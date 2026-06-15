@@ -36546,6 +36546,16 @@ app.post('/api/admin/recall-actives-backfill', requireAdmin, async (req, res) =>
     const writeSeed = pick('write_seed', 'false').toLowerCase() === 'true';
     const sampleN = Math.max(1, Math.min(200, Math.floor(Number(pick('sample', '50')) || 50)));
     if (!productId && !sampleQuery) return res.status(400).json({ ok: false, error: 'provide product_id or q' });
+    // SAFETY: real writes are disabled. catalog_products.product_payload.seed_data is a
+    // DOUBLE-ENCODED JSON string, so the jsonb deep-merge below turns it into an array and
+    // corrupts the row (regressed the pilot once). Use /api/admin/recall-actives-repair to
+    // restore. Re-enable only after redesigning the write to handle string-encoded seed_data.
+    if (!dryRun) {
+      return res.status(409).json({
+        ok: false,
+        error: 'WS1.2 real write disabled: catalog_products.seed_data is a double-encoded string; the merge corrupts it. Redesign required; use /api/admin/recall-actives-repair to undo.',
+      });
+    }
 
     let rows = [];
     if (productId) {
@@ -36616,6 +36626,76 @@ app.post('/api/admin/recall-actives-backfill', requireAdmin, async (req, res) =>
     return res.json({ ok: true, dry_run: dryRun, force, write_seed: writeSeed, mode: productId ? 'single' : 'sample', query: sampleQuery || null, summary });
   } catch (err) {
     logger.error({ err: err && err.message ? err.message : String(err) }, 'recall-actives-backfill failed');
+    return res.status(500).json({ ok: false, error: String((err && err.message) || err) });
+  }
+});
+
+// WS1.2 REPAIR: undo the damage from the broken write-back. The deep-merge turned
+// catalog_products.product_payload.seed_data (a double-encoded JSON STRING) into an
+// array [originalString, {derived...}] — restore = seed_data := seed_data->0. The
+// source external_product_seeds.seed_data stayed an object but got an extra WS1-authored
+// derived.recall block (authored_by=ws1_derive_v1) — strip those keys. dry_run default
+// true; both updates are guarded to act ONLY on the exact corruption shape.
+app.post('/api/admin/recall-actives-repair', requireAdmin, async (req, res) => {
+  try {
+    if (!process.env.DATABASE_URL) return res.status(503).json({ ok: false, error: 'DATABASE_URL not configured' });
+    const p = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
+    const pick = (k, def) => String((p[k] ?? req.query[k]) ?? def);
+    const productId = pick('product_id', '').trim();
+    const dryRun = pick('dry_run', 'true').toLowerCase() !== 'false';
+    if (!productId) return res.status(400).json({ ok: false, error: 'product_id required' });
+
+    const diag = await query(
+      `SELECT cp.content_key, cp.source_product_id,
+              jsonb_typeof(cp.product_payload->'seed_data')    AS cp_seed_data_type,
+              jsonb_typeof(cp.product_payload->'seed_data'->0) AS cp_seed_data_elem0_type,
+              (SELECT jsonb_typeof(eps.seed_data) FROM external_product_seeds eps
+                 WHERE eps.external_product_id = cp.source_product_id LIMIT 1) AS eps_seed_data_type,
+              (SELECT eps.seed_data#>>'{derived,recall,authored_by}' FROM external_product_seeds eps
+                 WHERE eps.external_product_id = cp.source_product_id LIMIT 1) AS eps_recall_authored_by
+         FROM catalog_products cp
+        WHERE cp.pivota_signature_id = $1 OR cp.content_key = $1 OR cp.source_product_id = $1
+        ORDER BY CASE WHEN cp.source_system = 'external_product_seeds_mirror_v1' THEN 0 ELSE 1 END,
+                 cp.updated_at DESC NULLS LAST
+        LIMIT 1`, [productId]);
+    const row = Array.isArray(diag && diag.rows) ? diag.rows[0] : null;
+    if (!row) return res.status(404).json({ ok: false, error: 'product not found' });
+
+    const plan = {
+      content_key: row.content_key,
+      source_product_id: row.source_product_id,
+      catalog_seed_data_type: row.cp_seed_data_type,
+      catalog_restore_to_elem0_type: row.cp_seed_data_elem0_type,
+      seed_seed_data_type: row.eps_seed_data_type,
+      seed_recall_authored_by: row.eps_recall_authored_by,
+      will_restore_catalog: row.cp_seed_data_type === 'array' && row.cp_seed_data_elem0_type === 'string',
+      will_clean_seed: row.eps_recall_authored_by === 'ws1_derive_v1',
+    };
+    const result = { dry_run: dryRun, plan, catalog_rowcount: 0, seed_rowcount: 0 };
+
+    if (!dryRun) {
+      if (plan.will_restore_catalog && row.content_key) {
+        const u = await query(
+          `UPDATE catalog_products
+              SET product_payload = jsonb_set(product_payload, '{seed_data}', product_payload->'seed_data'->0)
+            WHERE content_key = $1
+              AND jsonb_typeof(product_payload->'seed_data') = 'array'
+              AND jsonb_typeof(product_payload->'seed_data'->0) = 'string'`, [row.content_key]);
+        result.catalog_rowcount = u && typeof u.rowCount === 'number' ? u.rowCount : 0;
+      }
+      if (plan.will_clean_seed && row.source_product_id) {
+        const u = await query(
+          `UPDATE external_product_seeds
+              SET seed_data = jsonb_set(seed_data, '{derived,recall}',
+                    (seed_data#>'{derived,recall}') - 'ingredient_tokens' - 'alias_tokens' - 'concepts' - 'authored_by')
+            WHERE external_product_id = $1
+              AND seed_data#>>'{derived,recall,authored_by}' = 'ws1_derive_v1'`, [row.source_product_id]);
+        result.seed_rowcount = u && typeof u.rowCount === 'number' ? u.rowCount : 0;
+      }
+    }
+    return res.json({ ok: true, ...result });
+  } catch (err) {
+    logger.error({ err: err && err.message ? err.message : String(err) }, 'recall-actives-repair failed');
     return res.status(500).json({ ok: false, error: String((err && err.message) || err) });
   }
 });
