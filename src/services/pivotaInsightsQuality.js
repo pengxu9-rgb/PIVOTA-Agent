@@ -36,6 +36,11 @@ const EVIDENCE_PROFILE_RANK = new Map([
   ['seller_plus_reviews', 3],
   ['official_pdp_seed', 3],
   ['official_pdp_reviewed_line', 3],
+  // Tier-G grounded dossier (graded INCI × reviewed Ingredient KB) is decision-grade
+  // by construction — ranks with the reviewed tiers, above any positioning blurb, so
+  // it is never treated as a downgrade vs a seller-tier bundle (dossier authoring
+  // engine, Phase 1; see docs/dossier-authoring-engine-plan.md).
+  ['grounded_verified', 4],
   ['pivota_reviewed', 4],
   ['community_supported', 5],
 ]);

@@ -312,6 +312,54 @@ function isServableProductIntelBundle(bundle) {
   return resolveProductIntelTier(bundle) !== 'reject';
 }
 
+// ── Dossier authoring engine, Phase 1 — grounded dossier as the PRIMARY tier ──
+// A graded grounded dossier (Tier-G) is decision-grade by construction, so the
+// only thing it must yield to is a GENUINE human/community decision dossier. A
+// positioning blurb — seller-tier copy, an assistant curated_override, or a
+// `strict_human_manual_rewrite` seller summary — is outranked by the dossier.
+// See docs/dossier-authoring-engine-plan.md.
+
+// A servable bundle that is a genuine human/community dossier (NOT a positioning
+// blurb). These keep precedence over a grounded synthesis.
+function isProtectedDossierBundle(bundle) {
+  const source = asPlainObject(bundle);
+  if (!source) return false;
+  const provenance = asPlainObject(source.provenance) || {};
+  const core = asPlainObject(source.product_intel_core) || {};
+  const freshness = asPlainObject(source.freshness) || asPlainObject(core.freshness) || {};
+  const evidenceProfile = asString(source.evidence_profile || core.evidence_profile).toLowerCase();
+  const qualityState = asString(source.quality_state || core.quality_state).toLowerCase();
+  const reviewerKind = asString(provenance.reviewer_kind).toLowerCase();
+  const reviewTier = asString(provenance.review_tier).toLowerCase();
+  const generator = asString(provenance.generator).toLowerCase();
+  const sourceVersion = asString(freshness.source_version);
+  // The DEMOTED tier: strict_human_manual_rewrite seller summaries are positioning
+  // blurbs dressed as human review → explicitly NOT protected (plan: demote/retire).
+  if (generator === 'strict_human_manual_rewrite') return false;
+  // Real aggregated community evidence.
+  if (evidenceProfile === 'community_supported') return true;
+  // Verified, Pivota-reviewed at-rest copy.
+  if (qualityState === 'verified' && evidenceProfile === 'pivota_reviewed') return true;
+  // Real strict-human pilot selection.
+  if (sourceVersion === 'pilot_selected:strict_human_reviewed') return true;
+  if (reviewerKind === 'human' && reviewTier === 'strict_human') return true;
+  return false;
+}
+
+// A servable bundle a grounded dossier should outrank: servable, not already
+// grounded, and not a protected genuine dossier → a positioning blurb.
+function isPositioningBlurbBundle(bundle) {
+  if (!isServableProductIntelBundle(bundle)) return false;
+  if (isGroundedProductIntelBundle(bundle)) return false;
+  return !isProtectedDossierBundle(bundle);
+}
+
+// Serve-time precedence flip is flag-gated so merging is inert until deliberately
+// flipped (the base PDP_GROUNDED_PRODUCT_INTEL_ENABLED gate still also applies).
+function groundedOutranksBlurbEnabled() {
+  return asString(process.env.PDP_GROUNDED_OUTRANKS_BLURB).toLowerCase() === 'true';
+}
+
 function shouldRejectGenericProductIntelBundle(bundle) {
   const source = asPlainObject(bundle);
   const core = asPlainObject(source?.product_intel_core);
@@ -981,33 +1029,30 @@ function isGroundedProductIntelEnabled() {
 // published precedence (joint decision 2). `buildGrounded` is injectable for
 // tests and bypasses the flag. Best-effort: any failure returns the product
 // unchanged so the PDP is never broken.
-async function hydrateProductWithGroundedIntel({
+// Synthesize a Tier-G grounded bundle for a product from the reviewed Ingredient
+// KB, returning the bundle ONLY if it passes the grounded gate (else null).
+// Shared by the serve-time hydrate path and the at-rest catalog backfill, so both
+// produce identical, gate-passing dossiers. `buildGrounded` is injectable for
+// tests. Best-effort: any failure returns null so callers degrade gracefully.
+async function synthesizeGroundedProductIntelBundle({
   product,
   canonicalProductRef = null,
   productGroupId = null,
   buildGrounded = null,
 } = {}) {
   const sourceProduct = asPlainObject(product) || {};
-  if (typeof buildGrounded !== 'function' && !isGroundedProductIntelEnabled()) {
-    return sourceProduct;
-  }
-
-  // Precedence: never replace an already-servable (human/published) bundle.
-  const existing = readPublishedProductIntelBundle(sourceProduct, { canonicalProductRef });
-  if (existing && isServableProductIntelBundle(existing)) return sourceProduct;
-
   let generator = buildGrounded;
   if (typeof generator !== 'function') {
     try {
       ({ buildGroundedProductIntelBundle: generator } = require('./groundedProductIntel'));
     } catch {
-      return sourceProduct;
+      return null;
     }
   }
-  if (typeof generator !== 'function') return sourceProduct;
+  if (typeof generator !== 'function') return null;
 
-  // Resolve ingredients via the SAME authoritative view the PDP ingredient
-  // module uses, so external-seed/seed/snapshot INCI (which is NOT on
+  // Resolve ingredients via the SAME authoritative view the PDP ingredient module
+  // uses, so external-seed/seed/snapshot INCI (which is NOT on
   // product.ingredient_intel) reaches the generator. Only feed AUTHORITATIVE
   // ingredients — keeps the grounded bundle's inci_verified honest. Best-effort.
   let productForGen = sourceProduct;
@@ -1034,9 +1079,56 @@ async function hydrateProductWithGroundedIntel({
   try {
     bundle = await generator(productForGen, { canonicalProductRef, productGroupId });
   } catch {
+    return null;
+  }
+  if (!bundle || !isGroundedProductIntelBundle(bundle)) return null;
+  return bundle;
+}
+
+// ADR-002 item 9 + dossier authoring engine, Phase 1 (produce → serve).
+// Synthesize a Tier-G grounded bundle and stamp it onto the product so the sync
+// builder + tiered gate serve it. Flag-gated OFF by default
+// (PDP_GROUNDED_PRODUCT_INTEL_ENABLED) — a no-op until flipped.
+//
+// Precedence: a grounded dossier NEVER replaces a protected genuine human/
+// community dossier. It DOES outrank a positioning blurb (seller-tier copy /
+// strict_human_manual_rewrite seller summary) — but that outranking is gated
+// behind PDP_GROUNDED_OUTRANKS_BLURB (default OFF), so the at-rest backfill is the
+// primary mechanism and merging this is inert until the flag is flipped.
+// `buildGrounded` is injectable for tests and bypasses the env flags (an injected
+// generator may outrank a blurb but still yields to a protected dossier / grounded
+// bundle). Best-effort: any failure returns the product unchanged.
+async function hydrateProductWithGroundedIntel({
+  product,
+  canonicalProductRef = null,
+  productGroupId = null,
+  buildGrounded = null,
+} = {}) {
+  const sourceProduct = asPlainObject(product) || {};
+  if (typeof buildGrounded !== 'function' && !isGroundedProductIntelEnabled()) {
     return sourceProduct;
   }
-  if (!bundle || !isGroundedProductIntelBundle(bundle)) return sourceProduct;
+
+  // Precedence: keep grounded + protected genuine dossiers; outrank blurbs (gated).
+  const existing = readPublishedProductIntelBundle(sourceProduct, { canonicalProductRef });
+  if (existing && isServableProductIntelBundle(existing)) {
+    if (isGroundedProductIntelBundle(existing) || isProtectedDossierBundle(existing)) {
+      return sourceProduct;
+    }
+    // existing is a positioning blurb: only outrank it when explicitly enabled
+    // (env flag for the prod serve path; injected generator for tests/tools).
+    if (typeof buildGrounded !== 'function' && !groundedOutranksBlurbEnabled()) {
+      return sourceProduct;
+    }
+  }
+
+  const bundle = await synthesizeGroundedProductIntelBundle({
+    product: sourceProduct,
+    canonicalProductRef,
+    productGroupId,
+    buildGrounded,
+  });
+  if (!bundle) return sourceProduct;
 
   return {
     ...sourceProduct,
@@ -2024,7 +2116,10 @@ module.exports = {
   isGroundedProductIntelBundle,
   resolveProductIntelTier,
   isServableProductIntelBundle,
+  isProtectedDossierBundle,
+  isPositioningBlurbBundle,
   hydrateProductWithGroundedIntel,
+  synthesizeGroundedProductIntelBundle,
   normalizePublishedProductIntelBundle,
   readPublishedProductIntelBundle,
 };
