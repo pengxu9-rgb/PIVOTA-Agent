@@ -36501,6 +36501,96 @@ app.get('/api/admin/recall-actives-preview', requireAdmin, async (req, res) => {
   }
 });
 
+// WS1.2 actives write-back (docs/find_products_multi_phase2_scope.md). Derives actives
+// and PERSISTS them into catalog_products.product_payload.seed_data.derived.recall (the
+// canonical lane's source) via a JSONB deep-merge that preserves existing recall keys;
+// optionally external_product_seeds.seed_data when write_seed=true. dry_run defaults
+// TRUE — you must pass dry_run=false to actually write. Idempotent: skips products that
+// already have recall.ingredient_tokens unless force=true. Provenance: authored_by.
+app.post('/api/admin/recall-actives-backfill', requireAdmin, async (req, res) => {
+  try {
+    if (!process.env.DATABASE_URL) return res.status(503).json({ ok: false, error: 'DATABASE_URL not configured' });
+    const p = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
+    const pick = (k, def) => String((p[k] ?? req.query[k]) ?? def);
+    const productId = pick('product_id', '').trim();
+    const sampleQuery = pick('q', '').trim();
+    const dryRun = pick('dry_run', 'true').toLowerCase() !== 'false';
+    const force = pick('force', 'false').toLowerCase() === 'true';
+    const writeSeed = pick('write_seed', 'false').toLowerCase() === 'true';
+    const sampleN = Math.max(1, Math.min(200, Math.floor(Number(pick('sample', '50')) || 50)));
+    if (!productId && !sampleQuery) return res.status(400).json({ ok: false, error: 'provide product_id or q' });
+
+    let rows = [];
+    if (productId) {
+      const r = await query(
+        `SELECT cp.content_key, cp.source_product_id, cp.merchant_id, cp.platform,
+                cp.title AS product_title, cp.description AS product_description, cp.brand,
+                cp.category, cp.category_path, cp.product_payload, cp.pivota_signature_id
+           FROM catalog_products cp
+          WHERE cp.pivota_signature_id = $1 OR cp.content_key = $1 OR cp.source_product_id = $1
+          ORDER BY CASE WHEN cp.source_system = 'external_product_seeds_mirror_v1' THEN 0 ELSE 1 END,
+                   cp.updated_at DESC NULLS LAST
+          LIMIT 1`, [productId]);
+      rows = Array.isArray(r && r.rows) ? r.rows : [];
+    } else {
+      const recallRows = await fetchCanonicalChainRows({
+        query: sampleQuery,
+        categoryPathPrefix: resolveCanonicalCategoryPathPrefixForQuery(sampleQuery) || null,
+        limit: sampleN, deps: { query },
+      });
+      rows = Array.isArray(recallRows) ? recallRows : [];
+    }
+
+    const summary = { scanned: 0, derived_nonempty: 0, written_catalog: 0, written_seed: 0, skipped_existing: 0, skipped_no_actives: 0, samples: [] };
+    for (const row of rows) {
+      summary.scanned += 1;
+      const product = buildCanonicalChainMainlineProduct(row) || {};
+      const derived = deriveBeautyRecallActives(product);
+      const existing = product.seed_data && product.seed_data.derived && product.seed_data.derived.recall ? product.seed_data.derived.recall : {};
+      const hasExisting = Array.isArray(existing.ingredient_tokens) && existing.ingredient_tokens.length > 0;
+      if (!derived.ingredient_tokens.length) { summary.skipped_no_actives += 1; continue; }
+      summary.derived_nonempty += 1;
+      if (hasExisting && !force) { summary.skipped_existing += 1; continue; }
+      if (summary.samples.length < 10) {
+        summary.samples.push({ product_id: row.pivota_signature_id || row.content_key, title: product.title, ingredient_tokens: derived.ingredient_tokens });
+      }
+      if (dryRun || !row.content_key) continue;
+      const patch = JSON.stringify({
+        ingredient_tokens: derived.ingredient_tokens,
+        alias_tokens: derived.alias_tokens,
+        concepts: derived.concepts,
+        authored_by: 'ws1_derive_v1',
+      });
+      await query(
+        `UPDATE catalog_products
+            SET product_payload = coalesce(product_payload, '{}'::jsonb)
+              || jsonb_build_object('seed_data',
+                   coalesce(product_payload->'seed_data', '{}'::jsonb)
+                   || jsonb_build_object('derived',
+                        coalesce(product_payload#>'{seed_data,derived}', '{}'::jsonb)
+                        || jsonb_build_object('recall',
+                             coalesce(product_payload#>'{seed_data,derived,recall}', '{}'::jsonb) || $2::jsonb)))
+          WHERE content_key = $1`, [row.content_key, patch]);
+      summary.written_catalog += 1;
+      if (writeSeed && row.source_product_id) {
+        await query(
+          `UPDATE external_product_seeds
+              SET seed_data = coalesce(seed_data, '{}'::jsonb)
+                || jsonb_build_object('derived',
+                     coalesce(seed_data->'derived', '{}'::jsonb)
+                     || jsonb_build_object('recall',
+                          coalesce(seed_data#>'{derived,recall}', '{}'::jsonb) || $2::jsonb))
+            WHERE external_product_id = $1`, [row.source_product_id, patch]);
+        summary.written_seed += 1;
+      }
+    }
+    return res.json({ ok: true, dry_run: dryRun, force, write_seed: writeSeed, mode: productId ? 'single' : 'sample', query: sampleQuery || null, summary });
+  } catch (err) {
+    logger.error({ err: err && err.message ? err.message : String(err) }, 'recall-actives-backfill failed');
+    return res.status(500).json({ ok: false, error: String((err && err.message) || err) });
+  }
+});
+
 app.post('/api/admin/catalog-serving/search', requireAdmin, async (req, res) => {
   const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
   try {
