@@ -2012,13 +2012,33 @@ function buildProductIntelBundleInternal({
   };
 }
 
+// Attach the agent-facing context (pivota.agent_product_context.v1) to every
+// served bundle, so agents read structured, self-describing Pivota context
+// (what_it_is / why / best_for / watchouts as `facts`, confidence + source tier,
+// and guardrails like "no price/availability claims") rather than inferring it
+// from a display name alone. Lazy require avoids the
+// pivotaInsightsQuality → externalSeedPdpReadiness → pdpProductIntel cycle.
+// Idempotent (no-op if agent_context already present) and best-effort.
+function attachAgentContext(bundle) {
+  if (!asPlainObject(bundle)) return bundle;
+  try {
+    const { ensureAgentContextOnBundle } = require('./services/pivotaInsightsQuality');
+    if (typeof ensureAgentContextOnBundle === 'function') return ensureAgentContextOnBundle(bundle);
+  } catch {
+    /* best-effort: serve the bundle without agent_context rather than fail */
+  }
+  return bundle;
+}
+
 function buildProductIntelBundle(args = {}) {
-  return buildProductIntelBundleInternal({
-    ...args,
-    requirePublishedIntel: true,
-    requireReviewedBundle: args.requireReviewedBundle === true,
-    applyRolloutGate: true,
-  });
+  return attachAgentContext(
+    buildProductIntelBundleInternal({
+      ...args,
+      requirePublishedIntel: true,
+      requireReviewedBundle: args.requireReviewedBundle === true,
+      applyRolloutGate: true,
+    }),
+  );
 }
 
 function buildProductIntelDraftBundle(args = {}) {
