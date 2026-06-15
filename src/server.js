@@ -19802,6 +19802,66 @@ function countBeautyActiveConceptMatches(queryText, product) {
   return { count: keys.length, keys };
 }
 
+// WS1 actives authoring (docs/find_products_multi_phase2_scope.md): ingredient
+// SOURCE text — primary ingredient evidence only (INCI / active ingredients / raw
+// ingredient text), deliberately EXCLUDING any already-authored derived.recall
+// tokens so derivation grounds in real ingredients, not its own prior output.
+function buildBeautyIngredientSourceText(product) {
+  if (!product || typeof product !== 'object') return '';
+  const joinArr = (v) => (Array.isArray(v) ? v.join(' ') : typeof v === 'string' ? v : '');
+  const ing = product.ingredient_intel && typeof product.ingredient_intel === 'object' ? product.ingredient_intel : {};
+  const parts = [
+    joinArr(product.ingredients_inci),
+    joinArr(product.active_ingredients),
+    product.raw_ingredient_text_clean,
+    product.pdp_ingredients_raw,
+    product.pdp_active_ingredients_raw,
+    ing.raw_ingredient_text_clean,
+    joinArr(ing.active_ingredients),
+    joinArr(ing.inci_list),
+    product.description,
+  ]
+    .map((v) => String(v || '').trim())
+    .filter(Boolean);
+  return normalizeSearchTextForMatch(parts.join(' '));
+}
+
+// Derive searchable actives for a product from its ingredient evidence, reusing the
+// Phase-1 concept registry so authoring and matching share one taxonomy. Returns
+// friendly ingredient_tokens + alias_tokens (incl. the INCI surface forms) + the
+// matched concept set + per-concept evidence. Pure / no DB; persisting these into
+// derived.recall is a separate, gated write step (WS1 increment 2).
+function deriveBeautyRecallActives(product) {
+  const empty = { ingredient_tokens: [], alias_tokens: [], concepts: [], evidence: [], source_chars: 0 };
+  const text = buildBeautyIngredientSourceText(product);
+  if (!text) return empty;
+  const padded = ` ${text} `;
+  const ingredientTokens = new Set();
+  const aliasTokens = new Set();
+  const concepts = [];
+  const evidence = [];
+  for (const concept of BEAUTY_ACTIVE_CONCEPTS) {
+    const matched = concept.surfaceForms.filter((f) => beautyActiveTextHasForm(padded, f));
+    if (!matched.length) continue;
+    concepts.push(concept.key);
+    evidence.push({ concept: concept.key, matched });
+    // Benefit concepts (firming/brightening) describe the product but are not
+    // ingredients — keep them in `concepts` only, out of the ingredient tokens.
+    if (!concept.concept) {
+      ingredientTokens.add(concept.key.replace(/_/g, ' '));
+      concept.queryForms.forEach((q) => aliasTokens.add(q));
+      matched.forEach((m) => aliasTokens.add(m));
+    }
+  }
+  return {
+    ingredient_tokens: Array.from(ingredientTokens),
+    alias_tokens: Array.from(aliasTokens),
+    concepts,
+    evidence,
+    source_chars: text.length,
+  };
+}
+
 function scoreBeautyExternalSeedProduct({
   product,
   queryText,
@@ -36346,6 +36406,101 @@ app.get('/api/admin/find-products-prompt-test', requireAdmin, async (req, res) =
   }
 });
 
+// WS1 actives authoring — DRY-RUN preview (docs/find_products_multi_phase2_scope.md).
+// Read-only: shows what searchable actives WS1 would derive from a product's
+// ingredient evidence, WITHOUT writing. Two modes:
+//   ?product_id=<sig|content_key|source_product_id>  → single product + existing recall
+//   ?q=<category query>&sample=N                     → coverage % + token frequency
+// The actual write-back into derived.recall is a separate, gated step (WS1 inc. 2).
+app.get('/api/admin/recall-actives-preview', requireAdmin, async (req, res) => {
+  try {
+    if (!process.env.DATABASE_URL) {
+      return res.status(503).json({ ok: false, error: 'DATABASE_URL not configured' });
+    }
+    const productId = String(req.query.product_id || req.query.productId || req.query.id || '').trim();
+    const sampleQuery = String(req.query.q || req.query.query || '').trim();
+    if (!productId && !sampleQuery) {
+      return res.status(400).json({ ok: false, error: 'provide product_id (single) or q (sample)' });
+    }
+    if (productId) {
+      const result = await query(
+        `SELECT cp.merchant_id, cp.product_key, cp.source_product_id, cp.platform,
+                cp.title AS product_title, cp.description AS product_description, cp.brand,
+                cp.product_type, cp.category, cp.category_path, cp.canonical_url,
+                cp.image_url AS product_image_url, cp.pdp_scope, cp.product_payload,
+                cp.content_key, cp.pivota_signature_id, cp.pivota_canonical_url
+           FROM catalog_products cp
+          WHERE cp.pivota_signature_id = $1 OR cp.content_key = $1 OR cp.source_product_id = $1
+          ORDER BY CASE WHEN cp.source_system = 'external_product_seeds_mirror_v1' THEN 0 ELSE 1 END,
+                   cp.updated_at DESC NULLS LAST
+          LIMIT 1`,
+        [productId],
+      );
+      const row = Array.isArray(result && result.rows) ? result.rows[0] : null;
+      if (!row) return res.status(404).json({ ok: false, error: 'product not found', product_id: productId });
+      const product = buildCanonicalChainMainlineProduct(row) || {};
+      const derived = deriveBeautyRecallActives(product);
+      const existing =
+        product.seed_data && product.seed_data.derived && product.seed_data.derived.recall
+          ? product.seed_data.derived.recall
+          : {};
+      const existingTokens = Array.isArray(existing.ingredient_tokens) ? existing.ingredient_tokens : null;
+      return res.json({
+        ok: true,
+        mode: 'single',
+        product_id: productId,
+        title: product.title || null,
+        derived,
+        existing_recall: {
+          ingredient_tokens: existingTokens,
+          alias_tokens: Array.isArray(existing.alias_tokens) ? existing.alias_tokens : null,
+        },
+        would_write: derived.ingredient_tokens.length > 0 && !(existingTokens && existingTokens.length),
+      });
+    }
+    const sampleN = Math.max(1, Math.min(200, Math.floor(Number(req.query.sample) || 50)));
+    const rows = await fetchCanonicalChainRows({
+      query: sampleQuery,
+      categoryPathPrefix: resolveCanonicalCategoryPathPrefixForQuery(sampleQuery) || null,
+      limit: sampleN,
+      deps: { query },
+    });
+    const products = (Array.isArray(rows) ? rows : [])
+      .map((r) => buildCanonicalChainMainlineProduct(r))
+      .filter(Boolean);
+    let withActives = 0;
+    const tokenFreq = {};
+    const examples = [];
+    for (const p of products) {
+      const d = deriveBeautyRecallActives(p);
+      if (d.ingredient_tokens.length > 0) withActives += 1;
+      d.ingredient_tokens.forEach((t) => {
+        tokenFreq[t] = (tokenFreq[t] || 0) + 1;
+      });
+      if (examples.length < 10) {
+        examples.push({ title: p.title, ingredient_tokens: d.ingredient_tokens, concepts: d.concepts, source_chars: d.source_chars });
+      }
+    }
+    return res.json({
+      ok: true,
+      mode: 'sample',
+      query: sampleQuery,
+      sampled: products.length,
+      coverage: {
+        with_actives: withActives,
+        pct: products.length ? Math.round((withActives / products.length) * 100) : 0,
+      },
+      token_frequency: Object.fromEntries(
+        Object.entries(tokenFreq).sort((a, b) => b[1] - a[1]).slice(0, 25),
+      ),
+      examples,
+    });
+  } catch (err) {
+    logger.error({ err: err && err.message ? err.message : String(err) }, 'recall-actives-preview failed');
+    return res.status(500).json({ ok: false, error: String((err && err.message) || err) });
+  }
+});
+
 app.post('/api/admin/catalog-serving/search', requireAdmin, async (req, res) => {
   const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
   try {
@@ -48326,6 +48481,8 @@ module.exports._debug = {
   buildBeautyActivesText,
   mainlineProductMatchesId,
   diagnosePromptInspect,
+  buildBeautyIngredientSourceText,
+  deriveBeautyRecallActives,
   compactBeautyMainlineProductForResponse,
   snapshotProductDetailCacheStats,
   resolveProductDetailCacheTtlMs,
