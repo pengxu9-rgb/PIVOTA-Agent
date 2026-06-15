@@ -47,7 +47,8 @@ test("tools: exposes the canonical commerce lifecycle and EXCLUDES edge (externa
   const names = surface.tools.map((t) => t.name).sort();
   assert.deepEqual(names, [
     "cancel_checkout_session", "complete_checkout_session", "create_checkout_session",
-    "create_payment_link", "get_checkout_session", "get_order", "get_product", "request_after_sales",
+    "create_payment_link", "get_alternatives", "get_checkout_session", "get_intel", "get_offers",
+    "get_order", "get_product", "request_after_sales",
     "search_catalog", "update_checkout_session",
   ]);
   // edge OAuth / token-exchange ops are NOT executor-backed tools
