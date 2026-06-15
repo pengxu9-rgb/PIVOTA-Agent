@@ -36445,6 +36445,23 @@ app.get('/api/admin/recall-actives-preview', requireAdmin, async (req, res) => {
           ? product.seed_data.derived.recall
           : {};
       const existingTokens = Array.isArray(existing.ingredient_tokens) ? existing.ingredient_tokens : null;
+      // Raw ground-truth read straight from the column (bypasses the builder) so a
+      // write can be verified independently of how buildCanonicalChainMainlineProduct
+      // surfaces seed_data.
+      const rawDiag = await query(
+        `SELECT cp.content_key, cp.product_key, cp.source_system,
+                (cp.product_payload ? 'seed_data') AS has_seed_data,
+                cp.product_payload #>> '{seed_data,derived,recall,ingredient_tokens}' AS raw_recall_ingredient_tokens,
+                cp.product_payload #>> '{seed_data,derived,recall,authored_by}' AS raw_recall_authored_by,
+                (SELECT count(*) FROM catalog_products c2
+                  WHERE c2.pivota_signature_id = $1 OR c2.content_key = $1 OR c2.source_product_id = $1) AS catalog_rows_for_id
+           FROM catalog_products cp
+          WHERE cp.pivota_signature_id = $1 OR cp.content_key = $1 OR cp.source_product_id = $1
+          ORDER BY CASE WHEN cp.source_system = 'external_product_seeds_mirror_v1' THEN 0 ELSE 1 END,
+                   cp.updated_at DESC NULLS LAST
+          LIMIT 1`,
+        [productId],
+      );
       return res.json({
         ok: true,
         mode: 'single',
@@ -36455,6 +36472,7 @@ app.get('/api/admin/recall-actives-preview', requireAdmin, async (req, res) => {
           ingredient_tokens: existingTokens,
           alias_tokens: Array.isArray(existing.alias_tokens) ? existing.alias_tokens : null,
         },
+        raw: Array.isArray(rawDiag && rawDiag.rows) ? rawDiag.rows[0] || null : null,
         would_write: derived.ingredient_tokens.length > 0 && !(existingTokens && existingTokens.length),
       });
     }
@@ -36541,7 +36559,7 @@ app.post('/api/admin/recall-actives-backfill', requireAdmin, async (req, res) =>
       rows = Array.isArray(recallRows) ? recallRows : [];
     }
 
-    const summary = { scanned: 0, derived_nonempty: 0, written_catalog: 0, written_seed: 0, skipped_existing: 0, skipped_no_actives: 0, samples: [] };
+    const summary = { scanned: 0, derived_nonempty: 0, written_catalog: 0, written_seed: 0, rowcount_catalog: 0, rowcount_seed: 0, skipped_existing: 0, skipped_no_actives: 0, samples: [] };
     for (const row of rows) {
       summary.scanned += 1;
       const product = buildCanonicalChainMainlineProduct(row) || {};
@@ -36561,7 +36579,7 @@ app.post('/api/admin/recall-actives-backfill', requireAdmin, async (req, res) =>
         concepts: derived.concepts,
         authored_by: 'ws1_derive_v1',
       });
-      await query(
+      const updCatalog = await query(
         `UPDATE catalog_products
             SET product_payload = coalesce(product_payload, '{}'::jsonb)
               || jsonb_build_object('seed_data',
@@ -36572,8 +36590,9 @@ app.post('/api/admin/recall-actives-backfill', requireAdmin, async (req, res) =>
                              coalesce(product_payload#>'{seed_data,derived,recall}', '{}'::jsonb) || $2::jsonb)))
           WHERE content_key = $1`, [row.content_key, patch]);
       summary.written_catalog += 1;
+      summary.rowcount_catalog += (updCatalog && typeof updCatalog.rowCount === 'number' ? updCatalog.rowCount : 0);
       if (writeSeed && row.source_product_id) {
-        await query(
+        const updSeed = await query(
           `UPDATE external_product_seeds
               SET seed_data = coalesce(seed_data, '{}'::jsonb)
                 || jsonb_build_object('derived',
@@ -36582,6 +36601,7 @@ app.post('/api/admin/recall-actives-backfill', requireAdmin, async (req, res) =>
                           coalesce(seed_data#>'{derived,recall}', '{}'::jsonb) || $2::jsonb))
             WHERE external_product_id = $1`, [row.source_product_id, patch]);
         summary.written_seed += 1;
+        summary.rowcount_seed += (updSeed && typeof updSeed.rowCount === 'number' ? updSeed.rowCount : 0);
       }
     }
     return res.json({ ok: true, dry_run: dryRun, force, write_seed: writeSeed, mode: productId ? 'single' : 'sample', query: sampleQuery || null, summary });
