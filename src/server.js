@@ -518,6 +518,18 @@ const PIVOT_BEAUTY_STRICT_RECO_QUALITY_ENABLED = parseBooleanEnv(
   process.env.PIVOT_BEAUTY_STRICT_RECO_QUALITY_ENABLED,
   true,
 );
+// Phase 1 active-aware beauty rank (find_products_multi). Boosts mainline
+// candidates whose actives match the query's active/benefit concepts, so a
+// product whose differentiators (e.g. soy isoflavones, adenosine) are NOT in its
+// title can still surface for "soy firming cream" / "adenosine firming cream".
+// Confirmed need: the pilot sits at a fixed rank 38/52 because the ranker only
+// scores title-token overlap (server.js scoreBeautyExternalSeedProduct), invariant
+// to the active word. Default OFF — ship dark, enable per canary; rollback = flag
+// flip. See docs/find_products_multi_actives_recall_design.md.
+const PIVOT_BEAUTY_ACTIVE_AWARE_RANK_ENABLED = parseBooleanEnv(
+  process.env.PIVOT_BEAUTY_ACTIVE_AWARE_RANK_ENABLED,
+  false,
+);
 const SEARCH_QUALITY_CONTRACT_V1_ENABLED = parseBooleanEnv(
   process.env.SEARCH_QUALITY_CONTRACT_V1_ENABLED,
   true,
@@ -19671,6 +19683,125 @@ function scoreBeautyBrandBrowseCategoryPriority(product = {}, intent = null, can
   return score;
 }
 
+// Phase 1 active-aware rank: a compact registry mapping an active/benefit the
+// user can NAME in a query (queryForms) to the surface forms that prove a product
+// delivers it (surfaceForms — ingredient names, including INCI forms that differ
+// from the friendly word, e.g. soy -> "glycine soja"). Benefit concepts
+// (concept:true) map to ACTIVE ingredient names rather than the benefit word, so a
+// product that merely prints "firming" in its title does NOT match — only one whose
+// actives actually firm (adenosine, collagen, peptides…). Gated by
+// PIVOT_BEAUTY_ACTIVE_AWARE_RANK_ENABLED. See
+// docs/find_products_multi_actives_recall_design.md.
+const BEAUTY_ACTIVE_AWARE_RANK_WEIGHT = 44;
+const BEAUTY_ACTIVE_AWARE_RANK_MAX_CONCEPTS = 3;
+const BEAUTY_ACTIVE_CONCEPTS = [
+  {
+    key: 'soy',
+    queryForms: ['soy', 'soya', 'soybean', 'isoflavone', 'isoflavones', 'genistein', 'daidzein'],
+    surfaceForms: ['soy', 'soya', 'soybean', 'soja', 'glycine soja', 'glycine max', 'soymilk', 'soy milk', 'isoflavone', 'isoflavones', 'genistein', 'daidzein'],
+  },
+  { key: 'adenosine', queryForms: ['adenosine'], surfaceForms: ['adenosine'] },
+  { key: 'collagen', queryForms: ['collagen'], surfaceForms: ['collagen', 'hydrolyzed collagen'] },
+  { key: 'niacinamide', queryForms: ['niacinamide', 'vitamin b3'], surfaceForms: ['niacinamide', 'nicotinamide'] },
+  {
+    key: 'peptide',
+    queryForms: ['peptide', 'peptides', 'tripeptide', 'tetrapeptide', 'hexapeptide', 'copper peptide'],
+    surfaceForms: ['peptide', 'tripeptide', 'tetrapeptide', 'hexapeptide', 'palmitoyl', 'copper tripeptide'],
+  },
+  { key: 'retinol', queryForms: ['retinol', 'retinoid', 'retinal', 'vitamin a'], surfaceForms: ['retinol', 'retinal', 'retinyl', 'retinoid'] },
+  { key: 'hyaluronic', queryForms: ['hyaluronic', 'hyaluron', 'hyaluronic acid'], surfaceForms: ['hyaluron', 'hyaluronate', 'hyaluronic'] },
+  // Surface forms are whole normalized tokens (the matcher boundary-pads single
+  // tokens), so use the real derivative roots — `ascorb*` as a bare fragment would
+  // NOT match `ascorbyl` / `ascorbate` / `ascorbic acid` (the common Vit-C forms).
+  { key: 'vitamin_c', queryForms: ['vitamin c', 'ascorbic', 'ascorbate'], surfaceForms: ['ascorbic', 'ascorbyl', 'ascorbate', 'vitamin c'] },
+  { key: 'ceramide', queryForms: ['ceramide', 'ceramides'], surfaceForms: ['ceramide'] },
+  { key: 'centella', queryForms: ['centella', 'cica', 'madecassoside'], surfaceForms: ['centella', 'cica', 'madecassoside', 'asiaticoside'] },
+  {
+    key: 'firming',
+    concept: true,
+    queryForms: ['firming', 'firm', 'firmness', 'elasticity', 'lifting', 'tightening', 'anti aging', 'antiaging', 'wrinkle'],
+    surfaceForms: ['adenosine', 'collagen', 'peptide', 'tripeptide', 'tetrapeptide', 'hexapeptide', 'palmitoyl', 'retinol', 'retinal', 'isoflavone', 'genistein', 'idebenone', 'bakuchiol', 'elastin'],
+  },
+  {
+    key: 'brightening',
+    concept: true,
+    queryForms: ['brightening', 'brighten', 'whitening', 'dark spot', 'glow'],
+    surfaceForms: ['niacinamide', 'ascorbic', 'ascorbyl', 'ascorbate', 'vitamin c', 'arbutin', 'tranexamic', 'glutathione', 'kojic'],
+  },
+];
+
+// Whitespace-padded substring test with a word boundary for single-token forms
+// (so "soy" does not falsely match inside an unrelated token) and plain substring
+// for multi-word forms (e.g. "glycine soja" inside a normalized ingredient list).
+function beautyActiveTextHasForm(paddedNormalizedText, form) {
+  const f = normalizeSearchTextForMatch(form);
+  if (!f) return false;
+  return paddedNormalizedText.includes(f.includes(' ') ? f : ` ${f} `);
+}
+
+// Concepts the user named in the query (active ingredients + benefit words).
+function extractBeautyQueryActiveConcepts(queryText) {
+  const normalized = normalizeSearchTextForMatch(queryText);
+  if (!normalized) return [];
+  const padded = ` ${normalized} `;
+  return BEAUTY_ACTIVE_CONCEPTS.filter((concept) =>
+    concept.queryForms.some((form) => beautyActiveTextHasForm(padded, form)),
+  );
+}
+
+// All ingredient/active text already present on a mainline product object — across
+// external-seed (ingredient_tokens / external_seed_recall) and canonical_chain
+// (raw_ingredient_text_clean / ingredients_inci / active_ingredients / seed_data
+// derived.recall) shapes. No DB read; purely re-uses fields the builders attach.
+function buildBeautyActivesText(product) {
+  if (!product || typeof product !== 'object') return '';
+  const joinArr = (v) => (Array.isArray(v) ? v.join(' ') : typeof v === 'string' ? v : '');
+  const recall =
+    product.external_seed_recall && typeof product.external_seed_recall === 'object'
+      ? product.external_seed_recall
+      : product.seed_data &&
+          product.seed_data.derived &&
+          typeof product.seed_data.derived.recall === 'object'
+        ? product.seed_data.derived.recall
+        : null;
+  const ing =
+    product.ingredient_intel && typeof product.ingredient_intel === 'object' ? product.ingredient_intel : {};
+  const parts = [
+    joinArr(product.ingredient_tokens),
+    recall ? joinArr(recall.ingredient_tokens) : '',
+    recall ? joinArr(recall.alias_tokens) : '',
+    recall ? recall.retrieval_summary : '',
+    recall ? recall.retrieval_title : '',
+    product.raw_ingredient_text_clean,
+    product.pdp_ingredients_raw,
+    product.pdp_active_ingredients_raw,
+    joinArr(product.ingredients_inci),
+    joinArr(product.active_ingredients),
+    ing.raw_ingredient_text_clean,
+    joinArr(ing.active_ingredients),
+    product.description,
+  ]
+    .map((v) => String(v || '').trim())
+    .filter(Boolean);
+  return normalizeSearchTextForMatch(parts.join(' '));
+}
+
+// How many distinct query-named concepts the product's actives actually deliver.
+function countBeautyActiveConceptMatches(queryText, product) {
+  const concepts = extractBeautyQueryActiveConcepts(queryText);
+  if (!concepts.length) return { count: 0, keys: [] };
+  const activesText = buildBeautyActivesText(product);
+  if (!activesText) return { count: 0, keys: [] };
+  const padded = ` ${activesText} `;
+  const keys = [];
+  for (const concept of concepts) {
+    if (concept.surfaceForms.some((form) => beautyActiveTextHasForm(padded, form))) {
+      keys.push(concept.key);
+    }
+  }
+  return { count: keys.length, keys };
+}
+
 function scoreBeautyExternalSeedProduct({
   product,
   queryText,
@@ -19859,6 +19990,21 @@ function scoreBeautyExternalSeedProduct({
     queryText,
     baseScore: score,
   });
+  if (PIVOT_BEAUTY_ACTIVE_AWARE_RANK_ENABLED) {
+    const activeMatch = countBeautyActiveConceptMatches(queryText, product);
+    if (activeMatch.count > 0) {
+      const activeBonus =
+        Math.min(BEAUTY_ACTIVE_AWARE_RANK_MAX_CONCEPTS, activeMatch.count) *
+        BEAUTY_ACTIVE_AWARE_RANK_WEIGHT;
+      score += activeBonus;
+      return {
+        product,
+        relevant: true,
+        score,
+        active_match: { count: activeMatch.count, keys: activeMatch.keys, bonus: activeBonus },
+      };
+    }
+  }
   return { product, relevant: true, score };
 }
 
@@ -48052,6 +48198,9 @@ module.exports._debug = {
   beautyQueryHasAcneOilControlIntent,
   beautyProductHasAcneOilControlEvidence,
   scoreBeautyExternalSeedProduct,
+  extractBeautyQueryActiveConcepts,
+  countBeautyActiveConceptMatches,
+  buildBeautyActivesText,
   compactBeautyMainlineProductForResponse,
   snapshotProductDetailCacheStats,
   resolveProductDetailCacheTtlMs,
