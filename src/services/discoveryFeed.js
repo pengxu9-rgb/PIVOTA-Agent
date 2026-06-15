@@ -2115,6 +2115,8 @@ function buildStableBrowseCatalogCountQuery(request, { includeIdentityJoin = tru
     lower(concat_ws(' ',
       coalesce(eps.seed_data->'derived'->'recall'->>'retrieval_title', ''),
       coalesce(eps.seed_data->'derived'->'recall'->>'retrieval_summary', ''),
+      ${EXTERNAL_SEED_RECALL_SQL_FIELDS.ingredientTokens},
+      ${EXTERNAL_SEED_RECALL_SQL_FIELDS.aliasTokens},
       coalesce(eps.title, ''),
       coalesce(eps.seed_data->>'title', ''),
       coalesce(eps.seed_data->>'description', ''),
@@ -5042,6 +5044,10 @@ async function fetchExternalSeedCandidates({
             lower(
               concat_ws(
                 ' ',
+                coalesce(seed_data->'derived'->'recall'->>'retrieval_title', ''),
+                coalesce(seed_data->'derived'->'recall'->>'retrieval_summary', ''),
+                ${EXTERNAL_SEED_RECALL_SQL_FIELDS.ingredientTokens},
+                ${EXTERNAL_SEED_RECALL_SQL_FIELDS.aliasTokens},
                 coalesce(seed_data->>'title', ''),
                 coalesce(seed_data->'snapshot'->>'title', ''),
                 coalesce(title, ''),
