@@ -275,6 +275,39 @@ function classifyPivotaInsightQualityLane(rowOrClassification, options = {}) {
   };
 }
 
+const PUBLIC_SAFE_CLAIM_GRADES = new Set(['a', 'b', 'c']);
+const PUBLIC_SAFE_CLAIMS_MAX = 6;
+
+// Single source of the PUBLIC claim-safety rule (FTC posture): a grounded claim may be
+// published as public, frontier-model-citable structured data ONLY if it is
+// substantiation_status==='substantiated' AND graded A–C. Drops unverified / flagged
+// (marketing_vs_reality) / grade-D, caps the count, and returns a minimal public shape.
+// Consumed by the PDP serve-path stamp (pdpProductIntel.stampPublicGroundedClaims) so the
+// rule lives in ONE place. See docs/kbeauty_merchant_appearance_enrichment_scope.md.
+function filterPublicSafeClaims(evidenceClaims) {
+  if (!Array.isArray(evidenceClaims)) return [];
+  const out = [];
+  for (const claim of evidenceClaims) {
+    if (!claim || typeof claim !== 'object') continue;
+    if (asString(claim.substantiation_status).toLowerCase() !== 'substantiated') continue;
+    const grade = asString(claim.evidence_grade).toLowerCase();
+    if (!PUBLIC_SAFE_CLAIM_GRADES.has(grade)) continue;
+    const text = asString(claim.claim_text);
+    if (!text) continue;
+    out.push({
+      claim_text: text,
+      source_ref: asString(claim.source_ref) || null,
+      concern: asString(claim.concern) || null,
+      evidence_grade: grade.toUpperCase(),
+      source_refs: Array.isArray(claim.source_refs)
+        ? claim.source_refs.map((u) => asString(u)).filter(Boolean).slice(0, 3)
+        : [],
+    });
+    if (out.length >= PUBLIC_SAFE_CLAIMS_MAX) break;
+  }
+  return out;
+}
+
 function inferConfidenceTier(bundle) {
   const qualityState = readQualityState(null, bundle);
   const evidenceProfile = readEvidenceProfile(null, bundle);
@@ -630,6 +663,7 @@ module.exports = {
   buildAgentProductContext,
   buildPivotaInsightInventoryRow,
   classifyPivotaInsightQualityLane,
+  filterPublicSafeClaims,
   ensureAgentContextOnBundle,
   hashJson,
   hasCommerceTruthClaim,
