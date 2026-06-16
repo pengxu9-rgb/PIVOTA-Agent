@@ -66,26 +66,42 @@ AGENT_CHECKOUT_STRICT=1     # /mcp returns 404 until this is on
 
 ## Phase 3 — keyless OAuth channel (required for a *published* connector)
 
-Native MCP clients connect over **OAuth 2.1 only** (never a pre-shared key). The resource-server side
-is already built + tested and flag-gated; the one external dependency you still own is the
-**Authorization Server** (must support RFC 7591 DCR + `/authorize` PKCE + `/token` + user consent).
-Recommended managed AS: Stytch / WorkOS AuthKit / Auth0 / Descope / Clerk.
+Native MCP clients connect over **OAuth 2.1 only** (never a pre-shared key). Pivota is the resource
+server (built + tested, flag-gated by `MCP_OAUTH_ENABLED`). The Authorization Server is **our own
+`pb-oauth-as`** — already MCP-purpose-built (DCR / PKCE-S256 / RFC 8707 / RS256+JWKS / consent). **No
+external vendor.** See [`adr_mcp_oauth_authorization_server.md`](adr_mcp_oauth_authorization_server.md).
+
+**(a) Deploy `pb-oauth-as`** (issuer `https://api.pivota.cc`):
+
+```text
+MCP_OAUTH_AS_ENABLED=1
+MCP_OAUTH_AS_ISSUER=https://api.pivota.cc
+MCP_OAUTH_AS_PRIVATE_KEY_PEM=<RSA-2048 private key, PEM>   # stable across instances/restarts
+MCP_OAUTH_AS_REQUEST_SECRET=<32+ char secret>             # consent HMAC
+MCP_OAUTH_AS_LOGIN_URL=<buyer login URL>                  # else unauthenticated → 401
+```
+
+**(b) Point PIVOTA-Agent's verifier at it** (Railway "Pivota Agent" prod):
 
 ```text
 MCP_OAUTH_ENABLED=1
 MCP_OAUTH_RESOURCE=https://pivota-agent-production.up.railway.app/mcp
-MCP_OAUTH_AUTHORIZATION_SERVERS=https://<your-AS-issuer>
-MCP_OAUTH_ISSUERS_JSON=[{"iss":"https://<your-AS-issuer>","jwksUri":"https://<your-AS>/.well-known/jwks.json","algs":["ES256"]}]
-# optional: MCP_OAUTH_RESOURCE_NAME="Pivota Commerce"
+MCP_OAUTH_AUTHORIZATION_SERVERS=https://api.pivota.cc
+MCP_OAUTH_ISSUERS_JSON=[{"iss":"https://api.pivota.cc","jwksUri":"https://api.pivota.cc/.well-known/jwks.json","algs":["RS256"]}]
 ```
+
+`MCP_OAUTH_RESOURCE` must **exactly** equal the `resource`/`aud` the AS mints (pb-oauth-as already pins
+this value in its tests), or audience verification fails closed. Note **RS256**, not ES256.
 
 **Note for read-only:** because discovery tools need no `user_ref`, you do **not** need
 `PAYMENT_ISSUERS_JSON`, and the `acp_session_id` binding review item (open item #1 in the OAuth front-door
 doc) does **not** block reads — it only matters for money ops. So the citation connector can ship
 ahead of the paid-MCP review.
 
-**Verify:** redeploy → `GET https://…/mcp` (no auth) returns **401 + `WWW-Authenticate`** carrying
-`resource_metadata`; `GET /.well-known/oauth-protected-resource` returns **200** (RFC 9728 doc).
+**Verify:** `GET https://api.pivota.cc/.well-known/oauth-authorization-server` → 200 (+ `/.well-known/jwks.json`);
+`POST https://api.pivota.cc/oauth/register` with a redirect_uri → 201 (DCR works); on the Agent,
+unauthenticated `GET /mcp` → **401 + `WWW-Authenticate`** and `GET /.well-known/oauth-protected-resource`
+→ **200** (RFC 9728 doc).
 
 ## Phase 4 — publish one connector
 
@@ -110,6 +126,6 @@ no schema change.
 - [ ] `get_pdp_v2 include:[product_intel]` on the pilot shows graded `public_claims` with citation URLs
 - [ ] Phase-1 flags on; `get_intel` returns `evidence.claims[]` with `source_refs`
 - [ ] `AGENT_CHECKOUT_STRICT=1`; payment/hosted-link flags confirmed **off**
-- [ ] Authorization Server chosen + provisioned (DCR + PKCE + consent)
+- [ ] `pb-oauth-as` deployed at `https://api.pivota.cc` with `MCP_OAUTH_AS_*` env (DCR confirmed via `/oauth/register`)
 - [ ] `MCP_OAUTH_*` set; discovery returns 200; unauthenticated `/mcp` returns 401 + challenge
 - [ ] One connector published + a real frontier client cites the pilot's grade-A claims

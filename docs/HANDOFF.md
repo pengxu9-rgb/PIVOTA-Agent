@@ -50,11 +50,12 @@ restored); broken writer + repair + debug endpoints removed (PR #1700).
   - ⬜ **Ops/external (turnkey in `docs/mcp_citation_connector_runbook.md`):** flip the 3 read flags
     (`AGENT_INTEL_PUBLIC_CLAIMS_ENABLED` + de-gate `AURORA_BFF_PRODUCT_INTEL_AGENT_ENABLED` /
     `AURORA_BFF_RELATIONSHIP_GRAPH_AGENT_ENABLED`) → `AGENT_CHECKOUT_STRICT=1` (makes `/mcp` reachable) →
-    enable MCP OAuth (`MCP_OAUTH_ENABLED`, needs an external Authorization Server — see
-    `docs/adr_mcp_oauth_authorization_server.md`) → **build + publish one connector** (ChatGPT app /
+    enable MCP OAuth (`MCP_OAUTH_ENABLED`) → **build + publish one connector** (ChatGPT app /
     Claude connector → `/mcp`).
-  - The only real decision left in C is **which Authorization Server** (ADR recommends Stytch or WorkOS
-    AuthKit; ½–1 day spike to confirm).
+  - **AS is already ours:** `pb-oauth-as` is a purpose-built MCP Authorization Server (DCR/PKCE/RFC 8707/
+    RS256+JWKS/consent — its env is `MCP_OAUTH_AS_*`, issuer `https://api.pivota.cc`). No vendor decision.
+    Remaining work = deploy `pb-oauth-as` + point the Agent's `MCP_OAUTH_ISSUERS_JSON` at it (RS256). Full
+    wiring in `docs/adr_mcp_oauth_authorization_server.md` + `docs/mcp_citation_connector_runbook.md`.
 - **D. Phase 2 WS2 (recall)** — searchable actives field + match in both canonical lanes + finish the
   external-seed agent↔backend mirror + tokenize query + trigram index. For *non-category* ingredient
   recall. Scoped in `docs/find_products_multi_phase2_scope.md`.
