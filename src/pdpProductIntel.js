@@ -2030,14 +2030,47 @@ function attachAgentContext(bundle) {
   return bundle;
 }
 
+// Phase 1a: stamp the public-safe claim subset + public_ready onto a served GROUNDED
+// bundle so the public PDP JSON-LD can publish citable claims. ADDITIVE — never mutates
+// product_intel_core.evidence_claims (the agent surface keeps the full set). The FTC
+// per-claim rule is single-sourced in pivotaInsightsQuality.filterPublicSafeClaims. Gated
+// by PDP_PUBLIC_GROUNDED_CLAIMS_ENABLED (default off). Lazy require avoids the
+// pivotaInsightsQuality → externalSeedPdpReadiness → pdpProductIntel cycle.
+// See docs/kbeauty_merchant_appearance_enrichment_scope.md.
+const PDP_PUBLIC_GROUNDED_CLAIMS_ENABLED = /^(1|true|yes|on)$/i.test(
+  String(process.env.PDP_PUBLIC_GROUNDED_CLAIMS_ENABLED || '').trim(),
+);
+
+function stampPublicGroundedClaims(bundle) {
+  if (!PDP_PUBLIC_GROUNDED_CLAIMS_ENABLED) return bundle;
+  if (!asPlainObject(bundle)) return bundle;
+  if (!isGroundedProductIntelBundle(bundle)) return bundle;
+  try {
+    const { filterPublicSafeClaims } = require('./services/pivotaInsightsQuality');
+    if (typeof filterPublicSafeClaims !== 'function') return bundle;
+    const core = asPlainObject(bundle.product_intel_core) || {};
+    const publicClaims = filterPublicSafeClaims(core.evidence_claims);
+    if (!publicClaims.length) return bundle;
+    return {
+      ...bundle,
+      public_ready: true,
+      product_intel_core: { ...core, public_claims: publicClaims },
+    };
+  } catch {
+    return bundle; // best-effort: serve without public claims rather than fail
+  }
+}
+
 function buildProductIntelBundle(args = {}) {
-  return attachAgentContext(
-    buildProductIntelBundleInternal({
-      ...args,
-      requirePublishedIntel: true,
-      requireReviewedBundle: args.requireReviewedBundle === true,
-      applyRolloutGate: true,
-    }),
+  return stampPublicGroundedClaims(
+    attachAgentContext(
+      buildProductIntelBundleInternal({
+        ...args,
+        requirePublishedIntel: true,
+        requireReviewedBundle: args.requireReviewedBundle === true,
+        applyRolloutGate: true,
+      }),
+    ),
   );
 }
 
@@ -2127,6 +2160,7 @@ module.exports = {
   buildProductIntelCore,
   buildRecommendationIntents,
   buildProductIntelBundle,
+  stampPublicGroundedClaims,
   buildProductIntelDraftBundle,
   hydrateProductWithPublishedIntel,
   buildNormalizedPdpMetadata,
