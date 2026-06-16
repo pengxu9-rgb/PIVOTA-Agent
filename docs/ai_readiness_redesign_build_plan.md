@@ -37,8 +37,20 @@ surface). The plan below reflects real main.
 |----|------|------|--------|----|
 | 1 | "Pivota handles this" lane for un-indexed SKUs (fixes complaint #3 for the common case) | merchants-portal | ✅ merged | pivota-merchants-portal #68 |
 | 2 | Action surfaces write to the tracked queue → one unified "Action plan" (open/done × store/Pivota) | backend + portal | ✅ merged | pivota-backend #920 (2a) · pivota-merchants-portal #69 (2b) |
-| 3 | Thread the existing trend payload onto the per-SKU response + one delta sparkline | backend + portal | ◐ in progress | — |
-| 4 | Scope/label the persisted queue when viewing a past run | portal | ☐ | — |
+| 3 | Performance-over-time: persist per_sku run scores + thread trend + delta sparkline | backend + portal | ✅ merged | pivota-backend #921 (scores) · #922 (mode-purity/JSONB decode) · pivota-merchants-portal #70 (UI) |
+| 4 | Label the Action plan as the live, cross-audit list (re-opened past runs) | portal | ✅ done | pivota-merchants-portal #71 |
+
+**🎉 Redesign complete (2026-06-16).** All four steps shipped. The page now reads as a clean spine —
+How you're doing → Where you can win → Action plan (store/Pivota, open/done) → per-SKU detail — with a
+run-over-run "is it working?" trend. The merchant's two original complaints (action clarity store-vs-Pivota;
+messy layout / no spine) are both resolved, plus the consolidation and the proof loop.
+
+Step-3 hard-won lessons (kept here so they're not relearned): per_sku runs persisted NULL score columns
+(finalize path read the legacy-only `aggregate`); the per_sku scoring model differs from legacy
+(4 dimensions vs visibility/attribution → documented mapping: visibility = mean weakest-dimension overall,
+attribution = mean citation); JSONB columns come back as STRINGS via asyncpg (must `_decode_jsonb_field`
+before reading — the unit-test-masks-prod-bug pattern); and the trend must stay per_sku-pure (don't mix
+legacy runs). Deferred (not built — see "Won't build"): per-SKU score-history table for per-SKU sparklines.
 
 > **Step 3 grounding (2026-06-16) — load-bearing blocker found:** per_sku audit runs persist
 > `visibility_score_avg = NULL` because `_record_final_report_fields` (`audit_run_worker.py:~1376`) reads
