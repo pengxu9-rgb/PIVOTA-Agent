@@ -1,110 +1,94 @@
 # ADR: Authorization Server for the MCP OAuth front door
 
-**Status:** Proposed — decision owner sign-off pending.
+**Status:** **Accepted** — use Pivota's own `pb-oauth-as`. No external vendor.
 **Date:** 2026-06-16.
 **Context docs:** [`agent-checkout/MCP_OAUTH_FRONT_DOOR.md`](agent-checkout/MCP_OAUTH_FRONT_DOOR.md) (resource-server side, built + tested), [`mcp_citation_connector_runbook.md`](mcp_citation_connector_runbook.md) (turn-up), [`agent-checkout/PURE_MCP_PRODUCTION_WIRING_RUNBOOK.md`](agent-checkout/PURE_MCP_PRODUCTION_WIRING_RUNBOOK.md) (paid path).
 
-## Context
-
-Pivota is the OAuth **Resource Server** for `/mcp` — that code exists, is flag-gated (`MCP_OAUTH_ENABLED`),
-and is unit/e2e tested. It does **not** issue tokens. To let native frontier MCP clients (Claude /
-ChatGPT / Gemini) connect **keyless**, we need an external **Authorization Server (AS)** that issues the
-access tokens our resource server verifies. This ADR picks that AS.
-
-The choice is the single remaining decision in Task **C** (MCP/agent-read hardening). It gates publishing
-a connector — the *fast* citation path that doesn't wait on organic crawl/index.
-
-### Hard requirements (from the resource-server contract)
-
-1. **Dynamic Client Registration — RFC 7591.** This is the make-or-break feature. Frontier MCP clients
-   self-register at connect time; without open DCR they cannot connect. Many traditional IdPs disable or
-   gate DCR for security, so it must be explicitly supported for public/MCP clients.
-2. **Authorization Code + PKCE** (`/authorize`, `/token`) and a **user-consent login** — the buyer
-   authenticates and consents; this is who ultimately pays on the checkout path.
-3. **Resource indicators — RFC 8707.** Tokens must carry `aud` === our `MCP_OAUTH_RESOURCE`
-   (`https://…/mcp`) so a token minted for us can't be replayed at another resource. Our verifier enforces
-   audience; the AS must let us pin it.
-4. **Asymmetric signing + JWKS.** Tokens signed `ES256`/`RS256`/etc., published at an HTTPS `jwksUri`.
-   Tokens carry `iss`, `sub`, `exp`, `iat`.
-5. **(Checkout path, later) a stable per-session claim** (`acp_session_id` / `session_id` / `sid`) so
-   money ops bind to a single checkout session. **Not required for the read-only citation connector** —
-   discovery tools need no `user_ref` — so the AS can ship for citations first and add the session claim
-   before the paid canary.
-
-### Selection criteria (weighted for *our* situation: pre-prod, a few K-beauty pilots, want fastest +
-lowest auth-risk + cheap, read-only citations first, checkout later)
-
-| Criterion | Weight | Why |
-|---|---|---|
-| Native MCP / open DCR support | ★★★ | Hard requirement #1; the differentiator between vendors |
-| Time-to-integrate (issuer + JWKS + consent shipped) | ★★★ | We want a connector demoable, not an auth project |
-| Auth-risk / maturity (we're not auth experts) | ★★★ | Money is downstream; a token bug is existential |
-| Free / cheap at pilot scale | ★★ | Pre-prod, handful of users |
-| Custom claims (session binding) for checkout | ★★ | Needed before paid canary, not before citations |
-| Lock-in / exit cost | ★ | Standard OIDC ⇒ swappable; our verifier is issuer-agnostic |
-
-## Options
-
-We will **not** self-host. Building DCR + authorize + token + consent + key signing is auth-critical code,
-meaningfully more work, and needs an adversarial review loop — wrong trade for a pre-prod pilot whose
-value is citations, not auth. (Revisit only if a managed AS proves a hard blocker.)
-
-Managed candidates (all speak OIDC; differ mainly on MCP/DCR-nativeness, consent UX, price, maturity):
-
-| AS | MCP/DCR posture | Consent UX | Pilot pricing | Maturity / risk | Notes |
-|---|---|---|---|---|---|
-| **Stytch** | Most explicitly MCP-native (purpose-built "Connected Apps"/MCP-auth product, DCR for agent clients) | Hosted consent + login | Free dev tier, generous early MAU | Newer than Auth0 but auth-focused, strong agent/MCP docs | Lowest friction for *exactly* this use case |
-| **WorkOS AuthKit** | Added MCP auth support; AuthKit acts as AS with DCR | Polished hosted AuthKit UI | AuthKit free to a high MAU ceiling | Mature, strong docs, used widely for B2B | Best "value + maturity" balance; near-tie with Stytch |
-| **Descope** | Inbound-apps / MCP auth, agentic focus, DCR | Flow-builder consent | Free tier | Mid-maturity | Flexible flows; slightly more config surface |
-| **Clerk** | OAuth/MCP provider support added, DCR | Strong prebuilt UI | Free tier | Mature on B2C auth | Great UX; verify MCP-DCR maturity at spike |
-| **Auth0 (Okta)** | DCR exists but historically gated; "Auth for GenAI" program | Universal Login | Free tier small; scales expensive | Most mature | Heaviest integration; enterprise-leaning; possible overkill |
-
-> ⚠️ The MCP-auth feature surface across these vendors is **moving fast** and post-dates this author's
-> knowledge cutoff. Treat the "MCP/DCR posture" column as *direction*, not gospel — **confirm current
-> open-DCR + resource-indicator support during the validation spike below** before committing.
-
 ## Decision
 
-**Adopt a managed AS; primary recommendation: Stytch, with WorkOS AuthKit as the co-leading fallback.**
+**Pivota already owns a purpose-built MCP Authorization Server: `pb-oauth-as`** (sibling repo,
+Python/FastAPI). It was built for *this exact front door* — its env vars are named `MCP_OAUTH_AS_*` and
+its tests pin the resource to `https://pivota-agent-production.up.railway.app/mcp`. There is **no
+build-vs-buy decision and no vendor selection** — we deploy `pb-oauth-as` and point PIVOTA-Agent's
+resource-server verifier at it.
 
-Rationale: Stytch is the most explicitly MCP/agent-native (open DCR + hosted consent purpose-built for
-this), which directly de-risks hard requirement #1 and minimizes time-to-connector. WorkOS AuthKit is a
-near-tie — pick it if its free-tier ceiling, B2B maturity, or consent UX fit better after the spike. Both
-are standard OIDC, so our issuer-agnostic verifier (`MCP_OAUTH_ISSUERS_JSON`) makes switching cheap if one
-disappoints. Auth0 is the safe-but-heavy option to fall back to only if both leaders lack a needed
-feature; Descope/Clerk are viable if their consent/flow UX is preferred.
+> An earlier revision of this ADR compared managed vendors (Stytch / WorkOS / Auth0 / …). That was a
+> mistake — it overlooked the existing in-house AS. Superseded; kept only as the record that the
+> question was raised and resolved to "we own it."
 
-## Validation spike (½–1 day, before final sign-off)
+## Why `pb-oauth-as` is sufficient (verified against the code)
 
-Run against the **two** leaders, pick the winner on evidence:
+Pivota is the OAuth **Resource Server** for `/mcp` (built, tested, flag-gated by `MCP_OAUTH_ENABLED`) —
+it verifies tokens but does not mint them. `pb-oauth-as` is the **Authorization Server** that mints them,
+and it meets every MCP requirement:
 
-1. Create a dev tenant; enable **open Dynamic Client Registration** for public clients.
-2. Configure a resource/audience === `https://pivota-agent-production.up.railway.app/mcp` (RFC 8707).
-3. Set `MCP_OAUTH_ENABLED=1` + `MCP_OAUTH_ISSUERS_JSON` pointing at the tenant's issuer + JWKS on a
-   **staging** Agent; confirm `GET /.well-known/oauth-protected-resource` → 200 and unauthenticated
-   `/mcp` → 401 + `WWW-Authenticate`.
-4. Connect a **real** Claude/ChatGPT MCP client to `/mcp`; confirm it auto-registers (DCR), shows the
-   consent screen, gets a token, and `tools/list` succeeds — then `get_intel` on the pilot returns the
-   grade-A PubMed claims (end-to-end citation proof).
-5. Decode the issued token: assert `aud` === our resource, asymmetric alg, `iss/sub/exp/iat` present.
-6. (Checkout readiness, not blocking citations) confirm a **stable per-session claim** can be minted —
-   the open review item #1 in the OAuth front-door doc.
+| MCP requirement | `pb-oauth-as` | Evidence |
+|---|---|---|
+| Full AS (issues access tokens) | ✅ | `services/mcp_oauth_as.py` — RS256 access tokens |
+| **Dynamic Client Registration (RFC 7591)** — the make-or-break MCP feature | ✅ | `POST /oauth/register`; public clients (`token_endpoint_auth_method:"none"`) + confidential |
+| Authorization Code + **PKCE S256** | ✅ | `/oauth/authorize` + `/oauth/token`; S256 **mandatory**, plaintext rejected |
+| **Resource indicators (RFC 8707)** — `aud` bound to our `/mcp` | ✅ | `resource` param **required**; minted into `aud`; test asserts `aud == https://…/mcp` |
+| Asymmetric signing + JWKS | ✅ | **RS256** (not ES256); `/.well-known/jwks.json` |
+| Discovery | ✅ | `/.well-known/oauth-authorization-server` (RFC 8414) |
+| User login + consent | ✅ | reuses Pivota buyer accounts; HTML consent form + audited grants |
+| Refresh tokens, single-use codes, scopes | ✅ | 30-day refresh; atomic code consume; scope preserved |
+
+**Missing pieces are non-blocking for MCP** (token introspection RFC 7662, revocation RFC 7009, client
+update/delete, DCR rate-limiting). Worth adding for ops hygiene later — DCR rate-limiting especially, to
+blunt a registration-spam DoS — but none gate the citation connector.
+
+> ⚠️ One correction vs the resource-server doc examples: `pb-oauth-as` signs **RS256**, so the verifier's
+> `MCP_OAUTH_ISSUERS_JSON` must list `"algs":["RS256"]` (the front-door doc's `ES256` example is generic).
+
+## Wiring (the entire remaining task)
+
+**Authorization Server — deploy `pb-oauth-as`** (issuer `https://api.pivota.cc`):
+
+```text
+MCP_OAUTH_AS_ENABLED=1
+MCP_OAUTH_AS_ISSUER=https://api.pivota.cc
+MCP_OAUTH_AS_PRIVATE_KEY_PEM=<RSA-2048 private key, PEM>     # stable across instances/restarts
+MCP_OAUTH_AS_REQUEST_SECRET=<32+ char secret>               # consent HMAC
+MCP_OAUTH_AS_LOGIN_URL=<buyer login URL>                    # else unauthenticated → 401
+# optional: MCP_OAUTH_AS_KEY_ID (default pivota-mcp-as-1), MCP_OAUTH_AS_STORE (default postgres)
+```
+
+**Resource Server — PIVOTA-Agent** (Railway "Pivota Agent" prod) points at that issuer:
+
+```text
+MCP_OAUTH_ENABLED=1
+MCP_OAUTH_RESOURCE=https://pivota-agent-production.up.railway.app/mcp
+MCP_OAUTH_AUTHORIZATION_SERVERS=https://api.pivota.cc
+MCP_OAUTH_ISSUERS_JSON=[{"iss":"https://api.pivota.cc","jwksUri":"https://api.pivota.cc/.well-known/jwks.json","algs":["RS256"]}]
+```
+
+`MCP_OAUTH_RESOURCE` must **exactly** equal the `resource`/`aud` the AS mints (the value its tests already
+pin), or audience verification fails closed.
+
+## Validation (½ day, no vendor spike needed)
+
+1. Deploy `pb-oauth-as` with the env above; confirm `GET https://api.pivota.cc/.well-known/oauth-authorization-server`
+   → 200 and `/.well-known/jwks.json` → keys.
+2. On PIVOTA-Agent (staging), set the resource-server env; confirm `GET /.well-known/oauth-protected-resource`
+   → 200 and unauthenticated `/mcp` → 401 + `WWW-Authenticate`.
+3. `curl -X POST https://api.pivota.cc/oauth/register -d '{"redirect_uris":["https://claude.ai/..."]}'`
+   → 201 with a `client_id` (proves DCR works for a frontier client).
+4. Connect a real Claude/ChatGPT MCP client to `/mcp`; it auto-registers (DCR) → consent → token →
+   `tools/list` → `get_intel` on the pilot returns the grade-A PubMed claims (end-to-end citation proof).
+5. Decode the token: `aud` === `MCP_OAUTH_RESOURCE`, `alg` RS256, `iss/sub/exp/iat` present.
 
 ## Consequences
 
-- **Positive:** keyless frontier connection unblocked; connector publishable; fastest citation path live;
-  auth-critical code stays outside our codebase; issuer-agnostic verifier keeps exit cheap.
-- **Negative / risks:** a third-party in the trust path (consent + token issuance); vendor MCP-auth
-  features are young and may shift; per-MAU cost appears at scale (acceptable pre-prod). Mitigation: the
-  verifier already enforces audience + alg + exp fail-closed regardless of vendor.
-- **Follow-ups:** before the *paid* canary, resolve the `acp_session_id` binding review item, keep
-  `complete_checkout_session` gated by `AGENT_CHECKOUT_STRICT_SUBMIT_PAYMENT_ENABLED`, and track removal of
-  the legacy `X-Checkout-Token` channel bypass.
+- **Positive:** zero external dependency, zero vendor cost, no new trust party; the AS is already
+  MCP-correct and shares Pivota's buyer accounts (consent reuses existing login). Remaining work is env +
+  deploy, not an auth project.
+- **Risks / follow-ups:** add DCR rate-limiting before broad exposure; for the *paid* path, confirm the
+  token carries a stable per-session claim (open item #1 in the OAuth front-door doc) and keep
+  `complete_checkout_session` gated until the paid canary. None block the read-only citation connector.
 
 ## Open questions for the decision owner
 
-1. Stytch vs WorkOS AuthKit — any existing vendor relationship, compliance (SOC2/region), or pricing
-   ceiling that tips it? Otherwise the spike decides.
-2. Is the citation connector shipping **read-only first** (recommended — no session-claim dependency), or
-   do we want checkout live in the same connector launch (adds the session-binding review to the critical
-   path)?
+1. Is `pb-oauth-as` already deployed at `https://api.pivota.cc` (just needs the `MCP_OAUTH_AS_*` env), or
+   does it need a deploy target stood up?
+2. Citation connector **read-only first** (recommended — no session-claim dependency), or checkout in the
+   same launch (adds the session-binding review to the critical path)?
