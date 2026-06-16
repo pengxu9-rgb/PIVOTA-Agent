@@ -35,10 +35,20 @@ surface). The plan below reflects real main.
 
 | ID | Step | Repo | Status | PR |
 |----|------|------|--------|----|
-| 1 | "Pivota handles this" lane for un-indexed SKUs (fixes #3 for the common case) | merchants-portal | ☑ done | pivota-merchants-portal #68 |
-| 2 | Action surfaces write to the tracked queue → one unified "Action plan" (open/done × store/Pivota) | backend + portal | ☐ next | — |
-| 3 | Thread the existing trend payload onto the per-SKU response + one delta sparkline | backend + portal | ☐ | — |
+| 1 | "Pivota handles this" lane for un-indexed SKUs (fixes complaint #3 for the common case) | merchants-portal | ✅ merged | pivota-merchants-portal #68 |
+| 2 | Action surfaces write to the tracked queue → one unified "Action plan" (open/done × store/Pivota) | backend + portal | ✅ merged | pivota-backend #920 (2a) · pivota-merchants-portal #69 (2b) |
+| 3 | Thread the existing trend payload onto the per-SKU response + one delta sparkline | backend + portal | ◐ in progress | — |
 | 4 | Scope/label the persisted queue when viewing a past run | portal | ☐ | — |
+
+> **Step 3 grounding (2026-06-16) — load-bearing blocker found:** per_sku audit runs persist
+> `visibility_score_avg = NULL` because `_record_final_report_fields` (`audit_run_worker.py:~1376`) reads
+> `brand_report["aggregate"]`, which only the **legacy** branch sets — the per_sku response has no
+> `aggregate`. So `_build_history_trend` filters those rows out and the trend is **permanently empty**
+> unless we first persist real run-level scores for per_sku (from `brand_rollup` dimension medians).
+> Plan: (a) persist per_sku run scores; (b) attach `tracking` to the per_sku response via the existing
+> `_build_history_trend`/`_build_tracking_block` (no new math, no per-SKU history table); (c) types + one
+> delta line + sparkline in `BrandRollupCover` (page.tsx:~2623). Run-level delta only — per-SKU trend
+> needs a history table (deferred). Don't reuse `build_reaudit_delta` (legacy `merchant_view` shape).
 
 ## ✂️ Won't build (gold-plating — the independent review killed these)
 - **Per-task "mark-done → re-crawl":** the full re-audit already supersedes/reconciles tasks; the trend
