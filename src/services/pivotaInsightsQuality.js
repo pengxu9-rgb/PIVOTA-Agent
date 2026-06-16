@@ -24,7 +24,22 @@ const FIXABLE_PRODUCT_INTEL_ISSUES = new Set([
 ]);
 
 const PROTECTED_QUALITY_STATES = new Set(['verified', 'ready']);
-const PROTECTED_EVIDENCE_PROFILES = new Set(['community_supported']);
+// Tier-G grounded dossiers are decision-grade by construction (graded INCI × reviewed
+// Ingredient KB × claim-safety screen) and already serve to agents without per-SKU human
+// review (ADR-002 item 9). The PUBLIC quality-lane classifier historically gated on HUMAN
+// review only, so a grounded bundle was `not_reviewed` → never `public_ready`. Treating
+// 'grounded_verified' as protected lets a grounded bundle reach the public KEEP lane so its
+// (FTC-screened) claims can be published as citable structured data. Gated by
+// PDP_PUBLIC_GROUNDED_CLAIMS_ENABLED (default OFF) — ship dark; flip per K-beauty pilot.
+// See docs/kbeauty_merchant_appearance_enrichment_scope.md.
+const PDP_PUBLIC_GROUNDED_CLAIMS_ENABLED = /^(1|true|yes|on)$/i.test(
+  String(process.env.PDP_PUBLIC_GROUNDED_CLAIMS_ENABLED || '').trim(),
+);
+const PROTECTED_EVIDENCE_PROFILES = new Set(
+  PDP_PUBLIC_GROUNDED_CLAIMS_ENABLED
+    ? ['community_supported', 'grounded_verified']
+    : ['community_supported'],
+);
 
 const EVIDENCE_PROFILE_RANK = new Map([
   ['missing', 0],
