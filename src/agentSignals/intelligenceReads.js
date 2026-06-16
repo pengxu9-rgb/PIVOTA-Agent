@@ -159,10 +159,13 @@ function makeGetOffers(deps = {}) {
  *   getProductIntelKbEntries?: (kbKeys:string[]) => Promise<Map<string,object>>,
  *   resolveKbKeys?: (params:object) => Promise<string[]>,   // params → candidate kb keys
  *   isEnabled?: () => boolean,                              // agent-surface flag gate (fail-closed if absent)
+ *   isReviewed?: (bundle:object) => boolean,                // require-reviewed quality gate (fail-closed)
+ *   filterPublicSafeClaims?: (claims:object[]) => object[], // FTC public-safe claim filter (absent → no claims)
  * }} deps
  */
 function makeGetIntel(deps = {}) {
-  const { getProductIntelKbEntry, getProductIntelKbEntries, resolveKbKeys, isEnabled, isReviewed } = deps;
+  const { getProductIntelKbEntry, getProductIntelKbEntries, resolveKbKeys, isEnabled, isReviewed, filterPublicSafeClaims } =
+    deps;
   if (typeof getProductIntelKbEntry !== 'function' && typeof getProductIntelKbEntries !== 'function') {
     throw new Error('makeGetIntel requires getProductIntelKbEntry or getProductIntelKbEntries');
   }
@@ -226,7 +229,7 @@ function makeGetIntel(deps = {}) {
       return { subject, signals: [], metadata: { reason: 'not_found', kb_key_count: kbKeys.length } };
     }
 
-    const signal = intelToSignal(entry, { productId, isReviewed });
+    const signal = intelToSignal(entry, { productId, isReviewed, filterPublicSafeClaims });
     return {
       subject,
       signals: signal ? [signal] : [],

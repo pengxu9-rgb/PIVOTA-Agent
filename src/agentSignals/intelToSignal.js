@@ -10,6 +10,8 @@
 const PRODUCT_INTEL_CONTRACT_VERSION = 'pivota.product_intel.v1';
 // review_decision values that mean the bundle did NOT pass review → must not reach a buyer-facing agent.
 const REJECTED_REVIEW_DECISIONS = new Set(['reject', 'reject_external', 'rejected', 'blocked', 'suppressed']);
+// Higher = stronger. Used to surface the bundle's best public-safe claim grade on evidence.grade.
+const GRADE_RANK = { A: 3, B: 2, C: 1 };
 
 function nonEmptyString(v) {
   return typeof v === 'string' && v.trim() !== '';
@@ -40,7 +42,7 @@ function unwrapIntelBundle(analysis) {
   };
 }
 
-function intelToSignal(entry, { productId = null, isReviewed = null } = {}) {
+function intelToSignal(entry, { productId = null, isReviewed = null, filterPublicSafeClaims = null } = {}) {
   if (!entry || typeof entry !== 'object') return null;
   const unwrapped = unwrapIntelBundle(entry.analysis);
   if (!unwrapped || !unwrapped.core) return null;
@@ -88,8 +90,44 @@ function intelToSignal(entry, { productId = null, isReviewed = null } = {}) {
       ? provenance.evidence_profile.trim()
       : null;
 
+  // Public-safe grounded claims (substantiated + grade A–C, with citation URLs) — the SAME subset the
+  // public PDP JSON-LD publishes. The FTC per-claim rule is single-sourced in
+  // pivotaInsightsQuality.filterPublicSafeClaims; we take it as an injected fn so this projection stays
+  // pure (no app deps / no require cycle). When the fn is absent (flag off / not wired), no claims surface
+  // and the evidence block is byte-for-byte the prior shape. This is the citation substrate a frontier
+  // agent needs to CITE Pivota (claim_text + grade + PubMed source_refs), not just paraphrase it.
+  let publicClaims = [];
+  if (typeof filterPublicSafeClaims === 'function') {
+    try {
+      const filtered = filterPublicSafeClaims(asArray(core.evidence_claims));
+      publicClaims = asArray(filtered)
+        .map((c) => {
+          const r = asPlainObject(c) || {};
+          const grade = nonEmptyString(r.evidence_grade) ? r.evidence_grade.trim().toUpperCase() : null;
+          return {
+            claim_text: nonEmptyString(r.claim_text) ? r.claim_text.trim() : '',
+            evidence_grade: grade && GRADE_RANK[grade] ? grade : null,
+            source_refs: asArray(r.source_refs)
+              .map((u) => (nonEmptyString(u) ? u.trim() : null))
+              .filter(Boolean)
+              .slice(0, 3),
+            concern: nonEmptyString(r.concern) ? r.concern.trim() : null,
+          };
+        })
+        .filter((c) => c.claim_text);
+    } catch {
+      publicClaims = [];
+    }
+  }
+  // Bundle-level grade = the strongest claim grade present (A beats B beats C).
+  const bestGrade = publicClaims.reduce((best, c) => {
+    if (!c.evidence_grade) return best;
+    if (!best || GRADE_RANK[c.evidence_grade] > GRADE_RANK[best]) return c.evidence_grade;
+    return best;
+  }, null);
+
   // Nothing meaningful to say → no signal (never fabricate a hollow decision block).
-  if (!why.length && !bestFor.length && !evidenceProfile) return null;
+  if (!why.length && !bestFor.length && !evidenceProfile && !publicClaims.length) return null;
 
   return {
     signal_type: 'decision',
@@ -100,10 +138,11 @@ function intelToSignal(entry, { productId = null, isReviewed = null } = {}) {
       evidence_profile: evidenceProfile,
     },
     evidence: {
-      grade: null,
+      grade: bestGrade,
       confidence: null,
       method: 'published_intel',
       sources: nonEmptyString(entry.kb_key) ? [{ type: 'product_intel_kb', ref: entry.kb_key }] : [],
+      ...(publicClaims.length ? { claims: publicClaims } : {}),
     },
     freshness: { observed_at: entry.last_success_at || entry.updated_at || null, fresh_until: null },
     review_state: reviewDecision,

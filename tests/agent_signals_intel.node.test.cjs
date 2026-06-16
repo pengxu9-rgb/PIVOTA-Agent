@@ -53,6 +53,77 @@ test('intelToSignal: maps a reviewed KB entry to a decision Signal', () => {
   assert.equal(s.visibility, 'buyer_safe');
 });
 
+test('intelToSignal: surfaces public-safe grounded claims (citations + grade) when the filter is injected', () => {
+  const entry = sampleEntry();
+  entry.analysis.product_intel_v1.product_intel_core.evidence_claims = [
+    {
+      claim_text: 'Niacinamide supports the skin barrier.',
+      substantiation_status: 'substantiated',
+      evidence_grade: 'A',
+      source_refs: ['https://pubmed.ncbi.nlm.nih.gov/1', 'https://pubmed.ncbi.nlm.nih.gov/2'],
+    },
+    {
+      claim_text: 'Soy isoflavones improve firmness.',
+      substantiation_status: 'substantiated',
+      evidence_grade: 'B',
+      source_refs: ['https://pubmed.ncbi.nlm.nih.gov/3'],
+    },
+    // Unsubstantiated/grade-D rows must be dropped by the real filter, never reaching the agent.
+    { claim_text: 'Cures wrinkles overnight.', substantiation_status: 'flagged', evidence_grade: 'D', source_refs: [] },
+  ];
+  const { filterPublicSafeClaims } = require('../src/services/pivotaInsightsQuality');
+  const s = intelToSignal(entry, { productId: 'p1', filterPublicSafeClaims });
+  // Two graded+substantiated claims survive; the flagged grade-D one is dropped.
+  assert.equal(s.evidence.claims.length, 2);
+  assert.equal(s.evidence.claims[0].claim_text, 'Niacinamide supports the skin barrier.');
+  assert.equal(s.evidence.claims[0].evidence_grade, 'A');
+  // Citation URLs are preserved (the whole point) — capped at 3.
+  assert.deepEqual(s.evidence.claims[0].source_refs, [
+    'https://pubmed.ncbi.nlm.nih.gov/1',
+    'https://pubmed.ncbi.nlm.nih.gov/2',
+  ]);
+  // Bundle-level grade = strongest claim grade present.
+  assert.equal(s.evidence.grade, 'A');
+});
+
+test('intelToSignal: no claims key when the filter is not injected (byte-for-byte prior shape)', () => {
+  const entry = sampleEntry();
+  entry.analysis.product_intel_v1.product_intel_core.evidence_claims = [
+    { claim_text: 'x', substantiation_status: 'substantiated', evidence_grade: 'A', source_refs: ['u'] },
+  ];
+  const s = intelToSignal(entry, { productId: 'p1' });
+  assert.equal(s.evidence.grade, null);
+  assert.ok(!('claims' in s.evidence));
+});
+
+test('intelToSignal: a claims-only bundle is meaningful (not treated as hollow)', () => {
+  const entry = sampleEntry();
+  entry.analysis.product_intel_v1.product_intel_core = {
+    why_it_stands_out: [],
+    best_for: [],
+    evidence_claims: [
+      { claim_text: 'Backed.', substantiation_status: 'substantiated', evidence_grade: 'C', source_refs: ['u'] },
+    ],
+  };
+  const { filterPublicSafeClaims } = require('../src/services/pivotaInsightsQuality');
+  const s = intelToSignal(entry, { productId: 'p1', filterPublicSafeClaims });
+  assert.ok(s, 'claims alone should yield a signal');
+  assert.equal(s.evidence.claims.length, 1);
+  assert.equal(s.evidence.grade, 'C');
+});
+
+test('intelToSignal: a throwing filter fails closed to no claims (never breaks the signal)', () => {
+  const s = intelToSignal(sampleEntry(), {
+    productId: 'p1',
+    filterPublicSafeClaims: () => {
+      throw new Error('boom');
+    },
+  });
+  assert.ok(s);
+  assert.equal(s.evidence.grade, null);
+  assert.ok(!('claims' in s.evidence));
+});
+
 test('intelToSignal: drops a rejected-review bundle (never reaches a buyer)', () => {
   const entry = sampleEntry();
   entry.analysis.product_intel_v1.provenance.review_decision = 'reject_external';

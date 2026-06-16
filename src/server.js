@@ -28627,6 +28627,20 @@ async function getCommerceRemoteMcpAdapter() {
       // Independent gate for the why/fit/evidence intel surface — off unless explicitly enabled.
       const agentProductIntelEnabled = () =>
         /^(1|true|yes|on|enabled)$/i.test(String(process.env.AURORA_BFF_PRODUCT_INTEL_AGENT_ENABLED || '').trim());
+      // Independent gate for surfacing public-safe grounded claims (citation URLs + grade A–C) on the
+      // get_intel signal — the citation substrate a frontier agent needs to CITE Pivota. Off unless
+      // explicitly enabled. The FTC per-claim rule is single-sourced in filterPublicSafeClaims (same as the
+      // public PDP stamp); a lazy require avoids the pivotaInsightsQuality → … → pdpProductIntel cycle.
+      const agentIntelPublicClaimsEnabled = () =>
+        /^(1|true|yes|on|enabled)$/i.test(String(process.env.AGENT_INTEL_PUBLIC_CLAIMS_ENABLED || '').trim());
+      const filterPublicSafeClaimsGated = (claims) => {
+        if (!agentIntelPublicClaimsEnabled()) return [];
+        try {
+          return require('./services/pivotaInsightsQuality').filterPublicSafeClaims(claims);
+        } catch {
+          return [];
+        }
+      };
       const localReads = {
         get_alternatives: makeGetAlternatives({
           listApprovedRelationshipEdgesForAnchor,
@@ -28694,6 +28708,9 @@ async function getCommerceRemoteMcpAdapter() {
           getProductIntelKbEntry,
           getProductIntelKbEntries,
           isEnabled: agentProductIntelEnabled,
+          // Surface the public-safe grounded claims (citation URLs + grade) onto the signal, gated by
+          // AGENT_INTEL_PUBLIC_CLAIMS_ENABLED. Same FTC filter the public PDP uses → one consistent claim set.
+          filterPublicSafeClaims: filterPublicSafeClaimsGated,
           // Servable gate: human (Tier-H) OR grounded (Tier-G) intel reaches a buyer-facing agent
           // (drops thin/pilot/unreviewed Tier-L entries). Same predicate the consumer PDP uses for
           // public display, so the agent surface and PDP apply one consistent quality bar. (ADR-002 item 9)
