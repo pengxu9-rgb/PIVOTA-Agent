@@ -104,7 +104,7 @@ credit-neutral at equal coverage**. `comparison` revives the slot `_budgeted_wed
 |----|------|---------|----------|--------|----|
 | 0 | Lock taxonomy + architecture + billing model (this doc) | — | — | ✅ | — |
 | 1 | Diversify query SHAPES (problem_jtbd/constraint/trust) + demote category_head + kill junk padding (real filler) — **ADDITIVE: coarse axis tags, consumers untouched** | A | default | ✅ done | pivota-backend #928 |
-| 2 | Add the fine `intent_axis` tag + per-axis scoring + update its consumers TOGETHER (the rename blast radius lesson); revive the `review`/`comparison` budget slots | A | default | ☐ | — |
+| 2 | Per-intent citation breakdown — `_intent_axis_for` classifier + `citation_by_intent` on per-SKU + brand rollup (additive, snapshot-only) + frontend "cited by question type" panel. (`review` slot already catches trust from Step 1.) | A | default | ✅ done | backend #929 · portal #79 |
 | 3 | `comparison` two-pass: extract top competitor pass-1 → probe `{cat} vs {competitor}` pass-2 (opt-in; priced in preview) | A | opt-in | ☐ | — |
 | 4 | Cross-model judge: second model verifies key findings (off-trend annotation; opt-in) — reuse answer-quality-verify path | A | opt-in | ☐ | — |
 | 5 | Surface B: expand deepseek scan-mode shapes; drop hardcoded `2026`/`under $50` (derive band or omit) | B | — | ☐ | — |
@@ -132,6 +132,16 @@ credit-neutral at equal coverage**. `comparison` revives the slot `_budgeted_wed
   (`authority_map.provider_counts`), blended at render.
 
 ## Decisions / change log
+- 2026-06-17 (f) — **Step 2 shipped** (backend pivota-backend #929 `32cce716` + portal #79 `c31f813`,
+  both deployed). Per-intent citation breakdown done the ADDITIVE way again: classify intent from
+  (query, axis) at report-build time (`_intent_axis_for`), attach `citation_by_intent` next to
+  `citation_by_provider` on per-SKU + brand rollup, surface as a Zone-1 "cited by question type" panel.
+  No probe-pipeline change, no axis touch. **Snapshot-only** (per-intent trend needs new persisted
+  columns — not additively feasible). Known low-stakes edge: `_intent_axis_for`'s `" for "` split
+  mislabels a `product_type` that contains "for" (e.g. "food for cats") as problem_jtbd — snapshot
+  label only; cheap follow-up = thread category + strip it. Visible on the next fresh audit (old runs
+  lack the field → panel returns null).
+
 - 2026-06-17 (a) — plan created; 6-axis taxonomy; `{cat}` = one diagnostic `category_head` axis.
 - 2026-06-17 (b) — BOTH surfaces in scope; plan-before-code.
 - 2026-06-17 (c) — `comparison` = two-pass; architecture = LLM-authored frozen templates + cross-model
