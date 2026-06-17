@@ -102,14 +102,15 @@ credit-neutral at equal coverage**. `comparison` revives the slot `_budgeted_wed
 ## Progress tracker
 | ID | Step | Surface | Coverage | Status | PR |
 |----|------|---------|----------|--------|----|
-| 0 | Lock taxonomy + architecture + billing model (this doc) | — | — | ◐ review | — |
-| 1 | **LLM-author** the axis templates (realistic shopper phrasings per axis) → review → **freeze**; demote `category_head`; slot-fill from attr graph/enrichment | A | default | ☐ | — |
-| 2 | Preserve `axis` through scoring → per-axis trendable; revive/clean the dead `comparison`/`review` budget slots | A | default | ☐ | — |
+| 0 | Lock taxonomy + architecture + billing model (this doc) | — | — | ✅ | — |
+| 1 | Diversify query SHAPES (problem_jtbd/constraint/trust) + demote category_head + kill junk padding (real filler) — **ADDITIVE: coarse axis tags, consumers untouched** | A | default | ✅ done | pivota-backend #928 |
+| 2 | Add the fine `intent_axis` tag + per-axis scoring + update its consumers TOGETHER (the rename blast radius lesson); revive the `review`/`comparison` budget slots | A | default | ☐ | — |
 | 3 | `comparison` two-pass: extract top competitor pass-1 → probe `{cat} vs {competitor}` pass-2 (opt-in; priced in preview) | A | opt-in | ☐ | — |
 | 4 | Cross-model judge: second model verifies key findings (off-trend annotation; opt-in) — reuse answer-quality-verify path | A | opt-in | ☐ | — |
 | 5 | Surface B: expand deepseek scan-mode shapes; drop hardcoded `2026`/`under $50` (derive band or omit) | B | — | ☐ | — |
 | 6 | Confirm `{cat}` reframe; measure ingredient-"competitor" drop (filter disabled) | A+B | — | ☐ | — |
 | 7 | Verify default-audit credit-neutral + per-axis trend validity; quantify opt-in credit delta in cost_summary | A | — | ☐ | — |
+| 8 | Thin-SKU intake: when a SKU under-fills (OUR enrichment gap, not merchant ignorance), surface a CTA inviting merchant product knowledge — custom prompts now, product insights / lab reports later → richer queries + winning edge | A (portal+backend) | — | ☐ | — |
 
 ## Acceptance & verification (fill before coding each step)
 - **Step 1:** per-SKU audit emits ≥5 named axes; ≥1 problem_jtbd + ≥1 constraint query slot-filled from
@@ -139,3 +140,12 @@ credit-neutral at equal coverage**. `comparison` revives the slot `_budgeted_wed
   lowest-credit). "Free" = 2-audit new-user promo absorbed by Pivota. So: default axes rebalance to be
   **credit-neutral**; two-pass + judge + extra providers are **opt-in, priced in the cost preview**
   (was wrongly framed as free/paid tiers).
+- 2026-06-17 (e) — Step 1 shipped (pivota-backend #928, awaiting merge). Diverse query shapes + junk
+  padding killed + thin-SKU under-fill (all real). **Lesson — the axis RENAME had an 8-consumer /
+  6-module blast radius** (`axis` is load-bearing: win_plan_builder, merchant_narrative_builder,
+  sku_opportunity, sku_lane_priority, strategic_brief, + 3 in agent_center). Two independent reviews
+  caught it (count grew 0→3→8). **Switched to ADDITIVE:** keep the coarse axis vocabulary; the fine
+  `intent_axis` taxonomy + per-axis scoring move to Step 2, introduced WITH its consumers. 200 consumer
+  tests pass. Thin-SKU under-fill = OUR enrichment gap → new Step 8 (invite merchant knowledge / lab
+  reports). Metering follow-up: confirm credits bill per-probe not per-40-unit (under-fill should cost
+  less). [[ai-readiness-action-plan-integration-map]]
