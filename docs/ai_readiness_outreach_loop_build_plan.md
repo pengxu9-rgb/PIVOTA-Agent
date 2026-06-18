@@ -85,9 +85,9 @@ Two options; pick before coding:
 | 0 | Lock data model + state machine (this doc) — **DECIDED: (A) reuse `merchant_tasks`, `lever='outreach_pitch'`, outreach block in `evidence_jsonb`** | — | ✅ | — |
 | 1 | Persist an outreach record on "mark pitch sent" (draft→sent), keyed to (sku, query, host) | backend + portal | ✅ done | backend #930 · portal #80 |
 | 2 | Re-verify on next audit → flip pending outreach to `cited` when the pitched host now cites the merchant. **Oracle = endorsement-role host that ALSO cited the merchant's SKU** (NOT the bare endorsement_hosts roster — review caught that it includes competitor-endorsing hosts → false proof). `_norm_host` both sides. Best-effort in the audit worker. | backend | ✅ done | #932 |
-| 3 | Surface the loop in the Action plan / win-plan UI: "pitched · pending" → "X now cites you (+N)" | portal | ☐ | — |
-| 4 | Submission-form hosts: a `submitted` path (form URL + record) so highest-tier targets aren't dropped | backend + portal | ☐ | — |
-| 5 | Outreach rollup: "N pitches sent · M now citing you" on the brand cover (proof of lift) | backend + portal | ☐ | — |
+| 3 | Surface the loop — `MerchantOutreachPanel` (Zone 4): per-pitch cited vs pending. | portal | ✅ done | portal #81 |
+| 4 | Submission-form hosts get a `submitted` path — **already covered** by Step 1's actionable gate (button shows for submission_only+url, records channel='submission_form') + Step 2's host-based re-verify. | backend + portal | ✅ done | (Steps 1+2) |
+| 5 | Outreach rollup 'N pitches sent · M now citing you' — in `MerchantOutreachPanel` (frontend-computed from the tasks; no backend change). | portal | ✅ done | portal #81 |
 | 6 | (Optional, later) real auto-send (email API) behind explicit merchant opt-in + credits | backend | ⏸ | — |
 
 ## Acceptance & verification (fill before coding each step)
