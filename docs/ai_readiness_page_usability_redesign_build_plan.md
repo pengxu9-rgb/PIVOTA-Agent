@@ -119,7 +119,7 @@ workspace"). Pick one model and apply it consistently (decision below).
 ## Progress tracker (prioritized by merchant impact / effort)
 | ID | Step | Surface | Status | Notes |
 |----|------|---------|--------|-------|
-| 1 | **Make the action plan actionable** — backend: give every materialized strategic task a real CTA + one-line `expected_outcome` (or stop materializing it); honor the PERSISTENT-WORKSPACE scope (broaden beyond latest_completed; harden supersession). portal: render the do-it-here action, drop inert rows, fix the lane heuristic + header. | backend + portal | 🔵 built, not merged | core done; mailto-CTA-in-row deferred |
+| 1 | **Make the action plan actionable** — outcome+KPI on every task; persistent cross-audit scope + scope-aware reconciliation; honest lanes; inline next-step. | backend + portal | 🟢 merged + deployed (NOT yet eyeballed on a real audit) | backend #939 (330e9b02) · portal #85 (Vercel) · mailto-CTA-in-row deferred |
 | 2 | **Fold "Pivota agent activity" into the action plan** — "✓ done by Pivota" rows in the workspace, dated correctly; DELETE the standalone `MerchantExecutorActivityPanel` feed. (Decision A, locked.) | portal | ☐ | Kills the "30 days ago" confusion + the duplicate. |
 | 3 | **Restructure Zone 1 + relocate "Your products"** — move per-SKU cards up as the drill-down, surface the per-product "Make AI-ready" action, make brand cover a true summary (no duplicate scorecard). | portal | ☐ | Fixes the "duplicate at the bottom" + buries-the-action problem. |
 | 4 | **Close the leaky snapshot** — scope task/activity/outreach to the run being viewed (or cleanly separate past-report vs live-workspace). | portal + backend | ☐ | Makes historical runs honest. |
@@ -175,3 +175,4 @@ workspace"). Pick one model and apply it consistently (decision below).
   - DEFERRED within Step 1: a mailto CTA in the task row (outreach already has a mailto
     in the Win-plan panel; the row CTA needs backend cta_url + allowing non-http CTAs).
   - NOT merged — both are prod deploys (Railway + Vercel), awaiting user go.
+- 2026-06-18 (c) — Step 1 MERGED + DEPLOYED (backend #939 → 330e9b02 live; portal #85 → Vercel Ready). NOT yet eyeballed on a real audit — the plan's bar is shipped AND eyeballed. Portal changes (lanes/inline/persistent view) show immediately on existing tasks; backend outcome+KPI populate on NEWLY materialized tasks and reconciliation runs at the NEXT audit completion (a fresh audit costs the merchant credits → their call to trigger).
