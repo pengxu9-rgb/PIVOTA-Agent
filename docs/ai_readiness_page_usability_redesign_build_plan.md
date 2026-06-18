@@ -119,7 +119,7 @@ workspace"). Pick one model and apply it consistently (decision below).
 ## Progress tracker (prioritized by merchant impact / effort)
 | ID | Step | Surface | Status | Notes |
 |----|------|---------|--------|-------|
-| 1 | **Make the action plan actionable** — backend: give every materialized strategic task a real CTA + one-line `expected_outcome` (or stop materializing it); honor the PERSISTENT-WORKSPACE scope (broaden beyond latest_completed; harden supersession). portal: render the do-it-here action, drop inert rows, fix the lane heuristic + header. | backend + portal | ☐ | Highest impact — Zone 3 is the point of the page. |
+| 1 | **Make the action plan actionable** — backend: give every materialized strategic task a real CTA + one-line `expected_outcome` (or stop materializing it); honor the PERSISTENT-WORKSPACE scope (broaden beyond latest_completed; harden supersession). portal: render the do-it-here action, drop inert rows, fix the lane heuristic + header. | backend + portal | 🔵 built, not merged | core done; mailto-CTA-in-row deferred |
 | 2 | **Fold "Pivota agent activity" into the action plan** — "✓ done by Pivota" rows in the workspace, dated correctly; DELETE the standalone `MerchantExecutorActivityPanel` feed. (Decision A, locked.) | portal | ☐ | Kills the "30 days ago" confusion + the duplicate. |
 | 3 | **Restructure Zone 1 + relocate "Your products"** — move per-SKU cards up as the drill-down, surface the per-product "Make AI-ready" action, make brand cover a true summary (no duplicate scorecard). | portal | ☐ | Fixes the "duplicate at the bottom" + buries-the-action problem. |
 | 4 | **Close the leaky snapshot** — scope task/activity/outreach to the run being viewed (or cleanly separate past-report vs live-workspace). | portal + backend | ☐ | Makes historical runs honest. |
@@ -156,3 +156,22 @@ workspace"). Pick one model and apply it consistently (decision below).
   four merchant complaints validated in code; none cosmetic. Prioritized: action-plan
   actionability (1) → agent-activity (2) → Zone-1 restructure (3) → snapshot leak (4) → re-test
   loop (5, product call). Nothing built yet.
+
+## Change log (cont.)
+- 2026-06-18 (b) — Step 1 BUILT (not merged), in two worktrees:
+  - **Backend** (`pb-step1`, 2 commits): (1) every action-plan task gets a concrete
+    `expected_outcome` + `kpi` — closed the 6 uncovered families + an honest generic
+    fallback (reversed the prior "leave it blank" stance, justified); (2) default task
+    scope = PERSISTENT cross-audit workspace on BOTH merchant + BD routes; scope-aware
+    audit-completion reconciliation closes prior-run pending tasks the latest audit
+    dropped (per-product tasks only if THIS audit re-covered that product → no SKU-B
+    audit closing SKU-A tasks; brand tasks always; in_progress + standing NULL-parent
+    exempt; recoverable). Tests: recommendation_engine_v2, task_queue_scope (3 reversed),
+    task_reconciliation (new) — 56+ pass.
+  - **Portal** (`pmp-step1`, 1 commit): honest lane assignment (default → 'On your
+    store', not the misleading 'On Pivota' fallback); concrete next-step instruction
+    surfaced INLINE (was hidden behind 'Show details'); header now honest (scope is
+    truly persistent). TS clean on touched file.
+  - DEFERRED within Step 1: a mailto CTA in the task row (outreach already has a mailto
+    in the Win-plan panel; the row CTA needs backend cta_url + allowing non-http CTAs).
+  - NOT merged — both are prod deploys (Railway + Vercel), awaiting user go.
