@@ -55,7 +55,7 @@ starved and off-center:
 | ID | Step | Surface | Status | PR |
 |----|------|---------|--------|----|
 | 1 | ✅ **Invert the probe budget** — specific stacked (sidewalk) becomes the MAJORITY; thin 2-head + 2-nav + 2-trust diagnostic spine; lift the 16-sidewalk cap. Credit-neutral. | backend | ✅ done | #936 (tests) + #937 (source) |
-| 2 | **Suggested prompts** — expose the engine's top open-lane/sidewalk candidates as `suggested_prompts` on the report (the winnable niches, computed, currently un-surfaced) | backend | 🔵 built, PR open | #938 (awaiting merge) |
+| 2 | ✅ **Suggested prompts** — expose the engine's top open-lane/sidewalk candidates as `suggested_prompts` on the report (the winnable niches, computed, currently un-surfaced) | backend | ✅ done | #938 |
 | 3 | **Guided custom-prompt UI** — show "test these niches you can own" suggestions + a 1-click add; reframe the box from passive to guided (elicit the merchant's specific differentiators) | portal | ☐ | — |
 | 4 | (Later) **Feed custom prompts into the win logic** — merchant-supplied specific prompts can become open-lane targets, not just a parallel lighter surface | backend | ⏸ | — |
 
@@ -75,3 +75,4 @@ starved and off-center:
   niches as suggested prompts. Connects to the query-axis plan (Step 8 merchant-knowledge intake).
 - 2026-06-18 (b) — Step 1 shipped. PROCESS NOTE: #936's commit dropped the source file (git-add miss) — only tests merged (main stayed green by luck: the test SKU is supply-capped at 16 either way). Caught it (verified inversion absent on main), re-shipped the source via #937 with staged-file verification + the inversion unit test as the real guard. Lesson: `git show --stat HEAD` / `git diff --cached --name-only` before pushing a multi-file change.
 - 2026-06-18 (c) — Step 2 BUILT (PR #938, awaiting your merge). `_suggested_prompts_for_sku` + `build_suggested_prompts` surface the engine's computed-but-unprobed attribute-stacked niches as `brand_rollup.suggested_prompts` (deduped, ranked, capped 12); disjoint from where_you_can_win.targets by construction; thin SKU -> [] (no padding). 6 new tests + 33 related pass locally. NOTE: CI couldn't run (GitHub Actions billing block — jobs never started, not a code failure). Merge is a prod deploy → left for user to approve.
+- 2026-06-18 (d) — Step 2 MERGED (#938, main 015ab162) + deploying. User approved the merge (CI billing-blocked, verified locally). Next: Step 3 (portal guided custom-prompt UI) consumes brand_rollup.suggested_prompts.
