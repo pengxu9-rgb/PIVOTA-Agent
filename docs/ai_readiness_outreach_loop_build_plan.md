@@ -88,7 +88,7 @@ Two options; pick before coding:
 | 3 | Surface the loop — `MerchantOutreachPanel` (Zone 4): per-pitch cited vs pending. | portal | ✅ done | portal #81 |
 | 4 | Submission-form hosts get a `submitted` path — **already covered** by Step 1's actionable gate (button shows for submission_only+url, records channel='submission_form') + Step 2's host-based re-verify. | backend + portal | ✅ done | (Steps 1+2) |
 | 5 | Outreach rollup 'N pitches sent · M now citing you' — in `MerchantOutreachPanel` (frontend-computed from the tasks; no backend change). | portal | ✅ done | portal #81 |
-| 6 | (Optional, later) real auto-send (email API) behind explicit merchant opt-in + credits | backend | ⏸ | — |
+| 6 | Real auto-send (email API) | backend | ✂️ PARKED | — — recommendation: do NOT auto-blast cold pitches from Pivota's shared domain (deliverability/spam risk to transactional email). Merchant-sent (mailto) is safer. If ever wanted, send from merchant's OAuth-connected email (separate initiative). |
 
 ## Acceptance & verification (fill before coding each step)
 - **Step 1:** marking a draft-ready pitch sent creates a persisted outreach record (sku/query/host/
@@ -113,3 +113,4 @@ Two options; pick before coding:
 - 2026-06-18 (b) — **Step 0 LOCKED: data model (A)** — reuse `merchant_tasks` (`lever='outreach_pitch'`,
   outreach state in `evidence_jsonb`), no migration; graduate to a table only if re-verify needs indexed
   columns. Starting Step 1 (persist on mark-sent).
+- 2026-06-18 (c) — holistic review caught reverify was INERT (matrix_rows lacked cites_exact_sku → no flip ever); fixed via matrix aggregation + an integration test vs real build_authority_map (#933). Step 6 PARKED (auto-send unsafe; mailto is safer). Loop complete; only live 2-audit validation remains.
