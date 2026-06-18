@@ -58,9 +58,9 @@ evidence, it's drift.
 | 1 | ✅ **Verbatim AI evidence** — forward `cited_evidence.{excerpt,cited_hosts}` onto WYCW target+skip rows; render the quote ("AI literally said…") in win rows AND the don't-fight list (proof of the routing) | backend + portal | ✅ done | backend #934 · portal #82 |
 | 2 | ✅ **`first_move` headline** — render the one-line action at the top of the per-SKU next-step | portal | ✅ done | portal #82 |
 | 3 | ✅ **Action plan priority** — sort status → `priority_order` → severity (fixes low-above-critical) | portal | ✅ done | portal #82 |
-| 4 | **Winnability score + why-decomposition** — forward `opportunity_score`/`opportunity_factors`/`demand_state`; render a score + mini "why winnable" on win rows | backend + portal | ☐ | — |
-| 5 | **Outcome contract on tasks** — surface `expected_outcome`/`kpi_to_track` (join `action_plan_items` or carry into task evidence) + render real `cta_url`/`cta_label` | backend + portal | ☐ | — |
-| 6 | **Honest empty states** — WYCW + per-SKU next-step never vanish ("we probed N; none cleared the bar yet — add SKUs/attributes/custom prompts") | portal | ☐ | — |
+| 4 | ✅ **Winnability score + why-decomposition** — forward `opportunity_score`/`opportunity_factors`/`demand_state`; render a score + 'why winnable' breakdown on win rows | backend + portal | ✅ done | backend #935 · portal #83 |
+| 5 | ✅ **Outcome contract on tasks** — surface `expected_outcome`/`kpi_to_track` (join `action_plan_items` or carry into task evidence) + real `cta_url` link | backend + portal | ✅ done | backend #935 · portal #83 |
+| 6 | ✅ **Honest empty states** — WYCW + per-SKU next-step never vanish (coverage-gap message / 'no specific step yet') | portal | ✅ done | portal #83 |
 
 ## Acceptance & verification
 - **Step 1:** a win row and a don't-fight row each show the verbatim AI excerpt + the host AI cited; the
@@ -76,3 +76,4 @@ evidence, it's drift.
 - 2026-06-18 (a) — plan created from the holistic gold-standard critique. Thesis: data-rich, decision-poor
   — surface computed fields + rank by existing signals. Top-3 quick wins (1,2,3) first.
 - 2026-06-18 (b) — top-3 quick wins shipped: verbatim evidence (backend #934 forward + portal #82 render), first_move headline (#82), priority_order sort (#82). Remaining: 4 (score+why-decomp), 5 (outcome/KPI+CTA), 6 (honest empty states).
+- 2026-06-18 (c) — Steps 4-6 shipped (backend #935 forward score-factors + outcome/kpi; portal #83 render score+why, outcome contract+CTA, honest empty states). ALL 6 decision-quality steps done.
