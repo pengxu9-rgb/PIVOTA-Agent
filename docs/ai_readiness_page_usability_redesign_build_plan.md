@@ -119,8 +119,8 @@ workspace"). Pick one model and apply it consistently (decision below).
 ## Progress tracker (prioritized by merchant impact / effort)
 | ID | Step | Surface | Status | Notes |
 |----|------|---------|--------|-------|
-| 1 | **Make the action plan actionable** — backend: give every materialized strategic task a real CTA + one-line `expected_outcome` (or stop materializing it); portal: render the do-it-here action, drop inert rows. Fix the misleading "across all audits" header + the lane heuristic. | backend + portal | ☐ | Highest impact — Zone 3 is the point of the page. |
-| 2 | **Fix or fold "Pivota agent activity"** — DECISION: (A) fold "✓ done by Pivota" into the action plan + delete the standalone feed, or (B) scope it to the viewed run + reframe as outcomes. Recommend (A). | portal (+ backend if B) | ☐ | Kills the "30 days ago" confusion + the duplicate. |
+| 1 | **Make the action plan actionable** — backend: give every materialized strategic task a real CTA + one-line `expected_outcome` (or stop materializing it); honor the PERSISTENT-WORKSPACE scope (broaden beyond latest_completed; harden supersession). portal: render the do-it-here action, drop inert rows, fix the lane heuristic + header. | backend + portal | ☐ | Highest impact — Zone 3 is the point of the page. |
+| 2 | **Fold "Pivota agent activity" into the action plan** — "✓ done by Pivota" rows in the workspace, dated correctly; DELETE the standalone `MerchantExecutorActivityPanel` feed. (Decision A, locked.) | portal | ☐ | Kills the "30 days ago" confusion + the duplicate. |
 | 3 | **Restructure Zone 1 + relocate "Your products"** — move per-SKU cards up as the drill-down, surface the per-product "Make AI-ready" action, make brand cover a true summary (no duplicate scorecard). | portal | ☐ | Fixes the "duplicate at the bottom" + buries-the-action problem. |
 | 4 | **Close the leaky snapshot** — scope task/activity/outreach to the run being viewed (or cleanly separate past-report vs live-workspace). | portal + backend | ☐ | Makes historical runs honest. |
 | 5 | **Follow-up re-test loop** — re-run a past run's EXACT prompt/SKU set on demand for a true before/after ("I fixed X — did X improve?"). Store the run's prompt set; add `from_run_id` to create-audit; show paired deltas. **PRODUCT CALL** — was cut as gold-plating; costs credits. | backend + portal | ☐ | The "did my fix work" loop the merchant actually wants. |
@@ -138,13 +138,17 @@ workspace"). Pick one model and apply it consistently (decision below).
 - **Step 5:** from a past run, one click re-tests the same prompts and shows per-prompt
   before/after, with an honest credit-cost preview first.
 
-## Product decisions to confirm before coding (flagged, not assumed)
-1. **Action plan scope** — is it *this audit's* actions (snapshot-scoped) or the *persistent
-   cross-audit workspace*? The UI currently claims the latter but the backend does the former.
-   Pick one; it drives Steps 1 + 4.
-2. **Agent-activity** — fold-in (A) vs scope+reframe (B). Recommend (A) for simplicity.
-3. **Re-test loop (Step 5)** — revive the cut feature? It's the merchant's stated need but costs
-   credits per re-test and adds a `from_run_id` audit path. Confirm appetite before building.
+## Product decisions — LOCKED 2026-06-18
+1. **Action plan scope = PERSISTENT WORKSPACE.** One living cross-audit to-do list; each audit
+   adds/supersedes items. The UI claim is correct — fix the BACKEND to actually honor it
+   (broaden scope beyond `latest_completed`; harden supersession so stale/started tasks don't
+   pile up). Drives Steps 1 + 4.
+2. **Agent-activity = FOLD INTO the action plan.** Show "✓ done by Pivota" rows inside the
+   workspace, dated correctly; **delete the standalone `MerchantExecutorActivityPanel` feed.**
+   Kills the "30 days ago" confusion + the duplicate in one move.
+3. **Re-test loop (Step 5) = BUILD IT.** Revive the cut feature — it's the merchant's stated
+   need. Re-run a past run's exact prompt/SKU set on demand; **credit cost shown upfront**;
+   adds a `from_run_id` audit path; show per-prompt before/after.
 
 ## Change log
 - 2026-06-18 (a) — plan created from a code-grounded holistic review (3 parallel investigations
