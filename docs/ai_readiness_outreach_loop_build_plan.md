@@ -83,8 +83,8 @@ Two options; pick before coding:
 | ID | Step | Surface | Status | PR |
 |----|------|---------|--------|----|
 | 0 | Lock data model + state machine (this doc) — **DECIDED: (A) reuse `merchant_tasks`, `lever='outreach_pitch'`, outreach block in `evidence_jsonb`** | — | ✅ | — |
-| 1 | Persist an outreach record on "mark pitch sent" (draft→sent), keyed to (sku, query, host) | backend + portal | ☐ | — |
-| 2 | Re-verify on next audit: join outreach records vs the new run's cited host↔query → flip to `cited`/`not_yet` | backend | ☐ | — |
+| 1 | Persist an outreach record on "mark pitch sent" (draft→sent), keyed to (sku, query, host) | backend + portal | ✅ done | backend #930 · portal #80 |
+| 2 | Re-verify on next audit: join outreach records vs the new run's cited host↔query → flip to `cited`/`not_yet`. **Carry-over from #1:** lowercase host on BOTH sides of the join (backend stores lowercase); wire `audit_run_id` into the mark-sent call for run-linkage. | backend | ☐ | — |
 | 3 | Surface the loop in the Action plan / win-plan UI: "pitched · pending" → "X now cites you (+N)" | portal | ☐ | — |
 | 4 | Submission-form hosts: a `submitted` path (form URL + record) so highest-tier targets aren't dropped | backend + portal | ☐ | — |
 | 5 | Outreach rollup: "N pitches sent · M now citing you" on the brand cover (proof of lift) | backend + portal | ☐ | — |
