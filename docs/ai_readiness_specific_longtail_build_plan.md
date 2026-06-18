@@ -54,7 +54,7 @@ starved and off-center:
 ## Progress tracker
 | ID | Step | Surface | Status | PR |
 |----|------|---------|--------|----|
-| 1 | **Invert the probe budget** — specific stacked (sidewalk) becomes the MAJORITY; thin 2-head + 2-nav + 2-trust diagnostic spine; lift the 16-sidewalk cap. Credit-neutral. | backend | ☐ | — |
+| 1 | ✅ **Invert the probe budget** — specific stacked (sidewalk) becomes the MAJORITY; thin 2-head + 2-nav + 2-trust diagnostic spine; lift the 16-sidewalk cap. Credit-neutral. | backend | ✅ done | #936 (tests) + #937 (source) |
 | 2 | **Suggested prompts** — expose the engine's top open-lane/sidewalk candidates as `suggested_prompts` on the report (the winnable niches, computed, currently un-surfaced) | backend | ☐ | — |
 | 3 | **Guided custom-prompt UI** — show "test these niches you can own" suggestions + a 1-click add; reframe the box from passive to guided (elicit the merchant's specific differentiators) | portal | ☐ | — |
 | 4 | (Later) **Feed custom prompts into the win logic** — merchant-supplied specific prompts can become open-lane targets, not just a parallel lighter surface | backend | ⏸ | — |
@@ -73,3 +73,4 @@ starved and off-center:
   the win-the-specific machinery + scoring exist; the budget starves it (~60% general) and custom prompts
   are passive. Highest leverage = invert the budget (credit-neutral) + surface the engine's own winnable
   niches as suggested prompts. Connects to the query-axis plan (Step 8 merchant-knowledge intake).
+- 2026-06-18 (b) — Step 1 shipped. PROCESS NOTE: #936's commit dropped the source file (git-add miss) — only tests merged (main stayed green by luck: the test SKU is supply-capped at 16 either way). Caught it (verified inversion absent on main), re-shipped the source via #937 with staged-file verification + the inversion unit test as the real guard. Lesson: `git show --stat HEAD` / `git diff --cached --name-only` before pushing a multi-file change.
