@@ -215,3 +215,26 @@ turns each SKU's `next_best_action` into one task; `_extract_action_items` falls
 - Residual risk to watch on that next audit: reconciliation closes a legacy task only if the per-SKU
   report's product_key matches the legacy task's evidence.product_key (format match) — verify the 43
   actually collapse, not just that new tasks appear.
+
+## ✅ LIVE VERIFICATION of per-SKU materialization (2026-06-18, 2nd fresh audit, 352 cr)
+Ran a 2-SKU audit AFTER the per-SKU-materialization deploy (439d9168). Result, confirmed on the live page:
+- ✅ **Per-SKU audits now materialize tasks.** Two new `HIGH · SKU ENRICHMENT` tasks appeared:
+  "Fill the gaps on Triple Shine Grape - Ownist's page…" and "Fill the gaps on …Good Night Collagen…'s
+  page…", each with the inline why-line + **Expected:** (enrichment coverage completeness) + **Track:**
+  (failed SKU prompts now answered) — product-named, actionable. THE critical gap is fixed + verified.
+- ✅ **Reconciliation engaged + is scope-aware.** Open count 43 → 27. It correctly KEPT tasks for
+  products NOT in this audit (e.g. "Specific queries… Warm Fall/Winter dog sweater", "Pitch
+  whowhatwear.com" — fashion/dog SKUs from past audits).
+- ⚠️ **RESIDUAL (precisely diagnosed): product_key FORMAT MISMATCH blocks closing legacy leftovers for
+  AUDITED products.** The collagen legacy "Index your canonical PDPs" task stores
+  `product_key="https://agent.pivota.cc/products/sig_586147c399a05451ccd799cf9e82eab7"` (canonical-URL
+  form), but the per-SKU report + new tasks use `product_key="prod::merch_…::shopify::10100856914217"`
+  (catalog form). `_covered_product_keys` only collects the catalog form, so reconciliation's scope guard
+  skips the URL-form legacy task → it (and "Convert category mentions", "Strengthen schema", "Close the
+  gap") survive with their old generic titles + no outcome line.
+  FIX (next): normalize product identity — collect MULTIPLE ids per covered SKU (product_key, sku_key,
+  content_key/signature, canonical_url, + the bare `sig_…` extracted from any URL) and match a legacy
+  task if ANY of its product_key's normalized ids intersect the covered set. Then a per-SKU audit closes
+  the audited product's legacy leftovers too. (Same normalization should apply to dedup's identity.)
+- Net: the page is materially better (per-SKU audits feed Zone 3 with clean, actionable tasks); the
+  legacy backlog for audited products needs the product-key normalization fix to fully clear.
