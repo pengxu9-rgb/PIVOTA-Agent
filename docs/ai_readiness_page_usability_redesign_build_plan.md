@@ -121,7 +121,7 @@ workspace"). Pick one model and apply it consistently (decision below).
 |----|------|---------|--------|-------|
 | 1 | **Make the action plan actionable** — outcome+KPI on every task; persistent cross-audit scope + scope-aware reconciliation; honest lanes; inline next-step. | backend + portal | 🟢 merged + deployed (NOT yet eyeballed on a real audit) | backend #939 (330e9b02) · portal #85 (Vercel) · mailto-CTA-in-row deferred |
 | 2 | ✅ **Fold "Pivota agent activity" into the action plan** — DELETED the standalone `MerchantExecutorActivityPanel` feed; Pivota's work lives in the action plan's "On Pivota" lane + "by Pivota" tags (one-line clarifier added). | portal | 🟢 merged + deployed | #87 (Vercel 200d297) |
-| 3 | **Restructure Zone 1 + relocate "Your products"** — move per-SKU cards up as the drill-down, surface the per-product "Make AI-ready" action, make brand cover a true summary (no duplicate scorecard). | portal | ☐ | Fixes the "duplicate at the bottom" + buries-the-action problem. |
+| 3 | ✅ **Restructure Zone 1 + relocate "Your products"** — per-SKU cards moved up into Zone 1 as the drill-down; brand cover's 4-tile scorecard → compact median strip; per-product next-step already on the card face. | portal | 🟢 merged + deployed | #88 (Vercel 492ae6a) |
 | 4 | **Close the leaky snapshot** — scope task/activity/outreach to the run being viewed (or cleanly separate past-report vs live-workspace). | portal + backend | ☐ | Makes historical runs honest. |
 | 5 | **Follow-up re-test loop** — re-run a past run's EXACT prompt/SKU set on demand for a true before/after ("I fixed X — did X improve?"). Store the run's prompt set; add `from_run_id` to create-audit; show paired deltas. **PRODUCT CALL** — was cut as gold-plating; costs credits. | backend + portal | ☐ | The "did my fix work" loop the merchant actually wants. |
 
@@ -255,3 +255,13 @@ dedup, scope-aware reconciliation, product-named titles, outcome/KPI, and cross-
 Remaining redesign steps untouched: 2 (fold agent-activity), 3 (Zone-1 restructure / move Your-products up),
 4 (snapshot leak — scope task/activity/outreach to the viewed run), 5 (follow-up re-test loop).
 - 2026-06-18 — Step 2 SHIPPED (portal #87 → Vercel 200d297). Deleted the standalone agent-activity feed (unscoped, stale '34d ago', internal agent names + failures — merchant-flagged). Pivota's work now lives in the action plan's 'On Pivota' lane + 'by Pivota · {agent}' task tags, with a per-lane clarifier. Remaining: Step 3 (Zone-1 restructure: move 'Your products' up as the drill-down, surface per-product action, kill the brand-vs-SKU duplicate scorecard), Step 4 (leaky snapshot — scope task/activity/outreach to the viewed run), Step 5 (re-test loop).
+- 2026-06-18 — Step 3 SHIPPED (portal #88 → Vercel 492ae6a). Moved PerSkuCardList into Zone 1 (drill-down
+  behind the brand summary; Zone 3 = action plan only); de-duped the brand 4-tile scorecard → a compact
+  median strip; reframed 'Your products' as 'the detail behind the summary'. NOTE the per-product action
+  was already on the card face (not buried) — corrected that premise. RollupDimensionStat now unused (left).
+- **Step 4 REFRAMED:** Step 1 LOCKED the action plan as an intentional PERSISTENT cross-audit workspace, so
+  it SHOWING present-day tasks on a historical report is now BY DESIGN, not a leak. Step 2 deleted the
+  confusing activity feed. So Step 4 shrinks to a CLARITY fix: when viewing a historical run, add a banner
+  'You're viewing a past audit (date); your action plan + outreach below are your current live list.'
+  (No re-scoping — that would contradict Step 1.)
+- Remaining: Step 4 (historical-view clarity banner) + Step 5 (on-demand re-test loop — the bigger one).
