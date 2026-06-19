@@ -199,3 +199,19 @@ in deployed code:
 - Lesson: the holistic review + the task-CTA agent both traced materialize_tasks_from_audit but
   assumed per-SKU fed it; only the live eyeball caught that per-SKU audits don't create tasks at all.
   Do not trust a materialization path is exercised without confirming the report SHAPE it consumes.
+
+## Step 1 foundation fix — per-SKU audits now materialize tasks (2026-06-18)
+Shipped the REAL fix for the critical finding above. `_per_sku_action_items` (task_queue_service.py)
+turns each SKU's `next_best_action` into one task; `_extract_action_items` falls back to it when the
+`per_product` walk is empty (legacy unaffected). Backend #942 → 439d9168 (deploying). Consequences:
+- per-SKU audits now feed the action plan (Zone 3) — one product-named task per SKU, with the
+  tracking_metric as the outcome/KPI + citation-derived severity + real http CTA only.
+- the scope-aware reconciliation now ENGAGES at per-SKU audit completion → closes prior pending
+  tasks for covered products (incl. the orphaned legacy leftovers) + brand tasks.
+- title disambiguation (#941) applies (NBA headlines already name the product).
+- 84 task tests pass. LIVE confirmation still pending: materialization runs in the worker at audit
+  COMPLETION, so it needs the NEXT per-SKU audit to complete after this deploy (the 352-credit run I
+  did predates the fix). Did NOT auto-run another paid audit.
+- Residual risk to watch on that next audit: reconciliation closes a legacy task only if the per-SKU
+  report's product_key matches the legacy task's evidence.product_key (format match) — verify the 43
+  actually collapse, not just that new tasks appear.
