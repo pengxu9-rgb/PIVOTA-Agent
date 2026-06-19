@@ -238,3 +238,19 @@ Ran a 2-SKU audit AFTER the per-SKU-materialization deploy (439d9168). Result, c
   the audited product's legacy leftovers too. (Same normalization should apply to dedup's identity.)
 - Net: the page is materially better (per-SKU audits feed Zone 3 with clean, actionable tasks); the
   legacy backlog for audited products needs the product-key normalization fix to fully clear.
+
+## 2026-06-18 — residual + side-fix shipped
+- **product_key normalization** (backend #943 → c603de53, live): `_product_id_variants` extracts the
+  shared `sig_<hex>` from both the canonical-URL and catalog product_key forms; `_covered_product_keys`
+  collects it (incl. identity.canonical_url); reconciliation matches on variant intersection. So a
+  per-SKU audit now closes the AUDITED product's legacy URL-keyed leftovers (the surviving "Index"/etc).
+  Verifies on the next per-SKU audit — no extra paid run. 54 task tests pass.
+- **Models-to-run selector** (portal #86 → Vercel, live): dropped the LOWER COST/MORE CREDITS framing
+  (cost still shown per-selection in the estimate); Claude greyed + "Coming soon" (CONNECTED_AUDIT_PROVIDERS
+  allowlist = {gemini, chatgpt}). Merchant-reported.
+
+## Step 1 status: SHIPPED + verified (one residual verifies on next audit)
+Action plan is now actionable + persistent + fed by per-SKU audits, with honest lanes + inline next-step,
+dedup, scope-aware reconciliation, product-named titles, outcome/KPI, and cross-format product matching.
+Remaining redesign steps untouched: 2 (fold agent-activity), 3 (Zone-1 restructure / move Your-products up),
+4 (snapshot leak — scope task/activity/outreach to the viewed run), 5 (follow-up re-test loop).
