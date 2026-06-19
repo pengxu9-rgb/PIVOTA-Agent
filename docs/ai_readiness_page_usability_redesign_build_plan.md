@@ -122,7 +122,7 @@ workspace"). Pick one model and apply it consistently (decision below).
 | 1 | **Make the action plan actionable** — outcome+KPI on every task; persistent cross-audit scope + scope-aware reconciliation; honest lanes; inline next-step. | backend + portal | 🟢 merged + deployed (NOT yet eyeballed on a real audit) | backend #939 (330e9b02) · portal #85 (Vercel) · mailto-CTA-in-row deferred |
 | 2 | ✅ **Fold "Pivota agent activity" into the action plan** — DELETED the standalone `MerchantExecutorActivityPanel` feed; Pivota's work lives in the action plan's "On Pivota" lane + "by Pivota" tags (one-line clarifier added). | portal | 🟢 merged + deployed | #87 (Vercel 200d297) |
 | 3 | ✅ **Restructure Zone 1 + relocate "Your products"** — per-SKU cards moved up into Zone 1 as the drill-down; brand cover's 4-tile scorecard → compact median strip; per-product next-step already on the card face. | portal | 🟢 merged + deployed | #88 (Vercel 492ae6a) |
-| 4 | **Close the leaky snapshot** — scope task/activity/outreach to the run being viewed (or cleanly separate past-report vs live-workspace). | portal + backend | ☐ | Makes historical runs honest. |
+| 4 | ✅ **Historical-view clarity** (reframed: persistent workspace is intentional) — banner when viewing a past run: 'snapshot; your action plan + outreach are your current live list'. | portal | 🟢 merged + deployed | #89 (Vercel 3156277) |
 | 5 | **Follow-up re-test loop** — re-run a past run's EXACT prompt/SKU set on demand for a true before/after ("I fixed X — did X improve?"). Store the run's prompt set; add `from_run_id` to create-audit; show paired deltas. **PRODUCT CALL** — was cut as gold-plating; costs credits. | backend + portal | ☐ | The "did my fix work" loop the merchant actually wants. |
 
 ## Acceptance & verification (the bar for each step — eyeball on a REAL audit)
@@ -265,3 +265,11 @@ Remaining redesign steps untouched: 2 (fold agent-activity), 3 (Zone-1 restructu
   'You're viewing a past audit (date); your action plan + outreach below are your current live list.'
   (No re-scoping — that would contradict Step 1.)
 - Remaining: Step 4 (historical-view clarity banner) + Step 5 (on-demand re-test loop — the bigger one).
+- 2026-06-18 — Step 4 SHIPPED (portal #89 → Vercel 3156277). Reframed from "re-scope tasks to viewed run"
+  (would contradict Step 1's persistent-workspace lock) to a CLARITY banner: opening a past run now shows
+  "viewing a past audit from {date}; the findings are a snapshot; your action plan + outreach below are
+  your current live list across all audits — not from this run." savedRunViewedAt set on loadRunById,
+  cleared on a fresh run.
+- STATUS: Steps 1-4 SHIPPED + deployed. Only Step 5 remains (on-demand re-test loop — the bigger feature;
+  locked decision = BUILD, but warrants a scoping mini-plan first: store a run's prompt set, add
+  from_run_id audit path, paired per-prompt before/after; costs credits to verify).
