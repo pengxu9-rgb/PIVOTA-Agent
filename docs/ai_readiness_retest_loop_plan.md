@@ -93,3 +93,6 @@ demand shows merchants want the whole-run replay.
 Confirm the design-fork choices above (esp. #1 default-selected prompts + #2 where
 before/after renders), then build v1 (backend: tag + extract source prompts; portal:
 select-and-relaunch + paired-results view). v2 (`from_run_id` full replay) deferred.
+
+## STATUS — v1 SHIPPED 2026-06-18 (portal #90 → Vercel 0f776dc)
+RetestPanel in Zone 4: lists the win-plan losing queries ('not cited yet'), 1-click re-test via the custom-prompt path (onAddPrompts injection, <=10 cap). Before = not-cited (definition of losing); after = the re-run's CustomPromptsPanel result. Portal-only, no new probe machinery. v2 (explicit side-by-side before/after + from_run_id full-run replay + retest_of_run_id linking) DEFERRED — build if v1 shows demand.
