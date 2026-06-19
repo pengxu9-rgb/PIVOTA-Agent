@@ -178,3 +178,24 @@ workspace"). Pick one model and apply it consistently (decision below).
 - 2026-06-18 (c) — Step 1 MERGED + DEPLOYED (backend #939 → 330e9b02 live; portal #85 → Vercel Ready). NOT yet eyeballed on a real audit — the plan's bar is shipped AND eyeballed. Portal changes (lanes/inline/persistent view) show immediately on existing tasks; backend outcome+KPI populate on NEWLY materialized tasks and reconciliation runs at the NEXT audit completion (a fresh audit costs the merchant credits → their call to trigger).
 - 2026-06-18 (d) — Step 1 EYEBALLED on the live page (drove the merchant's own session; reload required re-login — never entered credentials). Confirmed working: persistent scope (action plan went 'No open tasks' → 'Open (61)'), inline next-step instruction, honest 'ON YOUR STORE' lane. FOUND A REAL PROBLEM: the persistent scope EXPOSED an accumulated pile of identical pending tasks ('Index your canonical PDPs' ×5+) that the old latest_completed scope was masking; the forward reconciliation only fires at the next audit, so the live list looked cluttered. FIX shipped: lazy idempotent dedup on the persistent read (backend #940 → 456b71d4) — collapses duplicate pendings to the newest on next page load, no audit/DB-access needed. Lesson: shipping the scope change without a backlog cleanup left the list ugly until an audit ran — eyeballing caught it. STILL: per-task outcome/KPI lines only populate on NEWLY-created tasks (next audit), not the pre-deploy backlog.
 - 2026-06-18 (e) — Step 1 cleanup, parts 2-3: (a) lazy dedup (#940, 456b71d4) collapsed exact-duplicate pendings live (61→43); eyeballing showed the residual were NOT dupes but distinct per-product tasks sharing a generic title. (b) Title disambiguation (#941, 8a976b65): _extract_action_items appends the product name to a per-product task title when absent ('Index your canonical PDPs … — Good Night Collagen'), so per-SKU tasks read as distinct. NEXT: run one fresh 1-2 SKU audit (user-authorized) to trigger the scope-aware reconciliation (collapses prior-run pending → this run's set) + populate outcome/KPI lines on the new tasks + render disambiguated titles — the genuinely-clean state.
+
+## ⚠️ CRITICAL FINDING (2026-06-18, from the live fresh-audit eyeball) — Step 1 is NOT verified
+Running a fresh per-SKU audit (352 credits) changed the REPORT (citation 20→25) but left the
+ACTION PLAN completely unchanged (43 tasks, generic-titled "Index" dupes). Root cause, confirmed
+in deployed code:
+- `run_brand_report(audit_mode="per_sku")` returns the report under **`per_sku_reports`**
+  (agent_center_bd_report_service.py ~9051), NOT `per_product`.
+- `_extract_action_items` (task_queue_service.py) reads **`audit_report.get("per_product")`** → []
+  for per-SKU runs → `materialize_tasks_from_audit` early-returns ("no action_items") **before**
+  the reconciliation/loop.
+- ⇒ **Per-SKU audits materialize ZERO merchant_tasks.** The action plan's tasks are LEGACY-mode
+  leftovers; the per-SKU audits merchants actually run never feed Zone 3. My Step 1 backend
+  reconciliation + title disambiguation hook into a path per-SKU audits don't use, so they never
+  fire. (The portal read-path fixes — inline instruction, honest lanes — and the lazy dedup DO
+  work, mode-independent: dedup collapsed 61→43 live.)
+- This reframes Step 1: the FIRST fix must be **make per-SKU audits materialize tasks** (from
+  `per_sku_reports[].next_best_action` + win_plan + brand-level actions), THEN reconciliation +
+  titles apply. The per-SKU action source is `next_best_action` (per SKU) — not `merchant_view.actions`.
+- Lesson: the holistic review + the task-CTA agent both traced materialize_tasks_from_audit but
+  assumed per-SKU fed it; only the live eyeball caught that per-SKU audits don't create tasks at all.
+  Do not trust a materialization path is exercised without confirming the report SHAPE it consumes.
