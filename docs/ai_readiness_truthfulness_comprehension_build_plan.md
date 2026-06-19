@@ -27,7 +27,7 @@ the merchant actually being named, or shows a bare number with no meaning, it's 
 | ID | Step | Surface | Status | Notes |
 |----|------|---------|--------|-------|
 | P0 | ✅ **Truthful endorsement/findability** — gated `_citation_signals` on merchant-named (cites_exact_sku/near_variant); own-domain ungated; un-naming hosts → cited_not_naming_hosts | backend | 🟢 merged + deployed | #944 (c51260f7) |
-| P1a | **Numbers-with-meaning + define terms** | portal | ☐ | band word + scale + glossary + product-vs-store |
+| P1a | ✅ **Numbers-with-meaning + define terms** — band word + 0–100 scale on the strip; 'How to read these scores' decoder (dimensions + scale + cited/findable/recommended); citation-by-intent reworded | portal | 🟢 merged + deployed | #91 (Vercel 38316ec) |
 | P1b | **Unify dedup on `_product_id_variants` + collapse brand-action-per-SKU** | backend | ☐ | kills residual duplicates |
 | P2a | **`in_progress` clarity** — drop the "running" spinner; show owner | portal | ☐ | small |
 | P2b | **"What AI names instead" — co-locate action + show frequency** | portal | ☐ | small |
@@ -117,3 +117,4 @@ scope before building anything here.
 - 2026-06-18 — plan created from the live-eyeball deep analysis. P0 (false claims) is the
   priority + bounded; P1 comprehension + dedup unification; P2 polish. Design calls flagged.
 - 2026-06-18 — P0 SHIPPED (backend #944 → c51260f7). _citation_signals now gates endorsement + third-party findability on the merchant actually being named; own-domain ungated; hosts cited without naming → cited_not_naming_hosts ('who AI cites instead'). 'cited' locked to mean 'AI named your product/brand'. Manifests on the NEXT audit (snapshots immutable) — the false 'earns recommendation from youtube/reddit' / 'listed across [retailers]' claims will be gone for a not-named merchant. 64 tests pass. Remaining: P1a (comprehension), P1b (dedup unify), P2a (in_progress spinner), P2b ('names instead' action), Q (operator follow-tests).
+- 2026-06-18 — P1a SHIPPED (portal #91 → Vercel 38316ec). Brand strip shows band word + '/100' scale; a 'How to read these scores' collapsible defines the 4 dimensions, the band scale, and cited/findable/recommended; CitationByIntent retitled + reworded to say it measures AI naming the product/brand (not a retailer) + explains the color thresholds. Remaining: P1b (dedup unify — backend), P2a (in_progress spinner), P2b ('names instead' action), Q (operator follow-tests).
