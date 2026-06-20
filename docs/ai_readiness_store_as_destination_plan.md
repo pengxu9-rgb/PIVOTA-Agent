@@ -78,3 +78,6 @@ retailer's win loop. Ties to [[pivota-frontier-citation-architecture]].
 - 2026-06-18 — plan created. R3 is the retailer's real win metric (store-as-destination), a new
   aggregation over existing buy-intent probe data; no new probes. Forks: Pivota-PDP-counts (rec
   yes), buy-intent query set, reseller-only vs both, where it renders.
+
+## STATUS — R3a + R3b SHIPPED 2026-06-18 (backend #947 → 192f5d5c, portal #94 → c0f54e6)
+`_store_as_destination` on brand_rollup (rate from navigational citation + routed_to_instead from authority hosts' cited_on_branded_query); 'Are you the buy destination?' reseller-headline panel. No new probes. R3c (tie the action to the canonical-PDP indexing arc — the explicit win loop) DEFERRED.
