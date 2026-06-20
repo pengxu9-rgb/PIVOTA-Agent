@@ -126,6 +126,18 @@ today" `WinPlanPanel.tsx:225-289`; `WhereYouCanWinPanel page.tsx:2996-3019`;
    the "products you don't carry" insight no DIY-with-a-frontier-model can produce.
 4. **C4** deferred.
 
+## STATUS
+- **C1 SHIPPED 2026-06-20** (backend #950 → f46b571e, portal #96 → 1f205f8). Channels in
+  Findability + how-to-compete advice. `_citation_signals` emits `channels_ai_cites_instead`
+  ({host, role, role_label, how_to_compete, times_cited}); `_channel_competition_advice` is
+  the role→advice map; advice also attached to `store_as_destination.routed_to_instead`.
+  Portal: "Channels AI sends buyers to instead — and how to compete" block under the
+  Findability/Endorsement split (both merchant types, top 8). Additive + safe; manifests on
+  the next audit. (Decisions taken: static role-templates; advice on both findability channels
+  and the reseller buy-destination.)
+- **C2 (two-axis framing) + C3 ("winning products you don't carry") — NOT BUILT.** C3 still
+  depends on the competitor-name cleaning (`d613e363`, not on main).
+
 ## Change log
 - 2026-06-20 — scope created from the competitive-landscape investigation. Data mostly EXISTS;
   gaps are framing (C1/C2), advice generation (C1, `citation_role` hook), and one novel join
