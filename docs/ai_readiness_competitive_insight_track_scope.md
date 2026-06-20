@@ -135,8 +135,24 @@ today" `WinPlanPanel.tsx:225-289`; `WhereYouCanWinPanel page.tsx:2996-3019`;
   Findability/Endorsement split (both merchant types, top 8). Additive + safe; manifests on
   the next audit. (Decisions taken: static role-templates; advice on both findability channels
   and the reseller buy-destination.)
-- **C2 (two-axis framing) + C3 ("winning products you don't carry") — NOT BUILT.** C3 still
-  depends on the competitor-name cleaning (`d613e363`, not on main).
+- **C2 SHIPPED 2026-06-20** (portal #97 → 43b2d8b). Two-axis framing: a `merchant_type`-keyed
+  `CompetitiveLensBanner` at the top of Zone 2 — brand → "compete on your product"; retailer →
+  "compete on the buy destination" + winners-below-are-stocking-signals (tees up C3). Render-time
+  (shows immediately).
+- **Competitor-name cleaning LANDED 2026-06-20** (backend #951 → 337ffb3c; cherry-pick of
+  `d613e363`). `competitor_brand_filter.filter_competitor_brands` drops ingredient/category noise
+  (Magnesium, Probiotics…) so "competitors" are real brands. C3's dependency, now on main.
+- **C3 SHIPPED 2026-06-20** (backend #952 → 69bc5bac, portal #98 → e536170). "Winning products
+  you don't carry": `_winning_products_not_carried` collects competitor_benchmark across losing
+  queries → `filter_competitor_brands` → excludes brands whose WORDS overlap the merchant's
+  catalog brands (`_brand_core_words`/`_carried_brand_words`; word-level, NOT derive_brand_aliases
+  set-intersection which missed multi-word names like "NUTRIONE BB Lab"). Errs toward "carried"
+  (never false-suggests stocking what they have); suppresses when catalog brands can't load.
+  Reseller-gated. Portal: amber Zone-2 panel "Winning products you don't carry" (named N× + the
+  queries they win). The sharpest Pivota-vs-DIY insight (catalog × measured winners). Manifests
+  on next reseller audit.
+- **THE COMPETITIVE-INSIGHT TRACK (C1+C2+C3) IS COMPLETE.** C4 ("why they win" attributes from the
+  cited_evidence excerpt / probe schema) remains deferred.
 
 ## Change log
 - 2026-06-20 — scope created from the competitive-landscape investigation. Data mostly EXISTS;
