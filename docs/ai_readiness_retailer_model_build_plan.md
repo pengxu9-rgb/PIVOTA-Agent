@@ -27,7 +27,7 @@ a detected reseller gets the corrected attribution. No regressions for brands.
 |----|------|---------|--------|-------|
 | R0 | ✅ **Detect merchant type** (derive from catalog) — `_audit_merchant_vendors` returns is_reseller; brand_rollup.merchant_type carried | backend | 🟢 merged + deployed | #946 (fe4cd5bf) |
 | R1 | ✅ **Reseller-aware identity** — fold a vendor only when it IS the merchant; resold brands excluded → ownist.com no longer the store's findability | backend | 🟢 merged + deployed | #946 (fe4cd5bf) |
-| R2 | **Reframe the sections for resellers** — findability/endorsement copy reflects "the brands you carry" vs "your store" honestly | portal | ☐ | so the numbers read right |
+| R2 | ✅ **Reframe for resellers** — reseller-context banner: 'this measures YOUR store, not the brands'; defines Findable/Recommended for a retailer | portal | 🟢 merged + deployed | #93 (0f39485) |
 | R3 | **Store-as-destination metric** — is the STORE (chydan.com / Pivota canonical PDP) the AI-routed buy path? | backend + portal | ☐ | the real retailer win; bigger |
 
 ## R0 — Detect merchant type (the foundational design call)
@@ -77,3 +77,4 @@ separately after R0-R2 land.
 - 2026-06-18 — plan created from the retailer-vs-brand identity finding. R0 detection is the gate;
   R1 the bug fix (de-conflate); R2 reframe; R3 the store-as-destination metric (bigger, later).
 - 2026-06-18 — R0 + R1 SHIPPED (backend #946 → fe4cd5bf). Derive-from-catalog merchant-type detection + reseller-aware identity: `_audit_merchant_vendors` folds a product vendor into the merchant identity ONLY when the vendor IS the merchant (D2C selling its own products); a reseller's resold brands are excluded so their domains (ownist.com) stop being mis-credited as the store's findability. brand_rollup.merchant_type='reseller'|'brand' carried for R2. Type-gated (D2C unchanged). Manifests on the NEXT audit. 55 tests pass. Remaining: R2 (portal reframe copy keyed on merchant_type), R3 (store-as-destination metric — the bigger retailer win).
+- 2026-06-18 — R2 SHIPPED (portal #93 → Vercel 0f39485). When merchant_type=reseller, the narrative leads with a context banner clarifying the audit measures whether AI routes shoppers to THE STORE (not whether the resold brands are recommended) + defines the terms for a retailer. R0+R1+R2 = the mis-attribution is fixed AND the page reads right for a reseller. Only R3 (store-as-destination metric — is the store the AI-routed buy path) remains — the bigger retailer-win initiative, scope separately.
