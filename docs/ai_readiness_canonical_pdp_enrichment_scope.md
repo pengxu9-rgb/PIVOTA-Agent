@@ -165,9 +165,35 @@ Both reuse data that already exists; the gaps are framing + advice + one new joi
 portal `app/dashboard/agent-center/ai-readiness/page.tsx:2267`,
 `components/audit/MerchantNarrativePanel.tsx:91`, `components/audit/WinPlanPanel.tsx:247`.
 
+## STATUS — E2 + E1 SHIPPED 2026-06-20
+- **E2 (backend #948 → 2dc46e73, DEPLOYED):** the publish-gap bridge. `assemble_row`
+  overlays `product_enrichment.description_markdown` at highest precedence, fetched
+  best-effort in `refresh_agent_pdp_view_for_content_key` (catalog_sync + supplier-
+  evidence + E1 all flow through it). Enriched copy now reaches the served PDP + the
+  `serving_eligible` gate. Strip-aware (empty can't blank); best-effort (degrades to
+  raw). 97 serving-path tests green.
+- **E1 (backend #949 → 89fec135, MERGED):** the `canonical_pdp_enrichment` executor.
+  Candidate query (minted sig + live + thin description + not-yet-enriched) → Gemini
+  grounded generation → `_simple_compliance_check` → `upsert_enrichment` → publish via
+  E2's `refresh_agent_pdp_view_for_content_key`. Cap 5/run. Registered in BOTH the
+  dispatcher AND the worker registry (two-place hazard, guarded by a test). Dispatched
+  on audit completion.
+- **ROLLOUT GATE (safe-by-default):** ships DORMANT. Env `CANONICAL_PDP_ENRICHMENT_ALLOWLIST`:
+  unset/empty → no merchant fires; `id1,id2` → those merchants; `*` → all (widen). To
+  verify on Chydan: set it to `merch_efbc46b4619cfbdf` in Railway, run a Chydan audit,
+  eyeball the generated `description_markdown` on the served PDP + the score move; then
+  set `*` to widen (env-only, no redeploy).
+- **DEFERRED:** E2b (project structured fields — bullets/usage — into new agent_pdp_view
+  columns + serve as JSON-LD); the competitive-insight track (directives 1+2:
+  channels-in-findability, two-axis framing, "winning products you don't carry"); a
+  realtime serving-eligibility recompute trigger post-enrich (today relies on the
+  nightly index-health job / next audit).
+
 ## Change log
 - 2026-06-20 — scope created. canonical_pdp_enrichment = thin executor (frontier-LLM
   generator) + close the publish gap (E2). ~80% of the machinery already exists
   (`product_enrichment` table + pipeline + audit read-path + executor framework +
   auto-dispatch). Companion insight track (channels-in-findability, two-axis framing,
   "winning products you don't carry" catalog-overlap) feeds the grounded brief.
+- 2026-06-20 — E2 (#948) + E1 (#949) SHIPPED. The measure → auto-enrich-the-owned-PDP →
+  publish → re-measure loop is live (E1 gated dormant pending the allowlist opt-in).
