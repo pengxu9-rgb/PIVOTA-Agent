@@ -151,8 +151,14 @@ today" `WinPlanPanel.tsx:225-289`; `WhereYouCanWinPanel page.tsx:2996-3019`;
   Reseller-gated. Portal: amber Zone-2 panel "Winning products you don't carry" (named N× + the
   queries they win). The sharpest Pivota-vs-DIY insight (catalog × measured winners). Manifests
   on next reseller audit.
-- **THE COMPETITIVE-INSIGHT TRACK (C1+C2+C3) IS COMPLETE.** C4 ("why they win" attributes from the
-  cited_evidence excerpt / probe schema) remains deferred.
+- **C4a SHIPPED 2026-06-20** (backend #955 → 25ba1b56). `competitor_insights` executor: 1 LLM pass
+  over the captured `cited_evidence` excerpts (no new probes, no grounded search) → per-competitor
+  why_wins (grounded in the AI's answer text) + how_to_compete, surfaced as a merchant task
+  (HUMAN_TASK_RECOMMENDED, owner=growth, lever=competitive_intel). Reads audit_report
+  per_sku_reports→opportunity.per_prompt.cited_evidence, cap 8 queries. Registered in dispatcher +
+  worker (two-place guard). Runs on next audit completion.
+- **THE COMPETITIVE-INSIGHT TRACK (C1+C2+C3+C4a) IS COMPLETE.** Only C4b (per-competitor claims via
+  a `deepseek_probe` schema change — new probe contract + tokens) remains deferred.
 
 ## Change log
 - 2026-06-20 — scope created from the competitive-landscape investigation. Data mostly EXISTS;
