@@ -25,8 +25,8 @@ a detected reseller gets the corrected attribution. No regressions for brands.
 ## Progress tracker
 | ID | Step | Surface | Status | Notes |
 |----|------|---------|--------|-------|
-| R0 | **Detect merchant type** (reseller vs brand) | backend | ☐ | the gate everything hangs on |
-| R1 | **Reseller-aware identity** — don't fold resold brands into the store's own_domain | backend | ☐ | fixes the ownist.com mis-attribution |
+| R0 | ✅ **Detect merchant type** (derive from catalog) — `_audit_merchant_vendors` returns is_reseller; brand_rollup.merchant_type carried | backend | 🟢 merged + deployed | #946 (fe4cd5bf) |
+| R1 | ✅ **Reseller-aware identity** — fold a vendor only when it IS the merchant; resold brands excluded → ownist.com no longer the store's findability | backend | 🟢 merged + deployed | #946 (fe4cd5bf) |
 | R2 | **Reframe the sections for resellers** — findability/endorsement copy reflects "the brands you carry" vs "your store" honestly | portal | ☐ | so the numbers read right |
 | R3 | **Store-as-destination metric** — is the STORE (chydan.com / Pivota canonical PDP) the AI-routed buy path? | backend + portal | ☐ | the real retailer win; bigger |
 
@@ -76,3 +76,4 @@ separately after R0-R2 land.
 ## Change log
 - 2026-06-18 — plan created from the retailer-vs-brand identity finding. R0 detection is the gate;
   R1 the bug fix (de-conflate); R2 reframe; R3 the store-as-destination metric (bigger, later).
+- 2026-06-18 — R0 + R1 SHIPPED (backend #946 → fe4cd5bf). Derive-from-catalog merchant-type detection + reseller-aware identity: `_audit_merchant_vendors` folds a product vendor into the merchant identity ONLY when the vendor IS the merchant (D2C selling its own products); a reseller's resold brands are excluded so their domains (ownist.com) stop being mis-credited as the store's findability. brand_rollup.merchant_type='reseller'|'brand' carried for R2. Type-gated (D2C unchanged). Manifests on the NEXT audit. 55 tests pass. Remaining: R2 (portal reframe copy keyed on merchant_type), R3 (store-as-destination metric — the bigger retailer win).
