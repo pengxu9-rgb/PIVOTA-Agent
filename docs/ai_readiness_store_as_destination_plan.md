@@ -79,5 +79,6 @@ retailer's win loop. Ties to [[pivota-frontier-citation-architecture]].
   aggregation over existing buy-intent probe data; no new probes. Forks: Pivota-PDP-counts (rec
   yes), buy-intent query set, reseller-only vs both, where it renders.
 
-## STATUS — R3a + R3b SHIPPED 2026-06-18 (backend #947 → 192f5d5c, portal #94 → c0f54e6)
-`_store_as_destination` on brand_rollup (rate from navigational citation + routed_to_instead from authority hosts' cited_on_branded_query); 'Are you the buy destination?' reseller-headline panel. No new probes. R3c (tie the action to the canonical-PDP indexing arc — the explicit win loop) DEFERRED.
+## STATUS — R3a + R3b + R3c SHIPPED 2026-06-20 (backend #947 → 192f5d5c, portal #94 → c0f54e6, #95 → dcba21f)
+`_store_as_destination` on brand_rollup (rate from navigational citation + routed_to_instead from authority hosts' cited_on_branded_query); 'Are you the buy destination?' reseller-headline panel. No new probes.
+**R3c (the win loop CLOSED, portal #95 → dcba21f):** the panel's action is no longer a static "get indexed" — it reads `brand_rollup.indexing_arc` (already computed backend-side, sibling of store_as_destination) and renders the live phase: still-indexing → "N of M products in Google's 30-90d window, re-audit on/after {recheck_on_or_after}"; past-window → "should be indexed; now a content/SEO gap, not a wait"; none-minted → falls back to step-1 "get indexed". Portal-only — no backend change (indexing_arc + the BrandIndexingArcRollup type already shipped). Cited-vs-retrieved discipline preserved; dates derived from real `pivota_signature_minted_at`. THE RETAILER MODEL (R0-R3) IS COMPLETE AND CLOSED-LOOP.
