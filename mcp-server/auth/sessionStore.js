@@ -1,10 +1,14 @@
 /**
- * Reference-only in-memory OAuth session store.
+ * ⚠️ QUARANTINE — REFERENCE ONLY, NOT PRODUCTION-WIRED. ⚠️
+ * No production code imports this module (only auth.test.js); it pairs with the quarantined oauth.js.
+ * Production session/identity binding on the live `/mcp` surface comes from the verified OAuth access token
+ * (see src/commerceMcpOAuth.js), not this in-memory store.
  *
- * This module is suitable for local adapter development and offline tests only.
- * Production deployments need encrypted, durable storage with explicit retention,
- * rotation, and revocation policies. Never write access tokens, refresh tokens,
- * or AP2 state to logs or thrown error messages.
+ * Reference-only in-memory OAuth session store. Suitable for local adapter development and offline tests only.
+ * Production deployments need encrypted, durable storage with explicit retention, rotation, and revocation
+ * policies. Never write access tokens, refresh tokens, or AP2 state to logs or thrown error messages.
+ * Known caveat if lifted: a record with no `expiresAt` NEVER expires (recordIsExpired returns false) — require
+ * an expiry on every put before relying on eviction.
  */
 
 export function createSessionStore() {

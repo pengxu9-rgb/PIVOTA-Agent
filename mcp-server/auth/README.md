@@ -1,5 +1,13 @@
 # Pivota MCP Auth Reference
 
+> **Status: mostly QUARANTINED reference.** `oauth.js` and `sessionStore.js` are **not production-wired**
+> (only `auth.test.js` imports them) and carry quarantine headers. The **only live file here is
+> `userRef.js`** (`deriveUserRef`/`attachUserRef`/`WRITE_OPERATIONS`), imported by the production
+> `src/commerceToolSurface.js` and the legacy `src/secureInvoke.js`. Production frontier-agent OAuth on the
+> live `/mcp` surface is the gateway's resource server (`safety-kernel/src/identity/mcpOAuthResourceServer.js`
+> + `src/commerceMcpOAuth.js`), **not** the `oauth.js` flow described below. See
+> [`../unwired/README.md`](../unwired/README.md) for the full unwired-scaffolding registry.
+
 This directory contains additive OAuth 2.1 helpers for the MCP adapter. The goal is
 to bind every money-path call to a stable `user_ref` derived from the platform OAuth
 subject, while the existing Pivota agent key continues to authenticate only the
