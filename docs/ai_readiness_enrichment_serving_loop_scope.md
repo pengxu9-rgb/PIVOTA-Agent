@@ -95,19 +95,49 @@ After `upsert_enrichment`, E1 must:
 - **Blocked on V2 (below):** Phase A only closes the loop if the enrichment actually scores ≥65.
 
 ### Phase B — Content correctness (R3 + R5)
-- **R3 (de-conflate the review account):** the review/test merchant must not own or shadow a real
-  merchant's canonical PDP.
-  - Primary: exclude test/review merchants from `pick_canonical` candidacy and from the
-    catalog/serving layer (check for an existing test/account-type flag; reuse the
-    source-quarantine machinery if applicable — `pivota-backend-source-quarantine` branch / R0-R3
-    de-conflation precedent). Then Chydan wins its own canonical → overlay fetches its enrichment.
-  - Defense-in-depth (do regardless): make `_fetch_enrichment_for_canonical` fall back to **any
-    merchant on the content_key that has enrichment** when the canonical pick has none — so a
-    future enrichment-owner≠canonical-pick case can't silently drop the overlay.
-  - One-time: quarantine/remove the review account's duplicate catalog rows for Chydan's store.
-- **R5 (wix):** give wix SKUs a content_key (preferred — unifies them into the serve layer) or a
-  non-content_key publish path. Lower priority (20 SKUs); confirm wix content_key minting is just
-  missing vs intentionally deferred.
+
+**R3 — quarantine the review test account WITHOUT unbinding the store** (decision: keep the store
+bound so the App Store review can still proceed; just stop `merch_bbd34645bc1950cc` from shadowing
+Chydan's canonical). Live blast radius: the review account is a 1:1 shadow — **361/361 of Chydan's
+canonical content_keys are duplicated under it, it wins `pick_canonical` for all of them** (lower
+`product_key`), it has **0 enrichment of its own**, and **8/8 of Chydan's enrichments are currently
+shadowed** (all future ones too). De-conflation hands all 361 back to Chydan.
+
+Mechanism (all confirmed against `origin/main @ 0f1b4782`):
+- The existing quarantine/trust machinery is **computed but NOT enforced** at the serving-assembly
+  layer. `agent_pdp_view_assembler` loads rows for a content_key filtering **only by `content_key`**
+  (`:70-95`); `pick_canonical` (`:249-262`) only respects `group_primary → has_sig → lowest
+  product_key`. `catalog_trust_policy` emits `SOURCE_QUARANTINED`/`ROW_TOMBSTONED` block reasons,
+  but only `catalog_trust_policy` + `catalog_row_trust_upserter` anti-join the quarantine — the
+  serving assembly does not. (Latent finding: quarantine controls silently don't gate the served PDP.)
+- **Step 1 (data, reversible):** add a `catalog_source_quarantine` row via
+  `source_quarantine.create_quarantine(match_type='merchant_platform',
+  match_value='merch_bbd34645bc1950cc:shopify', state='active', reason='App Store review test
+  account duplicating Chydan catalog', created_by=...)`. (`match_value` convention =
+  `<merchant_id>:<platform>`, `source_quarantine.py:64`.) It's an **opt-in reader anti-join overlay
+  that does NOT touch ingestion** (migration 134) — the store stays bound + syncing. **Re-sync
+  durable (confirmed):** `catalog_sync` writes `catalog_products`, never `catalog_source_quarantine`,
+  so the entry persists across every sync. Reversible: `state='revoked'`.
+- **Step 2 (code, surgical):** add the quarantine anti-join to the rows feeding `pick_canonical` —
+  use the ready-made `source_quarantine.build_quarantine_anti_join_sql(...)` in the `:70-95` loader,
+  and apply at BOTH `pick_canonical` call sites (`:640` assemble_row, `:860` overlay fetch — confirm
+  they share the loader or wire both). Keep it surgical (anti-join active source-quarantine only —
+  NOT the full `serving_decision`; enforcing all of Layer C1's block reasons at once could drop
+  legitimate rows from the 353 currently serving — separate careful change). Recurrence-proof: any
+  future quarantined source is auto-excluded.
+- **Step 3 (rollout):** `agent_pdp_view` is materialized, so refresh the 361 affected content_keys
+  (or let the next catalog_sync/audit do it) for the new canonical pick to take effect.
+- Effect: Chydan wins `pick_canonical` for all 361 → overlay fetches Chydan's enrichment → served
+  PDP carries Chydan's copy. NOTE: this fixes the **content/ownership** axis only. The collagen also
+  needs **Phase A** (it's not `serving_eligible` — no quality snapshot); the other 353 are already
+  serving and improve immediately. Caveat: confirm the App Store reviewer isn't actively relying on
+  Chydan's store via the review account before quarantining (a real review should use its own store).
+- Defense-in-depth (optional): make `_fetch_enrichment_for_canonical` fall back to any merchant on
+  the content_key that has enrichment when the canonical pick has none.
+
+**R5 (wix):** give wix SKUs a content_key (preferred — unifies them into the serve layer) or a
+non-content_key publish path. Lower priority (20 SKUs); confirm wix content_key minting is just
+missing vs intentionally deferred.
 
 ### Sequencing
 **C** (independent) → **A** (after V2) → **B** (R3 first, then R5). Minimal set to fix the
