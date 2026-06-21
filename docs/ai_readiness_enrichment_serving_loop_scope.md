@@ -5,8 +5,11 @@ Pivota canonical PDP that frontier agents read — so the merchant's owned surfa
 the enriched, intent-targeted copy and can be cited. Today it doesn't: the enrichment is
 written but is a dead-end.
 
-Status: **SCOPED** (no code yet). Root cause from a holistic agent + live prod DB read,
-2026-06-21. Code refs are against deployed `origin/main @ 0f1b4782` (line numbers approximate).
+Status: **SHIPPED + LOOP VERIFIED LIVE** (2026-06-21, main @ 6c8a4f69). Phase A (#964),
+Phase C (#966), R3 quarantine (#963) all deployed; collagen canary proven served via the
+live agent PDP endpoint (see "LOOP CLOSED + VERIFIED LIVE" in §2). R5 (wix) + V1 (systemic
+non-audit re-score) remain open. Root cause from a holistic agent + live prod DB read.
+Code refs are against deployed `origin/main` (line numbers approximate).
 
 > **Decision baked in:** `merch_bbd34645bc1950cc` (shopify-review@pivota.cc) is the **App
 > Store review test account** that connected the *same* Shopify store as Chydan, duplicating
@@ -149,12 +152,22 @@ key rule. Fix options (each needs a call, none is a safe mechanical patch):
 Lower priority (20 SKUs, secondary platform). Recommend a focused follow-up after picking an option.
 
 ### Status (2026-06-21)
-- **R3** ✅ SHIPPED + verified (#963 code + quarantine row; merch_bbd 0/743 survive; 355/361 cache rows already Chydan).
-- **Phase A** (R1/R2/R6) ✅ BUILT — PR #964. V2 validated (collagen real-path score ~71.2 ≥ 65). E1 now scores + recomputes serving-eligibility after enriching.
-- **Phase C** (R4) ✅ BUILT — PR #965 (stacked on #964). Retry + raised token cap + reason logging.
+- **R3** ✅ SHIPPED + verified (#963 code + quarantine row; merch_bbd 0/743 survive; 355/361 cache rows already Chydan). **Closure verified: 0 merch_bbd-owned APV rows remain.**
+- **Phase A** (R1/R2/R6) ✅ SHIPPED — PR #964 (main @ 58e8b9c1). V2 validated (collagen real-path score ~71.2 ≥ 65). E1 now scores + recomputes serving-eligibility after enriching.
+- **Phase C** (R4) ✅ SHIPPED — PR #966 (cherry-picked onto main @ 6c8a4f69; #965 auto-closed when #964's base branch was deleted). Retry + raised token cap + reason logging.
 - **R5** (wix) — root-caused (brand-less → null content_key); deferred, needs an option decision (above).
-- **V1 / dormant pipeline** — open: quality-eval newest snapshot 2026-06-05; Phase A fixes the audit-driven re-score, but SKUs changed OUTSIDE an audit still don't re-score. Systemic blanket re-score / un-dormant the nightly = follow-up.
-- Minimal set to fix the collagen = **A + R3** (both done; takes effect once its cache rebuilds + Phase A deploys).
+- **V1 / dormant pipeline** — open: quality-eval newest snapshot 2026-06-05; Phase A fixes the audit-driven re-score, but SKUs changed OUTSIDE an audit still don't re-score. Systemic blanket re-score / un-dormant the nightly = follow-up. (For Chydan the missing-snapshot population turned out to be only 2 SKUs — most already had snapshots.)
+
+### ✅ LOOP CLOSED + VERIFIED LIVE (2026-06-21, collagen canary)
+The re-audit is a **no-op** for the collagen: E1 skips already-enriched SKUs (`description_markdown` non-empty), and an audit triggers neither a re-sync nor a backfill. So Phase A only ever fires on *newly*-enriched SKUs. To close the loop on an **already-enriched** SKU, two product-path actions were run on Chydan (user-authorized) via the product's own service functions:
+1. **Re-sync** = `refresh_agent_pdp_view_for_content_key(ck, refresh_source=…)` → quarantine anti-join drops merch_bbd → Chydan wins → 878-char enrichment overlays. (1 APV row was still merch_bbd-owned — the collagen.)
+2. **Backfill** = `create_quality_backfill_job(merchant_id=CHY, missing_only=True)` + `process_quality_backfill_job(jid)` (job `qbf_82ec455da323429ea675`; 2 scored, 741 skipped, 0 failed) → writes the missing `product_quality_snapshot` → `full_quality_eval` recomputes `serving_eligible`.
+
+**Verified end-to-end** — `GET https://api.pivota.cc/api/agent/pdp/ck_431a34c88abacb0c567575bfb97dcd69` → HTTP 200, returns Chydan's enrichment: brand `NUTRIONE CO., LTD`, the flagged facts ("low molecular weight fish collagen… 1,200 mg… 1,000 Daltons… Halal certified… Vitamin C, Glycine… Hyaluronic Acid, Elastin"), 2 offers **both merchant_name="Chydan"** (zero merch_bbd), price $49.38–$70.17. `index_pipeline_state`: serving_eligible=TRUE, blocker=none, score=71.2.
+
+**Gotcha for next time:** the serving gate reads `content_quality_score` ONLY from `product_quality_snapshot`; a missing snapshot = `low_quality` blocker even when the APV content is perfect. Already-enriched SKUs need the **quality-backfill job** (no UI button; `POST /merchant/products/quality/backfill`, bearer auth) to get a snapshot — Phase A/E1 won't touch them. catalog_sync recomputes serving but does NOT write a snapshot, so a plain re-sync alone won't flip an unscored SKU.
+
+- Minimal set to fix one already-enriched SKU = **APV refresh + quality-backfill** (both product-path). Phase A covers the newly-enriched case automatically going forward.
 
 ---
 
