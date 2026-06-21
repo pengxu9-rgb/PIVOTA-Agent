@@ -135,13 +135,26 @@ Mechanism (all confirmed against `origin/main @ 0f1b4782`):
 - Defense-in-depth (optional): make `_fetch_enrichment_for_canonical` fall back to any merchant on
   the content_key that has enrichment when the canonical pick has none.
 
-**R5 (wix):** give wix SKUs a content_key (preferred — unifies them into the serve layer) or a
-non-content_key publish path. Lower priority (20 SKUs); confirm wix content_key minting is just
-missing vs intentionally deferred.
+**R5 (wix) — ROOT-CAUSED, needs a decision (deferred).** Live: all 20 Chydan wix SKUs have
+`content_key = NULL` because **they have no brand** (`brand="(none)"`; titles are present), and
+`catalog_identity.make_content_key(brand, title, gtin)` returns null unless BOTH brand and title are
+set. So it's not a wix-sync minting bug per se — it's brand-less products hitting the brand-required
+key rule. Fix options (each needs a call, none is a safe mechanical patch):
+- (a) make `make_content_key` brand-optional (fall back to title[+merchant]) — **risky**: changes
+  content_key derivation for ALL platforms → could re-key existing shopify products + break the serve
+  cache / cross-merchant de-dup.
+- (b) backfill a brand for wix products in the sync (store/merchant name?) — needs a product decision
+  on what brand value, and it shows on the served PDP.
+- (c) a non-content_key serve path for wix — architectural.
+Lower priority (20 SKUs, secondary platform). Recommend a focused follow-up after picking an option.
 
-### Sequencing
-**C** (independent) → **A** (after V2) → **B** (R3 first, then R5). Minimal set to fix the
-collagen = **A + R3**. Minimal set to fix the common thin-SKU case = **A** alone.
+### Status (2026-06-21)
+- **R3** ✅ SHIPPED + verified (#963 code + quarantine row; merch_bbd 0/743 survive; 355/361 cache rows already Chydan).
+- **Phase A** (R1/R2/R6) ✅ BUILT — PR #964. V2 validated (collagen real-path score ~71.2 ≥ 65). E1 now scores + recomputes serving-eligibility after enriching.
+- **Phase C** (R4) ✅ BUILT — PR #965 (stacked on #964). Retry + raised token cap + reason logging.
+- **R5** (wix) — root-caused (brand-less → null content_key); deferred, needs an option decision (above).
+- **V1 / dormant pipeline** — open: quality-eval newest snapshot 2026-06-05; Phase A fixes the audit-driven re-score, but SKUs changed OUTSIDE an audit still don't re-score. Systemic blanket re-score / un-dormant the nightly = follow-up.
+- Minimal set to fix the collagen = **A + R3** (both done; takes effect once its cache rebuilds + Phase A deploys).
 
 ---
 
