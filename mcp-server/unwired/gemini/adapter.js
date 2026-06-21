@@ -1,4 +1,4 @@
-import { buildSecureEnvelope } from "../src/secureInvoke.js";
+import { buildSecureEnvelope } from "../../src/secureInvoke.js";
 
 // Codex P1-3 fix: Gemini now routes through the SAME secure boundary as the MCP server
 // (buildSecureEnvelope): op-allowlist + idempotency presence (no minting) + trusted-identity

@@ -5,12 +5,12 @@ import {
   geminiCallToCommerceTool,
   geminiCallToInvoke,
   invokeResultToGeminiResponse
-} from "../gemini/adapter.js";
+} from "../unwired/gemini/adapter.js";
 import { createCommerceToolSurface } from "../src/commerceToolSurface.js";
 import {
   GEMINI_FUNCTION_DECLARATIONS,
   toGeminiSchema
-} from "../gemini/functionDeclarations.js";
+} from "../unwired/gemini/functionDeclarations.js";
 
 const CLAIMS = Object.freeze({
   iss: "https://idp.example.test",

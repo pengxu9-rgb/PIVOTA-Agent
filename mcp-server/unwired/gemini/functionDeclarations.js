@@ -1,4 +1,4 @@
-import { commerceToolDefinitions } from "../src/commerceToolSurface.js";
+import { commerceToolDefinitions } from "../../src/commerceToolSurface.js";
 
 const TYPE_MAP = Object.freeze({
   string: "STRING",

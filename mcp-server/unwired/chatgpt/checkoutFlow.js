@@ -1,5 +1,5 @@
-import { PivotaCommerceError } from "../../safety-kernel/src/errors.js";
-import { operationMap } from "../src/operationMap.js";
+import { PivotaCommerceError } from "../../../safety-kernel/src/errors.js";
+import { operationMap } from "../../src/operationMap.js";
 
 export const CHECKOUT_STAGES = Object.freeze({
   discover: "discover",
