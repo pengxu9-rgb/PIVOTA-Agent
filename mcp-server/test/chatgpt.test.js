@@ -4,15 +4,15 @@ import test from "node:test";
 import {
   paymentResultComponent,
   quoteCardComponent
-} from "../chatgpt/components.js";
+} from "../unwired/chatgpt/components.js";
 import {
   assertConfirmedBeforePay,
   nextStep
-} from "../chatgpt/checkoutFlow.js";
+} from "../unwired/chatgpt/checkoutFlow.js";
 import {
   fromAcpEvent,
   toAcpCheckout
-} from "../chatgpt/acpMapping.js";
+} from "../unwired/chatgpt/acpMapping.js";
 
 test("quoteCardComponent includes locked total, expiry, and confirm action with quote_id", () => {
   const component = quoteCardComponent({

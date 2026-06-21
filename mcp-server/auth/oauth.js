@@ -1,3 +1,10 @@
+// ⚠️ QUARANTINE — REFERENCE ONLY, NOT PRODUCTION-WIRED. ⚠️
+// No production code imports this module (only auth.test.js). Production frontier-agent OAuth on the live
+// `/mcp` surface is handled by the gateway's `safety-kernel/src/identity/mcpOAuthResourceServer.js` +
+// `src/commerceMcpOAuth.js` (RFC 9728/6750/8707, pinned JWKS, audience-bound) — NOT this helper.
+// Known caveats if anyone lifts this: it performs NO token signature/iss/aud/exp verification and never
+// validates the minted `nonce`, so `deriveUserRef()` over its output trusts unverified claim text. Verify
+// claims server-side first (see auth/README.md). Do not wire without that step.
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 
 export class OAuthError extends Error {
