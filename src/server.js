@@ -27803,6 +27803,12 @@ let commerceRemoteMcpAdapterPromise = null;
 let commerceConfirmationActionHandlerPromise = null;
 let commercePaymentAuthorizationVerifierPromise = null;
 let commerceUserTokenVerifierPromise = null;
+// The ONE canonical executor (kernel) every protocol door shares — MCP (/mcp), ACP REST, and UCP discovery —
+// so charge-once/idempotency/ownership hold ACROSS all doors (no second-kernel hazard). Built once as a side
+// effect of getCommerceRemoteMcpAdapter and reused by getCommerceCanonicalExecutor.
+let commerceSharedExecutor = null;
+let commerceAcpRestAdapterPromise = null;
+let commerceUcpRouteHandlersPromise = null;
 
 function isAgentCheckoutStrictEnabled() {
   return String(process.env.AGENT_CHECKOUT_STRICT || '').trim() === '1';
@@ -27821,6 +27827,24 @@ function isAgentCheckoutHostedLinkEnabled() {
   const normalized = String(process.env.AGENT_CHECKOUT_HOSTED_LINK_ENABLED || '')
     .trim()
     .toLowerCase();
+  return ['1', 'true', 'on', 'yes'].includes(normalized);
+}
+
+// Mount path for the OpenAI ACP (ChatGPT) REST checkout doors. Deliberately NOT bare `/checkout_sessions`
+// (which src/lookReplicator/index.js already serves) — namespaced to avoid the collision.
+const COMMERCE_ACP_BASE_PATH = '/acp';
+
+function isAgentCheckoutAcpRestEnabled() {
+  // OpenAI ACP REST checkout doors. Additive + fail-closed: dormant unless explicitly enabled AND strict is on.
+  // The complete (charge) endpoint is ADDITIONALLY gated by isAgentCheckoutStrictSubmitPaymentEnabled().
+  const normalized = String(process.env.AGENT_CHECKOUT_ACP_REST_ENABLED || '').trim().toLowerCase();
+  return ['1', 'true', 'on', 'yes'].includes(normalized);
+}
+
+function isAgentCheckoutUcpDiscoveryEnabled() {
+  // UCP discovery doors (/.well-known/ucp, /ucp/capabilities). Read-only (no money), but off by default so the
+  // discovery surface is published only when a UCP/Gemini integration is intended.
+  const normalized = String(process.env.AGENT_CHECKOUT_UCP_DISCOVERY_ENABLED || '').trim().toLowerCase();
   return ['1', 'true', 'on', 'yes'].includes(normalized);
 }
 
@@ -28764,6 +28788,8 @@ async function getCommerceRemoteMcpAdapter() {
         hostedLinkEnabled: isAgentCheckoutHostedLinkEnabled(),
         localReads,
       });
+      // Publish the executor for the ACP/UCP doors to reuse (one shared kernel — see commerceSharedExecutor).
+      commerceSharedExecutor = executor;
       const surface = createCommerceToolSurface(executor, { log: logger });
       return createRemoteMcpAdapter(surface, {
         serverInfo: { name: 'pivota-commerce-mcp', version: '0.1.0' },
@@ -29063,6 +29089,191 @@ async function getPaymentWebhookHandler() {
     })();
   }
   return paymentWebhookHandlerPromise;
+}
+
+// ---- ACP REST + UCP discovery doors (shared-kernel additive) --------------------------------------------
+// composeProductionCommerce builds its own kernel; to avoid a second kernel over the same backend (charge-once
+// would hold only per-kernel), we reuse the SAME building blocks it assembles (createAcpRestAdapter /
+// buildUcpProfile) but bind them to the EXISTING live executor/kernel that /mcp already uses. All three doors
+// then share one kernel. Each door is fail-closed and double-gated (AGENT_CHECKOUT_STRICT + its enable flag),
+// default OFF; the ACP charge endpoint is additionally gated by the submit_payment kill-switch.
+
+async function getCommerceCanonicalExecutor() {
+  // Build (once) and return the shared executor. getCommerceRemoteMcpAdapter constructs it and publishes it to
+  // commerceSharedExecutor as a side effect; calling it here just guarantees that has happened.
+  if (!commerceSharedExecutor) await getCommerceRemoteMcpAdapter();
+  if (!commerceSharedExecutor) throw new Error('commerce canonical executor unavailable');
+  return commerceSharedExecutor;
+}
+
+function extractAcpBuyerToken(req = {}) {
+  // ACP defines no stable buyer id; the verified per-buyer credential arrives as a Bearer in
+  // x-buyer-authorization (NEVER the platform signing channel, never the request body).
+  const h = req?.headers || {};
+  const raw = firstNonEmptyString(h['x-buyer-authorization'], h['X-Buyer-Authorization']);
+  if (!raw) return undefined;
+  const m = /^Bearer\s+(.+)$/i.exec(String(raw).trim());
+  return m ? m[1].trim() : String(raw).trim();
+}
+
+async function getCommerceAcpRestAdapter() {
+  if (!commerceAcpRestAdapterPromise) {
+    commerceAcpRestAdapterPromise = (async () => {
+      const acpSigningSecret = firstNonEmptyString(
+        process.env.ACP_SIGNING_SECRET,
+        process.env.AGENT_CHECKOUT_ACP_SIGNING_SECRET,
+      );
+      if (!acpSigningSecret || acpSigningSecret.length < 16) {
+        throw new Error('ACP REST requires ACP_SIGNING_SECRET (>=16 chars)');
+      }
+      const verifyUserToken = await getCommerceUserTokenVerifier();
+      if (typeof verifyUserToken !== 'function') {
+        throw new Error('ACP REST requires IDENTITY_ISSUERS_JSON (a per-buyer token verifier)');
+      }
+      const executor = await getCommerceCanonicalExecutor();
+      const { createAcpRestAdapter } = await import('../safety-kernel/src/protocol/acpRestAdapter.js');
+      const { PostgresKvStore } = await import('../safety-kernel/src/stores/postgresKvStore.js');
+      const { InMemoryKvStore } = await import('../safety-kernel/src/stores.js');
+      const db = buildCommerceKernelDb(); // throws in strict without DATABASE_URL → fail closed (durable state)
+      const sessionStore = db
+        ? new PostgresKvStore({ db, namespace: 'acp_sessions' })
+        : new InMemoryKvStore();
+      const resolveUserRef = async (req) => {
+        const token = extractAcpBuyerToken(req);
+        if (!token) return undefined;
+        try {
+          return (await verifyUserToken(token)).user_ref;
+        } catch (err) {
+          logger.warn({ code: err?.code || 'USER_TOKEN_INVALID' }, 'acp buyer token invalid');
+          return undefined;
+        }
+      };
+      const getProducts = async (query) => {
+        const raw = await invokeCommerceKernelRawUpstream('find_products', query || {});
+        return Array.isArray(raw?.products) ? raw.products : (Array.isArray(raw) ? raw : []);
+      };
+      return createAcpRestAdapter({
+        executor,
+        sessionStore,
+        signingSecret: acpSigningSecret,
+        resolveUserRef,
+        getProducts,
+        publicFeed: false,
+      });
+    })();
+  }
+  return commerceAcpRestAdapterPromise;
+}
+
+async function getCommerceUcpRouteHandlers() {
+  if (!commerceUcpRouteHandlersPromise) {
+    commerceUcpRouteHandlersPromise = (async () => {
+      const resourceOrigin = (() => {
+        try {
+          return process.env.MCP_OAUTH_RESOURCE ? new URL(process.env.MCP_OAUTH_RESOURCE).origin : undefined;
+        } catch {
+          return undefined;
+        }
+      })();
+      const baseUrl = firstNonEmptyString(
+        process.env.UCP_BASE_URL,
+        process.env.AGENT_CHECKOUT_UCP_BASE_URL,
+        resourceOrigin,
+      );
+      if (!baseUrl) throw new Error('UCP discovery requires UCP_BASE_URL (https origin)');
+      const { buildUcpProfile, createUcpRouteHandlers } = await import('../safety-kernel/src/protocol/ucpProfile.js');
+      const profile = buildUcpProfile({
+        baseUrl, // buildUcpProfile enforces https
+        restBasePath: COMMERCE_ACP_BASE_PATH,
+        mcpEndpoint: `${baseUrl.replace(/\/+$/, '')}/mcp`,
+      });
+      return createUcpRouteHandlers(profile);
+    })();
+  }
+  return commerceUcpRouteHandlersPromise;
+}
+
+function registerCommerceAcpRestRoutes() {
+  // The 5 ACP checkout endpoints + product feed, mounted under COMMERCE_ACP_BASE_PATH. Platform authenticity is
+  // the adapter's HMAC Signature/Timestamp (verifyAcpSignature over the exact rawBody) — NOT a Pivota key — so
+  // these routes do not run requireExternalInvokeAuth; the backend /invoke uses the internal service credential.
+  const routes = [
+    ['post', '/checkout_sessions', 'createCheckoutSession', false],
+    ['post', '/checkout_sessions/:checkout_session_id/complete', 'completeCheckoutSession', true],
+    ['post', '/checkout_sessions/:checkout_session_id/cancel', 'cancelCheckoutSession', false],
+    ['post', '/checkout_sessions/:checkout_session_id', 'updateCheckoutSession', false],
+    ['get', '/checkout_sessions/:checkout_session_id', 'getCheckoutSession', false],
+    ['get', '/feed', 'productFeed', false],
+  ];
+  for (const [method, subPath, handlerName, isCharge] of routes) {
+    app[method](`${COMMERCE_ACP_BASE_PATH}${subPath}`, async (req, res) => {
+      if (!isAgentCheckoutStrictEnabled() || !isAgentCheckoutAcpRestEnabled()) {
+        return res.status(404).json({ error: 'not_found' });
+      }
+      if (isCharge && !isAgentCheckoutStrictSubmitPaymentEnabled()) {
+        recordCommerceKernelAudit({
+          event: 'operation_blocked',
+          operation: 'complete_checkout_session',
+          detail: { code: 'OPERATION_NOT_ALLOWED', reason: 'strict_submit_payment_disabled', surface: 'acp_rest' },
+        });
+        return res.status(405).json({
+          type: 'error',
+          code: 'OPERATION_NOT_ALLOWED',
+          message: 'submit_payment is disabled in strict checkout mode.',
+        });
+      }
+      return INVOKE_AUTH_CONTEXT.run(buildExternalInvokeContext(req), async () => {
+        try {
+          const adapter = await getCommerceAcpRestAdapter();
+          const out = await adapter[handlerName]({
+            headers: req.headers || {},
+            rawBody: req.rawBody,
+            body: req.body,
+            params: req.params || {},
+          });
+          for (const [k, v] of Object.entries(out.headers || {})) res.setHeader(k, v);
+          return res.status(out.status).json(out.body);
+        } catch (err) {
+          logger.error(
+            { err: err?.message || String(err), surface: 'acp_rest', handler: handlerName },
+            'ACP REST route failed',
+          );
+          return res.status(503).json({
+            type: 'error',
+            code: 'MERCHANT_UNAVAILABLE',
+            message: 'Checkout is temporarily unavailable.',
+          });
+        }
+      });
+    });
+  }
+}
+
+function registerCommerceUcpRoutes() {
+  // UCP discovery: GET /.well-known/ucp + GET|POST /ucp/capabilities. Read-only; no money, no body signature.
+  const mountUcp = (method, routePath) => {
+    app[method](routePath, async (req, res) => {
+      if (!isAgentCheckoutStrictEnabled() || !isAgentCheckoutUcpDiscoveryEnabled()) {
+        return res.status(404).json({ error: 'not_found' });
+      }
+      try {
+        const handlers = await getCommerceUcpRouteHandlers();
+        const route = handlers.find(
+          (r) => r.method.toLowerCase() === method && r.path === routePath,
+        );
+        if (!route) return res.status(404).json({ error: 'not_found' });
+        const out = await route.handler({ headers: req.headers, body: req.body, query: req.query });
+        for (const [k, v] of Object.entries(out.headers || {})) res.setHeader(k, v);
+        return res.status(out.status).json(out.body);
+      } catch (err) {
+        logger.error({ err: err?.message || String(err), surface: 'ucp' }, 'UCP discovery route failed');
+        return res.status(503).json({ error: 'ucp_unavailable' });
+      }
+    });
+  };
+  mountUcp('get', '/.well-known/ucp');
+  mountUcp('post', '/ucp/capabilities');
+  mountUcp('get', '/ucp/capabilities');
 }
 
 function registerCommercePaymentWebhookRoute() {
@@ -32250,6 +32461,14 @@ app.use(express.json({
       JSON.parse(buf);
     } catch(e) {
       throw new Error('Invalid JSON');
+    }
+    // ACP request signatures (HMAC) bind the EXACT signed bytes, so the ACP adapter must verify/parse rawBody
+    // rather than a re-stringified body. Capture it only for ACP paths (additive; no other route is affected).
+    if (buf && buf.length) {
+      const u = req.originalUrl || req.url || '';
+      if (u.startsWith(`${COMMERCE_ACP_BASE_PATH}/`)) {
+        req.rawBody = buf.toString(encoding || 'utf8');
+      }
     }
   }
 }));
@@ -48241,6 +48460,8 @@ function registerExternalInvokeRoute(path, clientChannel) {
 registerCommerceRemoteMcpRoute();
 commerceMcpOAuth.registerMcpOAuthDiscoveryRoutes(app, { logger });
 registerCommerceConfirmationActionRoute();
+registerCommerceAcpRestRoutes();
+registerCommerceUcpRoutes();
 registerCommerceStrictInvokeRoute('/agent/shop/v1/invoke', 'shop');
 registerExternalInvokeRoute('/agent/shop/v1/invoke', 'shop');
 // Backward-compatible alias: creator invoke shares the same standardized shop pipeline.
