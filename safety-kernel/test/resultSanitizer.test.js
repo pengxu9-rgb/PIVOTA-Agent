@@ -68,3 +68,25 @@ test('stripRankingInternals: false leaves ranking fields intact (still scrubs se
   assert.equal(out.score, 0.5);
   assert.equal(out.access_token, '[REDACTED]');
 });
+
+test('shared (non-cyclic) reference is NOT flagged [Circular] — DAG, not a cycle', () => {
+  // Same product object appears in two slots (e.g. after dedup/family-collapse). Both must survive intact.
+  const shared = { product_id: 'p1', title: 'Vitamin C Serum', price: 29 };
+  const out = sanitizeResult({ items: [shared, shared], featured: shared });
+  assert.equal(out.items[0].title, 'Vitamin C Serum');
+  assert.equal(out.items[1].title, 'Vitamin C Serum', 'second occurrence must not be [Circular]');
+  assert.notEqual(out.items[1], '[Circular]');
+  assert.equal(out.featured.title, 'Vitamin C Serum');
+  assert.equal(out.featured.price, 29);
+});
+
+test('real cycle IS still flagged [Circular] (object and array back-references)', () => {
+  const node = { product_id: 'p1', title: 'X' };
+  node.self = node;            // object self-reference
+  const arr = [];
+  arr.push(arr);              // array self-reference
+  const out = sanitizeResult({ node, arr });
+  assert.equal(out.node.title, 'X');
+  assert.equal(out.node.self, '[Circular]');
+  assert.equal(out.arr[0], '[Circular]');
+});

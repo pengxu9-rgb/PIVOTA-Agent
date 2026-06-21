@@ -82,22 +82,32 @@ export function sanitizeResult(rootValue, { handoffAllowed = false, stripRanking
     }
     if (!isObjectLike(value)) return value;
     if (depth > 64) return '[Truncated]';
-    if (seen.has(value)) return '[Circular]'; // add to `seen` BEFORE recursing — covers array cycles too
+    // `seen` tracks the ANCESTOR chain on the CURRENT path (added before recursing, removed after) — not a
+    // permanent visited-set. This catches real cycles (a node reachable from itself) without misflagging a
+    // non-cyclic shared reference (a DAG — e.g. the same product object appearing in two result slots after
+    // dedup/family-collapse) as '[Circular]', which would silently corrupt the agent-facing result.
+    if (seen.has(value)) return '[Circular]';
     seen.add(value);
-    if (Array.isArray(value)) return value.map((v) => walk(v, seen, depth + 1, keyCanon));
-    const out = {};
-    const isProductNode = stripRankingInternals && looksLikeProductNode(value);
-    for (const [k, v] of Object.entries(value)) {
-      const c = canon(k);
-      if (SENSITIVE.has(c) || c.endsWith('token') || c.endsWith('secret') || c.endsWith('password') || c.endsWith('apikey')) {
-        out[k] = REDACTED;
-        continue;
+    let result;
+    if (Array.isArray(value)) {
+      result = value.map((v) => walk(v, seen, depth + 1, keyCanon));
+    } else {
+      const out = {};
+      const isProductNode = stripRankingInternals && looksLikeProductNode(value);
+      for (const [k, v] of Object.entries(value)) {
+        const c = canon(k);
+        if (SENSITIVE.has(c) || c.endsWith('token') || c.endsWith('secret') || c.endsWith('password') || c.endsWith('apikey')) {
+          out[k] = REDACTED;
+          continue;
+        }
+        if (stripRankingInternals && RANKING_INTERNAL.has(c)) continue; // internal ranking/debug noise — drop the key entirely
+        if (isProductNode && PRODUCT_SCOPED_INTERNAL.has(c)) continue; // bare rank signal on a product node — drop
+        out[k] = walk(v, seen, depth + 1, c);
       }
-      if (stripRankingInternals && RANKING_INTERNAL.has(c)) continue; // internal ranking/debug noise — drop the key entirely
-      if (isProductNode && PRODUCT_SCOPED_INTERNAL.has(c)) continue; // bare rank signal on a product node — drop
-      out[k] = walk(v, seen, depth + 1, c);
+      result = out;
     }
-    return out;
+    seen.delete(value); // leaving this node — it's no longer an ancestor of anything still being walked
+    return result;
   };
   return walk(rootValue, new WeakSet(), 0, null);
 }
