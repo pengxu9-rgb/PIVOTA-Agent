@@ -182,6 +182,71 @@ This is a production-exposure decision (publishing merchant grounded claims to a
 
 ---
 
+## 2a — buildable slice: general evidence store + dual-pipeline wiring
+
+**Architecture reality (grounded):** evidence flows through **two independent, beauty-INCI-only pipelines** — 2a wires a general store into both:
+- **Serving** (PIVOTA-Agent `get_pdp_v2` → JSON-LD): `src/groundedProductIntel.js` builds the `product_intel` bundle *live* from the reviewed Ingredient KB × the product's INCI. Reads no stored evidence.
+- **Audit** (pivota-backend `agent_pdp_view`): `services/agent_pdp_view_assembler.py::fetch_evidence_for_keys` reads `beauty_product_profiles.evidence_profile`.
+
+**Topology — RESOLVED: shared Postgres.** Both repos use `DATABASE_URL`; PIVOTA-Agent runs direct SQL on `products_cache`/`agent_pdp_view` (pivota-backend-owned). → one `product_evidence` table serves both; **no cross-service API**. Schema/migrations owned by pivota-backend; PIVOTA-Agent reads directly.
+
+### Schema (pivota-backend migration)
+
+```sql
+CREATE TABLE product_evidence (
+  product_key   TEXT NOT NULL,
+  geo_code      VARCHAR(16) NOT NULL DEFAULT 'default',
+  merchant_id   VARCHAR(100),
+  claims        JSONB NOT NULL DEFAULT '[]',  -- ProductClaim[] (claim_safety shape)
+  review_state  VARCHAR(32) NOT NULL DEFAULT 'observed',
+  required_disclaimers JSONB,
+  created_at    TIMESTAMPTZ DEFAULT now(),
+  updated_at    TIMESTAMPTZ DEFAULT now(),
+  PRIMARY KEY (product_key, geo_code)
+);
+CREATE INDEX idx_product_evidence_merchant ON product_evidence(merchant_id);
+
+CREATE TABLE evidence_artifact (
+  artifact_id   TEXT PRIMARY KEY,
+  product_key   TEXT NOT NULL,
+  merchant_id   VARCHAR(100),
+  kind          VARCHAR(32) NOT NULL,   -- lab_report|certification|review|press|positioning_doc
+  source        VARCHAR(32) NOT NULL,   -- merchant_upload|web_crawl
+  url_or_blob_ref TEXT,
+  captured_at   TIMESTAMPTZ DEFAULT now(),
+  extracted_claim_keys JSONB
+);
+CREATE INDEX idx_evidence_artifact_product ON evidence_artifact(product_key);
+```
+
+`claims` uses the `claim_safety.ProductClaim` shape `{claim_text, source_ref, source_type, evidence_grade, substantiation_status}` + `review_state` — the same as `beauty_product_profiles.evidence_profile`, so the two UNION cleanly. A claim's `source_ref` → `evidence_artifact.artifact_id` (attribution + substantiation link).
+
+### Wiring 1 — audit side (pivota-backend), no audit code change
+
+`fetch_evidence_for_keys` UNIONs `product_evidence` with `beauty_product_profiles` (merge `claims`, dedupe by `claim_text`+`source_ref`; keep the existing brand-official/recency precedence) → still writes `agent_pdp_view.evidence_profile`. The audit (`_has_substantiation`) + the #975 surfaces (agent-PDP API, canonical PDP) inherit general evidence automatically.
+
+### Wiring 2 — serving side (PIVOTA-Agent), the one piece of new logic
+
+- In the `product_intel` assembly for `get_pdp_v2`, also fetch `product_evidence` claims (direct SQL, like the `products_cache` reads) and **merge** them into the bundle's claims alongside the KB×INCI claims, before the gate.
+- Extend the `public_claims` gate (`src/services/pivotaInsightsQuality.js`) to grade/pass **non-INCI `source_type`s** (positioning/lab/review): drive `public_ready` from `evidence_grade` + `substantiation_status` rather than ingredient-mechanism only. Still: **only `substantiated` → `public_claims`** (the serve gate is unchanged in spirit).
+
+### Readiness evidence tier (informational)
+
+Add an evidence-coverage summary to `assess_merchant_audit_readiness` (count of SKUs with ≥1 substantiated claim) → the portal's "evidence tier" (G1). Reuses the readiness service; never blocks.
+
+### Scope boundary
+
+- **2a includes:** the two tables + both read-wirings + readiness tier. **Seed-tested** — insert `product_evidence` rows directly; assert they reach the audit (`/api/audits/readiness`, the audit report) and serving (`get_pdp_v2` `public_claims` → PDP JSON-LD).
+- **Defers:** merchant write UI → 2b; crawl + substantiation engine → 2c.
+
+### Decisions (narrowed)
+
+1. ~~Store location~~ — **resolved: shared DB, one table.**
+2. Merge precedence in `fetch_evidence_for_keys` — recommend **UNION + dedupe** (both INCI and merchant evidence contribute), not prefer-one.
+3. The `pivotaInsightsQuality` generalization is the real new logic — grading rules for non-ingredient claim types (positioning/lab/review → grade/public_ready). This is where to focus review.
+
+---
+
 ## Appendix — file:line index
 
 - Model: `models/catalog.py:134` (ProductClaim), `:155` (EvidenceProfile)
