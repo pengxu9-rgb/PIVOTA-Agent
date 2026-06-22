@@ -2112,13 +2112,21 @@ function mergeMerchantEvidenceClaims(bundle, merchantClaims) {
   }
   if (typeof filterPublicSafeClaims !== 'function') return bundle;
 
+  // The agent surface (evidence_claims) always merges. The PUBLIC surface
+  // (public_claims / public_ready on the JSON-LD path) has one dedicated gate /
+  // kill-switch — PDP_PUBLIC_GROUNDED_CLAIMS_ENABLED — and merchant claims publish
+  // to that same surface, so they respect it too. So: flipping the merchant flag
+  // alone enriches the agent surface; public publishing still requires the public
+  // flag (already on in prod). filterPublicSafeClaims remains the single FTC rule.
+  const publishPublic = PDP_PUBLIC_GROUNDED_CLAIMS_ENABLED;
+
   const existing = asPlainObject(bundle);
   if (existing) {
     const core = asPlainObject(existing.product_intel_core) || {};
     // Existing (INCI/curated) claims first so they keep their public slots; merchant
     // claims fill the remainder. filterPublicSafeClaims caps + applies the FTC rule.
     const combined = dedupeClaimsByText([...asArray(core.evidence_claims), ...claims]);
-    const publicClaims = filterPublicSafeClaims(combined);
+    const publicClaims = publishPublic ? filterPublicSafeClaims(combined) : [];
     return {
       ...existing,
       ...(publicClaims.length ? { public_ready: true } : {}),
@@ -2133,7 +2141,7 @@ function mergeMerchantEvidenceClaims(bundle, merchantClaims) {
   // No INCI/published bundle (non-beauty): synthesize a minimal one carrying just
   // the merchant evidence. The module consumer attaches whatever we return as-is.
   const deduped = dedupeClaimsByText(claims);
-  const publicClaims = filterPublicSafeClaims(deduped);
+  const publicClaims = publishPublic ? filterPublicSafeClaims(deduped) : [];
   return {
     contract_version: PRODUCT_INTEL_CONTRACT_VERSION,
     intel_tier: 'merchant_evidence',

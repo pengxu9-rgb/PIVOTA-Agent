@@ -6,6 +6,10 @@
 // citable claims. Additive + flag-gated; the public/FTC gate stays single-sourced
 // in pivotaInsightsQuality.filterPublicSafeClaims.
 
+// PUBLIC publishing additionally respects PDP_PUBLIC_GROUNDED_CLAIMS_ENABLED (the
+// public-surface kill-switch, read at module load). Default these tests with it ON
+// (prod reality); a dedicated test below reloads with it OFF.
+process.env.PDP_PUBLIC_GROUNDED_CLAIMS_ENABLED = 'true';
 const { mergeMerchantEvidenceClaims } = require('../src/pdpProductIntel.js');
 
 const A = { claim_text: 'SPF 30 verified', source_ref: 'art_1', evidence_grade: 'a', substantiation_status: 'substantiated' };
@@ -85,6 +89,38 @@ describe('mergeMerchantEvidenceClaims (flag-gated, additive)', () => {
       const b = { product_intel_core: { evidence_claims: [dup] } };
       const r = mergeMerchantEvidenceClaims(b, [A]); // A shares the claim_text
       expect(r.product_intel_core.evidence_claims).toHaveLength(1);
+    });
+  });
+});
+
+describe('mergeMerchantEvidenceClaims respects the public kill-switch', () => {
+  test('public flag OFF: agent surface merges, but NO public_claims published', () => {
+    // Reload the module with PDP_PUBLIC_GROUNDED_CLAIMS_ENABLED unset.
+    jest.isolateModules(() => {
+      const prevPub = process.env.PDP_PUBLIC_GROUNDED_CLAIMS_ENABLED;
+      const prevMerch = process.env.PDP_MERCHANT_EVIDENCE_CLAIMS_ENABLED;
+      delete process.env.PDP_PUBLIC_GROUNDED_CLAIMS_ENABLED;
+      process.env.PDP_MERCHANT_EVIDENCE_CLAIMS_ENABLED = 'true';
+      try {
+        const { mergeMerchantEvidenceClaims: merge } = require('../src/pdpProductIntel.js');
+        // existing-bundle case: evidence_claims still merge (agent surface)…
+        const b = { product_intel_core: { evidence_claims: [] } };
+        const r = merge(b, [A, B]);
+        expect(r.product_intel_core.evidence_claims).toHaveLength(2);
+        // …but the public surface stays dark.
+        expect(r.public_ready).toBeUndefined();
+        expect(r.product_intel_core.public_claims).toBeUndefined();
+        // synthesized (non-beauty) case: bundle exists for agents, public_ready false.
+        const s = merge(null, [A, B]);
+        expect(s.product_intel_core.evidence_claims).toHaveLength(2);
+        expect(s.public_ready).toBe(false);
+        expect(s.product_intel_core.public_claims).toBeUndefined();
+      } finally {
+        if (prevPub == null) delete process.env.PDP_PUBLIC_GROUNDED_CLAIMS_ENABLED;
+        else process.env.PDP_PUBLIC_GROUNDED_CLAIMS_ENABLED = prevPub;
+        if (prevMerch == null) delete process.env.PDP_MERCHANT_EVIDENCE_CLAIMS_ENABLED;
+        else process.env.PDP_MERCHANT_EVIDENCE_CLAIMS_ENABLED = prevMerch;
+      }
     });
   });
 });
