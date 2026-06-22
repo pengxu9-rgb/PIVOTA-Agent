@@ -162,26 +162,23 @@ Then in `_shape_product_for_pdp` (return dict at line 139) add (substantiated-on
 "disclaimers": row.get("required_disclaimers") or [],
 ```
 
-### P0-c — render claims in the agent-visible page + JSON-LD
+### P0-c — render claims in the agent-visible page + JSON-LD — ALREADY BUILT, DARK-SHIPPED
 
-**Routing correction (verified):** the rendered `agent.pivota.cc/products/{sig}` page is **`pivota-agent-ui`** and it fetches **`get_pdp_v2`** via `/api/gateway` (PIVOTA-Agent) — **not** the canonical route / agent-PDP API that P0-a/P0-b patched. (Those still serve direct crawlers of `/api/canonical/products` + `/api/agent/pdp`, but the human/agent-facing page is get_pdp_v2.) So P0-c does *not* consume the canonical route's `evidence_claims`. Instead:
+**Status: implemented on `main` in both repos and verified live for a pilot — gated off by default. The remaining action is an OPS flag flip, not code.** (The earlier "to-build" plan here was based on a stale `pivota-agent-ui` feature branch; `origin/main` already has it.)
 
-`get_pdp_v2` already assembles a `product_intel.v1` module carrying **graded `evidence_claims`** (`PIVOTA-Agent/src/groundedProductIntel.js:418` `buildEvidenceClaims` → `{claim_text, source_ref, source_type, evidence_grade, substantiation_status, source_refs[]}`). But: (a) it's gated by env `PDP_PRODUCT_INTEL_ALLOWLIST` (`src/pdpProductIntel.js:24`, gate at `:1146` — **empty allowlist = allow all**), and (b) the SSR doesn't request it (`PDP_SERVER_INCLUDE` omits `product_intel`), so it's client-hydrated → never reaches the server-rendered JSON-LD that Gemini/Google crawl.
+Routing: the rendered `agent.pivota.cc/products/{sig}` page is `pivota-agent-ui`, which fetches `get_pdp_v2` via `/api/gateway` (PIVOTA-Agent) — not the canonical route / agent-PDP API that P0-a/P0-b patched (those still serve direct crawlers of `/api/canonical/products` + `/api/agent/pdp`).
 
-Two moves:
+What's already shipped:
+- **Backend stamp** (PIVOTA-Agent `main`, #1701 gate + #1702 serve-path): `src/pdpProductIntel.js:2033` stamps a **public-safe** `public_claims` subset + `public_ready` onto the served `product_intel` bundle; the FTC/substantiation filtering is single-sourced in `src/services/pivotaInsightsQuality.js` (lane = KEEP & displayable → `public_ready`). Gated by env `PDP_PUBLIC_GROUNDED_CLAIMS_ENABLED` (default off).
+- **Frontend render** (pivota-agent-ui `main`, #250): when the same flag is on, the PDP SSR adds `product_intel` to the server include and `buildProductJsonLd` emits the backend's `core.public_claims` as schema.org `additionalProperty` (active name + claim + citation url) via `_buildGroundedClaimProperties`. The UI is a **dumb renderer** — it does NOT re-derive the gate; it trusts `public_ready` + the pre-filtered `public_claims`.
 
-1. **Backend = ops only (no code):** ensure `PDP_PRODUCT_INTEL_ALLOWLIST` is empty/broad so the `product_intel` module (with `evidence_claims`) is emitted for all products, not just a pilot allowlist. (No claims are fabricated — `buildEvidenceClaims` only grades benefits backed by a verified active, so products without evidence simply get none.)
-2. **Frontend (`pivota-agent-ui/src/app/products/[id]/`):**
-   - Add `'product_intel'` to `PDP_SERVER_INCLUDE` (`page.tsx:38`) so the SSR fetch includes the module → it's server-rendered (visible via the existing `PivotaInsightsSection`) **and** available for JSON-LD.
-   - In `buildJsonLdProduct` (`page.tsx`), pull `product_intel.data.product_intel_core.evidence_claims` and attach as `product._pivota_evidence_claims` (mirrors the `_pivota_offers` pattern).
-   - In `buildProductJsonLd` (`productJsonLd.ts`), emit **substantiated-only** claims as schema.org `additionalProperty` (the file already uses `additionalProperty`/`PropertyValue` for variant axes):
-     ```json
-     {"@type": "PropertyValue", "name": "verified_claim",
-      "value": "<claim_text>",
-      "valueReference": {"@type": "WebPage", "url": "<source_refs[0]>"}}
-     ```
+So the serve gate is single-sourced in the backend (good — matches §4). To go live beyond the pilot:
+1. Set `PDP_PUBLIC_GROUNDED_CLAIMS_ENABLED=true` on **both** the PIVOTA-Agent gateway (Railway) **and** pivota-agent-ui (Vercel). Both default off; both must be on (backend to stamp `public_claims`/`public_ready`, frontend to fetch + render).
+2. Ensure `PDP_PRODUCT_INTEL_ALLOWLIST` (`src/pdpProductIntel.js:24`, empty = allow all) is broad enough to emit `product_intel` for the target products.
 
-**Verification:** with `PDP_PRODUCT_INTEL_ALLOWLIST` open + `product_intel` server-included, load a beauty PDP that has graded claims → confirm `evidence_claims` appear in the server-rendered `<script type="application/ld+json">` (`additionalProperty`, substantiated only) and in the visible insights section.
+This is a production-exposure decision (publishing merchant grounded claims to all public PDPs + agent surfaces) — flip per the K-beauty pilot rollout, not unilaterally.
+
+**Verify after flip:** load a pilot beauty PDP → confirm `public_claims` appear in the server-rendered `<script type="application/ld+json">` `additionalProperty` (citation urls present) + the visible insights section. (Backend was verified live serving the pilot with `public_ready` + 6 grade-A cited claims.)
 
 ---
 
