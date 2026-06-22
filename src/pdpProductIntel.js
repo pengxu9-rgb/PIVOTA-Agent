@@ -2061,6 +2061,98 @@ function stampPublicGroundedClaims(bundle) {
   }
 }
 
+// Phase 2b serving half: read the flag per-call (testable) so substantiated
+// merchant evidence can be merged into a served bundle. Default OFF — ship dark,
+// flip per pilot, mirroring PDP_PUBLIC_GROUNDED_CLAIMS_ENABLED.
+function isMerchantEvidenceClaimsEnabled() {
+  return /^(1|true|yes|on)$/i.test(
+    String(process.env.PDP_MERCHANT_EVIDENCE_CLAIMS_ENABLED || '').trim(),
+  );
+}
+
+function dedupeClaimsByText(claims) {
+  const out = [];
+  const seen = new Set();
+  for (const claim of asArray(claims)) {
+    if (!asPlainObject(claim)) continue;
+    const text = asString(claim.claim_text).trim();
+    if (!text) continue;
+    const key = text.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(claim);
+  }
+  return out;
+}
+
+// Merge substantiated MERCHANT evidence claims (the general product_evidence store
+// — lab/cert/third-party, NOT INCI-derived) into a served product_intel bundle so
+// non-beauty products (and beauty products carrying merchant lab evidence) publish
+// citable claims. ADDITIVE: appends to product_intel_core.evidence_claims (the agent
+// surface) and re-derives public_claims through the SINGLE FTC gate
+// (filterPublicSafeClaims). When no INCI/published bundle exists (the non-beauty
+// case where buildProductIntelBundle returns null), synthesizes a minimal
+// merchant-evidence bundle so those products serve too. Gated default-OFF.
+//
+// `merchantClaims` are already substantiation-filtered upstream (db/merchantEvidence);
+// the public gate independently re-checks substantiation + grade a/b/c, so an
+// unverified/ungraded claim still reaches only the agent surface, never the public one.
+function mergeMerchantEvidenceClaims(bundle, merchantClaims) {
+  if (!isMerchantEvidenceClaimsEnabled()) return bundle;
+  const claims = asArray(merchantClaims).filter(
+    (c) => asPlainObject(c) && asString(c.claim_text).trim(),
+  );
+  if (!claims.length) return bundle;
+
+  let filterPublicSafeClaims;
+  try {
+    ({ filterPublicSafeClaims } = require('./services/pivotaInsightsQuality'));
+  } catch {
+    return bundle; // best-effort: serve the existing bundle rather than fail
+  }
+  if (typeof filterPublicSafeClaims !== 'function') return bundle;
+
+  const existing = asPlainObject(bundle);
+  if (existing) {
+    const core = asPlainObject(existing.product_intel_core) || {};
+    // Existing (INCI/curated) claims first so they keep their public slots; merchant
+    // claims fill the remainder. filterPublicSafeClaims caps + applies the FTC rule.
+    const combined = dedupeClaimsByText([...asArray(core.evidence_claims), ...claims]);
+    const publicClaims = filterPublicSafeClaims(combined);
+    return {
+      ...existing,
+      ...(publicClaims.length ? { public_ready: true } : {}),
+      product_intel_core: {
+        ...core,
+        evidence_claims: combined,
+        ...(publicClaims.length ? { public_claims: publicClaims } : {}),
+      },
+    };
+  }
+
+  // No INCI/published bundle (non-beauty): synthesize a minimal one carrying just
+  // the merchant evidence. The module consumer attaches whatever we return as-is.
+  const deduped = dedupeClaimsByText(claims);
+  const publicClaims = filterPublicSafeClaims(deduped);
+  return {
+    contract_version: PRODUCT_INTEL_CONTRACT_VERSION,
+    intel_tier: 'merchant_evidence',
+    evidence_profile: 'merchant_substantiated',
+    public_ready: publicClaims.length > 0,
+    product_intel_core: {
+      evidence_profile: 'merchant_substantiated',
+      evidence_claims: deduped,
+      ...(publicClaims.length ? { public_claims: publicClaims } : {}),
+    },
+    provenance: {
+      source: 'merchant_evidence',
+      review_tier: 'merchant_substantiated',
+      generated_by: 'product_evidence_store',
+    },
+    freshness: {},
+  };
+}
+
 function buildProductIntelBundle(args = {}) {
   return stampPublicGroundedClaims(
     attachAgentContext(
@@ -2161,6 +2253,8 @@ module.exports = {
   buildRecommendationIntents,
   buildProductIntelBundle,
   stampPublicGroundedClaims,
+  mergeMerchantEvidenceClaims,
+  isMerchantEvidenceClaimsEnabled,
   buildProductIntelDraftBundle,
   hydrateProductWithPublishedIntel,
   buildNormalizedPdpMetadata,

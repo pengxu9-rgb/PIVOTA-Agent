@@ -114,7 +114,10 @@ const {
   isHumanReviewedProductIntelBundle,
   isServableProductIntelBundle,
   hydrateProductWithGroundedIntel,
+  mergeMerchantEvidenceClaims,
+  isMerchantEvidenceClaimsEnabled,
 } = require('./pdpProductIntel');
+const { fetchSubstantiatedMerchantEvidenceClaims } = require('./db/merchantEvidence');
 const { inferMerchantIdFromProductId } = require('./productIntelResolve');
 const { buildStructuredPdpIngredientModules } = require('./services/pdpIngredientAuthority');
 const {
@@ -34764,7 +34767,7 @@ async function buildProductIntelTopLevelModuleData({
     canonicalProductRef,
     productGroupId,
   });
-  return buildProductIntelBundle({
+  const bundle = buildProductIntelBundle({
     product: productForBundle,
     relatedProducts,
     offersData,
@@ -34772,6 +34775,32 @@ async function buildProductIntelTopLevelModuleData({
     productGroupId,
     requireReviewedBundle,
   });
+  // Phase 2b serving half: merge substantiated MERCHANT evidence (general
+  // product_evidence store) so non-beauty products — and beauty products carrying
+  // merchant lab evidence — publish citable claims. Default-OFF (ship dark): skip
+  // the DB read entirely until PDP_MERCHANT_EVIDENCE_CLAIMS_ENABLED is flipped.
+  // Best-effort: a failure here must never drop the INCI/published bundle.
+  if (isMerchantEvidenceClaimsEnabled()) {
+    try {
+      const productKey = firstNonEmptyString(
+        productForBundle?.product_key,
+        product?.product_key,
+        canonicalProductRef?.product_key,
+      );
+      if (productKey) {
+        const merchantClaims = await fetchSubstantiatedMerchantEvidenceClaims(productKey);
+        if (merchantClaims.length) {
+          return mergeMerchantEvidenceClaims(bundle, merchantClaims);
+        }
+      }
+    } catch (err) {
+      logger.warn(
+        { err: err?.message || String(err), product_id: canonicalProductRef?.product_id || null },
+        'merchant evidence merge skipped',
+      );
+    }
+  }
+  return bundle;
 }
 
 async function buildCoverageProductIntelData({
