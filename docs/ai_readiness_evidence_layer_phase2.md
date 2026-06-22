@@ -164,21 +164,24 @@ Then in `_shape_product_for_pdp` (return dict at line 139) add (substantiated-on
 
 ### P0-c — render claims in the agent-visible page + JSON-LD
 
-The API now returns `evidence_claims` + `disclaimers`. In the `agent.pivota.cc/products/{sig}` SSR/frontend (locate the renderer — likely `pivota-agent-ui`):
-- **Visible body:** a "Verified claims" section — each claim text + "source: {attribution}" + a grade badge. This is the text agents actually read and cite.
-- **schema.org JSON-LD** (`Product`): mirror each substantiated claim as
-  ```json
-  "additionalProperty": [
-    {"@type": "PropertyValue", "name": "verified_claim",
-     "value": "<claim_text>",
-     "valueReference": {"@type": "WebPage", "url": "<source_ref>"}}
-  ]
-  ```
-  and surface disclaimers in `disambiguatingDescription` / a visible disclaimer block.
+**Routing correction (verified):** the rendered `agent.pivota.cc/products/{sig}` page is **`pivota-agent-ui`** and it fetches **`get_pdp_v2`** via `/api/gateway` (PIVOTA-Agent) — **not** the canonical route / agent-PDP API that P0-a/P0-b patched. (Those still serve direct crawlers of `/api/canonical/products` + `/api/agent/pdp`, but the human/agent-facing page is get_pdp_v2.) So P0-c does *not* consume the canonical route's `evidence_claims`. Instead:
 
-**Verification:** after P0-a/b, hit `/api/agent/pdp/{id}` and `/api/canonical/products/{sig}` for a beauty SKU that has an `evidence_profile` → confirm `evidence_claims` appear (substantiated only); load the public PDP → confirm the claims render in body + JSON-LD. This proves the full merchant-evidence→agent pipeline using data that already exists.
+`get_pdp_v2` already assembles a `product_intel.v1` module carrying **graded `evidence_claims`** (`PIVOTA-Agent/src/groundedProductIntel.js:418` `buildEvidenceClaims` → `{claim_text, source_ref, source_type, evidence_grade, substantiation_status, source_refs[]}`). But: (a) it's gated by env `PDP_PRODUCT_INTEL_ALLOWLIST` (`src/pdpProductIntel.js:24`, gate at `:1146` — **empty allowlist = allow all**), and (b) the SSR doesn't request it (`PDP_SERVER_INCLUDE` omits `product_intel`), so it's client-hydrated → never reaches the server-rendered JSON-LD that Gemini/Google crawl.
 
-> **Open:** confirm the SSR/frontend repo + file that renders `agent.pivota.cc` product pages (the JSON-LD change lands there; the two backend edits are precise).
+Two moves:
+
+1. **Backend = ops only (no code):** ensure `PDP_PRODUCT_INTEL_ALLOWLIST` is empty/broad so the `product_intel` module (with `evidence_claims`) is emitted for all products, not just a pilot allowlist. (No claims are fabricated — `buildEvidenceClaims` only grades benefits backed by a verified active, so products without evidence simply get none.)
+2. **Frontend (`pivota-agent-ui/src/app/products/[id]/`):**
+   - Add `'product_intel'` to `PDP_SERVER_INCLUDE` (`page.tsx:38`) so the SSR fetch includes the module → it's server-rendered (visible via the existing `PivotaInsightsSection`) **and** available for JSON-LD.
+   - In `buildJsonLdProduct` (`page.tsx`), pull `product_intel.data.product_intel_core.evidence_claims` and attach as `product._pivota_evidence_claims` (mirrors the `_pivota_offers` pattern).
+   - In `buildProductJsonLd` (`productJsonLd.ts`), emit **substantiated-only** claims as schema.org `additionalProperty` (the file already uses `additionalProperty`/`PropertyValue` for variant axes):
+     ```json
+     {"@type": "PropertyValue", "name": "verified_claim",
+      "value": "<claim_text>",
+      "valueReference": {"@type": "WebPage", "url": "<source_refs[0]>"}}
+     ```
+
+**Verification:** with `PDP_PRODUCT_INTEL_ALLOWLIST` open + `product_intel` server-included, load a beauty PDP that has graded claims → confirm `evidence_claims` appear in the server-rendered `<script type="application/ld+json">` (`additionalProperty`, substantiated only) and in the visible insights section.
 
 ---
 
