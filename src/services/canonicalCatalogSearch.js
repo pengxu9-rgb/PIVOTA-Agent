@@ -402,7 +402,12 @@ async function fetchCanonicalChainRows(args = {}) {
       o.price_confidence,
       o.source_system            AS offer_source_system,
       o.offer_payload,
-      c.rank_score + CASE WHEN o.catalog_track = 'internal_merchant' THEN 10 ELSE 0 END AS rank_score`
+      -- Neutrality (P0.3 firewall): NO ownership boost. A first-party
+      -- internal_merchant offer must NOT outrank an equally-relevant
+      -- third-party offer for the same product — ownership is not a ranking
+      -- signal, merit is. (pivota-backend removed the same +10 boost; this
+      -- completes that "delete pay-to-win +10" keystone on the live gateway.)
+      c.rank_score AS rank_score`
     : `
       NULL::text                 AS sku_key,
       NULL::text                 AS source_variant_id,
