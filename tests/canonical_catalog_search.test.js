@@ -176,6 +176,30 @@ describe('canonicalCatalogSearch.fetchCanonicalChainRows', () => {
     expect(sql).toMatch(/o\.catalog_track = 'internal_merchant'.+THEN 10 ELSE 0 END AS rank_score/s);
   });
 
+  test('default eligibility gates on serving_eligible (buyable)', async () => {
+    const query = makeMockQuery([]);
+    await fetchCanonicalChainRows({ query: 'lipstick', deps: { query } });
+    const { sql } = query.calls[0];
+    expect(sql).toMatch(/ips\.serving_eligible = TRUE/);
+    expect(sql).not.toMatch(/ips\.index_eligible = TRUE/);
+  });
+
+  test("eligibility:'index_eligible' gates on the OFFER-FREE citable column", async () => {
+    const query = makeMockQuery([]);
+    await fetchCanonicalChainRows({ query: 'lipstick', eligibility: 'index_eligible', deps: { query } });
+    const { sql } = query.calls[0];
+    expect(sql).toMatch(/ips\.index_eligible = TRUE/);
+    expect(sql).not.toMatch(/ips\.serving_eligible = TRUE/);
+  });
+
+  test('unknown eligibility falls back to serving_eligible (injection-safe)', async () => {
+    const query = makeMockQuery([]);
+    await fetchCanonicalChainRows({ query: 'lipstick', eligibility: 'DROP TABLE x', deps: { query } });
+    const { sql } = query.calls[0];
+    expect(sql).toMatch(/ips\.serving_eligible = TRUE/);
+    expect(sql).not.toMatch(/DROP TABLE/);
+  });
+
   test('keeps product-level catalog rows on the default recall path', async () => {
     const query = makeMockQuery([]);
     await fetchCanonicalChainRows({ query: 'lipstick', deps: { query } });

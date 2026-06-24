@@ -162,12 +162,18 @@ async function fetchCanonicalChainRows(args = {}) {
     brandFilter = null,
     marketId = null,
     limit = DEFAULT_LIMIT,
+    eligibility = 'serving_eligible',
     deps = {},
   } = args;
   const { query: pgQuery } = deps;
   if (typeof pgQuery !== 'function') {
     throw new TypeError('canonicalCatalogSearch: deps.query is required');
   }
+  // The eligibility gate column. Default 'serving_eligible' (has a buyable offer
+  // -> shopping). 'index_eligible' is the OFFER-FREE citable surface (ADR-007):
+  // trust+quality+identity without an offer. Whitelisted to avoid SQL injection.
+  const eligibilityColumn =
+    eligibility === 'index_eligible' ? 'index_eligible' : 'serving_eligible';
 
   const lowered = normalizeQuery(queryText);
   if (!lowered) return [];
@@ -488,7 +494,7 @@ async function fetchCanonicalChainRows(args = {}) {
       FROM catalog_products p
       INNER JOIN index_pipeline_state ips
         ON ips.content_key = p.content_key
-       AND ips.serving_eligible = TRUE
+       AND ips.${eligibilityColumn} = TRUE
       LEFT JOIN catalog_merchants m ON m.merchant_id = p.merchant_id
       WHERE ${whereClause}
         AND ${activeCatalogProductSourceWhere('p', 'm')}
