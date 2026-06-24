@@ -169,11 +169,14 @@ describe('canonicalCatalogSearch.fetchCanonicalChainRows', () => {
     expect(sql).toMatch(/THEN 200 ELSE 0 END/);
   });
 
-  test('outer SELECT bumps rank by +10 for internal_merchant offers', async () => {
+  test('neutrality: outer SELECT does NOT boost internal_merchant offers', async () => {
+    // P0.3 firewall — ownership is not a ranking signal. The old +10
+    // internal_merchant boost was removed (matches pivota-backend).
     const query = makeMockQuery([]);
     await fetchCanonicalChainRows({ query: 'lipstick', includeSkuOffers: true, deps: { query } });
     const { sql } = query.calls[0];
-    expect(sql).toMatch(/o\.catalog_track = 'internal_merchant'.+THEN 10 ELSE 0 END AS rank_score/s);
+    expect(sql).not.toMatch(/THEN 10 ELSE 0 END AS rank_score/);
+    expect(sql).toMatch(/c\.rank_score AS rank_score/);
   });
 
   test('keeps product-level catalog rows on the default recall path', async () => {
