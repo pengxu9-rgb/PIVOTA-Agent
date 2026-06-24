@@ -1,3 +1,5 @@
+const brandDictionaryCache = require('./brandDictionaryCache');
+
 const STATIC_BRAND_ALIASES = Object.freeze({
   tom_ford: ['tom ford', 'tomford', 'tf'],
   jo_malone: ['jo malone london', 'jo malone', 'jomalone', 'jomalonelondon'],
@@ -423,6 +425,20 @@ function detectBrandEntities(queryText, options = {}) {
       brand_like: true,
       brands: staticMatches,
       detection_mode: 'static',
+    };
+  }
+
+  // Catalog-wide brand dictionary (GATEWAY_DYNAMIC_BRAND_DETECT). Recognizes a
+  // brand that EXISTS in the catalog even when the recalled candidates don't
+  // include it — breaking the candidate-bootstrap chicken-and-egg that left
+  // "The Ordinary"/"Skin1004"/"Anuko" undetected. No-op (returns null) when the
+  // flag is off or the cache is empty, so detection stays byte-identical today.
+  const catalogMatch = brandDictionaryCache.matchCatalogBrand(normalizedQuery);
+  if (catalogMatch) {
+    return {
+      brand_like: true,
+      brands: [catalogMatch],
+      detection_mode: 'catalog',
     };
   }
 
