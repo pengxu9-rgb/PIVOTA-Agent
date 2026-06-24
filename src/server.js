@@ -20314,10 +20314,53 @@ async function searchBeautyExternalSeedProductsMainline({
   const canonicalProducts = (Array.isArray(canonicalResult?.rows) ? canonicalResult.rows : [])
     .map((row) => buildCanonicalChainMainlineProduct(row))
     .filter(Boolean);
+  // ADR-007 citable lane: surface store-less, OFFER-FREE index_eligible products
+  // (a brand with no buyable offer is still findable + citable). Flag-gated by
+  // INDEX_ELIGIBLE_RECALL (default OFF -> no extra query, no-op). Append-only +
+  // deduped by content_key/product_id; each row is marked buyable:false so it can
+  // never be treated as a buyable/checkout result. Best-effort; never breaks recall.
+  let citableProductCount = 0;
+  if (['1', 'true', 'yes', 'on'].includes(String(process.env.INDEX_ELIGIBLE_RECALL || '').trim().toLowerCase())) {
+    try {
+      const citableRows = await fetchCanonicalChainRows({
+        query: canonicalQueryText,
+        categoryPathPrefix: canonicalCategoryPathPrefix,
+        verticalSearch: hasBeautyIngredientIntentSignal(queryText),
+        limit: canonicalLimit,
+        marketId: market,
+        includeSkuOffers: false,
+        brandFilter: canonicalBrandFilter,
+        eligibility: 'index_eligible',
+        deps: { query },
+      });
+      const seenCitable = new Set(
+        canonicalProducts.map((p) => p && (p.content_key || p.product_id)).filter(Boolean),
+      );
+      for (const row of Array.isArray(citableRows) ? citableRows : []) {
+        const item = buildCanonicalChainMainlineProduct(row);
+        if (!item) continue;
+        const key = item.content_key || item.product_id;
+        if (key && seenCitable.has(key)) continue;
+        if (key) seenCitable.add(key);
+        item.buyable = false;
+        item.in_stock = false;
+        delete item.price;
+        item.source = 'canonical_citation';
+        item.search_recall_source = 'canonical_citation';
+        item.catalog_source = 'canonical_citation';
+        item.catalog_track = 'citation';
+        canonicalProducts.push(item);
+        citableProductCount += 1;
+      }
+    } catch (_) {
+      // best-effort: a failure in the citable lane must never break recall
+    }
+  }
   const canonicalTelemetry = {
     canonical_path_executed: true,
     canonical_raw_count: Array.isArray(canonicalResult?.rows) ? canonicalResult.rows.length : 0,
     canonical_product_count: canonicalProducts.length,
+    canonical_citable_count: citableProductCount,
     canonical_category_path_prefix: canonicalCategoryPathPrefix,
     canonical_brand_filter_applied: Boolean(canonicalBrandFilter),
     ...(canonicalQueryText !== queryText ? { canonical_recall_query_text: canonicalQueryText } : {}),
