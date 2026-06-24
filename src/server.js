@@ -11434,6 +11434,68 @@ function projectSearchTransportProduct(product, stats = null) {
   return projected;
 }
 
+// ADR-007 citable supplement. The canonical-chain block only runs for some
+// queries; branded/ingredient queries (where store-less brands surface) take
+// other lanes. To reach ALL of them, supplement the FINAL response with
+// OFFER-FREE index_eligible products just before transport. Flag-gated by
+// INDEX_ELIGIBLE_RECALL (default OFF -> no query, no-op). Append-only + deduped
+// by content_key/product_id; each row is buyable:false / catalog_track:'citation'
+// so it can never be a buyable/checkout result. Best-effort; never throws.
+async function maybeAppendCitableProducts(responseBody, { queryText = '' } = {}) {
+  try {
+    if (!['1', 'true', 'yes', 'on'].includes(String(process.env.INDEX_ELIGIBLE_RECALL || '').trim().toLowerCase())) {
+      return;
+    }
+    if (!responseBody || typeof responseBody !== 'object') return;
+    const container = Array.isArray(responseBody.products)
+      ? responseBody
+      : (responseBody.data && Array.isArray(responseBody.data.products) ? responseBody.data : null);
+    if (!container) return;
+    const q = String(queryText || (responseBody.metadata && responseBody.metadata.query) || '').trim();
+    if (!q) return;
+    const rows = await fetchCanonicalChainRows({
+      query: q,
+      includeSkuOffers: false,
+      eligibility: 'index_eligible',
+      deps: { query },
+    });
+    if (!Array.isArray(rows) || !rows.length) return;
+    const seen = new Set(
+      container.products.map((p) => p && (p.content_key || p.product_id)).filter(Boolean),
+    );
+    let added = 0;
+    for (const row of rows) {
+      const item = buildCanonicalChainMainlineProduct(row);
+      if (!item) continue;
+      const key = item.content_key || item.product_id;
+      if (key && seen.has(key)) continue;
+      if (key) seen.add(key);
+      item.buyable = false;
+      item.in_stock = false;
+      delete item.price;
+      item.source = 'canonical_citation';
+      item.search_recall_source = 'canonical_citation';
+      item.catalog_source = 'canonical_citation';
+      item.catalog_track = 'citation';
+      container.products.push(item);
+      added += 1;
+    }
+    if (responseBody.metadata && typeof responseBody.metadata === 'object') {
+      responseBody.metadata.citable_supplement_count = added;
+    }
+  } catch (_) {
+    // best-effort: the citable supplement must never break recall transport
+  }
+}
+
+// Shared find_products_multi finalizer: supplement citable rows (flag-gated),
+// then apply the transport projection. Used at every response exit so the
+// citable lane reaches all paths, not just the canonical-chain block.
+async function finalizeFindProductsMultiResponse(responseBody, { operation = null, queryText = '' } = {}) {
+  await maybeAppendCitableProducts(responseBody, { queryText });
+  return projectFindProductsMultiTransportResponse(responseBody, { operation });
+}
+
 function projectFindProductsMultiTransportResponse(responseBody, { operation = null } = {}) {
   if (
     String(operation || '').trim() !== 'find_products_multi' ||
@@ -20314,53 +20376,15 @@ async function searchBeautyExternalSeedProductsMainline({
   const canonicalProducts = (Array.isArray(canonicalResult?.rows) ? canonicalResult.rows : [])
     .map((row) => buildCanonicalChainMainlineProduct(row))
     .filter(Boolean);
-  // ADR-007 citable lane: surface store-less, OFFER-FREE index_eligible products
-  // (a brand with no buyable offer is still findable + citable). Flag-gated by
-  // INDEX_ELIGIBLE_RECALL (default OFF -> no extra query, no-op). Append-only +
-  // deduped by content_key/product_id; each row is marked buyable:false so it can
-  // never be treated as a buyable/checkout result. Best-effort; never breaks recall.
-  let citableProductCount = 0;
-  if (['1', 'true', 'yes', 'on'].includes(String(process.env.INDEX_ELIGIBLE_RECALL || '').trim().toLowerCase())) {
-    try {
-      const citableRows = await fetchCanonicalChainRows({
-        query: canonicalQueryText,
-        categoryPathPrefix: canonicalCategoryPathPrefix,
-        verticalSearch: hasBeautyIngredientIntentSignal(queryText),
-        limit: canonicalLimit,
-        marketId: market,
-        includeSkuOffers: false,
-        brandFilter: canonicalBrandFilter,
-        eligibility: 'index_eligible',
-        deps: { query },
-      });
-      const seenCitable = new Set(
-        canonicalProducts.map((p) => p && (p.content_key || p.product_id)).filter(Boolean),
-      );
-      for (const row of Array.isArray(citableRows) ? citableRows : []) {
-        const item = buildCanonicalChainMainlineProduct(row);
-        if (!item) continue;
-        const key = item.content_key || item.product_id;
-        if (key && seenCitable.has(key)) continue;
-        if (key) seenCitable.add(key);
-        item.buyable = false;
-        item.in_stock = false;
-        delete item.price;
-        item.source = 'canonical_citation';
-        item.search_recall_source = 'canonical_citation';
-        item.catalog_source = 'canonical_citation';
-        item.catalog_track = 'citation';
-        canonicalProducts.push(item);
-        citableProductCount += 1;
-      }
-    } catch (_) {
-      // best-effort: a failure in the citable lane must never break recall
-    }
-  }
+  // NOTE: the ADR-007 citable lane was moved out of this canonical-only block
+  // into the shared response finalizer (maybeAppendCitableProducts /
+  // finalizeFindProductsMultiResponse) so it reaches ALL find_products_multi
+  // paths — branded/ingredient queries (where store-less brands surface) never
+  // run this canonical block. Flag-gated by INDEX_ELIGIBLE_RECALL.
   const canonicalTelemetry = {
     canonical_path_executed: true,
     canonical_raw_count: Array.isArray(canonicalResult?.rows) ? canonicalResult.rows.length : 0,
     canonical_product_count: canonicalProducts.length,
-    canonical_citable_count: citableProductCount,
     canonical_category_path_prefix: canonicalCategoryPathPrefix,
     canonical_brand_filter_applied: Boolean(canonicalBrandFilter),
     ...(canonicalQueryText !== queryText ? { canonical_recall_query_text: canonicalQueryText } : {}),
@@ -48187,7 +48211,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       });
 
     return res.status(response.status).json(
-      projectFindProductsMultiTransportResponse(enrichedWithBeautyExpert, { operation }),
+      await finalizeFindProductsMultiResponse(enrichedWithBeautyExpert, { operation, queryText: extractSearchQueryText(queryParams) }),
     );
 
 	  } catch (err) {
@@ -48296,7 +48320,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               : [],
           });
         return res.status(200).json(
-          projectFindProductsMultiTransportResponse(finalCacheGuardWithBeautyExpert, { operation }),
+          await finalizeFindProductsMultiResponse(finalCacheGuardWithBeautyExpert, { operation, queryText: extractSearchQueryText(queryParams) }),
         );
       }
 	      const { code, message } = extractUpstreamErrorCode(err);
@@ -48406,7 +48430,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               : [],
           });
           return res.status(200).json(
-          projectFindProductsMultiTransportResponse(diagnosedWithBeautyExpert, { operation }),
+          await finalizeFindProductsMultiResponse(diagnosedWithBeautyExpert, { operation, queryText: extractSearchQueryText(queryParams) }),
         );
 	    }
 	    if (err.response) {
