@@ -37292,9 +37292,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
   // once (async), then append them in the res.json wrapper below so EVERY
   // find_products_multi lane is covered. No-op unless INDEX_ELIGIBLE_RECALL is on.
   let citableSupplementItems = [];
+  let citableSupplementAttempted = false;
   try {
     const supplementOp = String(debugRuntime.operation || req?.body?.operation || '').trim().toLowerCase();
     if (supplementOp === 'find_products_multi' && citableSupplementEnabled()) {
+      citableSupplementAttempted = true;
       citableSupplementItems = await buildCitableSupplementItems(
         String(req?.body?.payload?.search?.query || req?.body?.payload?.query || '').trim(),
       );
@@ -37571,6 +37573,19 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     }
     finalBody = maybeAttachInvokeBeautyExpertProjection(finalBody);
     finalBody = appendCitableSupplementItems(finalBody, citableSupplementItems);
+    // Stamp the count even when 0 items were appended, so the metadata
+    // distinguishes "supplement ran, nothing to add" (0) from "this response
+    // path bypassed the wrapper entirely" (field absent).
+    if (
+      citableSupplementAttempted &&
+      finalBody &&
+      typeof finalBody === 'object' &&
+      finalBody.metadata &&
+      typeof finalBody.metadata === 'object' &&
+      finalBody.metadata.citable_supplement_count === undefined
+    ) {
+      finalBody.metadata.citable_supplement_count = 0;
+    }
     setInvokePerfHeaders();
     return originalJson(finalBody);
   };
