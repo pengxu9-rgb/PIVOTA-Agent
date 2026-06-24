@@ -11434,42 +11434,37 @@ function projectSearchTransportProduct(product, stats = null) {
   return projected;
 }
 
-// ADR-007 citable supplement. The canonical-chain block only runs for some
-// queries; branded/ingredient queries (where store-less brands surface) take
-// other lanes. To reach ALL of them, supplement the FINAL response with
-// OFFER-FREE index_eligible products just before transport. Flag-gated by
-// INDEX_ELIGIBLE_RECALL (default OFF -> no query, no-op). Append-only + deduped
-// by content_key/product_id; each row is buyable:false / catalog_track:'citation'
-// so it can never be a buyable/checkout result. Best-effort; never throws.
-async function maybeAppendCitableProducts(responseBody, { queryText = '' } = {}) {
+// ADR-007 citable supplement — OPERATION-LEVEL. find_products_multi has many
+// lanes (agent_products_search / external_seed_mainline / ingredient_recall_direct)
+// with different return points, so per-exit wiring missed most of them. Instead we
+// hook the single universal res.json wrapper: PREFETCH offer-free index_eligible
+// items once (async, up-front) via buildCitableSupplementItems, then APPEND them
+// synchronously inside the wrapper (appendCitableSupplementItems) so EVERY response
+// is covered. Flag-gated by INDEX_ELIGIBLE_RECALL (default OFF -> no query, no-op).
+// Append-only + deduped; each item is buyable:false / catalog_track:'citation' so
+// it can never be a buyable/checkout result. Best-effort; never throws.
+function citableSupplementEnabled() {
+  return ['1', 'true', 'yes', 'on'].includes(
+    String(process.env.INDEX_ELIGIBLE_RECALL || '').trim().toLowerCase(),
+  );
+}
+
+async function buildCitableSupplementItems(queryText = '') {
   try {
-    if (!['1', 'true', 'yes', 'on'].includes(String(process.env.INDEX_ELIGIBLE_RECALL || '').trim().toLowerCase())) {
-      return;
-    }
-    if (!responseBody || typeof responseBody !== 'object') return;
-    const container = Array.isArray(responseBody.products)
-      ? responseBody
-      : (responseBody.data && Array.isArray(responseBody.data.products) ? responseBody.data : null);
-    if (!container) return;
-    const q = String(queryText || (responseBody.metadata && responseBody.metadata.query) || '').trim();
-    if (!q) return;
+    if (!citableSupplementEnabled()) return [];
+    const q = String(queryText || '').trim();
+    if (!q) return [];
     const rows = await fetchCanonicalChainRows({
       query: q,
       includeSkuOffers: false,
       eligibility: 'index_eligible',
       deps: { query },
     });
-    if (!Array.isArray(rows) || !rows.length) return;
-    const seen = new Set(
-      container.products.map((p) => p && (p.content_key || p.product_id)).filter(Boolean),
-    );
-    let added = 0;
+    if (!Array.isArray(rows) || !rows.length) return [];
+    const items = [];
     for (const row of rows) {
       const item = buildCanonicalChainMainlineProduct(row);
       if (!item) continue;
-      const key = item.content_key || item.product_id;
-      if (key && seen.has(key)) continue;
-      if (key) seen.add(key);
       item.buyable = false;
       item.in_stock = false;
       delete item.price;
@@ -11477,6 +11472,33 @@ async function maybeAppendCitableProducts(responseBody, { queryText = '' } = {})
       item.search_recall_source = 'canonical_citation';
       item.catalog_source = 'canonical_citation';
       item.catalog_track = 'citation';
+      items.push(item);
+    }
+    return items;
+  } catch (_) {
+    return []; // best-effort: never break recall
+  }
+}
+
+// Sync: append prefetched citable items to whatever final body is being sent,
+// deduped against the products already present. Returns the (possibly mutated)
+// body. Safe to call on any shape; no-op when items is empty.
+function appendCitableSupplementItems(responseBody, items) {
+  try {
+    if (!Array.isArray(items) || !items.length) return responseBody;
+    if (!responseBody || typeof responseBody !== 'object') return responseBody;
+    const container = Array.isArray(responseBody.products)
+      ? responseBody
+      : (responseBody.data && Array.isArray(responseBody.data.products) ? responseBody.data : null);
+    if (!container) return responseBody;
+    const seen = new Set(
+      container.products.map((p) => p && (p.content_key || p.product_id)).filter(Boolean),
+    );
+    let added = 0;
+    for (const item of items) {
+      const key = item && (item.content_key || item.product_id);
+      if (key && seen.has(key)) continue;
+      if (key) seen.add(key);
       container.products.push(item);
       added += 1;
     }
@@ -11486,14 +11508,7 @@ async function maybeAppendCitableProducts(responseBody, { queryText = '' } = {})
   } catch (_) {
     // best-effort: the citable supplement must never break recall transport
   }
-}
-
-// Shared find_products_multi finalizer: supplement citable rows (flag-gated),
-// then apply the transport projection. Used at every response exit so the
-// citable lane reaches all paths, not just the canonical-chain block.
-async function finalizeFindProductsMultiResponse(responseBody, { operation = null, queryText = '' } = {}) {
-  await maybeAppendCitableProducts(responseBody, { queryText });
-  return projectFindProductsMultiTransportResponse(responseBody, { operation });
+  return responseBody;
 }
 
 function projectFindProductsMultiTransportResponse(responseBody, { operation = null } = {}) {
@@ -20376,11 +20391,11 @@ async function searchBeautyExternalSeedProductsMainline({
   const canonicalProducts = (Array.isArray(canonicalResult?.rows) ? canonicalResult.rows : [])
     .map((row) => buildCanonicalChainMainlineProduct(row))
     .filter(Boolean);
-  // NOTE: the ADR-007 citable lane was moved out of this canonical-only block
-  // into the shared response finalizer (maybeAppendCitableProducts /
-  // finalizeFindProductsMultiResponse) so it reaches ALL find_products_multi
-  // paths — branded/ingredient queries (where store-less brands surface) never
-  // run this canonical block. Flag-gated by INDEX_ELIGIBLE_RECALL.
+  // NOTE: the ADR-007 citable lane is NOT here. It's an operation-level supplement
+  // applied in the universal res.json wrapper (buildCitableSupplementItems prefetch
+  // + appendCitableSupplementItems) so it reaches ALL find_products_multi lanes —
+  // branded/ingredient queries never run this canonical block. Flag-gated by
+  // INDEX_ELIGIBLE_RECALL.
   const canonicalTelemetry = {
     canonical_path_executed: true,
     canonical_raw_count: Array.isArray(canonicalResult?.rows) ? canonicalResult.rows.length : 0,
@@ -37273,6 +37288,20 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       'invoke request complete',
     );
   });
+  // ADR-007 op-level citable supplement: prefetch offer-free index_eligible items
+  // once (async), then append them in the res.json wrapper below so EVERY
+  // find_products_multi lane is covered. No-op unless INDEX_ELIGIBLE_RECALL is on.
+  let citableSupplementItems = [];
+  try {
+    const supplementOp = String(debugRuntime.operation || req?.body?.operation || '').trim().toLowerCase();
+    if (supplementOp === 'find_products_multi' && citableSupplementEnabled()) {
+      citableSupplementItems = await buildCitableSupplementItems(
+        String(req?.body?.payload?.search?.query || req?.body?.payload?.query || '').trim(),
+      );
+    }
+  } catch (_) {
+    citableSupplementItems = [];
+  }
   const originalJson = res.json.bind(res);
   res.json = (body) => {
     let finalBody = body;
@@ -37541,6 +37570,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       );
     }
     finalBody = maybeAttachInvokeBeautyExpertProjection(finalBody);
+    finalBody = appendCitableSupplementItems(finalBody, citableSupplementItems);
     setInvokePerfHeaders();
     return originalJson(finalBody);
   };
@@ -48211,7 +48241,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       });
 
     return res.status(response.status).json(
-      await finalizeFindProductsMultiResponse(enrichedWithBeautyExpert, { operation, queryText: extractSearchQueryText(queryParams) }),
+      projectFindProductsMultiTransportResponse(enrichedWithBeautyExpert, { operation }),
     );
 
 	  } catch (err) {
@@ -48320,7 +48350,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               : [],
           });
         return res.status(200).json(
-          await finalizeFindProductsMultiResponse(finalCacheGuardWithBeautyExpert, { operation, queryText: extractSearchQueryText(queryParams) }),
+          projectFindProductsMultiTransportResponse(finalCacheGuardWithBeautyExpert, { operation }),
         );
       }
 	      const { code, message } = extractUpstreamErrorCode(err);
@@ -48430,7 +48460,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               : [],
           });
           return res.status(200).json(
-          await finalizeFindProductsMultiResponse(diagnosedWithBeautyExpert, { operation, queryText: extractSearchQueryText(queryParams) }),
+          projectFindProductsMultiTransportResponse(diagnosedWithBeautyExpert, { operation }),
         );
 	    }
 	    if (err.response) {
