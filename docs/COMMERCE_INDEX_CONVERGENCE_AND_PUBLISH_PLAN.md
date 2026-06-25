@@ -1,0 +1,114 @@
+# Commerce Index — Recall Convergence + Publish/Citation Plan
+
+**Date:** 2026-06-25 · **Status:** approved, sequencing in progress
+**Repos:** `pivota-agent` (gateway, Node) · `pivota-backend` (Python) · `pivota-agent-ui` (Next.js public PDP)
+**Parent context:** ADR-007 (citable index vs commerce overlay); the store-less brand + citable recall work shipped 2026-06-24/25.
+
+> **Thesis being served:** a neutral, trust-graded **canonical product index that agents call and cite**, with citation decoupled from commerce. Two issues block that thesis at the infrastructure level: (A) recall logic is forked across two engines, and (B) the richest internal data isn't fully served on the public citation surface. This plan addresses both. Neither needs a redesign — both need *committing and connecting* what already exists.
+
+---
+
+## Part A — Recall stack convergence
+
+### A.0 Grounded diagnosis (what's actually true)
+
+- The **data is unified** (one Postgres: `catalog_products` / `catalog_skus` / `catalog_offers` / `index_pipeline_state`). The fork is in **query + ranking logic**, implemented twice:
+  - **Node gateway** — `src/services/canonicalCatalogSearch.js` + the `external_seed` / `ingredient` / `citable` lanes. A hand-port of the Python SQL, **plus every new index primitive** (token matching, brand detection, the citable supplement, store-less surfacing).
+  - **Python backend** — `services/pivot_query_service.py` `search_pivot_catalog`. Serves `/v1/pivot/query` + `get_pdp`; home of `RECALL_RELEVANCE_V2`.
+- **The live agent path is the gateway, not the backend.** Proven empirically (2026-06-24): `RECALL_RELEVANCE_V2` lives in `search_pivot_catalog` and was **inert** on the live agent beauty path, while every gateway-side change took effect. `/v1/pivot` has **zero callers** from the gateway. So `search_pivot_catalog` is a *parallel* engine serving PDP/citation reads — not the agent search brain.
+- **Drift is real and one-directional:** improvements keep landing in only one engine (V2 → backend only; token-match → gateway only — both confirmed). Other candidate divergences (lifecycle/sync gate, the `+200` multi-merchant-canonical boost missing in Node) are **to-confirm**, because Node may enforce equivalent gating via the `index_pipeline_state` eligibility **join** rather than inline columns. Confirm before treating as gaps.
+- **The history (agent → backend → agent) wasn't a wrong pick — it was never committing.** The last shift to the gateway was correct (all index primitives work there for real agents). The cost came from keeping *both* as live recall.
+
+### A.1 Decision
+
+**Commit to the Node gateway as the single agent-facing recall core.** This is a code-ownership decision, not a data migration (the DB is already shared).
+
+### A.2 Steps
+
+| # | Step | Repo | Notes |
+|---|---|---|---|
+| A1 | Designate the gateway as the one recall engine for the agent path; stop treating `search_pivot_catalog` as a live agent search path. | docs/contract | Decision of record |
+| A2 | Port the backend-only ranking features into the Node core **once**: RELEVANCE_V2 text/structure split + the `+200` multi-merchant-canonical boost. Confirm the lifecycle/sync gate is covered by the eligibility join; close it if not. | pivota-agent | Bounded one-time work; flag-gated |
+| A3 | Demote `search_pivot_catalog` to its non-agent jobs only: PDP detail render, quote/offer resolution, citation read. | pivota-backend | Keeps recall *shape* for those, not a second agent brain |
+| A4 | Add a **parity harness**: a golden query set run against both surfaces (gateway recall vs `/v1/pivot`) with a ranking-diff assertion in CI. Fails when a change moves one surface and not the other on a shared concept. | both | This is what makes "two surfaces, one contract" safe instead of hopeful |
+
+### A.3 Validation
+- Breadth no-regression on the existing recall harness (`pivota-agent-ui/scripts/eval_corpus_recall_*`).
+- Parity harness green (A4) before/after A2.
+- Trade-off neutralized: port V2 to Node **now**, while small, rather than letting the gap compound.
+
+> **Part A is NOT in the current implementation slice.** It is the recall track; it follows Part C. Recorded here so the decision is durable.
+
+---
+
+## Part B — Publish / citation output
+
+### B.0 Grounded status (corrected — more is built than first implied)
+
+| Piece | Status | Evidence |
+|---|---|---|
+| JSON-LD `Product` structured data | 🟢 **Built** | `pivota-agent-ui/src/app/products/[id]/productJsonLd.ts`; emitted at `…/products/[id]/page.tsx` |
+| Indexability / bot access | 🟢 **Built** | `robots.ts` allows GPTBot/ClaudeBot/Google-Extended; PDP `robots:{index:true}`; canonical links |
+| Sitemap pipeline | 🟡 **Built, flag-gated** | `sitemap-products.xml/route.ts` → backend `/api/canonical/products`; gated by `INDEX_ELIGIBLE_SITEMAP` |
+| **Enrichment on served PDP** | 🔴 **Missing** | `product_enrichment` written but `agent_pdp_v1.py` reads raw catalog / `agent_pdp_view` |
+| **Pivota attribution in citation** | 🔴 **Missing** | JSON-LD credits brand/merchant, no `source`/`creditText` for Pivota |
+| Citation read API | 🟠 **Spec-only** | ADR-007 P0; no `/agent/v1/citation/{content_key}` route |
+| Citation observations | 🟡 **Built, write-only** | `db/audit_evidence.py` `citation_observations` written by audit; no external read |
+
+### B.1 Sequenced items (priority order)
+
+- **B① Serve the enrichment you already generate (highest ROI).** `product_enrichment` (AI-improved titles, bullets, usage scenarios, disclaimers) is populated but the serve path reads the raw merchant catalog. Fix: `LEFT JOIN product_enrichment` in the PDP read and prefer enriched fields when present. Biggest unlock, no new system.
+- **B② Put Pivota *in* the citation.** Add `source.name: "Pivota"` + `creditText` to the JSON-LD `Product` so agents parsing it credit Pivota, not only the brand. Few lines; directly on-thesis. Ship with B①.
+- **B③ Flip `INDEX_ELIGIBLE_SITEMAP` (canary).** Includes offer-free citable products (store-less brands) in the public sitemap → makes them crawler-discoverable, not just answerable on a direct query. One flag, reversible.
+- **B④ Build the citation read API (ADR-007 P0).** `/agent/v1/citation/{content_key}` + `/search` returning a clean envelope (`title, brand, claim_summary, substantiation_basis, trust_grade, canonical_url, cite_as`). The one real new build; the canonical "call us" surface.
+- **B⑤ Close the proof loop — read citation observations.** Serve `citation_observations` back (merchant proof loop now; public transparency/network-effect later).
+
+---
+
+## Part C — IMMEDIATE TASK: B① + B② (this slice, do not drift)
+
+**Scope of this slice = B① and B② only.** A3/A4, B③, B④, B⑤ are explicitly **out of scope** for this slice.
+
+### C.1 B① — serve `product_enrichment` on the PDP
+- **Where:** `pivota-backend` PDP read path — `routes/agent_pdp_v1.py` (`get_pdp` / `_row_as_product`) and/or the `agent_pdp_view` SELECT.
+- **Approach:**
+  1. Read `db/product_enrichment.py` for the table shape (`title_override`, `description_markdown`, `bullet_points`, `usage_scenarios`, `regulatory_disclaimer`, `llm_readability_score`, freshness/author columns).
+  2. `LEFT JOIN product_enrichment` (by the PDP's product key) into the read.
+  3. **Prefer enriched fields when present, fall back to catalog fields when null** — never blank out a populated catalog field with an empty enrichment value. Title: `COALESCE(enrichment.title_override, catalog.title)`. Same pattern for description/bullets/usage.
+  4. Surface a small provenance marker (e.g. `content_source: "enriched" | "catalog"`) so we can see coverage and the JSON-LD/citation can reflect it.
+- **Guardrails:** read-only addition; no write path; do not regress the raw-catalog fallback; respect existing eligibility/scope gating; keep `offers`/`buyable` semantics unchanged.
+
+### C.2 B② — stamp Pivota attribution in JSON-LD
+- **Where:** `pivota-agent-ui/src/app/products/[id]/productJsonLd.ts` (the `Product` builder).
+- **Approach:** add machine-readable attribution to the `Product` node:
+  - `"creditText": "Data from Pivota"` (or agreed copy),
+  - `"isBasedOn"` / `"sourceOrganization"` or a `"publisher"`/`"provider": { "@type": "Organization", "name": "Pivota", "url": "https://agent.pivota.cc" }` — pick the field that best signals Pivota as the **knowledge source/aggregator** without misrepresenting the brand as Pivota.
+  - Keep the brand as `brand` (unchanged) — attribution is additive, not a relabel.
+- **Guardrails:** additive only; do not alter existing offers/price/availability fields; valid Schema.org (must pass a structured-data validation shape); no visual/UI change.
+
+### C.3 Acceptance criteria
+- **B①:** for a product with a populated `product_enrichment` row, `get_pdp` returns the enriched title/description/bullets; for one *without* enrichment, it returns the catalog fields unchanged (no blanks). A provenance marker distinguishes the two.
+- **B②:** the rendered PDP's `<script type="application/ld+json">` contains a Pivota `creditText`/`provider` attribution on the `Product`, brand unchanged, JSON-LD still valid.
+- No regression to `offers`/`buyable`/eligibility on either change.
+
+### C.4 Validation
+- B① (backend): targeted test for the COALESCE/fallback behavior (enriched-present vs enriched-absent); live `get_pdp` on a known enriched product + a non-enriched one.
+- B② (ui): unit/shape test on `productJsonLd.ts` asserting the attribution node + brand preserved + schema validity.
+- End-to-end: load a public PDP, confirm enriched copy renders and the JSON-LD carries Pivota attribution.
+
+### C.5 Rollout
+- B① behind a flag if the enrichment coverage is uneven (e.g. `SERVE_PDP_ENRICHMENT`, default OFF → canary on), so we can confirm no PDP regresses before widening.
+- B② is low-risk additive; can ship without a flag but verify structured-data validity first.
+
+### C.6 Git hygiene (per prior lessons)
+- `pivota-backend` local checkout rides a **stale branch** (`claude/commerce-index-p0`). **Branch off `origin/main`**, not the local branch. Watch for the `.pyc` stash-collision footgun; keep source edits out of any stash.
+- One PR per repo (backend B①, ui B②); validate each before merge.
+
+---
+
+## Guardrails for this slice
+- **Do B① and B② only.** Do not start A2/A3/A4, B③, B④, or B⑤ in this slice.
+- Additive + fail-safe: never blank a populated field; never change commerce/offer semantics; attribution is additive.
+- Follow this plan; if reality diverges from it (e.g. enrichment isn't keyed the way assumed), surface the divergence and adjust the plan doc — don't silently improvise.
+
+> Cross-ref: ADR-007, `external-citation-api-contract.md`, `docs/EXTERNAL_SEED_MAINLINE_BRAND_SCOPING.md`, and the `commerce-index-storeless-brand-decision-layer` memory.
