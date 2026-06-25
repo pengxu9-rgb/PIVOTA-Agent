@@ -115,6 +115,25 @@ function matchCatalogBrand(normalizedQuery) {
   return null;
 }
 
+// Read-only diagnostic snapshot. Kicks a (non-blocking) warm so a second call
+// reflects a freshly-loaded set. Returns counts + config only — never the full
+// brand list — so it's safe to expose. Used by the /internal/diag/brand-dict
+// route to disambiguate flag-off vs cache-empty vs brand-absent.
+function debugState() {
+  const on = enabled();
+  if (on) maybeRefresh();
+  return {
+    enabled: on,
+    flag_raw_present: Boolean(String(process.env.GATEWAY_DYNAMIC_BRAND_DETECT || '').trim()),
+    cache_size: _set.size,
+    loaded_at: _loadedAt || null,
+    loading: Boolean(_loading),
+    ttl_ms: TTL_MS,
+    cap: CAP,
+    min_len: MIN_LEN,
+  };
+}
+
 // Test hook: seed the cache without a DB.
 function __setBrandSetForTest(values) {
   _set = new Set(values || []);
@@ -127,5 +146,6 @@ module.exports = {
   maybeRefresh,
   getBrandSet,
   matchCatalogBrand,
+  debugState,
   __setBrandSetForTest,
 };
