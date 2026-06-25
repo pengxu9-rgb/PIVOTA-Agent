@@ -59,7 +59,8 @@ Probing the live surfaces corrected a premise in A.0/A.2:
 
 **DECISION (founder, 2026-06-25): keep `/v1/pivot` INTERNAL-only.** Therefore:
 - **The gateway is the single LIVE agent recall core.** `/v1/pivot` is the internal backend search/PDP path and is **explicitly NOT parity-guaranteed** with the gateway. A2 (V2 port) and A3 (demotion) are **NOT pursued** — the baseline showed the port wouldn't help and convergence isn't warranted while `/v1/pivot` stays internal.
-- **Decoupling is now guarded** by `tests/recall_stack_boundary.test.js` (asserts the gateway src has **zero** `/v1/pivot` callers). If a future change wires the gateway to `/v1/pivot`, the test trips — forcing a conscious convergence decision.
+- **Decoupling is now guarded in CI** by `tests/recall_stack_boundary.test.js` (asserts the gateway src has **zero** `/v1/pivot` callers). If a future change wires the gateway to `/v1/pivot`, the test trips — forcing a conscious convergence decision.
+- **Scope honesty (corrects A4):** the **parity dimension is NOT a CI gate** — only the *decoupling* guard above is. A literal "ranking-diff assertion in CI" (the original A4 wording) is impractical: it needs a `/v1/pivot` JWT (CI holds no user token) and the divergence is *expected* (~0.24, no natural fail-threshold). So `recall_parity_runner.mjs` is a **manual/periodic instrument** for before/after measurement, not a build gate. Given the internal-only decision, the decoupling guard is the dimension that matters.
 - **Re-open only if** `/v1/pivot` is ever promoted to a first-class external surface; then scope true convergence (route one through the other) as its own project, using the parity harness as the before/after gate.
 
 **Part A is RESOLVED as a decision, not a build.** The instrument (harness) exists, the divergence is measured, the cause is understood, and the decoupling is guarded.
@@ -154,3 +155,19 @@ Probing the live surfaces corrected a premise in A.0/A.2:
 **Note for the rest of the plan:** the E2 overlay covers title/description/bullets/usage but **not** `summary_short` / `regulatory_disclaimer_local` / `extra_images` / tags — extend only if a later slice needs them (out of scope here).
 
 > Cross-ref: ADR-007, `external-citation-api-contract.md`, `docs/EXTERNAL_SEED_MAINLINE_BRAND_SCOPING.md`, and the `commerce-index-storeless-brand-decision-layer` memory.
+
+---
+
+## Part D — Next layer (queued for a fresh session)
+
+The publish/citation core (B①–B⑤ + token-match) is **shipped, validated, and independently audited** — all merged, flag-gated default-OFF, byte-identical off-paths. These are the **follow-ups on top**, grounded so a new session ramps with zero context. Recommended start: **D.1** (extends what's live, closes the external loop), then D.2 (the native-agent north star).
+
+| # | Item | What it adds | Value | Size | Where |
+|---|---|---|---|---|---|
+| **D.1** | **B④-P1 — external attribution telemetry** | Log every call to `/agent/v1/citation/*`: (content_key/query, `X-Pivota-Agent` header else IP, ts). B⑤ (#1050) closed the loop for *audit-observed* citations; this closes it for **real external agents hitting our API** — the other half of "who cites us." | **Highest** — measures live frontier-agent usage of the surface | Small, self-contained | `pivota-backend/routes/agent_citation_v1.py` (best-effort write to a new `citation_read_log` table, off the hot path; reuse the `X-Pivota-Agent` extraction already in `_citation_rate_limit`). Contract P1. |
+| **D.2** | **B④-P2 — MCP product-read door** | Mount `pivota.search_index(query, intent?)` + `pivota.get_product(content_key)` as MCP read tools so ChatGPT/Claude/Gemini call the citation surface **natively** (same CitationItem body). | High — the "frontier agents call us natively" north star | Bigger | MCP kernel — see `protocol-integration-architecture` memory. Default-OFF behind a door flag, fail-closed. Contract P2. |
+| **D.3** | **B⑤ merchant-portal UI** | A screen rendering `GET /merchant/citations` (by-provider / recommended-vs-mentioned summary + observations). Today it's backend-only. | Medium — turns the proof loop into something a merchant *sees* | Frontend | `pivota-merchants-portal`. |
+| **D.4** | Fill deferred `CitationItem` fields | `project_citation_item` currently nulls `destination_url` (the brand site — join from `catalog_products`) + `verify_coverage` (wire real per-claim coverage when it reaches `agent_pdp_view`). | Low-medium — completeness | Tiny | `pivota-backend/routes/agent_citation_v1.py`. |
+| **D.5** | **B④-P3 — partner rate tiers + ToS** | Allow-list named frontier agents (OpenAI/Google/Anthropic) to a higher `AdvancedRateLimiter` tier via `X-Pivota-Agent`; publish machine + human usage terms. | Medium | Small-medium | `agent_citation_v1.py` + a ToS page. Contract P3. |
+
+> Cross-ref for the new session: this plan §B (shipped state), `external-citation-api-contract.md` (P1–P3), `protocol-integration-architecture` memory (D.2 MCP door), `ai-readiness-dispatch-and-enrichment` memory (the full B①–B⑤ + Part A record).
