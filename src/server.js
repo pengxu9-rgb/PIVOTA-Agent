@@ -33038,6 +33038,33 @@ app.get('/version', (req, res) => {
 });
 
 
+// Read-only diagnostic for the dynamic brand-detection cache
+// (GATEWAY_DYNAMIC_BRAND_DETECT). Disambiguates the three failure modes when a
+// known catalog brand isn't detected: flag-off (enabled:false), cache-empty
+// (enabled:true, cache_size:0 → DB/warm issue), or brand-absent (cache_size>0
+// but probe.matched:null). Pass ?q=<query> to probe a specific brand through
+// the real detectBrandEntities path. Exposes counts only, never the brand list.
+app.get('/internal/diag/brand-dict', (req, res) => {
+  try {
+    const brandDict = require('./findProductsMulti/brandDictionaryCache');
+    const q = String(req.query?.q || '').trim();
+    const out = { ok: true, ...brandDict.debugState() };
+    if (q) {
+      const normalized = normalizeBrandText(q);
+      out.probe = {
+        q,
+        normalized,
+        matched: brandDict.matchCatalogBrand(normalized),
+        detection: detectBrandEntities(q, { candidateProducts: [] }),
+      };
+    }
+    return res.json(out);
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: err?.message || 'diag_failed' });
+  }
+});
+
+
 app.get('/healthz/gemini', (req, res) => {
   try {
     const gate = getGeminiGlobalGate();
