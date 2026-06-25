@@ -51,6 +51,19 @@ Probing the live surfaces corrected a premise in A.0/A.2:
 
 **Next (decisions, not code):** (a) run the harness with a `/v1/pivot` JWT to capture the **divergence baseline** — that data decides whether A.2 is worth it; (b) if the ingredient lane is the real relevance gap, scope THAT fix (not a V2 port); (c) wire the harness into CI as the anti-re-fork guard. No live-ranking change until the baseline + sign-off exist.
 
+### A.5 — BASELINE + DECISION (2026-06-25) — Part A RESOLVED
+
+**Baseline measured** (`recall_parity_runner.mjs`, 53-query corpus, global, matched on `product_key`): **mean overlap 0.244 · top-1 agreement 0.038 · mean rank-delta 2.69 · 41/53 high-divergence**. The two surfaces are *substantially* divergent, and the cause is **structural** (different orchestrators selecting/ranking external seeds differently) — **not a single ranking flag, so a RELEVANCE_V2 port would not have fixed it.** (snapshot: `pivota-agent-ui/reports/recall_parity/baseline_2026-06-25.json`.)
+
+**Crucial nuance: the divergence is LATENT.** Agents hit the **gateway**; `/v1/pivot` has essentially no live agent callers. So 76% divergence costs live traffic nothing today — it's a loaded gun, not an active wound.
+
+**DECISION (founder, 2026-06-25): keep `/v1/pivot` INTERNAL-only.** Therefore:
+- **The gateway is the single LIVE agent recall core.** `/v1/pivot` is the internal backend search/PDP path and is **explicitly NOT parity-guaranteed** with the gateway. A2 (V2 port) and A3 (demotion) are **NOT pursued** — the baseline showed the port wouldn't help and convergence isn't warranted while `/v1/pivot` stays internal.
+- **Decoupling is now guarded** by `tests/recall_stack_boundary.test.js` (asserts the gateway src has **zero** `/v1/pivot` callers). If a future change wires the gateway to `/v1/pivot`, the test trips — forcing a conscious convergence decision.
+- **Re-open only if** `/v1/pivot` is ever promoted to a first-class external surface; then scope true convergence (route one through the other) as its own project, using the parity harness as the before/after gate.
+
+**Part A is RESOLVED as a decision, not a build.** The instrument (harness) exists, the divergence is measured, the cause is understood, and the decoupling is guarded.
+
 ---
 
 ## Part B — Publish / citation output
