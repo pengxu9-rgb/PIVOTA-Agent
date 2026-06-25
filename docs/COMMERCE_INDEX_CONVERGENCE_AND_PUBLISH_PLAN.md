@@ -39,6 +39,18 @@
 
 > **Part A is NOT in the current implementation slice.** It is the recall track; it follows Part C. Recorded here so the decision is durable.
 
+### A.4 — GROUNDING UPDATE (2026-06-25) + harness shipped
+
+Probing the live surfaces corrected a premise in A.0/A.2:
+
+- **The two surfaces are NOT redundant engines.** The **gateway** `find_products_multi` is a *multi-lane orchestrator* (ingredient-recall / external-seed / canonical / citable + policy); **`/v1/pivot/query`** is the auth-gated citation/PDP search (`search_pivot_catalog`). They **share exactly one duplicated component** — `canonicalCatalogSearch.js` (Node) ↔ `_fetch_canonical_search_rows` (Python) — not a whole duplicated engine.
+- **The gateway's beauty ranking does NOT run through `canonicalCatalogSearch`.** Live: "vitamin c serum" → gateway `query_source=agent_products_ingredient_recall_direct`. So **porting RELEVANCE_V2 into `canonicalCatalogSearch` (A.2) would have limited impact on the live agent path** — those queries rank via the ingredient/external-seed lanes, which are gateway-only (no backend twin). This is the key correction: the "two stacks" debt is the *shared canonical-search SQL*, plus a set of *gateway-only orchestration lanes* that aren't duplicated at all.
+- **Revised convergence framing:** (1) keep the gateway as the agent orchestrator; (2) treat the shared canonical-search SQL as the one thing that must not drift → guard it with the parity harness + a contract; (3) the gateway-only lanes (ingredient/external-seed) are agent-specific and don't need a backend twin — don't "converge" them, *own* them; (4) re-evaluate whether V2 even needs porting (its win was on `/v1/pivot`; the gateway's relevance problem lives in the ingredient lane, a *different* fix).
+
+**A4 DELIVERED — parity harness (pivota-agent-ui `scripts/recall_parity_runner.mjs`, PR #253 `7c32be30`).** Runs a golden corpus against both surfaces, matches by `content_key`, reports per-query Jaccard overlap + rank divergence + top-1 agreement + summary JSON. Read-only. `PIVOT_TOKEN=<jwt> node scripts/recall_parity_runner.mjs` (/v1/pivot is auth-gated). Smoke-tested (gateway live; pivot auth-failure reported cleanly).
+
+**Next (decisions, not code):** (a) run the harness with a `/v1/pivot` JWT to capture the **divergence baseline** — that data decides whether A.2 is worth it; (b) if the ingredient lane is the real relevance gap, scope THAT fix (not a V2 port); (c) wire the harness into CI as the anti-re-fork guard. No live-ranking change until the baseline + sign-off exist.
+
 ---
 
 ## Part B — Publish / citation output
