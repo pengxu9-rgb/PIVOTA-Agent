@@ -111,4 +111,21 @@
 - Additive + fail-safe: never blank a populated field; never change commerce/offer semantics; attribution is additive.
 - Follow this plan; if reality diverges from it (e.g. enrichment isn't keyed the way assumed), surface the divergence and adjust the plan doc — don't silently improvise.
 
+---
+
+## C.7 — Implementation outcome (2026-06-25) — the divergence the guardrail caught
+
+**Verifying before building changed B①.** The premise in C.1 ("enrichment written but never read → LEFT JOIN at read") was **wrong**. Ground truth:
+
+- The **E2 publish bridge already exists and is wired.** `services/agent_pdp_view_assembler.py` `assemble_row` overlays `product_enrichment` (`title_override` / `description_markdown` / `bullet_points` / `usage_scenarios`, brand-attested copy winning) **into `agent_pdp_view` at assembly time**, inside `refresh_agent_pdp_view_for_content_key` (→ `_fetch_enrichment_for_canonical`). `get_pdp` reading the view already gets enriched values. A read-time JOIN would have been **redundant**.
+- **The real gap** = write-time propagation. Only the merchant add/edit routes re-assembled the view after `upsert_enrichment`. The **automated `product_enrichment_pipeline`** and the **`employee_products`** path wrote enrichment *without* re-assembling, so generated/curated copy sat in `product_enrichment` until some unrelated re-assembly. That's why it *looked* "written but never read."
+
+**B① shipped (corrected mechanism)** — pivota-backend PR #1035 (`5aad3482`): new `refresh_agent_pdp_view_for_enrichment_write(merchant_id, platform, platform_product_id)` resolves `content_key` from `catalog_products` and rebuilds the served view; wired after the success-path upsert in the pipeline + the employee route. **Flag-gated** `SERVE_PDP_ENRICHMENT_ON_WRITE` (default OFF → current behavior; canary per C.5), best-effort (never raises into the writer). 10 tests pass (5 new).
+
+**B② shipped** — pivota-agent-ui PR #251 (`1143418b`): `Product.mainEntityOfPage` → `WebPage` with `publisher` = Pivota `Organization` + `creditText` + `isPartOf` the Pivota `WebSite`. Validator-clean, additive; brand unchanged. 98 tests pass (1 new).
+
+**Go-live:** flip `SERVE_PDP_ENRICHMENT_ON_WRITE` on a canary, confirm a generated-enrichment write reaches the served PDP + a non-enriched product is unchanged. B② is live on deploy (no flag).
+
+**Note for the rest of the plan:** the E2 overlay covers title/description/bullets/usage but **not** `summary_short` / `regulatory_disclaimer_local` / `extra_images` / tags — extend only if a later slice needs them (out of scope here).
+
 > Cross-ref: ADR-007, `external-citation-api-contract.md`, `docs/EXTERNAL_SEED_MAINLINE_BRAND_SCOPING.md`, and the `commerce-index-storeless-brand-decision-layer` memory.
