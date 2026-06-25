@@ -870,12 +870,28 @@ function getTenantProbeSemaphore(input) {
   return next;
 }
 
+// The Gemini global gate's circuit breaker, token-bucket rate limiter and
+// API-key pool are all GEMINI-specific. Only Gemini probe calls belong inside
+// it. ChatGPT (OpenAI) and Claude (Anthropic) use their own SDKs/keys and must
+// NOT share Gemini's circuit — otherwise a Gemini failure streak opens the
+// shared circuit and rejects ChatGPT/Claude with "Gemini global circuit open",
+// zeroing those providers even when their own APIs are perfectly healthy
+// (observed: every ChatGPT per-SKU probe returning __error__:Gemini global
+// circuit open). Non-Gemini providers still run under the per-tenant
+// concurrency gate below for fairness; they just skip the Gemini gate.
+function _providerUsesGeminiGate(provider) {
+  return String(provider || '').trim().toLowerCase().startsWith('gemini');
+}
+
 async function withProbeCostGate(input, provider, fn) {
   const tenantGate = getTenantProbeSemaphore(input);
   const releaseTenant = await tenantGate.acquire({
     timeoutMs: DEFAULT_PROBE_GATE_QUEUE_TIMEOUT_MS,
   });
   try {
+    if (!_providerUsesGeminiGate(provider)) {
+      return await fn();
+    }
     const globalGate = getGeminiGlobalGate();
     return await globalGate.withGate(
       `agent_center_llm_probe_${provider}`,
@@ -1858,6 +1874,8 @@ module.exports = {
   // Exported for testing only.
   _internals: {
     validateRequest,
+    withProbeCostGate,
+    _providerUsesGeminiGate,
     buildMockProbe,
     buildGeminiProbe,
     buildChatGptProbe,
