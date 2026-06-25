@@ -48956,6 +48956,33 @@ if (require.main === module) {
       } catch (err) {
         logger.warn({ err: err.message }, 'Failed to initialize Gemini global gate on startup');
       }
+
+      // Eagerly warm the catalog brand-detection cache at boot. The cache is
+      // otherwise only filled lazily inside matchCatalogBrand, which doesn't
+      // await the refresh — so the first brand query on a freshly-booted
+      // replica (and any query before the async load lands) misses, and under
+      // multiple replicas dynamic detection effectively never converges. A
+      // boot-time refresh gives every replica a populated set before it serves
+      // traffic. Gated on the flag so it's a no-op when detection is OFF.
+      try {
+        const brandDict = require('./findProductsMulti/brandDictionaryCache');
+        if (brandDict.enabled()) {
+          brandDict
+            .refresh()
+            .then(() => {
+              logger.info(
+                { brand_dict_size: brandDict.debugState().cache_size },
+                'STARTUP: catalog brand-detection cache warmed',
+              );
+            })
+            .catch((err) => {
+              logger.warn({ err: err && err.message }, 'STARTUP: brand-detection cache warm failed (will lazy-warm)');
+            });
+        }
+      } catch (err) {
+        logger.warn({ err: err && err.message }, 'STARTUP: brand-detection cache warm skipped');
+      }
+
       const autoSyncIntervalConfig = getCreatorCatalogAutoSyncIntervalConfig();
       const intervalMin = autoSyncIntervalConfig.intervalMinutes;
       const intervalMs = intervalMin * 60 * 1000;
