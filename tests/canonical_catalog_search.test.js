@@ -200,6 +200,40 @@ describe('canonicalCatalogSearch.fetchCanonicalChainRows', () => {
     expect(sql).not.toMatch(/DROP TABLE/);
   });
 
+  test('tokenMatch OFF (default) adds no token clause — buyable SQL unchanged', async () => {
+    const query = makeMockQuery([]);
+    await fetchCanonicalChainRows({ query: 'hair butter for damaged hair', deps: { query } });
+    const { sql, params } = query.calls[0];
+    expect(sql).not.toMatch(/\) >= \d+\)/); // no token-overlap threshold
+    expect(params).toHaveLength(4); // only $1..$4, no token binds
+  });
+
+  test('tokenMatch ON adds token-overlap WHERE + rank + binds for multi-token query', async () => {
+    const query = makeMockQuery([]);
+    await fetchCanonicalChainRows({
+      query: 'hair butter for damaged hair',
+      tokenMatch: true,
+      deps: { query },
+    });
+    const { sql, params } = query.calls[0];
+    // overlap threshold in WHERE + a *25 token rank bonus
+    expect(sql).toMatch(/\) >= 2\)/);
+    expect(sql).toMatch(/\* 25\)/);
+    // tokens: hair, butter, damaged ("for" is a stopword, dup "hair" deduped)
+    expect(params).toContain('%hair%');
+    expect(params).toContain('%butter%');
+    expect(params).toContain('%damaged%');
+    expect(params).not.toContain('%for%');
+  });
+
+  test('tokenMatch ON with a single significant token adds no token clause', async () => {
+    const query = makeMockQuery([]);
+    await fetchCanonicalChainRows({ query: 'anuko', tokenMatch: true, deps: { query } });
+    const { sql, params } = query.calls[0];
+    expect(sql).not.toMatch(/\) >= \d+\)/);
+    expect(params).toHaveLength(4);
+  });
+
   test('keeps product-level catalog rows on the default recall path', async () => {
     const query = makeMockQuery([]);
     await fetchCanonicalChainRows({ query: 'lipstick', deps: { query } });

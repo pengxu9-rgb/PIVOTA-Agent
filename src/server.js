@@ -11458,6 +11458,7 @@ async function buildCitableSupplementItems(queryText = '') {
       query: q,
       includeSkuOffers: false,
       eligibility: 'index_eligible',
+      tokenMatch: true,
       deps: { query },
     });
     if (!Array.isArray(rows) || !rows.length) return [];
