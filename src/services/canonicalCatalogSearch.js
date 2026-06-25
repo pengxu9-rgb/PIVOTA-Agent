@@ -57,6 +57,15 @@ const CANDIDATE_LIMIT_MAX = 200;
 const ROW_LIMIT_MIN = 50;
 const ROW_LIMIT_MAX = 500;
 
+// Generic words dropped from query token matching (tokenMatch mode) so they
+// don't dominate the token-overlap score / pull in irrelevant rows.
+const TOKEN_STOPWORDS = new Set([
+  'the', 'for', 'with', 'and', 'from', 'best', 'buy', 'top', 'good', 'great',
+  'your', 'our', 'new', 'all', 'any', 'that', 'this', 'are', 'how', 'what',
+  'under', 'over', 'cheap', 'affordable', 'recommend', 'recommended', 'review',
+  'reviews', 'vs', 'near', 'online', 'shop', 'store',
+]);
+
 function normalizeQuery(raw) {
   if (raw == null) return '';
   return String(raw).trim().toLowerCase();
@@ -163,6 +172,7 @@ async function fetchCanonicalChainRows(args = {}) {
     marketId = null,
     limit = DEFAULT_LIMIT,
     eligibility = 'serving_eligible',
+    tokenMatch = false,
     deps = {},
   } = args;
   const { query: pgQuery } = deps;
@@ -340,6 +350,37 @@ async function fetchCanonicalChainRows(args = {}) {
         ) THEN 15 ELSE 0 END`;
   }
 
+  // Token matching (citable lane only, opt-in). Whole-phrase LIKE '%full query%'
+  // misses queries whose words appear non-contiguously in a title (e.g. "hair
+  // butter for damaged hair" vs title "Anuko Nourishing Hair Butter"). When
+  // tokenMatch is on, ALSO match rows whose title/brand contain a threshold of
+  // the query's significant tokens, and rank by how many overlap. Additive — the
+  // whole-phrase clause is untouched, so this only ADDS matches. The buyable lane
+  // never passes tokenMatch, so its SQL is byte-identical.
+  let tokenWhere = '';
+  let tokenScore = '';
+  if (tokenMatch) {
+    const tokens = Array.from(
+      new Set(
+        lowered
+          .split(/\s+/)
+          .map((t) => t.trim())
+          .filter((t) => t.length >= 3 && !TOKEN_STOPWORDS.has(t)),
+      ),
+    ).slice(0, 6);
+    if (tokens.length >= 2) {
+      const overlapParts = tokens.map((t) => {
+        params.push(`%${t}%`);
+        const b = `$${params.length}`;
+        return `(CASE WHEN LOWER(COALESCE(p.title, '')) LIKE ${b} OR LOWER(COALESCE(p.brand, '')) LIKE ${b} THEN 1 ELSE 0 END)`;
+      });
+      const overlapSql = overlapParts.join(' + ');
+      const minTokens = Math.max(2, Math.ceil(tokens.length * 0.5));
+      tokenWhere = `OR ((${overlapSql}) >= ${minTokens})`;
+      tokenScore = `+ ((${overlapSql}) * 25)`;
+    }
+  }
+
   const textWhereClause = `
         LOWER(COALESCE(p.title, '')) LIKE $2
         OR LOWER(COALESCE(p.brand, '')) LIKE $2
@@ -347,6 +388,7 @@ async function fetchCanonicalChainRows(args = {}) {
         ${skuTextWhere}
         OR LOWER(COALESCE(p.source_product_id, '')) LIKE $2
         ${verticalWhere}
+        ${tokenWhere}
   `;
   const whereClause = categoryBind
     ? `(p.category_path IS NOT NULL AND (p.category_path = ${categoryExactBind} OR p.category_path LIKE ${categoryBind}) AND $2::text IS NOT NULL)`
@@ -490,6 +532,7 @@ async function fetchCanonicalChainRows(args = {}) {
           CASE WHEN p.pdp_scope = 'multi_merchant_canonical'              THEN 200 ELSE 0 END
           ${categoryScore}
           ${verticalScore}
+          ${tokenScore}
         ) AS rank_score
       FROM catalog_products p
       INNER JOIN index_pipeline_state ips
