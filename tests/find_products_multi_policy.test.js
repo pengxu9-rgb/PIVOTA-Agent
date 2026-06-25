@@ -123,6 +123,42 @@ describe('find_products_multi intent + filtering', () => {
     expect(resp.total).toBe(resp.products.length);
   });
 
+  test('top-level brand_query_detected syncs to the policy decision (not the stale input)', () => {
+    // Incoming metadata has NO brand signal — but the raw query is a known
+    // (static-alias) brand, so the policy's own detectBrandEntities fires. The
+    // top-level field must reflect the policy decision, matching search_decision,
+    // rather than staying false from the absent input.
+    const intent = extractIntentRuleBased('fenty beauty', [], []);
+    const resp = applyFindProductsMultiPolicy({
+      response: {
+        products: [
+          makeRawProduct({
+            id: 'brand-2',
+            title: 'Fenty Beauty Gloss Bomb',
+            description: 'Universal lip luminizer',
+            brand: 'Fenty Beauty',
+          }),
+        ],
+        total: 1,
+        page_size: 1,
+        reply: null,
+      },
+      intent,
+      requestPayload: { search: { query: 'fenty beauty' } },
+      metadata: { ambiguity_score_pre: 0.55 }, // no brand_* fields on input
+      rawUserQuery: 'fenty beauty',
+    });
+
+    // search_decision is the authority; the top-level field now agrees with it.
+    expect(resp.metadata?.search_decision?.brand_query_detected).toBe(true);
+    expect(resp.metadata?.brand_query_detected).toBe(true);
+    expect(resp.metadata?.brand_query_detected).toBe(
+      resp.metadata?.search_decision?.brand_query_detected,
+    );
+    expect(resp.metadata?.brand_entities).toEqual(resp.metadata?.search_decision?.brand_entities);
+    expect(resp.metadata?.brand_scope).toBe(resp.metadata?.search_decision?.brand_scope);
+  });
+
   test('sleepwear query does not hard-block strong human apparel candidates with stale toy tags', () => {
     const intent = extractIntentRuleBased('plus size sleepwear', [], []);
     const resp = applyFindProductsMultiPolicy({

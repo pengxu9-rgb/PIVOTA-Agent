@@ -6181,6 +6181,16 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
             ...mergedMetadata,
             ...fashionConstraintMetadata,
             strategy_version: STRATEGY_VERSION,
+            // Sync the top-level brand trio to the authoritative policy values
+            // (search_decision below). The incoming metadata's top-level
+            // brand_query_detected is stale — it predates the policy's reconciled
+            // detection (incl. the catalog-cache pass), so without this a real
+            // brand match shows search_decision.brand_query_detected=true while
+            // the top-level field reads false (the field downstream + the recall
+            // eval harness actually read).
+            brand_query_detected: Boolean(brandQueryDetected),
+            brand_entities: brandEntities,
+            brand_scope: brandScope,
             brand_query_bypass_ambiguity: Boolean(brandQueryBypassAmbiguity),
             ...policyQueryUnderstandingMetadata,
             ...policySearchQualityMetadata,
@@ -6223,6 +6233,11 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
             ...(augmented?.metadata && typeof augmented.metadata === 'object' ? augmented.metadata : {}),
             ...fashionConstraintMetadata,
             strategy_version: STRATEGY_VERSION,
+            // Sync the top-level brand trio to the authoritative policy values
+            // (search_decision below) — see the rationale in the sibling branch.
+            brand_query_detected: Boolean(brandQueryDetected),
+            brand_entities: brandEntities,
+            brand_scope: brandScope,
             brand_query_bypass_ambiguity: Boolean(brandQueryBypassAmbiguity),
             ...policyQueryUnderstandingMetadata,
             ...policySearchQualityMetadata,
