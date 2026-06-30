@@ -4862,6 +4862,18 @@ function applyIdentityOverrides(listing, overrides = []) {
       next.review_required = false;
       next.review_reason_codes = [];
     }
+    if (actionType === 'approve_first_party_canonical') {
+      // First-party brand authority (CREATE): the merchant owns this brand, so
+      // their own-store listing IS the canonical. Mark approved + brand tier.
+      // (Confidence is set authoritatively by the Python trust policy; this keeps
+      // the listing label consistent. A full re-resolution would also recompute
+      // confidence from brand-tier signals — see the from-signals follow-up.)
+      next.identity_status = 'approved';
+      next.live_read_enabled = true;
+      next.review_required = false;
+      next.review_reason_codes = [];
+      next.source_tier = 'brand';
+    }
     if (actionType === 'deny_live_read') {
       next.live_read_enabled = false;
     }
