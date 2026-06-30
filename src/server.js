@@ -691,6 +691,24 @@ const CREATOR_CATALOG_AUTO_SYNC_ENABLED = (() => {
   if (!raw) return String(process.env.NODE_ENV || '').trim().toLowerCase() === 'production';
   return ['1', 'true', 'yes', 'on'].includes(raw);
 })();
+// PDP identity auto-resolve tick: periodically run the identity resolver so newly
+// onboarded external_product_seeds (curated/audit catalog-coverage) become
+// depositable WITHOUT a manual GHA dispatch (the resolver was workflow_dispatch-only,
+// and downstream catalog_row_trust propagation is already scheduled). OFF BY DEFAULT —
+// deploying never starts it; flip PDP_IDENTITY_AUTO_RESOLVE_ENABLED to enable.
+const PDP_IDENTITY_AUTO_RESOLVE_ENABLED = ['1', 'true', 'yes', 'on'].includes(
+  String(process.env.PDP_IDENTITY_AUTO_RESOLVE_ENABLED || '').trim().toLowerCase(),
+);
+const PDP_IDENTITY_AUTO_RESOLVE_INTERVAL_MS = parsePositiveInt(
+  process.env.PDP_IDENTITY_AUTO_RESOLVE_INTERVAL_MINUTES,
+  30,
+  { min: 5, max: 24 * 60 },
+) * 60 * 1000;
+const PDP_IDENTITY_AUTO_RESOLVE_LIMIT = parsePositiveInt(
+  process.env.PDP_IDENTITY_AUTO_RESOLVE_LIMIT,
+  200,
+  { min: 1, max: 5000 },
+);
 const CREATOR_CATALOG_AUTO_SYNC_TIMEOUT_MS = parsePositiveInt(
   process.env.CREATOR_CATALOG_AUTO_SYNC_TIMEOUT_MS,
   120000,
@@ -10913,6 +10931,23 @@ function summarizeCatalogSyncMerchantState() {
     return tb - ta;
   });
   return rows.slice(0, 20);
+}
+
+async function runPdpIdentityAutoResolve() {
+  // Bounded, idempotent resolver tick — turns newly onboarded seeds into
+  // depositable canonical anchors so the catalog-coverage loop completes without
+  // a manual GHA dispatch. Best-effort: a failed tick logs and never crashes.
+  if (!PDP_IDENTITY_AUTO_RESOLVE_ENABLED) return;
+  if (!process.env.DATABASE_URL) return;
+  try {
+    const result = await backfillPdpIdentityGraph({
+      limit: PDP_IDENTITY_AUTO_RESOLVE_LIMIT,
+      dryRun: false,
+    });
+    logger.info({ ...result }, 'pdp_identity_auto_resolve tick');
+  } catch (err) {
+    logger.warn({ err: err?.message || String(err) }, 'pdp_identity_auto_resolve tick failed');
+  }
 }
 
 async function runCreatorCatalogAutoSync() {
@@ -49009,6 +49044,16 @@ if (require.main === module) {
           runCreatorCatalogAutoSync();
           setInterval(runCreatorCatalogAutoSync, intervalMs);
         }, initialDelayMs);
+      }
+
+      // PDP identity auto-resolve: completes the catalog-coverage loop by resolving
+      // newly onboarded seeds into depositable anchors. OFF by default (gated above);
+      // initial delay then fixed interval, mirroring the auto-sync tick.
+      if (PDP_IDENTITY_AUTO_RESOLVE_ENABLED) {
+        setTimeout(() => {
+          runPdpIdentityAutoResolve();
+          setInterval(runPdpIdentityAutoResolve, PDP_IDENTITY_AUTO_RESOLVE_INTERVAL_MS);
+        }, PDP_IDENTITY_AUTO_RESOLVE_INTERVAL_MS);
       }
 
       if (PDP_CORE_PREWARM_ENABLED) {
