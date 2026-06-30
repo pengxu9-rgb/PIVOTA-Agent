@@ -4617,7 +4617,20 @@ async function fetchBackfillProducts({
 
     const internalRes = await queryFn(
       `
-        SELECT merchant_id, platform_product_id, product_data, cached_at
+        SELECT merchant_id, platform_product_id, product_data, cached_at,
+          (
+            SELECT ms.domain
+            FROM merchant_stores ms
+            WHERE ms.merchant_id = products_cache.merchant_id
+              AND lower(coalesce(ms.status, '')) = 'active'
+              AND coalesce(nullif(trim(ms.domain), ''), '') <> ''
+              AND lower(coalesce(ms.platform, '')) = lower(coalesce(
+                nullif(trim(products_cache.platform), ''),
+                nullif(trim(products_cache.product_data->>'platform'), ''),
+                nullif(trim(products_cache.product_data #>> '{platform_metadata,platform}'), '')
+              ))
+            LIMIT 1
+          ) AS storefront_domain
         FROM products_cache
         WHERE ${internalWhere.join(' AND ')}
           AND ${activeProductsCacheSourceWhere('products_cache')}
@@ -4643,6 +4656,22 @@ async function fetchBackfillProducts({
         continue;
       }
       seenInternal.add(sourceListingRef);
+      // D2C unlock: connected products' normalized payload leaves
+      // online_store_url/canonical_url blank, so extractOfficialUrl finds nothing
+      // and the listing maxes at ~0.68 (below the 0.85 deposit gate). Backfill the
+      // official_url from the merchant's VERIFIED active storefront domain (matched
+      // on platform in the query above), product-specific so it doesn't collide in
+      // sellableItemKey. Safe by construction: chooseSourceTier only grants
+      // brand-tier (0.6) when the domain matches the vendor, so a true D2C brand
+      // earns official_url + brand-tier (~0.90) while a multi-brand retailer
+      // (domain != vendor) stays merchant-tier (~0.80) and is NOT inflated.
+      const storefrontDomain = asString(row?.storefront_domain)
+        .replace(/^https?:\/\//i, '')
+        .replace(/\/+$/, '')
+        .trim();
+      if (storefrontDomain && productId && !extractOfficialUrl(product)) {
+        product.online_store_url = `https://${storefrontDomain}/products/${productId}`;
+      }
       internalRows.push({
         merchant_id: merchantId,
         product_id: productId,
