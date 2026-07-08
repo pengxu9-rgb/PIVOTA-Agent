@@ -533,6 +533,33 @@ const PIVOT_BEAUTY_ACTIVE_AWARE_RANK_ENABLED = parseBooleanEnv(
   process.env.PIVOT_BEAUTY_ACTIVE_AWARE_RANK_ENABLED,
   false,
 );
+// Phase 2 WS2 (docs/find_products_multi_phase2_scope.md) — three independently
+// flippable startup flags, default OFF (ship dark, shadow-verify via the admin
+// prompt-test endpoint, then enable per flag; rollback = unset flag + restart).
+//
+// TOKEN_RELEVANCE_RANK: per-token query<->title/brand relevance scoring + title/
+// brand as active-concept surfaces + tier demotion of zero-token category-bucket
+// rows. Fixes "The Serum" outranking literal-title matches like "Vita Niacinamide
+// Dark Spot Serum" (title tokens were worth <=18 vs category +140 / brand +220).
+const PIVOT_BEAUTY_TOKEN_RELEVANCE_RANK_ENABLED = parseBooleanEnv(
+  process.env.PIVOT_BEAUTY_TOKEN_RELEVANCE_RANK_ENABLED,
+  false,
+);
+// NEAR_DUP_COLLAPSE: serving-time collapse of near-identical rows (same brand +
+// annotation-stripped title, e.g. "(Copy_T1)".."(Copy_T7)" test artifacts) —
+// best-scored representative stays, the rest demote below all distinct results.
+const PIVOT_BEAUTY_NEAR_DUP_COLLAPSE_ENABLED = parseBooleanEnv(
+  process.env.PIVOT_BEAUTY_NEAR_DUP_COLLAPSE_ENABLED,
+  false,
+);
+// ACTIVE_AWARE_RECALL (WS2b+c): tokenize recall patterns with query-named active
+// surface forms, match derived.recall.{ingredient_tokens,alias_tokens} in the
+// external-seed fast lane, and enable the canonical tokenMatch tokenizer on the
+// buyable mainline lane. Recall-side complement to the Phase-1 rank bonus.
+const PIVOT_BEAUTY_ACTIVE_AWARE_RECALL_ENABLED = parseBooleanEnv(
+  process.env.PIVOT_BEAUTY_ACTIVE_AWARE_RECALL_ENABLED,
+  false,
+);
 const SEARCH_QUALITY_CONTRACT_V1_ENABLED = parseBooleanEnv(
   process.env.SEARCH_QUALITY_CONTRACT_V1_ENABLED,
   true,
@@ -15280,6 +15307,18 @@ function buildBeautyExternalSeedRecallPatterns({ queryText = '', intent = null }
     push(intent.brandBrowse.brand);
     push(intent.brandBrowse.alias);
   }
+  // WS2c: query-named active surface forms as standalone patterns, so
+  // "soy firming cream" also recalls on %soy%/%isoflavone% instead of only the
+  // whole phrase. Placed BEFORE the category/retrieval expansions because the
+  // final cap truncates from the end. Benefit concepts (concept:true — firming,
+  // brightening) are rank-only: pushing their ingredient surface forms here would
+  // starve the cap with expansions the user never named.
+  if (PIVOT_BEAUTY_ACTIVE_AWARE_RECALL_ENABLED) {
+    for (const concept of extractBeautyQueryActiveConcepts(queryText)) {
+      if (concept.concept === true) continue;
+      (concept.surfaceForms || []).slice(0, 3).forEach(push);
+    }
+  }
   buildBeautyExternalSeedCategoryTerms(intent).forEach(push);
   buildBeautyMainlineRetrievalQueries(queryText, intent).forEach(push);
   return patterns.slice(0, 14);
@@ -15607,7 +15646,7 @@ async function queryBeautyExternalSeedRowsFast({
             WHERE cp.product_key = external_product_seeds.attached_product_key
             LIMIT 1) AS catalog_category_path`;
   const attachedServingSeedFilterSql = `
-              AND attached_product_key IS NOT NULL
+              AND coalesce(attached_product_key, '') <> ''
               AND EXISTS (
                 SELECT 1
                 FROM catalog_products cp_serving
@@ -15908,7 +15947,13 @@ async function queryBeautyExternalSeedRowsFast({
           OR lower(coalesce(seed_data->'derived'->'recall'->>'brand_name', '')) LIKE ${bind}
           OR lower(coalesce(seed_data->'derived'->'recall'->>'retrieval_title', '')) LIKE ${bind}
           OR lower(coalesce(seed_data->'derived'->'recall'->>'retrieval_summary', '')) LIKE ${bind}
-          OR lower(coalesce(seed_data->'derived'->'recall'->>'category', '')) LIKE ${bind}
+          OR lower(coalesce(seed_data->'derived'->'recall'->>'category', '')) LIKE ${bind}${
+            PIVOT_BEAUTY_ACTIVE_AWARE_RECALL_ENABLED
+              ? `
+          OR lower(coalesce(seed_data#>>'{derived,recall,ingredient_tokens}', '')) LIKE ${bind}
+          OR lower(coalesce(seed_data#>>'{derived,recall,alias_tokens}', '')) LIKE ${bind}`
+              : ''
+          }
         )`;
       });
       const limitBind = `$${safePatterns.length + 3}`;
@@ -18986,6 +19031,93 @@ function canonicalizeBeautyProductTitleForDedupe(rawTitle = '') {
     .trim();
 }
 
+// Phase 2 WS2 near-dup collapse: strip trailing ANNOTATION suffixes — test/copy
+// markers like "(Copy_T1)", "[TEST]", "- sample 2" — while preserving genuine
+// variant descriptors ("(Refill)", "(50ml)", "(SPF 50)", "(Shade 21)"). General
+// by design (annotation keywords + short codes), not a Copy_T-specific hack.
+const BEAUTY_TITLE_ANNOTATION_KEYWORDS =
+  /\b(?:copy|copies|test|dupe?|duplicate|clone|sample|demo|draft|tmp|temp|qa|internal|staging|tripwire|do\s*not\s*(?:buy|use))\b/i;
+const BEAUTY_TITLE_VARIANT_KEEP_GUARD =
+  /\b(?:\d+(?:\.\d+)?\s*(?:ml|oz|g|gram|grams)|spf\s*\d+|refill|unscented|fragrance\s*free|travel|mini|shade|tone|no\.?\s*\d+)\b/i;
+const BEAUTY_TITLE_ANNOTATION_SHORT_CODE = /^[a-z]{0,4}[\s_.-]*\d{1,4}$/i;
+
+function stripBeautyTitleAnnotationSuffix(rawTitle = '') {
+  let title = String(rawTitle || '').trim();
+  if (!title) return '';
+  for (let pass = 0; pass < 3; pass += 1) {
+    let stripped = title;
+    // Trailing bracketed group: (…) [TEST] {qa 2} — annotation keyword or short code.
+    const bracket = stripped.match(/^(.{4,}?)\s*[([{]([^()[\]{}]{1,40})[)\]}]$/u);
+    if (bracket) {
+      const inner = String(bracket[2] || '').trim();
+      // Underscore/dash are word characters, so "Copy_T1" would defeat \b
+      // keyword matching — normalize separators before testing.
+      const innerWords = inner.replace(/[_\-.]+/g, ' ').trim();
+      if (
+        !BEAUTY_TITLE_VARIANT_KEEP_GUARD.test(innerWords) &&
+        (BEAUTY_TITLE_ANNOTATION_KEYWORDS.test(innerWords) ||
+          BEAUTY_TITLE_ANNOTATION_SHORT_CODE.test(innerWords))
+      ) {
+        stripped = String(bracket[1] || '').trim();
+      }
+    }
+    if (stripped === title) {
+      // Bare trailing annotation: "… - copy 3", "…_test", "… sample 2".
+      const bare = stripped.match(
+        /^(.{8,}?)[\s_-]+(?:copy|copies|test|dupe?|duplicate|clone|sample|demo|draft|tmp|temp|qa)[\s_-]*[a-z]?\d{0,4}$/iu,
+      );
+      if (bare) stripped = String(bare[1] || '').trim();
+    }
+    if (stripped === title) break;
+    title = stripped;
+  }
+  return title;
+}
+
+// Serving-time collapse of near-identical scored rows (post-score, post-sort, pre-
+// display). Key = brand + annotation-stripped canonical title. The best-scored row
+// per key keeps its position; the rest are DEMOTED below all distinct rows (not
+// dropped — total stays stable and prompt-test reports ranked_below_page instead
+// of a silent disappearance).
+function collapseNearDuplicateScoredBeautyProducts(scoredRows = []) {
+  const rows = Array.isArray(scoredRows) ? scoredRows : [];
+  if (rows.length < 2) return { rows, collapsed_count: 0 };
+  const seen = new Set();
+  const distinct = [];
+  const demoted = [];
+  for (const row of rows) {
+    const product = row && row.product ? row.product : {};
+    const rawTitle = firstNonEmptyString(product.title, product.name, product.product_name, product.display_name) || '';
+    const canonicalTitle = canonicalizeBeautyProductTitleForDedupe(stripBeautyTitleAnnotationSuffix(rawTitle));
+    if (!canonicalTitle) {
+      distinct.push(row);
+      continue;
+    }
+    const brand = normalizeSearchTextForMatch(String(product.brand || product.vendor || '')) || 'unbranded';
+    const key = `${brand}|${canonicalTitle}`;
+    if (seen.has(key)) {
+      const representative = distinct.find((kept) => kept.__near_dup_key === key);
+      demoted.push({
+        ...row,
+        near_dup_demoted: true,
+        near_dup_of:
+          (representative &&
+            firstNonEmptyString(
+              representative.product?.pivota_signature_id,
+              representative.product?.id,
+              representative.product?.product_id,
+            )) ||
+          null,
+      });
+    } else {
+      seen.add(key);
+      distinct.push(Object.assign(row, { __near_dup_key: key }));
+    }
+  }
+  for (const row of distinct) delete row.__near_dup_key;
+  return { rows: [...distinct, ...demoted], collapsed_count: demoted.length };
+}
+
 function detectBeautyProductPackVariant(product = {}) {
   const rawTitle = [
       product.title,
@@ -19869,7 +20001,12 @@ function extractBeautyQueryActiveConcepts(queryText) {
 // external-seed (ingredient_tokens / external_seed_recall) and canonical_chain
 // (raw_ingredient_text_clean / ingredients_inci / active_ingredients / seed_data
 // derived.recall) shapes. No DB read; purely re-uses fields the builders attach.
-function buildBeautyActivesText(product) {
+// includeTitleBrand (token-relevance flag) additionally counts the display title/
+// brand as an actives surface, so "Vita Niacinamide Dark Spot Serum" earns the
+// niacinamide concept even with no INCI/recall data. Benefit concepts (firming,
+// brightening) are unaffected: their surfaceForms are ingredient names, so a title
+// that merely prints the benefit word still matches nothing.
+function buildBeautyActivesText(product, { includeTitleBrand = false } = {}) {
   if (!product || typeof product !== 'object') return '';
   const joinArr = (v) => (Array.isArray(v) ? v.join(' ') : typeof v === 'string' ? v : '');
   const recall =
@@ -19896,17 +20033,26 @@ function buildBeautyActivesText(product) {
     ing.raw_ingredient_text_clean,
     joinArr(ing.active_ingredients),
     product.description,
-  ]
-    .map((v) => String(v || '').trim())
-    .filter(Boolean);
-  return normalizeSearchTextForMatch(parts.join(' '));
+  ];
+  if (includeTitleBrand) {
+    parts.push(
+      product.title,
+      product.name,
+      product.product_name,
+      product.display_name,
+      product.brand,
+      product.vendor,
+    );
+  }
+  const cleaned = parts.map((v) => String(v || '').trim()).filter(Boolean);
+  return normalizeSearchTextForMatch(cleaned.join(' '));
 }
 
 // How many distinct query-named concepts the product's actives actually deliver.
-function countBeautyActiveConceptMatches(queryText, product) {
+function countBeautyActiveConceptMatches(queryText, product, options = {}) {
   const concepts = extractBeautyQueryActiveConcepts(queryText);
   if (!concepts.length) return { count: 0, keys: [] };
-  const activesText = buildBeautyActivesText(product);
+  const activesText = buildBeautyActivesText(product, options);
   if (!activesText) return { count: 0, keys: [] };
   const padded = ` ${activesText} `;
   const keys = [];
@@ -19916,6 +20062,56 @@ function countBeautyActiveConceptMatches(queryText, product) {
     }
   }
   return { count: keys.length, keys };
+}
+
+// Phase 2 WS2 token relevance: how much of the query's significant vocabulary the
+// product's DISPLAY surface (title + brand) actually carries. Complements the
+// active-concept bonus (which grounds in ingredient evidence): "Vita Niacinamide
+// Dark Spot Serum" should not lose to a zero-token category-bucket row just
+// because its INCI data is sparse. Pure, no DB.
+const BEAUTY_TOKEN_RELEVANCE_PER_TOKEN = 26; // < one proven active concept (44)
+const BEAUTY_TOKEN_RELEVANCE_MAX_TOKENS = 4; // per-token bonus cap: +104
+const BEAUTY_TOKEN_RELEVANCE_ALL_TOKENS_BONUS = 48;
+const BEAUTY_TOKEN_RELEVANCE_PHRASE_BONUS = 36;
+
+function scoreBeautyQueryTokenRelevance({ product, queryTokens } = {}) {
+  const empty = { matched: [], count: 0, bonus: 0, all_tokens: false, phrase: false };
+  if (!product || typeof product !== 'object') return empty;
+  const surface = normalizeSearchTextForMatch(
+    [product.title, product.name, product.product_name, product.display_name, product.brand, product.vendor]
+      .map((v) => String(v || '').trim())
+      .filter(Boolean)
+      .join(' '),
+  );
+  const significant = (Array.isArray(queryTokens) ? queryTokens : []).filter(
+    (token) => typeof token === 'string' && token.length >= 3 && !SEARCH_QUERY_STOP_TOKENS.has(token),
+  );
+  if (!surface || !significant.length) return empty;
+  const padded = ` ${surface} `;
+  // Boundary-padded token presence with a cheap plural fold (spots -> spot).
+  const hasToken = (token) =>
+    padded.includes(` ${token} `) ||
+    (token.endsWith('s') && token.length >= 4 && padded.includes(` ${token.slice(0, -1)} `));
+  const matched = significant.filter(hasToken);
+  if (!matched.length) return empty;
+  let bonus = Math.min(BEAUTY_TOKEN_RELEVANCE_MAX_TOKENS, matched.length) * BEAUTY_TOKEN_RELEVANCE_PER_TOKEN;
+  const allTokens = significant.length >= 2 && matched.length === significant.length;
+  if (allTokens) bonus += BEAUTY_TOKEN_RELEVANCE_ALL_TOKENS_BONUS;
+  // Phrase: any adjacent significant-token bigram of the query present verbatim
+  // (with the same plural fold on the trailing token).
+  let phrase = false;
+  for (let i = 0; i + 1 < significant.length; i += 1) {
+    const second = significant[i + 1];
+    const bigram = ` ${significant[i]} ${second} `;
+    const bigramSingular =
+      second.endsWith('s') && second.length >= 4 ? ` ${significant[i]} ${second.slice(0, -1)} ` : null;
+    if (padded.includes(bigram) || (bigramSingular && padded.includes(bigramSingular))) {
+      phrase = true;
+      break;
+    }
+  }
+  if (phrase) bonus += BEAUTY_TOKEN_RELEVANCE_PHRASE_BONUS;
+  return { matched, count: matched.length, bonus, all_tokens: allTokens, phrase };
 }
 
 // WS1 actives authoring (docs/find_products_multi_phase2_scope.md): ingredient
@@ -20160,28 +20356,52 @@ function scoreBeautyExternalSeedProduct({
     (token) => token.length >= 3 && candidateText.includes(token),
   ).length;
   score += Math.min(18, overlap * 3);
+  let tokenRelevance = null;
+  if (PIVOT_BEAUTY_TOKEN_RELEVANCE_RANK_ENABLED) {
+    tokenRelevance = scoreBeautyQueryTokenRelevance({ product, queryTokens });
+    score += tokenRelevance.bonus;
+  }
   score += scoreBeautySearchQualityContract({
     product,
     contract: searchQualityContract,
     queryText,
     baseScore: score,
   });
-  if (PIVOT_BEAUTY_ACTIVE_AWARE_RANK_ENABLED) {
-    const activeMatch = countBeautyActiveConceptMatches(queryText, product);
-    if (activeMatch.count > 0) {
-      const activeBonus =
-        Math.min(BEAUTY_ACTIVE_AWARE_RANK_MAX_CONCEPTS, activeMatch.count) *
-        BEAUTY_ACTIVE_AWARE_RANK_WEIGHT;
-      score += activeBonus;
-      return {
-        product,
-        relevant: true,
-        score,
-        active_match: { count: activeMatch.count, keys: activeMatch.keys, bonus: activeBonus },
-      };
-    }
+  // activeMatch is needed even when the Phase-1 rank flag is off: the token tier
+  // must never demote an ingredient-proven product (e.g. the Aruen pilot, whose
+  // actives live in INCI text, not its title).
+  let activeMatch = null;
+  if (PIVOT_BEAUTY_ACTIVE_AWARE_RANK_ENABLED || PIVOT_BEAUTY_TOKEN_RELEVANCE_RANK_ENABLED) {
+    activeMatch = countBeautyActiveConceptMatches(queryText, product, {
+      includeTitleBrand: PIVOT_BEAUTY_TOKEN_RELEVANCE_RANK_ENABLED,
+    });
   }
-  return { product, relevant: true, score };
+  // Tier 1 = carries query vocabulary (title/brand tokens) or delivers a query-
+  // named active; tier 0 = pure category-bucket filler. Sorted tier-first so a
+  // zero-token blusher can never outrank a token-matched serum. Flag off => every
+  // row is tier 1 (comparator byte-identical to today).
+  const tokenTier = !PIVOT_BEAUTY_TOKEN_RELEVANCE_RANK_ENABLED
+    ? 1
+    : (tokenRelevance && tokenRelevance.count > 0) || (activeMatch && activeMatch.count > 0)
+      ? 1
+      : 0;
+  const tokenFields = PIVOT_BEAUTY_TOKEN_RELEVANCE_RANK_ENABLED
+    ? { token_relevance: tokenRelevance, token_tier: tokenTier }
+    : {};
+  if (PIVOT_BEAUTY_ACTIVE_AWARE_RANK_ENABLED && activeMatch && activeMatch.count > 0) {
+    const activeBonus =
+      Math.min(BEAUTY_ACTIVE_AWARE_RANK_MAX_CONCEPTS, activeMatch.count) *
+      BEAUTY_ACTIVE_AWARE_RANK_WEIGHT;
+    score += activeBonus;
+    return {
+      product,
+      relevant: true,
+      score,
+      active_match: { count: activeMatch.count, keys: activeMatch.keys, bonus: activeBonus },
+      ...tokenFields,
+    };
+  }
+  return { product, relevant: true, score, ...tokenFields };
 }
 
 // WS3a operator prompt-test (docs/find_products_multi_phase2_scope.md). These two
@@ -20385,6 +20605,10 @@ async function searchBeautyExternalSeedProductsMainline({
     query: canonicalQueryText,
     categoryPathPrefix: canonicalCategoryPathPrefix,
     verticalSearch: hasBeautyIngredientIntentSignal(queryText),
+    // WS2c: per-token title/brand matching on the buyable mainline lane (reuses
+    // the #1722 citable-lane tokenizer). Only affects categoryless/text-mode
+    // queries — category-bucket mode ignores tokenWhere by construction.
+    tokenMatch: PIVOT_BEAUTY_ACTIVE_AWARE_RECALL_ENABLED,
     limit: canonicalLimit,
     // Market-aware filtering — pass the user's market (already computed
     // above for the external-seed-direct path's `safeQueryMarket`) so
@@ -20519,12 +20743,26 @@ async function searchBeautyExternalSeedProductsMainline({
     })
     .filter((row) => row.relevant === true)
     .sort((left, right) => {
+      // Tier-first (token-relevance flag): rows carrying query vocabulary or a
+      // query-named active always rank above pure category-bucket filler. Flag
+      // off => every row defaults to tier 1 and this comparator is byte-identical
+      // to the historical score/title ordering.
+      if (PIVOT_BEAUTY_TOKEN_RELEVANCE_RANK_ENABLED) {
+        const leftTier = left.token_tier ?? 1;
+        const rightTier = right.token_tier ?? 1;
+        if (rightTier !== leftTier) return rightTier - leftTier;
+      }
       if (right.score !== left.score) return right.score - left.score;
       return String(left.product?.title || '').localeCompare(String(right.product?.title || ''));
     });
+  const nearDupCollapse = PIVOT_BEAUTY_NEAR_DUP_COLLAPSE_ENABLED
+    ? collapseNearDuplicateScoredBeautyProducts(scored)
+    : null;
+  const rankedScored = nearDupCollapse ? nearDupCollapse.rows : scored;
+  if (nearDupCollapse) canonicalTelemetry.near_dup_collapsed_count = nearDupCollapse.collapsed_count;
   const displayRankedProducts = polishBeautyProductRankingForDisplay(
     dedupeBeautyProductsByDisplayKey(
-      scored.map((row) => {
+      rankedScored.map((row) => {
         const creatorRank = creatorScoped
           ? buildBeautyCreatorRankTelemetry({ overlayScore: row.creator_overlay_score || 0 })
           : null;
@@ -20593,8 +20831,8 @@ async function searchBeautyExternalSeedProductsMainline({
     const wantedId = inspectProductId.trim();
     const idMatch = (p) => mainlineProductMatchesId(p, wantedId);
     const recallHit = (Array.isArray(recallProducts) ? recallProducts : []).find(idMatch) || null;
-    const scoredIdx = scored.findIndex((row) => idMatch(row && row.product));
-    const scoredRow = scoredIdx >= 0 ? scored[scoredIdx] : null;
+    const scoredIdx = rankedScored.findIndex((row) => idMatch(row && row.product));
+    const scoredRow = scoredIdx >= 0 ? rankedScored[scoredIdx] : null;
     const balancedIdx = balancedProducts.findIndex(idMatch);
     const rejected = scoreRejected.find((r) => String((r && r.product_id) || '').trim() === wantedId) || null;
     promptInspect = {
@@ -20612,7 +20850,16 @@ async function searchBeautyExternalSeedProductsMainline({
       // matches regardless of flag — lets an operator see "you match soy+firming
       // but the active-aware rank flag isn't crediting it".
       active_bonus_applied: scoredRow && scoredRow.active_match ? scoredRow.active_match : null,
-      concept_match: recallHit ? countBeautyActiveConceptMatches(queryText, recallHit) : null,
+      token_relevance: scoredRow && scoredRow.token_relevance ? scoredRow.token_relevance : null,
+      token_tier: scoredRow && scoredRow.token_tier != null ? scoredRow.token_tier : null,
+      near_dup_demoted: Boolean(scoredRow && scoredRow.near_dup_demoted),
+      // Same includeTitleBrand surface as the scorer so operator diagnostics agree
+      // with what serving actually credited.
+      concept_match: recallHit
+        ? countBeautyActiveConceptMatches(queryText, recallHit, {
+            includeTitleBrand: PIVOT_BEAUTY_TOKEN_RELEVANCE_RANK_ENABLED,
+          })
+        : null,
       display_rank: balancedIdx >= 0 ? balancedIdx + 1 : null,
       total_ranked: balancedProducts.length,
       in_visible_page: balancedIdx >= 0 && balancedIdx >= safeOffset && balancedIdx < safeOffset + safeLimit,
@@ -48927,6 +49174,11 @@ module.exports._debug = {
   extractBeautyQueryActiveConcepts,
   countBeautyActiveConceptMatches,
   buildBeautyActivesText,
+  scoreBeautyQueryTokenRelevance,
+  stripBeautyTitleAnnotationSuffix,
+  collapseNearDuplicateScoredBeautyProducts,
+  buildBeautyExternalSeedRecallPatterns,
+  queryBeautyExternalSeedRowsFast,
   mainlineProductMatchesId,
   diagnosePromptInspect,
   buildBeautyIngredientSourceText,
