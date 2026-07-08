@@ -112,6 +112,19 @@ test('offerToSignal maps + seller_trust null', () => {
   assert.equal(s.visibility, 'buyer_safe');
 });
 
+test('offerToSignal surfaces attributed affiliate_url + purchase_route; absent → null', () => {
+  const attributed = 'https://api.pivota.cc/r?token=eyJ2IjowfQ==.c2ln';
+  const s = offerToSignal(
+    sampleOffer({ affiliate_url: attributed, purchase_route: 'affiliate_outbound' }),
+    { productId: 'p1' },
+  );
+  assert.equal(s.value.affiliate_url, attributed);
+  assert.equal(s.value.purchase_route, 'affiliate_outbound');
+  const bare = offerToSignal(sampleOffer(), { productId: 'p1' });
+  assert.equal(bare.value.affiliate_url, null);
+  assert.equal(bare.value.purchase_route, null);
+});
+
 test('offersToSignals: best = primary then lowest price', () => {
   const offers = [
     sampleOffer({ merchant_id: 'm1', price: 30 }),

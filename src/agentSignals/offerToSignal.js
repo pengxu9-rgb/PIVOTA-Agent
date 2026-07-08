@@ -27,6 +27,11 @@ function offerToSignal(offer, { productId = null } = {}) {
       availability: offer.availability || null,
       is_primary: offer.is_primary === true,
       url: offer.url || null,
+      // Attributed-redirect lane: backend offers.resolve stamps a signed /r attribution link on external
+      // (affiliate_outbound) offers as `affiliate_url`. Surface it — the shared sanitizer preserves it
+      // verbatim (shape-gated) so agents can send buyers through the attributed hop.
+      affiliate_url: nonEmptyString(offer.affiliate_url) ? offer.affiliate_url : null,
+      purchase_route: nonEmptyString(offer.purchase_route) ? offer.purchase_route : null,
     },
     evidence: {
       grade: null,

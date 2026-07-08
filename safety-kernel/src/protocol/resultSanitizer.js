@@ -32,6 +32,15 @@ const HANDOFF_KEYS = new Set([
 ]);
 const isIdKey = (c) => c === 'id' || c.endsWith('id');
 const URL_SECRET_RE = /([?&](?:client_secret|token|access_token|id_token|refresh_token|api_key|apikey|key|password|secret|sig|signature|code)=)[^&#\s]+/gi;
+// Attributed outbound links (redirect-commission lane): pivota-backend stamps signed first-party redirect URLs
+// (`https://<host>/r?token=<payload_b64url>.<sig_b64url>`) onto product/offer payloads under these keys. The
+// token is a PUBLIC signed click-attribution grant (HMAC over market/tool/dest/ctx), not a credential — and it
+// MUST survive verbatim: URL_SECRET_RE would redact `token=` and PAN_RE can false-positive on digit runs inside
+// the base64url payload; either one breaks the signature and kills attribution. Preservation is gated on BOTH
+// the key name AND the strict value shape, so an arbitrary URL (or a real secret) smuggled under these keys
+// still goes through the normal scrub.
+const ATTRIBUTED_LINK_KEYS = new Set(['externalredirecturl', 'affiliateurl', 'merchantcheckouturl']);
+const ATTRIBUTED_LINK_RE = /^https:\/\/[A-Za-z0-9.-]+(?::\d{1,5})?\/r\?token=[A-Za-z0-9_=-]+\.[A-Za-z0-9_=-]+$/;
 // STRICT = unambiguous secrets (never a legit id/sku) — scrubbed even in id fields. LOOSE adds sk-{32,}
 // (OpenAI-style), applied OUTSIDE id fields to avoid nuking a long "sk-…" SKU. Stripe publishable pk_ is
 // intentionally excluded (not a secret; collides with SKUs).
@@ -76,6 +85,9 @@ export function sanitizeResult(rootValue, { handoffAllowed = false, stripRanking
   const walk = (value, seen, depth, keyCanon) => {
     if (typeof value === 'string') {
       if (keyCanon && HANDOFF_KEYS.has(keyCanon) && handoffAllowed) return value; // legit payment handoff — verbatim
+      // Signed attribution link under an attributed-link key — verbatim regardless of handoffAllowed (these
+      // ride on DISCOVERY payloads: feed items, product detail, offers). Shape-gated; see ATTRIBUTED_LINK_RE.
+      if (keyCanon && ATTRIBUTED_LINK_KEYS.has(keyCanon) && ATTRIBUTED_LINK_RE.test(value)) return value;
       const out = value.replace(PAN_RE, '[REDACTED_PAN]');
       if (keyCanon && isIdKey(keyCanon)) return out.replace(STRICT_SECRET_RE, '[REDACTED_SECRET]'); // keep SKUs, kill real secrets
       return out.replace(LOOSE_SECRET_RE, '[REDACTED_SECRET]').replace(URL_SECRET_RE, '$1[REDACTED]');
