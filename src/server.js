@@ -29273,12 +29273,18 @@ async function getCommerceAcpRestAdapter() {
         const raw = await invokeCommerceKernelRawUpstream('find_products', query || {});
         return Array.isArray(raw?.products) ? raw.products : (Array.isArray(raw) ? raw : []);
       };
+      // Attributed-redirect lane D1: feed `link` = Pivota canonical PDP; the signed /r attribution link
+      // rides as `external_redirect_url`. Mapper is a pure module so the projection is unit-tested
+      // (tests/acp_feed_item.node.test.cjs); sanitizer preservation is shape-gated in resultSanitizer.
+      const { buildAcpFeedItem } = require('./acpFeedItem');
+      const mapFeedItem = (p) => buildAcpFeedItem(p, { buildPublicProductUrl });
       return createAcpRestAdapter({
         executor,
         sessionStore,
         signingSecret: acpSigningSecret,
         resolveUserRef,
         getProducts,
+        mapFeedItem,
         publicFeed: false,
       });
     })();

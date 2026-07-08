@@ -9,6 +9,8 @@ const { buildWhyThis } = require('./copy/whyThis');
 const INFRA_API_BASE = (process.env.PIVOTA_API_BASE || 'http://localhost:8080').replace(/\/$/, '');
 const OUTBOUND_LINKS_TOOL = String(process.env.OUTBOUND_LINKS_TOOL || 'look_replicator');
 const OUTBOUND_LINKS_ENABLED = process.env.NODE_ENV === 'production' || String(process.env.LAYER3_OUTBOUND_LINKS || '') === '1';
+// Shared service key for backend /api/links/resolve (attributed-redirect lane P1; warn-only until backend enforcement flips).
+const OUTBOUND_LINKS_SERVICE_KEY = String(process.env.OUTBOUND_LINKS_SERVICE_KEY || '').trim();
 const EXTERNAL_OFFERS_ENABLED = process.env.NODE_ENV === 'production' || String(process.env.LAYER3_EXTERNAL_OFFERS || '') === '1';
 
 function engineVersionFor(market) {
@@ -167,7 +169,7 @@ async function applyOutboundLinkAndExternalOffer({ market, area, kind, product, 
             ...(jobId ? { jobId } : {}),
           },
         },
-        { timeout: 5000 },
+        { timeout: 5000, headers: OUTBOUND_LINKS_SERVICE_KEY ? { 'X-Links-Service-Key': OUTBOUND_LINKS_SERVICE_KEY } : undefined },
       );
       if (res?.data?.matched) {
         resolved = res.data.resolved ?? null;

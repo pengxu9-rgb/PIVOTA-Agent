@@ -90,3 +90,49 @@ test('real cycle IS still flagged [Circular] (object and array back-references)'
   assert.equal(out.node.self, '[Circular]');
   assert.equal(out.arr[0], '[Circular]');
 });
+
+// ---- attributed redirect links (redirect-commission lane) ---------------------------------------------------
+
+// A realistic signed redirect: base64url payload with a 16-digit run (PAN_RE bait) + base64url HMAC sig.
+const ATTRIBUTED = 'https://api.pivota.cc/r?token=eyJ2IjowLCJ0Ijoi1234567890123456abc_-w==.9f8E7dC6bA5_-4321abcdEFGHijkl==';
+
+test('attributed link keys preserve a signed /r?token= URL verbatim (feed/discovery, handoff NOT allowed)', () => {
+  const out = sanitizeResult(
+    {
+      products: [{
+        product_id: 'p1', title: 'Serum',
+        external_redirect_url: ATTRIBUTED,
+        offers: [{ offer_id: 'o1', affiliate_url: ATTRIBUTED, purchase_route: 'affiliate_outbound' }],
+        merchant_checkout_url: ATTRIBUTED,
+      }],
+    },
+    { handoffAllowed: false },
+  );
+  const p = out.products[0];
+  assert.equal(p.external_redirect_url, ATTRIBUTED, 'external_redirect_url must survive byte-for-byte');
+  assert.equal(p.offers[0].affiliate_url, ATTRIBUTED, 'affiliate_url must survive byte-for-byte');
+  assert.equal(p.merchant_checkout_url, ATTRIBUTED, 'merchant_checkout_url must survive byte-for-byte');
+});
+
+test('attributed-link preservation is shape-gated: non-/r URLs and secrets under those keys still scrubbed', () => {
+  const out = sanitizeResult({
+    // token param on an arbitrary URL under the attributed key → still redacted (shape mismatch)
+    external_redirect_url: 'https://evil.example/steal?token=abc.def',
+    // path is not /r → still redacted
+    affiliate_url: 'https://api.pivota.cc/other?token=abc.def',
+    // http (not https) → still redacted
+    merchant_checkout_url: 'http://api.pivota.cc/r?token=abc.def',
+    // real secret under an attributed key → still killed
+    also_bad: { affiliate_url: 'Bearer abcdefghijklmnop1234' },
+  });
+  assert.match(out.external_redirect_url, /token=\[REDACTED\]/);
+  assert.match(out.affiliate_url, /token=\[REDACTED\]/);
+  assert.match(out.merchant_checkout_url, /token=\[REDACTED\]/);
+  assert.match(out.also_bad.affiliate_url, /\[REDACTED_SECRET\]/);
+});
+
+test('no regression: ?token= on ordinary URL keys is still scrubbed everywhere', () => {
+  const out = sanitizeResult({ url: 'https://api.pivota.cc/r?token=abc.def', link: 'https://x.example/?token=zzz' });
+  assert.match(out.url, /token=\[REDACTED\]/, 'plain url key gets no attributed-link exemption');
+  assert.match(out.link, /token=\[REDACTED\]/);
+});
