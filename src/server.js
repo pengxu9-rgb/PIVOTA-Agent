@@ -20114,6 +20114,81 @@ function scoreBeautyQueryTokenRelevance({ product, queryTokens } = {}) {
   return { matched, count: matched.length, bonus, all_tokens: allTokens, phrase };
 }
 
+// Relevance-order + near-dup-collapse a plain product array for the
+// ingredient-recall-direct lane (which recalls + filters but never ranks). Pure:
+// takes explicit flag booleans (not env) so it is unit-testable. Preserves the
+// full set — reorders and demotes near-dups below distinct rows, never drops —
+// so callers' `total`/pagination are unchanged. Both flags off ⇒ returns the
+// input array reference unchanged (byte-identical prior behavior).
+function reorderBeautyIngredientDirectProducts(
+  products,
+  { queryText = '', tokenRelevanceEnabled = false, nearDupCollapseEnabled = false } = {},
+) {
+  const input = Array.isArray(products) ? products : [];
+  if ((!tokenRelevanceEnabled && !nearDupCollapseEnabled) || input.length < 2) {
+    return { products: input, token_relevance_applied: false, near_dup_collapsed_count: 0 };
+  }
+  let rows = input.map((product, idx) => ({ product, __recall_idx: idx }));
+  let tokenRelevanceApplied = false;
+  if (tokenRelevanceEnabled) {
+    const queryTokens = Array.from(
+      new Set(tokenizeSearchTextForMatch(normalizeSearchTextForMatch(queryText))),
+    );
+    rows = rows.map((row) => {
+      const tokenRelevance = scoreBeautyQueryTokenRelevance({ product: row.product, queryTokens });
+      const activeMatch = countBeautyActiveConceptMatches(queryText, row.product, {
+        includeTitleBrand: true,
+      });
+      const relevanceScore =
+        (tokenRelevance.bonus || 0) +
+        Math.min(BEAUTY_ACTIVE_AWARE_RANK_MAX_CONCEPTS, activeMatch.count || 0) *
+          BEAUTY_ACTIVE_AWARE_RANK_WEIGHT;
+      // A row matching neither a query token nor a query-named active is demoted
+      // below every row that matches something. A proven ingredient (via INCI)
+      // counts, so rows recalled by ingredient evidence are never demoted.
+      const tokenTier = tokenRelevance.count > 0 || (activeMatch.count || 0) > 0 ? 1 : 0;
+      // A title carrying a stripped annotation (e.g. "(Copy_T1)") is a worse
+      // representative than the clean original when scores tie — so near-dup
+      // collapse (which keeps the first-seen per key) surfaces the clean row.
+      const rawTitle =
+        firstNonEmptyString(
+          row.product?.title,
+          row.product?.name,
+          row.product?.product_name,
+          row.product?.display_name,
+        ) || '';
+      const isAnnotatedTitle = stripBeautyTitleAnnotationSuffix(rawTitle) !== rawTitle;
+      return { ...row, relevance_score: relevanceScore, token_tier: tokenTier, __annotated: isAnnotatedTitle };
+    });
+    // Stable reorder: tier, then relevance score, then clean-title-first (so the
+    // near-dup representative is the un-annotated original), then recall order.
+    rows.sort((left, right) => {
+      if ((left.token_tier ?? 1) !== (right.token_tier ?? 1)) {
+        return (right.token_tier ?? 1) - (left.token_tier ?? 1);
+      }
+      if ((right.relevance_score || 0) !== (left.relevance_score || 0)) {
+        return (right.relevance_score || 0) - (left.relevance_score || 0);
+      }
+      if (Boolean(left.__annotated) !== Boolean(right.__annotated)) {
+        return left.__annotated ? 1 : -1;
+      }
+      return left.__recall_idx - right.__recall_idx;
+    });
+    tokenRelevanceApplied = true;
+  }
+  let nearDupCollapsedCount = 0;
+  if (nearDupCollapseEnabled) {
+    const collapsed = collapseNearDuplicateScoredBeautyProducts(rows);
+    rows = collapsed.rows;
+    nearDupCollapsedCount = collapsed.collapsed_count;
+  }
+  return {
+    products: rows.map((row) => row.product),
+    token_relevance_applied: tokenRelevanceApplied,
+    near_dup_collapsed_count: nearDupCollapsedCount,
+  };
+}
+
 // WS1 actives authoring (docs/find_products_multi_phase2_scope.md): ingredient
 // SOURCE text — primary ingredient evidence only (INCI / active ingredients / raw
 // ingredient text), deliberately EXCLUDING any already-authored derived.recall
@@ -42738,7 +42813,23 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         const filteredDirectProducts = safetyFilter.applied
           ? safetyFilter.products
           : directBudgetFilter.products;
-        const pagedDirectProducts = filteredDirectProducts.slice(safeOffset, safeOffset + safeLimit);
+        // The ingredient-direct lane recalls + filters but — unlike the mainline
+        // lane — does NOT relevance-rank or dedupe, so products keep raw recall
+        // order: generic-title rows can sit above literal ingredient matches and
+        // near-identical rows (e.g. test copies "…(Copy_T1)".."(Copy_T7)") cluster
+        // near the top. Reuse the mainline's token-relevance ordering + near-dup
+        // collapse, gated by the shared Phase-2 flags. Both preserve the full set
+        // (reorder / demote below distinct, never drop) so `total` + pagination
+        // stay stable; flags off ⇒ byte-identical to prior behavior.
+        const ingredientDirectReorder = reorderBeautyIngredientDirectProducts(filteredDirectProducts, {
+          queryText: rawUserQuery || queryText || '',
+          tokenRelevanceEnabled: PIVOT_BEAUTY_TOKEN_RELEVANCE_RANK_ENABLED,
+          nearDupCollapseEnabled: PIVOT_BEAUTY_NEAR_DUP_COLLAPSE_ENABLED,
+        });
+        const orderedDirectProducts = ingredientDirectReorder.products;
+        const ingredientDirectTokenRelevanceApplied = ingredientDirectReorder.token_relevance_applied;
+        const ingredientDirectNearDupCollapsedCount = ingredientDirectReorder.near_dup_collapsed_count;
+        const pagedDirectProducts = orderedDirectProducts.slice(safeOffset, safeOffset + safeLimit);
         const directBudgetFxMetadata = directBudgetFilter.resolution?.metadata || null;
         const baseMetadata = {
           ...buildIngredientIntentDirectBaseMetadata({
@@ -42762,6 +42853,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           ingredient_direct_budget_filter_applied: Boolean(directBudgetFxMetadata),
           ingredient_direct_budget_filtered_out_count: directBudgetFilter.filteredOut,
           ingredient_direct_budget_currency_filtered_out_count: directBudgetFilter.currencyFilteredOut || 0,
+          ingredient_direct_token_relevance_applied: ingredientDirectTokenRelevanceApplied,
+          ingredient_direct_near_dup_collapsed_count: ingredientDirectNearDupCollapsedCount,
           ...canonicalIngredientTelemetry,
           route_health: {
             primary_path_used: 'ingredient_recall_direct',
@@ -49175,6 +49268,7 @@ module.exports._debug = {
   countBeautyActiveConceptMatches,
   buildBeautyActivesText,
   scoreBeautyQueryTokenRelevance,
+  reorderBeautyIngredientDirectProducts,
   stripBeautyTitleAnnotationSuffix,
   collapseNearDuplicateScoredBeautyProducts,
   buildBeautyExternalSeedRecallPatterns,
