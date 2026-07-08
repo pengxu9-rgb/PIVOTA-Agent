@@ -11574,6 +11574,59 @@ function appendCitableSupplementItems(responseBody, items) {
   return responseBody;
 }
 
+// Op-level refinement for find_products_multi BEAUTY responses, applied AFTER the
+// citable supplement is appended. The lane-level rank/collapse (PR #1738/#1739)
+// runs BEFORE the supplement, so citable items — which carry distinct
+// content_keys and so pass appendCitableSupplementItems' exact-key dedupe — can
+// re-introduce near-identical titles the lane already collapsed (e.g. "(Copy_Tn)"
+// test copies), and a small-distinct-set lane's demoted dupes can leak into the
+// page. This is the single place that sees the fully merged list.
+//   - Near-dup collapse runs for EVERY beauty lane (idempotent where the lane
+//     already collapsed; catches citable-supplement dupes). Demotes to tail,
+//     never drops → total/pagination stay stable.
+//   - Token-relevance reorder runs ONLY for the ingredient-recall-direct lane
+//     (which has no scorer of its own). The mainline lane keeps its richer
+//     in-lane ranking (brand/category/active weights) untouched — re-sorting it
+//     by token relevance alone would be a regression.
+// Best-effort + flag-gated; never breaks recall transport.
+function refineBeautyFindProductsMultiResponseBody(responseBody, queryText = '') {
+  try {
+    if (!PIVOT_BEAUTY_NEAR_DUP_COLLAPSE_ENABLED && !PIVOT_BEAUTY_TOKEN_RELEVANCE_RANK_ENABLED) {
+      return responseBody;
+    }
+    if (!responseBody || typeof responseBody !== 'object') return responseBody;
+    const querySource = String(responseBody.metadata?.query_source || '');
+    if (!/beauty|ingredient_recall/i.test(querySource)) return responseBody;
+    const container = Array.isArray(responseBody.products)
+      ? responseBody
+      : responseBody.data && Array.isArray(responseBody.data.products)
+        ? responseBody.data
+        : null;
+    if (!container || container.products.length < 2) return responseBody;
+    const isIngredientDirect = /ingredient_recall_direct/i.test(querySource);
+    const result = reorderBeautyIngredientDirectProducts(container.products, {
+      queryText,
+      // Reorder only the scorer-less ingredient-direct lane; collapse everywhere.
+      tokenRelevanceEnabled: isIngredientDirect && PIVOT_BEAUTY_TOKEN_RELEVANCE_RANK_ENABLED,
+      nearDupCollapseEnabled: PIVOT_BEAUTY_NEAR_DUP_COLLAPSE_ENABLED,
+    });
+    if (result.near_dup_collapsed_count > 0 || result.token_relevance_applied) {
+      container.products = result.products;
+      if (responseBody.metadata && typeof responseBody.metadata === 'object') {
+        if (result.near_dup_collapsed_count > 0) {
+          responseBody.metadata.op_level_near_dup_collapsed_count = result.near_dup_collapsed_count;
+        }
+        if (result.token_relevance_applied) {
+          responseBody.metadata.op_level_token_relevance_applied = true;
+        }
+      }
+    }
+  } catch (_) {
+    // best-effort: refinement must never break recall transport
+  }
+  return responseBody;
+}
+
 function projectFindProductsMultiTransportResponse(responseBody, { operation = null } = {}) {
   if (
     String(operation || '').trim() !== 'find_products_multi' ||
@@ -37964,6 +38017,13 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     }
     finalBody = maybeAttachInvokeBeautyExpertProjection(finalBody);
     finalBody = appendCitableSupplementItems(finalBody, citableSupplementItems);
+    // Final near-dup collapse (+ ingredient-direct reorder) on the fully merged
+    // list, so citable-supplement items can't re-introduce near-identical titles
+    // the lane already collapsed. See refineBeautyFindProductsMultiResponseBody.
+    finalBody = refineBeautyFindProductsMultiResponseBody(
+      finalBody,
+      String(req?.body?.payload?.search?.query || req?.body?.payload?.query || '').trim(),
+    );
     // Stamp the count even when 0 items were appended, so the metadata
     // distinguishes "supplement ran, nothing to add" (0) from "this response
     // path bypassed the wrapper entirely" (field absent).
@@ -49269,6 +49329,7 @@ module.exports._debug = {
   buildBeautyActivesText,
   scoreBeautyQueryTokenRelevance,
   reorderBeautyIngredientDirectProducts,
+  refineBeautyFindProductsMultiResponseBody,
   stripBeautyTitleAnnotationSuffix,
   collapseNearDuplicateScoredBeautyProducts,
   buildBeautyExternalSeedRecallPatterns,
