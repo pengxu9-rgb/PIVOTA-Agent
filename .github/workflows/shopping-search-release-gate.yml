@@ -64,6 +64,7 @@ on:
       - "tests/shopping_agent_strict_find_products_multi.test.js"
       - "tests/find_products_multi_token_relevance_rank.test.js"
       - "tests/find_products_multi_near_dup_collapse.test.js"
+      - "tests/find_products_multi_ingredient_direct_reorder.test.js"
       - "tests/find_products_multi_active_aware_recall_patterns.test.js"
       - "tests/find_products_multi_active_aware_rank.test.js"
       - "tests/services/ingredient_product_recall.test.js"
@@ -139,6 +140,7 @@ on:
       - "tests/shopping_agent_strict_find_products_multi.test.js"
       - "tests/find_products_multi_token_relevance_rank.test.js"
       - "tests/find_products_multi_near_dup_collapse.test.js"
+      - "tests/find_products_multi_ingredient_direct_reorder.test.js"
       - "tests/find_products_multi_active_aware_recall_patterns.test.js"
       - "tests/find_products_multi_active_aware_rank.test.js"
       - "tests/services/ingredient_product_recall.test.js"
@@ -231,6 +233,7 @@ jobs:
             tests/find_products_multi_policy.test.js \
             tests/find_products_multi_token_relevance_rank.test.js \
             tests/find_products_multi_near_dup_collapse.test.js \
+            tests/find_products_multi_ingredient_direct_reorder.test.js \
             tests/find_products_multi_active_aware_recall_patterns.test.js \
             tests/find_products_multi_active_aware_rank.test.js \
             tests/discovery_feed_service.test.js \
