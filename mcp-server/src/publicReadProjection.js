@@ -218,10 +218,13 @@ function projectSearchCatalog(raw, { base = DEFAULT_PDP_BASE, limit } = {}) {
     .slice(0, cap);
   const total = finiteNum(r.total);
   // `products` is always present (even []) for a stable shape; optional scalars are omitted when absent.
+  // page_size is the effective REQUESTED page size (the cap applied), not the count on this page — so
+  // clients paginating by total/page_size aren't skewed by a short final page. `returned` gives the count.
   return {
     products,
     page: finiteNum(r.page) || 1,
-    page_size: products.length,
+    page_size: cap,
+    returned: products.length,
     ...(total != null ? { total } : {}),
     ...(products.length === 0 ? { note: 'No products matched this search.' } : {}),
   };

@@ -29004,9 +29004,27 @@ function getPublicReadMcpLimiter() {
   return publicReadMcpLimiter;
 }
 
+// Rate-limit key = the real client IP. The LEFT-most X-Forwarded-For entry is client-supplied and spoofable
+// (an attacker rotating it would land every request in a fresh bucket and defeat the limit), so we take the
+// entry appended by our own trusted edge: the Nth-from-the-right, where N = trusted proxy hops in front of
+// this service (Railway = 1). Configurable via PUBLIC_READ_TRUSTED_PROXIES. Falls back to the socket peer.
+function publicReadTrustedProxyHops() {
+  const n = Number(process.env.PUBLIC_READ_TRUSTED_PROXIES);
+  return Number.isInteger(n) && n >= 1 ? n : 1;
+}
+
 function publicReadMcpClientKey(req) {
-  const forwarded = String(req?.headers?.['x-forwarded-for'] || '').split(',')[0].trim();
-  return forwarded || req?.ip || req?.socket?.remoteAddress || 'unknown';
+  const parts = String(req?.headers?.['x-forwarded-for'] || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (parts.length) {
+    // Nth-from-the-right (the hop our trusted edge saw as the client); clamp so a short chain still yields
+    // the left-most real value rather than undefined.
+    const idx = Math.max(0, parts.length - publicReadTrustedProxyHops());
+    return parts[idx];
+  }
+  return req?.socket?.remoteAddress || req?.ip || 'unknown';
 }
 
 const PUBLIC_READ_MCP_MAX_BODY_BYTES = 32 * 1024;
@@ -32682,6 +32700,38 @@ app.use((req, res, next) => {
 });
 
 registerCommercePaymentWebhookRoute();
+
+// Early hard body-size cap for the PUBLIC (auth:none) MCP paths. Registered BEFORE the global 10MB JSON
+// parser so an unauthenticated caller cannot force a large parse — including a CHUNKED request with no
+// Content-Length (which the route's own header check can't catch). 32KB is ample for a JSON-RPC read call.
+app.use((req, res, next) => {
+  if (req.method !== 'POST') return next();
+  const p = req.path;
+  const isPublicPath =
+    p === '/public/mcp' ||
+    (p === '/mcp' && isPublicReadMcpEnabled() && isPublicReadMcpHostRequest(req));
+  if (!isPublicPath) return next();
+  const cap = PUBLIC_READ_MCP_MAX_BODY_BYTES;
+  const cl = Number(req.headers['content-length']);
+  if (Number.isFinite(cl) && cl > cap) {
+    return res.status(413).json({ error: 'payload_too_large' });
+  }
+  // Chunked / no-Content-Length: count bytes off the stream and abort past the cap before the JSON parser
+  // downstream can buffer 10MB. Both this listener and express.json read the same stream; destroying the
+  // request here makes the parser fail closed rather than complete a large parse.
+  let bytes = 0;
+  let tripped = false;
+  req.on('data', (chunk) => {
+    if (tripped) return;
+    bytes += chunk.length;
+    if (bytes > cap) {
+      tripped = true;
+      if (!res.headersSent) res.status(413).json({ error: 'payload_too_large' });
+      req.destroy();
+    }
+  });
+  return next();
+});
 
 // Body parser with error handling
 app.use(express.json({
