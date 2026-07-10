@@ -28485,6 +28485,35 @@ function buildCommerceKernelDb() {
   return null;
 }
 
+// Map a get_pdp_v2 response (modules[canonical].data.pdp_payload.product) back to the { product } contract
+// get_product_detail callers expect. Flattens brand {name} → string and price {current:{amount,currency}} →
+// price/currency scalars; every other field passes through (the adapters' sanitizer/projection handle it).
+function normalizePdpV2ToProductDetail(body) {
+  try {
+    const modules = Array.isArray(body?.modules) ? body.modules : [];
+    const canonical = modules.find((m) => m && typeof m === 'object' && m.type === 'canonical');
+    const p = canonical?.data?.pdp_payload?.product;
+    if (!p || typeof p !== 'object') return { product: null };
+    const current = p.price && typeof p.price === 'object' && p.price.current && typeof p.price.current === 'object'
+      ? p.price.current
+      : null;
+    const availability = typeof p.availability === 'string' ? p.availability.toLowerCase() : '';
+    return {
+      product: {
+        ...p,
+        brand: p.brand && typeof p.brand === 'object' ? (p.brand.name || null) : (p.brand ?? null),
+        price: current ? current.amount : typeof p.price === 'number' ? p.price : null,
+        currency: current ? current.currency : (typeof p.currency === 'string' ? p.currency : null),
+        in_stock: availability
+          ? /in.?stock|available/.test(availability)
+          : typeof p.in_stock === 'boolean' ? p.in_stock : undefined,
+      },
+    };
+  } catch {
+    return { product: null };
+  }
+}
+
 // Base URL for calling THIS service's own invoke pipeline over loopback (multi-merchant discovery reads).
 // Overridable for environments where loopback isn't routable (SELF_INVOKE_BASE).
 function selfInvokeBase() {
@@ -28504,8 +28533,28 @@ async function invokeCommerceKernelRawUpstream(operation, payload, headers = {})
   const checkoutToken = firstNonEmptyString(invokeContext?.checkout_token);
   let url = `${PIVOTA_API_BASE}/agent/shop/v1/invoke`;
   let requestBody = { operation: op, payload };
+  let pdpV2Detail = false;
 
   switch (op) {
+    case 'get_product_detail': {
+      // Bare-sig / canonical detail (no merchant_id — the public tier's lookups) is NOT resolvable by the
+      // Python per-merchant catalog (observed live: MERCHANT_UNAVAILABLE). It IS served by this gateway's
+      // own get_pdp_v2 — the same sig-detail lane the public PDP renders from — so unscoped detail routes
+      // there and the canonical module is normalized back to the { product } contract below.
+      // Merchant-scoped detail keeps the Python backend unchanged (commerce in-store flows).
+      const prod = isPlainObject(payload?.product) ? payload.product : {};
+      const merchantScoped = typeof prod.merchant_id === 'string' && prod.merchant_id.trim() !== '';
+      const pid = typeof prod.product_id === 'string' ? prod.product_id.trim() : '';
+      if (!merchantScoped && pid) {
+        pdpV2Detail = true;
+        url = `${selfInvokeBase()}/agent/shop/v1/invoke`;
+        requestBody = {
+          operation: 'get_pdp_v2',
+          payload: { product_ref: { product_id: pid }, include: ['product_overview'] },
+        };
+      }
+      break;
+    }
     case 'find_products_multi': {
       // Multi-merchant discovery is served by THIS gateway's own invoke pipeline (the mainline search
       // stack — the exact lane the public REST gateway proxies to), NOT the Python kernel backend, which
@@ -28672,7 +28721,9 @@ async function invokeCommerceKernelRawUpstream(operation, payload, headers = {})
       ? normalizePreviewQuoteCompat(body)
       : op === 'create_order'
         ? normalizeCreateOrderCompat(body)
-        : body;
+        : pdpV2Detail
+          ? normalizePdpV2ToProductDetail(body)
+          : body;
   if (
     normalizedBody &&
     normalizedBody.ok === true &&
