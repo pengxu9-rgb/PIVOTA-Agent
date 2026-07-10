@@ -4,10 +4,11 @@ import assert from "node:assert/strict";
 import { createPublicReadToolSurface, PUBLIC_READ_TOOL_NAMES } from "../src/publicReadToolSurface.js";
 import { createRemoteMcpAdapter } from "../src/remoteMcpAdapter.js";
 
-function fakeExecutor(calls) {
+function fakeExecutor(calls, results = {}) {
   return {
     async execute(opId, params, ctx) {
       calls.push({ opId, params, ctx });
+      if (Object.prototype.hasOwnProperty.call(results, opId)) return results[opId];
       return { ok: true, op: opId };
     },
   };
@@ -58,13 +59,24 @@ test("tools outside the allowlist do not exist on the public surface", async () 
 
 test("read calls run anonymously and strip model-supplied identity", async () => {
   const calls = [];
-  const surface = createPublicReadToolSurface(fakeExecutor(calls));
+  const surface = createPublicReadToolSurface(
+    fakeExecutor(calls, {
+      search_catalog: {
+        products: [
+          { pivota_signature_id: "sig_1", brand: "Round Lab", title: "Vita Serum", price: 26, currency: "USD", in_stock: true },
+        ],
+      },
+    })
+  );
   const result = await surface.callTool("search_catalog", {
     query: "niacinamide serum",
     user_ref: "model-supplied-identity",
     acp_session_id: "model-supplied-session",
   });
-  assert.deepEqual(result, { ok: true, op: "search_catalog" });
+  // Result is the slim projected shape, not the raw executor return.
+  assert.equal(result.products.length, 1);
+  assert.equal(result.products[0].product_id, "sig_1");
+  assert.deepEqual(result.products[0].price, { amount: 26, currency: "USD" });
   assert.equal(calls.length, 1);
   assert.equal(calls[0].opId, "search_catalog");
   assert.equal(calls[0].ctx.user_ref, undefined);
@@ -92,7 +104,11 @@ test("unauthenticated initialize negotiates the protocol version", async () => {
 
 test("unauthenticated tools/list and tools/call work; commerce tool call errors clean", async () => {
   const calls = [];
-  const adapter = publicAdapter(createPublicReadToolSurface(fakeExecutor(calls)));
+  const adapter = publicAdapter(
+    createPublicReadToolSurface(
+      fakeExecutor(calls, { get_product: { product: { pivota_signature_id: "sig_p1", title: "A Serum" } } })
+    )
+  );
 
   const list = await adapter.handleJsonRpc({ body: { jsonrpc: "2.0", id: 3, method: "tools/list" } });
   assert.equal(list.status, 200);
@@ -106,12 +122,15 @@ test("unauthenticated tools/list and tools/call work; commerce tool call errors 
       jsonrpc: "2.0",
       id: 4,
       method: "tools/call",
-      params: { name: "get_product", arguments: { merchant_id: "m1", product_id: "p1" } },
+      params: { name: "get_product", arguments: { product_id: "sig_p1" } },
     },
   });
   assert.equal(call.status, 200);
   assert.notEqual(call.body.result.isError, true);
-  assert.deepEqual(JSON.parse(call.body.result.content[0].text), { ok: true, op: "get_product" });
+  // Projected shape: a bare sig id resolves (no merchant_id required on the public surface).
+  const projected = JSON.parse(call.body.result.content[0].text);
+  assert.equal(projected.product_id, "sig_p1");
+  assert.ok(!("merchant_id" in projected));
 
   const refused = await adapter.handleJsonRpc({
     body: {
