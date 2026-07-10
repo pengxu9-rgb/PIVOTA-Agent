@@ -28,6 +28,14 @@ const MAX_OUTPUT_ITEMS = Math.min(
   50,
   Math.max(5, Number(process.env.FIND_PRODUCTS_MULTI_RERANK_LLM_MAX_OUTPUT || 20))
 );
+// Hard per-provider deadline. Without this the OpenAI SDK default applies
+// (600s + retries), which turns a slow rerank into a multi-minute
+// find_products_multi response; the rerank is an optional quality pass and
+// must fail open fast.
+const RERANK_LLM_TIMEOUT_MS = Math.min(
+  15_000,
+  Math.max(500, Number(process.env.PIVOTA_RERANK_LLM_TIMEOUT_MS || 2500) || 2500)
+);
 
 function isEnabled() {
   return resolveFindProductsLlmRuntime('rerank').enabled;
@@ -45,7 +53,12 @@ function getOpenAIClient() {
   const apiKey = resolveFindProductsOpenAiApiKey();
   if (!apiKey) throw new Error('OPENAI_API_KEY or LLM_API_KEY is not set');
   const baseURL = process.env.OPENAI_BASE_URL || undefined;
-  return new OpenAI({ apiKey, ...(baseURL ? { baseURL } : {}) });
+  return new OpenAI({
+    apiKey,
+    timeout: RERANK_LLM_TIMEOUT_MS,
+    maxRetries: 0,
+    ...(baseURL ? { baseURL } : {}),
+  });
 }
 
 function getProviderChain() {
@@ -255,7 +268,7 @@ async function callGemini({ prompt }) {
     generationConfig: { temperature: 0, topK: 1, topP: 0.1, maxOutputTokens: 1024 },
   };
 
-  const resp = await axios.post(url, body, { timeout: 12_000 });
+  const resp = await axios.post(url, body, { timeout: Math.min(12_000, RERANK_LLM_TIMEOUT_MS) });
   const text =
     resp?.data?.candidates?.[0]?.content?.parts?.map((p) => p.text || '').join('') ||
     resp?.data?.candidates?.[0]?.content?.parts?.[0]?.text ||
