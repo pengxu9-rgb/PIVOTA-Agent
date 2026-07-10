@@ -30,10 +30,11 @@ test('POST /public/mcp initialize works unauthenticated with AGENT_CHECKOUT_STRI
 
 test('POST /public/mcp tools/list returns exactly the four read tools', async () => {
   const resp = await supertest(app).post('/public/mcp').send(rpc('tools/list', undefined, 2)).expect(200);
-  assert.deepEqual(
-    resp.body.result.tools.map((t) => t.name).sort(),
-    [...PUBLIC_READ_TOOLS].sort()
-  );
+  const tools = resp.body.result.tools;
+  assert.deepEqual(tools.map((t) => t.name).sort(), [...PUBLIC_READ_TOOLS].sort());
+  // Input-collapse shipped: get_product resolves by the single public sig id, merchant_id not required.
+  const getProduct = tools.find((t) => t.name === 'get_product');
+  assert.deepEqual(getProduct.inputSchema.required, ['product_id']);
 });
 
 test('POST /mcp dispatches to the public tier for a public app host', async () => {
