@@ -28945,8 +28945,117 @@ async function getCommerceConfirmationActionHandler() {
   return commerceConfirmationActionHandlerPromise;
 }
 
+// ---- PUBLIC read-only MCP tier (auth:none) ----------------------------------------------------------------
+// The app-directory-facing read surface (OpenAI Apps SDK): the four discovery/intelligence read tools over
+// the SAME shared canonical executor as /mcp — one kernel, never a second. Anonymous by construction (empty
+// session context; user-scoped tools are not on the surface at all — see mcp-server/src/publicReadToolSurface).
+// Deliberately INDEPENDENT of AGENT_CHECKOUT_STRICT: the checkout kill-switch must never 404 the read app once
+// it is listed in a directory. Fail-closed: dark unless PUBLIC_READ_MCP_ENABLED is set. Served on
+// POST /public/mcp (any host — pre-DNS testing) and on POST /mcp when the request arrives via a public app
+// origin (PUBLIC_READ_MCP_HOSTS, default mcp.pivota.cc — a custom domain on this same service preserves the
+// path, so the branded origin must dispatch by Host).
+
+function isPublicReadMcpEnabled() {
+  return /^(1|true|yes|on|enabled)$/i.test(String(process.env.PUBLIC_READ_MCP_ENABLED || '').trim());
+}
+
+function publicReadMcpHosts() {
+  return String(process.env.PUBLIC_READ_MCP_HOSTS || 'mcp.pivota.cc')
+    .split(',')
+    .map((host) => host.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+function isPublicReadMcpHostRequest(req) {
+  const host = String(req?.headers?.host || '').trim().toLowerCase().split(':')[0];
+  return Boolean(host) && publicReadMcpHosts().includes(host);
+}
+
+let publicReadMcpAdapterPromise = null;
+async function getPublicReadMcpAdapter() {
+  if (!publicReadMcpAdapterPromise) {
+    publicReadMcpAdapterPromise = (async () => {
+      const executor = await getCommerceCanonicalExecutor();
+      const { createPublicReadToolSurface } = await import('../mcp-server/src/publicReadToolSurface.js');
+      const { createRemoteMcpAdapter } = await import('../mcp-server/src/remoteMcpAdapter.js');
+      const surface = createPublicReadToolSurface(executor, { log: logger });
+      return createRemoteMcpAdapter(surface, {
+        allowUnauthenticated: true,
+        serverInfo: { name: 'pivota', version: '1.0.0' },
+        supportedProtocolVersions: ['2025-03-26', '2025-06-18'],
+        resolveSessionContext: () => ({}),
+      });
+    })();
+  }
+  return publicReadMcpAdapterPromise;
+}
+
+let publicReadMcpLimiter = null;
+function getPublicReadMcpLimiter() {
+  if (!publicReadMcpLimiter) {
+    const { createTokenBucketLimiter } = require('./services/publicReadRateLimit');
+    const rpm = Number(process.env.PUBLIC_READ_MCP_RPM) > 0 ? Number(process.env.PUBLIC_READ_MCP_RPM) : 60;
+    const burst =
+      Number(process.env.PUBLIC_READ_MCP_BURST) > 0
+        ? Number(process.env.PUBLIC_READ_MCP_BURST)
+        : Math.max(10, Math.ceil(rpm / 3));
+    publicReadMcpLimiter = createTokenBucketLimiter({ capacity: burst, refillPerSecond: rpm / 60 });
+  }
+  return publicReadMcpLimiter;
+}
+
+function publicReadMcpClientKey(req) {
+  const forwarded = String(req?.headers?.['x-forwarded-for'] || '').split(',')[0].trim();
+  return forwarded || req?.ip || req?.socket?.remoteAddress || 'unknown';
+}
+
+const PUBLIC_READ_MCP_MAX_BODY_BYTES = 32 * 1024;
+
+async function handlePublicReadMcp(req, res) {
+  if (!isPublicReadMcpEnabled()) {
+    return res.status(404).json({ error: 'not_found' });
+  }
+  const contentLength = Number(req?.headers?.['content-length']);
+  if (Number.isFinite(contentLength) && contentLength > PUBLIC_READ_MCP_MAX_BODY_BYTES) {
+    return res.status(413).json({ error: 'payload_too_large' });
+  }
+  if (!getPublicReadMcpLimiter().allow(publicReadMcpClientKey(req))) {
+    res.setHeader('Retry-After', '10');
+    return res.status(429).json({ error: 'rate_limited', message: 'Too many requests; retry shortly.' });
+  }
+  // Explicit anonymous attribution context (same store the commerce door runs under) so downstream invoke
+  // reads see a labeled public-tier caller instead of an absent store.
+  return INVOKE_AUTH_CONTEXT.run(
+    { path: req?.path || null, surface: 'mcp_public', auth_mode: 'public_read', auth_source: 'public_read' },
+    async () => {
+      try {
+        const adapter = await getPublicReadMcpAdapter();
+        const out = await adapter.handleJsonRpc({ headers: req.headers || {}, body: req.body });
+        for (const [key, value] of Object.entries(out.headers || {})) {
+          res.setHeader(key, value);
+        }
+        if (out.body == null) return res.status(out.status).end();
+        return res.status(out.status).json(out.body);
+      } catch (err) {
+        logger.error({ err: err?.message || String(err) }, 'Public read MCP route failed');
+        return res.status(503).json({ error: 'mcp_unavailable' });
+      }
+    },
+  );
+}
+
+function registerPublicReadMcpRoute() {
+  app.post('/public/mcp', handlePublicReadMcp);
+}
+
 function registerCommerceRemoteMcpRoute() {
   app.post('/mcp', async (req, res) => {
+    // The branded public app origin (mcp.pivota.cc) maps to this same service and path, so /mcp dispatches
+    // those requests to the auth:none read tier BEFORE any commerce gating — the public app must never
+    // depend on the checkout kill-switch or the commerce auth channel.
+    if (isPublicReadMcpEnabled() && isPublicReadMcpHostRequest(req)) {
+      return handlePublicReadMcp(req, res);
+    }
     if (!isAgentCheckoutStrictEnabled()) {
       return res.status(404).json({ error: 'not_found' });
     }
@@ -48662,6 +48771,7 @@ function registerExternalInvokeRoute(path, clientChannel) {
 }
 
 registerCommerceRemoteMcpRoute();
+registerPublicReadMcpRoute();
 commerceMcpOAuth.registerMcpOAuthDiscoveryRoutes(app, { logger });
 registerCommerceConfirmationActionRoute();
 registerCommerceAcpRestRoutes();
