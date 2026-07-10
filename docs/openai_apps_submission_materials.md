@@ -31,10 +31,22 @@ Everything the OpenAI Platform Dashboard submission form asks for, drafted and r
 
 **Pre-submit server checklist:**
 - [ ] `PUBLIC_READ_MCP_ENABLED=1` and `PUBLIC_READ_MCP_HOSTS=mcp.pivota.cc` set on the service. **[USER]**
-- [ ] Intel flags ON so `get_intel` is not dark: `AURORA_BFF_PRODUCT_INTEL_AGENT_ENABLED`,
-      `AURORA_BFF_RELATIONSHIP_GRAPH_AGENT_ENABLED`, `AGENT_INTEL_PUBLIC_CLAIMS_ENABLED`. **[USER/VERIFY]**
+- Intel flags (prod service `PIVOTA-Agent`, **verified 2026-07-10**):
+  - [x] `AURORA_BFF_PRODUCT_INTEL_AGENT_ENABLED` = `true` (get_intel tool ON)
+  - [x] `AURORA_BFF_RELATIONSHIP_GRAPH_AGENT_ENABLED` = `1` (get_alternatives tool ON)
+  - [ ] **`AGENT_INTEL_PUBLIC_CLAIMS_ENABLED` — NOT SET → set to `1`.** This is the flag that surfaces the
+        cited claims (citation URLs + evidence grades) on `get_intel` — i.e. the app's whole "cited
+        intelligence" differentiator. Without it, `get_intel` returns why/best-for/evidence-profile but **no
+        citations**. Safe to enable: the same FTC-filtered claims are already served publicly on PDPs
+        (`PDP_PUBLIC_GROUNDED_CLAIMS_ENABLED` / `PDP_MERCHANT_EVIDENCE_CLAIMS_ENABLED` = `true`; a live PDP
+        renders grounded-claim PropertyValue nodes with citation URLs). **[USER]**
 - [ ] `mcp.pivota.cc/mcp` returns a valid `initialize` + `tools/list` (4 tools, annotations) anonymously.
 - [ ] MCP Inspector green on all 4 tools (part of PR-7 dark-launch verification).
+
+> **Naming note:** the `AURORA_BFF_`/`aurora_product_intel_kb` prefix is legacy — from when the beauty
+> decision system was codenamed "Aurora." It is NOT the dormant Aurora *chatbox* demo. This is the live
+> "Pivota Insights" product-intelligence data layer (maintained through 2026-06: PR #1703 cited claims,
+> #1688 dossier engine, #1664 alternatives), which is exactly the app's differentiator.
 
 ## 3. Test prompts + expected responses
 
