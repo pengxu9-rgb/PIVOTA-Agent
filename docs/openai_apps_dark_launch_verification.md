@@ -31,6 +31,12 @@ node scripts/verify_public_read_mcp.mjs \
   --base https://pivota-agent-production.up.railway.app --path /mcp --host mcp.pivota.cc
 ```
 
+**Latency gate (revised 2026-07-10 after live measurement):** the mainline multi-merchant search costs
+~8–15s per COLD query (sequential recall legs inside the gateway pipeline — a search-perf workstream
+tracked separately, not a public-tier defect). The public tier caches projected results (TTL 10min +
+stale-while-revalidate 60min), so the gate is: **warm/cached search < 1s (hard PASS required); cold search
+≤ 15s (WARN, acceptable for v1)**; all non-search tools < 3s.
+
 **Hard checks (must PASS):** `initialize` → serverInfo.name=pivota + negotiated protocol; `tools/list` = exactly
 the 4 read tools with `readOnlyHint:true`/`openWorldHint:false` and read-only descriptions; `get_product`
 required=`[product_id]`; `search_catalog` returns `structuredContent.products`, **no denylisted field / timestamp
