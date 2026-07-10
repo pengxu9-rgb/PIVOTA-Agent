@@ -134,3 +134,67 @@ export function createPublicReadToolSurface(executor, { log } = {}) {
 
   return { tools, callTool, isPublicReadTool };
 }
+
+// ---- MCP tool-result formatting (structuredContent + human summary) ---------------------------------------
+// docs/openai_apps_v1_plan.md §6 (v1): return the slim projected object as `structuredContent` (what the
+// model/app consumes) ALONGSIDE a short human-readable `content` text block. No custom widget / resources
+// in v1 — that's the fast-follow. The projected value is already slim + leak-free (PR-2), so it is safe to
+// surface verbatim as structuredContent.
+
+function pluralize(n, one, many) {
+  return `${n} ${n === 1 ? one : many}`;
+}
+
+// Build a concise, honest human summary from the already-projected value (never re-derives from raw).
+function summarizePublicReadValue(value, toolName) {
+  const v = value && typeof value === "object" ? value : {};
+  switch (toolName) {
+    case "search_catalog": {
+      const products = Array.isArray(v.products) ? v.products : [];
+      if (products.length === 0) return v.note || "No products matched this search.";
+      const names = products
+        .slice(0, 3)
+        .map((p) => [p.brand, p.title].filter(Boolean).join(" ").trim())
+        .filter(Boolean);
+      const lead = `Found ${pluralize(products.length, "product", "products")}`;
+      const tail = typeof v.total === "number" && v.total > products.length ? ` of ${v.total}` : "";
+      return names.length ? `${lead}${tail}: ${names.join("; ")}.` : `${lead}${tail}.`;
+    }
+    case "get_product": {
+      if (v.note && !v.product_id) return v.note;
+      const name = [v.brand, v.title].filter(Boolean).join(" ").trim() || "Product";
+      const price = v.price && typeof v.price.amount === "number"
+        ? ` — ${v.price.amount}${v.price.currency ? " " + v.price.currency : ""}`
+        : "";
+      const intel = v.decision ? " (reviewed intelligence available)" : "";
+      return `${name}${price}${intel}.`;
+    }
+    case "get_intel": {
+      if (!v.intel) return v.note || "No reviewed intelligence for this product yet.";
+      const grade = v.intel.grade ? `evidence grade ${v.intel.grade}` : "reviewed intelligence";
+      const claims = Array.isArray(v.intel.claims) ? v.intel.claims.length : 0;
+      return claims
+        ? `Pivota ${grade} with ${pluralize(claims, "cited claim", "cited claims")}.`
+        : `Pivota ${grade}.`;
+    }
+    case "get_alternatives": {
+      const alts = Array.isArray(v.alternatives) ? v.alternatives : [];
+      if (alts.length === 0) return v.note || "No reviewed alternatives for this product yet.";
+      return `Found ${pluralize(alts.length, "alternative", "alternatives")}.`;
+    }
+    default:
+      return "";
+  }
+}
+
+/**
+ * Format a public read tool's projected value as an MCP tool result: the projected object as
+ * `structuredContent` for the app/model, plus a short human-readable text `content` block.
+ */
+export function formatPublicReadToolResult(value, toolName) {
+  const summary = summarizePublicReadValue(value, toolName);
+  return {
+    content: [{ type: "text", text: summary || JSON.stringify(value) }],
+    structuredContent: value,
+  };
+}

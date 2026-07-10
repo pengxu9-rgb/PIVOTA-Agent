@@ -27,6 +27,9 @@ export function createRemoteMcpAdapter(surface, opts = {}) {
     serverInfo = { name: "pivota-commerce-mcp", version: "0.1.0" },
     protocolVersion = DEFAULT_PROTOCOL_VERSION,
     supportedProtocolVersions,
+    // Optional custom tool-result formatter: (value, toolName) => MCP tool result. Defaults to the commerce
+    // text-only wrapper; the public read tier supplies one that adds `structuredContent` + a human summary.
+    formatResult = toToolResult,
   } = opts;
   const supportedVersions =
     Array.isArray(supportedProtocolVersions) && supportedProtocolVersions.length > 0
@@ -74,7 +77,7 @@ export function createRemoteMcpAdapter(surface, opts = {}) {
           : defaultSessionContext(req, authResult);
         try {
           const value = await surface.callTool(params.name, params.arguments ?? {}, sessionContext ?? {});
-          return ok(id, toToolResult(value));
+          return ok(id, formatResult(value, params.name));
         } catch (error) {
           return ok(id, toToolError(error));
         }

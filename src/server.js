@@ -29351,7 +29351,7 @@ async function getPublicReadMcpAdapter() {
   if (!publicReadMcpAdapterPromise) {
     publicReadMcpAdapterPromise = (async () => {
       const executor = await getCommerceCanonicalExecutor();
-      const { createPublicReadToolSurface } = await import('../mcp-server/src/publicReadToolSurface.js');
+      const { createPublicReadToolSurface, formatPublicReadToolResult } = await import('../mcp-server/src/publicReadToolSurface.js');
       const { createRemoteMcpAdapter } = await import('../mcp-server/src/remoteMcpAdapter.js');
       const surface = createPublicReadToolSurface(executor, { log: logger });
       return createRemoteMcpAdapter(surface, {
@@ -29359,6 +29359,8 @@ async function getPublicReadMcpAdapter() {
         serverInfo: { name: 'pivota', version: '1.0.0' },
         supportedProtocolVersions: ['2025-03-26', '2025-06-18'],
         resolveSessionContext: () => ({}),
+        // Return structuredContent + a human summary for each read tool (docs/openai_apps_v1_plan.md §6).
+        formatResult: formatPublicReadToolResult,
       });
     })();
   }
