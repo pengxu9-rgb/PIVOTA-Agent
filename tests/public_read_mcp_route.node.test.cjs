@@ -35,6 +35,12 @@ test('POST /public/mcp tools/list returns exactly the four read tools', async ()
   // Input-collapse shipped: get_product resolves by the single public sig id, merchant_id not required.
   const getProduct = tools.find((t) => t.name === 'get_product');
   assert.deepEqual(getProduct.inputSchema.required, ['product_id']);
+  // Annotations flow through tools/list end-to-end (OpenAI's most-cited rejection cause).
+  for (const t of tools) {
+    assert.equal(t.annotations.readOnlyHint, true, `${t.name} readOnlyHint`);
+    assert.equal(t.annotations.openWorldHint, false, `${t.name} openWorldHint`);
+    assert.match(t.description, /read-only\.?$/i);
+  }
 });
 
 test('POST /mcp dispatches to the public tier for a public app host', async () => {

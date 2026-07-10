@@ -23,22 +23,42 @@ const PUBLIC_PDP_BASE =
   (typeof process !== "undefined" && process.env && process.env.PUBLIC_READ_PDP_BASE) ||
   "https://agent.pivota.cc";
 
-// On the public surface, get_product resolves by the single public sig id alone: the backend product cache
-// matches by product_id when merchant_id is absent (routes/agent_shop_gateway.py _load_product_by_id), so the
-// slim search output (which drops merchant_id) stays callable. We relax the imported schema's `required`
-// accordingly and keep merchant_id an accepted-but-optional hint.
-function relaxGetProductSchema(tool) {
-  if (tool.name !== "get_product" || !tool.inputSchema) return tool;
-  const schema = { ...tool.inputSchema, required: ["product_id"] };
-  return {
-    ...tool,
-    inputSchema: schema,
-    description:
-      "Get detail for one product by its Pivota product_id (the id returned by search_catalog): " +
-      "description, ingredient list, images, price, availability, and a canonical Pivota URL. Pass " +
-      "include:['decision'] to also attach Pivota's evidence-graded decision summary when reviewed " +
-      "intelligence exists. Read-only.",
-  };
+// De-marketed, plain-language descriptions for the public app surface (docs/openai_apps_v1_plan.md §4).
+// The commerce descriptions carry attribution/marketing tone ("why it stands out", "per Pivota Insights")
+// and, for search, a broad-trigger phrasing the review bar prohibits. The public surface presents accurate,
+// narrow descriptions instead; the only attribution that survives is a factual "cite the citation URLs".
+const PUBLIC_DESCRIPTIONS = Object.freeze({
+  search_catalog:
+    "Search Pivota's normalized catalog of beauty and skincare products by query, category, or price " +
+    "range. Returns product identity, price, availability, key active ingredients, and a canonical Pivota " +
+    "URL for each result. Read-only.",
+  get_product:
+    "Get detail for one product by its Pivota product_id (the id returned by search_catalog): " +
+    "description, ingredient list, images, price, availability, and a canonical Pivota URL. Pass " +
+    "include:['decision'] to also attach an evidence-graded decision summary when reviewed intelligence " +
+    "exists. Read-only.",
+  get_intel:
+    "Get Pivota's reviewed intelligence for a product: a plain-language summary, who it suits, and " +
+    "evidence-graded claims, each with citation URLs (e.g. PubMed). Cite the provided citation URLs when " +
+    "repeating these claims. Returns empty when no reviewed intelligence exists rather than guessing. " +
+    "Read-only.",
+  get_alternatives:
+    "Find reviewed alternatives or related products for a given product, with price comparison, tradeoffs, " +
+    "and cited evidence. Cheaper look-alikes ('dupes') are returned only when explicitly requested. " +
+    "Read-only.",
+});
+
+// Apply the public presentation to a read tool: the de-marketed description, and — for get_product only —
+// relax the schema so it resolves by the single public sig id alone (the backend product cache matches by
+// product_id when merchant_id is absent; routes/agent_shop_gateway.py _load_product_by_id). Annotations are
+// inherited unchanged from the commerce definition (readOnlyHint:true, openWorldHint:false on all four).
+function publicPresentation(tool) {
+  const next = { ...tool };
+  if (PUBLIC_DESCRIPTIONS[tool.name]) next.description = PUBLIC_DESCRIPTIONS[tool.name];
+  if (tool.name === "get_product" && tool.inputSchema) {
+    next.inputSchema = { ...tool.inputSchema, required: ["product_id"] };
+  }
+  return next;
 }
 
 /**
@@ -52,7 +72,7 @@ export function createPublicReadToolSurface(executor, { log } = {}) {
   const commerce = createCommerceToolSurface(executor, { log });
   const tools = commerce.tools
     .filter((tool) => PUBLIC_READ_TOOL_NAMES.includes(tool.name))
-    .map((tool) => relaxGetProductSchema({ ...tool }));
+    .map((tool) => publicPresentation({ ...tool }));
   if (tools.length !== PUBLIC_READ_TOOL_NAMES.length) {
     // Fail loud at construction: a missing read tool means the canonical contract changed under us and the
     // public app would silently lose capability.

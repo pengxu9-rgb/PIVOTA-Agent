@@ -421,11 +421,51 @@ const INPUT_SCHEMAS = Object.freeze({
   },
 });
 
+// MCP tool annotations (behavior hints). Correct annotations are OpenAI's most-cited rejection cause:
+// readOnlyHint (no external changes), destructiveHint (create/update/delete/post/send), openWorldHint
+// (interacts with external systems/accounts). We derive a base from the canonical op's `mutating` flag and
+// override the exceptions. NOTE: the MCP default for openWorldHint is TRUE when absent, so read tools MUST
+// set it explicitly false. `title` is a short human-readable label.
+const TOOL_TITLES = Object.freeze({
+  search_catalog: "Search products",
+  get_product: "Get product detail",
+  get_intel: "Get product intelligence",
+  get_alternatives: "Find alternatives",
+  get_offers: "Compare offers",
+  get_checkout_session: "Get checkout session",
+  get_order: "Track order",
+  create_checkout_session: "Start checkout",
+  update_checkout_session: "Update checkout",
+  complete_checkout_session: "Complete checkout and pay",
+  create_payment_link: "Create payment link",
+  cancel_checkout_session: "Cancel checkout",
+  request_after_sales: "Request after-sales",
+});
+// Per-op deviations from the mutating/read base.
+const ANNOTATION_OVERRIDES = Object.freeze({
+  get_order: { openWorldHint: true }, // reads an order's status from the merchant's system
+  create_checkout_session: { destructiveHint: false }, // additive: mints a quote, destroys nothing
+  update_checkout_session: { destructiveHint: false }, // additive re-quote
+  create_payment_link: { destructiveHint: false }, // mints a hosted payment page; charges nothing itself
+});
+
+function annotationsFor(op) {
+  const base = op.mutating
+    ? { readOnlyHint: false, destructiveHint: true, openWorldHint: true }
+    : { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false };
+  return Object.freeze({
+    title: TOOL_TITLES[op.id] || op.mcp,
+    ...base,
+    ...(ANNOTATION_OVERRIDES[op.id] || {}),
+  });
+}
+
 export const commerceToolDefinitions = Object.freeze(
   COMMERCE_OPERATIONS.map((op) => Object.freeze({
     name: op.mcp,
     description: describe(op),
     inputSchema: INPUT_SCHEMAS[op.id],
+    annotations: annotationsFor(op),
   }))
 );
 
