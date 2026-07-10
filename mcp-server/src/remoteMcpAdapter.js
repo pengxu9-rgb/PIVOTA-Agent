@@ -26,7 +26,12 @@ export function createRemoteMcpAdapter(surface, opts = {}) {
     allowUnauthenticated = false,
     serverInfo = { name: "pivota-commerce-mcp", version: "0.1.0" },
     protocolVersion = DEFAULT_PROTOCOL_VERSION,
+    supportedProtocolVersions,
   } = opts;
+  const supportedVersions =
+    Array.isArray(supportedProtocolVersions) && supportedProtocolVersions.length > 0
+      ? supportedProtocolVersions
+      : [protocolVersion];
 
   if (!surface || !Array.isArray(surface.tools) || typeof surface.callTool !== "function") {
     throw new Error("createRemoteMcpAdapter requires a canonical commerce surface");
@@ -43,8 +48,13 @@ export function createRemoteMcpAdapter(surface, opts = {}) {
       const authResult = typeof authenticate === "function" ? await authenticate(req) : undefined;
 
       if (rpc.method === "initialize") {
+        // Version negotiation: echo the client's requested version when this adapter supports it; otherwise
+        // answer with the default (per MCP spec, the server replies with its preferred supported version).
+        const requested = isPlainObject(rpc.params) ? rpc.params.protocolVersion : undefined;
+        const negotiated =
+          typeof requested === "string" && supportedVersions.includes(requested) ? requested : protocolVersion;
         return ok(id, {
-          protocolVersion,
+          protocolVersion: negotiated,
           serverInfo,
           capabilities: { tools: {} },
         });
