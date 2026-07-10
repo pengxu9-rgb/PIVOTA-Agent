@@ -16,6 +16,7 @@ import {
   resellerHostSet,
   isFirstPartyOnlyEnabled,
 } from "./publicReadSourcing.js";
+import { createPublicReadCache, stableStringify } from "./publicReadCache.js";
 
 export const PUBLIC_READ_TOOL_NAMES = Object.freeze([
   "search_catalog",
@@ -89,10 +90,35 @@ export function createPublicReadToolSurface(executor, { log } = {}) {
   const extraHostsCsv =
     (typeof process !== "undefined" && process.env && process.env.PUBLIC_READ_RESELLER_HOSTS) || "";
 
+  // Projected-result cache (TTL + stale-while-revalidate): the mainline multi-merchant search costs ~8–15s
+  // per cold query (sequential recall legs — a search-perf workstream of its own); the public tier serves
+  // deterministic, slowly-changing catalog reads, so cached/popular queries answer in <100ms while cold
+  // queries keep the honest full cost. Caches ONLY successful projected values (≤ ~25KB each). Disable via
+  // PUBLIC_READ_CACHE_ENABLED=0; tune PUBLIC_READ_CACHE_TTL_MS / PUBLIC_READ_CACHE_STALE_MS /
+  // PUBLIC_READ_CACHE_MAX.
+  const env = (typeof process !== "undefined" && process.env) || {};
+  const cacheEnabled = !["0", "false", "off", "no"].includes(String(env.PUBLIC_READ_CACHE_ENABLED ?? "").trim().toLowerCase() || "on");
+  const cache = cacheEnabled
+    ? createPublicReadCache({
+        ttlMs: Number(env.PUBLIC_READ_CACHE_TTL_MS) > 0 ? Number(env.PUBLIC_READ_CACHE_TTL_MS) : 10 * 60 * 1000,
+        staleMs: Number(env.PUBLIC_READ_CACHE_STALE_MS) > 0 ? Number(env.PUBLIC_READ_CACHE_STALE_MS) : 60 * 60 * 1000,
+        maxEntries: Number(env.PUBLIC_READ_CACHE_MAX) > 0 ? Number(env.PUBLIC_READ_CACHE_MAX) : 300,
+        onRevalidateError: (err, key) => {
+          if (logger) logger.warn({ err: err?.message || String(err), key }, "public_read cache revalidation failed (stale kept)");
+        },
+      })
+    : null;
+
   async function callTool(toolName, toolArgs = {}) {
     if (!PUBLIC_READ_TOOL_NAMES.includes(toolName)) {
       throw new UnknownToolError(toolName);
     }
+    if (!cache) return computeTool(toolName, toolArgs);
+    const key = `${toolName}:${stableStringify(toolArgs ?? {})}`;
+    return cache.getOrCompute(key, () => computeTool(toolName, toolArgs));
+  }
+
+  async function computeTool(toolName, toolArgs) {
     // Empty verified-session context: read ops are requiresUserRef:false and run anonymously; identity
     // fields in toolArgs are already allowlist-stripped by the commerce surface.
     let raw = await commerce.callTool(toolName, toolArgs, {});
