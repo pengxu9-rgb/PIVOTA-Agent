@@ -67,11 +67,13 @@ test('mutations require an idempotency key', async () => {
   await assert.rejects(exec('complete_checkout_session', { session_id: 'q' }, CTX), (e) => e.code === 'IDEMPOTENCY_CONFLICT' && e.detail?.reason === 'missing_idempotency_key');
 });
 
-test('reads route to the upstream (search_catalog / get_product)', async () => {
+test('reads route to the upstream (search_catalog lane selection / get_product)', async () => {
   const { exec, reads } = setup();
+  // Unscoped search → the multi-merchant canonical index; merchant-scoped → the per-merchant lane.
   await exec('search_catalog', { payload: { search: { query: 'x' } } }, CTX);
+  await exec('search_catalog', { payload: { search: { query: 'x', merchant_id: 'm1' } } }, CTX);
   await exec('get_product', { payload: { product: { merchant_id: 'm', product_id: 'p' } } }, CTX);
-  assert.deepEqual(reads.map((r) => r.op), ['find_products', 'get_product_detail']);
+  assert.deepEqual(reads.map((r) => r.op), ['find_products_multi', 'find_products', 'get_product_detail']);
 });
 
 test('create_checkout_session returns a session bound to the quote', async () => {

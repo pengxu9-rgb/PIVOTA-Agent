@@ -68,9 +68,9 @@ test("unknown tool → clean UnknownToolError, no crash", async () => {
 
 test("reads require no identity (search_catalog / get_product run without a buyer)", async () => {
   const { surface, reads } = setup();
-  await surface.callTool("search_catalog", { query: "socks" }, {}); // no session
+  await surface.callTool("search_catalog", { query: "socks" }, {}); // no session; unscoped → multi-merchant lane
   await surface.callTool("get_product", { merchant_id: "m", product_id: "p" }, {});
-  assert.deepEqual(reads.map((r) => r.op), ["find_products", "get_product_detail"]);
+  assert.deepEqual(reads.map((r) => r.op), ["find_products_multi", "get_product_detail"]);
   // args are wrapped into the discovery payload shape
   assert.deepEqual(reads[0].payload, { search: { query: "socks" } });
   assert.deepEqual(reads[1].payload, { product: { merchant_id: "m", product_id: "p" } });
