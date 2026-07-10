@@ -10,6 +10,12 @@
 
 import { createCommerceToolSurface, UnknownToolError } from "./commerceToolSurface.js";
 import { projectPublicReadResult } from "./publicReadProjection.js";
+import {
+  filterFirstPartyRows,
+  isResellerRow,
+  resellerHostSet,
+  isFirstPartyOnlyEnabled,
+} from "./publicReadSourcing.js";
 
 export const PUBLIC_READ_TOOL_NAMES = Object.freeze([
   "search_catalog",
@@ -79,13 +85,39 @@ export function createPublicReadToolSurface(executor, { log } = {}) {
     throw new Error("public read surface: expected read tools missing from the commerce surface");
   }
 
+  const logger = log && typeof log.info === "function" ? log : null;
+  const extraHostsCsv =
+    (typeof process !== "undefined" && process.env && process.env.PUBLIC_READ_RESELLER_HOSTS) || "";
+
   async function callTool(toolName, toolArgs = {}) {
     if (!PUBLIC_READ_TOOL_NAMES.includes(toolName)) {
       throw new UnknownToolError(toolName);
     }
     // Empty verified-session context: read ops are requiresUserRef:false and run anonymously; identity
     // fields in toolArgs are already allowlist-stripped by the commerce surface.
-    const raw = await commerce.callTool(toolName, toolArgs, {});
+    let raw = await commerce.callTool(toolName, toolArgs, {});
+
+    // First-party / brand-official sourcing filter (docs/openai_apps_v1_plan.md §5): drop reseller-sourced
+    // rows BEFORE projection (the projector strips the destination host the filter needs). ON by default
+    // within the public tier; PUBLIC_READ_FIRST_PARTY_ONLY=0 disables. Runs on the raw list-bearing shape.
+    if (isFirstPartyOnlyEnabled()) {
+      if (toolName === "search_catalog" && raw && Array.isArray(raw.products)) {
+        const { kept, droppedCount } = filterFirstPartyRows(raw.products, { extraHostsCsv });
+        if (droppedCount > 0) {
+          // No silent caps: record what the sourcing policy removed (§5).
+          if (logger) logger.info({ tool: toolName, dropped_reseller_rows: droppedCount, kept: kept.length }, "public_read sourcing filter");
+          raw = { ...raw, products: kept };
+        }
+      } else if (toolName === "get_product") {
+        // A directly-requested reseller product is not surfaced either (consistent with search).
+        const detail = raw && typeof raw === "object" && raw.product && typeof raw.product === "object" ? raw.product : raw;
+        if (isResellerRow(detail, resellerHostSet(extraHostsCsv))) {
+          if (logger) logger.info({ tool: toolName }, "public_read sourcing filter: reseller product withheld");
+          return { note: "Product not found." };
+        }
+      }
+    }
+
     // Slim the verbose internal result to the public allowlisted shape (docs/openai_apps_v1_plan.md §3):
     // strips diagnostics/telemetry/internal ids/timestamps, caps size. The search limit is threaded so the
     // projector honors the requested page size even though the upstream ignores it.
