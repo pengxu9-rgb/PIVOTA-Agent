@@ -28485,6 +28485,15 @@ function buildCommerceKernelDb() {
   return null;
 }
 
+// Base URL for calling THIS service's own invoke pipeline over loopback (multi-merchant discovery reads).
+// Overridable for environments where loopback isn't routable (SELF_INVOKE_BASE).
+function selfInvokeBase() {
+  const explicit = String(process.env.SELF_INVOKE_BASE || '').trim();
+  if (explicit) return explicit.replace(/\/$/, '');
+  const port = Number(process.env.PORT) > 0 ? Number(process.env.PORT) : 8080;
+  return `http://127.0.0.1:${port}`;
+}
+
 async function invokeCommerceKernelRawUpstream(operation, payload, headers = {}) {
   const op = String(operation || '').trim();
   const metadata = isPlainObject(payload?.metadata) ? payload.metadata : {};
@@ -28497,6 +28506,15 @@ async function invokeCommerceKernelRawUpstream(operation, payload, headers = {})
   let requestBody = { operation: op, payload };
 
   switch (op) {
+    case 'find_products_multi': {
+      // Multi-merchant discovery is served by THIS gateway's own invoke pipeline (the mainline search
+      // stack — the exact lane the public REST gateway proxies to), NOT the Python kernel backend, which
+      // only serves per-merchant catalogs (observed live: 2 products from one store). Loopback self-call;
+      // auth = the internal fallback key like any agent caller. The invoke handler serves search from the
+      // search stack and never re-enters this kernel-upstream path, so no recursion.
+      url = `${selfInvokeBase()}/agent/shop/v1/invoke`;
+      break;
+    }
     case 'preview_quote': {
       const quote = isPlainObject(payload?.quote) ? payload.quote : {};
       const offerIdRaw = quote.offer_id || quote.offerId || payload?.offer_id || payload?.offerId || null;
