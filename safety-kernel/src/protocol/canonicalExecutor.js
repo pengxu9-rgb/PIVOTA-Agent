@@ -66,8 +66,18 @@ export function createCanonicalExecutor({ kernel, upstream, verifyPaymentAuthori
     }
 
     switch (opId) {
-      case 'search_catalog':
-        return read('find_products', params.payload ?? params);
+      case 'search_catalog': {
+        // Lane selection: an UNscoped search ("find a niacinamide serum") must hit the multi-merchant
+        // canonical index (find_products_multi) — the per-merchant find_products lane degenerates to a
+        // single store's catalog without a merchant_id (observed live: 2 products from one Shopify store).
+        // A merchant-scoped search keeps the per-merchant lane, so in-store agent flows are unchanged.
+        const searchPayload = params.payload ?? params;
+        const merchantScoped =
+          searchPayload && typeof searchPayload === 'object' &&
+          searchPayload.search && typeof searchPayload.search === 'object' &&
+          typeof searchPayload.search.merchant_id === 'string' && searchPayload.search.merchant_id.trim() !== '';
+        return read(merchantScoped ? 'find_products' : 'find_products_multi', searchPayload);
+      }
       case 'get_product': {
         const result = await read('get_product_detail', params.payload ?? params);
         // Optional inline decision substrate (why/fit/evidence) attached when the caller asks for it via

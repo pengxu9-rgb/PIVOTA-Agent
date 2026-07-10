@@ -20,6 +20,38 @@
 
 const REDACTED = '[REDACTED]';
 const PAN_RE = /\b(?:\d[ -]*?){13,19}\b/g;
+// PAN detection is LUHN-GATED: every real card number is Luhn-valid, so requiring the checksum loses no real
+// PANs while eliminating the false positives that broke live results (a 14-digit Shopify product id inside
+// product_id / a canonical URL was redacted as a "PAN", destroying search→detail chaining — observed in prod
+// 2026-07-10). Additionally, SYSTEM-ISSUED id keys (below) are exempt from PAN scanning entirely: their
+// values are our own identifiers, a PAN cannot legitimately appear there via any flow, and the SENSITIVE
+// key-denylist already drops card-named keys outright.
+const PAN_EXEMPT_ID_KEYS = new Set([
+  'id', 'productid', 'variantid', 'skuid', 'sku', 'productgroupid', 'platformproductid', 'sourceproductid',
+  'sellableitemgroupid', 'signatureid', 'pivotasignatureid', 'productkey', 'catalogproductkey',
+  'orderid', 'quoteid', 'sessionid', 'checkoutsessionid', 'merchantid', 'externalseedid', 'offerid',
+  'lineitemid', 'itemid',
+]);
+function luhnValid(candidate) {
+  const digits = String(candidate).replace(/[ -]/g, '');
+  if (digits.length < 13 || digits.length > 19) return false;
+  let sum = 0;
+  let dbl = false;
+  for (let i = digits.length - 1; i >= 0; i -= 1) {
+    let d = digits.charCodeAt(i) - 48;
+    if (d < 0 || d > 9) return false;
+    if (dbl) {
+      d *= 2;
+      if (d > 9) d -= 9;
+    }
+    sum += d;
+    dbl = !dbl;
+  }
+  return sum % 10 === 0;
+}
+function redactPans(s) {
+  return s.replace(PAN_RE, (m) => (luhnValid(m) ? '[REDACTED_PAN]' : m));
+}
 const SENSITIVE = new Set([
   'ap2state', 'confirmationtoken', 'clientsecret', 'authorization', 'accesstoken', 'idtoken', 'refreshtoken',
   'paymenttoken', 'paymentauthorization', 'mandate', 'mandatetoken', 'cardtoken', 'cardnumber', 'token',
@@ -88,7 +120,9 @@ export function sanitizeResult(rootValue, { handoffAllowed = false, stripRanking
       // Signed attribution link under an attributed-link key — verbatim regardless of handoffAllowed (these
       // ride on DISCOVERY payloads: feed items, product detail, offers). Shape-gated; see ATTRIBUTED_LINK_RE.
       if (keyCanon && ATTRIBUTED_LINK_KEYS.has(keyCanon) && ATTRIBUTED_LINK_RE.test(value)) return value;
-      const out = value.replace(PAN_RE, '[REDACTED_PAN]');
+      // System-issued id keys skip PAN scanning (their digits are our identifiers); everywhere else PAN
+      // redaction is Luhn-gated (all real cards pass Luhn; random ids / URL digit runs almost never do).
+      const out = keyCanon && PAN_EXEMPT_ID_KEYS.has(keyCanon) ? value : redactPans(value);
       if (keyCanon && isIdKey(keyCanon)) return out.replace(STRICT_SECRET_RE, '[REDACTED_SECRET]'); // keep SKUs, kill real secrets
       return out.replace(LOOSE_SECRET_RE, '[REDACTED_SECRET]').replace(URL_SECRET_RE, '$1[REDACTED]');
     }

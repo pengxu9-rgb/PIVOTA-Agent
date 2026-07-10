@@ -60,10 +60,20 @@ function rpc(method, params) {
       });
     });
     req.on("error", reject);
-    req.setTimeout(30000, () => req.destroy(new Error("timeout")));
+    req.setTimeout(60000, () => req.destroy(new Error("timeout")));
     req.write(body);
     req.end();
   });
+}
+
+// Run a verification step; a thrown error (timeout, network) records a FAIL for that step and the run
+// CONTINUES — one slow tool must not abort the whole report.
+async function step(label, fn) {
+  try {
+    await fn();
+  } catch (e) {
+    record(label, false, `step error: ${e.message}`);
+  }
 }
 
 // ---- check harness ----
@@ -82,18 +92,18 @@ async function main() {
   console.log(`\nVerifying public read MCP tier @ ${BASE}${PATH}${HOST_HEADER ? ` (Host: ${HOST_HEADER})` : ""}\n`);
 
   // 1. initialize
-  {
+  await step("initialize", async () => {
     const r = await rpc("initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "verify", version: "1" } });
     const res = r.json?.result;
     record("initialize returns 200 + serverInfo.name=pivota",
       r.status === 200 && res?.serverInfo?.name === "pivota", `status=${r.status} name=${res?.serverInfo?.name}`);
     record("initialize negotiates a supported protocolVersion",
       SUPPORTED_PROTOCOLS.includes(res?.protocolVersion || ""), `protocolVersion=${res?.protocolVersion}`);
-  }
+  });
 
   // 2. tools/list
   let toolsOk = false;
-  {
+  await step("tools/list", async () => {
     const r = await rpc("tools/list");
     const tools = r.json?.result?.tools || [];
     const names = tools.map((t) => t.name).sort();
@@ -110,11 +120,11 @@ async function main() {
     const gp = tools.find((t) => t.name === "get_product");
     record("get_product resolves by bare product_id (merchant_id not required)",
       JSON.stringify(gp?.inputSchema?.required || []) === JSON.stringify(["product_id"]), JSON.stringify(gp?.inputSchema?.required));
-  }
+  });
 
   // 3. search_catalog
   let sampleProductId = null;
-  {
+  await step("search_catalog", async () => {
     const r = await rpc("tools/call", { name: "search_catalog", arguments: { query: QUERY, page_size: 5 } });
     const res = toolResult(r);
     const sc = res?.structuredContent;
@@ -131,10 +141,10 @@ async function main() {
       record("search_catalog: first-party sourcing (no reseller product surfaced)", withReseller.length === 0, `${withReseller.length} reseller rows`);
       sampleProductId = sc.products?.[0]?.product_id || null;
     }
-  }
+  });
 
   // 4. get_intel — the differentiator (cited claims => AGENT_INTEL_PUBLIC_CLAIMS_ENABLED effect)
-  if (sampleProductId) {
+  if (sampleProductId) await step("get_intel", async () => {
     const r = await rpc("tools/call", { name: "get_intel", arguments: { product_id: sampleProductId } });
     const sc = toolResult(r)?.structuredContent;
     const reachable = !!sc && ("intel" in sc);
@@ -146,34 +156,35 @@ async function main() {
         cited.length > 0, `${cited.length}/${claims.length} claims with citations`, { warn: cited.length === 0 });
       if (sc) record("get_intel: no field leaks", findLeakedFields(sc).length === 0);
     }
-  } else {
+  });
+  if (!sampleProductId) {
     record("get_intel: skipped (no sample product from search)", true, "", { warn: true });
   }
 
   // 5. get_alternatives
-  if (sampleProductId) {
+  if (sampleProductId) await step("get_alternatives", async () => {
     const r = await rpc("tools/call", { name: "get_alternatives", arguments: { product_id: sampleProductId } });
     const sc = toolResult(r)?.structuredContent;
     record("get_alternatives: reachable + honest shape", !!sc && ("alternatives" in sc), `alternatives=${sc?.alternatives?.length ?? "n/a"}`);
     if (sc) record("get_alternatives: no field leaks", findLeakedFields(sc).length === 0);
-  }
+  });
 
   // 6. get_product by bare sig
-  if (sampleProductId) {
+  if (sampleProductId) await step("get_product", async () => {
     const r = await rpc("tools/call", { name: "get_product", arguments: { product_id: sampleProductId } });
     const sc = toolResult(r)?.structuredContent;
     record("get_product: resolves by bare sig, echoes product_id", sc?.product_id === sampleProductId, `product_id=${sc?.product_id}`);
     record("get_product: no merchant_id / field leaks", !!sc && !("merchant_id" in sc) && findLeakedFields(sc).length === 0);
-  }
+  });
 
   // 7. negative — a commerce/write tool must not exist on this surface
-  {
+  await step("write-tool-absent", async () => {
     const r = await rpc("tools/call", { name: "create_checkout_session", arguments: {} });
     const res = toolResult(r);
     let code = null;
     try { code = JSON.parse(res.content[0].text).error.code; } catch { /* */ }
     record("write/commerce tool absent (create_checkout_session → UNKNOWN_TOOL)", res?.isError === true && code === "UNKNOWN_TOOL", `isError=${res?.isError} code=${code}`);
-  }
+  });
 
   // ---- summary ----
   const fails = results.filter((r) => !r.pass && !r.warn);

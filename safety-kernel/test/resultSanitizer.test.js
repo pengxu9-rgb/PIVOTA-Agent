@@ -59,6 +59,36 @@ test('no regression: secrets and PANs are still redacted alongside the ranking s
   assert.equal(out.title, 'X');
 });
 
+// PAN detection is Luhn-gated + system-id-exempt (prod incident 2026-07-10: 14-digit Shopify product ids in
+// product_id / canonical URLs were redacted as "PANs", destroying search→detail chaining on the MCP doors).
+test('numeric system ids are NOT redacted as PANs (id-key exemption)', () => {
+  const out = sanitizeResult({
+    product_id: '10064562258217',          // 14-digit Shopify id — the exact live breakage
+    variant_id: '53012664942889',
+    id: '4242424242424242',                // even a Luhn-valid run under a system id key survives
+    order_id: 'ORD_918269F734DA457B',
+    title: 'Serum',
+  });
+  assert.equal(out.product_id, '10064562258217');
+  assert.equal(out.variant_id, '53012664942889');
+  assert.equal(out.id, '4242424242424242');
+  assert.equal(out.order_id, 'ORD_918269F734DA457B');
+});
+
+test('Luhn-INVALID digit runs in text/urls are NOT redacted; Luhn-valid still are', () => {
+  const out = sanitizeResult({
+    title: 'X', product_id: 'p1',
+    pivota_url: 'https://agent.pivota.cc/products/4242424242424241',  // Luhn-invalid → preserved
+    note_invalid: 'ref 4242 4242 4242 4241 ok',                       // Luhn-invalid → preserved
+    note_valid: 'card 4242 4242 4242 4242 leaked',                    // Luhn-valid → redacted
+    ref_code: '4111111111111111',                                     // Luhn-valid under NON-exempt key → redacted
+  });
+  assert.equal(out.pivota_url, 'https://agent.pivota.cc/products/4242424242424241');
+  assert.equal(out.note_invalid, 'ref 4242 4242 4242 4241 ok');
+  assert.equal(out.note_valid, 'card [REDACTED_PAN] leaked');
+  assert.equal(out.ref_code, '[REDACTED_PAN]');
+});
+
 test('stripRankingInternals: false leaves ranking fields intact (still scrubs secrets)', () => {
   const out = sanitizeResult(
     { product_id: 'p1', title: 'X', ranking_score: 0.9, score: 0.5, access_token: 'at_secret' },
