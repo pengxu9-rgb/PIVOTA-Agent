@@ -17634,7 +17634,26 @@ async function fetchCanonicalChainRecallForFindProductsMulti({ search = {} } = {
       ? search.search_quality_contract
       : null;
   const searchQualityContractApplied = isBeautySearchQualityContractApplied(searchQualityContract);
-  if (isSearchQualityContractSafeEmptyContract(searchQualityContract)) {
+  // The search-quality contract is beauty-centric: any non-beauty query is
+  // classified target_domain:'other' / query_class:'ambiguous_or_non_shopping',
+  // which isSearchQualityContractSafeEmptyContract() treats as safe-empty and
+  // returns products:[] before touching the DB. That gate must NOT fire for the
+  // non-beauty canonical direct lane (electronics vertical pilot) — otherwise the
+  // electronics canonical catalog can never serve through find_products_multi and
+  // such queries fall through to slow upstream search + clarify. Bypass safe-empty
+  // when the query resolves to a non-beauty canonical category prefix (today:
+  // electronics/audio/, electronics/reading/); beauty prefixes always win inside
+  // resolveCanonicalCategoryPathPrefixForQuery(), so beauty behaviour is unchanged.
+  const canonicalRecallQueryTextForSafeEmpty =
+    (searchQualityContractApplied && searchQualityContract?.effective_query) ||
+    extractSearchQueryText(search);
+  const hasNonBeautyCanonicalPrefixForRecall = isNonBeautyCanonicalCategoryPathPrefix(
+    resolveCanonicalCategoryPathPrefixForQuery(canonicalRecallQueryTextForSafeEmpty),
+  );
+  if (
+    !hasNonBeautyCanonicalPrefixForRecall &&
+    isSearchQualityContractSafeEmptyContract(searchQualityContract)
+  ) {
     return {
       products: [],
       telemetry: {
