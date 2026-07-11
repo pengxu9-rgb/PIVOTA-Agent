@@ -56,4 +56,51 @@ describe('fetchBackfillProducts external-seed catalog keying (ADR-009)', () => {
     expect(joinBlock).toMatch(/cp\.product_key\s*=\s*e\.attached_product_key/i);
     expect(joinBlock).not.toMatch(/cp\.merchant_id\s*=\s*\$1/i);
   });
+
+  // Behavioral guard for the load-bearing line: the emitted identity row must be
+  // keyed on the catalog row's real seller (catalog_merchant_id), with the legacy
+  // bucket only as the null fallback. Returns one external_product_seeds row so
+  // the builder loop actually runs (the SQL-shape tests above no-op the loop).
+  function seedRow(overrides) {
+    return {
+      id: 'external_brand_crawl::mojawa_us_1',
+      external_product_id: 'mojawa_us_1',
+      title: 'Mojawa Purra Run Bone Conduction Headphones',
+      domain: 'mojawa.com',
+      destination_url: 'https://mojawa.com/products/purra-run',
+      canonical_url: 'https://mojawa.com/products/purra-run',
+      seed_data: { snapshot: { title: 'Mojawa Purra Run', brand: 'Mojawa' }, brand: 'Mojawa' },
+      attached_product_key: 'prod::merch_obs_abc::external_seed::mojawa_us_1',
+      ...overrides,
+    };
+  }
+  function queryFnReturning(rows) {
+    return jest.fn(async (sql) => {
+      if (/information_schema\.columns/i.test(String(sql))) {
+        return { rows: ['merchant_id', 'platform_product_id', 'product_data', 'cached_at'].map((column_name) => ({ column_name })) };
+      }
+      if (/FROM external_product_seeds e/i.test(String(sql))) return { rows };
+      return { rows: [] };
+    });
+  }
+
+  test('keys the emitted identity row on catalog_merchant_id (the observed seller)', async () => {
+    const out = await fetchBackfillProducts({
+      externalProductIds: ['mojawa_us_1'],
+      queryFn: queryFnReturning([seedRow({ catalog_merchant_id: 'merch_obs_abc' })]),
+    });
+    const row = out.find((r) => r.product_id === 'mojawa_us_1' && r.source_kind === 'external_seed');
+    expect(row).toBeTruthy();
+    expect(row.merchant_id).toBe('merch_obs_abc');
+  });
+
+  test('falls back to external_seed when the seed has no catalog row', async () => {
+    const out = await fetchBackfillProducts({
+      externalProductIds: ['mojawa_us_1'],
+      queryFn: queryFnReturning([seedRow({ catalog_merchant_id: null, attached_product_key: null })]),
+    });
+    const row = out.find((r) => r.product_id === 'mojawa_us_1' && r.source_kind === 'external_seed');
+    expect(row).toBeTruthy();
+    expect(row.merchant_id).toBe('external_seed');
+  });
 });
