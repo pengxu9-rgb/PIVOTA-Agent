@@ -4734,6 +4734,7 @@ async function fetchBackfillProducts({
         e.attached_product_key,
         cp.content_key AS catalog_content_key,
         cp.product_key AS catalog_product_key,
+        cp.merchant_id AS catalog_merchant_id,
         cp.pivota_signature_id AS catalog_pivota_signature_id,
         cp.sync_status AS catalog_sync_status,
         cp.pdp_lifecycle_stage AS catalog_pdp_lifecycle_stage,
@@ -4745,7 +4746,6 @@ async function fetchBackfillProducts({
       FROM external_product_seeds e
       LEFT JOIN catalog_products cp
         ON cp.product_key = e.attached_product_key
-       AND cp.merchant_id = $1
        AND cp.platform = $1
       LEFT JOIN index_pipeline_state ips
         ON ips.content_key = cp.content_key
@@ -4758,7 +4758,16 @@ async function fetchBackfillProducts({
   const seenExternal = new Set();
   for (const row of externalRes?.rows || []) {
     const product = buildExternalSeedProduct(row);
-    const merchantId = EXTERNAL_SEED_MERCHANT_ID;
+    // ADR-009 D2: key the identity listing on the product's real seller-of-record
+    // (the per-brand observed `merch_obs_` merchant the mirror wrote to
+    // catalog_products), not the legacy shared `external_seed` bucket. Without
+    // this, pdp_identity_listing stays keyed 'external_seed' while catalog_products
+    // is keyed 'merch_obs_…', so the catalog_row_trust join
+    // (pil.merchant_id = cp.merchant_id) never matches → observed-seller external
+    // seeds get no identity_confidence and stay un-trusted + un-served. Legacy
+    // seeds whose catalog row is still the 'external_seed' bucket (or unmirrored
+    // seeds with no catalog row) fall back to EXTERNAL_SEED_MERCHANT_ID unchanged.
+    const merchantId = asString(row?.catalog_merchant_id) || EXTERNAL_SEED_MERCHANT_ID;
     const productId = asString(product?.product_id || row?.external_product_id || row?.id);
     const sourceListingRef = buildSourceListingRef({ merchantId, productId });
     if (!product || !sourceListingRef || seenExternal.has(sourceListingRef)) continue;
