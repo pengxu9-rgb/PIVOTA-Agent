@@ -79,12 +79,16 @@ with citation URLs, (3) alternatives comparison. Save for the submission form.
 
 | Check | Result | Date |
 |---|---|---|
-| Automated verifier (Step 1) — all hard checks pass | ☐ | |
-| get_intel cited-claims check passes on a covered query | ☐ | |
-| MCP Inspector — 4 tools, structuredContent, no errors | ☐ | |
-| ChatGPT dev mode — all 4 prompts pass on **web** | ☐ | |
-| ChatGPT dev mode — all 4 prompts pass on **mobile** | ☐ | |
-| Screenshots captured (3) | ☐ | |
+| Automated verifier (Step 1) — all hard checks pass | ✅ **20/20 PASSED** (search 2.3s warm; sizes/leaks/annotations/sourcing all green) | 2026-07-10 |
+| get_intel cited-claims check passes on a covered query | ✅ 6/6 claims with PubMed citations (sig_b4d136…, grade A) | 2026-07-10 |
+| MCP Inspector — 4 tools, structuredContent, no errors | ✅ Official `@modelcontextprotocol/inspector --cli` over Streamable HTTP: 4 tools with correct annotations+titles; tools/call returns structuredContent (search 5 products; intel grade A, 6/6 cited) | 2026-07-10 |
+| ChatGPT dev mode — all 4 prompts pass on **web** | ⛔ BLOCKED: account is ChatGPT **Free**; custom MCP connectors require a paid plan + developer mode. Upgrade, then Settings → enable developer mode → add connector `https://pivota-agent-production.up.railway.app/public/mcp` (or `https://mcp.pivota.cc/mcp` post-DNS, the submission origin) | 2026-07-10 |
+| ChatGPT dev mode — all 4 prompts pass on **mobile** | ⛔ Same account gate as web | |
+| Screenshots captured (3) | ☐ (captured during the dev-mode runs above) | |
+
+> **Runner note:** from this dev machine, Node-based clients (the verifier, MCP Inspector) need
+> `NODE_USE_ENV_PROXY=1` — direct Node egress to Railway is blocked by the local network and only the
+> configured HTTP(S) proxy route works (curl uses it automatically; Node 24 needs the env flag).
 
 When every row is checked, the app is ready to submit via the Platform Dashboard
 (`docs/openai_apps_submission_materials.md` §6).
