@@ -11538,6 +11538,31 @@ function citableSupplementCacheTtlMs() {
   return Number.isFinite(raw) && raw >= 0 ? raw : 5 * 60 * 1000;
 }
 
+// Finalize one built product into a citation item (ADR-007). Marks it
+// non-buyable and strips fields that don't belong on an offer-free citation:
+//   - price (no offer),
+//   - the raw seed_data / external_seed jsonb blobs that
+//     buildCanonicalChainMainlineProduct echoes onto every item. On a citation
+//     these are pure response bloat — measured on prod as present on ~65% of
+//     citable items and the dominant per-item byte cost. The DERIVED fields the
+//     builder extracts from those blobs (ingredient_intel, active_ingredients,
+//     ingredients_inci, pdp_ingredients_raw, fashion_meta, identity) are separate
+//     top-level keys and are intentionally KEPT.
+// Scoped to the citation lane only; other lanes keep the full item shape.
+function finalizeCitableSupplementItem(item) {
+  if (!item || typeof item !== 'object' || Array.isArray(item)) return null;
+  item.buyable = false;
+  item.in_stock = false;
+  delete item.price;
+  delete item.seed_data;
+  delete item.external_seed;
+  item.source = 'canonical_citation';
+  item.search_recall_source = 'canonical_citation';
+  item.catalog_source = 'canonical_citation';
+  item.catalog_track = 'citation';
+  return item;
+}
+
 async function queryCitableSupplementItems(q) {
   const rows = await fetchCanonicalChainRows({
     query: q,
@@ -11549,15 +11574,8 @@ async function queryCitableSupplementItems(q) {
   if (!Array.isArray(rows) || !rows.length) return [];
   const items = [];
   for (const row of rows) {
-    const item = buildCanonicalChainMainlineProduct(row);
+    const item = finalizeCitableSupplementItem(buildCanonicalChainMainlineProduct(row));
     if (!item) continue;
-    item.buyable = false;
-    item.in_stock = false;
-    delete item.price;
-    item.source = 'canonical_citation';
-    item.search_recall_source = 'canonical_citation';
-    item.catalog_source = 'canonical_citation';
-    item.catalog_track = 'citation';
     items.push(item);
   }
   return items;
@@ -49857,6 +49875,7 @@ module.exports._debug = {
   dedupeBeautyProductsByDisplayKey,
   ensureSearchProductPdpOpen,
   buildCanonicalChainMainlineProduct,
+  finalizeCitableSupplementItem,
   mergeCanonicalChainProductsWithSeedProducts,
   resolveCatalogSyncMerchantIds,
   runCreatorCatalogAutoSync,
