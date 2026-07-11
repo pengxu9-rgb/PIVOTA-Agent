@@ -39,8 +39,24 @@ describe('brand-query expansion bypass (policy.js)', () => {
     expect(expansionMeta.brand_query_detected).toBe(true);
     // NOTE: brand_query_without_category may be false here — the NLU invents
     // intent.category for proper-noun queries, which is exactly why the guard
-    // checks text-only category evidence instead of that field.
+    // uses token remainder instead of that field.
+    expect(expansionMeta.brand_query_expansion_bypassed).toBe(true);
     expect(expansionMeta.applied).toBe(false);
+  });
+
+  test('brand + user-typed non-English category word is NOT treated as bare brand', async () => {
+    // Review finding: an English-only category regex would suppress expansion
+    // for "uniqlo 连衣裙"-shaped queries. The token-remainder rule keeps any
+    // non-brand token — in any script — as real user evidence.
+    const { expansion_meta: expansionMeta } = await buildFindProductsMultiContext({
+      payload: {
+        search: { query: 'acropass 面膜' },
+        user: { recent_queries: [] },
+        messages: [{ role: 'user', content: 'acropass 面膜' }],
+      },
+      metadata: {},
+    });
+    expect(expansionMeta.brand_query_expansion_bypassed).toBe(false);
   });
 
   test('non-brand apparel query still expands (guard does not disable expansion generally)', async () => {
@@ -130,6 +146,26 @@ describe('brand page guard in enforceFindProductsMultiRequestedPageSize (server.
       junk(8).map((p) => p.product_id),
     );
     expect(out.metadata.page_size_enforcement.brand_guard).toBeUndefined();
+  });
+
+  test('short brand compacts do not collide with unrelated title substrings', () => {
+    // Review finding: "nars" ⊂ compact("Lunar Spell"). Short compacts (<6)
+    // may only match via the product's own brand field, not title text.
+    brandDictionaryCache.__setBrandSetForTest(['nars']);
+    const products = [
+      ...junk(8),
+      { product_id: 'collider', brand: 'Moonlight Co', title: 'Lunar Spell Serum' },
+      { product_id: 'realbrand', brand: 'NARS', title: 'Blush' },
+    ];
+    const out = enforceFindProductsMultiRequestedPageSize({
+      responseBody: { products, metadata: {} },
+      searchParams: { page_size: 8 },
+      queryText: 'nars',
+    });
+    const ids = out.products.map((p) => p.product_id);
+    expect(ids).toContain('realbrand');
+    expect(ids).not.toContain('collider');
+    brandDictionaryCache.__setBrandSetForTest(['acropass']);
   });
 
   test('brand match via title text also counts', () => {

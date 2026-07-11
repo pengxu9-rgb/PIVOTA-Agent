@@ -11886,10 +11886,22 @@ function enforceFindProductsMultiRequestedPageSize({ responseBody, searchParams,
       .filter((brand) => brand.length >= 4);
     if (brandCompacts.length) {
       const matchesBrand = (product) => {
+        // Two-tier match (review finding: compacted substrings have no token
+        // boundaries — "nars" ⊂ "lunarspell", "fresh" ⊂ "refreshing"):
+        // the product's own brand field matches on containment at any length,
+        // but the loose title/name substring arm requires a longer compact so
+        // short brand names can't collide with unrelated words.
+        const brandField = String(product?.brand || '')
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '');
         const hay = `${product?.brand || ''} ${product?.title || ''} ${product?.name || ''}`
           .toLowerCase()
           .replace(/[^a-z0-9]+/g, '');
-        return brandCompacts.some((brand) => hay.includes(brand));
+        return brandCompacts.some(
+          (brand) =>
+            (brandField && brandField.includes(brand)) ||
+            (brand.length >= 6 && hay.includes(brand)),
+        );
       };
       const matched = [];
       const rest = [];
