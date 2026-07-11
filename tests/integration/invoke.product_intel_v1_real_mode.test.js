@@ -80,6 +80,13 @@ function buildPublishedIntelProduct(productId = 'ext_real_intel_1') {
       provenance: {
         source: 'product_intel_pilot_compare',
         generator: 'manual_review_curated',
+        // The public serving gate (isServableProductIntelBundle, ADR-002) now
+        // only serves human-reviewed (Tier-H) or grounded (Tier-G) bundles;
+        // mark this fixture as strict-human reviewed so it stays servable.
+        reviewer_kind: 'human',
+        review_status: 'completed',
+        review_decision: 'pass',
+        review_tier: 'strict_human',
       },
     },
   };
@@ -118,9 +125,19 @@ describe('get_product_intel_v1 real-mode invoke contract', () => {
   });
 
   test('serves published Pivota Insights instead of falling through to ROUTE_MAP', async () => {
+    // Product detail is now fetched via POST /agent/shop/v1/invoke with
+    // operation get_product_detail (fetchProductDetailFromUpstream), not the
+    // legacy GET /agent/v1/products/:merchant/:id route.
     nock(apiBase)
-      .get('/agent/v1/products/external_seed/ext_real_intel_1')
-      .reply(200, { product: buildPublishedIntelProduct() });
+      .post('/agent/shop/v1/invoke', (body) => {
+        const ref = body?.payload?.product || {};
+        return (
+          body?.operation === 'get_product_detail' &&
+          ref.merchant_id === 'external_seed' &&
+          ref.product_id === 'ext_real_intel_1'
+        );
+      })
+      .reply(200, { status: 'success', product: buildPublishedIntelProduct() });
 
     const app = require('../../src/server');
     const res = await request(app)

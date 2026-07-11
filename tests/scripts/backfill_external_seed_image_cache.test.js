@@ -15,6 +15,9 @@ const imageCacheService = {
   recoverImageUrlsFromCanonicalPage: jest.fn(async () => []),
   shouldCacheOriginalImageUrl: jest.fn(() => false),
   sourceHostFromUrl: jest.fn((url) => new URL(url).hostname),
+  // Mirrors the real module: candidate selection delegates to
+  // collectExternalSeedImageCandidates, keeping one control point for tests.
+  selectImageCandidatesForFetch: jest.fn((row) => imageCacheService.collectExternalSeedImageCandidates(row)),
 };
 
 jest.mock('../../src/services/externalSeedImageCache', () => imageCacheService);
@@ -27,6 +30,8 @@ describe('backfill-external-seed-image-cache', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     imageCacheService.collectExternalSeedImageCandidates.mockReturnValue([]);
+    imageCacheService.selectImageCandidatesForFetch.mockImplementation((row) =>
+      imageCacheService.collectExternalSeedImageCandidates(row));
     imageCacheService.recoverImageUrlsFromCanonicalPage.mockResolvedValue([]);
     imageCacheService.fetchImageForCache.mockImplementation(async (url) => ({
       url,

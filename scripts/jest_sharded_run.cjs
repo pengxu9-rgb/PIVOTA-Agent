@@ -51,6 +51,12 @@ for (let index = 0; index < allTests.length; index += 1) {
   shards[index % effectiveShardCount].push(allTests[index]);
 }
 
+// Run every shard even after a failure so a single red shard cannot mask
+// failures in later shards (set JEST_SHARD_FAIL_FAST=1 to restore the old
+// stop-at-first-failure behavior).
+const failFast = process.env.JEST_SHARD_FAIL_FAST === '1';
+const failedShards = [];
+
 for (let index = 0; index < shards.length; index += 1) {
   const shardTests = shards[index];
   const shardLabel = `${index + 1}/${shards.length}`;
@@ -74,8 +80,16 @@ for (let index = 0; index < shards.length; index += 1) {
   }
 
   if (result.status !== 0) {
-    process.exit(result.status || 1);
+    failedShards.push(shardLabel);
+    if (failFast) {
+      process.exit(result.status || 1);
+    }
   }
+}
+
+if (failedShards.length) {
+  console.error(`[jest-sharded-run] ${failedShards.length} shard(s) failed: ${failedShards.join(', ')}`);
+  process.exit(1);
 }
 
 console.log('[jest-sharded-run] All shards passed.');

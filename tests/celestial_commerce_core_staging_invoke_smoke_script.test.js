@@ -71,6 +71,7 @@ describe('Celestial commerce-core staging invoke smoke wrapper', () => {
               primary_path_used: 'cache_multi_intent',
             },
             search_decision: {
+              decision_authority: 'agent_products_ingredient_recall_direct',
               decision_locked: true,
               decision_lock_reason: 'strict_contract',
             },

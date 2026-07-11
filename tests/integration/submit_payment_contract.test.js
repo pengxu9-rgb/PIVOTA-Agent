@@ -623,7 +623,11 @@ describe('submit_payment response contract normalization', () => {
     });
   });
 
-  it('rejects unsupported pivota hosted checkout responses', async () => {
+  // Commit 4e99f685 (PR #1650) intentionally re-enabled pivota_hosted_checkout
+  // routing: the gateway no longer 502s with UNSUPPORTED_PAYMENT_SURFACE, and
+  // instead normalizes the hosted-checkout session into a client-owned
+  // redirect_url payment surface.
+  it('normalizes pivota hosted checkout responses into a client redirect surface', async () => {
     nock(API_BASE)
       .post('/agent/v1/payments')
       .reply(200, {
@@ -636,14 +640,40 @@ describe('submit_payment response contract normalization', () => {
       });
 
     const res = await invokeSubmitPayment();
-    expect(res.status).toBe(502);
+    expect(res.status).toBe(200);
     expect(res.body).toMatchObject({
-      error: 'UNSUPPORTED_PAYMENT_SURFACE',
-      message:
-        'Merchant checkout must return the merchant PSP payment surface. pivota_hosted_checkout is disabled.',
-      detail: {
+      status: 'requires_action',
+      upstream_status: 'success',
+      payment_status: 'requires_action',
+      confirmation_owner: 'client',
+      requires_client_confirmation: true,
+      submit_owner: 'redirect',
+      supported_in_shopping_ui: true,
+      psp: 'pivota_hosted_checkout',
+      checkout_session_id: 'csess_bad_123',
+      checkout_url: 'https://checkout.example.com/session/csess_bad_123',
+      checkout_session: {
+        checkout_session_id: 'csess_bad_123',
+        hosted_url: 'https://checkout.example.com/session/csess_bad_123',
+        provider: 'pivota_hosted_checkout',
+      },
+      payment_action: {
+        type: 'redirect_url',
+        url: 'https://checkout.example.com/session/csess_bad_123',
+      },
+      payment: {
         psp: 'pivota_hosted_checkout',
         checkout_session_id: 'csess_bad_123',
+        hosted_url: 'https://checkout.example.com/session/csess_bad_123',
+        payment_status: 'requires_action',
+        confirmation_owner: 'client',
+        requires_client_confirmation: true,
+        submit_owner: 'redirect',
+        supported_in_shopping_ui: true,
+        payment_action: {
+          type: 'redirect_url',
+          url: 'https://checkout.example.com/session/csess_bad_123',
+        },
       },
     });
   });

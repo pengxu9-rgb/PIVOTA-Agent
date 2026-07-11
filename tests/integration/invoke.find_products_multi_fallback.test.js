@@ -44,6 +44,7 @@ describe('/agent/shop/v1/invoke find_products_multi legacy fallback isolation', 
         process.env.FIND_PRODUCTS_MULTI_UPSTREAM_DEFAULT_TIMEOUT_MS,
       UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_MS:
         process.env.UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_MS,
+      FPM_PARALLEL_RESOLVER_PRIMARY: process.env.FPM_PARALLEL_RESOLVER_PRIMARY,
     };
 
     process.env.PIVOTA_API_BASE = 'http://pivota.test';
@@ -157,6 +158,13 @@ describe('/agent/shop/v1/invoke find_products_multi legacy fallback isolation', 
     const resolvedProductId = '9886500127048';
     process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED = 'true';
     process.env.PROXY_SEARCH_RESOLVER_FIRST_STRONG_ONLY = 'false';
+    // Since #1753 the resolver-first probe RACES the primary recall in parallel
+    // (FPM_PARALLEL_RESOLVER_PRIMARY, default on): the primary upstream fires
+    // speculatively and its result is discarded when the resolver wins. This
+    // test asserts the serialized resolver-first path suppresses the primary
+    // call, so pin the flag off — the parallel-primary behavior is orthogonal to
+    // the resolver-first legacy-fallback correctness under test here.
+    process.env.FPM_PARALLEL_RESOLVER_PRIMARY = 'false';
 
     jest.doMock('../../src/services/productGroundingResolver', () => ({
       resolveProductRef: jest.fn().mockResolvedValue({

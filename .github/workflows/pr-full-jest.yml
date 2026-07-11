@@ -1,0 +1,57 @@
+name: PR Full Jest Gate
+
+# Runs the ENTIRE jest suite (everything jest --listTests discovers) on every
+# PR, sharded across parallel runners with jest's native --shard. This is the
+# backstop gate: the older per-area workflows run hand-picked allowlists, so
+# suites outside those lists used to rot silently (31 suites / 134 tests had
+# accumulated red by 2026-07-11 before this gate existed).
+#
+# Env-dependent or retired suites must NOT be excluded here via allowlists —
+# gate them inside the test file (env opt-in describe.skip, see
+# tests/look_replicate_orchestration.test.js) or quarantine by renaming off
+# the *.test.js pattern, so the exclusion is visible in the tree.
+
+on:
+  pull_request:
+    paths:
+      - "src/**"
+      - "tests/**"
+      - "scripts/**"
+      - "package.json"
+      - "package-lock.json"
+      - "jest.config.js"
+      - ".github/workflows/pr-full-jest.yml"
+  workflow_dispatch: {}
+
+concurrency:
+  group: pr-full-jest-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  jest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install
+        run: npm ci
+
+      - name: Run jest shard ${{ matrix.shard }}/8
+        run: |
+          npx jest \
+            --watchman=false \
+            --runInBand \
+            --silent \
+            --shard=${{ matrix.shard }}/8

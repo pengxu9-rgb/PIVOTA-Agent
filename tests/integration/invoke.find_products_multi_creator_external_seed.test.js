@@ -22,6 +22,8 @@ describe('/agent/shop/v1/invoke creator human apparel external seed main path', 
       FIND_PRODUCTS_MULTI_VECTOR_ENABLED: process.env.FIND_PRODUCTS_MULTI_VECTOR_ENABLED,
       FIND_PRODUCTS_MULTI_ROUTE_DEBUG: process.env.FIND_PRODUCTS_MULTI_ROUTE_DEBUG,
       AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED: process.env.AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED,
+      DEFAULT_CREATOR_ID: process.env.DEFAULT_CREATOR_ID,
+      CREATOR_CATALOG_MERCHANT_IDS: process.env.CREATOR_CATALOG_MERCHANT_IDS,
     };
 
     process.env.PIVOTA_API_BASE = 'http://pivota.test';
@@ -31,6 +33,8 @@ describe('/agent/shop/v1/invoke creator human apparel external seed main path', 
     process.env.FIND_PRODUCTS_MULTI_VECTOR_ENABLED = 'false';
     process.env.FIND_PRODUCTS_MULTI_ROUTE_DEBUG = '1';
     process.env.AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED = 'false';
+    delete process.env.DEFAULT_CREATOR_ID;
+    delete process.env.CREATOR_CATALOG_MERCHANT_IDS;
   });
 
   afterEach(() => {
@@ -64,6 +68,10 @@ describe('/agent/shop/v1/invoke creator human apparel external seed main path', 
     } else {
       process.env.AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED = prevEnv.AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED;
     }
+    if (prevEnv.DEFAULT_CREATOR_ID === undefined) delete process.env.DEFAULT_CREATOR_ID;
+    else process.env.DEFAULT_CREATOR_ID = prevEnv.DEFAULT_CREATOR_ID;
+    if (prevEnv.CREATOR_CATALOG_MERCHANT_IDS === undefined) delete process.env.CREATOR_CATALOG_MERCHANT_IDS;
+    else process.env.CREATOR_CATALOG_MERCHANT_IDS = prevEnv.CREATOR_CATALOG_MERCHANT_IDS;
   });
 
   test('returns direct external seed results on creator cache miss without calling upstream search', async () => {
@@ -211,6 +219,14 @@ describe('/agent/shop/v1/invoke creator human apparel external seed main path', 
   });
 
   test('uses direct creator human apparel main path when creator cache has non-short-circuit brand hits', async () => {
+    // The creator sellable-cache search requires a configured creator:
+    // searchCreatorSellableFromCache throws UNKNOWN_CREATOR when
+    // getCreatorConfig() resolves nothing (src/server.js ~31500), and the
+    // invoke lane defaults creator-UI requests to the first configured creator
+    // (src/server.js ~32822, src/creatorConfig.js). Configure one so the
+    // cache-merge lane under test is reachable.
+    process.env.DEFAULT_CREATOR_ID = 'creator_test';
+    process.env.CREATOR_CATALOG_MERCHANT_IDS = 'merch_1';
     jest.doMock('../../src/db', () => ({
       query: async (sql) => {
         const text = String(sql || '');
@@ -562,6 +578,10 @@ describe('/agent/shop/v1/invoke creator human apparel external seed main path', 
   });
 
   test('merges creator cache search hits when external seed direct path is empty', async () => {
+    // See note above: the sellable-cache lane needs a configured creator
+    // (src/server.js ~31500 UNKNOWN_CREATOR gate, ~32822 default-creator fill).
+    process.env.DEFAULT_CREATOR_ID = 'creator_test';
+    process.env.CREATOR_CATALOG_MERCHANT_IDS = 'merch_efbc46b4619cfbdf';
     jest.doMock('../../src/db', () => ({
       query: async (sql) => {
         const text = String(sql || '');

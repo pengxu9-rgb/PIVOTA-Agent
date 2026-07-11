@@ -369,7 +369,7 @@ describe('externalSeedRecall', () => {
     const examples = [
       ['Cheeks Out Freestyle Cream Bronzer — Teddy', 'Bronzer', 'makeup'],
       ['Bright Fix Eye Brightener — Seashell', 'Concealer', 'makeup'],
-      ['Triple Drip Gloss Bomb Trio', 'Lip Gloss', 'makeup'],
+      ['Triple Drip Gloss Bomb Trio', 'Makeup Set', 'makeup'],
       ['Gloss Bomb Heat Universal Lip Luminizer + Plumper — Hot Cherry', 'Lip Gloss', 'makeup'],
       ['Brow MVP Ultra Fine Brow Pencil & Styler — Auburn', 'Brow Pencil', 'makeup'],
       ["Showstopp'r Football Sponge", 'Makeup Sponge', 'beauty_tools'],

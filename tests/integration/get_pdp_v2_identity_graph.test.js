@@ -32,6 +32,43 @@ function loadServerWithDb(envOverrides = {}) {
   return { app, db };
 }
 
+// get_pdp_v2 now runs a serving-eligibility gate (fetchPdpServingEligibilityFromDb)
+// before the identity-graph build. It queries catalog_products joined to
+// index_pipeline_state; without a mocked answer the gate fails closed for
+// external_seed refs and returns 404 PRODUCT_NOT_SERVABLE.
+function isServingEligibilityQuery(normalizedSql) {
+  return (
+    normalizedSql.includes('FROM catalog_products cp') &&
+    normalizedSql.includes('index_pipeline_state')
+  );
+}
+
+function buildServingEligibleRow(params) {
+  const [contentKey, merchantId, productId] = Array.isArray(params) ? params : [];
+  const anchor = productId || contentKey || 'fixture';
+  return {
+    content_key: contentKey || `ck_${anchor}`,
+    product_key: `pk_${anchor}`,
+    source_system: 'external_product_seeds_mirror_v1',
+    source_product_id: productId || null,
+    pivota_signature_id: null,
+    catalog_title: null,
+    catalog_image_url: null,
+    catalog_description: null,
+    external_seed_product_family: null,
+    catalog_image_urls_count: 0,
+    sync_status: 'live',
+    pdp_lifecycle_stage: 'published',
+    serving_eligible: true,
+    readiness_tier: 'serving',
+    pipeline_stage: 'serving',
+    blocker_code: null,
+    blocker_detail: null,
+    content_quality_score: 82,
+    active_external_seed_source_match: true,
+  };
+}
+
 function mockProductDetailInvoke(merchantId, productId, product, times = 1) {
   return nock(process.env.PIVOTA_API_BASE)
     .post('/agent/shop/v1/invoke', (payload) => {
@@ -60,6 +97,9 @@ describe('get_pdp_v2 identity graph live read', () => {
 
     db.query.mockImplementation(async (sql, params) => {
       const normalizedSql = String(sql || '').replace(/\s+/g, ' ').trim();
+      if (isServingEligibilityQuery(normalizedSql)) {
+        return { rows: [buildServingEligibleRow(params)] };
+      }
       if (normalizedSql.includes('FROM pdp_identity_listing') && normalizedSql.includes('merchant_id = $1')) {
         return {
           rows: [
@@ -560,8 +600,11 @@ describe('get_pdp_v2 identity graph live read', () => {
       },
     };
 
-    db.query.mockImplementation(async (sql) => {
+    db.query.mockImplementation(async (sql, params) => {
       const normalizedSql = String(sql || '').replace(/\s+/g, ' ').trim();
+      if (isServingEligibilityQuery(normalizedSql)) {
+        return { rows: [buildServingEligibleRow(params)] };
+      }
       if (normalizedSql.includes('FROM pdp_identity_listing') && normalizedSql.includes('merchant_id = $1')) {
         return { rows: [dn310Listing] };
       }
@@ -676,6 +719,12 @@ describe('get_pdp_v2 identity graph live read', () => {
         brand: 'KraveBeauty',
         description: 'Pivota-reviewed canonical barrier serum copy.',
         images: [{ url: 'https://cdn.example.com/gbr-canonical.jpg' }],
+        // External-seed offers are now built from the identity payload
+        // (fetchProductDetailForOffers skips upstream for external_seed), and
+        // buildExternalSeedOfferProductFromMember drops members without a
+        // price signal — so the payload must carry the offer price.
+        price: { amount: 31, currency: 'USD' },
+        destination_url: 'https://kravebeauty.com/products/great-barrier-relief',
       },
       review_summary: {
         rating: 4.5,
@@ -683,8 +732,11 @@ describe('get_pdp_v2 identity graph live read', () => {
       },
     };
 
-    db.query.mockImplementation(async (sql) => {
+    db.query.mockImplementation(async (sql, params) => {
       const normalizedSql = String(sql || '').replace(/\s+/g, ' ').trim();
+      if (isServingEligibilityQuery(normalizedSql)) {
+        return { rows: [buildServingEligibleRow(params)] };
+      }
       if (normalizedSql.includes('FROM pdp_identity_listing') && normalizedSql.includes('merchant_id = $1')) {
         return { rows: [] };
       }
@@ -853,7 +905,7 @@ describe('get_pdp_v2 identity graph live read', () => {
         merchant_id: 'merch_new',
         product_id: '10064558096681',
         description: 'Pivota-reviewed canonical barrier serum copy.',
-        price: { current: { amount: 28, currency: 'USD' } },
+        price: expect.objectContaining({ current: { amount: 28, currency: 'USD' } }),
         store_discount_evidence: expect.objectContaining({
           pricing_confidence: 'display_estimate',
         }),
