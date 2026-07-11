@@ -11510,7 +11510,8 @@ function projectSearchTransportProduct(product, stats = null) {
 // lanes (agent_products_search / external_seed_mainline / ingredient_recall_direct)
 // with different return points, so per-exit wiring missed most of them. Instead we
 // hook the single universal res.json wrapper: PREFETCH offer-free index_eligible
-// items once (async, up-front) via buildCitableSupplementItems, then APPEND them
+// items once (async, OFF the serial path — see handleInvokeRequest) via
+// buildCitableSupplementItems, then APPEND whatever has resolved by send time
 // synchronously inside the wrapper (appendCitableSupplementItems) so EVERY response
 // is covered. Flag-gated by INDEX_ELIGIBLE_RECALL (default OFF -> no query, no-op).
 // Append-only + deduped; each item is buyable:false / catalog_track:'citation' so
@@ -11521,33 +11522,79 @@ function citableSupplementEnabled() {
   );
 }
 
+// The tokenMatch canonical query behind the supplement is expensive
+// (prod fpm_stage_breakdown measured it at 5.8-17.2s), so results are cached
+// per normalized query and concurrent identical queries share one DB
+// round-trip. The first request for a query warms the cache (its own response
+// usually ships before the query resolves); subsequent requests append from
+// cache. Items are cloned on the way out so downstream response mutation
+// (near-dup collapse, page-size trim, projections) can't poison the cache.
+const CITABLE_SUPPLEMENT_CACHE_MAX_ENTRIES = 500;
+const citableSupplementCache = new Map(); // normalized query -> { items, expiresAt }
+const citableSupplementInFlight = new Map(); // normalized query -> Promise<items>
+
+function citableSupplementCacheTtlMs() {
+  const raw = Number(process.env.CITABLE_SUPPLEMENT_CACHE_TTL_MS);
+  return Number.isFinite(raw) && raw >= 0 ? raw : 5 * 60 * 1000;
+}
+
+async function queryCitableSupplementItems(q) {
+  const rows = await fetchCanonicalChainRows({
+    query: q,
+    includeSkuOffers: false,
+    eligibility: 'index_eligible',
+    tokenMatch: true,
+    deps: { query },
+  });
+  if (!Array.isArray(rows) || !rows.length) return [];
+  const items = [];
+  for (const row of rows) {
+    const item = buildCanonicalChainMainlineProduct(row);
+    if (!item) continue;
+    item.buyable = false;
+    item.in_stock = false;
+    delete item.price;
+    item.source = 'canonical_citation';
+    item.search_recall_source = 'canonical_citation';
+    item.catalog_source = 'canonical_citation';
+    item.catalog_track = 'citation';
+    items.push(item);
+  }
+  return items;
+}
+
 async function buildCitableSupplementItems(queryText = '') {
   try {
     if (!citableSupplementEnabled()) return [];
     const q = String(queryText || '').trim();
     if (!q) return [];
-    const rows = await fetchCanonicalChainRows({
-      query: q,
-      includeSkuOffers: false,
-      eligibility: 'index_eligible',
-      tokenMatch: true,
-      deps: { query },
-    });
-    if (!Array.isArray(rows) || !rows.length) return [];
-    const items = [];
-    for (const row of rows) {
-      const item = buildCanonicalChainMainlineProduct(row);
-      if (!item) continue;
-      item.buyable = false;
-      item.in_stock = false;
-      delete item.price;
-      item.source = 'canonical_citation';
-      item.search_recall_source = 'canonical_citation';
-      item.catalog_source = 'canonical_citation';
-      item.catalog_track = 'citation';
-      items.push(item);
+    const cacheKey = q.toLowerCase();
+    const cached = citableSupplementCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      return structuredClone(cached.items);
     }
-    return items;
+    if (cached) citableSupplementCache.delete(cacheKey);
+    let inFlight = citableSupplementInFlight.get(cacheKey);
+    if (!inFlight) {
+      inFlight = queryCitableSupplementItems(q)
+        .then((items) => {
+          const ttlMs = citableSupplementCacheTtlMs();
+          if (ttlMs > 0) {
+            if (citableSupplementCache.size >= CITABLE_SUPPLEMENT_CACHE_MAX_ENTRIES) {
+              const oldestKey = citableSupplementCache.keys().next().value;
+              if (oldestKey !== undefined) citableSupplementCache.delete(oldestKey);
+            }
+            citableSupplementCache.set(cacheKey, { items, expiresAt: Date.now() + ttlMs });
+          }
+          return items;
+        })
+        .finally(() => {
+          citableSupplementInFlight.delete(cacheKey);
+        });
+      citableSupplementInFlight.set(cacheKey, inFlight);
+    }
+    const items = await inFlight;
+    return structuredClone(items);
   } catch (_) {
     return []; // best-effort: never break recall
   }
@@ -38055,24 +38102,51 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     );
   });
   // ADR-007 op-level citable supplement: prefetch offer-free index_eligible items
-  // once (async), then append them in the res.json wrapper below so EVERY
+  // once, then append them in the res.json wrapper below so EVERY
   // find_products_multi lane is covered. No-op unless INDEX_ELIGIBLE_RECALL is on.
+  // NOT awaited: the tokenMatch canonical query is prod-measured at 5.8-17.2s
+  // and used to serialize in front of the whole pipeline (60-80% of fpm wall
+  // time). It now runs alongside the pipeline; the wrapper appends whatever has
+  // resolved by send time (typically a warm-cache hit) and fails open to []
+  // otherwise, stamping metadata.citable_supplement_pending for observability.
   let citableSupplementItems = [];
   let citableSupplementAttempted = false;
+  let citableSupplementSettled = false;
   try {
     const supplementOp = String(debugRuntime.operation || req?.body?.operation || '').trim().toLowerCase();
     if (supplementOp === 'find_products_multi' && citableSupplementEnabled()) {
       citableSupplementAttempted = true;
       const citableSupplementStartedAt = Date.now();
-      try {
-        citableSupplementItems = await buildCitableSupplementItems(
-          String(req?.body?.payload?.search?.query || req?.body?.payload?.query || '').trim(),
-        );
-      } finally {
-        recordFpmStage('citable_supplement', citableSupplementStartedAt, {
-          returned: Array.isArray(citableSupplementItems) ? citableSupplementItems.length : 0,
+      buildCitableSupplementItems(
+        String(req?.body?.payload?.search?.query || req?.body?.payload?.query || '').trim(),
+      )
+        .then((items) => {
+          citableSupplementSettled = true;
+          citableSupplementItems = Array.isArray(items) ? items : [];
+          if (res.writableEnded) {
+            // Response already sent: this request's fpm_stage_breakdown has
+            // been emitted, so keep the DB cost visible with its own log line.
+            logger.info(
+              {
+                gateway_request_id: gatewayRequestId,
+                stage: 'citable_supplement',
+                latency_ms: Math.max(0, Date.now() - citableSupplementStartedAt),
+                returned: citableSupplementItems.length,
+                applied: false,
+              },
+              'citable supplement resolved after response send (off-path)',
+            );
+          } else {
+            recordFpmStage('citable_supplement', citableSupplementStartedAt, {
+              returned: citableSupplementItems.length,
+              off_path: true,
+            });
+          }
+        })
+        .catch(() => {
+          citableSupplementSettled = true;
+          citableSupplementItems = [];
         });
-      }
     }
   } catch (_) {
     citableSupplementItems = [];
@@ -38355,16 +38429,22 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     );
     // Stamp the count even when 0 items were appended, so the metadata
     // distinguishes "supplement ran, nothing to add" (0) from "this response
-    // path bypassed the wrapper entirely" (field absent).
+    // path bypassed the wrapper entirely" (field absent). When the off-path
+    // prefetch hasn't resolved by send time, citable_supplement_pending marks
+    // "still in flight (warming the cache)" vs "ran and found nothing".
     if (
       citableSupplementAttempted &&
       finalBody &&
       typeof finalBody === 'object' &&
       finalBody.metadata &&
-      typeof finalBody.metadata === 'object' &&
-      finalBody.metadata.citable_supplement_count === undefined
+      typeof finalBody.metadata === 'object'
     ) {
-      finalBody.metadata.citable_supplement_count = 0;
+      if (finalBody.metadata.citable_supplement_count === undefined) {
+        finalBody.metadata.citable_supplement_count = 0;
+      }
+      if (!citableSupplementSettled) {
+        finalBody.metadata.citable_supplement_pending = true;
+      }
     }
     try {
       if (
