@@ -1,3 +1,11 @@
+// The stable-alias registry is read once at module load; since "Remove
+// runtime merchant hardcodes" the builtin registry is empty, so the lookup
+// reclassification tests need the fixture registry wired in before requires.
+process.env.AURORA_PRODUCT_GROUNDING_STABLE_ALIAS_PATH = require('path').join(
+  __dirname,
+  'fixtures/product_grounding_stable_aliases.test.json',
+);
+
 const { buildFindProductsMultiContext } = require('../src/findProductsMulti/policy');
 const { extractIntentRuleBased } = require('../src/findProductsMulti/intent');
 

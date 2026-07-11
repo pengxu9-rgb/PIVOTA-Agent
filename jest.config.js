@@ -1,6 +1,7 @@
 module.exports = {
   rootDir: __dirname,
   testEnvironment: 'node',
+  setupFiles: ['<rootDir>/tests/setupProxyEnv.js'],
   testTimeout: 15000,
   testMatch: ['**/tests/**/*.test.(js|ts)'],
   modulePathIgnorePatterns: ['<rootDir>/.cursor/'],
