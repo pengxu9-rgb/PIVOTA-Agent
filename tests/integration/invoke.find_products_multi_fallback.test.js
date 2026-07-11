@@ -162,8 +162,11 @@ describe('/agent/shop/v1/invoke find_products_multi legacy fallback isolation', 
     // (FPM_PARALLEL_RESOLVER_PRIMARY, default on): the primary upstream fires
     // speculatively and its result is discarded when the resolver wins. This
     // test asserts the serialized resolver-first path suppresses the primary
-    // call, so pin the flag off — the parallel-primary behavior is orthogonal to
-    // the resolver-first legacy-fallback correctness under test here.
+    // call, so pin the flag off to stay green on this branch alone.
+    // NOTE: the real fix is the strong-resolver-query guard on branch
+    // fix/fpm-speculative-primary-strong-guard — 'ipsa' is a strong lookup, so
+    // once that lands the guard skips the speculative primary here and this pin
+    // becomes redundant (safe to drop in that follow-up).
     process.env.FPM_PARALLEL_RESOLVER_PRIMARY = 'false';
 
     jest.doMock('../../src/services/productGroundingResolver', () => ({
