@@ -46,20 +46,33 @@ jobs:
           cache: "npm"
 
       - name: Install
-        run: npm ci
+        # npm ci runs onnxruntime-node's postinstall, which downloads a native
+        # binary from a CDN that intermittently ETIMEDOUTs and fails the whole
+        # shard before any test runs. Retry a few times to ride out the flake.
+        run: |
+          for attempt in 1 2 3; do
+            echo "npm ci attempt $attempt/3"
+            if npm ci; then exit 0; fi
+            echo "npm ci failed (attempt $attempt); retrying after backoff…"
+            sleep $((attempt * 15))
+          done
+          echo "npm ci failed after 3 attempts" >&2
+          exit 1
 
       - name: Run jest shard ${{ matrix.shard }}/8
-        # Worker mode (NOT --runInBand) with a per-worker memory ceiling: each
-        # suite loads the 45k-line server.js, so a single-process shard
-        # accumulates heap until it OOM-aborts (exit 134) on CI's ~7GB runners.
-        # --workerIdleMemoryLimit recycles a worker once it balloons, keeping
-        # each shard bounded; --maxWorkers=2 matches the standard runner.
+        # One worker (NOT --runInBand): --workerIdleMemoryLimit recycles it
+        # between files so heap can't accumulate to the OOM-abort that killed
+        # --runInBand on the heaviest shard. maxWorkers=1 (not 2) gives the
+        # single worker the whole runner: with 2 workers, budget-timed resolver
+        # tests in aurora_bff_product_intel.test.js lost the CPU race under
+        # node-20 contention and bailed to the wrong branch (green locally,
+        # red in CI). Parallelism still comes from the 8-way shard matrix.
         env:
           NODE_OPTIONS: "--max-old-space-size=4096"
         run: |
           npx jest \
             --watchman=false \
             --silent \
-            --maxWorkers=2 \
+            --maxWorkers=1 \
             --workerIdleMemoryLimit=768MB \
             --shard=${{ matrix.shard }}/8
