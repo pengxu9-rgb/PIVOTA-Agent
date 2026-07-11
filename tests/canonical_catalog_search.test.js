@@ -237,6 +237,60 @@ describe('canonicalCatalogSearch.fetchCanonicalChainRows', () => {
     expect(params).toHaveLength(4);
   });
 
+  test('buyable tokenMatch lane (serving_eligible) keeps merchant_name + source_product_id + plain overlap', async () => {
+    const query = makeMockQuery([]);
+    await fetchCanonicalChainRows({
+      query: 'hair butter for damaged hair',
+      tokenMatch: true, // default eligibility = serving_eligible
+      deps: { query },
+    });
+    const { sql } = query.calls[0];
+    // byte-identical buyable form: cross-table + source_product_id arms retained,
+    // token clause is the plain arithmetic threshold (no any-token superset guard)
+    expect(sql).toMatch(/OR LOWER\(COALESCE\(m\.merchant_name, ''\)\) LIKE \$2/);
+    expect(sql).toMatch(/OR LOWER\(COALESCE\(p\.source_product_id, ''\)\) LIKE \$2/);
+    expect(sql).toMatch(/OR \(\([^]*?\) >= 2\)/);
+    expect(sql).not.toMatch(/AND \(\([^]*?\) >= 2\)\)/); // no sargable AND-recheck wrapper
+  });
+
+  test('citable tokenMatch lane (index_eligible) is sargable: drops merchant_name/source_product_id, adds any-token guard', async () => {
+    const query = makeMockQuery([]);
+    await fetchCanonicalChainRows({
+      query: 'hair butter for damaged hair',
+      tokenMatch: true,
+      eligibility: 'index_eligible',
+      deps: { query },
+    });
+    const { sql, params } = query.calls[0];
+    // the two non-sargable OR-arms are gone from the text WHERE
+    expect(sql).not.toMatch(/OR LOWER\(COALESCE\(m\.merchant_name, ''\)\) LIKE \$2/);
+    expect(sql).not.toMatch(/OR LOWER\(COALESCE\(p\.source_product_id, ''\)\) LIKE \$2/);
+    // token clause is now (any-token superset) AND (exact overlap >= minTokens)
+    expect(sql).toMatch(/AND \(\([^]*?\) >= 2\)\)/);
+    // same token binds as the plain form — no extra params, exact-match semantics
+    expect(params).toContain('%hair%');
+    expect(params).toContain('%butter%');
+    expect(params).toContain('%damaged%');
+    // the eligibility gate flips to the index_eligible column
+    expect(sql).toMatch(/ips\.index_eligible = TRUE/);
+    // merchant_name is still available for the rank bonus (only the WHERE arm dropped)
+    expect(sql).toMatch(/LOWER\(COALESCE\(m\.merchant_name, ''\)\)\s+=\s+\$1\s+THEN\s+90/);
+  });
+
+  test('citable non-tokenMatch lane keeps the full clause (index_eligible alone does not rewrite)', async () => {
+    const query = makeMockQuery([]);
+    await fetchCanonicalChainRows({
+      query: 'lipstick',
+      eligibility: 'index_eligible', // tokenMatch OFF
+      deps: { query },
+    });
+    const { sql } = query.calls[0];
+    // without tokenMatch the sargable rewrite must NOT engage — full clause intact
+    expect(sql).toMatch(/OR LOWER\(COALESCE\(m\.merchant_name, ''\)\) LIKE \$2/);
+    expect(sql).toMatch(/OR LOWER\(COALESCE\(p\.source_product_id, ''\)\) LIKE \$2/);
+    expect(sql).toMatch(/ips\.index_eligible = TRUE/);
+  });
+
   test('keeps product-level catalog rows on the default recall path', async () => {
     const query = makeMockQuery([]);
     await fetchCanonicalChainRows({ query: 'lipstick', deps: { query } });
