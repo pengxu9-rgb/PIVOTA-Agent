@@ -506,6 +506,17 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     );
     expect(String(seen.deepScan?.query || '')).toMatch(/Product type:\s*spf/i);
 
+    // Lock the main-path guarantee: a legacy-alias input must flow through the
+    // same LLM parse+deep-scan pipeline as canonical url/name input, NOT the
+    // degraded or deterministic builders. Those builders never call the
+    // upstream chat (so seen.parse/seen.deepScan would be null) and they stamp
+    // session_patch.meta.product_analyze_mode; the main path leaves it unset.
+    // This keeps output quality at parity with the production {url}/{name}
+    // path rather than the low-quality degraded fallbacks.
+    expect(seen.parse).not.toBeNull();
+    expect(seen.deepScan).not.toBeNull();
+    expect(res.body?.session_patch?.meta?.product_analyze_mode).toBeUndefined();
+
     const card = res.body.cards.find((c) => c.type === 'product_analysis');
     expect(card).toBeTruthy();
     expect(card.payload?.assessment?.how_to_use?.timing).toBe('am');

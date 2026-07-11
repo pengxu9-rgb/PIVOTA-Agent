@@ -86596,6 +86596,44 @@ function mountAuroraBffRoutes(app, { logger }) {
         });
         return sendProductAnalyzeEnvelope(envelope, 400, 'main_path');
       }
+      // Canonicalize legacy product_name/product_url input aliases into the
+      // primary name/url keys. The degraded and deterministic builders already
+      // honor these aliases via pickFirstTrimmed(data.url, data.product_url,
+      // data.productUrl, ...); without this the main path reads only
+      // url|name|product and legacy-alias inputs parse to an empty entity.
+      let usedLegacyAnalyzeUrlAlias = false;
+      let usedLegacyAnalyzeNameAlias = false;
+      if (!String(parsed.data.url || '').trim()) {
+        const legacyAnalyzeUrl = pickFirstTrimmed(parsed.data.product_url, parsed.data.productUrl);
+        if (legacyAnalyzeUrl && PRODUCT_INTEL_HTTP_URL_RE.test(legacyAnalyzeUrl)) {
+          parsed.data.url = legacyAnalyzeUrl;
+          usedLegacyAnalyzeUrlAlias = true;
+        }
+      }
+      if (!String(parsed.data.name || '').trim()) {
+        const legacyAnalyzeName = pickFirstTrimmed(parsed.data.product_name, parsed.data.productName);
+        if (legacyAnalyzeName) {
+          parsed.data.name = legacyAnalyzeName;
+          usedLegacyAnalyzeNameAlias = true;
+        }
+      }
+      if (usedLegacyAnalyzeUrlAlias || usedLegacyAnalyzeNameAlias) {
+        // Telemetry: quantify whether any live client still sends the legacy
+        // product_name/product_url request shape (fires only when a canonical
+        // url/name key was absent and an alias supplied it). Zero volume over
+        // time => the alias contract is dead and this canonicalization is pure
+        // insurance. Datadog: @event:aurora_product_analyze_legacy_alias_input.
+        logger?.info?.(
+          {
+            event: 'aurora_product_analyze_legacy_alias_input',
+            request_id: ctx.request_id,
+            trace_id: ctx.trace_id,
+            used_legacy_url_alias: usedLegacyAnalyzeUrlAlias,
+            used_legacy_name_alias: usedLegacyAnalyzeNameAlias,
+          },
+          'aurora bff: product analyze received legacy product_name/product_url alias input',
+        );
+      }
       if (shouldReturnUnsupportedProductImageAnalyze(parsed.data)) {
         const envelope = buildUnsupportedProductImageAnalyzeEnvelope();
         return sendProductAnalyzeEnvelope(envelope, 200, 'degraded_unsupported_product_image');
