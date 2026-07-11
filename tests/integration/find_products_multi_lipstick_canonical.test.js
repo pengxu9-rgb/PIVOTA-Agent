@@ -139,11 +139,7 @@ describe('find_products_multi canonical lipstick recall', () => {
     expect(observedSql.some((sql) => sql.includes('FROM catalog_products'))).toBe(true);
   });
 
-  // SKIPPED 2026-07-11: non-beauty canonical_chain_catalog_direct lane is unreachable —
-  // beauty-centric search_quality_contract classifies non-beauty queries as
-  // ambiguous_or_non_shopping and fetchCanonicalChainRecallForFindProductsMulti
-  // safe-empties (src/server.js ~17585). Un-skip when the lane contradiction is resolved.
-  test.skip('electronics query can return canonical-chain catalog rows before slow upstream search', async () => {
+  test('electronics query can return canonical-chain catalog rows before slow upstream search', async () => {
     const observedSql = [];
     jest.doMock('../../src/db', () => ({
       query: async (sql) => {
@@ -198,11 +194,7 @@ describe('find_products_multi canonical lipstick recall', () => {
     expect(observedSql.some((sql) => sql.includes('FROM catalog_products'))).toBe(true);
   });
 
-  // SKIPPED 2026-07-11: non-beauty canonical_chain_catalog_direct lane is unreachable —
-  // beauty-centric search_quality_contract classifies non-beauty queries as
-  // ambiguous_or_non_shopping and fetchCanonicalChainRecallForFindProductsMulti
-  // safe-empties (src/server.js ~17585). Un-skip when the lane contradiction is resolved.
-  test.skip('shopping query keeps upstream result while exposing canonical telemetry', async () => {
+  test('shopping query keeps upstream result while exposing canonical telemetry', async () => {
     const observedSql = [];
     jest.doMock('../../src/db', () => ({
       query: async (sql) => {
