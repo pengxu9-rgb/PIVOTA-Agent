@@ -3701,6 +3701,16 @@ const FPM_LATENCY_GUARD_SECOND_STAGE_MIN_REMAINING_MS = Math.max(
   350,
   parseTimeoutMs(process.env.FPM_LATENCY_GUARD_SECOND_STAGE_MIN_REMAINING_MS, 700),
 );
+// Run the resolver-first probe and the primary upstream search concurrently
+// (they are independent recall legs); set to 'false' to restore the
+// sequential resolver → primary ordering.
+const FPM_PARALLEL_RESOLVER_PRIMARY =
+  String(process.env.FPM_PARALLEL_RESOLVER_PRIMARY || 'true').toLowerCase() !== 'false';
+// Trim the final find_products_multi response to the page_size/limit the
+// client explicitly requested (post-rank, so the wide candidate pool still
+// feeds ranking). Set to 'false' to restore pool-sized responses.
+const FPM_ENFORCE_REQUESTED_PAGE_SIZE =
+  String(process.env.FPM_ENFORCE_REQUESTED_PAGE_SIZE || 'true').toLowerCase() !== 'false';
 
 const OFFERS_RESOLVE_SUBJECT_TIMEOUT_MS = parseTimeoutMs(
   process.env.OFFERS_RESOLVE_SUBJECT_TIMEOUT_MS,
@@ -11760,6 +11770,56 @@ function normalizeAgentProductsListResponse(raw, ctx = {}) {
           : normalizedProducts.length,
     reply: base.reply ?? null,
     metadata: mergedMetadata,
+  };
+}
+
+// Final page-size contract for find_products_multi: the recall/rank pipeline
+// intentionally carries a wide candidate pool (upstream often returns ~50 rows
+// no matter what limit it was asked for), but the CLIENT-facing response must
+// honor an explicitly requested page_size/limit. Applied at the res.json choke
+// point — after policy ranking and LLM rerank, so trimming never shrinks the
+// pool those stages rank over. Strict-contract responses are left untouched
+// (their shape is parity-locked with the backend).
+function enforceFindProductsMultiRequestedPageSize({ responseBody, searchParams }) {
+  if (!responseBody || typeof responseBody !== 'object' || Array.isArray(responseBody)) {
+    return responseBody;
+  }
+  const search =
+    searchParams && typeof searchParams === 'object' && !Array.isArray(searchParams)
+      ? searchParams
+      : {};
+  const explicitRaw = search.page_size ?? search.pageSize ?? search.limit;
+  if (explicitRaw === undefined || explicitRaw === null || explicitRaw === '') {
+    return responseBody;
+  }
+  const parsedLimit = Math.floor(Number(explicitRaw));
+  // Invalid or non-positive values are treated as "not requested", never as 1.
+  if (!Number.isFinite(parsedLimit) || parsedLimit < 1) return responseBody;
+  const requestedLimit = Math.min(parsedLimit, SEARCH_LIMIT_MAX);
+  if (
+    String(responseBody?.metadata?.contract_bridge?.resolved_contract || '') ===
+    'shop_invoke_strict'
+  ) {
+    return responseBody;
+  }
+  const products = Array.isArray(responseBody.products) ? responseBody.products : null;
+  if (!products || products.length <= requestedLimit) return responseBody;
+  const existingMetadata =
+    responseBody.metadata && typeof responseBody.metadata === 'object' && !Array.isArray(responseBody.metadata)
+      ? responseBody.metadata
+      : {};
+  return {
+    ...responseBody,
+    products: products.slice(0, requestedLimit),
+    page_size: requestedLimit,
+    metadata: {
+      ...existingMetadata,
+      page_size_enforcement: {
+        applied: true,
+        requested_page_size: requestedLimit,
+        pre_trim_count: products.length,
+      },
+    },
   };
 }
 
@@ -37738,6 +37798,28 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     requiresClientConfirmation: null,
     timingSpansMs: {},
   };
+  // Per-stage latency breakdown for find_products_multi / find_products.
+  // Mirrors the discovery feed's provider_breakdown telemetry: one entry per
+  // pipeline leg, emitted in the 'invoke request complete' log so prod logs
+  // can attribute latency_ms to concrete legs (upstream HTTP vs LLM vs local).
+  const fpmStageBreakdown = [];
+  let fpmUpstreamHttpMs = 0;
+  const isFpmStageOperation = () => {
+    const op = String(debugRuntime.operation || '').trim().toLowerCase();
+    return op === 'find_products_multi' || op === 'find_products';
+  };
+  const recordFpmStage = (stage, startedAtMs, extra = {}) => {
+    if (!isFpmStageOperation()) return 0;
+    if (fpmStageBreakdown.length >= 64) return 0;
+    const latencyMs = Math.max(0, Date.now() - (Number(startedAtMs) || Date.now()));
+    const entry = { stage: String(stage || 'unknown'), latency_ms: latencyMs };
+    for (const [key, value] of Object.entries(extra)) {
+      if (value !== undefined && value !== null) entry[key] = value;
+    }
+    fpmStageBreakdown.push(entry);
+    if (entry.upstream_http === true) fpmUpstreamHttpMs += latencyMs;
+    return latencyMs;
+  };
   const buildInvokeBeautyExpertAttachOptions = () => {
     const requestBody = req?.body && typeof req.body === 'object' && !Array.isArray(req.body)
       ? req.body
@@ -37943,6 +38025,16 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         latency_ms: Math.max(0, Date.now() - invokeStartedAtMs),
         upstream_ms: Math.max(0, Math.round(upstreamElapsedMs)),
         gateway_retries: Math.max(0, gatewayRetryCount),
+        ...(fpmStageBreakdown.length > 0
+          ? {
+              fpm_stage_breakdown: fpmStageBreakdown,
+              fpm_stage_total_ms: fpmStageBreakdown.reduce(
+                (sum, entry) => sum + Math.max(0, Number(entry?.latency_ms || 0) || 0),
+                0,
+              ),
+              fpm_upstream_http_ms: Math.max(0, Math.round(fpmUpstreamHttpMs)),
+            }
+          : {}),
         ...(isCheckoutOperation
           ? {
               checkout_trace_id: checkoutRuntime.checkoutTraceId || gatewayRequestId,
@@ -37971,9 +38063,16 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     const supplementOp = String(debugRuntime.operation || req?.body?.operation || '').trim().toLowerCase();
     if (supplementOp === 'find_products_multi' && citableSupplementEnabled()) {
       citableSupplementAttempted = true;
-      citableSupplementItems = await buildCitableSupplementItems(
-        String(req?.body?.payload?.search?.query || req?.body?.payload?.query || '').trim(),
-      );
+      const citableSupplementStartedAt = Date.now();
+      try {
+        citableSupplementItems = await buildCitableSupplementItems(
+          String(req?.body?.payload?.search?.query || req?.body?.payload?.query || '').trim(),
+        );
+      } finally {
+        recordFpmStage('citable_supplement', citableSupplementStartedAt, {
+          returned: Array.isArray(citableSupplementItems) ? citableSupplementItems.length : 0,
+        });
+      }
     }
   } catch (_) {
     citableSupplementItems = [];
@@ -38267,6 +38366,36 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     ) {
       finalBody.metadata.citable_supplement_count = 0;
     }
+    try {
+      if (
+        FPM_ENFORCE_REQUESTED_PAGE_SIZE &&
+        String(debugRuntime.operation || req?.body?.operation || '').trim().toLowerCase() ===
+          'find_products_multi'
+      ) {
+        const payloadBodyForLimit =
+          req?.body?.payload && typeof req.body.payload === 'object' && !Array.isArray(req.body.payload)
+            ? req.body.payload
+            : {};
+        const searchParamsForLimit =
+          payloadBodyForLimit.search &&
+          typeof payloadBodyForLimit.search === 'object' &&
+          !Array.isArray(payloadBodyForLimit.search)
+            ? payloadBodyForLimit.search
+            : payloadBodyForLimit;
+        finalBody = enforceFindProductsMultiRequestedPageSize({
+          responseBody: finalBody,
+          searchParams: searchParamsForLimit,
+        });
+      }
+    } catch (pageSizeErr) {
+      logger.warn(
+        {
+          gateway_request_id: gatewayRequestId,
+          err: pageSizeErr?.message || String(pageSizeErr),
+        },
+        'failed to enforce requested page_size on find_products_multi response',
+      );
+    }
     setInvokePerfHeaders();
     return originalJson(finalBody);
   };
@@ -38547,6 +38676,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         },
       });
       debugRuntime.nluLatencyMs = Math.max(0, Date.now() - nluStartedAtMs);
+      recordFpmStage('context_build', nluStartedAtMs, {
+        expansion_mode:
+          findProductsMultiCtx?.expansion_meta?.mode || FIND_PRODUCTS_MULTI_EXPANSION_MODE || null,
+        query_class: findProductsMultiCtx?.expansion_meta?.query_class || null,
+      });
     }
     const effectivePayload = applyFindProductsMultiSourceContract(
       findProductsMultiCtx?.adjustedPayload || sourceContractPayload,
@@ -44027,6 +44161,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                   },
                 };
                 try {
+                  const externalSeedSupplementStartedAt = Date.now();
                   const supplement = await fetchExternalSeedSupplementFromBackend({
                     queryParams: {
                       query: activeCacheSearchQueryText,
@@ -44042,6 +44177,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                     checkoutToken,
                     neededCount,
                     source,
+                  });
+                  recordFpmStage('external_seed_supplement', externalSeedSupplementStartedAt, {
+                    upstream_http: true,
+                    returned: Array.isArray(supplement?.products) ? supplement.products.length : 0,
                   });
                   const seen = new Set(
                     internalProductsAfterAnchor
@@ -46203,7 +46342,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     const callTrackedUpstream = async (op, config, options = {}) => {
       const normalizedOp = String(op || '').trim().toLowerCase();
       const measureCheckout = CHECKOUT_TIMING_OPS.has(normalizedOp);
-      const startedAt = measureCheckout ? Date.now() : 0;
+      const measureFpmStage =
+        normalizedOp === 'find_products_multi' || normalizedOp === 'find_products';
+      const startedAt = measureCheckout || measureFpmStage ? Date.now() : 0;
       const hardDeadlineMs = Math.max(0, Number(options?.hardDeadlineMs || 0) || 0);
       let hardDeadlineTimer = null;
       try {
@@ -46246,6 +46387,12 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           if (options?.spanKey) {
             addCheckoutTimingSpan(checkoutRuntime, options.spanKey, elapsedMs);
           }
+        } else if (measureFpmStage) {
+          const elapsedMs = Math.max(0, Date.now() - startedAt);
+          upstreamElapsedMs += elapsedMs;
+          recordFpmStage(options?.stageLabel || 'upstream_call', startedAt, {
+            upstream_http: true,
+          });
         }
       }
     };
@@ -46305,6 +46452,20 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       });
     }
     let resolverFirstResult = null;
+    const primaryUpstreamOptions = {
+      spanKey: 'upstream_primary_ms',
+      stageLabel: 'primary_upstream',
+      ...(findProductsMultiNonBeautyPrimaryDeadlineMs > 0
+        ? {
+            hardDeadlineMs: findProductsMultiNonBeautyPrimaryDeadlineMs,
+            hardDeadlineCode: 'FPM_NON_BEAUTY_PRIMARY_DEADLINE_EXCEEDED',
+            hardDeadlineReason: 'non_beauty_primary_deadline',
+            hardDeadlineMessage:
+              'find_products_multi non-beauty primary exceeded hard deadline',
+          }
+        : {}),
+    };
+    let speculativePrimaryPromise = null;
     if (shouldAttemptResolverFirst) {
       addFpmGateTrace({
         gateId: 'resolver_first',
@@ -46314,6 +46475,29 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         costMsEstimate: 220,
         queryClass: traceQueryClass,
       });
+      // Parallel recall legs: the resolver-first probe and the primary
+      // upstream search are independent, so a resolver miss must not pay
+      // resolver + primary sequentially. Start the primary in flight now and
+      // await it below only if the resolver result isn't adopted. When the
+      // resolver IS adopted the in-flight primary is discarded (bounded by
+      // its own axios timeout).
+      if (FPM_PARALLEL_RESOLVER_PRIMARY && operation === 'find_products_multi') {
+        speculativePrimaryPromise = callTrackedUpstream(
+          operation,
+          axiosConfig,
+          primaryUpstreamOptions,
+        );
+        speculativePrimaryPromise.catch(() => {});
+        addFpmGateTrace({
+          gateId: 'resolver_first_parallel_primary',
+          applied: true,
+          decision: 'started',
+          reason: 'parallel_recall',
+          costMsEstimate: 0,
+          queryClass: traceQueryClass,
+        });
+      }
+      const resolverFirstStartedAt = Date.now();
       try {
         resolverFirstResult = await queryResolveSearchFallback({
           queryParams: resolverQueryParams,
@@ -46380,12 +46564,25 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           `${operation} resolver-first failed; falling back to upstream`,
         );
       }
+      recordFpmStage('resolver_first', resolverFirstStartedAt, {
+        upstream_http: true,
+        adopted: Boolean(response),
+        ...(speculativePrimaryPromise
+          ? {
+              parallel_primary_started: true,
+              ...(response ? { discarded_speculative_primary: true } : {}),
+            }
+          : {}),
+      });
     }
     if (
       !response &&
+      !speculativePrimaryPromise &&
       operation === 'find_products_multi' &&
       shouldReducePrimaryTimeoutAfterResolverMiss(resolverFirstResult, resolverQueryText)
     ) {
+      // Skipped when the primary was already dispatched in parallel with the
+      // resolver: the request is in flight, so its timeout can't be lowered.
       axiosConfig.timeout = Math.min(
         Number(axiosConfig.timeout || getUpstreamTimeoutMs(operation)),
         PROXY_SEARCH_PRIMARY_TIMEOUT_AFTER_RESOLVER_MISS_MS,
@@ -46446,18 +46643,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 
       if (!response) {
         try {
-          response = await callTrackedUpstream(operation, axiosConfig, {
-            spanKey: 'upstream_primary_ms',
-            ...(findProductsMultiNonBeautyPrimaryDeadlineMs > 0
-              ? {
-                  hardDeadlineMs: findProductsMultiNonBeautyPrimaryDeadlineMs,
-                  hardDeadlineCode: 'FPM_NON_BEAUTY_PRIMARY_DEADLINE_EXCEEDED',
-                  hardDeadlineReason: 'non_beauty_primary_deadline',
-                  hardDeadlineMessage:
-                    'find_products_multi non-beauty primary exceeded hard deadline',
-                }
-              : {}),
-          });
+          response = speculativePrimaryPromise
+            ? await speculativePrimaryPromise
+            : await callTrackedUpstream(operation, axiosConfig, primaryUpstreamOptions);
           if (operation === 'find_products' || operation === 'find_products_multi') {
             searchContractBridgeMeta =
               operation === 'find_products_multi' && strictCommerceFindProductsMulti
@@ -46491,7 +46679,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               ? getCanonicalSearchFallbackReason(primaryErr)
               : null;
           if (legacySearchAxiosConfig && legacyFallbackReason) {
-            response = await callTrackedUpstream(operation, legacySearchAxiosConfig);
+            response = await callTrackedUpstream(operation, legacySearchAxiosConfig, {
+              stageLabel: 'legacy_contract_fallback',
+            });
             searchContractBridgeMeta = {
               attempted_contract: 'agent_v2',
               resolved_contract: 'agent_v1',
@@ -46818,6 +47008,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 : 'upstream_exception';
 
           if (allowResolverFallbackOnException) {
+            const resolverAfterExceptionStartedAt = Date.now();
             try {
               const resolverFallback = await queryResolveSearchFallback({
                 queryParams: resolverQueryParams,
@@ -46825,6 +47016,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 reason: 'resolver_after_exception',
                 requestSource: metadata?.source,
                 timeoutMs: resolverTimeoutMs,
+              });
+              recordFpmStage('resolver_after_exception', resolverAfterExceptionStartedAt, {
+                upstream_http: true,
               });
               if (
                 resolverFallback &&
@@ -46864,12 +47058,16 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           }
 
           if (!response && allowSecondaryFallbackOnException) {
+            const secondaryInvokeFallbackStartedAt = Date.now();
             try {
               const fallback = await queryFindProductsMultiFallback({
                 queryParams: resolverQueryParams,
                 checkoutToken,
                 reason: fallbackReason,
                 requestSource: metadata?.source,
+              });
+              recordFpmStage('secondary_invoke_fallback', secondaryInvokeFallbackStartedAt, {
+                upstream_http: true,
               });
               if (
                 fallback &&
@@ -47001,11 +47199,15 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     }
 
     if (operation === 'find_products' || operation === 'find_products_multi') {
+      const normalizeHydrateStartedAt = Date.now();
       upstreamData = normalizeAgentProductsListResponse(upstreamData, {
         limit: queryParams?.limit,
         offset: queryParams?.offset,
       });
       upstreamData = await hydrateFindProductsCatalogIdentityFields(upstreamData);
+      recordFpmStage('normalize_hydrate', normalizeHydrateStartedAt, {
+        returned: Array.isArray(upstreamData?.products) ? upstreamData.products.length : 0,
+      });
       if (searchContractBridgeMeta) {
         upstreamData = {
           ...upstreamData,
@@ -47272,6 +47474,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           queryClass: traceQueryClass,
         });
         try {
+          const secondStageContextStartedAt = Date.now();
           const secondStageCtx = await buildFindProductsMultiContext({
             payload,
             metadata: {
@@ -47279,6 +47482,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               expansion_mode: FIND_PRODUCTS_MULTI_SECOND_STAGE_EXPANSION_MODE,
             },
           });
+          recordFpmStage('second_stage_context', secondStageContextStartedAt);
           const expandedSecondaryQuery = String(
             secondStageCtx?.adjustedPayload?.search?.query || queryText,
           ).trim();
@@ -47306,7 +47510,16 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 queryClass: traceQueryClass,
               });
             } else {
-              const secondaryResp = await axios(secondStageAxiosConfig);
+              const secondStageUpstreamStartedAt = Date.now();
+              let secondaryResp;
+              try {
+                secondaryResp = await axios(secondStageAxiosConfig);
+              } finally {
+                recordFpmStage('second_stage_upstream', secondStageUpstreamStartedAt, {
+                  upstream_http: true,
+                  status: secondaryResp?.status,
+                });
+              }
               const secondaryNormalized = normalizeAgentProductsListResponse(secondaryResp.data, {
                 limit: secondStageLimit,
                 offset: 0,
@@ -47439,6 +47652,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         let replacedByFallback = false;
 
         if (allowResolverFallback && !skipSecondaryFallback) {
+          const resolverAfterPrimaryStartedAt = Date.now();
           try {
             const resolverFallback = await queryResolveSearchFallback({
               queryParams: queryText ? { ...queryParams, query: queryText } : queryParams,
@@ -47446,6 +47660,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               reason: 'resolver_after_primary',
               requestSource: metadata?.source,
               timeoutMs: resolverTimeoutMs,
+            });
+            recordFpmStage('resolver_after_primary', resolverAfterPrimaryStartedAt, {
+              upstream_http: true,
             });
             if (
               resolverFallback &&
@@ -47482,6 +47699,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           (allowInvokeFallback || forceInvokeFallbackForFragrance) &&
           !skipSecondaryFallback
         ) {
+          const secondaryAfterPrimaryStartedAt = Date.now();
           try {
             const fallback = await queryFindProductsMultiFallback({
               queryParams: queryText ? { ...queryParams, query: queryText } : queryParams,
@@ -47496,6 +47714,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 ? 'primary_low_quality'
                 : 'primary_irrelevant',
               requestSource: metadata?.source,
+            });
+            recordFpmStage('secondary_fallback_after_primary', secondaryAfterPrimaryStartedAt, {
+              upstream_http: true,
             });
             const fallbackAttempts = Array.isArray(fallback?.attempts)
               ? fallback.attempts
@@ -48402,6 +48623,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       operation === 'find_products' ||
       operation === 'find_products_multi'
     ) {
+      const brandRescuePreStartedAt = Date.now();
       upstreamData = await maybeRescueBrandLikeSearchFromLocalExternalSeed({
         operation,
         upstreamData,
@@ -48411,6 +48633,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         checkoutToken,
         upstreamStatus: response?.status || null,
       });
+      recordFpmStage('brand_rescue_pre_policy', brandRescuePreStartedAt);
     }
 
     let maybePolicy = upstreamData;
@@ -48441,6 +48664,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         (isCacheLookupSource && isLookupPolicyQuery) ||
         (querySource === 'agent_products_search' && isAliasLookupQuery);
 
+      const policyApplyStartedAt = Date.now();
       maybePolicy = skipPolicyForLookupSoftFallback
         ? upstreamData
         : applyFindProductsMultiPolicy({
@@ -48450,6 +48674,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             metadata: policyMetadata,
             rawUserQuery,
           });
+      recordFpmStage('policy_apply', policyApplyStartedAt, {
+        skipped: skipPolicyForLookupSoftFallback || undefined,
+      });
 
       const effTarget = effectiveIntent?.target_object?.type || 'unknown';
       const productsAfterPolicy = Array.isArray(maybePolicy.products) ? maybePolicy.products : [];
@@ -48521,6 +48748,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       operation === 'find_products' ||
       operation === 'find_products_multi'
     ) {
+      const brandRescuePostStartedAt = Date.now();
       maybePolicy = await maybeRescueBrandLikeSearchFromLocalExternalSeed({
         operation,
         upstreamData: maybePolicy,
@@ -48530,9 +48758,12 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         checkoutToken,
         upstreamStatus: response?.status || null,
       });
+      recordFpmStage('brand_rescue_post_policy', brandRescuePostStartedAt);
     }
 
     if (operation === 'find_products_multi') {
+      const llmRerankStartedAt = Date.now();
+      let llmRerankOutcome = null;
       try {
         const search = effectivePayload.search || effectivePayload || {};
         const limit = Math.min(Math.max(1, Number(search.limit || search.page_size || 20) || 20), SEARCH_LIMIT_MAX);
@@ -48541,6 +48772,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           userQuery: rawUserQuery,
           limit,
         });
+        llmRerankOutcome = reranked?.applied
+          ? { applied: true, provider: reranked.provider || null }
+          : { applied: false };
         if (reranked?.applied) {
           maybePolicy = reranked.response;
           if (ROUTE_DEBUG_ENABLED) {
@@ -48562,17 +48796,25 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           }
         }
       } catch (err) {
+        llmRerankOutcome = { applied: false, error: true };
         logger.warn({ err: err?.message || String(err) }, 'find_products_multi llm rerank failed; keeping ordering');
       }
+      recordFpmStage('llm_rerank', llmRerankStartedAt, {
+        applied: Boolean(llmRerankOutcome?.applied),
+        provider: llmRerankOutcome?.provider,
+        error: llmRerankOutcome?.error,
+      });
     }
 
     if (operation === 'find_products_multi') {
+      const pdpIdentityRescueStartedAt = Date.now();
       maybePolicy = await maybeRescueSearchFromPdpIdentityGraph({
         operation,
         upstreamData: maybePolicy,
         queryText: String(rawUserQuery || extractSearchQueryText(queryParams) || '').trim(),
         queryParams,
       });
+      recordFpmStage('pdp_identity_rescue', pdpIdentityRescueStartedAt);
     }
 
     let enriched = applyDealsToResponse(maybePolicy, promotions, now, creatorId);
@@ -48902,11 +49144,13 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         queryText,
         queryParams,
       });
+      const savingsHydrateStartedAt = Date.now();
       enriched = await hydrateSearchSavingsPresentationFromUpstream({
         operation,
         responseBody: enriched,
         checkoutToken,
       });
+      recordFpmStage('savings_hydrate', savingsHydrateStartedAt);
       enriched = applyNonBeautyDomainIsolation({
         responseBody: enriched,
         queryText: String(rawUserQuery || extractSearchQueryText(queryParams) || '').trim(),
@@ -49511,6 +49755,7 @@ module.exports._debug = {
   uiChatBuildLoopBreakRetryArgs,
   decideGenericSkincareCachePreference,
   collapseNearDuplicateSearchProducts,
+  enforceFindProductsMultiRequestedPageSize,
   buildTravelLookupSearchProductDedupeKey,
   normalizeSearchAvailabilityState,
   postProcessTravelLookupProductsResponse,
