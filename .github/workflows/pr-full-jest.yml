@@ -49,9 +49,17 @@ jobs:
         run: npm ci
 
       - name: Run jest shard ${{ matrix.shard }}/8
+        # Worker mode (NOT --runInBand) with a per-worker memory ceiling: each
+        # suite loads the 45k-line server.js, so a single-process shard
+        # accumulates heap until it OOM-aborts (exit 134) on CI's ~7GB runners.
+        # --workerIdleMemoryLimit recycles a worker once it balloons, keeping
+        # each shard bounded; --maxWorkers=2 matches the standard runner.
+        env:
+          NODE_OPTIONS: "--max-old-space-size=4096"
         run: |
           npx jest \
             --watchman=false \
-            --runInBand \
             --silent \
+            --maxWorkers=2 \
+            --workerIdleMemoryLimit=768MB \
             --shard=${{ matrix.shard }}/8
