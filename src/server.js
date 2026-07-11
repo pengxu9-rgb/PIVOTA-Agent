@@ -11845,7 +11845,7 @@ function normalizeAgentProductsListResponse(raw, ctx = {}) {
 // point — after policy ranking and LLM rerank, so trimming never shrinks the
 // pool those stages rank over. Strict-contract responses are left untouched
 // (their shape is parity-locked with the backend).
-function enforceFindProductsMultiRequestedPageSize({ responseBody, searchParams }) {
+function enforceFindProductsMultiRequestedPageSize({ responseBody, searchParams, queryText = '' }) {
   if (!responseBody || typeof responseBody !== 'object' || Array.isArray(responseBody)) {
     return responseBody;
   }
@@ -11869,13 +11869,63 @@ function enforceFindProductsMultiRequestedPageSize({ responseBody, searchParams 
   }
   const products = Array.isArray(responseBody.products) ? responseBody.products : null;
   if (!products || products.length <= requestedLimit) return responseBody;
+  // Brand page guard: a brand-name query must not have its brand-matching
+  // items trimmed away in favor of items that don't match the brand at all.
+  // The failure this fixes: the primary pool returns irrelevant products
+  // (e.g. post-expansion junk or fallback recall) ranked ahead of brand-exact
+  // items the citable supplement appended AFTER ranking, so the page fills
+  // with junk and this trim used to drop the actual brand hits. Stable
+  // partition: brand-matching items keep their relative order, then the rest
+  // — and only when the plain trim would actually lose a brand-matching item.
+  let orderedProducts = products;
+  let brandGuard = null;
+  try {
+    const brandDetection = detectBrandEntities(String(queryText || ''), { candidateProducts: [] });
+    const brandCompacts = (brandDetection?.brand_like ? brandDetection.brands : [])
+      .map((brand) => String(brand || '').toLowerCase().replace(/[^a-z0-9]+/g, ''))
+      .filter((brand) => brand.length >= 4);
+    if (brandCompacts.length) {
+      const matchesBrand = (product) => {
+        // Two-tier match (review finding: compacted substrings have no token
+        // boundaries — "nars" ⊂ "lunarspell", "fresh" ⊂ "refreshing"):
+        // the product's own brand field matches on containment at any length,
+        // but the loose title/name substring arm requires a longer compact so
+        // short brand names can't collide with unrelated words.
+        const brandField = String(product?.brand || '')
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '');
+        const hay = `${product?.brand || ''} ${product?.title || ''} ${product?.name || ''}`
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '');
+        return brandCompacts.some(
+          (brand) =>
+            (brandField && brandField.includes(brand)) ||
+            (brand.length >= 6 && hay.includes(brand)),
+        );
+      };
+      const matched = [];
+      const rest = [];
+      for (const product of products) (matchesBrand(product) ? matched : rest).push(product);
+      const brandItemsOnPlainPage = products.slice(0, requestedLimit).filter(matchesBrand).length;
+      if (matched.length > 0 && brandItemsOnPlainPage < Math.min(matched.length, requestedLimit)) {
+        orderedProducts = [...matched, ...rest];
+        brandGuard = {
+          brands: brandDetection.brands,
+          brand_matched_count: matched.length,
+          promoted_count: Math.min(matched.length, requestedLimit) - brandItemsOnPlainPage,
+        };
+      }
+    }
+  } catch (_) {
+    // best-effort: the guard must never break page-size enforcement
+  }
   const existingMetadata =
     responseBody.metadata && typeof responseBody.metadata === 'object' && !Array.isArray(responseBody.metadata)
       ? responseBody.metadata
       : {};
   return {
     ...responseBody,
-    products: products.slice(0, requestedLimit),
+    products: orderedProducts.slice(0, requestedLimit),
     page_size: requestedLimit,
     metadata: {
       ...existingMetadata,
@@ -11883,6 +11933,7 @@ function enforceFindProductsMultiRequestedPageSize({ responseBody, searchParams 
         applied: true,
         requested_page_size: requestedLimit,
         pre_trim_count: products.length,
+        ...(brandGuard ? { brand_guard: brandGuard } : {}),
       },
     },
   };
@@ -38502,6 +38553,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         finalBody = enforceFindProductsMultiRequestedPageSize({
           responseBody: finalBody,
           searchParams: searchParamsForLimit,
+          // RAW user query (not the expanded one) — the brand guard must key
+          // off what the user actually asked for.
+          queryText: String(
+            req?.body?.payload?.search?.query || req?.body?.payload?.query || '',
+          ).trim(),
         });
       }
     } catch (pageSizeErr) {

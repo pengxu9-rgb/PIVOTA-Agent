@@ -4801,11 +4801,49 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
   const semanticOwnerLockedEffective = preserveStrictQueryOwner ? false : semanticOwnerLocked;
   const adjustedSemanticContract = preserveStrictQueryOwner ? null : semanticContract;
 
+  // A BARE brand-name query (the query is nothing but a detected brand) must
+  // reach upstream verbatim. The NLU has no grounding for proper-noun-only
+  // queries, so category expansion INVENTS intent — live incident: "acropass"
+  // (a catalog brand) was classified as women's apparel and expanded to
+  // "acropass women clothing dress top skirt outfit", which recalled lingerie
+  // junk in every lane while the brand's own products missed the page.
+  // "Bare" is decided by token remainder — query tokens minus the detected
+  // brand's tokens — NOT by a category-word list: intent.category is the
+  // NLU's invention on these queries (the very signal being guarded), and an
+  // English category regex is blind to user-typed CJK/es category words
+  // (review finding: "uniqlo 连衣裙" must keep its expansion). Unicode-aware
+  // token compare so non-ASCII remainder tokens count as real evidence.
+  // detectBrandEntities includes the catalog dictionary
+  // (GATEWAY_DYNAMIC_BRAND_DETECT), so brands unknown to the NLU are exactly
+  // the ones this protects.
+  const brandQueryExpansionBypassed = (() => {
+    if (!brandQueryDetected || !latestUserQuery) return false;
+    const normalizeGuardToken = (token) =>
+      String(token || '')
+        .toLowerCase()
+        .replace(/[^\p{L}\p{N}]/gu, '');
+    const brandTokenSet = new Set(
+      brandEntities
+        .flatMap((brand) => String(brand || '').toLowerCase().split(/\s+/))
+        .map(normalizeGuardToken)
+        .filter(Boolean),
+    );
+    if (!brandTokenSet.size) return false;
+    const remainder = String(latestUserQuery)
+      .toLowerCase()
+      .split(/\s+/)
+      .map(normalizeGuardToken)
+      .filter(Boolean)
+      .filter((token) => !brandTokenSet.has(token));
+    return remainder.length === 0;
+  })();
+
   const expandedQuery = (() => {
     const q = latestUserQuery;
     if (!q) return q;
     const expansionMode = baseExpansionMode;
     if (expansionMode === 'off') return q;
+    if (brandQueryExpansionBypassed) return q;
     const lang = intent?.language || 'en';
     const target = intent?.target_object?.type || 'unknown';
     const scenario = intent?.scenario?.name || 'general';
@@ -5196,6 +5234,7 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
     ambiguity_score_pre: ambiguityScorePre,
     query_semantic_class: querySemanticClass,
     brand_query_detected: brandQueryDetected,
+    brand_query_expansion_bypassed: brandQueryExpansionBypassed,
     brand_entities: brandEntities,
     brand_detection_mode: brandDetection?.detection_mode || null,
     brand_query_without_category: brandQueryWithoutCategory,
