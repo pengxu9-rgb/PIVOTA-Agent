@@ -350,13 +350,28 @@ async function fetchCanonicalChainRows(args = {}) {
         ) THEN 15 ELSE 0 END`;
   }
 
-  // Token matching (citable lane only, opt-in). Whole-phrase LIKE '%full query%'
-  // misses queries whose words appear non-contiguously in a title (e.g. "hair
-  // butter for damaged hair" vs title "Anuko Nourishing Hair Butter"). When
-  // tokenMatch is on, ALSO match rows whose title/brand contain a threshold of
-  // the query's significant tokens, and rank by how many overlap. Additive — the
-  // whole-phrase clause is untouched, so this only ADDS matches. The buyable lane
-  // never passes tokenMatch, so its SQL is byte-identical.
+  // Token matching (opt-in). Whole-phrase LIKE '%full query%' misses queries
+  // whose words appear non-contiguously in a title (e.g. "hair butter for
+  // damaged hair" vs title "Anuko Nourishing Hair Butter"). When tokenMatch is
+  // on, ALSO match rows whose title/brand contain a threshold of the query's
+  // significant tokens, and rank by how many overlap. Additive — the whole-phrase
+  // clause is untouched, so this only ADDS matches.
+  //
+  // Sargability (citable index_eligible lane only): the plain
+  // "(overlap) >= minTokens" arithmetic is opaque to the planner, so on the
+  // offer-free citable lane — which scans ~all index_eligible rows — it forced a
+  // seq/nested-loop over the whole eligible set (~6k rows), bypassing the
+  // idx_catalog_products_{title,brand}_trgm GIN indexes (prod EXPLAIN: ~2.8s just
+  // for this leg). When citableSargableLane is on we ALSO emit an explicit
+  // any-token superset of bare title/brand LIKEs (which the trigram indexes CAN
+  // bitmap) AND the exact overlap>=minTokens recheck. overlap>=minTokens implies
+  // >=1 token present, so the AND is logically a no-op on the result set — it
+  // only gives the planner an indexable handle. Prod EXPLAIN flips this to a
+  // trigram BitmapOr (planner cost 97060 -> 9395). The buyable tokenMatch lane
+  // (serving_eligible, WS2c) keeps the plain form byte-identical — it must retain
+  // merchant_name / source_product_id recall and doesn't have the same scan
+  // profile. See the citable-supplement latency track / PR follow-up to #1755.
+  const citableSargableLane = tokenMatch && eligibilityColumn === 'index_eligible';
   let tokenWhere = '';
   let tokenScore = '';
   if (tokenMatch) {
@@ -369,19 +384,42 @@ async function fetchCanonicalChainRows(args = {}) {
       ),
     ).slice(0, 6);
     if (tokens.length >= 2) {
+      const tokenBinds = [];
       const overlapParts = tokens.map((t) => {
         params.push(`%${t}%`);
         const b = `$${params.length}`;
+        tokenBinds.push(b);
         return `(CASE WHEN LOWER(COALESCE(p.title, '')) LIKE ${b} OR LOWER(COALESCE(p.brand, '')) LIKE ${b} THEN 1 ELSE 0 END)`;
       });
       const overlapSql = overlapParts.join(' + ');
       const minTokens = Math.max(2, Math.ceil(tokens.length * 0.5));
-      tokenWhere = `OR ((${overlapSql}) >= ${minTokens})`;
       tokenScore = `+ ((${overlapSql}) * 25)`;
+      if (citableSargableLane) {
+        const anyTokenSql = tokenBinds
+          .map((b) => `LOWER(COALESCE(p.title, '')) LIKE ${b} OR LOWER(COALESCE(p.brand, '')) LIKE ${b}`)
+          .join(' OR ');
+        tokenWhere = `OR ((${anyTokenSql}) AND ((${overlapSql}) >= ${minTokens}))`;
+      } else {
+        tokenWhere = `OR ((${overlapSql}) >= ${minTokens})`;
+      }
     }
   }
 
-  const textWhereClause = `
+  // On the citable sargable lane, drop the merchant_name (cross-table, defeats a
+  // catalog_products-only index) and source_product_id (leading-wildcard, no
+  // trigram index) OR-arms so the remaining disjuncts are all trigram-bitmap-able
+  // title/brand predicates. Both dropped arms are near-dead for natural-language
+  // citation queries (a merchant is ~never named the full query; source_product_id
+  // is an opaque platform id). Every other lane keeps the full clause verbatim.
+  const textWhereClause = citableSargableLane
+    ? `
+        LOWER(COALESCE(p.title, '')) LIKE $2
+        OR LOWER(COALESCE(p.brand, '')) LIKE $2
+        ${skuTextWhere}
+        ${verticalWhere}
+        ${tokenWhere}
+  `
+    : `
         LOWER(COALESCE(p.title, '')) LIKE $2
         OR LOWER(COALESCE(p.brand, '')) LIKE $2
         OR LOWER(COALESCE(m.merchant_name, '')) LIKE $2
