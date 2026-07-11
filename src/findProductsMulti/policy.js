@@ -4806,6 +4806,19 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
     if (!q) return q;
     const expansionMode = baseExpansionMode;
     if (expansionMode === 'off') return q;
+    // A bare brand-name query (detected brand, no category words TYPED BY THE
+    // USER) must reach upstream verbatim. The NLU has no grounding for
+    // proper-noun-only queries, so category expansion INVENTS intent — live
+    // incident: "acropass" (a catalog brand) was classified as women's
+    // apparel and expanded to "acropass women clothing dress top skirt
+    // outfit", which recalled lingerie junk in every lane while the brand's
+    // own products missed the page. Category evidence is checked with intent
+    // deliberately EXCLUDED (null): intent.category on such queries is the
+    // NLU's invention — the very signal this guards against — whereas
+    // brandQueryWithoutCategory trusts it. detectBrandEntities includes the
+    // catalog dictionary (GATEWAY_DYNAMIC_BRAND_DETECT), so brands unknown to
+    // the NLU are exactly the ones this protects.
+    if (brandQueryDetected && !hasExplicitCategoryHint(q, null)) return q;
     const lang = intent?.language || 'en';
     const target = intent?.target_object?.type || 'unknown';
     const scenario = intent?.scenario?.name || 'general';
