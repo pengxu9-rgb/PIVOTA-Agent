@@ -2,8 +2,12 @@ describe('creator cache search ranking', () => {
   test('penalizes toy/pet items for human clothing queries', async () => {
     const prevDatabaseUrl = process.env.DATABASE_URL;
     const prevVectorEnabled = process.env.FIND_PRODUCTS_MULTI_VECTOR_ENABLED;
+    const prevCreatorConfigs = process.env.CREATOR_CONFIGS_JSON;
     process.env.DATABASE_URL = '';
     process.env.FIND_PRODUCTS_MULTI_VECTOR_ENABLED = 'false';
+    // Creator configs are env-driven since the runtime hardcode scrub (3e19cc76).
+    process.env.CREATOR_CONFIGS_JSON =
+      '[{"creatorId":"creator_demo_001","merchantIds":["merch_efbc46b4619cfbdf"]}]';
 
     const products = [
       {
@@ -70,6 +74,8 @@ describe('creator cache search ranking', () => {
       jest.resetModules();
       process.env.DATABASE_URL = prevDatabaseUrl;
       process.env.FIND_PRODUCTS_MULTI_VECTOR_ENABLED = prevVectorEnabled;
+      if (prevCreatorConfigs === undefined) delete process.env.CREATOR_CONFIGS_JSON;
+      else process.env.CREATOR_CONFIGS_JSON = prevCreatorConfigs;
     }
   });
 });

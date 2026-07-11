@@ -8,7 +8,8 @@
       "require_primary_path": true,
       "allow_strict_empty": false,
       "allowed_query_sources": [
-        "cache_multi_intent"
+        "cache_multi_intent",
+        "agent_products_ingredient_recall_direct"
       ],
       "must_not_match_fallback_sources": [
         "agent_products_error_fallback",

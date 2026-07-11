@@ -22,6 +22,9 @@ describe('creator categories', () => {
       TAXONOMY_ENABLED: 'true',
       API_MODE: 'MOCK',
       PIVOTA_API_KEY: undefined,
+      // Hardcoded CREATOR_CONFIGS were removed in 3e19cc76; creators now come
+      // from CREATOR_CONFIGS_JSON (src/creatorConfig.js), so seed the fixture here.
+      CREATOR_CONFIGS_JSON: '[{"creatorId":"nina-studio","merchantIds":["merch_efbc46b4619cfbdf"]}]',
     });
     const res = await request(app).get('/creator/nina-studio/categories?includeCounts=true');
     expect(res.status).toBe(200);

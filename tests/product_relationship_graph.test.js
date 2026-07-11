@@ -15,7 +15,12 @@ const {
   __internal,
 } = require('../src/auroraBff/productRelationshipGraph');
 
-const NOW = Date.parse('2026-05-25T00:00:00.000Z');
+// Derive the fixture clock from the real clock: splitEdgesForRecoBlocks →
+// isApprovedFreshEdge defaults to Date.now(), so a calendar-pinned NOW turns
+// FUTURE_ISO expiries into a time bomb once the pinned date + 30d passes.
+// The absolute past dates below ('2026-05-01' stale price, '2026-05-20'
+// expired edge) stay in the past relative to any real NOW, preserving intent.
+const NOW = Date.now();
 const NOW_ISO = new Date(NOW).toISOString();
 const FUTURE_ISO = new Date(NOW + 30 * 24 * 60 * 60 * 1000).toISOString();
 

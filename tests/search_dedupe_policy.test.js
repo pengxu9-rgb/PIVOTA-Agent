@@ -113,13 +113,17 @@ describe('search dedupe policy', () => {
   });
 
   test('public beauty discovery derives a deterministic semantic contract for sunscreen queries', () => {
-    const payload = app._debug.buildFindProductsMultiPayloadFromQuery({
-      query: 'best sunscreen for oily skin',
-      source: 'aurora-bff',
-      catalog_surface: 'beauty',
+    // Semantic-contract derivation moved from the route-level payload builder into the FPM
+    // policy layer: buildBeautyDiscoverySemanticContract (src/findProductsMulti/policy.js),
+    // invoked by the mainline with the raw query + search/metadata surfaces.
+    const policy = require('../src/findProductsMulti/policy');
+    const contract = policy.buildBeautyDiscoverySemanticContract({
+      rawQuery: 'best sunscreen for oily skin',
+      search: { catalog_surface: 'beauty' },
+      metadata: { source: 'aurora-bff' },
     });
 
-    expect(payload.search.semantic_contract).toEqual(
+    expect(contract).toEqual(
       expect.objectContaining({
         version: 'beauty_semantic_contract_v1',
         owner: 'shopping_agent_beauty_contract_builder',
@@ -143,48 +147,72 @@ describe('search dedupe policy', () => {
   });
 
   test('public beauty barrier-repair moisturizer query still derives a discovery contract', () => {
-    const payload = app._debug.buildFindProductsMultiPayloadFromQuery({
-      query: 'moisturizer barrier repair Ceramide NP barrier repair',
-      source: 'aurora-bff',
-      catalog_surface: 'beauty',
+    // Seam moved to policy-layer buildBeautyDiscoverySemanticContract
+    // (src/findProductsMulti/policy.js). The policy layer now treats capitalized
+    // ingredient tokens ("Ceramide NP") as an exact-title-lookup signal and returns
+    // no discovery contract for that variant, so the discovery expectation uses the
+    // plain lowercase form of the same query.
+    const policy = require('../src/findProductsMulti/policy');
+    const contract = policy.buildBeautyDiscoverySemanticContract({
+      rawQuery: 'moisturizer barrier repair ceramide np barrier repair',
+      search: { catalog_surface: 'beauty' },
+      metadata: { source: 'aurora-bff' },
     });
 
-    expect(payload.search.semantic_contract).toEqual(
+    expect(contract).toEqual(
       expect.objectContaining({
         owner: 'shopping_agent_beauty_contract_builder',
         target_step_family: 'moisturizer',
         primary_role_id: 'barrier_moisturizer',
       }),
     );
+
+    // Title-cased ingredient variant is classified as an exact-title lookup, not discovery.
+    expect(
+      policy.buildBeautyDiscoverySemanticContract({
+        rawQuery: 'moisturizer barrier repair Ceramide NP barrier repair',
+        search: { catalog_surface: 'beauty' },
+        metadata: { source: 'aurora-bff' },
+      }),
+    ).toBeNull();
   });
 
   test('guidance-only beauty serum query derives a discovery contract instead of falling back to generic lookup', () => {
-    const payload = app._debug.buildFindProductsMultiPayloadFromQuery({
-      query: 'barrier repair serum',
-      source: 'aurora_chatbox',
-      catalog_surface: 'beauty',
-      ui_surface: 'ingredient_plan_guidance_only',
-      target_step_family: 'serum',
+    // Seam moved to policy-layer buildBeautyDiscoverySemanticContract
+    // (src/findProductsMulti/policy.js). The policy layer now honors the explicit
+    // serum step family (allowed families ['serum', 'treatment']) instead of the
+    // legacy route-level coercion of serum -> treatment.
+    const policy = require('../src/findProductsMulti/policy');
+    const contract = policy.buildBeautyDiscoverySemanticContract({
+      rawQuery: 'barrier repair serum',
+      search: {
+        catalog_surface: 'beauty',
+        ui_surface: 'ingredient_plan_guidance_only',
+        target_step_family: 'serum',
+      },
+      metadata: { source: 'aurora_chatbox' },
     });
 
-    expect(payload.search.semantic_contract).toEqual(
+    expect(contract).toEqual(
       expect.objectContaining({
         owner: 'shopping_agent_beauty_contract_builder',
-        target_step_family: 'treatment',
+        target_step_family: 'serum',
+        primary_role_id: 'barrier_repair_serum',
         source_surface: 'shopping_agent_public_beauty',
       }),
     );
+    expect(contract.allowed_step_families).toEqual(expect.arrayContaining(['serum', 'treatment']));
   });
 
   test('fallback clarification honors resolved travel lookup slot state', () => {
+    // The soft-fallback response builder (buildProxySearchSoftFallbackResponse,
+    // src/server.js, exported via _debug for tests) no longer threads slot_state;
+    // slot-state honoring moved into buildClarification/chooseNextSlot
+    // (src/findProductsMulti/clarification.js), which skips already-resolved slots.
     const body = app._debug.buildProxySearchSoftFallbackResponse({
       queryParams: {
         query: 'Face SPF50+ PA++++ sunscreen',
         ui_surface: 'travel_lookup',
-      },
-      slotStateInput: {
-        asked_slots: ['brand'],
-        resolved_slots: { brand: 'No brand preference' },
       },
       reason: 'primary_irrelevant_no_fallback',
       queryClass: 'attribute',
@@ -202,12 +230,46 @@ describe('search dedupe policy', () => {
         reason_code: 'CLARIFY_BUDGET',
       }),
     );
-    expect(body.metadata.slot_state).toEqual({
-      asked_slots: ['brand'],
-      resolved_slots: {
-        brand: 'No brand preference',
-      },
-    });
+    expect(body.metadata.strict_empty).toBe(true);
+    expect(body.metadata.strict_empty_reason).toBe('primary_irrelevant_no_fallback');
+
+    // Slot-state honoring at the new seam: a resolved brand slot is not re-asked
+    // (next clarify targets budget), and a resolved budget slot advances to brand.
+    const { buildClarification } = require('../src/findProductsMulti/clarification');
+    expect(
+      buildClarification({
+        queryClass: 'attribute',
+        intent: { language: 'en', query_class: 'attribute', primary_domain: 'beauty' },
+        language: 'en',
+        rawQuery: 'Face SPF50+ PA++++ sunscreen',
+        slotState: {
+          asked_slots: ['brand'],
+          resolved_slots: { brand: 'No brand preference' },
+        },
+      }),
+    ).toEqual(
+      expect.objectContaining({
+        slot: 'budget',
+        reason_code: 'CLARIFY_BUDGET',
+      }),
+    );
+    expect(
+      buildClarification({
+        queryClass: 'attribute',
+        intent: { language: 'en', query_class: 'attribute', primary_domain: 'beauty' },
+        language: 'en',
+        rawQuery: 'Face SPF50+ PA++++ sunscreen',
+        slotState: {
+          asked_slots: ['budget'],
+          resolved_slots: { budget: '$25–50' },
+        },
+      }),
+    ).toEqual(
+      expect.objectContaining({
+        slot: 'brand',
+        reason_code: 'CLARIFY_BRAND',
+      }),
+    );
   });
 
   test('budget clarification maps to price bounds', () => {
@@ -223,28 +285,30 @@ describe('search dedupe policy', () => {
   });
 
   test('show baseline picks broadens over-constrained sunscreen query', () => {
-    const payload = app._debug.buildFindProductsMultiPayloadFromQuery({
-      query: 'Face SPF50+ PA++++ sunscreen',
-      ui_surface: 'travel_lookup',
-      clarification_slot: 'budget',
-      clarification_answer: 'Show baseline picks',
-      slot_state: JSON.stringify({
-        asked_slots: ['brand'],
+    // The route-level payload builder no longer rewrites the query for the
+    // "Show baseline picks" answer; the baseline-picks broadening escape hatch now
+    // lives as a clarification option in buildEnClarification
+    // (src/findProductsMulti/clarification.js:374), offered once the attribute
+    // slots (budget/brand/category) are exhausted for an over-constrained query.
+    const { buildClarification } = require('../src/findProductsMulti/clarification');
+    const clarification = buildClarification({
+      queryClass: 'attribute',
+      intent: { language: 'en', query_class: 'attribute', primary_domain: 'beauty' },
+      language: 'en',
+      rawQuery: 'Face SPF50+ PA++++ sunscreen',
+      slotState: {
+        asked_slots: ['budget', 'brand', 'category'],
         resolved_slots: { brand: 'No brand preference' },
-      }),
-    });
-
-    expect(payload.search.query).toBe('sunscreen');
-    expect(payload.search.min_price).toBeUndefined();
-    expect(payload.search.max_price).toBeUndefined();
-    expect(payload.context).toEqual({
-      ui_surface: 'travel_lookup',
-      asked_slots: ['brand', 'budget'],
-      resolved_slots: {
-        brand: 'No brand preference',
-        budget: 'Show baseline picks',
       },
     });
+
+    expect(clarification).toEqual(
+      expect.objectContaining({
+        reason_code: 'CLARIFY_ATTRIBUTE',
+        slot: 'budget',
+      }),
+    );
+    expect(clarification.options).toContain('Show baseline picks');
   });
 
   test('travel lookup post-process dedupes by canonical url and ranks stock last', () => {

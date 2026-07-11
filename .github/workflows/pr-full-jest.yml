@@ -1,0 +1,78 @@
+name: PR Full Jest Gate
+
+# Runs the ENTIRE jest suite (everything jest --listTests discovers) on every
+# PR, sharded across parallel runners with jest's native --shard. This is the
+# backstop gate: the older per-area workflows run hand-picked allowlists, so
+# suites outside those lists used to rot silently (31 suites / 134 tests had
+# accumulated red by 2026-07-11 before this gate existed).
+#
+# Env-dependent or retired suites must NOT be excluded here via allowlists —
+# gate them inside the test file (env opt-in describe.skip, see
+# tests/look_replicate_orchestration.test.js) or quarantine by renaming off
+# the *.test.js pattern, so the exclusion is visible in the tree.
+
+on:
+  pull_request:
+    paths:
+      - "src/**"
+      - "tests/**"
+      - "scripts/**"
+      - "package.json"
+      - "package-lock.json"
+      - "jest.config.js"
+      - ".github/workflows/pr-full-jest.yml"
+  workflow_dispatch: {}
+
+concurrency:
+  group: pr-full-jest-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  jest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install
+        # npm ci runs onnxruntime-node's postinstall, which downloads a native
+        # binary from a CDN that intermittently ETIMEDOUTs and fails the whole
+        # shard before any test runs. Retry a few times to ride out the flake.
+        run: |
+          for attempt in 1 2 3; do
+            echo "npm ci attempt $attempt/3"
+            if npm ci; then exit 0; fi
+            echo "npm ci failed (attempt $attempt); retrying after backoff…"
+            sleep $((attempt * 15))
+          done
+          echo "npm ci failed after 3 attempts" >&2
+          exit 1
+
+      - name: Run jest shard ${{ matrix.shard }}/8
+        # One worker (NOT --runInBand): --workerIdleMemoryLimit recycles it
+        # between files so heap can't accumulate to the OOM-abort that killed
+        # --runInBand on the heaviest shard. maxWorkers=1 (not 2) gives the
+        # single worker the whole runner: with 2 workers, budget-timed resolver
+        # tests in aurora_bff_product_intel.test.js lost the CPU race under
+        # node-20 contention and bailed to the wrong branch (green locally,
+        # red in CI). Parallelism still comes from the 8-way shard matrix.
+        env:
+          NODE_OPTIONS: "--max-old-space-size=4096"
+        run: |
+          npx jest \
+            --watchman=false \
+            --silent \
+            --maxWorkers=1 \
+            --workerIdleMemoryLimit=768MB \
+            --shard=${{ matrix.shard }}/8

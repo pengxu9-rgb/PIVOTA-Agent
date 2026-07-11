@@ -16,7 +16,21 @@ const {
 const DEFAULT_CATALOG_BASE_URL =
   process.env.CATALOG_INTELLIGENCE_BASE_URL ||
   'https://pivota-catalog-intelligence-production.up.railway.app';
-const DEFAULT_CATALOG_TIMEOUT_MS = 15000;
+// Production-safe catalog probe timeout, aligned with sibling audit scripts
+// (see scripts/audit-external-product-pdp-quality.js CATALOG_INTELLIGENCE_TIMEOUT_MS || 90000).
+function resolveDefaultCatalogTimeoutMs(env = process.env) {
+  const candidates = [
+    env?.EXTERNAL_SEED_BEAUTY_SERVING_CATALOG_TIMEOUT_MS,
+    env?.CATALOG_INTELLIGENCE_TIMEOUT_MS,
+  ];
+  for (const raw of candidates) {
+    const parsed = Number.parseInt(String(raw ?? '').trim(), 10);
+    if (Number.isFinite(parsed) && parsed > 0) return parsed;
+  }
+  return 90000;
+}
+
+const DEFAULT_CATALOG_TIMEOUT_MS = resolveDefaultCatalogTimeoutMs();
 const DEFAULT_CORE_PDP_TIMEOUT_MS = 45000;
 const DEFAULT_DETAILS_PDP_TIMEOUT_MS = 60000;
 const DEFAULT_SIMILAR_TIMEOUT_MS = 30000;
@@ -548,6 +562,7 @@ module.exports = {
   DEFAULT_DETAILS_PDP_TIMEOUT_MS,
   DEFAULT_SIMILAR_TIMEOUT_MS,
   classifyBeautyServingQualityRow,
+  resolveDefaultCatalogTimeoutMs,
   shouldRetryPdpQualityAudit,
   probeMerchantUrl,
   renderMarkdownReport,

@@ -22,6 +22,14 @@ function expectServingEligibleJoin(sql, alias) {
   expect(sql).toMatch(/ips\.serving_eligible\s*=\s*TRUE/i);
 }
 
+// Readers cut over to catalog_row_trust (C1 Phase 3c/4a, #1570/#1584) gate on
+// serving_decision='public' instead of the legacy IPS predicate.
+function expectRowTrustServingJoin(sql, alias) {
+  expect(sql).toMatch(/catalog_row_trust\s+crt/i);
+  expect(sql).toMatch(new RegExp(`crt\\.subject_key\\s*=\\s*${alias}\\.product_key`, 'i'));
+  expect(sql).toMatch(/crt\.serving_decision\s*=\s*'public'/i);
+}
+
 describe('serving eligibility default-strict behavior', () => {
   beforeEach(() => {
     jest.resetModules();
@@ -159,7 +167,7 @@ describe('serving eligibility default-strict behavior', () => {
     const sql = String(query.mock.calls[0][0] || '');
     expect(sql).toMatch(/FROM external_product_seeds/i);
     expect(sql).toMatch(/FROM catalog_products cp/i);
-    expectServingEligibleJoin(sql, 'cp');
+    expectRowTrustServingJoin(sql, 'cp');
   });
 
   test('brand external-seed fastpath gates exact and broad queries through eligible catalog products', async () => {
@@ -188,7 +196,7 @@ describe('serving eligibility default-strict behavior', () => {
     expect(seedQueries.length).toBeGreaterThanOrEqual(2);
     for (const sql of seedQueries) {
       expect(sql).toMatch(/FROM catalog_products cp/i);
-      expectServingEligibleJoin(sql, 'cp');
+      expectRowTrustServingJoin(sql, 'cp');
     }
   });
 

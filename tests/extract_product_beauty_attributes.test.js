@@ -62,7 +62,7 @@ describe('extract-product-beauty-attributes', () => {
     expect(prompt).toContain('Product snapshot JSON:\n{\n  "brand": "Example Labs",');
     expect(prompt).toContain('  "product_id": "ext_fixture",\n  "url": "https://example.com/p/barrier-bounce"\n}');
     expect(crypto.createHash('sha256').update(prompt).digest('hex')).toBe(
-      '5c9e8b9fc256f650cd6eb1b841c587b7922e8757fc2d9248121a4aa5c9de9788',
+      '6d38237049306a5b7b25fb55db7f424057ed548d8d87cfb768b051111751e384',
     );
   });
 

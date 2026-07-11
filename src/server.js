@@ -49839,6 +49839,7 @@ module.exports._debug = {
   buildTravelLookupSearchProductDedupeKey,
   normalizeSearchAvailabilityState,
   postProcessTravelLookupProductsResponse,
+  buildProxySearchSoftFallbackResponse,
   resolveSearchDedupePerTitleLimit,
   resolveBeautyBrandBrowseQuery,
   inferBeautyMainlineIntent,
