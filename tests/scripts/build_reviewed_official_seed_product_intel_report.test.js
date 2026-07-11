@@ -291,11 +291,7 @@ describe('build-reviewed-official-seed-product-intel-report', () => {
     expect(JSON.stringify(bundle)).not.toMatch(/skincare treatment listed|excessive shedding/i);
   });
 
-  // SKIPPED 2026-07-11: asserts sanitizePublicSourceText truncates a run-on to
-  // its first sentence, but the shipped function only does phrase substitution.
-  // Adding sentence-truncation changes SERVED public copy — a product decision,
-  // not a mechanical test fix. Un-skip once the intended sanitization is decided.
-  test.skip('softens Wave3 public source copy before it enters Product Intel fields', () => {
+  test('softens Wave3 public source copy before it enters Product Intel fields', () => {
     expect(
       sanitizePublicSourceText(
         'Our phytoactive house formula offers long-lasting moisture and relief of inflammatory skin conditions.',
@@ -1135,12 +1131,7 @@ describe('build-reviewed-official-seed-product-intel-report', () => {
     expect(JSON.stringify(bundle)).not.toMatch(/skincare set identity|daily moisturizer/i);
   });
 
-  // SKIPPED 2026-07-11: asserts detectPublicProductIntelQualityIssues emits
-  // public_generic_marketing_copy on the concealer-brush-duo bundle, but the
-  // shipped detector only flags public_category_mismatch. Adding a marketing-copy
-  // rule changes what SERVED intel gets blocked — a product decision, not a
-  // mechanical test fix. Un-skip once the intended gating is decided.
-  test.skip('blocks reviewer-rejected Kylie public candidates before public-ready validation', () => {
+  test('blocks reviewer-rejected Kylie public candidates before public-ready validation', () => {
     const cosmicGiftSet = buildBundle({
       seed: {
         external_product_id: 'ext_kylie_cosmic_gift',
