@@ -343,7 +343,7 @@ function sanitizePublicSourceText(value) {
       'contains Vitamin-C and is positioned around luminous-looking skin',
     )
     .replace(
-      /\bDesigned to leave the complexion looking refreshed and Glowing,\s*these soft,\s*pre-soaked wipes are perfect\.?/gi,
+      /\bDesigned to leave the complexion looking refreshed and Glowing,\s*these soft,\s*pre-soaked wipes are (?:perfect|precise)\.?/gi,
       'Designed to leave the complexion looking refreshed and glowing in a pre-soaked wipe format.',
     )
     .replace(
@@ -352,7 +352,7 @@ function sanitizePublicSourceText(value) {
     )
     .replace(/\.\s*fresh from the first pump to the last\.?\s*why you['’]?ll love it\.?/gi, '.')
     .replace(
-      /\.\s*to revive,\s*protect and revitalize the skin\.?\s*Use the Vitamin-C Lotion daily as your go-to moisturizer or as needed for a skincare\.?/gi,
+      /\.\s*to revive,\s*protect and revitalize the skin\.?\s*Use the Vitamin-C Lotion daily as your (?:go-to|routine) moisturizer or as needed for a skincare\.?/gi,
       '.',
     )
     .replace(
