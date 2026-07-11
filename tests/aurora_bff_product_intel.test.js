@@ -1054,6 +1054,15 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     process.env.AURORA_BFF_USE_MOCK = 'false';
     process.env.AURORA_BFF_PRODUCT_INTEL_CATALOG_FALLBACK = 'true';
     process.env.PIVOTA_BACKEND_BASE_URL = 'http://catalog.test';
+    // resolveCatalogProductForProductInput races its catalog resolve/search legs
+    // against an internal Date.now() wall-clock budget (~1.2s default). Under
+    // full-suite / slow-CI event-loop load that budget can expire before the
+    // nocked reply lands, so the resolver bails to 'llm_external_match_empty'
+    // instead of 'catalog_search_ambiguous'. Nocked replies are instant, so
+    // giving the budget generous headroom removes the flake without changing
+    // behavior (deterministic under test, as the resolver's own follow-up asks).
+    process.env.AURORA_CHAT_CATALOG_AVAIL_SEARCH_TIMEOUT_MS = '6000';
+    process.env.AURORA_CHAT_CATALOG_AVAIL_RESOLVE_TIMEOUT_MS = '6000';
 
     nock('http://catalog.test')
       .post('/agent/v1/products/resolve')
@@ -1096,6 +1105,12 @@ describe('Aurora BFF product intelligence (structured upstream)', () => {
     process.env.AURORA_BFF_USE_MOCK = 'false';
     process.env.AURORA_BFF_PRODUCT_INTEL_CATALOG_FALLBACK = 'true';
     process.env.PIVOTA_BACKEND_BASE_URL = 'http://catalog.test';
+    // Same wall-clock budget fragility as the sibling ambiguous test above:
+    // give the nocked resolve/search legs generous headroom so the deeper-scan
+    // attempts complete before the deadline under load (green regardless of CI
+    // speed; nocked replies are instant so behavior is unchanged).
+    process.env.AURORA_CHAT_CATALOG_AVAIL_SEARCH_TIMEOUT_MS = '6000';
+    process.env.AURORA_CHAT_CATALOG_AVAIL_RESOLVE_TIMEOUT_MS = '6000';
     const { __internal } = require('../src/auroraBff/routes');
     __internal.__setResolveProductRefForTest(async () => ({
       resolved: false,
