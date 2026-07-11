@@ -10798,8 +10798,14 @@ async function resolveCatalogProductForProductInput({ inputText, inputUrl, parse
   let filteredNonSkincareCount = 0;
   let internalSearchAmbiguous = false;
   let externalSeedSearchAmbiguous = false;
-  const localResolverTimeoutMs = Math.max(1800, Math.min(3200, CATALOG_AVAIL_RESOLVE_TIMEOUT_MS));
-  const searchTimeoutMs = Math.max(1200, Math.min(3200, CATALOG_AVAIL_SEARCH_TIMEOUT_MS));
+  // Ceiling aligned with the module-level env clamp (both consts clamp to
+  // <=6000). The prior 3200 inner cap silently overrode a deliberately raised
+  // AURORA_CHAT_CATALOG_AVAIL_{RESOLVE,SEARCH}_TIMEOUT_MS; prod defaults
+  // (1400/1200ms) are unaffected — only an explicitly higher config now applies,
+  // which lets timing-sensitive tests give nocked legs enough budget to be
+  // deterministic under load.
+  const localResolverTimeoutMs = Math.max(1800, Math.min(6000, CATALOG_AVAIL_RESOLVE_TIMEOUT_MS));
+  const searchTimeoutMs = Math.max(1200, Math.min(6000, CATALOG_AVAIL_SEARCH_TIMEOUT_MS));
   const externalSeedSearchTimeoutMs = Math.max(2200, searchTimeoutMs);
 
   for (const query of queries) {
