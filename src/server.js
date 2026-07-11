@@ -46579,7 +46579,17 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       // await it below only if the resolver result isn't adopted. When the
       // resolver IS adopted the in-flight primary is discarded (bounded by
       // its own axios timeout).
-      if (FPM_PARALLEL_RESOLVER_PRIMARY && operation === 'find_products_multi') {
+      //
+      // Skip the speculation for strong-resolver queries (known stable-alias
+      // or UUID-style lookups): those adopt the resolver hit almost every
+      // time, so racing the primary is a pure wasted upstream call. Keep it
+      // for weaker lookup-style queries, where the resolver genuinely may miss
+      // and the in-flight primary earns the tail-latency win #1753 shipped for.
+      const speculativePrimaryEligible =
+        FPM_PARALLEL_RESOLVER_PRIMARY &&
+        operation === 'find_products_multi' &&
+        !isStrongResolverFirstQuery(resolverQueryText);
+      if (speculativePrimaryEligible) {
         speculativePrimaryPromise = callTrackedUpstream(
           operation,
           axiosConfig,
@@ -46591,6 +46601,18 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           applied: true,
           decision: 'started',
           reason: 'parallel_recall',
+          costMsEstimate: 0,
+          queryClass: traceQueryClass,
+        });
+      } else if (
+        FPM_PARALLEL_RESOLVER_PRIMARY &&
+        operation === 'find_products_multi'
+      ) {
+        addFpmGateTrace({
+          gateId: 'resolver_first_parallel_primary',
+          applied: false,
+          decision: 'skipped',
+          reason: 'strong_resolver_query',
           costMsEstimate: 0,
           queryClass: traceQueryClass,
         });
