@@ -177,6 +177,27 @@ describe('Aurora BFF /v1/chat ChatCards v1 contract', () => {
     expect(Array.isArray(res.body.safety.red_flags)).toBe(true);
   });
 
+  test('EN recommendation-phrased pregnancy + retinoid still hits the safety gate (not beauty-reco mainline)', async () => {
+    // Regression: a pregnancy question about a contraindicated active resolves an
+    // ingredient target-context ("retinol" -> treatment step) and was captured by the
+    // beauty-reco mainline, which skips safetyEngineV1. The reco-phrased variant is the
+    // more dangerous real-world case, so it must also route to the safety engine.
+    const app = require('../src/server');
+
+    const res = await request(app)
+      .post('/v1/chat')
+      .set('X-Aurora-UID', `uid_chatcards_v1_safety_reco_${Date.now()}`)
+      .set('X-Lang', 'EN')
+      .set('x-aurora-force-variant', 'v2_weather')
+      .send({ message: 'Recommend a good retinol serum, I am 12 weeks pregnant.' })
+      .expect(200);
+
+    expect(res.body.version).toBe('1.0');
+    expect(res.body.safety).toBeTruthy();
+    expect(res.body.safety.risk_level).toBe('high');
+    expect(Array.isArray(res.body.safety.red_flags)).toBe(true);
+  });
+
   test('language mismatch telemetry follows text-detected matching language', async () => {
     const app = require('../src/server');
 

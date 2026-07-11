@@ -1775,6 +1775,28 @@ function looksLikeContextualRecoContinuationRequest(message = '', latestRecoCont
     /\b(?:recommend|suggest)\b.{0,40}\b(?:product|step|option|routine)\b/i.test(text);
 }
 
+// Detects a high-risk safety question that pairs a pregnancy/lactation context with a
+// contraindicated active. Such messages must be routed to the mainline safety engine
+// (safetyEngineV1) rather than the beauty-reco mainline, which does not apply the
+// pregnancy/lactation safety gate. Mirrors the actives covered by safety rules P1-P8/L*.
+function looksLikeHighRiskPregnancyLactationSafetyQuestion(message) {
+  const raw = String(message || '').trim();
+  if (!raw) return false;
+  const lower = raw.toLowerCase();
+  const pregnancyOrLactationContext =
+    /\bpregnan(t|cy)\b/i.test(raw) ||
+    /\b\d+\s*weeks?\s*pregnant\b/i.test(raw) ||
+    /\b(breast\s*feed|breastfeed(?:ing)?|lactat|nursing)\b/i.test(lower) ||
+    /(怀孕|孕期|孕妇|妊娠|哺乳|母乳)/.test(raw);
+  if (!pregnancyOrLactationContext) return false;
+  const highRiskActive =
+    /\b(retinoid|retinol|retinal|tretinoin|adapalene|tazarotene|isotretinoin|accutane|roaccutane|hydroquinone)\b/i.test(lower) ||
+    /(维a|a醇|维甲酸|阿达帕林|氢醌|异维a酸|罗可坦|泰尔丝)/i.test(raw) ||
+    /(high[-\s]?strength|strong)\s+(salicylic|peel|acid)/i.test(lower) ||
+    /(高浓度|高强度)[^\n]{0,6}(水杨酸|焕肤|刷酸)/.test(raw);
+  return highRiskActive;
+}
+
 async function buildChatIntentContract(body) {
   const payload = isPlainObject(body) ? body : {};
   const action = normalizeIncomingChatAction(payload.action);
@@ -2023,6 +2045,23 @@ async function buildChatIntentContract(body) {
       delegate_target: 'legacy_quarantine',
       should_search: false,
       reply_mode: 'compatibility',
+    };
+  }
+  if (hasMessage && looksLikeHighRiskPregnancyLactationSafetyQuestion(message)) {
+    // Safety-first: a pregnancy/lactation question about a contraindicated active
+    // (retinoids, hydroquinone, oral isotretinoin, aggressive peels) must reach the
+    // mainline safety engine (safetyEngineV1). Without this guard, EN phrasings such as
+    // "Can I use retinol during pregnancy?" are captured by the beauty-reco mainline
+    // (via ingredient target-context resolution) and skip the pregnancy safety gate,
+    // while the CN equivalent already falls through to the legacy safety path.
+    return {
+      contract_version: 'chat_intent_v1',
+      surface: 'chat',
+      ownership_domain: 'legacy_quarantine',
+      request_class: 'legacy_compat',
+      delegate_target: 'legacy_quarantine',
+      should_search: false,
+      reply_mode: 'ingredient_advice',
     };
   }
   if (
