@@ -208,8 +208,15 @@ function buildActiveExternalSeedIdentityPredicate(alias = 'pdp_identity_listing'
       SELECT 1
       FROM external_product_seeds eps
       JOIN catalog_products cp
-        ON cp.merchant_id = 'external_seed'
-       AND cp.platform = 'external_seed'
+        -- ADR-009: match the external-seed mirror row by platform +
+        -- source_system + source_product_id, NOT the legacy
+        -- merchant_id='external_seed' bucket. External seeds now mirror under
+        -- per-brand observed sellers (merch_obs_…), so the old merchant_id
+        -- conjunct excluded every served merch_obs_ seed from its own identity
+        -- listing regardless of serving_eligible. Mirrors the #1772 inline fix
+        -- in server.js; this shared helper (used by ~7 serving/PDP identity
+        -- queries) was missed by it.
+        ON cp.platform = 'external_seed'
        AND cp.source_system = 'external_product_seeds_mirror_v1'
        AND cp.source_product_id = eps.external_product_id
        AND cp.sync_status = 'live'
@@ -5336,6 +5343,7 @@ module.exports = {
   listPdpIdentityOverrides,
   applyPdpIdentityOverride,
   _internals: {
+    buildActiveExternalSeedIdentityPredicate,
     extractVariantAxes,
     extractStrongIdentity,
     extractSoftIdentity,
