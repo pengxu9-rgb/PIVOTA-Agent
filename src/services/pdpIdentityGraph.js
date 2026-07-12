@@ -18,6 +18,7 @@ const {
   resolveCanonicalCatalogEntityGroup,
 } = require('./catalogEntityResolution');
 const { activeProductsCacheSourceWhere } = require('./activeCatalogSourceSql');
+const { isKnownRetailer } = require('./offerSellerIdentity');
 const {
   summarizePdpPayloadContract,
 } = require('./pdpIdentityPayloadDrift');
@@ -1165,7 +1166,13 @@ function extractOfficialUrl(product) {
   ];
   for (const candidate of candidates) {
     const normalized = normalizeComparableUrl(candidate);
-    if (normalized) return normalized;
+    if (!normalized) continue;
+    // A listing URL on a known third-party retailer host (ulta.com, dermstore.com, …)
+    // is where the seed was OBSERVED, not the brand's official page. Treating it as
+    // official poisons official_domain/official_url for every downstream consumer
+    // (canonical URL minting, brand verification, first-party gating) — see #1784.
+    if (isKnownRetailer(normalizeComparableDomain(normalized))) continue;
+    return normalized;
   }
   return '';
 }
