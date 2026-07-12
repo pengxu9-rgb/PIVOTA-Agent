@@ -1736,6 +1736,30 @@ function offerSellerNameLooksLikeProductBrand(value, product, member) {
   });
 }
 
+// ADR-009 D2: crawl-onboarded external seeds now live on per-brand observed
+// sellers (`merch_obs_<hash>`) instead of the legacy shared `external_seed`
+// bucket (#1770 re-keyed pdp_identity_listing to the observed seller). Both are
+// external-seed SUPPLY — crawl-sourced, with no upstream merchant checkout/API.
+// Serving-path branches that ask "is this external-seed supply?" (skip upstream
+// fetch, serve straight from the identity payload) must therefore treat the two
+// alike. Use this when only a merchant_id is in hand.
+function isExternalSeedListingMerchantId(merchantId) {
+  const mid = String(merchantId || '').trim();
+  if (!mid) return false;
+  return mid === EXTERNAL_SEED_MERCHANT_ID || mid.startsWith('merch_obs_');
+}
+
+// Member/listing-aware variant: prefer the durable `source_kind` discriminator
+// (surfaced from pdp_identity_listing.source_kind) when the row carries it,
+// otherwise fall back to the merchant-id shape. Connected merchants carry
+// neither signal, so they are unaffected.
+function memberIsExternalSeedSupply(member) {
+  if (!member || typeof member !== 'object') return false;
+  const sourceKind = String(member.source_kind || member.sourceKind || '').trim();
+  if (sourceKind === EXTERNAL_SEED_MERCHANT_ID) return true;
+  return isExternalSeedListingMerchantId(member.merchant_id || member.merchantId);
+}
+
 function resolveOfferSellerDisplayName({ product, member, merchantId }) {
   const mid = String(merchantId || product?.merchant_id || member?.merchant_id || '').trim();
   // ADR-009: observed sellers (merch_obs_) are external-seed supply too — their
@@ -5700,7 +5724,7 @@ async function resolveCatalogProductRefFromPivotaSignatureInner(normalizedProduc
       let exactIdentityRow = null;
       if (
         options.hydrateIdentityListing !== false &&
-        exactMerchantId === EXTERNAL_SEED_MERCHANT_ID &&
+        isExternalSeedListingMerchantId(exactMerchantId) &&
         isExternalSeedProductId(exactSourceProductId)
       ) {
         try {
@@ -5723,7 +5747,11 @@ async function resolveCatalogProductRefFromPivotaSignatureInner(normalizedProduc
                 AND COALESCE(pil.review_required, false) IS NOT TRUE
               LIMIT 1
             `,
-            [`external_seed:${exactSourceProductId}`],
+            // Post-#1770 the observed-seller (`merch_obs_`) listing is keyed on
+            // its own merchant id, not the legacy `external_seed` bucket, so
+            // derive the ref from the resolved merchant rather than hardcoding
+            // the prefix. Legacy external seeds keep `external_seed:<epid>`.
+            [`${exactMerchantId}:${exactSourceProductId}`],
           );
           exactIdentityRow = Array.isArray(identityResult?.rows) ? identityResult.rows[0] : null;
         } catch (err) {
@@ -6592,9 +6620,9 @@ function shouldHydratePdpIdentityLineMemberPayloads({
     return true;
   }
   return !(
-    canonicalProductRef?.merchant_id === EXTERNAL_SEED_MERCHANT_ID &&
+    isExternalSeedListingMerchantId(canonicalProductRef?.merchant_id) &&
     isExternalSeedProductId(canonicalProductRef?.product_id) &&
-    (!requestedMerchantId || requestedMerchantId === EXTERNAL_SEED_MERCHANT_ID)
+    (!requestedMerchantId || isExternalSeedListingMerchantId(requestedMerchantId))
   );
 }
 
@@ -8361,7 +8389,7 @@ function externalSeedOfferPayloadHasPriceSignal(product) {
 function buildExternalSeedOfferProductFromMember(member) {
   if (!member || typeof member !== 'object') return null;
   const merchantId = String(member.merchant_id || member.merchantId || '').trim();
-  if (merchantId !== EXTERNAL_SEED_MERCHANT_ID) return null;
+  if (!memberIsExternalSeedSupply(member)) return null;
   const productId = String(member.product_id || member.productId || '').trim();
   const payload =
     member.source_payload && typeof member.source_payload === 'object'
@@ -8607,10 +8635,10 @@ async function hydrateSavingsPresentationFromUpstream({
       merchant_id: String(ref?.merchant_id || ref?.merchantId || '').trim(),
       product_id: String(ref?.product_id || ref?.productId || ref?.id || '').trim(),
     }))
-    .find((ref) => ref.merchant_id && ref.product_id && ref.merchant_id !== EXTERNAL_SEED_MERCHANT_ID);
+    .find((ref) => ref.merchant_id && ref.product_id && !isExternalSeedListingMerchantId(ref.merchant_id));
   const merchantId = hydrationRef?.merchant_id || '';
   const productId = hydrationRef?.product_id || '';
-  if (!merchantId || !productId || merchantId === EXTERNAL_SEED_MERCHANT_ID) return product;
+  if (!merchantId || !productId || isExternalSeedListingMerchantId(merchantId)) return product;
 
   try {
     const upstreamProduct = await fetchProductDetailFromUpstream({
@@ -10070,8 +10098,9 @@ async function buildOffersFromGroupMembers(args) {
           prefetchedProductByKey.get(`${m.merchant_id}:${m.product_id}`) || null;
         const memberPayloadProduct = buildExternalSeedOfferProductFromMember(m);
         const usedPrefetchedProduct = Boolean(prefetchedProduct);
+        const memberIsExternalSeed = memberIsExternalSeedSupply(m);
         const memberPayloadCarriesCatalogOfferTruth = Boolean(
-          m.merchant_id === EXTERNAL_SEED_MERCHANT_ID &&
+          memberIsExternalSeed &&
           memberPayloadProduct &&
           m.source_payload &&
           typeof m.source_payload === 'object' &&
@@ -10080,7 +10109,7 @@ async function buildOffersFromGroupMembers(args) {
           typeof m.source_payload.catalog_offer_v1 === 'object',
         );
         const prefersFreshExternalSeedProduct =
-          m.merchant_id === EXTERNAL_SEED_MERCHANT_ID && !memberPayloadCarriesCatalogOfferTruth;
+          memberIsExternalSeed && !memberPayloadCarriesCatalogOfferTruth;
         if (memberPayloadProduct && !prefersFreshExternalSeedProduct) {
           buildSourceStats.identity_payload += 1;
           source = 'identity_payload';
@@ -10094,7 +10123,7 @@ async function buildOffersFromGroupMembers(args) {
             productId: m.product_id,
             checkoutToken,
             bypassCache,
-            skipUpstreamFallback: m.merchant_id === EXTERNAL_SEED_MERCHANT_ID,
+            skipUpstreamFallback: memberIsExternalSeed,
             timeoutMs: PDP_OFFER_GROUP_MEMBER_FETCH_TIMEOUT_MS,
             totalTimeoutMs: PDP_OFFER_GROUP_MEMBER_FETCH_TIMEOUT_MS,
             noRetry: true,
@@ -10140,7 +10169,7 @@ async function buildOffersFromGroupMembers(args) {
           });
         }
         const hydratedProduct =
-          !product || m.merchant_id === EXTERNAL_SEED_MERCHANT_ID || usedPrefetchedProduct
+          !product || memberIsExternalSeed || usedPrefetchedProduct
             ? product
             : await hydrateSavingsPresentationFromUpstream({
                 product,
@@ -10149,7 +10178,7 @@ async function buildOffersFromGroupMembers(args) {
         if (
           product &&
           hydratedProduct &&
-          m.merchant_id !== EXTERNAL_SEED_MERCHANT_ID &&
+          !memberIsExternalSeed &&
           !usedPrefetchedProduct
         ) {
           buildSourceStats.hydrated += 1;
@@ -23217,7 +23246,7 @@ function getProductRefCandidatesForSavings(source) {
       product_id: String(ref?.product_id || ref?.productId || ref?.id || '').trim(),
     }))
     .filter((ref) => {
-      if (!ref.merchant_id || !ref.product_id || ref.merchant_id === EXTERNAL_SEED_MERCHANT_ID) {
+      if (!ref.merchant_id || !ref.product_id || isExternalSeedListingMerchantId(ref.merchant_id)) {
         return false;
       }
       const key = `${ref.merchant_id}::${ref.product_id}`;
