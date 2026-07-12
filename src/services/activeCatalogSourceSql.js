@@ -49,7 +49,15 @@ function activeCatalogProductSourceWhere(productAlias = 'cp', merchantAlias = 'c
     (
       ${p}.merchant_id = '${EXTERNAL_SEED_MERCHANT_ID}'
       OR (
-        lower(coalesce(${m}.status, 'active')) = 'active'
+        -- 'observed' is the ADR-009 observed-seller-of-record status
+        -- (merch_obs_… merchants minted by ensure_observed_seller). External
+        -- seeds now live under those sellers instead of the legacy
+        -- 'external_seed' bucket above, and ADR-009 (unblock merch_obs_ trust
+        -- + serving) intends them to serve — so admit 'observed' alongside
+        -- 'active'. Without this, every merch_obs_-keyed external seed is
+        -- filtered out of the citable/category recall lane no matter its
+        -- index_eligible/serving_eligible state.
+        lower(coalesce(${m}.status, 'active')) IN ('active', 'observed')
         AND (
           NOT EXISTS (
             SELECT 1
