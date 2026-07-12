@@ -1,0 +1,84 @@
+{
+  "_note": "Fix Plan D · T4 — SAMPLE Olive Young affiliate product datafeed. Field shape mirrors a generic affiliate-network product feed (Impact/CJ/Rakuten/Partnerize) or a raw OY export. Values are illustrative for tests/dev ONLY — NOT real prices/URLs and MUST NOT be ingested to prod. Replace with a live network feed once credentials are provisioned (see docs/oliveyoung_affiliate_feed_runbook.md).",
+  "feed_meta": {
+    "network": "example_affiliate_network",
+    "advertiser": "Olive Young Global",
+    "market": "US",
+    "currency": "USD",
+    "generated_at": "2026-07-12T00:00:00Z"
+  },
+  "products": [
+    {
+      "product_id": "OY-GA0000001",
+      "product_name": "COSRX Advanced Snail 96 Mucin Power Essence 100ml",
+      "brand": "COSRX",
+      "category": "Skincare > Essence",
+      "price": "22.00",
+      "currency": "USD",
+      "availability": "in stock",
+      "image_url": "https://image.globaloliveyoung.com/uploads/images/goods/GA0000001.jpg",
+      "product_url": "https://global.oliveyoung.com/product/detail?prdtNo=GA0000001",
+      "deeplink": "https://track.example_affiliate_network.com/click?advertiser=oliveyoung&url=https%3A%2F%2Fglobal.oliveyoung.com%2Fproduct%2Fdetail%3FprdtNo%3DGA0000001&aff=PIVOTA"
+    },
+    {
+      "product_id": "OY-GA0000002",
+      "product_name": "Beauty of Joseon Relief Sun Rice + Probiotics SPF50+ 50ml",
+      "brand": "Beauty of Joseon",
+      "category": "Skincare > Suncare",
+      "price": "18.00",
+      "currency": "USD",
+      "availability": "in stock",
+      "image_url": "https://image.globaloliveyoung.com/uploads/images/goods/GA0000002.jpg",
+      "product_url": "https://global.oliveyoung.com/product/detail?prdtNo=GA0000002",
+      "deeplink": "https://track.example_affiliate_network.com/click?advertiser=oliveyoung&url=https%3A%2F%2Fglobal.oliveyoung.com%2Fproduct%2Fdetail%3FprdtNo%3DGA0000002&aff=PIVOTA"
+    },
+    {
+      "product_id": "OY-GA0000003",
+      "product_name": "Anua Heartleaf 77% Soothing Toner 250ml",
+      "brand": "Anua",
+      "category": "Skincare > Toner",
+      "price": "21.50",
+      "currency": "USD",
+      "availability": "in stock",
+      "image_url": "https://image.globaloliveyoung.com/uploads/images/goods/GA0000003.jpg",
+      "product_url": "https://global.oliveyoung.com/product/detail?prdtNo=GA0000003",
+      "deeplink": "https://track.example_affiliate_network.com/click?advertiser=oliveyoung&url=https%3A%2F%2Fglobal.oliveyoung.com%2Fproduct%2Fdetail%3FprdtNo%3DGA0000003&aff=PIVOTA"
+    },
+    {
+      "product_id": "OY-GA0000004",
+      "product_name": "SKIN1004 Madagascar Centella Ampoule 100ml",
+      "brand": "SKIN1004",
+      "category": "Skincare > Ampoule",
+      "price": "19.00",
+      "currency": "USD",
+      "availability": "out of stock",
+      "image_url": "https://image.globaloliveyoung.com/uploads/images/goods/GA0000004.jpg",
+      "product_url": "https://global.oliveyoung.com/product/detail?prdtNo=GA0000004",
+      "deeplink": "https://track.example_affiliate_network.com/click?advertiser=oliveyoung&url=https%3A%2F%2Fglobal.oliveyoung.com%2Fproduct%2Fdetail%3FprdtNo%3DGA0000004&aff=PIVOTA"
+    },
+    {
+      "product_id": "OY-GA0000005",
+      "product_name": "Round Lab 1025 Dokdo Toner 200ml",
+      "brand": "Round Lab",
+      "category": "Skincare > Toner",
+      "price": "17.00",
+      "currency": "USD",
+      "availability": "in stock",
+      "image_url": "https://image.globaloliveyoung.com/uploads/images/goods/GA0000005.jpg",
+      "product_url": "https://global.oliveyoung.com/product/detail?prdtNo=GA0000005",
+      "deeplink": "https://track.example_affiliate_network.com/click?advertiser=oliveyoung&url=https%3A%2F%2Fglobal.oliveyoung.com%2Fproduct%2Fdetail%3FprdtNo%3DGA0000005&aff=PIVOTA"
+    },
+    {
+      "product_id": "OY-GA0000006",
+      "product_name": "Medicube Zero Pore Pad 2.0",
+      "brand": "Medicube",
+      "category": "Skincare > Exfoliator",
+      "price": "0",
+      "currency": "USD",
+      "availability": "in stock",
+      "image_url": "https://image.globaloliveyoung.com/uploads/images/goods/GA0000006.jpg",
+      "product_url": "https://global.oliveyoung.com/product/detail?prdtNo=GA0000006",
+      "deeplink": ""
+    }
+  ]
+}

@@ -1,0 +1,510 @@
+{
+  "plan": "fix_plan_D_T2_reconcile_retailer_offers_into_d2c",
+  "generated_at": "2026-07-12T12:24:27.738Z",
+  "mode": "apply",
+  "fuzzy_threshold": 0.72,
+  "retailer_offers_total": 480,
+  "retailer_brands": 53,
+  "d2c_candidate_products": 1337,
+  "counts": {
+    "exact_reuse": 51,
+    "fuzzy_review": 21,
+    "self_mint_no_match": 393,
+    "already_folded": 15
+  },
+  "review_spike": {
+    "matchable_offers": 359,
+    "fuzzy_pct_of_matchable": 5.8,
+    "too_loose": false,
+    "threshold_pct": 10
+  },
+  "metrics_before": {
+    "multi_retailer_2plus": 1,
+    "multi_source_2plus": 94,
+    "multi_source_3plus": 1
+  },
+  "metrics_after": {
+    "multi_retailer_2plus": 1,
+    "multi_source_2plus": 145,
+    "multi_source_3plus": 1
+  },
+  "applied": {
+    "mode": "apply",
+    "content_key_updates": 51,
+    "group_member_updates": 10,
+    "review_rows_written": 21,
+    "apply_error": null
+  },
+  "exact_sample": [
+    {
+      "brand": "Beekman 1802",
+      "retailer_domain": "ulta.com",
+      "retailer_title": "Golden Booster Amla Berry Vitamin C Brightening Serum - 0.5 oz",
+      "retailer_product_key": "prod::external_seed::external_seed::ulta:40892743b2a63524",
+      "from_content_key": "ck_ab69a31cd7abbe74522c95e14655ca24",
+      "d2c_title": "Golden Booster Amla Berry Vitamin C Brightening Serum",
+      "d2c_product_key": "prod::external_seed::external_seed::ext_8d735b108c0f01151b80797b",
+      "into_content_key": "ck_6e62fefb6571bb55171112d7d0c53914"
+    },
+    {
+      "brand": "Beekman 1802",
+      "retailer_domain": "ulta.com",
+      "retailer_title": "Milk Drops Ceramide Serum - 0.9 oz",
+      "retailer_product_key": "prod::external_seed::external_seed::ulta:268fede09250bccd",
+      "from_content_key": "ck_5e5c4f54c90dfa07baf9fb83279e518d",
+      "d2c_title": "Milk Drops Ceramide Serum",
+      "d2c_product_key": "prod::external_seed::external_seed::ext_cac40acaef93510b3ed1986b",
+      "into_content_key": "ck_9bfbd3bc573934493a0719c090c29f4a"
+    },
+    {
+      "brand": "Beekman 1802",
+      "retailer_domain": "ulta.com",
+      "retailer_title": "Milk RX Advanced Better Aging Cream - 1.7 oz",
+      "retailer_product_key": "prod::external_seed::external_seed::ulta:cfe1000d5fc5e287",
+      "from_content_key": "ck_5fbaa950c6cf71c1547284273a7a4143",
+      "d2c_title": "Milk RX Advanced Better Aging Cream",
+      "d2c_product_key": "prod::external_seed::external_seed::ext_37d72074ffc0909d307b03c8",
+      "into_content_key": "ck_cf6aaab0fe1a3ef99b26c6b1fa93adae"
+    },
+    {
+      "brand": "BYOMA",
+      "retailer_domain": "ulta.com",
+      "retailer_title": "Barrier Repair Eye Cream",
+      "retailer_product_key": "prod::external_seed::external_seed::ulta:7d339162e145038c",
+      "from_content_key": "ck_d827720deca266a1b0ce71b672302e3c",
+      "d2c_title": "Barrier Repair Eye Cream",
+      "d2c_product_key": "prod::external_seed::external_seed::ext_88df3569cc31030b7bd4f347",
+      "into_content_key": "ck_a620345e5109bad65fa4355f8b17ab5d"
+    },
+    {
+      "brand": "BYOMA",
+      "retailer_domain": "ulta.com",
+      "retailer_title": "Bio-Collagen Radiance Facial Mask",
+      "retailer_product_key": "prod::external_seed::external_seed::ulta:b12bcdfbffd23a47",
+      "from_content_key": "ck_2ba238ebb05f6075a6c48c24f1065579",
+      "d2c_title": "Bio-Collagen Radiance Facial Mask",
+      "d2c_product_key": "prod::external_seed::external_seed::ext_becda03ff4336b5ea4a8cfdf",
+      "into_content_key": "ck_c1a31ee934c6b9da0aff647ccf6c2595"
+    },
+    {
+      "brand": "BYOMA",
+      "retailer_domain": "ulta.com",
+      "retailer_title": "Hydrating Recovery Oil",
+      "retailer_product_key": "prod::external_seed::external_seed::ulta:c5d2d95b8507cecb",
+      "from_content_key": "ck_65973183734e67f2033b65419da1dd73",
+      "d2c_title": "Hydrating Recovery Oil",
+      "d2c_product_key": "prod::external_seed::external_seed::ext_161b26bf56e2ddee4a9ae6cb",
+      "into_content_key": "ck_e051ad73e2d31a9b84bc22528d43c381"
+    },
+    {
+      "brand": "COSRX",
+      "retailer_domain": "ulta.com",
+      "retailer_title": "Advanced Snail 92 All In One Cream - 3.52 oz",
+      "retailer_product_key": "prod::external_seed::external_seed::ulta:7196c21be72790ac",
+      "from_content_key": "ck_067d7b2658cc000734239cc57293f577",
+      "d2c_title": "Advanced Snail 92 All in One Cream",
+      "d2c_product_key": "prod::external_seed::external_seed::ext_7d2888c44663c43f1576ca0f",
+      "into_content_key": "ck_de4c472b8579edc3157096e677047b8f"
+    },
+    {
+      "brand": "COSRX",
+      "retailer_domain": "ulta.com",
+      "retailer_title": "Advanced Snail Hydrogel Eye Patch",
+      "retailer_product_key": "prod::external_seed::external_seed::ulta:4c6e52c2d29020e6",
+      "from_content_key": "ck_2d3fd8b9e7b1db83ffa76cca131f51f0",
+      "d2c_title": "Advanced Snail Hydrogel Eye Patch",
+      "d2c_product_key": "prod::external_seed::external_seed::ext_1f127c64bd758541e6705516",
+      "into_content_key": "ck_c156e1119e7cc796642d75fdc859ad7e"
+    },
+    {
+      "brand": "COSRX",
+      "retailer_domain": "ulta.com",
+      "retailer_title": "Advanced Snail Mucin Gel Cleanser",
+      "retailer_product_key": "prod::external_seed::external_seed::ulta:6c95047a147a8a8f",
+      "from_content_key": "ck_e631266a1b66f877bacdb5b5a8a1dcb0",
+      "d2c_title": "Advanced Snail Mucin Gel Cleanser",
+      "d2c_product_key": "prod::external_seed::external_seed::ext_02a9f46f8624373fabd2e742",
+      "into_content_key": "ck_fa3836ec621acc03660c75a082fbb797"
+    },
+    {
+      "brand": "COSRX",
+      "retailer_domain": "ulta.com",
+      "retailer_title": "Advanced Snail Mucin Power Sheet Mask - 1 ct",
+      "retailer_product_key": "prod::external_seed::external_seed::ulta:9d509367afbeaef4",
+      "from_content_key": "ck_1be2a115c0365e9aa5d5742ea44e2377",
+      "d2c_title": "Advanced Snail Mucin Power Sheet Mask 10 Sheets",
+      "d2c_product_key": "prod::external_seed::external_seed::ext_30a2b7aae6ea5cc0f3ad3281",
+      "into_content_key": "ck_15c900ad3e87154747f85fb8c151e5b0"
+    },
+    {
+      "brand": "COSRX",
+      "retailer_domain": "ulta.com",
+      "retailer_title": "Advanced Snail Peptide Eye Cream",
+      "retailer_product_key": "prod::external_seed::external_seed::ulta:4c5575ac2c23de50",
+      "from_content_key": "ck_f46bd10763d920fcf69dc778f4c00c43",
+      "d2c_title": "Advanced Snail Peptide Eye Cream",
+      "d2c_product_key": "prod::external_seed::external_seed::ext_e649b5a54d96e3b38d327e46",
+      "into_content_key": "ck_923a6ad26ceccf09fbeb81cd7f723a8d"
+    },
+    {
+      "brand": "COSRX",
+      "retailer_domain": "ulta.com",
+      "retailer_title": "AHA/BHA Clarifying Treatment Toner",
+      "retailer_product_key": "prod::external_seed::external_seed::ulta:ff1302dde4387847",
+      "from_content_key": "ck_ac8184f23ee5f00d6611c15adf25d36e",
+      "d2c_title": "AHA/BHA Clarifying Treatment Toner",
+      "d2c_product_key": "prod::external_seed::external_seed::ext_fbac7a3c0e3227eed1c3d299",
+      "into_content_key": "ck_78bf3cf4f02718919656538bf32193d3"
+    },
+    {
+      "brand": "COSRX",
+      "retailer_domain": "ulta.com",
+      "retailer_title": "The AHA 2 BHA 2 Blemish Treatment Serum",
+      "retailer_product_key": "prod::external_seed::external_seed::ulta:d5e9efde6128fc0c",
+      "from_content_key": "ck_77e8af00ffb5d4d0bee86257f93689da",
+      "d2c_title": "The AHA 2 BHA 2 Blemish Treatment Serum",
+      "d2c_product_key": "prod::external_seed::external_seed::ext_5b6e20f91a6470f348875903",
+      "into_content_key": "ck_86a113719993578f6a4925de3addb33f"
+    },
+    {
+      "brand": "Dermalogica",
+      "retailer_domain": "ulta.com",
+      "retailer_title": "Biolumin-C Vitamin C Eye Serum",
+      "retailer_product_key": "prod::external_seed::external_seed::ulta:a850e4af60cbb33b",
+      "from_content_key": "ck_49d2121785ceb12d53c17b9d83a4d791",
+      "d2c_title": "biolumin-c vitamin c eye serum",
+      "d2c_product_key": "prod::external_seed::external_seed::ext_e9366ce39ac8c46f82a45619",
+      "into_content_key": "ck_8d4093016bcddb1e3f6736e16fcad840"
+    },
+    {
+      "brand": "Dermalogica",
+      "retailer_domain": "ulta.com",
+      "retailer_title": "Biolumin-C Vitamin C Gel Moisturizer - 1.7 oz",
+      "retailer_product_key": "prod::external_seed::external_seed::ulta:c6d01971e16c0307",
+      "from_content_key": "ck_32d79ff29e949bb38e40b889b482db32",
+      "d2c_title": "biolumin-c vitamin c gel moisturizer",
+      "d2c_product_key": "prod::external_seed::external_seed::ext_797f9aaf5658ec1733d86e52",
+      "into_content_key": "ck_524e4e0ad6c40e8a8a6b255d1bd8fa4f"
+    },
+    {
+      "brand": "First Aid Beauty",
+      "retailer_domain": "ulta.com",
+      "retailer_title": "After-Shower Nourishing Body Oil",
+      "retailer_product_key": "prod::external_seed::external_seed::ulta:ec0161cd2092ffc4",
+      "from_content_key": "ck_74a8ecdde98a9ac62239dedf26fc4f38",
+      "d2c_title": "After-Shower Nourishing Body Oil",
+      "d2c_product_key": "prod::external_seed::external_seed::ext_27541ddaefa99c1185fd9677",
+      "into_content_key": "ck_bc83303cf8461cadddd9a75be56bf97a"
+    },
+    {
+      "brand": "First Aid Beauty",
+      "retailer_domain": "ulta.com",
+      "retailer_title": "Brighten + Glow Eye Cream with Niacinamide",
+      "retailer_product_key": "prod::external_seed::external_seed::ulta:dad7ecc9d804c904",
+      "from_content_key": "ck_fa117d39b9c02cda3f5c06c5e392d997",
+      "d2c_title": "Brighten + Glow Eye Cream with Niacinamide",
+      "d2c_product_key": "prod::external_seed::external_seed::ext_77c5474a61c7c179242465d2",
+      "into_content_key": "ck_54f2281e823345de1fbd1c77548bf3b9"
+    },
+    {
+      "brand": "First Aid Beauty",
+      "retailer_domain": "ulta.com",
+      "retailer_title": "Hello FAB Coconut Skin Smoothie Priming Moisturizer",
+      "retailer_product_key": "prod::external_seed::external_seed::ulta:132164dc9871dd89",
+      "from_content_key": "ck_98868f86223e7f8f7d7f19fa784fe678",
+      "d2c_title": "Hello FAB Coconut Skin Smoothie Priming Moisturizer",
+      "d2c_product_key": "prod::external_seed::external_seed::ext_abbbbbffd4a23a6efba0afe5",
+      "into_content_key": "ck_5623f75fb7f7812fbb8d369ddc69df12"
+    },
+    {
+      "brand": "First Aid Beauty",
+      "retailer_domain": "ulta.com",
+      "retailer_title": "Hydrating Sunscreen Milk with Colloidal Oatmeal Broad Spectrum SPF 45",
+      "retailer_product_key": "prod::external_seed::external_seed::ulta:10c599efd61019c1",
+      "from_content_key": "ck_defa645fc1a2b8a75c9a95eb93d86d7a",
+      "d2c_title": "Hydrating Sunscreen Milk with Colloidal Oatmeal Broad Spectrum SPF 45",
+      "d2c_product_key": "prod::external_seed::external_seed::ext_94c4c0eb238cedb76438f01d",
+      "into_content_key": "ck_9eaf62d6c18ec4f2de3a9e6b899fbdb2"
+    },
+    {
+      "brand": "First Aid Beauty",
+      "retailer_domain": "ulta.com",
+      "retailer_title": "Ultra Gentle Cream-to-Foam Face Cleanser - 6.0 oz",
+      "retailer_product_key": "prod::external_seed::external_seed::ulta:da5c7c99463bd35a",
+      "from_content_key": "ck_9128466bef946f151200911097a8a249",
+      "d2c_title": "Ultra Gentle Cream-to-Foam Face Cleanser Jumbo",
+      "d2c_product_key": "prod::external_seed::external_seed::ext_8e21eb216b27854ddea6e0fa",
+      "into_content_key": "ck_47d8aba5a18297d4ed6b267c39988756"
+    },
+    {
+      "brand": "Murad",
+      "retailer_domain": "ulta.com",
+      "retailer_title": "AHA/BHA Exfoliating Cleanser - 5.0 oz",
+      "retailer_product_key": "prod::external_seed::external_seed::ulta:2c011e3bdf32f71e",
+      "from_content_key": "ck_4cb8de3663722e709ca32145435327f0",
+      "d2c_title": "AHA/BHA Exfoliating Cleanser",
+      "d2c_product_key": "prod::external_seed::external_seed::ext_16fcb6b2a82bb4b62d8c8451",
+      "into_content_key": "ck_e46eaf667ec4f702776c15751534327e"
+    },
+    {
+      "brand": "Murad",
+      "retailer_domain": "ulta.com",
+      "retailer_title": "Biome-Balancing Clear & Prevent Acne Treatment Serum",
+      "retailer_product_key": "prod::external_seed::external_seed::ulta:f350d8e6e3fad78d",
+      "from_content_key": "ck_a7518cbd81f1ad1c14d23c00d71c5302",
+      "d2c_title": "Biome-Balancing Clear & Prevent Acne Treatment Serum",
+      "d2c_product_key": "prod::external_seed::external_seed::ext_6fe2953f048a8a9a9d4dca8b",
+      "into_content_key": "ck_1fde74d861449fdc4efbec3985a960c8"
+    },
+    {
+      "brand": "Murad",
+      "retailer_domain": "ulta.com",
+      "retailer_title": "Cellular Hydration Barrier Repair Serum",
+      "retailer_product_key": "prod::external_seed::external_seed::ulta:6676e009707c98f9",
+      "from_content_key": "ck_6976b397b94b62d66b96293a189025f0",
+      "d2c_title": "Cellular Hydration Barrier Repair Serum Refill",
+      "d2c_product_key": "prod::external_seed::external_seed::ext_6c7de77555d3d57ee61e8ac7",
+      "into_content_key": "ck_bc47439c7c5ab3a2a0b28c2fd5bdebac"
+    },
+    {
+      "brand": "Murad",
+      "retailer_domain": "ulta.com",
+      "retailer_title": "Cellular Hydration Repair Face Oil Drops",
+      "retailer_product_key": "prod::external_seed::external_seed::ulta:4e0b83b9b63a1c59",
+      "from_content_key": "ck_c5026a485f13660cc5816eeef2edba61",
+      "d2c_title": "Cellular Hydration Repair Face Oil Drops",
+      "d2c_product_key": "prod::external_seed::external_seed::ext_3f62442d95c89cdcabffae69",
+      "into_content_key": "ck_dd7a19b790e7459e87dadc19e3505b19"
+    },
+    {
+      "brand": "Murad",
+      "retailer_domain": "ulta.com",
+      "retailer_title": "Deep Relief Acne Treatment",
+      "retailer_product_key": "prod::external_seed::external_seed::ulta:d5d472182125e2f3",
+      "from_content_key": "ck_92ec1e970c0ca8e8d3b0bf06ac596245",
+      "d2c_title": "Deep Relief Acne Treatment",
+      "d2c_product_key": "prod::external_seed::external_seed::ext_51c85862b5dd464bdbb336ad",
+      "into_content_key": "ck_ae57ce2edcd849e18fec059e0154b697"
+    }
+  ],
+  "fuzzy_sample": [
+    {
+      "brand": "Beekman 1802",
+      "score": 0.8,
+      "retailer_title": "Bloom Cream Daily Moisturizer - 1.69 oz Jar",
+      "retailer_product_key": "prod::external_seed::external_seed::ulta:2f22593dd125b1d7",
+      "candidate_title": "Bloom Cream Daily Moisturizer",
+      "candidate_product_key": "prod::external_seed::external_seed::ext_e8aeff56895f1e5f9056b7ba"
+    },
+    {
+      "brand": "COSRX",
+      "score": 0.7777777777777778,
+      "retailer_title": "5 PDRN Hyaluronic Acid Vital Hydrating Hydrogel Mask with Collagen & Adenosine",
+      "retailer_product_key": "prod::external_seed::external_seed::ulta:6ca7327dba84168b",
+      "candidate_title": "COSRX 5 PDRN Hyaluronic Acid Vital Hydrating Hydrogel Mask",
+      "candidate_product_key": "prod::external_seed::external_seed::ext_7e861758cdcdd680feb205ff"
+    },
+    {
+      "brand": "COSRX",
+      "score": 0.875,
+      "retailer_title": "Advanced Snail Mucin Glass Glow Hydrogel Mask",
+      "retailer_product_key": "prod::external_seed::external_seed::ulta:d3dc684a9962c144",
+      "candidate_title": "Advanced Snail Mucin Glass Glow Hydrogel Mask_3ea",
+      "candidate_product_key": "prod::external_seed::external_seed::ext_4eb455efabc6d2df7f234f32"
+    },
+    {
+      "brand": "Dermalogica",
+      "score": 0.8,
+      "retailer_title": "Biolumin-C Vitamin C Night Restore Serum",
+      "retailer_product_key": "prod::external_seed::external_seed::ulta:5563d7db582e8a60",
+      "candidate_title": "biolumin-c night restore serum",
+      "candidate_product_key": "prod::external_seed::external_seed::ext_539c5068c2d9cc9f5f471093"
+    },
+    {
+      "brand": "First Aid Beauty",
+      "score": 0.8571428571428571,
+      "retailer_title": "Acne Clearing Pads 2% Salicylic Acid Acne Treatment",
+      "retailer_product_key": "prod::external_seed::external_seed::ulta:d29e14eff436f1f1",
+      "candidate_title": "Acne Clearing Pads with 2% Salicylic Acid",
+      "candidate_product_key": "prod::external_seed::external_seed::ext_7c0d0d81dcfbc946791b6280"
+    },
+    {
+      "brand": "First Aid Beauty",
+      "score": 0.8,
+      "retailer_title": "Facial Radiance Niacinamide Dark Spot Serum",
+      "retailer_product_key": "prod::external_seed::external_seed::ulta:da295344f204688b",
+      "candidate_title": "Dark Spot Serum with Niacinamide",
+      "candidate_product_key": "prod::external_seed::external_seed::ext_7c4b0a2885131b08d1cda84a"
+    },
+    {
+      "brand": "First Aid Beauty",
+      "score": 0.7777777777777778,
+      "retailer_title": "Hydrating Dewy Gel Cream Moisturizer with Hyaluronic Acid +Ceramides",
+      "retailer_product_key": "prod::external_seed::external_seed::ulta:071416c479b67915",
+      "candidate_title": "Hydrating Dewy Gel Cream Moisturizer with Hyaluronic Acid + Ceramides",
+      "candidate_product_key": "prod::external_seed::external_seed::ext_a29393bd005135c81f47dade"
+    },
+    {
+      "brand": "First Aid Beauty",
+      "score": 0.8888888888888888,
+      "retailer_title": "Ultra Light Mineral Sunscreen with Zinc Oxide SPF 30",
+      "retailer_product_key": "prod::external_seed::external_seed::ulta:02a9f7ab5a9d0e04",
+      "candidate_title": "Ultra Light Liquid Mineral Sunscreen with Zinc Oxide SPF 30",
+      "candidate_product_key": "prod::external_seed::external_seed::ext_9452ba1fbc20ef7afc51e8a4"
+    },
+    {
+      "brand": "First Aid Beauty",
+      "score": 0.8333333333333334,
+      "retailer_title": "Ultra Repair Cream Intense Hydration Moisturizer - 4.0 oz",
+      "retailer_product_key": "prod::external_seed::external_seed::ulta:18c35d1886a0e785",
+      "candidate_title": "Ultra Repair Cream Intense Hydration",
+      "candidate_product_key": "prod::external_seed::external_seed::ext_8a021870d9ebe7c3dd0cb802"
+    },
+    {
+      "brand": "Murad",
+      "score": 0.8333333333333334,
+      "retailer_title": "Cellular Hydration Barrier Repair Cream",
+      "retailer_product_key": "prod::external_seed::external_seed::ulta:9065a39a4d2eeac5",
+      "candidate_title": "Cellular Hydration Barrier Repair Cream Moisturizer",
+      "candidate_product_key": "prod::external_seed::external_seed::ext_b9487dbdc5b3b075d109c530"
+    },
+    {
+      "brand": "Murad",
+      "score": 0.75,
+      "retailer_title": "Clarifying Water Gel Moisturizer",
+      "retailer_product_key": "prod::external_seed::external_seed::ulta:8f81d9d718acd630",
+      "candidate_title": "Clarifying Water Gel",
+      "candidate_product_key": "prod::external_seed::external_seed::ext_b7a1f4e778f455c226528f35"
+    },
+    {
+      "brand": "Naturium",
+      "score": 0.8571428571428571,
+      "retailer_title": "Dew-Glow Tinted Moisturizer SPF 50+ - Medium",
+      "retailer_product_key": "prod::external_seed::external_seed::ulta:40f932b6848cd61f",
+      "candidate_title": "Dew-Glow Tinted Moisturizer SPF 50+",
+      "candidate_product_key": "prod::external_seed::external_seed::ext_40018572e51a08b992c8c0ea"
+    },
+    {
+      "brand": "Rare Beauty",
+      "score": 0.8333333333333334,
+      "retailer_title": "Brow Harmony Flexible Lifting Gel - Clear",
+      "retailer_product_key": "prod::external_seed::external_seed::ulta:dadaf331e78a75d2",
+      "candidate_title": "Brow Harmony Flexible Lifting Gel",
+      "candidate_product_key": "prod::external_seed::external_seed::ext_7bd3c3103cfff9d7385d8760"
+    },
+    {
+      "brand": "Rare Beauty",
+      "score": 1,
+      "retailer_title": "Find Comfort Body & Hair Fragrance Mist - Awaken Confidence - Awaken Confidence",
+      "retailer_product_key": "prod::external_seed::external_seed::ulta:db7cc5449aa4f66f",
+      "candidate_title": "Find Comfort Body & Hair Fragrance Mist - Awaken Confidence",
+      "candidate_product_key": "prod::external_seed::external_seed::ext_afde7d460d3038d85b4b2aab"
+    },
+    {
+      "brand": "Rare Beauty",
+      "score": 0.8333333333333334,
+      "retailer_title": "Kind Words Matte Lip Liner - Humble",
+      "retailer_product_key": "prod::external_seed::external_seed::ulta:1bea6f13f0fb2fbe",
+      "candidate_title": "Kind Words Matte Lip Liner",
+      "candidate_product_key": "prod::external_seed::external_seed::ext_ad7f85ce149b2626c9c890e3"
+    },
+    {
+      "brand": "Supergoop!",
+      "score": 0.875,
+      "retailer_title": "Bright-Eyed 100% Mineral Eye Cream SPF 40",
+      "retailer_product_key": "prod::external_seed::external_seed::ulta:ce09ad4a611a565f",
+      "candidate_title": "Bright-Eyed Mineral Eye Cream SPF 40",
+      "candidate_product_key": "prod::external_seed::external_seed::ext_9601c7d1a8305f81830b04bf"
+    },
+    {
+      "brand": "Supergoop!",
+      "score": 0.875,
+      "retailer_title": "Every. Single. Face. Watery Lotion SPF 50 Sunscreen",
+      "retailer_product_key": "prod::external_seed::external_seed::ulta:f90c41707d89f984",
+      "candidate_title": "Every. Single. Face. Watery Lotion SPF 50",
+      "candidate_product_key": "prod::external_seed::external_seed::ext_8a616ceb3c7d5307c6872185"
+    },
+    {
+      "brand": "Supergoop!",
+      "score": 0.8,
+      "retailer_title": "Glow Stick SPF 50 Sunscreen",
+      "retailer_product_key": "prod::external_seed::external_seed::ulta:5463912317bbf180",
+      "candidate_title": "Glow Stick SPF 50",
+      "candidate_product_key": "prod::external_seed::external_seed::ext_7ceff2134b5420d499855d9a"
+    },
+    {
+      "brand": "Supergoop!",
+      "score": 0.875,
+      "retailer_title": "Mineral Glowscreen Soft-Radiance Drops SPF 40 - Sunrise",
+      "retailer_product_key": "prod::external_seed::external_seed::ulta:905735a8531234a2",
+      "candidate_title": "Mineral Glowscreen Soft-Radiance Drops SPF 40",
+      "candidate_product_key": "prod::external_seed::external_seed::ext_633e8684f7da4e64ef14bbf8"
+    },
+    {
+      "brand": "Supergoop!",
+      "score": 0.8,
+      "retailer_title": "Mineral Mattescreen SPF 40 - Sunrise",
+      "retailer_product_key": "prod::external_seed::external_seed::ulta:6c6041f3a824a8b9",
+      "candidate_title": "Mineral Mattescreen SPF 40",
+      "candidate_product_key": "prod::external_seed::external_seed::ext_cf0ebf0bb700023746462779"
+    },
+    {
+      "brand": "The Ordinary",
+      "score": 0.8,
+      "retailer_title": "Multi-Active Delivery Essence for Hydration",
+      "retailer_product_key": "prod::external_seed::external_seed::ext_2dabb435e294c21fc4953580",
+      "candidate_title": "Multi-Active Delivery Essence",
+      "candidate_product_key": "prod::external_seed::external_seed::ext_3c163878a163df986beeb2b0"
+    }
+  ],
+  "exact_by_brand": [
+    {
+      "brand": "Naturium",
+      "n": 12
+    },
+    {
+      "brand": "COSRX",
+      "n": 7
+    },
+    {
+      "brand": "First Aid Beauty",
+      "n": 5
+    },
+    {
+      "brand": "Murad",
+      "n": 5
+    },
+    {
+      "brand": "Rare Beauty",
+      "n": 4
+    },
+    {
+      "brand": "Sigma Beauty",
+      "n": 4
+    },
+    {
+      "brand": "Tom Ford",
+      "n": 4
+    },
+    {
+      "brand": "Beekman 1802",
+      "n": 3
+    },
+    {
+      "brand": "BYOMA",
+      "n": 3
+    },
+    {
+      "brand": "Dermalogica",
+      "n": 2
+    },
+    {
+      "brand": "RMS Beauty",
+      "n": 1
+    },
+    {
+      "brand": "Supergoop!",
+      "n": 1
+    }
+  ]
+}

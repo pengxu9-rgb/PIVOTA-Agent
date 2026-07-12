@@ -7,6 +7,8 @@ const axios = require('axios');
 const {
   buildSeedRow,
 } = require('./build_aurora_external_seed_creation_manifest.cjs');
+// Fix Plan D · T3 — structured discovery provenance.
+const { buildDiscoveredVia, hasDiscoveredVia } = require('../src/services/seedProvenance');
 const {
   attachCommerceFactsToSeedRow,
   validateCommerceFactsGateForSeedRow,
@@ -510,15 +512,24 @@ function annotateSeedRowSourceValidation(seedRow = {}, { brand, sourceUrl }) {
     requires_multi_offer_merge_validation: sourceType === 'channel_or_retailer',
     source_host: getUrlHost(sourceUrl) || null,
   };
+  // Fix Plan D · T3 — structured discovery provenance. Channel is inferred from
+  // the evidence host (ulta/sephora/olive_young/…); a brand-owned source becomes
+  // 'brand_site'; anything else is the honest 'agent_search'. Never invented.
+  const discoveredVia = buildDiscoveredVia({
+    evidenceUrl: sourceUrl,
+    fallback: sourceType === 'brand_owned' ? 'brand_site' : 'agent_search',
+  });
   return {
     ...seedRow,
     seed_data: {
       ...(seedRow.seed_data || {}),
       source_validation: sourceValidation,
+      ...(hasDiscoveredVia(seedRow.seed_data) ? {} : { discovered_via: discoveredVia }),
       ...(sourceType === 'channel_or_retailer' ? { requires_multi_offer_merge_validation: true } : {}),
       snapshot: {
         ...(seedRow.seed_data?.snapshot || {}),
         source_validation: sourceValidation,
+        ...(hasDiscoveredVia(seedRow.seed_data?.snapshot) ? {} : { discovered_via: discoveredVia }),
         ...(sourceType === 'channel_or_retailer' ? { requires_multi_offer_merge_validation: true } : {}),
       },
     },
