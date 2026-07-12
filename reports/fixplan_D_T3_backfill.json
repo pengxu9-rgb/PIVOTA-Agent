@@ -1,0 +1,846 @@
+{
+  "plan": "fix_plan_D_T3_backfill_discovered_via",
+  "generated_at": "2026-07-12T12:33:42.135Z",
+  "mode": "apply_completed",
+  "seeds_missing_discovered_via": 9496,
+  "derivable_updates": 9496,
+  "by_channel": [
+    {
+      "channel": "brand_site",
+      "n": 9033
+    },
+    {
+      "channel": "ulta",
+      "n": 431
+    },
+    {
+      "channel": "sephora",
+      "n": 27
+    },
+    {
+      "channel": "dermstore",
+      "n": 2
+    },
+    {
+      "channel": "nordstrom",
+      "n": 2
+    },
+    {
+      "channel": "target",
+      "n": 1
+    }
+  ],
+  "undetermined_seeds": 0,
+  "applied": {
+    "mode": "apply",
+    "rows_updated_total": 9496,
+    "batches_note": "applied across two runs (5500 + 3996); idempotent WHERE discovered_via IS NULL",
+    "apply_error": null
+  },
+  "founder_input_needed": {
+    "note": "Brands whose seeds carry no external retail-channel provenance (brand_site/undetermined). Founder: mark which were DISCOVERED on Olive Young so we can stamp discovered_via.channel=olive_young with evidence. NOT inferred.",
+    "brand_count": 269,
+    "brands": [
+      {
+        "brand": "Fenty Beauty",
+        "seeds": 499
+      },
+      {
+        "brand": "fenty beauty",
+        "seeds": 363
+      },
+      {
+        "brand": "PIXI BEAUTY",
+        "seeds": 347
+      },
+      {
+        "brand": "Paul Mitchell",
+        "seeds": 250
+      },
+      {
+        "brand": "mixsoon",
+        "seeds": 225
+      },
+      {
+        "brand": "kylie cosmetics",
+        "seeds": 224
+      },
+      {
+        "brand": "Palm of Feronia",
+        "seeds": 199
+      },
+      {
+        "brand": "Miss Nella",
+        "seeds": 198
+      },
+      {
+        "brand": "Merit",
+        "seeds": 197
+      },
+      {
+        "brand": "sigma beauty",
+        "seeds": 192
+      },
+      {
+        "brand": "TONYMOLY USA",
+        "seeds": 189
+      },
+      {
+        "brand": "Public Goods",
+        "seeds": 181
+      },
+      {
+        "brand": "comfortzone",
+        "seeds": 180
+      },
+      {
+        "brand": "INTELLIGENT CHANGE",
+        "seeds": 163
+      },
+      {
+        "brand": "Tom Ford Beauty",
+        "seeds": 146
+      },
+      {
+        "brand": "Arencia",
+        "seeds": 126
+      },
+      {
+        "brand": "Lizush",
+        "seeds": 125
+      },
+      {
+        "brand": "Mediheal US",
+        "seeds": 119
+      },
+      {
+        "brand": "Glossier",
+        "seeds": 115
+      },
+      {
+        "brand": "ILIA",
+        "seeds": 111
+      },
+      {
+        "brand": "rare beauty",
+        "seeds": 109
+      },
+      {
+        "brand": "COSRX",
+        "seeds": 106
+      },
+      {
+        "brand": "Naturium",
+        "seeds": 106
+      },
+      {
+        "brand": "UpCircle Beauty",
+        "seeds": 103
+      },
+      {
+        "brand": "NUXE",
+        "seeds": 102
+      },
+      {
+        "brand": "Jurlique",
+        "seeds": 99
+      },
+      {
+        "brand": "Beekman 1802",
+        "seeds": 97
+      },
+      {
+        "brand": "Too Cool For School",
+        "seeds": 97
+      },
+      {
+        "brand": "Lav Kids",
+        "seeds": 91
+      },
+      {
+        "brand": "Dear Barber",
+        "seeds": 89
+      },
+      {
+        "brand": "~Pourri",
+        "seeds": 89
+      },
+      {
+        "brand": "Round Lab",
+        "seeds": 88
+      },
+      {
+        "brand": "Murad",
+        "seeds": 76
+      },
+      {
+        "brand": "ma:nyo",
+        "seeds": 72
+      },
+      {
+        "brand": "KUNDAL",
+        "seeds": 72
+      },
+      {
+        "brand": "BIJIN",
+        "seeds": 69
+      },
+      {
+        "brand": "RED DANE",
+        "seeds": 69
+      },
+      {
+        "brand": "TIRTIR Global",
+        "seeds": 68
+      },
+      {
+        "brand": "Olehenriksen",
+        "seeds": 68
+      },
+      {
+        "brand": "Saie",
+        "seeds": 66
+      },
+      {
+        "brand": "EMBRYOLISSE",
+        "seeds": 65
+      },
+      {
+        "brand": "the ordinary",
+        "seeds": 61
+      },
+      {
+        "brand": "celimax_jp",
+        "seeds": 60
+      },
+      {
+        "brand": "Beauty of Joseon",
+        "seeds": 59
+      },
+      {
+        "brand": "HOLIKA HOLIKA STORE",
+        "seeds": 59
+      },
+      {
+        "brand": "La Savonnerie du Pilon du Roy",
+        "seeds": 57
+      },
+      {
+        "brand": "heimish US",
+        "seeds": 55
+      },
+      {
+        "brand": "Blind Barber",
+        "seeds": 54
+      },
+      {
+        "brand": "FORBEAUT",
+        "seeds": 54
+      },
+      {
+        "brand": "I DEW CARE",
+        "seeds": 54
+      },
+      {
+        "brand": "Anua",
+        "seeds": 53
+      },
+      {
+        "brand": "786 Cosmetics",
+        "seeds": 51
+      },
+      {
+        "brand": "Tower 28 Beauty",
+        "seeds": 50
+      },
+      {
+        "brand": "Lador",
+        "seeds": 49
+      },
+      {
+        "brand": "GOONGBE",
+        "seeds": 49
+      },
+      {
+        "brand": "SIMIHAZE BEAUTY",
+        "seeds": 46
+      },
+      {
+        "brand": "First Aid Beauty",
+        "seeds": 45
+      },
+      {
+        "brand": "IUNIK GLOBAL",
+        "seeds": 45
+      },
+      {
+        "brand": "SKIN1004",
+        "seeds": 44
+      },
+      {
+        "brand": "Rovectin",
+        "seeds": 44
+      },
+      {
+        "brand": "SUNGBOON EDITOR",
+        "seeds": 41
+      },
+      {
+        "brand": "TOCOBO US",
+        "seeds": 41
+      },
+      {
+        "brand": "CellFusionC",
+        "seeds": 40
+      },
+      {
+        "brand": "Heart Percent",
+        "seeds": 38
+      },
+      {
+        "brand": "Biodance | Better Formula for Better Glow",
+        "seeds": 37
+      },
+      {
+        "brand": "easydew.jp",
+        "seeds": 37
+      },
+      {
+        "brand": "ThankYouFarmer",
+        "seeds": 37
+      },
+      {
+        "brand": "celimax US",
+        "seeds": 36
+      },
+      {
+        "brand": "Vital Proteins",
+        "seeds": 36
+      },
+      {
+        "brand": "KraveBeauty",
+        "seeds": 35
+      },
+      {
+        "brand": "セルフュージョンC",
+        "seeds": 35
+      },
+      {
+        "brand": "Torriden",
+        "seeds": 35
+      },
+      {
+        "brand": "Haruharu Wonder",
+        "seeds": 32
+      },
+      {
+        "brand": "Supergoop!",
+        "seeds": 31
+      },
+      {
+        "brand": "Genabelle",
+        "seeds": 31
+      },
+      {
+        "brand": "EASYDEW",
+        "seeds": 31
+      },
+      {
+        "brand": "ByUR US",
+        "seeds": 30
+      },
+      {
+        "brand": "Kosas Cosmetics",
+        "seeds": 30
+      },
+      {
+        "brand": "Jumiso USA",
+        "seeds": 29
+      },
+      {
+        "brand": "KAINE, INC.",
+        "seeds": 29
+      },
+      {
+        "brand": "Neaf Neaf",
+        "seeds": 29
+      },
+      {
+        "brand": "LANEIGE US",
+        "seeds": 27
+      },
+      {
+        "brand": "Nourwish",
+        "seeds": 26
+      },
+      {
+        "brand": "TOUN28",
+        "seeds": 26
+      },
+      {
+        "brand": "Terra & Co.",
+        "seeds": 24
+      },
+      {
+        "brand": "INNBEAUTY PROJECT",
+        "seeds": 23
+      },
+      {
+        "brand": "Skin1004",
+        "seeds": 23
+      },
+      {
+        "brand": "PO:DL",
+        "seeds": 23
+      },
+      {
+        "brand": "GR",
+        "seeds": 22
+      },
+      {
+        "brand": "Essenherb Global",
+        "seeds": 21
+      },
+      {
+        "brand": "caraseoul",
+        "seeds": 21
+      },
+      {
+        "brand": "Luafee_jp",
+        "seeds": 20
+      },
+      {
+        "brand": "Haroutine",
+        "seeds": 20
+      },
+      {
+        "brand": "House of Balance",
+        "seeds": 20
+      },
+      {
+        "brand": "Park Jun Beautylab",
+        "seeds": 20
+      },
+      {
+        "brand": "Dr.FORHAIR",
+        "seeds": 19
+      },
+      {
+        "brand": "House of HUR",
+        "seeds": 19
+      },
+      {
+        "brand": "KOPHER JP",
+        "seeds": 19
+      },
+      {
+        "brand": "Tangle Angel",
+        "seeds": 19
+      },
+      {
+        "brand": "Oiad (US)",
+        "seeds": 18
+      },
+      {
+        "brand": "SLLIGHT",
+        "seeds": 18
+      },
+      {
+        "brand": "Guerlain",
+        "seeds": 17
+      },
+      {
+        "brand": "Medicube",
+        "seeds": 17
+      },
+      {
+        "brand": "PawStyle",
+        "seeds": 17
+      },
+      {
+        "brand": "Dermalogica",
+        "seeds": 17
+      },
+      {
+        "brand": "Moss & Noor",
+        "seeds": 16
+      },
+      {
+        "brand": "Carenology95",
+        "seeds": 16
+      },
+      {
+        "brand": "Native Atlas",
+        "seeds": 15
+      },
+      {
+        "brand": "milktouch",
+        "seeds": 15
+      },
+      {
+        "brand": "GROWUSOFFICIAL(US)",
+        "seeds": 15
+      },
+      {
+        "brand": "Meebak",
+        "seeds": 15
+      },
+      {
+        "brand": "SKINTIFIC",
+        "seeds": 15
+      },
+      {
+        "brand": "Lapoem",
+        "seeds": 15
+      },
+      {
+        "brand": "Byra",
+        "seeds": 14
+      },
+      {
+        "brand": "rhode",
+        "seeds": 14
+      },
+      {
+        "brand": "biologique-recherche",
+        "seeds": 13
+      },
+      {
+        "brand": "moremo",
+        "seeds": 13
+      },
+      {
+        "brand": "P.CALM",
+        "seeds": 13
+      },
+      {
+        "brand": "INERTIA",
+        "seeds": 13
+      },
+      {
+        "brand": "Seapuri US",
+        "seeds": 13
+      },
+      {
+        "brand": "ミルイット MEAL IT",
+        "seeds": 13
+      },
+      {
+        "brand": "Baie Botanique",
+        "seeds": 12
+      },
+      {
+        "brand": "HUE_CALM® X Centellian24",
+        "seeds": 12
+      },
+      {
+        "brand": "Hyaah",
+        "seeds": 12
+      },
+      {
+        "brand": "melixir",
+        "seeds": 12
+      },
+      {
+        "brand": "AYA Skincare",
+        "seeds": 12
+      },
+      {
+        "brand": "It's Skin",
+        "seeds": 12
+      },
+      {
+        "brand": "JouJou",
+        "seeds": 11
+      },
+      {
+        "brand": "Luna Nectar",
+        "seeds": 11
+      },
+      {
+        "brand": "Tovegan",
+        "seeds": 11
+      },
+      {
+        "brand": "Ponds US",
+        "seeds": 11
+      },
+      {
+        "brand": "Delicate Daisys Botanical Beauty",
+        "seeds": 10
+      },
+      {
+        "brand": "Nala Care",
+        "seeds": 10
+      },
+      {
+        "brand": "BYOMA",
+        "seeds": 10
+      },
+      {
+        "brand": "narka",
+        "seeds": 10
+      },
+      {
+        "brand": "Molvany",
+        "seeds": 10
+      },
+      {
+        "brand": "NuBest",
+        "seeds": 10
+      },
+      {
+        "brand": "RMS Beauty",
+        "seeds": 9
+      },
+      {
+        "brand": "MOYU",
+        "seeds": 9
+      },
+      {
+        "brand": "Maybelline",
+        "seeds": 9
+      },
+      {
+        "brand": "Paula's Choice",
+        "seeds": 9
+      },
+      {
+        "brand": "Tieut",
+        "seeds": 9
+      },
+      {
+        "brand": "SHUAIREH",
+        "seeds": 9
+      },
+      {
+        "brand": "Muzigae Mansion",
+        "seeds": 9
+      },
+      {
+        "brand": "Linhart Smile Care",
+        "seeds": 8
+      },
+      {
+        "brand": "KHUS KHUS",
+        "seeds": 8
+      },
+      {
+        "brand": "Active Drip",
+        "seeds": 8
+      },
+      {
+        "brand": "Nörre Nordic",
+        "seeds": 8
+      },
+      {
+        "brand": "Equlib",
+        "seeds": 8
+      },
+      {
+        "brand": "fwee",
+        "seeds": 8
+      },
+      {
+        "brand": "Supergoop",
+        "seeds": 8
+      },
+      {
+        "brand": "DERMAFIRM",
+        "seeds": 8
+      },
+      {
+        "brand": "DR.FORHAIR",
+        "seeds": 8
+      },
+      {
+        "brand": "The Inkey List",
+        "seeds": 8
+      },
+      {
+        "brand": "COCONUT MATTER",
+        "seeds": 7
+      },
+      {
+        "brand": "slowpure",
+        "seeds": 7
+      },
+      {
+        "brand": "Losy kim",
+        "seeds": 7
+      },
+      {
+        "brand": "Plackers",
+        "seeds": 7
+      },
+      {
+        "brand": "Kao Curél",
+        "seeds": 6
+      },
+      {
+        "brand": "Oio Lab",
+        "seeds": 6
+      },
+      {
+        "brand": "Lhamour",
+        "seeds": 6
+      },
+      {
+        "brand": "Ownist",
+        "seeds": 6
+      },
+      {
+        "brand": "The Ordinary",
+        "seeds": 6
+      },
+      {
+        "brand": "Then I Met You",
+        "seeds": 6
+      },
+      {
+        "brand": "SERUMKIND",
+        "seeds": 6
+      },
+      {
+        "brand": "Abyssian",
+        "seeds": 6
+      },
+      {
+        "brand": "Apiceuticals",
+        "seeds": 5
+      },
+      {
+        "brand": "L'Oreal Paris",
+        "seeds": 5
+      },
+      {
+        "brand": "7Journeys",
+        "seeds": 5
+      },
+      {
+        "brand": "OILUJ",
+        "seeds": 5
+      },
+      {
+        "brand": "Neogen",
+        "seeds": 5
+      },
+      {
+        "brand": "By Wishtrend",
+        "seeds": 5
+      },
+      {
+        "brand": "AGE20'S",
+        "seeds": 5
+      },
+      {
+        "brand": "PATYKA",
+        "seeds": 5
+      },
+      {
+        "brand": "Vitkle",
+        "seeds": 5
+      },
+      {
+        "brand": "quadthera",
+        "seeds": 5
+      },
+      {
+        "brand": "Lucamar Skin Care",
+        "seeds": 5
+      },
+      {
+        "brand": "Tarte",
+        "seeds": 4
+      },
+      {
+        "brand": "Benefit",
+        "seeds": 4
+      },
+      {
+        "brand": "ACROPASS",
+        "seeds": 4
+      },
+      {
+        "brand": "Biore UV",
+        "seeds": 4
+      },
+      {
+        "brand": "Charlotte Tilbury",
+        "seeds": 4
+      },
+      {
+        "brand": "Urban Decay",
+        "seeds": 4
+      },
+      {
+        "brand": "Jo Malone",
+        "seeds": 4
+      },
+      {
+        "brand": "MASAMI",
+        "seeds": 4
+      },
+      {
+        "brand": "ANUKO",
+        "seeds": 4
+      },
+      {
+        "brand": "Dr. Jart+",
+        "seeds": 4
+      },
+      {
+        "brand": "Moroccanoil",
+        "seeds": 4
+      },
+      {
+        "brand": "Peace Out Skincare",
+        "seeds": 4
+      },
+      {
+        "brand": "Cepolab Japan",
+        "seeds": 4
+      },
+      {
+        "brand": "Seresilk",
+        "seeds": 4
+      },
+      {
+        "brand": "Hugrab_usa",
+        "seeds": 4
+      },
+      {
+        "brand": "TODAY With 公式ストア",
+        "seeds": 4
+      },
+      {
+        "brand": "Catkin",
+        "seeds": 3
+      },
+      {
+        "brand": "Byredo",
+        "seeds": 3
+      },
+      {
+        "brand": "Dior",
+        "seeds": 3
+      },
+      {
+        "brand": "Diptyque",
+        "seeds": 3
+      },
+      {
+        "brand": "YSL",
+        "seeds": 3
+      },
+      {
+        "brand": "Lancôme",
+        "seeds": 3
+      },
+      {
+        "brand": "Judydoll",
+        "seeds": 3
+      }
+    ]
+  }
+}

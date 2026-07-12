@@ -14,6 +14,8 @@ const {
 } = require('../src/commerce/commerceFacts');
 const { classifyExternalSeedProductKind } = require('../src/services/externalSeedProductKind');
 const { deriveOfferSellerIdentity } = require('../src/services/offerSellerIdentity');
+// Fix Plan D · T1 — ONE shared, URL-free content_key fallback across both mirrors.
+const { contentKeyFallback } = require('../src/services/retailerOfferIdentity');
 
 const MERCHANT_ID = 'external_seed';
 const PLATFORM = 'external_seed';
@@ -1123,9 +1125,14 @@ function buildMirror(row) {
   else sourceRole = 'unknown';
   const sourceTier = offerTypeValue === 'brand_direct' ? 'brand' : (offerTypeValue === 'retailer' ? 'retailer' : 'unknown');
   const sellerName = sourceRole === 'official_brand_dtc' ? brand : asString(seedData.seller_or_retailer_name || snapshot.seller_or_retailer_name || extractHostname(canonicalUrl));
+  // Fix Plan D — resolve-first (existing key) then the ONE shared, URL-free
+  // fallback (brandCore + strict titleCore). Dropping the URL + stripping size
+  // tokens is what lets a brand-direct key and a retailer key ever be equal, so an
+  // independently-ingested D2C item and its Ulta/Sephora offer converge on one
+  // content_key. Existing rows keep their key via existing_content_key.
   const contentKey =
     asString(row.existing_content_key) ||
-    stableHash('ck', [normalizeText(brand), normalizeText(title), normalizeText(canonicalUrl)], 32);
+    contentKeyFallback(brand, title);
   const freshness = {
     source: SOURCE_SYSTEM,
     mirrored_at: new Date().toISOString(),

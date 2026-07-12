@@ -8,6 +8,8 @@ const {
   attachCommerceFactsToSeedRow,
   validateCommerceFactsGateForSeedRow,
 } = require('../src/commerce/commerceFacts');
+// Fix Plan D · T3 — record structured discovery provenance at seed intake.
+const { buildDiscoveredVia } = require('../src/services/seedProvenance');
 
 const DEFAULT_CATALOG_BASE_URL =
   process.env.CATALOG_INTELLIGENCE_BASE_URL ||
@@ -406,6 +408,7 @@ function buildSeedRowFromOffer({ offer, brand, brandUrl, market }) {
     checkout_handoff: 'merchant_pdp',
     external_redirect_url: url,
   };
+  const discoveredVia = buildDiscoveredVia({ channel: 'ulta', evidenceUrl: url });
   let row = {
     seed_id: seedId,
     external_product_id: externalProductId,
@@ -436,6 +439,7 @@ function buildSeedRowFromOffer({ offer, brand, brandUrl, market }) {
       image_url: imageUrl || null,
       image_urls: imageUrls,
       images: imageUrls,
+      discovered_via: discoveredVia,
       ulta_discovery: {
         contract_version: 'ulta_brand_offer_discovery.v1',
         brand,
@@ -446,6 +450,7 @@ function buildSeedRowFromOffer({ offer, brand, brandUrl, market }) {
       snapshot: {
         ...snapshot,
         ...retailerFields,
+        discovered_via: discoveredVia,
       },
     },
   };

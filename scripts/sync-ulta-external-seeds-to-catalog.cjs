@@ -10,6 +10,15 @@ const {
   readCommerceFactsV1,
   validateCommerceFactsGateForSeedRow,
 } = require('../src/commerce/commerceFacts');
+// Fix Plan D · T1 — resolve retailer offers against existing catalog identity
+// BEFORE minting a self product/group, and use the ONE shared content_key formula.
+const {
+  contentKeyFallback,
+  buildCatalogIdentityIndex,
+  resolveAgainstIndex,
+} = require('../src/services/retailerOfferIdentity');
+
+const RETAILER_FUZZY_THRESHOLD = 0.72;
 
 const MERCHANT_ID = 'external_seed';
 const PLATFORM = 'external_seed';
@@ -222,7 +231,11 @@ function buildMirror(row) {
   const facts = readCommerceFactsV1(row);
   const agentSafeCommerceFacts = buildAgentSafeCommerceFacts(row);
   const gate = validateCommerceFactsGateForSeedRow(row);
-  const contentKey = stableHash('ck', [normalizeText(brand), normalizeText(title)], 32);
+  // Self-mint fallback content_key uses the ONE shared, URL-free formula
+  // (brandCore + strict titleCore) so two independent sellers of a brand-new item
+  // still converge. Resolve-first (run()) overrides this when an existing D2C
+  // product matches exactly.
+  const contentKey = contentKeyFallback(brand, title);
   const sigId = stableHash('sig', ['external_seed_catalog_sig', externalProductId], 32);
   const productGroupId = stableHash('pg', ['external_seed_self_group', externalProductId], 32);
   const offerId = `offer:external_seed:${crypto
@@ -791,6 +804,62 @@ async function run() {
     }
     mirrors.push(mirror);
   }
+
+  // ---- Fix Plan D · T1: resolve-first against existing catalog identity --------
+  // Before minting a self product/group, fold each retailer offer onto an existing
+  // D2C/brand-direct product when (brandCore + strict titleCore) match EXACTLY.
+  // Near matches are surfaced for review, never auto-merged. This is what makes a
+  // dry-run report ZERO self-minted duplicates for products that already exist.
+  const identity_resolution = {
+    reuse_exact: 0,
+    review_fuzzy: 0,
+    self_mint: 0,
+    fuzzy_candidates: [],
+    reused: [],
+  };
+  if (mirrors.length) {
+    const brands = Array.from(new Set(mirrors.map((m) => m.product.brand).filter(Boolean)));
+    const excludeProductKeys = mirrors.map((m) => m.productKey);
+    const index = await buildCatalogIdentityIndex(query, brands, { excludeProductKeys });
+    for (const mirror of mirrors) {
+      const r = resolveAgainstIndex(index, mirror.product.brand, mirror.product.title, {
+        fuzzyThreshold: RETAILER_FUZZY_THRESHOLD,
+      });
+      if (r.decision === 'reuse_exact' && r.match.content_key) {
+        if (r.match.content_key !== mirror.product.content_key) {
+          identity_resolution.reused.push({
+            external_product_id: mirror.row.external_product_id,
+            brand: mirror.product.brand,
+            title: mirror.product.title,
+            from_content_key: mirror.product.content_key,
+            into_content_key: r.match.content_key,
+            d2c_product_key: r.match.product_key,
+          });
+        }
+        // Reuse the matched product's identity instead of self-minting.
+        mirror.product.content_key = r.match.content_key;
+        if (r.match.product_group_id) mirror.productGroupId = r.match.product_group_id;
+        mirror.resolved_identity = { rule: 'brand_title_core_exact', ...r.match };
+        identity_resolution.reuse_exact += 1;
+      } else if (r.decision === 'review_fuzzy') {
+        identity_resolution.review_fuzzy += 1;
+        identity_resolution.fuzzy_candidates.push({
+          external_product_id: mirror.row.external_product_id,
+          brand: mirror.product.brand,
+          retailer_title: mirror.product.title,
+          candidate_title: r.match.title,
+          candidate_product_key: r.match.product_key,
+          candidate_content_key: r.match.content_key,
+          score: r.score,
+        });
+        // Conservative: keep the self-mint content_key; do NOT merge on a fuzzy hit.
+      } else {
+        identity_resolution.self_mint += 1;
+      }
+    }
+  }
+  // -----------------------------------------------------------------------------
+
   const applied = await applyMirrors(mirrors, dryRun);
   const byBrand = {};
   for (const mirror of mirrors) {
@@ -808,6 +877,13 @@ async function run() {
     by_brand: Object.entries(byBrand)
       .map(([brand, rows]) => ({ brand, rows }))
       .sort((a, b) => b.rows - a.rows || a.brand.localeCompare(b.brand)),
+    identity_resolution: {
+      reuse_exact: identity_resolution.reuse_exact,
+      review_fuzzy: identity_resolution.review_fuzzy,
+      self_mint: identity_resolution.self_mint,
+      reused_sample: identity_resolution.reused.slice(0, 15),
+      fuzzy_sample: identity_resolution.fuzzy_candidates.slice(0, 15),
+    },
     applied,
     sample: mirrors.slice(0, 10).map((mirror) => ({
       external_product_id: mirror.row.external_product_id,
