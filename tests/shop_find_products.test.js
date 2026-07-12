@@ -18,6 +18,7 @@ describe('detectExplicitProductSearch', () => {
     ['browse cerave', 'cerave'],
     ['buy acropass patches', 'acropass patches'],
     ['where can i buy biodance', 'biodance'],
+    ['shop the ordinary', 'the ordinary'], // "the" is a real brand prefix, not guarded
   ])('routes %j -> query %j', (msg, query) => {
     const r = detectExplicitProductSearch(msg);
     expect(r).not.toBeNull();
@@ -33,6 +34,9 @@ describe('detectExplicitProductSearch', () => {
     'whats a dupe for that',
     'how is my skin type',
     'buy me something good for sensitive skin', // reco-signal guard
+    'buy a moisturizer for winter', // generic category → article guard
+    'shop for a sunscreen', // generic category → article guard
+    'buy something', // generic filler → article guard
   ])('does NOT route (falls through to LLM): %j', (msg) => {
     expect(detectExplicitProductSearch(msg)).toBeNull();
   });

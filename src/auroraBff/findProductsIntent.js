@@ -59,9 +59,13 @@ function detectExplicitProductSearch(userMessage) {
     const stripped = clean(
       msg.replace(/^\s*(shop|browse|buy|purchase)\s+(?:for\s+|me\s+|some\s+)?/i, ''),
     );
-    // Require something left after the verb and keep it short (a brand/keyword,
-    // not a sentence) to stay high-precision.
-    if (stripped && stripped.split(/\s+/).length <= 6) return { query: stripped };
+    // Require a CONCRETE brand/product token. An indefinite article or generic
+    // filler ("buy a moisturizer for winter", "buy something") reads as
+    // open-ended category shopping — better served by profile-aware reco, so let
+    // it fall through. "the" is intentionally NOT guarded ("shop the ordinary" is
+    // a real brand). Keep it short (brand/keyword, not a sentence).
+    const generic = /^(a|an|some|any|something|anything|stuff|things?)\b/i.test(stripped);
+    if (stripped && !generic && stripped.split(/\s+/).length <= 6) return { query: stripped };
   }
 
   return null;
