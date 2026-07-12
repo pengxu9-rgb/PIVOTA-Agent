@@ -13,6 +13,7 @@ const {
   validateCommerceFactsGateForSeedRow,
 } = require('../src/commerce/commerceFacts');
 const { classifyExternalSeedProductKind } = require('../src/services/externalSeedProductKind');
+const { deriveOfferSellerIdentity } = require('../src/services/offerSellerIdentity');
 
 const MERCHANT_ID = 'external_seed';
 const PLATFORM = 'external_seed';
@@ -1095,8 +1096,32 @@ function buildMirror(row) {
   const agentSafeCommerceFacts = buildAgentSafeCommerceFacts(row);
   const gate = validateCommerceFactsGateForSeedRow(row);
   const variants = collectVariants(row);
-  const sourceTier = asString(identity.source_tier).toLowerCase() || 'brand';
-  const sourceRole = sourceTier === 'brand' ? 'official_brand_dtc' : 'retailer_offer';
+  // Fix Plan C — classify the offer by the ACTUAL SELLER (domain evidence), not the
+  // ingest tier. Historically `sourceRole = source_tier==='brand' ? dtc : retailer`,
+  // so agent-found D2C offers on the brand's OWN domain were mislabelled retailer.
+  // Now we derive from: offer domain vs the product's official/brand domain, then a
+  // data-driven known-retailer list, else "unknown" (never a guess). is_first_party
+  // and product source_role/tier follow the same verdict so tags stay honest.
+  const officialDomain =
+    asString(identity.official_domain) ||
+    asString(asObject(identity.strong_identity).official_domain) ||
+    asString(asObject(identity.soft_identity).official_domain) ||
+    null;
+  const sellerIdentity = deriveOfferSellerIdentity({
+    domain: sourceDomain || (row.domain ? asString(row.domain) : ''),
+    canonicalUrl,
+    officialDomain,
+    brand,
+  });
+  const offerTypeValue = sellerIdentity.offer_type; // 'brand_direct' | 'retailer' | null
+  const isFirstPartyValue = sellerIdentity.is_first_party === true;
+  // Map the seller verdict onto the legacy source_role/source_tier vocabulary used
+  // for display + product tags. Unknown keeps the honest 'unknown' role.
+  let sourceRole;
+  if (offerTypeValue === 'brand_direct') sourceRole = 'official_brand_dtc';
+  else if (offerTypeValue === 'retailer') sourceRole = 'retailer_offer';
+  else sourceRole = 'unknown';
+  const sourceTier = offerTypeValue === 'brand_direct' ? 'brand' : (offerTypeValue === 'retailer' ? 'retailer' : 'unknown');
   const sellerName = sourceRole === 'official_brand_dtc' ? brand : asString(seedData.seller_or_retailer_name || snapshot.seller_or_retailer_name || extractHostname(canonicalUrl));
   const contentKey =
     asString(row.existing_content_key) ||
@@ -1217,6 +1242,13 @@ function buildMirror(row) {
       availability: variant.availability,
       commerce_facts_v1: facts || null,
       ...(agentSafeCommerceFacts ? { agent_safe_commerce_facts: agentSafeCommerceFacts } : {}),
+      // Provenance for the offer_type verdict (Fix Plan C) — keeps the derivation
+      // auditable on the row itself and lets the backfill/reconcile agree.
+      seller_identity: {
+        rule: sellerIdentity.rule,
+        evidence_domain: sellerIdentity.evidence_domain,
+        official_domain: officialDomain,
+      },
     };
     return {
       sku: {
@@ -1248,6 +1280,8 @@ function buildMirror(row) {
         readiness_tier: 'referral_only',
         offer_mode: 'redirect',
         channel: 'external_referral',
+        offer_type: offerTypeValue,
+        is_first_party: isFirstPartyValue,
         availability: variant.availability,
         currency: variant.price_currency,
         list_price: variant.price_amount,
@@ -1903,6 +1937,8 @@ async function applyMirrors(
                 readiness_tier,
                 offer_mode,
                 channel,
+                offer_type,
+                is_first_party,
                 availability,
                 currency,
                 list_price,
@@ -1914,8 +1950,17 @@ async function applyMirrors(
                 source_domain,
                 offer_payload,
                 updated_at
-              ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19::jsonb,now())
+              ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21::jsonb,now())
               ON CONFLICT (offer_id) DO UPDATE SET
+                -- Fix Plan C: self-correct the seller verdict. Prefer the freshly
+                -- derived value; only fall back to the stored one when we lack
+                -- domain evidence this run (COALESCE keeps a good label sticky
+                -- rather than nulling it out). is_first_party follows offer_type.
+                offer_type = COALESCE(EXCLUDED.offer_type, catalog_offers.offer_type),
+                is_first_party = CASE
+                  WHEN EXCLUDED.offer_type IS NOT NULL THEN EXCLUDED.is_first_party
+                  ELSE catalog_offers.is_first_party
+                END,
                 availability = EXCLUDED.availability,
                 currency = EXCLUDED.currency,
                 list_price = EXCLUDED.list_price,
@@ -1938,6 +1983,8 @@ async function applyMirrors(
               o.readiness_tier,
               o.offer_mode,
               o.channel,
+              o.offer_type,
+              o.is_first_party,
               o.availability,
               o.currency,
               o.list_price,
