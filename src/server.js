@@ -5234,7 +5234,9 @@ async function fetchExternalSeedSimilarCardSourcesFromDb(productIds = []) {
           FROM catalog_products cp
           JOIN requested_signature_products rsp
             ON rsp.pivota_signature_id = cp.pivota_signature_id
-          WHERE cp.merchant_id = 'external_seed'
+          -- ADR-009: external seeds are keyed by platform, not by the legacy
+          -- merchant_id='external_seed' bucket (per-brand merch_obs_ sellers now).
+          WHERE cp.platform = 'external_seed'
             AND cp.source_product_id IS NOT NULL
             AND cp.source_product_id <> ''
           ORDER BY cp.pivota_signature_id, cp.updated_at DESC NULLS LAST
@@ -5506,8 +5508,11 @@ async function fetchApprovedLiveIdentityGroupMembersForOffers({
             SELECT 1
             FROM external_product_seeds eps
             JOIN catalog_products cp_active
-              ON cp_active.merchant_id = 'external_seed'
-             AND cp_active.platform = 'external_seed'
+              -- ADR-009: match the external-seed mirror row by platform +
+              -- source_product_id, NOT the legacy merchant_id='external_seed'
+              -- bucket, so a served per-brand merch_obs_ seed isn't excluded
+              -- from its own sellable-item-group member list.
+              ON cp_active.platform = 'external_seed'
              AND cp_active.source_system = 'external_product_seeds_mirror_v1'
              AND cp_active.source_product_id = eps.external_product_id
              AND cp_active.sync_status = 'live'
@@ -5639,8 +5644,9 @@ async function resolveCatalogProductRefFromPivotaSignatureInner(normalizedProduc
         LEFT JOIN LATERAL (
           SELECT id, external_product_id, status, updated_at, created_at
           FROM external_product_seeds eps
-          WHERE cp.merchant_id = '${EXTERNAL_SEED_MERCHANT_ID}'
-            AND cp.platform = '${EXTERNAL_SEED_MERCHANT_ID}'
+          -- ADR-009: external seeds are identified by platform, not the legacy
+          -- merchant_id='external_seed' bucket (per-brand merch_obs_ sellers now).
+          WHERE cp.platform = '${EXTERNAL_SEED_MERCHANT_ID}'
             AND eps.external_product_id = cp.source_product_id
           ORDER BY
             CASE WHEN eps.status = 'active' THEN 0 ELSE 1 END,
@@ -5762,8 +5768,10 @@ async function resolveCatalogProductRefFromPivotaSignatureInner(normalizedProduc
                     SELECT 1
                     FROM external_product_seeds eps
                     JOIN catalog_products cp_active
-                      ON cp_active.merchant_id = 'external_seed'
-                     AND cp_active.platform = 'external_seed'
+                      -- ADR-009: match by platform + source_product_id, not the
+                      -- legacy merchant_id='external_seed' bucket (per-brand
+                      -- merch_obs_ sellers now) — see the sibling EXISTS above.
+                      ON cp_active.platform = 'external_seed'
                      AND cp_active.source_system = 'external_product_seeds_mirror_v1'
                      AND cp_active.source_product_id = eps.external_product_id
                      AND cp_active.sync_status = 'live'
