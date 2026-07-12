@@ -52,9 +52,10 @@ async function loadActiveQuarantines(pool) {
 //   index_pipeline_state    ↔ catalog_products via content_key
 //   pdp_identity_listing    ↔ catalog_products via (merchant_id, source_product_id)
 //   external_product_seeds  ↔ external_seed catalog rows via
-//                              (cp.merchant_id='external_seed' AND
-//                               cp.source_system='external_product_seeds_mirror_v1' AND
+//                              (cp.source_system='external_product_seeds_mirror_v1' AND
 //                               cp.source_product_id = eps.external_product_id)
+//                              ADR-009: keyed on source_system, NOT merchant_id —
+//                              seeds mirror under per-brand observed sellers (merch_obs_…)
 //   merchant_stores         ↔ catalog_products via (merchant_id, platform)
 //   pdp_identity_override   ↔ pdp_identity_listing via source_listing_ref
 const PRODUCT_DRIVER_SQL = `
@@ -145,8 +146,10 @@ const PRODUCT_DRIVER_SQL = `
     ON pil.merchant_id = cp.merchant_id
    AND pil.product_id = cp.source_product_id
   LEFT JOIN external_seed_one eps
-    ON cp.merchant_id = 'external_seed'
-   AND cp.source_system = 'external_product_seeds_mirror_v1'
+    -- ADR-009: match by source_system, NOT merchant_id='external_seed' (seeds
+    -- mirror under per-brand merch_obs_ observed sellers). Kept in sync with
+    -- src/services/catalogRowTrustUpserter.js + the Python twin.
+    ON cp.source_system = 'external_product_seeds_mirror_v1'
    AND eps.external_product_id = cp.source_product_id
   LEFT JOIN merchant_store_one ms
     ON ms.merchant_id = cp.merchant_id AND ms.platform = cp.platform
