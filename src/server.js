@@ -158,6 +158,9 @@ const {
   activeProductsCacheSourceWhere,
 } = require('./services/activeCatalogSourceSql');
 const {
+  transactionCapableMerchantWhere,
+} = require('./services/merchantTransactionCapabilitySql');
+const {
   buildQuarantineAntiJoinSql,
 } = require('./services/sourceQuarantine');
 const {
@@ -10662,7 +10665,7 @@ async function discoverCatalogSyncMerchantIdsFromDb(limit = 5000) {
         FROM merchant_onboarding
         WHERE COALESCE(NULLIF(trim(merchant_id), ''), '') <> ''
           AND lower(COALESCE(status, '')) = 'approved'
-          AND COALESCE(psp_connected, false) = true
+          AND ${transactionCapableMerchantWhere('merchant_onboarding')}
         ORDER BY merchant_id ASC
         LIMIT $1
       `,
@@ -31363,7 +31366,7 @@ async function tryCrossMerchantBeautyCategoryBrowseFastpath(
     AND ${activeProductsCacheSourceWhere('pc')}
     AND ${buildSellableStatusPredicate("pc.product_data->>'status'")}
     AND mo.status NOT IN ('deleted', 'rejected')
-    AND mo.psp_connected = true
+    AND ${transactionCapableMerchantWhere('mo')}
   `;
   const matchFields = [
     "lower(coalesce(pc.product_data->>'title',''))",
@@ -32334,7 +32337,7 @@ async function searchCrossMerchantFromCache(queryText, page = 1, limit = 20, opt
     (pc.expires_at IS NULL OR pc.expires_at > now())
     AND ${buildSellableStatusPredicate("pc.product_data->>'status'")}
     AND mo.status NOT IN ('deleted', 'rejected')
-    AND mo.psp_connected = true
+    AND ${transactionCapableMerchantWhere('mo')}
   `;
 
   const pageFetch = Math.min(Math.max(safeLimit * 4, 80), 400);
@@ -32680,7 +32683,7 @@ async function loadCrossMerchantBrowseFromCache(page = 1, limit = 20, options = 
       JOIN merchant_onboarding mo
         ON mo.merchant_id = pc.merchant_id
       WHERE mo.status NOT IN ('deleted', 'rejected')
-        AND mo.psp_connected = true
+        AND ${transactionCapableMerchantWhere('mo')}
       ORDER BY pc.expires_at DESC, pc.id DESC
     `,
     [fetchLimit],
@@ -32750,7 +32753,7 @@ async function loadMerchantBrowseFromCache(merchantId, page = 1, limit = 20, opt
         AND (pc.expires_at IS NULL OR pc.expires_at > now())
         AND ${buildSellableStatusPredicate("pc.product_data->>'status'")}
         AND mo.status NOT IN ('deleted', 'rejected')
-        AND mo.psp_connected = true
+        AND ${transactionCapableMerchantWhere('mo')}
       ORDER BY pc.cached_at DESC NULLS LAST, pc.id DESC
       LIMIT $2
     `,
