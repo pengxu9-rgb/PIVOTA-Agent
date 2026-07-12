@@ -33,6 +33,9 @@ const DEFAULT_KNOWN_RETAILER_DOMAINS = Object.freeze([
   'cultbeauty.com', 'cultbeauty.co.uk', 'yesstyle.com', 'stylevana.com',
   'iherb.com', 'ebay.com', 'kohls.com', 'jcpenney.com', 'beautylish.com',
   'revolve.com', 'asos.com', 'boots.com', 'feelunique.com', 'skinstore.com',
+  // Dept-store / marketplace beauty retailers (added Fix Plan C read-review):
+  'selfridges.com', 'harrods.com', 'spacenk.com',
+  'coupang.com', 'gmarket.co.kr',
 ]);
 
 // Multi-level public suffixes we recognise for SLD extraction (approx eTLD+1; not
@@ -148,9 +151,15 @@ function isKnownRetailer(host, extraCsv) {
 }
 
 /**
- * Is the brand plausibly the owner of this domain? True when the collapsed brand
- * token is contained in the domain's SLD (or vice-versa for short brands). A
- * length guard avoids spurious 2-3 char substring hits.
+ * Is the brand the owner of this domain? True only when the domain's SLD *is* the
+ * brand (collapsed) — exact label equality, NOT substring containment.
+ *
+ * Unanchored substring matching produced retailer->brand_direct false positives:
+ * 'elf' is inside 'selfridges', 'mac' inside 'pharmacy', and the reverse rule made
+ * brand 'beautyofjoseon' match label 'beauty' (beauty.com). Every genuine D2C case
+ * is exact (cosrx.com, tomfordbeauty.com, wholesale.publicgoods.com -> 'publicgoods'),
+ * so exact equality keeps all real matches while erring toward 'unknown' (never a
+ * false brand_direct) for affixed hosts like shopcosrx.com — the honest, safe way.
  */
 function brandOwnsDomain(brand, host) {
   const b = normalizeBrand(brand);
@@ -158,11 +167,7 @@ function brandOwnsDomain(brand, host) {
   if (!b || !label) return false;
   const labelNorm = label.replace(/[^a-z0-9]+/g, '');
   if (!labelNorm) return false;
-  if (b.length < 3) return b === labelNorm; // too short to substring safely
-  if (labelNorm.includes(b)) return true;
-  // brand longer than label (e.g. label truncated): require label be a strong prefix.
-  if (b.length >= 4 && b.includes(labelNorm) && labelNorm.length >= 4) return true;
-  return false;
+  return b === labelNorm;
 }
 
 const OFFER_TYPE_BRAND_DIRECT = 'brand_direct';

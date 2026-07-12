@@ -19,6 +19,8 @@ const DEFAULT_RESELLER_HOSTS = Object.freeze([
   'cultbeauty.com', 'cultbeauty.co.uk', 'yesstyle.com', 'stylevana.com', 'oliveyoung.com',
   'global.oliveyoung.com', 'iherb.com', 'ebay.com', 'kohls.com', 'jcpenney.com',
   'beautylish.com', 'revolve.com', 'asos.com', 'boots.com', 'feelunique.com', 'skinstore.com',
+  // Kept in sync with offerSellerIdentity.js DEFAULT_KNOWN_RETAILER_DOMAINS (Fix Plan C read-review).
+  'selfridges.com', 'harrods.com', 'spacenk.com', 'coupang.com', 'gmarket.co.kr',
 ]);
 
 function hostOf(url) {

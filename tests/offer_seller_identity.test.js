@@ -64,6 +64,12 @@ describe('isKnownRetailer (suffix + env-extendable)', () => {
     ['amzn.to', true],
     ['global.oliveyoung.com', true],
     ['bestbuy.com', true],
+    // Dept-store / marketplace beauty retailers added in the read-review.
+    ['selfridges.com', true],
+    ['harrods.com', true],
+    ['spacenk.com', true],
+    ['coupang.com', true],
+    ['gmarket.co.kr', true],
     ['fentybeauty.com', false],
     ['notulta.com', false],
   ])('isKnownRetailer(%p)=%p', (host, expected) => {
@@ -71,8 +77,9 @@ describe('isKnownRetailer (suffix + env-extendable)', () => {
   });
 
   test('env/csv-extendable without code change', () => {
-    expect(isKnownRetailer('coupang.com')).toBe(false);
-    expect(isKnownRetailer('coupang.com', 'coupang.com')).toBe(true);
+    // A host NOT in the default list is only recognized once supplied via CSV.
+    expect(isKnownRetailer('regional-mall.example')).toBe(false);
+    expect(isKnownRetailer('regional-mall.example', 'regional-mall.example')).toBe(true);
   });
 });
 
@@ -86,6 +93,15 @@ describe('brandOwnsDomain', () => {
     ['', 'anything.com', false],
     [null, 'anything.com', false],
     ['Naturium', null, false],
+    // Anchoring regression guards: brand token is a SUBSTRING of the domain label
+    // but does NOT own it -> must be false (was wrongly true under substring match).
+    ['e.l.f.', 'selfridges.com', false], // 'elf' inside 'selfridges'
+    ['MAC', 'pharmacy.com', false], // 'mac' inside 'pharmacy'
+    ['Ordinary', 'extraordinary-shop.com', false],
+    // Reverse direction: brand longer than the label -> label must not "win".
+    ['Beauty of Joseon', 'beauty.com', false], // label 'beauty' inside brand
+    // Affixed brand host now resolves conservatively (honest under-claim).
+    ['COSRX', 'shopcosrx.com', false],
   ])('brandOwnsDomain(%p,%p)=%p', (brand, host, expected) => {
     expect(brandOwnsDomain(brand, host)).toBe(expected);
   });
@@ -143,6 +159,20 @@ describe('deriveOfferSellerIdentity — precedence + NULL behaviour', () => {
   // Rule 4: unknown host, no brand match -> NULL, do not guess
   test('unknown domain with no brand/official evidence -> null', () => {
     const r = deriveOfferSellerIdentity({ domain: 'somerandommarketplace.com', brand: 'Acme' });
+    expect(r).toMatchObject({ offer_type: null, is_first_party: false, rule: 'unknown_no_evidence' });
+  });
+
+  // Anchoring + retailer-list: 'elf' ⊂ 'selfridges' but Selfridges is a known
+  // retailer -> rule 0 preempts -> retailer (was wrongly brand_direct).
+  test('substring brand on a listed retailer host -> retailer, not brand_direct', () => {
+    const r = deriveOfferSellerIdentity({ domain: 'www.selfridges.com', brand: 'e.l.f.' });
+    expect(r).toMatchObject({ offer_type: 'retailer', is_first_party: false, rule: 'known_retailer_domain' });
+  });
+
+  // Same substring shape on an UNLISTED host -> anchored brand rule refuses to
+  // guess brand_direct -> honest unknown (no over-claim).
+  test('substring brand on an unlisted host -> unknown, not brand_direct', () => {
+    const r = deriveOfferSellerIdentity({ domain: 'extraordinary-shop.com', brand: 'Ordinary' });
     expect(r).toMatchObject({ offer_type: null, is_first_party: false, rule: 'unknown_no_evidence' });
   });
 
