@@ -724,7 +724,10 @@ async function resolveCanonicalCatalogEntityGroup(args = {}) {
         s.product_key,
         COUNT(DISTINCT o.offer_id)::int AS offer_count
       FROM catalog_skus s
-      LEFT JOIN catalog_offers o ON o.sku_key = s.sku_key
+      LEFT JOIN catalog_offers o
+        ON o.sku_key = s.sku_key
+       AND o.suppressed_at IS NULL
+       AND COALESCE(o.list_price, 0) > 0
       GROUP BY s.product_key
     ),
     target AS (

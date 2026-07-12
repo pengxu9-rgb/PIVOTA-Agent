@@ -328,7 +328,7 @@ describe('canonicalCatalogSearch.fetchCanonicalChainRows', () => {
     await fetchCanonicalChainRows({ query: 'lipstick', includeSkuOffers: true, deps: { query } });
     const { sql } = query.calls[0];
     expect(sql).toMatch(/LEFT JOIN catalog_skus s ON s\.product_key = c\.product_key/);
-    expect(sql).toMatch(/LEFT JOIN catalog_offers o ON o\.sku_key = s\.sku_key/);
+    expect(sql).toMatch(/LEFT JOIN catalog_offers o\s+ON o\.sku_key = s\.sku_key\s+AND o\.suppressed_at IS NULL\s+AND COALESCE\(o\.list_price, 0\) > 0/);
   });
 
   test('returns the rows array as-is from the underlying query', async () => {

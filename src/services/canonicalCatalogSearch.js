@@ -530,7 +530,10 @@ async function fetchCanonicalChainRows(args = {}) {
   const skuOfferJoinSql = joinSkuOffers
     ? `
     LEFT JOIN catalog_skus s ON s.product_key = c.product_key
-    LEFT JOIN catalog_offers o ON o.sku_key = s.sku_key`
+    LEFT JOIN catalog_offers o
+      ON o.sku_key = s.sku_key
+     AND o.suppressed_at IS NULL
+     AND COALESCE(o.list_price, 0) > 0`
     : '';
   const skuOfferOrderSql = joinSkuOffers ? ', s.updated_at DESC, o.updated_at DESC' : '';
 
