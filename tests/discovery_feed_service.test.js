@@ -3396,10 +3396,18 @@ describe('discovery feed service', () => {
       });
       expect(dbQueryMock).toHaveBeenCalledTimes(1);
       expect(capturedSql).toMatch(/first_party\.merchant_id\s+AS\s+first_party_merchant_id/i);
-      expect(capturedSql).toMatch(/LEFT\s+JOIN\s+LATERAL\s*\([^)]*cp\.merchant_id\s*<>\s*'external_seed'/is);
-      // External_seed LATERAL must filter out tombstoned rows so the post-PR-2
-      // cleanup leaves no ghosts in the join.
-      expect(capturedSql).toMatch(/cp\.merchant_id\s*=\s*'external_seed'[\s\S]{0,200}?cp\.suppression_reason\s+IS\s+NULL/i);
+      // ADR-009: the source laterals are gated on platform, not
+      // merchant_id ['=' | '<>'] 'external_seed' — merch_obs_ observed sellers
+      // are external-seed content, not first-party. The first-party lateral
+      // excludes external-seed platform; the ext_seed lateral includes it and
+      // admits merch_obs_ crawl ids alongside the legacy 'ext_%' scheme.
+      expect(capturedSql).toMatch(/cp\.platform\s*<>\s*'external_seed'/i);
+      expect(capturedSql).toMatch(/cp\.platform\s*=\s*'external_seed'/i);
+      expect(capturedSql).toMatch(/cp\.merchant_id\s+LIKE\s+'merch_obs_%'/i);
+      // The legacy merchant_id gate must be gone from the source laterals.
+      expect(capturedSql).not.toMatch(/cp\.merchant_id\s*(<>|=)\s*'external_seed'/i);
+      // ext_seed lateral still filters tombstoned rows so no ghosts leak in.
+      expect(capturedSql).toMatch(/cp\.platform\s*=\s*'external_seed'[\s\S]{0,300}?cp\.suppression_reason\s+IS\s+NULL/i);
     } finally {
       jest.dontMock('../src/db');
       if (prevDatabaseUrl === undefined) delete process.env.DATABASE_URL;
