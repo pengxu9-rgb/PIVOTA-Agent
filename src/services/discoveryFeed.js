@@ -8894,7 +8894,12 @@ async function fetchBrandScopedCanonicalCandidates({ brandAliases = [], limit = 
           SELECT cp.merchant_id, cp.platform, cp.source_product_id, cp.product_key
           FROM catalog_products cp
           WHERE cp.content_key = apv.content_key
-            AND cp.merchant_id <> 'external_seed'
+            -- ADR-009: a connected-merchant (first-party) row is identified by
+            -- platform, not merchant_id <> 'external_seed'. External seeds now
+            -- mirror under per-brand observed sellers (merch_obs_…), which a
+            -- merchant_id check mis-claimed as first-party (then dropped their
+            -- external identity in the ext_seed lateral below).
+            AND cp.platform <> 'external_seed'
             AND cp.sync_status = 'live'
             AND cp.suppression_reason IS NULL
           ORDER BY cp.updated_at DESC NULLS LAST
@@ -8904,9 +8909,12 @@ async function fetchBrandScopedCanonicalCandidates({ brandAliases = [], limit = 
           SELECT cp.source_product_id, cp.product_key
           FROM catalog_products cp
           WHERE cp.content_key = apv.content_key
-            AND cp.merchant_id = 'external_seed'
+            -- ADR-009: match external-seed content by platform + accept both the
+            -- legacy 'ext_%' id scheme AND observed sellers (merch_obs_…, whose
+            -- crawl ids look like '<brand>_<market>_<id>'), so a merch_obs_ seed
+            -- keeps its external_product_id/key for the redirect path.
             AND cp.platform = 'external_seed'
-            AND cp.source_product_id LIKE 'ext_%'
+            AND (cp.source_product_id LIKE 'ext_%' OR cp.merchant_id LIKE 'merch_obs_%')
             AND cp.suppression_reason IS NULL
             AND cp.sync_status = 'live'
           ORDER BY cp.updated_at DESC NULLS LAST
