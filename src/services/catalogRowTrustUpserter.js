@@ -115,8 +115,14 @@ const PRODUCT_JOIN_SQL = `
     ON pil.merchant_id = cp.merchant_id
    AND pil.product_id = cp.source_product_id
   LEFT JOIN external_seed_one eps
-    ON cp.merchant_id = 'external_seed'
-   AND cp.source_system = 'external_product_seeds_mirror_v1'
+    -- ADR-009: match by source_system, NOT merchant_id='external_seed'. External
+    -- seeds now mirror under per-brand observed sellers (merch_obs_…); the legacy
+    -- merchant_id conjunct excluded those rows → eps NULL → source lifecycle
+    -- 'unknown' → a disabled merch_obs_ seed never propagated its inactive block.
+    -- source_system already scopes the join to seed-mirror rows only. Mirrors the
+    -- Python twin (services/catalog_row_trust_upserter.py); MUST stay in sync or
+    -- this backfill re-derives 'unknown' and overwrites the Python fix.
+    ON cp.source_system = 'external_product_seeds_mirror_v1'
    AND eps.external_product_id = cp.source_product_id
   LEFT JOIN merchant_store_one ms
     ON ms.merchant_id = cp.merchant_id AND ms.platform = cp.platform

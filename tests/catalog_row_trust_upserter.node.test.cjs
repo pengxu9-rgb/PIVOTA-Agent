@@ -185,3 +185,21 @@ test('upsertCatalogRowTrustForSourceListingRefs with empty refs returns 0', asyn
   assert.equal(wrote, 0);
   assert.equal(pool.queries.length, 0);
 });
+
+// ADR-009: the external_product_seeds join must key on source_system, not the
+// legacy merchant_id='external_seed' bucket — external seeds now mirror under
+// per-brand observed sellers (merch_obs_…), and a merchant_id conjunct excluded
+// them → eps NULL → source lifecycle 'unknown' → a disabled merch_obs_ seed
+// never propagated its inactive block. Keep in sync with the Python twin.
+test('external_product_seeds join gates on source_system, not legacy merchant_id (ADR-009)', async () => {
+  const pool = new FakePool({ joined: [makeJoinedRow()] });
+  await upsertCatalogRowTrust(pool, 'pk_internal_1', NOW);
+  const select = pool.queries.find(
+    (q) => q.sql.includes('external_seed_one eps') && q.sql.includes('catalog_products cp'),
+  );
+  assert.ok(select, 'no product-join SELECT emitted');
+  // The join correlates by source_system + external_product_id …
+  assert.match(select.sql, /external_seed_one eps\s+(?:--[^\n]*\n\s*)*ON cp\.source_system = 'external_product_seeds_mirror_v1'/);
+  // … and no longer restricts the join to the legacy external_seed merchant.
+  assert.doesNotMatch(select.sql, /eps\s+(?:--[^\n]*\n\s*)*ON cp\.merchant_id = 'external_seed'/);
+});
