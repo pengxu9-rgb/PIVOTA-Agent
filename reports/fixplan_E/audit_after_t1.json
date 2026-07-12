@@ -1,0 +1,614 @@
+{
+  "generated_at": "2026-07-12T11:07:41.973Z",
+  "scope": "production_catalog_counts",
+  "read_only": true,
+  "external_product_seeds": {
+    "table_exists": true,
+    "totals": {
+      "total_rows": 10742,
+      "active_rows": 9446,
+      "non_active_rows": 1246,
+      "active_standalone_pdp_rows": 217,
+      "active_attached_rows": 9229,
+      "distinct_external_product_ids": 10740,
+      "distinct_active_external_product_ids": 9446,
+      "distinct_domains": 225,
+      "distinct_markets": 6
+    },
+    "by_status": [
+      {
+        "status": "active",
+        "rows": 9496
+      },
+      {
+        "status": "inactive",
+        "rows": 1215
+      },
+      {
+        "status": "retired_demo",
+        "rows": 21
+      },
+      {
+        "status": "review_blocked",
+        "rows": 7
+      },
+      {
+        "status": "disabled",
+        "rows": 2
+      },
+      {
+        "status": "blocked",
+        "rows": 1
+      }
+    ],
+    "by_market": [
+      {
+        "market": "US",
+        "rows": 10309
+      },
+      {
+        "market": "JP",
+        "rows": 331
+      },
+      {
+        "market": "EU-DE",
+        "rows": 50
+      },
+      {
+        "market": "KR",
+        "rows": 27
+      },
+      {
+        "market": "GB",
+        "rows": 19
+      },
+      {
+        "market": "CN",
+        "rows": 6
+      }
+    ],
+    "active_by_market": [
+      {
+        "market": "US",
+        "rows": 9073
+      },
+      {
+        "market": "JP",
+        "rows": 331
+      },
+      {
+        "market": "KR",
+        "rows": 23
+      },
+      {
+        "market": "GB",
+        "rows": 19
+      }
+    ],
+    "by_tool": [
+      {
+        "tool": "creator_agents",
+        "rows": 3472
+      },
+      {
+        "tool": "external_brand_crawl",
+        "rows": 3378
+      },
+      {
+        "tool": "*",
+        "rows": 3167
+      },
+      {
+        "tool": "catalog_enrichment_agent_v1",
+        "rows": 720
+      },
+      {
+        "tool": "kbeauty_crawl",
+        "rows": 5
+      }
+    ],
+    "active_by_domain": [
+      {
+        "domain": "unknown",
+        "rows": 1779
+      },
+      {
+        "domain": "fentybeauty.com",
+        "rows": 862
+      },
+      {
+        "domain": "ulta.com",
+        "rows": 431
+      },
+      {
+        "domain": "pixibeauty.com",
+        "rows": 348
+      },
+      {
+        "domain": "paulmitchell.com",
+        "rows": 250
+      },
+      {
+        "domain": "kyliecosmetics.com",
+        "rows": 224
+      },
+      {
+        "domain": "palmofferonia.com",
+        "rows": 199
+      },
+      {
+        "domain": "missnella.com",
+        "rows": 198
+      },
+      {
+        "domain": "meritbeauty.com",
+        "rows": 197
+      },
+      {
+        "domain": "sigmabeauty.com",
+        "rows": 192
+      },
+      {
+        "domain": "tonymoly.us",
+        "rows": 189
+      },
+      {
+        "domain": "wholesale.publicgoods.com",
+        "rows": 181
+      },
+      {
+        "domain": "intelligentchange.com",
+        "rows": 163
+      },
+      {
+        "domain": "www.tomfordbeauty.com",
+        "rows": 146
+      },
+      {
+        "domain": "lizush.com",
+        "rows": 125
+      },
+      {
+        "domain": "glossier.com",
+        "rows": 115
+      },
+      {
+        "domain": "iliabeauty.com",
+        "rows": 112
+      },
+      {
+        "domain": "rarebeauty.com",
+        "rows": 109
+      },
+      {
+        "domain": "naturium.com",
+        "rows": 106
+      },
+      {
+        "domain": "upcirclebeauty.com",
+        "rows": 103
+      },
+      {
+        "domain": "us.nuxe.com",
+        "rows": 102
+      },
+      {
+        "domain": "cosrx.com",
+        "rows": 101
+      },
+      {
+        "domain": "www.jurlique.com",
+        "rows": 99
+      },
+      {
+        "domain": "beekman1802.com",
+        "rows": 97
+      },
+      {
+        "domain": "lav-kids.com",
+        "rows": 91
+      }
+    ],
+    "active_by_brand": [
+      {
+        "brand": "Fenty Beauty",
+        "rows": 499
+      },
+      {
+        "brand": "fenty beauty",
+        "rows": 363
+      },
+      {
+        "brand": "PIXI BEAUTY",
+        "rows": 347
+      },
+      {
+        "brand": "Paul Mitchell",
+        "rows": 250
+      },
+      {
+        "brand": "mixsoon",
+        "rows": 225
+      },
+      {
+        "brand": "kylie cosmetics",
+        "rows": 224
+      },
+      {
+        "brand": "Palm of Feronia",
+        "rows": 199
+      },
+      {
+        "brand": "Miss Nella",
+        "rows": 198
+      },
+      {
+        "brand": "Merit",
+        "rows": 197
+      },
+      {
+        "brand": "sigma beauty",
+        "rows": 192
+      },
+      {
+        "brand": "TONYMOLY USA",
+        "rows": 189
+      },
+      {
+        "brand": "Public Goods",
+        "rows": 181
+      },
+      {
+        "brand": "comfortzone",
+        "rows": 180
+      },
+      {
+        "brand": "INTELLIGENT CHANGE",
+        "rows": 163
+      },
+      {
+        "brand": "Tom Ford Beauty",
+        "rows": 146
+      },
+      {
+        "brand": "Arencia",
+        "rows": 126
+      },
+      {
+        "brand": "Lizush",
+        "rows": 125
+      },
+      {
+        "brand": "COSRX",
+        "rows": 120
+      },
+      {
+        "brand": "Mediheal US",
+        "rows": 119
+      },
+      {
+        "brand": "Naturium",
+        "rows": 119
+      },
+      {
+        "brand": "Glossier",
+        "rows": 115
+      },
+      {
+        "brand": "ILIA",
+        "rows": 111
+      },
+      {
+        "brand": "Beekman 1802",
+        "rows": 110
+      },
+      {
+        "brand": "rare beauty",
+        "rows": 109
+      },
+      {
+        "brand": "UpCircle Beauty",
+        "rows": 103
+      }
+    ],
+    "active_by_vertical": [
+      {
+        "vertical": "unknown",
+        "rows": 5422
+      },
+      {
+        "vertical": "skincare",
+        "rows": 2883
+      },
+      {
+        "vertical": "makeup",
+        "rows": 145
+      },
+      {
+        "vertical": "Nail Polish",
+        "rows": 96
+      },
+      {
+        "vertical": "haircare",
+        "rows": 95
+      },
+      {
+        "vertical": "Lip Gloss",
+        "rows": 46
+      },
+      {
+        "vertical": "Skincare Set",
+        "rows": 35
+      },
+      {
+        "vertical": "Moisturizer",
+        "rows": 31
+      },
+      {
+        "vertical": "Foundation",
+        "rows": 28
+      },
+      {
+        "vertical": "Eyeliner",
+        "rows": 27
+      },
+      {
+        "vertical": "Beauty Set",
+        "rows": 25
+      },
+      {
+        "vertical": "Serum",
+        "rows": 23
+      },
+      {
+        "vertical": "Nail Polish Set",
+        "rows": 19
+      },
+      {
+        "vertical": "Cleanser",
+        "rows": 16
+      },
+      {
+        "vertical": "Skincare",
+        "rows": 15
+      },
+      {
+        "vertical": "Highlighter",
+        "rows": 14
+      },
+      {
+        "vertical": "Makeup Bundle",
+        "rows": 14
+      },
+      {
+        "vertical": "Body Oil",
+        "rows": 13
+      },
+      {
+        "vertical": "Body Wash",
+        "rows": 13
+      },
+      {
+        "vertical": "Deodorant",
+        "rows": 13
+      },
+      {
+        "vertical": "Lip Balm",
+        "rows": 13
+      },
+      {
+        "vertical": "Makeup Set",
+        "rows": 12
+      },
+      {
+        "vertical": "Face Makeup/Cushion Foundation",
+        "rows": 11
+      },
+      {
+        "vertical": "Lipstick",
+        "rows": 11
+      },
+      {
+        "vertical": "Toner",
+        "rows": 11
+      }
+    ]
+  },
+  "products_cache": {
+    "table_exists": true,
+    "columns": [
+      "id",
+      "merchant_id",
+      "platform",
+      "platform_product_id",
+      "product_data",
+      "cache_status",
+      "cached_at",
+      "expires_at",
+      "ttl_seconds",
+      "access_count",
+      "last_accessed_at"
+    ],
+    "totals": {
+      "total_rows": 0,
+      "distinct_merchants": 0,
+      "unexpired_rows": 0,
+      "expired_rows": 0,
+      "active_like_rows": 0,
+      "orderable_like_rows": 0,
+      "rows_with_title": 0,
+      "rows_with_image": 0
+    },
+    "by_merchant": [],
+    "by_status": [],
+    "by_vendor": []
+  },
+  "pdp_identity_listing": {
+    "table_exists": true,
+    "totals": {
+      "total_listing_rows": 10467,
+      "live_read_enabled_rows": 5280,
+      "distinct_sellable_item_groups": 9528,
+      "distinct_product_lines": 7613,
+      "distinct_review_families": 7629,
+      "external_seed_listing_rows": 7559,
+      "non_external_seed_listing_rows": 2908,
+      "verified_rows": 0,
+      "non_verified_rows": 10467
+    },
+    "by_merchant": [
+      {
+        "merchant_id": "external_seed",
+        "rows": 7559
+      },
+      {
+        "merchant_id": "merch_efbc46b4619cfbdf",
+        "rows": 765
+      },
+      {
+        "merchant_id": "merch_bbd34645bc1950cc",
+        "rows": 750
+      },
+      {
+        "merchant_id": "merch_obs_2f4c3218b94929d0",
+        "rows": 250
+      },
+      {
+        "merchant_id": "merch_obs_5239b11b1dd11d40",
+        "rows": 189
+      },
+      {
+        "merchant_id": "merch_obs_c33423d5f0c28101",
+        "rows": 89
+      },
+      {
+        "merchant_id": "merch_obs_d8355ade38899abb",
+        "rows": 72
+      },
+      {
+        "merchant_id": "merch_obs_797322ed31d9ae01",
+        "rows": 54
+      },
+      {
+        "merchant_id": "merch_obs_7d65d696184c1023",
+        "rows": 54
+      },
+      {
+        "merchant_id": "merch_obs_8887b6c53f029191",
+        "rows": 49
+      },
+      {
+        "merchant_id": "merch_obs_feb858b14bb7b8ba",
+        "rows": 49
+      },
+      {
+        "merchant_id": "merch_obs_9771ea61329c8cf0",
+        "rows": 45
+      },
+      {
+        "merchant_id": "merch_obs_7374d4aba789b98b",
+        "rows": 44
+      },
+      {
+        "merchant_id": "merch_obs_6e81927c31b4f9e5",
+        "rows": 38
+      },
+      {
+        "merchant_id": "merch_obs_3d5125ac57d3b38f",
+        "rows": 36
+      },
+      {
+        "merchant_id": "merch_obs_897122abaf68ebb5",
+        "rows": 31
+      },
+      {
+        "merchant_id": "merch_obs_1520e8b3ec36d07f",
+        "rows": 23
+      },
+      {
+        "merchant_id": "merch_obs_8825a95ebb3f69ec",
+        "rows": 21
+      },
+      {
+        "merchant_id": "merch_obs_440c6180f4d0beb0",
+        "rows": 20
+      },
+      {
+        "merchant_id": "merch_obs_823851c477ad15e5",
+        "rows": 20
+      },
+      {
+        "merchant_id": "merch_obs_9cbd55982c778488",
+        "rows": 20
+      },
+      {
+        "merchant_id": "merch_obs_bafafc267163f1fc",
+        "rows": 20
+      },
+      {
+        "merchant_id": "merch_obs_fa2ddc31041f38ca",
+        "rows": 19
+      },
+      {
+        "merchant_id": "merch_obs_b2f79ddeabe73c7f",
+        "rows": 18
+      },
+      {
+        "merchant_id": "merch_obs_be16d153c2e337bd",
+        "rows": 18
+      }
+    ],
+    "by_status": [
+      {
+        "identity_status": "approved",
+        "rows": 9976
+      },
+      {
+        "identity_status": "review_required",
+        "rows": 491
+      }
+    ],
+    "live_by_merchant": [
+      {
+        "merchant_id": "external_seed",
+        "rows": 5279
+      },
+      {
+        "merchant_id": "merch_efbc46b4619cfbdf",
+        "rows": 1
+      }
+    ]
+  },
+  "aurora_product_intel_kb": {
+    "table_exists": true,
+    "totals": {
+      "total_rows": 9477,
+      "product_kb_rows": 8617,
+      "rows_with_last_success": 9477
+    }
+  },
+  "external_seed_image_assets": {
+    "table_exists": true,
+    "totals": {
+      "total_rows": 25056,
+      "distinct_external_product_ids": 1054,
+      "cached_rows": 6697,
+      "rows_with_cached_url": 6697
+    }
+  },
+  "derived": {
+    "recommended_counting_guidance": {
+      "external_seed_catalog_pdp_rows": 217,
+      "external_seed_active_listing_rows": 9446,
+      "merchant_cache_raw_rows": 0,
+      "merchant_cache_unexpired_rows": 0,
+      "identity_dedup_sellable_groups": 9528,
+      "identity_product_lines": 7613
+    },
+    "notes": [
+      "external_seed_catalog_pdp_rows is the best standalone external PDP count; attached rows are excluded to avoid double counting rows linked to internal products.",
+      "merchant_cache_raw_rows is not deduplicated and may include expired/unavailable merchant cache rows.",
+      "identity_dedup_sellable_groups is the best current dedup/product-group count where identity graph coverage exists; it is not yet a full-catalog total if identity coverage is incomplete."
+    ]
+  }
+}

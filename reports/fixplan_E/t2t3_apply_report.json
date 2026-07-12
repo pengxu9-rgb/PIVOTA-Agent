@@ -1,0 +1,86 @@
+{
+  "plan": "fixplan_2026-07-12_E",
+  "task": "T2_T3_demo_stores_and_fixtures",
+  "mode": "apply",
+  "at": "2026-07-12T11:13:52.718Z",
+  "counts": {
+    "t2_products": 743,
+    "t2_offers": 2333,
+    "t2_stores": 2,
+    "t3_ownist_products": 4,
+    "t3_ownist_offers": 4,
+    "t3_brand_products": 34,
+    "t3_brand_offers": 52
+  },
+  "apply": {
+    "t2_products": 743,
+    "t2_offers": 2333,
+    "t2_stores": 1,
+    "t3_ownist_products": 4,
+    "t3_ownist_offers": 4,
+    "t3_brand_products": 34,
+    "t3_brand_offers": 52,
+    "trust_rows_written": 781,
+    "trust_path": "upserter",
+    "touched_product_keys": 781
+  },
+  "verify": {
+    "t2_bbd_products_marked": 743,
+    "t2_bbd_offers_oos_marked": 2333,
+    "t2_bbd_stores": [
+      {
+        "store_id": "store_merch_bb_1781968014",
+        "status": "inactive"
+      },
+      {
+        "store_id": "store_merch_bb_1782827371",
+        "status": "inactive"
+      }
+    ],
+    "t3_ownist_marked": 4,
+    "t3_brand_marked": 34,
+    "trust_public_remaining": 0,
+    "kept_canary_products_before": 763,
+    "kept_canary_products_after": 763,
+    "kept_canary_marked_with_our_marker": 0,
+    "kept_canary_stores_before": [
+      {
+        "store_id": "store_merch_ef_1770560419",
+        "status": "inactive"
+      },
+      {
+        "store_id": "store_merch_ef_1779084258",
+        "status": "retired_test_rig"
+      },
+      {
+        "store_id": "store_merch_ef_1780807231",
+        "status": "retired_test_rig"
+      },
+      {
+        "store_id": "store_merch_ef_1782570103",
+        "status": "retired_test_rig"
+      }
+    ],
+    "kept_canary_stores_after": [
+      {
+        "store_id": "store_merch_ef_1770560419",
+        "status": "inactive"
+      },
+      {
+        "store_id": "store_merch_ef_1779084258",
+        "status": "retired_test_rig"
+      },
+      {
+        "store_id": "store_merch_ef_1780807231",
+        "status": "retired_test_rig"
+      },
+      {
+        "store_id": "store_merch_ef_1782570103",
+        "status": "retired_test_rig"
+      }
+    ],
+    "kept_canary_untouched": true,
+    "mojawa_unchanged": true,
+    "mojawa_changed_rows": []
+  }
+}
