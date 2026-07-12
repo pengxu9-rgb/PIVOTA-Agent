@@ -3,6 +3,24 @@
 const fs = require('fs');
 const path = require('path');
 const { closePool, query } = require('../src/db');
+const {
+  DEMO_MERCHANT_IDS,
+  DEMO_SUPPRESSION_REASONS,
+} = require('./_utils/demoExclusions.cjs');
+
+// Demo/test merchants pollute headline counts (Fix Plan E). Exclude them by
+// default; pass --include-demo to see raw counts.
+const EXCLUDE_DEMO = !process.argv.includes('--include-demo');
+function sqlStrList(values) {
+  return values.map((v) => `'${String(v).replace(/'/g, "''")}'`).join(', ');
+}
+const DEMO_MID_LIST = sqlStrList(DEMO_MERCHANT_IDS);
+const DEMO_REASON_LIST = sqlStrList(DEMO_SUPPRESSION_REASONS);
+// Predicate fragments (empty string when --include-demo is set).
+const CACHE_DEMO_PRED = EXCLUDE_DEMO ? ` AND coalesce(merchant_id, '') NOT IN (${DEMO_MID_LIST})` : '';
+const SEED_DEMO_PRED = EXCLUDE_DEMO
+  ? ` AND coalesce(seller_ref, '') NOT IN (${DEMO_MID_LIST})`
+  : '';
 
 function parseArgs(argv) {
   const args = {
@@ -100,21 +118,21 @@ async function auditExternalSeeds(topN) {
     await one(`
       SELECT
         COUNT(*)::int AS total_rows,
-        COUNT(*) FILTER (WHERE lower(coalesce(status, '')) = 'active')::int AS active_rows,
+        COUNT(*) FILTER (WHERE lower(coalesce(status, '')) = 'active'${SEED_DEMO_PRED})::int AS active_rows,
         COUNT(*) FILTER (WHERE lower(coalesce(status, '')) <> 'active')::int AS non_active_rows,
         COUNT(*) FILTER (
-          WHERE lower(coalesce(status, '')) = 'active'
+          WHERE lower(coalesce(status, '')) = 'active'${SEED_DEMO_PRED}
             AND coalesce(attached_product_key, '') = ''
         )::int AS active_standalone_pdp_rows,
         COUNT(*) FILTER (
-          WHERE lower(coalesce(status, '')) = 'active'
+          WHERE lower(coalesce(status, '')) = 'active'${SEED_DEMO_PRED}
             AND coalesce(attached_product_key, '') <> ''
         )::int AS active_attached_rows,
         COUNT(DISTINCT external_product_id) FILTER (
           WHERE coalesce(external_product_id, '') <> ''
         )::int AS distinct_external_product_ids,
         COUNT(DISTINCT external_product_id) FILTER (
-          WHERE lower(coalesce(status, '')) = 'active'
+          WHERE lower(coalesce(status, '')) = 'active'${SEED_DEMO_PRED}
             AND coalesce(external_product_id, '') <> ''
         )::int AS distinct_active_external_product_ids,
         COUNT(DISTINCT lower(coalesce(domain, ''))) FILTER (
@@ -151,7 +169,7 @@ async function auditExternalSeeds(topN) {
     `
       SELECT coalesce(nullif(market, ''), 'unknown') AS market, COUNT(*)::int AS rows
       FROM external_product_seeds
-      WHERE lower(coalesce(status, '')) = 'active'
+      WHERE lower(coalesce(status, '')) = 'active'${SEED_DEMO_PRED}
       GROUP BY 1
       ORDER BY rows DESC, market
       LIMIT $1
@@ -174,7 +192,7 @@ async function auditExternalSeeds(topN) {
     `
       SELECT coalesce(nullif(lower(domain), ''), 'unknown') AS domain, COUNT(*)::int AS rows
       FROM external_product_seeds
-      WHERE lower(coalesce(status, '')) = 'active'
+      WHERE lower(coalesce(status, '')) = 'active'${SEED_DEMO_PRED}
       GROUP BY 1
       ORDER BY rows DESC, domain
       LIMIT $1
@@ -200,7 +218,7 @@ async function auditExternalSeeds(topN) {
             ''
           ) AS brand
         FROM external_product_seeds
-        WHERE lower(coalesce(status, '')) = 'active'
+        WHERE lower(coalesce(status, '')) = 'active'${SEED_DEMO_PRED}
       )
       SELECT coalesce(brand, 'unknown') AS brand, COUNT(*)::int AS rows
       FROM normalized
@@ -230,7 +248,7 @@ async function auditExternalSeeds(topN) {
             ''
           ) AS vertical
         FROM external_product_seeds
-        WHERE lower(coalesce(status, '')) = 'active'
+        WHERE lower(coalesce(status, '')) = 'active'${SEED_DEMO_PRED}
       )
       SELECT coalesce(vertical, 'unknown') AS vertical, COUNT(*)::int AS rows
       FROM normalized
@@ -285,13 +303,19 @@ async function auditProductsCache(topN) {
     );
   }
 
-  const totals = normalizeCountRow(await one(`SELECT ${selectParts.join(',\n')} FROM products_cache`));
+  // Only exclude demo merchants when this table actually has a merchant_id column.
+  const cacheDemoPred = hasMerchantId ? CACHE_DEMO_PRED : '';
+
+  const totals = normalizeCountRow(
+    await one(`SELECT ${selectParts.join(',\n')} FROM products_cache WHERE 1=1${cacheDemoPred}`),
+  );
 
   const byMerchant = hasMerchantId
     ? await many(
         `
           SELECT coalesce(nullif(merchant_id, ''), 'unknown') AS merchant_id, COUNT(*)::int AS rows
           FROM products_cache
+          WHERE 1=1${cacheDemoPred}
           GROUP BY 1
           ORDER BY rows DESC, merchant_id
           LIMIT $1
@@ -305,6 +329,7 @@ async function auditProductsCache(topN) {
         `
           SELECT coalesce(nullif(lower(product_data->>'status'), ''), 'unknown') AS status, COUNT(*)::int AS rows
           FROM products_cache
+          WHERE 1=1${cacheDemoPred}
           GROUP BY 1
           ORDER BY rows DESC, status
           LIMIT $1
@@ -318,6 +343,7 @@ async function auditProductsCache(topN) {
         `
           SELECT coalesce(nullif(product_data->>'vendor', ''), 'unknown') AS vendor, COUNT(*)::int AS rows
           FROM products_cache
+          WHERE 1=1${cacheDemoPred}
           GROUP BY 1
           ORDER BY rows DESC, vendor
           LIMIT $1

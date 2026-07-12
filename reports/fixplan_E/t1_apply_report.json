@@ -1,0 +1,112 @@
+{
+  "plan": "fixplan_2026-07-12_E",
+  "task": "T1_electronics_demo_cohort",
+  "mode": "apply",
+  "at": "2026-07-12T11:05:44.184Z",
+  "counts": {
+    "seeds": 21,
+    "products": 33,
+    "offers": 42
+  },
+  "warnings": [],
+  "brands_touched": [
+    "amazon",
+    "apple",
+    "beats",
+    "bose",
+    "jbl",
+    "kobo",
+    "samsung",
+    "sennheiser",
+    "sony"
+  ],
+  "excluded_non_electronics_seed_count": 117,
+  "mojawa_snapshot_before": [
+    {
+      "product_key": "prod::merch_9678f6352da21473::url_audit::mojawa.com~0b99866a302a",
+      "merchant_id": "merch_9678f6352da21473",
+      "brand": "Mojawa",
+      "updated_at": "2026-07-09T16:12:29.621Z",
+      "suppression_reason": null,
+      "suppressed_at": null,
+      "content_changed_at": "2026-07-09T16:12:29.621Z"
+    },
+    {
+      "product_key": "prod::merch_9678f6352da21473::url_audit::mojawa.com~8ed4617854d2",
+      "merchant_id": "merch_9678f6352da21473",
+      "brand": "Mojawa",
+      "updated_at": "2026-07-10T19:17:34.226Z",
+      "suppression_reason": null,
+      "suppressed_at": null,
+      "content_changed_at": "2026-07-10T19:17:34.226Z"
+    },
+    {
+      "product_key": "prod::merch_9678f6352da21473::url_audit::mojawa.com~bbd1309099ce",
+      "merchant_id": "merch_9678f6352da21473",
+      "brand": "Mojawa",
+      "updated_at": "2026-07-10T02:19:42.374Z",
+      "suppression_reason": null,
+      "suppressed_at": null,
+      "content_changed_at": "2026-07-10T02:19:42.374Z"
+    },
+    {
+      "product_key": "prod::merch_obs_022b65d47a58b87a::external_seed::mojawa_us_8129594163442",
+      "merchant_id": "merch_obs_022b65d47a58b87a",
+      "brand": "Mojawa",
+      "updated_at": "2026-07-11T01:32:15.660Z",
+      "suppression_reason": null,
+      "suppressed_at": null,
+      "content_changed_at": "2026-07-11T01:31:43.585Z"
+    },
+    {
+      "product_key": "prod::merch_obs_022b65d47a58b87a::external_seed::mojawa_us_8754746065138",
+      "merchant_id": "merch_obs_022b65d47a58b87a",
+      "brand": "Mojawa",
+      "updated_at": "2026-07-11T01:32:11.256Z",
+      "suppression_reason": null,
+      "suppressed_at": null,
+      "content_changed_at": "2026-07-11T01:32:07.190Z"
+    },
+    {
+      "product_key": "prod::merch_obs_022b65d47a58b87a::external_seed::mojawa_us_8846819885298",
+      "merchant_id": "merch_obs_022b65d47a58b87a",
+      "brand": "Mojawa",
+      "updated_at": "2026-07-11T01:32:13.676Z",
+      "suppression_reason": null,
+      "suppressed_at": null,
+      "content_changed_at": "2026-07-11T01:31:56.675Z"
+    }
+  ],
+  "apply": {
+    "seeds_updated": 21,
+    "products_updated": 33,
+    "offers_updated": 42,
+    "trust_rows_written": 33,
+    "trust_path": "upserter"
+  },
+  "verify": {
+    "seeds": {
+      "retired": 21,
+      "still_active": 0
+    },
+    "products": {
+      "marked": 33,
+      "total": 33
+    },
+    "offers": {
+      "marked": 42,
+      "total": 42
+    },
+    "trust_breakdown": [
+      {
+        "serving_decision": "blocked",
+        "n": 33
+      }
+    ],
+    "trust_public_count": 0,
+    "mojawa_before_count": 6,
+    "mojawa_after_count": 6,
+    "mojawa_changed_rows": [],
+    "mojawa_unchanged": true
+  }
+}

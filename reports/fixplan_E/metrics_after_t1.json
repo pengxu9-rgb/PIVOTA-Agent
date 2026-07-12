@@ -1,0 +1,86 @@
+{
+  "at": "2026-07-12T11:07:30.465Z",
+  "t1_electronics_active_seeds": 0,
+  "t1_electronics_products_total": 33,
+  "t1_electronics_products_unsuppressed": 0,
+  "t1_electronics_products_marked": 33,
+  "t1_electronics_offers_unsuppressed": 0,
+  "t1_electronics_trust_public": 0,
+  "t2_bbd_products_total": 743,
+  "t2_bbd_products_marked": 0,
+  "t2_bbd_offers_total": 2333,
+  "t2_bbd_offers_marked": 0,
+  "t2_bbd_stores": [
+    {
+      "store_id": "store_merch_bb_1781968014",
+      "status": "inactive"
+    },
+    {
+      "store_id": "store_merch_bb_1782827371",
+      "status": "disconnected"
+    }
+  ],
+  "t2_ef_products_total": 763,
+  "t2_ef_stores": [
+    {
+      "store_id": "store_merch_ef_1770560419",
+      "status": "inactive"
+    },
+    {
+      "store_id": "store_merch_ef_1779084258",
+      "status": "retired_test_rig"
+    },
+    {
+      "store_id": "store_merch_ef_1780807231",
+      "status": "retired_test_rig"
+    },
+    {
+      "store_id": "store_merch_ef_1782570103",
+      "status": "retired_test_rig"
+    }
+  ],
+  "t3_ownist_products_total": 4,
+  "t3_ownist_products_marked": 0,
+  "t3_ownist_offers_total": 4,
+  "t3_ownist_offers_marked": 0,
+  "t3_test_brand_products_total": 34,
+  "t3_test_brand_products_marked": 0,
+  "mojawa_products": [
+    {
+      "product_key": "prod::merch_9678f6352da21473::url_audit::mojawa.com~0b99866a302a",
+      "updated_at": "2026-07-09T16:12:29.621Z",
+      "suppression_reason": null,
+      "suppressed_at": null
+    },
+    {
+      "product_key": "prod::merch_9678f6352da21473::url_audit::mojawa.com~8ed4617854d2",
+      "updated_at": "2026-07-10T19:17:34.226Z",
+      "suppression_reason": null,
+      "suppressed_at": null
+    },
+    {
+      "product_key": "prod::merch_9678f6352da21473::url_audit::mojawa.com~bbd1309099ce",
+      "updated_at": "2026-07-10T02:19:42.374Z",
+      "suppression_reason": null,
+      "suppressed_at": null
+    },
+    {
+      "product_key": "prod::merch_obs_022b65d47a58b87a::external_seed::mojawa_us_8129594163442",
+      "updated_at": "2026-07-11T01:32:15.660Z",
+      "suppression_reason": null,
+      "suppressed_at": null
+    },
+    {
+      "product_key": "prod::merch_obs_022b65d47a58b87a::external_seed::mojawa_us_8754746065138",
+      "updated_at": "2026-07-11T01:32:11.256Z",
+      "suppression_reason": null,
+      "suppressed_at": null
+    },
+    {
+      "product_key": "prod::merch_obs_022b65d47a58b87a::external_seed::mojawa_us_8846819885298",
+      "updated_at": "2026-07-11T01:32:13.676Z",
+      "suppression_reason": null,
+      "suppressed_at": null
+    }
+  ]
+}
