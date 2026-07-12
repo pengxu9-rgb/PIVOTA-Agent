@@ -224,18 +224,22 @@ async function fetchCanonicalChainRows(args = {}) {
   // non-matching market — mirrors the market filter on the
   // external-seed-direct path (queryBeautyExternalSeedRowsFast in
   // server.js: AND market = $1). Path A merchant rows
-  // (merchant_id != 'external_seed') and Path C canonical-scope rows
+  // (platform != 'external_seed') and Path C canonical-scope rows
   // (pdp_scope='multi_merchant_canonical') pass through regardless;
   // they're either user-merchant inventory or cross-market canonical
   // PDPs and should always be visible. Without this, market=KR Round
   // Lab products were surfacing in US users' chat.
+  // ADR-009: gate on platform, NOT merchant_id='external_seed' — external
+  // seeds now mirror under per-brand observed sellers (merch_obs_…), which a
+  // merchant_id check misread as Path A and exempted from the market filter,
+  // re-opening the cross-market bleed for every merch_obs_ seed.
   let marketWhere = '';
   if (marketId) {
     params.push(String(marketId).toUpperCase());
     const marketBind = `$${params.length}`;
     marketWhere = `
       AND (
-        p.merchant_id != 'external_seed'
+        p.platform != 'external_seed'
         OR p.pdp_scope = 'multi_merchant_canonical'
         OR EXISTS (
           SELECT 1 FROM external_product_seeds eps
@@ -431,9 +435,15 @@ async function fetchCanonicalChainRows(args = {}) {
   const whereClause = categoryBind
     ? `(p.category_path IS NOT NULL AND (p.category_path = ${categoryExactBind} OR p.category_path LIKE ${categoryBind}) AND $2::text IS NOT NULL)`
     : `(${textWhereClause})`;
+  // Suppress source-unavailable / discontinued external-seed products from
+  // recall. ADR-009: gate on platform, NOT the legacy merchant_id='external_seed'
+  // bucket — external seeds now mirror under per-brand observed sellers
+  // (merch_obs_…), so a merchant_id check let every source-unavailable merch_obs_
+  // seed slip through and stay citable. The inner EXISTS (unchanged) still keys
+  // by source_product_id and uses idx_eps_source_unavailable_epid (mig 055).
   const externalSeedUnavailableWhere = `
         AND NOT (
-          p.merchant_id = 'external_seed'
+          p.platform = 'external_seed'
           AND (
             lower(coalesce(p.product_payload #>> '{source_unavailable_v1,status}', '')) = 'source_unavailable'
             OR coalesce(p.product_payload #>> '{source_unavailable_v1,contract_version}', '') = 'external_seed.source_unavailable.v1'
