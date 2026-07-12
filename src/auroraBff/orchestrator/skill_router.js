@@ -15,7 +15,9 @@ const DupeSuggestSkill = require('../skills/dupe_suggest');
 const DupeCompareSkill = require('../skills/dupe_compare');
 const TravelApplyModeSkill = require('../skills/travel_apply_mode');
 const ExploreAddToRoutineSkill = require('../skills/explore_add_to_routine');
+const ShopFindProductsSkill = require('../skills/shop_find_products');
 const QualityGateEngine = require('./quality_gate_engine');
+const { detectExplicitProductSearch } = require('../findProductsIntent');
 const { extractRecoTargetStepFromText, normalizeRecoTargetStep } = require('../recoTargetStep');
 const {
   extractRecoUserMessage,
@@ -39,6 +41,7 @@ const SKILL_MAP = Object.freeze({
   'dupe.compare': DupeCompareSkill,
   'travel.apply_mode': TravelApplyModeSkill,
   'explore.add_to_routine': ExploreAddToRoutineSkill,
+  'shop.find_products': ShopFindProductsSkill,
 });
 
 const INTENT_TO_SKILL = Object.freeze({
@@ -48,6 +51,7 @@ const INTENT_TO_SKILL = Object.freeze({
   audit_optimize: 'routine.audit_optimize',
   recommend_products: 'reco.step_based',
   step_recommendation: 'reco.step_based',
+  find_products: 'shop.find_products',
   checkin_log: 'tracker.checkin_log',
   checkin_insights: 'tracker.checkin_insights',
   tracker_trends: 'tracker.checkin_insights',
@@ -254,6 +258,21 @@ class SkillRouter {
       entrySource: request.params?.entry_source,
     });
     const userMessage = extractRecoUserMessage(request);
+
+    // Phase 1 deterministic route: an UNAMBIGUOUS product-search phrasing
+    // ("show me acropass products", "shop cerave") goes straight to the grounded
+    // find_products_multi lane, BEFORE the LLM classifier. High precision — fuzzy
+    // queries return null and fall through to the classifier unchanged. (The LLM
+    // classifier learning a `find_products` intent that separates cleanly from
+    // recommend_products is Phase 2.)
+    if (!skillId && userMessage) {
+      const fp = detectExplicitProductSearch(userMessage);
+      if (fp && fp.query) {
+        request.params = request.params || {};
+        request.params.find_products_query = fp.query;
+        skillId = 'shop.find_products';
+      }
+    }
 
     if (!skillId && userMessage) {
       const classification = await this._classifyIntent(userMessage);
