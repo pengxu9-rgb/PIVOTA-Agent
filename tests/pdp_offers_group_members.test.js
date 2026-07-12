@@ -1652,6 +1652,169 @@ describe('PDP grouped offers', () => {
     );
   });
 
+  test('serves ADR-009 merch_obs_ external-seed members from the identity payload without an upstream fetch', async () => {
+    // ADR-009 D2 keys crawl-onboarded external seeds on a per-brand observed
+    // seller (merch_obs_<hash>) instead of the legacy shared external_seed
+    // bucket. The member still carries source_kind='external_seed', so it must
+    // hydrate straight from its identity payload (no upstream merchant API
+    // exists for an observed seller) — proving the reconciled discrimination.
+    const app = require('../src/server');
+
+    const offersData = await app._debug.buildOffersFromGroupMembers({
+      productGroupId: 'sig_mojawa_observed_seller',
+      debug: true,
+      members: [
+        {
+          merchant_id: 'merch_obs_022b65d47a58b87a',
+          product_id: 'ext_mojawa_us_shopify_1',
+          source_kind: 'external_seed',
+          source_tier: 'brand',
+          merchant_name: 'Mojawa',
+          source_payload: {
+            title: 'Mojawa Air Bone-Conduction Headphones',
+            brand: 'Mojawa',
+            merchant_name: 'Mojawa',
+            price: { amount: 159, currency: 'USD' },
+            currency: 'USD',
+            in_stock: true,
+            destination_url: 'https://mojawa.com/products/air-bone-conduction-headphones',
+            // Carries catalog offer truth, so the payload is authoritative and
+            // the serving loop must not reach for a (non-existent) upstream API.
+            catalog_offer_v1: {
+              offer_id: 'offer_ext_mojawa_us_shopify_1',
+              source_system: 'external_product_seeds_mirror_v1',
+              source_ref: 'ext_mojawa_us_shopify_1',
+            },
+          },
+        },
+      ],
+    });
+
+    expect(offersData.offers_count).toBe(1);
+    expect(offersData.offers).toHaveLength(1);
+    const offer = offersData.offers[0];
+    expect(offer).toEqual(
+      expect.objectContaining({
+        merchant_id: 'merch_obs_022b65d47a58b87a',
+        product_id: 'ext_mojawa_us_shopify_1',
+        source: 'external_seed',
+        source_kind: 'external_seed',
+        purchase_route: 'affiliate_outbound',
+        price: { amount: 159, currency: 'USD' },
+      }),
+    );
+    // Seller name resolves to the observed seller, not the raw merch_obs_ id.
+    expect(offer.merchant_name).toBe('Mojawa');
+    expect(offer.merchant_name).not.toMatch(/^merch_obs_/);
+    expect(offer.external_redirect_url).toBe(
+      'https://mojawa.com/products/air-bone-conduction-headphones',
+    );
+
+    // Served straight from the identity payload: no upstream fetch, no
+    // upstream savings hydration, and nothing left unresolved.
+    expect(offersData.diagnostics.build_sources).toEqual(
+      expect.objectContaining({
+        identity_payload: 1,
+        fetched: 0,
+        hydrated: 0,
+        unresolved: 0,
+      }),
+    );
+    expect(offersData.diagnostics.member_fetches).toEqual([
+      expect.objectContaining({
+        merchant_id: 'merch_obs_022b65d47a58b87a',
+        product_id: 'ext_mojawa_us_shopify_1',
+        source: 'identity_payload',
+      }),
+    ]);
+    expect(offersData.diagnostics.member_fetches[0]).toEqual(
+      expect.not.objectContaining({ error_code: expect.anything() }),
+    );
+  });
+
+  test('discriminates merch_obs_ external-seed supply from connected merchants in a mixed group', async () => {
+    // The connected merchant must keep its internal-checkout path (prefetched /
+    // upstream hydratable), while the merch_obs_ external seed is payload-served
+    // and link-outs. Neither should regress the other.
+    const app = require('../src/server');
+
+    const offersData = await app._debug.buildOffersFromGroupMembers({
+      productGroupId: 'sig_mixed_supply_group',
+      debug: true,
+      members: [
+        {
+          merchant_id: 'merch_efbc46b4619cfbdf',
+          product_id: 'shopify_connected_listing',
+          merchant_name: 'Chydan',
+          platform: 'shopify',
+        },
+        {
+          merchant_id: 'merch_obs_022b65d47a58b87a',
+          product_id: 'ext_mojawa_us_shopify_1',
+          source_kind: 'external_seed',
+          source_tier: 'brand',
+          merchant_name: 'Mojawa',
+          source_payload: {
+            title: 'Mojawa Air Bone-Conduction Headphones',
+            brand: 'Mojawa',
+            merchant_name: 'Mojawa',
+            price: { amount: 159, currency: 'USD' },
+            currency: 'USD',
+            in_stock: true,
+            destination_url: 'https://mojawa.com/products/air-bone-conduction-headphones',
+          },
+        },
+      ],
+      prefetchedProducts: [
+        {
+          merchant_id: 'merch_efbc46b4619cfbdf',
+          product_id: 'shopify_connected_listing',
+          title: 'Mojawa Air Bone-Conduction Headphones',
+          brand: 'Mojawa',
+          merchant_name: 'Chydan',
+          price: { amount: 149, currency: 'USD' },
+          currency: 'USD',
+          in_stock: true,
+        },
+      ],
+    });
+
+    expect(offersData.offers_count).toBe(2);
+    const connectedOffer = offersData.offers.find(
+      (o) => o.merchant_id === 'merch_efbc46b4619cfbdf',
+    );
+    const observedOffer = offersData.offers.find(
+      (o) => o.merchant_id === 'merch_obs_022b65d47a58b87a',
+    );
+
+    expect(connectedOffer).toEqual(
+      expect.objectContaining({
+        purchase_route: 'internal_checkout',
+        price: { amount: 149, currency: 'USD' },
+      }),
+    );
+    expect(connectedOffer.source_kind).not.toBe('external_seed');
+
+    expect(observedOffer).toEqual(
+      expect.objectContaining({
+        source: 'external_seed',
+        source_kind: 'external_seed',
+        purchase_route: 'affiliate_outbound',
+        price: { amount: 159, currency: 'USD' },
+      }),
+    );
+
+    // The observed seed came from its payload (prefetched=1 for the connected
+    // member; the seed is identity_payload), and nothing was left unresolved.
+    expect(offersData.diagnostics.build_sources).toEqual(
+      expect.objectContaining({
+        identity_payload: 1,
+        prefetched: 1,
+        unresolved: 0,
+      }),
+    );
+  });
+
   test('does not create zero-price external-seed offers from lightweight catalog member payloads', async () => {
     const app = require('../src/server');
 
