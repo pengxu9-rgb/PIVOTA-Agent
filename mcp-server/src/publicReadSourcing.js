@@ -21,6 +21,8 @@ const DEFAULT_RESELLER_HOSTS = Object.freeze([
   'beautylish.com', 'revolve.com', 'asos.com', 'boots.com', 'feelunique.com', 'skinstore.com',
   // Kept in sync with offerSellerIdentity.js DEFAULT_KNOWN_RETAILER_DOMAINS (Fix Plan C read-review).
   'selfridges.com', 'harrods.com', 'spacenk.com', 'coupang.com', 'gmarket.co.kr',
+  // Full parity with offerSellerIdentity: extra Amazon TLDs / shortlinks + BestBuy + OY Korea.
+  'amazon.ca', 'amazon.de', 'amzn.to', 'amzn.com', 'bestbuy.com', 'oliveyoung.co.kr',
 ]);
 
 function hostOf(url) {
