@@ -229,6 +229,23 @@ function buildActiveExternalSeedIdentityPredicate(alias = 'pdp_identity_listing'
   )`;
 }
 
+// ADR-009: the ONLY external-supply rows without a real seller of record are the
+// legacy anonymous 'external_seed' bucket — its catalog_merchants row is a
+// placeholder (merchant_name='External Seed'), not a seller. Per-brand observed
+// sellers (merch_obs_…, catalog_merchants.status='observed') and connected
+// merchants each own a real merchant_name, and #1770 re-keyed their identity
+// listing onto that seller. So the group-member serving path must gate seller-name
+// / merchant-join resolution on the legacy lump ONLY — never on merch_obs_.
+// Extracted from the inline `merchant_id <> 'external_seed'` pins in server.js
+// (flagged by the #1770 review as the same legacy-bucket bug shape as the
+// EXISTS predicate above) so the concept lives in one place. NULL-safe by
+// construction: for a NULL merchant_id the equality is UNKNOWN, so both the
+// suppress branch and its NOT() negation fall through to "not the lump".
+function buildLegacyExternalSeedLumpPredicate(alias = 'pdp_identity_listing') {
+  const tableAlias = asString(alias) || 'pdp_identity_listing';
+  return `${tableAlias}.merchant_id = '${EXTERNAL_SEED_MERCHANT_ID}'`;
+}
+
 function asPlainObject(value) {
   if (!value) return null;
   if (typeof value === 'object' && !Array.isArray(value)) return value;
@@ -5342,8 +5359,11 @@ module.exports = {
   listPdpIdentityReviewQueue,
   listPdpIdentityOverrides,
   applyPdpIdentityOverride,
+  buildActiveExternalSeedIdentityPredicate,
+  buildLegacyExternalSeedLumpPredicate,
   _internals: {
     buildActiveExternalSeedIdentityPredicate,
+    buildLegacyExternalSeedLumpPredicate,
     extractVariantAxes,
     extractStrongIdentity,
     extractSoftIdentity,

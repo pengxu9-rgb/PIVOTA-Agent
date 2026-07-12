@@ -133,6 +133,8 @@ const {
   listPdpIdentityReviewQueue,
   listPdpIdentityOverrides,
   applyPdpIdentityOverride,
+  buildActiveExternalSeedIdentityPredicate,
+  buildLegacyExternalSeedLumpPredicate,
 } = require('./services/pdpIdentityGraph');
 const {
   buildCoverageCandidate,
@@ -5453,9 +5455,13 @@ async function fetchApprovedLiveIdentityGroupMembersForOffers({
         pil.source_payload,
         pil.variant_axes,
         cp_offer.platform,
+        -- ADR-009: resolve the real seller name for connected merchants AND
+        -- per-brand observed sellers (merch_obs_…) — suppress ONLY the legacy
+        -- anonymous 'external_seed' lump, whose catalog_merchants row is a
+        -- placeholder ("External Seed"), not a seller of record.
         CASE
-          WHEN pil.merchant_id <> '${EXTERNAL_SEED_MERCHANT_ID}' THEN cm_offer.merchant_name
-          ELSE NULL
+          WHEN ${buildLegacyExternalSeedLumpPredicate('pil')} THEN NULL
+          ELSE cm_offer.merchant_name
         END AS merchant_name,
         cp_offer.title AS catalog_title,
         cp_offer.brand AS catalog_brand,
@@ -5477,7 +5483,10 @@ async function fetchApprovedLiveIdentityGroupMembersForOffers({
        AND cp_offer.source_product_id = pil.product_id
       LEFT JOIN catalog_merchants cm_offer
         ON cm_offer.merchant_id = pil.merchant_id
-       AND pil.merchant_id <> '${EXTERNAL_SEED_MERCHANT_ID}'
+       -- ADR-009: skip the join only for the legacy anonymous 'external_seed'
+       -- lump (placeholder merchant row); observed merch_obs_ sellers and
+       -- connected merchants resolve their real catalog_merchants row.
+       AND NOT (${buildLegacyExternalSeedLumpPredicate('pil')})
       LEFT JOIN LATERAL (
         SELECT
           o.offer_id,
@@ -5502,27 +5511,13 @@ async function fetchApprovedLiveIdentityGroupMembersForOffers({
         AND pil.live_read_enabled IS TRUE
         AND COALESCE(pil.review_required, false) IS NOT TRUE
         AND NOT (pil.merchant_id = $2 AND pil.product_id = $3)
-        AND (
-          pil.source_kind <> 'external_seed'
-          OR EXISTS (
-            SELECT 1
-            FROM external_product_seeds eps
-            JOIN catalog_products cp_active
-              -- ADR-009: match the external-seed mirror row by platform +
-              -- source_product_id, NOT the legacy merchant_id='external_seed'
-              -- bucket, so a served per-brand merch_obs_ seed isn't excluded
-              -- from its own sellable-item-group member list.
-              ON cp_active.platform = 'external_seed'
-             AND cp_active.source_system = 'external_product_seeds_mirror_v1'
-             AND cp_active.source_product_id = eps.external_product_id
-             AND cp_active.sync_status = 'live'
-            JOIN index_pipeline_state ips_active
-              ON ips_active.content_key = cp_active.content_key
-             AND ips_active.serving_eligible = TRUE
-            WHERE eps.external_product_id = pil.product_id
-              AND eps.status = 'active'
-          )
-        )
+        -- ADR-009: admit external-seed group members whose live mirror row is
+        -- serving_eligible, correlating by platform + source_system (NOT the
+        -- legacy merchant_id='external_seed' bucket) so per-brand merch_obs_
+        -- seeds aren't dropped from their own sellable-item-group. Shared with
+        -- the ~7 identity/serving queries in pdpIdentityGraph.js (#1775) so the
+        -- correlation lives in one place.
+        AND ${buildActiveExternalSeedIdentityPredicate('pil')}
         ${buildCatalogSourceQuarantineAntiJoinSql('cp_offer')}
       ORDER BY
         CASE WHEN pil.source_tier = 'brand' THEN 0 ELSE 1 END,
@@ -49861,6 +49856,8 @@ module.exports._debug = {
   findApplicablePromotionsForProduct,
   enrichProductsWithDeals,
   buildOffersFromGroupMembers,
+  fetchApprovedLiveIdentityGroupMembersForOffers,
+  buildCatalogSignatureGroupMemberFromIdentityRow,
   decoratePdpPayloadWithIdentity,
   hydrateCanonicalPdpPayloadFromOffers,
   loadCreatorSellableFromCache,
