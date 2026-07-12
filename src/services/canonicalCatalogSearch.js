@@ -233,13 +233,17 @@ async function fetchCanonicalChainRows(args = {}) {
   // seeds now mirror under per-brand observed sellers (merch_obs_…), which a
   // merchant_id check misread as Path A and exempted from the market filter,
   // re-opening the cross-market bleed for every merch_obs_ seed.
+  // COALESCE guards NULL platform: merchant_id is never NULL so the legacy
+  // form was NULL-immune; a bare `platform != 'external_seed'` returns NULL
+  // (not TRUE) for NULL-platform connected rows via SQL 3-valued logic, which
+  // would silently drop them from market-scoped recall. Treat NULL as Path A.
   let marketWhere = '';
   if (marketId) {
     params.push(String(marketId).toUpperCase());
     const marketBind = `$${params.length}`;
     marketWhere = `
       AND (
-        p.platform != 'external_seed'
+        COALESCE(p.platform, '') <> 'external_seed'
         OR p.pdp_scope = 'multi_merchant_canonical'
         OR EXISTS (
           SELECT 1 FROM external_product_seeds eps
@@ -443,7 +447,7 @@ async function fetchCanonicalChainRows(args = {}) {
   // by source_product_id and uses idx_eps_source_unavailable_epid (mig 055).
   const externalSeedUnavailableWhere = `
         AND NOT (
-          p.platform = 'external_seed'
+          COALESCE(p.platform, '') = 'external_seed'
           AND (
             lower(coalesce(p.product_payload #>> '{source_unavailable_v1,status}', '')) = 'source_unavailable'
             OR coalesce(p.product_payload #>> '{source_unavailable_v1,contract_version}', '') = 'external_seed.source_unavailable.v1'

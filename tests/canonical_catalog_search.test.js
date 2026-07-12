@@ -75,7 +75,7 @@ describe('canonicalCatalogSearch.fetchCanonicalChainRows', () => {
 
     // ADR-009: the source-unavailable suppression gates on platform, not the
     // legacy merchant_id='external_seed' bucket, so merch_obs_ seeds are covered.
-    expect(sql).toMatch(/AND NOT \(\s*p\.platform = 'external_seed'/);
+    expect(sql).toMatch(/AND NOT \(\s*COALESCE\(p\.platform, ''\) = 'external_seed'/);
     expect(sql).not.toMatch(/AND NOT \(\s*p\.merchant_id = 'external_seed'/);
     expect(sql).toMatch(/source_unavailable_v1,status/);
     expect(sql).toMatch(/external_seed\.source_unavailable\.v1/);
@@ -94,8 +94,9 @@ describe('canonicalCatalogSearch.fetchCanonicalChainRows', () => {
 
     // The market filter must exempt only NON-external-seed (Path A) rows via
     // platform — a merchant_id check let merch_obs_ external seeds skip the
-    // per-market filter (KR seed leaking into US recall).
-    expect(sql).toMatch(/p\.platform != 'external_seed'/);
+    // per-market filter (KR seed leaking into US recall). COALESCE keeps
+    // NULL-platform connected rows on the Path A (pass-through) side.
+    expect(sql).toMatch(/COALESCE\(p\.platform, ''\) <> 'external_seed'/);
     expect(sql).not.toMatch(/p\.merchant_id != 'external_seed'/);
     expect(sql).toMatch(/pdp_scope = 'multi_merchant_canonical'/);
     expect(sql).toMatch(/eps\.market =/);
@@ -376,9 +377,10 @@ describe('canonicalCatalogSearch.fetchCanonicalChainRows', () => {
     const query = makeMockQuery([]);
     await fetchCanonicalChainRows({ query: 'lipstick', marketId: 'US', deps: { query } });
     const { sql, params } = query.calls[0];
-    // Path A merchant rows pass through (platform != 'external_seed' — ADR-009,
-    // gated on platform so merch_obs_ external seeds still get the market filter)
-    expect(sql).toMatch(/p\.platform != 'external_seed'/);
+    // Path A merchant rows pass through (COALESCE(platform,'') <> 'external_seed'
+    // — ADR-009, gated on platform so merch_obs_ external seeds still get the
+    // market filter; COALESCE keeps NULL-platform connected rows on Path A)
+    expect(sql).toMatch(/COALESCE\(p\.platform, ''\) <> 'external_seed'/);
     // Canonical-scope override (Phase 7a / Path C agent rows surface across markets)
     expect(sql).toMatch(/p\.pdp_scope = 'multi_merchant_canonical'/);
     // Path B filter via EXISTS subquery on external_product_seeds.market
