@@ -16,6 +16,7 @@ const {
   resolveRecoTargetStepIntent,
 } = require('../auroraBff/recoTargetStep');
 const { activeProductsCacheSourceWhere } = require('./activeCatalogSourceSql');
+const { transactionCapableMerchantWhere } = require('./merchantTransactionCapabilitySql');
 
 const DEFAULT_MARKET = String(process.env.CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET || 'US')
   .trim()
@@ -2043,7 +2044,7 @@ async function fetchProductsCacheRowsByPatterns({ patterns = [], limit = 24 } = 
         AND COALESCE(lower(pc.product_data->>'status'), 'active') = 'active'
         AND COALESCE(lower(pc.product_data->>'orderable'), 'true') <> 'false'
         AND mo.status NOT IN ('deleted', 'rejected')
-        AND mo.psp_connected = true
+        AND ${transactionCapableMerchantWhere('mo')}
         AND (
           lower(coalesce(pc.product_data->>'title', '')) LIKE ANY($1::text[])
           OR lower(coalesce(pc.product_data->>'name', '')) LIKE ANY($1::text[])

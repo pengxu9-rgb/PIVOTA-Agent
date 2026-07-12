@@ -62,6 +62,7 @@ const {
   _internals: productGroundingResolverInternals = {},
 } = require('./productGroundingResolver');
 const { activeProductsCacheSourceWhere } = require('./activeCatalogSourceSql');
+const { transactionCapableMerchantWhere } = require('./merchantTransactionCapabilitySql');
 const {
   fetchRelationshipGraphRecallForAnchors,
   isRelationshipGraphSurfaceEnabled,
@@ -2164,7 +2165,7 @@ function buildStableBrowseCatalogCountQuery(request, { includeIdentityJoin = tru
           AND ${buildSellableStatusPredicate("pc.product_data->>'status'")}
           AND COALESCE(lower(pc.product_data->>'orderable'), 'true') <> 'false'
           AND mo.status NOT IN ('deleted', 'rejected')
-          AND mo.psp_connected = true
+          AND ${transactionCapableMerchantWhere('mo')}
           AND ${internalListingIdExpr} IS NOT NULL
         ORDER BY
           pc.merchant_id,
