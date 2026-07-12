@@ -33,6 +33,23 @@ test("isResellerRow: reseller host → true, brand host → false", () => {
   assert.equal(isResellerRow({ destination_url: "https://roundlab.com/a" }, DENY), false);
 });
 
+test("isResellerRow drops the retailer hosts synced from offerSellerIdentity", () => {
+  // Parity guard: every host offerSellerIdentity classifies 'retailer' must also
+  // be dropped by the public-read denylist. These were the gaps (Fix Plan C
+  // read-review follow-up): extra Amazon TLDs/shortlinks, BestBuy, OY Korea, and
+  // the dept-store additions.
+  for (const host of [
+    "amazon.ca", "amazon.de", "amzn.to", "amzn.com", "bestbuy.com", "oliveyoung.co.kr",
+    "selfridges.com", "harrods.com", "spacenk.com", "coupang.com", "gmarket.co.kr",
+  ]) {
+    assert.equal(
+      isResellerRow({ destination_url: `https://www.${host}/p/x` }, DENY),
+      true,
+      `${host} should be excluded from the first-party public tier`,
+    );
+  }
+});
+
 test("isResellerRow honors explicit backend signals over host", () => {
   // offer_type wins → reseller even if host looks brandy
   assert.equal(isResellerRow({ offer_type: "retailer", destination_url: "https://brand.com/x" }, DENY), true);
