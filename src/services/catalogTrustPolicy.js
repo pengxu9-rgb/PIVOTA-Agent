@@ -408,9 +408,23 @@ function deriveServingDecision({
   // hasn't quality-gated yet. First-party rows (MOYU/GR/PawStyle/etc.) keep
   // the legacy behavior since first-party merchants are the source of truth
   // for their own content and IPS coverage is sparse there by design.
+  // ADR-009 observed-seller trust tier (docs/adr009_observed_seller_trust_decision.md,
+  // Option C). Classify by content SOURCE, not the legacy merchant_id='external_seed'
+  // string: external seeds now mirror under per-brand observed sellers (merch_obs_…).
+  //   - isExternalSeedContent: legacy 'external_seed' lump OR an observed seller —
+  //     both are scraped supply and must clear the index/quality gate.
+  //   - isObservedSeller: the brand's own D2C crawl (merch_obs_), authoritative for
+  //     its own content, so exempt from the identity-COVERAGE shadow gates (below)
+  //     like a first-party merchant — but NOT from the index/quality gate.
+  const _merchantId = product ? String(product.merchant_id || '') : '';
+  const _platform = product ? String(product.platform || '').toLowerCase() : '';
+  const isExternalSeedContent =
+    _platform === 'external_seed' ||
+    _merchantId === 'external_seed' ||
+    _merchantId.startsWith('merch_obs_');
+  const isObservedSeller = _merchantId.startsWith('merch_obs_');
   if (product) {
-    const isFirstPartyCatalog = product.merchant_id !== 'external_seed';
-    if (!isFirstPartyCatalog && !ips) {
+    if (isExternalSeedContent && !ips) {
       reasons.push(REASON_CODES.INDEX_NOT_SERVING_ELIGIBLE);
       return { decision: 'blocked' };
     }
@@ -428,13 +442,14 @@ function deriveServingDecision({
   // Shadow conditions — would have served under legacy gates, but the
   // contract gates them out of public reads.
   //
-  // c1.v0.3: first-party sources (any merchant_id other than 'external_seed')
-  // are exempt from the identity-pipeline shadow gates. For internal Shopify/
-  // Wix/etc. merchants, the merchant IS the source of truth — the identity
-  // pipeline exists to verify scraped third-party content. review_required
-  // and IDENTITY_CONFLICT still apply (those are explicit moderation/data-
-  // quality signals, not identity-coverage gaps).
-  const isFirstParty = !!product && product.merchant_id !== 'external_seed';
+  // c1.v0.3 + ADR-009 Option C: exempt from the identity-COVERAGE shadow gates
+  // both (a) connected first-party merchants (the merchant IS the source of
+  // truth — the pipeline exists to verify scraped third-party content) and
+  // (b) per-brand observed sellers (merch_obs_, the brand's own D2C crawl,
+  // authoritative for its own content). The legacy anonymous 'external_seed'
+  // lump stays subject. review_required and IDENTITY_CONFLICT still apply to
+  // everyone (explicit moderation/data-quality signals, not coverage gaps).
+  const isIdentityCoverageExempt = !!product && (!isExternalSeedContent || isObservedSeller);
 
   if (identityDecision.status === 'review_required') {
     reasons.push(REASON_CODES.IDENTITY_REVIEW_REQUIRED_LIVE_READ);
@@ -444,7 +459,7 @@ function deriveServingDecision({
     (identityDecision.status === 'unknown' || identityDecision.status === 'approved') &&
     identityDecision.confidence == null;
   if (missingConfidence) {
-    if (isFirstParty) {
+    if (isIdentityCoverageExempt) {
       reasons.push(REASON_CODES.IDENTITY_NOT_APPLICABLE_FIRST_PARTY);
     } else {
       reasons.push(REASON_CODES.IDENTITY_CONFIDENCE_NULL);
@@ -452,7 +467,7 @@ function deriveServingDecision({
   }
 
   if (identityDecision.status === 'approved' && identityDecision.liveRead === false) {
-    if (!isFirstParty) {
+    if (!isIdentityCoverageExempt) {
       reasons.push(REASON_CODES.IDENTITY_LIVE_READ_DISABLED);
     }
   }
@@ -461,7 +476,7 @@ function deriveServingDecision({
     identityDecision.status === 'review_required' ||
     reasons.includes(REASON_CODES.IDENTITY_CONFIDENCE_NULL) ||
     reasons.includes(REASON_CODES.IDENTITY_LIVE_READ_DISABLED) ||
-    (identityDecision.status === 'unknown' && !isFirstParty);
+    (identityDecision.status === 'unknown' && !isIdentityCoverageExempt);
 
   if (shadow) {
     return { decision: 'shadow' };

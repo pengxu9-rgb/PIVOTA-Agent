@@ -121,6 +121,31 @@ function callExternalSeed(overrides = {}) {
   });
 }
 
+function observedSellerProduct(overrides = {}) {
+  // ADR-009: an external seed mirrored under its per-brand observed seller
+  // (merch_obs_…) instead of the legacy 'external_seed' merchant bucket.
+  return externalSeedProduct({
+    product_key: 'pk_obs_1',
+    content_key: 'ck_obs_1',
+    merchant_id: 'merch_obs_8887b6c53f029191',
+    source_domain: 'goongbe.us',
+    ...overrides,
+  });
+}
+
+function callObservedSeller(overrides = {}) {
+  return deriveTrust({
+    subject_type: 'product',
+    subject_key: 'pk_obs_1',
+    product: observedSellerProduct(),
+    identity: approvedIdentity({ source_listing_ref: 'merch_obs_8887b6c53f029191:ext_4242' }),
+    ips: eligibleIps(),
+    external_seed: activeExternalSeed(),
+    now: NOW,
+    ...overrides,
+  });
+}
+
 // ---- HAPPY PATH -------------------------------------------------------------
 
 test('approved merchant row with eligible IPS resolves to public', () => {
@@ -493,4 +518,58 @@ test('output row has all migration columns and reason_codes is bounded vocab', (
   for (const r of trust.serving_reason_codes) {
     assert.ok(vocab.has(r), `reason code not in vocabulary: ${r}`);
   }
+});
+
+// ---- ADR-009 OBSERVED-SELLER TIER (Option C) --------------------------------
+//
+// merch_obs_ observed sellers are external-seed CONTENT (subject to the index/
+// quality gate, like the legacy 'external_seed' lump) but are the brand's own
+// authoritative D2C crawl (exempt from the identity-COVERAGE shadow gates, like
+// a first-party merchant). Hard identity gates still apply.
+
+test('observed_seller: no IPS row → blocked like external_seed (gate applies)', () => {
+  const trust = callObservedSeller({ ips: null });
+  assert.equal(trust.serving_decision, 'blocked');
+  assert.ok(trust.serving_reason_codes.includes(REASON_CODES.INDEX_NOT_SERVING_ELIGIBLE));
+});
+
+test('observed_seller: IPS present + serving_eligible=true → public', () => {
+  const trust = callObservedSeller();
+  assert.equal(trust.serving_decision, 'public');
+  assert.ok(trust.serving_reason_codes.includes(REASON_CODES.PUBLIC_PASSTHROUGH));
+});
+
+test('observed_seller: IPS present + serving_eligible=false → blocked', () => {
+  const trust = callObservedSeller({ ips: eligibleIps({ serving_eligible: false }) });
+  assert.equal(trust.serving_decision, 'blocked');
+  assert.ok(trust.serving_reason_codes.includes(REASON_CODES.INDEX_NOT_SERVING_ELIGIBLE));
+});
+
+test('observed_seller: no identity row → public, exempt from coverage gate (Option C)', () => {
+  // Key behavior: unlike the legacy 'external_seed' lump (IDENTITY_CONFIDENCE_NULL
+  // shadow), an observed seller's own D2C crawl is authoritative and exempt.
+  const trust = callObservedSeller({ identity: null });
+  assert.equal(trust.serving_decision, 'public');
+  assert.equal(trust.identity_status, 'unknown');
+  assert.ok(trust.serving_reason_codes.includes(REASON_CODES.IDENTITY_NOT_APPLICABLE_FIRST_PARTY));
+  assert.ok(!trust.serving_reason_codes.includes(REASON_CODES.IDENTITY_CONFIDENCE_NULL));
+});
+
+test('observed_seller: approved + null confidence → public (exempt)', () => {
+  const trust = callObservedSeller({ identity: approvedIdentity({ identity_confidence: null }) });
+  assert.equal(trust.serving_decision, 'public');
+  assert.ok(trust.serving_reason_codes.includes(REASON_CODES.IDENTITY_NOT_APPLICABLE_FIRST_PARTY));
+  assert.ok(!trust.serving_reason_codes.includes(REASON_CODES.IDENTITY_CONFIDENCE_NULL));
+});
+
+test('observed_seller: identity_status=conflict STILL blocks (hard gate)', () => {
+  const trust = callObservedSeller({ identity: approvedIdentity({ identity_status: 'conflict' }) });
+  assert.equal(trust.serving_decision, 'blocked');
+  assert.ok(trust.serving_reason_codes.includes(REASON_CODES.IDENTITY_CONFLICT));
+});
+
+test('observed_seller: review_required STILL shadows (hard gate)', () => {
+  const trust = callObservedSeller({ identity: approvedIdentity({ review_required: true }) });
+  assert.notEqual(trust.serving_decision, 'public');
+  assert.ok(trust.serving_reason_codes.includes(REASON_CODES.IDENTITY_REVIEW_REQUIRED_LIVE_READ));
 });
