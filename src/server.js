@@ -1704,19 +1704,6 @@ function offerSellerNameLooksHostLike(value) {
   return /(^|\s)(www\.)?[a-z0-9-]+\.[a-z]{2,}(\s|$)/i.test(firstNonEmptyString(value));
 }
 
-// ADR-009 D2: crawl-onboarded external seeds live on per-brand observed sellers
-// (`merch_obs_<hash>`, catalog_merchants.status='observed') instead of the
-// legacy shared `external_seed` bucket. Both are external-seed SUPPLY — crawl
-// sourced, with no upstream merchant API, connected store, or products_cache
-// row — so serving-path branches that ask "is this external-seed supply?"
-// (serve detail from external_product_seeds, resolve a host-derived seller
-// label) must treat the two alike. Use this when only a merchant_id is in hand.
-function isExternalSeedListingMerchantId(merchantId) {
-  const mid = String(merchantId || '').trim();
-  if (!mid) return false;
-  return mid === EXTERNAL_SEED_MERCHANT_ID || mid.startsWith('merch_obs_');
-}
-
 function offerSellerNameLooksLikeProductBrand(value, product, member) {
   const seller = normalizeOfferSellerComparable(value);
   if (!seller) return false;
