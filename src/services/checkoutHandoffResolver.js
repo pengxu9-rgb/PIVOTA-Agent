@@ -1,9 +1,19 @@
 const {
   createExecutionFacingOutput,
 } = require('../modules/contracts/executionFacingContracts');
+const {
+  isWarmHandoffEnabled,
+  createWarmHandoffService,
+  WARM_HANDOFF_DISPOSITION,
+} = require('./ucpWarmHandoff');
+const {
+  toVariantGid,
+  resolveVariantFromSeed,
+} = require('./shopifyVariantResolver');
 
 const HANDOFF_KIND = 'pivota_agent_checkout_handoff';
 const DIRECT_COMMERCE_PATH = 'pivota_direct_quote_first';
+const WARM_HANDOFF_AUTHORITY = 'pivota_ucp_warm_handoff';
 
 const FORBIDDEN_MONEY_FIELDS = new Set([
   'amount',
@@ -466,6 +476,127 @@ function validateDescriptor(descriptor) {
   return null;
 }
 
+function hostFromUrl(value) {
+  const s = String(value || '').trim();
+  if (!s) return '';
+  const withScheme = /^https?:\/\//i.test(s) ? s : `https://${s}`;
+  try { return new URL(withScheme).hostname.toLowerCase(); } catch { return ''; }
+}
+
+// The brand storefront domain for a crawled offer. Prefer an explicit brand/official domain, then the crawled
+// canonical/destination storefront URL. (For a retailer offer this yields the retailer host, whose /.well-known/ucp
+// discovery will simply fail -> null -> cold redirect, so no wrong-brand cart is ever built.)
+function deriveWarmHandoffBrandDomain(descriptor = {}, product = null, offer = null) {
+  return firstNonEmptyString(
+    descriptor.brand_domain,
+    descriptor.brandDomain,
+    descriptor.brand_official_domain,
+    descriptor.official_domain,
+    hostFromUrl(descriptor.canonical_url),
+    hostFromUrl(descriptor.destination_url),
+    hostFromUrl(product && product.canonical_url),
+    hostFromUrl(product && product.destination_url),
+    hostFromUrl(offer && (offer.destination_url || offer.destinationUrl)),
+    hostFromUrl(offer && (offer.canonical_url || offer.canonicalUrl)),
+  );
+}
+
+// Resolve a Shopify variant GID from descriptor/offer/product identifiers, then from any embedded seed_data.
+// Offline only (no network) — this runs on the request path.
+function deriveWarmHandoffVariantGid(descriptor = {}, product = null, offer = null) {
+  const direct = toVariantGid(descriptor.variant_gid)
+    || toVariantGid(descriptor.variantGid)
+    || toVariantGid(descriptor.variant_id)
+    || toVariantGid(descriptor.variantId)
+    || toVariantGid(offer && (offer.variant_gid || offer.variantGid))
+    || toVariantGid(offer && (offer.variant_id || offer.variantId))
+    || toVariantGid(offer && (offer.selected_variant_id || offer.selectedVariantId))
+    || toVariantGid(offer && offer.sku_id)
+    || toVariantGid(offer && offer.sku);
+  if (direct) return direct;
+  for (const seed of [descriptor.seed_data, offer && offer.seed_data, product && product.seed_data]) {
+    if (isPlainObject(seed)) {
+      const fromSeed = resolveVariantFromSeed(seed, { preferAvailable: true });
+      if (fromSeed && fromSeed.variantGid) return fromSeed.variantGid;
+    }
+  }
+  return null;
+}
+
+function resolveWarmHandoffService(deps = {}) {
+  if (deps.warmHandoff && typeof deps.warmHandoff.resolveWarmHandoff === 'function') return deps.warmHandoff;
+  if (typeof deps.resolveWarmHandoff === 'function') return { resolveWarmHandoff: deps.resolveWarmHandoff };
+  // Prod default: build an env-configured warm-handoff service (only reached when the flag is ON, so never on
+  // the flag-OFF path). Cached on deps so repeated policy branches reuse per-domain endpoint discovery.
+  try {
+    if (!deps.__warmHandoffServiceSingleton) {
+      deps.__warmHandoffServiceSingleton = createWarmHandoffService(
+        isPlainObject(deps.warmHandoffOptions) ? deps.warmHandoffOptions : {},
+      );
+    }
+    return deps.__warmHandoffServiceSingleton;
+  } catch {
+    return null;
+  }
+}
+
+function buildWarmHandoffOutput({ input = {}, descriptor = {}, product = null, offer = null, handoff = {} }) {
+  const resolvedProduct = projectProduct(product, descriptor);
+  const resolvedOffer = projectOffer(offer, descriptor);
+  const output = createExecutionFacingOutput({
+    context: input.context || {},
+    status: 'resolved',
+    resolution_authority: WARM_HANDOFF_AUTHORITY,
+    fallback_applied: false,
+    fallback_reason_codes: [],
+    resolved_product: resolvedProduct,
+    resolved_offer: resolvedOffer,
+    serviceability: {
+      status: 'confirmed',
+      disposition: WARM_HANDOFF_DISPOSITION,
+      orderable_offer: true,
+    },
+    checkout_handoff: {
+      status: 'warm_handoff_ready',
+      kind: HANDOFF_KIND,
+      disposition: WARM_HANDOFF_DISPOSITION,
+      // The pre-built cart on the BRAND'S OWN Shopify checkout. Returned as a string only; Pivota NEVER opens
+      // it server-side and NEVER completes payment.
+      continue_url: firstNonEmptyString(handoff.continue_url) || null,
+      cart_id: firstNonEmptyString(handoff.cart_id) || null,
+      line_item: isPlainObject(handoff.line_item) ? handoff.line_item : null,
+      validation_authority: WARM_HANDOFF_AUTHORITY,
+      order_created: false,
+      payment_submitted: false,
+    },
+    blockers: [],
+  });
+  const forbiddenPath = containsForbiddenMoneyField(output);
+  if (forbiddenPath) return null;
+  return output;
+}
+
+// Flag-gated (UCP_WARM_HANDOFF_ENABLED, DEFAULT OFF) attempt to upgrade a cold redirect into a warm handoff:
+// a pre-built cart on the brand's own Shopify checkout. Returns an execution-facing warm_handoff output on
+// success, or null so the caller keeps today's exact behavior. With the flag OFF this is an immediate no-op,
+// so flag-OFF resolution is byte-identical to before this lane existed.
+async function maybeResolveWarmHandoff({ input = {}, descriptor = {}, product = null, offer = null, deps = {} }) {
+  if (!isWarmHandoffEnabled(deps && deps.env ? deps.env : process.env)) return null;
+  const service = resolveWarmHandoffService(deps);
+  if (!service) return null;
+  const brandDomain = deriveWarmHandoffBrandDomain(descriptor, product, offer);
+  const variantGid = deriveWarmHandoffVariantGid(descriptor, product, offer);
+  if (!brandDomain || !variantGid) return null;
+  let handoff;
+  try {
+    handoff = await service.resolveWarmHandoff({ brandDomain, variantGid, quantity: 1 });
+  } catch {
+    return null;
+  }
+  if (!handoff || !firstNonEmptyString(handoff.continue_url)) return null;
+  return buildWarmHandoffOutput({ input, descriptor, product, offer, handoff });
+}
+
 async function resolveCheckoutHandoff(input = {}, deps = {}) {
   const accessScope = input.access_scope || input.accessScope || {};
   if (accessScope.allow_checkout_handoff !== true) {
@@ -475,7 +606,16 @@ async function resolveCheckoutHandoff(input = {}, deps = {}) {
   const payload = input.payload && isPlainObject(input.payload) ? input.payload : {};
   const descriptor = input.descriptor || readCheckoutHandoffDescriptor(payload);
   const descriptorError = validateDescriptor(descriptor);
-  if (descriptorError) return buildBlock(descriptorError, { context: input.context });
+  if (descriptorError) {
+    // A crawled redirect offer fails direct-policy validation with `policy_not_supported`. Before blocking,
+    // try the (flag-gated) warm handoff — a pre-built cart on the brand's own Shopify checkout. Flag OFF =>
+    // no-op => identical `policy_not_supported` block as before.
+    if (descriptorError === 'policy_not_supported') {
+      const warm = await maybeResolveWarmHandoff({ input, descriptor, deps });
+      if (warm) return warm;
+    }
+    return buildBlock(descriptorError, { context: input.context });
+  }
 
   const resolvePdp = typeof deps.resolvePdp === 'function' ? deps.resolvePdp : null;
   if (!resolvePdp) return buildBlock('identity_unresolved', { context: input.context });
@@ -526,6 +666,11 @@ async function resolveCheckoutHandoff(input = {}, deps = {}) {
   const resolvedProduct = projectProduct(product, descriptor);
   const resolvedOffer = projectOffer(offer, descriptor);
   if (!isPolicyStillSupported(descriptor, offer, product, pdp)) {
+    // Live-revalidated offer is a redirect (not direct Pivota checkout). Try the flag-gated warm handoff using
+    // the freshly resolved brand storefront + variant before falling back to the cold-redirect block. Flag OFF
+    // => no-op => identical `policy_not_supported` block.
+    const warm = await maybeResolveWarmHandoff({ input, descriptor, product, offer, deps });
+    if (warm) return warm;
     return buildBlock('policy_not_supported', {
       context: input.context,
       resolved_product: resolvedProduct,
@@ -605,8 +750,12 @@ async function resolveCheckoutHandoff(input = {}, deps = {}) {
 module.exports = {
   DIRECT_COMMERCE_PATH,
   HANDOFF_KIND,
+  WARM_HANDOFF_DISPOSITION,
   buildProductRef,
   containsForbiddenMoneyField,
   readCheckoutHandoffDescriptor,
   resolveCheckoutHandoff,
+  deriveWarmHandoffBrandDomain,
+  deriveWarmHandoffVariantGid,
+  maybeResolveWarmHandoff,
 };
