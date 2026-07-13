@@ -28606,6 +28606,15 @@ function isAgentCheckoutUcpDiscoveryEnabled() {
   return ['1', 'true', 'on', 'yes'].includes(normalized);
 }
 
+function isUcpBuyerAgentProfileEnabled() {
+  // OUTBOUND buyer-agent capability profile door (GET /.well-known/ucp-agent). This is the OPPOSITE role from
+  // the seller `/.well-known/ucp` surface above: it advertises Pivota-as-shopping-agent so merchants/platforms
+  // (e.g. Shopify UCP) can fetch it during capability negotiation when Pivota calls THEIR UCP endpoint. Static,
+  // read-only, no money. Off by default; the founder flips it on when registering Pivota as a UCP buyer agent.
+  const normalized = String(process.env.UCP_BUYER_AGENT_PROFILE_ENABLED || '').trim().toLowerCase();
+  return ['1', 'true', 'on', 'yes'].includes(normalized);
+}
+
 function isAgentCheckoutAllowTestPspEnabled() {
   // TEST-MODE PROBE LEVER (default OFF). When on, hosted-checkout orders carry
   // metadata.allow_test_psp_surfaces=true so the backend can route the order to a TEST processor
@@ -30236,6 +30245,37 @@ function registerCommerceUcpRoutes() {
   mountUcp('get', '/.well-known/ucp');
   mountUcp('post', '/ucp/capabilities');
   mountUcp('get', '/ucp/capabilities');
+}
+
+function registerUcpBuyerAgentProfileRoute() {
+  // GET /.well-known/ucp-agent — Pivota's OUTBOUND buyer-agent capability profile (a different role from the
+  // seller `/.well-known/ucp` surface). Merchants/platforms fetch this during UCP negotiation when Pivota
+  // calls their endpoint. Static JSON, no money, no secrets. Off by default (UCP_BUYER_AGENT_PROFILE_ENABLED).
+  app.get('/.well-known/ucp-agent', async (req, res) => {
+    if (!isUcpBuyerAgentProfileEnabled()) {
+      return res.status(404).json({ error: 'not_found' });
+    }
+    try {
+      // eslint-disable-next-line global-require
+      const { buildUcpBuyerAgentProfile } = require('./services/ucpBuyerAgentProfile');
+      const profileUrl = firstNonEmptyString(
+        process.env.UCP_AGENT_PROFILE_URL,
+        (() => {
+          try {
+            const host = req.headers['x-forwarded-host'] || req.headers.host;
+            return host ? `https://${host}/.well-known/ucp-agent` : undefined;
+          } catch { return undefined; }
+        })(),
+      );
+      const profile = buildUcpBuyerAgentProfile(profileUrl ? { profileUrl } : {});
+      res.setHeader('content-type', 'application/json');
+      res.setHeader('cache-control', 'public, max-age=300');
+      return res.status(200).json(profile);
+    } catch (err) {
+      logger.error({ err: err?.message || String(err), surface: 'ucp_buyer_agent' }, 'UCP buyer-agent profile route failed');
+      return res.status(503).json({ error: 'ucp_buyer_agent_profile_unavailable' });
+    }
+  });
 }
 
 function registerCommercePaymentWebhookRoute() {
@@ -49833,6 +49873,7 @@ commerceMcpOAuth.registerMcpOAuthDiscoveryRoutes(app, { logger });
 registerCommerceConfirmationActionRoute();
 registerCommerceAcpRestRoutes();
 registerCommerceUcpRoutes();
+registerUcpBuyerAgentProfileRoute();
 registerCommerceStrictInvokeRoute('/agent/shop/v1/invoke', 'shop');
 registerExternalInvokeRoute('/agent/shop/v1/invoke', 'shop');
 // Backward-compatible alias: creator invoke shares the same standardized shop pipeline.
