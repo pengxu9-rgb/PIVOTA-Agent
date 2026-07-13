@@ -1704,6 +1704,19 @@ function offerSellerNameLooksHostLike(value) {
   return /(^|\s)(www\.)?[a-z0-9-]+\.[a-z]{2,}(\s|$)/i.test(firstNonEmptyString(value));
 }
 
+// ADR-009 D2: crawl-onboarded external seeds live on per-brand observed sellers
+// (`merch_obs_<hash>`, catalog_merchants.status='observed') instead of the
+// legacy shared `external_seed` bucket. Both are external-seed SUPPLY — crawl
+// sourced, with no upstream merchant API, connected store, or products_cache
+// row — so serving-path branches that ask "is this external-seed supply?"
+// (serve detail from external_product_seeds, resolve a host-derived seller
+// label) must treat the two alike. Use this when only a merchant_id is in hand.
+function isExternalSeedListingMerchantId(merchantId) {
+  const mid = String(merchantId || '').trim();
+  if (!mid) return false;
+  return mid === EXTERNAL_SEED_MERCHANT_ID || mid.startsWith('merch_obs_');
+}
+
 function offerSellerNameLooksLikeProductBrand(value, product, member) {
   const seller = normalizeOfferSellerComparable(value);
   if (!seller) return false;
@@ -1725,8 +1738,14 @@ function offerSellerNameLooksLikeProductBrand(value, product, member) {
 
 function resolveOfferSellerDisplayName({ product, member, merchantId }) {
   const mid = String(merchantId || product?.merchant_id || member?.merchant_id || '').trim();
+  // ADR-009: observed sellers (merch_obs_) are external-seed supply too — their
+  // seed payloads carry raw host strings ("mojawa.com") in the seller fields.
+  // Without the host-label pass those leak through verbatim (the merchant-name
+  // candidates below skip brand-equal names, and an observed brand seller's
+  // catalog_merchants name IS the brand), so the offer shows the bare domain
+  // instead of the seller of record.
   const externalSeedHostLabel =
-    mid === EXTERNAL_SEED_MERCHANT_ID
+    isExternalSeedListingMerchantId(mid)
       ? resolveExternalSeedOfferSellerHostLabel(product, member)
       : '';
   const explicitCandidates = [
@@ -1745,9 +1764,15 @@ function resolveOfferSellerDisplayName({ product, member, merchantId }) {
   ];
   for (const candidate of explicitCandidates) {
     const sellerName = normalizeOfferSellerNameCandidate(candidate, mid);
-    if (sellerName) return offerSellerNameLooksHostLike(sellerName) && externalSeedHostLabel
-      ? externalSeedHostLabel
-      : sellerName;
+    if (!sellerName) continue;
+    if (offerSellerNameLooksHostLike(sellerName) && externalSeedHostLabel) {
+      // Legacy anonymous lump: the formatted host label is the best name on
+      // offer. Observed sellers have a real catalog_merchants name — keep
+      // scanning so it wins over a host string; the label stays the fallback.
+      if (mid === EXTERNAL_SEED_MERCHANT_ID) return externalSeedHostLabel;
+      continue;
+    }
+    return sellerName;
   }
 
   const merchantCandidates = [
@@ -1759,10 +1784,16 @@ function resolveOfferSellerDisplayName({ product, member, merchantId }) {
   for (const candidate of merchantCandidates) {
     const sellerName = normalizeOfferSellerNameCandidate(candidate, mid);
     if (!sellerName) continue;
+    if (externalSeedHostLabel && offerSellerNameLooksHostLike(sellerName)) {
+      continue;
+    }
+    // Brand-equal merchant names are fabricated on the legacy anonymous lump,
+    // but an observed brand seller's catalog_merchants name legitimately IS
+    // the brand ("Mojawa" sells Mojawa) — suppress only for the legacy bucket.
     if (
       externalSeedHostLabel &&
-      (offerSellerNameLooksHostLike(sellerName) ||
-        offerSellerNameLooksLikeProductBrand(sellerName, product, member))
+      mid === EXTERNAL_SEED_MERCHANT_ID &&
+      offerSellerNameLooksLikeProductBrand(sellerName, product, member)
     ) {
       continue;
     }
@@ -8678,14 +8709,24 @@ async function fetchProductDetailForOffers(args) {
   }
 
   const loadPromise = (async () => {
-    if (process.env.DATABASE_URL && merchantId === EXTERNAL_SEED_MERCHANT_ID) {
+    // ADR-009: observed sellers (`merch_obs_`) are external-seed supply — their
+    // only detail store is external_product_seeds (no products_cache row: the
+    // legacy cache lane's source gate excludes them; no upstream API: the
+    // backend 404s for observed refs). Route them through the seed-DB detail
+    // path alongside the legacy bucket, re-stamped with the observed seller id
+    // so identity/offer keying stays on the resolved merchant.
+    if (process.env.DATABASE_URL && isExternalSeedListingMerchantId(merchantId)) {
       const seedDetail = await fetchExternalSeedProductDetailFromDb({ productId });
       if (seedDetail?.product) {
+        const seedProduct =
+          merchantId === EXTERNAL_SEED_MERCHANT_ID
+            ? seedDetail.product
+            : { ...seedDetail.product, merchant_id: merchantId };
         if (useMemoryCache) {
           setProductDetailCache(cacheKey, {
             status: 'success',
             success: true,
-            product: seedDetail.product,
+            product: seedProduct,
             metadata: {
               query_source: 'external_seed_db',
               external_seed_id: seedDetail.external_seed_id || null,
@@ -8694,13 +8735,17 @@ async function fetchProductDetailForOffers(args) {
             },
           }, resolvedCacheTtlMs);
         }
-        return seedDetail.product;
+        return seedProduct;
       }
       if (PDP_EXTERNAL_SEED_LEGACY_DETAIL_FALLBACK_ENABLED) {
         const fromExternalSeeds = await findExternalSeedProductById({ productId }).catch(() => null);
         if (fromExternalSeeds) {
           const normalizedExternalSeed = attachProductDetailSource(
-            normalizeProductDetailPrice(fromExternalSeeds),
+            normalizeProductDetailPrice(
+              merchantId === EXTERNAL_SEED_MERCHANT_ID
+                ? fromExternalSeeds
+                : { ...fromExternalSeeds, merchant_id: merchantId },
+            ),
             'external_seed_db',
           );
           if (useMemoryCache) {
@@ -40507,12 +40552,36 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 
 	      if (!canonicalProduct) {
 	        const identityRescueStartedAt = Date.now();
+	        const rescueMerchantId = requestedMerchantId || canonicalProductRef?.merchant_id;
+	        const rescueProductId = entryProductId || productId || canonicalProductRef?.product_id;
 	        identityGraphLive = await maybeBuildLiveSyntheticPdp({
-	          merchantId: requestedMerchantId || canonicalProductRef?.merchant_id,
-	          productId: entryProductId || productId || canonicalProductRef?.product_id,
+	          merchantId: rescueMerchantId,
+	          productId: rescueProductId,
 	          canonicalProduct: null,
 	          bypassCache,
 	        }).catch(() => null);
+	        // The requested ref may name a lane with no identity listing of its own
+	        // (e.g. a url_audit lane member) while identity resolution already
+	        // canonicalized onto a sibling lane that IS live-read enabled. Retry the
+	        // rescue with the RESOLVED canonical ref before giving up, so any member
+	        // ref of a live sellable-item-group serves the same grouped PDP.
+	        if (!identityGraphLive?.synthetic_product) {
+	          const canonicalRescueMerchantId = String(canonicalProductRef?.merchant_id || '').trim();
+	          const canonicalRescueProductId = String(canonicalProductRef?.product_id || '').trim();
+	          if (
+	            canonicalRescueMerchantId &&
+	            canonicalRescueProductId &&
+	            (canonicalRescueMerchantId !== String(rescueMerchantId || '').trim() ||
+	              canonicalRescueProductId !== String(rescueProductId || '').trim())
+	          ) {
+	            identityGraphLive = await maybeBuildLiveSyntheticPdp({
+	              merchantId: canonicalRescueMerchantId,
+	              productId: canonicalRescueProductId,
+	              canonicalProduct: null,
+	              bypassCache,
+	            }).catch(() => null);
+	          }
+	        }
 	        markPdpV2Phase('identity_graph_rescue', identityRescueStartedAt);
 	        if (identityGraphLive?.synthetic_product) {
 	          canonicalProduct = identityGraphLive.synthetic_product;
