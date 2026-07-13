@@ -18,18 +18,30 @@
  *     profile at `<business>/.well-known/ucp` (`services...endpoint`, e.g. "https://business.example.com/ucp/mcp").
  *     Every request carries `meta["ucp-agent"].profile` = the agent's hosted profile URL.
  *   - shopify.dev/docs/agents/profiles/auth-and-rate-limiting — trust tiers: ANONYMOUS (no auth header),
- *     SIGNED (RFC 9421 / ECDSA P-256 HTTP Message Signatures; pubkey in the agent profile), TOKEN
- *     (`Authorization: Bearer <jwt>` from the Dev Dashboard). Higher tiers unlock more; `complete_checkout`
- *     is trust-tier gated.
+ *     SIGNED (RFC 9421 / ECDSA P-256 HTTP Message Signatures; pubkey in the agent profile — "No registration
+ *     required", self-generated key), TOKEN (`Authorization: Bearer <jwt>` from the Dev Dashboard). Higher tiers
+ *     unlock more; `complete_checkout` is trust-tier gated (TOKEN-only) and this client NEVER calls it at any tier.
+ *
+ * SIGNED-TIER SIGNATURE CONSTRUCTION (ucp.dev/2026-04-08/specification/signatures, fetched 2026-07-13):
+ *   - Signature base covered components, in order (POST with body + idempotency): "@method" "@authority"
+ *     "@path" ["@query" if present] "ucp-agent" "idempotency-key" "content-digest" "content-type".
+ *   - Content-Digest: RFC 9530 `sha-256=:<base64(sha256(body))>:` — MUST be sha-256.
+ *   - Signature-Input: `sig1=(<components>);created=<ts>;expires=<ts>;keyid="<jwk kid>"`. NO `alg` param — the
+ *     algorithm is derived from the key's JWK `crv` (P-256 => ecdsa-p256-sha256).
+ *   - Signature: `sig1=:<base64(raw r||s)>:` — ECDSA MUST be fixed-width raw r||s (IEEE P1363), NOT ASN.1/DER.
+ *   - keyid matches a JWK `kid` published in our profile's `ucp.signing_keys`.
+ *   - `ucp-agent` and `idempotency-key` are carried in the JSON-RPC `meta` (MCP requirement) AND mirrored as
+ *     covered HTTP headers so the signature binds them; the body itself is bound via content-digest.
  *
  * HARD SAFETY BOUNDS (enforced in code, not just convention):
  *   - There is NO method that calls `complete_checkout`, submits payment, or opens/fetches a handoff URL.
  *     `refuseCompleteCheckout()` returns a hard refusal object and performs no network call.
- *   - Credentials come from ENV ONLY (never hardcoded). The credential value is NEVER logged/printed/returned;
- *     only a boolean "present" and the derived tier are exposed via `describeTier()`.
+ *   - Credentials AND the signing PRIVATE key come from ENV ONLY (never hardcoded). Neither value is ever
+ *     logged/printed/returned; only booleans "present" and the derived tier are exposed via `describeTier()`.
  *   - Framework-agnostic: pure module using the global `fetch` (Node >= 18); `fetchImpl` is injectable for tests.
  */
 
+const nodeCrypto = require('node:crypto');
 const {
   buildUcpBuyerAgentProfile,
   DEFAULT_UCP_VERSION,
@@ -91,10 +103,28 @@ function createUcpBuyerAgentClient(options = {}) {
     : (typeof globalThis.fetch === 'function' ? globalThis.fetch.bind(globalThis) : null);
   const userAgent = firstNonEmpty(options.userAgent, 'Pivota-UCP-BuyerAgent/1.0');
   const timeoutMs = Number.isFinite(options.timeoutMs) ? Number(options.timeoutMs) : 15000;
+  const signatureTtlSec = Number.isFinite(options.signatureTtlSec) ? Number(options.signatureTtlSec) : 300;
 
-  // Trust tier is derived purely from what we can present. We support ANONYMOUS + TOKEN here; SIGNED requires
-  // an ECDSA signing key (founder-provisioned) and is intentionally out of scope for this probe client.
-  const tier = credential ? TRUST_TIER.TOKEN : TRUST_TIER.ANONYMOUS;
+  // SIGNED tier: load our OWN ECDSA P-256 private key from env ONLY (PEM or JWK). Never logged. The public half
+  // lives in the hosted profile's `ucp.signing_keys`; `keyid` must match its JWK `kid`.
+  const signingPrivateRaw = firstNonEmpty(options.signingPrivateKey, process.env.UCP_AGENT_SIGNING_PRIVATE_KEY);
+  let signingKeyObject;
+  let signingKeyId;
+  if (signingPrivateRaw) {
+    const loaded = loadSigningPrivateKey(signingPrivateRaw);
+    signingKeyObject = loaded.keyObject;
+    signingKeyId = firstNonEmpty(options.signingKeyId, process.env.UCP_AGENT_SIGNING_KEY_ID, loaded.kid);
+    if (!signingKeyId) {
+      throw new Error('UCP signing key present but no keyid — set UCP_AGENT_SIGNING_KEY_ID or embed "kid" in the JWK.');
+    }
+  }
+  const canSign = Boolean(signingKeyObject);
+  // Optional explicit public JWK(s) to publish in the profile (else the profile module reads env). Never private.
+  const signingKeysToPublish = Array.isArray(options.signingKeys) ? options.signingKeys : undefined;
+
+  // Trust tier is derived by descending capability: a Bearer token (TOKEN) beats a signing key (SIGNED) beats
+  // nothing (ANONYMOUS). complete_checkout is refused at ALL of them by this client.
+  const tier = credential ? TRUST_TIER.TOKEN : (canSign ? TRUST_TIER.SIGNED : TRUST_TIER.ANONYMOUS);
 
   function requireFetch() {
     if (!fetchImpl) {
@@ -103,9 +133,20 @@ function createUcpBuyerAgentClient(options = {}) {
     return fetchImpl;
   }
 
-  function requestMeta() {
+  // The UCP-agent profile pointer. Carried in JSON-RPC meta (MCP requirement) and, when signing, mirrored as a
+  // structured-field HTTP header `ucp-agent: profile="<url>"` so the RFC 9421 signature can cover it.
+  function ucpAgentMeta() {
+    return { profile: profileUrl };
+  }
+  function ucpAgentHeaderValue() {
+    return `profile="${profileUrl}"`;
+  }
+
+  function requestMeta(idempotencyKey) {
     // Referenced on every UCP request so the merchant can fetch our capability profile for negotiation.
-    return { 'ucp-agent': { profile: profileUrl } };
+    const meta = { 'ucp-agent': ucpAgentMeta() };
+    if (idempotencyKey) meta['idempotency-key'] = idempotencyKey;
+    return meta;
   }
 
   function authHeaders() {
@@ -121,9 +162,10 @@ function createUcpBuyerAgentClient(options = {}) {
 
   /**
    * The agent capability profile we publish/serve. Requests catalog+cart+checkout scopes, never completion.
+   * Publishes our PUBLIC signing JWK(s) (from options.signingKeys or env) so SIGNED-tier verifiers can find them.
    */
   function buildProfile() {
-    return buildUcpBuyerAgentProfile({ profileUrl, ucpVersion });
+    return buildUcpBuyerAgentProfile({ profileUrl, ucpVersion, signingKeys: signingKeysToPublish });
   }
 
   /**
@@ -131,14 +173,19 @@ function createUcpBuyerAgentClient(options = {}) {
    * the requested scopes, and the profile URL. NEVER includes the credential value.
    */
   function describeTier() {
+    const profile = buildProfile();
     return {
       tier,
       has_credential: Boolean(credential),
+      // Boolean only — the private key value is NEVER exposed.
+      has_signing_key: canSign,
+      signing_key_id: canSign ? signingKeyId : undefined,
+      published_signing_key_ids: (profile.ucp.signing_keys || []).map((k) => k && k.kid).filter(Boolean),
       profile_url: profileUrl,
       ucp_version: ucpVersion,
-      requested_scopes: buildProfile().agent.requested_scopes,
-      // We only ever support anonymous/token here; complete_checkout is refused at ALL tiers by this client.
-      supports_signed_tier: false,
+      requested_scopes: profile.agent.requested_scopes,
+      // SIGNED tier is now implemented (RFC 9421). complete_checkout is STILL refused at ALL tiers by this client.
+      supports_signed_tier: canSign,
       completes_checkout: false,
     };
   }
@@ -175,6 +222,9 @@ function createUcpBuyerAgentClient(options = {}) {
     }
     const endpoint = normalizeBaseUrl(mcpEndpoint, 'mcpEndpoint').toString();
     const doFetch = requireFetch();
+    // Idempotency key is minted for signed (state-changing) requests; it lives in meta AND is a covered header.
+    const idempotencyKey = tier === TRUST_TIER.SIGNED ? cryptoId() : undefined;
+    const meta = requestMeta(idempotencyKey);
     const body = {
       jsonrpc: '2.0',
       id: cryptoId(),
@@ -182,14 +232,37 @@ function createUcpBuyerAgentClient(options = {}) {
       params: {
         name: toolName,
         arguments: args,
-        _meta: requestMeta(),
+        _meta: meta,
       },
-      meta: requestMeta(),
+      meta,
     };
+    const bodyString = JSON.stringify(body);
+
+    const headers = authHeaders();
+    if (tier === TRUST_TIER.SIGNED) {
+      // Mirror the meta pointers as covered HTTP headers, then sign. The private key never leaves this scope.
+      headers['ucp-agent'] = ucpAgentHeaderValue();
+      headers['idempotency-key'] = idempotencyKey;
+      const created = Math.floor(Date.now() / 1000);
+      const expires = created + signatureTtlSec;
+      const { headers: sigHeaders } = signUcpRequest({
+        method: 'POST',
+        url: endpoint,
+        bodyString,
+        ucpAgentValue: headers['ucp-agent'],
+        idempotencyKey,
+        keyObject: signingKeyObject,
+        keyid: signingKeyId,
+        created,
+        expires,
+      });
+      Object.assign(headers, sigHeaders);
+    }
+
     const res = await withTimeout((signal) => doFetch(endpoint, {
       method: 'POST',
-      headers: authHeaders(),
-      body: JSON.stringify(body),
+      headers,
+      body: bodyString,
       signal,
     }), timeoutMs);
     const text = await res.text();
@@ -327,6 +400,79 @@ function cryptoId() {
   }
 }
 
+// ---- RFC 9421 signing (SIGNED tier) ---------------------------------------
+
+/**
+ * Load an ECDSA P-256 PRIVATE key from a PEM or JWK string into a Node KeyObject. Never logs the material.
+ * @param {string} raw  PEM (PKCS8/SEC1) or a JWK JSON string. From env only.
+ * @returns {{ keyObject: import('crypto').KeyObject, kid: string|undefined }}
+ */
+function loadSigningPrivateKey(raw) {
+  const s = firstNonEmpty(raw);
+  if (!s) return { keyObject: undefined, kid: undefined };
+  if (s.startsWith('{')) {
+    let jwk;
+    try { jwk = JSON.parse(s); } catch { throw new Error('UCP_AGENT_SIGNING_PRIVATE_KEY is not valid JSON (JWK)'); }
+    if (!jwk || jwk.d === undefined) throw new Error('signing JWK is missing private component "d"');
+    return { keyObject: nodeCrypto.createPrivateKey({ key: jwk, format: 'jwk' }), kid: jwk.kid };
+  }
+  return { keyObject: nodeCrypto.createPrivateKey(s), kid: undefined };
+}
+
+/** RFC 9530 Content-Digest for a request body. Always sha-256. */
+function contentDigestFor(bodyString) {
+  const hash = nodeCrypto.createHash('sha256').update(bodyString, 'utf8').digest('base64');
+  return `sha-256=:${hash}:`;
+}
+
+/**
+ * Build the RFC 9421 signature base + Signature-Input params for a UCP MCP request. Pure/deterministic given
+ * its inputs (used directly by tests). Component values are the exact HTTP field / derived-component values.
+ * @returns {{ base: string, params: string, covered: string[], contentDigest: string }}
+ */
+function buildUcpSignatureBase({ method, url, bodyString, ucpAgentValue, idempotencyKey, keyid, created, expires }) {
+  const u = new URL(url);
+  const contentDigest = bodyString != null ? contentDigestFor(bodyString) : undefined;
+  const fields = [];
+  fields.push(['@method', String(method || 'POST').toUpperCase()]);
+  fields.push(['@authority', u.host]);
+  fields.push(['@path', u.pathname]);
+  if (u.search) fields.push(['@query', u.search]);
+  if (ucpAgentValue) fields.push(['ucp-agent', ucpAgentValue]);
+  if (idempotencyKey) fields.push(['idempotency-key', idempotencyKey]);
+  if (contentDigest) fields.push(['content-digest', contentDigest]);
+  if (bodyString != null) fields.push(['content-type', 'application/json']);
+
+  const covered = fields.map(([name]) => name);
+  const inner = covered.map((n) => `"${n}"`).join(' ');
+  let params = `(${inner})`;
+  if (created != null) params += `;created=${created}`;
+  if (expires != null) params += `;expires=${expires}`;
+  params += `;keyid="${keyid}"`; // NO alg param — derived from JWK crv per the spec.
+
+  const lines = fields.map(([name, value]) => `"${name}": ${value}`);
+  lines.push(`"@signature-params": ${params}`);
+  return { base: lines.join('\n'), params, covered, contentDigest };
+}
+
+/**
+ * Sign a UCP MCP request. Returns the HTTP headers to attach (content-digest, signature-input, signature) plus
+ * the covered components (for logging/tests). The private key + signature never leak any private material.
+ */
+function signUcpRequest({ method, url, bodyString, ucpAgentValue, idempotencyKey, keyObject, keyid, created, expires }) {
+  const { base, params, covered, contentDigest } = buildUcpSignatureBase({
+    method, url, bodyString, ucpAgentValue, idempotencyKey, keyid, created, expires,
+  });
+  // ECDSA P-256 over SHA-256, raw r||s (IEEE P1363) per RFC 9421 — NOT DER.
+  const sig = nodeCrypto.sign('sha256', Buffer.from(base, 'utf8'), { key: keyObject, dsaEncoding: 'ieee-p1363' });
+  const headers = {
+    'signature-input': `sig1=${params}`,
+    signature: `sig1=:${sig.toString('base64')}:`,
+  };
+  if (contentDigest) headers['content-digest'] = contentDigest;
+  return { headers, covered, signatureBase: base };
+}
+
 async function withTimeout(run, ms) {
   if (!Number.isFinite(ms) || ms <= 0) return run(undefined);
   const controller = new AbortController();
@@ -342,4 +488,9 @@ module.exports = {
   createUcpBuyerAgentClient,
   TOOL,
   TRUST_TIER,
+  // Exposed for deterministic signing tests (no live network). Not part of the public client surface.
+  loadSigningPrivateKey,
+  contentDigestFor,
+  buildUcpSignatureBase,
+  signUcpRequest,
 };
