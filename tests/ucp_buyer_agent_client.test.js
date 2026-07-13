@@ -251,7 +251,7 @@ describe('createUcpBuyerAgentClient over recorded UCP responses', () => {
     expect(search.ok).toBe(true);
 
     const cart = await client.createCart(endpoint, {
-      lineItems: [{ item: { id: '111', title: 'Snail Mucin' }, quantity: 1 }],
+      lineItems: [{ item: { id: 'gid://shopify/ProductVariant/111' }, quantity: 1 }],
     });
     expect(cart.ok).toBe(true);
     expect(client.extractHandoffUrl(cart)).toMatch(/\/cart\/111/);
@@ -261,10 +261,43 @@ describe('createUcpBuyerAgentClient over recorded UCP responses', () => {
     expect(client.extractHandoffUrl(checkout)).toBe('https://cosrx.example.myshopify.com/checkouts/xyz');
 
     // Every request carried the agent profile pointer + Bearer auth (token tier). Credential never in a URL.
+    // LIVE shape: meta sits at params.arguments.meta (NOT body.meta / params._meta), alongside the tool fields.
     const mcpCall = fetchImpl.calls.find((c) => c.body && c.body.params && c.body.params.name === TOOL.CREATE_CART);
-    expect(mcpCall.body.meta['ucp-agent'].profile).toBe('https://agent.pivota.cc/.well-known/ucp-agent');
+    expect(mcpCall.body.params.arguments.meta['ucp-agent'].profile).toBe('https://agent.pivota.cc/.well-known/ucp-agent');
     expect(mcpCall.headers.authorization).toBe('Bearer test-token');
     expect(fetchImpl.calls.every((c) => !String(c.url).includes('test-token'))).toBe(true);
+  });
+
+  test('create_cart args carry cart.line_items[0].item.id DIRECTLY under arguments (no `input` wrapper)', async () => {
+    const { client, fetchImpl } = newClient({ [TOOL.CREATE_CART]: CREATE_CART_FIXTURE });
+    const endpoint = 'https://cosrx.example.myshopify.com/ucp/mcp';
+    const variantGid = 'gid://shopify/ProductVariant/51895645012184';
+
+    const cart = await client.createCart(endpoint, { lineItems: [{ item: { id: variantGid }, quantity: 1 }] });
+    expect(cart.ok).toBe(true);
+
+    const call = fetchImpl.calls.find((c) => c.body && c.body.params && c.body.params.name === TOOL.CREATE_CART);
+    const args = call.body.params.arguments;
+    // Tool fields sit directly alongside meta — NO `input` wrapper anywhere.
+    expect(args.input).toBeUndefined();
+    expect(call.body.params._meta).toBeUndefined();
+    expect(call.body.meta).toBeUndefined();
+    // create_cart's field is a `cart` object wrapping line_items (live cosrx schema).
+    expect(args.cart.line_items[0].item.id).toBe(variantGid);
+    expect(args.cart.line_items[0].quantity).toBe(1);
+    // meta stays at params.arguments.meta.
+    expect(args.meta['ucp-agent'].profile).toBe('https://agent.pivota.cc/.well-known/ucp-agent');
+  });
+
+  test('extractHandoffUrl pulls continue_url out of a fixture cart result', async () => {
+    const { client } = newClient({ [TOOL.CREATE_CART]: CREATE_CART_FIXTURE });
+    const endpoint = 'https://cosrx.example.myshopify.com/ucp/mcp';
+    const cart = await client.createCart(endpoint, {
+      lineItems: [{ item: { id: 'gid://shopify/ProductVariant/111' }, quantity: 1 }],
+    });
+    expect(client.extractHandoffUrl(cart)).toBe(
+      'https://cosrx.example.myshopify.com/cart/111:1?payment=shop_pay',
+    );
   });
 
   test('surfaces a tier/auth refusal without throwing', async () => {
@@ -461,9 +494,9 @@ describe('SIGNED tier checkout-create reaches the handoff URL credential-free', 
     expect(call.headers['idempotency-key']).toBeTruthy();
     // content-digest binds the exact wire body.
     expect(call.headers['content-digest']).toBe(contentDigestFor(call.rawBody));
-    // idempotency-key + ucp-agent also travel in the JSON-RPC meta (MCP requirement).
-    expect(call.body.meta['ucp-agent'].profile).toBe('https://agent.pivota.cc/.well-known/ucp-agent');
-    expect(call.body.meta['idempotency-key']).toBe(call.headers['idempotency-key']);
+    // idempotency-key + ucp-agent also travel in the JSON-RPC meta at params.arguments.meta (live shape).
+    expect(call.body.params.arguments.meta['ucp-agent'].profile).toBe('https://agent.pivota.cc/.well-known/ucp-agent');
+    expect(call.body.params.arguments.meta['idempotency-key']).toBe(call.headers['idempotency-key']);
     // End-to-end: the signature verifies against the PUBLISHED public JWK.
     const { ok } = verifyCapturedSignature(call, endpoint);
     expect(ok).toBe(true);

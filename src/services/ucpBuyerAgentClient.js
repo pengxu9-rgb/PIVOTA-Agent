@@ -225,16 +225,19 @@ function createUcpBuyerAgentClient(options = {}) {
     // Idempotency key is minted for signed (state-changing) requests; it lives in meta AND is a covered header.
     const idempotencyKey = tier === TRUST_TIER.SIGNED ? cryptoId() : undefined;
     const meta = requestMeta(idempotencyKey);
+    // LIVE-VERIFIED shape (cosrx create_cart inputSchema, 2026-07-13): the tool's own fields sit DIRECTLY
+    // alongside `meta` inside params.arguments (e.g. { meta, cart: { line_items: [...] } }). They are NOT
+    // wrapped under an `input` object, and `meta` lives at params.arguments.meta. Sending an `input` wrapper
+    // (or hoisting meta to params._meta / body.meta only) fails the live schema validation.
+    const argumentsWithMeta = { meta, ...args };
     const body = {
       jsonrpc: '2.0',
       id: cryptoId(),
       method: 'tools/call',
       params: {
         name: toolName,
-        arguments: args,
-        _meta: meta,
+        arguments: argumentsWithMeta,
       },
-      meta,
     };
     const bodyString = JSON.stringify(body);
 
@@ -279,7 +282,11 @@ function createUcpBuyerAgentClient(options = {}) {
     };
   }
 
-  /** Catalog search for the merchant's product(s). Uses `get_product`. */
+  /**
+   * Catalog search via `get_product`. NOTE (live-verified cosrx 2026-07-13): the per-merchant UCP endpoint
+   * exposes cart + checkout tools ONLY and returns "Tool not found" for `get_product`. Product discovery is
+   * the Global Catalog / our own crawled index — do NOT point this at a per-merchant endpoint.
+   */
   async function catalogSearch(mcpEndpoint, { query, productId, sku } = {}) {
     const args = {};
     if (query) args.query = query;
@@ -289,15 +296,18 @@ function createUcpBuyerAgentClient(options = {}) {
   }
 
   /**
-   * Build a cart. line_items = [{ item: { id, title, price, image_url }, quantity }].
-   * Cart tools accept unauthenticated (anonymous) requests per the spec.
+   * Build a cart. line_items = [{ item: { id: "gid://shopify/ProductVariant/<n>" }, quantity }].
+   * LIVE-VERIFIED (cosrx, 2026-07-13): create_cart's tool field is a `cart` object wrapping `line_items`,
+   * i.e. arguments = { meta, cart: { line_items: [...] } }. Cart tools accept unauthenticated (anonymous)
+   * requests per the spec, and the returned cart carries a storefront `continue_url` (warm handoff).
    */
   async function createCart(mcpEndpoint, { lineItems, context, attribution } = {}) {
     if (!Array.isArray(lineItems) || lineItems.length === 0) {
       throw new Error('createCart requires a non-empty lineItems array');
     }
-    const args = { line_items: lineItems };
-    if (context) args.context = context;
+    const cart = { line_items: lineItems };
+    if (context) cart.context = context;
+    const args = { cart };
     if (attribution) args.attribution = attribution;
     return callTool(mcpEndpoint, TOOL.CREATE_CART, args);
   }
