@@ -16,8 +16,18 @@
  *     the request `meta["ucp-agent"].profile` field. Only the *business/merchant* profile uses the fixed
  *     `/.well-known/ucp` path; the agent profile URL is agent-chosen. We serve ours at `/.well-known/ucp-agent`.
  *   - shopify.dev/docs/agents/profiles/auth-and-rate-limiting — for the SIGNED tier, the agent's public key is
- *     read from this profile (RFC 9421 / ECDSA P-256). We expose `ucp.signing_keys` (empty until the founder
- *     provisions a key) so the profile can carry it later without a code change.
+ *     read from this profile (RFC 9421 / ECDSA P-256). We publish it in `ucp.signing_keys` as a PUBLIC JWK
+ *     array; the `keyid` the client signs with is the JWK `kid`. Verifiers do `find_key_by_kid(profile
+ *     .signing_keys, keyid)` (ucp.dev/2026-04-08/specification/signatures). The signing alg is derived from the
+ *     JWK `crv` (P-256), so no `alg` member is required.
+ *
+ * KEY SOURCING (public key only — it IS public, but is sourced from env so the founder controls rotation and
+ * we never bake a real key into the repo):
+ *   - `UCP_AGENT_SIGNING_PUBLIC_JWK` — a single JWK object OR a JSON array of JWKs (the ECDSA P-256 PUBLIC key).
+ *   - Any JWK carrying a private `d` member is REJECTED — this module MUST never publish private material.
+ *   - Absent env + no `config.signingKeys` => `signing_keys: []` (anonymous/token tier only). We ship a
+ *     clearly-marked PLACEHOLDER_PUBLIC_JWK constant (NOT a usable key) that documents the shape the founder
+ *     replaces via env; it is never auto-published.
  *
  * HARD BOUND: this profile requests discovery + cart-build + checkout-create scopes ONLY. It must NEVER
  * declare a purchase-completion / payment-handler capability — Pivota does not complete payment or act as a
@@ -38,6 +48,54 @@ const CHECKOUT_CAPABILITY = 'dev.ucp.shopping.checkout';
 
 // Any capability whose name implies completing a purchase / moving money. Requesting these is forbidden here.
 const FORBIDDEN_CAPABILITY_PATTERN = /(complete|payment|charge|purchase)/i;
+
+// PLACEHOLDER ONLY — this is NOT a usable key (the x/y are dummy zero-ish coordinates). It documents the JWK
+// shape the founder replaces by setting UCP_AGENT_SIGNING_PUBLIC_JWK (generate the pair with
+// `node scripts/gen-ucp-agent-keypair.cjs`). It is NEVER auto-published into the profile.
+const PLACEHOLDER_PUBLIC_JWK = Object.freeze({
+  kty: 'EC',
+  crv: 'P-256',
+  x: 'REPLACE_ME_base64url_public_x_coordinate',
+  y: 'REPLACE_ME_base64url_public_y_coordinate',
+  kid: 'pivota-ucp-agent-REPLACE_ME',
+  use: 'sig',
+});
+
+/**
+ * Sanitize one candidate signing key into a publishable PUBLIC JWK, or return undefined if unusable.
+ * HARD BOUND: strips/rejects any private-key material (`d`) so we can NEVER publish a private key.
+ */
+function toPublicJwk(candidate) {
+  if (!candidate || typeof candidate !== 'object') return undefined;
+  if (candidate.d !== undefined) {
+    // Private key material — refuse loudly. Callers must publish the PUBLIC half only.
+    throw new Error('ucpBuyerAgentProfile: signing key contains private material ("d"); refuse to publish it.');
+  }
+  const { kty, crv, x, y, kid } = candidate;
+  if (kty !== 'EC' || crv !== 'P-256' || !x || !y || !kid) return undefined;
+  // Publish only the well-known public JWK members (drop anything unexpected).
+  const jwk = { kty, crv, x, y, kid, use: candidate.use || 'sig' };
+  return jwk;
+}
+
+/**
+ * Resolve the PUBLIC signing keys to publish, in priority order:
+ *   config.signingKeys (array) -> env UCP_AGENT_SIGNING_PUBLIC_JWK (object or JSON array) -> [] (none).
+ * Never throws on absent/blank env; only throws if a provided key carries private material.
+ */
+function resolveSigningKeys(config = {}) {
+  let raw;
+  if (Array.isArray(config.signingKeys)) raw = config.signingKeys;
+  else {
+    const env = (config.env || process.env || {}).UCP_AGENT_SIGNING_PUBLIC_JWK;
+    if (typeof env === 'string' && env.trim()) {
+      let parsed;
+      try { parsed = JSON.parse(env.trim()); } catch { throw new Error('UCP_AGENT_SIGNING_PUBLIC_JWK is not valid JSON'); }
+      raw = Array.isArray(parsed) ? parsed : [parsed];
+    } else raw = [];
+  }
+  return raw.map(toPublicJwk).filter(Boolean);
+}
 
 function requireHttps(url, field) {
   if (typeof url !== 'string' || !url.trim()) throw new Error(`${field} is required`);
@@ -106,8 +164,10 @@ function buildUcpBuyerAgentProfile(config = {}) {
     // Empty object = Pivota declares NO payment handler. It never processes payment; the buyer completes on
     // the merchant's own storefront via the returned handoff URL.
     payment_handlers: {},
-    // Public keys for the SIGNED trust tier (RFC 9421 / ECDSA P-256). Empty = anonymous/token tier only.
-    signing_keys: Array.isArray(config.signingKeys) ? config.signingKeys : [],
+    // PUBLIC keys for the SIGNED trust tier (RFC 9421 / ECDSA P-256). Sourced from env / config (public JWK
+    // only; private material rejected). Empty = anonymous/token tier only. Verifiers match the request's
+    // `keyid` against a JWK `kid` here.
+    signing_keys: resolveSigningKeys(config),
   };
   if (profileUrl) ucp.profile_url = profileUrl;
 
@@ -133,6 +193,9 @@ function buildUcpBuyerAgentProfile(config = {}) {
 module.exports = {
   buildUcpBuyerAgentProfile,
   assertNoPurchaseCompletion,
+  resolveSigningKeys,
+  toPublicJwk,
+  PLACEHOLDER_PUBLIC_JWK,
   DEFAULT_UCP_VERSION,
   SHOPPING_SERVICE,
   CATALOG_CAPABILITY,

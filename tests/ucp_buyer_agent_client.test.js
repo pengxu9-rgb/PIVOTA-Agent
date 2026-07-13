@@ -7,16 +7,69 @@
  * credential, requests only catalog+cart+checkout scopes, and correctly captures the storefront handoff URL.
  */
 
+const nodeCrypto = require('node:crypto');
 const {
   createUcpBuyerAgentClient,
   TOOL,
   TRUST_TIER,
+  buildUcpSignatureBase,
+  signUcpRequest,
+  contentDigestFor,
+  loadSigningPrivateKey,
 } = require('../src/services/ucpBuyerAgentClient');
 const {
   buildUcpBuyerAgentProfile,
   assertNoPurchaseCompletion,
+  resolveSigningKeys,
   CHECKOUT_CAPABILITY,
 } = require('../src/services/ucpBuyerAgentProfile');
+
+// ---- deterministic TEST-ONLY ECDSA P-256 keypair --------------------------
+// Generated once for these tests; NOT a production key and NOT published anywhere. The client loads the
+// PRIVATE key from env/options; here we inject it directly so signing is deterministic and verifiable offline.
+const TEST_PRIVATE_PEM = [
+  '-----BEGIN PRIVATE KEY-----',
+  'MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQg2fN8OxOlC9VwiMwu',
+  'Q0tpTsXRIH3nnlwnWwQwLnsAQoKhRANCAASp8aRruLtbq+P9X5jOjbpOOrgSX+Mf',
+  'rx2Rl5cYEhcK8JJbntMGQeGDoTXqmaJskgNtd81kC+TOUjRLfzvvVRU4',
+  '-----END PRIVATE KEY-----',
+  '',
+].join('\n');
+const TEST_PUBLIC_JWK = Object.freeze({
+  kty: 'EC',
+  x: 'qfGka7i7W6vj_V-Yzo26Tjq4El_jH68dkZeXGBIXCvA',
+  y: 'klue0wZB4YOhNeqZomySA213zWQL5M5SNEt_O-9VFTg',
+  crv: 'P-256',
+  kid: 'pivota-test-key-1',
+  use: 'sig',
+});
+const TEST_KEY_ID = 'pivota-test-key-1';
+
+/** Verify a captured signed MCP request end-to-end against the published PUBLIC JWK. */
+function verifyCapturedSignature(call, endpoint) {
+  const sigInput = call.headers['signature-input'];
+  const sigHeader = call.headers.signature;
+  const m = /^sig1=\((.*?)\)(.*)$/.exec(sigInput);
+  if (!m) throw new Error(`unparseable signature-input: ${sigInput}`);
+  const covered = m[1].split(' ').map((s) => s.replace(/"/g, ''));
+  const params = `(${m[1]})${m[2]}`;
+  const u = new URL(endpoint);
+  const lines = covered.map((name) => {
+    switch (name) {
+      case '@method': return '"@method": POST';
+      case '@authority': return `"@authority": ${u.host}`;
+      case '@path': return `"@path": ${u.pathname}`;
+      case '@query': return `"@query": ${u.search}`;
+      default: return `"${name}": ${call.headers[name]}`;
+    }
+  });
+  lines.push(`"@signature-params": ${params}`);
+  const base = lines.join('\n');
+  const sigB64 = /^sig1=:(.*):$/.exec(sigHeader)[1];
+  const pub = nodeCrypto.createPublicKey({ key: TEST_PUBLIC_JWK, format: 'jwk' });
+  const ok = nodeCrypto.verify('sha256', Buffer.from(base, 'utf8'), { key: pub, dsaEncoding: 'ieee-p1363' }, Buffer.from(sigB64, 'base64'));
+  return { ok, covered, base };
+}
 
 // ---- fixtures --------------------------------------------------------------
 
@@ -79,7 +132,7 @@ function makeFetch(routes) {
   const fetchImpl = async (url, init = {}) => {
     let body;
     try { body = init.body ? JSON.parse(init.body) : undefined; } catch { body = init.body; }
-    calls.push({ url, headers: init.headers || {}, body });
+    calls.push({ url, headers: init.headers || {}, body, rawBody: init.body });
     // well-known discovery
     if (String(url).endsWith('/.well-known/ucp')) {
       return jsonResponse(routes.wellKnown ?? BUSINESS_PROFILE_FIXTURE, routes.wellKnownStatus ?? 200);
@@ -248,5 +301,173 @@ describe('hard safety bounds', () => {
     await expect(client.callTool('https://cosrx.example.myshopify.com/ucp/mcp', 'complete_checkout', {}))
       .rejects.toThrow(/hard-disabled/);
     expect(fetchImpl.calls.length).toBe(0);
+  });
+
+  test('complete_checkout is hard-blocked at the SIGNED tier too', async () => {
+    const fetchImpl = makeFetch({});
+    const client = createUcpBuyerAgentClient({
+      signingPrivateKey: TEST_PRIVATE_PEM, signingKeyId: TEST_KEY_ID, fetchImpl,
+    });
+    expect(client.tier).toBe(TRUST_TIER.SIGNED);
+    expect(client.completeCheckout).toBeUndefined();
+    await expect(client.callTool('https://cosrx.example.myshopify.com/ucp/mcp', 'complete_checkout', {}))
+      .rejects.toThrow(/hard-disabled/);
+    expect(fetchImpl.calls.length).toBe(0);
+  });
+});
+
+// ---- profile: signing_keys publication ------------------------------------
+
+describe('buildUcpBuyerAgentProfile signing_keys', () => {
+  test('defaults to an empty signing_keys array (anonymous/token only)', () => {
+    const p = buildUcpBuyerAgentProfile({ signingKeys: [] });
+    expect(Array.isArray(p.ucp.signing_keys)).toBe(true);
+    expect(p.ucp.signing_keys.length).toBe(0);
+  });
+
+  test('publishes a provided PUBLIC JWK with its kid', () => {
+    const p = buildUcpBuyerAgentProfile({ signingKeys: [TEST_PUBLIC_JWK] });
+    expect(p.ucp.signing_keys).toHaveLength(1);
+    const k = p.ucp.signing_keys[0];
+    expect(k.kty).toBe('EC');
+    expect(k.crv).toBe('P-256');
+    expect(k.kid).toBe(TEST_KEY_ID);
+    expect(k.use).toBe('sig');
+  });
+
+  test('REFUSES to publish a private key (throws on a `d` member)', () => {
+    const withPrivate = { ...TEST_PUBLIC_JWK, d: 'super-secret-private-scalar' };
+    expect(() => buildUcpBuyerAgentProfile({ signingKeys: [withPrivate] })).toThrow(/private material/i);
+  });
+
+  test('resolveSigningKeys reads a single JWK object from env and never leaks private material', () => {
+    const keys = resolveSigningKeys({ env: { UCP_AGENT_SIGNING_PUBLIC_JWK: JSON.stringify(TEST_PUBLIC_JWK) } });
+    expect(keys).toHaveLength(1);
+    expect(keys[0].kid).toBe(TEST_KEY_ID);
+    expect(JSON.stringify(keys[0])).not.toMatch(/"d"/);
+  });
+});
+
+// ---- client: SIGNED-tier identity + derivation ----------------------------
+
+describe('SIGNED tier identity + derivation', () => {
+  test('signing key present, no token -> SIGNED tier; private key never leaked', () => {
+    const client = createUcpBuyerAgentClient({
+      signingPrivateKey: TEST_PRIVATE_PEM, signingKeyId: TEST_KEY_ID,
+      signingKeys: [TEST_PUBLIC_JWK], fetchImpl: makeFetch({}),
+    });
+    const d = client.describeTier();
+    expect(client.tier).toBe(TRUST_TIER.SIGNED);
+    expect(d.supports_signed_tier).toBe(true);
+    expect(d.has_signing_key).toBe(true);
+    expect(d.signing_key_id).toBe(TEST_KEY_ID);
+    expect(d.published_signing_key_ids).toContain(TEST_KEY_ID);
+    expect(d.completes_checkout).toBe(false);
+    // The private key/PEM must never appear in the descriptor.
+    expect(JSON.stringify(d)).not.toMatch(/BEGIN PRIVATE KEY|MIGHAgEA/);
+  });
+
+  test('token beats signing key (TOKEN tier when both present)', () => {
+    const client = createUcpBuyerAgentClient({
+      credential: 'jwt', signingPrivateKey: TEST_PRIVATE_PEM, signingKeyId: TEST_KEY_ID, fetchImpl: makeFetch({}),
+    });
+    expect(client.tier).toBe(TRUST_TIER.TOKEN);
+  });
+
+  test('no key + no token -> ANONYMOUS, supports_signed_tier false', () => {
+    const client = createUcpBuyerAgentClient({ fetchImpl: makeFetch({}) });
+    expect(client.tier).toBe(TRUST_TIER.ANONYMOUS);
+    expect(client.describeTier().supports_signed_tier).toBe(false);
+  });
+
+  test('signing key without a resolvable keyid throws', () => {
+    // PEM carries no kid, and no keyid is supplied -> must fail loudly.
+    expect(() => createUcpBuyerAgentClient({ signingPrivateKey: TEST_PRIVATE_PEM, fetchImpl: makeFetch({}) }))
+      .toThrow(/keyid/i);
+  });
+});
+
+// ---- RFC 9421 signature construction (deterministic) ----------------------
+
+describe('RFC 9421 signature construction', () => {
+  const endpoint = 'https://cosrx.example.myshopify.com/ucp/mcp';
+  const bodyString = JSON.stringify({ jsonrpc: '2.0', id: '1', method: 'tools/call', params: { name: 'create_checkout' } });
+
+  test('content digest is RFC 9530 sha-256 base64 wrapped in colons', () => {
+    const cd = contentDigestFor(bodyString);
+    const expected = `sha-256=:${nodeCrypto.createHash('sha256').update(bodyString, 'utf8').digest('base64')}:`;
+    expect(cd).toBe(expected);
+  });
+
+  test('covered components + params match the UCP signature spec for a POST body', () => {
+    const { covered, params } = buildUcpSignatureBase({
+      method: 'POST', url: endpoint, bodyString,
+      ucpAgentValue: 'profile="https://agent.pivota.cc/.well-known/ucp-agent"',
+      idempotencyKey: 'idem-123', keyid: TEST_KEY_ID, created: 1000, expires: 1300,
+    });
+    expect(covered).toEqual([
+      '@method', '@authority', '@path', 'ucp-agent', 'idempotency-key', 'content-digest', 'content-type',
+    ]);
+    // keyid present; NO alg param (derived from JWK crv); created/expires present.
+    expect(params).toContain(';keyid="pivota-test-key-1"');
+    expect(params).toContain(';created=1000');
+    expect(params).toContain(';expires=1300');
+    expect(params).not.toMatch(/;alg=/);
+  });
+
+  test('signUcpRequest produces a signature verifiable with the PUBLIC JWK (raw r||s)', () => {
+    const { keyObject } = loadSigningPrivateKey(TEST_PRIVATE_PEM);
+    const { headers, signatureBase } = signUcpRequest({
+      method: 'POST', url: endpoint, bodyString,
+      ucpAgentValue: 'profile="https://agent.pivota.cc/.well-known/ucp-agent"',
+      idempotencyKey: 'idem-123', keyObject, keyid: TEST_KEY_ID, created: 1000, expires: 1300,
+    });
+    expect(headers['content-digest']).toBe(contentDigestFor(bodyString));
+    expect(headers['signature-input']).toMatch(/^sig1=\("@method" "@authority" "@path" "ucp-agent" "idempotency-key" "content-digest" "content-type"\);created=1000;expires=1300;keyid="pivota-test-key-1"$/);
+    // Raw r||s ECDSA signature (64 bytes for P-256), NOT DER.
+    const sigB64 = /^sig1=:(.*):$/.exec(headers.signature)[1];
+    expect(Buffer.from(sigB64, 'base64').length).toBe(64);
+    const pub = nodeCrypto.createPublicKey({ key: TEST_PUBLIC_JWK, format: 'jwk' });
+    const ok = nodeCrypto.verify('sha256', Buffer.from(signatureBase, 'utf8'), { key: pub, dsaEncoding: 'ieee-p1363' }, Buffer.from(sigB64, 'base64'));
+    expect(ok).toBe(true);
+  });
+});
+
+// ---- client: SIGNED-tier checkout-create over fixtures --------------------
+
+describe('SIGNED tier checkout-create reaches the handoff URL credential-free', () => {
+  test('signs create_checkout, sends NO Authorization, and the signature verifies', async () => {
+    const fetchImpl = makeFetch({
+      [TOOL.CREATE_CHECKOUT]: CREATE_CHECKOUT_FIXTURE,
+    });
+    const client = createUcpBuyerAgentClient({
+      signingPrivateKey: TEST_PRIVATE_PEM, signingKeyId: TEST_KEY_ID, signingKeys: [TEST_PUBLIC_JWK],
+      profileUrl: 'https://agent.pivota.cc/.well-known/ucp-agent', fetchImpl,
+    });
+    const endpoint = 'https://cosrx.example.myshopify.com/ucp/mcp';
+
+    const checkout = await client.createCheckout(endpoint, { cartId: 'cart_abc' });
+    expect(checkout.ok).toBe(true);
+    expect(checkout.tier).toBe(TRUST_TIER.SIGNED);
+    expect(client.extractHandoffUrl(checkout)).toBe('https://cosrx.example.myshopify.com/checkouts/xyz');
+
+    const call = fetchImpl.calls.find((c) => c.body && c.body.params && c.body.params.name === TOOL.CREATE_CHECKOUT);
+    // SIGNED tier sends NO Bearer token — checkout is reached credential-free.
+    expect(call.headers.authorization).toBeUndefined();
+    // Signature + digest + covered pointers are attached.
+    expect(call.headers['signature-input']).toMatch(/keyid="pivota-test-key-1"/);
+    expect(call.headers.signature).toMatch(/^sig1=:.*:$/);
+    expect(call.headers['ucp-agent']).toBe('profile="https://agent.pivota.cc/.well-known/ucp-agent"');
+    expect(call.headers['idempotency-key']).toBeTruthy();
+    // content-digest binds the exact wire body.
+    expect(call.headers['content-digest']).toBe(contentDigestFor(call.rawBody));
+    // idempotency-key + ucp-agent also travel in the JSON-RPC meta (MCP requirement).
+    expect(call.body.meta['ucp-agent'].profile).toBe('https://agent.pivota.cc/.well-known/ucp-agent');
+    expect(call.body.meta['idempotency-key']).toBe(call.headers['idempotency-key']);
+    // End-to-end: the signature verifies against the PUBLISHED public JWK.
+    const { ok } = verifyCapturedSignature(call, endpoint);
+    expect(ok).toBe(true);
+    // No credential/private material anywhere on the wire.
+    expect(JSON.stringify(call)).not.toMatch(/BEGIN PRIVATE KEY|MIGHAgEA/);
   });
 });

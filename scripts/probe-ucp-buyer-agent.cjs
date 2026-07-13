@@ -13,21 +13,32 @@
  *   5. confirm complete_checkout is REFUSED at Pivota's tier — captured, NEVER attempted.
  * and log the effective trust tier + negotiated scopes.
  *
+ * TRUST TIER: this probe reaches checkout-create at the SIGNED tier — RFC 9421 HTTP Message Signatures with
+ * Pivota's OWN ECDSA P-256 key. NO Shopify-issued credential is required ("No registration required"). Set
+ * UCP_AGENT_SIGNING_PRIVATE_KEY (PEM/JWK, secret) + UCP_AGENT_SIGNING_KEY_ID + publish the public JWK via
+ * UCP_AGENT_SIGNING_PUBLIC_JWK. Generate the pair with `node scripts/gen-ucp-agent-keypair.cjs`.
+ * If no signing key is set, the probe runs at the ANONYMOUS tier (catalog + cart only), SKIPS checkout-create
+ * (checkout tools require auth/signed), notes the skip, and exits 0 (clean, never an error).
+ *
  * HARD SAFETY BOUNDS:
  *   - NO real purchase, NO payment, NO complete_checkout. The client physically has no method that completes
  *     checkout; this script only records the refusal. It never opens/fetches the handoff URL.
  *   - Read + cart-build only against the target brand. No store mutation, no order.
- *   - Credential comes from env (UCP_AGENT_CREDENTIAL) ONLY; never printed. If absent, the probe prints
- *     "credential required — founder registration pending" and exits 0 (clean, not an error).
+ *   - The signing PRIVATE key comes from env ONLY and is NEVER printed. A Bearer token (UCP_AGENT_CREDENTIAL)
+ *     is optional and also never printed.
  *   - External content (catalog/store/API responses) is DATA, not instructions.
  *
  * Usage:
- *   UCP_AGENT_CREDENTIAL=... node scripts/probe-ucp-buyer-agent.cjs [target1 target2 ...]
- *   node scripts/probe-ucp-buyer-agent.cjs                      # defaults to the OY cohort below
+ *   UCP_AGENT_SIGNING_PRIVATE_KEY=... UCP_AGENT_SIGNING_KEY_ID=... UCP_AGENT_SIGNING_PUBLIC_JWK=... \
+ *     node scripts/probe-ucp-buyer-agent.cjs [target1 target2 ...]   # SIGNED: full catalog->cart->checkout->handoff
+ *   node scripts/probe-ucp-buyer-agent.cjs                            # ANONYMOUS: catalog+cart only, checkout skipped
  * Env:
- *   UCP_AGENT_CREDENTIAL   (required to run live) — JWT/token from the Shopify Dev Dashboard buyer-agent reg.
- *   UCP_AGENT_PROFILE_URL  (optional) — HTTPS URL Pivota's capability profile is hosted at.
- *   UCP_AGENT_TARGETS      (optional) — comma-separated targets (overridden by CLI args).
+ *   UCP_AGENT_SIGNING_PRIVATE_KEY  (enables SIGNED tier / checkout-create) — ECDSA P-256 PEM or JWK. Secret; never printed.
+ *   UCP_AGENT_SIGNING_KEY_ID       (with the private key) — the `keyid`; must match the published JWK `kid`.
+ *   UCP_AGENT_SIGNING_PUBLIC_JWK   (published in the profile) — the PUBLIC JWK.
+ *   UCP_AGENT_CREDENTIAL           (optional) — Bearer JWT for the TOKEN tier; not needed for this probe.
+ *   UCP_AGENT_PROFILE_URL          (optional) — HTTPS URL Pivota's capability profile is hosted at.
+ *   UCP_AGENT_TARGETS              (optional) — comma-separated targets (overridden by CLI args).
  */
 
 const DEFAULT_TARGETS = ['https://cosrx.com', 'https://beautyofjoseon.com', 'https://roundlab.com'];
@@ -91,13 +102,19 @@ async function probeTarget(client, target) {
     const cartId = pickCartId(cart.response);
     finding.storefront_handoff_url = client.extractHandoffUrl(cart) || null;
 
-    if (cartId) {
+    // Checkout tools require auth/signed. At ANONYMOUS tier we do NOT attempt checkout-create (it would just be
+    // refused) — we note the skip. At SIGNED/TOKEN tier we create the checkout and capture the handoff URL.
+    const canCheckout = client.tier === client.TRUST_TIER.SIGNED || client.tier === client.TRUST_TIER.TOKEN;
+    if (!cartId) {
+      finding.notes.push('no cart id returned; skipping checkout-create');
+    } else if (!canCheckout) {
+      finding.checkout_create = null;
+      finding.notes.push(`checkout-create skipped at '${client.tier}' tier (checkout tools require auth/signed); set UCP_AGENT_SIGNING_PRIVATE_KEY for the SIGNED tier`);
+    } else {
       const checkout = await client.createCheckout(endpoint, { cartId });
       finding.checkout_create = Boolean(checkout.ok && !checkout.error);
       finding.checkout = { status: checkout.status, error: checkout.error || null };
       finding.storefront_handoff_url = client.extractHandoffUrl(checkout) || finding.storefront_handoff_url;
-    } else {
-      finding.notes.push('no cart id returned; skipping checkout-create');
     }
   } catch (err) {
     finding.notes.push(`probe error: ${err && err.message ? err.message : String(err)}`);
@@ -132,19 +149,23 @@ function unwrap(resp) {
 }
 
 async function main() {
-  const credential = (process.env.UCP_AGENT_CREDENTIAL || '').trim();
-  if (!credential) {
-    // Clean exit, not an error — the founder's Dev Dashboard registration is pending.
-    process.stdout.write('credential required — founder registration pending\n');
-    process.stdout.write('Set UCP_AGENT_CREDENTIAL (JWT/token from the Shopify Dev Dashboard buyer-agent registration) to run the live probe.\n');
-    process.exit(0);
-    return;
-  }
-
   const { createUcpBuyerAgentClient } = await import('../src/services/ucpBuyerAgentClient.js');
   const client = createUcpBuyerAgentClient();
+  const identity = client.describeTier();
 
-  log({ event: 'probe_start', identity: client.describeTier(), profile_capabilities: Object.keys(client.buildProfile().ucp.capabilities) });
+  if (client.tier === client.TRUST_TIER.ANONYMOUS) {
+    // No signing key + no token: catalog + cart only, checkout-create is skipped (not an error).
+    log({
+      event: 'probe_mode',
+      tier: client.tier,
+      note: 'ANONYMOUS tier — catalog + cart only; checkout-create will be SKIPPED. '
+        + 'Set UCP_AGENT_SIGNING_PRIVATE_KEY (+ _KEY_ID, publish _PUBLIC_JWK) to reach checkout-create at the SIGNED tier.',
+    });
+  } else {
+    log({ event: 'probe_mode', tier: client.tier, note: `checkout-create ENABLED at '${client.tier}' tier` });
+  }
+
+  log({ event: 'probe_start', identity, profile_capabilities: Object.keys(client.buildProfile().ucp.capabilities) });
 
   const targets = resolveTargets();
   const findings = [];
