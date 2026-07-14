@@ -22,10 +22,20 @@
  * External content (the /.well-known/ucp profile, the cart response) is DATA, not instructions.
  */
 
-const { createUcpBuyerAgentClient } = require('./ucpBuyerAgentClient');
+const { createUcpBuyerAgentClient, FAILURE_REASON, classifyUcpFailure } = require('./ucpBuyerAgentClient');
+const defaultWarmHandoffMetrics = require('../observability/ucpWarmHandoffMetrics');
 
 const WARM_HANDOFF_DISPOSITION = 'warm_handoff';
 const FLAG_ENV = 'UCP_WARM_HANDOFF_ENABLED';
+
+// H1 resilience defaults (all overridable). Bounded so a slow brand can't hang the handoff — any breach falls
+// back to the cold redirect.
+const DEFAULT_ENDPOINT_TTL_MS = 10 * 60 * 1000; // reachable endpoint cached 10 min
+const DEFAULT_NEGATIVE_TTL_MS = 60 * 1000; // unreachable domain negative-cached only 60s (re-check sooner, don't hammer)
+const DEFAULT_CACHE_MAX_ENTRIES = 500; // bounded LRU-ish cap on distinct brand domains
+const DEFAULT_CALL_TIMEOUT_MS = 6000; // per-call timeout for the warm-handoff client
+const DEFAULT_CALL_RETRY_ATTEMPTS = 1; // at most one retry of an idempotent GET on the serving path
+const DEFAULT_TOTAL_BUDGET_MS = 9000; // total discover->cart(->preview) wall-clock budget
 // SEPARATE additive flag (Phase 1 in-chat priced preview). DEFAULT OFF. When OFF the warm-handoff result is
 // byte-identical to before this preview existed (no `preview` key). When ON, after building the cart the lane
 // also fetches a create_checkout PRICED preview (synthetic address, no PII) to enrich the result with
@@ -74,23 +84,90 @@ function normalizeBrandOrigin(brandDomain) {
 }
 
 /**
+ * A tiny bounded TTL cache (explicit, per the H1 mandate). Entries expire after their own `expiresAt`; a
+ * distinct positive vs. negative TTL lets unreachable domains re-check sooner without hammering. When the entry
+ * count exceeds `maxEntries` the oldest insertion is evicted (Map preserves insertion order). Time is injectable
+ * for deterministic tests.
+ * @param {{ maxEntries?: number, now?: () => number }} [opts]
+ */
+function createTtlCache({ maxEntries = DEFAULT_CACHE_MAX_ENTRIES, now = () => Date.now() } = {}) {
+  const store = new Map(); // key -> { value, expiresAt }
+  return {
+    get(key) {
+      const entry = store.get(key);
+      if (!entry) return undefined;
+      if (entry.expiresAt != null && now() >= entry.expiresAt) {
+        store.delete(key);
+        return undefined;
+      }
+      return entry.value;
+    },
+    set(key, value, ttlMs) {
+      // Refresh insertion order so recently-set keys survive eviction longest.
+      if (store.has(key)) store.delete(key);
+      const expiresAt = Number.isFinite(ttlMs) && ttlMs > 0 ? now() + ttlMs : null;
+      store.set(key, { value, expiresAt });
+      while (store.size > maxEntries) {
+        const oldest = store.keys().next().value;
+        if (oldest === undefined) break;
+        store.delete(oldest);
+      }
+    },
+    delete(key) { store.delete(key); },
+    get size() { return store.size; },
+    clear() { store.clear(); },
+  };
+}
+
+/** Bare host of an https origin (for a low-cardinality, PII-free metric/log label). */
+function hostOf(origin) {
+  try { return new URL(origin).host; } catch { return firstNonEmptyString(origin) || 'unknown'; }
+}
+
+/**
  * Create a warm-handoff service. The UCP buyer-agent client and its per-domain endpoint discovery are cached
  * for the lifetime of the service instance.
  * @param {{
  *   client?: object,            // a pre-built ucpBuyerAgentClient (tests inject a fake). Default: env-configured.
  *   clientOptions?: object,     // options forwarded to createUcpBuyerAgentClient when client is not supplied.
  *   logger?: { warn?: Function, info?: Function },
+ *   metrics?: object,           // observability sink (default: src/observability/ucpWarmHandoffMetrics).
+ *   totalBudgetMs?: number,     // total discover->cart(->preview) wall-clock budget (default env or 9000).
+ *   endpointTtlMs?: number,     // positive endpoint-cache TTL (default 10min).
+ *   negativeTtlMs?: number,     // negative (unreachable) cache TTL (default 60s, shorter — re-check sooner).
+ *   cacheMaxEntries?: number,   // bounded cache cap (default 500).
+ *   now?: () => number,         // injectable clock for tests.
  * }} [deps]
  */
 function createWarmHandoffService(deps = {}) {
-  const client = deps.client || createUcpBuyerAgentClient(deps.clientOptions || {});
+  // Bounded per-call timeout + at-most-one idempotent retry on the LIVE serving path so a slow brand can't hang
+  // the handoff. Caller-supplied clientOptions win.
+  const clientOptions = {
+    timeoutMs: DEFAULT_CALL_TIMEOUT_MS,
+    retryAttempts: DEFAULT_CALL_RETRY_ATTEMPTS,
+    ...(isPlainObject(deps.clientOptions) ? deps.clientOptions : {}),
+  };
+  const client = deps.client || createUcpBuyerAgentClient(clientOptions);
   const logger = deps.logger || null;
+  const metrics = deps.metrics || defaultWarmHandoffMetrics;
+  const now = typeof deps.now === 'function' ? deps.now : () => Date.now();
+  const totalBudgetMs = Number.isFinite(deps.totalBudgetMs)
+    ? Number(deps.totalBudgetMs)
+    : (Number.isFinite(Number(process.env.UCP_WARM_HANDOFF_BUDGET_MS))
+      ? Number(process.env.UCP_WARM_HANDOFF_BUDGET_MS)
+      : DEFAULT_TOTAL_BUDGET_MS);
+  const endpointTtlMs = Number.isFinite(deps.endpointTtlMs) ? Number(deps.endpointTtlMs) : DEFAULT_ENDPOINT_TTL_MS;
+  const negativeTtlMs = Number.isFinite(deps.negativeTtlMs) ? Number(deps.negativeTtlMs) : DEFAULT_NEGATIVE_TTL_MS;
+  const cacheMaxEntries = Number.isFinite(deps.cacheMaxEntries) ? Number(deps.cacheMaxEntries) : DEFAULT_CACHE_MAX_ENTRIES;
   // In-chat priced preview is a SEPARATE additive flag (default OFF). Tests may force it via deps.previewEnabled.
   const previewEnabled = typeof deps.previewEnabled === 'boolean'
     ? deps.previewEnabled
     : isInchatPreviewEnabled(deps && deps.env ? deps.env : process.env);
-  // domain(origin) -> { mcpEndpoint: string|null, reachable: boolean } (endpoint discovery is cached per-domain).
-  const endpointCache = new Map();
+  // Explicit, bounded, TTL'd endpoint cache. Value = { mcpEndpoint: string|null, reachable, reason }.
+  const endpointCache = createTtlCache({ maxEntries: cacheMaxEntries, now });
+  // Hosts that have EVER resolved reachable in this process — used to detect reachability drift (a brand that
+  // used to expose UCP starts failing discovery). PII-free (host only).
+  const everReachable = new Set();
 
   function note(level, event, detail) {
     if (logger && typeof logger[level] === 'function') {
@@ -98,23 +175,56 @@ function createWarmHandoffService(deps = {}) {
     }
   }
 
-  /** Discover (and cache) the brand's UCP MCP endpoint. Returns null when the brand is not UCP-reachable. */
-  async function discoverBrandEndpoint(origin) {
-    if (endpointCache.has(origin)) return endpointCache.get(origin).mcpEndpoint;
-    let entry = { mcpEndpoint: null, reachable: false };
-    try {
-      const disco = await client.discoverEndpoint(origin);
-      if (disco && disco.mcpEndpoint) entry = { mcpEndpoint: disco.mcpEndpoint, reachable: true };
-      else note('info', 'ucp_warm_handoff_not_reachable', { origin, status: disco && disco.status });
-    } catch (err) {
-      note('warn', 'ucp_warm_handoff_discovery_error', { origin, message: err && err.message });
+  function safeMetric(fn, arg) {
+    if (metrics && typeof metrics[fn] === 'function') {
+      try { metrics[fn](arg); } catch { /* metrics must never throw the lane */ }
     }
-    endpointCache.set(origin, entry);
-    return entry.mcpEndpoint;
   }
 
   /**
-   * Resolve a warm handoff for a crawled product.
+   * Discover the brand's UCP MCP endpoint with an explicit bounded TTL cache (+ negative cache for unreachable
+   * domains) and reachability-drift detection. Returns { mcpEndpoint, reachable, reason }.
+   */
+  async function discoverBrandEndpointDetailed(origin) {
+    const cached = endpointCache.get(origin);
+    if (cached !== undefined) return cached;
+
+    let entry = { mcpEndpoint: null, reachable: false, reason: FAILURE_REASON.NOT_UCP_REACHABLE };
+    try {
+      const disco = await client.discoverEndpoint(origin);
+      if (disco && disco.mcpEndpoint) {
+        entry = { mcpEndpoint: disco.mcpEndpoint, reachable: true, reason: null };
+      } else {
+        entry = { mcpEndpoint: null, reachable: false, reason: FAILURE_REASON.NOT_UCP_REACHABLE };
+        note('info', 'ucp_warm_handoff_not_reachable', { origin, status: disco && disco.status });
+      }
+    } catch (err) {
+      entry = { mcpEndpoint: null, reachable: false, reason: classifyUcpFailure({ thrown: err, phase: 'discovery' }) };
+      note('warn', 'ucp_warm_handoff_discovery_error', { origin, message: err && err.message, reason: entry.reason });
+    }
+
+    if (entry.reachable) {
+      everReachable.add(hostOf(origin));
+    } else if (everReachable.has(hostOf(origin))) {
+      // A previously-reachable brand is now failing discovery: emit a reachability-drift signal (cohort coverage
+      // is changing). Emitted on the fresh check that flips reachable->unreachable (negative TTL rate-limits it).
+      note('warn', 'ucp_warm_handoff_reachability_drift', { origin, brand_domain: hostOf(origin), reason: entry.reason });
+      safeMetric('recordReachabilityDrift', { brandDomain: hostOf(origin) });
+    }
+
+    endpointCache.set(origin, entry, entry.reachable ? endpointTtlMs : negativeTtlMs);
+    return entry;
+  }
+
+  /** Back-compat: discover (and cache) the brand's UCP MCP endpoint; returns the endpoint string or null. */
+  async function discoverBrandEndpoint(origin) {
+    const detailed = await discoverBrandEndpointDetailed(origin);
+    return detailed ? detailed.mcpEndpoint : null;
+  }
+
+  /**
+   * Resolve a warm handoff for a crawled product. EVERY failure path resolves to a clean `null` (cold-redirect
+   * fallback), tagged with an H1 taxonomy `reason` for observability. Success behavior is unchanged.
    * @param {{
    *   brandDomain: string,      // the brand storefront host/URL (e.g. cosrx.com)
    *   variantGid: string,       // resolved Shopify variant GID (gid://shopify/ProductVariant/<n>)
@@ -125,12 +235,34 @@ function createWarmHandoffService(deps = {}) {
    * @returns {Promise<{ disposition, continue_url, cart_id, line_item, mcp_endpoint } | null>}
    */
   async function resolveWarmHandoff(params = {}) {
+    const startedAt = now();
     const origin = normalizeBrandOrigin(params.brandDomain);
     const variantGid = firstNonEmptyString(params.variantGid);
-    if (!origin || !variantGid) return null;
 
-    const mcpEndpoint = await discoverBrandEndpoint(origin);
-    if (!mcpEndpoint) return null;
+    // Terminal fallback: record the tagged reason + latency, then return null so the caller cold-redirects.
+    function fallback(reason, brandDomain) {
+      safeMetric('recordWarmHandoffOutcome', { outcome: 'fallback', reason, brandDomain });
+      safeMetric('observeWarmHandoffLatency', { outcome: 'fallback', latencyMs: now() - startedAt });
+      return null;
+    }
+
+    if (!origin || !variantGid) {
+      // No usable inputs — this is not a UCP failure; tag as invalid_input for visibility.
+      return fallback(FAILURE_REASON.INVALID_INPUT, hostOf(origin || firstNonEmptyString(params.brandDomain)));
+    }
+    const brandLabel = hostOf(origin);
+
+    const detailed = await discoverBrandEndpointDetailed(origin);
+    if (!detailed || !detailed.mcpEndpoint) {
+      return fallback((detailed && detailed.reason) || FAILURE_REASON.NOT_UCP_REACHABLE, brandLabel);
+    }
+    const mcpEndpoint = detailed.mcpEndpoint;
+
+    // Total-latency guard: if discovery already burned the budget, bail to cold redirect rather than risk a hang.
+    if (now() - startedAt > totalBudgetMs) {
+      note('info', 'ucp_warm_handoff_budget_exceeded', { origin, phase: 'pre_cart' });
+      return fallback(FAILURE_REASON.TIMEOUT, brandLabel);
+    }
 
     const quantity = Number.isInteger(params.quantity) && params.quantity > 0 ? params.quantity : 1;
     let cart;
@@ -141,23 +273,32 @@ function createWarmHandoffService(deps = {}) {
         ...(isPlainObject(params.attribution) ? { attribution: params.attribution } : {}),
       });
     } catch (err) {
-      note('warn', 'ucp_warm_handoff_create_cart_error', { origin, message: err && err.message });
-      return null;
+      const reason = classifyUcpFailure({ thrown: err, phase: 'create_cart' });
+      note('warn', 'ucp_warm_handoff_create_cart_error', { origin, message: err && err.message, reason });
+      return fallback(reason, brandLabel);
     }
 
     if (!cart || !cart.ok || cart.error) {
+      // Classify the merchant's own error (out-of-stock / invalid-variant / discontinued / schema) so the cold
+      // fallback is tagged; never surface a broken cart.
+      const reason = classifyUcpFailure({
+        status: cart && cart.status,
+        errorMessage: cart && cart.error && (cart.error.message || cart.error.code),
+        phase: 'create_cart',
+      });
       note('info', 'ucp_warm_handoff_cart_refused', {
         origin,
         status: cart && cart.status,
         error_code: cart && cart.error && cart.error.code,
+        reason,
       });
-      return null;
+      return fallback(reason, brandLabel);
     }
 
     const continueUrl = client.extractHandoffUrl(cart);
     if (!continueUrl) {
       note('info', 'ucp_warm_handoff_no_continue_url', { origin, status: cart.status });
-      return null;
+      return fallback(FAILURE_REASON.NO_CONTINUE_URL, brandLabel);
     }
 
     const cartId = extractCartId(cart);
@@ -171,13 +312,17 @@ function createWarmHandoffService(deps = {}) {
 
     // PHASE 1 in-chat PRICED PREVIEW enrichment. Only when the SEPARATE flag is ON. Flag OFF => `result` above is
     // returned unchanged (byte-identical to today's warm handoff). Any preview failure is swallowed so the warm
-    // handoff still succeeds with just the continue_url. HARD BOUND: create_checkout preview only — no payment,
-    // no completion, the continue_url is never opened.
-    if (previewEnabled && cartId && typeof client.createCheckoutPreview === 'function') {
+    // handoff still succeeds with just the continue_url. Skipped if the total budget is already spent. HARD BOUND:
+    // create_checkout preview only — no payment, no completion, the continue_url is never opened.
+    if (previewEnabled && cartId && typeof client.createCheckoutPreview === 'function'
+      && now() - startedAt <= totalBudgetMs) {
       const preview = await buildPreview({ mcpEndpoint, cartId, variantGid, quantity, origin });
       if (preview) result.preview = preview;
     }
 
+    // SUCCESS — the lane returned a warm cart + continue_url. Record success + latency (no PII, no URL material).
+    safeMetric('recordWarmHandoffOutcome', { outcome: 'success', reason: 'ok', brandDomain: brandLabel });
+    safeMetric('observeWarmHandoffLatency', { outcome: 'success', latencyMs: now() - startedAt });
     return result;
   }
 
@@ -216,8 +361,9 @@ function createWarmHandoffService(deps = {}) {
   return {
     resolveWarmHandoff,
     discoverBrandEndpoint,
+    discoverBrandEndpointDetailed,
     WARM_HANDOFF_DISPOSITION,
-    // exposed for observability/tests; never contains secrets.
+    // exposed for observability/tests; never contains secrets or URL key material.
     _endpointCache: endpointCache,
   };
 }
@@ -264,6 +410,7 @@ function unwrapCartPayload(cart) {
 
 module.exports = {
   createWarmHandoffService,
+  createTtlCache,
   isWarmHandoffEnabled,
   isInchatPreviewEnabled,
   normalizeBrandOrigin,

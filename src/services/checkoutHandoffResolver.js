@@ -15,6 +15,17 @@ const HANDOFF_KIND = 'pivota_agent_checkout_handoff';
 const DIRECT_COMMERCE_PATH = 'pivota_direct_quote_first';
 const WARM_HANDOFF_AUTHORITY = 'pivota_ucp_warm_handoff';
 
+// The shared structured logger, loaded lazily + defensively (never let a logging-require failure break the
+// serving path). Passed to the warm-handoff service so H2 emits structured fallback/drift logs in prod.
+function getWarmHandoffLogger() {
+  try {
+    // eslint-disable-next-line global-require
+    return require('../logger');
+  } catch {
+    return null;
+  }
+}
+
 const FORBIDDEN_MONEY_FIELDS = new Set([
   'amount',
   'total_amount',
@@ -530,9 +541,11 @@ function resolveWarmHandoffService(deps = {}) {
   // the flag-OFF path). Cached on deps so repeated policy branches reuse per-domain endpoint discovery.
   try {
     if (!deps.__warmHandoffServiceSingleton) {
-      deps.__warmHandoffServiceSingleton = createWarmHandoffService(
-        isPlainObject(deps.warmHandoffOptions) ? deps.warmHandoffOptions : {},
-      );
+      const baseOpts = isPlainObject(deps.warmHandoffOptions) ? deps.warmHandoffOptions : {};
+      // Wire the shared structured logger (H2 observability) unless the caller already supplied one. The metrics
+      // sink defaults inside the service to src/observability/ucpWarmHandoffMetrics. Never carries secrets.
+      const opts = baseOpts.logger ? baseOpts : { ...baseOpts, logger: getWarmHandoffLogger() };
+      deps.__warmHandoffServiceSingleton = createWarmHandoffService(opts);
     }
     return deps.__warmHandoffServiceSingleton;
   } catch {
