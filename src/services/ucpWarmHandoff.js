@@ -26,6 +26,11 @@ const { createUcpBuyerAgentClient } = require('./ucpBuyerAgentClient');
 
 const WARM_HANDOFF_DISPOSITION = 'warm_handoff';
 const FLAG_ENV = 'UCP_WARM_HANDOFF_ENABLED';
+// SEPARATE additive flag (Phase 1 in-chat priced preview). DEFAULT OFF. When OFF the warm-handoff result is
+// byte-identical to before this preview existed (no `preview` key). When ON, after building the cart the lane
+// also fetches a create_checkout PRICED preview (synthetic address, no PII) to enrich the result with
+// { item, shipping_options, tax, total, currency, continue_url }. It NEVER completes checkout or pays.
+const INCHAT_PREVIEW_FLAG_ENV = 'UCP_INCHAT_PREVIEW_ENABLED';
 
 function isPlainObject(v) {
   return Boolean(v && typeof v === 'object' && !Array.isArray(v));
@@ -39,10 +44,19 @@ function firstNonEmptyString(...values) {
   return '';
 }
 
+function isFlagOn(value) {
+  const raw = firstNonEmptyString(value).toLowerCase();
+  return raw === '1' || raw === 'true' || raw === 'yes' || raw === 'on';
+}
+
 /** Is the warm-handoff lane enabled? Flag-gated, DEFAULT OFF. */
 function isWarmHandoffEnabled(env = process.env) {
-  const raw = firstNonEmptyString(env && env[FLAG_ENV]).toLowerCase();
-  return raw === '1' || raw === 'true' || raw === 'yes' || raw === 'on';
+  return isFlagOn(env && env[FLAG_ENV]);
+}
+
+/** Is the Phase 1 in-chat priced preview enrichment enabled? SEPARATE flag, DEFAULT OFF. */
+function isInchatPreviewEnabled(env = process.env) {
+  return isFlagOn(env && env[INCHAT_PREVIEW_FLAG_ENV]);
 }
 
 /** Normalize a brand domain into an https origin (accepts bare host or full URL). */
@@ -71,6 +85,10 @@ function normalizeBrandOrigin(brandDomain) {
 function createWarmHandoffService(deps = {}) {
   const client = deps.client || createUcpBuyerAgentClient(deps.clientOptions || {});
   const logger = deps.logger || null;
+  // In-chat priced preview is a SEPARATE additive flag (default OFF). Tests may force it via deps.previewEnabled.
+  const previewEnabled = typeof deps.previewEnabled === 'boolean'
+    ? deps.previewEnabled
+    : isInchatPreviewEnabled(deps && deps.env ? deps.env : process.env);
   // domain(origin) -> { mcpEndpoint: string|null, reachable: boolean } (endpoint discovery is cached per-domain).
   const endpointCache = new Map();
 
@@ -142,13 +160,57 @@ function createWarmHandoffService(deps = {}) {
       return null;
     }
 
-    return {
+    const cartId = extractCartId(cart);
+    const result = {
       disposition: WARM_HANDOFF_DISPOSITION,
       continue_url: continueUrl,
-      cart_id: extractCartId(cart),
+      cart_id: cartId,
       line_item: buildLineItemSummary(cart, variantGid, quantity),
       mcp_endpoint: mcpEndpoint,
     };
+
+    // PHASE 1 in-chat PRICED PREVIEW enrichment. Only when the SEPARATE flag is ON. Flag OFF => `result` above is
+    // returned unchanged (byte-identical to today's warm handoff). Any preview failure is swallowed so the warm
+    // handoff still succeeds with just the continue_url. HARD BOUND: create_checkout preview only — no payment,
+    // no completion, the continue_url is never opened.
+    if (previewEnabled && cartId && typeof client.createCheckoutPreview === 'function') {
+      const preview = await buildPreview({ mcpEndpoint, cartId, variantGid, quantity, origin });
+      if (preview) result.preview = preview;
+    }
+
+    return result;
+  }
+
+  /** Fetch + normalize the create_checkout priced preview. Never throws; returns null on any failure. */
+  async function buildPreview({ mcpEndpoint, cartId, variantGid, quantity, origin }) {
+    try {
+      const pv = await client.createCheckoutPreview(mcpEndpoint, {
+        cartId,
+        lineItems: [{ item: { id: variantGid }, quantity }],
+      });
+      if (!pv || !pv.ok || !pv.priced) {
+        note('info', 'ucp_inchat_preview_unavailable', { origin, status: pv && pv.status });
+        return null;
+      }
+      const p = pv.priced;
+      return {
+        item: p.item || null,
+        shipping_options: Array.isArray(p.shipping_options) ? p.shipping_options : [],
+        tax: p.tax != null ? p.tax : null,
+        subtotal: p.subtotal != null ? p.subtotal : null,
+        total: p.total != null ? p.total : null,
+        currency: p.currency || null,
+        // The shopper still pays on the merchant storefront; this is the same handoff URL, surfaced for display.
+        continue_url: p.continue_url || null,
+        checkout_status: p.status || null,
+        // True when the merchant still needs a delivery address / payment entered on the STOREFRONT to finalize.
+        requires_escalation: Boolean(pv.requires_escalation),
+        messages: Array.isArray(p.messages) ? p.messages : [],
+      };
+    } catch (err) {
+      note('warn', 'ucp_inchat_preview_error', { origin, message: err && err.message });
+      return null;
+    }
   }
 
   return {
@@ -203,7 +265,9 @@ function unwrapCartPayload(cart) {
 module.exports = {
   createWarmHandoffService,
   isWarmHandoffEnabled,
+  isInchatPreviewEnabled,
   normalizeBrandOrigin,
   WARM_HANDOFF_DISPOSITION,
   FLAG_ENV,
+  INCHAT_PREVIEW_FLAG_ENV,
 };

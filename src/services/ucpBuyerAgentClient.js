@@ -53,9 +53,29 @@ const TOOL = Object.freeze({
   CREATE_CART: 'create_cart',
   GET_CART: 'get_cart',
   CREATE_CHECKOUT: 'create_checkout',
+  UPDATE_CHECKOUT: 'update_checkout',
   GET_CHECKOUT: 'get_checkout',
   COMPLETE_CHECKOUT: 'complete_checkout', // NEVER invoked by this client.
 });
+
+// SYNTHETIC, clearly-fake US shipping address used ONLY to fetch shipping/tax quotes for the in-chat priced
+// preview. This is NOT a real person and carries NO real buyer PII — it exists solely so create_checkout can
+// compute shipping options + tax before the shopper decides. The street literally says "SAMPLE".
+const SYNTHETIC_PREVIEW_ADDRESS = Object.freeze({
+  first_name: 'Preview',
+  last_name: 'Sample',
+  address1: '1 SAMPLE PREVIEW ADDRESS',
+  address2: '',
+  city: 'San Francisco',
+  province: 'CA',
+  province_code: 'CA',
+  country: 'United States',
+  country_code: 'US',
+  zip: '94105',
+  phone: '+10000000000',
+});
+// A synthetic contact email for the same preview-only purpose (no real buyer inbox).
+const SYNTHETIC_PREVIEW_EMAIL = 'preview-sample@example.com';
 
 const TRUST_TIER = Object.freeze({
   ANONYMOUS: 'anonymous',
@@ -92,6 +112,25 @@ function normalizeBaseUrl(u, field) {
  */
 function createUcpBuyerAgentClient(options = {}) {
   const credential = firstNonEmpty(options.credential, process.env.UCP_AGENT_CREDENTIAL);
+  // TOKEN tier via SELF-SERVE client-credential exchange (Shopify Dev Dashboard flow, verified 2026-07-13 from
+  // shopify.dev/docs/agents/get-started/authentication): POST { client_id, client_secret,
+  // grant_type:"client_credentials" } to the token endpoint -> a short-lived (60-min) JWT that feeds the
+  // EXISTING Bearer token-tier path. The client_id/secret are env-only and NEVER logged; the minted JWT is
+  // cached and refreshed before expiry and never logged either. A static `credential` (UCP_AGENT_CREDENTIAL)
+  // still wins and short-circuits the exchange (existing behavior unchanged).
+  const clientId = firstNonEmpty(options.clientId, process.env.UCP_AGENT_CLIENT_ID);
+  const clientSecret = firstNonEmpty(options.clientSecret, process.env.UCP_AGENT_CLIENT_SECRET);
+  const hasClientCredentials = Boolean(clientId && clientSecret);
+  const tokenEndpoint = firstNonEmpty(
+    options.tokenEndpoint,
+    process.env.UCP_AGENT_TOKEN_ENDPOINT,
+    'https://api.shopify.com/auth/access_token',
+  );
+  // Refresh the minted JWT this many ms BEFORE its stated expiry (default 5 min) so an in-flight request never
+  // races the 60-min TTL boundary.
+  const tokenRefreshSkewMs = Number.isFinite(options.tokenRefreshSkewMs)
+    ? Number(options.tokenRefreshSkewMs)
+    : 5 * 60 * 1000;
   const profileUrl = firstNonEmpty(
     options.profileUrl,
     process.env.UCP_AGENT_PROFILE_URL,
@@ -122,9 +161,61 @@ function createUcpBuyerAgentClient(options = {}) {
   // Optional explicit public JWK(s) to publish in the profile (else the profile module reads env). Never private.
   const signingKeysToPublish = Array.isArray(options.signingKeys) ? options.signingKeys : undefined;
 
-  // Trust tier is derived by descending capability: a Bearer token (TOKEN) beats a signing key (SIGNED) beats
-  // nothing (ANONYMOUS). complete_checkout is refused at ALL of them by this client.
-  const tier = credential ? TRUST_TIER.TOKEN : (canSign ? TRUST_TIER.SIGNED : TRUST_TIER.ANONYMOUS);
+  // Trust tier is derived by descending capability: TOKEN (a static Bearer token OR self-serve client
+  // credentials we can exchange for one) beats a signing key (SIGNED) beats nothing (ANONYMOUS).
+  // complete_checkout is refused at ALL of them by this client.
+  const hasTokenTierCredential = Boolean(credential) || hasClientCredentials;
+  const tier = hasTokenTierCredential
+    ? TRUST_TIER.TOKEN
+    : (canSign ? TRUST_TIER.SIGNED : TRUST_TIER.ANONYMOUS);
+
+  // Cached minted JWT from the client-credential exchange: { token, expiresAt(ms) }. Never logged.
+  let tokenCache = null;
+
+  /**
+   * Exchange client_id/client_secret for a short-lived JWT (client_credentials grant). Caches with a refresh
+   * skew. NEVER logs/returns the secret or the JWT; on failure throws an error that carries only the HTTP
+   * status (no credential material).
+   */
+  async function exchangeClientCredentials() {
+    const doFetch = requireFetch();
+    const res = await withTimeout((signal) => doFetch(tokenEndpoint, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        accept: 'application/json',
+        'user-agent': userAgent,
+      },
+      body: JSON.stringify({ client_id: clientId, client_secret: clientSecret, grant_type: 'client_credentials' }),
+      signal,
+    }), timeoutMs);
+    const text = await res.text();
+    let parsed;
+    try { parsed = text ? JSON.parse(text) : null; } catch { parsed = null; }
+    const accessToken = parsed && firstNonEmpty(parsed.access_token, parsed.token);
+    if (!res.ok || !accessToken) {
+      // Deliberately opaque — never echo the request body or any credential/JWT into the error/logs.
+      throw new Error(`ucpBuyerAgentClient: token-credential exchange failed (status ${res.status}).`);
+    }
+    const ttlSec = Number.isFinite(parsed.expires_in) && Number(parsed.expires_in) > 0
+      ? Number(parsed.expires_in)
+      : 3600; // Shopify's documented default is a 60-min TTL.
+    tokenCache = { token: accessToken, expiresAt: Date.now() + ttlSec * 1000 };
+    return accessToken;
+  }
+
+  /**
+   * Resolve the Bearer token to attach for the TOKEN tier. A static credential wins verbatim (unchanged path);
+   * otherwise the cached client-credential JWT is reused until it enters the refresh window, then re-minted.
+   * Returns null when there is no token-tier credential at all (ANONYMOUS/SIGNED send no Authorization header).
+   */
+  async function resolveBearerToken() {
+    if (credential) return credential;
+    if (!hasClientCredentials) return null;
+    const now = Date.now();
+    if (tokenCache && now < tokenCache.expiresAt - tokenRefreshSkewMs) return tokenCache.token;
+    return exchangeClientCredentials();
+  }
 
   function requireFetch() {
     if (!fetchImpl) {
@@ -149,14 +240,15 @@ function createUcpBuyerAgentClient(options = {}) {
     return meta;
   }
 
-  function authHeaders() {
+  function authHeaders(bearer) {
     const headers = {
       'content-type': 'application/json',
       accept: 'application/json, text/event-stream',
       'user-agent': userAgent,
     };
-    // TOKEN tier only. Never logged. ANONYMOUS/SIGNED send no Authorization header.
-    if (tier === TRUST_TIER.TOKEN) headers.authorization = `Bearer ${credential}`;
+    // TOKEN tier only. Never logged. ANONYMOUS/SIGNED send no Authorization header. `bearer` is the static
+    // credential OR the freshly-minted client-credential JWT resolved by resolveBearerToken().
+    if (tier === TRUST_TIER.TOKEN && bearer) headers.authorization = `Bearer ${bearer}`;
     return headers;
   }
 
@@ -177,6 +269,12 @@ function createUcpBuyerAgentClient(options = {}) {
     return {
       tier,
       has_credential: Boolean(credential),
+      // Self-serve client-credential exchange is configured (client_id + client_secret present). Boolean only —
+      // the secret and the minted JWT are NEVER exposed.
+      has_client_credentials: hasClientCredentials,
+      // True when SOME token-tier credential is available (static token OR exchangeable client credentials).
+      has_token_tier_credential: hasTokenTierCredential,
+      token_endpoint: hasClientCredentials ? tokenEndpoint : undefined,
       // Boolean only — the private key value is NEVER exposed.
       has_signing_key: canSign,
       signing_key_id: canSign ? signingKeyId : undefined,
@@ -241,7 +339,10 @@ function createUcpBuyerAgentClient(options = {}) {
     };
     const bodyString = JSON.stringify(body);
 
-    const headers = authHeaders();
+    // TOKEN tier: resolve (mint/refresh) the Bearer JWT before building headers. ANONYMOUS/SIGNED skip this and
+    // stay byte-identical to before (no exchange, no Authorization header).
+    const bearer = tier === TRUST_TIER.TOKEN ? await resolveBearerToken() : null;
+    const headers = authHeaders(bearer);
     if (tier === TRUST_TIER.SIGNED) {
       // Mirror the meta pointers as covered HTTP headers, then sign. The private key never leaves this scope.
       headers['ucp-agent'] = ucpAgentHeaderValue();
@@ -271,14 +372,20 @@ function createUcpBuyerAgentClient(options = {}) {
     const text = await res.text();
     let parsed;
     try { parsed = text ? JSON.parse(text) : null; } catch { parsed = { raw: text }; }
+    // MCP tool-level failures come back HTTP-200 with { result: { isError: true, content:[{type:'text',...}] } }
+    // (e.g. "Invalid arguments: ... missing required properties: line_items") — NOT a JSON-RPC top-level error.
+    // Surface those as an `error` too so callers (preview/warm-handoff) treat them as failures, not empty prices.
+    const mcpToolError = parsed && parsed.result && parsed.result.isError
+      ? { code: 'mcp_tool_error', message: mcpErrorText(parsed.result) }
+      : undefined;
     return {
       ok: res.ok,
       status: res.status,
       tool: toolName,
       tier,
       response: parsed,
-      // JSON-RPC error (e.g. auth/tier refusal) is surfaced without throwing so the probe can log it.
-      error: parsed && parsed.error ? parsed.error : (res.ok ? undefined : { code: res.status, message: text }),
+      // JSON-RPC error (auth/tier refusal) OR an MCP tool error is surfaced without throwing so the probe logs it.
+      error: (parsed && parsed.error) || mcpToolError || (res.ok ? undefined : { code: res.status, message: text }),
     };
   }
 
@@ -313,14 +420,95 @@ function createUcpBuyerAgentClient(options = {}) {
   }
 
   /**
-   * Create a checkout from a cart. Checkout tools require auth/signed per spec — at anonymous tier this is
-   * expected to be refused, which is itself a probe finding (captured, not forced).
+   * List the tools a merchant UCP endpoint exposes (JSON-RPC `tools/list`). Used to fetch the LIVE
+   * create_checkout/update_checkout inputSchema (we do NOT guess the request shape). Read-only; carries the
+   * agent profile in meta like every request. Never calls a state-changing tool.
    */
-  async function createCheckout(mcpEndpoint, { cartId, buyer } = {}) {
-    if (!cartId) throw new Error('createCheckout requires cartId');
-    const args = { cart_id: cartId };
-    if (buyer) args.buyer = buyer;
+  async function listTools(mcpEndpoint) {
+    const endpoint = normalizeBaseUrl(mcpEndpoint, 'mcpEndpoint').toString();
+    const doFetch = requireFetch();
+    const bearer = tier === TRUST_TIER.TOKEN ? await resolveBearerToken() : null;
+    const headers = authHeaders(bearer);
+    const body = {
+      jsonrpc: '2.0',
+      id: cryptoId(),
+      method: 'tools/list',
+      // The profile pointer is required at params.arguments.meta for both tools/list and tools/call (live-verified).
+      params: { arguments: { meta: requestMeta() } },
+    };
+    const bodyString = JSON.stringify(body);
+    const res = await withTimeout((signal) => doFetch(endpoint, {
+      method: 'POST', headers, body: bodyString, signal,
+    }), timeoutMs);
+    const text = await res.text();
+    let parsed;
+    try { parsed = text ? JSON.parse(text) : null; } catch { parsed = { raw: text }; }
+    return { ok: res.ok, status: res.status, tier, response: parsed,
+      error: parsed && parsed.error ? parsed.error : (res.ok ? undefined : { code: res.status, message: text }) };
+  }
+
+  /**
+   * Create a checkout from a cart (LIVE create_checkout schema). Requires `line_items` even when converting a
+   * `cart_id`. `context` carries the destination HINTS (there is no shipping_address field). Checkout tools
+   * require auth/signed per spec; at anonymous tier a refusal is a captured finding (not forced). NEVER pays or
+   * completes; NEVER attaches a payment instrument.
+   * @param {{ cartId?: string, lineItems?: Array, buyer?: object, context?: object, attribution?: object,
+   *          checkout?: object }} params
+   */
+  async function createCheckout(mcpEndpoint, { cartId, lineItems, buyer, context, attribution, checkout } = {}) {
+    const args = buildCheckoutArgs({ cartId, lineItems, buyer, context, attribution, checkout });
     return callTool(mcpEndpoint, TOOL.CREATE_CHECKOUT, args);
+  }
+
+  /**
+   * Update an existing checkout to re-price (LIVE update_checkout schema requires top-level `id` + meta +
+   * checkout). Same additive fields as createCheckout. NEVER pays or completes.
+   * @param {{ checkoutId: string, cartId?: string, lineItems?: Array, buyer?: object, context?: object,
+   *          attribution?: object, checkout?: object }} params
+   */
+  async function updateCheckout(mcpEndpoint, { checkoutId, cartId, lineItems, buyer, context, attribution, checkout } = {}) {
+    if (!checkoutId) throw new Error('updateCheckout requires checkoutId');
+    const args = buildCheckoutArgs({ cartId, lineItems, buyer, context, attribution, checkout });
+    args.id = checkoutId; // top-level `id` per the live update_checkout schema.
+    return callTool(mcpEndpoint, TOOL.UPDATE_CHECKOUT, args);
+  }
+
+  /**
+   * PHASE 1 in-chat PRICED PREVIEW (docs/ucp_inchat_preview_build_2026-07-13.md). From a built cart (+ its
+   * line_items), create a checkout using a SYNTHETIC sample US address (placeholder, no real PII) — mapped to
+   * the schema's `context` destination HINTS — purely to price the order, then return the NORMALIZED priced
+   * object { item, shipping_options, tax, total, currency, continue_url, ... }.
+   *
+   * LIVE-VERIFIED (cosrx, 2026-07-13): create_checkout returns the item + subtotal + total + currency +
+   * continue_url + storefront policy links. Shipping options and tax are NOT returned at this step — Shopify
+   * requires the full delivery address (collected on the storefront), surfaced as recoverable `messages`
+   * (delivery_address_required). So shipping_options=[] / tax=null here is the HONEST merchant response, not a
+   * client omission. This NEVER completes checkout and NEVER pays; the shopper pays on the storefront.
+   * @param {{ cartId?: string, lineItems?: Array, address?: object, email?: string, context?: object }} params
+   */
+  async function createCheckoutPreview(mcpEndpoint, { cartId, lineItems, address, email, context } = {}) {
+    if (!cartId && !(Array.isArray(lineItems) && lineItems.length)) {
+      throw new Error('createCheckoutPreview requires cartId or lineItems');
+    }
+    const addr = isPlainObjectLocal(address) ? address : SYNTHETIC_PREVIEW_ADDRESS;
+    const ctx = { currency: 'USD', ...addressToContextHints(addr), ...(isPlainObjectLocal(context) ? context : {}) };
+    const buyer = { email: firstNonEmpty(email, SYNTHETIC_PREVIEW_EMAIL) };
+    const result = await createCheckout(mcpEndpoint, { cartId, lineItems, buyer, context: ctx });
+    if (!result || (result.status && result.status >= 400)) {
+      return { ok: false, status: result && result.status, error: result && result.error, tool_result: result };
+    }
+    // A usable priced preview may come back with the merchant's `isError:true` / status `requires_escalation`
+    // (Shopify flags that a full delivery address + payment must still be entered on the STOREFRONT). That is a
+    // valid in-chat preview, NOT a failure — we surface it with `requires_escalation` + `messages`. Only a
+    // payload with no priced content (e.g. an "invalid arguments" text error) is treated as a hard failure.
+    const priced = normalizePricedCheckout(result);
+    const usable = Boolean(priced && (priced.item || priced.continue_url || priced.total != null));
+    if (!usable) {
+      return { ok: false, status: result.status, error: result.error, tool_result: result };
+    }
+    const requiresEscalation = Boolean(result.error) || priced.status === 'requires_escalation'
+      || (Array.isArray(priced.messages) && priced.messages.some((m) => m && m.code === 'delivery_address_required'));
+    return { ok: true, status: result.status, tier, priced, requires_escalation: requiresEscalation, tool_result: result };
   }
 
   /**
@@ -354,16 +542,160 @@ function createUcpBuyerAgentClient(options = {}) {
     TOOL,
     TRUST_TIER,
     tier,
+    SYNTHETIC_PREVIEW_ADDRESS,
     buildProfile,
     describeTier,
     discoverEndpoint,
+    listTools,
     callTool,
     catalogSearch,
     createCart,
     createCheckout,
+    updateCheckout,
+    createCheckoutPreview,
+    normalizePricedCheckout,
     refuseCompleteCheckout,
     extractHandoffUrl,
   };
+}
+
+function isPlainObjectLocal(v) {
+  return Boolean(v && typeof v === 'object' && !Array.isArray(v));
+}
+
+/**
+ * Assemble create/update_checkout tool fields to the LIVE create_checkout inputSchema (fetched from cosrx via
+ * tools/list, 2026-07-13). Top-level is `{ meta, checkout }` (meta is added by callTool); the merchant re-prices
+ * from the cart + line_items + context. Only defined fields are attached.
+ *
+ * LIVE schema notes (verified 2026-07-13): `checkout.required = ["line_items"]` — `line_items` MUST be present
+ * even when converting a `cart_id`. There is NO `shipping_address` field; the destination is conveyed only as
+ * `context` HINTS (address_country / address_region / postal_code / currency), and Shopify collects the full
+ * delivery address on the storefront (so shipping/tax quotes are not returned at this step). We NEVER attach the
+ * `payment` field (payment instruments/tokens are the gated bottom half — out of scope).
+ */
+function buildCheckoutArgs({ cartId, lineItems, buyer, context, attribution, checkout } = {}) {
+  const checkoutBody = isPlainObjectLocal(checkout) ? { ...checkout } : {};
+  if (cartId && checkoutBody.cart_id === undefined) checkoutBody.cart_id = cartId;
+  if (Array.isArray(lineItems) && checkoutBody.line_items === undefined) checkoutBody.line_items = lineItems;
+  if (isPlainObjectLocal(buyer) && checkoutBody.buyer === undefined) checkoutBody.buyer = buyer;
+  if (isPlainObjectLocal(context) && checkoutBody.context === undefined) checkoutBody.context = context;
+  if (isPlainObjectLocal(attribution) && checkoutBody.attribution === undefined) checkoutBody.attribution = attribution;
+  // HARD BOUND: never emit a `payment` field from this client (no instruments, no tokens, no card).
+  delete checkoutBody.payment;
+  return { checkout: checkoutBody };
+}
+
+/** Map a full address object to the create_checkout `context` localization/pricing HINTS the live schema accepts. */
+function addressToContextHints(addr) {
+  if (!isPlainObjectLocal(addr)) return {};
+  const hints = {};
+  const country = firstNonEmpty(addr.country_code, addr.address_country, addr.country);
+  const region = firstNonEmpty(addr.province_code, addr.address_region, addr.province, addr.region);
+  const postal = firstNonEmpty(addr.zip, addr.postal_code, addr.postalCode);
+  if (country) hints.address_country = country;
+  if (region) hints.address_region = region;
+  if (postal) hints.postal_code = postal;
+  return hints;
+}
+
+/**
+ * Normalize a create/update_checkout tool result into the in-chat priced preview shape:
+ *   { item, shipping_options, tax, total, subtotal, shipping, currency, continue_url, status, messages, raw }
+ *
+ * Grounded in the LIVE cosrx create_checkout payload (2026-07-13): `totals` is an ARRAY of
+ * { type, amount, display_text } (types e.g. subtotal, total, tax, shipping); amounts are MINOR units (integer
+ * cents). `line_items[].item` = { id, title, price, image_url }; `currency` is top-level. `shipping_options`
+ * and `tax` are absent until the storefront collects the full delivery address (reflected in `messages`), so
+ * shipping_options=[] / tax=null is an HONEST passthrough of what the merchant returned — never fabricated.
+ * Amounts are passed through EXACTLY as the merchant reported them (no math, no currency coercion).
+ */
+function normalizePricedCheckout(toolResult) {
+  const payload = unwrapToolPayload(toolResult);
+  if (!payload || typeof payload !== 'object') {
+    return {
+      item: null, shipping_options: [], tax: null, total: null, subtotal: null, shipping: null,
+      currency: null, continue_url: null, status: null, messages: [], raw: null,
+    };
+  }
+  const lineItems = Array.isArray(payload.line_items) ? payload.line_items
+    : (Array.isArray(payload.items) ? payload.items : []);
+  const firstLine = lineItems.length ? lineItems[0] : null;
+  const item = firstLine ? normalizeLineItem(firstLine) : null;
+
+  const shippingRaw = payload.shipping_options || payload.available_shipping_options
+    || payload.shipping_rates || payload.available_shipping_rates || payload.delivery_options || [];
+  const shipping_options = (Array.isArray(shippingRaw) ? shippingRaw : []).map(normalizeShippingOption);
+
+  const totalsByType = indexTotals(payload.totals);
+  const tax = pickMoney(payload.total_tax, payload.tax, totalsByType.tax, totalsByType.taxes);
+  const subtotal = pickMoney(payload.subtotal, totalsByType.subtotal);
+  const shipping = pickMoney(payload.total_shipping, totalsByType.shipping, totalsByType.delivery);
+  const total = pickMoney(
+    payload.total_amount, payload.grand_total, payload.total_price, totalsByType.total,
+    (typeof payload.total === 'string' || typeof payload.total === 'number') ? payload.total : undefined,
+  );
+  const currency = firstNonEmpty(
+    payload.currency, payload.currency_code, payload.presentment_currency,
+  ) || null;
+  const continue_url = firstNonEmpty(
+    payload.continue_url, payload.checkout_url, payload.permalink, payload.url,
+  ) || null;
+  const status = firstNonEmpty(payload.status) || null;
+  const messages = Array.isArray(payload.messages)
+    ? payload.messages.map((m) => (isPlainObjectLocal(m)
+      ? { code: m.code || null, severity: m.severity || null, content: m.content || null }
+      : null)).filter(Boolean)
+    : [];
+
+  return { item, shipping_options, tax, total, subtotal, shipping, currency, continue_url, status, messages, raw: payload };
+}
+
+/**
+ * Index a Shopify UCP `totals` value by `type` -> money. Handles the live ARRAY form
+ * ([{ type, amount, display_text }]) and tolerates an object form ({ total, subtotal, tax }). Amount is passed
+ * through as-is (minor units) — no coercion.
+ */
+function indexTotals(totals) {
+  const out = {};
+  if (Array.isArray(totals)) {
+    for (const t of totals) {
+      if (isPlainObjectLocal(t) && t.type) out[String(t.type)] = (t.amount !== undefined ? t.amount : t.value);
+    }
+  } else if (isPlainObjectLocal(totals)) {
+    for (const [k, v] of Object.entries(totals)) out[k] = v;
+  }
+  return out;
+}
+
+function normalizeLineItem(line) {
+  const itemObj = isPlainObjectLocal(line.item) ? line.item : line;
+  return {
+    variant_gid: firstNonEmpty(itemObj.id, itemObj.variant_id, line.id) || null,
+    title: firstNonEmpty(itemObj.title, itemObj.name, line.title) || null,
+    image_url: firstNonEmpty(itemObj.image_url, itemObj.image, line.image_url) || null,
+    quantity: Number.isFinite(line.quantity) ? line.quantity : (Number.isFinite(itemObj.quantity) ? itemObj.quantity : null),
+    price: pickMoney(itemObj.price, line.price, line.unit_price, indexTotals(line.totals).subtotal),
+  };
+}
+
+function normalizeShippingOption(opt) {
+  if (!isPlainObjectLocal(opt)) return { id: null, title: null, price: null };
+  return {
+    id: firstNonEmpty(opt.id, opt.handle, opt.code) || null,
+    title: firstNonEmpty(opt.title, opt.name, opt.label) || null,
+    price: pickMoney(opt.price, opt.amount, opt.total),
+  };
+}
+
+/** Pass through the first defined money-ish value (number/string/{amount|value}). No math, no coercion. */
+function pickMoney(...values) {
+  for (const v of values) {
+    if (v === undefined || v === null) continue;
+    if (typeof v === 'number' || typeof v === 'string') return v;
+    if (isPlainObjectLocal(v) && (v.amount !== undefined || v.value !== undefined)) return v;
+  }
+  return null;
 }
 
 // ---- helpers ---------------------------------------------------------------
@@ -399,6 +731,16 @@ function unwrapToolPayload(toolResult) {
   }
   if (result && (result.continue_url || result.checkout_url || result.id || result.line_items)) return result;
   return result;
+}
+
+/** Extract a human-readable message from an MCP tool error result ({ content:[{type:'text',text}], isError }). */
+function mcpErrorText(result) {
+  if (result && Array.isArray(result.content)) {
+    for (const c of result.content) {
+      if (c && c.type === 'text' && typeof c.text === 'string') return c.text;
+    }
+  }
+  return 'mcp tool returned isError';
 }
 
 function cryptoId() {
@@ -498,9 +840,13 @@ module.exports = {
   createUcpBuyerAgentClient,
   TOOL,
   TRUST_TIER,
-  // Exposed for deterministic signing tests (no live network). Not part of the public client surface.
+  SYNTHETIC_PREVIEW_ADDRESS,
+  SYNTHETIC_PREVIEW_EMAIL,
+  // Exposed for deterministic tests (no live network). Not part of the public client surface.
   loadSigningPrivateKey,
   contentDigestFor,
   buildUcpSignatureBase,
   signUcpRequest,
+  normalizePricedCheckout,
+  buildCheckoutArgs,
 };
