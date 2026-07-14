@@ -58,6 +58,24 @@ const TOOL = Object.freeze({
   COMPLETE_CHECKOUT: 'complete_checkout', // NEVER invoked by this client.
 });
 
+// READ-ONLY / idempotent tools that MAY be retried on a transient error. Everything else (create/update cart &
+// checkout) is state-changing and must never be blind-retried.
+const IDEMPOTENT_TOOLS = Object.freeze(new Set([TOOL.GET_PRODUCT, TOOL.GET_CART, TOOL.GET_CHECKOUT]));
+
+// H1 error taxonomy — canonical fallback reasons. EVERY warm-handoff failure maps to one of these, then to a
+// clean null (cold-redirect fallback), tagged for observability (H2). No reason carries buyer PII or key material.
+const FAILURE_REASON = Object.freeze({
+  PROFILE_UNREACHABLE: 'profile_unreachable', // discovery threw a network/DNS error
+  NOT_UCP_REACHABLE: 'not_ucp_reachable', // discovery succeeded but the brand exposes no UCP MCP endpoint
+  TIMEOUT: 'timeout', // a per-call timeout (AbortError) or the total handoff budget was exceeded
+  OUT_OF_STOCK: 'out_of_stock', // product-state: sold out / no inventory / not available for sale
+  VARIANT_INVALID: 'variant_invalid', // product-state: variant not found / discontinued / bad id
+  TOOL_ERROR: 'tool_error', // a generic MCP tool / 5xx failure
+  INVALID_INPUT: 'invalid_input', // schema / missing-argument rejection
+  NO_CONTINUE_URL: 'no_continue_url', // cart built but carried no storefront handoff URL
+  UNKNOWN: 'unknown',
+});
+
 // SYNTHETIC, clearly-fake US shipping address used ONLY to fetch shipping/tax quotes for the in-chat priced
 // preview. This is NOT a real person and carries NO real buyer PII — it exists solely so create_checkout can
 // compute shipping options + tax before the shopper decides. The street literally says "SAMPLE".
@@ -144,6 +162,19 @@ function createUcpBuyerAgentClient(options = {}) {
   const timeoutMs = Number.isFinite(options.timeoutMs) ? Number(options.timeoutMs) : 15000;
   const signatureTtlSec = Number.isFinite(options.signatureTtlSec) ? Number(options.signatureTtlSec) : 300;
 
+  // H1 resilience: bounded jittered-backoff retry applied ONLY to idempotent GET-shaped calls (well-known
+  // discovery, tools/list, catalog get_product). Mutating cart/checkout POSTs are NEVER retried (default
+  // retry=false on callTool) so we can't double-submit a state change. `retryAttempts` = extra attempts after
+  // the first (so total tries = retryAttempts + 1). Set retryAttempts=0 to disable. A per-call timeout still
+  // bounds every individual attempt.
+  const retryAttempts = Number.isFinite(options.retryAttempts) ? Math.max(0, Number(options.retryAttempts)) : 2;
+  const retryBaseDelayMs = Number.isFinite(options.retryBaseDelayMs) ? Math.max(0, Number(options.retryBaseDelayMs)) : 150;
+  const retryMaxDelayMs = Number.isFinite(options.retryMaxDelayMs) ? Math.max(0, Number(options.retryMaxDelayMs)) : 2000;
+  // Injectable sleep so tests don't wait on real timers.
+  const sleepImpl = typeof options.sleepImpl === 'function'
+    ? options.sleepImpl
+    : (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
   // SIGNED tier: load our OWN ECDSA P-256 private key from env ONLY (PEM or JWK). Never logged. The public half
   // lives in the hosted profile's `ucp.signing_keys`; `keyid` must match its JWK `kid`.
   const signingPrivateRaw = firstNonEmpty(options.signingPrivateKey, process.env.UCP_AGENT_SIGNING_PRIVATE_KEY);
@@ -224,6 +255,41 @@ function createUcpBuyerAgentClient(options = {}) {
     return fetchImpl;
   }
 
+  /**
+   * Run a single bounded HTTP attempt (per-call timeout) with OPTIONAL jittered-backoff retry on TRANSIENT
+   * failures — a thrown network/DNS error, or a 5xx response. Retries are gated by `retry` (true ONLY for
+   * idempotent GET-shaped calls); a per-call TIMEOUT (AbortError) is NOT retried so a slow brand can't multiply
+   * the latency budget. When `retry` is false this is byte-identical to a single `withTimeout(run, timeoutMs)`.
+   * @param {(signal: AbortSignal|undefined) => Promise<Response>} run
+   * @param {{ retry?: boolean }} [opts]
+   */
+  async function fetchWithPolicy(run, { retry = false } = {}) {
+    let attempt = 0;
+    for (;;) {
+      let res;
+      try {
+        res = await withTimeout(run, timeoutMs);
+      } catch (err) {
+        // AbortError = our own per-call timeout: do NOT retry (bounds total latency). Any other throw is a
+        // network/DNS transient — retry idempotent calls with backoff.
+        const isTimeout = err && err.name === 'AbortError';
+        if (retry && !isTimeout && attempt < retryAttempts) {
+          attempt += 1;
+          await sleepImpl(backoffDelay(attempt, retryBaseDelayMs, retryMaxDelayMs));
+          continue;
+        }
+        throw err;
+      }
+      // Transient server-side error on an idempotent call => backoff + retry.
+      if (retry && res && Number(res.status) >= 500 && attempt < retryAttempts) {
+        attempt += 1;
+        await sleepImpl(backoffDelay(attempt, retryBaseDelayMs, retryMaxDelayMs));
+        continue;
+      }
+      return res;
+    }
+  }
+
   // The UCP-agent profile pointer. Carried in JSON-RPC meta (MCP requirement) and, when signing, mirrored as a
   // structured-field HTTP header `ucp-agent: profile="<url>"` so the RFC 9421 signature can cover it.
   function ucpAgentMeta() {
@@ -289,6 +355,45 @@ function createUcpBuyerAgentClient(options = {}) {
   }
 
   /**
+   * H3 token-tier verification. Resolves (mints/refreshes) the Bearer token via the client-credentials exchange
+   * and reports — with BOOLEANS ONLY — whether the client operates at TOKEN tier end-to-end. The token value and
+   * the client_secret are NEVER returned or logged; only `token_present` (a boolean derived from a non-empty
+   * resolved token) and the tier/config booleans are exposed. On a failed exchange it returns
+   * { ok:false, error: <status-only message> } and still leaks no credential material.
+   *
+   * This performs the auth exchange only — it does NOT call a merchant tool and does NOT complete checkout.
+   * @returns {Promise<{ ok:boolean, tier:string, has_credential:boolean, has_client_credentials:boolean,
+   *   has_token_tier_credential:boolean, token_present:boolean, minted_via_exchange:boolean,
+   *   token_endpoint?:string, error?:string }>}
+   */
+  async function verifyTokenTier() {
+    const base = {
+      tier,
+      has_credential: Boolean(credential),
+      has_client_credentials: hasClientCredentials,
+      has_token_tier_credential: hasTokenTierCredential,
+      token_endpoint: hasClientCredentials ? tokenEndpoint : undefined,
+    };
+    if (tier !== TRUST_TIER.TOKEN) {
+      return { ok: false, ...base, token_present: false, minted_via_exchange: false };
+    }
+    try {
+      const token = await resolveBearerToken();
+      return {
+        ok: Boolean(token),
+        ...base,
+        // Boolean ONLY — never the token string.
+        token_present: Boolean(token),
+        // True when the token came from the client-credentials exchange (vs. a static UCP_AGENT_CREDENTIAL).
+        minted_via_exchange: !credential && hasClientCredentials,
+      };
+    } catch (err) {
+      // exchangeClientCredentials throws a status-only error (no credential/JWT). Pass its message through as-is.
+      return { ok: false, ...base, token_present: false, minted_via_exchange: false, error: err && err.message };
+    }
+  }
+
+  /**
    * Discover a target business's UCP MCP endpoint from its `/.well-known/ucp` profile.
    * @param {string} businessBaseUrl  https origin of the merchant storefront (e.g. https://cosrx.com)
    * @returns {Promise<{ mcpEndpoint: string|undefined, businessProfile: object, wellKnownUrl: string }>}
@@ -297,11 +402,12 @@ function createUcpBuyerAgentClient(options = {}) {
     const base = normalizeBaseUrl(businessBaseUrl, 'businessBaseUrl');
     const wellKnownUrl = new URL('/.well-known/ucp', base.origin).toString();
     const doFetch = requireFetch();
-    const res = await withTimeout((signal) => doFetch(wellKnownUrl, {
+    // Idempotent GET: safe to retry transient network/5xx with backoff (H1).
+    const res = await fetchWithPolicy((signal) => doFetch(wellKnownUrl, {
       method: 'GET',
       headers: { accept: 'application/json', 'user-agent': userAgent },
       signal,
-    }), timeoutMs);
+    }), { retry: true });
     if (!res.ok) {
       return { mcpEndpoint: undefined, businessProfile: null, wellKnownUrl, status: res.status };
     }
@@ -314,10 +420,13 @@ function createUcpBuyerAgentClient(options = {}) {
    * Low-level MCP tool call (JSON-RPC 2.0 `tools/call`) against a discovered endpoint.
    * Never call this with TOOL.COMPLETE_CHECKOUT — a guard throws.
    */
-  async function callTool(mcpEndpoint, toolName, args = {}) {
+  async function callTool(mcpEndpoint, toolName, args = {}, { retry = false } = {}) {
     if (toolName === TOOL.COMPLETE_CHECKOUT) {
       throw new Error('ucpBuyerAgentClient: complete_checkout is hard-disabled (cart-build + handoff only).');
     }
+    // HARD BOUND: retry is permitted ONLY for read-only/idempotent tools. Never blind-retry a mutating
+    // cart/checkout call (would risk a duplicate cart/checkout). Callers pass retry:true only for get_product.
+    const retryOk = retry && IDEMPOTENT_TOOLS.has(toolName);
     const endpoint = normalizeBaseUrl(mcpEndpoint, 'mcpEndpoint').toString();
     const doFetch = requireFetch();
     // Idempotency key is minted for signed (state-changing) requests; it lives in meta AND is a covered header.
@@ -363,12 +472,12 @@ function createUcpBuyerAgentClient(options = {}) {
       Object.assign(headers, sigHeaders);
     }
 
-    const res = await withTimeout((signal) => doFetch(endpoint, {
+    const res = await fetchWithPolicy((signal) => doFetch(endpoint, {
       method: 'POST',
       headers,
       body: bodyString,
       signal,
-    }), timeoutMs);
+    }), { retry: retryOk });
     const text = await res.text();
     let parsed;
     try { parsed = text ? JSON.parse(text) : null; } catch { parsed = { raw: text }; }
@@ -399,7 +508,8 @@ function createUcpBuyerAgentClient(options = {}) {
     if (query) args.query = query;
     if (productId) args.id = productId;
     if (sku) args.sku = sku;
-    return callTool(mcpEndpoint, TOOL.GET_PRODUCT, args);
+    // Read-only catalog lookup: safe to retry on a transient error (H1).
+    return callTool(mcpEndpoint, TOOL.GET_PRODUCT, args, { retry: true });
   }
 
   /**
@@ -437,9 +547,10 @@ function createUcpBuyerAgentClient(options = {}) {
       params: { arguments: { meta: requestMeta() } },
     };
     const bodyString = JSON.stringify(body);
-    const res = await withTimeout((signal) => doFetch(endpoint, {
+    // tools/list is read-only discovery: safe to retry on a transient error (H1).
+    const res = await fetchWithPolicy((signal) => doFetch(endpoint, {
       method: 'POST', headers, body: bodyString, signal,
-    }), timeoutMs);
+    }), { retry: true });
     const text = await res.text();
     let parsed;
     try { parsed = text ? JSON.parse(text) : null; } catch { parsed = { raw: text }; }
@@ -541,10 +652,13 @@ function createUcpBuyerAgentClient(options = {}) {
   return {
     TOOL,
     TRUST_TIER,
+    FAILURE_REASON,
     tier,
     SYNTHETIC_PREVIEW_ADDRESS,
     buildProfile,
     describeTier,
+    verifyTokenTier,
+    classifyUcpFailure,
     discoverEndpoint,
     listTools,
     callTool,
@@ -752,6 +866,48 @@ function cryptoId() {
   }
 }
 
+/**
+ * Exponential backoff with full jitter for retry attempt N (1-based): a random delay in
+ * [0, min(maxMs, baseMs * 2^(N-1))]. Full jitter avoids thundering-herd retries against a recovering brand.
+ */
+function backoffDelay(attempt, baseMs, maxMs) {
+  const ceiling = Math.min(Number(maxMs) || 0, (Number(baseMs) || 0) * (2 ** Math.max(0, attempt - 1)));
+  if (!(ceiling > 0)) return 0;
+  return Math.floor(Math.random() * ceiling);
+}
+
+/**
+ * H1 error taxonomy. Map a failure signal to a canonical FAILURE_REASON string used for the cold-redirect
+ * fallback tag (H2 observability). Best-effort: product-state text (out-of-stock / invalid-variant /
+ * discontinued) is matched from the merchant's own message; everything else degrades to tool_error/unknown.
+ * Pure/deterministic; carries no PII (it inspects only status + the merchant's own error text).
+ * @param {{ thrown?: Error, status?: number, errorMessage?: string, phase?: string }} signal
+ * @returns {string} a FAILURE_REASON value
+ */
+function classifyUcpFailure({ thrown, status, errorMessage, phase } = {}) {
+  if (thrown) {
+    if (thrown.name === 'AbortError') return FAILURE_REASON.TIMEOUT;
+    // A thrown non-abort error during discovery is a network/DNS reach failure; elsewhere it's a tool error.
+    return phase === 'discovery' ? FAILURE_REASON.PROFILE_UNREACHABLE : FAILURE_REASON.TOOL_ERROR;
+  }
+  const msg = String(errorMessage == null ? '' : errorMessage).toLowerCase();
+  if (msg) {
+    if (/out[\s_-]?of[\s_-]?stock|sold[\s_-]?out|no (?:more )?inventory|insufficient inventory|not available for sale|unavailable/.test(msg)) {
+      return FAILURE_REASON.OUT_OF_STOCK;
+    }
+    if (/variant|discontinued|no longer available|not found|no such|does not exist|invalid (?:variant|product|id)|unknown (?:variant|product)/.test(msg)) {
+      return FAILURE_REASON.VARIANT_INVALID;
+    }
+    if (/invalid arguments|missing required|schema|validation|required propert/.test(msg)) {
+      return FAILURE_REASON.INVALID_INPUT;
+    }
+  }
+  if (Number(status) >= 500) return FAILURE_REASON.TOOL_ERROR;
+  if (Number(status) >= 400) return FAILURE_REASON.TOOL_ERROR;
+  if (msg) return FAILURE_REASON.TOOL_ERROR;
+  return FAILURE_REASON.UNKNOWN;
+}
+
 // ---- RFC 9421 signing (SIGNED tier) ---------------------------------------
 
 /**
@@ -840,9 +996,12 @@ module.exports = {
   createUcpBuyerAgentClient,
   TOOL,
   TRUST_TIER,
+  FAILURE_REASON,
   SYNTHETIC_PREVIEW_ADDRESS,
   SYNTHETIC_PREVIEW_EMAIL,
   // Exposed for deterministic tests (no live network). Not part of the public client surface.
+  classifyUcpFailure,
+  backoffDelay,
   loadSigningPrivateKey,
   contentDigestFor,
   buildUcpSignatureBase,
