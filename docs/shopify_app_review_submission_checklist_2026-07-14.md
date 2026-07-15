@@ -31,6 +31,8 @@ These are the checks that auto-fail a submission. Current state:
 
 App A's `read_orders` access = **protected customer data (order data)**. This is the single most scrutinized part of review. Our position is strong because attribution needs no PII.
 
+> **🔴 BLOCKER — live PCD declaration contradicts the scope (found 2026-07-15, verified in Partner Dashboard → Distribution → App Store review → preliminary steps).** The listing currently declares **"Doesn't need access to protected customer data."** That contradicts (a) the `read_orders` scope (orders carry customer PII) and (b) this section's own analysis. A human reviewer cross-checking scopes against the PCD declaration is a likely rejection path — and this is the gate we ourselves call the most-scrutinized. **Fix before submitting:** change the declaration to *needs PCD access for order data* and complete the data-protection questionnaire with the truthful facts below (reads only `note_attributes` + totals, strips/doesn't store PII, real GDPR fulfillment). **Do NOT hit "Submit fixes" with this mismatch in place.** Note: Shopify's *automated* check passed, so this will be a *manual*-reviewer catch — exactly where §2 warned the scrutiny lands.
+
 - ⬜ **Request the ORDERS protected-data scope with NO PII field-level access** (no email, name, address, phone). Our code audit (C6) confirmed attribution reads only `note_attributes` + order totals — never customer PII.
 - ⬜ **Data protection questionnaire — answer truthfully with these facts:**
   - *What customer data do you access?* Order data (`read_orders`) — only order id, financial status, totals, and `note_attributes` (for the `pivota_click_id` attribution key). No customer PII fields are read or required.
@@ -184,7 +186,7 @@ NOTES
    • Support: support@pivota.cc
 ```
 
-**Honesty note (deliberate):** the block describes only App A's read-only behaviour and makes no "never processes checkout" platform-wide claim — Pivota does support agent checkout via the **separate, merchant-created custom-app (`write_orders`) path**, which is NOT this App Store app. The install-success page copy was corrected to match (portal #166, deployed 2026-07-15). Whether the public listing should mention agent checkout at all is a founder positioning decision, tied to the "competing sales channel" concern — not resolved here.
+**Honesty note (deliberate):** the block describes only App A's read-only behaviour and makes no "never processes checkout" platform-wide claim — Pivota does support agent checkout via the **separate, merchant-created custom-app (`write_orders`) path**, which is NOT this App Store app. The install-success page copy was corrected to match (portal #166, deployed 2026-07-15). Whether the public listing should mention agent checkout at all — **DECISION (2026-07-15): keep App A positioned as read-only; do NOT feature agent checkout in the App A listing.** It runs via a separate merchant-created custom app (not this App Store app), and featuring it invites the "competing sales channel / parallel checkout" flag Shopify already raised — a real risk for a just-suspended app. Omitting a separate, merchant-controlled integration is not dishonest; a false "never checkout" claim would be (already removed, #166). **Consistency caveat:** hold this line across ALL surfaces (marketing included) — App A = read-only measurement; checkout = separate, merchant-controlled. Answer truthfully if a reviewer asks directly.
 
 ---
 
@@ -235,3 +237,12 @@ Re-walked the full reviewer journey on the current reviewer store `pivota-review
 - GDPR compliance webhooks return 401 on bad/missing HMAC in prod (Shopify's automated test).
 - Read-only payment-nag suppressed (#163); install-success copy scoped to read-only, no "never checkout" overclaim (#166).
 - Fresh reviewer account `shopify-review-2@pivota.cc` (§5.3), 17-product catalog, `token/diagnostic auth_ok:true`, 4 read scopes, no write.
+
+**Partner Dashboard pre-submission checks (2026-07-15):**
+- ✅ **`shopify.app.toml` deployment** — active + released version **pivota-8** verified field-by-field: read-only scopes (no write), managed install, api 2024-07, callback URL, and all 3 GDPR compliance webhook URLs → `/webhooks/shopify/gdpr`. Session changes needed no new version.
+- 🔴 **PCD declaration = BLOCKER** — listing declares "Doesn't need access to protected customer data" while holding `read_orders`. Contradicts the scope + §2. **Must fix before submit** (see §2 blocker). Founder-only Partner Dashboard change.
+- ⬜ **Privacy policy URL** — listing is "Created (English)" and passed automated checks (so a URL is almost certainly set), but not read directly (avoided touching the live submission form). Founder: confirm it's present + describes the order-data / no-PII-storage posture.
+- ✅ **Agent-checkout disclosure** — DECIDED: keep App A read-only, don't feature checkout (see §5.3 honesty note).
+- ℹ️ **Deprecated offline-tokens advisory** ("Fix by Jan 1") still shows on the app Overview — non-blocking (deadline 2027-01-01), matches §7. Don't let its wording spook a reviewer.
+
+**Verdict:** only the PCD declaration blocks submission. Everything else is confirmed, decided, or a quick founder verify.
