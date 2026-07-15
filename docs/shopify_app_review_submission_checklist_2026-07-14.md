@@ -220,6 +220,42 @@ NOTES
 
 ---
 
+## 9. Final submission handoff — remaining founder actions (2026-07-15)
+
+All engineering is done, deployed, and prod-verified (see the 2026-07-15 appendix addendum). Three items remain, and **all three are Partner Dashboard actions only the founder can do** — the dashboard's bot-detection blocks automated help on these pages. **Only Item 1 (PCD) is a hard blocker;** Items 2–3 are a verify and a paste. Do them in order, then submit.
+
+### Item 1 — 🔴 PCD declaration (BLOCKER — see §2)
+Gather 3 facts first (only you have them): (a) retention period for the non-PII attribution records, (b) is the DB/host encrypted **at rest** (e.g. Railway Postgres), (c) any sub-processors touching order data — or "none".
+Then: Partner Dashboard → **Pivota** → **Distribution → Shopify App Store** → change **"Doesn't need access to protected customer data"** → **needs access (order data)** → complete the questionnaire:
+
+```
+Which protected customer data? Order data (read_orders). In practice reads only
+order id, financial status, order totals, and note_attributes (pivota_click_id).
+No customer PII fields (name/email/phone/address) are read or required.
+Why? Conversion attribution via note_attributes.pivota_click_id. No PII needed.
+Store customer PII? No — ingest sanitizer strips customer/email/phone/billing_
+address/shipping_address/customer_locale before persistence
+(services/shopify_webhook_ingest.py, pii_stripped:true); only 4 non-PII order
+fields are stored.
+Retention/deletion? GDPR webhooks implemented (customers/redact, shop/redact,
+customers/data_request; shopify_gdpr_requests audit row).  [+ retention = FACT a]
+Encryption? In transit: HTTPS all endpoints.  [At rest = FACT b]
+Sub-processors? [FACT c]
+```
+
+### Item 2 — ⬜ Privacy policy (verify)
+Distribution → App Store → **Edit listing** → **Privacy policy** field: confirm the URL is present AND the linked policy describes reads-order-data-for-attribution / stores-no-PII / honors-GDPR. Tighten if generic — the reviewer reads it against the PCD declaration. (Could not auto-verify — CAPTCHA-blocked.)
+
+### Item 3 — 🔴 Reviewer password (paste)
+Paste the password for `shopify-review-2@pivota.cc` into the **Testing instructions** field (the ready block in **§5.3**, replacing `<FILL IN…>`). Keep it only here + a password manager — never in chat/marketing.
+
+### Then
+- Paste the §5.3 block into **App submission → Testing instructions**.
+- Day-of (§6/§7): confirm `pivota-8` is Active; **confirm `api.pivota.cc` is stable** (intermittent TLS resets are the single biggest submission risk — a reset mid-install reads as an install failure); optional fresh-store smoke test; ignore the offline-tokens "Fix by Jan 1" advisory (non-blocking, 2027-01-01).
+- **▶️ Submit fixes.**
+
+---
+
 ## Appendix — verification evidence (this session, 2026-07-07)
 
 - **Managed-install OAuth E2E:** dev store `pivota-review-demo-3` via `/integrations/shopify/app` → grant → callback `status=success` → `token/diagnostic auth_ok:true`, scopes = read_products/read_orders/read_discounts/read_fulfillments (no write).
