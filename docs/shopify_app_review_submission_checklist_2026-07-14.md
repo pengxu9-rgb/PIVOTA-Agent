@@ -17,13 +17,13 @@ Status legend: ✅ done & verified this session · ⬜ founder action before sub
 
 These are the checks that auto-fail a submission. Current state:
 
-- ✅ **App authenticates immediately after install.** Managed install (`use_legacy_install_flow=false`) auto-grants the declared scopes; OAuth completes to a working token. Verified end-to-end on dev store `pivota-review-demo-3` (`auth_ok: true`, 4 read scopes, no write).
+- ✅ **App authenticates immediately after install.** Managed install (`use_legacy_install_flow=false`) auto-grants the declared scopes; OAuth completes to a working token. Verified end-to-end on dev stores `pivota-review-demo-3` (2026-07-07) and `pivota-review-demo` (2026-07-15, the current reviewer store — §5.3): `auth_ok: true`, 4 read scopes, no write.
 - ✅ **OAuth requests only declared scopes.** Authorize URL scopes exactly match toml `[access_scopes]`. Requesting an undeclared scope 400s the authorize request (that check is why the set must match) — confirmed the consent screen renders the correct read-only permission set.
 - ✅ **Install redirects to a real UI, not raw JSON.** Callback 302-redirects to `merchant.pivota.cc/app/install/success?...` (verified — landed with `status=success`). This satisfies the 2.1.1 "no display errors" check; a raw JSON body on the callback is a known auto-flag.
 - ✅ **Latest-supported API version.** `api_version=2024-07` pinned in toml and matched by all backend code (`DEFAULT_API_VERSION`, `/admin/api/2024-07/...`). 🔁 **Day-of: confirm 2024-07 is still within Shopify's supported window on 2026-07-14**; if Shopify has advanced the floor past it, bump toml + code together (they must stay in lockstep) and re-`deploy`.
 - ✅ **HTTPS everywhere.** App URL `https://api.pivota.cc/integrations/shopify/app`; all webhook/callback endpoints HTTPS.
 - ✅ **Mandatory compliance webhooks present** (see §3).
-- 🔁 **Install on a clean store succeeds without errors.** Proven on `pivota-review-demo-3`. Day-of, ideally test a **fresh** dev store (no prior Pivota connection) to mirror a first-time reviewer install.
+- 🔁 **Install on a clean store succeeds without errors.** Proven on `pivota-review-demo-3` and re-verified on `pivota-review-demo` (2026-07-15). Day-of, ideally test a **fresh** dev store (no prior Pivota connection) to mirror a first-time reviewer install.
 
 ---
 
@@ -69,8 +69,8 @@ These are content/UX items reviewers check manually — not verifiable from code
 - ⬜ **Privacy policy URL** — must describe the order-data usage + no-PII-storage posture consistent with §2.
 - ✅ **Pricing — DECIDED: declare App A as FREE.** App A charges Shopify merchants nothing; no Shopify Billing API is required. See **§5.1** for the decision, evidence, and the compliance boundary that keeps it true.
 - ⬜ **Support contact / email** reachable.
-- ⬜ **Demo store / test credentials** for the reviewer, if the app's value needs a populated catalog. Provide a review-demo dev store in a clean, install-ready state (see §6).
-- ⬜ **"Install" walkthrough note** for the reviewer describing what to expect (read-only measurement tool; no destructive actions).
+- 🔁 **Demo store / test credentials** for the reviewer — DONE (2026-07-15): fresh clean account `shopify-review-2@pivota.cc` on populated `pivota-review-demo` store. Founder: fill the password into §5.3 + Partner Dashboard.
+- 🔁 **"Install" walkthrough note** for the reviewer — DRAFTED (ready-to-paste block in **§5.3**), read-only framing.
 
 ### 5.1 Billing model — DECISION: App A is **FREE** (no Shopify Billing API needed)
 
@@ -126,6 +126,66 @@ Pivota has **one** take-rate pipeline (`commerce_attribution_edges` → T6 daily
 
 **Not a route:** keeping the plain-Free listing while Stripe-invoicing commissions on Shopify-checkout sales. Review wouldn't see the invoice on day one, but it violates the Partner Agreement and surfaces the first time a merchant disputes a charge — delisting risk against a just-approved app.
 
+### 5.3 Reviewer test instructions (READY TO PASTE — updated 2026-07-15)
+
+**Reviewer account + demo store (set up and verified this session):**
+- Account: `shopify-review-2@pivota.cc` — a **fresh** account created via App Store install → claim (clean data, no stale artifacts). Password: set by founder; **fill it into the block below and the Partner Dashboard, keep it only in a password manager.**
+- Connected store: `pivota-review-demo.myshopify.com` (17 synced products — the standard Shopify sample catalog). Dashboard is fully populated (catalog, catalog health "Ready", channel readiness, AI-readiness metrics).
+- Billing shows the clean **free/exempt** state (no Stripe references) — verified live.
+
+**Do NOT** put a `pivota-review-demo.myshopify.com/products/...` URL in the instructions: dev-store storefronts aren't publicly fetchable (429), so the AI-visibility URL check returns "no products resolved." Keep the reviewer on the pre-connected, populated views (section A below).
+
+**Paste block for Partner Dashboard → App submission → Testing instructions:**
+
+```
+WHAT THIS APP DOES
+Pivota's App Store app connects with READ-ONLY access — read_products,
+read_orders, read_fulfillments, read_discounts (verifiable on the OAuth consent
+screen). It reads your catalog to score how discoverable your products are to AI
+shopping agents and to surface analytics. With these scopes it cannot create or
+modify products, orders, or checkout.
+
+PRE-CONNECTED TEST ACCOUNT (already populated — start here)
+  Portal:   https://merchant.pivota.cc/login
+  Email:    shopify-review-2@pivota.cc
+  Password: <FILL IN THE PASSWORD YOU SET>
+Already connected to a development store (pivota-review-demo.myshopify.com) with
+a synced catalog, so the app is fully populated and ready to review.
+
+A) SEE THE APP WORKING (pre-connected account)
+   1. Sign in with the account above.
+   2. Overview: one connected sales channel, synced catalog (17 products),
+      catalog health, and channel-readiness signals.
+   3. Catalog: browse the synced products and their AI-readiness/content signals.
+   4. AI Visibility / Readiness audit: the app's core scoring features
+      (deeper coverage is credit-based, as noted in the listing).
+
+B) INSTALL / OAUTH FLOW (read-only connection)
+   1. From the listing, install Pivota on one of your development stores.
+   2. On Shopify's consent screen, note the requested scopes are READ-ONLY
+      (view products, orders, fulfillments, discounts) — no write scopes.
+   3. Approve. You are redirected to a "Pivota is connected" confirmation page,
+      then to a short account-setup step (create an email + password, or reuse
+      an existing Pivota login). No raw data or error pages appear at any step.
+
+C) BILLING (free on the App Store)
+   1. Open "Plan & billing".
+   2. It shows "Pivota is free on the Shopify App Store — Included, no
+      subscription to manage." App Store merchants are never billed
+      off-platform; there are no Stripe/off-platform payment options.
+
+NOTES
+   • Read-only: this connection uses read-only scopes and cannot modify your
+     products or orders.
+   • Cross-platform: the AI-readiness engine is platform-agnostic (Shopify, Wix,
+     WooCommerce, BigCommerce, PrestaShop); the Shopify integration is read-only
+     catalog onboarding. Pivota complements Shopify — it is not a competing
+     checkout or sales channel.
+   • Support: support@pivota.cc
+```
+
+**Honesty note (deliberate):** the block describes only App A's read-only behaviour and makes no "never processes checkout" platform-wide claim — Pivota does support agent checkout via the **separate, merchant-created custom-app (`write_orders`) path**, which is NOT this App Store app. The install-success page copy was corrected to match (portal #166, deployed 2026-07-15). Whether the public listing should mention agent checkout at all is a founder positioning decision, tied to the "competing sales channel" concern — not resolved here.
+
 ---
 
 ## 6. Day-of pre-submission verification (run in order on 2026-07-14)
@@ -165,3 +225,13 @@ Pivota has **one** take-rate pipeline (`commerce_attribution_edges` → T6 daily
 - **Attribution = read-only (code trace):** `outbound_links_service.py` 0 Shopify calls (local permalink build); `commerce_attribution_service.py` closure writes to Pivota DB only; `external_conversion_poller.py:160` `GET orders.json` (read); 0 write calls in the path.
 - **Scopes / config:** `shopify.app.toml` @ `main` — read-only, managed install, 2024-07, app-owned + compliance webhooks.
 - Full audit + fix history: `docs/shopify_app_config_audit_2026-07-07.md`; fixes in `pivota-backend` PRs #1193 / #1195 / #1209.
+
+### Re-verification addendum (2026-07-15)
+
+Re-walked the full reviewer journey on the current reviewer store `pivota-review-demo` (App A install → OAuth consent → callback → success → claim → populated dashboard). Verified live in prod:
+- OAuth callback success **and** every failure path 302-redirect to a clean page (no raw JSON) — the actual repeat-2.1.1 offender was the callback's JSON error paths; fixed backend #1402 + portal #161.
+- Install-links flow removed (404 in prod); OAuth-first connect; beta OAuth allowlist removed.
+- Billing shows clean free/exempt (no Stripe) — required two fixes: the `api_key_raw` parse bug (#1406) and the pending_verification gate for App Store shell merchants (#1408).
+- GDPR compliance webhooks return 401 on bad/missing HMAC in prod (Shopify's automated test).
+- Read-only payment-nag suppressed (#163); install-success copy scoped to read-only, no "never checkout" overclaim (#166).
+- Fresh reviewer account `shopify-review-2@pivota.cc` (§5.3), 17-product catalog, `token/diagnostic auth_ok:true`, 4 read scopes, no write.
