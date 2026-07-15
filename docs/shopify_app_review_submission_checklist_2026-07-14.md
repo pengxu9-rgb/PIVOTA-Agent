@@ -222,7 +222,7 @@ NOTES
 
 ## 9. Final submission handoff — remaining founder actions (2026-07-15)
 
-All engineering is done, deployed, and prod-verified (see the 2026-07-15 appendix addendum). Three items remain, and **all three are Partner Dashboard actions only the founder can do** — the dashboard's bot-detection blocks automated help on these pages. **Only Item 1 (PCD) is a hard blocker;** Items 2–3 are a verify and a paste. Do them in order, then submit.
+All engineering is done, deployed, and prod-verified (see the 2026-07-15 appendix addendum). Four items remain, and **all four are Partner Dashboard actions only the founder can do** — the dashboard's bot-detection blocks automated help on these pages. **Items 1 (PCD) and 2 (category) are hard blockers;** Items 3–4 are a verify and a paste. Do them in order, then submit.
 
 ### Item 1 — 🔴 PCD declaration (BLOCKER — see §2)
 Gather 3 facts first (only you have them): (a) retention period for the non-PII attribution records, (b) is the DB/host encrypted **at rest** (e.g. Railway Postgres), (c) any sub-processors touching order data — or "none".
@@ -243,14 +243,22 @@ Encryption? In transit: HTTPS all endpoints.  [At rest = FACT b]
 Sub-processors? [FACT c]
 ```
 
-### Item 2 — ⬜ Privacy policy (verify)
-Distribution → App Store → **Edit listing** → **Privacy policy** field: confirm the URL is present AND the linked policy describes reads-order-data-for-attribution / stores-no-PII / honors-GDPR. Tighten if generic — the reviewer reads it against the PCD declaration. (Could not auto-verify — CAPTCHA-blocked.)
+### Item 2 — 🔴 App category + "sales channel" capability (BLOCKER — found 2026-07-15)
+The listing's category is currently **"Sales channels › Marketplaces"** and the app declares the **"sales channel" capability**. Both contradict the read-only measurement positioning (§5.3 honesty note) and invite exactly the competing-channel scrutiny tied to the suspension — a reviewer who sees "Marketplaces sales channel" next to read-only scopes and a "not a competing checkout" testing note has a self-contradicting listing in front of them.
+Fix: Partner Dashboard → **Edit listing** → change category to **Analytics** (or Marketing — Analytics matches the AI-readiness scoring product best) → and remove/uncheck the **sales channel capability**.
+⚠️ **The category cannot be edited after submitting** — this must happen before "Submit fixes", not as a follow-up.
 
-### Item 3 — 🔴 Reviewer password (paste)
+### Item 3 — ⬜ Privacy policy (verify the URL only — content is confirmed good)
+Content verified live 2026-07-15 at `https://merchant.pivota.cc/privacy`: read-only scopes enumerated, order data "used only in aggregate… do not use this data to contact customers", explicitly "does not request or use protected customer fields (customer name, email, phone, or address)", all 3 GDPR webhooks described with the 48h shop/redact window, retention/deletion, sub-processors ("cloud hosting… under contractual obligations"), encryption in transit. This is consistent with the §2 PCD questionnaire answers. Remaining founder check: Distribution → App Store → **Edit listing** → confirm the **Privacy policy field points at that URL**.
+
+### Item 4 — 🔴 Reviewer password (paste)
 Paste the password for `shopify-review-2@pivota.cc` into the **Testing instructions** field (the ready block in **§5.3**, replacing `<FILL IN…>`). Keep it only here + a password manager — never in chat/marketing.
 
-### Then
-- Paste the §5.3 block into **App submission → Testing instructions**.
+### Then — eyeball these on the submission form before hitting Submit
+- Paste the §5.3 block into **App submission → Testing instructions**; reviewer **Username** field = `shopify-review-2@pivota.cc`, **Password** field filled.
+- **"I have approval to charge merchants outside the Shopify Billing API" checkbox = UNCHECKED** — App A is a plain Free listing (§5.1); checking it contradicts the free declaration.
+- The listing shows **"1 private plan"** — identify what it is; if it's a leftover Stripe/paid-plan artifact, remove it (a paid plan on a Free listing is another self-contradiction).
+- **Search terms: drop "product sync"** — it implies write behaviour the read-only app doesn't have.
 - Day-of (§6/§7): confirm `pivota-8` is Active; **confirm `api.pivota.cc` is stable** (intermittent TLS resets are the single biggest submission risk — a reset mid-install reads as an install failure); optional fresh-store smoke test; ignore the offline-tokens "Fix by Jan 1" advisory (non-blocking, 2027-01-01).
 - **▶️ Submit fixes.**
 
@@ -277,8 +285,17 @@ Re-walked the full reviewer journey on the current reviewer store `pivota-review
 **Partner Dashboard pre-submission checks (2026-07-15):**
 - ✅ **`shopify.app.toml` deployment** — active + released version **pivota-8** verified field-by-field: read-only scopes (no write), managed install, api 2024-07, callback URL, and all 3 GDPR compliance webhook URLs → `/webhooks/shopify/gdpr`. Session changes needed no new version.
 - 🔴 **PCD declaration = BLOCKER** — listing declares "Doesn't need access to protected customer data" while holding `read_orders`. Contradicts the scope + §2. **Must fix before submit** (see §2 blocker). Founder-only Partner Dashboard change.
-- ⬜ **Privacy policy URL** — listing is "Created (English)" and passed automated checks (so a URL is almost certainly set), but not read directly (avoided touching the live submission form). Founder: confirm it's present + describes the order-data / no-PII-storage posture.
+- 🔴 **App category = BLOCKER** — listing category is "Sales channels › Marketplaces" + the app declares the "sales channel" capability, contradicting the read-only positioning and re-inviting the competing-channel scrutiny behind the suspension. Change to **Analytics**, drop the capability (see §9 Item 2). ⚠️ Category is not editable after submit.
+- ⬜ **Privacy policy URL** — policy **content verified good** at `https://merchant.pivota.cc/privacy` (order-data-in-aggregate, no protected customer fields, GDPR webhooks, retention, sub-processors — see §9 Item 3). Remaining: founder confirms the listing's Privacy-policy field points at that URL.
 - ✅ **Agent-checkout disclosure** — DECIDED: keep App A read-only, don't feature checkout (see §5.3 honesty note).
 - ℹ️ **Deprecated offline-tokens advisory** ("Fix by Jan 1") still shows on the app Overview — non-blocking (deadline 2027-01-01), matches §7. Don't let its wording spook a reviewer.
 
-**Verdict:** only the PCD declaration blocks submission. Everything else is confirmed, decided, or a quick founder verify.
+**Final prod re-probe (2026-07-15, pre-submit review session):**
+- Callback failure paths: bare callback → 302 `…/app/install/error?reason=missing_shop`; forged hmac/state → 302 `…?reason=state_not_found`. No raw JSON on any callback error path.
+- App entry `?shop=pivota-review-demo.myshopify.com` → 302 to Shopify authorize with exactly `read_discounts,read_fulfillments,read_orders,read_products`, correct client_id + callback URL.
+- GDPR webhook POST with bad HMAC → **401** `UNAUTHORIZED`; missing HMAC → **401**.
+- Portal `/app/install/error` and `/app/install/success` both 200.
+- `api.pivota.cc` stability: **50/50 TLS handshakes succeeded, zero resets** (handshake 0.7–2.5s). Still re-check day-of.
+- ℹ️ Residual (non-blocking): `/integrations/shopify/app` **without** a `shop` param (or with a malformed one) returns a raw JSON 400. Shopify always appends `shop` when launching the App URL, so no reviewer path hits this — but redirecting it to `/app/install/error` like the callback would close the last raw-JSON surface.
+
+**Verdict:** two blockers before submit — the PCD declaration (§9 Item 1) and the app category / sales-channel capability (§9 Item 2). Everything else is confirmed, decided, or a quick founder verify.
