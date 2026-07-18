@@ -5488,9 +5488,24 @@ function buildCatalogSignatureGroupMemberFromIdentityRow(row, canonicalRef = {})
 // by the minted-aware seed-identity predicate rendered with a NULL offer/price
 // or a retired mirror row's offer. Resolve the catalog row through BOTH lanes —
 // direct source_product_id (mirror/connected) and the attached seed
-// (eps.attached_product_key = cp.product_key, minted) — preferring a live row,
-// then the minted canonical over the mirror. Kept in sync with the minted arm
-// of buildActiveExternalSeedIdentityPredicate (services/pdpIdentityGraph.js).
+// (eps.attached_product_key = cp.product_key, minted).
+//
+// Row-selection order (ultrareview #1800 finding: keep this in sync with the
+// SERVING GATES of buildActiveExternalSeedIdentityPredicate, not just its join
+// keys). The admission predicate's arms each require cp.sync_status='live' AND
+// index_pipeline_state.serving_eligible=TRUE on the lane that admitted the
+// member, so we PREFER the serving-eligible + live row first, then the minted
+// canonical over the mirror, then recency. This is a preference, not a hard
+// gate: the direct lane also carries connected-merchant rows (admitted with no
+// serving_eligible requirement) and mirror rows, which must never be dropped —
+// LIMIT 1 still returns the best available row so a member never regresses to a
+// NULL offer. For an admitted external_seed member the admitting lane is
+// (live + serving_eligible) by construction, so it wins these ranks; a
+// live-but-not-serving-eligible minted row (e.g. pre-graduation PQS gate or an
+// evidence hold, while the mirror is still live+eligible) can no longer shadow
+// the eligible row the pipeline actually cleared. serving_eligible is checked
+// via a correlated EXISTS (semi-join, matching the predicate) so the LEFT JOIN
+// never fans cp_pick out on a content_key with multiple pipeline rows.
 function buildGroupMemberCatalogOfferLateralJoinSql(alias = 'pil') {
   return `
       LEFT JOIN LATERAL (
@@ -5511,6 +5526,13 @@ function buildGroupMemberCatalogOfferLateralJoinSql(alias = 'pil') {
             AND eps.status = 'active'
         ) cp_pick
         ORDER BY
+          CASE
+            WHEN EXISTS (
+              SELECT 1 FROM index_pipeline_state ips_pick
+              WHERE ips_pick.content_key = cp_pick.content_key
+                AND ips_pick.serving_eligible = TRUE
+            ) THEN 0 ELSE 1
+          END,
           CASE WHEN cp_pick.sync_status = 'live' THEN 0 ELSE 1 END,
           cp_pick.offer_join_lane ASC,
           cp_pick.updated_at DESC NULLS LAST,

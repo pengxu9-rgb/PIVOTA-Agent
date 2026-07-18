@@ -254,15 +254,53 @@ describe('group-member catalog offer join — Path-C minted canonical lane', () 
       expect(sql.match(/cp\.merchant_id = pil\.merchant_id/g)).toHaveLength(2);
     });
 
-    test('prefers a live catalog row, then the minted canonical over the mirror', () => {
+    test('binds each lane rank to the correct UNION branch (rank 0 = minted-via-seed, rank 1 = direct)', () => {
       const sql = app._debug.buildGroupMemberCatalogOfferLateralJoinSql('pil');
+      // Rank must be bound to the branch, not merely present somewhere: the
+      // MINTED branch (via external_product_seeds) is rank 0 (preferred), the
+      // DIRECT branch (catalog_products by source_product_id) is rank 1. An
+      // ultrareview mutation showed that unbound toContain lets a marker swap
+      // pass — assert the marker sits on its own branch's FROM clause.
+      expect(sql).toMatch(
+        /SELECT cp\.\*, 1 AS offer_join_lane\s+FROM catalog_products cp\s+WHERE cp\.merchant_id = pil\.merchant_id\s+AND cp\.source_product_id = pil\.product_id/,
+      );
+      expect(sql).toMatch(
+        /SELECT cp\.\*, 0 AS offer_join_lane\s+FROM external_product_seeds eps\s+JOIN catalog_products cp/,
+      );
+    });
+
+    test('ORDER BY sequence is exactly: serving-eligible, live, lane, updated_at, product_key', () => {
+      const sql = app._debug.buildGroupMemberCatalogOfferLateralJoinSql('pil');
+      // Pin the FULL term order by index (an ultrareview mutation showed that a
+      // lone liveIdx < laneIdx check lets updated_at be hoisted above lane,
+      // silently reintroducing the stale-row bug). Each term must strictly
+      // precede the next.
+      const eligibleIdx = sql.indexOf('ips_pick.serving_eligible = TRUE');
       const liveIdx = sql.indexOf("CASE WHEN cp_pick.sync_status = 'live' THEN 0 ELSE 1 END");
       const laneIdx = sql.indexOf('cp_pick.offer_join_lane ASC');
-      expect(liveIdx).toBeGreaterThan(-1);
-      expect(laneIdx).toBeGreaterThan(liveIdx);
-      // Minted lane ranks 0 (preferred), direct/mirror lane ranks 1.
-      expect(sql).toContain('SELECT cp.*, 0 AS offer_join_lane');
-      expect(sql).toContain('SELECT cp.*, 1 AS offer_join_lane');
+      const updatedIdx = sql.indexOf('cp_pick.updated_at DESC NULLS LAST');
+      const productKeyIdx = sql.indexOf('cp_pick.product_key ASC');
+      // The serving_eligible EXISTS also appears — ensure the index we grabbed
+      // is the one inside the ORDER BY (after the FROM/UNION block).
+      const orderByIdx = sql.indexOf('ORDER BY');
+      expect(orderByIdx).toBeGreaterThan(-1);
+      for (const idx of [eligibleIdx, liveIdx, laneIdx, updatedIdx, productKeyIdx]) {
+        expect(idx).toBeGreaterThan(orderByIdx);
+      }
+      // Strict monotonic ordering of every rank term.
+      expect(eligibleIdx).toBeLessThan(liveIdx);
+      expect(liveIdx).toBeLessThan(laneIdx);
+      expect(laneIdx).toBeLessThan(updatedIdx);
+      expect(updatedIdx).toBeLessThan(productKeyIdx);
+    });
+
+    test('ranks serving-eligibility via a correlated EXISTS (semi-join, no fan-out) and caps at one row', () => {
+      const sql = app._debug.buildGroupMemberCatalogOfferLateralJoinSql('pil');
+      // serving_eligible must be a correlated EXISTS on cp_pick.content_key —
+      // NOT a LEFT JOIN that could fan cp_pick out on a multi-row content_key.
+      expect(sql).toMatch(
+        /EXISTS\s*\(\s*SELECT 1 FROM index_pipeline_state ips_pick\s+WHERE ips_pick\.content_key = cp_pick\.content_key\s+AND ips_pick\.serving_eligible = TRUE\s*\)/,
+      );
       // At most one catalog row per member — the lateral never fans out.
       expect(sql).toContain('LIMIT 1');
     });
