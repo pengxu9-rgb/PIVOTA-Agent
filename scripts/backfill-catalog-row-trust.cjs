@@ -70,6 +70,26 @@ const PRODUCT_DRIVER_SQL = `
       created_at DESC NULLS LAST,
       id DESC
   ),
+  minted_seed_one AS (
+    -- Path-C minted canonicals (catalog_enrichment_agent_v1) attach one seed
+    -- PER OFFER; dedupe by attached_product_key, preferring the seed that
+    -- carries an identity listing (its external_product_id is the pil join
+    -- key below). Kept in sync with src/services/catalogRowTrustUpserter.js
+    -- + the Python twin.
+    SELECT DISTINCT ON (s.attached_product_key)
+      s.id, s.external_product_id, s.status, s.domain, s.attached_product_key, s.updated_at
+    FROM external_product_seeds s
+    LEFT JOIN pdp_identity_listing spl
+      ON spl.product_id = s.external_product_id
+    WHERE s.attached_product_key IS NOT NULL
+    ORDER BY
+      s.attached_product_key,
+      (spl.product_id IS NOT NULL) DESC,
+      (s.status = 'active') DESC,
+      s.updated_at DESC NULLS LAST,
+      s.created_at DESC NULLS LAST,
+      s.id DESC
+  ),
   merchant_store_one AS (
     SELECT DISTINCT ON (merchant_id, platform)
       merchant_id, platform, domain, status, last_sync
@@ -123,11 +143,11 @@ const PRODUCT_DRIVER_SQL = `
     pil.product_line_id,
     pil.review_family_id,
 
-    eps.id            AS eps_id,
-    eps.status        AS eps_status,
-    eps.domain        AS eps_domain,
-    eps.attached_product_key AS eps_attached_product_key,
-    eps.updated_at    AS eps_last_seen_at,
+    COALESCE(eps.id, epm.id)                                     AS eps_id,
+    COALESCE(eps.status, epm.status)                             AS eps_status,
+    COALESCE(eps.domain, epm.domain)                             AS eps_domain,
+    COALESCE(eps.attached_product_key, epm.attached_product_key) AS eps_attached_product_key,
+    COALESCE(eps.updated_at, epm.updated_at)                     AS eps_last_seen_at,
 
     ms.merchant_id    AS ms_merchant_id,
     ms.platform       AS ms_platform,
@@ -142,15 +162,24 @@ const PRODUCT_DRIVER_SQL = `
   FROM catalog_products cp
   LEFT JOIN index_pipeline_state ips
     ON ips.content_key = cp.content_key
-  LEFT JOIN pdp_identity_listing pil
-    ON pil.merchant_id = cp.merchant_id
-   AND pil.product_id = cp.source_product_id
   LEFT JOIN external_seed_one eps
     -- ADR-009: match by source_system, NOT merchant_id='external_seed' (seeds
     -- mirror under per-brand merch_obs_ observed sellers). Kept in sync with
     -- src/services/catalogRowTrustUpserter.js + the Python twin.
     ON cp.source_system = 'external_product_seeds_mirror_v1'
    AND eps.external_product_id = cp.source_product_id
+  LEFT JOIN minted_seed_one epm
+    ON cp.source_system = 'catalog_enrichment_agent_v1'
+   AND epm.attached_product_key = cp.product_key
+  LEFT JOIN pdp_identity_listing pil
+    -- Minted rows key identity by their attached SEED id, not the name slug
+    -- in source_product_id. Kept in sync with the service + Python twin.
+    ON pil.merchant_id = cp.merchant_id
+   AND pil.product_id = CASE
+         WHEN cp.source_system = 'catalog_enrichment_agent_v1'
+           THEN epm.external_product_id
+         ELSE cp.source_product_id
+       END
   LEFT JOIN merchant_store_one ms
     ON ms.merchant_id = cp.merchant_id AND ms.platform = cp.platform
   LEFT JOIN identity_override_one pio

@@ -42,18 +42,25 @@ const PRODUCT_JOIN_SQL = `
   minted_seed_one AS (
     -- Path-C minted canonicals (catalog_enrichment_agent_v1) attach one seed
     -- PER OFFER to the same product_key, so their seed join must be keyed by
-    -- attached_product_key and deduped here (best/most-recent seed wins) or
-    -- the product join would fan out per offer.
-    SELECT DISTINCT ON (attached_product_key)
-      id, external_product_id, status, domain, attached_product_key, updated_at
-    FROM external_product_seeds
-    WHERE attached_product_key IS NOT NULL
+    -- attached_product_key and deduped here or the product join would fan out
+    -- per offer. Preference order: a seed that CARRIES an identity listing
+    -- outranks a merely-newer sibling — the winner's external_product_id is
+    -- the pil join key below, so picking an identity-less sibling would
+    -- re-derive IDENTITY_CONFIDENCE_NULL nondeterministically as updated_at
+    -- values move.
+    SELECT DISTINCT ON (s.attached_product_key)
+      s.id, s.external_product_id, s.status, s.domain, s.attached_product_key, s.updated_at
+    FROM external_product_seeds s
+    LEFT JOIN pdp_identity_listing spl
+      ON spl.product_id = s.external_product_id
+    WHERE s.attached_product_key IS NOT NULL
     ORDER BY
-      attached_product_key,
-      (status = 'active') DESC,
-      updated_at DESC NULLS LAST,
-      created_at DESC NULLS LAST,
-      id DESC
+      s.attached_product_key,
+      (spl.product_id IS NOT NULL) DESC,
+      (s.status = 'active') DESC,
+      s.updated_at DESC NULLS LAST,
+      s.created_at DESC NULLS LAST,
+      s.id DESC
   ),
   merchant_store_one AS (
     SELECT DISTINCT ON (merchant_id, platform)
@@ -413,7 +420,11 @@ async function upsertCatalogRowTrustForSourceListingRefs(pool, sourceListingRefs
   try {
     // Resolve refs to catalog product_keys.
     // source_listing_ref = 'merchantId:productId'; product_id in
-    // pdp_identity_listing maps to source_product_id in catalog_products.
+    // pdp_identity_listing maps to source_product_id in catalog_products for
+    // mirror-lane rows. Path-C minted canonicals carry a name slug there, so
+    // their refs resolve through the attached seed instead — without the
+    // second arm the post-promotion trust refresh resolved 0 keys for minted
+    // rows and their serving_decision stayed stale until the 6h cron.
     const resolveRes = await pool.query(
       `
         SELECT DISTINCT cp.product_key
@@ -421,6 +432,16 @@ async function upsertCatalogRowTrustForSourceListingRefs(pool, sourceListingRefs
         JOIN pdp_identity_listing pil
           ON pil.merchant_id = cp.merchant_id
          AND pil.product_id = cp.source_product_id
+        WHERE pil.source_listing_ref = ANY($1::text[])
+        UNION
+        SELECT DISTINCT cp.product_key
+        FROM pdp_identity_listing pil
+        JOIN external_product_seeds eps
+          ON eps.external_product_id = pil.product_id
+        JOIN catalog_products cp
+          ON cp.product_key = eps.attached_product_key
+         AND cp.source_system = 'catalog_enrichment_agent_v1'
+         AND cp.merchant_id = pil.merchant_id
         WHERE pil.source_listing_ref = ANY($1::text[])
         LIMIT 5000
       `,
