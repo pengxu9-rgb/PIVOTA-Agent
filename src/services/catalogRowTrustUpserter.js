@@ -39,6 +39,29 @@ const PRODUCT_JOIN_SQL = `
       created_at DESC NULLS LAST,
       id DESC
   ),
+  minted_seed_one AS (
+    -- Path-C minted canonicals (catalog_enrichment_agent_v1) attach one seed
+    -- PER OFFER to the same product_key, so their seed join must be keyed by
+    -- attached_product_key and deduped here or the product join would fan out
+    -- per offer. Preference order: a seed that CARRIES an identity listing
+    -- outranks a merely-newer sibling — the winner's external_product_id is
+    -- the pil join key below, so picking an identity-less sibling would
+    -- re-derive IDENTITY_CONFIDENCE_NULL nondeterministically as updated_at
+    -- values move.
+    SELECT DISTINCT ON (s.attached_product_key)
+      s.id, s.external_product_id, s.status, s.domain, s.attached_product_key, s.updated_at
+    FROM external_product_seeds s
+    LEFT JOIN pdp_identity_listing spl
+      ON spl.product_id = s.external_product_id
+    WHERE s.attached_product_key IS NOT NULL
+    ORDER BY
+      s.attached_product_key,
+      (spl.product_id IS NOT NULL) DESC,
+      (s.status = 'active') DESC,
+      s.updated_at DESC NULLS LAST,
+      s.created_at DESC NULLS LAST,
+      s.id DESC
+  ),
   merchant_store_one AS (
     SELECT DISTINCT ON (merchant_id, platform)
       merchant_id, platform, domain, status, last_sync
@@ -92,11 +115,11 @@ const PRODUCT_JOIN_SQL = `
     pil.product_line_id,
     pil.review_family_id,
 
-    eps.id            AS eps_id,
-    eps.status        AS eps_status,
-    eps.domain        AS eps_domain,
-    eps.attached_product_key AS eps_attached_product_key,
-    eps.updated_at    AS eps_last_seen_at,
+    COALESCE(eps.id, epm.id)                                     AS eps_id,
+    COALESCE(eps.status, epm.status)                             AS eps_status,
+    COALESCE(eps.domain, epm.domain)                             AS eps_domain,
+    COALESCE(eps.attached_product_key, epm.attached_product_key) AS eps_attached_product_key,
+    COALESCE(eps.updated_at, epm.updated_at)                     AS eps_last_seen_at,
 
     ms.merchant_id    AS ms_merchant_id,
     ms.platform       AS ms_platform,
@@ -111,9 +134,6 @@ const PRODUCT_JOIN_SQL = `
   FROM catalog_products cp
   LEFT JOIN index_pipeline_state ips
     ON ips.content_key = cp.content_key
-  LEFT JOIN pdp_identity_listing pil
-    ON pil.merchant_id = cp.merchant_id
-   AND pil.product_id = cp.source_product_id
   LEFT JOIN external_seed_one eps
     -- ADR-009: match by source_system, NOT merchant_id='external_seed'. External
     -- seeds now mirror under per-brand observed sellers (merch_obs_…); the legacy
@@ -124,6 +144,24 @@ const PRODUCT_JOIN_SQL = `
     -- this backfill re-derives 'unknown' and overwrites the Python fix.
     ON cp.source_system = 'external_product_seeds_mirror_v1'
    AND eps.external_product_id = cp.source_product_id
+  LEFT JOIN minted_seed_one epm
+    -- Path-C minted canonicals: seeds attach by attached_product_key (their
+    -- source_product_id is a canonical name slug, not a seed id).
+    ON cp.source_system = 'catalog_enrichment_agent_v1'
+   AND epm.attached_product_key = cp.product_key
+  LEFT JOIN pdp_identity_listing pil
+    -- Identity rows for external-seed supply are keyed by the SEED id
+    -- (pil.product_id = eps.external_product_id). Mirror rows carry that id in
+    -- cp.source_product_id; minted rows must route through their attached seed
+    -- (epm) or the pil join silently misses and trust re-derives
+    -- IDENTITY_CONFIDENCE_NULL forever (the shadow-forever bug on the Jul-16
+    -- minted cohort). MUST stay in sync with the Python twin.
+    ON pil.merchant_id = cp.merchant_id
+   AND pil.product_id = CASE
+         WHEN cp.source_system = 'catalog_enrichment_agent_v1'
+           THEN epm.external_product_id
+         ELSE cp.source_product_id
+       END
   LEFT JOIN merchant_store_one ms
     ON ms.merchant_id = cp.merchant_id AND ms.platform = cp.platform
   LEFT JOIN identity_override_one pio
@@ -382,7 +420,11 @@ async function upsertCatalogRowTrustForSourceListingRefs(pool, sourceListingRefs
   try {
     // Resolve refs to catalog product_keys.
     // source_listing_ref = 'merchantId:productId'; product_id in
-    // pdp_identity_listing maps to source_product_id in catalog_products.
+    // pdp_identity_listing maps to source_product_id in catalog_products for
+    // mirror-lane rows. Path-C minted canonicals carry a name slug there, so
+    // their refs resolve through the attached seed instead — without the
+    // second arm the post-promotion trust refresh resolved 0 keys for minted
+    // rows and their serving_decision stayed stale until the 6h cron.
     const resolveRes = await pool.query(
       `
         SELECT DISTINCT cp.product_key
@@ -390,6 +432,16 @@ async function upsertCatalogRowTrustForSourceListingRefs(pool, sourceListingRefs
         JOIN pdp_identity_listing pil
           ON pil.merchant_id = cp.merchant_id
          AND pil.product_id = cp.source_product_id
+        WHERE pil.source_listing_ref = ANY($1::text[])
+        UNION
+        SELECT DISTINCT cp.product_key
+        FROM pdp_identity_listing pil
+        JOIN external_product_seeds eps
+          ON eps.external_product_id = pil.product_id
+        JOIN catalog_products cp
+          ON cp.product_key = eps.attached_product_key
+         AND cp.source_system = 'catalog_enrichment_agent_v1'
+         AND cp.merchant_id = pil.merchant_id
         WHERE pil.source_listing_ref = ANY($1::text[])
         LIMIT 5000
       `,

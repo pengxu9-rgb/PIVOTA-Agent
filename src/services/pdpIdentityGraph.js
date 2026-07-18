@@ -226,6 +226,26 @@ function buildActiveExternalSeedIdentityPredicate(alias = 'pdp_identity_listing'
       WHERE eps.external_product_id = ${tableAlias}.product_id
         AND eps.status = 'active'
     )
+    -- Path-C minted canonicals (catalog_enrichment_agent_v1): same shape as
+    -- the mirror arm above, but the seed links to its catalog row by
+    -- attached_product_key — a minted row's source_product_id is a canonical
+    -- name slug, never a seed id, so the mirror arm can't match it. Without
+    -- this arm every minted canonical was invisible to the ~7 identity/serving
+    -- queries on this predicate (live-read promotion scanned 0 candidates on
+    -- the Jul-16 cohort). Same lane-omission class as the #1772 fix.
+    OR EXISTS (
+      SELECT 1
+      FROM external_product_seeds eps
+      JOIN catalog_products cp
+        ON cp.source_system = 'catalog_enrichment_agent_v1'
+       AND cp.product_key = eps.attached_product_key
+       AND cp.sync_status = 'live'
+      JOIN index_pipeline_state ips
+        ON ips.content_key = cp.content_key
+       AND ips.serving_eligible = TRUE
+      WHERE eps.external_product_id = ${tableAlias}.product_id
+        AND eps.status = 'active'
+    )
   )`;
 }
 

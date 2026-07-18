@@ -39,4 +39,15 @@ describe('buildActiveExternalSeedIdentityPredicate', () => {
     expect(sql).toContain("custom_alias.source_kind <> 'external_seed'");
     expect(sql).toContain('eps.external_product_id = custom_alias.product_id');
   });
+
+  test('recognizes Path-C minted canonicals via their attached seed', () => {
+    // A minted row's source_product_id is a canonical name slug, never a seed
+    // id — the mirror arm can't match it. The minted arm must correlate the
+    // seed by attached_product_key or every minted canonical is invisible to
+    // the ~7 identity/serving queries on this predicate (live-read promotion
+    // scanned 0 candidates on the Jul-16 cohort).
+    const sql = buildActiveExternalSeedIdentityPredicate('pil');
+    expect(sql).toContain("cp.source_system = 'catalog_enrichment_agent_v1'");
+    expect(sql).toContain('cp.product_key = eps.attached_product_key');
+  });
 });

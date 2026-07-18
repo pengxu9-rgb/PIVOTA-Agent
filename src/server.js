@@ -5825,6 +5825,22 @@ async function resolveCatalogProductRefFromPivotaSignatureInner(normalizedProduc
                     WHERE eps.external_product_id = pil.product_id
                       AND eps.status = 'active'
                   )
+                  -- Path-C minted canonicals: seed links by attached_product_key
+                  -- (source_product_id is a name slug, never a seed id). Kept in
+                  -- sync with buildActiveExternalSeedIdentityPredicate.
+                  OR EXISTS (
+                    SELECT 1
+                    FROM external_product_seeds eps
+                    JOIN catalog_products cp_active
+                      ON cp_active.source_system = 'catalog_enrichment_agent_v1'
+                     AND cp_active.product_key = eps.attached_product_key
+                     AND cp_active.sync_status = 'live'
+                    JOIN index_pipeline_state ips_active
+                      ON ips_active.content_key = cp_active.content_key
+                     AND ips_active.serving_eligible = TRUE
+                    WHERE eps.external_product_id = pil.product_id
+                      AND eps.status = 'active'
+                  )
                 )
               ORDER BY
                 CASE WHEN pil.source_tier = 'brand' THEN 0 ELSE 1 END,
