@@ -5479,6 +5479,46 @@ function buildCatalogSignatureGroupMemberFromIdentityRow(row, canonicalRef = {})
   };
 }
 
+// #1799 rendering-side follow-up (pre-merge finding 6): group-member catalog
+// rows were joined ONLY by cp.source_product_id = <alias>.product_id. For
+// Path-C minted canonicals (source_system='catalog_enrichment_agent_v1') the
+// identity row's product_id is the attached SEED's external_product_id while
+// the minted row's source_product_id is a name slug, so that key could reach
+// only the seed's MIRROR row (possibly stale/retired) — minted members admitted
+// by the minted-aware seed-identity predicate rendered with a NULL offer/price
+// or a retired mirror row's offer. Resolve the catalog row through BOTH lanes —
+// direct source_product_id (mirror/connected) and the attached seed
+// (eps.attached_product_key = cp.product_key, minted) — preferring a live row,
+// then the minted canonical over the mirror. Kept in sync with the minted arm
+// of buildActiveExternalSeedIdentityPredicate (services/pdpIdentityGraph.js).
+function buildGroupMemberCatalogOfferLateralJoinSql(alias = 'pil') {
+  return `
+      LEFT JOIN LATERAL (
+        SELECT cp_pick.*
+        FROM (
+          SELECT cp.*, 1 AS offer_join_lane
+          FROM catalog_products cp
+          WHERE cp.merchant_id = ${alias}.merchant_id
+            AND cp.source_product_id = ${alias}.product_id
+          UNION ALL
+          SELECT cp.*, 0 AS offer_join_lane
+          FROM external_product_seeds eps
+          JOIN catalog_products cp
+            ON cp.product_key = eps.attached_product_key
+           AND cp.source_system = 'catalog_enrichment_agent_v1'
+           AND cp.merchant_id = ${alias}.merchant_id
+          WHERE eps.external_product_id = ${alias}.product_id
+            AND eps.status = 'active'
+        ) cp_pick
+        ORDER BY
+          CASE WHEN cp_pick.sync_status = 'live' THEN 0 ELSE 1 END,
+          cp_pick.offer_join_lane ASC,
+          cp_pick.updated_at DESC NULLS LAST,
+          cp_pick.product_key ASC
+        LIMIT 1
+      ) cp_offer ON true`;
+}
+
 async function fetchApprovedLiveIdentityGroupMembersForOffers({
   sellableItemGroupId,
   excludeMerchantId,
@@ -5523,9 +5563,7 @@ async function fetchApprovedLiveIdentityGroupMembersForOffers({
         offer_row.source_system AS catalog_offer_source_system,
         offer_row.source_ref AS catalog_offer_source_ref
       FROM pdp_identity_listing pil
-      LEFT JOIN catalog_products cp_offer
-        ON cp_offer.merchant_id = pil.merchant_id
-       AND cp_offer.source_product_id = pil.product_id
+      ${buildGroupMemberCatalogOfferLateralJoinSql('pil')}
       LEFT JOIN catalog_merchants cm_offer
         ON cm_offer.merchant_id = pil.merchant_id
        -- ADR-009: skip the join only for the legacy anonymous 'external_seed'
@@ -5780,9 +5818,7 @@ async function resolveCatalogProductRefFromPivotaSignatureInner(normalizedProduc
                 offer_row.source_system AS catalog_offer_source_system,
                 offer_row.source_ref AS catalog_offer_source_ref
               FROM pdp_identity_listing pil
-              LEFT JOIN catalog_products cp_offer
-                ON cp_offer.merchant_id = pil.merchant_id
-               AND cp_offer.source_product_id = pil.product_id
+              ${buildGroupMemberCatalogOfferLateralJoinSql('pil')}
               LEFT JOIN LATERAL (
                 SELECT
                   o.offer_id,
@@ -9945,9 +9981,7 @@ async function filterGroupMembersByCatalogSourceQuarantine(members, { queryFn = 
             rm.product_id,
             rm.ord
           FROM requested_members rm
-          LEFT JOIN catalog_products cp_offer
-            ON cp_offer.merchant_id = rm.merchant_id
-           AND cp_offer.source_product_id = rm.product_id
+          ${buildGroupMemberCatalogOfferLateralJoinSql('rm')}
           WHERE 1 = 1
             ${buildCatalogSourceQuarantineAntiJoinSql('cp_offer')}
           ORDER BY rm.merchant_id, rm.product_id, rm.ord
@@ -50003,6 +50037,8 @@ module.exports._debug = {
   buildOffersFromGroupMembers,
   fetchApprovedLiveIdentityGroupMembersForOffers,
   buildCatalogSignatureGroupMemberFromIdentityRow,
+  buildGroupMemberCatalogOfferLateralJoinSql,
+  filterGroupMembersByCatalogSourceQuarantine,
   decoratePdpPayloadWithIdentity,
   hydrateCanonicalPdpPayloadFromOffers,
   loadCreatorSellableFromCache,
