@@ -198,6 +198,216 @@ describe('fetchApprovedLiveIdentityGroupMembersForOffers — ADR-009 external-su
   });
 });
 
+// #1799 rendering-side follow-up (pre-merge finding 6): a Path-C minted
+// canonical's identity row carries the attached SEED's external_product_id as
+// product_id, while the minted catalog row's source_product_id is a name slug.
+// The old `cp_offer ON cp_offer.source_product_id = pil.product_id` join could
+// therefore reach only the seed's MIRROR row (possibly stale/retired), so
+// minted group members admitted by the minted-aware seed-identity predicate
+// rendered with a NULL offer/price or a retired mirror row's offer. The join
+// must route minted rows through their attached seed.
+describe('group-member catalog offer join — Path-C minted canonical lane', () => {
+  let app;
+
+  beforeEach(() => {
+    jest.resetModules();
+    jest.dontMock('../src/db');
+    process.env = { ...ORIGINAL_ENV, NODE_ENV: 'test' };
+    app = require('../src/server');
+  });
+
+  afterAll(() => {
+    process.env = ORIGINAL_ENV;
+  });
+
+  const MINTED_ROW = {
+    merchant_id: 'merch_obs_9cd1c95a6a1b22aa',
+    product_id: 'seed_missha_16821',
+    source_listing_ref: 'merch_obs_9cd1c95a6a1b22aa:seed_missha_16821',
+    source_kind: 'external_seed',
+    source_tier: 'brand',
+    merchant_name: 'Missha',
+    source_payload: {},
+    variant_axes: {},
+    // Fields the fixed join resolves from the minted canonical, not the mirror.
+    catalog_title: 'MISSHA Time Revolution Essence',
+    catalog_brand: 'Missha',
+    catalog_canonical_url: 'https://example.com/missha-essence',
+    catalog_image_url: 'https://example.com/missha-essence.jpg',
+    catalog_offer_id: 'offer_minted_1',
+    catalog_sku_key: 'sku_minted_1',
+    catalog_offer_currency: 'USD',
+    catalog_offer_price: '32.00',
+    catalog_offer_source_system: 'catalog_enrichment_agent_v1',
+    catalog_offer_source_ref: 'enrich_ref_1',
+  };
+
+  describe('shared lateral join builder (single source of truth for all 3 sites)', () => {
+    test('routes minted rows through the attached seed, gated on an active seed', () => {
+      const sql = app._debug.buildGroupMemberCatalogOfferLateralJoinSql('pil');
+      expect(sql).toContain('cp.product_key = eps.attached_product_key');
+      expect(sql).toContain("cp.source_system = 'catalog_enrichment_agent_v1'");
+      expect(sql).toContain('eps.external_product_id = pil.product_id');
+      expect(sql).toContain("eps.status = 'active'");
+      // Both lanes stay merchant-scoped (prod-verified: minted rows share
+      // pil.merchant_id = cp.merchant_id — see #1799).
+      expect(sql.match(/cp\.merchant_id = pil\.merchant_id/g)).toHaveLength(2);
+    });
+
+    test('binds each lane rank to the correct UNION branch (rank 0 = minted-via-seed, rank 1 = direct)', () => {
+      const sql = app._debug.buildGroupMemberCatalogOfferLateralJoinSql('pil');
+      // Rank must be bound to the branch, not merely present somewhere: the
+      // MINTED branch (via external_product_seeds) is rank 0 (preferred), the
+      // DIRECT branch (catalog_products by source_product_id) is rank 1. An
+      // ultrareview mutation showed that unbound toContain lets a marker swap
+      // pass — assert the marker sits on its own branch's FROM clause.
+      expect(sql).toMatch(
+        /SELECT cp\.\*, 1 AS offer_join_lane\s+FROM catalog_products cp\s+WHERE cp\.merchant_id = pil\.merchant_id\s+AND cp\.source_product_id = pil\.product_id/,
+      );
+      expect(sql).toMatch(
+        /SELECT cp\.\*, 0 AS offer_join_lane\s+FROM external_product_seeds eps\s+JOIN catalog_products cp/,
+      );
+    });
+
+    test('ORDER BY sequence is exactly: serving-eligible, live, lane, updated_at, product_key', () => {
+      const sql = app._debug.buildGroupMemberCatalogOfferLateralJoinSql('pil');
+      // Pin the FULL term order by index (an ultrareview mutation showed that a
+      // lone liveIdx < laneIdx check lets updated_at be hoisted above lane,
+      // silently reintroducing the stale-row bug). Each term must strictly
+      // precede the next.
+      const eligibleIdx = sql.indexOf('ips_pick.serving_eligible = TRUE');
+      const liveIdx = sql.indexOf("CASE WHEN cp_pick.sync_status = 'live' THEN 0 ELSE 1 END");
+      const laneIdx = sql.indexOf('cp_pick.offer_join_lane ASC');
+      const updatedIdx = sql.indexOf('cp_pick.updated_at DESC NULLS LAST');
+      const productKeyIdx = sql.indexOf('cp_pick.product_key ASC');
+      // The serving_eligible EXISTS also appears — ensure the index we grabbed
+      // is the one inside the ORDER BY (after the FROM/UNION block).
+      const orderByIdx = sql.indexOf('ORDER BY');
+      expect(orderByIdx).toBeGreaterThan(-1);
+      for (const idx of [eligibleIdx, liveIdx, laneIdx, updatedIdx, productKeyIdx]) {
+        expect(idx).toBeGreaterThan(orderByIdx);
+      }
+      // Strict monotonic ordering of every rank term.
+      expect(eligibleIdx).toBeLessThan(liveIdx);
+      expect(liveIdx).toBeLessThan(laneIdx);
+      expect(laneIdx).toBeLessThan(updatedIdx);
+      expect(updatedIdx).toBeLessThan(productKeyIdx);
+    });
+
+    test('ranks serving-eligibility via a correlated EXISTS (semi-join, no fan-out) and caps at one row', () => {
+      const sql = app._debug.buildGroupMemberCatalogOfferLateralJoinSql('pil');
+      // serving_eligible must be a correlated EXISTS on cp_pick.content_key —
+      // NOT a LEFT JOIN that could fan cp_pick out on a multi-row content_key.
+      expect(sql).toMatch(
+        /EXISTS\s*\(\s*SELECT 1 FROM index_pipeline_state ips_pick\s+WHERE ips_pick\.content_key = cp_pick\.content_key\s+AND ips_pick\.serving_eligible = TRUE\s*\)/,
+      );
+      // At most one catalog row per member — the lateral never fans out.
+      expect(sql).toContain('LIMIT 1');
+    });
+
+    test('applies the provided identity-row alias', () => {
+      const sql = app._debug.buildGroupMemberCatalogOfferLateralJoinSql('rm');
+      expect(sql).toContain('eps.external_product_id = rm.product_id');
+      expect(sql).toContain('cp.merchant_id = rm.merchant_id');
+      expect(sql).toContain('cp.source_product_id = rm.product_id');
+    });
+  });
+
+  describe('emitted SQL at the call sites', () => {
+    test('fetchApprovedLiveIdentityGroupMembersForOffers resolves offers through the minted lane', async () => {
+      const queryFn = makeQueryFn([]);
+      await app._debug.fetchApprovedLiveIdentityGroupMembersForOffers({
+        sellableItemGroupId: 'sig_x',
+        excludeMerchantId: 'merch_canonical',
+        excludeProductId: 'prod_canonical',
+        queryFn,
+      });
+      const sql = String(queryFn.mock.calls[0][0]);
+      expect(sql).toContain('cp.product_key = eps.attached_product_key');
+      expect(sql).toContain('cp_pick.offer_join_lane');
+      // The mirror-only join must not survive as the sole offer path.
+      expect(sql).not.toMatch(
+        /LEFT JOIN catalog_products cp_offer\s+ON cp_offer\.merchant_id = pil\.merchant_id\s+AND cp_offer\.source_product_id = pil\.product_id/,
+      );
+    });
+
+    test('filterGroupMembersByCatalogSourceQuarantine judges minted members by their canonical row', async () => {
+      process.env.DATABASE_URL = 'postgres://unit-test-not-connected';
+      const queryFn = jest.fn(async () => ({
+        rows: [{ members: [{ merchant_id: 'merch_obs_9cd1c95a6a1b22aa', product_id: 'seed_missha_16821' }] }],
+      }));
+      const { members } = await app._debug.filterGroupMembersByCatalogSourceQuarantine(
+        [{ merchant_id: 'merch_obs_9cd1c95a6a1b22aa', product_id: 'seed_missha_16821' }],
+        { queryFn },
+      );
+      const sql = String(queryFn.mock.calls[0][0]);
+      expect(sql).toContain('cp.product_key = eps.attached_product_key');
+      expect(sql).toContain('eps.external_product_id = rm.product_id');
+      expect(members).toHaveLength(1);
+    });
+
+    test('no raw mirror-only cp_offer join shape survives anywhere in server.js (covers the inline signature-resolver sibling)', () => {
+      const fs = require('fs');
+      const source = fs.readFileSync(require.resolve('../src/server'), 'utf8');
+      // The exact pre-fix join shape (finding 6) must not reappear in ANY of
+      // the three sibling queries — including the inline group-members query in
+      // resolveCatalogProductRefFromPivotaSignatureInner, which cannot be
+      // driven directly from a unit test.
+      expect(source).not.toMatch(
+        /LEFT JOIN catalog_products cp_offer\s+ON cp_offer\.merchant_id = (pil|rm)\.merchant_id\s+AND cp_offer\.source_product_id = \1\.product_id/,
+      );
+      // All three sites route through the shared builder.
+      expect(source.match(/\$\{buildGroupMemberCatalogOfferLateralJoinSql\('(?:pil|rm)'\)\}/g)).toHaveLength(3);
+    });
+  });
+
+  describe('member surfacing behavior for minted-backed rows', () => {
+    test('a minted member surfaces with its canonical offer price + catalog_offer_v1 provenance', async () => {
+      const queryFn = makeQueryFn([MINTED_ROW]);
+      const members = await app._debug.fetchApprovedLiveIdentityGroupMembersForOffers({
+        sellableItemGroupId: 'sig_minted',
+        excludeMerchantId: 'merch_canonical',
+        excludeProductId: 'prod_canonical',
+        queryFn,
+      });
+      expect(members).toHaveLength(1);
+      const member = members[0];
+      expect(member.merchant_id).toBe('merch_obs_9cd1c95a6a1b22aa');
+      expect(member.merchant_name).toBe('Missha');
+      expect(member.source_payload.price).toEqual({ amount: 32, currency: 'USD' });
+      expect(member.source_payload.catalog_offer_v1).toMatchObject({
+        offer_id: 'offer_minted_1',
+        source_system: 'catalog_enrichment_agent_v1',
+      });
+      expect(member.source_payload.title).toBe('MISSHA Time Revolution Essence');
+    });
+
+    test('a minted member whose offer row is still NULL surfaces without a fabricated price', async () => {
+      const noOfferRow = {
+        ...MINTED_ROW,
+        catalog_offer_id: null,
+        catalog_sku_key: null,
+        catalog_offer_currency: null,
+        catalog_offer_price: null,
+        catalog_offer_source_system: null,
+        catalog_offer_source_ref: null,
+      };
+      const queryFn = makeQueryFn([noOfferRow]);
+      const members = await app._debug.fetchApprovedLiveIdentityGroupMembersForOffers({
+        sellableItemGroupId: 'sig_minted_no_offer',
+        excludeMerchantId: 'merch_canonical',
+        excludeProductId: 'prod_canonical',
+        queryFn,
+      });
+      expect(members).toHaveLength(1);
+      expect(members[0].source_payload.price).toBeUndefined();
+      expect(members[0].source_payload.catalog_offer_v1).toBeUndefined();
+      // Catalog identity fields still render from the canonical row.
+      expect(members[0].source_payload.title).toBe('MISSHA Time Revolution Essence');
+    });
+  });
+});
+
 describe('buildLegacyExternalSeedLumpPredicate — ADR-009 seller-name gate', () => {
   const {
     buildLegacyExternalSeedLumpPredicate,
