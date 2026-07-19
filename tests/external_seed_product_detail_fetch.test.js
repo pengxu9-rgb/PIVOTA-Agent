@@ -881,6 +881,11 @@ describe('external seed product detail hydration', () => {
         seed_data: {
           brand: 'Fenty Beauty',
           description: 'A high-shine lip luminizer.',
+          electronics_meta: {
+            spec_groups: [
+              { label: 'Flight', rows: [['Takeoff weight', '192.5 g']] },
+            ],
+          },
           snapshot: {
             canonical_url: 'https://www.fentybeauty.com/products/gloss-bomb',
             product_id: 'ext_seed_db_sig_1',
@@ -1065,6 +1070,13 @@ describe('external seed product detail hydration', () => {
         canonical_url: 'https://agent.pivota.cc/products/sig_fentygloss1',
         source_url: 'https://www.fentybeauty.com/products/gloss-bomb',
         title: 'Fenty Beauty Gloss Bomb Universal Lip Luminizer',
+        // FIRST-CLASS electronics_meta composed at build time from the signature
+        // catalog payload's seed_data (no render-time fallback).
+        electronics_meta: {
+          spec_groups: [
+            { label: 'Flight', rows: [['Takeoff weight', '192.5 g']] },
+          ],
+        },
       }),
     );
   });
@@ -3384,5 +3396,68 @@ describe('product detail cache per-merchant TTL resolution', () => {
     expect(stats.ttl_ms_by_merchant.merch_overridden_a).toBe(45000);
     // external_seed still appears (it's known historical special-case)
     expect(stats.ttl_ms_by_merchant.external_seed).toBe(0);
+  });
+});
+
+describe('electronics_meta — FIRST-CLASS across every external-seed composer', () => {
+  const SPEC_GROUPS = [
+    { label: 'Flight', rows: [['Takeoff weight', '192.5 g']] },
+  ];
+
+  test('branch-1 fetchExternalSeedProductDetailFromDb composes electronics_meta first-class', async () => {
+    const { db, debug } = loadServerWithDb();
+    db.query.mockResolvedValueOnce({
+      rows: [
+        {
+          id: 'eps_hoverair_x1_pro',
+          external_product_id: 'hoverair_x1_pro',
+          canonical_url: 'https://us.hoverair.com/products/hoverair-x1-pro',
+          destination_url: 'https://us.hoverair.com/products/hoverair-x1-pro',
+          domain: 'us.hoverair.com',
+          title: 'HOVERAir X1 PRO',
+          image_url: 'https://cdn.example.com/x1pro.jpg',
+          price_amount: '499.00',
+          price_currency: 'USD',
+          availability: 'In Stock',
+          status: 'active',
+          // prunedSeedDataSql preserves root seed_data keys (electronics_meta),
+          // so buildExternalSeedProduct promotes it exactly like the main route.
+          seed_data: {
+            brand: 'HOVERAir',
+            electronics_meta: { spec_groups: SPEC_GROUPS },
+            snapshot: {
+              product_id: 'hoverair_x1_pro',
+              variants: [{ variant_id: 'x1pro-default', price: '499.00', currency: 'USD' }],
+            },
+          },
+        },
+      ],
+    });
+
+    const detail = await debug.fetchExternalSeedProductDetailFromDb({ productId: 'hoverair_x1_pro' });
+    expect(detail?.product?.electronics_meta).toEqual({ spec_groups: SPEC_GROUPS });
+  });
+
+  test('buildCatalogSignatureGroupMemberFromIdentityRow heals whitelisted electronics_meta from the catalog payload', () => {
+    const { debug } = loadServerWithDb();
+    const member = debug.buildCatalogSignatureGroupMemberFromIdentityRow({
+      merchant_id: 'merch_obs_5a402329c64deec0',
+      product_id: 'hoverair_x1_pro',
+      source_payload: { title: 'HOVERAir X1 PRO', product_id: 'hoverair_x1_pro' },
+      catalog_electronics_meta: { spec_groups: SPEC_GROUPS, junk: 'nope' },
+    });
+    expect(member?.source_payload?.electronics_meta).toEqual({ spec_groups: SPEC_GROUPS });
+  });
+
+  test('buildCatalogSignatureGroupMemberFromIdentityRow never clobbers a fresher seed-hydrated electronics_meta', () => {
+    const { debug } = loadServerWithDb();
+    const fresh = { spec_groups: [{ label: 'Fresh', rows: [['a', 'b']] }] };
+    const member = debug.buildCatalogSignatureGroupMemberFromIdentityRow({
+      merchant_id: 'merch_obs_5a402329c64deec0',
+      product_id: 'hoverair_x1_pro',
+      source_payload: { title: 'HOVERAir X1 PRO', product_id: 'hoverair_x1_pro', electronics_meta: fresh },
+      catalog_electronics_meta: { spec_groups: SPEC_GROUPS },
+    });
+    expect(member?.source_payload?.electronics_meta).toEqual(fresh);
   });
 });

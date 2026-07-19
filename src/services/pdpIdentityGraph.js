@@ -7,6 +7,7 @@ const {
   collectCachedSeedImageUrls,
   normalizeExternalSeedPrice,
 } = require('./externalSeedProducts');
+const { pickElectronicsMeta } = require('../pdpBuilder');
 const {
   _internals: productGroundingResolverInternals = {},
 } = require('./productGroundingResolver');
@@ -3071,6 +3072,38 @@ function composeSyntheticCanonicalProduct({
     gallery_scope: 'exact_item',
     preview_scope: 'product_line',
   };
+
+  // Electronics spec surface is FIRST-CLASS on the composed product (main route
+  // — founder decision: no render-time fallback digging into seed_data). The
+  // synthetic/product_group lane composes its product from the selected listing
+  // source_payloads (and the fallback canonical product), any of which may carry
+  // the whitelisted electronics_meta a per-brand seller (merch_obs_) route needs.
+  // Promote it here — otherwise the {...basePayload} spread that starts this
+  // product would silently drop it whenever the winning content payload lacked a
+  // first-class copy while a sibling listing / the fallback product had one.
+  // Strict-unsafe listings block content inheritance, so promote only from the
+  // requested listing's own payload in that case.
+  {
+    const electronicsMetaCandidates = requestedListingIsStrictUnsafe
+      ? [asPlainObject(requestedListing?.source_payload)]
+      : [
+          product,
+          basePayload,
+          asPlainObject(contentListing?.source_payload),
+          asPlainObject(commerceListing?.source_payload),
+          asPlainObject(fallbackProduct),
+        ];
+    let promotedElectronicsMeta = null;
+    for (const candidate of electronicsMetaCandidates) {
+      const source = asPlainObject(candidate);
+      promotedElectronicsMeta =
+        pickElectronicsMeta(source?.electronics_meta) ||
+        pickElectronicsMeta(asPlainObject(source?.seed_data)?.electronics_meta);
+      if (promotedElectronicsMeta) break;
+    }
+    if (promotedElectronicsMeta) product.electronics_meta = promotedElectronicsMeta;
+    else if ('electronics_meta' in product) delete product.electronics_meta;
+  }
 
   return {
     product,

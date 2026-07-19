@@ -5326,7 +5326,15 @@ async function fetchExternalSeedSimilarCardSourcesFromDb(productIds = []) {
             WHEN jsonb_typeof(seed_data->'pdp_details_sections') = 'array'
               THEN seed_data->'pdp_details_sections'
             ELSE '[]'::jsonb
-          END AS pdp_details_sections
+          END AS pdp_details_sections,
+          -- Electronics spec surface is FIRST-CLASS at compose time (main route
+          -- — no render-time fallback digging into seed_data). Project it here
+          -- (snapshot then root) so the similar-card source object composes the
+          -- whitelisted electronics_meta identically to the primary PDP route.
+          coalesce(
+            seed_data->'snapshot'->'electronics_meta',
+            seed_data->'electronics_meta'
+          ) AS electronics_meta
         FROM external_product_seeds eps
         LEFT JOIN signature_external_sources ses
           ON ses.external_product_id = eps.external_product_id
@@ -5369,6 +5377,9 @@ async function fetchExternalSeedSimilarCardSourcesFromDb(productIds = []) {
         description: firstNonEmptyString(row?.description),
         pdp_description_raw: firstNonEmptyString(row?.pdp_description_raw),
         pdp_details_sections: pdpDetailsSections,
+        ...(pickElectronicsMeta(row?.electronics_meta)
+          ? { electronics_meta: pickElectronicsMeta(row?.electronics_meta) }
+          : {}),
         seed_data: {
           snapshot: {
             brand: firstNonEmptyString(row?.brand),
@@ -5448,6 +5459,14 @@ function buildCatalogSignatureGroupMemberFromIdentityRow(row, canonicalRef = {})
     if (!firstNonEmptyString(sourcePayload[targetKey]) && firstNonEmptyString(sourceValue)) {
       sourcePayload[targetKey] = firstNonEmptyString(sourceValue);
     }
+  }
+  // Heal the FIRST-CLASS electronics_meta onto the member payload from the
+  // resolved catalog row (main route — no render-time fallback). Guarded so an
+  // existing (fresher, seed-hydrated) value is never clobbered; whitelisted so
+  // only the recognized spec shape is admitted.
+  if (!sourcePayload.electronics_meta) {
+    const memberElectronicsMeta = pickElectronicsMeta(row.catalog_electronics_meta);
+    if (memberElectronicsMeta) sourcePayload.electronics_meta = memberElectronicsMeta;
   }
   const variantAxes = isPlainObject(row.variant_axes) ? row.variant_axes : {};
   const merchantId = firstNonEmptyString(row.merchant_id);
@@ -5575,6 +5594,11 @@ async function fetchApprovedLiveIdentityGroupMembersForOffers({
         cp_offer.brand AS catalog_brand,
         cp_offer.canonical_url AS catalog_canonical_url,
         cp_offer.image_url AS catalog_image_url,
+        -- Electronics spec surface is FIRST-CLASS at compose time (main route —
+        -- no render-time fallback). Project the whitelisted electronics_meta off
+        -- the resolved catalog row's payload so a group member that later feeds
+        -- product composition carries the spec table like the primary route.
+        cp_offer.product_payload#>'{seed_data,electronics_meta}' AS catalog_electronics_meta,
         offer_row.offer_id AS catalog_offer_id,
         offer_row.sku_key AS catalog_sku_key,
         offer_row.currency AS catalog_offer_currency,
@@ -5830,6 +5854,12 @@ async function resolveCatalogProductRefFromPivotaSignatureInner(normalizedProduc
                 cp_offer.brand AS catalog_brand,
                 cp_offer.canonical_url AS catalog_canonical_url,
                 cp_offer.image_url AS catalog_image_url,
+                -- Electronics spec surface is FIRST-CLASS at compose time (main
+                -- route — no render-time fallback). Project the whitelisted
+                -- electronics_meta off the resolved catalog row's payload so a
+                -- group member that later feeds product composition carries the
+                -- spec table like the primary route.
+                cp_offer.product_payload#>'{seed_data,electronics_meta}' AS catalog_electronics_meta,
                 offer_row.offer_id AS catalog_offer_id,
                 offer_row.sku_key AS catalog_sku_key,
                 offer_row.currency AS catalog_offer_currency,
