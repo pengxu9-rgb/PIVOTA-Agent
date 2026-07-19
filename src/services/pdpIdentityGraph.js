@@ -3792,6 +3792,35 @@ async function maybeBuildLiveSyntheticPdp({
           has_multiple_offers: catalogGroup.has_multiple_offers === true || catalogGroup.group_members.length > 1,
           grouped: catalogGroup.group_members.length > 1,
         };
+        // Electronics spec surface is FIRST-CLASS on the composed product (main
+        // route — founder decision: no render-time fallback digging into
+        // seed_data). This branch replaces the canonical product wholesale for
+        // per-brand observed sellers (merch_obs_) resolved through the catalog
+        // entity group — the LIVE product_group lane for minted Path-C
+        // canonicals. When the fetched detail product lacks the meta (e.g. the
+        // slug-keyed seed lookup resolved a lesser row), promote it from the
+        // group members' source_payload — built off the LIVE
+        // catalog_products.product_payload — primary member first. Guarded so a
+        // valid upstream value is never clobbered; whitelisted so only the
+        // recognized spec shape is admitted.
+        if (!pickElectronicsMeta(product.electronics_meta)) {
+          let promotedElectronicsMeta =
+            pickElectronicsMeta(asPlainObject(canonicalProduct.seed_data)?.electronics_meta) || null;
+          if (!promotedElectronicsMeta) {
+            const orderedMembers = [...catalogGroup.group_members].sort(
+              (a, b) => (a?.is_primary === true ? 0 : 1) - (b?.is_primary === true ? 0 : 1),
+            );
+            for (const member of orderedMembers) {
+              const memberPayload = asPlainObject(member?.source_payload) || {};
+              promotedElectronicsMeta =
+                pickElectronicsMeta(memberPayload.electronics_meta) ||
+                pickElectronicsMeta(asPlainObject(memberPayload.seed_data)?.electronics_meta);
+              if (promotedElectronicsMeta) break;
+            }
+          }
+          if (promotedElectronicsMeta) product.electronics_meta = promotedElectronicsMeta;
+          else delete product.electronics_meta;
+        }
         return writeLiveSyntheticPdpCache(cacheKey, {
           synthetic_product: product,
           canonical_product_ref: catalogGroup.canonical_product_ref,
