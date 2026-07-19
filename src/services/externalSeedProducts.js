@@ -1,5 +1,6 @@
 const crypto = require('node:crypto');
 const { lookupExternalSeedImageOverride } = require('./externalSeedImageOverrides');
+const { pickElectronicsMeta } = require('../pdpBuilder');
 const {
   resolveExternalSeedRecallDoc,
   normalizeNonEmptyString,
@@ -4492,6 +4493,14 @@ function buildExternalSeedProduct(row, options = {}) {
     destination_url: destinationUrl || undefined,
     external_seed_id: row.id ? String(row.id) : undefined,
     seed_data: runtimeSeedData,
+    // Electronics spec surface is FIRST-CLASS on the composed product (main
+    // route — founder decision: no render-time fallback digging into
+    // seed_data; every consumer reads product.electronics_meta and every route
+    // composes it identically). Read from the RAW row payload so snapshot
+    // canonicalization can never strip it; whitelisted at compose time.
+    ...(pickElectronicsMeta(ensureJsonObject(row.seed_data).electronics_meta)
+      ? { electronics_meta: pickElectronicsMeta(ensureJsonObject(row.seed_data).electronics_meta) }
+      : {}),
     ...(reviewedActiveIngredientsContract
       ? { reviewed_active_ingredients_v1: reviewedActiveIngredientsContract }
       : {}),

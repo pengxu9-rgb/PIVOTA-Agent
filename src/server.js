@@ -64,6 +64,7 @@ const {
   buildBundleCompositionModuleData,
   isExternalSeedLikeProduct,
   normalizeBundleComponentRefsForPdp,
+  pickElectronicsMeta,
   resolveProductExternalRedirectUrl,
 } = require('./pdpBuilder');
 const {
@@ -7358,14 +7359,13 @@ async function buildExternalSeedProductFromSignatureCatalogRef(signatureProductR
   product.source_product_id = externalProductId;
   product.external_product_id = externalProductId;
   product.external_seed_product_id = externalProductId;
-  // Carry the payload's seed_data through (drone Slices 3+6 follow-up): this
-  // builder plucked display fields only, so buildPdpPayload's
-  // seed_data.electronics_meta fallback could never fire on the signature
-  // route and a served electronics seed rendered an empty spec table.
-  // pickElectronicsMeta whitelists on read; attaching the object is inert for
-  // products without curated meta.
-  if (!isPlainObject(product.seed_data) && Object.keys(payloadSeedData).length) {
-    product.seed_data = payloadSeedData;
+  // Electronics spec surface is FIRST-CLASS on the composed product (main
+  // route — founder decision: no render-time fallback digging into seed_data).
+  // This builder composes it exactly like buildExternalSeedProduct does, so
+  // the signature route and the seed-detail route render identically.
+  if (!product.electronics_meta) {
+    const composedElectronicsMeta = pickElectronicsMeta(payloadSeedData.electronics_meta);
+    if (composedElectronicsMeta) product.electronics_meta = composedElectronicsMeta;
   }
   product.pivota_signature_id = firstNonEmptyString(signatureProductRef.pivota_signature_id) || product.pivota_signature_id;
   product.signature_id = firstNonEmptyString(signatureProductRef.pivota_signature_id) || product.signature_id;
