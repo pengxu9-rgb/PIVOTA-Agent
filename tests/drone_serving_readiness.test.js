@@ -47,7 +47,7 @@ describe('resolveCanonicalCategoryPathPrefixForQuery — drones branch', () => {
   });
 });
 
-describe('buildPdpPayload — electronics_meta from external-seed seed_data', () => {
+describe('electronics_meta — MAIN ROUTE (first-class at compose time, no render fallback)', () => {
   const SPEC_GROUPS = [
     { label: 'Flight', rows: [['Weight', '125 g'], ['Flight time', '16 min']] },
   ];
@@ -62,33 +62,51 @@ describe('buildPdpPayload — electronics_meta from external-seed seed_data', ()
     };
   }
 
-  test('seed_data.electronics_meta reaches the payload', () => {
-    const payload = buildPdpPayload({
-      product: productWith({
-        seed_data: { electronics_meta: { spec_groups: SPEC_GROUPS, in_box: ['Drone', 'Battery'] } },
-      }),
+  test('composer promotes seed_data.electronics_meta to a first-class field', () => {
+    const { buildExternalSeedProduct } = require('../src/services/externalSeedProducts');
+    const product = buildExternalSeedProduct({
+      id: 'seed-1',
+      external_product_id: 'hoverair_x1',
+      title: 'HOVERAir X1 Self-Flying Camera Drone',
+      domain: 'us.hoverair.com',
+      destination_url: 'https://us.hoverair.com/products/x1',
+      image_url: 'https://us.hoverair.com/x1.jpg',
+      price_amount: 349,
+      price_currency: 'USD',
+      seed_data: { electronics_meta: { spec_groups: SPEC_GROUPS, in_box: ['Drone', 'Battery'] } },
     });
-    expect(payload.product.electronics_meta).toEqual({
+    expect(product.electronics_meta).toEqual({
       spec_groups: SPEC_GROUPS,
       in_box: ['Drone', 'Battery'],
     });
   });
 
-  test('top-level electronics_meta still wins over seed_data', () => {
-    const topLevel = { spec_groups: [{ label: 'Top', rows: [['A', 'B']] }] };
-    const payload = buildPdpPayload({
-      product: productWith({
-        electronics_meta: topLevel,
-        seed_data: { electronics_meta: { spec_groups: SPEC_GROUPS } },
-      }),
-    });
+  test('composer emits no field when seed_data has no/garbage meta', () => {
+    const { buildExternalSeedProduct } = require('../src/services/externalSeedProducts');
+    for (const seed_data of [{}, { electronics_meta: 'nope' }, { electronics_meta: {} }, null]) {
+      const product = buildExternalSeedProduct({
+        id: 'seed-2', external_product_id: 'x', title: 'T',
+        domain: 'd.example', destination_url: 'https://d.example/p',
+        seed_data,
+      });
+      expect(product.electronics_meta).toBeUndefined();
+    }
+  });
+
+  test('payload renders the first-class field (main route)', () => {
+    const topLevel = { spec_groups: SPEC_GROUPS };
+    const payload = buildPdpPayload({ product: productWith({ electronics_meta: topLevel }) });
     expect(payload.product.electronics_meta).toEqual(topLevel);
   });
 
-  test('garbage seed_data shapes are safe no-ops', () => {
-    for (const seed_data of [null, 'text', 42, [], { electronics_meta: 'nope' }, { electronics_meta: {} }]) {
-      const payload = buildPdpPayload({ product: productWith({ seed_data }) });
-      expect(payload.product.electronics_meta).toBeUndefined();
-    }
+  test('NO render-time fallback: seed_data alone never renders meta', () => {
+    // Founder decision: if a route misses the spec table, fix its composer —
+    // the reader must not dig into seed_data. This pins the fallback removal.
+    const payload = buildPdpPayload({
+      product: productWith({
+        seed_data: { electronics_meta: { spec_groups: SPEC_GROUPS } },
+      }),
+    });
+    expect(payload.product.electronics_meta).toBeUndefined();
   });
 });

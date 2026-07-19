@@ -5216,21 +5216,14 @@ function buildPdpPayload(args) {
         return sample ? { fashion_meta: sample } : {};
       })(),
       ...(() => {
+        // MAIN ROUTE ONLY (founder decision — no render-time fallback digging
+        // into seed_data): electronics_meta is composed as a FIRST-CLASS field
+        // by every product builder (buildExternalSeedProduct + the signature-
+        // route builder read seed_data.electronics_meta through the same
+        // whitelist at COMPOSE time). If a route misses the spec table, fix
+        // its composer, not this reader.
         const upstream = pickElectronicsMeta(product.electronics_meta);
         if (upstream) return { electronics_meta: upstream };
-        // External-seed products carry curated meta inside seed_data (the
-        // crawl/onboard payload). Catalog rows have no top-level
-        // electronics_meta and it is never auto-extracted, so without this
-        // read a served electronics seed (e.g. the HoverAir drones) renders
-        // the Electronics shell with an EMPTY spec table — the whole
-        // ElectronicsTechSpecs/in-the-box surface hangs off this one field.
-        // Same pickElectronicsMeta whitelist as the upstream path.
-        const fromSeed = pickElectronicsMeta(
-          product && product.seed_data && typeof product.seed_data === 'object'
-            ? product.seed_data.electronics_meta
-            : null,
-        );
-        if (fromSeed) return { electronics_meta: fromSeed };
         const sample = pickElectronicsMeta(lookupSampleElectronicsMeta(product.product_id || product.id));
         return sample ? { electronics_meta: sample } : {};
       })(),
@@ -5290,6 +5283,7 @@ module.exports = {
   isExternalSeedLikeProduct,
   normalizeBundleComponentRefsForPdp,
   normalizePdpHttpUrl,
+  pickElectronicsMeta,
   resolveProductExternalRedirectUrl,
   titleCaseBrand,
 };
