@@ -110,3 +110,95 @@ describe('electronics_meta — MAIN ROUTE (first-class at compose time, no rende
     expect(payload.product.electronics_meta).toBeUndefined();
   });
 });
+
+// The live gap that motivated this change: a per-brand observed seller
+// (merch_obs_) sig_* route resolves subject=product_group and composes its
+// canonical product through the identity/synthetic lane (pdp_content_source
+// canonical_inherited, offer_source group_fused) — NOT through
+// buildExternalSeedProduct / the signature-route builder. Those two already
+// carry electronics_meta first-class; the synthetic composer did not, so the
+// spec table vanished on exactly the product_group lane that renders live.
+describe('electronics_meta — SYNTHETIC / product_group lane (composeSyntheticCanonicalProduct)', () => {
+  const { composeSyntheticCanonicalProduct } = require('../src/services/pdpIdentityGraph');
+  const SPEC_GROUPS = [
+    { label: 'Flight', rows: [['Takeoff weight', '192.5 g'], ['Max flight time', '16 min']] },
+  ];
+
+  function listing(overrides = {}) {
+    return {
+      merchant_id: 'merch_obs_5a402329c64deec0',
+      product_id: 'hoverair_x1_pro',
+      source_kind: 'external_seed',
+      source_tier: 'brand',
+      sellable_item_group_id: 'sig_hoverair_x1_pro_group',
+      identity_confidence: 0.98,
+      source_payload: {
+        merchant_id: 'merch_obs_5a402329c64deec0',
+        product_id: 'hoverair_x1_pro',
+        title: 'HOVERAir X1 PRO Self-Flying Camera Drone',
+        brand: 'HOVERAir',
+        source_url: 'https://us.hoverair.com/products/hoverair-x1-pro',
+        ...overrides,
+      },
+    };
+  }
+
+  test('carries first-class electronics_meta from the hydrated content listing payload', () => {
+    // buildExternalSeedProduct sets a first-class electronics_meta on the
+    // hydrated source_payload; the synthetic composer must preserve it.
+    const content = listing({ electronics_meta: { spec_groups: SPEC_GROUPS } });
+    const composed = composeSyntheticCanonicalProduct({
+      requestedListing: content,
+      exactListings: [content],
+      lineListings: [],
+      fallbackProduct: null,
+    });
+    expect(composed?.product?.pdp_content_source).toBeDefined();
+    expect(composed?.product?.electronics_meta).toEqual({ spec_groups: SPEC_GROUPS });
+  });
+
+  test('promotes electronics_meta from the fallback canonical product when the winning payload lacks it', () => {
+    // The primary detail fetch (branch-1 / buildExternalSeedProduct) produced a
+    // canonicalProduct WITH electronics_meta, but the identity listing's stored
+    // source_payload predates it. The synthetic product replaces canonicalProduct
+    // wholesale for merch_obs_ merchants — so the meta must be promoted, not lost.
+    const content = listing();
+    const fallbackProduct = {
+      merchant_id: 'merch_obs_5a402329c64deec0',
+      product_id: 'hoverair_x1_pro',
+      title: 'HOVERAir X1 PRO Self-Flying Camera Drone',
+      electronics_meta: { spec_groups: SPEC_GROUPS },
+    };
+    const composed = composeSyntheticCanonicalProduct({
+      requestedListing: content,
+      exactListings: [content],
+      lineListings: [],
+      fallbackProduct,
+    });
+    expect(composed?.product?.electronics_meta).toEqual({ spec_groups: SPEC_GROUPS });
+  });
+
+  test('whitelists the composed meta (drops non-schema keys, never leaks a raw blob)', () => {
+    const content = listing({
+      electronics_meta: { spec_groups: SPEC_GROUPS, junk: 'nope', configurator_groups: 'bad-shape' },
+    });
+    const composed = composeSyntheticCanonicalProduct({
+      requestedListing: content,
+      exactListings: [content],
+      lineListings: [],
+      fallbackProduct: null,
+    });
+    expect(composed?.product?.electronics_meta).toEqual({ spec_groups: SPEC_GROUPS });
+  });
+
+  test('emits no electronics_meta when no source carries a valid spec surface', () => {
+    const content = listing();
+    const composed = composeSyntheticCanonicalProduct({
+      requestedListing: content,
+      exactListings: [content],
+      lineListings: [],
+      fallbackProduct: { merchant_id: 'm', product_id: 'p', electronics_meta: {} },
+    });
+    expect(composed?.product?.electronics_meta).toBeUndefined();
+  });
+});
