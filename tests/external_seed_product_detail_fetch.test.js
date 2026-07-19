@@ -3461,3 +3461,237 @@ describe('electronics_meta — FIRST-CLASS across every external-seed composer',
     expect(member?.source_payload?.electronics_meta).toEqual(fresh);
   });
 });
+
+// Live X1 PRO gap on build 59039ad2: a per-brand observed seller (merch_obs_)
+// sig_* route with NO pdp_identity_listing rows composes its product through the
+// catalog-entity-group branch of maybeBuildLiveSyntheticPdp (fingerprint:
+// canonical_scope=canonical_catalog, identity_confidence=0.96,
+// content_review_state=not_needed, pdp_content_source=canonical_inherited,
+// offer_source=group_fused). That branch replaced the canonical product
+// wholesale with {...canonicalProduct, group fields} — so when the slug-keyed
+// seed detail lookup produced a product WITHOUT electronics_meta, the spec table
+// vanished even though the LIVE catalog_products.product_payload carried it.
+// The fix promotes the meta from the group members' source_payload (built off
+// the live cp.product_payload), guarded and whitelisted, at COMPOSE time.
+describe('electronics_meta — canonical_catalog product_group lane (live X1 PRO gap)', () => {
+  const SPEC_GROUPS = [
+    { label: 'Flight', rows: [['Takeoff weight', '192.5 g']] },
+    { label: 'Safety', rows: [['FAA registration', 'Not required']] },
+  ];
+  const sigId = 'sig_e99bf03f82c811fd66b44cb1cf141aee';
+  const merchantId = 'merch_obs_5a402329c64deec0';
+  const slug = 'hoverair_x1_pro';
+  const productKey = 'ext:hoverair-x1-pro::9485151e';
+  const contentKey = 'content::hoverair::x1-pro';
+
+  function buildFixtures({ seedHasMeta, catalogPayloadHasMeta }) {
+    const catalogPayload = {
+      seed_data: {
+        brand: 'HOVERAir',
+        description: 'A self-flying camera drone.',
+        ...(catalogPayloadHasMeta ? { electronics_meta: { spec_groups: SPEC_GROUPS } } : {}),
+        snapshot: { product_id: slug },
+      },
+    };
+    return {
+      signatureRow: {
+        merchant_id: merchantId,
+        platform: 'external_seed',
+        source_product_id: slug,
+        product_key: productKey,
+        source_system: 'catalog_enrichment_agent_v1',
+        pivota_signature_id: sigId,
+        content_key: contentKey,
+        catalog_title: 'HOVERAir X1 PRO',
+        catalog_brand: 'HOVERAir',
+        catalog_image_url: 'https://cdn.example.com/x1pro.jpg',
+        catalog_description: 'A self-flying camera drone.',
+        catalog_canonical_url: 'https://us.hoverair.com/products/hoverair-x1-pro',
+        catalog_pivota_canonical_url: `https://agent.pivota.cc/products/${sigId}`,
+        catalog_product_payload: catalogPayload,
+        catalog_sync_status: 'live',
+        catalog_pdp_lifecycle_stage: 'published',
+        signature_serving_eligible: true,
+        signature_pipeline_stage: 'serving',
+        signature_content_quality_score: 92,
+        external_seed_id: null,
+        external_seed_external_product_id: null,
+        external_seed_status: null,
+      },
+      seedDetailRow: {
+        id: 'eps_hoverair_x1_pro',
+        external_product_id: slug,
+        status: 'active',
+        canonical_url: 'https://us.hoverair.com/products/hoverair-x1-pro',
+        destination_url: 'https://us.hoverair.com/products/hoverair-x1-pro',
+        domain: 'us.hoverair.com',
+        title: 'HOVERAir X1 PRO',
+        image_url: 'https://cdn.example.com/x1pro.jpg',
+        price_amount: '499.00',
+        price_currency: 'USD',
+        availability: 'In Stock',
+        seed_data: {
+          brand: 'HOVERAir',
+          description: 'A self-flying camera drone.',
+          ...(seedHasMeta ? { electronics_meta: { spec_groups: SPEC_GROUPS } } : {}),
+          snapshot: {
+            product_id: slug,
+            variants: [{ variant_id: 'x1pro-default', price: '499.00', currency: 'USD' }],
+          },
+        },
+      },
+      catalogGroupRow: {
+        product_key: productKey,
+        merchant_id: merchantId,
+        platform: 'external_seed',
+        source_product_id: slug,
+        product_title: 'HOVERAir X1 PRO',
+        product_description: 'A self-flying camera drone.',
+        brand: 'HOVERAir',
+        category: 'camera-drone',
+        product_type: 'camera-drone',
+        category_path: 'electronics/drones/camera-drone',
+        canonical_url: 'https://us.hoverair.com/products/hoverair-x1-pro',
+        product_image_url: 'https://cdn.example.com/x1pro.jpg',
+        product_payload: catalogPayload,
+        pdp_lifecycle_stage: 'published',
+        pivota_signature_id: sigId,
+        pivota_canonical_url: `https://agent.pivota.cc/products/${sigId}`,
+        pivota_signature_minted_at: '2026-07-01T00:00:00Z',
+        content_key: contentKey,
+        updated_at: '2026-07-18T00:00:00Z',
+        merchant_name: 'HOVERAir',
+        internal_product_group_id: null,
+        is_primary: true,
+        offer_count: 1,
+      },
+    };
+  }
+
+  function mockDbForCatalogGroupLane(db, { signatureRow, seedDetailRow, catalogGroupRow }) {
+    db.query.mockImplementation((sql, params = []) => {
+      const text = String(sql || '');
+      if (text.includes('FROM catalog_products cp') && text.includes('LEFT JOIN index_pipeline_state ips')) {
+        return Promise.resolve({
+          rows: [
+            eligibleServingRow({
+              content_key: contentKey,
+              product_key: productKey,
+              pivota_signature_id: sigId,
+            }),
+          ],
+        });
+      }
+      // NOTE: check the entity-group SQL BEFORE the signature-exact SQL — the
+      // group query also contains 'pivota_signature_id = $1' in its OR clause.
+      if (text.includes('WITH offer_stats AS')) {
+        return Promise.resolve({ rows: [catalogGroupRow] });
+      }
+      if (text.includes('FROM catalog_products') && text.includes('pivota_signature_id = $1')) {
+        return Promise.resolve({ rows: [signatureRow] });
+      }
+      if (text.includes('FROM pdp_identity_listing')) {
+        return Promise.resolve({ rows: [] });
+      }
+      if (text.includes('FROM external_product_seeds') && text.includes('destination_url')) {
+        const requested = String(params[0] || '');
+        return Promise.resolve({ rows: requested === slug ? [seedDetailRow] : [] });
+      }
+      if (text.includes('FROM external_product_seeds') && text.includes('status')) {
+        return Promise.resolve({
+          rows: [{ id: 'eps_hoverair_x1_pro', external_product_id: slug, status: 'active' }],
+        });
+      }
+      return Promise.resolve({ rows: [] });
+    });
+  }
+
+  async function invokePdp(app) {
+    return request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'get_pdp_v2',
+        payload: {
+          product_ref: { product_id: sigId },
+          options: { no_cache: true },
+        },
+      })
+      .expect(200);
+  }
+
+  test('stale/lesser seed detail WITHOUT meta + live catalog payload WITH meta -> composed product carries it (THE live PRO shape)', async () => {
+    const { app, db } = loadServerWithDb({
+      PIVOTA_API_BASE: 'https://backend.test',
+      PIVOTA_API_KEY: 'test-token',
+      PDP_IDENTITY_GRAPH_ENABLED: 'true',
+    });
+    mockDbForCatalogGroupLane(db, buildFixtures({ seedHasMeta: false, catalogPayloadHasMeta: true }));
+
+    const res = await invokePdp(app);
+    const canonicalModule = res.body.modules?.find((m) => m?.type === 'canonical');
+    // Pin the lane: this must be the catalog-entity-group synthetic branch.
+    expect(canonicalModule?.data).toEqual(
+      expect.objectContaining({
+        canonical_scope: 'canonical_catalog',
+        identity_confidence: 0.96,
+        pdp_content_source: 'canonical_inherited',
+        offer_source: 'group_fused',
+        content_review_state: 'not_needed',
+      }),
+    );
+    expect(canonicalModule?.data?.pdp_payload?.product?.electronics_meta).toEqual({
+      spec_groups: SPEC_GROUPS,
+    });
+  });
+
+  test('combo-style: seed detail WITH meta keeps working (upstream value never clobbered by group promotion)', async () => {
+    const { app, db } = loadServerWithDb({
+      PIVOTA_API_BASE: 'https://backend.test',
+      PIVOTA_API_KEY: 'test-token',
+      PDP_IDENTITY_GRAPH_ENABLED: 'true',
+    });
+    mockDbForCatalogGroupLane(db, buildFixtures({ seedHasMeta: true, catalogPayloadHasMeta: false }));
+
+    const res = await invokePdp(app);
+    const canonicalModule = res.body.modules?.find((m) => m?.type === 'canonical');
+    expect(canonicalModule?.data?.canonical_scope).toBe('canonical_catalog');
+    expect(canonicalModule?.data?.pdp_payload?.product?.electronics_meta).toEqual({
+      spec_groups: SPEC_GROUPS,
+    });
+  });
+
+  test('unit: catalogGroup branch whitelists promoted meta and emits nothing without a valid source', async () => {
+    loadServerWithDb({ PDP_IDENTITY_GRAPH_ENABLED: 'true' });
+    const { maybeBuildLiveSyntheticPdp } = require('../src/services/pdpIdentityGraph');
+    const baseRow = buildFixtures({ seedHasMeta: false, catalogPayloadHasMeta: true }).catalogGroupRow;
+
+    const runWithPayload = async (productPayload) => {
+      const queryFn = jest.fn((sql) => {
+        const text = String(sql || '');
+        if (text.includes('WITH offer_stats AS')) {
+          return Promise.resolve({ rows: [{ ...baseRow, product_payload: productPayload }] });
+        }
+        return Promise.resolve({ rows: [] });
+      });
+      return maybeBuildLiveSyntheticPdp({
+        merchantId,
+        productId: slug,
+        canonicalProduct: { merchant_id: merchantId, product_id: slug, title: 'HOVERAir X1 PRO' },
+        queryFn,
+        bypassCache: true,
+      });
+    };
+
+    const junky = await runWithPayload({
+      seed_data: { electronics_meta: { spec_groups: SPEC_GROUPS, junk: 'nope' } },
+    });
+    expect(junky?.canonical_scope).toBe('canonical_catalog');
+    expect(junky?.synthetic_product?.electronics_meta).toEqual({ spec_groups: SPEC_GROUPS });
+
+    const empty = await runWithPayload({ seed_data: { electronics_meta: {} } });
+    expect(empty?.synthetic_product?.electronics_meta).toBeUndefined();
+
+    const none = await runWithPayload({ seed_data: {} });
+    expect(none?.synthetic_product?.electronics_meta).toBeUndefined();
+  });
+});
