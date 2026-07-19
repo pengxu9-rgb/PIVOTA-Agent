@@ -17708,6 +17708,20 @@ function resolveCanonicalCategoryPathPrefixForQuery(queryText) {
     return 'electronics/audio/';
   }
 
+  // Camera drones (electronics_drone sub-vertical — HoverAir pilot). Without
+  // this branch a drone query resolves '' → the search-quality contract
+  // safe-empties it, so served drone canonicals could never surface through
+  // find_products_multi (the exact failure mode the electronics pilot warned
+  // about below). Prefix matches catalog_products.category_path
+  // 'electronics/drones/camera-drone'. No bare "camera" — cameras are not
+  // drones; "hoverair" is a category-defining product line like "airpods".
+  if (
+    /\b(drones?|quadcopters?|fpv\s*drones?|camera\s*drones?|self\s*flying\s*(?:camera|drone)|flying\s*camera|follow\s*me\s*drones?|hover\s*air|hoverair|uav)\b/i.test(normalized) ||
+    /无人机|無人機|四轴飞行器|四軸飛行器|航拍机|航拍機/.test(text)
+  ) {
+    return 'electronics/drones/';
+  }
+
   return '';
 }
 
@@ -50051,6 +50065,8 @@ async function runPdpCorePrewarmPass() {
 
 module.exports = app;
 module.exports._debug = {
+  resolveCanonicalCategoryPathPrefixForQuery,
+  isNonBeautyCanonicalCategoryPathPrefix,
   matchesScope,
   isPromoActive,
   allowedForCreator,
