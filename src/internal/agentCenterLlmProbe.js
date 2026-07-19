@@ -1509,8 +1509,20 @@ async function buildGeminiProbe(input) {
       groundingMetadata = cand0?.groundingMetadata || cand0?.grounding_metadata || null;
       parsed = unwrapJson(rawText);
       if (resp?.usageMetadata) {
-        inputTokens += Number(resp.usageMetadata.promptTokenCount || 0);
-        outputTokens += Number(resp.usageMetadata.candidatesTokenCount || 0);
+        // Gemini 2.5 splits usage across fields: promptTokenCount is ONLY the
+        // prompt; toolUsePromptTokenCount is the grounding/search content fed back
+        // into the model (large for google_search grounding, billed as input);
+        // thoughtsTokenCount is 2.5-Flash thinking (billed as output). Summing
+        // only prompt+candidates undercounted every grounded call by the entire
+        // retrieved-content + thinking cost — telemetry recorded ~343 input
+        // tok/probe when the true grounded input is materially higher, making
+        // Gemini look near-free in per-provider cost accounting. `|| 0` keeps
+        // this a no-op for any field a given response doesn't carry.
+        const um = resp.usageMetadata;
+        inputTokens +=
+          Number(um.promptTokenCount || 0) + Number(um.toolUsePromptTokenCount || 0);
+        outputTokens +=
+          Number(um.candidatesTokenCount || 0) + Number(um.thoughtsTokenCount || 0);
       }
     } catch (err) {
       // Same swallowed-failure class as the grounded ChatGPT/Claude path —
