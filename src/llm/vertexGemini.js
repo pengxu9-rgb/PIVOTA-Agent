@@ -53,9 +53,61 @@ function geminiClientOptions(apiKey) {
  * is no longer the thing that matters. ADC itself resolves lazily inside the
  * SDK, so this checks the one thing that must be configured up front.
  */
+/**
+ * Whether ADC has any chance of resolving, checked synchronously.
+ *
+ * Explicit key material always counts. Otherwise we look for a marker that this
+ * process is running somewhere with a metadata server, because that is the only
+ * other way `google.auth` can succeed without configuration.
+ */
+function credentialSourceConfigured() {
+  return Boolean(
+    String(process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON || '').trim() ||
+      String(process.env.GOOGLE_APPLICATION_CREDENTIALS || '').trim() ||
+      process.env.K_SERVICE || // Cloud Run
+      process.env.GAE_SERVICE || // App Engine
+      process.env.GCE_METADATA_HOST,
+  );
+}
+
+function startProbe() {
+  if (probeStarted) return;
+  probeStarted = true;
+  // Swallow: the point is only to record whether a token can be minted.
+  accessToken().catch(() => {});
+}
+
+/**
+ * Whether a call would authenticate, without making one.
+ *
+ * This has to be synchronous because the guards it replaced were, but ADC
+ * resolution is async — so it answers from an observed probe once one exists,
+ * and from configuration before that.
+ *
+ * It fails CLOSED when nothing is configured. Returning true and letting the
+ * token mint throw is worse than degrading: callers treat this as "is the LLM
+ * usable", and a false positive converts a clean "LLM unavailable" path into a
+ * mid-request exception. That is exactly what happened on staging when the flag
+ * was flipped before any credential existed.
+ *
+ * The background probe keeps that from being sticky on a real GCP runtime that
+ * has a metadata server but none of the env markers above: the first call fails
+ * closed, the probe resolves, and subsequent calls return the observed answer.
+ */
 function credentialsAvailable(apiKey) {
   if (!vertexEnabled()) return Boolean(apiKey && String(apiKey).trim());
-  return Boolean(vertexProject());
+  if (!vertexProject()) return false;
+  if (adcProbe !== null) return adcProbe;
+  if (credentialSourceConfigured()) return true;
+  startProbe();
+  return false;
+}
+
+/** Test hook — drops the memoised auth client and probe state. */
+function resetCredentialsCache() {
+  cachedAuth = null;
+  adcProbe = null;
+  probeStarted = false;
 }
 
 /**
@@ -72,6 +124,9 @@ const AI_STUDIO_HOST = 'https://generativelanguage.googleapis.com';
 const SCOPES = ['https://www.googleapis.com/auth/cloud-platform'];
 
 let cachedAuth = null;
+// null = never probed; true/false = observed result of an actual token mint.
+let adcProbe = null;
+let probeStarted = false;
 
 /** Vertex host: the global endpoint is not region-prefixed. */
 function vertexHost() {
@@ -94,12 +149,27 @@ function vertexModelPath() {
 async function accessToken() {
   if (!cachedAuth) {
     const { GoogleAuth } = require('google-auth-library');
-    cachedAuth = new GoogleAuth({ scopes: SCOPES });
+    // Railway (and anything not on GCP) can only hand us env vars, and the
+    // library reads GOOGLE_APPLICATION_CREDENTIALS as a FILE PATH. Accept the
+    // key material inline so a deployment needs no bootstrap step to write it
+    // to disk.
+    const rawJson = String(process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON || '').trim();
+    cachedAuth = rawJson
+      ? new GoogleAuth({ scopes: SCOPES, credentials: JSON.parse(rawJson) })
+      : new GoogleAuth({ scopes: SCOPES });
   }
-  // GoogleAuth caches the client and refreshes the token internally.
-  const token = await cachedAuth.getAccessToken();
-  if (!token) throw new Error('VERTEX_ADC_NO_TOKEN');
-  return token;
+  try {
+    // GoogleAuth caches the client and refreshes the token internally.
+    const token = await cachedAuth.getAccessToken();
+    if (!token) throw new Error('VERTEX_ADC_NO_TOKEN');
+    adcProbe = true;
+    return token;
+  } catch (err) {
+    // Remember that ADC cannot resolve here, so credentialsAvailable() stops
+    // waving callers through into a guaranteed mid-request failure.
+    adcProbe = false;
+    throw err;
+  }
 }
 
 /**
@@ -221,6 +291,8 @@ module.exports = {
   credentialsAvailable,
   clientCacheKey,
   accessToken,
+  credentialSourceConfigured,
+  resetCredentialsCache,
   restTarget,
   openAiCompatBaseUrl,
   openAiCompatModel,
