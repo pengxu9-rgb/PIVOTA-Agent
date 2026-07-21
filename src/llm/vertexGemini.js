@@ -46,14 +46,6 @@ function geminiClientOptions(apiKey) {
 }
 
 /**
- * Whether a client could authenticate, without building one.
- *
- * Replaces the `if (!apiKey) return null` guard the callers already had, so
- * their degradation paths keep working once the flag flips and GEMINI_API_KEY
- * is no longer the thing that matters. ADC itself resolves lazily inside the
- * SDK, so this checks the one thing that must be configured up front.
- */
-/**
  * Whether ADC has any chance of resolving, checked synchronously.
  *
  * Explicit key material always counts. Otherwise we look for a marker that this
@@ -101,6 +93,32 @@ function credentialsAvailable(apiKey) {
   if (credentialSourceConfigured()) return true;
   startProbe();
   return false;
+}
+
+// The only image-generation model that resolves on Vertex for this project,
+// verified by probing :generateContent in both us-central1 and global. Every
+// AI Studio "-image-preview" id 404s there, as do the imagen-* ids.
+const VERTEX_IMAGE_MODEL = 'gemini-2.5-flash-image';
+
+/**
+ * Translate an AI Studio model id to its Vertex equivalent.
+ *
+ * Only image-generation models need this. Non-image calls are already pinned to
+ * gemini-2.5-flash by src/lib/geminiModelFloor.js, and that floor deliberately
+ * excludes image models — so the try-on path is the one place an AI Studio id
+ * reaches the wire unmapped.
+ *
+ * Ids without the "-preview" suffix pass through untouched, so a Vertex-native
+ * id (gemini-2.5-flash-image) stays as-is, and a future one will too rather than
+ * being silently rewritten to today's model.
+ */
+function vertexModelName(model) {
+  const raw = String(model || '').trim();
+  if (!vertexEnabled() || !raw) return raw;
+  const normalized = raw.startsWith('models/') ? raw.slice('models/'.length) : raw;
+  const isImagePreview =
+    normalized.includes('-image-preview') || normalized.startsWith('imagen-');
+  return isImagePreview ? VERTEX_IMAGE_MODEL : normalized;
 }
 
 /**
@@ -216,7 +234,7 @@ async function restTarget({ model, apiKey, stream = false, baseUrl = null, apiVe
   // Vertex exposes only v1 for generateContent; the AI Studio v1beta/v1 split
   // does not carry over.
   return {
-    url: `${vertexHost()}/v1/${vertexModelPath()}/${encodeURIComponent(model)}:${method}${suffix}`,
+    url: `${vertexHost()}/v1/${vertexModelPath()}/${encodeURIComponent(vertexModelName(model))}:${method}${suffix}`,
     headers: {
       'content-type': 'application/json',
       authorization: `Bearer ${await accessToken()}`,
@@ -311,6 +329,7 @@ module.exports = {
   accessToken,
   credentialSourceConfigured,
   missingCredentialMessage,
+  vertexModelName,
   resetCredentialsCache,
   restTarget,
   openAiCompatBaseUrl,

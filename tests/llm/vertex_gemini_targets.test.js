@@ -138,6 +138,54 @@ describe('vertexGemini OpenAI-compat surface', () => {
   });
 });
 
+describe('vertexGemini.vertexModelName', () => {
+  it('is a no-op when the flag is off', () => {
+    withEnv(OFF, () => {
+      expect(vertexGemini.vertexModelName('gemini-3.1-flash-image-preview')).toBe(
+        'gemini-3.1-flash-image-preview',
+      );
+      expect(vertexGemini.vertexModelName('gemini-2.5-flash')).toBe('gemini-2.5-flash');
+    });
+  });
+
+  // Probed live: every AI Studio "-image-preview" id 404s on Vertex in both
+  // us-central1 and global; gemini-2.5-flash-image is the one that serves.
+  it('maps AI Studio image-preview ids onto the Vertex image model', () => {
+    withEnv(ON, () => {
+      expect(vertexGemini.vertexModelName('gemini-3.1-flash-image-preview')).toBe(
+        'gemini-2.5-flash-image',
+      );
+      expect(vertexGemini.vertexModelName('gemini-2.5-flash-image-preview')).toBe(
+        'gemini-2.5-flash-image',
+      );
+      expect(vertexGemini.vertexModelName('imagen-3.0-generate-002')).toBe('gemini-2.5-flash-image');
+    });
+  });
+
+  it('leaves non-image and already-Vertex ids alone', () => {
+    withEnv(ON, () => {
+      expect(vertexGemini.vertexModelName('gemini-2.5-flash')).toBe('gemini-2.5-flash');
+      expect(vertexGemini.vertexModelName('gemini-3-flash-preview')).toBe('gemini-3-flash-preview');
+      expect(vertexGemini.vertexModelName('gemini-2.5-flash-image')).toBe('gemini-2.5-flash-image');
+    });
+  });
+
+  it('strips a models/ prefix and tolerates empty input', () => {
+    withEnv(ON, () => {
+      expect(vertexGemini.vertexModelName('models/gemini-2.5-flash')).toBe('gemini-2.5-flash');
+      expect(vertexGemini.vertexModelName('')).toBe('');
+    });
+  });
+
+  it('applies through restTarget so REST callers get the mapped id', async () => {
+    const t = await withEnv(ON, () =>
+      vertexGemini.restTarget({ model: 'gemini-3.1-flash-image-preview', apiKey: '' }),
+    );
+    expect(t.url).toContain('/models/gemini-2.5-flash-image:generateContent');
+    expect(t.url).not.toContain('image-preview');
+  });
+});
+
 describe('vertexGemini.missingCredentialMessage', () => {
   it('names the API key when the flag is off', () => {
     withEnv(OFF, () => expect(vertexGemini.missingCredentialMessage()).toMatch(/GEMINI_API_KEY/));
