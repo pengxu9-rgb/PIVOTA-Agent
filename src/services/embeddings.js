@@ -94,7 +94,7 @@ function geminiModelName(model) {
 
 async function embedWithGemini(texts, model) {
   if (!vertexGemini.credentialsAvailable(process.env.GEMINI_API_KEY)) {
-    throw new Error('GEMINI_API_KEY is not set');
+    throw new Error(vertexGemini.missingCredentialMessage());
   }
   const name = geminiModelName(model);
 

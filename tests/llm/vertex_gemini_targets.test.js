@@ -138,6 +138,28 @@ describe('vertexGemini OpenAI-compat surface', () => {
   });
 });
 
+describe('vertexGemini.missingCredentialMessage', () => {
+  it('names the API key when the flag is off', () => {
+    withEnv(OFF, () => expect(vertexGemini.missingCredentialMessage()).toMatch(/GEMINI_API_KEY/));
+  });
+
+  // Regression: under Vertex the old text pointed at GEMINI_API_KEY, a variable
+  // the code deliberately ignores in that mode. It cost real debugging time.
+  it('does NOT blame GEMINI_API_KEY when running on Vertex', () => {
+    withEnv(ON, () => {
+      const msg = vertexGemini.missingCredentialMessage();
+      expect(msg).not.toMatch(/GEMINI_API_KEY/);
+      expect(msg).toMatch(/GOOGLE_APPLICATION_CREDENTIALS_JSON/);
+    });
+  });
+
+  it('calls out a missing project specifically', () => {
+    withEnv({ ...ON, GOOGLE_CLOUD_PROJECT: '' }, () =>
+      expect(vertexGemini.missingCredentialMessage()).toMatch(/GOOGLE_CLOUD_PROJECT/),
+    );
+  });
+});
+
 describe('vertexGemini.credentialsAvailable', () => {
   beforeEach(() => vertexGemini.resetCredentialsCache());
 
