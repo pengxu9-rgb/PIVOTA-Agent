@@ -232,9 +232,12 @@ function extractFirstInlineImage(resp) {
  */
 async function generateMultiImageImageFromGemini({ promptText, images }) {
   const apiKey = getGeminiGlobalGate().getApiKey() || parseEnvString(process.env.GEMINI_API_KEY) || parseEnvString(process.env.GOOGLE_API_KEY);
-  const model =
+  // Vertex names image models without the AI Studio "-preview" suffix; the
+  // non-image model floor deliberately skips these, so map here.
+  const model = vertexGemini.vertexModelName(
     parseEnvString(process.env.GEMINI_TRYON_IMAGE_MODEL) ||
-    "gemini-3.1-flash-image-preview";
+      "gemini-3.1-flash-image-preview",
+  );
   const timeoutMs = Math.max(1, parseEnvInt(process.env.GEMINI_TIMEOUT_MS, 45_000));
   const debugEnabled = parseEnvBool(process.env.GEMINI_DEBUG) || parseEnvBool(process.env.LAYER1_SELFIE_DEBUG);
   const imgMaxEdge = Math.max(64, parseEnvInt(process.env.GEMINI_IMAGE_MAX_EDGE, 1536));
