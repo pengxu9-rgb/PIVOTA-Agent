@@ -1,4 +1,5 @@
 'use strict';
+const vertexGemini = require('../llm/vertexGemini');
 
 const OpenAI = require('openai');
 const { resolveNonImageGeminiModel } = require('../lib/geminiModelFloor');
@@ -48,12 +49,12 @@ let geminiClient;
 let geminiInitFailed = false;
 function getGeminiClient() {
   const apiKey = String(process.env.GEMINI_API_KEY || '').trim();
-  if (!apiKey) return null;
+  if (!vertexGemini.credentialsAvailable(apiKey)) return null;
   if (geminiClient) return geminiClient;
   if (geminiInitFailed) return null;
   try {
     const { GoogleGenAI } = require('@google/genai');
-    geminiClient = new GoogleGenAI({ apiKey });
+    geminiClient = new GoogleGenAI(vertexGemini.geminiClientOptions(apiKey));
     return geminiClient;
   } catch (_err) {
     geminiInitFailed = true;

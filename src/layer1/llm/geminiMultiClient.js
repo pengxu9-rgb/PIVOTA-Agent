@@ -1,3 +1,4 @@
+const vertexGemini = require('../../llm/vertexGemini');
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
@@ -94,7 +95,7 @@ async function generateMultiImageJsonFromGemini({ promptText, images, schema, mo
     preprocess: [],
   };
 
-  if (!apiKey) return { ok: false, error: { code: "MISSING_API_KEY", message: "Missing GEMINI_API_KEY or GOOGLE_API_KEY" }, meta };
+  if (!vertexGemini.credentialsAvailable(apiKey)) return { ok: false, error: { code: "MISSING_API_KEY", message: "Missing GEMINI_API_KEY or GOOGLE_API_KEY" }, meta };
 
   let GoogleGenAI = null;
   try {
@@ -153,7 +154,7 @@ async function generateMultiImageJsonFromGemini({ promptText, images, schema, mo
       parts.push({ inlineData: { mimeType, data } });
     }
 
-    const ai = new GoogleGenAI({ apiKey });
+    const ai = new GoogleGenAI(vertexGemini.geminiClientOptions(apiKey));
     const request = {
       model,
       contents: [{ role: "user", parts }],
@@ -247,7 +248,7 @@ async function generateMultiImageImageFromGemini({ promptText, images }) {
     preprocess: [],
   };
 
-  if (!apiKey) return { ok: false, error: { code: "MISSING_API_KEY", message: "Missing GEMINI_API_KEY or GOOGLE_API_KEY" }, meta };
+  if (!vertexGemini.credentialsAvailable(apiKey)) return { ok: false, error: { code: "MISSING_API_KEY", message: "Missing GEMINI_API_KEY or GOOGLE_API_KEY" }, meta };
 
   let GoogleGenAI = null;
   try {
@@ -306,7 +307,7 @@ async function generateMultiImageImageFromGemini({ promptText, images }) {
       parts.push({ inlineData: { mimeType, data } });
     }
 
-    const ai = new GoogleGenAI({ apiKey });
+    const ai = new GoogleGenAI(vertexGemini.geminiClientOptions(apiKey));
     const request = {
       model,
       contents: [{ role: "user", parts }],
