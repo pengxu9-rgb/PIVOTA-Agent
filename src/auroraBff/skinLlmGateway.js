@@ -1,3 +1,4 @@
+const vertexGemini = require('../llm/vertexGemini');
 const { parseJsonOnlyObject } = require('./jsonExtract');
 const {
   SkinVisionObservationSchema,
@@ -155,13 +156,14 @@ function pickGeminiApiKey() {
 
 function getGeminiClient(apiKey) {
   const key = typeof apiKey === 'string' ? apiKey.trim() : '';
-  if (!key) return null;
-  if (geminiClientsByKey.has(key)) return geminiClientsByKey.get(key);
+  if (!vertexGemini.credentialsAvailable(key)) return null;
+  const cacheKey = vertexGemini.clientCacheKey(key);
+  if (geminiClientsByKey.has(cacheKey)) return geminiClientsByKey.get(cacheKey);
   if (geminiInitFailed) return null;
   try {
     const { GoogleGenAI } = require('@google/genai');
-    const client = new GoogleGenAI({ apiKey: key });
-    geminiClientsByKey.set(key, client);
+    const client = new GoogleGenAI(vertexGemini.geminiClientOptions(key));
+    geminiClientsByKey.set(cacheKey, client);
     return client;
   } catch (_err) {
     geminiInitFailed = true;

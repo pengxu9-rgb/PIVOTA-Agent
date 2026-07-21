@@ -27,6 +27,7 @@
  */
 
 'use strict';
+const vertexGemini = require('../llm/vertexGemini');
 
 const { getGeminiGlobalGate } = require('../lib/geminiGlobalGate');
 
@@ -311,10 +312,10 @@ function getGeminiClient() {
   if (cachedGeminiClient) return cachedGeminiClient;
   if (geminiInitFailed) return null;
   const apiKey = String(process.env.GEMINI_API_KEY || '').trim();
-  if (!apiKey) return null;
+  if (!vertexGemini.credentialsAvailable(apiKey)) return null;
   try {
     const { GoogleGenAI } = require('@google/genai');
-    cachedGeminiClient = new GoogleGenAI({ apiKey });
+    cachedGeminiClient = new GoogleGenAI(vertexGemini.geminiClientOptions(apiKey));
     return cachedGeminiClient;
   } catch (_err) {
     geminiInitFailed = true;

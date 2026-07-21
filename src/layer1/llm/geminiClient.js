@@ -1,3 +1,4 @@
+const vertexGemini = require('../../llm/vertexGemini');
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
@@ -136,7 +137,7 @@ async function generateLookSpecFromImage({ imagePath, promptText, responseJsonSc
     preprocess: { ok: null, usedOriginal: true, errorCode: null },
   };
 
-  if (!apiKey) {
+  if (!vertexGemini.credentialsAvailable(apiKey)) {
     return { ok: false, error: { code: "MISSING_API_KEY", message: "Missing GEMINI_API_KEY or GOOGLE_API_KEY" }, meta };
   }
 
@@ -193,7 +194,7 @@ async function generateLookSpecFromImage({ imagePath, promptText, responseJsonSc
 
     const data = bytes.toString("base64");
 
-    const ai = new GoogleGenAI({ apiKey });
+    const ai = new GoogleGenAI(vertexGemini.geminiClientOptions(apiKey));
 
     const request = {
       model,

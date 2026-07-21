@@ -1,4 +1,5 @@
 'use strict';
+const vertexGemini = require('../llm/vertexGemini');
 
 const { resolveAuroraGeminiKey } = require('./auroraGeminiKeys');
 const { getGeminiGlobalGate } = require('../lib/geminiGlobalGate');
@@ -137,19 +138,20 @@ function pickAuroraGeminiApiKey(featureEnvVar) {
 
 function getAuroraGeminiClient(featureEnvVar) {
   const apiKey = pickAuroraGeminiApiKey(featureEnvVar);
-  if (!apiKey) {
+  if (!vertexGemini.credentialsAvailable(apiKey)) {
     return { client: null, apiKey: '', init_error: 'MISSING_GEMINI_KEY' };
   }
-  if (clientsByKey.has(apiKey)) {
-    return { client: clientsByKey.get(apiKey), apiKey, init_error: null };
+  const cacheKey = vertexGemini.clientCacheKey(apiKey);
+  if (clientsByKey.has(cacheKey)) {
+    return { client: clientsByKey.get(cacheKey), apiKey, init_error: null };
   }
   if (geminiInitFailed) {
     return { client: null, apiKey, init_error: 'GEMINI_INIT_FAILED' };
   }
   try {
     const { GoogleGenAI } = require('@google/genai');
-    const client = new GoogleGenAI({ apiKey });
-    clientsByKey.set(apiKey, client);
+    const client = new GoogleGenAI(vertexGemini.geminiClientOptions(apiKey));
+    clientsByKey.set(cacheKey, client);
     return { client, apiKey, init_error: null };
   } catch {
     geminiInitFailed = true;
@@ -258,7 +260,7 @@ async function callAuroraGeminiGenerateContentRestWithMeta({
   upstreamTimeoutMs = 0,
 } = {}) {
   const apiKey = pickAuroraGeminiApiKey(featureEnvVar);
-  if (!apiKey) {
+  if (!vertexGemini.credentialsAvailable(apiKey)) {
     const err = new Error('MISSING_GEMINI_KEY');
     err.code = 'MISSING_GEMINI_KEY';
     throw err;
