@@ -212,14 +212,10 @@ async function postGeminiRestGenerateContent({ apiKey, request, upstreamTimeoutM
   try {
     let lastErr = null;
     for (const model of modelCandidates.length ? modelCandidates : [modelName]) {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
-      const response = await fetch(url, {
+      const target = await vertexGemini.restTarget({ model, apiKey });
+      const response = await fetch(target.url, {
         method: 'POST',
-        headers: {
-          accept: 'application/json',
-          'content-type': 'application/json',
-          'x-goog-api-key': apiKey,
-        },
+        headers: { accept: 'application/json', ...target.headers },
         body: JSON.stringify(buildGeminiRestBodyFromSdkRequest({ ...request, model })),
         signal: controller ? controller.signal : undefined,
       });

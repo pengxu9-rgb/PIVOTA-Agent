@@ -1,3 +1,4 @@
+const vertexGemini = require('../llm/vertexGemini');
 const fs = require('fs');
 const path = require('path');
 
@@ -252,8 +253,11 @@ async function callGemini({ prompt }) {
   const apiKey = resolveFindProductsGeminiApiKey();
   if (!apiKey) throw new Error('Gemini API key is not set');
 
-  const baseURL = (process.env.GEMINI_BASE_URL || 'https://generativelanguage.googleapis.com').replace(/\/$/, '');
-  const url = `${baseURL}/v1beta/models/${encodeURIComponent(DEFAULT_MODEL_GEMINI)}:generateContent?key=${encodeURIComponent(apiKey)}`;
+  const { url, headers: geminiHeaders } = await vertexGemini.restTarget({
+    model: DEFAULT_MODEL_GEMINI,
+    apiKey,
+    baseUrl: process.env.GEMINI_BASE_URL || null,
+  });
 
   const body = {
     systemInstruction: {
@@ -268,7 +272,10 @@ async function callGemini({ prompt }) {
     generationConfig: { temperature: 0, topK: 1, topP: 0.1, maxOutputTokens: 1024 },
   };
 
-  const resp = await axios.post(url, body, { timeout: Math.min(12_000, RERANK_LLM_TIMEOUT_MS) });
+  const resp = await axios.post(url, body, {
+    headers: geminiHeaders,
+    timeout: Math.min(12_000, RERANK_LLM_TIMEOUT_MS),
+  });
   const text =
     resp?.data?.candidates?.[0]?.content?.parts?.map((p) => p.text || '').join('') ||
     resp?.data?.candidates?.[0]?.content?.parts?.[0]?.text ||

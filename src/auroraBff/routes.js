@@ -1,3 +1,4 @@
+const vertexGemini = require('../llm/vertexGemini');
 const axios = require('axios');
 const sharp = require('sharp');
 const fs = require('fs');
@@ -29600,7 +29601,7 @@ function normalizeGeminiRestModelName(model) {
     .replace(/^publishers\/google\/models\//i, '');
 }
 
-function postGeminiRestGenerateContent({ url, apiKey, requestBody, timeoutMs = 3000, signal } = {}) {
+function postGeminiRestGenerateContent({ url, headers = {}, requestBody, timeoutMs = 3000, signal } = {}) {
   const endpoint = new URL(String(url || ''));
   const bodyText = JSON.stringify(requestBody || {});
   const hardTimeoutMs = Math.max(1, Math.trunc(Number(timeoutMs) || 1));
@@ -29643,9 +29644,8 @@ function postGeminiRestGenerateContent({ url, apiKey, requestBody, timeoutMs = 3
         method: 'POST',
         headers: {
           accept: 'application/json',
-          'content-type': 'application/json',
           'content-length': Buffer.byteLength(bodyText),
-          'x-goog-api-key': apiKey,
+          ...headers,
         },
         timeout: hardTimeoutMs,
       },
@@ -29792,7 +29792,7 @@ async function callGeminiJsonObjectViaRest({
       route,
       async () => {
         upstreamStartedAt = Date.now();
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelName)}:generateContent`;
+        const geminiTarget = await vertexGemini.restTarget({ model: modelName, apiKey });
         const upstreamTimeoutMs = Math.max(1, Math.trunc(Number(timeoutBudget.upstream_timeout_ms || 0) || 1));
         const controller =
           typeof AbortController === 'function' && upstreamTimeoutMs > 0
@@ -29803,8 +29803,8 @@ async function callGeminiJsonObjectViaRest({
           : null;
         try {
           const requestPromise = postGeminiRestGenerateContent({
-            url,
-            apiKey,
+            url: geminiTarget.url,
+            headers: geminiTarget.headers,
             requestBody,
             timeoutMs: upstreamTimeoutMs,
             signal: controller ? controller.signal : undefined,
@@ -30667,7 +30667,7 @@ async function callGeminiTextResponseViaRest({
       route,
       async () => {
         upstreamStartedAt = Date.now();
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelName)}:generateContent`;
+        const geminiTarget = await vertexGemini.restTarget({ model: modelName, apiKey });
         const upstreamHardTimeoutMs = Math.max(1, Math.trunc(Number(timeoutBudget.upstream_timeout_ms || 0) || 1));
         const controller =
           typeof AbortController === 'function' && upstreamHardTimeoutMs > 0
@@ -30678,8 +30678,8 @@ async function callGeminiTextResponseViaRest({
           : null;
         try {
           const requestPromise = postGeminiRestGenerateContent({
-            url,
-            apiKey,
+            url: geminiTarget.url,
+            headers: geminiTarget.headers,
             requestBody,
             timeoutMs: upstreamHardTimeoutMs,
             signal: controller ? controller.signal : undefined,
