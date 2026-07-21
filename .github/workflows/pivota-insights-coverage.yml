@@ -60,6 +60,15 @@ jobs:
       GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
       GEMINI_BASE_URL: ${{ secrets.GEMINI_BASE_URL }}
       GOOGLE_GENAI_BASE_URL: ${{ secrets.GOOGLE_GENAI_BASE_URL }}
+      # Route this batch through Vertex so its usage bills the GCP project that
+      # holds the credits, matching the Railway services. Without these the seam
+      # silently falls back to AI Studio and the spend lands on the old API key.
+      VERTEX_AI_ENABLED: "true"
+      GOOGLE_CLOUD_PROJECT: project-f165a637-145f-4de2-89d
+      # NOT us-central1: gemini-3-flash-preview (this workflow's default model)
+      # is 404 there and only resolves on the global endpoint.
+      GOOGLE_CLOUD_LOCATION: global
+      GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -72,6 +81,34 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      # Fail fast rather than silently producing a Gemini-less report. A prod
+      # cutover was once left flag-on with a truncated credential; the guards
+      # degrade cleanly, which is exactly why a bad value can go unnoticed.
+      - name: Verify Vertex credentials
+        if: env.VERTEX_AI_ENABLED == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${GOOGLE_APPLICATION_CREDENTIALS_JSON:-}" ]]; then
+            echo "::error::VERTEX_AI_ENABLED=true but GOOGLE_APPLICATION_CREDENTIALS_JSON is empty."
+            echo "::error::Add the service-account JSON as a repo secret, or unset VERTEX_AI_ENABLED to use AI Studio."
+            exit 1
+          fi
+          node -e '
+            const raw = process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON || "";
+            let d;
+            try { d = JSON.parse(raw); }
+            catch (e) {
+              console.error(`::error::credential is not valid JSON (${raw.length} chars): ${e.message}`);
+              process.exit(1);
+            }
+            if (d.type !== "service_account" || !d.private_key) {
+              console.error("::error::credential parsed but is not a service_account key");
+              process.exit(1);
+            }
+            console.log(`credential OK: ${raw.length} chars, project=${d.project_id}`);
+          '
 
       - name: Build review packet
         shell: bash
