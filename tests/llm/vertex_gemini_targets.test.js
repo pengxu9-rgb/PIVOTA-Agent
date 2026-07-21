@@ -139,6 +139,8 @@ describe('vertexGemini OpenAI-compat surface', () => {
 });
 
 describe('vertexGemini.credentialsAvailable', () => {
+  beforeEach(() => vertexGemini.resetCredentialsCache());
+
   it('flag off gates on the api key', () => {
     withEnv(OFF, () => {
       expect(vertexGemini.credentialsAvailable('k')).toBe(true);
@@ -146,8 +148,36 @@ describe('vertexGemini.credentialsAvailable', () => {
     });
   });
 
-  it('flag on gates on the project, not the key', () => {
-    withEnv(ON, () => expect(vertexGemini.credentialsAvailable('')).toBe(true));
-    withEnv({ ...ON, GOOGLE_CLOUD_PROJECT: '' }, () => expect(vertexGemini.credentialsAvailable('k')).toBe(false));
+  it('flag on still requires a project', () => {
+    withEnv({ ...ON, GOOGLE_CLOUD_PROJECT: '' }, () =>
+      expect(vertexGemini.credentialsAvailable('k')).toBe(false),
+    );
+  });
+
+  // Regression: staging had VERTEX_AI_ENABLED=true and a project set, but no
+  // credential of any kind. This returned true, so callers sailed past their
+  // guard and the token mint threw mid-request instead of degrading.
+  it('fails closed when the flag is on but NO credential is configured', () => {
+    withEnv({ ...ON, GOOGLE_APPLICATION_CREDENTIALS: '', GOOGLE_APPLICATION_CREDENTIALS_JSON: '' }, () =>
+      expect(vertexGemini.credentialsAvailable('')).toBe(false),
+    );
+  });
+
+  it('accepts inline key material via GOOGLE_APPLICATION_CREDENTIALS_JSON', () => {
+    withEnv({ ...ON, GOOGLE_APPLICATION_CREDENTIALS_JSON: '{"type":"service_account"}' }, () =>
+      expect(vertexGemini.credentialsAvailable('')).toBe(true),
+    );
+  });
+
+  it('accepts a credentials file path', () => {
+    withEnv({ ...ON, GOOGLE_APPLICATION_CREDENTIALS: '/var/run/sa.json' }, () =>
+      expect(vertexGemini.credentialsAvailable('')).toBe(true),
+    );
+  });
+
+  it('trusts a metadata-server runtime marker', () => {
+    withEnv({ ...ON, K_SERVICE: 'some-cloud-run-service' }, () =>
+      expect(vertexGemini.credentialsAvailable('')).toBe(true),
+    );
   });
 });
