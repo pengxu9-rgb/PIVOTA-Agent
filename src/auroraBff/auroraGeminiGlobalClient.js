@@ -257,7 +257,7 @@ async function callAuroraGeminiGenerateContentRestWithMeta({
 } = {}) {
   const apiKey = pickAuroraGeminiApiKey(featureEnvVar);
   if (!vertexGemini.credentialsAvailable(apiKey)) {
-    const err = new Error('MISSING_GEMINI_KEY');
+    const err = new Error(vertexGemini.missingCredentialMessage());
     err.code = 'MISSING_GEMINI_KEY';
     throw err;
   }

@@ -95,7 +95,7 @@ async function generateMultiImageJsonFromGemini({ promptText, images, schema, mo
     preprocess: [],
   };
 
-  if (!vertexGemini.credentialsAvailable(apiKey)) return { ok: false, error: { code: "MISSING_API_KEY", message: "Missing GEMINI_API_KEY or GOOGLE_API_KEY" }, meta };
+  if (!vertexGemini.credentialsAvailable(apiKey)) return { ok: false, error: { code: "MISSING_API_KEY", message: vertexGemini.missingCredentialMessage() }, meta };
 
   let GoogleGenAI = null;
   try {
@@ -248,7 +248,7 @@ async function generateMultiImageImageFromGemini({ promptText, images }) {
     preprocess: [],
   };
 
-  if (!vertexGemini.credentialsAvailable(apiKey)) return { ok: false, error: { code: "MISSING_API_KEY", message: "Missing GEMINI_API_KEY or GOOGLE_API_KEY" }, meta };
+  if (!vertexGemini.credentialsAvailable(apiKey)) return { ok: false, error: { code: "MISSING_API_KEY", message: vertexGemini.missingCredentialMessage() }, meta };
 
   let GoogleGenAI = null;
   try {

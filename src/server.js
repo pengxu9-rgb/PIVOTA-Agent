@@ -25208,7 +25208,7 @@ function getUiChatLlmClient() {
     if (provider === 'gemini') {
       const geminiApiKey = resolveGeminiApiKey();
       if (!vertexGemini.credentialsAvailable(geminiApiKey)) {
-        throw new Error('GEMINI_API_KEY (or PIVOTA_GEMINI_API_KEY/GOOGLE_API_KEY) is required for /ui/chat provider=gemini');
+        throw new Error(`/ui/chat provider=gemini: ${vertexGemini.missingCredentialMessage()}`);
       }
       uiChatLlmModel = vertexGemini.openAiCompatModel(uiChatLlmModel);
       uiChatLlmClient = new OpenAI({

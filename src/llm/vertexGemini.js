@@ -103,6 +103,24 @@ function credentialsAvailable(apiKey) {
   return false;
 }
 
+/**
+ * Human-readable reason a call cannot authenticate, for the mode actually in
+ * effect.
+ *
+ * Structured error CODES stay as they are — callers and tests match on those —
+ * but the prose has to name the thing that is genuinely missing. Under Vertex,
+ * "GEMINI_API_KEY is not set" points at a variable that is deliberately unused
+ * and sends whoever is debugging in exactly the wrong direction.
+ */
+function missingCredentialMessage() {
+  if (!vertexEnabled()) return 'Missing GEMINI_API_KEY or GOOGLE_API_KEY';
+  if (!vertexProject()) return 'VERTEX_AI_ENABLED=true but GOOGLE_CLOUD_PROJECT is unset';
+  return (
+    'Vertex credentials unavailable: set GOOGLE_APPLICATION_CREDENTIALS_JSON, ' +
+    'or run where Application Default Credentials resolve'
+  );
+}
+
 /** Test hook — drops the memoised auth client and probe state. */
 function resetCredentialsCache() {
   cachedAuth = null;
@@ -292,6 +310,7 @@ module.exports = {
   clientCacheKey,
   accessToken,
   credentialSourceConfigured,
+  missingCredentialMessage,
   resetCredentialsCache,
   restTarget,
   openAiCompatBaseUrl,

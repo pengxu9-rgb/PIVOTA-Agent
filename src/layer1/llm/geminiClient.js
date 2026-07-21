@@ -138,7 +138,7 @@ async function generateLookSpecFromImage({ imagePath, promptText, responseJsonSc
   };
 
   if (!vertexGemini.credentialsAvailable(apiKey)) {
-    return { ok: false, error: { code: "MISSING_API_KEY", message: "Missing GEMINI_API_KEY or GOOGLE_API_KEY" }, meta };
+    return { ok: false, error: { code: "MISSING_API_KEY", message: vertexGemini.missingCredentialMessage() }, meta };
   }
 
   let GoogleGenAI = null;
