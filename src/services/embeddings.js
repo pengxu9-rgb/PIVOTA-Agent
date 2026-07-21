@@ -1,6 +1,7 @@
 const axios = require('axios');
 const OpenAI = require('openai');
 const crypto = require('crypto');
+const vertexGemini = require('../llm/vertexGemini');
 
 const CACHE_TTL_MS = Number(process.env.PIVOTA_EMBEDDINGS_CACHE_TTL_MS || 5 * 60 * 1000);
 
@@ -85,10 +86,6 @@ async function embedWithOpenAI(texts, model) {
   return vectors;
 }
 
-function geminiBaseUrl() {
-  return (process.env.GEMINI_BASE_URL || 'https://generativelanguage.googleapis.com').replace(/\/$/, '');
-}
-
 function geminiModelName(model) {
   const m = String(model || '').trim();
   if (!m) return 'text-embedding-004';
@@ -96,31 +93,29 @@ function geminiModelName(model) {
 }
 
 async function embedWithGemini(texts, model) {
-  if (!process.env.GEMINI_API_KEY) throw new Error('GEMINI_API_KEY is not set');
-  const baseURL = geminiBaseUrl();
-  const name = geminiModelName(model);
-  const mpath = `models/${name}`;
-
-  if (texts.length === 1) {
-    const url = `${baseURL}/v1beta/models/${encodeURIComponent(name)}:embedContent?key=${encodeURIComponent(process.env.GEMINI_API_KEY)}`;
-    const body = {
-      content: { parts: [{ text: texts[0] }] },
-    };
-    const res = await axios.post(url, body, { timeout: 12000 });
-    const vec = res?.data?.embedding?.values || res?.data?.embedding?.value || null;
-    return [assertEmbeddingVector(vec)];
+  if (!vertexGemini.credentialsAvailable(process.env.GEMINI_API_KEY)) {
+    throw new Error('GEMINI_API_KEY is not set');
   }
+  const name = geminiModelName(model);
 
-  const url = `${baseURL}/v1beta/models/${encodeURIComponent(name)}:batchEmbedContents?key=${encodeURIComponent(process.env.GEMINI_API_KEY)}`;
-  const body = {
-    requests: texts.map((t) => ({
-      model: mpath,
-      content: { parts: [{ text: t }] },
-    })),
-  };
-  const res = await axios.post(url, body, { timeout: 20000 });
-  const embeddings = res?.data?.embeddings || res?.data?.responses?.map((r) => r.embedding) || [];
-  const vectors = embeddings.map((e) => assertEmbeddingVector(e?.values || e?.value));
+  // Vertex has no embedContent/batchEmbedContents — it exposes :predict with a
+  // different request AND response shape, so the target carries its own body
+  // and parser and this function stays shape-agnostic.
+  const target = vertexGemini.embedTarget({
+    model: name,
+    texts,
+    apiKey: process.env.GEMINI_API_KEY,
+    baseUrl: process.env.GEMINI_BASE_URL || null,
+  });
+  const headers = target.needsBearer
+    ? { ...target.headers, authorization: `Bearer ${await vertexGemini.accessToken()}` }
+    : target.headers;
+
+  const res = await axios.post(target.url, target.body, {
+    headers,
+    timeout: texts.length === 1 ? 12000 : 20000,
+  });
+  const vectors = target.parse(res?.data).map((v) => assertEmbeddingVector(v));
   if (vectors.length !== texts.length) throw new Error('Gemini embeddings count mismatch');
   return vectors;
 }

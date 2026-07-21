@@ -1,3 +1,4 @@
+const vertexGemini = require('./llm/vertexGemini');
 /*
  * Pivota Agent gateway.
  * Exposes /agent/shop/v1/invoke and forwards to Pivota internal API based on operation.
@@ -25206,12 +25207,24 @@ function getUiChatLlmClient() {
 
     if (provider === 'gemini') {
       const geminiApiKey = resolveGeminiApiKey();
-      if (!geminiApiKey) {
+      if (!vertexGemini.credentialsAvailable(geminiApiKey)) {
         throw new Error('GEMINI_API_KEY (or PIVOTA_GEMINI_API_KEY/GOOGLE_API_KEY) is required for /ui/chat provider=gemini');
       }
+      uiChatLlmModel = vertexGemini.openAiCompatModel(uiChatLlmModel);
       uiChatLlmClient = new OpenAI({
-        apiKey: geminiApiKey,
-        baseURL: resolveGeminiBaseUrl(),
+        // On Vertex the bearer token is minted per request by the fetch wrapper
+        // below, because ADC tokens expire and this client is cached.
+        apiKey: vertexGemini.vertexEnabled() ? 'vertex-adc' : geminiApiKey,
+        baseURL: vertexGemini.openAiCompatBaseUrl(resolveGeminiBaseUrl()),
+        ...(vertexGemini.vertexEnabled()
+          ? {
+              fetch: async (url, init = {}) => {
+                const headers = new Headers(init.headers || {});
+                headers.set('authorization', `Bearer ${await vertexGemini.accessToken()}`);
+                return fetch(url, { ...init, headers });
+              },
+            }
+          : {}),
       });
     } else {
       if (!process.env.OPENAI_API_KEY) {

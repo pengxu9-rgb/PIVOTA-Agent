@@ -1,3 +1,4 @@
+const vertexGemini = require('../llm/vertexGemini');
 const OpenAI = require('openai');
 const axios = require('axios');
 const {
@@ -886,10 +887,11 @@ async function extractIntentWithGemini(latest_user_query, recent_queries = [], r
 
   const model = String(options?.model || resolveIntentGeminiModel().model || 'gemini-3-flash-preview').trim() ||
     'gemini-3-flash-preview';
-  const baseURL =
-    (process.env.GEMINI_BASE_URL || 'https://generativelanguage.googleapis.com').replace(/\/$/, '');
-
-  const url = `${baseURL}/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
+  const { url, headers: geminiHeaders } = await vertexGemini.restTarget({
+    model,
+    apiKey,
+    baseUrl: process.env.GEMINI_BASE_URL || null,
+  });
 
   const systemText = `${buildSystemPrompt()}\n\n${buildDeveloperPrompt()}`;
   const userText = buildIntentLlmInput(latest_user_query, recent_queries, recent_messages, options);
@@ -907,6 +909,7 @@ async function extractIntentWithGemini(latest_user_query, recent_queries = [], r
   };
 
   const res = await axios.post(url, body, {
+    headers: geminiHeaders,
     timeout: Math.max(
       1000,
       Math.min(

@@ -1,3 +1,4 @@
+const vertexGemini = require('../../llm/vertexGemini');
 const crypto = require('crypto');
 const { getGeminiGlobalGate } = require('../../lib/geminiGlobalGate');
 const { extractRecoTargetStepFromText } = require('../recoTargetStep');
@@ -1794,10 +1795,10 @@ class LlmGateway {
       const body = JSON.stringify(this._buildGeminiBody(messages, options));
       let lastErr = null;
       for (const model of GEMINI_MODEL_CANDIDATES[mode].length ? GEMINI_MODEL_CANDIDATES[mode] : [GEMINI_MODELS[mode]]) {
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-        const response = await fetch(url, {
+        const target = await vertexGemini.restTarget({ model, apiKey });
+        const response = await fetch(target.url, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: target.headers,
           body,
           signal: AbortSignal.timeout(30000),
         });
@@ -1831,11 +1832,11 @@ class LlmGateway {
       throw err;
     }
 
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODELS.chat}:streamGenerateContent?alt=sse&key=${apiKey}`;
+    const target = await vertexGemini.restTarget({ model: GEMINI_MODELS.chat, apiKey, stream: true });
     return this._withGeminiGate('aurora_chat_v2_gemini_stream', async () => {
-      const response = await fetch(url, {
+      const response = await fetch(target.url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: target.headers,
         body: JSON.stringify(this._buildGeminiBody(messages, { mode: 'chat' })),
         signal: AbortSignal.timeout(60000),
       });

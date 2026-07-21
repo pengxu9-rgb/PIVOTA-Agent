@@ -1,3 +1,4 @@
+const vertexGemini = require('./vertexGemini');
 const axios = require('axios');
 const { AxiosError } = require('axios');
 const { z } = require('zod');
@@ -557,11 +558,11 @@ function createProviderFromEnv(purpose = 'generic') {
         ...resolveGeminiRuntimeModelCandidates(requestedModel),
         ...resolveGeminiRuntimeModelCandidates(resolveGeminiRuntimeModelName(NON_IMAGE_GEMINI_FLOOR_MODEL)),
       ]);
-      const apiVersions = ['v1beta', 'v1'];
+      const apiVersions = vertexGemini.vertexEnabled() ? ['v1'] : ['v1beta', 'v1'];
       if (!apiKey) throw new LlmError('LLM_CONFIG_MISSING', 'Missing required env var: GEMINI_API_KEY');
 
-      const urlFor = (apiVersion, model) =>
-        `${baseURL}/${apiVersion}/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
+      const targetFor = (apiVersion, model) =>
+        vertexGemini.restTarget({ model, apiKey, baseUrl: baseURL, apiVersion });
 
       async function postGeminiWithRetry(body, schema) {
         const maxAttempts = llmMaxAttempts();
@@ -572,7 +573,9 @@ function createProviderFromEnv(purpose = 'generic') {
             for (const apiVersion of apiVersions) {
               for (const model of candidateModels) {
                 try {
-                  const res = await axios.post(urlFor(apiVersion, model), body, {
+                  const target = await targetFor(apiVersion, model);
+                  const res = await axios.post(target.url, body, {
+                    headers: target.headers,
                     timeout: Number(getEnv('LLM_TIMEOUT_MS') || '20000'),
                   });
                   const text =
