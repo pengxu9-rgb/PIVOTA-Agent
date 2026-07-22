@@ -18,6 +18,10 @@ const {
   buildSearchCardPayload: buildServiceSearchCardPayload,
   buildShoppingCardPayload: buildServiceShoppingCardPayload,
 } = require('../src/services/pivotaShoppingCard');
+// Same transport seam the server uses, so VERTEX_AI_ENABLED decides whether
+// these calls hit AI Studio (GEMINI_API_KEY) or Vertex (the GCP project's
+// billing). Bypassing it kept this script on the API key even with the flag on.
+const vertexGemini = require('../src/llm/vertexGemini');
 
 const GEMINI_PRIMARY_MODEL = 'gemini-3-flash-preview';
 const GEMINI_UPGRADE_MODEL = 'gemini-3.1-pro-preview';
@@ -79,13 +83,18 @@ function normalizeGeminiModel(rawModel) {
   return asString(rawModel).toLowerCase().replace(/^models\//, '');
 }
 
-function buildGeminiModelCallUrl(model) {
-  return `${geminiBaseUrl()}/v1beta/models/${encodeURIComponent(normalizeGeminiModel(model))}:generateContent?key=${encodeURIComponent(geminiApiKey())}`;
-}
-
 async function invokeGeminiDraft(model, prompt) {
+  // restTarget puts the key in a header (never the query string) on AI Studio,
+  // and mints a fresh ADC bearer token per call on Vertex — hence resolved per
+  // request, not once. On Vertex only v1 exposes generateContent.
+  const target = await vertexGemini.restTarget({
+    model: normalizeGeminiModel(model),
+    apiKey: geminiApiKey(),
+    baseUrl: geminiBaseUrl(),
+    apiVersion: vertexGemini.vertexEnabled() ? 'v1' : 'v1beta',
+  });
   const response = await axios.post(
-    buildGeminiModelCallUrl(model),
+    target.url,
     {
       systemInstruction: {
         parts: [
@@ -105,7 +114,7 @@ async function invokeGeminiDraft(model, prompt) {
         responseMimeType: 'application/json',
       },
     },
-    { timeout: 45000 },
+    { timeout: 45000, headers: target.headers },
   );
 
   const candidate = response?.data?.candidates?.[0] || {};
@@ -958,14 +967,10 @@ function attachShoppingCard(caseRow, bundle) {
 }
 
 function hasGeminiKey() {
-  return Boolean(
-    String(
-      process.env.GEMINI_API_KEY ||
-        process.env.PIVOTA_GEMINI_API_KEY ||
-        process.env.GOOGLE_API_KEY ||
-        '',
-    ).trim(),
-  );
+  // On Vertex the credential is ADC, not an API key — gating on the key would
+  // skip Gemini entirely with the flag on. credentialsAvailable() answers for
+  // whichever mode is active.
+  return vertexGemini.credentialsAvailable(geminiApiKey());
 }
 
 function geminiApiKey() {
