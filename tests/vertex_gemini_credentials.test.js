@@ -87,6 +87,135 @@ describe('vertexGemini credential source', () => {
     expect(seam.credentialsAvailable('ak-ignored')).toBe(true);
   });
 
+  describe('host pinning', () => {
+    // @google/genai@0.7.0 derives `${location}-aiplatform.googleapis.com` with
+    // no case for "global" — which is the configured location. Asserting on
+    // our own options object would prove nothing about where the SDK actually
+    // points, so these drive the real constructor and read the resolved URL.
+    function resolvedBaseUrl(options) {
+      const { GoogleGenAI } = require('@google/genai');
+      const ai = new GoogleGenAI(options);
+      const client = ai.apiClient || ai.api_client;
+      return client.clientOptions.httpOptions.baseUrl;
+    }
+
+    test('location=global reaches the real Vertex host, not global-*', () => {
+      const seam = loadSeam({
+        VERTEX_AI_ENABLED: 'true',
+        GOOGLE_CLOUD_PROJECT: 'proj-from-key',
+        GOOGLE_CLOUD_LOCATION: 'global',
+        GOOGLE_APPLICATION_CREDENTIALS_JSON: JSON.stringify(VALID_SA),
+      });
+      const url = resolvedBaseUrl(seam.geminiClientOptions('ak-ignored'));
+      expect(url).toBe('https://aiplatform.googleapis.com/');
+      // The unpinned value: a host that answers 404 where the real one 401s.
+      expect(url).not.toContain('global-aiplatform');
+    });
+
+    test('a regional location keeps its regional host', () => {
+      const seam = loadSeam({
+        VERTEX_AI_ENABLED: 'true',
+        GOOGLE_CLOUD_PROJECT: 'proj-from-key',
+        GOOGLE_CLOUD_LOCATION: 'us-central1',
+        GOOGLE_APPLICATION_CREDENTIALS_JSON: JSON.stringify(VALID_SA),
+      });
+      expect(resolvedBaseUrl(seam.geminiClientOptions('ak-ignored'))).toBe(
+        'https://us-central1-aiplatform.googleapis.com/',
+      );
+    });
+
+    test('pinning the host leaves apiVersion and auth mode intact', () => {
+      const seam = loadSeam({
+        VERTEX_AI_ENABLED: 'true',
+        GOOGLE_CLOUD_PROJECT: 'proj-from-key',
+        GOOGLE_CLOUD_LOCATION: 'global',
+        GOOGLE_APPLICATION_CREDENTIALS_JSON: JSON.stringify(VALID_SA),
+      });
+      const { GoogleGenAI } = require('@google/genai');
+      const ai = new GoogleGenAI(seam.geminiClientOptions('ak-ignored'));
+      const client = ai.apiClient || ai.api_client;
+      expect(client.clientOptions.httpOptions.apiVersion).toBeTruthy();
+      // Vertex has no API-key auth; a surviving key would re-target billing.
+      expect(client.clientOptions.apiKey).toBeUndefined();
+    });
+
+    test('the SDK and REST transports agree on the host', () => {
+      // They disagreed: REST special-cased global, the SDK did not.
+      for (const location of ['global', 'us-central1', 'europe-west4']) {
+        const seam = loadSeam({
+          VERTEX_AI_ENABLED: 'true',
+          GOOGLE_CLOUD_PROJECT: 'proj-from-key',
+          GOOGLE_CLOUD_LOCATION: location,
+          GOOGLE_APPLICATION_CREDENTIALS_JSON: JSON.stringify(VALID_SA),
+        });
+        const sdkHost = resolvedBaseUrl(seam.geminiClientOptions('ak')).replace(/\/+$/, '');
+        const restHost = new URL(
+          seam.embedTarget({ model: 'text-embedding-004', texts: ['x'], apiKey: 'ak' }).url,
+        ).origin;
+        expect(sdkHost).toBe(restHost);
+      }
+    });
+  });
+
+  test('a service-account key without an explicit type is still accepted', () => {
+    // GoogleAuth.fromJSON falls through to JWT.fromJSON, which validates only
+    // client_email/private_key and never reads `type` — so this resolves today
+    // and must not be narrowed away.
+    const seam = loadSeam({
+      VERTEX_AI_ENABLED: 'true',
+      GOOGLE_CLOUD_PROJECT: 'proj-from-key',
+      GOOGLE_APPLICATION_CREDENTIALS_JSON: JSON.stringify({
+        client_email: 'sa@proj-from-key.iam.gserviceaccount.com',
+        private_key: '-----BEGIN PRIVATE KEY-----\nx\n-----END PRIVATE KEY-----\n',
+      }),
+    });
+    expect(seam.credentialsAvailable('ak-ignored')).toBe(true);
+    expect(seam.geminiClientOptions('ak-ignored').googleAuthOptions).toBeTruthy();
+  });
+
+  test.each([
+    'authorized_user',
+    'external_account',
+    'external_account_authorized_user',
+    'impersonated_service_account',
+  ])('%s credentials are accepted', (type) => {
+    const seam = loadSeam({
+      VERTEX_AI_ENABLED: 'true',
+      GOOGLE_CLOUD_PROJECT: 'proj-from-key',
+      GOOGLE_APPLICATION_CREDENTIALS_JSON: JSON.stringify({ type }),
+    });
+    expect(seam.credentialsAvailable('ak-ignored')).toBe(true);
+  });
+
+  test('a credential from another project warns about billing', () => {
+    // Requests bill the configured project while quota is checked against the
+    // credential's, so a mismatch spends from a project nobody is watching.
+    const seam = loadSeam({
+      VERTEX_AI_ENABLED: 'true',
+      GOOGLE_CLOUD_PROJECT: 'proj-configured',
+      GOOGLE_APPLICATION_CREDENTIALS_JSON: JSON.stringify({
+        ...VALID_SA,
+        project_id: 'proj-somewhere-else',
+      }),
+    });
+    seam.geminiClientOptions('ak-ignored');
+    seam.geminiClientOptions('ak-ignored');
+    expect(errSpy).toHaveBeenCalledTimes(1);
+    const msg = String(errSpy.mock.calls[0][0]);
+    expect(msg).toMatch(/proj-somewhere-else/);
+    expect(msg).toMatch(/proj-configured/);
+  });
+
+  test('a matching credential project stays quiet', () => {
+    const seam = loadSeam({
+      VERTEX_AI_ENABLED: 'true',
+      GOOGLE_CLOUD_PROJECT: 'proj-from-key',
+      GOOGLE_APPLICATION_CREDENTIALS_JSON: JSON.stringify(VALID_SA),
+    });
+    seam.geminiClientOptions('ak-ignored');
+    expect(errSpy).not.toHaveBeenCalled();
+  });
+
   test('no inline JSON still yields plain ADC options', () => {
     // On GCE/Cloud Run the metadata server is a legitimate credential source,
     // so absence of the env var must not be treated as misconfiguration.
@@ -108,10 +237,10 @@ describe('vertexGemini credential source', () => {
     // exactly what waved callers through into the outage.
     const cases = [
       ['unparseable', '{not json', /is not valid JSON/],
-      ['JSON null', 'null', /not a credential object/],
-      ['JSON number', '42', /not a credential object/],
-      ['JSON array', '[{"type":"service_account"}]', /not a credential object/],
-      ['double-encoded string', JSON.stringify(JSON.stringify(VALID_SA)), /not a credential object/],
+      ['JSON null', 'null', /is not a JSON object/],
+      ['JSON number', '42', /is not a JSON object/],
+      ['JSON array', '[{"type":"service_account"}]', /is not a JSON object/],
+      ['double-encoded string', JSON.stringify(JSON.stringify(VALID_SA)), /is not a JSON object/],
       ['object without type', JSON.stringify({ project_id: 'p' }), /not a credential object/],
       ['object with blank type', JSON.stringify({ type: '   ' }), /not a credential object/],
     ];

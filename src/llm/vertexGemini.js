@@ -85,19 +85,51 @@ function parsedCredentials() {
       `GOOGLE_APPLICATION_CREDENTIALS_JSON is not valid JSON: ${err.message}`,
     );
   }
-  if (
-    !info ||
-    typeof info !== 'object' ||
-    Array.isArray(info) ||
-    typeof info.type !== 'string' ||
-    !info.type.trim()
-  ) {
+  if (!info || typeof info !== 'object' || Array.isArray(info)) {
     throw credentialFailure(
-      'GOOGLE_APPLICATION_CREDENTIALS_JSON parsed but is not a credential ' +
-        'object (expected JSON with a "type", e.g. "service_account")',
+      'GOOGLE_APPLICATION_CREDENTIALS_JSON parsed but is not a JSON object',
     );
   }
+  // `type` is how GoogleAuth.fromJSON dispatches (service_account,
+  // authorized_user, external_account, external_account_authorized_user,
+  // impersonated_service_account). But its fallback branch hands anything
+  // unrecognised to JWT.fromJSON, which validates only client_email and
+  // private_key and never looks at `type` — so a service-account key with the
+  // field stripped genuinely works today. Accept that too rather than
+  // narrowing what already resolves.
+  const hasType = typeof info.type === 'string' && info.type.trim();
+  const looksLikeJwt = Boolean(info.client_email && info.private_key);
+  if (!hasType && !looksLikeJwt) {
+    throw credentialFailure(
+      'GOOGLE_APPLICATION_CREDENTIALS_JSON parsed but is not a credential ' +
+        'object (expected a "type", e.g. "service_account", or a ' +
+        'client_email/private_key pair)',
+    );
+  }
+  warnOnProjectMismatch(info);
   return info;
+}
+
+/**
+ * Warn when the key's own project disagrees with GOOGLE_CLOUD_PROJECT.
+ *
+ * Requests bill the configured project while quota is checked against the
+ * credential's, so a mismatch spends from a project nobody is watching. The
+ * Python twin has warned about this since the migration landed; this side was
+ * silent, which matters more now that a whole service account arrives as one
+ * pasted env var.
+ */
+function warnOnProjectMismatch(info) {
+  if (warnedProjectMismatch) return;
+  const keyProject = String(info.project_id || info.quota_project_id || '').trim();
+  const configured = vertexProject();
+  if (!keyProject || !configured || keyProject === configured) return;
+  warnedProjectMismatch = true;
+  console.error(
+    `[vertexGemini] credential project "${keyProject}" != GOOGLE_CLOUD_PROJECT ` +
+      `"${configured}" — requests bill the configured project but quota is ` +
+      `checked against the credential's`,
+  );
 }
 
 /**
@@ -127,6 +159,19 @@ function geminiClientOptions(apiKey) {
     vertexai: true,
     project: vertexProject(),
     location: vertexLocation(),
+    // @google/genai@0.7.0 derives the host as `${location}-aiplatform.
+    // googleapis.com` with NO case for "global" (verified: zero occurrences of
+    // 'global' in the bundle; ApiClient ctor, dist/node/index.js:7329). Our
+    // configured location IS global, which resolves to
+    // global-aiplatform.googleapis.com — a host that answers 404 where the
+    // real endpoint answers 401. Pinning it to the same rule vertexHost()
+    // applies on the REST path keeps the two transports on one host, and an
+    // explicit httpOptions.baseUrl is patched over the derived one
+    // (index.js:7345) while apiVersion and headers survive untouched.
+    //
+    // This is invisible until credentials resolve — auth happens before the
+    // URL is used — so it was hiding behind the ADC failure this branch fixes.
+    httpOptions: { baseUrl: `${vertexHost()}/` },
   };
   const credentials = parsedCredentials();
   if (credentials) options.googleAuthOptions = { credentials };
@@ -255,6 +300,7 @@ function resetCredentialsCache() {
   adcProbe = null;
   probeStarted = false;
   warnedBadCredential = false;
+  warnedProjectMismatch = false;
 }
 
 /**
@@ -276,6 +322,7 @@ let adcProbe = null;
 let probeStarted = false;
 // Log an unusable inline credential once per process, not once per call.
 let warnedBadCredential = false;
+let warnedProjectMismatch = false;
 
 /** Vertex host: the global endpoint is not region-prefixed. */
 function vertexHost() {
