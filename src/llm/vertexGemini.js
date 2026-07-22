@@ -32,6 +32,10 @@ function vertexLocation() {
   return String(process.env.GOOGLE_CLOUD_LOCATION || '').trim() || 'us-central1';
 }
 
+function credentialsJson() {
+  return String(process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON || '').trim();
+}
+
 /**
  * Options for `new GoogleGenAI(...)`.
  *
@@ -39,10 +43,40 @@ function vertexLocation() {
  * Studio path — several callers accept it as an argument rather than reading
  * the env, so swallowing it here would change behaviour beyond transport. On
  * the Vertex path it is ignored: that endpoint authenticates via ADC.
+ *
+ * Railway (and anything not on GCP) can only hand us env vars, and the ADC
+ * resolution inside google-auth-library reads GOOGLE_APPLICATION_CREDENTIALS
+ * as a FILE PATH. Passing the key material inline is what lets a deployment
+ * supply a service account without a bootstrap step that writes it to disk.
+ * pivota-backend #1545 did exactly this for the Python twin; leaving it undone
+ * here is what took Gemini audit probes down on 2026-07-21 — those probes run
+ * in this repo, so the Python-only fix never reached them.
+ *
+ * Throws on unparseable JSON rather than falling through to bare ADC: every
+ * caller wraps construction in a try/catch that degrades to "Gemini
+ * unavailable", so a named failure beats a silent outage that looks
+ * indistinguishable from a platform that was never given a credential.
  */
 function geminiClientOptions(apiKey) {
   if (!vertexEnabled()) return { apiKey };
-  return { vertexai: true, project: vertexProject(), location: vertexLocation() };
+  const options = {
+    vertexai: true,
+    project: vertexProject(),
+    location: vertexLocation(),
+  };
+  const raw = credentialsJson();
+  if (raw) {
+    let info;
+    try {
+      info = JSON.parse(raw);
+    } catch (err) {
+      throw new Error(
+        `GOOGLE_APPLICATION_CREDENTIALS_JSON is not valid JSON: ${err.message}`
+      );
+    }
+    options.googleAuthOptions = { credentials: info };
+  }
+  return options;
 }
 
 /**
