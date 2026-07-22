@@ -30416,6 +30416,28 @@ function registerUcpBuyerAgentProfileRoute() {
   });
 }
 
+function registerUcpWarmHandoffInternalRoute() {
+  // INTERNAL warm-handoff resolve for the CLICK lane (Pivota_Warm_Handoff_Click_Lane_Spec_2026-07-22.md):
+  // pivota-backend's public GET /r redirect calls this at click time to upgrade a cold brand redirect into a
+  // pre-built cart on the brand's own Shopify checkout. Fail-closed dark (route flag + master flag + key all
+  // required — the handler 404s otherwise); X-Internal-Key auth; NEVER mounted publicly. Any handler failure
+  // resolves to continue_url:null so the caller cold-redirects — this route must never 5xx the click path.
+  const { createUcpWarmHandoffInternalHandler } = require('./services/ucpWarmHandoffInternalRoute');
+  const handler = createUcpWarmHandoffInternalHandler({ logger });
+  app.post('/internal/ucp/warm-handoff/resolve', async (req, res) => {
+    try {
+      const out = await handler({ headers: req.headers, body: req.body });
+      return res.status(out.status).json(out.body);
+    } catch (err) {
+      logger.error(
+        { err: err?.message || String(err), surface: 'ucp_warm_handoff_internal' },
+        'UCP warm-handoff internal route failed',
+      );
+      return res.status(200).json({ continue_url: null, reason: 'error' });
+    }
+  });
+}
+
 function registerCommercePaymentWebhookRoute() {
   app.post('/agent/shop/v1/payment-webhook', express.raw({ type: '*/*', limit: '1mb' }), async (req, res) => {
     if (!isAgentCheckoutStrictEnabled()) {
@@ -50012,6 +50034,7 @@ registerCommerceConfirmationActionRoute();
 registerCommerceAcpRestRoutes();
 registerCommerceUcpRoutes();
 registerUcpBuyerAgentProfileRoute();
+registerUcpWarmHandoffInternalRoute();
 registerCommerceStrictInvokeRoute('/agent/shop/v1/invoke', 'shop');
 registerExternalInvokeRoute('/agent/shop/v1/invoke', 'shop');
 // Backward-compatible alias: creator invoke shares the same standardized shop pipeline.
