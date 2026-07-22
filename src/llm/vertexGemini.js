@@ -37,6 +37,70 @@ function credentialsJson() {
 }
 
 /**
+ * Build the error for an unusable inline credential, logging it once.
+ *
+ * Of the seven client-construction sites, four catch without logging (they set
+ * a sticky `geminiInitFailed` and return null). Without a log here the reason
+ * never reaches an operator: it surfaces as a generic "Gemini unavailable",
+ * which is exactly indistinguishable from the credential never having been
+ * supplied — the ambiguity that made the 2026-07-21 outage take a day to find.
+ */
+function credentialFailure(message) {
+  if (!warnedBadCredential) {
+    warnedBadCredential = true;
+    console.error(`[vertexGemini] ${message}`);
+  }
+  return new Error(message);
+}
+
+/**
+ * Parsed inline credentials, or null when none are configured.
+ *
+ * Both credential paths in this module go through here, so they agree on what
+ * "configured" means. They did not before: `accessToken()` parsed the variable
+ * itself, outside its own try block, so a malformed value threw a bare
+ * SyntaxError, never set `adcProbe = false`, and left `credentialsAvailable()`
+ * answering true for the life of the process.
+ *
+ * Railway (and anything not on GCP) can only hand us env vars, while ADC reads
+ * GOOGLE_APPLICATION_CREDENTIALS as a FILE PATH — accepting the key material
+ * inline is what lets a deployment supply a service account with no bootstrap
+ * step that writes it to disk.
+ *
+ * A syntax check alone is not enough. `GOOGLE_APPLICATION_CREDENTIALS_JSON=null`
+ * parses cleanly, and google-auth-library discards a falsy `credentials`
+ * (`opts.credentials || null` in googleauth.js) and falls back to bare ADC —
+ * silently reproducing the outage this inline path exists to prevent. So the
+ * shape is checked too; `type` covers service_account, external_account (WIF)
+ * and authorized_user without enumerating them.
+ */
+function parsedCredentials() {
+  const raw = credentialsJson();
+  if (!raw) return null;
+  let info;
+  try {
+    info = JSON.parse(raw);
+  } catch (err) {
+    throw credentialFailure(
+      `GOOGLE_APPLICATION_CREDENTIALS_JSON is not valid JSON: ${err.message}`,
+    );
+  }
+  if (
+    !info ||
+    typeof info !== 'object' ||
+    Array.isArray(info) ||
+    typeof info.type !== 'string' ||
+    !info.type.trim()
+  ) {
+    throw credentialFailure(
+      'GOOGLE_APPLICATION_CREDENTIALS_JSON parsed but is not a credential ' +
+        'object (expected JSON with a "type", e.g. "service_account")',
+    );
+  }
+  return info;
+}
+
+/**
  * Options for `new GoogleGenAI(...)`.
  *
  * `apiKey` is the caller's own resolved key and is used verbatim on the AI
@@ -44,18 +108,18 @@ function credentialsJson() {
  * the env, so swallowing it here would change behaviour beyond transport. On
  * the Vertex path it is ignored: that endpoint authenticates via ADC.
  *
- * Railway (and anything not on GCP) can only hand us env vars, and the ADC
- * resolution inside google-auth-library reads GOOGLE_APPLICATION_CREDENTIALS
- * as a FILE PATH. Passing the key material inline is what lets a deployment
- * supply a service account without a bootstrap step that writes it to disk.
- * pivota-backend #1545 did exactly this for the Python twin; leaving it undone
- * here is what took Gemini audit probes down on 2026-07-21 — those probes run
- * in this repo, so the Python-only fix never reached them.
+ * The SDK path is what took Gemini audit probes down on 2026-07-21. The REST
+ * path in `accessToken()` already accepted inline credentials; this one did
+ * not, so it resolved bare ADC, found nothing, and every probe died before its
+ * request. Audit probes construct through here (see
+ * src/internal/agentCenterLlmProbe.js), which is why only they were affected.
  *
- * Throws on unparseable JSON rather than falling through to bare ADC: every
- * caller wraps construction in a try/catch that degrades to "Gemini
- * unavailable", so a named failure beats a silent outage that looks
- * indistinguishable from a platform that was never given a credential.
+ * Throws rather than omitting the credential when one is configured but
+ * unusable — omitting it would fall through to bare ADC, which is the failure
+ * being fixed. In the normal flow callers gate on `credentialsAvailable()`
+ * first, which now reports false for the same condition, so they degrade
+ * cleanly and this throw is only a backstop for a caller that skipped the
+ * guard.
  */
 function geminiClientOptions(apiKey) {
   if (!vertexEnabled()) return { apiKey };
@@ -64,18 +128,8 @@ function geminiClientOptions(apiKey) {
     project: vertexProject(),
     location: vertexLocation(),
   };
-  const raw = credentialsJson();
-  if (raw) {
-    let info;
-    try {
-      info = JSON.parse(raw);
-    } catch (err) {
-      throw new Error(
-        `GOOGLE_APPLICATION_CREDENTIALS_JSON is not valid JSON: ${err.message}`
-      );
-    }
-    options.googleAuthOptions = { credentials: info };
-  }
+  const credentials = parsedCredentials();
+  if (credentials) options.googleAuthOptions = { credentials };
   return options;
 }
 
@@ -85,11 +139,24 @@ function geminiClientOptions(apiKey) {
  * Explicit key material always counts. Otherwise we look for a marker that this
  * process is running somewhere with a metadata server, because that is the only
  * other way `google.auth` can succeed without configuration.
+ *
+ * Inline credentials must be USABLE, not merely present. Presence was the old
+ * test, and it is what let the outage through the guard: the variable was set,
+ * so this returned true, callers were waved through, and the call then died at
+ * the transport. A value that is set but unparseable is worse than an unset one
+ * — it looks configured to whoever is reading the env — so it is not allowed to
+ * vouch for the other sources either.
  */
 function credentialSourceConfigured() {
+  if (credentialsJson()) {
+    try {
+      return parsedCredentials() !== null;
+    } catch {
+      return false;
+    }
+  }
   return Boolean(
-    String(process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON || '').trim() ||
-      String(process.env.GOOGLE_APPLICATION_CREDENTIALS || '').trim() ||
+    String(process.env.GOOGLE_APPLICATION_CREDENTIALS || '').trim() ||
       process.env.K_SERVICE || // Cloud Run
       process.env.GAE_SERVICE || // App Engine
       process.env.GCE_METADATA_HOST,
@@ -167,6 +234,15 @@ function vertexModelName(model) {
 function missingCredentialMessage() {
   if (!vertexEnabled()) return 'Missing GEMINI_API_KEY or GOOGLE_API_KEY';
   if (!vertexProject()) return 'VERTEX_AI_ENABLED=true but GOOGLE_CLOUD_PROJECT is unset';
+  // "Set GOOGLE_APPLICATION_CREDENTIALS_JSON" is actively misleading when it IS
+  // set and merely unusable; say which it is.
+  if (credentialsJson()) {
+    try {
+      parsedCredentials();
+    } catch (err) {
+      return err.message;
+    }
+  }
   return (
     'Vertex credentials unavailable: set GOOGLE_APPLICATION_CREDENTIALS_JSON, ' +
     'or run where Application Default Credentials resolve'
@@ -178,6 +254,7 @@ function resetCredentialsCache() {
   cachedAuth = null;
   adcProbe = null;
   probeStarted = false;
+  warnedBadCredential = false;
 }
 
 /**
@@ -197,6 +274,8 @@ let cachedAuth = null;
 // null = never probed; true/false = observed result of an actual token mint.
 let adcProbe = null;
 let probeStarted = false;
+// Log an unusable inline credential once per process, not once per call.
+let warnedBadCredential = false;
 
 /** Vertex host: the global endpoint is not region-prefixed. */
 function vertexHost() {
@@ -217,18 +296,19 @@ function vertexModelPath() {
  * — which is why choosing between those is an env change, not a code change.
  */
 async function accessToken() {
-  if (!cachedAuth) {
-    const { GoogleAuth } = require('google-auth-library');
-    // Railway (and anything not on GCP) can only hand us env vars, and the
-    // library reads GOOGLE_APPLICATION_CREDENTIALS as a FILE PATH. Accept the
-    // key material inline so a deployment needs no bootstrap step to write it
-    // to disk.
-    const rawJson = String(process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON || '').trim();
-    cachedAuth = rawJson
-      ? new GoogleAuth({ scopes: SCOPES, credentials: JSON.parse(rawJson) })
-      : new GoogleAuth({ scopes: SCOPES });
-  }
+  // Client construction is INSIDE the try: it parses the inline credential,
+  // and when that throws the failure has to be recorded like any other. It sat
+  // outside, so a malformed value escaped as a bare SyntaxError, left adcProbe
+  // null, and `credentialsAvailable()` went on reporting true for the life of
+  // the process — waving every caller into the same mid-request failure.
   try {
+    if (!cachedAuth) {
+      const { GoogleAuth } = require('google-auth-library');
+      const credentials = parsedCredentials();
+      cachedAuth = credentials
+        ? new GoogleAuth({ scopes: SCOPES, credentials })
+        : new GoogleAuth({ scopes: SCOPES });
+    }
     // GoogleAuth caches the client and refreshes the token internally.
     const token = await cachedAuth.getAccessToken();
     if (!token) throw new Error('VERTEX_ADC_NO_TOKEN');
