@@ -12,6 +12,10 @@ const {
   upsertBeautyAttributes,
   validateExtractionPayload,
 } = require('../src/auroraBff/productBeautyAttributes');
+// Same transport seam the server uses, so VERTEX_AI_ENABLED decides whether the
+// Gemini path bills the AI Studio key or the Vertex GCP project. Bypassing it
+// kept this script on the API key even with the flag on.
+const vertexGemini = require('../src/llm/vertexGemini');
 
 const DEFAULT_CONCURRENCY = 5;
 const DEFAULT_DRY_RUN_LIMIT = 5;
@@ -529,13 +533,17 @@ function resolveProviderConfig(env = process.env) {
       kind: 'openai_compatible',
     };
   }
-  if (explicit === 'gemini' || (!explicit && (env.GEMINI_API_KEY || env.GOOGLE_API_KEY))) {
+  if (
+    explicit === 'gemini' ||
+    (!explicit && (env.GEMINI_API_KEY || env.GOOGLE_API_KEY || vertexGemini.vertexEnabled()))
+  ) {
     const model = normalizeString(env.BEAUTY_LLM_MODEL || env.GEMINI_MODEL || 'gemini-2.0-flash', 120);
     return {
       provider: 'gemini',
       model,
       baseUrl: normalizeString(env.GEMINI_BASE_URL || 'https://generativelanguage.googleapis.com', 300).replace(/\/+$/, ''),
-      apiKey: env.GEMINI_API_KEY || env.GOOGLE_API_KEY,
+      // Empty on Vertex, where ADC is the credential rather than a key.
+      apiKey: env.GEMINI_API_KEY || env.GOOGLE_API_KEY || '',
       kind: 'gemini',
     };
   }
@@ -600,7 +608,10 @@ function estimateCostUsd(usage, model, env = process.env) {
 }
 
 function createDefaultLlmFn(config = resolveProviderConfig()) {
-  if (!config.apiKey || config.kind === 'missing') {
+  // On Vertex the Gemini credential is ADC, not an API key, so gate that path on
+  // the seam instead of on config.apiKey being non-empty.
+  const geminiUsable = config.kind === 'gemini' && vertexGemini.credentialsAvailable(config.apiKey);
+  if (config.kind === 'missing' || (!config.apiKey && !geminiUsable)) {
     const err = new Error('Missing LLM credentials. Set DEEPSEEK_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY, or LLM_API_KEY/LLM_BASE_URL/LLM_MODEL_NAME.');
     err.code = 'LLM_CONFIG_MISSING';
     throw err;
@@ -647,11 +658,19 @@ function createDefaultLlmFn(config = resolveProviderConfig()) {
 
   if (config.kind === 'gemini') {
     const modelPath = config.model.startsWith('models/') ? config.model.slice('models/'.length) : config.model;
-    const endpoint = `${config.baseUrl}/v1beta/models/${encodeURIComponent(modelPath)}:generateContent?key=${encodeURIComponent(config.apiKey)}`;
     return async (prompt) => {
-      const response = await fetch(endpoint, {
+      // Resolved per request: restTarget keys the URL/headers off the flag —
+      // header auth on AI Studio, a freshly-minted ADC bearer on Vertex (where
+      // only v1 exposes generateContent).
+      const target = await vertexGemini.restTarget({
+        model: modelPath,
+        apiKey: config.apiKey,
+        baseUrl: config.baseUrl,
+        apiVersion: vertexGemini.vertexEnabled() ? 'v1' : 'v1beta',
+      });
+      const response = await fetch(target.url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: target.headers,
         body: JSON.stringify({
           contents: [{ role: 'user', parts: [{ text: prompt }] }],
           generationConfig: {
