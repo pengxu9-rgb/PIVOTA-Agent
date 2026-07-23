@@ -881,8 +881,10 @@ async function extractIntentWithOpenAI(latest_user_query, recent_queries = [], r
 
 async function extractIntentWithGemini(latest_user_query, recent_queries = [], recent_messages = [], options = {}) {
   const apiKey = resolveFindProductsGeminiApiKey();
-  if (!apiKey) {
-    throw new Error('Gemini API key is not set');
+  // Vertex authenticates via ADC, where apiKey is empty and unused; gate on the
+  // seam so a retired GEMINI_API_KEY doesn't false-negative a working call.
+  if (!vertexGemini.credentialsAvailable(apiKey)) {
+    throw new Error(vertexGemini.missingCredentialMessage());
   }
 
   const model = String(options?.model || resolveIntentGeminiModel().model || 'gemini-3-flash-preview').trim() ||

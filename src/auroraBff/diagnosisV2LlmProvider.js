@@ -137,7 +137,9 @@ async function callOpenAi({ system, user, temperature = 0, maxTokens = 1024, tim
 }
 
 function createDiagnosisV2LlmProvider() {
-  const hasGemini = Boolean(String(process.env.GEMINI_API_KEY || '').trim());
+  // Credential-aware, not raw-key: on Vertex, Gemini is usable via ADC with no
+  // GEMINI_API_KEY, so a raw-key check would drop Gemini from the failover.
+  const hasGemini = vertexGemini.credentialsAvailable(String(process.env.GEMINI_API_KEY || '').trim());
   const hasOpenAi = Boolean(String(process.env.OPENAI_API_KEY || '').trim());
 
   async function callWithRetryAndFailover(params) {

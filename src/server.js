@@ -25146,7 +25146,9 @@ function resolveUiChatProvider() {
   const explicit = String(process.env.PIVOTA_UI_CHAT_LLM_PROVIDER || '').trim().toLowerCase();
 
   const hasOpenAI = Boolean(String(process.env.OPENAI_API_KEY || '').trim());
-  const hasGemini = Boolean(
+  // Credential-aware, not raw-key: on Vertex, Gemini authenticates via ADC with
+  // no GEMINI_API_KEY, so provider selection must not hinge on the key's presence.
+  const hasGemini = vertexGemini.credentialsAvailable(
     String(
       process.env.GEMINI_API_KEY ||
         process.env.PIVOTA_GEMINI_API_KEY ||
