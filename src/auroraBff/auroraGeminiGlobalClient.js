@@ -122,7 +122,9 @@ function hasAuroraGeminiApiKey(featureEnvVar) {
   } catch {
     // noop
   }
-  return Boolean(resolveAuroraGeminiKey(featureEnvVar));
+  // On Vertex the key pool is unused (the client authenticates via ADC), so a
+  // resolved feature key OR available Vertex credentials both count.
+  return vertexGemini.credentialsAvailable(resolveAuroraGeminiKey(featureEnvVar));
 }
 
 function pickAuroraGeminiApiKey(featureEnvVar) {
