@@ -63,7 +63,10 @@ test('UCP profile: version, services, capabilities (dev.ucp.*), payment_handlers
     signingKeys: [{ kid: 'k1', kty: 'EC' }],
   });
   assert.match(profile.ucp_version, /^\d{4}-\d{2}-\d{2}$/);
-  assert.equal(profile.provider.merchant_of_record, true);
+  // Mid-man rule: Pivota is NEVER merchant-of-record — the profile must say so
+  // and state its actual role (the merchant settles on their own rails).
+  assert.equal(profile.provider.merchant_of_record, false);
+  assert.equal(profile.provider.role, 'commerce_index_passthrough');
   // capability ids are the dev.ucp.* names
   const capIds = profile.capabilities.map((c) => c.id);
   assert.ok(capIds.includes('dev.ucp.shopping.checkout'));
