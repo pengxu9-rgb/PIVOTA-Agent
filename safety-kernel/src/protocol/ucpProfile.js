@@ -49,7 +49,20 @@ export function buildUcpProfile(config = {}) {
 
   return {
     ucp_version: config.ucpVersion || DEFAULT_UCP_VERSION,
-    provider: { merchant_of_record: true },
+    // Pivota is a MID-MAN, never merchant-of-record (founder rule, 2026-07-23):
+    // transactions pass through this edge and settle on the MERCHANT's side — the
+    // kernel's own quote schema carries the true per-transaction
+    // `merchant_of_record` (the merchant), and the previous `true` here
+    // contradicted both that schema and the design docs ("both ecosystems keep
+    // the merchant as MoR"). `role` states what this endpoint actually is.
+    provider: {
+      merchant_of_record: false,
+      role: 'commerce_index_passthrough',
+      description:
+        'Pivota is a commerce index / protocol edge: it passes checkout '
+        + 'sessions through to the merchant of record, who settles the '
+        + 'transaction on their own rails.',
+    },
     services,
     capabilities,
     payment_handlers: Array.isArray(config.paymentHandlers) ? config.paymentHandlers : [],
