@@ -512,6 +512,23 @@ function availabilityToInStock(availability) {
   return null;
 }
 
+// A source that only knows in-stock as a boolean was historically encoded as a
+// fake count of 999 ("assume plenty"). That synthesized number leaks to agents
+// as "999 units in stock". Never surface it: emit the REAL count when known, 0
+// when out of stock, and null ("in stock, count unknown") otherwise. `in_stock`
+// stays the authoritative boolean, emitted alongside — so this strips only a
+// fabricated number, never the stock status.
+const IN_STOCK_QTY_SENTINEL = 999;
+
+function honestInventoryQuantity(realCount, inStock) {
+  const n = Number(realCount);
+  if (realCount != null && realCount !== '' && Number.isFinite(n) && n !== IN_STOCK_QTY_SENTINEL) {
+    return Math.max(0, Math.floor(n));
+  }
+  if (inStock === false) return 0;
+  return null; // in stock but count unknown, or unknown entirely
+}
+
 function normalizeCurrency(value, fallback = 'USD') {
   return String(value || fallback).trim().toUpperCase() || fallback;
 }
@@ -3616,7 +3633,7 @@ function normalizeSeedVariants(seedData, row) {
         rawVariant.stock_quantity ??
         rawVariant.stock;
       const availableQuantity =
-        rawQty == null || rawQty === ''
+        rawQty == null || rawQty === '' || Number(rawQty) === IN_STOCK_QTY_SENTINEL
           ? undefined
           : Number.isFinite(Number(rawQty))
             ? Math.max(0, Math.floor(Number(rawQty)))
@@ -3685,7 +3702,7 @@ function normalizeSeedVariants(seedData, row) {
         price,
         currency,
         pricing: { current: { amount: price, currency } },
-        inventory_quantity: availableQuantity ?? (inStock === true ? 999 : inStock === false ? 0 : null),
+        inventory_quantity: honestInventoryQuantity(availableQuantity, inStock),
         in_stock: inStock,
         available: typeof inStock === 'boolean' ? inStock : undefined,
         availability: availability || undefined,
@@ -4345,7 +4362,7 @@ function buildExternalSeedProduct(row, options = {}) {
         price,
         currency,
         pricing: { current: { amount: price, currency } },
-        inventory_quantity: inStock === true ? 999 : inStock === false ? 0 : null,
+        inventory_quantity: honestInventoryQuantity(undefined, inStock),
         in_stock: inStock,
         available: typeof inStock === 'boolean' ? inStock : undefined,
         image_url: imageUrl,
@@ -4466,7 +4483,7 @@ function buildExternalSeedProduct(row, options = {}) {
     image_url: imageUrl,
     images: imageUrls,
     image_urls: imageUrls,
-    inventory_quantity: inStock === true ? 999 : inStock === false ? 0 : null,
+    inventory_quantity: honestInventoryQuantity(undefined, inStock),
     in_stock: inStock,
     availability: availability || undefined,
     ...(transactionUnavailableContract
@@ -4760,7 +4777,7 @@ function buildExternalSeedBrandSearchProduct(row) {
     currency,
     ...(imageUrl ? { image_url: imageUrl } : {}),
     ...(imageUrls.length ? { images: imageUrls, image_urls: imageUrls } : {}),
-    inventory_quantity: inStock === true ? 999 : inStock === false ? 0 : null,
+    inventory_quantity: honestInventoryQuantity(undefined, inStock),
     in_stock: inStock,
     ...(availability ? { availability } : {}),
     product_type: normalizedCategory || explicitCategory || 'external',
@@ -4809,6 +4826,8 @@ module.exports = {
   normalizeSeedAvailability,
   normalizeSeedReviewSummary,
   availabilityToInStock,
+  honestInventoryQuantity,
+  IN_STOCK_QTY_SENTINEL,
   resolveBeautyCategoryPathPrefixForQuery,
   inferExternalSeedBeautyCategory,
   inferExternalSeedSkincareCategory: inferExternalSeedBeautyCategory,
