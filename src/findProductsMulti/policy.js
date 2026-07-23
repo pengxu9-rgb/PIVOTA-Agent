@@ -3493,6 +3493,21 @@ function getCompatMeta(intent, product) {
   return { critical: true, state: match ? 'ok' : 'incompatible' };
 }
 
+// A product counts as in stock when it explicitly says so (in_stock/available
+// boolean) or carries a real positive count. A null/absent inventory_quantity is
+// "unknown" — never a positive signal on its own, but it must NOT override an
+// explicit in_stock:true. (External-seed in-stock-but-unknown-count products now
+// emit inventory_quantity:null instead of a fabricated 999; coercing that null to
+// 0 would wrongly mark them out of stock.)
+function hasPositiveInStockSignal(product) {
+  if (product?.in_stock === true || product?.available === true) return true;
+  const rawQty =
+    product?.inventory_quantity ?? product?.inventoryQuantity ?? product?.quantity ?? null;
+  if (rawQty == null) return false;
+  const n = Number(rawQty);
+  return Number.isFinite(n) && n > 0;
+}
+
 function evaluateProductForIntent(product, intent, ctx = {}) {
   const rawQuery = String(ctx?.rawQuery || '').trim();
   const target = intent?.target_object?.type || 'unknown';
@@ -3626,10 +3641,7 @@ function evaluateProductForIntent(product, intent, ctx = {}) {
   // ---------- in_stock_only ----------
   const inStockOnly = intent?.hard_constraints?.in_stock_only;
   if (riskLevel !== 'hard_block' && inStockOnly === true) {
-    const qty = Number(
-      product.inventory_quantity ?? product.inventoryQuantity ?? product.quantity ?? 0,
-    );
-    if (!Number.isFinite(qty) || qty <= 0) {
+    if (!hasPositiveInStockSignal(product)) {
       riskLevel = 'hard_block';
       reasonCodes.add(REASON_CODES.CONSTRAINT_PARTIAL);
     }
@@ -3723,10 +3735,7 @@ function computeProductRelevance(product, intent, evalMeta) {
 
   if (hard.in_stock_only === true) {
     required += 1;
-    const qty = Number(
-      product.inventory_quantity ?? product.inventoryQuantity ?? product.quantity ?? 0,
-    );
-    if (Number.isFinite(qty) && qty > 0) {
+    if (hasPositiveInStockSignal(product)) {
       satisfied += 1;
     } else {
       reasonCodes.add(REASON_CODES.MISSING_SIZE);
@@ -3932,10 +3941,7 @@ function computeMatchStats(sortedProducts, intent, ctx = {}) {
       else if (tier === 'weak') weakCount += 1;
       else distractorCount += 1;
 
-      const qty = Number(
-        p.inventory_quantity ?? p.inventoryQuantity ?? p.quantity ?? 0,
-      );
-      if (tier !== 'none' && Number.isFinite(qty) && qty > 0) inStockNonNoneCount += 1;
+      if (tier !== 'none' && hasPositiveInStockSignal(p)) inStockNonNoneCount += 1;
     }
   }
 

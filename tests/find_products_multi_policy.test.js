@@ -1033,6 +1033,72 @@ describe('find_products_multi intent + filtering', () => {
     );
   });
 
+  test('in_stock_only keeps in-stock products with unknown count (null), drops genuine OOS (regression #1819)', () => {
+    const intent = {
+      intent_version: '1.0',
+      language: 'en',
+      primary_domain: 'beauty',
+      target_object: { type: 'human', age_group: 'adult', notes: '' },
+      category: { required: [], optional: [] },
+      scenario: { name: 'general', signals: [] },
+      hard_constraints: {
+        temperature_c: { min: null, max: null },
+        must_include_keywords: [],
+        must_exclude_domains: [],
+        must_exclude_keywords: [],
+        in_stock_only: true,
+      },
+      soft_preferences: { style: [], colors: [], brands: [], materials: [] },
+      confidence: { overall: 0.7, domain: 0.8, target_object: 0.9, category: 0.4, notes: '' },
+      ambiguity: { needs_clarification: false, missing_slots: [], clarifying_questions: [] },
+      history_usage: { used: false, reason: '', ignored_queries: [] },
+      query_class: 'attribute',
+    };
+
+    const resp = applyFindProductsMultiPolicy({
+      response: {
+        products: [
+          // The regression: in stock, but count unknown (external-seed now emits null, was a fake 999).
+          makeRawProduct({
+            id: 'instock-unknown-count',
+            title: 'Hydrating Serum',
+            description: 'Hydrating facial serum',
+            in_stock: true,
+            inventory_quantity: null,
+          }),
+          // A real positive count still passes.
+          makeRawProduct({
+            id: 'instock-known-count',
+            title: 'Brightening Serum',
+            description: 'Brightening facial serum',
+            in_stock: true,
+            inventory_quantity: 5,
+          }),
+          // Genuine out of stock must still be dropped.
+          makeRawProduct({
+            id: 'out-of-stock',
+            title: 'Soothing Serum',
+            description: 'Soothing facial serum',
+            in_stock: false,
+            inventory_quantity: 0,
+          }),
+        ],
+        total: 3,
+        page_size: 3,
+        reply: null,
+        metadata: {},
+      },
+      intent,
+      requestPayload: { search: { query: 'facial serum in stock' } },
+      metadata: {},
+      rawUserQuery: 'facial serum in stock',
+    });
+
+    const ids = resp.products.map((item) => item.id);
+    expect(ids).toEqual(expect.arrayContaining(['instock-unknown-count', 'instock-known-count']));
+    expect(ids).not.toContain('out-of-stock');
+  });
+
   test('search source preserves literal beauty multi-constraint queries as the upstream search text', async () => {
     const { adjustedPayload, expansion_meta } = await buildFindProductsMultiContext({
       payload: {
