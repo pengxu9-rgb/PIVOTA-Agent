@@ -137,12 +137,21 @@ async function callOpenAi({ system, user, temperature = 0, maxTokens = 1024, tim
 }
 
 function createDiagnosisV2LlmProvider() {
-  const hasGemini = Boolean(String(process.env.GEMINI_API_KEY || '').trim());
-  const hasOpenAi = Boolean(String(process.env.OPENAI_API_KEY || '').trim());
+  // Credential-aware, not raw-key: on Vertex, Gemini is usable via ADC with no
+  // GEMINI_API_KEY, so a raw-key check would drop Gemini from the failover.
+  // Re-evaluated per call, NOT captured once: credentialsAvailable() fails closed
+  // on its first synchronous call and self-heals via a background probe, so a
+  // value frozen at construction could stay false for the process lifetime on a
+  // Vertex runtime whose ADC resolves only through the metadata server.
+  const hasGemini = () =>
+    vertexGemini.credentialsAvailable(String(process.env.GEMINI_API_KEY || '').trim());
+  const hasOpenAi = () => Boolean(String(process.env.OPENAI_API_KEY || '').trim());
 
   async function callWithRetryAndFailover(params) {
-    const primary = hasGemini ? callGemini : hasOpenAi ? callOpenAi : null;
-    const secondary = hasGemini && hasOpenAi ? callOpenAi : null;
+    const gemini = hasGemini();
+    const openai = hasOpenAi();
+    const primary = gemini ? callGemini : openai ? callOpenAi : null;
+    const secondary = gemini && openai ? callOpenAi : null;
     if (!primary) throw new LlmProviderUnavailableError();
 
     let lastError;
@@ -181,7 +190,7 @@ function createDiagnosisV2LlmProvider() {
 
   return {
     isAvailable() {
-      return hasGemini || hasOpenAi;
+      return hasGemini() || hasOpenAi();
     },
     async generate({ system, user, temperature = 0, maxTokens = 1024 }) {
       return callWithRetryAndFailover({ system, user, temperature, maxTokens });

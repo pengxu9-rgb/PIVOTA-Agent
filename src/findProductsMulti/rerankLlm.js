@@ -251,7 +251,9 @@ async function callOpenAI({ prompt }) {
 
 async function callGemini({ prompt }) {
   const apiKey = resolveFindProductsGeminiApiKey();
-  if (!apiKey) throw new Error('Gemini API key is not set');
+  // Vertex authenticates via ADC, where apiKey is empty and unused; gate on the
+  // seam so a retired GEMINI_API_KEY doesn't false-negative a working call.
+  if (!vertexGemini.credentialsAvailable(apiKey)) throw new Error(vertexGemini.missingCredentialMessage());
 
   const { url, headers: geminiHeaders } = await vertexGemini.restTarget({
     model: DEFAULT_MODEL_GEMINI,
