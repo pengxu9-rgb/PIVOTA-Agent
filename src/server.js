@@ -160,6 +160,9 @@ const {
   activeProductsCacheSourceWhere,
 } = require('./services/activeCatalogSourceSql');
 const {
+  isTestMerchantId,
+} = require('./services/testMerchantPolicy');
+const {
   transactionCapableMerchantWhere,
 } = require('./services/merchantTransactionCapabilitySql');
 const {
@@ -30256,7 +30259,24 @@ async function getCommerceAcpRestAdapter() {
       };
       const getProducts = async (query) => {
         const raw = await invokeCommerceKernelRawUpstream('find_products', query || {});
-        return Array.isArray(raw?.products) ? raw.products : (Array.isArray(raw) ? raw : []);
+        const products = Array.isArray(raw?.products) ? raw.products : (Array.isArray(raw) ? raw : []);
+        // Defence-in-depth against test/demo rigs reaching a PUBLIC agent-facing
+        // surface. The feed's find_products(empty query) falls back to the
+        // backend multi-search connected_catalog lane, which is gated only by
+        // _is_product_sellable (status+orderable) — NOT by the shared
+        // activeCatalogProductSourceWhere source gate — so the SQL test-merchant
+        // exclusion does not reach it. This runtime leg is the one that actually
+        // stops the live leak (all 20 feed items on 2026-07-23 were rigs). See
+        // testMerchantPolicy.js for the shared source of truth; merchant_id
+        // survives to the product payload via _standard_to_shop_product.
+        const filtered = products.filter((p) => !isTestMerchantId(p?.merchant_id));
+        if (filtered.length !== products.length) {
+          logger.info(
+            { dropped: products.length - filtered.length, surface: 'acp_public_feed' },
+            'acp feed: excluded test/demo merchant products',
+          );
+        }
+        return filtered;
       };
       // Attributed-redirect lane D1: feed `link` = Pivota canonical PDP; the signed /r attribution link
       // rides as `external_redirect_url`. Mapper is a pure module so the projection is unit-tested
