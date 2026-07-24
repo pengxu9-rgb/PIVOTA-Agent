@@ -28732,12 +28732,13 @@ function isAgentCheckoutHostedLinkEnabled() {
 // (which src/lookReplicator/index.js already serves) — namespaced to avoid the collision.
 const COMMERCE_ACP_BASE_PATH = '/acp';
 
-function isAgentCheckoutAcpRestEnabled() {
-  // OpenAI ACP REST checkout doors. Additive + fail-closed: dormant unless explicitly enabled AND strict is on.
-  // The complete (charge) endpoint is ADDITIONALLY gated by isAgentCheckoutStrictSubmitPaymentEnabled().
-  const normalized = String(process.env.AGENT_CHECKOUT_ACP_REST_ENABLED || '').trim().toLowerCase();
-  return ['1', 'true', 'on', 'yes'].includes(normalized);
-}
+// ACP door flag semantics live in ./acpFeedFlags (unit-tested decoupling of the
+// read-only feed from the money-path checkout endpoints).
+const {
+  isAcpRestEnabled: isAgentCheckoutAcpRestEnabled,
+  isAcpPublicFeedEnabled,
+  isAcpRouteEnabled: isAcpRouteEnabledForEnv,
+} = require('./acpFeedFlags');
 
 function isAgentCheckoutUcpDiscoveryEnabled() {
   // UCP discovery doors (/.well-known/ucp, /ucp/capabilities). Read-only (no money), but off by default so the
@@ -30269,7 +30270,10 @@ async function getCommerceAcpRestAdapter() {
         resolveUserRef,
         getProducts,
         mapFeedItem,
-        publicFeed: false,
+        // Env-gated (ACP_PUBLIC_FEED). Only relaxes the FEED's signature check;
+        // checkout endpoints stay signature-gated. A public catalog feed is how
+        // frontier discovery surfaces (ChatGPT/Google shopping) ingest the index.
+        publicFeed: isAcpPublicFeedEnabled(),
       });
     })();
   }
@@ -30317,8 +30321,11 @@ function registerCommerceAcpRestRoutes() {
     ['get', '/feed', 'productFeed', false],
   ];
   for (const [method, subPath, handlerName, isCharge] of routes) {
+    // The read-only feed mounts under the feed flag (which the full-checkout flag
+    // implies); every checkout endpoint requires the full flag. So publishing the
+    // feed never mounts a money-path endpoint.
     app[method](`${COMMERCE_ACP_BASE_PATH}${subPath}`, async (req, res) => {
-      if (!isAgentCheckoutStrictEnabled() || !isAgentCheckoutAcpRestEnabled()) {
+      if (!isAcpRouteEnabledForEnv(handlerName, process.env, { strict: isAgentCheckoutStrictEnabled() })) {
         return res.status(404).json({ error: 'not_found' });
       }
       if (isCharge && !isAgentCheckoutStrictSubmitPaymentEnabled()) {
