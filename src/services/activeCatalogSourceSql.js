@@ -1,5 +1,7 @@
 'use strict';
 
+const { notTestMerchantSql } = require('./testMerchantPolicy');
+
 const EXTERNAL_SEED_MERCHANT_ID = 'external_seed';
 
 function normalizeAlias(alias, fallback) {
@@ -21,16 +23,23 @@ function productsCachePlatformExpr(alias = 'pc') {
 function activeProductsCacheSourceWhere(alias = 'pc') {
   const a = normalizeAlias(alias, 'pc');
   const platformExpr = productsCachePlatformExpr(a);
+  // Test/demo rigs are excluded OUTSIDE the OR, never as another branch of it:
+  // the external_seed branch below admits rows on merchant_id alone, so folding
+  // the exclusion into the OR would let a rig keep serving through it.
+  // products_cache has no source_domain column → merchant-id leg only.
   return `
     (
-      ${a}.merchant_id = '${EXTERNAL_SEED_MERCHANT_ID}'
-      OR EXISTS (
-        SELECT 1
-        FROM merchant_stores ms_active_source
-        WHERE ms_active_source.merchant_id = ${a}.merchant_id
-          AND lower(coalesce(ms_active_source.status, '')) = 'active'
-          AND coalesce(nullif(trim(ms_active_source.domain), ''), '') <> ''
-          AND lower(coalesce(ms_active_source.platform, '')) = ${platformExpr}
+      ${notTestMerchantSql(a)}
+      AND (
+        ${a}.merchant_id = '${EXTERNAL_SEED_MERCHANT_ID}'
+        OR EXISTS (
+          SELECT 1
+          FROM merchant_stores ms_active_source
+          WHERE ms_active_source.merchant_id = ${a}.merchant_id
+            AND lower(coalesce(ms_active_source.status, '')) = 'active'
+            AND coalesce(nullif(trim(ms_active_source.domain), ''), '') <> ''
+            AND lower(coalesce(ms_active_source.platform, '')) = ${platformExpr}
+        )
       )
     )
   `;
@@ -45,8 +54,14 @@ function activeCatalogProductSourceWhere(productAlias = 'cp', merchantAlias = 'c
   const p = normalizeAlias(productAlias, 'cp');
   const m = normalizeAlias(merchantAlias, 'cm');
   const platformExpr = catalogProductPlatformExpr(p);
+  // Test/demo exclusion wraps the whole OR (external_seed branch admits on
+  // merchant_id alone). catalog_products carries source_domain, so the demo
+  // storefront-prefix leg is active here too — a re-connected demo store under
+  // a new merchant_id is still excluded by domain.
   return `
     (
+      ${notTestMerchantSql(p, { hasSourceDomain: true })}
+      AND (
       ${p}.merchant_id = '${EXTERNAL_SEED_MERCHANT_ID}'
       OR (
         -- 'observed' is the ADR-009 observed-seller-of-record status
@@ -76,6 +91,7 @@ function activeCatalogProductSourceWhere(productAlias = 'cp', merchantAlias = 'c
               )
           )
         )
+      )
       )
     )
   `;
