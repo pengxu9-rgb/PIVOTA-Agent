@@ -87,6 +87,20 @@ function buildProductEntityIndexFeedItem(row) {
   const productEntityId = nonEmptyString(row.product_entity_id, row.sellable_item_group_id);
   if (!/^sig_[a-z0-9]+$/i.test(productEntityId) || !sourceProductId) return null;
   const title = nonEmptyString(product.title, product.name, row.product_name, row.title, seedData.title, snapshot.title);
+  // Amount and currency must come from the same source: the joined best-offer
+  // row when present, else the seed-derived product. No cross-source mixing
+  // and no currency default (the INR-served-as-USD class).
+  const rowPrice = Number(row.price_amount);
+  const productPrice = Number(product.price);
+  let priceAmount = null;
+  let priceCurrency = null;
+  if (Number.isFinite(rowPrice) && rowPrice > 0) {
+    priceAmount = rowPrice;
+    priceCurrency = nonEmptyString(row.price_currency) || null;
+  } else if (Number.isFinite(productPrice) && productPrice > 0) {
+    priceAmount = productPrice;
+    priceCurrency = nonEmptyString(product.currency) || null;
+  }
   return {
     id: sourceProductId,
     product_id: sourceProductId,
@@ -111,6 +125,11 @@ function buildProductEntityIndexFeedItem(row) {
     member_count: Number(row.member_count || 0) || undefined,
     offer_count: Number(row.offer_count || 0) || undefined,
     member_refs: safeJsonArray(row.member_refs),
+    price_amount: priceAmount,
+    price_currency: priceCurrency,
+    price: priceAmount,
+    currency: priceCurrency,
+    availability: nonEmptyString(row.availability, product.availability) || null,
     updated_at: row.source_updated_at || row.updated_at || row.identity_updated_at || null,
   };
 }
@@ -136,6 +155,10 @@ async function getProductEntityIndexFeed(payload = {}, deps = {}) {
   const includeAttached = payload.include_attached === true || payload.includeAttached === true;
   const fetchLimit = limit + 1;
   const params = [];
+  // Best-offer price preference: in-market offers first. Captured as a bind
+  // up front so the LATERAL below can reference it regardless of which
+  // pagination binds are added later.
+  const bestOfferMarketParam = params.push(String(market).toUpperCase());
   let identityPaginationWhere = '';
   let paginationWhere = '';
   if (useSourceRefCursor) {
@@ -272,9 +295,9 @@ async function getProductEntityIndexFeed(payload = {}, deps = {}) {
           regexp_replace(lower(coalesce(ranked.canonical_url, ranked.pivota_canonical_url, '')), '^https?://(?:www\\.)?([^/]+).*$','\\1') AS domain,
           ranked.product_name,
           ranked.image_url,
-          null::numeric AS price_amount,
-          null::text AS price_currency,
-          null::text AS availability,
+          best_offer.price_amount AS price_amount,
+          best_offer.price_currency AS price_currency,
+          best_offer.availability AS availability,
           COALESCE(ranked.brand, '') AS brand,
           COALESCE(ranked.category, ranked.product_type, '') AS category,
           COALESCE(ranked.product_payload, '{}'::jsonb) AS seed_data,
@@ -293,6 +316,27 @@ async function getProductEntityIndexFeed(payload = {}, deps = {}) {
           'canonical_catalog'::text AS source
         FROM ranked
         JOIN stats ON stats.content_key = ranked.content_key
+        -- Shopping ingesters reject price-null items, so every feed item
+        -- carries ONE representative offer's price: amount, currency, and
+        -- availability from the SAME offer row (never mixed across rows),
+        -- cheapest in-market first. Currency is never defaulted — an offer
+        -- without a currency is not price-quotable and is skipped.
+        LEFT JOIN LATERAL (
+          SELECT
+            COALESCE(o.merchant_effective_price, o.list_price) AS price_amount,
+            o.currency AS price_currency,
+            o.availability AS availability
+          FROM catalog_offers o
+          WHERE o.product_key = ranked.product_key
+            AND o.suppressed_at IS NULL
+            AND COALESCE(o.merchant_effective_price, o.list_price) > 0
+            AND o.currency IS NOT NULL
+          ORDER BY
+            CASE WHEN upper(coalesce(o.market, '')) = $${bestOfferMarketParam} THEN 0 ELSE 1 END,
+            COALESCE(o.merchant_effective_price, o.list_price) ASC,
+            o.offer_id ASC
+          LIMIT 1
+        ) best_offer ON TRUE
         WHERE ranked.row_rank = 1
           ${identityPaginationWhere}
       )

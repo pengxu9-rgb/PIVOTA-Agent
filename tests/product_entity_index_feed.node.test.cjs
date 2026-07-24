@@ -43,6 +43,9 @@ test('ProductEntity index feed pages approved canonical sig mappings only', asyn
                 category: 'Serum',
                 description: 'A real product description.',
               },
+              price_amount: '18.50',
+              price_currency: 'USD',
+              availability: 'in_stock',
               source_updated_at: '2026-05-01T00:00:00.000Z',
               sort_updated_at: '2026-05-01T00:00:00.000Z',
               total_rows: 3,
@@ -94,7 +97,7 @@ test('ProductEntity index feed pages approved canonical sig mappings only', asyn
   );
 
   assert.equal(calls.length, 1);
-  assert.deepEqual(calls[0].params, [3]);
+  assert.deepEqual(calls[0].params, ['US', 3]);
   assert.equal(result.status, 'success');
   assert.equal(result.products.length, 2);
   assert.equal(result.products[0].product_entity_id, 'sig_alpha');
@@ -103,6 +106,15 @@ test('ProductEntity index feed pages approved canonical sig mappings only', asyn
   assert.equal(result.products[0].merchant_id, 'merch_alpha');
   assert.equal(result.products[0].seller_count, 2);
   assert.equal(result.products[0].offer_count, 2);
+  // Price contract: shopping ingesters reject price-null items; amount and
+  // currency come from the same best-offer row, no currency default.
+  assert.equal(result.products[0].price_amount, 18.5);
+  assert.equal(result.products[0].price_currency, 'USD');
+  assert.equal(result.products[0].price, 18.5);
+  assert.equal(result.products[0].availability, 'in_stock');
+  // A row with no priced offer and no seed price stays honestly null.
+  assert.equal(result.products[1].price_amount, null);
+  assert.equal(result.products[1].price_currency, null);
   assert.equal(result.cursor_info.has_next_page, true);
   assert.ok(result.cursor_info.next_cursor);
 });
@@ -146,6 +158,6 @@ test('ProductEntity index feed cursor advances with source listing ref', async (
     },
   );
   assert.deepEqual(keysetParams, [
-    ['catalog_content_key:ck_alpha', 2],
+    ['US', 'catalog_content_key:ck_alpha', 2],
   ]);
 });

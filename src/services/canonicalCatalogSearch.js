@@ -471,6 +471,17 @@ async function fetchCanonicalChainRows(args = {}) {
           )
         )`;
   const joinSkuOffers = Boolean(includeSkuOffers);
+  // Price presence is part of the serving contract even when the caller skips
+  // the SKU/offer fan-out: shopping ingesters reject price-null items. When
+  // not fanning out, surface ONE representative offer's price via a no-fanout
+  // LATERAL — amount, currency, and availability MUST come from the same offer
+  // row (never mixed across rows), cheapest in-market first, and currency is
+  // never defaulted: an offer without a currency is not price-quotable.
+  let bestOfferMarketOrder = '';
+  if (!joinSkuOffers && marketId) {
+    params.push(String(marketId).toUpperCase());
+    bestOfferMarketOrder = `CASE WHEN upper(coalesce(o.market, '')) = $${params.length} THEN 0 ELSE 1 END,`;
+  }
   const skuOfferColumns = joinSkuOffers
     ? `
       s.sku_key,
@@ -517,11 +528,11 @@ async function fetchCanonicalChainRows(args = {}) {
       NULL::text                 AS offer_truth_tier,
       NULL::text                 AS offer_readiness_tier,
       NULL::text                 AS offer_mode,
-      NULL::text                 AS availability,
+      best_offer.availability    AS availability,
       NULL::integer              AS inventory_quantity,
-      NULL::text                 AS currency,
-      NULL::numeric              AS list_price,
-      NULL::numeric              AS merchant_effective_price,
+      best_offer.currency        AS currency,
+      best_offer.list_price      AS list_price,
+      best_offer.merchant_effective_price AS merchant_effective_price,
       NULL::numeric              AS estimated_best_price,
       NULL::text                 AS price_confidence,
       NULL::text                 AS offer_source_system,
@@ -531,7 +542,19 @@ async function fetchCanonicalChainRows(args = {}) {
     ? `
     LEFT JOIN catalog_skus s ON s.product_key = c.product_key
     LEFT JOIN catalog_offers o ON o.sku_key = s.sku_key`
-    : '';
+    : `
+    LEFT JOIN LATERAL (
+      SELECT o.currency, o.list_price, o.merchant_effective_price, o.availability
+      FROM catalog_offers o
+      WHERE o.product_key = c.product_key
+        AND o.suppressed_at IS NULL
+        AND COALESCE(o.merchant_effective_price, o.list_price) > 0
+        AND o.currency IS NOT NULL
+      ORDER BY ${bestOfferMarketOrder}
+        COALESCE(o.merchant_effective_price, o.list_price) ASC,
+        o.offer_id ASC
+      LIMIT 1
+    ) best_offer ON TRUE`;
   const skuOfferOrderSql = joinSkuOffers ? ', s.updated_at DESC, o.updated_at DESC' : '';
 
   // Rank score weights mirror pivot_query_service.py exactly so canonical
