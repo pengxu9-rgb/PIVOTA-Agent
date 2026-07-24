@@ -30224,7 +30224,7 @@ function extractAcpBuyerToken(req = {}) {
 
 async function getCommerceAcpRestAdapter() {
   if (!commerceAcpRestAdapterPromise) {
-    commerceAcpRestAdapterPromise = (async () => {
+    const build = (async () => {
       const acpSigningSecret = firstNonEmptyString(
         process.env.ACP_SIGNING_SECRET,
         process.env.AGENT_CHECKOUT_ACP_SIGNING_SECRET,
@@ -30276,6 +30276,11 @@ async function getCommerceAcpRestAdapter() {
         publicFeed: isAcpPublicFeedEnabled(),
       });
     })();
+    // Do NOT memoize a REJECTED build: a truthy rejected promise would 503 every
+    // /acp request permanently (even the feed), long after ACP_SIGNING_SECRET is
+    // set, until restart. Cache only on success; a failed build retries next call.
+    build.catch(() => { commerceAcpRestAdapterPromise = null; });
+    commerceAcpRestAdapterPromise = build;
   }
   return commerceAcpRestAdapterPromise;
 }
@@ -30308,6 +30313,21 @@ async function getCommerceUcpRouteHandlers() {
   return commerceUcpRouteHandlersPromise;
 }
 
+const ACP_PUBLIC_FEED_MAX_BODY_BYTES = 32 * 1024;
+let acpPublicFeedLimiter = null;
+function getAcpPublicFeedLimiter() {
+  if (!acpPublicFeedLimiter) {
+    const { createTokenBucketLimiter } = require('./services/publicReadRateLimit');
+    const rpm = Number(process.env.ACP_PUBLIC_FEED_RPM) > 0 ? Number(process.env.ACP_PUBLIC_FEED_RPM) : 60;
+    const burst =
+      Number(process.env.ACP_PUBLIC_FEED_BURST) > 0
+        ? Number(process.env.ACP_PUBLIC_FEED_BURST)
+        : Math.max(10, Math.ceil(rpm / 3));
+    acpPublicFeedLimiter = createTokenBucketLimiter({ capacity: burst, refillPerSecond: rpm / 60 });
+  }
+  return acpPublicFeedLimiter;
+}
+
 function registerCommerceAcpRestRoutes() {
   // The 5 ACP checkout endpoints + product feed, mounted under COMMERCE_ACP_BASE_PATH. Platform authenticity is
   // the adapter's HMAC Signature/Timestamp (verifyAcpSignature over the exact rawBody) — NOT a Pivota key — so
@@ -30324,9 +30344,24 @@ function registerCommerceAcpRestRoutes() {
     // The read-only feed mounts under the feed flag (which the full-checkout flag
     // implies); every checkout endpoint requires the full flag. So publishing the
     // feed never mounts a money-path endpoint.
+    const isFeed = handlerName === 'productFeed';
     app[method](`${COMMERCE_ACP_BASE_PATH}${subPath}`, async (req, res) => {
       if (!isAcpRouteEnabledForEnv(handlerName, process.env, { strict: isAgentCheckoutStrictEnabled() })) {
         return res.status(404).json({ error: 'not_found' });
+      }
+      // The feed can be served UNSIGNED (public discovery), so — like the sibling
+      // public-read MCP door — it gets a body cap + per-client rate limit that the
+      // signed checkout endpoints (auth is their throttle) don't need. Applied
+      // only to the feed so a real signed checkout is never rate-limited.
+      if (isFeed && isAcpPublicFeedEnabled()) {
+        const contentLength = Number(req?.headers?.['content-length']);
+        if (Number.isFinite(contentLength) && contentLength > ACP_PUBLIC_FEED_MAX_BODY_BYTES) {
+          return res.status(413).json({ error: 'payload_too_large' });
+        }
+        if (!getAcpPublicFeedLimiter().allow(publicReadMcpClientKey(req))) {
+          res.setHeader('Retry-After', '10');
+          return res.status(429).json({ error: 'rate_limited', message: 'Too many requests; retry shortly.' });
+        }
       }
       if (isCharge && !isAgentCheckoutStrictSubmitPaymentEnabled()) {
         recordCommerceKernelAudit({
@@ -30359,7 +30394,9 @@ function registerCommerceAcpRestRoutes() {
           return res.status(503).json({
             type: 'error',
             code: 'MERCHANT_UNAVAILABLE',
-            message: 'Checkout is temporarily unavailable.',
+            message: isFeed
+              ? 'Product feed is temporarily unavailable.'
+              : 'Checkout is temporarily unavailable.',
           });
         }
       });
