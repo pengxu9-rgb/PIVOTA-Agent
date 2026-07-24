@@ -24,16 +24,23 @@
 // RecommendationEngine, the ProductEntity index feed) inherits the exclusion.
 
 // Sellers whose entire catalog is a rig. Founder-confirmed 2026-07-24.
+// Kept in lockstep with pivota-backend services/test_merchant_policy.py
+// (KNOWN_TEST_MERCHANT_IDS) and scripts/step5_working_set.py (DEMO_DOMAIN_PREFIX).
 const TEST_MERCHANT_IDS = Object.freeze([
   // 92sfrj-bi.myshopify.com — the founder's test store. Carries the "Winona
   // Soothing Repair Serum" $1.69 fixture whose description literally reads
   // "Test fixture for PDP", alongside PawStyle/MOYU/KraveBeauty scratch rows.
   'merch_efbc46b4619cfbdf',
-  // pivota-review-demo-2.myshopify.com — Shopify's stock dev-store sample
-  // catalog. This was the App Store review rig; Pivota moved to custom-app-only
-  // credentials on 2026-07-21 after repeated review rejections, so nothing
-  // depends on these rows being publicly reachable.
-  'merch_shopify_0584b37f7a8be00a5223',
+  // pivota-review-demo*.myshopify.com — Shopify's stock dev-store sample catalog
+  // (snowboards). This was the App Store review rig; Pivota moved to
+  // custom-app-only credentials on 2026-07-21 after repeated review rejections,
+  // so nothing depends on these rows being publicly reachable. All three ids
+  // resolve to a pivota-review-demo domain — the same demo store re-connected
+  // under multiple merchant_ids (one domain observed live under two ids), which
+  // is exactly why the SQL gate ALSO carries the domain-prefix leg below.
+  'merch_shopify_0584b37f7a8be00a5223', // pivota-review-demo-2
+  'merch_shopify_00d4a720d67d96c5dcba', // pivota-review-demo
+  'merch_bbd34645bc1950cc',             // pivota-review-demo (2nd connection)
 ]);
 
 // Storefront domains that are rigs regardless of which merchant_id they mint

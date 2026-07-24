@@ -53,7 +53,10 @@ describe('testMerchantPolicy', () => {
   describe('notTestMerchantSql', () => {
     test('merchant-id leg lists every effective rig id', () => {
       const sql = notTestMerchantSql('cp');
-      expect(sql).toContain("cp.merchant_id NOT IN ('merch_efbc46b4619cfbdf', 'merch_shopify_0584b37f7a8be00a5223')");
+      expect(sql).toContain('cp.merchant_id NOT IN (');
+      for (const id of TEST_MERCHANT_IDS) {
+        expect(sql).toContain(`'${id}'`);
+      }
     });
 
     test('omits the source_domain leg unless the table has that column', () => {
