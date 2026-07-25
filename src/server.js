@@ -30104,7 +30104,7 @@ async function getCommerceConfirmationActionHandler() {
 // FAIL-OPEN by construction: any resolver error, timeout, or missing DATABASE_URL keeps the row. A blank
 // public search is a worse failure than a dead id, and a dead id that slips through now returns the honest
 // non-retriable NO_MERCHANT_OFFER rather than an invitation to retry forever.
-const { pdpRouteResolvable } = require('./services/pdpRenderability');
+const { chainRowResolvable } = require('./services/publicReadChainResolvability');
 
 const PUBLIC_READ_CHAIN_FILTER_CONCURRENCY = 8;
 
@@ -30114,34 +30114,15 @@ function isPublicReadChainFilterEnabled() {
   return !['0', 'false', 'off', 'no'].includes(raw);
 }
 
-// DROP ONLY WHAT IS PROVABLY DEAD. This is the opposite asymmetry from pdpRenderability's: there,
-// under-advertising costs a withheld sitemap URL, so the unproven lanes fail CLOSED. Here a false negative
-// deletes a product from search that get_product would have served, so the unproven lanes fail OPEN. That is
-// why this does NOT call pdpRouteResolvable directly — its non-seed arms return false for shopify/wix and for
-// "everything else", and 77 of the 98 ids sampled on prod resolve fine, so borrowing that verdict wholesale
-// would gut the catalog. Only the two cohorts measured dead are removed.
+// The decision itself lives in services/publicReadChainResolvability so it is unit-testable without a DB —
+// see that file for the drop-only-what-is-provably-dead rationale and the fail-open lanes.
 async function publicReadDetailResolves(productId) {
   const pid = String(productId || '').trim();
   if (!pid) return false;
-  // Cohort 1 — the unscoped detail lane only understands Pivota signature ids. Measured: 0 of 5 sampled
-  // non-signature ids (`rejuran:...`) resolved, and every id that DID resolve was a sig_.
+  // Skip the DB round-trip entirely for ids the detail lane cannot resolve by construction.
   if (!isPivotaSignatureProductId(pid)) return false;
   const ref = await resolveCatalogProductRefFromPivotaSignature(pid);
-  // No catalog row behind the signature ⇒ get_pdp_v2 has nothing to serve and answers PRODUCT_NOT_FOUND.
-  if (!ref) return false;
-  // Cohort 2 — a seed-ROUTED row whose content route has no acceptable seed. This is the same question
-  // seedRouteResolvesSql asks, read off the detail lane's own resolved row, and the same precheck get_pdp_v2
-  // applies (a seed that exists but is not active is a 404). Rows on any other lane are left alone.
-  const seedRouted = pdpRouteResolvable({
-    merchantId: ref.merchant_id,
-    platform: ref.platform,
-    sourceSystem: ref.source_system,
-    sourceProductId: ref.product_id,
-    seedRouteOk: true,
-  });
-  if (!seedRouted) return true; // not a seed-routed row — no evidence it is dead, so keep it
-  const seedStatus = String(ref.external_seed_status || '').trim().toLowerCase();
-  return Boolean(ref.external_seed_id) && (seedStatus === '' || seedStatus === 'active');
+  return chainRowResolvable(pid, ref, isPivotaSignatureProductId);
 }
 
 async function filterPublicReadChainResolvableRows(rows) {
