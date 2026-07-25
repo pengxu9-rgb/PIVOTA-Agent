@@ -5765,22 +5765,80 @@ async function resolveCatalogProductRefFromPivotaSignatureInner(normalizedProduc
           eps.external_product_id AS external_seed_external_product_id,
           eps.status AS external_seed_status,
           eps.updated_at AS external_seed_updated_at,
-          eps.created_at AS external_seed_created_at
+          eps.created_at AS external_seed_created_at,
+          eps.seed_route_lane AS external_seed_route_lane
         FROM catalog_products cp
         LEFT JOIN catalog_merchants cm ON cm.merchant_id = cp.merchant_id
         LEFT JOIN index_pipeline_state signature_ips
           ON signature_ips.content_key = cp.content_key
         LEFT JOIN LATERAL (
-          SELECT id, external_product_id, status, updated_at, created_at
-          FROM external_product_seeds eps
-          -- ADR-009: external seeds are identified by platform, not the legacy
-          -- merchant_id='external_seed' bucket (per-brand merch_obs_ sellers now).
-          WHERE cp.platform = '${EXTERNAL_SEED_MERCHANT_ID}'
-            AND eps.external_product_id = cp.source_product_id
+          SELECT
+            seed_pick.id,
+            seed_pick.external_product_id,
+            seed_pick.status,
+            seed_pick.updated_at,
+            seed_pick.created_at,
+            seed_pick.seed_route_lane
+          FROM (
+            -- LANE 0 — ROUTE KEY (unchanged). ADR-009: external seeds are
+            -- identified by platform, not the legacy merchant_id='external_seed'
+            -- bucket (per-brand merch_obs_ sellers now).
+            SELECT
+              eps.id,
+              eps.external_product_id,
+              eps.status,
+              eps.updated_at,
+              eps.created_at,
+              0 AS seed_route_lane
+            FROM external_product_seeds eps
+            WHERE cp.platform = '${EXTERNAL_SEED_MERCHANT_ID}'
+              AND eps.external_product_id = cp.source_product_id
+            UNION ALL
+            -- LANE 1 — P3 MINTED CANONICALS. Path-C rows
+            -- (source_system='catalog_enrichment_agent_v1') attach their seed by
+            -- attached_product_key and carry a brand:hash external_product_id,
+            -- while their own source_product_id is a canonical NAME SLUG — so the
+            -- lane-0 key can never meet (measured prod 2026-07-25: 0 of 2,175
+            -- minted rows resolve on it, while 2,063 carry an attached seed and
+            -- 2,051 an ACTIVE one). Without this arm every minted PDP 404s at
+            -- fetch_canonical_product and the ISR route turns that into a 500.
+            -- Same join key as services/catalog_row_trust_upserter.minted_seed_one.
+            SELECT
+              eps.id,
+              eps.external_product_id,
+              eps.status,
+              eps.updated_at,
+              eps.created_at,
+              1 AS seed_route_lane
+            FROM external_product_seeds eps
+            WHERE cp.source_system = 'catalog_enrichment_agent_v1'
+              AND eps.attached_product_key = cp.product_key
+          ) seed_pick
           ORDER BY
-            CASE WHEN eps.status = 'active' THEN 0 ELSE 1 END,
-            eps.updated_at DESC NULLS LAST,
-            eps.created_at DESC NULLS LAST
+            -- Lane FIRST: whenever lane 0 answers at all, its own best row wins,
+            -- so every pre-P3 lane keeps byte-identical resolution. Lane 1 is
+            -- reachable only when lane 0 returns nothing.
+            seed_pick.seed_route_lane ASC,
+            -- ACTIVE FIRST — deliberately ranked ABOVE the identity-carrying
+            -- preference that minted_seed_one uses. That CTE picks the seed whose
+            -- external_product_id joins pdp_identity_listing, for determinism of
+            -- the pil join key; here the winner is the row whose STATUS the
+            -- external-seed precheck will judge, and pdpRenderability's
+            -- seedRouteResolvesSql predicts renderable from "an acceptable seed
+            -- EXISTS". Ranking identity above status would break that
+            -- equivalence: a product with an identity-carrying INACTIVE seed and
+            -- a plain ACTIVE one would be advertised renderable and then 404
+            -- external_seed_not_active. (pdp_identity_listing is indexed on
+            -- (merchant_id, product_id), so a per-seed identity EXISTS on this
+            -- hot path would also be an unindexed probe per candidate — up to 31
+            -- candidates on the widest minted product_key in prod.)
+            CASE WHEN seed_pick.status = 'active' THEN 0 ELSE 1 END,
+            seed_pick.updated_at DESC NULLS LAST,
+            seed_pick.created_at DESC NULLS LAST,
+            -- Total order, so a minted product_key with several equally-fresh
+            -- seeds renders the SAME seed on every request instead of whichever
+            -- row the planner happened to emit first.
+            seed_pick.id DESC
           LIMIT 1
         ) eps ON true
         WHERE cp.pivota_signature_id = $1
@@ -5795,7 +5853,21 @@ async function resolveCatalogProductRefFromPivotaSignatureInner(normalizedProduc
     );
     const exactRow = Array.isArray(exactResult?.rows) ? exactResult.rows[0] : null;
     const exactMerchantId = String(exactRow?.merchant_id || '').trim();
-    const exactSourceProductId = String(exactRow?.source_product_id || '').trim();
+    // P3: when the seed was resolved through LANE 1 (minted canonical, attached
+    // by product_key), the row's own source_product_id is a name slug that NO
+    // content store answers on. The gateway's downstream content route —
+    // precheck_entry_product, the external-seed status precheck, and
+    // fetch_canonical_product — is keyed on the product id, so the minted lane
+    // must present the SEED's external_product_id, exactly like the mirror lane
+    // does (there source_product_id already IS the seed id, which is why that
+    // lane renders). This narrows to lane 1 only: lane 0 and the no-seed case
+    // keep the slug they resolve on today.
+    const mintedSeedRouteProductId =
+      Number(exactRow?.external_seed_route_lane) === 1
+        ? firstNonEmptyString(exactRow?.external_seed_external_product_id)
+        : null;
+    const exactSourceProductId =
+      mintedSeedRouteProductId || String(exactRow?.source_product_id || '').trim();
     if (exactMerchantId && exactSourceProductId) {
       let exactIdentityRow = null;
       if (
