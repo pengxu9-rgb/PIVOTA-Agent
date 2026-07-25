@@ -5822,16 +5822,27 @@ async function resolveCatalogProductRefFromPivotaSignatureInner(normalizedProduc
             -- ACTIVE FIRST — deliberately ranked ABOVE the identity-carrying
             -- preference that minted_seed_one uses. That CTE picks the seed whose
             -- external_product_id joins pdp_identity_listing, for determinism of
-            -- the pil join key; here the winner is the row whose STATUS the
-            -- external-seed precheck will judge, and pdpRenderability's
-            -- seedRouteResolvesSql predicts renderable from "an acceptable seed
-            -- EXISTS". Ranking identity above status would break that
-            -- equivalence: a product with an identity-carrying INACTIVE seed and
-            -- a plain ACTIVE one would be advertised renderable and then 404
-            -- external_seed_not_active. (pdp_identity_listing is indexed on
-            -- (merchant_id, product_id), so a per-seed identity EXISTS on this
-            -- hot path would also be an unindexed probe per candidate — up to 31
-            -- candidates on the widest minted product_key in prod.)
+            -- the pil join key; here the winner is the row that DECIDES THE
+            -- CONTENT ROUTE, and pdpRenderability's seedRouteResolvesSql predicts
+            -- renderable from "an acceptable seed EXISTS". Ranking identity above
+            -- status would break that equivalence: a product with an
+            -- identity-carrying INACTIVE seed and a plain ACTIVE one would be
+            -- advertised renderable and then 404 external_seed_not_active.
+            -- (pdp_identity_listing is indexed on (merchant_id, product_id), so a
+            -- per-seed identity EXISTS on this hot path would also be an
+            -- unindexed probe per candidate — up to 31 candidates on the widest
+            -- minted product_key in prod.)
+            --
+            -- PRECISION NOTE: the downstream external-seed status precheck does
+            -- NOT read this winner's status. fetchExternalSeedRouteStatusFromDb
+            -- re-queries external_product_seeds by the resolved id and re-ranks
+            -- with its own ORDER BY (active first, then recency). The two agree
+            -- today because the resolved id is this winner's external_product_id
+            -- and the active-unique index makes at most one active row answer it
+            -- — but the precheck is a second, independent pick, not a read of
+            -- this one. Whichever way that redundancy is resolved, both orderings
+            -- must stay active-first or the renderability equivalence above
+            -- breaks.
             CASE WHEN seed_pick.status = 'active' THEN 0 ELSE 1 END,
             seed_pick.updated_at DESC NULLS LAST,
             seed_pick.created_at DESC NULLS LAST,
@@ -40226,6 +40237,30 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	      // merchant_id=external_seed explicitly. Without this, domain-prefixed seed
 	      // IDs (e.g. `ulta:hash`, produced by brand-scoped seed search) fail to
 	      // enter the external_seed lookup branches and PDP cannot resolve them.
+	      //
+	      // ⚠️ LATENT ADR-009 GAP, MEASURED 2026-07-25 — NOT closed here, and the
+	      // reason is that closing it is not a one-liner. Both tests below key off
+	      // the legacy anonymous `external_seed` merchant bucket or an ext_/ext:
+	      // id prefix. P3's minted lane satisfies NEITHER on its own: its resolved
+	      // ids are `brand:hash` and 0 of the 2,063 attached seeds carry an ext
+	      // prefix, so minted rows reach this route ONLY because all 2,175 of them
+	      // still sit in the legacy bucket (measured: 2,175/2,175 under
+	      // 'external_seed', 0 under merch_obs_). Meanwhile pdpRenderability
+	      // dispatches on source_system, so the day the minter emits under a
+	      // per-brand merch_obs_ seller — as 1,365 other seed-routed rows already
+	      // do — the predicate keeps calling those rows renderable while this
+	      // route stops resolving them: #1583's dead-URL bug on a new lane.
+	      //
+	      // Widening THIS expression alone is a no-op and was tried and reverted:
+	      // the three consumers below re-test the bucket themselves
+	      // (`requestedMerchantId === EXTERNAL_SEED_MERCHANT_ID` at the seed-status
+	      // precheck and the similar-prewarm block, and
+	      // `canonicalProductRef.merchant_id === … && isExternalSeedProductId(...)`
+	      // at the identity rescue), so a merch_obs_ minted row would still skip
+	      // every one of them. A real fix has to move all four onto the same
+	      // source_system signal the predicate uses, in one change, with the
+	      // legacy-lane blast radius measured. Tracked as a follow-up rather than
+	      // smuggled into P3.
 	      const entryProductIsExternalSeed =
 	        isExternalSeedProductId(entryProductId) ||
 	        requestedMerchantId === EXTERNAL_SEED_MERCHANT_ID;

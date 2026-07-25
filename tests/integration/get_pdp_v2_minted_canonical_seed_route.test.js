@@ -168,17 +168,27 @@ describe('get_pdp_v2 minted-canonical seed route (P3)', () => {
   test('a lane-0 row keeps its own source_product_id, byte-identically', async () => {
     // The mirror lane and every other pre-P3 lane must be untouched: the swap
     // is conditioned on external_seed_route_lane === 1 and nothing else.
+    //
+    // THE TWO IDS MUST DIFFER HERE OR THIS TEST PROVES NOTHING. In prod a
+    // mirror row's source_product_id already IS its seed's external_product_id,
+    // so a fixture that mirrors prod makes the swap a no-op and the assertion
+    // passes even when the lane condition is deleted entirely (verified: with
+    // `external_seed_route_lane === 1` replaced by `true`, i.e. the swap
+    // applied to EVERY lane, the equal-ids version of this test stayed green).
+    // Feeding a route-lane-0 row a DIFFERENT seed id is artificial on purpose:
+    // it is the only shape in which "lane 0 keeps its slug" is observable.
     const { app, db } = loadServerWithDb();
     const mirrorRow = {
       ...mintedSignatureRow(),
       source_product_id: 'ext_406df819ae18fad866eff5b8',
       source_system: 'external_product_seeds_mirror_v1',
-      external_seed_external_product_id: 'ext_406df819ae18fad866eff5b8',
+      external_seed_external_product_id: 'seed:must_not_be_used_on_lane_0',
       external_seed_route_lane: 0,
     };
     const { res } = await invokeMintedPdp({ app, db, signatureRow: mirrorRow });
     const identity = res.body?.metadata?.identity_resolution || {};
     expect(identity.resolved_product_id).toBe('ext_406df819ae18fad866eff5b8');
+    expect(identity.resolved_product_id).not.toBe('seed:must_not_be_used_on_lane_0');
   });
 
   test('a minted row with NO seed on either lane keeps its slug and does not render', async () => {
