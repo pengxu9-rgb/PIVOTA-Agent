@@ -80,6 +80,58 @@ const PDP_IDENTITY_GRAPH_LIVE_CACHE_TTL_MS = Math.max(
 );
 const liveSyntheticPdpCache = new Map();
 const liveSyntheticPdpInflight = new Map();
+// Budget for a live synthetic-PDP read.
+//
+// The in-flight map hands its stored promise to every concurrent caller for the
+// same key and evicts it only when that promise settles. A read that never
+// settles is therefore never evicted, and the key stays poisoned for the life
+// of the process — the failure mode that made three sitemap PDPs return zero
+// bytes indefinitely (see resolveCatalogProductRefFromPivotaSignature in
+// src/server.js). Bounding the promise BEFORE it is stored is what makes the
+// map self-healing.
+//
+// Resolves to null on timeout rather than rejecting: every other failure in
+// this path already degrades to null (see the .catch at the call site), and a
+// live-read miss is meant to fall back, not to fail the PDP.
+const LIVE_SYNTHETIC_PDP_BUDGET_MS = readTimeoutMsEnv(
+  'PDP_IDENTITY_GRAPH_LIVE_READ_BUDGET_MS',
+  15000,
+  { min: 250, max: 120000 },
+);
+// Defense in depth: even with a budget, cap the map so a burst of distinct keys
+// cannot grow it without bound.
+const LIVE_SYNTHETIC_PDP_INFLIGHT_MAX_ENTRIES = Math.max(
+  50,
+  Number(process.env.PDP_IDENTITY_GRAPH_LIVE_INFLIGHT_MAX_ENTRIES || 300) || 300,
+);
+
+function withLiveSyntheticPdpBudget(promise, cacheKey) {
+  const ms = LIVE_SYNTHETIC_PDP_BUDGET_MS;
+  if (!ms) return promise;
+  let timer = null;
+  return Promise.race([
+    promise,
+    new Promise((resolve) => {
+      timer = setTimeout(() => {
+        logger.warn(
+          { cache_key: cacheKey, budget_ms: ms },
+          'PDP identity graph live read exceeded budget; degrading to null',
+        );
+        resolve(null);
+      }, ms);
+    }),
+  ]).finally(() => {
+    if (timer) clearTimeout(timer);
+  });
+}
+
+function trimLiveSyntheticPdpInflight() {
+  while (liveSyntheticPdpInflight.size >= LIVE_SYNTHETIC_PDP_INFLIGHT_MAX_ENTRIES) {
+    const firstKey = liveSyntheticPdpInflight.keys().next().value;
+    if (firstKey === undefined) break;
+    liveSyntheticPdpInflight.delete(firstKey);
+  }
+}
 
 const SAVINGS_PRESENTATION_FIELDS = Object.freeze([
   'payment_offer_evidence',
@@ -3927,18 +3979,26 @@ async function maybeBuildLiveSyntheticPdp({
   if (cacheKey) {
     const inflight = liveSyntheticPdpInflight.get(cacheKey);
     if (inflight) return cloneJsonSafe(await inflight);
-    const promise = loadLiveSyntheticPdp().catch((err) => {
-      if (looksLikeRelationMissing(err)) return null;
-      logger.warn(
-        {
-          err: err?.message || String(err),
-          merchant_id: merchantId,
-          product_id: productId,
-        },
-        'PDP identity graph live read failed',
-      );
-      return null;
-    });
+    // Bound BEFORE storing. The stored promise is what every concurrent caller
+    // awaits, so an unbounded one here poisons this cacheKey permanently: the
+    // finally below never runs, the entry is never evicted, and each later
+    // caller is handed the same promise that will never settle.
+    const promise = withLiveSyntheticPdpBudget(
+      loadLiveSyntheticPdp().catch((err) => {
+        if (looksLikeRelationMissing(err)) return null;
+        logger.warn(
+          {
+            err: err?.message || String(err),
+            merchant_id: merchantId,
+            product_id: productId,
+          },
+          'PDP identity graph live read failed',
+        );
+        return null;
+      }),
+      cacheKey,
+    );
+    trimLiveSyntheticPdpInflight();
     liveSyntheticPdpInflight.set(cacheKey, promise);
     try {
       return await promise;
@@ -5466,5 +5526,7 @@ module.exports = {
     fetchBackfillProducts,
     sanitizeJsonForPostgres,
     stringifyPostgresJsonb,
+    liveSyntheticPdpInflight,
+    withLiveSyntheticPdpBudget,
   },
 };
