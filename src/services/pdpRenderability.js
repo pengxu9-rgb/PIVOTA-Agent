@@ -124,6 +124,22 @@ const EXTERNAL_SEED_ID_PREFIXES = ['ext_', 'ext:'];
  * first so non-minted rows never pay for the two extra subqueries and their
  * plan is unchanged.
  *
+ * Two details in that arm mirror the gateway EXACTLY rather than
+ * approximately, both in the under-advertise direction if they ever diverge:
+ *
+ *   - `source_system = 'catalog_enrichment_agent_v1'` is an EXACT comparison,
+ *     like the gateway's LANE 1. Normalising it with lower/trim here would be
+ *     strictly WIDER than the gateway — the OVER-advertise direction.
+ *   - the lane-order NOT EXISTS carries the gateway LANE 0 platform conjunct
+ *     (`platform = 'external_seed'`), because the gateway falls through to
+ *     lane 1 exactly when its OWN lane 0 matched nothing.
+ *
+ * The ACCEPTANCE arm deliberately does NOT carry that platform guard: it never
+ * has, and adding it would change lanes this change is otherwise additive to.
+ * So it stays a STATED precondition — the equivalence holds exactly on rows
+ * whose platform is `external_seed`, which is all 2,175 minted rows in prod
+ * and every seed-mirror row. See the Python twin for the full note.
+ *
  * NOTE on `IN ('', 'active')`: this is deliberately WIDER than the gateway's
  * own ranking, which orders `status = 'active'` first. NULL / empty / all-space
  * statuses are accepted here because the gateway's precheck lets them through,
@@ -139,10 +155,11 @@ function seedRouteResolvesSql(cpAlias = 'cp') {
     '(EXISTS (SELECT 1 FROM external_product_seeds _seed_route ' +
     `WHERE _seed_route.external_product_id = ${cpAlias}.source_product_id ` +
     "AND coalesce(lower(trim(_seed_route.status)), '') IN ('', 'active'))" +
-    ` OR (lower(trim(coalesce(${cpAlias}.source_system, ''))) ` +
-    `= '${MINTED_SOURCE_SYSTEM}'` +
+    ` OR (${cpAlias}.source_system = '${MINTED_SOURCE_SYSTEM}'` +
     ' AND NOT EXISTS (SELECT 1 FROM external_product_seeds _seed_route_any ' +
-    `WHERE _seed_route_any.external_product_id = ${cpAlias}.source_product_id)` +
+    `WHERE _seed_route_any.external_product_id = ${cpAlias}.source_product_id ` +
+    `AND lower(trim(coalesce(${cpAlias}.platform, ''))) ` +
+    `= '${EXTERNAL_SEED_MERCHANT_ID}')` +
     ' AND EXISTS (SELECT 1 FROM external_product_seeds _seed_route_minted ' +
     `WHERE _seed_route_minted.attached_product_key = ${cpAlias}.product_key ` +
     "AND coalesce(lower(trim(_seed_route_minted.status)), '') " +

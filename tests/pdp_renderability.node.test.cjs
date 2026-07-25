@@ -225,13 +225,15 @@ test('a row without the seed-route column stays tri-state null', () => {
 const SEED_ROUTE_SQL_CP =
   "(EXISTS (SELECT 1 FROM external_product_seeds _seed_route WHERE " +
   "_seed_route.external_product_id = cp.source_product_id AND " +
-  "coalesce(lower(trim(_seed_route.status)), '') IN ('', 'active')) OR " +
-  "(lower(trim(coalesce(cp.source_system, ''))) = " +
-  "'catalog_enrichment_agent_v1' AND NOT EXISTS (SELECT 1 FROM " +
-  "external_product_seeds _seed_route_any WHERE " +
-  "_seed_route_any.external_product_id = cp.source_product_id) AND EXISTS " +
-  "(SELECT 1 FROM external_product_seeds _seed_route_minted WHERE " +
-  "_seed_route_minted.attached_product_key = cp.product_key AND " +
+  "coalesce(lower(trim(_seed_route.status)), '') IN ('', 'active')) " +
+  "OR (cp.source_system = 'catalog_enrichment_agent_v1' AND NOT " +
+  "EXISTS (SELECT 1 FROM external_product_seeds _seed_route_any WHERE" +
+  " _seed_route_any.external_product_id = cp.source_product_id AND " +
+  "lower(trim(coalesce(cp.platform, ''))) = 'external_seed') AND " +
+  "EXISTS (SELECT 1 FROM external_product_seeds _seed_route_minted " +
+  "WHERE _seed_route_minted.attached_product_key = cp.product_key AND" +
+  " coalesce(lower(trim(_seed_route_minted.status)), '') IN ('', " +
+  "'active'))))";
   "coalesce(lower(trim(_seed_route_minted.status)), '') IN ('', 'active'))))";
 
 test('the seed-route fragment is byte-identical to the Python twin', () => {
@@ -262,8 +264,10 @@ test('the minted lane is gated on source_system AND on lane 0 answering nothing'
   // guarantees a 404 external_seed_not_active, recreating #1583's dead URLs.
   const sql = seedRouteResolvesSql('cp');
   assert.ok(
-    sql.includes(`lower(trim(coalesce(cp.source_system, ''))) = '${MINTED_SOURCE_SYSTEM}'`),
-    'the minted arm must be gated on source_system, so no other lane borrows it',
+    sql.includes(`cp.source_system = '${MINTED_SOURCE_SYSTEM}'`),
+    'the minted arm must be gated on source_system so no other lane borrows ' +
+      'it, and must compare it EXACTLY like the gateway does — normalising it ' +
+      'here would be strictly wider, i.e. the over-advertise direction',
   );
   const notExists = sql.match(/NOT EXISTS/g) || [];
   assert.equal(
@@ -274,10 +278,14 @@ test('the minted lane is gated on source_system AND on lane 0 answering nothing'
   assert.ok(
     sql.includes(
       'NOT EXISTS (SELECT 1 FROM external_product_seeds _seed_route_any ' +
-        'WHERE _seed_route_any.external_product_id = cp.source_product_id)',
+        'WHERE _seed_route_any.external_product_id = cp.source_product_id ' +
+        "AND lower(trim(coalesce(cp.platform, ''))) = 'external_seed')",
     ),
-    'the lane-order guard must be an unfiltered NOT EXISTS on the ROUTE key: ' +
-      'status must not narrow it, or an inactive lane-0 seed stops blocking',
+    'the lane-order guard must be a status-UNFILTERED NOT EXISTS on the ROUTE ' +
+      'key (status must not narrow it, or an inactive lane-0 seed stops ' +
+      "blocking) and must carry the gateway LANE 0 platform conjunct (without " +
+      'it, a minted row on another platform reads as "lane 0 answered" here ' +
+      'while the gateway falls through to lane 1)',
   );
 });
 
