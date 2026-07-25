@@ -29399,6 +29399,11 @@ async function invokeCommerceKernelRawUpstream(operation, payload, headers = {})
   return normalizedBody;
 }
 
+// Read-only kernel ops — the lanes where a bare HTTP 404 genuinely means "no such product", as opposed to the
+// money ops on this same error path where it much more likely means a missing/mid-deploy backend route.
+// Mirrors the read() calls in safety-kernel/src/protocol/canonicalExecutor.js.
+const COMMERCE_KERNEL_READ_OPS = new Set(['get_product_detail', 'find_products', 'find_products_multi']);
+
 let commerceKernelErrorsPromise = null;
 
 async function throwCommerceKernelUpstreamError(operation, err) {
@@ -29406,12 +29411,20 @@ async function throwCommerceKernelUpstreamError(operation, err) {
   const { code: upstreamCode, message: upstreamMessage, detail: upstreamDetail } = extractUpstreamErrorCode(err);
   const status = err?.response?.status || null;
   const normalizedCode = String(upstreamCode || '').trim().toUpperCase();
-  // A 404 / PRODUCT_NOT_FOUND from a READ lane is a persistent data condition, not an outage: the id has no
-  // servable detail because no acceptable offer/seed answers its content route, and that is true again on the
-  // next call. Mapping it to MERCHANT_UNAVAILABLE (retriable:true, "try again shortly") is what made the
-  // public search -> get_product chain a retry trap. Scoped to the not-found signal so every other upstream
-  // failure keeps its existing retriable classification.
-  const notFound = normalizedCode === 'PRODUCT_NOT_FOUND' || status === 404;
+  // A not-found from a READ lane is a persistent data condition, not an outage: the id has no servable detail
+  // because no acceptable offer/seed answers its content route, and that is true again on the next call.
+  // Mapping it to MERCHANT_UNAVAILABLE (retriable:true, "try again shortly") is what made the public
+  // search -> get_product chain a retry trap.
+  //
+  // The bare-STATUS arm is restricted to read ops ON PURPOSE. preview_quote / create_order / submit_payment /
+  // create_payment_link / request_after_sales all share this function, and a 404 on one of those is far more
+  // likely to be a missing or mid-deploy backend route than a statement about the product. Calling that
+  // NO_MERCHANT_OFFER would tell a checkout agent "this will never work, do not retry" during what is
+  // actually a transient blip — the mirror image of the bug being fixed. An explicit PRODUCT_NOT_FOUND code
+  // is unambiguous by name, so that arm stays op-independent.
+  const notFound =
+    normalizedCode === 'PRODUCT_NOT_FOUND' ||
+    (status === 404 && COMMERCE_KERNEL_READ_OPS.has(String(operation || '').trim()));
   const kernelCode =
     normalizedCode === 'QUOTE_EXPIRED'
       ? 'QUOTE_EXPIRED'

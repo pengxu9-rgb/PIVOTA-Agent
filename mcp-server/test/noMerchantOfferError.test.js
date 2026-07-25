@@ -36,6 +36,33 @@ test("the MCP tool error body carries the retry classification, not just a code"
   assert.equal(transient.error.retriable, true);
 });
 
+test("a bare 404 is terminal on READ ops but stays a retriable outage on money ops", async () => {
+  // The money ops share this upstream. A 404 there is far more likely to be a missing or mid-deploy backend
+  // route than a statement about the product, and telling a checkout agent "never retry" during a transient
+  // blip is the mirror image of the bug this change fixes.
+  const { createHttpBackendUpstream } = await import("../../safety-kernel/src/protocol/productionWiring.js");
+  const upstream = createHttpBackendUpstream({
+    baseUrl: "https://example.test",
+    authToken: "tok",
+    fetchImpl: async () => ({ ok: false, status: 404, json: async () => ({}) }),
+  });
+  const codeFor = async (op) => {
+    try {
+      await upstream(op, {});
+      return null;
+    } catch (e) {
+      return { code: e.code, retriable: e.retriable };
+    }
+  };
+
+  for (const op of ["get_product_detail", "find_products", "find_products_multi"]) {
+    assert.deepEqual(await codeFor(op), { code: "NO_MERCHANT_OFFER", retriable: false }, op);
+  }
+  for (const op of ["preview_quote", "create_order", "submit_payment"]) {
+    assert.deepEqual(await codeFor(op), { code: "MERCHANT_UNAVAILABLE", retriable: true }, op);
+  }
+});
+
 test("errors that declare no retry classification keep their exact previous body", () => {
   const body = JSON.parse(toToolError(new Error("boom")).content[0].text);
   assert.deepEqual(body, {
