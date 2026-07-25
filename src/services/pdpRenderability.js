@@ -26,8 +26,9 @@
 //     their seeds attach by attached_product_key and carry an
 //     external_product_id of the form `brand:hash`, while source_product_id is
 //     a name slug — the keys never meet.)
-//   * merchant-synced rows (shopify/wix) resolve detail from the merchant
-//     upstream and need no seed.
+//   * merchant-synced rows (shopify/wix) were ASSUMED to resolve detail from the
+//     merchant upstream and need no seed. Measured, that is FALSE (7/7 HTTP
+//     500) — see MERCHANT_SYNCED_LANE_RENDERABLE below.
 //   * everything else (url_audit audit-minted rows, brand_authored stubs) has
 //     neither route.
 //
@@ -47,7 +48,36 @@ const SEED_ROUTED_SOURCE_SYSTEMS = new Set([
 // NOT renderable — fail-closed, so a new adapter stays out of the sitemap
 // rather than being advertised as a possible 500. Add the platform when an
 // adapter ships; the public_not_renderable invariant is the alarm.
+//
+// This set is NARROWER than the platform sets the rest of the stack supports
+// ({shopify, wix, woocommerce, bigcommerce} in the backend's
+// merchant_commerce_readiness / agent_center_sku_match_live services). Moot
+// while the lane is closed (below), load-bearing again the moment it re-opens.
 const MERCHANT_SYNCED_PLATFORMS = new Set(['shopify', 'wix']);
+
+// …AND WHETHER THAT LANE RENDERS AT ALL. Answer today: NO.
+//
+// The first cut of this predicate assumed "platform has a sync adapter ⇒ the
+// gateway serves detail from the merchant upstream ⇒ renderable", by symmetry
+// with the seed lane. That was never measured, and when it WAS measured it came
+// back false: 7/7 shopify PDPs the arm called renderable returned HTTP 500
+// (2,007 bytes, no product JSON-LD), including rows under merchants with
+// catalog_merchants.indexable = true. So the lane is fail-CLOSED like every
+// other unproven lane rather than the single fail-OPEN exception.
+//
+// Blast radius of being honest, measured 2026-07-25: ZERO rows change. Prod has
+// 1,561 merchant-synced-lane rows, of which 0 are trust-public and 0 are
+// unsuppressed AND index/serving-eligible. What it buys is a defused landmine:
+// 737 of those rows are held out of the sitemap only by their merchant's
+// indexable=false bit, which is NOT part of this predicate — flip that one bit
+// while this arm says true and 737 hard-500 URLs enter the sitemap while
+// public_not_renderable reports none of them.
+//
+// TO RE-ENABLE: measure. If the PDPs render with product JSON-LD, flip this to
+// true in BOTH twins in one change (here and pivota-backend
+// services/pdp_renderability.py). The right long-term fix is P3 — teach the
+// gateway to resolve these rows — not a wider predicate.
+const MERCHANT_SYNCED_LANE_RENDERABLE = false;
 
 const EXTERNAL_SEED_ID_PREFIXES = ['ext_', 'ext:'];
 
@@ -62,6 +92,16 @@ const EXTERNAL_SEED_ID_PREFIXES = ['ext_', 'ext:'];
  * carries a good active seed beside a stale inactive one. A falsy status counts
  * as acceptable: the gateway's check is
  * `if (externalSeedStatus && externalSeedStatus !== 'active')`.
+ *
+ * NOTE on `IN ('', 'active')`: this is deliberately WIDER than the gateway's
+ * own ranking, which orders `status = 'active'` first. NULL / empty / all-space
+ * statuses are accepted here because the gateway's precheck lets them through,
+ * but a row whose ONLY seed has a blank status would be ranked last rather than
+ * refused — a divergence we accept as empirically moot: prod currently holds
+ * ZERO NULL-or-empty seed statuses (the non-active values in the wild are
+ * 'inactive', 'retired_demo', 'review_blocked', 'disabled', 'blocked', all of
+ * which fall outside the set). If blank statuses ever start being written,
+ * revisit this together with the gateway ranking rather than only here.
  */
 function seedRouteResolvesSql(cpAlias = 'cp') {
   return (
@@ -96,7 +136,11 @@ function pdpRouteResolvable({
     EXTERNAL_SEED_ID_PREFIXES.includes(loweredId.slice(0, 4));
 
   if (seedRouted) return Boolean(seedRouteOk);
-  return MERCHANT_SYNCED_PLATFORMS.has(loweredPlatform);
+  if (MERCHANT_SYNCED_PLATFORMS.has(loweredPlatform)) {
+    // MEASURED FALSE — see MERCHANT_SYNCED_LANE_RENDERABLE.
+    return MERCHANT_SYNCED_LANE_RENDERABLE;
+  }
+  return false;
 }
 
 /**
@@ -117,6 +161,7 @@ function pdpRouteResolvableFromRow(row) {
 
 module.exports = {
   EXTERNAL_SEED_MERCHANT_ID,
+  MERCHANT_SYNCED_LANE_RENDERABLE,
   MERCHANT_SYNCED_PLATFORMS,
   SEED_ROUTED_SOURCE_SYSTEMS,
   pdpRouteResolvable,

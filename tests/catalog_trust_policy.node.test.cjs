@@ -672,3 +672,20 @@ test('INDEX_ELIGIBLE_READ widening matches the Python twin', () => {
     else process.env.INDEX_ELIGIBLE_READ = previous;
   }
 });
+
+test('POLICY_VERSION is pinned to the Python twin', () => {
+  // A version MISMATCH between the twins is the catastrophic failure mode.
+  // Both repos write the same catalog_row_trust table against one Postgres and
+  // the UPSERT refreshes a row whenever policy_version differs. pivota-backend
+  // stamps rows from a 6h cron; THIS repo stamps them from prod RUNTIME
+  // (pdpIdentityGraph calls upsertCatalogRowTrustForSourceListingRefs on every
+  // live-read promotion and identity override). A split-brain rewrites ~14k
+  // rows forever and makes /__trust_health's version_distribution a permanent
+  // false alarm.
+  //
+  // Nothing pinned this string before, in either repo — reverting the bump left
+  // every test green. Bump it here AND in pivota-backend
+  // services/catalog_trust_policy.py, and merge the two PRs back to back
+  // (backend first).
+  assert.equal(POLICY_VERSION, 'c1.v0.5');
+});

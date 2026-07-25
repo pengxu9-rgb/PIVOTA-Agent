@@ -54,12 +54,25 @@ const POLICY_VERSION = 'c1.v0.5';
 //   IDENTITY_CONFLICT                — identity_status='conflict'.
 //   OFFER_SUPPRESSED                 — subject_type='offer' with offer.suppression_reason set.
 //   PDP_ROUTE_UNRESOLVABLE           — c1.v0.5. The gateway has no resolvable
-//     content route for the row, so its public PDP is a hard HTTP 500, not a
-//     shell. GATED on CATALOG_TRUST_RENDERABLE_GATE, default OFF: turning it
-//     on demotes 1,376 rows out of 'public' (measured 2026-07-25), which is a
-//     serving-surface decision for the founder, not a code default. The
-//     predicate lives in pivota-backend services/pdp_renderability.py; this
-//     module only consumes the boolean its caller computed.
+//     content route for the row, so its public PDP never answers with a real
+//     product page: it is either a hard HTTP 500 or a generic noindex shell
+//     carrying no product JSON-LD (both measured 2026-07-25). GATED on
+//     CATALOG_TRUST_RENDERABLE_GATE, default OFF: turning it on demotes 1,376
+//     rows out of 'public', which is a serving-surface decision for the
+//     founder, not a code default. The predicate lives in
+//     src/services/pdpRenderability.js (twin of pivota-backend
+//     services/pdp_renderability.py); this module only consumes the boolean
+//     its caller computed.
+//
+//     ⚠️ THE FLAG IS PER-SERVICE AND THE TWINS SHARE ONE DATABASE. pivota-backend
+//     runs the same policy and writes the same catalog_row_trust table on a 6h
+//     cron; this repo writes it from prod RUNTIME (pdpIdentityGraph calls
+//     upsertCatalogRowTrustForSourceListingRefs on every live-read promotion
+//     and identity override). Set CATALOG_TRUST_RENDERABLE_GATE on BOTH Railway
+//     services or NEITHER: with it on one side only, the backend blocks the
+//     1,376 and this repo re-derives them public on the next identity event, so
+//     rows FLAP public↔blocked on the live serving surface. The same applies to
+//     POLICY_VERSION — ship the two repos back to back.
 
 const REASON_CODES = Object.freeze({
   PUBLIC_PASSTHROUGH: 'PUBLIC_PASSTHROUGH',
@@ -92,6 +105,29 @@ function flagOn(name) {
 // ADR-008 SLICE 1 read flag. When ON, the index-pipeline serving gate widens
 // from serving_eligible to (serving_eligible OR index_eligible) — the
 // OFFER-FREE citation floor. Default OFF ⇒ byte-identical to before.
+//
+// ⚠️ THIS ARM IS CURRENTLY UNREACHABLE FROM THE UPSERTERS, DELIBERATELY.
+// Neither this repo's product join (catalogRowTrustUpserter.js /
+// scripts/backfill-catalog-row-trust.cjs) nor the Python twin selects
+// ips.index_eligible, so `ips.index_eligible === true` is never satisfied and
+// both writers compute serving_eligible-only regardless of the flag. That is
+// what keeps them AGREEING, and agreement is the whole point: they share one
+// catalog_row_trust table and the UPSERT rewrites a row whenever
+// serving_decision differs.
+//
+// Selecting the column would break that today, because the flag is set
+// ASYMMETRICALLY in prod: INDEX_ELIGIBLE_READ=1 on the pivota-backend `web`
+// service, UNSET on the PIVOTA-Agent service (verified 2026-07-25). Wire the
+// column up and the ~100 prod rows with index_eligible=true AND
+// serving_eligible<>true would be derived `public` by the backend cron and
+// `blocked` by this repo on the next identity event — flapping forever.
+//
+// Known consequence of leaving it unreachable: the citation READ path
+// (pivot_query_service.py) DOES honor index_eligible, so those ~100 rows are
+// recall-eligible there while trust keeps blocking them. Closing that gap is a
+// founder call, not a code default, and it is a THREE-part change — select the
+// column in both joins, and set INDEX_ELIGIBLE_READ on both Railway services in
+// the same operation. Do not do one part.
 function indexEligibleReadEnabled() {
   return flagOn('INDEX_ELIGIBLE_READ');
 }
@@ -126,7 +162,8 @@ const STALE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
  * @param {Object} [inputs.override]     pdp_identity_override row (or null)
  * @param {boolean} [inputs.pdp_route_resolvable] c1.v0.5 tri-state: true when the
  *   gateway can resolve a PDP content route for the row, false when it cannot
- *   (the PDP is a hard 500), null/undefined when the caller did not compute it.
+ *   (the PDP answers with a 500 or a bare noindex shell), null/undefined when
+ *   the caller did not compute it.
  *   Absence NEVER blocks, so producers not yet taught to supply it keep their
  *   c1.v0.4 output exactly.
  * @param {Array}  [inputs.active_quarantines] active catalog_source_quarantine rows

@@ -395,7 +395,16 @@ async function main() {
   await pool.end();
 }
 
-main().catch((err) => {
-  process.stderr.write(`backfill-catalog-row-trust failed: ${err.message}\n${err.stack}\n`);
-  process.exit(1);
-});
+// Exported so tests can assert on the compiled SQL and the row reshape without
+// opening a pool. The main() call is guarded on require.main so `node
+// scripts/backfill-catalog-row-trust.cjs` still runs exactly as before, while
+// `require()` from a test is inert. Without this, replacing the c1.v0.5
+// seed-route EXISTS in PRODUCT_DRIVER_SQL with TRUE was an invisible mutation.
+module.exports = { PRODUCT_DRIVER_SQL, rowToPolicyInputs };
+
+if (require.main === module) {
+  main().catch((err) => {
+    process.stderr.write(`backfill-catalog-row-trust failed: ${err.message}\n${err.stack}\n`);
+    process.exit(1);
+  });
+}

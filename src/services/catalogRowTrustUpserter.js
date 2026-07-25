@@ -481,6 +481,10 @@ async function upsertCatalogRowTrustForSourceListingRefs(pool, sourceListingRefs
 
 module.exports = {
   POLICY_VERSION,
+  // Exported for tests: the compiled join must keep carrying the c1.v0.5
+  // seed-route EXISTS. Swapping it for TRUE was an invisible mutation.
+  PRODUCT_JOIN_SQL,
+  rowToPolicyInputs,
   upsertCatalogRowTrust,
   upsertCatalogRowTrustMany,
   upsertCatalogRowTrustForSourceListingRefs,
