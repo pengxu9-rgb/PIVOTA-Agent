@@ -2,9 +2,23 @@
 
 **Status:** Phase 3a (discoveryFeed brand candidates wired behind flag).
 **Migration:** `pivota-backend-quality-gate/db/migrations/136_catalog_row_trust.sql`
-**Policy:** `src/services/catalogTrustPolicy.js` (POLICY_VERSION = `c1.v0.4`)
+**Policy:** `src/services/catalogTrustPolicy.js` (POLICY_VERSION = `c1.v0.5`)
 **Python parity:** `pivota-backend/services/catalog_trust_policy.py` (same version)
 **Backfill:** `scripts/backfill-catalog-row-trust.cjs`
+
+> ⚠️ **The two twins must ship together, and their flags must match.** Both
+> repos write `catalog_row_trust` against the SAME Postgres, and the UPSERT
+> refreshes a row whenever `policy_version <> EXCLUDED.policy_version`. The Node
+> writers are not batch-only: `src/services/pdpIdentityGraph.js` calls
+> `upsertCatalogRowTrustForSourceListingRefs` on every live-read promotion and
+> identity override, in prod runtime. A version split-brain therefore has the
+> backend's 6h cron stamp one version across ~14k keys while Node stamps the
+> other back on every identity event — a permanent rewrite loop and a
+> permanently false `version_distribution` alarm on `/__trust_health`. Merge
+> pivota-backend and PIVOTA-Agent policy changes back to back, and set
+> `CATALOG_TRUST_RENDERABLE_GATE` on **both** Railway services or **neither**:
+> with the gate on one side only, rows FLAP public↔blocked on the live serving
+> surface.
 
 ## What this contract is
 
@@ -55,6 +69,7 @@ Authoritative source: `src/services/catalogTrustPolicy.js` (`REASON_CODES`).
 | `PUBLISH_STATE_NOT_PUBLIC`          | blocked         | `catalog_products.sync_status` != `live`. (Name kept for forward-compat with audit copy.)      |
 | `IDENTITY_CONFLICT`                 | blocked         | `pdp_identity_listing.identity_status='conflict'`.                                             |
 | `OFFER_SUPPRESSED`                  | blocked         | subject_type=`offer`, offer.suppression_reason set.                                            |
+| `PDP_ROUTE_UNRESOLVABLE`            | blocked         | c1.v0.5+. The gateway has no resolvable PDP **content route** for the row (no acceptable `external_product_seeds` row answers on `external_product_id = catalog_products.source_product_id`, and the row is not merchant-synced), so its public PDP is a 500 or a generic noindex shell rather than a real product page. **Gated on `CATALOG_TRUST_RENDERABLE_GATE`, default OFF** — measured 2026-07-25, turning it on demotes 1,376 rows out of `public` (1,011 of them with no renderable sibling), which is a founder serving-surface call, not a code default. Predicate: `pivota-backend/services/pdp_renderability.py` / `src/services/pdpRenderability.js`. |
 
 ## How to consume
 

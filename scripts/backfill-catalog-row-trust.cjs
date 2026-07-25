@@ -18,6 +18,10 @@ const {
   POLICY_VERSION,
   deriveTrust,
 } = require('../src/services/catalogTrustPolicy');
+const {
+  pdpRouteResolvableFromRow,
+  seedRouteResolvesSql,
+} = require('../src/services/pdpRenderability');
 
 const BATCH_SIZE = 500;
 
@@ -61,7 +65,7 @@ async function loadActiveQuarantines(pool) {
 const PRODUCT_DRIVER_SQL = `
   WITH external_seed_one AS (
     SELECT DISTINCT ON (external_product_id)
-      id, external_product_id, status, domain, attached_product_key, updated_at
+      id, external_product_id, status, domain, attached_product_key, updated_at, seed_kind
     FROM external_product_seeds
     ORDER BY
       external_product_id,
@@ -77,7 +81,7 @@ const PRODUCT_DRIVER_SQL = `
     -- key below). Kept in sync with src/services/catalogRowTrustUpserter.js
     -- + the Python twin.
     SELECT DISTINCT ON (s.attached_product_key)
-      s.id, s.external_product_id, s.status, s.domain, s.attached_product_key, s.updated_at
+      s.id, s.external_product_id, s.status, s.domain, s.attached_product_key, s.updated_at, s.seed_kind
     FROM external_product_seeds s
     LEFT JOIN pdp_identity_listing spl
       ON spl.product_id = s.external_product_id
@@ -143,11 +147,19 @@ const PRODUCT_DRIVER_SQL = `
     pil.product_line_id,
     pil.review_family_id,
 
+    -- c1.v0.5 renderability input. NOT the same question as the eps join
+    -- below: eps is restricted to source_system='external_product_seeds_mirror_v1',
+    -- while the gateway looks up external_product_id for EVERY row it routes
+    -- through seeds. Path-C minted rows join their seed by attached_product_key
+    -- and so answer FALSE here — which is exactly why their PDPs 500.
+    ` + seedRouteResolvesSql('cp') + ` AS pdp_seed_route_ok,
+
     COALESCE(eps.id, epm.id)                                     AS eps_id,
     COALESCE(eps.status, epm.status)                             AS eps_status,
     COALESCE(eps.domain, epm.domain)                             AS eps_domain,
     COALESCE(eps.attached_product_key, epm.attached_product_key) AS eps_attached_product_key,
     COALESCE(eps.updated_at, epm.updated_at)                     AS eps_last_seen_at,
+    COALESCE(eps.seed_kind, epm.seed_kind)                       AS eps_seed_kind,
 
     ms.merchant_id    AS ms_merchant_id,
     ms.platform       AS ms_platform,
@@ -253,7 +265,14 @@ function rowToPolicyInputs(row, activeQuarantines, now) {
       sync_status: row.sync_status,
       suppression_reason: row.suppression_reason,
       last_seen_in_sync_at: row.last_seen_in_sync_at,
+      // seed_kind='cross' (retailer-sourced observed seller) must NOT get the
+      // observed-seller public-passthrough exemption; 'self'/null keeps it.
+      seed_kind: row.eps_seed_kind,
     },
+    // c1.v0.5. The lane test is pure row data; only the seed EXISTS needs SQL
+    // (pdp_seed_route_ok above). Tri-state: a row assembled without that column
+    // yields null and leaves the decision exactly as c1.v0.4.
+    pdp_route_resolvable: pdpRouteResolvableFromRow(row),
     identity: row.identity_status ? {
       source_listing_ref: row.pil_source_listing_ref,
       identity_status: row.identity_status,
@@ -376,7 +395,16 @@ async function main() {
   await pool.end();
 }
 
-main().catch((err) => {
-  process.stderr.write(`backfill-catalog-row-trust failed: ${err.message}\n${err.stack}\n`);
-  process.exit(1);
-});
+// Exported so tests can assert on the compiled SQL and the row reshape without
+// opening a pool. The main() call is guarded on require.main so `node
+// scripts/backfill-catalog-row-trust.cjs` still runs exactly as before, while
+// `require()` from a test is inert. Without this, replacing the c1.v0.5
+// seed-route EXISTS in PRODUCT_DRIVER_SQL with TRUE was an invisible mutation.
+module.exports = { PRODUCT_DRIVER_SQL, rowToPolicyInputs };
+
+if (require.main === module) {
+  main().catch((err) => {
+    process.stderr.write(`backfill-catalog-row-trust failed: ${err.message}\n${err.stack}\n`);
+    process.exit(1);
+  });
+}
