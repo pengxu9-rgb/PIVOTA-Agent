@@ -40037,6 +40037,23 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	    const markPdpV2Phase = (name, startedAt) => {
 	      pdpV2PhaseTimings[name] = Date.now() - startedAt;
 	    };
+	    // Cumulative checkpoints, measured from pdpV2StartedAt.
+	    //
+	    // WHY (2026-07-25): `phases` only covers spans someone wrapped, and on the
+	    // three Tom Ford PDPs it accounted for 1,569ms of a 9,899ms request —
+	    // ~7,000ms fell outside EVERY phase (healthy controls: ~170ms). That blind
+	    // spot is why two plausible diagnoses (TOAST detoast, an N+1 over identity
+	    // group members) both survived review and both turned out to be wrong when
+	    // finally measured.
+	    //
+	    // Checkpoints are cumulative rather than paired start/end on purpose: they
+	    // are single standalone statements, so they can be dropped in without
+	    // restructuring the surrounding control flow. Read them by DIFFING
+	    // consecutive values — the largest jump is the cost.
+	    const pdpV2Checkpoints = {};
+	    const markPdpV2Checkpoint = (name) => {
+	      pdpV2Checkpoints[name] = Date.now() - pdpV2StartedAt;
+	    };
 	    const markPdpV2Module = (name, startedAt, status = 'complete') => {
 	      const latencyMs = Date.now() - startedAt;
 	      pdpV2ModuleTimings[name] = latencyMs;
@@ -40076,6 +40093,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       } = {}) => ({
         total_latency_ms: Math.max(0, Date.now() - pdpV2StartedAt),
         phases: pdpV2PhaseTimings,
+        // Cumulative ms from request start. Diff consecutive entries to find
+        // where the time went; `total_latency_ms` minus the last checkpoint is
+        // whatever still is not covered.
+        checkpoints_ms: pdpV2Checkpoints,
         modules: pdpV2ModuleTimings,
         savings_presentation_hydration_mode: pdpV2SavingsPresentationHydrationMode,
         product_group_resolve_mode: pdpV2ProductGroupResolveMode,
@@ -41701,6 +41722,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	        'savings_presentation_hydration',
 	        savingsPresentationHydrationStartedAt,
 	      );
+	      markPdpV2Checkpoint('after_savings_hydration');
 	
 		      let relatedProducts = [];
 	      let relatedProductsEnvelope = null;
@@ -41777,6 +41799,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	          bypassCache,
 	          maxItems: similarCardEnrichmentLimit,
 	        });
+        markPdpV2Checkpoint('after_similar_card_enrichment');
         const cardEnrichmentMetadata = getSimilarCardEnrichmentMetadata(enrichedRelatedProducts);
         const missingHighlightCount = enrichedRelatedProducts.filter(
           (item) => String(item?.card_highlight_status || '').trim() === 'highlight_missing',
@@ -41792,6 +41815,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           displayableSimilarCandidates,
           { bypassCache },
         );
+        markPdpV2Checkpoint('after_similar_sig_hydration');
         const publicSimilarCandidates = filterPublicVisibleSimilarProducts(hydratedSimilarCandidates);
         const componentFilteredSimilar = excludeBundleComponentProductsFromSimilar({
           products: publicSimilarCandidates,
@@ -41899,6 +41923,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       }
       try {
         await enrichProductWithRelatedServices(canonicalProductForPdp);
+      markPdpV2Checkpoint('after_related_services');
       } catch (err) {
         logger.warn(
           { err: err?.message || String(err) },
@@ -42197,6 +42222,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         const offersModuleStartedAt = Date.now();
         try {
           if (groupMembers.length > 0) {
+            markPdpV2Checkpoint('before_offers_build');
             offersData = await buildOffersFromGroupMembers({
               productGroupId: effectiveSellableItemGroupId || effectiveProductGroupId || productGroupId,
               members: groupMembers,
@@ -42667,6 +42693,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           const enrichmentMap = new Map();
           if (componentIds.length > 0) {
             try {
+        markPdpV2Checkpoint('before_enrichment_query');
               const enrichmentRes = await query(
                 `SELECT DISTINCT ON (external_product_id)
                    external_product_id, title, image_url, canonical_url,
@@ -42781,6 +42808,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       const responseModules = sanitizePdpSimilarResponseModules(modules);
       const moduleHealth = classifyPdpV2ModuleHealth(missing, modules);
 
+      markPdpV2Checkpoint('before_response_assembly');
       const responsePayload = {
         status: 'success',
         pdp_version: '2.0',
