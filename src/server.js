@@ -3970,6 +3970,27 @@ const PRODUCT_DETAIL_CACHE_ENABLED =
   process.env.PRODUCT_DETAIL_CACHE_ENABLED !== 'false';
 const PRODUCT_DETAIL_CACHE = new Map(); // cacheKey -> { value, storedAtMs, expiresAtMs }
 const PRODUCT_DETAIL_INFLIGHT = new Map(); // cacheKey -> Promise<product|null>
+// Backstop budget for the offer-detail load.
+//
+// `totalTimeoutMs` is opt-in and defaults to 0, and only a minority of call
+// sites pass one — so most loads ran with NO deadline at all. Combined with the
+// in-flight map (which hands its stored promise to every concurrent caller for
+// the same key and evicts it only when that promise settles), an upstream that
+// never responds poisoned that cacheKey for the life of the process. That is
+// the same failure mode that made three sitemap PDPs return zero bytes
+// indefinitely — see resolveCatalogProductRefFromPivotaSignature.
+//
+// Deliberately generous: this exists to stop a wedged load from becoming a
+// permanent outage, NOT to enforce a latency budget. Callers that want a tight
+// deadline still pass `totalTimeoutMs`, and the smaller of the two wins.
+const PRODUCT_DETAIL_MAX_LOAD_MS = Math.max(
+  1000,
+  Number(process.env.PRODUCT_DETAIL_MAX_LOAD_MS || 30000) || 30000,
+);
+const PRODUCT_DETAIL_INFLIGHT_MAX_ENTRIES = Math.max(
+  50,
+  Number(process.env.PRODUCT_DETAIL_INFLIGHT_MAX_ENTRIES || 300) || 300,
+);
 const PRODUCT_DETAIL_CACHE_METRICS = {
   hits: 0,
   misses: 0,
@@ -9223,19 +9244,36 @@ async function fetchProductDetailForOffers(args) {
     return null;
   })();
 
-  const guardedLoadPromise = totalTimeoutMs > 0
-    ? withStageBudget(loadPromise, totalTimeoutMs, `offer_detail:${merchantId}:${productId}`)
-    : loadPromise;
+  // ALWAYS bounded. The caller's own budget still wins when it is tighter; the
+  // backstop only exists so a load with no budget cannot run forever.
+  const effectiveTimeoutMs = totalTimeoutMs > 0
+    ? Math.min(totalTimeoutMs, PRODUCT_DETAIL_MAX_LOAD_MS)
+    : PRODUCT_DETAIL_MAX_LOAD_MS;
+  const guardedLoadPromise = withStageBudget(
+    loadPromise,
+    effectiveTimeoutMs,
+    `offer_detail:${merchantId}:${productId}`,
+  );
 
   if (!useMemoryCache) {
     return guardedLoadPromise;
   }
 
-  PRODUCT_DETAIL_INFLIGHT.set(cacheKey, loadPromise);
+  // Store the GUARDED promise, not the raw one. Concurrent callers for this key
+  // return the stored promise directly (see the PRODUCT_DETAIL_INFLIGHT.get
+  // above) — storing the unguarded load meant those piggybacking callers
+  // awaited something with no deadline, and evicting the map entry does not
+  // cancel an await already in flight.
+  trimOldestInflightEntries(PRODUCT_DETAIL_INFLIGHT, PRODUCT_DETAIL_INFLIGHT_MAX_ENTRIES);
+  PRODUCT_DETAIL_INFLIGHT.set(cacheKey, guardedLoadPromise);
   try {
     return await guardedLoadPromise;
   } finally {
-    PRODUCT_DETAIL_INFLIGHT.delete(cacheKey);
+    // Identity-checked so a slow unwind cannot evict a NEWER entry that has
+    // already replaced this one under the same key.
+    if (PRODUCT_DETAIL_INFLIGHT.get(cacheKey) === guardedLoadPromise) {
+      PRODUCT_DETAIL_INFLIGHT.delete(cacheKey);
+    }
   }
 }
 
@@ -50552,6 +50590,7 @@ module.exports._debug = {
   shouldSkipPdpSimilarFetchForAccessory,
   buildFindProductsMultiDiscoveryBridgeResponse,
   fetchProductDetailForOffers,
+  PRODUCT_DETAIL_INFLIGHT,
   fetchExternalSeedProductDetailFromDb,
   fetchExternalSeedSimilarCardSourcesFromDb,
   collectCatalogPdpContentSourceProductIds,
