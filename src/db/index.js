@@ -132,6 +132,28 @@ function getPool() {
       max: Number(process.env.DB_POOL_MAX || 5),
       idleTimeoutMillis: Number(process.env.DB_IDLE_TIMEOUT_MS || 30000),
       connectionTimeoutMillis: Number(process.env.DB_CONN_TIMEOUT_MS || 10000),
+      // Backstop so NO query in this process can hang forever.
+      //
+      // 2026-07-25: three sitemap PDPs returned zero bytes and no status,
+      // indefinitely, because `query()` is `Pool.query` — which had neither a
+      // server-side nor a client-side deadline. A single pathological plan
+      // pinned one of only `max` (default 5) connections until the TCP session
+      // died, and the awaiting request never produced a response at all.
+      //
+      // Both are set here rather than per-query on purpose: node-postgres sends
+      // them with the connection, so they cost ZERO extra round-trips. The
+      // per-query alternative (`queryWithStatementTimeout`) wraps each call in
+      // BEGIN / SET LOCAL / COMMIT — three extra round-trips on a hot read path
+      // whose app and database sit in different regions.
+      //
+      // Deliberately generous: these exist to kill true pathologies, not to
+      // enforce latency budgets. Per-request budgets belong at the call site
+      // (see `withStageBudget`). `query_timeout` is set ABOVE
+      // `statement_timeout` so the server-side cancel normally wins and the
+      // connection stays reusable; the client-side one only fires if the socket
+      // itself is wedged.
+      statement_timeout: Number(process.env.DB_STATEMENT_TIMEOUT_MS || 30000),
+      query_timeout: Number(process.env.DB_QUERY_TIMEOUT_MS || 35000),
       ssl:
         useSsl
           ? { rejectUnauthorized: process.env.DB_SSL_REJECT_UNAUTHORIZED !== 'false' }

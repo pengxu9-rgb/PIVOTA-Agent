@@ -5436,6 +5436,42 @@ const RESOLVE_CATALOG_SIGNATURE_CACHE_MAX_ENTRIES = Math.max(
 const RESOLVE_CATALOG_SIGNATURE_CACHE = new Map(); // sigId -> { value, expiresAtMs }
 const RESOLVE_CATALOG_SIGNATURE_INFLIGHT = new Map(); // sigId -> Promise
 
+// First-paint budget for the signature resolve itself.
+//
+// WHY THIS EXISTS (2026-07-25): three sitemap PDPs hung FOREVER — zero bytes,
+// no status, reproducible for hours. The chain was:
+//   1. `query()` is pg `Pool.query` with no `query_timeout` and no
+//      `statement_timeout`, so a pathological plan never settles.
+//   2. This resolver was the ONLY first-paint stage with no budget guard, so
+//      that unsettled promise was awaited directly by the handler.
+//   3. Worst of all, the single-flight map above stores the PENDING promise and
+//      only evicts it in `.finally()`. A promise that never settles is never
+//      evicted, so EVERY later request for that sig was handed the SAME dead
+//      promise. One unlucky query poisoned that sig for the life of the
+//      process, which is exactly why it looked like corrupt per-product data.
+//
+// Bounding the promise stored in INFLIGHT is the load-bearing part: it
+// guarantees `.finally()` runs, which guarantees the map self-heals.
+const RESOLVE_CATALOG_SIGNATURE_BUDGET_MS = Math.max(
+  250,
+  parseTimeoutMs(process.env.RESOLVE_CATALOG_SIGNATURE_BUDGET_MS, 6_000),
+);
+// Negative cooldown after a budget miss. `withStageBudget` only stops us
+// WAITING — the underlying query keeps running and keeps its pool connection
+// pinned (DB_POOL_MAX defaults to 5). Without a cooldown, a crawler hitting a
+// pathological sig would launch a fresh multi-second query every request and
+// starve the pool for every other operation. Fail fast instead until it lapses.
+const RESOLVE_CATALOG_SIGNATURE_COOLDOWN_MS = Math.max(
+  1_000,
+  parseTimeoutMs(process.env.RESOLVE_CATALOG_SIGNATURE_COOLDOWN_MS, 30_000),
+);
+const RESOLVE_CATALOG_SIGNATURE_COOLDOWN = new Map(); // cacheKey -> expiresAtMs
+
+// NOTE: the budget above only stops us WAITING. What actually releases the
+// pinned connection is the pool-level `statement_timeout` / `query_timeout` in
+// src/db/index.js — set there, not per-query, because the per-query helper
+// (`queryWithStatementTimeout`) costs three extra round-trips per call.
+
 function buildCatalogSignatureGroupMemberFromIdentityRow(row, canonicalRef = {}) {
   if (!row || typeof row !== 'object') return null;
   const sourcePayload = { ...(isPlainObject(row.source_payload) ? row.source_payload : {}) };
@@ -5602,7 +5638,21 @@ async function fetchApprovedLiveIdentityGroupMembersForOffers({
         -- no render-time fallback). Project the whitelisted electronics_meta off
         -- the resolved catalog row's payload so a group member that later feeds
         -- product composition carries the spec table like the primary route.
-        cp_offer.product_payload#>'{seed_data,electronics_meta}' AS catalog_electronics_meta,
+        --
+        -- GATED on the cheap category column: the #> operator against a TOASTed
+        -- jsonb forces a FULL detoast of product_payload, and this projection
+        -- runs once per identity-group member. Three Tom Ford Beauty PDPs
+        -- (payloads 1.0-1.9MB, in the corpus's two largest identity groups at
+        -- 40 and 43 members) were reading ~67-77MB of TOAST per request through
+        -- this one column — enough to hang the request outright. Verified
+        -- 2026-07-25: ZERO live rows carry seed_data.electronics_meta, so the
+        -- gate drops nothing today and still populates the moment an
+        -- electronics ingest writes it under an electronics* category.
+        CASE
+          WHEN cp_offer.category ILIKE 'electronics%'
+            THEN cp_offer.product_payload#>'{seed_data,electronics_meta}'
+          ELSE NULL
+        END AS catalog_electronics_meta,
         offer_row.offer_id AS catalog_offer_id,
         offer_row.sku_key AS catalog_sku_key,
         offer_row.currency AS catalog_offer_currency,
@@ -5690,6 +5740,62 @@ function normalizeCatalogSignatureResolveOptions(options = {}) {
   };
 }
 
+/**
+ * Budget-bounded call into the signature resolver.
+ *
+ * EVERY path out of here settles. That is the invariant the single-flight map
+ * below depends on: an unsettled promise in INFLIGHT is a permanent per-sig
+ * outage, not a slow request.
+ */
+function resolveCatalogSignatureInnerBounded(normalizedProductId, resolveOptions, cacheKey) {
+  return withStageBudget(
+    resolveCatalogProductRefFromPivotaSignatureInner(normalizedProductId, resolveOptions),
+    RESOLVE_CATALOG_SIGNATURE_BUDGET_MS,
+    'resolve_catalog_signature',
+  ).catch((err) => {
+    if (err?.code === 'STAGE_TIMEOUT') {
+      // Trip the cooldown so we stop launching new copies of a query that is
+      // already pinning a pool connection.
+      RESOLVE_CATALOG_SIGNATURE_COOLDOWN.set(
+        cacheKey,
+        Date.now() + RESOLVE_CATALOG_SIGNATURE_COOLDOWN_MS,
+      );
+      logger.warn(
+        {
+          product_id: normalizedProductId,
+          cache_variant: resolveOptions.cacheVariant,
+          budget_ms: RESOLVE_CATALOG_SIGNATURE_BUDGET_MS,
+          cooldown_ms: RESOLVE_CATALOG_SIGNATURE_COOLDOWN_MS,
+        },
+        'resolve_catalog_signature exceeded first-paint budget',
+      );
+    }
+    throw err;
+  });
+}
+
+function readCatalogSignatureCooldown(cacheKey) {
+  const until = RESOLVE_CATALOG_SIGNATURE_COOLDOWN.get(cacheKey);
+  if (!until) return null;
+  if (until <= Date.now()) {
+    RESOLVE_CATALOG_SIGNATURE_COOLDOWN.delete(cacheKey);
+    return null;
+  }
+  return until;
+}
+
+function buildCatalogSignatureTimeoutError(normalizedProductId) {
+  // Deliberately NOT a null return. Null means "this sig resolves to nothing",
+  // which the handler turns into PRODUCT_NOT_FOUND — and a 404 on a sitemap URL
+  // tells Google to drop a product that is probably fine. A thrown, retryable
+  // error keeps the index signal intact.
+  const err = new Error(
+    `Catalog signature resolve unavailable (${normalizedProductId}): first-paint budget exceeded`,
+  );
+  err.code = 'CATALOG_SIGNATURE_RESOLVE_TIMEOUT';
+  return err;
+}
+
 async function resolveCatalogProductRefFromPivotaSignature(productId, options = {}) {
   if (!process.env.DATABASE_URL) return null;
   const normalizedProductId = String(productId || '').trim();
@@ -5704,10 +5810,16 @@ async function resolveCatalogProductRefFromPivotaSignature(productId, options = 
     }
     if (cached) RESOLVE_CATALOG_SIGNATURE_CACHE.delete(cacheKey);
 
+    // A live cooldown means the last attempt blew its budget and its query may
+    // still be holding a connection. Fail fast rather than pile on.
+    if (readCatalogSignatureCooldown(cacheKey)) {
+      throw buildCatalogSignatureTimeoutError(normalizedProductId);
+    }
+
     const inflight = RESOLVE_CATALOG_SIGNATURE_INFLIGHT.get(cacheKey);
     if (inflight) return inflight;
 
-    const promise = resolveCatalogProductRefFromPivotaSignatureInner(normalizedProductId, resolveOptions)
+    const promise = resolveCatalogSignatureInnerBounded(normalizedProductId, resolveOptions, cacheKey)
       .then((value) => {
         if (RESOLVE_CATALOG_SIGNATURE_CACHE.size >= RESOLVE_CATALOG_SIGNATURE_CACHE_MAX_ENTRIES) {
           const firstKey = RESOLVE_CATALOG_SIGNATURE_CACHE.keys().next().value;
@@ -5726,7 +5838,10 @@ async function resolveCatalogProductRefFromPivotaSignature(productId, options = 
     return promise;
   }
 
-  return resolveCatalogProductRefFromPivotaSignatureInner(normalizedProductId, resolveOptions);
+  // Cache-bypass path (debug probes, cache_bypass=true). Still bounded — an
+  // unbounded await here would hang the request just as hard, it simply would
+  // not poison the sig for everyone else.
+  return resolveCatalogSignatureInnerBounded(normalizedProductId, resolveOptions, cacheKey);
 }
 
 async function resolveCatalogProductRefFromPivotaSignatureInner(normalizedProductId, options = {}) {
@@ -5844,6 +5959,10 @@ async function resolveCatalogProductRefFromPivotaSignatureInner(normalizedProduc
       let exactIdentityGroup = null;
       if (options.hydrateIdentityGroupMembers !== false && exactIdentityGroupId) {
         try {
+          // Heaviest query in the resolver: two correlated EXISTS plus a
+          // LATERAL join are evaluated for EVERY candidate row in the identity
+          // group before `LIMIT 200` can apply, so an over-clustered
+          // sellable_item_group_id is unbounded work, not a bounded 200 rows.
           const groupRowsResult = await query(
             `
               SELECT
@@ -5863,7 +5982,16 @@ async function resolveCatalogProductRefFromPivotaSignatureInner(normalizedProduc
                 -- electronics_meta off the resolved catalog row's payload so a
                 -- group member that later feeds product composition carries the
                 -- spec table like the primary route.
-                cp_offer.product_payload#>'{seed_data,electronics_meta}' AS catalog_electronics_meta,
+                --
+                -- GATED on category for the same reason as the sibling
+                -- projection above: #> on a TOASTed jsonb detoasts the WHOLE
+                -- payload, once per group member. See that comment for the
+                -- measured blast radius.
+                CASE
+                  WHEN cp_offer.category ILIKE 'electronics%'
+                    THEN cp_offer.product_payload#>'{seed_data,electronics_meta}'
+                  ELSE NULL
+                END AS catalog_electronics_meta,
                 offer_row.offer_id AS catalog_offer_id,
                 offer_row.sku_key AS catalog_sku_key,
                 offer_row.currency AS catalog_offer_currency,
@@ -40001,11 +40129,50 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 			        (!requestedMerchantId || requestedMerchantId === EXTERNAL_SEED_MERCHANT_ID)
 			      ) {
 		        const signatureResolveStartedAt = Date.now();
-        const signatureProductRef = await resolveCatalogProductRefFromPivotaSignature(productId, {
+        let signatureProductRef = null;
+        try {
+          signatureProductRef = await resolveCatalogProductRefFromPivotaSignature(productId, {
               hydrateIdentityListing: true,
               hydrateIdentityGroupMembers: wantsOffers,
               bypassCache,
             });
+        } catch (err) {
+          if (
+            err?.code !== 'CATALOG_SIGNATURE_RESOLVE_TIMEOUT' &&
+            err?.code !== 'STAGE_TIMEOUT'
+          ) {
+            throw err;
+          }
+          // Bounded failure, NOT "no such product". Answer 503 so the PDP
+          // degrades to a retryable error instead of hanging the request
+          // forever (zero bytes, no status, no log line — strictly worse than
+          // any error, because it also burns crawl budget and function time).
+          // Deliberately not 404: a 404 here would deindex a product whose only
+          // problem is a slow identity-group query.
+          markPdpV2Phase('resolve_catalog_signature', signatureResolveStartedAt);
+          logger.warn(
+            {
+              product_id: productId,
+              merchant_id: requestedMerchantId || null,
+              wants_offers: wantsOffers,
+              budget_ms: RESOLVE_CATALOG_SIGNATURE_BUDGET_MS,
+              phase_timings: pdpV2PhaseTimings,
+            },
+            'get_pdp_v2 signature resolve exceeded first-paint budget; returning retryable 503',
+          );
+          return res.status(503).json({
+            ...buildPdpV2ErrorBody({
+              error: 'TEMPORARY_UNAVAILABLE',
+              message: 'Product is temporarily unavailable. Please retry shortly.',
+              reasonCode: 'CATALOG_SIGNATURE_RESOLVE_TIMEOUT',
+              details: {
+                reason: 'catalog_signature_resolve_timeout',
+                budget_ms: RESOLVE_CATALOG_SIGNATURE_BUDGET_MS,
+              },
+              requestedProductId: requestedProductIdForDiagnostics || null,
+            }),
+          });
+        }
 		        markPdpV2Phase('resolve_catalog_signature', signatureResolveStartedAt);
 		        if (signatureProductRef?.product_id && signatureProductRef?.merchant_id) {
               requestedPivotaSignatureId = requestedProductIdForDiagnostics;
@@ -50215,6 +50382,10 @@ module.exports._debug = {
   enrichProductsWithDeals,
   buildOffersFromGroupMembers,
   fetchApprovedLiveIdentityGroupMembersForOffers,
+  resolveCatalogProductRefFromPivotaSignature,
+  RESOLVE_CATALOG_SIGNATURE_INFLIGHT,
+  RESOLVE_CATALOG_SIGNATURE_CACHE,
+  RESOLVE_CATALOG_SIGNATURE_COOLDOWN,
   buildCatalogSignatureGroupMemberFromIdentityRow,
   buildGroupMemberCatalogOfferLateralJoinSql,
   filterGroupMembersByCatalogSourceQuarantine,
