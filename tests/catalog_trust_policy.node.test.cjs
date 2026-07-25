@@ -573,3 +573,102 @@ test('observed_seller: review_required STILL shadows (hard gate)', () => {
   assert.notEqual(trust.serving_decision, 'public');
   assert.ok(trust.serving_reason_codes.includes(REASON_CODES.IDENTITY_REVIEW_REQUIRED_LIVE_READ));
 });
+
+// ---- c1.v0.5: CATALOG_TRUST_RENDERABLE_GATE --------------------------------
+//
+// Mirrors tests/test_catalog_trust_policy.py case-for-case. The gap this
+// closes: 1,825 rows were 'public' while the invariant said their PDP could not
+// render. Measured live 2026-07-25 — 449 render perfectly (the invariant was
+// wrong) and 1,376 serve a hard HTTP 500, not a shell. Blocking those 1,376
+// darkens 1,011 products with no renderable sibling row, so it is flag-gated.
+
+function withRenderableGate(value, fn) {
+  const previous = process.env.CATALOG_TRUST_RENDERABLE_GATE;
+  if (value === null) delete process.env.CATALOG_TRUST_RENDERABLE_GATE;
+  else process.env.CATALOG_TRUST_RENDERABLE_GATE = value;
+  try {
+    return fn();
+  } finally {
+    if (previous === undefined) delete process.env.CATALOG_TRUST_RENDERABLE_GATE;
+    else process.env.CATALOG_TRUST_RENDERABLE_GATE = previous;
+  }
+}
+
+test('renderable gate OFF by default leaves an unrenderable row public', () => {
+  const trust = withRenderableGate(null, () => call({ pdp_route_resolvable: false }));
+  assert.equal(trust.serving_decision, 'public');
+  assert.ok(!trust.serving_reason_codes.includes(REASON_CODES.PDP_ROUTE_UNRESOLVABLE));
+});
+
+test('renderable gate ON blocks a row with no PDP content route', () => {
+  const trust = withRenderableGate('true', () => call({ pdp_route_resolvable: false }));
+  assert.equal(trust.serving_decision, 'blocked');
+  assert.ok(trust.serving_reason_codes.includes(REASON_CODES.PDP_ROUTE_UNRESOLVABLE));
+});
+
+test('renderable gate ON leaves a renderable row public', () => {
+  const trust = withRenderableGate('on', () => call({ pdp_route_resolvable: true }));
+  assert.equal(trust.serving_decision, 'public');
+  assert.ok(!trust.serving_reason_codes.includes(REASON_CODES.PDP_ROUTE_UNRESOLVABLE));
+});
+
+test('renderable gate ON is inert when the input is absent (tri-state)', () => {
+  // A producer not yet taught to compute the input supplies nothing. Reading
+  // that as "not renderable" would mass-demote the catalog.
+  const trust = withRenderableGate('1', () => call());
+  assert.equal(trust.serving_decision, 'public');
+  assert.ok(!trust.serving_reason_codes.includes(REASON_CODES.PDP_ROUTE_UNRESOLVABLE));
+});
+
+test('renderable gate does not mask an earlier block reason', () => {
+  const trust = withRenderableGate('1', () =>
+    call({ ips: eligibleIps({ serving_eligible: false }), pdp_route_resolvable: false }),
+  );
+  assert.equal(trust.serving_decision, 'blocked');
+  assert.ok(trust.serving_reason_codes.includes(REASON_CODES.INDEX_NOT_SERVING_ELIGIBLE));
+  assert.ok(!trust.serving_reason_codes.includes(REASON_CODES.PDP_ROUTE_UNRESOLVABLE));
+});
+
+// ---- c1.v0.5 parity repairs (arms the Python twin had and this one did not) --
+
+test('observed_seller with seed_kind=cross is NOT identity-coverage exempt', () => {
+  // A retailer-sourced observed seller (no-D2C brand crawled from a
+  // marketplace) is not authoritative for its own content, so a missing
+  // identity must shadow rather than pass through as brand-official. Python
+  // has enforced this since the ADR-009 amendment; Node did not, so the two
+  // twins disagreed live on these rows.
+  const trust = callObservedSeller({
+    product: observedSellerProduct({ seed_kind: 'cross' }),
+    identity: null,
+  });
+  assert.notEqual(trust.serving_decision, 'public');
+  assert.ok(trust.serving_reason_codes.includes(REASON_CODES.IDENTITY_CONFIDENCE_NULL));
+});
+
+test('observed_seller with seed_kind=self keeps the exemption', () => {
+  const trust = callObservedSeller({
+    product: observedSellerProduct({ seed_kind: 'self' }),
+    identity: null,
+  });
+  assert.equal(trust.serving_decision, 'public');
+  assert.ok(trust.serving_reason_codes.includes(REASON_CODES.IDENTITY_NOT_APPLICABLE_FIRST_PARTY));
+});
+
+test('INDEX_ELIGIBLE_READ widening matches the Python twin', () => {
+  const previous = process.env.INDEX_ELIGIBLE_READ;
+  try {
+    delete process.env.INDEX_ELIGIBLE_READ;
+    const off = call({ ips: eligibleIps({ serving_eligible: false, index_eligible: true }) });
+    assert.equal(off.serving_decision, 'blocked');
+
+    process.env.INDEX_ELIGIBLE_READ = 'true';
+    const on = call({ ips: eligibleIps({ serving_eligible: false, index_eligible: true }) });
+    assert.notEqual(on.serving_decision, 'blocked');
+
+    const neither = call({ ips: eligibleIps({ serving_eligible: false, index_eligible: false }) });
+    assert.equal(neither.serving_decision, 'blocked');
+  } finally {
+    if (previous === undefined) delete process.env.INDEX_ELIGIBLE_READ;
+    else process.env.INDEX_ELIGIBLE_READ = previous;
+  }
+});
