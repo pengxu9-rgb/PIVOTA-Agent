@@ -19,13 +19,20 @@
 // touches pdp_identity_listing. What decides it is whether the gateway can
 // resolve a CONTENT ROUTE:
 //
-//   * seed-routed rows resolve detail through external_product_seeds keyed by
-//     external_product_id = catalog_products.source_product_id. No acceptable
-//     seed on that key ⇒ PRODUCT_NOT_FOUND ⇒ the static/ISR PDP route 500s.
-//     (This is why all 1,375 public catalog_enrichment_agent_v1 rows are dead:
-//     their seeds attach by attached_product_key and carry an
-//     external_product_id of the form `brand:hash`, while source_product_id is
-//     a name slug — the keys never meet.)
+//   * seed-routed rows resolve detail through external_product_seeds on TWO
+//     keys, in the gateway's own order of preference:
+//       1. external_product_id = catalog_products.source_product_id — the
+//          mirror lane, where source_product_id already IS a seed id;
+//       2. attached_product_key = catalog_products.product_key — the P3 minted
+//          lane, for catalog_enrichment_agent_v1 rows whose seeds attach by
+//          product_key and carry an external_product_id of the form
+//          brand:hash while their own source_product_id is a name slug.
+//     No acceptable seed on EITHER key ⇒ PRODUCT_NOT_FOUND ⇒ the static/ISR
+//     PDP route 500s. Key 2 is why the 1,375 public catalog_enrichment_agent_v1
+//     rows stopped being dead: before P3 the gateway only tried key 1, and
+//     11/11 sampled minted PDPs hard-500ed; after it, 12/12 sampled minted PDPs
+//     answered 200 with a real title, brand, image and price against prod data,
+//     while 8 mirror / 4 shopify / 3 url_audit controls were byte-identical.
 //   * merchant-synced rows (shopify/wix) were ASSUMED to resolve detail from the
 //     merchant upstream and need no seed. Measured, that is FALSE (7/7 HTTP
 //     500) — see MERCHANT_SYNCED_LANE_RENDERABLE below.
@@ -43,6 +50,19 @@ const SEED_ROUTED_SOURCE_SYSTEMS = new Set([
   'external_product_seeds_mirror_v1',
   'catalog_enrichment_agent_v1',
 ]);
+
+// Path-C "minted canonical" rows. Their seed does NOT answer on the route key:
+// it attaches by external_product_seeds.attached_product_key =
+// catalog_products.product_key and carries a brand:hash external_product_id,
+// while the minted row's own source_product_id is a canonical name slug.
+// Measured in prod 2026-07-25: 0 of 2,175 minted rows have ANY seed on the
+// route key, while 2,063 carry an attached seed (2,051 an active one).
+//
+// P3 taught get_pdp_v2 to resolve that second lane — see the LANE 1 arm of the
+// seed LATERAL in resolveCatalogProductRefFromPivotaSignatureInner in
+// src/server.js — so the lane is now renderable and this predicate has to say
+// so, or the sitemap keeps withholding ~1,375 PDPs that render fine.
+const MINTED_SOURCE_SYSTEM = 'catalog_enrichment_agent_v1';
 
 // Platforms with a live catalog-sync adapter. A platform missing here reads as
 // NOT renderable — fail-closed, so a new adapter stays out of the sitemap
@@ -93,6 +113,33 @@ const EXTERNAL_SEED_ID_PREFIXES = ['ext_', 'ext:'];
  * as acceptable: the gateway's check is
  * `if (externalSeedStatus && externalSeedStatus !== 'active')`.
  *
+ * P3 added the SECOND lane (attached_product_key). It is gated on
+ * source_system AND on "the route key answers with NOTHING", rather than OR-ed
+ * in flat, because the gateway's seed LATERAL ranks by LANE before it ranks by
+ * status: whenever lane 0 answers at all, its winner is what the precheck
+ * judges. A flat OR would over-advertise a row holding an inactive route-key
+ * seed alongside an active attached one — the gateway would 404
+ * external_seed_not_active while the sitemap called it renderable, which is
+ * #1583's dead-URL bug recreated on a new lane. The source_system test comes
+ * first so non-minted rows never pay for the two extra subqueries and their
+ * plan is unchanged.
+ *
+ * Two details in that arm mirror the gateway EXACTLY rather than
+ * approximately, both in the under-advertise direction if they ever diverge:
+ *
+ *   - `source_system = 'catalog_enrichment_agent_v1'` is an EXACT comparison,
+ *     like the gateway's LANE 1. Normalising it with lower/trim here would be
+ *     strictly WIDER than the gateway — the OVER-advertise direction.
+ *   - the lane-order NOT EXISTS carries the gateway LANE 0 platform conjunct
+ *     (`platform = 'external_seed'`), because the gateway falls through to
+ *     lane 1 exactly when its OWN lane 0 matched nothing.
+ *
+ * The ACCEPTANCE arm deliberately does NOT carry that platform guard: it never
+ * has, and adding it would change lanes this change is otherwise additive to.
+ * So it stays a STATED precondition — the equivalence holds exactly on rows
+ * whose platform is `external_seed`, which is all 2,175 minted rows in prod
+ * and every seed-mirror row. See the Python twin for the full note.
+ *
  * NOTE on `IN ('', 'active')`: this is deliberately WIDER than the gateway's
  * own ranking, which orders `status = 'active'` first. NULL / empty / all-space
  * statuses are accepted here because the gateway's precheck lets them through,
@@ -105,9 +152,18 @@ const EXTERNAL_SEED_ID_PREFIXES = ['ext_', 'ext:'];
  */
 function seedRouteResolvesSql(cpAlias = 'cp') {
   return (
-    'EXISTS (SELECT 1 FROM external_product_seeds _seed_route ' +
+    '(EXISTS (SELECT 1 FROM external_product_seeds _seed_route ' +
     `WHERE _seed_route.external_product_id = ${cpAlias}.source_product_id ` +
-    "AND coalesce(lower(trim(_seed_route.status)), '') IN ('', 'active'))"
+    "AND coalesce(lower(trim(_seed_route.status)), '') IN ('', 'active'))" +
+    ` OR (${cpAlias}.source_system = '${MINTED_SOURCE_SYSTEM}'` +
+    ' AND NOT EXISTS (SELECT 1 FROM external_product_seeds _seed_route_any ' +
+    `WHERE _seed_route_any.external_product_id = ${cpAlias}.source_product_id ` +
+    `AND lower(trim(coalesce(${cpAlias}.platform, ''))) ` +
+    `= '${EXTERNAL_SEED_MERCHANT_ID}')` +
+    ' AND EXISTS (SELECT 1 FROM external_product_seeds _seed_route_minted ' +
+    `WHERE _seed_route_minted.attached_product_key = ${cpAlias}.product_key ` +
+    "AND coalesce(lower(trim(_seed_route_minted.status)), '') " +
+    "IN ('', 'active'))))"
   );
 }
 
@@ -163,6 +219,7 @@ module.exports = {
   EXTERNAL_SEED_MERCHANT_ID,
   MERCHANT_SYNCED_LANE_RENDERABLE,
   MERCHANT_SYNCED_PLATFORMS,
+  MINTED_SOURCE_SYSTEM,
   SEED_ROUTED_SOURCE_SYSTEMS,
   pdpRouteResolvable,
   pdpRouteResolvableFromRow,

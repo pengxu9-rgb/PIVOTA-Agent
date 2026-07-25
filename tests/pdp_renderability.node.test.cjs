@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const {
   MERCHANT_SYNCED_LANE_RENDERABLE,
   MERCHANT_SYNCED_PLATFORMS,
+  MINTED_SOURCE_SYSTEM,
   pdpRouteResolvable,
   pdpRouteResolvableFromRow,
   seedRouteResolvesSql,
@@ -63,19 +64,35 @@ const MATRIX = [
     false,
   ],
   [
-    // THE 1,375. Path-C minted canonicals: the seed attaches by
-    // attached_product_key and carries external_product_id='brand:hash', while
-    // source_product_id is a name slug — the keys never meet, so nothing
-    // answers the gateway's lookup and the PDP hard-500s (11/11 measured).
-    'Path-C minted canonical whose seed does not answer on its id',
+    // Pre-P3 shape: a minted canonical with no seed on EITHER key. Nothing to
+    // render from, so it stays false — the 112-row slice P3 does not rescue.
+    'Path-C minted canonical with no seed on either key',
     {
       merchant_id: 'external_seed',
       platform: 'external_seed',
-      source_system: 'catalog_enrichment_agent_v1',
+      source_system: MINTED_SOURCE_SYSTEM,
       source_product_id: 'tower-28-beauty-sunnydays-tinted-spf-30',
       pdp_seed_route_ok: false,
     },
     false,
+  ],
+  [
+    // THE P3 FLIP. Same row shape, with the attached seed prod actually has
+    // (2,063 of 2,175 minted rows do). The route key still misses; the gateway
+    // falls through to attached_product_key and renders. Measured 12/12
+    // 404 -> 200 with real title/brand/image/price. The lane logic HERE is
+    // unchanged — minted rows were already seed-routed — so what this pins is
+    // that a true seed-route answer is honoured for the minted source_system
+    // exactly like any other seed row.
+    'Path-C minted canonical with an ACTIVE attached seed',
+    {
+      merchant_id: 'external_seed',
+      platform: 'external_seed',
+      source_system: MINTED_SOURCE_SYSTEM,
+      source_product_id: '9wishes-centella-pdrn-calm-ampule',
+      pdp_seed_route_ok: true,
+    },
+    true,
   ],
   [
     // Audit-minted: no merchant sync and no seed. Measured 500 (1/1).
@@ -199,17 +216,77 @@ test('a row without the seed-route column stays tri-state null', () => {
   assert.equal(pdpRouteResolvableFromRow(null), null);
 });
 
+// The literal both twins must emit, byte for byte. pivota-backend
+// tests/test_pdp_renderability.py asserts the SAME string against
+// services.pdp_renderability.seed_route_resolves_sql('cp'), so the two suites
+// fail together the moment either repo edits the fragment alone — which is the
+// one drift no runtime check can catch (the two services write ONE
+// catalog_row_trust table and would silently disagree per row).
+const SEED_ROUTE_SQL_CP =
+  "(EXISTS (SELECT 1 FROM external_product_seeds _seed_route WHERE " +
+  "_seed_route.external_product_id = cp.source_product_id AND " +
+  "coalesce(lower(trim(_seed_route.status)), '') IN ('', 'active')) " +
+  "OR (cp.source_system = 'catalog_enrichment_agent_v1' AND NOT " +
+  "EXISTS (SELECT 1 FROM external_product_seeds _seed_route_any WHERE" +
+  " _seed_route_any.external_product_id = cp.source_product_id AND " +
+  "lower(trim(coalesce(cp.platform, ''))) = 'external_seed') AND " +
+  "EXISTS (SELECT 1 FROM external_product_seeds _seed_route_minted " +
+  "WHERE _seed_route_minted.attached_product_key = cp.product_key AND" +
+  " coalesce(lower(trim(_seed_route_minted.status)), '') IN ('', " +
+  "'active'))))";
+  "coalesce(lower(trim(_seed_route_minted.status)), '') IN ('', 'active'))))";
+
+test('the seed-route fragment is byte-identical to the Python twin', () => {
+  assert.equal(seedRouteResolvesSql('cp'), SEED_ROUTE_SQL_CP);
+});
+
 test('the seed EXISTS fragment is correlated to the outer row', () => {
-  // If catalog_products ever leaks into that subquery's FROM the predicate
-  // becomes a cartesian product and every row reads renderable as long as ONE
-  // acceptable seed exists anywhere.
+  // If catalog_products ever leaks into any of these subqueries' FROM the
+  // predicate becomes a cartesian product and every row reads renderable as
+  // long as ONE acceptable seed exists anywhere.
   const sql = seedRouteResolvesSql('cp');
-  assert.match(sql, /^EXISTS \(SELECT 1 FROM external_product_seeds _seed_route /);
+  assert.match(sql, /^\(EXISTS \(SELECT 1 FROM external_product_seeds _seed_route /);
   assert.ok(sql.includes('_seed_route.external_product_id = cp.source_product_id'));
   assert.ok(!/FROM external_product_seeds _seed_route,/.test(sql));
   assert.ok(!sql.includes('catalog_products'));
+  // Every subquery correlates on the outer alias, none of them join it in.
+  assert.ok(sql.includes('_seed_route_any.external_product_id = cp.source_product_id'));
+  assert.ok(sql.includes('_seed_route_minted.attached_product_key = cp.product_key'));
   // A falsy status falls THROUGH the gateway precheck rather than 404ing.
   assert.ok(sql.includes("IN ('', 'active')"));
+});
+
+test('the minted lane is gated on source_system AND on lane 0 answering nothing', () => {
+  // The gateway's seed LATERAL ranks by LANE before status: whenever the route
+  // key answers at all, ITS winner is what the precheck judges. So the minted
+  // arm may only fire when the route key answers with nothing — a flat
+  // `routeKey OR attached` would advertise a row whose inactive route-key seed
+  // guarantees a 404 external_seed_not_active, recreating #1583's dead URLs.
+  const sql = seedRouteResolvesSql('cp');
+  assert.ok(
+    sql.includes(`cp.source_system = '${MINTED_SOURCE_SYSTEM}'`),
+    'the minted arm must be gated on source_system so no other lane borrows ' +
+      'it, and must compare it EXACTLY like the gateway does — normalising it ' +
+      'here would be strictly wider, i.e. the over-advertise direction',
+  );
+  const notExists = sql.match(/NOT EXISTS/g) || [];
+  assert.equal(
+    notExists.length,
+    1,
+    'exactly one NOT EXISTS — the lane-order guard, and nothing else',
+  );
+  assert.ok(
+    sql.includes(
+      'NOT EXISTS (SELECT 1 FROM external_product_seeds _seed_route_any ' +
+        'WHERE _seed_route_any.external_product_id = cp.source_product_id ' +
+        "AND lower(trim(coalesce(cp.platform, ''))) = 'external_seed')",
+    ),
+    'the lane-order guard must be a status-UNFILTERED NOT EXISTS on the ROUTE ' +
+      'key (status must not narrow it, or an inactive lane-0 seed stops ' +
+      "blocking) and must carry the gateway LANE 0 platform conjunct (without " +
+      'it, a minted row on another platform reads as "lane 0 answered" here ' +
+      'while the gateway falls through to lane 1)',
+  );
 });
 
 test('the seed EXISTS fragment encodes the gateway status precheck', () => {
@@ -229,11 +306,26 @@ test('the seed EXISTS fragment encodes the gateway status precheck', () => {
   //     'review_blocked' (7), 'disabled' (2) and 'blocked' (1), all of which
   //     must fall OUTSIDE the set.
   const sql = seedRouteResolvesSql('cp');
-  assert.match(sql, /^EXISTS \(/, 'must be EXISTS(acceptable), not NOT EXISTS(unacceptable)');
-  assert.ok(!/NOT\s+EXISTS/i.test(sql));
+  // Both ACCEPTANCE arms must be EXISTS(acceptable), never
+  // NOT EXISTS(unacceptable). The single NOT EXISTS in the fragment is the
+  // lane-order guard, which asks a different question (does lane 0 answer at
+  // all) and carries no status filter — pinned in the test above.
+  assert.match(
+    sql,
+    /^\(EXISTS \(/,
+    'must be EXISTS(acceptable), not NOT EXISTS(unacceptable)',
+  );
+  assert.ok(!/NOT\s+EXISTS[^)]*trim\(_seed_route/i.test(sql));
+  assert.ok(!/NOT\s+EXISTS[^)]*_seed_route_minted/i.test(sql));
   assert.ok(
     sql.includes("coalesce(lower(trim(_seed_route.status)), '') IN ('', 'active')"),
     'status must be case/whitespace-normalized and NULL-coalesced before the IN',
+  );
+  assert.ok(
+    sql.includes(
+      "coalesce(lower(trim(_seed_route_minted.status)), '') IN ('', 'active')",
+    ),
+    'the minted lane must normalize status exactly like the route-key lane',
   );
   for (const rejected of ['inactive', 'retired_demo', 'review_blocked', 'disabled', 'blocked']) {
     assert.ok(!sql.includes(`'${rejected}'`), `${rejected} must not be an accepted status`);

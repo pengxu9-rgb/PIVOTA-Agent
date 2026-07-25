@@ -15,8 +15,21 @@
 // serving_reason_codes). The other fields are advisory and used for ranking,
 // debugging, and shadow-comparison.
 //
-// Versioning: POLICY_VERSION must bump on any change to derivation logic.
-// The backfill job uses POLICY_VERSION to detect stale rows.
+// Versioning: POLICY_VERSION must bump on any change to derivation LOGIC — the
+// mapping from inputs to a decision. It must NOT bump when only an INPUT the
+// current logic cannot reach changes, because the backfill uses POLICY_VERSION
+// to detect stale rows and the UPSERT rewrites on a version mismatch: a
+// cosmetic bump costs a full ~14k-row rewrite and, worse, re-opens the
+// split-brain window where the two services disagree on the version until both
+// are deployed.
+//
+// Worked example — P3, 2026-07-25. It changed how pdp_route_resolvable is
+// COMPUTED (pdpRenderability learned the minted attached_product_key lane,
+// flipping 2,051 rows to renderable). That input is read in exactly one place,
+// deriveServingDecision, behind the default-OFF CATALOG_TRUST_RENDERABLE_GATE —
+// so every derived decision and every reason code is byte-identical before and
+// after, on all 14,104 rows. No bump. The version bumps the day the GATE flips,
+// not the day the input gets more accurate.
 
 const POLICY_VERSION = 'c1.v0.5';
 
