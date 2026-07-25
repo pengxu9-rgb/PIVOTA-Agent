@@ -80,6 +80,29 @@ test("upstream is asked for the over-fetch ceiling, not the caller's page_size",
   );
 });
 
+test("over-fetch is NOT applied past page 1 — it would relocate the caller's window", async () => {
+  // page 2 of size 10 means rows 11-20. Over-fetching to size 20 while leaving page=2 would ask upstream for
+  // rows 21-40 and silently skip ten products.
+  const seen = [];
+  const surface = createPublicReadToolSurface(
+    executorReturning([row("sig_live_a")], { onCall: (_op, params) => seen.push(params) }),
+    { filterChainResolvableRows: filterLiveOnly },
+  );
+  await surface.callTool("search_catalog", { query: "serum", page: 2, page_size: 10 });
+  assert.equal(seen[0]?.payload?.search?.page_size, 10, "deep pages must keep the caller's page_size");
+  assert.equal(seen[0]?.payload?.search?.page, 2, "and their page");
+});
+
+test("page 1 stated explicitly still over-fetches", async () => {
+  const seen = [];
+  const surface = createPublicReadToolSurface(
+    executorReturning([row("sig_live_a")], { onCall: (_op, params) => seen.push(params) }),
+    { filterChainResolvableRows: filterLiveOnly },
+  );
+  await surface.callTool("search_catalog", { query: "serum", page: 1, page_size: 10 });
+  assert.equal(seen[0]?.payload?.search?.page_size, 20);
+});
+
 test("caller's page_size still bounds the returned page", async () => {
   const surface = createPublicReadToolSurface(
     executorReturning(Array.from({ length: 20 }, (_, i) => row(`sig_live_${i}`))),
@@ -87,6 +110,28 @@ test("caller's page_size still bounds the returned page", async () => {
   );
   const out = await surface.callTool("search_catalog", { query: "serum", page_size: 3 });
   assert.equal(out.products.length, 3, "over-fetch must not leak into the caller's page size");
+});
+
+test("rows past the probe cap are truncated, never passed through unexamined", async () => {
+  // 100 rows, all "live" by the filter's rule. Only the first 40 may be probed; the remaining 60 must be
+  // dropped rather than silently admitted — an unexamined row reaching the page is the original bug.
+  const probed = [];
+  const surface = createPublicReadToolSurface(
+    executorReturning(Array.from({ length: 100 }, (_, i) => row(`sig_live_${i}`))),
+    {
+      filterChainResolvableRows: async (rows) => {
+        probed.push(rows.length);
+        return { kept: rows, droppedCount: 0 };
+      },
+    },
+  );
+  const out = await surface.callTool("search_catalog", { query: "serum", page_size: 20 });
+  assert.equal(probed[0], 40, "must not probe more than the cap");
+  assert.ok(out.products.length <= 20);
+  assert.ok(
+    out.products.every((p) => Number(p.product_id.split("_").pop()) < 40),
+    "no row from beyond the examined window may be advertised",
+  );
 });
 
 test("no filter injected leaves the result exactly as before", async () => {

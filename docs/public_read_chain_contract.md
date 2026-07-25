@@ -73,6 +73,26 @@ now asks upstream for the projector's ceiling (`MAX_SEARCH_RESULTS`) and lets th
 caller's `page_size`, turning drops into backfill. `"serum"` returns ~10 real results instead of 1 real + 9
 dead.
 
+### Two bounds worth knowing
+
+**Over-fetch applies to the first page only.** `page` is expressed in units of `page_size`, so inflating
+`page_size` while leaving `page` alone relocates the window — page 2 of size 10 (rows 11–20) would fetch page
+2 of size 20 (rows 21–40) and skip ten products. Deeper pages pass the caller's args through untouched and may
+return a short page.
+
+**The filter probes at most `2 × MAX_SEARCH_RESULTS` rows per search.** The recall pipeline carries a wide
+candidate pool (~50 rows) and only trims to the requested `page_size` while `FPM_ENFORCE_REQUESTED_PAGE_SIZE`
+is on; the cap keeps an unauthenticated search from fanning out one resolver probe per pooled row if that flag
+is ever flipped. Rows past the cap are **truncated, not passed through** — an unexamined row reaching the page
+is the original bug.
+
+### Known wart: `total` is an upper bound
+
+`total` still reports the upstream (unfiltered) match count, so it over-counts *fetchable* products, and a
+client paginating by `total / page_size` will hit short pages. Computing a true filtered total would mean
+probing the whole candidate pool on every search. `returned` is the honest per-page count. Left as-is
+deliberately rather than replaced with a fabricated number.
+
 ## Defense in depth
 
 The filter removes the systematic cohorts; the honest error covers the residual. Both are needed — the
