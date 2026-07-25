@@ -91,6 +91,12 @@ export function createHttpBackendUpstream(cfg = {}) {
       clearTimeout(timer);
     }
     if (!res.ok) {
+      // 404 = the backend positively answered "nothing here" (e.g. PRODUCT_NOT_FOUND). That is persistent and
+      // must not be advertised as a retriable outage — same distinction as throwCommerceKernelUpstreamError in
+      // src/server.js, kept in step so both upstream wirings classify the not-found signal identically.
+      if (res.status === 404) {
+        throw new PivotaCommerceError('NO_MERCHANT_OFFER', { reason: 'backend_not_found', status: res.status });
+      }
       throw new PivotaCommerceError('MERCHANT_UNAVAILABLE', { reason: 'backend_http_error', status: res.status });
     }
     let body;

@@ -24,6 +24,10 @@ export const AUDIT_EVENTS = Object.freeze([
   'user_auth_blocked',
   'operation_blocked',
   'merchant_unavailable',
+  // Distinct from merchant_unavailable on purpose: a catalog-coverage signal (an id advertised with no
+  // servable offer behind it), not an availability one. Folding the two together is what let a persistent
+  // dead-id condition read as a transient outage.
+  'no_merchant_offer',
   'idempotency_conflict_blocked',
   'after_sales_requested',
 ]);

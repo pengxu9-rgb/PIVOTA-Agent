@@ -29406,6 +29406,12 @@ async function throwCommerceKernelUpstreamError(operation, err) {
   const { code: upstreamCode, message: upstreamMessage, detail: upstreamDetail } = extractUpstreamErrorCode(err);
   const status = err?.response?.status || null;
   const normalizedCode = String(upstreamCode || '').trim().toUpperCase();
+  // A 404 / PRODUCT_NOT_FOUND from a READ lane is a persistent data condition, not an outage: the id has no
+  // servable detail because no acceptable offer/seed answers its content route, and that is true again on the
+  // next call. Mapping it to MERCHANT_UNAVAILABLE (retriable:true, "try again shortly") is what made the
+  // public search -> get_product chain a retry trap. Scoped to the not-found signal so every other upstream
+  // failure keeps its existing retriable classification.
+  const notFound = normalizedCode === 'PRODUCT_NOT_FOUND' || status === 404;
   const kernelCode =
     normalizedCode === 'QUOTE_EXPIRED'
       ? 'QUOTE_EXPIRED'
@@ -29413,7 +29419,9 @@ async function throwCommerceKernelUpstreamError(operation, err) {
         ? 'PRICE_CHANGED'
         : normalizedCode === 'OUT_OF_STOCK'
           ? 'OUT_OF_STOCK'
-          : 'MERCHANT_UNAVAILABLE';
+          : notFound
+            ? 'NO_MERCHANT_OFFER'
+            : 'MERCHANT_UNAVAILABLE';
   throw new PivotaCommerceError(kernelCode, {
     operation,
     upstream_status: status,
@@ -29509,6 +29517,8 @@ function statusForCommerceKernelError(code) {
       return 403;
     case 'QUOTE_NOT_FOUND':
     case 'STATE_LINKAGE_MISMATCH':
+    // Persistent "this id has nothing servable behind it" — a 404, not the 503 an outage gets.
+    case 'NO_MERCHANT_OFFER':
       return 404;
     case 'IDEMPOTENCY_CONFLICT':
     case 'PRICE_CHANGED':
@@ -30063,6 +30073,94 @@ async function getCommerceConfirmationActionHandler() {
 // origin (PUBLIC_READ_MCP_HOSTS, default mcp.pivota.cc — a custom domain on this same service preserves the
 // path, so the branded origin must dispatch by Host).
 
+// ---- the search -> get_product chain contract -------------------------------------------------------------
+// The whole point of the read pair is that an id from search can be fetched. It could not: measured on prod
+// 2026-07-25, 22 of 99 public search results (14 queries) returned ids get_product refused, and for "serum" 9
+// of the top 10. Every one of the 21 distinct dead ids was also absent from the sitemap and served a shell PDP
+// — they are not "temporarily unavailable", they have no content route at all.
+//
+// The public tier resolves UNSCOPED detail through get_pdp_v2's signature lane (see the get_product_detail
+// case in invokeCommerceKernelRawUpstream). This predicate asks that lane's OWN resolver whether an id would
+// resolve, rather than re-deriving a second predicate over catalog_products: services/pdpRenderability.js
+// documents at length what re-derivation costs when the twins drift (rows advertised renderable that then
+// 404). Two measured cohorts are removed, both decided off the resolver's own row:
+//   1. a non-signature id (e.g. `rejuran:...`) never resolves on the unscoped lane at all — 0 of 5 sampled;
+//   2. a seed-routed row with no acceptable seed on its content route.
+// Everything else is KEPT — see the drop-only-what-is-provably-dead note on publicReadDetailResolves.
+//
+// FAIL-OPEN by construction: any resolver error, timeout, or missing DATABASE_URL keeps the row. A blank
+// public search is a worse failure than a dead id, and a dead id that slips through now returns the honest
+// non-retriable NO_MERCHANT_OFFER rather than an invitation to retry forever.
+const { pdpRouteResolvable } = require('./services/pdpRenderability');
+
+const PUBLIC_READ_CHAIN_FILTER_CONCURRENCY = 8;
+
+function isPublicReadChainFilterEnabled() {
+  const raw = String(process.env.PUBLIC_READ_CHAIN_FILTER_ENABLED ?? '').trim().toLowerCase();
+  if (raw === '') return true; // default ON — the contract is the product
+  return !['0', 'false', 'off', 'no'].includes(raw);
+}
+
+// DROP ONLY WHAT IS PROVABLY DEAD. This is the opposite asymmetry from pdpRenderability's: there,
+// under-advertising costs a withheld sitemap URL, so the unproven lanes fail CLOSED. Here a false negative
+// deletes a product from search that get_product would have served, so the unproven lanes fail OPEN. That is
+// why this does NOT call pdpRouteResolvable directly — its non-seed arms return false for shopify/wix and for
+// "everything else", and 77 of the 98 ids sampled on prod resolve fine, so borrowing that verdict wholesale
+// would gut the catalog. Only the two cohorts measured dead are removed.
+async function publicReadDetailResolves(productId) {
+  const pid = String(productId || '').trim();
+  if (!pid) return false;
+  // Cohort 1 — the unscoped detail lane only understands Pivota signature ids. Measured: 0 of 5 sampled
+  // non-signature ids (`rejuran:...`) resolved, and every id that DID resolve was a sig_.
+  if (!isPivotaSignatureProductId(pid)) return false;
+  const ref = await resolveCatalogProductRefFromPivotaSignature(pid);
+  // No catalog row behind the signature ⇒ get_pdp_v2 has nothing to serve and answers PRODUCT_NOT_FOUND.
+  if (!ref) return false;
+  // Cohort 2 — a seed-ROUTED row whose content route has no acceptable seed. This is the same question
+  // seedRouteResolvesSql asks, read off the detail lane's own resolved row, and the same precheck get_pdp_v2
+  // applies (a seed that exists but is not active is a 404). Rows on any other lane are left alone.
+  const seedRouted = pdpRouteResolvable({
+    merchantId: ref.merchant_id,
+    platform: ref.platform,
+    sourceSystem: ref.source_system,
+    sourceProductId: ref.product_id,
+    seedRouteOk: true,
+  });
+  if (!seedRouted) return true; // not a seed-routed row — no evidence it is dead, so keep it
+  const seedStatus = String(ref.external_seed_status || '').trim().toLowerCase();
+  return Boolean(ref.external_seed_id) && (seedStatus === '' || seedStatus === 'active');
+}
+
+async function filterPublicReadChainResolvableRows(rows) {
+  const list = Array.isArray(rows) ? rows : [];
+  if (!list.length || !isPublicReadChainFilterEnabled() || !process.env.DATABASE_URL) {
+    return { kept: list, droppedCount: 0 };
+  }
+  const verdicts = new Array(list.length).fill(true);
+  let cursor = 0;
+  const worker = async () => {
+    for (let i = cursor++; i < list.length; i = cursor++) {
+      const row = list[i];
+      const pid = firstNonEmptyString(row?.pivota_signature_id, row?.product_id, row?.id);
+      try {
+        verdicts[i] = await publicReadDetailResolves(pid);
+      } catch (err) {
+        // Fail-open on this row only — see the FAIL-OPEN note above.
+        logger.warn(
+          { err: err?.message || String(err), product_id: pid },
+          'public_read chain filter: resolvability probe failed (row kept)',
+        );
+        verdicts[i] = true;
+      }
+    }
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(PUBLIC_READ_CHAIN_FILTER_CONCURRENCY, list.length) }, worker),
+  );
+  const kept = list.filter((_, i) => verdicts[i]);
+  return { kept, droppedCount: list.length - kept.length };
+}
+
 function isPublicReadMcpEnabled() {
   return /^(1|true|yes|on|enabled)$/i.test(String(process.env.PUBLIC_READ_MCP_ENABLED || '').trim());
 }
@@ -30086,7 +30184,10 @@ async function getPublicReadMcpAdapter() {
       const executor = await getCommerceCanonicalExecutor();
       const { createPublicReadToolSurface, formatPublicReadToolResult } = await import('../mcp-server/src/publicReadToolSurface.js');
       const { createRemoteMcpAdapter } = await import('../mcp-server/src/remoteMcpAdapter.js');
-      const surface = createPublicReadToolSurface(executor, { log: logger });
+      const surface = createPublicReadToolSurface(executor, {
+        log: logger,
+        filterChainResolvableRows: filterPublicReadChainResolvableRows,
+      });
       return createRemoteMcpAdapter(surface, {
         allowUnauthenticated: true,
         serverInfo: { name: 'pivota', version: '1.0.0' },

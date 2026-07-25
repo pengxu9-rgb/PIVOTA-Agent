@@ -505,7 +505,13 @@ export function toToolError(error) {
   const message = (typeof error.userMessage === "string" && error.userMessage)
     || (typeof error.message === "string" && error.message)
     || "The request could not be completed.";
-  return { isError: true, content: [{ type: "text", text: JSON.stringify({ error: { code, message } }, null, 2) }] };
+  // Surface the retry classification the taxonomy already carries. Without it the code alone is not actionable:
+  // an agent seeing an unfamiliar code has no way to tell "back off and retry" from "this will never succeed",
+  // so it retries — the budget burn this whole change is about. Only emitted for kernel errors that actually
+  // declare it, so a non-kernel safe error keeps its exact current body.
+  const retriable = typeof error.retriable === "boolean" ? error.retriable : undefined;
+  const body = retriable === undefined ? { code, message } : { code, message, retriable };
+  return { isError: true, content: [{ type: "text", text: JSON.stringify({ error: body }, null, 2) }] };
 }
 
 // --- small helpers ----------------------------------------------------------------------------------------
