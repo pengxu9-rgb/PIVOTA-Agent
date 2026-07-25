@@ -40036,6 +40036,24 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       let pdpV2IdentityGraphLiveMode = 'not_started';
 	    const markPdpV2Phase = (name, startedAt) => {
 	      pdpV2PhaseTimings[name] = Date.now() - startedAt;
+	      // Also drop a cumulative checkpoint for EVERY phase mark.
+	      //
+	      // Two reasons this is not redundant with `phases`:
+	      //
+	      // 1. `phases` is keyed by NAME, so a repeated name OVERWRITES. Both
+	      //    `resolve_catalog_signature` and `catalog_identity_hydration` are
+	      //    marked at two different sites, so a slow first pass is erased by a
+	      //    fast second one and reads as 0ms. Checkpoints keep both by
+	      //    suffixing the repeat.
+	      // 2. `phases` only measures WRAPPED spans. Gaps BETWEEN marks are
+	      //    invisible, and that is exactly where the missing ~8.5s lives:
+	      //    request_start -> after_savings_hydration is 10,128ms on an
+	      //    affected PDP vs 983ms on a control, while every phase inside that
+	      //    window reports 0ms. A cumulative timeline makes the gaps legible.
+	      const key = pdpV2Checkpoints[`phase:${name}`] === undefined
+	        ? `phase:${name}`
+	        : `phase:${name}#${Object.keys(pdpV2Checkpoints).filter((k) => k.startsWith(`phase:${name}`)).length + 1}`;
+	      pdpV2Checkpoints[key] = Date.now() - pdpV2StartedAt;
 	    };
 	    // Cumulative checkpoints, measured from pdpV2StartedAt.
 	    //
