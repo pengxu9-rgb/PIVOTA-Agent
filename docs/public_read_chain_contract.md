@@ -66,6 +66,16 @@ cohorts are removed:
 Rows on any other lane (shopify/wix, `url_audit`, `brand_authored`) are **kept**: 77 of 98 sampled ids resolve
 fine, and borrowing `pdpRouteResolvable`'s non-seed arms wholesale would have gutted the catalog.
 
+A third fail-open case is subtle enough to be worth stating: `resolveCatalogProductRefFromPivotaSignature` has
+fallback branches returning only `{merchant_id, product_id, platform, product_key}` — **no** `external_seed_*`
+columns. Value-checking `external_seed_id` would read those as "no seed" and drop healthy seed-routed rows,
+i.e. most of the catalog. The exact branch always *sets* the seed keys (even to `undefined`); the fallbacks
+never set them. So the discriminator is key **presence**, not value: no seed keys ⇒ the resolver did not
+answer the question ⇒ keep the row.
+
+The whole decision lives in `src/services/publicReadChainResolvability.js` precisely because it is this
+fiddly — it is unit-testable with no database.
+
 **Backfill, don't shrink.** Both post-hoc filters drop rows after the upstream already trimmed to the
 requested page size, so filtering alone would shrink the page. `"serum"` holds 9 dead rows in its top 10 but
 **11 resolvable rows in its top 20** — the dead rows are concentrated at the top of the ranking. The surface
@@ -118,7 +128,11 @@ python3 conformance/check.py
 
 ## Coverage
 
-- `mcp-server/test/publicReadChainContract.test.js` — filtering, backfill, over-fetch, opt-in behaviour
-- `mcp-server/test/noMerchantOfferError.test.js` — the taxonomy split and the `retriable` field
+- `mcp-server/test/publicReadChainContract.test.js` — filtering, backfill, over-fetch, first-page-only
+  pagination, the probe cap + truncation, opt-in behaviour
+- `mcp-server/test/noMerchantOfferError.test.js` — the taxonomy split, the `retriable` field, and that a bare
+  404 stays a retriable outage on `preview_quote` / `create_order` / `submit_payment`
+- `tests/public_read_chain_resolvability.node.test.cjs` — the drop/keep decision with no DB, including the
+  fallback-ref shape as an explicit regression against mass over-drop
 - `tests/public_read_chain_seed_routed_probe.node.test.cjs` — pins the seed-routed probe, and fails loudly if
   `MERCHANT_SYNCED_LANE_RENDERABLE` flips (which would otherwise silently delete every shopify row from search)
