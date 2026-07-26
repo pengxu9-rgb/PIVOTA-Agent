@@ -230,7 +230,49 @@ function normalizePdpImageUrls(values) {
   return out;
 }
 
+// Memo for buildPdpImageDedupeKey.
+//
+// The key is a PURE function of its input string — it parses into a fresh URL,
+// builds a local URLSearchParams and returns a string, mutating nothing — so
+// caching by exact input is output-identical by construction.
+//
+// WHY (2026-07-26): appendImageUrls in services/externalSeedProducts.js dedupes
+// with `out.some(existing => buildPdpImageDedupeKey(existing) === key)`, which
+// RECOMPUTES this key for every element of the accumulating gallery on every
+// incoming URL — O(n*m) calls of a ~15us function. External seeds make that
+// explode, because every variant carries an identical copy of the whole product
+// image list: the three Tom Ford PDPs that were serving 500s feed 7,276 image
+// URLs of which only 165 are DISTINCT (redundancy is exactly the variant count:
+// 40 variants => 40.0x). 7,276 x ~165 accumulated ~= 1.2M expensive calls, which
+// measured at ~18-20s locally and ~7.8s in prod — inside a request whose
+// frontend budget is 9s.
+//
+// Bounded so a long-lived process cannot grow it without limit; eviction is
+// oldest-first via Map insertion order.
+const PDP_IMAGE_DEDUPE_KEY_CACHE = new Map();
+const PDP_IMAGE_DEDUPE_KEY_CACHE_MAX_ENTRIES = Math.max(
+  1000,
+  Number(process.env.PDP_IMAGE_DEDUPE_KEY_CACHE_MAX_ENTRIES || 20000) || 20000,
+);
+
 function buildPdpImageDedupeKey(value) {
+  // Only memoize string inputs. Objects are rare here and are not safe map keys
+  // by identity, so they fall through to the uncached path unchanged.
+  if (typeof value !== 'string') return computePdpImageDedupeKey(value);
+
+  const cached = PDP_IMAGE_DEDUPE_KEY_CACHE.get(value);
+  if (cached !== undefined) return cached;
+
+  const computed = computePdpImageDedupeKey(value);
+  if (PDP_IMAGE_DEDUPE_KEY_CACHE.size >= PDP_IMAGE_DEDUPE_KEY_CACHE_MAX_ENTRIES) {
+    const oldest = PDP_IMAGE_DEDUPE_KEY_CACHE.keys().next().value;
+    if (oldest !== undefined) PDP_IMAGE_DEDUPE_KEY_CACHE.delete(oldest);
+  }
+  PDP_IMAGE_DEDUPE_KEY_CACHE.set(value, computed);
+  return computed;
+}
+
+function computePdpImageDedupeKey(value) {
   const normalized = normalizePdpImageUrl(value);
   if (!normalized) return '';
 
