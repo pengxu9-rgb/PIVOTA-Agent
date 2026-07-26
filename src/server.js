@@ -6033,6 +6033,13 @@ async function resolveCatalogProductRefFromPivotaSignatureInner(normalizedProduc
             -- renderability probes to the ~11% of rows that are genuinely
             -- duplicates instead of paying them on every PDP request.
             AND cce.canonical_sig_id IS DISTINCT FROM cp.pivota_signature_id
+            -- The stored id must still LOOK like a route id. Under
+            -- INDEX_ELIGIBLE_SITEMAP the backend's elector qualifies rows on
+            -- index_eligible alone rather than on the sig shape, so a non-sig_
+            -- pivota_signature_id could reach this table and then be handed to
+            -- agent-ui to build a URL out of. Underscore escaped — it is a
+            -- single-character wildcard in LIKE.
+            AND cce.canonical_sig_id LIKE 'sig\\_%'
             AND cp_elected.suppressed_at IS NULL
             -- NOT a step-5 dedupe loser. suppression_reason without
             -- suppressed_at is a real, populated state: 431 tombstoned rows
@@ -42452,11 +42459,23 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             match_basis: effectiveMatchBasis,
             canonical_scope: effectiveCanonicalScope || null,
             // The elected /products/{id} for this content_key, or null. See
-            // effectiveContentCanonicalRouteId above. Consumed by
-            // pivota-agent-ui's readServerCanonicalRouteId, which turns it into
-            // alternates.canonical — RANKED BELOW product_group_id, because a
-            // multi-merchant group is the wider canonicalisation and already
-            // subsumes this one.
+            // effectiveContentCanonicalRouteId above.
+            //
+            // CONSUMER STATUS: nothing on pivota-agent-ui's `main` reads this
+            // yet — the consumer is pivota-agent-ui#283
+            // (readServerCanonicalRouteId), which is a coordinated, still
+            // UNMERGED change. Until it lands this field is inert and no
+            // rendered canonical tag changes. Stated explicitly because an
+            // earlier version of this comment described the consumer in the
+            // present tense, and in a change whose whole discipline is "READ,
+            // never derive", a comment asserting a contract that does not exist
+            // is exactly what a future reader will trust.
+            //
+            // When it lands, the consumer ranks it BELOW product_group_id (a
+            // multi-merchant group is the wider canonicalisation and subsumes
+            // this) and BELOW #1833's dedupe keeper (an explicit
+            // keeper_product_key from the row layer beats an election seeded
+            // from whichever URL happened to be indexed).
             content_canonical_route_id: effectiveContentCanonicalRouteId,
             pdp_schema_profile: pdpSchemaProfile,
             pdp_content_source: pdpContentSource,

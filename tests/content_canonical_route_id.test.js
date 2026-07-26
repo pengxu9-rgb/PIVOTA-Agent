@@ -119,6 +119,17 @@ describe('content_canonical_election is READ by the signature resolver', () => {
     expect(sql).toContain('cp_elected.suppressed_at IS NULL');
     expect(sql).toContain('ips_elected.serving_eligible IS TRUE');
     expect(sql).toContain("cm_elected.status IN ('active', 'observed')");
+    expect(sql).toContain('cm_elected.indexable IS TRUE');
+    // NOT a step-5 dedupe loser — the guard against the #1833 interaction
+    // specifically. #1833 points every tombstone at its keeper INSIDE the same
+    // content_key, so crowning a tombstone here would point a live keeper back
+    // at the duplicate it replaced, undoing a fix already in production.
+    expect(sql).toContain('cp_elected.suppression_reason IS NULL');
+    // The stored id must still LOOK like a route id. Under
+    // INDEX_ELIGIBLE_SITEMAP the backend's elector qualifies rows on
+    // index_eligible alone, so a non-sig_ pivota_signature_id could be stored
+    // and then handed to agent-ui to build a URL out of.
+    expect(sql).toContain("cce.canonical_sig_id LIKE 'sig\\_%'");
     // ...including BOTH halves of renderability: the lane dispatch and the
     // seed route. The seed route alone would pass a merchant-synced row whose
     // source_product_id collided with a seed id.
