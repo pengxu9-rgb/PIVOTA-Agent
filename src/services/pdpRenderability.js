@@ -168,6 +168,41 @@ function seedRouteResolvesSql(cpAlias = 'cp') {
 }
 
 /**
+ * SQL twin of the LANE DISPATCH in `pdpRouteResolvable` — "is this row
+ * seed-routed at all?".
+ *
+ * `seedRouteResolvesSql` alone is NOT the renderability predicate; it answers
+ * only the seed lane. A merchant-synced (shopify/wix) row whose
+ * `source_product_id` happened to collide with some seed's
+ * `external_product_id` would satisfy it, while `pdpRouteResolvable` returns
+ * MERCHANT_SYNCED_LANE_RENDERABLE — measured FALSE. Callers needing the whole
+ * predicate in SQL must AND the two, or they sit on the OVER-advertise side,
+ * which for a canonical tag means pointing a live page at a URL that 500s.
+ *
+ * Mirrors the `seedRouted` disjunction verbatim, including that it is evaluated
+ * BEFORE the merchant-synced lane, so an `ext_`-prefixed id under a normal
+ * merchant stays seed-gated.
+ *
+ * @param {string} cpAlias catalog_products alias in the enclosing statement
+ */
+function seedRoutedLaneSql(cpAlias = 'cp') {
+  const sourceSystems = [...SEED_ROUTED_SOURCE_SYSTEMS]
+    .map((system) => `'${system}'`)
+    .join(', ');
+  // `left(..., 4) IN (...)`, NOT `LIKE 'ext_%'` — `_` is a single-character
+  // wildcard in LIKE, so the pattern form would also match `extX…` and make
+  // this predicate WIDER than the `loweredId.slice(0, 4)` it mirrors. Wider is
+  // the over-advertise direction.
+  const idPrefixes = EXTERNAL_SEED_ID_PREFIXES.map((prefix) => `'${prefix}'`).join(', ');
+  return (
+    `(${cpAlias}.merchant_id = '${EXTERNAL_SEED_MERCHANT_ID}'` +
+    ` OR lower(trim(coalesce(${cpAlias}.platform, ''))) = '${EXTERNAL_SEED_MERCHANT_ID}'` +
+    ` OR lower(trim(coalesce(${cpAlias}.source_system, ''))) IN (${sourceSystems})` +
+    ` OR left(lower(trim(coalesce(${cpAlias}.source_product_id, ''))), 4) IN (${idPrefixes}))`
+  );
+}
+
+/**
  * @param {Object} args
  * @param {string|null} args.merchantId
  * @param {string|null} args.platform
@@ -223,5 +258,6 @@ module.exports = {
   SEED_ROUTED_SOURCE_SYSTEMS,
   pdpRouteResolvable,
   pdpRouteResolvableFromRow,
+  seedRoutedLaneSql,
   seedRouteResolvesSql,
 };

@@ -84,6 +84,10 @@ const {
   getProviderById,
   normalizeServicesSearchParams,
 } = require('./services/servicesSearch');
+// The renderability predicate this repo already owns. Reused verbatim to
+// validate an ELECTED canonical sig rather than restated — a fourth hand-kept
+// copy of it is how the surfaces would drift apart again.
+const { seedRoutedLaneSql, seedRouteResolvesSql } = require('./services/pdpRenderability');
 const bookingsApi = require('./services/bookings/api');
 const requireBookingFlagOn = bookingsApi.requireBookingFlagOn;
 const {
@@ -5885,11 +5889,22 @@ async function resolveCatalogProductRefFromPivotaSignature(productId, options = 
 let CONTENT_CANONICAL_ELECTION_TABLE_MISSING = false;
 
 function isMissingContentCanonicalElectionError(err) {
-  // 42P01 = undefined_table. The message test is belt to that braces: the pg
-  // driver surfaces the code, but a wrapping proxy may carry only the text.
-  if (err?.code === '42P01') return true;
+  // The relation NAME is the required signal, not the SQLSTATE.
+  //
+  // This query also touches catalog_products, catalog_merchants,
+  // index_pipeline_state and external_product_seeds. Latching on a bare
+  // `code === '42P01'` therefore disabled the feature permanently whenever ANY
+  // of those went missing — verified by injecting `relation
+  // "index_pipeline_state" does not exist`: the next request for a healthy,
+  // unrelated sig ran the no-join SQL, and the warn line blamed migration 181.
+  // Silent, process-lifetime, and misdiagnosed.
+  //
+  // Postgres's undefined_table message always names the relation, so requiring
+  // the name first costs nothing and the SQLSTATE stays as corroboration (a
+  // wrapping proxy may carry only the text).
   const message = String(err?.message || err || '');
-  return message.includes('content_canonical_election') && message.includes('does not exist');
+  if (!message.includes('content_canonical_election')) return false;
+  return err?.code === '42P01' || message.includes('does not exist');
 }
 
 async function resolveCatalogProductRefFromPivotaSignatureInner(normalizedProductId, options = {}) {
@@ -5939,7 +5954,7 @@ async function resolveCatalogProductRefFromPivotaSignatureInner(normalizedProduc
           -- Aliased content_canonical_* because canonical_sig_id is already
           -- taken on the ref this row builds, where it means the sellable
           -- ITEM GROUP id — a different and wider canonicalisation.
-          ${withElection ? 'cce.canonical_sig_id' : 'NULL::text'} AS content_canonical_sig_id,
+          ${withElection ? 'cce_valid.canonical_sig_id' : 'NULL::text'} AS content_canonical_sig_id,
           eps.id AS external_seed_id,
           eps.external_product_id AS external_seed_external_product_id,
           eps.status AS external_seed_status,
@@ -5986,7 +6001,60 @@ async function resolveCatalogProductRefFromPivotaSignatureInner(normalizedProduc
         -- and the PDP falls back to a self-referential canonical — exactly the
         -- behaviour that predates this join. Primary-key lookup on a row this
         -- query has already materialised, so it adds no round trip.
-        ${withElection ? 'LEFT JOIN content_canonical_election cce ON cce.content_key = cp.content_key' : ''}
+        ${withElection ? `LEFT JOIN LATERAL (
+          -- The elected canonical sig for this content_key, but ONLY while that
+          -- sig is STILL something we would advertise.
+          --
+          -- An election is a durable fact; electability is a live one, and they
+          -- diverge the moment the elected row stops rendering. Reading the
+          -- election unvalidated produces the exact failure this feature exists
+          -- to prevent: the SITEMAP is structurally safe (its renderable filter
+          -- runs before the dedup, so a dead sig is never a candidate and the
+          -- live sibling gets advertised), but this side would still hand the
+          -- sibling's PDP the dead sig — so we would submit URL B while B's own
+          -- page canonicalised at a URL that 500s. That content_key then loses
+          -- ALL index presence: worse than the duplicate, worse than a moved
+          -- URL. Not hypothetical — P3 moved 2,051 rows on renderable in a day.
+          --
+          -- NULL is the correct degradation: it means "no election", which the
+          -- consumer already handles by falling back to self, so both surfaces
+          -- fall back TOGETHER.
+          SELECT cce.canonical_sig_id
+          FROM content_canonical_election cce
+          JOIN catalog_products cp_elected
+            ON cp_elected.pivota_signature_id = cce.canonical_sig_id
+          JOIN index_pipeline_state ips_elected
+            ON ips_elected.content_key = cp_elected.content_key
+          LEFT JOIN catalog_merchants cm_elected
+            ON cm_elected.merchant_id = cp_elected.merchant_id
+          WHERE cce.content_key = cp.content_key
+            -- Skip the whole check when the election names THIS row: a
+            -- self-canonical needs no cross-reference, and this confines the
+            -- renderability probes to the ~11% of rows that are genuinely
+            -- duplicates instead of paying them on every PDP request.
+            AND cce.canonical_sig_id IS DISTINCT FROM cp.pivota_signature_id
+            AND cp_elected.suppressed_at IS NULL
+            -- NOT a step-5 dedupe loser. suppression_reason without
+            -- suppressed_at is a real, populated state: 431 tombstoned rows
+            -- still serve 200s and 362 are live sitemap URLs. #1833 points
+            -- every such loser at its keeper, and that keeper is in the SAME
+            -- content_key — so crowning a tombstone here would point a live
+            -- keeper at a duplicate and undo a fix already in production.
+            AND cp_elected.suppression_reason IS NULL
+            AND cp_elected.content_key IS NOT NULL
+            AND ips_elected.serving_eligible IS TRUE
+            AND cm_elected.indexable IS TRUE
+            AND cm_elected.status IN ('active', 'observed')
+            -- BOTH halves of renderability: the lane dispatch AND the seed
+            -- route. seedRouteResolvesSql alone would pass a merchant-synced
+            -- row whose source_product_id collided with a seed id, while
+            -- pdpRouteResolvable calls that lane FALSE — and being wider here
+            -- is the over-advertise direction, i.e. canonicalising a live page
+            -- at a URL that 500s.
+            AND ${seedRoutedLaneSql('cp_elected')}
+            AND ${seedRouteResolvesSql('cp_elected')}
+          LIMIT 1
+        ) cce_valid ON true` : ''}
         LEFT JOIN LATERAL (
           SELECT
             seed_pick.id,

@@ -79,7 +79,7 @@ afterAll(() => {
 });
 
 describe('content_canonical_election is READ by the signature resolver', () => {
-  test('joins the election table on content_key and selects the aliased winner', async () => {
+  test('reads the election on content_key and selects the validated winner', async () => {
     const { app, seenSql } = loadServerWithRows([signatureRow()]);
 
     await app._debug.resolveCatalogProductRefFromPivotaSignature(SIG_SIBLING, {
@@ -88,16 +88,24 @@ describe('content_canonical_election is READ by the signature resolver', () => {
     });
 
     const sql = seenSql[0];
-    expect(sql).toContain('LEFT JOIN content_canonical_election cce');
+    expect(sql).toContain('FROM content_canonical_election cce');
     expect(sql).toContain('cce.content_key = cp.content_key');
-    expect(sql).toContain('cce.canonical_sig_id AS content_canonical_sig_id');
+    expect(sql).toContain('cce_valid.canonical_sig_id AS content_canonical_sig_id');
   });
 
-  test('the join is LEFT, so an unelected content_key still resolves', async () => {
-    // A LEFT join is the whole safety story: freshly-minted content_keys, and
-    // every row while the election sweep has not yet run, must keep resolving.
-    // An INNER join would 404 them — turning a missing canonical TAG into a
-    // missing PAGE.
+  test('THE STALE-ELECTION GUARD: the elected sig must still be advertisable', async () => {
+    // An election is a durable fact; electability is a live one. When the
+    // elected sig stops rendering, the SITEMAP is structurally safe — its
+    // renderable filter runs before the dedup, so the dead sig is not a
+    // candidate and the live sibling gets advertised. This side has no such
+    // structure: reading the election unvalidated would hand the sibling's PDP
+    // the dead sig, so we would submit URL B while B's own page canonicalised
+    // at a URL that 500s. That content_key then loses ALL index presence —
+    // worse than the duplicate, and worse than a moved URL.
+    //
+    // P3 moved 2,051 rows on `renderable` in a single day; nothing prevents the
+    // reverse direction, and (until scheduled) the sweep that would re-elect
+    // runs by hand.
     const { app, seenSql } = loadServerWithRows([signatureRow()]);
 
     await app._debug.resolveCatalogProductRefFromPivotaSignature(SIG_SIBLING, {
@@ -105,8 +113,46 @@ describe('content_canonical_election is READ by the signature resolver', () => {
       hydrateIdentityGroupMembers: false,
     });
 
+    const sql = seenSql[0];
+    // Re-asks the serving question of the ELECTED row, on its own alias...
+    expect(sql).toContain('cp_elected.pivota_signature_id = cce.canonical_sig_id');
+    expect(sql).toContain('cp_elected.suppressed_at IS NULL');
+    expect(sql).toContain('ips_elected.serving_eligible IS TRUE');
+    expect(sql).toContain("cm_elected.status IN ('active', 'observed')");
+    // ...including BOTH halves of renderability: the lane dispatch and the
+    // seed route. The seed route alone would pass a merchant-synced row whose
+    // source_product_id collided with a seed id.
+    expect(sql).toContain("cp_elected.merchant_id = 'external_seed'");
+    expect(sql).toContain('_seed_route.external_product_id = cp_elected.source_product_id');
+    // And it skips the whole probe when the election names THIS row.
+    expect(sql).toContain('cce.canonical_sig_id IS DISTINCT FROM cp.pivota_signature_id');
+  });
+
+  test('the election read is a LEFT LATERAL, so an unelected content_key still resolves', async () => {
+    // The whole safety story: freshly-minted content_keys, every row while the
+    // sweep has not run, and every row whose election failed validation must
+    // keep resolving. An inner join would 404 them — turning a missing
+    // canonical TAG into a missing PAGE.
+    const { app, seenSql } = loadServerWithRows([signatureRow()]);
+
+    await app._debug.resolveCatalogProductRefFromPivotaSignature(SIG_SIBLING, {
+      hydrateIdentityListing: false,
+      hydrateIdentityGroupMembers: false,
+    });
+
+    expect(seenSql[0]).toContain(') cce_valid ON true');
     expect(seenSql[0]).not.toMatch(/\bINNER JOIN content_canonical_election\b/);
     expect(seenSql[0]).not.toMatch(/\n\s*JOIN content_canonical_election\b/);
+  });
+
+  test('the seed-routed lane SQL uses left(), not a LIKE whose _ is a wildcard', async () => {
+    // `LIKE 'ext_%'` matches `extX…` because `_` is a single-character wildcard
+    // in SQL — strictly WIDER than the `slice(0, 4)` it mirrors, and wider is
+    // the over-advertise direction for a canonical tag.
+    const { seedRoutedLaneSql } = require('../src/services/pdpRenderability');
+    const sql = seedRoutedLaneSql('cp_elected');
+    expect(sql).toContain("left(lower(trim(coalesce(cp_elected.source_product_id, ''))), 4)");
+    expect(sql).not.toContain("LIKE 'ext_");
   });
 
   test('surfaces the elected sig on the ref when the content_key has a winner', async () => {
@@ -192,6 +238,57 @@ describe('content_canonical_election is READ by the signature resolver', () => {
       { ...opts, bypassCache: true },
     );
     expect(sawElectionJoin).toBe(1);
+  });
+
+  test('the latch does NOT fire on an unrelated missing relation', async () => {
+    // The query also touches catalog_products, catalog_merchants,
+    // index_pipeline_state and external_product_seeds. Latching on a bare
+    // `code === '42P01'` disabled the election permanently whenever ANY of them
+    // went missing — silently, for the whole process lifetime, with a warn line
+    // blaming migration 181. Postgres always names the relation, so requiring
+    // the name costs nothing.
+    let electionSqlSeen = 0;
+    jest.resetModules();
+    process.env = {
+      ...ORIGINAL_ENV,
+      NODE_ENV: 'test',
+      DATABASE_URL: 'postgres://user:pass@localhost:5432/test',
+      RESOLVE_CATALOG_SIGNATURE_BUDGET_MS: '2000',
+    };
+    let failNext = true;
+    const query = jest.fn(async (sql) => {
+      const text = String(sql);
+      if (text.includes('content_canonical_election')) electionSqlSeen += 1;
+      if (failNext) {
+        failNext = false;
+        const err = new Error('relation "index_pipeline_state" does not exist');
+        err.code = '42P01';
+        throw err;
+      }
+      return { rows: text.includes('FROM catalog_products') ? [signatureRow()] : [] };
+    });
+    jest.doMock('../src/db', () => ({
+      query,
+      queryWithStatementTimeout: query,
+      withClient: jest.fn(),
+      getPool: jest.fn(() => ({})),
+      closePool: jest.fn(),
+    }));
+    const app = require('../src/server');
+    const opts = { hydrateIdentityListing: false, hydrateIdentityGroupMembers: false };
+
+    // The unrelated failure must propagate, not be swallowed into a latch.
+    await expect(
+      app._debug.resolveCatalogProductRefFromPivotaSignature(SIG_SIBLING, opts),
+    ).resolves.toBeNull();
+
+    const before = electionSqlSeen;
+    await app._debug.resolveCatalogProductRefFromPivotaSignature(
+      'sig_0000000000000000000000000000beef',
+      { ...opts, bypassCache: true },
+    );
+    // THE REGRESSION: the next request still asks for the election.
+    expect(electionSqlSeen).toBeGreaterThan(before);
   });
 
   test('survives buildCatalogIdentityFromSignatureProductRef', async () => {
