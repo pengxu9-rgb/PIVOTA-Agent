@@ -84,6 +84,10 @@ const {
   getProviderById,
   normalizeServicesSearchParams,
 } = require('./services/servicesSearch');
+// The renderability predicate this repo already owns. Reused verbatim to
+// validate an ELECTED canonical sig rather than restated — a fourth hand-kept
+// copy of it is how the surfaces would drift apart again.
+const { seedRoutedLaneSql, seedRouteResolvesSql } = require('./services/pdpRenderability');
 const bookingsApi = require('./services/bookings/api');
 const requireBookingFlagOn = bookingsApi.requireBookingFlagOn;
 const {
@@ -5865,10 +5869,60 @@ async function resolveCatalogProductRefFromPivotaSignature(productId, options = 
   return resolveCatalogSignatureInnerBounded(normalizedProductId, resolveOptions, cacheKey);
 }
 
+// content_canonical_election is created by pivota-backend migration 181, whose
+// prod apply rides db/schema_guard.py at backend boot. THIS repo deploys
+// independently, so there is a window — and a merge-order mistake — in which
+// this gateway runs against a database that has not grown the table yet.
+//
+// Without this latch that window is a TOTAL outage, not a degraded feature: the
+// election is joined in the PRIMARY signature-resolution query, so a missing
+// relation fails every single /products/{sig} PDP, not just the 474 duplicate
+// groups the election exists for. That is wildly out of proportion to what is
+// being added, which is a canonical TAG. So on undefined_table: drop the join,
+// serve every PDP exactly as it did before migration 181 (its own
+// self-referential canonical), and pick the election back up on the next
+// process start.
+//
+// Latched per process rather than re-probed per request — a missing table does
+// not reappear mid-process, and re-probing would put a guaranteed-failing query
+// in front of every PDP.
+let CONTENT_CANONICAL_ELECTION_TABLE_MISSING = false;
+
+// Mirrors pivota-backend's INDEX_ELIGIBLE_SITEMAP (ADR-007 SLICE 1, the
+// offer-free citation floor). It governs which rows the backend's ELECTOR will
+// crown, so the guard that validates an elected sig has to widen with it or it
+// silently rejects every widen-only winner.
+//
+// Read at module load, like the backend's own `_flag_on`. Cross-service flag
+// coupling is not lovely, but the alternative — this gateway guessing at the
+// backend's eligibility rule — is exactly the drift the whole design is built
+// to prevent. Default OFF matches the backend's default; set BOTH or neither.
+const INDEX_ELIGIBLE_SITEMAP_ENABLED = ['1', 'true', 'yes', 'on'].includes(
+  String(process.env.INDEX_ELIGIBLE_SITEMAP || '').trim().toLowerCase(),
+);
+
+function isMissingContentCanonicalElectionError(err) {
+  // The relation NAME is the required signal, not the SQLSTATE.
+  //
+  // This query also touches catalog_products, catalog_merchants,
+  // index_pipeline_state and external_product_seeds. Latching on a bare
+  // `code === '42P01'` therefore disabled the feature permanently whenever ANY
+  // of those went missing — verified by injecting `relation
+  // "index_pipeline_state" does not exist`: the next request for a healthy,
+  // unrelated sig ran the no-join SQL, and the warn line blamed migration 181.
+  // Silent, process-lifetime, and misdiagnosed.
+  //
+  // Postgres's undefined_table message always names the relation, so requiring
+  // the name first costs nothing and the SQLSTATE stays as corroboration (a
+  // wrapping proxy may carry only the text).
+  const message = String(err?.message || err || '');
+  if (!message.includes('content_canonical_election')) return false;
+  return err?.code === '42P01' || message.includes('does not exist');
+}
+
 async function resolveCatalogProductRefFromPivotaSignatureInner(normalizedProductId, options = {}) {
   try {
-    const exactResult = await query(
-      `
+    const buildExactSignatureSql = (withElection) => `
         SELECT
           cp.merchant_id,
           cp.platform,
@@ -5897,6 +5951,23 @@ async function resolveCatalogProductRefFromPivotaSignatureInner(normalizedProduc
           signature_ips.blocker_code AS signature_blocker_code,
           signature_ips.blocker_detail AS signature_blocker_detail,
           signature_ips.content_quality_score AS signature_content_quality_score,
+          -- Migration 181 (pivota-backend). The ONE sig that holds the public
+          -- URL for this row's content_key. 474 content_keys serve identical
+          -- content under 2-7 sitemap-eligible sigs, and until now every one of
+          -- those pages emitted a SELF-referential <link rel="canonical"> — two
+          -- URLs, same content, each claiming to be canonical, so Google is
+          -- free to index the one the sitemap does NOT advertise.
+          --
+          -- The value is READ, never derived here. The sitemap advertises
+          -- exactly this sig, and it can only do that because both sides read
+          -- one stored answer: the winner is sticky on index equity
+          -- (pivota-agent-ui#280 seeded it from the URLs already indexed), and
+          -- incumbency is not a property either surface can recompute.
+          --
+          -- Aliased content_canonical_* because canonical_sig_id is already
+          -- taken on the ref this row builds, where it means the sellable
+          -- ITEM GROUP id — a different and wider canonicalisation.
+          ${withElection ? 'cce_valid.canonical_sig_id' : 'NULL::text'} AS content_canonical_sig_id,
           eps.id AS external_seed_id,
           eps.external_product_id AS external_seed_external_product_id,
           eps.status AS external_seed_status,
@@ -5938,6 +6009,87 @@ async function resolveCatalogProductRefFromPivotaSignatureInner(normalizedProduc
             AND keeper_cp.pivota_signature_id IS NOT NULL
           LIMIT 1
         ) keeper ON true
+        -- LEFT, never INNER: a content_key with no election yet (freshly
+        -- minted, or the sweep has not run) must still resolve. It gets a null
+        -- and the PDP falls back to a self-referential canonical — exactly the
+        -- behaviour that predates this join. Primary-key lookup on a row this
+        -- query has already materialised, so it adds no round trip.
+        ${withElection ? `LEFT JOIN LATERAL (
+          -- The elected canonical sig for this content_key, but ONLY while that
+          -- sig is STILL something we would advertise.
+          --
+          -- An election is a durable fact; electability is a live one, and they
+          -- diverge the moment the elected row stops rendering. Reading the
+          -- election unvalidated produces the exact failure this feature exists
+          -- to prevent: the SITEMAP is structurally safe (its renderable filter
+          -- runs before the dedup, so a dead sig is never a candidate and the
+          -- live sibling gets advertised), but this side would still hand the
+          -- sibling's PDP the dead sig — so we would submit URL B while B's own
+          -- page canonicalised at a URL that 500s. That content_key then loses
+          -- ALL index presence: worse than the duplicate, worse than a moved
+          -- URL. Not hypothetical — P3 moved 2,051 rows on renderable in a day.
+          --
+          -- NULL is the correct degradation: it means "no election", which the
+          -- consumer already handles by falling back to self, so both surfaces
+          -- fall back TOGETHER.
+          SELECT cce.canonical_sig_id
+          FROM content_canonical_election cce
+          JOIN catalog_products cp_elected
+            ON cp_elected.pivota_signature_id = cce.canonical_sig_id
+          JOIN index_pipeline_state ips_elected
+            ON ips_elected.content_key = cp_elected.content_key
+          LEFT JOIN catalog_merchants cm_elected
+            ON cm_elected.merchant_id = cp_elected.merchant_id
+          WHERE cce.content_key = cp.content_key
+            -- Skip the whole check when the election names THIS row: a
+            -- self-canonical needs no cross-reference, and this confines the
+            -- renderability probes to the ~11% of rows that are genuinely
+            -- duplicates instead of paying them on every PDP request.
+            AND cce.canonical_sig_id IS DISTINCT FROM cp.pivota_signature_id
+            -- The stored id must still LOOK like a route id. Under
+            -- INDEX_ELIGIBLE_SITEMAP the backend's elector qualifies rows on
+            -- index_eligible alone rather than on the sig shape, so a non-sig_
+            -- pivota_signature_id could reach this table and then be handed to
+            -- agent-ui to build a URL out of. Underscore escaped — it is a
+            -- single-character wildcard in LIKE.
+            AND cce.canonical_sig_id LIKE 'sig\\_%'
+            AND cp_elected.suppressed_at IS NULL
+            -- NOT a step-5 dedupe loser. suppression_reason without
+            -- suppressed_at is a real, populated state: 431 tombstoned rows
+            -- still serve 200s and 362 are live sitemap URLs. #1833 points
+            -- every such loser at its keeper, and that keeper is in the SAME
+            -- content_key — so crowning a tombstone here would point a live
+            -- keeper at a duplicate and undo a fix already in production.
+            AND cp_elected.suppression_reason IS NULL
+            AND cp_elected.content_key IS NOT NULL
+            -- Serving gate, widened in lockstep with the BACKEND's
+            -- INDEX_ELIGIBLE_SITEMAP (ADR-007's offer-free citation floor).
+            --
+            -- That flag is ON in production — 100 rows in the live feed are
+            -- index_eligible WITHOUT serving_eligible. Hardcoding
+            -- serving_eligible here makes this guard narrower than the elector,
+            -- so the backend can elect a widen-only winner that this can never
+            -- validate: the sitemap advertises it, every sibling PDP silently
+            -- falls back to self-canonical, and the duplicate returns with no
+            -- signal anywhere. Narrower is the SAFE direction (degrade, never a
+            -- dead URL), which is why this is a correctness-of-coverage fix
+            -- rather than an invariant fix — but it is a live flag, not a
+            -- hypothetical, so the two must be set together.
+            AND (ips_elected.serving_eligible IS TRUE${
+              INDEX_ELIGIBLE_SITEMAP_ENABLED ? ' OR ips_elected.index_eligible IS TRUE' : ''
+            })
+            AND cm_elected.indexable IS TRUE
+            AND cm_elected.status IN ('active', 'observed')
+            -- BOTH halves of renderability: the lane dispatch AND the seed
+            -- route. seedRouteResolvesSql alone would pass a merchant-synced
+            -- row whose source_product_id collided with a seed id, while
+            -- pdpRouteResolvable calls that lane FALSE — and being wider here
+            -- is the over-advertise direction, i.e. canonicalising a live page
+            -- at a URL that 500s.
+            AND ${seedRoutedLaneSql('cp_elected')}
+            AND ${seedRouteResolvesSql('cp_elected')}
+          LIMIT 1
+        ) cce_valid ON true` : ''}
         LEFT JOIN LATERAL (
           SELECT
             seed_pick.id,
@@ -6026,9 +6178,27 @@ async function resolveCatalogProductRefFromPivotaSignatureInner(normalizedProduc
           cp.updated_at DESC NULLS LAST,
           cp.product_key ASC
         LIMIT 1
-      `,
-      [normalizedProductId],
-    );
+      `;
+    let exactResult;
+    try {
+      exactResult = await query(
+        buildExactSignatureSql(!CONTENT_CANONICAL_ELECTION_TABLE_MISSING),
+        [normalizedProductId],
+      );
+    } catch (err) {
+      if (CONTENT_CANONICAL_ELECTION_TABLE_MISSING || !isMissingContentCanonicalElectionError(err)) {
+        throw err;
+      }
+      // First request to notice migration 181 has not landed. Latch, warn ONCE
+      // (the flag makes this branch unreachable afterwards), and serve.
+      CONTENT_CANONICAL_ELECTION_TABLE_MISSING = true;
+      logger.warn?.(
+        { err: err?.message || String(err) },
+        'content_canonical_election is missing — serving PDPs without cross-canonical tags ' +
+          'until pivota-backend migration 181 lands. Duplicate sig URLs stay self-canonical.',
+      );
+      exactResult = await query(buildExactSignatureSql(false), [normalizedProductId]);
+    }
     const exactRow = Array.isArray(exactResult?.rows) ? exactResult.rows[0] : null;
     const exactMerchantId = String(exactRow?.merchant_id || '').trim();
     // P3: when the seed was resolved through LANE 1 (minted canonical, attached
@@ -6340,6 +6510,11 @@ async function resolveCatalogProductRefFromPivotaSignatureInner(normalizedProduc
         external_seed_updated_at: exactRow?.external_seed_updated_at || null,
         external_seed_created_at: exactRow?.external_seed_created_at || null,
         content_key: firstNonEmptyString(exactRow?.content_key) || null,
+        // The elected canonical URL id for this content_key (migration 181), or
+        // null when nothing has been elected. NOT `canonical_sig_id` — that key
+        // is already the sellable ITEM GROUP id on this ref.
+        content_canonical_sig_id:
+          firstNonEmptyString(exactRow?.content_canonical_sig_id) || null,
         members: exactIdentityGroupMembers,
         group_members: exactIdentityGroupMembers,
         member_sig_ids: uniqueStrings([
@@ -6603,6 +6778,13 @@ function buildCatalogIdentityFromSignatureProductRef(signatureProductRef, {
     identity_status: firstNonEmptyString(signatureProductRef.identity_status, 'approved'),
     live_read_enabled: signatureProductRef.live_read_enabled === true,
     review_required: signatureProductRef.review_required === true,
+    // The elected canonical URL for this row's content_key (migration 181).
+    // Carried through so get_pdp_v2 can read it off catalogIdentity — this
+    // builder returns a NEW object, so anything not named here is dropped, and
+    // a dropped election reads downstream as "no election": the duplicate PDP
+    // silently goes back to declaring itself canonical.
+    content_canonical_sig_id:
+      firstNonEmptyString(signatureProductRef.content_canonical_sig_id) || null,
   };
 }
 
@@ -40558,6 +40740,19 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                   ...(signatureProductRef.content_key
                     ? { content_key: String(signatureProductRef.content_key).trim() }
                     : {}),
+                  // The elected canonical URL for this content_key (migration
+                  // 181). Threaded EXPLICITLY because this ref is rebuilt
+                  // field-by-field rather than spread — a field that is not
+                  // named here is silently dropped, and a dropped election
+                  // reads downstream as "no election", i.e. the duplicate PDP
+                  // quietly goes back to declaring itself canonical.
+                  ...(signatureProductRef.content_canonical_sig_id
+                    ? {
+                        content_canonical_sig_id: String(
+                          signatureProductRef.content_canonical_sig_id,
+                        ).trim(),
+                      }
+                    : {}),
                   ...(signatureProductRef.canonical_sig_id
                     ? { pivota_signature_id: String(signatureProductRef.canonical_sig_id).trim() }
                     : {}),
@@ -42357,6 +42552,32 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         : Array.isArray(catalogIdentity?.match_basis)
           ? catalogIdentity.match_basis
           : [];
+      // The ONE public URL id for this row's content_key (pivota-backend
+      // migration 181). Emitted so a PDP that is NOT the elected URL can point
+      // its <link rel="canonical"> at the one that is.
+      //
+      // 474 content_keys serve identical content — same title, same Product
+      // JSON-LD — under 2 to 7 sitemap-eligible sigs, a population P3 grew when
+      // it made minted canonicals renderable alongside the external_seed mirror
+      // they were minted from. Each of those pages currently declares ITSELF
+      // canonical, which is the textbook duplicate-content shape: the crawler
+      // picks one arbitrarily and may well pick the one the sitemap omits.
+      //
+      // Read-only, deliberately: the value MUST be the same one
+      // pivota-agent-ui's sitemap advertises, and the sitemap's winner is
+      // sticky on index equity (#280) rather than computable from the row.
+      // Deriving it here instead of reading it would let this module name sig A
+      // while the sitemap submits sig B — which tells the crawler to drop the
+      // URL we just submitted, strictly worse than the duplicate.
+      //
+      // Null whenever the content_key has not been elected (or the request did
+      // not resolve through the signature path). The consumer then falls back
+      // to a self-referential canonical, which is exactly today's behaviour.
+      const effectiveContentCanonicalRouteId =
+        firstNonEmptyString(
+          catalogIdentity?.content_canonical_sig_id,
+          canonicalProductRef?.content_canonical_sig_id,
+        ) || null;
 
       canonicalPayload = decoratePdpPayloadWithIdentity(canonicalPayload, {
         productGroupId: effectiveProductGroupId,
@@ -42378,6 +42599,25 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             identity_confidence: effectiveIdentityConfidence,
             match_basis: effectiveMatchBasis,
             canonical_scope: effectiveCanonicalScope || null,
+            // The elected /products/{id} for this content_key, or null. See
+            // effectiveContentCanonicalRouteId above.
+            //
+            // CONSUMER STATUS: nothing on pivota-agent-ui's `main` reads this
+            // yet — the consumer is pivota-agent-ui#283
+            // (readServerCanonicalRouteId), which is a coordinated, still
+            // UNMERGED change. Until it lands this field is inert and no
+            // rendered canonical tag changes. Stated explicitly because an
+            // earlier version of this comment described the consumer in the
+            // present tense, and in a change whose whole discipline is "READ,
+            // never derive", a comment asserting a contract that does not exist
+            // is exactly what a future reader will trust.
+            //
+            // When it lands, the consumer ranks it BELOW product_group_id (a
+            // multi-merchant group is the wider canonicalisation and subsumes
+            // this) and BELOW #1833's dedupe keeper (an explicit
+            // keeper_product_key from the row layer beats an election seeded
+            // from whichever URL happened to be indexed).
+            content_canonical_route_id: effectiveContentCanonicalRouteId,
             pdp_schema_profile: pdpSchemaProfile,
             pdp_content_source: pdpContentSource,
             offer_source: offerSource,
@@ -50772,6 +51012,7 @@ module.exports._debug = {
   buildOffersFromGroupMembers,
   fetchApprovedLiveIdentityGroupMembersForOffers,
   resolveCatalogProductRefFromPivotaSignature,
+  buildCatalogIdentityFromSignatureProductRef,
   RESOLVE_CATALOG_SIGNATURE_INFLIGHT,
   RESOLVE_CATALOG_SIGNATURE_CACHE,
   RESOLVE_CATALOG_SIGNATURE_COOLDOWN,
