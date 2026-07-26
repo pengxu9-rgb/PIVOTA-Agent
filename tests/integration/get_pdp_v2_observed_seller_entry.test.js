@@ -50,6 +50,27 @@ function normalizeSql(sql) {
   return String(sql || '').replace(/\s+/g, ' ').trim();
 }
 
+// filterGroupMembersByCatalogSourceQuarantine. It must be answered on its own
+// terms: the real query projects `COALESCE(jsonb_agg(...), '[]'::jsonb) AS
+// members`, and an empty/absent survivor list means "every member is
+// quarantined", which empties the offer group and drops the offers module.
+// Nothing is quarantined in these fixtures, so every requested member survives.
+function isGroupMemberQuarantineQuery(normalizedSql) {
+  return normalizedSql.includes('surviving_members AS');
+}
+
+function buildQuarantineSurvivorRows(params) {
+  const requested = JSON.parse(String((Array.isArray(params) ? params[0] : null) || '[]'));
+  return [
+    {
+      members: requested.map((member) => ({
+        merchant_id: member.merchant_id,
+        product_id: member.product_id,
+      })),
+    },
+  ];
+}
+
 function canonicalGroupRow(overrides = {}) {
   return {
     product_key: `prod::${OBS_MERCHANT}::external_seed::${OBS_PRODUCT}`,
@@ -156,16 +177,21 @@ function identityListingRow() {
 function mockDbForObservedSellerGroup(db, { seedDetailAvailable }) {
   db.query.mockImplementation(async (sql, params = []) => {
     const normalizedSql = normalizeSql(sql);
+    if (isGroupMemberQuarantineQuery(normalizedSql)) {
+      return { rows: buildQuarantineSurvivorRows(params) };
+    }
 
     // Canonical catalog entity group (both lanes, one content_key).
     if (normalizedSql.includes('WITH offer_stats AS')) {
       return { rows: [canonicalGroupRow(), urlAuditGroupRow()] };
     }
 
-    // Serving-eligibility gate.
+    // Serving-eligibility gate, matched on its own `LEFT JOIN
+    // index_pipeline_state ips`. A bare `index_pipeline_state` substring also
+    // matches the quarantine query's `ips_pick` LATERAL probe, handled above.
     if (
       normalizedSql.includes('FROM catalog_products cp') &&
-      normalizedSql.includes('index_pipeline_state')
+      normalizedSql.includes('LEFT JOIN index_pipeline_state ips')
     ) {
       return {
         rows: [
@@ -446,6 +472,9 @@ describe('fetchProductDetailForOffers — observed-seller seed-store routing', (
     const { app, db } = loadServerWithDb();
     db.query.mockImplementation(async (sql, params = []) => {
       const normalizedSql = normalizeSql(sql);
+      if (isGroupMemberQuarantineQuery(normalizedSql)) {
+        return { rows: buildQuarantineSurvivorRows(params) };
+      }
       if (
         normalizedSql.includes('FROM external_product_seeds') &&
         normalizedSql.includes('external_product_id = $1') &&
