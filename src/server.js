@@ -10597,6 +10597,10 @@ async function filterGroupMembersByCatalogSourceQuarantine(members, { queryFn = 
     // open rather than reading "no survivor column" as "no survivors".
     const survivors = parseQuarantineSurvivorMembers(result.rows[0]?.members);
     if (!survivors) {
+      logger.warn(
+        { member_count: list.length },
+        'Catalog source quarantine returned no survivor list; serving group members unfiltered',
+      );
       return { members: list, filteredCount: 0 };
     }
     const survivingKeys = new Set(
@@ -10676,7 +10680,21 @@ async function buildOffersFromGroupMembers(args) {
     : { members: normalizedMembers, filteredCount: 0 };
   const members = quarantineFilterResult.members;
   const sourceQuarantineFilteredCount = quarantineFilterResult.filteredCount;
-  if (!members.length) return null;
+  if (!members.length) {
+    // Returning null here drops the whole offers module, and `filteredCount` is
+    // only ever surfaced in the debug diagnostics built further down — so
+    // without this line "quarantine suppressed every offer" is indistinguishable
+    // in prod logs from "this product has no offers".
+    logger.warn(
+      {
+        product_group_id: productGroupId,
+        requested_member_count: normalizedMembers.length,
+        source_quarantine_filtered_count: sourceQuarantineFilteredCount,
+      },
+      'PDP offer group emptied before build; offers module will be omitted',
+    );
+    return null;
+  }
 
   const canonicalMember = members.find((m) => m.is_primary) || members[0] || null;
   const canonicalProductRef = canonicalMember

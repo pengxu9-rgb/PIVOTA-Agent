@@ -365,13 +365,17 @@ describe('group-member catalog offer join — Path-C minted canonical lane', () 
         expect(members).toHaveLength(2);
         expect(filteredCount).toBe(0);
       }
-      // An explicit empty list still means every member is quarantined.
-      const quarantinedAll = await app._debug.filterGroupMembersByCatalogSourceQuarantine(
-        requested,
-        { queryFn: jest.fn(async () => ({ rows: [{ members: [] }] })) },
-      );
-      expect(quarantinedAll.members).toHaveLength(0);
-      expect(quarantinedAll.filteredCount).toBe(2);
+      // An explicit empty list still means every member is quarantined —
+      // whether pg hands it back as an array or as a jsonb string.
+      for (const emptyRow of [{ members: [] }, { members: '[]' }]) {
+        // eslint-disable-next-line no-await-in-loop
+        const quarantinedAll = await app._debug.filterGroupMembersByCatalogSourceQuarantine(
+          requested,
+          { queryFn: jest.fn(async () => ({ rows: [emptyRow] })) },
+        );
+        expect(quarantinedAll.members).toHaveLength(0);
+        expect(quarantinedAll.filteredCount).toBe(2);
+      }
     });
 
     test('no raw mirror-only cp_offer join shape survives anywhere in server.js (covers the inline signature-resolver sibling)', () => {

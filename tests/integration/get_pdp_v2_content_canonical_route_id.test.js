@@ -59,7 +59,13 @@ function loadServerWithDb() {
 function isServingEligibilityQuery(normalizedSql) {
   return (
     normalizedSql.includes('FROM catalog_products cp') &&
-    normalizedSql.includes('index_pipeline_state') &&
+    // The gate's own join. A bare `index_pipeline_state` substring also matches
+    // the group-member catalog-source quarantine query, which probes
+    // `index_pipeline_state ips_pick` inside a LATERAL; answering that one with
+    // an eligibility row reads as "every member quarantined" and drops the
+    // offers module. Inert here (these fixtures build single-member groups, and
+    // the filter only runs for 2+), but the collision is one added member away.
+    normalizedSql.includes('LEFT JOIN index_pipeline_state ips') &&
     !normalizedSql.includes('cp.pivota_signature_id = $1')
   );
 }
