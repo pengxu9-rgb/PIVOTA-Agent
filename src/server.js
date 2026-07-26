@@ -5888,6 +5888,19 @@ async function resolveCatalogProductRefFromPivotaSignature(productId, options = 
 // in front of every PDP.
 let CONTENT_CANONICAL_ELECTION_TABLE_MISSING = false;
 
+// Mirrors pivota-backend's INDEX_ELIGIBLE_SITEMAP (ADR-007 SLICE 1, the
+// offer-free citation floor). It governs which rows the backend's ELECTOR will
+// crown, so the guard that validates an elected sig has to widen with it or it
+// silently rejects every widen-only winner.
+//
+// Read at module load, like the backend's own `_flag_on`. Cross-service flag
+// coupling is not lovely, but the alternative — this gateway guessing at the
+// backend's eligibility rule — is exactly the drift the whole design is built
+// to prevent. Default OFF matches the backend's default; set BOTH or neither.
+const INDEX_ELIGIBLE_SITEMAP_ENABLED = ['1', 'true', 'yes', 'on'].includes(
+  String(process.env.INDEX_ELIGIBLE_SITEMAP || '').trim().toLowerCase(),
+);
+
 function isMissingContentCanonicalElectionError(err) {
   // The relation NAME is the required signal, not the SQLSTATE.
   //
@@ -6049,7 +6062,22 @@ async function resolveCatalogProductRefFromPivotaSignatureInner(normalizedProduc
             -- keeper at a duplicate and undo a fix already in production.
             AND cp_elected.suppression_reason IS NULL
             AND cp_elected.content_key IS NOT NULL
-            AND ips_elected.serving_eligible IS TRUE
+            -- Serving gate, widened in lockstep with the BACKEND's
+            -- INDEX_ELIGIBLE_SITEMAP (ADR-007's offer-free citation floor).
+            --
+            -- That flag is ON in production — 100 rows in the live feed are
+            -- index_eligible WITHOUT serving_eligible. Hardcoding
+            -- serving_eligible here makes this guard narrower than the elector,
+            -- so the backend can elect a widen-only winner that this can never
+            -- validate: the sitemap advertises it, every sibling PDP silently
+            -- falls back to self-canonical, and the duplicate returns with no
+            -- signal anywhere. Narrower is the SAFE direction (degrade, never a
+            -- dead URL), which is why this is a correctness-of-coverage fix
+            -- rather than an invariant fix — but it is a live flag, not a
+            -- hypothetical, so the two must be set together.
+            AND (ips_elected.serving_eligible IS TRUE${
+              INDEX_ELIGIBLE_SITEMAP_ENABLED ? ' OR ips_elected.index_eligible IS TRUE' : ''
+            })
             AND cm_elected.indexable IS TRUE
             AND cm_elected.status IN ('active', 'observed')
             -- BOTH halves of renderability: the lane dispatch AND the seed

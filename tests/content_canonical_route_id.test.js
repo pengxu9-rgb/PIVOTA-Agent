@@ -156,6 +156,30 @@ describe('content_canonical_election is READ by the signature resolver', () => {
     expect(seenSql[0]).not.toMatch(/\n\s*JOIN content_canonical_election\b/);
   });
 
+  test('the serving gate widens in lockstep with INDEX_ELIGIBLE_SITEMAP', async () => {
+    // The backend's elector widens on this flag, and the flag is ON in prod:
+    // 100 rows in the live feed are index_eligible WITHOUT serving_eligible.
+    // Hardcoding serving_eligible here would make this guard narrower than the
+    // elector, so a widen-only winner could be elected and advertised while
+    // every sibling PDP silently fell back to self-canonical.
+    const strict = loadServerWithRows([signatureRow()]);
+    await strict.app._debug.resolveCatalogProductRefFromPivotaSignature(SIG_SIBLING, {
+      hydrateIdentityListing: false,
+      hydrateIdentityGroupMembers: false,
+    });
+    expect(strict.seenSql[0]).toContain('ips_elected.serving_eligible IS TRUE');
+    expect(strict.seenSql[0]).not.toContain('ips_elected.index_eligible');
+
+    const widened = loadServerWithRows([signatureRow()], {
+      INDEX_ELIGIBLE_SITEMAP: 'true',
+    });
+    await widened.app._debug.resolveCatalogProductRefFromPivotaSignature(SIG_SIBLING, {
+      hydrateIdentityListing: false,
+      hydrateIdentityGroupMembers: false,
+    });
+    expect(widened.seenSql[0]).toContain('ips_elected.index_eligible IS TRUE');
+  });
+
   test('the seed-routed lane SQL uses left(), not a LIKE whose _ is a wildcard', async () => {
     // `LIKE 'ext_%'` matches `extX…` because `_` is a single-character wildcard
     // in SQL — strictly WIDER than the `slice(0, 4)` it mirrors, and wider is
