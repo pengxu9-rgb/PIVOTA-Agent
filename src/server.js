@@ -40591,6 +40591,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                   buildPrefetchedPdpServingEligibilityFromSignatureRef(signatureProductRef);
                 signatureExternalSeedPrecheckProduct =
                   await buildExternalSeedProductFromSignatureCatalogRef(signatureProductRef);
+                markPdpV2Checkpoint('after_build_external_seed_product');
                 if (signatureExternalSeedPrecheckProduct?.product_id) {
                   signaturePrefetchedPdpContentProductId = String(
                     signatureExternalSeedPrecheckProduct.product_id || '',
@@ -40714,6 +40715,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           !offerProductGroupId &&
           !hasExplicitProductGroup
         ) {
+          markPdpV2Checkpoint('before_group_alias');
           const resolveIdentityGroupAliasStartedAt = Date.now();
           let identityGroupAlias = await resolveLivePdpIdentityGroupForPdp({
             productGroupId: entryProductId,
@@ -40758,6 +40760,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	        entryProductIsExternalSeed &&
 	        (!requestedMerchantId || requestedMerchantId === EXTERNAL_SEED_MERCHANT_ID)
 	      ) {
+	        markPdpV2Checkpoint('before_seed_precheck');
 	        const externalSeedStatusStartedAt = Date.now();
 	        let externalSeedRouteStatus =
 	          signatureExternalSeedRouteStatus &&
