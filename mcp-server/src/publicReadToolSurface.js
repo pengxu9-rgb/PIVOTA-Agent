@@ -9,7 +9,7 @@
 // listings, which the app-directory sourcing policy excludes (docs/openai_apps_v1_plan.md §1, §5).
 
 import { createCommerceToolSurface, UnknownToolError } from "./commerceToolSurface.js";
-import { projectPublicReadResult } from "./publicReadProjection.js";
+import { projectPublicReadResult, MAX_SEARCH_RESULTS } from "./publicReadProjection.js";
 import {
   filterFirstPartyRows,
   isResellerRow,
@@ -24,6 +24,22 @@ export const PUBLIC_READ_TOOL_NAMES = Object.freeze([
   "get_intel",
   "get_alternatives",
 ]);
+
+// How many rows to ask upstream for on search, regardless of the caller's page_size, so the post-hoc filters
+// have something to backfill from. The projector's own hard ceiling — never more than the public tier could
+// already return, and the projector slices back to the caller's page_size.
+const PUBLIC_READ_SEARCH_OVERFETCH = MAX_SEARCH_RESULTS;
+
+// Ceiling on rows the chain filter may probe per search (see the truncation note at the call site). Twice the
+// over-fetch size, so it is a safety valve rather than a limit reached in normal operation.
+const PUBLIC_READ_CHAIN_FILTER_MAX_EXAMINED = MAX_SEARCH_RESULTS * 2;
+
+// Absent / 1 / anything non-numeric all mean "first page" — the only page where inflating page_size does not
+// move the caller's window. Kept deliberately strict: a page we cannot read as 1 is treated as a deep page.
+function isFirstPage(toolArgs) {
+  const page = toolArgs == null ? undefined : toolArgs.page;
+  return page === undefined || page === null || page === 1;
+}
 
 // Public PDP base for citable URLs, overridable via env so a domain move needs no code change.
 const PUBLIC_PDP_BASE =
@@ -75,7 +91,7 @@ function publicPresentation(tool) {
  * @param {{ log?: object }} [opts]
  * @returns {{ tools: Array<{name,description,inputSchema}>, callTool: Function, isPublicReadTool: Function }}
  */
-export function createPublicReadToolSurface(executor, { log } = {}) {
+export function createPublicReadToolSurface(executor, { log, filterChainResolvableRows } = {}) {
   const commerce = createCommerceToolSurface(executor, { log });
   const tools = commerce.tools
     .filter((tool) => PUBLIC_READ_TOOL_NAMES.includes(tool.name))
@@ -121,7 +137,24 @@ export function createPublicReadToolSurface(executor, { log } = {}) {
   async function computeTool(toolName, toolArgs) {
     // Empty verified-session context: read ops are requiresUserRef:false and run anonymously; identity
     // fields in toolArgs are already allowlist-stripped by the commerce surface.
-    let raw = await commerce.callTool(toolName, toolArgs, {});
+    //
+    // OVER-FETCH for search: both post-hoc filters below (sourcing, chain-resolvability) drop rows AFTER the
+    // upstream has already trimmed to the requested page size, so filtering alone would shrink the page
+    // instead of backfilling it — on prod, "serum" holds 9 dead rows in its top 10 but 11 resolvable ones in
+    // its top 20. Asking upstream for the projector's hard ceiling and letting the projector slice back down
+    // to the caller's page_size turns those drops into backfill. Bounded by MAX_SEARCH_RESULTS, so this can
+    // never ask for more than the public tier was already allowed to return.
+    //
+    // FIRST PAGE ONLY. `page` is expressed in units of `page_size`, so inflating page_size while leaving
+    // `page` alone RELOCATES the caller's window — page 2 of size 10 (rows 11-20) would fetch page 2 of size
+    // 20 (rows 21-40) and silently skip ten products. On deeper pages we pass the caller's args through
+    // untouched: the window stays correct and the filter may return a short page, which is honest — those
+    // rows were unfetchable anyway.
+    const upstreamArgs =
+      toolName === "search_catalog" && isFirstPage(toolArgs)
+        ? { ...(toolArgs ?? {}), page_size: PUBLIC_READ_SEARCH_OVERFETCH }
+        : toolArgs;
+    let raw = await commerce.callTool(toolName, upstreamArgs, {});
 
     // First-party / brand-official sourcing filter (docs/openai_apps_v1_plan.md §5): drop reseller-sourced
     // rows BEFORE projection (the projector strips the destination host the filter needs). ON by default
@@ -141,6 +174,30 @@ export function createPublicReadToolSurface(executor, { log } = {}) {
           if (logger) logger.info({ tool: toolName }, "public_read sourcing filter: reseller product withheld");
           return { note: "Product not found." };
         }
+      }
+    }
+
+    // The chain contract: never advertise a product_id that get_product cannot resolve, and never mint a
+    // pivota_url that renders a shell. Runs on the raw rows (the projector strips the identity the probe
+    // needs) and BEFORE the slice, so survivors backfill the page. Fail-open lives in the injected filter.
+    if (toolName === "search_catalog" && typeof filterChainResolvableRows === "function"
+        && raw && Array.isArray(raw.products)) {
+      // Hard cap on how many rows we probe. The recall pipeline carries a wide candidate pool and only trims
+      // to the requested page_size when FPM_ENFORCE_REQUESTED_PAGE_SIZE is on — flip that off and an unauth
+      // search would otherwise fan out one resolver probe per pooled row. Rows past the cap are TRUNCATED,
+      // never passed through: an unexamined row must never reach the page, or the contract leaks right back
+      // in. The cap sits well above the projector's own ceiling, so it does not bind in normal operation.
+      const examined = raw.products.slice(0, PUBLIC_READ_CHAIN_FILTER_MAX_EXAMINED);
+      const truncated = raw.products.length - examined.length;
+      if (truncated > 0 && logger) {
+        logger.info({ tool: toolName, truncated_unexamined_rows: truncated }, "public_read chain filter cap");
+      }
+      const { kept, droppedCount: dropped } = await filterChainResolvableRows(examined);
+      const droppedCount = dropped + truncated;
+      if (droppedCount > 0) {
+        // No silent caps: an id dropped here is a catalog-coverage gap, not a search-quality choice.
+        if (logger) logger.info({ tool: toolName, dropped_unresolvable_rows: droppedCount, kept: kept.length }, "public_read chain filter");
+        raw = { ...raw, products: kept };
       }
     }
 

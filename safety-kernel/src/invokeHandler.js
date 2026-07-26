@@ -43,6 +43,9 @@ export const ERROR_OBSERVABILITY = Object.freeze({
   USER_AUTH_REQUIRED: { event: 'user_auth_blocked', metric: 'user_auth_required' },
   OPERATION_NOT_ALLOWED: { event: 'operation_blocked', metric: 'operation_not_allowed' },
   MERCHANT_UNAVAILABLE: { event: 'merchant_unavailable', metric: 'merchant_unavailable' },
+  // Separate metric on purpose: this one is a catalog-coverage signal (ids advertised with nothing behind
+  // them), not an availability signal. Folding it into merchant_unavailable is what hid the dead ids.
+  NO_MERCHANT_OFFER: { event: 'no_merchant_offer', metric: 'no_merchant_offer' },
   IDEMPOTENCY_CONFLICT: { event: 'idempotency_conflict_blocked', metric: 'idempotency_conflict' },
 });
 

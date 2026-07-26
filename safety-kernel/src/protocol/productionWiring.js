@@ -20,6 +20,10 @@ import { InMemoryKvStore } from '../stores.js';
 import { wrapUpstream } from '../upstreamAdapter.js';
 import { PivotaCommerceError } from '../errors.js';
 import { createCanonicalExecutor } from './canonicalExecutor.js';
+
+// Read-only ops — the lanes where a bare 404 means "no such product" rather than a missing backend route.
+// Mirrors the read() calls in canonicalExecutor.js and COMMERCE_KERNEL_READ_OPS in src/server.js.
+const BACKEND_READ_OPS = new Set(['get_product_detail', 'find_products', 'find_products_multi']);
 import { createPaymentAuthorizationVerifier } from './paymentAuthorizationVerifier.js';
 import { createSignedGrantVerifier, createAp2MandateVerifier } from './protocolPaymentVerifiers.js';
 import { createAcpRestAdapter } from './acpRestAdapter.js';
@@ -91,6 +95,15 @@ export function createHttpBackendUpstream(cfg = {}) {
       clearTimeout(timer);
     }
     if (!res.ok) {
+      // 404 on a READ op = the backend positively answered "nothing here" (e.g. PRODUCT_NOT_FOUND). That is
+      // persistent and must not be advertised as a retriable outage. Restricted to reads because this same
+      // upstream carries preview_quote / create_order / submit_payment, where a 404 is far more likely to be a
+      // missing or mid-deploy route than a statement about the product — calling that NO_MERCHANT_OFFER would
+      // tell a checkout agent not to retry a transient blip. Kept in step with
+      // throwCommerceKernelUpstreamError in src/server.js.
+      if (res.status === 404 && BACKEND_READ_OPS.has(String(operation || '').trim())) {
+        throw new PivotaCommerceError('NO_MERCHANT_OFFER', { reason: 'backend_not_found', status: res.status });
+      }
       throw new PivotaCommerceError('MERCHANT_UNAVAILABLE', { reason: 'backend_http_error', status: res.status });
     }
     let body;
