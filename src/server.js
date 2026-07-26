@@ -5902,11 +5902,42 @@ async function resolveCatalogProductRefFromPivotaSignatureInner(normalizedProduc
           eps.status AS external_seed_status,
           eps.updated_at AS external_seed_updated_at,
           eps.created_at AS external_seed_created_at,
-          eps.seed_route_lane AS external_seed_route_lane
+          eps.seed_route_lane AS external_seed_route_lane,
+          cp.suppression_reason AS catalog_suppression_reason,
+          keeper.pivota_signature_id AS tombstone_keeper_sig_id
         FROM catalog_products cp
         LEFT JOIN catalog_merchants cm ON cm.merchant_id = cp.merchant_id
         LEFT JOIN index_pipeline_state signature_ips
           ON signature_ips.content_key = cp.content_key
+        -- TOMBSTONE -> KEEPER canonical. A step-5 dedupe loser
+        -- (suppression_reason set, suppression_metadata.keeper_product_key
+        -- naming the survivor) still resolves and still renders 200 — this
+        -- resolver deliberately has no suppression filter, and the ORDER BY
+        -- below actively prefers the mirror lane. Measured in prod 2026-07-25:
+        -- 431 tombstoned mirrors serve, all self-canonical, and 362 of them are
+        -- the sig the live sitemap advertises. Serving them is fine (they ARE
+        -- the incumbent URLs); serving them as their OWN canonical is not —
+        -- it splits one product's index equity across up to 6 self-canonical
+        -- duplicate 200s. Resolve the keeper's sig here so the PDP can point
+        -- rel=canonical at it WITHOUT changing which row renders, which URL
+        -- answers, or the sitemap's incumbency pick. Equity consolidates; no
+        -- redirect and no URL migration is required for this step.
+        LEFT JOIN LATERAL (
+          SELECT keeper_cp.pivota_signature_id
+          FROM catalog_products keeper_cp
+          WHERE cp.suppression_reason IS NOT NULL
+            AND keeper_cp.product_key = cp.suppression_metadata->>'keeper_product_key'
+            -- Three guards, all load-bearing. Same content_key: never
+            -- canonicalize to a DIFFERENT product if a keeper pointer is ever
+            -- wrong. Keeper not itself tombstoned: a chain of dedupe runs could
+            -- otherwise point at another loser. Keeper has a sig: /products/
+            -- 500s on a bare content_key, so a sig-less keeper must leave the
+            -- page self-canonical rather than advertise a URL that errors.
+            AND keeper_cp.content_key = cp.content_key
+            AND keeper_cp.suppression_reason IS NULL
+            AND keeper_cp.pivota_signature_id IS NOT NULL
+          LIMIT 1
+        ) keeper ON true
         LEFT JOIN LATERAL (
           SELECT
             seed_pick.id,
@@ -6285,6 +6316,11 @@ async function resolveCatalogProductRefFromPivotaSignatureInner(normalizedProduc
         product_group_id: exactEffectiveSellableGroupId,
         sellable_item_group_id: exactEffectiveSellableGroupId,
         canonical_sig_id: exactEffectiveSellableGroupId,
+        // Set ONLY when this row is a dedupe loser whose keeper is live and
+        // signed (see the keeper LATERAL). Null on every untombstoned row, so
+        // the flag-free default for the whole non-deduped catalog is unchanged.
+        suppression_reason: firstNonEmptyString(exactRow?.catalog_suppression_reason),
+        tombstone_keeper_sig_id: firstNonEmptyString(exactRow?.tombstone_keeper_sig_id),
         public_pdp_id: normalizedProductId,
         requested_pivota_signature_id: normalizedProductId,
         catalog_pivota_signature_id: normalizedProductId,
@@ -6435,6 +6471,11 @@ function applyRequestedPivotaSignatureToPdpProduct(
   sigId,
   sourceProductId = '',
   canonicalEntityId = '',
+  // Keeper sig of a step-5 dedupe group, set only when the row backing THIS
+  // request is a tombstoned loser (see the keeper LATERAL in
+  // resolveCatalogProductRefFromPivotaSignatureInner). Moves rel=canonical
+  // only — the page keeps answering 200 on its own URL with its own `url`.
+  canonicalRouteSigId = '',
 ) {
   if (!product || typeof product !== 'object' || Array.isArray(product)) return product;
   const normalizedSigId = String(sigId || '').trim();
@@ -6466,15 +6507,35 @@ function applyRequestedPivotaSignatureToPdpProduct(
     ? publicUrl
     : firstNonEmptyString(product.pivota_canonical_url, publicUrl);
 
+  // Dedupe-loser canonical. Deliberately NOT applied on the
+  // canonical_entity_id path: that flag already emits a stronger cross-row
+  // canonical, and stacking the two would silently change what it publishes.
+  const normalizedKeeperSigId = String(canonicalRouteSigId || '').trim();
+  const keeperCanonicalUrl =
+    !shouldEmitCanonicalEntityId &&
+    /^sig_[a-z0-9]+$/i.test(normalizedKeeperSigId) &&
+    normalizedKeeperSigId !== publicId
+      ? buildPublicProductUrl(normalizedKeeperSigId)
+      : '';
+
+  // `url` stays the REQUESTED url even when canonical points elsewhere. The
+  // page genuinely answers here; only the consolidation target moves. agent-ui
+  // reads rel=canonical off pivota_canonical_url/canonical_url
+  // (lib/productHref.resolveProductRouteId), never off `url`.
+  const effectiveCanonicalUrl = keeperCanonicalUrl || pivotaCanonicalUrl;
+
   return {
     ...product,
     id: publicId,
     product_id: publicId,
     pivota_signature_id: product.pivota_signature_id || normalizedSigId,
     signature_id: product.signature_id || normalizedSigId,
-    pivota_canonical_url: pivotaCanonicalUrl,
-    canonical_url: pivotaCanonicalUrl,
-    url: pivotaCanonicalUrl,
+    pivota_canonical_url: effectiveCanonicalUrl,
+    canonical_url: effectiveCanonicalUrl,
+    url: keeperCanonicalUrl ? publicUrl : pivotaCanonicalUrl,
+    ...(keeperCanonicalUrl
+      ? { canonical_route_sig_id: normalizedKeeperSigId, canonical_route_basis: 'dedupe_keeper' }
+      : {}),
     ...(merchantCanonicalUrl ? { merchant_canonical_url: merchantCanonicalUrl } : {}),
     ...(resolvedSourceProductId
       ? {
@@ -6689,7 +6750,16 @@ async function resolveCatalogIdentityForProductRef({ merchantId, productId, prod
   }
 }
 
-function applyCatalogIdentityToPdpProduct(product, identity = {}) {
+// `canonicalRouteSigId` is the dedupe keeper (see
+// applyRequestedPivotaSignatureToPdpProduct). It has to be honored HERE as
+// well, not just in the shaper: this function runs again at the very end on
+// pdpBuilder's projected payload product, and that projection does not carry
+// `pivota_canonical_url` — so the `|| publicUrl` fallback below silently
+// re-stamped the REQUESTED sig over the keeper. agent-ui reads
+// pivota_canonical_url FIRST (lib/productHref.resolveProductRouteId), so the
+// keeper being correct on `canonical_url` alone still renders a self-canonical
+// page. Caught by tests/integration/get_pdp_v2_dedupe_keeper_canonical.
+function applyCatalogIdentityToPdpProduct(product, identity = {}, canonicalRouteSigId = '') {
   if (!product || typeof product !== 'object' || Array.isArray(product)) return product;
   const sigId = firstNonEmptyString(identity.pivota_signature_id, identity.signature_id);
   if (!isPivotaSignatureProductId(sigId)) return product;
@@ -6707,6 +6777,15 @@ function applyCatalogIdentityToPdpProduct(product, identity = {}) {
     CANONICAL_ENTITY_ID_PUBLIC_EMIT_ENABLED && Boolean(identityCanonicalEntityId);
   const publicId = resolvePublicProductIdForEmit(sigId, identityCanonicalEntityId);
   const publicUrl = buildPublicProductUrl(publicId);
+  // Same precedence rule as the shaper: the canonical_entity_id flag already
+  // publishes a stronger cross-row canonical, so the keeper never stacks on it.
+  const normalizedKeeperSigId = String(canonicalRouteSigId || '').trim();
+  const keeperCanonicalUrl =
+    !shouldEmitCanonicalEntityId &&
+    /^sig_[a-z0-9]+$/i.test(normalizedKeeperSigId) &&
+    normalizedKeeperSigId !== publicId
+      ? buildPublicProductUrl(normalizedKeeperSigId)
+      : '';
   const catalogCategoryParts = catalogCategoryPath
     ? catalogCategoryPath.split('/').map((part) => String(part || '').trim()).filter(Boolean)
     : [];
@@ -6738,8 +6817,16 @@ function applyCatalogIdentityToPdpProduct(product, identity = {}) {
       : {}),
     pivota_signature_id: product.pivota_signature_id || sigId,
     signature_id: product.signature_id || sigId,
-    pivota_canonical_url:
-      shouldEmitCanonicalEntityId ? publicUrl : product.pivota_canonical_url || publicUrl,
+    pivota_canonical_url: shouldEmitCanonicalEntityId
+      ? publicUrl
+      : keeperCanonicalUrl || product.pivota_canonical_url || publicUrl,
+    ...(keeperCanonicalUrl
+      ? {
+          canonical_url: keeperCanonicalUrl,
+          canonical_route_sig_id: normalizedKeeperSigId,
+          canonical_route_basis: 'dedupe_keeper',
+        }
+      : {}),
   };
 }
 
@@ -40258,6 +40345,13 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 		      const requestedProductIdForDiagnostics = productId || null;
           const requestedMerchantIdForDiagnostics = requestedMerchantId || null;
           let requestedPivotaSignatureId = null;
+          // Deliberately its OWN binding rather than a field on
+          // canonicalProductRef: that ref is rebuilt from a whitelist here and
+          // reassigned again downstream (identity-group alias, fetched group),
+          // any of which would drop the keeper. The keeper canonical is a
+          // property of the ROW THE REQUESTED SIG RESOLVED TO, so it has to
+          // outlive those reassignments.
+          let requestedSigDedupeKeeperSigId = '';
           let signatureCatalogIdentity = null;
           let signatureExternalSeedRouteStatus = null;
           let signatureExternalSeedPrecheckProduct = null;
@@ -40318,6 +40412,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 		        markPdpV2Phase('resolve_catalog_signature', signatureResolveStartedAt);
 		        if (signatureProductRef?.product_id && signatureProductRef?.merchant_id) {
               requestedPivotaSignatureId = requestedProductIdForDiagnostics;
+              requestedSigDedupeKeeperSigId = String(
+                signatureProductRef.tombstone_keeper_sig_id || '',
+              ).trim();
               const signatureResolvedProductId =
                 String(signatureProductRef.product_id || '').trim() || productId;
               const signatureResolvedMerchantId =
@@ -41436,6 +41533,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             requestedPivotaSignatureId,
             canonicalProductRef?.product_id || productId,
             requestedCanonicalEntityIdForPublicEmit,
+            requestedSigDedupeKeeperSigId,
           );
         }
         if (!catalogIdentity) {
@@ -41451,6 +41549,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           canonicalProductForPdp = applyCatalogIdentityToPdpProduct(
             canonicalProductForPdp,
             catalogIdentity,
+            requestedSigDedupeKeeperSigId,
           );
           canonicalProductRef = {
             ...canonicalProductRef,
@@ -42055,7 +42154,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       if (catalogIdentity?.pivota_signature_id && canonicalPayload?.product) {
         canonicalPayload = {
           ...canonicalPayload,
-          product: applyCatalogIdentityToPdpProduct(canonicalPayload.product, catalogIdentity),
+          product: applyCatalogIdentityToPdpProduct(
+            canonicalPayload.product,
+            catalogIdentity,
+            requestedSigDedupeKeeperSigId,
+          ),
         };
       }
       const canonicalPayloadProductRef = {
