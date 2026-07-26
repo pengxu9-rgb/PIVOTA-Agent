@@ -36,10 +36,16 @@ function loadServerWithDb(envOverrides = {}) {
 // before the identity-graph build. It queries catalog_products joined to
 // index_pipeline_state; without a mocked answer the gate fails closed for
 // external_seed refs and returns 404 PRODUCT_NOT_SERVABLE.
+// Match on the gate's own `LEFT JOIN index_pipeline_state ips`. A bare
+// `index_pipeline_state` substring also matches the group-member
+// catalog-source quarantine query (which probes `index_pipeline_state
+// ips_pick` inside a LATERAL); answering that one with an eligibility row
+// leaves its `members` column undefined, which reads as "every member
+// quarantined" and drops the offers module entirely.
 function isServingEligibilityQuery(normalizedSql) {
   return (
     normalizedSql.includes('FROM catalog_products cp') &&
-    normalizedSql.includes('index_pipeline_state')
+    normalizedSql.includes('LEFT JOIN index_pipeline_state ips')
   );
 }
 

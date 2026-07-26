@@ -2283,6 +2283,22 @@ describe('external seed product detail hydration', () => {
 
     db.query.mockImplementation((sql, params = []) => {
       const text = String(sql || '');
+      // Group-member catalog-source quarantine: nothing is quarantined here, so
+      // every requested member survives. Answered before the seed branches
+      // below, which its `FROM external_product_seeds eps ... eps.status`
+      // clause would otherwise match.
+      if (text.includes('surviving_members AS')) {
+        return Promise.resolve({
+          rows: [
+            {
+              members: JSON.parse(String(params[0] || '[]')).map((member) => ({
+                merchant_id: member.merchant_id,
+                product_id: member.product_id,
+              })),
+            },
+          ],
+        });
+      }
       if (text.includes('FROM catalog_products cp') && text.includes('LEFT JOIN index_pipeline_state ips')) {
         return Promise.resolve({ rows: [servingEligibilityRow] });
       }

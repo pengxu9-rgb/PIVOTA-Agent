@@ -162,10 +162,14 @@ function mockDbForObservedSellerGroup(db, { seedDetailAvailable }) {
       return { rows: [canonicalGroupRow(), urlAuditGroupRow()] };
     }
 
-    // Serving-eligibility gate.
+    // Serving-eligibility gate. Match on the gate's own `LEFT JOIN
+    // index_pipeline_state ips` — a bare `index_pipeline_state` substring also
+    // matches the group-member catalog-source quarantine query (which probes
+    // `index_pipeline_state ips_pick` inside a LATERAL), and answering that one
+    // with an eligibility row makes every group member look quarantined.
     if (
       normalizedSql.includes('FROM catalog_products cp') &&
-      normalizedSql.includes('index_pipeline_state')
+      normalizedSql.includes('LEFT JOIN index_pipeline_state ips')
     ) {
       return {
         rows: [

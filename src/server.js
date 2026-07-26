@@ -10519,17 +10519,22 @@ function collapseSameInternalMerchantOffers(offers) {
   return { offers: result, removed: list.length - result.length };
 }
 
+// Returns the survivor list, or null when the value is not a survivor list at
+// all. The distinction matters: an empty array is this filter answering "every
+// member is quarantined", while a missing or unparseable value is the filter
+// not answering. Collapsing the second case into the first drops every offer on
+// the PDP, so the caller fails open on null instead.
 function parseQuarantineSurvivorMembers(value) {
   if (Array.isArray(value)) return value;
   if (typeof value === 'string' && value.trim()) {
     try {
       const parsed = JSON.parse(value);
-      return Array.isArray(parsed) ? parsed : [];
+      return Array.isArray(parsed) ? parsed : null;
     } catch (_err) {
-      return [];
+      return null;
     }
   }
-  return [];
+  return null;
 }
 
 async function filterGroupMembersByCatalogSourceQuarantine(members, { queryFn = query } = {}) {
@@ -10587,7 +10592,13 @@ async function filterGroupMembersByCatalogSourceQuarantine(members, { queryFn = 
     if (!Array.isArray(result?.rows) || result.rows.length !== 1) {
       return { members: list, filteredCount: 0 };
     }
+    // The aggregate below always projects a `members` column (COALESCE(...,
+    // '[]'::jsonb)), so a row without one did not come from this query. Fail
+    // open rather than reading "no survivor column" as "no survivors".
     const survivors = parseQuarantineSurvivorMembers(result.rows[0]?.members);
+    if (!survivors) {
+      return { members: list, filteredCount: 0 };
+    }
     const survivingKeys = new Set(
       survivors
         .map((member) => `${String(member?.merchant_id || '').trim()}:${String(member?.product_id || '').trim()}`)
