@@ -488,6 +488,11 @@ function buildInvokeIngressGatewayInput({
 
 module.exports = {
   buildInvokeIngressGatewayInput,
+  // Exported so the asserted-privilege observer can ask THIS function what a
+  // caller's tier actually normalizes to. A second copy of the rule would make
+  // the measurement disagree with the code it is measuring, which is the one
+  // way that measurement could be wrong in the direction that matters.
+  normalizePartnerTier,
   resolveInvokeTaskType,
   resolveInvokeRequestedLayer,
   resolveInvokeRequestedLayerWithInput,
