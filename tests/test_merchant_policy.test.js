@@ -25,6 +25,24 @@ describe('testMerchantPolicy', () => {
     expect(isTestMerchantId('merch_test_ownist_001', {})).toBe(true);
   });
 
+  // pivota-review-demo-3 was already a known rig in scripts/_utils/
+  // demoExclusions.cjs but had never been added to the serving denylist. It has
+  // no merchant_stores row, so the domain leg cannot reach it either.
+  test('bakes in pivota-review-demo-3 (2026-07-27)', () => {
+    expect(TEST_MERCHANT_IDS).toContain('merch_shopify_b20b5797f4181983c177');
+    expect(isTestMerchantId('merch_shopify_b20b5797f4181983c177', {})).toBe(true);
+  });
+
+  // The serving denylist must be a superset of the metrics-only rig list —
+  // a rig excluded from audits but not from serving is the exact bug this
+  // sweep found. This is the only thing enforcing agreement between the two.
+  test('covers every rig in the metrics exclusion list', () => {
+    const { DEMO_MERCHANT_IDS } = require('../scripts/_utils/demoExclusions.cjs');
+    for (const id of DEMO_MERCHANT_IDS) {
+      expect(TEST_MERCHANT_IDS).toContain(id);
+    }
+  });
+
   describe('isTestMerchantId', () => {
     test('flags the baked-in rigs', () => {
       expect(isTestMerchantId('merch_efbc46b4619cfbdf', {})).toBe(true);
