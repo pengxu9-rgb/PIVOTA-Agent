@@ -38864,6 +38864,10 @@ function buildCheckoutServerTimingHeader({ totalMs, upstreamMs, checkoutRuntime 
   return metrics.join(', ');
 }
 
+// Measurement for the self-asserted `partner_tier` hole (worklist P0.5 defect 2). Pure, no I/O, extracted so
+// the decision is unit-testable without booting the app — the same pattern as publicReadChainResolvability.
+const { observeAssertedPrivilege } = require('./services/assertedPrivilegeObservation');
+
 async function handleInvokeRequest(req, res, routeContext = {}) {
   const clientChannel = String(routeContext.client_channel || 'shop').trim().toLowerCase() || 'shop';
   const routeKeyFingerprint =
@@ -38881,6 +38885,38 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     intent: null,
     expansionMode: null,
   };
+
+  // MEASUREMENT ONLY — no decision, no block, no response change. See
+  // src/services/assertedPrivilegeObservation.js for the defect and for why this ships before the fix.
+  //
+  // Placed HERE, at the invoke ingress, and not next to buildRawAuthClaims, deliberately. buildRawAuthClaims
+  // is only reached on two narrow paths today (the checkout_handoff envelope, and find_products* under
+  // governance shadow mode), so observing there would answer "who asserted a tier on those two paths" when
+  // the question is "does ANY caller assert one at all". Under-counting here is the one way this measurement
+  // could mislead the enforcement decision it exists to inform.
+  //
+  // Silent unless something is actually asserted, so on a healthy corpus this emits nothing and any line is a
+  // finding. Wrapped because an observability call must never be able to fail a request.
+  try {
+    const assertedPrivilege = observeAssertedPrivilege({
+      req,
+      routeContext,
+      operation: debugRuntime.operation,
+      metadata:
+        req?.body?.metadata && typeof req.body.metadata === 'object' && !Array.isArray(req.body.metadata)
+          ? req.body.metadata
+          : {},
+    });
+    if (assertedPrivilege) {
+      logger.warn(
+        { ...assertedPrivilege, gateway_request_id: gatewayRequestId },
+        'invoke request asserted a privilege field it cannot prove',
+      );
+    }
+  } catch (_) {
+    // Never let measurement break the surface it is measuring.
+  }
+
   const checkoutRuntime = {
     checkoutTraceId: null,
     paymentStatus: null,

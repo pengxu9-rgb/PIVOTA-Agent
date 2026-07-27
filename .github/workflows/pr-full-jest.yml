@@ -42,7 +42,7 @@ jobs:
   # This starts with the shared error taxonomy — the money-path classification —
   # and should grow file by file as each is confirmed.
   node-tests:
-    name: node:test (commerce kernel error taxonomy)
+    name: node:test (allowlist)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -77,7 +77,8 @@ jobs:
         run: |
           node --test \
             tests/commerce_kernel_error_body.node.test.cjs \
-            tests/commerce_kernel_error_mapping.node.test.cjs
+            tests/commerce_kernel_error_mapping.node.test.cjs \
+            tests/asserted_privilege_observation.node.test.cjs
 
   jest:
     runs-on: ubuntu-latest
