@@ -17,6 +17,14 @@ describe('testMerchantPolicy', () => {
     expect(TEST_MERCHANT_IDS).toContain('merch_shopify_0584b37f7a8be00a5223'); // pivota-review-demo-2
   });
 
+  // ADR-018 census (#1595): a fixture catalog with 4 serving_eligible rows and
+  // NO merchant_stores row, so the domain leg can never reach it — the id
+  // denylist is the only thing standing between it and the public feed.
+  test('bakes in the ownist fixture merchant (2026-07-27)', () => {
+    expect(TEST_MERCHANT_IDS).toContain('merch_test_ownist_001');
+    expect(isTestMerchantId('merch_test_ownist_001', {})).toBe(true);
+  });
+
   describe('isTestMerchantId', () => {
     test('flags the baked-in rigs', () => {
       expect(isTestMerchantId('merch_efbc46b4619cfbdf', {})).toBe(true);
