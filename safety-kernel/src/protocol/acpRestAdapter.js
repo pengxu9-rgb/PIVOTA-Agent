@@ -369,6 +369,14 @@ const STATUS_BY_CODE = Object.freeze({
   IDEMPOTENT_REPLAY: 409,
   PAYMENT_REQUIRES_ACTION: 402,
   MERCHANT_UNAVAILABLE: 503,
+  // The two TERMINAL read outcomes. Both mean "there is nothing at this id and there never will be", so both
+  // are 404 — matching statusForCommerceKernelError in src/server.js. Without an entry here they fell to the
+  // `?? 400` default below, which tells an ACP client its REQUEST was malformed: a different lie in the same
+  // family as the retry trap these codes exist to end, and one that points a caller at fixing its payload
+  // instead of at its id. NO_MERCHANT_OFFER's omission is a pre-existing hole from #1829; both are fixed
+  // together because leaving one behind would have the door answer two statuses for one class of fact.
+  NO_MERCHANT_OFFER: 404,
+  UNKNOWN_PRODUCT_ID: 404,
   OPERATION_NOT_ALLOWED: 409,
 });
 
