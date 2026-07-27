@@ -23,6 +23,13 @@
 // BACKEND_READ_OPS in safety-kernel/src/protocol/productionWiring.js.
 const COMMERCE_KERNEL_READ_OPS = new Set(['get_product_detail', 'find_products', 'find_products_multi']);
 
+// NARROWER STILL: the ops where "the id resolved to nothing" is a sentence that can be true. A search op has
+// a query, not an id, so "No product matches that id — search again" would be nonsense advice for what would
+// actually be a bad search argument. `MISSING_MERCHANT_CONTEXT` provably originates only from the get_pdp_v2
+// lane today (single emit site in src/server.js), so this is not a behaviour difference — it is the arm
+// refusing to hold an opinion it has no basis for if the backend ever starts emitting that code elsewhere.
+const SINGLE_PRODUCT_READ_OPS = new Set(['get_product_detail']);
+
 /**
  * @param {{ operation?: string, upstreamCode?: string|null, status?: number|null }} input
  * @returns {'QUOTE_EXPIRED'|'PRICE_CHANGED'|'OUT_OF_STOCK'|'UNKNOWN_PRODUCT_ID'|'NO_MERCHANT_OFFER'|'MERCHANT_UNAVAILABLE'}
@@ -42,12 +49,16 @@ function mapUpstreamErrorToKernelCode({ operation, upstreamCode, status } = {}) 
   // a non-signature id like `rejuran:…`. Measured on prod 2026-07-27: both shapes came back
   // MERCHANT_UNAVAILABLE / retriable:true, because 400 misses the not-found arm below.
   //
-  // READ OPS ONLY, and matched on the CODE rather than the bare 400. Two independent guards, both load-bearing:
+  // SINGLE-PRODUCT READS ONLY, and matched on the CODE rather than the bare 400. Two independent guards,
+  // both load-bearing:
   //   - op scope, because the money ops share this function and no product-identity story should ever be able
   //     to tell a checkout agent "never retry";
   //   - code (not status), because a 400 on a read op is just as likely a malformed page_size — a caller bug,
   //     not a statement about any product id.
-  if (isReadOp && code === 'MISSING_MERCHANT_CONTEXT') return 'UNKNOWN_PRODUCT_ID';
+  // Note this arm is checked BEFORE the not-found arms, so a `MISSING_MERCHANT_CONTEXT` that happens to
+  // arrive with HTTP 404 reports UNKNOWN_PRODUCT_ID rather than NO_MERCHANT_OFFER. Same terminal semantics
+  // and the same HTTP 404 out; it only moves that slice onto the more accurate metric.
+  if (SINGLE_PRODUCT_READ_OPS.has(op) && code === 'MISSING_MERCHANT_CONTEXT') return 'UNKNOWN_PRODUCT_ID';
 
   // A not-found from a read lane is a persistent data condition: no acceptable offer/seed answers the id's
   // content route, and that is true again on the next call. The explicit PRODUCT_NOT_FOUND code is unambiguous
@@ -58,4 +69,8 @@ function mapUpstreamErrorToKernelCode({ operation, upstreamCode, status } = {}) 
   return 'MERCHANT_UNAVAILABLE';
 }
 
-module.exports = { mapUpstreamErrorToKernelCode, COMMERCE_KERNEL_READ_OPS };
+module.exports = {
+  mapUpstreamErrorToKernelCode,
+  COMMERCE_KERNEL_READ_OPS,
+  SINGLE_PRODUCT_READ_OPS,
+};

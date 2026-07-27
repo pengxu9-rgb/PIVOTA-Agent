@@ -28,6 +28,41 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # THE SUITES JEST STRUCTURALLY CANNOT SEE. jest.config.js testMatch is
+  # `**/tests/**/*.test.(js|ts)`, so every `*.node.test.cjs` file is invisible to
+  # the shard matrix below — including tests written specifically to pin
+  # behaviour that had already broken production once. #1829's
+  # `commerce_kernel_error_body` has never run in CI; #1837's
+  # `commerce_kernel_error_mapping` would have joined it.
+  #
+  # DELIBERATELY A SHORT ALLOWLIST, which the header above rightly forbids for
+  # jest. The repo has ~45 `.node.test.cjs` files listed in `npm run test:node`
+  # and no workflow runs any of them; sweeping them all in here without first
+  # confirming each is green would trade a silent gap for a permanently red gate.
+  # This starts with the shared error taxonomy — the money-path classification —
+  # and should grow file by file as each is confirmed.
+  node-tests:
+    name: node:test (commerce kernel error taxonomy)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      # No `npm ci`: both files import only node builtins and first-party source
+      # under src/, safety-kernel/ and mcp-server/, so they run on a bare
+      # checkout. Worth keeping — it is what makes this job seconds, not minutes.
+      - name: Run node:test suites
+        run: |
+          node --test \
+            tests/commerce_kernel_error_body.node.test.cjs \
+            tests/commerce_kernel_error_mapping.node.test.cjs
+
   jest:
     runs-on: ubuntu-latest
     timeout-minutes: 30

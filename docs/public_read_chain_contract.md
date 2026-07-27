@@ -62,12 +62,24 @@ the retriable default.
 resolves to nothing — and it is metered as a catalog-**coverage** signal, i.e. gaps we own. Folding stale or
 invented ids into that metric would make it unreadable the first time an agent starts guessing sigs.
 
-**Two guards, both load-bearing.** The arm keys on the upstream *code* and is restricted to read ops.
-Op-scoping matters because `throwCommerceKernelUpstreamError` is shared with `preview_quote` / `create_order`
-/ `submit_payment`; code-matching matters because a bare 400 on a read op is just as likely a malformed
+**Two guards, both load-bearing.** The arm keys on the upstream *code* and is restricted to
+`get_product_detail` — the one op where "the id resolved to nothing" is a sentence that can be true. Op-scoping
+matters because `throwCommerceKernelUpstreamError` is shared with `preview_quote` / `create_order` /
+`submit_payment`; code-matching matters because a bare 400 on a read op is just as likely a malformed
 `page_size`. The decision now lives in `src/services/commerceKernelErrorMapping.js` so it is unit-testable
 without booting the app, and `tests/commerce_kernel_error_mapping.node.test.cjs` pins that neither terminal
 classification can reach a money op.
+
+**One cell of the 404 lane moves.** `get_product_detail` + `MISSING_MERCHANT_CONTEXT` + HTTP 404 previously
+reported `NO_MERCHANT_OFFER` and now reports `UNKNOWN_PRODUCT_ID` — the new arm is checked first, by design.
+Same terminal semantics, same HTTP 404 out; it only routes that slice onto the metric that describes it. Every
+other 404 cell is byte-identical (verified by diffing the old and new decision tables over 1,800 op × code ×
+status combinations: 96 divergences, all of them this one condition).
+
+Both terminal codes now also map to **404 on the ACP door** (`acpRestAdapter.STATUS_BY_CODE`). Neither had an
+entry, so both fell to its `?? 400` default — telling an ACP client its *request* was malformed and pointing it
+at fixing the payload rather than the id. `NO_MERCHANT_OFFER`'s omission dates from #1829; both are fixed
+together so the door cannot answer two statuses for one class of fact.
 
 `safety-kernel/src/protocol/productionWiring.js` deliberately does **not** mirror this arm: it throws before
 parsing the response body, so it cannot see an upstream code, and widening it to a bare 400 would be wrong.

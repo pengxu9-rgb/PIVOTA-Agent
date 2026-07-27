@@ -30379,8 +30379,9 @@ async function getCommerceConfirmationActionHandler() {
 // Everything else is KEPT — see the drop-only-what-is-provably-dead note on publicReadDetailResolves.
 //
 // FAIL-OPEN by construction: any resolver error, timeout, or missing DATABASE_URL keeps the row. A blank
-// public search is a worse failure than a dead id, and a dead id that slips through now returns the honest
-// non-retriable NO_MERCHANT_OFFER rather than an invitation to retry forever.
+// public search is a worse failure than a dead id, and a dead id that slips through now returns an honest
+// non-retriable error rather than an invitation to retry forever — NO_MERCHANT_OFFER when the id is real but
+// nothing serves it, UNKNOWN_PRODUCT_ID when it resolves to nothing at all.
 const { chainRowResolvable } = require('./services/publicReadChainResolvability');
 
 const PUBLIC_READ_CHAIN_FILTER_CONCURRENCY = 8;

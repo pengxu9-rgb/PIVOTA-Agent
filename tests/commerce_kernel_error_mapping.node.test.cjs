@@ -18,6 +18,7 @@ const assert = require('node:assert/strict');
 const {
   mapUpstreamErrorToKernelCode,
   COMMERCE_KERNEL_READ_OPS,
+  SINGLE_PRODUCT_READ_OPS,
 } = require('../src/services/commerceKernelErrorMapping');
 
 const READ_OPS = ['get_product_detail', 'find_products', 'find_products_multi'];
@@ -29,18 +30,47 @@ const MONEY_OPS = [
   'request_after_sales',
 ];
 
-test('an unresolvable id on a read op is terminal, not a retriable outage', () => {
-  for (const op of READ_OPS) {
+test('an unresolvable id on the single-product read is terminal, not a retriable outage', () => {
+  assert.equal(
+    mapUpstreamErrorToKernelCode({
+      operation: 'get_product_detail',
+      upstreamCode: 'MISSING_MERCHANT_CONTEXT',
+      status: 400,
+    }),
+    'UNKNOWN_PRODUCT_ID',
+  );
+});
+
+test('…and NOT on the search reads, where the message would be nonsense', () => {
+  // "No product matches that id — search again" is bad advice for an op that was
+  // given a query, not an id. MISSING_MERCHANT_CONTEXT provably originates only
+  // from the get_pdp_v2 lane today, so this costs nothing and stops the arm from
+  // holding an opinion it has no basis for if that ever changes.
+  for (const op of ['find_products', 'find_products_multi']) {
     assert.equal(
       mapUpstreamErrorToKernelCode({
         operation: op,
         upstreamCode: 'MISSING_MERCHANT_CONTEXT',
         status: 400,
       }),
-      'UNKNOWN_PRODUCT_ID',
+      'MERCHANT_UNAVAILABLE',
       op,
     );
   }
+});
+
+test('the unknown-id arm wins over the 404 arm when both would apply', () => {
+  // Same terminal semantics and the same HTTP 404 either way; this only routes
+  // the slice onto the metric that describes it accurately. Pinned so the arm
+  // order is a decision, not an accident of where it was pasted.
+  assert.equal(
+    mapUpstreamErrorToKernelCode({
+      operation: 'get_product_detail',
+      upstreamCode: 'MISSING_MERCHANT_CONTEXT',
+      status: 404,
+    }),
+    'UNKNOWN_PRODUCT_ID',
+  );
 });
 
 test('THE GUARD: the same signal on a money op stays a retriable outage', () => {
@@ -127,10 +157,11 @@ test('anything unrecognised still falls back to the retriable outage', () => {
   assert.equal(mapUpstreamErrorToKernelCode({}), 'MERCHANT_UNAVAILABLE');
 });
 
-test('the read-op set is exactly the three read lanes', () => {
-  // Pinned because both terminal classifications key off it. Adding a money op here would silently widen
-  // "never retry" onto the charge path.
+test('the op sets are exactly what they claim', () => {
+  // Pinned because both terminal classifications key off them. Adding a money op to either would silently
+  // widen "never retry" onto the charge path.
   assert.deepEqual([...COMMERCE_KERNEL_READ_OPS].sort(), [...READ_OPS].sort());
+  assert.deepEqual([...SINGLE_PRODUCT_READ_OPS], ['get_product_detail']);
 });
 
 test('UNKNOWN_PRODUCT_ID is a real, non-retriable code with an honest message', async () => {
@@ -175,4 +206,19 @@ test('the new code is wired into audit + observability, not just the catalog', a
     ERROR_OBSERVABILITY.UNKNOWN_PRODUCT_ID.metric,
     ERROR_OBSERVABILITY.NO_MERCHANT_OFFER.metric,
   );
+});
+
+test('every door answers 404 for the terminal read outcomes, not 400', () => {
+  // A door that says 400 tells the caller its REQUEST was malformed and points it
+  // at fixing the payload — a different lie in the same family as the retry trap.
+  // The ACP adapter's STATUS_BY_CODE had no entry for either terminal code, so
+  // both fell to its `?? 400` default while src/server.js correctly said 404.
+  const src = require('node:fs').readFileSync(
+    require('node:path').join(__dirname, '..', 'safety-kernel', 'src', 'protocol', 'acpRestAdapter.js'),
+    'utf8',
+  );
+  const table = src.split('const STATUS_BY_CODE')[1].split('});')[0];
+  for (const code of ['NO_MERCHANT_OFFER', 'UNKNOWN_PRODUCT_ID']) {
+    assert.match(table, new RegExp(`${code}:\\s*404`), `${code} must map to 404 on the ACP door`);
+  }
 });

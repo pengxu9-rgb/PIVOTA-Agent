@@ -22,7 +22,8 @@ import { PivotaCommerceError } from '../errors.js';
 import { createCanonicalExecutor } from './canonicalExecutor.js';
 
 // Read-only ops — the lanes where a bare 404 means "no such product" rather than a missing backend route.
-// Mirrors the read() calls in canonicalExecutor.js and COMMERCE_KERNEL_READ_OPS in src/server.js.
+// Mirrors the read() calls in canonicalExecutor.js and COMMERCE_KERNEL_READ_OPS in
+// src/services/commerceKernelErrorMapping.js (where it moved out of src/server.js).
 const BACKEND_READ_OPS = new Set(['get_product_detail', 'find_products', 'find_products_multi']);
 import { createPaymentAuthorizationVerifier } from './paymentAuthorizationVerifier.js';
 import { createSignedGrantVerifier, createAp2MandateVerifier } from './protocolPaymentVerifiers.js';
