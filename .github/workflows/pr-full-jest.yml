@@ -54,9 +54,25 @@ jobs:
         with:
           node-version: "20"
 
-      # No `npm ci`: both files import only node builtins and first-party source
-      # under src/, safety-kernel/ and mcp-server/, so they run on a bare
-      # checkout. Worth keeping — it is what makes this job seconds, not minutes.
+      # `npm ci` IS required, and the reason is worth writing down because it is
+      # easy to get wrong locally. `node_modules` is a TRACKED SYMLINK in this
+      # repo pointing at an absolute path on a developer machine, so every fresh
+      # checkout — including this runner and `git archive` — starts with a
+      # DANGLING link. On a dev box it silently resolves to a populated tree, so
+      # "this test needs no deps" verifies as true locally and is false in CI.
+      # commerce_kernel_error_body pulls in the axios/pino side of src/; only the
+      # mapping test is genuinely dependency-free.
+      - name: Install
+        run: |
+          for attempt in 1 2 3; do
+            echo "npm ci attempt $attempt/3"
+            if npm ci; then exit 0; fi
+            echo "npm ci failed (attempt $attempt); retrying after backoff…"
+            sleep $((attempt * 15))
+          done
+          echo "npm ci failed after 3 attempts" >&2
+          exit 1
+
       - name: Run node:test suites
         run: |
           node --test \
