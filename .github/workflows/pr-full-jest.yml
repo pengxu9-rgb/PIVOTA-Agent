@@ -73,12 +73,24 @@ jobs:
           echo "npm ci failed after 3 attempts" >&2
           exit 1
 
+      # ADDED 2026-07-27: the three ACP feed-lane suites. Jest's testMatch is
+      # `**/tests/**/*.test.(js|ts)`, so `*.node.test.cjs` is STRUCTURALLY
+      # invisible to the sharded jest job below — landing them without this
+      # entry would mean the only tests for the feed's flag gates, price gate and
+      # rig exclusion run in no CI job at all. In a repo that has shipped "a test
+      # that cannot fail" four times in three days, that is the same wound.
+      # These three need only src/ + node builtins (no axios/pino side of src/),
+      # which is why they are safe on the dangling-symlink checkout described
+      # above; confirmed green in CI before this line was added.
       - name: Run node:test suites
         run: |
           node --test \
             tests/commerce_kernel_error_body.node.test.cjs \
             tests/commerce_kernel_error_mapping.node.test.cjs \
-            tests/asserted_privilege_observation.node.test.cjs
+            tests/asserted_privilege_observation.node.test.cjs \
+            tests/acp_feed_item.node.test.cjs \
+            tests/acp_feed_source.node.test.cjs \
+            tests/product_entity_index_feed_election.node.test.cjs
 
   jest:
     runs-on: ubuntu-latest

@@ -156,14 +156,21 @@ test('the relation name is required; a bare SQLSTATE is not enough', () => {
   assert.equal(isMissingContentCanonicalElectionError(null), false);
 });
 
-test('with the flag OFF, an election error is not caught — nothing to degrade to', async () => {
+test('with the flag OFF there is no retry and no latch — asserted on CALL COUNT', async () => {
+  // Asserting only that it rejects is a test that CANNOT FAIL: delete the
+  // `!electedCanonicalEnabled ||` guard and the mutant still rejects — it just
+  // burns a second doomed query and latches spuriously on the way. The call
+  // count is the only thing that distinguishes them.
   const err = new Error('relation "content_canonical_election" does not exist');
   err.code = '42P01';
+  let calls = 0;
+  const query = async () => { calls += 1; throw err; };
   await assert.rejects(
     withEnv({ INDEX_FEED_ELECTED_CANONICAL: undefined }, () =>
-      getProductEntityIndexFeed({ limit: 2 }, { query: async () => { throw err; } })),
+      getProductEntityIndexFeed({ limit: 2 }, { query })),
     /content_canonical_election/,
   );
+  assert.equal(calls, 1, 'flag off ⇒ exactly one query, no retry, no spurious latch');
 });
 
 // ---- connection layer -------------------------------------------------------
@@ -244,9 +251,18 @@ test('the missing-table latch is sticky, so test ORDER in this file matters', as
   // Made visible on purpose rather than left as a trap. The degrade test above
   // has already latched CONTENT_CANONICAL_ELECTION_TABLE_MISSING for this
   // process, so from here on the flag cannot re-enable the join no matter what
-  // the env says. That is the intended production behaviour — a missing table
-  // does not reappear mid-process — but it means any NEW test that needs the
-  // join must be placed ABOVE the degrade test.
+  // the env says.
+  //
+  // Be accurate about WHY that is acceptable: the table certainly CAN appear
+  // mid-process — pivota-backend creates it at ITS boot (db/schema_guard.py),
+  // a different process from this long-lived gateway. The latch is a deliberate
+  // trade, not a claim about the world: re-probing would put a
+  // guaranteed-failing query in front of every request, and the cost of being
+  // wrong is only that a canonical PREFERENCE stays off until the next gateway
+  // restart. It is NOT self-healing, and a deploy is what clears it.
+  //
+  // The consequence for this file is that any NEW test needing the join must
+  // sit ABOVE the degrade test.
   const cap = captureSql();
   await withEnv({ INDEX_FEED_ELECTED_CANONICAL: '1' }, () =>
     getProductEntityIndexFeed({ limit: 2 }, { query: cap.query }));

@@ -21,11 +21,22 @@ function firstNonEmpty(...vals) {
   return undefined;
 }
 
+// Same flag NAME as pivota-backend's `CONNECTION_LAYER_FIELD_ENABLED` and as the
+// sibling gate in services/productEntityIndexFeed — one connection-layer
+// contract spans two repos and three call sites, and a different name at any of
+// them ships half a contract.
+function connectionLayerFieldEnabled(env = process.env) {
+  return ['1', 'true', 'yes', 'on'].includes(
+    String(env?.CONNECTION_LAYER_FIELD_ENABLED || '').trim().toLowerCase(),
+  );
+}
+
 /**
  * @param {object} p Raw product from backend find_products.
- * @param {{ buildPublicProductUrl?: (id: string) => string }} deps PDP URL builder (gateway-owned).
+ * @param {{ buildPublicProductUrl?: (id: string) => string, env?: NodeJS.ProcessEnv }} deps
+ *        PDP URL builder (gateway-owned) and the env the layer-field gate reads.
  */
-function buildAcpFeedItem(p, { buildPublicProductUrl } = {}) {
+function buildAcpFeedItem(p, { buildPublicProductUrl, env = process.env } = {}) {
   const o = isPlainObject(p) ? p : {};
   const productId = firstNonEmpty(o.id, o.product_id, o.sku_id, o.external_product_id);
   const attributedUrl = firstNonEmpty(o.external_redirect_url, o.affiliate_url);
@@ -59,10 +70,15 @@ function buildAcpFeedItem(p, { buildPublicProductUrl } = {}) {
     // fallback the standing rule forbids. An agent that wants to know what it
     // gets reads `execution_path`; `connection_layer` is provenance only.
     //
-    // Both are `undefined` on the existing find_products lane, which does not
-    // supply them, so today's feed output is byte-identical.
-    connection_layer: o.connection_layer,
-    execution_path: o.execution_path,
+    // GATED, not merely "additive". The backend's own gate for this contract is
+    // `CONNECTION_LAYER_FIELD_ENABLED` and this repo deliberately reuses the
+    // NAME — which means that without a gate here, the day someone flips it
+    // backend-side the PUBLIC feed grows two fields with no gateway flag and no
+    // gateway deploy, including a `layer 3` that the sibling lane refuses to
+    // claim on principle. Same flag, both repos, or it is not one contract.
+    ...(connectionLayerFieldEnabled(env)
+      ? { connection_layer: o.connection_layer, execution_path: o.execution_path }
+      : {}),
   };
 }
 
@@ -89,4 +105,4 @@ function isQuotableFeedItem(item) {
   return typeof o.currency === 'string' && o.currency.trim() !== '';
 }
 
-module.exports = { buildAcpFeedItem, isQuotableFeedItem };
+module.exports = { buildAcpFeedItem, isQuotableFeedItem, connectionLayerFieldEnabled };

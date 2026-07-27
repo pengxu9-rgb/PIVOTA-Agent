@@ -496,9 +496,16 @@ async function getProductEntityIndexFeed(payload = {}, deps = {}) {
   // against a database that has not grown the table yet. A missing relation
   // must degrade this lane to its pre-election behaviour, never 500 it: the
   // election adds a canonical PREFERENCE, and losing a preference is not worth
-  // losing the feed. Latched per process, because a missing table does not
-  // reappear mid-process and re-probing would put a guaranteed-failing query in
-  // front of every request.
+  // losing the feed.
+  //
+  // Latched per process — and stated precisely, because the obvious phrasing is
+  // false: the table CAN appear mid-process, since the backend creates it at
+  // ITS boot (db/schema_guard.py) and that is a different process from this
+  // long-lived gateway. The latch is a deliberate trade, not a claim about the
+  // world. Re-probing would put a guaranteed-failing query in front of every
+  // request, and the cost of being wrong is only that the canonical preference
+  // stays off until this process restarts. It does NOT self-heal; a gateway
+  // deploy clears it.
   let result;
   try {
     result = await query(buildSql(electedCanonicalEnabled), params);

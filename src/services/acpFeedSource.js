@@ -47,6 +47,7 @@
 // link to the MERCHANT's own destination, and settlement is the merchant's.
 
 const { isTestMerchantId } = require('./testMerchantPolicy');
+const { isQuotableFeedItem } = require('../acpFeedItem');
 
 const ENV_TRUE = new Set(['1', 'true', 'yes', 'on']);
 
@@ -115,12 +116,21 @@ async function fetchIndexFeedProducts(query = {}, deps = {}) {
 
   const products = asArray(result?.products);
 
-  // Defence in depth, NOT redundancy. The lane gates rigs in SQL via
-  // `activeCatalogProductSourceWhere` (merchant-id leg AND the
-  // `pivota-review-demo%` source_domain leg — one demo domain is live under TWO
-  // merchant_ids, so id enumeration alone is insufficient). This runtime leg is
-  // the one that actually stopped the 2026-07-23 leak when the SQL gate did not
-  // reach the lane in play. Both stay: they fail independently.
+  // Defence in depth, NOT redundancy — but the two legs are NOT equivalent, and
+  // it is worth being exact about which one covers what.
+  //
+  // The SQL gate (`activeCatalogProductSourceWhere`) has BOTH legs: merchant-id
+  // AND the `pivota-review-demo%` source_domain prefix. The domain leg exists
+  // because one demo domain is live under two distinct merchant_ids, so a
+  // re-connected demo store under a NEW id is still caught.
+  //
+  // This runtime leg has only the merchant-id leg, because the lane's item does
+  // not project `source_domain`. It is the leg that actually stopped the
+  // 2026-07-23 leak (all 20 feed items were rigs) when the SQL gate did not
+  // reach the lane in play — but be clear-eyed: in that same scenario it would
+  // NOT catch a demo store re-connected under an unknown merchant_id. Closing
+  // that would mean projecting source_domain onto the item; noted rather than
+  // done, because for THIS lane the SQL domain leg is in play and verified.
   const withoutRigs = products.filter((p) => !isTestMerchantId(p?.merchant_id, env));
   if (withoutRigs.length !== products.length && logger?.info) {
     logger.info(
@@ -128,7 +138,25 @@ async function fetchIndexFeedProducts(query = {}, deps = {}) {
       'acp feed: excluded test/demo merchant products',
     );
   }
-  return withoutRigs;
+
+  // THE PRICE GATE IS APPLIED HERE, not left to the caller.
+  //
+  // It has to be: the lane's best-offer join is a LEFT JOIN LATERAL, so a row
+  // with no priced, currency-bearing, unsuppressed offer comes back with
+  // `price: null` rather than being dropped. This module advertises itself as
+  // "the whole swap minus one line" and the server.js integration as a single
+  // call substitution — so if the gate lived in the caller, an integrator doing
+  // exactly what the handoff says would ship price-null items to ChatGPT/Google.
+  // That is the precise failure this lane exists to prevent, and a documented
+  // requirement is not a gate.
+  const quotable = withoutRigs.filter(isQuotableFeedItem);
+  if (quotable.length !== withoutRigs.length && logger?.info) {
+    logger.info(
+      { dropped: withoutRigs.length - quotable.length, surface: 'acp_public_feed', reason: 'not_price_quotable' },
+      'acp feed: dropped items with no quotable price',
+    );
+  }
+  return quotable;
 }
 
 module.exports = {

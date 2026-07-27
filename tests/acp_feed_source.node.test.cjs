@@ -74,8 +74,8 @@ test('the env escape hatch can exclude a newly-spotted rig without a deploy', as
       env: { PIVOTA_TEST_MERCHANT_IDS: 'merch_new_rig' },
       getProductEntityIndexFeed: async () => ({
         products: [
-          { id: 'a', merchant_id: 'merch_real' },
-          { id: 'b', merchant_id: 'merch_new_rig' },
+          { id: 'a', merchant_id: 'merch_real', price: 9, currency: 'USD' },
+          { id: 'b', merchant_id: 'merch_new_rig', price: 9, currency: 'USD' },
         ],
       }),
     },
@@ -90,7 +90,7 @@ test('a rig-free page logs nothing — the log line means something', async () =
     {
       env: {},
       logger: { info: () => logged.push(1) },
-      getProductEntityIndexFeed: async () => ({ products: [{ id: 'a', merchant_id: 'merch_real' }] }),
+      getProductEntityIndexFeed: async () => ({ products: [{ id: 'a', merchant_id: 'merch_real', price: 9, currency: 'USD' }] }),
     },
   );
   assert.equal(logged.length, 0);
@@ -162,7 +162,7 @@ test('a string amount from the DB numeric type still counts as quotable', () => 
 
 // ---- the two-field expression ----------------------------------------------
 
-test('connection_layer and execution_path ride through the mapper', () => {
+test('connection_layer and execution_path ride through the mapper when the flag is on', () => {
   const item = buildAcpFeedItem(
     {
       id: 'sig_x',
@@ -172,30 +172,37 @@ test('connection_layer and execution_path ride through the mapper', () => {
       connection_layer: 1,
       execution_path: ['warm_handoff', 'attributed_redirect'],
     },
-    { buildPublicProductUrl: pdp },
+    { buildPublicProductUrl: pdp, env: { CONNECTION_LAYER_FIELD_ENABLED: '1' } },
   );
   assert.equal(item.connection_layer, 1);
   assert.deepEqual(item.execution_path, ['warm_handoff', 'attributed_redirect']);
 });
 
-test('the two fields are absent — not invented — on the existing find_products lane', () => {
-  // Today's source supplies neither, so the emitted item must be unchanged.
-  const item = buildAcpFeedItem({ id: 'p1', title: 'T', price: 5, currency: 'USD' }, { buildPublicProductUrl: pdp });
-  assert.equal(item.connection_layer, undefined);
-  assert.equal(item.execution_path, undefined);
-  assert.equal('connection_layer' in item, true, 'key present with undefined value is fine; a guessed value is not');
+test('the two fields are ABSENT unless CONNECTION_LAYER_FIELD_ENABLED', () => {
+  // The backend gate for this contract has the SAME name. Without a gate here,
+  // flipping it backend-side would grow two fields on the PUBLIC feed with no
+  // gateway flag and no gateway deploy — including a layer 3 the sibling lane
+  // refuses to claim. So the default must be silence, and the KEY must be
+  // absent rather than present-and-undefined.
+  const item = buildAcpFeedItem(
+    { id: 'p1', title: 'T', price: 5, currency: 'USD', connection_layer: 3, execution_path: ['pivota_psp_checkout'] },
+    { buildPublicProductUrl: pdp, env: {} },
+  );
+  assert.equal('connection_layer' in item, false);
+  assert.equal('execution_path' in item, false);
 });
 
 test('a redirect-only item is never advertised as one-click', () => {
   // The standing no-execution-layer-fallback rule, as an assertion: the mapper
   // must not derive a better path from a higher layer, or vice versa.
+  const on = { buildPublicProductUrl: pdp, env: { CONNECTION_LAYER_FIELD_ENABLED: '1' } };
   const layer1Warm = buildAcpFeedItem(
     { id: 'a', price: 1, currency: 'USD', connection_layer: 1, execution_path: ['warm_handoff'] },
-    { buildPublicProductUrl: pdp },
+    on,
   );
   const layer2Cold = buildAcpFeedItem(
     { id: 'b', price: 1, currency: 'USD', connection_layer: 2, execution_path: ['attributed_redirect'] },
-    { buildPublicProductUrl: pdp },
+    on,
   );
   assert.deepEqual(layer1Warm.execution_path, ['warm_handoff']);
   assert.deepEqual(layer2Cold.execution_path, ['attributed_redirect']);
@@ -203,4 +210,48 @@ test('a redirect-only item is never advertised as one-click', () => {
     layer2Cold.connection_layer > layer1Warm.connection_layer,
     'the higher layer here has the WORSE path — that asymmetry is real and must survive',
   );
+});
+
+test('the price gate is applied BY THE LANE, not left to the caller', () => {
+  // The lane's best-offer join is a LEFT JOIN LATERAL, so price-less rows come
+  // back rather than being dropped. This module advertises itself as "the whole
+  // swap minus one line", so if the gate lived in the caller an integrator doing
+  // exactly what the handoff says would ship price:null to ChatGPT/Google. A
+  // documented requirement is not a gate.
+  return fetchIndexFeedProducts(
+    { limit: 10 },
+    {
+      env: {},
+      getProductEntityIndexFeed: async () => ({
+        products: [
+          { id: 'priced', merchant_id: 'm', price: 12, currency: 'USD' },
+          { id: 'no_price', merchant_id: 'm', price: null, currency: null },
+          { id: 'no_currency', merchant_id: 'm', price: 12, currency: null },
+          { id: 'zero', merchant_id: 'm', price: 0, currency: 'USD' },
+        ],
+      }),
+    },
+  ).then((products) => {
+    assert.deepEqual(products.map((p) => p.id), ['priced']);
+  });
+});
+
+test('dropping unquotable items is logged, so a silent feed shrink is visible', async () => {
+  const logged = [];
+  await fetchIndexFeedProducts(
+    { limit: 10 },
+    {
+      env: {},
+      logger: { info: (meta) => logged.push(meta) },
+      getProductEntityIndexFeed: async () => ({
+        products: [
+          { id: 'a', merchant_id: 'm', price: 5, currency: 'USD' },
+          { id: 'b', merchant_id: 'm', price: null, currency: null },
+        ],
+      }),
+    },
+  );
+  const priceLog = logged.find((m) => m.reason === 'not_price_quotable');
+  assert.ok(priceLog, 'a dropped-for-price event must be observable');
+  assert.equal(priceLog.dropped, 1);
 });
