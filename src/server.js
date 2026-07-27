@@ -17107,7 +17107,33 @@ function parseCanonicalPayloadObject(value) {
   }
 }
 
+// How much work `parseCanonicalCatalogPayload` is doing, and over how many bytes.
+//
+// WHY THIS COUNTER EXISTS. The PDP latency tail had ~7,000ms that fell outside
+// EVERY instrumented phase (healthy controls: ~170ms), and two plausible
+// diagnoses — TOAST detoast, an N+1 over identity group members — both survived
+// review and were both refuted when finally measured. The span turned out to be
+// a single un-wrapped `await` around work that does NO I/O at all, which is why
+// nothing I/O-shaped ever explained it. This function is the suspect: it deep
+// parses `product_payload` plus four nested re-parses and spreads, it is called
+// from SEVEN sites, it is not memoized, and on the heavy rows the payload is
+// ~200KB. `signatureRefHasUsableCatalogDetailContent` parses a payload
+// immediately before `buildExternalSeedProductFromSignatureCatalogRef` parses
+// the same one again.
+//
+// Counting rather than asserting: this ships the number, so the next change is
+// made against evidence instead of the third plausible story.
+const canonicalPayloadParseStats = { calls: 0, bytes: 0 };
+function readAndResetCanonicalPayloadParseStats() {
+  const snapshot = { ...canonicalPayloadParseStats };
+  canonicalPayloadParseStats.calls = 0;
+  canonicalPayloadParseStats.bytes = 0;
+  return snapshot;
+}
+
 function parseCanonicalCatalogPayload(value) {
+  canonicalPayloadParseStats.calls += 1;
+  if (typeof value === 'string') canonicalPayloadParseStats.bytes += value.length;
   const payload = parseCanonicalPayloadObject(value);
   if (!Object.keys(payload).length) return {};
   const seedData = parseCanonicalPayloadObject(payload.seed_data);
@@ -40524,6 +40550,14 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         // where the time went; `total_latency_ms` minus the last checkpoint is
         // whatever still is not covered.
         checkpoints_ms: pdpV2Checkpoints,
+        // How many deep payload parses this request performed, and over how many
+        // bytes. The suspected cost inside `build_external_seed_product`: the
+        // parser is called from seven sites, is not memoized, and two of those
+        // sites parse the SAME payload back to back. If `calls` is >1 on a slow
+        // row, memoizing it is the trim — and if it is 1, this hypothesis dies
+        // the way the previous two did, which is the point of shipping the
+        // number instead of the story.
+        canonical_payload_parses: readAndResetCanonicalPayloadParseStats(),
         modules: pdpV2ModuleTimings,
         savings_presentation_hydration_mode: pdpV2SavingsPresentationHydrationMode,
         product_group_resolve_mode: pdpV2ProductGroupResolveMode,
@@ -40829,8 +40863,20 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 }
                 signaturePrefetchedServingEligibility =
                   buildPrefetchedPdpServingEligibilityFromSignatureRef(signatureProductRef);
+                // THE SPAN THAT HELD THE MISSING TIME. Measured on the heavy
+                // sig_4b293ca5… : `phase:resolve_catalog_signature` -> this
+                // checkpoint is 818ms of an 839ms request, and everything
+                // between them except this one `await` is synchronous field
+                // copying. It does no I/O — it deep-parses `product_payload`
+                // (~200KB on the affected rows) — so it is CPU-bound and blocks
+                // the event loop, which is why the serial cost is sub-second
+                // while the same rows blow the 9s budget under concurrent load.
+                // Wrapped now so `phases` attributes it instead of `phases`
+                // summing to a fraction of `total_latency_ms`.
+                const buildExternalSeedProductStartedAt = Date.now();
                 signatureExternalSeedPrecheckProduct =
                   await buildExternalSeedProductFromSignatureCatalogRef(signatureProductRef);
+                markPdpV2Phase('build_external_seed_product', buildExternalSeedProductStartedAt);
                 markPdpV2Checkpoint('after_build_external_seed_product');
                 if (signatureExternalSeedPrecheckProduct?.product_id) {
                   signaturePrefetchedPdpContentProductId = String(
