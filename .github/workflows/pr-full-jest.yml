@@ -42,7 +42,7 @@ jobs:
   # This starts with the shared error taxonomy — the money-path classification —
   # and should grow file by file as each is confirmed.
   node-tests:
-    name: node:test (commerce kernel error taxonomy)
+    name: node:test (allowlist)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:

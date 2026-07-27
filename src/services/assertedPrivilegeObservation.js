@@ -33,7 +33,23 @@
 // observability. Two independent bounds: the raw value is truncated to RAW_TIER_MAX_CHARS, and the observer
 // stays SILENT unless the assertion actually has an effect (see below), so junk never reaches the log at all.
 
-const { normalizePartnerTier } = require('../api/gateway/invocation/buildInvokeIngressGatewayInput');
+// THE REAL RULES, not a copy of them. `buildRawAuthClaims` is what the governance envelope actually calls, so
+// reading `.partner_tier` off its output is identical-by-construction to what production decides. An earlier
+// version imported only the normalizer and kept private `firstNonEmpty`/`readHeader` copies; they disagreed
+// with the originals on array-valued and falsy inputs, and the disagreement produced FALSE NEGATIVES — a
+// caller demonstrably holding `flagship_partner` (90 rpm, deep_resolution, deep offer fields) that the
+// measurement never counted. A false negative here is strictly worse than the false positive it replaced: it
+// makes "a sustained zero" REACHABLE while a live partner is silently on flagship, which is exactly the
+// throttle-a-live-partner outcome this whole exercise exists to prevent.
+const {
+  buildRawAuthClaims,
+  firstNonEmptyString,
+  readHeader,
+} = require('../api/gateway/invocation/buildInvokeIngressGatewayInput');
+
+// Bound on any other caller-controlled string that reaches the log line. `operation` is caller-supplied on
+// POST /agent/v1/invoke and the observer runs before schema validation.
+const MAX_ECHOED_CHARS = 64;
 
 // Long enough that a real tier ('flagship') is never truncated, short enough that the field cannot be an
 // amplifier. Truncation is flagged rather than silent, so a reader can tell a capped value from a real one.
@@ -43,40 +59,35 @@ const RAW_TIER_MAX_CHARS = 64;
 // with that function — if a source is added there and not here, the observation under-reports and the
 // enforcement decision is made on incomplete data.
 const PARTNER_TIER_SOURCES = Object.freeze([
-  { source: 'metadata.partner_tier', read: (ctx) => ctx.metadata.partner_tier },
-  { source: 'metadata.partnerTier', read: (ctx) => ctx.metadata.partnerTier },
-  { source: 'header:x-pivota-partner-tier', read: (ctx) => ctx.header('x-pivota-partner-tier') },
-  { source: 'header:x-partner-tier', read: (ctx) => ctx.header('x-partner-tier') },
+  { source: 'metadata.partner_tier', read: (ctx) => firstNonEmptyString(ctx.metadata.partner_tier) },
+  { source: 'metadata.partnerTier', read: (ctx) => firstNonEmptyString(ctx.metadata.partnerTier) },
+  { source: 'header:x-pivota-partner-tier', read: (ctx) => readHeader(ctx.headers, 'x-pivota-partner-tier') },
+  { source: 'header:x-partner-tier', read: (ctx) => readHeader(ctx.headers, 'x-partner-tier') },
 ]);
 
-// The same self-assertion pattern on the other identity fields buildRawAuthClaims reads from metadata. Not
-// the primary question, but they are the same defect family and cost nothing to count while we are here.
+// The other identity fields buildRawAuthClaims reads from caller-controlled input. Counted for completeness,
+// but NOT the same defect as the tier, and the difference is worth stating because it is counter-intuitive:
+// asserting `org_id` alone promotes principal_type to 'partner' while leaving partner_tier at 'none', and
+// resolvePartnerTierPolicy then falls through to the `unknown` profile — 0 rpm, no allowed layers. Measured:
+// no headers -> public_api_agent 20 rpm; x-org-id only -> unknown 0 rpm. So org_id assertion is a SELF-DoS,
+// not an escalation, and enforcement would HELP such a caller rather than throttle them.
 const OTHER_ASSERTED_FIELDS = Object.freeze([
-  { field: 'org_id', read: (ctx) => firstNonEmpty(ctx.metadata.org_id, ctx.metadata.orgId, ctx.header('x-pivota-org-id'), ctx.header('x-org-id')) },
-  { field: 'agent_id', read: (ctx) => firstNonEmpty(ctx.metadata.agent_id, ctx.metadata.agentId) },
-  { field: 'principal_id', read: (ctx) => firstNonEmpty(ctx.metadata.principal_id, ctx.metadata.principalId) },
+  {
+    field: 'org_id',
+    read: (ctx) =>
+      firstNonEmptyString(
+        ctx.metadata.org_id,
+        ctx.metadata.orgId,
+        readHeader(ctx.headers, 'x-pivota-org-id'),
+        readHeader(ctx.headers, 'x-org-id'),
+      ),
+  },
+  { field: 'agent_id', read: (ctx) => firstNonEmptyString(ctx.metadata.agent_id, ctx.metadata.agentId) },
+  {
+    field: 'principal_id',
+    read: (ctx) => firstNonEmptyString(ctx.metadata.principal_id, ctx.metadata.principalId),
+  },
 ]);
-
-function firstNonEmpty(...values) {
-  for (const value of values) {
-    const trimmed = typeof value === 'string' ? value.trim() : value == null ? '' : String(value).trim();
-    if (trimmed) return trimmed;
-  }
-  return '';
-}
-
-function readHeaderFrom(headers) {
-  return (name) => {
-    if (!headers || typeof headers !== 'object') return '';
-    const direct = headers[name];
-    if (typeof direct === 'string') return direct.trim();
-    const lower = String(name).toLowerCase();
-    for (const [key, value] of Object.entries(headers)) {
-      if (String(key).toLowerCase() === lower && typeof value === 'string') return value.trim();
-    }
-    return '';
-  };
-}
 
 /**
  * The tier the CREDENTIAL proves, as opposed to the one the request claims.
@@ -87,7 +98,7 @@ function readHeaderFrom(headers) {
  * working with a one-line change and the emitted field is already named.
  */
 function resolveCredentialPartnerTier(invokeAuth = {}) {
-  const fromAuth = firstNonEmpty(invokeAuth?.partner_tier, invokeAuth?.partnerTier);
+  const fromAuth = firstNonEmptyString(invokeAuth?.partner_tier, invokeAuth?.partnerTier);
   return fromAuth || null;
 }
 
@@ -96,15 +107,13 @@ function resolveCredentialPartnerTier(invokeAuth = {}) {
  *   effect — which is the common case, and the case an attacker can force.
  */
 function observeAssertedPrivilege({ req = {}, routeContext = {}, operation = '', metadata = {} } = {}) {
-  const ctx = {
-    metadata: metadata && typeof metadata === 'object' ? metadata : {},
-    header: readHeaderFrom(req?.headers),
-  };
+  const safeMetadata = metadata && typeof metadata === 'object' ? metadata : {};
+  const ctx = { metadata: safeMetadata, headers: req?.headers };
 
   let assertedTier = '';
   let assertedTierSource = null;
   for (const candidate of PARTNER_TIER_SOURCES) {
-    const value = firstNonEmpty(candidate.read(ctx));
+    const value = candidate.read(ctx) || '';
     if (value) {
       assertedTier = value;
       assertedTierSource = candidate.source;
@@ -112,7 +121,7 @@ function observeAssertedPrivilege({ req = {}, routeContext = {}, operation = '',
     }
   }
 
-  const otherAsserted = OTHER_ASSERTED_FIELDS.filter((entry) => Boolean(firstNonEmpty(entry.read(ctx)))).map(
+  const otherAsserted = OTHER_ASSERTED_FIELDS.filter((entry) => Boolean(entry.read(ctx))).map(
     (entry) => entry.field,
   );
 
@@ -123,7 +132,10 @@ function observeAssertedPrivilege({ req = {}, routeContext = {}, operation = '',
   // would score every one of them as a downgrade, and since this counter's whole purpose is a go/no-go
   // ("a sustained zero is the green light"), a corpus of harmless junk would make the criterion unreachable:
   // the measurement could only ever block the safe change it exists to unblock.
-  const effectiveTier = normalizePartnerTier(assertedTier);
+  // Ask the REAL builder, on the REAL inputs. It normalizes and then omits the key when the answer is 'none',
+  // so `|| 'none'` here reproduces production exactly — including for array-valued and falsy inputs, which a
+  // reimplementation got wrong in the false-negative direction.
+  const effectiveTier = buildRawAuthClaims(req, routeContext, safeMetadata).partner_tier || 'none';
   const hasEffect = effectiveTier !== 'none';
 
   // SILENT WHEN THE ASSERTION CANNOT MATTER. This is a correctness rule and a safety rule at once: a value
@@ -138,7 +150,7 @@ function observeAssertedPrivilege({ req = {}, routeContext = {}, operation = '',
 
   return {
     event: 'invoke_asserted_privilege',
-    operation: String(operation || '').trim().toLowerCase() || null,
+    operation: String(operation || '').trim().toLowerCase().slice(0, MAX_ECHOED_CHARS) || null,
     client_channel: String(routeContext?.client_channel || '').trim() || null,
 
     // WHAT WAS CLAIMED, and from where. Bounded — see RAW_TIER_MAX_CHARS.
@@ -146,16 +158,26 @@ function observeAssertedPrivilege({ req = {}, routeContext = {}, operation = '',
     asserted_partner_tier_truncated: assertedTier.length > RAW_TIER_MAX_CHARS,
     asserted_partner_tier_source: assertedTierSource,
 
-    // WHAT THE CODE WOULD ACTUALLY USE. Compare against this, never against the raw string.
+    // WHAT THE CODE WOULD ACTUALLY USE, straight from buildRawAuthClaims. Compare against this, never the raw
+    // string — and note the two can differ legitimately (`FLAGSHIP` -> `flagship`, `['flagship','x']` -> the
+    // first element) as well as illegitimately.
     effective_partner_tier: effectiveTier,
+
+    // A tier WAS asserted but resolves to nothing. Costs no extra line (this only rides lines that emit for
+    // another reason) and answers the second half of the enforcement design: the "refuse an unprovable
+    // assertion" flavour would turn these callers' 200s into 4xx, which the downgrade counter cannot see.
+    asserted_tier_ignored: Boolean(assertedTier) && !hasEffect,
 
     // WHAT THE CREDENTIAL PROVES. null today for everyone — see resolveCredentialPartnerTier.
     credential_partner_tier: credentialTier,
 
     // THE DECISION FIELD. True means enforcement would take a privilege this request currently HAS. Counting
     // these by key_fingerprint over a few days is exactly the input the enforcement change needs, and a
-    // sustained zero is the green light to ship it. Keyed on the EFFECTIVE tier, so an assertion that already
-    // resolves to 'none' can never hold the gate shut.
+    // sustained zero is the green light to ship it — specifically, a sustained zero among lines with a
+    // NON-NULL key_fingerprint. Anonymous callers reach this ingress (GET /agent/v1/products/search has no
+    // auth middleware), so a header-fuzzing bot can otherwise hold the gate shut forever with lines that
+    // identify nobody. Keyed on the EFFECTIVE tier, so an assertion that already resolves to 'none' cannot
+    // hold it shut either.
     enforcement_would_downgrade: hasEffect && effectiveTier !== credentialTier,
 
     // WHO. Fingerprint, never the key itself.
@@ -173,6 +195,7 @@ function observeAssertedPrivilege({ req = {}, routeContext = {}, operation = '',
 module.exports = {
   observeAssertedPrivilege,
   RAW_TIER_MAX_CHARS,
+  MAX_ECHOED_CHARS,
   resolveCredentialPartnerTier,
   PARTNER_TIER_SOURCES,
   OTHER_ASSERTED_FIELDS,

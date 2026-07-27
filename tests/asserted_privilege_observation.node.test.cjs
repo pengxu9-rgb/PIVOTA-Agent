@@ -20,7 +20,11 @@ const {
   resolveCredentialPartnerTier,
   PARTNER_TIER_SOURCES,
   RAW_TIER_MAX_CHARS,
+  MAX_ECHOED_CHARS,
 } = require('../src/services/assertedPrivilegeObservation');
+const {
+  buildRawAuthClaims,
+} = require('../src/api/gateway/invocation/buildInvokeIngressGatewayInput');
 
 test('silent when nothing is asserted — the common case', () => {
   assert.equal(
@@ -48,8 +52,8 @@ test('catches a tier asserted through metadata', () => {
   assert.equal(out.agent_id, 'agent_x');
 });
 
-test('catches a tier asserted through either header spelling', () => {
-  for (const header of ['x-pivota-partner-tier', 'X-Partner-Tier']) {
+test('catches a tier asserted through either header name', () => {
+  for (const header of ['x-pivota-partner-tier', 'x-partner-tier']) {
     const out = observeAssertedPrivilege({
       req: { headers: { [header]: 'flagship' } },
       operation: 'find_products',
@@ -59,6 +63,19 @@ test('catches a tier asserted through either header spelling', () => {
     assert.equal(out.asserted_partner_tier, 'flagship');
     assert.match(out.asserted_partner_tier_source, /^header:/);
   }
+
+  // A MIXED-CASE KEY IS DELIBERATELY NOT OBSERVED, because the real reader does not see it either — Node
+  // lowercases header names off the wire, so this shape only exists in synthetic objects. An earlier version
+  // scanned case-insensitively and reported a tier the request did not actually get. Matching production
+  // beats being generous: a measurement that disagrees with the code is not a measurement.
+  assert.equal(
+    buildRawAuthClaims({ headers: { 'X-Partner-Tier': 'flagship' } }, {}, {}).partner_tier,
+    undefined,
+  );
+  assert.equal(
+    observeAssertedPrivilege({ req: { headers: { 'X-Partner-Tier': 'flagship' } }, metadata: {} }),
+    null,
+  );
 });
 
 test('COVERS EVERY SOURCE buildRawAuthClaims READS — a missed one under-counts silently', () => {
@@ -147,6 +164,66 @@ test('the raw tier value is BOUNDED — it is reachable unauthenticated', () => 
   assert.ok(JSON.stringify(withOther).length < 1000, 'a single observation must never be an amplifier');
 });
 
+test('AGREES WITH buildRawAuthClaims ON EVERY INPUT SHAPE — false negatives are the dangerous direction', () => {
+  // The observer used to keep private copies of firstNonEmptyString/readHeader. They disagreed with the
+  // originals on array-valued and falsy inputs, and every disagreement was a FALSE NEGATIVE: a caller
+  // demonstrably holding flagship_partner (90 rpm, deep_resolution, deep offer fields) that the counter never
+  // saw. That is strictly worse than the false positive it replaced — it makes "a sustained zero" REACHABLE
+  // while a live partner is silently on flagship, i.e. it green-lights the exact throttling this measures for.
+  //
+  // The observer now calls buildRawAuthClaims itself, so this asserts identity rather than parity. Keep this
+  // test even if that seems tautological: it is what stops the next person reintroducing a local shortcut.
+  const cases = [
+    ['plain', { headers: {} }, { partner_tier: 'flagship' }],
+    ['array value', { headers: {} }, { partner_tier: ['flagship', 'x'] }],
+    ['array, empty first', { headers: {} }, { partner_tier: ['', 'flagship'] }],
+    ['falsy metadata + header', { headers: { 'x-partner-tier': 'flagship' } }, { partner_tier: 0 }],
+    ['array-valued header', { headers: { 'x-partner-tier': ['flagship'] } }, {}],
+    ['uppercase', { headers: {} }, { partner_tier: 'FLAGSHIP' }],
+    ['mixed-case header key', { headers: { 'X-Partner-Tier': 'flagship' } }, {}],
+    ['approved via camelCase', { headers: {} }, { partnerTier: 'approved' }],
+    ['junk', { headers: {} }, { partner_tier: 'bogus' }],
+    ['literal none', { headers: {} }, { partner_tier: 'none' }],
+    ['nothing', { headers: {} }, {}],
+  ];
+
+  for (const [label, req, metadata] of cases) {
+    const real = buildRawAuthClaims(req, {}, metadata).partner_tier || 'none';
+    const out = observeAssertedPrivilege({ req, routeContext: {}, operation: 'find_products_multi', metadata });
+    const observed = out ? out.effective_partner_tier : 'none';
+    assert.equal(observed, real, `${label}: observer must see what buildRawAuthClaims sees`);
+    // And the line must exist exactly when the tier is real — silence on a real tier is the false negative.
+    assert.equal(Boolean(out && out.enforcement_would_downgrade), real !== 'none', `${label}: line presence`);
+  }
+});
+
+test('the echoed operation is bounded too — it is caller-supplied on POST /agent/v1/invoke', () => {
+  const out = observeAssertedPrivilege({
+    req: { headers: {} },
+    operation: 'O'.repeat(100_000),
+    metadata: { partner_tier: 'flagship' },
+  });
+  assert.equal(out.operation.length, MAX_ECHOED_CHARS);
+  assert.ok(JSON.stringify(out).length < 1000);
+});
+
+test('an ignored assertion is flagged, without costing a line of its own', () => {
+  // The "refuse an unprovable assertion" flavour of enforcement would turn these callers' 200s into 4xx —
+  // something enforcement_would_downgrade cannot see. Flagged on lines that emit for another reason.
+  const out = observeAssertedPrivilege({
+    req: { headers: {} },
+    metadata: { partner_tier: 'premium', org_id: 'org_1' },
+  });
+  assert.equal(out.asserted_tier_ignored, true);
+  assert.equal(out.enforcement_would_downgrade, false);
+
+  // …and alone it still emits nothing.
+  assert.equal(
+    observeAssertedPrivilege({ req: { headers: {} }, metadata: { partner_tier: 'premium' } }),
+    null,
+  );
+});
+
 test('THE OBSERVER IS ACTUALLY WIRED IN — a no-op PR must not look like a clean corpus', () => {
   // This is pure observability whose only failure mode is SILENCE. Delete the call site and every other test
   // here still passes, `node --check` is clean, and prod emits nothing — which is indistinguishable from the
@@ -155,20 +232,19 @@ test('THE OBSERVER IS ACTUALLY WIRED IN — a no-op PR must not look like a clea
   const path = require('node:path');
   const server = fs.readFileSync(path.join(__dirname, '..', 'src', 'server.js'), 'utf8');
 
-  assert.match(
-    server,
-    /require\('\.\/services\/assertedPrivilegeObservation'\)/,
+  // assert.ok, not assert.match: match() prints `actual`, which here is ~2MB of server.js in the failure log.
+  assert.ok(
+    server.includes("require('./services/assertedPrivilegeObservation')"),
     'src/server.js must require the observer',
   );
-  assert.match(
-    server,
-    /observeAssertedPrivilege\(\{/,
+  assert.ok(
+    /observeAssertedPrivilege\s*\(/.test(server),
     'src/server.js must CALL the observer, not merely import it',
   );
   // And it must be inside handleInvokeRequest — the ingress that sees every invoke — rather than next to
   // buildRawAuthClaims, which only two narrow paths reach.
   const handlerAt = server.indexOf('async function handleInvokeRequest(');
-  const callAt = server.indexOf('observeAssertedPrivilege({');
+  const callAt = server.search(/observeAssertedPrivilege\s*\(\{/);
   assert.ok(handlerAt > 0 && callAt > handlerAt, 'the call must live inside handleInvokeRequest');
   assert.ok(callAt - handlerAt < 4000, 'the call must be near the top of the ingress, before response work');
 });
