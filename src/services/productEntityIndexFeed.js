@@ -5,6 +5,43 @@ const {
 } = require('./externalSeedProducts');
 const { activeCatalogProductSourceWhere } = require('./activeCatalogSourceSql');
 
+// ADR-018 connection layer, JS twin of pivota-backend
+// `services/connection_layer.classify_connection_layer`. Kept deliberately
+// narrow: this lane sees one catalog row and nothing merchant-scoped, so it can
+// distinguish layer 1 from layer 2 and must never claim layer 3 (which needs a
+// PSP fact this query does not join). Normalisation matches the Python twin's
+// `.strip().lower()` — the backend paid for that lesson twice, once because a
+// NULL track fell through to the wrong layer and once because single-argument
+// Postgres `btrim` strips spaces but not tabs.
+const TRACK_EXTERNAL_REFERRAL = 'external_referral';
+const TRACK_INTERNAL_MERCHANT = 'internal_merchant';
+
+function connectionLayerForTrack(track) {
+  const normalized = String(track ?? '').trim().toLowerCase();
+  // Anything that is not explicitly the internal (synced) track is layer 1 —
+  // an unrecognised or absent track is not evidence of a sync, so it falls to
+  // the honest floor rather than inventing a tier.
+  return normalized === TRACK_INTERNAL_MERCHANT ? 2 : 1;
+}
+
+// Latched per process — see the try/catch around the statement below.
+let CONTENT_CANONICAL_ELECTION_TABLE_MISSING = false;
+
+function isMissingContentCanonicalElectionError(err) {
+  // The relation NAME is the required signal, not the SQLSTATE. This statement
+  // also touches catalog_products, catalog_merchants, index_pipeline_state,
+  // catalog_skus, catalog_offers and product_group_members; latching on a bare
+  // `code === '42P01'` would permanently disable the election preference
+  // whenever ANY of those went missing, and blame migration 181 for it. That
+  // exact misdiagnosis was demonstrated on the sibling latch in src/server.js.
+  // Postgres's undefined_table message always names the relation, so requiring
+  // the name costs nothing and the SQLSTATE stays as corroboration (a wrapping
+  // proxy may carry only the text).
+  const message = String(err?.message || err || '');
+  if (!message.includes('content_canonical_election')) return false;
+  return err?.code === '42P01' || message.includes('does not exist');
+}
+
 function clampInt(value, fallback, min, max) {
   const n = Number(value);
   if (!Number.isFinite(n)) return fallback;
@@ -130,6 +167,21 @@ function buildProductEntityIndexFeedItem(row) {
     price: priceAmount,
     currency: priceCurrency,
     availability: nonEmptyString(row.availability, product.availability) || null,
+    // ADR-018. `catalog_track` already encodes layers 1 vs 2 with no new
+    // storage, which is why the layer is DERIVED rather than stored: a stored
+    // copy would be a third thing to keep in sync with catalog_track and
+    // merchant_stores.status, both of which move, and a stale derivative is
+    // this stack's recurring failure.
+    //
+    // This lane can only see the ROW, so it can only answer layers 1 vs 2 —
+    // layer 3 additionally needs a merchant-scoped PSP fact this query does not
+    // join. It reports 2, not 3, for a synced row: understating the layer costs
+    // an agent nothing (execution_path is what it acts on), whereas overstating
+    // it would advertise a settlement rail that may not exist. Measured 2026-07-27,
+    // this is academic — 100% of the real serving catalog is layer 1 and layers
+    // 2 and 3 have ZERO non-rig population — but the contract is fixed now so
+    // the first real sync is a data change, not a shape change.
+    connection_layer: connectionLayerForTrack(row.catalog_track),
     updated_at: row.source_updated_at || row.updated_at || row.identity_updated_at || null,
   };
 }
@@ -153,6 +205,62 @@ async function getProductEntityIndexFeed(payload = {}, deps = {}) {
   const market = nonEmptyString(payload.market, process.env.EXTERNAL_SEED_MARKET, 'US');
   const tool = nonEmptyString(payload.tool, 'creator_agents');
   const includeAttached = payload.include_attached === true || payload.includeAttached === true;
+
+  // ── ELECTED-CANONICAL REPRESENTATIVE (default OFF) ──────────────────────────
+  //
+  // This lane picks ONE row per content_key with a ROW_NUMBER whose tie-breaks
+  // (is_primary → lifecycle → minted_at → updated_at → product_key) predate the
+  // canonical election and know nothing about it. `content_canonical_election`
+  // is now seeded in prod — 4,266 rows — and it is a DIFFERENT choice.
+  //
+  // Measured against prod 2026-07-27, over the 4,467 content_keys this lane
+  // would serve to the ACP feed:
+  //     4,266 have an election row
+  //        83 where THIS lane's rank-1 sig ≠ the elected canonical_sig_id
+  //       201 with no election row at all
+  //
+  // Those 83 matter specifically on a shopping feed. The item's `link` is built
+  // from the rank-1 sig, so the feed would advertise a PDP whose own
+  // rel=canonical points at a DIFFERENT URL. An ingester reads that as a
+  // canonical conflict and drops or merges the item — and the attribution goes
+  // with it. Rather than a second canonicalisation mechanism (there are already
+  // three), this defers to the election when one exists and falls back to the
+  // untouched tie-break chain when it does not.
+  //
+  // Flagged because this lane also serves the LIVE `get_product_entity_index_feed`
+  // operation, where changing which sig represents a group changes ids that
+  // callers may have cached. Flag off ⇒ SQL byte-identical to today.
+  const electedCanonicalEnabled = ['1', 'true', 'yes', 'on'].includes(
+    String(process.env.INDEX_FEED_ELECTED_CANONICAL || '').trim().toLowerCase(),
+  ) && !CONTENT_CANONICAL_ELECTION_TABLE_MISSING;
+
+  // Built as a function of `on` rather than as fixed consts, so the retry below
+  // can rebuild the SAME statement with the join dropped.
+  const electionFragments = (on) => ({
+    // The column is selected either way so `canonical_rows` has a stable shape
+    // and the ranked CTE's `cr.*` does not change arity between the two builds.
+    select: on
+      ? 'cce.canonical_sig_id AS elected_canonical_sig_id,'
+      : 'NULL::text AS elected_canonical_sig_id,',
+    join: on
+      ? 'LEFT JOIN content_canonical_election cce ON cce.content_key = cp.content_key'
+      : '',
+    // Leading term, so it wins over every existing tie-break — but ONLY when an
+    // election exists for that key. Three-way rather than a boolean: keys with
+    // NO election (201 of them) sort at 1, ahead of a NON-elected sibling at 2,
+    // so their ordering is decided entirely by the untouched tie-break chain
+    // below. `IS NOT DISTINCT FROM` rather than `=` so a NULL on either side
+    // yields false instead of NULL — a NULL CASE result would scatter the
+    // ordering rather than fall through.
+    rank: on
+      ? `CASE
+                WHEN cr.elected_canonical_sig_id IS NULL THEN 1
+                WHEN cr.pivota_signature_id IS NOT DISTINCT FROM cr.elected_canonical_sig_id THEN 0
+                ELSE 2
+              END,`
+      : '',
+  });
+
   const fetchLimit = limit + 1;
   const params = [];
   // Best-offer price preference: in-market offers first. Captured as a bind
@@ -191,8 +299,9 @@ async function getProductEntityIndexFeed(payload = {}, deps = {}) {
     offsetClause = `OFFSET $${params.length}`;
   }
 
-  const result = await query(
-    `
+  const buildSql = (withElection) => {
+    const election = electionFragments(withElection);
+    return `
       WITH offer_stats AS (
         SELECT
           s.product_key,
@@ -222,6 +331,8 @@ async function getProductEntityIndexFeed(payload = {}, deps = {}) {
           cp.pivota_signature_minted_at,
           cp.pdp_lifecycle_stage,
           cp.updated_at,
+          cp.catalog_track,
+          ${election.select}
           pgm.product_group_id AS internal_product_group_id,
           COALESCE(pgm.is_primary, false) AS is_primary,
           COALESCE(offer_stats.offer_count, 0)::int AS offer_count
@@ -235,6 +346,7 @@ async function getProductEntityIndexFeed(payload = {}, deps = {}) {
          AND pgm.platform = cp.platform
          AND pgm.platform_product_id = cp.source_product_id
         LEFT JOIN offer_stats ON offer_stats.product_key = cp.product_key
+        ${election.join}
         WHERE cp.content_key IS NOT NULL
           AND cp.pivota_signature_id LIKE 'sig\\_%' ESCAPE '\\'
           AND ${activeCatalogProductSourceWhere('cp', 'cm')}
@@ -245,6 +357,7 @@ async function getProductEntityIndexFeed(payload = {}, deps = {}) {
           ROW_NUMBER() OVER (
             PARTITION BY cr.content_key
             ORDER BY
+              ${election.rank}
               CASE WHEN cr.is_primary = true THEN 0 ELSE 1 END,
               CASE cr.pdp_lifecycle_stage
                 WHEN 'published' THEN 0
@@ -308,6 +421,8 @@ async function getProductEntityIndexFeed(payload = {}, deps = {}) {
           ranked.merchant_id,
           ranked.merchant_name,
           ranked.content_key,
+          ranked.catalog_track,
+          ranked.elected_canonical_sig_id,
           ranked.internal_product_group_id,
           stats.seller_count,
           stats.member_count,
@@ -347,9 +462,26 @@ async function getProductEntityIndexFeed(payload = {}, deps = {}) {
         source_listing_ref ASC
       LIMIT $${limitParam}
       ${offsetClause}
-    `,
-    params,
-  );
+    `;
+  };
+
+  // The election table is created by pivota-backend migration 181, applied at
+  // BACKEND boot via db/schema_guard.py. This repo deploys independently, so
+  // there is a window — and a merge-order mistake — in which this gateway runs
+  // against a database that has not grown the table yet. A missing relation
+  // must degrade this lane to its pre-election behaviour, never 500 it: the
+  // election adds a canonical PREFERENCE, and losing a preference is not worth
+  // losing the feed. Latched per process, because a missing table does not
+  // reappear mid-process and re-probing would put a guaranteed-failing query in
+  // front of every request.
+  let result;
+  try {
+    result = await query(buildSql(electedCanonicalEnabled), params);
+  } catch (err) {
+    if (!electedCanonicalEnabled || !isMissingContentCanonicalElectionError(err)) throw err;
+    CONTENT_CANONICAL_ELECTION_TABLE_MISSING = true;
+    result = await query(buildSql(false), params);
+  }
 
   const rows = Array.isArray(result?.rows) ? result.rows : [];
   const pageRows = rows.slice(0, limit);
@@ -406,4 +538,6 @@ async function getProductEntityIndexFeed(payload = {}, deps = {}) {
 module.exports = {
   getProductEntityIndexFeed,
   buildProductEntityIndexFeedItem,
+  connectionLayerForTrack,
+  isMissingContentCanonicalElectionError,
 };
