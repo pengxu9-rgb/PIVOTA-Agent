@@ -186,7 +186,29 @@ test('this lane never claims layer 3 — it cannot see a PSP fact', () => {
   assert.ok(!layers.has(3));
 });
 
-test('the feed item carries the derived layer', () => {
+test('the layer field is ABSENT unless CONNECTION_LAYER_FIELD_ENABLED', () => {
+  // "Additive is safe" is how a payload grows a field nobody reviewed on a
+  // surface nobody re-tested. This builder serves the LIVE
+  // get_product_entity_index_feed operation, so the default must be silence.
+  const row = {
+    product_entity_id: 'sig_q',
+    source_product_id: 'ext_q',
+    catalog_track: 'external_referral',
+    seed_data: { title: 'Q' },
+  };
+  const before = process.env.CONNECTION_LAYER_FIELD_ENABLED;
+  delete process.env.CONNECTION_LAYER_FIELD_ENABLED;
+  try {
+    const item = buildProductEntityIndexFeedItem(row);
+    assert.equal('connection_layer' in item, false, 'the KEY must be absent, not merely undefined');
+  } finally {
+    if (before === undefined) delete process.env.CONNECTION_LAYER_FIELD_ENABLED;
+    else process.env.CONNECTION_LAYER_FIELD_ENABLED = before;
+  }
+});
+
+test('the feed item carries the derived layer when the flag is on', () => {
+  process.env.CONNECTION_LAYER_FIELD_ENABLED = '1';
   const item = buildProductEntityIndexFeedItem({
     product_entity_id: 'sig_alpha',
     source_product_id: 'ext_alpha',
@@ -196,6 +218,7 @@ test('the feed item carries the derived layer', () => {
     price_currency: 'USD',
     seed_data: { title: 'Alpha' },
   });
+  delete process.env.CONNECTION_LAYER_FIELD_ENABLED;
   assert.equal(item.connection_layer, 1);
   assert.equal(item.price, 18.5);
   assert.equal(item.currency, 'USD');

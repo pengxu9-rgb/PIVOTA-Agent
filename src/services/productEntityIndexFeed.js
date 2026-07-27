@@ -16,6 +16,16 @@ const { activeCatalogProductSourceWhere } = require('./activeCatalogSourceSql');
 const TRACK_EXTERNAL_REFERRAL = 'external_referral';
 const TRACK_INTERNAL_MERCHANT = 'internal_merchant';
 
+// Same flag NAME as pivota-backend's `CONNECTION_LAYER_FIELD_ENABLED`, on
+// purpose: one connection-layer contract spans two repos, and two names for one
+// rollout is how half a contract ships. Read per call rather than at module
+// load so a test (and an operator flipping it) does not need a restart.
+function connectionLayerFieldEnabled(env = process.env) {
+  return ['1', 'true', 'yes', 'on'].includes(
+    String(env?.CONNECTION_LAYER_FIELD_ENABLED || '').trim().toLowerCase(),
+  );
+}
+
 function connectionLayerForTrack(track) {
   const normalized = String(track ?? '').trim().toLowerCase();
   // Anything that is not explicitly the internal (synced) track is layer 1 —
@@ -181,7 +191,22 @@ function buildProductEntityIndexFeedItem(row) {
     // this is academic — 100% of the real serving catalog is layer 1 and layers
     // 2 and 3 have ZERO non-rig population — but the contract is fixed now so
     // the first real sync is a data change, not a shape change.
-    connection_layer: connectionLayerForTrack(row.catalog_track),
+    // Emission is FLAG-GATED (default off) even though the field is purely
+    // additive, because this builder also serves the LIVE
+    // `get_product_entity_index_feed` operation. "Additive is safe" is how a
+    // payload grows a field nobody reviewed on a surface nobody re-tested — and
+    // the standing rule for anything feeding a public surface is a default-off
+    // flag. With the flag off the emitted item is byte-identical to today.
+    //
+    // Note what is NOT gated: `cp.catalog_track` is selected unconditionally so
+    // the row shape stays constant across both flag states. A column in a SELECT
+    // list adds no join, no predicate and no ordering term — it cannot change
+    // which rows come back, their order, or the `stats` CTE's counts — so
+    // branching the SQL on it would buy nothing and give the two builds
+    // different arities through `cr.*`.
+    ...(connectionLayerFieldEnabled()
+      ? { connection_layer: connectionLayerForTrack(row.catalog_track) }
+      : {}),
     updated_at: row.source_updated_at || row.updated_at || row.identity_updated_at || null,
   };
 }
@@ -539,5 +564,6 @@ module.exports = {
   getProductEntityIndexFeed,
   buildProductEntityIndexFeedItem,
   connectionLayerForTrack,
+  connectionLayerFieldEnabled,
   isMissingContentCanonicalElectionError,
 };
