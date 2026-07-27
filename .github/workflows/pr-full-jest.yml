@@ -77,7 +77,8 @@ jobs:
         run: |
           node --test \
             tests/commerce_kernel_error_body.node.test.cjs \
-            tests/commerce_kernel_error_mapping.node.test.cjs
+            tests/commerce_kernel_error_mapping.node.test.cjs \
+            tests/asserted_privilege_observation.node.test.cjs
 
   jest:
     runs-on: ubuntu-latest
