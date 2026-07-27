@@ -28,6 +28,9 @@ export const AUDIT_EVENTS = Object.freeze([
   // servable offer behind it), not an availability one. Folding the two together is what let a persistent
   // dead-id condition read as a transient outage.
   'no_merchant_offer',
+  // And distinct from THAT: the id resolved to no product at all (stale/invented sig, or a non-signature id
+  // the unscoped detail lane cannot route). A caller-side fact, where no_merchant_offer is a catalog-side one.
+  'unknown_product_id',
   'idempotency_conflict_blocked',
   'after_sales_requested',
 ]);

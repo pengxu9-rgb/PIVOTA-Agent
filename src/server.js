@@ -29697,10 +29697,11 @@ async function invokeCommerceKernelRawUpstream(operation, payload, headers = {})
   return normalizedBody;
 }
 
-// Read-only kernel ops — the lanes where a bare HTTP 404 genuinely means "no such product", as opposed to the
-// money ops on this same error path where it much more likely means a missing/mid-deploy backend route.
-// Mirrors the read() calls in safety-kernel/src/protocol/canonicalExecutor.js.
-const COMMERCE_KERNEL_READ_OPS = new Set(['get_product_detail', 'find_products', 'find_products_multi']);
+// The upstream-failure -> shared-taxonomy mapping lives in services/commerceKernelErrorMapping so it is
+// unit-testable without booting this app. Read that module before touching the classification: it is shared
+// by every kernel op including the money ops, and `retriable` is a promise that costs real money when wrong
+// in either direction.
+const { mapUpstreamErrorToKernelCode } = require('./services/commerceKernelErrorMapping');
 
 let commerceKernelErrorsPromise = null;
 
@@ -29708,31 +29709,7 @@ async function throwCommerceKernelUpstreamError(operation, err) {
   const { PivotaCommerceError } = await (commerceKernelErrorsPromise ||= import('../safety-kernel/src/errors.js'));
   const { code: upstreamCode, message: upstreamMessage, detail: upstreamDetail } = extractUpstreamErrorCode(err);
   const status = err?.response?.status || null;
-  const normalizedCode = String(upstreamCode || '').trim().toUpperCase();
-  // A not-found from a READ lane is a persistent data condition, not an outage: the id has no servable detail
-  // because no acceptable offer/seed answers its content route, and that is true again on the next call.
-  // Mapping it to MERCHANT_UNAVAILABLE (retriable:true, "try again shortly") is what made the public
-  // search -> get_product chain a retry trap.
-  //
-  // The bare-STATUS arm is restricted to read ops ON PURPOSE. preview_quote / create_order / submit_payment /
-  // create_payment_link / request_after_sales all share this function, and a 404 on one of those is far more
-  // likely to be a missing or mid-deploy backend route than a statement about the product. Calling that
-  // NO_MERCHANT_OFFER would tell a checkout agent "this will never work, do not retry" during what is
-  // actually a transient blip — the mirror image of the bug being fixed. An explicit PRODUCT_NOT_FOUND code
-  // is unambiguous by name, so that arm stays op-independent.
-  const notFound =
-    normalizedCode === 'PRODUCT_NOT_FOUND' ||
-    (status === 404 && COMMERCE_KERNEL_READ_OPS.has(String(operation || '').trim()));
-  const kernelCode =
-    normalizedCode === 'QUOTE_EXPIRED'
-      ? 'QUOTE_EXPIRED'
-      : normalizedCode === 'PRICE_CHANGED' || normalizedCode === 'QUOTE_MISMATCH'
-        ? 'PRICE_CHANGED'
-        : normalizedCode === 'OUT_OF_STOCK'
-          ? 'OUT_OF_STOCK'
-          : notFound
-            ? 'NO_MERCHANT_OFFER'
-            : 'MERCHANT_UNAVAILABLE';
+  const kernelCode = mapUpstreamErrorToKernelCode({ operation, upstreamCode, status });
   throw new PivotaCommerceError(kernelCode, {
     operation,
     upstream_status: status,
@@ -29830,6 +29807,8 @@ function statusForCommerceKernelError(code) {
     case 'STATE_LINKAGE_MISMATCH':
     // Persistent "this id has nothing servable behind it" — a 404, not the 503 an outage gets.
     case 'NO_MERCHANT_OFFER':
+    // Persistent "there is no such id" — same HTTP answer, different fact (see errors.js).
+    case 'UNKNOWN_PRODUCT_ID':
       return 404;
     case 'IDEMPOTENCY_CONFLICT':
     case 'PRICE_CHANGED':

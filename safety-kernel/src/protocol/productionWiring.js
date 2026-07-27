@@ -101,6 +101,14 @@ export function createHttpBackendUpstream(cfg = {}) {
       // missing or mid-deploy route than a statement about the product — calling that NO_MERCHANT_OFFER would
       // tell a checkout agent not to retry a transient blip. Kept in step with
       // throwCommerceKernelUpstreamError in src/server.js.
+      //
+      // DELIBERATELY NOT MIRRORED HERE: the UNKNOWN_PRODUCT_ID arm that throwCommerceKernelUpstreamError
+      // grew for the `MISSING_MERCHANT_CONTEXT` / HTTP 400 lane. That arm keys on the upstream error CODE,
+      // and this function throws before it parses the response body, so it cannot see one. Widening it to a
+      // bare 400 would be wrong: a 400 on a read op is just as likely a malformed request from our own
+      // caller. It also cannot arise on this path — that code comes from the gateway's own get_pdp_v2, which
+      // only the src/server.js wiring calls. The two stay in step on the 404 lane, which is the only lane
+      // both can observe.
       if (res.status === 404 && BACKEND_READ_OPS.has(String(operation || '').trim())) {
         throw new PivotaCommerceError('NO_MERCHANT_OFFER', { reason: 'backend_not_found', status: res.status });
       }

@@ -46,6 +46,11 @@ export const ERROR_OBSERVABILITY = Object.freeze({
   // Separate metric on purpose: this one is a catalog-coverage signal (ids advertised with nothing behind
   // them), not an availability signal. Folding it into merchant_unavailable is what hid the dead ids.
   NO_MERCHANT_OFFER: { event: 'no_merchant_offer', metric: 'no_merchant_offer' },
+  // A THIRD metric, not a second name for the one above. NO_MERCHANT_OFFER counts ids WE advertised with
+  // nothing behind them — a coverage gap we own. This counts ids that resolve to no product at all, which is
+  // usually a caller holding a stale or invented id. Same recovery, different owner; merging them would make
+  // the coverage metric unreadable the first time an agent starts guessing sigs.
+  UNKNOWN_PRODUCT_ID: { event: 'unknown_product_id', metric: 'unknown_product_id' },
   IDEMPOTENCY_CONFLICT: { event: 'idempotency_conflict_blocked', metric: 'idempotency_conflict' },
 });
 
