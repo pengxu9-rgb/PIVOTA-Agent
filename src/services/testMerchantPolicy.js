@@ -23,9 +23,12 @@
 // uses the shared source gate (PDP sig resolution, canonical search,
 // RecommendationEngine, the ProductEntity index feed) inherits the exclusion.
 
-// Sellers whose entire catalog is a rig. Founder-confirmed 2026-07-24.
+// Sellers whose entire catalog is a rig. Founder-confirmed 2026-07-24;
+// merch_test_ownist_001 and pivota-review-demo-3 added 2026-07-27 from the
+// ADR-018 census and its review sweep.
 // Kept in lockstep with pivota-backend services/test_merchant_policy.py
-// (KNOWN_TEST_MERCHANT_IDS) and scripts/step5_working_set.py (DEMO_DOMAIN_PREFIX).
+// (KNOWN_TEST_MERCHANT_IDS) and scripts/step5_working_set.py
+// (DEMO_DOMAIN_PREFIX + DEMO_MERCHANT_IDS).
 const TEST_MERCHANT_IDS = Object.freeze([
   // 92sfrj-bi.myshopify.com — the founder's test store. Carries the "Winona
   // Soothing Repair Serum" $1.69 fixture whose description literally reads
@@ -41,6 +44,30 @@ const TEST_MERCHANT_IDS = Object.freeze([
   'merch_shopify_0584b37f7a8be00a5223', // pivota-review-demo-2
   'merch_shopify_00d4a720d67d96c5dcba', // pivota-review-demo
   'merch_bbd34645bc1950cc',             // pivota-review-demo (2nd connection)
+  // pivota-review-demo-3 — the same App-review cohort, and already listed as a
+  // rig in scripts/_utils/demoExclusions.cjs (REVIEW_DEMO_MERCHANT_IDS), but it
+  // was never added to THIS list. Inert today (0 catalog_products, 0
+  // products_cache, 0 merchant_stores rows, verified in prod 2026-07-27) — but
+  // with no merchant_stores row the domain leg cannot reach it either, so if
+  // the store is ever re-synced it would serve. Same blindness as ownist below.
+  'merch_shopify_b20b5797f4181983c177', // pivota-review-demo-3
+  // "Ownist Test Merchant" — a seeded fixture catalog, not a connected store.
+  // Every one of its 4 rows carries source_system 'ownist_test_fixture_v1'
+  // ("Triple Shine Grape", "Triple Collagen Orange", and two "Garden edition"
+  // twins), and all 4 are index_pipeline_state.serving_eligible = TRUE.
+  //
+  // Found by the ADR-018 connection-layer census (#1595), which parked the
+  // exclusion for this PR. What holds the rows back today is DATA, not policy:
+  // the 4 catalog_products rows and their 4 offers all carry
+  // suppression_reason 'demo_retired_2026_07' (the offers are otherwise fully
+  // price-quotable — USD 41.00/65.60, out_of_stock). Any re-sync or backfill
+  // that clears that suppression re-exposes 4 rig SKUs to a public,
+  // externally-ingested shopping surface, because serving_eligible stays TRUE.
+  //
+  // The domain leg below CANNOT cover this one: merch_test_ownist_001 has no
+  // merchant_stores row at all (verified in prod 2026-07-27), so there is no
+  // storefront domain to match. The id denylist is the only mechanism.
+  'merch_test_ownist_001',
 ]);
 
 // Storefront domains that are rigs regardless of which merchant_id they mint
@@ -97,7 +124,9 @@ function quoteSqlLiteral(value) {
  * The domain leg is opt-in because only catalog_products carries source_domain —
  * products_cache does not (merchant_id / platform / platform_product_id /
  * product_data), so asking for it there would be a 42703 on every read. The
- * merchant-id leg always applies, and it is the leg that covers both known rigs.
+ * merchant-id leg always applies, and for the rigs with no merchant_stores row
+ * (merch_test_ownist_001, pivota-review-demo-3) it is the ONLY leg that can
+ * reach them — on products_cache it is the only leg for every rig.
  *
  * @param {string} productAlias table alias holding merchant_id (already validated by the caller)
  * @param {{ hasSourceDomain?: boolean, env?: NodeJS.ProcessEnv }} [opts]
