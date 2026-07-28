@@ -81,7 +81,17 @@ function buildAcpFeedItem(p, { buildPublicProductUrl, env = process.env } = {}) 
     price,
     currency,
     availability: o.availability ?? (o.in_stock === false ? 'out_of_stock' : o.in_stock === true ? 'in_stock' : undefined),
-    brand: o.brand ?? o.merchant_id,
+    // NO `?? o.merchant_id` (#1851). A merchant id is not a brand, and this is
+    // a PUBLIC feed — `merch_obs_deadbeef` or `external_seed` would be indexed
+    // by an ingester as the manufacturer's name. An ABSENT brand is honest and
+    // is what the index lane's own projection already emits; a wrong one is not
+    // cheaper, because ingesters treat a missing optional field as missing and
+    // a garbage value as real.
+    //
+    // Measured before removing: 0 of 4,375 live feed rows had an empty brand,
+    // so this is hardening rather than a live-leak fix — but the path was one
+    // brandless promoted row away from firing.
+    brand: o.brand,
     variants: o.variants,
     // ADR-018 (pivota-backend docs/adr): the connection layer and the execution
     // path are TWO fields, deliberately never collapsed into one "tier".
