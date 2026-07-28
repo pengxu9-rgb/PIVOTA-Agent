@@ -94,8 +94,8 @@ function gatePublicFeedRows(rows, { project, logger, lane = 'unknown', env = pro
   const input = Array.isArray(rows) ? rows : [];
 
   // 1. RIGS FIRST, and on the RAW row — `merchant_id` does not survive every
-  //    projection (`buildAcpFeedItem` folds it into `brand` as a fallback and
-  //    keeps no `merchant_id` key), so gating after projection would silently
+  //    projection (`buildAcpFeedItem` keeps no `merchant_id` key; it
+  //    used to fold it into `brand` as a fallback, removed in #1851), so gating after projection would silently
   //    stop excluding rigs on the connected lane. That ordering is load-bearing,
   //    not incidental.
   //    `env` is THREADED, not defaulted inside isTestMerchantId: the index lane

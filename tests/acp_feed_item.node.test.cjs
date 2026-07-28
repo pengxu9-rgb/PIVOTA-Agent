@@ -162,3 +162,14 @@ test('the TWO-STAGE projection is a pipeline, not a redundant second pass', () =
   assert.equal(stage2.image_link, 'https://cdn/x.jpg');
   assert.equal(stage2.brand, 'Anua');
 });
+
+test('#1851: an EMPTY or NULL brand is not rescued by the merchant id either', () => {
+  // Mutant M4 restored the leak for `brand === null` only and survived — the
+  // original test used an absent key exclusively. `''` on the wire is arguably
+  // worse for an ingester than an absent field, since it reads as "this product
+  // asserts it has no brand" rather than "unknown".
+  for (const brand of [null, '', undefined]) {
+    const item = buildAcpFeedItem({ id: 'sig_a', brand, merchant_id: 'merch_obs_deadbeef' }, {});
+    assert.notEqual(item.brand, 'merch_obs_deadbeef', `brand=${JSON.stringify(brand)} must not borrow the merchant id`);
+  }
+});
