@@ -57,7 +57,10 @@ function isMissingContentCanonicalElectionError(err) {
   const message = String(err?.message || err || '');
   const namesRelation = /relation "?content_canonical_election"? does not exist/i.test(message);
   if (!namesRelation) return false;
-  return err?.code === '42P01' || true;
+  // Unconditional: the anchored pattern above IS the decision. Writing
+  // `err?.code === '42P01' || true` read as though SQLSTATE still
+  // corroborated, which it does not — the `|| true` made the left side dead.
+  return true;
 }
 
 function clampInt(value, fallback, min, max) {
@@ -206,22 +209,20 @@ function buildProductEntityIndexFeedItem(row, env = process.env) {
     // one additive key. Ingesters treat description-less items as low quality,
     // and the ACP projection has no other source for it.
     description: nonEmptyString(row.product_description, product.description) || undefined,
-    // Emission is FLAG-GATED (default off) even though the field is purely
-    // additive, because this builder also serves the LIVE
-    // `get_product_entity_index_feed` operation. "Additive is safe" is how a
-    // payload grows a field nobody reviewed on a surface nobody re-tested — and
-    // the standing rule for anything feeding a public surface is a default-off
-    // flag. With the flag off the emitted item is byte-identical to today.
+    // ── connection_layer is NOT emitted here. Read this before adding it back. ──
     //
-    // Note what is NOT gated: `cp.catalog_track` is selected unconditionally so
-    // the row shape stays constant across both flag states. A column in a SELECT
-    // list adds no join, no predicate and no ordering term — it cannot change
-    // which rows come back, their order, or the `stats` CTE's counts — so
-    // branching the SQL on it would buy nothing and give the two builds
-    // different arities through `cr.*`.
-    ...(connectionLayerFieldEnabled(env)
-      ? { connection_layer: connectionLayerForTrack(row.catalog_track) }
-      : {}),
+    // ADR-018's whole rationale — the one given to the founder — is that the
+    // layer and the execution path ship as TWO fields precisely so the layer can
+    // never imply an execution guarantee. This lane can derive the layer (from
+    // catalog_track) but CANNOT derive `execution_path`: that needs the
+    // warm-handoff brand allowlist and the ACP door state, neither of which this
+    // query sees. Emitting `connection_layer: 1` beside `execution_path:
+    // undefined` ships the empty half of the contract and reintroduces exactly
+    // the implication the two-field design exists to prevent.
+    //
+    // `connectionLayerForTrack` and its tests stay — the derivation is correct
+    // and is what a caller that CAN resolve an execution path should use. The
+    // rule is: both fields together, or neither.
     updated_at: row.source_updated_at || row.updated_at || row.identity_updated_at || null,
   };
 }

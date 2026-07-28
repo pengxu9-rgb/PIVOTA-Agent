@@ -39,6 +39,31 @@
 // (flag, source selection, rig exclusion, price gate) already made and tested
 // here.
 //
+// ══ OPERATOR PRECONDITION — THE TWO FLAGS ARE NOT INDEPENDENT ════════════════
+//
+//   ACP_FEED_SOURCE=index_feed  MUST NEVER be set without
+//   INDEX_FEED_ELECTED_CANONICAL=1
+//
+// `isLinkableFeedProduct` below proves an id is WELL-FORMED. It cannot prove the
+// id RESOLVES, and those differ in production. Of 600 sampled prod rows, 9 are
+// `serving_eligible: true` AND `renderable: false` — well-formed sigs that pass
+// this lane's own `ips.serving_eligible = TRUE` join and are nevertheless dead
+// pages. That is ~1.5% of the feed.
+//
+// In 9 of those 9, the ELECTED canonical resolves 200. So the election
+// preference is not a nice-to-have ranking tweak — it is the mitigation for the
+// dead-link class, and an operator who flips only the source flag republishes a
+// smaller version of the bug that nearly shipped in this very PR (every `link`
+// a 500). Flip both, or neither.
+//
+// The durable fix is a renderability signal on the row, NOT another id-shape
+// heuristic and NOT a hand-ported predicate: pivota-backend already has
+// `services/pdp_renderability.pdp_will_render_expression`, documented as what a
+// consumer deciding whether to ADVERTISE a URL should ask. The follow-up is to
+// have the backend PERSIST it onto `index_pipeline_state` so this lane can add
+// one `AND ips.<col> = TRUE`. A fourth drifting copy of that logic would be
+// worse than the present gap.
+//
 // ── WHAT IT DOES NOT DO ───────────────────────────────────────────────────────
 // It does not open the money path. The ACP checkout doors stay dark
 // (`AGENT_CHECKOUT_ACP_REST_ENABLED` unset; `POST /acp/checkout_sessions`
@@ -95,13 +120,22 @@ function toAcpFeedProduct(item) {
     merchant_id: o.merchant_id,
     connection_layer: o.connection_layer,
     execution_path: o.execution_path,
-    // NOT SET, deliberately, and this is a real degradation to be honest about:
-    // this lane does not mint the signed `/r` attribution deep-link (that is
-    // stamped by pivota-backend on the find_products path), so an agent that
-    // follows tool links programmatically loses the direct attributed hop.
-    // Attribution is not lost outright — the D1 decision's primary mechanism is
-    // that `link` is a Pivota PDP whose own outbound buttons are attributed —
-    // but the secondary hop is absent until the lane learns to mint one.
+    // NOT SET, deliberately — and the earlier version of this comment justified
+    // that with a safety property that IS NOT TRUE, which is the exact defect
+    // family this PR keeps fixing, committed inside the fix.
+    //
+    // It claimed "attribution rides on the PDP's own outbound buttons". Checked
+    // against a live PDP (sig_1b4d53ca07835e10cdaada553bc26ed6, 364 KB): it
+    // contains ZERO `pivota.cc/r?` links, and its two embedded
+    // `external_redirect_url` values are a RAW MERCHANT URL
+    // (www.tomfordbeauty.com/products/…). There is no attribution hop on that
+    // row in either lane.
+    //
+    // So omitting the field is still right, but for a different reason: nothing
+    // is lost that exists. What IS lost is the direct-to-merchant link for an
+    // agent that follows tool links programmatically rather than rendering the
+    // PDP — it gets the Pivota PDP and nothing else. Whether that matters is a
+    // product question, not a safety one.
     // external_redirect_url: intentionally omitted.
   };
 }

@@ -193,42 +193,37 @@ test('this lane never claims layer 3 — it cannot see a PSP fact', () => {
   assert.ok(!layers.has(3));
 });
 
-test('the layer field is ABSENT unless CONNECTION_LAYER_FIELD_ENABLED', () => {
-  // "Additive is safe" is how a payload grows a field nobody reviewed on a
-  // surface nobody re-tested. This builder serves the LIVE
-  // get_product_entity_index_feed operation, so the default must be silence.
+test('this lane emits NEITHER layer field — both together, or neither', () => {
+  // ADR-018's rationale, as an executable rule. The lane can derive the layer
+  // but CANNOT derive execution_path (that needs the warm-handoff brand
+  // allowlist and the ACP door state, neither visible to this query). Emitting
+  // `connection_layer: 1` beside `execution_path: undefined` ships the empty
+  // half of the contract and reintroduces the very implication the two-field
+  // design exists to prevent: that a layer number is an execution guarantee.
   const row = {
     product_entity_id: 'sig_q',
     source_product_id: 'ext_q',
-    catalog_track: 'external_referral',
+    catalog_track: 'internal_merchant',
     seed_data: { title: 'Q' },
   };
   const before = process.env.CONNECTION_LAYER_FIELD_ENABLED;
-  delete process.env.CONNECTION_LAYER_FIELD_ENABLED;
   try {
-    const item = buildProductEntityIndexFeedItem(row);
-    assert.equal('connection_layer' in item, false, 'the KEY must be absent, not merely undefined');
+    for (const flag of [undefined, '1']) {
+      if (flag === undefined) delete process.env.CONNECTION_LAYER_FIELD_ENABLED;
+      else process.env.CONNECTION_LAYER_FIELD_ENABLED = flag;
+      const item = buildProductEntityIndexFeedItem(row);
+      assert.equal('connection_layer' in item, false, `layer leaked with flag=${flag}`);
+      assert.equal('execution_path' in item, false, `path leaked with flag=${flag}`);
+    }
   } finally {
     if (before === undefined) delete process.env.CONNECTION_LAYER_FIELD_ENABLED;
     else process.env.CONNECTION_LAYER_FIELD_ENABLED = before;
   }
 });
 
-test('the feed item carries the derived layer when the flag is on', () => {
-  process.env.CONNECTION_LAYER_FIELD_ENABLED = '1';
-  const item = buildProductEntityIndexFeedItem({
-    product_entity_id: 'sig_alpha',
-    source_product_id: 'ext_alpha',
-    content_key: 'ck_alpha',
-    catalog_track: 'external_referral',
-    price_amount: '18.50',
-    price_currency: 'USD',
-    seed_data: { title: 'Alpha' },
-  });
-  delete process.env.CONNECTION_LAYER_FIELD_ENABLED;
-  assert.equal(item.connection_layer, 1);
-  assert.equal(item.price, 18.5);
-  assert.equal(item.currency, 'USD');
+test('the derivation itself is kept — it is what a caller with an execution path uses', () => {
+  assert.equal(connectionLayerForTrack('external_referral'), 1);
+  assert.equal(connectionLayerForTrack('internal_merchant'), 2);
 });
 
 test('amount and currency still come from the SAME source — no cross-mixing', () => {
@@ -269,5 +264,55 @@ test('the missing-table latch is sticky, so test ORDER in this file matters', as
   assert.ok(
     !cap.seen[0].includes('content_canonical_election'),
     'latched off — if this ever fails, the latch stopped being per-process',
+  );
+});
+
+// ---- the SQL must CONTAIN the predicates, not merely be asked for them ------
+//
+// "A documented requirement is not a gate" — the phrase this PR coined, applied
+// to itself. `acp_feed_source` asserts that `priced_only: true` is SENT; nothing
+// asserted the SQL then carries the predicate, so deleting `pricedOnlyWhere`
+// left every suite green. Same for the latch's anchored pattern.
+
+test('priced_only puts the price predicate in the SQL, where LIMIT can see it', async () => {
+  const on = captureSql();
+  await withEnv({ INDEX_FEED_ELECTED_CANONICAL: undefined }, () =>
+    getProductEntityIndexFeed({ limit: 2, priced_only: true }, { query: on.query }));
+  assert.ok(
+    on.seen[0].includes('best_offer.price_amount IS NOT NULL'),
+    'without this predicate LIMIT counts rows that JS then drops — pages under-deliver ~24%',
+  );
+  assert.ok(on.seen[0].includes('best_offer.price_currency IS NOT NULL'));
+
+  const off = captureSql();
+  await withEnv({ INDEX_FEED_ELECTED_CANONICAL: undefined }, () =>
+    getProductEntityIndexFeed({ limit: 2 }, { query: off.query }));
+  assert.ok(
+    !off.seen[0].includes('best_offer.price_amount IS NOT NULL'),
+    'default OFF: the predicate must not appear unless asked for',
+  );
+});
+
+test('the latch pattern is ANCHORED, so an embedded query string cannot trip it', () => {
+  // The loose two-substring form latches when an unrelated 42P01's message
+  // embeds the failing SQL (proxies/ORMs append `QUERY: ...`), and this
+  // statement names the table.
+  const embedded = {
+    code: '42P01',
+    message:
+      'relation "index_pipeline_state" does not exist\n'
+      + 'QUERY: SELECT ... LEFT JOIN content_canonical_election cce ON ...',
+  };
+  assert.equal(
+    isMissingContentCanonicalElectionError(embedded),
+    false,
+    'an unrelated missing relation whose message merely MENTIONS the election table must not latch',
+  );
+  assert.equal(
+    isMissingContentCanonicalElectionError({
+      code: '42P01',
+      message: 'relation "content_canonical_election" does not exist',
+    }),
+    true,
   );
 });
