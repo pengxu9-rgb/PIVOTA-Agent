@@ -107,7 +107,8 @@ jobs:
             tests/acp_feed_source.node.test.cjs \
             tests/product_entity_index_feed_election.node.test.cjs \
             tests/acp_feed_flags.node.test.cjs \
-            tests/acp_feed_pagination.node.test.cjs
+            tests/acp_feed_pagination.node.test.cjs \
+            tests/public_feed_gate.node.test.cjs
 
   jest:
     runs-on: ubuntu-latest

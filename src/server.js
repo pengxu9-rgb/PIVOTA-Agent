@@ -30916,6 +30916,7 @@ async function getCommerceAcpRestAdapter() {
         isIndexFeedSourceEnabled,
         isIndexFeedLaneServable,
         buildConnectedLaneQuery,
+        isLinkableFeedProduct,
       } = require('./services/acpFeedSource');
       // Attributed-redirect lane D1: feed `link` = Pivota canonical PDP; the signed /r attribution link
       // rides as `external_redirect_url`. Mapper is a pure module so the projection is unit-tested
@@ -30924,7 +30925,8 @@ async function getCommerceAcpRestAdapter() {
       // below calls it — it would resolve anyway (the closure only runs on a
       // request, long after this const is initialised), but a reader should not
       // have to reason about the TDZ to check that.
-      const { buildAcpFeedItem, isQuotableFeedItem } = require('./acpFeedItem');
+      const { buildAcpFeedItem } = require('./acpFeedItem');
+      const { gatePublicFeedRows } = require('./services/publicFeedGate');
       const mapFeedItem = (p) => buildAcpFeedItem(p, { buildPublicProductUrl });
       const getProducts = async (query) => {
         // No `env` passed on purpose — the gate then reads the SAME process.env
@@ -30998,28 +31000,29 @@ async function getCommerceAcpRestAdapter() {
         // stops the live leak (all 20 feed items on 2026-07-23 were rigs). See
         // testMerchantPolicy.js for the shared source of truth; merchant_id
         // survives to the product payload via _standard_to_shop_product.
-        const filtered = products.filter((p) => !isTestMerchantId(p?.merchant_id));
-        if (filtered.length !== products.length) {
-          logger.info(
-            { dropped: products.length - filtered.length, surface: 'acp_public_feed' },
-            'acp feed: excluded test/demo merchant products',
-          );
-        }
-        // The price gate, on the connected lane too. Shopping ingesters REJECT
-        // price-less items, and a rejected item costs the whole submission's
-        // credibility where an absent one costs a single row. The index lane
-        // applies this itself (deliberately — see acpFeedSource) and returns
-        // early above, so this covers only the connected lane, which serves
-        // nothing today and must not start serving `price: null` the day a real
-        // merchant connects. Gated on the MAPPED item so the check sees exactly
-        // what the feed emits rather than what upstream happened to return.
-        const quotable = filtered.filter((p) => isQuotableFeedItem(mapFeedItem(p)));
-        if (quotable.length !== filtered.length) {
-          logger.info(
-            { dropped: filtered.length - quotable.length, surface: 'acp_public_feed', reason: 'not_price_quotable' },
-            'acp feed: dropped items with no quotable price',
-          );
-        }
+        // THE SAME GATE THE INDEX LANE USES (issue #1847). This lane used to
+        // hand-assemble its own chain and it was missing the LINK-SHAPE gate —
+        // measured on prod 2026-07-28, an unsigned GET with a JSON body served
+        // 17 rows and all 17 carried `ext_*` ids whose PDP answers HTTP 500.
+        // The block on those merchants was never broken; this door simply never
+        // read it.
+        //
+        // Behaviour change, stated: rows whose id is not a `sig_` will now be
+        // DROPPED rather than published with a dead link. If the index flags are
+        // ever unset, this lane returns fewer rows — which is the correct
+        // trade. An empty feed costs one submission; a feed of 500s costs the
+        // domain's credibility with the ingester.
+        //
+        // NOT closed by this gate: currency correctness. An INR price labelled
+        // "USD" is indistinguishable from a real USD price here — that needs the
+        // offer's suppression state, which only reaches the index lane. See the
+        // header of services/publicFeedGate.
+        const { items: quotable } = gatePublicFeedRows(products, {
+          project: mapFeedItem,
+          isLinkable: isLinkableFeedProduct,
+          logger,
+          lane: 'connected',
+        });
         return quotable;
       };
       return createAcpRestAdapter({
