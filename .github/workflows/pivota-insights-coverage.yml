@@ -70,19 +70,23 @@ jobs:
       # Route this batch through Vertex so its usage bills the GCP project that
       # holds the credits, matching the Railway services.
       #
-      # WHAT HAPPENS IF ADC IS MISSING, stated precisely because a previous
-      # version of this comment got it wrong in both directions. The seam does
-      # NOT silently fall back to AI Studio — every branch is gated on the flag,
-      # never on credential presence, and nothing in src/ or scripts/ assigns
-      # VERTEX_AI_ENABLED at runtime (only test harnesses do). But it does not
-      # hard-error either: this job's actual caller,
-      # scripts/product_intel_pilot_compare.js `runGeminiDraft`, checks
-      # `hasGeminiKey()` and returns `{skipped:true, reason:
-      # 'missing_gemini_api_key'}`, so the batch still exits 0 with a
-      # GEMINI-LESS report and `gemini_skipped: N` in its meta. The
-      # "Verify Vertex credentials" step below is what converts that quiet
-      # degradation into a hard failure — which is exactly what its own comment
-      # says it is for.
+      # WHAT HAPPENS IF ADC IS MISSING. The seam does NOT silently fall back to
+      # AI Studio — every branch is gated on the flag, never on credential
+      # presence, and nothing in src/ or scripts/ assigns VERTEX_AI_ENABLED at
+      # runtime (only test harnesses do).
+      #
+      # It used to degrade quietly instead: `runGeminiDraft` returns
+      # `{skipped:true, reason:'missing_gemini_api_key'}` and the batch exited 0
+      # with a GEMINI-LESS report. Two guards now close that, and they catch
+      # DIFFERENT failures — neither subsumes the other:
+      #   * the "Verify Vertex credentials" step below catches an EMPTY or
+      #     malformed credential, or one whose project_id disagrees with
+      #     GOOGLE_CLOUD_PROJECT, BEFORE any work is done;
+      #   * product_intel_pilot_compare.js exits non-zero at the end when the
+      #     credential turned out to be unusable AT CALL TIME — a revoked key, a
+      #     disabled service account, an ADC that resolves but cannot mint a
+      #     token. The verify step cannot see any of those.
+      # Pinned by tests/product_intel_pilot_compare_vertex_skip_fatal.test.js.
       VERTEX_AI_ENABLED: "true"
       GOOGLE_CLOUD_PROJECT: project-f165a637-145f-4de2-89d
       # NOT us-central1: gemini-3-flash-preview (this workflow's default model)

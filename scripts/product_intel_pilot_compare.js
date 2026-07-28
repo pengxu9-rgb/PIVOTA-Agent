@@ -4712,6 +4712,61 @@ async function main() {
   writeJson(jsonOut, { meta, rows: reportRows });
   writeText(markdownOut, buildMarkdownReport(reportRows, meta));
 
+  // FAIL LOUDLY when Vertex was explicitly demanded and we could not call it.
+  //
+  // Until now this exited 0 with a Gemini-less report: `runGeminiDraft` returns
+  // `{skipped:true, reason:'missing_gemini_api_key'}` and nothing downstream
+  // treated that as an error. So a rotated, expired, or wrong-project credential
+  // produced a GREEN run and an empty packet — the silently-degraded success that
+  // is worse than a failure, because nothing prompts anyone to look.
+  // `.github/workflows/pivota-insights-coverage.yml` already claimed this
+  // behaviour in a comment ("fail fast rather than silently producing a
+  // Gemini-less report"); its verify step only catches an EMPTY credential, never
+  // a call-time one. This makes the code match the claim.
+  //
+  // SCOPE, deliberately narrow — three things this must NOT do:
+  //   1. Not fatal when VERTEX_AI_ENABLED is off. The AI Studio arm is the
+  //      legitimate local-dev default; unmigrated environments must not start
+  //      failing.
+  //   2. Not fatal when the operator ASKED to skip. `--skip-gemini` short-circuits
+  //      before runGeminiDraft and carries its own reason (`skip_gemini_flag`), so
+  //      "I chose not to call it" and "I could not call it" are already distinct
+  //      values — this gates on the reason, never on `skipped` alone.
+  //   3. Only the CREDENTIAL class. The other skip reasons — `model_call_failed:`,
+  //      `model_fallback_exhausted:`, `human_standard_rewrite_failed:`,
+  //      `gemini_quality_failed:` — are transient or quality outcomes that the
+  //      report is designed to express. Making any of those fatal would convert
+  //      working soft paths into hard failures.
+  //
+  // Placed AFTER the report is written, not as a startup precondition, for two
+  // reasons: the artifacts stay available for diagnosis, and on a GCP runtime
+  // relying on the metadata server `credentialsAvailable()` fails closed on its
+  // FIRST call while a background probe resolves — so a startup check would abort
+  // spuriously. This asserts on what actually happened instead of predicting it.
+  const credentialSkips = reportRows.filter(
+    (row) => row.gemini?.skipped && String(row.gemini.reason || '') === 'missing_gemini_api_key',
+  );
+  if (vertexGemini.vertexEnabled() && !args.skipGemini && credentialSkips.length) {
+    process.stderr.write(
+      `${JSON.stringify({
+        status: 'error',
+        error: 'VERTEX_CREDENTIALS_UNAVAILABLE',
+        message:
+          'VERTEX_AI_ENABLED=true but the Gemini credential was unavailable at call time, so '
+          + `${credentialSkips.length} of ${reportRows.length} case(s) produced a Gemini-less draft. `
+          + 'Refusing to report success. Check GOOGLE_APPLICATION_CREDENTIALS_JSON (and that its '
+          + 'project_id matches GOOGLE_CLOUD_PROJECT); or pass --skip-gemini to request a '
+          + 'baseline-only run deliberately.',
+        cases: reportRows.length,
+        gemini_credential_skipped: credentialSkips.length,
+        json: jsonOut,
+        markdown: markdownOut,
+      })}\n`,
+    );
+    process.exitCode = 1;
+    return;
+  }
+
   process.stdout.write(
     `${JSON.stringify({ status: 'ok', cases: reportRows.length, json: jsonOut, markdown: markdownOut })}\n`,
   );
