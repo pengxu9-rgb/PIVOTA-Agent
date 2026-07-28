@@ -34,12 +34,16 @@ const fs = require('fs');
 const path = require('path');
 
 const vertexGemini = require('../src/llm/vertexGemini');
+// The REAL classifier, imported — not a copy. An earlier revision duplicated the
+// predicate here and guarded the copy with a source-substring test; importing it
+// removes the drift risk entirely and means these cases assert shipped behaviour.
+const { isCredentialFailureReason } = require('../scripts/product_intel_pilot_compare');
 
 const SOURCE = path.join(__dirname, '..', 'scripts', 'product_intel_pilot_compare.js');
 
 function isFatal(rows, args) {
   const credentialSkips = rows.filter(
-    (row) => row.gemini?.skipped && String(row.gemini.reason || '') === 'missing_gemini_api_key',
+    (row) => row.gemini?.skipped && isCredentialFailureReason(row.gemini.reason),
   );
   return Boolean(vertexGemini.vertexEnabled() && !args.skipGemini && credentialSkips.length);
 }
@@ -77,14 +81,42 @@ describe('vertex credential skip is fatal', () => {
     expect(isFatal(row('missing_gemini_api_key'), { skipGemini: true })).toBe(false);
   });
 
+  // TRANSIENT / QUALITY — must stay soft. Making these fatal would turn a busy
+  // afternoon or a picky quality gate into a red pipeline.
   test.each([
-    'model_call_failed:503',
-    'model_fallback_exhausted:429',
+    'model_call_failed:model_call_failed_429:rate limited',
+    'model_call_failed:model_call_failed_503:backend unavailable',
+    'model_call_failed:ETIMEDOUT',
+    'model_fallback_exhausted:model_call_failed_500:internal',
     'human_standard_rewrite_failed:too_short',
     'gemini_quality_failed:no_candidate',
   ])('non-credential skip %s => not fatal', (reason) => {
     process.env.VERTEX_AI_ENABLED = 'true';
+    expect(isCredentialFailureReason(reason)).toBe(false);
     expect(isFatal(row(reason), {})).toBe(false);
+  });
+
+  // CREDENTIAL-CLASS BEYOND "absent". This is the case that motivated the guard
+  // and that the first revision MISSED: `credentialsAvailable()` only checks a
+  // credential source is configured and parses, so a revoked/expired/wrong-project
+  // key sails past it and fails at the API instead — landing in what used to be
+  // the non-fatal bucket and exiting 0. A rotation is exactly this.
+  test.each([
+    'model_call_failed:model_call_failed_401:API key not valid',
+    'model_call_failed:model_call_failed_403:PERMISSION_DENIED',
+    'model_fallback_exhausted:model_call_failed_401:UNAUTHENTICATED',
+    'model_call_failed:UNAUTHENTICATED',
+    'model_call_failed:Could not load the default credentials',
+    'model_call_failed:invalid_grant',
+  ])('credential-class skip %s => FATAL', (reason) => {
+    process.env.VERTEX_AI_ENABLED = 'true';
+    expect(isCredentialFailureReason(reason)).toBe(true);
+    expect(isFatal(row(reason), {})).toBe(true);
+  });
+
+  test('429 is not mistaken for 401 by a loose match', () => {
+    expect(isCredentialFailureReason('model_call_failed_4010')).toBe(false);
+    expect(isCredentialFailureReason('model_call_failed_429')).toBe(false);
   });
 
   test('a reason without the skipped flag => not fatal', () => {
@@ -92,12 +124,14 @@ describe('vertex credential skip is fatal', () => {
     expect(isFatal(row('missing_gemini_api_key', false), {})).toBe(false);
   });
 
-  test('the shipped predicate still matches this copy', () => {
+  // The classifier itself is imported, so it cannot drift. What a substring check
+  // still buys is that the SHIPPED guard actually consults it and actually exits
+  // non-zero — neither of which is observable from the exported function.
+  test('the shipped guard uses the classifier and exits non-zero', () => {
     const src = fs.readFileSync(SOURCE, 'utf8');
-    expect(src).toContain("=== 'missing_gemini_api_key'");
+    expect(src).toContain('isCredentialFailureReason(row.gemini.reason)');
     expect(src).toContain('vertexGemini.vertexEnabled() && !args.skipGemini && credentialSkips.length');
     expect(src).toContain('VERTEX_CREDENTIALS_UNAVAILABLE');
-    // and the exit must be non-zero
     expect(src).toContain('process.exitCode = 1');
   });
 });

@@ -142,6 +142,39 @@ function extractModelError(err) {
   return asString(err?.code || err?.message || err) || 'gemini_failed';
 }
 
+/**
+ * Is this skip reason a CREDENTIAL failure — i.e. we were unable to authenticate,
+ * as opposed to the model being unhappy, busy, or deliberately not called?
+ *
+ * WHY THIS IS NOT JUST `=== 'missing_gemini_api_key'`, which is where this
+ * started. `credentialsAvailable()` only checks that a credential SOURCE is
+ * configured and parses — so a REVOKED, EXPIRED, or WRONG-PROJECT service
+ * account passes it, `runGeminiDraft` proceeds, and the failure surfaces from
+ * the API instead. `runStage` catches everything and labels it
+ * `model_call_failed:…`, and once all models are exhausted it becomes
+ * `model_fallback_exhausted:…`. So the exact case that motivated this guard —
+ * a credential rotation — would have landed in the NON-fatal bucket and exited
+ * 0. Classifying on the transport status is what actually closes it.
+ *
+ * DELIBERATELY NOT credential-class: 429 (rate limit) and 5xx (upstream) are
+ * transient and must stay soft, or a busy afternoon turns into a red pipeline.
+ * Quality gates are outcomes the report exists to express.
+ */
+function isCredentialFailureReason(reason) {
+  const text = String(reason || '');
+  if (!text) return false;
+  if (text === 'missing_gemini_api_key') return true;
+  // `extractModelError` renders an HTTP failure as `model_call_failed_<status>`,
+  // which is then wrapped again by runStage / the fallback-exhausted path — so
+  // match the status token anywhere in the chain rather than anchoring.
+  if (/model_call_failed_(401|403)\b/.test(text)) return true;
+  // Vertex and AI Studio both use these gRPC-style status names in the body, and
+  // a token-mint failure surfaces with no HTTP response at all.
+  if (/\b(UNAUTHENTICATED|PERMISSION_DENIED)\b/.test(text)) return true;
+  if (/could not (load|refresh) the default credentials|invalid_grant|invalid_client/i.test(text)) return true;
+  return false;
+}
+
 function normalizeGeminiGroundingMetadata(value) {
   const source = value && typeof value === 'object' ? value : {};
   const webSources = toList(source.groundingChunks)
@@ -4744,7 +4777,7 @@ async function main() {
   // FIRST call while a background probe resolves — so a startup check would abort
   // spuriously. This asserts on what actually happened instead of predicting it.
   const credentialSkips = reportRows.filter(
-    (row) => row.gemini?.skipped && String(row.gemini.reason || '') === 'missing_gemini_api_key',
+    (row) => row.gemini?.skipped && isCredentialFailureReason(row.gemini.reason),
   );
   if (vertexGemini.vertexEnabled() && !args.skipGemini && credentialSkips.length) {
     process.stderr.write(
@@ -4796,4 +4829,5 @@ module.exports = {
   buildShoppingCardPayload,
   parseGeminiModelList,
   runGeminiDraft,
+  isCredentialFailureReason,
 };
