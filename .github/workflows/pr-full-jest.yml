@@ -73,12 +73,28 @@ jobs:
           echo "npm ci failed after 3 attempts" >&2
           exit 1
 
+      # ADDED 2026-07-27: the three ACP feed-lane suites. Jest's testMatch is
+      # `**/tests/**/*.test.(js|ts)`, so `*.node.test.cjs` is STRUCTURALLY
+      # invisible to the sharded jest job below — landing them without this
+      # entry would mean the only tests for the feed's flag gates, price gate and
+      # rig exclusion run in no CI job at all. In a repo that has shipped "a test
+      # that cannot fail" four times in three days, that is the same wound.
+      # CORRECTION to an earlier version of this comment: these files do NOT run
+      # dependency-free. `product_entity_index_feed_election` reaches
+      # src/services/productEntityIndexFeed -> ../db -> ../logger and fails with
+      # `Cannot find module 'pino'` on a checkout without node_modules. The job
+      # is green because `npm ci` runs above, NOT because the files are leaves.
+      # Green here proves the job passes; it does not prove the reason. Said
+      # plainly so nobody relies on the wrong one.
       - name: Run node:test suites
         run: |
           node --test \
             tests/commerce_kernel_error_body.node.test.cjs \
             tests/commerce_kernel_error_mapping.node.test.cjs \
-            tests/asserted_privilege_observation.node.test.cjs
+            tests/asserted_privilege_observation.node.test.cjs \
+            tests/acp_feed_item.node.test.cjs \
+            tests/acp_feed_source.node.test.cjs \
+            tests/product_entity_index_feed_election.node.test.cjs
 
   jest:
     runs-on: ubuntu-latest
