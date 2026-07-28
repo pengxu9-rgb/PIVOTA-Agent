@@ -149,7 +149,9 @@ function runBodies(text) {
     const indent = m[1].length + (m[2] ? m[2].length : 0);
     const rest = m[3].trim();
 
-    const isBlock = /^[|>][+-]?\d*$/.test(rest) || /^[|>]\d*[+-]?$/.test(rest);
+    // Trailing comments are legal after a block indicator (`run: | # note`), and
+    // exact-matching the rest of the line let that bypass the gate entirely.
+    const isBlock = /^[|>][+-]?\d*(\s+#.*)?$/.test(rest) || /^[|>]\d*[+-]?(\s+#.*)?$/.test(rest);
     if (!isBlock) {
       // Inline scalar: the value is on this line (possibly quoted). Anything
       // after `run:` is the script.
@@ -191,6 +193,19 @@ function scan(file) {
           freeForm.push(`${where}: \${{ ${expr} }}  (inputs.${im[1]} is ${declared})`);
         }
       }
+      // AN EMPTY OR MALFORMED EXPRESSION BREAKS THE WHOLE WORKFLOW, and this
+      // gate shipped one in its own explanatory comment. A `run:` body is
+      // scanned by the Actions template evaluator BEFORE any shell exists, so
+      // `#` does not make a line a comment to it — `${'$'}{{ }}` is an empty
+      // expression, the grammar has no epsilon production, and the file fails to
+      // parse. bash -n never sees it, js-yaml calls it a valid string, and the
+      // free-form check ignores it because it names no input. Three green checks
+      // and a dead workflow.
+      if (expr.trim() === '') {
+        freeForm.push(`${where}: EMPTY Actions expression — the workflow will fail to parse. `
+          + `Remove the braces (a run: body is template-scanned before any shell exists, `
+          + `so '#' does not make it a comment).`);
+      }
       for (const [pattern, why] of LAUNDERED) {
         if (pattern.test(expr)) freeForm.push(`${where}: \${{ ${expr} }} — ${why}`);
       }
@@ -201,6 +216,78 @@ function scan(file) {
     }
   }
   return { freeForm, untrusted };
+}
+
+/**
+ * Every `${IN_*}` in a run body must be declared in the SAME step's `env:`
+ * (or the job's). This is the ONE property the rewrite depends on and nothing
+ * else checks: `${IN_MARKT:-}` — one transposed letter — silently passes
+ * `--market ""` to a production script, and the gate, `bash -n` and js-yaml are
+ * all green on it. The `:-` that makes the refs `set -u`-safe is exactly what
+ * removed the shell's own backstop, so the check has to live here.
+ *
+ * Hand-rolled step/env association, consistent with the no-YAML-dependency
+ * choice: walk `- name:`/`- run:` step boundaries by indentation and collect the
+ * `env:` keys in scope.
+ */
+function envRefsResolve(file) {
+  const lines = fs.readFileSync(file, 'utf8').split('\n');
+  const problems = [];
+  let jobEnv = new Set();
+  let stepEnv = new Set();
+  let stepIndent = -1;
+  let inEnv = false;
+  let envIndent = -1;
+  let envIsJob = false;
+
+  const flushCheck = (body, where) => {
+    for (const m of body.matchAll(/\$\{(IN_[A-Z0-9_]+)(?::-)?\}/g)) {
+      if (!stepEnv.has(m[1]) && !jobEnv.has(m[1])) {
+        problems.push(`${where}: \${${m[1]}} is not declared in this step's env:`);
+      }
+    }
+  };
+
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i];
+    if (!line.trim()) continue;
+    const ind = indentOf(line);
+    const t = line.trim();
+
+    if (/^jobs:\s*$/.test(t)) { jobEnv = new Set(); }
+    // a new step resets step-scoped env
+    if (/^-\s+(name|uses|run):/.test(t)) { stepEnv = new Set(); stepIndent = ind; inEnv = false; }
+    if (/^env:\s*$/.test(t)) {
+      inEnv = true; envIndent = ind;
+      envIsJob = stepIndent === -1 || ind < stepIndent;
+      continue;
+    }
+    if (inEnv) {
+      if (ind > envIndent) {
+        const km = t.match(/^([A-Za-z_][A-Za-z0-9_]*):/);
+        if (km) (envIsJob ? jobEnv : stepEnv).add(km[1]);
+        continue;
+      }
+      inEnv = false;
+    }
+    const rm = line.match(/^(\s*)(-\s+)?run:\s*(.*)$/);
+    if (rm) {
+      const indent = rm[1].length + (rm[2] ? rm[2].length : 0);
+      const rest = rm[3].trim();
+      const isBlock = /^[|>][+-]?\d*(\s+#.*)?$/.test(rest);
+      const where = `${path.basename(file)} line ${i + 1}`;
+      if (!isBlock) { if (rest) flushCheck(rest, where); continue; }
+      let j = i + 1;
+      const collected = [];
+      for (; j < lines.length; j += 1) {
+        if (!lines[j].trim()) { collected.push(lines[j]); continue; }
+        if (indentOf(lines[j]) <= indent) break;
+        collected.push(lines[j]);
+      }
+      flushCheck(collected.join('\n'), where);
+    }
+  }
+  return problems;
 }
 
 describe('GitHub Actions: no free-form interpolation into run: bodies', () => {
@@ -224,6 +311,13 @@ describe('GitHub Actions: no free-form interpolation into run: bodies', () => {
     (_name, file) => {
       const { untrusted } = scan(file);
       expect(untrusted).toEqual([]);
+    },
+  );
+
+  test.each(files.map((f) => [path.basename(f), f]))(
+    '%s: every ${IN_*} resolves to an env: entry in the same step',
+    (_name, file) => {
+      expect(envRefsResolve(file)).toEqual([]);
     },
   );
 
@@ -306,6 +400,19 @@ describe('GitHub Actions: no free-form interpolation into run: bodies', () => {
           hits: scan(write(runLine, extra)).freeForm.length,
         }).toEqual({ form: runLine, hits: 1 });
       }
+      // A trailing comment after the block indicator is legal YAML and a
+      // plausible thing to write. Exact-matching the rest of the line let it
+      // bypass the gate entirely — the body was never scanned.
+      expect(scan(write('run: | # a perfectly plausible note',
+                        `          ${PAYLOAD}`)).freeForm.length).toBe(1);
+      expect(scan(write('run: >- # note', `          ${PAYLOAD}`)).freeForm.length).toBe(1);
+
+      // An EMPTY expression fails the whole workflow to parse, and `#` does not
+      // make it a comment — a run: body is template-scanned before any shell
+      // exists. This gate shipped one in its own explanatory prose.
+      expect(scan(write('run: |', '          # explaining ${{ }} in prose')).freeForm.length).toBe(1);
+      expect(scan(write('run: |', '          # ${{    }} with padding')).freeForm.length).toBe(1);
+
       // and a benign single-line run: must still pass
       expect(scan(write('run: npm ci')).freeForm.length).toBe(0);
       fs.rmSync(dir, { recursive: true, force: true });

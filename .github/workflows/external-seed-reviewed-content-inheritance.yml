@@ -54,10 +54,20 @@ jobs:
           mapping_file="${out_dir}/mapping.json"
           # printf, NOT a heredoc. `<<'JSON'` disables parameter expansion, so a
           # shell variable is written LITERALLY — the original only worked because
-          # ${{ }} substituted before the shell ever saw the heredoc, which is the
-          # property this change deliberately removes. And un-quoting the delimiter
-          # would be worse: `<<JSON` re-enables $( ) inside operator-supplied JSON,
-          # reintroducing the injection. printf '%s' treats the value as inert data.
+          # the Actions template substituted the value before the shell ever saw
+          # the heredoc, which is the property this change deliberately removes.
+          #
+          # Un-quoting the delimiter would be worse: `<<JSON` re-enables $( )
+          # inside operator-supplied JSON, reintroducing the injection. And the
+          # quoted heredoc had a SECOND hole regardless — a payload containing a
+          # line that is exactly `JSON` terminates the heredoc early and the
+          # remainder runs as shell. printf '%s' treats the value as inert data
+          # and closes both.
+          #
+          # NOTE: no Actions-expression braces in this comment, deliberately. A
+          # `run:` body is scanned by the template evaluator BEFORE any shell
+          # exists, so `#` does not make a line a comment to it — an empty
+          # expression there fails the whole workflow to parse.
           printf '%s\n' "${IN_MAPPING_JSON:-}" > "${mapping_file}"
 
           report_name="apply.json"
