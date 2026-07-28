@@ -13,12 +13,16 @@ function daysAgo(n) {
   return new Date(NOW.getTime() - n * 24 * 60 * 60 * 1000);
 }
 
+// NB: this id must NOT be one of testMerchantPolicy's rigs. It used to be
+// merch_efbc46b4619cfbdf — the founder's test store — so the whole happy path
+// was modelled on a rig, and every 'resolves to public' assertion here started
+// failing the moment the trust policy learned to block rigs (2026-07-27).
 function activeMerchantProduct(overrides = {}) {
   return {
     product_key: 'pk_internal_1',
     content_key: 'ck_internal_1',
     source_domain: 'chydan.myshopify.com',
-    merchant_id: 'merch_efbc46b4619cfbdf',
+    merchant_id: 'merch_first_party_seller_1',
     platform: 'shopify',
     source_system: 'shopify',
     source_ref: 'gid://shopify/Product/1',
@@ -32,7 +36,7 @@ function activeMerchantProduct(overrides = {}) {
 
 function approvedIdentity(overrides = {}) {
   return {
-    source_listing_ref: 'merch_efbc46b4619cfbdf:1',
+    source_listing_ref: 'merch_first_party_seller_1:1',
     identity_status: 'approved',
     identity_confidence: 0.95,
     live_read_enabled: true,
@@ -58,7 +62,7 @@ function eligibleIps(overrides = {}) {
 
 function activeMerchantStore(overrides = {}) {
   return {
-    merchant_id: 'merch_efbc46b4619cfbdf',
+    merchant_id: 'merch_first_party_seller_1',
     platform: 'shopify',
     domain: 'chydan.myshopify.com',
     status: 'active',
@@ -688,4 +692,68 @@ test('POLICY_VERSION is pinned to the Python twin', () => {
   // services/catalog_trust_policy.py, and merge the two PRs back to back
   // (backend first).
   assert.equal(POLICY_VERSION, 'c1.v0.5');
+});
+
+// ---- TEST/DEMO MERCHANT GATE (2026-07-27) -----------------------------------
+//
+// Closes the Regime B gap from the ADR-018 census: before this arm, the only
+// thing keeping a rig out of 'public' HERE was suppression data, not policy.
+
+test('rig merchant that would otherwise be public is blocked', () => {
+  const trust = call({
+    product: activeMerchantProduct({ merchant_id: 'merch_test_ownist_001' }),
+  });
+  assert.equal(trust.serving_decision, 'blocked');
+  assert.ok(trust.serving_reason_codes.includes(REASON_CODES.TEST_MERCHANT_EXCLUDED));
+});
+
+test('every baked-in rig id is blocked by the gate', () => {
+  const { TEST_MERCHANT_IDS } = require('../src/services/testMerchantPolicy');
+  for (const id of TEST_MERCHANT_IDS) {
+    const trust = call({ product: activeMerchantProduct({ merchant_id: id }) });
+    assert.equal(trust.serving_decision, 'blocked', `${id} should be blocked`);
+    assert.ok(
+      trust.serving_reason_codes.includes(REASON_CODES.TEST_MERCHANT_EXCLUDED),
+      `${id} should carry TEST_MERCHANT_EXCLUDED`,
+    );
+  }
+});
+
+// This is the test that pins the no-POLICY_VERSION-bump argument: an
+// already-blocked rig must keep reporting its REAL reason, so output stays
+// byte-identical on every row that exists in prod today.
+test('already-blocked rig keeps its real reason, not TEST_MERCHANT_EXCLUDED', () => {
+  const trust = call({
+    product: activeMerchantProduct({
+      merchant_id: 'merch_test_ownist_001',
+      suppression_reason: 'demo_retired_2026_07',
+    }),
+  });
+  assert.equal(trust.serving_decision, 'blocked');
+  assert.equal(trust.source_lifecycle_state, 'tombstoned');
+  assert.ok(trust.serving_reason_codes.includes(REASON_CODES.ROW_TOMBSTONED));
+  assert.ok(!trust.serving_reason_codes.includes(REASON_CODES.TEST_MERCHANT_EXCLUDED));
+});
+
+test('non-rig merchant is unaffected', () => {
+  const trust = call();
+  assert.equal(trust.serving_decision, 'public');
+  assert.ok(!trust.serving_reason_codes.includes(REASON_CODES.TEST_MERCHANT_EXCLUDED));
+});
+
+// The gate must not read the env hatch: catalog_row_trust is shared state and a
+// per-service env var would make the twins disagree and flap rows.
+test('env hatch does NOT affect the trust gate (twins share this table)', () => {
+  const prev = process.env.PIVOTA_TEST_MERCHANT_IDS;
+  process.env.PIVOTA_TEST_MERCHANT_IDS = 'merch_env_only_rig';
+  try {
+    const trust = call({
+      product: activeMerchantProduct({ merchant_id: 'merch_env_only_rig' }),
+    });
+    assert.equal(trust.serving_decision, 'public');
+    assert.ok(!trust.serving_reason_codes.includes(REASON_CODES.TEST_MERCHANT_EXCLUDED));
+  } finally {
+    if (prev === undefined) delete process.env.PIVOTA_TEST_MERCHANT_IDS;
+    else process.env.PIVOTA_TEST_MERCHANT_IDS = prev;
+  }
 });

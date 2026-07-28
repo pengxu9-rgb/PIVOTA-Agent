@@ -22,7 +22,7 @@ function makeJoinedRow(overrides = {}) {
   return {
     product_key: 'pk_internal_1',
     content_key: 'ck_internal_1',
-    merchant_id: 'merch_efbc46b4619cfbdf',
+    merchant_id: 'merch_first_party_seller_1',
     platform: 'shopify',
     source_system: 'shopify',
     source_ref: 'gid://shopify/Product/1',
@@ -44,7 +44,7 @@ function makeJoinedRow(overrides = {}) {
     content_quality_score: 0.8,
     quality_scored_at: daysAgo(1),
     last_extracted_at: daysAgo(1),
-    pil_source_listing_ref: 'merch_efbc46b4619cfbdf:1',
+    pil_source_listing_ref: 'merch_first_party_seller_1:1',
     identity_status: 'approved',
     identity_confidence: 0.95,
     live_read_enabled: true,
@@ -58,7 +58,7 @@ function makeJoinedRow(overrides = {}) {
     eps_attached_product_key: null,
     eps_last_seen_at: null,
     eps_seed_kind: null,
-    ms_merchant_id: 'merch_efbc46b4619cfbdf',
+    ms_merchant_id: 'merch_first_party_seller_1',
     ms_platform: 'shopify',
     ms_domain: 'chydan.myshopify.com',
     ms_status: 'active',
@@ -178,7 +178,7 @@ test('upsertCatalogRowTrustForSourceListingRefs resolves refs and writes trust',
   });
   const wrote = await upsertCatalogRowTrustForSourceListingRefs(
     pool,
-    ['merch_efbc46b4619cfbdf:1'],
+    ['merch_first_party_seller_1:1'],
     NOW,
   );
   assert.equal(wrote, 1);
