@@ -11,7 +11,10 @@ const assert = require('node:assert/strict');
 
 const {
   ACP_FEED_SOURCE_ENV,
+  INDEX_FEED_ELECTED_CANONICAL_ENV,
   isIndexFeedSourceEnabled,
+  isElectedCanonicalEnabled,
+  isIndexFeedLaneServable,
   resolveFeedMarket,
   fetchIndexFeedProducts,
 } = require('../src/services/acpFeedSource');
@@ -33,6 +36,114 @@ test('index-feed source is OFF unless explicitly selected', () => {
 test('index-feed source is ON only for the exact source name', () => {
   assert.equal(isIndexFeedSourceEnabled({ [ACP_FEED_SOURCE_ENV]: 'index_feed' }), true);
   assert.equal(isIndexFeedSourceEnabled({ [ACP_FEED_SOURCE_ENV]: '  INDEX_FEED  ' }), true);
+});
+
+// ---- the COUPLING between the two flags -------------------------------------
+//
+// `ACP_FEED_SOURCE=index_feed` without `INDEX_FEED_ELECTED_CANONICAL=1` is the
+// state that republishes ~1.5% dead links (9 of 600 sampled prod rows are
+// serving_eligible AND unrenderable; in 9/9 the ELECTED canonical resolves 200).
+// Until the wiring commit that precondition existed ONLY as a comment, so the
+// code was correct in prod purely because the operator set both. These tests
+// exist so it is correct because the code says so.
+
+test('the lane is servable ONLY when both flags agree', () => {
+  const SRC = { [ACP_FEED_SOURCE_ENV]: 'index_feed' };
+  const ELECT = { [INDEX_FEED_ELECTED_CANONICAL_ENV]: '1' };
+  assert.equal(isIndexFeedLaneServable({}), false, 'neither flag');
+  assert.equal(isIndexFeedLaneServable({ ...SRC }), false, 'source without election = the dead-link state');
+  assert.equal(isIndexFeedLaneServable({ ...ELECT }), false, 'election without source is not a source selection');
+  assert.equal(isIndexFeedLaneServable({ ...SRC, ...ELECT }), true, 'both = prod');
+});
+
+test('the flag NAMES are LITERALS, and are the names the lane itself reads', () => {
+  // Found by mutation testing, and worth stating why it needed to be: every
+  // other test in this block builds its env off the EXPORTED constant, so
+  // renaming the constant renames it in the tests too and the whole block stays
+  // green while the guard reads an env var nobody sets. The name is a
+  // cross-module contract — `services/productEntityIndexFeed` reads the string
+  // `INDEX_FEED_ELECTED_CANONICAL` off process.env directly and cannot be
+  // injected — so it is pinned as a literal here, on both sides.
+  assert.equal(ACP_FEED_SOURCE_ENV, 'ACP_FEED_SOURCE');
+  assert.equal(INDEX_FEED_ELECTED_CANONICAL_ENV, 'INDEX_FEED_ELECTED_CANONICAL');
+
+  // Same assertion again, but through the guard, keyed by literal — so a rename
+  // breaks behaviour here and not merely an equality check.
+  assert.equal(isIndexFeedLaneServable({ ACP_FEED_SOURCE: 'index_feed', INDEX_FEED_ELECTED_CANONICAL: '1' }), true);
+  assert.equal(isIndexFeedLaneServable({ ACP_FEED_SOURCE: 'index_feed' }), false);
+  assert.equal(isElectedCanonicalEnabled({ INDEX_FEED_ELECTED_CANONICAL: '1' }), true);
+
+  // The other side of the contract. There is no import that can express "these
+  // two modules read the same env var", so the source text is the only place the
+  // agreement can be checked at all — and an unchecked agreement between two
+  // files is how half-contracts ship here.
+  const laneSrc = require('node:fs').readFileSync(
+    require.resolve('../src/services/productEntityIndexFeed'),
+    'utf8',
+  );
+  assert.ok(
+    laneSrc.includes('process.env.INDEX_FEED_ELECTED_CANONICAL'),
+    'productEntityIndexFeed must read the same flag name this gate guards',
+  );
+});
+
+test('the election flag accepts the same truthy vocabulary as its sibling in the lane', () => {
+  for (const v of ['1', 'true', 'yes', 'on', 'ON', ' True ']) {
+    assert.equal(isElectedCanonicalEnabled({ [INDEX_FEED_ELECTED_CANONICAL_ENV]: v }), true, `truthy: ${v}`);
+  }
+  for (const v of ['', '0', 'false', 'off', 'no', undefined]) {
+    assert.equal(isElectedCanonicalEnabled({ [INDEX_FEED_ELECTED_CANONICAL_ENV]: v }), false, `falsy: ${v}`);
+  }
+});
+
+test('the lane REFUSES to run in the dead-link state, and never reaches the DB', async () => {
+  let called = false;
+  await assert.rejects(
+    () =>
+      fetchIndexFeedProducts(
+        {},
+        {
+          env: { [ACP_FEED_SOURCE_ENV]: 'index_feed' }, // election flag missing
+          getProductEntityIndexFeed: async () => {
+            called = true;
+            return { products: [] };
+          },
+        },
+      ),
+    /INDEX_FEED_ELECTED_CANONICAL/,
+    'a refused feed must not look like an empty one',
+  );
+  assert.equal(called, false, 'refusal happens BEFORE the query, not after');
+});
+
+test('with both flags set the lane runs normally', async () => {
+  const products = await fetchIndexFeedProducts(
+    {},
+    {
+      env: { [ACP_FEED_SOURCE_ENV]: 'index_feed', [INDEX_FEED_ELECTED_CANONICAL_ENV]: '1' },
+      getProductEntityIndexFeed: async () => ({
+        products: [{ product_entity_id: 'sig_abc123', title: 'T', price: 10, currency: 'USD' }],
+      }),
+    },
+  );
+  assert.equal(products.length, 1);
+  assert.equal(products[0].id, 'sig_abc123');
+});
+
+test('the guard is scoped to the mis-wired COMBINATION, not to the election flag alone', async () => {
+  // A caller driving the lane directly with no source flag (every other test in
+  // this file, and the live get_product_entity_index_feed operation) must be
+  // unaffected — otherwise the guard is a breaking change dressed as a safety fix.
+  const products = await fetchIndexFeedProducts(
+    {},
+    {
+      env: {},
+      getProductEntityIndexFeed: async () => ({
+        products: [{ product_entity_id: 'sig_def456', title: 'T', price: 5, currency: 'USD' }],
+      }),
+    },
+  );
+  assert.equal(products.length, 1);
 });
 
 test('feed market defaults to US and is upper-cased', () => {
@@ -286,6 +397,37 @@ const REAL_LANE_ROW = {
   availability: 'in_stock',
   seed_data: { title: 'Barrier Repair Cream', brand: 'ANUKO' },
 };
+
+test('END TO END: a schema.org brand object never reaches the feed as "[object Object]"', async () => {
+  // Found by running the REAL lane against the REAL prod DB before merging, not
+  // by any unit test: 12 of the 20 rows the ACP feed serves emitted
+  // `brand: "[object Object]"`. Several seeds carry a schema.org-shaped brand
+  // (`{"@type":"Brand","name":…}`), and `externalSeedProducts.firstNonEmptyString`
+  // does `String(value || '')`, so the object arrives pre-stringified — a
+  // non-empty string that WINS the coalesce and masks the clean
+  // `catalog_products.brand` sitting later in the same chain.
+  //
+  // The fixture reproduces exactly that: an object at the front, the truth at the
+  // back. Brand is a core matching field for shopping ingesters, and this feed's
+  // whole wedge is brand visibility.
+  const laneItem = buildProductEntityIndexFeedItem({
+    ...REAL_LANE_ROW,
+    brand: 'Anua', // the clean varchar, LAST in normalizeBrand's chain
+    seed_data: {
+      title: 'Barrier Repair Cream',
+      brand: { '@type': 'Brand', name: 'Anua' }, // the poisoned candidate, FIRST
+    },
+  });
+  assert.notEqual(laneItem.brand, '[object Object]', 'a coercion accident is not a brand');
+  assert.equal(laneItem.brand, 'Anua', 'the clean value further down the chain must win');
+
+  const products = await fetchIndexFeedProducts(
+    { limit: 10 },
+    { env: {}, getProductEntityIndexFeed: async () => ({ products: [laneItem] }) },
+  );
+  const item = buildAcpFeedItem(products[0], { buildPublicProductUrl: pdp });
+  assert.equal(item.brand, 'Anua', 'and it must survive all the way to the emitted feed item');
+});
 
 test('END TO END: the emitted ACP link is a sig PDP, never the ext_ seed id', async () => {
   const laneItem = buildProductEntityIndexFeedItem(REAL_LANE_ROW);

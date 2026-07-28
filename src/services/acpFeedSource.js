@@ -169,6 +169,47 @@ function isIndexFeedSourceEnabled(env = process.env) {
   return String(env?.[ACP_FEED_SOURCE_ENV] || '').trim().toLowerCase() === ACP_FEED_SOURCE_INDEX;
 }
 
+// ══ THE COUPLING, NOW ENFORCED IN CODE RATHER THAN IN A COMMENT ══════════════
+//
+// The header above states the precondition — `ACP_FEED_SOURCE=index_feed` must
+// never be set without `INDEX_FEED_ELECTED_CANONICAL=1` — and until this commit
+// that statement was the ENTIRE mechanism. Nothing read the second flag on this
+// path. The two flags happened to agree in prod, so the correct behaviour was
+// the operator's, not the code's, and the code would have gone on working "by
+// luck" until the day someone unset one of them.
+//
+// What is lost when they disagree is not a ranking nicety. Of 600 sampled prod
+// rows, 9 are `serving_eligible: true` AND `renderable: false` — well-formed
+// sigs that pass this lane's own join and are nevertheless dead pages, i.e.
+// ~1.5% of the feed. In 9 of those 9 the ELECTED canonical resolves 200. The
+// election preference IS the mitigation for the dead-link class, so a lane
+// running without it publishes known-dead links under our name on a public,
+// externally-ingested surface.
+//
+// Hence: source-selected + election-off is not a degraded mode, it is a mode
+// this lane refuses. `isIndexFeedLaneServable` is what a caller asks; the throw
+// inside `fetchIndexFeedProducts` is the belt to that braces, unreachable on the
+// correct path and loud on a mis-wired one.
+const INDEX_FEED_ELECTED_CANONICAL_ENV = 'INDEX_FEED_ELECTED_CANONICAL';
+
+// NOTE ON WHICH env THIS READS. `productEntityIndexFeed` reads
+// `process.env.INDEX_FEED_ELECTED_CANONICAL` DIRECTLY and cannot be injected;
+// this helper honours the injected `env` so the gate stays unit-testable. In
+// production the caller passes no `env`, so both default to the same
+// `process.env` object and the gate provably describes the lane it guards. A
+// caller that injects a DIFFERENT env is testing, not serving.
+function isElectedCanonicalEnabled(env = process.env) {
+  return ENV_TRUE.has(String(env?.[INDEX_FEED_ELECTED_CANONICAL_ENV] || '').trim().toLowerCase());
+}
+
+// The predicate a caller must ask before serving this lane. Deliberately NOT
+// folded into `isIndexFeedSourceEnabled`: that one answers "which source did the
+// operator name?", which is also what the mis-configuration warning needs to
+// distinguish from "no source named at all".
+function isIndexFeedLaneServable(env = process.env) {
+  return isIndexFeedSourceEnabled(env) && isElectedCanonicalEnabled(env);
+}
+
 // The feed's market. Non-US offers are correctly LABELLED (measured: 0 offers
 // have a NULL currency) but a US shopping ingester may still reject or mis-rank
 // them, and 160 of the ~5,774 representative best-offers behind the serving
@@ -208,6 +249,22 @@ async function fetchIndexFeedProducts(query = {}, deps = {}) {
   const { getProductEntityIndexFeed, env = process.env, logger } = deps;
   if (typeof getProductEntityIndexFeed !== 'function') {
     throw new Error('fetchIndexFeedProducts requires getProductEntityIndexFeed');
+  }
+
+  // Fail CLOSED on the one misconfiguration the header names (see
+  // `isIndexFeedLaneServable`). Scoped to the mis-wired combination only —
+  // source-selected AND election-off — so a caller that drives this lane
+  // directly with neither flag set (every existing unit test) is unaffected,
+  // while the state that would republish ~1.5% dead links cannot serve at all.
+  // A throw, not a silent empty list: on this surface an empty feed and a
+  // refused feed must not look the same, and an exception is the only one of the
+  // two the route's 503 handler reports.
+  if (isIndexFeedSourceEnabled(env) && !isElectedCanonicalEnabled(env)) {
+    throw new Error(
+      `acp feed: ${ACP_FEED_SOURCE_ENV}=${ACP_FEED_SOURCE_INDEX} requires ${INDEX_FEED_ELECTED_CANONICAL_ENV}=1 `
+        + '(the elected canonical is the mitigation for serving_eligible-but-unrenderable rows; '
+        + 'without it ~1.5% of feed links are dead). Set both flags, or neither.',
+    );
   }
 
   const result = await getProductEntityIndexFeed(
@@ -287,11 +344,14 @@ async function fetchIndexFeedProducts(query = {}, deps = {}) {
 
 module.exports = {
   ACP_FEED_SOURCE_ENV,
+  INDEX_FEED_ELECTED_CANONICAL_ENV,
   PIVOTA_SIGNATURE_ID,
   toAcpFeedProduct,
   isLinkableFeedProduct,
   ACP_FEED_SOURCE_INDEX,
   isIndexFeedSourceEnabled,
+  isElectedCanonicalEnabled,
+  isIndexFeedLaneServable,
   resolveFeedMarket,
   fetchIndexFeedProducts,
 };

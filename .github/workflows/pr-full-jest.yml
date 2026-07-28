@@ -91,6 +91,12 @@ jobs:
       # is green because `npm ci` runs above, NOT because the files are leaves.
       # Green here proves the job passes; it does not prove the reason. Said
       # plainly so nobody relies on the wrong one.
+      #
+      # ADDED 2026-07-28: `acp_feed_flags`, confirmed green (6/6) before landing,
+      # per the "grow file by file as each is confirmed" rule above. It was the
+      # ONLY suite asserting the invariant that publishing the read-only feed
+      # never mounts a money-path endpoint — and it ran in no workflow at all,
+      # while the commit alongside this one turns that feed on in production.
       - name: Run node:test suites
         run: |
           node --test \
@@ -99,7 +105,8 @@ jobs:
             tests/asserted_privilege_observation.node.test.cjs \
             tests/acp_feed_item.node.test.cjs \
             tests/acp_feed_source.node.test.cjs \
-            tests/product_entity_index_feed_election.node.test.cjs
+            tests/product_entity_index_feed_election.node.test.cjs \
+            tests/acp_feed_flags.node.test.cjs
 
   jest:
     runs-on: ubuntu-latest

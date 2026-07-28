@@ -100,9 +100,38 @@ function decodeCursor(value) {
   }
 }
 
+// `[object Object]` is not a brand — it is a coercion accident, and it POISONS a
+// fallback chain because it is a non-empty string and therefore WINS.
+//
+// Upstream, `externalSeedProducts.js:firstNonEmptyString` does
+// `String(value || '')`, so an object-valued brand candidate (several seeds
+// carry schema.org-shaped `{"@type":"Brand","name":"Anua"}`) arrives here
+// ALREADY stringified. `normalizeBrand`'s own `typeof === 'object'` unwrap
+// cannot see it — by then it is a string.
+//
+// Measured on prod 2026-07-28 over the 20 rows the ACP feed serves: 12 of 20
+// (60%) resolved to the literal `"[object Object]"` while the CLEAN value sat
+// further down the very same chain in `catalog_products.brand` ("Mediheal US",
+// "Anua", …), outranked by the garbage. Rejecting the sentinel lets the truth
+// win — this is a recovery, not a blanking.
+//
+// Scoped to the two DISPLAY normalizers on purpose. The shared `nonEmptyString`
+// also builds ids, `content_key` and `title`, where changing what counts as
+// "empty" could change which rows survive the `!/^sig_/` drop and so move the
+// live `get_product_entity_index_feed` row COUNT. Brand and category cannot: the
+// worst case here is the field falls through to '' exactly as it would have if
+// the poisoned candidate had been absent. The upstream helper is the real
+// defect and is filed separately; it feeds a 4,000-line module and many surfaces.
+const STRINGIFIED_OBJECT = '[object Object]';
+
+function withoutStringifiedObjects(values) {
+  return values.filter((v) => String(v ?? '').trim() !== STRINGIFIED_OBJECT);
+}
+
 function normalizeBrand(product, row, seedData, snapshot) {
-  const productBrand = product && typeof product.brand === 'object' ? product.brand.name : product?.brand;
+  const productBrand = product && typeof product.brand === 'object' ? product.brand?.name : product?.brand;
   return nonEmptyString(
+    ...withoutStringifiedObjects([
     productBrand,
     product?.vendor,
     row.brand,
@@ -112,12 +141,14 @@ function normalizeBrand(product, row, seedData, snapshot) {
     snapshot.brand,
     snapshot.brand_name,
     snapshot.vendor,
+    ]),
   );
 }
 
 function normalizeCategory(product, row, seedData, snapshot) {
   const categoryPath = Array.isArray(product?.category_path) ? product.category_path.join(' > ') : '';
   return nonEmptyString(
+    ...withoutStringifiedObjects([
     categoryPath,
     product?.category,
     product?.product_type,
@@ -126,6 +157,7 @@ function normalizeCategory(product, row, seedData, snapshot) {
     seedData.product_type,
     snapshot.category,
     snapshot.product_type,
+    ]),
   );
 }
 

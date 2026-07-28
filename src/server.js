@@ -30879,7 +30879,51 @@ async function getCommerceAcpRestAdapter() {
           return undefined;
         }
       };
+      // ADR-018 (pivota-backend) — the PRICED SERVING LANE. See
+      // src/services/acpFeedSource.js for the full rationale; the short version
+      // is that `find_products` with an empty query resolves to the
+      // connected_catalog lane, every connected store is a rig, testMerchantPolicy
+      // correctly empties it, and the feed has therefore served
+      // `{"count":0,"products":[]}` for its whole life. The real serving catalog
+      // (~4,467 priced, currency-bearing content_keys) lives behind the index
+      // feed, and until this call existed NOTHING in the process referenced it.
+      //
+      // Source-selected by env, never by merge: with the flags unset this is
+      // byte-identical to the connected lane below.
+      const {
+        fetchIndexFeedProducts,
+        isIndexFeedSourceEnabled,
+        isIndexFeedLaneServable,
+      } = require('./services/acpFeedSource');
+      // Attributed-redirect lane D1: feed `link` = Pivota canonical PDP; the signed /r attribution link
+      // rides as `external_redirect_url`. Mapper is a pure module so the projection is unit-tested
+      // (tests/acp_feed_item.node.test.cjs); sanitizer preservation is shape-gated in resultSanitizer.
+      // Declared BEFORE `getProducts` because the connected lane's price gate
+      // below calls it — it would resolve anyway (the closure only runs on a
+      // request, long after this const is initialised), but a reader should not
+      // have to reason about the TDZ to check that.
+      const { buildAcpFeedItem, isQuotableFeedItem } = require('./acpFeedItem');
+      const mapFeedItem = (p) => buildAcpFeedItem(p, { buildPublicProductUrl });
       const getProducts = async (query) => {
+        // No `env` passed on purpose — the gate then reads the SAME process.env
+        // object that productEntityIndexFeed's own INDEX_FEED_ELECTED_CANONICAL
+        // check reads, so the two cannot disagree in production.
+        if (isIndexFeedLaneServable()) {
+          return fetchIndexFeedProducts(query, { getProductEntityIndexFeed, logger });
+        }
+        if (isIndexFeedSourceEnabled()) {
+          // Source selected, election flag off. The lane refuses to serve in this
+          // state (it is the ~1.5% dead-link state), so we fall through to the
+          // connected lane rather than 503 a public discovery surface — but a
+          // silent fallback is exactly the "reports success, does nothing" shape
+          // this repo keeps shipping, so it is logged at WARN with the fix in the
+          // message. An operator who flipped one flag sees why the feed is still
+          // empty instead of re-deriving it from the count.
+          logger.warn(
+            { surface: 'acp_public_feed', source: 'index_feed', missing: 'INDEX_FEED_ELECTED_CANONICAL' },
+            'acp feed: ACP_FEED_SOURCE=index_feed ignored — set INDEX_FEED_ELECTED_CANONICAL=1 to serve the priced lane',
+          );
+        }
         const raw = await invokeCommerceKernelRawUpstream('find_products', query || {});
         const products = Array.isArray(raw?.products) ? raw.products : (Array.isArray(raw) ? raw : []);
         // Defence-in-depth against test/demo rigs reaching a PUBLIC agent-facing
@@ -30898,13 +30942,23 @@ async function getCommerceAcpRestAdapter() {
             'acp feed: excluded test/demo merchant products',
           );
         }
-        return filtered;
+        // The price gate, on the connected lane too. Shopping ingesters REJECT
+        // price-less items, and a rejected item costs the whole submission's
+        // credibility where an absent one costs a single row. The index lane
+        // applies this itself (deliberately — see acpFeedSource) and returns
+        // early above, so this covers only the connected lane, which serves
+        // nothing today and must not start serving `price: null` the day a real
+        // merchant connects. Gated on the MAPPED item so the check sees exactly
+        // what the feed emits rather than what upstream happened to return.
+        const quotable = filtered.filter((p) => isQuotableFeedItem(mapFeedItem(p)));
+        if (quotable.length !== filtered.length) {
+          logger.info(
+            { dropped: filtered.length - quotable.length, surface: 'acp_public_feed', reason: 'not_price_quotable' },
+            'acp feed: dropped items with no quotable price',
+          );
+        }
+        return quotable;
       };
-      // Attributed-redirect lane D1: feed `link` = Pivota canonical PDP; the signed /r attribution link
-      // rides as `external_redirect_url`. Mapper is a pure module so the projection is unit-tested
-      // (tests/acp_feed_item.node.test.cjs); sanitizer preservation is shape-gated in resultSanitizer.
-      const { buildAcpFeedItem } = require('./acpFeedItem');
-      const mapFeedItem = (p) => buildAcpFeedItem(p, { buildPublicProductUrl });
       return createAcpRestAdapter({
         executor,
         sessionStore,
