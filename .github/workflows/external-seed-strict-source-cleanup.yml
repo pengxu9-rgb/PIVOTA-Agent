@@ -45,6 +45,9 @@ jobs:
 
       - name: Run strict source cleanup
         shell: bash
+        env:
+          IN_EXTERNAL_PRODUCT_IDS: ${{ inputs.external_product_ids }}
+          IN_MARKET: ${{ inputs.market }}
         run: |
           set -euo pipefail
           if [[ -z "${DATABASE_URL:-}" ]]; then
@@ -54,7 +57,7 @@ jobs:
           out_dir="reports/workflow_ops/external-seed-strict-source-cleanup/${{ github.run_id }}"
           mkdir -p "${out_dir}"
           ids_file="${out_dir}/external_product_ids.txt"
-          printf '%s\n' "${{ inputs.external_product_ids }}" \
+          printf '%s\n' "${IN_EXTERNAL_PRODUCT_IDS:-}" \
             | tr ',' '\n' \
             | sed 's/^ *//;s/ *$//' \
             | awk 'NF' > "${ids_file}"
@@ -63,7 +66,7 @@ jobs:
             report_name="apply.json"
           fi
           args=(
-            --market "${{ inputs.market }}"
+            --market "${IN_MARKET:-}"
             --ids-file "${ids_file}"
             --fetch-chunk-size 2
             --out "${out_dir}/${report_name}"
@@ -77,7 +80,7 @@ jobs:
           node scripts/mark-kbeauty-strict-pdp-source-blockers.cjs "${args[@]}" \
             | tee "${out_dir}/summary.json"
           sync_args=(
-            --market "${{ inputs.market }}"
+            --market "${IN_MARKET:-}"
             --external-product-ids-file "${ids_file}"
             --out "${out_dir}/identity-source-payload-sync-${report_name}"
             --created-by "github_actions_strict_source_cleanup"

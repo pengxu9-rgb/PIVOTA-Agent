@@ -76,6 +76,12 @@ jobs:
 
       - name: Run external seed image cache backfill
         shell: bash
+        env:
+          IN_MARKET: ${{ inputs.market }}
+          IN_LIMIT: ${{ inputs.limit }}
+          IN_PRODUCT_ID: ${{ inputs.product_id }}
+          IN_BRAND: ${{ inputs.brand }}
+          IN_HOST: ${{ inputs.host }}
         run: |
           set -euo pipefail
           if [[ -z "${DATABASE_URL:-}" ]]; then
@@ -100,20 +106,20 @@ jobs:
               out_dir="reports/workflow_ops/external-seed-image-cache-backfill/${{ github.run_id }}"
               mkdir -p "${out_dir}"
               enqueue_args=(
-                --market "${{ inputs.market }}"
-                --limit "${{ inputs.limit }}"
+                --market "${IN_MARKET:-}"
+                --limit "${IN_LIMIT:-}"
                 --fetch-mode "${{ inputs.fetch_mode }}"
                 --requested-by "github-actions:${{ github.run_id }}"
                 --out "${out_dir}/enqueue.json"
               )
-              if [[ -n "${{ inputs.product_id }}" ]]; then
-                enqueue_args+=(--product-id "${{ inputs.product_id }}")
+              if [[ -n "${IN_PRODUCT_ID:-}" ]]; then
+                enqueue_args+=(--product-id "${IN_PRODUCT_ID:-}")
               fi
-              if [[ -n "${{ inputs.brand }}" ]]; then
-                enqueue_args+=(--brand "${{ inputs.brand }}")
+              if [[ -n "${IN_BRAND:-}" ]]; then
+                enqueue_args+=(--brand "${IN_BRAND:-}")
               fi
-              if [[ -n "${{ inputs.host }}" ]]; then
-                enqueue_args+=(--host "${{ inputs.host }}")
+              if [[ -n "${IN_HOST:-}" ]]; then
+                enqueue_args+=(--host "${IN_HOST:-}")
               fi
               if [[ "${{ inputs.force_cache }}" == "true" ]]; then
                 enqueue_args+=(--force-cache)
@@ -131,19 +137,19 @@ jobs:
             report_name="apply.json"
           fi
           args=(
-            --market "${{ inputs.market }}"
-            --limit "${{ inputs.limit }}"
+            --market "${IN_MARKET:-}"
+            --limit "${IN_LIMIT:-}"
             --fetch-mode "${{ inputs.fetch_mode }}"
             --out "${out_dir}/${report_name}"
           )
-          if [[ -n "${{ inputs.product_id }}" ]]; then
-            args+=(--product-id "${{ inputs.product_id }}")
+          if [[ -n "${IN_PRODUCT_ID:-}" ]]; then
+            args+=(--product-id "${IN_PRODUCT_ID:-}")
           fi
-          if [[ -n "${{ inputs.brand }}" ]]; then
-            args+=(--brand "${{ inputs.brand }}")
+          if [[ -n "${IN_BRAND:-}" ]]; then
+            args+=(--brand "${IN_BRAND:-}")
           fi
-          if [[ -n "${{ inputs.host }}" ]]; then
-            args+=(--host "${{ inputs.host }}")
+          if [[ -n "${IN_HOST:-}" ]]; then
+            args+=(--host "${IN_HOST:-}")
           fi
           if [[ "${{ inputs.force_cache }}" == "true" ]]; then
             args+=(--force-cache)

@@ -41,6 +41,9 @@ jobs:
 
       - name: Backfill identity graph
         shell: bash
+        env:
+          IN_LIMIT: ${{ inputs.limit }}
+          IN_BRAND: ${{ inputs.brand }}
         run: |
           set -euo pipefail
           if [[ -z "${DATABASE_URL:-}" ]]; then
@@ -51,11 +54,11 @@ jobs:
           out_dir="reports/workflow_ops/pdp-identity-graph-backfill/${{ github.run_id }}"
           mkdir -p "${out_dir}"
           args=(
-            --limit "${{ inputs.limit }}"
+            --limit "${IN_LIMIT:-}"
             --out "${out_dir}/result.json"
           )
-          if [[ -n "${{ inputs.brand }}" ]]; then
-            args+=(--brand "${{ inputs.brand }}")
+          if [[ -n "${IN_BRAND:-}" ]]; then
+            args+=(--brand "${IN_BRAND:-}")
           fi
           if [[ "${{ inputs.dry_run }}" == "true" ]]; then
             args+=(--dry-run)

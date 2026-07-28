@@ -20,7 +20,12 @@ on:
       - "package.json"
       - "package-lock.json"
       - "jest.config.js"
-      - ".github/workflows/pr-full-jest.yml"
+      # ANY workflow change, not just this file's. The workflow-hygiene gate in
+      # tests/ polices `.github/workflows/**`, and a PR that ADDS a workflow
+      # touches nothing else — so without this the gate could not fire on the
+      # exact change class it exists to police. That is how the backend's twin
+      # gate shipped unable to run; do not narrow this back.
+      - ".github/workflows/**"
   workflow_dispatch: {}
 
 concurrency:

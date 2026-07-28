@@ -32,6 +32,8 @@ jobs:
 
       - name: Run production catalog count audit
         shell: bash
+        env:
+          IN_TOP_N: ${{ inputs.top_n }}
         run: |
           set -euo pipefail
           if [[ -z "${DATABASE_URL:-}" ]]; then
@@ -43,7 +45,7 @@ jobs:
           mkdir -p "${out_dir}"
 
           node scripts/audit-production-catalog-counts.cjs \
-            --top-n "${{ inputs.top_n }}" \
+            --top-n "${IN_TOP_N:-}" \
             --out "${out_dir}/report.json" \
             --markdown-out "${out_dir}/summary.md" \
             | tee "${out_dir}/stdout.json"
