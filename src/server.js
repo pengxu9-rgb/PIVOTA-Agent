@@ -40829,8 +40829,50 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 }
                 signaturePrefetchedServingEligibility =
                   buildPrefetchedPdpServingEligibilityFromSignatureRef(signatureProductRef);
+                // THE LARGEST UNCOVERED SPAN, wrapped so `phases` stops summing
+                // to a fraction of `total_latency_ms`. Largest uncovered
+                // checkpoint diff in 6 of 6 paced prod runs.
+                //
+                // WHAT IT IS *NOT*, because two stories died here and the next
+                // reader deserves the corpses. It is not a heavy-row problem:
+                // the "healthy control" shows 582-627ms in this same span vs the
+                // "heavy" row's 611-769ms, and the control carries the LARGER
+                // payload (82,613 vs 75,278 bytes) — neither row-specific nor
+                // size-proportional. And it is not a CPU-bound deep parse:
+                // `product_payload` is jsonb, `pg` decodes it to an object, so
+                // `parseCanonicalPayloadObject` returns it untouched and parses
+                // nothing. Benchmarked at 0.0018 ms/call on a 376KB object.
+                //
+                // WHAT THE NUMBER HERE ACTUALLY MEASURES: wall time across a
+                // suspension point. The only await inside is
+                // `resolvePublicExternalSeedProductId`, which returns at its
+                // FOURTH body line (`:6628`) while
+                // CANONICAL_ENTITY_ID_PUBLIC_EMIT_ENABLED is false — verified
+                // genuinely unset on the gateway Railway service, not merely
+                // defaulted. So that callee issues no query.
+                //
+                // Note the precise scope of "no work": it describes the CALLEE's
+                // early return, not this span. `signatureRefHasUsableCatalogDetailContent`
+                // (`:7672`) and `parseCanonicalCatalogPayload` (`:7674`) plus the
+                // spreads at `:7793-7796` all run synchronously inside the
+                // measured region. Microseconds — but they are not zero, and the
+                // whole point of this comment is to stop asserting round numbers.
+                //
+                // So a ~600ms reading on BOTH ROWS MEASURED (n=2 — do not
+                // generalise it to every external-seed PDP; over-generalising
+                // from two rows is how the refuted "~170ms healthy control"
+                // premise acquired its authority) across an await whose callee
+                // returns immediately is most likely a statement about the EVENT
+                // LOOP rather than about this code. `Date.now()` around an await
+                // cannot separate "the callee was expensive" from "the loop was
+                // busy" — it is ambiguous here, though it WOULD be a valid cost
+                // probe if the callee did I/O. See
+                // docs/pdp_latency_floor_investigation.md for an instrument that
+                // can separate them.
+                const buildExternalSeedProductStartedAt = Date.now();
                 signatureExternalSeedPrecheckProduct =
                   await buildExternalSeedProductFromSignatureCatalogRef(signatureProductRef);
+                markPdpV2Phase('build_external_seed_product', buildExternalSeedProductStartedAt);
                 markPdpV2Checkpoint('after_build_external_seed_product');
                 if (signatureExternalSeedPrecheckProduct?.product_id) {
                   signaturePrefetchedPdpContentProductId = String(
