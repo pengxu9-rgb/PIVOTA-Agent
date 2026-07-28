@@ -30913,7 +30913,34 @@ async function getCommerceAcpRestAdapter() {
         // object that productEntityIndexFeed's own INDEX_FEED_ELECTED_CANONICAL
         // check reads, so the two cannot disagree in production.
         if (isIndexFeedLaneServable()) {
-          return fetchIndexFeedProducts(query, { getProductEntityIndexFeed, logger });
+          // LOG-AND-RETHROW, not catch-and-degrade. The adapter's `guard()`
+          // (safety-kernel/src/protocol/acpRestAdapter.js:385-394) turns any
+          // throw here into a bare 500 `INTERNAL_ERROR` and logs NOTHING, and
+          // the route's own try/catch never sees it. Before this lane existed
+          // the feed never touched Postgres on this path — it always answered
+          // `200 {count:0}` — so wiring it converts a DB blip into an UNLOGGED
+          // 500 on a public, externally-ingested surface. That is undiagnosable
+          // from the outside: an ingester reports our feed as broken and we
+          // have no line to correlate it against.
+          //
+          // Rethrowing on purpose. Falling back to the connected lane here
+          // would answer 200 with the WRONG catalog while the real lane is
+          // down, which is [[feedback_no_execution_layer_fallbacks]] applied to
+          // discovery — a silent wrong answer is worse than an honest error.
+          try {
+            return await fetchIndexFeedProducts(query, { getProductEntityIndexFeed, logger });
+          } catch (err) {
+            logger.error(
+              {
+                surface: 'acp_public_feed',
+                source: 'index_feed',
+                err: err?.message || String(err),
+                code: err?.code,
+              },
+              'acp feed: priced serving lane failed — the public feed is answering 500',
+            );
+            throw err;
+          }
         }
         if (isIndexFeedSourceEnabled()) {
           // Source selected, election flag off. The lane refuses to serve in this

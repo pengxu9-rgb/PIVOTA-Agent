@@ -48,8 +48,22 @@ function buildAcpFeedItem(p, { buildPublicProductUrl, env = process.env } = {}) 
     link: pdpUrl ?? attributedUrl ?? o.link ?? o.url,
     external_redirect_url: attributedUrl,
     image_link: o.image_link ?? o.image ?? o.image_url ?? (Array.isArray(o.images) ? o.images[0] : undefined),
-    price: o.price,
-    currency: o.currency,
+    // `?? price_amount` / `?? price_currency` mirrors `toAcpFeedProduct`
+    // (src/services/acpFeedSource.js:116-117) EXACTLY — same two keys, same
+    // order. Without it the two lanes disagreed about where money lives, and
+    // the disagreement was silent in the worst direction: `isQuotableFeedItem`
+    // reads the MAPPED item, so a row carrying `price_amount` mapped to
+    // `price: undefined`, failed the gate, and was DROPPED — a priced product
+    // withheld from the feed because the mapper never looked for its price.
+    //
+    // These shapes are not speculative: `price_amount`/`priceAmount` are
+    // produced and consumed across this codebase (services/RecommendationEngine
+    // :1031-1037,1162-1165; services/catalogEntityResolution:189-192).
+    // Deliberately NOT widened to `price_cents` or a nested `{amount,currency}`
+    // — neither has any producer in this repo, and a gate accepting shapes
+    // nothing emits is untestable surface, not safety.
+    price: o.price ?? o.price_amount,
+    currency: o.currency ?? o.price_currency,
     availability: o.availability ?? (o.in_stock === false ? 'out_of_stock' : o.in_stock === true ? 'in_stock' : undefined),
     brand: o.brand ?? o.merchant_id,
     variants: o.variants,

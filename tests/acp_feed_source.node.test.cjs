@@ -505,3 +505,45 @@ test('the lane is asked to apply the price gate in SQL, so LIMIT counts quotable
   );
   assert.equal(seen.priced_only, true, 'without this a page silently under-delivers by ~24%');
 });
+
+test('the CONNECTED lane keeps its price gate', () => {
+  // F1 from the #1846 Opus review. Mutating `filtered.filter((p) =>
+  // isQuotableFeedItem(mapFeedItem(p)))` back to `filtered` — i.e. exactly
+  // origin/main — left ALL 52 tests green. The gate had zero coverage, inside
+  // the PR that added it, which is this repo's dominant defect class committed
+  // inside a fix for it.
+  //
+  // Source-text for the same reason as the wiring test above: `getProducts` is
+  // a closure inside getCommerceAcpRestAdapter() and cannot be imported.
+  const serverSrc = require('node:fs').readFileSync(require.resolve('../src/server'), 'utf8');
+  assert.ok(
+    /filtered\.filter\(\(p\) => isQuotableFeedItem\(mapFeedItem\(p\)\)\)/.test(serverSrc),
+    'the connected lane must gate on the MAPPED item — gating the raw upstream row checks a different object than the feed emits',
+  );
+});
+
+test('a priced-lane failure is LOGGED before it becomes a 500', () => {
+  // F2 from the same review. The adapter's guard() turns a throw here into a
+  // bare 500 INTERNAL_ERROR and logs NOTHING, and the route's try/catch never
+  // sees it. Wiring the lane made the public feed query Postgres on every
+  // request, so a DB blip became an UNLOGGED 500 on an externally-ingested
+  // surface — undiagnosable from either side.
+  //
+  // `await` is load-bearing, not style: without it the promise rejection escapes
+  // the try block entirely and this whole handler is decorative.
+  const serverSrc = require('node:fs').readFileSync(require.resolve('../src/server'), 'utf8');
+  const block = serverSrc.slice(
+    serverSrc.indexOf('if (isIndexFeedLaneServable()) {'),
+    serverSrc.indexOf('if (isIndexFeedSourceEnabled()) {'),
+  );
+  assert.ok(block.length > 0, 'could not locate the priced-lane branch');
+  assert.ok(
+    /return await fetchIndexFeedProducts\(/.test(block),
+    'the lane call must be AWAITED inside the try, or the rejection bypasses the catch',
+  );
+  assert.ok(/logger\.error\(/.test(block), 'a lane failure must be logged at error level');
+  assert.ok(
+    /throw err;/.test(block),
+    'and must RETHROW — falling back to the connected lane would answer 200 with the wrong catalog',
+  );
+});
