@@ -140,3 +140,27 @@ describe('activeCatalogSourceSql inherits the test-merchant exclusion', () => {
     expect(sql).toContain("lower(coalesce(cm.status, 'active')) IN ('active', 'observed')");
   });
 });
+
+// The two repos' rig lists must hold the SAME ids: both services write
+// catalog_row_trust from the same policy, so an id present in one and not the
+// other makes them derive different serving_decisions for the same row and flap
+// it public<->blocked on the live surface. Nothing can enforce that across repo
+// boundaries, so each side pins the exact set.
+describe('rig list is pinned across both repos', () => {
+  const EXPECTED_RIG_IDS = [
+    'merch_efbc46b4619cfbdf',
+    'merch_shopify_0584b37f7a8be00a5223',
+    'merch_shopify_00d4a720d67d96c5dcba',
+    'merch_bbd34645bc1950cc',
+    'merch_shopify_b20b5797f4181983c177',
+    'merch_test_ownist_001',
+  ];
+
+  test('mirrors the pivota-backend twin', () => {
+    expect([...TEST_MERCHANT_IDS].sort()).toEqual([...EXPECTED_RIG_IDS].sort());
+    // If this fails: mirror the change in pivota-backend
+    // services/test_merchant_policy.py KNOWN_TEST_MERCHANT_IDS (and its pinned
+    // test) IN THE SAME DEPLOY — the two services share catalog_row_trust, so a
+    // one-sided change flaps rows public<->blocked.
+  });
+});
