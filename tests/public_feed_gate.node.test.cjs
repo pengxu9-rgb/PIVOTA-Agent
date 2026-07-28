@@ -9,7 +9,9 @@ const EXT = 'ext_fb756aa379b28bd89ad3f4c8';
 // A projection that keeps what the ACP shape keeps. Deliberately NOT one of the
 // real mappers: this file tests the POLICY, and coupling it to a mapper would
 // make a mapper change look like a policy failure.
-const project = (r) => ({ id: r.id, price: r.price, currency: r.currency });
+// `title` included: the gate now requires a usable one (#1852), so a
+// projection that dropped it would make every fixture fail for the wrong reason.
+const project = (r) => ({ id: r.id, title: r.title ?? 'A Real Product Name', price: r.price, currency: r.currency });
 const gate = (rows, logger, env) => gatePublicFeedRows(rows, { project, logger, lane: 't', env });
 
 test('drops ext_* ids — the gate the connected lane never had', () => {
@@ -59,7 +61,7 @@ test('all three gates are reachable and counted independently', () => {
   ];
   const { items, dropped } = gate(rows);
   assert.equal(items.length, 1);
-  assert.deepEqual(dropped, { rig: 1, unlinkable: 1, unquotable: 1 });
+  assert.deepEqual(dropped, { rig: 1, unlinkable: 1, untitled: 0, unquotable: 1 });
 });
 
 test('an unresolvable link logs at WARN, not info', () => {
@@ -83,7 +85,7 @@ test('tolerates junk input without throwing', () => {
   for (const bad of [undefined, null, 'nope', {}]) {
     const { items, dropped } = gate(bad);
     assert.deepEqual(items, []);
-    assert.deepEqual(dropped, { rig: 0, unlinkable: 0, unquotable: 0 });
+    assert.deepEqual(dropped, { rig: 0, unlinkable: 0, untitled: 0, unquotable: 0 });
   }
 });
 
@@ -156,4 +158,40 @@ test('log lines carry BOTH lane and source', () => {
   assert.equal(lines[0].lane, 'index_feed');
   assert.equal(lines[0].source, 'index_feed');
   assert.equal(lines[0].surface, 'acp_public_feed');
+});
+
+test('a URL or missing title is not publishable, and is counted separately', () => {
+  // #1852: 3,952 of 4,375 live rows (90%) published the PDP URL as `title` —
+  // the field an ingester displays as the product name. Counted under its own
+  // reason so the number IS the residue metric after deploy, rather than being
+  // folded into an existing bucket where "dropped nothing" and "did not run"
+  // print the same figure.
+  const rows = [
+    { id: SIG, title: 'Rice 72 Serum', price: 10, currency: 'USD' },
+    { id: SIG, title: 'https://agent.pivota.cc/products/sig_x', price: 10, currency: 'USD' },
+    { id: SIG, title: '//agent.pivota.cc/products/sig_y', price: 10, currency: 'USD' },
+    { id: SIG, title: '   ', price: 10, currency: 'USD' },
+    // explicit empty, NOT an omitted key — the projection helper defaults a
+    // missing title, and relying on that would have tested the helper.
+    { id: SIG, title: '', price: 10, currency: 'USD' },
+  ];
+  const { items, dropped } = gate(rows);
+  assert.deepEqual(items.map((i) => i.title), ['Rice 72 Serum']);
+  assert.equal(dropped.untitled, 4);
+  assert.equal(dropped.unquotable, 0, 'a title drop must not be miscounted as a price drop');
+});
+
+test('a title that merely CONTAINS a url is kept', () => {
+  // The predicate is anchored. Over-rejecting here would drop real products
+  // whose name happens to mention a URL — the mirror failure of the one being
+  // fixed, and the more expensive one since it removes sellable rows.
+  const { items } = gate([{ id: SIG, title: 'Serum (see https://x.com)', price: 10, currency: 'USD' }]);
+  assert.equal(items.length, 1);
+});
+
+test('the untitled drop logs at WARN with its own reason', () => {
+  const warns = [];
+  gate([{ id: SIG, title: 'https://x.com/p', price: 10, currency: 'USD' }], { warn: (o) => warns.push(o) });
+  assert.equal(warns.length, 1);
+  assert.equal(warns[0].reason, 'no_usable_title');
 });
