@@ -51,15 +51,19 @@ jobs:
 
       - name: Promote PDP identity live read
         shell: bash
+        env:
+          IN_LIMIT: ${{ inputs.limit || '500' }}
+          IN_SOURCE_LISTING_REFS: ${{ inputs.source_listing_refs }}
+          IN_BRAND: ${{ inputs.brand }}
         run: |
           set -euo pipefail
           mkdir -p reports/workflow_ops/pdp-identity-live-read-promote/${{ github.run_id }}
           args=(
-            --limit "${{ inputs.limit || '500' }}"
+            --limit "${IN_LIMIT}"
             --created-by "github_actions"
           )
-          refs='${{ inputs.source_listing_refs }}'
-          brand='${{ inputs.brand }}'
+          refs="${IN_SOURCE_LISTING_REFS}"
+          brand="${IN_BRAND}"
           if [[ -n "${refs}" ]]; then
             args+=(--source-listing-refs "${refs}")
           fi

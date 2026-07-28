@@ -45,6 +45,8 @@ jobs:
       - name: Run targeted external seed backfill
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          IN_MARKET: ${{ inputs.market }}
+          IN_EXTERNAL_PRODUCT_IDS: ${{ inputs.external_product_ids }}
         run: |
           if [ -z "${DATABASE_URL}" ]; then
             echo "DATABASE_URL secret is required" >&2
@@ -52,8 +54,8 @@ jobs:
           fi
           mkdir -p reports/workflow_ops/external-seed-targeted-backfill/${{ github.run_id }}
           ARGS=(
-            --market "${{ inputs.market }}"
-            --external-product-ids "${{ inputs.external_product_ids }}"
+            --market "${IN_MARKET}"
+            --external-product-ids "${IN_EXTERNAL_PRODUCT_IDS}"
             --limit 200
             --concurrency 1
           )

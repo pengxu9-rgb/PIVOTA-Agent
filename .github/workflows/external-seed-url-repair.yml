@@ -45,6 +45,9 @@ jobs:
 
       - name: Run external seed URL repair
         shell: bash
+        env:
+          IN_MAPPING_JSON_BASE64: ${{ inputs.mapping_json_base64 }}
+          IN_MARKET: ${{ inputs.market }}
         run: |
           set -euo pipefail
           if [[ -z "${DATABASE_URL:-}" ]]; then
@@ -55,11 +58,11 @@ jobs:
           mkdir -p "${out_dir}"
           mapping_file="${out_dir}/mapping.json"
           ids_file="${out_dir}/external_product_ids.txt"
-          printf '%s' "${{ inputs.mapping_json_base64 }}" | base64 --decode > "${mapping_file}"
+          printf '%s' "${IN_MAPPING_JSON_BASE64}" | base64 --decode > "${mapping_file}"
           node -e "const fs=require('fs'); const j=JSON.parse(fs.readFileSync(process.argv[1],'utf8')); const rows=Array.isArray(j)?j:j.mappings; for (const row of rows||[]) if (row.external_product_id) console.log(row.external_product_id)" "${mapping_file}" > "${ids_file}"
           report_name="dry-run.json"
           args=(
-            --market "${{ inputs.market }}"
+            --market "${IN_MARKET}"
             --mapping-file "${mapping_file}"
             --out "${out_dir}/${report_name}"
           )
@@ -71,7 +74,7 @@ jobs:
           else
             report_name="apply.json"
             args=(
-              --market "${{ inputs.market }}"
+              --market "${IN_MARKET}"
               --mapping-file "${mapping_file}"
               --out "${out_dir}/${report_name}"
             )
@@ -82,7 +85,7 @@ jobs:
           node scripts/repair-external-seed-url-fields.cjs "${args[@]}" \
             | tee "${out_dir}/summary.json"
           sync_args=(
-            --market "${{ inputs.market }}"
+            --market "${IN_MARKET}"
             --external-product-ids-file "${ids_file}"
             --out "${out_dir}/identity-source-payload-sync-${report_name}"
             --created-by "github_actions_external_seed_url_repair"

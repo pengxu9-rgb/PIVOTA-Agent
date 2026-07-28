@@ -62,26 +62,35 @@ jobs:
       - name: Run cross-agent beauty matrix
         if: ${{ inputs.run_single_matrix == 'true' }}
         shell: bash
+        env:
+          IN_INVOKE_BASE_URL: ${{ inputs.invoke_base_url }}
+          IN_AURORA_BASE_URL: ${{ inputs.aurora_base_url }}
+          IN_CASES_PATH: ${{ inputs.cases_path }}
+          IN_INVOKE_TIMEOUT_MS: ${{ inputs.invoke_timeout_ms }}
+          IN_AURORA_TIMEOUT_MS: ${{ inputs.aurora_timeout_ms }}
         run: |
           set -euo pipefail
           node scripts/run_celestial_commerce_core_beauty_cross_agent_matrix.js \
-            --invoke-base-url "${{ inputs.invoke_base_url }}" \
-            --aurora-base-url "${{ inputs.aurora_base_url }}" \
-            --cases "${{ inputs.cases_path }}" \
+            --invoke-base-url "${IN_INVOKE_BASE_URL}" \
+            --aurora-base-url "${IN_AURORA_BASE_URL}" \
+            --cases "${IN_CASES_PATH}" \
             --out-dir "reports/celestial-commerce-beauty-cross-agent-matrix-ci" \
-            --invoke-timeout-ms "${{ inputs.invoke_timeout_ms }}" \
-            --aurora-timeout-ms "${{ inputs.aurora_timeout_ms }}"
+            --invoke-timeout-ms "${IN_INVOKE_TIMEOUT_MS}" \
+            --aurora-timeout-ms "${IN_AURORA_TIMEOUT_MS}"
 
       - name: Run cross-agent beauty multi-turn invoke matrix
         if: ${{ inputs.run_multiturn == 'true' }}
         shell: bash
+        env:
+          IN_INVOKE_BASE_URL: ${{ inputs.invoke_base_url }}
+          IN_INVOKE_TIMEOUT_MS: ${{ inputs.invoke_timeout_ms }}
         run: |
           set -euo pipefail
           node scripts/run_celestial_commerce_core_beauty_cross_agent_multiturn_live.js \
-            --base-url "${{ inputs.invoke_base_url }}" \
+            --base-url "${IN_INVOKE_BASE_URL}" \
             --out-dir "reports/celestial-commerce-beauty-cross-agent-multiturn-live-ci" \
             --rounds "1" \
-            --timeout-ms "${{ inputs.invoke_timeout_ms }}"
+            --timeout-ms "${IN_INVOKE_TIMEOUT_MS}"
 
       - name: Upload cross-agent matrix artifacts
         if: ${{ always() && hashFiles('reports/celestial-commerce-beauty-cross-agent-matrix-ci/**') != '' }}

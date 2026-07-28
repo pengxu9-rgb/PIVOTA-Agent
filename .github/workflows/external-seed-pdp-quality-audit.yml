@@ -72,6 +72,14 @@ jobs:
 
       - name: Run PDP quality audit
         shell: bash
+        env:
+          IN_MARKET: ${{ inputs.market }}
+          IN_LIMIT: ${{ inputs.limit }}
+          IN_OFFSET: ${{ inputs.offset }}
+          IN_CONCURRENCY: ${{ inputs.concurrency }}
+          IN_DOMAIN: ${{ inputs.domain }}
+          IN_BRAND: ${{ inputs.brand }}
+          IN_EXTERNAL_PRODUCT_ID: ${{ inputs.external_product_id }}
         run: |
           set -euo pipefail
           if [[ -z "${DATABASE_URL:-}" ]]; then
@@ -83,20 +91,20 @@ jobs:
           mkdir -p "${out_dir}"
 
           args=(
-            --market "${{ inputs.market }}"
-            --limit "${{ inputs.limit }}"
-            --offset "${{ inputs.offset }}"
-            --concurrency "${{ inputs.concurrency }}"
+            --market "${IN_MARKET}"
+            --limit "${IN_LIMIT}"
+            --offset "${IN_OFFSET}"
+            --concurrency "${IN_CONCURRENCY}"
             --out "${out_dir}/report.json"
           )
-          if [[ -n "${{ inputs.domain }}" ]]; then
-            args+=(--domain "${{ inputs.domain }}")
+          if [[ -n "${IN_DOMAIN}" ]]; then
+            args+=(--domain "${IN_DOMAIN}")
           fi
-          if [[ -n "${{ inputs.brand }}" ]]; then
-            args+=(--brand "${{ inputs.brand }}")
+          if [[ -n "${IN_BRAND}" ]]; then
+            args+=(--brand "${IN_BRAND}")
           fi
-          if [[ -n "${{ inputs.external_product_id }}" ]]; then
-            args+=(--external-product-id "${{ inputs.external_product_id }}")
+          if [[ -n "${IN_EXTERNAL_PRODUCT_ID}" ]]; then
+            args+=(--external-product-id "${IN_EXTERNAL_PRODUCT_ID}")
           fi
           if [[ "${{ inputs.skip_similar }}" == "true" ]]; then
             args+=(--skip-similar)

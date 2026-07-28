@@ -55,6 +55,25 @@ jobs:
       SHOP_GATEWAY_AGENT_API_KEY: ${{ secrets.SHOP_GATEWAY_AGENT_API_KEY }}
       PIVOTA_AGENT_API_KEY: ${{ secrets.PIVOTA_AGENT_API_KEY }}
       AGENT_API_KEY: ${{ secrets.AGENT_API_KEY }}
+      # ⚠️ VESTIGIAL — AI Studio credentials, superseded by the Vertex migration
+      # below (VERTEX_AI_ENABLED is hardcoded "true" and the "Verify Vertex
+      # credentials" step hard-fails without the service-account JSON, so the
+      # AI Studio path is unreachable from this workflow).
+      #
+      # NOT DELETED HERE, DELIBERATELY. Removing these five lines does not reduce
+      # exposure by one bit: the secrets still exist in GitHub, so any other
+      # workflow — or a re-added line — still reaches them. Exposure ends at
+      # REVOCATION, not at deletion of a reference. And "outdated" is not
+      # "revoked": an unused key is still a live credential, and an injection
+      # exfiltrates whatever is in the environment whether the run uses it or not.
+      #
+      # So the correct order is founder-owned and this PR cannot do it:
+      #   1. revoke at Google,
+      #   2. delete the repo secrets,
+      #   3. THEN remove these lines (at which point it is provably a no-op).
+      # Doing (3) first would leave live credentials with the reference removed —
+      # the same class of "looks fixed, isn't" this PR exists to end. Tracked on
+      # the worklist as a founder action.
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       PIVOTA_GEMINI_API_KEY: ${{ secrets.PIVOTA_GEMINI_API_KEY }}
       GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
@@ -112,22 +131,27 @@ jobs:
 
       - name: Build review packet
         shell: bash
+        env:
+          IN_SEED: ${{ inputs.seed }}
+          IN_PRODUCT_IDS: ${{ inputs.product_ids }}
+          IN_LIMIT: ${{ inputs.limit }}
+          IN_MODEL: ${{ inputs.model }}
         run: |
           set -euo pipefail
           out_dir="reports/workflow_ops/pivota-insights-coverage/${{ github.run_id }}"
           mkdir -p "${out_dir}"
-          seed='${{ inputs.seed }}'
+          seed="${IN_SEED}"
           if [[ -z "${seed}" ]]; then
             seed="workflow-${{ github.run_id }}"
           fi
 
           args=(
-            --product-ids "${{ inputs.product_ids }}"
+            --product-ids "${IN_PRODUCT_IDS}"
             --out-dir "${out_dir}/coverage"
-            --limit "${{ inputs.limit }}"
+            --limit "${IN_LIMIT}"
             --per-query "12"
             --seed "${seed}"
-            --model "${{ inputs.model }}"
+            --model "${IN_MODEL}"
             --max-per-brand "50"
             --max-per-category "50"
             --covered-review-mode "strict_human"
