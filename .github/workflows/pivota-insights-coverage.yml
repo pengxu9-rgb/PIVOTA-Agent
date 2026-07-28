@@ -58,24 +58,31 @@ jobs:
       # AI Studio credentials are NOT declared here, deliberately. This job pins
       # VERTEX_AI_ENABLED=true below, and the transport seam
       # (src/llm/vertexGemini.js) branches purely on that flag — `restTarget()`
-      # and `credentialsAvailable()` both ignore the API key on the Vertex arm.
-      # So GEMINI_API_KEY / PIVOTA_GEMINI_API_KEY / GOOGLE_API_KEY /
-      # GEMINI_BASE_URL / GOOGLE_GENAI_BASE_URL were UNREACHABLE, not merely
-      # unset, and AI Studio is retired in production. Do not re-add them: a
+      # returns the Vertex arm before touching apiKey/baseUrl, and
+      # `credentialsAvailable()` only inspects its apiKey argument when
+      # vertexEnabled is false. So GEMINI_API_KEY / PIVOTA_GEMINI_API_KEY /
+      # GOOGLE_API_KEY / GEMINI_BASE_URL / GOOGLE_GENAI_BASE_URL were
+      # UNREACHABLE here, not merely unset — no value you could set would have
+      # been read — and AI Studio is retired in production. Do not re-add them: a
       # credential that cannot be read is worse than absent, because it reads as
       # a working fallback that does not exist.
+      #
       # Route this batch through Vertex so its usage bills the GCP project that
       # holds the credits, matching the Railway services.
       #
-      # CORRECTION to what this comment used to say ("without these the seam
-      # silently falls back to AI Studio and the spend lands on the old API
-      # key"): it does not. Verified in src/llm/vertexGemini.js — every branch is
-      # `if (!vertexEnabled())`, i.e. gated on THIS FLAG, never on whether a
-      # credential is present, and the flag is read-only at runtime (nothing
-      # assigns process.env.VERTEX_AI_ENABLED anywhere). With the flag on and ADC
-      # missing, `credentialsAvailable()` returns false and callers return a hard
-      # MISSING_API_KEY error; they do not retry against AI Studio. So the risk
-      # here is a FAILED run, not a misbilled one.
+      # WHAT HAPPENS IF ADC IS MISSING, stated precisely because a previous
+      # version of this comment got it wrong in both directions. The seam does
+      # NOT silently fall back to AI Studio — every branch is gated on the flag,
+      # never on credential presence, and nothing in src/ or scripts/ assigns
+      # VERTEX_AI_ENABLED at runtime (only test harnesses do). But it does not
+      # hard-error either: this job's actual caller,
+      # scripts/product_intel_pilot_compare.js `runGeminiDraft`, checks
+      # `hasGeminiKey()` and returns `{skipped:true, reason:
+      # 'missing_gemini_api_key'}`, so the batch still exits 0 with a
+      # GEMINI-LESS report and `gemini_skipped: N` in its meta. The
+      # "Verify Vertex credentials" step below is what converts that quiet
+      # degradation into a hard failure — which is exactly what its own comment
+      # says it is for.
       VERTEX_AI_ENABLED: "true"
       GOOGLE_CLOUD_PROJECT: project-f165a637-145f-4de2-89d
       # NOT us-central1: gemini-3-flash-preview (this workflow's default model)
@@ -105,9 +112,9 @@ jobs:
           set -euo pipefail
           if [[ -z "${GOOGLE_APPLICATION_CREDENTIALS_JSON:-}" ]]; then
             echo "::error::VERTEX_AI_ENABLED=true but GOOGLE_APPLICATION_CREDENTIALS_JSON is empty."
-            echo "::error::Remedy: add the Vertex service-account JSON as the repo secret GOOGLE_APPLICATION_CREDENTIALS_JSON."
+            echo "::error::Remedy: add the Vertex service-account JSON as the repo secret GOOGLE_APPLICATION_CREDENTIALS_JSON. Its project_id must be ${GOOGLE_CLOUD_PROJECT}."
             echo "::error::It is already set on both Railway services (gateway and backend web); this is a copy into GitHub Actions secrets, not a new credential."
-            echo "::error::Do NOT unset VERTEX_AI_ENABLED to 'fall back to AI Studio' — AI Studio is retired in production and no GEMINI_API_KEY/GOOGLE_API_KEY exists in this repo, so that path cannot run."
+            echo "::error::Do NOT unset VERTEX_AI_ENABLED to 'fall back to AI Studio' — AI Studio is retired in production and no GEMINI_API_KEY/GOOGLE_API_KEY SECRET is configured for this repo, so that path would silently produce a Gemini-less report."
             exit 1
           fi
           node -e '
@@ -120,6 +127,19 @@ jobs:
             }
             if (d.type !== "service_account" || !d.private_key) {
               console.error("::error::credential parsed but is not a service_account key");
+              process.exit(1);
+            }
+            // ASSERT the project, do not merely print it. The guard printed
+            // project_id and checked nothing, so a service-account key from the
+            // WRONG project passed here and only produced a console.error later
+            // from warnOnProjectMismatch() — meaning the run bills the project
+            // named in GOOGLE_CLOUD_PROJECT while quota-checking the
+            // credential's. Verified safe to assert: the credential in use today
+            // reports project-f165a637-145f-4de2-89d, which is the configured
+            // value (run 30334494514).
+            const want = String(process.env.GOOGLE_CLOUD_PROJECT || "").trim();
+            if (want && d.project_id && d.project_id !== want) {
+              console.error(`::error::credential belongs to project ${d.project_id} but GOOGLE_CLOUD_PROJECT is ${want}. Billing and quota would disagree; use the key for ${want}.`);
               process.exit(1);
             }
             console.log(`credential OK: ${raw.length} chars, project=${d.project_id}`);
