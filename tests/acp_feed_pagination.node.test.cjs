@@ -88,35 +88,51 @@ test('the CALL SITE passes req.query THROUGH the allow-list — exactly once', (
   );
 });
 
-test('the fallback lane clamps by VALUE, using the same helper as the index lane', () => {
-  // Round 2: the previous source-text check let FIVE mutants live, including
-  // deleting the clamp outright and raising its ceiling to 1,000,000. A
-  // presence check never executes the thing it guards.
+test('the fallback lane query is built by VALUE, clamp wired in', () => {
+  // Round 3: the previous version asserted on `clampLimit` (a pure, pre-existing
+  // function the index lane already exercised) plus a source-text match. FOUR
+  // wiring mutants survived — reverting the arg to `query ?? {}`, wrapping it in
+  // parens, and two that ran the clamp then discarded it. The assertion died on
+  // formatting and lived on semantics, backwards in both directions.
   //
-  // The clamp is now `clampLimit` from services/acpFeedSource — the SAME
-  // function the index lane uses, not a second inline copy — so it is callable
-  // and these assert on values.
-  const { clampLimit } = require('../src/services/acpFeedSource');
-  assert.equal(clampLimit('999999999'), 100, 'clamps to the ceiling');
-  assert.equal(clampLimit(1e21), 100);
-  assert.equal(clampLimit('0'), 1, 'floor is 1, not 0');
-  assert.equal(clampLimit('-5'), 1);
-  assert.equal(clampLimit('abc'), 20, 'unparseable falls back to the default, not to a huge page');
-  assert.equal(clampLimit('50'), 50, 'a legitimate value passes through');
-  assert.equal(clampLimit(undefined), 20);
+  // `buildConnectedLaneQuery` is now the extracted seam, so these are value
+  // assertions on the object that actually goes upstream.
+  const { buildConnectedLaneQuery, clampLimit } = require('../src/services/acpFeedSource');
 
-  // And the call site must apply it, without touching a query that has no limit.
-  const src = require('node:fs').readFileSync(require.resolve('../src/server'), 'utf8');
-  const i = src.indexOf('const upstreamQuery = { ...(query || {}) };');
-  assert.ok(i >= 0, 'could not locate the fallback lane clamp');
-  const block = src.slice(i, i + 400).replace(/\s+/g, '');
-  assert.ok(
-    block.includes('if(upstreamQuery.limit!=null)upstreamQuery.limit=clampLimit(upstreamQuery.limit);'),
-    'the clamp must be applied, and only when a limit was supplied',
-  );
-  assert.ok(
-    !/find_products',query\|\|\{\}\)/.test(block),
-    'the unclamped query must not reach find_products',
+  assert.equal(buildConnectedLaneQuery({ limit: '999999999' }).limit, 100, 'clamps to the ceiling');
+  assert.equal(buildConnectedLaneQuery({ limit: 1e21 }).limit, 100);
+  assert.equal(buildConnectedLaneQuery({ limit: '0' }).limit, 1, 'floor is 1');
+  assert.equal(buildConnectedLaneQuery({ limit: '-5' }).limit, 1);
+  assert.equal(buildConnectedLaneQuery({ limit: 'abc' }).limit, 20, 'unparseable -> default, not a huge page');
+  assert.equal(buildConnectedLaneQuery({ limit: '50' }).limit, 50);
+
+  // A query with no limit must come back structurally unchanged — the clamp
+  // must not invent one.
+  assert.deepEqual(buildConnectedLaneQuery({}), {});
+  assert.deepEqual(buildConnectedLaneQuery(undefined), {});
+  assert.deepEqual(buildConnectedLaneQuery({ page: '3', cursor: 'c' }), { page: '3', cursor: 'c' });
+  assert.ok(!('limit' in buildConnectedLaneQuery({ page: '3' })), 'no limit key may be added');
+
+  // page/cursor pass through untranslated — this lane has no paging contract,
+  // and pretending otherwise would silently re-serve page 1.
+  const out = buildConnectedLaneQuery({ limit: '500', page: '2', cursor: 'abc', query: 'serum' });
+  assert.deepEqual(out, { limit: 100, page: '2', cursor: 'abc', query: 'serum' });
+
+  // It must be a COPY — mutating the caller's query object is its own bug.
+  const src = { limit: '500' };
+  assert.notEqual(buildConnectedLaneQuery(src), src);
+  assert.equal(src.limit, '500', 'the input must not be mutated');
+
+  // And it must use the same clamp as the index lane, not a private copy.
+  assert.equal(buildConnectedLaneQuery({ limit: '777' }).limit, clampLimit('777'));
+
+  // The call site must hand it the raw query — a source-text check, but now
+  // only as a WIRING check on top of the value assertions above.
+  const serverText = require('node:fs').readFileSync(require.resolve('../src/server'), 'utf8');
+  assert.match(
+    serverText.replace(/\s+/g, ''),
+    /invokeCommerceKernelRawUpstream\('find_products',buildConnectedLaneQuery\(query\)\)/,
+    'the upstream call must send the BUILT query',
   );
 });
 
@@ -144,6 +160,7 @@ test('a malformed cursor degrades to absent, never a 500', () => {
   const { decodeCursor } = require('../src/services/productEntityIndexFeed');
   const enc = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
   const NUL = String.fromCharCode(0);
+  const cur = (t) => decodeCursor(enc({ sort_updated_at: t, product_entity_id: 'sig_a', source_product_id: 'ext_b' }));
 
   // The two shapes that started this: both produced an unauthenticated 500.
   assert.equal(decodeCursor(enc({ sort_updated_at: 'not-a-date', product_entity_id: 'x', source_product_id: 'y' })), null);
@@ -200,15 +217,42 @@ test('a malformed cursor degrades to absent, never a 500', () => {
   // Shape-only: SQL-ish text is harmless (bound parameter) and must decode.
   const sqlish = { source_listing_ref: "' OR 1=1--" };
   assert.deepEqual(decodeCursor(enc(sqlish)), sqlish);
-});
-test('the connected fallback lane clamps limit before going upstream', () => {
-  const src = require('node:fs').readFileSync(require.resolve('../src/server'), 'utf8');
-  const i = src.indexOf('const upstreamQuery = { ...(query || {}) };');
-  const j = src.indexOf("invokeCommerceKernelRawUpstream('find_products'");
-  assert.ok(i >= 0 && j > i, 'the clamp must sit before the upstream call');
-  assert.ok(!/find_products', query \|\| \{\}\)/.test(src), 'the raw query must not reach find_products unclamped');
-});
 
+  // ---- round-3: CALENDAR-invalid dates, and three uncovered branches ----
+
+  // Date.parse is NOT a calendar validator. V8 accepts day 01-31 for any month
+  // and MakeDay ROLLS OVER (Feb 30 -> Mar 2), so it returns a number, the regex
+  // passes `\d{2}`, and `$N::timestamptz` throws "date/time field value out of
+  // range". All six of these were live 500s after the previous fix.
+  for (const t of ['2026-02-30T00:00:00Z', '2026-04-31T00:00:00Z', '2026-06-31T00:00:00Z',
+                   '2026-09-31T00:00:00Z', '2026-11-31T00:00:00Z', '2025-02-29T00:00:00Z']) {
+    assert.equal(cur(t), null, 'calendar-invalid date must be rejected: ' + t);
+  }
+  for (const t of ['2026-13-01T00:00:00Z', '2026-00-10T00:00:00Z',
+                   '2026-07-00T00:00:00Z', '2026-07-32T00:00:00Z']) {
+    assert.equal(cur(t), null, 'out-of-range field must be rejected: ' + t);
+  }
+
+  // The leap-year rule is NOT written in the guard — the round-trip gets it from
+  // the platform. Both directions pinned so a hand-rolled rule cannot creep in.
+  assert.notEqual(cur('2024-02-29T00:00:00Z'), null, 'a real leap day must be accepted');
+  assert.equal(cur('2025-02-29T00:00:00Z'), null, 'a non-leap Feb 29 must be rejected');
+
+  // KEEPS `Date.parse` LOAD-BEARING. Review found that deleting that line left
+  // the suite green: every string it was credited with catching was already
+  // killed by the regex or the year check. These are TIME-field violations —
+  // the calendar round-trip only inspects Y/M/D, so Date.parse is the only
+  // thing that sees them, and the regex's `\d{2}` admits both.
+  assert.equal(cur('2026-07-28T25:00:00Z'), null, 'hour 25 — only Date.parse catches this');
+  assert.equal(cur('2026-07-28T00:60:00Z'), null, 'minute 60 — only Date.parse catches this');
+
+  // KEEPS THE NON-NUL HALF OF hasControlChars LOAD-BEARING. Narrowing it to
+  // /[\u0000]/ previously survived: nothing exercised \u0001-\u001f or \u007f.
+  for (const ch of ['\u0001', '\u001f', '\u007f']) {
+    assert.equal(decodeCursor(enc({ source_listing_ref: 'a' + ch + 'b' })), null,
+      'control character U+' + ch.charCodeAt(0).toString(16).padStart(4, '0') + ' must be rejected');
+  }
+});
 test('a polluted Object.prototype cannot inject pagination', () => {
   // Finding 5. Without `Object.hasOwn`, `q[k]` reads inherited properties, so a
   // pollution primitive ANYWHERE else in the process would make every request
