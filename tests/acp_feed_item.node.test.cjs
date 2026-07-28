@@ -93,3 +93,29 @@ test('an amount with no currency in EITHER shape is still refused', () => {
   assert.equal(isQuotableFeedItem(buildAcpFeedItem({ id: 'x', price_amount: 19.5 }, {})), false);
   assert.equal(isQuotableFeedItem(buildAcpFeedItem({ id: 'x', price_amount: 19.5, price_currency: '  ' }, {})), false);
 });
+
+test('amount and currency come from the SAME source — no cross-mixing', () => {
+  // N2 from the re-review. Two independent `??` would pair an amount from one
+  // shape with a currency from the other, which IS the INR-served-as-USD class.
+  // The same invariant is named one layer up in
+  // tests/product_entity_index_feed_election.node.test.cjs:229.
+  //
+  // Both of these were `quotable: true` before this fix — a public feed row
+  // whose amount and currency described different things.
+  const mixedA = buildAcpFeedItem({ id: 'x', price: 12, price_currency: 'INR' }, {});
+  assert.equal(mixedA.currency, undefined, 'a scalar price must not borrow price_currency');
+  assert.equal(isQuotableFeedItem(mixedA), false);
+
+  const mixedB = buildAcpFeedItem({ id: 'x', price_amount: 99000, currency: 'USD' }, {});
+  assert.equal(mixedB.currency, undefined, 'a price_amount must not borrow the scalar currency');
+  assert.equal(isQuotableFeedItem(mixedB), false);
+});
+
+test('an explicit price of 0 is refused, not treated as missing', () => {
+  // `!= null` rather than truthiness: 0 is a real value the gate must see and
+  // reject. Falling through to price_amount here would let a zero-priced row be
+  // rescued by a stale alternate amount.
+  const zero = buildAcpFeedItem({ id: 'x', price: 0, currency: 'USD', price_amount: 42 }, {});
+  assert.equal(zero.price, 0);
+  assert.equal(isQuotableFeedItem(zero), false);
+});

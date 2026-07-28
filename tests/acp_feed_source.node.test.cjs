@@ -536,7 +536,13 @@ test('a priced-lane failure is LOGGED before it becomes a 500', () => {
     serverSrc.indexOf('if (isIndexFeedLaneServable()) {'),
     serverSrc.indexOf('if (isIndexFeedSourceEnabled()) {'),
   );
-  assert.ok(block.length > 0, 'could not locate the priced-lane branch');
+  const start = serverSrc.indexOf('if (isIndexFeedLaneServable()) {');
+  const end = serverSrc.indexOf('if (isIndexFeedSourceEnabled()) {');
+  // Assert the ORDER, not just non-emptiness. With a bare slice, if the second
+  // marker ever moved or vanished, `slice(a, -1)` silently returns the rest of
+  // the file, `length > 0` still passes, and the regexes below happily match
+  // code from somewhere else entirely.
+  assert.ok(start >= 0 && end > start, 'could not locate the priced-lane branch');
   assert.ok(
     /return await fetchIndexFeedProducts\(/.test(block),
     'the lane call must be AWAITED inside the try, or the rejection bypasses the catch',
@@ -546,4 +552,42 @@ test('a priced-lane failure is LOGGED before it becomes a 500', () => {
     /throw err;/.test(block),
     'and must RETHROW — falling back to the connected lane would answer 200 with the wrong catalog',
   );
+});
+
+test('BEHAVIOURAL: the priced-lane catch actually runs, logs once, and preserves the error', async () => {
+  // N1 from the re-review, and it was demonstrated rather than argued: the
+  // three regexes above are all satisfied by code that keeps the lane call
+  // OUTSIDE any try and parks `logger.error(...); throw err;` in an
+  // unreachable branch of the same block. That passes `node --check`, matches
+  // every pattern, and leaves a real lane failure exactly as unlogged as
+  // before. A source-text test cannot tell reachable from unreachable.
+  //
+  // So execute the shipped block instead of matching it. Sliced out of
+  // src/server.js and run with stubs, because `getProducts` is a closure inside
+  // getCommerceAcpRestAdapter() that needs a signing secret, a verifier, an
+  // executor and a DB before it can be reached.
+  const serverSrc = require('node:fs').readFileSync(require.resolve('../src/server'), 'utf8');
+  const start = serverSrc.indexOf('if (isIndexFeedLaneServable()) {');
+  const end = serverSrc.indexOf('if (isIndexFeedSourceEnabled()) {');
+  assert.ok(start >= 0 && end > start, 'could not locate the priced-lane branch');
+  const block = serverSrc.slice(start, end);
+
+  const boom = Object.assign(new Error('relation "content_canonical_election" does not exist'), { code: '42P01' });
+  const errors = [];
+  const logger = { error: (...a) => errors.push(a), warn() {}, info() {} };
+
+  const run = new Function(
+    'isIndexFeedLaneServable', 'fetchIndexFeedProducts', 'getProductEntityIndexFeed', 'logger',
+    `return (async (query) => { ${block} })`,
+  )(() => true, async () => { throw boom; }, {}, logger);
+
+  const caught = await run({}).then(
+    () => { throw new Error('the lane failure must NOT be swallowed — a silent 200 count:0 is the shape this guards'); },
+    (e) => e,
+  );
+
+  assert.equal(caught, boom, 'the rethrow must preserve error identity, not wrap or replace it');
+  assert.equal(errors.length, 1, 'exactly one error log per failed request');
+  assert.equal(errors[0][0].surface, 'acp_public_feed');
+  assert.equal(errors[0][0].code, '42P01');
 });
