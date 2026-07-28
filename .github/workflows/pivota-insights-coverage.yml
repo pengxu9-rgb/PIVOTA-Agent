@@ -55,25 +55,26 @@ jobs:
       SHOP_GATEWAY_AGENT_API_KEY: ${{ secrets.SHOP_GATEWAY_AGENT_API_KEY }}
       PIVOTA_AGENT_API_KEY: ${{ secrets.PIVOTA_AGENT_API_KEY }}
       AGENT_API_KEY: ${{ secrets.AGENT_API_KEY }}
-      # ⚠️ VESTIGIAL — AI Studio credentials, superseded by the Vertex migration
-      # below (VERTEX_AI_ENABLED is hardcoded "true" and the "Verify Vertex
-      # credentials" step hard-fails without the service-account JSON, so the
-      # AI Studio path is unreachable from this workflow).
+      # ⚠️ THESE SECRETS DO NOT EXIST. Verified against the GitHub API on
+      # 2026-07-28: this repo has 7 repo-level secrets and 1 environment-scoped
+      # one, and none of the five below is among them. They render as EMPTY
+      # STRINGS. Of the 11 secret names this job references, only DATABASE_URL
+      # is actually set.
       #
-      # NOT DELETED HERE, DELIBERATELY. Removing these five lines does not reduce
-      # exposure by one bit: the secrets still exist in GitHub, so any other
-      # workflow — or a re-added line — still reaches them. Exposure ends at
-      # REVOCATION, not at deletion of a reference. And "outdated" is not
-      # "revoked": an unused key is still a live credential, and an injection
-      # exfiltrates whatever is in the environment whether the run uses it or not.
+      # So there is nothing to revoke here, and deleting these lines is a
+      # documentation fix rather than a security one. Left in place because
+      # removing them is not this PR's job (it is a security fix, and a
+      # behaviour-neutral cleanup would only blur what it changed) — but do not
+      # read this block as evidence that credentials are exposed. They are not.
       #
-      # So the correct order is founder-owned and this PR cannot do it:
-      #   1. revoke at Google,
-      #   2. delete the repo secrets,
-      #   3. THEN remove these lines (at which point it is provably a no-op).
-      # Doing (3) first would leave live credentials with the reference removed —
-      # the same class of "looks fixed, isn't" this PR exists to end. Tracked on
-      # the worklist as a founder action.
+      # A live secret elsewhere is a different matter, and the ordering there
+      # still holds: revoke at the provider -> delete the repo secret -> then
+      # remove the reference, at which point removal is provably a no-op.
+      #
+      # NOTE ALSO: with GOOGLE_APPLICATION_CREDENTIALS_JSON unset, the
+      # "Verify Vertex credentials" step above hard-fails (exit 1) before this
+      # job reaches any of the steps below. That guard landed 2026-07-21 and the
+      # workflow has had 0 runs since, so it has never executed in this form.
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       PIVOTA_GEMINI_API_KEY: ${{ secrets.PIVOTA_GEMINI_API_KEY }}
       GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
