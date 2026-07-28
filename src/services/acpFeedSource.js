@@ -49,12 +49,85 @@
 const { isTestMerchantId } = require('./testMerchantPolicy');
 const { isQuotableFeedItem } = require('../acpFeedItem');
 
+// The ONLY id shape the public PDP route resolves. Verified against live prod:
+//   /products/sig_1b4d53ca07835e10cdaada553bc26ed6  -> 200
+//   /products/ext_0feb1c58f18d9f6694955e7e          -> 500 (same as a bogus id)
+// An `ext_*` source_product_id is indistinguishable from garbage to that route.
+const PIVOTA_SIGNATURE_ID = /^sig_[a-z0-9]+$/i;
+
+/**
+ * Project a PRODUCT-ENTITY-INDEX-FEED item into the shape `buildAcpFeedItem`
+ * expects.
+ *
+ * THIS FUNCTION IS THE WHOLE POINT, and it is worth saying why in full, because
+ * the bug it fixes was invisible to every unit test written against this module.
+ *
+ * The lane's item sets `id = source_product_id` (an `ext_*` seed id), because
+ * its own consumers key on the source listing. `buildAcpFeedItem` reads `o.id`
+ * FIRST and builds `link = buildPublicProductUrl(id)`. So handing a raw lane
+ * item to the mapper produces `/products/ext_…` — and every single `link` in
+ * the feed is a live 500. A shopping ingester that fetches those drops the whole
+ * submission; one that doesn't fetch them publishes dead links under our name.
+ *
+ * The correct value is already on the row (`product_entity_id` /
+ * `canonical_sig_id` = `sig_…`); the projection simply has to use it. The tests
+ * could not see this because they fed synthetic `{id:'a', price, currency}`
+ * stubs that never went near a real lane row — which is exactly the
+ * no-op-behind-a-success-signal shape this repo keeps hitting.
+ *
+ * @param {object} item One item from getProductEntityIndexFeed.
+ */
+function toAcpFeedProduct(item) {
+  const o = item && typeof item === 'object' ? item : {};
+  return {
+    // The canonical signature, NEVER source_product_id. `id` is what the PDP
+    // URL is built from, so getting this wrong is not a cosmetic field error.
+    id: o.product_entity_id || o.canonical_sig_id || o.sellable_item_group_id,
+    title: o.title || o.name,
+    // The lane carries the seed description; without this every feed item is
+    // description-less, which several ingesters treat as low quality.
+    description: o.description,
+    image_url: o.image_url,
+    price: o.price ?? o.price_amount,
+    currency: o.currency ?? o.price_currency,
+    availability: o.availability,
+    brand: o.brand,
+    merchant_id: o.merchant_id,
+    connection_layer: o.connection_layer,
+    execution_path: o.execution_path,
+    // NOT SET, deliberately, and this is a real degradation to be honest about:
+    // this lane does not mint the signed `/r` attribution deep-link (that is
+    // stamped by pivota-backend on the find_products path), so an agent that
+    // follows tool links programmatically loses the direct attributed hop.
+    // Attribution is not lost outright — the D1 decision's primary mechanism is
+    // that `link` is a Pivota PDP whose own outbound buttons are attributed —
+    // but the secondary hop is absent until the lane learns to mint one.
+    // external_redirect_url: intentionally omitted.
+  };
+}
+
+/**
+ * Would this item produce a PDP link that actually resolves?
+ *
+ * Sibling to `isQuotableFeedItem`. A price gate without a link gate protects
+ * the cheaper of the two failure modes: a mispriced item is one bad row, a
+ * dead link is a dead row that also burns crawl budget and trust.
+ */
+function isLinkableFeedProduct(product) {
+  const id = String((product && product.id) || '').trim();
+  return PIVOTA_SIGNATURE_ID.test(id);
+}
+
 const ENV_TRUE = new Set(['1', 'true', 'yes', 'on']);
 
 // The source selector. Default UNSET = today's `find_products` behaviour,
 // byte-identical. Flipped by env, never by merge — this is a public,
 // externally-ingested surface, so the deploy and the behaviour change are
 // deliberately two separate events.
+// FOUR env vars, not three — `ACP_FEED_MARKET` below is the fourth and was
+// missing from the PR's own flag list. It defaults to 'US', which matches the
+// lane's existing default, so it changes nothing unset; it is named here so the
+// list of things an operator can change is complete.
 const ACP_FEED_SOURCE_ENV = 'ACP_FEED_SOURCE';
 const ACP_FEED_SOURCE_INDEX = 'index_feed';
 
@@ -110,6 +183,11 @@ async function fetchIndexFeedProducts(query = {}, deps = {}) {
       page: query?.page,
       market: resolveFeedMarket(env),
       tool: 'acp_public_feed',
+      // Apply the price gate in SQL so LIMIT counts QUOTABLE rows. Without it
+      // the JS gate below trims after the fact and every page silently
+      // under-delivers by ~24% (prod: ~4,467 priced of ~5,887), with no cursor
+      // in the ACP feed body to recover the difference.
+      priced_only: true,
     },
     {},
   );
@@ -149,10 +227,24 @@ async function fetchIndexFeedProducts(query = {}, deps = {}) {
   // exactly what the handoff says would ship price-null items to ChatGPT/Google.
   // That is the precise failure this lane exists to prevent, and a documented
   // requirement is not a gate.
-  const quotable = withoutRigs.filter(isQuotableFeedItem);
-  if (quotable.length !== withoutRigs.length && logger?.info) {
+  // Project into the ACP shape BEFORE gating, so both gates see what the feed
+  // will actually emit rather than what the lane happens to return.
+  const projected = withoutRigs.map(toAcpFeedProduct);
+
+  const linkable = projected.filter(isLinkableFeedProduct);
+  if (linkable.length !== projected.length && logger?.warn) {
+    // warn, not info: a lane row without a resolvable signature is a data
+    // problem upstream, not routine filtering.
+    logger.warn(
+      { dropped: projected.length - linkable.length, surface: 'acp_public_feed', reason: 'unresolvable_pdp_id' },
+      'acp feed: dropped items whose PDP link would not resolve',
+    );
+  }
+
+  const quotable = linkable.filter(isQuotableFeedItem);
+  if (quotable.length !== linkable.length && logger?.info) {
     logger.info(
-      { dropped: withoutRigs.length - quotable.length, surface: 'acp_public_feed', reason: 'not_price_quotable' },
+      { dropped: linkable.length - quotable.length, surface: 'acp_public_feed', reason: 'not_price_quotable' },
       'acp feed: dropped items with no quotable price',
     );
   }
@@ -161,6 +253,9 @@ async function fetchIndexFeedProducts(query = {}, deps = {}) {
 
 module.exports = {
   ACP_FEED_SOURCE_ENV,
+  PIVOTA_SIGNATURE_ID,
+  toAcpFeedProduct,
+  isLinkableFeedProduct,
   ACP_FEED_SOURCE_INDEX,
   isIndexFeedSourceEnabled,
   resolveFeedMarket,

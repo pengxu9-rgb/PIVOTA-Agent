@@ -47,9 +47,17 @@ function isMissingContentCanonicalElectionError(err) {
   // Postgres's undefined_table message always names the relation, so requiring
   // the name costs nothing and the SQLSTATE stays as corroboration (a wrapping
   // proxy may carry only the text).
+  // ONE anchored pattern, not two independent substring tests. The loose form
+  // (`includes('content_canonical_election')` AND `includes('does not exist')`)
+  // latches on an unrelated 42P01 whose message happens to embed the failing SQL
+  // — which some proxies and ORMs append as `QUERY: ...`, and this statement
+  // names the table. Consequence is only a lost preference, but a latch that
+  // fires on the wrong cause is how the sibling latch in server.js misdiagnosed
+  // itself for a process lifetime.
   const message = String(err?.message || err || '');
-  if (!message.includes('content_canonical_election')) return false;
-  return err?.code === '42P01' || message.includes('does not exist');
+  const namesRelation = /relation "?content_canonical_election"? does not exist/i.test(message);
+  if (!namesRelation) return false;
+  return err?.code === '42P01' || true;
 }
 
 function clampInt(value, fallback, min, max) {
@@ -118,7 +126,7 @@ function normalizeCategory(product, row, seedData, snapshot) {
   );
 }
 
-function buildProductEntityIndexFeedItem(row) {
+function buildProductEntityIndexFeedItem(row, env = process.env) {
   const seedData = safeJsonObject(row?.seed_data);
   const snapshot = safeJsonObject(seedData.snapshot);
   const product = buildExternalSeedProduct(row) || {};
@@ -191,6 +199,13 @@ function buildProductEntityIndexFeedItem(row) {
     // this is academic — 100% of the real serving catalog is layer 1 and layers
     // 2 and 3 have ZERO non-rig population — but the contract is fixed now so
     // the first real sync is a data change, not a shape change.
+    // Plain PDP content, already public on the page this item links to, and it
+    // carries no semantic CLAIM the way `connection_layer` does — so unlike that
+    // field this one is emitted ungated. Stated rather than assumed: it does
+    // mean the flags-off item payload differs from origin/main by exactly this
+    // one additive key. Ingesters treat description-less items as low quality,
+    // and the ACP projection has no other source for it.
+    description: nonEmptyString(row.product_description, product.description) || undefined,
     // Emission is FLAG-GATED (default off) even though the field is purely
     // additive, because this builder also serves the LIVE
     // `get_product_entity_index_feed` operation. "Additive is safe" is how a
@@ -204,7 +219,7 @@ function buildProductEntityIndexFeedItem(row) {
     // which rows come back, their order, or the `stats` CTE's counts — so
     // branching the SQL on it would buy nothing and give the two builds
     // different arities through `cr.*`.
-    ...(connectionLayerFieldEnabled()
+    ...(connectionLayerFieldEnabled(env)
       ? { connection_layer: connectionLayerForTrack(row.catalog_track) }
       : {}),
     updated_at: row.source_updated_at || row.updated_at || row.identity_updated_at || null,
@@ -244,8 +259,16 @@ async function getProductEntityIndexFeed(payload = {}, deps = {}) {
   //        83 where THIS lane's rank-1 sig ≠ the elected canonical_sig_id
   //       201 with no election row at all
   //
-  // Those 83 matter specifically on a shopping feed. The item's `link` is built
-  // from the rank-1 sig, so the feed would advertise a PDP whose own
+  // Those 83 matter specifically on a shopping feed — but ONLY because
+  // acpFeedSource's projection now keys the feed item on `product_entity_id`.
+  // Worth recording precisely, because the first cut of this comment was wrong:
+  // while the ACP projection still keyed on `source_product_id`, moving the
+  // rank-1 sig was UNOBSERVABLE on the feed (every link was an ext_ id, i.e. a
+  // 500 regardless of which sibling won). The rationale below is true of the
+  // code as it now stands, not of the code the flag was first written against.
+  //
+  // With the projection fixed, the item's `link` IS built from the rank-1 sig,
+  // so without this preference the feed would advertise a PDP whose own
   // rel=canonical points at a DIFFERENT URL. An ingester reads that as a
   // canonical conflict and drops or merges the item — and the attribution goes
   // with it. Rather than a second canonicalisation mechanism (there are already
@@ -285,6 +308,24 @@ async function getProductEntityIndexFeed(payload = {}, deps = {}) {
               END,`
       : '',
   });
+
+  // PRICE GATE IN SQL, not only in JS (default OFF — opt in per caller).
+  //
+  // The best-offer join is a LEFT JOIN LATERAL, so an offer-less row comes back
+  // with a NULL price. Filtering those in JS *after* the query means LIMIT
+  // counted rows that then vanish: in prod roughly 4,467 of ~5,887 rows are
+  // priced, so about a QUARTER of every page would silently disappear — and the
+  // ACP feed body (`{version, count, products}`) carries no cursor, so there is
+  // no top-up and no second page to recover them. The caller asks for 20 and
+  // gets 15, with nothing saying why.
+  //
+  // Pushing the predicate into `mapped` makes LIMIT apply to quotable rows. The
+  // JS gate stays as defence-in-depth: they fail independently, and the JS one
+  // also covers a lane that is not this SQL.
+  const pricedOnly = payload.priced_only === true || payload.pricedOnly === true;
+  const pricedOnlyWhere = pricedOnly
+    ? "AND best_offer.price_amount IS NOT NULL AND best_offer.price_currency IS NOT NULL"
+    : '';
 
   const fetchLimit = limit + 1;
   const params = [];
@@ -447,6 +488,7 @@ async function getProductEntityIndexFeed(payload = {}, deps = {}) {
           ranked.merchant_name,
           ranked.content_key,
           ranked.catalog_track,
+          ranked.product_description,
           ranked.elected_canonical_sig_id,
           ranked.internal_product_group_id,
           stats.seller_count,
@@ -478,6 +520,7 @@ async function getProductEntityIndexFeed(payload = {}, deps = {}) {
           LIMIT 1
         ) best_offer ON TRUE
         WHERE ranked.row_rank = 1
+          ${pricedOnlyWhere}
           ${identityPaginationWhere}
       )
       SELECT *, COUNT(*) OVER() AS total_rows

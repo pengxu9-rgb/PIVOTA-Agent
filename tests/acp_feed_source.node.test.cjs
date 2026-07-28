@@ -55,13 +55,13 @@ test('test/demo merchants are dropped even when the SQL gate let them through', 
       logger: { info: (meta, msg) => logged.push({ meta, msg }) },
       getProductEntityIndexFeed: async () => ({
         products: [
-          { id: 'a', merchant_id: 'merch_real', price: 12, currency: 'USD' },
-          { id: 'b', merchant_id: rig, price: 1.69, currency: 'USD' },
+          { product_entity_id: 'sig_aaa111', merchant_id: 'merch_real', price: 12, currency: 'USD' },
+          { product_entity_id: 'sig_bbb222', merchant_id: rig, price: 1.69, currency: 'USD' },
         ],
       }),
     },
   );
-  assert.deepEqual(products.map((p) => p.id), ['a']);
+  assert.deepEqual(products.map((p) => p.id), ['sig_aaa111']);
   assert.equal(logged.length, 1);
   assert.equal(logged[0].meta.dropped, 1);
   assert.equal(logged[0].meta.surface, 'acp_public_feed');
@@ -74,13 +74,13 @@ test('the env escape hatch can exclude a newly-spotted rig without a deploy', as
       env: { PIVOTA_TEST_MERCHANT_IDS: 'merch_new_rig' },
       getProductEntityIndexFeed: async () => ({
         products: [
-          { id: 'a', merchant_id: 'merch_real', price: 9, currency: 'USD' },
-          { id: 'b', merchant_id: 'merch_new_rig', price: 9, currency: 'USD' },
+          { product_entity_id: 'sig_aaa111', merchant_id: 'merch_real', price: 9, currency: 'USD' },
+          { product_entity_id: 'sig_bbb222', merchant_id: 'merch_new_rig', price: 9, currency: 'USD' },
         ],
       }),
     },
   );
-  assert.deepEqual(products.map((p) => p.id), ['a']);
+  assert.deepEqual(products.map((p) => p.id), ['sig_aaa111']);
 });
 
 test('a rig-free page logs nothing — the log line means something', async () => {
@@ -90,7 +90,7 @@ test('a rig-free page logs nothing — the log line means something', async () =
     {
       env: {},
       logger: { info: () => logged.push(1) },
-      getProductEntityIndexFeed: async () => ({ products: [{ id: 'a', merchant_id: 'merch_real', price: 9, currency: 'USD' }] }),
+      getProductEntityIndexFeed: async () => ({ products: [{ product_entity_id: 'sig_aaa111', merchant_id: 'merch_real', price: 9, currency: 'USD' }] }),
     },
   );
   assert.equal(logged.length, 0);
@@ -224,15 +224,15 @@ test('the price gate is applied BY THE LANE, not left to the caller', () => {
       env: {},
       getProductEntityIndexFeed: async () => ({
         products: [
-          { id: 'priced', merchant_id: 'm', price: 12, currency: 'USD' },
-          { id: 'no_price', merchant_id: 'm', price: null, currency: null },
-          { id: 'no_currency', merchant_id: 'm', price: 12, currency: null },
-          { id: 'zero', merchant_id: 'm', price: 0, currency: 'USD' },
+          { product_entity_id: 'sig_priced', merchant_id: 'm', price: 12, currency: 'USD' },
+          { product_entity_id: 'sig_noprice', merchant_id: 'm', price: null, currency: null },
+          { product_entity_id: 'sig_nocur', merchant_id: 'm', price: 12, currency: null },
+          { product_entity_id: 'sig_zero', merchant_id: 'm', price: 0, currency: 'USD' },
         ],
       }),
     },
   ).then((products) => {
-    assert.deepEqual(products.map((p) => p.id), ['priced']);
+    assert.deepEqual(products.map((p) => p.id), ['sig_priced']);
   });
 });
 
@@ -245,8 +245,8 @@ test('dropping unquotable items is logged, so a silent feed shrink is visible', 
       logger: { info: (meta) => logged.push(meta) },
       getProductEntityIndexFeed: async () => ({
         products: [
-          { id: 'a', merchant_id: 'm', price: 5, currency: 'USD' },
-          { id: 'b', merchant_id: 'm', price: null, currency: null },
+          { product_entity_id: 'sig_aaa', merchant_id: 'm', price: 5, currency: 'USD' },
+          { product_entity_id: 'sig_bbb', merchant_id: 'm', price: null, currency: null },
         ],
       }),
     },
@@ -254,4 +254,89 @@ test('dropping unquotable items is logged, so a silent feed shrink is visible', 
   const priceLog = logged.find((m) => m.reason === 'not_price_quotable');
   assert.ok(priceLog, 'a dropped-for-price event must be observable');
   assert.equal(priceLog.dropped, 1);
+});
+
+// ---- END TO END: the test that would have caught the dead-link defect -------
+//
+// Every other test in this file feeds synthetic stubs. That is precisely why the
+// PR's first two revisions shipped a projection that would have made 100% of the
+// feed's `link`s live 500s: no test ever ran a REAL lane row through the real
+// chain. This one does — buildProductEntityIndexFeedItem → fetchIndexFeedProducts
+// → buildAcpFeedItem — and asserts the emitted link, which is the only field a
+// shopping ingester actually dereferences.
+
+const { buildProductEntityIndexFeedItem } = require('../src/services/productEntityIndexFeed');
+
+// Shaped after a real prod row. `product_entity_id` is a sig; `source_product_id`
+// is an ext_* seed id. Both are real shapes, verified live:
+//   /products/sig_1b4d53ca07835e10cdaada553bc26ed6 -> 200
+//   /products/ext_0feb1c58f18d9f6694955e7e         -> 500 (as a bogus id would)
+const REAL_LANE_ROW = {
+  product_entity_id: 'sig_1b4d53ca07835e10cdaada553bc26ed6',
+  source_product_id: 'ext_0feb1c58f18d9f6694955e7e',
+  content_key: 'catalog_content_key:ck_real',
+  catalog_track: 'external_referral',
+  merchant_id: 'external_seed',
+  product_name: 'Barrier Repair Cream',
+  product_description: 'A real product description.',
+  image_url: 'https://cdn.example/i.jpg',
+  canonical_url: 'https://brand.example/p',
+  price_amount: '18.50',
+  price_currency: 'USD',
+  availability: 'in_stock',
+  seed_data: { title: 'Barrier Repair Cream', brand: 'ANUKO' },
+};
+
+test('END TO END: the emitted ACP link is a sig PDP, never the ext_ seed id', async () => {
+  const laneItem = buildProductEntityIndexFeedItem(REAL_LANE_ROW);
+  assert.equal(laneItem.id, 'ext_0feb1c58f18d9f6694955e7e', 'precondition: the lane really does key on ext_');
+
+  const products = await fetchIndexFeedProducts(
+    { limit: 10 },
+    { env: {}, getProductEntityIndexFeed: async () => ({ products: [laneItem] }) },
+  );
+  assert.equal(products.length, 1);
+
+  const item = buildAcpFeedItem(products[0], { buildPublicProductUrl: pdp });
+  assert.match(
+    item.link,
+    /^https:\/\/agent\.pivota\.cc\/products\/sig_[a-z0-9]+$/i,
+    `link must be a resolvable sig PDP, got ${item.link}`,
+  );
+  assert.ok(!item.link.includes('ext_'), 'an ext_ id in the link is a guaranteed 500');
+  assert.equal(item.id, 'sig_1b4d53ca07835e10cdaada553bc26ed6');
+  assert.equal(item.description, 'A real product description.');
+  assert.equal(item.price, 18.5);
+  assert.equal(item.currency, 'USD');
+});
+
+test('a lane row with no resolvable signature is dropped, not published dead', async () => {
+  const logged = [];
+  const products = await fetchIndexFeedProducts(
+    { limit: 10 },
+    {
+      env: {},
+      logger: { warn: (meta) => logged.push(meta) },
+      getProductEntityIndexFeed: async () => ({
+        products: [
+          { product_entity_id: 'sig_ok111', merchant_id: 'm', price: 5, currency: 'USD' },
+          { product_entity_id: 'ext_not_a_sig', merchant_id: 'm', price: 5, currency: 'USD' },
+          { merchant_id: 'm', price: 5, currency: 'USD' },
+        ],
+      }),
+    },
+  );
+  assert.deepEqual(products.map((p) => p.id), ['sig_ok111']);
+  const warn = logged.find((m) => m.reason === 'unresolvable_pdp_id');
+  assert.ok(warn, 'an unresolvable id is a data problem and must be observable');
+  assert.equal(warn.dropped, 2);
+});
+
+test('the lane is asked to apply the price gate in SQL, so LIMIT counts quotable rows', async () => {
+  let seen = null;
+  await fetchIndexFeedProducts(
+    { limit: 20 },
+    { env: {}, getProductEntityIndexFeed: async (p) => { seen = p; return { products: [] }; } },
+  );
+  assert.equal(seen.priced_only, true, 'without this a page silently under-delivers by ~24%');
 });
