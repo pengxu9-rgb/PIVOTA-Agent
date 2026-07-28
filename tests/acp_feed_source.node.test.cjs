@@ -524,9 +524,13 @@ test('the CONNECTED lane gates on the MAPPED item, via the shared gate', () => {
     norm.includes('gatePublicFeedRows(products,{project:mapFeedItem,'),
     'the connected lane must pass its MAPPER as the projection — gating the raw upstream row checks a different object than the feed emits',
   );
+  // The link predicate is no longer passed in — it is OWNED by publicFeedGate,
+  // precisely so a lane cannot neutralise it with `isLinkable: () => true` and
+  // still be "calling the shared gate". So the assertion is the inverse: the
+  // call site must NOT supply one.
   assert.ok(
-    norm.includes('isLinkable:isLinkableFeedProduct'),
-    'and must supply the link-shape predicate it previously lacked entirely',
+    !norm.includes('isLinkable:'),
+    'no lane may inject a link predicate — the gate owns it, so it cannot be opted out of',
   );
 });
 

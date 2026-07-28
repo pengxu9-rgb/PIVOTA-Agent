@@ -30916,7 +30916,6 @@ async function getCommerceAcpRestAdapter() {
         isIndexFeedSourceEnabled,
         isIndexFeedLaneServable,
         buildConnectedLaneQuery,
-        isLinkableFeedProduct,
       } = require('./services/acpFeedSource');
       // Attributed-redirect lane D1: feed `link` = Pivota canonical PDP; the signed /r attribution link
       // rides as `external_redirect_url`. Mapper is a pure module so the projection is unit-tested
@@ -31019,7 +31018,6 @@ async function getCommerceAcpRestAdapter() {
         // header of services/publicFeedGate.
         const { items: quotable } = gatePublicFeedRows(products, {
           project: mapFeedItem,
-          isLinkable: isLinkableFeedProduct,
           logger,
           lane: 'connected',
         });

@@ -43,6 +43,32 @@
 const { isTestMerchantId } = require('./testMerchantPolicy');
 const { isQuotableFeedItem } = require('../acpFeedItem');
 
+// OWNED HERE, not injected. The first cut took `isLinkable` as a parameter to
+// dodge a require cycle with acpFeedSource — the cycle is real (a direct
+// require resolves `undefined` under the production load order, verified) —
+// but the injection re-opened the very hole this module closes: a lane could
+// pass `isLinkable: () => true` and still be "calling the shared gate". Rig and
+// price were hard-wired and un-opt-out-able; the link gate, the one #1847
+// exists to add, was the only one a caller could neutralise.
+//
+// Moving the predicate here kills the cycle and the opt-out together.
+// `acpFeedSource` re-exports both names so existing importers are unaffected.
+const PIVOTA_SIGNATURE_ID = /^sig_[a-z0-9]+$/i;
+
+/**
+ * Would this item produce a PDP link that actually resolves?
+ *
+ * Sibling to `isQuotableFeedItem`. A price gate without a link gate protects
+ * the cheaper of the two failure modes: a mispriced item is one bad row, a
+ * dead link is a dead row that also burns crawl budget and trust.
+ *
+ * Proves an id is WELL-FORMED, never that it resolves.
+ */
+function isLinkableFeedProduct(product) {
+  const id = String((product && product.id) || '').trim();
+  return PIVOTA_SIGNATURE_ID.test(id);
+}
+
 /**
  * @param {Array<object>} rows   Raw lane rows, BEFORE projection.
  * @param {object}   opts
@@ -51,8 +77,6 @@ const { isQuotableFeedItem } = require('../acpFeedItem');
  *   connected lane's `buildAcpFeedItem` reads `id`/`product_id`. Same target
  *   shape, different sources — which is exactly why the projection is the
  *   lane's and the policy is not.
- * @param {function} opts.isLinkable  Link-shape predicate (injected to avoid a
- *   require cycle: acpFeedSource already requires this module's siblings).
  * @param {object}   [opts.logger]
  * @param {string}   [opts.lane]   Label for the log lines only.
  * @param {object}   [opts.env]    Threaded to `isTestMerchantId` so the no-deploy
@@ -60,7 +84,12 @@ const { isQuotableFeedItem } = require('../acpFeedItem');
  *   is a silent disablement, not a tidy-up.
  * @returns {{items: Array<object>, dropped: {rig: number, unlinkable: number, unquotable: number}}}
  */
-function gatePublicFeedRows(rows, { project, isLinkable, logger, lane = 'unknown', env = process.env } = {}) {
+function gatePublicFeedRows(rows, { project, logger, lane = 'unknown', env = process.env } = {}) {
+  // `source` is emitted ALONGSIDE `lane`, not instead of it. The index lane's
+  // other log lines (server.js error/warn) still carry `source: 'index_feed'`,
+  // so dropping it here would make a `source=index_feed` query return a partial
+  // view of that lane — worse than either name alone.
+  const logBase = { lane, source: lane, surface: 'acp_public_feed' };
   const input = Array.isArray(rows) ? rows : [];
 
   // 1. RIGS FIRST, and on the RAW row — `merchant_id` does not survive every
@@ -80,7 +109,7 @@ function gatePublicFeedRows(rows, { project, isLinkable, logger, lane = 'unknown
   const projected = withoutRigs.map((r) => project(r));
 
   // 3. LINK SHAPE. The gate the connected lane never had.
-  const linkable = projected.filter((p) => isLinkable(p));
+  const linkable = projected.filter(isLinkableFeedProduct);
 
   // 4. PRICE. Shopping ingesters REJECT price-less items, and a rejected item
   //    costs the whole submission's credibility where an absent one costs a row.
@@ -92,20 +121,31 @@ function gatePublicFeedRows(rows, { project, isLinkable, logger, lane = 'unknown
     unquotable: linkable.length - items.length,
   };
 
-  if (logger) {
+  // `logger?.info?.(...)` — BOTH optional links matter, and my first fix only
+  // had the first. `logger?.info(...)` guards a null LOGGER, not a missing
+  // METHOD: with `logger = {}` it still throws. Caught by the test written for
+  // this very finding, one line after writing it.
+  //
+  // The chain this replaced
+  // used optional calls throughout, so a partial logger silently skipped. The
+  // first draft here guarded only the warn branch, which meant a logger with no
+  // `.info` THREW: `fetchIndexFeedProducts` rejects, the adapter's guard() turns
+  // it into a bare 500, and the public feed answers an unlogged error. That is
+  // the exact failure #1846 fixed one layer up, reintroduced while extracting.
+  {
     if (dropped.rig) {
-      logger.info({ lane, surface: 'acp_public_feed', dropped: dropped.rig, reason: 'test_merchant' },
+      logger?.info?.({ ...logBase, dropped: dropped.rig, reason: 'test_merchant' },
         'acp feed: excluded test/demo merchant products');
     }
-    if (dropped.unlinkable && logger.warn) {
+    if (dropped.unlinkable) {
       // WARN, not info: a row whose PDP link would not resolve is a data problem
       // upstream, not routine filtering. On the connected lane this fired on
       // 17 of 17 rows in production.
-      logger.warn({ lane, surface: 'acp_public_feed', dropped: dropped.unlinkable, reason: 'unresolvable_pdp_id' },
+      logger?.warn?.({ ...logBase, dropped: dropped.unlinkable, reason: 'unresolvable_pdp_id' },
         'acp feed: dropped items whose PDP link would not resolve');
     }
     if (dropped.unquotable) {
-      logger.info({ lane, surface: 'acp_public_feed', dropped: dropped.unquotable, reason: 'not_price_quotable' },
+      logger?.info?.({ ...logBase, dropped: dropped.unquotable, reason: 'not_price_quotable' },
         'acp feed: dropped items with no quotable price');
     }
   }
@@ -113,4 +153,4 @@ function gatePublicFeedRows(rows, { project, isLinkable, logger, lane = 'unknown
   return { items, dropped };
 }
 
-module.exports = { gatePublicFeedRows };
+module.exports = { gatePublicFeedRows, isLinkableFeedProduct, PIVOTA_SIGNATURE_ID };

@@ -72,14 +72,13 @@
 // link to the MERCHANT's own destination, and settlement is the merchant's.
 
 const { isTestMerchantId } = require('./testMerchantPolicy');
-const { gatePublicFeedRows } = require('./publicFeedGate');
+const { gatePublicFeedRows, isLinkableFeedProduct, PIVOTA_SIGNATURE_ID } = require('./publicFeedGate');
 const { isQuotableFeedItem } = require('../acpFeedItem');
 
 // The ONLY id shape the public PDP route resolves. Verified against live prod:
 //   /products/sig_1b4d53ca07835e10cdaada553bc26ed6  -> 200
 //   /products/ext_0feb1c58f18d9f6694955e7e          -> 500 (same as a bogus id)
 // An `ext_*` source_product_id is indistinguishable from garbage to that route.
-const PIVOTA_SIGNATURE_ID = /^sig_[a-z0-9]+$/i;
 
 /**
  * Project a PRODUCT-ENTITY-INDEX-FEED item into the shape `buildAcpFeedItem`
@@ -141,17 +140,6 @@ function toAcpFeedProduct(item) {
   };
 }
 
-/**
- * Would this item produce a PDP link that actually resolves?
- *
- * Sibling to `isQuotableFeedItem`. A price gate without a link gate protects
- * the cheaper of the two failure modes: a mispriced item is one bad row, a
- * dead link is a dead row that also burns crawl budget and trust.
- */
-function isLinkableFeedProduct(product) {
-  const id = String((product && product.id) || '').trim();
-  return PIVOTA_SIGNATURE_ID.test(id);
-}
 
 const ENV_TRUE = new Set(['1', 'true', 'yes', 'on']);
 
@@ -341,7 +329,6 @@ async function fetchIndexFeedProducts(query = {}, deps = {}) {
   // mapper reads `id`; same target shape, different sources.
   const { items } = gatePublicFeedRows(products, {
     project: toAcpFeedProduct,
-    isLinkable: isLinkableFeedProduct,
     logger,
     lane: 'index_feed',
     env,
