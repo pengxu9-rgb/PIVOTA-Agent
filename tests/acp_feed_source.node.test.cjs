@@ -11,7 +11,10 @@ const assert = require('node:assert/strict');
 
 const {
   ACP_FEED_SOURCE_ENV,
+  INDEX_FEED_ELECTED_CANONICAL_ENV,
   isIndexFeedSourceEnabled,
+  isElectedCanonicalEnabled,
+  isIndexFeedLaneServable,
   resolveFeedMarket,
   fetchIndexFeedProducts,
 } = require('../src/services/acpFeedSource');
@@ -33,6 +36,137 @@ test('index-feed source is OFF unless explicitly selected', () => {
 test('index-feed source is ON only for the exact source name', () => {
   assert.equal(isIndexFeedSourceEnabled({ [ACP_FEED_SOURCE_ENV]: 'index_feed' }), true);
   assert.equal(isIndexFeedSourceEnabled({ [ACP_FEED_SOURCE_ENV]: '  INDEX_FEED  ' }), true);
+});
+
+// ---- the COUPLING between the two flags -------------------------------------
+//
+// `ACP_FEED_SOURCE=index_feed` without `INDEX_FEED_ELECTED_CANONICAL=1` is the
+// state that republishes ~1.5% dead links (9 of 600 sampled prod rows are
+// serving_eligible AND unrenderable; in 9/9 the ELECTED canonical resolves 200).
+// Until the wiring commit that precondition existed ONLY as a comment, so the
+// code was correct in prod purely because the operator set both. These tests
+// exist so it is correct because the code says so.
+
+test('the lane is servable ONLY when both flags agree', () => {
+  const SRC = { [ACP_FEED_SOURCE_ENV]: 'index_feed' };
+  const ELECT = { [INDEX_FEED_ELECTED_CANONICAL_ENV]: '1' };
+  assert.equal(isIndexFeedLaneServable({}), false, 'neither flag');
+  assert.equal(isIndexFeedLaneServable({ ...SRC }), false, 'source without election = the dead-link state');
+  assert.equal(isIndexFeedLaneServable({ ...ELECT }), false, 'election without source is not a source selection');
+  assert.equal(isIndexFeedLaneServable({ ...SRC, ...ELECT }), true, 'both = prod');
+});
+
+test('THE FEED ROUTE ACTUALLY CALLS THE LANE', () => {
+  // The gap this PR exists to close, now pinned — because without this test,
+  // deleting the wiring from src/server.js leaves EVERY suite green while the
+  // feed silently returns to {"count":0}. That is verbatim the #1840 failure:
+  // a fully-built, fully-tested lane that nothing called, with green CI.
+  //
+  // A source-text assertion is a blunt instrument, and it is used here for the
+  // same reason the flag-name test below uses one: `getProducts` lives inside an
+  // async closure in `getCommerceAcpRestAdapter()` that needs ACP_SIGNING_SECRET,
+  // a token verifier, an executor and a DB before it can be reached, so there is
+  // no import that can express "the route asks the gate and calls the lane".
+  // Blunt and able to fail beats elegant and vacuous.
+  const serverSrc = require('node:fs').readFileSync(require.resolve('../src/server'), 'utf8');
+  assert.ok(
+    serverSrc.includes('isIndexFeedLaneServable()'),
+    'the feed must ASK the coupled gate — with no env arg, so it reads the same process.env the lane reads',
+  );
+  assert.ok(
+    /fetchIndexFeedProducts\(query, \{\s*getProductEntityIndexFeed/.test(serverSrc),
+    'the feed must actually CALL the lane, and hand it the real getProductEntityIndexFeed',
+  );
+});
+
+test('the flag NAMES are LITERALS, and are the names the lane itself reads', () => {
+  // Found by mutation testing, and worth stating why it needed to be: every
+  // other test in this block builds its env off the EXPORTED constant, so
+  // renaming the constant renames it in the tests too and the whole block stays
+  // green while the guard reads an env var nobody sets. The name is a
+  // cross-module contract — `services/productEntityIndexFeed` reads the string
+  // `INDEX_FEED_ELECTED_CANONICAL` off process.env directly and cannot be
+  // injected — so it is pinned as a literal here, on both sides.
+  assert.equal(ACP_FEED_SOURCE_ENV, 'ACP_FEED_SOURCE');
+  assert.equal(INDEX_FEED_ELECTED_CANONICAL_ENV, 'INDEX_FEED_ELECTED_CANONICAL');
+
+  // Same assertion again, but through the guard, keyed by literal — so a rename
+  // breaks behaviour here and not merely an equality check.
+  assert.equal(isIndexFeedLaneServable({ ACP_FEED_SOURCE: 'index_feed', INDEX_FEED_ELECTED_CANONICAL: '1' }), true);
+  assert.equal(isIndexFeedLaneServable({ ACP_FEED_SOURCE: 'index_feed' }), false);
+  assert.equal(isElectedCanonicalEnabled({ INDEX_FEED_ELECTED_CANONICAL: '1' }), true);
+
+  // The other side of the contract. There is no import that can express "these
+  // two modules read the same env var", so the source text is the only place the
+  // agreement can be checked at all — and an unchecked agreement between two
+  // files is how half-contracts ship here.
+  const laneSrc = require('node:fs').readFileSync(
+    require.resolve('../src/services/productEntityIndexFeed'),
+    'utf8',
+  );
+  assert.ok(
+    laneSrc.includes('process.env.INDEX_FEED_ELECTED_CANONICAL'),
+    'productEntityIndexFeed must read the same flag name this gate guards',
+  );
+});
+
+test('the election flag accepts the same truthy vocabulary as its sibling in the lane', () => {
+  for (const v of ['1', 'true', 'yes', 'on', 'ON', ' True ']) {
+    assert.equal(isElectedCanonicalEnabled({ [INDEX_FEED_ELECTED_CANONICAL_ENV]: v }), true, `truthy: ${v}`);
+  }
+  for (const v of ['', '0', 'false', 'off', 'no', undefined]) {
+    assert.equal(isElectedCanonicalEnabled({ [INDEX_FEED_ELECTED_CANONICAL_ENV]: v }), false, `falsy: ${v}`);
+  }
+});
+
+test('the lane REFUSES to run in the dead-link state, and never reaches the DB', async () => {
+  let called = false;
+  await assert.rejects(
+    () =>
+      fetchIndexFeedProducts(
+        {},
+        {
+          env: { [ACP_FEED_SOURCE_ENV]: 'index_feed' }, // election flag missing
+          getProductEntityIndexFeed: async () => {
+            called = true;
+            return { products: [] };
+          },
+        },
+      ),
+    /INDEX_FEED_ELECTED_CANONICAL/,
+    'a refused feed must not look like an empty one',
+  );
+  assert.equal(called, false, 'refusal happens BEFORE the query, not after');
+});
+
+test('with both flags set the lane runs normally', async () => {
+  const products = await fetchIndexFeedProducts(
+    {},
+    {
+      env: { [ACP_FEED_SOURCE_ENV]: 'index_feed', [INDEX_FEED_ELECTED_CANONICAL_ENV]: '1' },
+      getProductEntityIndexFeed: async () => ({
+        products: [{ product_entity_id: 'sig_abc123', title: 'T', price: 10, currency: 'USD' }],
+      }),
+    },
+  );
+  assert.equal(products.length, 1);
+  assert.equal(products[0].id, 'sig_abc123');
+});
+
+test('the guard is scoped to the mis-wired COMBINATION, not to the election flag alone', async () => {
+  // A caller driving the lane directly with no source flag (every other test in
+  // this file, and the live get_product_entity_index_feed operation) must be
+  // unaffected — otherwise the guard is a breaking change dressed as a safety fix.
+  const products = await fetchIndexFeedProducts(
+    {},
+    {
+      env: {},
+      getProductEntityIndexFeed: async () => ({
+        products: [{ product_entity_id: 'sig_def456', title: 'T', price: 5, currency: 'USD' }],
+      }),
+    },
+  );
+  assert.equal(products.length, 1);
 });
 
 test('feed market defaults to US and is upper-cased', () => {
@@ -287,6 +421,37 @@ const REAL_LANE_ROW = {
   seed_data: { title: 'Barrier Repair Cream', brand: 'ANUKO' },
 };
 
+test('END TO END: a schema.org brand object never reaches the feed as "[object Object]"', async () => {
+  // Found by running the REAL lane against the REAL prod DB before merging, not
+  // by any unit test: 12 of the 20 rows the ACP feed serves emitted
+  // `brand: "[object Object]"`. Several seeds carry a schema.org-shaped brand
+  // (`{"@type":"Brand","name":…}`), and `externalSeedProducts.firstNonEmptyString`
+  // does `String(value || '')`, so the object arrives pre-stringified — a
+  // non-empty string that WINS the coalesce and masks the clean
+  // `catalog_products.brand` sitting later in the same chain.
+  //
+  // The fixture reproduces exactly that: an object at the front, the truth at the
+  // back. Brand is a core matching field for shopping ingesters, and this feed's
+  // whole wedge is brand visibility.
+  const laneItem = buildProductEntityIndexFeedItem({
+    ...REAL_LANE_ROW,
+    brand: 'Anua', // the clean varchar, LAST in normalizeBrand's chain
+    seed_data: {
+      title: 'Barrier Repair Cream',
+      brand: { '@type': 'Brand', name: 'Anua' }, // the poisoned candidate, FIRST
+    },
+  });
+  assert.notEqual(laneItem.brand, '[object Object]', 'a coercion accident is not a brand');
+  assert.equal(laneItem.brand, 'Anua', 'the clean value further down the chain must win');
+
+  const products = await fetchIndexFeedProducts(
+    { limit: 10 },
+    { env: {}, getProductEntityIndexFeed: async () => ({ products: [laneItem] }) },
+  );
+  const item = buildAcpFeedItem(products[0], { buildPublicProductUrl: pdp });
+  assert.equal(item.brand, 'Anua', 'and it must survive all the way to the emitted feed item');
+});
+
 test('END TO END: the emitted ACP link is a sig PDP, never the ext_ seed id', async () => {
   const laneItem = buildProductEntityIndexFeedItem(REAL_LANE_ROW);
   assert.equal(laneItem.id, 'ext_0feb1c58f18d9f6694955e7e', 'precondition: the lane really does key on ext_');
@@ -339,4 +504,103 @@ test('the lane is asked to apply the price gate in SQL, so LIMIT counts quotable
     { env: {}, getProductEntityIndexFeed: async (p) => { seen = p; return { products: [] }; } },
   );
   assert.equal(seen.priced_only, true, 'without this a page silently under-delivers by ~24%');
+});
+
+test('the CONNECTED lane keeps its price gate', () => {
+  // F1 from the #1846 Opus review. Mutating `filtered.filter((p) =>
+  // isQuotableFeedItem(mapFeedItem(p)))` back to `filtered` — i.e. exactly
+  // origin/main — left ALL 52 tests green. The gate had zero coverage, inside
+  // the PR that added it, which is this repo's dominant defect class committed
+  // inside a fix for it.
+  //
+  // Source-text for the same reason as the wiring test above: `getProducts` is
+  // a closure inside getCommerceAcpRestAdapter() and cannot be imported.
+  const serverSrc = require('node:fs').readFileSync(require.resolve('../src/server'), 'utf8');
+  assert.ok(
+    /filtered\.filter\(\(p\) => isQuotableFeedItem\(mapFeedItem\(p\)\)\)/.test(serverSrc),
+    'the connected lane must gate on the MAPPED item — gating the raw upstream row checks a different object than the feed emits',
+  );
+});
+
+test('a priced-lane failure is LOGGED before it becomes a 500', () => {
+  // F2 from the same review. The adapter's guard() turns a throw here into a
+  // bare 500 INTERNAL_ERROR and logs NOTHING, and the route's try/catch never
+  // sees it. Wiring the lane made the public feed query Postgres on every
+  // request, so a DB blip became an UNLOGGED 500 on an externally-ingested
+  // surface — undiagnosable from either side.
+  //
+  // `await` is load-bearing, not style: without it the promise rejection escapes
+  // the try block entirely and this whole handler is decorative.
+  const serverSrc = require('node:fs').readFileSync(require.resolve('../src/server'), 'utf8');
+  const block = serverSrc.slice(
+    serverSrc.indexOf('if (isIndexFeedLaneServable()) {'),
+    serverSrc.indexOf('if (isIndexFeedSourceEnabled()) {'),
+  );
+  const start = serverSrc.indexOf('if (isIndexFeedLaneServable()) {');
+  const end = serverSrc.indexOf('if (isIndexFeedSourceEnabled()) {');
+  // Assert the ORDER, not just non-emptiness. With a bare slice, if the second
+  // marker ever moved or vanished, `slice(a, -1)` silently returns the rest of
+  // the file, `length > 0` still passes, and the regexes below happily match
+  // code from somewhere else entirely.
+  assert.ok(start >= 0 && end > start, 'could not locate the priced-lane branch');
+  assert.ok(
+    /return await fetchIndexFeedProducts\(/.test(block),
+    'the lane call must be AWAITED inside the try, or the rejection bypasses the catch',
+  );
+  assert.ok(/logger\.error\(/.test(block), 'a lane failure must be logged at error level');
+  assert.ok(
+    /throw err;/.test(block),
+    'and must RETHROW — falling back to the connected lane would answer 200 with the wrong catalog',
+  );
+});
+
+test('BEHAVIOURAL: the priced-lane catch actually runs, logs once, and preserves the error', async () => {
+  // N1 from the re-review, and it was demonstrated rather than argued: the
+  // three regexes above are all satisfied by code that keeps the lane call
+  // OUTSIDE any try and parks `logger.error(...); throw err;` in an
+  // unreachable branch of the same block. That passes `node --check`, matches
+  // every pattern, and leaves a real lane failure exactly as unlogged as
+  // before. A source-text test cannot tell reachable from unreachable.
+  //
+  // So execute the shipped block instead of matching it. Sliced out of
+  // src/server.js and run with stubs, because `getProducts` is a closure inside
+  // getCommerceAcpRestAdapter() that needs a signing secret, a verifier, an
+  // executor and a DB before it can be reached.
+  const serverSrc = require('node:fs').readFileSync(require.resolve('../src/server'), 'utf8');
+  const start = serverSrc.indexOf('if (isIndexFeedLaneServable()) {');
+  const end = serverSrc.indexOf('if (isIndexFeedSourceEnabled()) {');
+  assert.ok(start >= 0 && end > start, 'could not locate the priced-lane branch');
+  const block = serverSrc.slice(start, end);
+
+  const boom = Object.assign(new Error('relation "content_canonical_election" does not exist'), { code: '42P01' });
+  const errors = [];
+  const logger = { error: (...a) => errors.push(a), warn() {}, info() {} };
+
+  const run = new Function(
+    'isIndexFeedLaneServable', 'fetchIndexFeedProducts', 'getProductEntityIndexFeed', 'logger',
+    `return (async (query) => { ${block} })`,
+  )(() => true, async () => { throw boom; }, {}, logger);
+
+  const caught = await run({}).then(
+    () => { throw new Error('the lane failure must NOT be swallowed — a silent 200 count:0 is the shape this guards'); },
+    (e) => e,
+  );
+
+  assert.equal(caught, boom, 'the rethrow must preserve error identity, not wrap or replace it');
+  assert.equal(errors.length, 1, 'exactly one error log per failed request');
+  assert.equal(errors[0][0].surface, 'acp_public_feed');
+  assert.equal(errors[0][0].code, '42P01');
+
+  // A NON-EMPTY query too. Asserting only on `run({})` let a mutant route the
+  // lane call through an unguarded early return for any query-bearing request
+  // and still pass — and that shape is LIVE-REACHABLE, not theoretical:
+  // `express.json()` ignores the method, so a GET carrying a JSON body arrives
+  // here with a real query (measured on prod: `{"query":{"query":"serum"}}`
+  // returns 17 rows). A single-input test cannot see that path at all.
+  const caught2 = await run({ limit: 100, query: 'serum' }).then(
+    () => { throw new Error('a query-bearing request must not bypass the catch'); },
+    (e) => e,
+  );
+  assert.equal(caught2, boom);
+  assert.equal(errors.length, 2, 'the query-bearing path must log too, not just the empty one');
 });
