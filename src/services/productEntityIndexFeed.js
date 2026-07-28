@@ -125,7 +125,22 @@ function decodeCursor(value) {
 const STRINGIFIED_OBJECT = '[object Object]';
 
 function withoutStringifiedObjects(values) {
-  return values.filter((v) => String(v ?? '').trim() !== STRINGIFIED_OBJECT);
+  return values.filter((v) => {
+    // Drop live objects WITHOUT coercing them. `nonEmptyString` short-circuits at
+    // the first non-empty candidate; a filter does not, so a `String(v)` here
+    // runs on EVERY candidate including ones the original chain would never have
+    // touched. A scraped JSON-LD blob carrying a non-callable `toString` key
+    // therefore threw on this branch where origin/main returned a good earlier
+    // value — a hard 500 on the public feed and on the live
+    // `get_product_entity_index_feed`. Testing the type first cannot throw, and
+    // an object can only ever coerce to the sentinel anyway.
+    // Arrays are deliberately let through: `nonEmptyString` renders ['Anua'] as
+    // 'Anua', which is a real value, not a coercion accident.
+    if (v && typeof v === 'object' && !Array.isArray(v)) return false;
+    // The actual defect: the object was ALREADY stringified upstream, so by the
+    // time it reaches here it is an ordinary string that wins the coalesce.
+    return typeof v !== 'string' || v.trim() !== STRINGIFIED_OBJECT;
+  });
 }
 
 function normalizeBrand(product, row, seedData, snapshot) {

@@ -30888,8 +30888,12 @@ async function getCommerceAcpRestAdapter() {
       // (~4,467 priced, currency-bearing content_keys) lives behind the index
       // feed, and until this call existed NOTHING in the process referenced it.
       //
-      // Source-selected by env, never by merge: with the flags unset this is
-      // byte-identical to the connected lane below.
+      // Source-selected by env, never by merge: with the flags unset the feed
+      // still serves the connected lane below. NOT byte-identical to origin/main
+      // even then — that lane gains the price gate in this same commit — but it
+      // serves 0 rows today, so the difference is unobservable until a real
+      // merchant connects, which is precisely when dropping a price-less row is
+      // the behaviour we want.
       const {
         fetchIndexFeedProducts,
         isIndexFeedSourceEnabled,

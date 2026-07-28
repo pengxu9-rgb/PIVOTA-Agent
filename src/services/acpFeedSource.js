@@ -188,8 +188,30 @@ function isIndexFeedSourceEnabled(env = process.env) {
 //
 // Hence: source-selected + election-off is not a degraded mode, it is a mode
 // this lane refuses. `isIndexFeedLaneServable` is what a caller asks; the throw
-// inside `fetchIndexFeedProducts` is the belt to that braces, unreachable on the
-// correct path and loud on a mis-wired one.
+// inside `fetchIndexFeedProducts` is the belt to that braces.
+//
+// BE HONEST ABOUT WHAT THE THROW DOES, because the first version of this comment
+// was not. It is unreachable from the ACP feed today: `server.js` checks
+// `isIndexFeedLaneServable()` against the same `process.env` one frame earlier
+// and falls through to the connected lane, so the refused state is answered
+// there, with a WARN, as an empty 200. The throw exists for the SECOND caller —
+// whoever next wires this lane up and reaches for `fetchIndexFeedProducts`
+// directly, as the module header invites them to.
+//
+// And if it ever does fire it is NOT loud: `createAcpRestAdapter`'s `guard()`
+// catches any non-`PivotaCommerceError` and returns a bare 500 with no logging,
+// so the route's own `logger.error` and its 503 body never run and this
+// message's flag name never reaches an operator. Fixing that belongs to the
+// adapter's error taxonomy, not here. Do not write a comment claiming a 503.
+//
+// KNOWN GAP, stated so nobody reads more into this gate than it gives: it
+// enforces that the OPERATOR SET BOTH FLAGS, not that the election is actually
+// being applied. `productEntityIndexFeed` also ANDs in a process-lifetime latch
+// (`CONTENT_CANONICAL_ELECTION_TABLE_MISSING`) that silently disables the
+// election if the table is ever missing for a single query. In that state this
+// gate still returns true and the lane serves the very dead-link class it is
+// written to refuse. The table is live in prod (seeded 2026-07-27), so this is
+// a hardening follow-up, not a merge-time risk — but it is a real hole.
 const INDEX_FEED_ELECTED_CANONICAL_ENV = 'INDEX_FEED_ELECTED_CANONICAL';
 
 // NOTE ON WHICH env THIS READS. `productEntityIndexFeed` reads
@@ -252,13 +274,14 @@ async function fetchIndexFeedProducts(query = {}, deps = {}) {
   }
 
   // Fail CLOSED on the one misconfiguration the header names (see
-  // `isIndexFeedLaneServable`). Scoped to the mis-wired combination only —
+  // `isIndexFeedLaneServable`, and read its note on what this throw does and
+  // does not achieve). Scoped to the mis-wired combination only —
   // source-selected AND election-off — so a caller that drives this lane
-  // directly with neither flag set (every existing unit test) is unaffected,
-  // while the state that would republish ~1.5% dead links cannot serve at all.
-  // A throw, not a silent empty list: on this surface an empty feed and a
-  // refused feed must not look the same, and an exception is the only one of the
-  // two the route's 503 handler reports.
+  // directly with neither flag set (every existing unit test, and the live
+  // `get_product_entity_index_feed` operation) is unaffected, while the state
+  // that would republish ~1.5% dead links cannot serve at all.
+  // A throw rather than an empty list so that a caller which has NOT made the
+  // server.js fall-through decision cannot mistake "refused" for "nothing here".
   if (isIndexFeedSourceEnabled(env) && !isElectedCanonicalEnabled(env)) {
     throw new Error(
       `acp feed: ${ACP_FEED_SOURCE_ENV}=${ACP_FEED_SOURCE_INDEX} requires ${INDEX_FEED_ELECTED_CANONICAL_ENV}=1 `

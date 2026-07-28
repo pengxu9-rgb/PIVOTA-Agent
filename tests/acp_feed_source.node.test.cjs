@@ -56,6 +56,29 @@ test('the lane is servable ONLY when both flags agree', () => {
   assert.equal(isIndexFeedLaneServable({ ...SRC, ...ELECT }), true, 'both = prod');
 });
 
+test('THE FEED ROUTE ACTUALLY CALLS THE LANE', () => {
+  // The gap this PR exists to close, now pinned — because without this test,
+  // deleting the wiring from src/server.js leaves EVERY suite green while the
+  // feed silently returns to {"count":0}. That is verbatim the #1840 failure:
+  // a fully-built, fully-tested lane that nothing called, with green CI.
+  //
+  // A source-text assertion is a blunt instrument, and it is used here for the
+  // same reason the flag-name test below uses one: `getProducts` lives inside an
+  // async closure in `getCommerceAcpRestAdapter()` that needs ACP_SIGNING_SECRET,
+  // a token verifier, an executor and a DB before it can be reached, so there is
+  // no import that can express "the route asks the gate and calls the lane".
+  // Blunt and able to fail beats elegant and vacuous.
+  const serverSrc = require('node:fs').readFileSync(require.resolve('../src/server'), 'utf8');
+  assert.ok(
+    serverSrc.includes('isIndexFeedLaneServable()'),
+    'the feed must ASK the coupled gate — with no env arg, so it reads the same process.env the lane reads',
+  );
+  assert.ok(
+    /fetchIndexFeedProducts\(query, \{\s*getProductEntityIndexFeed/.test(serverSrc),
+    'the feed must actually CALL the lane, and hand it the real getProductEntityIndexFeed',
+  );
+});
+
 test('the flag NAMES are LITERALS, and are the names the lane itself reads', () => {
   // Found by mutation testing, and worth stating why it needed to be: every
   // other test in this block builds its env off the EXPORTED constant, so
