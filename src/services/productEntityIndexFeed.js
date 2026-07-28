@@ -94,10 +94,50 @@ function decodeCursor(value) {
   if (!text) return null;
   try {
     const decoded = JSON.parse(Buffer.from(text, 'base64url').toString('utf8'));
-    return decoded && typeof decoded === 'object' && !Array.isArray(decoded) ? decoded : null;
+    if (!decoded || typeof decoded !== 'object' || Array.isArray(decoded)) return null;
+    return isUsableCursor(decoded) ? decoded : null;
   } catch (_err) {
     return null;
   }
+}
+
+// A MALFORMED CURSOR IS AN ABSENT CURSOR, never a 500.
+//
+// Decoding used to succeed on any JSON object and hand its fields straight to
+// Postgres, so two shapes reached the DB and crashed it — confirmed live on
+// acp.pivota.cc, unauthenticated:
+//
+//   {"sort_updated_at":"not-a-date","product_entity_id":"x",
+//    "source_product_id":"y"}  -> 500  ($N::timestamptz cast, ~line 390-397)
+//   {"offset": 1e21}           -> 500  (bigint overflow on OFFSET)
+//
+// There is NO injection here — every value is a bound parameter, and
+// `{"source_listing_ref":"' OR 1=1--"}` correctly returns 200 count=0. This is
+// availability, not confidentiality. But until now the only way to deliver a
+// cursor at all was a JSON body on a GET, which no crawler stumbles into;
+// forwarding the query string puts it one plain URL away on a public,
+// crawler-facing feed — one bad link or scanner from a 500.
+//
+// Degrading to "start from the beginning" is also what a caller replaying a
+// stale or truncated cursor link actually wants.
+//
+// Deliberately SHAPE-only: this validates what Postgres will be asked to cast,
+// not whether the cursor points anywhere real. A well-formed cursor for a
+// deleted row still legitimately returns an empty page.
+function isUsableCursor(c) {
+  if (c.offset != null) {
+    const n = Number(c.offset);
+    // `Number.isSafeInteger` rejects 1e21, Infinity, NaN and 1.5 in one check.
+    // A negative offset is not a crash, but it is not a page either.
+    if (!Number.isSafeInteger(n) || n < 0) return false;
+  }
+  if (c.sort_updated_at != null) {
+    // Must survive `::timestamptz`. `Date.parse` is deliberately loose — it
+    // accepts what Postgres accepts and rejects the free-form strings that
+    // reach the cast and throw.
+    if (typeof c.sort_updated_at !== 'string' || Number.isNaN(Date.parse(c.sort_updated_at))) return false;
+  }
+  return true;
 }
 
 // `[object Object]` is not a brand — it is a coercion accident, and it POISONS a
@@ -661,6 +701,10 @@ async function getProductEntityIndexFeed(payload = {}, deps = {}) {
 module.exports = {
   getProductEntityIndexFeed,
   buildProductEntityIndexFeedItem,
+  // Exported for the cursor-validation tests. `getProductEntityIndexFeed`
+  // itself needs a live DB, so the malformed-cursor guard is unreachable from
+  // the outside without this — and an unreachable guard is an untested one.
+  decodeCursor,
   connectionLayerForTrack,
   connectionLayerFieldEnabled,
   isMissingContentCanonicalElectionError,

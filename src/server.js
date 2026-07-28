@@ -30972,7 +30972,26 @@ async function getCommerceAcpRestAdapter() {
             'acp feed: ACP_FEED_SOURCE=index_feed ignored — set INDEX_FEED_ELECTED_CANONICAL=1 to serve the priced lane',
           );
         }
-        const raw = await invokeCommerceKernelRawUpstream('find_products', query || {});
+        // CLAMP ON THIS LANE TOO. The index lane clamps via
+        // `clampLimit(query?.limit)` (max 100) inside `fetchIndexFeedProducts`;
+        // this one passed `query` through raw, so once the query string is
+        // forwarded a `?limit=999999999` would travel upstream unbounded.
+        //
+        // Zero impact while both index flags are on (the lane above returns
+        // early) — but the fallback is precisely where this PR's own risk
+        // argument lives, so it should not be the unclamped one.
+        //
+        // Note `page`/`cursor` are NOT translated here: this lane has no paging
+        // contract, so an ingester walking `page=2,3,4…` against it would
+        // silently re-receive page 1. That is a gap in the fallback, recorded
+        // rather than papered over — it only becomes reachable if the index
+        // flags are ever unset.
+        const upstreamQuery = { ...(query || {}) };
+        if (upstreamQuery.limit != null) {
+          const n = Number(upstreamQuery.limit);
+          upstreamQuery.limit = Number.isFinite(n) ? Math.max(1, Math.min(Math.floor(n), 100)) : 20;
+        }
+        const raw = await invokeCommerceKernelRawUpstream('find_products', upstreamQuery);
         const products = Array.isArray(raw?.products) ? raw.products : (Array.isArray(raw) ? raw : []);
         // Defence-in-depth against test/demo rigs reaching a PUBLIC agent-facing
         // surface. The feed's find_products(empty query) falls back to the
@@ -31097,6 +31116,11 @@ function registerCommerceAcpRestRoutes() {
     if (!q || typeof q !== 'object') return undefined;
     const out = {};
     for (const k of ['limit', 'cursor', 'page']) {
+      // `Object.hasOwn` so a polluted `Object.prototype.limit` — set by any
+      // OTHER pollution primitive in the process — cannot be read off a plain
+      // `{}` on every request. It cannot widen the key surface (only these
+      // three literals are ever written), so this is hardening, not a hole.
+      if (!Object.hasOwn(q, k)) continue;
       const v = q[k];
       if (typeof v === 'string' && v.trim() !== '') out[k] = v.trim();
     }
