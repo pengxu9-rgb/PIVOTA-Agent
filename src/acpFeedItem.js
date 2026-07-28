@@ -81,7 +81,28 @@ function buildAcpFeedItem(p, { buildPublicProductUrl, env = process.env } = {}) 
     price,
     currency,
     availability: o.availability ?? (o.in_stock === false ? 'out_of_stock' : o.in_stock === true ? 'in_stock' : undefined),
-    brand: o.brand ?? o.merchant_id,
+    // NO `?? o.merchant_id` (#1851). A merchant id is not a brand, and this is
+    // a PUBLIC feed — `merch_obs_deadbeef` or `external_seed` would be indexed
+    // by an ingester as the manufacturer's name. An ABSENT brand is honest and
+    // is what the index lane's own projection already emits; a wrong one is not
+    // cheaper, because ingesters treat a missing optional field as missing and
+    // a garbage value as real.
+    //
+    // ⚠️ TWO CLAIMS I MADE HERE WERE WRONG; review caught both.
+    //
+    // (a) "an absent brand is what the index lane already emits" — it emits
+    //     `''`. `normalizeBrand` → `nonEmptyString` never returns null/undefined
+    //     and the SQL is `COALESCE(ranked.brand,'')`, so on the INDEX lane this
+    //     `??` could never fire and removing it is a strict no-op there.
+    //
+    // (b) "0 of 4,375 live rows had an empty brand, so this is hardening" — that
+    //     measurement answers only ONE way. It cannot distinguish "no brandless
+    //     rows exist" from "every brandless row already borrowed a merchant id
+    //     and so looked branded". The reachable lane is the CONNECTED one, whose
+    //     producer `_standard_to_shop_product` sets `merchant_id` and never sets
+    //     `brand` at all — meaning this fallback likely fired for 100% of that
+    //     lane's rows. Not hardening: a real fix on the lane that can serve it.
+    brand: o.brand,
     variants: o.variants,
     // ADR-018 (pivota-backend docs/adr): the connection layer and the execution
     // path are TWO fields, deliberately never collapsed into one "tier".

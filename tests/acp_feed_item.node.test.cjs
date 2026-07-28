@@ -131,3 +131,45 @@ test('#1852: the mapper EMITS a title — it is now publish-blocking', () => {
   const viaName = buildAcpFeedItem({ id: 'sig_a', name: 'Fallback Name', price: 10, currency: 'USD' }, {});
   assert.equal(viaName.title, 'Fallback Name', 'the name fallback must survive too');
 });
+
+test('#1851: a merchant id is never published as a brand', () => {
+  // PUBLIC feed: `merch_obs_deadbeef` / `external_seed` would be indexed by an
+  // ingester as the manufacturer's name. An ABSENT brand is honest — and is
+  // already what the index lane's own projection emits. Measured before the
+  // change: 0 of 4,375 live rows had an empty brand, so this is hardening.
+  const withBrand = buildAcpFeedItem({ id: 'sig_a', brand: 'Anua', merchant_id: 'external_seed' }, {});
+  assert.equal(withBrand.brand, 'Anua', 'a real brand still wins');
+
+  for (const mid of ['external_seed', 'merch_obs_deadbeef', 'merch_69d6b67f78c10154']) {
+    const bare = buildAcpFeedItem({ id: 'sig_a', merchant_id: mid }, {});
+    assert.equal(bare.brand, undefined, `a brandless row must not borrow ${mid}`);
+  }
+});
+
+test('the TWO-STAGE projection is a pipeline, not a redundant second pass', () => {
+  // Recorded because I got this wrong and nearly shipped the "fix": the index
+  // lane's `toAcpFeedProduct` emits NO `link` and NO `image_link` — the adapter's
+  // second pass through buildAcpFeedItem is what builds them from `id` and
+  // `image_url`. Skipping it (the #1850 proposal) would publish a feed with no
+  // links at all: far worse than the brand override it was meant to fix.
+  const { toAcpFeedProduct } = require('../src/services/acpFeedSource');
+  const stage1 = toAcpFeedProduct({ product_entity_id: 'sig_a', title: 'T', image_url: 'https://cdn/x.jpg', price: 10, currency: 'USD', brand: 'Anua' });
+  assert.ok(!('link' in stage1), 'stage 1 does NOT build the PDP link — stage 2 does');
+  assert.ok(!('image_link' in stage1), 'stage 1 emits image_url; stage 2 renames it');
+
+  const stage2 = buildAcpFeedItem(stage1, { buildPublicProductUrl: (id) => `https://agent.pivota.cc/products/${id}` });
+  assert.equal(stage2.link, 'https://agent.pivota.cc/products/sig_a');
+  assert.equal(stage2.image_link, 'https://cdn/x.jpg');
+  assert.equal(stage2.brand, 'Anua');
+});
+
+test('#1851: an EMPTY or NULL brand is not rescued by the merchant id either', () => {
+  // Mutant M4 restored the leak for `brand === null` only and survived — the
+  // original test used an absent key exclusively. `''` on the wire is arguably
+  // worse for an ingester than an absent field, since it reads as "this product
+  // asserts it has no brand" rather than "unknown".
+  for (const brand of [null, '', undefined]) {
+    const item = buildAcpFeedItem({ id: 'sig_a', brand, merchant_id: 'merch_obs_deadbeef' }, {});
+    assert.notEqual(item.brand, 'merch_obs_deadbeef', `brand=${JSON.stringify(brand)} must not borrow the merchant id`);
+  }
+});

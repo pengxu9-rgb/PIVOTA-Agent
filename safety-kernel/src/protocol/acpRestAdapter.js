@@ -358,7 +358,10 @@ function defaultFeedItem(p) {
     price: o.price,
     currency: o.currency,
     availability: o.availability ?? (o.in_stock === false ? 'out_of_stock' : o.in_stock === true ? 'in_stock' : undefined),
-    brand: o.brand ?? o.merchant_id,
+    brand: o.brand /* NOT `?? o.merchant_id` — see src/acpFeedItem.js (#1851). A
+       merchant id is not a brand, and this adapter is reused verbatim by every
+       caller, including productionWiring.js which constructs it with NO
+       mapFeedItem and therefore lands here. */,
     variants: o.variants,
   };
 }
