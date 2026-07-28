@@ -72,13 +72,13 @@
 // link to the MERCHANT's own destination, and settlement is the merchant's.
 
 const { isTestMerchantId } = require('./testMerchantPolicy');
+const { gatePublicFeedRows, isLinkableFeedProduct, PIVOTA_SIGNATURE_ID } = require('./publicFeedGate');
 const { isQuotableFeedItem } = require('../acpFeedItem');
 
 // The ONLY id shape the public PDP route resolves. Verified against live prod:
 //   /products/sig_1b4d53ca07835e10cdaada553bc26ed6  -> 200
 //   /products/ext_0feb1c58f18d9f6694955e7e          -> 500 (same as a bogus id)
 // An `ext_*` source_product_id is indistinguishable from garbage to that route.
-const PIVOTA_SIGNATURE_ID = /^sig_[a-z0-9]+$/i;
 
 /**
  * Project a PRODUCT-ENTITY-INDEX-FEED item into the shape `buildAcpFeedItem`
@@ -140,17 +140,6 @@ function toAcpFeedProduct(item) {
   };
 }
 
-/**
- * Would this item produce a PDP link that actually resolves?
- *
- * Sibling to `isQuotableFeedItem`. A price gate without a link gate protects
- * the cheaper of the two failure modes: a mispriced item is one bad row, a
- * dead link is a dead row that also burns crawl budget and trust.
- */
-function isLinkableFeedProduct(product) {
-  const id = String((product && product.id) || '').trim();
-  return PIVOTA_SIGNATURE_ID.test(id);
-}
 
 const ENV_TRUE = new Set(['1', 'true', 'yes', 'on']);
 
@@ -323,46 +312,28 @@ async function fetchIndexFeedProducts(query = {}, deps = {}) {
   // NOT catch a demo store re-connected under an unknown merchant_id. Closing
   // that would mean projecting source_domain onto the item; noted rather than
   // done, because for THIS lane the SQL domain leg is in play and verified.
-  const withoutRigs = products.filter((p) => !isTestMerchantId(p?.merchant_id, env));
-  if (withoutRigs.length !== products.length && logger?.info) {
-    logger.info(
-      { dropped: products.length - withoutRigs.length, surface: 'acp_public_feed', source: 'index_feed' },
-      'acp feed: excluded test/demo merchant products',
-    );
-  }
 
-  // THE PRICE GATE IS APPLIED HERE, not left to the caller.
+  // THE GATE IS APPLIED HERE, not left to the caller.
   //
   // It has to be: the lane's best-offer join is a LEFT JOIN LATERAL, so a row
   // with no priced, currency-bearing, unsuppressed offer comes back with
   // `price: null` rather than being dropped. This module advertises itself as
-  // "the whole swap minus one line" and the server.js integration as a single
-  // call substitution — so if the gate lived in the caller, an integrator doing
-  // exactly what the handoff says would ship price-null items to ChatGPT/Google.
-  // That is the precise failure this lane exists to prevent, and a documented
-  // requirement is not a gate.
-  // Project into the ACP shape BEFORE gating, so both gates see what the feed
-  // will actually emit rather than what the lane happens to return.
-  const projected = withoutRigs.map(toAcpFeedProduct);
-
-  const linkable = projected.filter(isLinkableFeedProduct);
-  if (linkable.length !== projected.length && logger?.warn) {
-    // warn, not info: a lane row without a resolvable signature is a data
-    // problem upstream, not routine filtering.
-    logger.warn(
-      { dropped: projected.length - linkable.length, surface: 'acp_public_feed', reason: 'unresolvable_pdp_id' },
-      'acp feed: dropped items whose PDP link would not resolve',
-    );
-  }
-
-  const quotable = linkable.filter(isQuotableFeedItem);
-  if (quotable.length !== linkable.length && logger?.info) {
-    logger.info(
-      { dropped: linkable.length - quotable.length, surface: 'acp_public_feed', reason: 'not_price_quotable' },
-      'acp feed: dropped items with no quotable price',
-    );
-  }
-  return quotable;
+  // "the whole swap minus one line", so if the gate lived in the caller, an
+  // integrator doing exactly what the handoff says would ship price-null items
+  // to ChatGPT/Google. A documented requirement is not a gate.
+  //
+  // Both lanes now call the SAME `gatePublicFeedRows` (issue #1847): the policy
+  // — which gates, in what order — is no longer a per-lane hand-assembled chain
+  // that can silently differ. This lane keeps its own PROJECTION, because
+  // `toAcpFeedProduct` reads `product_entity_id` where the connected lane's
+  // mapper reads `id`; same target shape, different sources.
+  const { items } = gatePublicFeedRows(products, {
+    project: toAcpFeedProduct,
+    logger,
+    lane: 'index_feed',
+    env,
+  });
+  return items;
 }
 
 

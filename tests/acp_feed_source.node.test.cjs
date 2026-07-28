@@ -506,19 +506,31 @@ test('the lane is asked to apply the price gate in SQL, so LIMIT counts quotable
   assert.equal(seen.priced_only, true, 'without this a page silently under-delivers by ~24%');
 });
 
-test('the CONNECTED lane keeps its price gate', () => {
-  // F1 from the #1846 Opus review. Mutating `filtered.filter((p) =>
-  // isQuotableFeedItem(mapFeedItem(p)))` back to `filtered` — i.e. exactly
-  // origin/main — left ALL 52 tests green. The gate had zero coverage, inside
-  // the PR that added it, which is this repo's dominant defect class committed
-  // inside a fix for it.
+test('the CONNECTED lane gates on the MAPPED item, via the shared gate', () => {
+  // Originally F1 from the #1846 review: mutating the inline price filter back
+  // to `filtered` left all 52 tests green — the gate had zero coverage inside
+  // the PR that added it.
   //
-  // Source-text for the same reason as the wiring test above: `getProducts` is
-  // a closure inside getCommerceAcpRestAdapter() and cannot be imported.
+  // REWRITTEN for #1847. That inline chain is gone: both lanes now call
+  // `gatePublicFeedRows`, which projects BEFORE filtering, so "gates on the
+  // mapped item" is now a property of the shared gate rather than of this
+  // lane's local code. What still has to be pinned HERE is the wiring — that
+  // the connected lane hands the gate its own mapper as the projection. Pass
+  // the raw row instead and the price check would inspect a different object
+  // than the feed emits, which is the original defect through a new door.
   const serverSrc = require('node:fs').readFileSync(require.resolve('../src/server'), 'utf8');
+  const norm = serverSrc.replace(/\s+/g, '');
   assert.ok(
-    /filtered\.filter\(\(p\) => isQuotableFeedItem\(mapFeedItem\(p\)\)\)/.test(serverSrc),
-    'the connected lane must gate on the MAPPED item — gating the raw upstream row checks a different object than the feed emits',
+    norm.includes('gatePublicFeedRows(products,{project:mapFeedItem,'),
+    'the connected lane must pass its MAPPER as the projection — gating the raw upstream row checks a different object than the feed emits',
+  );
+  // The link predicate is no longer passed in — it is OWNED by publicFeedGate,
+  // precisely so a lane cannot neutralise it with `isLinkable: () => true` and
+  // still be "calling the shared gate". So the assertion is the inverse: the
+  // call site must NOT supply one.
+  assert.ok(
+    !norm.includes('isLinkable:'),
+    'no lane may inject a link predicate — the gate owns it, so it cannot be opted out of',
   );
 });
 
