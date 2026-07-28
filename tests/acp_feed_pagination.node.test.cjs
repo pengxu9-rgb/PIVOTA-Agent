@@ -53,25 +53,71 @@ test('empty and whitespace-only values are dropped', () => {
   assert.deepEqual(pick({ limit: ' 100 ' }), { limit: '100' });
 });
 
-test('the CALL SITE passes req.query THROUGH the allow-list', () => {
-  // The three mutants this closes all left the previous suite 6/6 GREEN, because
-  // it tested `pickAcpFeedPagination` in a vacuum and never asserted anyone
-  // calls it:
-  //   * delete the `query:` line entirely      -> PR is a total no-op, still 20
-  //   * pickAcpFeedPagination(req.params)      -> always {} for /feed, no-op
-  //   * `query: req.query`                     -> ALLOW-LIST BYPASSED, the exact
-  //                                               hole this PR exists to prevent
-  // A helper nothing calls is the purest form of a success signal that means
-  // nothing, and the comment at the top of this file claimed to have avoided it.
-  assert.match(
-    serverSrc,
-    /query: pickAcpFeedPagination\(req\.query\),/,
-    'the adapter call must pass req.query THROUGH pickAcpFeedPagination — not raw, not req.params, not omitted',
+test('the CALL SITE passes req.query THROUGH the allow-list — exactly once', () => {
+  // Round 2 defeated the previous version of this test THREE ways, all of which
+  // bypass the allow-list while keeping it green:
+  //   Q1  add `query: req?.query,` AFTER the good line  -> last duplicate key
+  //       wins, so raw req.query reaches the lane; the positive regex still
+  //       matched and the negative one did not match `req?.query`.
+  //   Q2  the same via `req['query']`.
+  //   Q3  a spread: `...(cond ? { query: Object.assign({}, req.query) } : {})`.
+  // And it was killed by two changes with ZERO behavioural effect (an extra
+  // space, a reflow) — wrong in both directions, which is what a prettier run
+  // or a lint autofix would have discovered the hard way.
+  //
+  // So: normalise whitespace (kills the formatting brittleness), then assert on
+  // the COUNT of `query`-key assignments rather than the presence of one good
+  // one (kills the duplicate-key and spread shapes).
+  const start = serverSrc.indexOf('const out = await adapter[handlerName]({');
+  const end = serverSrc.indexOf('for (const [k, v] of Object.entries(out.headers || {}))');
+  assert.ok(start >= 0 && end > start, 'could not locate the adapter call site — markers drifted');
+  const norm = serverSrc.slice(start, end).replace(/\s+/g, '');
+
+  const assignments = norm.match(/query:/g) || [];
+  assert.equal(
+    assignments.length, 1,
+    'exactly ONE query: key in the adapter call object — a second one silently wins and can be raw req.query',
   );
-  // And raw forwarding must not appear anywhere in the adapter call object.
-  const callSite = serverSrc.slice(serverSrc.indexOf('const out = await adapter[handlerName]({'), serverSrc.indexOf('for (const [k, v] of Object.entries(out.headers || {}))'));
-  assert.ok(callSite.length > 0, 'could not locate the adapter call site');
-  assert.ok(!/query: req\.query/.test(callSite), 'req.query must never be forwarded raw');
+  assert.ok(
+    norm.includes('query:pickAcpFeedPagination(req.query),'),
+    'the single query: key must pass req.query THROUGH the allow-list',
+  );
+  assert.ok(
+    !/\.\.\./.test(norm),
+    'no spread in the call object — a spread can inject a query key the count above cannot attribute',
+  );
+});
+
+test('the fallback lane clamps by VALUE, using the same helper as the index lane', () => {
+  // Round 2: the previous source-text check let FIVE mutants live, including
+  // deleting the clamp outright and raising its ceiling to 1,000,000. A
+  // presence check never executes the thing it guards.
+  //
+  // The clamp is now `clampLimit` from services/acpFeedSource — the SAME
+  // function the index lane uses, not a second inline copy — so it is callable
+  // and these assert on values.
+  const { clampLimit } = require('../src/services/acpFeedSource');
+  assert.equal(clampLimit('999999999'), 100, 'clamps to the ceiling');
+  assert.equal(clampLimit(1e21), 100);
+  assert.equal(clampLimit('0'), 1, 'floor is 1, not 0');
+  assert.equal(clampLimit('-5'), 1);
+  assert.equal(clampLimit('abc'), 20, 'unparseable falls back to the default, not to a huge page');
+  assert.equal(clampLimit('50'), 50, 'a legitimate value passes through');
+  assert.equal(clampLimit(undefined), 20);
+
+  // And the call site must apply it, without touching a query that has no limit.
+  const src = require('node:fs').readFileSync(require.resolve('../src/server'), 'utf8');
+  const i = src.indexOf('const upstreamQuery = { ...(query || {}) };');
+  assert.ok(i >= 0, 'could not locate the fallback lane clamp');
+  const block = src.slice(i, i + 400).replace(/\s+/g, '');
+  assert.ok(
+    block.includes('if(upstreamQuery.limit!=null)upstreamQuery.limit=clampLimit(upstreamQuery.limit);'),
+    'the clamp must be applied, and only when a limit was supplied',
+  );
+  assert.ok(
+    !/find_products',query\|\|\{\}\)/.test(block),
+    'the unclamped query must not reach find_products',
+  );
 });
 
 test('the adapter prefers a body query over the querystring, and never mixes them on the signed path', () => {
@@ -95,36 +141,66 @@ test('the adapter prefers a body query over the querystring, and never mixes the
 });
 
 test('a malformed cursor degrades to absent, never a 500', () => {
-  // Finding 3. Both shapes below reached Postgres and crashed it, confirmed live
-  // and unauthenticated. Reachable today only via the obscure GET-JSON-body
-  // path; forwarding the query string puts them one plain URL away on a public
-  // crawler-facing feed.
   const { decodeCursor } = require('../src/services/productEntityIndexFeed');
   const enc = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
+  const NUL = String.fromCharCode(0);
 
+  // The two shapes that started this: both produced an unauthenticated 500.
   assert.equal(decodeCursor(enc({ sort_updated_at: 'not-a-date', product_entity_id: 'x', source_product_id: 'y' })), null);
   assert.equal(decodeCursor(enc({ offset: 1e21 })), null);
-  // NOT rejected, and correctly so: JSON cannot carry Infinity, so
-  // `JSON.stringify({offset: Infinity})` is literally `{"offset":null}`. The
-  // guard skips a null offset, and downstream `Number(null)` is 0 -> page 1.
-  // Asserting a rejection here would have been testing my expectation rather
-  // than the hazard, and the hazard is the timestamptz cast and the overflow.
-  assert.deepEqual(decodeCursor(enc({ offset: Infinity })), { offset: null });
   assert.equal(decodeCursor(enc({ offset: -5 })), null);
   assert.equal(decodeCursor(enc({ offset: 1.5 })), null);
 
-  // Valid cursors must still work — a guard that rejects everything would cap
-  // the feed at page 1 while looking like a fix.
-  assert.deepEqual(decodeCursor(enc({ offset: 20 })), { offset: 20 });
-  assert.deepEqual(
-    decodeCursor(enc({ sort_updated_at: '2026-07-28T00:00:00Z', product_entity_id: 'sig_a', source_product_id: 'ext_b' })),
-    { sort_updated_at: '2026-07-28T00:00:00Z', product_entity_id: 'sig_a', source_product_id: 'ext_b' },
-  );
-  // Shape-only: a well-formed cursor for a row that no longer exists is still a
-  // valid cursor and must decode.
-  assert.deepEqual(decodeCursor(enc({ source_listing_ref: "' OR 1=1--" })), { source_listing_ref: "' OR 1=1--" });
-});
+  // JSON cannot carry Infinity — it serialises to null, the guard skips a null
+  // offset, and Number(null) is 0, i.e. page 1. Asserting a rejection here
+  // would test my expectation rather than the hazard.
+  assert.deepEqual(decodeCursor(enc({ offset: Infinity })), { offset: null });
 
+  // (a) Date.parse is LOOSER than ::timestamptz. Every one of these was
+  // ACCEPTED by the first version of the guard and every one throws in
+  // Postgres (measured on a local PG 15 by review).
+  const dateParseAcceptedButPgRejects = [
+    '2026', '2026-07', 'Jan 2026', '2026 Jul', '0', '12', '5/5',
+    '0000-01-01T00:00:00Z', '+275760-09-13T00:00:00.000Z', 'Jul 28 2026 GMT+9999',
+  ];
+  for (const t of dateParseAcceptedButPgRejects) {
+    assert.equal(
+      decodeCursor(enc({ sort_updated_at: t, product_entity_id: 'x', source_product_id: 'y' })),
+      null,
+      'Date.parse accepts ' + JSON.stringify(t) + ' but ::timestamptz rejects it',
+    );
+  }
+
+  // (b) a NUL byte survives BOTH Date.parse and String.trim, and breaks the
+  // connection-level UTF8 encode.
+  assert.equal(decodeCursor(enc({ sort_updated_at: '2026-07-28T00:00:00Z' + NUL, product_entity_id: 'x', source_product_id: 'y' })), null);
+
+  // (c) the three TEXT fields were validated by nothing. No cast can throw on a
+  // text comparison — but 0x00 breaks the encode whatever the type, so "no
+  // cast" was never "no hazard".
+  for (const f of ['product_entity_id', 'source_product_id', 'source_listing_ref']) {
+    assert.equal(decodeCursor(enc({ [f]: 'ok' + NUL + 'x' })), null, f + ' must reject a NUL byte');
+  }
+
+  // Non-scalars are refused outright — an object bound as a parameter is its
+  // own class of upstream surprise.
+  assert.equal(decodeCursor(enc({ offset: { a: 1 } })), null);
+  assert.equal(decodeCursor(enc({ source_listing_ref: ['a'] })), null);
+
+  // OVER-REJECTION MATTERS AS MUCH AS THE 500. A guard that refused legitimate
+  // cursors would silently cap the feed at page 1 while looking like a fix.
+  // This is the cursor the feed actually MINTS and it must survive untouched.
+  const minted = { source_listing_ref: 'abc', market: 'US', tool: 'acp_public_feed', include_attached: true };
+  assert.deepEqual(decodeCursor(enc(minted)), minted, 'the cursor this feed mints must decode');
+  assert.deepEqual(decodeCursor(enc({ offset: 20 })), { offset: 20 });
+  for (const t of ['2026-07-28T00:00:00Z', '2026-07-28T00:00:00.123456+09:00', '2026-07-28 00:00:00']) {
+    const c = { sort_updated_at: t, product_entity_id: 'sig_a', source_product_id: 'ext_b' };
+    assert.deepEqual(decodeCursor(enc(c)), c, 'a legitimate keyset timestamp must be accepted: ' + t);
+  }
+  // Shape-only: SQL-ish text is harmless (bound parameter) and must decode.
+  const sqlish = { source_listing_ref: "' OR 1=1--" };
+  assert.deepEqual(decodeCursor(enc(sqlish)), sqlish);
+});
 test('the connected fallback lane clamps limit before going upstream', () => {
   const src = require('node:fs').readFileSync(require.resolve('../src/server'), 'utf8');
   const i = src.indexOf('const upstreamQuery = { ...(query || {}) };');

@@ -377,4 +377,8 @@ module.exports = {
   isIndexFeedLaneServable,
   resolveFeedMarket,
   fetchIndexFeedProducts,
+  // Exported so the CONNECTED fallback lane in src/server.js clamps with the
+  // SAME function this lane does, rather than a second inline copy of the
+  // predicate. Two drifting copies of one rule is the failure ADR-012 names.
+  clampLimit,
 };

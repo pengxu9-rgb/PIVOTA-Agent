@@ -30915,6 +30915,7 @@ async function getCommerceAcpRestAdapter() {
         fetchIndexFeedProducts,
         isIndexFeedSourceEnabled,
         isIndexFeedLaneServable,
+        clampLimit,
       } = require('./services/acpFeedSource');
       // Attributed-redirect lane D1: feed `link` = Pivota canonical PDP; the signed /r attribution link
       // rides as `external_redirect_url`. Mapper is a pure module so the projection is unit-tested
@@ -30987,10 +30988,7 @@ async function getCommerceAcpRestAdapter() {
         // rather than papered over — it only becomes reachable if the index
         // flags are ever unset.
         const upstreamQuery = { ...(query || {}) };
-        if (upstreamQuery.limit != null) {
-          const n = Number(upstreamQuery.limit);
-          upstreamQuery.limit = Number.isFinite(n) ? Math.max(1, Math.min(Math.floor(n), 100)) : 20;
-        }
+        if (upstreamQuery.limit != null) upstreamQuery.limit = clampLimit(upstreamQuery.limit);
         const raw = await invokeCommerceKernelRawUpstream('find_products', upstreamQuery);
         const products = Array.isArray(raw?.products) ? raw.products : (Array.isArray(raw) ? raw : []);
         // Defence-in-depth against test/demo rigs reaching a PUBLIC agent-facing
