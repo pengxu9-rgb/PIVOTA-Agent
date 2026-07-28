@@ -42,6 +42,7 @@
 
 const { isTestMerchantId } = require('./testMerchantPolicy');
 const { isQuotableFeedItem } = require('../acpFeedItem');
+const { isUsableTitleText } = require('./productEntityIndexFeed');
 
 // OWNED HERE, not injected. The first cut took `isLinkable` as a parameter to
 // dodge a require cycle with acpFeedSource — the cycle is real (a direct
@@ -123,10 +124,9 @@ function gatePublicFeedRows(rows, { project, logger, lane = 'unknown', env = pro
   //    thousands in prod, the premise was wrong and the corpus genuinely lacks
   //    titles — which is a data-authoring problem, not a mapper one. Watch
   //    `reason: 'no_usable_title'` after deploy rather than assuming.
-  const titled = linkable.filter((p) => {
-    const t = String(p?.title ?? '').trim();
-    return t !== '' && !/^(https?:)?\/\//i.test(t);
-  });
+  // SHARED predicate, not an inline copy — review found the `/i` flag unpinned
+  // on both copies and nothing stopping them drifting.
+  const titled = linkable.filter((p) => isUsableTitleText(p?.title));
 
   // 5. PRICE. Shopping ingesters REJECT price-less items, and a rejected item
   //    costs the whole submission's credibility where an absent one costs a row.

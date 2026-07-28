@@ -119,3 +119,15 @@ test('an explicit price of 0 is refused, not treated as missing', () => {
   assert.equal(zero.price, 0);
   assert.equal(isQuotableFeedItem(zero), false);
 });
+
+test('#1852: the mapper EMITS a title — it is now publish-blocking', () => {
+  // Review finding: `title` is validated by the gate on the projected item, but
+  // the adapter re-maps through buildAcpFeedItem before serialising, and that
+  // line was unpinned — setting it to `undefined` left all 9 suites green.
+  // Since #1852 a missing title DROPS the row, so on the connected lane this
+  // single unpinned line is the difference between a feed and an empty feed.
+  const item = buildAcpFeedItem({ id: 'sig_a', title: 'Rice 72 Serum', price: 10, currency: 'USD' }, {});
+  assert.equal(item.title, 'Rice 72 Serum');
+  const viaName = buildAcpFeedItem({ id: 'sig_a', name: 'Fallback Name', price: 10, currency: 'USD' }, {});
+  assert.equal(viaName.title, 'Fallback Name', 'the name fallback must survive too');
+});

@@ -100,6 +100,27 @@ function nonEmptyString(...values) {
 // candidate has to be rejected HERE, where the alternative sources are in hand.
 const URL_SHAPED = /^(https?:)?\/\//i;
 
+// An ID is not a name either. The builder's chain ends `… || externalProductId`,
+// so with an empty canonical_url the feed shipped `"ext_x1"` as a product title
+// — demonstrated by review, and invisible to the residue counter because the
+// value is non-empty and not URL-shaped.
+//
+// FULL match, not a prefix: a real product legitimately named "ext_" something,
+// or any name that merely begins with those letters, must survive. Only a title
+// that IS nothing but an id is rejected.
+const BARE_ID_SHAPED = /^(ext|sig|merch)_[a-z0-9_]+$/i;
+
+// Exported and shared so the lane and the gate cannot drift apart — two copies
+// of one predicate is the failure ADR-012 names, and review found the /i flag
+// unpinned on both.
+function isUsableTitleText(value) {
+  const text = String(value ?? '').trim();
+  if (!text) return false;
+  if (URL_SHAPED.test(text)) return false;
+  if (BARE_ID_SHAPED.test(text)) return false;
+  return true;
+}
+
 function firstUsableTitle(...values) {
   for (const value of values) {
     const text = String(value ?? '').trim();
@@ -108,7 +129,7 @@ function firstUsableTitle(...values) {
     // are a different (and much rarer) fallback, and widening this predicate
     // without measuring it first is how a title gate starts dropping real
     // products whose name legitimately begins with an id.
-    if (text && !URL_SHAPED.test(text)) return text;
+    if (isUsableTitleText(text)) return text;
   }
   return '';
 }
@@ -829,6 +850,7 @@ async function getProductEntityIndexFeed(payload = {}, deps = {}) {
 module.exports = {
   getProductEntityIndexFeed,
   firstUsableTitle,
+  isUsableTitleText,
   buildProductEntityIndexFeedItem,
   // Exported for the cursor-validation tests. `getProductEntityIndexFeed`
   // itself needs a live DB, so the malformed-cursor guard is unreachable from
