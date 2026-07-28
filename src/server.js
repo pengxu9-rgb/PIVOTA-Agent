@@ -30915,6 +30915,7 @@ async function getCommerceAcpRestAdapter() {
         fetchIndexFeedProducts,
         isIndexFeedSourceEnabled,
         isIndexFeedLaneServable,
+        buildConnectedLaneQuery,
       } = require('./services/acpFeedSource');
       // Attributed-redirect lane D1: feed `link` = Pivota canonical PDP; the signed /r attribution link
       // rides as `external_redirect_url`. Mapper is a pure module so the projection is unit-tested
@@ -30972,7 +30973,21 @@ async function getCommerceAcpRestAdapter() {
             'acp feed: ACP_FEED_SOURCE=index_feed ignored — set INDEX_FEED_ELECTED_CANONICAL=1 to serve the priced lane',
           );
         }
-        const raw = await invokeCommerceKernelRawUpstream('find_products', query || {});
+        // CLAMP ON THIS LANE TOO. The index lane clamps via
+        // `clampLimit(query?.limit)` (max 100) inside `fetchIndexFeedProducts`;
+        // this one passed `query` through raw, so once the query string is
+        // forwarded a `?limit=999999999` would travel upstream unbounded.
+        //
+        // Zero impact while both index flags are on (the lane above returns
+        // early) — but the fallback is precisely where this PR's own risk
+        // argument lives, so it should not be the unclamped one.
+        //
+        // Note `page`/`cursor` are NOT translated here: this lane has no paging
+        // contract, so an ingester walking `page=2,3,4…` against it would
+        // silently re-receive page 1. That is a gap in the fallback, recorded
+        // rather than papered over — it only becomes reachable if the index
+        // flags are ever unset.
+        const raw = await invokeCommerceKernelRawUpstream('find_products', buildConnectedLaneQuery(query));
         const products = Array.isArray(raw?.products) ? raw.products : (Array.isArray(raw) ? raw : []);
         // Defence-in-depth against test/demo rigs reaching a PUBLIC agent-facing
         // surface. The feed's find_products(empty query) falls back to the
@@ -31084,6 +31099,30 @@ function registerCommerceAcpRestRoutes() {
     ['get', '/checkout_sessions/:checkout_session_id', 'getCheckoutSession', false],
     ['get', '/feed', 'productFeed', false],
   ];
+  // Allow-list, not a filter: builds a NEW object holding at most these three
+  // keys, so nothing else in `req.query` can reach a lane no matter what a
+  // caller sends. Returns undefined when none are present, so the adapter's
+  // existing `?? params ?? {}` chain is untouched for an ordinary GET.
+  //
+  // Array-valued params (`?limit=1&limit=2` parses to `['1','2']`) are DROPPED
+  // rather than coerced: `Number(['1','2'])` is NaN, which clampLimit would
+  // silently swallow into its 20 default — a caller asking for 100 and getting
+  // 20 with no error. An absent key at least behaves predictably.
+  const pickAcpFeedPagination = (q) => {
+    if (!q || typeof q !== 'object') return undefined;
+    const out = {};
+    for (const k of ['limit', 'cursor', 'page']) {
+      // `Object.hasOwn` so a polluted `Object.prototype.limit` — set by any
+      // OTHER pollution primitive in the process — cannot be read off a plain
+      // `{}` on every request. It cannot widen the key surface (only these
+      // three literals are ever written), so this is hardening, not a hole.
+      if (!Object.hasOwn(q, k)) continue;
+      const v = q[k];
+      if (typeof v === 'string' && v.trim() !== '') out[k] = v.trim();
+    }
+    return Object.keys(out).length ? out : undefined;
+  };
+
   for (const [method, subPath, handlerName, isCharge] of routes) {
     // The read-only feed mounts under the feed flag (which the full-checkout flag
     // implies); every checkout endpoint requires the full flag. So publishing the
@@ -31127,6 +31166,27 @@ function registerCommerceAcpRestRoutes() {
             rawBody: req.rawBody,
             body: req.body,
             params: req.params || {},
+            // Pagination from the QUERY STRING, allow-listed to three keys.
+            //
+            // Why it was not forwarded before: passing `req.query` wholesale
+            // would put unsigned public input straight into `find_products`
+            // free-text search on the connected fallback lane. That objection
+            // is answered by the allow-list, not by omission — `limit`,
+            // `cursor` and `page` are the only keys any feed lane reads
+            // (services/productEntityIndexFeed.js:279-284), and a free-text
+            // `query` key deliberately does NOT pass, so the search surface
+            // stays exactly as closed as it is today.
+            //
+            // Why it is needed: the feed defaulted to 20 of ~4,467 priced rows
+            // (0.4%) and the ONLY way to raise it was a JSON body on a GET —
+            // which works solely because `express.json()` does not check the
+            // method, i.e. an accident of middleware ordering that no ingester
+            // would ever discover from the outside. Google/ChatGPT feed
+            // crawlers issue a plain GET with a query string.
+            //
+            // Values arrive as strings; `clampLimit` does `Number(value)` and
+            // `decodeCursor`/`clampInt` parse their own, so no coercion here.
+            query: pickAcpFeedPagination(req.query),
           });
           for (const [k, v] of Object.entries(out.headers || {})) res.setHeader(k, v);
           return res.status(out.status).json(out.body);

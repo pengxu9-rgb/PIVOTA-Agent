@@ -94,10 +94,142 @@ function decodeCursor(value) {
   if (!text) return null;
   try {
     const decoded = JSON.parse(Buffer.from(text, 'base64url').toString('utf8'));
-    return decoded && typeof decoded === 'object' && !Array.isArray(decoded) ? decoded : null;
+    if (!decoded || typeof decoded !== 'object' || Array.isArray(decoded)) return null;
+    return isUsableCursor(decoded) ? decoded : null;
   } catch (_err) {
     return null;
   }
+}
+
+// A MALFORMED CURSOR IS AN ABSENT CURSOR, never a 500.
+//
+// Decoding used to succeed on any JSON object and hand its fields straight to
+// Postgres, so two shapes reached the DB and crashed it — confirmed live on
+// acp.pivota.cc, unauthenticated:
+//
+//   {"sort_updated_at":"not-a-date","product_entity_id":"x",
+//    "source_product_id":"y"}  -> 500  ($N::timestamptz cast, ~line 390-397)
+//   {"offset": 1e21}           -> 500  (bigint overflow on OFFSET)
+//
+// There is NO injection here — every value is a bound parameter, and
+// `{"source_listing_ref":"' OR 1=1--"}` correctly returns 200 count=0. This is
+// availability, not confidentiality. But until now the only way to deliver a
+// cursor at all was a JSON body on a GET, which no crawler stumbles into;
+// forwarding the query string puts it one plain URL away on a public,
+// crawler-facing feed — one bad link or scanner from a 500.
+//
+// Degrading to "start from the beginning" is also what a caller replaying a
+// stale or truncated cursor link actually wants.
+//
+// Deliberately SHAPE-only: this validates what Postgres will be asked to cast,
+// not whether the cursor points anywhere real. A well-formed cursor for a
+// deleted row still legitimately returns an empty page.
+// Every field that reaches a bind, not just the two that reach a CAST. The
+// first version of this guard checked `offset` and `sort_updated_at` only, and
+// review proved that insufficient against a local PG 15 on three counts:
+//
+//   * `Date.parse` is LOOSER than `::timestamptz`, not equal to it. 11 of 20
+//     Date.parse-accepted strings threw: "2026", "2026-07", "Jan 2026", "0",
+//     "12", "5/5", "0000-01-01T00:00:00Z", "+275760-09-13T00:00:00.000Z",
+//     "Jul 28 2026 GMT+9999". Using it as a proxy for the cast was the error.
+//   * A NUL byte defeats it in the field it does check —
+//     `Date.parse('2026-07-28T00:00:00Z' + a NUL byte)` is a valid number, and
+//     `String.trim()` does not strip it. PG: "invalid byte sequence for
+//     encoding UTF8: 0x00".
+//   * `product_entity_id`, `source_product_id` and `source_listing_ref` were
+//     validated by NOTHING. They are text comparisons so no cast can throw —
+//     but 0x00 kills the connection-level encode whatever the comparison type,
+//     so "no cast" is not "no hazard".
+//
+// Strict ISO-8601 instead of Date.parse: the only cursor this feed MINTS is
+// `{source_listing_ref, market, tool, include_attached}` (see the keyset cursor
+// builder below), and a keyset cursor's timestamp is always an ISO string. So
+// the strict form accepts everything we produce and rejects the free-form
+// strings that reach the cast. Date.parse still runs afterwards to catch
+// shapes the regex admits but that are not real dates (month 13, day 32).
+const ISO_TIMESTAMP_RE = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(\.\d{1,6})?(Z|[+-]\d{2}(:?\d{2})?)?$/;
+
+// 0x00 is the one that matters (it breaks the encode, not the parse); the rest
+// of the C0 range has no business in an id and costs nothing to refuse.
+const hasControlChars = (s) => /[\u0000-\u001f\u007f]/.test(s);
+
+function isUsableCursor(c) {
+  // Reject unexpected value types across the board FIRST — a nested object or
+  // array bound as a parameter is its own class of upstream surprise.
+  for (const [k, v] of Object.entries(c)) {
+    if (v == null) continue;
+    if (typeof v === 'string') {
+      if (hasControlChars(v)) return false;
+      continue;
+    }
+    if (typeof v === 'number' || typeof v === 'boolean') continue;
+    return false; // objects, arrays, anything else
+  }
+
+  if (c.offset != null) {
+    const n = Number(c.offset);
+    // `Number.isSafeInteger` rejects 1e21, Infinity, NaN and 1.5 in one check.
+    // A negative offset is not a crash, but it is not a page either.
+    if (!Number.isSafeInteger(n) || n < 0) return false;
+  }
+
+  if (c.sort_updated_at != null) {
+    const t = c.sort_updated_at;
+    if (typeof t !== 'string') return false;
+    if (!ISO_TIMESTAMP_RE.test(t)) return false;
+    // Catches what the calendar check below cannot see: the TIME fields. V8
+    // rejects hour 25 and minute 60 in an ISO string, so this is load-bearing
+    // for `2026-07-28T25:00:00Z`, which the regex's `\d{2}` happily admits.
+    if (Number.isNaN(Date.parse(t))) return false;
+    if (!isRealCalendarDate(t)) return false;
+  }
+
+  return true;
+}
+
+// Date.parse is NOT a calendar validator, and assuming it was is what left six
+// live 500s in the previous version of this guard.
+//
+// V8's ISO parser accepts day 01-31 for ANY month and then `MakeDay` ROLLS OVER:
+// `Date.parse('2026-02-30T00:00:00Z')` returns a number (it becomes Mar 2), so
+// the "secondary Date.parse check" the last commit described as catching
+// "month 13 / day 32" catches neither of these:
+//
+//   2026-02-30  2026-04-31  2026-06-31  2026-09-31  2026-11-31  2025-02-29
+//
+// All six passed the regex (`\d{2}`), passed Date.parse, and reached
+// `$N::timestamptz` -> "date/time field value out of range". Delivered as a
+// base64url `?cursor=`, which needs no URL encoding at all.
+//
+// A UTC round-trip is the check that actually holds: build the date from its
+// components and require every component to survive. Rollover changes at least
+// one of them, so Feb 30 -> Mar 2 fails on the day, month 13 fails on the year,
+// day 00 fails by rolling into the previous month. Leap days are correct for
+// free — 2024-02-29 survives, 2025-02-29 does not — with no leap-year rule
+// written here, which is the point: the platform already knows the calendar.
+//
+// NO SEPARATE YEAR-0000 CASE. An earlier draft had one; mutation testing showed
+// it was unkillable, i.e. redundant. `Date.UTC(0, ...)` maps year 0 to 1900, so
+// the round-trip compares 1900 against 0 and rejects it anyway. A guard no
+// mutation can kill is not defence in depth — it is dead weight that hides
+// which check is actually load-bearing, so it is gone rather than papered over
+// with a test that only exercises the sibling.
+//
+// The three-component comparison is deliberately kept WHOLE even though the
+// month leg alone catches every case the regex can produce today (rollover
+// always changes the month: Feb 30 -> Mar, day 32 -> next month, day 00 ->
+// previous month). Pruning it to just the month would be correct-by-accident
+// and would silently become wrong if the regex ever admitted a different digit
+// width. One idiom that states "every component survived" beats three guards
+// where two are load-bearing only under conditions a future edit controls.
+function isRealCalendarDate(t) {
+  const year = Number(t.slice(0, 4));
+  const month = Number(t.slice(5, 7));
+  const day = Number(t.slice(8, 10));
+  const d = new Date(Date.UTC(year, month - 1, day));
+  return d.getUTCFullYear() === year
+    && d.getUTCMonth() === month - 1
+    && d.getUTCDate() === day;
 }
 
 // `[object Object]` is not a brand — it is a coercion accident, and it POISONS a
@@ -661,6 +793,10 @@ async function getProductEntityIndexFeed(payload = {}, deps = {}) {
 module.exports = {
   getProductEntityIndexFeed,
   buildProductEntityIndexFeedItem,
+  // Exported for the cursor-validation tests. `getProductEntityIndexFeed`
+  // itself needs a live DB, so the malformed-cursor guard is unreachable from
+  // the outside without this — and an unreachable guard is an untested one.
+  decodeCursor,
   connectionLayerForTrack,
   connectionLayerFieldEnabled,
   isMissingContentCanonicalElectionError,

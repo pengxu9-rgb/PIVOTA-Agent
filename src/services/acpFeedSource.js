@@ -365,6 +365,28 @@ async function fetchIndexFeedProducts(query = {}, deps = {}) {
   return quotable;
 }
 
+
+/**
+ * The query the CONNECTED fallback lane sends upstream to `find_products`.
+ *
+ * Extracted from `src/server.js` so the WIRING is assertable, not just the
+ * clamp. Review round 3 showed why: with the clamp inline, four mutants that
+ * broke it survived — reverting the argument to `query || {}`, wrapping it in
+ * parens, re-adding `limit: query?.limit` after the clamp — because the only
+ * assertion was a source-text match on a literal. It died when a string changed
+ * and lived when behaviour changed, which is exactly backwards.
+ *
+ * Clamps `limit` with the SAME `clampLimit` the index lane uses (one rule, one
+ * implementation), and touches nothing else: `page` and `cursor` pass through
+ * verbatim because this lane has no paging contract to translate them into.
+ * A query with no `limit` is returned structurally unchanged.
+ */
+function buildConnectedLaneQuery(query) {
+  const out = { ...(query || {}) };
+  if (out.limit != null) out.limit = clampLimit(out.limit);
+  return out;
+}
+
 module.exports = {
   ACP_FEED_SOURCE_ENV,
   INDEX_FEED_ELECTED_CANONICAL_ENV,
@@ -377,4 +399,9 @@ module.exports = {
   isIndexFeedLaneServable,
   resolveFeedMarket,
   fetchIndexFeedProducts,
+  // Exported so the CONNECTED fallback lane in src/server.js clamps with the
+  // SAME function this lane does, rather than a second inline copy of the
+  // predicate. Two drifting copies of one rule is the failure ADR-012 names.
+  clampLimit,
+  buildConnectedLaneQuery,
 };

@@ -231,8 +231,19 @@ export function createAcpRestAdapter(deps = {}) {
       if (typeof getProducts !== 'function') throw new PivotaCommerceError('MERCHANT_UNAVAILABLE', { reason: 'no_feed_source' });
       // For an AUTHENTICATED feed, the filter query must come from the SIGNED body, not an unsigned parsed body
       // (Codex round-2 #1). For a public feed there is no signature, so the unsigned body/params are expected.
+      // `req.query` here is the caller's ALLOW-LISTED pagination (limit/cursor/
+      // page) built in src/server.js — never Express's raw `req.query`.
+      //
+      // Ordering is deliberate and backward-compatible: a body `query` still
+      // wins, so every existing caller raising the limit via a JSON body on a
+      // GET keeps working unchanged. The query string is the new, discoverable
+      // path for crawlers that issue a plain GET.
+      //
+      // The AUTHENTICATED branch is untouched: its filter must come from the
+      // SIGNED body, and letting an unsigned query string contribute there
+      // would reopen exactly the hole the signed-body rule closes.
       const query = publicFeed
-        ? (req?.body?.query ?? req?.params ?? {})
+        ? (req?.body?.query ?? req?.query ?? req?.params ?? {})
         : (nonEmpty(req?.rawBody) ? (trustedBody(req).query ?? {}) : {});
       const products = await getProducts(query);
       const items = (Array.isArray(products) ? products : []).map((p) => (mapFeedItem ? mapFeedItem(p) : defaultFeedItem(p)));
