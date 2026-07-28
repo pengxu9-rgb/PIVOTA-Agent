@@ -54,8 +54,8 @@ jobs:
           fi
           mkdir -p reports/workflow_ops/external-seed-targeted-backfill/${{ github.run_id }}
           ARGS=(
-            --market "${IN_MARKET}"
-            --external-product-ids "${IN_EXTERNAL_PRODUCT_IDS}"
+            --market "${IN_MARKET:-}"
+            --external-product-ids "${IN_EXTERNAL_PRODUCT_IDS:-}"
             --limit 200
             --concurrency 1
           )

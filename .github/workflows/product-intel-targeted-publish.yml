@@ -41,7 +41,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p reports/product_intel_targeted_publish
-          printf '%s' "${IN_REPORT_JSON_BASE64}" | base64 --decode > reports/product_intel_targeted_publish/report.json
+          printf '%s' "${IN_REPORT_JSON_BASE64:-}" | base64 --decode > reports/product_intel_targeted_publish/report.json
           jq '.meta' reports/product_intel_targeted_publish/report.json > reports/product_intel_targeted_publish/report_meta.json
 
       - name: Publish product intel to KB
@@ -51,7 +51,7 @@ jobs:
         run: |
           set -euo pipefail
           args=(--report reports/product_intel_targeted_publish/report.json --write)
-          case_ids="${IN_CASE_IDS}"
+          case_ids="${IN_CASE_IDS:-}"
           if [[ -n "${case_ids}" ]]; then
             args+=(--case-ids "${case_ids}")
           fi

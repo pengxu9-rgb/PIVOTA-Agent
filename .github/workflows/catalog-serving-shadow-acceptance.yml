@@ -74,12 +74,12 @@ jobs:
           mkdir -p reports
           args=(
             --out-dir reports
-            --limit "${IN_LIMIT}"
-            --market "${IN_MARKET}"
-            --sample-query "${IN_SAMPLE_QUERY}"
-            --fail-on-status "${IN_FAIL_ON_STATUS}"
+            --limit "${IN_LIMIT:-}"
+            --market "${IN_MARKET:-}"
+            --sample-query "${IN_SAMPLE_QUERY:-}"
+            --fail-on-status "${IN_FAIL_ON_STATUS:-}"
           )
-          brand_input="${IN_BRAND}"
+          brand_input="${IN_BRAND:-}"
           if [[ -n "${brand_input}" ]]; then
             args+=(--brand "${brand_input}")
           fi

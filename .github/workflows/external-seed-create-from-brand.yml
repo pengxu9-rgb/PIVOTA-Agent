@@ -88,10 +88,10 @@ jobs:
           mode_result="${out_dir}/seed-creation-dry-run.json"
 
           build_args=(
-            --brand "${IN_BRAND}"
-            --domain "${IN_DOMAIN}"
-            --market "${IN_MARKET}"
-            --limit "${IN_LIMIT}"
+            --brand "${IN_BRAND:-}"
+            --domain "${IN_DOMAIN:-}"
+            --market "${IN_MARKET:-}"
+            --limit "${IN_LIMIT:-}"
             --out "${raw_manifest}"
           )
           if [[ "${{ inputs.include_commerce_facts }}" == "true" ]]; then
@@ -107,8 +107,8 @@ jobs:
             --accepted-manifest "${accepted_manifest}"
             --min-coverage "0.9"
           )
-          if [[ -n "${IN_EXCLUDE_TITLE_REGEX}" ]]; then
-            review_args+=(--exclude-title-regex "${IN_EXCLUDE_TITLE_REGEX}")
+          if [[ -n "${IN_EXCLUDE_TITLE_REGEX:-}" ]]; then
+            review_args+=(--exclude-title-regex "${IN_EXCLUDE_TITLE_REGEX:-}")
           fi
           if [[ "${{ inputs.allow_block_provider }}" == "true" ]]; then
             review_args+=(--allow-block-provider)

@@ -71,12 +71,12 @@ jobs:
         run: |
           set -euo pipefail
           node scripts/run_celestial_commerce_core_beauty_cross_agent_matrix.js \
-            --invoke-base-url "${IN_INVOKE_BASE_URL}" \
-            --aurora-base-url "${IN_AURORA_BASE_URL}" \
-            --cases "${IN_CASES_PATH}" \
+            --invoke-base-url "${IN_INVOKE_BASE_URL:-}" \
+            --aurora-base-url "${IN_AURORA_BASE_URL:-}" \
+            --cases "${IN_CASES_PATH:-}" \
             --out-dir "reports/celestial-commerce-beauty-cross-agent-matrix-ci" \
-            --invoke-timeout-ms "${IN_INVOKE_TIMEOUT_MS}" \
-            --aurora-timeout-ms "${IN_AURORA_TIMEOUT_MS}"
+            --invoke-timeout-ms "${IN_INVOKE_TIMEOUT_MS:-}" \
+            --aurora-timeout-ms "${IN_AURORA_TIMEOUT_MS:-}"
 
       - name: Run cross-agent beauty multi-turn invoke matrix
         if: ${{ inputs.run_multiturn == 'true' }}
@@ -87,10 +87,10 @@ jobs:
         run: |
           set -euo pipefail
           node scripts/run_celestial_commerce_core_beauty_cross_agent_multiturn_live.js \
-            --base-url "${IN_INVOKE_BASE_URL}" \
+            --base-url "${IN_INVOKE_BASE_URL:-}" \
             --out-dir "reports/celestial-commerce-beauty-cross-agent-multiturn-live-ci" \
             --rounds "1" \
-            --timeout-ms "${IN_INVOKE_TIMEOUT_MS}"
+            --timeout-ms "${IN_INVOKE_TIMEOUT_MS:-}"
 
       - name: Upload cross-agent matrix artifacts
         if: ${{ always() && hashFiles('reports/celestial-commerce-beauty-cross-agent-matrix-ci/**') != '' }}

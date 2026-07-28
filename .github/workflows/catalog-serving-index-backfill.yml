@@ -70,9 +70,9 @@ jobs:
           out_dir="reports/workflow_ops/catalog-serving-index-backfill/${{ github.run_id }}"
           result_path="${out_dir}/result.json"
           mkdir -p "${out_dir}"
-          brand="${IN_BRAND}"
+          brand="${IN_BRAND:-}"
           export BRAND="${brand}"
-          export MARKET="${IN_MARKET}"
+          export MARKET="${IN_MARKET:-}"
           export PUBLIC_ONLY="${{ inputs.public_only }}"
           if [[ '${{ inputs.dry_run }}' != 'true' && -z "${CATALOG_SERVING_INDEX_BASE_URL:-}" && -z "${CATALOG_SERVING_BASE_URL:-}" ]]; then
             node -e 'const fs=require("fs"); const out=process.argv[1]; fs.writeFileSync(out, `${JSON.stringify({ok:false,error:"CATALOG_SERVING_INDEX_DISABLED",message:"CATALOG_SERVING_INDEX_BASE_URL or CATALOG_SERVING_BASE_URL must be configured for non-dry-run catalog serving backfill.",requested:{brand:process.env.BRAND||"",market:process.env.MARKET||"US",dry_run:false,public_only:process.env.PUBLIC_ONLY==="true"},index:{enabled:false,base_url:null,index_name:process.env.CATALOG_SERVING_INDEX_NAME||"catalog_public_v1"}}, null, 2)}\n`);' "${result_path}"
@@ -80,8 +80,8 @@ jobs:
             exit 1
           fi
           args=(
-            --market "${IN_MARKET}"
-            --limit "${IN_LIMIT}"
+            --market "${IN_MARKET:-}"
+            --limit "${IN_LIMIT:-}"
           )
           if [[ -n "${brand}" ]]; then
             args+=(--brand "${brand}")

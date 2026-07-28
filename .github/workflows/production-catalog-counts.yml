@@ -45,7 +45,7 @@ jobs:
           mkdir -p "${out_dir}"
 
           node scripts/audit-production-catalog-counts.cjs \
-            --top-n "${IN_TOP_N}" \
+            --top-n "${IN_TOP_N:-}" \
             --out "${out_dir}/report.json" \
             --markdown-out "${out_dir}/summary.md" \
             | tee "${out_dir}/stdout.json"

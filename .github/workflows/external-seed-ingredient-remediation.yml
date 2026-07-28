@@ -58,7 +58,7 @@ jobs:
           out_dir="reports/workflow_ops/external-seed-ingredient-remediation/${{ github.run_id }}"
           mkdir -p "${out_dir}"
           ids_file="${out_dir}/external_product_ids.txt"
-          printf '%s\n' "${IN_EXTERNAL_PRODUCT_IDS}" \
+          printf '%s\n' "${IN_EXTERNAL_PRODUCT_IDS:-}" \
             | tr ',' '\n' \
             | sed 's/^ *//;s/ *$//' \
             | awk 'NF' > "${ids_file}"
@@ -69,8 +69,8 @@ jobs:
           fi
 
           args=(
-            --market "${IN_MARKET}"
-            --domain "${IN_DOMAIN}"
+            --market "${IN_MARKET:-}"
+            --domain "${IN_DOMAIN:-}"
             --product-ids "${ids_csv}"
             --out "${out_dir}/${report_name}"
           )
@@ -81,7 +81,7 @@ jobs:
             | tee "${out_dir}/ingredient-remediation-summary.json"
 
           sync_args=(
-            --market "${IN_MARKET}"
+            --market "${IN_MARKET:-}"
             --external-product-ids-file "${ids_file}"
             --out "${out_dir}/identity-source-payload-sync.json"
             --created-by "github_actions_ingredient_remediation"

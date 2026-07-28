@@ -140,18 +140,18 @@ jobs:
           set -euo pipefail
           out_dir="reports/workflow_ops/pivota-insights-coverage/${{ github.run_id }}"
           mkdir -p "${out_dir}"
-          seed="${IN_SEED}"
+          seed="${IN_SEED:-}"
           if [[ -z "${seed}" ]]; then
             seed="workflow-${{ github.run_id }}"
           fi
 
           args=(
-            --product-ids "${IN_PRODUCT_IDS}"
+            --product-ids "${IN_PRODUCT_IDS:-}"
             --out-dir "${out_dir}/coverage"
-            --limit "${IN_LIMIT}"
+            --limit "${IN_LIMIT:-}"
             --per-query "12"
             --seed "${seed}"
-            --model "${IN_MODEL}"
+            --model "${IN_MODEL:-}"
             --max-per-brand "50"
             --max-per-category "50"
             --covered-review-mode "strict_human"

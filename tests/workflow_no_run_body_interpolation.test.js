@@ -127,15 +127,35 @@ function declaredInputTypes(text) {
   return types;
 }
 
-/** Every `run:` block body, by indentation. */
+/**
+ * Every `run:` body — ALL of YAML's scalar forms, not just `run: |`.
+ *
+ * The first version matched `/run:\s*\|-?$/` only, and an adversarial review
+ * showed five valid forms sailing straight through the gate: a plain one-line
+ * `- run: echo ${{ inputs.x }}`, folded `>` and `>-`, a double-quoted scalar,
+ * and an explicit indent indicator `|2`. This repo has 58 single-line `run:`
+ * steps today, so that was not a hypothetical hole — it was the gate being blind
+ * to the most common form in the tree.
+ */
 function runBodies(text) {
   const lines = text.split('\n');
   const bodies = [];
   for (let i = 0; i < lines.length; i += 1) {
-    // Both `run: |` and the list-item form `- run: |`.
-    const m = lines[i].match(/^(\s*)(-\s+)?run:\s*\|-?\s*$/);
+    // `run:` possibly as a list item, then either a block indicator
+    // (| > with optional +/- chomping and an optional explicit indent digit)
+    // or an inline scalar on the same line.
+    const m = lines[i].match(/^(\s*)(-\s+)?run:\s*(.*)$/);
     if (!m) continue;
     const indent = m[1].length + (m[2] ? m[2].length : 0);
+    const rest = m[3].trim();
+
+    const isBlock = /^[|>][+-]?\d*$/.test(rest) || /^[|>]\d*[+-]?$/.test(rest);
+    if (!isBlock) {
+      // Inline scalar: the value is on this line (possibly quoted). Anything
+      // after `run:` is the script.
+      if (rest) bodies.push({ startLine: i + 1, body: rest });
+      continue;
+    }
     let j = i + 1;
     const collected = [];
     for (; j < lines.length; j += 1) {
@@ -251,6 +271,43 @@ describe('GitHub Actions: no free-form interpolation into run: bodies', () => {
       expect(scan(write("echo ${{ hashFiles('.env.example') }}")).freeForm.length).toBe(0);
       expect(scan(write('echo "$IN_FREE"')).freeForm.length).toBe(0);
       expect(scan(write('echo ${{ github.event.pull_request.title }}')).untrusted.length).toBe(1);
+      fs.rmSync(dir, { recursive: true, force: true });
+    });
+
+    test('every YAML scalar form of run: is scanned, not just `run: |`', () => {
+      // An adversarial review found FIVE forms bypassing the first version of
+      // this gate. The repo has 58 single-line `run:` steps, so the plain-scalar
+      // form is the most common one in the tree — the gate was blind to exactly
+      // what it was most likely to meet.
+      const os = require('os');
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'wfgate-forms-'));
+      const write = (runLine, extra = '') => {
+        const p = path.join(dir, 'w.yml');
+        fs.writeFileSync(p, [
+          'on:', '  workflow_dispatch:', '    inputs:',
+          '      pwn:', '        type: string',
+          'jobs:', '  j:', '    steps:', `      - ${runLine}`, extra,
+        ].filter(Boolean).join('\n'));
+        return p;
+      };
+      const PAYLOAD = 'echo ${{ inputs.pwn }}';
+      const forms = [
+        [`run: ${PAYLOAD}`, ''],                                  // plain scalar
+        ['run: |', `          ${PAYLOAD}`],                       // literal block
+        ['run: |-', `          ${PAYLOAD}`],                      // literal, chomped
+        ['run: >', `          ${PAYLOAD}`],                       // folded
+        ['run: >-', `          ${PAYLOAD}`],                      // folded, chomped
+        ['run: |2', `          ${PAYLOAD}`],                      // explicit indent
+        [`run: "${PAYLOAD}"`, ''],                                // double-quoted
+      ];
+      for (const [runLine, extra] of forms) {
+        expect({
+          form: runLine,
+          hits: scan(write(runLine, extra)).freeForm.length,
+        }).toEqual({ form: runLine, hits: 1 });
+      }
+      // and a benign single-line run: must still pass
+      expect(scan(write('run: npm ci')).freeForm.length).toBe(0);
       fs.rmSync(dir, { recursive: true, force: true });
     });
   });

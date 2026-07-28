@@ -59,11 +59,11 @@ jobs:
           set -euo pipefail
           mkdir -p reports/workflow_ops/pdp-identity-live-read-promote/${{ github.run_id }}
           args=(
-            --limit "${IN_LIMIT}"
+            --limit "${IN_LIMIT:-}"
             --created-by "github_actions"
           )
-          refs="${IN_SOURCE_LISTING_REFS}"
-          brand="${IN_BRAND}"
+          refs="${IN_SOURCE_LISTING_REFS:-}"
+          brand="${IN_BRAND:-}"
           if [[ -n "${refs}" ]]; then
             args+=(--source-listing-refs "${refs}")
           fi

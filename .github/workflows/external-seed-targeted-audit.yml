@@ -41,8 +41,8 @@ jobs:
           OUT_DIR="reports/workflow_ops/external-seed-targeted-audit/${{ github.run_id }}"
           mkdir -p "$OUT_DIR"
           node scripts/audit-external-seed-targeted-pdp-fields.js \
-            --external-product-ids "${IN_EXTERNAL_PRODUCT_IDS}" \
-            --market "${IN_MARKET}" \
+            --external-product-ids "${IN_EXTERNAL_PRODUCT_IDS:-}" \
+            --market "${IN_MARKET:-}" \
             --out "$OUT_DIR/audit.json" | tee "$OUT_DIR/stdout.json"
 
       - name: Upload artifact

@@ -52,16 +52,20 @@ jobs:
           out_dir="reports/workflow_ops/external-seed-bundle-component-refs/${{ github.run_id }}"
           mkdir -p "${out_dir}"
           mapping_file="${out_dir}/mapping.json"
-          cat > "${mapping_file}" <<'JSON'
-          ${IN_MAPPING_JSON}
-          JSON
+          # printf, NOT a heredoc. `<<'JSON'` disables parameter expansion, so a
+          # shell variable is written LITERALLY — the original only worked because
+          # ${{ }} substituted before the shell ever saw the heredoc, which is the
+          # property this change deliberately removes. And un-quoting the delimiter
+          # would be worse: `<<JSON` re-enables $( ) inside operator-supplied JSON,
+          # reintroducing the injection. printf '%s' treats the value as inert data.
+          printf '%s\n' "${IN_MAPPING_JSON:-}" > "${mapping_file}"
 
           report_name="dry-run.json"
           if [[ "${{ inputs.dry_run }}" != "true" ]]; then
             report_name="apply.json"
           fi
           args=(
-            --market "${IN_MARKET}"
+            --market "${IN_MARKET:-}"
             --mapping-json "${mapping_file}"
             --out "${out_dir}/${report_name}"
           )
@@ -74,7 +78,7 @@ jobs:
           ids_file="${out_dir}/external_product_ids.txt"
           node -e "const fs=require('fs'); const data=JSON.parse(fs.readFileSync(process.argv[1],'utf8')); for (const row of data.mappings||[]) if (row.external_product_id) console.log(row.external_product_id)" "${mapping_file}" > "${ids_file}"
           sync_args=(
-            --market "${IN_MARKET}"
+            --market "${IN_MARKET:-}"
             --external-product-ids-file "${ids_file}"
             --out "${out_dir}/identity-source-payload-sync.json"
             --created-by "github_actions_bundle_component_refs"

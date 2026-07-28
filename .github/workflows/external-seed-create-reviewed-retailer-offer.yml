@@ -118,27 +118,27 @@ jobs:
           mode_result="${out_dir}/seed-creation-dry-run.json"
 
           build_args=(
-            --brand "${IN_BRAND}"
-            --retailer-name "${IN_RETAILER_NAME}"
-            --domain "${IN_DOMAIN}"
-            --market "${IN_MARKET}"
-            --limit "${IN_LIMIT}"
+            --brand "${IN_BRAND:-}"
+            --retailer-name "${IN_RETAILER_NAME:-}"
+            --domain "${IN_DOMAIN:-}"
+            --market "${IN_MARKET:-}"
+            --limit "${IN_LIMIT:-}"
             --out "${raw_manifest}"
           )
-          if [[ -n "${IN_TARGET_EXTERNAL_PRODUCT_ID}" ]]; then
-            build_args+=(--target-external-product-id "${IN_TARGET_EXTERNAL_PRODUCT_ID}")
+          if [[ -n "${IN_TARGET_EXTERNAL_PRODUCT_ID:-}" ]]; then
+            build_args+=(--target-external-product-id "${IN_TARGET_EXTERNAL_PRODUCT_ID:-}")
           fi
-          if [[ -n "${IN_TARGET_SOURCE_LISTING_REF}" ]]; then
-            build_args+=(--target-source-listing-ref "${IN_TARGET_SOURCE_LISTING_REF}")
+          if [[ -n "${IN_TARGET_SOURCE_LISTING_REF:-}" ]]; then
+            build_args+=(--target-source-listing-ref "${IN_TARGET_SOURCE_LISTING_REF:-}")
           fi
-          if [[ -n "${IN_TARGET_CANONICAL_URL}" ]]; then
-            build_args+=(--target-canonical-url "${IN_TARGET_CANONICAL_URL}")
+          if [[ -n "${IN_TARGET_CANONICAL_URL:-}" ]]; then
+            build_args+=(--target-canonical-url "${IN_TARGET_CANONICAL_URL:-}")
           fi
-          if [[ -n "${IN_TARGET_PRODUCT_TITLE}" ]]; then
-            build_args+=(--target-product-title "${IN_TARGET_PRODUCT_TITLE}")
+          if [[ -n "${IN_TARGET_PRODUCT_TITLE:-}" ]]; then
+            build_args+=(--target-product-title "${IN_TARGET_PRODUCT_TITLE:-}")
           fi
-          if [[ -n "${IN_MATCH_BASIS}" ]]; then
-            build_args+=(--match-basis "${IN_MATCH_BASIS}")
+          if [[ -n "${IN_MATCH_BASIS:-}" ]]; then
+            build_args+=(--match-basis "${IN_MATCH_BASIS:-}")
           fi
           if [[ "${{ inputs.include_commerce_facts }}" == "true" ]]; then
             build_args+=(--include-commerce-facts)
@@ -153,8 +153,8 @@ jobs:
             --accepted-manifest "${accepted_manifest}"
             --min-coverage "0.9"
           )
-          if [[ -n "${IN_EXCLUDE_TITLE_REGEX}" ]]; then
-            review_args+=(--exclude-title-regex "${IN_EXCLUDE_TITLE_REGEX}")
+          if [[ -n "${IN_EXCLUDE_TITLE_REGEX:-}" ]]; then
+            review_args+=(--exclude-title-regex "${IN_EXCLUDE_TITLE_REGEX:-}")
           fi
           node scripts/review-external-seed-creation-manifest.cjs "${review_args[@]}" \
             | tee "${out_dir}/review-summary.json"
