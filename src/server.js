@@ -30890,10 +30890,27 @@ async function getCommerceAcpRestAdapter() {
       //
       // Source-selected by env, never by merge: with the flags unset the feed
       // still serves the connected lane below. NOT byte-identical to origin/main
-      // even then — that lane gains the price gate in this same commit — but it
-      // serves 0 rows today, so the difference is unobservable until a real
-      // merchant connects, which is precisely when dropping a price-less row is
-      // the behaviour we want.
+      // even then — that lane gains the price gate in this same commit.
+      //
+      // ⚠️ CORRECTED 2026-07-28. An earlier version of this comment said the
+      // connected lane "serves 0 rows today, so the difference is unobservable
+      // until a real merchant connects". THAT IS FALSE, and measured on LIVE
+      // PROD, not reasoned about. `express.json()` does not check the method, so
+      // a GET carrying a JSON body reaches this lane with a real query:
+      //
+      //   GET /acp/feed  body {"query":{"query":"serum"}}  ->  200, count: 17
+      //
+      // Those 17 rows are why the price gate is observable immediately: one is
+      // `{"brand":"Veganifect","price":0}`, which this gate now DROPS. The
+      // change is right; the "unobservable" justification for it was not, and a
+      // reader would have trusted it to rule the question out.
+      //
+      // The same 17 rows are the argument for flipping the index-feed flags:
+      // every one carries an `ext_*` id whose PDP returns HTTP 500, and 7 are
+      // Mintree priced 847-3927.70 labelled "USD" (the INR-served-as-USD
+      // defect). The index lane emits `sig_*`, excludes those merchants, and
+      // gates on price — so this door stops publishing all three the moment it
+      // is the source.
       const {
         fetchIndexFeedProducts,
         isIndexFeedSourceEnabled,

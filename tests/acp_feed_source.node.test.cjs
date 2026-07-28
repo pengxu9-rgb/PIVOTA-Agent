@@ -590,4 +590,17 @@ test('BEHAVIOURAL: the priced-lane catch actually runs, logs once, and preserves
   assert.equal(errors.length, 1, 'exactly one error log per failed request');
   assert.equal(errors[0][0].surface, 'acp_public_feed');
   assert.equal(errors[0][0].code, '42P01');
+
+  // A NON-EMPTY query too. Asserting only on `run({})` let a mutant route the
+  // lane call through an unguarded early return for any query-bearing request
+  // and still pass — and that shape is LIVE-REACHABLE, not theoretical:
+  // `express.json()` ignores the method, so a GET carrying a JSON body arrives
+  // here with a real query (measured on prod: `{"query":{"query":"serum"}}`
+  // returns 17 rows). A single-input test cannot see that path at all.
+  const caught2 = await run({ limit: 100, query: 'serum' }).then(
+    () => { throw new Error('a query-bearing request must not bypass the catch'); },
+    (e) => e,
+  );
+  assert.equal(caught2, boom);
+  assert.equal(errors.length, 2, 'the query-bearing path must log too, not just the empty one');
 });
