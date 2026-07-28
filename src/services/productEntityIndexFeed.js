@@ -77,6 +77,42 @@ function nonEmptyString(...values) {
   return '';
 }
 
+// A URL IS NOT A TITLE, and this chain used to accept one silently.
+//
+// Measured on the live feed 2026-07-28: 3,952 of 4,375 rows (90%) published
+// `title` IDENTICAL to `link` — the PDP URL as the product name, on the field a
+// shopping ingester displays. Every other field on those rows was correct.
+//
+// ROOT CAUSE IS A CHAIN ORDER, NOT MISSING DATA. `buildExternalSeedProduct`
+// (services/externalSeedProducts:3888) ends its own title fallback with
+// `... || canonicalUrl || destinationUrl || externalProductId`, so for a seed
+// with no authored title `product.title` arrives here ALREADY holding the URL —
+// a non-empty string, which wins `nonEmptyString` at position 1 and means
+// `row.product_name` (i.e. `cp.title`) is never consulted.
+//
+// The real titles were there the whole time. Probed 6 affected rows across 6
+// brands: every one renders a proper name on its own PDP —
+// "Complexion Essentials", "Rice 72 Serum", "Hyalu-Cica First Ampoule". So the
+// residue after this fix is expected to be ~0, not 3,952.
+//
+// Fixing the builder's fallback instead would NOT fix this: the chain would
+// then take `externalProductId` and still never reach `cp.title`. The poisoned
+// candidate has to be rejected HERE, where the alternative sources are in hand.
+const URL_SHAPED = /^(https?:)?\/\//i;
+
+function firstUsableTitle(...values) {
+  for (const value of values) {
+    const text = String(value ?? '').trim();
+    // Skip empty AND URL-shaped candidates, rather than stopping at the first
+    // non-empty one. Deliberately not skipping `ext_*`/`sig_*` ids too: those
+    // are a different (and much rarer) fallback, and widening this predicate
+    // without measuring it first is how a title gate starts dropping real
+    // products whose name legitimately begins with an id.
+    if (text && !URL_SHAPED.test(text)) return text;
+  }
+  return '';
+}
+
 function safeJsonObject(value) {
   return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
 }
@@ -323,7 +359,7 @@ function buildProductEntityIndexFeedItem(row, env = process.env) {
   );
   const productEntityId = nonEmptyString(row.product_entity_id, row.sellable_item_group_id);
   if (!/^sig_[a-z0-9]+$/i.test(productEntityId) || !sourceProductId) return null;
-  const title = nonEmptyString(product.title, product.name, row.product_name, row.title, seedData.title, snapshot.title);
+  const title = firstUsableTitle(product.title, product.name, row.product_name, row.title, seedData.title, snapshot.title);
   // Amount and currency must come from the same source: the joined best-offer
   // row when present, else the seed-derived product. No cross-source mixing
   // and no currency default (the INR-served-as-USD class).
@@ -792,6 +828,7 @@ async function getProductEntityIndexFeed(payload = {}, deps = {}) {
 
 module.exports = {
   getProductEntityIndexFeed,
+  firstUsableTitle,
   buildProductEntityIndexFeedItem,
   // Exported for the cursor-validation tests. `getProductEntityIndexFeed`
   // itself needs a live DB, so the malformed-cursor guard is unreachable from

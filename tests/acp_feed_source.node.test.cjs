@@ -189,8 +189,8 @@ test('test/demo merchants are dropped even when the SQL gate let them through', 
       logger: { info: (meta, msg) => logged.push({ meta, msg }) },
       getProductEntityIndexFeed: async () => ({
         products: [
-          { product_entity_id: 'sig_aaa111', merchant_id: 'merch_real', price: 12, currency: 'USD' },
-          { product_entity_id: 'sig_bbb222', merchant_id: rig, price: 1.69, currency: 'USD' },
+          { title: 'A Real Product Name', product_entity_id: 'sig_aaa111', merchant_id: 'merch_real', price: 12, currency: 'USD' },
+          { title: 'A Real Product Name', product_entity_id: 'sig_bbb222', merchant_id: rig, price: 1.69, currency: 'USD' },
         ],
       }),
     },
@@ -208,8 +208,8 @@ test('the env escape hatch can exclude a newly-spotted rig without a deploy', as
       env: { PIVOTA_TEST_MERCHANT_IDS: 'merch_new_rig' },
       getProductEntityIndexFeed: async () => ({
         products: [
-          { product_entity_id: 'sig_aaa111', merchant_id: 'merch_real', price: 9, currency: 'USD' },
-          { product_entity_id: 'sig_bbb222', merchant_id: 'merch_new_rig', price: 9, currency: 'USD' },
+          { title: 'A Real Product Name', product_entity_id: 'sig_aaa111', merchant_id: 'merch_real', price: 9, currency: 'USD' },
+          { title: 'A Real Product Name', product_entity_id: 'sig_bbb222', merchant_id: 'merch_new_rig', price: 9, currency: 'USD' },
         ],
       }),
     },
@@ -224,7 +224,7 @@ test('a rig-free page logs nothing — the log line means something', async () =
     {
       env: {},
       logger: { info: () => logged.push(1) },
-      getProductEntityIndexFeed: async () => ({ products: [{ product_entity_id: 'sig_aaa111', merchant_id: 'merch_real', price: 9, currency: 'USD' }] }),
+      getProductEntityIndexFeed: async () => ({ products: [{ title: 'A Real Product Name', product_entity_id: 'sig_aaa111', merchant_id: 'merch_real', price: 9, currency: 'USD' }] }),
     },
   );
   assert.equal(logged.length, 0);
@@ -358,10 +358,10 @@ test('the price gate is applied BY THE LANE, not left to the caller', () => {
       env: {},
       getProductEntityIndexFeed: async () => ({
         products: [
-          { product_entity_id: 'sig_priced', merchant_id: 'm', price: 12, currency: 'USD' },
-          { product_entity_id: 'sig_noprice', merchant_id: 'm', price: null, currency: null },
-          { product_entity_id: 'sig_nocur', merchant_id: 'm', price: 12, currency: null },
-          { product_entity_id: 'sig_zero', merchant_id: 'm', price: 0, currency: 'USD' },
+          { title: 'A Real Product Name', product_entity_id: 'sig_priced', merchant_id: 'm', price: 12, currency: 'USD' },
+          { title: 'A Real Product Name', product_entity_id: 'sig_noprice', merchant_id: 'm', price: null, currency: null },
+          { title: 'A Real Product Name', product_entity_id: 'sig_nocur', merchant_id: 'm', price: 12, currency: null },
+          { title: 'A Real Product Name', product_entity_id: 'sig_zero', merchant_id: 'm', price: 0, currency: 'USD' },
         ],
       }),
     },
@@ -379,8 +379,8 @@ test('dropping unquotable items is logged, so a silent feed shrink is visible', 
       logger: { info: (meta) => logged.push(meta) },
       getProductEntityIndexFeed: async () => ({
         products: [
-          { product_entity_id: 'sig_aaa', merchant_id: 'm', price: 5, currency: 'USD' },
-          { product_entity_id: 'sig_bbb', merchant_id: 'm', price: null, currency: null },
+          { title: 'A Real Product Name', product_entity_id: 'sig_aaa', merchant_id: 'm', price: 5, currency: 'USD' },
+          { title: 'A Real Product Name', product_entity_id: 'sig_bbb', merchant_id: 'm', price: null, currency: null },
         ],
       }),
     },
@@ -484,8 +484,8 @@ test('a lane row with no resolvable signature is dropped, not published dead', a
       logger: { warn: (meta) => logged.push(meta) },
       getProductEntityIndexFeed: async () => ({
         products: [
-          { product_entity_id: 'sig_ok111', merchant_id: 'm', price: 5, currency: 'USD' },
-          { product_entity_id: 'ext_not_a_sig', merchant_id: 'm', price: 5, currency: 'USD' },
+          { title: 'A Real Product Name', product_entity_id: 'sig_ok111', merchant_id: 'm', price: 5, currency: 'USD' },
+          { title: 'A Real Product Name', product_entity_id: 'ext_not_a_sig', merchant_id: 'm', price: 5, currency: 'USD' },
           { merchant_id: 'm', price: 5, currency: 'USD' },
         ],
       }),

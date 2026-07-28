@@ -82,7 +82,7 @@ function isLinkableFeedProduct(product) {
  * @param {object}   [opts.env]    Threaded to `isTestMerchantId` so the no-deploy
  *   rig escape hatch keeps working. Defaulting it here rather than threading it
  *   is a silent disablement, not a tidy-up.
- * @returns {{items: Array<object>, dropped: {rig: number, unlinkable: number, unquotable: number}}}
+ * @returns {{items: Array<object>, dropped: {rig: number, unlinkable: number, untitled: number, unquotable: number}}}
  */
 function gatePublicFeedRows(rows, { project, logger, lane = 'unknown', env = process.env } = {}) {
   // `source` is emitted ALONGSIDE `lane`, not instead of it. The index lane's
@@ -111,14 +111,32 @@ function gatePublicFeedRows(rows, { project, logger, lane = 'unknown', env = pro
   // 3. LINK SHAPE. The gate the connected lane never had.
   const linkable = projected.filter(isLinkableFeedProduct);
 
-  // 4. PRICE. Shopping ingesters REJECT price-less items, and a rejected item
+  // 4. TITLE. A feed item whose name is missing — or is a URL that slipped
+  //    through the lane's own chain — is not publishable: `title` is the field
+  //    an ingester displays as the product name, so a URL there is worse than
+  //    an absent row. #1852 measured 3,952 of 4,375 live rows (90%) publishing
+  //    the PDP URL as their title.
+  //
+  //    THIS COUNTER IS THE RESIDUE METRIC. The lane fix reaches the real title
+  //    via `cp.title`, and probing 6 affected rows across 6 brands found a
+  //    proper name on every one, so this is expected to drop ~0. If it drops
+  //    thousands in prod, the premise was wrong and the corpus genuinely lacks
+  //    titles — which is a data-authoring problem, not a mapper one. Watch
+  //    `reason: 'no_usable_title'` after deploy rather than assuming.
+  const titled = linkable.filter((p) => {
+    const t = String(p?.title ?? '').trim();
+    return t !== '' && !/^(https?:)?\/\//i.test(t);
+  });
+
+  // 5. PRICE. Shopping ingesters REJECT price-less items, and a rejected item
   //    costs the whole submission's credibility where an absent one costs a row.
-  const items = linkable.filter(isQuotableFeedItem);
+  const items = titled.filter(isQuotableFeedItem);
 
   const dropped = {
     rig: input.length - withoutRigs.length,
     unlinkable: projected.length - linkable.length,
-    unquotable: linkable.length - items.length,
+    untitled: linkable.length - titled.length,
+    unquotable: titled.length - items.length,
   };
 
   // `logger?.info?.(...)` — BOTH optional links matter, and my first fix only
@@ -143,6 +161,10 @@ function gatePublicFeedRows(rows, { project, logger, lane = 'unknown', env = pro
       // 17 of 17 rows in production.
       logger?.warn?.({ ...logBase, dropped: dropped.unlinkable, reason: 'unresolvable_pdp_id' },
         'acp feed: dropped items whose PDP link would not resolve');
+    }
+    if (dropped.untitled) {
+      logger?.warn?.({ ...logBase, dropped: dropped.untitled, reason: 'no_usable_title' },
+        'acp feed: dropped items with no usable title (a URL is not a name)');
     }
     if (dropped.unquotable) {
       logger?.info?.({ ...logBase, dropped: dropped.unquotable, reason: 'not_price_quotable' },

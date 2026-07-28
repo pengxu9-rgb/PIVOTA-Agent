@@ -316,3 +316,52 @@ test('the latch pattern is ANCHORED, so an embedded query string cannot trip it'
     true,
   );
 });
+
+test('#1852: a URL-poisoned title candidate is skipped so cp.title is reached', () => {
+  // The chain is `firstUsableTitle(product.title, product.name, row.product_name, …)`.
+  // `buildExternalSeedProduct` ends its own fallback with `|| canonicalUrl`, so
+  // for a seed with no authored title `product.title` arrives ALREADY holding
+  // the PDP URL — non-empty, so it won at position 1 and `row.product_name`
+  // (cp.title) was never consulted. The data was there the whole time: 6 of 6
+  // probed rows render a real name on their own PDP.
+  //
+  // Fixing the builder instead would NOT fix this — the chain would take
+  // `externalProductId` next and still never reach cp.title.
+  const { firstUsableTitle } = require('../src/services/productEntityIndexFeed');
+  const URL = 'https://agent.pivota.cc/products/sig_2fb79a1a97d616e538602261cb62d00f';
+  assert.equal(firstUsableTitle(URL, '', 'Complexion Essentials'), 'Complexion Essentials');
+  assert.equal(firstUsableTitle('//agent.pivota.cc/p/1', 'Rice 72 Serum'), 'Rice 72 Serum');
+  assert.equal(firstUsableTitle('Hyalu-Cica First Ampoule', URL), 'Hyalu-Cica First Ampoule');
+  assert.equal(firstUsableTitle(URL), '', 'a URL alone yields no title, never the URL');
+  assert.equal(firstUsableTitle('', null, undefined), '');
+  // Anchored, not a substring match.
+  assert.equal(firstUsableTitle('Serum (see https://x.com)'), 'Serum (see https://x.com)');
+});
+
+test('#1852 BEHAVIOURAL: the lane BUILDER reaches cp.title past a URL-poisoned candidate', () => {
+  // The unit test above exercises `firstUsableTitle` in isolation, and a mutant
+  // that reverts the CALL SITE back to `nonEmptyString` survived it — nothing
+  // asserted the builder actually uses the new helper. Same shape as the #1848
+  // call-site gap: a helper nothing calls is a success signal that means
+  // nothing.
+  //
+  // So drive the real `buildProductEntityIndexFeedItem` with the exact shape
+  // that produced the live defect: no authored title anywhere, a canonical_url
+  // that `buildExternalSeedProduct` falls back to, and the real name sitting in
+  // `product_name` (cp.title) further down the chain.
+  const { buildProductEntityIndexFeedItem } = require('../src/services/productEntityIndexFeed');
+  const item = buildProductEntityIndexFeedItem({
+    product_entity_id: 'sig_abc123',
+    source_product_id: 'ext_x1',
+    canonical_url: 'https://agent.pivota.cc/products/sig_abc123',
+    product_name: 'Complexion Essentials',
+    price_amount: 118,
+    price_currency: 'USD',
+    merchant_id: 'external_seed',
+  });
+  assert.ok(item, 'the row must still build');
+  assert.equal(item.title, 'Complexion Essentials',
+    'the builder must skip the URL candidate and reach cp.title — this is the 90% defect');
+  assert.notEqual(item.title, item.canonical_url);
+  assert.ok(!String(item.title).startsWith('http'), 'no feed item may carry a URL as its name');
+});
