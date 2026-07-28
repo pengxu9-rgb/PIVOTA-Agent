@@ -37,7 +37,10 @@ const vertexGemini = require('../src/llm/vertexGemini');
 // The REAL classifier, imported — not a copy. An earlier revision duplicated the
 // predicate here and guarded the copy with a source-substring test; importing it
 // removes the drift risk entirely and means these cases assert shipped behaviour.
-const { isCredentialFailureReason } = require('../scripts/product_intel_pilot_compare');
+const {
+  isCredentialFailureReason,
+  shouldFailForUnusableGemini,
+} = require('../scripts/product_intel_pilot_compare');
 
 const SOURCE = path.join(__dirname, '..', 'scripts', 'product_intel_pilot_compare.js');
 
@@ -124,14 +127,44 @@ describe('vertex credential skip is fatal', () => {
     expect(isFatal(row('missing_gemini_api_key', false), {})).toBe(false);
   });
 
-  // The classifier itself is imported, so it cannot drift. What a substring check
-  // still buys is that the SHIPPED guard actually consults it and actually exits
-  // non-zero — neither of which is observable from the exported function.
-  test('the shipped guard uses the classifier and exits non-zero', () => {
-    const src = fs.readFileSync(SOURCE, 'utf8');
-    expect(src).toContain('isCredentialFailureReason(row.gemini.reason)');
-    expect(src).toContain('vertexGemini.vertexEnabled() && !args.skipGemini && credentialSkips.length');
-    expect(src).toContain('VERTEX_CREDENTIALS_UNAVAILABLE');
-    expect(src).toContain('process.exitCode = 1');
+  // NO SUBSTRING ASSERTIONS. An earlier revision pinned the guard with
+  // `expect(src).toContain(...)`, and a review proved that wrapping the shipped
+  // guard in `if (false && …)` left every test here green while the CLI exited 0.
+  // A grep cannot see behaviour. The decision is now an exported function, tested
+  // directly below, and the end-to-end exit codes live in
+  // tests/product_intel_pilot_compare_cli_exit.test.js — which spawns main().
+  describe('shouldFailForUnusableGemini (the shipped decision)', () => {
+    const geminiRow = (seedAvailable) => ({
+      gemini: {
+        skipped: false,
+        model: 'deterministic-human-standard-rewrite',
+        gemini_seed_available: seedAvailable,
+      },
+    });
+    const realGeminiRow = { gemini: { skipped: false, model: 'gemini-3-flash-preview' } };
+
+    test('no row got a Gemini draft => fail', () => {
+      expect(shouldFailForUnusableGemini([geminiRow(false)], { vertexEnabled: true })).toBe(true);
+    });
+
+    test('ALL not ANY — one healthy row is enough to pass', () => {
+      expect(
+        shouldFailForUnusableGemini([geminiRow(false), realGeminiRow], { vertexEnabled: true }),
+      ).toBe(false);
+    });
+
+    test('the rewrite counts ONLY when it had a real seed', () => {
+      expect(shouldFailForUnusableGemini([geminiRow(true)], { vertexEnabled: true })).toBe(false);
+      expect(shouldFailForUnusableGemini([geminiRow(false)], { vertexEnabled: true })).toBe(true);
+    });
+
+    test('vertex off, operator skip, and an empty case set all pass', () => {
+      expect(shouldFailForUnusableGemini([geminiRow(false)], { vertexEnabled: false })).toBe(false);
+      expect(
+        shouldFailForUnusableGemini([geminiRow(false)], { vertexEnabled: true, skipGemini: true }),
+      ).toBe(false);
+      expect(shouldFailForUnusableGemini([], { vertexEnabled: true })).toBe(false);
+      expect(shouldFailForUnusableGemini([{}], { vertexEnabled: true })).toBe(false);
+    });
   });
 });

@@ -82,11 +82,25 @@ jobs:
       #   * the "Verify Vertex credentials" step below catches an EMPTY or
       #     malformed credential, or one whose project_id disagrees with
       #     GOOGLE_CLOUD_PROJECT, BEFORE any work is done;
-      #   * product_intel_pilot_compare.js exits non-zero at the end when the
-      #     credential turned out to be unusable AT CALL TIME — a revoked key, a
-      #     disabled service account, an ADC that resolves but cannot mint a
-      #     token. The verify step cannot see any of those.
-      # Pinned by tests/product_intel_pilot_compare_vertex_skip_fatal.test.js.
+      #   * product_intel_pilot_compare.js exits non-zero at the end when NOT ONE
+      #     case received a Gemini draft — which is what a revoked key, a disabled
+      #     service account, or an ADC that resolves but cannot mint a token
+      #     actually look like at call time. The verify step cannot see any of
+      #     those, because the credential is present and well-formed.
+      #
+      # The check is "did Gemini work at all", NOT "did some row report a
+      # credential error". A call-time failure produces no error on the row: both
+      # model stages throw, a LOCAL deterministic rewrite rescues the row, and it
+      # comes back skipped:false. Two earlier attempts gated on skip reasons and
+      # were structurally unreachable — verified by spawning the CLI with a key
+      # that parses but is not a real account (exit 0, gemini_completed:N).
+      #
+      # Pinned by tests/product_intel_pilot_compare_cli_exit.test.js, which SPAWNS
+      # the CLI and asserts exit codes — including the positive control that a
+      # healthy run still exits 0. That control is load-bearing: a healthy run
+      # ALSO reports model "deterministic-human-standard-rewrite" (the rewrite is
+      # applied on top of a real draft), so a guard keyed on the model name would
+      # fail this workflow. Confirmed against run 30334494514's artifact.
       VERTEX_AI_ENABLED: "true"
       GOOGLE_CLOUD_PROJECT: project-f165a637-145f-4de2-89d
       # NOT us-central1: gemini-3-flash-preview (this workflow's default model)
