@@ -722,6 +722,14 @@ test('every baked-in rig id is blocked by the gate', () => {
 // This is the test that pins the no-POLICY_VERSION-bump argument: an
 // already-blocked rig must keep reporting its REAL reason, so output stays
 // byte-identical on every row that exists in prod today.
+// Guards every negative assertion below: `!includes(undefined)` is vacuously
+// true, so if TEST_MERCHANT_EXCLUDED were ever dropped from REASON_CODES these
+// would pass while proving nothing. The Python twin raises AttributeError and
+// is safe by construction; this keeps the JS suite equally strict.
+test('TEST_MERCHANT_EXCLUDED exists in the reason-code vocabulary', () => {
+  assert.equal(REASON_CODES.TEST_MERCHANT_EXCLUDED, 'TEST_MERCHANT_EXCLUDED');
+});
+
 test('already-blocked rig keeps its real reason, not TEST_MERCHANT_EXCLUDED', () => {
   const trust = call({
     product: activeMerchantProduct({
@@ -756,4 +764,20 @@ test('env hatch does NOT affect the trust gate (twins share this table)', () => 
     if (prev === undefined) delete process.env.PIVOTA_TEST_MERCHANT_IDS;
     else process.env.PIVOTA_TEST_MERCHANT_IDS = prev;
   }
+});
+
+// The transition the no-POLICY_VERSION-bump argument assumes is EMPTY in prod,
+// made explicit so the assumption is testable rather than implied.
+// identity_status='review_required' shadows every row — there is no first-party
+// or observed-seller exemption from it (unlike the identity-COVERAGE gates), so
+// it is the one reachable path by which a rig could have been 'shadow' rather
+// than 'blocked'. Census 2026-07-28, grouped by serving_decision (not filtered
+// to 'blocked'): all 1,561 rig rows are 'blocked' — zero public AND zero shadow.
+test('rig in the shadow lane is blocked', () => {
+  const trust = call({
+    product: activeMerchantProduct({ merchant_id: 'merch_test_ownist_001' }),
+    identity: approvedIdentity({ identity_status: 'review_required' }),
+  });
+  assert.equal(trust.serving_decision, 'blocked');
+  assert.ok(trust.serving_reason_codes.includes(REASON_CODES.TEST_MERCHANT_EXCLUDED));
 });

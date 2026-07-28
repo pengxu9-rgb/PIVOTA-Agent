@@ -17,11 +17,22 @@
 //
 // Versioning: POLICY_VERSION must bump on any change to derivation LOGIC — the
 // mapping from inputs to a decision. It must NOT bump when only an INPUT the
-// current logic cannot reach changes, because the backfill uses POLICY_VERSION
-// to detect stale rows and the UPSERT rewrites on a version mismatch: a
-// cosmetic bump costs a full ~14k-row rewrite and, worse, re-opens the
+// current logic cannot reach changes.
+//
+// CORRECTION 2026-07-28: this paragraph used to say "the backfill uses
+// POLICY_VERSION to detect stale rows". It does not, and the error misled a
+// reviewer into arguing a bump was mandatory. The backfill selects by
+// `ORDER BY updated_at ASC NULLS FIRST` with NO policy_version predicate — it
+// re-derives every row every pass. POLICY_VERSION appears only as one of five
+// OR'd terms in the UPSERT write-guard (catalogRowTrustUpserter.js), so it is a
+// write-trigger and an observability tag, never a row selector.
+//
+// The cost of a cosmetic bump is therefore one extra UPDATE per row, once — not
+// re-derivation — plus, and this is the part that matters, it re-opens the
 // split-brain window where the two services disagree on the version until both
-// are deployed.
+// are deployed, and the updated_at churn defeats the cron's stalest-first
+// ordering. The upside forgone is forensic: rows derived before and after the
+// change become indistinguishable in the table.
 //
 // Worked example — P3, 2026-07-25. It changed how pdp_route_resolvable is
 // COMPUTED (pdpRenderability learned the minted attached_product_key lane,
