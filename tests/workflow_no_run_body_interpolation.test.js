@@ -219,8 +219,11 @@ function scan(file) {
 }
 
 /**
- * Every `${IN_*}` in a run body must be declared in the SAME step's `env:`
- * (or the job's). This is the ONE property the rewrite depends on and nothing
+ * Every `${IN_*}` in a run body must resolve to an `env:` entry on its own step
+ * OR on its job — both are genuinely defined at runtime, so accepting either is
+ * correct; the earlier "the SAME step" wording overstated the guarantee, and an
+ * overstated name is how the next person mis-scopes a change. This is the ONE
+ * property the rewrite depends on and nothing
  * else checks: `${IN_MARKT:-}` — one transposed letter — silently passes
  * `--market ""` to a production script, and the gate, `bash -n` and js-yaml are
  * all green on it. The `:-` that makes the refs `set -u`-safe is exactly what
@@ -239,11 +242,17 @@ function envRefsResolve(file) {
   let inEnv = false;
   let envIndent = -1;
   let envIsJob = false;
+  let jobsIndent = -1;   // indent of the `jobs:` key itself
 
   const flushCheck = (body, where) => {
-    for (const m of body.matchAll(/\$\{(IN_[A-Z0-9_]+)(?::-)?\}/g)) {
+    // `(?::-[^}]*)?` — NOT `(?::-)?`. Requiring the brace immediately after `:-`
+    // let `${IN_MARKT:-us}` escape the check entirely, and a non-empty default is
+    // the obvious next thing someone writes — precisely the typo case this exists
+    // to catch. All 105 today are `${IN_X:-}`; that is not a reason to only match
+    // that form.
+    for (const m of body.matchAll(/\$\{(IN_[A-Z0-9_]+)(?::-[^}]*)?\}/g)) {
       if (!stepEnv.has(m[1]) && !jobEnv.has(m[1])) {
-        problems.push(`${where}: \${${m[1]}} is not declared in this step's env:`);
+        problems.push(`${where}: \${${m[1]}} is declared in neither the step's nor the job's env:`);
       }
     }
   };
@@ -254,7 +263,14 @@ function envRefsResolve(file) {
     const ind = indentOf(line);
     const t = line.trim();
 
-    if (/^jobs:\s*$/.test(t)) { jobEnv = new Set(); }
+    if (/^jobs:\s*$/.test(t)) { jobEnv = new Set(); jobsIndent = ind; }
+    // A NEW JOB resets job-scoped env. Resetting only at the `jobs:` key meant
+    // once per FILE, so job A's job-level env resolved job B's references —
+    // four workflows here already have multiple jobs with job-level env.
+    else if (jobsIndent >= 0 && ind > jobsIndent && /^[A-Za-z0-9_-]+:\s*$/.test(t)
+             && !inEnv && (stepIndent === -1 || ind <= jobsIndent + 2)) {
+      jobEnv = new Set(); stepEnv = new Set(); stepIndent = -1;
+    }
     // a new step resets step-scoped env
     if (/^-\s+(name|uses|run):/.test(t)) { stepEnv = new Set(); stepIndent = ind; inEnv = false; }
     if (/^env:\s*$/.test(t)) {
@@ -315,7 +331,7 @@ describe('GitHub Actions: no free-form interpolation into run: bodies', () => {
   );
 
   test.each(files.map((f) => [path.basename(f), f]))(
-    '%s: every ${IN_*} resolves to an env: entry in the same step',
+    '%s: every ${IN_*} resolves to a step-level or job-level env: entry',
     (_name, file) => {
       expect(envRefsResolve(file)).toEqual([]);
     },
