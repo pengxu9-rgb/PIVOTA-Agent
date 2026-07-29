@@ -2145,6 +2145,64 @@ describe('external seed product detail hydration', () => {
     expect(res.body.details.index_row_found).toBeUndefined();
   });
 
+  test('excluded-source probe only runs for callers that opt in via probeExcluded', async () => {
+    const { db, debug } = loadServerWithDb({
+      PIVOTA_API_BASE: 'https://backend.test',
+      PIVOTA_API_KEY: 'test-token',
+    });
+
+    const excludedProbeRow = {
+      content_key: 'ck_probe_optin',
+      product_key: 'prod::merch_probe::shopify::optin-1',
+      pivota_signature_id: 'sig_probe_optin',
+      sync_status: 'live',
+      pdp_lifecycle_stage: 'candidate',
+      not_test_merchant: false,
+      merchant_status: 'active',
+      merchant_has_stores: true,
+      merchant_has_active_platform_store: true,
+    };
+
+    db.query.mockImplementation((sql) => {
+      const text = String(sql || '');
+      if (text.includes('pdp_serving_eligibility_excluded_source_probe')) {
+        return Promise.resolve({ rows: [excludedProbeRow] });
+      }
+      return Promise.resolve({ rows: [] });
+    });
+
+    // Default (no flag): only the readiness_tier / serving_eligible flags are
+    // consumed downstream, for which the settled refusal is behaviorally
+    // identical to null — the probe must NOT spend a query.
+    const withoutFlag = await debug.fetchPdpServingEligibilityFromDb({
+      pivotaSignatureId: 'sig_probe_optin',
+    });
+    expect(withoutFlag).toBeNull();
+    expect(
+      db.query.mock.calls.filter(([sql]) =>
+        String(sql || '').includes('pdp_serving_eligibility_excluded_source_probe'),
+      ),
+    ).toHaveLength(0);
+
+    // Opted in (the serving-eligibility gate): the probe runs and returns the
+    // settled refusal.
+    const withFlag = await debug.fetchPdpServingEligibilityFromDb({
+      pivotaSignatureId: 'sig_probe_optin',
+      probeExcluded: true,
+    });
+    expect(withFlag).toMatchObject({
+      serving_eligible: false,
+      index_row_found: true,
+      blocker_code: 'test_merchant_excluded',
+      content_key: 'ck_probe_optin',
+    });
+    expect(
+      db.query.mock.calls.filter(([sql]) =>
+        String(sql || '').includes('pdp_serving_eligibility_excluded_source_probe'),
+      ),
+    ).toHaveLength(1);
+  });
+
   test('get_pdp_v2 serving_eligible_only still blocks active external seed rows marked non-core', async () => {
     const { app, db } = loadServerWithDb({
       PIVOTA_API_BASE: 'https://backend.test',

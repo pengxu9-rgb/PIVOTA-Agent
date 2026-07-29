@@ -8001,6 +8001,13 @@ async function fetchPdpServingEligibilityFromDb(args = {}) {
   const pivotaSignatureId = String(args.pivotaSignatureId || '').trim();
   const merchantId = String(args.merchantId || '').trim();
   const productId = String(args.productId || '').trim();
+  // Opt-in: only the serving-eligibility gate needs the settled-vs-missing
+  // distinction the excluded-source probe provides. Every other caller reads
+  // just readiness_tier / serving_eligible === true, for which the settled
+  // refusal is behaviorally identical to null — running the probe there would
+  // spend a DB round-trip per miss (including crawler garbage ids) for
+  // nothing.
+  const probeExcluded = args.probeExcluded === true;
   if (!contentKey && !pivotaSignatureId && (!merchantId || !productId)) return null;
 
   try {
@@ -8068,6 +8075,7 @@ async function fetchPdpServingEligibilityFromDb(args = {}) {
     );
     const row = Array.isArray(result?.rows) ? result.rows[0] : null;
     if (row) return normalizePdpServingEligibilityRow(row);
+    if (!probeExcluded) return null;
 
     // The primary read filters through activeCatalogProductSourceWhere, so a
     // deliberately excluded source (test-merchant rig, retired merchant, dead
@@ -8117,6 +8125,7 @@ async function fetchPdpServingEligibilityFromDb(args = {}) {
         ORDER BY
           CASE WHEN $1::text <> '' AND cp.content_key = $1 THEN 0 ELSE 1 END,
           CASE WHEN $4::text <> '' AND cp.pivota_signature_id = $4 THEN 0 ELSE 1 END,
+          CASE WHEN cp.source_system = 'external_product_seeds_mirror_v1' THEN 0 ELSE 1 END,
           cp.updated_at DESC NULLS LAST,
           cp.product_key ASC
         LIMIT 1
@@ -41815,6 +41824,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                     pivotaSignatureId: requestedPivotaSignatureId || null,
                     merchantId: canonicalProductRef?.merchant_id,
                     productId: canonicalProductRef?.product_id,
+                    // This gate is the one caller that 404s on the result, so it
+                    // is the one place the settled-vs-missing split matters.
+                    probeExcluded: true,
                   });
             markPdpV2Phase('serving_eligibility_gate', servingEligibilityStartedAt);
             // Fix A — read-time identity reconciliation (flag-gated, default off).
@@ -51490,6 +51502,7 @@ module.exports._debug = {
   getSearchProductServingEligibility,
   shouldRequirePdpServingEligible,
   shouldAllowPublishedPdpMissingQualitySnapshot,
+  fetchPdpServingEligibilityFromDb,
   getSearchQualityContractHardConstraintResult,
   buildSearchQualityTierCounts,
   projectSearchQualityContractForMetadata,
