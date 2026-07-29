@@ -7592,6 +7592,12 @@ function buildExcludedCatalogSourcePdpServingEligibility(row) {
   if (row.merchant_has_stores === true && row.merchant_has_active_platform_store !== true) {
     causes.push('no_active_platform_store');
   }
+  // No cause we can name means we cannot confirm the exclusion was deliberate:
+  // either the row became active between the primary read and this probe, or
+  // activeCatalogProductSourceWhere gained a leg these checks don't mirror yet.
+  // Both must fail TRANSIENT (null → the missing flavor), never settled — a
+  // false settled refusal 404s a servable product and gets cached.
+  if (causes.length === 0) return null;
   return {
     catalog_row_found: true,
     content_key: firstNonEmptyString(row.content_key) || null,
@@ -7604,9 +7610,7 @@ function buildExcludedCatalogSourcePdpServingEligibility(row) {
     index_row_found: true,
     pipeline_stage: null,
     blocker_code: isTestMerchantExcluded ? 'test_merchant_excluded' : 'catalog_source_excluded',
-    blocker_detail: `catalog row exists but its source is excluded from active serving (${
-      causes.join('; ') || 'active_source_predicate_failed'
-    })`,
+    blocker_detail: `catalog row exists but its source is excluded from active serving (${causes.join('; ')})`,
     content_quality_score: null,
     active_external_seed_source_match: false,
     eligibility_override_reason: null,

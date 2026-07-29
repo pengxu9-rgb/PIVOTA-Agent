@@ -2044,6 +2044,107 @@ describe('external seed product detail hydration', () => {
     expect(res.body.modules).toBeUndefined();
   });
 
+  test('get_pdp_v2 serving_eligible_only keeps a FAILING excluded-source probe on the fail-closed flavor', async () => {
+    const { app, db } = loadServerWithDb({
+      PIVOTA_API_BASE: 'https://backend.test',
+      PIVOTA_API_KEY: 'test-token',
+    });
+
+    // The outage path: primary read resolves empty (e.g. replica lag) and the
+    // probe itself errors. The catch must swallow BOTH queries and return the
+    // fail-closed missing flavor — a probe error must never mint the settled
+    // shape, or an outage could 404-and-cache healthy products.
+    db.query.mockImplementation((sql) => {
+      const text = String(sql || '');
+      if (text.includes('pdp_serving_eligibility_excluded_source_probe')) {
+        return Promise.reject(new Error('connection terminated unexpectedly'));
+      }
+      return Promise.resolve({ rows: [] });
+    });
+
+    const res = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'get_pdp_v2',
+        payload: {
+          product_ref: {
+            merchant_id: 'merch_retired_pilot',
+            product_id: 'sig_probe_outage',
+          },
+          options: {
+            serving_eligible_only: true,
+          },
+        },
+      })
+      .expect(404);
+
+    expect(res.body).toMatchObject({
+      error: 'PRODUCT_NOT_SERVABLE',
+      details: {
+        reason: 'serving_eligibility_missing',
+        serving_eligible: false,
+      },
+    });
+    expect(res.body.details.index_row_found).toBeUndefined();
+  });
+
+  test('get_pdp_v2 serving_eligible_only never settles a probe row with no nameable exclusion cause', async () => {
+    const { app, db } = loadServerWithDb({
+      PIVOTA_API_BASE: 'https://backend.test',
+      PIVOTA_API_KEY: 'test-token',
+    });
+
+    // Race/drift guard: the probe finds a row that passes every exclusion
+    // cause check (row became active between the two reads, or the predicate
+    // gained a leg the cause checks don't mirror yet). With no nameable cause
+    // the refusal cannot be confirmed deliberate — it must fail TRANSIENT
+    // (the missing flavor), never settled.
+    const fullyActiveProbeRow = {
+      content_key: 'ck_raced_active_row',
+      product_key: 'prod::merch_raced::shopify::raced-1',
+      pivota_signature_id: 'sig_raced_active_row',
+      sync_status: 'live',
+      pdp_lifecycle_stage: 'published',
+      not_test_merchant: true,
+      merchant_status: 'active',
+      merchant_has_stores: true,
+      merchant_has_active_platform_store: true,
+    };
+
+    db.query.mockImplementation((sql) => {
+      const text = String(sql || '');
+      if (text.includes('pdp_serving_eligibility_excluded_source_probe')) {
+        return Promise.resolve({ rows: [fullyActiveProbeRow] });
+      }
+      return Promise.resolve({ rows: [] });
+    });
+
+    const res = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'get_pdp_v2',
+        payload: {
+          product_ref: {
+            merchant_id: 'merch_raced',
+            product_id: 'sig_raced_active_row',
+          },
+          options: {
+            serving_eligible_only: true,
+          },
+        },
+      })
+      .expect(404);
+
+    expect(res.body).toMatchObject({
+      error: 'PRODUCT_NOT_SERVABLE',
+      details: {
+        reason: 'serving_eligibility_missing',
+        serving_eligible: false,
+      },
+    });
+    expect(res.body.details.index_row_found).toBeUndefined();
+  });
+
   test('get_pdp_v2 serving_eligible_only still blocks active external seed rows marked non-core', async () => {
     const { app, db } = loadServerWithDb({
       PIVOTA_API_BASE: 'https://backend.test',
