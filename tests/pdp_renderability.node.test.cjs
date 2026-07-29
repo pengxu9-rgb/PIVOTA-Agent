@@ -2,8 +2,8 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const {
-  MERCHANT_SYNCED_LANE_RENDERABLE,
   MERCHANT_SYNCED_PLATFORMS,
+  MERCHANT_SYNCED_RENDERABLE_BY_PLATFORM,
   MINTED_SOURCE_SYSTEM,
   pdpRouteResolvable,
   pdpRouteResolvableFromRow,
@@ -107,8 +107,8 @@ const MATRIX = [
     false,
   ],
   [
-    // MEASURED FALSE, 7/7 HTTP 500 — see MERCHANT_SYNCED_LANE_RENDERABLE. This
-    // was the one arm asserting renderable with no evidence behind it.
+    // MEASURED FALSE, 7/7 HTTP 500 — see MERCHANT_SYNCED_RENDERABLE_BY_PLATFORM.
+    // This was the one arm asserting renderable with no evidence behind it.
     'merchant-synced shopify row with no seed at all',
     {
       merchant_id: 'merch_a',
@@ -147,8 +147,11 @@ const MATRIX = [
     false,
   ],
   [
-    // wix is in MERCHANT_SYNCED_PLATFORMS too and had no case at all —
-    // dropping 'wix' from the set used to pass the entire suite.
+    // MEASURED TRUE 2026-07-29 — the Wix pilot (merch_e68c20b0189746d0)
+    // exercised the content phase end-to-end: 8/8 get_pdp_v2 SUCCESS with real
+    // payloads, 8/8 public PDP HTTP 200 with product JSON-LD. Verdicts are PER
+    // PLATFORM now (MERCHANT_SYNCED_RENDERABLE_BY_PLATFORM); the shopify arms
+    // above keep their own measured False.
     'merchant-synced wix row with no seed at all',
     {
       merchant_id: 'merch_wix',
@@ -157,7 +160,7 @@ const MATRIX = [
       source_product_id: 'wix_12345',
       pdp_seed_route_ok: false,
     },
-    false,
+    true,
   ],
   [
     // isExternalSeedProductId() keys off the id prefix, not the merchant.
@@ -336,16 +339,20 @@ test('the alias is threaded, not hardcoded', () => {
   assert.ok(seedRouteResolvesSql('x').includes('x.source_product_id'));
 });
 
-test('the merchant-synced lane is closed until it is measured', () => {
-  // It asserted renderable=true purely by symmetry with the seed lane, with no
-  // measurement behind it. Measured, 7/7 sampled shopify PDPs returned HTTP
-  // 500 — including under merchants with catalog_merchants.indexable=true.
-  // Re-opening it requires fresh PDP samples AND the same flip in the Python
-  // twin (pivota-backend services/pdp_renderability.py) in one change.
-  assert.equal(
-    MERCHANT_SYNCED_LANE_RENDERABLE,
-    false,
-    'reopening the merchant-synced lane needs measured evidence + the Python twin',
+test('each merchant-synced lane verdict is pinned to its own measurement', () => {
+  // PER-PLATFORM since 2026-07-29, in lockstep with the Python twin
+  // (pivota-backend services/pdp_renderability.py). shopify: measured FALSE,
+  // 7/7 sampled PDPs returned HTTP 500 (2026-07-25), including under merchants
+  // with catalog_merchants.indexable=true — stays closed until a shopify pilot
+  // produces the wix pilot's artifact. wix: measured TRUE by the pilot
+  // (merch_e68c20b0189746d0, 2026-07-29): 8/8 get_pdp_v2 SUCCESS with real
+  // payloads, 8/8 public PDP HTTP 200 with product JSON-LD. Changing either
+  // verdict requires evidence of that same shape PLUS the identical flip in
+  // the Python twin in one change.
+  assert.deepEqual(
+    MERCHANT_SYNCED_RENDERABLE_BY_PLATFORM,
+    { shopify: false, wix: true },
+    'a lane verdict changed without the paired measurement + Python-twin flip',
   );
   for (const platform of MERCHANT_SYNCED_PLATFORMS) {
     assert.equal(
@@ -356,11 +363,15 @@ test('the merchant-synced lane is closed until it is measured', () => {
         sourceProductId: `${platform}_1`,
         seedRouteOk: false,
       }),
-      false,
-      `${platform} must not assert renderable`,
+      MERCHANT_SYNCED_RENDERABLE_BY_PLATFORM[platform],
+      `${platform} must answer exactly its measured verdict`,
     );
   }
-  // Pinned so the set cannot silently shrink while the lane is closed and
-  // become wrong the moment it reopens.
+  // The set is DERIVED from the verdict map; pin the derivation so a platform
+  // added to one but not the other is impossible by construction.
+  assert.deepEqual(
+    [...MERCHANT_SYNCED_PLATFORMS].sort(),
+    Object.keys(MERCHANT_SYNCED_RENDERABLE_BY_PLATFORM).sort(),
+  );
   assert.deepEqual([...MERCHANT_SYNCED_PLATFORMS].sort(), ['shopify', 'wix']);
 });

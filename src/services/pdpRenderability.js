@@ -33,9 +33,9 @@
 //     11/11 sampled minted PDPs hard-500ed; after it, 12/12 sampled minted PDPs
 //     answered 200 with a real title, brand, image and price against prod data,
 //     while 8 mirror / 4 shopify / 3 url_audit controls were byte-identical.
-//   * merchant-synced rows (shopify/wix) were ASSUMED to resolve detail from the
-//     merchant upstream and need no seed. Measured, that is FALSE (7/7 HTTP
-//     500) — see MERCHANT_SYNCED_LANE_RENDERABLE below.
+//   * merchant-synced rows (shopify/wix) resolve detail from the merchant
+//     upstream — or don't. The verdict is PER PLATFORM and measured, never
+//     assumed — see MERCHANT_SYNCED_RENDERABLE_BY_PLATFORM below.
 //   * everything else (url_audit audit-minted rows, brand_authored stubs) has
 //     neither route.
 //
@@ -71,11 +71,12 @@ const MINTED_SOURCE_SYSTEM = 'catalog_enrichment_agent_v1';
 //
 // This set is NARROWER than the platform sets the rest of the stack supports
 // ({shopify, wix, woocommerce, bigcommerce} in the backend's
-// merchant_commerce_readiness / agent_center_sku_match_live services). Moot
-// while the lane is closed (below), load-bearing again the moment it re-opens.
-const MERCHANT_SYNCED_PLATFORMS = new Set(['shopify', 'wix']);
+// merchant_commerce_readiness / agent_center_sku_match_live services). It is
+// LOAD-BEARING since 2026-07-29: the wix half of the lane is open. Derived
+// from the verdict map (as in the Python twin) so membership and verdict can
+// never disagree — declared after the map below, hoisted note only.
 
-// …AND WHETHER THAT LANE RENDERS AT ALL. Answer today: NO.
+// …AND WHETHER EACH PLATFORM'S LANE RENDERS. shopify: NO. wix: YES.
 //
 // The first cut of this predicate assumed "platform has a sync adapter ⇒ the
 // gateway serves detail from the merchant upstream ⇒ renderable", by symmetry
@@ -97,7 +98,26 @@ const MERCHANT_SYNCED_PLATFORMS = new Set(['shopify', 'wix']);
 // true in BOTH twins in one change (here and pivota-backend
 // services/pdp_renderability.py). The right long-term fix is P3 — teach the
 // gateway to resolve these rows — not a wider predicate.
-const MERCHANT_SYNCED_LANE_RENDERABLE = false;
+// Split PER PLATFORM on 2026-07-29, in lockstep with the Python twin
+// (pivota-backend services/pdp_renderability.py, same-day change). The single
+// boolean this replaced was measured FALSE for shopify (7/7 HTTP 500,
+// 2026-07-25) and assumed-by-symmetry for wix. The Wix pilot
+// (merch_e68c20b0189746d0, ~/dev/PIVOTA_SYNC_LANE_PILOT_RUNBOOK.md) then
+// measured the wix lane end-to-end: 8/8 get_pdp_v2 SUCCESS with real payloads,
+// 8/8 public PDP HTTP 200 with product JSON-LD. wix is TRUE on that evidence;
+// shopify stays FALSE until its own pilot produces the same artifact — the
+// TO RE-ENABLE procedure above applies to it verbatim.
+const MERCHANT_SYNCED_RENDERABLE_BY_PLATFORM = Object.freeze({
+  shopify: false, // MEASURED FALSE 2026-07-25: 7/7 HTTP 500
+  wix: true,      // MEASURED TRUE 2026-07-29: pilot 8/8 gateway + 8/8 PDP 200
+});
+// The old single boolean MERCHANT_SYNCED_LANE_RENDERABLE is DELETED, not
+// aliased: an every-lane-open alias would still read `false` today and let a
+// stale reader keep passing while meaning something different. The Python twin
+// deleted its symbol for the same reason — stale readers must break at import.
+const MERCHANT_SYNCED_PLATFORMS = new Set(
+  Object.keys(MERCHANT_SYNCED_RENDERABLE_BY_PLATFORM),
+);
 
 const EXTERNAL_SEED_ID_PREFIXES = ['ext_', 'ext:'];
 
@@ -175,9 +195,10 @@ function seedRouteResolvesSql(cpAlias = 'cp') {
  * only the seed lane. A merchant-synced (shopify/wix) row whose
  * `source_product_id` happened to collide with some seed's
  * `external_product_id` would satisfy it, while `pdpRouteResolvable` returns
- * MERCHANT_SYNCED_LANE_RENDERABLE — measured FALSE. Callers needing the whole
- * predicate in SQL must AND the two, or they sit on the OVER-advertise side,
- * which for a canonical tag means pointing a live page at a URL that 500s.
+ * that platform's MERCHANT_SYNCED_RENDERABLE_BY_PLATFORM verdict. Callers
+ * needing the whole predicate in SQL must AND the two, or they sit on the
+ * OVER-advertise side, which for a canonical tag means pointing a live page
+ * at a URL that 500s.
  *
  * Mirrors the `seedRouted` disjunction verbatim, including that it is evaluated
  * BEFORE the merchant-synced lane, so an `ext_`-prefixed id under a normal
@@ -218,20 +239,39 @@ function pdpRouteResolvable({
   sourceProductId,
   seedRouteOk,
 }) {
+  const loweredPlatform = String(platform ?? '').trim().toLowerCase();
+  if (isSeedRoutedLane({ merchantId, platform, sourceSystem, sourceProductId })) {
+    return Boolean(seedRouteOk);
+  }
+  if (MERCHANT_SYNCED_PLATFORMS.has(loweredPlatform)) {
+    // Per-platform measured verdicts — see MERCHANT_SYNCED_RENDERABLE_BY_PLATFORM.
+    return MERCHANT_SYNCED_RENDERABLE_BY_PLATFORM[loweredPlatform] === true;
+  }
+  return false;
+}
+
+/**
+ * The LANE DISPATCH alone: "is this row's PDP content routed through
+ * external_product_seeds?" — the JS value twin of `seedRoutedLaneSql`, and the
+ * first arm of `pdpRouteResolvable`.
+ *
+ * Exists as its own export because publicReadChainResolvability needs exactly
+ * this question and nothing else. It used to approximate it by calling
+ * pdpRouteResolvable with seedRouteOk pinned true — valid only while every
+ * non-seed arm returned false, which stopped being true the day the wix
+ * verdict flipped: the pin would have read wix merchant rows as "seed-routed",
+ * demanded a seed they don't have, and silently deleted every wix product
+ * from public search.
+ */
+function isSeedRoutedLane({ merchantId, platform, sourceSystem, sourceProductId }) {
   const loweredId = String(sourceProductId ?? '').trim().toLowerCase();
   const loweredPlatform = String(platform ?? '').trim().toLowerCase();
-  const seedRouted =
+  return (
     String(merchantId ?? '') === EXTERNAL_SEED_MERCHANT_ID ||
     loweredPlatform === EXTERNAL_SEED_MERCHANT_ID ||
     SEED_ROUTED_SOURCE_SYSTEMS.has(String(sourceSystem ?? '').trim().toLowerCase()) ||
-    EXTERNAL_SEED_ID_PREFIXES.includes(loweredId.slice(0, 4));
-
-  if (seedRouted) return Boolean(seedRouteOk);
-  if (MERCHANT_SYNCED_PLATFORMS.has(loweredPlatform)) {
-    // MEASURED FALSE — see MERCHANT_SYNCED_LANE_RENDERABLE.
-    return MERCHANT_SYNCED_LANE_RENDERABLE;
-  }
-  return false;
+    EXTERNAL_SEED_ID_PREFIXES.includes(loweredId.slice(0, 4))
+  );
 }
 
 /**
@@ -252,10 +292,11 @@ function pdpRouteResolvableFromRow(row) {
 
 module.exports = {
   EXTERNAL_SEED_MERCHANT_ID,
-  MERCHANT_SYNCED_LANE_RENDERABLE,
+  MERCHANT_SYNCED_RENDERABLE_BY_PLATFORM,
   MERCHANT_SYNCED_PLATFORMS,
   MINTED_SOURCE_SYSTEM,
   SEED_ROUTED_SOURCE_SYSTEMS,
+  isSeedRoutedLane,
   pdpRouteResolvable,
   pdpRouteResolvableFromRow,
   seedRoutedLaneSql,
