@@ -97,7 +97,24 @@ const MERCHANT_SYNCED_PLATFORMS = new Set(['shopify', 'wix']);
 // true in BOTH twins in one change (here and pivota-backend
 // services/pdp_renderability.py). The right long-term fix is P3 — teach the
 // gateway to resolve these rows — not a wider predicate.
-const MERCHANT_SYNCED_LANE_RENDERABLE = false;
+// Split PER PLATFORM on 2026-07-29, in lockstep with the Python twin
+// (pivota-backend services/pdp_renderability.py, same-day change). The single
+// boolean this replaced was measured FALSE for shopify (7/7 HTTP 500,
+// 2026-07-25) and assumed-by-symmetry for wix. The Wix pilot
+// (merch_e68c20b0189746d0, ~/dev/PIVOTA_SYNC_LANE_PILOT_RUNBOOK.md) then
+// measured the wix lane end-to-end: 8/8 get_pdp_v2 SUCCESS with real payloads,
+// 8/8 public PDP HTTP 200 with product JSON-LD. wix is TRUE on that evidence;
+// shopify stays FALSE until its own pilot produces the same artifact — the
+// TO RE-ENABLE procedure above applies to it verbatim.
+const MERCHANT_SYNCED_RENDERABLE_BY_PLATFORM = Object.freeze({
+  shopify: false, // MEASURED FALSE 2026-07-25: 7/7 HTTP 500
+  wix: true,      // MEASURED TRUE 2026-07-29: pilot 8/8 gateway + 8/8 PDP 200
+});
+// Legacy alias: true only if EVERY lane is open (it is not). Kept so stale
+// readers fail loudly in review rather than silently reading a wrong boolean.
+const MERCHANT_SYNCED_LANE_RENDERABLE = Object.values(
+  MERCHANT_SYNCED_RENDERABLE_BY_PLATFORM,
+).every(Boolean);
 
 const EXTERNAL_SEED_ID_PREFIXES = ['ext_', 'ext:'];
 
@@ -228,8 +245,8 @@ function pdpRouteResolvable({
 
   if (seedRouted) return Boolean(seedRouteOk);
   if (MERCHANT_SYNCED_PLATFORMS.has(loweredPlatform)) {
-    // MEASURED FALSE — see MERCHANT_SYNCED_LANE_RENDERABLE.
-    return MERCHANT_SYNCED_LANE_RENDERABLE;
+    // Per-platform measured verdicts — see MERCHANT_SYNCED_RENDERABLE_BY_PLATFORM.
+    return MERCHANT_SYNCED_RENDERABLE_BY_PLATFORM[loweredPlatform] === true;
   }
   return false;
 }
@@ -253,6 +270,7 @@ function pdpRouteResolvableFromRow(row) {
 module.exports = {
   EXTERNAL_SEED_MERCHANT_ID,
   MERCHANT_SYNCED_LANE_RENDERABLE,
+  MERCHANT_SYNCED_RENDERABLE_BY_PLATFORM,
   MERCHANT_SYNCED_PLATFORMS,
   MINTED_SOURCE_SYSTEM,
   SEED_ROUTED_SOURCE_SYSTEMS,
