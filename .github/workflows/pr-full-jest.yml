@@ -92,6 +92,12 @@ jobs:
       # Green here proves the job passes; it does not prove the reason. Said
       # plainly so nobody relies on the wrong one.
       #
+      # ADDED 2026-07-29: the three suites guarding the PDP-renderability
+      # predicate and the public-read chain filter (pdp_renderability,
+      # public_read_chain_resolvability, public_read_chain_seed_routed_probe),
+      # all confirmed green locally before landing. The per-platform verdict
+      # flip in this same change is exactly the event the probe suite exists to
+      # catch, and none of the three ran in ANY workflow before this.
       # ADDED 2026-07-28: `acp_feed_flags`, confirmed green (6/6) before landing,
       # per the "grow file by file as each is confirmed" rule above. It was the
       # ONLY suite asserting the invariant that publishing the read-only feed
@@ -109,7 +115,10 @@ jobs:
             tests/acp_feed_flags.node.test.cjs \
             tests/acp_feed_pagination.node.test.cjs \
             tests/public_feed_gate.node.test.cjs \
-            tests/acp_adapter_applies_mapper.node.test.cjs
+            tests/acp_adapter_applies_mapper.node.test.cjs \
+            tests/pdp_renderability.node.test.cjs \
+            tests/public_read_chain_resolvability.node.test.cjs \
+            tests/public_read_chain_seed_routed_probe.node.test.cjs
 
   jest:
     runs-on: ubuntu-latest

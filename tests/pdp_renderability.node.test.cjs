@@ -2,7 +2,6 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const {
-  MERCHANT_SYNCED_LANE_RENDERABLE,
   MERCHANT_SYNCED_PLATFORMS,
   MERCHANT_SYNCED_RENDERABLE_BY_PLATFORM,
   MINTED_SOURCE_SYSTEM,
@@ -108,8 +107,8 @@ const MATRIX = [
     false,
   ],
   [
-    // MEASURED FALSE, 7/7 HTTP 500 — see MERCHANT_SYNCED_LANE_RENDERABLE. This
-    // was the one arm asserting renderable with no evidence behind it.
+    // MEASURED FALSE, 7/7 HTTP 500 — see MERCHANT_SYNCED_RENDERABLE_BY_PLATFORM.
+    // This was the one arm asserting renderable with no evidence behind it.
     'merchant-synced shopify row with no seed at all',
     {
       merchant_id: 'merch_a',
@@ -355,8 +354,6 @@ test('each merchant-synced lane verdict is pinned to its own measurement', () =>
     { shopify: false, wix: true },
     'a lane verdict changed without the paired measurement + Python-twin flip',
   );
-  // The legacy alias must never read true while ANY lane is closed.
-  assert.equal(MERCHANT_SYNCED_LANE_RENDERABLE, false);
   for (const platform of MERCHANT_SYNCED_PLATFORMS) {
     assert.equal(
       pdpRouteResolvable({
@@ -370,7 +367,11 @@ test('each merchant-synced lane verdict is pinned to its own measurement', () =>
       `${platform} must answer exactly its measured verdict`,
     );
   }
-  // Pinned so the set cannot silently shrink while the lane is closed and
-  // become wrong the moment it reopens.
+  // The set is DERIVED from the verdict map; pin the derivation so a platform
+  // added to one but not the other is impossible by construction.
+  assert.deepEqual(
+    [...MERCHANT_SYNCED_PLATFORMS].sort(),
+    Object.keys(MERCHANT_SYNCED_RENDERABLE_BY_PLATFORM).sort(),
+  );
   assert.deepEqual([...MERCHANT_SYNCED_PLATFORMS].sort(), ['shopify', 'wix']);
 });
