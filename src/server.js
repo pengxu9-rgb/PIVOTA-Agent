@@ -162,9 +162,11 @@ const {
 const {
   activeCatalogProductSourceWhere,
   activeProductsCacheSourceWhere,
+  catalogProductPlatformExpr,
 } = require('./services/activeCatalogSourceSql');
 const {
   isTestMerchantId,
+  notTestMerchantSql,
 } = require('./services/testMerchantPolicy');
 const {
   transactionCapableMerchantWhere,
@@ -7568,6 +7570,49 @@ function normalizePdpServingEligibilityRow(row) {
   };
 }
 
+// A catalog row that exists but fails activeCatalogProductSourceWhere — a
+// test-merchant rig (testMerchantPolicy) or a retired/inactive source — is a
+// deliberately excluded row, not a read failure. It must surface as the SETTLED
+// refusal shape: index_row_found: true, serving_eligible: false. agent-ui's
+// classifyPdpFetchFailure (pdpServerPage.tsx) keys its 404-vs-500 decision on
+// exactly that pair, so this is what lets a retired product's public PDP URL
+// settle to a cacheable 404 instead of a permanent 500. The fail-closed
+// { reason: 'serving_eligibility_missing' } flavor (NO index_row_found key) is
+// reserved for genuinely-missing rows and DB errors, which must stay on the
+// transient side — one Postgres hiccup must not 404-and-cache the catalog.
+function buildExcludedCatalogSourcePdpServingEligibility(row) {
+  if (!row || typeof row !== 'object') return null;
+  const isTestMerchantExcluded = row.not_test_merchant === false;
+  const merchantStatus = String(row.merchant_status || '').trim().toLowerCase();
+  const causes = [];
+  if (isTestMerchantExcluded) causes.push('test_merchant_policy');
+  if (merchantStatus && merchantStatus !== 'active' && merchantStatus !== 'observed') {
+    causes.push(`merchant_status=${merchantStatus}`);
+  }
+  if (row.merchant_has_stores === true && row.merchant_has_active_platform_store !== true) {
+    causes.push('no_active_platform_store');
+  }
+  return {
+    catalog_row_found: true,
+    content_key: firstNonEmptyString(row.content_key) || null,
+    product_key: firstNonEmptyString(row.product_key) || null,
+    pivota_signature_id: firstNonEmptyString(row.pivota_signature_id) || null,
+    sync_status: firstNonEmptyString(row.sync_status) || null,
+    pdp_lifecycle_stage: firstNonEmptyString(row.pdp_lifecycle_stage) || null,
+    serving_eligible: false,
+    readiness_tier: null,
+    index_row_found: true,
+    pipeline_stage: null,
+    blocker_code: isTestMerchantExcluded ? 'test_merchant_excluded' : 'catalog_source_excluded',
+    blocker_detail: `catalog row exists but its source is excluded from active serving (${
+      causes.join('; ') || 'active_source_predicate_failed'
+    })`,
+    content_quality_score: null,
+    active_external_seed_source_match: false,
+    eligibility_override_reason: null,
+  };
+}
+
 function buildPrefetchedPdpServingEligibilityFromSignatureRef(signatureProductRef) {
   if (!signatureProductRef || typeof signatureProductRef !== 'object') return null;
   if (signatureProductRef.serving_eligibility_prefetched !== true) return null;
@@ -8018,7 +8063,64 @@ async function fetchPdpServingEligibilityFromDb(args = {}) {
       [contentKey, merchantId, productId, pivotaSignatureId],
     );
     const row = Array.isArray(result?.rows) ? result.rows[0] : null;
-    return normalizePdpServingEligibilityRow(row);
+    if (row) return normalizePdpServingEligibilityRow(row);
+
+    // The primary read filters through activeCatalogProductSourceWhere, so a
+    // deliberately excluded source (test-merchant rig, retired merchant, dead
+    // store) and a genuinely-missing row are both "no row" to it. Re-probe the
+    // same identity WITHOUT the exclusion predicate: a hit means the row exists
+    // and was excluded on purpose — emit the settled refusal so consumers can
+    // 404 it (see buildExcludedCatalogSourcePdpServingEligibility). A miss (or
+    // any error) still returns null, keeping the fail-closed missing flavor.
+    const excludedResult = await query(
+      `
+        SELECT /* pdp_serving_eligibility_excluded_source_probe */
+          cp.content_key,
+          cp.product_key,
+          cp.pivota_signature_id,
+          cp.sync_status,
+          cp.pdp_lifecycle_stage,
+          ${notTestMerchantSql('cp', { hasSourceDomain: true })} AS not_test_merchant,
+          lower(coalesce(cm.status, 'active')) AS merchant_status,
+          EXISTS (
+            SELECT 1
+            FROM merchant_stores ms_any_probe
+            WHERE ms_any_probe.merchant_id = cp.merchant_id
+          ) AS merchant_has_stores,
+          EXISTS (
+            SELECT 1
+            FROM merchant_stores ms_active_probe
+            WHERE ms_active_probe.merchant_id = cp.merchant_id
+              AND lower(coalesce(ms_active_probe.status, '')) = 'active'
+              AND coalesce(nullif(trim(ms_active_probe.domain), ''), '') <> ''
+              AND (
+                ${catalogProductPlatformExpr('cp')} = ''
+                OR lower(coalesce(ms_active_probe.platform, '')) = ${catalogProductPlatformExpr('cp')}
+              )
+          ) AS merchant_has_active_platform_store
+        FROM catalog_products cp
+        LEFT JOIN catalog_merchants cm ON cm.merchant_id = cp.merchant_id
+        WHERE (
+          ($1::text <> '' AND cp.content_key = $1)
+          OR ($4::text <> '' AND cp.pivota_signature_id = $4)
+          OR (
+            $2::text <> ''
+            AND $3::text <> ''
+            AND cp.merchant_id = $2
+            AND cp.source_product_id = $3
+          )
+        )
+        ORDER BY
+          CASE WHEN $1::text <> '' AND cp.content_key = $1 THEN 0 ELSE 1 END,
+          CASE WHEN $4::text <> '' AND cp.pivota_signature_id = $4 THEN 0 ELSE 1 END,
+          cp.updated_at DESC NULLS LAST,
+          cp.product_key ASC
+        LIMIT 1
+      `,
+      [contentKey, merchantId, productId, pivotaSignatureId],
+    );
+    const excludedRow = Array.isArray(excludedResult?.rows) ? excludedResult.rows[0] : null;
+    return buildExcludedCatalogSourcePdpServingEligibility(excludedRow);
   } catch (err) {
     const message = String(err?.message || err || '');
     if (
