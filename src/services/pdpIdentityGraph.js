@@ -4741,6 +4741,7 @@ async function fetchBackfillProducts({
   limit = 500,
   brandFilter = null,
   externalProductIds = [],
+  onlyUncovered = false,
   queryFn = query,
 } = {}) {
   const normalizedLimit = Math.max(1, Math.min(5000, Number(limit) || 500));
@@ -4852,6 +4853,21 @@ async function fetchBackfillProducts({
 
   const externalParams = [EXTERNAL_SEED_MERCHANT_ID];
   const externalWhere = [`e.status = 'active'`];
+  if (onlyUncovered) {
+    // CATCH-UP MODE — select ONLY seeds that have no identity listing yet, so
+    // the run cannot reach the ON CONFLICT branch below and therefore cannot
+    // rewrite an existing row's live_read_enabled. That is not a stylistic
+    // preference: liveReadEnabled computes to FALSE whenever
+    // PDP_IDENTITY_GRAPH_AUTO_ENABLE_LIVE is unset (it is unset in prod), so a
+    // blanket re-run would set live_read_enabled=false on every existing
+    // listing and demote the entire live public surface to shadow. Scoping to
+    // uncovered rows makes the automated job structurally incapable of that.
+    externalWhere.push(`NOT EXISTS (
+      SELECT 1 FROM pdp_identity_listing pil
+      WHERE pil.merchant_id = $1
+        AND pil.product_id = e.external_product_id
+    )`);
+  }
   if (exactExternalProductIds.length) {
     externalParams.push(exactExternalProductIds);
     externalWhere.push(`e.external_product_id = ANY($${externalParams.length}::text[])`);
@@ -5148,7 +5164,16 @@ async function writeIdentityRows({ listings, reviewQueueEntries, dryRun = false,
               product_id = EXCLUDED.product_id,
               source_kind = EXCLUDED.source_kind,
               source_tier = EXCLUDED.source_tier,
-              live_read_enabled = EXCLUDED.live_read_enabled,
+              -- PRESERVED, not overwritten. Enabling/disabling live read is an
+              -- OPERATOR decision made elsewhere (the gated live-read runbook,
+              -- and the 2026-07 currency remediation that deliberately disabled
+              -- it on defective rows). EXCLUDED.live_read_enabled is a
+              -- recomputed default -- false whenever
+              -- PDP_IDENTITY_GRAPH_AUTO_ENABLE_LIVE is unset, as it is in prod
+              -- -- so taking it here would silently revert those decisions and
+              -- demote the live public surface. Same failure class as the
+              -- relationship-graph upsert that reverted 203 human labels.
+              live_read_enabled = pdp_identity_listing.live_read_enabled,
               sellable_item_group_id = CASE
                 WHEN EXCLUDED.matched_by_rule = 'reviewed_multi_offer_merge'
                   THEN EXCLUDED.sellable_item_group_id
@@ -5271,6 +5296,7 @@ async function backfillPdpIdentityGraph({
   limit = 500,
   brand = null,
   externalProductIds = [],
+  onlyUncovered = false,
   dryRun = false,
   queryFn = query,
   withClientFn = withClient,
@@ -5279,6 +5305,7 @@ async function backfillPdpIdentityGraph({
     limit,
     brandFilter: brand,
     externalProductIds,
+    onlyUncovered,
     queryFn,
   });
   const overrides = await loadIdentityOverrides({ queryFn }).catch((err) => {

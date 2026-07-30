@@ -117,6 +117,7 @@ jobs:
             tests/public_feed_gate.node.test.cjs \
             tests/acp_adapter_applies_mapper.node.test.cjs \
             tests/pdp_renderability.node.test.cjs \
+            tests/pdp_identity_coverage_catchup.node.test.cjs \
             tests/public_read_chain_resolvability.node.test.cjs \
             tests/public_read_chain_seed_routed_probe.node.test.cjs
 
