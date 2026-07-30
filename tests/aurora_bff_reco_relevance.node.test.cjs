@@ -6423,6 +6423,8 @@ test('__internal: local external seed single-query recall includes attached auth
 test('__internal: framework recall exhausts primary planned sources before support stages when mock recall never yields a candidate', async () => {
   const { __internal } = loadRoutesFresh();
   const originalGet = axios.get;
+  const originalInternalLaneMode = process.env.AURORA_RECO_INTERNAL_RECALL_LANE_MODE;
+  process.env.AURORA_RECO_INTERNAL_RECALL_LANE_MODE = 'enabled';
   const observedQueries = [];
   axios.get = async (url, config) => {
     observedQueries.push(String(config?.params?.query || ''));
@@ -6479,12 +6481,16 @@ test('__internal: framework recall exhausts primary planned sources before suppo
     assert.equal(observedQueries.some((query) => /lightweight moisturizer|gel cream|daily sunscreen|spf fluid/i.test(query)), false);
   } finally {
     axios.get = originalGet;
+    if (originalInternalLaneMode === undefined) delete process.env.AURORA_RECO_INTERNAL_RECALL_LANE_MODE;
+    else process.env.AURORA_RECO_INTERNAL_RECALL_LANE_MODE = originalInternalLaneMode;
   }
 });
 
 test('__internal: framework recall skips support stages when primary external stage fully times out after empty primary internal recall', async () => {
   const { __internal } = loadRoutesFresh();
   const originalGet = axios.get;
+  const originalInternalLaneMode = process.env.AURORA_RECO_INTERNAL_RECALL_LANE_MODE;
+  process.env.AURORA_RECO_INTERNAL_RECALL_LANE_MODE = 'enabled';
   const observedQueries = [];
   let callCount = 0;
   axios.get = async (url, config) => {
@@ -6548,6 +6554,75 @@ test('__internal: framework recall skips support stages when primary external st
     assert.ok(['plan_exhausted', 'primary_transient_timeout'].includes(out.plannerStopReason));
     assert.ok(['no_recall_from_planned_sources', 'upstream_timeout_primary_role'].includes(out.candidateDropStage));
     assert.equal(observedQueries.some((query) => /lightweight moisturizer|oil control sunscreen/i.test(query)), false);
+  } finally {
+    axios.get = originalGet;
+    if (originalInternalLaneMode === undefined) delete process.env.AURORA_RECO_INTERNAL_RECALL_LANE_MODE;
+    else process.env.AURORA_RECO_INTERNAL_RECALL_LANE_MODE = originalInternalLaneMode;
+  }
+});
+
+test('__internal: framework recall skips internal-lane stages by default and goes straight to external seed recall', async () => {
+  const { __internal } = loadRoutesFresh();
+  const originalGet = axios.get;
+  const observedQueries = [];
+  axios.get = async (url, config) => {
+    observedQueries.push(String(config?.params?.query || ''));
+    return {
+      status: 200,
+      data: { items: [] },
+    };
+  };
+
+  const targetContext = {
+    framework_summary: {
+      concern_text: 'im oily skin, what product should i use?',
+    },
+    primary_role_id: 'oil_control_treatment',
+    framework_roles: [
+      {
+        role_id: 'oil_control_treatment',
+        rank: 1,
+        preferred_step: 'treatment',
+        query_terms: ['oil control serum', 'oil balance serum', 'mattifying serum'],
+      },
+      {
+        role_id: 'lightweight_moisturizer',
+        rank: 2,
+        preferred_step: 'moisturizer',
+        query_terms: ['lightweight moisturizer'],
+      },
+    ],
+  };
+
+  try {
+    const out = await __internal.collectRecoCandidatesFromRecallPlan({
+      recallPlan: __internal.buildRecoRecallPlan({
+        mode: 'framework_generic',
+        targetContext,
+      }),
+      targetContext,
+      logger: null,
+      timeoutMs: 300,
+      limit: 6,
+      usePurchasableFallback: false,
+    });
+
+    const internalStageRows = out.stageResults.filter(
+      (row) => String(row?.source_scope || '').trim().toLowerCase() === 'internal',
+    );
+    assert.ok(internalStageRows.length > 0);
+    for (const row of internalStageRows) {
+      assert.equal(row.skipped, true);
+      assert.equal(row.skip_reason, 'internal_lane_disabled');
+      assert.equal(row.executed_query_count, 0);
+    }
+    const primaryExternalRow = out.stageResults.find(
+      (row) => String(row?.stage_id || '').trim() === 'framework_stage_b_primary_external_seed',
+    );
+    assert.ok(primaryExternalRow);
+    assert.equal(primaryExternalRow.skipped, false);
+    assert.ok(Number(primaryExternalRow.executed_query_count) > 0);
+    assert.equal(out.primaryStageTimeoutClass, '');
   } finally {
     axios.get = originalGet;
   }
