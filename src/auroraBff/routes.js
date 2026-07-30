@@ -29762,7 +29762,11 @@ async function callGeminiJsonObjectViaRest({
   thinkingLevel = undefined,
 } = {}) {
   const apiKey = pickAuroraGeminiApiKey(AURORA_GEMINI_KEY_FEATURE_ENV);
-  if (!apiKey) {
+  // Vertex-aware availability: on Vertex the key pool is legitimately empty
+  // (prod authenticates via ADC and restTarget mints the OAuth header), so a
+  // bare !apiKey bail would report unavailable exactly where the credentials
+  // work. Mirrors auroraGeminiGlobalClient's REST guard.
+  if (!vertexGemini.credentialsAvailable(apiKey)) {
     return {
       ok: false,
       reason: 'gemini_client_unavailable',
@@ -30462,7 +30466,14 @@ async function callGeminiJsonObject({
   const forceRestExecutor =
     normalizedRoute === 'aurora_reco_assistant_rewrite' ||
     normalizedRoute === 'aurora_reco_alternatives_open_world';
-  if (normalizedThinkingLevel || forceRestExecutor) {
+  // A finite thinkingBudget forces the REST executor: the pinned @google/genai
+  // 0.7.0 serializer (thinkingConfigToVertex/ToMldev) forwards ONLY
+  // includeThoughts and silently drops thinkingBudget, so on the SDK path the
+  // model keeps thinking at its dynamic default — observed in prod as the
+  // concern planner's thoughts eating the 1400-token output budget and
+  // returning PARSE_TRUNCATED_JSON. The REST body builder below maps the
+  // budget correctly.
+  if (normalizedThinkingLevel || forceRestExecutor || Number.isFinite(thinkingBudget)) {
     return callGeminiJsonObjectViaRest({
       resolvedModel,
       requestedModel,
