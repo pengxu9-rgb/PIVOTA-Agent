@@ -3413,6 +3413,69 @@ test('runConcernSemanticPlanner uses deterministic mainline when Gemini JSON enr
   }
 });
 
+test('runConcernSemanticPlanner labels attempt timeouts neutrally instead of claiming a REST transport', async () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    let callCount = 0;
+    __internal.__setCallGeminiJsonObjectForTest(async () => {
+      callCount += 1;
+      const err = new Error('gemini upstream timed out');
+      err.code = 'GEMINI_UPSTREAM_TIMEOUT';
+      throw err;
+    });
+
+    const out = await __internal.runConcernSemanticPlanner({
+      ctx: { lang: 'EN', request_id: 'req_planner_timeout_label_test' },
+      requestText: 'my skin feels dry and tight after washing, what should i use first?',
+      focus: '',
+      deadlineAtMs: Date.now() + 30000,
+    });
+
+    // The catch path can't know whether the call died on the REST or SDK
+    // executor, so the trace must not claim 'local_gemini_rest_direct'.
+    assert.equal(out.trace?.planner_attempts?.length, 1);
+    assert.equal(out.trace?.planner_attempts?.[0]?.selection_source, 'attempt_timeout');
+    assert.equal(out.trace?.planner_attempts?.[0]?.provider_reason, 'GEMINI_JSON_TIMEOUT');
+    assert.equal(out.trace?.planner_enrichment_failure_class, 'timeout');
+    assert.equal(out.trace?.planner_deterministic_mainline_used, true);
+    assert.equal(out.semanticPlan?.selection_owner_source, 'rule_concern_planner_mainline');
+    // Exactly one enrichment attempt: a failed attempt falls straight to the
+    // deterministic mainline, never to a second LLM call.
+    assert.equal(callCount, 1);
+  } finally {
+    __internal.__resetCallGeminiJsonObjectForTest();
+    delete require.cache[moduleId];
+  }
+});
+
+test('runConcernSemanticPlanner labels non-timeout attempt failures as attempt_error', async () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    let callCount = 0;
+    __internal.__setCallGeminiJsonObjectForTest(async () => {
+      callCount += 1;
+      throw new Error('gemini exploded before transport selection');
+    });
+
+    const out = await __internal.runConcernSemanticPlanner({
+      ctx: { lang: 'EN', request_id: 'req_planner_error_label_test' },
+      requestText: 'my skin feels dry and tight after washing, what should i use first?',
+      focus: '',
+      deadlineAtMs: Date.now() + 30000,
+    });
+
+    assert.equal(callCount, 1);
+    assert.equal(out.trace?.planner_attempts?.length, 1);
+    assert.equal(out.trace?.planner_attempts?.[0]?.selection_source, 'attempt_error');
+    assert.equal(out.trace?.planner_enrichment_failure_class, 'planner_untrusted');
+    assert.equal(out.trace?.planner_deterministic_mainline_used, true);
+    assert.equal(out.semanticPlan?.selection_owner_source, 'rule_concern_planner_mainline');
+  } finally {
+    __internal.__resetCallGeminiJsonObjectForTest();
+    delete require.cache[moduleId];
+  }
+});
+
 test('runConcernSemanticPlanner narrows Chinese dry-tight use-first asks into moisturizer-led comparison', async () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
