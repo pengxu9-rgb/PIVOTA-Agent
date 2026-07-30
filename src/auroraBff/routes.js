@@ -24691,8 +24691,40 @@ async function runBeautyMainlineLocalHandoffSearch({
               ),
             };
           }
+          // Primary roles run the LOCAL external-seed authority search FIRST, same as
+          // support roles above. The backend-authority hop below routes through the
+          // self-proxy (prefer_self_proxy_first, single attempt, no failover), whose
+          // find_products_multi run costs ~5.5-6s against a ~5.4s stage budget — a
+          // guaranteed-loss race that burned the whole stage whenever the backend
+          // internal lane (products_cache) had no beauty inventory. Local seeds answer
+          // in ~1-2.5s from external_product_seeds; the backend hop stays as fallback.
+          if (isPrimaryRole && typeof localExternalSeedSearchFn === 'function') {
+            localPrimaryAuthorityFirstOut = await runLocalExternalSeedAuthoritySearch({
+              skipReason: 'primary_local_authority_first',
+            });
+            const localPrimaryProducts = Array.isArray(localPrimaryAuthorityFirstOut?.products)
+              ? localPrimaryAuthorityFirstOut.products
+              : [];
+            // Hit or miss, do NOT fall through to the backend race: a miss here
+            // burns the whole remaining stage budget on the doomed self-proxy
+            // attempt and starves the ladder's later (often better-matching)
+            // queries. Returning the miss lets the ladder advance immediately;
+            // the post-mainline recovery lane is still the recall safety net.
+            return {
+              ...localPrimaryAuthorityFirstOut,
+              primary_external_seed_authority_local_primary: true,
+              primary_external_seed_authority_backend_skipped: true,
+              primary_external_seed_authority_backend_skip_reason: localPrimaryProducts.length > 0
+                ? 'primary_local_authority_hit'
+                : 'primary_local_authority_miss',
+              local_external_seed_search_mode: pickFirstTrimmed(
+                localPrimaryAuthorityFirstOut?.local_external_seed_search_mode,
+                'primary_local_authority_first',
+              ),
+            };
+          }
           if (typeof backendExternalSeedAuthoritySearchFn !== 'function') {
-            return localSupportAuthorityFirstOut || await runLocalExternalSeedAuthoritySearch({
+            return localSupportAuthorityFirstOut || localPrimaryAuthorityFirstOut || await runLocalExternalSeedAuthoritySearch({
               skipReason: 'backend_external_seed_authority_unavailable',
             });
           }

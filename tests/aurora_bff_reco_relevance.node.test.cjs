@@ -9191,7 +9191,7 @@ test('__internal: beauty local handoff support external stage uses local authori
   }
 });
 
-test('__internal: beauty local handoff external stage uses local authority peer after backend timeout', async () => {
+test('__internal: beauty local handoff primary external stage uses local authority first and skips the backend race', async () => {
   const { __internal } = loadRoutesFresh();
   const calls = [];
   const targetContext = {
@@ -9267,8 +9267,15 @@ test('__internal: beauty local handoff external stage uses local authority peer 
       (Array.isArray(out.products) ? out.products : []).map((item) => item?.product_id),
       ['local_oil_control_1'],
     );
+    // Primary roles now run the LOCAL authority search FIRST (2026-07-30):
+    // the backend-authority hop routed through the self-proxy, whose
+    // find_products_multi run (~5.5-6s) always lost the race against the
+    // ~5.4s stage budget once the backend internal lane went empty — the
+    // 2026-07-29 chat-latency regression. On a local hit the backend hop is
+    // skipped entirely, so this scenario no longer reaches the timing-out
+    // backend at all.
     assert.ok(
-      calls.some((call) => call.kind === 'backend_external_seed' && call.query === 'shine control serum'),
+      !calls.some((call) => call.kind === 'backend_external_seed'),
       JSON.stringify(calls),
     );
     assert.ok(
@@ -9278,10 +9285,9 @@ test('__internal: beauty local handoff external stage uses local authority peer 
     const attempt = (out.search_stage_ledger?.primary_search?.query_pack_attempts || [])
       .find((entry) => entry?.query === 'shine control serum' && entry?.source_scope === 'external_seed') || null;
     assert.ok(attempt);
-    assert.equal(attempt.external_seed_authority_backend_primary, true);
-    assert.equal(attempt.external_seed_authority_backend_reason, 'upstream_timeout');
-    assert.equal(attempt.external_seed_authority_peer_used, true);
-    assert.equal(attempt.local_external_seed_authority_peer, true);
+    assert.equal(attempt.primary_external_seed_authority_local_primary, true);
+    assert.equal(attempt.primary_external_seed_authority_backend_skipped, true);
+    assert.equal(attempt.primary_external_seed_authority_backend_skip_reason, 'primary_local_authority_hit');
     assert.equal(attempt.primary_transport_owner, 'local_external_seed_search');
   } finally {
     __internal.__resetRouteDependencyOverridesForTest();
