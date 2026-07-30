@@ -70095,7 +70095,6 @@ async function runConcernSemanticPlanner({
         model_policy: primaryModel,
       },
     ];
-    let lastSemanticPlan = { ...fallbackPlan };
     let lastPlannerResponse = null;
     let anyTimeout = false;
     for (let index = 0; index < plannerAttempts.length; index += 1) {
@@ -70244,7 +70243,6 @@ async function runConcernSemanticPlanner({
             ),
           ).replace(/\s+/g, ' ').slice(0, 400)
         : '';
-      lastSemanticPlan = semanticPlan;
       const providerReason = pickFirstTrimmed(plannerResponse?.reason) || null;
       if (/TIMEOUT/i.test(String(providerReason || ''))) anyTimeout = true;
       const attemptTrace = {
