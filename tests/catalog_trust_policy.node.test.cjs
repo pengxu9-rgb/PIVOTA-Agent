@@ -781,3 +781,67 @@ test('rig in the shadow lane is blocked', () => {
   assert.equal(trust.serving_decision, 'blocked');
   assert.ok(trust.serving_reason_codes.includes(REASON_CODES.TEST_MERCHANT_EXCLUDED));
 });
+
+// --- domain normalisation parity with the Python twin -----------------------
+// Both this file and services/catalog_trust_policy.py write catalog_row_trust
+// for the SAME rows (Node via scripts/sync-external-seeds-to-catalog.cjs,
+// Python via the trust cron), so a normalisation split makes serving_decision
+// FLAP — last writer wins. Before pivota-backend#1639 a `www.mintree.us`
+// quarantine blocked a `mintree.us` row on the Python side and not here, and
+// every external-seed sync flipped it back to public.
+const DOMAIN_FORMS = ['mintree.us', 'www.mintree.us', 'MINTREE.US', 'WWW.MinTree.US', '  mintree.us  '];
+
+test('quarantine matches across every www./case/whitespace form, both sides', () => {
+  for (const rowDomain of DOMAIN_FORMS) {
+    for (const matchValue of DOMAIN_FORMS) {
+      const trust = call({
+        product: activeMerchantProduct({ source_domain: rowDomain }),
+        merchant_store: activeMerchantStore({ domain: rowDomain }),
+        active_quarantines: [
+          { match_type: 'domain', match_value: matchValue, state: 'active', expires_at: null },
+        ],
+      });
+      assert.ok(
+        trust.serving_reason_codes.includes(REASON_CODES.SOURCE_QUARANTINED),
+        `row=${JSON.stringify(rowDomain)} match_value=${JSON.stringify(matchValue)} not quarantined`,
+      );
+    }
+  }
+});
+
+// Blanks are unreachable on this path (the `&& domain` short-circuit fires
+// first), so this test documents the real reason they are safe rather than
+// claiming the bareDomain guard is what protects them. The Python twin's
+// quarantine_matches_source has no such short-circuit and DID match every
+// domain-less row against a blank match_value — fixed in the same PR set.
+test('a blank match_value quarantines nobody', () => {
+  for (const blank of ['', '   ', null, undefined]) {
+    const trust = call({
+      product: activeMerchantProduct({ source_domain: null }),
+      merchant_store: activeMerchantStore({ domain: null }),
+      active_quarantines: [
+        { match_type: 'domain', match_value: blank, state: 'active', expires_at: null },
+      ],
+    });
+    assert.ok(
+      !trust.serving_reason_codes.includes(REASON_CODES.SOURCE_QUARANTINED),
+      `blank match_value ${JSON.stringify(blank)} quarantined a domain-less row`,
+    );
+  }
+});
+
+test('lookalike domains are not over-blocked', () => {
+  for (const rowDomain of ['notmintree.us', 'shop.mintree.us', 'mintree.us.evil.com']) {
+    const trust = call({
+      product: activeMerchantProduct({ source_domain: rowDomain }),
+      merchant_store: activeMerchantStore({ domain: rowDomain }),
+      active_quarantines: [
+        { match_type: 'domain', match_value: 'mintree.us', state: 'active', expires_at: null },
+      ],
+    });
+    assert.ok(
+      !trust.serving_reason_codes.includes(REASON_CODES.SOURCE_QUARANTINED),
+      `${rowDomain} was over-blocked`,
+    );
+  }
+});

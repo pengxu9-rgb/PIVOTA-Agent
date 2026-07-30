@@ -362,13 +362,28 @@ function deriveSourceLifecycle({ product, externalSeed, merchantStore, activeQua
   return { state: 'unknown' };
 }
 
+// Bare host: trimmed, lowercased, no leading `www.`. Byte-equivalent to the
+// Python twin `services/source_quarantine.bare_domain` and to the SQL
+// `sql_bare_domain`, and it MUST stay that way: both this file and the Python
+// `catalog_trust_policy` write `catalog_row_trust` for the same rows (Node via
+// scripts/sync-external-seeds-to-catalog.cjs, Python via the trust cron), so a
+// normalisation split makes `serving_decision` FLAP — last writer wins.
+//
+// Before this existed, a `www.mintree.us` quarantine blocked a `mintree.us` row
+// on the Python side and not here, so every external-seed sync flipped it back
+// to `public`. See pivota-backend#1639.
+function bareDomain(value) {
+  const text = String(value ?? '').trim().toLowerCase();
+  return text.startsWith('www.') ? text.slice(4) : text;
+}
+
 function isQuarantined({ product, externalSeed, merchantStore, activeQuarantines, now }) {
   if (!activeQuarantines.length) return false;
   const nowMs = (now instanceof Date ? now : new Date()).getTime();
 
-  const domain = String(
+  const domain = bareDomain(
     product?.source_domain ?? externalSeed?.domain ?? merchantStore?.domain ?? ''
-  ).toLowerCase();
+  );
   const merchantId = product?.merchant_id ?? merchantStore?.merchant_id ?? null;
   const platform = product?.platform ?? merchantStore?.platform ?? null;
   const sourceSystem = product?.source_system ?? null;
@@ -378,9 +393,17 @@ function isQuarantined({ product, externalSeed, merchantStore, activeQuarantines
     if (q.state !== 'active') continue;
     if (q.expires_at && new Date(q.expires_at).getTime() <= nowMs) continue;
 
-    if (q.match_type === 'domain' && domain &&
-        String(q.match_value).toLowerCase() === domain) {
-      return true;
+    if (q.match_type === 'domain' && domain) {
+      // Both sides through bareDomain.
+      //
+      // The `wanted &&` guard is belt-and-braces HERE — the enclosing `&& domain`
+      // already makes a blank unreachable on this path, so no test can kill it.
+      // It is kept because the Python twin's `quarantine_matches_source` has NO
+      // such enclosing guard and DID match every domain-less row against a blank
+      // match_value; keeping the two shaped alike is what stops the next reader
+      // "simplifying" one of them back apart.
+      const wanted = bareDomain(q.match_value);
+      if (wanted && wanted === domain) return true;
     }
     if (q.match_type === 'merchant_platform' && merchantId && platform &&
         q.match_value === `${merchantId}:${platform}`) {
