@@ -46,6 +46,22 @@ function normalize(value) {
     .trim();
 }
 
+// Detection keys to index for one raw catalog brand string. A polluted brand
+// field like "Biodance | Better Formula for Better Glow" (brand + tagline) is
+// stored as a single dictionary entry, so a bare "biodance" query — one token
+// vs the whole multi-word span — never matches. Index the leading segment
+// before a tagline separator ('|' or newline) IN ADDITION to the full string.
+// Only the FIRST segment is the brand; later segments are marketing copy and
+// must NOT be indexed (they'd turn category-ish words into false brand hits).
+function brandAliases(rawBrand) {
+  const out = [];
+  const full = normalize(rawBrand);
+  if (full) out.push(full);
+  const lead = normalize(String(rawBrand || '').split(/[|\n]/, 1)[0]);
+  if (lead && lead !== full) out.push(lead);
+  return out;
+}
+
 async function refresh() {
   let query;
   try {
@@ -71,8 +87,9 @@ async function refresh() {
   }
   const next = new Set();
   for (const row of rows) {
-    const b = normalize(row && row.b);
-    if (b && b.length >= MIN_LEN && !STOPWORDS.has(b)) next.add(b);
+    for (const b of brandAliases(row && row.b)) {
+      if (b && b.length >= MIN_LEN && !STOPWORDS.has(b)) next.add(b);
+    }
   }
   _set = next;
   _loadedAt = Date.now();
@@ -146,6 +163,7 @@ module.exports = {
   maybeRefresh,
   getBrandSet,
   matchCatalogBrand,
+  brandAliases,
   debugState,
   __setBrandSetForTest,
 };
