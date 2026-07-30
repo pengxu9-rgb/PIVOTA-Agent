@@ -3,15 +3,20 @@ jest.mock('../../src/db', () => ({
   closePool: jest.fn(async () => {}),
 }));
 
+const db = require('../../src/db');
+
 const {
   CONFIRM_TOKEN,
   DEFAULT_BATCH_SIZE,
   ALIAS_BUNDLE_PATHS,
   RECALL_DOC_FIELD_ORDER,
+  assertWriteConfirmed,
   buildRecallDocProjection,
   buildDriftPredicateSql,
   normalizeAvailability,
   textOf,
+  landBatch,
+  reconcile,
 } = require('../../scripts/reconcile-catalog-recall-doc.cjs');
 
 const gapScope = require('../fixtures/adr020_phase1_gap_scope.json');
@@ -174,10 +179,105 @@ describe('drift predicate SQL builder', () => {
   });
 });
 
+describe('landBatch convergence stamp', () => {
+  beforeEach(() => {
+    db.query.mockClear();
+  });
+
+  test('stamps recall_doc_updated_at from the seed clock observed at select time, never now()', async () => {
+    db.query.mockResolvedValueOnce({ rows: [], rowCount: 1 });
+    const seedTs = new Date('2026-07-30T01:02:03Z');
+    const landed = await landBatch([
+      {
+        product_key: 'prod::external_seed::external_seed::ext_a',
+        seed_updated_at: seedTs,
+        projection: {
+          recall_doc: 'doc a',
+          recall_market: 'US',
+          recall_tool: 'beauty',
+          recall_availability: 'in_stock',
+        },
+      },
+      {
+        product_key: 'prod::external_seed::external_seed::ext_b',
+        seed_updated_at: null, // seed with no clock -> COALESCE(now()) in SQL
+        projection: {
+          recall_doc: 'doc b',
+          recall_market: null,
+          recall_tool: null,
+          recall_availability: null,
+        },
+      },
+    ]);
+
+    expect(landed).toBe(1);
+    expect(db.query).toHaveBeenCalledTimes(1);
+    const [sql, params] = db.query.mock.calls[0];
+
+    // The stamp must come from the observed seed clock so a seed updated
+    // between SELECT and UPDATE stays drift-flagged (convergence guarantee).
+    expect(sql).toContain('recall_doc_updated_at = COALESCE(d.seed_updated_at, now())');
+    expect(sql).not.toMatch(/recall_doc_updated_at\s*=\s*now\(\)/);
+    expect(sql).toContain('unnest($6::timestamptz[]) AS seed_updated_at');
+
+    expect(params).toHaveLength(6);
+    expect(params[5]).toEqual([seedTs, null]);
+  });
+
+  test('lands nothing without touching the db when the batch is empty', async () => {
+    await expect(landBatch([])).resolves.toBe(0);
+    expect(db.query).not.toHaveBeenCalled();
+  });
+});
+
 describe('script conventions', () => {
   test('write path is gated behind an explicit confirm token', () => {
     expect(CONFIRM_TOKEN).toBe('RECONCILE_CATALOG_RECALL_DOC_PROJECTION');
     expect(DEFAULT_BATCH_SIZE).toBe(200);
+  });
+});
+
+describe('reconcile() write confirm gate', () => {
+  beforeEach(() => {
+    db.query.mockClear();
+    db.query.mockResolvedValue({ rows: [], rowCount: 0 });
+  });
+
+  test('write intent without the confirm token throws before any db access', async () => {
+    await expect(reconcile({ write: true, batchSize: 5, maxRows: 5 })).rejects.toThrow(
+      `Refusing write without --confirm ${CONFIRM_TOKEN}`,
+    );
+    await expect(
+      reconcile({ write: true, confirm: 'WRONG_TOKEN', batchSize: 5, maxRows: 5 }),
+    ).rejects.toThrow(`--confirm ${CONFIRM_TOKEN}`);
+    expect(db.query).not.toHaveBeenCalled();
+  });
+
+  test('proceeds when --write carries the exact confirm token', async () => {
+    const result = await reconcile({
+      write: true,
+      confirm: CONFIRM_TOKEN,
+      batchSize: 5,
+      maxRows: 5,
+    });
+    expect(result.counters.rows_scanned).toBe(0);
+    expect(result.counters.updates_landed).toBe(0);
+    expect(db.query).toHaveBeenCalled(); // reached the batch fetch past the gate
+  });
+
+  test('dry-run needs no token and never writes', async () => {
+    const result = await reconcile({ write: false, batchSize: 5, maxRows: 5 });
+    expect(result.counters.updates_landed).toBe(0);
+    // Only the drifted-batch SELECT ran; no UPDATE landed.
+    for (const [sql] of db.query.mock.calls) {
+      expect(sql).not.toContain('UPDATE catalog_products');
+    }
+  });
+
+  test('assertWriteConfirmed is the shared gate', () => {
+    expect(() => assertWriteConfirmed({ write: true })).toThrow(/Refusing write/);
+    expect(() => assertWriteConfirmed({ write: true, confirm: CONFIRM_TOKEN })).not.toThrow();
+    expect(() => assertWriteConfirmed({ write: false })).not.toThrow();
   });
 });
 

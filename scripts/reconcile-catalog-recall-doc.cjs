@@ -313,6 +313,14 @@ async function fetchDriftedBatch({ batchSize, offset = 0 }) {
  * Set-based landing of one batch. Returns the UPDATE rowCount — the number of
  * writes that actually landed (rows may drop out if a concurrent writer
  * changed catalog_track or deleted the row between select and update).
+ *
+ * CONVERGENCE GUARANTEE: recall_doc_updated_at is stamped from the seed clock
+ * OBSERVED at select time (d.seed_updated_at), never now(). If the seed is
+ * updated between our SELECT and this UPDATE, the stored stamp stays behind
+ * eps.updated_at, so the drift predicate keeps the row flagged and the next
+ * pass re-projects it. Stamping now() would silently mask that window.
+ * COALESCE covers seeds with a NULL updated_at (no seed clock to lag behind),
+ * which would otherwise leave recall_doc_updated_at NULL and re-flag forever.
  */
 async function landBatch(updates) {
   if (!updates.length) return 0;
@@ -324,7 +332,7 @@ async function landBatch(updates) {
         recall_market = d.recall_market,
         recall_tool = d.recall_tool,
         recall_availability = d.recall_availability,
-        recall_doc_updated_at = now(),
+        recall_doc_updated_at = COALESCE(d.seed_updated_at, now()),
         updated_at = now()
       FROM (
         SELECT
@@ -332,7 +340,8 @@ async function landBatch(updates) {
           unnest($2::text[]) AS recall_doc,
           unnest($3::text[]) AS recall_market,
           unnest($4::text[]) AS recall_tool,
-          unnest($5::text[]) AS recall_availability
+          unnest($5::text[]) AS recall_availability,
+          unnest($6::timestamptz[]) AS seed_updated_at
       ) d
       WHERE cp.product_key = d.product_key
         AND cp.catalog_track = 'external_referral'
@@ -343,12 +352,25 @@ async function landBatch(updates) {
       updates.map((u) => u.projection.recall_market),
       updates.map((u) => u.projection.recall_tool),
       updates.map((u) => u.projection.recall_availability),
+      updates.map((u) => u.seed_updated_at ?? null),
     ],
   );
   return Number(res.rowCount || 0);
 }
 
-async function reconcile({ write, batchSize, maxRows }) {
+/**
+ * Write gate: any write intent must carry the exact confirm token. Enforced
+ * inside reconcile() itself (not only at the CLI arg-parsing layer) so no
+ * caller can land writes without the token.
+ */
+function assertWriteConfirmed({ write, confirm }) {
+  if (write && asString(confirm) !== CONFIRM_TOKEN) {
+    throw new Error(`Refusing write without --confirm ${CONFIRM_TOKEN}`);
+  }
+}
+
+async function reconcile({ write, confirm, batchSize, maxRows }) {
+  assertWriteConfirmed({ write, confirm });
   const counters = {
     batches: 0,
     rows_scanned: 0,
@@ -376,6 +398,10 @@ async function reconcile({ write, batchSize, maxRows }) {
 
     const updates = rows.map((row) => ({
       product_key: row.product_key,
+      // Seed clock observed at select time; landBatch stamps
+      // recall_doc_updated_at from this so mid-batch seed updates stay
+      // drift-flagged (see landBatch).
+      seed_updated_at: row.seed_updated_at ?? null,
       changed: null,
       projection: buildRecallDocProjection(row),
     }));
@@ -414,15 +440,14 @@ async function main() {
   const maxRows = Math.max(0, Number(argValue('max-rows', '0')) || 0);
   const out = asString(argValue('out'));
 
-  if (write && confirm !== CONFIRM_TOKEN) {
-    throw new Error(`Refusing write without --confirm ${CONFIRM_TOKEN}`);
-  }
+  // Fail fast before touching the db; reconcile() re-asserts the same gate.
+  assertWriteConfirmed({ write, confirm });
 
   const driftBefore = await fetchDriftMetric();
   let reconcileResult = null;
   let driftAfter = null;
   if (!driftOnly) {
-    reconcileResult = await reconcile({ write, batchSize, maxRows });
+    reconcileResult = await reconcile({ write, confirm, batchSize, maxRows });
     driftAfter = write ? await fetchDriftMetric() : null;
   }
 
@@ -465,6 +490,7 @@ module.exports = {
   DEFAULT_BATCH_SIZE,
   ALIAS_BUNDLE_PATHS,
   RECALL_DOC_FIELD_ORDER,
+  assertWriteConfirmed,
   buildRecallDocProjection,
   buildDriftPredicateSql,
   normalizeAvailability,

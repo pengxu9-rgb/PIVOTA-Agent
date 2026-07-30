@@ -54,11 +54,12 @@ BEGIN
   $sql$;
 
   -- Reconciler scan support: drift selection is stalest-first by
-  -- (recall_market, recall_doc_updated_at); NULLs (never projected) sort first
-  -- in the reconciler's ORDER BY.
+  -- recall_doc_updated_at ASC NULLS FIRST with no market filter (the
+  -- reconciler's ORDER BY), so the index matches that ordering exactly;
+  -- NULLs (never projected) sort first.
   EXECUTE $sql$
-    CREATE INDEX IF NOT EXISTS idx_catalog_products_recall_market_doc_updated
-    ON catalog_products (recall_market, recall_doc_updated_at)
+    CREATE INDEX IF NOT EXISTS idx_catalog_products_recall_doc_updated
+    ON catalog_products (recall_doc_updated_at ASC NULLS FIRST)
   $sql$;
 
   IF trgm_ready THEN
