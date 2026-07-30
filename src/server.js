@@ -51606,7 +51606,26 @@ if (require.main === module) {
         const gate = getGeminiGlobalGate();
         const snap = gate.snapshot();
         if (snap.gate.keyCount === 0) {
-          logger.error({ gate: snap.gate }, 'STARTUP: No Gemini API keys found in env. All LLM calls will fail.');
+          // Under Vertex (VERTEX_AI_ENABLED=true) the key pool is legitimately
+          // empty — auth is ADC, not API keys — so keyCount 0 is not a failure
+          // and "All LLM calls will fail" is false exactly where prod runs.
+          if (vertexGemini.credentialsAvailable(null)) {
+            logger.info(
+              {
+                gate: snap.gate,
+                vertex: true,
+                project: vertexGemini.vertexProject(),
+                concurrencyMax: snap.gate.concurrencyMax,
+                ratePerMin: snap.gate.ratePerMin,
+              },
+              'Gemini global gate initialized (Vertex AI via ADC; no API keys expected)',
+            );
+          } else {
+            logger.error(
+              { gate: snap.gate },
+              `STARTUP: No usable Gemini credentials (${vertexGemini.missingCredentialMessage()}). All LLM calls will fail.`,
+            );
+          }
         } else {
           logger.info(
             { keyCount: snap.gate.keyCount, concurrencyMax: snap.gate.concurrencyMax, ratePerMin: snap.gate.ratePerMin },
