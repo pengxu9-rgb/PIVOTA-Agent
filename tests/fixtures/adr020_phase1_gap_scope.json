@@ -1,0 +1,477 @@
+{
+ "generated_at": "2026-07-30T11:36:39.299Z",
+ "source": "audit-recall-lane-parity.cjs @48f78af4 vs prod",
+ "gap_query_count": 15,
+ "gap_queries": [
+  {
+   "query": "gentle cleanser",
+   "bucket": "skincare",
+   "seed_count": 8,
+   "only_in_seed": [
+    {
+     "external_product_id": "ulta:71310019b3bf4a10",
+     "brand": "Clinique",
+     "title": "All About Clean Liquid Facial Soap Cleanser - Mild - 6.7 oz"
+    },
+    {
+     "external_product_id": "ext_ffb12fe6f5825dbc7ae8d71e",
+     "brand": "Beauty of Joseon",
+     "title": "Beauty of Joseon Ginseng Cleansing Oil"
+    },
+    {
+     "external_product_id": "ext_218ac2ea5a9b179e1ca0fdcf",
+     "brand": "Jurlique",
+     "title": "Revitalising Cleansing Gel"
+    },
+    {
+     "external_product_id": "ext_0d4ffd13b899460cabb1f392",
+     "brand": "Seresilk",
+     "title": "Gentle Silk Cleanser"
+    },
+    {
+     "external_product_id": "ext_1fe8f24a0ae64ed8b3e756ba",
+     "brand": "AYA Skincare",
+     "title": "Clear & Control - Oily Skin Cleanser"
+    },
+    {
+     "external_product_id": "ext_99b5d36c01c7614a5de71fa1",
+     "brand": "Delicate Daisys Botanical Beauty",
+     "title": "Cleansing Face Milk Bulgarian Rose"
+    },
+    {
+     "external_product_id": "ext_b0e98400b870b8783629e14a",
+     "brand": "Reap & Glow",
+     "title": "Coffee Fruit Antioxidant Cleanser"
+    },
+    {
+     "external_product_id": "ulta:70fe4a4bc2e296ad",
+     "brand": "Clinique",
+     "title": "All About Clean Liquid Facial Soap Cleanser - Oily - 6.7 oz"
+    }
+   ]
+  },
+  {
+   "query": "hydrating barrier moisturizer fragrance free",
+   "bucket": "skincare",
+   "seed_count": 8,
+   "only_in_seed": [
+    {
+     "external_product_id": "ulta:7cd47ba7a283490c",
+     "brand": "TULA",
+     "title": "24-7 Moisture Fragrance Free Hydrating Day & Night Cream"
+    },
+    {
+     "external_product_id": "ulta:e8664e1b44cae310",
+     "brand": "Neutrogena",
+     "title": "Collagen Bank Vitamin C Face Serum Fragrance Free"
+    },
+    {
+     "external_product_id": "ext_db10285b875616e21b4e3cf4",
+     "brand": "COSRX",
+     "title": "Ceramide Skin Barrier Moisturizer"
+    },
+    {
+     "external_product_id": "ext_4729e70c78478cb6a57aa177",
+     "brand": "Olehenriksen",
+     "title": "Après Skin Rich Rescue Barrier Moisturizer with Ceramides"
+    },
+    {
+     "external_product_id": "ext_0b16b7ab0f27aad5007e1c4e",
+     "brand": "Purito SEOUL",
+     "title": "Purito Cream Bamboo"
+    },
+    {
+     "external_product_id": "ext_54622d272663a9941ba758ae",
+     "brand": "The Ordinary",
+     "title": "Soothing & Barrier Support Serum for Sensitive Skin & Hydration"
+    },
+    {
+     "external_product_id": "ext_1c12835bab42c6dbd38cf71c",
+     "brand": "Naturium",
+     "title": "Skin-Renewing Retinol Body Lotion - Jumbo"
+    },
+    {
+     "external_product_id": "ext_fc7af581263cef7037f9a3bc",
+     "brand": "Naturium",
+     "title": "Multi-Peptide Moisturizer - Jumbo"
+    }
+   ]
+  },
+  {
+   "query": "lightweight gel moisturizer for acne-prone skin",
+   "bucket": "skincare",
+   "seed_count": 8,
+   "only_in_seed": [
+    {
+     "external_product_id": "ext_074b575f32dd0f5048bf55ce",
+     "brand": "Beauty of Joseon",
+     "title": "Beauty of Joseon Red Bean Water Gel"
+    },
+    {
+     "external_product_id": "ulta:efbcea89a87d2f61",
+     "brand": "Neutrogena",
+     "title": "Evenly Clear Acne Gel Moisturizer"
+    },
+    {
+     "external_product_id": "ext_9de6c28d3bc9481c98afeebd",
+     "brand": "Aveeno",
+     "title": "Calm + Restore Oat Gel Moisturizer, Sensitive Skin"
+    },
+    {
+     "external_product_id": "ext_8d1ef8a7e492c407c7f509d5",
+     "brand": "The Ordinary",
+     "title": "Natural Moisturizing Factors + Beta Glucan Lightweight Gel Moisturizer"
+    },
+    {
+     "external_product_id": "ext_624a12ac9aec83ba278950e0",
+     "brand": "Round Lab",
+     "title": "1025 Dokdo Cream"
+    },
+    {
+     "external_product_id": "ext_d6716f08ba30aa68ed0120db",
+     "brand": "Haruharu Wonder",
+     "title": "5% Niacinamide Radiance Gel Cream / Unscented 40g"
+    },
+    {
+     "external_product_id": "ext_f2f0f159377aa5d2a9613e32",
+     "brand": "Haruharu Wonder",
+     "title": "5% Niacinamide Radiance Gel Cream / Unscented"
+    },
+    {
+     "external_product_id": "ext_7f86bf0eba830f16dae39f6c",
+     "brand": "Beauty of Joseon",
+     "title": "Red Bean Water Gel"
+    }
+   ]
+  },
+  {
+   "query": "matte lipstick under $30",
+   "bucket": "makeup",
+   "seed_count": 1,
+   "only_in_seed": [
+    {
+     "external_product_id": "ext_ad7f85ce149b2626c9c890e3",
+     "brand": "rare beauty",
+     "title": "Kind Words Matte Lip Liner"
+    }
+   ]
+  },
+  {
+   "query": "red lipstick long-lasting",
+   "bucket": "makeup",
+   "seed_count": 8,
+   "only_in_seed": [
+    {
+     "external_product_id": "ext_863f6f847c2b89f4f6bb4c79",
+     "brand": "SKINTIFIC",
+     "title": "Glow Bright Day Cream"
+    },
+    {
+     "external_product_id": "ext_332e0949ace181c1749e16e6",
+     "brand": "Round Lab",
+     "title": "Birch Moisturizing Cleanser"
+    },
+    {
+     "external_product_id": "ext_a0f7c9d52ef357fa5a7a0b6d",
+     "brand": "Round Lab",
+     "title": "[DEAL] Birch Moisturizing Cleanser"
+    },
+    {
+     "external_product_id": "ext_119f785907c2b90e5cfdaf43",
+     "brand": "COSRX",
+     "title": "Hydrium Triple Hyaluronic Moisture Ampoule"
+    },
+    {
+     "external_product_id": "ext_ff7f4fcd1e538fce0891f1cd",
+     "brand": "LANEIGE US",
+     "title": "JuicePop Box Lip Tint"
+    },
+    {
+     "external_product_id": "ext_06a3d186c9bae3e9f2e38a65",
+     "brand": "Tom Ford Beauty",
+     "title": "Oud Wood Hand and Body Moisturizer"
+    },
+    {
+     "external_product_id": "ext_6dfac1b57e6748969079805b",
+     "brand": "Glow Recipe",
+     "title": "Plum Plump Hyaluronic Cream"
+    },
+    {
+     "external_product_id": "ext_5431dfb6427b84f0d3076a49",
+     "brand": "Beekman 1802",
+     "title": "Pure Face Wipes"
+    }
+   ]
+  },
+  {
+   "query": "waterproof volumizing mascara",
+   "bucket": "makeup",
+   "seed_count": 3,
+   "only_in_seed": [
+    {
+     "external_product_id": "ext_0d1c5ae124190cdf0a6ac4de",
+     "brand": "Fenty Beauty",
+     "title": "Hella Thicc Volumizing Mascara — Elec'Trip Blue"
+    },
+    {
+     "external_product_id": "ext_16046d8920b5daf5d7ab74ca",
+     "brand": "fenty beauty",
+     "title": "Hella Thicc Volumizing Mascara — Cuz I'm Black"
+    },
+    {
+     "external_product_id": "ext_9a69b83edbb5de2280ec7b0a",
+     "brand": "rare beauty",
+     "title": "Perfect Strokes Universal Volumizing Mascara"
+    }
+   ]
+  },
+  {
+   "query": "neutral eyeshadow palette",
+   "bucket": "makeup",
+   "seed_count": 2,
+   "only_in_seed": [
+    {
+     "external_product_id": "ulta:28a43302dc9fdaac",
+     "brand": "e.l.f. Cosmetics",
+     "title": "Bite Size Eyeshadow Palette - Cream & Sugar"
+    },
+    {
+     "external_product_id": "ext_5f69a24fd9314e9ea535ea25",
+     "brand": "RMS Beauty",
+     "title": "ReDimension Hydra Eyes Quartet"
+    }
+   ]
+  },
+  {
+   "query": "unisex fragrance for daily wear",
+   "bucket": "fragrance",
+   "seed_count": 2,
+   "only_in_seed": [
+    {
+     "external_product_id": "ext_c72a4eb40e754beaa43a39d0",
+     "brand": "Haruharu Wonder",
+     "title": "Moisture Pure Mineral Relief Sunscreen SPF50+/PA++++ /Unscented"
+    },
+    {
+     "external_product_id": "ext_8e3303506e188f00dc594bc9",
+     "brand": "Then I Met You",
+     "title": "Bong² Bounce Cream"
+    }
+   ]
+  },
+  {
+   "query": "vanilla perfume",
+   "bucket": "fragrance",
+   "seed_count": 8,
+   "only_in_seed": [
+    {
+     "external_product_id": "ext_8bd37dde2fd8981f456401be",
+     "brand": "Beekman 1802",
+     "title": "Lilac Dream Whipped Body Cream"
+    },
+    {
+     "external_product_id": "ext_82f082065005538cb466ed5c",
+     "brand": "Beekman 1802",
+     "title": "Almond Honey Cookie Lotion"
+    },
+    {
+     "external_product_id": "ext_0feb1c58f18d9f6694955e7e",
+     "brand": "Tom Ford Beauty",
+     "title": "Architecture Radiance Hydrating Foundation Broad Spectrum SPF 50+"
+    },
+    {
+     "external_product_id": "ext_b0dab90da0bc8e1a26af4bd8",
+     "brand": "Tom Ford Beauty",
+     "title": "Soleil Summer Spark Lip Balm Clutch Size"
+    },
+    {
+     "external_product_id": "ext_c2a21ae12bae77cb44cdb52a",
+     "brand": "rare beauty",
+     "title": "Fragrance Layering Balm - Amber Vanilla"
+    },
+    {
+     "external_product_id": "ext_d02991027e0a0ce673fdd7fc",
+     "brand": "Naturium",
+     "title": "Phyto-Glow Lip Balm Shimmer Solar"
+    },
+    {
+     "external_product_id": "ext_66424865b4ae7950145699f3",
+     "brand": "Naturium",
+     "title": "Phyto-Glow Lip Balm Mocha"
+    },
+    {
+     "external_product_id": "ext_bd18e7593f9d096c0ffbd17f",
+     "brand": "Naturium",
+     "title": "Phyto-Glow Lip Balm Petal"
+    }
+   ]
+  },
+  {
+   "query": "woody fragrance under $80",
+   "bucket": "fragrance",
+   "seed_count": 1,
+   "only_in_seed": [
+    {
+     "external_product_id": "ext_3691d49e7e0a215a024e3185",
+     "brand": "NUXE",
+     "title": "Multi-Use Shower Gel Face, Beard, Body, Hair"
+    }
+   ]
+  },
+  {
+   "query": "oversized hoodie",
+   "bucket": "fashion",
+   "seed_count": 5,
+   "only_in_seed": [
+    {
+     "external_product_id": "ext_078332aaca51a643b72e13b4",
+     "brand": "PIXI BEAUTY",
+     "title": "Pixi 25th Anniversary Hoodie"
+    },
+    {
+     "external_product_id": "ext_68fe130235ee92a8b0148267",
+     "brand": "COSRX",
+     "title": "One Step Original Clear Skin Calming Pad"
+    },
+    {
+     "external_product_id": "ext_0a7067e05a7269fad74a53f2",
+     "brand": "COSRX",
+     "title": "One Step Original Peptide Collagen Lifting Glow Pad"
+    },
+    {
+     "external_product_id": "ext_f4ce1694d0f7c29a17b88426",
+     "brand": "COSRX",
+     "title": "One Step Original Tone Clarifying Moisture Pad"
+    },
+    {
+     "external_product_id": "ext_d1f1cf3e5bd1cd416a8d39fa",
+     "brand": "COSRX",
+     "title": "One Step Original Blemish Pore Clear Pad"
+    }
+   ]
+  },
+  {
+   "query": "running shoes",
+   "bucket": "fashion",
+   "seed_count": 8,
+   "only_in_seed": [
+    {
+     "external_product_id": "ext_4325616696001433e9e318ca",
+     "brand": "Fenty Beauty",
+     "title": "Hydra Vizor Huez Tinted Moisturizer Broad Spectrum Mineral SPF 30 Sunscreen Refill (EU) — 9"
+    },
+    {
+     "external_product_id": "ext_a0c23c9d3dac7c1f04cd7fdb",
+     "brand": "Fenty Beauty",
+     "title": "Hydra Vizor Huez Tinted Moisturizer Broad Spectrum Mineral SPF 30 Sunscreen Refill (EU) — 3"
+    },
+    {
+     "external_product_id": "ext_a872eaa0f93f8d62b7e32d0e",
+     "brand": "Fenty Beauty",
+     "title": "Hydra Vizor Huez Tinted Moisturizer Broad Spectrum Mineral SPF 30 Sunscreen Refill (EU) — 2"
+    },
+    {
+     "external_product_id": "ext_696fabdc21f712cc05c65b5b",
+     "brand": "Fenty Beauty",
+     "title": "Hydra Vizor Huez Tinted Moisturizer Broad Spectrum Mineral SPF 30 Sunscreen Refill (EU) — 5"
+    },
+    {
+     "external_product_id": "ext_22409c792ff6aae8ab490c2f",
+     "brand": "Fenty Beauty",
+     "title": "Hydra Vizor Huez Tinted Moisturizer Broad Spectrum Mineral SPF 30 Sunscreen Refill (EU) — 1"
+    },
+    {
+     "external_product_id": "ext_bd7f77f4a0b717b76b8aa899",
+     "brand": "Fenty Beauty",
+     "title": "Hydra Vizor Huez Tinted Moisturizer Broad Spectrum Mineral SPF 30 Sunscreen Refill (EU) — 6"
+    },
+    {
+     "external_product_id": "ext_4402d5c445f34c3b34890623",
+     "brand": "Fenty Beauty",
+     "title": "Hydra Vizor Huez Tinted Moisturizer Broad Spectrum Mineral SPF 30 Sunscreen Refill (EU) — 4"
+    },
+    {
+     "external_product_id": "ext_4ffb3baf1bd641c6665bf657",
+     "brand": "Fenty Beauty",
+     "title": "Hydra Vizor Huez Tinted Moisturizer Broad Spectrum Mineral SPF 30 Sunscreen Refill (EU) — 8"
+    }
+   ]
+  },
+  {
+   "query": "black leather sneakers",
+   "bucket": "fashion",
+   "seed_count": 2,
+   "only_in_seed": [
+    {
+     "external_product_id": "ext_1e41e86897f6cf5e11592f59",
+     "brand": "Tom Ford Beauty",
+     "title": "Ombré Leather Eau de Parfum"
+    },
+    {
+     "external_product_id": "ext_23219e6e35e92245bd02a89b",
+     "brand": "Tom Ford Beauty",
+     "title": "Ombré Leather Parfum"
+    }
+   ]
+  },
+  {
+   "query": "aroma diffuser",
+   "bucket": "home",
+   "seed_count": 8,
+   "only_in_seed": [
+    {
+     "external_product_id": "ext_1b8432f4230a2c1b21b6cd7e",
+     "brand": "Tom Ford Beauty",
+     "title": "Neroli Portofino Hand and Body Moisturizer"
+    },
+    {
+     "external_product_id": "ext_06a3d186c9bae3e9f2e38a65",
+     "brand": "Tom Ford Beauty",
+     "title": "Oud Wood Hand and Body Moisturizer"
+    },
+    {
+     "external_product_id": "ext_38019560724349c61bc64497",
+     "brand": "Blind Barber",
+     "title": "Curl Defining Cream"
+    },
+    {
+     "external_product_id": "ext_82f082065005538cb466ed5c",
+     "brand": "Beekman 1802",
+     "title": "Almond Honey Cookie Lotion"
+    },
+    {
+     "external_product_id": "ext_e742231be6551fbca24b3920",
+     "brand": "Naturium",
+     "title": "The Energizer Mandelic Acid Body Wash"
+    },
+    {
+     "external_product_id": "ext_7fdc5419f5102b304021558e",
+     "brand": "Beekman 1802",
+     "title": "Vanilla Absolute Goat Milk Lotion"
+    },
+    {
+     "external_product_id": "ext_ad12f1257ab3899b13aa096f",
+     "brand": "Beekman 1802",
+     "title": "Honey & Orange Blossom Hand & Body Wash"
+    },
+    {
+     "external_product_id": "ext_dd10b87bdb34ae8c9656db85",
+     "brand": "rare beauty",
+     "title": "Find Comfort Stop & Soothe Aromatherapy Pen"
+    }
+   ]
+  },
+  {
+   "query": "insulated water bottle",
+   "bucket": "home",
+   "seed_count": 1,
+   "only_in_seed": [
+    {
+     "external_product_id": "ext_39dea73e212c850cc4ba3dfb",
+     "brand": "Supergoop!",
+     "title": "SPF! Glass Water Bottle"
+    }
+   ]
+  }
+ ]
+}
