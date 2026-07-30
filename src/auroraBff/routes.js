@@ -69873,11 +69873,6 @@ const CONCERN_SEMANTIC_PLAN_FIRST_ATTEMPT_TIMEOUT_MS = (() => {
   const v = Number.isFinite(n) ? Math.trunc(n) : 5000;
   return Math.max(1000, Math.min(15000, v));
 })();
-const CONCERN_SEMANTIC_PLAN_RETRY_ATTEMPT_TIMEOUT_MS = (() => {
-  const n = Number(process.env.AURORA_CONCERN_PLANNER_RETRY_ATTEMPT_TIMEOUT_MS || 10000);
-  const v = Number.isFinite(n) ? Math.trunc(n) : 10000;
-  return Math.max(1000, Math.min(20000, v));
-})();
 const CONCERN_SEMANTIC_PLAN_JSON_SCHEMA = Object.freeze({
   type: 'object',
   properties: {
@@ -70088,12 +70083,10 @@ async function runConcernSemanticPlanner({
       envSource: 'AURORA_CONCERN_PLANNER_GEMINI_MODEL',
       callPath: 'aurora_concern_semantic_planner_primary',
     });
-    const retryModel = resolveAuroraGeminiMainlineModel({
-      configuredModel: pickConfiguredEnv(['AURORA_CONCERN_PLANNER_GEMINI_RETRY_MODEL', 'AURORA_SKIN_DEEP_DIVE_MODEL_GEMINI', 'GEMINI_MODEL']).value,
-      fallbackModel: 'gemini-3-pro-preview',
-      envSource: 'AURORA_CONCERN_PLANNER_GEMINI_RETRY_MODEL',
-      callPath: 'aurora_concern_semantic_planner_retry',
-    });
+    // Single enrichment attempt by design: on failure the deterministic
+    // mainline below is the trusted fast path, and a second LLM attempt is
+    // not worth its added tail latency on the chat critical path (under the
+    // unified model override it would hit the same model again anyway).
     const plannerAttempts = [
       {
         provider: 'gemini',
@@ -70101,26 +70094,13 @@ async function runConcernSemanticPlanner({
         structured_contract: 'json_object',
         model_policy: primaryModel,
       },
-      {
-        provider: 'gemini',
-        model: retryModel.effective_model,
-        structured_contract: 'json_object',
-        model_policy: retryModel,
-      },
-    ].filter((attempt, index, attempts) => {
-      const key = `${String(attempt.provider || '').trim().toLowerCase()}:${String(attempt.model || '').trim().toLowerCase()}`;
-      return index === attempts.findIndex((row) => (
-        `${String(row.provider || '').trim().toLowerCase()}:${String(row.model || '').trim().toLowerCase()}` === key
-      ));
-    });
+    ];
     let lastSemanticPlan = { ...fallbackPlan };
     let lastPlannerResponse = null;
     let anyTimeout = false;
     for (let index = 0; index < plannerAttempts.length; index += 1) {
       const attempt = plannerAttempts[index];
-      const defaultAttemptTimeoutMs = index === 0
-        ? CONCERN_SEMANTIC_PLAN_FIRST_ATTEMPT_TIMEOUT_MS
-        : CONCERN_SEMANTIC_PLAN_RETRY_ATTEMPT_TIMEOUT_MS;
+      const defaultAttemptTimeoutMs = CONCERN_SEMANTIC_PLAN_FIRST_ATTEMPT_TIMEOUT_MS;
       const remainingBudgetMs = Number.isFinite(Number(deadlineAtMs))
         ? Math.max(0, Math.trunc(Number(deadlineAtMs) - Date.now()))
         : null;
@@ -70190,7 +70170,10 @@ async function runConcernSemanticPlanner({
           provider: 'gemini',
           requested_model: attempt.model,
           effective_model: attempt.model,
-          selection_source: 'local_gemini_rest_direct',
+          // The attempt failed before callGeminiJsonObject reported which
+          // executor it picked, so the transport is unknown here — label the
+          // failure stage instead of guessing REST vs SDK.
+          selection_source: /TIMEOUT/i.test(String(classified.reason || '')) ? 'attempt_timeout' : 'attempt_error',
           meta: normalizeQaTimeoutMeta(
             err && err.meta && typeof err.meta === 'object' ? err.meta : {},
             {
@@ -70310,7 +70293,6 @@ async function runConcernSemanticPlanner({
         return { semanticPlan, trace, upstream: plannerResponse };
       }
       if (
-        index === 0 &&
         isPlainObject(deterministicMainlinePlan) &&
         Array.isArray(deterministicMainlinePlan.core_roles) &&
         deterministicMainlinePlan.core_roles.length > 0
