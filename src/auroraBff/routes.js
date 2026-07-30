@@ -165,6 +165,7 @@ const {
   getRecoRecallFilledRoleIds,
   getRecoRecallSelectedCount,
   isRecoRecallFrameworkCoverageSatisfied,
+  isRecoRecallInternalLaneEnabled,
   shouldRunRecoRecallStage,
 } = require('./recoRecallStagePolicy');
 const {
@@ -27673,17 +27674,23 @@ async function collectRecoCandidatesFromQueryLevels({
     let runnableQueries = [];
     const querySkipReasons = [];
     for (const queryEntry of queries) {
+      const queryAllowExternalSeed =
+        allowExternalSeed === true
+        && queryEntry?.allow_external_seed === true;
+      const internalLaneDisabledSkip =
+        !queryAllowExternalSeed
+        && hasFrameworkTargetContext
+        && !isRecoRecallInternalLaneEnabled();
       const queryPrimaryExternalSkip = shouldSkipFrameworkPrimaryExternalSeedQuery(queryEntry, candidateState, {
         targetContext,
       });
       const supportSkipReason = resolveFrameworkSupportRoleQuerySkipReason(queryEntry, candidateState);
-      if (queryPrimaryExternalSkip || supportSkipReason) {
-        const queryAllowExternalSeed =
-          allowExternalSeed === true
-          && queryEntry?.allow_external_seed === true;
-        const runtimeSkipReason = queryPrimaryExternalSkip
-          ? 'skipped_primary_already_satisfied'
-          : supportSkipReason;
+      if (internalLaneDisabledSkip || queryPrimaryExternalSkip || supportSkipReason) {
+        const runtimeSkipReason = internalLaneDisabledSkip
+          ? 'internal_lane_disabled'
+          : queryPrimaryExternalSkip
+            ? 'skipped_primary_already_satisfied'
+            : supportSkipReason;
         querySkipReasons.push(runtimeSkipReason);
         searchResults.push({
           ...queryEntry,
@@ -27718,9 +27725,11 @@ async function collectRecoCandidatesFromQueryLevels({
             ? 'external_seed'
             : 'internal',
         skipped: true,
-        skip_reason: querySkipReasons.includes('primary_role_unmatched')
-          ? 'primary_role_unmatched'
-          : 'skipped_support_role_already_satisfied',
+        skip_reason: querySkipReasons.length > 0 && querySkipReasons.every((reason) => reason === 'internal_lane_disabled')
+          ? 'internal_lane_disabled'
+          : querySkipReasons.includes('primary_role_unmatched')
+            ? 'primary_role_unmatched'
+            : 'skipped_support_role_already_satisfied',
         executed_query_count: 0,
         executed_upstream_attempt_count: 0,
         actual_http_attempt_count: 0,

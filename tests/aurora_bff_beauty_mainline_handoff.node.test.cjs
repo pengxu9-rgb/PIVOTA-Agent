@@ -3,6 +3,10 @@ const assert = require('node:assert/strict');
 const path = require('node:path');
 process.env.AURORA_BFF_USE_MOCK = 'true';
 process.env.AURORA_DECISION_BASE_URL = '';
+// This suite exercises lane-live handoff semantics (internal primitive timeouts,
+// internal/external comparison, support budgets); the production default skips
+// internal-scope framework queries entirely (internal_lane_disabled).
+process.env.AURORA_RECO_INTERNAL_RECALL_LANE_MODE = 'enabled';
 process.env.AURORA_PRODUCT_GROUNDING_STABLE_ALIAS_PATH = path.join(
   __dirname,
   'fixtures',
