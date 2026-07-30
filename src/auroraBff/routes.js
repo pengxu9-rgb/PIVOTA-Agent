@@ -69854,6 +69854,19 @@ const CONCERN_SEMANTIC_PLAN_THINKING_BUDGET = (() => {
   const n = Number(process.env.AURORA_CONCERN_PLANNER_THINKING_BUDGET);
   return Number.isFinite(n) && n >= 0 ? Math.min(4096, Math.trunc(n)) : 0;
 })();
+// With thinking pinned off the call answers in ~2.8s when the transport is
+// healthy, so 8s of first-attempt budget only prolongs the failure path on the
+// calls that will never make it; keep the cap env-tunable for ops.
+const CONCERN_SEMANTIC_PLAN_FIRST_ATTEMPT_TIMEOUT_MS = (() => {
+  const n = Number(process.env.AURORA_CONCERN_PLANNER_FIRST_ATTEMPT_TIMEOUT_MS || 5000);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 5000;
+  return Math.max(1000, Math.min(15000, v));
+})();
+const CONCERN_SEMANTIC_PLAN_RETRY_ATTEMPT_TIMEOUT_MS = (() => {
+  const n = Number(process.env.AURORA_CONCERN_PLANNER_RETRY_ATTEMPT_TIMEOUT_MS || 10000);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 10000;
+  return Math.max(1000, Math.min(20000, v));
+})();
 const CONCERN_SEMANTIC_PLAN_JSON_SCHEMA = Object.freeze({
   type: 'object',
   properties: {
@@ -70094,7 +70107,9 @@ async function runConcernSemanticPlanner({
     let anyTimeout = false;
     for (let index = 0; index < plannerAttempts.length; index += 1) {
       const attempt = plannerAttempts[index];
-      const defaultAttemptTimeoutMs = index === 0 ? 8000 : 10000;
+      const defaultAttemptTimeoutMs = index === 0
+        ? CONCERN_SEMANTIC_PLAN_FIRST_ATTEMPT_TIMEOUT_MS
+        : CONCERN_SEMANTIC_PLAN_RETRY_ATTEMPT_TIMEOUT_MS;
       const remainingBudgetMs = Number.isFinite(Number(deadlineAtMs))
         ? Math.max(0, Math.trunc(Number(deadlineAtMs) - Date.now()))
         : null;
