@@ -3319,6 +3319,11 @@ test('runConcernSemanticPlanner narrows dry use-first asks into moisturizer-led 
     assert.equal(capturedArgs?.route, 'aurora_concern_semantic_plan_json');
     assert.equal(capturedArgs?.thinkingLevel, undefined);
     assert.equal(capturedArgs?.maxOutputTokens, 1400);
+    // Thinking is pinned OFF for this call: measured on the prod Vertex
+    // project, default dynamic thinking spent ~690 thought tokens and 7.1s —
+    // straddling the 8s attempt budget, so enrichment timed out on
+    // effectively every prod chat. 0 keeps the same call at ~2.8s.
+    assert.equal(capturedArgs?.thinkingBudget, 0);
     assert.equal(capturedArgs?.responseSchema?.type, 'object');
     assert.equal(out.trace?.planner_failure_class, null);
     assert.equal(out.trace?.planner_attempts?.[0]?.structured_contract, 'json_object');

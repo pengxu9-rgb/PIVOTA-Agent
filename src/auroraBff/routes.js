@@ -69836,6 +69836,13 @@ function buildAuroraProductRecommendationsQuery({ profile, requestText, lang, gl
 const CONCERN_SELECTOR_RACE_VERSION = 'concern_selector_race_v1';
 const CONCERN_SEMANTIC_PLAN_JSON_ROUTE = 'aurora_concern_semantic_plan_json';
 const CONCERN_SEMANTIC_PLAN_JSON_MAX_OUTPUT_TOKENS = 1400;
+// 0 = no thinking (see the call site for the measured latency account).
+// Env-overridable so ops can re-enable thinking without a deploy if plan
+// quality ever measurably needs it.
+const CONCERN_SEMANTIC_PLAN_THINKING_BUDGET = (() => {
+  const n = Number(process.env.AURORA_CONCERN_PLANNER_THINKING_BUDGET);
+  return Number.isFinite(n) && n >= 0 ? Math.min(4096, Math.trunc(n)) : 0;
+})();
 const CONCERN_SEMANTIC_PLAN_JSON_SCHEMA = Object.freeze({
   type: 'object',
   properties: {
@@ -70122,6 +70129,15 @@ async function runConcernSemanticPlanner({
             responseSchema: CONCERN_SEMANTIC_PLAN_JSON_SCHEMA,
             route: CONCERN_SEMANTIC_PLAN_JSON_ROUTE,
             ignoreForceModel: true,
+            // Without an explicit budget, gemini-2.5-flash spends its dynamic
+            // thinking allowance on this call (measured on the prod Vertex
+            // project: ~690 thought tokens, 7.1s total — straddling the 8s
+            // attempt budget, which is why prod planner enrichment timed out
+            // on effectively every chat and always fell back to the
+            // deterministic mainline). A JSON role-plan needs no
+            // chain-of-thought: with the budget pinned to 0 the same call
+            // returns valid schema-conforming JSON in ~2.8s.
+            thinkingBudget: CONCERN_SEMANTIC_PLAN_THINKING_BUDGET,
           })),
           effectiveAttemptTimeoutMs,
           'GEMINI_UPSTREAM_TIMEOUT',
