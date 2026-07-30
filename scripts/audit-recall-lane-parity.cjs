@@ -2,7 +2,8 @@
 'use strict';
 
 /**
- * Recall-lane parity harness (Phase 0 of ADR-001 unified sig commerce index).
+ * Recall-lane parity harness (Phase 0 of ADR-020 unified commerce index lanes,
+ * docs/ADR-020-unified-commerce-index-lanes.md).
  *
  * Replays a query corpus through BOTH recall lanes and diffs the results so we
  * can enumerate the actual recall gaps between them before unifying:
@@ -79,6 +80,18 @@ function normalizeBrandTitleKey(brand, title) {
   const normalizedTitle = normalizeText(title);
   if (!normalizedTitle) return '';
   return `${normalizeText(brand)}|${normalizedTitle}`;
+}
+
+/**
+ * Truncate one lane's raw rows to the per-lane limit BEFORE normalization.
+ * fetchCanonicalChainRows returns up to limit*6 flattened chain rows; overlap@k
+ * must compare the top-k of each lane, so slice to `limit` first.
+ */
+function truncateToLaneLimit(rows, limit) {
+  const list = Array.isArray(rows) ? rows : [];
+  const max = Math.trunc(Number(limit));
+  if (!Number.isFinite(max) || max <= 0) return list.slice();
+  return list.slice(0, max);
 }
 
 /**
@@ -225,6 +238,10 @@ function joinLaneItems(seedItems, catalogItems) {
  * `overlap_at_k` = matched seed items / seed item count — the fraction of the
  * incumbent seed lane's recall that the catalog lane also returns. When the
  * seed lane returned nothing, it is null (undefined coverage).
+ *
+ * When a lane threw (`seedError` / `catalogError` set), its empty result is an
+ * error artifact, not a recall signal: `catalog_gap` is never flagged for
+ * errored rows.
  */
 function diffQueryResults({
   query,
@@ -235,6 +252,8 @@ function diffQueryResults({
   seedLatencyMs = null,
   catalogLatencyMs = null,
   seedReason = null,
+  seedError = null,
+  catalogError = null,
 } = {}) {
   const { matches, onlyInSeed, onlyInCatalog } = joinLaneItems(seedItems, catalogItems);
   const seedCount = (Array.isArray(seedItems) ? seedItems : []).filter(Boolean).length;
@@ -250,7 +269,7 @@ function diffQueryResults({
     overlap_count: overlapCount,
     overlap_at_k: seedCount > 0 ? overlapCount / seedCount : null,
     jaccard: unionCount > 0 ? overlapCount / unionCount : null,
-    catalog_gap: catalogCount === 0 && seedCount > 0,
+    catalog_gap: !seedError && !catalogError && catalogCount === 0 && seedCount > 0,
     matches,
     only_in_seed: onlyInSeed,
     only_in_catalog: onlyInCatalog,
@@ -259,6 +278,8 @@ function diffQueryResults({
       ? Math.trunc(Number(catalogLatencyMs))
       : null,
     ...(seedReason ? { seed_reason: seedReason } : {}),
+    ...(seedError ? { seed_error: asString(seedError) } : {}),
+    ...(catalogError ? { catalog_error: asString(catalogError) } : {}),
   };
 }
 
@@ -286,6 +307,11 @@ function round(value, digits = 4) {
  * The headline gap metric is `catalog_zero_seed_positive_pct`: the share of
  * queries where the catalog lane returned 0 rows while the seed lane returned
  * at least one product — the recall the unified index must not lose.
+ *
+ * Rows where either lane errored (`seed_error` / `catalog_error`) are excluded
+ * from the gap numerator AND denominator (an errored lane's empty result says
+ * nothing about recall); they are surfaced via `queries_seed_error` /
+ * `queries_catalog_error` instead.
  */
 function aggregateParityReport(perQuery, { topOnlyInSeedTitles = TOP_ONLY_IN_SEED_TITLES } = {}) {
   const rows = (Array.isArray(perQuery) ? perQuery : []).filter(Boolean);
@@ -295,7 +321,8 @@ function aggregateParityReport(perQuery, { topOnlyInSeedTitles = TOP_ONLY_IN_SEE
     .map(Number);
 
   const seedPositive = rows.filter((row) => Number(row.seed_count) > 0);
-  const catalogZeroSeedPositive = seedPositive.filter((row) => Number(row.catalog_count) === 0);
+  const gapEligible = seedPositive.filter((row) => !row.seed_error && !row.catalog_error);
+  const catalogZeroSeedPositive = gapEligible.filter((row) => Number(row.catalog_count) === 0);
 
   const onlyInSeedTitleCounts = new Map();
   for (const row of rows) {
@@ -339,12 +366,14 @@ function aggregateParityReport(perQuery, { topOnlyInSeedTitles = TOP_ONLY_IN_SEE
     queries_both_empty: rows.filter(
       (row) => Number(row.seed_count) === 0 && Number(row.catalog_count) === 0,
     ).length,
+    queries_seed_error: rows.filter((row) => row.seed_error).length,
+    queries_catalog_error: rows.filter((row) => row.catalog_error).length,
     mean_overlap_at_k: round(mean(overlaps)),
     median_overlap_at_k: round(median(overlaps)),
     catalog_zero_seed_positive_count: catalogZeroSeedPositive.length,
     catalog_zero_seed_positive_pct:
-      seedPositive.length > 0
-        ? round((catalogZeroSeedPositive.length / seedPositive.length) * 100, 2)
+      gapEligible.length > 0
+        ? round((catalogZeroSeedPositive.length / gapEligible.length) * 100, 2)
         : null,
     catalog_zero_seed_positive_queries: catalogZeroSeedPositive.map((row) => row.query),
     top_only_in_seed_titles: topOnlyInSeed,
@@ -453,6 +482,7 @@ async function main() {
     for (const entry of corpus) {
       const seedStartedAt = Date.now();
       let seedOut;
+      let seedError = null;
       try {
         seedOut = await searchLocalExternalSeedProducts({
           query: entry.query,
@@ -461,7 +491,8 @@ async function main() {
           transportPolicyMode: 'product_grounding_exact',
         });
       } catch (error) {
-        seedOut = { ok: false, products: [], reason: `seed_lane_error: ${error?.message || error}` };
+        seedError = `seed_lane_error: ${error?.message || error}`;
+        seedOut = { ok: false, products: [], reason: seedError };
       }
       const seedLatencyMs = Date.now() - seedStartedAt;
 
@@ -484,7 +515,9 @@ async function main() {
       const seedItems = (Array.isArray(seedOut?.products) ? seedOut.products : [])
         .map(normalizeSeedLaneItem)
         .filter(Boolean);
-      const catalogItems = (Array.isArray(catalogRows) ? catalogRows : [])
+      // fetchCanonicalChainRows returns up to limit*6 flattened chain rows;
+      // truncate to the per-lane limit so overlap@k compares k vs k.
+      const catalogItems = truncateToLaneLimit(catalogRows, limit)
         .map(normalizeCatalogLaneItem)
         .filter(Boolean);
 
@@ -497,8 +530,9 @@ async function main() {
         seedLatencyMs,
         catalogLatencyMs,
         seedReason: seedOut?.ok ? null : asString(seedOut?.reason) || null,
+        seedError,
+        catalogError,
       });
-      if (catalogError) diff.catalog_error = catalogError;
       perQuery.push(diff);
 
       const line =
@@ -552,6 +586,7 @@ module.exports = {
   EXTERNAL_SEED_PRODUCT_KEY_PREFIX,
   normalizeText,
   normalizeBrandTitleKey,
+  truncateToLaneLimit,
   externalProductIdFromProductKey,
   normalizeSeedLaneItem,
   normalizeCatalogLaneItem,

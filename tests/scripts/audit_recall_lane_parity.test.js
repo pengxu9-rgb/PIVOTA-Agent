@@ -2,6 +2,7 @@ const {
   EXTERNAL_SEED_PRODUCT_KEY_PREFIX,
   externalProductIdFromProductKey,
   normalizeBrandTitleKey,
+  truncateToLaneLimit,
   normalizeSeedLaneItem,
   normalizeCatalogLaneItem,
   joinLaneItems,
@@ -164,6 +165,39 @@ describe('audit-recall-lane-parity per-query diff', () => {
     expect(diff.catalog_latency_ms).toBe(34);
   });
 
+  test('truncates the catalog lane to the per-lane limit so overlap@k compares k vs k', () => {
+    // fetchCanonicalChainRows returns up to limit*6 flattened chain rows.
+    const limit = 3;
+    const rawCatalogRows = Array.from({ length: limit * 6 }, (_, i) => ({
+      product_key: `prod::external_seed::external_seed::ext_trunc_${i}`,
+      product_title: `Chain Row ${i}`,
+      brand: 'TruncBrand',
+    }));
+
+    const truncated = truncateToLaneLimit(rawCatalogRows, limit);
+    expect(truncated).toHaveLength(limit);
+    // Keeps the head of the ranked list, in order.
+    expect(truncated.map((r) => r.product_title)).toEqual(['Chain Row 0', 'Chain Row 1', 'Chain Row 2']);
+    // Degenerate inputs are safe.
+    expect(truncateToLaneLimit(null, limit)).toEqual([]);
+    expect(truncateToLaneLimit(rawCatalogRows, Number.NaN)).toHaveLength(limit * 6);
+
+    // Seed lane matches only the tail rows -> with truncation those rows are
+    // outside the catalog top-k, so overlap@k must be 0 (k vs k), not 1.
+    const seedItems = [
+      normalizeSeedLaneItem({
+        external_product_id: `ext_trunc_${limit * 6 - 1}`,
+        title: `Chain Row ${limit * 6 - 1}`,
+        brand: 'TruncBrand',
+      }),
+    ];
+    const catalogItems = truncated.map(normalizeCatalogLaneItem).filter(Boolean);
+    const diff = diffQueryResults({ query: 'truncation', seedItems, catalogItems });
+    expect(diff.catalog_count).toBe(limit);
+    expect(diff.overlap_count).toBe(0);
+    expect(diff.overlap_at_k).toBe(0);
+  });
+
   test('flags catalog_gap when catalog lane is empty but seed lane is not', () => {
     const diff = diffQueryResults({
       query: 'vanilla perfume',
@@ -223,6 +257,59 @@ describe('audit-recall-lane-parity aggregate gap metric', () => {
     expect(aggregate.catalog_zero_seed_positive_queries).toEqual(['gap query']);
     expect(aggregate.mean_seed_latency_ms).toBe(10);
     expect(aggregate.mean_catalog_latency_ms).toBe(20);
+  });
+
+  test('excludes lane-errored rows from the gap metric and counts them as errors', () => {
+    // Catalog lane threw for this query; its empty result is an error
+    // artifact, not a recall gap.
+    const erroredCatalog = diffQueryResults({
+      query: 'errored catalog query',
+      seedItems: [
+        normalizeSeedLaneItem({ external_product_id: 'ext_err_1', title: 'Seed Hit', brand: 'B' }),
+      ],
+      catalogItems: [],
+      catalogError: 'catalog_lane_error: relation does not exist',
+    });
+    expect(erroredCatalog.catalog_error).toBe('catalog_lane_error: relation does not exist');
+    expect(erroredCatalog.seed_count).toBe(1);
+    expect(erroredCatalog.catalog_count).toBe(0);
+    expect(erroredCatalog.catalog_gap).toBe(false);
+
+    const erroredSeed = diffQueryResults({
+      query: 'errored seed query',
+      seedItems: [],
+      catalogItems: [],
+      seedError: 'seed_lane_error: timeout',
+    });
+    expect(erroredSeed.seed_error).toBe('seed_lane_error: timeout');
+    expect(erroredSeed.catalog_gap).toBe(false);
+
+    const trueGap = makeDiff({ query: 'true gap', seedTitles: ['Seed Only Hit'] });
+
+    const aggregate = aggregateParityReport([erroredCatalog, erroredSeed, trueGap]);
+    expect(aggregate.queries_total).toBe(3);
+    expect(aggregate.queries_seed_error).toBe(1);
+    expect(aggregate.queries_catalog_error).toBe(1);
+    // Only the clean gap query counts; the errored catalog row is excluded
+    // from both the numerator and the denominator.
+    expect(aggregate.catalog_zero_seed_positive_count).toBe(1);
+    expect(aggregate.catalog_zero_seed_positive_queries).toEqual(['true gap']);
+    expect(aggregate.catalog_zero_seed_positive_pct).toBe(100);
+  });
+
+  test('gap pct is null when every seed-positive row errored', () => {
+    const erroredCatalog = diffQueryResults({
+      query: 'only errored',
+      seedItems: [
+        normalizeSeedLaneItem({ external_product_id: 'ext_err_2', title: 'Seed Hit', brand: 'B' }),
+      ],
+      catalogItems: [],
+      catalogError: 'catalog_lane_error: boom',
+    });
+    const aggregate = aggregateParityReport([erroredCatalog]);
+    expect(aggregate.queries_catalog_error).toBe(1);
+    expect(aggregate.catalog_zero_seed_positive_count).toBe(0);
+    expect(aggregate.catalog_zero_seed_positive_pct).toBeNull();
   });
 
   test('surfaces recurring only-in-seed titles across queries', () => {
