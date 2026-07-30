@@ -232,7 +232,8 @@ population).
    minted at multiple server.js sites). Formalize `offersPriority` as the
    single preference module with parity tests.
 4. [ ] **Deletion:** remove `source_scope` stages, dual transports,
-   `AURORA_RECO_INTERNAL_RECALL_LANE_MODE`, and per-lane gates once trust-gate
+   `AURORA_RECO_INTERNAL_RECALL_LANE_MODE`, the transitional
+   `AURORA_RECO_UNIFIED_RECALL_MODE` flag, and per-lane gates once trust-gate
    parity and preference parity tests are green in prod shadow. Note the trust
    gate is a **cross-repo dependency**: `catalog_row_trust` is defined by a
    pivota-backend migration and its rollout (replacing
@@ -263,7 +264,8 @@ path).
   dependency folded into the migration above.
 - `docs/CATALOG_ROW_TRUST_CONTRACT.md` — trust predicates to re-home at the
   offer layer.
-- `docs/services_provider_integrations_design.md` — same motif in the services
+- `docs/services_provider_integrations_design.md` (not yet committed —
+  untracked draft in the working tree as of 2026-07-30) — same motif in the services
   domain: source becomes a data column (`capability`) dispatched by policy, not
   parallel code paths. (Note: it reserves migration number `049`, which is now
   taken by `049_index_pipeline_state_readiness_tier.sql` — renumber on
