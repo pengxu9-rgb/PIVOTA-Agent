@@ -1,8 +1,27 @@
-# ADR-001: Unify internal and external products under the sig-keyed commerce index
+# ADR-020: Unify internal and external recall lanes; internal vs external becomes offer source
 
 **Status:** Proposed
 **Date:** 2026-07-30
 **Deciders:** Peng (product/eng), pivota-backend owner (internal lane is their HTTP surface)
+**Builds on:** ADR-007 (citable index vs commerce overlay), ADR-009
+(seller-of-record identity; "gate on platform, not `merchant_id='external_seed'`"),
+ADR-010 (canonical product identity — `content_key` spine, resolver-owned),
+ADR-012 (catalog convergence: reconcilers, not pokes) — all in
+`pivota-backend/docs/adr/` — and `docs/COMMERCE_INDEX_CONVERGENCE_AND_PUBLISH_PLAN.md`
+(approved 2026-06-25), whose Part A already committed the Node gateway as the
+single agent-facing recall engine. This ADR extends that decision **within**
+the gateway: Part A unified gateway-vs-backend; this unifies the gateway's own
+internal/external lanes. Numbered in the shared `pivota-backend/docs/adr/`
+sequence (next free after ADR-019); lives in this repo because the affected
+code does.
+
+> **Identity-key note (per ADR-010, which this ADR defers to):** the row-level
+> identity spine is **`content_key`** (PRIMARY KEY of `agent_pdp_view`);
+> `pivota_signature_id` is the per-merchant, write-once **public citation
+> handle**; `product_group_id` is internal grouping. Where this document says
+> "sig-keyed", read it as shorthand for "canonical identity per ADR-010's
+> resolver, with sig as the public handle" — recall unification does not
+> re-decide the identity grain.
 
 ## Context
 
@@ -78,9 +97,11 @@ intent go).
 Treat internal and external products as **equal at the identity and recall
 layers, distinct only at the offer layer**:
 
-1. **Identity** — one product node per sig. Internal rows and external seeds
-   sharing a sig are the same product. (Already the direction of travel;
-   becomes the primary model, not a reconciliation afterthought.)
+1. **Identity** — one canonical product node per ADR-010's resolver
+   (`content_key` spine, `product_group_id` grouping, sig as public handle).
+   Internal rows and external seeds resolving to the same canonical identity
+   are the same product. (Already the direction of travel; becomes the primary
+   model, not a reconciliation afterthought.)
 2. **Recall** — one commerce-index search per query against the sig-keyed
    index. No `source_scope` stages, no per-lane transports, no inter-lane
    preference logic, no kill-switch.
@@ -174,14 +195,19 @@ population).
 0. [ ] **Ground truth + parity harness:** all work is derived from and verified
    against `origin/main` (local checkouts drift). Build an offline
    recall-parity harness replaying a query corpus through both lanes; use it to
-   enumerate the *actual* recall gaps before committing projection scope.
+   enumerate the *actual* recall gaps before committing projection scope. This
+   is the same instrument the convergence plan's step A4 specifies for
+   gateway-vs-backend parity — reuse its golden corpus
+   (`pivota-agent-ui/scripts/eval_corpus_recall_v1.jsonl`) rather than minting
+   a new one.
    (Adversarial review 2026-07-30 falsified an earlier premise here: graduation
    does **not** downgrade recall — attached seeds have dedicated indexes and
    the brand fastpath requires them. The real gap is that search still runs
    against the raw seeds table with per-request catalog joins.)
 1. [ ] **Index completeness:** project the seed recall doc **plus market/tool
-   scoping, availability, and brand-alias state** into `catalog_products` at
-   sync time, so no per-request `external_product_seeds` join survives. New
+   scoping, availability, and brand-alias state** into `catalog_products` — per
+   ADR-012, as a **convergent reconciler with a drift metric**, not a sync-time
+   poke — so no per-request `external_product_seeds` join survives. New
    trgm indexes go in with `CREATE INDEX CONCURRENTLY` (live serving table).
    Recalibrate `rank_score` (the `+200 multi_merchant_canonical` term currently
    outranks external over internal systematically) and fix the market-filter
@@ -223,6 +249,13 @@ path).
 
 ## Related
 
+- `pivota-backend/docs/adr/` ADR-007, ADR-009, ADR-010, ADR-012 — see header;
+  ADR-009 in particular already mandates gating on `platform`, not the legacy
+  `merchant_id='external_seed'`, which Phase 3's `offer_source` derivation must
+  follow.
+- `docs/COMMERCE_INDEX_CONVERGENCE_AND_PUBLISH_PLAN.md` — Part A (gateway as
+  the single recall engine) is the parent decision; its A4 parity harness and
+  `eval_corpus_recall_*` corpus are reused in Phase 0.
 - PRs #1863 / #1864 / #1865 — the kill-switch triplet motivating this ADR.
 - Adversarial plan review (2026-07-30) — corrected the graduation-recall
   premise, surfaced the market-filter/rank-score interactions, the
