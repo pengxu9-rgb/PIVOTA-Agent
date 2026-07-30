@@ -1,3 +1,19 @@
+const RECO_INTERNAL_RECALL_LANE_MODE_ENV = 'AURORA_RECO_INTERNAL_RECALL_LANE_MODE';
+
+function isRecoRecallInternalLaneEnabled(env = process.env) {
+  const normalized = String(env?.[RECO_INTERNAL_RECALL_LANE_MODE_ENV] || '')
+    .trim()
+    .toLowerCase();
+  if (['enabled', 'on', '1', 'true', 'yes'].includes(normalized)) return true;
+  if (['disabled', 'off', '0', 'false', 'no'].includes(normalized)) return false;
+  // Default disabled: pivota-backend's internal products search serves only from
+  // products_cache, which holds no real (non-test-rig) inventory, so every
+  // internal-scope recall attempt is a guaranteed-empty ~1s HTTP call. Set
+  // AURORA_RECO_INTERNAL_RECALL_LANE_MODE=enabled once that lane is fed real
+  // inventory (or reads real serving tables).
+  return false;
+}
+
 function getRecoRecallSelectedCount(candidateState) {
   if (Number.isFinite(Number(candidateState?.selected_candidate_count))) {
     return Math.max(0, Math.trunc(Number(candidateState.selected_candidate_count)));
@@ -67,6 +83,10 @@ function shouldRunRecoRecallStage(stage, { stageResults = [], candidateState = n
   if (!stageObj) return { run: false, reason: 'stage_invalid' };
   const runIf = String(stageObj.run_if || 'always').trim().toLowerCase();
   const stageId = String(stageObj.stage_id || '').trim().toLowerCase();
+  const sourceScope = String(stageObj.source_scope || '').trim().toLowerCase();
+  if (sourceScope === 'internal' && !isRecoRecallInternalLaneEnabled()) {
+    return { run: false, reason: 'internal_lane_disabled' };
+  }
   if (runIf === 'always') return { run: true, reason: 'always' };
   if (runIf === 'if_surface_count_below_target') {
     if (stageId.startsWith('framework_stage_c_support_') && candidateState?.primary_role_matched !== true) {
@@ -112,6 +132,8 @@ function shouldRunRecoRecallStage(stage, { stageResults = [], candidateState = n
 }
 
 module.exports = {
+  RECO_INTERNAL_RECALL_LANE_MODE_ENV,
+  isRecoRecallInternalLaneEnabled,
   getRecoRecallSelectedCount,
   getRecoRecallFilledRoleIds,
   getRecoRecallRequiredRoleIds,
