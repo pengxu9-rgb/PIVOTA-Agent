@@ -19,6 +19,13 @@ on:
       - "tests/skills/**"
       - "scripts/verify_aurora_contracts_sync.cjs"
 
+# Superseded PR pushes cancel the run for the commit they replaced. Push-to-main
+# falls through to run_id — a group of one — so every main commit keeps its own
+# result, matching the concurrency shape of the other PR gates in this repo.
+concurrency:
+  group: aurora-skill-contracts-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
 jobs:
   aurora-skill-contracts:
     runs-on: ubuntu-latest
