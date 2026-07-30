@@ -1,7 +1,16 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const path = require('node:path');
 
 process.env.AURORA_BFF_USE_MOCK = 'true';
+// The runtime stable-alias registry ships empty (merchant hardcodes were removed);
+// stable-alias tests in this suite rely on the shared fixture, same as the
+// beauty mainline handoff suite.
+process.env.AURORA_PRODUCT_GROUNDING_STABLE_ALIAS_PATH = path.join(
+  __dirname,
+  'fixtures',
+  'product_grounding_stable_aliases.test.json',
+);
 process.env.AURORA_DECISION_BASE_URL = '';
 process.env.AURORA_BFF_RECO_CATALOG_GROUNDED = 'true';
 process.env.AURORA_CHATCARDS_RESPONSE_CONTRACT = 'dual';
@@ -16151,7 +16160,10 @@ test('/v1/chat: beauty-owned hard path uses stable authority before legacy plann
     const cards = Array.isArray(response.body?.cards) ? response.body.cards : [];
     const confidenceCard = cards.find((card) => card && card.type === 'confidence_notice') || null;
     assert.equal(confidenceCard, null);
-    assert.equal(response.body?.assistant_message, null);
+    // Deterministic beauty visible reply is backfilled into assistant_message
+    // even without an LLM rewrite (beautyExpertV1 attach).
+    assert.equal(response.body?.assistant_message?.role, 'assistant');
+    assert.match(String(response.body?.assistant_message?.content || ''), /current lead|oily|oil.control/i);
   } finally {
     axios.get = originalGet;
     harness.restore();
@@ -16231,7 +16243,13 @@ test('/v1/chat: beauty-owned reco helper miss still fails closed before legacy p
     const notice = getConfidenceNoticePayload(response.body);
     assert.ok(notice);
     assert.equal(String(notice.reason || ''), 'upstream_empty_recommendations');
-    assert.equal(response.body?.assistant_message, null);
+    // Fail-closed still attaches the deterministic "need more context" visible
+    // reply as assistant_message (beautyExpertV1 attach) — no product picks though.
+    assert.equal(response.body?.assistant_message?.role, 'assistant');
+    assert.match(
+      String(response.body?.assistant_message?.content || ''),
+      /more context|not required to continue/i,
+    );
     assert.match(
       String(notice.message || ''),
       /not showing product picks|not forcing product picks|could not confirm|不展示商品推荐/i,
@@ -16783,7 +16801,7 @@ staleFallbackPlannerTest('/v1/chat: greasy-by-noon free text stays on the beauty
   }
 });
 
-test('/v1/chat: exact oily first-turn matrix keeps canonical target bundle and green quality contract across bare, seeded, and action-patched paths', { concurrency: false }, async () => {
+test('/v1/chat: exact oily first-turn matrix keeps canonical target bundle and green quality contract across bare, seeded, and action-patched paths', { concurrency: false }, withInternalRecallLaneEnabled(async () => {
   let auroraChatCallCount = 0;
   const observedInternalQueries = [];
   const harness = createAppWithPatchedAuroraChat({
@@ -16938,8 +16956,11 @@ test('/v1/chat: exact oily first-turn matrix keeps canonical target bundle and g
       const assistantText = String(
         response.body?.assistant_message?.content || response.body?.assistant_text || '',
       );
-      assert.equal(response.body?.assistant_message ?? null, null, testCase.label);
-      assert.equal(assistantText, '', testCase.label);
+      // With the LLM rewrite disabled the deterministic beauty visible reply is
+      // still backfilled into assistant_message (beautyExpertV1 attach), while
+      // rewrite meta keeps recording that no LLM ran.
+      assert.equal(response.body?.assistant_message?.role, 'assistant', testCase.label);
+      assert.match(assistantText, /niacinamide/i, testCase.label);
       assert.equal(payload.recommendation_meta?.assistant_rewrite_llm_used, false, testCase.label);
       assert.equal(payload.recommendation_meta?.assistant_rewrite_reason, 'rewrite_disabled', testCase.label);
 
@@ -16969,7 +16990,7 @@ test('/v1/chat: exact oily first-turn matrix keeps canonical target bundle and g
     harness.routesMod.__internal.__resetRouteDependencyOverridesForTest();
     harness.restore();
   }
-});
+}));
 
 staleFallbackPlannerTest('/v1/chat: step-aware typed reco still returns products when upstream reco times out', async () => {
   const originalGet = axios.get;
