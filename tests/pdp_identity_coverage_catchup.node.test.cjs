@@ -49,6 +49,43 @@ test('only-uncovered adds the NOT EXISTS guard to the external-seed lane', async
   assert.match(seedSql, /pil\.product_id = e\.external_product_id/);
 });
 
+test('the guard must NOT correlate on merchant_id — it cannot see its own output', async () => {
+  // THE defect this file exists to prevent, and the one a SQL-text assertion
+  // missed on the first cut. Since #1770 an external-seed listing is keyed to
+  // the per-brand observed seller (merch_obs_…), NOT the legacy 'external_seed'
+  // bucket. A `pil.merchant_id = $1` conjunct therefore fails to match the rows
+  // THIS job mints: week 1 mints under merch_obs_, week 2 re-selects them as
+  // "uncovered" and re-enters ON CONFLICT — unattended, against prod, forever.
+  const { seen, queryFn } = capture();
+  await fetchBackfillProducts({ onlyUncovered: true, queryFn });
+  const seedSql = seen.find((s) => s.includes('external_product_seeds'));
+  const guard = seedSql.slice(seedSql.indexOf('NOT EXISTS'));
+  const guardBlock = guard.slice(0, guard.indexOf(')') + 1);
+  assert.ok(
+    !/pil\.merchant_id/.test(guardBlock),
+    'the uncovered guard must key on product_id alone; merchant_id makes it blind to merch_obs_ listings',
+  );
+  assert.match(guardBlock, /pil\.source_kind = 'external_seed'/);
+});
+
+test('catch-up mode does not touch the internal (products_cache) lane', async () => {
+  // An internal listing's key is resolved from JSONB in JS, so no SQL
+  // predicate reproduces it; running that lane in catch-up mode would re-enter
+  // ON CONFLICT for rows that already have listings. Skipped on purpose.
+  const { seen, queryFn } = capture();
+  await fetchBackfillProducts({ onlyUncovered: true, queryFn });
+  assert.ok(
+    !seen.some((s) => s.includes('products_cache')),
+    'catch-up mode must not query the internal lane',
+  );
+  const plain = capture();
+  await fetchBackfillProducts({ queryFn: plain.queryFn });
+  assert.ok(
+    plain.seen.some((s) => s.includes('products_cache')),
+    'default mode must still cover the internal lane',
+  );
+});
+
 test('the guard is OFF by default — an explicit opt-in, not a silent filter', async () => {
   const { seen, queryFn } = capture();
   await fetchBackfillProducts({ queryFn });
@@ -64,12 +101,17 @@ test('the ON CONFLICT arm PRESERVES live_read_enabled, never takes EXCLUDED', ()
   // Structural, because the alternative is a prod-only failure: taking
   // EXCLUDED here writes the recomputed default (false, flag unset) over an
   // operator-enabled row.
+  // Scoped to the ON CONFLICT block so a future mention in a comment cannot
+  // flip this green or red by accident.
+  const conflictBlock = GRAPH_SRC.slice(
+    GRAPH_SRC.indexOf('ON CONFLICT (source_listing_ref) DO UPDATE SET'),
+  ).slice(0, 4000);
   assert.ok(
-    GRAPH_SRC.includes('live_read_enabled = pdp_identity_listing.live_read_enabled'),
+    conflictBlock.includes('live_read_enabled = pdp_identity_listing.live_read_enabled'),
     'the upsert must preserve the stored live_read_enabled',
   );
   assert.ok(
-    !GRAPH_SRC.includes('live_read_enabled = EXCLUDED.live_read_enabled'),
+    !conflictBlock.includes('live_read_enabled = EXCLUDED.live_read_enabled'),
     'taking EXCLUDED.live_read_enabled would revert operator live-read decisions',
   );
 });

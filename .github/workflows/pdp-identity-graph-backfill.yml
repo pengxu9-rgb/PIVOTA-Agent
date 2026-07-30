@@ -13,6 +13,10 @@ on:
   # to run unattended: it selects only seeds with no listing, so it never
   # reaches the writer's ON CONFLICT branch. Cost is ~1 short run/week against
   # a CI budget already under pressure.
+  # ⚠️ VERIFY AFTER THE FIRST MONDAY RUN that it actually EXECUTED and reported
+  # written_rows > 0. The job declares `environment: Pivota Agent / production`;
+  # if that environment carries required reviewers, a scheduled run sits pending
+  # approval forever — an inert no-op wearing a green tick.
   schedule:
     - cron: "40 3 * * 1"
   workflow_dispatch:
@@ -33,10 +37,15 @@ on:
         default: true
         type: boolean
       only_uncovered:
-        description: "Mint ONLY for seeds with no identity listing (safe: cannot rewrite existing rows)"
+        description: "Mint ONLY for external seeds with no identity listing (safe: cannot rewrite existing rows). EXTERNAL LANE ONLY — skips products_cache."
         required: false
-        default: true
+        default: false
         type: boolean
+
+concurrency:
+  # One production applier at a time: a manual dispatch must not overlap the cron.
+  group: pdp-identity-graph-backfill
+  cancel-in-progress: false
 
 jobs:
   identity-graph-backfill:
@@ -63,7 +72,7 @@ jobs:
         env:
           # Scheduled runs carry no `inputs`, so every value needs an explicit
           # default here: scan wide, apply, and uncovered-only.
-          IN_LIMIT: ${{ inputs.limit || '2000' }}
+          IN_LIMIT: ${{ github.event_name == 'schedule' && '2000' || inputs.limit }}
           IN_BRAND: ${{ inputs.brand }}
           IN_DRY_RUN: ${{ github.event_name == 'schedule' && 'false' || inputs.dry_run }}
           IN_ONLY_UNCOVERED: ${{ github.event_name == 'schedule' && 'true' || inputs.only_uncovered }}

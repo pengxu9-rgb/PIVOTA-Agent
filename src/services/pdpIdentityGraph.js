@@ -4757,7 +4757,16 @@ async function fetchBackfillProducts({
   const externalRows = [];
   const titleBrandPatterns = brandFilterTokens.titlePatterns;
 
-  if (!exactExternalProductIds.length) {
+  // The internal (products_cache) lane is OUT OF SCOPE for catch-up mode, and
+  // deliberately so rather than by oversight. An internal listing's key is
+  // `product_data->>'product_id' || .id || platform_product_id`, resolved in
+  // JS below — no SQL predicate reproduces it faithfully, and an APPROXIMATE
+  // one re-opens exactly the hazard this mode exists to close (a row whose
+  // listing is keyed on a JSON id would look uncovered and re-enter ON
+  // CONFLICT). Skipping the lane keeps the guarantee absolute: in catch-up
+  // mode this function touches nothing that already has a listing. Internal
+  // rows are minted by dispatching without --only-uncovered.
+  if (!exactExternalProductIds.length && !onlyUncovered) {
     const internalParams = [EXTERNAL_SEED_MERCHANT_ID];
     const internalWhere = ['merchant_id <> $1'];
     if (compactBrandVariants.length) {
@@ -4856,15 +4865,24 @@ async function fetchBackfillProducts({
   if (onlyUncovered) {
     // CATCH-UP MODE — select ONLY seeds that have no identity listing yet, so
     // the run cannot reach the ON CONFLICT branch below and therefore cannot
-    // rewrite an existing row's live_read_enabled. That is not a stylistic
-    // preference: liveReadEnabled computes to FALSE whenever
-    // PDP_IDENTITY_GRAPH_AUTO_ENABLE_LIVE is unset (it is unset in prod), so a
-    // blanket re-run would set live_read_enabled=false on every existing
-    // listing and demote the entire live public surface to shadow. Scoping to
-    // uncovered rows makes the automated job structurally incapable of that.
+    // rewrite live_read_enabled / review_summary / source_payload on a row
+    // some other job or operator wrote. liveReadEnabled computes to FALSE
+    // whenever PDP_IDENTITY_GRAPH_AUTO_ENABLE_LIVE is unset (it is unset in
+    // prod), so a blanket re-run would demote the entire live public surface
+    // to shadow. This predicate is what makes an unattended apply safe.
+    //
+    // 🚨 CORRELATE ON product_id ALONE, NEVER ALSO ON merchant_id. Since #1770
+    // an external-seed listing is keyed to the per-brand observed seller
+    // (`merch_obs_…`, from catalog_merchant_id below), not the legacy shared
+    // `external_seed` bucket. A `pil.merchant_id = $1` conjunct therefore
+    // cannot see the very rows THIS job mints: run 1 would mint them under
+    // merch_obs_, run 2 would re-select them as "uncovered" and re-enter ON
+    // CONFLICT — weekly, unattended, forever. Same trap #1772 fixed in
+    // buildActiveExternalSeedIdentityPredicate; `source_kind` carries the
+    // lane, so merchant_id buys nothing here.
     externalWhere.push(`NOT EXISTS (
       SELECT 1 FROM pdp_identity_listing pil
-      WHERE pil.merchant_id = $1
+      WHERE pil.source_kind = 'external_seed'
         AND pil.product_id = e.external_product_id
     )`);
   }
@@ -5173,6 +5191,14 @@ async function writeIdentityRows({ listings, reviewQueueEntries, dryRun = false,
               -- -- so taking it here would silently revert those decisions and
               -- demote the live public surface. Same failure class as the
               -- relationship-graph upsert that reverted 203 human labels.
+              -- CONSEQUENCE, stated so it is not rediscovered as a mystery:
+              -- applyIdentityOverrides' approve_first_party_canonical action
+              -- sets live_read_enabled=true in the built listing and — unlike
+              -- approve_live_read / deny_live_read / force_review_required —
+              -- has no synchronous UPDATE of its own, so this upsert was its
+              -- only route to the column for an EXISTING row. No creator for
+              -- that action exists in the repo today; if one is added it needs
+              -- its own write path.
               live_read_enabled = pdp_identity_listing.live_read_enabled,
               sellable_item_group_id = CASE
                 WHEN EXCLUDED.matched_by_rule = 'reviewed_multi_offer_merge'
