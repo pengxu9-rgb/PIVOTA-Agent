@@ -17,6 +17,7 @@ const {
 } = require('../services/externalSeedProducts');
 const {
   buildExternalSeedRecallLikePredicate,
+  buildExternalSeedSearchTextGateSql,
   EXTERNAL_SEED_RECALL_SQL_FIELDS,
 } = require('../services/externalSeedRecall');
 const {
@@ -8480,12 +8481,17 @@ function buildLocalExternalSeedSearchPredicate(bind, { lean = false } = {}) {
     // path: it is slow in production and can recall polluted non-authority text.
     return buildExternalSeedRecallLikePredicate(bind, { includeLegacyFallback: false });
   }
+  // The search_text gate drives the trigram index; the per-field arms then
+  // restrict recall to the lean authority fields on the few candidate rows.
   return `(
-    ${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalTitle} LIKE ANY(${bind}::text[])
-    OR ${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalSummary} LIKE ANY(${bind}::text[])
-    OR ${EXTERNAL_SEED_RECALL_SQL_FIELDS.category} LIKE ANY(${bind}::text[])
-    OR ${EXTERNAL_SEED_RECALL_SQL_FIELDS.ingredientTokens} LIKE ANY(${bind}::text[])
-    OR ${EXTERNAL_SEED_RECALL_SQL_FIELDS.aliasTokens} LIKE ANY(${bind}::text[])
+    ${buildExternalSeedSearchTextGateSql(bind)}
+    AND (
+      ${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalTitle} LIKE ANY(${bind}::text[])
+      OR ${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalSummary} LIKE ANY(${bind}::text[])
+      OR ${EXTERNAL_SEED_RECALL_SQL_FIELDS.category} LIKE ANY(${bind}::text[])
+      OR ${EXTERNAL_SEED_RECALL_SQL_FIELDS.ingredientTokens} LIKE ANY(${bind}::text[])
+      OR ${EXTERNAL_SEED_RECALL_SQL_FIELDS.aliasTokens} LIKE ANY(${bind}::text[])
+    )
   )`;
 }
 
@@ -9035,6 +9041,7 @@ function buildLocalExternalSeedSupportStageDefinitions({
         if (!fieldClauses.length) return '';
         return `(
           ${EXTERNAL_SEED_RECALL_SQL_FIELDS.category} = ANY(${categoryBind}::text[])
+          AND ${buildExternalSeedSearchTextGateSql(patternBind)}
           AND (
             ${fieldClauses.join('\n            OR ')}
           )
@@ -9125,6 +9132,7 @@ function buildLocalExternalSeedSupportStageDefinitions({
           : '';
         return `(
           ${EXTERNAL_SEED_RECALL_SQL_FIELDS.category} = ANY(${categoryBind}::text[])
+          AND ${buildExternalSeedSearchTextGateSql(patternBind)}
           AND (
             ${fieldClauses.join('\n            OR ')}
           )
@@ -9146,29 +9154,32 @@ function buildLocalExternalSeedSupportStageDefinitions({
   }
 
   if (!hasLeanAuthorityStage && Array.isArray(patterns) && patterns.length > 0) {
+    // Each stage keeps its per-field arm (staged scoring depends on which field
+    // matched) but is gated on the indexed search_text superset column, so the
+    // arm's jsonb extraction only runs on the gate's candidate rows.
+    const buildGatedFieldWhereSql = (fieldSql) => (bind) => {
+      const patternBind = bind(patterns);
+      return `(${buildExternalSeedSearchTextGateSql(patternBind)} AND ${fieldSql} LIKE ANY(${patternBind}::text[]))`;
+    };
     addStage({
       stage: 'support_recall_title',
       score: 48,
-      buildWhereSql: (bind) =>
-        `${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalTitle} LIKE ANY(${bind(patterns)}::text[])`,
+      buildWhereSql: buildGatedFieldWhereSql(EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalTitle),
     });
     addStage({
       stage: 'support_alias_tokens',
       score: 44,
-      buildWhereSql: (bind) =>
-        `${EXTERNAL_SEED_RECALL_SQL_FIELDS.aliasTokens} LIKE ANY(${bind(patterns)}::text[])`,
+      buildWhereSql: buildGatedFieldWhereSql(EXTERNAL_SEED_RECALL_SQL_FIELDS.aliasTokens),
     });
     addStage({
       stage: 'support_recall_summary',
       score: 40,
-      buildWhereSql: (bind) =>
-        `${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalSummary} LIKE ANY(${bind(patterns)}::text[])`,
+      buildWhereSql: buildGatedFieldWhereSql(EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalSummary),
     });
     addStage({
       stage: 'support_raw_title',
       score: 36,
-      buildWhereSql: (bind) =>
-        `lower(coalesce(title, '')) LIKE ANY(${bind(patterns)}::text[])`,
+      buildWhereSql: buildGatedFieldWhereSql(`lower(coalesce(title, ''))`),
     });
   }
 

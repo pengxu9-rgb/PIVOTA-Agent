@@ -918,36 +918,43 @@ const EXTERNAL_SEED_RECALL_SQL_FIELDS = Object.freeze({
     "coalesce(seed_data->'derived'->'recall'->>'category', seed_data->>'category', seed_data->'product'->>'category', seed_data->'snapshot'->>'category', seed_data->>'product_type', seed_data->'product'->>'product_type', seed_data->'snapshot'->>'product_type', '')",
   vertical: "lower(coalesce(seed_data->'derived'->'recall'->>'vertical', ''))",
   ingredientTokens: "lower(coalesce(seed_data#>>'{derived,recall,ingredient_tokens}', ''))",
-  aliasTokens: `lower(concat_ws(' ',
-    coalesce(seed_data#>>'{derived,recall,alias_tokens}', ''),
-    coalesce(seed_data#>>'{search_aliases}', ''),
-    coalesce(seed_data#>>'{searchAliases}', ''),
-    coalesce(seed_data#>>'{aliases}', ''),
-    coalesce(seed_data#>>'{product,search_aliases}', ''),
-    coalesce(seed_data#>>'{product,searchAliases}', ''),
-    coalesce(seed_data#>>'{product,aliases}', ''),
-    coalesce(seed_data#>>'{snapshot,search_aliases}', ''),
-    coalesce(seed_data#>>'{snapshot,searchAliases}', ''),
-    coalesce(seed_data#>>'{snapshot,aliases}', ''),
-    coalesce(seed_data#>>'{snapshot,product,search_aliases}', ''),
-    coalesce(seed_data#>>'{snapshot,product,searchAliases}', ''),
-    coalesce(seed_data#>>'{snapshot,product,aliases}', '')
+  // ||-concatenation instead of concat_ws: identical output (coalesce makes
+  // every arg non-null), but textcat is IMMUTABLE where concat_ws is only
+  // STABLE, so migration 057's idx_eps_active_alias_chain_trgm can index this
+  // exact expression. Keep the two byte-equivalent or the planner drops the index.
+  aliasTokens: `lower((
+    coalesce(seed_data#>>'{derived,recall,alias_tokens}', '')
+    || ' ' || coalesce(seed_data#>>'{search_aliases}', '')
+    || ' ' || coalesce(seed_data#>>'{searchAliases}', '')
+    || ' ' || coalesce(seed_data#>>'{aliases}', '')
+    || ' ' || coalesce(seed_data#>>'{product,search_aliases}', '')
+    || ' ' || coalesce(seed_data#>>'{product,searchAliases}', '')
+    || ' ' || coalesce(seed_data#>>'{product,aliases}', '')
+    || ' ' || coalesce(seed_data#>>'{snapshot,search_aliases}', '')
+    || ' ' || coalesce(seed_data#>>'{snapshot,searchAliases}', '')
+    || ' ' || coalesce(seed_data#>>'{snapshot,aliases}', '')
+    || ' ' || coalesce(seed_data#>>'{snapshot,product,search_aliases}', '')
+    || ' ' || coalesce(seed_data#>>'{snapshot,product,searchAliases}', '')
+    || ' ' || coalesce(seed_data#>>'{snapshot,product,aliases}', '')
   ))`,
 });
 
+// external_product_seeds.search_text (migration 057) materializes every arm of
+// the historical OR-of-LIKE predicate — title/domain/urls plus the
+// EXTERNAL_SEED_RECALL_SQL_FIELDS text projections — lower()ed, one field per
+// E'\n'-separated line, trigger-maintained, with a trigram GIN index partial on
+// status = 'active'. A single LIKE over it recalls exactly the union of the old
+// arms (a pattern cannot span two fields across the \n) without detoasting
+// seed_data per arm per row. Any new searchable field must be added to the
+// migration's external_product_seeds_search_text() before a predicate here may
+// rely on it.
+function buildExternalSeedSearchTextGateSql(bind) {
+  return `search_text LIKE ANY(${bind}::text[])`;
+}
+
 function buildExternalSeedRecallLikePredicate(bind, { includeLegacyFallback = false } = {}) {
   return `(
-    lower(coalesce(title, '')) LIKE ANY(${bind}::text[])
-    OR lower(coalesce(domain, '')) LIKE ANY(${bind}::text[])
-    OR lower(coalesce(canonical_url, '')) LIKE ANY(${bind}::text[])
-    OR lower(coalesce(destination_url, '')) LIKE ANY(${bind}::text[])
-    OR ${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalTitle} LIKE ANY(${bind}::text[])
-    OR ${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalSummary} LIKE ANY(${bind}::text[])
-    OR ${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalBody} LIKE ANY(${bind}::text[])
-    OR ${EXTERNAL_SEED_RECALL_SQL_FIELDS.brand} LIKE ANY(${bind}::text[])
-    OR ${EXTERNAL_SEED_RECALL_SQL_FIELDS.category} LIKE ANY(${bind}::text[])
-    OR ${EXTERNAL_SEED_RECALL_SQL_FIELDS.ingredientTokens} LIKE ANY(${bind}::text[])
-    OR ${EXTERNAL_SEED_RECALL_SQL_FIELDS.aliasTokens} LIKE ANY(${bind}::text[])
+    ${buildExternalSeedSearchTextGateSql(bind)}
     ${includeLegacyFallback ? `OR lower(coalesce(seed_data::text, '')) LIKE ANY(${bind}::text[])` : ''}
   )`;
 }
@@ -1005,6 +1012,7 @@ module.exports = {
   normalizeSuppressionFlags,
   resolveExternalSeedProtectionContract,
   buildExternalSeedRecallLikePredicate,
+  buildExternalSeedSearchTextGateSql,
   classifyExternalSeedRecallMatchSource,
   EXTERNAL_SEED_RECALL_SQL_FIELDS,
   BROAD_RECALL_CATEGORY_KEYS,
