@@ -38,6 +38,19 @@ const {
 const staleFallbackPlannerTest =
   process.env.AURORA_RUN_STALE_FALLBACK_PLANNER_TESTS === 'true' ? test : test.skip;
 
+function withInternalRecallLaneEnabled(fn) {
+  return async (...args) => {
+    const original = process.env.AURORA_RECO_INTERNAL_RECALL_LANE_MODE;
+    process.env.AURORA_RECO_INTERNAL_RECALL_LANE_MODE = 'enabled';
+    try {
+      return await fn(...args);
+    } finally {
+      if (original === undefined) delete process.env.AURORA_RECO_INTERNAL_RECALL_LANE_MODE;
+      else process.env.AURORA_RECO_INTERNAL_RECALL_LANE_MODE = original;
+    }
+  };
+}
+
 function loadRoutesFresh() {
   delete require.cache[AURORA_DECISION_CLIENT_MODULE_PATH];
   delete require.cache[ROUTES_MODULE_PATH];
@@ -8678,7 +8691,7 @@ test('__internal: beauty mainline does not use soft-mismatch comparison fill for
   );
 });
 
-test('__internal: soft-mismatch rows do not skip primary external authority recall', async () => {
+test('__internal: soft-mismatch rows do not skip primary external authority recall', withInternalRecallLaneEnabled(async () => {
   const { __internal } = loadRoutesFresh();
   const startedQueries = [];
   const targetContext = {
@@ -8829,7 +8842,7 @@ test('__internal: soft-mismatch rows do not skip primary external authority reca
       item?.product_id === 'internal_soft_barrier_treatment'),
     false,
   );
-});
+}));
 
 test('__internal: beauty mainline handoff payload preserves viable support role candidates in ranked targets even when they are not selected', async () => {
   const { __internal } = loadRoutesFresh();
@@ -9004,7 +9017,7 @@ test('__internal: beauty mainline handoff payload preserves viable support role 
   assert.equal(persistedSunscreenTarget?.product_candidates?.[0]?.product_id, 'handoff_sunscreen_viable_1');
 });
 
-test('__internal: beauty local handoff support external stage uses local authority without backend fallback', async () => {
+test('__internal: beauty local handoff support external stage uses local authority without backend fallback', withInternalRecallLaneEnabled(async () => {
   const { __internal } = loadRoutesFresh();
   const calls = [];
   const targetContext = {
@@ -9264,7 +9277,7 @@ test('__internal: beauty local handoff support external stage uses local authori
   } finally {
     __internal.__resetRouteDependencyOverridesForTest();
   }
-});
+}));
 
 test('__internal: beauty local handoff primary external stage uses local authority first and skips the backend race', async () => {
   const { __internal } = loadRoutesFresh();
@@ -9466,7 +9479,7 @@ test('__internal: stable alias authority resolves oil-control role query variant
   }
 });
 
-test('__internal: beauty local handoff keeps same-role sunscreen authority open through under-makeup query', async () => {
+test('__internal: beauty local handoff keeps same-role sunscreen authority open through under-makeup query', withInternalRecallLaneEnabled(async () => {
   const { __internal } = loadRoutesFresh();
   const calls = [];
   const targetContext = {
@@ -9633,7 +9646,7 @@ test('__internal: beauty local handoff keeps same-role sunscreen authority open 
   } finally {
     __internal.__resetRouteDependencyOverridesForTest();
   }
-});
+}));
 
 test('__internal: beauty local handoff does not backend-fallback same-role sunscreen after local primary miss', async () => {
   const { __internal } = loadRoutesFresh();
@@ -14253,7 +14266,7 @@ test('__internal: framework reject preview includes product title for live diagn
   assert.equal(state.hard_reject_preview[0]?.title, 'The Ordinary Niacinamide 10% + Zinc 1%');
 });
 
-test('__internal: framework reco query collection runs per-level catalog searches concurrently', async () => {
+test('__internal: framework reco query collection runs per-level catalog searches concurrently', withInternalRecallLaneEnabled(async () => {
   const originalGet = axios.get;
   let inFlight = 0;
   let maxInFlight = 0;
@@ -14339,7 +14352,7 @@ test('__internal: framework reco query collection runs per-level catalog searche
   } finally {
     axios.get = originalGet;
   }
-});
+}));
 
 staleFallbackPlannerTest('__internal: collectRecoCandidatesFromQueryLevels drops explicit non-skincare pollution at beauty boundary', async () => {
   const { __internal } = loadRoutesFresh();
@@ -14421,7 +14434,84 @@ staleFallbackPlannerTest('__internal: collectRecoCandidatesFromQueryLevels drops
   );
 });
 
-test('__internal: collectRecoCandidatesFromQueryLevels clamps per-query timeout by deadline', async () => {
+test('__internal: collectRecoCandidatesFromQueryLevels skips framework internal-lane queries by default', async () => {
+  const { __internal } = loadRoutesFresh();
+  const observed = [];
+  const targetContext = {
+    framework_id: 'framework_oily_skin_v1',
+    primary_role_id: 'oil_control_treatment',
+    framework_roles: [
+      {
+        role_id: 'oil_control_treatment',
+        rank: 1,
+        preferred_step: 'treatment',
+      },
+    ],
+    framework_owner_source: 'generic_concern_framework_resolver',
+    framework_owner_state: 'trusted',
+  };
+  const queryLevels = [
+    {
+      level_index: 0,
+      ladder_level: 'framework_stage_a_primary_internal',
+      queries: [
+        { query: 'oil control serum', step: 'treatment', slot: 'other', ladder_level: 'framework_stage_a_primary_internal', role_id: 'oil_control_treatment' },
+        { query: 'shine control serum', step: 'treatment', slot: 'other', ladder_level: 'framework_stage_a_primary_internal', role_id: 'oil_control_treatment' },
+      ],
+    },
+    {
+      level_index: 1,
+      ladder_level: 'framework_stage_b_primary_external_seed',
+      queries: [
+        { query: 'oil control serum', step: 'treatment', slot: 'other', ladder_level: 'framework_stage_b_primary_external_seed', role_id: 'oil_control_treatment', allow_external_seed: true },
+      ],
+    },
+  ];
+
+  const out = await __internal.collectRecoCandidatesFromQueryLevels({
+    queryLevels,
+    targetContext,
+    recommendationTaskContext: null,
+    logger: null,
+    timeoutMs: 800,
+    limit: 6,
+    usePurchasableFallback: false,
+    allowExternalSeed: true,
+    externalSeedStrategy: 'supplement_internal_first',
+    searchFn: async (args) => {
+      observed.push({
+        query: String(args?.query || ''),
+        allowExternalSeed: args?.allowExternalSeed === true,
+      });
+      return {
+        ok: true,
+        products: [],
+        reason: 'empty',
+      };
+    },
+  });
+
+  assert.equal(observed.length, 1);
+  assert.equal(observed[0].allowExternalSeed, true);
+  const internalRows = out.searchResults.filter(
+    (row) => String(row?.ladder_level || '').trim() === 'framework_stage_a_primary_internal',
+  );
+  assert.equal(internalRows.length, 2);
+  for (const row of internalRows) {
+    assert.equal(row.skipped_runtime, true);
+    assert.equal(row.reason, 'internal_lane_disabled');
+    assert.equal(row.actual_http_attempt_count, 0);
+  }
+  const internalStageRow = out.stageResults.find(
+    (row) => String(row?.stage_id || '').trim() === 'framework_stage_a_primary_internal',
+  );
+  assert.ok(internalStageRow);
+  assert.equal(internalStageRow.skipped, true);
+  assert.equal(internalStageRow.skip_reason, 'internal_lane_disabled');
+  assert.equal(internalStageRow.executed_query_count, 0);
+});
+
+test('__internal: collectRecoCandidatesFromQueryLevels clamps per-query timeout by deadline', withInternalRecallLaneEnabled(async () => {
   const { __internal } = loadRoutesFresh();
   const observed = [];
   const targetContext = {
@@ -14479,9 +14569,9 @@ test('__internal: collectRecoCandidatesFromQueryLevels clamps per-query timeout 
     assert.ok(row.timeoutMs <= 360);
     assert.ok(row.deadlineMs > 0);
   }
-});
+}));
 
-test('__internal: collectRecoCandidatesFromQueryLevels hard-stops wall clock when search hangs', async () => {
+test('__internal: collectRecoCandidatesFromQueryLevels hard-stops wall clock when search hangs', withInternalRecallLaneEnabled(async () => {
   const { __internal } = loadRoutesFresh();
   const targetContext = {
     framework_id: 'framework_oily_skin_v1',
@@ -14528,7 +14618,7 @@ test('__internal: collectRecoCandidatesFromQueryLevels hard-stops wall clock whe
     assert.equal(row.timeout_guard, 'caller_wall_clock');
     assert.deepEqual(row.products, []);
   }
-});
+}));
 
 test('__internal: collectRecoCandidatesFromQueryLevels caps support external seed timeout below stage wall clock budget', async () => {
   const originalSupportTimeout = process.env.AURORA_BFF_RECO_CATALOG_SUPPORT_EXTERNAL_SEED_QUERY_TIMEOUT_MS;
