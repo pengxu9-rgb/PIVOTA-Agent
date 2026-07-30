@@ -30657,7 +30657,11 @@ async function callGeminiTextResponseViaRest({
   thinkingBudget = undefined,
 } = {}) {
   const apiKey = pickAuroraGeminiApiKey(AURORA_GEMINI_KEY_FEATURE_ENV);
-  if (!apiKey) {
+  // Vertex-aware availability: on Vertex the key pool is legitimately empty
+  // (prod authenticates via ADC and restTarget mints the OAuth header), so a
+  // bare !apiKey bail would report unavailable exactly where the credentials
+  // work. Mirrors callGeminiJsonObjectViaRest's guard.
+  if (!vertexGemini.credentialsAvailable(apiKey)) {
     return {
       ok: false,
       reason: 'gemini_client_unavailable',
