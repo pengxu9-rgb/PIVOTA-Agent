@@ -92,11 +92,19 @@ function pickVisibleEvidence(...values) {
   return '';
 }
 
-function asEvidenceFragment(value = '') {
-  const text = asString(value);
+function asEvidenceReasonClause(value = '') {
+  let text = asString(value).replace(/\s*[.!?]+$/, '');
   if (!text) return '';
-  if (/^[A-Z]{2,}\b/.test(text)) return text;
-  return `${text.charAt(0).toLowerCase()}${text.slice(1)}`;
+  if (!/^[A-Z]{2,}\b/.test(text)) {
+    text = `${text.charAt(0).toLowerCase()}${text.slice(1)}`;
+  }
+  // Evidence arrives as a full clause ("it layers well under makeup"), a verb
+  // phrase with an implied subject ("keeps the finish lighter"), or a noun
+  // phrase ("a mattifying oil-control serum"); the result must read after
+  // "because", so supply the missing subject/verb for the latter two.
+  if (/^(?:it|its|this|that|these|those|there|they)\b/.test(text)) return text;
+  if (/^[a-z]*[^s\s]s\s/.test(text)) return `it ${text}`;
+  return `it is ${text}`;
 }
 
 function normalizeSourceToken(value) {
@@ -1628,7 +1636,7 @@ function inferProductRoleLabel(product = {}) {
 
 function describeProductForVisibleCopy(product = {}, beautyIntent = {}) {
   const reason = pickVisibleEvidence(product.why_this_one, product.short_description);
-  if (reason) return asEvidenceFragment(reason);
+  if (reason) return asEvidenceReasonClause(reason);
   const contextText = getBeautyIntentContextText(beautyIntent);
   const productText = normalizeText([
     product.name,
