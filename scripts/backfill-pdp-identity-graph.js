@@ -43,11 +43,16 @@ async function main() {
   const limitFallback = externalProductIds.length || 500;
   const limit = Math.max(1, Math.min(5000, Number(argValue('limit') || limitFallback) || limitFallback));
   const dryRun = hasFlag('dry-run') || hasFlag('dryRun');
+  // Catch-up mode: mint ONLY for seeds with no listing yet. Structurally
+  // cannot rewrite an existing row (see the NOT EXISTS note in
+  // fetchBackfillProducts) -- this is what makes an unattended run safe.
+  const onlyUncovered = hasFlag('only-uncovered') || hasFlag('onlyUncovered');
   const out = argValue('out');
 
   const result = await backfillPdpIdentityGraph({
     brand,
     limit,
+    onlyUncovered,
     externalProductIds,
     dryRun,
   });
@@ -57,6 +62,7 @@ async function main() {
     input: {
       brand,
       limit,
+      only_uncovered: onlyUncovered,
       external_product_ids: externalProductIds,
       dry_run: dryRun,
     },

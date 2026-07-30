@@ -1,6 +1,24 @@
 name: PDP Identity Graph Backfill
 
 on:
+  # WEEKLY CATCH-UP, added 2026-07-30. Identity minting was never wired into
+  # ingestion and this workflow had no schedule, so coverage was a function of
+  # who remembered to dispatch it: 8 runs, all manual, all on 2026-05-14/15,
+  # while July alone ingested 3,380 mirror rows. Measured drift at the time:
+  # 1,029 unsuppressed mirror rows with no identity listing, 862 of them
+  # serving-eligible and therefore stuck in `shadow` forever -- the trust
+  # policy cannot evaluate a row whose listing does not exist.
+  #
+  # The scheduled run is ALWAYS --only-uncovered, which is what makes it safe
+  # to run unattended: it selects only seeds with no listing, so it never
+  # reaches the writer's ON CONFLICT branch. Cost is ~1 short run/week against
+  # a CI budget already under pressure.
+  # ⚠️ VERIFY AFTER THE FIRST MONDAY RUN that it actually EXECUTED and reported
+  # written_rows > 0. The job declares `environment: Pivota Agent / production`;
+  # if that environment carries required reviewers, a scheduled run sits pending
+  # approval forever — an inert no-op wearing a green tick.
+  schedule:
+    - cron: "40 3 * * 1"
   workflow_dispatch:
     inputs:
       brand:
@@ -18,6 +36,16 @@ on:
         required: true
         default: true
         type: boolean
+      only_uncovered:
+        description: "Mint ONLY for external seeds with no identity listing (safe: cannot rewrite existing rows). EXTERNAL LANE ONLY — skips products_cache."
+        required: false
+        default: false
+        type: boolean
+
+concurrency:
+  # One production applier at a time: a manual dispatch must not overlap the cron.
+  group: pdp-identity-graph-backfill
+  cancel-in-progress: false
 
 jobs:
   identity-graph-backfill:
@@ -42,8 +70,12 @@ jobs:
       - name: Backfill identity graph
         shell: bash
         env:
-          IN_LIMIT: ${{ inputs.limit }}
+          # Scheduled runs carry no `inputs`, so every value needs an explicit
+          # default here: scan wide, apply, and uncovered-only.
+          IN_LIMIT: ${{ github.event_name == 'schedule' && '2000' || inputs.limit }}
           IN_BRAND: ${{ inputs.brand }}
+          IN_DRY_RUN: ${{ github.event_name == 'schedule' && 'false' || inputs.dry_run }}
+          IN_ONLY_UNCOVERED: ${{ github.event_name == 'schedule' && 'true' || inputs.only_uncovered }}
         run: |
           set -euo pipefail
           if [[ -z "${DATABASE_URL:-}" ]]; then
@@ -60,8 +92,13 @@ jobs:
           if [[ -n "${IN_BRAND:-}" ]]; then
             args+=(--brand "${IN_BRAND:-}")
           fi
-          if [[ "${{ inputs.dry_run }}" == "true" ]]; then
+          if [[ "${IN_DRY_RUN:-true}" == "true" ]]; then
             args+=(--dry-run)
+          fi
+          # A blanket (non-uncovered) apply would rewrite live_read_enabled on
+          # every existing listing; the scheduled path pins this to true.
+          if [[ "${IN_ONLY_UNCOVERED:-true}" == "true" ]]; then
+            args+=(--only-uncovered)
           fi
           node scripts/backfill-pdp-identity-graph.js "${args[@]}" \
             | tee "${out_dir}/stdout.json"
