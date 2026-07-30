@@ -42,6 +42,15 @@ data. Meanwhile prod recall is effectively **external-only today**: the unified
 model is not a risky bet on an unproven lane; it is an accurate description of
 current serving reality.
 
+The split is also already a **hybrid in disguise**: `canonicalCatalogSearch`
+(the "catalog" lane) consults `external_product_seeds` up to three times per
+request via EXISTS subqueries (market pass-through, brand match, unavailability
+exclusion), while the seed lane serves *graduated* rows through dedicated
+attached-seed indexes (migration 035) — and the brand fastpath now *requires*
+graduation (`attached_product_key IS NOT NULL` + serving-eligible catalog
+join). Neither lane is what its name claims; unification is partly a matter of
+admitting this.
+
 Crucially, the **identity layer already exists**:
 `src/services/catalogEntityResolution.js` groups catalog rows by
 `pivota_signature_id` with `source_kind: 'canonical_catalog'` and
@@ -126,9 +135,15 @@ executors and required three synchronized patches for one incident; data puts it
 in one offer-policy module with unit tests. Option B's genuine risk — sig
 quality — is not avoided by A or C; it is merely masked by lane preference
 (today a bad sig association silently loses to lane ordering instead of
-surfacing as a fixable data defect). Since recall is already external-only in
-production, B's recall unification changes *plumbing*, not serving behavior; the
-behavioral change is confined to the offer layer, which is additive.
+surfacing as a fixable data defect). Recall unification is *mostly* plumbing,
+but two verified behavior deltas must be shadow-compared, not assumed away:
+`retrieval_source`-conditioned scoring (`routes.js:78806` grants `catalog` rows
+a 0.06 vs 0.03 bonus, and several external-seed authority gates key on the
+value), and the catalog lane's rank/market semantics (`+200` for
+`pdp_scope='multi_merchant_canonical'` is the dominant rank term, and the
+market filter *exempts* that same scope — which the sync stamps on every
+graduated row, making the filter a no-op for exactly the migrating
+population).
 
 ## Consequences
 
@@ -156,30 +171,63 @@ behavioral change is confined to the offer layer, which is additive.
 
 ## Migration (each phase independently shippable)
 
-1. [ ] **Index completeness:** make sig-identified, external-backed products
-   first-class rows in the serving index (graduation pipeline already feeds it);
-   add sig-collision detection to ingest with a review queue.
-2. [ ] **Single-lane recall:** collapse the three executors to one index search
-   path; keep emitting `retrieval_source`/ledger fields derived from offer data
-   for contract compatibility. Gate behind an env flag mirroring the
-   kill-switch pattern for rollback.
-3. [ ] **Offer layer:** model internal inventory and external destinations as
-   offer rows with source/trust/purchasability; move
-   `choosePreferredExternalSeedCandidate` semantics into an offer-selection
-   policy module with unit tests (preference parity tests against current
-   behavior).
+0. [ ] **Ground truth + parity harness:** all work is derived from and verified
+   against `origin/main` (local checkouts drift). Build an offline
+   recall-parity harness replaying a query corpus through both lanes; use it to
+   enumerate the *actual* recall gaps before committing projection scope.
+   (Adversarial review 2026-07-30 falsified an earlier premise here: graduation
+   does **not** downgrade recall — attached seeds have dedicated indexes and
+   the brand fastpath requires them. The real gap is that search still runs
+   against the raw seeds table with per-request catalog joins.)
+1. [ ] **Index completeness:** project the seed recall doc **plus market/tool
+   scoping, availability, and brand-alias state** into `catalog_products` at
+   sync time, so no per-request `external_product_seeds` join survives. New
+   trgm indexes go in with `CREATE INDEX CONCURRENTLY` (live serving table).
+   Recalibrate `rank_score` (the `+200 multi_merchant_canonical` term currently
+   outranks external over internal systematically) and fix the market-filter
+   exemption for that scope. Add sig-collision detection to ingest with a
+   review queue.
+2. [ ] **Single-lane recall:** extract one search interface — it must carry
+   role/step/target-context, not just `{query, market, limit}`, or the
+   executors cannot reach parity. Cut over executors one at a time behind
+   `AURORA_RECO_UNIFIED_RECALL_MODE`: **stage-policy path first** (simplest,
+   already flag-gated), chat query-levels second, the grounding loop **last**
+   (most bespoke semantics: run_if skips, strict-filter picking, inter-lane
+   adjudication). Keep emitting `retrieval_source` derived from row provenance
+   — but treat this as a **behavior change with its own shadow comparison**,
+   not a compatibility no-op (scoring and authority gates key on it).
+3. [ ] **Offer layer:** define `offer_source` (`internal_merchant |
+   external_referral`) and an explicit `purchasable` field (today inferred
+   from URL shape per call site); reconcile `purchase_route`'s zod enum with
+   `pdpBuilder`'s wider informal vocabulary — noting most offer schemas are
+   `.strict()`, so "additive" fields need a schema audit first. Converge
+   grouping keys on sig with an **explicit backfill** (the sync deliberately
+   preserves legacy `product_group_id`s, and `pg:pid:` fallbacks are still
+   minted at multiple server.js sites). Formalize `offersPriority` as the
+   single preference module with parity tests.
 4. [ ] **Deletion:** remove `source_scope` stages, dual transports,
    `AURORA_RECO_INTERNAL_RECALL_LANE_MODE`, and per-lane gates once trust-gate
-   parity and preference parity tests are green in prod shadow.
+   parity and preference parity tests are green in prod shadow. Note the trust
+   gate is a **cross-repo dependency**: `catalog_row_trust` is defined by a
+   pivota-backend migration and its rollout (replacing
+   `index_pipeline_state.serving_eligible`) must complete first — backend
+   commitment required, which is why they are a decider on this ADR.
 
 **Invariants needing tests before phase 4:** sig uniqueness per product line;
 trust-gate parity (no row served post-migration that a per-lane gate would have
 blocked); offer-preference semantics (internal-purchasable beats external at
-equal trust); recall latency budget (p95 single-lane ≤ current gated path).
+equal trust); market/tool scoping parity (no cross-market seed resurfaces);
+seeds-table independence (zero per-request `external_product_seeds` joins in
+the unified lane); recall latency budget (p95 single-lane ≤ current gated
+path).
 
 ## Related
 
 - PRs #1863 / #1864 / #1865 — the kill-switch triplet motivating this ADR.
+- Adversarial plan review (2026-07-30) — corrected the graduation-recall
+  premise, surfaced the market-filter/rank-score interactions, the
+  `retrieval_source` behavior deltas, and the cross-repo trust-gate
+  dependency folded into the migration above.
 - `docs/CATALOG_ROW_TRUST_CONTRACT.md` — trust predicates to re-home at the
   offer layer.
 - `docs/services_provider_integrations_design.md` — same motif in the services
