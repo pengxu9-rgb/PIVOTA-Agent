@@ -1636,7 +1636,8 @@ function inferProductRoleLabel(product = {}) {
 
 function describeProductForVisibleCopy(product = {}, beautyIntent = {}) {
   const reason = pickVisibleEvidence(product.why_this_one, product.short_description);
-  if (reason) return asEvidenceReasonClause(reason);
+  const reasonClause = asEvidenceReasonClause(reason);
+  if (reasonClause) return reasonClause;
   const contextText = getBeautyIntentContextText(beautyIntent);
   const productText = normalizeText([
     product.name,

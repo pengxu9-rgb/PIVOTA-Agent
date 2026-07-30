@@ -319,6 +319,94 @@ describe('beauty_expert_v1 contract', () => {
     expect(result.reply).not.toBe('Here are some more suitable picks based on your request.');
   });
 
+  test('visible reply reason clauses stay grammatical across evidence shapes', () => {
+    const buildReply = (products) => attachBeautyExpertV1ToResponse(
+      {
+        reply: null,
+        products,
+      },
+      {
+        source: 'shopping_agent',
+        entryLayer: 'orchestration',
+        delegatedLayer: 'decisioning',
+        taskType: 'discovery',
+        context: {
+          vertical: 'beauty',
+          category: 'skincare',
+          raw_user_goal: 'I have oily skin, what serum should I buy?',
+        },
+        metadata: {
+          source: 'shopping_agent',
+          catalog_surface: 'beauty',
+        },
+        payload: {
+          search: {
+            query: 'I have oily skin, what serum should I buy?',
+          },
+        },
+      },
+    ).reply;
+
+    const nounPhraseReply = buildReply([
+      {
+        product_id: 'sku_1',
+        merchant_id: 'm_1',
+        title: 'Niacinamide 10% + Zinc 1%',
+        short_description: 'A mattifying oil-control serum for oily skin.',
+      },
+      {
+        product_id: 'sku_2',
+        merchant_id: 'm_2',
+        title: 'Green Tea Serum',
+        short_description: 'A lightweight balancing serum for combination skin.',
+      },
+    ]);
+    expect(nounPhraseReply).toContain(
+      'is the current lead because it is a mattifying oil-control serum for oily skin. ',
+    );
+    expect(nounPhraseReply).toContain(
+      'is the comparison option because it is a lightweight balancing serum for combination skin',
+    );
+    expect(nounPhraseReply).not.toMatch(/\.\./);
+
+    const verbPhraseReply = buildReply([
+      {
+        product_id: 'sku_1',
+        merchant_id: 'm_1',
+        title: 'Fluid Serum',
+        why_this_one: 'Keeps the finish lighter and smoother under makeup.',
+      },
+    ]);
+    expect(verbPhraseReply).toContain(
+      'is the current lead because it keeps the finish lighter and smoother under makeup. ',
+    );
+    expect(verbPhraseReply).not.toMatch(/\.\./);
+
+    const fullClauseReply = buildReply([
+      {
+        product_id: 'sku_1',
+        merchant_id: 'm_1',
+        title: 'Barrier Serum',
+        why_this_one: 'It layers well under makeup without pilling.',
+      },
+    ]);
+    expect(fullClauseReply).toContain(
+      'is the current lead because it layers well under makeup without pilling. ',
+    );
+    expect(fullClauseReply).not.toMatch(/\.\./);
+
+    const punctuationOnlyReply = buildReply([
+      {
+        product_id: 'sku_1',
+        merchant_id: 'm_1',
+        title: 'Test Serum',
+        why_this_one: '!!!',
+      },
+    ]);
+    expect(punctuationOnlyReply).not.toContain('because .');
+    expect(punctuationOnlyReply).toContain('is the current lead because it ');
+  });
+
   test('uses request context in sunscreen visible copy when product records lack reviewed reasons', () => {
     const result = attachBeautyExpertV1ToResponse(
       {
