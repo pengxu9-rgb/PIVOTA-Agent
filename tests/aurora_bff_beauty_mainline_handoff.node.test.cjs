@@ -3265,6 +3265,39 @@ test('handoffRecoToBeautyMainlineSearch prioritizes lightweight layering queries
   }
 });
 
+test('runConcernSemanticPlanner caps the first attempt at the tunable 5s budget', async () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    let capturedArgs = null;
+    __internal.__setCallGeminiJsonObjectForTest(async (args = {}) => {
+      capturedArgs = args;
+      return {
+        ok: false,
+        reason: 'GEMINI_JSON_TIMEOUT',
+        provider: 'gemini',
+        requested_model: args.model,
+        effective_model: args.model,
+        selection_source: 'local_gemini_rest_direct',
+      };
+    });
+
+    await __internal.runConcernSemanticPlanner({
+      ctx: { lang: 'EN', request_id: 'req_planner_budget_test' },
+      requestText: 'my skin feels oily, what should i use?',
+      focus: '',
+      deadlineAtMs: Date.now() + 30000,
+    });
+
+    // First attempt uses the env-tunable cap (default 5000), not the old
+    // hardcoded 8000 — with thinking pinned off a healthy call answers in
+    // ~2.8s, so anything past 5s is a transport that will never make it.
+    assert.equal(capturedArgs?.timeoutMs, 5000);
+  } finally {
+    __internal.__resetRouteDependencyOverridesForTest();
+    delete require.cache[moduleId];
+  }
+});
+
 test('runConcernSemanticPlanner narrows dry use-first asks into moisturizer-led same-slot comparison', async () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
