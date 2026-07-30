@@ -165,6 +165,7 @@ const {
   getRecoRecallFilledRoleIds,
   getRecoRecallSelectedCount,
   isRecoRecallFrameworkCoverageSatisfied,
+  isRecoRecallInternalLaneEnabled,
   shouldRunRecoRecallStage,
 } = require('./recoRecallStagePolicy');
 const {
@@ -10881,6 +10882,16 @@ async function resolveCatalogProductForProductInput({ inputText, inputUrl, parse
   let bestSearchCandidate = null;
   for (const stage of Array.isArray(searchRecallPlan?.stages) ? searchRecallPlan.stages : []) {
     const sourceScope = String(stage?.source_scope || 'internal').trim().toLowerCase();
+    if (sourceScope === 'internal' && !isRecoRecallInternalLaneEnabled()) {
+      searchStageResults.push({
+        stage_id: stage.stage_id,
+        picked_candidate: false,
+        transient_only: false,
+        skipped: true,
+        skip_reason: 'internal_lane_disabled',
+      });
+      continue;
+    }
     if (sourceScope === 'external_seed' && AURORA_EXTERNAL_SEED_SUPPLEMENT_ENABLED !== true) {
       searchStageResults.push({
         stage_id: stage.stage_id,
