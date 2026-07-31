@@ -492,8 +492,16 @@ async function fetchCanonicalChainRows(args = {}) {
   // Binds are captured at params.push time (params.length), same as every
   // other optional arm in this function, so appending here never renumbers an
   // existing $n placeholder.
+  //
+  // IMPORTANT: only build (and bind) this arm when the text branch of
+  // whereClause will actually be used. When categoryPathPrefix is provided,
+  // whereClause takes the category branch and discards textWhereClause — if we
+  // pushed the recall-doc binds anyway, the statement would declare fewer $n
+  // placeholders than supplied params (Postgres 08P01) and every category-lane
+  // query would fail. The category lane simply doesn't get recall-doc matching
+  // in this slice.
   let recallDocWhere = '';
-  if (isRecallDocMatchEnabled()) {
+  if (!categoryBind && isRecallDocMatchEnabled()) {
     const recallDocPatterns = buildRecallDocMatchPatterns(lowered);
     if (recallDocPatterns.length > 0) {
       params.push(recallDocPatterns);
@@ -517,14 +525,19 @@ async function fetchCanonicalChainRows(args = {}) {
   // title/brand predicates. Both dropped arms are near-dead for natural-language
   // citation queries (a merchant is ~never named the full query; source_product_id
   // is an opaque platform id). Every other lane keeps the full clause verbatim.
+  //
+  // recallDocArm carries its own leading newline+indent so that with the flag
+  // off (recallDocWhere === '') the interpolation contributes zero bytes and
+  // the generated SQL is byte-identical to the pre-recall-doc output (no stray
+  // blank line where the arm would sit).
+  const recallDocArm = recallDocWhere ? `\n        ${recallDocWhere}` : '';
   const textWhereClause = citableSargableLane
     ? `
         LOWER(COALESCE(p.title, '')) LIKE $2
         OR LOWER(COALESCE(p.brand, '')) LIKE $2
         ${skuTextWhere}
         ${verticalWhere}
-        ${tokenWhere}
-        ${recallDocWhere}
+        ${tokenWhere}${recallDocArm}
   `
     : `
         LOWER(COALESCE(p.title, '')) LIKE $2
@@ -533,8 +546,7 @@ async function fetchCanonicalChainRows(args = {}) {
         ${skuTextWhere}
         OR LOWER(COALESCE(p.source_product_id, '')) LIKE $2
         ${verticalWhere}
-        ${tokenWhere}
-        ${recallDocWhere}
+        ${tokenWhere}${recallDocArm}
   `;
   const whereClause = categoryBind
     ? `(p.category_path IS NOT NULL AND (p.category_path = ${categoryExactBind} OR p.category_path LIKE ${categoryBind}) AND $2::text IS NOT NULL)`

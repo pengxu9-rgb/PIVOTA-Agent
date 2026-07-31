@@ -576,6 +576,82 @@ describe('canonicalCatalogSearch recall_doc match lane (ADR-020, flag-gated)', (
     expect(query.calls[0].sql).toMatch(/p\.recall_doc LIKE ANY/);
   });
 
+  test('flag on + categoryPathPrefix -> no recall_doc arm and no orphan binds (08P01 guard)', async () => {
+    process.env[FLAG] = 'enabled';
+    const query = makeMockQuery([]);
+    await fetchCanonicalChainRows({
+      query: 'vitamin c serum',
+      categoryPathPrefix: 'beauty/skincare/serum/',
+      marketId: 'US',
+      deps: { query },
+    });
+    const { sql, params } = query.calls[0];
+    // The category branch of whereClause discards textWhereClause, so the
+    // recall-doc arm (and its patterns/market-guard binds) must not be built
+    // at all — otherwise the statement declares fewer $n placeholders than
+    // supplied params and Postgres rejects every category-lane query (08P01).
+    expect(sql).not.toMatch(/recall_doc/);
+    expect(sql).not.toMatch(/recall_market/);
+    expect(params.some((p) => Array.isArray(p))).toBe(false);
+    // The assertion that would have caught the bug: the highest $n referenced
+    // in the SQL must equal the number of supplied params.
+    const maxBind = Math.max(
+      ...[...sql.matchAll(/\$(\d+)/g)].map((m) => Number(m[1])),
+    );
+    expect(maxBind).toBe(params.length);
+  });
+
+  test('flag off leaves no blank-line artifact where the arm would interpolate (buyable lane)', async () => {
+    delete process.env[FLAG];
+    const query = makeMockQuery([]);
+    await fetchCanonicalChainRows({
+      query: 'hair butter for damaged hair',
+      tokenMatch: true,
+      deps: { query },
+    });
+    const { sql } = query.calls[0];
+    // tokenWhere is the last arm of textWhereClause; with the flag off the
+    // clause must close immediately after it (pre-recall-doc bytes), with no
+    // extra indent-only line from an empty `${recallDocWhere}` interpolation.
+    expect(sql).toMatch(/\) >= 2\)\n  \)/);
+    expect(sql).not.toMatch(/\) >= 2\)\n *\n/);
+  });
+
+  test('flag off leaves no blank-line artifact on the citable sargable lane either', async () => {
+    delete process.env[FLAG];
+    const query = makeMockQuery([]);
+    await fetchCanonicalChainRows({
+      query: 'hair butter for damaged hair',
+      tokenMatch: true,
+      eligibility: 'index_eligible',
+      deps: { query },
+    });
+    const { sql } = query.calls[0];
+    expect(sql).toMatch(/\) >= 2\)\)\n  \)/);
+    expect(sql).not.toMatch(/\) >= 2\)\)\n *\n/);
+  });
+
+  test('flag unset vs flag=disabled -> byte-identical SQL and params', async () => {
+    delete process.env[FLAG];
+    const q1 = makeMockQuery([]);
+    await fetchCanonicalChainRows({
+      query: 'vitamin c serum',
+      marketId: 'US',
+      tokenMatch: true,
+      deps: { query: q1 },
+    });
+    process.env[FLAG] = 'disabled';
+    const q2 = makeMockQuery([]);
+    await fetchCanonicalChainRows({
+      query: 'vitamin c serum',
+      marketId: 'US',
+      tokenMatch: true,
+      deps: { query: q2 },
+    });
+    expect(q2.calls[0].sql).toBe(q1.calls[0].sql);
+    expect(q2.calls[0].params).toEqual(q1.calls[0].params);
+  });
+
   test('flag is read per call, not at module load', async () => {
     delete process.env[FLAG];
     const query = makeMockQuery([]);
