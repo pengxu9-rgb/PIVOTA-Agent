@@ -15,6 +15,7 @@ const {
   buildDriftPredicateSql,
   normalizeAvailability,
   textOf,
+  fetchDriftedBatch,
   landBatch,
   reconcile,
 } = require('../../scripts/reconcile-catalog-recall-doc.cjs');
@@ -278,6 +279,20 @@ describe('reconcile() write confirm gate', () => {
     expect(() => assertWriteConfirmed({ write: true })).toThrow(/Refusing write/);
     expect(() => assertWriteConfirmed({ write: true, confirm: CONFIRM_TOKEN })).not.toThrow();
     expect(() => assertWriteConfirmed({ write: false })).not.toThrow();
+  });
+});
+
+describe('seed clock precision round-trip', () => {
+  test('batch SELECT reads eps.updated_at::text so microseconds survive the JS Date round-trip', async () => {
+    // Regression: node-pg parses bare timestamptz into a ms-precision JS Date;
+    // stamping that back left recall_doc_updated_at up to 999µs behind
+    // eps.updated_at, re-flagging every row forever (prod 2026-07-31:
+    // 10,579/10,579 "stale", max_staleness 999µs).
+    db.query.mockClear();
+    await fetchDriftedBatch({ batchSize: 5, offset: 0 });
+    const sql = db.query.mock.calls[0][0];
+    expect(sql).toContain('eps.updated_at::text AS seed_updated_at');
+    expect(sql).not.toMatch(/eps\.updated_at AS seed_updated_at/);
   });
 });
 
