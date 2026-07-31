@@ -296,7 +296,13 @@ async function fetchDriftedBatch({ batchSize, offset = 0 }) {
         eps.tool,
         eps.availability,
         eps.seed_data,
-        eps.updated_at AS seed_updated_at
+        -- ::text keeps full microsecond precision through the JS round-trip.
+        -- node-pg parses a bare timestamptz into a JS Date (millisecond
+        -- precision), so the stamp would land up to 999µs BEHIND
+        -- eps.updated_at and the drift predicate would re-flag every row
+        -- forever (observed on prod 2026-07-31: 10,579/10,579 "stale" with
+        -- max_staleness 999µs). The $6::timestamptz[] cast restores it losslessly.
+        eps.updated_at::text AS seed_updated_at
       FROM catalog_products cp
       ${ATTACHED_SEED_LATERAL_SQL}
       WHERE cp.catalog_track = 'external_referral'
