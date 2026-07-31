@@ -320,7 +320,7 @@ test('Path-C minted row stays PUBLIC with the gate off (what prod does today)', 
   const res = await decisionFor(mintedRow(), { renderableGate: undefined });
   assert.equal(res.decision, 'public');
   assert.ok(!res.reasons.includes('PDP_ROUTE_UNRESOLVABLE'));
-  assert.equal(res.policyVersion, 'c1.v0.5');
+  assert.equal(res.policyVersion, 'c1.v0.6');
 });
 
 test('a producer that never learned the column keeps c1.v0.4 output exactly', async () => {
@@ -432,18 +432,55 @@ test('both product joins compile the c1.v0.5 seed-route EXISTS, not TRUE', () =>
   }
 });
 
-test('the three trust suites are actually wired into `npm run test:node`', () => {
+test('both product joins compile the c1.v0.6 priced-offer EXISTS, per product_key', () => {
+  // MUTATION PIN (d): drop this column from either join and the policy input
+  // goes null, the tri-state gate never fires, and 4 price-less PDPs go back to
+  // 'public' while every row-level unit test above still passes.
+  //
+  // The correlation assert is the one that matters. `co.product_key =
+  // cp.product_key` is what makes this a PER-ROW answer; correlate it to
+  // cp.content_key instead and you have rebuilt the exact content-grained leak
+  // this gate exists to close — a priced sibling would launder the price-less
+  // row all over again.
+  const { PRODUCT_JOIN_SQL } = require('../src/services/catalogRowTrustUpserter');
+  const { PRODUCT_DRIVER_SQL } = require('../scripts/backfill-catalog-row-trust.cjs');
+  const { pricedOfferExistsSql } = require('../src/services/pricedOfferSql');
+
+  const fragment = pricedOfferExistsSql('cp.product_key');
+
+  for (const [name, sql] of [
+    ['PRODUCT_JOIN_SQL', PRODUCT_JOIN_SQL],
+    ['PRODUCT_DRIVER_SQL', PRODUCT_DRIVER_SQL],
+  ]) {
+    assert.ok(
+      sql.includes(fragment),
+      `${name} must embed pricedOfferExistsSql('cp.product_key') verbatim`,
+    );
+    assert.ok(
+      sql.includes('AS row_has_priced_offer'),
+      `${name} must alias the priced-offer EXISTS as row_has_priced_offer`,
+    );
+    assert.ok(
+      sql.includes('co.product_key = cp.product_key'),
+      `${name} must correlate the offer EXISTS to the ROW, not the content_key`,
+    );
+  }
+});
+
+test('the four trust suites are actually wired into `npm run test:node`', () => {
   // These files are `.cjs`, which jest.config.js testMatch
   // ('**/tests/**/*.test.(js|ts)') does NOT match. They therefore run ONLY if
   // listed explicitly in the test:node script. All three sat in the repo
   // collecting zero executions, which is how the c1.v0.5 mutations above
   // survived. Assert the wiring so a future suite cannot go dead silently.
+  // priced_offer_sql joined the list with the c1.v0.6 price gate.
   const pkg = require('../package.json');
   const script = String(pkg.scripts['test:node'] || '');
   for (const f of [
     'tests/catalog_trust_policy.node.test.cjs',
     'tests/pdp_renderability.node.test.cjs',
     'tests/catalog_row_trust_upserter.node.test.cjs',
+    'tests/priced_offer_sql.node.test.cjs',
   ]) {
     assert.ok(script.includes(f), `${f} is not listed in the test:node script — it never runs`);
   }

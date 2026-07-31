@@ -57,7 +57,14 @@ const { TEST_MERCHANT_IDS } = require('./testMerchantPolicy');
 // split-brain window for a change no row can currently observe. The version
 // bumps the day a rig row would actually reach 'public', not the day the
 // backstop is installed.
-const POLICY_VERSION = 'c1.v0.5';
+// Worked example 3 — the per-row price gate, 2026-07-31. This one DOES bump.
+// OFFER_PRICE_MISSING flips 4 real decisions from 'public' to 'blocked' — rows
+// CAN observe it, which is exactly the condition the versioning rule names.
+//
+// 🚨 SHIPS SECOND, RIGHT BEHIND pivota-backend#1649. The backend carries the
+// same gate and the same bump; until BOTH are deployed the twins disagree and
+// the 4 rows flap. Merge order: backend, then this.
+const POLICY_VERSION = 'c1.v0.6';
 
 // ---- Reason codes (authoritative vocabulary) -------------------------------
 //
@@ -96,6 +103,36 @@ const POLICY_VERSION = 'c1.v0.5';
 //   EXTERNAL_SEED_INACTIVE           — external_product_seeds.status != 'active'.
 //   MERCHANT_STORE_INACTIVE          — merchant_stores.status != 'active'.
 //   INDEX_NOT_SERVING_ELIGIBLE       — index_pipeline_state.serving_eligible=false.
+//   OFFER_PRICE_MISSING              — 2026-07-31. THIS product_key carries no
+//     unsuppressed catalog_offers row with a price > 0 (src/services/pricedOfferSql,
+//     byte-identical twin of pivota-backend services/priced_offer_sql.py).
+//     Evaluated right after the index gate, so a row already blocked upstream
+//     keeps its real reason and only a row that would otherwise reach
+//     public/shadow is reclassified.
+//
+//     WHY IT CANNOT BE READ OFF ips.serving_eligible, which is the obvious
+//     objection: index_pipeline_state is keyed by CONTENT_KEY (migration 098)
+//     and both upserters join it 'ips.content_key = cp.content_key', but trust
+//     is keyed by PRODUCT_KEY and every product_key mints its own
+//     pivota_signature_id — its own public PDP. pivota-backend's
+//     index_pipeline_state_service 'has_price' is per-row and always was
+//     correct; its _select_content_key_state then stores the BEST row's state
+//     for the whole content_key, so a price-less row sharing a content_key with
+//     a priced sibling inherits serving_eligible=true and publishes a
+//     price-less page. Measured on prod 2026-07-31: 4 Tom Ford fragrance PDPs,
+//     each with exactly one unsuppressed offer whose list_price,
+//     merchant_effective_price and estimated_best_price were ALL NULL, sitting
+//     at trust 'public' behind a priced tomfordbeauty.com sibling. This gate
+//     asks the price question of the row it is actually deciding.
+//
+//     TRI-STATE, like PDP_ROUTE_UNRESOLVABLE: only an explicit false blocks. A
+//     producer that does not compute row_has_priced_offer is byte-identical to
+//     c1.v0.5. NOT env-gated, unlike the renderable gate: its entire blast
+//     radius measured on prod is those 4 rows, because the 2,535 other rows
+//     lacking a priced offer of their own are ALREADY blocked upstream.
+//
+//     ⚠️ SAME TWIN-SYMMETRY RULE AS PDP_ROUTE_UNRESOLVABLE BELOW. This landed
+//     as the mirror of pivota-backend#1649 — backend first, this repo second.
 //   PUBLISH_STATE_NOT_PUBLIC         — catalog_products.publish_state != 'public'.
 //   IDENTITY_CONFLICT                — identity_status='conflict'.
 //   OFFER_SUPPRESSED                 — subject_type='offer' with offer.suppression_reason set.
@@ -139,6 +176,7 @@ const REASON_CODES = Object.freeze({
   OFFER_SUPPRESSED: 'OFFER_SUPPRESSED',
   PDP_ROUTE_UNRESOLVABLE: 'PDP_ROUTE_UNRESOLVABLE',
   TEST_MERCHANT_EXCLUDED: 'TEST_MERCHANT_EXCLUDED',
+  OFFER_PRICE_MISSING: 'OFFER_PRICE_MISSING',
 });
 
 const VALID_SUBJECT_TYPES = new Set(['product', 'offer', 'listing', 'content_key']);
@@ -239,6 +277,11 @@ function deriveTrust(inputs) {
   const override = inputs.override || null;
   const pdpRouteResolvable =
     inputs.pdp_route_resolvable == null ? null : Boolean(inputs.pdp_route_resolvable);
+  // Same tri-state contract. true = this product_key has its own unsuppressed
+  // priced offer, false = it does not, null/absent = not computed and the
+  // OFFER_PRICE_MISSING gate stays silent.
+  const rowHasPricedOffer =
+    inputs.row_has_priced_offer == null ? null : Boolean(inputs.row_has_priced_offer);
   const activeQuarantines = Array.isArray(inputs.active_quarantines)
     ? inputs.active_quarantines
     : [];
@@ -273,6 +316,7 @@ function deriveTrust(inputs) {
     sourceLifecycle,
     identityDecision,
     pdpRouteResolvable,
+    rowHasPricedOffer,
     reasons,
   });
 
@@ -524,6 +568,7 @@ function deriveServingDecision({
   sourceLifecycle,
   identityDecision,
   pdpRouteResolvable = null,
+  rowHasPricedOffer = null,
   reasons,
 }) {
   // Offer-specific block: suppressed offers never surface.
@@ -587,6 +632,21 @@ function deriveServingDecision({
     const syncStatus = String(product.sync_status ?? '').toLowerCase();
     if (syncStatus && syncStatus !== 'live') {
       reasons.push(REASON_CODES.PUBLISH_STATE_NOT_PUBLIC);
+      return { decision: 'blocked' };
+    }
+
+    // PER-ROW price gate. Immediately after the index gate on purpose: the
+    // index gate answers for the CONTENT_KEY, this one answers for the
+    // PRODUCT_KEY being decided, and a row that fails the coarse gate must keep
+    // reporting INDEX_NOT_SERVING_ELIGIBLE rather than being relabelled. See the
+    // OFFER_PRICE_MISSING entry in the reason-code vocabulary above for the
+    // grain argument and the measured 4-row blast radius.
+    //
+    // Tri-state: only an explicit false blocks. `=== false` and not
+    // `!rowHasPricedOffer` — the difference IS the contract, since null must
+    // fall through untouched.
+    if (rowHasPricedOffer === false) {
+      reasons.push(REASON_CODES.OFFER_PRICE_MISSING);
       return { decision: 'blocked' };
     }
   }

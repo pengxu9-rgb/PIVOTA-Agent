@@ -25,6 +25,7 @@ const {
   pdpRouteResolvableFromRow,
   seedRouteResolvesSql,
 } = require('./pdpRenderability');
+const { pricedOfferExistsSql } = require('./pricedOfferSql');
 
 // ---------------------------------------------------------------------------
 // SQL — kept literal & in sync with scripts/backfill-catalog-row-trust.cjs.
@@ -128,6 +129,23 @@ const PRODUCT_JOIN_SQL = `
     -- seed exists and their PDPs render. They answered FALSE — and 500ed —
     -- until P3 shipped.
     ` + seedRouteResolvesSql('cp') + ` AS pdp_seed_route_ok,
+
+    -- PER-ROW price input for the OFFER_PRICE_MISSING gate. This is the one
+    -- serving signal that CANNOT be taken from the ips join below: that join is
+    -- 'ips.content_key = cp.content_key', and index_pipeline_state stores ONE
+    -- state per content_key (its primary key, migration 098) chosen from the
+    -- best of that key's catalog_products rows. Every product_key mints its own
+    -- pivota_signature_id and therefore its own public PDP, so reading price
+    -- eligibility off the content-grained row publishes a price-less PDP
+    -- whenever a priced SIBLING carries the content_key's state.
+    --
+    -- That is not hypothetical: it put 4 Tom Ford fragrance PDPs on the public
+    -- surface with no price on 2026-07-31, each sharing its content_key with a
+    -- priced tomfordbeauty.com row while its own single offer had list_price,
+    -- merchant_effective_price and estimated_best_price ALL NULL and no
+    -- suppression. index_pipeline_state's has_price was never wrong — it was
+    -- answering about a different row.
+    ` + pricedOfferExistsSql('cp.product_key') + ` AS row_has_priced_offer,
 
     COALESCE(eps.id, epm.id)                                     AS eps_id,
     COALESCE(eps.status, epm.status)                             AS eps_status,
@@ -366,6 +384,13 @@ function rowToPolicyInputs(row, activeQuarantines, now) {
       product_line_id: row.product_line_id,
       review_family_id: row.review_family_id,
     } : null,
+    // Tri-state, same contract as pdp_route_resolvable above: true = this
+    // product_key has its own unsuppressed priced offer, false = it does not,
+    // null = the caller did not compute it and the gate stays silent. The JOIN
+    // always computes it (EXISTS is never NULL), so null here means a
+    // hand-built test input or an older caller.
+    row_has_priced_offer:
+      row.row_has_priced_offer == null ? null : Boolean(row.row_has_priced_offer),
     ips: row.serving_eligible != null ? {
       serving_eligible: row.serving_eligible,
       pipeline_stage: row.pipeline_stage,

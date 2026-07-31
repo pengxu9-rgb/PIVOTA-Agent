@@ -691,7 +691,12 @@ test('POLICY_VERSION is pinned to the Python twin', () => {
   // every test green. Bump it here AND in pivota-backend
   // services/catalog_trust_policy.py, and merge the two PRs back to back
   // (backend first).
-  assert.equal(POLICY_VERSION, 'c1.v0.5');
+  //
+  // c1.v0.5 -> c1.v0.6 on 2026-07-31 for the OFFER_PRICE_MISSING gate, which
+  // flips 4 measured prod rows 'public' -> 'blocked' and so is a real logic
+  // change by the versioning rule. This repo is the SECOND half of that pair —
+  // pivota-backend#1649 is the first. Until both deploy, the twins disagree.
+  assert.equal(POLICY_VERSION, 'c1.v0.6');
 });
 
 // ---- TEST/DEMO MERCHANT GATE (2026-07-27) -----------------------------------
@@ -844,4 +849,79 @@ test('lookalike domains are not over-blocked', () => {
       `${rowDomain} was over-blocked`,
     );
   }
+});
+
+
+// ---- c1.v0.6: OFFER_PRICE_MISSING -------------------------------------------
+//
+// Mirror of pivota-backend#1649. The gap it closes is GRAIN, not a wrong
+// predicate. pivota-backend's index_pipeline_state 'has_price' was always right
+// — it asked about an unsuppressed, priced catalog_offers row belonging to the
+// catalog_products row in front of it. But index_pipeline_state is keyed by
+// CONTENT_KEY and stores the best sibling's state, while trust is keyed by
+// PRODUCT_KEY and every product_key mints its own pivota_signature_id — its own
+// public PDP. A price-less row sharing a content_key with a priced sibling
+// therefore read the sibling's serving_eligible=true and published a price-less
+// page.
+//
+// Measured on prod 2026-07-31: exactly 4 rows, all Tom Ford fragrances, each
+// with one unsuppressed offer whose list_price, merchant_effective_price and
+// estimated_best_price were ALL NULL — drained by the 2026-07-30 currency
+// remediation without being suppressed. 2,535 further rows also lack a priced
+// offer of their own and every one is already blocked upstream, which is why
+// this gate ships ungated: its entire blast radius is those 4 rows.
+
+test('price gate blocks a row with no priced offer of its own', () => {
+  const trust = call({ row_has_priced_offer: false });
+  assert.equal(trust.serving_decision, 'blocked');
+  assert.ok(trust.serving_reason_codes.includes(REASON_CODES.OFFER_PRICE_MISSING));
+});
+
+test('price gate leaves a priced row public', () => {
+  const trust = call({ row_has_priced_offer: true });
+  assert.equal(trust.serving_decision, 'public');
+  assert.ok(!trust.serving_reason_codes.includes(REASON_CODES.OFFER_PRICE_MISSING));
+});
+
+test('price gate is inert when the input is absent', () => {
+  // Tri-state, and the reason it must be. Only the upserter and the backfill
+  // driver compute this input. Reading an ABSENT input as "not priced" would
+  // mass-demote the catalog the first time any other producer called
+  // deriveTrust.
+  const trust = call();
+  assert.equal(trust.serving_decision, 'public');
+  assert.ok(!trust.serving_reason_codes.includes(REASON_CODES.OFFER_PRICE_MISSING));
+});
+
+test('price gate ignores a null input rather than treating it as falsy', () => {
+  // `=== false`, not `!rowHasPricedOffer`. null must fall through.
+  const trust = call({ row_has_priced_offer: null });
+  assert.equal(trust.serving_decision, 'public');
+  assert.ok(!trust.serving_reason_codes.includes(REASON_CODES.OFFER_PRICE_MISSING));
+});
+
+test('price gate does not mask an earlier block reason', () => {
+  // Ordering: the index gate answers for the content_key and runs FIRST, so a
+  // row already blocked there keeps reporting INDEX_NOT_SERVING_ELIGIBLE. If
+  // this ever flips, the reason-code histogram collapses onto the newest gate
+  // and the two grains become indistinguishable in the data.
+  const trust = call({
+    ips: eligibleIps({ serving_eligible: false }),
+    row_has_priced_offer: false,
+  });
+  assert.equal(trust.serving_decision, 'blocked');
+  assert.ok(trust.serving_reason_codes.includes(REASON_CODES.INDEX_NOT_SERVING_ELIGIBLE));
+  assert.ok(!trust.serving_reason_codes.includes(REASON_CODES.OFFER_PRICE_MISSING));
+});
+
+test('price gate applies to external_seed supply', () => {
+  // The 4 prod rows are external-seed mirror rows, so the lane that actually
+  // regressed must be covered — not just the first-party fixture.
+  const trust = callExternalSeed({ row_has_priced_offer: false });
+  assert.equal(trust.serving_decision, 'blocked');
+  assert.ok(trust.serving_reason_codes.includes(REASON_CODES.OFFER_PRICE_MISSING));
+});
+
+test('OFFER_PRICE_MISSING is in the reason vocabulary', () => {
+  assert.equal(REASON_CODES.OFFER_PRICE_MISSING, 'OFFER_PRICE_MISSING');
 });
