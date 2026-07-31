@@ -147,6 +147,29 @@ const PRODUCT_JOIN_SQL = `
     -- answering about a different row.
     ` + pricedOfferExistsSql('cp.product_key') + ` AS row_has_priced_offer,
 
+    -- c1.v0.7 canonical-election input. THE grain bridge, and the reason the
+    -- OFFER_PRICE_MISSING gate above is a backstop rather than the fix.
+    --
+    -- content_canonical_election (mig 181) elects ONE pivota_signature_id per
+    -- content_key: the single URL the sitemap advertises and that every sibling
+    -- sig's PDP names in <link rel="canonical">. index_pipeline_state answers
+    -- for the CONTENT, catalog_row_trust answers for the ROW, and this is the
+    -- fact that connects them — without it a non-elected sibling inherits the
+    -- content-grained verdict and gets promoted as though it were canonical.
+    --
+    -- Measured on prod 2026-07-31: 121 of 6,814 trust-public rows are NOT their
+    -- content_key's elected canonical, every one on a multi-row content_key.
+    -- The 4 Tom Ford rows behind OFFER_PRICE_MISSING were 4 of them.
+    --
+    -- TRI-STATE and it must stay that way: TRUE/FALSE when an election exists,
+    -- NULL when it does not. 32 multi-row content_keys still have no election
+    -- and must be left alone, not demoted.
+    (
+      SELECT (cce.canonical_sig_id = cp.pivota_signature_id)
+      FROM content_canonical_election cce
+      WHERE cce.content_key = cp.content_key
+    ) AS row_is_elected_canonical,
+
     COALESCE(eps.id, epm.id)                                     AS eps_id,
     COALESCE(eps.status, epm.status)                             AS eps_status,
     COALESCE(eps.domain, epm.domain)                             AS eps_domain,
@@ -391,6 +414,13 @@ function rowToPolicyInputs(row, activeQuarantines, now) {
     // hand-built test input or an older caller.
     row_has_priced_offer:
       row.row_has_priced_offer == null ? null : Boolean(row.row_has_priced_offer),
+    // Tri-state, same contract. true = this row IS its content_key's elected
+    // canonical, false = a sibling holds the canonical URL, null = no election
+    // exists and the gate stays silent. Unlike the two above, null is a NORMAL
+    // production value here — the election table does not cover every
+    // content_key — not just a hand-built-test artifact.
+    row_is_elected_canonical:
+      row.row_is_elected_canonical == null ? null : Boolean(row.row_is_elected_canonical),
     ips: row.serving_eligible != null ? {
       serving_eligible: row.serving_eligible,
       pipeline_stage: row.pipeline_stage,
