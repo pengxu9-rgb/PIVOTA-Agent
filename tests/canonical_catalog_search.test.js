@@ -850,10 +850,12 @@ describe('canonicalCatalogSearch rank v2 + market-exemption fix (ADR-020, flag-g
   test('both flags on: combined SQL sane, params numbering intact (max $n === params.length)', async () => {
     process.env[RANK_FLAG] = 'enabled';
     process.env[DOC_FLAG] = 'enabled';
-    // NOTE: no categoryPathPrefix here — the category branch replaces the text
-    // WHERE entirely, so the recall-doc lane's LIKE ANY binds would be pushed
-    // but unreferenced (latent in the recall-doc wiring slice, predates rank
-    // v2; rank-v2 arms are immune since rank_score is always computed).
+    // NOTE: no categoryPathPrefix here — on the category branch the
+    // !categoryBind guard in the recall-doc lane skips building (and binding)
+    // the LIKE ANY arm entirely (pinned by the '08P01 guard' test in the
+    // recall-doc describe above), so this combo exercises the text branch,
+    // where the recall-doc lane and the rank-v2 arms actually coexist. The
+    // category-branch rank-arm bind integrity has its own test below.
     const { sql, params } = await capture({
       query: 'hair butter for damaged hair',
       tokenMatch: true,
@@ -877,6 +879,42 @@ describe('canonicalCatalogSearch rank v2 + market-exemption fix (ADR-020, flag-g
     // fixed leading binds not renumbered
     expect(params[0]).toBe('hair butter for damaged hair');
     expect(params[1]).toBe('%hair butter for damaged hair%');
+  });
+
+  test('flag on + categoryPathPrefix: rank-arm binds stay integral on the category branch (08P01 guard)', async () => {
+    process.env[RANK_FLAG] = 'enabled';
+    delete process.env[DOC_FLAG];
+    const { sql, params } = await capture({
+      query: 'vitamin c serum',
+      categoryPathPrefix: 'beauty/skincare/serum/',
+      marketId: 'US',
+      tokenMatch: true,
+    });
+
+    // Category branch active: whereClause takes the category form and
+    // discards the text arms — but rank_score is always computed, so every
+    // rank-v2 bind pushed above must still be referenced there.
+    expect(sql).toMatch(
+      /p\.category_path IS NOT NULL AND \(p\.category_path = \$\d+ OR p\.category_path LIKE \$\d+\) AND \$2::text IS NOT NULL/,
+    );
+
+    // Coverage-arm binds ('vitamin' + 'serum'; 'c' < 3 chars dropped) are
+    // pushed AND referenced inside the rank_score coverage CASE.
+    const cov = sql.match(
+      /\(LOWER\(COALESCE\(p\.title, ''\)\) LIKE \$(\d+) OR LOWER\(COALESCE\(p\.brand, ''\)\) LIKE \$\1\) AND \(LOWER\(COALESCE\(p\.title, ''\)\) LIKE \$(\d+) OR LOWER\(COALESCE\(p\.brand, ''\)\) LIKE \$\2\)/,
+    );
+    expect(cov).not.toBeNull();
+    expect(params[Number(cov[1]) - 1]).toBe('%vitamin%');
+    expect(params[Number(cov[2]) - 1]).toBe('%serum%');
+    expect(sql).toMatch(/\)\)\s+THEN\s+80 ELSE 0 END/); // coverage arm present
+
+    // The 08P01 pin: highest $n referenced === number of supplied params —
+    // no rank-arm / tokenScore / market bind may be pushed-but-orphaned when
+    // the category branch discards textWhereClause.
+    const maxBind = Math.max(
+      ...[...sql.matchAll(/\$(\d+)/g)].map((x) => Number(x[1])),
+    );
+    expect(maxBind).toBe(params.length);
   });
 
   test('rank v2 flag is read per call, not at module load', async () => {
