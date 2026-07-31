@@ -330,12 +330,70 @@ test('external_seed: IPS row present + serving_eligible=false → blocked (uncha
   assert.ok(trust.serving_reason_codes.includes(REASON_CODES.INDEX_NOT_SERVING_ELIGIBLE));
 });
 
-test('first-party: no IPS row → public (c1.v0.4 keeps the c1.v0.3 carve-out)', () => {
-  // MOYU/GR/PawStyle case — first-party merchants don't get IPS coverage, but
-  // the merchant is the source of truth, so absence of IPS does not block.
+test('first-party: no IPS row → BLOCKED (c1.v0.5 fails closed for every lane)', () => {
+  // This assertion was inverted on 2026-07-31, bringing this repo in line with
+  // the Python twin, which has failed closed here since 2026-07-29. It used to
+  // read "no IPS row → public" on the c1.v0.3 carve-out.
+  //
+  // The carve-out ("IPS coverage is sparse for first-party merchants by
+  // design") described a corpus where every first-party merchant was a retired
+  // test rig, already blocked upstream. The first REAL merchant-sync arrival
+  // (the 2026-07-29 Wix pilot) synced 20 rows with content_key NULL — rows that
+  // can structurally never have an IPS row — and every one went trust-public
+  // with no quality gate; public_not_renderable went red within the hour, and
+  // only the gateway's own fail-closed lookup kept them off the wire.
+  //
+  // An unscored row must not be public. The lifecycle for a fresh sync is
+  // blocked -> scored -> eligible -> public. If this assertion is being flipped
+  // back to 'public', that lifecycle is being reopened AND this repo is being
+  // put back into disagreement with the Python twin over one shared table —
+  // measure the blast radius first.
   const trust = call({ ips: null });
-  assert.equal(trust.serving_decision, 'public');
+  assert.equal(trust.serving_decision, 'blocked');
+  assert.ok(trust.serving_reason_codes.includes(REASON_CODES.INDEX_NOT_SERVING_ELIGIBLE));
+});
+
+test('the index gate fails closed on a missing IPS row for EVERY lane', () => {
+  // The gap the repair closes was lane-shaped: external-seed content already
+  // failed closed here, first-party and merchant-synced content did not. Pin
+  // all three lanes so a future edit cannot reintroduce a per-lane carve-out
+  // without saying so out loud.
+  for (const [lane, trust] of [
+    ['first-party', call({ ips: null })],
+    ['external_seed', callExternalSeed({ ips: null })],
+    ['observed_seller', callObservedSeller({ ips: null })],
+  ]) {
+    assert.equal(trust.serving_decision, 'blocked', `${lane} must block on a missing IPS row`);
+    assert.ok(
+      trust.serving_reason_codes.includes(REASON_CODES.INDEX_NOT_SERVING_ELIGIBLE),
+      `${lane} must report INDEX_NOT_SERVING_ELIGIBLE`,
+    );
+  }
+});
+
+test('a missing IPS row does not mask an earlier hard block', () => {
+  // Ordering pin, and the reason the repair measured ZERO prod rows: all 20
+  // rows in the gap set on 2026-07-31 were tombstoned rig rows, and the
+  // lifecycle hard-block returns before the index gate is ever reached. If this
+  // ordering flips, those rows start reporting INDEX_NOT_SERVING_ELIGIBLE and
+  // the reason-code histogram stops being diagnostic.
+  const trust = call({
+    ips: null,
+    product: activeMerchantProduct({ suppression_reason: 'demo_retired_2026_07' }),
+  });
+  assert.equal(trust.serving_decision, 'blocked');
+  assert.ok(trust.serving_reason_codes.includes(REASON_CODES.ROW_TOMBSTONED));
   assert.ok(!trust.serving_reason_codes.includes(REASON_CODES.INDEX_NOT_SERVING_ELIGIBLE));
+});
+
+test('an IPS row with serving_eligible=false is NOT the same as a missing one', () => {
+  // `!ips` must mean "no row", not "no opinion". The upserter builds the ips
+  // object only when serving_eligible is non-null, so a present-but-false row
+  // has to keep flowing through the eligibility branch below — that is what
+  // makes the INDEX_ELIGIBLE_READ widening reachable at all.
+  const trust = call({ ips: eligibleIps({ serving_eligible: false }) });
+  assert.equal(trust.serving_decision, 'blocked');
+  assert.ok(trust.serving_reason_codes.includes(REASON_CODES.INDEX_NOT_SERVING_ELIGIBLE));
 });
 
 test('first-party: IPS row present + serving_eligible=false STILL blocks (unchanged)', () => {

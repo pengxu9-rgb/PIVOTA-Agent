@@ -64,6 +64,20 @@ const { TEST_MERCHANT_IDS } = require('./testMerchantPolicy');
 // 🚨 SHIPS SECOND, RIGHT BEHIND pivota-backend#1649. The backend carries the
 // same gate and the same bump; until BOTH are deployed the twins disagree and
 // the 4 rows flap. Merge order: backend, then this.
+//
+// PARITY REPAIR, 2026-07-31, NO BUMP — the index gate learned to fail closed on
+// a missing IPS row for EVERY lane, matching what the Python twin has done
+// since c1.v0.5. It is a real logic change, so the rule says measure before
+// deciding. Measured on prod the day it landed: the gap set — rows with no
+// index_pipeline_state row that are NOT external-seed content — is 20 rows, all
+// merch_efbc46b4619cfbdf (a KNOWN_TEST_MERCHANT_IDS rig) with content_key NULL,
+// and all 20 are ALREADY blocked by BOTH twins via ROW_TOMBSTONED, which
+// returns from the hard-block arm well before the index gate is reached. So
+// every decision AND every reason code is byte-identical on all ~14k rows, and
+// the same no-bump reasoning as P3 and the test-merchant gate applies: bumping
+// would cost a full rewrite and re-open the split-brain window for a change no
+// row can currently observe. The version bumps the day a first-party row
+// actually reaches the gate.
 const POLICY_VERSION = 'c1.v0.6';
 
 // ---- Reason codes (authoritative vocabulary) -------------------------------
@@ -594,9 +608,33 @@ function deriveServingDecision({
   // ips=null pass on the assumption "no IPS opinion = no reason to block",
   // but Phase 3c parity found 80 external_seed catalog products with public
   // trust + no IPS row — i.e., shipping content that the index pipeline
-  // hasn't quality-gated yet. First-party rows (MOYU/GR/PawStyle/etc.) keep
-  // the legacy behavior since first-party merchants are the source of truth
-  // for their own content and IPS coverage is sparse there by design.
+  // hasn't quality-gated yet.
+  //
+  // c1.v0.5 (2026-07-29), PARITY REPAIR LANDED HERE 2026-07-31: a missing IPS
+  // row now fails CLOSED for EVERY lane, not only external-seed content. The
+  // first-party carve-out this replaces let ips=null fall through to public on
+  // the theory that "first-party merchants are the source of truth and IPS
+  // coverage there is sparse by design". Both halves of that theory failed the
+  // first time a real merchant-sync row arrived:
+  //
+  //   * Measured 2026-07-29 (Wix pilot merch_e68c20b0189746d0): 20 rows synced
+  //     with content_key NULL — structurally incapable of ever having an IPS
+  //     row — and every one went trust-public with NO quality gate, no scoring,
+  //     no eligibility. Only the gateway's own fail-closed eligibility lookup
+  //     kept them from serving, and public_not_renderable went red (20 > 0)
+  //     within the hour.
+  //   * "Sparse by design" described a corpus where every first-party merchant
+  //     was a retired test rig whose rows were already blocked upstream.
+  //
+  // An unscored row must not be public. The correct lifecycle for a fresh sync
+  // is blocked -> scored -> eligible -> public, and rows without a content_key
+  // stay blocked until identity is repaired.
+  //
+  // The Python twin has enforced this since 2026-07-29; this repo did not, so
+  // the two disagreed in CODE. It fires on ZERO prod rows today (measured
+  // 2026-07-31, see the PARITY REPAIR note above the version constant), which
+  // is why it carries no POLICY_VERSION bump — it is the backstop for the next
+  // uncovered first-party row, not a live demotion.
   // ADR-009 observed-seller trust tier (docs/adr009_observed_seller_trust_decision.md,
   // Option C). Classify by content SOURCE, not the legacy merchant_id='external_seed'
   // string: external seeds now mirror under per-brand observed sellers (merch_obs_…).
@@ -613,7 +651,7 @@ function deriveServingDecision({
     _merchantId.startsWith('merch_obs_');
   const isObservedSeller = _merchantId.startsWith('merch_obs_');
   if (product) {
-    if (isExternalSeedContent && !ips) {
+    if (!ips) {
       reasons.push(REASON_CODES.INDEX_NOT_SERVING_ELIGIBLE);
       return { decision: 'blocked' };
     }
