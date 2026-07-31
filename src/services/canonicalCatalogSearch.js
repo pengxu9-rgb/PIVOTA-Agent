@@ -71,6 +71,67 @@ function normalizeQuery(raw) {
   return String(raw).trim().toLowerCase();
 }
 
+// ADR-020 search-wiring slice: env-flag gate for the recall_doc match lane.
+// Read PER CALL (not at module load) so ops can flip the flag on a running
+// process without a restart. Default OFF — serving is byte-identical until
+// the flag is explicitly enabled.
+const RECALL_DOC_MATCH_FLAG_VALUES = new Set(['enabled', 'on', '1', 'true']);
+
+function isRecallDocMatchEnabled(env = process.env) {
+  return RECALL_DOC_MATCH_FLAG_VALUES.has(
+    String(env.CANONICAL_CATALOG_RECALL_DOC_MATCH || '').trim().toLowerCase(),
+  );
+}
+
+// Max LIKE patterns sent to the recall_doc LIKE ANY arm. Mirrors the seed
+// lane's cap discipline (findProductsExternalSeedDirectRetrieval caps its
+// variant patterns at 12); 16 leaves headroom for phrase + bigrams + tokens.
+const RECALL_DOC_PATTERN_CAP = 16;
+
+/**
+ * Build the `%…%` LIKE patterns for the recall_doc match lane from the user
+ * query. Pure function; mirrors the external-seed lane's approach
+ * (search_text LIKE ANY over token patterns — see
+ * buildExternalSeedRecallLikePredicate in externalSeedRecall.js and its
+ * caller in findProductsExternalSeedDirectRetrieval.js; that caller derives
+ * patterns from injected tokenizers so it is not reusable here).
+ *
+ * Emits, in order, deduped and capped at RECALL_DOC_PATTERN_CAP:
+ *   1. the lowered full phrase,
+ *   2. adjacent-token bigrams over the raw token sequence (kept verbatim —
+ *      recall_doc is matched with LIKE, so a bigram must appear contiguously;
+ *      dropping stopwords first would build patterns that can never match),
+ *   3. single significant tokens of length >= 4 (stopwords excluded so
+ *      generic words like "best"/"cheap" don't fan out the recall set).
+ *
+ * recall_doc is stored lower()ed (migration 058), so every pattern is
+ * lowercased for a case-insensitive match without an ILIKE (which would
+ * defeat the trigram index's LIKE support).
+ */
+function buildRecallDocMatchPatterns(rawQuery) {
+  const lowered = normalizeQuery(rawQuery);
+  if (!lowered) return [];
+  const patterns = [];
+  const seen = new Set();
+  const push = (text) => {
+    const t = String(text || '').trim();
+    if (!t) return;
+    const pattern = `%${t}%`;
+    if (seen.has(pattern) || patterns.length >= RECALL_DOC_PATTERN_CAP) return;
+    seen.add(pattern);
+    patterns.push(pattern);
+  };
+  push(lowered);
+  const tokens = lowered.split(/\s+/).map((t) => t.trim()).filter(Boolean);
+  for (let i = 0; i + 1 < tokens.length; i += 1) {
+    push(`${tokens[i]} ${tokens[i + 1]}`);
+  }
+  for (const token of tokens) {
+    if (token.length >= 4 && !TOKEN_STOPWORDS.has(token)) push(token);
+  }
+  return patterns;
+}
+
 function clampLimit(value, fallback, min, max) {
   const n = Number(value);
   if (!Number.isFinite(n) || n <= 0) return fallback;
@@ -413,19 +474,70 @@ async function fetchCanonicalChainRows(args = {}) {
     }
   }
 
+  // ADR-020 search-wiring slice: flag-gated recall_doc match lane. When
+  // CANONICAL_CATALOG_RECALL_DOC_MATCH is enabled, the candidate WHERE gains
+  // an OR-arm over catalog_products.recall_doc (migration 058: lower()ed
+  // \n-joined projection of the external-seed searchable text, partial trgm
+  // GIN index WHERE recall_doc IS NOT NULL — the IS NOT NULL conjunct below
+  // keeps the predicate aligned with that partial index). Patterns are the
+  // lowered phrase + bigrams + long tokens (see buildRecallDocMatchPatterns).
+  //
+  // Market scoping (recall-doc lane ONLY — the existing marketWhere behaviour
+  // is untouched in this slice): rows matched via recall_doc must also satisfy
+  // (recall_market IS NULL OR recall_market = $market) when a marketId is
+  // provided. Without this, the recall_doc arm would resurface cross-market
+  // seeds through the known pdp_scope='multi_merchant_canonical' market
+  // exemption in marketWhere (full fix is a later slice).
+  //
+  // Binds are captured at params.push time (params.length), same as every
+  // other optional arm in this function, so appending here never renumbers an
+  // existing $n placeholder.
+  //
+  // IMPORTANT: only build (and bind) this arm when the text branch of
+  // whereClause will actually be used. When categoryPathPrefix is provided,
+  // whereClause takes the category branch and discards textWhereClause — if we
+  // pushed the recall-doc binds anyway, the statement would declare fewer $n
+  // placeholders than supplied params (Postgres 08P01) and every category-lane
+  // query would fail. The category lane simply doesn't get recall-doc matching
+  // in this slice.
+  let recallDocWhere = '';
+  if (!categoryBind && isRecallDocMatchEnabled()) {
+    const recallDocPatterns = buildRecallDocMatchPatterns(lowered);
+    if (recallDocPatterns.length > 0) {
+      params.push(recallDocPatterns);
+      const recallDocPatternsBind = `$${params.length}`;
+      let recallDocMarketGuard = '';
+      if (marketId) {
+        params.push(String(marketId).toUpperCase());
+        recallDocMarketGuard = `
+          AND (p.recall_market IS NULL OR p.recall_market = $${params.length})`;
+      }
+      recallDocWhere = `OR (
+          p.recall_doc IS NOT NULL
+          AND p.recall_doc LIKE ANY(${recallDocPatternsBind}::text[])${recallDocMarketGuard}
+        )`;
+    }
+  }
+
   // On the citable sargable lane, drop the merchant_name (cross-table, defeats a
   // catalog_products-only index) and source_product_id (leading-wildcard, no
   // trigram index) OR-arms so the remaining disjuncts are all trigram-bitmap-able
   // title/brand predicates. Both dropped arms are near-dead for natural-language
   // citation queries (a merchant is ~never named the full query; source_product_id
   // is an opaque platform id). Every other lane keeps the full clause verbatim.
+  //
+  // recallDocArm carries its own leading newline+indent so that with the flag
+  // off (recallDocWhere === '') the interpolation contributes zero bytes and
+  // the generated SQL is byte-identical to the pre-recall-doc output (no stray
+  // blank line where the arm would sit).
+  const recallDocArm = recallDocWhere ? `\n        ${recallDocWhere}` : '';
   const textWhereClause = citableSargableLane
     ? `
         LOWER(COALESCE(p.title, '')) LIKE $2
         OR LOWER(COALESCE(p.brand, '')) LIKE $2
         ${skuTextWhere}
         ${verticalWhere}
-        ${tokenWhere}
+        ${tokenWhere}${recallDocArm}
   `
     : `
         LOWER(COALESCE(p.title, '')) LIKE $2
@@ -434,7 +546,7 @@ async function fetchCanonicalChainRows(args = {}) {
         ${skuTextWhere}
         OR LOWER(COALESCE(p.source_product_id, '')) LIKE $2
         ${verticalWhere}
-        ${tokenWhere}
+        ${tokenWhere}${recallDocArm}
   `;
   const whereClause = categoryBind
     ? `(p.category_path IS NOT NULL AND (p.category_path = ${categoryExactBind} OR p.category_path LIKE ${categoryBind}) AND $2::text IS NOT NULL)`
@@ -687,5 +799,8 @@ module.exports = {
     clampLimit,
     normalizeBrandFilterTerm,
     buildBrandFilterTerms,
+    RECALL_DOC_PATTERN_CAP,
+    isRecallDocMatchEnabled,
+    buildRecallDocMatchPatterns,
   },
 };

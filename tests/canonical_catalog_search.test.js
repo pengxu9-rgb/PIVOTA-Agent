@@ -473,3 +473,246 @@ describe('canonicalCatalogSearch.__internal helpers', () => {
     ).toEqual(['fenty beauty', 'fenty']);
   });
 });
+
+describe('canonicalCatalogSearch recall_doc match lane (ADR-020, flag-gated)', () => {
+  const FLAG = 'CANONICAL_CATALOG_RECALL_DOC_MATCH';
+  const savedFlag = process.env[FLAG];
+
+  afterEach(() => {
+    if (savedFlag === undefined) delete process.env[FLAG];
+    else process.env[FLAG] = savedFlag;
+  });
+
+  test('flag off (unset) -> SQL contains no recall_doc reference (serving unchanged)', async () => {
+    delete process.env[FLAG];
+    const query = makeMockQuery([]);
+    await fetchCanonicalChainRows({
+      query: 'vitamin c serum',
+      marketId: 'US',
+      deps: { query },
+    });
+    const { sql, params } = query.calls[0];
+    expect(sql).not.toMatch(/recall_doc/);
+    expect(sql).not.toMatch(/recall_market/);
+    expect(params.some((p) => Array.isArray(p))).toBe(false);
+  });
+
+  test.each(['off', 'false', '0', 'disabled', ''])(
+    'flag value %p stays off',
+    async (value) => {
+      process.env[FLAG] = value;
+      const query = makeMockQuery([]);
+      await fetchCanonicalChainRows({ query: 'lip balm', deps: { query } });
+      expect(query.calls[0].sql).not.toMatch(/recall_doc/);
+    },
+  );
+
+  test.each(['enabled', 'on', '1', 'true', ' TRUE '])(
+    'flag value %p turns the lane on',
+    async (value) => {
+      process.env[FLAG] = value;
+      const query = makeMockQuery([]);
+      await fetchCanonicalChainRows({ query: 'lip balm', deps: { query } });
+      expect(query.calls[0].sql).toMatch(/p\.recall_doc LIKE ANY\(\$\d+::text\[\]\)/);
+    },
+  );
+
+  test('flag on + marketId -> LIKE ANY arm, recall_market guard, patterns param appended', async () => {
+    process.env[FLAG] = 'enabled';
+    const query = makeMockQuery([]);
+    await fetchCanonicalChainRows({
+      query: 'Vitamin C Serum',
+      marketId: 'us',
+      deps: { query },
+    });
+    const { sql, params } = query.calls[0];
+
+    expect(sql).toMatch(/p\.recall_doc IS NOT NULL/);
+    const armMatch = sql.match(/p\.recall_doc LIKE ANY\(\$(\d+)::text\[\]\)/);
+    expect(armMatch).not.toBeNull();
+    const patternsIdx = Number(armMatch[1]) - 1;
+    const patterns = params[patternsIdx];
+    expect(Array.isArray(patterns)).toBe(true);
+    expect(patterns).toEqual(
+      expect.arrayContaining(['%vitamin c serum%', '%vitamin c%', '%c serum%', '%vitamin%', '%serum%']),
+    );
+
+    const guardMatch = sql.match(
+      /p\.recall_market IS NULL OR p\.recall_market = \$(\d+)/,
+    );
+    expect(guardMatch).not.toBeNull();
+    expect(params[Number(guardMatch[1]) - 1]).toBe('US');
+
+    // Regression guard: appending the recall-doc binds must not renumber the
+    // fixed leading params.
+    expect(params[0]).toBe('vitamin c serum');
+    expect(params[1]).toBe('%vitamin c serum%');
+
+    // Every $N referenced in the SQL must resolve to a supplied param.
+    const maxBind = Math.max(
+      ...[...sql.matchAll(/\$(\d+)/g)].map((m) => Number(m[1])),
+    );
+    expect(maxBind).toBe(params.length);
+  });
+
+  test('flag on without marketId -> no recall_market guard', async () => {
+    process.env[FLAG] = 'on';
+    const query = makeMockQuery([]);
+    await fetchCanonicalChainRows({ query: 'niacinamide toner', deps: { query } });
+    const { sql } = query.calls[0];
+    expect(sql).toMatch(/p\.recall_doc LIKE ANY/);
+    expect(sql).not.toMatch(/recall_market/);
+  });
+
+  test('flag on -> citable sargable lane (tokenMatch + index_eligible) also gains the arm', async () => {
+    process.env[FLAG] = 'true';
+    const query = makeMockQuery([]);
+    await fetchCanonicalChainRows({
+      query: 'hair butter damaged',
+      tokenMatch: true,
+      eligibility: 'index_eligible',
+      deps: { query },
+    });
+    expect(query.calls[0].sql).toMatch(/p\.recall_doc LIKE ANY/);
+  });
+
+  test('flag on + categoryPathPrefix -> no recall_doc arm and no orphan binds (08P01 guard)', async () => {
+    process.env[FLAG] = 'enabled';
+    const query = makeMockQuery([]);
+    await fetchCanonicalChainRows({
+      query: 'vitamin c serum',
+      categoryPathPrefix: 'beauty/skincare/serum/',
+      marketId: 'US',
+      deps: { query },
+    });
+    const { sql, params } = query.calls[0];
+    // The category branch of whereClause discards textWhereClause, so the
+    // recall-doc arm (and its patterns/market-guard binds) must not be built
+    // at all — otherwise the statement declares fewer $n placeholders than
+    // supplied params and Postgres rejects every category-lane query (08P01).
+    expect(sql).not.toMatch(/recall_doc/);
+    expect(sql).not.toMatch(/recall_market/);
+    expect(params.some((p) => Array.isArray(p))).toBe(false);
+    // The assertion that would have caught the bug: the highest $n referenced
+    // in the SQL must equal the number of supplied params.
+    const maxBind = Math.max(
+      ...[...sql.matchAll(/\$(\d+)/g)].map((m) => Number(m[1])),
+    );
+    expect(maxBind).toBe(params.length);
+  });
+
+  test('flag off leaves no blank-line artifact where the arm would interpolate (buyable lane)', async () => {
+    delete process.env[FLAG];
+    const query = makeMockQuery([]);
+    await fetchCanonicalChainRows({
+      query: 'hair butter for damaged hair',
+      tokenMatch: true,
+      deps: { query },
+    });
+    const { sql } = query.calls[0];
+    // tokenWhere is the last arm of textWhereClause; with the flag off the
+    // clause must close immediately after it (pre-recall-doc bytes), with no
+    // extra indent-only line from an empty `${recallDocWhere}` interpolation.
+    expect(sql).toMatch(/\) >= 2\)\n  \)/);
+    expect(sql).not.toMatch(/\) >= 2\)\n *\n/);
+  });
+
+  test('flag off leaves no blank-line artifact on the citable sargable lane either', async () => {
+    delete process.env[FLAG];
+    const query = makeMockQuery([]);
+    await fetchCanonicalChainRows({
+      query: 'hair butter for damaged hair',
+      tokenMatch: true,
+      eligibility: 'index_eligible',
+      deps: { query },
+    });
+    const { sql } = query.calls[0];
+    expect(sql).toMatch(/\) >= 2\)\)\n  \)/);
+    expect(sql).not.toMatch(/\) >= 2\)\)\n *\n/);
+  });
+
+  test('flag unset vs flag=disabled -> byte-identical SQL and params', async () => {
+    delete process.env[FLAG];
+    const q1 = makeMockQuery([]);
+    await fetchCanonicalChainRows({
+      query: 'vitamin c serum',
+      marketId: 'US',
+      tokenMatch: true,
+      deps: { query: q1 },
+    });
+    process.env[FLAG] = 'disabled';
+    const q2 = makeMockQuery([]);
+    await fetchCanonicalChainRows({
+      query: 'vitamin c serum',
+      marketId: 'US',
+      tokenMatch: true,
+      deps: { query: q2 },
+    });
+    expect(q2.calls[0].sql).toBe(q1.calls[0].sql);
+    expect(q2.calls[0].params).toEqual(q1.calls[0].params);
+  });
+
+  test('flag is read per call, not at module load', async () => {
+    delete process.env[FLAG];
+    const query = makeMockQuery([]);
+    await fetchCanonicalChainRows({ query: 'sunscreen', deps: { query } });
+    expect(query.calls[0].sql).not.toMatch(/recall_doc/);
+    process.env[FLAG] = 'enabled';
+    await fetchCanonicalChainRows({ query: 'sunscreen', deps: { query } });
+    expect(query.calls[1].sql).toMatch(/p\.recall_doc LIKE ANY/);
+  });
+});
+
+describe('__internal.buildRecallDocMatchPatterns', () => {
+  const build = (q) => __internal.buildRecallDocMatchPatterns(q);
+
+  test('phrase + adjacent bigrams + significant long tokens, all %-wrapped', () => {
+    expect(build('vitamin c serum')).toEqual([
+      '%vitamin c serum%',
+      '%vitamin c%',
+      '%c serum%',
+      '%vitamin%',
+      '%serum%',
+    ]);
+  });
+
+  test('lowercases and trims input', () => {
+    expect(build('  Vitamin C SERUM ')).toEqual(build('vitamin c serum'));
+    for (const p of build('Fenty GLOSS Bomb')) {
+      expect(p).toBe(p.toLowerCase());
+    }
+  });
+
+  test('single-token query emits just the phrase pattern (deduped)', () => {
+    expect(build('lipstick')).toEqual(['%lipstick%']);
+  });
+
+  test('tokens shorter than 4 chars and stopwords are excluded from single-token patterns', () => {
+    const patterns = build('best gel for dry skin');
+    // "best"/"for" are stopwords, "gel"/"dry" are < 4 chars, "skin" qualifies.
+    expect(patterns).toContain('%skin%');
+    expect(patterns).not.toContain('%best%');
+    expect(patterns).not.toContain('%for%');
+    expect(patterns).not.toContain('%gel%');
+    expect(patterns).not.toContain('%dry%');
+    // Bigrams stay verbatim over the raw token sequence (LIKE needs contiguity).
+    expect(patterns).toContain('%best gel%');
+    expect(patterns).toContain('%gel for%');
+    expect(patterns).toContain('%for dry%');
+    expect(patterns).toContain('%dry skin%');
+  });
+
+  test('caps at RECALL_DOC_PATTERN_CAP patterns', () => {
+    const longQuery = Array.from({ length: 30 }, (_, i) => `ingredient${i}`).join(' ');
+    const patterns = build(longQuery);
+    expect(patterns.length).toBe(__internal.RECALL_DOC_PATTERN_CAP);
+    expect(__internal.RECALL_DOC_PATTERN_CAP).toBe(16);
+  });
+
+  test('empty / null query -> []', () => {
+    expect(build('')).toEqual([]);
+    expect(build('   ')).toEqual([]);
+    expect(build(null)).toEqual([]);
+    expect(build(undefined)).toEqual([]);
+  });
+});
