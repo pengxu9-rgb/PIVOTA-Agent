@@ -30498,6 +30498,7 @@ async function getCommerceConfirmationActionHandler() {
 // non-retriable error rather than an invitation to retry forever — NO_MERCHANT_OFFER when the id is real but
 // nothing serves it, UNKNOWN_PRODUCT_ID when it resolves to nothing at all.
 const { chainRowResolvable } = require('./services/publicReadChainResolvability');
+const { describeCaller } = require('./services/callerIdentity');
 
 const PUBLIC_READ_CHAIN_FILTER_CONCURRENCY = 8;
 
@@ -34691,14 +34692,25 @@ app.head('/catalog-image-cache/*', handleCatalogImageCacheAsset);
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
 // Lightweight request logging.
+//
+// Now carries CALLER IDENTITY. Without it this log could not answer the one
+// question the public doors exist to answer -- 2026-07-31: /mcp showed 20 POSTs
+// attributable to nobody, several of them our own probes. `caller_class` makes
+// "did anything but us call this week" a countable query rather than a squint
+// at User-Agent strings. Headers only; never the client IP, never a key value.
 app.use((req, res, next) => {
   const start = Date.now();
   res.on('finish', () => {
+    const caller = describeCaller(req);
     logger.info({
       method: req.method,
       path: req.path,
       status: res.statusCode,
       duration_ms: Date.now() - start,
+      caller_class: caller.caller_class,
+      caller_ua: caller.ua,
+      caller_origin: caller.origin,
+      caller_authed: caller.authed,
       build_id: SERVICE_BUILD_ID,
       service_commit: SERVICE_GIT_SHA_SHORT,
     });
