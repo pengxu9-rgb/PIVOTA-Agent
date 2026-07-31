@@ -83,6 +83,34 @@ function isRecallDocMatchEnabled(env = process.env) {
   );
 }
 
+// ADR-020 rank-recalibration slice: env-flag gate for rank v2 (match-quality
+// dominance over provenance) + the market-exemption fix for
+// pdp_scope='multi_merchant_canonical'. Same per-call read discipline as
+// CANONICAL_CATALOG_RECALL_DOC_MATCH above — read per call so ops can flip it
+// on a running process. Default OFF — flag-off SQL and params are
+// byte-identical to the pre-slice behaviour.
+const RANK_V2_FLAG_VALUES = new Set(['enabled', 'on', '1', 'true']);
+
+function isRankV2Enabled(env = process.env) {
+  return RANK_V2_FLAG_VALUES.has(
+    String(env.CANONICAL_CATALOG_RANK_V2 || '').trim().toLowerCase(),
+  );
+}
+
+// Significant query tokens: length >= 3, stopwords dropped, deduped, capped
+// at 6. Shared by the tokenMatch lane (WHERE overlap + *25 rank bonus) and the
+// rank-v2 all-token-coverage arm so both see the same tokenization.
+function buildSignificantTokens(lowered) {
+  return Array.from(
+    new Set(
+      lowered
+        .split(/\s+/)
+        .map((t) => t.trim())
+        .filter((t) => t.length >= 3 && !TOKEN_STOPWORDS.has(t)),
+    ),
+  ).slice(0, 6);
+}
+
 // Max LIKE patterns sent to the recall_doc LIKE ANY arm. Mirrors the seed
 // lane's cap discipline (findProductsExternalSeedDirectRetrieval caps its
 // variant patterns at 12); 16 leaves headroom for phrase + bigrams + tokens.
@@ -249,6 +277,10 @@ async function fetchCanonicalChainRows(args = {}) {
   const lowered = normalizeQuery(queryText);
   if (!lowered) return [];
 
+  // ADR-020 rank-recalibration slice. Read once per call; gates BOTH the rank
+  // v2 CASE and the market-exemption fix below so they ship/roll back as one.
+  const rankV2Enabled = isRankV2Enabled();
+
   const normalizedLimit = clampLimit(limit, DEFAULT_LIMIT, 1, ROW_LIMIT_MAX);
   const candidateLimit = clampLimit(
     normalizedLimit * 4,
@@ -298,14 +330,27 @@ async function fetchCanonicalChainRows(args = {}) {
   // form was NULL-immune; a bare `platform != 'external_seed'` returns NULL
   // (not TRUE) for NULL-platform connected rows via SQL 3-valued logic, which
   // would silently drop them from market-scoped recall. Treat NULL as Path A.
+  // ADR-020 rank-recalibration slice (flag-gated): the unconditional
+  // pdp_scope='multi_merchant_canonical' exemption is the known cross-market
+  // hole — the sync stamps that scope on every graduated external row, so the
+  // market filter was a no-op for exactly the graduated population. Under
+  // CANONICAL_CATALOG_RANK_V2 the exemption tightens to rows whose
+  // recall_market is NULL (non-graduated multi-merchant canonicals keep the
+  // legacy pass-through) or matches the caller's market. Graduated rows carry
+  // recall_market (migration 058 projection) and become market-scopable; a
+  // graduated row can still surface cross-market via the eps.market EXISTS arm
+  // when its source seed genuinely matches the caller's market.
   let marketWhere = '';
   if (marketId) {
     params.push(String(marketId).toUpperCase());
     const marketBind = `$${params.length}`;
+    const canonicalScopeExemption = rankV2Enabled
+      ? `(p.pdp_scope = 'multi_merchant_canonical' AND (p.recall_market IS NULL OR p.recall_market = ${marketBind}))`
+      : `p.pdp_scope = 'multi_merchant_canonical'`;
     marketWhere = `
       AND (
         COALESCE(p.platform, '') <> 'external_seed'
-        OR p.pdp_scope = 'multi_merchant_canonical'
+        OR ${canonicalScopeExemption}
         OR EXISTS (
           SELECT 1 FROM external_product_seeds eps
           WHERE eps.external_product_id = p.source_product_id
@@ -444,14 +489,7 @@ async function fetchCanonicalChainRows(args = {}) {
   let tokenWhere = '';
   let tokenScore = '';
   if (tokenMatch) {
-    const tokens = Array.from(
-      new Set(
-        lowered
-          .split(/\s+/)
-          .map((t) => t.trim())
-          .filter((t) => t.length >= 3 && !TOKEN_STOPWORDS.has(t)),
-      ),
-    ).slice(0, 6);
+    const tokens = buildSignificantTokens(lowered);
     if (tokens.length >= 2) {
       const tokenBinds = [];
       const overlapParts = tokens.map((t) => {
@@ -472,6 +510,49 @@ async function fetchCanonicalChainRows(args = {}) {
         tokenWhere = `OR ((${overlapSql}) >= ${minTokens})`;
       }
     }
+  }
+
+  // ADR-020 rank-recalibration slice (flag-gated): rank v2. The legacy CASE
+  // grants +200 for pdp_scope='multi_merchant_canonical' — a pure provenance
+  // bonus that every graduated external row carries (the sync stamps it
+  // unconditionally), so external systematically outranked internal. Under
+  // CANONICAL_CATALOG_RANK_V2 that arm is replaced with match-quality
+  // dominance (source-neutral: text-match quality outranks provenance):
+  //   +120  lowered query phrase appears in the title ($2 = '%phrase%')
+  //   + 80  ALL significant query tokens covered across title/brand
+  //   + 60  recall_doc phrase hit (projected seed searchable text, mig 058)
+  //   + 20  multi_merchant_canonical (structural bonus, scaled down 200 -> 20)
+  // Every other existing arm (identity exacts 105/100/90/80, category 90,
+  // vertical 20/15, token overlap *25, sku identity 120/110) keeps its current
+  // weight — none is a provenance bonus exceeding the new dominant terms.
+  // NOTE: the old +10 internal_merchant offer bonus no longer exists in this
+  // helper (removed by the P0.3 neutrality firewall — ownership is not a
+  // ranking signal); rank v2 deliberately does NOT reintroduce it.
+  // Flag OFF emits the legacy arm byte-for-byte and pushes no binds.
+  let canonicalScopeRankArms =
+    "CASE WHEN p.pdp_scope = 'multi_merchant_canonical'              THEN 200 ELSE 0 END";
+  if (rankV2Enabled) {
+    const v2Arms = [
+      `CASE WHEN LOWER(COALESCE(p.title, '')) LIKE $2                 THEN 120 ELSE 0 END`,
+    ];
+    const v2Tokens = buildSignificantTokens(lowered);
+    if (v2Tokens.length > 0) {
+      const coverageSql = v2Tokens
+        .map((t) => {
+          params.push(`%${t}%`);
+          const b = `$${params.length}`;
+          return `(LOWER(COALESCE(p.title, '')) LIKE ${b} OR LOWER(COALESCE(p.brand, '')) LIKE ${b})`;
+        })
+        .join(' AND ');
+      v2Arms.push(`CASE WHEN (${coverageSql})                          THEN  80 ELSE 0 END`);
+    }
+    v2Arms.push(
+      `CASE WHEN p.recall_doc IS NOT NULL AND p.recall_doc LIKE $2    THEN  60 ELSE 0 END`,
+    );
+    v2Arms.push(
+      `CASE WHEN p.pdp_scope = 'multi_merchant_canonical'             THEN  20 ELSE 0 END`,
+    );
+    canonicalScopeRankArms = v2Arms.join(' +\n          ');
   }
 
   // ADR-020 search-wiring slice: flag-gated recall_doc match lane. When
@@ -672,7 +753,10 @@ async function fetchCanonicalChainRows(args = {}) {
   // Rank score weights mirror pivot_query_service.py exactly so canonical
   // recall ranks identically across the backend's HTTP API and this gateway
   // helper. Drift here would surface as inconsistent top-N between the two.
-  // The +200 multi_merchant_canonical bonus is the dominant term.
+  // The +200 multi_merchant_canonical bonus is the dominant term — UNLESS
+  // CANONICAL_CATALOG_RANK_V2 is enabled, in which case the pdp_scope arm is
+  // the rank-v2 match-quality block built above (canonicalScopeRankArms) and
+  // the gateway intentionally diverges from the backend's legacy weights.
   const sql = `
     WITH candidate_products AS (
       SELECT
@@ -721,7 +805,7 @@ async function fetchCanonicalChainRows(args = {}) {
           CASE WHEN LOWER(COALESCE(p.title, '')) = $1                     THEN 100 ELSE 0 END +
           CASE WHEN LOWER(COALESCE(m.merchant_name, '')) = $1             THEN  90 ELSE 0 END +
           CASE WHEN LOWER(COALESCE(p.brand, '')) = $1                     THEN  80 ELSE 0 END +
-          CASE WHEN p.pdp_scope = 'multi_merchant_canonical'              THEN 200 ELSE 0 END
+          ${canonicalScopeRankArms}
           ${categoryScore}
           ${verticalScore}
           ${tokenScore}
@@ -802,5 +886,7 @@ module.exports = {
     RECALL_DOC_PATTERN_CAP,
     isRecallDocMatchEnabled,
     buildRecallDocMatchPatterns,
+    isRankV2Enabled,
+    buildSignificantTokens,
   },
 };

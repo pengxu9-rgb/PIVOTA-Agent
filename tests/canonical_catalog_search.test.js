@@ -663,6 +663,290 @@ describe('canonicalCatalogSearch recall_doc match lane (ADR-020, flag-gated)', (
   });
 });
 
+describe('canonicalCatalogSearch rank v2 + market-exemption fix (ADR-020, flag-gated)', () => {
+  const RANK_FLAG = 'CANONICAL_CATALOG_RANK_V2';
+  const DOC_FLAG = 'CANONICAL_CATALOG_RECALL_DOC_MATCH';
+  const savedRank = process.env[RANK_FLAG];
+  const savedDoc = process.env[DOC_FLAG];
+
+  afterEach(() => {
+    if (savedRank === undefined) delete process.env[RANK_FLAG];
+    else process.env[RANK_FLAG] = savedRank;
+    if (savedDoc === undefined) delete process.env[DOC_FLAG];
+    else process.env[DOC_FLAG] = savedDoc;
+  });
+
+  // Option combos exercised for flag-off byte-identity. Covers the plain path,
+  // market/merchant/category binds, tokenMatch (plain + citable sargable),
+  // brandFilter, and the offer fan-out.
+  const COMBOS = [
+    { name: 'base', args: { query: 'vitamin c serum' } },
+    { name: 'market', args: { query: 'vitamin c serum', marketId: 'US' } },
+    {
+      name: 'merchant+category+market',
+      args: {
+        query: 'vitamin c serum',
+        merchantId: 'merch_abc',
+        categoryPathPrefix: 'beauty/skincare/serum/',
+        marketId: 'kr',
+      },
+    },
+    {
+      name: 'tokenMatch buyable',
+      args: { query: 'hair butter for damaged hair', tokenMatch: true, marketId: 'US' },
+    },
+    {
+      name: 'tokenMatch citable sargable',
+      args: {
+        query: 'hair butter for damaged hair',
+        tokenMatch: true,
+        eligibility: 'index_eligible',
+      },
+    },
+    {
+      name: 'brandFilter+offers',
+      args: {
+        query: 'fenty lipstick',
+        includeSkuOffers: true,
+        brandFilter: { canonical: 'Fenty Beauty' },
+        marketId: 'US',
+      },
+    },
+  ];
+
+  async function capture(args) {
+    const query = makeMockQuery([]);
+    await fetchCanonicalChainRows({ ...args, deps: { query } });
+    return query.calls[0];
+  }
+
+  describe.each([
+    ['recall-doc flag off', () => delete process.env[DOC_FLAG]],
+    ['recall-doc flag on', () => { process.env[DOC_FLAG] = 'enabled'; }],
+  ])('flag-off byte-identity (%s)', (_label, setDocFlag) => {
+    test.each(COMBOS)(
+      'combo $name: SQL and params identical across unset and every off spelling',
+      async ({ args }) => {
+        setDocFlag();
+        delete process.env[RANK_FLAG];
+        const baseline = await capture(args);
+
+        // Legacy shape preserved: +200 provenance arm, no v2 markers.
+        expect(baseline.sql).toMatch(/THEN 200 ELSE 0 END/);
+        expect(baseline.sql).not.toMatch(/LIKE \$2\s+THEN 120 ELSE 0 END/);
+        expect(baseline.sql).not.toMatch(/p\.recall_doc LIKE \$2/);
+        expect(baseline.sql).not.toMatch(
+          /pdp_scope = 'multi_merchant_canonical'\s+THEN\s+20 ELSE/,
+        );
+        if (args.marketId) {
+          // Market exemption stays the bare legacy pass-through.
+          expect(baseline.sql).toMatch(/OR p\.pdp_scope = 'multi_merchant_canonical'\s*\n\s*OR EXISTS/);
+          expect(baseline.sql).not.toMatch(
+            /pdp_scope = 'multi_merchant_canonical' AND \(p\.recall_market/,
+          );
+        }
+
+        for (const value of ['', '0', 'false', 'off', 'disabled', 'no']) {
+          process.env[RANK_FLAG] = value;
+          const run = await capture(args);
+          expect(run.sql).toBe(baseline.sql);
+          expect(run.params).toEqual(baseline.params);
+        }
+      },
+    );
+  });
+
+  test('flag off: base combo pushes no extra binds (params stay $1..$4)', async () => {
+    delete process.env[RANK_FLAG];
+    delete process.env[DOC_FLAG];
+    const { params } = await capture({ query: 'vitamin c serum' });
+    expect(params).toHaveLength(4);
+  });
+
+  test.each(['enabled', 'on', '1', 'true', ' TRUE '])(
+    'flag value %p turns rank v2 on',
+    async (value) => {
+      process.env[RANK_FLAG] = value;
+      const { sql } = await capture({ query: 'lip balm' });
+      expect(sql).toMatch(/LIKE \$2\s+THEN 120 ELSE 0 END/);
+      expect(sql).not.toMatch(/THEN 200 ELSE 0 END/);
+    },
+  );
+
+  test('flag on: rank arms are title-phrase 120, all-token coverage 80, recall_doc 60, scope 20', async () => {
+    process.env[RANK_FLAG] = 'enabled';
+    delete process.env[DOC_FLAG];
+    const { sql, params } = await capture({ query: 'Vitamin C Serum' });
+
+    // +120 phrase-in-title (reuses $2 = '%vitamin c serum%')
+    expect(sql).toMatch(
+      /CASE WHEN LOWER\(COALESCE\(p\.title, ''\)\) LIKE \$2\s+THEN 120 ELSE 0 END/,
+    );
+    // +80 all-token coverage: tokens vitamin + serum ('c' < 3 chars dropped),
+    // AND-joined (title OR brand) pairs with fresh binds.
+    expect(sql).toMatch(
+      /\(LOWER\(COALESCE\(p\.title, ''\)\) LIKE \$(\d+) OR LOWER\(COALESCE\(p\.brand, ''\)\) LIKE \$\1\) AND \(LOWER\(COALESCE\(p\.title, ''\)\) LIKE \$(\d+) OR LOWER\(COALESCE\(p\.brand, ''\)\) LIKE \$\2\)/,
+    );
+    expect(sql).toMatch(/\)\)\s+THEN\s+80 ELSE 0 END/); // coverage arm (paren-closed), distinct from brand-exact = $1 THEN 80
+    expect(params).toContain('%vitamin%');
+    expect(params).toContain('%serum%');
+    // +60 recall_doc phrase hit (rank arm — present even with the recall-doc
+    // MATCH lane flag off; it scores, it does not recall)
+    expect(sql).toMatch(
+      /CASE WHEN p\.recall_doc IS NOT NULL AND p\.recall_doc LIKE \$2\s+THEN\s+60 ELSE 0 END/,
+    );
+    // provenance bonus scaled 200 -> 20
+    expect(sql).toMatch(
+      /CASE WHEN p\.pdp_scope = 'multi_merchant_canonical'\s+THEN\s+20 ELSE 0 END/,
+    );
+    expect(sql).not.toMatch(/THEN 200 ELSE 0 END/);
+    // recall-doc MATCH lane stayed off: no LIKE ANY arm in the WHERE
+    expect(sql).not.toMatch(/LIKE ANY/);
+
+    // existing identity-exact arms keep their weights
+    expect(sql).toMatch(/= \$1\s+THEN 105 ELSE 0 END/);
+    expect(sql).toMatch(/= \$1\s+THEN 100 ELSE 0 END/);
+    expect(sql).toMatch(/= \$1\s+THEN\s+90 ELSE 0 END/);
+    expect(sql).toMatch(/= \$1\s+THEN\s+80 ELSE 0 END/);
+  });
+
+  test('flag on: no significant tokens -> coverage arm omitted, other v2 arms intact', async () => {
+    process.env[RANK_FLAG] = 'enabled';
+    delete process.env[DOC_FLAG];
+    // 'bb' is < 3 chars; no significant tokens survive.
+    const { sql, params } = await capture({ query: 'bb' });
+    expect(sql).toMatch(/THEN 120 ELSE 0 END/);
+    expect(sql).toMatch(/THEN\s+60 ELSE 0 END/);
+    expect(sql).toMatch(/THEN\s+20 ELSE 0 END/);
+    expect(sql).not.toMatch(/\)\)\s+THEN\s+80 ELSE 0 END/); // no coverage arm
+    expect(params).toHaveLength(4); // no coverage binds pushed
+  });
+
+  test('flag on + marketId: canonical-scope exemption tightens to recall_market', async () => {
+    process.env[RANK_FLAG] = 'enabled';
+    delete process.env[DOC_FLAG];
+    const { sql, params } = await capture({ query: 'sunscreen', marketId: 'us' });
+
+    const m = sql.match(
+      /OR \(p\.pdp_scope = 'multi_merchant_canonical' AND \(p\.recall_market IS NULL OR p\.recall_market = \$(\d+)\)\)/,
+    );
+    expect(m).not.toBeNull();
+    expect(params[Number(m[1]) - 1]).toBe('US');
+    // bare unconditional exemption is gone
+    expect(sql).not.toMatch(/OR p\.pdp_scope = 'multi_merchant_canonical'\s*\n\s*OR EXISTS/);
+    // Path A + eps.market arms untouched
+    expect(sql).toMatch(/COALESCE\(p\.platform, ''\) <> 'external_seed'/);
+    expect(sql).toMatch(/eps\.market\s*=\s*\$\d+/);
+  });
+
+  test('flag on without marketId: no market filter and no recall_market guard', async () => {
+    process.env[RANK_FLAG] = 'enabled';
+    delete process.env[DOC_FLAG];
+    const { sql } = await capture({ query: 'sunscreen' });
+    expect(sql).not.toMatch(/recall_market/);
+    expect(sql).not.toMatch(/eps\.market/);
+  });
+
+  test('both flags on: combined SQL sane, params numbering intact (max $n === params.length)', async () => {
+    process.env[RANK_FLAG] = 'enabled';
+    process.env[DOC_FLAG] = 'enabled';
+    // NOTE: no categoryPathPrefix here — on the category branch the
+    // !categoryBind guard in the recall-doc lane skips building (and binding)
+    // the LIKE ANY arm entirely (pinned by the '08P01 guard' test in the
+    // recall-doc describe above), so this combo exercises the text branch,
+    // where the recall-doc lane and the rank-v2 arms actually coexist. The
+    // category-branch rank-arm bind integrity has its own test below.
+    const { sql, params } = await capture({
+      query: 'hair butter for damaged hair',
+      tokenMatch: true,
+      marketId: 'US',
+      merchantId: 'merch_abc',
+    });
+
+    // rank v2 arms + tightened exemption + recall-doc LIKE ANY lane coexist
+    expect(sql).toMatch(/THEN 120 ELSE 0 END/);
+    expect(sql).toMatch(
+      /pdp_scope = 'multi_merchant_canonical' AND \(p\.recall_market IS NULL OR p\.recall_market = \$\d+\)/,
+    );
+    expect(sql).toMatch(/p\.recall_doc LIKE ANY\(\$\d+::text\[\]\)/);
+    expect(sql).not.toMatch(/THEN 200 ELSE 0 END/);
+
+    // every $N referenced resolves to a supplied param, and none are unused
+    const maxBind = Math.max(
+      ...[...sql.matchAll(/\$(\d+)/g)].map((x) => Number(x[1])),
+    );
+    expect(maxBind).toBe(params.length);
+    // fixed leading binds not renumbered
+    expect(params[0]).toBe('hair butter for damaged hair');
+    expect(params[1]).toBe('%hair butter for damaged hair%');
+  });
+
+  test('flag on + categoryPathPrefix: rank-arm binds stay integral on the category branch (08P01 guard)', async () => {
+    process.env[RANK_FLAG] = 'enabled';
+    delete process.env[DOC_FLAG];
+    const { sql, params } = await capture({
+      query: 'vitamin c serum',
+      categoryPathPrefix: 'beauty/skincare/serum/',
+      marketId: 'US',
+      tokenMatch: true,
+    });
+
+    // Category branch active: whereClause takes the category form and
+    // discards the text arms — but rank_score is always computed, so every
+    // rank-v2 bind pushed above must still be referenced there.
+    expect(sql).toMatch(
+      /p\.category_path IS NOT NULL AND \(p\.category_path = \$\d+ OR p\.category_path LIKE \$\d+\) AND \$2::text IS NOT NULL/,
+    );
+
+    // Coverage-arm binds ('vitamin' + 'serum'; 'c' < 3 chars dropped) are
+    // pushed AND referenced inside the rank_score coverage CASE.
+    const cov = sql.match(
+      /\(LOWER\(COALESCE\(p\.title, ''\)\) LIKE \$(\d+) OR LOWER\(COALESCE\(p\.brand, ''\)\) LIKE \$\1\) AND \(LOWER\(COALESCE\(p\.title, ''\)\) LIKE \$(\d+) OR LOWER\(COALESCE\(p\.brand, ''\)\) LIKE \$\2\)/,
+    );
+    expect(cov).not.toBeNull();
+    expect(params[Number(cov[1]) - 1]).toBe('%vitamin%');
+    expect(params[Number(cov[2]) - 1]).toBe('%serum%');
+    expect(sql).toMatch(/\)\)\s+THEN\s+80 ELSE 0 END/); // coverage arm present
+
+    // The 08P01 pin: highest $n referenced === number of supplied params —
+    // no rank-arm / tokenScore / market bind may be pushed-but-orphaned when
+    // the category branch discards textWhereClause.
+    const maxBind = Math.max(
+      ...[...sql.matchAll(/\$(\d+)/g)].map((x) => Number(x[1])),
+    );
+    expect(maxBind).toBe(params.length);
+  });
+
+  test('rank v2 flag is read per call, not at module load', async () => {
+    delete process.env[RANK_FLAG];
+    delete process.env[DOC_FLAG];
+    const query = makeMockQuery([]);
+    await fetchCanonicalChainRows({ query: 'sunscreen', deps: { query } });
+    expect(query.calls[0].sql).toMatch(/THEN 200 ELSE 0 END/);
+    process.env[RANK_FLAG] = 'enabled';
+    await fetchCanonicalChainRows({ query: 'sunscreen', deps: { query } });
+    expect(query.calls[1].sql).toMatch(/THEN 120 ELSE 0 END/);
+    expect(query.calls[1].sql).not.toMatch(/THEN 200 ELSE 0 END/);
+  });
+
+  test('__internal.buildSignificantTokens matches the tokenMatch lane rules', () => {
+    expect(__internal.buildSignificantTokens('hair butter for damaged hair')).toEqual([
+      'hair', 'butter', 'damaged',
+    ]);
+    expect(__internal.buildSignificantTokens('vitamin c serum')).toEqual(['vitamin', 'serum']);
+    expect(__internal.buildSignificantTokens('bb')).toEqual([]);
+  });
+
+  test('__internal.isRankV2Enabled honors enabled/on/1/true only', () => {
+    for (const v of ['enabled', 'on', '1', 'true', ' TRUE ']) {
+      expect(__internal.isRankV2Enabled({ CANONICAL_CATALOG_RANK_V2: v })).toBe(true);
+    }
+    for (const v of ['', '0', 'false', 'off', 'disabled', 'yes-ish', undefined]) {
+      expect(__internal.isRankV2Enabled({ CANONICAL_CATALOG_RANK_V2: v })).toBe(false);
+    }
+  });
+});
+
 describe('__internal.buildRecallDocMatchPatterns', () => {
   const build = (q) => __internal.buildRecallDocMatchPatterns(q);
 
