@@ -13,6 +13,12 @@
  *   - a drift metric (rows where recall_doc IS NULL or recall_doc_updated_at
  *     lags the attached seed's updated_at) reported on every run and
  *     standalone via --drift-only;
+ *   - an orphaned-mirror metric (external_referral rows with NO active seed
+ *     carrying their attached_product_key). Such rows are invisible to the
+ *     attached-seed join, so the reconciler can never project them and
+ *     drift_total does not count them — without this counter the metric
+ *     silently reads "converged" over rows it cannot reach (prod 2026-07-31:
+ *     1,963 of 12,542, of which 3 sat in the gap-scope acceptance corpus);
  *   - counters count UPDATE rowCount actually landed, never rows attempted.
  *
  * The projected doc mirrors, field for field, what the seed lane searches —
@@ -248,6 +254,38 @@ const ATTACHED_SEED_LATERAL_SQL = `
   ) eps ON true
 `;
 
+/**
+ * Orphaned mirrors: external_referral rows no active seed points back at
+ * (external_product_seeds.attached_product_key). The reconciler joins through
+ * that back-pointer, so these rows are structurally out of its reach — they
+ * are not drift (they can never converge) but a broken back-link that needs
+ * re-attachment or retirement. Counted separately so drift_total=0 cannot be
+ * read as "every mirror row is projected". The live-only sub-count is the
+ * serving-relevant slice (archived/stale orphans are already out of serving).
+ */
+async function fetchOrphanedMirrorMetric() {
+  const res = await query(
+    `
+      SELECT
+        count(*)::int AS orphaned_mirror_count,
+        count(*) FILTER (WHERE cp.sync_status = 'live')::int AS orphaned_mirror_live_count
+      FROM catalog_products cp
+      WHERE cp.catalog_track = 'external_referral'
+        AND NOT EXISTS (
+          SELECT 1
+          FROM external_product_seeds eps
+          WHERE eps.attached_product_key = cp.product_key
+            AND eps.status = 'active'
+        )
+    `,
+  );
+  const row = res.rows?.[0] || {};
+  return {
+    orphaned_mirror_count: Number(row.orphaned_mirror_count || 0),
+    orphaned_mirror_live_count: Number(row.orphaned_mirror_live_count || 0),
+  };
+}
+
 async function fetchDriftMetric() {
   const res = await query(
     `
@@ -277,6 +315,8 @@ async function fetchDriftMetric() {
     drift_total: drift,
     converged_pct: total ? Math.round(((total - drift) / total) * 1000) / 10 : 100,
     max_staleness: row.max_staleness || null,
+    // Rows outside the attached-seed join entirely; disjoint from drift_total.
+    ...(await fetchOrphanedMirrorMetric()),
   };
 }
 
@@ -502,6 +542,7 @@ module.exports = {
   normalizeAvailability,
   textOf,
   fetchDriftMetric,
+  fetchOrphanedMirrorMetric,
   fetchDriftedBatch,
   landBatch,
   reconcile,
