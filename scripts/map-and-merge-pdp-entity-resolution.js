@@ -94,7 +94,37 @@ function mintedMs(row) {
   return Number.isFinite(parsed) ? parsed : Number.MAX_SAFE_INTEGER;
 }
 
+function isElectedCanonical(row) {
+  const elected = asString(row?.elected_canonical_sig_id);
+  return Boolean(elected) && asString(row?.pivota_signature_id) === elected;
+}
+
+// THE ANCHOR MUST BE THE ELECTED CANONICAL, AND THIS TIEBREAK RUNS FIRST.
+//
+// content_canonical_election (backend mig 181) already decides which sig holds
+// the ONE public URL for a content_key — the URL the sitemap advertises and that
+// every sibling's PDP names in <link rel="canonical">. Merging identity onto a
+// DIFFERENT row points the entity at a page we do not advertise, and
+// sellable_item_group_id is not cosmetic: checkoutHandoffResolver, acpFeedSource,
+// discoveryFeed, RecommendationEngine, productEntityIndexFeed and
+// catalogEntityResolution all key off it.
+//
+// MEASURED 2026-07-31, which is why this exists. Ranking by is_primary first
+// disagreed with the election on 43 of the 83 cross-merchant content_keys whose
+// identity is ALREADY correct — i.e. running the sweep would have rewritten 43
+// good groupings. The disagreements were systematic, not noise: is_primary
+// selects rows that are trust-'shadow' or 'blocked' while the elected row is
+// trust-'public'. On ck_1fdeb19a47f5ae0140084 (Tom Ford Black Orchid) it picked
+// the sephora.com row that is trust-BLOCKED for carrying no price at all, over
+// the priced tomfordbeauty.com row that actually serves.
+//
+// is_primary stays as the fallback for the groups with no election (6 of 83
+// measured); it is a fine tiebreak, it is just not a statement about which URL
+// the world sees.
 function comparePrimaryRows(left, right) {
+  const leftElected = isElectedCanonical(left) ? 1 : 0;
+  const rightElected = isElectedCanonical(right) ? 1 : 0;
+  if (leftElected !== rightElected) return rightElected - leftElected;
   const leftPrimary = left?.is_primary === true ? 1 : 0;
   const rightPrimary = right?.is_primary === true ? 1 : 0;
   if (leftPrimary !== rightPrimary) return rightPrimary - leftPrimary;
@@ -390,7 +420,8 @@ async function fetchCrossMerchantClusters(options = {}) {
         pil.match_basis,
         pil.strong_identity,
         pil.variant_axes,
-        pil.official_url
+        pil.official_url,
+        cce.canonical_sig_id AS elected_canonical_sig_id
       FROM catalog_products cp
       JOIN eligible e ON e.content_key = cp.content_key
       LEFT JOIN catalog_merchants cm ON cm.merchant_id = cp.merchant_id
@@ -402,6 +433,8 @@ async function fetchCrossMerchantClusters(options = {}) {
       LEFT JOIN pdp_identity_listing pil
         ON pil.merchant_id = cp.merchant_id
        AND pil.product_id = cp.source_product_id
+      LEFT JOIN content_canonical_election cce
+        ON cce.content_key = cp.content_key
       WHERE ${memberWhere}
       ORDER BY
         cp.content_key ASC,
@@ -677,6 +710,9 @@ if (require.main === module) {
 }
 
 module.exports = {
+  comparePrimaryRows,
+  pickPrimaryMember,
+  isElectedCanonical,
   REVIEW_CONFIRM_TOKEN,
   applyReadyClusters,
   buildClusterReport,
