@@ -78,7 +78,10 @@ const { TEST_MERCHANT_IDS } = require('./testMerchantPolicy');
 // would cost a full rewrite and re-open the split-brain window for a change no
 // row can currently observe. The version bumps the day a first-party row
 // actually reaches the gate.
-const POLICY_VERSION = 'c1.v0.6';
+// Worked example 4 — the canonical-election gate, 2026-07-31. Bumps: it moves
+// 121 measured prod rows from 'public' to 'shadow'. Pairs with pivota-backend,
+// backend first.
+const POLICY_VERSION = 'c1.v0.7';
 
 // ---- Reason codes (authoritative vocabulary) -------------------------------
 //
@@ -96,6 +99,32 @@ const POLICY_VERSION = 'c1.v0.6';
 //   IDENTITY_LIVE_READ_DISABLED — identity_status='approved' but
 //     live_read_enabled=false. First-party sources are exempt.
 //   FRESHNESS_UNVERIFIED — never observed a verification timestamp.
+//   NON_CANONICAL_DUPLICATE — c1.v0.7 (2026-07-31). This row is NOT the elected
+//     canonical for its content_key (content_canonical_election, mig 181): a
+//     SIBLING row holds the one URL the sitemap advertises and that this row's
+//     own PDP names in <link rel="canonical">. The row is real and renderable,
+//     it is simply not the copy that represents this physical product publicly.
+//
+//     SHADOW, DELIBERATELY NOT BLOCKED, and the distinction is load-bearing.
+//     The two surfaces read different tables: the PDP RENDERER gates on
+//     index_pipeline_state.serving_eligible (content grain, unchanged here),
+//     while public recall / discovery / the entity feed gate on
+//     catalog_row_trust.serving_decision='public' (row grain — see
+//     catalogServingIndex.fetchCatalogServingEligibleSourceSet in THIS repo).
+//     Shadow drops the duplicate out of public promotion while its page KEEPS
+//     ANSWERING 200 with its rel=canonical intact. Blocking would 404 URLs
+//     Google may already have indexed AND destroy the canonical signal that
+//     consolidates them onto the winner — strictly worse than the duplicate,
+//     the same trap services/content_canonical_election documents.
+//
+//     THE GRAIN BRIDGE. index_pipeline_state is keyed by content_key and stores
+//     ONE row's state; catalog_row_trust is keyed by product_key. Nothing
+//     connected the two, so a non-elected sibling inherited the content verdict
+//     and was promoted as if canonical. Measured on prod 2026-07-31: 121 of
+//     6,814 trust-public rows, ALL on multi-row content_keys.
+//
+//     TRI-STATE: only an explicit false shadows. 32 multi-row content_keys have
+//     no election yet and MUST NOT be demoted on absence.
 //
 // Advisory (does not flip decision):
 //   IDENTITY_NOT_APPLICABLE_FIRST_PARTY — c1.v0.3+. Marks rows where the
@@ -191,6 +220,7 @@ const REASON_CODES = Object.freeze({
   PDP_ROUTE_UNRESOLVABLE: 'PDP_ROUTE_UNRESOLVABLE',
   TEST_MERCHANT_EXCLUDED: 'TEST_MERCHANT_EXCLUDED',
   OFFER_PRICE_MISSING: 'OFFER_PRICE_MISSING',
+  NON_CANONICAL_DUPLICATE: 'NON_CANONICAL_DUPLICATE',
 });
 
 const VALID_SUBJECT_TYPES = new Set(['product', 'offer', 'listing', 'content_key']);
@@ -296,6 +326,10 @@ function deriveTrust(inputs) {
   // OFFER_PRICE_MISSING gate stays silent.
   const rowHasPricedOffer =
     inputs.row_has_priced_offer == null ? null : Boolean(inputs.row_has_priced_offer);
+  // Tri-state. true = this row IS its content_key's elected canonical,
+  // false = a sibling holds the canonical URL, null = no election exists.
+  const rowIsElectedCanonical =
+    inputs.row_is_elected_canonical == null ? null : Boolean(inputs.row_is_elected_canonical);
   const activeQuarantines = Array.isArray(inputs.active_quarantines)
     ? inputs.active_quarantines
     : [];
@@ -331,6 +365,7 @@ function deriveTrust(inputs) {
     identityDecision,
     pdpRouteResolvable,
     rowHasPricedOffer,
+    rowIsElectedCanonical,
     reasons,
   });
 
@@ -583,6 +618,7 @@ function deriveServingDecision({
   identityDecision,
   pdpRouteResolvable = null,
   rowHasPricedOffer = null,
+  rowIsElectedCanonical = null,
   reasons,
 }) {
   // Offer-specific block: suppressed offers never surface.
@@ -771,10 +807,22 @@ function deriveServingDecision({
     }
   }
 
+  // c1.v0.7: a row that is not its content_key's elected canonical is a
+  // duplicate of a sibling that holds the public URL. It SHADOWS — see the
+  // NON_CANONICAL_DUPLICATE entry above for why shadow and not blocked, and for
+  // the 121-row measured blast radius.
+  //
+  // `=== false` and not `!rowIsElectedCanonical`: null means no election exists
+  // for this content_key, which must leave the decision untouched.
+  if (rowIsElectedCanonical === false) {
+    reasons.push(REASON_CODES.NON_CANONICAL_DUPLICATE);
+  }
+
   const shadow =
     identityDecision.status === 'review_required' ||
     reasons.includes(REASON_CODES.IDENTITY_CONFIDENCE_NULL) ||
     reasons.includes(REASON_CODES.IDENTITY_LIVE_READ_DISABLED) ||
+    reasons.includes(REASON_CODES.NON_CANONICAL_DUPLICATE) ||
     (identityDecision.status === 'unknown' && !isIdentityCoverageExempt);
 
   if (shadow) {

@@ -752,9 +752,13 @@ test('POLICY_VERSION is pinned to the Python twin', () => {
   //
   // c1.v0.5 -> c1.v0.6 on 2026-07-31 for the OFFER_PRICE_MISSING gate, which
   // flips 4 measured prod rows 'public' -> 'blocked' and so is a real logic
-  // change by the versioning rule. This repo is the SECOND half of that pair —
+  // change by the versioning rule.
+  //
+  // c1.v0.6 -> c1.v0.7 same day for the canonical-election gate
+  // (NON_CANONICAL_DUPLICATE), which moves 121 measured prod rows
+  // 'public' -> 'shadow'. This repo is the SECOND half of that pair —
   // pivota-backend#1649 is the first. Until both deploy, the twins disagree.
-  assert.equal(POLICY_VERSION, 'c1.v0.6');
+  assert.equal(POLICY_VERSION, 'c1.v0.7');
 });
 
 // ---- TEST/DEMO MERCHANT GATE (2026-07-27) -----------------------------------
@@ -982,4 +986,74 @@ test('price gate applies to external_seed supply', () => {
 
 test('OFFER_PRICE_MISSING is in the reason vocabulary', () => {
   assert.equal(REASON_CODES.OFFER_PRICE_MISSING, 'OFFER_PRICE_MISSING');
+});
+
+
+// ---- c1.v0.7: NON_CANONICAL_DUPLICATE (the grain bridge) --------------------
+//
+// index_pipeline_state is keyed by content_key and stores ONE row's state;
+// catalog_row_trust is keyed by product_key. content_canonical_election (mig
+// 181) elects the ONE sig per content_key that the sitemap advertises and that
+// every sibling's PDP names in <link rel="canonical">. Nothing connected the
+// two, so a non-elected sibling inherited the content-grained verdict and was
+// promoted as though it were the canonical.
+//
+// Measured on prod 2026-07-31: 121 of 6,814 trust-public rows, ALL on multi-row
+// content_keys. The 4 Tom Ford rows behind OFFER_PRICE_MISSING were 4 of them —
+// the election had already picked the priced tomfordbeauty.com row correctly in
+// every case, which is why this is the general rule and the price gate is now a
+// backstop beneath it.
+
+test('a non-elected duplicate SHADOWS rather than blocking', () => {
+  // Shadow, not blocked, and the distinction is the whole design. The PDP
+  // RENDERER gates on index_pipeline_state.serving_eligible (content grain);
+  // public recall/discovery/feed gate on serving_decision='public' (row grain,
+  // catalogServingIndex). Shadow drops the duplicate out of promotion while its
+  // page keeps answering 200 with rel=canonical intact. Blocking would 404 URLs
+  // Google may already have indexed and destroy the canonical signal.
+  const trust = call({ row_is_elected_canonical: false });
+  assert.equal(trust.serving_decision, 'shadow');
+  assert.ok(trust.serving_reason_codes.includes(REASON_CODES.NON_CANONICAL_DUPLICATE));
+});
+
+test('the elected canonical stays public', () => {
+  const trust = call({ row_is_elected_canonical: true });
+  assert.equal(trust.serving_decision, 'public');
+  assert.ok(!trust.serving_reason_codes.includes(REASON_CODES.NON_CANONICAL_DUPLICATE));
+});
+
+test('an absent election never demotes', () => {
+  // 32 multi-row content_keys still have NO election row and the join
+  // legitimately yields NULL. Unlike the other tri-states here, null is a NORMAL
+  // production value — reading it as "not canonical" would shadow every
+  // uncovered row.
+  assert.equal(call().serving_decision, 'public');
+  assert.equal(call({ row_is_elected_canonical: null }).serving_decision, 'public');
+});
+
+test('a non-elected duplicate does not mask a hard block', () => {
+  // The election gate lives in the SHADOW block, reached only after every hard
+  // block has passed. A tombstoned duplicate keeps reporting ROW_TOMBSTONED.
+  const trust = call({
+    row_is_elected_canonical: false,
+    product: activeMerchantProduct({ suppression_reason: 'demo_retired_2026_07' }),
+  });
+  assert.equal(trust.serving_decision, 'blocked');
+  assert.ok(trust.serving_reason_codes.includes(REASON_CODES.ROW_TOMBSTONED));
+});
+
+test('the price gate still BLOCKS a non-elected duplicate', () => {
+  // Defence in depth. OFFER_PRICE_MISSING is a hard block and runs first, so a
+  // duplicate that is also price-less stays blocked rather than being softened
+  // to shadow. If this ever inverts, the 4 Tom Ford rows quietly return to a
+  // rendering state with no price.
+  const trust = call({ row_is_elected_canonical: false, row_has_priced_offer: false });
+  assert.equal(trust.serving_decision, 'blocked');
+  assert.ok(trust.serving_reason_codes.includes(REASON_CODES.OFFER_PRICE_MISSING));
+});
+
+test('NON_CANONICAL_DUPLICATE applies to external_seed supply', () => {
+  const trust = callExternalSeed({ row_is_elected_canonical: false });
+  assert.equal(trust.serving_decision, 'shadow');
+  assert.ok(trust.serving_reason_codes.includes(REASON_CODES.NON_CANONICAL_DUPLICATE));
 });

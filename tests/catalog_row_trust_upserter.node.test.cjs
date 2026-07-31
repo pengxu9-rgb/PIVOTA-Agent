@@ -320,7 +320,7 @@ test('Path-C minted row stays PUBLIC with the gate off (what prod does today)', 
   const res = await decisionFor(mintedRow(), { renderableGate: undefined });
   assert.equal(res.decision, 'public');
   assert.ok(!res.reasons.includes('PDP_ROUTE_UNRESOLVABLE'));
-  assert.equal(res.policyVersion, 'c1.v0.6');
+  assert.equal(res.policyVersion, 'c1.v0.7');
 });
 
 test('a producer that never learned the column keeps c1.v0.4 output exactly', async () => {
@@ -483,5 +483,41 @@ test('the four trust suites are actually wired into `npm run test:node`', () => 
     'tests/priced_offer_sql.node.test.cjs',
   ]) {
     assert.ok(script.includes(f), `${f} is not listed in the test:node script — it never runs`);
+  }
+});
+
+
+test('both product joins select the c1.v0.7 canonical-election input', () => {
+  // MUTATION PIN (e): drop this column from either join and the policy input
+  // goes null, the tri-state gate never fires, and 121 duplicate PDPs go back to
+  // being independently promoted while every row-level unit test still passes.
+  //
+  // The correlation asserts are what make it a PER-ROW answer about the RIGHT
+  // pair of facts: the election is looked up by content_key, but compared
+  // against THIS row's signature. Compare against anything else and the gate
+  // either shadows everything or nothing.
+  const { PRODUCT_JOIN_SQL } = require('../src/services/catalogRowTrustUpserter');
+  const { PRODUCT_DRIVER_SQL } = require('../scripts/backfill-catalog-row-trust.cjs');
+
+  for (const [name, sql] of [
+    ['PRODUCT_JOIN_SQL', PRODUCT_JOIN_SQL],
+    ['PRODUCT_DRIVER_SQL', PRODUCT_DRIVER_SQL],
+  ]) {
+    assert.ok(
+      sql.includes('AS row_is_elected_canonical'),
+      `${name} must alias the election lookup as row_is_elected_canonical`,
+    );
+    assert.ok(
+      sql.includes('FROM content_canonical_election cce'),
+      `${name} must read content_canonical_election`,
+    );
+    assert.ok(
+      sql.includes('cce.content_key = cp.content_key'),
+      `${name} must look the election up by content_key`,
+    );
+    assert.ok(
+      sql.includes('cce.canonical_sig_id = cp.pivota_signature_id'),
+      `${name} must compare the elected sig against THIS row's signature`,
+    );
   }
 });
