@@ -467,7 +467,7 @@ test('both product joins compile the c1.v0.6 priced-offer EXISTS, per product_ke
   }
 });
 
-test('the four trust suites are actually wired into `npm run test:node`', () => {
+test('the five identity/trust suites are actually wired into `npm run test:node`', () => {
   // These files are `.cjs`, which jest.config.js testMatch
   // ('**/tests/**/*.test.(js|ts)') does NOT match. They therefore run ONLY if
   // listed explicitly in the test:node script. All three sat in the repo
@@ -481,6 +481,7 @@ test('the four trust suites are actually wired into `npm run test:node`', () => 
     'tests/pdp_renderability.node.test.cjs',
     'tests/catalog_row_trust_upserter.node.test.cjs',
     'tests/priced_offer_sql.node.test.cjs',
+    'tests/merge_tool_election_anchor.node.test.cjs',
   ]) {
     assert.ok(script.includes(f), `${f} is not listed in the test:node script — it never runs`);
   }
