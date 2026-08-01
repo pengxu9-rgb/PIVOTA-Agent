@@ -405,4 +405,40 @@ describe('find_products_multi ingredient_recall_direct canonical extension', () 
     expect(resp.body.metadata).toHaveProperty('canonical_category_scope_prefix', 'beauty/skincare');
     expect(resp.body.metadata?.canonical_category_scope_filtered_out_count).toBe(3);
   });
+
+  test('canonical leg is bounded — a hung query degrades to seed-only, not a hang', async () => {
+    // The canonical call is wrapped in withStageBudget
+    // (FPM_INGREDIENT_CANONICAL_STAGE_BUDGET_MS). Pin the degraded path: when
+    // the catalog_products query never resolves, the lane must still answer
+    // within the budget with canonical_error=STAGE_TIMEOUT telemetry and
+    // whatever the seed prefetch produced, instead of holding the request
+    // until the DB statement_timeout backstop (30s).
+    process.env.FPM_INGREDIENT_CANONICAL_STAGE_BUDGET_MS = '150';
+    jest.doMock('../../src/db', () => ({
+      query: async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('FROM catalog_products p')) return new Promise(() => {});
+        if (text.includes('FROM external_product_seeds')) return { rows: [] };
+        return { rows: [] };
+      },
+    }));
+
+    const app = require('../../src/server');
+    const startedAt = Date.now();
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: { query: 'niacinamide serum', page: 1, limit: 10, market: 'US' },
+        },
+        metadata: { source: 'shopping_agent', market: 'US' },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(Date.now() - startedAt).toBeLessThan(10000);
+    expect(resp.body.metadata?.query_source).toBe('agent_products_ingredient_recall_direct');
+    expect(resp.body.metadata?.canonical_error).toBe('STAGE_TIMEOUT');
+    expect(resp.body.metadata?.canonical_raw_count).toBe(0);
+  });
 });

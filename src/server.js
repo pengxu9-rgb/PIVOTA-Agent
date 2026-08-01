@@ -3741,6 +3741,18 @@ const FIND_PRODUCTS_MULTI_NON_BEAUTY_PRIMARY_DEADLINE_MS = Math.max(
   50,
   parseTimeoutMs(process.env.FIND_PRODUCTS_MULTI_NON_BEAUTY_PRIMARY_DEADLINE_MS, 6000),
 );
+// Hard ceiling on the ingredient-direct lane's canonical-chain recall leg.
+// Text-mode recall measures ~3.0s server-side on prod (see PR #1889); this
+// bound exists so a plan regression degrades the lane to seed-only results
+// (canonical_error: STAGE_TIMEOUT in telemetry) instead of holding the
+// request and a pool connection for up to statement_timeout (30s). The
+// default deliberately clears the measured cost with headroom — tightening
+// it below ~4s would silently drop canonical results and re-fail the
+// skincare release gate.
+const FPM_INGREDIENT_CANONICAL_STAGE_BUDGET_MS = Math.max(
+  500,
+  parseTimeoutMs(process.env.FPM_INGREDIENT_CANONICAL_STAGE_BUDGET_MS, 6000),
+);
 const FPM_GATE_SIMPLIFY_V1 =
   String(process.env.FPM_GATE_SIMPLIFY_V1 || 'true').toLowerCase() !== 'false';
 const FPM_LOOKUP_ONLY_RESOLVER =
@@ -44897,7 +44909,12 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           String(search.market || metadata.market || process.env.CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET || 'US')
             .trim()
             .toUpperCase() || 'US';
-        const canonicalIngredientRowsPromise = fetchCanonicalChainRows({
+        // Bounded from inside: this leg is otherwise the only expensive stage
+        // in the handler with no withStageBudget wrapper. STAGE_TIMEOUT flows
+        // into the .catch below and surfaces as canonical_error in telemetry;
+        // the lane then serves seed-only results instead of hanging.
+        const canonicalIngredientRowsPromise = withStageBudget(
+          fetchCanonicalChainRows({
           query: rawUserQuery || queryText,
           categoryPathPrefix: canonicalIngredientCategoryPathPrefix,
           // Always true for the ingredient_recall_direct path: by definition
@@ -44909,7 +44926,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           includeSkuOffers: false,
           marketId: ingredientPathMarket,
           deps: { query },
-        })
+          }),
+          FPM_INGREDIENT_CANONICAL_STAGE_BUDGET_MS,
+          'ingredient_canonical_chain',
+        )
           .then((rows) => ({
             rows: Array.isArray(rows) ? rows : [],
             error: null,
