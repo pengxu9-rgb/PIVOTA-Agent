@@ -44863,8 +44863,30 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         // v15 left skincare_serum at 0/2 PASS (2 THIN). Most skincare
         // canonical PDPs (COSRX / Naturium / Anua / etc.) live in
         // catalog_products and are unreachable without this path.
-        const canonicalIngredientCategoryPathPrefix =
-          resolveBeautyCategoryPathPrefixForQuery(rawUserQuery || queryText) || null;
+        // Recall on TEXT, not on a category bucket. fetchCanonicalChainRows has
+        // two modes and `categoryPathPrefix` silently selects the wrong one for
+        // this lane: when it is set, the text predicate is dropped from the
+        // WHERE clause entirely (see `whereClause` in canonicalCatalogSearch.js
+        // — `AND $2::text IS NOT NULL` is a no-op that only keeps the bind
+        // referenced), leaving "rows under the prefix" ordered by rank_score,
+        // which inside a single bucket is near-constant (the title arm is exact
+        // equality, categoryScore is uniform, tokenScore is absent here) so it
+        // degenerates to updated_at DESC. A bulk restamp of 3,824 skincare rows
+        // on 2026-07-30 therefore turned "niacinamide serum" into "recently
+        // updated things under beauty/skincare/treat/" — 25 rows, zero of them
+        // niacinamide serums (sheet masks, toners, body mist), which is what
+        // took the skincare release gate red.
+        //
+        // The bucket is also structurally wrong for this query: the catalog
+        // runs competing taxonomies (beauty/skincare/treat/serum AND flat
+        // beauty/skincare/serum AND bare beauty/skincare), and the literal
+        // "Niacinamide Serum" PDPs sit outside the treat/ prefix — so ANDing
+        // text with the prefix would return ~nothing rather than fix it.
+        //
+        // Category discipline is not lost: the resolved intent still narrows
+        // the merged list below via filterStrictIngredientProductsByCategoryIntents,
+        // which filters on the product's own visible text after recall.
+        const canonicalIngredientCategoryPathPrefix = null;
         const canonicalIngredientLimit = Math.max(6, Math.min(12, Math.ceil(safeLimit / 2)));
         const canonicalIngredientStartedAt = Date.now();
         // Market-aware filtering on the ingredient path too — same

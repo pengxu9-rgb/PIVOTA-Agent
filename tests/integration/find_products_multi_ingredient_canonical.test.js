@@ -254,4 +254,50 @@ describe('find_products_multi ingredient_recall_direct canonical extension', () 
       }),
     );
   });
+
+  test('canonical recall matches on query text, not a category bucket', async () => {
+    // Regression pin for the 2026-07-31 skincare release-gate red.
+    // fetchCanonicalChainRows has two modes: passing `categoryPathPrefix`
+    // switches it to category BROWSE, which drops the text predicate from the
+    // WHERE clause entirely and orders by rank_score — near-constant inside a
+    // single bucket, so effectively updated_at DESC. "niacinamide serum" then
+    // recalled whatever had most recently been restamped under
+    // beauty/skincare/treat/ (sheet masks, toners, body mist) and zero actual
+    // niacinamide serums, because the literal PDPs are catalogued under the
+    // catalog's competing taxonomies (beauty/skincare/serum, beauty/skincare).
+    // Assert on the emitted SQL so the mode itself is pinned, not just an
+    // outcome a fixture could fake.
+    const observedSql = [];
+    jest.doMock('../../src/db', () => ({
+      query: async (sql) => {
+        const text = String(sql || '');
+        observedSql.push(text);
+        if (text.includes('FROM catalog_products p')) return { rows: canonicalMixedNiacinamideRows() };
+        if (text.includes('FROM external_product_seeds')) return { rows: [] };
+        return { rows: [] };
+      },
+    }));
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: { query: 'niacinamide serum', page: 1, limit: 10, market: 'US' },
+        },
+        metadata: { source: 'shopping_agent', market: 'US' },
+      });
+
+    expect(resp.status).toBe(200);
+    const canonicalSql = observedSql.find((sql) => sql.includes('FROM catalog_products p'));
+    expect(canonicalSql).toBeDefined();
+    // Text mode: the title/brand LIKE arms are present in the WHERE clause.
+    expect(canonicalSql).toMatch(/LOWER\(COALESCE\(p\.title, ''\)\) LIKE \$2/);
+    // Bucket mode's tell — the category-only predicate with the no-op bind
+    // guard that replaces the text clause — must NOT appear.
+    expect(canonicalSql).not.toMatch(/\$2::text IS NOT NULL/);
+    // And the lane must report that it passed no prefix.
+    expect(resp.body.metadata?.canonical_category_path_prefix ?? null).toBeNull();
+  });
 });
