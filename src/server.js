@@ -3741,6 +3741,18 @@ const FIND_PRODUCTS_MULTI_NON_BEAUTY_PRIMARY_DEADLINE_MS = Math.max(
   50,
   parseTimeoutMs(process.env.FIND_PRODUCTS_MULTI_NON_BEAUTY_PRIMARY_DEADLINE_MS, 6000),
 );
+// Hard ceiling on the ingredient-direct lane's canonical-chain recall leg.
+// Text-mode recall measures ~3.0s server-side on prod (see PR #1889); this
+// bound exists so a plan regression degrades the lane to seed-only results
+// (canonical_error: STAGE_TIMEOUT in telemetry) instead of holding the
+// request and a pool connection for up to statement_timeout (30s). The
+// default deliberately clears the measured cost with headroom — tightening
+// it below ~4s would silently drop canonical results and re-fail the
+// skincare release gate.
+const FPM_INGREDIENT_CANONICAL_STAGE_BUDGET_MS = Math.max(
+  500,
+  parseTimeoutMs(process.env.FPM_INGREDIENT_CANONICAL_STAGE_BUDGET_MS, 6000),
+);
 const FPM_GATE_SIMPLIFY_V1 =
   String(process.env.FPM_GATE_SIMPLIFY_V1 || 'true').toLowerCase() !== 'false';
 const FPM_LOOKUP_ONLY_RESOLVER =
@@ -44863,8 +44875,30 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         // v15 left skincare_serum at 0/2 PASS (2 THIN). Most skincare
         // canonical PDPs (COSRX / Naturium / Anua / etc.) live in
         // catalog_products and are unreachable without this path.
-        const canonicalIngredientCategoryPathPrefix =
-          resolveBeautyCategoryPathPrefixForQuery(rawUserQuery || queryText) || null;
+        // Recall on TEXT, not on a category bucket. fetchCanonicalChainRows has
+        // two modes and `categoryPathPrefix` silently selects the wrong one for
+        // this lane: when it is set, the text predicate is dropped from the
+        // WHERE clause entirely (see `whereClause` in canonicalCatalogSearch.js
+        // — `AND $2::text IS NOT NULL` is a no-op that only keeps the bind
+        // referenced), leaving "rows under the prefix" ordered by rank_score,
+        // which inside a single bucket is near-constant (the title arm is exact
+        // equality, categoryScore is uniform, tokenScore is absent here) so it
+        // degenerates to updated_at DESC. A bulk restamp of 3,824 skincare rows
+        // on 2026-07-30 therefore turned "niacinamide serum" into "recently
+        // updated things under beauty/skincare/treat/" — 25 rows, zero of them
+        // niacinamide serums (sheet masks, toners, body mist), which is what
+        // took the skincare release gate red.
+        //
+        // The bucket is also structurally wrong for this query: the catalog
+        // runs competing taxonomies (beauty/skincare/treat/serum AND flat
+        // beauty/skincare/serum AND bare beauty/skincare), and the literal
+        // "Niacinamide Serum" PDPs sit outside the treat/ prefix — so ANDing
+        // text with the prefix would return ~nothing rather than fix it.
+        //
+        // Category discipline is not lost: the resolved intent still narrows
+        // the merged list below via filterStrictIngredientProductsByCategoryIntents,
+        // which filters on the product's own visible text after recall.
+        const canonicalIngredientCategoryPathPrefix = null;
         const canonicalIngredientLimit = Math.max(6, Math.min(12, Math.ceil(safeLimit / 2)));
         const canonicalIngredientStartedAt = Date.now();
         // Market-aware filtering on the ingredient path too — same
@@ -44875,7 +44909,12 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           String(search.market || metadata.market || process.env.CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET || 'US')
             .trim()
             .toUpperCase() || 'US';
-        const canonicalIngredientRowsPromise = fetchCanonicalChainRows({
+        // Bounded from inside: this leg is otherwise the only expensive stage
+        // in the handler with no withStageBudget wrapper. STAGE_TIMEOUT flows
+        // into the .catch below and surfaces as canonical_error in telemetry;
+        // the lane then serves seed-only results instead of hanging.
+        const canonicalIngredientRowsPromise = withStageBudget(
+          fetchCanonicalChainRows({
           query: rawUserQuery || queryText,
           categoryPathPrefix: canonicalIngredientCategoryPathPrefix,
           // Always true for the ingredient_recall_direct path: by definition
@@ -44887,7 +44926,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           includeSkuOffers: false,
           marketId: ingredientPathMarket,
           deps: { query },
-        })
+          }),
+          FPM_INGREDIENT_CANONICAL_STAGE_BUDGET_MS,
+          'ingredient_canonical_chain',
+        )
           .then((rows) => ({
             rows: Array.isArray(rows) ? rows : [],
             error: null,
@@ -44907,9 +44949,51 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           canonicalIngredientRowsPromise,
         ]);
         const strictIngredientPrefetchMs = Math.max(0, Date.now() - strictIngredientPrefetchStartedAt);
-        const canonicalIngredientProducts = (Array.isArray(canonicalIngredientResult?.rows) ? canonicalIngredientResult.rows : [])
+        const canonicalIngredientRecalledProducts = (Array.isArray(canonicalIngredientResult?.rows) ? canonicalIngredientResult.rows : [])
           .map((row) => buildCanonicalChainMainlineProduct(row))
           .filter(Boolean);
+        // Category floor, restored in JS after recall.
+        //
+        // Dropping the SQL prefix (above) also dropped the only category
+        // constraint this lane had. The post-merge filter below does NOT cover
+        // it: extractStrictFindProductsMultiSkincareCategoryIntents recognises
+        // exactly four form words (serum/moisturizer/cleanser/toner), so a bare
+        // ingredient query — "niacinamide", "salicylic acid" — yields zero
+        // intents and filterStrictIngredientProductsByCategoryIntents
+        // short-circuits to applied:false. With verticalSearch matching
+        // catalog_skus.ingredient_ids, that let ANY niacinamide-formulated row
+        // through: body wash, shampoo, foundation. The old SQL prefix silently
+        // floored those out; nothing else does.
+        //
+        // Scope to the PARENT of the resolved prefix (beauty/skincare/treat/ ->
+        // beauty/skincare) rather than the prefix itself. That is the whole
+        // point of the fix: the catalog runs competing taxonomies and the
+        // literal PDPs sit at beauty/skincare/serum and bare beauty/skincare,
+        // outside treat/. The parent scope admits all three while still
+        // excluding bodycare / haircare / makeup.
+        //
+        // Fail-closed on a missing category_path is deliberate and is never
+        // stricter than main: the old SQL required category_path IS NOT NULL
+        // and a prefix match, so any row this drops was already unreachable.
+        const ingredientCategoryScopePrefix = (() => {
+          const resolved = String(
+            resolveBeautyCategoryPathPrefixForQuery(rawUserQuery || queryText) || '',
+          )
+            .trim()
+            .replace(/^\/+|\/+$/g, '');
+          if (!resolved) return '';
+          const parts = resolved.split('/').filter(Boolean);
+          return parts.length > 1 ? parts.slice(0, -1).join('/') : resolved;
+        })();
+        const canonicalIngredientProducts = ingredientCategoryScopePrefix
+          ? canonicalIngredientRecalledProducts.filter((product) =>
+              beautyProductMatchesCategoryPathPrefix(product, ingredientCategoryScopePrefix),
+            )
+          : canonicalIngredientRecalledProducts;
+        const canonicalIngredientCategoryScopeFilteredOut = Math.max(
+          0,
+          canonicalIngredientRecalledProducts.length - canonicalIngredientProducts.length,
+        );
         const mergedIngredientRecall = mergeCanonicalChainProductsWithSeedProducts(
           Array.isArray(directProducts) ? directProducts : [],
           canonicalIngredientProducts,
@@ -44928,6 +45012,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           canonical_raw_count: Array.isArray(canonicalIngredientResult?.rows) ? canonicalIngredientResult.rows.length : 0,
           canonical_product_count: canonicalIngredientProducts.length,
           canonical_category_path_prefix: canonicalIngredientCategoryPathPrefix,
+          canonical_category_scope_prefix: ingredientCategoryScopePrefix || null,
+          canonical_category_scope_filtered_out_count: canonicalIngredientCategoryScopeFilteredOut,
           canonical_duration_ms: Math.max(0, Number(canonicalIngredientResult?.duration_ms || 0) || 0),
           canonical_dedupe_count: Number(mergedIngredientRecall?.canonical_dedupe_count || 0) || 0,
           ...(canonicalIngredientResult?.error ? { canonical_error: canonicalIngredientResult.error } : {}),
