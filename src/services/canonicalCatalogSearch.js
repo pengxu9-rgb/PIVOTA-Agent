@@ -40,8 +40,17 @@
  *     known category alias (matches the backend's
  *     `services/pdp_category_classifier.py:category_path_prefix_for_query`,
  *     e.g. "lipstick" → "beauty/makeup/lip/"). Pass `null`/`undefined` when
- *     there's no category match — the helper simply omits the category
- *     WHERE/score branches.
+ *     there's no category match.
+ *   - **Passing a prefix switches the helper into CATEGORY-BROWSE mode and
+ *     the query-text predicate is DROPPED from the WHERE clause** — recall
+ *     becomes "rows under the prefix", ranked, with `updated_at` as the
+ *     effective tie-break inside a bucket. That is correct for browse
+ *     surfaces and silently wrong for query-specific recall (the 2026-07-31
+ *     skincare release-gate red, PR #1889). Because the switch is invisible
+ *     at the call site, a caller passing a prefix MUST also declare
+ *     `categoryMode: 'category_browse'` — the helper throws otherwise.
+ *     `categoryMode` without a prefix is fine (text mode; browse intent
+ *     simply had no bucket to browse).
  *   - Set `verticalSearch=true` for ingredient-anchored queries (e.g.
  *     "niacinamide serum") to also match SKU `visible_option_labels` /
  *     `ingredient_ids`. Default `false` for category / brand queries.
@@ -255,6 +264,7 @@ async function fetchCanonicalChainRows(args = {}) {
     query: queryText,
     merchantId = null,
     categoryPathPrefix = null,
+    categoryMode = null,
     verticalSearch = false,
     includeSkuOffers = false,
     brandFilter = null,
@@ -267,6 +277,18 @@ async function fetchCanonicalChainRows(args = {}) {
   const { query: pgQuery } = deps;
   if (typeof pgQuery !== 'function') {
     throw new TypeError('canonicalCatalogSearch: deps.query is required');
+  }
+  // Contract guard: a category prefix silently flips this helper from
+  // query-text recall to category BROWSE (the text predicate is dropped from
+  // the WHERE clause — see `whereClause` below). Every caller that passes a
+  // prefix must therefore say so explicitly; an undeclared prefix is the exact
+  // shape of the 2026-07-31 skincare release-gate regression (PR #1889) and is
+  // rejected rather than silently honored. `categoryMode` without a prefix is
+  // allowed: browse intent with no resolvable bucket degrades to text mode.
+  if (categoryPathPrefix && categoryMode !== 'category_browse') {
+    throw new TypeError(
+      "canonicalCatalogSearch: categoryPathPrefix switches recall to category-browse mode and DROPS the query-text predicate; pass categoryMode: 'category_browse' to confirm, or drop the prefix for text recall",
+    );
   }
   // The eligibility gate column. Default 'serving_eligible' (has a buyable offer
   // -> shopping). 'index_eligible' is the OFFER-FREE citable surface (ADR-007):

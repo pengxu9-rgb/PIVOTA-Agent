@@ -132,6 +132,7 @@ describe('canonicalCatalogSearch.fetchCanonicalChainRows', () => {
     await fetchCanonicalChainRows({
       query: 'lipstick',
       categoryPathPrefix: 'beauty/makeup/lip/',
+      categoryMode: 'category_browse',
       deps: { query },
     });
     const { sql, params } = query.calls[0];
@@ -142,12 +143,73 @@ describe('canonicalCatalogSearch.fetchCanonicalChainRows', () => {
     expect(sql).toMatch(/THEN 90 ELSE 0 END/);
   });
 
+  test('categoryPathPrefix without categoryMode throws — the mode switch must be declared', async () => {
+    // Contract pin at the SOURCE, not at a caller. Passing a prefix flips
+    // this helper from query-text recall to category BROWSE: the text
+    // predicate is dropped from the WHERE clause entirely (the
+    // `AND $2::text IS NOT NULL` bind-keeper stands in for it). An
+    // undeclared prefix is exactly the 2026-07-31 skincare release-gate
+    // regression (PR #1889) — the ingredient lane passed a prefix believing
+    // it narrowed text recall. The helper now rejects that shape so the NEXT
+    // caller cannot reintroduce it; caller-side fixes cannot pin this.
+    const query = makeMockQuery([]);
+    await expect(
+      fetchCanonicalChainRows({
+        query: 'niacinamide serum',
+        categoryPathPrefix: 'beauty/skincare/treat/',
+        deps: { query },
+      }),
+    ).rejects.toThrow(/categoryMode: 'category_browse'/);
+    expect(query).not.toHaveBeenCalled();
+  });
+
+  test('categoryMode without a prefix degrades to text recall (no throw, no category predicate)', async () => {
+    // Browse intent with no resolvable bucket is a legitimate runtime state
+    // (callers resolve the prefix dynamically and often get null). It must
+    // fall through to text mode rather than throw or leak a category arm.
+    const query = makeMockQuery([]);
+    await fetchCanonicalChainRows({
+      query: 'niacinamide serum',
+      categoryPathPrefix: null,
+      categoryMode: 'category_browse',
+      deps: { query },
+    });
+    const { sql, params } = query.calls[0];
+    expect(sql).not.toMatch(/p\.category_path = \$\d+/);
+    expect(sql).not.toMatch(/\$2::text IS NOT NULL/);
+    // Title arm immediately followed by the brand arm — that adjacency exists
+    // only in textWhereClause (the rank-v2 CASE arm also contains a bare
+    // `title LIKE $2`, so a bare match would not discriminate the modes).
+    expect(sql).toMatch(
+      /LOWER\(COALESCE\(p\.title, ''\)\) LIKE \$2\s+OR LOWER\(COALESCE\(p\.brand, ''\)\) LIKE \$2/,
+    );
+    expect(params).toHaveLength(4);
+  });
+
+  test('text mode (no prefix) keeps the text WHERE arms — recall matches the query, not a bucket', async () => {
+    const query = makeMockQuery([]);
+    await fetchCanonicalChainRows({
+      query: 'niacinamide serum',
+      deps: { query },
+    });
+    const { sql, params } = query.calls[0];
+    expect(sql).toMatch(
+      /LOWER\(COALESCE\(p\.title, ''\)\) LIKE \$2\s+OR LOWER\(COALESCE\(p\.brand, ''\)\) LIKE \$2/,
+    );
+    expect(sql).not.toMatch(/\$2::text IS NOT NULL/);
+    // 08P01 pin, same idiom as the sibling bind-integrity tests: every $n
+    // referenced in the SQL resolves to a supplied param.
+    const maxBind = Math.max(...[...sql.matchAll(/\$(\d+)/g)].map((m) => Number(m[1])));
+    expect(maxBind).toBe(params.length);
+  });
+
   test('combines merchantId + categoryPathPrefix on $5/$6 in order', async () => {
     const query = makeMockQuery([]);
     await fetchCanonicalChainRows({
       query: 'lipstick',
       merchantId: 'merch_abc',
       categoryPathPrefix: 'beauty/makeup/lip/',
+      categoryMode: 'category_browse',
       deps: { query },
     });
     const { sql, params } = query.calls[0];
@@ -403,6 +465,7 @@ describe('canonicalCatalogSearch.fetchCanonicalChainRows', () => {
       query: 'lipstick',
       merchantId: 'shop_42',
       categoryPathPrefix: 'beauty/makeup/lip/',
+      categoryMode: 'category_browse',
       marketId: 'US',
       deps: { query },
     });
@@ -424,6 +487,7 @@ describe('canonicalCatalogSearch.fetchCanonicalChainRows', () => {
     await fetchCanonicalChainRows({
       query: 'fenty lipstick',
       categoryPathPrefix: 'beauty/makeup/lip/',
+      categoryMode: 'category_browse',
       marketId: 'US',
       brandFilter: { canonical: 'Fenty Beauty', alias: 'fenty', brand_key: 'fenty_beauty' },
       deps: { query },
@@ -582,6 +646,7 @@ describe('canonicalCatalogSearch recall_doc match lane (ADR-020, flag-gated)', (
     await fetchCanonicalChainRows({
       query: 'vitamin c serum',
       categoryPathPrefix: 'beauty/skincare/serum/',
+      categoryMode: 'category_browse',
       marketId: 'US',
       deps: { query },
     });
@@ -688,6 +753,7 @@ describe('canonicalCatalogSearch rank v2 + market-exemption fix (ADR-020, flag-g
         query: 'vitamin c serum',
         merchantId: 'merch_abc',
         categoryPathPrefix: 'beauty/skincare/serum/',
+        categoryMode: 'category_browse',
         marketId: 'kr',
       },
     },
@@ -887,6 +953,7 @@ describe('canonicalCatalogSearch rank v2 + market-exemption fix (ADR-020, flag-g
     const { sql, params } = await capture({
       query: 'vitamin c serum',
       categoryPathPrefix: 'beauty/skincare/serum/',
+      categoryMode: 'category_browse',
       marketId: 'US',
       tokenMatch: true,
     });

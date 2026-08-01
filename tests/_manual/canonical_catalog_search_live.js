@@ -40,6 +40,7 @@ async function main() {
       args: {
         query: 'lipstick',
         categoryPathPrefix: 'beauty/makeup/lip/',
+        categoryMode: 'category_browse',
         deps: { query },
       },
     },
@@ -52,6 +53,7 @@ async function main() {
       args: {
         query: '口红',
         categoryPathPrefix: 'beauty/makeup/lip/',
+        categoryMode: 'category_browse',
         deps: { query },
       },
     },
