@@ -1067,3 +1067,63 @@ describe('__internal.buildRecallDocMatchPatterns', () => {
     expect(build(undefined)).toEqual([]);
   });
 });
+
+describe('canonicalCatalogSearch deterministic tie-break (Class 4, flag-gated)', () => {
+  const TIEBREAK_FLAG = 'CANONICAL_CATALOG_DETERMINISTIC_TIEBREAK';
+  const saved = process.env[TIEBREAK_FLAG];
+
+  afterEach(() => {
+    if (saved === undefined) delete process.env[TIEBREAK_FLAG];
+    else process.env[TIEBREAK_FLAG] = saved;
+  });
+
+  async function capture(args) {
+    const query = makeMockQuery([]);
+    await fetchCanonicalChainRows({ ...args, deps: { query } });
+    return query.calls[0];
+  }
+
+  test('flag off: legacy recency tie-break byte-for-byte', async () => {
+    delete process.env[TIEBREAK_FLAG];
+    const { sql } = await capture({ query: 'vitamin c serum', marketId: 'US' });
+    expect(sql).toMatch(/ORDER BY rank_score DESC, p\.updated_at DESC/);
+    expect(sql).toMatch(/ORDER BY rank_score DESC, c\.product_updated_at DESC/);
+    expect(sql).not.toMatch(/ORDER BY rank_score DESC, p\.product_key/);
+  });
+
+  test('flag on: equal-rank ordering pinned to product_key, recency out of the tie-break', async () => {
+    // The point of the flag: a bulk restamp of updated_at must not be able to
+    // reshuffle serving order (the 2026-07-30 restamp turned the release gate
+    // red with no code change because rank ties broke on recency).
+    process.env[TIEBREAK_FLAG] = 'enabled';
+    const { sql, params } = await capture({ query: 'vitamin c serum', marketId: 'US' });
+    expect(sql).toMatch(/ORDER BY rank_score DESC, p\.product_key ASC/);
+    expect(sql).toMatch(/ORDER BY rank_score DESC, c\.product_key ASC/);
+    expect(sql).not.toMatch(/ORDER BY rank_score DESC, p\.updated_at DESC/);
+    expect(sql).not.toMatch(/ORDER BY rank_score DESC, c\.product_updated_at DESC/);
+    // Bind integrity (08P01 idiom): the flag adds no binds and orphans none.
+    const maxBind = Math.max(...[...sql.matchAll(/\$(\d+)/g)].map((m) => Number(m[1])));
+    expect(maxBind).toBe(params.length);
+  });
+
+  test('flag on composes with rank v2 + recall-doc + browse mode without bind drift', async () => {
+    process.env[TIEBREAK_FLAG] = 'enabled';
+    process.env.CANONICAL_CATALOG_RANK_V2 = 'enabled';
+    process.env.CANONICAL_CATALOG_RECALL_DOC_MATCH = 'enabled';
+    try {
+      const { sql, params } = await capture({
+        query: 'vitamin c serum',
+        merchantId: 'merch_abc',
+        categoryPathPrefix: 'beauty/skincare/serum/',
+        categoryMode: 'category_browse',
+        marketId: 'US',
+      });
+      expect(sql).toMatch(/ORDER BY rank_score DESC, p\.product_key ASC/);
+      const maxBind = Math.max(...[...sql.matchAll(/\$(\d+)/g)].map((m) => Number(m[1])));
+      expect(maxBind).toBe(params.length);
+    } finally {
+      delete process.env.CANONICAL_CATALOG_RANK_V2;
+      delete process.env.CANONICAL_CATALOG_RECALL_DOC_MATCH;
+    }
+  });
+});
