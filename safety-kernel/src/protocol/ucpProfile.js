@@ -11,6 +11,51 @@ import { CANONICAL_CAPABILITIES, CANONICAL_OPERATIONS, operationsForCapability }
 
 const DEFAULT_UCP_VERSION = '2026-01-23'; // target spec version; negotiate per advertised version in prod
 
+// Default kid for a business signing key published without one. Matches the kid the retired
+// `ucp-web-production` profile shipped, so platforms that pinned it keep verifying across the port.
+const DEFAULT_BUSINESS_SIGNING_KID = 'pivota-order-1';
+
+/**
+ * Sanitize one candidate business signing key into a publishable PUBLIC JWK, or return undefined if unusable.
+ * Mirrors `toPublicJwk` in src/services/ucpBuyerAgentProfile.js (the buyer-agent precedent).
+ * HARD BOUND: any private-key material (`d`) is REJECTED loudly — this module must NEVER publish a private key.
+ */
+export function toPublicSigningJwk(candidate) {
+  if (!candidate || typeof candidate !== 'object') return undefined;
+  if (candidate.d !== undefined) {
+    // Private key material — refuse loudly. Callers must publish the PUBLIC half only.
+    throw new Error('ucpProfile: signing key contains private material ("d"); refuse to publish it.');
+  }
+  const { kty, crv, x, y } = candidate;
+  if (kty !== 'EC' || crv !== 'P-256' || !x || !y) return undefined;
+  // Prefer an explicit kid; fall back to the house convention so a kid-less key is still addressable.
+  const kid = typeof candidate.kid === 'string' && candidate.kid.trim() ? candidate.kid : DEFAULT_BUSINESS_SIGNING_KID;
+  // Publish only the well-known public JWK members (drop anything unexpected). `use` is republished
+  // only when it is a string — any other type collapses to 'sig' rather than leaking odd values.
+  return { kty, crv, x, y, kid, use: typeof candidate.use === 'string' && candidate.use ? candidate.use : 'sig' };
+}
+
+/**
+ * Resolve the PUBLIC business signing keys to publish in `/.well-known/ucp`, in priority order:
+ *   config.signingKeys (array) -> env UCP_BUSINESS_SIGNING_PUBLIC_JWK (object or JSON array) -> [] (none).
+ * Never throws on absent/blank env; throws if the env is unparseable JSON or a provided key carries
+ * private material (`d`) — better a 503 profile than a leaked private key.
+ */
+export function resolveBusinessSigningKeys(config = {}) {
+  let raw;
+  if (Array.isArray(config.signingKeys)) raw = config.signingKeys;
+  else {
+    const envSource = config.env || (typeof process !== 'undefined' ? process.env : {}) || {};
+    const env = envSource.UCP_BUSINESS_SIGNING_PUBLIC_JWK;
+    if (typeof env === 'string' && env.trim()) {
+      let parsed;
+      try { parsed = JSON.parse(env.trim()); } catch { throw new Error('UCP_BUSINESS_SIGNING_PUBLIC_JWK is not valid JSON'); }
+      raw = Array.isArray(parsed) ? parsed : [parsed];
+    } else raw = [];
+  }
+  return raw.map(toPublicSigningJwk).filter(Boolean);
+}
+
 /**
  * Build the `/.well-known/ucp` profile object.
  * @param {{
@@ -20,6 +65,9 @@ const DEFAULT_UCP_VERSION = '2026-01-23'; // target spec version; negotiate per 
  *   paymentHandlers?: Array<object>,       // declared handlers (id, name, version, psp, pci, ap2?, ...)
  *   signingKeys?: Array<object>,           // public JWKs Pivota signs responses/receipts with
  *   capabilities?: string[],               // which CANONICAL_CAPABILITIES keys to advertise (default: all)
+ *   omitCapabilityIds?: string[],          // UCP capability ids (dev.ucp.*) to withhold from the profile —
+ *                                          // for capabilities whose doors are currently dark (a profile
+ *                                          // must not advertise what would hard-404)
  *   ucpVersion?: string,
  * }} config
  */
@@ -34,11 +82,15 @@ export function buildUcpProfile(config = {}) {
     if (!CANONICAL_CAPABILITIES[cap]) throw new Error(`unknown capability advertised: ${cap}`);
   }
 
-  const capabilities = advertised.map((cap) => ({
-    id: CANONICAL_CAPABILITIES[cap].ucp,
-    title: CANONICAL_CAPABILITIES[cap].title,
-    operations: operationsForCapability(cap),
-  }));
+  const omit = new Set(Array.isArray(config.omitCapabilityIds) ? config.omitCapabilityIds : []);
+  const capabilities = advertised
+    .map((cap) => ({
+      id: CANONICAL_CAPABILITIES[cap].ucp,
+      title: CANONICAL_CAPABILITIES[cap].title,
+      operations: operationsForCapability(cap),
+    }))
+    // Withheld capabilities (and every operation they carry) never appear in the profile.
+    .filter((c) => !omit.has(c.id));
 
   const services = [
     { transport: 'rest', endpoint: `${baseUrl}${restBasePath}` },
@@ -66,7 +118,10 @@ export function buildUcpProfile(config = {}) {
     services,
     capabilities,
     payment_handlers: Array.isArray(config.paymentHandlers) ? config.paymentHandlers : [],
-    signing_keys: Array.isArray(config.signingKeys) ? config.signingKeys : [],
+    // PUBLIC keys platforms verify Pivota's order webhooks / receipts against (ES256, P-256).
+    // Sourced from config.signingKeys or env UCP_BUSINESS_SIGNING_PUBLIC_JWK; validated so a
+    // private component (`d`) can never be published. Empty until the founder provisions a key.
+    signing_keys: resolveBusinessSigningKeys(config),
   };
 }
 

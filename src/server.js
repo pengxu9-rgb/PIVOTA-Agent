@@ -29324,7 +29324,11 @@ let commerceUserTokenVerifierPromise = null;
 // effect of getCommerceRemoteMcpAdapter and reused by getCommerceCanonicalExecutor.
 let commerceSharedExecutor = null;
 let commerceAcpRestAdapterPromise = null;
-let commerceUcpRouteHandlersPromise = null;
+// Memoizes ONLY the ESM module import for the UCP profile — the profile/handlers themselves are built
+// PER REQUEST (cheap object construction). Memoizing the build froze env reads at the first request and
+// cached a rejected build (e.g. a bad signing-key env) as a permanent 503 until redeploy; per-request
+// build makes key rotation and the strict-flag-dependent capability list live.
+let commerceUcpProfileModulePromise = null;
 
 function isAgentCheckoutStrictEnabled() {
   return String(process.env.AGENT_CHECKOUT_STRICT || '').trim() === '1';
@@ -31114,32 +31118,46 @@ async function getCommerceAcpRestAdapter() {
   return commerceAcpRestAdapterPromise;
 }
 
-async function getCommerceUcpRouteHandlers() {
-  if (!commerceUcpRouteHandlersPromise) {
-    commerceUcpRouteHandlersPromise = (async () => {
-      const resourceOrigin = (() => {
-        try {
-          return process.env.MCP_OAUTH_RESOURCE ? new URL(process.env.MCP_OAUTH_RESOURCE).origin : undefined;
-        } catch {
-          return undefined;
-        }
-      })();
-      const baseUrl = firstNonEmptyString(
-        process.env.UCP_BASE_URL,
-        process.env.AGENT_CHECKOUT_UCP_BASE_URL,
-        resourceOrigin,
-      );
-      if (!baseUrl) throw new Error('UCP discovery requires UCP_BASE_URL (https origin)');
-      const { buildUcpProfile, createUcpRouteHandlers } = await import('../safety-kernel/src/protocol/ucpProfile.js');
-      const profile = buildUcpProfile({
-        baseUrl, // buildUcpProfile enforces https
-        restBasePath: COMMERCE_ACP_BASE_PATH,
-        mcpEndpoint: `${baseUrl.replace(/\/+$/, '')}/mcp`,
-      });
-      return createUcpRouteHandlers(profile);
-    })();
+function getCommerceUcpProfileModule() {
+  if (!commerceUcpProfileModulePromise) {
+    commerceUcpProfileModulePromise = import('../safety-kernel/src/protocol/ucpProfile.js');
+    // Never memoize a rejected import (same rationale as the ACP adapter above).
+    commerceUcpProfileModulePromise.catch(() => { commerceUcpProfileModulePromise = null; });
   }
-  return commerceUcpRouteHandlersPromise;
+  return commerceUcpProfileModulePromise;
+}
+
+async function getCommerceUcpRouteHandlers() {
+  // Built PER REQUEST (only the ESM import is memoized): env — base URL, signing keys, strict flag — is
+  // read fresh each time, so a signing-key rotation or kill-switch flip is reflected on the next request
+  // and a throwing build 503s only that request instead of caching a rejection forever.
+  const resourceOrigin = (() => {
+    try {
+      return process.env.MCP_OAUTH_RESOURCE ? new URL(process.env.MCP_OAUTH_RESOURCE).origin : undefined;
+    } catch {
+      return undefined;
+    }
+  })();
+  const baseUrl = firstNonEmptyString(
+    process.env.UCP_BASE_URL,
+    process.env.AGENT_CHECKOUT_UCP_BASE_URL,
+    resourceOrigin,
+  );
+  if (!baseUrl) throw new Error('UCP discovery requires UCP_BASE_URL (https origin)');
+  const { buildUcpProfile, createUcpRouteHandlers } = await getCommerceUcpProfileModule();
+  const profile = buildUcpProfile({
+    baseUrl, // buildUcpProfile enforces https
+    restBasePath: COMMERCE_ACP_BASE_PATH,
+    mcpEndpoint: `${baseUrl.replace(/\/+$/, '')}/mcp`,
+    // With the checkout kill-switch dark, the money capabilities are hard-404 — a profile advertising
+    // them would be lying to the platform. Omitting the checkout capability also withholds every
+    // operation it carries (create/update/complete/cancel _checkout_session AND create_payment_link);
+    // discovery/order/identity_linking stay advertised, matching what actually serves.
+    omitCapabilityIds: isAgentCheckoutStrictEnabled()
+      ? []
+      : ['dev.ucp.shopping.checkout', 'dev.ucp.shopping.ap2_mandate'],
+  });
+  return createUcpRouteHandlers(profile);
 }
 
 const ACP_PUBLIC_FEED_MAX_BODY_BYTES = 32 * 1024;
@@ -31155,6 +31173,22 @@ function getAcpPublicFeedLimiter() {
     acpPublicFeedLimiter = createTokenBucketLimiter({ capacity: burst, refillPerSecond: rpm / 60 });
   }
   return acpPublicFeedLimiter;
+}
+
+// UCP order-webhook: same public-door protections as the ACP public feed — the receiver's own auth is
+// the signature check, but that runs AFTER a JWKS fetch, so an unauthenticated flood is still a cost.
+let ucpOrderWebhookLimiter = null;
+function getUcpOrderWebhookLimiter() {
+  if (!ucpOrderWebhookLimiter) {
+    const { createTokenBucketLimiter } = require('./services/publicReadRateLimit');
+    const rpm = Number(process.env.UCP_ORDER_WEBHOOK_RPM) > 0 ? Number(process.env.UCP_ORDER_WEBHOOK_RPM) : 60;
+    const burst =
+      Number(process.env.UCP_ORDER_WEBHOOK_BURST) > 0
+        ? Number(process.env.UCP_ORDER_WEBHOOK_BURST)
+        : Math.max(10, Math.ceil(rpm / 3));
+    ucpOrderWebhookLimiter = createTokenBucketLimiter({ capacity: burst, refillPerSecond: rpm / 60 });
+  }
+  return ucpOrderWebhookLimiter;
 }
 
 function registerCommerceAcpRestRoutes() {
@@ -31280,9 +31314,13 @@ function registerCommerceAcpRestRoutes() {
 
 function registerCommerceUcpRoutes() {
   // UCP discovery: GET /.well-known/ucp + GET|POST /ucp/capabilities. Read-only; no money, no body signature.
+  // Deliberately INDEPENDENT of AGENT_CHECKOUT_STRICT (same decoupling as the ACP feed and the public read
+  // MCP tier): discovery is read-only — the kill-switch governs money paths, not the profile door. A platform
+  // that pinned /.well-known/ucp must keep resolving it while checkout is dark. Fail-closed on its own flag
+  // (AGENT_CHECKOUT_UCP_DISCOVERY_ENABLED).
   const mountUcp = (method, routePath) => {
     app[method](routePath, async (req, res) => {
-      if (!isAgentCheckoutStrictEnabled() || !isAgentCheckoutUcpDiscoveryEnabled()) {
+      if (!isAgentCheckoutUcpDiscoveryEnabled()) {
         return res.status(404).json({ error: 'not_found' });
       }
       try {
@@ -31303,6 +31341,46 @@ function registerCommerceUcpRoutes() {
   mountUcp('get', '/.well-known/ucp');
   mountUcp('post', '/ucp/capabilities');
   mountUcp('get', '/ucp/capabilities');
+}
+
+function registerUcpOrderWebhookRoutes() {
+  // Inbound UCP order-webhook door (port of the retired `ucp-platform-receiver` service): the business
+  // profile above promises this door, so it lives on the same gateway ucp.pivota.cc routes to.
+  // POST verifies a detached ES256 JWS over req.rawBody (when UCP_VERIFY_ORDER_WEBHOOK is on) against the
+  // signing keys published at UCP_BUSINESS_PROFILE_URL; GET /events is the e2e positive-control surface,
+  // itself gated by the shared secret UCP_ORDER_WEBHOOK_EVENTS_KEY (unconfigured -> the route 404s).
+  // Metadata only — never the raw body, no PII. Fail-closed dark unless UCP_ORDER_WEBHOOK_RECEIVER_ENABLED.
+  // Registered in the LATE block (with the other UCP doors) so the caller-identity access log covers it.
+  const { createUcpOrderWebhookReceiver, isUcpOrderWebhookReceiverEnabled } = require('./services/ucpOrderWebhookReceiver');
+  const receiver = createUcpOrderWebhookReceiver({ logger });
+  app.post('/ucp/order-webhook', async (req, res) => {
+    // Public write door: per-client token-bucket limit (ACP public-feed pattern), applied only when
+    // the door is LIT — a dark door must stay indistinguishable from a missing route (404, never 429).
+    if (isUcpOrderWebhookReceiverEnabled() && !getUcpOrderWebhookLimiter().allow(publicReadMcpClientKey(req))) {
+      res.setHeader('Retry-After', '10');
+      return res.status(429).json({ error: 'rate_limited', message: 'Too many requests; retry shortly.' });
+    }
+    try {
+      const out = await receiver.handleOrderWebhook({
+        headers: req.headers,
+        rawBody: req.rawBody, // exact wire bytes (express.json verify hook) — the JWS binds these
+        body: req.body,
+      });
+      return res.status(out.status).json(out.body);
+    } catch (err) {
+      logger.error({ err: err?.message || String(err), surface: 'ucp_order_webhook' }, 'UCP order webhook route failed');
+      return res.status(503).json({ error: 'ucp_order_webhook_unavailable' });
+    }
+  });
+  app.get('/ucp/order-webhook/events', async (req, res) => {
+    try {
+      const out = await receiver.handleListEvents({ headers: req.headers, query: req.query });
+      return res.status(out.status).json(out.body);
+    } catch (err) {
+      logger.error({ err: err?.message || String(err), surface: 'ucp_order_webhook' }, 'UCP order webhook events route failed');
+      return res.status(503).json({ error: 'ucp_order_webhook_unavailable' });
+    }
+  });
 }
 
 function registerUcpBuyerAgentProfileRoute() {
@@ -34535,14 +34613,21 @@ app.use((req, res, next) => {
 
 registerCommercePaymentWebhookRoute();
 
-// Early hard body-size cap for the PUBLIC (auth:none) MCP paths. Registered BEFORE the global 10MB JSON
-// parser so an unauthenticated caller cannot force a large parse — including a CHUNKED request with no
-// Content-Length (which the route's own header check can't catch). 32KB is ample for a JSON-RPC read call.
+// Early hard body-size cap for the PUBLIC (auth:none) MCP paths — and the UCP order-webhook, which is
+// equally unauthenticated pre-signature. Registered BEFORE the global 10MB JSON parser so an
+// unauthenticated caller cannot force a large parse — including a CHUNKED request with no
+// Content-Length (which the route's own header check can't catch). 32KB is ample for a JSON-RPC read
+// call and for any order-event payload.
 app.use((req, res, next) => {
   if (req.method !== 'POST') return next();
   const p = req.path;
+  // Express routes case-insensitively and tolerates trailing slashes (caseSensitive/strict default
+  // off), so the comparison must normalize the same way — otherwise `POST /ucp/order-webhook/` (or
+  // /UCP/...) reaches the handler while skipping this cap and buffering via the 10MB global parser.
+  const pNorm = p.toLowerCase().replace(/\/+$/, '');
   const isPublicPath =
     p === '/public/mcp' ||
+    pNorm === '/ucp/order-webhook' ||
     (p === '/mcp' && isPublicReadMcpEnabled() && isPublicReadMcpHostRequest(req));
   if (!isPublicPath) return next();
   const cap = PUBLIC_READ_MCP_MAX_BODY_BYTES;
@@ -34578,9 +34663,15 @@ app.use(express.json({
     }
     // ACP request signatures (HMAC) bind the EXACT signed bytes, so the ACP adapter must verify/parse rawBody
     // rather than a re-stringified body. Capture it only for ACP paths (additive; no other route is affected).
+    // The UCP order-webhook's detached JWS binds the exact bytes the same way, so it gets the same capture.
     if (buf && buf.length) {
       const u = req.originalUrl || req.url || '';
-      if (u.startsWith(`${COMMERCE_ACP_BASE_PATH}/`)) {
+      // Exact-path match after stripping the query string and normalizing case + trailing slashes —
+      // Express routes `/UCP/order-webhook/` to the handler (caseSensitive/strict default off), so
+      // the stash must match the same way, while a bare startsWith would also capture unrelated
+      // siblings like a future /ucp/order-webhook-config route.
+      const pathOnly = u.split('?')[0].toLowerCase().replace(/\/+$/, '');
+      if (u.startsWith(`${COMMERCE_ACP_BASE_PATH}/`) || pathOnly === '/ucp/order-webhook') {
         req.rawBody = buf.toString(encoding || 'utf8');
       }
     }
@@ -51301,6 +51392,7 @@ commerceMcpOAuth.registerMcpOAuthDiscoveryRoutes(app, { logger });
 registerCommerceConfirmationActionRoute();
 registerCommerceAcpRestRoutes();
 registerCommerceUcpRoutes();
+registerUcpOrderWebhookRoutes();
 registerUcpBuyerAgentProfileRoute();
 registerUcpWarmHandoffInternalRoute();
 registerCommerceStrictInvokeRoute('/agent/shop/v1/invoke', 'shop');

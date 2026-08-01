@@ -75,6 +75,9 @@ describe('Agent checkout ACP REST + UCP discovery doors', () => {
       assert.equal(res.status, 200);
       assert.ok(res.body.ucp_version, 'has ucp_version');
       assert.ok(Array.isArray(res.body.capabilities) && res.body.capabilities.length > 0, 'has capabilities');
+      const capIds = res.body.capabilities.map((c) => c.id);
+      // Strict ON: the money capabilities ARE advertised (their doors serve).
+      assert.ok(capIds.includes('dev.ucp.shopping.checkout'), 'checkout advertised while strict is on');
       const rest = (res.body.services || []).find((s) => s.transport === 'rest');
       assert.ok(rest, 'advertises a REST service');
       assert.equal(rest.endpoint, 'https://agent.test.local/acp', 'REST endpoint is the ACP base path');
@@ -87,6 +90,26 @@ describe('Agent checkout ACP REST + UCP discovery doors', () => {
       assert.equal(res.status, 200);
       const ids = (res.body.active_capabilities || []).map((c) => c.id);
       assert.ok(ids.includes(someCapId), 'intersection includes the shared capability');
+    });
+  });
+
+  describe('UCP discovery decoupled from the checkout kill-switch', () => {
+    it('serves /.well-known/ucp with AGENT_CHECKOUT_STRICT off (discovery is read-only; the kill-switch governs money paths)', async () => {
+      const { AGENT_CHECKOUT_STRICT, ...withoutStrict } = STRICT_BASE;
+      const localApp = bootApp({
+        ...withoutStrict,
+        AGENT_CHECKOUT_UCP_DISCOVERY_ENABLED: '1',
+        UCP_BASE_URL: 'https://agent.test.local',
+      });
+      delete process.env.AGENT_CHECKOUT_STRICT;
+      const res = await request(localApp).get('/.well-known/ucp');
+      assert.equal(res.status, 200);
+      assert.ok(res.body.ucp_version, 'profile stays up while checkout is dark');
+      // ...but it must not advertise capabilities whose doors are hard-404 while the switch is dark.
+      const capIds = res.body.capabilities.map((c) => c.id);
+      assert.ok(!capIds.includes('dev.ucp.shopping.checkout'), 'checkout withheld while checkout is dark');
+      assert.ok(!capIds.includes('dev.ucp.shopping.ap2_mandate'), 'ap2 mandate withheld while checkout is dark');
+      assert.ok(capIds.includes('dev.ucp.shopping.discovery'), 'read capabilities still advertised');
     });
   });
 

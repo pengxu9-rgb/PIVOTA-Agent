@@ -9,7 +9,13 @@ import {
 import {
   buildUcpProfile, activeCapabilityIntersection,
   createUcpRouteHandlers, parsePlatformCapabilities,
+  resolveBusinessSigningKeys, toPublicSigningJwk,
 } from '../src/protocol/ucpProfile.js';
+
+// A structurally valid PUBLIC P-256 JWK (coordinates are dummy base64url — shape tests only).
+const PUBLIC_JWK = Object.freeze({
+  kty: 'EC', crv: 'P-256', x: 'eF9kdW1teV9jb29yZA', y: 'eV9kdW1teV9jb29yZA', kid: 'k1',
+});
 
 test('every canonical operation references a real capability + has the required fields', () => {
   for (const op of CANONICAL_OPERATIONS) {
@@ -60,7 +66,7 @@ test('UCP profile: version, services, capabilities (dev.ucp.*), payment_handlers
     baseUrl: 'https://shop.pivota.cc',
     mcpEndpoint: 'https://shop.pivota.cc/mcp',
     paymentHandlers: [{ id: 'stripe_spt', psp: 'stripe', pci: false }],
-    signingKeys: [{ kid: 'k1', kty: 'EC' }],
+    signingKeys: [PUBLIC_JWK],
   });
   assert.match(profile.ucp_version, /^\d{4}-\d{2}-\d{2}$/);
   // Mid-man rule: Pivota is NEVER merchant-of-record — the profile must say so
@@ -80,6 +86,58 @@ test('UCP profile: version, services, capabilities (dev.ucp.*), payment_handlers
   assert.deepEqual(transports.sort(), ['mcp', 'rest']);
   assert.deepEqual(profile.payment_handlers, [{ id: 'stripe_spt', psp: 'stripe', pci: false }]);
   assert.equal(profile.signing_keys.length, 1);
+  assert.equal(profile.signing_keys[0].kid, 'k1');
+});
+
+test('business signing keys: env-sourced, validated, and NEVER private', () => {
+  // Env accepts a single JWK object or a JSON array of JWKs.
+  const single = resolveBusinessSigningKeys({ env: { UCP_BUSINESS_SIGNING_PUBLIC_JWK: JSON.stringify(PUBLIC_JWK) } });
+  assert.equal(single.length, 1);
+  assert.equal(single[0].kid, 'k1');
+  const asArray = resolveBusinessSigningKeys({ env: { UCP_BUSINESS_SIGNING_PUBLIC_JWK: JSON.stringify([PUBLIC_JWK]) } });
+  assert.equal(asArray.length, 1);
+  // Absent/blank env -> [] (current behavior preserved).
+  assert.deepEqual(resolveBusinessSigningKeys({ env: {} }), []);
+  assert.deepEqual(resolveBusinessSigningKeys({ env: { UCP_BUSINESS_SIGNING_PUBLIC_JWK: '  ' } }), []);
+  // Unparseable env throws (a silently-empty profile would mask a rotation typo).
+  assert.throws(
+    () => resolveBusinessSigningKeys({ env: { UCP_BUSINESS_SIGNING_PUBLIC_JWK: '{not json' } }),
+    /not valid JSON/,
+  );
+  // A key carrying private material ("d") is REFUSED loudly — never published.
+  assert.throws(
+    () => resolveBusinessSigningKeys({ env: { UCP_BUSINESS_SIGNING_PUBLIC_JWK: JSON.stringify({ ...PUBLIC_JWK, d: 'secret' }) } }),
+    /private material/,
+  );
+  assert.throws(() => buildUcpProfile({ baseUrl: 'https://x', signingKeys: [{ ...PUBLIC_JWK, d: 'secret' }] }), /private material/);
+  // Wrong curve/type/missing coordinates are dropped, not published.
+  assert.deepEqual(resolveBusinessSigningKeys({ signingKeys: [{ kty: 'EC', crv: 'P-384', x: 'x', y: 'y' }] }), []);
+  assert.deepEqual(resolveBusinessSigningKeys({ signingKeys: [{ kty: 'RSA', n: 'n', e: 'e' }] }), []);
+  assert.deepEqual(resolveBusinessSigningKeys({ signingKeys: [{ kty: 'EC', crv: 'P-256', x: 'x' }] }), []);
+  // A kid-less key gets the house default kid (pivota-order-1) so it stays addressable by verifiers.
+  const noKid = toPublicSigningJwk({ kty: 'EC', crv: 'P-256', x: 'x', y: 'y' });
+  assert.equal(noKid.kid, 'pivota-order-1');
+  // `use` is republished only when it is a string; anything else collapses to 'sig'.
+  assert.equal(toPublicSigningJwk({ ...PUBLIC_JWK, use: { odd: true } }).use, 'sig');
+});
+
+test('omitCapabilityIds withholds a capability (and its operations) from the profile', () => {
+  const profile = buildUcpProfile({
+    baseUrl: 'https://shop.pivota.cc',
+    omitCapabilityIds: ['dev.ucp.shopping.checkout', 'dev.ucp.shopping.ap2_mandate'],
+  });
+  const capIds = profile.capabilities.map((c) => c.id);
+  assert.ok(!capIds.includes('dev.ucp.shopping.checkout'));
+  assert.ok(!capIds.includes('dev.ucp.shopping.ap2_mandate'));
+  assert.ok(capIds.includes('dev.ucp.shopping.discovery'), 'non-omitted capabilities remain');
+  const allOps = profile.capabilities.flatMap((c) => c.operations);
+  assert.ok(!allOps.includes('create_payment_link'), 'operations of an omitted capability vanish with it');
+  assert.ok(!allOps.includes('complete_checkout_session'));
+  // The intersection can never resurrect an omitted capability.
+  assert.deepEqual(activeCapabilityIntersection(profile, ['dev.ucp.shopping.checkout']), []);
+  // Omitting nothing is the identity.
+  const full = buildUcpProfile({ baseUrl: 'https://shop.pivota.cc', omitCapabilityIds: [] });
+  assert.ok(full.capabilities.map((c) => c.id).includes('dev.ucp.shopping.checkout'));
 });
 
 test('UCP profile requires an https baseUrl and rejects unknown advertised capabilities', () => {
