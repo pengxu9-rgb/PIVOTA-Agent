@@ -117,6 +117,27 @@ test('business signing keys: env-sourced, validated, and NEVER private', () => {
   // A kid-less key gets the house default kid (pivota-order-1) so it stays addressable by verifiers.
   const noKid = toPublicSigningJwk({ kty: 'EC', crv: 'P-256', x: 'x', y: 'y' });
   assert.equal(noKid.kid, 'pivota-order-1');
+  // `use` is republished only when it is a string; anything else collapses to 'sig'.
+  assert.equal(toPublicSigningJwk({ ...PUBLIC_JWK, use: { odd: true } }).use, 'sig');
+});
+
+test('omitCapabilityIds withholds a capability (and its operations) from the profile', () => {
+  const profile = buildUcpProfile({
+    baseUrl: 'https://shop.pivota.cc',
+    omitCapabilityIds: ['dev.ucp.shopping.checkout', 'dev.ucp.shopping.ap2_mandate'],
+  });
+  const capIds = profile.capabilities.map((c) => c.id);
+  assert.ok(!capIds.includes('dev.ucp.shopping.checkout'));
+  assert.ok(!capIds.includes('dev.ucp.shopping.ap2_mandate'));
+  assert.ok(capIds.includes('dev.ucp.shopping.discovery'), 'non-omitted capabilities remain');
+  const allOps = profile.capabilities.flatMap((c) => c.operations);
+  assert.ok(!allOps.includes('create_payment_link'), 'operations of an omitted capability vanish with it');
+  assert.ok(!allOps.includes('complete_checkout_session'));
+  // The intersection can never resurrect an omitted capability.
+  assert.deepEqual(activeCapabilityIntersection(profile, ['dev.ucp.shopping.checkout']), []);
+  // Omitting nothing is the identity.
+  const full = buildUcpProfile({ baseUrl: 'https://shop.pivota.cc', omitCapabilityIds: [] });
+  assert.ok(full.capabilities.map((c) => c.id).includes('dev.ucp.shopping.checkout'));
 });
 
 test('UCP profile requires an https baseUrl and rejects unknown advertised capabilities', () => {

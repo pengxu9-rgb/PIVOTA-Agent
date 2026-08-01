@@ -30,8 +30,9 @@ export function toPublicSigningJwk(candidate) {
   if (kty !== 'EC' || crv !== 'P-256' || !x || !y) return undefined;
   // Prefer an explicit kid; fall back to the house convention so a kid-less key is still addressable.
   const kid = typeof candidate.kid === 'string' && candidate.kid.trim() ? candidate.kid : DEFAULT_BUSINESS_SIGNING_KID;
-  // Publish only the well-known public JWK members (drop anything unexpected).
-  return { kty, crv, x, y, kid, use: candidate.use || 'sig' };
+  // Publish only the well-known public JWK members (drop anything unexpected). `use` is republished
+  // only when it is a string — any other type collapses to 'sig' rather than leaking odd values.
+  return { kty, crv, x, y, kid, use: typeof candidate.use === 'string' && candidate.use ? candidate.use : 'sig' };
 }
 
 /**
@@ -64,6 +65,9 @@ export function resolveBusinessSigningKeys(config = {}) {
  *   paymentHandlers?: Array<object>,       // declared handlers (id, name, version, psp, pci, ap2?, ...)
  *   signingKeys?: Array<object>,           // public JWKs Pivota signs responses/receipts with
  *   capabilities?: string[],               // which CANONICAL_CAPABILITIES keys to advertise (default: all)
+ *   omitCapabilityIds?: string[],          // UCP capability ids (dev.ucp.*) to withhold from the profile —
+ *                                          // for capabilities whose doors are currently dark (a profile
+ *                                          // must not advertise what would hard-404)
  *   ucpVersion?: string,
  * }} config
  */
@@ -78,11 +82,15 @@ export function buildUcpProfile(config = {}) {
     if (!CANONICAL_CAPABILITIES[cap]) throw new Error(`unknown capability advertised: ${cap}`);
   }
 
-  const capabilities = advertised.map((cap) => ({
-    id: CANONICAL_CAPABILITIES[cap].ucp,
-    title: CANONICAL_CAPABILITIES[cap].title,
-    operations: operationsForCapability(cap),
-  }));
+  const omit = new Set(Array.isArray(config.omitCapabilityIds) ? config.omitCapabilityIds : []);
+  const capabilities = advertised
+    .map((cap) => ({
+      id: CANONICAL_CAPABILITIES[cap].ucp,
+      title: CANONICAL_CAPABILITIES[cap].title,
+      operations: operationsForCapability(cap),
+    }))
+    // Withheld capabilities (and every operation they carry) never appear in the profile.
+    .filter((c) => !omit.has(c.id));
 
   const services = [
     { transport: 'rest', endpoint: `${baseUrl}${restBasePath}` },
