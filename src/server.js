@@ -265,6 +265,7 @@ const {
 const {
   fetchCanonicalChainRows,
 } = require('./services/canonicalCatalogSearch');
+const beautyRelevanceGate = require('./services/beautyRelevanceGate');
 const {
   resolveCanonicalCatalogEntityGroup,
   resolveAnchorIdentityForRelationshipGraph,
@@ -2438,12 +2439,10 @@ const STRICT_FIND_PRODUCTS_MULTI_VISIBLE_ATTRIBUTE_TERMS = Object.freeze([
   'brightening',
 ]);
 
-const STRICT_FIND_PRODUCTS_MULTI_SKINCARE_CATEGORY_TERMS = Object.freeze([
-  'serum',
-  'moisturizer',
-  'cleanser',
-  'toner',
-]);
+// Vocabulary lives in the shared relevance gate (Class 2 consolidation);
+// this alias keeps the existing references stable.
+const STRICT_FIND_PRODUCTS_MULTI_SKINCARE_CATEGORY_TERMS =
+  beautyRelevanceGate.SKINCARE_FORM_TERMS;
 
 const STRICT_FIND_PRODUCTS_MULTI_EXTERNAL_PREFETCH_LIMIT = Math.max(
   1,
@@ -2601,12 +2600,12 @@ function shouldUseStrictFindProductsMultiInvoke({ search = {}, metadata = {} } =
   return getStrictFindProductsMultiConstraintDecision({ search, metadata }).enabled;
 }
 
+// Thin delegate — implementation consolidated in services/beautyRelevanceGate
+// (Class 2). Same for the two matchers below and the category-path helpers:
+// keep the local names so the ~50 call sites and their tests stay untouched,
+// while the vocabulary itself has exactly one home.
 function extractStrictFindProductsMultiSkincareCategoryIntents(queryText) {
-  const normalizedQuery = normalizeSearchTextForMatch(String(queryText || ''));
-  if (!normalizedQuery) return [];
-  return STRICT_FIND_PRODUCTS_MULTI_SKINCARE_CATEGORY_TERMS.filter((term) =>
-    normalizedQuery.includes(normalizeSearchTextForMatch(term)),
-  );
+  return beautyRelevanceGate.extractSkincareFormIntents(queryText);
 }
 
 function productMatchesStrictIngredientPrefetch(product, { ingredientIntents = [], categoryIntents = [], inStockOnly = true } = {}) {
@@ -2663,65 +2662,11 @@ function productMatchesStrictIngredientPrefetch(product, { ingredientIntents = [
 }
 
 function productMatchesStrictSkincareCategoryIntent(product = {}, categoryIntent = '') {
-  if (!product || typeof product !== 'object' || Array.isArray(product)) return false;
-  const intent = normalizeSearchTextForMatch(categoryIntent);
-  if (!intent) return true;
-  const visibleText = normalizeSearchTextForMatch(
-    [
-      product.title,
-      product.name,
-      product.product_name,
-      product.display_name,
-      product.product_type,
-      product.category,
-      product.catalog_category_path,
-      Array.isArray(product.category_path) ? product.category_path.join(' ') : product.category_path,
-      product.canonical_url,
-      product.destination_url,
-      product.url,
-      product.merchant_canonical_url,
-    ]
-      .filter(Boolean)
-      .join(' '),
-  );
-  if (!visibleText) return false;
-  if (intent === 'serum') {
-    return /\b(serum|essence|ampoule|concentrate|booster|treatment)\b|精华|精華|美容液/i.test(visibleText);
-  }
-  if (intent === 'moisturizer') {
-    return /\b(moisturi[sz]er|cream|gel\s*cream|barrier\s*cream|repair\s*cream|lotion|balm)\b|面霜|乳液|保湿|保濕/i.test(visibleText);
-  }
-  if (intent === 'cleanser') {
-    return /\b(cleanser|cleansing|face\s*wash|facial\s*wash|wash\s*gel|cleansing\s*(?:foam|gel|milk|oil|balm))\b|洁面|潔面|洗顔/i.test(visibleText);
-  }
-  if (intent === 'toner') {
-    return /\b(toner|tonic|lotion|essence\s*water|skin\s*booster)\b|爽肤水|化妆水|化粧水/i.test(visibleText);
-  }
-  return visibleText.includes(intent);
+  return beautyRelevanceGate.productMatchesSkincareFormIntent(product, categoryIntent);
 }
 
 function filterStrictIngredientProductsByCategoryIntents(products = [], categoryIntents = []) {
-  const list = Array.isArray(products) ? products.filter(Boolean) : [];
-  const intents = Array.isArray(categoryIntents)
-    ? categoryIntents.map((value) => normalizeSearchTextForMatch(value)).filter(Boolean)
-    : [];
-  if (list.length === 0 || intents.length === 0) {
-    return {
-      products: list,
-      applied: false,
-      filtered_out_count: 0,
-      category_intents: intents,
-    };
-  }
-  const filtered = list.filter((product) =>
-    intents.every((intent) => productMatchesStrictSkincareCategoryIntent(product, intent)),
-  );
-  return {
-    products: filtered,
-    applied: true,
-    filtered_out_count: Math.max(0, list.length - filtered.length),
-    category_intents: intents,
-  };
+  return beautyRelevanceGate.filterProductsBySkincareFormIntents(products, categoryIntents);
 }
 
 async function prefetchStrictIngredientExternalSeedCandidates({
@@ -15743,11 +15688,7 @@ function countUsableSearchProducts(products) {
 }
 
 function normalizeSearchTextForMatch(raw) {
-  return String(raw || '')
-    .toLowerCase()
-    .replace(/[^a-z0-9\u4e00-\u9fff]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
+  return beautyRelevanceGate.normalizeSearchTextForMatch(raw);
 }
 
 function tokenizeSearchTextForMatch(raw) {
@@ -20806,22 +20747,11 @@ function buildBeautyMainlineRetrievalQueries(queryText = '', intent = null) {
 }
 
 function getBeautyProductCategoryPathText(product = {}) {
-  const raw = firstNonEmptyString(
-    product.catalog_category_path,
-    Array.isArray(product.category_path) ? product.category_path.join('/') : product.category_path,
-    product.categoryPath,
-    product.seed_data?.category_path,
-    product.snapshot?.category_path,
-  );
-  return String(raw || '').trim().toLowerCase().replace(/^\/+|\/+$/g, '');
+  return beautyRelevanceGate.getProductCategoryPathText(product);
 }
 
 function beautyProductMatchesCategoryPathPrefix(product = {}, categoryPathPrefix = '') {
-  const prefix = String(categoryPathPrefix || '').trim().toLowerCase().replace(/^\/+|\/+$/g, '');
-  if (!prefix) return false;
-  const path = getBeautyProductCategoryPathText(product);
-  if (!path) return false;
-  return path === prefix || path.startsWith(`${prefix}/`);
+  return beautyRelevanceGate.productMatchesCategoryPathPrefix(product, categoryPathPrefix);
 }
 
 function beautyProductMatchesCategoryPathQuery(product = {}, queryText = '', categoryPathPrefix = '') {
@@ -44989,16 +44919,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         // Fail-closed on a missing category_path is deliberate and is never
         // stricter than main: the old SQL required category_path IS NOT NULL
         // and a prefix match, so any row this drops was already unreachable.
-        const ingredientCategoryScopePrefix = (() => {
-          const resolved = String(
-            resolveBeautyCategoryPathPrefixForQuery(rawUserQuery || queryText) || '',
-          )
-            .trim()
-            .replace(/^\/+|\/+$/g, '');
-          if (!resolved) return '';
-          const parts = resolved.split('/').filter(Boolean);
-          return parts.length > 1 ? parts.slice(0, -1).join('/') : resolved;
-        })();
+        const ingredientCategoryScopePrefix = beautyRelevanceGate.categoryPathParentScope(
+          resolveBeautyCategoryPathPrefixForQuery(rawUserQuery || queryText),
+        );
         const canonicalIngredientProducts = ingredientCategoryScopePrefix
           ? canonicalIngredientRecalledProducts.filter((product) =>
               beautyProductMatchesCategoryPathPrefix(product, ingredientCategoryScopePrefix),
