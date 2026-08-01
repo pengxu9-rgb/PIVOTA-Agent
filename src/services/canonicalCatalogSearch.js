@@ -100,6 +100,25 @@ function isRecallDocMatchEnabled(env = process.env) {
 // byte-identical to the pre-slice behaviour.
 const RANK_V2_FLAG_VALUES = new Set(['enabled', 'on', '1', 'true']);
 
+// Class 4 (recall-lane assessment): deterministic serving tie-break.
+// `updated_at DESC` as the rank tie-break means any bulk restamp of catalog
+// rows reshuffles serving order wherever rank_score ties are broad — which is
+// how the 2026-07-30 restamp of 3,824 skincare rows turned the release gate
+// red with no code change (category-bucket mode had near-constant rank_score,
+// so ordering degenerated to recency). Under this flag the tie-break becomes
+// `product_key` — arbitrary but FIXED, so data jobs can never reorder results
+// whose rank is equal. Freshness stops influencing equal-rank ordering by
+// design: that influence is the instability. Default off; flip alongside
+// CANONICAL_CATALOG_RANK_V2 (both reorder all canonical searches — soak as
+// one change).
+const DETERMINISTIC_TIEBREAK_FLAG_VALUES = RANK_V2_FLAG_VALUES;
+
+function isDeterministicTiebreakEnabled(env = process.env) {
+  return DETERMINISTIC_TIEBREAK_FLAG_VALUES.has(
+    String(env.CANONICAL_CATALOG_DETERMINISTIC_TIEBREAK || '').trim().toLowerCase(),
+  );
+}
+
 function isRankV2Enabled(env = process.env) {
   return RANK_V2_FLAG_VALUES.has(
     String(env.CANONICAL_CATALOG_RANK_V2 || '').trim().toLowerCase(),
@@ -302,6 +321,13 @@ async function fetchCanonicalChainRows(args = {}) {
   // ADR-020 rank-recalibration slice. Read once per call; gates BOTH the rank
   // v2 CASE and the market-exemption fix below so they ship/roll back as one.
   const rankV2Enabled = isRankV2Enabled();
+  // Flag off emits the legacy recency tie-break byte-for-byte; flag on pins
+  // equal-rank ordering to product_key so bulk restamps cannot reshuffle it.
+  const deterministicTiebreak = isDeterministicTiebreakEnabled();
+  const innerTiebreakSql = deterministicTiebreak ? 'p.product_key ASC' : 'p.updated_at DESC';
+  const outerTiebreakSql = deterministicTiebreak
+    ? 'c.product_key ASC'
+    : 'c.product_updated_at DESC';
 
   const normalizedLimit = clampLimit(limit, DEFAULT_LIMIT, 1, ROW_LIMIT_MAX);
   const candidateLimit = clampLimit(
@@ -843,7 +869,7 @@ async function fetchCanonicalChainRows(args = {}) {
       ${merchantClause}
       ${marketWhere}
       ${brandWhere}
-      ORDER BY rank_score DESC, p.updated_at DESC
+      ORDER BY rank_score DESC, ${innerTiebreakSql}
       LIMIT $3
     )
     SELECT
@@ -884,7 +910,7 @@ async function fetchCanonicalChainRows(args = {}) {
       ${skuOfferColumns}
     FROM candidate_products c
     ${skuOfferJoinSql}
-    ORDER BY rank_score DESC, c.product_updated_at DESC${skuOfferOrderSql}
+    ORDER BY rank_score DESC, ${outerTiebreakSql}${skuOfferOrderSql}
     LIMIT $4
   `;
 
@@ -909,6 +935,7 @@ module.exports = {
     isRecallDocMatchEnabled,
     buildRecallDocMatchPatterns,
     isRankV2Enabled,
+    isDeterministicTiebreakEnabled,
     buildSignificantTokens,
   },
 };
