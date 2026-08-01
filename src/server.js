@@ -18630,6 +18630,10 @@ async function fetchCanonicalChainRecallForFindProductsMulti({ search = {} } = {
     const rows = await fetchCanonicalChainRows({
       query: canonicalQueryText,
       categoryPathPrefix: canonicalCategoryPathPrefix,
+      // Deliberate category-browse: when the prefix resolves, this lane WANTS
+      // bucket semantics (the text predicate is dropped — see the helper's
+      // contract guard). Post-recall relevance filtering narrows the bucket.
+      categoryMode: 'category_browse',
       verticalSearch:
         Boolean(canonicalCategoryPathPrefix && String(canonicalCategoryPathPrefix).startsWith('beauty/')) &&
         hasBeautyIngredientIntentSignal(queryText),
@@ -21797,6 +21801,13 @@ async function searchBeautyExternalSeedProductsMainline({
   const canonicalRowsPromise = fetchCanonicalChainRows({
     query: canonicalQueryText,
     categoryPathPrefix: canonicalCategoryPathPrefix,
+    // Deliberate category-browse: mainline recalls the bucket and then runs
+    // its own relevance gate (scoreBeautyMainlineProduct + relevant===true),
+    // which is what masks bucket noise on this lane. Known recall-quality
+    // follow-up: the lane burns its candidate budget on bucket rows for
+    // query-specific searches — tracked in the recall-lane assessment, not
+    // changed here (this PR is contract-only, behavior-preserving).
+    categoryMode: 'category_browse',
     verticalSearch: hasBeautyIngredientIntentSignal(queryText),
     // WS2c: per-token title/brand matching on the buyable mainline lane (reuses
     // the #1722 citable-lane tokenizer). Only affects categoryless/text-mode
@@ -38935,6 +38946,9 @@ app.get('/api/admin/recall-actives-preview', requireAdmin, async (req, res) => {
     const rows = await fetchCanonicalChainRows({
       query: sampleQuery,
       categoryPathPrefix: resolveCanonicalCategoryPathPrefixForQuery(sampleQuery) || null,
+      // Diagnostics sampler: browse semantics are fine here — it samples what
+      // a category surface would serve, it does not serve users.
+      categoryMode: 'category_browse',
       limit: sampleN,
       deps: { query },
     });
