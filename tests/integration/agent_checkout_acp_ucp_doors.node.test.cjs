@@ -90,6 +90,21 @@ describe('Agent checkout ACP REST + UCP discovery doors', () => {
     });
   });
 
+  describe('UCP discovery decoupled from the checkout kill-switch', () => {
+    it('serves /.well-known/ucp with AGENT_CHECKOUT_STRICT off (discovery is read-only; the kill-switch governs money paths)', async () => {
+      const { AGENT_CHECKOUT_STRICT, ...withoutStrict } = STRICT_BASE;
+      const localApp = bootApp({
+        ...withoutStrict,
+        AGENT_CHECKOUT_UCP_DISCOVERY_ENABLED: '1',
+        UCP_BASE_URL: 'https://agent.test.local',
+      });
+      delete process.env.AGENT_CHECKOUT_STRICT;
+      const res = await request(localApp).get('/.well-known/ucp');
+      assert.equal(res.status, 200);
+      assert.ok(res.body.ucp_version, 'profile stays up while checkout is dark');
+    });
+  });
+
   describe('ACP REST (enabled)', () => {
     let app;
     beforeEach(() => {

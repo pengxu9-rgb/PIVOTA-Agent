@@ -103,6 +103,11 @@ jobs:
       # ONLY suite asserting the invariant that publishing the read-only feed
       # never mounts a money-path endpoint — and it ran in no workflow at all,
       # while the commit alongside this one turns that feed on in production.
+      # ADDED 2026-08-01: `ucp_order_webhook_receiver`, confirmed green (18/18)
+      # before landing. It is the ONLY suite covering the ported UCP business
+      # doors — the /.well-known/ucp kill-switch decoupling, the published
+      # business signing keys (private material refused), and the order-webhook
+      # detached-JWS verification/dedup — which run in no other workflow.
       - name: Run node:test suites
         run: |
           node --test \
@@ -120,7 +125,8 @@ jobs:
             tests/pdp_identity_coverage_catchup.node.test.cjs \
             tests/caller_identity.node.test.cjs \
             tests/public_read_chain_resolvability.node.test.cjs \
-            tests/public_read_chain_seed_routed_probe.node.test.cjs
+            tests/public_read_chain_seed_routed_probe.node.test.cjs \
+            tests/ucp_order_webhook_receiver.node.test.cjs
 
   jest:
     runs-on: ubuntu-latest

@@ -31350,9 +31350,13 @@ function registerCommerceAcpRestRoutes() {
 
 function registerCommerceUcpRoutes() {
   // UCP discovery: GET /.well-known/ucp + GET|POST /ucp/capabilities. Read-only; no money, no body signature.
+  // Deliberately INDEPENDENT of AGENT_CHECKOUT_STRICT (same decoupling as the ACP feed and the public read
+  // MCP tier): discovery is read-only — the kill-switch governs money paths, not the profile door. A platform
+  // that pinned /.well-known/ucp must keep resolving it while checkout is dark. Fail-closed on its own flag
+  // (AGENT_CHECKOUT_UCP_DISCOVERY_ENABLED).
   const mountUcp = (method, routePath) => {
     app[method](routePath, async (req, res) => {
-      if (!isAgentCheckoutStrictEnabled() || !isAgentCheckoutUcpDiscoveryEnabled()) {
+      if (!isAgentCheckoutUcpDiscoveryEnabled()) {
         return res.status(404).json({ error: 'not_found' });
       }
       try {
@@ -31373,6 +31377,39 @@ function registerCommerceUcpRoutes() {
   mountUcp('get', '/.well-known/ucp');
   mountUcp('post', '/ucp/capabilities');
   mountUcp('get', '/ucp/capabilities');
+}
+
+function registerUcpOrderWebhookRoutes() {
+  // Inbound UCP order-webhook door (port of the retired `ucp-platform-receiver` service): the business
+  // profile above promises this door, so it lives on the same gateway ucp.pivota.cc routes to.
+  // POST verifies a detached ES256 JWS over req.rawBody (when UCP_VERIFY_ORDER_WEBHOOK is on) against the
+  // signing keys published at UCP_BUSINESS_PROFILE_URL; GET /events is the e2e positive-control surface.
+  // Metadata only — never the raw body, no PII. Fail-closed dark unless UCP_ORDER_WEBHOOK_RECEIVER_ENABLED.
+  // Registered in the LATE block (with the other UCP doors) so the caller-identity access log covers it.
+  const { createUcpOrderWebhookReceiver } = require('./services/ucpOrderWebhookReceiver');
+  const receiver = createUcpOrderWebhookReceiver({ logger });
+  app.post('/ucp/order-webhook', async (req, res) => {
+    try {
+      const out = await receiver.handleOrderWebhook({
+        headers: req.headers,
+        rawBody: req.rawBody, // exact wire bytes (express.json verify hook) — the JWS binds these
+        body: req.body,
+      });
+      return res.status(out.status).json(out.body);
+    } catch (err) {
+      logger.error({ err: err?.message || String(err), surface: 'ucp_order_webhook' }, 'UCP order webhook route failed');
+      return res.status(503).json({ error: 'ucp_order_webhook_unavailable' });
+    }
+  });
+  app.get('/ucp/order-webhook/events', async (req, res) => {
+    try {
+      const out = await receiver.handleListEvents({ query: req.query });
+      return res.status(out.status).json(out.body);
+    } catch (err) {
+      logger.error({ err: err?.message || String(err), surface: 'ucp_order_webhook' }, 'UCP order webhook events route failed');
+      return res.status(503).json({ error: 'ucp_order_webhook_unavailable' });
+    }
+  });
 }
 
 function registerUcpBuyerAgentProfileRoute() {
@@ -34648,9 +34685,10 @@ app.use(express.json({
     }
     // ACP request signatures (HMAC) bind the EXACT signed bytes, so the ACP adapter must verify/parse rawBody
     // rather than a re-stringified body. Capture it only for ACP paths (additive; no other route is affected).
+    // The UCP order-webhook's detached JWS binds the exact bytes the same way, so it gets the same capture.
     if (buf && buf.length) {
       const u = req.originalUrl || req.url || '';
-      if (u.startsWith(`${COMMERCE_ACP_BASE_PATH}/`)) {
+      if (u.startsWith(`${COMMERCE_ACP_BASE_PATH}/`) || u.startsWith('/ucp/order-webhook')) {
         req.rawBody = buf.toString(encoding || 'utf8');
       }
     }
@@ -51378,6 +51416,7 @@ commerceMcpOAuth.registerMcpOAuthDiscoveryRoutes(app, { logger });
 registerCommerceConfirmationActionRoute();
 registerCommerceAcpRestRoutes();
 registerCommerceUcpRoutes();
+registerUcpOrderWebhookRoutes();
 registerUcpBuyerAgentProfileRoute();
 registerUcpWarmHandoffInternalRoute();
 registerCommerceStrictInvokeRoute('/agent/shop/v1/invoke', 'shop');
