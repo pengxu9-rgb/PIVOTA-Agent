@@ -12427,6 +12427,24 @@ function appendCitableSupplementItems(responseBody, items) {
   try {
     if (!Array.isArray(items) || !items.length) return responseBody;
     if (!responseBody || typeof responseBody !== 'object') return responseBody;
+    // Strict-contract lanes (ingredient_recall_direct) paginate inside the lane
+    // AND are exempt from enforceFindProductsMultiRequestedPageSize's trim, so
+    // anything appended here ships to the client uncapped: prod probes showed
+    // limit=10 requests returning 48-52 products whenever the supplement cache
+    // was warm at send time (and 10 when it wasn't — the count flapped with
+    // cache warmth). Citation items are token-matched, never checked against
+    // the ingredient constraint, so they don't belong in a
+    // strict_constraint_query response either. Skip the lane entirely.
+    if (
+      String(responseBody?.metadata?.contract_bridge?.resolved_contract || '') ===
+      'shop_invoke_strict'
+    ) {
+      if (responseBody.metadata && typeof responseBody.metadata === 'object') {
+        responseBody.metadata.citable_supplement_count = 0;
+        responseBody.metadata.citable_supplement_skip_reason = 'strict_contract';
+      }
+      return responseBody;
+    }
     const container = Array.isArray(responseBody.products)
       ? responseBody
       : (responseBody.data && Array.isArray(responseBody.data.products) ? responseBody.data : null);
@@ -51659,6 +51677,7 @@ module.exports._debug = {
   decideGenericSkincareCachePreference,
   collapseNearDuplicateSearchProducts,
   enforceFindProductsMultiRequestedPageSize,
+  appendCitableSupplementItems,
   buildTravelLookupSearchProductDedupeKey,
   normalizeSearchAvailabilityState,
   postProcessTravelLookupProductsResponse,

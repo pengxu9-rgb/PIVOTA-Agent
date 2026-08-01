@@ -51,7 +51,7 @@
     "must_return_one_of_title_token_sets": [
       ["niacinamide", "serum"]
     ],
-    "min_title_token_set_match_ratio": 0.1
+    "min_title_token_set_match_ratio": 0.15
   },
   {
     "id": "skincare_strict_vitamin_c_serum_prod",
