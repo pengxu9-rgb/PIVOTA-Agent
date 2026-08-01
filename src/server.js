@@ -34691,9 +34691,13 @@ registerCommercePaymentWebhookRoute();
 app.use((req, res, next) => {
   if (req.method !== 'POST') return next();
   const p = req.path;
+  // Express routes case-insensitively and tolerates trailing slashes (caseSensitive/strict default
+  // off), so the comparison must normalize the same way — otherwise `POST /ucp/order-webhook/` (or
+  // /UCP/...) reaches the handler while skipping this cap and buffering via the 10MB global parser.
+  const pNorm = p.toLowerCase().replace(/\/+$/, '');
   const isPublicPath =
     p === '/public/mcp' ||
-    p === '/ucp/order-webhook' ||
+    pNorm === '/ucp/order-webhook' ||
     (p === '/mcp' && isPublicReadMcpEnabled() && isPublicReadMcpHostRequest(req));
   if (!isPublicPath) return next();
   const cap = PUBLIC_READ_MCP_MAX_BODY_BYTES;
@@ -34732,9 +34736,12 @@ app.use(express.json({
     // The UCP order-webhook's detached JWS binds the exact bytes the same way, so it gets the same capture.
     if (buf && buf.length) {
       const u = req.originalUrl || req.url || '';
-      // Exact-path (or query-string) match — bare startsWith would also capture unrelated siblings
-      // like a future /ucp/order-webhook-config route.
-      if (u.startsWith(`${COMMERCE_ACP_BASE_PATH}/`) || u === '/ucp/order-webhook' || u.startsWith('/ucp/order-webhook?')) {
+      // Exact-path match after stripping the query string and normalizing case + trailing slashes —
+      // Express routes `/UCP/order-webhook/` to the handler (caseSensitive/strict default off), so
+      // the stash must match the same way, while a bare startsWith would also capture unrelated
+      // siblings like a future /ucp/order-webhook-config route.
+      const pathOnly = u.split('?')[0].toLowerCase().replace(/\/+$/, '');
+      if (u.startsWith(`${COMMERCE_ACP_BASE_PATH}/`) || pathOnly === '/ucp/order-webhook') {
         req.rawBody = buf.toString(encoding || 'utf8');
       }
     }

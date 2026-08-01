@@ -212,11 +212,67 @@ test('GET /events: 404 when UCP_ORDER_WEBHOOK_EVENTS_KEY is unconfigured (even w
 });
 
 // H3: pre-parse body cap — a 10mb body must never reach the route (or the JSON parser).
-test('POST /ucp/order-webhook rejects oversized bodies with 413 before parsing', async () => {
-  await supertest(app)
-    .post('/ucp/order-webhook')
-    .send({ padding: 'x'.repeat(64 * 1024) })
-    .expect(413);
+// N1: Express routes case-insensitively and tolerates trailing slashes, so the cap must catch the
+// normalized spellings too — otherwise they reach the handler having skipped the cap entirely.
+test('POST /ucp/order-webhook rejects oversized bodies with 413 before parsing (all path spellings)', async () => {
+  const oversized = { padding: 'x'.repeat(64 * 1024) };
+  await supertest(app).post('/ucp/order-webhook').send(oversized).expect(413);
+  await supertest(app).post('/ucp/order-webhook/').send(oversized).expect(413);
+  await supertest(app).post('/UCP/order-webhook').send(oversized).expect(413);
+});
+
+// N1: the rawBody stash must match the same normalized path — a trailing slash previously skipped it,
+// turning a correctly-signed webhook into a 415. Verified end-to-end: the app's receiver resolves its
+// signing keys via GLOBAL fetch at request time, patched here to serve the test profile.
+test('a valid-signature POST to /ucp/order-webhook/ (trailing slash) verifies — rawBody is stashed', async () => {
+  const origFetch = globalThis.fetch;
+  delete process.env.UCP_ORDER_WEBHOOK_ALLOW_UNVERIFIED; // verification required (the default)
+  process.env.UCP_VERIFY_ORDER_WEBHOOK = '1';
+  process.env.UCP_BUSINESS_PROFILE_URL = 'https://ucp.test.local/.well-known/ucp';
+  globalThis.fetch = profileFetch([PUBLIC_JWK]);
+  try {
+    const rawBody = JSON.stringify({ order_id: 'ord_trailing_slash' });
+    const resp = await supertest(app)
+      .post('/ucp/order-webhook/')
+      .set('content-type', 'application/json')
+      .set('request-signature', signDetached(rawBody))
+      .send(rawBody)
+      .expect(200);
+    assert.equal(resp.body.meta.signature_verified, true);
+    assert.equal(resp.body.meta.kid, 'test-1');
+  } finally {
+    globalThis.fetch = origFetch;
+    process.env.UCP_ORDER_WEBHOOK_ALLOW_UNVERIFIED = '1';
+    delete process.env.UCP_VERIFY_ORDER_WEBHOOK;
+    delete process.env.UCP_BUSINESS_PROFILE_URL;
+  }
+});
+
+// N2: Express initializes req.body = {} when no parser claims the request, so a text/plain body used
+// to collapse into one sha256("{}") dedup entry. Through the REAL route: both POSTs must come back
+// stored:false (never "duplicate") and the ring buffer must stay untouched.
+test('text/plain bodies through the real route are stored:false and never pollute dedup', async () => {
+  const eventsBefore = await supertest(app)
+    .get('/ucp/order-webhook/events')
+    .set('x-pivota-internal-key', EVENTS_KEY)
+    .expect(200);
+  for (let i = 0; i < 2; i += 1) {
+    const resp = await supertest(app)
+      .post('/ucp/order-webhook')
+      .set('content-type', 'text/plain')
+      .send('hello, not json')
+      .expect(200);
+    assert.deepEqual(
+      resp.body.meta,
+      { stored: false, reason: 'unparsed_body' },
+      `attempt ${i + 1}: not stored, never "duplicate"`,
+    );
+  }
+  const eventsAfter = await supertest(app)
+    .get('/ucp/order-webhook/events')
+    .set('x-pivota-internal-key', EVENTS_KEY)
+    .expect(200);
+  assert.equal(eventsAfter.body.count, eventsBefore.body.count, 'no sha256("{}") entry recorded');
 });
 
 // ---- deliverable 3: pure handler — detached-JWS verification (injected env + fetch) -----------------
@@ -290,6 +346,7 @@ test('TIGHTENED vs platform_receiver.py: wrong alg / missing b64:false / bad cri
     { alg: 'ES256', kid: 'test-1', typ: 'JWT' },                                   // no b64:false
     { alg: 'ES256', b64: false, kid: 'test-1', typ: 'JWT' },                       // b64 not in crit
     { alg: 'ES256', b64: false, crit: ['b64', 'exp'], kid: 'test-1', typ: 'JWT' }, // crit member we do not understand (RFC 7515 §4.1.11)
+    { alg: 'ES256', b64: false, crit: ['b64', 'b64'], kid: 'test-1', typ: 'JWT' }, // duplicate crit entries (RFC 7515 forbids)
   ]) {
     const out = await post(receiver, rawBody, { 'request-signature': signDetached(rawBody, { header }) });
     assert.equal(out.status, 401, `header ${JSON.stringify(header)} must be rejected`);
@@ -345,21 +402,9 @@ test('verification with no rawBody (non-JSON content type) -> 415, not a mislead
   assert.equal(out.body.detail, 'unsupported media type: application/json required');
 });
 
-// M7: nothing parseable at all -> acknowledged but NOT recorded (no "{}"-collapse dedup entry).
-test('no rawBody and no parsed object -> 200 stored:false, nothing recorded', async () => {
-  const receiver = createUcpOrderWebhookReceiver({
-    env: {
-      UCP_ORDER_WEBHOOK_RECEIVER_ENABLED: '1',
-      UCP_ORDER_WEBHOOK_ALLOW_UNVERIFIED: '1',
-      UCP_ORDER_WEBHOOK_EVENTS_KEY: EVENTS_KEY,
-    },
-  });
-  const out = await receiver.handleOrderWebhook({ headers: {}, rawBody: undefined, body: undefined });
-  assert.equal(out.status, 200);
-  assert.deepEqual(out.body.meta, { stored: false, reason: 'unparsed_body' });
-  const events = await receiver.handleListEvents({ headers: { 'x-pivota-internal-key': EVENTS_KEY } });
-  assert.equal(events.body.count, 0);
-});
+// M7/N2 (unparsed-body guard, incl. Express's `req.body = {}` default) is covered end-to-end by the
+// text/plain supertest case in the route section above — the pure-handler variant lived here before
+// but never exercised the real-route condition (Express hands the handler {} rather than undefined).
 
 // ---- H4: profile-fetch hardening --------------------------------------------------------------------
 

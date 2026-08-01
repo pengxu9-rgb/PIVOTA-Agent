@@ -140,11 +140,12 @@ function verifyDetachedJws({ signature, rawBodyBytes, jwks }) {
 
   // TIGHTENED vs platform_receiver.py: the declared alg must be ES256 (never verify a header claiming
   // another alg with an ES256 key), and RFC 7797 detached mode must be declared (b64:false) with `crit`
-  // of exactly ["b64"] — RFC 7515 §4.1.11 requires rejecting any crit member we do not understand.
+  // of EXACTLY ["b64"] — RFC 7515 §4.1.11 requires rejecting any crit member we do not understand,
+  // and forbids duplicate entries, so ["b64","b64"] is refused as well (length must be exactly 1).
   if (protectedHeader.alg !== 'ES256') return { verified: false, kid };
   if (protectedHeader.b64 !== false) return { verified: false, kid };
   const crit = protectedHeader.crit;
-  if (!Array.isArray(crit) || !crit.includes('b64') || crit.some((m) => m !== 'b64')) {
+  if (!Array.isArray(crit) || crit.length !== 1 || crit[0] !== 'b64') {
     return { verified: false, kid };
   }
 
@@ -292,9 +293,11 @@ function createUcpOrderWebhookReceiver(deps = {}) {
       kid = out.kid;
     }
 
-    // Nothing parseable at all (no raw bytes AND no parsed object): acknowledge without recording —
-    // hashing a synthesized "{}" would collapse every such request into one bogus dedup entry.
-    if (!rawBodyBytes && !isPlainObject(body)) {
+    // Nothing parseable (no raw bytes AND no parsed content): acknowledge without recording. Express
+    // initializes req.body to {} when no parser claims the request (e.g. text/plain), so an EMPTY
+    // object with no raw bytes is indistinguishable from an unparsed body — without this guard every
+    // such request would collapse into one bogus sha256("{}") dedup entry and silently "duplicate".
+    if (!rawBodyBytes && (!isPlainObject(body) || Object.keys(body).length === 0)) {
       return { status: 200, body: { status: 'ok', meta: { stored: false, reason: 'unparsed_body' } } };
     }
 
