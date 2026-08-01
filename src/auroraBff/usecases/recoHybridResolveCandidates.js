@@ -6,9 +6,30 @@ const PIVOTA_BACKEND_AGENT_API_KEY = String(process.env.PIVOTA_BACKEND_AGENT_API
 
 const MAX_SEEDS = 6;
 const SEARCH_LIMIT = 8;
-const RESOLVE_TIMEOUT_MS = 1800;
-const SEARCH_TIMEOUT_MS = 1800;
-const SHOP_INVOKE_TIMEOUT_MS = 2200;
+// Timeouts are env-tunable; defaults preserve the long-standing hardcoded
+// values byte-for-byte. SEARCH_TIMEOUT_MS in particular caps the loopback
+// GET /agent/v1/products/search leg from chat — the ingredient-direct lane
+// behind it can legitimately spend ~3.0s on canonical text-mode recall
+// (PR #1889), so 1800ms silently drops that lane's results from chat as
+// `search_transient`. Ops can now raise it without a deploy; raising the
+// DEFAULT is a deliberate latency-profile change that belongs in its own PR.
+const clampTimeoutMs = (rawValue, fallbackMs, minMs = 250, maxMs = 15000) => {
+  const parsed = Number(rawValue);
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallbackMs;
+  return Math.min(maxMs, Math.max(minMs, Math.floor(parsed)));
+};
+const RESOLVE_TIMEOUT_MS = clampTimeoutMs(
+  process.env.AURORA_BFF_RECO_HYBRID_RESOLVE_TIMEOUT_MS,
+  1800,
+);
+const SEARCH_TIMEOUT_MS = clampTimeoutMs(
+  process.env.AURORA_BFF_RECO_HYBRID_SEARCH_TIMEOUT_MS,
+  1800,
+);
+const SHOP_INVOKE_TIMEOUT_MS = clampTimeoutMs(
+  process.env.AURORA_BFF_RECO_HYBRID_SHOP_INVOKE_TIMEOUT_MS,
+  2200,
+);
 const FUZZY_THRESHOLD = 0.45;
 
 const STEP_ALIASES = Object.freeze({
