@@ -227,3 +227,26 @@ test("denylist covers the internal field names seen in the live response", () =>
     assert.ok(DENYLIST_FIELDS.includes(k), `denylist missing product field ${k}`);
   }
 });
+
+// ---- availability projection: string wins over stale boolean (Class 7) -----------------------------------
+// Verified on prod 2026-08-01: rows whose catalog_offers were all in_stock served
+// `availability: "in_stock", in_stock: false` (the boolean aggregates per-variant states captured at
+// seed-scrape time), and this surface projected them as out_of_stock. The availability string is the
+// fresher projection; the boolean is the fallback, not the authority.
+test("availability: string beats a stale disagreeing boolean, boolean fills in when string is absent or unknown", () => {
+  const project = (row) =>
+    projectSearchCatalog({ products: [{ product_id: "sig_x", title: "T", brand: "B", ...row }] }, { limit: 1 })
+      .products[0].availability;
+
+  // The prod-observed stale shape: offers say in stock, variant boolean says false.
+  assert.equal(project({ availability: "in_stock", in_stock: false }), "in_stock");
+  assert.equal(project({ availability: "out_of_stock", in_stock: true }), "out_of_stock");
+  // Common upstream spellings normalize.
+  assert.equal(project({ availability: "In Stock" }), "in_stock");
+  assert.equal(project({ availability: "sold out" }), "out_of_stock");
+  // Unrecognized / absent string falls back to the boolean...
+  assert.equal(project({ availability: "unknown", in_stock: true }), "in_stock");
+  assert.equal(project({ in_stock: false }), "out_of_stock");
+  // ...and to unknown when neither field is usable.
+  assert.equal(project({}), "unknown");
+});
