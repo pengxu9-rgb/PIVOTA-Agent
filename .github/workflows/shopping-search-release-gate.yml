@@ -47,6 +47,11 @@ on:
       - "src/pdpBuilder.js"
       - "src/pdpProductIntel.js"
       - "src/services/discoveryFeed.js"
+      # The canonical-chain recall engine: the 2026-07-31 skincare gate red
+      # originated in this file, which was absent from these triggers — a
+      # recall-engine change did not fire the recall gate.
+      - "src/services/canonicalCatalogSearch.js"
+      - "src/services/activeCatalogSourceSql.js"
       - "src/services/catalogServingGateway.js"
       - "src/services/catalogServingIndex.js"
       - "src/services/ingredientSkuEvidence.js"
@@ -124,6 +129,11 @@ on:
       - "src/pdpBuilder.js"
       - "src/pdpProductIntel.js"
       - "src/services/discoveryFeed.js"
+      # The canonical-chain recall engine: the 2026-07-31 skincare gate red
+      # originated in this file, which was absent from these triggers — a
+      # recall-engine change did not fire the recall gate.
+      - "src/services/canonicalCatalogSearch.js"
+      - "src/services/activeCatalogSourceSql.js"
       - "src/services/catalogServingGateway.js"
       - "src/services/catalogServingIndex.js"
       - "src/services/ingredientSkuEvidence.js"
