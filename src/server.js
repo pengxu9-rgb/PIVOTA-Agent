@@ -44929,9 +44929,51 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           canonicalIngredientRowsPromise,
         ]);
         const strictIngredientPrefetchMs = Math.max(0, Date.now() - strictIngredientPrefetchStartedAt);
-        const canonicalIngredientProducts = (Array.isArray(canonicalIngredientResult?.rows) ? canonicalIngredientResult.rows : [])
+        const canonicalIngredientRecalledProducts = (Array.isArray(canonicalIngredientResult?.rows) ? canonicalIngredientResult.rows : [])
           .map((row) => buildCanonicalChainMainlineProduct(row))
           .filter(Boolean);
+        // Category floor, restored in JS after recall.
+        //
+        // Dropping the SQL prefix (above) also dropped the only category
+        // constraint this lane had. The post-merge filter below does NOT cover
+        // it: extractStrictFindProductsMultiSkincareCategoryIntents recognises
+        // exactly four form words (serum/moisturizer/cleanser/toner), so a bare
+        // ingredient query — "niacinamide", "salicylic acid" — yields zero
+        // intents and filterStrictIngredientProductsByCategoryIntents
+        // short-circuits to applied:false. With verticalSearch matching
+        // catalog_skus.ingredient_ids, that let ANY niacinamide-formulated row
+        // through: body wash, shampoo, foundation. The old SQL prefix silently
+        // floored those out; nothing else does.
+        //
+        // Scope to the PARENT of the resolved prefix (beauty/skincare/treat/ ->
+        // beauty/skincare) rather than the prefix itself. That is the whole
+        // point of the fix: the catalog runs competing taxonomies and the
+        // literal PDPs sit at beauty/skincare/serum and bare beauty/skincare,
+        // outside treat/. The parent scope admits all three while still
+        // excluding bodycare / haircare / makeup.
+        //
+        // Fail-closed on a missing category_path is deliberate and is never
+        // stricter than main: the old SQL required category_path IS NOT NULL
+        // and a prefix match, so any row this drops was already unreachable.
+        const ingredientCategoryScopePrefix = (() => {
+          const resolved = String(
+            resolveBeautyCategoryPathPrefixForQuery(rawUserQuery || queryText) || '',
+          )
+            .trim()
+            .replace(/^\/+|\/+$/g, '');
+          if (!resolved) return '';
+          const parts = resolved.split('/').filter(Boolean);
+          return parts.length > 1 ? parts.slice(0, -1).join('/') : resolved;
+        })();
+        const canonicalIngredientProducts = ingredientCategoryScopePrefix
+          ? canonicalIngredientRecalledProducts.filter((product) =>
+              beautyProductMatchesCategoryPathPrefix(product, ingredientCategoryScopePrefix),
+            )
+          : canonicalIngredientRecalledProducts;
+        const canonicalIngredientCategoryScopeFilteredOut = Math.max(
+          0,
+          canonicalIngredientRecalledProducts.length - canonicalIngredientProducts.length,
+        );
         const mergedIngredientRecall = mergeCanonicalChainProductsWithSeedProducts(
           Array.isArray(directProducts) ? directProducts : [],
           canonicalIngredientProducts,
@@ -44950,6 +44992,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           canonical_raw_count: Array.isArray(canonicalIngredientResult?.rows) ? canonicalIngredientResult.rows.length : 0,
           canonical_product_count: canonicalIngredientProducts.length,
           canonical_category_path_prefix: canonicalIngredientCategoryPathPrefix,
+          canonical_category_scope_prefix: ingredientCategoryScopePrefix || null,
+          canonical_category_scope_filtered_out_count: canonicalIngredientCategoryScopeFilteredOut,
           canonical_duration_ms: Math.max(0, Number(canonicalIngredientResult?.duration_ms || 0) || 0),
           canonical_dedupe_count: Number(mergedIngredientRecall?.canonical_dedupe_count || 0) || 0,
           ...(canonicalIngredientResult?.error ? { canonical_error: canonicalIngredientResult.error } : {}),
