@@ -50,7 +50,8 @@
     },
     "must_return_one_of_title_token_sets": [
       ["niacinamide", "serum"]
-    ]
+    ],
+    "min_title_token_set_match_ratio": 0.1
   },
   {
     "id": "skincare_strict_vitamin_c_serum_prod",
@@ -80,8 +81,101 @@
       "strict_constraint_reason": "ingredient"
     },
     "must_return_one_of_title_token_sets": [
-      ["serum"]
+      ["vitamin c", "serum"],
+      ["ascorbic", "serum"]
+    ],
+    "min_title_token_set_match_ratio": 0.15
+  },
+  {
+    "id": "skincare_strict_retinol_serum_prod",
+    "family": "strict_ingredient",
+    "query": "retinol serum",
+    "source": "search",
+    "rail_mode": "authoritative_commerce",
+    "require_primary_path": true,
+    "allow_strict_empty": false,
+    "allowed_contract_paths": [
+      "pivot.agent.v1",
+      "shop_invoke_strict",
+      "agent_v1_search_beauty_mainline"
+    ],
+    "allow_zero_results": false,
+    "must_have_metadata": [
+      "contract_bridge.resolved_contract",
+      "service_version.commit",
+      "strict_constraint_query",
+      "strict_constraint_reason",
+      "ingredient_intents.0",
+      "matched_ingredient_ids.0",
+      "source_breakdown.external_seed_count"
+    ],
+    "must_equal_metadata": {
+      "strict_constraint_query": true,
+      "strict_constraint_reason": "ingredient"
+    },
+    "must_return_one_of_title_token_sets": [
+      ["retinol", "serum"],
+      ["retinoid", "serum"]
+    ],
+    "min_title_token_set_match_ratio": 0.15
+  },
+  {
+    "id": "skincare_strict_salicylic_acid_serum_prod",
+    "family": "strict_ingredient",
+    "query": "salicylic acid serum",
+    "source": "search",
+    "rail_mode": "authoritative_commerce",
+    "require_primary_path": true,
+    "allow_strict_empty": false,
+    "allowed_contract_paths": [
+      "pivot.agent.v1",
+      "shop_invoke_strict",
+      "agent_v1_search_beauty_mainline"
+    ],
+    "allow_zero_results": false,
+    "must_have_metadata": [
+      "contract_bridge.resolved_contract",
+      "service_version.commit",
+      "strict_constraint_query",
+      "strict_constraint_reason",
+      "ingredient_intents.0",
+      "matched_ingredient_ids.0",
+      "source_breakdown.external_seed_count"
+    ],
+    "must_equal_metadata": {
+      "strict_constraint_query": true,
+      "strict_constraint_reason": "ingredient"
+    },
+    "must_return_one_of_title_token_sets": [
+      ["salicylic"],
+      ["bha"]
     ]
+  },
+  {
+    "id": "skincare_generic_brightening_serum_prod",
+    "family": "generic_skincare_category",
+    "query": "brightening serum",
+    "source": "search",
+    "rail_mode": "authoritative_commerce",
+    "require_primary_path": true,
+    "allow_strict_empty": false,
+    "allowed_query_sources": [
+      "beauty_discovery_mainline"
+    ],
+    "allowed_contract_paths": [
+      "pivot.agent.v1",
+      "agent_v1_search_beauty_mainline"
+    ],
+    "allow_zero_results": false,
+    "must_have_metadata": [
+      "query_source",
+      "service_version.commit",
+      "source_breakdown"
+    ],
+    "must_return_one_of_title_token_sets": [
+      ["brightening", "serum"]
+    ],
+    "min_title_token_set_match_ratio": 0.15
   },
   {
     "id": "skincare_strict_vitamin_c_serum_budget_eur_prod",

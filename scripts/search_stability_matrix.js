@@ -199,6 +199,7 @@ function normalizeCase(rawCase, defaultSource, fallbackId = '') {
       must_return_titles: [],
       must_return_one_of_titles: [],
       must_return_one_of_title_token_sets: [],
+      min_title_token_set_match_ratio: null,
       must_respect_budget: false,
       must_have_reason_codes: [],
       must_equal_metadata: {},
@@ -254,6 +255,10 @@ function normalizeCase(rawCase, defaultSource, fallbackId = '') {
           )
           .filter((tokenSet) => tokenSet.length > 0)
       : [],
+    min_title_token_set_match_ratio: (() => {
+      const parsed = Number(rawCase?.min_title_token_set_match_ratio);
+      return Number.isFinite(parsed) && parsed > 0 && parsed <= 1 ? parsed : null;
+    })(),
     must_respect_budget: rawCase?.must_respect_budget === true,
     must_have_reason_codes: Array.isArray(rawCase?.must_have_reason_codes)
       ? rawCase.must_have_reason_codes.map((item) => String(item || '').trim()).filter(Boolean)
@@ -546,6 +551,38 @@ function evaluateCase(row) {
         .map((tokenSet) => (Array.isArray(tokenSet) ? tokenSet.join(' & ') : ''))
         .filter(Boolean);
       reasons.push(`missing_required_title_tokens:${serializedTokenSets.join(' | ')}`);
+    }
+
+    // Precision floor, opt-in per case. The any-title check above is a 1-of-N
+    // floor: 19 junk results plus one literal match passes. That is exactly
+    // the shape the 2026-07-31 ingredient-lane regression took while it was
+    // still partial — mostly-junk responses stayed green until degradation
+    // hit 100%. min_title_token_set_match_ratio requires that at least this
+    // fraction of returned titles match one of the token sets, so partial
+    // degradation trips the gate too.
+    const minMatchRatio = Number(spec.min_title_token_set_match_ratio);
+    if (Number.isFinite(minMatchRatio) && minMatchRatio > 0 && titles.length > 0) {
+      const normalizedSets = mustReturnOneOfTitleTokenSets
+        .map((tokenSet) =>
+          (Array.isArray(tokenSet) ? tokenSet : [])
+            .map((token) => normalizeText(token))
+            .filter(Boolean),
+        )
+        .filter((tokenSet) => tokenSet.length > 0);
+      if (normalizedSets.length > 0) {
+        const matchedCount = titles.filter((title) => {
+          const normalizedTitle = normalizeText(title);
+          return normalizedSets.some((tokenSet) =>
+            tokenSet.every((token) => normalizedTitle.includes(token)),
+          );
+        }).length;
+        const ratio = matchedCount / titles.length;
+        if (ratio < minMatchRatio) {
+          reasons.push(
+            `title_token_match_ratio_below_floor:${ratio.toFixed(2)}<${minMatchRatio} (${matchedCount}/${titles.length})`,
+          );
+        }
+      }
     }
   }
 
