@@ -108,7 +108,22 @@ function priceOf(p) {
   if (amount == null) return null;
   return compact({ amount, currency });
 }
+const AVAILABILITY_IN_STOCK = new Set(['in_stock', 'in stock', 'instock', 'available']);
+const AVAILABILITY_OUT_OF_STOCK = new Set([
+  'out_of_stock', 'out of stock', 'outofstock', 'oos', 'sold out', 'sold_out', 'unavailable', 'discontinued',
+]);
 function availabilityOf(p) {
+  // Prefer the row's availability STRING over the in_stock boolean. The two
+  // fields are derived independently upstream and can disagree on the same
+  // row: `availability` projects from the offer/recall chain while `in_stock`
+  // aggregates per-variant booleans captured at seed-scrape time — verified
+  // stale on prod 2026-08-01, where rows with only in-stock offers served
+  // `availability: "in_stock", in_stock: false` and surfaced here as
+  // out_of_stock. When the string is absent or unrecognized (e.g. "unknown"),
+  // the boolean still carries signal, so fall back to it.
+  const text = typeof p.availability === 'string' ? p.availability.trim().toLowerCase() : '';
+  if (AVAILABILITY_IN_STOCK.has(text)) return 'in_stock';
+  if (AVAILABILITY_OUT_OF_STOCK.has(text)) return 'out_of_stock';
   if (p.in_stock === true) return 'in_stock';
   if (p.in_stock === false) return 'out_of_stock';
   return 'unknown';
