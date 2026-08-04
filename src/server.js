@@ -30643,7 +30643,7 @@ function publicReadMcpHeartbeatOptions() {
     delayMs:
       Number(process.env.PUBLIC_READ_MCP_HEARTBEAT_DELAY_MS) > 0
         ? Number(process.env.PUBLIC_READ_MCP_HEARTBEAT_DELAY_MS)
-        : 8000,
+        : 6000,
     intervalMs:
       Number(process.env.PUBLIC_READ_MCP_HEARTBEAT_INTERVAL_MS) > 0
         ? Number(process.env.PUBLIC_READ_MCP_HEARTBEAT_INTERVAL_MS)
@@ -30683,7 +30683,8 @@ async function handlePublicReadMcp(req, res) {
         return res.status(out.status).json(out.body);
       } catch (err) {
         logger.error({ err: err?.message || String(err) }, 'Public read MCP route failed');
-        if (heartbeat.fail({ jsonrpc: '2.0', id: null, error: { code: -32603, message: 'Internal error.' } })) {
+        const rpcId = req?.body && typeof req.body === 'object' && req.body.id !== undefined ? req.body.id : null;
+        if (heartbeat.fail({ jsonrpc: '2.0', id: rpcId, error: { code: -32603, message: 'Internal error.' } })) {
           return undefined;
         }
         return res.status(503).json({ error: 'mcp_unavailable' });

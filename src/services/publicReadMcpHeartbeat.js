@@ -37,8 +37,10 @@
  */
 function createMcpResponseHeartbeat(res, opts = {}) {
   const {
+    // 6s, not closer to the ~13s deadline: the delay is measured from handler entry, so edge queueing,
+    // body upload, and event-loop lag all eat into the margin before the commit byte reaches the edge.
     enabled = true,
-    delayMs = 8000,
+    delayMs = 6000,
     intervalMs = 5000,
     timers = { setTimeout, clearTimeout, setInterval, clearInterval },
   } = opts;
@@ -69,6 +71,10 @@ function createMcpResponseHeartbeat(res, opts = {}) {
 
   const delay = timers.setTimeout(commit, delayMs);
   if (delay && typeof delay.unref === 'function') delay.unref();
+
+  // If the adapter promise never settles, neither finish() nor fail() runs — the socket closing is then
+  // the only signal that can reclaim the interval.
+  if (res && typeof res.on === 'function') res.on('close', stop);
 
   function stop() {
     if (stopped) return;
