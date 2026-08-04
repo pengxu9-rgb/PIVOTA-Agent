@@ -114,6 +114,13 @@ jobs:
       # answers in every configuration, that neither the PAN nor the CVC reaches
       # the response or any log line, and that the express.json rawBody stash
       # skips that path. Nothing else asserts any of it.
+      # ADDED 2026-08-04: `public_read_mcp_heartbeat`, confirmed green (8/8)
+      # before landing. It is the ONLY suite covering the edge-timeout guard on
+      # the public MCP tier — that slow responses commit 200 + heartbeat bytes
+      # (the cold-search dropped-connection fix) and that fast paths stay
+      # byte-identical buffered responses. Dependency-free (node builtins + the
+      # pure module), but per the npm-ci note above, green proves the job
+      # passes, not that the file is a leaf.
       - name: Run node:test suites
         run: |
           node --test \
@@ -133,7 +140,8 @@ jobs:
             tests/public_read_chain_resolvability.node.test.cjs \
             tests/public_read_chain_seed_routed_probe.node.test.cjs \
             tests/ucp_order_webhook_receiver.node.test.cjs \
-            tests/acp_delegate_payment_refusal.node.test.cjs
+            tests/acp_delegate_payment_refusal.node.test.cjs \
+            tests/public_read_mcp_heartbeat.node.test.cjs
 
   jest:
     runs-on: ubuntu-latest

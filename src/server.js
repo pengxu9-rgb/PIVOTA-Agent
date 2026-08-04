@@ -30631,6 +30631,26 @@ function publicReadMcpClientKey(req) {
 
 const PUBLIC_READ_MCP_MAX_BODY_BYTES = 32 * 1024;
 
+// Railway's edge resets any response whose first BODY byte is later than ~13s after the request (measured
+// ~16.4s wall-clock kill; headers don't count) — see services/publicReadMcpHeartbeat. Cold search runs
+// 8–23s, so without this guard the partner's first uncached query is a dropped connection.
+const { createMcpResponseHeartbeat } = require('./services/publicReadMcpHeartbeat');
+
+function publicReadMcpHeartbeatOptions() {
+  const enabledRaw = String(process.env.PUBLIC_READ_MCP_HEARTBEAT_ENABLED ?? '').trim().toLowerCase();
+  return {
+    enabled: enabledRaw === '' ? true : !['0', 'false', 'off', 'no'].includes(enabledRaw),
+    delayMs:
+      Number(process.env.PUBLIC_READ_MCP_HEARTBEAT_DELAY_MS) > 0
+        ? Number(process.env.PUBLIC_READ_MCP_HEARTBEAT_DELAY_MS)
+        : 6000,
+    intervalMs:
+      Number(process.env.PUBLIC_READ_MCP_HEARTBEAT_INTERVAL_MS) > 0
+        ? Number(process.env.PUBLIC_READ_MCP_HEARTBEAT_INTERVAL_MS)
+        : 5000,
+  };
+}
+
 async function handlePublicReadMcp(req, res) {
   if (!isPublicReadMcpEnabled()) {
     return res.status(404).json({ error: 'not_found' });
@@ -30648,9 +30668,14 @@ async function handlePublicReadMcp(req, res) {
   return INVOKE_AUTH_CONTEXT.run(
     { path: req?.path || null, surface: 'mcp_public', auth_mode: 'public_read', auth_source: 'public_read' },
     async () => {
+      const heartbeat = createMcpResponseHeartbeat(res, publicReadMcpHeartbeatOptions());
       try {
         const adapter = await getPublicReadMcpAdapter();
         const out = await adapter.handleJsonRpc({ headers: req.headers || {}, body: req.body });
+        // finish() returns true when the heartbeat already committed the wire (slow path) and wrote the
+        // body itself — every adapter path still running past the heartbeat delay is a tools/call, which
+        // always resolves status 200, so committing early never masks a real non-200.
+        if (heartbeat.finish(out)) return undefined;
         for (const [key, value] of Object.entries(out.headers || {})) {
           res.setHeader(key, value);
         }
@@ -30658,6 +30683,10 @@ async function handlePublicReadMcp(req, res) {
         return res.status(out.status).json(out.body);
       } catch (err) {
         logger.error({ err: err?.message || String(err) }, 'Public read MCP route failed');
+        const rpcId = req?.body && typeof req.body === 'object' && req.body.id !== undefined ? req.body.id : null;
+        if (heartbeat.fail({ jsonrpc: '2.0', id: rpcId, error: { code: -32603, message: 'Internal error.' } })) {
+          return undefined;
+        }
         return res.status(503).json({ error: 'mcp_unavailable' });
       }
     },

@@ -116,3 +116,34 @@ test('rate limiter keys on the trusted (right-most) XFF hop, not the spoofable l
   }
   assert.ok(sawLimit, 'rotating the forged left-most XFF should not bypass the per-client limit');
 });
+
+test('slow tools/call heartbeats through the REAL route: 200 committed, leading bytes, body still parses', async () => {
+  // The guard exists because the Railway edge resets any response whose first BODY byte is later than ~13s
+  // (services/publicReadMcpHeartbeat). Force the commit with a 1ms delay so every real tools/call is "slow",
+  // and observe the actual wire: heartbeat whitespace first, then a JSON-RPC body that still parses.
+  // Fresh right-most XFF hop: the previous test intentionally drained the shared client's rate bucket.
+  process.env.PUBLIC_READ_MCP_HEARTBEAT_DELAY_MS = '1';
+  process.env.PUBLIC_READ_MCP_HEARTBEAT_INTERVAL_MS = '5';
+  try {
+    const resp = await supertest(app)
+      .post('/public/mcp')
+      .set('X-Forwarded-For', '10.9.9.9, 198.51.100.42')
+      .send(rpc('tools/call', { name: 'search_catalog', arguments: { query: 'heartbeat wire probe' } }, 9))
+      .buffer(true)
+      .parse((res, cb) => {
+        let raw = '';
+        res.on('data', (c) => { raw += c; });
+        res.on('end', () => cb(null, raw));
+      })
+      .expect(200);
+    const raw = resp.body;
+    assert.match(raw, /^\s/, 'expected heartbeat whitespace before the JSON body');
+    const parsed = JSON.parse(raw);
+    assert.equal(parsed.jsonrpc, '2.0');
+    assert.equal(parsed.id, 9);
+    assert.ok(parsed.result || parsed.error, 'expected a JSON-RPC result or error body');
+  } finally {
+    delete process.env.PUBLIC_READ_MCP_HEARTBEAT_DELAY_MS;
+    delete process.env.PUBLIC_READ_MCP_HEARTBEAT_INTERVAL_MS;
+  }
+});
