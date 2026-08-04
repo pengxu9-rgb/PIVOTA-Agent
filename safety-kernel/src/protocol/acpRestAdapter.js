@@ -27,6 +27,7 @@ import { createHmac, timingSafeEqual, randomUUID } from 'node:crypto';
 import { PivotaCommerceError } from '../errors.js';
 import { PIVOTA_TO_ACP_STATUS } from '../acpAp2.js';
 import { sanitizeResult } from './resultSanitizer.js';
+import { delegatedPaymentRefusalAcpResponse } from './delegatedPaymentRefusal.js';
 
 const DEFAULT_MAX_SKEW_MS = 5 * 60 * 1000; // reject a Timestamp more than 5 minutes off (replay window)
 const CREATE_DEDUP_TTL_MS = 15 * 60 * 1000; // window over which a replayed (buyer, idempotency_key) create dedupes
@@ -255,7 +256,30 @@ export function createAcpRestAdapter(deps = {}) {
   return {
     createCheckoutSession, updateCheckoutSession, getCheckoutSession,
     completeCheckoutSession, cancelCheckoutSession, productFeed,
+    delegatePayment,
   };
+}
+
+/**
+ * POST /agentic_commerce/delegate_payment — PERMANENT refusal.
+ *
+ * NOT a handler in the usual sense: it is a CONSTANT. It ignores its argument entirely.
+ *
+ *  - No body parse. An ACP delegate_payment body carries raw cardholder data — `payment_method.number` and
+ *    `cvc`. Parsing it would put a PAN and a CVC into this process's heap for no purpose whatsoever.
+ *  - No signature verification, deliberately. `verifyAcpSignature` HMACs `rawBody`, i.e. it must READ the
+ *    cardholder bytes to authenticate them. Authenticating a request we will refuse regardless is a pure
+ *    liability, so the refusal is answered before auth. This also means no unauthenticated caller can learn
+ *    anything from it: the answer is a fixed string that is true for everyone.
+ *  - No logging, no echo of any request field. The response is built from module constants only.
+ *  - Not behind any flag. A refusal is not a capability; the answer is identical in every configuration
+ *    because it is an architectural fact, not a rollout stage.
+ *
+ * Exported OUTSIDE createAcpRestAdapter's closure so it needs no executor, kernel, store or secret — nothing
+ * it could reach even in principle.
+ */
+export function delegatePayment() {
+  return delegatedPaymentRefusalAcpResponse();
 }
 
 // ---- request helpers --------------------------------------------------------------------------------------

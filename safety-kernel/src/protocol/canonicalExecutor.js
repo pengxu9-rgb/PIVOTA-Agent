@@ -11,10 +11,13 @@
 //   cancel_checkout_session        -> mark a non-terminal kernel order canceled (best-effort)
 //   get_order / request_after_sales-> get_order_status (ownership-gated) / requestAfterSales
 //   search_catalog / get_product   -> upstream reads
-//   start_identity_linking / exchange_payment_token -> handled at the edge (OAuth / token verify), not here
+//   start_identity_linking         -> handled at the edge (OAuth), not here
+//   exchange_payment_token         -> PERMANENTLY REFUSED (see delegatedPaymentRefusal.js): that operation is
+//                                     delegated-payment VAULTING, which belongs to the merchant's PSP.
 
 import { PivotaCommerceError } from '../errors.js';
 import { canonicalOp } from './canonicalContract.js';
+import { delegatedPaymentRefusalDetail } from './delegatedPaymentRefusal.js';
 
 const nonEmpty = (s) => typeof s === 'string' && s.trim() !== '';
 
@@ -26,6 +29,18 @@ const nonEmpty = (s) => typeof s === 'string' && s.trim() !== '';
 // delimiter would break Postgres text keys. Distinct triples => distinct strings. user_ref is always present
 // here (the contract required it upstream), so the base is always over the ledger min-length floor.
 const scopedBaseKey = (rawKey, ctx) => JSON.stringify(['cs', ctx.user_ref ?? null, ctx.acp_session_id ?? null, rawKey ?? null]);
+
+/**
+ * Build the PivotaCommerceError for a PERMANENTLY-refused canonical operation. One function so the pre-gate
+ * refusal and the switch-case backstop can never drift. Takes only the op id — never params: the one operation
+ * in this class (`exchange_payment_token` == ACP delegate_payment) carries raw cardholder data.
+ */
+function refusalFor(opId) {
+  if (opId === 'exchange_payment_token') {
+    return new PivotaCommerceError('OPERATION_NOT_ALLOWED', delegatedPaymentRefusalDetail(opId));
+  }
+  return new PivotaCommerceError('OPERATION_NOT_ALLOWED', { op: opId, reason: 'operation_permanently_refused' });
+}
 
 /**
  * @param {{
@@ -49,6 +64,13 @@ export function createCanonicalExecutor({ kernel, upstream, verifyPaymentAuthori
 
   async function execute(opId, params = {}, ctx = {}) {
     const op = canonicalOp(opId); // throws on unknown — adapters can never route an unknown op
+
+    // A PERMANENTLY-REFUSED operation is answered BEFORE the auth/session/idempotency gates. Those gates exist
+    // to protect an operation that can succeed; running them first would answer "sign in and bind a session"
+    // to a caller who can never get past this line — the sign-in-then-be-refused loop this refusal exists to
+    // end. Nothing is disclosed by answering early: `op.refusalOnly` is a fixed property of the published
+    // contract, and no params are read. See delegatedPaymentRefusal.js.
+    if (op.refusalOnly) throw refusalFor(opId);
 
     // --- contract-level safety enforcement (single place, all protocols) ---
     // A user-scoped op needs BOTH a verified buyer AND a verified session id. Enforcing the session id HERE
@@ -175,8 +197,10 @@ export function createCanonicalExecutor({ kernel, upstream, verifyPaymentAuthori
         throw new PivotaCommerceError('OPERATION_NOT_ALLOWED', { reason: 'identity_linking_is_edge_oauth', op: opId });
 
       case 'exchange_payment_token':
-        // Payment-token / mandate verification happens via verifyPaymentAuthorization at complete time.
-        throw new PivotaCommerceError('OPERATION_NOT_ALLOWED', { reason: 'token_exchange_verified_at_complete', op: opId });
+        // Backstop: the pre-gate `op.refusalOnly` check above already threw this. Kept so the refusal survives
+        // even if the contract flag is ever dropped — an operation that vaults cardholder data must never be
+        // able to fall through to the kernel because of an edit elsewhere.
+        throw refusalFor(opId);
 
       default:
         throw new PivotaCommerceError('OPERATION_NOT_ALLOWED', { op: opId });
