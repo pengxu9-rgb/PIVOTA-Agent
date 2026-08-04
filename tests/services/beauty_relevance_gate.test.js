@@ -84,3 +84,34 @@ describe('category path helpers', () => {
     expect(gate.categoryPathParentScope(null)).toBe('');
   });
 });
+
+describe('titleMatchesForm (shared measurement vocabulary)', () => {
+  test('recognizes synonyms that naive substring scoring misses', () => {
+    // These four are the exact cases that made substring scoring report
+    // toner precision as 3/10 when the true value was 9/10.
+    expect(gate.titleMatchesForm('Pixi Glow Tonic', 'toner')).toBe(true);
+    expect(gate.titleMatchesForm('Revitalising Cleansing Gel', 'cleanser')).toBe(true);
+    expect(gate.titleMatchesForm('Shade and Illuminate Contour Duo', 'bronzer')).toBe(true);
+    expect(gate.titleMatchesForm('Niacinamide 10% Ampoule', 'serum')).toBe(true);
+  });
+
+  test('still rejects the wrong form — synonym-aware, not permissive', () => {
+    expect(gate.titleMatchesForm('Niacinamide Smoothing Body Wash', 'serum')).toBe(false);
+    expect(gate.titleMatchesForm('Volumizing Mascara', 'toner')).toBe(false);
+    expect(gate.titleMatchesForm('', 'serum')).toBe(false);
+    expect(gate.titleMatchesForm('Some Serum', '')).toBe(false);
+  });
+
+  test('unknown form falls back to substring rather than matching everything', () => {
+    expect(gate.titleMatchesForm('Mystery Widget', 'widget')).toBe(true);
+    expect(gate.titleMatchesForm('Mystery Widget', 'gadget')).toBe(false);
+  });
+
+  test('serving-side form filter keeps its historical vocabulary (no leak)', () => {
+    // The wider measurement vocabulary must not change recall: the strict
+    // filter handles only the four skincare forms it always did. "bronzer" is
+    // measurement-only, so as a serving intent it falls through to substring.
+    expect(gate.productMatchesSkincareFormIntent({ title: 'Intense Biome Ampoule' }, 'serum')).toBe(true);
+    expect(gate.productMatchesSkincareFormIntent({ title: 'Shade and Illuminate Contour Duo' }, 'bronzer')).toBe(false);
+  });
+});
