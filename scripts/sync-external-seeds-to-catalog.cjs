@@ -1329,8 +1329,16 @@ function buildMirror(row) {
       category_path: categoryShape.categoryPath,
       category_confidence: 0.85,
       category_label_source: 'reviewed_ext_seed_mirror',
-      pdp_scope: 'multi_merchant_canonical',
-      pdp_scope_source: SOURCE_SYSTEM,
+      // pdp_scope / pdp_scope_source / pdp_scope_set_at are DELIBERATELY not
+      // written by this lane. The classifier (pivota-backend
+      // services/pdp_scope_classifier) is the only authority on the column;
+      // rows land on the DB default 'unverified' (NOT NULL, migration 070) and
+      // are promoted by the classifier-backed writers. This lane used to stamp
+      // 'multi_merchant_canonical' unconditionally and re-assert it on every
+      // conflict: measured 2026-08-04, 3,182 of its 3,400 canonical rows had
+      // <2 sellers, each wrongly carrying a +200 rank term and the
+      // market-filter exemption (canonicalCatalogSearch.js). See
+      // pivota-backend docs/PDP_SCOPE_REDESIGN.md (P1).
       pivota_signature_id: sigId,
       pivota_canonical_url: `https://agent.pivota.cc/products/${sigId}`,
       tags: ['external_seed', sourceRole, 'links_out'],
@@ -1683,9 +1691,6 @@ async function applyMirrors(
               category_path,
               category_confidence,
               category_label_source,
-              pdp_scope,
-              pdp_scope_source,
-              pdp_scope_set_at,
               pivota_signature_id,
               pivota_canonical_url,
               pivota_signature_minted_at,
@@ -1696,8 +1701,8 @@ async function applyMirrors(
               sync_status,
               updated_at
             ) VALUES (
-              $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18::jsonb,$19::jsonb,$20,$21,$22,$23,$24,now(),
-              $25,$26,now(),$27::jsonb,$28,$29,now(),$30,now()
+              $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18::jsonb,$19::jsonb,$20,$21,$22,
+              $23,$24,now(),$25::jsonb,$26,$27,now(),$28,now()
             )
             ON CONFLICT (product_key) DO UPDATE SET
               catalog_track = EXCLUDED.catalog_track,
@@ -1718,9 +1723,6 @@ async function applyMirrors(
               category_path = EXCLUDED.category_path,
               category_confidence = EXCLUDED.category_confidence,
               category_label_source = EXCLUDED.category_label_source,
-              pdp_scope = EXCLUDED.pdp_scope,
-              pdp_scope_source = EXCLUDED.pdp_scope_source,
-              pdp_scope_set_at = now(),
               pivota_signature_id = COALESCE(catalog_products.pivota_signature_id, EXCLUDED.pivota_signature_id),
               pivota_canonical_url = EXCLUDED.pivota_canonical_url,
               tags = EXCLUDED.tags,
@@ -1753,8 +1755,6 @@ async function applyMirrors(
             p.category_path,
             p.category_confidence,
             p.category_label_source,
-            p.pdp_scope,
-            p.pdp_scope_source,
             p.pivota_signature_id,
             p.pivota_canonical_url,
             JSON.stringify(p.tags),
