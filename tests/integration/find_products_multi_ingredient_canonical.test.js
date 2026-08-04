@@ -263,6 +263,57 @@ describe('find_products_multi ingredient_recall_direct canonical extension', () 
     // assertion. The first test pins the wiring; this one pins the args.
   });
 
+  test('canonical helper invocation includes tokenMatch=true for ingredient path', async () => {
+    // Regression pin for the 2026-08-01 junk top-10 ("vitamin c serum" ->
+    // 0/10 literal matches in the lane's own products). Without tokenMatch
+    // the only title predicate is the contiguous whole phrase
+    // (LIKE '%vitamin c serum%'), which literal PDPs like "Advanced The
+    // Vitamin C 23 Serum" do not contain — literal matches could then enter
+    // the candidate set ONLY via the flag-gated recall_doc arm, whose
+    // single-token '%serum%' patterns admit every serum in the catalog, and
+    // with rank v2 off the pool tied at the flat +200 scope bonus and
+    // degenerated to updated_at DESC. tokenMatch emits the token-overlap
+    // WHERE arm ((...) >= N) plus the *25-per-token rank bonus, making the
+    // lane's recall and ordering self-sufficient (flag-independent).
+    const observedSql = [];
+    const observedParams = [];
+    jest.doMock('../../src/db', () => ({
+      query: async (sql, params) => {
+        observedSql.push(String(sql || ''));
+        observedParams.push(Array.isArray(params) ? params : []);
+        return { rows: [] };
+      },
+    }));
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: { query: 'vitamin c serum', page: 1, limit: 10, market: 'US' },
+        },
+        metadata: { source: 'shopping_agent', market: 'US' },
+      });
+
+    expect(resp.status).toBe(200);
+    // Pin the lane so the SQL assertions can't silently relocate.
+    expect(resp.body.metadata?.query_source).toBe('agent_products_ingredient_recall_direct');
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({ canonical_token_match: true }),
+    );
+    const canonicalIdx = observedSql.findIndex((sql) => sql.includes('FROM catalog_products p'));
+    expect(canonicalIdx).toBeGreaterThanOrEqual(0);
+    const canonicalSql = observedSql[canonicalIdx];
+    // Token-overlap threshold in WHERE ("vitamin c serum" -> significant
+    // tokens [vitamin, serum], minTokens 2) + the *25 token rank bonus.
+    expect(canonicalSql).toMatch(/\) >= 2\)/);
+    expect(canonicalSql).toMatch(/\* 25\)/);
+    expect(observedParams[canonicalIdx]).toEqual(
+      expect.arrayContaining(['%vitamin%', '%serum%']),
+    );
+  });
+
   test('ingredient direct canonical merge respects explicit skincare form intent', async () => {
     jest.doMock('../../src/db', () => ({
       query: async (sql) => {

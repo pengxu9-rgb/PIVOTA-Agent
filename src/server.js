@@ -44957,6 +44957,22 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           // populated ingredientIntentIds), so SKU-level visible_option_labels
           // and ingredient_ids should also be matched.
           verticalSearch: true,
+          // Token recall, not phrase-or-recall_doc-only. Without this the only
+          // title predicate is the contiguous whole phrase (LIKE '%vitamin c
+          // serum%'), which "Advanced The Vitamin C 23 Serum" does not contain
+          // — so literal ingredient matches enter the candidate set ONLY via
+          // the flag-gated recall_doc arm (CANONICAL_CATALOG_RECALL_DOC_MATCH),
+          // whose single-token patterns ('%serum%') also admit every serum in
+          // the catalog. With rank v2 OFF that pool ties at the flat +200
+          // scope bonus and degenerates to updated_at DESC: the prod-verified
+          // 2026-08-01 junk top-10 ("vitamin c serum" -> 0/10 literal). Token
+          // match makes the lane's recall self-sufficient (title/brand token
+          // overlap, >= half the significant tokens) and its +25/token rank
+          // arm orders literal matches above single-token noise regardless of
+          // the recall_doc / rank-v2 flag state. Single-significant-token
+          // queries ("niacinamide") are unaffected: tokenMatch needs >= 2
+          // tokens and the contiguous phrase arm already covers one word.
+          tokenMatch: true,
           limit: canonicalIngredientLimit,
           includeSkuOffers: false,
           marketId: ingredientPathMarket,
@@ -45037,6 +45053,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         );
         const canonicalIngredientTelemetry = {
           canonical_path_executed: true,
+          canonical_token_match: true,
           canonical_raw_count: Array.isArray(canonicalIngredientResult?.rows) ? canonicalIngredientResult.rows.length : 0,
           canonical_product_count: canonicalIngredientProducts.length,
           canonical_category_path_prefix: canonicalIngredientCategoryPathPrefix,
