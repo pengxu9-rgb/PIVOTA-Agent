@@ -7,7 +7,7 @@
 // The checkout-session lifecycle maps onto the kernel:
 //   create/update_checkout_session -> previewQuote        (session_id == quote_id)
 //   get_checkout_session           -> quotes.resolveForOrder (ownership + expiry checked)
-//   complete_checkout_session      -> createOrder -> verifyPaymentAuthorization -> mintConfirmation -> submitPayment
+//   complete_checkout_session      -> verifyPaymentAuthorization -> createOrder -> mintConfirmation -> submitPayment
 //   cancel_checkout_session        -> mark a non-terminal kernel order canceled (best-effort)
 //   get_order / request_after_sales-> get_order_status (ownership-gated) / requestAfterSales
 //   search_catalog / get_product   -> upstream reads
@@ -46,6 +46,9 @@ function refusalFor(opId) {
  * @param {{
  *   kernel: object,                      // SafetyKernel
  *   upstream?: (op:string, payload:object, headers?:object) => Promise<any>,  // for reads
+ *   // NOTE: on complete, `bound.order_id` is null — the authorization is verified against the locked quote
+ *   // BEFORE the order exists (see completeCheckout). A verifier must bind on amount/currency/merchant_id/
+ *   // checkout_session_id/user_ref, never on order_id.
  *   verifyPaymentAuthorization?: (authorization:any, bound:{order_id,user_ref,amount,currency,merchant_id,checkout_session_id,ctx}) => Promise<void>,
  *   localReads?: Record<string, (params:object, ctx:object) => Promise<any>>,  // read-only intelligence ops (get_alternatives/get_offers)
  * }} deps
@@ -210,8 +213,17 @@ export function createCanonicalExecutor({ kernel, upstream, verifyPaymentAuthori
   return { execute };
 }
 
-// complete = (idempotent, replayable on the base key) createOrder -> verify payment authorization ->
-// mintConfirmation -> submitPayment.
+// complete = (idempotent, replayable on the base key) resolve locked quote -> verify payment authorization ->
+// createOrder -> re-check the attestation against the minted order -> mintConfirmation -> submitPayment.
+//
+// The verify comes BEFORE createOrder deliberately. createOrder claims the quote single-use (INV-1), so
+// verifying after it meant a complete whose authorization did NOT verify permanently burned the checkout
+// session: no order was payable and no money had moved, yet a retry with a CORRECTED authorization got
+// QUOTE_ALREADY_USED ("this checkout was already completed" — untrue). Nothing is lost by verifying first:
+// the binding invariant is over the money (amount/currency/merchant), the checkout session and the buyer,
+// and the LOCKED QUOTE fixes all of those before an order exists — createOrder derives order.amount_total /
+// currency / merchant_of_record from that same snapshot. Step 3 re-checks the attestation against the
+// authoritative order anyway, so a divergence still fails closed before any confirmation or charge.
 async function completeCheckout({ kernel, verifyPaymentAuthorization }, params, ctx) {
   if (!nonEmpty(params.session_id)) throw new PivotaCommerceError('QUOTE_NOT_FOUND', { reason: 'missing_session_id' });
   if (typeof verifyPaymentAuthorization !== 'function') {
@@ -234,8 +246,14 @@ async function completeCheckout({ kernel, verifyPaymentAuthorization }, params, 
   // Codex P1: make the WHOLE complete idempotent + replayable on the base key. A retry after a SUCCESSFUL
   // complete returns the original {order, payment} (no IDEMPOTENCY_CONFLICT from a freshly-minted token, no
   // re-charge). A retry after a FAILED verify (no charge yet) is allowed — the ledger releases the key
-  // because sideEffectDone is still false — so the buyer can re-complete with a corrected authorization. The
-  // inner createOrder/submitPayment ledgers remain the charge-once backstop.
+  // because sideEffectDone is still false. That release only makes retrying POSSIBLE; what makes it
+  // SUCCEED is that a failed verify now happens before createOrder, so the quote is still unspent.
+  //
+  // On retry keys, precisely (an earlier draft of this comment got it wrong): after a FAILED verify the
+  // ledger has COMPARE-AND-DELETED its record, so there is nothing left to conflict with — the buyer may
+  // retry a corrected authorization on the SAME key or a new one, and both work. A fingerprint conflict
+  // only arises while a prior attempt is still pending/done/ambiguous, i.e. never on this recovery path.
+  // The inner createOrder/submitPayment ledgers remain the charge-once backstop.
   const { result } = await kernel.idempotency.run(
     base,
     {
@@ -253,33 +271,73 @@ async function completeCheckout({ kernel, verifyPaymentAuthorization }, params, 
       const orderKey = `${base}:order`;
       const payKey = `${base}:pay`;
 
-      // 1. INV-1/5: order from the session's locked quote; amount is the server-side snapshot, not the caller's.
-      const order = await kernel.createOrder(
-        { idempotency_key: orderKey, order: { quote_id: params.session_id, shipping_address: params.shipping_address ?? {} } },
-        ctx,
-      );
+      // 1. INV-1/5: resolve the session's LOCKED quote. This is a READ — it enforces existence, expiry and
+      //    user/session linkage exactly as createOrder does, but it does NOT claim the quote (createOrder's
+      //    atomic putIfAbsent is what makes a quote single-use). So it hands us the authoritative money —
+      //    the same snapshot createOrder will price the order from — while the session is still spendable.
+      const quote = await kernel.quotes.resolveForOrder(params.session_id, ctx);
+      // resolveForOrder matches createOrder on existence, expiry and user/session linkage but NOT on the
+      // single-use claim, so without this a SPENT quote would reach the verifier — presenting the buyer's
+      // grant before refusing. That costs nothing with a pure-crypto verifier, but a verifier that consumes
+      // the grant (PSP-side validation, a jti replay cache) would burn it and answer CONFIRMATION_INVALID
+      // where the honest answer is QUOTE_ALREADY_USED — the same misreporting this reordering set out to fix.
+      // Advisory only: createOrder's atomic claim below is still the enforcement, so a concurrent claim that
+      // lands after this read is refused there, exactly as before.
+      if (typeof kernel.isQuoteClaimed === 'function' && (await kernel.isQuoteClaimed(quote.quote_id))) {
+        throw new PivotaCommerceError('QUOTE_ALREADY_USED', { quote_id: quote.quote_id });
+      }
+      // Shaped like the order the kernel is about to mint, so the ONE attestation check runs against the
+      // quote here and against the real order in step 3 with no second, drifting copy of the rules.
+      const authorized = {
+        amount_total: quote.locked_totals?.total,
+        currency: quote.currency,
+        merchant_of_record: quote.merchant_of_record,
+      };
 
       // 2. INV-3: verify the buyer's payment authorization (ACP delegated token / AP2 Checkout Mandate) BEFORE
-      //    minting confirmation. Codex P0: require a POSITIVE attestation, not merely a non-throw — a verifier
-      //    that silently returns (undefined / {ok:false}) for malformed auth must FAIL CLOSED — and the
-      //    attestation must MATCH the authoritative order amount/currency/buyer.
+      //    anything irreversible — before the quote is consumed and long before minting confirmation. Codex P0:
+      //    require a POSITIVE attestation, not merely a non-throw — a verifier that silently returns
+      //    (undefined / {ok:false}) for malformed auth must FAIL CLOSED — and the attestation must MATCH the
+      //    authoritative amount/currency/buyer.
       const attestation = await verifyPaymentAuthorization(params.payment_authorization, {
-        order_id: order.order_id,
+        // No order exists yet, by design. order_id was never part of the binding invariant
+        // (assertPaymentBinding checks merchant/amount/currency/checkout session/buyer/expiry and never reads
+        // it); the checkout session id below is what ties a grant to THIS checkout.
+        order_id: null,
         user_ref: ctx.user_ref,
-        amount: order.amount_total,
-        currency: order.currency,
-        merchant_id: order.merchant_of_record,
+        amount: authorized.amount_total,
+        currency: authorized.currency,
+        merchant_id: authorized.merchant_of_record,
         checkout_session_id: nonEmpty(params.authorization_checkout_session_id)
           ? params.authorization_checkout_session_id
           : params.session_id,
         ctx,
       });
-      assertAttestation(attestation, order, ctx);
+      assertAttestation(attestation, authorized, ctx);
 
-      // 3. host-mint the confirmation (ownership + amount/currency bound inside the kernel).
+      // 3. Order from the locked quote (this is what claims it single-use); amount is the server-side
+      //    snapshot, not the caller's. Then re-check the attestation against the AUTHORITATIVE order and
+      //    confirm its merchant too. The order is derived from the very snapshot we just verified against, so
+      //    these must agree; a divergence means the money we are about to charge is not the money the buyer
+      //    authorized — fail CLOSED here, before any confirmation is minted. (The authorization is verified
+      //    ONCE: re-running the verifier would re-present a single-use/nonce-bearing grant.)
+      const order = await kernel.createOrder(
+        { idempotency_key: orderKey, order: { quote_id: params.session_id, shipping_address: params.shipping_address ?? {} } },
+        ctx,
+      );
+      assertAttestation(attestation, order, ctx);
+      // Require the field on BOTH sides: a bare string compare would pass when both are absent
+      // ("undefined" === "undefined"), which is exactly the regression class this line exists to catch.
+      // (previewQuote already refuses a quote with no merchant_of_record, so this is defense in depth.)
+      if (!nonEmpty(order.merchant_of_record) || !nonEmpty(authorized.merchant_of_record)
+        || String(order.merchant_of_record) !== String(authorized.merchant_of_record)) {
+        throw new PivotaCommerceError('CONFIRMATION_INVALID', { reason: 'authorization_merchant_mismatch' });
+      }
+
+      // 4. host-mint the confirmation (ownership + amount/currency bound inside the kernel).
       const confirmation_token = await kernel.mintConfirmation({ order_id: order.order_id }, ctx);
 
-      // 4. INV-2/4: charge once; amount/currency from the order, never the caller. From here a failure is
+      // 5. INV-2/4: charge once; amount/currency from the order, never the caller. From here a failure is
       //    AMBIGUOUS (a charge may have landed) — mark the outer attempt so a base-key retry can't re-run it.
       runCtx.sideEffectDone = true;
       const payment = await kernel.submitPayment(
