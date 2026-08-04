@@ -176,6 +176,30 @@ describe('renew-relationship-ai-approved-labels', () => {
     expect(calls.some(({ sql }) => /UPDATE/.test(sql))).toBe(false);
   });
 
+  test('row loading paginates by keyset cursor instead of one unbounded SELECT', async () => {
+    const { loadExpiringAiApprovedRows } = require('../../scripts/renew-relationship-ai-approved-labels');
+    const batch1 = Array.from({ length: 2 }, (_, i) => baseRow({
+      id: `lbl_${i}`,
+      expires_at: `2026-08-1${i}T00:00:00.000Z`,
+    }));
+    const batch2 = [baseRow({ id: 'lbl_last', expires_at: '2026-08-20T00:00:00.000Z' })];
+    const calls = [];
+    const queryFn = async (sql, params) => {
+      calls.push({ sql, params });
+      return { rows: calls.length === 1 ? batch1 : batch2 };
+    };
+
+    const rows = await loadExpiringAiApprovedRows({ queryFn, batchSize: 2 });
+
+    expect(rows.map((r) => r.id)).toEqual(['lbl_0', 'lbl_1', 'lbl_last']);
+    expect(calls).toHaveLength(2);
+    expect(calls[0].sql).not.toContain('(expires_at, id) >');
+    // Second batch resumes from the previous batch's last (expires_at, id).
+    expect(calls[1].sql).toContain('(expires_at, id) >');
+    expect(calls[1].params).toContain('2026-08-11T00:00:00.000Z');
+    expect(calls[1].params).toContain('lbl_1');
+  });
+
   test('runRenewal apply that renews zero of a non-empty renewable set fails loudly', async () => {
     const queryFn = fakeQueryFn({
       rows: [baseRow({ id: 'lbl_1' })],

@@ -112,35 +112,60 @@ function stripProductPrefix(ref) {
   return normalizeString(ref, 260).toLowerCase().replace(/^product:/, '');
 }
 
-async function loadExpiringAiApprovedRows({ queryFn = query, windowDays = DEFAULT_WINDOW_DAYS, market = '', limit = 0 } = {}) {
-  const params = [windowDays];
-  const where = [
-    "label_state = 'ai_approved'",
-    `expires_at <= now() + ($1::int * interval '1 day')`,
-  ];
-  if (market) {
-    params.push(market);
-    where.push(`upper(market) = $${params.length}`);
+// Cursor-paginated: the rows carry full anchor/candidate snapshots, and a
+// single unbounded SELECT of the whole backlog gets the connection dropped by
+// the Railway public proxy (and would balloon memory in the cron). Keyset
+// pagination on (expires_at, id) matches the ORDER BY, so batches are exact.
+const SELECT_BATCH_SIZE = 500;
+
+async function loadExpiringAiApprovedRows({
+  queryFn = query,
+  windowDays = DEFAULT_WINDOW_DAYS,
+  market = '',
+  limit = 0,
+  batchSize = SELECT_BATCH_SIZE,
+} = {}) {
+  const rows = [];
+  let cursor = null;
+  for (;;) {
+    const take = limit > 0 ? Math.min(batchSize, limit - rows.length) : batchSize;
+    if (take <= 0) break;
+    const params = [windowDays];
+    const where = [
+      "label_state = 'ai_approved'",
+      `expires_at <= now() + ($1::int * interval '1 day')`,
+    ];
+    if (market) {
+      params.push(market);
+      where.push(`upper(market) = $${params.length}`);
+    }
+    if (cursor) {
+      params.push(cursor.expiresAt, cursor.id);
+      where.push(`(expires_at, id) > ($${params.length - 1}, $${params.length})`);
+    }
+    params.push(take);
+    // eslint-disable-next-line no-await-in-loop
+    const res = await queryFn(
+      `
+        SELECT id, edge_id, anchor_type, anchor_ref, anchor_snapshot, candidate_product_ref,
+               candidate_snapshot, relation_type, display_label, market, vertical,
+               category_taxonomy, use_case, label_state, score_total, score_breakdown,
+               price_evidence, source_refs, evidence_grade, why_candidate, tradeoffs,
+               watchouts, provenance, last_verified_at, expires_at
+        FROM relationship_candidate_labels
+        WHERE ${where.join('\n          AND ')}
+        ORDER BY expires_at ASC, id ASC
+        LIMIT $${params.length}::int
+      `,
+      params,
+    );
+    const batch = Array.isArray(res && res.rows) ? res.rows : [];
+    rows.push(...batch);
+    if (batch.length < take) break;
+    const last = batch[batch.length - 1];
+    cursor = { expiresAt: last.expires_at, id: last.id };
   }
-  let limitSql = '';
-  if (limit > 0) {
-    params.push(limit);
-    limitSql = `\n      LIMIT $${params.length}::int`;
-  }
-  const res = await queryFn(
-    `
-      SELECT id, edge_id, anchor_type, anchor_ref, anchor_snapshot, candidate_product_ref,
-             candidate_snapshot, relation_type, display_label, market, vertical,
-             category_taxonomy, use_case, label_state, score_total, score_breakdown,
-             price_evidence, source_refs, evidence_grade, why_candidate, tradeoffs,
-             watchouts, provenance, last_verified_at, expires_at
-      FROM relationship_candidate_labels
-      WHERE ${where.join('\n        AND ')}
-      ORDER BY expires_at ASC, id ASC${limitSql}
-    `,
-    params,
-  );
-  return Array.isArray(res && res.rows) ? res.rows : [];
+  return rows;
 }
 
 // One union set of every id form edges are anchored on in this codebase (see
