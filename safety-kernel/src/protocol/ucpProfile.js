@@ -87,10 +87,22 @@ export function buildUcpProfile(config = {}) {
     .map((cap) => ({
       id: CANONICAL_CAPABILITIES[cap].ucp,
       title: CANONICAL_CAPABILITIES[cap].title,
-      operations: operationsForCapability(cap),
+      // PERMANENTLY-refused operations are never advertised. A profile is a promise of what a platform can
+      // call; listing an operation that always refuses is the "advertised but not executable" defect this
+      // repo already fixed once for the checkout capabilities under a dark kill-switch (omitCapabilityIds
+      // below). Today this drops `exchange_payment_token` — ACP delegate_payment, which Pivota will never
+      // implement because it vaults cardholder data (see delegatedPaymentRefusal.js). The door still answers
+      // a named refusal; it is simply not advertised as a capability.
+      operations: operationsForCapability(cap, { includeRefusalOnly: false }),
     }))
     // Withheld capabilities (and every operation they carry) never appear in the profile.
-    .filter((c) => !omit.has(c.id));
+    .filter((c) => !omit.has(c.id))
+    // A capability with NO advertisable operation left is not a capability — it is a title with nothing behind
+    // it, and a platform reading `operations: []` learns only that it should not have been sent. This is what
+    // removes `dev.ucp.shopping.ap2_mandate` from the profile: its only operation was the refused
+    // delegate_payment exchange. Payment authorization itself is NOT lost — an ACP delegated token / AP2
+    // mandate is presented inline on `checkout.complete`, which the checkout capability already advertises.
+    .filter((c) => c.operations.length > 0);
 
   const services = [
     { transport: 'rest', endpoint: `${baseUrl}${restBasePath}` },

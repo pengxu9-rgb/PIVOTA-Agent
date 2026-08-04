@@ -15,12 +15,24 @@ export function createAcpRouteHandlers(adapter, { basePath = DEFAULT_BASE_PATH }
     ['POST', '/checkout_sessions/:checkout_session_id', adapter.updateCheckoutSession],
     ['GET', '/checkout_sessions/:checkout_session_id', adapter.getCheckoutSession],
     ['GET', '/feed', adapter.productFeed],
+    // Delegated-payment vaulting — mounted ONLY to answer a named, permanent refusal. Left unmounted it
+    // 404s, which reads to an integrator as "wrong path / not deployed yet" and sends them hunting; the
+    // refusal says the true thing (this belongs to the merchant's PSP) once. The handler is a constant that
+    // never reads its request — see acpRestAdapter.delegatePayment. `rawBody` is deliberately NOT forwarded
+    // to it below for the same reason.
+    ['POST', '/agentic_commerce/delegate_payment', adapter.delegatePayment],
   ];
 
   return routes.map(([method, path, handler]) => ({
     method,
     path: joinPath(basePath, path),
-    handler: async (req) => addJsonHeader(await handler(normalizeAcpRouteRequest(req))),
+    handler: async (req) => addJsonHeader(
+      // The delegate_payment refusal is handed NOTHING. Every other route needs the normalized request
+      // (headers for the signature, rawBody for the signed bytes); that one needs no input at all, and the
+      // input it would receive is cardholder data. Not building it is the cheapest possible guarantee that
+      // no code path downstream of this line can touch a PAN or a CVC.
+      handler === adapter.delegatePayment ? await handler() : await handler(normalizeAcpRouteRequest(req)),
+    ),
   }));
 }
 

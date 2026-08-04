@@ -110,9 +110,18 @@ export const CANONICAL_OPERATIONS = Object.freeze([
     acp: null, ucp: 'identity_linking.start', mcp: 'start_identity_linking',
   },
   {
-    // payment authorization handoff: ACP delegate_payment token / UCP payment handler / AP2 mandate envelope.
-    id: 'exchange_payment_token', capability: 'payment', kernel: 'external', // verified, then used by complete
+    // Delegated-payment VAULTING: ACP `POST /agentic_commerce/delegate_payment`. PERMANENTLY REFUSED — that
+    // endpoint receives raw cardholder data (FPAN + CVC) and the spec scopes it to a PSP or a PCI-DSS Level 1
+    // merchant running its own vault. Pivota is a commerce index / protocol edge, never the vault and never the
+    // merchant of record, so it stays outside cardholder-data scope by design. The operation REMAINS in the
+    // contract — the door must answer a named, diagnosable refusal rather than a bare 404 that reads as a
+    // routing bug — but `refusalOnly` keeps it out of every discovery profile: advertising an operation that
+    // permanently refuses is exactly the "advertised but not executable" defect. See delegatedPaymentRefusal.js.
+    // NOTE: this is NOT the payment-authorization path. An ACP delegated token / AP2 mandate is presented
+    // INLINE as `payment_data` on complete_checkout_session and verified there — no exchange step exists.
+    id: 'exchange_payment_token', capability: 'payment', kernel: 'external',
     mutating: false, requiresUserRef: true, requiresPaymentAuthz: false,
+    refusalOnly: true,
     acp: 'POST /agentic_commerce/delegate_payment', ucp: 'payment.token_exchange', mcp: 'exchange_payment_token',
   },
 ]);
@@ -126,10 +135,24 @@ export function canonicalOp(id) {
   return op;
 }
 
-/** All canonical operation ids for a capability. */
-export function operationsForCapability(capability) {
-  return CANONICAL_OPERATIONS.filter((o) => o.capability === capability).map((o) => o.id);
+/**
+ * All canonical operation ids for a capability.
+ * @param {string} capability
+ * @param {{ includeRefusalOnly?: boolean }} [opts] — `includeRefusalOnly:false` drops PERMANENTLY-refused
+ *   operations. Discovery profiles pass false; the default stays true so the contract view (and every existing
+ *   caller/test) is unchanged.
+ */
+export function operationsForCapability(capability, { includeRefusalOnly = true } = {}) {
+  return CANONICAL_OPERATIONS
+    .filter((o) => o.capability === capability && (includeRefusalOnly || !o.refusalOnly))
+    .map((o) => o.id);
 }
+
+/**
+ * Operations the contract defines a door for but that PERMANENTLY refuse — the door answers a named refusal
+ * instead of 404ing, but nothing may advertise them as executable.
+ */
+export const REFUSAL_ONLY_OPERATIONS = Object.freeze(CANONICAL_OPERATIONS.filter((o) => o.refusalOnly).map((o) => o.id));
 
 /** Operations that mutate state (must carry an idempotency key) / need a verified buyer / need payment authz. */
 export const MUTATING_OPERATIONS = Object.freeze(CANONICAL_OPERATIONS.filter((o) => o.mutating).map((o) => o.id));

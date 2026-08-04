@@ -108,6 +108,12 @@ jobs:
       # doors — the /.well-known/ucp kill-switch decoupling, the published
       # business signing keys (private material refused), and the order-webhook
       # detached-JWS verification/dedup — which run in no other workflow.
+      # ADDED 2026-08-04: `acp_delegate_payment_refusal`, confirmed green (6/6)
+      # before landing. It guards the one gateway path a caller sends a raw PAN
+      # and CVC to (ACP delegate_payment, permanently refused): that the refusal
+      # answers in every configuration, that neither the PAN nor the CVC reaches
+      # the response or any log line, and that the express.json rawBody stash
+      # skips that path. Nothing else asserts any of it.
       - name: Run node:test suites
         run: |
           node --test \
@@ -126,7 +132,8 @@ jobs:
             tests/caller_identity.node.test.cjs \
             tests/public_read_chain_resolvability.node.test.cjs \
             tests/public_read_chain_seed_routed_probe.node.test.cjs \
-            tests/ucp_order_webhook_receiver.node.test.cjs
+            tests/ucp_order_webhook_receiver.node.test.cjs \
+            tests/acp_delegate_payment_refusal.node.test.cjs
 
   jest:
     runs-on: ubuntu-latest

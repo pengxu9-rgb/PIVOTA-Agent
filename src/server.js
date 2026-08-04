@@ -29395,6 +29395,11 @@ function isAgentCheckoutHostedLinkEnabled() {
 // (which src/lookReplicator/index.js already serves) — namespaced to avoid the collision.
 const COMMERCE_ACP_BASE_PATH = '/acp';
 
+// ACP delegated-payment vaulting. Pivota PERMANENTLY refuses this endpoint (it receives raw cardholder data
+// and belongs to the merchant's PSP) — the path is named here because two places need it: the refusal route
+// below, and the express.json verify hook, which must NOT stash this body's raw bytes.
+const ACP_DELEGATE_PAYMENT_SUBPATH = '/agentic_commerce/delegate_payment';
+
 // ACP door flag semantics live in ./acpFeedFlags (unit-tested decoupling of the
 // read-only feed from the money-path checkout endpoints).
 const {
@@ -31230,6 +31235,51 @@ function getUcpOrderWebhookLimiter() {
     ucpOrderWebhookLimiter = createTokenBucketLimiter({ capacity: burst, refillPerSecond: rpm / 60 });
   }
   return ucpOrderWebhookLimiter;
+}
+
+let commerceDelegatedPaymentRefusalModulePromise = null;
+function getCommerceDelegatedPaymentRefusalModule() {
+  if (!commerceDelegatedPaymentRefusalModulePromise) {
+    commerceDelegatedPaymentRefusalModulePromise = import('../safety-kernel/src/protocol/delegatedPaymentRefusal.js');
+    // Never memoize a rejected import (same rationale as the ACP adapter / UCP profile modules above).
+    commerceDelegatedPaymentRefusalModulePromise.catch(() => { commerceDelegatedPaymentRefusalModulePromise = null; });
+  }
+  return commerceDelegatedPaymentRefusalModulePromise;
+}
+
+function registerCommerceDelegatePaymentRefusalRoute() {
+  // POST /acp/agentic_commerce/delegate_payment — a PERMANENT, unconditional refusal.
+  //
+  // Newly reachable: this path previously fell through to the 404 handler in every configuration. It now
+  // answers 501 with a named reason. That is not a new capability — nothing here touches the kernel, the
+  // executor, the session store, a secret, or the request body — it is the replacement of a silent 404 (which
+  // reads as "wrong path / not deployed yet" and sends integrators hunting) with the true, actionable fact.
+  //
+  // Deliberately NOT gated by AGENT_CHECKOUT_STRICT / AGENT_CHECKOUT_ACP_REST_ENABLED, unlike every route
+  // below. Those flags gate money paths; this endpoint will never be a money path in any configuration, so a
+  // config-dependent answer would only make the refusal harder to discover without making anything safer.
+  //
+  // Deliberately does NOT read req.body / req.rawBody / req.headers. An ACP delegate_payment body carries raw
+  // cardholder data (FPAN + CVC); the express.json verify hook above already refuses to stash rawBody for this
+  // exact path, and nothing here re-reads it, logs it, or echoes it back.
+  app.post(`${COMMERCE_ACP_BASE_PATH}${ACP_DELEGATE_PAYMENT_SUBPATH}`, async (req, res) => {
+    try {
+      const { delegatedPaymentRefusalAcpResponse } = await getCommerceDelegatedPaymentRefusalModule();
+      const out = delegatedPaymentRefusalAcpResponse();
+      return res.status(out.status).json(out.body);
+    } catch (err) {
+      // The refusal module is constants with no dependencies, so this is unreachable in practice. If the
+      // import ever does fail, still answer the refusal — degraded to its core fact, never a 503 that would
+      // invite a retry of a request carrying card data. No `err` detail is logged: the only interesting
+      // context here would be the request, which must not be touched.
+      logger.error({ surface: 'acp_rest', handler: 'delegatePayment' }, 'delegated-payment refusal module unavailable');
+      return res.status(501).json({
+        type: 'error',
+        code: 'OPERATION_NOT_ALLOWED',
+        message: 'Pivota does not implement delegated payment vaulting. This endpoint belongs to the merchant\'s PSP.',
+      });
+    }
+  });
 }
 
 function registerCommerceAcpRestRoutes() {
@@ -34693,6 +34743,28 @@ app.use((req, res, next) => {
   return next();
 });
 
+// Should this request's EXACT wire bytes be stashed on `req.rawBody`?
+//
+// YES for the ACP doors (their HMAC Signature binds the exact signed bytes, so the adapter must verify/parse
+// rawBody rather than a re-stringified body) and for the UCP order-webhook (its detached JWS binds them the
+// same way). Exact-path match after stripping the query string and normalizing case + trailing slashes —
+// Express routes `/UCP/order-webhook/` to the handler (caseSensitive/strict default off), so the stash must
+// match the same way, while a bare startsWith would also capture unrelated siblings like a future
+// /ucp/order-webhook-config route.
+//
+// NEVER for ACP delegate_payment. That body carries raw cardholder data (FPAN + CVC) and Pivota permanently
+// refuses the endpoint WITHOUT reading it (safety-kernel/src/protocol/delegatedPaymentRefusal.js). The stash
+// exists to be HMAC'd; the refusal never authenticates, so a stash here would have no consumer at all and
+// would only keep a PAN and a CVC alive on the request object for the life of the request.
+//
+// Exported on `_debug` because that carve-out is a security property worth asserting directly.
+function shouldCaptureAcpRawBody(url) {
+  const u = typeof url === 'string' ? url : '';
+  const pathOnly = u.split('?')[0].toLowerCase().replace(/\/+$/, '');
+  if (pathOnly === `${COMMERCE_ACP_BASE_PATH}${ACP_DELEGATE_PAYMENT_SUBPATH}`) return false;
+  return u.startsWith(`${COMMERCE_ACP_BASE_PATH}/`) || pathOnly === '/ucp/order-webhook';
+}
+
 // Body parser with error handling
 app.use(express.json({
   limit: '10mb',
@@ -34702,19 +34774,8 @@ app.use(express.json({
     } catch(e) {
       throw new Error('Invalid JSON');
     }
-    // ACP request signatures (HMAC) bind the EXACT signed bytes, so the ACP adapter must verify/parse rawBody
-    // rather than a re-stringified body. Capture it only for ACP paths (additive; no other route is affected).
-    // The UCP order-webhook's detached JWS binds the exact bytes the same way, so it gets the same capture.
-    if (buf && buf.length) {
-      const u = req.originalUrl || req.url || '';
-      // Exact-path match after stripping the query string and normalizing case + trailing slashes —
-      // Express routes `/UCP/order-webhook/` to the handler (caseSensitive/strict default off), so
-      // the stash must match the same way, while a bare startsWith would also capture unrelated
-      // siblings like a future /ucp/order-webhook-config route.
-      const pathOnly = u.split('?')[0].toLowerCase().replace(/\/+$/, '');
-      if (u.startsWith(`${COMMERCE_ACP_BASE_PATH}/`) || pathOnly === '/ucp/order-webhook') {
-        req.rawBody = buf.toString(encoding || 'utf8');
-      }
+    if (buf && buf.length && shouldCaptureAcpRawBody(req.originalUrl || req.url || '')) {
+      req.rawBody = buf.toString(encoding || 'utf8');
     }
   }
 }));
@@ -51477,6 +51538,7 @@ registerCommerceRemoteMcpRoute();
 registerPublicReadMcpRoute();
 commerceMcpOAuth.registerMcpOAuthDiscoveryRoutes(app, { logger });
 registerCommerceConfirmationActionRoute();
+registerCommerceDelegatePaymentRefusalRoute();
 registerCommerceAcpRestRoutes();
 registerCommerceUcpRoutes();
 registerUcpOrderWebhookRoutes();
@@ -51587,6 +51649,9 @@ async function runPdpCorePrewarmPass() {
 
 module.exports = app;
 module.exports._debug = {
+  // Security property: the raw wire bytes of an ACP delegate_payment request (raw PAN + CVC) are never
+  // stashed on `req.rawBody`. Exported so that can be asserted directly rather than inferred.
+  shouldCaptureAcpRawBody,
   resolveCanonicalCategoryPathPrefixForQuery,
   isNonBeautyCanonicalCategoryPathPrefix,
   matchesScope,
