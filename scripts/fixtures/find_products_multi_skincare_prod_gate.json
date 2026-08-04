@@ -49,7 +49,10 @@
       "strict_constraint_reason": "ingredient"
     },
     "must_return_one_of_title_token_sets": [
-      ["niacinamide", "serum"]
+      [
+        "niacinamide",
+        "form:serum"
+      ]
     ],
     "min_title_token_set_match_ratio": 0.5
   },
@@ -81,8 +84,14 @@
       "strict_constraint_reason": "ingredient"
     },
     "must_return_one_of_title_token_sets": [
-      ["vitamin c", "serum"],
-      ["ascorbic", "serum"]
+      [
+        "vitamin c",
+        "form:serum"
+      ],
+      [
+        "ascorbic",
+        "form:serum"
+      ]
     ],
     "min_title_token_set_match_ratio": 0.4
   },
@@ -114,8 +123,14 @@
       "strict_constraint_reason": "ingredient"
     },
     "must_return_one_of_title_token_sets": [
-      ["retinol", "serum"],
-      ["retinoid", "serum"]
+      [
+        "retinol",
+        "form:serum"
+      ],
+      [
+        "retinoid",
+        "form:serum"
+      ]
     ],
     "min_title_token_set_match_ratio": 0.5
   },
@@ -147,8 +162,12 @@
       "strict_constraint_reason": "ingredient"
     },
     "must_return_one_of_title_token_sets": [
-      ["salicylic"],
-      ["bha"]
+      [
+        "salicylic"
+      ],
+      [
+        "bha"
+      ]
     ],
     "min_title_token_set_match_ratio": 0.3
   },
@@ -174,14 +193,17 @@
       "source_breakdown"
     ],
     "must_return_one_of_title_token_sets": [
-      ["brightening", "serum"]
+      [
+        "brightening",
+        "form:serum"
+      ]
     ],
     "min_title_token_set_match_ratio": 0.15
   },
   {
     "id": "skincare_strict_vitamin_c_serum_budget_eur_prod",
     "family": "strict_ingredient_budget",
-    "query": "vitamin c serum under €30",
+    "query": "vitamin c serum under \u20ac30",
     "source": "search",
     "allowed_contract_paths": [
       "pivot.agent.v1",
@@ -239,5 +261,61 @@
       "strict_constraint_reason": "multi_constraint"
     },
     "must_respect_budget": true
+  },
+  {
+    "id": "skincare_generic_toner_prod",
+    "family": "generic_skincare_category",
+    "query": "toner",
+    "source": "search",
+    "rail_mode": "authoritative_commerce",
+    "require_primary_path": true,
+    "allow_strict_empty": false,
+    "allowed_query_sources": [
+      "beauty_discovery_mainline"
+    ],
+    "allowed_contract_paths": [
+      "pivot.agent.v1",
+      "agent_v1_search_beauty_mainline"
+    ],
+    "allow_zero_results": false,
+    "must_have_metadata": [
+      "query_source",
+      "service_version.commit",
+      "source_breakdown"
+    ],
+    "must_return_one_of_title_token_sets": [
+      [
+        "form:toner"
+      ]
+    ],
+    "min_title_token_set_match_ratio": 0.4
+  },
+  {
+    "id": "skincare_generic_cleanser_prod",
+    "family": "generic_skincare_category",
+    "query": "cleanser",
+    "source": "search",
+    "rail_mode": "authoritative_commerce",
+    "require_primary_path": true,
+    "allow_strict_empty": false,
+    "allowed_query_sources": [
+      "beauty_discovery_mainline"
+    ],
+    "allowed_contract_paths": [
+      "pivot.agent.v1",
+      "agent_v1_search_beauty_mainline"
+    ],
+    "allow_zero_results": false,
+    "must_have_metadata": [
+      "query_source",
+      "service_version.commit",
+      "source_breakdown"
+    ],
+    "must_return_one_of_title_token_sets": [
+      [
+        "form:cleanser"
+      ]
+    ],
+    "min_title_token_set_match_ratio": 0.3
   }
 ]

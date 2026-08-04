@@ -66,6 +66,59 @@ function extractSkincareFormIntents(queryText) {
   );
 }
 
+// Form -> title/text synonym pattern. ONE vocabulary, two consumers: the
+// serving-side form filter below, and the release gate's precision scoring
+// (scripts/search_stability_matrix.js `form:` tokens).
+//
+// Why the gate needs this: scoring category precision by naive substring match
+// on the query word is wrong, and wrong in a way that invents phantom bugs.
+// "Pixi Glow Tonic" IS a toner; "Revitalising Cleansing Gel" IS a cleanser —
+// neither contains the query string. Measured live 2026-08-04, substring
+// scoring under-reported toner precision as 3/10 when the true value was 9/10,
+// and that phantom nearly sent us chasing a serving regression that did not
+// exist. Beauty categories are synonym-rich; the ruler has to know that.
+//
+// The first four entries are the EXACT patterns the serving-side filter has
+// always used — moved here verbatim, not rewritten, so serving behavior is
+// unchanged. Entries past them are measurement vocabulary (makeup and hair
+// forms the strict skincare filter never handled).
+const FORM_TITLE_PATTERNS = Object.freeze({
+  // --- serving-side (verbatim; changing these changes recall) -------------
+  serum: /\b(serum|essence|ampoule|concentrate|booster|treatment)\b|精华|精華|美容液/i,
+  moisturizer: /\b(moisturi[sz]er|cream|gel\s*cream|barrier\s*cream|repair\s*cream|lotion|balm)\b|面霜|乳液|保湿|保濕/i,
+  cleanser: /\b(cleanser|cleansing|face\s*wash|facial\s*wash|wash\s*gel|cleansing\s*(?:foam|gel|milk|oil|balm))\b|洁面|潔面|洗顔/i,
+  toner: /\b(toner|tonic|lotion|essence\s*water|skin\s*booster)\b|爽肤水|化妆水|化粧水/i,
+  // --- measurement vocabulary --------------------------------------------
+  sunscreen: /\b(sunscreen|sun\s*screen|sunblock|spf|uv\s*(?:filter|protect\w*)|sun\s*(?:cream|fluid|stick|milk))\b|防晒|防曬/i,
+  mask: /\b(mask|masque|sheet\s*mask|sleeping\s*mask|pack)\b|面膜/i,
+  exfoliant: /\b(exfoliant|exfoliating|exfoliator|peel(?:ing)?|scrub|aha|bha|pha)\b|去角质|去角質/i,
+  bronzer: /\b(bronzer|bronzing|contour(?:ing)?|self[-\s]*tan\w*)\b/i,
+  highlighter: /\b(highlighter|highlighting|illuminat\w+|luminizer|glow\s*(?:stick|drops|balm))\b/i,
+  blush: /\b(blush(?:er)?|cheek\s*(?:tint|colou?r|stain))\b|腮红|腮紅/i,
+  lipstick: /\b(lipstick|lip\s*stick|lip\s*colou?r|lip\s*tint|rouge)\b|口红|口紅|唇膏/i,
+  mascara: /\b(mascara|lash\s*(?:volumiz\w+|lengthen\w+))\b|睫毛膏/i,
+  eyeshadow: /\b(eye\s*shadow|eyeshadow|shadow\s*palette)\b|眼影/i,
+  foundation: /\b(foundation|skin\s*tint|bb\s*cream|cc\s*cream)\b|粉底/i,
+  concealer: /\b(concealer|corrector)\b|遮瑕/i,
+  shampoo: /\b(shampoo)\b|洗发|洗髮/i,
+  conditioner: /\b(conditioner|conditioning\s*(?:mask|treatment)?)\b|护发素|護髮素/i,
+});
+
+/**
+ * Does a product TITLE (or any text) denote the given product form?
+ * Synonym-aware — this is the ruler for measurement code. Unknown forms fall
+ * back to a plain substring test so a typo fails closed-ish rather than
+ * matching everything.
+ */
+function titleMatchesForm(title, form) {
+  const text = String(title || '');
+  const key = String(form || '').trim().toLowerCase();
+  if (!text || !key) return false;
+  const pattern = FORM_TITLE_PATTERNS[key];
+  if (pattern) return pattern.test(text);
+  return normalizeSearchTextForMatch(text).includes(normalizeSearchTextForMatch(key));
+}
+
 function productMatchesSkincareFormIntent(product = {}, categoryIntent = '') {
   if (!product || typeof product !== 'object' || Array.isArray(product)) return false;
   const intent = normalizeSearchTextForMatch(categoryIntent);
@@ -89,17 +142,11 @@ function productMatchesSkincareFormIntent(product = {}, categoryIntent = '') {
       .join(' '),
   );
   if (!visibleText) return false;
-  if (intent === 'serum') {
-    return /\b(serum|essence|ampoule|concentrate|booster|treatment)\b|精华|精華|美容液/i.test(visibleText);
-  }
-  if (intent === 'moisturizer') {
-    return /\b(moisturi[sz]er|cream|gel\s*cream|barrier\s*cream|repair\s*cream|lotion|balm)\b|面霜|乳液|保湿|保濕/i.test(visibleText);
-  }
-  if (intent === 'cleanser') {
-    return /\b(cleanser|cleansing|face\s*wash|facial\s*wash|wash\s*gel|cleansing\s*(?:foam|gel|milk|oil|balm))\b|洁面|潔面|洗顔/i.test(visibleText);
-  }
-  if (intent === 'toner') {
-    return /\b(toner|tonic|lotion|essence\s*water|skin\s*booster)\b|爽肤水|化妆水|化粧水/i.test(visibleText);
+  // Serving keeps EXACTLY its historical vocabulary: only the four skincare
+  // forms it has always handled, via the same patterns (now shared above).
+  // The wider measurement vocabulary must NOT leak into recall.
+  if (SKINCARE_FORM_TERMS.includes(intent)) {
+    return FORM_TITLE_PATTERNS[intent].test(visibleText);
   }
   return visibleText.includes(intent);
 }
@@ -165,6 +212,8 @@ function categoryPathParentScope(categoryPathPrefix) {
 
 module.exports = {
   normalizeSearchTextForMatch,
+  FORM_TITLE_PATTERNS,
+  titleMatchesForm,
   SKINCARE_FORM_TERMS,
   extractSkincareFormIntents,
   productMatchesSkincareFormIntent,

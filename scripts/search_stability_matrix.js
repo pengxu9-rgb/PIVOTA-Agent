@@ -11,6 +11,7 @@ const {
 } = require('./lib/commerce_invoke_contract');
 const { evaluatePrimaryPathContract } = require('./lib/commerce_primary_path');
 const { loadProdGateCases } = require('./lib/commerce_shared_acceptance_corpus');
+const { titleMatchesForm } = require('../src/services/beautyRelevanceGate');
 
 function timestamp() {
   const now = new Date();
@@ -85,6 +86,39 @@ function normalizeText(input) {
     .replace(/[^a-z0-9\u4e00-\u9fff]+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+
+// Token semantics for `must_return_one_of_title_token_sets`:
+//   "niacinamide"  -> substring match (ingredients are literal; stay strict)
+//   "form:serum"   -> synonym-aware product-form match via the shared beauty
+//                     vocabulary (serum|essence|ampoule|...)
+//
+// The `form:` prefix exists because naive substring scoring is wrong for
+// synonym-rich categories and invents phantom regressions: measured live
+// 2026-08-04, substring scoring called toner precision 3/10 when the true
+// value was 9/10 ("Pixi Glow Tonic" is a toner). A gate that mis-measures is
+// worse than no gate — it burns real investigation on nothing, and it can go
+// red on healthy serving.
+function titleMatchesTokenSet(title, tokenSet) {
+  const normalizedTitle = normalizeText(title);
+  return tokenSet.every((rawToken) => {
+    const token = String(rawToken || '').trim();
+    if (!token) return false;
+    if (/^form:/i.test(token)) return titleMatchesForm(title, token.slice(5));
+    const normalizedToken = normalizeText(token);
+    return normalizedToken ? normalizedTitle.includes(normalizedToken) : false;
+  });
+}
+
+function normalizeTokenSets(rawSets) {
+  return (Array.isArray(rawSets) ? rawSets : [])
+    .map((tokenSet) =>
+      (Array.isArray(tokenSet) ? tokenSet : [tokenSet])
+        .map((token) => String(token || '').trim())
+        .filter(Boolean),
+    )
+    .filter((tokenSet) => tokenSet.length > 0);
 }
 
 function normalizeCurrency(value, fallback = '') {
@@ -536,16 +570,9 @@ function evaluateCase(row) {
     ? spec.must_return_one_of_title_token_sets
     : [];
   if (mustReturnOneOfTitleTokenSets.length > 0) {
-    const hasAllowedTokenSet = mustReturnOneOfTitleTokenSets.some((tokenSet) => {
-      const normalizedTokens = (Array.isArray(tokenSet) ? tokenSet : [])
-        .map((token) => normalizeText(token))
-        .filter(Boolean);
-      if (normalizedTokens.length === 0) return false;
-      return titles.some((title) => {
-        const normalizedTitle = normalizeText(title);
-        return normalizedTokens.every((token) => normalizedTitle.includes(token));
-      });
-    });
+    const hasAllowedTokenSet = normalizeTokenSets(mustReturnOneOfTitleTokenSets).some((tokenSet) =>
+      titles.some((title) => titleMatchesTokenSet(title, tokenSet)),
+    );
     if (!hasAllowedTokenSet) {
       const serializedTokenSets = mustReturnOneOfTitleTokenSets
         .map((tokenSet) => (Array.isArray(tokenSet) ? tokenSet.join(' & ') : ''))
@@ -562,20 +589,11 @@ function evaluateCase(row) {
     // degradation trips the gate too.
     const minMatchRatio = Number(spec.min_title_token_set_match_ratio);
     if (Number.isFinite(minMatchRatio) && minMatchRatio > 0 && titles.length > 0) {
-      const normalizedSets = mustReturnOneOfTitleTokenSets
-        .map((tokenSet) =>
-          (Array.isArray(tokenSet) ? tokenSet : [])
-            .map((token) => normalizeText(token))
-            .filter(Boolean),
-        )
-        .filter((tokenSet) => tokenSet.length > 0);
+      const normalizedSets = normalizeTokenSets(mustReturnOneOfTitleTokenSets);
       if (normalizedSets.length > 0) {
-        const matchedCount = titles.filter((title) => {
-          const normalizedTitle = normalizeText(title);
-          return normalizedSets.some((tokenSet) =>
-            tokenSet.every((token) => normalizedTitle.includes(token)),
-          );
-        }).length;
+        const matchedCount = titles.filter((title) =>
+          normalizedSets.some((tokenSet) => titleMatchesTokenSet(title, tokenSet)),
+        ).length;
         const ratio = matchedCount / titles.length;
         if (ratio < minMatchRatio) {
           reasons.push(
