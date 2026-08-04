@@ -75,30 +75,43 @@ const BEAUTY_CATEGORY_DESCRIPTION_PATTERNS = BEAUTY_CATEGORY_PATTERNS.map(([labe
   }
   return [label, pattern];
 });
+// Label -> canonical category path. Values come from the shared taxonomy
+// module (Class 3 single source of truth) so this table and the reconciler can
+// never disagree — a disagreement here means the resolver browses a bucket the
+// data has been moved out of, which is exactly the failure this class is about.
+//
+// Corrected 2026-08-04 against the prod survey: Shampoo/Conditioner/Hair
+// Styling pointed at beauty/hair/* (2/2/0 rows) while the data lives at
+// beauty/haircare/* (143/42/8), and the cheek trio pointed at
+// beauty/makeup/cheek/* (2/13/0) while the data lives at beauty/makeup/face/*
+// (83+22/57/35). Both made the canonical browse leg recall ~nothing —
+// prod-measured: "shampoo" BROWSE 0 rows vs TEXT 48/48 hits.
+const { CANONICAL_CATEGORY_PATHS: BEAUTY_TAXONOMY } = require('./beautyTaxonomy');
+
 const BEAUTY_CATEGORY_PATH_BY_LABEL = Object.freeze({
-  Brush: 'beauty/tools/brush',
-  Shampoo: 'beauty/hair/shampoo',
-  Conditioner: 'beauty/hair/conditioner',
-  'Hair Styling': 'beauty/hair/styling',
-  'Hair Care': 'beauty/hair',
-  Sunscreen: 'beauty/skincare/sun/sunscreen',
-  Fragrance: 'beauty/fragrance/perfume',
-  Cleanser: 'beauty/skincare/cleanse/cleanser',
-  Toner: 'beauty/skincare/tone/toner',
-  Treatment: 'beauty/skincare/treat/treatment',
-  Serum: 'beauty/skincare/treat/serum',
-  Concealer: 'beauty/makeup/face/concealer',
-  Foundation: 'beauty/makeup/face/foundation',
-  Powder: 'beauty/makeup/face/powder',
-  Highlighter: 'beauty/makeup/cheek/highlighter',
-  Blush: 'beauty/makeup/cheek/blush',
-  Bronzer: 'beauty/makeup/cheek/bronzer',
-  Eyeshadow: 'beauty/makeup/eye/eyeshadow',
-  Mascara: 'beauty/makeup/eye/mascara',
-  'Brow Pencil': 'beauty/makeup/eye/brow',
-  'Lip Balm': 'beauty/makeup/lip/balm',
-  Lipstick: 'beauty/makeup/lip/lipstick',
-  Moisturizer: 'beauty/skincare/moisturize/cream',
+  Brush: BEAUTY_TAXONOMY.brush,
+  Shampoo: BEAUTY_TAXONOMY.shampoo,
+  Conditioner: BEAUTY_TAXONOMY.conditioner,
+  'Hair Styling': BEAUTY_TAXONOMY.hair_styling,
+  'Hair Care': 'beauty/haircare',
+  Sunscreen: BEAUTY_TAXONOMY.sunscreen,
+  Fragrance: BEAUTY_TAXONOMY.fragrance,
+  Cleanser: BEAUTY_TAXONOMY.cleanser,
+  Toner: BEAUTY_TAXONOMY.toner,
+  Treatment: BEAUTY_TAXONOMY.treatment,
+  Serum: BEAUTY_TAXONOMY.serum,
+  Concealer: BEAUTY_TAXONOMY.concealer,
+  Foundation: BEAUTY_TAXONOMY.foundation,
+  Powder: BEAUTY_TAXONOMY.powder,
+  Highlighter: BEAUTY_TAXONOMY.highlighter,
+  Blush: BEAUTY_TAXONOMY.blush,
+  Bronzer: BEAUTY_TAXONOMY.bronzer,
+  Eyeshadow: BEAUTY_TAXONOMY.eyeshadow,
+  Mascara: BEAUTY_TAXONOMY.mascara,
+  'Brow Pencil': BEAUTY_TAXONOMY.brow,
+  'Lip Balm': BEAUTY_TAXONOMY.lip_balm,
+  Lipstick: BEAUTY_TAXONOMY.lipstick,
+  Moisturizer: BEAUTY_TAXONOMY.moisturizer,
 });
 const BEAUTY_CATEGORY_PATH_ALIAS_PATTERNS = Object.freeze([
   ['beauty/makeup/lip/lipstick', /\b(lipsticks?|lip\s*tints?|lip\s*colors?|liquid\s*lips?|lip\s*gloss(?:es)?)\b|口红|口紅|唇膏|唇釉|唇彩/i],
