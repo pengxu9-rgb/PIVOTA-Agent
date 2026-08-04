@@ -20,6 +20,11 @@ on:
         required: true
         default: "0"
         type: string
+      max_expiring_14d_pct:
+        description: "Fail when more than this percentage of serving edges expires within 14 days"
+        required: true
+        default: "30"
+        type: string
 
 jobs:
   serving-guard-audit:
@@ -32,6 +37,7 @@ jobs:
       MARKET_INPUT: ${{ github.event.inputs.market }}
       MAX_SUPPRESSED_ROWS_INPUT: ${{ github.event.inputs.max_suppressed_rows }}
       MAX_SUPPRESSED_PCT_INPUT: ${{ github.event.inputs.max_suppressed_pct }}
+      MAX_EXPIRING_14D_PCT_INPUT: ${{ github.event.inputs.max_expiring_14d_pct }}
       CRITICAL_REASONS: ai_approved_dupe_quarantined,candidate_ref_unresolvable_nested_product_prefix,anchor_ref_unresolvable_nested_product_prefix
     steps:
       - name: Checkout
@@ -99,6 +105,22 @@ jobs:
             console.log(JSON.stringify(gate, null, 2));
             if (!gate.ok) process.exit(1);
           " "${report}" "${max_suppressed_rows}" "${max_suppressed_pct}" "${CRITICAL_REASONS}" "${out_dir}/serving_guard_gate.json"
+
+      - name: Serving expiry risk alarm
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          out_dir="reports/workflow_ops/relationship-graph-serving-guard-audit/${{ github.run_id }}"
+          mkdir -p "${out_dir}"
+          max_expiring_14d_pct="${MAX_EXPIRING_14D_PCT_INPUT:-30}"
+
+          npm run relgraph:serving-status -- \
+            --all-markets \
+            --json \
+            --max-expiring-14d-pct "${max_expiring_14d_pct}" \
+            --fail-on-expiry-risk \
+            | tee "${out_dir}/serving_status_expiry.json"
 
       - name: Upload artifact
         if: always()

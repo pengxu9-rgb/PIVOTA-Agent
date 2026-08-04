@@ -80,6 +80,10 @@ function usage() {
     'Optional gates:',
     '  --max-expiring-7d N',
     '  --max-ai-approved-pct N',
+    '  --max-expiring-14d-pct N   fail when more than N% of serving rows expire within 14 days',
+    '',
+    '--fail-on-expiry-risk exits non-zero when the expiring-14d percentage gate fails,',
+    'independent of --fail-on-readiness. Use it as a loud renewal-outage alarm.',
   ].join('\n');
 }
 
@@ -89,6 +93,7 @@ function parseArgs(argv = process.argv.slice(2)) {
   const market = allMarkets ? '' : normalizeString(argValue(argv, 'market', DEFAULT_MARKET), 24).toUpperCase();
   const maxExpiring7dInput = normalizeString(argValue(argv, 'max-expiring-7d'), 32);
   const maxAiApprovedPctInput = normalizeString(argValue(argv, 'max-ai-approved-pct'), 32);
+  const maxExpiring14dPctInput = normalizeString(argValue(argv, 'max-expiring-14d-pct'), 32);
 
   return {
     market: market || (allMarkets ? '' : DEFAULT_MARKET),
@@ -119,8 +124,12 @@ function parseArgs(argv = process.argv.slice(2)) {
       maxAiApprovedPct: maxAiApprovedPctInput
         ? parseNumber(maxAiApprovedPctInput, null, { min: 0, max: 100 })
         : null,
+      maxExpiring14dPct: maxExpiring14dPctInput
+        ? parseNumber(maxExpiring14dPctInput, null, { min: 0, max: 100 })
+        : null,
     },
     failOnReadiness: hasFlag(argv, 'fail-on-readiness'),
+    failOnExpiryRisk: hasFlag(argv, 'fail-on-expiry-risk'),
     json: hasFlag(argv, 'json'),
   };
 }
@@ -286,6 +295,8 @@ function summarizeServingStatusRows(rows = [], {
   const approvedAlternativeAnchorCount = alternativeAnchors.size;
   const approvedAlternativeAnchorPct = pct(approvedAlternativeAnchorCount, anchorCount);
   const aiApprovedPct = pct(aiApprovedRows, totalRows);
+  const expiring14dPct = pct(expiry.expiring_14d, totalRows);
+  expiry.expiring_14d_pct = expiring14dPct;
   const safeThresholds = {
     ...DEFAULT_THRESHOLDS,
     ...(thresholds && typeof thresholds === 'object' ? thresholds : {}),
@@ -311,6 +322,7 @@ function summarizeServingStatusRows(rows = [], {
     ),
     expiring_7d: maxGate('expiring_7d', expiry.expiring_7d, safeThresholds.maxExpiring7d, 'count'),
     ai_approved_pct: maxGate('ai_approved_pct', aiApprovedPct, safeThresholds.maxAiApprovedPct, 'percent'),
+    expiring_14d_pct: maxGate('expiring_14d_pct', expiring14dPct, safeThresholds.maxExpiring14dPct, 'percent'),
   };
   const ok = Object.values(checks).every((gate) => gate.status !== 'fail');
   const topAnchorLimit = parseInteger(topAnchors, DEFAULT_TOP_ANCHORS, { min: 0, max: MAX_TOP_ANCHORS });
@@ -368,6 +380,7 @@ function formatServingStatusText(report = {}) {
   lines.push([
     `expiring_7d=${compactValue(expiry.expiring_7d)}`,
     `expiring_14d=${compactValue(expiry.expiring_14d)}`,
+    `expiring_14d_pct=${compactValue(expiry.expiring_14d_pct)}`,
     `expiring_30d=${compactValue(expiry.expiring_30d)}`,
     `min_expires_at=${compactValue(expiry.min_expires_at)}`,
   ].join(' '));
@@ -426,6 +439,7 @@ async function main(argv = process.argv.slice(2)) {
     process.stdout.write(formatServingStatusText(report));
   }
   if (options.failOnReadiness && !report.ok) process.exitCode = 1;
+  if (options.failOnExpiryRisk && report.checks?.expiring_14d_pct?.status === 'fail') process.exitCode = 1;
   return report;
 }
 

@@ -21,6 +21,7 @@ Default behavior:
 - Uses selector mode against recently updated `catalog_products` and
   `external_product_seeds`.
 - Dry-runs graph build/review by default.
+- Applies non-LLM renewal of expiring `ai_approved` rows by default (see below).
 - Keeps the production gates from `scripts/run-relationship-graph-sync-routine.js`:
   DB lock, stale lock recovery, serving suppression thresholds, and critical
   reason gating.
@@ -41,6 +42,24 @@ Useful tuning variables:
 - `RELGRAPH_SYNC_RUN_LEDGER_ENABLED=true`
 - `RELGRAPH_SYNC_RUN_TRIGGER=railway_cron`
 - `RELGRAPH_SYNC_RUN_LEDGER_FAIL_CLOSED=false`
+
+## AI-Approval Renewal
+
+`ai_approved` rows expire 45 days after review and nothing else renews them —
+without renewal the whole ai_approved serving set falls off
+`product_relationship_edges` in one cliff (this emptied `get_alternatives` on
+2026-07-17..26). The cron therefore runs
+`scripts/renew-relationship-ai-approved-labels.js` as its first step and
+APPLIES it by default: rows expiring within 14 days (or already expired) that
+still pass the serving guard and still resolve to an active external seed /
+catalog product get `last_verified_at`/`expires_at` extended. `label_state` is
+never modified and `human_approved` rows are never touched. Renewal is not an
+LLM call and is not gated behind `RELGRAPH_SYNC_ALLOW_WRITES` (that gate
+protects LLM-driven build/review label-state writes).
+
+- `RELGRAPH_SYNC_APPLY_RENEWAL=false` demotes renewal to dry-run.
+- `RELGRAPH_SYNC_SKIP_RENEWAL=true` skips the step entirely.
+- `RELGRAPH_SYNC_RENEWAL_WINDOW_DAYS=14` tunes the lookahead.
 
 Write mode stays disabled unless all of these are set deliberately:
 

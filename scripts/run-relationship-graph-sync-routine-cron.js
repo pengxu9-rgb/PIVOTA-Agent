@@ -99,6 +99,14 @@ function buildCronArgs(env = process.env, { now = new Date() } = {}) {
     }
   }
 
+  // ai_approved renewal is a non-LLM, label_state-preserving write that only
+  // extends expiry on rows that still verify. It applies by default on schedule
+  // so the 45-day freshness cliff cannot empty serving again; it is NOT gated
+  // behind RELGRAPH_SYNC_ALLOW_WRITES, which protects LLM-driven build/review
+  // label-state writes.
+  const skipRenewal = parseBooleanEnv(env.RELGRAPH_SYNC_SKIP_RENEWAL, false);
+  const applyRenewal = !skipRenewal && parseBooleanEnv(env.RELGRAPH_SYNC_APPLY_RENEWAL, true);
+
   const outDir = normalizeString(env.RELGRAPH_SYNC_OUT_DIR, 2000)
     || path.join('/tmp', 'relationship-graph-sync-routine', `relgraph_sync_cron_${dateStamp(now)}`);
   const allowEmpty = parseBooleanEnv(env.RELGRAPH_SYNC_ALLOW_EMPTY, true);
@@ -137,6 +145,7 @@ function buildCronArgs(env = process.env, { now = new Date() } = {}) {
   pushArg(args, 'max-serving-suppressed-pct', env.RELGRAPH_SYNC_MAX_SERVING_SUPPRESSED_PCT);
   pushArg(args, 'max-serving-suppressed-rows', env.RELGRAPH_SYNC_MAX_SERVING_SUPPRESSED_ROWS);
   pushArg(args, 'fail-on-serving-suppression-reasons', env.RELGRAPH_SYNC_FAIL_ON_SERVING_SUPPRESSION_REASONS);
+  pushArg(args, 'renewal-window-days', env.RELGRAPH_SYNC_RENEWAL_WINDOW_DAYS);
   pushArg(args, 'lock-stale-after-minutes', env.RELGRAPH_SYNC_LOCK_STALE_AFTER_MINUTES);
   pushArg(args, 'step-timeout-minutes', env.RELGRAPH_SYNC_STEP_TIMEOUT_MINUTES);
   pushArg(args, 'step-timeout-ms', env.RELGRAPH_SYNC_STEP_TIMEOUT_MS);
@@ -163,6 +172,8 @@ function buildCronArgs(env = process.env, { now = new Date() } = {}) {
   pushFlag(args, 'skip-validation', parseBooleanEnv(env.RELGRAPH_SYNC_SKIP_VALIDATION, false));
   pushFlag(args, 'skip-serving-audit', parseBooleanEnv(env.RELGRAPH_SYNC_SKIP_SERVING_AUDIT, false));
   pushFlag(args, 'skip-pba-sig-refresh', parseBooleanEnv(env.RELGRAPH_SYNC_SKIP_PBA_SIG_REFRESH, false));
+  pushFlag(args, 'skip-renewal', skipRenewal);
+  pushFlag(args, 'apply-renewal', applyRenewal);
   pushFlag(args, 'apply-build', applyBuild);
   pushFlag(args, 'apply-review', applyReview);
   pushFlag(args, 'record-run-ledger', recordRunLedger);
@@ -170,7 +181,7 @@ function buildCronArgs(env = process.env, { now = new Date() } = {}) {
     pushArg(args, 'run-trigger', runTrigger);
     pushFlag(args, 'run-ledger-fail-closed', runLedgerFailClosed);
   }
-  if (!dryRun) {
+  if (!dryRun || applyRenewal) {
     args.push('--confirm', WRAPPER_CONFIRM_TOKEN);
   }
 
@@ -181,6 +192,8 @@ function buildCronArgs(env = process.env, { now = new Date() } = {}) {
     selectUpdatedSince,
     outDir,
     dryRun,
+    applyRenewal,
+    skipRenewal,
     recordRunLedger,
     runTrigger: recordRunLedger ? runTrigger : '',
     runLedgerFailClosed: recordRunLedger && runLedgerFailClosed,
@@ -204,6 +217,7 @@ async function runCron({
     ok: true,
     skipped: !config.enabled,
     dry_run: config.dryRun,
+    apply_renewal: Boolean(config.applyRenewal),
     cutoff: config.cutoff || null,
     select_updated_since: config.selectUpdatedSince || null,
     out_dir: config.outDir || null,

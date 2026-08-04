@@ -45,6 +45,9 @@ describe('report-relationship-graph-serving-status', () => {
       '12',
       '--max-ai-approved-pct',
       '60',
+      '--max-expiring-14d-pct',
+      '40',
+      '--fail-on-expiry-risk',
       '--json',
     ]);
 
@@ -53,6 +56,7 @@ describe('report-relationship-graph-serving-status', () => {
       limit: 500,
       topAnchors: 5,
       failOnReadiness: false,
+      failOnExpiryRisk: true,
       json: true,
     }));
     expect(options.thresholds).toEqual(expect.objectContaining({
@@ -61,7 +65,29 @@ describe('report-relationship-graph-serving-status', () => {
       minNicheSpecialistCount: 100,
       maxExpiring7d: 12,
       maxAiApprovedPct: 60,
+      maxExpiring14dPct: 40,
     }));
+  });
+
+  test('expiring-14d percentage gate flags a renewal outage cliff', () => {
+    const cliff = summarizeServingStatusRows([
+      row({ id: 'e1', expires_at: '2026-06-15T12:00:00.000Z' }),
+      row({ id: 'e2', expires_at: '2026-06-18T12:00:00.000Z' }),
+      row({ id: 'safe', expires_at: '2026-07-20T12:00:00.000Z' }),
+    ], {
+      generatedAt: NOW,
+      thresholds: { maxExpiring14dPct: 30 },
+    });
+
+    expect(cliff.expiry_windows.expiring_14d).toBe(2);
+    expect(cliff.expiry_windows.expiring_14d_pct).toBe(66.67);
+    expect(cliff.checks.expiring_14d_pct.status).toBe('fail');
+    expect(cliff.ok).toBe(false);
+
+    const inactive = summarizeServingStatusRows([
+      row({ id: 'e1', expires_at: '2026-06-15T12:00:00.000Z' }),
+    ], { generatedAt: NOW });
+    expect(inactive.checks.expiring_14d_pct.status).toBe('not_applicable');
   });
 
   test('buildServingStatusSql uses the runtime active/fresh serving predicates', () => {
