@@ -133,7 +133,7 @@ async function loadExpiringAiApprovedRows({ queryFn = query, windowDays = DEFAUL
              candidate_snapshot, relation_type, display_label, market, vertical,
              category_taxonomy, use_case, label_state, score_total, score_breakdown,
              price_evidence, source_refs, evidence_grade, why_candidate, tradeoffs,
-             watchouts, provenance, created_at, last_verified_at, expires_at
+             watchouts, provenance, last_verified_at, expires_at
       FROM relationship_candidate_labels
       WHERE ${where.join('\n        AND ')}
       ORDER BY expires_at ASC, id ASC${limitSql}
@@ -278,7 +278,9 @@ async function applyRenewals(renewableIds, {
     // re_verify is built row-side so first_verified_at preserves the ORIGINAL
     // AI-verdict date (prior first_verified_at, else the pre-update
     // last_verified_at) before last_verified_at is overwritten — losing it
-    // would make the max-age cap unenforceable forever.
+    // would make the max-age cap unenforceable forever. No synthetic terminal
+    // fallback: a row with neither value keeps first_verified_at as JSON null
+    // (honestly unknown) rather than acquiring a fabricated verdict date.
     const res = await queryFn(
       `
         UPDATE relationship_candidate_labels
@@ -294,8 +296,7 @@ async function applyRenewals(renewableIds, {
               'operator', $5::text,
               'first_verified_at', COALESCE(
                 provenance #>> '{re_verify,first_verified_at}',
-                to_char(last_verified_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
-                $3::text
+                to_char(last_verified_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
               )
             ),
             true
