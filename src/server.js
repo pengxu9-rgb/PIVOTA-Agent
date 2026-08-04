@@ -34765,9 +34765,28 @@ function shouldCaptureAcpRawBody(url) {
   return u.startsWith(`${COMMERCE_ACP_BASE_PATH}/`) || pathOnly === '/ucp/order-webhook';
 }
 
+// Is this the ACP delegate_payment door? That request body carries raw cardholder data (FPAN + CVC) for a
+// door Pivota permanently refuses without reading (delegatedPaymentRefusal.js). Denying the rawBody stash is
+// not the strongest form of that promise — the JSON parser would still materialize the PAN on `req.body`.
+// So the parser SKIPS this path entirely (express.json's `type` predicate): the bytes are never parsed, never
+// land on the request object, and the refusal answers from a constant. The route stays registered in the LATE
+// block, so the caller-identity access log still records WHO knocked on a cardholder-data door.
+function isAcpDelegatePaymentRequest(req) {
+  const u = req?.originalUrl || req?.url || '';
+  const pathOnly = String(u).split('?')[0].toLowerCase().replace(/\/+$/, '');
+  return pathOnly === `${COMMERCE_ACP_BASE_PATH}${ACP_DELEGATE_PAYMENT_SUBPATH}`;
+}
+
 // Body parser with error handling
 app.use(express.json({
   limit: '10mb',
+  // express.json's default media-type match (`application/json`, parameters ignored), spelled inline so this
+  // does not depend on body-parser's transitive `type-is` — EXCEPT the cardholder-data door, never parsed.
+  type: (req) => {
+    if (isAcpDelegatePaymentRequest(req)) return false;
+    const ct = String(req.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
+    return ct === 'application/json';
+  },
   verify: (req, res, buf, encoding) => {
     try {
       JSON.parse(buf);

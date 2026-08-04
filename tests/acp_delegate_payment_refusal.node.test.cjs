@@ -158,3 +158,33 @@ test('GET on the delegate_payment path is not a door (only the POST refusal is m
   const res = await supertest(app).get('/acp/agentic_commerce/delegate_payment');
   assert.notEqual(res.status, 501);
 });
+
+// --- the parser never even MATERIALIZES the cardholder body (review follow-up) ---
+test('the cardholder-data door is skipped by the JSON parser entirely', async () => {
+  // Denying the rawBody stash was not the strongest form of "we never read it":
+  // express.json would still parse the PAN onto req.body. The parser's `type`
+  // predicate now skips this exact path, so the bytes are never parsed at all —
+  // while the route stays in the LATE block so the caller-identity access log
+  // still records who knocked on a cardholder-data door.
+  //
+  // The proof: a body that is NOT valid JSON would be rejected 400 by
+  // express.json if the parser claimed this path. It reaches the refusal instead.
+  const res = await supertest(app)
+    .post('/acp/agentic_commerce/delegate_payment')
+    .set('content-type', 'application/json')
+    .send(`{"payment_method": {"number": "${PAN}", NOT VALID JSON`);
+  assert.equal(res.status, 501, 'malformed JSON must still reach the refusal — proof the parser skipped it');
+  assert.equal(res.body.code, 'OPERATION_NOT_ALLOWED');
+  assert.ok(!JSON.stringify(res.body).includes(PAN), 'the PAN must not echo back');
+});
+
+test('a normal JSON door is still parsed (the skip is path-scoped)', async () => {
+  // The `type` predicate must not have disabled JSON parsing globally: malformed
+  // JSON on any OTHER path is still rejected before routing.
+  const res = await supertest(app)
+    .post('/acp/checkout_sessions')
+    .set('content-type', 'application/json')
+    .send('{ NOT VALID JSON');
+  assert.notEqual(res.status, 501);
+  assert.ok(res.status === 400 || res.status === 404, `expected parser/route rejection, got ${res.status}`);
+});
