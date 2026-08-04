@@ -199,8 +199,10 @@ test('fail-closed: strict rejects a short acpSigningSecret and a custom now()', 
 
 // --- end to end through both doors -----------------------------------------------------------------------
 
-async function mintBuyerToken(privateKey, sub = 'buyer-1') {
-  return new SignJWT({}).setProtectedHeader({ alg: 'ES256', kid: 'k1' }).setIssuer(ISS).setAudience(AUD).setSubject(sub).setIssuedAt().setExpirationTime('1h').sign(privateKey);
+// `claims` carries the ATTESTED buyer fields (OIDC `email`/`email_verified`). They never touch user_ref
+// derivation (still iss|sub) — they are what the ACP door reads so a body-supplied email cannot override.
+async function mintBuyerToken(privateKey, sub = 'buyer-1', claims = { email: `${sub}@example.com`, email_verified: true }) {
+  return new SignJWT({ ...claims }).setProtectedHeader({ alg: 'ES256', kid: 'k1' }).setIssuer(ISS).setAudience(AUD).setSubject(sub).setIssuedAt().setExpirationTime('1h').sign(privateKey);
 }
 async function mintGrant(privateKey, checkout_session_id, { maxAmount = 50000 } = {}) {
   // exp is anchored to FIXED_NOW (the binding verifier's clock) so the allowance isn't seen as expired; iat is
@@ -234,7 +236,9 @@ test('E2E ACP door: signed request + verified buyer token → checkout completes
     const raw = JSON.stringify(body); const ts = String(FIXED_NOW);
     return { headers: { authorization: 'Bearer platform', timestamp: ts, signature: sign(raw, ts), 'idempotency-key': idem, 'x-buyer-authorization': `Bearer ${buyerToken}` }, rawBody: raw, body, params: id ? { checkout_session_id: id } : {} };
   };
-  const created = await wired.acp.createCheckoutSession(req({ merchant_id: MERCHANT, items: [{ product_id: 'p1', quantity: 1 }] }, null, 'ac-create-1'));
+  // No `buyer` in the body: the buyer email is ATTESTED by the verified token (mintBuyerToken sets an
+  // `email` claim), which is the precedence this door is built around.
+  const created = await wired.acp.createCheckoutSession(req({ merchant_id: MERCHANT, items: [{ product_id: 'p1', variant_id: 'v1', quantity: 1 }] }, null, 'ac-create-1'));
   assert.equal(created.status, 201, JSON.stringify(created.body));
   assert.equal(created.body.totals.total, 11300);
   const grant = await mintGrant(privateKey, created.body.id);
@@ -388,6 +392,7 @@ test('identity: the same verified buyer token yields a stable user_ref across bo
   const token = await mintBuyerToken(privateKey, 'buyer-shared');
   const acpRef = await wired.resolveUserRef({ headers: { 'x-buyer-authorization': `Bearer ${token}` } });
   const direct = (await wired.verifyUserToken(token)).user_ref;
-  assert.ok(acpRef?.startsWith('usr_'));
-  assert.equal(acpRef, direct);
+  // resolveUserRef now returns the buyer-IDENTITY object; user_ref itself is unchanged.
+  assert.ok(acpRef?.user_ref?.startsWith('usr_'));
+  assert.equal(acpRef.user_ref, direct);
 });

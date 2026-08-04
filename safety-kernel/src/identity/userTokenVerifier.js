@@ -13,6 +13,10 @@
 // Usage (IdP-agnostic):
 //   const verify = createUserTokenVerifier({ issuers: [{ iss, aud, jwksUri, algs }] });
 //   const { user_ref, claims } = await verify(token);   // throws UserTokenError on any failure
+//
+// The result ALSO carries `attested_email` / `attested_name` when the verified claims contain them
+// (see attestedBuyerFromClaims). Those are a READ of claims that were already returned in `claims` —
+// nothing about what the verifier ACCEPTS, or how `user_ref` is DERIVED, depends on them.
 
 import { jwtVerify, createRemoteJWKSet, createLocalJWKSet, decodeJwt } from 'jose';
 import { createHash } from 'node:crypto';
@@ -40,6 +44,35 @@ export function deriveUserRefFromClaims(iss, sub) {
   }
   const digest = createHash('sha256').update(`${iss}|${sub}`, 'utf8').digest('base64url').slice(0, 32);
   return `usr_${digest}`;
+}
+
+// Conservative address shape. Deliberately NOT an RFC-5322 parser: this only has to reject the shapes a
+// downstream order/receipt system cannot use, and anything it lets through the backend validates again.
+const EMAIL_SHAPE = /^[^\s@,;<>"'\\]+@[^\s@,;<>"'\\]+\.[^\s@,;<>"'\\]{2,}$/;
+
+const trimmed = (v) => (typeof v === 'string' ? v.trim() : '');
+
+/**
+ * ATTESTED buyer identity fields, read from claims a verified token already carried.
+ *
+ * `email` is taken ONLY when the IdP has not explicitly disclaimed it: an OIDC `email_verified: false`
+ * means "the issuer is asserting an address it has NOT confirmed", which is not an attestation, so it is
+ * treated as ABSENT (a caller-supplied address may then be used instead). A missing `email_verified` is
+ * accepted — many issuers omit it — because the claim still comes from inside a signature-verified token,
+ * which is strictly stronger than a value typed into a request body by the calling agent.
+ *
+ * Pure and side-effect free. It NEVER contributes to `user_ref` (ownership stays `iss|sub`), and it never
+ * widens what the verifier accepts — a token without these claims verifies exactly as it does today.
+ */
+export function attestedBuyerFromClaims(claims) {
+  if (claims == null || typeof claims !== 'object' || Array.isArray(claims)) return {};
+  const out = {};
+  const email = trimmed(claims.email);
+  if (email && claims.email_verified !== false && EMAIL_SHAPE.test(email)) out.attested_email = email;
+  const name = trimmed(claims.name)
+    || [trimmed(claims.given_name), trimmed(claims.family_name)].filter(Boolean).join(' ');
+  if (name) out.attested_name = name;
+  return out;
 }
 
 /**
@@ -153,6 +186,8 @@ export function createUserTokenVerifier(config = {}) {
     }
 
     const user_ref = deriveUserRefFromClaims(payload.iss, payload.sub);
-    return { user_ref, claims: payload };
+    // Additive: `claims` already carried these; surfacing them named saves every caller from re-deriving
+    // the "is this attested?" rule (and getting `email_verified:false` wrong) on its own.
+    return { user_ref, claims: payload, ...attestedBuyerFromClaims(payload) };
   };
 }

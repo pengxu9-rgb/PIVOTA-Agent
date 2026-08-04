@@ -281,8 +281,12 @@ export function composeProductionCommerce(config = {}) {
   const resolveUserRef = async (req) => {
     const token = extractBuyerToken(req);
     if (!nonEmpty(token)) return undefined; // adapter fails closed (USER_AUTH_REQUIRED) for a user-scoped op
-    try { return (await verifyUserToken(token)).user_ref; }
-    catch (e) { log.warn?.('acp_buyer_token_invalid', { code: e?.code }); return undefined; }
+    try {
+      // Return the buyer-identity OBJECT, not the bare user_ref: the ACP door needs the ATTESTED email so a
+      // caller-asserted `buyer.email` can never override it. user_ref derivation is untouched (iss|sub).
+      const { user_ref, attested_email, attested_name } = await verifyUserToken(token);
+      return { user_ref, customer_email: attested_email, customer_name: attested_name };
+    } catch (e) { log.warn?.('acp_buyer_token_invalid', { code: e?.code }); return undefined; }
   };
 
   // MCP: identity from the server-verified session context (the OAuth/session layer attaches claims/user_ref).

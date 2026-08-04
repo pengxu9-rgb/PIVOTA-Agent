@@ -31259,7 +31259,14 @@ async function getCommerceAcpRestAdapter() {
         const token = extractAcpBuyerToken(req);
         if (!token) return undefined;
         try {
-          return (await verifyUserToken(token)).user_ref;
+          // Buyer-identity OBJECT, not the bare user_ref. The ACP door needs the ATTESTED buyer email so
+          // that a caller-asserted `buyer.email` in the request body can only ever FILL a gap and can never
+          // override what the verified credential asserted (PR-E / P1). user_ref derivation is unchanged —
+          // still `iss|sub` via deriveUserRefFromClaims — and nothing about what the verifier ACCEPTS moved.
+          // NOTE: `customer_email` is buyer PII. It is deliberately never logged here or anywhere on this
+          // path; the warn below carries only an error code.
+          const { user_ref, attested_email, attested_name } = await verifyUserToken(token);
+          return { user_ref, customer_email: attested_email, customer_name: attested_name };
         } catch (err) {
           logger.warn({ code: err?.code || 'USER_TOKEN_INVALID' }, 'acp buyer token invalid');
           return undefined;

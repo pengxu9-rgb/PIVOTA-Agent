@@ -54,7 +54,10 @@ function req({ body = {}, id, buyer = 'buyer_1', idem = 'idem-acp-00001', ts = F
   if (buyer) headers['x-test-buyer'] = buyer;
   return { headers, rawBody, body, params: id ? { checkout_session_id: id } : {} };
 }
-const CART = { merchant_id: 'merch_A', items: [{ product_id: 'p1', quantity: 1 }] };
+// PR-E intake: every ACP item now needs a REAL variant_id (never synthesised from product_id), and a
+// checkout session needs a buyer email. `resolveUserRef` in setup() returns a bare STRING (no attested
+// claims), so this fixture also pins the BODY-ONLY email path and the string-return back-compat shape.
+const CART = { merchant_id: 'merch_A', buyer: { email: 'buyer1@example.com' }, items: [{ product_id: 'p1', variant_id: 'v1', quantity: 1 }] };
 
 async function open(adapter, buyer = 'buyer_1') {
   const r = await adapter.createCheckoutSession(req({ body: CART, idem: `idem-open-${buyer}`, buyer }));
@@ -109,14 +112,14 @@ test('create → ACP checkout_session with id, totals, status; session bound to 
 
 test('amount injection: a caller-set total/price in the body never reaches pricing (allowlist)', async () => {
   const { adapter, upstreamCalls } = setup();
-  await adapter.createCheckoutSession(req({ body: { ...CART, total: 1, items: [{ product_id: 'p1', quantity: 1, price: 1, amount: 1 }] } }));
+  await adapter.createCheckoutSession(req({ body: { ...CART, total: 1, items: [{ product_id: 'p1', variant_id: 'v1', quantity: 1, price: 1, amount: 1 }] } }));
   const pq = upstreamCalls.find((c) => c.op === 'preview_quote');
   assert.ok(pq, 'preview_quote called');
   const q = pq.payload.quote;
   assert.equal(q.total, undefined);
   assert.equal(q.items[0].price, undefined);
   assert.equal(q.items[0].amount, undefined);
-  assert.deepEqual(q.items[0], { product_id: 'p1', quantity: 1 });
+  assert.deepEqual(q.items[0], { product_id: 'p1', variant_id: 'v1', quantity: 1 });
 });
 
 test('full flow: create → complete charges once; ACP order returned; verifier saw the bound total', async () => {
@@ -277,7 +280,7 @@ test('P2 validation: empty items / non-object body are rejected before pricing',
   const empty = await adapter.createCheckoutSession(req({ body: { merchant_id: 'merch_A', items: [] }, idem: 'idem-empty-1' }));
   assert.equal(empty.status, 400);
   assert.equal(empty.body.code, 'QUOTE_REQUIRED');
-  const badQty = await adapter.createCheckoutSession(req({ body: { merchant_id: 'merch_A', items: [{ product_id: 'p1', quantity: 0 }] }, idem: 'idem-bq-1' }));
+  const badQty = await adapter.createCheckoutSession(req({ body: { ...CART, items: [{ product_id: 'p1', variant_id: 'v1', quantity: 0 }] }, idem: 'idem-bq-1' }));
   assert.equal(badQty.status, 400);
   // non-object signed body
   const ts = String(FIXED_NOW);

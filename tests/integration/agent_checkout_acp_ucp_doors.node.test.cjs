@@ -163,7 +163,10 @@ describe('Agent checkout ACP REST + UCP discovery doors', () => {
           { iss: 'https://buyer.test.local', aud: BUYER_AUD, jwks: { keys: [privForBuyer.pub] }, algs: ['ES256'] },
         ]),
       });
-      const buyerJwt = await new SignJWT({})
+      // `email` is an ATTESTED claim: it satisfies the door's buyer-email intake (PR-E / P1) without the
+      // request body asserting an identity, which is the precedence the ACP door is built around. It does
+      // NOT participate in user_ref derivation (still iss|sub).
+      const buyerJwt = await new SignJWT({ email: 'buyer-123@example.com', email_verified: true })
         .setProtectedHeader({ alg: 'ES256', kid: 'buyer-k2' })
         .setIssuer('https://buyer.test.local')
         .setAudience(BUYER_AUD)
@@ -172,7 +175,9 @@ describe('Agent checkout ACP REST + UCP discovery doors', () => {
         .setExpirationTime('10m')
         .sign(privForBuyer.privateKey);
 
-      const rawBody = JSON.stringify({ items: [{ product_id: 'p1', quantity: 1 }], merchant_id: 'm1' });
+      // A REAL variant_id: the door refuses an item whose variant_id the shared quote-body builder would
+      // otherwise synthesise from its product_id.
+      const rawBody = JSON.stringify({ items: [{ product_id: 'p1', variant_id: 'v1', quantity: 1 }], merchant_id: 'm1' });
       const timestamp = String(Date.now());
       const signature = crypto.createHmac('sha256', ACP_SECRET).update(`${timestamp}.${rawBody}`).digest('hex');
 

@@ -276,7 +276,7 @@ test('ACP REST end-to-end: a 402 on a bad delegated token leaves the checkout se
     if (authz?.token !== 'tok_good') throw new PivotaCommerceError('CONFIRMATION_INVALID', { reason: 'bad_grant' });
     return attest(bound);
   });
-  const created = await adapter.createCheckoutSession(acpReq({ body: { merchant_id: 'merch_A', items: [{ product_id: 'p1', quantity: 1 }] }, idem: 'idem-acp-open-1' }));
+  const created = await adapter.createCheckoutSession(acpReq({ body: { merchant_id: 'merch_A', buyer: { email: 'vfo@example.com' }, items: [{ product_id: 'p1', variant_id: 'v1', quantity: 1 }] }, idem: 'idem-acp-open-1' }));
   assert.equal(created.status, 201, JSON.stringify(created.body));
   const id = created.body.id;
 

@@ -72,7 +72,9 @@ export function verifyAcpSignature({ signature, timestamp, rawBody, secret, maxS
  *   sessionStore: { get, set },              // KV: acpSid -> { quote_id, order_id, user_ref }
  *   signingSecret?: string,                  // for the built-in HMAC verifier
  *   authenticate?: (req) => Promise<void>,   // custom auth (overrides built-in); MUST throw on failure
- *   resolveUserRef: (req) => Promise<string|undefined>,  // verified per-buyer identity (NEVER from body)
+ *   resolveUserRef: (req) => Promise<string|{user_ref:string,customer_email?:string,customer_name?:string}|undefined>,
+ *                                            // verified per-buyer identity (NEVER from body). The object form
+ *                                            // carries ATTESTED buyer fields; see requireBuyer.
  *   getProducts?: (query) => Promise<Array>, // product feed source
  *   mapFeedItem?: (product) => object,       // product -> ACP feed item
  *   maxClockSkewMs?: number,
@@ -96,10 +98,24 @@ export function createAcpRestAdapter(deps = {}) {
       });
 
   // Resolve the verified buyer; checkout ops are user-scoped so a missing buyer fails closed.
+  //
+  // `resolveUserRef` may return EITHER the historical bare `user_ref` string OR a buyer-identity object
+  // `{ user_ref, customer_email?, customer_name? }` carrying fields ATTESTED by the buyer credential the
+  // integrator verified (see identity/userTokenVerifier.js `attestedBuyerFromClaims`). Both shapes are
+  // supported so every existing wiring keeps working unchanged; the object form is what lets an attested
+  // email beat a caller-asserted one (see mapItemsToQuote). Ownership is unchanged either way: `user_ref`
+  // is still whatever the injected resolver derived, and NOTHING here reads identity from the body.
   async function requireBuyer(req) {
-    const user_ref = await resolveUserRef(req);
-    if (!nonEmpty(user_ref)) throw new PivotaCommerceError('USER_AUTH_REQUIRED', { reason: 'no_verified_buyer' });
-    return user_ref.trim();
+    const resolved = await resolveUserRef(req);
+    const identity = isPlainObject(resolved) ? resolved : { user_ref: resolved };
+    if (!nonEmpty(identity.user_ref)) throw new PivotaCommerceError('USER_AUTH_REQUIRED', { reason: 'no_verified_buyer' });
+    return {
+      user_ref: identity.user_ref.trim(),
+      // A malformed attested address is treated as ABSENT rather than fatal: it is the IdP's field, the
+      // buyer cannot fix it, and the body fallback below is then allowed to supply a usable one.
+      attested_email: normalizeEmail(identity.customer_email),
+      attested_name: nonEmpty(identity.customer_name) ? identity.customer_name.trim() : undefined,
+    };
   }
 
   // Load a session the requester OWNS (bound to their buyer at creation). A leaked/guessed id from another
@@ -137,8 +153,9 @@ export function createAcpRestAdapter(deps = {}) {
     return guard(async () => {
       await auth(req);
       const idempotency_key = requireIdempotencyKey(req);
-      const user_ref = await requireBuyer(req);
-      const quote = mapItemsToQuote(trustedBody(req)); // priced from the SIGNED bytes (validates non-empty items)
+      const buyer = await requireBuyer(req);
+      const { user_ref } = buyer;
+      const quote = mapItemsToQuote(trustedBody(req), buyer); // priced from the SIGNED bytes (validates non-empty items)
 
       // ACP-layer create idempotency (Codex P1): a replayed (buyer, key) returns the ORIGINAL session instead
       // of minting a new one — no quote/inventory-hold amplification. (Concurrent first-time creates with the
@@ -166,10 +183,14 @@ export function createAcpRestAdapter(deps = {}) {
     return guard(async () => {
       await auth(req);
       const idempotency_key = requireIdempotencyKey(req);
-      const user_ref = await requireBuyer(req);
+      const buyer = await requireBuyer(req);
+      const { user_ref } = buyer;
       const acp_session_id = pathId(req);
       const stored = await ownedSession(acp_session_id, user_ref);
-      const quote = mapItemsToQuote(trustedBody(req));
+      // An update RE-MINTS the quote snapshot (executor: create/update share previewQuote), and the snapshot
+      // is the ONLY carrier of buyer_context on this lane — so the update body must carry the buyer/address
+      // intake again, exactly as create did. Anything it omits is not "kept", it is DROPPED.
+      const quote = mapItemsToQuote(trustedBody(req), buyer);
       const ctx = { user_ref, acp_session_id };
       const session = await executor.execute('update_checkout_session', { idempotency_key, session_id: stored.quote_id, quote }, ctx);
       await sessionStore.set(acp_session_id, { ...stored, quote_id: session.session_id });
@@ -180,7 +201,7 @@ export function createAcpRestAdapter(deps = {}) {
   async function getCheckoutSession(req) {
     return guard(async () => {
       await auth(req);
-      const user_ref = await requireBuyer(req);
+      const { user_ref } = await requireBuyer(req);
       const acp_session_id = pathId(req);
       const stored = await ownedSession(acp_session_id, user_ref);
       const ctx = { user_ref, acp_session_id };
@@ -193,7 +214,7 @@ export function createAcpRestAdapter(deps = {}) {
     return guard(async () => {
       await auth(req);
       const idempotency_key = requireIdempotencyKey(req);
-      const user_ref = await requireBuyer(req);
+      const { user_ref } = await requireBuyer(req);
       const acp_session_id = pathId(req);
       const stored = await ownedSession(acp_session_id, user_ref);
       const body = trustedBody(req);
@@ -215,7 +236,7 @@ export function createAcpRestAdapter(deps = {}) {
     return guard(async () => {
       await auth(req);
       const idempotency_key = requireIdempotencyKey(req);
-      const user_ref = await requireBuyer(req);
+      const { user_ref } = await requireBuyer(req);
       const acp_session_id = pathId(req);
       const stored = await ownedSession(acp_session_id, user_ref);
       const ctx = { user_ref, acp_session_id };
@@ -295,16 +316,95 @@ const pathId = (req) => {
   return id.trim();
 };
 
+// ---- intake validation (P1-P3) ----------------------------------------------------------------------------
+//
+// Everything below refuses AT INTAKE (create/update) what the ORDER lane hard-requires, so an agent learns
+// which field is missing from the door it is talking to instead of from an opaque 400 several calls later —
+// after it has already presented a payment credential. All three refusals were verified against
+// pivota-backend origin/main `routes/agent_v2.py`, which is the lane this gateway's create_order calls:
+//
+//   - customer_email : `agent_v2.py` -> `if not customer_email: 400 INVALID_BUYER_CONTEXT`. UNCONDITIONAL.
+//   - shipping addr  : `_coerce_shipping_address` -> 400 INVALID_BUYER_CONTEXT + `missing_fields`, requiring
+//                      name, address_line1, city, postal_code, country. UNCONDITIONAL at order creation.
+//   - variant_id     : the shared `buildQuotePreviewV2Body` SYNTHESISES `variant_id = variant_id || sku ||
+//                      product_id` and DROPS any item with no product_id. That builder is shared with other
+//                      lanes and is deliberately NOT changed here — the refusal lives at this door instead.
+//
+// The refusal bodies below name FIELDS, never VALUES: a buyer email is PII and must not reach an error body
+// or a log line, so nothing here ever echoes the address it rejected.
+
+// The five fields pivota-backend `_coerce_shipping_address` requires, in its own order.
+const REQUIRED_ADDRESS_FIELDS = Object.freeze(['name', 'address_line1', 'city', 'postal_code', 'country']);
+// Conservative shape check only — the backend validates again. Deliberately DUPLICATED from
+// identity/userTokenVerifier.js rather than imported: that module pulls in `jose`, and this adapter is
+// constructed by jose-free consumers (see the mcp-server note in productionWiring.js). Two four-line regexes
+// are a smaller cost than dragging a crypto dependency into an import graph that does not need it.
+const EMAIL_SHAPE = /^[^\s@,;<>"'\\]+@[^\s@,;<>"'\\]+\.[^\s@,;<>"'\\]{2,}$/;
+
+/** Trim + shape-check an email. Returns undefined for anything unusable — NEVER echoes the input. */
+function normalizeEmail(value) {
+  if (typeof value !== 'string') return undefined;
+  const v = value.trim();
+  return v && EMAIL_SHAPE.test(v) ? v : undefined;
+}
+
+/**
+ * An intake refusal carrying a curated message + a structured `detail` block.
+ *
+ * `code` stays one of the contract-stable PivotaErrorCodes (ACP clients already branch on it); the specific,
+ * actionable fact lives in the message and in `detail`, exactly as the delegate_payment refusal does. The
+ * `acp_detail` key is an EXPLICIT opt-in read by guard() — ordinary PivotaCommerceError detail (which can
+ * carry ids and internal reasons) is still never surfaced.
+ */
+function intakeRefusal(code, reason, message, extra = {}) {
+  return new PivotaCommerceError(code, {
+    reason,
+    acp_message: message,
+    acp_detail: { reason, ...extra },
+  });
+}
+
+const BUYER_EMAIL_REQUIRED_MESSAGE = [
+  'A buyer email is required to create a checkout session.',
+  'Supply it as `buyer.email` (or `customer_email`) in the request body, or present a buyer credential whose',
+  'verified claims carry an `email`. An attested email from the buyer credential always wins; a body value is',
+  'used only when the credential carries none.',
+].join(' ');
+
+const ITEM_IDENTITY_REQUIRED_MESSAGE = [
+  'Every item must carry BOTH a `product_id` and a real `variant_id`.',
+  'A `sku_id` alone is not resolvable at this door, and a missing `variant_id` would be filled in from the',
+  '`product_id` — pricing a cart that does not exist and that order creation would reject. Re-run product',
+  'discovery to obtain the variant identifier for the exact option the buyer chose.',
+].join(' ');
+
+const ADDRESS_INCOMPLETE_MESSAGE = [
+  'The fulfillment address is incomplete. An address is optional here — a checkout session may be created',
+  'without one and the address supplied later via POST /checkout_sessions/{checkout_session_id} — but an',
+  'address that IS supplied must be complete, because order creation requires all of',
+  `${REQUIRED_ADDRESS_FIELDS.join(', ')}.`,
+  '(`name` may be given as `recipient_name`.)',
+].join(' ');
+
 // ACP items -> canonical quote request, by ALLOWLIST (a caller-set amount/total/currency never reaches pricing).
-// Requires a non-empty items array with a scalar product/SKU id and a positive safe-integer quantity each, so a
-// `{}` / `{items:[]}` body can't drive a default/zero-item quote on a loose backend (Codex P2).
-function mapItemsToQuote(body) {
+// Requires a non-empty items array with a scalar product/variant id and a positive safe-integer quantity each,
+// so a `{}` / `{items:[]}` body can't drive a default/zero-item quote on a loose backend (Codex P2).
+//
+// `buyer` is the VERIFIED identity from requireBuyer, not anything read from the body.
+function mapItemsToQuote(body, buyer = {}) {
   const b = isPlainObject(body) ? body : {};
   const rawItems = Array.isArray(b.items) ? b.items : [];
   if (rawItems.length === 0) throw new PivotaCommerceError('QUOTE_REQUIRED', { reason: 'no_items' });
   const items = rawItems.map((it) => {
     const item = pick(it, ['product_id', 'sku_id', 'variant_id', 'quantity']);
-    if (!nonEmpty(item.product_id) && !nonEmpty(item.sku_id)) throw new PivotaCommerceError('QUOTE_REQUIRED', { reason: 'item_missing_product_id' });
+    // P3. Both ids are required because the shared quote-body builder needs both: no product_id and the
+    // item is silently DROPPED from offer_refs (a `sku_id`-only cart prices as an EMPTY cart); no variant_id
+    // and one is forged from the product_id. Either way the priced cart is not the requested cart.
+    if (!nonEmpty(item.product_id) || !nonEmpty(item.variant_id)) {
+      throw intakeRefusal('QUOTE_REQUIRED', 'acp_item_identity_required', ITEM_IDENTITY_REQUIRED_MESSAGE, {
+        required_item_fields: ['product_id', 'variant_id'],
+      });
+    }
     if (!Number.isSafeInteger(item.quantity) || item.quantity < 1) throw new PivotaCommerceError('QUOTE_REQUIRED', { reason: 'item_bad_quantity' });
     return item;
   });
@@ -313,15 +413,63 @@ function mapItemsToQuote(body) {
   if (codes && codes.length) quote.discount_codes = codes;
   const addr = mapAddress(b);
   if (addr) quote.shipping_address = addr;
+
+  // P1. PRECEDENCE IS THE POINT: the attested address is read FIRST, so a body value can only ever fill a
+  // gap and can never override what the verified buyer credential asserted. The body value is not even
+  // parsed when an attested one exists, so a malformed/hostile body email is inert on that path.
+  const acpBuyer = isPlainObject(b.buyer) ? b.buyer : {};
+  const customer_email = buyer.attested_email ?? normalizeEmail(acpBuyer.email ?? b.customer_email);
+  if (!customer_email) {
+    throw intakeRefusal('QUOTE_REQUIRED', 'acp_buyer_email_required', BUYER_EMAIL_REQUIRED_MESSAGE, {
+      accepted_body_fields: ['buyer.email', 'customer_email'],
+      attested_source: 'buyer_credential_claims.email',
+      attested_wins: true,
+    });
+  }
+  // Reaches the kernel's buyer_context via kernel.js buyerContextFromQuotePayload (quote.customer_email /
+  // quote.customer_name), which is what the order lane's buyer_context is built from.
+  quote.customer_email = customer_email;
+  const customer_name = buyer.attested_name
+    ?? joinName(acpBuyer.first_name, acpBuyer.last_name)
+    ?? (nonEmpty(b.customer_name) ? b.customer_name.trim() : undefined);
+  if (customer_name) quote.customer_name = customer_name;
   return quote;
 }
 
+function joinName(first, last) {
+  const parts = [first, last].filter((p) => nonEmpty(p)).map((p) => p.trim());
+  return parts.length ? parts.join(' ') : undefined;
+}
+
+// P2. Optional-but-COMPLETE-IF-PRESENT, applied wherever an address is supplied to this door.
+//
+// Optional, because ACP permits an address-less create (an agent prices first, the buyer picks a destination
+// after) and this door HAS an update op that genuinely re-maps the address: update re-runs mapItemsToQuote
+// and the executor's create/update both go through kernel.previewQuote, minting a fresh snapshot whose
+// buyer_context carries the new address. Requiring one at create would refuse a spec-legal request that the
+// protocol expects to succeed.
+//
+// Complete-if-present, because a PARTIAL address is worse than none: it silently prices shipping/tax against
+// a destination the order lane will then reject, and the caller does not find out until completion.
+//
+// `recipient_name` is preserved (not renamed): both src/server.js buildInvokeBuyerContext and the kernel's
+// normalizeBuyerAddress already map recipient_name -> name. `name` is now also carried through, so a caller
+// using the plain ACP spelling is no longer silently stripped of the recipient.
 function mapAddress(body) {
   const a = isPlainObject(body?.fulfillment_address) ? body.fulfillment_address
     : isPlainObject(body?.shipping_address) ? body.shipping_address
     : isPlainObject(body?.address) ? body.address : null;
   if (!a) return undefined;
-  return pick(a, ['country', 'city', 'state', 'postal_code', 'address_line1', 'address_line2', 'recipient_name', 'phone']);
+  const out = pick(a, ['country', 'city', 'state', 'postal_code', 'address_line1', 'address_line2', 'name', 'recipient_name', 'phone']);
+  const effective = { ...out, name: nonEmpty(out.name) ? out.name : out.recipient_name };
+  const missing = REQUIRED_ADDRESS_FIELDS.filter((f) => !nonEmpty(effective[f]));
+  if (missing.length) {
+    throw intakeRefusal('QUOTE_REQUIRED', 'acp_fulfillment_address_incomplete', ADDRESS_INCOMPLETE_MESSAGE, {
+      missing_fields: missing,
+      required_fields: [...REQUIRED_ADDRESS_FIELDS],
+    });
+  }
+  return out;
 }
 
 // ACP `payment_data` is the delegated-token / credential envelope; opaque to the kernel, VERIFIED by the
@@ -420,12 +568,24 @@ const STATUS_BY_CODE = Object.freeze({
 
 // Run a handler, mapping any throw to an ACP error response. PivotaCommerceError → its code + curated
 // userMessage; anything else → a generic 500 (a raw error message is NEVER surfaced).
+//
+// The `detail` block is EXPLICIT OPT-IN via `detail.acp_detail` (intakeRefusal), matching the shape the
+// delegate_payment refusal already emits: `{ type, code, message, detail }`. Ordinary PivotaCommerceError
+// detail — which carries ids, session ids and internal reasons — is still never surfaced, and by
+// construction an acp_detail block names FIELDS only, never a value taken from the request (no PII).
 async function guard(fn) {
   try {
     return await fn();
   } catch (err) {
     if (err instanceof PivotaCommerceError) {
-      return { status: STATUS_BY_CODE[err.code] ?? 400, body: { type: 'error', code: err.code, message: err.userMessage } };
+      const acpDetail = isPlainObject(err.detail?.acp_detail) ? err.detail.acp_detail : null;
+      const body = {
+        type: 'error',
+        code: err.code,
+        message: acpDetail && nonEmpty(err.detail.acp_message) ? err.detail.acp_message : err.userMessage,
+      };
+      if (acpDetail) body.detail = { ...acpDetail };
+      return { status: STATUS_BY_CODE[err.code] ?? 400, body };
     }
     return { status: 500, body: { type: 'error', code: 'INTERNAL_ERROR', message: 'The request could not be completed.' } };
   }
