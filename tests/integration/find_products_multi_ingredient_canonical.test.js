@@ -169,6 +169,12 @@ describe('find_products_multi ingredient_recall_direct canonical extension', () 
     process.env.DATABASE_URL = 'postgres://canonical-test';
     process.env.FIND_PRODUCTS_MULTI_ROUTE_DEBUG = '1';
     process.env.AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED = 'false';
+    // The ADR-007 citable-supplement prefetch (INDEX_ELIGIBLE_RECALL) also
+    // calls fetchCanonicalChainRows with tokenMatch on the SAME query text,
+    // earlier in the request than the ingredient leg. If a developer shell
+    // (or prod-parity env) has the flag on, SQL-shape assertions could match
+    // the supplement's statement instead of the lane's — pin it off.
+    delete process.env.INDEX_ELIGIBLE_RECALL;
   });
 
   afterEach(() => {
@@ -302,7 +308,13 @@ describe('find_products_multi ingredient_recall_direct canonical extension', () 
     expect(resp.body.metadata).toEqual(
       expect.objectContaining({ canonical_token_match: true }),
     );
-    const canonicalIdx = observedSql.findIndex((sql) => sql.includes('FROM catalog_products p'));
+    // Select the LANE's statement, not just any canonical SQL: the citable
+    // supplement prefetch emits a near-identical statement on the
+    // index_eligible column when INDEX_ELIGIBLE_RECALL is on. The serving
+    // eligibility gate is unique to the buyable lane.
+    const canonicalIdx = observedSql.findIndex(
+      (sql) => sql.includes('FROM catalog_products p') && sql.includes('ips.serving_eligible = TRUE'),
+    );
     expect(canonicalIdx).toBeGreaterThanOrEqual(0);
     const canonicalSql = observedSql[canonicalIdx];
     // Token-overlap threshold in WHERE ("vitamin c serum" -> significant
