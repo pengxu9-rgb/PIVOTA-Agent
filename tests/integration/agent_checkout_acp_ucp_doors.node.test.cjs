@@ -192,6 +192,33 @@ describe('Agent checkout ACP REST + UCP discovery doors', () => {
 
       // Past HMAC + buyer identity + quote mapping; the only thing missing is a reachable backend → 503.
       assert.equal(res.status, 503, `expected 503 (no backend), got ${res.status}: ${JSON.stringify(res.body)}`);
+
+      // NEGATIVE CONTROL (review F5): 503 alone does not prove the ATTESTED email did the work — the
+      // request would reach the backend either way. The same request with a buyer credential carrying NO
+      // email claim must be refused at intake, so the only difference between 400 and 503 here is the
+      // attested claim itself.
+      const noEmailJwt = await new SignJWT({})
+        .setProtectedHeader({ alg: 'ES256', kid: 'buyer-k2' })
+        .setIssuer('https://buyer.test.local')
+        .setAudience(BUYER_AUD)
+        .setSubject('buyer-123')
+        .setIssuedAt()
+        .setExpirationTime('10m')
+        .sign(privForBuyer.privateKey);
+      const ts2 = String(Date.now());
+      const sig2 = crypto.createHmac('sha256', ACP_SECRET).update(`${ts2}.${rawBody}`).digest('hex');
+      const noEmailRes = await request(localApp)
+        .post('/acp/checkout_sessions')
+        .set('content-type', 'application/json')
+        .set('idempotency-key', 'idem-3-noemail')
+        .set('signature', sig2)
+        .set('timestamp', ts2)
+        .set('x-buyer-authorization', `Bearer ${noEmailJwt}`)
+        .send(rawBody);
+      assert.equal(noEmailRes.status, 400, 'a credential with no email claim must be refused at intake');
+      assert.equal(noEmailRes.body?.detail?.reason, 'acp_buyer_email_required');
+      // And the refusal names FIELDS, never a value.
+      assert.ok(!JSON.stringify(noEmailRes.body).includes('@'), 'refusal body must not echo any address');
     });
   });
 });

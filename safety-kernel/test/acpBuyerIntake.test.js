@@ -148,6 +148,17 @@ test('attested `email_verified:false` is NOT an attestation: the body may then s
 test('attestedBuyerFromClaims: shape rules', () => {
   assert.deepEqual(attestedBuyerFromClaims({ email: ' a@b.co ' }), { attested_email: 'a@b.co' }, 'trimmed; absent email_verified is accepted');
   assert.deepEqual(attestedBuyerFromClaims({ email: 'a@b.co', email_verified: true, name: 'A B' }), { attested_email: 'a@b.co', attested_name: 'A B' });
+  // Review F4: ANY falsy email_verified is the issuer disclaiming, not just a strict boolean false —
+  // a non-conformant IdP emitting "false"/0 must not have its disclaimed address promoted to attested.
+  for (const disclaimer of [false, 'false', 0, '', null]) {
+    assert.deepEqual(
+      attestedBuyerFromClaims({ email: 'a@b.co', email_verified: disclaimer }), {},
+      `email_verified:${JSON.stringify(disclaimer)} must disclaim the address`,
+    );
+  }
+  // ...but a MISSING claim is not a disclaimer (many IdPs omit it), and a truthy one attests.
+  assert.deepEqual(attestedBuyerFromClaims({ email: 'a@b.co' }), { attested_email: 'a@b.co' });
+  assert.deepEqual(attestedBuyerFromClaims({ email: 'a@b.co', email_verified: 'true' }), { attested_email: 'a@b.co' });
   assert.deepEqual(attestedBuyerFromClaims({ given_name: 'Ada', family_name: 'Lovelace' }), { attested_name: 'Ada Lovelace' });
   assert.deepEqual(attestedBuyerFromClaims({ email: 'garbage' }), {}, 'a malformed attested address is dropped, not trusted');
   assert.deepEqual(attestedBuyerFromClaims(null), {});

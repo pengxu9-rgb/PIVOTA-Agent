@@ -57,7 +57,8 @@ const trimmed = (v) => (typeof v === 'string' ? v.trim() : '');
  *
  * `email` is taken ONLY when the IdP has not explicitly disclaimed it: an OIDC `email_verified: false`
  * means "the issuer is asserting an address it has NOT confirmed", which is not an attestation, so it is
- * treated as ABSENT (a caller-supplied address may then be used instead). A missing `email_verified` is
+ * treated as ABSENT (a caller-supplied address may then be used instead) — as is any other FALSY value for
+ * that claim, since a non-conformant `"false"`/`0` is still the issuer disclaiming. A MISSING `email_verified` is
  * accepted — many issuers omit it — because the claim still comes from inside a signature-verified token,
  * which is strictly stronger than a value typed into a request body by the calling agent.
  *
@@ -68,7 +69,14 @@ export function attestedBuyerFromClaims(claims) {
   if (claims == null || typeof claims !== 'object' || Array.isArray(claims)) return {};
   const out = {};
   const email = trimmed(claims.email);
-  if (email && claims.email_verified !== false && EMAIL_SHAPE.test(email)) out.attested_email = email;
+  // A PRESENT `email_verified` that does not affirmatively say "yes" is a disclaimer (review F4). OIDC
+  // says boolean, but a non-conformant IdP emitting `"false"`/`"0"`/`0` must not have its disclaimed
+  // address promoted to attested — and note `"false"` is a TRUTHY string, so a plain falsy test misses
+  // exactly the case worth defending against. `undefined`/absent is NOT a disclaimer: many IdPs omit it.
+  const ev = claims.email_verified;
+  const affirmed = ev === true || (typeof ev === 'string' && ['true', '1', 'yes'].includes(ev.trim().toLowerCase()));
+  const disclaimed = 'email_verified' in claims && !affirmed;
+  if (email && !disclaimed && EMAIL_SHAPE.test(email)) out.attested_email = email;
   const name = trimmed(claims.name)
     || [trimmed(claims.given_name), trimmed(claims.family_name)].filter(Boolean).join(' ');
   if (name) out.attested_name = name;

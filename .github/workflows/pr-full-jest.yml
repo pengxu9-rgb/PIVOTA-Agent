@@ -198,8 +198,9 @@ jobs:
       # green (8/8) before landing. It already existed and ran in NO workflow —
       # found while adding the ACP door's buyer/address/item intake (PR-E), whose
       # end-to-end proof it now is: the only suite that drives a real signed ACP
-      # create through src/server.js's own wiring, so it is the only place the
-      # attested-buyer-email path (verified JWT claim -> resolveUserRef ->
+      # create through src/server.js's own wiring, and pairs it with a no-email
+      # credential that must be REFUSED at intake, so the attested-buyer-email
+      # path (verified JWT claim -> resolveUserRef ->
       # quote buyer_context) is exercised outside the kernel's own harness. It is
       # also the only coverage of the ACP/UCP door flag gates and the 405 on the
       # charge endpoint while submit_payment is disabled.
