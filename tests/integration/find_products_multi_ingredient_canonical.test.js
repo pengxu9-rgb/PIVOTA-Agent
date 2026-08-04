@@ -324,7 +324,11 @@ describe('find_products_multi ingredient_recall_direct canonical extension', () 
     // post-graduation). sargableTextWhere elects the citable sargable shape
     // for this buyable call: every text-WHERE disjunct trigram-bitmap-able,
     // which flips the plan to a BitmapOr over the title/brand/recall_doc
-    // trigram indexes (0.7-1.5s measured; identical rows on the probe set).
+    // trigram indexes (0.7-1.5s measured; identical rows on the probe set —
+    // parity holds only WITH the recall_doc arm, so the helper requires the
+    // flag and this test pins the flag-on shape; flag-off falls back to the
+    // plain WHERE (unit-tested in canonical_catalog_search.test.js).
+    process.env.CANONICAL_CATALOG_RECALL_DOC_MATCH = 'enabled';
     const observedSql = [];
     jest.doMock('../../src/db', () => ({
       query: async (sql, params) => {
@@ -346,6 +350,8 @@ describe('find_products_multi ingredient_recall_direct canonical extension', () 
 
     expect(resp.status).toBe(200);
     expect(resp.body.metadata?.query_source).toBe('agent_products_ingredient_recall_direct');
+    // The stamp reports the EFFECTIVE sargable state (requested opt-in AND
+    // recall_doc arm on), so a flag-off deploy is visible in metadata.
     expect(resp.body.metadata).toEqual(
       expect.objectContaining({ canonical_sargable_text_where: true }),
     );

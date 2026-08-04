@@ -264,6 +264,7 @@ const {
 } = require('./services/externalSeedRecall');
 const {
   fetchCanonicalChainRows,
+  isRecallDocMatchEnabled: isCanonicalRecallDocMatchEnabled,
 } = require('./services/canonicalCatalogSearch');
 const beautyRelevanceGate = require('./services/beautyRelevanceGate');
 const {
@@ -44984,10 +44985,15 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           // every disjunct trigram-bitmap-able, flipping the plan to a
           // BitmapOr over idx_catalog_products_{title,brand,recall_doc}_trgm
           // (0.7-1.5s measured). Row parity prod-verified on vitamin c serum /
-          // salicylic acid serum / niacinamide: identical rows, identical
-          // order — the dropped WHERE arms (merchant_name, source_product_id,
-          // sku/vertical EXISTS) contributed nothing here, and the
-          // SKU-ingredient rank arms verticalSearch provides are kept.
+          // salicylic acid serum / niacinamide AND bare retinol / ceramide /
+          // glycerin / niacinamide: identical rows, identical order — BUT only
+          // with the recall_doc arm present (flag-off, bare "glycerin" lost
+          // 22/25 rows that only the sku/vertical EXISTS arms recalled;
+          // catalog_skus.ingredient_ids IS populated for part of the catalog).
+          // The helper therefore honors this opt-in only while
+          // CANONICAL_CATALOG_RECALL_DOC_MATCH is enabled and falls back to
+          // the (slower, complete) plain WHERE otherwise. The SKU-ingredient
+          // rank arms verticalSearch provides are kept either way.
           sargableTextWhere: true,
           limit: canonicalIngredientLimit,
           includeSkuOffers: false,
@@ -45070,7 +45076,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         const canonicalIngredientTelemetry = {
           canonical_path_executed: true,
           canonical_token_match: true,
-          canonical_sargable_text_where: true,
+          // EFFECTIVE state, not the requested opt-in: the helper honors
+          // sargableTextWhere only while the recall_doc arm is on (row-parity
+          // guard), so deploy verification must see what actually ran.
+          canonical_sargable_text_where: isCanonicalRecallDocMatchEnabled(),
           canonical_raw_count: Array.isArray(canonicalIngredientResult?.rows) ? canonicalIngredientResult.rows.length : 0,
           canonical_product_count: canonicalIngredientProducts.length,
           canonical_category_path_prefix: canonicalIngredientCategoryPathPrefix,

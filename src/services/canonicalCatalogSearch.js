@@ -555,13 +555,28 @@ async function fetchCanonicalChainRows(args = {}) {
   // 2026-08-04: 3.2-3.9s, ~262k buffers), because merchant_name (cross-table),
   // source_product_id (no trgm index), the two OR-EXISTS catalog_skus arms, and
   // the opaque overlap arithmetic each block a bitmap plan. The sargable shape
-  // flips it to a trigram BitmapOr over title/brand/recall_doc: 0.7-1.5s, and
-  // prod row-diffs on "vitamin c serum" / "salicylic acid serum" /
-  // "niacinamide" returned IDENTICAL rows — the dropped WHERE arms contributed
-  // no recall (sku EXISTS matches all title-matched too; rank arms below are
-  // kept, so SKU/ingredient signals still order the pool).
+  // flips it to a trigram BitmapOr over title/brand/recall_doc: 0.7-1.5s.
+  //
+  // Row parity for the buyable opt-in HOLDS ONLY WITH THE recall_doc ARM
+  // PRESENT — it is scoped to flag state, not universal. Prod row-diffs with
+  // CANONICAL_CATALOG_RECALL_DOC_MATCH enabled returned identical rows +
+  // order on "vitamin c serum" / "salicylic acid serum" / "niacinamide" and
+  // (2026-08-04 review pass) bare "retinol" / "ceramide" / "glycerin" /
+  // "niacinamide". With the flag DISABLED the same probe lost 22/25 rows for
+  // bare "glycerin": catalog_skus.ingredient_ids / visible_option_labels ARE
+  // populated for part of the catalog, and for a single-significant-token
+  // query tokenWhere is empty, so the sargable WHERE would collapse to two
+  // title/brand LIKEs while main's vertical EXISTS arm was doing the
+  // recalling — recall_doc (populated on graduated seeds) is what covers
+  // those rows when the flag is on. Therefore the buyable opt-in only takes
+  // effect when the recall_doc arm will be emitted; flag-off callers fall
+  // back to the plain WHERE (complete recall, pre-#1900 plan profile). The
+  // citable index_eligible lane is unaffected: its callers never pass
+  // verticalSearch, so the dropped fragments are empty strings there.
   const citableSargableLane =
-    tokenMatch && (eligibilityColumn === 'index_eligible' || sargableTextWhere === true);
+    tokenMatch &&
+    (eligibilityColumn === 'index_eligible' ||
+      (sargableTextWhere === true && isRecallDocMatchEnabled()));
   let tokenWhere = '';
   let tokenScore = '';
   if (tokenMatch) {
@@ -687,13 +702,17 @@ async function fetchCanonicalChainRows(args = {}) {
   // WHERE: a single OR-EXISTS disjunct forces the whole disjunction off the
   // bitmap path (prod EXPLAIN 2026-08-04: keeping them, the "sargable" form ran
   // 6.9s — WORSE than the 3.2s plain form). For citable callers this is a
-  // no-op (they don't pass verticalSearch, so both fragments are empty); for
-  // the buyable sargableTextWhere caller the WHERE recall they provided was
-  // measured empty (vertical arm 0 products, sku-text arm 9 SKUs all of whose
-  // products already title-match) while the verticalScore / skuIdentityScore
-  // RANK arms — which do carry signal (+35 moved 6 niacinamide rows across the
-  // candidate cut) — are unaffected: they live in the projection, evaluate as
-  // one-time hashed subplans, and don't block the bitmap plan.
+  // no-op (they don't pass verticalSearch, so both fragments are empty). For
+  // the buyable sargableTextWhere caller the recall these arms provide is
+  // covered by the recall_doc arm the lane now requires (see the
+  // citableSargableLane gate above — without it, bare "glycerin" lost 22/25
+  // rows that only the vertical EXISTS arm recalled). The verticalScore /
+  // skuIdentityScore RANK arms — which do carry signal (+35 moved 6
+  // niacinamide rows across the candidate cut) — are unaffected: they are
+  // correlated EXISTS subqueries in the candidate CTE's projection (an index
+  // probe on catalog_skus(product_key) per WHERE-surviving row, feeding the
+  // ORDER BY), outside the WHERE disjunction, so they don't block the bitmap
+  // plan; their cost scales with WHERE breadth, not with the candidate cap.
   //
   // recallDocArm carries its own leading newline+indent so that with the flag
   // off (recallDocWhere === '') the interpolation contributes zero bytes and
@@ -958,6 +977,11 @@ async function fetchCanonicalChainRows(args = {}) {
 
 module.exports = {
   fetchCanonicalChainRows,
+  // Exported so buyable sargableTextWhere callers can stamp the EFFECTIVE
+  // sargable state into telemetry: the opt-in is honored only while the
+  // recall_doc arm is on (see citableSargableLane), so a literal `true`
+  // stamp would lie in flag-off environments.
+  isRecallDocMatchEnabled,
   // Exposed for tests so the upper bounds can be asserted.
   __internal: {
     DEFAULT_LIMIT,
