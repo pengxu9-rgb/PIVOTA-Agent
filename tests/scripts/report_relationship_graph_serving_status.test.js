@@ -90,6 +90,27 @@ describe('report-relationship-graph-serving-status', () => {
     expect(inactive.checks.expiring_14d_pct.status).toBe('not_applicable');
   });
 
+  test('fail-on-expiry-risk defaults its threshold and the total-rows floor catches an emptied view', () => {
+    const options = parseArgs(['--fail-on-expiry-risk']);
+    expect(options.failOnExpiryRisk).toBe(true);
+    expect(options.thresholds.maxExpiring14dPct).toBe(30);
+
+    const withFloor = parseArgs(['--min-total-rows', '500']);
+    expect(withFloor.thresholds.minTotalRows).toBe(500);
+
+    // The 2026-07 outage shape: serving set fully drained. 0% expiring of 0 rows
+    // must not read as healthy — the floor gate fails.
+    const empty = summarizeServingStatusRows([], {
+      generatedAt: NOW,
+      thresholds: { minTotalRows: 500, maxExpiring14dPct: 30 },
+    });
+    expect(empty.coverage.total_rows).toBe(0);
+    expect(empty.expiry_windows.expiring_14d_pct).toBe(0);
+    expect(empty.checks.expiring_14d_pct.status).toBe('pass');
+    expect(empty.checks.total_rows.status).toBe('fail');
+    expect(empty.ok).toBe(false);
+  });
+
   test('buildServingStatusSql uses the runtime active/fresh serving predicates', () => {
     const { sql, params } = buildServingStatusSql({ market: 'us', limit: 25 });
 

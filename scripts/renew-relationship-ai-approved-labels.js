@@ -7,19 +7,23 @@
  * ai_approved rows expire AI_APPROVAL_FRESHNESS_INTERVAL (45 days) after review,
  * and no other code path renews them: applyApproval only flips generated ->
  * ai_approved, and the guarded graph upsert refuses to re-emit reviewed rows as
- * generated. Without renewal the entire ai_approved serving set falls off the
+ * generated. Without renewal the whole ai_approved serving set falls off the
  * product_relationship_edges view in one 45-day cliff (this emptied
  * get_alternatives once already, 2026-07-17..26).
  *
  * Renewal re-verifies each row about to expire (or already expired) without any
  * LLM call:
  *   1. the row passes the CURRENT serving guard
- *      (getRelationshipEdgeServingSuppressionReasons is empty), and
- *   2. anchor and candidate refs still resolve to an active
- *      external_product_seeds row or a catalog_products row.
- * Rows that verify get last_verified_at=now() and expires_at extended by the AI
- * freshness interval. label_state is NEVER modified, and human_approved rows are
- * never touched (selected and updated under label_state='ai_approved' only).
+ *      (getRelationshipEdgeServingSuppressionReasons is empty),
+ *   2. anchor and candidate refs still resolve to an active external seed, an
+ *      actively-serving catalog product (activeCatalogProductSourceWhere — the
+ *      same liveness predicate the serving read paths use, so a deactivated
+ *      merchant's products stop renewing), or a product group (pg_*), and
+ *   3. the row is younger than --max-age-days (default 180): renewal must not
+ *      keep an AI verdict alive forever without a fresh review.
+ * Rows that verify get last_verified_at/expires_at extended by the AI freshness
+ * interval. label_state is NEVER modified, and human_approved rows are never
+ * touched (selected and updated under label_state='ai_approved' only).
  */
 
 const fs = require('node:fs');
@@ -27,14 +31,17 @@ const path = require('node:path');
 
 const { closePool, query } = require('../src/db');
 const { getRelationshipEdgeServingSuppressionReasons } = require('../src/auroraBff/productRelationshipGraph');
+const { activeCatalogProductSourceWhere } = require('../src/services/activeCatalogSourceSql');
 const { AI_APPROVAL_FRESHNESS_INTERVAL } = require('./review-relationship-candidate-labels');
 
 const APPLY_CONFIRM_TOKEN = 'APPLY_RELGRAPH_AI_RENEWAL';
 const DEFAULT_WINDOW_DAYS = 14;
 const MAX_WINDOW_DAYS = 60;
+const DEFAULT_MAX_AGE_DAYS = 180;
 const DEFAULT_OPERATOR = 'relgraph_ai_renewal';
 const RENEWAL_METHOD = 'seed_catalog_active_check+serving_guard';
 const UPDATE_CHUNK_SIZE = 500;
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 function normalizeString(value, max = 512) {
   const text = String(value == null ? '' : value).trim().replace(/\s+/g, ' ');
@@ -63,12 +70,14 @@ function parseNumber(value, fallback, { min = 0, max = Number.MAX_SAFE_INTEGER }
 function usage() {
   return [
     'Usage:',
-    '  DATABASE_URL=... node scripts/renew-relationship-ai-approved-labels.js [--window-days 14] [--market US] [--limit N] [--out path] [--apply --confirm APPLY_RELGRAPH_AI_RENEWAL]',
+    '  DATABASE_URL=... node scripts/renew-relationship-ai-approved-labels.js [--window-days 14] [--max-age-days 180] [--market US] [--limit N] [--out path] [--apply --confirm APPLY_RELGRAPH_AI_RENEWAL]',
     '',
     'Dry-run by default. Renews ai_approved relationship_candidate_labels rows whose',
     'expires_at falls within --window-days (already-expired rows included) when they',
-    'still pass the serving guard and their anchor/candidate refs still resolve.',
-    'Never modifies label_state and never touches human_approved rows.',
+    'still pass the serving guard, their anchor/candidate refs still resolve to an',
+    'actively-serving seed/catalog/group entity, and the row is younger than',
+    '--max-age-days. Never modifies label_state and never touches human_approved rows.',
+    'Exits non-zero if apply mode found renewable rows but renewed none.',
   ].join('\n');
 }
 
@@ -84,6 +93,7 @@ function parseArgs(argv = process.argv.slice(2)) {
   return {
     apply,
     windowDays: parseNumber(argValue(argv, 'window-days'), DEFAULT_WINDOW_DAYS, { min: 0, max: MAX_WINDOW_DAYS }),
+    maxAgeDays: parseNumber(argValue(argv, 'max-age-days'), DEFAULT_MAX_AGE_DAYS, { min: 1, max: 3650 }),
     market: normalizeString(argValue(argv, 'market'), 24).toUpperCase(),
     limit: parseNumber(argValue(argv, 'limit'), 0, { min: 0, max: 250000 }),
     out: normalizeString(argValue(argv, 'out'), 2000),
@@ -116,7 +126,7 @@ async function loadExpiringAiApprovedRows({ queryFn = query, windowDays = DEFAUL
              candidate_snapshot, relation_type, display_label, market, vertical,
              category_taxonomy, use_case, label_state, score_total, score_breakdown,
              price_evidence, source_refs, evidence_grade, why_candidate, tradeoffs,
-             watchouts, provenance, last_verified_at, expires_at
+             watchouts, provenance, created_at, last_verified_at, expires_at
       FROM relationship_candidate_labels
       WHERE ${where.join('\n        AND ')}
       ORDER BY expires_at ASC, id ASC${limitSql}
@@ -126,48 +136,79 @@ async function loadExpiringAiApprovedRows({ queryFn = query, windowDays = DEFAUL
   return Array.isArray(res && res.rows) ? res.rows : [];
 }
 
-async function loadResolvableRefSets({ queryFn = query } = {}) {
+// One union set of every id form edges are anchored on in this codebase (see
+// productRelationshipGraphSources ref matching): external seed id /
+// external_product_id / attached_product_key, catalog product_key /
+// source_product_id / pivota_signature_id / content_key, and pg_* group ids.
+// Membership is checked after stripping the optional product: prefix, so no
+// prefix-dispatch assumptions can silently orphan a ref form.
+async function loadResolvableRefSet({ queryFn = query } = {}) {
+  const resolvableRefs = new Set();
+  const addRow = (row) => {
+    for (const value of Object.values(row || {})) {
+      const ref = normalizeString(value, 260).toLowerCase();
+      if (ref) resolvableRefs.add(ref);
+    }
+  };
+
   const seedRes = await queryFn(`
-    SELECT lower(external_product_id) AS ref
+    SELECT lower(id) AS k1,
+           lower(external_product_id) AS k2,
+           lower(COALESCE(attached_product_key, '')) AS k3
     FROM external_product_seeds
     WHERE COALESCE(status, 'active') = 'active'
   `);
-  const activeSeedRefs = new Set(
-    (Array.isArray(seedRes && seedRes.rows) ? seedRes.rows : []).map((row) => row.ref).filter(Boolean),
-  );
+  for (const row of (Array.isArray(seedRes && seedRes.rows) ? seedRes.rows : [])) addRow(row);
 
   const catalogRes = await queryFn(`
-    SELECT lower(product_key) AS k1,
-           lower(source_product_id) AS k2,
-           lower(COALESCE(pivota_signature_id, '')) AS k3
-    FROM catalog_products
+    SELECT lower(cp.product_key) AS k1,
+           lower(cp.source_product_id) AS k2,
+           lower(COALESCE(cp.pivota_signature_id, '')) AS k3,
+           lower(COALESCE(cp.content_key, '')) AS k4
+    FROM catalog_products cp
+    LEFT JOIN catalog_merchants cm ON cm.merchant_id = cp.merchant_id
+    WHERE ${activeCatalogProductSourceWhere('cp', 'cm')}
   `);
-  const catalogRefs = new Set();
-  for (const row of (Array.isArray(catalogRes && catalogRes.rows) ? catalogRes.rows : [])) {
-    if (row.k1) catalogRefs.add(row.k1);
-    if (row.k2) catalogRefs.add(row.k2);
-    if (row.k3) catalogRefs.add(row.k3);
-  }
-  return { activeSeedRefs, catalogRefs };
+  for (const row of (Array.isArray(catalogRes && catalogRes.rows) ? catalogRes.rows : [])) addRow(row);
+
+  const groupRes = await queryFn(`
+    SELECT DISTINCT lower(product_group_id) AS k1
+    FROM product_group_members
+    WHERE product_group_id IS NOT NULL
+  `);
+  for (const row of (Array.isArray(groupRes && groupRes.rows) ? groupRes.rows : [])) addRow(row);
+
+  return resolvableRefs;
 }
 
-function refResolves(rawRef, { activeSeedRefs, catalogRefs }, { allowNeed = false } = {}) {
+function refResolves(rawRef, resolvableRefs, { allowNeed = false } = {}) {
   const full = normalizeString(rawRef, 260).toLowerCase();
   if (!full) return false;
   if (allowNeed && full.startsWith('need:')) return true;
-  const ref = stripProductPrefix(rawRef);
-  if (ref.startsWith('ext_')) return activeSeedRefs.has(ref);
-  return catalogRefs.has(ref);
+  return resolvableRefs.has(stripProductPrefix(rawRef));
 }
 
-function evaluateRenewalCandidates(rows = [], refSets, {
+function evaluateRenewalCandidates(rows = [], resolvableRefs, {
   suppressionFn = getRelationshipEdgeServingSuppressionReasons,
+  maxAgeDays = DEFAULT_MAX_AGE_DAYS,
+  nowMs = Date.now(),
 } = {}) {
   const renewableIds = [];
-  const skipped = { suppressed: 0, anchor_unresolvable: 0, candidate_unresolvable: 0 };
+  const skipped = {
+    suppressed: 0,
+    anchor_unresolvable: 0,
+    candidate_unresolvable: 0,
+    age_capped: 0,
+  };
   const suppressionReasons = {};
+  const maxAgeMs = maxAgeDays * DAY_MS;
 
   for (const row of rows) {
+    const createdMs = new Date(row.created_at || '').getTime();
+    if (Number.isFinite(createdMs) && nowMs - createdMs > maxAgeMs) {
+      skipped.age_capped += 1;
+      continue;
+    }
     const reasons = suppressionFn(row);
     if (Array.isArray(reasons) && reasons.length) {
       skipped.suppressed += 1;
@@ -177,12 +218,12 @@ function evaluateRenewalCandidates(rows = [], refSets, {
       continue;
     }
     const anchorOk = normalizeString(row.anchor_type, 40).toLowerCase() === 'need'
-      || refResolves(row.anchor_ref, refSets, { allowNeed: true });
+      || refResolves(row.anchor_ref, resolvableRefs, { allowNeed: true });
     if (!anchorOk) {
       skipped.anchor_unresolvable += 1;
       continue;
     }
-    if (!refResolves(row.candidate_product_ref, refSets)) {
+    if (!refResolves(row.candidate_product_ref, resolvableRefs)) {
       skipped.candidate_unresolvable += 1;
       continue;
     }
@@ -229,6 +270,7 @@ async function applyRenewals(renewableIds, {
 async function runRenewal({
   apply = false,
   windowDays = DEFAULT_WINDOW_DAYS,
+  maxAgeDays = DEFAULT_MAX_AGE_DAYS,
   market = '',
   limit = 0,
   operator = DEFAULT_OPERATOR,
@@ -237,28 +279,40 @@ async function runRenewal({
   generatedAt = new Date().toISOString(),
 } = {}) {
   const rows = await loadExpiringAiApprovedRows({ queryFn, windowDays, market, limit });
-  const refSets = await loadResolvableRefSets({ queryFn });
-  const { renewableIds, skipped, suppressionReasons } = evaluateRenewalCandidates(rows, refSets, { suppressionFn });
+  const resolvableRefs = await loadResolvableRefSet({ queryFn });
+  const nowMs = new Date(generatedAt).getTime() || Date.now();
+  const { renewableIds, skipped, suppressionReasons } = evaluateRenewalCandidates(rows, resolvableRefs, {
+    suppressionFn,
+    maxAgeDays,
+    nowMs,
+  });
 
   let renewed = 0;
   if (apply && renewableIds.length) {
     renewed = await applyRenewals(renewableIds, { queryFn, operator, generatedAt });
   }
 
+  // Apply mode that found renewable rows but renewed none is an inert no-op
+  // behind a success signal — fail loudly instead.
+  const ok = !apply || !renewableIds.length || renewed > 0;
+  const skippedTotal = Object.values(skipped).reduce((sum, n) => sum + n, 0);
+
   return {
     schema_version: 'relationship_graph_ai_renewal.v1',
     generated_at: generatedAt,
     mode: apply ? 'apply' : 'dry-run',
     window_days: windowDays,
+    max_age_days: maxAgeDays,
     market: market || 'all',
     scanned_rows: rows.length,
     renewable_count: renewableIds.length,
     renewed_count: renewed,
     applied_count: renewed,
     skipped,
+    skipped_total: skippedTotal,
     suppression_reasons: suppressionReasons,
     freshness_interval: AI_APPROVAL_FRESHNESS_INTERVAL,
-    ok: true,
+    ok,
   };
 }
 
@@ -275,6 +329,7 @@ async function main(argv = process.argv.slice(2)) {
     fs.writeFileSync(options.out, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
   }
   process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+  if (!report.ok) process.exitCode = 1;
   return report;
 }
 
@@ -289,11 +344,12 @@ if (require.main === module) {
 
 module.exports = {
   APPLY_CONFIRM_TOKEN,
+  DEFAULT_MAX_AGE_DAYS,
   DEFAULT_WINDOW_DAYS,
   applyRenewals,
   evaluateRenewalCandidates,
   loadExpiringAiApprovedRows,
-  loadResolvableRefSets,
+  loadResolvableRefSet,
   parseArgs,
   runRenewal,
 };

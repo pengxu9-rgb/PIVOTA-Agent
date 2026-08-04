@@ -115,10 +115,11 @@ jobs:
           mkdir -p "${out_dir}"
           max_expiring_14d_pct="${MAX_EXPIRING_14D_PCT_INPUT:-30}"
 
-          npm run relgraph:serving-status -- \
+          npm run --silent relgraph:serving-status -- \
             --all-markets \
             --json \
             --max-expiring-14d-pct "${max_expiring_14d_pct}" \
+            --min-total-rows 500 \
             --fail-on-expiry-risk \
             | tee "${out_dir}/serving_status_expiry.json"
 

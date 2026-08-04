@@ -51,15 +51,30 @@ without renewal the whole ai_approved serving set falls off
 2026-07-17..26). The cron therefore runs
 `scripts/renew-relationship-ai-approved-labels.js` as its first step and
 APPLIES it by default: rows expiring within 14 days (or already expired) that
-still pass the serving guard and still resolve to an active external seed /
-catalog product get `last_verified_at`/`expires_at` extended. `label_state` is
-never modified and `human_approved` rows are never touched. Renewal is not an
-LLM call and is not gated behind `RELGRAPH_SYNC_ALLOW_WRITES` (that gate
-protects LLM-driven build/review label-state writes).
+still pass the serving guard and still resolve to an actively-serving external
+seed / catalog product (`activeCatalogProductSourceWhere` — the same liveness
+predicate the serving read paths use) / product group get
+`last_verified_at`/`expires_at` extended. `label_state` is never modified and
+`human_approved` rows are never touched. Renewal is not an LLM call and is not
+gated behind `RELGRAPH_SYNC_ALLOW_WRITES` (that gate protects LLM-driven
+build/review label-state writes).
 
+The renewal step is optional and timeboxed inside the routine: if it fails or
+times out, the rest of the routine still runs and the failure is recorded in
+`summary.warnings` / the run ledger. The daily Serving Guard Audit workflow's
+expiry alarm (`relgraph:serving-status --fail-on-expiry-risk`) is the loud
+backstop if renewal silently stops working.
+
+Deliberate policy defaults (change with the founder, not silently):
+
+- Rows older than 180 days since creation are NOT auto-renewed
+  (`--max-age-days`); an AI verdict must not stay alive forever without a fresh
+  review. Age-capped rows expire and show up in the renewal report as
+  `skipped.age_capped`.
 - `RELGRAPH_SYNC_APPLY_RENEWAL=false` demotes renewal to dry-run.
 - `RELGRAPH_SYNC_SKIP_RENEWAL=true` skips the step entirely.
 - `RELGRAPH_SYNC_RENEWAL_WINDOW_DAYS=14` tunes the lookahead.
+- `RELGRAPH_SYNC_RENEWAL_MAX_AGE_DAYS=180` tunes the re-review age cap.
 
 Write mode stays disabled unless all of these are set deliberately:
 

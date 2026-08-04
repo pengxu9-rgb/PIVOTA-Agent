@@ -7,7 +7,11 @@ const path = require('node:path');
 
 const { recordRelationshipGraphRun } = require('../src/services/relationshipGraphRunLedger');
 const { APPLY_CONFIRM_TOKEN: ROUTINE_CONFIRM_TOKEN } = require('./run-relationship-graph-routine-job');
-const { APPLY_CONFIRM_TOKEN: RENEWAL_CONFIRM_TOKEN, DEFAULT_WINDOW_DAYS: DEFAULT_RENEWAL_WINDOW_DAYS } = require('./renew-relationship-ai-approved-labels');
+const {
+  APPLY_CONFIRM_TOKEN: RENEWAL_CONFIRM_TOKEN,
+  DEFAULT_WINDOW_DAYS: DEFAULT_RENEWAL_WINDOW_DAYS,
+  DEFAULT_MAX_AGE_DAYS: DEFAULT_RENEWAL_MAX_AGE_DAYS,
+} = require('./renew-relationship-ai-approved-labels');
 
 const WRAPPER_CONFIRM_TOKEN = 'APPLY_RELGRAPH_SYNC_ROUTINE';
 const SYNC_CONFIRM_TOKEN = 'SYNC_REVIEWED_EXTERNAL_SEEDS_TO_CATALOG';
@@ -195,6 +199,10 @@ function parseArgs(argv = process.argv.slice(2), { now = new Date(), cwd = proce
       min: 0,
       max: 60,
     }),
+    renewalMaxAgeDays: parseNumber(argValue(argv, 'renewal-max-age-days'), DEFAULT_RENEWAL_MAX_AGE_DAYS, {
+      min: 1,
+      max: 3650,
+    }),
     renewalOut: resolvePathMaybeRelative(argValue(argv, 'renewal-out') || path.join(outDir, 'ai_renewal.json'), cwd),
     limit: parseNumber(argValue(argv, 'limit'), DEFAULT_LIMIT, { min: 1, max: 2000 }),
     sourceLimit: parseNumber(argValue(argv, 'source-limit'), 0, { min: 0, max: 100000 }),
@@ -268,13 +276,16 @@ function serializableOptions(options = {}) {
         allow_empty_selection: Boolean(options.allowEmptySelection),
       }
       : null,
-    dry_run: !(options.applySync || options.applyBuild || options.applyReview || options.applyRenewal),
+    // dry_run keeps its established ledger meaning: "no catalog/graph label-state
+    // writes". Renewal apply (expiry extension only) is reported separately.
+    dry_run: !(options.applySync || options.applyBuild || options.applyReview),
     apply_sync: Boolean(options.applySync),
     apply_build: Boolean(options.applyBuild),
     apply_review: Boolean(options.applyReview),
     apply_renewal: Boolean(options.applyRenewal),
     skip_renewal: Boolean(options.skipRenewal),
     renewal_window_days: options.renewalWindowDays,
+    renewal_max_age_days: options.renewalMaxAgeDays,
     db_lock: Boolean(options.dbLock),
     db_lock_heartbeat_ms: options.dbLockHeartbeatMs || null,
     lock_stale_after_minutes: options.lockStaleAfterMinutes,
@@ -296,12 +307,17 @@ function buildSyncRoutineSteps(options = {}) {
 
   // Renewal runs first, outside the routine's DB lock and independent of
   // build/review: a failure later in the pipeline must not block keeping the
-  // already-approved serving set alive.
+  // already-approved serving set alive. It is optional + hard-timeboxed in the
+  // other direction too — a slow or failed renewal must not take down catalog
+  // sync / build / review / the serving audit (the daily expiry alarm in the
+  // serving-guard-audit workflow catches a renewal path that stops working).
   if (!options.skipRenewal) {
     const renewalArgs = [
       scriptPath('renew-relationship-ai-approved-labels.js'),
       '--window-days',
       String(options.renewalWindowDays == null ? DEFAULT_RENEWAL_WINDOW_DAYS : options.renewalWindowDays),
+      '--max-age-days',
+      String(options.renewalMaxAgeDays == null ? DEFAULT_RENEWAL_MAX_AGE_DAYS : options.renewalMaxAgeDays),
       '--out',
       options.renewalOut,
     ];
@@ -313,6 +329,9 @@ function buildSyncRoutineSteps(options = {}) {
       command: node,
       args: renewalArgs,
       artifact: options.renewalOut,
+      optional: true,
+      timeoutMs: options.stepTimeoutMs
+        || (options.stepTimeoutMinutes ? options.stepTimeoutMinutes * 60 * 1000 : DEFAULT_STEP_TIMEOUT_MINUTES * 60 * 1000),
     });
   }
 
@@ -447,7 +466,7 @@ function tailOutput(value, max = OUTPUT_TAIL_CHARS) {
   return text.length <= max ? text : text.slice(text.length - max);
 }
 
-function runCommand(command, args, { cwd = process.cwd(), env = {} } = {}) {
+function runCommand(command, args, { cwd = process.cwd(), env = {}, timeoutMs = 0 } = {}) {
   return new Promise((resolve) => {
     const child = spawn(command, args, {
       cwd,
@@ -456,6 +475,15 @@ function runCommand(command, args, { cwd = process.cwd(), env = {} } = {}) {
     });
     let stdout = '';
     let stderr = '';
+    let timedOut = false;
+    let timer = null;
+    if (Number.isFinite(timeoutMs) && timeoutMs > 0) {
+      timer = setTimeout(() => {
+        timedOut = true;
+        child.kill('SIGKILL');
+      }, timeoutMs);
+      if (typeof timer.unref === 'function') timer.unref();
+    }
     child.stdout.on('data', (chunk) => {
       stdout = tailOutput(stdout + chunk.toString());
     });
@@ -463,9 +491,15 @@ function runCommand(command, args, { cwd = process.cwd(), env = {} } = {}) {
       stderr = tailOutput(stderr + chunk.toString());
     });
     child.on('error', (err) => {
+      if (timer) clearTimeout(timer);
       resolve({ exitCode: 1, stdout, stderr: `${stderr}\n${err.message}`.trim() });
     });
     child.on('close', (code) => {
+      if (timer) clearTimeout(timer);
+      if (timedOut) {
+        resolve({ exitCode: 124, stdout, stderr: `${stderr}\nstep timed out after ${timeoutMs}ms`.trim() });
+        return;
+      }
       resolve({ exitCode: code == null ? 1 : code, stdout, stderr });
     });
   });
@@ -540,7 +574,7 @@ async function runSyncRoutine(
   for (const step of steps) {
     const startedAt = new Date().toISOString();
     // eslint-disable-next-line no-await-in-loop
-    const result = await runner(step.command, step.args, { cwd, env: step.env || {} });
+    const result = await runner(step.command, step.args, { cwd, env: step.env || {}, timeoutMs: step.timeoutMs || 0 });
     const record = {
       id: step.id,
       status: result.exitCode === 0 ? 'passed' : 'failed',
@@ -553,7 +587,16 @@ async function runSyncRoutine(
       stdout_tail: tailOutput(result.stdout),
       stderr_tail: tailOutput(result.stderr),
     };
+    if (step.optional) record.optional = true;
     summary.steps.push(record);
+    if (result.exitCode !== 0 && step.optional) {
+      // An optional step (renewal) must not abort the routine; surface it in
+      // the summary/ledger instead of failing the whole run.
+      summary.warnings = Array.isArray(summary.warnings) ? summary.warnings : [];
+      summary.warnings.push(`optional step failed: ${step.id} (exit ${result.exitCode})`);
+      writeSummary(options.summaryOut, summary);
+      continue;
+    }
     if (result.exitCode !== 0) {
       summary.ok = false;
       summary.failed_step = step.id;

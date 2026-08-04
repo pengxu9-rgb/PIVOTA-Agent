@@ -161,6 +161,9 @@ describe('run-relationship-graph-sync-routine', () => {
     expect(renewalArgs).toContain('renew-relationship-ai-approved-labels.js');
     expect(renewalArgs).toContain('--window-days 14');
     expect(renewalArgs).not.toContain('--apply');
+    // Renewal must be non-fatal and timeboxed so it can never take down the routine.
+    expect(steps[0].optional).toBe(true);
+    expect(steps[0].timeoutMs).toBe(9 * 60 * 1000);
 
     const syncArgs = steps[1].args.join(' ');
     expect(syncArgs).toContain('sync-external-seeds-to-catalog.cjs');
@@ -404,14 +407,21 @@ describe('run-relationship-graph-sync-routine', () => {
     await expect(runSyncRoutine(options, { runner, now: NOW })).rejects.toMatchObject({
       summary: expect.objectContaining({
         ok: false,
-        failed_step: 'ai_approval_renewal',
+        failed_step: 'catalog_sync',
       }),
     });
 
     const summary = JSON.parse(fs.readFileSync(path.join(outDir, 'sync_routine_summary.json'), 'utf8'));
     expect(summary.ok).toBe(false);
+    // The optional renewal step fails without aborting; the run fails at catalog_sync.
     expect(summary.steps[0]).toEqual(expect.objectContaining({
       id: 'ai_approval_renewal',
+      status: 'failed',
+      optional: true,
+    }));
+    expect(summary.warnings).toEqual([expect.stringContaining('ai_approval_renewal')]);
+    expect(summary.steps[1]).toEqual(expect.objectContaining({
+      id: 'catalog_sync',
       status: 'failed',
     }));
   });
@@ -438,7 +448,7 @@ describe('run-relationship-graph-sync-routine', () => {
     await expect(runSyncRoutine(options, { runner, ledgerRecorder, now: NOW })).rejects.toMatchObject({
       summary: expect.objectContaining({
         ok: false,
-        failed_step: 'ai_approval_renewal',
+        failed_step: 'catalog_sync',
         ledger: expect.objectContaining({
           recorded: true,
           status: 'failed',
@@ -449,7 +459,7 @@ describe('run-relationship-graph-sync-routine', () => {
     expect(ledgerRecorder).toHaveBeenCalledTimes(1);
     expect(ledgerRecorder.mock.calls[0][0]).toEqual(expect.objectContaining({
       ok: false,
-      failed_step: 'ai_approval_renewal',
+      failed_step: 'catalog_sync',
     }));
   });
 

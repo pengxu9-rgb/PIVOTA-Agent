@@ -81,9 +81,12 @@ function usage() {
     '  --max-expiring-7d N',
     '  --max-ai-approved-pct N',
     '  --max-expiring-14d-pct N   fail when more than N% of serving rows expire within 14 days',
+    '  --min-total-rows N         fail when fewer than N rows are serving at all',
     '',
-    '--fail-on-expiry-risk exits non-zero when the expiring-14d percentage gate fails,',
-    'independent of --fail-on-readiness. Use it as a loud renewal-outage alarm.',
+    '--fail-on-expiry-risk exits non-zero when the expiring-14d percentage gate or the',
+    'total-rows floor fails, or when the serving set is empty (an empty set means the',
+    'cliff already happened — 0% expiring must never read as healthy). Defaults',
+    '--max-expiring-14d-pct to 30 when not given. Use it as a loud renewal-outage alarm.',
   ].join('\n');
 }
 
@@ -94,6 +97,8 @@ function parseArgs(argv = process.argv.slice(2)) {
   const maxExpiring7dInput = normalizeString(argValue(argv, 'max-expiring-7d'), 32);
   const maxAiApprovedPctInput = normalizeString(argValue(argv, 'max-ai-approved-pct'), 32);
   const maxExpiring14dPctInput = normalizeString(argValue(argv, 'max-expiring-14d-pct'), 32);
+  const minTotalRowsInput = normalizeString(argValue(argv, 'min-total-rows'), 32);
+  const failOnExpiryRisk = hasFlag(argv, 'fail-on-expiry-risk');
 
   return {
     market: market || (allMarkets ? '' : DEFAULT_MARKET),
@@ -126,10 +131,14 @@ function parseArgs(argv = process.argv.slice(2)) {
         : null,
       maxExpiring14dPct: maxExpiring14dPctInput
         ? parseNumber(maxExpiring14dPctInput, null, { min: 0, max: 100 })
+        // The expiry alarm without an explicit threshold must still alarm.
+        : (failOnExpiryRisk ? 30 : null),
+      minTotalRows: minTotalRowsInput
+        ? parseInteger(minTotalRowsInput, null, { min: 0, max: MAX_LIMIT })
         : null,
     },
     failOnReadiness: hasFlag(argv, 'fail-on-readiness'),
-    failOnExpiryRisk: hasFlag(argv, 'fail-on-expiry-risk'),
+    failOnExpiryRisk,
     json: hasFlag(argv, 'json'),
   };
 }
@@ -323,6 +332,7 @@ function summarizeServingStatusRows(rows = [], {
     expiring_7d: maxGate('expiring_7d', expiry.expiring_7d, safeThresholds.maxExpiring7d, 'count'),
     ai_approved_pct: maxGate('ai_approved_pct', aiApprovedPct, safeThresholds.maxAiApprovedPct, 'percent'),
     expiring_14d_pct: maxGate('expiring_14d_pct', expiring14dPct, safeThresholds.maxExpiring14dPct, 'percent'),
+    total_rows: thresholdGate('total_rows', totalRows, safeThresholds.minTotalRows, 'count'),
   };
   const ok = Object.values(checks).every((gate) => gate.status !== 'fail');
   const topAnchorLimit = parseInteger(topAnchors, DEFAULT_TOP_ANCHORS, { min: 0, max: MAX_TOP_ANCHORS });
@@ -439,7 +449,14 @@ async function main(argv = process.argv.slice(2)) {
     process.stdout.write(formatServingStatusText(report));
   }
   if (options.failOnReadiness && !report.ok) process.exitCode = 1;
-  if (options.failOnExpiryRisk && report.checks?.expiring_14d_pct?.status === 'fail') process.exitCode = 1;
+  if (options.failOnExpiryRisk) {
+    const expiryGateFailed = report.checks?.expiring_14d_pct?.status === 'fail';
+    const floorGateFailed = report.checks?.total_rows?.status === 'fail';
+    // An empty serving set means the cliff already happened; 0% expiring of 0
+    // rows must never pass the alarm.
+    const servingEmpty = Number(report.coverage?.total_rows || 0) === 0;
+    if (expiryGateFailed || floorGateFailed || servingEmpty) process.exitCode = 1;
+  }
   return report;
 }
 
