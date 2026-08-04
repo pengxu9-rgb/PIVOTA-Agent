@@ -362,6 +362,55 @@ describe('canonicalCatalogSearch.fetchCanonicalChainRows', () => {
     expect(sql).toMatch(/LOWER\(COALESCE\(m\.merchant_name, ''\)\)\s+=\s+\$1\s+THEN\s+90/);
   });
 
+  test('sargableTextWhere opts the buyable tokenMatch lane into the sargable text WHERE', async () => {
+    // Class 5 closure for the strict ingredient-direct leg: the plain buyable
+    // form scans all serving-eligible products through the
+    // index_pipeline_state nested loop and post-filters (prod EXPLAIN
+    // 2026-08-04: 3.2-3.9s); the sargable shape flips it to a trigram
+    // BitmapOr (0.7-1.5s) with prod-verified identical rows on
+    // vitamin c serum / salicylic acid serum / niacinamide.
+    const query = makeMockQuery([]);
+    await fetchCanonicalChainRows({
+      query: 'vitamin c serum',
+      tokenMatch: true,
+      verticalSearch: true,
+      sargableTextWhere: true, // default eligibility = serving_eligible
+      deps: { query },
+    });
+    const { sql } = query.calls[0];
+    // still the buyable population
+    expect(sql).toMatch(/ips\.serving_eligible = TRUE/);
+    // non-sargable OR-arms gone from the text WHERE
+    expect(sql).not.toMatch(/OR LOWER\(COALESCE\(m\.merchant_name, ''\)\) LIKE \$2/);
+    expect(sql).not.toMatch(/OR LOWER\(COALESCE\(p\.source_product_id, ''\)\) LIKE \$2/);
+    // the sku/vertical OR-EXISTS recall arms (sw/sv) are excluded too — one
+    // OR-EXISTS disjunct pushes the whole disjunction off the bitmap path
+    // (prod EXPLAIN: 6.9s with them kept, worse than the plain form)
+    expect(sql).not.toMatch(/FROM catalog_skus sw/);
+    expect(sql).not.toMatch(/FROM catalog_skus sv/);
+    // token clause is the sargable (any-token superset) AND (overlap >= N) form
+    expect(sql).toMatch(/AND \(\([^]*?\) >= 2\)\)/);
+    // the verticalSearch RANK arms survive: sku identity (sx) and the
+    // visible_option_labels / ingredient_ids score arms (ss/si) — projection
+    // subplans that carry the SKU-ingredient signal without blocking the bitmap
+    expect(sql).toMatch(/FROM catalog_skus sx/);
+    expect(sql).toMatch(/FROM catalog_skus ss/);
+    expect(sql).toMatch(/FROM catalog_skus si/);
+  });
+
+  test('sargableTextWhere without tokenMatch does not rewrite (full buyable clause intact)', async () => {
+    const query = makeMockQuery([]);
+    await fetchCanonicalChainRows({
+      query: 'vitamin c serum',
+      sargableTextWhere: true, // tokenMatch OFF -> no sargable lane
+      deps: { query },
+    });
+    const { sql } = query.calls[0];
+    expect(sql).toMatch(/OR LOWER\(COALESCE\(m\.merchant_name, ''\)\) LIKE \$2/);
+    expect(sql).toMatch(/OR LOWER\(COALESCE\(p\.source_product_id, ''\)\) LIKE \$2/);
+    expect(sql).toMatch(/ips\.serving_eligible = TRUE/);
+  });
+
   test('citable non-tokenMatch lane keeps the full clause (index_eligible alone does not rewrite)', async () => {
     const query = makeMockQuery([]);
     await fetchCanonicalChainRows({

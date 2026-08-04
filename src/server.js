@@ -44973,6 +44973,22 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           // queries ("niacinamide") are unaffected: tokenMatch needs >= 2
           // tokens and the contiguous phrase arm already covers one word.
           tokenMatch: true,
+          // Class 5 (budget incoherence) closure: the plain-form statement
+          // scanned all ~7.9k serving-eligible products via the
+          // index_pipeline_state nested loop and post-filtered the text
+          // predicates (prod EXPLAIN ANALYZE 2026-08-04: 3.2-3.9s server-side
+          // against this stage's 6s budget — intermittent STAGE_TIMEOUT, and a
+          // timeout blanks the lane because the seed-prefetch leg is
+          // structurally empty post-graduation). The sargable text WHERE is
+          // the existing citable-lane shape applied to this buyable call:
+          // every disjunct trigram-bitmap-able, flipping the plan to a
+          // BitmapOr over idx_catalog_products_{title,brand,recall_doc}_trgm
+          // (0.7-1.5s measured). Row parity prod-verified on vitamin c serum /
+          // salicylic acid serum / niacinamide: identical rows, identical
+          // order — the dropped WHERE arms (merchant_name, source_product_id,
+          // sku/vertical EXISTS) contributed nothing here, and the
+          // SKU-ingredient rank arms verticalSearch provides are kept.
+          sargableTextWhere: true,
           limit: canonicalIngredientLimit,
           includeSkuOffers: false,
           marketId: ingredientPathMarket,
@@ -45054,6 +45070,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         const canonicalIngredientTelemetry = {
           canonical_path_executed: true,
           canonical_token_match: true,
+          canonical_sargable_text_where: true,
           canonical_raw_count: Array.isArray(canonicalIngredientResult?.rows) ? canonicalIngredientResult.rows.length : 0,
           canonical_product_count: canonicalIngredientProducts.length,
           canonical_category_path_prefix: canonicalIngredientCategoryPathPrefix,
