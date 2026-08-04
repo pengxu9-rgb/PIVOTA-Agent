@@ -40,9 +40,18 @@ const DELEGATED_PSP_TOKEN_PREFIX = 'spt_';
  * `token` with the `spt_` prefix. Anything else — including a signed grant that happens to sit next to one —
  * takes the verifier path unchanged (INV-3 is not weakened for non-SPT authorizations).
  */
+// The ONLY door this lane serves. It is both the ctx gate above and the `protocol_name` written onto the
+// backend order, so the label the backend gates on can never disagree with the door the request came from.
+const DELEGATED_LANE_PROTOCOL = 'acp';
+
 export function delegatedPspToken(paymentAuthorization) {
   if (!isPlainObject(paymentAuthorization)) return null;
-  const raw = paymentAuthorization.token;
+  // OWN property only (review F3). A `token` inherited from a polluted Object.prototype must never route a
+  // completion to the delegated lane: a legitimate SIGNED GRANT would then be diverted past the verifier and
+  // charged with an attacker-chosen token. Not reachable through either door today (Express's JSON parse does
+  // not pollute and the MCP surface strips `__proto__`), but this is a money branch and the codebase already
+  // uses hasOwn for exactly this reason elsewhere.
+  const raw = Object.hasOwn(paymentAuthorization, 'token') ? paymentAuthorization.token : undefined;
   if (typeof raw !== 'string') return null;
   const token = raw.trim();
   return token.startsWith(DELEGATED_PSP_TOKEN_PREFIX) && token.length > DELEGATED_PSP_TOKEN_PREFIX.length
@@ -285,7 +294,13 @@ async function completeCheckout(
   // THE ROUTING DECISION, taken once and before anything else reads the authorization. P5 of the routing
   // design: it must precede the kernel verifier. Flag OFF (default) ⇒ always null ⇒ every line below behaves
   // exactly as it did before this lane existed.
-  const delegatedToken = flagOn(delegatedTokenHandoffEnabled)
+  // Scoped to the ACP door (review F2). This branch lives in the SHARED completeCheckout, and the MCP tool
+  // surface also accepts a free-form `payment_authorization` — so without this an /mcp completion carrying an
+  // `spt_` would route here too, under a flag named ACP_SPT_GATEWAY_HANDOFF_ENABLED, and would write
+  // `protocol_name: 'acp'` onto the backend order. That field is exactly what the backend's off-session gate
+  // keys on, so a false value there is a falsified provenance record on the money path. The door declares
+  // itself in ctx; anything that is not the ACP door takes the verifier path unchanged.
+  const delegatedToken = flagOn(delegatedTokenHandoffEnabled) && ctx?.protocol === DELEGATED_LANE_PROTOCOL
     ? delegatedPspToken(params.payment_authorization)
     : null;
 
@@ -478,19 +493,20 @@ async function completeWithDelegatedPspToken(
   //    metadata builder merges rather than replaces, so this key survives to POST /agent/v2/orders alongside
   //    whatever else that builder adds.
   //
-  //    UNVERIFIED, RECORDED RATHER THAN GUESSED AT: the gateway's applyStrictHostedOrderMetadata also stamps
-  //    `metadata.agent_v2.{checkout_provider:'pivota_hosted_checkout', hosted_checkout:true}` on EVERY order
-  //    it builds, including this one — which is not a hosted checkout. pivota-backend was not available to
-  //    trace whether the off-session lane reads those keys. They are left in place deliberately: if they do
-  //    matter the failure is a refusal (fail-closed, diagnosable), whereas stripping them on a guess could
-  //    remove something the backend needs. PR-G's sandbox run should settle it.
+  //    RESOLVED (traced in pivota-backend origin/main): applyStrictHostedOrderMetadata also stamps
+  //    `metadata.agent_v2.{checkout_provider:'pivota_hosted_checkout', hosted_checkout:true}` on every order,
+  //    including this one — which is not a hosted checkout. The backend's off-session lane reads only
+  //    `protocol_name` and `payment_flow` from order metadata (agent_payment_sdk / acp_offsession_payment /
+  //    acp_offsession_capture contain no reference to the hosted keys, and the gateway never sets
+  //    `payment_flow`), so those keys are inert here. Left in place: they are honest about which builder made
+  //    the order, and removing them would change the normal lane too.
   const order = await kernel.createOrder(
     {
       idempotency_key: orderKey,
       order: {
         quote_id: params.session_id,
         shipping_address: params.shipping_address ?? {},
-        metadata: { protocol_name: 'acp' },
+        metadata: { protocol_name: DELEGATED_LANE_PROTOCOL },
       },
     },
     ctx,

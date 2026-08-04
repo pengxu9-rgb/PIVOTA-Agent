@@ -29,7 +29,12 @@ import { createAcpRestAdapter } from '../src/protocol/acpRestAdapter.js';
 import { createPaymentAuthorizationVerifier } from '../src/protocol/paymentAuthorizationVerifier.js';
 
 const SECRET = 'spt-handoff-secret-0123456789abcd';
-const CTX = { user_ref: 'user_1', acp_session_id: 'acp_1' };
+// `protocol: 'acp'` is what SCOPES the delegated lane to the ACP door (review F2) — the branch lives in the
+// shared completeCheckout, so the door must declare itself or an /mcp completion would route here too and
+// stamp a false `protocol_name` on the backend order.
+const CTX = { user_ref: 'user_1', acp_session_id: 'acp_1', protocol: 'acp' };
+// The same buyer/session arriving at any OTHER door.
+const CTX_NON_ACP = { user_ref: 'user_1', acp_session_id: 'acp_1', protocol: 'mcp' };
 const SPT = 'spt_1PjKtestTOKENvalue0001';
 
 // `quote_id` here is the BACKEND's own quote id — the gateway persists it as snapshot.upstream_quote_id and
@@ -592,4 +597,32 @@ test('ACP REST, flag ON: POST /complete with an spt_ completes through the deleg
   assert.equal(again.status, 409);
   assert.equal(again.body.code, 'QUOTE_ALREADY_USED');
   assert.equal(calls.delegated, 1, 'still exactly one charge');
+});
+
+
+test('the delegated lane is scoped to the ACP door: another door takes the verifier path unchanged', async () => {
+  // Review F2. completeCheckout is SHARED, and the MCP tool surface accepts a free-form
+  // `payment_authorization` — so without the ctx gate an /mcp completion carrying an `spt_` would route to
+  // the delegated lane under a flag named ACP_SPT_GATEWAY_HANDOFF_ENABLED, and would write
+  // `protocol_name: 'acp'` onto the backend order, which is the field the backend's off-session gate keys
+  // on. A false value there is a falsified provenance record on the money path.
+  const dispatched = [];
+  const verified = [];
+  const { exec, calls } = setup({
+    enabled: true,
+    dispatchImpl: async (bound) => { dispatched.push(bound); return { payment_status: 'succeeded', payment_id: 'pay_1' }; },
+    verify: async (auth) => { verified.push(auth); throw new PivotaCommerceError('CONFIRMATION_INVALID', { reason: 'unknown_authorization_method' }); },
+  });
+  const session_id = await newSession(exec, CTX_NON_ACP);
+
+  await assert.rejects(
+    exec('complete_checkout_session',
+      { idempotency_key: 'idem-nonacp', session_id, payment_authorization: { token: 'spt_live_1' } },
+      CTX_NON_ACP),
+    (e) => e.code === 'CONFIRMATION_INVALID',
+    'a non-ACP door must fall through to the verifier, which cannot attest an spt_',
+  );
+  assert.equal(dispatched.length, 0, 'no delegated dispatch from another door');
+  assert.equal(verified.length, 1, 'the verifier ran instead — INV-3 unchanged off the ACP door');
+  assert.equal(calls.create_order, 0, 'and no order was created');
 });

@@ -29,6 +29,9 @@ import { PIVOTA_TO_ACP_STATUS } from '../acpAp2.js';
 import { sanitizeResult } from './resultSanitizer.js';
 import { delegatedPaymentRefusalAcpResponse } from './delegatedPaymentRefusal.js';
 
+// This adapter IS the ACP door; every ctx it builds says so, which scopes the delegated-PSP-token lane.
+const ACP_PROTOCOL_NAME = 'acp';
+
 const DEFAULT_MAX_SKEW_MS = 5 * 60 * 1000; // reject a Timestamp more than 5 minutes off (replay window)
 const CREATE_DEDUP_TTL_MS = 15 * 60 * 1000; // window over which a replayed (buyer, idempotency_key) create dedupes
 // Build a sanitized ACP checkout-session response. handoffAllowed=FALSE: a quote/session response carries NO
@@ -258,11 +261,11 @@ export function createAcpRestAdapter(deps = {}) {
       if (!claimed) {
         const prior = await sessionStore.get(createKey);
         const stored = await ownedSession(prior.acp_session_id, user_ref);
-        const session = await executor.execute('get_checkout_session', { session_id: stored.quote_id }, { user_ref, acp_session_id: prior.acp_session_id });
+        const session = await executor.execute('get_checkout_session', { session_id: stored.quote_id }, { user_ref, acp_session_id: prior.acp_session_id, protocol: ACP_PROTOCOL_NAME });
         return { status: 200, body: acpSessionBody(prior.acp_session_id, session, stored) };
       }
 
-      const ctx = { user_ref, acp_session_id: minted };
+      const ctx = { user_ref, acp_session_id: minted, protocol: ACP_PROTOCOL_NAME };
       const session = await executor.execute('create_checkout_session', { idempotency_key, quote }, ctx);
       await sessionStore.set(minted, { quote_id: session.session_id, order_id: null, user_ref });
       return { status: 201, body: acpSessionBody(minted, session) };
@@ -281,7 +284,7 @@ export function createAcpRestAdapter(deps = {}) {
       // is the ONLY carrier of buyer_context on this lane — so the update body must carry the buyer/address
       // intake again, exactly as create did. Anything it omits is not "kept", it is DROPPED.
       const quote = await mapItemsToQuote(trustedBody(req), buyer, resolveDefaultVariants);
-      const ctx = { user_ref, acp_session_id };
+      const ctx = { user_ref, acp_session_id, protocol: ACP_PROTOCOL_NAME };
       const session = await executor.execute('update_checkout_session', { idempotency_key, session_id: stored.quote_id, quote }, ctx);
       await sessionStore.set(acp_session_id, { ...stored, quote_id: session.session_id });
       return { status: 200, body: acpSessionBody(acp_session_id, session, stored) };
@@ -294,7 +297,7 @@ export function createAcpRestAdapter(deps = {}) {
       const { user_ref } = await requireBuyer(req);
       const acp_session_id = pathId(req);
       const stored = await ownedSession(acp_session_id, user_ref);
-      const ctx = { user_ref, acp_session_id };
+      const ctx = { user_ref, acp_session_id, protocol: ACP_PROTOCOL_NAME };
       const session = await executor.execute('get_checkout_session', { session_id: stored.quote_id }, ctx);
       return { status: 200, body: acpSessionBody(acp_session_id, session, stored) };
     });
@@ -308,7 +311,7 @@ export function createAcpRestAdapter(deps = {}) {
       const acp_session_id = pathId(req);
       const stored = await ownedSession(acp_session_id, user_ref);
       const body = trustedBody(req);
-      const ctx = { user_ref, acp_session_id };
+      const ctx = { user_ref, acp_session_id, protocol: ACP_PROTOCOL_NAME };
       const out = await executor.execute('complete_checkout_session', {
         idempotency_key,
         session_id: stored.quote_id,
@@ -329,7 +332,7 @@ export function createAcpRestAdapter(deps = {}) {
       const { user_ref } = await requireBuyer(req);
       const acp_session_id = pathId(req);
       const stored = await ownedSession(acp_session_id, user_ref);
-      const ctx = { user_ref, acp_session_id };
+      const ctx = { user_ref, acp_session_id, protocol: ACP_PROTOCOL_NAME };
       await executor.execute('cancel_checkout_session', { idempotency_key, session_id: stored.quote_id, order_id: stored.order_id ?? undefined }, ctx);
       return { status: 200, body: { id: acp_session_id, object: 'checkout_session', status: 'canceled' } };
     });
