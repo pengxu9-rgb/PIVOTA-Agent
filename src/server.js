@@ -268,6 +268,10 @@ const {
 } = require('./services/canonicalCatalogSearch');
 const beautyRelevanceGate = require('./services/beautyRelevanceGate');
 const {
+  titleLooksLikeMultiProductSet,
+  queryWantsMultiProductSet,
+} = beautyRelevanceGate;
+const {
   resolveCanonicalCatalogEntityGroup,
   resolveAnchorIdentityForRelationshipGraph,
   applyAnchorIdentity,
@@ -568,6 +572,16 @@ const PIVOT_BEAUTY_TOKEN_RELEVANCE_RANK_ENABLED = parseBooleanEnv(
 // best-scored representative stays, the rest demote below all distinct results.
 const PIVOT_BEAUTY_NEAR_DUP_COLLAPSE_ENABLED = parseBooleanEnv(
   process.env.PIVOT_BEAUTY_NEAR_DUP_COLLAPSE_ENABLED,
+  false,
+);
+// SET_DEMOTION: demote multi-product bundles ("The Mini Discovery Set") below
+// single products when the shopper asked for ONE product type. Prod-measured
+// 2026-08-04: 14/120 rows across 12 category queries were bundles, clustered in
+// makeup (bronzer 4/10, blush 4/10). Demote-to-tail, never drop — total and
+// pagination stay stable, thin categories keep their coverage, and a query that
+// asks for a set ("gift set", "starter kit") is exempt so bundles still win there.
+const PIVOT_BEAUTY_SET_DEMOTION_ENABLED = parseBooleanEnv(
+  process.env.PIVOT_BEAUTY_SET_DEMOTION_ENABLED,
   false,
 );
 // ACTIVE_AWARE_RECALL (WS2b+c): tokenize recall patterns with query-named active
@@ -12508,7 +12522,11 @@ function appendCitableSupplementItems(responseBody, items) {
 // Best-effort + flag-gated; never breaks recall transport.
 function refineBeautyFindProductsMultiResponseBody(responseBody, queryText = '') {
   try {
-    if (!PIVOT_BEAUTY_NEAR_DUP_COLLAPSE_ENABLED && !PIVOT_BEAUTY_TOKEN_RELEVANCE_RANK_ENABLED) {
+    if (
+      !PIVOT_BEAUTY_NEAR_DUP_COLLAPSE_ENABLED &&
+      !PIVOT_BEAUTY_TOKEN_RELEVANCE_RANK_ENABLED &&
+      !PIVOT_BEAUTY_SET_DEMOTION_ENABLED
+    ) {
       return responseBody;
     }
     if (!responseBody || typeof responseBody !== 'object') return responseBody;
@@ -12526,8 +12544,16 @@ function refineBeautyFindProductsMultiResponseBody(responseBody, queryText = '')
       // Reorder only the scorer-less ingredient-direct lane; collapse everywhere.
       tokenRelevanceEnabled: isIngredientDirect && PIVOT_BEAUTY_TOKEN_RELEVANCE_RANK_ENABLED,
       nearDupCollapseEnabled: PIVOT_BEAUTY_NEAR_DUP_COLLAPSE_ENABLED,
+      // Set demotion runs for EVERY beauty lane: the bundles show up in the
+      // mainline's own results, not just the scorer-less lane, and this is the
+      // only place that sees the fully merged list.
+      setDemotionEnabled: PIVOT_BEAUTY_SET_DEMOTION_ENABLED,
     });
-    if (result.near_dup_collapsed_count > 0 || result.token_relevance_applied) {
+    if (
+      result.near_dup_collapsed_count > 0 ||
+      result.token_relevance_applied ||
+      result.set_demoted_count > 0
+    ) {
       container.products = result.products;
       if (responseBody.metadata && typeof responseBody.metadata === 'object') {
         if (result.near_dup_collapsed_count > 0) {
@@ -12535,6 +12561,9 @@ function refineBeautyFindProductsMultiResponseBody(responseBody, queryText = '')
         }
         if (result.token_relevance_applied) {
           responseBody.metadata.op_level_token_relevance_applied = true;
+        }
+        if (result.set_demoted_count > 0) {
+          responseBody.metadata.op_level_set_demoted_count = result.set_demoted_count;
         }
       }
     }
@@ -21215,11 +21244,24 @@ function scoreBeautyQueryTokenRelevance({ product, queryTokens } = {}) {
 // input array reference unchanged (byte-identical prior behavior).
 function reorderBeautyIngredientDirectProducts(
   products,
-  { queryText = '', tokenRelevanceEnabled = false, nearDupCollapseEnabled = false } = {},
+  {
+    queryText = '',
+    tokenRelevanceEnabled = false,
+    nearDupCollapseEnabled = false,
+    setDemotionEnabled = false,
+  } = {},
 ) {
   const input = Array.isArray(products) ? products : [];
-  if ((!tokenRelevanceEnabled && !nearDupCollapseEnabled) || input.length < 2) {
-    return { products: input, token_relevance_applied: false, near_dup_collapsed_count: 0 };
+  if (
+    (!tokenRelevanceEnabled && !nearDupCollapseEnabled && !setDemotionEnabled) ||
+    input.length < 2
+  ) {
+    return {
+      products: input,
+      token_relevance_applied: false,
+      near_dup_collapsed_count: 0,
+      set_demoted_count: 0,
+    };
   }
   let rows = input.map((product, idx) => ({ product, __recall_idx: idx }));
   let tokenRelevanceApplied = false;
@@ -21275,10 +21317,43 @@ function reorderBeautyIngredientDirectProducts(
     rows = collapsed.rows;
     nearDupCollapsedCount = collapsed.collapsed_count;
   }
+  // Multi-product bundles sink below single products — LAST, so it dominates
+  // the other orderings for the one thing a category shopper cares about
+  // (getting a product, not a kit). Stable within each group: relative order
+  // from the steps above is preserved, and nothing is dropped, so `total` and
+  // pagination are untouched. Skipped entirely when the query asked for a set.
+  let setDemotedCount = 0;
+  if (setDemotionEnabled && !queryWantsMultiProductSet(queryText)) {
+    const marked = rows.map((row, idx) => ({
+      row,
+      idx,
+      isSet: titleLooksLikeMultiProductSet(
+        firstNonEmptyString(
+          row.product?.title,
+          row.product?.name,
+          row.product?.product_name,
+          row.product?.display_name,
+        ) || '',
+      ),
+    }));
+    setDemotedCount = marked.filter((entry) => entry.isSet).length;
+    // Demote only when singles exist to take their place — an all-bundle result
+    // set is better served in its recall order than reshuffled to no effect.
+    if (setDemotedCount > 0 && setDemotedCount < marked.length) {
+      marked.sort((left, right) => {
+        if (left.isSet !== right.isSet) return left.isSet ? 1 : -1;
+        return left.idx - right.idx;
+      });
+      rows = marked.map((entry) => entry.row);
+    } else {
+      setDemotedCount = 0;
+    }
+  }
   return {
     products: rows.map((row) => row.product),
     token_relevance_applied: tokenRelevanceApplied,
     near_dup_collapsed_count: nearDupCollapsedCount,
+    set_demoted_count: setDemotedCount,
   };
 }
 
@@ -51700,6 +51775,11 @@ module.exports._debug = {
   // Security property: the raw wire bytes of an ACP delegate_payment request (raw PAN + CVC) are never
   // stashed on `req.rawBody`. Exported so that can be asserted directly rather than inferred.
   shouldCaptureAcpRawBody,
+  // Serving-order refinement over the fully merged beauty list. Exported so the
+  // set-demotion ordering is asserted directly instead of inferred from an
+  // end-to-end fixture that could pass without exercising it.
+  refineBeautyFindProductsMultiResponseBody,
+  reorderBeautyIngredientDirectProducts,
   resolveCanonicalCategoryPathPrefixForQuery,
   isNonBeautyCanonicalCategoryPathPrefix,
   matchesScope,

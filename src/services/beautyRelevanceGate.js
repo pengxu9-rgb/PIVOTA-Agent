@@ -210,8 +210,44 @@ function categoryPathParentScope(categoryPathPrefix) {
   return parts.length > 1 ? parts.slice(0, -1).join('/') : resolved;
 }
 
+
+// --- multi-product sets / bundles ------------------------------------------
+// A shopper asking for "bronzer" wants a bronzer, not a discovery set. Prod
+// 2026-08-04: 14 of 120 served rows across 12 category queries were sets, and
+// they cluster in makeup (bronzer 4/10, blush 4/10, highlighter 2/10).
+//
+// THE CATEGORY SIGNAL IS USELESS HERE — verified, not assumed. All 14 rows
+// carried the SINGLE-product category: "The Mini Discovery Set" is stored as
+// category=Bronzer, product_type=Bronzer. Zero sat under beauty/sets/*. The
+// merchant/harvester categorises a bundle by the department it sells into, so
+// the title is the only available signal.
+const MULTI_PRODUCT_TITLE_PATTERN =
+  /\b(sets?|kits?|bundles?|duos?|trios?|collections?|discovery|value\s*pack|pack\s*of|\d+\s*(?:pc|pcs|piece)s?|routines?)\b|套装|套裝|礼盒|禮盒/i;
+
+// Queries that ASK for a bundle. When the shopper says "set"/"kit"/"gift", a
+// bundle is the right answer and must not be demoted.
+const MULTI_PRODUCT_QUERY_PATTERN =
+  /\b(sets?|kits?|bundles?|duos?|trios?|collections?|discovery|gift|routines?|starter)\b|套装|套裝|礼盒|禮盒/i;
+
+/** Does this TITLE denote a multi-product bundle rather than one product? */
+function titleLooksLikeMultiProductSet(title) {
+  const text = String(title || '').trim();
+  if (!text) return false;
+  return MULTI_PRODUCT_TITLE_PATTERN.test(text);
+}
+
+/** Did the QUERY ask for a bundle? If so, bundles are on-intent. */
+function queryWantsMultiProductSet(queryText) {
+  const text = String(queryText || '').trim();
+  if (!text) return false;
+  return MULTI_PRODUCT_QUERY_PATTERN.test(text);
+}
+
 module.exports = {
   normalizeSearchTextForMatch,
+  MULTI_PRODUCT_TITLE_PATTERN,
+  titleLooksLikeMultiProductSet,
+  queryWantsMultiProductSet,
   FORM_TITLE_PATTERNS,
   titleMatchesForm,
   SKINCARE_FORM_TERMS,
