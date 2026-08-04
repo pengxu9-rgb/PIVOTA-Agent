@@ -362,6 +362,111 @@ describe('canonicalCatalogSearch.fetchCanonicalChainRows', () => {
     expect(sql).toMatch(/LOWER\(COALESCE\(m\.merchant_name, ''\)\)\s+=\s+\$1\s+THEN\s+90/);
   });
 
+  test('sargableTextWhere opts the buyable tokenMatch lane into the sargable text WHERE (recall_doc arm on)', async () => {
+    // Class 5 closure for the strict ingredient-direct leg: the plain buyable
+    // form scans all serving-eligible products through the
+    // index_pipeline_state nested loop and post-filters (prod EXPLAIN
+    // 2026-08-04: 3.2-3.9s); the sargable shape flips it to a trigram
+    // BitmapOr (0.7-1.5s) with prod-verified identical rows on
+    // vitamin c serum / salicylic acid serum / niacinamide (and the bare
+    // single-token ingredients) — parity that requires the recall_doc arm,
+    // hence the flag below.
+    process.env.CANONICAL_CATALOG_RECALL_DOC_MATCH = 'enabled';
+    try {
+      const query = makeMockQuery([]);
+      await fetchCanonicalChainRows({
+        query: 'vitamin c serum',
+        tokenMatch: true,
+        verticalSearch: true,
+        sargableTextWhere: true, // default eligibility = serving_eligible
+        deps: { query },
+      });
+      const { sql } = query.calls[0];
+      // still the buyable population
+      expect(sql).toMatch(/ips\.serving_eligible = TRUE/);
+      // non-sargable OR-arms gone from the text WHERE
+      expect(sql).not.toMatch(/OR LOWER\(COALESCE\(m\.merchant_name, ''\)\) LIKE \$2/);
+      expect(sql).not.toMatch(/OR LOWER\(COALESCE\(p\.source_product_id, ''\)\) LIKE \$2/);
+      // the sku/vertical OR-EXISTS recall arms (sw/sv) are excluded too — one
+      // OR-EXISTS disjunct pushes the whole disjunction off the bitmap path
+      // (prod EXPLAIN: 6.9s with them kept, worse than the plain form); the
+      // recall_doc arm covers their recall while the flag is on
+      expect(sql).not.toMatch(/FROM catalog_skus sw/);
+      expect(sql).not.toMatch(/FROM catalog_skus sv/);
+      // the compensating recall_doc arm is actually present
+      expect(sql).toMatch(/p\.recall_doc LIKE ANY/);
+      // token clause is the sargable (any-token superset) AND (overlap >= N) form
+      expect(sql).toMatch(/AND \(\([^]*?\) >= 2\)\)/);
+      // the verticalSearch RANK arms survive: sku identity (sx) and the
+      // visible_option_labels / ingredient_ids score arms (ss/si) — projection
+      // subplans that carry the SKU-ingredient signal without blocking the bitmap
+      expect(sql).toMatch(/FROM catalog_skus sx/);
+      expect(sql).toMatch(/FROM catalog_skus ss/);
+      expect(sql).toMatch(/FROM catalog_skus si/);
+    } finally {
+      delete process.env.CANONICAL_CATALOG_RECALL_DOC_MATCH;
+    }
+  });
+
+  test('sargableTextWhere falls back to the plain WHERE when the recall_doc arm is off', async () => {
+    // Without the recall_doc arm the sargable rewrite would LOSE recall: with
+    // CANONICAL_CATALOG_RECALL_DOC_MATCH disabled, prod row-diff on bare
+    // "glycerin" showed 22/25 rows recalled ONLY by the sku/vertical EXISTS
+    // arms (catalog_skus.ingredient_ids is populated for part of the catalog,
+    // and single-significant-token queries get no tokenWhere compensation).
+    // The buyable opt-in therefore only takes effect while the flag is on;
+    // flag-off keeps the complete plain clause.
+    delete process.env.CANONICAL_CATALOG_RECALL_DOC_MATCH;
+    const query = makeMockQuery([]);
+    await fetchCanonicalChainRows({
+      query: 'glycerin toner',
+      tokenMatch: true,
+      verticalSearch: true,
+      sargableTextWhere: true,
+      deps: { query },
+    });
+    const { sql } = query.calls[0];
+    // full plain clause intact, including the sku/vertical recall arms
+    expect(sql).toMatch(/OR LOWER\(COALESCE\(m\.merchant_name, ''\)\) LIKE \$2/);
+    expect(sql).toMatch(/OR LOWER\(COALESCE\(p\.source_product_id, ''\)\) LIKE \$2/);
+    expect(sql).toMatch(/FROM catalog_skus sw/);
+    expect(sql).toMatch(/FROM catalog_skus sv/);
+    // tokenWhere stays in its plain (non-sargable) form
+    expect(sql).toMatch(/OR \(\([^]*?\) >= 2\)/);
+    expect(sql).toMatch(/ips\.serving_eligible = TRUE/);
+  });
+
+  test('citable sargable lane does not depend on the recall_doc flag (index_eligible)', async () => {
+    // The flag gate is scoped to the buyable sargableTextWhere opt-in only:
+    // citable callers never pass verticalSearch, so their rewrite drops no
+    // live recall and must keep working with the flag off.
+    delete process.env.CANONICAL_CATALOG_RECALL_DOC_MATCH;
+    const query = makeMockQuery([]);
+    await fetchCanonicalChainRows({
+      query: 'hair butter for damaged hair',
+      tokenMatch: true,
+      eligibility: 'index_eligible',
+      deps: { query },
+    });
+    const { sql } = query.calls[0];
+    expect(sql).not.toMatch(/OR LOWER\(COALESCE\(m\.merchant_name, ''\)\) LIKE \$2/);
+    expect(sql).toMatch(/AND \(\([^]*?\) >= 2\)\)/);
+    expect(sql).toMatch(/ips\.index_eligible = TRUE/);
+  });
+
+  test('sargableTextWhere without tokenMatch does not rewrite (full buyable clause intact)', async () => {
+    const query = makeMockQuery([]);
+    await fetchCanonicalChainRows({
+      query: 'vitamin c serum',
+      sargableTextWhere: true, // tokenMatch OFF -> no sargable lane
+      deps: { query },
+    });
+    const { sql } = query.calls[0];
+    expect(sql).toMatch(/OR LOWER\(COALESCE\(m\.merchant_name, ''\)\) LIKE \$2/);
+    expect(sql).toMatch(/OR LOWER\(COALESCE\(p\.source_product_id, ''\)\) LIKE \$2/);
+    expect(sql).toMatch(/ips\.serving_eligible = TRUE/);
+  });
+
   test('citable non-tokenMatch lane keeps the full clause (index_eligible alone does not rewrite)', async () => {
     const query = makeMockQuery([]);
     await fetchCanonicalChainRows({

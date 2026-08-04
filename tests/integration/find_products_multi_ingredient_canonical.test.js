@@ -263,6 +263,116 @@ describe('find_products_multi ingredient_recall_direct canonical extension', () 
     // assertion. The first test pins the wiring; this one pins the args.
   });
 
+  test('canonical helper invocation includes tokenMatch=true for ingredient path', async () => {
+    // Regression pin for the 2026-08-01 junk top-10 ("vitamin c serum" ->
+    // 0/10 literal matches in the lane's own products). Without tokenMatch
+    // the only title predicate is the contiguous whole phrase
+    // (LIKE '%vitamin c serum%'), which literal PDPs like "Advanced The
+    // Vitamin C 23 Serum" do not contain — literal matches could then enter
+    // the candidate set ONLY via the flag-gated recall_doc arm, whose
+    // single-token '%serum%' patterns admit every serum in the catalog, and
+    // with rank v2 off the pool tied at the flat +200 scope bonus and
+    // degenerated to updated_at DESC. tokenMatch emits the token-overlap
+    // WHERE arm ((...) >= N) plus the *25-per-token rank bonus, making the
+    // lane's recall and ordering self-sufficient (flag-independent).
+    const observedSql = [];
+    const observedParams = [];
+    jest.doMock('../../src/db', () => ({
+      query: async (sql, params) => {
+        observedSql.push(String(sql || ''));
+        observedParams.push(Array.isArray(params) ? params : []);
+        return { rows: [] };
+      },
+    }));
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: { query: 'vitamin c serum', page: 1, limit: 10, market: 'US' },
+        },
+        metadata: { source: 'shopping_agent', market: 'US' },
+      });
+
+    expect(resp.status).toBe(200);
+    // Pin the lane so the SQL assertions can't silently relocate.
+    expect(resp.body.metadata?.query_source).toBe('agent_products_ingredient_recall_direct');
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({ canonical_token_match: true }),
+    );
+    const canonicalIdx = observedSql.findIndex((sql) => sql.includes('FROM catalog_products p'));
+    expect(canonicalIdx).toBeGreaterThanOrEqual(0);
+    const canonicalSql = observedSql[canonicalIdx];
+    // Token-overlap threshold in WHERE ("vitamin c serum" -> significant
+    // tokens [vitamin, serum], minTokens 2) + the *25 token rank bonus.
+    expect(canonicalSql).toMatch(/\) >= 2\)/);
+    expect(canonicalSql).toMatch(/\* 25\)/);
+    expect(observedParams[canonicalIdx]).toEqual(
+      expect.arrayContaining(['%vitamin%', '%serum%']),
+    );
+  });
+
+  test('canonical helper invocation uses the sargable text WHERE for ingredient path', async () => {
+    // Class 5 (budget incoherence) closure. The plain buyable form scanned
+    // all ~7.9k serving-eligible products through the index_pipeline_state
+    // nested loop and post-filtered the text predicates (prod EXPLAIN ANALYZE
+    // 2026-08-04: 3.2-3.9s server-side against the leg's 6s
+    // FPM_INGREDIENT_CANONICAL_STAGE_BUDGET_MS — intermittent STAGE_TIMEOUT
+    // blanked the lane because the seed-prefetch leg is structurally empty
+    // post-graduation). sargableTextWhere elects the citable sargable shape
+    // for this buyable call: every text-WHERE disjunct trigram-bitmap-able,
+    // which flips the plan to a BitmapOr over the title/brand/recall_doc
+    // trigram indexes (0.7-1.5s measured; identical rows on the probe set —
+    // parity holds only WITH the recall_doc arm, so the helper requires the
+    // flag and this test pins the flag-on shape; flag-off falls back to the
+    // plain WHERE (unit-tested in canonical_catalog_search.test.js).
+    process.env.CANONICAL_CATALOG_RECALL_DOC_MATCH = 'enabled';
+    const observedSql = [];
+    jest.doMock('../../src/db', () => ({
+      query: async (sql, params) => {
+        observedSql.push(String(sql || ''));
+        return { rows: [] };
+      },
+    }));
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: { query: 'vitamin c serum', page: 1, limit: 10, market: 'US' },
+        },
+        metadata: { source: 'shopping_agent', market: 'US' },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(resp.body.metadata?.query_source).toBe('agent_products_ingredient_recall_direct');
+    // The stamp reports the EFFECTIVE sargable state (requested opt-in AND
+    // recall_doc arm on), so a flag-off deploy is visible in metadata.
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({ canonical_sargable_text_where: true }),
+    );
+    const canonicalIdx = observedSql.findIndex((sql) => sql.includes('FROM catalog_products p'));
+    expect(canonicalIdx).toBeGreaterThanOrEqual(0);
+    const canonicalSql = observedSql[canonicalIdx];
+    // Buyable population, sargable token form: (any-token superset) AND
+    // (overlap >= N) — the AND-recheck wrapper only the sargable lane emits.
+    expect(canonicalSql).toMatch(/ips\.serving_eligible = TRUE/);
+    expect(canonicalSql).toMatch(/AND \(\([^]*?\) >= 2\)\)/);
+    // Non-bitmap-able recall arms are out of the text WHERE...
+    expect(canonicalSql).not.toMatch(/OR LOWER\(COALESCE\(m\.merchant_name, ''\)\) LIKE \$2/);
+    expect(canonicalSql).not.toMatch(/FROM catalog_skus sw/);
+    expect(canonicalSql).not.toMatch(/FROM catalog_skus sv/);
+    // ...while the verticalSearch RANK arms (sku identity + option/ingredient
+    // scores) remain so SKU-ingredient signal still orders the pool.
+    expect(canonicalSql).toMatch(/FROM catalog_skus sx/);
+    expect(canonicalSql).toMatch(/FROM catalog_skus ss/);
+    expect(canonicalSql).toMatch(/FROM catalog_skus si/);
+  });
+
   test('ingredient direct canonical merge respects explicit skincare form intent', async () => {
     jest.doMock('../../src/db', () => ({
       query: async (sql) => {

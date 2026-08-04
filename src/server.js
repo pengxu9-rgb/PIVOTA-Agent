@@ -264,6 +264,7 @@ const {
 } = require('./services/externalSeedRecall');
 const {
   fetchCanonicalChainRows,
+  isRecallDocMatchEnabled: isCanonicalRecallDocMatchEnabled,
 } = require('./services/canonicalCatalogSearch');
 const beautyRelevanceGate = require('./services/beautyRelevanceGate');
 const {
@@ -44957,6 +44958,43 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           // populated ingredientIntentIds), so SKU-level visible_option_labels
           // and ingredient_ids should also be matched.
           verticalSearch: true,
+          // Token recall, not phrase-or-recall_doc-only. Without this the only
+          // title predicate is the contiguous whole phrase (LIKE '%vitamin c
+          // serum%'), which "Advanced The Vitamin C 23 Serum" does not contain
+          // — so literal ingredient matches enter the candidate set ONLY via
+          // the flag-gated recall_doc arm (CANONICAL_CATALOG_RECALL_DOC_MATCH),
+          // whose single-token patterns ('%serum%') also admit every serum in
+          // the catalog. With rank v2 OFF that pool ties at the flat +200
+          // scope bonus and degenerates to updated_at DESC: the prod-verified
+          // 2026-08-01 junk top-10 ("vitamin c serum" -> 0/10 literal). Token
+          // match makes the lane's recall self-sufficient (title/brand token
+          // overlap, >= half the significant tokens) and its +25/token rank
+          // arm orders literal matches above single-token noise regardless of
+          // the recall_doc / rank-v2 flag state. Single-significant-token
+          // queries ("niacinamide") are unaffected: tokenMatch needs >= 2
+          // tokens and the contiguous phrase arm already covers one word.
+          tokenMatch: true,
+          // Class 5 (budget incoherence) closure: the plain-form statement
+          // scanned all ~7.9k serving-eligible products via the
+          // index_pipeline_state nested loop and post-filtered the text
+          // predicates (prod EXPLAIN ANALYZE 2026-08-04: 3.2-3.9s server-side
+          // against this stage's 6s budget — intermittent STAGE_TIMEOUT, and a
+          // timeout blanks the lane because the seed-prefetch leg is
+          // structurally empty post-graduation). The sargable text WHERE is
+          // the existing citable-lane shape applied to this buyable call:
+          // every disjunct trigram-bitmap-able, flipping the plan to a
+          // BitmapOr over idx_catalog_products_{title,brand,recall_doc}_trgm
+          // (0.7-1.5s measured). Row parity prod-verified on vitamin c serum /
+          // salicylic acid serum / niacinamide AND bare retinol / ceramide /
+          // glycerin / niacinamide: identical rows, identical order — BUT only
+          // with the recall_doc arm present (flag-off, bare "glycerin" lost
+          // 22/25 rows that only the sku/vertical EXISTS arms recalled;
+          // catalog_skus.ingredient_ids IS populated for part of the catalog).
+          // The helper therefore honors this opt-in only while
+          // CANONICAL_CATALOG_RECALL_DOC_MATCH is enabled and falls back to
+          // the (slower, complete) plain WHERE otherwise. The SKU-ingredient
+          // rank arms verticalSearch provides are kept either way.
+          sargableTextWhere: true,
           limit: canonicalIngredientLimit,
           includeSkuOffers: false,
           marketId: ingredientPathMarket,
@@ -45037,6 +45075,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         );
         const canonicalIngredientTelemetry = {
           canonical_path_executed: true,
+          canonical_token_match: true,
+          // EFFECTIVE state, not the requested opt-in: the helper honors
+          // sargableTextWhere only while the recall_doc arm is on (row-parity
+          // guard), so deploy verification must see what actually ran.
+          canonical_sargable_text_where: isCanonicalRecallDocMatchEnabled(),
           canonical_raw_count: Array.isArray(canonicalIngredientResult?.rows) ? canonicalIngredientResult.rows.length : 0,
           canonical_product_count: canonicalIngredientProducts.length,
           canonical_category_path_prefix: canonicalIngredientCategoryPathPrefix,
