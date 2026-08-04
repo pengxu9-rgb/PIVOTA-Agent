@@ -30711,7 +30711,47 @@ const PUBLIC_READ_MCP_MAX_BODY_BYTES = 32 * 1024;
 // 8–23s, so without this guard the partner's first uncached query is a dropped connection.
 const { createMcpResponseHeartbeat } = require('./services/publicReadMcpHeartbeat');
 
-function mcpHeartbeatOptionsFromEnv(prefixes) {
+// Committing locks the response to 200 FOREVER, so the heartbeat may only arm on a request whose outcome is
+// guaranteed 200. `tools/call` is that method — and the only one that does real work, so the only one that
+// can approach the deadline: every other method on this transport answers from memory in microseconds.
+// One of them, `notifications/initialized`, legitimately answers 202 with a null body, which a commit would
+// silently rewrite to 200 + a bare "\n" (not parseable JSON) — and it is NOT reliably instant, because the
+// adapter warm-up and identity verification that precede the dispatch can outlive the delay on a cold
+// container. An ALLOWLIST keeps the invariant true when a future method is added; a blocklist would not.
+// The method is read synchronously from the already-parsed body, so this check costs no deadline margin.
+function isMcpHeartbeatEligibleRequest(req) {
+  const body = req && typeof req.body === 'object' && req.body !== null ? req.body : null;
+  return Boolean(body) && body.method === 'tools/call';
+}
+
+// Money-path kill-switches, decided from the parsed JSON-RPC body alone (no adapter, no session context) so
+// a refused op answers instantly. Returns null when nothing is blocked.
+function resolveBlockedCommerceMcpOperation(rpcBody) {
+  const toolName = rpcBody && rpcBody.method === 'tools/call' && rpcBody.params
+    ? rpcBody.params.name
+    : null;
+  if (toolName === 'complete_checkout_session' && !isAgentCheckoutStrictSubmitPaymentEnabled()) {
+    return {
+      operation: 'complete_checkout_session',
+      reason: 'strict_submit_payment_disabled',
+      message: 'submit_payment is disabled in strict checkout mode.',
+    };
+  }
+  if (toolName === 'create_payment_link' && !isAgentCheckoutHostedLinkEnabled()) {
+    return {
+      operation: 'create_payment_link',
+      reason: 'hosted_link_disabled',
+      message: 'create_payment_link is disabled (AGENT_CHECKOUT_HOSTED_LINK_ENABLED=0).',
+    };
+  }
+  return null;
+}
+
+/**
+ * @param {string[]} prefixes env prefix chain, most specific first.
+ * @param {{eligible?: boolean, elapsedMs?: number}} ctx per-request gating.
+ */
+function mcpHeartbeatOptionsFromEnv(prefixes, { eligible = true, elapsedMs = 0 } = {}) {
   // First non-empty value wins across the prefix chain (e.g. COMMERCE_MCP_* overriding PUBLIC_READ_MCP_*).
   const pick = (suffix) => {
     for (const prefix of prefixes) {
@@ -30721,22 +30761,31 @@ function mcpHeartbeatOptionsFromEnv(prefixes) {
     return '';
   };
   const enabledRaw = pick('ENABLED').toLowerCase();
+  const delayRaw = Number(pick('DELAY_MS'));
+  const intervalRaw = Number(pick('INTERVAL_MS'));
+  const delayMs = delayRaw > 0 ? delayRaw : 6000;
   return {
-    enabled: enabledRaw === '' ? true : !['0', 'false', 'off', 'no'].includes(enabledRaw),
-    delayMs: Number(pick('DELAY_MS')) > 0 ? Number(pick('DELAY_MS')) : 6000,
-    intervalMs: Number(pick('INTERVAL_MS')) > 0 ? Number(pick('INTERVAL_MS')) : 5000,
+    enabled: (enabledRaw === '' ? true : !['0', 'false', 'off', 'no'].includes(enabledRaw)) && eligible,
+    // The module picks its default on the assumption that the delay runs from HANDLER ENTRY (see its note on
+    // why 6s and not 13s). Anything awaited before the heartbeat is constructed — on the commerce lane, token
+    // introspection and remote-JWKS identity verification, together several seconds worst case — is deadline
+    // budget already spent, so subtract it. A budget fully consumed commits on the next tick, which is the
+    // intended behaviour: that request is the one closest to being reset.
+    delayMs: Math.max(0, delayMs - Math.max(0, Number(elapsedMs) || 0)),
+    intervalMs: intervalRaw > 0 ? intervalRaw : 5000,
   };
 }
 
-function publicReadMcpHeartbeatOptions() {
-  return mcpHeartbeatOptionsFromEnv(['PUBLIC_READ_MCP']);
+function publicReadMcpHeartbeatOptions(ctx) {
+  return mcpHeartbeatOptionsFromEnv(['PUBLIC_READ_MCP'], ctx);
 }
 
 // The commerce lane sits behind the SAME Railway edge with the same first-body-byte deadline, so it shares
-// the public-tier knobs (one kill-switch stops both lanes) while COMMERCE_MCP_HEARTBEAT_* takes precedence
-// when the lanes ever need to differ.
-function commerceMcpHeartbeatOptions() {
-  return mcpHeartbeatOptionsFromEnv(['COMMERCE_MCP', 'PUBLIC_READ_MCP']);
+// the public-tier knobs — one kill-switch stops both lanes, so disabling the public tier's guard in an
+// incident silently disables this one too unless COMMERCE_MCP_HEARTBEAT_ENABLED=1 is set explicitly, which
+// takes precedence (as does every other COMMERCE_MCP_HEARTBEAT_* value, per suffix).
+function commerceMcpHeartbeatOptions(ctx) {
+  return mcpHeartbeatOptionsFromEnv(['COMMERCE_MCP', 'PUBLIC_READ_MCP'], ctx);
 }
 
 async function handlePublicReadMcp(req, res) {
@@ -30756,7 +30805,10 @@ async function handlePublicReadMcp(req, res) {
   return INVOKE_AUTH_CONTEXT.run(
     { path: req?.path || null, surface: 'mcp_public', auth_mode: 'public_read', auth_source: 'public_read' },
     async () => {
-      const heartbeat = createMcpResponseHeartbeat(res, publicReadMcpHeartbeatOptions());
+      const heartbeat = createMcpResponseHeartbeat(
+        res,
+        publicReadMcpHeartbeatOptions({ eligible: isMcpHeartbeatEligibleRequest(req) }),
+      );
       try {
         const adapter = await getPublicReadMcpAdapter();
         const out = await adapter.handleJsonRpc({ headers: req.headers || {}, body: req.body });
@@ -30787,6 +30839,9 @@ function registerPublicReadMcpRoute() {
 
 function registerCommerceRemoteMcpRoute() {
   app.post('/mcp', async (req, res) => {
+    // Handler entry, not heartbeat construction: the auth channel below (token introspection, remote-JWKS
+    // identity verification) can burn seconds of the edge's first-body-byte budget before the guard exists.
+    const handlerEnteredAtMs = Date.now();
     // The branded public app origin (mcp.pivota.cc) maps to this same service and path, so /mcp dispatches
     // those requests to the auth:none read tier BEFORE any commerce gating — the public app must never
     // depend on the checkout kill-switch or the commerce auth channel.
@@ -30818,65 +30873,43 @@ function registerCommerceRemoteMcpRoute() {
 
     const runMcp = async () => {
       return INVOKE_AUTH_CONTEXT.run(buildExternalInvokeContext(req), async () => {
+        // The blocked-operation short-circuits run BEFORE the heartbeat exists. They decide purely from the
+        // parsed body and two env flags — they never needed the adapter or the session context — so hoisting
+        // them keeps a refused money op on the same instant, fully buffered path as the 404/401 refusals
+        // instead of leaving a rarely-taken committed-wire branch behind the guard.
+        const rpcBody = req?.body && typeof req.body === 'object' ? req.body : {};
+        const blockedOperation = resolveBlockedCommerceMcpOperation(rpcBody);
+        if (blockedOperation) {
+          recordCommerceKernelAudit({
+            event: 'operation_blocked',
+            operation: blockedOperation.operation,
+            detail: { code: 'OPERATION_NOT_ALLOWED', reason: blockedOperation.reason },
+          });
+          return res.status(200).json(mcpToolErrorBody({
+            id: Object.prototype.hasOwnProperty.call(rpcBody, 'id') ? rpcBody.id : null,
+            code: 'OPERATION_NOT_ALLOWED',
+            message: blockedOperation.message,
+          }));
+        }
+
         // Same Railway edge first-body-byte deadline as the public tier (services/publicReadMcpHeartbeat):
         // a commerce tools/call that outlives ~13s (cold search, slow checkout upstream) gets its connection
-        // reset while the server completes uselessly. Created only HERE — after every non-200 fast path
-        // (strict-off 404, OAuth challenge + WWW-Authenticate, api-key 401/403) — so committing 200 can
-        // never mask a real status or drop a challenge header. Every path from this point resolves 200
-        // (the adapter rides tool errors inside the JSON-RPC body; its only non-200, the instant 202 for
-        // notifications/initialized, cannot outlive the delay), and the adapter's headers are only
-        // content-type, which the heartbeat sets itself.
-        const heartbeat = createMcpResponseHeartbeat(res, commerceMcpHeartbeatOptions());
+        // reset while the server completes uselessly. Two things make committing 200 here safe. First,
+        // construction happens only AFTER every non-200 outcome this route can produce (strict-off 404,
+        // OAuth challenge + WWW-Authenticate, api-key 401/403/503, blocked-op refusal), so a commit can
+        // never mask a real status or drop a challenge header. Second, isMcpHeartbeatEligibleRequest arms it
+        // for tools/call ONLY — the one method whose outcome is guaranteed 200, tool errors riding inside
+        // the JSON-RPC body — instead of relying on the other methods being too fast to reach the delay.
+        // Adapter headers are only content-type, which the heartbeat sets itself on commit.
+        const heartbeat = createMcpResponseHeartbeat(res, commerceMcpHeartbeatOptions({
+          eligible: isMcpHeartbeatEligibleRequest(req),
+          elapsedMs: Date.now() - handlerEnteredAtMs,
+        }));
         try {
           const adapter = await getCommerceRemoteMcpAdapter();
           const sessionContext = mcpOAuthOutcome.mode === 'oauth'
             ? buildOAuthCommerceCtx(req, mcpOAuthOutcome)
             : await deriveStrictCommerceCtxAsync(req);
-          const rpcBody = req?.body && typeof req.body === 'object' ? req.body : {};
-          if (
-            rpcBody.method === 'tools/call' &&
-            rpcBody.params &&
-            rpcBody.params.name === 'complete_checkout_session' &&
-            !isAgentCheckoutStrictSubmitPaymentEnabled()
-          ) {
-            recordCommerceKernelAudit({
-              event: 'operation_blocked',
-              operation: 'complete_checkout_session',
-              detail: {
-                code: 'OPERATION_NOT_ALLOWED',
-                reason: 'strict_submit_payment_disabled',
-              },
-            });
-            const blockedBody = mcpToolErrorBody({
-              id: Object.prototype.hasOwnProperty.call(rpcBody, 'id') ? rpcBody.id : null,
-              code: 'OPERATION_NOT_ALLOWED',
-              message: 'submit_payment is disabled in strict checkout mode.',
-            });
-            if (heartbeat.finish({ status: 200, body: blockedBody })) return undefined;
-            return res.status(200).json(blockedBody);
-          }
-          if (
-            rpcBody.method === 'tools/call' &&
-            rpcBody.params &&
-            rpcBody.params.name === 'create_payment_link' &&
-            !isAgentCheckoutHostedLinkEnabled()
-          ) {
-            recordCommerceKernelAudit({
-              event: 'operation_blocked',
-              operation: 'create_payment_link',
-              detail: {
-                code: 'OPERATION_NOT_ALLOWED',
-                reason: 'hosted_link_disabled',
-              },
-            });
-            const blockedBody = mcpToolErrorBody({
-              id: Object.prototype.hasOwnProperty.call(rpcBody, 'id') ? rpcBody.id : null,
-              code: 'OPERATION_NOT_ALLOWED',
-              message: 'create_payment_link is disabled (AGENT_CHECKOUT_HOSTED_LINK_ENABLED=0).',
-            });
-            if (heartbeat.finish({ status: 200, body: blockedBody })) return undefined;
-            return res.status(200).json(blockedBody);
-          }
           const out = await adapter.handleJsonRpc({
             headers: req.headers || {},
             body: req.body,
@@ -51811,6 +51844,13 @@ module.exports._debug = {
   // end-to-end fixture that could pass without exercising it.
   refineBeautyFindProductsMultiResponseBody,
   reorderBeautyIngredientDirectProducts,
+  // Safety property of the MCP edge-timeout guard: committing locks the response to 200 forever, so the
+  // heartbeat arms for tools/call ONLY. Route-level tests cannot prove this — the work preceding the
+  // dispatch is synchronous, so the commit timer never fires there no matter what the gate says — hence
+  // the predicate and the elapsed-budget math are exported and asserted directly.
+  isMcpHeartbeatEligibleRequest,
+  mcpHeartbeatOptionsFromEnv,
+  resolveBlockedCommerceMcpOperation,
   resolveCanonicalCategoryPathPrefixForQuery,
   isNonBeautyCanonicalCategoryPathPrefix,
   matchesScope,

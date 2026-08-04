@@ -121,7 +121,7 @@ jobs:
       # byte-identical buffered responses. Dependency-free (node builtins + the
       # pure module), but per the npm-ci note above, green proves the job
       # passes, not that the file is a leaf.
-      # ADDED 2026-08-04: `commerce_mcp_route_heartbeat`, confirmed green (6/6)
+      # ADDED 2026-08-04: `commerce_mcp_route_heartbeat`, confirmed green (7/7)
       # before landing. It is the ONLY suite covering the same edge-timeout
       # guard on the AUTHENTICATED commerce /mcp lane: a slow tools/call
       # commits 200 + heartbeat whitespace with a still-parseable JSON-RPC
@@ -129,6 +129,16 @@ jobs:
       # keep their real statuses because they resolve before the heartbeat is
       # created. Boots the real server via supertest, so it needs the npm ci
       # above.
+      # ADDED 2026-08-04: `commerce_mcp_heartbeat_gate`, confirmed green (7/7)
+      # before landing AND mutation-checked — deleting the tools/call gate
+      # fails 2 of its tests, deleting the elapsed-budget subtraction fails a
+      # 3rd. It carries the safety property the route suite structurally
+      # CANNOT: committing locks the response to 200 forever, so only
+      # tools/call may arm the heartbeat (the adapter's 202 for
+      # notifications/initialized would otherwise become 200 + an unparseable
+      # "\n"). A route test cannot prove that — everything preceding the
+      # dispatch is synchronous, so the commit timer never fires there — which
+      # is exactly the "test that cannot fail" shape this job exists to avoid.
       - name: Run node:test suites
         run: |
           node --test \
@@ -150,7 +160,8 @@ jobs:
             tests/ucp_order_webhook_receiver.node.test.cjs \
             tests/acp_delegate_payment_refusal.node.test.cjs \
             tests/public_read_mcp_heartbeat.node.test.cjs \
-            tests/commerce_mcp_route_heartbeat.node.test.cjs
+            tests/commerce_mcp_route_heartbeat.node.test.cjs \
+            tests/commerce_mcp_heartbeat_gate.node.test.cjs
 
   jest:
     runs-on: ubuntu-latest

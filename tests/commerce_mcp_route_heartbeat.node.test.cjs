@@ -42,6 +42,14 @@ test.before(async () => {
   process.env.PAYMENT_WEBHOOK_SECRET = 'strict-webhook-secret-0123456789';
   // Keep /mcp on the commerce lane: the public tier must not capture these requests by host.
   delete process.env.PUBLIC_READ_MCP_ENABLED;
+  // Hermetic against a developer machine exporting the prod knobs: an ambient
+  // PUBLIC_READ_MCP_HEARTBEAT_ENABLED=0 disables the guard on this lane too and would turn the heartbeat
+  // assertions below into failures for a reason that has nothing to do with the code under test.
+  for (const prefix of ['COMMERCE_MCP', 'PUBLIC_READ_MCP']) {
+    for (const suffix of ['ENABLED', 'DELAY_MS', 'INTERVAL_MS']) {
+      delete process.env[`${prefix}_HEARTBEAT_${suffix}`];
+    }
+  }
 
   app = require('../src/server');
 });
@@ -60,6 +68,29 @@ function rawParser(res, cb) {
   res.on('data', (chunk) => { raw += chunk; });
   res.on('end', () => cb(null, raw));
 }
+
+// A REGRESSION LOCK, deliberately not a proof. The gate that keeps this 202 intact
+// (isMcpHeartbeatEligibleRequest) is proven in tests/commerce_mcp_heartbeat_gate.node.test.cjs, because no
+// route-level test can prove it: everything the handler does before the JSON-RPC dispatch is synchronous, so
+// the commit timer never fires here even with the delay forced to 1ms and the gate deleted. What this
+// still catches is a future change that makes the pre-dispatch path genuinely async — at which point an
+// ungated heartbeat would rewrite this 202 into 200 + a bare "\n" and this test would go red.
+test('notifications/initialized answers 202 with an empty body under a forced 1ms delay', async () => {
+  process.env.COMMERCE_MCP_HEARTBEAT_DELAY_MS = '1';
+  process.env.COMMERCE_MCP_HEARTBEAT_INTERVAL_MS = '5';
+  try {
+    const resp = await supertest(app)
+      .post('/mcp')
+      .send({ jsonrpc: '2.0', method: 'notifications/initialized' })
+      .buffer(true)
+      .parse(rawParser);
+    assert.equal(resp.status, 202, 'a commit would have masked this as 200');
+    assert.equal(resp.body, '', 'expected an empty body, not heartbeat whitespace');
+  } finally {
+    delete process.env.COMMERCE_MCP_HEARTBEAT_DELAY_MS;
+    delete process.env.COMMERCE_MCP_HEARTBEAT_INTERVAL_MS;
+  }
+});
 
 test('slow commerce tools/call heartbeats through the REAL route: 200 committed, leading bytes, body still parses', async () => {
   // Force the commit with a 1ms delay (commerce-specific knobs) so the slow upstream call is "slow",
@@ -141,10 +172,10 @@ test('missing-key 401 keeps its status even with a 1ms heartbeat delay', async (
   }
 });
 
-test('OPERATION_NOT_ALLOWED short-circuit still answers a parseable tool-error body with the heartbeat wired', async () => {
-  // complete_checkout_session is blocked while AGENT_CHECKOUT_STRICT_SUBMIT_PAYMENT_ENABLED is off. With a
-  // 1ms delay the short-circuit may answer before OR after the commit — either way the wire must carry a
-  // parseable JSON-RPC tool-error body.
+test('a blocked money op answers buffered, ahead of the heartbeat, even with a 1ms delay', async () => {
+  // complete_checkout_session is refused while AGENT_CHECKOUT_STRICT_SUBMIT_PAYMENT_ENABLED is off. That
+  // refusal is decided from the body alone and returns BEFORE the heartbeat is constructed, so it must be a
+  // plain buffered JSON body — no heartbeat whitespace — however small the delay is.
   process.env.COMMERCE_MCP_HEARTBEAT_DELAY_MS = '1';
   try {
     const resp = await supertest(app)
@@ -153,10 +184,12 @@ test('OPERATION_NOT_ALLOWED short-circuit still answers a parseable tool-error b
       .buffer(true)
       .parse(rawParser)
       .expect(200);
+    assert.match(resp.body, /^\{/, 'a refused money op must not ride a committed heartbeat wire');
     const parsed = JSON.parse(resp.body);
     assert.equal(parsed.id, 16);
     assert.equal(parsed.result.isError, true);
     assert.match(parsed.result.content[0].text, /OPERATION_NOT_ALLOWED/);
+    assert.match(parsed.result.content[0].text, /submit_payment is disabled/);
   } finally {
     delete process.env.COMMERCE_MCP_HEARTBEAT_DELAY_MS;
   }

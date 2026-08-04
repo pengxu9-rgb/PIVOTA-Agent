@@ -13,9 +13,15 @@
 // The guard: once compute has run longer than delayMs, COMMIT a 200 + chunked application/json response and
 // write a newline heartbeat every intervalMs until the JSON-RPC body is ready, then append the body. Leading
 // whitespace is valid JSON, so every body-parsing client (fetch().json(), JSON.parse, Python/Go decoders) is
-// unaffected. Committing locks the status to 200 — safe on this surface because every adapter path that can
-// still be running after delayMs is a tools/call, and tools/call always resolves status 200 (tool errors
-// ride inside the JSON-RPC body; the adapter's non-200 responses are all instant validation paths).
+// unaffected.
+//
+// Committing locks the status to 200 and discards out.status FOREVER, so the CALLER owes this module one
+// precondition: only construct an enabled heartbeat for a request whose outcome is guaranteed 200. Both
+// wiring sites enforce that by arming only for tools/call (isMcpHeartbeatEligibleRequest in server.js) —
+// tool errors ride inside the JSON-RPC body, so tools/call always resolves 200, while the adapter's 202 for
+// notifications/initialized would be rewritten to 200 + a bare "\n" that no client can parse. Do NOT relax
+// that to "the other methods are fast enough": adapter warm-up and identity verification precede the
+// dispatch, and on a cold container they can outlive delayMs.
 //
 // Pure module: timers injected, no env reads — configuration happens at the wiring site.
 
