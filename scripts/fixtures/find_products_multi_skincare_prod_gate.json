@@ -149,7 +149,8 @@
     "must_return_one_of_title_token_sets": [
       ["salicylic"],
       ["bha"]
-    ]
+    ],
+    "min_title_token_set_match_ratio": 0.15
   },
   {
     "id": "skincare_generic_brightening_serum_prod",

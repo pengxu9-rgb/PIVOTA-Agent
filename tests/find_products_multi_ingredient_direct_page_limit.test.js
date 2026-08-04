@@ -85,6 +85,45 @@ describe('ingredient-direct strict lane honors requested limit at the res.json c
     expect(out.metadata.citable_supplement_skip_reason).toBe('strict_contract');
   });
 
+  test('skip survives the pivot beauty contract rewrite of contract_bridge', () => {
+    // applyPivotBeautyContractToInvokeSearchResponse runs BEFORE the
+    // supplement in the res.json wrapper and overwrites
+    // contract_bridge.{attempted,resolved}_contract to 'pivot.agent.v1' for
+    // beauty-shaped requests — while spreading the rest of metadata
+    // untouched. The strict lane deliberately still serves pivot-contract
+    // ingredient queries, so the skip must key on the surviving stamps
+    // (top-level resolved_contract / strict_constraint_query), not on
+    // contract_bridge alone. Simulate exactly what the rewrite does to the
+    // bridge fields.
+    const limit = 10;
+    const response = buildStrictLaneResponse({ merged: 19, limit });
+    response.metadata.contract_bridge = {
+      ...response.metadata.contract_bridge,
+      attempted_contract: 'pivot.agent.v1',
+      resolved_contract: 'pivot.agent.v1',
+    };
+    expect(response.metadata.strict_constraint_query).toBe(true);
+
+    const out = appendCitableSupplementItems(response, buildCitableItems(42));
+
+    expect(out.products).toHaveLength(limit);
+    expect(out.products.every((p) => p.search_recall_source !== 'canonical_citation')).toBe(true);
+    expect(out.metadata.citable_supplement_count).toBe(0);
+    expect(out.metadata.citable_supplement_skip_reason).toBe('strict_contract');
+  });
+
+  test('strict bodies stamp skip telemetry even when the supplement cache is cold (no items)', () => {
+    // The skip check sits before the items-length early-return, so the
+    // count/skip_reason stamps are deterministic and do not flap with the
+    // supplement cache's warmth at send time.
+    const response = buildStrictLaneResponse({ merged: 19, limit: 10 });
+
+    const out = appendCitableSupplementItems(response, []);
+
+    expect(out.metadata.citable_supplement_count).toBe(0);
+    expect(out.metadata.citable_supplement_skip_reason).toBe('strict_contract');
+  });
+
   test('strict lane response never exceeds the requested limit through the full choke-point sequence', () => {
     const limit = 10;
     const response = buildStrictLaneResponse({ merged: 19, limit });

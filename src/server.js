@@ -12425,26 +12425,48 @@ async function buildCitableSupplementItems(queryText = '') {
 // body. Safe to call on any shape; no-op when items is empty.
 function appendCitableSupplementItems(responseBody, items) {
   try {
-    if (!Array.isArray(items) || !items.length) return responseBody;
     if (!responseBody || typeof responseBody !== 'object') return responseBody;
-    // Strict-contract lanes (ingredient_recall_direct) paginate inside the lane
-    // AND are exempt from enforceFindProductsMultiRequestedPageSize's trim, so
-    // anything appended here ships to the client uncapped: prod probes showed
-    // limit=10 requests returning 48-52 products whenever the supplement cache
-    // was warm at send time (and 10 when it wasn't — the count flapped with
-    // cache warmth). Citation items are token-matched, never checked against
-    // the ingredient constraint, so they don't belong in a
-    // strict_constraint_query response either. Skip the lane entirely.
-    if (
-      String(responseBody?.metadata?.contract_bridge?.resolved_contract || '') ===
-      'shop_invoke_strict'
-    ) {
-      if (responseBody.metadata && typeof responseBody.metadata === 'object') {
-        responseBody.metadata.citable_supplement_count = 0;
-        responseBody.metadata.citable_supplement_skip_reason = 'strict_contract';
-      }
+    // Strict-contract lanes (ingredient_recall_direct + the upstream strict
+    // proxy) paginate inside the lane AND are exempt from
+    // enforceFindProductsMultiRequestedPageSize's trim, so anything appended
+    // here ships to the client uncapped: prod probes showed limit=10 requests
+    // returning 48-52 products whenever the supplement cache was warm at send
+    // time (and 10 when it wasn't — the count flapped with cache warmth).
+    // Citation items are token-matched, never checked against the ingredient
+    // constraint, so they don't belong in a strict_constraint_query response
+    // either. Skip the lane entirely.
+    //
+    // The discriminator must NOT rely on contract_bridge alone:
+    // applyPivotBeautyContractToInvokeSearchResponse runs EARLIER in the same
+    // res.json wrapper and overwrites contract_bridge.{attempted,resolved}_contract
+    // to 'pivot.agent.v1' for beauty-shaped requests — and the strict lane
+    // deliberately still serves pivot-contract ingredient queries
+    // (shouldPreserveIngredientDirectForPivotBeautyContract). That rewrite
+    // spreads the rest of metadata untouched, so the lane's top-level
+    // resolved_contract and strict_constraint_query stamps survive it; the
+    // upstream strict proxy stamps only contract_bridge, which is covered by
+    // the first arm when no rewrite fired.
+    //
+    // This check sits BEFORE the items-length early-return so strict bodies
+    // stamp count 0 + skip_reason deterministically, cold or warm cache —
+    // otherwise the skip_reason itself would flap with cache warmth, the
+    // exact ambiguity it exists to remove.
+    const responseMetadata =
+      responseBody.metadata && typeof responseBody.metadata === 'object' && !Array.isArray(responseBody.metadata)
+        ? responseBody.metadata
+        : null;
+    const isStrictContractBody = Boolean(
+      responseMetadata &&
+        (String(responseMetadata.contract_bridge?.resolved_contract || '') === 'shop_invoke_strict' ||
+          String(responseMetadata.resolved_contract || '') === 'shop_invoke_strict' ||
+          responseMetadata.strict_constraint_query === true),
+    );
+    if (isStrictContractBody) {
+      responseMetadata.citable_supplement_count = 0;
+      responseMetadata.citable_supplement_skip_reason = 'strict_contract';
       return responseBody;
     }
+    if (!Array.isArray(items) || !items.length) return responseBody;
     const container = Array.isArray(responseBody.products)
       ? responseBody
       : (responseBody.data && Array.isArray(responseBody.data.products) ? responseBody.data : null);
@@ -44954,6 +44976,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         // which filters on the product's own visible text after recall.
         const canonicalIngredientCategoryPathPrefix = null;
         const canonicalIngredientLimit = Math.max(6, Math.min(12, Math.ceil(safeLimit / 2)));
+        // Single source of truth for the call arg AND the canonical_token_match
+        // telemetry stamp below — the stamp must not be a free-floating literal
+        // that keeps reading true if the call arg ever becomes conditional.
+        const canonicalIngredientTokenMatch = true;
         const canonicalIngredientStartedAt = Date.now();
         // Market-aware filtering on the ingredient path too — same
         // rationale as the other call sites (Round Lab market=KR was
@@ -44991,7 +45017,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           // the recall_doc / rank-v2 flag state. Single-significant-token
           // queries ("niacinamide") are unaffected: tokenMatch needs >= 2
           // tokens and the contiguous phrase arm already covers one word.
-          tokenMatch: true,
+          tokenMatch: canonicalIngredientTokenMatch,
           // Class 5 (budget incoherence) closure: the plain-form statement
           // scanned all ~7.9k serving-eligible products via the
           // index_pipeline_state nested loop and post-filtered the text
@@ -45093,7 +45119,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         );
         const canonicalIngredientTelemetry = {
           canonical_path_executed: true,
-          canonical_token_match: true,
+          canonical_token_match: canonicalIngredientTokenMatch,
           // EFFECTIVE state, not the requested opt-in: the helper honors
           // sargableTextWhere only while the recall_doc arm is on (row-parity
           // guard), so deploy verification must see what actually ran.
