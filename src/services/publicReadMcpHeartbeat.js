@@ -1,6 +1,7 @@
 'use strict';
 
-// Edge-timeout guard for the public MCP read tier (POST /mcp on mcp.pivota.cc, POST /public/mcp).
+// Edge-timeout guard for the MCP lanes: the public read tier (POST /mcp on mcp.pivota.cc, POST /public/mcp)
+// and the authenticated commerce lane (POST /mcp on non-public hosts) — both wired in src/server.js.
 //
 // Measured 2026-08-04 with a probe service behind the same Railway edge: a response whose FIRST BODY BYTE
 // arrives later than ~13s after the request is reset at ~16.4s (HTTP/2 RST_STREAM; "empty reply" on

@@ -30711,19 +30711,32 @@ const PUBLIC_READ_MCP_MAX_BODY_BYTES = 32 * 1024;
 // 8–23s, so without this guard the partner's first uncached query is a dropped connection.
 const { createMcpResponseHeartbeat } = require('./services/publicReadMcpHeartbeat');
 
-function publicReadMcpHeartbeatOptions() {
-  const enabledRaw = String(process.env.PUBLIC_READ_MCP_HEARTBEAT_ENABLED ?? '').trim().toLowerCase();
+function mcpHeartbeatOptionsFromEnv(prefixes) {
+  // First non-empty value wins across the prefix chain (e.g. COMMERCE_MCP_* overriding PUBLIC_READ_MCP_*).
+  const pick = (suffix) => {
+    for (const prefix of prefixes) {
+      const raw = process.env[`${prefix}_HEARTBEAT_${suffix}`];
+      if (raw !== undefined && String(raw).trim() !== '') return String(raw).trim();
+    }
+    return '';
+  };
+  const enabledRaw = pick('ENABLED').toLowerCase();
   return {
     enabled: enabledRaw === '' ? true : !['0', 'false', 'off', 'no'].includes(enabledRaw),
-    delayMs:
-      Number(process.env.PUBLIC_READ_MCP_HEARTBEAT_DELAY_MS) > 0
-        ? Number(process.env.PUBLIC_READ_MCP_HEARTBEAT_DELAY_MS)
-        : 6000,
-    intervalMs:
-      Number(process.env.PUBLIC_READ_MCP_HEARTBEAT_INTERVAL_MS) > 0
-        ? Number(process.env.PUBLIC_READ_MCP_HEARTBEAT_INTERVAL_MS)
-        : 5000,
+    delayMs: Number(pick('DELAY_MS')) > 0 ? Number(pick('DELAY_MS')) : 6000,
+    intervalMs: Number(pick('INTERVAL_MS')) > 0 ? Number(pick('INTERVAL_MS')) : 5000,
   };
+}
+
+function publicReadMcpHeartbeatOptions() {
+  return mcpHeartbeatOptionsFromEnv(['PUBLIC_READ_MCP']);
+}
+
+// The commerce lane sits behind the SAME Railway edge with the same first-body-byte deadline, so it shares
+// the public-tier knobs (one kill-switch stops both lanes) while COMMERCE_MCP_HEARTBEAT_* takes precedence
+// when the lanes ever need to differ.
+function commerceMcpHeartbeatOptions() {
+  return mcpHeartbeatOptionsFromEnv(['COMMERCE_MCP', 'PUBLIC_READ_MCP']);
 }
 
 async function handlePublicReadMcp(req, res) {
@@ -30805,6 +30818,15 @@ function registerCommerceRemoteMcpRoute() {
 
     const runMcp = async () => {
       return INVOKE_AUTH_CONTEXT.run(buildExternalInvokeContext(req), async () => {
+        // Same Railway edge first-body-byte deadline as the public tier (services/publicReadMcpHeartbeat):
+        // a commerce tools/call that outlives ~13s (cold search, slow checkout upstream) gets its connection
+        // reset while the server completes uselessly. Created only HERE — after every non-200 fast path
+        // (strict-off 404, OAuth challenge + WWW-Authenticate, api-key 401/403) — so committing 200 can
+        // never mask a real status or drop a challenge header. Every path from this point resolves 200
+        // (the adapter rides tool errors inside the JSON-RPC body; its only non-200, the instant 202 for
+        // notifications/initialized, cannot outlive the delay), and the adapter's headers are only
+        // content-type, which the heartbeat sets itself.
+        const heartbeat = createMcpResponseHeartbeat(res, commerceMcpHeartbeatOptions());
         try {
           const adapter = await getCommerceRemoteMcpAdapter();
           const sessionContext = mcpOAuthOutcome.mode === 'oauth'
@@ -30825,11 +30847,13 @@ function registerCommerceRemoteMcpRoute() {
                 reason: 'strict_submit_payment_disabled',
               },
             });
-            return res.status(200).json(mcpToolErrorBody({
+            const blockedBody = mcpToolErrorBody({
               id: Object.prototype.hasOwnProperty.call(rpcBody, 'id') ? rpcBody.id : null,
               code: 'OPERATION_NOT_ALLOWED',
               message: 'submit_payment is disabled in strict checkout mode.',
-            }));
+            });
+            if (heartbeat.finish({ status: 200, body: blockedBody })) return undefined;
+            return res.status(200).json(blockedBody);
           }
           if (
             rpcBody.method === 'tools/call' &&
@@ -30845,11 +30869,13 @@ function registerCommerceRemoteMcpRoute() {
                 reason: 'hosted_link_disabled',
               },
             });
-            return res.status(200).json(mcpToolErrorBody({
+            const blockedBody = mcpToolErrorBody({
               id: Object.prototype.hasOwnProperty.call(rpcBody, 'id') ? rpcBody.id : null,
               code: 'OPERATION_NOT_ALLOWED',
               message: 'create_payment_link is disabled (AGENT_CHECKOUT_HOSTED_LINK_ENABLED=0).',
-            }));
+            });
+            if (heartbeat.finish({ status: 200, body: blockedBody })) return undefined;
+            return res.status(200).json(blockedBody);
           }
           const out = await adapter.handleJsonRpc({
             headers: req.headers || {},
@@ -30857,6 +30883,7 @@ function registerCommerceRemoteMcpRoute() {
             authInfo: buildStrictSessionAuthInfo(req, sessionContext),
             sessionContext,
           });
+          if (heartbeat.finish(out)) return undefined;
           for (const [key, value] of Object.entries(out.headers || {})) {
             res.setHeader(key, value);
           }
@@ -30864,6 +30891,10 @@ function registerCommerceRemoteMcpRoute() {
           return res.status(out.status).json(out.body);
         } catch (err) {
           logger.error({ err: err?.message || String(err) }, 'Strict checkout remote MCP route failed');
+          const rpcId = req?.body && typeof req.body === 'object' && req.body.id !== undefined ? req.body.id : null;
+          if (heartbeat.fail({ jsonrpc: '2.0', id: rpcId, error: { code: -32603, message: 'Internal error.' } })) {
+            return undefined;
+          }
           return res.status(503).json({ error: 'mcp_unavailable' });
         }
       });
