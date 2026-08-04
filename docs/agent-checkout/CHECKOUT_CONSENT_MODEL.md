@@ -17,20 +17,34 @@ human-confirm flow, implying it gated all charges).
 
 The one-shot flow a native frontier client (Claude/ChatGPT/Gemini) drives over the remote `/mcp` surface.
 
-Pipeline ([`safety-kernel/src/protocol/canonicalExecutor.js:181`](../../safety-kernel/src/protocol/canonicalExecutor.js)):
+Pipeline ([`safety-kernel/src/protocol/canonicalExecutor.js`, `completeCheckout`](../../safety-kernel/src/protocol/canonicalExecutor.js)):
 
 ```
-createOrder (amount from the locked quote, not the caller)
-  -> verifyPaymentAuthorization(payment_authorization, { order_id, user_ref, amount, currency, merchant_id, checkout_session_id })
-  -> assertAttestation  (positive attestation; amount/currency/user_ref MUST match the authoritative order)
+resolve the LOCKED QUOTE (a read: existence/expiry/linkage, and refuse a quote already spent)
+  -> verifyPaymentAuthorization(payment_authorization, { order_id: null, user_ref, amount, currency, merchant_id, checkout_session_id })
+  -> assertAttestation  (positive attestation; amount/currency/user_ref MUST match the locked quote)
+  -> createOrder (amount from that same locked quote, not the caller — THIS is what claims it single-use)
+  -> assertAttestation again, against the authoritative order + merchant re-check (fail closed on drift)
   -> kernel.mintConfirmation({ order_id })   // host-minted INTERNALLY; bound to order+buyer in the kernel
   -> kernel.submitPayment(...)               // charge once; amount/currency from the order
 ```
 
+**Verification comes BEFORE `createOrder`, deliberately.** `createOrder` claims the quote single-use (INV-1),
+so verifying after it meant a complete whose authorization failed to verify permanently burned the checkout
+session — no money moved, nothing completed, yet a retry with a *corrected* authorization was refused. The
+money being verified is identical either way: `order.amount_total` / `currency` / `merchant_of_record` are
+taken verbatim from the same locked-quote snapshot.
+
+**Verifier contract:** `bound.order_id` is `null` — no order exists yet, and it was never part of the binding
+invariant (`assertPaymentBinding` binds merchant/amount/currency/checkout-session/buyer/expiry and never reads
+it). `checkout_session_id` is what ties a grant to this checkout. The verifier is invoked exactly ONCE per
+attempt, and is not invoked at all against an already-spent quote, so a grant that is single-use or
+nonce-bearing is never presented twice by the executor.
+
 **Consent = the `payment_authorization`** — an ACP delegated payment token or an AP2 Checkout Mandate. The
 buyer authorized it upstream (confirmed in ChatGPT → delegated token; or signed the AP2 mandate). It is
 cryptographically verified and bound to *this* order's amount/currency/buyer/session before any charge
-([`assertAttestation`, canonicalExecutor.js:340](../../safety-kernel/src/protocol/canonicalExecutor.js) — fail-closed: absence-of-throw is not success).
+([`assertAttestation`](../../safety-kernel/src/protocol/canonicalExecutor.js) — fail-closed: absence-of-throw is not success).
 
 **The caller never supplies a confirmation token.** It is internal kernel plumbing (INV-3). Requiring an
 additional Pivota-side human click here would break the native one-shot — there is no Pivota UI inside

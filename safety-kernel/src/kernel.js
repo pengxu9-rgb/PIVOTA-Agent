@@ -191,6 +191,19 @@ export class SafetyKernel {
     };
   }
 
+  /**
+   * Has this quote already been turned into an order (INV-1 single-use)?
+   *
+   * READ-ONLY and advisory. It is NOT the enforcement — `createOrder`'s atomic `putIfAbsent` is, and stays
+   * the only thing that can make a quote single-use. This exists so a caller can decline to do irreversible
+   * or externally-visible work against a quote that is already spent; a concurrent claim can still land
+   * between this read and that write, and the atomic claim is what refuses it.
+   */
+  async isQuoteClaimed(quoteId) {
+    if (!quoteId) return false;
+    return Boolean(await this._quoteClaims.get(quoteId));
+  }
+
   /** create_order: INV-1 (quote required), INV-4 (idempotent), INV-5 (amount from snapshot). */
   async createOrder(payload, ctx) {
     this._requireUser(ctx);

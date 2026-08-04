@@ -247,11 +247,13 @@ async function completeCheckout({ kernel, verifyPaymentAuthorization }, params, 
   // complete returns the original {order, payment} (no IDEMPOTENCY_CONFLICT from a freshly-minted token, no
   // re-charge). A retry after a FAILED verify (no charge yet) is allowed — the ledger releases the key
   // because sideEffectDone is still false. That release only makes retrying POSSIBLE; what makes it
-  // SUCCEED is that a failed verify now happens before createOrder, so the quote is still unspent. Note the
-  // two retry shapes: the SAME key replays only for the same body (an unchanged authorization), while a
-  // CORRECTED authorization changes the fingerprint and therefore needs a NEW idempotency key — which is
-  // exactly the case that used to hit QUOTE_ALREADY_USED. The inner createOrder/submitPayment ledgers remain
-  // the charge-once backstop.
+  // SUCCEED is that a failed verify now happens before createOrder, so the quote is still unspent.
+  //
+  // On retry keys, precisely (an earlier draft of this comment got it wrong): after a FAILED verify the
+  // ledger has COMPARE-AND-DELETED its record, so there is nothing left to conflict with — the buyer may
+  // retry a corrected authorization on the SAME key or a new one, and both work. A fingerprint conflict
+  // only arises while a prior attempt is still pending/done/ambiguous, i.e. never on this recovery path.
+  // The inner createOrder/submitPayment ledgers remain the charge-once backstop.
   const { result } = await kernel.idempotency.run(
     base,
     {
@@ -274,6 +276,16 @@ async function completeCheckout({ kernel, verifyPaymentAuthorization }, params, 
       //    atomic putIfAbsent is what makes a quote single-use). So it hands us the authoritative money —
       //    the same snapshot createOrder will price the order from — while the session is still spendable.
       const quote = await kernel.quotes.resolveForOrder(params.session_id, ctx);
+      // resolveForOrder matches createOrder on existence, expiry and user/session linkage but NOT on the
+      // single-use claim, so without this a SPENT quote would reach the verifier — presenting the buyer's
+      // grant before refusing. That costs nothing with a pure-crypto verifier, but a verifier that consumes
+      // the grant (PSP-side validation, a jti replay cache) would burn it and answer CONFIRMATION_INVALID
+      // where the honest answer is QUOTE_ALREADY_USED — the same misreporting this reordering set out to fix.
+      // Advisory only: createOrder's atomic claim below is still the enforcement, so a concurrent claim that
+      // lands after this read is refused there, exactly as before.
+      if (typeof kernel.isQuoteClaimed === 'function' && (await kernel.isQuoteClaimed(quote.quote_id))) {
+        throw new PivotaCommerceError('QUOTE_ALREADY_USED', { quote_id: quote.quote_id });
+      }
       // Shaped like the order the kernel is about to mint, so the ONE attestation check runs against the
       // quote here and against the real order in step 3 with no second, drifting copy of the rules.
       const authorized = {
@@ -314,7 +326,11 @@ async function completeCheckout({ kernel, verifyPaymentAuthorization }, params, 
         ctx,
       );
       assertAttestation(attestation, order, ctx);
-      if (String(order.merchant_of_record) !== String(authorized.merchant_of_record)) {
+      // Require the field on BOTH sides: a bare string compare would pass when both are absent
+      // ("undefined" === "undefined"), which is exactly the regression class this line exists to catch.
+      // (previewQuote already refuses a quote with no merchant_of_record, so this is defense in depth.)
+      if (!nonEmpty(order.merchant_of_record) || !nonEmpty(authorized.merchant_of_record)
+        || String(order.merchant_of_record) !== String(authorized.merchant_of_record)) {
         throw new PivotaCommerceError('CONFIRMATION_INVALID', { reason: 'authorization_merchant_mismatch' });
       }
 

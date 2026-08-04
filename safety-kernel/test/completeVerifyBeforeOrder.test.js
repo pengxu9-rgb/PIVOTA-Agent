@@ -137,7 +137,12 @@ test('the same recovery holds through the REAL unified verifier (createPaymentAu
 
 test('the verifier is bound to the LOCKED QUOTE snapshot (authoritative money), never the caller', async () => {
   const seen = [];
-  const { exec } = setup({ verify: async (_a, bound) => { seen.push(bound); return attest(bound); } });
+  let calls;
+  const made = setup({
+    verify: async (_a, bound) => { seen.push({ ...bound, __orders_at_verify: calls.create_order }); return attest(bound); },
+  });
+  const exec = made.exec;
+  calls = made.calls;
   const session_id = await newSession(exec);
   await exec(
     'complete_checkout_session',
@@ -146,6 +151,11 @@ test('the verifier is bound to the LOCKED QUOTE snapshot (authoritative money), 
     CTX,
   );
   assert.equal(seen.length, 1);
+  // ORDERING, not just values: on the old executor the verifier ran AFTER createOrder, so it received a real
+  // order_id and the order already existed. Both assertions below fail against that ordering — without them
+  // this test passes either way, because the order's amount equals the quote's.
+  assert.equal(seen[0].order_id, null, 'verified BEFORE any order exists');
+  assert.equal(seen[0].__orders_at_verify, 0, 'no order had been created when the verifier ran');
   assert.equal(seen[0].amount, 113, 'the quote snapshot total, not the caller');
   assert.equal(seen[0].currency, 'USD');
   assert.equal(seen[0].merchant_id, 'merch_A');
@@ -165,7 +175,7 @@ test('INV-3 not weakened: a non-attesting verifier still fails CLOSED — and no
     const { exec, calls } = setup({ verify: bad });
     const session_id = await newSession(exec);
     await assert.rejects(
-      exec('complete_checkout_session', { idempotency_key: `idem-inv3-${calls.create_order}-x`, session_id, payment_authorization: { token: 't' } }, CTX),
+      exec('complete_checkout_session', { idempotency_key: `idem-inv3-${label.replace(/[^a-z0-9]+/gi, '-')}`, session_id, payment_authorization: { token: 't' } }, CTX),
       (e) => e.code === 'CONFIRMATION_INVALID',
       `verifier that ${label} must fail closed`,
     );
@@ -299,4 +309,78 @@ test('ACP REST end-to-end: a 402 on a bad delegated token leaves the checkout se
   assert.equal(after.status, 409);
   assert.equal(after.body.code, 'QUOTE_ALREADY_USED');
   assert.equal(calls.submit_payment, 1, 'still one charge');
+});
+
+// --- review follow-ups: the reordering must not present a grant against a SPENT quote ---------------------
+
+test('a SPENT quote is refused BEFORE the verifier sees the grant (no grant presentation on a dead session)', async () => {
+  // resolveForOrder matches createOrder on existence/expiry/linkage but NOT on the single-use claim, so
+  // without an explicit pre-check a second complete would present the buyer's authorization and only THEN
+  // refuse. Harmless for a pure-crypto verifier; a verifier that consumes the grant (PSP validation, a jti
+  // replay cache) would burn it and answer CONFIRMATION_INVALID where QUOTE_ALREADY_USED is the honest answer
+  // — reintroducing exactly the misreporting this reordering fixes.
+  let verifies = 0;
+  const { exec, calls } = setup({ verify: async (_a, bound) => { verifies++; return attest(bound); } });
+  const session_id = await newSession(exec);
+
+  await exec('complete_checkout_session', { idempotency_key: 'idem-spent-1', session_id, payment_authorization: { token: 't' } }, CTX);
+  assert.equal(calls.create_order, 1);
+  assert.equal(verifies, 1);
+
+  await assert.rejects(
+    exec('complete_checkout_session', { idempotency_key: 'idem-spent-2', session_id, payment_authorization: { token: 't' } }, CTX),
+    (e) => e.code === 'QUOTE_ALREADY_USED',
+    'a spent quote must answer QUOTE_ALREADY_USED',
+  );
+  assert.equal(verifies, 1, 'the grant must NOT be presented again against a spent quote');
+  assert.equal(calls.create_order, 1, 'and no second order');
+  assert.equal(calls.submit_payment, 1, 'and no second charge');
+});
+
+test('a grant-consuming verifier is never burned by a replay on a spent session', async () => {
+  // The concrete scenario: a verifier with a one-shot nonce store. Before the pre-check it would be consumed
+  // by the doomed second attempt; after it, the buyer's grant survives untouched.
+  const consumed = new Set();
+  const { exec } = setup({
+    verify: async (a, bound) => {
+      if (consumed.has(a.token)) throw new PivotaCommerceError('CONFIRMATION_INVALID', { reason: 'grant_already_used' });
+      consumed.add(a.token);
+      return attest(bound);
+    },
+  });
+  const session_id = await newSession(exec);
+  await exec('complete_checkout_session', { idempotency_key: 'idem-nonce-1', session_id, payment_authorization: { token: 'grant_1' } }, CTX);
+
+  await assert.rejects(
+    exec('complete_checkout_session', { idempotency_key: 'idem-nonce-2', session_id, payment_authorization: { token: 'grant_2' } }, CTX),
+    (e) => e.code === 'QUOTE_ALREADY_USED', // NOT CONFIRMATION_INVALID
+  );
+  assert.ok(!consumed.has('grant_2'), 'the second grant must not have been presented/consumed');
+});
+
+test('the merchant re-check is not vacuous when the field is absent on BOTH sides', async () => {
+  // `String(a) !== String(b)` agrees when both are undefined ("undefined" === "undefined"), so a one-sided
+  // absence was already caught but a TWO-sided one sailed through. previewQuote refuses a merchant-less
+  // quote, so this state is unreachable today — which is exactly why the guard must not quietly depend on
+  // that: it exists to catch a kernel/adapter regression that reintroduces it.
+  const calls = { create_order: 0, submit_payment: 0 };
+  const bare = { quote_id: 'q_bare', currency: 'USD', locked_totals: { total: 113 } }; // no merchant_of_record
+  const kernel = {
+    previewQuote: async () => bare, // the executor requires a kernel-shaped object
+    quotes: { resolveForOrder: async () => bare },
+    isQuoteClaimed: async () => false,
+    async createOrder() { calls.create_order++; return { order_id: 'o_1', amount_total: 113, currency: 'USD' }; },
+    async mintConfirmation() { return 'conf_1'; },
+    async submitPayment() { calls.submit_payment++; return { payment_id: 'pay_1', payment_status: 'succeeded' }; },
+    idempotency: { run: async (_k, _b, fn) => ({ result: await fn({}) }) },
+  };
+  const { execute } = createCanonicalExecutor({
+    kernel, upstream: async () => ({}), verifyPaymentAuthorization: async (_a, bound) => attest(bound),
+  });
+  await assert.rejects(
+    execute('complete_checkout_session', { idempotency_key: 'idem-merch-both', session_id: 'q_bare', payment_authorization: { token: 't' } }, CTX),
+    (e) => e.code === 'CONFIRMATION_INVALID',
+    'a merchant-less order+quote pair must fail closed, not pass by string-equal undefined',
+  );
+  assert.equal(calls.submit_payment, 0, 'no charge when the merchant binding is unverifiable');
 });
