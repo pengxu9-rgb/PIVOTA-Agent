@@ -51,7 +51,7 @@
     "must_return_one_of_title_token_sets": [
       ["niacinamide", "serum"]
     ],
-    "min_title_token_set_match_ratio": 0.15
+    "min_title_token_set_match_ratio": 0.5
   },
   {
     "id": "skincare_strict_vitamin_c_serum_prod",
@@ -84,7 +84,7 @@
       ["vitamin c", "serum"],
       ["ascorbic", "serum"]
     ],
-    "min_title_token_set_match_ratio": 0.15
+    "min_title_token_set_match_ratio": 0.4
   },
   {
     "id": "skincare_strict_retinol_serum_prod",
@@ -117,7 +117,7 @@
       ["retinol", "serum"],
       ["retinoid", "serum"]
     ],
-    "min_title_token_set_match_ratio": 0.15
+    "min_title_token_set_match_ratio": 0.5
   },
   {
     "id": "skincare_strict_salicylic_acid_serum_prod",
@@ -150,7 +150,7 @@
       ["salicylic"],
       ["bha"]
     ],
-    "min_title_token_set_match_ratio": 0.15
+    "min_title_token_set_match_ratio": 0.3
   },
   {
     "id": "skincare_generic_brightening_serum_prod",
