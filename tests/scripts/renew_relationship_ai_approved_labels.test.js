@@ -19,6 +19,7 @@ function baseRow(overrides = {}) {
     anchor_snapshot: {},
     candidate_snapshot: {},
     created_at: '2026-07-01T00:00:00.000Z',
+    last_verified_at: '2026-07-01T00:00:00.000Z',
     ...overrides,
   };
 }
@@ -68,8 +69,17 @@ describe('renew-relationship-ai-approved-labels', () => {
       baseRow({ id: 'gone_anchor', anchor_ref: 'product:ext_retired_seed' }),
       // The live serving guard quarantines ai_approved dupes.
       baseRow({ id: 'suppressed_dupe', relation_type: 'dupe' }),
-      // Older than max-age-days: renewal must not extend an AI verdict forever.
-      baseRow({ id: 'too_old', created_at: '2025-08-01T00:00:00.000Z' }),
+      // Verdict older than max-age-days: renewal must not extend it forever.
+      // A prior renewal's first_verified_at pins the ORIGINAL verdict date
+      // regardless of the fresher last_verified_at.
+      baseRow({
+        id: 'too_old_verdict',
+        last_verified_at: '2026-07-20T00:00:00.000Z',
+        provenance: { re_verify: { first_verified_at: '2025-08-01T00:00:00.000Z' } },
+      }),
+      // Backfilled cohort shape: ancient created_at but a recent verdict —
+      // MUST stay renewable (age is keyed on the verdict, never created_at).
+      baseRow({ id: 'ok_backfilled', created_at: '2025-01-01T00:00:00.000Z' }),
     ];
 
     const { renewableIds, skipped, suppressionReasons } = evaluateRenewalCandidates(rows, RESOLVABLE, {
@@ -77,7 +87,7 @@ describe('renew-relationship-ai-approved-labels', () => {
       maxAgeDays: 180,
     });
 
-    expect(renewableIds).toEqual(['ok_seed', 'ok_catalog', 'ok_group_anchor', 'ok_need_anchor']);
+    expect(renewableIds).toEqual(['ok_seed', 'ok_catalog', 'ok_group_anchor', 'ok_need_anchor', 'ok_backfilled']);
     expect(skipped).toEqual({
       suppressed: 1,
       anchor_unresolvable: 1,
@@ -138,13 +148,16 @@ describe('renew-relationship-ai-approved-labels', () => {
     expect(update.sql).toContain("AND label_state = 'ai_approved'");
     // The SET clause must never assign label_state (renewal preserves review state).
     expect(update.sql.split('WHERE')[0]).not.toContain('label_state');
+    // first_verified_at must be preserved from the row's own prior value
+    // (existing first_verified_at, else the pre-update last_verified_at) so the
+    // original verdict date survives the last_verified_at overwrite.
+    expect(update.sql).toContain("provenance #>> '{re_verify,first_verified_at}'");
+    expect(update.sql).toContain('to_char(last_verified_at');
     expect(update.params[0]).toEqual(['lbl_1', 'lbl_2']);
     expect(update.params[1]).toBe('45 days');
-    expect(JSON.parse(update.params[2])).toEqual({
-      verified_at: '2026-08-04T00:00:00.000Z',
-      method: 'seed_catalog_active_check+serving_guard',
-      operator: 'unit_test',
-    });
+    expect(update.params[2]).toBe('2026-08-04T00:00:00.000Z');
+    expect(update.params[3]).toBe('seed_catalog_active_check+serving_guard');
+    expect(update.params[4]).toBe('unit_test');
   });
 
   test('runRenewal apply with nothing renewable issues no UPDATE and stays ok', async () => {

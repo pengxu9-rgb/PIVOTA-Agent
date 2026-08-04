@@ -60,17 +60,29 @@ gated behind `RELGRAPH_SYNC_ALLOW_WRITES` (that gate protects LLM-driven
 build/review label-state writes).
 
 The renewal step is optional and timeboxed inside the routine: if it fails or
-times out, the rest of the routine still runs and the failure is recorded in
-`summary.warnings` / the run ledger. The daily Serving Guard Audit workflow's
-expiry alarm (`relgraph:serving-status --fail-on-expiry-risk`) is the loud
-backstop if renewal silently stops working.
+times out, the rest of the routine still runs. The failure appears in
+`summary.warnings` (persisted inside the run ledger row's `summary` JSON — the
+ledger `status` column stays `passed`, so do not gate on it for renewal
+health). The loud backstop for a renewal path that silently stops working is
+the daily Serving Guard Audit workflow's expiry alarm
+(`relgraph:serving-status --fail-on-expiry-risk`), which goes red when >30% of
+serving edges are within 14 days of expiry or the serving set shrinks below
+the floor.
+
+Note: because renewal applies by default, every scheduled run now carries
+`--confirm APPLY_RELGRAPH_SYNC_ROUTINE`. The build/review write posture is
+still controlled solely by the `RELGRAPH_SYNC_APPLY_BUILD` /
+`RELGRAPH_SYNC_APPLY_REVIEW` + `RELGRAPH_SYNC_ALLOW_WRITES` envs — the token's
+presence alone no longer implies a graph-label write was intended.
 
 Deliberate policy defaults (change with the founder, not silently):
 
-- Rows older than 180 days since creation are NOT auto-renewed
-  (`--max-age-days`); an AI verdict must not stay alive forever without a fresh
-  review. Age-capped rows expire and show up in the renewal report as
-  `skipped.age_capped`.
+- Verdicts older than 180 days are NOT auto-renewed (`--max-age-days`); an AI
+  verdict must not stay alive forever without a fresh review. Age is measured
+  from the AI-verdict date (`provenance.re_verify.first_verified_at`, else
+  `last_verified_at` as written at approval) — never `created_at`, which for
+  backfilled rows predates the verdict. Age-capped rows expire and show up in
+  the renewal report as `skipped.age_capped`.
 - `RELGRAPH_SYNC_APPLY_RENEWAL=false` demotes renewal to dry-run.
 - `RELGRAPH_SYNC_SKIP_RENEWAL=true` skips the step entirely.
 - `RELGRAPH_SYNC_RENEWAL_WINDOW_DAYS=14` tunes the lookahead.

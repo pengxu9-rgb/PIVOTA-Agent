@@ -19,8 +19,15 @@
  *      actively-serving catalog product (activeCatalogProductSourceWhere — the
  *      same liveness predicate the serving read paths use, so a deactivated
  *      merchant's products stop renewing), or a product group (pg_*), and
- *   3. the row is younger than --max-age-days (default 180): renewal must not
- *      keep an AI verdict alive forever without a fresh review.
+ *   3. the AI verdict is younger than --max-age-days (default 180): renewal
+ *      must not keep an AI verdict alive forever without a fresh review. Age is
+ *      measured from the verdict, not the row: provenance.re_verify
+ *      .first_verified_at when a renewal already stamped it, else
+ *      last_verified_at (set at approval time) — NEVER created_at, which for
+ *      backfilled rows predates the verdict and would silently age-cap whole
+ *      cohorts. The UPDATE preserves first_verified_at (from the row's own
+ *      prior value) before overwriting last_verified_at, so the verdict date
+ *      survives every renewal.
  * Rows that verify get last_verified_at/expires_at extended by the AI freshness
  * interval. label_state is NEVER modified, and human_approved rows are never
  * touched (selected and updated under label_state='ai_approved' only).
@@ -142,11 +149,16 @@ async function loadExpiringAiApprovedRows({ queryFn = query, windowDays = DEFAUL
 // source_product_id / pivota_signature_id / content_key, and pg_* group ids.
 // Membership is checked after stripping the optional product: prefix, so no
 // prefix-dispatch assumptions can silently orphan a ref form.
+const REF_SET_COLUMNS = ['k1', 'k2', 'k3', 'k4'];
+
 async function loadResolvableRefSet({ queryFn = query } = {}) {
   const resolvableRefs = new Set();
+  // Explicit column allow-list: only k1..k4 id aliases from the SELECTs below
+  // may enter the set — adding a display column to a query must not silently
+  // turn its values into valid product refs.
   const addRow = (row) => {
-    for (const value of Object.values(row || {})) {
-      const ref = normalizeString(value, 260).toLowerCase();
+    for (const key of REF_SET_COLUMNS) {
+      const ref = normalizeString(row && row[key], 260).toLowerCase();
       if (ref) resolvableRefs.add(ref);
     }
   };
@@ -188,6 +200,24 @@ function refResolves(rawRef, resolvableRefs, { allowNeed = false } = {}) {
   return resolvableRefs.has(stripProductPrefix(rawRef));
 }
 
+// The AI-verdict date: first_verified_at stamped by a prior renewal, else
+// last_verified_at (written at approval). created_at is deliberately NOT a
+// fallback for the cap — backfilled rows are created long before their verdict.
+function verdictDateMs(row = {}) {
+  let provenance = row.provenance;
+  if (typeof provenance === 'string') {
+    try {
+      provenance = JSON.parse(provenance);
+    } catch {
+      provenance = null;
+    }
+  }
+  const firstVerifiedAt = provenance && provenance.re_verify && provenance.re_verify.first_verified_at;
+  const basis = firstVerifiedAt || row.last_verified_at;
+  const ms = new Date(basis || '').getTime();
+  return Number.isFinite(ms) ? ms : null;
+}
+
 function evaluateRenewalCandidates(rows = [], resolvableRefs, {
   suppressionFn = getRelationshipEdgeServingSuppressionReasons,
   maxAgeDays = DEFAULT_MAX_AGE_DAYS,
@@ -204,8 +234,8 @@ function evaluateRenewalCandidates(rows = [], resolvableRefs, {
   const maxAgeMs = maxAgeDays * DAY_MS;
 
   for (const row of rows) {
-    const createdMs = new Date(row.created_at || '').getTime();
-    if (Number.isFinite(createdMs) && nowMs - createdMs > maxAgeMs) {
+    const verdictMs = verdictDateMs(row);
+    if (verdictMs != null && nowMs - verdictMs > maxAgeMs) {
       skipped.age_capped += 1;
       continue;
     }
@@ -238,29 +268,43 @@ async function applyRenewals(renewableIds, {
   operator = DEFAULT_OPERATOR,
   generatedAt = new Date().toISOString(),
 } = {}) {
-  const reVerify = JSON.stringify({
-    verified_at: generatedAt,
-    method: RENEWAL_METHOD,
-    operator,
-  });
   let renewed = 0;
   for (let i = 0; i < renewableIds.length; i += UPDATE_CHUNK_SIZE) {
     const chunk = renewableIds.slice(i, i + UPDATE_CHUNK_SIZE);
     // label_state='ai_approved' is load-bearing: renewal must never extend or
     // otherwise touch human_approved rows, and must not resurrect a row whose
     // state changed between select and update.
+    //
+    // re_verify is built row-side so first_verified_at preserves the ORIGINAL
+    // AI-verdict date (prior first_verified_at, else the pre-update
+    // last_verified_at) before last_verified_at is overwritten — losing it
+    // would make the max-age cap unenforceable forever.
     const res = await queryFn(
       `
         UPDATE relationship_candidate_labels
         SET
           last_verified_at = now(),
           expires_at = now() + $2::interval,
-          provenance = jsonb_set(COALESCE(provenance, '{}'::jsonb), '{re_verify}', $3::jsonb, true),
+          provenance = jsonb_set(
+            COALESCE(provenance, '{}'::jsonb),
+            '{re_verify}',
+            jsonb_build_object(
+              'verified_at', $3::text,
+              'method', $4::text,
+              'operator', $5::text,
+              'first_verified_at', COALESCE(
+                provenance #>> '{re_verify,first_verified_at}',
+                to_char(last_verified_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
+                $3::text
+              )
+            ),
+            true
+          ),
           updated_at = now()
         WHERE id = ANY($1::text[])
           AND label_state = 'ai_approved'
       `,
-      [chunk, AI_APPROVAL_FRESHNESS_INTERVAL, reVerify],
+      [chunk, AI_APPROVAL_FRESHNESS_INTERVAL, generatedAt, RENEWAL_METHOD, operator],
     );
     renewed += Number(res && res.rowCount) || 0;
   }
