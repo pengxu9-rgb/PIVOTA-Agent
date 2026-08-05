@@ -171,6 +171,7 @@
     "relgraph:routine": "node scripts/run-relationship-graph-routine-job.js",
     "relgraph:sync-routine": "node scripts/run-relationship-graph-sync-routine.js",
     "relgraph:sync-routine:cron": "node scripts/run-relationship-graph-sync-routine-cron.js",
+    "relgraph:renew-ai-approved": "node scripts/renew-relationship-ai-approved-labels.js",
     "relgraph:run-ledger": "node scripts/report-relationship-graph-run-ledger.js",
     "relgraph:serving-status": "node scripts/report-relationship-graph-serving-status.js",
     "relgraph:serving-audit": "node scripts/audit-relationship-graph-serving-guard.js",

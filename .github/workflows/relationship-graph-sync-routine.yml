@@ -65,6 +65,11 @@ on:
         required: true
         default: false
         type: boolean
+      apply_renewal:
+        description: "Apply non-LLM renewal of expiring ai_approved rows (always applied on scheduled runs)"
+        required: true
+        default: true
+        type: boolean
       limit:
         description: "Relationship graph anchor limit"
         required: true
@@ -125,6 +130,10 @@ on:
         required: false
         default: false
         type: boolean
+      apply_renewal:
+        required: false
+        default: true
+        type: boolean
       limit:
         required: false
         default: "200"
@@ -161,6 +170,7 @@ jobs:
       INPUT_APPLY_SYNC: ${{ inputs.apply_sync || false }}
       INPUT_APPLY_BUILD: ${{ inputs.apply_build || false }}
       INPUT_APPLY_REVIEW: ${{ inputs.apply_review || false }}
+      INPUT_APPLY_RENEWAL: ${{ github.event_name == 'schedule' || inputs.apply_renewal }}
       INPUT_LIMIT: ${{ inputs.limit || '200' }}
       INPUT_REVIEW_LIMIT: ${{ inputs.review_limit || '250' }}
     steps:
@@ -237,7 +247,10 @@ jobs:
           if [[ "${INPUT_APPLY_REVIEW}" == "true" ]]; then
             args+=(--apply-review)
           fi
-          if [[ "${INPUT_APPLY_SYNC}" == "true" || "${INPUT_APPLY_BUILD}" == "true" || "${INPUT_APPLY_REVIEW}" == "true" ]]; then
+          if [[ "${INPUT_APPLY_RENEWAL}" == "true" ]]; then
+            args+=(--apply-renewal)
+          fi
+          if [[ "${INPUT_APPLY_SYNC}" == "true" || "${INPUT_APPLY_BUILD}" == "true" || "${INPUT_APPLY_REVIEW}" == "true" || "${INPUT_APPLY_RENEWAL}" == "true" ]]; then
             args+=(--confirm APPLY_RELGRAPH_SYNC_ROUTINE)
           fi
 

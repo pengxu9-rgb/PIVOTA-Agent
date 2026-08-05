@@ -21,6 +21,7 @@ Default behavior:
 - Uses selector mode against recently updated `catalog_products` and
   `external_product_seeds`.
 - Dry-runs graph build/review by default.
+- Applies non-LLM renewal of expiring `ai_approved` rows by default (see below).
 - Keeps the production gates from `scripts/run-relationship-graph-sync-routine.js`:
   DB lock, stale lock recovery, serving suppression thresholds, and critical
   reason gating.
@@ -41,6 +42,51 @@ Useful tuning variables:
 - `RELGRAPH_SYNC_RUN_LEDGER_ENABLED=true`
 - `RELGRAPH_SYNC_RUN_TRIGGER=railway_cron`
 - `RELGRAPH_SYNC_RUN_LEDGER_FAIL_CLOSED=false`
+
+## AI-Approval Renewal
+
+`ai_approved` rows expire 45 days after review and nothing else renews them —
+without renewal the whole ai_approved serving set falls off
+`product_relationship_edges` in one cliff (this emptied `get_alternatives` on
+2026-07-17..26). The cron therefore runs
+`scripts/renew-relationship-ai-approved-labels.js` as its first step and
+APPLIES it by default: rows expiring within 14 days (or already expired) that
+still pass the serving guard and still resolve to an actively-serving external
+seed / catalog product (`activeCatalogProductSourceWhere` — the same liveness
+predicate the serving read paths use) / product group get
+`last_verified_at`/`expires_at` extended. `label_state` is never modified and
+`human_approved` rows are never touched. Renewal is not an LLM call and is not
+gated behind `RELGRAPH_SYNC_ALLOW_WRITES` (that gate protects LLM-driven
+build/review label-state writes).
+
+The renewal step is optional and timeboxed inside the routine: if it fails or
+times out, the rest of the routine still runs. The failure appears in
+`summary.warnings` (persisted inside the run ledger row's `summary` JSON — the
+ledger `status` column stays `passed`, so do not gate on it for renewal
+health). The loud backstop for a renewal path that silently stops working is
+the daily Serving Guard Audit workflow's expiry alarm
+(`relgraph:serving-status --fail-on-expiry-risk`), which goes red when >30% of
+serving edges are within 14 days of expiry or the serving set shrinks below
+the floor.
+
+Note: because renewal applies by default, every scheduled run now carries
+`--confirm APPLY_RELGRAPH_SYNC_ROUTINE`. The build/review write posture is
+still controlled solely by the `RELGRAPH_SYNC_APPLY_BUILD` /
+`RELGRAPH_SYNC_APPLY_REVIEW` + `RELGRAPH_SYNC_ALLOW_WRITES` envs — the token's
+presence alone no longer implies a graph-label write was intended.
+
+Deliberate policy defaults (change with the founder, not silently):
+
+- Verdicts older than 180 days are NOT auto-renewed (`--max-age-days`); an AI
+  verdict must not stay alive forever without a fresh review. Age is measured
+  from the AI-verdict date (`provenance.re_verify.first_verified_at`, else
+  `last_verified_at` as written at approval) — never `created_at`, which for
+  backfilled rows predates the verdict. Age-capped rows expire and show up in
+  the renewal report as `skipped.age_capped`.
+- `RELGRAPH_SYNC_APPLY_RENEWAL=false` demotes renewal to dry-run.
+- `RELGRAPH_SYNC_SKIP_RENEWAL=true` skips the step entirely.
+- `RELGRAPH_SYNC_RENEWAL_WINDOW_DAYS=14` tunes the lookahead.
+- `RELGRAPH_SYNC_RENEWAL_MAX_AGE_DAYS=180` tunes the re-review age cap.
 
 Write mode stays disabled unless all of these are set deliberately:
 

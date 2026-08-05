@@ -166,6 +166,24 @@ describe('relationshipGraphRunLedger', () => {
     }));
   });
 
+  test('ai_approval_renewal renewed_count contributes to applied_count', () => {
+    const summary = buildSummaryFixture();
+    const renewalPath = path.join(summary.out_dir, 'ai_renewal.json');
+    writeJson(renewalPath, {
+      schema_version: 'relationship_graph_ai_renewal.v1',
+      mode: 'apply',
+      renewed_count: 57,
+      applied_count: 57,
+      ok: true,
+    });
+    summary.artifacts.ai_renewal = renewalPath;
+    summary.steps.unshift({ id: 'ai_approval_renewal', status: 'passed', completed_at: '2026-06-08T00:00:00.500Z' });
+
+    const record = extractRelationshipGraphRunRecord(summary, { trigger: 'railway_cron' });
+
+    expect(record.applied_count).toBe(57);
+  });
+
   test('recordRelationshipGraphRun upserts by run_id with aligned parameters', async () => {
     const summary = buildSummaryFixture();
     const queryFn = jest.fn(async () => ({ rowCount: 1 }));

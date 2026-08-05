@@ -122,6 +122,7 @@ function extractRelationshipGraphRunRecord(summary = {}, {
     'affected_product_selector',
     summary?.artifacts?.affected_product_selector || summary?.artifacts?.affected_products,
   ) || {};
+  const renewal = readStepJson(summary, 'ai_approval_renewal', summary?.artifacts?.ai_renewal) || {};
   const { routine, build, review, servingAudit } = readRoutineArtifactsFromSummary(summary);
   const buildSummary = artifactSummary(build);
   const reviewSummary = artifactSummary(review);
@@ -158,7 +159,9 @@ function extractRelationshipGraphRunRecord(summary = {}, {
     approved_count: parseNumber(reviewSummary?.approved_count),
     review_rejected_count: parseNumber(reviewSummary?.rejected_count),
     applied_count: parseNumber(
-      (parseNumber(buildSummary?.applied_count, 0) || 0) + (parseNumber(reviewSummary?.applied_count, 0) || 0),
+      (parseNumber(buildSummary?.applied_count, 0) || 0)
+        + (parseNumber(reviewSummary?.applied_count, 0) || 0)
+        + (parseNumber(renewal?.renewed_count, 0) || 0),
     ),
     serving_total_rows: parseNumber(servingAudit?.total_rows),
     serving_safe_rows: parseNumber(servingAudit?.safe_rows),

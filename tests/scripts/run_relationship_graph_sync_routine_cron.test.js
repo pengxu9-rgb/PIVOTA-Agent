@@ -45,6 +45,35 @@ describe('run-relationship-graph-sync-routine-cron', () => {
     expect(argValue(config.args, 'run-trigger')).toBe('railway_cron');
     expect(config.args).not.toContain('--apply-build');
     expect(config.args).not.toContain('--apply-review');
+
+    // Non-LLM ai_approved renewal applies by default on schedule; the wrapper
+    // confirm token comes along for that write alone.
+    expect(config.applyRenewal).toBe(true);
+    expect(config.args).toContain('--apply-renewal');
+    expect(config.args).not.toContain('--skip-renewal');
+    expect(argValue(config.args, 'confirm')).toBe(WRAPPER_CONFIRM_TOKEN);
+  });
+
+  test('buildCronArgs can demote renewal to dry-run or skip it entirely', () => {
+    const dryRenewal = buildCronArgs({
+      RELGRAPH_SYNC_APPLY_RENEWAL: 'false',
+    }, { now: NOW });
+    expect(dryRenewal.applyRenewal).toBe(false);
+    expect(dryRenewal.args).not.toContain('--apply-renewal');
+    expect(dryRenewal.args).not.toContain('--confirm');
+
+    const skipped = buildCronArgs({
+      RELGRAPH_SYNC_SKIP_RENEWAL: 'true',
+    }, { now: NOW });
+    expect(skipped.skipRenewal).toBe(true);
+    expect(skipped.applyRenewal).toBe(false);
+    expect(skipped.args).toContain('--skip-renewal');
+    expect(skipped.args).not.toContain('--apply-renewal');
+
+    const tuned = buildCronArgs({
+      RELGRAPH_SYNC_RENEWAL_WINDOW_DAYS: '21',
+    }, { now: NOW });
+    expect(argValue(tuned.args, 'renewal-window-days')).toBe('21');
   });
 
   test('buildCronArgs accepts env tuning without changing write posture', () => {
@@ -165,13 +194,17 @@ describe('run-relationship-graph-sync-routine-cron', () => {
 
     expect(report.ok).toBe(true);
     expect(report.summary.steps.map((step) => step.id)).toEqual([
+      'ai_approval_renewal',
       'affected_product_selector',
       'relationship_graph_routine',
     ]);
-    expect(runner).toHaveBeenCalledTimes(2);
-    const selectorArgs = runner.mock.calls[0][1].join(' ');
+    expect(runner).toHaveBeenCalledTimes(3);
+    const renewalArgs = runner.mock.calls[0][1].join(' ');
+    expect(renewalArgs).toContain('renew-relationship-ai-approved-labels.js');
+    expect(renewalArgs).toContain('--apply');
+    const selectorArgs = runner.mock.calls[1][1].join(' ');
     expect(selectorArgs).toContain('--limit 2');
-    const routineArgs = runner.mock.calls[1][1].join(' ');
+    const routineArgs = runner.mock.calls[2][1].join(' ');
     expect(routineArgs).toContain('--db-lock');
     expect(routineArgs).toContain('--allow-empty-build');
     expect(ledgerRecorder).toHaveBeenCalledTimes(1);
