@@ -521,9 +521,14 @@ describe('canonicalCatalogSearch.fetchCanonicalChainRows', () => {
   test('non-numeric limit falls back to DEFAULT_LIMIT', async () => {
     const query = makeMockQuery([]);
     await fetchCanonicalChainRows({ query: 'lipstick', limit: 'xyz', deps: { query } });
-    // DEFAULT_LIMIT (12) * ROW_LIMIT_MULTIPLIER (3) = 36, clamped UP to ROW_LIMIT_MIN (50).
-    // Was 72 when the multiplier was 6 — see the over-fetch note in canonicalCatalogSearch.
-    expect(query.calls[0].params[3]).toBe(__internal.ROW_LIMIT_MIN);
+    // DEFAULT_LIMIT (12) * ROW_LIMIT_MULTIPLIER (6) = 72, above ROW_LIMIT_MIN (50) so it wins.
+    // Asserted as a LIVE number rather than as ROW_LIMIT_MIN: pinning it to the clamp would hold for any
+    // row multiplier <= 4 and quietly stop noticing multiplier changes, which is what an earlier draft of
+    // this test did.
+    expect(query.calls[0].params[3]).toBe(72);
+    // candidate_limit at the default depth is MIN-pinned (12 * 4 = 48 > 25), asserted so the candidate
+    // side of the default path is not blind.
+    expect(query.calls[0].params[2]).toBe(48);
   });
 
   // The over-fetch multipliers decide how much work this query does. Measured on prod 2026-08-05 the
@@ -533,22 +538,23 @@ describe('canonicalCatalogSearch.fetchCanonicalChainRows', () => {
   test('over-fetch multipliers scale candidate_limit and row_limit off the caller limit', async () => {
     const query = makeMockQuery([]);
     await fetchCanonicalChainRows({ query: 'lipstick', limit: 48, deps: { query } });
-    // $3 = candidate_limit, $4 = row_limit
-    expect(query.calls[0].params[2]).toBe(96); // 48 * 2, was 192 at the old 4x
-    expect(query.calls[0].params[3]).toBe(144); // 48 * 3, was 288 at the old 6x
+    // $3 = candidate_limit, $4 = row_limit. These are the SHIPPED defaults; a change here is a change to
+    // how deep every canonical recall lane looks, so it should have to be made deliberately.
+    expect(query.calls[0].params[2]).toBe(192); // 48 * 4
+    expect(query.calls[0].params[3]).toBe(288); // 48 * 6
   });
 
   test('over-fetch multipliers are tunable without a deploy', async () => {
-    process.env.CANONICAL_CHAIN_CANDIDATE_MULTIPLIER = '4';
-    process.env.CANONICAL_CHAIN_ROW_MULTIPLIER = '6';
+    process.env.CANONICAL_CHAIN_CANDIDATE_MULTIPLIER = '2';
+    process.env.CANONICAL_CHAIN_ROW_MULTIPLIER = '3';
     jest.resetModules();
     try {
       // eslint-disable-next-line global-require
       const reloaded = require('../src/services/canonicalCatalogSearch');
       const query = makeMockQuery([]);
       await reloaded.fetchCanonicalChainRows({ query: 'lipstick', limit: 48, deps: { query } });
-      expect(query.calls[0].params[2]).toBe(192);
-      expect(query.calls[0].params[3]).toBe(288);
+      expect(query.calls[0].params[2]).toBe(96);
+      expect(query.calls[0].params[3]).toBe(144);
     } finally {
       delete process.env.CANONICAL_CHAIN_CANDIDATE_MULTIPLIER;
       delete process.env.CANONICAL_CHAIN_ROW_MULTIPLIER;
