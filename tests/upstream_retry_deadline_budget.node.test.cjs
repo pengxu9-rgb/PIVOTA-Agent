@@ -20,15 +20,21 @@ process.env.AURORA_CHAT_RESPONSE_FORMAT = 'legacy';
 // it off these tests would pass for the wrong reason.
 process.env.UPSTREAM_RETRY_FIND_PRODUCTS_MULTI_ON_TIMEOUT = 'true';
 
-// Arm the non-beauty primary deadline JUST ABOVE the attempt timeout the route actually uses — that
-// narrow gap is the production shape (6000ms deadline over a 4500ms attempt). Measured, not assumed: this
-// lane arms 1800ms regardless of the *_UPSTREAM_*_TIMEOUT_MS knobs below, so an earlier draft of this test
-// put the deadline UNDER the attempt timeout, the first attempt never aborted, and the retry branch it
-// exists to exercise never ran at all. Read at module load, so set before the server is required.
-process.env.FIND_PRODUCTS_MULTI_NON_BEAUTY_PRIMARY_DEADLINE_MS = '2200';
+// Pose the route in the PRODUCTION SHAPE: deadline strictly ABOVE the attempt timeout, which is the only
+// arrangement in which the doomed retry can occur. The knob that makes this possible is
+// UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_MS — it caps BOTH the attempt (min(G, budget)) and the deadline
+// (min(D_env, G)), so it must be raised above the budget for the two to decouple. All read at module load.
+process.env.UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_ALLOW_UNSAFE_LOWER = 'true';
+process.env.UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_MS = '4000';
+process.env.FIND_PRODUCTS_MULTI_UPSTREAM_LOOKUP_TIMEOUT_MS = '1500';
+process.env.FIND_PRODUCTS_MULTI_UPSTREAM_DEFAULT_TIMEOUT_MS = '1800';
+process.env.FIND_PRODUCTS_MULTI_NON_BEAUTY_PRIMARY_DEADLINE_MS = '2900';
+process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED = 'false';
+process.env.API_MODE = 'REAL';
 process.env.PIVOTA_API_BASE = 'http://127.0.0.1:4599';
 const TEST_KEY = `ak_${'a'.repeat(64)}`;
 process.env.PIVOTA_API_KEY = TEST_KEY;
+delete process.env.DATABASE_URL;
 
 const app = require('../src/server');
 const { callUpstreamWithOptionalRetry } = app._debug;
@@ -103,43 +109,50 @@ test('a retry the deadline CAN accommodate still runs', async () => {
   }
 });
 
-test('a viable retry never arms a timeout longer than the deadline allows', async () => {
-  // getTimeoutRetryMs would hand this op a 10s retry timeout. Inside a ~1.2s remaining budget that number
-  // is a fiction: the race abandons the request first. Clamping keeps the armed timeout honest.
-  const state = interceptHanging();
-  let armedTimeout = null;
-  const cfg = config(150);
+// NOTE: there is deliberately no "retry timeout is clamped to the deadline" test. An earlier draft clamped
+// it; review showed the clamp buys nothing (the caller already races the chain) while making axios abort a
+// moment BEFORE the race, which swapped the deadline error for a bare timeout and silently dropped the
+// deadline's telemetry. The clamp was removed; the race is the enforcement point.
+
+// -- the wiring, on the surface that actually runs --------------------------------------------------------
+
+const supertest = require('supertest');
+
+test('WIRING: the route threads its hard deadline into the retry decision', async () => {
+  // The tests above pass deadlineAtMs themselves, so they prove the POLICY and not the WIRING — deleting
+  // `deadlineAtMs` from the callTrackedUpstream call site leaves every one of them green. This drives the
+  // real invoke route with a hanging backend, in the production shape (1500ms attempt under a 2900ms
+  // deadline), and counts UPSTREAM ATTEMPTS: one with the wiring, two without it.
+  let attempts = 0;
+  nock.cleanAll();
+  const hang = () => {
+    attempts += 1;
+    return new Promise((resolve) => { setTimeout(() => resolve([200, { products: [] }]), 30000); });
+  };
+  const scope = nock('http://127.0.0.1:4599').persist();
+  scope.post(/\/agent\/v[12]\/products\/search/).query(true).reply(hang);
+  scope.get(/\/agent\/v[12]\/products\/search/).query(true).reply(hang);
+
+  const startedAt = Date.now();
   try {
-    await assert.rejects(() =>
-      callUpstreamWithOptionalRetry('find_products_multi', cfg, {
-        deadlineAtMs: Date.now() + 1400,
-        onRetry: () => { armedTimeout = cfg.timeout; },
-      }));
-    assert.equal(state.attempts, 2);
-    assert.ok(armedTimeout !== null, 'expected the retry to have been taken');
-    assert.ok(
-      armedTimeout <= 1400,
-      `retry timeout ${armedTimeout}ms must be clamped to the remaining deadline, not the op default`,
-    );
+    const res = await supertest(app)
+      .post('/agent/shop/v1/invoke')
+      .set('x-agent-api-key', TEST_KEY)
+      .send({
+        operation: 'find_products_multi',
+        metadata: { source: 'shopping_agent' },
+        payload: { search: { query: 'running shoes', page_size: 5 } },
+      });
+    const elapsedMs = Date.now() - startedAt;
+    assert.equal(attempts, 1, `the deadline cannot accommodate a retry; expected 1 attempt, saw ${attempts}`);
+    assert.ok(elapsedMs < 2400, `expected to fail fast at the first timeout, took ${elapsedMs}ms`);
+    // Declining the retry must still be reported AS a deadline outcome. Skipping quietly would buy latency
+    // by deleting the very signal an operator uses to see this guard working.
+    const metadata = (res.body && res.body.metadata) || {};
+    assert.equal(metadata.fpm_primary_deadline_applied, true, 'deadline telemetry must survive the skip');
+    assert.equal(metadata.strict_empty_reason, 'shopping_mainline_non_beauty_primary_deadline');
   } finally {
-    state.scope.persist(false);
+    nock.cleanAll();
+    nock.enableNetConnect();
   }
 });
-
-// -- WHY THERE IS NO ROUTE-LEVEL TEST HERE ----------------------------------------------------------------
-//
-// A route-level test was written and then DELETED, because it passed with the wiring
-// (`deadlineAtMs` at the callTrackedUpstream call site) deleted — it advertised coverage it did not have,
-// which is the exact "test that cannot fail" shape this repo has shipped before.
-//
-// The reason it could not discriminate, recorded so the next person does not spend the same hour: the
-// mainline primary does not use the *_UPSTREAM_*_TIMEOUT_MS knobs this suite can set (it armed 1800ms
-// regardless), and whether the retry starts at all turns out to depend on the deadline itself — measured,
-// with the deadline at 5000ms the retry fires at ~1800ms, and at 2200ms it never fires. So the harness
-// cannot be posed in the production shape (4500ms attempt under a 6000ms deadline) where the doomed retry
-// actually occurs.
-//
-// That shape IS real: prod logs 2026-08-05 02:12-02:13 show `previous_timeout_ms=4500 retry_timeout_ms=10000`
-// on the primary, with `primary_upstream` then stamping ~6002ms — attempt aborted at 4.5s, retry started,
-// deadline killed it 1.5s later. The POLICY above is mutation-covered; the one-line wiring that feeds it is
-// verified only by reading. Said plainly rather than papered over with a green test.

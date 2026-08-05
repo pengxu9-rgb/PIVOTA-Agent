@@ -174,9 +174,12 @@ jobs:
       # deadline will cut off. A 6000ms deadline over a 4500ms attempt gave the
       # retry 1500ms to redo work that had just failed in 4500ms, so its only
       # effects were +1.5s of latency and a second request at an upstream
-      # already under stress. NOTE the file documents, in place, that the
-      # one-line call-site wiring is NOT covered by a discriminating test and
-      # why the route-level attempt was deleted rather than kept green.
+      # already under stress. Includes a ROUTE-level test that counts upstream
+      # attempts in the production shape (attempt timeout under deadline):
+      # deleting the one-line call-site wiring makes it see 2 attempts instead
+      # of 1. An earlier draft claimed that shape could not be posed in a
+      # harness and shipped the gap as a comment; review disproved it, so the
+      # claim is gone and the test is here.
       - name: Run node:test suites
         run: |
           node --test \
