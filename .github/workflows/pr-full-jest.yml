@@ -204,6 +204,18 @@ jobs:
       # quote buyer_context) is exercised outside the kernel's own harness. It is
       # also the only coverage of the ACP/UCP door flag gates and the 405 on the
       # charge endpoint while submit_payment is disabled.
+      # ADDED 2026-08-04: `acp_spt_gateway_handoff`, confirmed green (6/6) before
+      # landing. It is the only place the delegated-PSP-token (Stripe
+      # SharedPaymentToken) money lane is exercised through src/server.js's own
+      # wiring: that ACP_SPT_GATEWAY_HANDOFF_ENABLED is OFF by default, the exact
+      # body sent to POST /agent/v1/payments, and — end to end against a stub
+      # backend — that the order carries `metadata.protocol_name = "acp"` (without
+      # which the backend's off-session gate never engages) and the BACKEND's own
+      # quote id, that the token reaches the off-session endpoint and never the
+      # hosted checkout surface, and that flag-off neither creates an order nor
+      # charges. The kernel-side routing invariants live in safety-kernel's own
+      # suite; this file is the only proof the three gateway body builders it
+      # crosses still agree.
       - name: Run node:test suites
         run: |
           node --test \
@@ -233,6 +245,7 @@ jobs:
             mcp-server/test/commerceToolSurface.test.js \
             tests/upstream_retry_deadline_budget.node.test.cjs \
             tests/fpm_stage_attribution.node.test.cjs \
+            tests/acp_spt_gateway_handoff.node.test.cjs \
             tests/integration/agent_checkout_acp_ucp_doors.node.test.cjs
 
   jest:

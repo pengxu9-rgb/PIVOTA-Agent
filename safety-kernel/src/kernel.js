@@ -354,8 +354,24 @@ export class SafetyKernel {
     return this.confirmations.mint({ order_id, user_ref: ctx.user_ref, amount: order.amount, currency: order.currency });
   }
 
-  /** submit_payment: INV-2 (amount verify), INV-3 (confirmation), INV-4 (idempotent). */
-  async submitPayment(payload, ctx) {
+  /**
+   * submit_payment: INV-2 (amount verify), INV-3 (confirmation), INV-4 (idempotent).
+   *
+   * `opts.dispatch` replaces ONLY the transport of the charge call — every guard around it (the per-order
+   * charge lock, the payable-status allowlist, the amount/currency pin from the kernel's OWN order record,
+   * the confirmation-token consume, the durable `charge_pending` write BEFORE dispatch, the attempt-scoped
+   * idempotency key, the post-charge state machine and webhook correlation) is unchanged and still runs.
+   * It exists because one lane — an ACP completion carrying a Stripe SharedPaymentToken — must be charged on
+   * a DIFFERENT backend endpoint than `this._upstream('submit_payment')` routes to. Injecting the dispatcher
+   * keeps that lane inside this method's charge-once machinery instead of forking a second, weaker charge path,
+   * and keeps the opaque PSP token OUT of kernel state entirely (it lives in the caller's closure, so it never
+   * enters the idempotency fingerprint, the order record or any log).
+   *
+   * Omitting `opts` is byte-identical to the previous behavior.
+   *
+   * @param {{dispatch?: (bound:{order_id:string, amount:number, currency:string, idempotency_key:string}) => Promise<object>}} [opts]
+   */
+  async submitPayment(payload, ctx, opts = {}) {
     this._requireUser(ctx);
     const p = payload?.payment || {};
     const order_id = p.order_id;
@@ -439,8 +455,18 @@ export class SafetyKernel {
           runCtx.sideEffectDone = true; // from here, a failure is AMBIGUOUS (a charge may have landed)
 
           // Codex P0-1 cont.: forward an amount/currency-pinned payment to upstream.
+          // The injected dispatcher (when present) receives the SAME authoritative amount/currency and the
+          // SAME attempt-scoped idempotency key — it may not choose its own, so a replay is still parameter-
+          // identical on the PSP side.
           const safePayment = { ...p, expected_amount: authoritativeAmount, currency: authoritativeCurrency };
-          const r = await this._upstream('submit_payment', { ...payload, payment: safePayment }, { 'Idempotency-Key': key });
+          const r = typeof opts?.dispatch === 'function'
+            ? await opts.dispatch({
+                order_id,
+                amount: authoritativeAmount,
+                currency: authoritativeCurrency,
+                idempotency_key: key,
+              })
+            : await this._upstream('submit_payment', { ...payload, payment: safePayment }, { 'Idempotency-Key': key });
 
           // Charge call returned. Finalize the state machine + record this attempt's payment_id so the
           // webhook can correlate (reject a stale webhook for a previous attempt).

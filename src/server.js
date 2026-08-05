@@ -2336,6 +2336,30 @@ function buildSubmitPaymentV1Body({
   });
 }
 
+// The DELEGATED-PSP-TOKEN charge body for POST /agent/v1/payments.
+//
+// That endpoint dispatches through the backend's off-session gate → off-session payment → capture, i.e. the
+// lane that knows how to charge a Stripe SharedPaymentToken on the MERCHANT's own key. It is deliberately NOT
+// /agent/v2/payments/checkout-sessions: that mints a HOSTED checkout page a buyer clicks, which cannot take a
+// delegated token and cannot complete off-session.
+//
+// Amount and currency are NOT sent. The backend prices the charge from the order it created from our quote —
+// re-asserting an amount here would introduce a second, forgeable source for the figure the buyer's token
+// allowance was sized against. `order_id` is the binding.
+//
+// The token value never appears in a log line: this builder only places it in the request body, and neither
+// callUpstreamWithOptionalRetry nor throwCommerceKernelUpstreamError logs the request body.
+function buildDelegatedPaymentV1Body({ order_id = null, token = null, idempotency_key = null } = {}) {
+  const delegatedToken = firstNonEmptyString(token);
+  return pruneEmptyFields({
+    order_id: firstNonEmptyString(order_id),
+    // Emitted ONLY with a token. A bare `{type:'card'}` on a money endpoint is a request to charge with no
+    // instrument — the backend would refuse it, but this lane should not be the thing that asks.
+    payment_method: delegatedToken ? { type: 'card', token: delegatedToken } : undefined,
+    idempotency_key: firstNonEmptyString(idempotency_key),
+  });
+}
+
 function shouldSubmitPaymentUseExistingOrderMerchantPspSurface({
   payload = {},
   payment = {},
@@ -29509,6 +29533,20 @@ function isAgentCheckoutStrictSubmitPaymentEnabled() {
   return ['1', 'true', 'on', 'yes'].includes(normalized);
 }
 
+function isAcpSptGatewayHandoffEnabled() {
+  // ACP delegated-PSP-token (Stripe SharedPaymentToken) handoff. When an external ACP agent completes with
+  // `payment_data.token = spt_…`, the completion is routed to the backend's off-session money endpoint
+  // instead of the kernel's hosted-checkout charge — the kernel cannot attest an opaque Stripe handle and
+  // must not pretend to (see safety-kernel/src/protocol/canonicalExecutor.js `delegatedPspToken`).
+  //
+  // Default OFF. With the flag off the routing branch is unreachable and an `spt_` gets exactly the refusal it
+  // gets today: CONFIRMATION_INVALID / `unknown_authorization_method` from the configured verifier (or
+  // `no_payment_authorization_verifier` when none is configured — the pre-existing answer in that setup).
+  // Read LIVE (the executor is memoized, so a build-time boolean would freeze this money kill-switch).
+  const normalized = String(process.env.ACP_SPT_GATEWAY_HANDOFF_ENABLED || '').trim().toLowerCase();
+  return ['1', 'true', 'on', 'yes'].includes(normalized);
+}
+
 function isAgentCheckoutHostedLinkEnabled() {
   // Guest hosted-checkout (create_payment_link). Independent of the autonomous-charge flag above:
   // this path never charges, but it does mint a real payment surface, so it ships OFF by default.
@@ -29891,6 +29929,18 @@ async function invokeCommerceKernelRawUpstream(operation, payload, headers = {})
       }
       break;
     }
+    case 'submit_delegated_payment': {
+      // ACP delegated-PSP-token charge (Stripe SharedPaymentToken). Flag-gated upstream of here — the
+      // canonical executor only reaches this op when ACP_SPT_GATEWAY_HANDOFF_ENABLED is on AND the ACP
+      // completion carried an `spt_` token. See buildDelegatedPaymentV1Body for why no amount is sent.
+      url = `${PIVOTA_API_BASE}/agent/v1/payments`;
+      requestBody = buildDelegatedPaymentV1Body({
+        order_id: payload?.order_id,
+        token: payload?.token,
+        idempotency_key: payload?.idempotency_key,
+      });
+      break;
+    }
     case 'create_payment_link': {
       // GUEST hosted checkout: mint a hosted Stripe checkout page for an already-created order. This is the
       // SAME backend surface submit_payment routes to, but invoked WITHOUT a charge/grant — the buyer pays
@@ -29945,7 +29995,11 @@ async function invokeCommerceKernelRawUpstream(operation, payload, headers = {})
   let resp;
   try {
     resp = await callUpstreamWithOptionalRetry(op, axiosConfig, {
-      disableBusyRetry: op === 'create_order' || op === 'submit_payment' || op === 'request_after_sales',
+      // `submit_delegated_payment` joins the no-auto-retry set for the same reason the others are in it: a
+      // transport-level retry on a money call whose first attempt may have reached the PSP is precisely the
+      // double-charge shape. (It is also absent from busyRetryableOps, so this is belt-and-braces.)
+      disableBusyRetry: op === 'create_order' || op === 'submit_payment' || op === 'request_after_sales'
+        || op === 'submit_delegated_payment',
       // See resolveSelfInvokeBudget: retrying a loopback timeout doubles concurrent load on the same
       // process and cannot fix what caused it.
       disableTimeoutRetry: selfInvoked,
@@ -29996,6 +30050,10 @@ async function invokeCommerceKernelRawUpstream(operation, payload, headers = {})
 const { mapUpstreamErrorToKernelCode } = require('./services/commerceKernelErrorMapping');
 
 let commerceKernelErrorsPromise = null;
+// The upstream-response normalizer (safety-kernel/src/upstreamAdapter.js). The kernel's own money ops get it
+// via wrapUpstream inside createCommerceMount; the delegated-PSP-token charge does NOT go through the kernel's
+// `_upstream`, so its dispatcher applies the same normalizer explicitly. Memoized ESM import only.
+let commerceKernelUpstreamAdapterPromise = null;
 
 async function throwCommerceKernelUpstreamError(operation, err) {
   const { PivotaCommerceError } = await (commerceKernelErrorsPromise ||= import('../safety-kernel/src/errors.js'));
@@ -30608,6 +30666,33 @@ async function getCommerceRemoteMcpAdapter() {
         verifyPaymentAuthorization,
         hostedLinkEnabled: isAgentCheckoutHostedLinkEnabled(),
         localReads,
+        // ACP delegated-PSP-token lane (Stripe SharedPaymentToken). The executor is kernel-side and stays
+        // transport-agnostic, so the HTTP call lives here, beside the other upstream money calls, and rides
+        // the SAME auth headers / timeout / error taxonomy as create_order and submit_payment.
+        //
+        // The token is passed through to the request body and NOWHERE else — it is never logged, never put in
+        // an error detail, and never persisted. amount/currency arrive from the kernel's own order record but
+        // are deliberately not forwarded (the backend prices from the order); they are accepted here only so
+        // the dispatcher signature documents what the kernel pinned.
+        //
+        // The response is put through the SAME normalizer the kernel's own submit_payment lane uses
+        // (`normalizeRealUpstream: true` above wraps that one via wrapUpstream; this call bypasses the wrap
+        // because it is not a kernel `_upstream` op). Without it a backend that answers `status` /
+        // `payment_intent_id` instead of `payment_status` / `payment_id` would leave the kernel with an
+        // unclassifiable status AND no payment_id — the order would sit in charge_pending forever, because
+        // onPaymentWebhook refuses to transition an attempt it cannot correlate.
+        submitDelegatedPayment: async ({ order_id, idempotency_key, token }) => {
+          const raw = await invokeCommerceKernelRawUpstream(
+            'submit_delegated_payment',
+            { order_id, idempotency_key, token },
+            { 'Idempotency-Key': idempotency_key },
+          );
+          const { normalizeSubmitPayment } = await (commerceKernelUpstreamAdapterPromise ||= import('../safety-kernel/src/upstreamAdapter.js'));
+          return normalizeSubmitPayment(raw);
+        },
+        // Thunk, not a boolean: this executor is memoized for the process lifetime, so a boolean would freeze
+        // the flag at first build and make the kill-switch un-flippable without a redeploy.
+        delegatedTokenHandoffEnabled: () => isAcpSptGatewayHandoffEnabled(),
       });
       // Publish the executor for the ACP/UCP doors to reuse (one shared kernel — see commerceSharedExecutor).
       commerceSharedExecutor = executor;
@@ -52099,6 +52184,8 @@ module.exports._debug = {
   buildInvokeUpstreamAuthHeaders,
   applyStrictHostedOrderMetadata,
   isAgentCheckoutAllowTestPspEnabled,
+  buildDelegatedPaymentV1Body,
+  isAcpSptGatewayHandoffEnabled,
   commerceKernelErrorBody,
   sanitizeCommerceKernelErrorDetails,
   filterSimilarProductsWithCardHighlights,
