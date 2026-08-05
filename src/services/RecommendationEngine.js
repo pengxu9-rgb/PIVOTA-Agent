@@ -19,6 +19,8 @@ const {
   activeCatalogProductSourceWhere,
   activeProductsCacheSourceWhere,
 } = require('./activeCatalogSourceSql');
+const { isExternalSeedLaneProduct, seedRoutedLaneSql } = require('./externalSeedLane');
+const { notTestMerchantSql } = require('./testMerchantPolicy');
 
 function parseTimeoutMs(raw, fallbackMs) {
   const s = String(raw ?? '').trim();
@@ -976,14 +978,18 @@ function getParentExternalProductId(product) {
 }
 
 function isExternalProduct(product) {
-  const mid = getMerchantId(product);
-  if (mid === EXTERNAL_SEED_MERCHANT_ID) return true;
+  // Shared seed-lane predicate (merchant_id OR platform OR source_system OR id
+  // prefix) — see src/services/externalSeedLane.js. The merchant_id leg keeps
+  // matching not-yet-re-keyed rows; the platform/source_system legs make the
+  // rows ADR-009 phase 3 already moved to `merch_obs_…` classify identically,
+  // so internal/external candidate splitting, brand-authority filtering and the
+  // retrieval_mix counters do not silently change under the re-key.
+  if (isExternalSeedLaneProduct(product)) return true;
+  // Legacy non-seed-lane legs, unchanged.
   const platform = String(product?.platform || '').trim().toLowerCase();
   if (platform === 'external') return true;
   const source = String(product?.source || product?.source_type || '').trim().toLowerCase();
-  if (source === 'external_seed' || source === 'external') return true;
-  const pid = getProductId(product);
-  return pid.startsWith('ext_');
+  return source === 'external_seed' || source === 'external';
 }
 
 function getBrandName(product) {
@@ -2423,10 +2429,25 @@ function buildCatalogProductRecommendationCandidate(row, options = {}) {
     seedData.product_id,
     snapshot.product_id,
   );
+  // This is the STAMPER: whatever it decides here becomes the candidate's
+  // `platform`/`source`, and every downstream external/internal question
+  // (isExternalProduct, retrieval_mix, brand-authority filtering, the external
+  // flags on the similar/compare paths) reads those stamps rather than the row.
+  //
+  // It had merchant_id / platform / `ext_` / `:` legs but NO source_system leg,
+  // which is precisely the leg a re-keyed MINTED row (Path C,
+  // catalog_enrichment_agent_v1) has left once merchant_id moves and platform is
+  // blank. The seed-lane WHERE clauses now admit such a row, so without this the
+  // builder would stamp it `platform:'catalog', source:'catalog_products'` —
+  // inverting its classification versus the identical sentinel row and shipping
+  // a card that carries seed price/availability (from the lane-keyed
+  // external_product_seeds join) while claiming connected-merchant provenance.
+  //
+  // The `:` leg is retained: it is BROADER than the canonical predicate's `ext:`
+  // prefix (it matches a colon anywhere, e.g. `brand:hash` minted ids) and
+  // dropping it would narrow the stamp.
   const isExternalSeedCatalogRow =
-    String(row.merchant_id || '').trim() === EXTERNAL_SEED_MERCHANT_ID ||
-    String(row.platform || '').trim() === EXTERNAL_SEED_MERCHANT_ID ||
-    sourceProductId.startsWith('ext_') ||
+    isExternalSeedLaneProduct({ ...row, source_product_id: sourceProductId }) ||
     sourceProductId.includes(':');
   const productId = isExternalSeedCatalogRow
     ? sourceProductId
@@ -2794,6 +2815,12 @@ async function fetchCatalogCandidates({
         cp.content_key,
         cp.merchant_id,
         cp.platform,
+        -- REQUIRED by buildCatalogProductRecommendationCandidate's lane test.
+        -- The WHERE above admits seed-lane rows on source_system, so a row can
+        -- now arrive whose ONLY seed evidence is this column; without it in the
+        -- projection the candidate builder would mislabel it as a connected
+        -- merchant product while its price came from the seed join.
+        cp.source_system,
         cp.source_product_id,
         cp.title AS product_title,
         left(coalesce(cp.description, ''), 500) AS product_description,
@@ -2815,12 +2842,48 @@ async function fetchCatalogCandidates({
       LEFT JOIN external_product_seeds eps_catalog
         ON eps_catalog.external_product_id = cp.source_product_id
        AND eps_catalog.status = 'active'
-       AND cp.merchant_id = '${EXTERNAL_SEED_MERCHANT_ID}'
+       -- Price/availability for this lane come from the seed, not the merchant.
+       -- Keyed on lane membership, not on merchant_id: after the ADR-009 phase-3
+       -- re-key the sentinel is gone but platform/source_system survive, and a
+       -- merchant_id-only condition would drop price+availability off every
+       -- re-keyed card.
+       --
+       -- This DOES widen which cp rows get decorated. The
+       -- external_product_id = cp.source_product_id condition picks WHICH SEED
+       -- joins; it does not restrict WHICH cp ROW is eligible. So in normal
+       -- (non-seed-lane) mode an ordinary merchant row whose source_product_id
+       -- happens to start ext_ / ext: now receives seed price/availability
+       -- where it previously got NULLs. Accepted: this SELECT exposes no cp
+       -- price column, so the seed is the only price source either way, and an
+       -- ext_-prefixed id under a normal merchant is already defined as
+       -- seed-routed by pdpRenderability ("the seed lane is tested FIRST"), so
+       -- the alternative is a lane disagreement rather than a narrower read.
+       AND ${seedRoutedLaneSql('cp')}
       INNER JOIN index_pipeline_state ips
         ON ips.content_key = cp.content_key
        AND ips.serving_eligible = TRUE
       WHERE cp.sync_status = 'live'
-        AND ${externalSeedSourceOnly ? `cp.merchant_id = '${EXTERNAL_SEED_MERCHANT_ID}'` : activeCatalogProductSourceWhere('cp', 'cm')}
+        AND ${
+          externalSeedSourceOnly
+            // Seed-lane-only mode: the caller told us the BASE product is a
+            // seed-lane row, so restrict candidates to that lane and skip the
+            // catalog_merchants join (that is the single-round-trip fast path).
+            //
+            // Two fixes here:
+            //  1. Lane membership replaces the bare merchant_id literal, so
+            //     ADR-009 phase-3 re-keyed rows stay in their own lane instead
+            //     of vanishing from seed-anchored recommendations entirely.
+            //  2. notTestMerchantSql is composed back IN. This branch used to
+            //     REPLACE activeCatalogProductSourceWhere outright, and that
+            //     helper is the only thing carrying the test/demo-rig
+            //     exclusion — so this lane was the one catalog read path with
+            //     no testMerchantPolicy gate at all. It was masked only by the
+            //     literal being a single non-rig merchant id; broadening the
+            //     lane without restoring the gate would have turned a latent
+            //     bypass into a live rig leak.
+            ? `${notTestMerchantSql('cp', { hasSourceDomain: true })} AND ${seedRoutedLaneSql('cp')}`
+            : activeCatalogProductSourceWhere('cp', 'cm')
+        }
         AND cp.pivota_signature_id IS NOT NULL
         AND cp.pivota_signature_id LIKE 'sig\\_%' ESCAPE '\\'
         AND coalesce(nullif(trim(cp.title), ''), '') <> ''
@@ -2878,6 +2941,22 @@ async function fetchCatalogCandidates({
   }
 }
 
+// The four SELECT fragments below each carry a correlated lookup from
+// external_product_seeds BACK into catalog_products, to borrow the mirrored
+// row's category_path. That lookup used to be gated on
+// `merchant_id = 'external_seed' AND platform = 'external_seed'`.
+//
+// ADR-009 phase 3 re-keys merchant_id and leaves platform/source_system alone,
+// so the merchant_id conjunct turns those lookups into guaranteed NULLs for
+// every re-keyed row — silently stripping catalog_category_path off ~8,974
+// external-seed recommendation cards once the flip runs, and off the 1,365
+// already-re-keyed rows TODAY. Replaced with the shared seed-lane predicate,
+// whose merchant_id leg still matches the un-re-keyed rows unchanged.
+//
+// Widening from that AND-pair to the 4-way OR is safe here: each subquery is
+// already pinned by
+// `source_product_id = external_product_seeds.external_product_id`, so any row
+// it can reach is by construction the catalog mirror of that exact seed.
 const EXTERNAL_SEED_RECOMMENDATION_SELECT = `
             id,
             external_product_id,
@@ -2886,8 +2965,7 @@ const EXTERNAL_SEED_RECOMMENDATION_SELECT = `
             domain,
             (SELECT catalog_seed_product.category_path
                FROM catalog_products catalog_seed_product
-              WHERE catalog_seed_product.merchant_id = 'external_seed'
-                AND catalog_seed_product.platform = 'external_seed'
+              WHERE ${seedRoutedLaneSql('catalog_seed_product')}
                 AND catalog_seed_product.source_product_id = external_product_seeds.external_product_id
               LIMIT 1) AS catalog_category_path,
             title,
@@ -2966,8 +3044,7 @@ const EXTERNAL_SEED_FAST_RECOMMENDATION_SELECT = `
             domain,
             (SELECT catalog_seed_product.category_path
                FROM catalog_products catalog_seed_product
-              WHERE catalog_seed_product.merchant_id = 'external_seed'
-                AND catalog_seed_product.platform = 'external_seed'
+              WHERE ${seedRoutedLaneSql('catalog_seed_product')}
                 AND catalog_seed_product.source_product_id = external_product_seeds.external_product_id
               LIMIT 1) AS catalog_category_path,
             title,
@@ -2987,8 +3064,7 @@ const EXTERNAL_SEED_LIGHT_RECOMMENDATION_SELECT = `
             domain,
             (SELECT catalog_seed_product.category_path
                FROM catalog_products catalog_seed_product
-              WHERE catalog_seed_product.merchant_id = 'external_seed'
-                AND catalog_seed_product.platform = 'external_seed'
+              WHERE ${seedRoutedLaneSql('catalog_seed_product')}
                 AND catalog_seed_product.source_product_id = external_product_seeds.external_product_id
               LIMIT 1) AS catalog_category_path,
             title,
@@ -3034,8 +3110,7 @@ const EXTERNAL_SEED_SEMANTIC_SELECT = `
         availability,
         (SELECT catalog_seed_product.category_path
            FROM catalog_products catalog_seed_product
-          WHERE catalog_seed_product.merchant_id = 'external_seed'
-            AND catalog_seed_product.platform = 'external_seed'
+          WHERE ${seedRoutedLaneSql('catalog_seed_product')}
             AND catalog_seed_product.source_product_id = external_product_seeds.external_product_id
           LIMIT 1) AS catalog_category_path,
         jsonb_strip_nulls(jsonb_build_object(
@@ -3049,8 +3124,7 @@ const EXTERNAL_SEED_SEMANTIC_SELECT = `
           'productType', seed_data->>'productType',
           'catalog_category_path', (SELECT catalog_seed_product.category_path
              FROM catalog_products catalog_seed_product
-            WHERE catalog_seed_product.merchant_id = 'external_seed'
-              AND catalog_seed_product.platform = 'external_seed'
+            WHERE ${seedRoutedLaneSql('catalog_seed_product')}
               AND catalog_seed_product.source_product_id = external_product_seeds.external_product_id
             LIMIT 1),
           'category_path', coalesce(seed_data->>'category_path', seed_data->>'catalog_category_path'),
@@ -4908,6 +4982,10 @@ ${EXTERNAL_SEED_RECOMMENDATION_SELECT}
             cp.product_key,
             cp.merchant_id,
             cp.platform,
+            -- See the note on the same column in fetchCatalogCandidates: the
+            -- candidate builder's lane test needs it, and a re-keyed minted row
+            -- carries no other seed evidence.
+            cp.source_system,
             cp.source_product_id,
             cp.title AS product_title,
             cp.description AS product_description,
@@ -4930,7 +5008,15 @@ ${EXTERNAL_SEED_RECOMMENDATION_SELECT}
             AND ${activeCatalogProductSourceWhere('cp', 'cm')}
             AND cp.category_path = $1
             AND NOT (
-              cp.merchant_id = 'external_seed'
+              -- Suppress seed-lane rows whose upstream source went away.
+              -- Keyed on lane membership rather than merchant_id: after the
+              -- ADR-009 phase-3 re-key a merchant_id test matches nothing, and
+              -- source-unavailable products would start LEAKING back into
+              -- category-path recommendations. Widening the outer conjunct only
+              -- ever suppresses more, and the inner conditions are all
+              -- seed-specific contracts ('external_seed.source_unavailable.v1'),
+              -- which a non-seed row cannot carry.
+              ${seedRoutedLaneSql('cp')}
               AND (
                 lower(coalesce(cp.product_payload #>> '{source_unavailable_v1,status}', '')) = 'source_unavailable'
                 OR coalesce(cp.product_payload #>> '{source_unavailable_v1,contract_version}', '') = 'external_seed.source_unavailable.v1'

@@ -7,7 +7,11 @@ const {
   resolveExternalSeedRecallDoc,
 } = require('./externalSeedRecall');
 const { activeProductsCacheSourceWhere } = require('./activeCatalogSourceSql');
+const { isExternalSeedLaneProduct } = require('./externalSeedLane');
 
+// Retained as the STAMP value for synthesized seed-resolver products (see
+// buildExternalSeedResolverProduct) — not as a read discriminator. Reads go
+// through isExternalSeedLaneProduct so they survive the ADR-009 phase-3 re-key.
 const EXTERNAL_SEED_MERCHANT_ID = 'external_seed';
 const PRODUCT_GROUNDING_BASE_URL_ENVS = ['PIVOTA_BACKEND_BASE_URL', 'PIVOTA_API_BASE'];
 const PRODUCT_GROUNDING_API_KEY_ENVS = [
@@ -495,14 +499,28 @@ function isStrongStandaloneResolverToken(token) {
 }
 
 function isExternalProduct(product) {
-  const mid = String(product?.merchant_id || product?.merchantId || '').trim();
-  if (mid === EXTERNAL_SEED_MERCHANT_ID) return true;
+  // Seed-lane membership: merchant_id OR platform OR source_system OR id
+  // prefix. The merchant_id leg still matches the ~8,974 rows that have not
+  // been re-keyed yet; the platform/source_system legs are what make the 1,365
+  // rows ADR-009 phase 3 already moved to `merch_obs_…` answer identically.
+  // Before this, a re-keyed row fell through to the `ext_` prefix leg or was
+  // read as internal — which is how a seed product ended up bypassing
+  // allow_external_seed=false at the caller below.
+  //
+  // DISCLOSED WIDENING: the shared adapter also reads the nested `merchant.id`
+  // shape, which this function did not (RecommendationEngine's getMerchantId
+  // always did). So `{merchant:{id:'external_seed'}}` now reads external here
+  // where it read internal before. Correct direction — the old answer let a
+  // seed product slip past allow_external_seed=false — and it removes a silent
+  // disagreement between the two isExternalProduct implementations.
+  if (isExternalSeedLaneProduct(product)) return true;
+  // Legacy non-seed-lane legs, unchanged: these describe rows the external-seed
+  // writer did not produce, so they are ORed alongside rather than folded into
+  // the shared predicate.
   const platform = String(product?.platform || '').trim().toLowerCase();
   if (platform === 'external') return true;
   const source = String(product?.source || product?.source_type || '').trim().toLowerCase();
-  if (source === 'external_seed' || source === 'external') return true;
-  const pid = String(product?.product_id || product?.productId || product?.id || '').trim();
-  return pid.startsWith('ext_');
+  return source === 'external_seed' || source === 'external';
 }
 
 function getCandidateTitle(product) {
@@ -1035,6 +1053,20 @@ function buildExternalSeedResolverProduct(row) {
   if (!productId || !title) return null;
   return {
     product_id: productId,
+    // DELIBERATELY still the sentinel, and NOT migrated with the readers.
+    //
+    // This object is synthesized from an external_product_seeds row that has no
+    // catalog_products row and therefore no seller of record. ADR-009 D2 bans
+    // inventing one ("no fallback / unknown-seller merchant"), and
+    // ensure_observed_seller cannot mint here anyway — it keys on
+    // (normalized_brand, etld1) and raises on an empty brand, which this path
+    // routinely has. The sentinel is the honest answer: "produced by the
+    // external-seed writer, seller not established."
+    //
+    // Safe because the readers no longer key on it: `source`/`source_type`
+    // below already put this object in the seed lane via isExternalProduct, so
+    // the value here is a provenance label, not a routing key. If the sentinel
+    // is ever fully retired, this becomes a null merchant_id — not a mint.
     merchant_id: EXTERNAL_SEED_MERCHANT_ID,
     title,
     name: title,
