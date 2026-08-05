@@ -180,9 +180,14 @@ jobs:
       # of 1. An earlier draft claimed that shape could not be posed in a
       # harness and shipped the gap as a comment; review disproved it, so the
       # claim is gone and the test is here.
-      # ADDED 2026-08-05: `fpm_stage_attribution`, confirmed green (2/2) AND
-      # mutation-checked — deleting the route_entry stage fails both tests,
-      # recording it after context_build fails the ordering one. It guards the
+      # ADDED 2026-08-05: `fpm_stage_attribution`, confirmed green (5/5) AND
+      # mutation-checked — deleting route_entry fails 3, deleting the beauty
+      # lane stage fails 1, renaming fpm_unattributed_ms fails 1, and moving
+      # route_entry back BELOW the early beauty lane fails 2 (that ordering is
+      # load-bearing: recorded after the lane, route_entry's span CONTAINS it,
+      # so fpm_stage_total_ms double-counts a multi-second lane and the
+      # attribution gap goes negative — confidently wrong beats missing only in
+      # the wrong direction). It guards the
       # search pipeline's own latency telemetry: full-pipeline requests were 99%
       # attributed while EARLY-EXIT requests left 93-99% of their latency with
       # nothing to explain it. Instrumentation that quietly stops firing is

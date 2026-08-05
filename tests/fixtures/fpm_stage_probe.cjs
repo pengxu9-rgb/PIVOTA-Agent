@@ -21,6 +21,10 @@ const supertest = require('supertest');
 const app = require('../../src/server');
 
 const query = process.argv[2] || 'attribution probe running shoes';
+// argv[3] optionally sets search.domain — 'beauty' drives the early indexed beauty lane
+// (isPivotBeautyContractInvokeRequest keys off the explicit domain). Avoid ingredient words in the query:
+// they trip earlyPreserveIngredientDirectForPivotBeautyContract and route elsewhere.
+const domain = process.argv[3] || null;
 
 (async () => {
   await supertest(app)
@@ -29,7 +33,7 @@ const query = process.argv[2] || 'attribution probe running shoes';
     .send({
       operation: 'find_products_multi',
       metadata: { source: 'shopping_agent' },
-      payload: { search: { query, page_size: 5 } },
+      payload: { search: { query, page_size: 5, ...(domain ? { domain } : {}) } },
     });
   // The breakdown is emitted from res.on('finish'), after the response promise resolves.
   await new Promise((resolve) => setTimeout(resolve, 400));

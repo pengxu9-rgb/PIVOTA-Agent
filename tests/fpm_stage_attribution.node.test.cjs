@@ -17,11 +17,11 @@ const { execFile } = require('node:child_process');
 
 const PROBE = path.join(__dirname, 'fixtures', 'fpm_stage_probe.cjs');
 
-function runProbe(query) {
+function runProbe(query, domain) {
   return new Promise((resolve, reject) => {
     execFile(
       process.execPath,
-      [PROBE, query],
+      domain ? [PROBE, query, domain] : [PROBE, query],
       { cwd: path.join(__dirname, '..'), timeout: 60000, maxBuffer: 32 * 1024 * 1024 },
       (err, stdout, stderr) => {
         if (err && !stdout) return reject(new Error(`probe failed: ${err.message} ${stderr}`));
@@ -66,4 +66,44 @@ test('route_entry leads the serial stages, so nothing precedes it unmeasured', a
   // it is excluded from the ordering claim.
   const ordered = stages.filter((s) => !s.off_path).map((s) => s.stage);
   assert.equal(ordered[0], 'route_entry', `route_entry must lead the serial stages; saw ${ordered.join(', ')}`);
+});
+
+test('route_entry still leads on a BEAUTY request, and does not contain the lane it precedes', async () => {
+  // The ordering claim has to hold on the lane-driven path too. An earlier draft recorded route_entry
+  // AFTER the early beauty lane, so route_entry's span CONTAINED beauty_direct_recall — fpm_stage_total_ms
+  // then double-counted a multi-second lane and the attribution gap went negative. Confidently wrong is
+  // worse than missing, so this pins the ordering on the request shape that exposed it.
+  const stages = stagesFrom(await runProbe('gentle foaming cleanser', 'beauty'));
+  assert.ok(stages, 'expected an fpm_stage_breakdown to be emitted');
+  const ordered = stages.filter((s) => !s.off_path).map((s) => s.stage);
+  assert.equal(ordered[0], 'route_entry', `route_entry must lead even on the beauty lane; saw ${ordered.join(', ')}`);
+});
+
+test('the early beauty lane records a stage of its own', async () => {
+  const stages = stagesFrom(await runProbe('gentle foaming cleanser', 'beauty'));
+  assert.ok(stages, 'expected an fpm_stage_breakdown to be emitted');
+  const lane = stages.find((s) => s.stage === 'beauty_direct_recall');
+  assert.ok(
+    lane,
+    `the beauty direct-recall lane must record a stage — it can answer the request outright, and it was ` +
+      `this lane's silence that left 93-99% of an early-exit request unattributed; saw ` +
+      `${stages.map((s) => s.stage).join(', ')}`,
+  );
+  assert.equal(lane.lane, 'early_indexed');
+  assert.equal(typeof lane.latency_ms, 'number');
+});
+
+test('the log reports how much of the request nothing accounts for', async () => {
+  // Instrumenting lanes one at a time cannot close this class — a missing lane just makes the breakdown
+  // look short. This field makes the absence itself observable.
+  const stdout = await runProbe('attribution unattributed probe');
+  const line = stdout.split('\n').find((l) => l.includes('fpm_stage_breakdown'));
+  assert.ok(line, 'expected a breakdown log line');
+  const payload = JSON.parse(line);
+  assert.equal(
+    typeof payload.fpm_unattributed_ms,
+    'number',
+    'fpm_unattributed_ms must be emitted alongside the breakdown',
+  );
+  assert.ok(payload.fpm_unattributed_ms >= 0);
 });

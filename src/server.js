@@ -39883,6 +39883,24 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 (sum, entry) => sum + Math.max(0, Number(entry?.latency_ms || 0) || 0),
                 0,
               ),
+              // How much of this request NOTHING accounts for. Instrumenting lanes one at a time is a
+              // losing game — this handler has ~14 early-return lanes and gains more — and worse, a missing
+              // lane is INVISIBLE: the breakdown just looks short. This number makes the absence itself
+              // observable, cannot go stale as lanes are added, and is what turns "roughly 3-6s somewhere"
+              // into a value you can sort by.
+              //
+              // Serial stages only: off_path entries (the citable-supplement floating promise) overlap the
+              // pipeline by design, so counting them would understate the true remainder.
+              fpm_unattributed_ms: Math.max(
+                0,
+                Math.max(0, Date.now() - invokeStartedAtMs)
+                  - fpmStageBreakdown.reduce(
+                    (sum, entry) => (entry?.off_path
+                      ? sum
+                      : sum + Math.max(0, Number(entry?.latency_ms || 0) || 0)),
+                    0,
+                  ),
+              ),
               fpm_upstream_http_ms: Math.max(0, Math.round(fpmUpstreamHttpMs)),
             }
           : {}),
@@ -40370,6 +40388,19 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       );
       gatewayGovernanceAudit = null;
     }
+    // Everything between handler entry and this line was invisible BY CONSTRUCTION: the first stage
+    // previously recorded was context_build, so schema validation, the governance audit and the guardrail
+    // pass landed in latency_ms with nothing to attribute them to.
+    //
+    // Recorded HERE — above every early lane — for two reasons. It fires on the lanes that answer the
+    // request and return before context_build is ever reached (which is exactly the cohort whose latency
+    // was unexplained), and it does not OVERLAP the lane stages below. An earlier draft sat after the early
+    // beauty lane and therefore contained it, which made fpm_stage_total_ms double-count a multi-second
+    // lane and drove the attribution gap negative — a confidently wrong number, worse than a missing one.
+    //
+    // Deliberately outside the find_products_multi conditional: recordFpmStage's own isFpmStageOperation
+    // guard also admits find_products, whose cache lane otherwise returns with an EMPTY breakdown.
+    recordFpmStage('route_entry', invokeStartedAtMs);
     if (operation === 'find_products_multi') {
       const earlySearch =
         sourceContractPayload?.search &&
@@ -40433,22 +40464,28 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           const earlySource = metadata?.source;
           const earlyCreatorScoped =
             isCreatorUiSource(earlySource) || normalizeAgentSource(earlySource) === 'creator-agent';
-          const directResponse = await searchBeautyExternalSeedProductsMainline({
-            search: earlySearch,
-            metadata,
-            intent: null,
-            creatorScoped: earlyCreatorScoped,
-          });
+          // Recorded in a FINALLY: this lane can answer the request outright, so without a stage its whole
+          // cost lands in latency_ms unexplained (measured on prod as 1.8-2.7s of a request whose breakdown
+          // stopped at context_build) — and a THROW here is the slowest case of all, so recording only on
+          // success would lose exactly the measurement worth having.
+          let directResponse;
+          try {
+            directResponse = await searchBeautyExternalSeedProductsMainline({
+              search: earlySearch,
+              metadata,
+              intent: null,
+              creatorScoped: earlyCreatorScoped,
+            });
+          } finally {
+            recordFpmStage('beauty_direct_recall', earlyDirectStartedAt, {
+              returned: Array.isArray(directResponse?.products) ? directResponse.products.length : null,
+              lane: 'early_indexed',
+              failed: directResponse === undefined ? true : null,
+            });
+          }
           const directProducts = Array.isArray(directResponse?.products)
             ? directResponse.products
             : [];
-          // This lane can answer the request outright, so without a stage of its own its whole cost lands
-          // in the request's latency with nothing in fpm_stage_breakdown to explain it — measured on prod
-          // 2026-08-05 as 1.8-2.7s of a request whose breakdown stopped at context_build.
-          recordFpmStage('beauty_direct_recall', earlyDirectStartedAt, {
-            returned: directProducts.length,
-            lane: 'early_indexed',
-          });
           if (isSearchQualityContractSafeEmptyResponse(directResponse)) {
             return res.json({
               ...directResponse,
@@ -40563,11 +40600,6 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     }
     let findProductsMultiCtx = null;
     if (operation === 'find_products_multi') {
-      // Everything between handler entry and here is invisible by construction: context_build is the FIRST
-      // stage recorded, so whatever runs in front of it lands in latency_ms with nothing to attribute it to
-      // (schema validation, governance audit, guardrails, and the early indexed beauty lane all live here).
-      // Recording it as its own stage is what turns "unexplained time" into a name.
-      recordFpmStage('route_entry', invokeStartedAtMs);
       const nluStartedAtMs = Date.now();
       findProductsMultiCtx = await buildFindProductsMultiContext({
         payload: sourceContractPayload,
@@ -45612,21 +45644,25 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           const earlySourceNormalized = normalizeAgentSource(source);
           const earlyCreatorScoped = isCreatorUiSource(source) || earlySourceNormalized === 'creator-agent';
           const beautyDirectStartedAt = Date.now();
-          const directResponse = await searchBeautyExternalSeedProductsMainline({
-            search,
-            metadata,
-            intent: effectiveIntent,
-            creatorScoped: earlyCreatorScoped,
-          });
+          let directResponse;
+          try {
+            directResponse = await searchBeautyExternalSeedProductsMainline({
+              search,
+              metadata,
+              intent: effectiveIntent,
+              creatorScoped: earlyCreatorScoped,
+            });
+          } finally {
+            // See the early_indexed lane: also answers outright, also needs the throw path measured.
+            recordFpmStage('beauty_direct_recall', beautyDirectStartedAt, {
+              returned: Array.isArray(directResponse?.products) ? directResponse.products.length : null,
+              lane: 'mainline_direct',
+              failed: directResponse === undefined ? true : null,
+            });
+          }
           const directProducts = Array.isArray(directResponse?.products)
             ? directResponse.products
             : [];
-          // See the early_indexed lane above: this one can also answer outright, so it needs its own stage
-          // or its cost is invisible.
-          recordFpmStage('beauty_direct_recall', beautyDirectStartedAt, {
-            returned: directProducts.length,
-            lane: 'mainline_direct',
-          });
           if (
             directProducts.length > 0 ||
             isSearchQualityContractSafeEmptyResponse(directResponse) ||
@@ -46053,20 +46089,25 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       if (creatorBeautyMainlineDirectEligible) {
         try {
           const creatorDirectStartedAt = Date.now();
-          const directResponse = await searchBeautyExternalSeedProductsMainline({
-            search,
-            metadata,
-            intent: effectiveIntent,
-            creatorScoped: isCreatorHumanApparelSource,
-          });
+          let directResponse;
+          try {
+            directResponse = await searchBeautyExternalSeedProductsMainline({
+              search,
+              metadata,
+              intent: effectiveIntent,
+              creatorScoped: isCreatorHumanApparelSource,
+            });
+          } finally {
+            // Third early-return lane; same reasoning.
+            recordFpmStage('beauty_direct_recall', creatorDirectStartedAt, {
+              returned: Array.isArray(directResponse?.products) ? directResponse.products.length : null,
+              lane: 'creator_direct',
+              failed: directResponse === undefined ? true : null,
+            });
+          }
           const directProducts = Array.isArray(directResponse?.products)
             ? directResponse.products
             : [];
-          // Third early-return lane; same reasoning.
-          recordFpmStage('beauty_direct_recall', creatorDirectStartedAt, {
-            returned: directProducts.length,
-            lane: 'creator_direct',
-          });
           if (
             directProducts.length > 0 ||
             routeSearchQualityContractApplied ||
