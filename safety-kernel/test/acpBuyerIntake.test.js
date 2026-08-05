@@ -14,6 +14,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHmac } from 'node:crypto';
+import { createRequire } from 'node:module';
 import { SafetyKernel } from '../src/kernel.js';
 import { InMemoryKvStore } from '../src/stores.js';
 import { redact } from '../src/redact.js';
@@ -78,7 +79,19 @@ function setup({ identity = 'buyer_1', productRead, variantResolutionTimeoutMs }
 }
 
 // A product-detail read result carrying `variants` — the shape the canonical get_product read returns.
-const productWith = (...variants) => ({ product: { product_id: 'p1', variants } });
+//
+// It ECHOES the identity it was asked about (product_id, and merchant_id when the request scoped one), which
+// is what a correct read does. This used to hardcode `product_id: 'p1'` regardless of what was requested —
+// so tests asking about `sig_abc` were asserting against a read that answered about a DIFFERENT product, and
+// the fixture's unrealism is precisely what hid the missing identity check. `productReadOf` builds an
+// explicitly WRONG answer for the tests that need one.
+const productWith = (...variants) => (payload) => ({
+  product: {
+    product_id: payload?.product?.product_id,
+    ...(payload?.product?.merchant_id ? { merchant_id: payload.product.merchant_id } : {}),
+    variants,
+  },
+});
 
 function req({ body = {}, id, idem = 'idem-intake-1' } = {}) {
   const rawBody = JSON.stringify(body);
@@ -251,7 +264,7 @@ test('update is held to the SAME intake rules (its snapshot replaces, it does no
 // impossible. The invariant that survives untouched: an id is NEVER synthesised from a product id.
 
 test('item with a REAL variant_id is accepted, reaches pricing verbatim, and triggers NO resolution read', async () => {
-  const { adapter, priced, productReads } = setup({ productRead: () => productWith({ variant_id: 'SHOULD_NOT_BE_USED' }) });
+  const { adapter, priced, productReads } = setup({ productRead: productWith({ variant_id: 'SHOULD_NOT_BE_USED' }) });
   const r = await adapter.createCheckoutSession(req({ body: cart({ customer_email: 'a@b.co' }) }));
   assert.equal(r.status, 201, JSON.stringify(r.body));
   assert.deepEqual(quoteOf(priced()).items[0], { product_id: 'p1', variant_id: 'v1', quantity: 1 });
@@ -259,7 +272,7 @@ test('item with a REAL variant_id is accepted, reaches pricing verbatim, and tri
 });
 
 test('product_id ONLY + exactly ONE variant: resolved, and the RESOLVED id is what reaches the quote payload', async () => {
-  const { adapter, priced, productReads } = setup({ productRead: () => productWith({ variant_id: 'v_resolved', title: 'Default' }) });
+  const { adapter, priced, productReads } = setup({ productRead: productWith({ variant_id: 'v_resolved', title: 'Default' }) });
   const r = await adapter.createCheckoutSession(req({
     body: cart({ customer_email: 'a@b.co', items: [{ product_id: 'p1', quantity: 2 }] }),
   }));
@@ -271,7 +284,7 @@ test('product_id ONLY + exactly ONE variant: resolved, and the RESOLVED id is wh
 });
 
 test('the resolved id is NEVER derived from the product id (the forging bug this path exists to remove)', async () => {
-  const { adapter, priced } = setup({ productRead: () => productWith({ variant_id: 'v_real' }) });
+  const { adapter, priced } = setup({ productRead: productWith({ variant_id: 'v_real' }) });
   const r = await adapter.createCheckoutSession(req({
     body: cart({ customer_email: 'a@b.co', items: [{ product_id: 'p1', quantity: 1 }] }),
   }));
@@ -283,7 +296,7 @@ test('a SYNTHETIC canonical variant id resolves like any other (no shape special
   // Live feed products resolve to BOTH real storefront ids (`48930014462260`) and canonical placeholders
   // (`merit:c7e0303d89a516b5::canonical`). Telling them apart is index-lane knowledge; this door must not.
   for (const id of ['merit:c7e0303d89a516b5::canonical', '48930014462260']) {
-    const { adapter, priced } = setup({ productRead: () => productWith({ variant_id: id }) });
+    const { adapter, priced } = setup({ productRead: productWith({ variant_id: id }) });
     const r = await adapter.createCheckoutSession(req({
       body: cart({ customer_email: 'a@b.co', items: [{ product_id: 'sig_x', quantity: 1 }] }),
     }));
@@ -293,7 +306,7 @@ test('a SYNTHETIC canonical variant id resolves like any other (no shape special
 });
 
 test('a NUMERIC upstream variant id is accepted (stringified) — the read`s own id, not a derived one', async () => {
-  const { adapter, priced } = setup({ productRead: () => productWith({ id: 48930014462260 }) });
+  const { adapter, priced } = setup({ productRead: productWith({ id: 48930014462260 }) });
   const r = await adapter.createCheckoutSession(req({
     body: cart({ customer_email: 'a@b.co', items: [{ product_id: 'sig_x', quantity: 1 }] }),
   }));
@@ -303,7 +316,7 @@ test('a NUMERIC upstream variant id is accepted (stringified) — the read`s own
 
 test('product_id ONLY + MULTIPLE variants: refused as AMBIGUOUS, with the count, before pricing', async () => {
   const { adapter, priced } = setup({
-    productRead: () => productWith({ variant_id: 'v1' }, { variant_id: 'v2' }, { variant_id: 'v3' }),
+    productRead: productWith({ variant_id: 'v1' }, { variant_id: 'v2' }, { variant_id: 'v3' }),
   });
   const r = await adapter.createCheckoutSession(req({
     body: cart({ customer_email: 'a@b.co', items: [{ product_id: 'p1', quantity: 1 }] }),
@@ -318,7 +331,7 @@ test('product_id ONLY + MULTIPLE variants: refused as AMBIGUOUS, with the count,
 });
 
 test('product_id ONLY + ZERO variants: refused, count 0, distinguishable from the ambiguous case', async () => {
-  const { adapter, priced } = setup({ productRead: () => productWith() });
+  const { adapter, priced } = setup({ productRead: productWith() });
   const r = await adapter.createCheckoutSession(req({
     body: cart({ customer_email: 'a@b.co', items: [{ product_id: 'p1', quantity: 1 }] }),
   }));
@@ -360,7 +373,7 @@ test('resolution TIMES OUT: refused on expiry — a hanging read cannot stall se
 });
 
 test('the SAME product twice in one cart costs ONE read, and both items get the resolved id', async () => {
-  const { adapter, priced, productReads } = setup({ productRead: () => productWith({ variant_id: 'v_shared' }) });
+  const { adapter, priced, productReads } = setup({ productRead: productWith({ variant_id: 'v_shared' }) });
   const r = await adapter.createCheckoutSession(req({
     body: cart({ customer_email: 'a@b.co', items: [{ product_id: 'p1', quantity: 1 }, { product_id: 'p1', quantity: 4 }] }),
   }));
@@ -372,8 +385,8 @@ test('the SAME product twice in one cart costs ONE read, and both items get the 
 test('ONE ambiguous item refuses the WHOLE request (a partially-resolved cart is never priced)', async () => {
   const { adapter, priced } = setup({
     productRead: (payload) => (payload.product.product_id === 'p_ok'
-      ? productWith({ variant_id: 'v_ok' })
-      : productWith({ variant_id: 'a' }, { variant_id: 'b' })),
+      ? productWith({ variant_id: 'v_ok' })(payload)
+      : productWith({ variant_id: 'a' }, { variant_id: 'b' })(payload)),
   });
   const r = await adapter.createCheckoutSession(req({
     body: cart({ customer_email: 'a@b.co', items: [{ product_id: 'p_ok', quantity: 1 }, { product_id: 'p_multi', quantity: 1 }] }),
@@ -386,7 +399,7 @@ test('ONE ambiguous item refuses the WHOLE request (a partially-resolved cart is
 test('resolution runs on UPDATE too (the update op re-mints the snapshot, so it re-resolves)', async () => {
   const { adapter, priced } = setup({
     identity: { user_ref: 'buyer_1', customer_email: 'attested@example.com' },
-    productRead: () => productWith({ variant_id: 'v_upd' }),
+    productRead: productWith({ variant_id: 'v_upd' }),
   });
   const created = await adapter.createCheckoutSession(req({ body: cart(), idem: 'idem-res-create' }));
   assert.equal(created.status, 201, JSON.stringify(created.body));
@@ -398,7 +411,7 @@ test('resolution runs on UPDATE too (the update op re-mints the snapshot, so it 
 });
 
 test('an UNSCOPED cart (no merchant_id) resolves too — the ACP feed publishes sig_* ids with no merchant', async () => {
-  const { adapter, priced, productReads } = setup({ productRead: () => productWith({ variant_id: 'v_sig' }) });
+  const { adapter, priced, productReads } = setup({ productRead: productWith({ variant_id: 'v_sig' }) });
   const r = await adapter.createCheckoutSession(req({
     body: { customer_email: 'a@b.co', items: [{ product_id: 'sig_abc', quantity: 1 }] },
   }));
@@ -408,7 +421,7 @@ test('an UNSCOPED cart (no merchant_id) resolves too — the ACP feed publishes 
 });
 
 test('a CHEAP refusal (missing buyer email) is answered without spending an upstream read', async () => {
-  const { adapter, productReads } = setup({ productRead: () => productWith({ variant_id: 'v1' }) });
+  const { adapter, productReads } = setup({ productRead: productWith({ variant_id: 'v1' }) });
   const r = await adapter.createCheckoutSession(req({ body: cart({ items: [{ product_id: 'p1', quantity: 1 }] }) }));
   assert.equal(r.status, 400);
   assert.equal(r.body.detail.reason, 'acp_buyer_email_required');
@@ -428,7 +441,7 @@ test('item with product_id ONLY and NOTHING resolvable is still refused', async 
 });
 
 test('item with sku_id ONLY is refused OUTRIGHT (sku_id is not resolvable; it would price an EMPTY cart)', async () => {
-  const { adapter, priced, productReads } = setup({ productRead: () => productWith({ variant_id: 'v1' }) });
+  const { adapter, priced, productReads } = setup({ productRead: productWith({ variant_id: 'v1' }) });
   const r = await adapter.createCheckoutSession(req({ body: cart({ customer_email: 'a@b.co', items: [{ sku_id: 'sku_1', quantity: 1 }] }) }));
   assert.equal(r.status, 400);
   assert.equal(r.body.detail.reason, 'acp_item_identity_required');
@@ -438,7 +451,7 @@ test('item with sku_id ONLY is refused OUTRIGHT (sku_id is not resolvable; it wo
 });
 
 test('item with product_id + sku_id but no variant_id resolves via the product_id (sku_id is not the key)', async () => {
-  const { adapter, priced } = setup({ productRead: () => productWith({ variant_id: 'v_from_product' }) });
+  const { adapter, priced } = setup({ productRead: productWith({ variant_id: 'v_from_product' }) });
   const r = await adapter.createCheckoutSession(req({ body: cart({ customer_email: 'a@b.co', items: [{ product_id: 'p1', sku_id: 'sku_1', quantity: 1 }] }) }));
   assert.equal(r.status, 201, JSON.stringify(r.body));
   assert.equal(quoteOf(priced()).items[0].variant_id, 'v_from_product');
@@ -449,6 +462,331 @@ test('item with product_id + sku_id and NOTHING resolvable is still refused', as
   const r = await adapter.createCheckoutSession(req({ body: cart({ customer_email: 'a@b.co', items: [{ product_id: 'p1', sku_id: 'sku_1', quantity: 1 }] }) }));
   assert.equal(r.status, 400);
   assert.equal(r.body.detail.reason, 'acp_item_identity_required');
+});
+
+// ---- 3a. THE P0: a resolved id that is the requested product_id RESTATED must be REFUSED --------------------
+//
+// The commit that introduced default-variant resolution claimed "the only value ever written into
+// `variant_id` is one the product read returned". True but insufficient: on the UNSCOPED lane the read is
+// answered by this gateway's OWN get_pdp_v2, whose variants come from src/pdpBuilder.js `buildVariants`,
+// which MANUFACTURES `variant_id: product.product_id` (product with no variants) and
+// `` `${product.product_id}-${idx+1}` `` (variant with no id). Both "came back from the read" and both are
+// byte-identical to the `variant_id || sku || product_id` forgery this door exists to eliminate.
+//
+// Section 3b below drives the REAL pdpBuilder to prove those two strings are what that lane actually emits;
+// these tests pin the door's response to them.
+
+const idsFrom = (r) => quoteOf(r).items[0].variant_id;
+
+test('P0: a resolved variant_id EQUAL to the requested product_id is REFUSED, not priced', async () => {
+  const { adapter, priced } = setup({ productRead: productWith({ variant_id: 'sig_9f2c1a' }) });
+  const r = await adapter.createCheckoutSession(req({
+    body: cart({ customer_email: 'a@b.co', items: [{ product_id: 'sig_9f2c1a', quantity: 1 }] }),
+  }));
+  assert.equal(r.status, 400, `a product-id restatement must never price: ${JSON.stringify(r.body)}`);
+  assert.equal(r.body.code, 'QUOTE_REQUIRED');
+  assert.equal(r.body.detail.reason, 'acp_item_identity_required');
+  assert.equal(r.body.detail.variant_resolution, 'no_real_variant_identity');
+  assert.equal(r.body.detail.variant_count, 1, 'the catalog DID publish a variant — it just has no identity');
+  assert.equal(priced().length, 0);
+});
+
+test('P0: a resolved variant_id of `${product_id}-1` (pdpBuilder`s id-less-variant shape) is REFUSED', async () => {
+  const { adapter, priced } = setup({ productRead: productWith({ variant_id: 'sig_9f2c1a-1' }) });
+  const r = await adapter.createCheckoutSession(req({
+    body: cart({ customer_email: 'a@b.co', items: [{ product_id: 'sig_9f2c1a', quantity: 1 }] }),
+  }));
+  assert.equal(r.status, 400, JSON.stringify(r.body));
+  assert.equal(r.body.detail.variant_resolution, 'no_real_variant_identity');
+  assert.equal(priced().length, 0);
+});
+
+test('P0: `no_real_variant_identity` is DISTINCT from `no_variants` (ops can tell the two apart)', async () => {
+  const { adapter } = setup({ productRead: productWith() }); // genuinely zero variants
+  const r = await adapter.createCheckoutSession(req({
+    body: cart({ customer_email: 'a@b.co', items: [{ product_id: 'sig_9f2c1a', quantity: 1 }] }),
+  }));
+  assert.equal(r.body.detail.variant_resolution, 'no_variants', 'a product with NO variants is a different fact');
+  assert.equal(r.body.detail.variant_count, 0);
+});
+
+test('NOT over-refused: a real id that merely CONTAINS the product id is ACCEPTED', async () => {
+  // `v_p1_red` contains `p1` but does not START with it — it is a genuine, distinct catalog identity.
+  const { adapter, priced } = setup({ productRead: productWith({ variant_id: 'v_p1_red' }) });
+  const r = await adapter.createCheckoutSession(req({
+    body: cart({ customer_email: 'a@b.co', items: [{ product_id: 'p1', quantity: 1 }] }),
+  }));
+  assert.equal(r.status, 201, JSON.stringify(r.body));
+  assert.equal(idsFrom(priced()), 'v_p1_red');
+});
+
+test('NOT over-refused: a real id that STARTS with the product id but continues alphanumerically is ACCEPTED', async () => {
+  // `sig_9f2c` is a prefix of `sig_9f2c1a` only by hash-prefix accident; the next character is alphanumeric,
+  // so the id is a different id and not the product id plus a suffix. Refusing this WOULD be over-refusal.
+  const { adapter, priced } = setup({ productRead: productWith({ variant_id: 'sig_9f2c1a' }) });
+  const r = await adapter.createCheckoutSession(req({
+    body: cart({ customer_email: 'a@b.co', items: [{ product_id: 'sig_9f2c', quantity: 1 }] }),
+  }));
+  assert.equal(r.status, 201, JSON.stringify(r.body));
+  assert.equal(idsFrom(priced()), 'sig_9f2c1a');
+});
+
+test('a `${product_id}::canonical` id is a restatement too (separator, not a distinct identity)', async () => {
+  const { adapter, priced } = setup({ productRead: productWith({ variant_id: 'merit:c7e0303d::canonical' }) });
+  const r = await adapter.createCheckoutSession(req({
+    body: cart({ customer_email: 'a@b.co', items: [{ product_id: 'merit:c7e0303d', quantity: 1 }] }),
+  }));
+  assert.equal(r.status, 400, JSON.stringify(r.body));
+  assert.equal(r.body.detail.variant_resolution, 'no_real_variant_identity');
+  assert.equal(priced().length, 0);
+  // ...but the SAME canonical id resolved from a `sig_*` product (the live shape) is still accepted —
+  // see the pre-existing "SYNTHETIC canonical variant id" test above. The filter is about the RELATIONSHIP
+  // between the two ids, never about how either one looks.
+});
+
+test('filtering happens BEFORE the unique/ambiguous decision: a forged id alongside a real one leaves ONE', async () => {
+  const { adapter, priced } = setup({
+    productRead: productWith({ variant_id: 'p1' }, { variant_id: 'v_real' }),
+  });
+  const r = await adapter.createCheckoutSession(req({
+    body: cart({ customer_email: 'a@b.co', items: [{ product_id: 'p1', quantity: 1 }] }),
+  }));
+  assert.equal(r.status, 201, `the one REAL identity resolves: ${JSON.stringify(r.body)}`);
+  assert.equal(idsFrom(priced()), 'v_real', 'the forged sibling is dropped, never chosen');
+});
+
+test('two REAL ids are still `ambiguous`, and the count is of the REAL ones only', async () => {
+  const { adapter, priced } = setup({
+    productRead: productWith({ variant_id: 'p1' }, { variant_id: 'v_a' }, { variant_id: 'v_b' }),
+  });
+  const r = await adapter.createCheckoutSession(req({
+    body: cart({ customer_email: 'a@b.co', items: [{ product_id: 'p1', quantity: 1 }] }),
+  }));
+  assert.equal(r.status, 400);
+  assert.equal(r.body.detail.variant_resolution, 'ambiguous');
+  assert.equal(r.body.detail.variant_count, 2, 'the forged candidate is not offered as a choice');
+  assert.equal(priced().length, 0);
+});
+
+// ---- 3b. THE REAL CHAIN: executor read -> get_product_detail -> pdpBuilder`s FABRICATION -------------------
+//
+// This is the gap that let the P0 ship: every safety-kernel case stubbed the executor, and the one e2e case
+// sent `merchant_id: 'm1'` — the merchant-SCOPED lane, which goes to the Python backend and never reaches
+// pdpBuilder at all. Nothing exercised the UNSCOPED (`sig_*` feed) lane the feature was built for.
+//
+// WHAT IS STUBBED, AND WHY IT STILL PROVES THE PROPERTY:
+// the door -> executor.execute('get_product') -> canonicalExecutor read('get_product_detail') hop is REAL.
+// Below that, src/server.js `invokeCommerceKernelRawUpstream` would (a) HTTP-loopback to this gateway's own
+// `get_pdp_v2` and (b) unwrap `modules[canonical].data.pdp_payload.product` via
+// `normalizePdpV2ToProductDetail`. The test replaces exactly those two steps — one network hop and one field
+// projection, neither of which invents a variant — and calls the REAL `buildPdpPayload` from
+// src/pdpBuilder.js in between. So `buildVariants`, the actual source of the forged ids, runs for real: the
+// variant ids these tests feed the door are the ones production would feed it.
+const pdpRequire = createRequire(import.meta.url);
+const { buildPdpPayload } = pdpRequire('../../src/pdpBuilder.js');
+
+// The unscoped lane as src/server.js assembles it, minus the loopback HTTP hop.
+const unscopedPdpRead = (upstreamProduct) => (payload) => {
+  const pid = payload?.product?.product_id;
+  const pdpPayload = buildPdpPayload({ product: { ...upstreamProduct, product_id: pid } });
+  return { product: pdpPayload.product }; // == normalizePdpV2ToProductDetail's projection
+};
+
+test('REAL CHAIN: pdpBuilder really does fabricate variant_id === product_id for a variant-less product', () => {
+  // A positive control. If this ever stops holding, the door tests below stop meaning anything.
+  const p = buildPdpPayload({ product: { product_id: 'sig_9f2c1a', title: 'Serum', price: 42, in_stock: true } });
+  assert.deepEqual(p.product.variants.map((v) => v.variant_id), ['sig_9f2c1a'],
+    'src/pdpBuilder.js buildVariants synthesises the product id as the variant id');
+  const q = buildPdpPayload({ product: { product_id: 'sig_9f2c1a', title: 'Serum', price: 42, in_stock: true, variants: [{ title: 'Full size' }] } });
+  assert.deepEqual(q.product.variants.map((v) => v.variant_id), ['sig_9f2c1a-1'],
+    'and `${product_id}-${idx+1}` for a variant with no id of its own');
+});
+
+test('REAL CHAIN P0: an UNSCOPED sig_* cart over the real pdpBuilder is REFUSED, not priced 201', async () => {
+  const { adapter, priced, productReads } = setup({
+    productRead: unscopedPdpRead({ title: 'Niacinamide Serum', price: 42, currency: 'USD', in_stock: true }),
+  });
+  const r = await adapter.createCheckoutSession(req({
+    body: { customer_email: 'a@b.co', items: [{ product_id: 'sig_9f2c1a', quantity: 1 }] },
+  }));
+  assert.equal(productReads().length, 1, 'the read really happened, unscoped');
+  assert.deepEqual(productReads()[0].payload.product, { product_id: 'sig_9f2c1a' }, 'no merchant_id invented');
+  assert.equal(r.status, 400, `the door must refuse the fabricated identity, got ${r.status}: ${JSON.stringify(r.body)}`);
+  assert.equal(r.body.detail.variant_resolution, 'no_real_variant_identity');
+  assert.equal(priced().length, 0, 'and price nothing');
+});
+
+test('REAL CHAIN P0: the `sig_9f2c1a-1` shape from an id-less upstream variant is REFUSED too', async () => {
+  const { adapter, priced } = setup({
+    productRead: unscopedPdpRead({ title: 'Serum', price: 42, in_stock: true, variants: [{ title: 'Full size' }] }),
+  });
+  const r = await adapter.createCheckoutSession(req({
+    body: { customer_email: 'a@b.co', items: [{ product_id: 'sig_9f2c1a', quantity: 1 }] },
+  }));
+  assert.equal(r.status, 400, JSON.stringify(r.body));
+  assert.equal(r.body.detail.variant_resolution, 'no_real_variant_identity');
+  assert.equal(priced().length, 0);
+});
+
+test('REAL CHAIN: a product whose upstream variants carry REAL ids still resolves through the same lane', async () => {
+  // The filter must not have broken the case the feature exists for.
+  const { adapter, priced } = setup({
+    productRead: unscopedPdpRead({
+      title: 'Serum', price: 42, in_stock: true,
+      variants: [{ variant_id: '48930014462260', title: '30ml' }],
+    }),
+  });
+  const r = await adapter.createCheckoutSession(req({
+    body: { customer_email: 'a@b.co', items: [{ product_id: 'sig_9f2c1a', quantity: 1 }] },
+  }));
+  assert.equal(r.status, 201, JSON.stringify(r.body));
+  assert.equal(idsFrom(priced()), '48930014462260', 'a real storefront id from the real builder resolves');
+});
+
+// ---- 3c. IDENTITY: the read must have answered about the product that was ASKED for ------------------------
+
+// A read that answers about some OTHER product entirely.
+const wrongProductRead = (over) => () => ({
+  product: { product_id: 'SOME_OTHER_PRODUCT', merchant_id: 'other_merchant', variants: [{ variant_id: 'v_of_other' }], ...over },
+});
+
+test('IDENTITY: a read answering about a DIFFERENT product_id is refused, and its variants are NOT used', async () => {
+  const { adapter, priced } = setup({ productRead: wrongProductRead() });
+  const r = await adapter.createCheckoutSession(req({
+    body: cart({ customer_email: 'a@b.co', items: [{ product_id: 'p1', quantity: 1 }] }),
+  }));
+  assert.equal(r.status, 400, `got ${r.status}: ${JSON.stringify(r.body)}`);
+  assert.equal(r.body.code, 'QUOTE_REQUIRED');
+  assert.equal(r.body.detail.reason, 'acp_item_identity_required');
+  assert.equal(r.body.detail.variant_resolution, 'identity_mismatch');
+  assert.equal(priced().length, 0, 'another product`s variant must never reach pricing');
+  assert.ok(!JSON.stringify(r.body).includes('v_of_other'), 'the refusal names fields, never values');
+  assert.ok(!JSON.stringify(r.body).includes('SOME_OTHER_PRODUCT'));
+});
+
+test('IDENTITY: a read answering for a DIFFERENT merchant_id than the one requested is refused', async () => {
+  // merchant_id is a caller-controlled body field selecting between two lanes with different resolution
+  // semantics, so a response that silently re-homes the product must not be believed.
+  const { adapter, priced } = setup({
+    productRead: () => ({ product: { product_id: 'p1', merchant_id: 'other_merchant', variants: [{ variant_id: 'v_elsewhere' }] } }),
+  });
+  const r = await adapter.createCheckoutSession(req({
+    body: cart({ customer_email: 'a@b.co', items: [{ product_id: 'p1', quantity: 1 }] }), // cart() scopes merch_A
+  }));
+  assert.equal(r.status, 400, JSON.stringify(r.body));
+  assert.equal(r.body.detail.variant_resolution, 'identity_mismatch');
+  assert.equal(priced().length, 0);
+});
+
+test('IDENTITY: a scoped read that simply OMITS merchant_id is still accepted (not every lane echoes it)', async () => {
+  const { adapter, priced } = setup({
+    productRead: () => ({ product: { product_id: 'p1', variants: [{ variant_id: 'v_ok' }] } }),
+  });
+  const r = await adapter.createCheckoutSession(req({
+    body: cart({ customer_email: 'a@b.co', items: [{ product_id: 'p1', quantity: 1 }] }),
+  }));
+  assert.equal(r.status, 201, JSON.stringify(r.body));
+  assert.equal(idsFrom(priced()), 'v_ok');
+});
+
+test('IDENTITY: the UNSCOPED lane legitimately answers with no merchant — still accepted', async () => {
+  const { adapter, priced } = setup({ productRead: productWith({ variant_id: 'v_sig' }) });
+  const r = await adapter.createCheckoutSession(req({
+    body: { customer_email: 'a@b.co', items: [{ product_id: 'sig_abc', quantity: 1 }] },
+  }));
+  assert.equal(r.status, 201, JSON.stringify(r.body));
+  assert.equal(idsFrom(priced()), 'v_sig');
+});
+
+// ---- 3d. LOAD: caps, a bounded limiter, and a deadline that stops launching work --------------------------
+//
+// Before this, mapItemsToQuote checked only `items.length !== 0`: one signed create naming 2000 distinct
+// products issued 2000 CONCURRENT reads and answered 201. And the reads run BEFORE the create-claim, so a
+// replayed create repeats them — the caps are what bounds that.
+
+const bigCart = (n, { distinct = true } = {}) => ({
+  customer_email: 'a@b.co',
+  items: Array.from({ length: n }, (_, i) => ({ product_id: distinct ? `p_${i}` : 'p_same', quantity: 1 })),
+});
+
+test('LOAD: a cart over the ITEM cap is refused before any read', async () => {
+  const { adapter, priced, productReads } = setup({ productRead: productWith({ variant_id: 'v' }) });
+  const r = await adapter.createCheckoutSession(req({ body: bigCart(51, { distinct: false }) }));
+  assert.equal(r.status, 400, JSON.stringify(r.body));
+  assert.equal(r.body.code, 'QUOTE_REQUIRED');
+  assert.equal(r.body.detail.reason, 'acp_cart_too_many_items');
+  assert.equal(r.body.detail.max_items, 50);
+  assert.equal(r.body.detail.item_count, 51);
+  assert.equal(productReads().length, 0, 'an over-cap cart costs ZERO upstream reads');
+  assert.equal(priced().length, 0);
+});
+
+test('LOAD: a cart over the DISTINCT-PRODUCT cap is refused before any read, under the item cap', async () => {
+  const { adapter, priced, productReads } = setup({ productRead: productWith({ variant_id: 'v' }) });
+  const r = await adapter.createCheckoutSession(req({ body: bigCart(26) })); // 26 items, 26 distinct
+  assert.equal(r.status, 400, JSON.stringify(r.body));
+  assert.equal(r.body.detail.reason, 'acp_cart_too_many_products');
+  assert.equal(r.body.detail.max_distinct_products, 25);
+  assert.equal(r.body.detail.distinct_product_count, 26);
+  assert.equal(productReads().length, 0, 'the read count is capped BEFORE the reads are issued');
+  assert.equal(priced().length, 0);
+});
+
+test('LOAD: a 50-line cart of ONE product is still legal — it is 1 read, not 50', async () => {
+  const { adapter, productReads } = setup({ productRead: productWith({ variant_id: 'v_shared' }) });
+  const r = await adapter.createCheckoutSession(req({ body: bigCart(50, { distinct: false }) }));
+  assert.equal(r.status, 201, `the caps must not punish quantity: ${JSON.stringify(r.body)}`);
+  assert.equal(productReads().length, 1);
+});
+
+test('LOAD: read concurrency never exceeds the limiter', async () => {
+  let inFlight = 0;
+  let peak = 0;
+  const { adapter, productReads } = setup({
+    productRead: async (payload) => {
+      inFlight += 1;
+      peak = Math.max(peak, inFlight);
+      await new Promise((r) => setTimeout(r, 5));
+      inFlight -= 1;
+      return productWith({ variant_id: `v_${payload.product.product_id}` })(payload);
+    },
+  });
+  const r = await adapter.createCheckoutSession(req({ body: bigCart(25), idem: 'idem-conc' }));
+  assert.equal(r.status, 201, JSON.stringify(r.body));
+  assert.equal(productReads().length, 25, 'all 25 distinct products were read');
+  assert.ok(peak <= 6, `concurrency must stay within the limiter, peaked at ${peak}`);
+  assert.ok(peak > 1, `...but still be parallel, peaked at ${peak}`);
+});
+
+test('LOAD: the deadline STOPS LAUNCHING reads — an abandoned batch does not keep issuing them', async () => {
+  let started = 0;
+  const { adapter } = setup({
+    productRead: () => { started += 1; return new Promise(() => {}); }, // never settles
+    variantResolutionTimeoutMs: 25,
+  });
+  const r = await adapter.createCheckoutSession(req({ body: bigCart(25), idem: 'idem-deadline' }));
+  assert.equal(r.status, 400);
+  assert.equal(r.body.detail.variant_resolution, 'resolution_unavailable');
+  const atRefusal = started;
+  assert.ok(atRefusal <= 6, `at most the limiter width may be in flight, ${atRefusal} were started`);
+  // Before the limiter, all 25 launched at once and kept running well past the refusal.
+  await new Promise((r2) => setTimeout(r2, 60));
+  assert.equal(started, atRefusal, 'no further read is launched after the deadline aborted the batch');
+});
+
+test('LOAD: product_id is TRIMMED, so " p1 " / "p1" / "p1  " are ONE product and ONE read', async () => {
+  const { adapter, priced, productReads } = setup({ productRead: productWith({ variant_id: 'v_trim' }) });
+  const r = await adapter.createCheckoutSession(req({
+    body: {
+      customer_email: 'a@b.co',
+      items: [{ product_id: 'p1', quantity: 1 }, { product_id: ' p1 ', quantity: 1 }, { product_id: 'p1  ', quantity: 1 }],
+    },
+  }));
+  assert.equal(r.status, 201, JSON.stringify(r.body));
+  assert.equal(productReads().length, 1, 'untrimmed spellings were three distinct read keys before this');
+  assert.deepEqual(productReads()[0].payload.product, { product_id: 'p1' });
+  assert.deepEqual(quoteOf(priced()).items.map((i) => i.product_id), ['p1', 'p1', 'p1'],
+    'and the NORMALIZED value is what reaches pricing');
 });
 
 // ---- 4. PII hygiene ---------------------------------------------------------------------------------------
