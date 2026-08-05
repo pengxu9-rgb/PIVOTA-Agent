@@ -66,6 +66,35 @@ const CANDIDATE_LIMIT_MAX = 200;
 const ROW_LIMIT_MIN = 50;
 const ROW_LIMIT_MAX = 500;
 
+// How far past the caller's `limit` this query over-fetches, as env-tunable knobs. DEFAULTS ARE THE
+// HISTORICAL 4x/6x — read the next paragraph before lowering them.
+//
+// Measured on prod 2026-08-05: the beauty direct-recall lane asks for limit=48, which becomes 192
+// candidates and a 288-row cap; that query costs 1.9-5.5s and is 60-98% of the lane's 3.1-4.0s. Lowering
+// the multipliers looks like free latency. It is not, for two reasons found in review:
+//
+//   1. "ORDER BY rank_score DESC keeps the best rows" IS NOT TRUE ON THE LANES THAT MATTER. In
+//      category_browse mode the text predicate is dropped and categoryScore adds a flat +90 to every row
+//      in the bucket, so rank_score is near-constant and ordering degenerates to the `updated_at DESC`
+//      tie-break — see the 2026-07-30 restamp note above, which turned the release gate red by exactly
+//      this mechanism. Cutting candidates there keeps the most RECENTLY UPDATED rows, not the most
+//      relevant ones. Both production callers (beauty mainline, shopping non-beauty) use category_browse.
+//   2. THE ROW COUNT IS NOT THE CANDIDATE COUNT. The outer join fans out over skus/offers, so the observed
+//      234-288 rows come from 192 candidates. Those candidates then pass the caller's relevance gate at a
+//      measured ~30-35%, i.e. 192 -> 58-67 products for a 48-product page. Halve the candidates and the
+//      canonical leg supplies ~29-34 — it silently stops filling its own page, and the seed-leg merge
+//      hides the shortfall.
+//
+// So the safe unit of headroom is CANDIDATES SURVIVING THE GATE, not rows: hold
+// candidate_limit * survival >= the caller's limit. To cut cost without touching recall, reduce the row
+// fan-out (e.g. the unfiltered offer join) rather than the candidate depth.
+function multiplierFromEnv(name, fallback) {
+  const n = Number(process.env[name]);
+  return Number.isFinite(n) && n >= 1 ? n : fallback;
+}
+const CANDIDATE_LIMIT_MULTIPLIER = multiplierFromEnv('CANONICAL_CHAIN_CANDIDATE_MULTIPLIER', 4);
+const ROW_LIMIT_MULTIPLIER = multiplierFromEnv('CANONICAL_CHAIN_ROW_MULTIPLIER', 6);
+
 // Generic words dropped from query token matching (tokenMatch mode) so they
 // don't dominate the token-overlap score / pull in irrelevant rows.
 const TOKEN_STOPWORDS = new Set([
@@ -274,7 +303,11 @@ function buildBrandFilterTerms(brandFilter) {
  *                                          filter on the external-seed-direct
  *                                          path (queryBeautyExternalSeedRowsFast
  *                                          in server.js: AND market = $1).
- * @param {number} [args.limit]            Final row cap (default 12).
+ * @param {number} [args.limit]            Recall depth (default 12). NOT a final row cap: it is
+ *                                         multiplied into candidate_limit and row_limit (see the
+ *                                         over-fetch note), and the outer join fans out over
+ *                                         skus/offers, so the returned row count routinely
+ *                                         exceeds it several times over.
  * @param {boolean} [args.sargableTextWhere] Optional (tokenMatch callers only).
  *                                          Opt the buyable (serving_eligible)
  *                                          lane into the citable sargable text
@@ -343,12 +376,17 @@ async function fetchCanonicalChainRows(args = {}) {
 
   const normalizedLimit = clampLimit(limit, DEFAULT_LIMIT, 1, ROW_LIMIT_MAX);
   const candidateLimit = clampLimit(
-    normalizedLimit * 4,
+    normalizedLimit * CANDIDATE_LIMIT_MULTIPLIER,
     CANDIDATE_LIMIT_MIN,
     CANDIDATE_LIMIT_MIN,
     CANDIDATE_LIMIT_MAX,
   );
-  const rowLimit = clampLimit(normalizedLimit * 6, ROW_LIMIT_MIN, ROW_LIMIT_MIN, ROW_LIMIT_MAX);
+  const rowLimit = clampLimit(
+    normalizedLimit * ROW_LIMIT_MULTIPLIER,
+    ROW_LIMIT_MIN,
+    ROW_LIMIT_MIN,
+    ROW_LIMIT_MAX,
+  );
 
   // Build positional params alongside the SQL fragments. Order:
   //   $1 query_exact, $2 query_like, $3 candidate_limit, $4 row_limit,

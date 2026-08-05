@@ -521,8 +521,45 @@ describe('canonicalCatalogSearch.fetchCanonicalChainRows', () => {
   test('non-numeric limit falls back to DEFAULT_LIMIT', async () => {
     const query = makeMockQuery([]);
     await fetchCanonicalChainRows({ query: 'lipstick', limit: 'xyz', deps: { query } });
-    // DEFAULT_LIMIT * 6 = 72, clamped up to ROW_LIMIT_MIN (50 → 72 wins)
+    // DEFAULT_LIMIT (12) * ROW_LIMIT_MULTIPLIER (6) = 72, above ROW_LIMIT_MIN (50) so it wins.
+    // Asserted as a LIVE number rather than as ROW_LIMIT_MIN: pinning it to the clamp would hold for any
+    // row multiplier <= 4 and quietly stop noticing multiplier changes, which is what an earlier draft of
+    // this test did.
     expect(query.calls[0].params[3]).toBe(72);
+    // candidate_limit at the default depth is MIN-pinned (12 * 4 = 48 > 25), asserted so the candidate
+    // side of the default path is not blind.
+    expect(query.calls[0].params[2]).toBe(48);
+  });
+
+  // The over-fetch multipliers decide how much work this query does. Measured on prod 2026-08-05 the
+  // beauty direct-recall lane asked for limit=48 and got 192 candidates / 288 rows to serve ~48-67
+  // products, with the query costing 1.9-5.5s (60-98% of that lane). Both stages ORDER BY rank_score
+  // DESC before their cap, so a smaller multiplier drops the lowest-ranked rows.
+  test('over-fetch multipliers scale candidate_limit and row_limit off the caller limit', async () => {
+    const query = makeMockQuery([]);
+    await fetchCanonicalChainRows({ query: 'lipstick', limit: 48, deps: { query } });
+    // $3 = candidate_limit, $4 = row_limit. These are the SHIPPED defaults; a change here is a change to
+    // how deep every canonical recall lane looks, so it should have to be made deliberately.
+    expect(query.calls[0].params[2]).toBe(192); // 48 * 4
+    expect(query.calls[0].params[3]).toBe(288); // 48 * 6
+  });
+
+  test('over-fetch multipliers are tunable without a deploy', async () => {
+    process.env.CANONICAL_CHAIN_CANDIDATE_MULTIPLIER = '2';
+    process.env.CANONICAL_CHAIN_ROW_MULTIPLIER = '3';
+    jest.resetModules();
+    try {
+      // eslint-disable-next-line global-require
+      const reloaded = require('../src/services/canonicalCatalogSearch');
+      const query = makeMockQuery([]);
+      await reloaded.fetchCanonicalChainRows({ query: 'lipstick', limit: 48, deps: { query } });
+      expect(query.calls[0].params[2]).toBe(96);
+      expect(query.calls[0].params[3]).toBe(144);
+    } finally {
+      delete process.env.CANONICAL_CHAIN_CANDIDATE_MULTIPLIER;
+      delete process.env.CANONICAL_CHAIN_ROW_MULTIPLIER;
+      jest.resetModules();
+    }
   });
 
   // ------------------------------------------------------------------------
