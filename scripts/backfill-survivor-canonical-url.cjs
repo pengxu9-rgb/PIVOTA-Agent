@@ -123,10 +123,12 @@ function planFor(row) {
   const survivorUrl = asString(r.survivor_url);
   const seedUrl = asString(r.seed_url);
 
+  const title = asString(r.title);
+
   if (!seedUrl) return { action: 'skip', reason: 'no_seed_url' };
   if (seedUrl === survivorUrl) return { action: 'skip', reason: 'already_matches_seed' };
-  if (isDowngradedUrl(seedUrl)) return { action: 'skip', reason: 'seed_url_also_downgraded' };
-  if (survivorUrl && !isDowngradedUrl(survivorUrl)) {
+  if (isDowngradedUrl(seedUrl, title)) return { action: 'skip', reason: 'seed_url_also_downgraded' };
+  if (survivorUrl && !isDowngradedUrl(survivorUrl, title)) {
     // Diverges, but what is stored is already a clean URL — not a regression
     // this repair is responsible for. Leave it rather than churn it.
     return { action: 'skip', reason: 'survivor_url_already_clean' };

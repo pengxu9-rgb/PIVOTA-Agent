@@ -95,16 +95,58 @@ describe('blockReasonFor (duplicate-proof guards)', () => {
 
 describe('survivor-quality guard (regression: prod 2026-08-05)', () => {
   test('isDowngradedUrl flags regional storefronts and promo pages, not clean PDPs', () => {
-    expect(isDowngradedUrl('https://meritbeauty.com/products/bronze-balm-eu')).toBe(true);
-    expect(isDowngradedUrl('https://meritbeauty.com/products/clean-lash-uk')).toBe(true);
-    expect(isDowngradedUrl('https://tower28beauty.com/products/makewaves-mascara-gift-with-purchase')).toBe(true);
-    expect(isDowngradedUrl('https://x.com/products/thing-bundle')).toBe(true);
+    expect(isDowngradedUrl('https://meritbeauty.com/products/bronze-balm-eu', 'Bronze Balm')).toBe(true);
+    expect(isDowngradedUrl('https://meritbeauty.com/products/clean-lash-uk', 'Clean Lash')).toBe(true);
+    expect(isDowngradedUrl('https://tower28beauty.com/products/makewaves-mascara-gift-with-purchase', 'MakeWaves Mascara')).toBe(true);
+    expect(isDowngradedUrl('https://x.com/products/thing-bundle', 'Thing')).toBe(true);
 
-    expect(isDowngradedUrl('https://meritbeauty.com/products/bronze-balm')).toBe(false);
+    expect(isDowngradedUrl('https://meritbeauty.com/products/bronze-balm', 'Bronze Balm')).toBe(false);
     expect(isDowngradedUrl('')).toBe(false);
     expect(isDowngradedUrl(null)).toBe(false);
     // A hyphenated word that merely ends in a region code must not trip it.
-    expect(isDowngradedUrl('https://x.com/products/mascara-deuxieme')).toBe(false);
+    expect(isDowngradedUrl('https://x.com/products/mascara-deuxieme', 'Mascara')).toBe(false);
+  });
+
+  test('a marker carried by the title is describing the product, not degrading it', () => {
+    // All four observed on prod 2026-08-05 as false positives of the naive form.
+    expect(isDowngradedUrl(
+      'https://iliabeauty.com/products/barrier-build-skin-protectant-cream-sample',
+      'Barrier Build Skin Protectant Cream - Sample',
+    )).toBe(false);
+    expect(isDowngradedUrl(
+      'https://saiehello.com/products/bestsellers-bundle',
+      'Bestsellers Bundle',
+    )).toBe(false);
+    expect(isDowngradedUrl(
+      'https://meritbeauty.com/products/pre-seeding-lip-liner-ext-eu',
+      '[Pre-Seeding] Lip Liner Ext (EU)',
+    )).toBe(false);
+    // `free-` is gone entirely: "shimmer-free" is a product descriptor.
+    expect(isDowngradedUrl(
+      'https://tower28beauty.com/products/superdew-shimmer-free-highlighter',
+      'SuperDew Highlighter',
+    )).toBe(false);
+
+    // But the same marker with no title support still flags.
+    expect(isDowngradedUrl('https://x.com/products/thing-sample', 'Thing')).toBe(true);
+  });
+
+  test('the guard reads the title when judging a downgrade', () => {
+    // Sample product: survivor URL says "sample", so does the title -> allowed.
+    expect(blockReasonFor(safeRow({
+      title: 'Multi-Stick - Sample',
+      canonical_title: 'Multi-Stick - Sample',
+      canonical_url: 'https://iliabeauty.com/products/multi-stick',
+      canonical_canonical_url: 'https://iliabeauty.com/products/multi-stick-sample-card',
+    }))).toBeNull();
+
+    // Same URL shape, but nothing in the title supports it -> blocked.
+    expect(blockReasonFor(safeRow({
+      title: 'Multi-Stick',
+      canonical_title: 'Multi-Stick',
+      canonical_url: 'https://iliabeauty.com/products/multi-stick',
+      canonical_canonical_url: 'https://iliabeauty.com/products/multi-stick-sample-card',
+    }))).toBe('survivor_url_downgraded');
   });
 
   test('blocks when the survivor URL is regional and the stranded one is clean', () => {

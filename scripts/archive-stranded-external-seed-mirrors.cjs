@@ -117,20 +117,46 @@ function buildCohortSql({ includeInactiveSeeds = false } = {}) {
 // Back-compat for callers/tests that want the default (active-seed) cohort.
 const COHORT_SQL = buildCohortSql();
 
-// A canonical_url is "downgraded" when it points at a regional storefront or a
-// promo/bundle page rather than the primary product page. Archiving a row whose
-// URL is clean in favour of a survivor carrying one of these silently changes
-// which page represents the product.
-const DOWNGRADED_URL_RE = /(-(eu|uk|ca|au|de|fr|jp|kr)(\/|\?|$))|(gift-with-purchase|gwp|bundle|sample|promo|free-)/i;
+/**
+ * A canonical_url is "downgraded" when it points at a regional storefront or a
+ * promo/bundle page INSTEAD OF the primary product page. Archiving a row whose
+ * URL is clean in favour of a survivor carrying one of these silently changes
+ * which page represents the product.
+ *
+ * A marker only counts when the product's own title does NOT carry it. Prod
+ * 2026-08-05 showed the naive form is badly false-positive-prone:
+ *   - ".../superdew-shimmer-free-highlighter" matched a bare `free-`;
+ *   - ".../barrier-build-skin-protectant-cream-sample" is the RIGHT url for a
+ *     product titled "Barrier Build Skin Protectant Cream - Sample";
+ *   - ".../bestsellers-bundle" is right for "Bestsellers Bundle";
+ *   - ".../pre-seeding-lip-liner-ext-eu" is right for "[Pre-Seeding] Lip Liner
+ *     Ext (EU)".
+ * `free-` is dropped entirely — no non-false-positive case was observed and
+ * "shimmer-free"/"fragrance-free" style names are common in this catalog.
+ */
+const URL_MARKERS = Object.freeze([
+  { re: /-(eu|uk|ca|au|de|fr|jp|kr)(\/|\?|$)/i, titleRe: /\b(eu|uk|ca|au|de|fr|jp|kr|europe|british|canad|austral)/i },
+  { re: /gift-with-purchase|gwp/i, titleRe: /\bgift\b/i },
+  { re: /\bbundle\b/i, titleRe: /\bbundle\b/i },
+  { re: /\bsample\b/i, titleRe: /\bsample\b/i },
+  { re: /\bpromo\b/i, titleRe: /\bpromo\b/i },
+]);
 
 // First-party merchant rows are transacted through the merchant integration and
 // legitimately carry no external canonical_url, so an empty URL on one of these
 // is not evidence of a downgrade.
 const FIRST_PARTY_KEY_RE = /^prod::merch_/i;
 
-function isDowngradedUrl(url) {
+/**
+ * @param {string} url
+ * @param {string} [title] product title; a marker present in the title means
+ *   the URL is describing the product, not degrading it.
+ */
+function isDowngradedUrl(url, title = '') {
   const v = asString(url);
-  return v !== '' && DOWNGRADED_URL_RE.test(v);
+  if (!v) return false;
+  const t = asString(title);
+  return URL_MARKERS.some(({ re, titleRe }) => re.test(v) && !titleRe.test(t));
 }
 
 /**
@@ -172,8 +198,11 @@ function blockReasonFor(row) {
 
   const strandedUrl = asString(r.canonical_url);
   const survivorUrl = asString(r.canonical_canonical_url);
+  // Titles are already proven equivalent by the guard above, so either serves
+  // as the reference for "is this marker describing the product?".
+  const title = asString(r.canonical_title) || asString(r.title);
   if (strandedUrl) {
-    if (isDowngradedUrl(survivorUrl) && !isDowngradedUrl(strandedUrl)) {
+    if (isDowngradedUrl(survivorUrl, title) && !isDowngradedUrl(strandedUrl, title)) {
       return 'survivor_url_downgraded';
     }
     if (!survivorUrl && !FIRST_PARTY_KEY_RE.test(asString(r.canonical_key))) {
