@@ -521,8 +521,39 @@ describe('canonicalCatalogSearch.fetchCanonicalChainRows', () => {
   test('non-numeric limit falls back to DEFAULT_LIMIT', async () => {
     const query = makeMockQuery([]);
     await fetchCanonicalChainRows({ query: 'lipstick', limit: 'xyz', deps: { query } });
-    // DEFAULT_LIMIT * 6 = 72, clamped up to ROW_LIMIT_MIN (50 → 72 wins)
-    expect(query.calls[0].params[3]).toBe(72);
+    // DEFAULT_LIMIT (12) * ROW_LIMIT_MULTIPLIER (3) = 36, clamped UP to ROW_LIMIT_MIN (50).
+    // Was 72 when the multiplier was 6 — see the over-fetch note in canonicalCatalogSearch.
+    expect(query.calls[0].params[3]).toBe(__internal.ROW_LIMIT_MIN);
+  });
+
+  // The over-fetch multipliers decide how much work this query does. Measured on prod 2026-08-05 the
+  // beauty direct-recall lane asked for limit=48 and got 192 candidates / 288 rows to serve ~48-67
+  // products, with the query costing 1.9-5.5s (60-98% of that lane). Both stages ORDER BY rank_score
+  // DESC before their cap, so a smaller multiplier drops the lowest-ranked rows.
+  test('over-fetch multipliers scale candidate_limit and row_limit off the caller limit', async () => {
+    const query = makeMockQuery([]);
+    await fetchCanonicalChainRows({ query: 'lipstick', limit: 48, deps: { query } });
+    // $3 = candidate_limit, $4 = row_limit
+    expect(query.calls[0].params[2]).toBe(96); // 48 * 2, was 192 at the old 4x
+    expect(query.calls[0].params[3]).toBe(144); // 48 * 3, was 288 at the old 6x
+  });
+
+  test('over-fetch multipliers are tunable without a deploy', async () => {
+    process.env.CANONICAL_CHAIN_CANDIDATE_MULTIPLIER = '4';
+    process.env.CANONICAL_CHAIN_ROW_MULTIPLIER = '6';
+    jest.resetModules();
+    try {
+      // eslint-disable-next-line global-require
+      const reloaded = require('../src/services/canonicalCatalogSearch');
+      const query = makeMockQuery([]);
+      await reloaded.fetchCanonicalChainRows({ query: 'lipstick', limit: 48, deps: { query } });
+      expect(query.calls[0].params[2]).toBe(192);
+      expect(query.calls[0].params[3]).toBe(288);
+    } finally {
+      delete process.env.CANONICAL_CHAIN_CANDIDATE_MULTIPLIER;
+      delete process.env.CANONICAL_CHAIN_ROW_MULTIPLIER;
+      jest.resetModules();
+    }
   });
 
   // ------------------------------------------------------------------------

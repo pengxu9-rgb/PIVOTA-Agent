@@ -66,6 +66,22 @@ const CANDIDATE_LIMIT_MAX = 200;
 const ROW_LIMIT_MIN = 50;
 const ROW_LIMIT_MAX = 500;
 
+// How far past the caller's `limit` this query over-fetches. Both stages ORDER BY rank_score DESC before
+// applying their cap, so a smaller multiplier drops the LOWEST-ranked rows — headroom for the caller's own
+// relevance gate, not a lottery.
+//
+// Measured on prod 2026-08-05: the beauty direct-recall lane asks for limit=48 and these multipliers turned
+// that into 192 candidates and a 288-row result — 235-288 rows materialised to serve ~48-67 products, with
+// the query itself costing 1.9-5.5s and accounting for 60-98% of that lane's 3.1-4.0s. 2x/3x keeps real
+// headroom over the final page while halving the work. Env-tunable so this can be moved without a deploy
+// if recall regresses.
+function multiplierFromEnv(name, fallback) {
+  const n = Number(process.env[name]);
+  return Number.isFinite(n) && n >= 1 ? n : fallback;
+}
+const CANDIDATE_LIMIT_MULTIPLIER = multiplierFromEnv('CANONICAL_CHAIN_CANDIDATE_MULTIPLIER', 2);
+const ROW_LIMIT_MULTIPLIER = multiplierFromEnv('CANONICAL_CHAIN_ROW_MULTIPLIER', 3);
+
 // Generic words dropped from query token matching (tokenMatch mode) so they
 // don't dominate the token-overlap score / pull in irrelevant rows.
 const TOKEN_STOPWORDS = new Set([
@@ -343,12 +359,17 @@ async function fetchCanonicalChainRows(args = {}) {
 
   const normalizedLimit = clampLimit(limit, DEFAULT_LIMIT, 1, ROW_LIMIT_MAX);
   const candidateLimit = clampLimit(
-    normalizedLimit * 4,
+    normalizedLimit * CANDIDATE_LIMIT_MULTIPLIER,
     CANDIDATE_LIMIT_MIN,
     CANDIDATE_LIMIT_MIN,
     CANDIDATE_LIMIT_MAX,
   );
-  const rowLimit = clampLimit(normalizedLimit * 6, ROW_LIMIT_MIN, ROW_LIMIT_MIN, ROW_LIMIT_MAX);
+  const rowLimit = clampLimit(
+    normalizedLimit * ROW_LIMIT_MULTIPLIER,
+    ROW_LIMIT_MIN,
+    ROW_LIMIT_MIN,
+    ROW_LIMIT_MAX,
+  );
 
   // Build positional params alongside the SQL fragments. Order:
   //   $1 query_exact, $2 query_like, $3 candidate_limit, $4 row_limit,
