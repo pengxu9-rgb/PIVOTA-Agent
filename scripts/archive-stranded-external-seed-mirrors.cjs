@@ -77,6 +77,7 @@ const COHORT_SQL = `
     cp.content_key,
     cp.title,
     cp.source_domain,
+    cp.canonical_url,
     cp.sync_status,
     eps.id AS seed_id,
     eps.attached_product_key AS canonical_key,
@@ -84,7 +85,8 @@ const COHORT_SQL = `
     t.sync_status AS canonical_sync_status,
     t.content_key AS canonical_content_key,
     t.title AS canonical_title,
-    t.source_domain AS canonical_domain
+    t.source_domain AS canonical_domain,
+    t.canonical_url AS canonical_canonical_url
   FROM catalog_products cp
   JOIN external_product_seeds eps ON eps.id = cp.source_ref
   LEFT JOIN catalog_products t ON t.product_key = eps.attached_product_key
@@ -99,9 +101,32 @@ const COHORT_SQL = `
     AND coalesce(eps.attached_product_key, '') NOT IN ('', cp.product_key)
 `;
 
+// A canonical_url is "downgraded" when it points at a regional storefront or a
+// promo/bundle page rather than the primary product page. Archiving a row whose
+// URL is clean in favour of a survivor carrying one of these silently changes
+// which page represents the product.
+const DOWNGRADED_URL_RE = /(-(eu|uk|ca|au|de|fr|jp|kr)(\/|\?|$))|(gift-with-purchase|gwp|bundle|sample|promo|free-)/i;
+
+// First-party merchant rows are transacted through the merchant integration and
+// legitimately carry no external canonical_url, so an empty URL on one of these
+// is not evidence of a downgrade.
+const FIRST_PARTY_KEY_RE = /^prod::merch_/i;
+
+function isDowngradedUrl(url) {
+  const v = asString(url);
+  return v !== '' && DOWNGRADED_URL_RE.test(v);
+}
+
 /**
  * Pure guard evaluation over one cohort row. Returns null when the row is safe
  * to archive, or a block_reason string naming the invariant that failed.
+ *
+ * The first four guards prove the row is a DUPLICATE. The fifth proves the
+ * survivor is not a WORSE representative — added after a prod run archived 45
+ * rows whose clean canonical_url was replaced by a regional variant
+ * (e.g. .../bronze-balm archived, .../bronze-balm-eu survived), plus a
+ * Tower 28 row whose survivor pointed at a gift-with-purchase page. Proving
+ * two rows are the same product is not the same as proving the right one won.
  */
 function blockReasonFor(row) {
   const r = row && typeof row === 'object' ? row : {};
@@ -112,6 +137,17 @@ function blockReasonFor(row) {
   }
   if (asString(r.title).toLowerCase() !== asString(r.canonical_title).toLowerCase()) {
     return 'title_mismatch';
+  }
+
+  const strandedUrl = asString(r.canonical_url);
+  const survivorUrl = asString(r.canonical_canonical_url);
+  if (strandedUrl) {
+    if (isDowngradedUrl(survivorUrl) && !isDowngradedUrl(strandedUrl)) {
+      return 'survivor_url_downgraded';
+    }
+    if (!survivorUrl && !FIRST_PARTY_KEY_RE.test(asString(r.canonical_key))) {
+      return 'survivor_url_missing';
+    }
   }
   return null;
 }
@@ -203,8 +239,10 @@ async function run({ write, confirm, domain, limit, batchSize }) {
       product_key: r.product_key,
       title: r.title,
       source_domain: r.source_domain,
+      canonical_url: r.canonical_url,
       canonical_key: r.canonical_key,
       canonical_domain: r.canonical_domain,
+      survivor_canonical_url: r.canonical_canonical_url,
       shared_content_key: r.content_key,
     })),
   };
@@ -256,6 +294,7 @@ module.exports = {
   COHORT_SQL,
   assertWriteConfirmed,
   blockReasonFor,
+  isDowngradedUrl,
   fetchCohort,
   archiveBatch,
   run,

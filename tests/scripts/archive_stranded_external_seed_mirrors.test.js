@@ -10,6 +10,7 @@ const {
   COHORT_SQL,
   assertWriteConfirmed,
   blockReasonFor,
+  isDowngradedUrl,
   fetchCohort,
   archiveBatch,
   run,
@@ -26,6 +27,8 @@ function safeRow(overrides = {}) {
     canonical_sync_status: 'live',
     canonical_content_key: 'ck_shared',
     canonical_title: 'Boox Page',
+    canonical_url: 'https://shop.boox.com/products/boox-page',
+    canonical_canonical_url: 'https://shop.boox.com/products/boox-page',
     ...overrides,
   };
 }
@@ -60,6 +63,77 @@ describe('blockReasonFor (duplicate-proof guards)', () => {
   test('is null-safe on garbage input', () => {
     expect(() => blockReasonFor(null)).not.toThrow();
     expect(blockReasonFor(null)).toBe('canonical_missing');
+  });
+});
+
+describe('survivor-quality guard (regression: prod 2026-08-05)', () => {
+  test('isDowngradedUrl flags regional storefronts and promo pages, not clean PDPs', () => {
+    expect(isDowngradedUrl('https://meritbeauty.com/products/bronze-balm-eu')).toBe(true);
+    expect(isDowngradedUrl('https://meritbeauty.com/products/clean-lash-uk')).toBe(true);
+    expect(isDowngradedUrl('https://tower28beauty.com/products/makewaves-mascara-gift-with-purchase')).toBe(true);
+    expect(isDowngradedUrl('https://x.com/products/thing-bundle')).toBe(true);
+
+    expect(isDowngradedUrl('https://meritbeauty.com/products/bronze-balm')).toBe(false);
+    expect(isDowngradedUrl('')).toBe(false);
+    expect(isDowngradedUrl(null)).toBe(false);
+    // A hyphenated word that merely ends in a region code must not trip it.
+    expect(isDowngradedUrl('https://x.com/products/mascara-deuxieme')).toBe(false);
+  });
+
+  test('blocks when the survivor URL is regional and the stranded one is clean', () => {
+    // The exact prod shape: .../bronze-balm archived, .../bronze-balm-eu survived.
+    expect(blockReasonFor(safeRow({
+      canonical_url: 'https://meritbeauty.com/products/bronze-balm',
+      canonical_canonical_url: 'https://meritbeauty.com/products/bronze-balm-eu',
+    }))).toBe('survivor_url_downgraded');
+  });
+
+  test('blocks when the survivor URL is a promo page and the stranded one is the PDP', () => {
+    // Tower 28 MakeWaves: survivor pointed at a gift-with-purchase page.
+    expect(blockReasonFor(safeRow({
+      canonical_url: 'https://tower28beauty.com/products/makewaves-mascara',
+      canonical_canonical_url: 'https://tower28beauty.com/products/makewaves-mascara-gift-with-purchase',
+    }))).toBe('survivor_url_downgraded');
+  });
+
+  test('allows the correct direction — stranded regional, survivor clean', () => {
+    expect(blockReasonFor(safeRow({
+      canonical_url: 'https://iliabeauty.com/products/barrier-build-uk',
+      canonical_canonical_url: 'https://iliabeauty.com/products/barrier-build',
+    }))).toBeNull();
+  });
+
+  test('allows when both URLs are equally downgraded', () => {
+    expect(blockReasonFor(safeRow({
+      canonical_url: 'https://x.com/products/a-eu',
+      canonical_canonical_url: 'https://x.com/products/b-uk',
+    }))).toBeNull();
+  });
+
+  test('blocks a missing survivor URL only for non-first-party survivors', () => {
+    // External survivor with no URL: the stranded row was the only one with a
+    // destination, so archiving it loses the link.
+    expect(blockReasonFor(safeRow({
+      canonical_key: 'ext:some-external-row::abc',
+      canonical_url: 'https://x.com/products/thing',
+      canonical_canonical_url: null,
+    }))).toBe('survivor_url_missing');
+
+    // First-party merchant rows transact through the merchant integration and
+    // legitimately store no external URL — these 50 prod rows were fine.
+    expect(blockReasonFor(safeRow({
+      canonical_key: 'prod::merch_efbc46b4619cfbdf::shopify::10064572776745',
+      canonical_url: 'https://jwx893-fz.myshopify.com/products/moyu-5560894018009',
+      canonical_canonical_url: null,
+    }))).toBeNull();
+  });
+
+  test('does not fire when the stranded row has no URL to lose', () => {
+    expect(blockReasonFor(safeRow({
+      canonical_url: null,
+      canonical_canonical_url: null,
+      canonical_key: 'ext:whatever::abc',
+    }))).toBeNull();
   });
 });
 
