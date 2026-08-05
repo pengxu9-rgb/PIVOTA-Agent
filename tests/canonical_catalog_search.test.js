@@ -279,19 +279,32 @@ describe('canonicalCatalogSearch.fetchCanonicalChainRows', () => {
     expect(joinMatch[0]).toMatch(/o\.suppressed_at IS NULL/);
   });
 
-  test('the suppressed-offer filter is in the ON clause, so the LEFT JOIN is not silently an INNER JOIN', async () => {
-    // Putting this predicate in WHERE would drop every product that has no live offer — a hidden deletion
-    // rather than a product judged on its merits by the serving gate. Asserting the join stays LEFT and
-    // that no WHERE clause filters on the offer alias is what keeps that distinction honest.
+  test('the suppression filters are in ON clauses — the outer query has NO where at all', async () => {
+    // Putting these predicates in WHERE would turn both LEFT JOINs INNER and drop every product without a
+    // live sku/offer — a hidden deletion rather than a product judged by the serving gate.
+    //
+    // An earlier version of this test guarded that with `if (whereIdx !== -1) expect(...)`. The outer
+    // template can never emit a WHERE, so the branch never ran and the test could only pass: an inert
+    // assertion sitting behind a green tick, in the very test cited as the safety argument. It now asserts
+    // the real invariant unconditionally, and on ANY offer-alias predicate rather than suppressed_at alone
+    // (an outer `WHERE o.currency IS NOT NULL` would INNER-join just as effectively).
     const query = makeMockQuery([]);
     await fetchCanonicalChainRows({ query: 'lipstick', includeSkuOffers: true, deps: { query } });
     const { sql } = query.calls[0];
+    expect(sql).toMatch(/LEFT JOIN catalog_skus s/);
     expect(sql).toMatch(/LEFT JOIN catalog_offers o/);
-    const whereBlock = sql.slice(sql.lastIndexOf('LEFT JOIN catalog_offers o'));
-    const whereIdx = whereBlock.search(/\bWHERE\b/);
-    if (whereIdx !== -1) {
-      expect(whereBlock.slice(whereIdx)).not.toMatch(/o\.suppressed_at/);
-    }
+    const afterJoin = sql.slice(sql.lastIndexOf('LEFT JOIN catalog_offers o'));
+    expect(afterJoin).not.toMatch(/\bWHERE\b/);
+    expect(afterJoin.replace(/ON o\.sku_key = s\.sku_key[\s\S]*?IS NULL/, '')).not.toMatch(/\bWHERE[\s\S]*\bo\./);
+  });
+
+  test('sku fan-out join excludes suppressed skus (same defect one join up)', async () => {
+    const query = makeMockQuery([]);
+    await fetchCanonicalChainRows({ query: 'lipstick', includeSkuOffers: true, deps: { query } });
+    const { sql } = query.calls[0];
+    const skuJoin = sql.match(/LEFT JOIN catalog_skus s[\s\S]*?(?=LEFT JOIN catalog_offers)/);
+    expect(skuJoin).not.toBeNull();
+    expect(skuJoin[0]).toMatch(/s\.suppressed_at IS NULL/);
   });
 
   test('default eligibility gates on serving_eligible (buyable)', async () => {
@@ -524,7 +537,7 @@ describe('canonicalCatalogSearch.fetchCanonicalChainRows', () => {
     const query = makeMockQuery([]);
     await fetchCanonicalChainRows({ query: 'lipstick', includeSkuOffers: true, deps: { query } });
     const { sql } = query.calls[0];
-    expect(sql).toMatch(/LEFT JOIN catalog_skus s ON s\.product_key = c\.product_key/);
+    expect(sql).toMatch(/LEFT JOIN catalog_skus s\s+ON s\.product_key = c\.product_key/);
     // Multi-line since the suppressed-offer predicate joined the ON clause.
     expect(sql).toMatch(/LEFT JOIN catalog_offers o\s+ON o\.sku_key = s\.sku_key/);
   });

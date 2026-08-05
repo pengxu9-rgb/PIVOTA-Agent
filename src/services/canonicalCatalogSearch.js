@@ -874,25 +874,38 @@ async function fetchCanonicalChainRows(args = {}) {
       NULL::text                 AS offer_source_system,
       NULL::jsonb                AS offer_payload,
       c.rank_score               AS rank_score`;
-  // Suppressed offers are NOT servable, and this fan-out branch used to join them anyway while the
-  // best_offer LATERAL below — the other half of this same function — has always filtered them.
+  // GUARD, NOT A FIX — measured, and the measurement is the point.
   //
-  // Measured on prod 2026-08-05: 7,294 of 22,161 offers are suppressed (32.9%), and 7,208 of those still
-  // carry a positive price AND a currency, so they look perfectly servable to the row mapper, which reads
-  // price straight off the joined row. Their suppression_reason says what they actually are:
+  // These two joins were bare while the best_offer LATERAL below (the other half of this same function)
+  // has always required `suppressed_at IS NULL`. That asymmetry looks alarming because the row mapper
+  // reads price straight off the joined row, and 7,294 of 22,161 offers table-wide are suppressed —
   // step5_test_rig_retirement (4,295), demo_retired_2026_07 (2,457), source_currency_or_channel_defect
-  // (466) — retired test-rig data, retired demo data, and the known currency defect. Any one of those
-  // winning the row ordering priced a real result.
+  // (466) — of which 7,208 still carry a positive price and a currency, so they look servable.
   //
-  // The predicate goes in the ON clause, NEVER in WHERE: this is a LEFT JOIN, and a WHERE would silently
-  // turn it into an INNER JOIN and drop every product with no live offer. In ON, such a product keeps its
-  // row with NULL offer columns and is judged by the serving gate on its merits.
+  // But within the population this query can actually REACH — serving_eligible joined on content_key, plus
+  // activeCatalogProductSourceWhere, which already excludes test/demo merchants — the count of suppressed
+  // offers on prod 2026-08-05 was ZERO of 11,236. The scary cohort is 92.6% test-rig and demo rows whose
+  // PRODUCTS are excluded upstream, so they never fan out here.
   //
-  // The fan-out reduction that prompted this (a third of offer rows stop multiplying product x sku x
-  // offer) is the side effect, not the point.
+  // So this filter removes no rows today: no latency win, no live mispricing corrected. What it buys is a
+  // closed latent hole, and the hole is sharp — suppressing a row is itself a write, so 7,090 of the 7,294
+  // suppressed offers have updated_at >= suppressed_at. The outer ORDER BY ends `s.updated_at DESC,
+  // o.updated_at DESC` and both consuming lanes dedupe first-wins without preferring a priced row, so if a
+  // suppressed offer ever DID attach to a serving-eligible product it would not merely be present, it
+  // would sort ahead of its live siblings and take the price. The likeliest future instance is a
+  // source_currency_or_channel_defect row on a live product: a wrong-currency amount, first in line.
+  //
+  // catalog_skus carries the same suppressed_at / suppression_reason / suppression_metadata columns and was
+  // joined just as bare, so the same latent hole existed one join up and is closed here too.
+  //
+  // ON clause, never WHERE: these are LEFT JOINs and a WHERE would silently make them INNER, dropping every
+  // product with no live sku/offer. In ON, such a product keeps its row with NULL columns and is judged by
+  // the serving gate on its merits. A test asserts the outer query has no WHERE at all.
   const skuOfferJoinSql = joinSkuOffers
     ? `
-    LEFT JOIN catalog_skus s ON s.product_key = c.product_key
+    LEFT JOIN catalog_skus s
+      ON s.product_key = c.product_key
+      AND s.suppressed_at IS NULL
     LEFT JOIN catalog_offers o
       ON o.sku_key = s.sku_key
       AND o.suppressed_at IS NULL`
