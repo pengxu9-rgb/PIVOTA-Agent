@@ -96,3 +96,6 @@ reports/pivota-insights-quality/
 # Pivota specific - ensure no real API keys
 pivota-credentials.json
 real-api-keys.txt
+
+# Claude Code personal settings (not shared)
+.claude/settings.local.json
