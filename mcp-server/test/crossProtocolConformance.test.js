@@ -29,6 +29,17 @@ const QUOTE = {
   locked_totals: { subtotal: 100, tax: 8, shipping: 5, total: 113 },
   line_items: [{ product_id: 'p1', quantity: 1 }], acp_state: {},
 };
+// ONE cart, handed to BOTH doors verbatim. `variant_id` is explicit so neither door needs a product read —
+// default-variant RESOLUTION has its own dedicated coverage in each door's intake suite; what this file is
+// for is the money path below the intake.
+const CART_ITEMS = Object.freeze([Object.freeze({ product_id: 'p1', variant_id: 'v1', quantity: 1 })]);
+const BUYER_EMAIL = 'conformance@example.com';
+// The SAME attested buyer, presented to each door the way that door receives a verified identity: MCP reads
+// it from the verified session's `claims`, ACP from its injected `resolveUserRef`. Both land on the shared
+// attested-wins rule.
+const MCP_CLAIMS = Object.freeze({ iss: 'https://idp.test', sub: 'buyer-1', email: BUYER_EMAIL, email_verified: true });
+const mcpSession = (sessionId, user_ref = 'usr_buyer') => ({ user_ref, acp_session_id: sessionId, claims: MCP_CLAIMS });
+const cart = () => ({ merchant_id: MERCHANT, items: CART_ITEMS.map((it) => ({ ...it })) });
 
 // One shared kernel + executor + REAL unified payment-binding verifier (stub crypto); both adapters mount on it.
 async function harness() {
@@ -76,7 +87,9 @@ async function harness() {
   const mcp = createCommerceToolSurface(executor);
   const acp = createAcpRestAdapter({
     executor, sessionStore: new InMemoryKvStore({ now: () => FIXED_NOW }), signingSecret: ACP_SECRET,
-    resolveUserRef: async (req) => req.headers['x-test-buyer'], now: () => FIXED_NOW,
+    // Object form: the same buyer, with the same ATTESTED email the MCP session carries in its claims.
+    resolveUserRef: async (req) => ({ user_ref: req.headers['x-test-buyer'], customer_email: BUYER_EMAIL }),
+    now: () => FIXED_NOW,
   });
 
   // a delegated-token allowance grant bound to a specific checkout session
@@ -88,18 +101,22 @@ async function harness() {
 // ---- protocol drivers: each runs cart → quote → complete and returns a normalized money outcome -----------
 
 async function mcpFlow({ mcp, mintGrant }, { idem = 'idem-mcp-1', sessionId = 'sess_mcp', maxAmount } = {}) {
-  const sess = { user_ref: 'usr_buyer', acp_session_id: sessionId };
-  const created = await mcp.callTool('create_checkout_session', { idempotency_key: `${idem}-c`, quote: { merchant_id: MERCHANT, items: [{ product_id: 'p1', quantity: 1 }] } }, sess);
+  const sess = mcpSession(sessionId);
+  const created = await mcp.callTool('create_checkout_session', { idempotency_key: `${idem}-c`, quote: cart() }, sess);
   const grant = await mintGrant(created.session_id, { maxAmount });
   const out = await mcp.callTool('complete_checkout_session', { idempotency_key: idem, session_id: created.session_id, payment_authorization: { method: 'acp_delegated_token', token: grant } }, sess);
   return { order_id: out.order.order_id, amount: out.order.amount_total, status: out.payment.order_status };
 }
 
-// NOTE on the ACP bodies below: they carry `buyer.email` and a real `variant_id` because the ACP door has
-// PROTOCOL-LEVEL intake validation (PR-E) that the MCP door does not — MCP hands the executor an already-
-// canonical `quote` object and never passes through acpRestAdapter's mapItemsToQuote. That asymmetry is at
-// the INTAKE layer only; everything these tests actually assert (amount-from-quote, charge-once, binding,
-// isolation) lives in the shared kernel below it and is still exercised identically through both doors.
+// The two doors are now fed the IDENTICAL cart and the IDENTICAL attested buyer.
+//
+// They were NOT, and the note that used to sit here said so: the ACP bodies carried `buyer.email` and a real
+// `variant_id` while the MCP calls carried neither, "because the ACP door has PROTOCOL-LEVEL intake
+// validation that the MCP door does not". That asymmetry was not a property of the protocols — it was the
+// MCP door's missing intake, and it meant this capstone could not have caught an intake divergence: it was
+// constructed to route around the exact gap. Both doors now import the same intake (buyerIntake.js), so the
+// inputs are like-for-like and `CONFORMANCE intake parity` below asserts that the canonical quote the kernel
+// prices is BYTE-IDENTICAL from either door.
 function acpReq({ body = {}, id, buyer = 'usr_buyer', idem = 'idem-acp-1' } = {}) {
   const rawBody = JSON.stringify(body);
   const ts = String(FIXED_NOW);
@@ -110,7 +127,7 @@ function acpReq({ body = {}, id, buyer = 'usr_buyer', idem = 'idem-acp-1' } = {}
 }
 
 async function acpFlow({ acp, mintGrant }, { idem = 'idem-acp-1', maxAmount } = {}) {
-  const created = await acp.createCheckoutSession(acpReq({ body: { merchant_id: MERCHANT, buyer: { email: 'conformance@example.com' }, items: [{ product_id: 'p1', variant_id: 'v1', quantity: 1 }] }, idem: `${idem}-c` }));
+  const created = await acp.createCheckoutSession(acpReq({ body: cart(), idem: `${idem}-c` }));
   assert.equal(created.status, 201, JSON.stringify(created.body));
   const acpSid = created.body.id;
   const grant = await mintGrant(acpSid, { maxAmount });
@@ -144,8 +161,8 @@ test('CONFORMANCE: MCP and ACP drive the SAME kernel money-path — both charge 
 test('CONFORMANCE: replay is charge-once in BOTH ecosystems (same idempotency key → no second charge)', async () => {
   const h = await harness();
   // MCP: complete twice with the same key
-  const sess = { user_ref: 'usr_buyer', acp_session_id: 'sess_mcp' };
-  const created = await h.mcp.callTool('create_checkout_session', { idempotency_key: 'k-c', quote: { merchant_id: MERCHANT, items: [{ product_id: 'p1', quantity: 1 }] } }, sess);
+  const sess = mcpSession('sess_mcp');
+  const created = await h.mcp.callTool('create_checkout_session', { idempotency_key: 'k-c', quote: cart() }, sess);
   const grant = await h.mintGrant(created.session_id);
   const args = { idempotency_key: 'k-pay', session_id: created.session_id, payment_authorization: { method: 'acp_delegated_token', token: grant } };
   const first = await h.mcp.callTool('complete_checkout_session', args, sess);
@@ -154,7 +171,7 @@ test('CONFORMANCE: replay is charge-once in BOTH ecosystems (same idempotency ke
   assert.deepEqual(second, first);
 
   // ACP: complete twice with the same key on the same session
-  const aCreated = await h.acp.createCheckoutSession(acpReq({ body: { merchant_id: MERCHANT, buyer: { email: 'conformance@example.com' }, items: [{ product_id: 'p1', variant_id: 'v1', quantity: 1 }] }, idem: 'ak-c' }));
+  const aCreated = await h.acp.createCheckoutSession(acpReq({ body: cart(), idem: 'ak-c' }));
   const aGrant = await h.mintGrant(aCreated.body.id);
   const aArgs = acpReq({ id: aCreated.body.id, body: { payment_data: { method: 'acp_delegated_token', token: aGrant } }, idem: 'ak-pay' });
   const aFirst = await h.acp.completeCheckoutSession(aArgs);
@@ -170,11 +187,11 @@ test('CONFORMANCE: replay is charge-once in BOTH ecosystems (same idempotency ke
 
 test('CONFORMANCE isolation: a session/checkout id from one protocol cannot be driven through the other', async () => {
   const h = await harness();
-  const sess = { user_ref: 'usr_buyer', acp_session_id: 'sess_mcp' };
+  const sess = mcpSession('sess_mcp');
   // an MCP checkout session (a kernel quote_id)
-  const mcpCreated = await h.mcp.callTool('create_checkout_session', { idempotency_key: 'iso-mc', quote: { merchant_id: MERCHANT, items: [{ product_id: 'p1', quantity: 1 }] } }, sess);
+  const mcpCreated = await h.mcp.callTool('create_checkout_session', { idempotency_key: 'iso-mc', quote: cart() }, sess);
   // an ACP checkout session (an adapter-minted acpSid)
-  const acpCreated = await h.acp.createCheckoutSession(acpReq({ body: { merchant_id: MERCHANT, buyer: { email: 'conformance@example.com' }, items: [{ product_id: 'p1', variant_id: 'v1', quantity: 1 }] }, idem: 'iso-ac' }));
+  const acpCreated = await h.acp.createCheckoutSession(acpReq({ body: cart(), idem: 'iso-ac' }));
 
   // ACP cannot resolve/complete an MCP session id (it isn't in the ACP session store) → 404, no charge
   const acpOnMcp = await h.acp.completeCheckoutSession(acpReq({ id: mcpCreated.session_id, body: { payment_data: { method: 'acp_delegated_token', token: await h.mintGrant(mcpCreated.session_id) } }, idem: 'iso-x1' }));
@@ -192,11 +209,11 @@ test('CONFORMANCE isolation: the SAME raw idempotency key across protocols does 
   const h = await harness();
   const KEY = 'shared-raw-key-123';
   // MCP complete with KEY
-  const sess = { user_ref: 'usr_buyer', acp_session_id: 'sess_mcp' };
-  const mc = await h.mcp.callTool('create_checkout_session', { idempotency_key: `${KEY}-mc`, quote: { merchant_id: MERCHANT, items: [{ product_id: 'p1', quantity: 1 }] } }, sess);
+  const sess = mcpSession('sess_mcp');
+  const mc = await h.mcp.callTool('create_checkout_session', { idempotency_key: `${KEY}-mc`, quote: cart() }, sess);
   const mOut = await h.mcp.callTool('complete_checkout_session', { idempotency_key: KEY, session_id: mc.session_id, payment_authorization: { method: 'acp_delegated_token', token: await h.mintGrant(mc.session_id) } }, sess);
   // ACP complete with the SAME raw KEY — must run its OWN flow, not replay MCP's cached result
-  const ac = await h.acp.createCheckoutSession(acpReq({ body: { merchant_id: MERCHANT, buyer: { email: 'conformance@example.com' }, items: [{ product_id: 'p1', variant_id: 'v1', quantity: 1 }] }, idem: `${KEY}-ac` }));
+  const ac = await h.acp.createCheckoutSession(acpReq({ body: cart(), idem: `${KEY}-ac` }));
   const aOut = await h.acp.completeCheckoutSession(acpReq({ id: ac.body.id, body: { payment_data: { method: 'acp_delegated_token', token: await h.mintGrant(ac.body.id) } }, idem: KEY }));
   assert.equal(aOut.status, 200);
   assert.notEqual(aOut.body.order.id, mOut.order.order_id); // distinct orders — no cross-protocol replay/leak
@@ -205,12 +222,12 @@ test('CONFORMANCE isolation: the SAME raw idempotency key across protocols does 
 
 test('CONFORMANCE edge parity: a missing idempotency key on a mutation is refused by BOTH', async () => {
   const h = await harness();
-  const sess = { user_ref: 'usr_buyer', acp_session_id: 'sess_mcp' };
+  const sess = mcpSession('sess_mcp');
   await assert.rejects(
-    h.mcp.callTool('create_checkout_session', { quote: { merchant_id: MERCHANT, items: [{ product_id: 'p1', quantity: 1 }] } }, sess),
+    h.mcp.callTool('create_checkout_session', { quote: cart() }, sess),
     (e) => e.code === 'IDEMPOTENCY_CONFLICT',
   );
-  const aRes = await h.acp.createCheckoutSession(acpReq({ body: { merchant_id: MERCHANT, buyer: { email: 'conformance@example.com' }, items: [{ product_id: 'p1', variant_id: 'v1', quantity: 1 }] }, idem: null }));
+  const aRes = await h.acp.createCheckoutSession(acpReq({ body: cart(), idem: null }));
   assert.equal(aRes.status, 409);
   assert.equal(aRes.body.code, 'IDEMPOTENCY_CONFLICT');
   assert.equal(h.charges().length, 0);
@@ -220,28 +237,28 @@ test('CONFORMANCE edge parity: a user-scoped op with no verified session id is r
   const h = await harness();
   // MCP: user_ref but no acp_session_id
   await assert.rejects(
-    h.mcp.callTool('create_checkout_session', { idempotency_key: 'ns-mc', quote: { merchant_id: MERCHANT, items: [{ product_id: 'p1', quantity: 1 }] } }, { user_ref: 'usr_buyer' }),
+    h.mcp.callTool('create_checkout_session', { idempotency_key: 'ns-mc', quote: cart() }, { user_ref: 'usr_buyer' }),
     (e) => e.code === 'USER_AUTH_REQUIRED',
   );
   // ACP: no verified buyer at all
-  const aRes = await h.acp.createCheckoutSession(acpReq({ body: { merchant_id: MERCHANT, buyer: { email: 'conformance@example.com' }, items: [{ product_id: 'p1', variant_id: 'v1', quantity: 1 }] }, buyer: null, idem: 'ns-ac' }));
+  const aRes = await h.acp.createCheckoutSession(acpReq({ body: cart(), buyer: null, idem: 'ns-ac' }));
   assert.equal(aRes.status, 401);
   assert.equal(h.charges().length, 0);
 });
 
 test('CONFORMANCE binding parity: wrong currency AND wrong merchant are rejected through BOTH adapters', async () => {
   const h = await harness();
-  const sess = { user_ref: 'usr_buyer', acp_session_id: 'sess_mcp' };
+  const sess = mcpSession('sess_mcp');
   // helper: open an MCP session and attempt complete with a poisoned grant → must reject
   const mcpReject = async (tag, grantOpts) => {
-    const c = await h.mcp.callTool('create_checkout_session', { idempotency_key: `b-mc-${tag}`, quote: { merchant_id: MERCHANT, items: [{ product_id: 'p1', quantity: 1 }] } }, sess);
+    const c = await h.mcp.callTool('create_checkout_session', { idempotency_key: `b-mc-${tag}`, quote: cart() }, sess);
     await assert.rejects(
       h.mcp.callTool('complete_checkout_session', { idempotency_key: `b-mp-${tag}`, session_id: c.session_id, payment_authorization: { method: 'acp_delegated_token', token: await h.mintGrant(c.session_id, grantOpts) } }, sess),
       (e) => e.code === 'CONFIRMATION_INVALID',
     );
   };
   const acpReject = async (tag, grantOpts) => {
-    const c = await h.acp.createCheckoutSession(acpReq({ body: { merchant_id: MERCHANT, buyer: { email: 'conformance@example.com' }, items: [{ product_id: 'p1', variant_id: 'v1', quantity: 1 }] }, idem: `b-ac-${tag}` }));
+    const c = await h.acp.createCheckoutSession(acpReq({ body: cart(), idem: `b-ac-${tag}` }));
     const r = await h.acp.completeCheckoutSession(acpReq({ id: c.body.id, body: { payment_data: { method: 'acp_delegated_token', token: await h.mintGrant(c.body.id, grantOpts) } }, idem: `b-ap-${tag}` }));
     assert.equal(r.status, 402);
   };
@@ -255,15 +272,15 @@ test('CONFORMANCE binding parity: wrong currency AND wrong merchant are rejected
 
 test('CONFORMANCE surface parity: get returns the owned session; cancel works unpaid and refuses paid — in BOTH', async () => {
   const h = await harness();
-  const sess = { user_ref: 'usr_buyer', acp_session_id: 'sess_mcp' };
+  const sess = mcpSession('sess_mcp');
   // MCP: create → get → cancel (unpaid)
-  const mc = await h.mcp.callTool('create_checkout_session', { idempotency_key: 'sp-mc', quote: { merchant_id: MERCHANT, items: [{ product_id: 'p1', quantity: 1 }] } }, sess);
+  const mc = await h.mcp.callTool('create_checkout_session', { idempotency_key: 'sp-mc', quote: cart() }, sess);
   const got = await h.mcp.callTool('get_checkout_session', { session_id: mc.session_id }, sess);
   assert.equal(got.session_id, mc.session_id);
   const cxl = await h.mcp.callTool('cancel_checkout_session', { idempotency_key: 'sp-cxl', session_id: mc.session_id }, sess);
   assert.equal(cxl.status, 'canceled');
   // ACP: create → get → cancel (unpaid)
-  const ac = await h.acp.createCheckoutSession(acpReq({ body: { merchant_id: MERCHANT, buyer: { email: 'conformance@example.com' }, items: [{ product_id: 'p1', variant_id: 'v1', quantity: 1 }] }, idem: 'sp-ac' }));
+  const ac = await h.acp.createCheckoutSession(acpReq({ body: cart(), idem: 'sp-ac' }));
   const aGot = await h.acp.getCheckoutSession(acpReq({ id: ac.body.id, idem: null }));
   assert.equal(aGot.status, 200);
   assert.equal(aGot.body.id, ac.body.id);
@@ -273,14 +290,14 @@ test('CONFORMANCE surface parity: get returns the owned session; cancel works un
 
   // a PAID order refuses cancellation — in BOTH
   // MCP: complete then cancel the resulting order → refused
-  const mp = await h.mcp.callTool('create_checkout_session', { idempotency_key: 'sp-mp', quote: { merchant_id: MERCHANT, items: [{ product_id: 'p1', quantity: 1 }] } }, sess);
+  const mp = await h.mcp.callTool('create_checkout_session', { idempotency_key: 'sp-mp', quote: cart() }, sess);
   const mPaid = await h.mcp.callTool('complete_checkout_session', { idempotency_key: 'sp-mpay', session_id: mp.session_id, payment_authorization: { method: 'acp_delegated_token', token: await h.mintGrant(mp.session_id) } }, sess);
   await assert.rejects(
     h.mcp.callTool('cancel_checkout_session', { idempotency_key: 'sp-mcxl2', order_id: mPaid.order.order_id }, sess),
     (e) => e.code === 'OPERATION_NOT_ALLOWED',
   );
   // ACP: complete then cancel the same checkout session → refused
-  const ap = await h.acp.createCheckoutSession(acpReq({ body: { merchant_id: MERCHANT, buyer: { email: 'conformance@example.com' }, items: [{ product_id: 'p1', variant_id: 'v1', quantity: 1 }] }, idem: 'sp-apc' }));
+  const ap = await h.acp.createCheckoutSession(acpReq({ body: cart(), idem: 'sp-apc' }));
   await h.acp.completeCheckoutSession(acpReq({ id: ap.body.id, body: { payment_data: { method: 'acp_delegated_token', token: await h.mintGrant(ap.body.id) } }, idem: 'sp-apay' }));
   const aPaidCxl = await h.acp.cancelCheckoutSession(acpReq({ id: ap.body.id, idem: 'sp-acxl2' }));
   assert.equal(aPaidCxl.status, 409); // OPERATION_NOT_ALLOWED → 409
@@ -291,15 +308,15 @@ test('CONFORMANCE surface parity: get returns the owned session; cancel works un
 test('CONFORMANCE: an under-covering credential is rejected by BOTH (amount binding is identical)', async () => {
   const h = await harness();
   // MCP: grant allowance below the 113 total
-  const sess = { user_ref: 'usr_buyer', acp_session_id: 'sess_mcp' };
-  const created = await h.mcp.callTool('create_checkout_session', { idempotency_key: 'u-c', quote: { merchant_id: MERCHANT, items: [{ product_id: 'p1', quantity: 1 }] } }, sess);
+  const sess = mcpSession('sess_mcp');
+  const created = await h.mcp.callTool('create_checkout_session', { idempotency_key: 'u-c', quote: cart() }, sess);
   const smallGrant = await h.mintGrant(created.session_id, { maxAmount: 100 });
   await assert.rejects(
     h.mcp.callTool('complete_checkout_session', { idempotency_key: 'u-pay', session_id: created.session_id, payment_authorization: { method: 'acp_delegated_token', token: smallGrant } }, sess),
     (e) => e.code === 'CONFIRMATION_INVALID',
   );
   // ACP: same under-covering grant
-  const aCreated = await h.acp.createCheckoutSession(acpReq({ body: { merchant_id: MERCHANT, buyer: { email: 'conformance@example.com' }, items: [{ product_id: 'p1', variant_id: 'v1', quantity: 1 }] }, idem: 'au-c' }));
+  const aCreated = await h.acp.createCheckoutSession(acpReq({ body: cart(), idem: 'au-c' }));
   const aSmall = await h.mintGrant(aCreated.body.id, { maxAmount: 100 });
   const aRes = await h.acp.completeCheckoutSession(acpReq({ id: aCreated.body.id, body: { payment_data: { method: 'acp_delegated_token', token: aSmall } }, idem: 'au-pay' }));
   assert.equal(aRes.status, 402); // CONFIRMATION_INVALID → 402
@@ -310,15 +327,15 @@ test('CONFORMANCE: an under-covering credential is rejected by BOTH (amount bind
 test('CONFORMANCE: a credential bound to ANOTHER session is rejected by BOTH (session binding is identical)', async () => {
   const h = await harness();
   // MCP: grant bound to a different session id
-  const sess = { user_ref: 'usr_buyer', acp_session_id: 'sess_mcp' };
-  const created = await h.mcp.callTool('create_checkout_session', { idempotency_key: 'x-c', quote: { merchant_id: MERCHANT, items: [{ product_id: 'p1', quantity: 1 }] } }, sess);
+  const sess = mcpSession('sess_mcp');
+  const created = await h.mcp.callTool('create_checkout_session', { idempotency_key: 'x-c', quote: cart() }, sess);
   const wrongGrant = await h.mintGrant('sess_SOMEONE_ELSE');
   await assert.rejects(
     h.mcp.callTool('complete_checkout_session', { idempotency_key: 'x-pay', session_id: created.session_id, payment_authorization: { method: 'acp_delegated_token', token: wrongGrant } }, sess),
     (e) => e.code === 'CONFIRMATION_INVALID',
   );
   // ACP: grant for a different session than the one created
-  const aCreated = await h.acp.createCheckoutSession(acpReq({ body: { merchant_id: MERCHANT, buyer: { email: 'conformance@example.com' }, items: [{ product_id: 'p1', variant_id: 'v1', quantity: 1 }] }, idem: 'ax-c' }));
+  const aCreated = await h.acp.createCheckoutSession(acpReq({ body: cart(), idem: 'ax-c' }));
   const aWrong = await h.mintGrant('cs_not_this_one');
   const aRes = await h.acp.completeCheckoutSession(acpReq({ id: aCreated.body.id, body: { payment_data: { method: 'acp_delegated_token', token: aWrong } }, idem: 'ax-pay' }));
   assert.equal(aRes.status, 402);
@@ -327,14 +344,16 @@ test('CONFORMANCE: a credential bound to ANOTHER session is rejected by BOTH (se
 
 test('CONFORMANCE: amount-from-quote — a caller-injected amount is STRIPPED by BOTH (adversarial pricing stub)', async () => {
   const h = await harness();
-  // MCP: the surface schema has no amount field; a stuffed one is dropped by the allowlist
-  const sess = { user_ref: 'usr_buyer', acp_session_id: 'sess_mcp' };
-  const created = await h.mcp.callTool('create_checkout_session', { idempotency_key: 'q-c', amount_total: 1, quote: { merchant_id: MERCHANT, total: 1, items: [{ product_id: 'p1', quantity: 1, price: 1 }] } }, sess);
+  // ONE poisoned cart, both doors. The surface schema has no amount field; a stuffed one is dropped by the
+  // allowlist on either side.
+  const poisoned = () => ({ ...cart(), total: 1, items: CART_ITEMS.map((it) => ({ ...it, price: 1 })) });
+  const sess = mcpSession('sess_mcp');
+  const created = await h.mcp.callTool('create_checkout_session', { idempotency_key: 'q-c', amount_total: 1, quote: poisoned() }, sess);
   const grant = await h.mintGrant(created.session_id);
   const out = await h.mcp.callTool('complete_checkout_session', { idempotency_key: 'q-pay', session_id: created.session_id, payment_authorization: { method: 'acp_delegated_token', token: grant } }, sess);
   assert.equal(out.order.amount_total, 113); // the adversarial stub would have priced this 1 if total/price leaked
   // ACP: stuffed amount in the (signed) body is dropped by the allowlist
-  const aCreated = await h.acp.createCheckoutSession(acpReq({ body: { merchant_id: MERCHANT, buyer: { email: 'conformance@example.com' }, total: 1, items: [{ product_id: 'p1', variant_id: 'v1', quantity: 1, price: 1 }] }, idem: 'aq-c' }));
+  const aCreated = await h.acp.createCheckoutSession(acpReq({ body: poisoned(), idem: 'aq-c' }));
   const aGrant = await h.mintGrant(aCreated.body.id);
   const aRes = await h.acp.completeCheckoutSession(acpReq({ id: aCreated.body.id, body: { payment_data: { method: 'acp_delegated_token', token: aGrant } }, idem: 'aq-pay' }));
   assert.equal(aRes.body.order.amount_total, 113);
@@ -348,14 +367,88 @@ test('CONFORMANCE: amount-from-quote — a caller-injected amount is STRIPPED by
 
 test('CONFORMANCE: a missing/absent payment authorization is refused by BOTH before any charge', async () => {
   const h = await harness();
-  const sess = { user_ref: 'usr_buyer', acp_session_id: 'sess_mcp' };
-  const created = await h.mcp.callTool('create_checkout_session', { idempotency_key: 'n-c', quote: { merchant_id: MERCHANT, items: [{ product_id: 'p1', quantity: 1 }] } }, sess);
+  const sess = mcpSession('sess_mcp');
+  const created = await h.mcp.callTool('create_checkout_session', { idempotency_key: 'n-c', quote: cart() }, sess);
   await assert.rejects(
     h.mcp.callTool('complete_checkout_session', { idempotency_key: 'n-pay', session_id: created.session_id }, sess),
     (e) => e.code === 'CONFIRMATION_INVALID',
   );
-  const aCreated = await h.acp.createCheckoutSession(acpReq({ body: { merchant_id: MERCHANT, buyer: { email: 'conformance@example.com' }, items: [{ product_id: 'p1', variant_id: 'v1', quantity: 1 }] }, idem: 'an-c' }));
+  const aCreated = await h.acp.createCheckoutSession(acpReq({ body: cart(), idem: 'an-c' }));
   const aRes = await h.acp.completeCheckoutSession(acpReq({ id: aCreated.body.id, body: {}, idem: 'an-pay' }));
   assert.equal(aRes.status, 402);
   assert.equal(h.charges().length, 0);
+});
+
+// ---- intake parity --------------------------------------------------------------------------------------
+//
+// These are the assertions the old "the MCP door has no intake" note made impossible. They compare the two
+// doors on the ONE thing that used to differ: what each hands the kernel to price.
+
+test('CONFORMANCE intake parity: the SAME cart + SAME attested buyer yields a BYTE-IDENTICAL canonical quote', async () => {
+  const h = await harness();
+  await h.mcp.callTool('create_checkout_session', { idempotency_key: 'par-m', quote: cart() }, mcpSession('sess_par'));
+  const acpCreated = await h.acp.createCheckoutSession(acpReq({ body: cart(), idem: 'par-a' }));
+  assert.equal(acpCreated.status, 201, JSON.stringify(acpCreated.body));
+
+  const [fromMcp, fromAcp] = h.previewQuotes();
+  assert.deepEqual(fromMcp, fromAcp, 'the two doors must price the identical canonical quote');
+  // and it is the RIGHT quote: the attested buyer reached buyer_context, the cart reached offer_refs.
+  assert.equal(fromMcp.customer_email, BUYER_EMAIL);
+  assert.deepEqual(fromMcp.items, [{ product_id: 'p1', variant_id: 'v1', quantity: 1 }]);
+});
+
+test('CONFORMANCE intake parity: an ATTESTED email beats a caller-supplied one at BOTH doors', async () => {
+  const h = await harness();
+  const HOSTILE = 'model-asserted@evil.example';
+  await h.mcp.callTool(
+    'create_checkout_session',
+    { idempotency_key: 'att-m', quote: { ...cart(), customer_email: HOSTILE } },
+    mcpSession('sess_att'),
+  );
+  const acpCreated = await h.acp.createCheckoutSession(acpReq({ body: { ...cart(), customer_email: HOSTILE }, idem: 'att-a' }));
+  assert.equal(acpCreated.status, 201, JSON.stringify(acpCreated.body));
+
+  const [fromMcp, fromAcp] = h.previewQuotes();
+  for (const q of [fromMcp, fromAcp]) assert.equal(q.customer_email, BUYER_EMAIL);
+  assert.deepEqual(fromMcp, fromAcp);
+});
+
+test('CONFORMANCE intake parity: BOTH doors refuse the same defective carts, with the same code + reason', async () => {
+  const h = await harness();
+  const cases = [
+    { name: 'sku_id only (would price an EMPTY cart)', items: [{ sku_id: 's1', quantity: 1 }], reason: 'acp_item_identity_required' },
+    { name: 'no items at all', items: [], reason: undefined },
+  ];
+  for (const c of cases) {
+    const mcpErr = await h.mcp
+      .callTool('create_checkout_session', { idempotency_key: `neg-m-${c.name}`, quote: { merchant_id: MERCHANT, items: c.items } }, mcpSession('sess_neg'))
+      .then(() => null, (e) => e);
+    const acpRes = await h.acp.createCheckoutSession(acpReq({ body: { merchant_id: MERCHANT, items: c.items }, idem: `neg-a-${c.name}` }));
+    assert.ok(mcpErr, `${c.name}: MCP must refuse`);
+    assert.equal(mcpErr.code, 'QUOTE_REQUIRED', c.name);
+    assert.equal(acpRes.status, 400, c.name);
+    assert.equal(acpRes.body.code, mcpErr.code, `${c.name}: both doors answer the same code`);
+    if (c.reason) assert.equal(acpRes.body.detail.reason, c.reason, c.name);
+  }
+  assert.equal(h.previewQuotes().length, 0, 'nothing was priced by either door');
+});
+
+test('CONFORMANCE intake parity: a partial shipping address is refused by BOTH, naming the same missing fields', async () => {
+  const h = await harness();
+  const partial = { city: 'London' };
+  const mcpErr = await h.mcp
+    .callTool('create_checkout_session', { idempotency_key: 'addr-m', quote: { ...cart(), shipping_address: partial } }, mcpSession('sess_addr'))
+    .then(() => null, (e) => e);
+  const acpRes = await h.acp.createCheckoutSession(acpReq({ body: { ...cart(), shipping_address: partial }, idem: 'addr-a' }));
+
+  assert.ok(mcpErr);
+  assert.equal(mcpErr.code, 'QUOTE_REQUIRED');
+  assert.equal(acpRes.status, 400);
+  assert.deepEqual(
+    mcpErr.detail.acp_detail.missing_fields,
+    acpRes.body.detail.missing_fields,
+    'one required-address field set, one answer',
+  );
+  assert.deepEqual(acpRes.body.detail.missing_fields, ['name', 'address_line1', 'postal_code', 'country']);
+  assert.equal(h.previewQuotes().length, 0, 'a partial destination must never price shipping/tax');
 });
