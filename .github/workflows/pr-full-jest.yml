@@ -153,6 +153,16 @@ jobs:
       # first cut of this PR did exactly that; the guard test is what stops it
       # coming back. Boots the real server via supertest + nock, so it needs the
       # npm ci above.
+      # ADDED 2026-08-05: `mcp-server/test/commerceReadCache`, confirmed green
+      # (9/9) before landing AND mutation-checked — caching every tool, adding
+      # identity to the key, or moving the cache in front of the identity gate
+      # each fail a test. NOTE this is the FIRST `mcp-server/test/**` file in any
+      # CI job: those suites live under `test/` (singular) while jest's testMatch
+      # wants `tests/`, so every one of them has always run in no workflow at
+      # all. This file carries the safety argument for sharing commerce search
+      # results across callers — that search_catalog is caller-independent — so
+      # it is the wrong one to leave unrun. It is ESM (`mcp-server` sets
+      # type:module); node --test handles that alongside the .cjs files.
       - name: Run node:test suites
         run: |
           node --test \
@@ -176,7 +186,8 @@ jobs:
             tests/public_read_mcp_heartbeat.node.test.cjs \
             tests/commerce_mcp_route_heartbeat.node.test.cjs \
             tests/commerce_mcp_heartbeat_gate.node.test.cjs \
-            tests/commerce_search_self_invoke_budget.node.test.cjs
+            tests/commerce_search_self_invoke_budget.node.test.cjs \
+            mcp-server/test/commerceReadCache.test.js
 
   jest:
     runs-on: ubuntu-latest

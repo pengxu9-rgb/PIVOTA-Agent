@@ -17,6 +17,7 @@ import { CANONICAL_OPERATIONS, canonicalOp } from "../../safety-kernel/src/proto
 import { PivotaCommerceError } from "../../safety-kernel/src/errors.js";
 import { sanitizeResult } from "../../safety-kernel/src/protocol/resultSanitizer.js";
 import { deriveUserRef } from "../auth/userRef.js";
+import { createPublicReadCache, stableStringify } from "./publicReadCache.js";
 
 export class UnknownToolError extends Error {
   constructor(name) {
@@ -48,6 +49,47 @@ export class ToolValidationError extends Error {
 const COMMERCE_OPERATIONS = CANONICAL_OPERATIONS.filter((op) => op.kernel !== "external");
 const OP_BY_MCP = Object.freeze(Object.fromEntries(COMMERCE_OPERATIONS.map((op) => [op.mcp, op])));
 
+// --- result cache (search_catalog ONLY) -------------------------------------------------------------------
+//
+// Cold search costs seconds and the commerce lane had no cache at all, so a repeated identical query paid
+// full price every time (measured on prod 2026-08-05: an identical repeat still cost 21.2s).
+//
+// SHARING RESULTS ACROSS CALLERS IS ONLY SAFE BECAUSE search_catalog IS CALLER-INDEPENDENT END TO END.
+// Each leg was verified in the code, not assumed:
+//   1. params are built by ALLOWLIST (toParams) from tool args alone — no identity field can enter;
+//   2. canonicalExecutor's `search_catalog` case calls read(), and read() is `upstream(op, payload)` — the
+//      ctx carrying user_ref / acp_session_id / agent_id is DROPPED, never forwarded;
+//   3. the upstream request forces the INTERNAL api key (forceInternalFallback, forwardAgentUserJwt:false),
+//      so the backend sees one constant identity. The single caller-derived byte that crosses is
+//      X-Buyer-Ref, and its only consumers are the quote / order / payment / checkout-session body
+//      builders — the search body builder reads no identity at all;
+//   4. the response carries no user, buyer, session or account field.
+// THEREFORE the cache key is the tool args and NOTHING else. Adding user_ref/agent_id would shred the hit
+// rate for zero safety gain. If any of the four legs above ever changes — most plausibly (2), by passing
+// ctx through read() — this cache MUST be re-scoped or removed. There is a test asserting that two calls
+// with different sessionContext produce byte-identical upstream invocations; it exists to fail loudly
+// exactly then.
+//
+// DELIBERATELY search_catalog ALONE. get_alternatives / get_offers / get_intel DO receive ctx in the
+// executor (localReads take (params, ctx)), so they are not covered by the argument above and are not
+// cached until each has its own analysis.
+const CACHEABLE_TOOLS = Object.freeze(["search_catalog"]);
+
+function envValue(name) {
+  return (typeof process !== "undefined" && process.env && process.env[name]) || "";
+}
+
+function positiveIntEnv(name, fallback) {
+  const n = Number(envValue(name));
+  return Number.isFinite(n) && n > 0 ? n : fallback;
+}
+
+function commerceCacheEnabled() {
+  const raw = String(envValue("COMMERCE_READ_CACHE_ENABLED")).trim().toLowerCase();
+  if (raw === "") return true; // default ON, mirroring the public read tier
+  return !["0", "false", "off", "no"].includes(raw);
+}
+
 /**
  * Build the MCP commerce tool surface over an already-composed canonical executor.
  * @param {{ execute: (opId:string, params:object, ctx:object)=>Promise<any> }} executor
@@ -60,6 +102,32 @@ export function createCommerceToolSurface(executor, { log } = {}) {
   }
 
   const tools = commerceToolDefinitions.map((tool) => ({ ...tool }));
+
+  // Shorter-lived than the public tier's 10min/60min: these results carry prices and availability an agent
+  // may act on. Search staleness cannot produce a wrong charge — the money path re-quotes against the
+  // backend (preview_quote) rather than trusting a search row — but discovery should still turn over
+  // faster here than on the anonymous read tier.
+  const logger = log && typeof log.info === "function" ? log : null;
+  const cache = commerceCacheEnabled()
+    ? createPublicReadCache({
+        ttlMs: positiveIntEnv("COMMERCE_READ_CACHE_TTL_MS", 5 * 60 * 1000),
+        staleMs: positiveIntEnv("COMMERCE_READ_CACHE_STALE_MS", 15 * 60 * 1000),
+        // 60, not the public tier's 300: these entries are FAT. The public tier caches slim projected
+        // rows (~5KB); a commerce search result is the unprojected product list, measured at ~460KB on
+        // prod (68 products, ingredient_intel alone about half of it). 300 of those would be ~150MB
+        // resident for a cache, which is how a latency fix turns into an OOM. 60 covers the head of the
+        // query distribution for ~30MB.
+        maxEntries: positiveIntEnv("COMMERCE_READ_CACHE_MAX", 60),
+        onRevalidateError: (err, key) => {
+          if (logger) {
+            logger.warn(
+              { err: err?.message || String(err), key },
+              "commerce read cache revalidation failed (stale kept)",
+            );
+          }
+        },
+      })
+    : null;
 
   /**
    * Execute a commerce tool call.
@@ -95,13 +163,24 @@ export function createCommerceToolSurface(executor, { log } = {}) {
     //    extra money fields (e.g. a model-set refund amount), and prototype-polluting keys.
     const params = toParams(op, toolArgs);
 
-    // 4) the single execution bridge enforces the contract flags + routes to the kernel.
-    const result = await executor.execute(op.id, params, ctx);
-    // 5) sanitize. A payment redirect (requires_action) is only LEGITIMATE for the checkout flow, so handoff
-    //    URLs are preserved verbatim ONLY for checkout ops (PayPal `?token=EC-…`, OAuth `?code=…`, Stripe 3DS
-    //    `client_secret` must reach the buyer intact). For discovery/order results a redirect-named field is
-    //    NOT a payment handoff and is scrubbed aggressively.
-    return sanitizeResult(result, { handoffAllowed: op.capability === "checkout" });
+    const execute = async () => {
+      // 4) the single execution bridge enforces the contract flags + routes to the kernel.
+      const result = await executor.execute(op.id, params, ctx);
+      // 5) sanitize. A payment redirect (requires_action) is only LEGITIMATE for the checkout flow, so
+      //    handoff URLs are preserved verbatim ONLY for checkout ops (PayPal `?token=EC-…`, OAuth `?code=…`,
+      //    Stripe 3DS `client_secret` must reach the buyer intact). For discovery/order results a
+      //    redirect-named field is NOT a payment handoff and is scrubbed aggressively.
+      return sanitizeResult(result, { handoffAllowed: op.capability === "checkout" });
+    };
+
+    // 6) cache read-only, caller-independent results. Gated on the op being cacheable — never on anything
+    //    about the caller — so a mutating or user-scoped op can never reach this branch. The cached value
+    //    is the SANITIZED result, so a cache hit is byte-identical to a miss. Only successes are stored
+    //    (getOrCompute lets errors propagate uncached), which keeps a transient MERCHANT_UNAVAILABLE from
+    //    being served for the rest of the TTL. See the CACHEABLE_TOOLS note above for why the key omits
+    //    identity — that omission is the whole safety argument and is asserted by tests.
+    if (!cache || !CACHEABLE_TOOLS.includes(op.id)) return execute();
+    return cache.getOrCompute(`${op.id}:${stableStringify(toolArgs ?? {})}`, execute);
   }
 
   function isCommerceTool(name) {
