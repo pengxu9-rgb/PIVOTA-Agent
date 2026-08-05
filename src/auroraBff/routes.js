@@ -15,6 +15,7 @@ const {
   buildExternalSeedProduct,
   ensureJsonObject,
 } = require('../services/externalSeedProducts');
+const { isExternalSeedLaneProduct } = require('../services/externalSeedLane');
 const {
   buildExternalSeedRecallLikePredicate,
   buildExternalSeedSearchTextGateSql,
@@ -25978,6 +25979,35 @@ function shouldPreserveConcernFrameworkRetrievalRoleScore(roleScore = null) {
   return false;
 }
 
+// "Does this candidate carry external-seed authority?" — the concern-framework
+// scorers below grant seed-lane rows a role-fit preservation that
+// merchant-synced rows do not get.
+//
+// Two legs, deliberately:
+//   * retrieval_source — a RUNTIME label stamped by whichever retriever
+//     produced the candidate. Unaffected by the ADR-009 re-key, but absent on
+//     candidates that came back through the catalog_products lane (those carry
+//     retrieval_source = 'catalog_products').
+//   * seed-lane membership — the DATA answer, shared with pdpRenderability.
+//     Its merchant_id leg keeps matching un-re-keyed rows; its
+//     platform/source_system legs are what keep the already-re-keyed
+//     `merch_obs_…` rows scoring identically instead of quietly losing their
+//     role-fit preservation the moment phase 3 runs.
+//
+// NOTE: the merchant_id comparison is now case-sensitive (it matches the
+// canonical predicate in pdpRenderability, which already governs PDP serving
+// for these same rows) where the four inlined copies this replaces lowercased
+// first. merchant ids are machine-generated lowercase, so this is a
+// normalization, not a behaviour change.
+function hasConcernFrameworkExternalSeedAuthority(product) {
+  if (!isPlainObject(product)) return false;
+  const retrievalSource = String(product?.retrieval_source || product?.retrievalSource || '')
+    .trim()
+    .toLowerCase();
+  if (retrievalSource === 'external_seed') return true;
+  return isExternalSeedLaneProduct(product);
+}
+
 function shouldPreserveConcernFrameworkExternalSeedRetrievalRoleScore({
   row = null,
   roleScore = null,
@@ -25987,9 +26017,7 @@ function shouldPreserveConcernFrameworkExternalSeedRetrievalRoleScore({
   const product = isPlainObject(row) ? row : null;
   const scoreObj = isPlainObject(roleScore) ? roleScore : null;
   if (!product || !scoreObj || scoreObj.retrieval_role_matched !== true) return false;
-  const externalSeedAuthority =
-    String(product?.retrieval_source || product?.retrievalSource || '').trim().toLowerCase() === 'external_seed'
-    || String(product?.merchant_id || product?.merchantId || '').trim().toLowerCase() === 'external_seed';
+  const externalSeedAuthority = hasConcernFrameworkExternalSeedAuthority(product);
   if (!externalSeedAuthority) return false;
   const score = Number(roleFitScore);
   if (!Number.isFinite(score) || score < 0.6) return false;
@@ -26043,9 +26071,7 @@ function buildConcernFrameworkExternalSeedRetrievalRoleScore({
   const roleId = String(retrievalRoleId || '').trim();
   if (!product || !roleId) return null;
   if (roleId === 'daily_sunscreen_finish_fit') return null;
-  const externalSeedAuthority =
-    String(product?.retrieval_source || product?.retrievalSource || '').trim().toLowerCase() === 'external_seed'
-    || String(product?.merchant_id || product?.merchantId || '').trim().toLowerCase() === 'external_seed';
+  const externalSeedAuthority = hasConcernFrameworkExternalSeedAuthority(product);
   if (!externalSeedAuthority) return null;
   const score = Number(roleFitScore);
   if (!Number.isFinite(score) || score < 0.6) return null;
@@ -26131,9 +26157,7 @@ function isConcernFrameworkStrongViableCandidate(candidate, role = null) {
     matchedRoleId !== ''
     && currentRoleId !== ''
     && matchedRoleId === currentRoleId;
-  const externalSeedAuthority =
-    String(product?.retrieval_source || '').trim().toLowerCase() === 'external_seed'
-    || String(product?.merchant_id || product?.merchantId || '').trim().toLowerCase() === 'external_seed';
+  const externalSeedAuthority = hasConcernFrameworkExternalSeedAuthority(product);
   const sunscreenPrimaryIdentityMatched =
     hasConcernSunscreenPrimaryIdentitySignal(product)
     || (
@@ -26230,8 +26254,7 @@ function isConcernFrameworkStrongViableCandidate(candidate, role = null) {
     semanticFit &&
     score >= 0.48 &&
     (
-      String(product?.retrieval_source || '').trim().toLowerCase() === 'external_seed' ||
-      String(product?.merchant_id || product?.merchantId || '').trim().toLowerCase() === 'external_seed'
+      hasConcernFrameworkExternalSeedAuthority(product)
     )
   ) {
     return true;
@@ -103576,6 +103599,7 @@ const __internal = {
   getRecoCatalogSearchSourceHealthSnapshot,
   normalizeRecoCatalogProduct,
   scoreRealtimeCompetitorCandidate,
+  hasConcernFrameworkExternalSeedAuthority,
   buildExternalSeedDirectSearchTransportPolicy,
   routeCandidates,
   routeCompetitorCandidatePools,
