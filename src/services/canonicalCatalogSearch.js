@@ -874,10 +874,41 @@ async function fetchCanonicalChainRows(args = {}) {
       NULL::text                 AS offer_source_system,
       NULL::jsonb                AS offer_payload,
       c.rank_score               AS rank_score`;
+  // GUARD, NOT A FIX — measured, and the measurement is the point.
+  //
+  // These two joins were bare while the best_offer LATERAL below (the other half of this same function)
+  // has always required `suppressed_at IS NULL`. That asymmetry looks alarming because the row mapper
+  // reads price straight off the joined row, and 7,294 of 22,161 offers table-wide are suppressed —
+  // step5_test_rig_retirement (4,295), demo_retired_2026_07 (2,457), source_currency_or_channel_defect
+  // (466) — of which 7,208 still carry a positive price and a currency, so they look servable.
+  //
+  // But within the population this query can actually REACH — serving_eligible joined on content_key, plus
+  // activeCatalogProductSourceWhere, which already excludes test/demo merchants — the count of suppressed
+  // offers on prod 2026-08-05 was ZERO of 11,236. The scary cohort is 92.6% test-rig and demo rows whose
+  // PRODUCTS are excluded upstream, so they never fan out here.
+  //
+  // So this filter removes no rows today: no latency win, no live mispricing corrected. What it buys is a
+  // closed latent hole, and the hole is sharp — suppressing a row is itself a write, so 7,090 of the 7,294
+  // suppressed offers have updated_at >= suppressed_at. The outer ORDER BY ends `s.updated_at DESC,
+  // o.updated_at DESC` and both consuming lanes dedupe first-wins without preferring a priced row, so if a
+  // suppressed offer ever DID attach to a serving-eligible product it would not merely be present, it
+  // would sort ahead of its live siblings and take the price. The likeliest future instance is a
+  // source_currency_or_channel_defect row on a live product: a wrong-currency amount, first in line.
+  //
+  // catalog_skus carries the same suppressed_at / suppression_reason / suppression_metadata columns and was
+  // joined just as bare, so the same latent hole existed one join up and is closed here too.
+  //
+  // ON clause, never WHERE: these are LEFT JOINs and a WHERE would silently make them INNER, dropping every
+  // product with no live sku/offer. In ON, such a product keeps its row with NULL columns and is judged by
+  // the serving gate on its merits. A test asserts the outer query has no WHERE at all.
   const skuOfferJoinSql = joinSkuOffers
     ? `
-    LEFT JOIN catalog_skus s ON s.product_key = c.product_key
-    LEFT JOIN catalog_offers o ON o.sku_key = s.sku_key`
+    LEFT JOIN catalog_skus s
+      ON s.product_key = c.product_key
+      AND s.suppressed_at IS NULL
+    LEFT JOIN catalog_offers o
+      ON o.sku_key = s.sku_key
+      AND o.suppressed_at IS NULL`
     : `
     LEFT JOIN LATERAL (
       SELECT o.currency, o.list_price, o.merchant_effective_price, o.availability
