@@ -405,7 +405,13 @@ describe('strict Safety Kernel mount on /agent/shop/v1/invoke', () => {
                   amount: 999999,
                 },
               ],
+              // The MCP door now enforces the same intake the ACP door does: a buyer email and a
+              // COMPLETE address (name + address_line1 + city + postal_code + country). A partial
+              // address used to price shipping/tax against a destination order-create would reject.
+              customer_email: 'buyer@example.test',
               shipping_address: {
+                name: 'Strict Buyer',
+                address_line1: '1 Market St',
                 country: 'US',
                 postal_code: '94105',
                 city: 'San Francisco',
@@ -475,7 +481,18 @@ describe('strict Safety Kernel mount on /agent/shop/v1/invoke', () => {
               customer_email: 'strict-buyer@example.com',
               customer_name: 'Strict Buyer',
               items: [{ product_id: 'p_strict', variant_id: 'v_strict', quantity: 1 }],
-              shipping_address: { country: 'US', postal_code: '94105', city: 'San Francisco', state: 'CA' },
+              // Complete address: the MCP door now enforces the same five fields the backend order lane
+              // requires (name, address_line1, city, postal_code, country). This create feeds the
+              // complete_checkout_session assertion below, so a refusal here surfaced as a confusing
+              // TypeError on `result.order.order_id` rather than as the intake refusal it was.
+              shipping_address: {
+                name: 'Strict Buyer',
+                address_line1: '1 Kernel Way',
+                country: 'US',
+                postal_code: '94105',
+                city: 'San Francisco',
+                state: 'CA',
+              },
             },
           },
         },

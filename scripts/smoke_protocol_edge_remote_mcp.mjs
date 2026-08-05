@@ -187,7 +187,13 @@ function createSessionArgs(config) {
         quantity: 1,
         amount: 99999999,
       }],
+      // The door requires a buyer email (unless the identity JWT attests one — this smoke's does not) and,
+      // if a shipping address is supplied at all, all five of name/address_line1/city/postal_code/country.
+      // Both are checked at intake, before pricing; this body used to omit the email and the name entirely
+      // and was accepted, which is the defect the intake now closes.
+      customer_email: env('MCP_SMOKE_CUSTOMER_EMAIL') || 'smoke-probe@pivota.cc',
       shipping_address: {
+        name: env('MCP_SMOKE_SHIP_NAME') || 'Pivota Smoke Probe',
         country: env('MCP_SMOKE_SHIP_COUNTRY') || 'US',
         state: env('MCP_SMOKE_SHIP_STATE') || 'CA',
         city: env('MCP_SMOKE_SHIP_CITY') || 'San Francisco',

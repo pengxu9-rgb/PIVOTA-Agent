@@ -243,6 +243,8 @@ jobs:
             tests/commerce_search_self_invoke_budget.node.test.cjs \
             mcp-server/test/commerceReadCache.test.js \
             mcp-server/test/commerceToolSurface.test.js \
+            mcp-server/test/mcpBuyerIntake.test.js \
+            mcp-server/test/crossProtocolConformance.test.js \
             tests/upstream_retry_deadline_budget.node.test.cjs \
             tests/fpm_stage_attribution.node.test.cjs \
             tests/acp_spt_gateway_handoff.node.test.cjs \

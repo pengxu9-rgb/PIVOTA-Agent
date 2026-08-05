@@ -26,7 +26,7 @@ test("remote MCP tools/call binds identity/session from verified request context
   });
 
   const out = await adapter.handleJsonRpc({
-    sessionContext: { user_ref: "user_verified", acp_session_id: "sess_verified", agent_id: "gemini" },
+    sessionContext: { user_ref: "user_verified", acp_session_id: "sess_verified", agent_id: "gemini", claims: { iss: "https://idp.test", sub: "s1", email: "buyer@example.com", email_verified: true } },
     body: rpc("tools/call", {
       name: "create_checkout_session",
       arguments: {
@@ -35,7 +35,7 @@ test("remote MCP tools/call binds identity/session from verified request context
         acp_session_id: "sess_attacker",
         quote: {
           merchant_id: "m1",
-          items: [{ product_id: "p1", quantity: 1, amount: 999999 }],
+          items: [{ product_id: "p1", variant_id: "v1", quantity: 1, amount: 999999 }],
         },
       },
     }),

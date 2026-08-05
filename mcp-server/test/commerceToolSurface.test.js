@@ -35,10 +35,17 @@ function setup({ verify = okVerify, readResult, submitResult } = {}) {
 }
 
 // a verified buyer session — the session layer supplies BOTH a user_ref and a per-connection session id.
-const SESS = { user_ref: "user_1", acp_session_id: "sess_conn_1" };
+// It ALSO carries the verified claims, which is what a real signed-in request looks like (src/server.js puts
+// the whole verified JWT payload on the session context). The `email` claim is what the shared buyer intake
+// reads as the ATTESTED address, so these carts need no `customer_email` of their own.
+const CLAIMS = { iss: "https://idp.test", sub: "user-1", email: "buyer@example.com", email_verified: true };
+const SESS = { user_ref: "user_1", acp_session_id: "sess_conn_1", claims: CLAIMS };
+// `variant_id` is explicit so these tests exercise the money path, not default-variant RESOLUTION (which has
+// its own dedicated coverage in mcpBuyerIntake.test.js).
+const CART = () => ({ merchant_id: "merch_A", items: [{ product_id: "p1", variant_id: "v1", quantity: 1 }] });
 
 async function openSession(surface, sessionContext = SESS, key = "idem-open-001") {
-  const s = await surface.callTool("create_checkout_session", { idempotency_key: key, quote: { merchant_id: "merch_A", items: [{ product_id: "p1", quantity: 1 }] } }, sessionContext);
+  const s = await surface.callTool("create_checkout_session", { idempotency_key: key, quote: CART() }, sessionContext);
   return s.session_id;
 }
 
@@ -79,7 +86,7 @@ test("reads require no identity (search_catalog / get_product run without a buye
 test("a user-scoped tool with NO verified buyer is refused (USER_AUTH_REQUIRED) before the executor", async () => {
   const { surface, charges } = setup();
   await assert.rejects(
-    surface.callTool("create_checkout_session", { idempotency_key: "idem-x-001", quote: { merchant_id: "m", items: [{ product_id: "p1", quantity: 1 }] } }, {}),
+    surface.callTool("create_checkout_session", { idempotency_key: "idem-x-001", quote: CART() }, {}),
     (e) => e instanceof IdentityRequiredError && e.code === "USER_AUTH_REQUIRED",
   );
   await assert.rejects(surface.callTool("get_order", { order_id: "o1" }, {}), (e) => e.code === "USER_AUTH_REQUIRED");
@@ -91,13 +98,13 @@ test("IDENTITY: a model-supplied user_ref in tool args is IGNORED — the verifi
   // attacker stuffs a different user_ref into the args; the session is user_1
   const sid = await surface.callTool(
     "create_checkout_session",
-    { idempotency_key: "idem-spoof-1", user_ref: "user_ATTACKER", quote: { merchant_id: "merch_A", items: [{ product_id: "p1", quantity: 1 }] } },
-    { user_ref: "user_1", acp_session_id: "sess_A" },
+    { idempotency_key: "idem-spoof-1", user_ref: "user_ATTACKER", quote: CART() },
+    { ...SESS, acp_session_id: "sess_A" },
   ).then((s) => s.session_id);
   // user_2 cannot read this session (it is owned by the VERIFIED user_1, not the spoofed value)
-  await assert.rejects(surface.callTool("get_checkout_session", { session_id: sid }, { user_ref: "user_2", acp_session_id: "sess_A" }), (e) => e.code === "STATE_LINKAGE_MISMATCH");
+  await assert.rejects(surface.callTool("get_checkout_session", { session_id: sid }, { ...SESS, user_ref: "user_2", acp_session_id: "sess_A" }), (e) => e.code === "STATE_LINKAGE_MISMATCH");
   // and the real owner can
-  const got = await surface.callTool("get_checkout_session", { session_id: sid }, { user_ref: "user_1", acp_session_id: "sess_A" });
+  const got = await surface.callTool("get_checkout_session", { session_id: sid }, { ...SESS, acp_session_id: "sess_A" });
   assert.equal(got.session_id, sid);
   assert.equal(charges(), 0);
 });
@@ -125,7 +132,7 @@ test("complete passes payment_authorization to the verifier but a FAILED verify 
 
 test("identity via verified OAuth claims: iss/sub derive a stable user_ref", async () => {
   const { surface } = setup();
-  const claimsSession = { claims: { iss: "https://accounts.example.com", sub: "abc-123" }, acp_session_id: "sess_claims" };
+  const claimsSession = { claims: { iss: "https://accounts.example.com", sub: "abc-123", email: "buyer@example.com", email_verified: true }, acp_session_id: "sess_claims" };
   const sid = await openSession(surface, claimsSession, "idem-claims-1");
   // the same claims resolve the same user_ref → can read its own session
   const got = await surface.callTool("get_checkout_session", { session_id: sid }, claimsSession);
@@ -139,9 +146,9 @@ test("identity via verified OAuth claims: iss/sub derive a stable user_ref", asy
 
 test("cross-session: a different verified acp_session_id (same user) cannot read another session's quote", async () => {
   const { surface } = setup();
-  const sid = await openSession(surface, { user_ref: "user_1", acp_session_id: "sess_A" }, "idem-xsess-1");
+  const sid = await openSession(surface, { ...SESS, acp_session_id: "sess_A" }, "idem-xsess-1");
   await assert.rejects(
-    surface.callTool("get_checkout_session", { session_id: sid }, { user_ref: "user_1", acp_session_id: "sess_B" }),
+    surface.callTool("get_checkout_session", { session_id: sid }, { ...SESS, acp_session_id: "sess_B" }),
     (e) => e.code === "STATE_LINKAGE_MISMATCH",
   );
 });
@@ -225,7 +232,7 @@ test("checkout handoff: a payment redirect (PayPal token= / OAuth code= / 3DS) i
 test("mutations without an idempotency_key are refused (executor contract)", async () => {
   const { surface } = setup();
   await assert.rejects(
-    surface.callTool("create_checkout_session", { quote: { merchant_id: "m", items: [{ product_id: "p1", quantity: 1 }] } }, SESS),
+    surface.callTool("create_checkout_session", { quote: CART() }, SESS),
     (e) => e.code === "IDEMPOTENCY_CONFLICT",
   );
 });
@@ -233,7 +240,7 @@ test("mutations without an idempotency_key are refused (executor contract)", asy
 test("a user-scoped op with a verified buyer but NO verified session id is refused", async () => {
   const { surface } = setup();
   await assert.rejects(
-    surface.callTool("create_checkout_session", { idempotency_key: "idem-nosess-1", quote: { merchant_id: "m", items: [{ product_id: "p1", quantity: 1 }] } }, { user_ref: "user_1" }),
+    surface.callTool("create_checkout_session", { idempotency_key: "idem-nosess-1", quote: CART() }, { user_ref: "user_1" }),
     (e) => e.code === "USER_AUTH_REQUIRED",
   );
 });
@@ -256,9 +263,13 @@ test("P1: model-set money/extra fields on request_after_sales are stripped befor
 
 test("P2: prototype-pollution keys in tool args cannot inject params and do not pollute Object.prototype", async () => {
   const { surface } = setup();
-  const evil = JSON.parse('{"__proto__":{"idempotency_key":"idem-proto-1","quote":{"merchant_id":"m","items":[{"product_id":"p1","quantity":1}]}}}');
-  // the injected idempotency_key/quote are NOT read (own-property allowlist) → missing key → refused
-  await assert.rejects(surface.callTool("create_checkout_session", evil, SESS), (e) => e.code === "IDEMPOTENCY_CONFLICT");
+  const evil = JSON.parse('{"__proto__":{"idempotency_key":"idem-proto-1","quote":{"merchant_id":"m","items":[{"product_id":"p1","variant_id":"v1","quantity":1}]}}}');
+  // The injected idempotency_key/quote are NOT read (own-property allowlist), so the call is refused rather
+  // than executed. It now trips the CART check first — buyer intake runs before the executor, deliberately,
+  // so nothing is priced — where it used to reach the executor's idempotency gate. That gate is unweakened
+  // and still asserted directly by "mutations without an idempotency_key are refused" above, which sends a
+  // fully valid cart and gets IDEMPOTENCY_CONFLICT.
+  await assert.rejects(surface.callTool("create_checkout_session", evil, SESS), (e) => e.code === "QUOTE_REQUIRED");
   assert.equal({}.idempotency_key, undefined, "global Object.prototype must not be polluted");
 });
 

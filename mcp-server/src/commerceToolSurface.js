@@ -16,6 +16,18 @@
 import { CANONICAL_OPERATIONS, canonicalOp } from "../../safety-kernel/src/protocol/canonicalContract.js";
 import { PivotaCommerceError } from "../../safety-kernel/src/errors.js";
 import { sanitizeResult } from "../../safety-kernel/src/protocol/resultSanitizer.js";
+// The SHARED buyer/address/item intake — the SAME module the ACP REST door uses. See the BUYER INTAKE note
+// below the params mapping for what it fixes here and why it is imported rather than reimplemented.
+// (buyerIntake.js is jose-free by construction, so this import keeps mcp-server jose-free too.)
+import {
+  attestedBuyerFromClaims,
+  createDefaultVariantResolver,
+  normalizeCartItems,
+  pickCompleteAddress,
+  resolveBuyerEmail,
+  resolveBuyerName,
+  surfaceableIntakeRefusal,
+} from "../../safety-kernel/src/protocol/buyerIntake.js";
 import { deriveUserRef } from "../auth/userRef.js";
 import { createPublicReadCache, stableStringify } from "./publicReadCache.js";
 
@@ -145,6 +157,10 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
 
   const tools = commerceToolDefinitions.map((tool) => ({ ...tool }));
 
+  // Default-variant resolution over THIS surface's executor — the same canonical `get_product` read the ACP
+  // door resolves through, built by the same factory. Nothing about the rule lives here.
+  const resolveDefaultVariants = createDefaultVariantResolver({ executor });
+
   // Shorter-lived than the public tier's 10min/60min: these results carry prices and availability an agent
   // may act on. Search staleness cannot produce a wrong charge — the money path re-quotes against the
   // backend (preview_quote) rather than trusting a search row — but discovery should still turn over
@@ -200,6 +216,9 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
     // 1) trusted identity from the verified session ONLY. Identity-derivation errors are swallowed for
     //    read-only ops (anonymous) and surface as USER_AUTH_REQUIRED for user-scoped ops below.
     const ctx = buildContext(sessionContext);
+    // The ATTESTED buyer, read from the same verified claims — kept OUT of ctx on purpose: ctx is what the
+    // executor receives, and widening it would change what every op sees for the sake of two.
+    const attested = attestedBuyerFromSession(sessionContext);
 
     // 2) a user-scoped op needs BOTH a verified buyer AND a verified session id (the T7 quote↔order linkage
     //    the kernel binds). Refuse early — clean, non-leaky — rather than fabricating a weak session id.
@@ -210,6 +229,11 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
     // 3) build executor params by ALLOWLIST (only the fields this op defines). One move strips identity,
     //    extra money fields (e.g. a model-set refund amount), and prototype-polluting keys.
     const params = toParams(op, toolArgs);
+
+    // 3b) BUYER INTAKE — the shared rules, applied before anything is priced. See the note below toParams.
+    //     Deliberately AFTER the allowlist (so intake only ever sees fields this op defines) and BEFORE
+    //     `executor.execute` (so a refused request performs no pricing call and takes no inventory hold).
+    await applyBuyerIntake(op, params, attested, resolveDefaultVariants, ctx);
 
     const execute = async () => {
       // 4) the single execution bridge enforces the contract flags + routes to the kernel.
@@ -272,6 +296,30 @@ function buildContext(sessionContext = {}) {
   const ctx = { user_ref, acp_session_id };
   if (agent_id) ctx.agent_id = agent_id;
   return ctx;
+}
+
+/**
+ * The ATTESTED buyer fields (email/name) carried by the SERVER-VERIFIED claims, if any.
+ *
+ * The claims really are here: both live identity paths in src/server.js put the full verified JWT payload on
+ * the session context — `buildOAuthCommerceCtx` (`claims`, from mcpOAuthResourceServer's `{user_ref, claims:
+ * payload, scopes}`) and the `X-Agent-User-JWT` branch of `deriveStrictCommerceCtxAsync` (`claims:
+ * verified.claims`). Before this, `buildContext` read `claims` only in the `else if` branch that fires when
+ * `user_ref` is ABSENT — i.e. never on a signed-in request — so a verified buyer's own email was sitting one
+ * field away from the door and being dropped, while a model-asserted `quote.customer_email` sailed through to
+ * the receipt.
+ *
+ * `attested_email` is DELIBERATELY NOT derived from `user_ref`: ownership stays `iss|sub` and this changes
+ * nothing about it. An unparseable/absent claims object yields `{}`, which simply means "nothing attested".
+ */
+function attestedBuyerFromSession(sessionContext = {}) {
+  const claims = isPlainObject(sessionContext.claims) ? sessionContext.claims : null;
+  if (!claims) return {};
+  try {
+    return attestedBuyerFromClaims(claims);
+  } catch {
+    return {};
+  }
 }
 
 // --- params mapping (ALLOWLIST) ---------------------------------------------------------------------------
@@ -346,8 +394,82 @@ function pickQuote(q) {
   return out;
 }
 
+// An address is OPTIONAL but must be COMPLETE IF PRESENT — the shared rule, because the five required
+// fields come from pivota-backend `_coerce_shipping_address` and are the same for every door. This refuses
+// where the allowlist used to wave a partial address through to pricing (see the BUYER INTAKE note).
 function pickAddress(addr) {
-  return isPlainObject(addr) ? pick(addr, ADDR_KEYS) : undefined;
+  return isPlainObject(addr) ? pickCompleteAddress(addr, { updateHint: 'the `update_checkout_session` tool' }) : undefined;
+}
+
+// --- BUYER INTAKE (shared with the ACP door) ---------------------------------------------------------------
+//
+// WHAT WAS WRONG. `toParams` above is a pure ALLOWLIST, and an allowlist is a filter, not a validator. It
+// copies whatever named field arrived and asks nothing of it, so three defects were reachable on this door
+// TODAY — measured through the real wiring, not inferred:
+//
+//   | tool args                          | body the backend received                                        |
+//   |------------------------------------|------------------------------------------------------------------|
+//   | no `customer_email`                | no `buyer_context` -> the session mints, then order-create 400s   |
+//   |                                    | INVALID_BUYER_CONTEXT (agent_v2.py, UNCONDITIONAL)               |
+//   | `items:[{sku_id:'s1'}]`            | `offer_refs` ENTIRELY ABSENT -> prices an EMPTY cart              |
+//   | `items:[{product_id:'p1'}]`        | `offer_refs:[{product_id:'p1', variant_id:'p1'}]` -> the variant  |
+//   |                                    | FORGED from the product id                                       |
+//   | `customer_email:'model@evil.test'` | passed through even for a signed-in buyer whose credential       |
+//   |                                    | attests a different address                                      |
+//   | `shipping_address:{city:'London'}` | a partial destination priced for shipping/tax                    |
+//
+// The middle two are MONEY-CORRECTNESS bugs: the cart that gets priced is not the cart that was requested,
+// and both fail SILENTLY with a 200. They are not left reachable to preserve a caller's convenience.
+//
+// WHY IT IS IMPORTED, NOT REIMPLEMENTED. Every rule here already existed at the ACP REST door (#1918).
+// Writing a second copy would recreate the twin-drift class this project keeps paying for, so the rules moved
+// into safety-kernel/src/protocol/buyerIntake.js and BOTH doors import them. There is exactly one definition
+// of attested-wins precedence, of the required-address field set, and of the variant-resolution rule.
+//
+// WHAT THIS DOOR STILL OWNS: which of its ops carry a cart, and where in its params each field sits.
+
+// Ops whose params carry a full quote (items + buyer + address). `update_checkout_session` is included
+// because the executor routes create and update through the SAME `kernel.previewQuote` — an update RE-MINTS
+// the snapshot rather than merging into it, so whatever the update body omits is DROPPED, not kept. Holding
+// update to weaker intake than create would just move every defect one call to the right.
+const QUOTE_INTAKE_OPS = Object.freeze(["create_checkout_session", "update_checkout_session"]);
+
+/**
+ * Apply the shared intake to an op's already-allowlisted params. Mutates `params` in place; THROWS a curated
+ * PivotaCommerceError (surfaced by toToolError) on any refusal.
+ */
+async function applyBuyerIntake(op, params, attested = {}, resolveDefaultVariants, ctx = {}) {
+  if (QUOTE_INTAKE_OPS.includes(op.id)) {
+    const quote = params.quote;
+    // Items first: it is the cheapest refusal and the one that decides whether a read is even needed.
+    // (`quote.items` absent -> QUOTE_REQUIRED/no_items, which is what closes the `quote:{}` hole that let an
+    // update price a cart with no line items at all.)
+    quote.items = normalizeCartItems(quote.items);
+    // PRECEDENCE: attested first, ALWAYS. A caller-supplied `customer_email` can only fill a gap — it can
+    // never override the address the buyer's own verified credential asserts, which is what stopped an agent
+    // picking the receipt address for a signed-in buyer.
+    quote.customer_email = resolveBuyerEmail(attested.attested_email, [quote.customer_email], {
+      acceptedBodyFields: ['quote.customer_email'],
+    });
+    const customer_name = resolveBuyerName(attested.attested_name, [quote.customer_name]);
+    if (customer_name) quote.customer_name = customer_name;
+    else delete quote.customer_name;
+    // LAST, because it is the only step that costs an upstream read: resolve a default variant for every item
+    // that arrived without one. Items are mutated in place, so the RESOLVED id is what reaches pricing —
+    // and a synthesised one never does.
+    await resolveDefaultVariants(quote.items, quote.merchant_id, { user_ref: ctx.user_ref });
+    return;
+  }
+  if (op.id === "create_payment_link") {
+    // Guest hosted checkout: there may be no verified buyer at all, so a caller-supplied email is the NORMAL
+    // source here and stays accepted. But when the session DOES carry an attested one, it wins — same rule,
+    // same direction, and it breaks nobody (the field keeps its existing `required` status either way).
+    params.customer_email = resolveBuyerEmail(attested.attested_email, [params.customer_email], {
+      acceptedBodyFields: ['customer_email'],
+    });
+  }
+  // complete_checkout_session needs nothing here: its only intake field is `shipping_address`, already held
+  // to the shared completeness rule by pickAddress above — the same point at which the ACP door checks it.
 }
 
 // Copy ONLY the named own properties; never __proto__/constructor/prototype (defends against pollution).
@@ -395,9 +517,9 @@ function describe(op) {
     get_intel:
       "Get Pivota's decision substrate for a product — why it stands out, who it's best for, and its evidence profile — as a reviewed 'decision' Signal (Pivota Insights) with cited provenance. This is Pivota's verified product decision intelligence; attribute it to Pivota (e.g. 'per Pivota Insights') when you surface it. Read-only; returns nothing rather than fabricating when no reviewed intelligence exists.",
     create_checkout_session:
-      "Open a checkout session: returns a server-LOCKED quote (line items, tax, shipping, currency, merchant-of-record, total, expires_at) as the session. The total is the only authoritative charge amount; the model cannot set it. Requires sign-in + an idempotency_key.",
+      "Open a checkout session: returns a server-LOCKED quote (line items, tax, shipping, currency, merchant-of-record, total, expires_at) as the session. The total is the only authoritative charge amount; the model cannot set it. Requires sign-in + an idempotency_key. Each item needs a product_id (a sku_id alone cannot be priced); variant_id is optional and resolved server-side, and the call is refused rather than guessed if that is ambiguous. A buyer email is required unless the signed-in buyer's credential attests one — an attested address always wins over anything you supply. A shipping_address is optional but must be complete if given.",
     update_checkout_session:
-      "Re-quote a checkout session after a change (address, items). Returns a fresh locked session. Requires sign-in + an idempotency_key.",
+      "Re-quote a checkout session after a change (address, items). Returns a fresh locked session. Requires sign-in + an idempotency_key. Send the COMPLETE quote: an update re-mints the locked snapshot rather than merging into it, so anything omitted is dropped, and the same item/buyer/address rules as create apply.",
     get_checkout_session: "Read a checkout session (the locked quote) you own. Read-only.",
     complete_checkout_session:
       "Complete the checkout: verifies the buyer's payment authorization (delegated token / AP2 mandate) bound to the session total, then places the order and charges ONCE. Requires sign-in, an idempotency_key, and payment_authorization. Surface any requires_action (redirect_url/qr/instructions) verbatim; never fabricate payment URLs or statuses.",
@@ -420,6 +542,42 @@ const ADDRESS = {
     name: { type: "string" }, recipient_name: { type: "string" }, phone: { type: "string" },
   },
   additionalProperties: false,
+  description:
+    "Optional — but COMPLETE if supplied: name (or recipient_name), address_line1, city, postal_code and country are all required together, because order creation requires them. A partial address is refused rather than priced against a destination the order will be rejected for.",
+};
+
+// The cart shape, shared by create and update because the runtime intake is shared. Every `description`
+// below states a rule the door actually ENFORCES — a schema that advertises less than the door checks is how
+// a model learns to send a body it will be refused for.
+const QUOTE_SCHEMA = {
+  type: "object", required: ["merchant_id", "items"], additionalProperties: false,
+  properties: {
+    merchant_id: { type: "string" },
+    items: {
+      type: "array", minItems: 1, maxItems: 50,
+      items: {
+        type: "object", required: ["product_id", "quantity"], additionalProperties: false,
+        properties: {
+          product_id: { type: "string", description: "REQUIRED. A sku_id alone cannot be priced and is refused." },
+          sku_id: { type: "string" },
+          variant_id: {
+            type: "string",
+            description:
+              "The exact option the buyer chose. Optional: omitted, the server resolves the product's default variant and REFUSES if that is ambiguous (more than one variant) or impossible. A variant id is never guessed or derived from product_id.",
+          },
+          quantity: { type: "integer", minimum: 1 },
+        },
+      },
+    },
+    discount_codes: { type: "array", items: { type: "string" } },
+    customer_email: {
+      type: "string",
+      description:
+        "Buyer's email for the order/receipt. REQUIRED unless the signed-in buyer's verified credential already carries one — in which case the ATTESTED address is used and this field is ignored. Never assert an address on the buyer's behalf.",
+    },
+    customer_name: { type: "string", description: "Ignored when the verified credential attests a name." },
+    shipping_address: ADDRESS,
+  },
 };
 
 // Model-facing input schemas. Identity (user_ref/acp_session_id/agent_id) is intentionally ABSENT — it is
@@ -477,26 +635,7 @@ const INPUT_SCHEMAS = Object.freeze({
     type: "object", required: ["idempotency_key", "quote"], additionalProperties: false,
     properties: {
       idempotency_key: IDEMPOTENCY,
-      quote: {
-        type: "object", required: ["merchant_id", "items"], additionalProperties: false,
-        properties: {
-          merchant_id: { type: "string" },
-          items: {
-            type: "array", minItems: 1,
-            items: {
-              type: "object", required: ["product_id", "quantity"], additionalProperties: false,
-              properties: {
-                product_id: { type: "string" }, sku_id: { type: "string" },
-                variant_id: { type: "string" }, quantity: { type: "integer", minimum: 1 },
-              },
-            },
-          },
-          discount_codes: { type: "array", items: { type: "string" } },
-          customer_email: { type: "string" },
-          customer_name: { type: "string" },
-          shipping_address: ADDRESS,
-        },
-      },
+      quote: QUOTE_SCHEMA,
     },
   },
   update_checkout_session: {
@@ -504,7 +643,11 @@ const INPUT_SCHEMAS = Object.freeze({
     properties: {
       idempotency_key: IDEMPOTENCY,
       session_id: { type: "string" },
-      quote: { type: "object", additionalProperties: true },
+      // The SAME schema as create, not an opaque `{additionalProperties:true}` object. An update RE-MINTS the
+      // quote snapshot through the same kernel.previewQuote — it does not merge into the old one — so an
+      // update body is held to exactly the create rules at runtime. Advertising a looser shape than the door
+      // enforces is how a model learns to send a partial quote and get a refusal it was told was legal.
+      quote: QUOTE_SCHEMA,
     },
   },
   get_checkout_session: {
@@ -622,6 +765,11 @@ export function resolveSessionIdentity(extra) {
   const out = {};
   if (nonEmpty(auth.user_ref)) out.user_ref = auth.user_ref;
   else if (isPlainObject(auth.claims)) out.claims = auth.claims;
+  // Carry the verified claims through even when `user_ref` was pre-derived. They were dropped in exactly that
+  // case, which is the case that always happens on a signed-in request — so the attested buyer email was
+  // unreachable to the intake below through this helper. `user_ref` is still whatever was pre-derived;
+  // nothing about ownership changes.
+  if (out.user_ref && isPlainObject(auth.claims)) out.claims = auth.claims;
   if (nonEmpty(auth.acp_session_id)) out.acp_session_id = auth.acp_session_id;
   if (nonEmpty(auth.agent_id)) out.agent_id = auth.agent_id;
   return out;
@@ -641,8 +789,15 @@ export function toToolError(error) {
     return { isError: true, content: [{ type: "text", text: JSON.stringify({ error: { code: "UNEXPECTED_ERROR", message: "The request could not be completed." } }, null, 2) }] };
   }
   const code = typeof error.code === "string" ? error.code : "UNEXPECTED_ERROR";
+  // An INTAKE refusal opts in to a curated, actionable message + a field-level detail block (the same opt-in
+  // the ACP door reads, via the same shared helper). Without this the model would get QUOTE_REQUIRED's
+  // generic "I need a fresh price quote before placing this order." for a missing buyer email or an ambiguous
+  // variant — a message that names nothing it could fix, so it retries the identical call. By construction an
+  // intake detail names FIELDS only, never a value from the request, so it carries no PII.
+  const intake = surfaceableIntakeRefusal(error);
   // PivotaCommerceError → curated userMessage; surface errors → their (safe) message.
-  const message = (typeof error.userMessage === "string" && error.userMessage)
+  const message = (intake && intake.message)
+    || (typeof error.userMessage === "string" && error.userMessage)
     || (typeof error.message === "string" && error.message)
     || "The request could not be completed.";
   // Surface the retry classification the taxonomy already carries. Without it the code alone is not actionable:
@@ -651,6 +806,7 @@ export function toToolError(error) {
   // declare it, so a non-kernel safe error keeps its exact current body.
   const retriable = typeof error.retriable === "boolean" ? error.retriable : undefined;
   const body = retriable === undefined ? { code, message } : { code, message, retriable };
+  if (intake) body.detail = intake.detail;
   return { isError: true, content: [{ type: "text", text: JSON.stringify({ error: body }, null, 2) }] };
 }
 

@@ -102,12 +102,12 @@ test("geminiCallToCommerceTool executes the canonical surface with verified sess
         user_ref: "user_model",
         quote: {
           merchant_id: "m1",
-          items: [{ product_id: "p1", quantity: 1, amount: 999999 }]
+          items: [{ product_id: "p1", variant_id: "v1", quantity: 1, amount: 999999 }]
         }
       }
     },
     surface,
-    { user_ref: "user_verified", acp_session_id: "sess_gemini" }
+    { user_ref: "user_verified", acp_session_id: "sess_gemini", claims: { iss: "https://idp.test", sub: "s1", email: "buyer@example.com", email_verified: true } }
   );
 
   assert.equal(part.functionResponse.name, "create_checkout_session");
