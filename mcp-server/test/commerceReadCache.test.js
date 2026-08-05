@@ -45,8 +45,13 @@ test("THE SAFETY PROPERTY: different callers produce byte-identical UPSTREAM inv
     });
     const executor = createCanonicalExecutor({
       kernel,
-      upstream: async (op, payload) => {
-        seen.push({ op, payload: structuredClone(payload) });
+      // EVERY argument, not a hand-picked subset. The real upstream is
+      // invokeCommerceKernelRawUpstream(operation, payload, headers) and that third argument is spread
+      // LAST into the request headers, so it overrides even the auth headers — recording only (op,
+      // payload) would let a header-shaped leak through green, which is the same mistake as recording at
+      // the executor instead of here.
+      upstream: async (...args) => {
+        seen.push(structuredClone(args));
         return { status: "success", products: [{ id: "p1" }] };
       },
     });
@@ -56,11 +61,10 @@ test("THE SAFETY PROPERTY: different callers produce byte-identical UPSTREAM inv
     await s.callTool("search_catalog", ARGS, { user_ref: "user-bob", acp_session_id: "sess-b", agent_id: "agent-2" });
 
     assert.equal(seen.length, 2);
-    assert.equal(seen[0].op, seen[1].op, "both callers must hit the same upstream op");
     assert.deepEqual(
-      seen[0].payload,
-      seen[1].payload,
-      "upstream payload must not vary by caller — the cache key omits identity",
+      seen[0],
+      seen[1],
+      "EVERY upstream argument must be identical across callers — op, payload and headers alike",
     );
     const flat = JSON.stringify(seen[0]);
     for (const needle of ["user-alice", "sess-a", "agent-1"]) {

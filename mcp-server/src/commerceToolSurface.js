@@ -60,15 +60,23 @@ const OP_BY_MCP = Object.freeze(Object.fromEntries(COMMERCE_OPERATIONS.map((op) 
 //   2. canonicalExecutor's `search_catalog` case calls read(), and read() is `upstream(op, payload)` — the
 //      ctx carrying user_ref / acp_session_id / agent_id is DROPPED, never forwarded;
 //   3. the upstream request forces the INTERNAL api key (forceInternalFallback, forwardAgentUserJwt:false),
-//      so the backend sees one constant identity. The single caller-derived byte that crosses is
-//      X-Buyer-Ref, and its only consumers are the quote / order / payment / checkout-session body
-//      builders — the search body builder reads no identity at all;
+//      AND suppresses X-Buyer-Ref on exactly these cached read lanes (forwardBuyerRef, keyed on
+//      COMMERCE_CACHED_READ_OPS in src/server.js). That header is attached to every other upstream call and
+//      is the one caller-derived byte that would otherwise leave the process — including on the
+//      merchant-scoped find_products lane, which reaches the Python backend where we cannot audit what it
+//      does with it. Suppressed, "the upstream sees one identity" is true BY CONSTRUCTION, not by trusting
+//      a backend we cannot read;
 //   4. the response carries no user, buyer, session or account field.
-// THEREFORE the cache key is the tool args and NOTHING else. Adding user_ref/agent_id would shred the hit
-// rate for zero safety gain. If any of the four legs above ever changes — most plausibly (2), by passing
-// ctx through read() — this cache MUST be re-scoped or removed. There is a test asserting that two calls
-// with different sessionContext produce byte-identical upstream invocations; it exists to fail loudly
-// exactly then.
+// THEREFORE the cache key is the ALLOWLISTED params and NOTHING else (see the note at the getOrCompute call
+// for why params rather than the raw tool args). Adding user_ref/agent_id would shred the hit rate for zero
+// safety gain. If any of the four legs ever changes — most plausibly (2), by threading ctx through read() —
+// this cache MUST be re-scoped or removed.
+//
+// The guard is a test, not this comment: commerceReadCache asserts that two different verified sessions
+// produce byte-identical upstream invocations, recording EVERY argument the upstream receives. Both parts
+// of that sentence were learned the hard way — a draft recorded at a stubbed executor (which stubs out legs
+// 2 and 3 entirely), and its replacement recorded only (op, payload), which let a leak through the third
+// `headers` argument land green.
 //
 // DELIBERATELY search_catalog ALONE. get_alternatives / get_offers / get_intel DO receive ctx in the
 // executor (localReads take (params, ctx)), so they are not covered by the argument above and are not
@@ -109,13 +117,15 @@ function isCacheableSearchResult(value) {
 // downstream mutates today — the commerce path stringifies, the public tier rebuilds with spreads — but the
 // public tier is exactly where post-processing accretes, and its sourcing filter reads fields the projector
 // later strips. Cloning on read costs a few ms against a search measured in seconds.
-function cloneCachedValue(value) {
+function cloneCachedValue(value, onCloneFailure) {
   if (value === null || typeof value !== "object") return value;
   try {
     return structuredClone(value);
-  } catch {
+  } catch (err) {
     // Non-cloneable values are not something this cache should be holding, but degrade to the shared
-    // reference rather than failing a caller's search.
+    // reference rather than failing a caller's search. Logged because silently degrading here removes the
+    // isolation above with no other signal that it is gone.
+    if (onCloneFailure) onCloneFailure(err);
     return value;
   }
 }
@@ -224,7 +234,14 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
     //    construction: junk properties are already gone by this line.
     if (!cache || !CACHEABLE_TOOLS.includes(op.id)) return execute();
     const value = await cache.getOrCompute(`${op.id}:${stableStringify(params ?? {})}`, execute);
-    return cloneCachedValue(value);
+    return cloneCachedValue(value, (err) => {
+      if (logger) {
+        logger.warn(
+          { err: err?.message || String(err), tool: op.id },
+          "commerce read cache: value not cloneable, serving shared reference",
+        );
+      }
+    });
   }
 
   function isCommerceTool(name) {
