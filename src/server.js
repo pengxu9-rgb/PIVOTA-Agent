@@ -19021,10 +19021,43 @@ function attachCanonicalChainRecallTelemetry(body, canonicalResult) {
   };
 }
 
+// Budget for the DIAGNOSTICS-ONLY canonical-chain await below. This is the last await before the response
+// is serialized and it sat unbounded: attachCanonicalChainRecallTelemetry writes only body.metadata
+// (route_health / source_breakdown) and adds NO products, yet a partner's search blocked on it for as long
+// as the query took — and fetchCanonicalChainRows is the query family this file already documents at
+// 5.8-17.2s on prod. It is also after the last recordFpmStage call, so the wait was invisible in
+// fpm_stage_breakdown. Degrading is already a supported outcome (the catch below returns body unchanged),
+// so a timeout costs two metadata fields, never a product.
+const CANONICAL_CHAIN_TELEMETRY_BUDGET_MS = parseTimeoutMs(
+  process.env.FPM_CANONICAL_CHAIN_TELEMETRY_BUDGET_MS,
+  400,
+);
+// Sentinel: a distinct object so a legitimate resolved value can never be mistaken for the timeout.
+const CANONICAL_CHAIN_TELEMETRY_TIMED_OUT = Symbol('canonical_chain_telemetry_timed_out');
+
 async function attachCanonicalChainRecallTelemetryFromPromise(body, canonicalPromise) {
   if (!canonicalPromise) return body;
   try {
-    const canonicalResult = await canonicalPromise;
+    // Never let a slow diagnostics query extend the partner's latency. The loser keeps running (it is the
+    // same promise the recall lane already owns); we just stop waiting on it. Attach a no-op catch so an
+    // abandoned rejection can never surface as an unhandled rejection.
+    let timer = null;
+    const budget = new Promise((resolve) => {
+      timer = setTimeout(() => resolve(CANONICAL_CHAIN_TELEMETRY_TIMED_OUT), CANONICAL_CHAIN_TELEMETRY_BUDGET_MS);
+      if (timer && typeof timer.unref === 'function') timer.unref();
+    });
+    if (canonicalPromise && typeof canonicalPromise.catch === 'function') {
+      canonicalPromise.catch(() => {});
+    }
+    const canonicalResult = await Promise.race([canonicalPromise, budget]);
+    if (timer) clearTimeout(timer);
+    if (canonicalResult === CANONICAL_CHAIN_TELEMETRY_TIMED_OUT) {
+      logger.warn(
+        { budget_ms: CANONICAL_CHAIN_TELEMETRY_BUDGET_MS },
+        'find_products_multi canonical chain telemetry budget exceeded (response sent without it)',
+      );
+      return body;
+    }
     return attachCanonicalChainRecallTelemetry(body, canonicalResult);
   } catch (err) {
     logger.warn(
@@ -29678,6 +29711,30 @@ function selfInvokeBase() {
   return `http://127.0.0.1:${port}`;
 }
 
+// Timeout/retry policy for the LOOPBACK self-call, which is a different animal from a call to the Python
+// kernel and must not inherit the outbound-upstream budget.
+//
+// Measured on prod 2026-08-05, one partner MCP search: attempt 1 started 02:35:19.2 and was aborted by the
+// 10s budget at 02:35:29.4; attempt 2 re-ran the WHOLE pipeline and answered in 9.3s at 02:35:38.4. The
+// partner waited 19.3s for 9.3s of work. The inner search's own p50 sits just under the outer budget, so
+// ordinary jitter tips every slow query into a full re-execution.
+//
+// Two reasons a loopback timeout must NOT be retried:
+//   1. Aborting the axios client does not stop the server. Nothing in handleInvokeRequest checks
+//      req.aborted, so attempt 1 keeps running to completion — the retry means the entire expensive
+//      pipeline runs TWICE CONCURRENTLY against a 5-connection DB pool, making the retry slower still.
+//   2. A self-call cannot suffer the transient network faults a retry exists to paper over. Same process,
+//      same loopback interface: a timeout here means the work is genuinely slow, and the answer to slow
+//      work is not to start it again.
+// So: one attempt, with a budget wide enough for the real tail. Busy (503) retries are unaffected.
+const SELF_INVOKE_TIMEOUT_MS = parseTimeoutMs(process.env.SELF_INVOKE_TIMEOUT_MS, 30000);
+
+function resolveSelfInvokeBudget(defaultTimeoutMs) {
+  const explicit = Number(process.env.AGENT_CHECKOUT_UPSTREAM_TIMEOUT_MS);
+  if (Number.isFinite(explicit) && explicit > 0) return explicit;
+  return Math.max(Number(defaultTimeoutMs) || 0, SELF_INVOKE_TIMEOUT_MS);
+}
+
 async function invokeCommerceKernelRawUpstream(operation, payload, headers = {}) {
   const op = String(operation || '').trim();
   const metadata = isPlainObject(payload?.metadata) ? payload.metadata : {};
@@ -29689,6 +29746,9 @@ async function invokeCommerceKernelRawUpstream(operation, payload, headers = {})
   let url = `${PIVOTA_API_BASE}/agent/shop/v1/invoke`;
   let requestBody = { operation: op, payload };
   let pdpV2Detail = false;
+  // Set by the cases below that route back into THIS process over loopback instead of out to the Python
+  // kernel. A loopback hop needs a different timeout/retry policy — see resolveSelfInvokeBudget.
+  let selfInvoked = false;
 
   switch (op) {
     case 'get_product_detail': {
@@ -29702,6 +29762,7 @@ async function invokeCommerceKernelRawUpstream(operation, payload, headers = {})
       const pid = typeof prod.product_id === 'string' ? prod.product_id.trim() : '';
       if (!merchantScoped && pid) {
         pdpV2Detail = true;
+        selfInvoked = true;
         url = `${selfInvokeBase()}/agent/shop/v1/invoke`;
         requestBody = {
           operation: 'get_pdp_v2',
@@ -29716,6 +29777,7 @@ async function invokeCommerceKernelRawUpstream(operation, payload, headers = {})
       // only serves per-merchant catalogs (observed live: 2 products from one store). Loopback self-call;
       // auth = the internal fallback key like any agent caller. The invoke handler serves search from the
       // search stack and never re-enters this kernel-upstream path, so no recursion.
+      selfInvoked = true;
       url = `${selfInvokeBase()}/agent/shop/v1/invoke`;
       break;
     }
@@ -29843,13 +29905,16 @@ async function invokeCommerceKernelRawUpstream(operation, payload, headers = {})
       ...headers,
     },
     data: requestBody,
-    timeout,
+    timeout: selfInvoked ? resolveSelfInvokeBudget(timeout) : timeout,
   };
 
   let resp;
   try {
     resp = await callUpstreamWithOptionalRetry(op, axiosConfig, {
       disableBusyRetry: op === 'create_order' || op === 'submit_payment' || op === 'request_after_sales',
+      // See resolveSelfInvokeBudget: retrying a loopback timeout doubles concurrent load on the same
+      // process and cannot fix what caused it.
+      disableTimeoutRetry: selfInvoked,
     });
   } catch (err) {
     if (
@@ -50417,7 +50482,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       };
     }
 
+    // Instrumented: on a cold promotions cache this blocks on an HTTP fetch with its own timeout+retry
+    // (up to ~16s) and sat between two recorded stages, so it never showed up in the breakdown.
+    const promotionsStartedAt = Date.now();
     const promotions = await getActivePromotions(now, creatorId);
+    recordFpmStage('promotions_hydrate', promotionsStartedAt);
 
     // Normalize submit_payment responses so frontends always see a unified
     // payment object with PSP + payment_action, regardless of PSP type.
@@ -51348,10 +51417,16 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         metadata,
         beautyRequest: effectiveInvokeContext.normalized_need.beauty_request,
       });
+      // Instrumented because it is the LAST await before serialization: an unbounded wait here was
+      // invisible in fpm_stage_breakdown, which is how it went unnoticed while partners paid for it.
+      const canonicalChainJoinStartedAt = Date.now();
       enriched = await attachCanonicalChainRecallTelemetryFromPromise(
         enriched,
         canonicalChainRecallPromise,
       );
+      recordFpmStage('canonical_chain_join', canonicalChainJoinStartedAt, {
+        budget_ms: CANONICAL_CHAIN_TELEMETRY_BUDGET_MS,
+      });
     }
 
       const { attachBeautyExpertV1ToResponse } = require('./modules/orchestration/aurora_beauty/beautyExpertV1');
@@ -51836,6 +51911,11 @@ async function runPdpCorePrewarmPass() {
 
 module.exports = app;
 module.exports._debug = {
+  // Latency property: the loopback self-call gets its own budget and never timeout-retries. Exported so
+  // the policy is asserted directly, not inferred from the 12k-line handler it protects.
+  resolveSelfInvokeBudget,
+  // Latency property: a slow diagnostics-only canonical-chain query must not extend a partner's search.
+  attachCanonicalChainRecallTelemetryFromPromise,
   // Security property: the raw wire bytes of an ACP delegate_payment request (raw PAN + CVC) are never
   // stashed on `req.rawBody`. Exported so that can be asserted directly rather than inferred.
   shouldCaptureAcpRawBody,

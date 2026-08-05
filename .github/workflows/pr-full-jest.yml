@@ -139,6 +139,16 @@ jobs:
       # "\n"). A route test cannot prove that — everything preceding the
       # dispatch is synchronous, so the commit timer never fires there — which
       # is exactly the "test that cannot fail" shape this job exists to avoid.
+      # ADDED 2026-08-05: `commerce_search_self_invoke_budget`, confirmed green
+      # (7/7) before landing AND mutation-checked — deleting
+      # `disableTimeoutRetry: selfInvoked` fails the one-attempt wire test,
+      # deleting the telemetry budget race hangs the diagnostics test to its
+      # timeout. It guards the cold-search latency fix: the loopback self-call
+      # is attempted ONCE (a retry re-runs the whole pipeline concurrently and
+      # doubled partner latency to ~2x the real work), and a slow
+      # diagnostics-only canonical-chain query can never extend a partner's
+      # response. Boots the real server via supertest + nock, so it needs the
+      # npm ci above.
       - name: Run node:test suites
         run: |
           node --test \
@@ -161,7 +171,8 @@ jobs:
             tests/acp_delegate_payment_refusal.node.test.cjs \
             tests/public_read_mcp_heartbeat.node.test.cjs \
             tests/commerce_mcp_route_heartbeat.node.test.cjs \
-            tests/commerce_mcp_heartbeat_gate.node.test.cjs
+            tests/commerce_mcp_heartbeat_gate.node.test.cjs \
+            tests/commerce_search_self_invoke_budget.node.test.cjs
 
   jest:
     runs-on: ubuntu-latest
