@@ -56,8 +56,7 @@ function interceptLoopback(delayMs) {
     .reply(function reply() {
       state.attempts += 1;
       return new Promise((resolve) => {
-        const t = setTimeout(() => resolve([200, SEARCH_RESULT]), delayMs);
-        if (t && typeof t.unref === 'function') t.unref();
+        setTimeout(() => resolve([200, SEARCH_RESULT]), delayMs);
       });
     });
   return state;
@@ -80,11 +79,12 @@ test('the canonical-chain await waits for a slow result instead of racing it', a
   // this asserts disappears with it.
   const body = { products: [], metadata: {} };
   const slow = new Promise((resolve) => {
-    const t = setTimeout(
+    // NOT unref'd: this suite awaits this timer, and an unref'd timer lets the loop drain out from
+    // under it ("Promise resolution is still pending but the event loop has already resolved").
+    setTimeout(
       () => resolve({ telemetry: { canonical_path_executed: true, canonical_returned_count: 2 } }),
       600,
     );
-    if (t && typeof t.unref === 'function') t.unref();
   });
   const out = await attachCanonicalChainRecallTelemetryFromPromise(body, slow);
   assert.notDeepEqual(
