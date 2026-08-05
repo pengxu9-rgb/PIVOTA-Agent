@@ -29382,12 +29382,21 @@ function buildInvokeUpstreamAuthHeaders({
   preferInternalFallback = false,
   forceInternalFallback = false,
   forwardAgentUserJwt = true,
+  // Search results are CACHED and shared across callers (mcp-server/src/commerceToolSurface.js). That is
+  // only sound if the upstream cannot see who asked, and X-Buyer-Ref is the one caller-derived byte that
+  // otherwise leaves this process on every op — including the merchant-scoped `find_products` lane, which
+  // goes to the Python backend where we cannot audit what it does with it. Suppressing it on the cached
+  // read lanes makes "the upstream sees one identity" true by construction instead of by assumption.
+  // Money ops are untouched: they need buyer_ref and are never cached.
+  forwardBuyerRef = true,
 } = {}) {
   const forwardedHeaders = pruneEmptyFields({
     ...(forwardAgentUserJwt
       ? { 'X-Agent-User-JWT': firstNonEmptyString(getInvokeAuthContext()?.agent_user_jwt) }
       : {}),
-    'X-Buyer-Ref': firstNonEmptyString(getInvokeAuthContext()?.buyer_ref),
+    ...(forwardBuyerRef
+      ? { 'X-Buyer-Ref': firstNonEmptyString(getInvokeAuthContext()?.buyer_ref) }
+      : {}),
   });
   const normalizedCheckoutToken = String(checkoutToken || '').trim();
   if (normalizedCheckoutToken) {
@@ -29715,6 +29724,11 @@ function resolveSelfInvokeBudget(defaultTimeoutMs) {
   return Math.max(Number(defaultTimeoutMs) || 0, SELF_INVOKE_TIMEOUT_MS);
 }
 
+// The backend ops behind the CACHED search_catalog tool (mcp-server/src/commerceToolSurface.js caches that
+// tool's results and shares them across callers). Both lanes are listed: the unscoped multi-merchant one
+// and the merchant-scoped one, which goes to the Python backend where we cannot audit per-buyer behaviour.
+const COMMERCE_CACHED_READ_OPS = new Set(['find_products_multi', 'find_products']);
+
 async function invokeCommerceKernelRawUpstream(operation, payload, headers = {}) {
   const op = String(operation || '').trim();
   const metadata = isPlainObject(payload?.metadata) ? payload.metadata : {};
@@ -29883,6 +29897,9 @@ async function invokeCommerceKernelRawUpstream(operation, payload, headers = {})
         // backend /agent/v2/orders verifier is not configured for this canary issuer and rejects the raw
         // forwarded header before optional agent_user handling, blocking safe checkout before payment.
         forwardAgentUserJwt: false,
+        // The search lanes are the ones whose results get cached and shared across callers, so the
+        // upstream must not be able to tell callers apart on them. See forwardBuyerRef.
+        forwardBuyerRef: !COMMERCE_CACHED_READ_OPS.has(op),
       }),
       ...headers,
     },

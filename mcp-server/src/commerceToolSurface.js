@@ -90,13 +90,45 @@ function commerceCacheEnabled() {
   return !["0", "false", "off", "no"].includes(raw);
 }
 
+// A thrown error is not the only answer worth NOT keeping. The upstream returns its body unthrown whenever
+// `ok !== true`, and the search lane can answer HTTP-200 with a degraded envelope and an empty list — so
+// without this a transient degradation is pinned for the full TTL and replayed to every later caller. A
+// legitimately empty result (a real search that matched nothing) is still cached: absence of an error, not
+// presence of products, is the test.
+function isCacheableSearchResult(value) {
+  if (!isPlainObject(value)) return false;
+  if (value.ok === false) return false;
+  if (value.success === false) return false;
+  if (value.error !== undefined && value.error !== null) return false;
+  if (typeof value.status === "string" && value.status.toLowerCase() === "error") return false;
+  return true;
+}
+
+// Cached values are handed to every later caller, so they must not be a shared mutable object: one consumer
+// editing a product row in place would serve the edit to everyone else for the rest of the TTL. Nothing
+// downstream mutates today — the commerce path stringifies, the public tier rebuilds with spreads — but the
+// public tier is exactly where post-processing accretes, and its sourcing filter reads fields the projector
+// later strips. Cloning on read costs a few ms against a search measured in seconds.
+function cloneCachedValue(value) {
+  if (value === null || typeof value !== "object") return value;
+  try {
+    return structuredClone(value);
+  } catch {
+    // Non-cloneable values are not something this cache should be holding, but degrade to the shared
+    // reference rather than failing a caller's search.
+    return value;
+  }
+}
+
 /**
  * Build the MCP commerce tool surface over an already-composed canonical executor.
  * @param {{ execute: (opId:string, params:object, ctx:object)=>Promise<any> }} executor
- * @param {{ log?: object }} [opts]
+ * @param {{ log?: object, cache?: boolean }} [opts] pass cache:false when the CALLER already caches this
+ *   surface's results (the public read tier does). Two stacked caches would put the public tier's own
+ *   documented kill switch behind this one and double the resident payload for no extra hit rate.
  * @returns {{ tools: Array<{name,description,inputSchema}>, callTool: Function, isCommerceTool: Function }}
  */
-export function createCommerceToolSurface(executor, { log } = {}) {
+export function createCommerceToolSurface(executor, { log, cache: cacheOpt = true } = {}) {
   if (!executor || typeof executor.execute !== "function") {
     throw new Error("createCommerceToolSurface requires a canonical executor with execute()");
   }
@@ -107,16 +139,21 @@ export function createCommerceToolSurface(executor, { log } = {}) {
   // may act on. Search staleness cannot produce a wrong charge — the money path re-quotes against the
   // backend (preview_quote) rather than trusting a search row — but discovery should still turn over
   // faster here than on the anonymous read tier.
-  const logger = log && typeof log.info === "function" ? log : null;
-  const cache = commerceCacheEnabled()
+  const logger = log && typeof log.warn === "function" ? log : null;
+  const ttlMs = positiveIntEnv("COMMERCE_READ_CACHE_TTL_MS", 5 * 60 * 1000);
+  // A staleMs below ttlMs makes the stale-serve and expiry branches unreachable — a silent
+  // misconfiguration rather than a loud one, so clamp it.
+  const staleMs = Math.max(positiveIntEnv("COMMERCE_READ_CACHE_STALE_MS", 15 * 60 * 1000), ttlMs);
+  const cache = cacheOpt !== false && commerceCacheEnabled()
     ? createPublicReadCache({
-        ttlMs: positiveIntEnv("COMMERCE_READ_CACHE_TTL_MS", 5 * 60 * 1000),
-        staleMs: positiveIntEnv("COMMERCE_READ_CACHE_STALE_MS", 15 * 60 * 1000),
+        ttlMs,
+        staleMs,
         // 60, not the public tier's 300: these entries are FAT. The public tier caches slim projected
         // rows (~5KB); a commerce search result is the unprojected product list, measured at ~460KB on
         // prod (68 products, ingredient_intel alone about half of it). 300 of those would be ~150MB
         // resident for a cache, which is how a latency fix turns into an OOM. 60 covers the head of the
-        // query distribution for ~30MB.
+        // query distribution for ~28MB — one instance, because the public tier passes cache:false rather
+        // than stacking a second copy of the same payloads.
         maxEntries: positiveIntEnv("COMMERCE_READ_CACHE_MAX", 60),
         onRevalidateError: (err, key) => {
           if (logger) {
@@ -126,6 +163,7 @@ export function createCommerceToolSurface(executor, { log } = {}) {
             );
           }
         },
+        shouldCache: isCacheableSearchResult,
       })
     : null;
 
@@ -179,8 +217,14 @@ export function createCommerceToolSurface(executor, { log } = {}) {
     //    (getOrCompute lets errors propagate uncached), which keeps a transient MERCHANT_UNAVAILABLE from
     //    being served for the rest of the TTL. See the CACHEABLE_TOOLS note above for why the key omits
     //    identity — that omission is the whole safety argument and is asserted by tests.
+    //    The key is the ALLOWLISTED params, never the raw tool args. Nothing rejects unknown argument
+    //    properties, so keying on the raw args lets any caller mint unlimited distinct keys for one
+    //    identical upstream call (`{query, _cb: <nonce>}`) — a 0% hit rate, and 60 such requests evict
+    //    every real entry. Keying on what actually reaches the executor makes that impossible by
+    //    construction: junk properties are already gone by this line.
     if (!cache || !CACHEABLE_TOOLS.includes(op.id)) return execute();
-    return cache.getOrCompute(`${op.id}:${stableStringify(toolArgs ?? {})}`, execute);
+    const value = await cache.getOrCompute(`${op.id}:${stableStringify(params ?? {})}`, execute);
+    return cloneCachedValue(value);
   }
 
   function isCommerceTool(name) {
