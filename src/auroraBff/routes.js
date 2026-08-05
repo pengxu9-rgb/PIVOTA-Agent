@@ -8062,6 +8062,47 @@ function recordCatalogFallbackAttemptsToProductAnchorSpine(spine, attempts = [])
   }
 }
 
+// ADR-009 phase 0 — the seed-lane predicate plus the ONE shape
+// src/services/externalSeedLane.js is deliberately NOT defined over.
+//
+// The product-anchor sites below accept a seed row either on the row itself or
+// on a NESTED `canonical_product_ref`, and treated a sentinel merchant in
+// either position identically. The adapter is row-shaped, so the nesting is
+// unwrapped HERE rather than by teaching `readSeedLaneFields` a new alias
+// SOURCE: that would be a widening applied to every adapter caller
+// (productGroundingResolver.isExternalProduct, RecommendationEngine's
+// isExternalProduct and its candidate stamp, guidanceFastpath's ordering
+// tiebreak, hasConcernFrameworkExternalSeedAuthority) — none of which read this
+// shape, and each of which would silently gain a new way to be routed into the
+// seed lane. Blast radius of doing it here instead: exactly these call sites.
+//
+// A canonical ref is itself product-like (`{product_id, merchant_id}`), so the
+// SAME row-shaped predicate answers it; nothing about the adapter changes.
+//
+// The `canonicalProductRef` camelCase alias is included because
+// isExternalRecoAlternativesSeedProduct already read it, and one definition
+// beats two — a widening of the snake_case-only sites, in the fail-closed
+// direction (it routes a row INTO the seed lane, where the gates are stricter).
+function isExternalSeedLaneProductOrCanonicalRef(productLike) {
+  if (isExternalSeedLaneProduct(productLike)) return true;
+  const row = isPlainObject(productLike) ? productLike : null;
+  if (!row) return false;
+  // Read the nested refs the way the adapter reads every field: ignore a value that could ONLY have
+  // come from a polluted Object.prototype. A bare `row.canonical_product_ref` reintroduces exactly the
+  // hole externalSeedLane's own() guard exists to close — and this predicate is a SERVING branch
+  // (recoAlternativesRouteHandler routes /v1/reco/alternatives on it), so pollution would send every
+  // request down the external-seed compare path and drop personalization.
+  //
+  // Deliberately NOT a bare Object.hasOwn: that would also drop a ref on a LEGITIMATE prototype
+  // (a class instance, an Object.create row) and misclassify a real seed row as internal.
+  const nested = (key) => {
+    if (Object.hasOwn(row, key)) return row[key];
+    return Object.hasOwn(Object.prototype, key) ? undefined : row[key];
+  };
+  return isExternalSeedLaneProduct(nested('canonical_product_ref'))
+    || isExternalSeedLaneProduct(nested('canonicalProductRef'));
+}
+
 async function resolveOpenWorldExternalProductMatchForProductInput({
   inputText = '',
   inputUrl = '',
@@ -8096,13 +8137,7 @@ async function resolveOpenWorldExternalProductMatchForProductInput({
 
   const attempts = [];
   let parsedProductObj = parsedProduct && typeof parsedProduct === 'object' && !Array.isArray(parsedProduct) ? parsedProduct : null;
-  if (
-    parsedProductObj &&
-    (
-      pickFirstTrimmed(parsedProductObj.merchant_id, parsedProductObj.merchantId) === EXTERNAL_SEED_MERCHANT_ID ||
-      pickFirstTrimmed(parsedProductObj.canonical_product_ref?.merchant_id, parsedProductObj.canonical_product_ref?.merchantId) === EXTERNAL_SEED_MERCHANT_ID
-    )
-  ) {
+  if (parsedProductObj && isExternalSeedLaneProductOrCanonicalRef(parsedProductObj)) {
     parsedProductObj = (await loadExternalSeedEvidenceProduct(parsedProductObj, { logger })) || parsedProductObj;
   }
   const externalSeedSnapshotEvidence = extractExternalSeedSnapshotEvidence(parsedProductObj);
@@ -8349,7 +8384,12 @@ async function loadExternalSeedEvidenceProduct(productLike, { logger } = {}) {
   const productRef = buildProductAnchorRefFromProductLike(row);
   const merchantId = pickFirstTrimmed(row?.merchant_id, row?.merchantId, productRef?.merchant_id);
   const productId = pickFirstTrimmed(row?.product_id, row?.productId, row?.sku_id, row?.skuId, productRef?.product_id);
-  if (!productId || merchantId !== EXTERNAL_SEED_MERCHANT_ID) return null;
+  // The gate the CALLERS' gate is useless without: migrating only the four call
+  // sites would admit a re-keyed row into this function and then bail here, so
+  // the evidence load stayed dead for exactly the rows the migration is for.
+  // productRef is asked separately because it may be the normalizeRecoCatalogProduct
+  // projection of the row, which resolves merchant aliases the raw row does not.
+  if (!productId || !(isExternalSeedLaneProductOrCanonicalRef(row) || isExternalSeedLaneProduct(productRef))) return null;
   try {
     const res = await runDbQuery(
       `
@@ -8390,7 +8430,13 @@ async function loadExternalSeedEvidenceProduct(productLike, { logger } = {}) {
       productRef ||
       {
         product_id: productId,
-        merchant_id: EXTERNAL_SEED_MERCHANT_ID,
+        // NOT the sentinel literal: this gate now admits re-keyed `merch_obs_…`
+        // rows, and stamping `external_seed` here would hand a downstream reader
+        // a merchant the row does not have. Shaped like
+        // buildProductAnchorRefFromProductLike so an empty merchant is omitted
+        // rather than emitted blank. (Unreachable in practice — productRef is
+        // non-null whenever productId is; kept correct rather than deleted.)
+        ...(merchantId ? { merchant_id: merchantId } : {}),
       };
     return {
       ...hydrated,
@@ -17337,7 +17383,10 @@ async function maybeSyncRepairLowCoverageCompetitors({
 function extractExternalSeedSnapshotEvidence(parsedProduct = null) {
   const product = isPlainObject(parsedProduct) ? parsedProduct : null;
   if (!product) return null;
-  if (String(product.merchant_id || '').trim() !== EXTERNAL_SEED_MERCHANT_ID) return null;
+  // Runs on the SAME object the loadExternalSeedEvidenceProduct gate just
+  // admitted, so it has to admit the same rows or the evidence is loaded and
+  // then thrown away for every re-keyed row.
+  if (!isExternalSeedLaneProductOrCanonicalRef(product)) return null;
 
   const captureStatus =
     product.pdp_field_capture_status && typeof product.pdp_field_capture_status === 'object' && !Array.isArray(product.pdp_field_capture_status)
@@ -17422,13 +17471,7 @@ async function buildProductAnalysisFromUrlIngredients({
   }
 
   let parsedProductObj = parsedProduct && typeof parsedProduct === 'object' && !Array.isArray(parsedProduct) ? parsedProduct : null;
-  if (
-    parsedProductObj &&
-    (
-      pickFirstTrimmed(parsedProductObj.merchant_id, parsedProductObj.merchantId) === EXTERNAL_SEED_MERCHANT_ID ||
-      pickFirstTrimmed(parsedProductObj.canonical_product_ref?.merchant_id, parsedProductObj.canonical_product_ref?.merchantId) === EXTERNAL_SEED_MERCHANT_ID
-    )
-  ) {
+  if (parsedProductObj && isExternalSeedLaneProductOrCanonicalRef(parsedProductObj)) {
     parsedProductObj = (await loadExternalSeedEvidenceProduct(parsedProductObj, { logger })) || parsedProductObj;
   }
   const externalSeedSnapshotEvidence = extractExternalSeedSnapshotEvidence(parsedProductObj);
@@ -24767,6 +24810,10 @@ async function runBeautyMainlineLocalHandoffSearch({
               'stage_planned',
             ) || 'stage_planned',
             catalogSurface: 'beauty',
+            // NOT migrated: this is a SEARCH FILTER sent to the backend, not a read of a local row —
+            // it is part of backendExternalSeedAuthoritySearchFn's contract, so changing it is a
+            // cross-repo change with its own PR. It DOES stop matching after the phase-3 re-key;
+            // tracked as a phase-3 prerequisite rather than silently left.
             merchantId: 'external_seed',
             externalSeedOnly: true,
             fastMode: true,
@@ -77934,20 +77981,23 @@ function isExternalRecoAlternativesSeedProduct(product) {
       : {};
   const matchState = String(metadata.match_state || metadata.matchState || '').trim().toLowerCase();
   const pdpPath = String(pdpOpen.path || '').trim().toLowerCase();
-  const merchantId = pickFirstTrimmed(
-    row.merchant_id,
-    row.merchantId,
-    sku.merchant_id,
-    sku.merchantId,
-    canonicalRef.merchant_id,
-    canonicalRef.merchantId,
-  );
   const productId = pickFirstTrimmed(row.product_id, row.productId, sku.product_id, sku.productId, canonicalRef.product_id, canonicalRef.productId);
   const source = String(pickFirstTrimmed(row.retrieval_source, row.source, sku.retrieval_source, sku.source) || '').trim().toLowerCase();
+  // The merchant_id leg is now the shared lane predicate. It replaces a pick
+  // over row/sku/canonical_product_ref, so the nested `sku` is asked separately
+  // — the adapter is row-shaped and does not read it. The four NON-merchant
+  // legs (llm_seed, pdp_open.path, retrieval_source, `ext_` id) are untouched,
+  // per the adapter's SCOPE note: this predicate answers lane membership only,
+  // and each site keeps its own broader notion of "external" ORed alongside.
+  //
+  // Without this, a catalog-sourced re-keyed row — retrieval_source
+  // 'catalog_products', slug id, no external pdp_open path — has NO leg left to
+  // match on and silently leaves the external-alternatives lane at phase 3.
   return (
     matchState === 'llm_seed' ||
     pdpPath === 'external' ||
-    merchantId === EXTERNAL_SEED_MERCHANT_ID ||
+    isExternalSeedLaneProductOrCanonicalRef(row) ||
+    isExternalSeedLaneProduct(sku) ||
     source === 'external_seed' ||
     String(productId || '').trim().toLowerCase().startsWith('ext_')
   );
@@ -79404,8 +79454,16 @@ function scoreRecoAlternativeCatalogGroundingMatch(openWorldRow, catalogRow) {
 function classifyRecoAuthorityHitSource(candidate) {
   const normalized = normalizeRecoCatalogProduct(candidate);
   if (!normalized) return '';
+  // Asked of the RAW candidate as well as the normalized projection:
+  // normalizeRecoCatalogProduct drops `platform` and `source_system` entirely,
+  // so on the normalized object the only surviving lane evidence after the
+  // re-key would be none at all, and every re-keyed row would be relabelled
+  // 'internal_hit' — corrupting the per-seller attribution signal ADR-009
+  // exists to build. The normalized object is still asked because it resolves
+  // merchant aliases (`merchant.merchant_id`) the raw row may only carry nested.
   if (
-    String(normalized.merchant_id || '').trim().toLowerCase() === String(EXTERNAL_SEED_MERCHANT_ID || '').trim().toLowerCase() ||
+    isExternalSeedLaneProduct(candidate) ||
+    isExternalSeedLaneProduct(normalized) ||
     String(normalized.retrieval_source || '').trim().toLowerCase() === 'external_seed' ||
     String(normalized.source || '').trim().toLowerCase().includes('external')
   ) {
@@ -79414,6 +79472,21 @@ function classifyRecoAuthorityHitSource(candidate) {
   return 'internal_hit';
 }
 
+// ADR-009 phase 0 — KNOWN RESIDUAL, deliberately not migrated.
+//
+// The only input here is a canonical product ref, and the resolver's contract
+// for that ref is literally `{merchant_id, product_id}` (src/server.js:23913),
+// re-normalized through normalizeCanonicalProductRef, which keeps nothing else.
+// There is no `platform` / `source_system` to migrate onto, so routing this
+// through isExternalSeedLaneProduct would be a no-op dressed up as a fix.
+//
+// Consequence, stated rather than hidden: after phase 3 this emits
+// 'internal_hit' for a re-keyed row that resolved through the seed lane. It is
+// a telemetry label (`authority_presence_class` / `catalog_grounding_resolver_source`)
+// — never a serving or eligibility gate — and it has an independent
+// `metadata.sources` leg below. Fixing it properly means teaching
+// resolveRecoPdpByLocalResolver to surface the resolved row's lane fields,
+// which is a resolver contract change and belongs in its own PR.
 function summarizeResolverAuthoritySource(resolved) {
   const canonicalRef =
     normalizeCanonicalProductRef(resolved?.canonicalProductRef, {
@@ -87721,10 +87794,7 @@ function mountAuroraBffRoutes(app, { logger }) {
 
       const descriptorAnchorBase = anchorTrustContext.usable_for_anchor_id === true ? parsedProduct : null;
       const descriptorAnchor =
-        descriptorAnchorBase && (
-          pickFirstTrimmed(descriptorAnchorBase.merchant_id, descriptorAnchorBase.merchantId) === EXTERNAL_SEED_MERCHANT_ID
-          || pickFirstTrimmed(descriptorAnchorBase.canonical_product_ref?.merchant_id, descriptorAnchorBase.canonical_product_ref?.merchantId) === EXTERNAL_SEED_MERCHANT_ID
-        )
+        descriptorAnchorBase && isExternalSeedLaneProductOrCanonicalRef(descriptorAnchorBase)
           ? (await loadExternalSeedEvidenceProduct(descriptorAnchorBase, { logger })) || descriptorAnchorBase
           : descriptorAnchorBase;
       const productUrlForIngredientAnalysis = String(
@@ -100142,7 +100212,15 @@ function mountAuroraBffRoutes(app, { logger }) {
                 : null;
             const remoteMerchantId = String(resolvedRemoteProduct?.merchant_id || '').trim();
 
-            if (resolvedRemoteProduct && remoteMerchantId && remoteMerchantId !== 'external_seed') {
+            // Lane membership, not the merchant literal: after the ADR-009 phase-3 re-key a seed row
+            // carries `merch_obs_*`, so `!== 'external_seed'` would flip to TRUE and start preferring
+            // the REMOTE resolution for rows that used to fall through to the local resolver. The
+            // remoteMerchantId presence check is kept — an unattributed remote row is still skipped.
+            if (
+              resolvedRemoteProduct
+              && remoteMerchantId
+              && !isExternalSeedLaneProductOrCanonicalRef(resolvedRemoteProduct)
+            ) {
               products = [resolvedRemoteProduct];
               availabilityResolvedVia = 'products_resolve';
             } else if (resolvedLocalProduct) {
@@ -103600,6 +103678,12 @@ const __internal = {
   normalizeRecoCatalogProduct,
   scoreRealtimeCompetitorCandidate,
   hasConcernFrameworkExternalSeedAuthority,
+  // ADR-009 phase 0 reader-parity surface — see
+  // tests/external_seed_lane_reader_parity.node.test.cjs §6.
+  isExternalSeedLaneProductOrCanonicalRef,
+  extractExternalSeedSnapshotEvidence,
+  isExternalRecoAlternativesSeedProduct,
+  classifyRecoAuthorityHitSource,
   buildExternalSeedDirectSearchTransportPolicy,
   routeCandidates,
   routeCompetitorCandidatePools,

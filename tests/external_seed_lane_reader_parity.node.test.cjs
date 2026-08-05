@@ -695,3 +695,256 @@ test('a LEGITIMATE prototype still reads — the pollution guard must not narrow
     'inheritance must not manufacture a seed row',
   );
 });
+
+// ---------------------------------------------------------------------------
+// 6. auroraBff/routes.js — the residual merchant_id literals PR #1914 left.
+//
+// Four of these gate the EXTERNAL-SEED EVIDENCE CHAIN:
+//
+//   caller gate -> loadExternalSeedEvidenceProduct -> extractExternalSeedSnapshotEvidence
+//
+// and the chain is only as migrated as its narrowest link. The two INNER gates
+// (the load function's own `merchantId !== EXTERNAL_SEED_MERCHANT_ID`, and the
+// snapshot extractor's) are the reason migrating the call sites alone would
+// have accomplished nothing: a re-keyed row would have been waved through the
+// call site and then dropped one frame later, silently, with no evidence
+// loaded and no error raised.
+// ---------------------------------------------------------------------------
+
+function routesInternal() {
+  return require('../src/auroraBff/routes').__internal;
+}
+
+// A full serving-shaped product: the row's own lane fields (which survive the
+// re-key) PLUS the nested canonical_product_ref the four sites also read.
+function anchorProductFor(row) {
+  return {
+    product_id: row.source_product_id,
+    merchant_id: row.merchant_id,
+    platform: row.platform,
+    source_system: row.source_system,
+    display_name: row.title,
+    canonical_product_ref: { product_id: row.source_product_id, merchant_id: row.merchant_id },
+  };
+}
+
+test('routes: nested canonical_product_ref reader — sentinel/re-keyed parity', () => {
+  const { isExternalSeedLaneProductOrCanonicalRef } = routesInternal();
+  for (const [label, sentinel, rekeyed] of SEED_PAIRS) {
+    assert.equal(isExternalSeedLaneProductOrCanonicalRef(anchorProductFor(sentinel)), true, `${label}: sentinel`);
+    assert.equal(
+      isExternalSeedLaneProductOrCanonicalRef(anchorProductFor(rekeyed)),
+      true,
+      `${label}: re-keyed merch_obs_ anchor (fails on main)`,
+    );
+  }
+
+  // The legacy leg this replaces: seed evidence ONLY on the nested ref, nothing
+  // on the row. Must keep matching for as long as sentinel rows exist.
+  assert.equal(
+    isExternalSeedLaneProductOrCanonicalRef({
+      merchant_id: 'merch_shopify_9a8b7c6d5e4f3021',
+      canonical_product_ref: { product_id: 'p1', merchant_id: 'external_seed' },
+    }),
+    true,
+    'sentinel on the nested ref alone must still admit',
+  );
+  assert.equal(
+    isExternalSeedLaneProductOrCanonicalRef({
+      canonicalProductRef: { product_id: 'p1', merchant_id: 'external_seed' },
+    }),
+    true,
+    'camelCase nested ref — unified with isExternalRecoAlternativesSeedProduct, which already read it',
+  );
+
+  // No over-broadening.
+  assert.equal(isExternalSeedLaneProductOrCanonicalRef(anchorProductFor(SHOPIFY_ROW)), false);
+  assert.equal(isExternalSeedLaneProductOrCanonicalRef(null), false);
+  assert.equal(isExternalSeedLaneProductOrCanonicalRef('external_seed'), false);
+  assert.equal(isExternalSeedLaneProductOrCanonicalRef({ canonical_product_ref: 'external_seed' }), false);
+
+  // PINNED LIMIT, not an oversight: a canonical ref carries only
+  // {product_id, merchant_id} by contract (src/server.js:23913), so a re-keyed
+  // row whose ONLY seed evidence is the nested ref has no durable discriminator
+  // left and reads as non-seed. Nothing in the gateway can recover that; it is
+  // the same shape of gap documented on summarizeResolverAuthoritySource.
+  assert.equal(
+    isExternalSeedLaneProductOrCanonicalRef({
+      canonical_product_ref: { product_id: 'p1', merchant_id: OBSERVED_SELLER_ID },
+    }),
+    false,
+    'a bare re-keyed ref is undecidable — asserted so the limit cannot rot silently',
+  );
+});
+
+test('routes: loadExternalSeedEvidenceProduct GATE admits re-keyed rows (the inner gate)', async () => {
+  const { loadExternalSeedEvidenceProduct } = routesInternal();
+  const dbModule = require('../src/db');
+  const priorQuery = dbModule.query;
+  const attempts = [];
+  dbModule.query = async (sql, params) => {
+    attempts.push({ sql: String(sql || ''), params });
+    return { rows: [] };
+  };
+  try {
+    for (const [label, sentinel, rekeyed] of SEED_PAIRS) {
+      attempts.length = 0;
+      await loadExternalSeedEvidenceProduct(anchorProductFor(sentinel));
+      assert.equal(attempts.length, 1, `${label}: sentinel must reach the seed lookup`);
+      assert.match(attempts[0].sql, /external_product_seeds/, `${label}: sentinel queries the seed table`);
+      assert.deepEqual(attempts[0].params, [sentinel.source_product_id]);
+
+      attempts.length = 0;
+      await loadExternalSeedEvidenceProduct(anchorProductFor(rekeyed));
+      assert.equal(
+        attempts.length,
+        1,
+        `${label}: re-keyed row must reach the SAME seed lookup (fails on main — main returns null before querying)`,
+      );
+      assert.deepEqual(attempts[0].params, [rekeyed.source_product_id]);
+    }
+
+    // No over-broadening: a connected shopify row must never trigger a seed read.
+    attempts.length = 0;
+    assert.equal(await loadExternalSeedEvidenceProduct(anchorProductFor(SHOPIFY_ROW)), null);
+    assert.equal(attempts.length, 0, 'shopify row must not query external_product_seeds');
+
+    // Pre-existing non-lane guards untouched.
+    attempts.length = 0;
+    assert.equal(await loadExternalSeedEvidenceProduct(null), null);
+    assert.equal(await loadExternalSeedEvidenceProduct({ merchant_id: 'external_seed' }), null, 'no product id -> no read');
+    assert.equal(attempts.length, 0);
+  } finally {
+    dbModule.query = priorQuery;
+  }
+});
+
+test('routes: extractExternalSeedSnapshotEvidence — sentinel/re-keyed parity', () => {
+  const { extractExternalSeedSnapshotEvidence } = routesInternal();
+  const withSnapshot = (row) => ({
+    ...anchorProductFor(row),
+    inci_list: ['Water', 'Glycerin', 'Niacinamide', 'Squalane', 'Ceramide NP'],
+    source_page_type: 'official_product',
+    content_quality: 'high',
+    source_url: 'https://example.test/products/x',
+  });
+  for (const [label, sentinel, rekeyed] of SEED_PAIRS) {
+    const fromSentinel = extractExternalSeedSnapshotEvidence(withSnapshot(sentinel));
+    const fromRekeyed = extractExternalSeedSnapshotEvidence(withSnapshot(rekeyed));
+    assert.equal(fromSentinel?.ok, true, `${label}: sentinel yields evidence`);
+    assert.deepEqual(
+      fromRekeyed,
+      fromSentinel,
+      `${label}: re-keyed row must yield IDENTICAL evidence (fails on main — main returns null)`,
+    );
+  }
+  assert.equal(extractExternalSeedSnapshotEvidence(withSnapshot(SHOPIFY_ROW)), null, 'shopify row yields no seed evidence');
+  assert.equal(extractExternalSeedSnapshotEvidence(null), null);
+  // The pre-existing ingredient guard is untouched: lane membership alone is not evidence.
+  assert.equal(extractExternalSeedSnapshotEvidence(anchorProductFor(MIRROR_SENTINEL)), null);
+});
+
+test('routes: isExternalRecoAlternativesSeedProduct — catalog-sourced re-keyed row stays external', () => {
+  const { isExternalRecoAlternativesSeedProduct } = routesInternal();
+  // The exact shape that flips at phase 3: sourced from catalog_products, a
+  // canonical NAME SLUG id (no `ext_` rescue), and no external pdp_open path —
+  // so after the re-key the merchant leg is the ONLY thing left holding it in.
+  const catalogSourced = (row) => ({
+    ...anchorProductFor(row),
+    retrieval_source: 'catalog_products',
+    pdp_open: { path: 'internal' },
+    metadata: { match_state: 'catalog_exact' },
+  });
+  for (const [label, sentinel, rekeyed] of SEED_PAIRS) {
+    assert.equal(isExternalRecoAlternativesSeedProduct(catalogSourced(sentinel)), true, `${label}: sentinel`);
+    assert.equal(
+      isExternalRecoAlternativesSeedProduct(catalogSourced(rekeyed)),
+      true,
+      `${label}: re-keyed row must stay in the external-alternatives lane (fails on main)`,
+    );
+  }
+  assert.equal(
+    isExternalRecoAlternativesSeedProduct(catalogSourced(SHOPIFY_ROW)),
+    false,
+    'a connected shopify row must not enter the external lane',
+  );
+
+  // Every pre-existing NON-merchant leg is preserved verbatim.
+  assert.equal(isExternalRecoAlternativesSeedProduct({ metadata: { match_state: 'llm_seed' } }), true);
+  assert.equal(isExternalRecoAlternativesSeedProduct({ metadata: { matchState: 'llm_seed' } }), true);
+  assert.equal(isExternalRecoAlternativesSeedProduct({ pdp_open: { path: 'external' } }), true);
+  assert.equal(isExternalRecoAlternativesSeedProduct({ pdpOpen: { path: 'external' } }), true);
+  assert.equal(isExternalRecoAlternativesSeedProduct({ retrieval_source: 'external_seed' }), true);
+  assert.equal(isExternalRecoAlternativesSeedProduct({ source: 'external_seed' }), true);
+  assert.equal(isExternalRecoAlternativesSeedProduct({ product_id: 'ext_abc123' }), true);
+  assert.equal(isExternalRecoAlternativesSeedProduct({ canonicalProductRef: { merchantId: 'external_seed' } }), true);
+  assert.equal(isExternalRecoAlternativesSeedProduct({}), false);
+  assert.equal(isExternalRecoAlternativesSeedProduct(null), false);
+
+  // The nested `sku` leg: the adapter is row-shaped, so it is asked separately.
+  assert.equal(isExternalRecoAlternativesSeedProduct({ sku: { merchant_id: 'external_seed' } }), true);
+  assert.equal(
+    isExternalRecoAlternativesSeedProduct({ sku: { merchant_id: OBSERVED_SELLER_ID, source_system: 'catalog_enrichment_agent_v1' } }),
+    true,
+    're-keyed nested sku (fails on main)',
+  );
+  assert.equal(isExternalRecoAlternativesSeedProduct({ sku: { merchant_id: 'merch_shopify_1', platform: 'shopify' } }), false);
+});
+
+test('routes: classifyRecoAuthorityHitSource — re-keyed rows are still external_seed_hit', () => {
+  const { classifyRecoAuthorityHitSource } = routesInternal();
+  for (const [label, sentinel, rekeyed] of SEED_PAIRS) {
+    assert.equal(classifyRecoAuthorityHitSource(anchorProductFor(sentinel)), 'external_seed_hit', `${label}: sentinel`);
+    assert.equal(
+      classifyRecoAuthorityHitSource(anchorProductFor(rekeyed)),
+      'external_seed_hit',
+      `${label}: re-keyed row must keep its authority class (fails on main — main says internal_hit)`,
+    );
+  }
+  assert.equal(classifyRecoAuthorityHitSource(anchorProductFor(SHOPIFY_ROW)), 'internal_hit');
+  // Pre-existing legs untouched, including the ones that read the NORMALIZED
+  // projection rather than the raw row.
+  assert.equal(classifyRecoAuthorityHitSource({ product_id: 'p1', retrieval_source: 'external_seed' }), 'external_seed_hit');
+  assert.equal(classifyRecoAuthorityHitSource({ product_id: 'p1', source: 'external_catalog' }), 'external_seed_hit');
+  assert.equal(classifyRecoAuthorityHitSource({ product_id: 'p1', merchant: { merchant_id: 'external_seed' } }), 'external_seed_hit');
+  assert.equal(classifyRecoAuthorityHitSource({ product_id: 'p1', merchant_id: 'merch_shopify_1' }), 'internal_hit');
+  assert.equal(classifyRecoAuthorityHitSource(null), '', 'unresolvable candidate keeps its empty class');
+});
+
+test('routes.js carries no behavioural merchant_id literal left except the pinned residual', () => {
+  const source = fs.readFileSync(path.join(__dirname, '..', 'src', 'auroraBff', 'routes.js'), 'utf8');
+  // Match the constant AND the raw string, but ONLY where the line also mentions a merchant —
+  // that is the defect class (a merchant_id compared to the sentinel). The bare string is used
+  // legitimately all over this file as a SOURCE LABEL (`source: 'external_seed'`, token classifiers),
+  // and flagging those would make the guard noise that gets muted. A reviewer showed a constant-only
+  // grep misses `String(row?.merchant_id||'').trim() === 'external_seed'`, and that counting alone is
+  // insufficient (migrating the residual while adding a literal keeps the count) — so pin LINE CONTENT.
+  const hits = source
+    .split('\n')
+    .map((line, index) => [index + 1, line.trim()])
+    .filter(([, line]) => !line.startsWith('//'))
+    .filter(([, line]) => (
+      line.includes('EXTERNAL_SEED_MERCHANT_ID')
+      || (/'external_seed'|"external_seed"/.test(line) && /merchant/i.test(line))
+    ));
+  const EXPECTED = [
+    // the import
+    'EXTERNAL_SEED_MERCHANT_ID,',
+    // Dead inline fallback for productGroundingResolverInternals.isExternalProduct — the real export
+    // IS a function, so this branch never runs. Not a live reader; left as-is.
+    "return merchantId === 'external_seed' || source.includes('external_seed');",
+    // The pinned, documented residual: telemetry label only, never a serving/eligibility gate
+    // (summarizeResolverAuthoritySource -> authority_presence_class / catalog_grounding_resolver_source).
+    "String(canonicalRef?.merchant_id || '').trim().toLowerCase() === String(EXTERNAL_SEED_MERCHANT_ID || '').trim().toLowerCase()",
+    // A SEARCH FILTER sent to the backend (backendExternalSeedAuthoritySearchFn), not a read of a
+    // local row. Migrating it is a cross-repo contract change with its own PR — but it DOES stop
+    // matching after the phase-3 re-key, so it is a phase-3 prerequisite, pinned here so it cannot
+    // be forgotten or quietly deleted.
+    "merchantId: 'external_seed',",
+  ];
+  assert.deepEqual(
+    hits.map(([, line]) => line).sort(),
+    [...EXPECTED].sort(),
+    `unexpected merchant-keyed external_seed literals in routes.js: ${JSON.stringify(hits, null, 2)}`,
+  );
+});
