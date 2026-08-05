@@ -26004,6 +26004,9 @@ function getUiChatLlmClient() {
 // occasional slow product/search slowness.
 async function callUpstreamWithOptionalRetry(operation, axiosConfig, options = {}) {
   const disableTimeoutRetry = options?.disableTimeoutRetry === true;
+  // Absolute epoch-ms at which the CALLER stops waiting for this whole chain (0/absent = no deadline, and
+  // then nothing below changes). Retries are bounded by it — see the note in the timeout-retry branch.
+  const deadlineAtMs = Number(options?.deadlineAtMs) > 0 ? Number(options.deadlineAtMs) : 0;
   const disableBusyRetry = options?.disableBusyRetry === true;
   const timeoutRetryableOps = [
     'find_products',
@@ -26136,7 +26139,31 @@ async function callUpstreamWithOptionalRetry(operation, axiosConfig, options = {
         attempt === 1
       ) {
         const prevTimeoutMs = Number(axiosConfig?.timeout || 0) || null;
-        const retryTimeoutMs = getTimeoutRetryMs(operation, prevTimeoutMs);
+        // DON'T START AN ATTEMPT YOU CANNOT FINISH. When the caller races this whole chain against a hard
+        // deadline, a retry begun with less time left than the attempt that just timed out is doomed by
+        // construction — and it fires a SECOND request at an upstream that is by definition already
+        // struggling. The find_products_multi mainline is exactly that shape: a 6s non-beauty deadline over
+        // a 4.5s attempt timeout leaves the retry 1.5s to redo work that just failed in 4.5s, so its only
+        // effects are +1.5s of latency and +1 request under stress. Fail fast on the first timeout instead.
+        const remainingDeadlineMs = deadlineAtMs ? deadlineAtMs - Date.now() : null;
+        if (remainingDeadlineMs !== null && remainingDeadlineMs <= (prevTimeoutMs || 0)) {
+          logger.warn(
+            {
+              url: axiosConfig.url,
+              operation,
+              previous_timeout_ms: prevTimeoutMs,
+              remaining_deadline_ms: remainingDeadlineMs,
+            },
+            'Upstream timeout; retry skipped (cannot finish within the caller deadline)',
+          );
+          throw err;
+        }
+        let retryTimeoutMs = getTimeoutRetryMs(operation, prevTimeoutMs);
+        // Never arm a timeout longer than the deadline that will cut it off: the request would be
+        // abandoned mid-flight and the number would be a fiction.
+        if (retryTimeoutMs && remainingDeadlineMs !== null) {
+          retryTimeoutMs = Math.min(retryTimeoutMs, remainingDeadlineMs);
+        }
         if (retryTimeoutMs && retryTimeoutMs !== prevTimeoutMs) {
           axiosConfig.timeout = retryTimeoutMs;
         }
@@ -48568,6 +48595,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         normalizedOp === 'find_products_multi' || normalizedOp === 'find_products';
       const startedAt = measureCheckout || measureFpmStage ? Date.now() : 0;
       const hardDeadlineMs = Math.max(0, Number(options?.hardDeadlineMs || 0) || 0);
+      // The deadline is raced below, but the RETRY needs to know about it too — otherwise it happily starts
+      // an attempt the race will kill moments later. Computed here, before the first attempt, so it is the
+      // same clock the race uses.
+      const deadlineAtMs = hardDeadlineMs ? Date.now() + hardDeadlineMs : 0;
       let hardDeadlineTimer = null;
       try {
         const upstreamPromise = callUpstreamWithOptionalRetry(op, config, {
@@ -48576,6 +48607,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           disableBusyRetry:
             options?.disableBusyRetry === true ||
             String(op || '').trim().toLowerCase() === 'find_products_multi',
+          deadlineAtMs,
           onRetry: () => {
             if (measureCheckout) gatewayRetryCount += 1;
           },
@@ -51911,6 +51943,10 @@ module.exports._debug = {
   // Latency property: the loopback self-call gets its own budget and never timeout-retries. Exported so
   // the policy is asserted directly, not inferred from the 12k-line handler it protects.
   resolveSelfInvokeBudget,
+  // Latency property: a retry is never started that the caller's hard deadline will cut off. Exported so
+  // the retry chain is driven directly — the alternative is inferring it from a race inside a 12k-line
+  // handler, which is how the doomed retry survived unnoticed in the first place.
+  callUpstreamWithOptionalRetry,
   // Correctness property: despite the name, this applies a strict-empty PRODUCT rescue and therefore must
   // never be raced against a timeout. Exported so that is asserted, not just commented.
   attachCanonicalChainRecallTelemetryFromPromise,
