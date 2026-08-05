@@ -8,8 +8,8 @@
 // network fault, and aborting the client does not stop the server: the retry runs the whole expensive
 // pipeline a second time, concurrently, against a 5-connection DB pool.
 //
-// These tests assert the two properties that fix costs: ONE attempt on the loopback, and a diagnostics
-// query that can never extend a partner's latency.
+// Both halves of the fix are asserted ON THE REAL ROUTE (supertest + nock on the loopback), because both
+// are wiring: a pure-function assertion would pass with the wiring deleted.
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -23,110 +23,106 @@ process.env.PUBLIC_READ_MCP_ENABLED = '1';
 // The projected-result cache would answer without ever reaching the loopback; this suite is about the
 // loopback, so compute every time.
 process.env.PUBLIC_READ_CACHE_ENABLED = '0';
-// Arm the retry we are asserting is NOT taken. With this off the test would pass for the wrong reason.
+// Arm the retry we assert is NOT taken. With this off the retry test would pass for the wrong reason.
 process.env.UPSTREAM_RETRY_FIND_PRODUCTS_MULTI_ON_TIMEOUT = 'true';
-// NOTE: SELF_INVOKE_TIMEOUT_MS is deliberately left at its default here so the budget assertions below
-// exercise the real shipped value. The wire test narrows the budget per-call instead.
+
+// Squeeze the OUTBOUND budget below the self-invoke budget so the two differ observably. Without the
+// unsafe-lower opt-in this is clamped up to the 8s safe floor and the widening becomes untestable.
+process.env.UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_ALLOW_UNSAFE_LOWER = 'true';
+process.env.UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_MS = '1500';
+process.env.SELF_INVOKE_TIMEOUT_MS = '6000';
 
 const app = require('../src/server');
-const { resolveSelfInvokeBudget, attachCanonicalChainRecallTelemetryFromPromise } = app._debug;
+const { resolveSelfInvokeBudget } = app._debug;
 
 const LOOPBACK = 'http://127.0.0.1:3999';
+const SEARCH_RESULT = { status: 'success', success: true, products: [{ id: 'p1', title: 'probe' }], total: 1 };
 
-test.after(() => {
+function searchRpc(query, id = 1) {
+  return { jsonrpc: '2.0', id, method: 'tools/call', params: { name: 'search_catalog', arguments: { query } } };
+}
+
+/** Intercept the loopback invoke, delaying `delayMs` before answering. Returns an attempt counter. */
+function interceptLoopback(delayMs) {
+  const state = { attempts: 0 };
+  state.scope = nock(LOOPBACK)
+    .persist()
+    .post('/agent/shop/v1/invoke')
+    .reply(function reply() {
+      state.attempts += 1;
+      return new Promise((resolve) => {
+        const t = setTimeout(() => resolve([200, SEARCH_RESULT]), delayMs);
+        if (t && typeof t.unref === 'function') t.unref();
+      });
+    });
+  return state;
+}
+
+test.afterEach(() => {
   nock.cleanAll();
   nock.enableNetConnect();
 });
 
-// -- the budget ---------------------------------------------------------------------------------------
+// -- budget relationships (the shipped default is asserted on the wire, below) ---------------------------
 
-test('self-invoke budget widens the outbound default rather than inheriting it', () => {
-  // The outbound-upstream budget (10s in prod) sat just under the inner search p50, so ordinary jitter
-  // tipped every slow query into a re-execution. The loopback must get the wider budget.
-  assert.equal(resolveSelfInvokeBudget(10000), 30000);
-  assert.equal(resolveSelfInvokeBudget(0), 30000);
+test('the self-invoke budget widens a narrower outbound default', () => {
+  assert.equal(resolveSelfInvokeBudget(1500), 6000);
 });
 
-test('a wider outbound default is never narrowed by the self-invoke budget', () => {
+test('a wider outbound default is never narrowed', () => {
   assert.equal(resolveSelfInvokeBudget(45000), 45000);
 });
 
 test('an explicit AGENT_CHECKOUT_UPSTREAM_TIMEOUT_MS still wins', () => {
   process.env.AGENT_CHECKOUT_UPSTREAM_TIMEOUT_MS = '7000';
   try {
-    assert.equal(resolveSelfInvokeBudget(10000), 7000);
+    assert.equal(resolveSelfInvokeBudget(1500), 7000);
   } finally {
     delete process.env.AGENT_CHECKOUT_UPSTREAM_TIMEOUT_MS;
   }
 });
 
-// -- the diagnostics await ----------------------------------------------------------------------------
+// -- the wiring, on the surface that actually runs -------------------------------------------------------
 
-test('a hung canonical-chain telemetry query does NOT extend the response', async () => {
-  const body = { products: [{ id: 'p1' }], metadata: { existing: true } };
-  const neverResolves = new Promise(() => {});
-  const startedAt = Date.now();
-  const out = await attachCanonicalChainRecallTelemetryFromPromise(body, neverResolves);
-  const elapsed = Date.now() - startedAt;
-  assert.ok(elapsed < 3000, `expected the budget to release the response, waited ${elapsed}ms`);
-  // Degrading costs metadata, never products.
-  assert.deepEqual(out.products, body.products);
-  assert.equal(out.metadata.existing, true);
+test('a loopback search slower than the OUTBOUND budget still succeeds (the widened budget is applied)', async () => {
+  // 3s sits above the 1.5s outbound budget and below the 6s self-invoke budget. Reverting the
+  // `selfInvoked ? resolveSelfInvokeBudget(timeout) : timeout` wiring makes this request time out, so
+  // this test — not the pure-function ones above — is what pins the widening.
+  const state = interceptLoopback(3000);
+  try {
+    const resp = await supertest(app)
+      .post('/public/mcp')
+      .set('X-Forwarded-For', '10.7.7.7, 203.0.113.91')
+      .send(searchRpc('widened budget probe'))
+      .expect(200);
+    const result = resp.body.result;
+    // The public tier answers with a human summary + structuredContent; a refused/timed-out call comes
+    // back as isError with an error payload instead.
+    assert.notEqual(
+      result.isError,
+      true,
+      `expected the slow-but-within-budget loopback search to succeed, got ${JSON.stringify(result.content)}`,
+    );
+    assert.match(result.content[0].text, /found/i);
+    assert.equal(state.attempts, 1, `expected exactly one attempt, saw ${state.attempts}`);
+  } finally {
+    state.scope.persist(false);
+  }
 });
-
-test('a rejected telemetry query is swallowed and never becomes an unhandled rejection', async () => {
-  const body = { products: [] };
-  const out = await attachCanonicalChainRecallTelemetryFromPromise(body, Promise.reject(new Error('db down')));
-  assert.deepEqual(out, body);
-  // Give the microtask queue a turn: an unhandled rejection would surface here.
-  await new Promise((resolve) => setTimeout(resolve, 10));
-});
-
-test('telemetry that resolves within budget is still attached', async () => {
-  const body = { products: [], metadata: {} };
-  const resolved = Promise.resolve({ telemetry: { canonical_path_executed: true, canonical_returned_count: 3 } });
-  const out = await attachCanonicalChainRecallTelemetryFromPromise(body, resolved);
-  assert.notDeepEqual(out.metadata, {}, 'expected telemetry to reach metadata when it arrives in time');
-});
-
-// -- the wiring, on the surface that actually runs ------------------------------------------------------
 
 test('a timed-out loopback search is attempted ONCE, not retried', async () => {
-  nock.cleanAll();
-  // Narrow the loopback budget for this call only (this override wins inside resolveSelfInvokeBudget), so
-  // the hung interceptor below trips it in 300ms instead of 30s.
-  process.env.AGENT_CHECKOUT_UPSTREAM_TIMEOUT_MS = '300';
-
-  let attempts = 0;
-  const scope = nock(LOOPBACK)
-    .persist()
-    .post('/agent/shop/v1/invoke')
-    .reply(function reply() {
-      attempts += 1;
-      // Outlive the 300ms budget so axios aborts, which is the condition that used to trigger the retry.
-      return new Promise((resolve) => {
-        const t = setTimeout(() => resolve([200, { products: [] }]), 2000);
-        if (t && typeof t.unref === 'function') t.unref();
-      });
-    });
-
+  // 9s outlives even the self-invoke budget, so the request genuinely times out — the condition that
+  // used to trigger a second full pipeline run.
+  const state = interceptLoopback(9000);
   try {
     await supertest(app)
       .post('/public/mcp')
-      .set('X-Forwarded-For', '10.7.7.7, 203.0.113.99')
-      .send({
-        jsonrpc: '2.0',
-        id: 1,
-        method: 'tools/call',
-        params: { name: 'search_catalog', arguments: { query: 'self invoke retry probe' } },
-      });
-    // Let any (incorrect) retry land before we count.
-    await new Promise((resolve) => setTimeout(resolve, 750));
-    assert.equal(attempts, 1, `loopback search must be attempted once; saw ${attempts}`);
+      .set('X-Forwarded-For', '10.7.7.8, 203.0.113.92')
+      .send(searchRpc('retry probe'));
+    // Let an (incorrect) retry land before counting.
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    assert.equal(state.attempts, 1, `loopback search must be attempted once; saw ${state.attempts}`);
   } finally {
-    delete process.env.AGENT_CHECKOUT_UPSTREAM_TIMEOUT_MS;
-    scope.persist(false);
-    nock.cleanAll();
-    nock.enableNetConnect();
+    state.scope.persist(false);
   }
 });

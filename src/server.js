@@ -19021,43 +19021,18 @@ function attachCanonicalChainRecallTelemetry(body, canonicalResult) {
   };
 }
 
-// Budget for the DIAGNOSTICS-ONLY canonical-chain await below. This is the last await before the response
-// is serialized and it sat unbounded: attachCanonicalChainRecallTelemetry writes only body.metadata
-// (route_health / source_breakdown) and adds NO products, yet a partner's search blocked on it for as long
-// as the query took — and fetchCanonicalChainRows is the query family this file already documents at
-// 5.8-17.2s on prod. It is also after the last recordFpmStage call, so the wait was invisible in
-// fpm_stage_breakdown. Degrading is already a supported outcome (the catch below returns body unchanged),
-// so a timeout costs two metadata fields, never a product.
-const CANONICAL_CHAIN_TELEMETRY_BUDGET_MS = parseTimeoutMs(
-  process.env.FPM_CANONICAL_CHAIN_TELEMETRY_BUDGET_MS,
-  400,
-);
-// Sentinel: a distinct object so a legitimate resolved value can never be mistaken for the timeout.
-const CANONICAL_CHAIN_TELEMETRY_TIMED_OUT = Symbol('canonical_chain_telemetry_timed_out');
-
+// DO NOT put a timeout on this await without splitting the function first. The name says telemetry, but
+// attachCanonicalChainRecallTelemetry ALSO applies a strict-empty product rescue: when
+// shouldApplyCanonicalProducts is true it replaces body.products/status/total wholesale (see the return
+// at the end of that function). Two of its three arms fire precisely when products.length === 0, so
+// abandoning the wait would hand a partner an EMPTY result where they previously got products. Its cost
+// is real — it is the last await before serialization and fetchCanonicalChainRows is the query family
+// this file documents at 5.8-17.2s on prod — but the fix is to make the rescue cheaper or to separate it
+// from the diagnostics half, not to race it. The canonical_chain_join stage below measures it.
 async function attachCanonicalChainRecallTelemetryFromPromise(body, canonicalPromise) {
   if (!canonicalPromise) return body;
   try {
-    // Never let a slow diagnostics query extend the partner's latency. The loser keeps running (it is the
-    // same promise the recall lane already owns); we just stop waiting on it. Attach a no-op catch so an
-    // abandoned rejection can never surface as an unhandled rejection.
-    let timer = null;
-    const budget = new Promise((resolve) => {
-      timer = setTimeout(() => resolve(CANONICAL_CHAIN_TELEMETRY_TIMED_OUT), CANONICAL_CHAIN_TELEMETRY_BUDGET_MS);
-      if (timer && typeof timer.unref === 'function') timer.unref();
-    });
-    if (canonicalPromise && typeof canonicalPromise.catch === 'function') {
-      canonicalPromise.catch(() => {});
-    }
-    const canonicalResult = await Promise.race([canonicalPromise, budget]);
-    if (timer) clearTimeout(timer);
-    if (canonicalResult === CANONICAL_CHAIN_TELEMETRY_TIMED_OUT) {
-      logger.warn(
-        { budget_ms: CANONICAL_CHAIN_TELEMETRY_BUDGET_MS },
-        'find_products_multi canonical chain telemetry budget exceeded (response sent without it)',
-      );
-      return body;
-    }
+    const canonicalResult = await canonicalPromise;
     return attachCanonicalChainRecallTelemetry(body, canonicalResult);
   } catch (err) {
     logger.warn(
@@ -29727,7 +29702,12 @@ function selfInvokeBase() {
 //      same loopback interface: a timeout here means the work is genuinely slow, and the answer to slow
 //      work is not to start it again.
 // So: one attempt, with a budget wide enough for the real tail. Busy (503) retries are unaffected.
-const SELF_INVOKE_TIMEOUT_MS = parseTimeoutMs(process.env.SELF_INVOKE_TIMEOUT_MS, 30000);
+//
+// 20s specifically, so the TAIL does not regress while the typical case improves. The old worst case was
+// 10s + an 11.2s retry = 21.2s; one 20s attempt is inside that, and the inner search's measured spread
+// (2.5-9.4s typical, ~23s pathological) fits with room. A wider budget would trade partner tail latency
+// for a longer hold on a 5-connection DB pool, which is the opposite of the trade this change is making.
+const SELF_INVOKE_TIMEOUT_MS = parseTimeoutMs(process.env.SELF_INVOKE_TIMEOUT_MS, 20000);
 
 function resolveSelfInvokeBudget(defaultTimeoutMs) {
   const explicit = Number(process.env.AGENT_CHECKOUT_UPSTREAM_TIMEOUT_MS);
@@ -29762,7 +29742,9 @@ async function invokeCommerceKernelRawUpstream(operation, payload, headers = {})
       const pid = typeof prod.product_id === 'string' ? prod.product_id.trim() : '';
       if (!merchantScoped && pid) {
         pdpV2Detail = true;
-        selfInvoked = true;
+        // Deliberately NOT marked selfInvoked: get_product_detail is absent from timeoutRetryableOps, so
+        // there is no doubled execution to remove here, and widening a budget for a path whose latency
+        // has not been measured is a change without evidence.
         url = `${selfInvokeBase()}/agent/shop/v1/invoke`;
         requestBody = {
           operation: 'get_pdp_v2',
@@ -51424,9 +51406,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         enriched,
         canonicalChainRecallPromise,
       );
-      recordFpmStage('canonical_chain_join', canonicalChainJoinStartedAt, {
-        budget_ms: CANONICAL_CHAIN_TELEMETRY_BUDGET_MS,
-      });
+      recordFpmStage('canonical_chain_join', canonicalChainJoinStartedAt);
     }
 
       const { attachBeautyExpertV1ToResponse } = require('./modules/orchestration/aurora_beauty/beautyExpertV1');
