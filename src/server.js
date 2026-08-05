@@ -40442,6 +40442,13 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           const directProducts = Array.isArray(directResponse?.products)
             ? directResponse.products
             : [];
+          // This lane can answer the request outright, so without a stage of its own its whole cost lands
+          // in the request's latency with nothing in fpm_stage_breakdown to explain it — measured on prod
+          // 2026-08-05 as 1.8-2.7s of a request whose breakdown stopped at context_build.
+          recordFpmStage('beauty_direct_recall', earlyDirectStartedAt, {
+            returned: directProducts.length,
+            lane: 'early_indexed',
+          });
           if (isSearchQualityContractSafeEmptyResponse(directResponse)) {
             return res.json({
               ...directResponse,
@@ -40556,6 +40563,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     }
     let findProductsMultiCtx = null;
     if (operation === 'find_products_multi') {
+      // Everything between handler entry and here is invisible by construction: context_build is the FIRST
+      // stage recorded, so whatever runs in front of it lands in latency_ms with nothing to attribute it to
+      // (schema validation, governance audit, guardrails, and the early indexed beauty lane all live here).
+      // Recording it as its own stage is what turns "unexplained time" into a name.
+      recordFpmStage('route_entry', invokeStartedAtMs);
       const nluStartedAtMs = Date.now();
       findProductsMultiCtx = await buildFindProductsMultiContext({
         payload: sourceContractPayload,
@@ -45599,6 +45611,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         try {
           const earlySourceNormalized = normalizeAgentSource(source);
           const earlyCreatorScoped = isCreatorUiSource(source) || earlySourceNormalized === 'creator-agent';
+          const beautyDirectStartedAt = Date.now();
           const directResponse = await searchBeautyExternalSeedProductsMainline({
             search,
             metadata,
@@ -45608,6 +45621,12 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           const directProducts = Array.isArray(directResponse?.products)
             ? directResponse.products
             : [];
+          // See the early_indexed lane above: this one can also answer outright, so it needs its own stage
+          // or its cost is invisible.
+          recordFpmStage('beauty_direct_recall', beautyDirectStartedAt, {
+            returned: directProducts.length,
+            lane: 'mainline_direct',
+          });
           if (
             directProducts.length > 0 ||
             isSearchQualityContractSafeEmptyResponse(directResponse) ||
@@ -46033,6 +46052,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         !hasMerchantScope;
       if (creatorBeautyMainlineDirectEligible) {
         try {
+          const creatorDirectStartedAt = Date.now();
           const directResponse = await searchBeautyExternalSeedProductsMainline({
             search,
             metadata,
@@ -46042,6 +46062,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           const directProducts = Array.isArray(directResponse?.products)
             ? directResponse.products
             : [];
+          // Third early-return lane; same reasoning.
+          recordFpmStage('beauty_direct_recall', creatorDirectStartedAt, {
+            returned: directProducts.length,
+            lane: 'creator_direct',
+          });
           if (
             directProducts.length > 0 ||
             routeSearchQualityContractApplied ||
