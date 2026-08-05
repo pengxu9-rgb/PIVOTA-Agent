@@ -32,8 +32,13 @@ process.env.UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_ALLOW_UNSAFE_LOWER = 'true';
 process.env.UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_MS = '1500';
 process.env.SELF_INVOKE_TIMEOUT_MS = '6000';
 
+// The wire tests below must observe the loopback outcome, not a heartbeat commit: if a loaded runner
+// pushed a request past the heartbeat delay, `result` would be undefined and the failure would read as a
+// TypeError instead of an assertion.
+process.env.PUBLIC_READ_MCP_HEARTBEAT_ENABLED = '0';
+
 const app = require('../src/server');
-const { resolveSelfInvokeBudget } = app._debug;
+const { resolveSelfInvokeBudget, attachCanonicalChainRecallTelemetryFromPromise } = app._debug;
 
 const LOOPBACK = 'http://127.0.0.1:3999';
 const SEARCH_RESULT = { status: 'success', success: true, products: [{ id: 'p1', title: 'probe' }], total: 1 };
@@ -63,7 +68,34 @@ test.afterEach(() => {
   nock.enableNetConnect();
 });
 
-// -- budget relationships (the shipped default is asserted on the wire, below) ---------------------------
+// -- the counter-invariant: this await must NOT be budgeted ----------------------------------------------
+
+test('the canonical-chain await waits for a slow result instead of racing it', async () => {
+  // A first cut of this change raced this await against a 400ms budget on the belief that it was
+  // diagnostics-only. It is not: past the metadata, attachCanonicalChainRecallTelemetry applies a
+  // strict-empty PRODUCT rescue (shouldApplyCanonicalProducts replaces body.products/status/total), and
+  // two of its three arms fire exactly when products.length === 0 — so abandoning the wait serves an
+  // EMPTY result where products existed. This test pins the property that makes the rescue reachable at
+  // all: the function waits for the promise, however slow it is. Re-introduce any race and the telemetry
+  // this asserts disappears with it.
+  const body = { products: [], metadata: {} };
+  const slow = new Promise((resolve) => {
+    const t = setTimeout(
+      () => resolve({ telemetry: { canonical_path_executed: true, canonical_returned_count: 2 } }),
+      600,
+    );
+    if (t && typeof t.unref === 'function') t.unref();
+  });
+  const out = await attachCanonicalChainRecallTelemetryFromPromise(body, slow);
+  assert.notDeepEqual(
+    out.metadata,
+    {},
+    'a slow canonical-chain result must still be applied — racing this await drops a product rescue',
+  );
+});
+
+// -- budget relationships (the wire tests below pin the MECHANISM; the shipped default is a config
+//    choice documented at SELF_INVOKE_TIMEOUT_MS, deliberately overridden here) --------------------------
 
 test('the self-invoke budget widens a narrower outbound default', () => {
   assert.equal(resolveSelfInvokeBudget(1500), 6000);

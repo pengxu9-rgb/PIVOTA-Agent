@@ -51894,7 +51894,8 @@ module.exports._debug = {
   // Latency property: the loopback self-call gets its own budget and never timeout-retries. Exported so
   // the policy is asserted directly, not inferred from the 12k-line handler it protects.
   resolveSelfInvokeBudget,
-  // Latency property: a slow diagnostics-only canonical-chain query must not extend a partner's search.
+  // Correctness property: despite the name, this applies a strict-empty PRODUCT rescue and therefore must
+  // never be raced against a timeout. Exported so that is asserted, not just commented.
   attachCanonicalChainRecallTelemetryFromPromise,
   // Security property: the raw wire bytes of an ACP delegate_payment request (raw PAN + CVC) are never
   // stashed on `req.rawBody`. Exported so that can be asserted directly rather than inferred.
