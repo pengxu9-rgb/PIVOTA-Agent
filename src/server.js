@@ -19021,6 +19021,14 @@ function attachCanonicalChainRecallTelemetry(body, canonicalResult) {
   };
 }
 
+// DO NOT put a timeout on this await without splitting the function first. The name says telemetry, but
+// attachCanonicalChainRecallTelemetry ALSO applies a strict-empty product rescue: when
+// shouldApplyCanonicalProducts is true it replaces body.products/status/total wholesale (see the return
+// at the end of that function). Two of its three arms fire precisely when products.length === 0, so
+// abandoning the wait would hand a partner an EMPTY result where they previously got products. Its cost
+// is real — it is the last await before serialization and fetchCanonicalChainRows is the query family
+// this file documents at 5.8-17.2s on prod — but the fix is to make the rescue cheaper or to separate it
+// from the diagnostics half, not to race it. The canonical_chain_join stage below measures it.
 async function attachCanonicalChainRecallTelemetryFromPromise(body, canonicalPromise) {
   if (!canonicalPromise) return body;
   try {
@@ -29678,6 +29686,35 @@ function selfInvokeBase() {
   return `http://127.0.0.1:${port}`;
 }
 
+// Timeout/retry policy for the LOOPBACK self-call, which is a different animal from a call to the Python
+// kernel and must not inherit the outbound-upstream budget.
+//
+// Measured on prod 2026-08-05, one partner MCP search: attempt 1 started 02:35:19.2 and was aborted by the
+// 10s budget at 02:35:29.4; attempt 2 re-ran the WHOLE pipeline and answered in 9.3s at 02:35:38.4. The
+// partner waited 19.3s for 9.3s of work. The inner search's own p50 sits just under the outer budget, so
+// ordinary jitter tips every slow query into a full re-execution.
+//
+// Two reasons a loopback timeout must NOT be retried:
+//   1. Aborting the axios client does not stop the server. Nothing in handleInvokeRequest checks
+//      req.aborted, so attempt 1 keeps running to completion — the retry means the entire expensive
+//      pipeline runs TWICE CONCURRENTLY against a 5-connection DB pool, making the retry slower still.
+//   2. A self-call cannot suffer the transient network faults a retry exists to paper over. Same process,
+//      same loopback interface: a timeout here means the work is genuinely slow, and the answer to slow
+//      work is not to start it again.
+// So: one attempt, with a budget wide enough for the real tail. Busy (503) retries are unaffected.
+//
+// 20s specifically, so the TAIL does not regress while the typical case improves. The old worst case was
+// 10s + an 11.2s retry = 21.2s; one 20s attempt is inside that, and the inner search's measured spread
+// (2.5-9.4s typical, ~23s pathological) fits with room. A wider budget would trade partner tail latency
+// for a longer hold on a 5-connection DB pool, which is the opposite of the trade this change is making.
+const SELF_INVOKE_TIMEOUT_MS = parseTimeoutMs(process.env.SELF_INVOKE_TIMEOUT_MS, 20000);
+
+function resolveSelfInvokeBudget(defaultTimeoutMs) {
+  const explicit = Number(process.env.AGENT_CHECKOUT_UPSTREAM_TIMEOUT_MS);
+  if (Number.isFinite(explicit) && explicit > 0) return explicit;
+  return Math.max(Number(defaultTimeoutMs) || 0, SELF_INVOKE_TIMEOUT_MS);
+}
+
 async function invokeCommerceKernelRawUpstream(operation, payload, headers = {}) {
   const op = String(operation || '').trim();
   const metadata = isPlainObject(payload?.metadata) ? payload.metadata : {};
@@ -29689,6 +29726,9 @@ async function invokeCommerceKernelRawUpstream(operation, payload, headers = {})
   let url = `${PIVOTA_API_BASE}/agent/shop/v1/invoke`;
   let requestBody = { operation: op, payload };
   let pdpV2Detail = false;
+  // Set by the cases below that route back into THIS process over loopback instead of out to the Python
+  // kernel. A loopback hop needs a different timeout/retry policy — see resolveSelfInvokeBudget.
+  let selfInvoked = false;
 
   switch (op) {
     case 'get_product_detail': {
@@ -29702,6 +29742,9 @@ async function invokeCommerceKernelRawUpstream(operation, payload, headers = {})
       const pid = typeof prod.product_id === 'string' ? prod.product_id.trim() : '';
       if (!merchantScoped && pid) {
         pdpV2Detail = true;
+        // Deliberately NOT marked selfInvoked: get_product_detail is absent from timeoutRetryableOps, so
+        // there is no doubled execution to remove here, and widening a budget for a path whose latency
+        // has not been measured is a change without evidence.
         url = `${selfInvokeBase()}/agent/shop/v1/invoke`;
         requestBody = {
           operation: 'get_pdp_v2',
@@ -29716,6 +29759,7 @@ async function invokeCommerceKernelRawUpstream(operation, payload, headers = {})
       // only serves per-merchant catalogs (observed live: 2 products from one store). Loopback self-call;
       // auth = the internal fallback key like any agent caller. The invoke handler serves search from the
       // search stack and never re-enters this kernel-upstream path, so no recursion.
+      selfInvoked = true;
       url = `${selfInvokeBase()}/agent/shop/v1/invoke`;
       break;
     }
@@ -29843,13 +29887,16 @@ async function invokeCommerceKernelRawUpstream(operation, payload, headers = {})
       ...headers,
     },
     data: requestBody,
-    timeout,
+    timeout: selfInvoked ? resolveSelfInvokeBudget(timeout) : timeout,
   };
 
   let resp;
   try {
     resp = await callUpstreamWithOptionalRetry(op, axiosConfig, {
       disableBusyRetry: op === 'create_order' || op === 'submit_payment' || op === 'request_after_sales',
+      // See resolveSelfInvokeBudget: retrying a loopback timeout doubles concurrent load on the same
+      // process and cannot fix what caused it.
+      disableTimeoutRetry: selfInvoked,
     });
   } catch (err) {
     if (
@@ -50417,7 +50464,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       };
     }
 
+    // Instrumented: on a cold promotions cache this blocks on an HTTP fetch with its own timeout+retry
+    // (up to ~16s) and sat between two recorded stages, so it never showed up in the breakdown.
+    const promotionsStartedAt = Date.now();
     const promotions = await getActivePromotions(now, creatorId);
+    recordFpmStage('promotions_hydrate', promotionsStartedAt);
 
     // Normalize submit_payment responses so frontends always see a unified
     // payment object with PSP + payment_action, regardless of PSP type.
@@ -51348,10 +51399,14 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         metadata,
         beautyRequest: effectiveInvokeContext.normalized_need.beauty_request,
       });
+      // Instrumented because it is the LAST await before serialization: an unbounded wait here was
+      // invisible in fpm_stage_breakdown, which is how it went unnoticed while partners paid for it.
+      const canonicalChainJoinStartedAt = Date.now();
       enriched = await attachCanonicalChainRecallTelemetryFromPromise(
         enriched,
         canonicalChainRecallPromise,
       );
+      recordFpmStage('canonical_chain_join', canonicalChainJoinStartedAt);
     }
 
       const { attachBeautyExpertV1ToResponse } = require('./modules/orchestration/aurora_beauty/beautyExpertV1');
@@ -51836,6 +51891,12 @@ async function runPdpCorePrewarmPass() {
 
 module.exports = app;
 module.exports._debug = {
+  // Latency property: the loopback self-call gets its own budget and never timeout-retries. Exported so
+  // the policy is asserted directly, not inferred from the 12k-line handler it protects.
+  resolveSelfInvokeBudget,
+  // Correctness property: despite the name, this applies a strict-empty PRODUCT rescue and therefore must
+  // never be raced against a timeout. Exported so that is asserted, not just commented.
+  attachCanonicalChainRecallTelemetryFromPromise,
   // Security property: the raw wire bytes of an ACP delegate_payment request (raw PAN + CVC) are never
   // stashed on `req.rawBody`. Exported so that can be asserted directly rather than inferred.
   shouldCaptureAcpRawBody,

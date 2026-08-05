@@ -139,6 +139,20 @@ jobs:
       # "\n"). A route test cannot prove that — everything preceding the
       # dispatch is synchronous, so the commit timer never fires there — which
       # is exactly the "test that cannot fail" shape this job exists to avoid.
+      # ADDED 2026-08-05: `commerce_search_self_invoke_budget`, confirmed green
+      # (6/6) before landing AND mutation-checked — reverting the budget wiring,
+      # the `disableTimeoutRetry: selfInvoked` policy, or the `selfInvoked` flag
+      # on find_products_multi each fail a test. It guards the cold-search
+      # latency fix: the loopback self-call gets its own budget and is attempted
+      # ONCE, because a retry re-ran the whole pipeline concurrently and doubled
+      # partner latency to ~2x the real work.
+      # It ALSO carries the counter-invariant, which matters more than the perf:
+      # the canonical-chain await must NOT be raced against a budget. Its name
+      # says telemetry, but it applies a strict-empty PRODUCT rescue, so
+      # abandoning the wait serves an empty result where products existed. A
+      # first cut of this PR did exactly that; the guard test is what stops it
+      # coming back. Boots the real server via supertest + nock, so it needs the
+      # npm ci above.
       - name: Run node:test suites
         run: |
           node --test \
@@ -161,7 +175,8 @@ jobs:
             tests/acp_delegate_payment_refusal.node.test.cjs \
             tests/public_read_mcp_heartbeat.node.test.cjs \
             tests/commerce_mcp_route_heartbeat.node.test.cjs \
-            tests/commerce_mcp_heartbeat_gate.node.test.cjs
+            tests/commerce_mcp_heartbeat_gate.node.test.cjs \
+            tests/commerce_search_self_invoke_budget.node.test.cjs
 
   jest:
     runs-on: ubuntu-latest
