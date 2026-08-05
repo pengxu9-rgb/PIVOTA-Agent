@@ -71,7 +71,7 @@ function asString(value) {
  * Guard columns are selected (not filtered) so blocked rows stay visible in
  * the report instead of silently vanishing from the candidate set.
  */
-const COHORT_SQL = `
+const COHORT_SQL_HEAD = `
   SELECT
     cp.product_key,
     cp.content_key,
@@ -97,9 +97,25 @@ const COHORT_SQL = `
       WHERE a.attached_product_key = cp.product_key
         AND a.status = 'active'
     )
-    AND eps.status = 'active'
     AND coalesce(eps.attached_product_key, '') NOT IN ('', cp.product_key)
 `;
+
+/**
+ * The seed whose back-pointer moved is normally ACTIVE — that is the evidence
+ * a dedup deliberately re-pointed it. A seed that has since been deactivated
+ * leaves an identical stranded row behind, but the re-pointing evidence is
+ * weaker, so those need an explicit opt-in (--include-inactive-seeds) rather
+ * than riding along silently. Every guard still applies either way; measured
+ * on prod 2026-08-05 the inactive variant is 25 rows, all of which pass.
+ */
+function buildCohortSql({ includeInactiveSeeds = false } = {}) {
+  return includeInactiveSeeds
+    ? COHORT_SQL_HEAD
+    : `${COHORT_SQL_HEAD}    AND eps.status = 'active'\n`;
+}
+
+// Back-compat for callers/tests that want the default (active-seed) cohort.
+const COHORT_SQL = buildCohortSql();
 
 // A canonical_url is "downgraded" when it points at a regional storefront or a
 // promo/bundle page rather than the primary product page. Archiving a row whose
@@ -115,6 +131,21 @@ const FIRST_PARTY_KEY_RE = /^prod::merch_/i;
 function isDowngradedUrl(url) {
   const v = asString(url);
   return v !== '' && DOWNGRADED_URL_RE.test(v);
+}
+
+/**
+ * Title comparison key. Trademark glyphs and internal whitespace runs are
+ * presentation, not product identity — "MakeWaves® Mascara" and "MakeWaves
+ * Mascara" are the same mascara, and blocking on that difference held a
+ * genuine duplicate live on prod. Anything beyond these two normalizations is
+ * a real title difference and must still block.
+ */
+function titleKey(title) {
+  return asString(title)
+    .toLowerCase()
+    .replace(/[®™©]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 /**
@@ -135,7 +166,7 @@ function blockReasonFor(row) {
   if (!asString(r.content_key) || asString(r.content_key) !== asString(r.canonical_content_key)) {
     return 'content_key_mismatch';
   }
-  if (asString(r.title).toLowerCase() !== asString(r.canonical_title).toLowerCase()) {
+  if (!titleKey(r.title) || titleKey(r.title) !== titleKey(r.canonical_title)) {
     return 'title_mismatch';
   }
 
@@ -158,12 +189,18 @@ function assertWriteConfirmed({ write, confirm }) {
   }
 }
 
-async function fetchCohort({ domain = '', limit = 0 }) {
+async function fetchCohort({ domain = '', limit = 0, includeInactiveSeeds = false, productKeys = [] }) {
   const params = [];
-  let sql = COHORT_SQL;
+  let sql = buildCohortSql({ includeInactiveSeeds });
   if (domain) {
     params.push(domain.toLowerCase());
     sql += ` AND lower(coalesce(cp.source_domain, '')) = $${params.length}`;
+  }
+  // Narrows the cohort to named rows. NOT a guard bypass — every candidate
+  // still has to pass blockReasonFor.
+  if (productKeys.length) {
+    params.push(productKeys);
+    sql += ` AND cp.product_key = ANY($${params.length}::text[])`;
   }
   sql += ' ORDER BY cp.product_key ASC';
   if (limit > 0) {
@@ -201,10 +238,10 @@ async function archiveBatch(productKeys) {
   return Number(res.rowCount || 0);
 }
 
-async function run({ write, confirm, domain, limit, batchSize }) {
+async function run({ write, confirm, domain, limit, batchSize, includeInactiveSeeds = false, productKeys = [] }) {
   assertWriteConfirmed({ write, confirm });
 
-  const cohort = await fetchCohort({ domain, limit });
+  const cohort = await fetchCohort({ domain, limit, includeInactiveSeeds, productKeys });
   const eligible = [];
   const blocked = [];
   for (const row of cohort) {
@@ -254,16 +291,23 @@ async function main() {
   const domain = asString(argValue('domain')).toLowerCase();
   const limit = Math.max(0, Number(argValue('limit', '0')) || 0);
   const batchSize = Math.max(1, Number(argValue('batch-size', String(DEFAULT_BATCH_SIZE))) || DEFAULT_BATCH_SIZE);
+  const includeInactiveSeeds = hasFlag('include-inactive-seeds');
+  const productKeys = asString(argValue('product-key')).split(',').map((s) => s.trim()).filter(Boolean);
   const out = asString(argValue('out'));
 
   assertWriteConfirmed({ write, confirm });
 
-  const result = await run({ write, confirm, domain, limit, batchSize });
+  const result = await run({ write, confirm, domain, limit, batchSize, includeInactiveSeeds, productKeys });
   const report = {
     plan: 'adr020_archive_stranded_external_seed_mirrors',
     generated_at: new Date().toISOString(),
     mode: write ? 'write' : 'dry_run',
-    filters: { domain: domain || null, limit: limit || null },
+    filters: {
+      domain: domain || null,
+      limit: limit || null,
+      include_inactive_seeds: includeInactiveSeeds,
+      product_keys: productKeys.length ? productKeys : null,
+    },
     batch_size: batchSize,
     ...result,
   };
@@ -292,9 +336,11 @@ module.exports = {
   CONFIRM_TOKEN,
   DEFAULT_BATCH_SIZE,
   COHORT_SQL,
+  buildCohortSql,
   assertWriteConfirmed,
   blockReasonFor,
   isDowngradedUrl,
+  titleKey,
   fetchCohort,
   archiveBatch,
   run,

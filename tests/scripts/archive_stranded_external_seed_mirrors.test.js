@@ -8,9 +8,11 @@ const db = require('../../src/db');
 const {
   CONFIRM_TOKEN,
   COHORT_SQL,
+  buildCohortSql,
   assertWriteConfirmed,
   blockReasonFor,
   isDowngradedUrl,
+  titleKey,
   fetchCohort,
   archiveBatch,
   run,
@@ -58,6 +60,31 @@ describe('blockReasonFor (duplicate-proof guards)', () => {
 
   test('blocks when titles disagree', () => {
     expect(blockReasonFor(safeRow({ canonical_title: 'Something Else' }))).toBe('title_mismatch');
+  });
+
+  test('treats trademark glyphs and whitespace runs as presentation, not identity', () => {
+    // Prod 2026-08-05: "MakeWaves® Mascara" vs "MakeWaves Mascara" held a
+    // genuine duplicate live. Same mascara.
+    expect(titleKey('MakeWaves® Mascara')).toBe(titleKey('MakeWaves Mascara'));
+    expect(titleKey('Brow  1980™')).toBe(titleKey('brow 1980'));
+    expect(titleKey('  Bronze Balm©  ')).toBe('bronze balm');
+
+    expect(blockReasonFor(safeRow({
+      title: 'MakeWaves® Mascara',
+      canonical_title: 'MakeWaves Mascara',
+    }))).toBeNull();
+  });
+
+  test('normalization does not collapse genuinely different titles', () => {
+    expect(titleKey('Brow 1980')).not.toBe(titleKey('Brow 1990'));
+    expect(blockReasonFor(safeRow({
+      title: 'MakeWaves® Mascara Mini',
+      canonical_title: 'MakeWaves Mascara',
+    }))).toBe('title_mismatch');
+  });
+
+  test('blocks when a title is empty after normalization', () => {
+    expect(blockReasonFor(safeRow({ title: '®', canonical_title: '®' }))).toBe('title_mismatch');
   });
 
   test('is null-safe on garbage input', () => {
@@ -155,6 +182,28 @@ describe('cohort SQL', () => {
     expect(sql).toContain('$1');
     expect(sql).toContain('$2');
     expect(params).toEqual(['example.com', 25]);
+  });
+
+  test('inactive seeds are excluded unless explicitly opted in', () => {
+    expect(buildCohortSql()).toContain(`eps.status = 'active'`);
+    expect(buildCohortSql({ includeInactiveSeeds: false })).toContain(`eps.status = 'active'`);
+    // Opt-in drops only the seed-status filter; the re-pointed and
+    // no-active-backpointer conditions still hold.
+    const opened = buildCohortSql({ includeInactiveSeeds: true });
+    expect(opened).not.toContain(`eps.status = 'active'`);
+    expect(opened).toContain(`coalesce(eps.attached_product_key, '') NOT IN ('', cp.product_key)`);
+    expect(opened).toContain('NOT EXISTS');
+  });
+
+  test('--product-key narrows the cohort but is not a guard bypass', async () => {
+    db.query.mockClear();
+    await fetchCohort({ productKeys: ['k1', 'k2'] });
+    const [sql, params] = db.query.mock.calls[0];
+    expect(sql).toContain('cp.product_key = ANY($1::text[])');
+    expect(params).toEqual([['k1', 'k2']]);
+    // Guards live in blockReasonFor, which run() applies to every fetched row
+    // regardless of how the cohort was narrowed.
+    expect(blockReasonFor(safeRow({ canonical_content_key: 'other' }))).toBe('content_key_mismatch');
   });
 });
 
