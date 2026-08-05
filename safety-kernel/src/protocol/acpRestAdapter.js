@@ -77,6 +77,7 @@ export function verifyAcpSignature({ signature, timestamp, rawBody, secret, maxS
  *                                            // carries ATTESTED buyer fields; see requireBuyer.
  *   getProducts?: (query) => Promise<Array>, // product feed source
  *   mapFeedItem?: (product) => object,       // product -> ACP feed item
+ *   variantResolutionTimeoutMs?: number,     // bound on the door's default-variant resolution (see below)
  *   maxClockSkewMs?: number,
  *   now?: () => number,
  * }} deps
@@ -147,6 +148,59 @@ export function createAcpRestAdapter(deps = {}) {
     return parsed;
   }
 
+  // ---- default-variant resolution (see the intake section below for WHY) ----------------------------------
+
+  // Bounded so a slow or hanging product read can never add an unbounded stall to session creation. The whole
+  // batch shares ONE deadline, so a 20-item cart costs the same wall clock as a 1-item cart. Expiry is a
+  // REFUSAL, never a fall-through.
+  const variantResolutionTimeoutMs = Number.isFinite(deps.variantResolutionTimeoutMs) && deps.variantResolutionTimeoutMs > 0
+    ? deps.variantResolutionTimeoutMs
+    : DEFAULT_VARIANT_RESOLUTION_TIMEOUT_MS;
+
+  // The SAME read the executor already exposes to every other protocol surface: canonical `get_product` ->
+  // read('get_product_detail'). No new transport, no new credential, no second copy of the read path. The
+  // canonical contract marks get_product `requiresUserRef:false, mutating:false`, so this passes no gate it
+  // could weaken: no idempotency key, no session binding, no money path. ctx carries the verified buyer for
+  // upstream attribution only.
+  async function readProductVariantIds(product_id, merchant_id, ctx) {
+    const product = { product_id };
+    if (nonEmpty(merchant_id)) product.merchant_id = merchant_id;
+    return variantIdsFromProductRead(await executor.execute('get_product', { payload: { product } }, ctx));
+  }
+
+  // Fill in `variant_id` for every item that arrived without one. FAIL-CLOSED at every exit: a read that
+  // throws, expires, resolves nothing, or resolves more than one candidate REFUSES the item. Nothing here can
+  // fall through to a forged id — the only value ever written is one the product read returned.
+  async function resolveDefaultVariants(items, merchant_id, ctx) {
+    const needing = items.filter((it) => !nonEmpty(it.variant_id));
+    if (needing.length === 0) return;
+    // One read per DISTINCT product_id (the same product twice in a cart is one lookup).
+    const byProduct = new Map(needing.map((it) => [it.product_id, null]));
+    const productIds = [...byProduct.keys()];
+    let resolved;
+    try {
+      resolved = await withDeadline(
+        Promise.all(productIds.map((pid) => readProductVariantIds(pid, merchant_id, ctx))),
+        variantResolutionTimeoutMs,
+      );
+    } catch {
+      // An errored/expired lookup is a REFUSAL. The internal cause is never surfaced (it can carry ids and
+      // upstream detail); the caller is told what is actionable — retry, or name the variant.
+      throw itemVariantRefusal('resolution_unavailable', VARIANT_RESOLUTION_UNAVAILABLE_MESSAGE);
+    }
+    productIds.forEach((pid, i) => byProduct.set(pid, resolved[i]));
+    for (const it of needing) {
+      const variantIds = byProduct.get(it.product_id) ?? [];
+      if (variantIds.length === 0) {
+        throw itemVariantRefusal('no_variants', VARIANT_NOT_RESOLVABLE_MESSAGE, { variant_count: 0 });
+      }
+      if (variantIds.length > 1) {
+        throw itemVariantRefusal('ambiguous', variantAmbiguousMessage(variantIds.length), { variant_count: variantIds.length });
+      }
+      it.variant_id = variantIds[0];
+    }
+  }
+
   // ---- handlers -------------------------------------------------------------------------------------------
 
   async function createCheckoutSession(req) {
@@ -155,7 +209,8 @@ export function createAcpRestAdapter(deps = {}) {
       const idempotency_key = requireIdempotencyKey(req);
       const buyer = await requireBuyer(req);
       const { user_ref } = buyer;
-      const quote = mapItemsToQuote(trustedBody(req), buyer); // priced from the SIGNED bytes (validates non-empty items)
+      // priced from the SIGNED bytes (validates non-empty items; resolves each item's default variant)
+      const quote = await mapItemsToQuote(trustedBody(req), buyer, resolveDefaultVariants);
 
       // ACP-layer create idempotency (Codex P1): a replayed (buyer, key) returns the ORIGINAL session instead
       // of minting a new one — no quote/inventory-hold amplification. (Concurrent first-time creates with the
@@ -190,7 +245,7 @@ export function createAcpRestAdapter(deps = {}) {
       // An update RE-MINTS the quote snapshot (executor: create/update share previewQuote), and the snapshot
       // is the ONLY carrier of buyer_context on this lane — so the update body must carry the buyer/address
       // intake again, exactly as create did. Anything it omits is not "kept", it is DROPPED.
-      const quote = mapItemsToQuote(trustedBody(req), buyer);
+      const quote = await mapItemsToQuote(trustedBody(req), buyer, resolveDefaultVariants);
       const ctx = { user_ref, acp_session_id };
       const session = await executor.execute('update_checkout_session', { idempotency_key, session_id: stored.quote_id, quote }, ctx);
       await sessionStore.set(acp_session_id, { ...stored, quote_id: session.session_id });
@@ -328,10 +383,40 @@ const pathId = (req) => {
 //                      name, address_line1, city, postal_code, country. UNCONDITIONAL at order creation.
 //   - variant_id     : the shared `buildQuotePreviewV2Body` SYNTHESISES `variant_id = variant_id || sku ||
 //                      product_id` and DROPS any item with no product_id. That builder is shared with other
-//                      lanes and is deliberately NOT changed here — the refusal lives at this door instead.
+//                      lanes and is deliberately NOT changed here — this door RESOLVES the variant instead,
+//                      so the forging fallback is never what fills the field on this lane (see below).
 //
 // The refusal bodies below name FIELDS, never VALUES: a buyer email is PII and must not reach an error body
 // or a log line, so nothing here ever echoes the address it rejected.
+//
+// ---- ITEM IDENTITY: RESOLVE, DON'T FORGE, AND DON'T REFUSE WHAT IS RESOLVABLE ------------------------------
+//
+// An earlier revision of this door refused ANY item without a real `variant_id`. That refusal was
+// UNSATISFIABLE from Pivota's own ACP feed, which publishes `{id (sig_*), title, price, brand, availability,
+// currency, description, image_link, link}` and NO variant identity whatsoever — so an agent that discovered a
+// product through GET /acp/feed had nowhere to obtain a variant_id and could never open a checkout session.
+//
+// The door therefore RESOLVES the product's default variant, and refuses only when resolution is genuinely
+// ambiguous or impossible:
+//   exactly one variant  -> use it
+//   zero variants        -> refuse (`no_variants`)
+//   more than one        -> refuse (`ambiguous`, with the count — the door will not guess an option)
+//   read errors/expires  -> refuse (`resolution_unavailable`)
+//
+// Three properties this must keep, in order of importance:
+//
+//  1. NEVER synthesise a variant id from a product id. The only value ever written into `variant_id` here is
+//     one the product read returned. A forged id does not fail loudly — it PRICES A DIFFERENT CART and
+//     succeeds, which is the whole reason this path exists.
+//  2. FAIL CLOSED. Every non-unique outcome (including a read that throws or times out) refuses the item.
+//     There is no path from a failed resolution to a priced quote.
+//  3. REFUSE BEFORE PRICING. Resolution runs inside mapItemsToQuote, i.e. before the executor is asked for
+//     `preview_quote` — a refused request performs no pricing call and takes no inventory hold.
+//
+// The resolved id's SHAPE is never inspected. Live feed products resolve to real storefront ids
+// (`48930014462260`) and to synthetic canonical placeholders (`merit:c7e0303d89a516b5::canonical`) alike;
+// telling those apart is index-lane knowledge that must not leak into a protocol door. If a resolved id later
+// fails to price, that surfaces as a quote failure — fail-closed and diagnosable.
 
 // The five fields pivota-backend `_coerce_shipping_address` requires, in its own order.
 const REQUIRED_ADDRESS_FIELDS = Object.freeze(['name', 'address_line1', 'city', 'postal_code', 'country']);
@@ -371,12 +456,44 @@ const BUYER_EMAIL_REQUIRED_MESSAGE = [
   'used only when the credential carries none.',
 ].join(' ');
 
-const ITEM_IDENTITY_REQUIRED_MESSAGE = [
-  'Every item must carry BOTH a `product_id` and a real `variant_id`.',
-  'A `sku_id` alone is not resolvable at this door, and a missing `variant_id` would be filled in from the',
-  '`product_id` — pricing a cart that does not exist and that order creation would reject. Re-run product',
-  'discovery to obtain the variant identifier for the exact option the buyer chose.',
+// Every item-identity refusal keeps the SAME contract-stable code (QUOTE_REQUIRED) and the same
+// `detail.reason` (`acp_item_identity_required`); `detail.variant_resolution` is what distinguishes the
+// cases, and `detail.variant_count` carries the count when one is known. `required_item_fields` is kept on
+// all of them because a fully-specified item resolves whatever the outcome was.
+function itemVariantRefusal(variant_resolution, message, extra = {}) {
+  return intakeRefusal('QUOTE_REQUIRED', 'acp_item_identity_required', message, {
+    required_item_fields: ['product_id', 'variant_id'],
+    variant_resolution,
+    ...extra,
+  });
+}
+
+const ITEM_PRODUCT_ID_REQUIRED_MESSAGE = [
+  'Every item must carry a `product_id`.',
+  'A `sku_id` alone is not resolvable at this door: the shared quote-body builder reads `sku`, not `sku_id`,',
+  'so a `sku_id`-only cart prices as an EMPTY cart. `variant_id` is optional — when it is omitted this door',
+  "resolves the product's default variant and refuses if that resolution is ambiguous or impossible.",
 ].join(' ');
+
+const VARIANT_NOT_RESOLVABLE_MESSAGE = [
+  'No purchasable variant could be resolved for this item: the product read returned no variants.',
+  'Supply `variant_id` explicitly, or re-run product discovery — as it stands this product cannot be priced.',
+].join(' ');
+
+const variantAmbiguousMessage = (count) => [
+  `This item is ambiguous: the product resolves to ${count} variants and the request names none.`,
+  'Supply `variant_id` for the exact option the buyer chose. This door will not pick one for you, because',
+  'guessing prices a cart the buyer did not ask for.',
+].join(' ');
+
+const VARIANT_RESOLUTION_UNAVAILABLE_MESSAGE = [
+  "The item's default variant could not be resolved: the product read failed or timed out.",
+  'The request is refused rather than priced against a guessed variant. Retry, or supply `variant_id`.',
+].join(' ');
+
+// Short by design: this runs inside checkout-session creation, so it bounds how long an agent waits before
+// the door answers. Overridable per-wiring via `variantResolutionTimeoutMs`.
+const DEFAULT_VARIANT_RESOLUTION_TIMEOUT_MS = 3000;
 
 const ADDRESS_INCOMPLETE_MESSAGE = [
   'The fulfillment address is incomplete. An address is optional here — a checkout session may be created',
@@ -391,20 +508,25 @@ const ADDRESS_INCOMPLETE_MESSAGE = [
 // so a `{}` / `{items:[]}` body can't drive a default/zero-item quote on a loose backend (Codex P2).
 //
 // `buyer` is the VERIFIED identity from requireBuyer, not anything read from the body.
-function mapItemsToQuote(body, buyer = {}) {
+//
+// `resolveDefaultVariants` is the closure-bound resolver above; it is the ONLY step in here that talks to
+// another service, and it runs LAST — after every cheap refusal — so a request that was going to be refused
+// anyway never costs an upstream read.
+async function mapItemsToQuote(body, buyer = {}, resolveDefaultVariants) {
   const b = isPlainObject(body) ? body : {};
   const rawItems = Array.isArray(b.items) ? b.items : [];
   if (rawItems.length === 0) throw new PivotaCommerceError('QUOTE_REQUIRED', { reason: 'no_items' });
   const items = rawItems.map((it) => {
     const item = pick(it, ['product_id', 'sku_id', 'variant_id', 'quantity']);
-    // P3. Both ids are required because the shared quote-body builder needs both: no product_id and the
-    // item is silently DROPPED from offer_refs (a `sku_id`-only cart prices as an EMPTY cart); no variant_id
-    // and one is forged from the product_id. Either way the priced cart is not the requested cart.
-    if (!nonEmpty(item.product_id) || !nonEmpty(item.variant_id)) {
-      throw intakeRefusal('QUOTE_REQUIRED', 'acp_item_identity_required', ITEM_IDENTITY_REQUIRED_MESSAGE, {
-        required_item_fields: ['product_id', 'variant_id'],
-      });
+    // P3. `product_id` is REQUIRED: without it the shared quote-body builder silently DROPS the item from
+    // offer_refs, so a `sku_id`-only cart prices as an EMPTY cart. `variant_id` is optional and resolved
+    // below; an unusable value (empty string, non-string) is treated as ABSENT so resolution fills it
+    // rather than passing junk to pricing.
+    if (!nonEmpty(item.product_id)) {
+      throw itemVariantRefusal('product_id_required', ITEM_PRODUCT_ID_REQUIRED_MESSAGE);
     }
+    if (nonEmpty(item.variant_id)) item.variant_id = item.variant_id.trim();
+    else delete item.variant_id;
     if (!Number.isSafeInteger(item.quantity) || item.quantity < 1) throw new PivotaCommerceError('QUOTE_REQUIRED', { reason: 'item_bad_quantity' });
     return item;
   });
@@ -433,7 +555,64 @@ function mapItemsToQuote(body, buyer = {}) {
     ?? joinName(acpBuyer.first_name, acpBuyer.last_name)
     ?? (nonEmpty(b.customer_name) ? b.customer_name.trim() : undefined);
   if (customer_name) quote.customer_name = customer_name;
+
+  // LAST: resolve a default variant for every item that arrived without one (items are mutated in place, so
+  // the resolved id is what reaches `quote.items` and therefore pricing). Deliberately after the buyer/address
+  // refusals — those are free, this one is a network read — and deliberately before the caller's
+  // `preview_quote`, so a refused request never prices anything or takes an inventory hold.
+  if (typeof resolveDefaultVariants !== 'function') {
+    // FAIL CLOSED on a wiring mistake too: with no resolver threaded, an item that still lacks a variant_id
+    // would reach pricing unresolved and be forged by the shared builder — the exact hole this door closes.
+    // (A fully-specified cart is unaffected; there is nothing to resolve.)
+    if (items.some((it) => !nonEmpty(it.variant_id))) {
+      throw itemVariantRefusal('resolution_unavailable', VARIANT_RESOLUTION_UNAVAILABLE_MESSAGE);
+    }
+  } else {
+    await resolveDefaultVariants(items, quote.merchant_id, { user_ref: buyer.user_ref });
+  }
   return quote;
+}
+
+// A product read -> the DISTINCT variant ids it published, in order. Accepts the shapes the canonical
+// `get_product` read returns across lanes (`{product:{variants}}`, `{data:{product:{variants}}}`, or a bare
+// product), and both spellings of the id. Nothing is derived: an entry with no id of its own contributes
+// nothing, and a product with no variants yields an empty list (which REFUSES upstream).
+function variantIdsFromProductRead(result) {
+  const r = isPlainObject(result) ? result : {};
+  const product = isPlainObject(r.product) ? r.product
+    : isPlainObject(r.data) && isPlainObject(r.data.product) ? r.data.product
+    : r;
+  const ids = [];
+  for (const v of Array.isArray(product.variants) ? product.variants : []) {
+    const id = variantIdOf(v);
+    if (id && !ids.includes(id)) ids.push(id);
+  }
+  return ids;
+}
+
+function variantIdOf(v) {
+  if (!isPlainObject(v)) return undefined;
+  for (const key of ['variant_id', 'id']) {
+    const raw = v[key];
+    if (typeof raw === 'string' && raw.trim() !== '') return raw.trim();
+    // Numeric storefront ids are common upstream; stringifying the value the READ returned is not
+    // synthesis — it is still that variant's own id, never anything derived from the product id.
+    if (typeof raw === 'number' && Number.isFinite(raw)) return String(raw);
+  }
+  return undefined;
+}
+
+// Race a promise against a deadline. The loser's later settlement is already handled by the race, so a slow
+// read that finishes after expiry cannot surface as an unhandled rejection; the timer is unref'd so it never
+// holds the process open.
+function withDeadline(promise, ms) {
+  if (!(ms > 0)) return promise;
+  let timer;
+  const expiry = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error('variant_resolution_timeout')), ms);
+    if (timer && typeof timer.unref === 'function') timer.unref();
+  });
+  return Promise.race([promise, expiry]).finally(() => clearTimeout(timer));
 }
 
 function joinName(first, last) {

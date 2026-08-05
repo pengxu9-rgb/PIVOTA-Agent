@@ -220,5 +220,57 @@ describe('Agent checkout ACP REST + UCP discovery doors', () => {
       // And the refusal names FIELDS, never a value.
       assert.ok(!JSON.stringify(noEmailRes.body).includes('@'), 'refusal body must not echo any address');
     });
+
+    it('an item with NO variant_id is resolved through the LIVE executor read, and fails CLOSED when that read cannot answer', async () => {
+      // The door resolves an item's default variant through the canonical `get_product` read on the SAME
+      // shared executor src/server.js wires for /mcp — no separate transport is threaded for it. That read
+      // is unreachable in this test (no backend), which is precisely the interesting case: the request must
+      // be REFUSED at intake, not priced against a variant_id forged from the product_id.
+      //
+      // The discriminator is the status. A forged id would have travelled on to `preview_quote` and produced
+      // the 503 the test above asserts for a fully-specified item; a 400 here can only come from the door.
+      const { SignJWT, generateKeyPair, exportJWK } = await import('jose');
+      const { publicKey, privateKey } = await generateKeyPair('ES256');
+      const pub = await exportJWK(publicKey);
+      pub.kid = 'buyer-k3';
+      pub.alg = 'ES256';
+      const localApp = bootApp({
+        ...STRICT_BASE,
+        AGENT_CHECKOUT_ACP_REST_ENABLED: '1',
+        ACP_SIGNING_SECRET: ACP_SECRET,
+        IDENTITY_ISSUERS_JSON: JSON.stringify([
+          { iss: 'https://buyer.test.local', aud: BUYER_AUD, jwks: { keys: [pub] }, algs: ['ES256'] },
+        ]),
+      });
+      const buyerJwt = await new SignJWT({ email: 'buyer-124@example.com', email_verified: true })
+        .setProtectedHeader({ alg: 'ES256', kid: 'buyer-k3' })
+        .setIssuer('https://buyer.test.local')
+        .setAudience(BUYER_AUD)
+        .setSubject('buyer-124')
+        .setIssuedAt()
+        .setExpirationTime('10m')
+        .sign(privateKey);
+
+      const rawBody = JSON.stringify({ items: [{ product_id: 'p1', quantity: 1 }], merchant_id: 'm1' });
+      const timestamp = String(Date.now());
+      const signature = crypto.createHmac('sha256', ACP_SECRET).update(`${timestamp}.${rawBody}`).digest('hex');
+      const res = await request(localApp)
+        .post('/acp/checkout_sessions')
+        .set('content-type', 'application/json')
+        .set('idempotency-key', 'idem-4-novariant')
+        .set('signature', signature)
+        .set('timestamp', timestamp)
+        .set('x-buyer-authorization', `Bearer ${buyerJwt}`)
+        .send(rawBody);
+
+      assert.equal(res.status, 400, `expected an intake refusal, got ${res.status}: ${JSON.stringify(res.body)}`);
+      assert.equal(res.body?.code, 'QUOTE_REQUIRED');
+      assert.equal(res.body?.detail?.reason, 'acp_item_identity_required');
+      assert.ok(
+        ['resolution_unavailable', 'no_variants'].includes(res.body?.detail?.variant_resolution),
+        `an unanswerable read must refuse, got ${JSON.stringify(res.body?.detail)}`,
+      );
+      assert.deepEqual(res.body?.detail?.required_item_fields, ['product_id', 'variant_id']);
+    });
   });
 });

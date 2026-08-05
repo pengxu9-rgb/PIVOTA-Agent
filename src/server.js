@@ -31416,6 +31416,13 @@ async function getCommerceAcpRestAdapter() {
         });
         return quotable;
       };
+      // ITEM IDENTITY: nothing extra is threaded for it, ON PURPOSE. The door resolves an item's default
+      // variant through the canonical `get_product` read on the SHARED executor passed right below — the
+      // same read /mcp serves — so it needs no second transport and no second credential. That is what
+      // keeps `buildQuotePreviewV2Body`'s `variant_id = variant_id || sku || product_id` fallback (still in
+      // this file, still used by the other lanes, deliberately unchanged) from ever being what fills the
+      // field on the ACP lane: by the time a quote leaves the door, every item carries an id the PRODUCT
+      // READ returned, or the request was refused. See the item-identity section in acpRestAdapter.js.
       return createAcpRestAdapter({
         executor,
         sessionStore,
@@ -31423,6 +31430,13 @@ async function getCommerceAcpRestAdapter() {
         resolveUserRef,
         getProducts,
         mapFeedItem,
+        // The resolution read is bounded so it cannot stall session creation, and expiry REFUSES. That makes
+        // the bound operationally load-bearing: if the product-detail lane slows down, every variant-less
+        // cart starts refusing. `undefined` keeps the adapter's own short default (3s); this env exists so
+        // the bound can be moved without a deploy.
+        variantResolutionTimeoutMs: Number(process.env.ACP_ITEM_VARIANT_RESOLUTION_TIMEOUT_MS) > 0
+          ? Number(process.env.ACP_ITEM_VARIANT_RESOLUTION_TIMEOUT_MS)
+          : undefined,
         // Env-gated (ACP_PUBLIC_FEED). Only relaxes the FEED's signature check;
         // checkout endpoints stay signature-gated. A public catalog feed is how
         // frontier discovery surfaces (ChatGPT/Google shopping) ingest the index.
