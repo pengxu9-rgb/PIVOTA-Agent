@@ -5,6 +5,11 @@
 const SENSITIVE_KEYS = new Set([
   'ap2_state', 'confirmation_token', 'payment_token', 'token', 'card', 'card_number',
   'pan', 'cvv', 'cvc', 'mandate', 'mandate_id', 'authorization', 'secret', 'client_secret', 'api_key',
+  // Buyer PII. The ACP door now captures a buyer email (P1 intake), so it travels inside quote/order
+  // payloads; a logged payload must not become a place a buyer's address is readable. Masked rather than
+  // dropped so a log line still shows the field WAS present — which is what a missing-email investigation
+  // actually needs. redact() feeds loggers/audit and the /invoke error detail; it never builds a success body.
+  'email', 'customer_email', 'buyer_email', 'recipient_email',
 ]);
 
 // Field names whose values are amounts-as-PII: keep the key, mask the value.

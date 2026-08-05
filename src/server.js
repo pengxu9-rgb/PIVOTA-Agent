@@ -31259,7 +31259,14 @@ async function getCommerceAcpRestAdapter() {
         const token = extractAcpBuyerToken(req);
         if (!token) return undefined;
         try {
-          return (await verifyUserToken(token)).user_ref;
+          // Buyer-identity OBJECT, not the bare user_ref. The ACP door needs the ATTESTED buyer email so
+          // that a caller-asserted `buyer.email` in the request body can only ever FILL a gap and can never
+          // override what the verified credential asserted (PR-E / P1). user_ref derivation is unchanged —
+          // still `iss|sub` via deriveUserRefFromClaims — and nothing about what the verifier ACCEPTS moved.
+          // NOTE: `customer_email` is buyer PII. It is deliberately never logged here or anywhere on this
+          // path; the warn below carries only an error code.
+          const { user_ref, attested_email, attested_name } = await verifyUserToken(token);
+          return { user_ref, customer_email: attested_email, customer_name: attested_name };
         } catch (err) {
           logger.warn({ code: err?.code || 'USER_TOKEN_INVALID' }, 'acp buyer token invalid');
           return undefined;
@@ -31409,6 +31416,13 @@ async function getCommerceAcpRestAdapter() {
         });
         return quotable;
       };
+      // ITEM IDENTITY: nothing extra is threaded for it, ON PURPOSE. The door resolves an item's default
+      // variant through the canonical `get_product` read on the SHARED executor passed right below — the
+      // same read /mcp serves — so it needs no second transport and no second credential. That is what
+      // keeps `buildQuotePreviewV2Body`'s `variant_id = variant_id || sku || product_id` fallback (still in
+      // this file, still used by the other lanes, deliberately unchanged) from ever being what fills the
+      // field on the ACP lane: by the time a quote leaves the door, every item carries an id the PRODUCT
+      // READ returned, or the request was refused. See the item-identity section in acpRestAdapter.js.
       return createAcpRestAdapter({
         executor,
         sessionStore,
@@ -31416,6 +31430,13 @@ async function getCommerceAcpRestAdapter() {
         resolveUserRef,
         getProducts,
         mapFeedItem,
+        // The resolution read is bounded so it cannot stall session creation, and expiry REFUSES. That makes
+        // the bound operationally load-bearing: if the product-detail lane slows down, every variant-less
+        // cart starts refusing. `undefined` keeps the adapter's own short default (3s); this env exists so
+        // the bound can be moved without a deploy.
+        variantResolutionTimeoutMs: Number(process.env.ACP_ITEM_VARIANT_RESOLUTION_TIMEOUT_MS) > 0
+          ? Number(process.env.ACP_ITEM_VARIANT_RESOLUTION_TIMEOUT_MS)
+          : undefined,
         // Env-gated (ACP_PUBLIC_FEED). Only relaxes the FEED's signature check;
         // checkout endpoints stay signature-gated. A public catalog feed is how
         // frontier discovery surfaces (ChatGPT/Google shopping) ingest the index.
