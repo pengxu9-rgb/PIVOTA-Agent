@@ -26004,6 +26004,10 @@ function getUiChatLlmClient() {
 // occasional slow product/search slowness.
 async function callUpstreamWithOptionalRetry(operation, axiosConfig, options = {}) {
   const disableTimeoutRetry = options?.disableTimeoutRetry === true;
+  // Absolute epoch-ms at which the CALLER stops waiting for this whole chain (0/absent = no deadline, and
+  // then nothing below changes). Only the TIMEOUT retry consults it — the busy/503 retry below is not
+  // deadline-aware (moot for find_products_multi, which forces disableBusyRetry, but do not assume it).
+  const deadlineAtMs = Number(options?.deadlineAtMs) > 0 ? Number(options.deadlineAtMs) : 0;
   const disableBusyRetry = options?.disableBusyRetry === true;
   const timeoutRetryableOps = [
     'find_products',
@@ -26136,7 +26140,38 @@ async function callUpstreamWithOptionalRetry(operation, axiosConfig, options = {
         attempt === 1
       ) {
         const prevTimeoutMs = Number(axiosConfig?.timeout || 0) || null;
+        // DON'T START AN ATTEMPT YOU CANNOT FINISH. When the caller races this whole chain against a hard
+        // deadline, a retry begun with less time left than the attempt that just timed out is doomed by
+        // construction — and it fires a SECOND request at an upstream that is by definition already
+        // struggling. The find_products_multi mainline is exactly that shape: a 6s non-beauty deadline over
+        // a 4.5s attempt timeout leaves the retry 1.5s to redo work that just failed in 4.5s, so its only
+        // effects are +1.5s of latency and +1 request under stress. Fail fast on the first timeout instead.
         const retryTimeoutMs = getTimeoutRetryMs(operation, prevTimeoutMs);
+        const remainingDeadlineMs = deadlineAtMs ? deadlineAtMs - Date.now() : null;
+        // Compare against what the PREVIOUS attempt was given; if that is unknown, fall back to what this
+        // retry would be given, so an absent axios timeout cannot silently defeat the check.
+        const budgetNeededMs = prevTimeoutMs || retryTimeoutMs || 0;
+        if (remainingDeadlineMs !== null && remainingDeadlineMs <= budgetNeededMs) {
+          logger.warn(
+            {
+              url: axiosConfig.url,
+              operation,
+              previous_timeout_ms: prevTimeoutMs,
+              remaining_deadline_ms: remainingDeadlineMs,
+            },
+            'Upstream timeout; retry skipped (cannot finish within the caller deadline)',
+          );
+          // The caller's deadline is what actually ended this call, so say so. Without this the escaping
+          // error stays a bare ECONNABORTED and the deadline's own telemetry (fpm_primary_deadline_applied,
+          // route_health, the decision-lock reason) silently disappears — the exact signal an operator
+          // would use to confirm this guard is working. callTrackedUpstream translates the flag.
+          err.deadline_retry_skipped = true;
+          throw err;
+        }
+        // NOT clamped to the remaining deadline. The caller already races this chain against that deadline,
+        // so a clamp buys no latency and no fewer requests — it only makes axios abort a moment BEFORE the
+        // race does, which swaps the deadline error for a bare timeout and drops the deadline telemetry
+        // with it. Let the race be the thing that enforces the deadline.
         if (retryTimeoutMs && retryTimeoutMs !== prevTimeoutMs) {
           axiosConfig.timeout = retryTimeoutMs;
         }
@@ -48568,7 +48603,24 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         normalizedOp === 'find_products_multi' || normalizedOp === 'find_products';
       const startedAt = measureCheckout || measureFpmStage ? Date.now() : 0;
       const hardDeadlineMs = Math.max(0, Number(options?.hardDeadlineMs || 0) || 0);
+      // The deadline is raced below, but the RETRY needs to know about it too — otherwise it happily starts
+      // an attempt the race will kill moments later. Derived here, BEFORE the race timer is armed, so this
+      // value is always slightly EARLIER than the real cutoff (wall clock here, monotonic timer there).
+      // That skew is deliberate: erring early can only decline a retry that was already marginal.
+      const deadlineAtMs = hardDeadlineMs ? Date.now() + hardDeadlineMs : 0;
       let hardDeadlineTimer = null;
+      const buildHardDeadlineError = () => {
+        const deadlineErr = new Error(
+          options?.hardDeadlineMessage || `${normalizedOp || 'upstream'} primary exceeded hard deadline`,
+        );
+        deadlineErr.code = options?.hardDeadlineCode || 'UPSTREAM_HARD_DEADLINE_EXCEEDED';
+        deadlineErr.deadline_ms = hardDeadlineMs;
+        deadlineErr.hard_deadline = true;
+        if (options?.hardDeadlineReason) {
+          deadlineErr.deadline_reason = String(options.hardDeadlineReason);
+        }
+        return deadlineErr;
+      };
       try {
         const upstreamPromise = callUpstreamWithOptionalRetry(op, config, {
           disableTimeoutRetry:
@@ -48576,6 +48628,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           disableBusyRetry:
             options?.disableBusyRetry === true ||
             String(op || '').trim().toLowerCase() === 'find_products_multi',
+          deadlineAtMs,
           onRetry: () => {
             if (measureCheckout) gatewayRetryCount += 1;
           },
@@ -48586,21 +48639,14 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         return await Promise.race([
           upstreamPromise,
           new Promise((_, reject) => {
-            hardDeadlineTimer = setTimeout(() => {
-              const deadlineErr = new Error(
-                options?.hardDeadlineMessage ||
-                  `${normalizedOp || 'upstream'} primary exceeded hard deadline`,
-              );
-              deadlineErr.code = options?.hardDeadlineCode || 'UPSTREAM_HARD_DEADLINE_EXCEEDED';
-              deadlineErr.deadline_ms = hardDeadlineMs;
-              deadlineErr.hard_deadline = true;
-              if (options?.hardDeadlineReason) {
-                deadlineErr.deadline_reason = String(options.hardDeadlineReason);
-              }
-              reject(deadlineErr);
-            }, hardDeadlineMs);
+            hardDeadlineTimer = setTimeout(() => reject(buildHardDeadlineError()), hardDeadlineMs);
           }),
-        ]);
+        ]).catch((err) => {
+          // A retry declined because it could not fit inside this deadline IS a deadline outcome; report it
+          // as one so downstream classification and telemetry are identical to the race firing.
+          if (err && err.deadline_retry_skipped) throw buildHardDeadlineError();
+          throw err;
+        });
       } finally {
         if (hardDeadlineTimer) clearTimeout(hardDeadlineTimer);
         if (measureCheckout) {
@@ -51911,6 +51957,10 @@ module.exports._debug = {
   // Latency property: the loopback self-call gets its own budget and never timeout-retries. Exported so
   // the policy is asserted directly, not inferred from the 12k-line handler it protects.
   resolveSelfInvokeBudget,
+  // Latency property: a retry is never started that the caller's hard deadline will cut off. Exported so
+  // the retry chain is driven directly — the alternative is inferring it from a race inside a 12k-line
+  // handler, which is how the doomed retry survived unnoticed in the first place.
+  callUpstreamWithOptionalRetry,
   // Correctness property: despite the name, this applies a strict-empty PRODUCT rescue and therefore must
   // never be raced against a timeout. Exported so that is asserted, not just commented.
   attachCanonicalChainRecallTelemetryFromPromise,
