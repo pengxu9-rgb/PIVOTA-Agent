@@ -60,7 +60,7 @@ describe('canonicalCatalogSearch.fetchCanonicalChainRows', () => {
     expect(params[3]).toBeLessThanOrEqual(__internal.ROW_LIMIT_MAX);
     expect(sql).toMatch(/FROM catalog_products p/);
     expect(sql).not.toMatch(/LEFT JOIN catalog_skus s ON s\.product_key = c\.product_key/);
-    expect(sql).not.toMatch(/LEFT JOIN catalog_offers o ON o\.sku_key = s\.sku_key/);
+    expect(sql).not.toMatch(/LEFT JOIN catalog_offers o\s+ON o\.sku_key = s\.sku_key/);
     expect(sql).toMatch(/p\.pivota_signature_id/);
     expect(sql).toMatch(/p\.pivota_canonical_url/);
   });
@@ -262,6 +262,36 @@ describe('canonicalCatalogSearch.fetchCanonicalChainRows', () => {
     const { sql } = query.calls[0];
     expect(sql).not.toMatch(/THEN 10 ELSE 0 END AS rank_score/);
     expect(sql).toMatch(/c\.rank_score AS rank_score/);
+  });
+
+  // The sku/offer fan-out branch joined SUPPRESSED offers while the best_offer LATERAL in the same
+  // function has always filtered them. Measured on prod 2026-08-05: 32.9% of offers are suppressed and
+  // 7,208 of those still carry a positive price + currency, with suppression_reason values of
+  // step5_test_rig_retirement / demo_retired_2026_07 / source_currency_or_channel_defect. The row mapper
+  // reads price straight off the joined row, so such a row winning the ordering priced a result off
+  // retired test-rig, retired demo, or currency-defective data.
+  test('sku/offer fan-out join excludes suppressed offers', async () => {
+    const query = makeMockQuery([]);
+    await fetchCanonicalChainRows({ query: 'lipstick', includeSkuOffers: true, deps: { query } });
+    const { sql } = query.calls[0];
+    const joinMatch = sql.match(/LEFT JOIN catalog_offers o\b[\s\S]*?(?=\n\s*(?:LEFT JOIN|INNER JOIN|JOIN|WHERE|GROUP BY|ORDER BY)\b)/);
+    expect(joinMatch).not.toBeNull();
+    expect(joinMatch[0]).toMatch(/o\.suppressed_at IS NULL/);
+  });
+
+  test('the suppressed-offer filter is in the ON clause, so the LEFT JOIN is not silently an INNER JOIN', async () => {
+    // Putting this predicate in WHERE would drop every product that has no live offer — a hidden deletion
+    // rather than a product judged on its merits by the serving gate. Asserting the join stays LEFT and
+    // that no WHERE clause filters on the offer alias is what keeps that distinction honest.
+    const query = makeMockQuery([]);
+    await fetchCanonicalChainRows({ query: 'lipstick', includeSkuOffers: true, deps: { query } });
+    const { sql } = query.calls[0];
+    expect(sql).toMatch(/LEFT JOIN catalog_offers o/);
+    const whereBlock = sql.slice(sql.lastIndexOf('LEFT JOIN catalog_offers o'));
+    const whereIdx = whereBlock.search(/\bWHERE\b/);
+    if (whereIdx !== -1) {
+      expect(whereBlock.slice(whereIdx)).not.toMatch(/o\.suppressed_at/);
+    }
   });
 
   test('default eligibility gates on serving_eligible (buyable)', async () => {
@@ -495,7 +525,8 @@ describe('canonicalCatalogSearch.fetchCanonicalChainRows', () => {
     await fetchCanonicalChainRows({ query: 'lipstick', includeSkuOffers: true, deps: { query } });
     const { sql } = query.calls[0];
     expect(sql).toMatch(/LEFT JOIN catalog_skus s ON s\.product_key = c\.product_key/);
-    expect(sql).toMatch(/LEFT JOIN catalog_offers o ON o\.sku_key = s\.sku_key/);
+    // Multi-line since the suppressed-offer predicate joined the ON clause.
+    expect(sql).toMatch(/LEFT JOIN catalog_offers o\s+ON o\.sku_key = s\.sku_key/);
   });
 
   test('returns the rows array as-is from the underlying query', async () => {

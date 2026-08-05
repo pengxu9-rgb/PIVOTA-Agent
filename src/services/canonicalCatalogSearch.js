@@ -874,10 +874,28 @@ async function fetchCanonicalChainRows(args = {}) {
       NULL::text                 AS offer_source_system,
       NULL::jsonb                AS offer_payload,
       c.rank_score               AS rank_score`;
+  // Suppressed offers are NOT servable, and this fan-out branch used to join them anyway while the
+  // best_offer LATERAL below — the other half of this same function — has always filtered them.
+  //
+  // Measured on prod 2026-08-05: 7,294 of 22,161 offers are suppressed (32.9%), and 7,208 of those still
+  // carry a positive price AND a currency, so they look perfectly servable to the row mapper, which reads
+  // price straight off the joined row. Their suppression_reason says what they actually are:
+  // step5_test_rig_retirement (4,295), demo_retired_2026_07 (2,457), source_currency_or_channel_defect
+  // (466) — retired test-rig data, retired demo data, and the known currency defect. Any one of those
+  // winning the row ordering priced a real result.
+  //
+  // The predicate goes in the ON clause, NEVER in WHERE: this is a LEFT JOIN, and a WHERE would silently
+  // turn it into an INNER JOIN and drop every product with no live offer. In ON, such a product keeps its
+  // row with NULL offer columns and is judged by the serving gate on its merits.
+  //
+  // The fan-out reduction that prompted this (a third of offer rows stop multiplying product x sku x
+  // offer) is the side effect, not the point.
   const skuOfferJoinSql = joinSkuOffers
     ? `
     LEFT JOIN catalog_skus s ON s.product_key = c.product_key
-    LEFT JOIN catalog_offers o ON o.sku_key = s.sku_key`
+    LEFT JOIN catalog_offers o
+      ON o.sku_key = s.sku_key
+      AND o.suppressed_at IS NULL`
     : `
     LEFT JOIN LATERAL (
       SELECT o.currency, o.list_price, o.merchant_effective_price, o.availability
