@@ -17,6 +17,7 @@ import { CANONICAL_OPERATIONS, canonicalOp } from "../../safety-kernel/src/proto
 import { PivotaCommerceError } from "../../safety-kernel/src/errors.js";
 import { sanitizeResult } from "../../safety-kernel/src/protocol/resultSanitizer.js";
 import { deriveUserRef } from "../auth/userRef.js";
+import { createPublicReadCache, stableStringify } from "./publicReadCache.js";
 
 export class UnknownToolError extends Error {
   constructor(name) {
@@ -48,18 +49,133 @@ export class ToolValidationError extends Error {
 const COMMERCE_OPERATIONS = CANONICAL_OPERATIONS.filter((op) => op.kernel !== "external");
 const OP_BY_MCP = Object.freeze(Object.fromEntries(COMMERCE_OPERATIONS.map((op) => [op.mcp, op])));
 
+// --- result cache (search_catalog ONLY) -------------------------------------------------------------------
+//
+// Cold search costs seconds and the commerce lane had no cache at all, so a repeated identical query paid
+// full price every time (measured on prod 2026-08-05: an identical repeat still cost 21.2s).
+//
+// SHARING RESULTS ACROSS CALLERS IS ONLY SAFE BECAUSE search_catalog IS CALLER-INDEPENDENT END TO END.
+// Each leg was verified in the code, not assumed:
+//   1. params are built by ALLOWLIST (toParams) from tool args alone — no identity field can enter;
+//   2. canonicalExecutor's `search_catalog` case calls read(), and read() is `upstream(op, payload)` — the
+//      ctx carrying user_ref / acp_session_id / agent_id is DROPPED, never forwarded;
+//   3. the upstream request forces the INTERNAL api key (forceInternalFallback, forwardAgentUserJwt:false),
+//      AND suppresses X-Buyer-Ref on exactly these cached read lanes (forwardBuyerRef, keyed on
+//      COMMERCE_CACHED_READ_OPS in src/server.js). That header is attached to every other upstream call and
+//      is the one caller-derived byte that would otherwise leave the process — including on the
+//      merchant-scoped find_products lane, which reaches the Python backend where we cannot audit what it
+//      does with it. Suppressed, "the upstream sees one identity" is true BY CONSTRUCTION, not by trusting
+//      a backend we cannot read;
+//   4. the response carries no user, buyer, session or account field.
+// THEREFORE the cache key is the ALLOWLISTED params and NOTHING else (see the note at the getOrCompute call
+// for why params rather than the raw tool args). Adding user_ref/agent_id would shred the hit rate for zero
+// safety gain. If any of the four legs ever changes — most plausibly (2), by threading ctx through read() —
+// this cache MUST be re-scoped or removed.
+//
+// The guard is a test, not this comment: commerceReadCache asserts that two different verified sessions
+// produce byte-identical upstream invocations, recording EVERY argument the upstream receives. Both parts
+// of that sentence were learned the hard way — a draft recorded at a stubbed executor (which stubs out legs
+// 2 and 3 entirely), and its replacement recorded only (op, payload), which let a leak through the third
+// `headers` argument land green.
+//
+// DELIBERATELY search_catalog ALONE. get_alternatives / get_offers / get_intel DO receive ctx in the
+// executor (localReads take (params, ctx)), so they are not covered by the argument above and are not
+// cached until each has its own analysis.
+const CACHEABLE_TOOLS = Object.freeze(["search_catalog"]);
+
+function envValue(name) {
+  return (typeof process !== "undefined" && process.env && process.env[name]) || "";
+}
+
+function positiveIntEnv(name, fallback) {
+  const n = Number(envValue(name));
+  return Number.isFinite(n) && n > 0 ? n : fallback;
+}
+
+function commerceCacheEnabled() {
+  const raw = String(envValue("COMMERCE_READ_CACHE_ENABLED")).trim().toLowerCase();
+  if (raw === "") return true; // default ON, mirroring the public read tier
+  return !["0", "false", "off", "no"].includes(raw);
+}
+
+// A thrown error is not the only answer worth NOT keeping. The upstream returns its body unthrown whenever
+// `ok !== true`, and the search lane can answer HTTP-200 with a degraded envelope and an empty list — so
+// without this a transient degradation is pinned for the full TTL and replayed to every later caller. A
+// legitimately empty result (a real search that matched nothing) is still cached: absence of an error, not
+// presence of products, is the test.
+function isCacheableSearchResult(value) {
+  if (!isPlainObject(value)) return false;
+  if (value.ok === false) return false;
+  if (value.success === false) return false;
+  if (value.error !== undefined && value.error !== null) return false;
+  if (typeof value.status === "string" && value.status.toLowerCase() === "error") return false;
+  return true;
+}
+
+// Cached values are handed to every later caller, so they must not be a shared mutable object: one consumer
+// editing a product row in place would serve the edit to everyone else for the rest of the TTL. Nothing
+// downstream mutates today — the commerce path stringifies, the public tier rebuilds with spreads — but the
+// public tier is exactly where post-processing accretes, and its sourcing filter reads fields the projector
+// later strips. Cloning on read costs a few ms against a search measured in seconds.
+function cloneCachedValue(value, onCloneFailure) {
+  if (value === null || typeof value !== "object") return value;
+  try {
+    return structuredClone(value);
+  } catch (err) {
+    // Non-cloneable values are not something this cache should be holding, but degrade to the shared
+    // reference rather than failing a caller's search. Logged because silently degrading here removes the
+    // isolation above with no other signal that it is gone.
+    if (onCloneFailure) onCloneFailure(err);
+    return value;
+  }
+}
+
 /**
  * Build the MCP commerce tool surface over an already-composed canonical executor.
  * @param {{ execute: (opId:string, params:object, ctx:object)=>Promise<any> }} executor
- * @param {{ log?: object }} [opts]
+ * @param {{ log?: object, cache?: boolean }} [opts] pass cache:false when the CALLER already caches this
+ *   surface's results (the public read tier does). Two stacked caches would put the public tier's own
+ *   documented kill switch behind this one and double the resident payload for no extra hit rate.
  * @returns {{ tools: Array<{name,description,inputSchema}>, callTool: Function, isCommerceTool: Function }}
  */
-export function createCommerceToolSurface(executor, { log } = {}) {
+export function createCommerceToolSurface(executor, { log, cache: cacheOpt = true } = {}) {
   if (!executor || typeof executor.execute !== "function") {
     throw new Error("createCommerceToolSurface requires a canonical executor with execute()");
   }
 
   const tools = commerceToolDefinitions.map((tool) => ({ ...tool }));
+
+  // Shorter-lived than the public tier's 10min/60min: these results carry prices and availability an agent
+  // may act on. Search staleness cannot produce a wrong charge — the money path re-quotes against the
+  // backend (preview_quote) rather than trusting a search row — but discovery should still turn over
+  // faster here than on the anonymous read tier.
+  const logger = log && typeof log.warn === "function" ? log : null;
+  const ttlMs = positiveIntEnv("COMMERCE_READ_CACHE_TTL_MS", 5 * 60 * 1000);
+  // A staleMs below ttlMs makes the stale-serve and expiry branches unreachable — a silent
+  // misconfiguration rather than a loud one, so clamp it.
+  const staleMs = Math.max(positiveIntEnv("COMMERCE_READ_CACHE_STALE_MS", 15 * 60 * 1000), ttlMs);
+  const cache = cacheOpt !== false && commerceCacheEnabled()
+    ? createPublicReadCache({
+        ttlMs,
+        staleMs,
+        // 60, not the public tier's 300: these entries are FAT. The public tier caches slim projected
+        // rows (~5KB); a commerce search result is the unprojected product list, measured at ~460KB on
+        // prod (68 products, ingredient_intel alone about half of it). 300 of those would be ~150MB
+        // resident for a cache, which is how a latency fix turns into an OOM. 60 covers the head of the
+        // query distribution for ~28MB — one instance, because the public tier passes cache:false rather
+        // than stacking a second copy of the same payloads.
+        maxEntries: positiveIntEnv("COMMERCE_READ_CACHE_MAX", 60),
+        onRevalidateError: (err, key) => {
+          if (logger) {
+            logger.warn(
+              { err: err?.message || String(err), key },
+              "commerce read cache revalidation failed (stale kept)",
+            );
+          }
+        },
+        shouldCache: isCacheableSearchResult,
+      })
+    : null;
 
   /**
    * Execute a commerce tool call.
@@ -95,13 +211,37 @@ export function createCommerceToolSurface(executor, { log } = {}) {
     //    extra money fields (e.g. a model-set refund amount), and prototype-polluting keys.
     const params = toParams(op, toolArgs);
 
-    // 4) the single execution bridge enforces the contract flags + routes to the kernel.
-    const result = await executor.execute(op.id, params, ctx);
-    // 5) sanitize. A payment redirect (requires_action) is only LEGITIMATE for the checkout flow, so handoff
-    //    URLs are preserved verbatim ONLY for checkout ops (PayPal `?token=EC-…`, OAuth `?code=…`, Stripe 3DS
-    //    `client_secret` must reach the buyer intact). For discovery/order results a redirect-named field is
-    //    NOT a payment handoff and is scrubbed aggressively.
-    return sanitizeResult(result, { handoffAllowed: op.capability === "checkout" });
+    const execute = async () => {
+      // 4) the single execution bridge enforces the contract flags + routes to the kernel.
+      const result = await executor.execute(op.id, params, ctx);
+      // 5) sanitize. A payment redirect (requires_action) is only LEGITIMATE for the checkout flow, so
+      //    handoff URLs are preserved verbatim ONLY for checkout ops (PayPal `?token=EC-…`, OAuth `?code=…`,
+      //    Stripe 3DS `client_secret` must reach the buyer intact). For discovery/order results a
+      //    redirect-named field is NOT a payment handoff and is scrubbed aggressively.
+      return sanitizeResult(result, { handoffAllowed: op.capability === "checkout" });
+    };
+
+    // 6) cache read-only, caller-independent results. Gated on the op being cacheable — never on anything
+    //    about the caller — so a mutating or user-scoped op can never reach this branch. The cached value
+    //    is the SANITIZED result, so a cache hit is byte-identical to a miss. Only successes are stored
+    //    (getOrCompute lets errors propagate uncached), which keeps a transient MERCHANT_UNAVAILABLE from
+    //    being served for the rest of the TTL. See the CACHEABLE_TOOLS note above for why the key omits
+    //    identity — that omission is the whole safety argument and is asserted by tests.
+    //    The key is the ALLOWLISTED params, never the raw tool args. Nothing rejects unknown argument
+    //    properties, so keying on the raw args lets any caller mint unlimited distinct keys for one
+    //    identical upstream call (`{query, _cb: <nonce>}`) — a 0% hit rate, and 60 such requests evict
+    //    every real entry. Keying on what actually reaches the executor makes that impossible by
+    //    construction: junk properties are already gone by this line.
+    if (!cache || !CACHEABLE_TOOLS.includes(op.id)) return execute();
+    const value = await cache.getOrCompute(`${op.id}:${stableStringify(params ?? {})}`, execute);
+    return cloneCachedValue(value, (err) => {
+      if (logger) {
+        logger.warn(
+          { err: err?.message || String(err), tool: op.id },
+          "commerce read cache: value not cloneable, serving shared reference",
+        );
+      }
+    });
   }
 
   function isCommerceTool(name) {

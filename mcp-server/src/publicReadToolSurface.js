@@ -92,7 +92,11 @@ function publicPresentation(tool) {
  * @returns {{ tools: Array<{name,description,inputSchema}>, callTool: Function, isPublicReadTool: Function }}
  */
 export function createPublicReadToolSurface(executor, { log, filterChainResolvableRows } = {}) {
-  const commerce = createCommerceToolSurface(executor, { log });
+  // cache:false — this tier caches the PROJECTED result itself (below). Letting the commerce surface cache
+  // underneath as well would put this tier's own documented kill switch (PUBLIC_READ_CACHE_ENABLED=0)
+  // behind a second, differently-named one, stack two staleness windows, and hold the fat unprojected
+  // payload in memory for no extra hit rate.
+  const commerce = createCommerceToolSurface(executor, { log, cache: false });
   const tools = commerce.tools
     .filter((tool) => PUBLIC_READ_TOOL_NAMES.includes(tool.name))
     .map((tool) => publicPresentation({ ...tool }));

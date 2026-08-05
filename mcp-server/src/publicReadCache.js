@@ -27,6 +27,11 @@ function createPublicReadCache({
   maxEntries = 300,
   now = () => Date.now(),
   onRevalidateError = () => {},
+  // Optional store predicate. Default keeps every computed value, which is the behaviour the public read
+  // tier has always had. A caller whose upstream can answer HTTP-200 with a DEGRADED envelope (ok:false,
+  // or an error code, with an empty list) uses this so a transient degradation is not pinned for the whole
+  // TTL — `compute` throwing is not the only way an answer can be worth not keeping.
+  shouldCache = () => true,
 } = {}) {
   const entries = new Map(); // key → { value, at }
   const inflight = new Set(); // keys with a background revalidation running
@@ -62,7 +67,7 @@ function createPublicReadCache({
           inflight.add(key);
           Promise.resolve()
             .then(compute)
-            .then((value) => touch(key, { value, at: now() }))
+            .then((value) => { if (shouldCache(value)) touch(key, { value, at: now() }); })
             .catch((err) => onRevalidateError(err, key)) // keep the stale entry on failure
             .finally(() => inflight.delete(key));
         }
@@ -71,7 +76,7 @@ function createPublicReadCache({
       entries.delete(key); // fully expired
     }
     const value = await compute(); // errors propagate, nothing cached
-    touch(key, { value, at: now() });
+    if (shouldCache(value)) touch(key, { value, at: now() });
     return value;
   }
 

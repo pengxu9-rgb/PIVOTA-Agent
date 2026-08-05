@@ -153,6 +153,20 @@ jobs:
       # first cut of this PR did exactly that; the guard test is what stops it
       # coming back. Boots the real server via supertest + nock, so it needs the
       # npm ci above.
+      # ADDED 2026-08-05: the first two `mcp-server/test/**` files in ANY CI job.
+      # Those suites live under `test/` (singular) while jest's testMatch wants
+      # `tests/`, so every one of them has always run in no workflow at all.
+      # `commerceReadCache` (13/13, mutation-checked) carries the argument that
+      # lets commerce search results be SHARED ACROSS CALLERS: that
+      # search_catalog is caller-independent. Its headline test records at the
+      # UPSTREAM seam through a real canonical executor, because a stubbed
+      # executor would stub out the very layer that can break the property —
+      # an earlier draft did exactly that, and the reviewer's leak mutation
+      # (passing buyer_ref through the executor's read()) landed GREEN.
+      # `commerceToolSurface` (17/17) is added alongside it because it covers
+      # the sanitizer/identity behaviour of the same surface and independently
+      # catches that leak. Both are ESM (mcp-server sets type:module); node
+      # --test handles that next to the .cjs files.
       - name: Run node:test suites
         run: |
           node --test \
@@ -176,7 +190,9 @@ jobs:
             tests/public_read_mcp_heartbeat.node.test.cjs \
             tests/commerce_mcp_route_heartbeat.node.test.cjs \
             tests/commerce_mcp_heartbeat_gate.node.test.cjs \
-            tests/commerce_search_self_invoke_budget.node.test.cjs
+            tests/commerce_search_self_invoke_budget.node.test.cjs \
+            mcp-server/test/commerceReadCache.test.js \
+            mcp-server/test/commerceToolSurface.test.js
 
   jest:
     runs-on: ubuntu-latest
