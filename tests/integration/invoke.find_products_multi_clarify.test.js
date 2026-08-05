@@ -726,6 +726,13 @@ describe('/agent/shop/v1/invoke find_products_multi clarify', () => {
               truth_tier: 'observed',
               readiness_tier: 'referral_only',
               pdp_scope: 'unverified',
+              // Offer-row columns from the catalog_offers join — the only
+              // price source the canonical-chain mapper reads. Amount and
+              // currency must come from the same offer row or the product
+              // ships no price and the serving gate drops it, so a fixture
+              // priced only via seed_data would now recall zero products.
+              merchant_effective_price: '68.00',
+              currency: 'USD',
               product_payload: {
                 seed_data: {
                   price_amount: '68.00',

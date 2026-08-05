@@ -12394,6 +12394,14 @@ function finalizeCitableSupplementItem(item) {
   item.buyable = false;
   item.in_stock = false;
   delete item.price;
+  delete item.currency;
+  // A citation is offer-free BY DEFINITION (ADR-007: trust+quality+identity
+  // without an offer), so "the offer row carried no price" is the expected
+  // state here, not a defect worth reporting. Left in place it would stamp the
+  // reason code on every citation and swamp no_offer_derived_price_count —
+  // the counter exists to size the SERVING residue, and citations are not in
+  // it. Dropped for the same reason `price` is.
+  delete item.price_absent_reason;
   delete item.seed_data;
   delete item.external_seed;
   item.source = 'canonical_citation';
@@ -17358,6 +17366,64 @@ function firstBrandDisplayString(...values) {
   return normalizeBrandCase(candidates.find((candidate) => /\p{Lu}/u.test(candidate)) || candidates[0]);
 }
 
+// Reason code stamped on a canonical-chain product whose joined catalog_offers
+// row carries no usable price. Counted into the search-quality telemetry as
+// `no_offer_derived_price_count` so this residue stays sortable instead of
+// being silently absorbed by a guess.
+const CANONICAL_NO_OFFER_DERIVED_PRICE_REASON = 'no_offer_derived_price';
+
+/**
+ * Resolve a canonical-chain row's price from that row's OWN catalog_offers row.
+ *
+ * PRIMARY ROUTE ONLY — THERE IS DELIBERATELY NO FALLBACK. Amount and currency
+ * must come from the SAME offer row or no price is emitted at all.
+ *
+ * This used to be two INDEPENDENT chains: the amount walked
+ * merchant_effective_price -> estimated_best_price -> list_price -> the seed
+ * payload, while the currency walked a separate chain ending in the literal
+ * 'USD'. Nothing tied them together, so an amount taken from the payload could
+ * be labelled with a currency taken from somewhere else — or with a hardcoded
+ * USD that no source ever asserted. Measured on prod 2026-08-05 across the
+ * 15,961 rows the fan-out lane emits for 9,289 serving-eligible products: two
+ * rows resolved amount-from-payload with currency-from-offer-row, and one of
+ * them (product_key prod::external_seed::external_seed::ext_b0a4058ee31f92149cfb14ba)
+ * carried a EUR payload amount under a USD offer currency — a live wrong price.
+ *
+ * A fallback-derived price is an invisible wrong answer that makes a broken
+ * primary route look healthy. An absent price is a countable failure that gets
+ * fixed. So when the offer row has no usable price this returns `priced:false`
+ * and the caller emits NO price and NO currency; getSearchProductServingEligibility
+ * then drops the product on `missing_price`, which is the correct outcome.
+ *
+ * coalesce(merchant_effective_price, list_price) is the buyable-price
+ * expression from services/pricedOfferSql.js — the same one the OFFER_PRICE_MISSING
+ * trust gate and the best_offer LATERAL in services/canonicalCatalogSearch.js
+ * use, so the served surface and the gate that admits it now agree by
+ * construction. estimated_best_price is deliberately NOT consulted: it is our
+ * own derived estimate, and pricedOfferSql excludes it for exactly that reason
+ * ("a PDP must not be published on the strength of our own guess"). It sat at
+ * position 2 of the old amount chain, AHEAD of list_price, so the served price
+ * could be an estimate the trust gate did not even count as a price. Measured
+ * 2026-08-05: estimated_best_price is set on 11,098 rows but would have won on
+ * 0 of them, so removing it changes no row today and closes the divergence
+ * before a writer populates only that column.
+ *
+ * `> 0` rather than merely present, matching pricedOfferSql: a 0.00 price is
+ * not buyable either.
+ */
+function resolveCanonicalOfferDerivedPrice(row) {
+  if (!isPlainObject(row)) {
+    return { priced: false, reason: CANONICAL_NO_OFFER_DERIVED_PRICE_REASON };
+  }
+  const currency = firstNonEmptyString(row.currency);
+  const amountRaw = firstNonEmptyString(row.merchant_effective_price, row.list_price);
+  const amount = Number(amountRaw);
+  if (!currency || !Number.isFinite(amount) || amount <= 0) {
+    return { priced: false, reason: CANONICAL_NO_OFFER_DERIVED_PRICE_REASON };
+  }
+  return { priced: true, amount, currency };
+}
+
 function buildCanonicalChainMainlineProduct(row) {
   if (!row || typeof row !== 'object' || Array.isArray(row)) return null;
   const payload = parseCanonicalCatalogPayload(row.product_payload);
@@ -17413,28 +17479,7 @@ function buildCanonicalChainMainlineProduct(row) {
     externalSeed.category_path,
     externalSnapshot.category_path,
   );
-  const priceRaw = firstNonEmptyString(
-    row.merchant_effective_price,
-    row.estimated_best_price,
-    row.list_price,
-    externalSeed.price_amount,
-    externalSeed.price,
-    externalSnapshot.price_amount,
-    seedData.price_amount,
-    seedData.price,
-    snapshot.price_amount,
-  );
-  const price = Number(priceRaw);
-  const currency = firstNonEmptyString(
-    row.currency,
-    externalSeed.price_currency,
-    externalSeed.currency,
-    externalSnapshot.price_currency,
-    seedData.price_currency,
-    seedData.currency,
-    snapshot.price_currency,
-    'USD',
-  );
+  const offerPrice = resolveCanonicalOfferDerivedPrice(row);
   const availability = firstNonEmptyString(
     row.availability,
     externalSeed.availability,
@@ -17575,8 +17620,14 @@ function buildCanonicalChainMainlineProduct(row) {
     platform_product_id: sourceProductId || productId,
     title,
     ...(description ? { description } : {}),
-    ...(Number.isFinite(price) && price > 0 ? { price } : {}),
-    currency,
+    // Price and currency ship together or not at all — they come from one
+    // offer row (see resolveCanonicalOfferDerivedPrice). `currency` is NOT
+    // emitted unconditionally any more: it used to be present on every product
+    // even when there was no price, which is where the hardcoded 'USD' default
+    // surfaced. A price-less product now carries a reason code instead.
+    ...(offerPrice.priced
+      ? { price: offerPrice.amount, currency: offerPrice.currency }
+      : { price_absent_reason: offerPrice.reason }),
     ...(imageUrl ? { image_url: imageUrl, images: [imageUrl], image_urls: [imageUrl] } : {}),
     ...(availability ? { availability } : {}),
     ...(typeof inStock === 'boolean' ? { in_stock: inStock } : {}),
@@ -17970,6 +18021,15 @@ function getSearchProductServingEligibility(product = {}, options = {}) {
   const amount = getSearchProductPriceAmount(product);
   if (amount == null) {
     if (!hasExplicitUnknownPrice(product)) reasons.push('missing_price');
+    // Narrower companion to `missing_price`, stamped by the canonical-chain
+    // mapper when the product's own catalog_offers row carried no usable
+    // price. `missing_price` says the served card has no amount; THIS says the
+    // primary route produced nothing and no guess was substituted. Kept as a
+    // separate reason so the residue left by deleting the price fallback is
+    // countable and sortable rather than blended into the generic bucket.
+    if (product.price_absent_reason === CANONICAL_NO_OFFER_DERIVED_PRICE_REASON) {
+      reasons.push(CANONICAL_NO_OFFER_DERIVED_PRICE_REASON);
+    }
   } else if (amount <= 0 && !hasExplicitFreePrice(product)) {
     reasons.push('non_positive_price');
   }
@@ -18370,6 +18430,12 @@ function buildSearchQualityTierCounts(products = [], contract = null, queryText 
     serving_eligible_count: 0,
     missing_image_count: 0,
     invalid_price_count: 0,
+    // Subset of invalid_price_count: dropped specifically because the
+    // canonical-chain row's own catalog_offers row carried no usable price and
+    // nothing was guessed in its place. Tracks the residue of the price
+    // fallback deletion so it can be driven down at the source (the writers
+    // that leave unsuppressed offers price-less) instead of hidden.
+    no_offer_derived_price_count: 0,
     missing_or_unresolved_pdp_count: 0,
     polluted_or_unavailable_count: 0,
   };
@@ -18388,6 +18454,7 @@ function buildSearchQualityTierCounts(products = [], contract = null, queryText 
     if (reasons.has('missing_image')) counts.missing_image_count += 1;
     if (reasons.has('non_positive_price')) counts.invalid_price_count += 1;
     if (reasons.has('missing_price')) counts.invalid_price_count += 1;
+    if (reasons.has(CANONICAL_NO_OFFER_DERIVED_PRICE_REASON)) counts.no_offer_derived_price_count += 1;
     if (reasons.has('unresolved_pdp_ref')) counts.missing_or_unresolved_pdp_count += 1;
     if (
       reasons.has('generic_category') ||
@@ -21792,6 +21859,7 @@ async function searchBeautyExternalSeedProductsMainline({
           serving_eligible_count: 0,
           missing_image_count: 0,
           invalid_price_count: 0,
+          no_offer_derived_price_count: 0,
           missing_or_unresolved_pdp_count: 0,
           polluted_or_unavailable_count: 0,
         },
@@ -40867,6 +40935,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               serving_eligible_count: 0,
               missing_image_count: 0,
               invalid_price_count: 0,
+              no_offer_derived_price_count: 0,
               missing_or_unresolved_pdp_count: 0,
               polluted_or_unavailable_count: 0,
             },
@@ -52292,6 +52361,8 @@ module.exports._debug = {
   dedupeBeautyProductsByDisplayKey,
   ensureSearchProductPdpOpen,
   buildCanonicalChainMainlineProduct,
+  resolveCanonicalOfferDerivedPrice,
+  CANONICAL_NO_OFFER_DERIVED_PRICE_REASON,
   finalizeCitableSupplementItem,
   mergeCanonicalChainProductsWithSeedProducts,
   resolveCatalogSyncMerchantIds,
