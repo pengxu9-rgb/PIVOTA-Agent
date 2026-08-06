@@ -1466,25 +1466,66 @@ async function fetchRows(ids, market) {
 //   1. the catalog row's existing merchant_id (derive from the row — the
 //      product upsert never changes merchant_id, so writing skus/offers/groups
 //      under anything else would split the product from its own children);
-//   2. for genuinely NEW products, the seed's seller_ref — but only when that
-//      merchant exists in catalog_merchants (a missing row would make the
-//      product silently unservable via the serving predicate's branch 2);
+//   2. for genuinely NEW products, the seed's seller_ref — but ONLY when:
+//      - it is an OBSERVED seller (merch_obs_…). A first-party merchant id in
+//        seller_ref is never minted here: real merchants carry merchant_stores
+//        rows, and the serving predicate then demands an active store whose
+//        platform equals the product's platform 'external_seed' — never true —
+//        so the row would be silently unservable. Routing a seed onto a real
+//        merchant's catalog is a deliberate operation, not a mirror default.
+//      - its catalog_merchants row exists with an ADMITTING status
+//        ('active'/'observed'). A suspended/pending merchant would produce
+//        dark rows; and some serving call sites INNER-join catalog_merchants,
+//        where a missing row silently drops the product.
+//      - no catalog_products row already occupies
+//        (seller_ref, 'external_seed', source_product_id) from ANOTHER
+//        source_system — idx_catalog_products_source_identity spans all
+//        source_systems, and inserting into an occupied slot aborts the whole
+//        batch. Occupied → legacy bucket + counter, never a guessed merge.
 //   3. the legacy 'external_seed' bucket, counted loudly — the documented
 //      shrinking-legacy posture for unresolvable rows, never a silent fallback.
+const MINTABLE_SELLER_PATTERN = /^merch_obs_[0-9a-f]{16}$/;
+const MINT_ADMITTING_STATUSES = ['active', 'observed'];
+
 async function annotateMirrorMerchants(rows) {
-  const counts = { existing: 0, minted_from_seller_ref: 0, seller_ref_missing: 0, seller_ref_merchant_missing: 0 };
+  const counts = {
+    existing: 0,
+    minted_from_seller_ref: 0,
+    seller_ref_missing: 0,
+    seller_ref_not_observed: 0,
+    seller_ref_merchant_missing_or_not_admitted: 0,
+    seller_ref_slot_occupied: 0,
+  };
   const candidates = new Set();
   for (const row of rows || []) {
     const sellerRef = asString(row.seller_ref);
-    if (!asString(row.existing_merchant_id) && /^merch_/.test(sellerRef)) candidates.add(sellerRef);
+    if (!asString(row.existing_merchant_id) && MINTABLE_SELLER_PATTERN.test(sellerRef)) candidates.add(sellerRef);
   }
-  let known = new Set();
+  let admitted = new Set();
+  const occupied = new Set();
   if (candidates.size > 0) {
     const res = await query(
-      'SELECT merchant_id FROM catalog_merchants WHERE merchant_id = ANY($1::text[])',
-      [[...candidates]],
+      `SELECT merchant_id FROM catalog_merchants
+       WHERE merchant_id = ANY($1::text[])
+         AND lower(coalesce(status, 'active')) = ANY($2::text[])`,
+      [[...candidates], MINT_ADMITTING_STATUSES],
     );
-    known = new Set((res.rows || []).map((r) => asString(r.merchant_id)));
+    admitted = new Set((res.rows || []).map((r) => asString(r.merchant_id)));
+    // Slot-occupancy guard (unique index spans ALL source_systems).
+    const pairs = (rows || [])
+      .filter((row) => !asString(row.existing_merchant_id) && admitted.has(asString(row.seller_ref)))
+      .map((row) => ({ m: asString(row.seller_ref), p: asString(row.external_product_id) }));
+    if (pairs.length > 0) {
+      const occ = await query(
+        `SELECT cp.merchant_id, cp.source_product_id
+         FROM catalog_products cp
+         JOIN jsonb_to_recordset($1::jsonb) AS want(m text, p text)
+           ON want.m = cp.merchant_id AND want.p = cp.source_product_id
+         WHERE cp.platform = $2`,
+        [JSON.stringify(pairs), PLATFORM],
+      );
+      for (const r of occ.rows || []) occupied.add(`${asString(r.merchant_id)}::${asString(r.source_product_id)}`);
+    }
   }
   for (const row of rows || []) {
     const existing = asString(row.existing_merchant_id);
@@ -1492,17 +1533,28 @@ async function annotateMirrorMerchants(rows) {
     if (existing) {
       row.mirror_merchant_id = existing;
       counts.existing += 1;
-    } else if (/^merch_/.test(sellerRef) && known.has(sellerRef)) {
+    } else if (!sellerRef) {
+      row.mirror_merchant_id = MERCHANT_ID;
+      counts.seller_ref_missing += 1;
+    } else if (!MINTABLE_SELLER_PATTERN.test(sellerRef)) {
+      row.mirror_merchant_id = MERCHANT_ID;
+      counts.seller_ref_not_observed += 1;
+    } else if (!admitted.has(sellerRef)) {
+      row.mirror_merchant_id = MERCHANT_ID;
+      counts.seller_ref_merchant_missing_or_not_admitted += 1;
+    } else if (occupied.has(`${sellerRef}::${asString(row.external_product_id)}`)) {
+      row.mirror_merchant_id = MERCHANT_ID;
+      counts.seller_ref_slot_occupied += 1;
+    } else {
       row.mirror_merchant_id = sellerRef;
       counts.minted_from_seller_ref += 1;
-    } else {
-      row.mirror_merchant_id = MERCHANT_ID;
-      if (!sellerRef) counts.seller_ref_missing += 1;
-      else counts.seller_ref_merchant_missing += 1;
     }
   }
-  if (counts.seller_ref_missing || counts.seller_ref_merchant_missing) {
-    console.log(JSON.stringify({ event: 'mirror_merchant_fallback_to_legacy_bucket', ...counts }));
+  const fallbacks = counts.seller_ref_missing + counts.seller_ref_not_observed
+    + counts.seller_ref_merchant_missing_or_not_admitted + counts.seller_ref_slot_occupied;
+  if (fallbacks > 0) {
+    // stderr, deliberately: stdout stays a single JSON document for pipelines.
+    console.error(JSON.stringify({ event: 'mirror_merchant_fallback_to_legacy_bucket', ...counts }));
   }
   return counts;
 }
@@ -1884,7 +1936,17 @@ async function applyMirrors(
               )
               ON CONFLICT (content_key) DO UPDATE SET
                 pivota_signature_id = EXCLUDED.pivota_signature_id,
-                merchant_id = EXCLUDED.merchant_id,
+                -- ADR-009 R1: heal-only restamp. content_key deliberately
+                -- converges a D2C row and its retailer row (contentKeyFallback),
+                -- so an unconditional restamp would thrash the shared IPS row's
+                -- merchant between two real sellers on alternating syncs. Legacy
+                -- sentinel stamps heal to the resolved merchant exactly once;
+                -- a real merchant is never overwritten by another.
+                merchant_id = CASE
+                  WHEN index_pipeline_state.merchant_id = 'external_seed'
+                  THEN EXCLUDED.merchant_id
+                  ELSE index_pipeline_state.merchant_id
+                END,
                 pipeline_stage = EXCLUDED.pipeline_stage,
                 blocker_code = EXCLUDED.blocker_code,
                 blocker_detail = EXCLUDED.blocker_detail,
@@ -1939,9 +2001,15 @@ async function applyMirrors(
                   AND coalesce(live_read_enabled, false) = false
                 RETURNING source_listing_ref
               `,
-              // ADR-009 R1: the graph keys listings on the catalog row's live
-              // merchant — a sentinel literal here goes blind for re-keyed rows.
-              [mirror.product.merchant_id, mirror.row.external_product_id],
+              // ADR-009 R1: target the listing that was actually READ for
+              // eligibility (fetchRows joined it; it carries its own merchant).
+              // On a fresh mint the listing still sits under the sentinel while
+              // the product mints merch_obs_ — writing to the resolved merchant
+              // there would be a silent no-op on the very run that needs it.
+              [
+                asString(asObject(mirror.row.identity_listing).merchant_id) || mirror.product.merchant_id,
+                mirror.row.external_product_id,
+              ],
             );
             totals.identity_live_read_updates += Number(identityRes.rowCount || 0);
           }
@@ -2143,6 +2211,26 @@ async function applyMirrors(
           [mirror.productGroupId, mirror.product.merchant_id, PLATFORM, mirror.row.external_product_id],
         );
         totals.group_member_upserts += Number(groupRes.rowCount || 0);
+        if (mirror.product.merchant_id !== MERCHANT_ID) {
+          // Self-heal: retire a leftover sentinel membership row for this same
+          // product. The upsert's conflict target is (merchant_id, platform,
+          // platform_product_id), so a legacy sentinel row would otherwise
+          // coexist with the observed-seller row forever — both is_primary —
+          // and group consumers would see the product twice. Zero such rows on
+          // prod today (measured 2026-08-06); this keeps it zero if a future
+          // re-key ever moves a product without its membership.
+          const staleGroupRes = await client.query(
+            `
+              DELETE FROM product_group_members
+              WHERE merchant_id = $1
+                AND platform = $2
+                AND platform_product_id = $3
+            `,
+            [MERCHANT_ID, PLATFORM, mirror.row.external_product_id],
+          );
+          totals.stale_group_member_deletes = (totals.stale_group_member_deletes || 0)
+            + Number(staleGroupRes.rowCount || 0);
+        }
         if (groupRes.rows?.[0]?.preserved_existing_group) {
           totals.group_member_preserved_existing_merges += 1;
         }

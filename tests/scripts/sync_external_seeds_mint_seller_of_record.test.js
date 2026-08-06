@@ -50,22 +50,44 @@ describe('annotateMirrorMerchants precedence', () => {
     expect(query).not.toHaveBeenCalled();
   });
 
-  test('a NEW product mints from seller_ref only when the merchant exists in catalog_merchants', async () => {
-    query.mockResolvedValueOnce({ rows: [{ merchant_id: 'merch_obs_ffff000011112222' }] });
+  test('a NEW product mints from seller_ref when the merchant is admitted and the slot is free', async () => {
+    query.mockResolvedValueOnce({ rows: [{ merchant_id: 'merch_obs_ffff000011112222' }] }); // admitted
+    query.mockResolvedValueOnce({ rows: [] }); // slot unoccupied
     const rows = [seedRow({ existing_merchant_id: null, seller_ref: 'merch_obs_ffff000011112222' })];
     const counts = await annotateMirrorMerchants(rows);
     expect(rows[0].mirror_merchant_id).toBe('merch_obs_ffff000011112222');
     expect(counts).toMatchObject({ minted_from_seller_ref: 1 });
+    // The admission query must filter on status, not bare existence — a
+    // suspended merchant would produce rows dark on every serving surface.
+    expect(query.mock.calls[0][0]).toMatch(/status/);
   });
 
-  test('a seller_ref whose merchant is missing falls back to the legacy bucket LOUDLY — never a dark unservable row', async () => {
-    // Serving predicate branch 2 requires a catalog_merchants row; minting a
-    // merchant that does not exist would silently drop the product from serving.
-    query.mockResolvedValueOnce({ rows: [] });
+  test('a seller_ref whose merchant is missing or not admitted falls back LOUDLY — never a dark row', async () => {
+    query.mockResolvedValueOnce({ rows: [] }); // not admitted
     const rows = [seedRow({ existing_merchant_id: null, seller_ref: 'merch_obs_deadbeefdeadbeef' })];
     const counts = await annotateMirrorMerchants(rows);
     expect(rows[0].mirror_merchant_id).toBe('external_seed');
-    expect(counts).toMatchObject({ seller_ref_merchant_missing: 1 });
+    expect(counts).toMatchObject({ seller_ref_merchant_missing_or_not_admitted: 1 });
+  });
+
+  test('an occupied (merchant, platform, source_product_id) slot is never inserted into — that unique index spans ALL source_systems', async () => {
+    query.mockResolvedValueOnce({ rows: [{ merchant_id: 'merch_obs_ffff000011112222' }] }); // admitted
+    query.mockResolvedValueOnce({ rows: [{ merchant_id: 'merch_obs_ffff000011112222', source_product_id: 'ext_abc123' }] }); // occupied
+    const rows = [seedRow({ existing_merchant_id: null, seller_ref: 'merch_obs_ffff000011112222' })];
+    const counts = await annotateMirrorMerchants(rows);
+    expect(rows[0].mirror_merchant_id).toBe('external_seed');
+    expect(counts).toMatchObject({ seller_ref_slot_occupied: 1 });
+  });
+
+  test('a FIRST-PARTY merchant id in seller_ref is never minted by the mirror', async () => {
+    // Real merchants carry merchant_stores rows; the serving predicate then
+    // demands an active store on platform 'external_seed', which cannot exist —
+    // the row would be unservable where the sentinel bucket serves today.
+    const rows = [seedRow({ existing_merchant_id: null, seller_ref: 'merch_shopify_0584b37f7a8be00a5223' })];
+    const counts = await annotateMirrorMerchants(rows);
+    expect(rows[0].mirror_merchant_id).toBe('external_seed');
+    expect(counts).toMatchObject({ seller_ref_not_observed: 1 });
+    expect(query).not.toHaveBeenCalled();
   });
 
   test('a seed with no seller_ref lands in the legacy bucket and is counted', async () => {
@@ -75,10 +97,11 @@ describe('annotateMirrorMerchants precedence', () => {
     expect(counts).toMatchObject({ seller_ref_missing: 1 });
   });
 
-  test('a non-merchant-shaped seller_ref is never minted', async () => {
+  test('a non-merchant-shaped seller_ref is never minted, and is counted in its own bucket', async () => {
     const rows = [seedRow({ existing_merchant_id: null, seller_ref: 'ulta.com' })];
-    await annotateMirrorMerchants(rows);
+    const counts = await annotateMirrorMerchants(rows);
     expect(rows[0].mirror_merchant_id).toBe('external_seed');
+    expect(counts).toMatchObject({ seller_ref_not_observed: 1, seller_ref_missing: 0 });
     expect(query).not.toHaveBeenCalled();
   });
 });
@@ -127,10 +150,26 @@ describe('terminality of the migration (source-level guards)', () => {
     }
   });
 
-  test('index_pipeline_state DOES restamp merchant_id from the resolved value (the healing path)', () => {
+  test('index_pipeline_state restamp is HEAL-ONLY: sentinel stamps heal, real merchants never thrash', () => {
+    // content_key deliberately converges a D2C row and its retailer row, so an
+    // unconditional merchant_id = EXCLUDED restamp would flip the shared IPS
+    // row between two real sellers on alternating syncs.
     const ips = SCRIPT_SOURCE.match(/INSERT INTO index_pipeline_state[\s\S]*?(?=`)/g) || [];
     expect(ips.length).toBeGreaterThanOrEqual(1);
-    expect(ips[0]).toMatch(/merchant_id = EXCLUDED\.merchant_id/);
+    expect(ips[0]).toMatch(/WHEN index_pipeline_state\.merchant_id = 'external_seed'\s*\n?\s*THEN EXCLUDED\.merchant_id/);
+    expect(ips[0]).toMatch(/ELSE index_pipeline_state\.merchant_id/);
+  });
+
+  test('the dry-run preview joins carry no merchant literal (it must agree with the real prunes)', () => {
+    const preview = SCRIPT_SOURCE.match(/current_skus AS \([\s\S]*?current_offers AS \([\s\S]*?\),/g) || [];
+    expect(preview.length).toBeGreaterThanOrEqual(1);
+    expect(preview[0]).not.toMatch(/merchant_id/);
+  });
+
+  test('a leftover sentinel group-membership row is retired when the product resolves to a real seller', () => {
+    const cleanup = SCRIPT_SOURCE.match(/DELETE FROM product_group_members[\s\S]*?`/g) || [];
+    expect(cleanup.length).toBe(1);
+    expect(cleanup[0]).toContain('platform_product_id = $3');
   });
 
   // The stale prunes and the dry-run preview must not key on a merchant
