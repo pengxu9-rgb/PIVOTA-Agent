@@ -1,0 +1,17 @@
+{
+ "catalog_products:external_product_seeds_mirror_v1": {
+  "watermark": 8974,
+  "mode": "enforce",
+  "note": "Path B legacy backlog, measured 2026-08-06. The mirror mints seller_ref merchants as of feat/adr009-r1-mint-seller-of-record; this lane may only shrink (R3 drains it)."
+ },
+ "catalog_products:catalog_enrichment_agent_v1": {
+  "watermark": 2175,
+  "mode": "report",
+  "note": "Path C still mints the sentinel until the retailer-model writer (W2) lands. Flip to enforce IN THE SAME PR as W2."
+ },
+ "seeds_missing_seller_ref": {
+  "watermark": 2,
+  "mode": "enforce",
+  "note": "external_product_seeds rows with NULL seller_ref. A9-3 wired derivation for new writes; growth means a seed writer bypasses it."
+ }
+}

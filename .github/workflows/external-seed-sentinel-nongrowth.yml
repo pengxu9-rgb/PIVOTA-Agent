@@ -1,0 +1,41 @@
+name: External Seed Sentinel Non-Growth Audit
+
+# ADR-009: the merchant_id='external_seed' bucket is a retiring legacy
+# population and may only shrink. This audit pages within a day if any writer
+# starts refilling it — the regression class that previously went unnoticed
+# for weeks (~1,693 rows minted between two censuses while the writer was
+# believed fixed). Watermarks + per-lane enforce/report modes live in
+# tests/fixtures/external_seed_sentinel_watermarks.json.
+
+on:
+  schedule:
+    - cron: "23 10 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  sentinel-nongrowth-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: Pivota Agent / production
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run sentinel non-growth audit
+        run: |
+          if [[ -z "${DATABASE_URL:-}" ]]; then
+            echo "DATABASE_URL secret is required" >&2
+            exit 1
+          fi
+          node scripts/audit-external-seed-sentinel-nongrowth.cjs
