@@ -83,6 +83,7 @@ on:
       - "tests/admin.catalog_serving_search.test.js"
       - "tests/catalog_serving_gateway.test.js"
       - "tests/catalog_serving_index.test.js"
+      - "tests/services/active_catalog_source_sql.test.js"
       - "tests/catalog_serving_shadow_acceptance_script.test.js"
       - "tests/services/external_seed_brand_fastpath.test.js"
       - "tests/services/external_seed_products.test.js"
@@ -165,6 +166,7 @@ on:
       - "tests/admin.catalog_serving_search.test.js"
       - "tests/catalog_serving_gateway.test.js"
       - "tests/catalog_serving_index.test.js"
+      - "tests/services/active_catalog_source_sql.test.js"
       - "tests/catalog_serving_shadow_acceptance_script.test.js"
       - "tests/services/external_seed_brand_fastpath.test.js"
       - "tests/services/external_seed_products.test.js"
@@ -255,6 +257,7 @@ jobs:
             tests/aurora_commerce_core_contracts.test.js \
             tests/aurora_beauty_facade.test.js \
             tests/catalog_serving_index.test.js \
+            tests/services/active_catalog_source_sql.test.js \
             tests/catalog_serving_gateway.test.js \
             tests/catalog_serving_shadow_acceptance_script.test.js \
             tests/admin.catalog_serving_search.test.js \
