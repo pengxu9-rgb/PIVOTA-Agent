@@ -1101,8 +1101,14 @@ function buildMirror(row) {
   const productKey = asString(row.existing_product_key)
     || `prod::external_seed::external_seed::${externalProductId}`;
   // The merchant this mirror row is written under — resolved by
-  // annotateMirrorMerchants (existing row > seller_ref > legacy bucket).
-  const mirrorMerchantId = asString(row.mirror_merchant_id) || MERCHANT_ID;
+  // annotateMirrorMerchants (existing row wins; new rows mint from seller_ref
+  // or are BLOCKED and skipped upstream). No default: a row reaching this
+  // point without a resolved merchant is a caller bug, and guessing the legacy
+  // bucket here is exactly the silent fallback the founder rule forbids.
+  const mirrorMerchantId = asString(row.mirror_merchant_id);
+  if (!mirrorMerchantId) {
+    throw new Error(`buildMirror: row ${externalProductId} has no resolved mirror_merchant_id — run annotateMirrorMerchants first`);
+  }
   const facts = readCommerceFactsV1(row);
   const agentSafeCommerceFacts = buildAgentSafeCommerceFacts(row);
   const gate = validateCommerceFactsGateForSeedRow(row);
@@ -1527,6 +1533,13 @@ async function annotateMirrorMerchants(rows) {
       for (const r of occ.rows || []) occupied.add(`${asString(r.merchant_id)}::${asString(r.source_product_id)}`);
     }
   }
+  // NO FALLBACK for new rows (founder rule). A NEW product whose seller of
+  // record cannot be minted is BLOCKED — it is skipped this run and retried on
+  // the next, because the seed stays queued in external_product_seeds. Landing
+  // it in the legacy bucket instead would let "existing wins" pin a transient
+  // condition (merchant row not created yet) into a permanent legacy resident,
+  // refilling the exact backlog R3 exists to drain. The sentinel is the
+  // current home of EXISTING legacy rows only — never a landing zone.
   for (const row of rows || []) {
     const existing = asString(row.existing_merchant_id);
     const sellerRef = asString(row.seller_ref);
@@ -1534,27 +1547,27 @@ async function annotateMirrorMerchants(rows) {
       row.mirror_merchant_id = existing;
       counts.existing += 1;
     } else if (!sellerRef) {
-      row.mirror_merchant_id = MERCHANT_ID;
+      row.mirror_mint_blocked_reason = 'seller_ref_missing';
       counts.seller_ref_missing += 1;
     } else if (!MINTABLE_SELLER_PATTERN.test(sellerRef)) {
-      row.mirror_merchant_id = MERCHANT_ID;
+      row.mirror_mint_blocked_reason = 'seller_ref_not_observed';
       counts.seller_ref_not_observed += 1;
     } else if (!admitted.has(sellerRef)) {
-      row.mirror_merchant_id = MERCHANT_ID;
+      row.mirror_mint_blocked_reason = 'seller_ref_merchant_missing_or_not_admitted';
       counts.seller_ref_merchant_missing_or_not_admitted += 1;
     } else if (occupied.has(`${sellerRef}::${asString(row.external_product_id)}`)) {
-      row.mirror_merchant_id = MERCHANT_ID;
+      row.mirror_mint_blocked_reason = 'seller_ref_slot_occupied';
       counts.seller_ref_slot_occupied += 1;
     } else {
       row.mirror_merchant_id = sellerRef;
       counts.minted_from_seller_ref += 1;
     }
   }
-  const fallbacks = counts.seller_ref_missing + counts.seller_ref_not_observed
+  const blocked = counts.seller_ref_missing + counts.seller_ref_not_observed
     + counts.seller_ref_merchant_missing_or_not_admitted + counts.seller_ref_slot_occupied;
-  if (fallbacks > 0) {
+  if (blocked > 0) {
     // stderr, deliberately: stdout stays a single JSON document for pipelines.
-    console.error(JSON.stringify({ event: 'mirror_merchant_fallback_to_legacy_bucket', ...counts }));
+    console.error(JSON.stringify({ event: 'mirror_merchant_mint_blocked', ...counts }));
   }
   return counts;
 }
@@ -2403,6 +2416,18 @@ async function run() {
     const identity = asObject(row.identity_listing);
     if (identity.review_required === true || asString(identity.identity_status) === 'review_required') {
       skipped.push({ external_product_id: id, reason: 'identity_review_required' });
+      continue;
+    }
+    if (row.mirror_mint_blocked_reason) {
+      // ADR-009 R1, founder no-fallback rule: a NEW product whose seller of
+      // record cannot be minted is skipped and retried next run — never landed
+      // in the legacy bucket, where "existing wins" would pin it permanently.
+      skipped.push({
+        external_product_id: id,
+        reason: 'seller_of_record_unresolved',
+        detail: row.mirror_mint_blocked_reason,
+        seller_ref: asString(row.seller_ref) || null,
+      });
       continue;
     }
     const mirror = buildMirror(row);

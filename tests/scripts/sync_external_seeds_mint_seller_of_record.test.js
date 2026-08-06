@@ -62,11 +62,12 @@ describe('annotateMirrorMerchants precedence', () => {
     expect(query.mock.calls[0][0]).toMatch(/status/);
   });
 
-  test('a seller_ref whose merchant is missing or not admitted falls back LOUDLY — never a dark row', async () => {
+  test('a seller_ref whose merchant is missing or not admitted BLOCKS the row — skipped and retried, never a dark row and never the bucket', async () => {
     query.mockResolvedValueOnce({ rows: [] }); // not admitted
     const rows = [seedRow({ existing_merchant_id: null, seller_ref: 'merch_obs_deadbeefdeadbeef' })];
     const counts = await annotateMirrorMerchants(rows);
-    expect(rows[0].mirror_merchant_id).toBe('external_seed');
+    expect(rows[0].mirror_merchant_id).toBeUndefined();
+    expect(rows[0].mirror_mint_blocked_reason).toBe('seller_ref_merchant_missing_or_not_admitted');
     expect(counts).toMatchObject({ seller_ref_merchant_missing_or_not_admitted: 1 });
   });
 
@@ -75,32 +76,36 @@ describe('annotateMirrorMerchants precedence', () => {
     query.mockResolvedValueOnce({ rows: [{ merchant_id: 'merch_obs_ffff000011112222', source_product_id: 'ext_abc123' }] }); // occupied
     const rows = [seedRow({ existing_merchant_id: null, seller_ref: 'merch_obs_ffff000011112222' })];
     const counts = await annotateMirrorMerchants(rows);
-    expect(rows[0].mirror_merchant_id).toBe('external_seed');
+    expect(rows[0].mirror_merchant_id).toBeUndefined();
+    expect(rows[0].mirror_mint_blocked_reason).toBe('seller_ref_slot_occupied');
     expect(counts).toMatchObject({ seller_ref_slot_occupied: 1 });
   });
 
-  test('a FIRST-PARTY merchant id in seller_ref is never minted by the mirror', async () => {
+  test('a FIRST-PARTY merchant id in seller_ref BLOCKS the row — the mirror never routes onto a real merchant', async () => {
     // Real merchants carry merchant_stores rows; the serving predicate then
     // demands an active store on platform 'external_seed', which cannot exist —
     // the row would be unservable where the sentinel bucket serves today.
     const rows = [seedRow({ existing_merchant_id: null, seller_ref: 'merch_shopify_0584b37f7a8be00a5223' })];
     const counts = await annotateMirrorMerchants(rows);
-    expect(rows[0].mirror_merchant_id).toBe('external_seed');
+    expect(rows[0].mirror_merchant_id).toBeUndefined();
+    expect(rows[0].mirror_mint_blocked_reason).toBe('seller_ref_not_observed');
     expect(counts).toMatchObject({ seller_ref_not_observed: 1 });
     expect(query).not.toHaveBeenCalled();
   });
 
-  test('a seed with no seller_ref lands in the legacy bucket and is counted', async () => {
+  test('a seed with no seller_ref BLOCKS the row and is counted', async () => {
     const rows = [seedRow({ existing_merchant_id: null, seller_ref: null })];
     const counts = await annotateMirrorMerchants(rows);
-    expect(rows[0].mirror_merchant_id).toBe('external_seed');
+    expect(rows[0].mirror_merchant_id).toBeUndefined();
+    expect(rows[0].mirror_mint_blocked_reason).toBe('seller_ref_missing');
     expect(counts).toMatchObject({ seller_ref_missing: 1 });
   });
 
-  test('a non-merchant-shaped seller_ref is never minted, and is counted in its own bucket', async () => {
+  test('a non-merchant-shaped seller_ref BLOCKS the row, counted in its own bucket', async () => {
     const rows = [seedRow({ existing_merchant_id: null, seller_ref: 'ulta.com' })];
     const counts = await annotateMirrorMerchants(rows);
-    expect(rows[0].mirror_merchant_id).toBe('external_seed');
+    expect(rows[0].mirror_merchant_id).toBeUndefined();
+    expect(rows[0].mirror_mint_blocked_reason).toBe('seller_ref_not_observed');
     expect(counts).toMatchObject({ seller_ref_not_observed: 1, seller_ref_missing: 0 });
     expect(query).not.toHaveBeenCalled();
   });
@@ -126,9 +131,8 @@ describe('buildMirror carries the resolved merchant onto every child row', () =>
     expect(mirror.productKey).toBe('prod::external_seed::external_seed::ext_abc123');
   });
 
-  test('an unannotated row still lands in the legacy bucket, not undefined', () => {
-    const mirror = buildMirror(seedRow());
-    expect(mirror.product.merchant_id).toBe('external_seed');
+  test('an unannotated row THROWS — no silent default merchant (founder no-fallback rule)', () => {
+    expect(() => buildMirror(seedRow())).toThrow(/annotateMirrorMerchants/);
   });
 });
 

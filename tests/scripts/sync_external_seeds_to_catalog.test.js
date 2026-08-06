@@ -188,6 +188,7 @@ describe('sync-external-seeds-to-catalog category inference', () => {
 
   test('overrides stale bundle product kind in mirror payload for single makeup remover wipes', () => {
     const mirror = buildMirror({
+      mirror_merchant_id: 'external_seed',
       id: 'eps_rms_wipe',
       external_product_id: 'ext_rms_wipe',
       market: 'US',
@@ -287,6 +288,7 @@ describe('sync-external-seeds-to-catalog category inference', () => {
 describe('sync-external-seeds-to-catalog signature preservation', () => {
   test('uses the existing catalog signature for public PDP while keeping identity group separately', () => {
     const mirror = buildMirror({
+      mirror_merchant_id: 'external_seed',
       id: 'eps_test',
       external_product_id: 'ext_test_lip_liner',
       market: 'US',
@@ -336,6 +338,7 @@ describe('sync-external-seeds-to-catalog signature preservation', () => {
 describe('sync-external-seeds-to-catalog source domain capture', () => {
   test('mirrors external seed domain into catalog row values', () => {
     const mirror = buildMirror({
+      mirror_merchant_id: 'external_seed',
       id: 'eps_source_domain',
       external_product_id: 'ext_source_domain_serum',
       market: 'US',
@@ -375,6 +378,7 @@ describe('sync-external-seeds-to-catalog source domain capture', () => {
 
   test('leaves source_domain null when seed domain is empty', () => {
     const mirror = buildMirror({
+      mirror_merchant_id: 'external_seed',
       id: 'eps_source_domain_null',
       external_product_id: 'ext_source_domain_null_serum',
       market: 'US',
@@ -407,6 +411,7 @@ describe('sync-external-seeds-to-catalog source domain capture', () => {
 describe('sync-external-seeds-to-catalog barcode capture', () => {
   function buildSeed(seedData) {
     return buildMirror({
+      mirror_merchant_id: 'external_seed',
       id: 'eps_barcode',
       external_product_id: 'ext_barcode_serum',
       market: 'US',
@@ -464,6 +469,7 @@ describe('sync-external-seeds-to-catalog barcode capture', () => {
 describe('sync-external-seeds-to-catalog variant prices', () => {
   test('does not surface promo copy as a single-SKU option label', () => {
     const mirror = buildMirror({
+      mirror_merchant_id: 'external_seed',
       id: 'eps_upcircle_hydration',
       external_product_id: 'ext_upcircle_hydration',
       market: 'US',
@@ -517,6 +523,7 @@ describe('sync-external-seeds-to-catalog variant prices', () => {
 
   test('does not surface purchase-flow labels as shade options', () => {
     const mirror = buildMirror({
+      mirror_merchant_id: 'external_seed',
       id: 'eps_upcircle_repeat',
       external_product_id: 'ext_upcircle_repeat',
       market: 'US',
@@ -570,6 +577,7 @@ describe('sync-external-seeds-to-catalog variant prices', () => {
 
   test('does not surface generic single item labels as SKU options', () => {
     const mirror = buildMirror({
+      mirror_merchant_id: 'external_seed',
       id: 'eps_single_item',
       external_product_id: 'ext_single_item_serum',
       market: 'US',
@@ -622,6 +630,7 @@ describe('sync-external-seeds-to-catalog variant prices', () => {
 
   test('maps reviewed formula variants into visible catalog option labels', () => {
     const mirror = buildMirror({
+      mirror_merchant_id: 'external_seed',
       id: 'eps_lime_eye_patch',
       external_product_id: 'ext_lime_eye_patch',
       market: 'US',
@@ -665,6 +674,7 @@ describe('sync-external-seeds-to-catalog variant prices', () => {
 
   test('preserves reviewed multi-size variant prices when top-level price is the minimum price', () => {
     const mirror = buildMirror({
+      mirror_merchant_id: 'external_seed',
       id: 'eps_multisize',
       external_product_id: 'ext_multisize_mist',
       market: 'US',
@@ -718,6 +728,7 @@ describe('sync-external-seeds-to-catalog variant prices', () => {
 describe('sync-external-seeds-to-catalog serving bootstrap', () => {
   function buildReadyMirror(identityListing) {
     return buildMirror({
+      mirror_merchant_id: 'external_seed',
       id: 'eps_bootstrap',
       external_product_id: 'ext_bootstrap_serum',
       market: 'US',
