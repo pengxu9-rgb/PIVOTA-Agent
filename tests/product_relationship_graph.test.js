@@ -2,6 +2,7 @@ const {
   validateRelationshipEdge,
   edgeToRecoCandidate,
   splitEdgesForRecoBlocks,
+  relationshipEdgeToSimilarItem,
   buildAnchorRefsFromProduct,
   listApprovedRelationshipEdgesForAnchor,
   upsertRelationshipEdge,
@@ -241,6 +242,58 @@ describe('product relationship graph store helpers', () => {
         'text:Top Brand:Luxury Serum',
       ]),
     );
+  });
+
+  test('anchor refs derive an ext_ product identity from external_product_id', () => {
+    // External-seed PDPs sometimes carry a pivota signature as product_id while
+    // the ext_ key (which the curated edges are anchored on) lives on
+    // external_product_id. Matching must still resolve.
+    expect(
+      buildAnchorRefsFromProduct({
+        product_id: 'sig_abc123',
+        external_product_id: 'ext_066c4dfce36363f1dfd2c450',
+      }),
+    ).toEqual(
+      expect.arrayContaining([
+        'product:sig_abc123',
+        'product:ext_066c4dfce36363f1dfd2c450',
+        'ext_066c4dfce36363f1dfd2c450',
+      ]),
+    );
+  });
+
+  test('relationshipEdgeToSimilarItem maps a snapshot-backed edge to a similar item', () => {
+    const item = relationshipEdgeToSimilarItem(approvedDupe());
+    expect(item).toMatchObject({
+      product_id: 'candidate_1',
+      external_product_id: 'candidate_1',
+      merchant_id: 'external_seed',
+      title: 'Barrier Serum Alternative',
+      brand: 'Value Brand',
+      url: 'https://example.test/candidate',
+      price: 80,
+      source: 'relationship_graph',
+      recommendation_source: 'relationship_graph',
+      relationship_type: 'dupe',
+    });
+    expect(item.relationship_edge_id).toBeTruthy();
+  });
+
+  test('relationshipEdgeToSimilarItem strips the ref prefix when snapshot lacks a product id', () => {
+    // Production edges store the candidate id only on candidate_product_ref
+    // (`product:ext_<hash>`); the served product_id must be the bare ext_ key.
+    const edge = approvedDupe({
+      candidate_product_ref: 'product:ext_6f1c7d03a6e0dd364d151ebd',
+      candidate_snapshot: {
+        brand: 'Tomford Beauty',
+        name: 'Traceless Soft Matte Concealer',
+        url: 'https://www.tomfordbeauty.com/products/traceless-soft-matte-concealer',
+      },
+    });
+    const item = relationshipEdgeToSimilarItem(edge);
+    expect(item.product_id).toBe('ext_6f1c7d03a6e0dd364d151ebd');
+    expect(item.merchant_id).toBe('external_seed');
+    expect(item.title).toBe('Traceless Soft Matte Concealer');
   });
 
   test('listApprovedRelationshipEdgesForAnchor preserves source provenance from rows', async () => {

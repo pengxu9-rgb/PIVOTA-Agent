@@ -1,0 +1,334 @@
+[
+  {
+    "status": "failed",
+    "seed_id": "eps_8392f5063ab5890a5f8388ce",
+    "external_product_id": "ext_8b6bcbe031a743c1e607aa6a",
+    "market": "US",
+    "domain": "ownist.com",
+    "canonical_url": "https://ownist.com/products/triple-shine-1-box",
+    "seed_gate": {
+      "status": "passed",
+      "findings_count": 1,
+      "blockers_count": 0
+    },
+    "extractor_gate": {
+      "status": "passed",
+      "failure_category": null,
+      "description_present": true,
+      "price_amount": 41,
+      "failure_reasons": []
+    },
+    "identity_gate": {
+      "status": "skipped",
+      "product_group_id": null,
+      "product_line_id": null,
+      "sellable_item_group_id": null,
+      "skipped_reason": "live_pdp_probe_failed",
+      "probe_error": "Product not found",
+      "failure_reasons": []
+    },
+    "product_intel_gate": {
+      "status": "skipped",
+      "has_product_intel": false,
+      "product_intel_status": null,
+      "skipped_reason": "live_pdp_probe_failed",
+      "probe_error": "Product not found",
+      "failure_reasons": []
+    },
+    "live_pdp_gate": {
+      "status": "failed",
+      "price_amount": null,
+      "has_overview": false,
+      "live_modules": [],
+      "probe_error": "Product not found",
+      "failure_reasons": [
+        "live_pdp_probe_failed"
+      ]
+    },
+    "similar_gate": {
+      "status": "passed",
+      "similar_count": 4,
+      "card_highlight_missing_count": 0,
+      "card_seller_only_fallback_count": 0,
+      "duplicate_count": 0,
+      "duplicate_examples": [],
+      "exempt": false,
+      "failure_reasons": []
+    },
+    "variant_gate": {
+      "status": "passed",
+      "visible_variant_row_count": 0,
+      "identity_option_visible_count": 0,
+      "wrong_axis_for_category_count": 0,
+      "makeup_shade_missing_visual_count": 0,
+      "size_value_generic_axis_count": 0,
+      "examples": {
+        "identity_option_visible": [],
+        "wrong_axis_for_category": [],
+        "makeup_shade_missing_visual": [],
+        "size_value_generic_axis": [],
+        "missing_variant_selector_from_size_evidence": [],
+        "identity_default_title_axis": [],
+        "size_siblings_split_product_line": []
+      },
+      "failure_reasons": []
+    },
+    "root_cause_classification": [
+      "pdp_shaping_issue"
+    ],
+    "failure_reasons": [
+      "live_pdp_probe_failed"
+    ],
+    "probed_product_id": "ext_8b6bcbe031a743c1e607aa6a",
+    "probed_id_type": "external_product_id"
+  },
+  {
+    "status": "failed",
+    "seed_id": "eps_b81018b0147d2b7103a9ff50",
+    "external_product_id": "ext_52e9fce8bee97af26d6f77db",
+    "market": "US",
+    "domain": "ownist.com",
+    "canonical_url": "https://ownist.com/products/ownist-triple-collagen-1-box",
+    "seed_gate": {
+      "status": "passed",
+      "findings_count": 1,
+      "blockers_count": 0
+    },
+    "extractor_gate": {
+      "status": "passed",
+      "failure_category": null,
+      "description_present": true,
+      "price_amount": 41,
+      "failure_reasons": []
+    },
+    "identity_gate": {
+      "status": "skipped",
+      "product_group_id": null,
+      "product_line_id": null,
+      "sellable_item_group_id": null,
+      "skipped_reason": "live_pdp_probe_failed",
+      "probe_error": "Product not found",
+      "failure_reasons": []
+    },
+    "product_intel_gate": {
+      "status": "skipped",
+      "has_product_intel": false,
+      "product_intel_status": null,
+      "skipped_reason": "live_pdp_probe_failed",
+      "probe_error": "Product not found",
+      "failure_reasons": []
+    },
+    "live_pdp_gate": {
+      "status": "failed",
+      "price_amount": null,
+      "has_overview": false,
+      "live_modules": [],
+      "probe_error": "Product not found",
+      "failure_reasons": [
+        "live_pdp_probe_failed"
+      ]
+    },
+    "similar_gate": {
+      "status": "passed",
+      "similar_count": 5,
+      "card_highlight_missing_count": 0,
+      "card_seller_only_fallback_count": 0,
+      "duplicate_count": 0,
+      "duplicate_examples": [],
+      "exempt": false,
+      "failure_reasons": []
+    },
+    "variant_gate": {
+      "status": "passed",
+      "visible_variant_row_count": 0,
+      "identity_option_visible_count": 0,
+      "wrong_axis_for_category_count": 0,
+      "makeup_shade_missing_visual_count": 0,
+      "size_value_generic_axis_count": 0,
+      "examples": {
+        "identity_option_visible": [],
+        "wrong_axis_for_category": [],
+        "makeup_shade_missing_visual": [],
+        "size_value_generic_axis": [],
+        "missing_variant_selector_from_size_evidence": [],
+        "identity_default_title_axis": [],
+        "size_siblings_split_product_line": []
+      },
+      "failure_reasons": []
+    },
+    "root_cause_classification": [
+      "pdp_shaping_issue"
+    ],
+    "failure_reasons": [
+      "live_pdp_probe_failed"
+    ],
+    "probed_product_id": "ext_52e9fce8bee97af26d6f77db",
+    "probed_id_type": "external_product_id"
+  },
+  {
+    "status": "failed",
+    "seed_id": "eps_ef1189fcc1414c309f574ee0",
+    "external_product_id": "ext_3dab0df3312e80e8dac97452",
+    "market": "US",
+    "domain": "ownist.com",
+    "canonical_url": "https://ownist.com/products/triple-shine-garden-gift-set",
+    "seed_gate": {
+      "status": "passed",
+      "findings_count": 1,
+      "blockers_count": 0
+    },
+    "extractor_gate": {
+      "status": "passed",
+      "failure_category": null,
+      "description_present": true,
+      "price_amount": 65.6,
+      "failure_reasons": []
+    },
+    "identity_gate": {
+      "status": "skipped",
+      "product_group_id": null,
+      "product_line_id": null,
+      "sellable_item_group_id": null,
+      "skipped_reason": "live_pdp_probe_failed",
+      "probe_error": "Product not found",
+      "failure_reasons": []
+    },
+    "product_intel_gate": {
+      "status": "skipped",
+      "has_product_intel": false,
+      "product_intel_status": null,
+      "skipped_reason": "live_pdp_probe_failed",
+      "probe_error": "Product not found",
+      "failure_reasons": []
+    },
+    "live_pdp_gate": {
+      "status": "failed",
+      "price_amount": null,
+      "has_overview": false,
+      "live_modules": [],
+      "probe_error": "Product not found",
+      "failure_reasons": [
+        "live_pdp_probe_failed"
+      ]
+    },
+    "similar_gate": {
+      "status": "exempt",
+      "similar_count": 3,
+      "card_highlight_missing_count": 0,
+      "card_seller_only_fallback_count": 0,
+      "duplicate_count": 0,
+      "duplicate_examples": [],
+      "exempt": true,
+      "failure_reasons": []
+    },
+    "variant_gate": {
+      "status": "passed",
+      "visible_variant_row_count": 0,
+      "identity_option_visible_count": 0,
+      "wrong_axis_for_category_count": 0,
+      "makeup_shade_missing_visual_count": 0,
+      "size_value_generic_axis_count": 0,
+      "examples": {
+        "identity_option_visible": [],
+        "wrong_axis_for_category": [],
+        "makeup_shade_missing_visual": [],
+        "size_value_generic_axis": [],
+        "missing_variant_selector_from_size_evidence": [],
+        "identity_default_title_axis": [],
+        "size_siblings_split_product_line": []
+      },
+      "failure_reasons": []
+    },
+    "root_cause_classification": [
+      "pdp_shaping_issue"
+    ],
+    "failure_reasons": [
+      "live_pdp_probe_failed"
+    ],
+    "probed_product_id": "ext_3dab0df3312e80e8dac97452",
+    "probed_id_type": "external_product_id"
+  },
+  {
+    "status": "failed",
+    "seed_id": "eps_c563537f86299bf556bd6761",
+    "external_product_id": "ext_3b2f5eaa044e309bf442a047",
+    "market": "US",
+    "domain": "ownist.com",
+    "canonical_url": "https://ownist.com/products/triple-collagen-garden-gift-set",
+    "seed_gate": {
+      "status": "passed",
+      "findings_count": 1,
+      "blockers_count": 0
+    },
+    "extractor_gate": {
+      "status": "passed",
+      "failure_category": null,
+      "description_present": true,
+      "price_amount": 65.6,
+      "failure_reasons": []
+    },
+    "identity_gate": {
+      "status": "skipped",
+      "product_group_id": null,
+      "product_line_id": null,
+      "sellable_item_group_id": null,
+      "skipped_reason": "live_pdp_probe_failed",
+      "probe_error": "Product not found",
+      "failure_reasons": []
+    },
+    "product_intel_gate": {
+      "status": "skipped",
+      "has_product_intel": false,
+      "product_intel_status": null,
+      "skipped_reason": "live_pdp_probe_failed",
+      "probe_error": "Product not found",
+      "failure_reasons": []
+    },
+    "live_pdp_gate": {
+      "status": "failed",
+      "price_amount": null,
+      "has_overview": false,
+      "live_modules": [],
+      "probe_error": "Product not found",
+      "failure_reasons": [
+        "live_pdp_probe_failed"
+      ]
+    },
+    "similar_gate": {
+      "status": "exempt",
+      "similar_count": 5,
+      "card_highlight_missing_count": 0,
+      "card_seller_only_fallback_count": 0,
+      "duplicate_count": 0,
+      "duplicate_examples": [],
+      "exempt": true,
+      "failure_reasons": []
+    },
+    "variant_gate": {
+      "status": "passed",
+      "visible_variant_row_count": 0,
+      "identity_option_visible_count": 0,
+      "wrong_axis_for_category_count": 0,
+      "makeup_shade_missing_visual_count": 0,
+      "size_value_generic_axis_count": 0,
+      "examples": {
+        "identity_option_visible": [],
+        "wrong_axis_for_category": [],
+        "makeup_shade_missing_visual": [],
+        "size_value_generic_axis": [],
+        "missing_variant_selector_from_size_evidence": [],
+        "identity_default_title_axis": [],
+        "size_siblings_split_product_line": []
+      },
+      "failure_reasons": []
+    },
+    "root_cause_classification": [
+      "pdp_shaping_issue"
+    ],
+    "failure_reasons": [
+      "live_pdp_probe_failed"
+    ],
+    "probed_product_id": "ext_3b2f5eaa044e309bf442a047",
+    "probed_id_type": "external_product_id"
+  }
+]

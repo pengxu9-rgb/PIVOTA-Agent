@@ -1,0 +1,1340 @@
+{
+  "extractDoc": {
+    "brand": "Ownist",
+    "domain": "ownist.com",
+    "mode": "puppeteer",
+    "platform": "Shopify",
+    "products": [
+      {
+        "title": "Triple Shine Garden edition",
+        "url": "https://ownist.com/products/triple-shine-garden-gift-set",
+        "image_url": "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/01_cd88e474-d67b-42fc-b7a4-a0c9aab84d2b.jpg?v=1777860744",
+        "image_urls": [
+          "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/01_cd88e474-d67b-42fc-b7a4-a0c9aab84d2b.jpg?v=1777860744",
+          "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/02_8cab7cab-8153-4ffc-877c-2a6acf82f2b4.jpg?v=1777860744",
+          "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/03_5b4271d8-64e3-4926-8844-9b275d5dd9aa.jpg?v=1777860744",
+          "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/04_9e17b2f1-f51a-405a-9be9-96bec5aba818.jpg?v=1777860745",
+          "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/05_5e00757f-8546-4574-8bb8-6958344d8056.jpg?v=1777860745",
+          "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/06_b69efc52-2163-42ab-82d9-b0508baa78da.jpg?v=1777860745",
+          "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/07_a197ebcb-eebd-4c6c-a257-dcb114f5c9f3.jpg?v=1777860744",
+          "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/08_f76a3d52-7122-498a-a592-ec728338908b.jpg?v=1777860744",
+          "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/09_7032e344-d237-4fdc-bcc6-f8a815c27cc8.jpg?v=1777860744",
+          "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/10_e046d38a-c7ed-4468-9f82-fa9f13d610fa.jpg?v=1777860744",
+          "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/09_8dca42b7-96d6-4785-bda7-5f081d53dbd6.jpg?v=1779341892"
+        ],
+        "variant_skus": [
+          "SHOPIFY-48389624299703"
+        ],
+        "variants": [
+          {
+            "id": "48389624299703",
+            "sku": "SHOPIFY-48389624299703",
+            "url": "https://ownist.com/products/triple-shine-garden-gift-set",
+            "option_name": "Title",
+            "option_value": "Default Title",
+            "price": "65.60",
+            "currency": "USD",
+            "stock": "In Stock",
+            "description": "TRIPLE-THREAT FORMULATION: Made with three key ingredients for glowing skin: Belight®, niacin (vitamin B3), and vitamin C. \n\nREAL RESULTS: One powerful formula targets three main concerns to help your skin look brighter, clearer, and more refined. \n\nBASED IN SCIENCE: Formulated to work with the natural processes of your body for maximum impact with minimal ingredients. \n\nNOTHING ARTIFICIAL: Flavored with organic grape concentrate sourced from the French regions of Bordeaux and Champagne. Naturally sweet and sugar- gluten- and dairy-free. \n\nENJOY DAILY: No messy powders or water here. Just sip and enjoy wherever and whenever you like.",
+            "image_url": "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/01_cd88e474-d67b-42fc-b7a4-a0c9aab84d2b.jpg?v=1777860744",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/01_cd88e474-d67b-42fc-b7a4-a0c9aab84d2b.jpg?v=1777860744",
+              "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/02_8cab7cab-8153-4ffc-877c-2a6acf82f2b4.jpg?v=1777860744",
+              "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/03_5b4271d8-64e3-4926-8844-9b275d5dd9aa.jpg?v=1777860744",
+              "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/04_9e17b2f1-f51a-405a-9be9-96bec5aba818.jpg?v=1777860745",
+              "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/05_5e00757f-8546-4574-8bb8-6958344d8056.jpg?v=1777860745",
+              "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/06_b69efc52-2163-42ab-82d9-b0508baa78da.jpg?v=1777860745",
+              "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/07_a197ebcb-eebd-4c6c-a257-dcb114f5c9f3.jpg?v=1777860744",
+              "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/08_f76a3d52-7122-498a-a592-ec728338908b.jpg?v=1777860744",
+              "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/09_7032e344-d237-4fdc-bcc6-f8a815c27cc8.jpg?v=1777860744",
+              "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/10_e046d38a-c7ed-4468-9f82-fa9f13d610fa.jpg?v=1777860744",
+              "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/09_8dca42b7-96d6-4785-bda7-5f081d53dbd6.jpg?v=1779341892"
+            ],
+            "ad_copy": "",
+            "source_origin": "shopify_json",
+            "source_quality_status": "quarantined",
+            "hidden_from_selector": true
+          }
+        ],
+        "description_raw": "TRIPLE-THREAT FORMULATION: Made with three key ingredients for glowing skin: Belight®, niacin (vitamin B3), and vitamin C. \n\nREAL RESULTS: One powerful formula targets three main concerns to help your skin look brighter, clearer, and more refined. \n\nBASED IN SCIENCE: Formulated to work with the natural processes of your body for maximum impact with minimal ingredients. \n\nNOTHING ARTIFICIAL: Flavored with organic grape concentrate sourced from the French regions of Bordeaux and Champagne. Naturally sweet and sugar- gluten- and dairy-free. \n\nENJOY DAILY: No messy powders or water here. Just sip and enjoy wherever and whenever you like.",
+        "field_capture_status": {
+          "description_raw": "present",
+          "details_sections": "missing",
+          "ingredients_raw": "missing",
+          "active_ingredients_raw": "missing",
+          "how_to_use_raw": "missing",
+          "faq_items": "missing"
+        },
+        "field_sources": {
+          "description_raw": [
+            "shopify_body_html"
+          ],
+          "details_sections": [],
+          "ingredients_raw": [],
+          "active_ingredients_raw": [],
+          "how_to_use_raw": [],
+          "faq_items": []
+        },
+        "field_quality_summary": {
+          "description_raw": {
+            "source_origin": "shopify_json",
+            "source_quality_status": "high",
+            "source_kinds": [
+              "shopify_body_html"
+            ],
+            "reason_codes": []
+          },
+          "details_sections": {
+            "source_origin": "unknown",
+            "source_quality_status": "low",
+            "source_kinds": [],
+            "reason_codes": [
+              "missing_source_kind"
+            ]
+          },
+          "ingredients_raw": {
+            "source_origin": "unknown",
+            "source_quality_status": "low",
+            "source_kinds": [],
+            "reason_codes": [
+              "missing_source_kind"
+            ]
+          },
+          "active_ingredients_raw": {
+            "source_origin": "unknown",
+            "source_quality_status": "low",
+            "source_kinds": [],
+            "reason_codes": [
+              "missing_source_kind"
+            ]
+          },
+          "how_to_use_raw": {
+            "source_origin": "unknown",
+            "source_quality_status": "low",
+            "source_kinds": [],
+            "reason_codes": [
+              "missing_source_kind"
+            ]
+          },
+          "faq_items": {
+            "source_origin": "unknown",
+            "source_quality_status": "low",
+            "source_kinds": [],
+            "reason_codes": [
+              "missing_source_kind"
+            ]
+          }
+        },
+        "product_kind": "bundle",
+        "bundle_components": [
+          {
+            "name": "TRIPLE-THREAT FORMULATION: Made with three key ingredients for glowing skin: Belight®",
+            "source_kind": "bundle_component_description_candidate",
+            "raw_text": "TRIPLE-THREAT FORMULATION: Made with three key ingredients for glowing skin: Belight®"
+          },
+          {
+            "name": "niacin (vitamin B3),",
+            "source_kind": "bundle_component_description_candidate",
+            "raw_text": "niacin (vitamin B3),"
+          },
+          {
+            "name": "vitamin C",
+            "source_kind": "bundle_component_description_candidate",
+            "raw_text": "vitamin C."
+          },
+          {
+            "name": "REAL RESULTS: One powerful formula targets three main concerns to help your skin look brighter",
+            "source_kind": "bundle_component_description_candidate",
+            "raw_text": "REAL RESULTS: One powerful formula targets three main concerns to help your skin look brighter"
+          },
+          {
+            "name": "clearer,",
+            "source_kind": "bundle_component_description_candidate",
+            "raw_text": "clearer,"
+          },
+          {
+            "name": "more refined",
+            "source_kind": "bundle_component_description_candidate",
+            "raw_text": "more refined."
+          },
+          {
+            "name": "Champagne. Naturally sweet",
+            "source_kind": "bundle_component_description_candidate",
+            "raw_text": "Champagne. Naturally sweet"
+          },
+          {
+            "name": "sugar- gluten-",
+            "source_kind": "bundle_component_description_candidate",
+            "raw_text": "sugar- gluten-"
+          },
+          {
+            "name": "dairy-free",
+            "source_kind": "bundle_component_description_candidate",
+            "raw_text": "dairy-free."
+          },
+          {
+            "name": "ENJOY DAILY: No messy powders or water here. Just sip",
+            "source_kind": "bundle_component_description_candidate",
+            "raw_text": "ENJOY DAILY: No messy powders or water here. Just sip"
+          },
+          {
+            "name": "enjoy wherever",
+            "source_kind": "bundle_component_description_candidate",
+            "raw_text": "enjoy wherever"
+          },
+          {
+            "name": "whenever you like",
+            "source_kind": "bundle_component_description_candidate",
+            "raw_text": "whenever you like."
+          }
+        ]
+      },
+      {
+        "title": "Triple Collagen Garden edition",
+        "url": "https://ownist.com/products/triple-collagen-garden-gift-set",
+        "image_url": "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/01.jpg?v=1777860706",
+        "image_urls": [
+          "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/01.jpg?v=1777860706",
+          "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/02.jpg?v=1777860706",
+          "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/03_44d028da-5dc8-43c7-8008-1803f574406c.jpg?v=1777860705",
+          "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/04.jpg?v=1777860706",
+          "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/05.jpg?v=1777860706",
+          "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/06.jpg?v=1777860706",
+          "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/07.jpg?v=1777860706",
+          "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/08.jpg?v=1777860705",
+          "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/09.jpg?v=1777860706",
+          "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/10.jpg?v=1777860706",
+          "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/09_d95b0e27-49a5-4571-b09f-73d490a5565a.jpg?v=1779341930"
+        ],
+        "variant_skus": [
+          "SHOPIFY-48389129306295"
+        ],
+        "variants": [
+          {
+            "id": "48389129306295",
+            "sku": "SHOPIFY-48389129306295",
+            "url": "https://ownist.com/products/triple-collagen-garden-gift-set",
+            "option_name": "Title",
+            "option_value": "Default Title",
+            "price": "65.60",
+            "currency": "USD",
+            "stock": "In Stock",
+            "description": "•TRIPLE EFFECTIVE FORMULA: Made with the same three key elements that make up healthy skin: collagen, elastin, and hyaluronic acid.\n•REAL RESULTS: Improve skin elasticity, texture, and hydration with one powerful formula. It even supports healthier hair and nails too!\n•BASED IN SCIENCE: Formulated to work with the natural processes of your body for maximum impact with minimal ingredients.\n•NOTHING ARTIFICIAL: Flavored with organic Valencia orange concentrate for a naturally sweet taste that’s sugar-, gluten-, and dairy-free.\n•ENJOY DAILY: No messy powders or water here. Just sip and enjoy wherever and whenever you like.",
+            "image_url": "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/01.jpg?v=1777860706",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/01.jpg?v=1777860706",
+              "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/02.jpg?v=1777860706",
+              "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/03_44d028da-5dc8-43c7-8008-1803f574406c.jpg?v=1777860705",
+              "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/04.jpg?v=1777860706",
+              "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/05.jpg?v=1777860706",
+              "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/06.jpg?v=1777860706",
+              "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/07.jpg?v=1777860706",
+              "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/08.jpg?v=1777860705",
+              "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/09.jpg?v=1777860706",
+              "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/10.jpg?v=1777860706",
+              "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/09_d95b0e27-49a5-4571-b09f-73d490a5565a.jpg?v=1779341930"
+            ],
+            "ad_copy": "",
+            "source_origin": "shopify_json",
+            "source_quality_status": "quarantined",
+            "hidden_from_selector": true
+          }
+        ],
+        "description_raw": "•TRIPLE EFFECTIVE FORMULA: Made with the same three key elements that make up healthy skin: collagen, elastin, and hyaluronic acid.\n•REAL RESULTS: Improve skin elasticity, texture, and hydration with one powerful formula. It even supports healthier hair and nails too!\n•BASED IN SCIENCE: Formulated to work with the natural processes of your body for maximum impact with minimal ingredients.\n•NOTHING ARTIFICIAL: Flavored with organic Valencia orange concentrate for a naturally sweet taste that’s sugar-, gluten-, and dairy-free.\n•ENJOY DAILY: No messy powders or water here. Just sip and enjoy wherever and whenever you like.",
+        "field_capture_status": {
+          "description_raw": "present",
+          "details_sections": "missing",
+          "ingredients_raw": "missing",
+          "active_ingredients_raw": "missing",
+          "how_to_use_raw": "missing",
+          "faq_items": "missing"
+        },
+        "field_sources": {
+          "description_raw": [
+            "shopify_body_html"
+          ],
+          "details_sections": [],
+          "ingredients_raw": [],
+          "active_ingredients_raw": [],
+          "how_to_use_raw": [],
+          "faq_items": []
+        },
+        "field_quality_summary": {
+          "description_raw": {
+            "source_origin": "shopify_json",
+            "source_quality_status": "high",
+            "source_kinds": [
+              "shopify_body_html"
+            ],
+            "reason_codes": []
+          },
+          "details_sections": {
+            "source_origin": "unknown",
+            "source_quality_status": "low",
+            "source_kinds": [],
+            "reason_codes": [
+              "missing_source_kind"
+            ]
+          },
+          "ingredients_raw": {
+            "source_origin": "unknown",
+            "source_quality_status": "low",
+            "source_kinds": [],
+            "reason_codes": [
+              "missing_source_kind"
+            ]
+          },
+          "active_ingredients_raw": {
+            "source_origin": "unknown",
+            "source_quality_status": "low",
+            "source_kinds": [],
+            "reason_codes": [
+              "missing_source_kind"
+            ]
+          },
+          "how_to_use_raw": {
+            "source_origin": "unknown",
+            "source_quality_status": "low",
+            "source_kinds": [],
+            "reason_codes": [
+              "missing_source_kind"
+            ]
+          },
+          "faq_items": {
+            "source_origin": "unknown",
+            "source_quality_status": "low",
+            "source_kinds": [],
+            "reason_codes": [
+              "missing_source_kind"
+            ]
+          }
+        },
+        "product_kind": "bundle",
+        "bundle_components": [
+          {
+            "name": "TRIPLE EFFECTIVE FORMULA: Made with the same three key elements that make up healthy skin: collagen",
+            "source_kind": "bundle_component_description_candidate",
+            "raw_text": "TRIPLE EFFECTIVE FORMULA: Made with the same three key elements that make up healthy skin: collagen"
+          },
+          {
+            "name": "elastin,",
+            "source_kind": "bundle_component_description_candidate",
+            "raw_text": "elastin,"
+          },
+          {
+            "name": "hyaluronic acid",
+            "source_kind": "bundle_component_description_candidate",
+            "raw_text": "hyaluronic acid."
+          },
+          {
+            "name": "REAL RESULTS: Improve skin elasticity",
+            "source_kind": "bundle_component_description_candidate",
+            "raw_text": "REAL RESULTS: Improve skin elasticity"
+          },
+          {
+            "name": "texture,",
+            "source_kind": "bundle_component_description_candidate",
+            "raw_text": "texture,"
+          },
+          {
+            "name": "hydration with one powerful formula. It even supports healthier hair",
+            "source_kind": "bundle_component_description_candidate",
+            "raw_text": "hydration with one powerful formula. It even supports healthier hair"
+          },
+          {
+            "name": "nails too!",
+            "source_kind": "bundle_component_description_candidate",
+            "raw_text": "nails too!"
+          },
+          {
+            "name": "gluten-,",
+            "source_kind": "bundle_component_description_candidate",
+            "raw_text": "gluten-,"
+          },
+          {
+            "name": "dairy-free",
+            "source_kind": "bundle_component_description_candidate",
+            "raw_text": "dairy-free."
+          },
+          {
+            "name": "ENJOY DAILY: No messy powders or water here. Just sip",
+            "source_kind": "bundle_component_description_candidate",
+            "raw_text": "ENJOY DAILY: No messy powders or water here. Just sip"
+          },
+          {
+            "name": "enjoy wherever",
+            "source_kind": "bundle_component_description_candidate",
+            "raw_text": "enjoy wherever"
+          },
+          {
+            "name": "whenever you like",
+            "source_kind": "bundle_component_description_candidate",
+            "raw_text": "whenever you like."
+          }
+        ]
+      },
+      {
+        "title": "Triple Shine Grape",
+        "url": "https://ownist.com/products/triple-shine-1-box",
+        "image_url": "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/01_b5642dc3-8842-4dc8-9322-2ddc28fe08a7.jpg?v=1778030956",
+        "image_urls": [
+          "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/01_b5642dc3-8842-4dc8-9322-2ddc28fe08a7.jpg?v=1778030956",
+          "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/02_740b6752-77c9-4f5b-80be-5fd560487244.jpg?v=1778030956",
+          "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/03_1ad2f6c6-29fe-4cb5-a5fc-62b644edd4b4.jpg?v=1778030956",
+          "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/04_067029ac-3c28-4c3a-b0c5-23907675c612.jpg?v=1778030955",
+          "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/05_92a4e195-c2a5-42c3-b7d2-15c45180afe5.jpg?v=1778030956",
+          "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/06_bf58225d-867e-42d0-81f7-9fe5e5e2eab8.jpg?v=1778030955",
+          "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/07_3d3c8589-5ed6-4a03-aa13-03c3568fdb6e.jpg?v=1778030956",
+          "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/08_f677a317-7c8a-4edf-8494-4249a28ee9e6.jpg?v=1778030956",
+          "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/09_612ed31e-1e3d-404e-b0da-1f1f289f696e.jpg?v=1778030956",
+          "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/10_aeb56a67-fb57-44ed-8227-35d6a5270848.jpg?v=1778030956",
+          "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/ShopifyTripleShineGrape.jpg?v=1722500020"
+        ],
+        "variant_skus": [
+          "TS-01"
+        ],
+        "variants": [
+          {
+            "id": "42327845699767",
+            "sku": "TS-01",
+            "url": "https://ownist.com/products/triple-shine-1-box",
+            "option_name": "Title",
+            "option_value": "Default Title",
+            "price": "41.00",
+            "currency": "USD",
+            "stock": "In Stock",
+            "description": "TRIPLE-THREAT FORMULATION: Made with three key ingredients for glowing skin: Belight®, niacin (vitamin B3), and vitamin C. \n\nREAL RESULTS: One powerful formula targets three main concerns to help your skin look brighter, clearer, and more refined. \n\nBASED IN SCIENCE: Formulated to work with the natural processes of your body for maximum impact with minimal ingredients. \n\nNOTHING ARTIFICIAL: Flavored with organic grape concentrate sourced from the French regions of Bordeaux and Champagne. Naturally sweet and sugar- gluten- and dairy-free. \n\nENJOY DAILY: No messy powders or water here. Just sip and enjoy wherever and whenever you like.",
+            "image_url": "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/01_b5642dc3-8842-4dc8-9322-2ddc28fe08a7.jpg?v=1778030956",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/01_b5642dc3-8842-4dc8-9322-2ddc28fe08a7.jpg?v=1778030956",
+              "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/02_740b6752-77c9-4f5b-80be-5fd560487244.jpg?v=1778030956",
+              "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/03_1ad2f6c6-29fe-4cb5-a5fc-62b644edd4b4.jpg?v=1778030956",
+              "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/04_067029ac-3c28-4c3a-b0c5-23907675c612.jpg?v=1778030955",
+              "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/05_92a4e195-c2a5-42c3-b7d2-15c45180afe5.jpg?v=1778030956",
+              "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/06_bf58225d-867e-42d0-81f7-9fe5e5e2eab8.jpg?v=1778030955",
+              "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/07_3d3c8589-5ed6-4a03-aa13-03c3568fdb6e.jpg?v=1778030956",
+              "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/08_f677a317-7c8a-4edf-8494-4249a28ee9e6.jpg?v=1778030956",
+              "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/09_612ed31e-1e3d-404e-b0da-1f1f289f696e.jpg?v=1778030956",
+              "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/10_aeb56a67-fb57-44ed-8227-35d6a5270848.jpg?v=1778030956",
+              "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/ShopifyTripleShineGrape.jpg?v=1722500020"
+            ],
+            "ad_copy": "",
+            "source_origin": "shopify_json",
+            "source_quality_status": "quarantined",
+            "hidden_from_selector": true
+          }
+        ],
+        "description_raw": "TRIPLE-THREAT FORMULATION: Made with three key ingredients for glowing skin: Belight®, niacin (vitamin B3), and vitamin C. \n\nREAL RESULTS: One powerful formula targets three main concerns to help your skin look brighter, clearer, and more refined. \n\nBASED IN SCIENCE: Formulated to work with the natural processes of your body for maximum impact with minimal ingredients. \n\nNOTHING ARTIFICIAL: Flavored with organic grape concentrate sourced from the French regions of Bordeaux and Champagne. Naturally sweet and sugar- gluten- and dairy-free. \n\nENJOY DAILY: No messy powders or water here. Just sip and enjoy wherever and whenever you like.",
+        "field_capture_status": {
+          "description_raw": "present",
+          "details_sections": "missing",
+          "ingredients_raw": "missing",
+          "active_ingredients_raw": "missing",
+          "how_to_use_raw": "missing",
+          "faq_items": "missing"
+        },
+        "field_sources": {
+          "description_raw": [
+            "shopify_body_html"
+          ],
+          "details_sections": [],
+          "ingredients_raw": [],
+          "active_ingredients_raw": [],
+          "how_to_use_raw": [],
+          "faq_items": []
+        },
+        "field_quality_summary": {
+          "description_raw": {
+            "source_origin": "shopify_json",
+            "source_quality_status": "high",
+            "source_kinds": [
+              "shopify_body_html"
+            ],
+            "reason_codes": []
+          },
+          "details_sections": {
+            "source_origin": "unknown",
+            "source_quality_status": "low",
+            "source_kinds": [],
+            "reason_codes": [
+              "missing_source_kind"
+            ]
+          },
+          "ingredients_raw": {
+            "source_origin": "unknown",
+            "source_quality_status": "low",
+            "source_kinds": [],
+            "reason_codes": [
+              "missing_source_kind"
+            ]
+          },
+          "active_ingredients_raw": {
+            "source_origin": "unknown",
+            "source_quality_status": "low",
+            "source_kinds": [],
+            "reason_codes": [
+              "missing_source_kind"
+            ]
+          },
+          "how_to_use_raw": {
+            "source_origin": "unknown",
+            "source_quality_status": "low",
+            "source_kinds": [],
+            "reason_codes": [
+              "missing_source_kind"
+            ]
+          },
+          "faq_items": {
+            "source_origin": "unknown",
+            "source_quality_status": "low",
+            "source_kinds": [],
+            "reason_codes": [
+              "missing_source_kind"
+            ]
+          }
+        },
+        "product_kind": "single_formula"
+      },
+      {
+        "title": "Triple Collagen Orange",
+        "url": "https://ownist.com/products/ownist-triple-collagen-1-box",
+        "image_url": "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/01_3177d579-37e1-494f-b9cd-deb0aee90926.jpg?v=1778030894",
+        "image_urls": [
+          "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/01_3177d579-37e1-494f-b9cd-deb0aee90926.jpg?v=1778030894",
+          "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/02_7501aedb-342d-4cda-93cf-d6cb5b86ee2f.jpg?v=1779254663",
+          "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/03_be01589a-3c00-4a37-a8cd-bd04b3ccb68a.jpg?v=1779254656",
+          "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/05_de98b781-df7b-4c4e-997c-02b8b44240cc.jpg?v=1778030893",
+          "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/04_5fbfe5f6-f339-406d-a92c-f311f3f1d419.jpg?v=1778030894",
+          "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/06_54172f1a-eaf2-4959-afed-287b35ffb39e.jpg?v=1778030894",
+          "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/07_bf1d47c2-f6cc-430a-9beb-3ac4a5417f75.jpg?v=1778030894",
+          "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/08_bfece642-e25e-4b0a-9f23-6e090cf43f71.jpg?v=1778030894",
+          "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/09_4f6f336a-5f09-43e4-8718-937d26e7e2f7.jpg?v=1779254793",
+          "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/10_241492ce-1314-496b-b4f8-ead73f1df8ec.jpg?v=1779254527",
+          "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/ShopifyTripleCollagenOrange.jpg?v=1722499679"
+        ],
+        "variant_skus": [
+          "TC-01_NEW"
+        ],
+        "variants": [
+          {
+            "id": "42327805624503",
+            "sku": "TC-01_NEW",
+            "url": "https://ownist.com/products/ownist-triple-collagen-1-box",
+            "option_name": "Title",
+            "option_value": "Default Title",
+            "price": "41.00",
+            "currency": "USD",
+            "stock": "In Stock",
+            "description": "•TRIPLE EFFECTIVE FORMULA: Made with the same three key elements that make up healthy skin: collagen, elastin, and hyaluronic acid.\n•REAL RESULTS: Improve skin elasticity, texture, and hydration with one powerful formula. It even supports healthier hair and nails too!\n•BASED IN SCIENCE: Formulated to work with the natural processes of your body for maximum impact with minimal ingredients.\n•NOTHING ARTIFICIAL: Flavored with organic Valencia orange concentrate for a naturally sweet taste that’s sugar-, gluten-, and dairy-free.\n•ENJOY DAILY: No messy powders or water here. Just sip and enjoy wherever and whenever you like.",
+            "image_url": "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/01_3177d579-37e1-494f-b9cd-deb0aee90926.jpg?v=1778030894",
+            "image_urls": [
+              "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/01_3177d579-37e1-494f-b9cd-deb0aee90926.jpg?v=1778030894",
+              "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/02_7501aedb-342d-4cda-93cf-d6cb5b86ee2f.jpg?v=1779254663",
+              "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/03_be01589a-3c00-4a37-a8cd-bd04b3ccb68a.jpg?v=1779254656",
+              "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/05_de98b781-df7b-4c4e-997c-02b8b44240cc.jpg?v=1778030893",
+              "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/04_5fbfe5f6-f339-406d-a92c-f311f3f1d419.jpg?v=1778030894",
+              "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/06_54172f1a-eaf2-4959-afed-287b35ffb39e.jpg?v=1778030894",
+              "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/07_bf1d47c2-f6cc-430a-9beb-3ac4a5417f75.jpg?v=1778030894",
+              "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/08_bfece642-e25e-4b0a-9f23-6e090cf43f71.jpg?v=1778030894",
+              "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/09_4f6f336a-5f09-43e4-8718-937d26e7e2f7.jpg?v=1779254793",
+              "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/10_241492ce-1314-496b-b4f8-ead73f1df8ec.jpg?v=1779254527",
+              "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/ShopifyTripleCollagenOrange.jpg?v=1722499679"
+            ],
+            "ad_copy": "",
+            "source_origin": "shopify_json",
+            "source_quality_status": "quarantined",
+            "hidden_from_selector": true
+          }
+        ],
+        "description_raw": "•TRIPLE EFFECTIVE FORMULA: Made with the same three key elements that make up healthy skin: collagen, elastin, and hyaluronic acid.\n•REAL RESULTS: Improve skin elasticity, texture, and hydration with one powerful formula. It even supports healthier hair and nails too!\n•BASED IN SCIENCE: Formulated to work with the natural processes of your body for maximum impact with minimal ingredients.\n•NOTHING ARTIFICIAL: Flavored with organic Valencia orange concentrate for a naturally sweet taste that’s sugar-, gluten-, and dairy-free.\n•ENJOY DAILY: No messy powders or water here. Just sip and enjoy wherever and whenever you like.",
+        "field_capture_status": {
+          "description_raw": "present",
+          "details_sections": "missing",
+          "ingredients_raw": "missing",
+          "active_ingredients_raw": "missing",
+          "how_to_use_raw": "missing",
+          "faq_items": "missing"
+        },
+        "field_sources": {
+          "description_raw": [
+            "shopify_body_html"
+          ],
+          "details_sections": [],
+          "ingredients_raw": [],
+          "active_ingredients_raw": [],
+          "how_to_use_raw": [],
+          "faq_items": []
+        },
+        "field_quality_summary": {
+          "description_raw": {
+            "source_origin": "shopify_json",
+            "source_quality_status": "high",
+            "source_kinds": [
+              "shopify_body_html"
+            ],
+            "reason_codes": []
+          },
+          "details_sections": {
+            "source_origin": "unknown",
+            "source_quality_status": "low",
+            "source_kinds": [],
+            "reason_codes": [
+              "missing_source_kind"
+            ]
+          },
+          "ingredients_raw": {
+            "source_origin": "unknown",
+            "source_quality_status": "low",
+            "source_kinds": [],
+            "reason_codes": [
+              "missing_source_kind"
+            ]
+          },
+          "active_ingredients_raw": {
+            "source_origin": "unknown",
+            "source_quality_status": "low",
+            "source_kinds": [],
+            "reason_codes": [
+              "missing_source_kind"
+            ]
+          },
+          "how_to_use_raw": {
+            "source_origin": "unknown",
+            "source_quality_status": "low",
+            "source_kinds": [],
+            "reason_codes": [
+              "missing_source_kind"
+            ]
+          },
+          "faq_items": {
+            "source_origin": "unknown",
+            "source_quality_status": "low",
+            "source_kinds": [],
+            "reason_codes": [
+              "missing_source_kind"
+            ]
+          }
+        },
+        "product_kind": "single_formula"
+      }
+    ],
+    "variants": [
+      {
+        "id": "48389624299703",
+        "sku": "SHOPIFY-48389624299703",
+        "url": "https://ownist.com/products/triple-shine-garden-gift-set",
+        "option_name": "Title",
+        "option_value": "Default Title",
+        "price": "65.60",
+        "currency": "USD",
+        "stock": "In Stock",
+        "description": "TRIPLE-THREAT FORMULATION: Made with three key ingredients for glowing skin: Belight®, niacin (vitamin B3), and vitamin C. \n\nREAL RESULTS: One powerful formula targets three main concerns to help your skin look brighter, clearer, and more refined. \n\nBASED IN SCIENCE: Formulated to work with the natural processes of your body for maximum impact with minimal ingredients. \n\nNOTHING ARTIFICIAL: Flavored with organic grape concentrate sourced from the French regions of Bordeaux and Champagne. Naturally sweet and sugar- gluten- and dairy-free. \n\nENJOY DAILY: No messy powders or water here. Just sip and enjoy wherever and whenever you like.",
+        "image_url": "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/01_cd88e474-d67b-42fc-b7a4-a0c9aab84d2b.jpg?v=1777860744",
+        "image_urls": [
+          "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/01_cd88e474-d67b-42fc-b7a4-a0c9aab84d2b.jpg?v=1777860744",
+          "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/02_8cab7cab-8153-4ffc-877c-2a6acf82f2b4.jpg?v=1777860744",
+          "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/03_5b4271d8-64e3-4926-8844-9b275d5dd9aa.jpg?v=1777860744",
+          "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/04_9e17b2f1-f51a-405a-9be9-96bec5aba818.jpg?v=1777860745",
+          "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/05_5e00757f-8546-4574-8bb8-6958344d8056.jpg?v=1777860745",
+          "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/06_b69efc52-2163-42ab-82d9-b0508baa78da.jpg?v=1777860745",
+          "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/07_a197ebcb-eebd-4c6c-a257-dcb114f5c9f3.jpg?v=1777860744",
+          "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/08_f76a3d52-7122-498a-a592-ec728338908b.jpg?v=1777860744",
+          "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/09_7032e344-d237-4fdc-bcc6-f8a815c27cc8.jpg?v=1777860744",
+          "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/10_e046d38a-c7ed-4468-9f82-fa9f13d610fa.jpg?v=1777860744",
+          "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/09_8dca42b7-96d6-4785-bda7-5f081d53dbd6.jpg?v=1779341892"
+        ],
+        "ad_copy": "",
+        "source_origin": "shopify_json",
+        "source_quality_status": "quarantined",
+        "hidden_from_selector": true,
+        "brand": "Ownist",
+        "product_title": "Triple Shine Garden edition",
+        "product_url": "https://ownist.com/products/triple-shine-garden-gift-set",
+        "deep_link": "https://ownist.com/products/triple-shine-garden-gift-set?variant=48389624299703&utm_source=pivota&utm_medium=affiliate",
+        "simulated": false
+      },
+      {
+        "id": "48389129306295",
+        "sku": "SHOPIFY-48389129306295",
+        "url": "https://ownist.com/products/triple-collagen-garden-gift-set",
+        "option_name": "Title",
+        "option_value": "Default Title",
+        "price": "65.60",
+        "currency": "USD",
+        "stock": "In Stock",
+        "description": "•TRIPLE EFFECTIVE FORMULA: Made with the same three key elements that make up healthy skin: collagen, elastin, and hyaluronic acid.\n•REAL RESULTS: Improve skin elasticity, texture, and hydration with one powerful formula. It even supports healthier hair and nails too!\n•BASED IN SCIENCE: Formulated to work with the natural processes of your body for maximum impact with minimal ingredients.\n•NOTHING ARTIFICIAL: Flavored with organic Valencia orange concentrate for a naturally sweet taste that’s sugar-, gluten-, and dairy-free.\n•ENJOY DAILY: No messy powders or water here. Just sip and enjoy wherever and whenever you like.",
+        "image_url": "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/01.jpg?v=1777860706",
+        "image_urls": [
+          "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/01.jpg?v=1777860706",
+          "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/02.jpg?v=1777860706",
+          "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/03_44d028da-5dc8-43c7-8008-1803f574406c.jpg?v=1777860705",
+          "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/04.jpg?v=1777860706",
+          "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/05.jpg?v=1777860706",
+          "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/06.jpg?v=1777860706",
+          "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/07.jpg?v=1777860706",
+          "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/08.jpg?v=1777860705",
+          "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/09.jpg?v=1777860706",
+          "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/10.jpg?v=1777860706",
+          "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/09_d95b0e27-49a5-4571-b09f-73d490a5565a.jpg?v=1779341930"
+        ],
+        "ad_copy": "",
+        "source_origin": "shopify_json",
+        "source_quality_status": "quarantined",
+        "hidden_from_selector": true,
+        "brand": "Ownist",
+        "product_title": "Triple Collagen Garden edition",
+        "product_url": "https://ownist.com/products/triple-collagen-garden-gift-set",
+        "deep_link": "https://ownist.com/products/triple-collagen-garden-gift-set?variant=48389129306295&utm_source=pivota&utm_medium=affiliate",
+        "simulated": false
+      },
+      {
+        "id": "42327845699767",
+        "sku": "TS-01",
+        "url": "https://ownist.com/products/triple-shine-1-box",
+        "option_name": "Title",
+        "option_value": "Default Title",
+        "price": "41.00",
+        "currency": "USD",
+        "stock": "In Stock",
+        "description": "TRIPLE-THREAT FORMULATION: Made with three key ingredients for glowing skin: Belight®, niacin (vitamin B3), and vitamin C. \n\nREAL RESULTS: One powerful formula targets three main concerns to help your skin look brighter, clearer, and more refined. \n\nBASED IN SCIENCE: Formulated to work with the natural processes of your body for maximum impact with minimal ingredients. \n\nNOTHING ARTIFICIAL: Flavored with organic grape concentrate sourced from the French regions of Bordeaux and Champagne. Naturally sweet and sugar- gluten- and dairy-free. \n\nENJOY DAILY: No messy powders or water here. Just sip and enjoy wherever and whenever you like.",
+        "image_url": "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/01_b5642dc3-8842-4dc8-9322-2ddc28fe08a7.jpg?v=1778030956",
+        "image_urls": [
+          "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/01_b5642dc3-8842-4dc8-9322-2ddc28fe08a7.jpg?v=1778030956",
+          "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/02_740b6752-77c9-4f5b-80be-5fd560487244.jpg?v=1778030956",
+          "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/03_1ad2f6c6-29fe-4cb5-a5fc-62b644edd4b4.jpg?v=1778030956",
+          "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/04_067029ac-3c28-4c3a-b0c5-23907675c612.jpg?v=1778030955",
+          "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/05_92a4e195-c2a5-42c3-b7d2-15c45180afe5.jpg?v=1778030956",
+          "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/06_bf58225d-867e-42d0-81f7-9fe5e5e2eab8.jpg?v=1778030955",
+          "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/07_3d3c8589-5ed6-4a03-aa13-03c3568fdb6e.jpg?v=1778030956",
+          "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/08_f677a317-7c8a-4edf-8494-4249a28ee9e6.jpg?v=1778030956",
+          "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/09_612ed31e-1e3d-404e-b0da-1f1f289f696e.jpg?v=1778030956",
+          "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/10_aeb56a67-fb57-44ed-8227-35d6a5270848.jpg?v=1778030956",
+          "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/ShopifyTripleShineGrape.jpg?v=1722500020"
+        ],
+        "ad_copy": "",
+        "source_origin": "shopify_json",
+        "source_quality_status": "quarantined",
+        "hidden_from_selector": true,
+        "brand": "Ownist",
+        "product_title": "Triple Shine Grape",
+        "product_url": "https://ownist.com/products/triple-shine-1-box",
+        "deep_link": "https://ownist.com/products/triple-shine-1-box?variant=42327845699767&utm_source=pivota&utm_medium=affiliate",
+        "simulated": false
+      },
+      {
+        "id": "42327805624503",
+        "sku": "TC-01_NEW",
+        "url": "https://ownist.com/products/ownist-triple-collagen-1-box",
+        "option_name": "Title",
+        "option_value": "Default Title",
+        "price": "41.00",
+        "currency": "USD",
+        "stock": "In Stock",
+        "description": "•TRIPLE EFFECTIVE FORMULA: Made with the same three key elements that make up healthy skin: collagen, elastin, and hyaluronic acid.\n•REAL RESULTS: Improve skin elasticity, texture, and hydration with one powerful formula. It even supports healthier hair and nails too!\n•BASED IN SCIENCE: Formulated to work with the natural processes of your body for maximum impact with minimal ingredients.\n•NOTHING ARTIFICIAL: Flavored with organic Valencia orange concentrate for a naturally sweet taste that’s sugar-, gluten-, and dairy-free.\n•ENJOY DAILY: No messy powders or water here. Just sip and enjoy wherever and whenever you like.",
+        "image_url": "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/01_3177d579-37e1-494f-b9cd-deb0aee90926.jpg?v=1778030894",
+        "image_urls": [
+          "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/01_3177d579-37e1-494f-b9cd-deb0aee90926.jpg?v=1778030894",
+          "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/02_7501aedb-342d-4cda-93cf-d6cb5b86ee2f.jpg?v=1779254663",
+          "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/03_be01589a-3c00-4a37-a8cd-bd04b3ccb68a.jpg?v=1779254656",
+          "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/05_de98b781-df7b-4c4e-997c-02b8b44240cc.jpg?v=1778030893",
+          "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/04_5fbfe5f6-f339-406d-a92c-f311f3f1d419.jpg?v=1778030894",
+          "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/06_54172f1a-eaf2-4959-afed-287b35ffb39e.jpg?v=1778030894",
+          "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/07_bf1d47c2-f6cc-430a-9beb-3ac4a5417f75.jpg?v=1778030894",
+          "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/08_bfece642-e25e-4b0a-9f23-6e090cf43f71.jpg?v=1778030894",
+          "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/09_4f6f336a-5f09-43e4-8718-937d26e7e2f7.jpg?v=1779254793",
+          "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/10_241492ce-1314-496b-b4f8-ead73f1df8ec.jpg?v=1779254527",
+          "https://cdn.shopify.com/s/files/1/0604/7927/5191/files/ShopifyTripleCollagenOrange.jpg?v=1722499679"
+        ],
+        "ad_copy": "",
+        "source_origin": "shopify_json",
+        "source_quality_status": "quarantined",
+        "hidden_from_selector": true,
+        "brand": "Ownist",
+        "product_title": "Triple Collagen Orange",
+        "product_url": "https://ownist.com/products/ownist-triple-collagen-1-box",
+        "deep_link": "https://ownist.com/products/ownist-triple-collagen-1-box?variant=42327805624503&utm_source=pivota&utm_medium=affiliate",
+        "simulated": false
+      }
+    ],
+    "pricing": {
+      "currency": "USD",
+      "min": 41,
+      "max": 65.6,
+      "avg": 53.3
+    },
+    "ad_copy": {
+      "by_variant_id": {}
+    },
+    "pagination": {
+      "offset": 0,
+      "limit": 10,
+      "next_offset": null,
+      "has_more": false,
+      "discovered_urls": 4
+    },
+    "diagnostics": {
+      "requested_domain": "ownist.com",
+      "resolved_base_url": "https://ownist.com",
+      "discovery_strategy": "shopify_json",
+      "failure_category": null,
+      "block_provider": null,
+      "http_trace": [
+        {
+          "url": "https://ownist.com/",
+          "status": 200
+        },
+        {
+          "url": "https://ownist.com/products.json?limit=1",
+          "status": 200
+        },
+        {
+          "url": "https://ownist.com/pages/contactus",
+          "status": 200
+        },
+        {
+          "url": "https://ownist.com/products.json?limit=250&page=1",
+          "status": 200
+        }
+      ]
+    },
+    "generated_at": "2026-05-30T10:05:13.590Z",
+    "logs": [
+      {
+        "at": "2026-05-30T10:05:13.590Z",
+        "type": "info",
+        "msg": "Initializing Puppeteer extraction for: Ownist"
+      },
+      {
+        "at": "2026-05-30T10:05:13.590Z",
+        "type": "info",
+        "msg": "Requested target: https://ownist.com (market=US)"
+      },
+      {
+        "at": "2026-05-30T10:05:13.590Z",
+        "type": "info",
+        "msg": "Batch window: offset=0, limit=10, max_total=500"
+      },
+      {
+        "at": "2026-05-30T10:05:14.043Z",
+        "type": "info",
+        "msg": "Resolved storefront https://ownist.com -> https://ownist.com"
+      },
+      {
+        "at": "2026-05-30T10:05:14.043Z",
+        "type": "info",
+        "msg": "Checking Shopify feed: https://ownist.com/products.json?limit=1"
+      },
+      {
+        "at": "2026-05-30T10:05:14.151Z",
+        "type": "success",
+        "msg": "Shopify feed detected."
+      },
+      {
+        "at": "2026-05-30T10:05:14.368Z",
+        "type": "data",
+        "msg": "Loaded 4 products from Shopify feed."
+      },
+      {
+        "at": "2026-05-30T10:05:14.368Z",
+        "type": "info",
+        "msg": "Variant discovery disabled (mode=off). Candidates: 0/4 (0%)."
+      },
+      {
+        "at": "2026-05-30T10:05:14.379Z",
+        "type": "data",
+        "msg": "Summary: total_products=4, batch_products=4, variants=4, avg=1.00, multi=0"
+      },
+      {
+        "at": "2026-05-30T10:05:14.379Z",
+        "type": "success",
+        "msg": "Extraction Complete. 4 variants processed successfully."
+      }
+    ]
+  },
+  "extractV2Doc": {
+    "brand": "Ownist",
+    "domain": "ownist.com",
+    "generated_at": "2026-05-30T10:05:14.921Z",
+    "mode": "puppeteer",
+    "offers_v2": [
+      {
+        "source_site": "ownist.com",
+        "source_product_id": "ownist.com:8556612780215",
+        "url_canonical": "https://ownist.com/products/triple-shine-garden-gift-set",
+        "product_title": "Triple Shine Garden edition",
+        "product_description": "TRIPLE-THREAT FORMULATION: Made with three key ingredients for glowing skin: Belight®, niacin (vitamin B3), and vitamin C. \n\nREAL RESULTS: One powerful formula targets three main concerns to help your skin look brighter, clearer, and more refined. \n\nBASED IN SCIENCE: Formulated to work with the natural processes of your body for maximum impact with minimal ingredients. \n\nNOTHING ARTIFICIAL: Flavored with organic grape concentrate sourced from the French regions of Bordeaux and Champagne. Naturally sweet and sugar- gluten- and dairy-free. \n\nENJOY DAILY: No messy powders or water here. Just sip and enjoy wherever and whenever you like.",
+        "variant_sku": "48389624299703",
+        "market_id": "US",
+        "price_amount": 65.6,
+        "price_currency": null,
+        "price_display_raw": "65.60",
+        "price_type": "sale",
+        "compare_at_amount": 82,
+        "compare_at_currency": null,
+        "compare_at_display_raw": "82.00",
+        "tax_included": "unknown",
+        "availability": "in_stock",
+        "captured_at": "2026-05-30T10:05:15.304Z",
+        "currency_confidence": "low",
+        "market_switch_status": "unknown",
+        "market_context_debug": {
+          "headers": {
+            "Accept-Language": "en-US,en;q=0.9"
+          },
+          "cookies": {
+            "localization": "US",
+            "cart_currency": "USD",
+            "country": "US",
+            "locale": "en-US"
+          },
+          "url_params": {
+            "country": "US",
+            "locale": "en-US",
+            "currency": "USD"
+          },
+          "geo_hint": "US",
+          "expected_currency": "USD",
+          "observed_currency": null
+        },
+        "commerce_facts_v1": {
+          "contract_version": "commerce_facts.v1",
+          "market_id": "US",
+          "country": "US",
+          "currency_target": "USD",
+          "source_authority": "catalog_extract_v2",
+          "captured_at": "2026-05-30T10:05:15.304Z",
+          "evidence_url": "https://ownist.com/products/triple-shine-garden-gift-set",
+          "sellable_region": {
+            "status": "unknown",
+            "countries": [],
+            "evidence_source": "catalog_extract_v2",
+            "confidence": "low",
+            "checked_at": "2026-05-30T10:05:15.304Z",
+            "reason_codes": [
+              "market_currency_not_verified",
+              "shipping_destination_not_verified",
+              "external_checkout_not_queried"
+            ],
+            "evidence_url": "https://ownist.com/products/triple-shine-garden-gift-set"
+          },
+          "regional_price": {
+            "amount": 65.6,
+            "currency": null,
+            "display_raw": "65.60",
+            "price_type": "sale",
+            "compare_at_amount": 82,
+            "compare_at_currency": null,
+            "compare_at_display_raw": "82.00",
+            "tax_included": "unknown",
+            "confidence": "low",
+            "market_switch_status": "unknown",
+            "observed_currency": null,
+            "source_url": "https://ownist.com/products/triple-shine-garden-gift-set",
+            "captured_at": "2026-05-30T10:05:15.304Z"
+          },
+          "availability": {
+            "status": "in_stock",
+            "source": "catalog_extract_v2",
+            "confidence": "medium",
+            "captured_at": "2026-05-30T10:05:15.304Z"
+          },
+          "shipping": {
+            "status": "unknown",
+            "source": "catalog_extract_v2",
+            "confidence": "unknown",
+            "reason_codes": [
+              "external_checkout_not_queried"
+            ],
+            "checked_at": "2026-05-30T10:05:15.304Z"
+          },
+          "promotions": [],
+          "returns": {
+            "status": "unknown",
+            "source": "catalog_extract_v2",
+            "confidence": "unknown",
+            "reason_codes": [
+              "external_returns_not_extracted"
+            ],
+            "checked_at": "2026-05-30T10:05:15.304Z"
+          }
+        }
+      },
+      {
+        "source_site": "ownist.com",
+        "source_product_id": "ownist.com:8556597575863",
+        "url_canonical": "https://ownist.com/products/triple-collagen-garden-gift-set",
+        "product_title": "Triple Collagen Garden edition",
+        "product_description": "•TRIPLE EFFECTIVE FORMULA: Made with the same three key elements that make up healthy skin: collagen, elastin, and hyaluronic acid.\n•REAL RESULTS: Improve skin elasticity, texture, and hydration with one powerful formula. It even supports healthier hair and nails too!\n•BASED IN SCIENCE: Formulated to work with the natural processes of your body for maximum impact with minimal ingredients.\n•NOTHING ARTIFICIAL: Flavored with organic Valencia orange concentrate for a naturally sweet taste that’s sugar-, gluten-, and dairy-free.\n•ENJOY DAILY: No messy powders or water here. Just sip and enjoy wherever and whenever you like.",
+        "variant_sku": "48389129306295",
+        "market_id": "US",
+        "price_amount": 65.6,
+        "price_currency": null,
+        "price_display_raw": "65.60",
+        "price_type": "sale",
+        "compare_at_amount": 82,
+        "compare_at_currency": null,
+        "compare_at_display_raw": "82.00",
+        "tax_included": "unknown",
+        "availability": "in_stock",
+        "captured_at": "2026-05-30T10:05:15.304Z",
+        "currency_confidence": "low",
+        "market_switch_status": "unknown",
+        "market_context_debug": {
+          "headers": {
+            "Accept-Language": "en-US,en;q=0.9"
+          },
+          "cookies": {
+            "localization": "US",
+            "cart_currency": "USD",
+            "country": "US",
+            "locale": "en-US"
+          },
+          "url_params": {
+            "country": "US",
+            "locale": "en-US",
+            "currency": "USD"
+          },
+          "geo_hint": "US",
+          "expected_currency": "USD",
+          "observed_currency": null
+        },
+        "commerce_facts_v1": {
+          "contract_version": "commerce_facts.v1",
+          "market_id": "US",
+          "country": "US",
+          "currency_target": "USD",
+          "source_authority": "catalog_extract_v2",
+          "captured_at": "2026-05-30T10:05:15.304Z",
+          "evidence_url": "https://ownist.com/products/triple-collagen-garden-gift-set",
+          "sellable_region": {
+            "status": "unknown",
+            "countries": [],
+            "evidence_source": "catalog_extract_v2",
+            "confidence": "low",
+            "checked_at": "2026-05-30T10:05:15.304Z",
+            "reason_codes": [
+              "market_currency_not_verified",
+              "shipping_destination_not_verified",
+              "external_checkout_not_queried"
+            ],
+            "evidence_url": "https://ownist.com/products/triple-collagen-garden-gift-set"
+          },
+          "regional_price": {
+            "amount": 65.6,
+            "currency": null,
+            "display_raw": "65.60",
+            "price_type": "sale",
+            "compare_at_amount": 82,
+            "compare_at_currency": null,
+            "compare_at_display_raw": "82.00",
+            "tax_included": "unknown",
+            "confidence": "low",
+            "market_switch_status": "unknown",
+            "observed_currency": null,
+            "source_url": "https://ownist.com/products/triple-collagen-garden-gift-set",
+            "captured_at": "2026-05-30T10:05:15.304Z"
+          },
+          "availability": {
+            "status": "in_stock",
+            "source": "catalog_extract_v2",
+            "confidence": "medium",
+            "captured_at": "2026-05-30T10:05:15.304Z"
+          },
+          "shipping": {
+            "status": "unknown",
+            "source": "catalog_extract_v2",
+            "confidence": "unknown",
+            "reason_codes": [
+              "external_checkout_not_queried"
+            ],
+            "checked_at": "2026-05-30T10:05:15.304Z"
+          },
+          "promotions": [],
+          "returns": {
+            "status": "unknown",
+            "source": "catalog_extract_v2",
+            "confidence": "unknown",
+            "reason_codes": [
+              "external_returns_not_extracted"
+            ],
+            "checked_at": "2026-05-30T10:05:15.304Z"
+          }
+        }
+      },
+      {
+        "source_site": "ownist.com",
+        "source_product_id": "ownist.com:7508774715575",
+        "url_canonical": "https://ownist.com/products/triple-shine-1-box",
+        "product_title": "Triple Shine Grape",
+        "product_description": "TRIPLE-THREAT FORMULATION: Made with three key ingredients for glowing skin: Belight®, niacin (vitamin B3), and vitamin C. \n\nREAL RESULTS: One powerful formula targets three main concerns to help your skin look brighter, clearer, and more refined. \n\nBASED IN SCIENCE: Formulated to work with the natural processes of your body for maximum impact with minimal ingredients. \n\nNOTHING ARTIFICIAL: Flavored with organic grape concentrate sourced from the French regions of Bordeaux and Champagne. Naturally sweet and sugar- gluten- and dairy-free. \n\nENJOY DAILY: No messy powders or water here. Just sip and enjoy wherever and whenever you like.",
+        "variant_sku": "TS-01",
+        "market_id": "US",
+        "price_amount": 41,
+        "price_currency": null,
+        "price_display_raw": "41.00",
+        "price_type": "list",
+        "compare_at_amount": 41,
+        "compare_at_currency": null,
+        "compare_at_display_raw": "41.00",
+        "tax_included": "unknown",
+        "availability": "in_stock",
+        "captured_at": "2026-05-30T10:05:15.304Z",
+        "currency_confidence": "low",
+        "market_switch_status": "unknown",
+        "market_context_debug": {
+          "headers": {
+            "Accept-Language": "en-US,en;q=0.9"
+          },
+          "cookies": {
+            "localization": "US",
+            "cart_currency": "USD",
+            "country": "US",
+            "locale": "en-US"
+          },
+          "url_params": {
+            "country": "US",
+            "locale": "en-US",
+            "currency": "USD"
+          },
+          "geo_hint": "US",
+          "expected_currency": "USD",
+          "observed_currency": null
+        },
+        "commerce_facts_v1": {
+          "contract_version": "commerce_facts.v1",
+          "market_id": "US",
+          "country": "US",
+          "currency_target": "USD",
+          "source_authority": "catalog_extract_v2",
+          "captured_at": "2026-05-30T10:05:15.304Z",
+          "evidence_url": "https://ownist.com/products/triple-shine-1-box",
+          "sellable_region": {
+            "status": "unknown",
+            "countries": [],
+            "evidence_source": "catalog_extract_v2",
+            "confidence": "low",
+            "checked_at": "2026-05-30T10:05:15.304Z",
+            "reason_codes": [
+              "market_currency_not_verified",
+              "shipping_destination_not_verified",
+              "external_checkout_not_queried"
+            ],
+            "evidence_url": "https://ownist.com/products/triple-shine-1-box"
+          },
+          "regional_price": {
+            "amount": 41,
+            "currency": null,
+            "display_raw": "41.00",
+            "price_type": "list",
+            "compare_at_amount": 41,
+            "compare_at_currency": null,
+            "compare_at_display_raw": "41.00",
+            "tax_included": "unknown",
+            "confidence": "low",
+            "market_switch_status": "unknown",
+            "observed_currency": null,
+            "source_url": "https://ownist.com/products/triple-shine-1-box",
+            "captured_at": "2026-05-30T10:05:15.304Z"
+          },
+          "availability": {
+            "status": "in_stock",
+            "source": "catalog_extract_v2",
+            "confidence": "medium",
+            "captured_at": "2026-05-30T10:05:15.304Z"
+          },
+          "shipping": {
+            "status": "unknown",
+            "source": "catalog_extract_v2",
+            "confidence": "unknown",
+            "reason_codes": [
+              "external_checkout_not_queried"
+            ],
+            "checked_at": "2026-05-30T10:05:15.304Z"
+          },
+          "promotions": [],
+          "returns": {
+            "status": "unknown",
+            "source": "catalog_extract_v2",
+            "confidence": "unknown",
+            "reason_codes": [
+              "external_returns_not_extracted"
+            ],
+            "checked_at": "2026-05-30T10:05:15.304Z"
+          }
+        }
+      },
+      {
+        "source_site": "ownist.com",
+        "source_product_id": "ownist.com:7508760953015",
+        "url_canonical": "https://ownist.com/products/ownist-triple-collagen-1-box",
+        "product_title": "Triple Collagen Orange",
+        "product_description": "•TRIPLE EFFECTIVE FORMULA: Made with the same three key elements that make up healthy skin: collagen, elastin, and hyaluronic acid.\n•REAL RESULTS: Improve skin elasticity, texture, and hydration with one powerful formula. It even supports healthier hair and nails too!\n•BASED IN SCIENCE: Formulated to work with the natural processes of your body for maximum impact with minimal ingredients.\n•NOTHING ARTIFICIAL: Flavored with organic Valencia orange concentrate for a naturally sweet taste that’s sugar-, gluten-, and dairy-free.\n•ENJOY DAILY: No messy powders or water here. Just sip and enjoy wherever and whenever you like.",
+        "variant_sku": "TC-01_NEW",
+        "market_id": "US",
+        "price_amount": 41,
+        "price_currency": null,
+        "price_display_raw": "41.00",
+        "price_type": "list",
+        "compare_at_amount": null,
+        "compare_at_currency": null,
+        "compare_at_display_raw": null,
+        "tax_included": "unknown",
+        "availability": "in_stock",
+        "captured_at": "2026-05-30T10:05:15.304Z",
+        "currency_confidence": "low",
+        "market_switch_status": "unknown",
+        "market_context_debug": {
+          "headers": {
+            "Accept-Language": "en-US,en;q=0.9"
+          },
+          "cookies": {
+            "localization": "US",
+            "cart_currency": "USD",
+            "country": "US",
+            "locale": "en-US"
+          },
+          "url_params": {
+            "country": "US",
+            "locale": "en-US",
+            "currency": "USD"
+          },
+          "geo_hint": "US",
+          "expected_currency": "USD",
+          "observed_currency": null
+        },
+        "commerce_facts_v1": {
+          "contract_version": "commerce_facts.v1",
+          "market_id": "US",
+          "country": "US",
+          "currency_target": "USD",
+          "source_authority": "catalog_extract_v2",
+          "captured_at": "2026-05-30T10:05:15.304Z",
+          "evidence_url": "https://ownist.com/products/ownist-triple-collagen-1-box",
+          "sellable_region": {
+            "status": "unknown",
+            "countries": [],
+            "evidence_source": "catalog_extract_v2",
+            "confidence": "low",
+            "checked_at": "2026-05-30T10:05:15.304Z",
+            "reason_codes": [
+              "market_currency_not_verified",
+              "shipping_destination_not_verified",
+              "external_checkout_not_queried"
+            ],
+            "evidence_url": "https://ownist.com/products/ownist-triple-collagen-1-box"
+          },
+          "regional_price": {
+            "amount": 41,
+            "currency": null,
+            "display_raw": "41.00",
+            "price_type": "list",
+            "compare_at_amount": null,
+            "compare_at_currency": null,
+            "compare_at_display_raw": null,
+            "tax_included": "unknown",
+            "confidence": "low",
+            "market_switch_status": "unknown",
+            "observed_currency": null,
+            "source_url": "https://ownist.com/products/ownist-triple-collagen-1-box",
+            "captured_at": "2026-05-30T10:05:15.304Z"
+          },
+          "availability": {
+            "status": "in_stock",
+            "source": "catalog_extract_v2",
+            "confidence": "medium",
+            "captured_at": "2026-05-30T10:05:15.304Z"
+          },
+          "shipping": {
+            "status": "unknown",
+            "source": "catalog_extract_v2",
+            "confidence": "unknown",
+            "reason_codes": [
+              "external_checkout_not_queried"
+            ],
+            "checked_at": "2026-05-30T10:05:15.304Z"
+          },
+          "promotions": [],
+          "returns": {
+            "status": "unknown",
+            "source": "catalog_extract_v2",
+            "confidence": "unknown",
+            "reason_codes": [
+              "external_returns_not_extracted"
+            ],
+            "checked_at": "2026-05-30T10:05:15.304Z"
+          }
+        }
+      }
+    ],
+    "counters_by_site_market": [
+      {
+        "source_site": "ownist.com",
+        "market_id": "US",
+        "total_offers": 4,
+        "native_currency_hit_rate": 0,
+        "price_parse_success_rate": 1,
+        "currency_confidence_low_rate": 1,
+        "market_switch_fail_rate": 0
+      }
+    ],
+    "pagination": {
+      "offset": 0,
+      "limit": 10,
+      "next_offset": null,
+      "has_more": false,
+      "discovered_urls": 4
+    },
+    "logs": [
+      {
+        "at": "2026-05-30T10:05:14.921Z",
+        "type": "info",
+        "msg": "V2 extraction start: ownist.com | markets=US"
+      },
+      {
+        "at": "2026-05-30T10:05:15.024Z",
+        "type": "info",
+        "msg": "Resolved storefront https://ownist.com -> https://ownist.com"
+      },
+      {
+        "at": "2026-05-30T10:05:15.024Z",
+        "type": "info",
+        "msg": "Extracting market=US expected=USD"
+      },
+      {
+        "at": "2026-05-30T10:05:15.304Z",
+        "type": "data",
+        "msg": "Shopify V2 offers=4 market=US"
+      },
+      {
+        "at": "2026-05-30T10:05:15.304Z",
+        "type": "success",
+        "msg": "Market US offers=4 failed=no"
+      }
+    ],
+    "diagnostics": {
+      "requested_domain": "ownist.com",
+      "resolved_base_url": "https://ownist.com",
+      "discovery_strategy": "shopify_json",
+      "failure_category": null,
+      "block_provider": null,
+      "http_trace": [
+        {
+          "url": "https://ownist.com/?country=US&locale=en-US&currency=USD",
+          "status": 200
+        },
+        {
+          "url": "https://ownist.com/products.json?limit=1&country=US&locale=en-US&currency=USD",
+          "status": 200
+        },
+        {
+          "url": "https://ownist.com/products.json?limit=250&page=1&country=US&locale=en-US&currency=USD",
+          "status": 200
+        },
+        {
+          "url": "https://ownist.com/?country=US&locale=en-US&currency=USD",
+          "status": 200
+        }
+      ]
+    }
+  }
+}

@@ -11,6 +11,8 @@ const CONFIRM_TOKEN = 'ALIGN_REVIEWED_EXTERNAL_SEED_IDENTITY_TO_CATALOG_SIG';
 const REVIEWED_PRODUCT_LINE_SINGLETON_REASON = 'reviewed_product_line_singleton_catalog_sig_alignment';
 const REVIEWED_OFFICIAL_URL_EXACT_CONFLICT_CLEANUP_REASON =
   'reviewed_official_url_exact_conflict_cleanup_catalog_sig_alignment';
+const OFFICIAL_REVIEWED_SET_COMPONENT_REF_REASON =
+  'official_reviewed_set_component_ref_identity_alignment';
 const ALLOWED_PRODUCT_LINE_SINGLETON_REVIEW_REASON_CODES = new Set([
   'multi_variant_exact_item_unresolved',
   'insufficient_exact_item_evidence',
@@ -21,6 +23,10 @@ const ALLOWED_OFFICIAL_URL_EXACT_CONFLICT_REVIEW_REASON_CODES = new Set([
 const ALLOWED_OFFICIAL_URL_EXACT_CONFLICT_MATCHED_RULES = new Set([
   'manual_reviewed_default_title_axis_cleanup',
   'official_url_axes',
+]);
+const ALLOWED_OFFICIAL_REVIEWED_SET_MATCHED_RULES = new Set([
+  'official_url_axes',
+  'official_url_route',
 ]);
 
 function argValue(name, fallback = '') {
@@ -79,6 +85,44 @@ function normalizeTextKey(value) {
     .replace(/[^a-z0-9]+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+function normalizeAmount(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const numeric = Number(String(value).replace(/[^0-9.-]/g, ''));
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
+function isPositiveAmount(value) {
+  const numeric = normalizeAmount(value);
+  return Number.isFinite(numeric) && numeric > 0;
+}
+
+function isLiveAvailability(value) {
+  const normalized = asString(value).toLowerCase();
+  if (!normalized) return true;
+  return !['out_of_stock', 'sold_out', 'unavailable', 'discontinued'].includes(normalized);
+}
+
+function hostnameForCompare(value) {
+  const raw = asString(value);
+  if (!raw) return '';
+  try {
+    const url = new URL(raw);
+    return url.hostname.toLowerCase().replace(/^www\./, '');
+  } catch {
+    return '';
+  }
+}
+
+function textContainsMeaningfulRef(seedTitle, refTitle) {
+  const seedKey = normalizeTextKey(seedTitle);
+  const refKey = normalizeTextKey(refTitle);
+  if (!seedKey || !refKey) return false;
+  if (seedKey.includes(refKey)) return true;
+  const refTokens = refKey.split(' ').filter((token) => token.length >= 3);
+  if (!refTokens.length) return false;
+  return refTokens.every((token) => seedKey.split(' ').includes(token));
 }
 
 function activeVariantAxes(value) {
@@ -206,6 +250,116 @@ function evaluateReviewedOfficialUrlExactConflictCleanup(
   };
 }
 
+function evaluateOfficialReviewedSetComponentRefs(
+  row,
+  { allowOfficialReviewedSetComponentRefs = false } = {},
+) {
+  const blockers = [];
+  const catalogCanonicalUrl = normalizeUrlForCompare(row.canonical_url);
+  const seedCanonicalUrl = normalizeUrlForCompare(row.seed_canonical_url || row.destination_url);
+  const officialUrl = normalizeUrlForCompare(row.official_url);
+  const catalogTitleKey = normalizeTextKey(row.title);
+  const seedTitleKey = normalizeTextKey(row.seed_title || row.title);
+  const matchedByRule = asString(row.matched_by_rule);
+  const parentPrice = normalizeAmount(row.price_amount);
+  const parentHost = hostnameForCompare(row.canonical_url || row.seed_canonical_url || row.destination_url);
+  const components = asArray(row.components).filter(
+    (component) => asString(component.external_product_id || component.product_id || component.ref_title),
+  );
+  const componentIds = components.map((component) =>
+    asString(component.external_product_id || component.product_id),
+  );
+  const uniqueComponentIds = new Set(componentIds.filter(Boolean));
+  const componentPrices = components.map((component) =>
+    normalizeAmount(component.max_list_price ?? component.price_amount),
+  );
+  const maxComponentPrice = componentPrices.reduce(
+    (max, price) => (Number.isFinite(price) && price > max ? price : max),
+    0,
+  );
+  const totalComponentPrice = componentPrices.reduce(
+    (sum, price) => sum + (Number.isFinite(price) && price > 0 ? price : 0),
+    0,
+  );
+
+  if (!allowOfficialReviewedSetComponentRefs) blockers.push('flag_not_enabled');
+  if (asString(row.source_tier).toLowerCase() !== 'brand') blockers.push('source_tier_not_brand');
+  if (!ALLOWED_OFFICIAL_REVIEWED_SET_MATCHED_RULES.has(matchedByRule)) {
+    blockers.push('unexpected_matched_by_rule');
+  }
+  if (!officialUrl || !catalogCanonicalUrl || officialUrl !== catalogCanonicalUrl) {
+    blockers.push('official_url_mismatch');
+  }
+  if (seedCanonicalUrl && catalogCanonicalUrl && seedCanonicalUrl !== catalogCanonicalUrl) {
+    blockers.push('seed_canonical_url_mismatch');
+  }
+  if (!catalogTitleKey || !seedTitleKey || catalogTitleKey !== seedTitleKey) {
+    blockers.push('seed_title_mismatch');
+  }
+  if (hasTerminalHold(row.seed_data)) blockers.push('terminal_hold_present');
+  if (!isPositiveAmount(parentPrice)) blockers.push('missing_parent_price');
+  if (!isLiveAvailability(row.availability)) blockers.push('parent_not_live_available');
+  if (asString(row.product_sync_status).toLowerCase() !== 'live') blockers.push('catalog_not_live');
+  if (components.length < 2) blockers.push('insufficient_component_refs');
+  if (uniqueComponentIds.size !== components.length) blockers.push('duplicate_or_missing_component_ids');
+  if (parentPrice > 0 && maxComponentPrice > parentPrice * 2) {
+    blockers.push('component_price_outlier');
+  }
+  if (parentPrice > 0 && totalComponentPrice > parentPrice * 3) {
+    blockers.push('component_total_price_outlier');
+  }
+
+  for (const component of components) {
+    const componentId = asString(component.external_product_id || component.product_id);
+    const refTitle = asString(component.ref_title);
+    const seedTitle = asString(component.seed_title);
+    const componentHost = hostnameForCompare(
+      component.canonical_url || component.destination_url || component.ref_canonical_url,
+    );
+    if (!componentId) blockers.push('component_missing_external_product_id');
+    if (asString(component.review_state).toLowerCase() !== 'reviewed') {
+      blockers.push('component_not_reviewed');
+    }
+    if (asString(component.status).toLowerCase() !== 'active') blockers.push('component_not_active');
+    if (asString(component.sync_status).toLowerCase() !== 'live') blockers.push('component_catalog_not_live');
+    if (!isPositiveAmount(component.max_list_price ?? component.price_amount)) {
+      blockers.push('component_missing_price');
+    }
+    if (!isLiveAvailability(component.availability)) blockers.push('component_not_live_available');
+    if (parentHost && componentHost && parentHost !== componentHost) blockers.push('component_domain_mismatch');
+    if (!textContainsMeaningfulRef(seedTitle, refTitle)) blockers.push('component_ref_title_mismatch');
+  }
+
+  return {
+    eligible: blockers.length === 0,
+    blockers: uniqueStrings(blockers),
+    evidence: {
+      source_tier: asString(row.source_tier),
+      matched_by_rule: matchedByRule,
+      official_url: asString(row.official_url),
+      canonical_url: asString(row.canonical_url),
+      seed_canonical_url: asString(row.seed_canonical_url || row.destination_url),
+      title: asString(row.title),
+      seed_title: asString(row.seed_title || row.title),
+      parent_price: parentPrice,
+      parent_availability: asString(row.availability),
+      component_ref_count: components.length,
+      max_component_price: maxComponentPrice || null,
+      total_component_price: totalComponentPrice || null,
+      components: components.map((component) => ({
+        external_product_id: asString(component.external_product_id || component.product_id),
+        ref_title: asString(component.ref_title),
+        seed_title: asString(component.seed_title),
+        review_state: asString(component.review_state),
+        price_amount: normalizeAmount(component.price_amount),
+        max_list_price: normalizeAmount(component.max_list_price),
+        availability: asString(component.availability),
+        canonical_url: asString(component.canonical_url),
+      })),
+    },
+  };
+}
+
 async function fetchRows(externalProductIds) {
   const result = await query(
     `
@@ -217,13 +371,17 @@ async function fetchRows(externalProductIds) {
         cp.title,
         cp.brand,
         cp.canonical_url,
+        cp.sync_status AS product_sync_status,
         cp.pivota_signature_id AS catalog_sig_id,
         cp.pivota_canonical_url AS catalog_sig_url,
         cp.content_key,
         eps.title AS seed_title,
         eps.canonical_url AS seed_canonical_url,
         eps.destination_url,
+        eps.price_amount,
+        eps.availability,
         COALESCE(eps.seed_data, '{}'::jsonb) AS seed_data,
+        COALESCE(component_refs.components, '[]'::jsonb) AS components,
         pgm.product_group_id,
         pgm.is_primary,
         pil.source_listing_ref,
@@ -250,6 +408,88 @@ async function fetchRows(externalProductIds) {
       LEFT JOIN pdp_identity_listing pil
         ON pil.merchant_id = cp.merchant_id
        AND pil.product_id = cp.source_product_id
+      LEFT JOIN LATERAL (
+        WITH raw_refs AS (
+          SELECT
+            CASE
+              WHEN jsonb_typeof(eps.seed_data->'bundle_component_refs') = 'array'
+                THEN eps.seed_data->'bundle_component_refs'
+              WHEN jsonb_typeof(eps.seed_data#>ARRAY['snapshot','bundle_component_refs']) = 'array'
+                THEN eps.seed_data#>ARRAY['snapshot','bundle_component_refs']
+              ELSE '[]'::jsonb
+            END AS refs
+        ),
+        refs AS (
+          SELECT
+            ref->>'external_product_id' AS external_product_id,
+            ref->>'product_id' AS product_id,
+            ref->>'title' AS ref_title,
+            ref->>'canonical_url' AS ref_canonical_url,
+            ref->>'source_url' AS ref_source_url,
+            ref->>'review_state' AS review_state
+          FROM raw_refs
+          LEFT JOIN LATERAL jsonb_array_elements(raw_refs.refs) AS ref ON true
+        ),
+        component_rows AS (
+          SELECT
+            refs.external_product_id,
+            refs.product_id,
+            refs.ref_title,
+            refs.ref_canonical_url,
+            refs.ref_source_url,
+            refs.review_state,
+            ce.title AS seed_title,
+            ce.domain,
+            ce.status,
+            ce.canonical_url,
+            ce.destination_url,
+            ce.price_amount,
+            ce.availability,
+            ccp.sync_status,
+            os.max_list_price
+          FROM refs
+          LEFT JOIN external_product_seeds ce
+            ON ce.external_product_id = COALESCE(refs.external_product_id, refs.product_id)
+          LEFT JOIN catalog_products ccp
+            ON ccp.merchant_id = 'external_seed'
+           AND ccp.platform = 'external_seed'
+           AND ccp.source_product_id = COALESCE(refs.external_product_id, refs.product_id)
+          LEFT JOIN LATERAL (
+            SELECT max(co.list_price) FILTER (WHERE co.list_price > 0) AS max_list_price
+            FROM catalog_offers co
+            WHERE co.product_key = ccp.product_key
+          ) os ON true
+        )
+        SELECT
+          COALESCE(
+            jsonb_agg(
+              jsonb_build_object(
+                'external_product_id', component_rows.external_product_id,
+                'product_id', component_rows.product_id,
+                'ref_title', component_rows.ref_title,
+                'ref_canonical_url', component_rows.ref_canonical_url,
+                'ref_source_url', component_rows.ref_source_url,
+                'review_state', component_rows.review_state,
+                'seed_title', component_rows.seed_title,
+                'domain', component_rows.domain,
+                'status', component_rows.status,
+                'canonical_url', component_rows.canonical_url,
+                'destination_url', component_rows.destination_url,
+                'price_amount', component_rows.price_amount,
+                'availability', component_rows.availability,
+                'sync_status', component_rows.sync_status,
+                'max_list_price', component_rows.max_list_price
+              )
+              ORDER BY component_rows.ref_title, component_rows.external_product_id, component_rows.product_id
+            ) FILTER (
+              WHERE component_rows.ref_title IS NOT NULL
+                 OR component_rows.external_product_id IS NOT NULL
+                 OR component_rows.product_id IS NOT NULL
+            ),
+            '[]'::jsonb
+          ) AS components
+        FROM component_rows
+      ) component_refs ON true
       WHERE cp.merchant_id = 'external_seed'
         AND cp.source_product_id = ANY($1::text[])
       ORDER BY array_position($1::text[], cp.source_product_id::text)
@@ -271,6 +511,9 @@ function buildPlans(rows, options = {}) {
     const reviewedOfficialUrlExactConflictCleanup = reviewRequired
       ? evaluateReviewedOfficialUrlExactConflictCleanup(row, options)
       : { eligible: false, blockers: [], evidence: null };
+    const officialReviewedSetComponentRefs = reviewRequired
+      ? evaluateOfficialReviewedSetComponentRefs(row, options)
+      : { eligible: false, blockers: [], evidence: null };
     if (!asString(row.source_product_id)) blockers.push('missing_source_product_id');
     if (!asString(row.product_key)) blockers.push('missing_catalog_product');
     if (!asString(row.source_listing_ref)) blockers.push('missing_identity_listing');
@@ -280,9 +523,17 @@ function buildPlans(rows, options = {}) {
         options.allowReviewedProductLineSingletons && reviewedProductLineSingleton.eligible;
       const allowedByOfficialUrlExactConflictCleanup =
         options.allowOfficialUrlExactConflictCleanup && reviewedOfficialUrlExactConflictCleanup.eligible;
-      if (!allowedByReviewedProductLineSingleton && !allowedByOfficialUrlExactConflictCleanup) {
+      const allowedByOfficialReviewedSetComponentRefs =
+        options.allowOfficialReviewedSetComponentRefs && officialReviewedSetComponentRefs.eligible;
+      if (
+        !allowedByReviewedProductLineSingleton &&
+        !allowedByOfficialUrlExactConflictCleanup &&
+        !allowedByOfficialReviewedSetComponentRefs
+      ) {
         const hasReviewedGate =
-          options.allowReviewedProductLineSingletons || options.allowOfficialUrlExactConflictCleanup;
+          options.allowReviewedProductLineSingletons ||
+          options.allowOfficialUrlExactConflictCleanup ||
+          options.allowOfficialReviewedSetComponentRefs;
         if (!hasReviewedGate) {
           blockers.push('identity_review_required');
         } else {
@@ -297,6 +548,13 @@ function buildPlans(rows, options = {}) {
             blockers.push(
               ...reviewedOfficialUrlExactConflictCleanup.blockers.map(
                 (blocker) => `reviewed_official_url_exact_conflict_cleanup_${blocker}`,
+              ),
+            );
+          }
+          if (options.allowOfficialReviewedSetComponentRefs) {
+            blockers.push(
+              ...officialReviewedSetComponentRefs.blockers.map(
+                (blocker) => `official_reviewed_set_component_ref_${blocker}`,
               ),
             );
           }
@@ -333,6 +591,7 @@ function buildPlans(rows, options = {}) {
       review_reason_codes_before: row.review_reason_codes || [],
       reviewed_product_line_singleton: reviewedProductLineSingleton,
       reviewed_official_url_exact_conflict_cleanup: reviewedOfficialUrlExactConflictCleanup,
+      official_reviewed_set_component_ref: officialReviewedSetComponentRefs,
       needs_update: needsUpdate,
     };
   });
@@ -351,12 +610,16 @@ async function applyPlans(plans, reviewedBy) {
           ? REVIEWED_PRODUCT_LINE_SINGLETON_REASON
           : plan.reviewed_official_url_exact_conflict_cleanup?.eligible
             ? REVIEWED_OFFICIAL_URL_EXACT_CONFLICT_CLEANUP_REASON
-            : 'reviewed_external_seed_identity_catalog_sig_alignment';
+            : plan.official_reviewed_set_component_ref?.eligible
+              ? OFFICIAL_REVIEWED_SET_COMPONENT_REF_REASON
+              : 'reviewed_external_seed_identity_catalog_sig_alignment';
         const reviewGateEvidence = plan.reviewed_product_line_singleton?.eligible
           ? plan.reviewed_product_line_singleton.evidence
           : plan.reviewed_official_url_exact_conflict_cleanup?.eligible
             ? plan.reviewed_official_url_exact_conflict_cleanup.evidence
-            : null;
+            : plan.official_reviewed_set_component_ref?.eligible
+              ? plan.official_reviewed_set_component_ref.evidence
+              : null;
         const payload = {
           source_listing_ref: plan.source_listing_ref,
           source_sellable_item_group_id: plan.identity_sig_id_before || null,
@@ -424,6 +687,9 @@ async function applyPlans(plans, reviewedBy) {
               ...(plan.reviewed_official_url_exact_conflict_cleanup?.eligible
                 ? [`${REVIEWED_OFFICIAL_URL_EXACT_CONFLICT_CLEANUP_REASON}:official_url_title_guard`]
                 : []),
+              ...(plan.official_reviewed_set_component_ref?.eligible
+                ? [`${OFFICIAL_REVIEWED_SET_COMPONENT_REF_REASON}:official_url_component_price_guard`]
+                : []),
             ]),
             JSON.stringify({
               canonical_sig_id: plan.catalog_sig_id,
@@ -456,6 +722,7 @@ async function main() {
   const reviewedBy = asString(argValue('reviewed-by')) || 'codex';
   const allowReviewedProductLineSingletons = hasFlag('allow-reviewed-product-line-singletons');
   const allowOfficialUrlExactConflictCleanup = hasFlag('allow-official-url-exact-conflict-cleanup');
+  const allowOfficialReviewedSetComponentRefs = hasFlag('allow-official-reviewed-set-component-refs');
   if (!externalProductIds.length) throw new Error('Missing --external-product-ids');
   if (write && confirm !== CONFIRM_TOKEN) throw new Error(`Refusing write without --confirm ${CONFIRM_TOKEN}`);
   const rows = await fetchRows(externalProductIds);
@@ -464,6 +731,7 @@ async function main() {
   const plans = buildPlans(rows, {
     allowReviewedProductLineSingletons,
     allowOfficialUrlExactConflictCleanup,
+    allowOfficialReviewedSetComponentRefs,
   });
   const held = plans.filter((plan) => plan.action === 'hold');
   const ready = plans.filter((plan) => plan.action === 'align_ready');
@@ -476,6 +744,7 @@ async function main() {
     options: {
       allow_reviewed_product_line_singletons: allowReviewedProductLineSingletons,
       allow_official_url_exact_conflict_cleanup: allowOfficialUrlExactConflictCleanup,
+      allow_official_reviewed_set_component_refs: allowOfficialReviewedSetComponentRefs,
     },
     rows_seen: rows.length,
     missing_ids: missingIds,
@@ -515,8 +784,10 @@ module.exports = {
   CONFIRM_TOKEN,
   REVIEWED_PRODUCT_LINE_SINGLETON_REASON,
   REVIEWED_OFFICIAL_URL_EXACT_CONFLICT_CLEANUP_REASON,
+  OFFICIAL_REVIEWED_SET_COMPONENT_REF_REASON,
   buildPlans,
   evaluateReviewedProductLineSingleton,
   evaluateReviewedOfficialUrlExactConflictCleanup,
+  evaluateOfficialReviewedSetComponentRefs,
   normalizeUrlForCompare,
 };

@@ -1,0 +1,260 @@
+{
+  "generated_at": "2026-05-30T11:56:11.563Z",
+  "options": {
+    "brand": "Ownist",
+    "domain": "",
+    "market": "US",
+    "externalProductId": "",
+    "categoryPrefix": "",
+    "limit": 10,
+    "out": "reports/ownist_seed_ingest_20260530/pdp-price-offer-integrity-audit-after-component-repair-production-db.json",
+    "onlyIssues": false
+  },
+  "scanned": 4,
+  "review_count": 0,
+  "reason_counts": [],
+  "brand_counts": [],
+  "domain_counts": [],
+  "rows": [
+    {
+      "product_key": "prod::external_seed::external_seed::ext_3b2f5eaa044e309bf442a047",
+      "pivota_signature_id": "sig_3baddcba272e0e635e6f1bcc602afeaa",
+      "external_product_id": "ext_3b2f5eaa044e309bf442a047",
+      "brand": "Ownist",
+      "title": "Triple Collagen Garden edition",
+      "domain": "ownist.com",
+      "market": "US",
+      "category_path": "beauty/wellness/beauty-supplements/sets",
+      "canonical_url": "https://ownist.com/products/triple-collagen-garden-gift-set",
+      "catalog_price": {
+        "amount": 65.6,
+        "currency": "USD"
+      },
+      "seed_price": {
+        "amount": 65.6,
+        "currency": "USD"
+      },
+      "offer_count": 1,
+      "offer_prices": [
+        {
+          "amount": 65.6,
+          "currency": "USD"
+        }
+      ],
+      "identity_listing_count": 1,
+      "identity_prices": [
+        {
+          "amount": 65.6,
+          "currency": "USD"
+        }
+      ],
+      "identity_listings": [
+        {
+          "source_listing_ref": "external_seed:ext_3b2f5eaa044e309bf442a047",
+          "product_group_id": "sig_e624f2bb6e60ed18ab9647db",
+          "product_line_id": "pl_ba021098b65634822bca3d94",
+          "sellable_item_group_id": "sig_e624f2bb6e60ed18ab9647db",
+          "merchant_id": "external_seed",
+          "product_id": "ext_3b2f5eaa044e309bf442a047",
+          "source_kind": "external_seed",
+          "matched_by_rule": "official_url_route",
+          "identity_confidence": 0.92,
+          "price": {
+            "amount": 65.6,
+            "currency": "USD"
+          },
+          "merchant_name": "ownist.com",
+          "url": "https://ownist.com/products/triple-collagen-garden-gift-set"
+        }
+      ],
+      "currencies": [
+        "USD"
+      ],
+      "price_keys": [
+        "USD:65.60"
+      ],
+      "status": "ok",
+      "reasons": []
+    },
+    {
+      "product_key": "prod::external_seed::external_seed::ext_3dab0df3312e80e8dac97452",
+      "pivota_signature_id": "sig_804c13c0550e9c46cacdadd7616d3ffd",
+      "external_product_id": "ext_3dab0df3312e80e8dac97452",
+      "brand": "Ownist",
+      "title": "Triple Shine Garden edition",
+      "domain": "ownist.com",
+      "market": "US",
+      "category_path": "beauty/wellness/beauty-supplements/sets",
+      "canonical_url": "https://ownist.com/products/triple-shine-garden-gift-set",
+      "catalog_price": {
+        "amount": 65.6,
+        "currency": "USD"
+      },
+      "seed_price": {
+        "amount": 65.6,
+        "currency": "USD"
+      },
+      "offer_count": 1,
+      "offer_prices": [
+        {
+          "amount": 65.6,
+          "currency": "USD"
+        }
+      ],
+      "identity_listing_count": 1,
+      "identity_prices": [
+        {
+          "amount": 65.6,
+          "currency": "USD"
+        }
+      ],
+      "identity_listings": [
+        {
+          "source_listing_ref": "external_seed:ext_3dab0df3312e80e8dac97452",
+          "product_group_id": "sig_d1486cb7ebda1f1d43ca5444",
+          "product_line_id": "pl_21f2f3d163f9667b23ee61ce",
+          "sellable_item_group_id": "sig_d1486cb7ebda1f1d43ca5444",
+          "merchant_id": "external_seed",
+          "product_id": "ext_3dab0df3312e80e8dac97452",
+          "source_kind": "external_seed",
+          "matched_by_rule": "official_url_route",
+          "identity_confidence": 0.92,
+          "price": {
+            "amount": 65.6,
+            "currency": "USD"
+          },
+          "merchant_name": "ownist.com",
+          "url": "https://ownist.com/products/triple-shine-garden-gift-set"
+        }
+      ],
+      "currencies": [
+        "USD"
+      ],
+      "price_keys": [
+        "USD:65.60"
+      ],
+      "status": "ok",
+      "reasons": []
+    },
+    {
+      "product_key": "prod::external_seed::external_seed::ext_52e9fce8bee97af26d6f77db",
+      "pivota_signature_id": "sig_9435f32d8c54d3ac2227664cbbd8a47e",
+      "external_product_id": "ext_52e9fce8bee97af26d6f77db",
+      "brand": "Ownist",
+      "title": "Triple Collagen Orange",
+      "domain": "ownist.com",
+      "market": "US",
+      "category_path": "beauty",
+      "canonical_url": "https://ownist.com/products/ownist-triple-collagen-1-box",
+      "catalog_price": {
+        "amount": 41,
+        "currency": "USD"
+      },
+      "seed_price": {
+        "amount": 41,
+        "currency": "USD"
+      },
+      "offer_count": 1,
+      "offer_prices": [
+        {
+          "amount": 41,
+          "currency": "USD"
+        }
+      ],
+      "identity_listing_count": 1,
+      "identity_prices": [
+        {
+          "amount": 41,
+          "currency": "USD"
+        }
+      ],
+      "identity_listings": [
+        {
+          "source_listing_ref": "external_seed:ext_52e9fce8bee97af26d6f77db",
+          "product_group_id": "sig_436f4ee7845feaf3fc4be912",
+          "product_line_id": "pl_8b539f8a6ace221690e74d39",
+          "sellable_item_group_id": "sig_436f4ee7845feaf3fc4be912",
+          "merchant_id": "external_seed",
+          "product_id": "ext_52e9fce8bee97af26d6f77db",
+          "source_kind": "external_seed",
+          "matched_by_rule": "official_url_route",
+          "identity_confidence": 0.92,
+          "price": {
+            "amount": 41,
+            "currency": "USD"
+          },
+          "merchant_name": "ownist.com",
+          "url": "https://ownist.com/products/ownist-triple-collagen-1-box"
+        }
+      ],
+      "currencies": [
+        "USD"
+      ],
+      "price_keys": [
+        "USD:41.00"
+      ],
+      "status": "ok",
+      "reasons": []
+    },
+    {
+      "product_key": "prod::external_seed::external_seed::ext_8b6bcbe031a743c1e607aa6a",
+      "pivota_signature_id": "sig_c01623e2b15214a1a0a5612659ebe746",
+      "external_product_id": "ext_8b6bcbe031a743c1e607aa6a",
+      "brand": "Ownist",
+      "title": "Triple Shine Grape",
+      "domain": "ownist.com",
+      "market": "US",
+      "category_path": "beauty",
+      "canonical_url": "https://ownist.com/products/triple-shine-1-box",
+      "catalog_price": {
+        "amount": 41,
+        "currency": "USD"
+      },
+      "seed_price": {
+        "amount": 41,
+        "currency": "USD"
+      },
+      "offer_count": 1,
+      "offer_prices": [
+        {
+          "amount": 41,
+          "currency": "USD"
+        }
+      ],
+      "identity_listing_count": 1,
+      "identity_prices": [
+        {
+          "amount": 41,
+          "currency": "USD"
+        }
+      ],
+      "identity_listings": [
+        {
+          "source_listing_ref": "external_seed:ext_8b6bcbe031a743c1e607aa6a",
+          "product_group_id": "sig_e0334b50a7a2ae80510b223d",
+          "product_line_id": "pl_872ebd2805309fb9b54af944",
+          "sellable_item_group_id": "sig_e0334b50a7a2ae80510b223d",
+          "merchant_id": "external_seed",
+          "product_id": "ext_8b6bcbe031a743c1e607aa6a",
+          "source_kind": "external_seed",
+          "matched_by_rule": "official_url_route",
+          "identity_confidence": 0.92,
+          "price": {
+            "amount": 41,
+            "currency": "USD"
+          },
+          "merchant_name": "ownist.com",
+          "url": "https://ownist.com/products/triple-shine-1-box"
+        }
+      ],
+      "currencies": [
+        "USD"
+      ],
+      "price_keys": [
+        "USD:41.00"
+      ],
+      "status": "ok",
+      "reasons": []
+    }
+  ]
+}

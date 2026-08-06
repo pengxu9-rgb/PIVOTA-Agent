@@ -885,6 +885,8 @@ function isPublicContributionVisible(item) {
 
 const PDP_SYNTHETIC_QUESTION_SOURCE_RE =
   /(?:pivota_force_fill|force_filled|force_fill|synthetic|simulation|mock|browser_fallback|legacy_fallback)/i;
+const PDP_SYNTHETIC_REVIEW_SOURCE_RE =
+  /(?:pivota_force_fill|force_filled|force_fill|synthetic|simulation|mock|browser_fallback|legacy_fallback)/i;
 const PDP_SYNTHETIC_HOW_TO_SOURCE_RE =
   /(?:pivota_force_fill|force_filled|force_fill|synthetic|simulation|mock|browser_fallback|legacy_fallback)/i;
 const PDP_GENERIC_FORCE_FILL_HOW_TO_RE =
@@ -909,6 +911,30 @@ function isSyntheticPdpQuestionSource(item) {
     .filter(Boolean)
     .join(' ');
   return PDP_SYNTHETIC_QUESTION_SOURCE_RE.test(sourceSignals);
+}
+
+function isSyntheticPdpReviewSummary(summary) {
+  const source = asPlainObject(summary) || {};
+  if (source.force_filled === true) return true;
+  if (source.distribution_estimated === true) return true;
+  const sourceSignals = [
+    source.status,
+    source.review_status,
+    source.source,
+    source.source_kind,
+    source.sourceKind,
+    source.source_origin,
+    source.sourceOrigin,
+    source.source_type,
+    source.sourceType,
+    source.content_review_state,
+    source.review_status,
+    source.aggregation_scope,
+  ]
+    .map((value) => asNonEmptyString(value))
+    .filter(Boolean)
+    .join(' ');
+  return PDP_SYNTHETIC_REVIEW_SOURCE_RE.test(sourceSignals) || /\bestimated\b/i.test(sourceSignals);
 }
 
 function isSyntheticPdpHowToCandidate(candidate, candidateText = '') {
@@ -4375,14 +4401,19 @@ function buildReviewsPreview(product, options = {}) {
   }
 
   const scale = Number(summary?.scale || summary?.rating_scale || 5) || 5;
-  const rating = Number(summary?.rating || summary?.average_rating || summary?.avg_rating || 0) || 0;
-  const reviewCount = Number(summary?.review_count || summary?.count || summary?.total || 0) || 0;
+  const summaryIsSynthetic = isSyntheticPdpReviewSummary(summary);
+  const rawRating = Number(summary?.rating || summary?.average_rating || summary?.avg_rating || 0) || 0;
+  const rawReviewCount = Number(summary?.review_count || summary?.count || summary?.total || 0) || 0;
+  const rating = summaryIsSynthetic ? 0 : rawRating;
+  const reviewCount = summaryIsSynthetic ? 0 : rawReviewCount;
   const rawPreviewItems = Array.isArray(summary?.preview_items)
     ? summary.preview_items
     : Array.isArray(summary?.snippets)
       ? summary.snippets
       : [];
-  const previewItems = rawPreviewItems.filter((item) => isPublicContributionVisible(item));
+  const previewItems = summaryIsSynthetic
+    ? []
+    : rawPreviewItems.filter((item) => isPublicContributionVisible(item));
   const explicitQuestions = normalizeReviewSummaryQuestions(summary?.questions);
   const derivedQuestions = deriveReviewQuestionsFromPreviewItems(previewItems);
   const questions = mergeQuestionItems([merchantFaqQuestions, explicitQuestions, derivedQuestions]);
@@ -4394,12 +4425,14 @@ function buildReviewsPreview(product, options = {}) {
   const brandCardSubtitle = String(summaryBrandCard?.subtitle || '').trim() || null;
 
   const distributionRaw =
-    summary?.rating_distribution ||
-    summary?.star_distribution ||
-    summary?.ratingDistribution ||
-    summary?.starDistribution ||
-    summary?.distribution ||
-    null;
+    summaryIsSynthetic
+      ? null
+      : summary?.rating_distribution ||
+        summary?.star_distribution ||
+        summary?.ratingDistribution ||
+        summary?.starDistribution ||
+        summary?.distribution ||
+        null;
 
   const normalizedRatingDistribution = normalizeReviewDistributionRows(distributionRaw, reviewCount);
   const estimatedRatingDistribution =
@@ -4411,23 +4444,28 @@ function buildReviewsPreview(product, options = {}) {
 
   const normalizeScopedSummary = (rawSummary) => {
     if (!rawSummary || typeof rawSummary !== 'object') return null;
+    const nestedIsSynthetic = isSyntheticPdpReviewSummary(rawSummary);
     const nestedScale = Number(rawSummary.scale || rawSummary.rating_scale || scale) || scale;
-    const nestedRating =
+    const rawNestedRating =
       Number(rawSummary.rating || rawSummary.average_rating || rawSummary.avg_rating || 0) || 0;
-    const nestedReviewCount =
+    const rawNestedReviewCount =
       Number(rawSummary.review_count || rawSummary.count || rawSummary.total || 0) || 0;
+    const nestedRating = nestedIsSynthetic ? 0 : rawNestedRating;
+    const nestedReviewCount = nestedIsSynthetic ? 0 : rawNestedReviewCount;
     const nestedPreviewItems = Array.isArray(rawSummary.preview_items)
       ? rawSummary.preview_items
       : Array.isArray(rawSummary.snippets)
         ? rawSummary.snippets
         : [];
     const nestedDistributionRaw =
-      rawSummary.rating_distribution ||
-      rawSummary.star_distribution ||
-      rawSummary.ratingDistribution ||
-      rawSummary.starDistribution ||
-      rawSummary.distribution ||
-      null;
+      nestedIsSynthetic
+        ? null
+        : rawSummary.rating_distribution ||
+          rawSummary.star_distribution ||
+          rawSummary.ratingDistribution ||
+          rawSummary.starDistribution ||
+          rawSummary.distribution ||
+          null;
     const normalizedNestedDistribution = normalizeReviewDistributionRows(
       nestedDistributionRaw,
       nestedReviewCount,
@@ -4459,23 +4497,29 @@ function buildReviewsPreview(product, options = {}) {
             distribution_estimation_method: 'average_rating_linear_interpolation',
           }
         : {}),
-      preview_items: nestedPreviewItems.filter((item) => isPublicContributionVisible(item)).slice(0, 6).map((item, idx) => ({
-        review_id: String(item.review_id || item.id || idx),
-        rating: Number(item.rating || item.score || nestedScale) || nestedScale,
-        author_label: item.author_label || item.author || item.user,
-        title: item.title ? String(item.title) : undefined,
-        text_snippet: String(item.text_snippet || item.text || item.body || item.title || ''),
-        media: Array.isArray(item.media)
-          ? item.media.map((m) => ({
-              type: m.type || 'image',
-              url: m.url || m.image_url,
-              thumbnail_url: m.thumbnail_url,
-            }))
-          : undefined,
-      })),
+      preview_items: (nestedIsSynthetic ? [] : nestedPreviewItems)
+        .filter((item) => isPublicContributionVisible(item))
+        .slice(0, 6)
+        .map((item, idx) => ({
+          review_id: String(item.review_id || item.id || idx),
+          rating: Number(item.rating || item.score || nestedScale) || nestedScale,
+          author_label: item.author_label || item.author || item.user,
+          title: item.title ? String(item.title) : undefined,
+          text_snippet: String(item.text_snippet || item.text || item.body || item.title || ''),
+          media: Array.isArray(item.media)
+            ? item.media.map((m) => ({
+                type: m.type || 'image',
+                url: m.url || m.image_url,
+                thumbnail_url: m.thumbnail_url,
+              }))
+            : undefined,
+        })),
       ...(rawSummary?.brand_card && typeof rawSummary.brand_card === 'object'
         ? { brand_card: rawSummary.brand_card }
         : {}),
+      source: typeof rawSummary?.source === 'string' ? rawSummary.source : undefined,
+      source_origin: typeof rawSummary?.source_origin === 'string' ? rawSummary.source_origin : undefined,
+      source_kind: typeof rawSummary?.source_kind === 'string' ? rawSummary.source_kind : undefined,
     };
   };
   const scopedSummaries =
@@ -4495,6 +4539,8 @@ function buildReviewsPreview(product, options = {}) {
     unavailable_reason:
       typeof summary?.unavailable_reason === 'string' ? summary.unavailable_reason : undefined,
     source: typeof summary?.source === 'string' ? summary.source : undefined,
+    source_origin: typeof summary?.source_origin === 'string' ? summary.source_origin : undefined,
+    source_kind: typeof summary?.source_kind === 'string' ? summary.source_kind : undefined,
     content_review_state:
       typeof summary?.content_review_state === 'string' ? summary.content_review_state : undefined,
     force_filled: summary?.force_filled === true ? true : undefined,
@@ -4707,6 +4753,53 @@ function buildBundleCompositionModuleData(product, options = {}) {
   const enrichmentMap =
     options.enrichmentMap instanceof Map ? options.enrichmentMap : new Map();
   const currencyFallback = asNonEmptyString(options.currencyFallback) || 'USD';
+  const buildPriceState = (ref, enriched, hasPrice) => {
+    if (hasPrice) return null;
+    const explicitStatus = asNonEmptyString(
+      enriched.price_status ||
+        enriched.priceStatus ||
+        ref.price_status ||
+        ref.priceStatus,
+    ).toLowerCase();
+    const explicitLabel = asNonEmptyString(
+      enriched.price_label ||
+        enriched.priceLabel ||
+        ref.price_label ||
+        ref.priceLabel,
+    );
+    const explicitNote = asNonEmptyString(
+      enriched.price_note ||
+        enriched.priceNote ||
+        ref.price_note ||
+        ref.priceNote,
+    );
+    const sourceUnavailableContract =
+      asPlainObject(enriched.source_unavailable_v1) ||
+      asPlainObject(enriched.snapshot_source_unavailable_v1) ||
+      asPlainObject(ref.source_unavailable_v1);
+    const transactionBlocker =
+      asPlainObject(enriched.transaction_readiness_blocker_v1) ||
+      asPlainObject(enriched.snapshot_transaction_readiness_blocker_v1) ||
+      asPlainObject(ref.transaction_readiness_blocker_v1);
+    const availability = asNonEmptyString(
+      enriched.availability ||
+        enriched.availability_status ||
+        enriched.status ||
+        ref.availability ||
+        ref.status,
+    ).toLowerCase();
+    const unavailableish =
+      Boolean(sourceUnavailableContract || transactionBlocker) ||
+      /(?:not[_\s-]?sold|unavailable|discontinued|out[_\s-]?of[_\s-]?stock|sample|gift|included)/i.test(
+        availability,
+      );
+    const priceStatus = explicitStatus || (unavailableish ? 'not_sold_separately' : 'included_in_set');
+    return {
+      price_status: priceStatus,
+      price_label: explicitLabel || 'Included in set',
+      price_note: explicitNote || 'Not sold separately',
+    };
+  };
   const items = refs.map((ref) => {
     const enrichKey = String(ref.product_id || ref.external_product_id || '').trim();
     const enriched = enrichKey ? enrichmentMap.get(enrichKey) || {} : {};
@@ -4720,6 +4813,7 @@ function buildBundleCompositionModuleData(product, options = {}) {
       currencyFallback,
     );
     const hasPrice = Number.isFinite(priceAmount) && priceAmount > 0;
+    const priceState = buildPriceState(ref, enriched, hasPrice);
     return {
       product_id: ref.product_id,
       ...(ref.merchant_id ? { merchant_id: ref.merchant_id } : {}),
@@ -4728,16 +4822,33 @@ function buildBundleCompositionModuleData(product, options = {}) {
       ...(imageUrl ? { image_url: imageUrl } : {}),
       ...(canonicalUrl ? { canonical_url: canonicalUrl } : {}),
       ...(hasPrice ? { price: { amount: priceAmount, currency: priceCurrency } } : {}),
+      ...(priceState || {}),
       ...(asNonEmptyString(ref.component_role) ? { component_role: ref.component_role } : {}),
       ...(asNonEmptyString(ref.size_label) ? { size_label: ref.size_label } : {}),
       ...(asNonEmptyString(ref.review_state) ? { review_state: ref.review_state } : {}),
-      source_quality_status: imageUrl && title ? 'ready' : 'partial',
+      source_quality_status: imageUrl && title && (hasPrice || priceState?.price_status) ? 'ready' : 'partial',
     };
   });
+  const pricedCount = items.filter((item) => item?.price).length;
+  const priceStatusCounts = items.reduce(
+    (acc, item) => {
+      if (item?.price) {
+        acc.priced += 1;
+        return acc;
+      }
+      const status = asNonEmptyString(item?.price_status) || 'unpriced';
+      acc[status] = (acc[status] || 0) + 1;
+      return acc;
+    },
+    { priced: 0 },
+  );
   return {
     strategy: 'bundle_components',
     items,
     total_count: items.length,
+    priced_count: pricedCount,
+    unpriced_count: Math.max(0, items.length - pricedCount),
+    price_status_counts: priceStatusCounts,
   };
 }
 

@@ -1,0 +1,18 @@
+{
+  "status": "ok",
+  "mode": "dry_run_validate_replacements",
+  "report": "/Users/pengchydan/dev/PIVOTA-Agent/reports/ownist_seed_ingest_20260530/ownist-component-repair-product-intel-report.json",
+  "rows": [
+    "live_ext_8b6bcbe031a743c1e607aa6a",
+    "live_ext_52e9fce8bee97af26d6f77db",
+    "live_ext_3dab0df3312e80e8dac97452",
+    "live_ext_3b2f5eaa044e309bf442a047"
+  ],
+  "entries": [
+    "product:ext_8b6bcbe031a743c1e607aa6a",
+    "product:ext_52e9fce8bee97af26d6f77db",
+    "product:ext_3dab0df3312e80e8dac97452",
+    "product:ext_3b2f5eaa044e309bf442a047"
+  ],
+  "skipped_rows": []
+}

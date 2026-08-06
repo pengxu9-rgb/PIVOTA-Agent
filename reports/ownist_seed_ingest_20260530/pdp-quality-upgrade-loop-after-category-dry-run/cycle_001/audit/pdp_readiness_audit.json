@@ -1,0 +1,570 @@
+{
+  "generated_at": "2026-05-30T10:46:48.234Z",
+  "options": {
+    "market": "US",
+    "includeAttached": true,
+    "domain": null,
+    "externalProductIds": [
+      "ext_3dab0df3312e80e8dac97452",
+      "ext_3b2f5eaa044e309bf442a047",
+      "ext_8b6bcbe031a743c1e607aa6a",
+      "ext_52e9fce8bee97af26d6f77db"
+    ],
+    "limit": 4,
+    "sampleLimit": 25,
+    "checkpointDir": "/Users/pengchydan/dev/PIVOTA-Agent/reports/ownist_seed_ingest_20260530/pdp-quality-upgrade-loop-after-category-dry-run/cycle_001/audit/pdp_readiness_checkpoint",
+    "checkpointMode": "domain",
+    "resume": false,
+    "force": false,
+    "continueOnError": true,
+    "pageSize": 500,
+    "format": "json"
+  },
+  "warnings": [],
+  "summary": {
+    "scanned": 4,
+    "by_market": {
+      "US": 4
+    },
+    "by_domain": [
+      {
+        "key": "ownist.com",
+        "count": 4
+      }
+    ],
+    "by_product_family": [
+      {
+        "key": "set_or_collection",
+        "count": 2
+      },
+      {
+        "key": "unknown_product",
+        "count": 2
+      }
+    ],
+    "coverage": {
+      "missing_inci": 4,
+      "missing_active_raw": 2,
+      "missing_details": 4,
+      "missing_how_to": 4,
+      "missing_faq": 4
+    },
+    "pivota_insights": {
+      "direct": {
+        "displayable": 0,
+        "high_quality_ready": 0,
+        "missing_kb": 4,
+        "not_displayable": 0
+      },
+      "effective": {
+        "displayable": 0,
+        "high_quality_ready": 0,
+        "missing_kb": 4,
+        "not_displayable": 0,
+        "borrowed_from_sibling": 0
+      },
+      "effective_issues": [
+        {
+          "key": "missing_kb",
+          "count": 4
+        }
+      ],
+      "effective_issue_domains": [
+        {
+          "key": "ownist.com::missing_kb",
+          "count": 4
+        }
+      ],
+      "quality_state": [
+        {
+          "key": "missing",
+          "count": 4
+        }
+      ],
+      "evidence_profile": [
+        {
+          "key": "missing",
+          "count": 4
+        }
+      ],
+      "samples": {
+        "missing_kb": [
+          {
+            "external_product_id": "ext_8b6bcbe031a743c1e607aa6a",
+            "domain": "ownist.com",
+            "title": "Triple Shine Grape",
+            "used_product_id": "ext_8b6bcbe031a743c1e607aa6a",
+            "quality_state": "missing",
+            "evidence_profile": "missing"
+          },
+          {
+            "external_product_id": "ext_52e9fce8bee97af26d6f77db",
+            "domain": "ownist.com",
+            "title": "Triple Collagen Orange",
+            "used_product_id": "ext_52e9fce8bee97af26d6f77db",
+            "quality_state": "missing",
+            "evidence_profile": "missing"
+          },
+          {
+            "external_product_id": "ext_3dab0df3312e80e8dac97452",
+            "domain": "ownist.com",
+            "title": "Triple Shine Garden edition",
+            "used_product_id": "ext_3dab0df3312e80e8dac97452",
+            "quality_state": "missing",
+            "evidence_profile": "missing"
+          },
+          {
+            "external_product_id": "ext_3b2f5eaa044e309bf442a047",
+            "domain": "ownist.com",
+            "title": "Triple Collagen Garden edition",
+            "used_product_id": "ext_3b2f5eaa044e309bf442a047",
+            "quality_state": "missing",
+            "evidence_profile": "missing"
+          }
+        ]
+      }
+    },
+    "active_ingredients": {
+      "regulatory_expected": 0,
+      "hero_expected": 2,
+      "any_active_items": 0,
+      "status": [
+        {
+          "key": "missing_hero",
+          "count": 2
+        },
+        {
+          "key": "not_applicable_product_family",
+          "count": 2
+        }
+      ],
+      "issues": [
+        {
+          "key": "missing_hero",
+          "count": 2
+        }
+      ],
+      "issue_domains": [
+        {
+          "key": "ownist.com::missing_hero",
+          "count": 2
+        }
+      ],
+      "source_origin": [
+        {
+          "key": "none",
+          "count": 4
+        }
+      ],
+      "samples": {
+        "missing_hero": [
+          {
+            "external_product_id": "ext_8b6bcbe031a743c1e607aa6a",
+            "domain": "ownist.com",
+            "title": "Triple Shine Grape",
+            "status": "missing_hero",
+            "active_items": [],
+            "source_origin": "none"
+          },
+          {
+            "external_product_id": "ext_52e9fce8bee97af26d6f77db",
+            "domain": "ownist.com",
+            "title": "Triple Collagen Orange",
+            "status": "missing_hero",
+            "active_items": [],
+            "source_origin": "none"
+          }
+        ]
+      }
+    },
+    "variants": {
+      "status": [
+        {
+          "key": "no_visible_variant_axis",
+          "count": 4
+        }
+      ],
+      "issues": [],
+      "issue_domains": [],
+      "samples": {}
+    }
+  },
+  "rows": [
+    {
+      "seed_id": "eps_8392f5063ab5890a5f8388ce",
+      "external_product_id": "ext_8b6bcbe031a743c1e607aa6a",
+      "market": "US",
+      "domain": "ownist.com",
+      "title": "Triple Shine Grape",
+      "canonical_url": "https://ownist.com/products/triple-shine-1-box",
+      "product_family": "unknown_product",
+      "product_line_id": "pl_872ebd2805309fb9b54af944",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_8b6bcbe031a743c1e607aa6a",
+          "kb_key": null,
+          "status": "missing_kb",
+          "kb_exists": false,
+          "displayable": false,
+          "high_quality_ready": false,
+          "issues": [
+            "missing_kb"
+          ],
+          "quality_state": "missing",
+          "evidence_profile": "missing"
+        },
+        "effective": {
+          "product_id": "ext_8b6bcbe031a743c1e607aa6a",
+          "kb_key": null,
+          "status": "missing_kb",
+          "kb_exists": false,
+          "displayable": false,
+          "high_quality_ready": false,
+          "issues": [
+            "missing_kb"
+          ],
+          "quality_state": "missing",
+          "evidence_profile": "missing"
+        },
+        "product_line_id": "pl_872ebd2805309fb9b54af944",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "missing_hero",
+        "issues": [
+          "missing_hero"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 0,
+          "how_to_chars": 0,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "no_authoritative_source"
+      },
+      "variants": {
+        "status": "no_visible_variant_axis",
+        "issues": [],
+        "visible_variant_rows": 0,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 0,
+        "how_to_chars": 0,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_b81018b0147d2b7103a9ff50",
+      "external_product_id": "ext_52e9fce8bee97af26d6f77db",
+      "market": "US",
+      "domain": "ownist.com",
+      "title": "Triple Collagen Orange",
+      "canonical_url": "https://ownist.com/products/ownist-triple-collagen-1-box",
+      "product_family": "unknown_product",
+      "product_line_id": "pl_8b539f8a6ace221690e74d39",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_52e9fce8bee97af26d6f77db",
+          "kb_key": null,
+          "status": "missing_kb",
+          "kb_exists": false,
+          "displayable": false,
+          "high_quality_ready": false,
+          "issues": [
+            "missing_kb"
+          ],
+          "quality_state": "missing",
+          "evidence_profile": "missing"
+        },
+        "effective": {
+          "product_id": "ext_52e9fce8bee97af26d6f77db",
+          "kb_key": null,
+          "status": "missing_kb",
+          "kb_exists": false,
+          "displayable": false,
+          "high_quality_ready": false,
+          "issues": [
+            "missing_kb"
+          ],
+          "quality_state": "missing",
+          "evidence_profile": "missing"
+        },
+        "product_line_id": "pl_8b539f8a6ace221690e74d39",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "missing_hero",
+        "issues": [
+          "missing_hero"
+        ],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 0,
+          "how_to_chars": 0,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "no_authoritative_source"
+      },
+      "variants": {
+        "status": "no_visible_variant_axis",
+        "issues": [],
+        "visible_variant_rows": 0,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 0,
+        "how_to_chars": 0,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_ef1189fcc1414c309f574ee0",
+      "external_product_id": "ext_3dab0df3312e80e8dac97452",
+      "market": "US",
+      "domain": "ownist.com",
+      "title": "Triple Shine Garden edition",
+      "canonical_url": "https://ownist.com/products/triple-shine-garden-gift-set",
+      "product_family": "set_or_collection",
+      "product_line_id": "pl_21f2f3d163f9667b23ee61ce",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_3dab0df3312e80e8dac97452",
+          "kb_key": null,
+          "status": "missing_kb",
+          "kb_exists": false,
+          "displayable": false,
+          "high_quality_ready": false,
+          "issues": [
+            "missing_kb"
+          ],
+          "quality_state": "missing",
+          "evidence_profile": "missing"
+        },
+        "effective": {
+          "product_id": "ext_3dab0df3312e80e8dac97452",
+          "kb_key": null,
+          "status": "missing_kb",
+          "kb_exists": false,
+          "displayable": false,
+          "high_quality_ready": false,
+          "issues": [
+            "missing_kb"
+          ],
+          "quality_state": "missing",
+          "evidence_profile": "missing"
+        },
+        "product_line_id": "pl_21f2f3d163f9667b23ee61ce",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_applicable_product_family",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 0,
+          "how_to_chars": 0,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 1,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "set_or_collection"
+      },
+      "variants": {
+        "status": "no_visible_variant_axis",
+        "issues": [],
+        "visible_variant_rows": 0,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 0,
+        "how_to_chars": 0,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 1,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_c563537f86299bf556bd6761",
+      "external_product_id": "ext_3b2f5eaa044e309bf442a047",
+      "market": "US",
+      "domain": "ownist.com",
+      "title": "Triple Collagen Garden edition",
+      "canonical_url": "https://ownist.com/products/triple-collagen-garden-gift-set",
+      "product_family": "set_or_collection",
+      "product_line_id": "pl_ba021098b65634822bca3d94",
+      "identity_variant_axes": {
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_3b2f5eaa044e309bf442a047",
+          "kb_key": null,
+          "status": "missing_kb",
+          "kb_exists": false,
+          "displayable": false,
+          "high_quality_ready": false,
+          "issues": [
+            "missing_kb"
+          ],
+          "quality_state": "missing",
+          "evidence_profile": "missing"
+        },
+        "effective": {
+          "product_id": "ext_3b2f5eaa044e309bf442a047",
+          "kb_key": null,
+          "status": "missing_kb",
+          "kb_exists": false,
+          "displayable": false,
+          "high_quality_ready": false,
+          "issues": [
+            "missing_kb"
+          ],
+          "quality_state": "missing",
+          "evidence_profile": "missing"
+        },
+        "product_line_id": "pl_ba021098b65634822bca3d94",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_applicable_product_family",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 0,
+          "faq_count": 0,
+          "how_to_chars": 0,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 1,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "set_or_collection"
+      },
+      "variants": {
+        "status": "no_visible_variant_axis",
+        "issues": [],
+        "visible_variant_rows": 0,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 0,
+        "faq_count": 0,
+        "how_to_chars": 0,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 1,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    }
+  ]
+}

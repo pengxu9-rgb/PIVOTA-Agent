@@ -1,0 +1,5 @@
+external_product_id,title,domain,action,lane,reason,main_blocker,recommended_lane,kb_status,kb_quality_state,kb_evidence_profile,identity_status,catalog_attached,index_serving_eligible,commerce_doc_public,terminal_hold,terminal_hold_reason,seed_missing_fields
+ext_8b6bcbe031a743c1e607aa6a,Triple Shine Grape,ownist.com,insight_rewrite,lane_3_kb_rewrite_review,kb_missing,kb_missing,lane_3_kb_rewrite_review,missing_kb,missing,missing,approved,true,true,true,false,,
+ext_52e9fce8bee97af26d6f77db,Triple Collagen Orange,ownist.com,insight_rewrite,lane_3_kb_rewrite_review,kb_missing,kb_missing,lane_3_kb_rewrite_review,missing_kb,missing,missing,approved,true,true,true,false,,
+ext_3dab0df3312e80e8dac97452,Triple Shine Garden edition,ownist.com,insight_rewrite,lane_3_kb_rewrite_review,kb_missing,kb_missing,lane_3_kb_rewrite_review,missing_kb,missing,missing,approved,true,true,true,false,,
+ext_3b2f5eaa044e309bf442a047,Triple Collagen Garden edition,ownist.com,insight_rewrite,lane_3_kb_rewrite_review,kb_missing,kb_missing,lane_3_kb_rewrite_review,missing_kb,missing,missing,approved,true,true,true,false,,

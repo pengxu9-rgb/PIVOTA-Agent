@@ -688,4 +688,77 @@ describe('sync-external-seeds-to-catalog serving bootstrap', () => {
       identityBootstrapEligible: false,
     });
   });
+
+  test('uses reviewed component price evidence for set parents without parent price', () => {
+    const mirror = buildMirror({
+      id: 'eps_component_priced_set',
+      external_product_id: 'ext_component_priced_set',
+      market: 'US',
+      domain: 'sigmabeauty.com',
+      title: 'The Modern Muse Set',
+      image_url: 'https://cdn.example.com/set.jpg',
+      price_amount: null,
+      price_currency: null,
+      availability: 'out_of_stock',
+      canonical_url: 'https://sigmabeauty.com/products/the-modern-muse-set',
+      status: 'active',
+      identity_listing: {
+        identity_status: 'approved',
+        live_read_enabled: true,
+        review_required: false,
+        sellable_item_group_id: 'sig_eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',
+        source_tier: 'brand',
+      },
+      seed_data: {
+        brand: 'Sigma Beauty',
+        description:
+          'An official makeup set with reviewed component references and source-backed component pricing.',
+        bundle_component_refs: [
+          {
+            external_product_id: 'ext_component_palette',
+            title: 'New Mod Eyeshadow Palette',
+            review_state: 'reviewed',
+          },
+          {
+            external_product_id: 'ext_component_lip_oil',
+            title: 'Renew Lip Oil',
+            review_state: 'reviewed',
+          },
+        ],
+        variants: [
+          {
+            variant_id: 'default',
+            sku: 'SET-01',
+            title: 'Default Title',
+            price: '',
+            currency: 'USD',
+            image_url: 'https://cdn.example.com/set.jpg',
+          },
+        ],
+      },
+    });
+
+    expect(scoreMirrorServingQuality(mirror)).toMatchObject({
+      servingEligible: false,
+      blockerCode: 'missing_price',
+      hasParentPrice: false,
+      componentPriceResolved: false,
+    });
+
+    expect(
+      scoreMirrorServingQuality(mirror, {
+        componentPriceEvidence: {
+          reviewed_component_ref_count: 2,
+          priced_component_count: 2,
+          all_reviewed_components_priced: true,
+        },
+      }),
+    ).toMatchObject({
+      servingEligible: true,
+      blockerCode: 'none',
+      hasParentPrice: false,
+      hasPrice: true,
+      componentPriceResolved: true,
+    });
+  });
 });

@@ -1,0 +1,552 @@
+{
+  "generated_at": "2026-05-30T14:00:42.857Z",
+  "options": {
+    "market": "US",
+    "allMarkets": false,
+    "includeAttached": true,
+    "domain": "ownist.com",
+    "externalProductId": null,
+    "limit": 10,
+    "offset": 0,
+    "sampleLimit": 8,
+    "intelContext": "effective",
+    "chunkByDomain": false,
+    "checkpointDir": null,
+    "checkpointMode": "page",
+    "resume": false,
+    "force": false,
+    "continueOnError": false,
+    "maxDomains": 0,
+    "maxPages": 0,
+    "pageSize": 250,
+    "cursor": null,
+    "format": "json",
+    "out": "reports/ownist_seed_ingest_20260530/pdp-readiness-component-audit-after-external-evidence-production-db.json"
+  },
+  "warnings": [],
+  "summary": {
+    "scanned": 4,
+    "by_market": {
+      "US": 4
+    },
+    "by_domain": [
+      {
+        "key": "ownist.com",
+        "count": 4
+      }
+    ],
+    "by_product_family": [
+      {
+        "key": "set_or_collection",
+        "count": 2
+      },
+      {
+        "key": "unknown_product",
+        "count": 2
+      }
+    ],
+    "coverage": {
+      "missing_inci": 0,
+      "missing_active_raw": 0,
+      "missing_details": 0,
+      "missing_how_to": 0,
+      "missing_faq": 4
+    },
+    "pivota_insights": {
+      "direct": {
+        "displayable": 4,
+        "high_quality_ready": 4,
+        "missing_kb": 0,
+        "not_displayable": 0
+      },
+      "effective": {
+        "displayable": 4,
+        "high_quality_ready": 4,
+        "missing_kb": 0,
+        "not_displayable": 0,
+        "borrowed_from_sibling": 0
+      },
+      "effective_issues": [],
+      "effective_issue_domains": [],
+      "quality_state": [
+        {
+          "key": "reviewed",
+          "count": 4
+        }
+      ],
+      "evidence_profile": [
+        {
+          "key": "official_pdp_seed",
+          "count": 2
+        },
+        {
+          "key": "seller_plus_reviews",
+          "count": 2
+        }
+      ],
+      "samples": {}
+    },
+    "active_ingredients": {
+      "regulatory_expected": 0,
+      "hero_expected": 2,
+      "any_active_items": 2,
+      "status": [
+        {
+          "key": "not_applicable_product_family",
+          "count": 2
+        },
+        {
+          "key": "ready_hero",
+          "count": 2
+        }
+      ],
+      "issues": [],
+      "issue_domains": [],
+      "source_origin": [
+        {
+          "key": "active_block",
+          "count": 2
+        },
+        {
+          "key": "none",
+          "count": 2
+        }
+      ],
+      "samples": {}
+    },
+    "variants": {
+      "status": [
+        {
+          "key": "ready",
+          "count": 4
+        }
+      ],
+      "issues": [],
+      "issue_domains": [],
+      "samples": {}
+    }
+  },
+  "rows": [
+    {
+      "seed_id": "eps_c563537f86299bf556bd6761",
+      "external_product_id": "ext_3b2f5eaa044e309bf442a047",
+      "market": "US",
+      "domain": "ownist.com",
+      "title": "Triple Collagen Garden edition",
+      "canonical_url": "https://ownist.com/products/triple-collagen-garden-gift-set",
+      "product_family": "set_or_collection",
+      "product_line_id": "pl_ba021098b65634822bca3d94",
+      "identity_variant_axes": {
+        "options": [
+          {
+            "name": "Format",
+            "values": [
+              "Garden Gift Set"
+            ]
+          }
+        ],
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_3b2f5eaa044e309bf442a047",
+          "kb_key": "product:ext_3b2f5eaa044e309bf442a047",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_seed",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_3b2f5eaa044e309bf442a047",
+          "kb_key": "product:ext_3b2f5eaa044e309bf442a047",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_seed",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_ba021098b65634822bca3d94",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_applicable_product_family",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 0,
+          "how_to_chars": 155,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "component_refs_linked",
+          "ingredient_remediation_action": "component_refs_linked",
+          "bundle_component_refs_count": 1,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "set_or_collection"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 0,
+        "how_to_chars": 155,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "component_refs_linked",
+        "ingredient_remediation_action": "component_refs_linked",
+        "bundle_component_refs_count": 1,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_ef1189fcc1414c309f574ee0",
+      "external_product_id": "ext_3dab0df3312e80e8dac97452",
+      "market": "US",
+      "domain": "ownist.com",
+      "title": "Triple Shine Garden edition",
+      "canonical_url": "https://ownist.com/products/triple-shine-garden-gift-set",
+      "product_family": "set_or_collection",
+      "product_line_id": "pl_21f2f3d163f9667b23ee61ce",
+      "identity_variant_axes": {
+        "options": [
+          {
+            "name": "Format",
+            "values": [
+              "Garden Gift Set"
+            ]
+          }
+        ],
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_3dab0df3312e80e8dac97452",
+          "kb_key": "product:ext_3dab0df3312e80e8dac97452",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_seed",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_3dab0df3312e80e8dac97452",
+          "kb_key": "product:ext_3dab0df3312e80e8dac97452",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_seed",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_21f2f3d163f9667b23ee61ce",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "not_applicable_product_family",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": false,
+        "active_items": [],
+        "source_origin": "none",
+        "source_quality_status": "blocked",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 0,
+          "how_to_chars": 152,
+          "inci_chars": 0,
+          "active_ingredients_chars": 0,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "component_refs_linked",
+          "ingredient_remediation_action": "component_refs_linked",
+          "bundle_component_refs_count": 1,
+          "effective_inci_chars": 0,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "set_or_collection"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 0,
+        "how_to_chars": 152,
+        "inci_chars": 0,
+        "active_ingredients_chars": 0,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "component_refs_linked",
+        "ingredient_remediation_action": "component_refs_linked",
+        "bundle_component_refs_count": 1,
+        "effective_inci_chars": 0,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_b81018b0147d2b7103a9ff50",
+      "external_product_id": "ext_52e9fce8bee97af26d6f77db",
+      "market": "US",
+      "domain": "ownist.com",
+      "title": "Triple Collagen Orange",
+      "canonical_url": "https://ownist.com/products/ownist-triple-collagen-1-box",
+      "product_family": "unknown_product",
+      "product_line_id": "pl_8b539f8a6ace221690e74d39",
+      "identity_variant_axes": {
+        "options": [
+          {
+            "name": "Supply",
+            "values": [
+              "14 Servings, 2-Week Routine"
+            ]
+          }
+        ],
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_52e9fce8bee97af26d6f77db",
+          "kb_key": "product:ext_52e9fce8bee97af26d6f77db",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_reviews",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_52e9fce8bee97af26d6f77db",
+          "kb_key": "product:ext_52e9fce8bee97af26d6f77db",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_reviews",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_8b539f8a6ace221690e74d39",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Hydrolyzed Marine Collagen",
+          "Elastin",
+          "Hyaluronic Acid",
+          "Vitamin C"
+        ],
+        "source_origin": "active_block",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 0,
+          "how_to_chars": 162,
+          "inci_chars": 128,
+          "active_ingredients_chars": 63,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 128,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "full_inci_low_purity"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 0,
+        "how_to_chars": 162,
+        "inci_chars": 128,
+        "active_ingredients_chars": 63,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 128,
+        "inci_borrowed_from_product_id": ""
+      }
+    },
+    {
+      "seed_id": "eps_8392f5063ab5890a5f8388ce",
+      "external_product_id": "ext_8b6bcbe031a743c1e607aa6a",
+      "market": "US",
+      "domain": "ownist.com",
+      "title": "Triple Shine Grape",
+      "canonical_url": "https://ownist.com/products/triple-shine-1-box",
+      "product_family": "unknown_product",
+      "product_line_id": "pl_872ebd2805309fb9b54af944",
+      "identity_variant_axes": {
+        "options": [
+          {
+            "name": "Supply",
+            "values": [
+              "14 Servings, 2-Week Routine"
+            ]
+          }
+        ],
+        "multi_variant": false
+      },
+      "pivota_insights": {
+        "direct": {
+          "product_id": "ext_8b6bcbe031a743c1e607aa6a",
+          "kb_key": "product:ext_8b6bcbe031a743c1e607aa6a",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_reviews",
+          "has_card_highlight": true
+        },
+        "effective": {
+          "product_id": "ext_8b6bcbe031a743c1e607aa6a",
+          "kb_key": "product:ext_8b6bcbe031a743c1e607aa6a",
+          "status": "displayable",
+          "kb_exists": true,
+          "displayable": true,
+          "high_quality_ready": true,
+          "human_reviewed": true,
+          "issues": [],
+          "blocking_issues": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_reviews",
+          "has_card_highlight": true
+        },
+        "product_line_id": "pl_872ebd2805309fb9b54af944",
+        "borrowed_from_sibling": false
+      },
+      "active_ingredients": {
+        "status": "ready_hero",
+        "issues": [],
+        "regulatory_expected": false,
+        "hero_expected": true,
+        "active_items": [
+          "Belight",
+          "Niacin (Vitamin B3)",
+          "Vitamin C"
+        ],
+        "source_origin": "active_block",
+        "source_quality_status": "captured",
+        "coverage": {
+          "details_sections_count": 6,
+          "faq_count": 0,
+          "how_to_chars": 117,
+          "inci_chars": 138,
+          "active_ingredients_chars": 39,
+          "inci_applicability_status": "",
+          "ingredient_review_status": "",
+          "ingredient_remediation_action": "",
+          "bundle_component_refs_count": 0,
+          "effective_inci_chars": 138,
+          "inci_borrowed_from_product_id": ""
+        },
+        "invalid_fragments": [],
+        "suppressed_reason": "full_inci_low_purity"
+      },
+      "variants": {
+        "status": "ready",
+        "issues": [],
+        "visible_variant_rows": 1,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "default_option_size_evidence_missing_axis": [],
+          "identity_default_title_axis": []
+        }
+      },
+      "coverage": {
+        "details_sections_count": 6,
+        "faq_count": 0,
+        "how_to_chars": 117,
+        "inci_chars": 138,
+        "active_ingredients_chars": 39,
+        "inci_applicability_status": "",
+        "ingredient_review_status": "",
+        "ingredient_remediation_action": "",
+        "bundle_component_refs_count": 0,
+        "effective_inci_chars": 138,
+        "inci_borrowed_from_product_id": ""
+      }
+    }
+  ]
+}

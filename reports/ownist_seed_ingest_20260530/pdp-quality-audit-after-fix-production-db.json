@@ -1,0 +1,686 @@
+[
+  {
+    "status": "failed",
+    "seed_id": "eps_8392f5063ab5890a5f8388ce",
+    "external_product_id": "ext_8b6bcbe031a743c1e607aa6a",
+    "market": "US",
+    "domain": "ownist.com",
+    "canonical_url": "https://ownist.com/products/triple-shine-1-box",
+    "seed_gate": {
+      "status": "passed",
+      "findings_count": 1,
+      "blockers_count": 0
+    },
+    "extractor_gate": {
+      "status": "passed",
+      "failure_category": null,
+      "description_present": true,
+      "price_amount": 41,
+      "failure_reasons": []
+    },
+    "identity_gate": {
+      "status": "passed",
+      "product_group_id": "sig_e0334b50a7a2ae80510b223d",
+      "product_line_id": "pl_872ebd2805309fb9b54af944",
+      "sellable_item_group_id": "sig_e0334b50a7a2ae80510b223d",
+      "failure_reasons": []
+    },
+    "product_intel_gate": {
+      "status": "failed",
+      "has_product_intel": false,
+      "product_intel_status": "missing_blocked",
+      "failure_reasons": [
+        "product_intel_module_empty_or_blocked"
+      ]
+    },
+    "live_pdp_gate": {
+      "status": "failed",
+      "price_amount": 41,
+      "has_overview": true,
+      "live_modules": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "reviews_preview",
+        "similar",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "media_gallery",
+        "price_promo"
+      ],
+      "offers_status": {
+        "module_present": true,
+        "price_promo_present": true,
+        "offers_module_present": true,
+        "offer_count": 1,
+        "price_amount": 41,
+        "price_source": "price_promo",
+        "reference_price_amount": 41,
+        "missing_price": false
+      },
+      "reviews_status": {
+        "module_present": true,
+        "review_count": 0,
+        "rating": null,
+        "force_filled": false,
+        "estimated_public_social_proof": false,
+        "chart_present": false,
+        "distribution_bucket_count": 0,
+        "preview_count": 0,
+        "question_count": 0
+      },
+      "details_status": {
+        "section_count": 1,
+        "section_soup_count": 0,
+        "has_product_facts": false,
+        "seed_section_count": 0,
+        "compressed_structured_sections": false
+      },
+      "questions_status": {
+        "seed_faq_count": 0,
+        "live_question_count": 0,
+        "invalid_live_question_count": 0,
+        "invalid_live_question_examples": []
+      },
+      "bundle_composition_status": {
+        "module_present": false,
+        "required_for_product_family": false,
+        "component_count": 0,
+        "reason": null,
+        "missing_for_set": false,
+        "empty_for_set": false
+      },
+      "active_ingredients_status": {
+        "expected": false,
+        "live_item_count": 0,
+        "suppressed_for_product_family": null
+      },
+      "image_health": {
+        "scanned_count": 11,
+        "total_url_count": 11,
+        "broken_count": 0,
+        "broken_urls": [],
+        "transient_error_count": 0,
+        "transient_error_urls": [],
+        "dimension_check_enabled": false,
+        "dimension_error_count": 0,
+        "dimension_error_urls": [],
+        "low_resolution_count": 0,
+        "low_resolution_urls": [],
+        "min_long_edge": null,
+        "primary_long_edge": null,
+        "min_long_edge_threshold": 800,
+        "skipped": false,
+        "truncated": false
+      },
+      "gallery_status": {
+        "image_count": 11,
+        "duplicate_count": 0,
+        "content_leak_count": 0,
+        "seed_content_image_count": 0
+      },
+      "snapshot_contract": null,
+      "image_url_identity_stripped_count": 0,
+      "image_url_identity_stripped_examples": [],
+      "failure_reasons": [
+        "legacy_snapshot_not_quarantined"
+      ]
+    },
+    "similar_gate": {
+      "status": "passed",
+      "similar_count": 6,
+      "card_highlight_missing_count": 0,
+      "card_seller_only_fallback_count": 0,
+      "duplicate_count": 0,
+      "duplicate_examples": [],
+      "exempt": false,
+      "failure_reasons": []
+    },
+    "variant_gate": {
+      "status": "passed",
+      "visible_variant_row_count": 0,
+      "identity_option_visible_count": 0,
+      "wrong_axis_for_category_count": 0,
+      "makeup_shade_missing_visual_count": 0,
+      "size_value_generic_axis_count": 0,
+      "examples": {
+        "identity_option_visible": [],
+        "wrong_axis_for_category": [],
+        "makeup_shade_missing_visual": [],
+        "size_value_generic_axis": [],
+        "missing_variant_selector_from_size_evidence": [],
+        "identity_default_title_axis": [],
+        "size_siblings_split_product_line": []
+      },
+      "failure_reasons": []
+    },
+    "root_cause_classification": [
+      "snapshot_contract_gap",
+      "product_intel_gap"
+    ],
+    "failure_reasons": [
+      "product_intel_module_empty_or_blocked",
+      "legacy_snapshot_not_quarantined"
+    ],
+    "probed_product_id": "ext_8b6bcbe031a743c1e607aa6a",
+    "probed_id_type": "external_product_id"
+  },
+  {
+    "status": "failed",
+    "seed_id": "eps_b81018b0147d2b7103a9ff50",
+    "external_product_id": "ext_52e9fce8bee97af26d6f77db",
+    "market": "US",
+    "domain": "ownist.com",
+    "canonical_url": "https://ownist.com/products/ownist-triple-collagen-1-box",
+    "seed_gate": {
+      "status": "passed",
+      "findings_count": 1,
+      "blockers_count": 0
+    },
+    "extractor_gate": {
+      "status": "passed",
+      "failure_category": null,
+      "description_present": true,
+      "price_amount": 41,
+      "failure_reasons": []
+    },
+    "identity_gate": {
+      "status": "passed",
+      "product_group_id": "sig_436f4ee7845feaf3fc4be912",
+      "product_line_id": "pl_8b539f8a6ace221690e74d39",
+      "sellable_item_group_id": "sig_436f4ee7845feaf3fc4be912",
+      "failure_reasons": []
+    },
+    "product_intel_gate": {
+      "status": "failed",
+      "has_product_intel": false,
+      "product_intel_status": "missing_blocked",
+      "failure_reasons": [
+        "product_intel_module_empty_or_blocked"
+      ]
+    },
+    "live_pdp_gate": {
+      "status": "failed",
+      "price_amount": 41,
+      "has_overview": true,
+      "live_modules": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "reviews_preview",
+        "similar",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "media_gallery",
+        "price_promo"
+      ],
+      "offers_status": {
+        "module_present": true,
+        "price_promo_present": true,
+        "offers_module_present": true,
+        "offer_count": 1,
+        "price_amount": 41,
+        "price_source": "price_promo",
+        "reference_price_amount": 41,
+        "missing_price": false
+      },
+      "reviews_status": {
+        "module_present": true,
+        "review_count": 0,
+        "rating": null,
+        "force_filled": false,
+        "estimated_public_social_proof": false,
+        "chart_present": false,
+        "distribution_bucket_count": 0,
+        "preview_count": 0,
+        "question_count": 0
+      },
+      "details_status": {
+        "section_count": 1,
+        "section_soup_count": 0,
+        "has_product_facts": false,
+        "seed_section_count": 0,
+        "compressed_structured_sections": false
+      },
+      "questions_status": {
+        "seed_faq_count": 0,
+        "live_question_count": 0,
+        "invalid_live_question_count": 0,
+        "invalid_live_question_examples": []
+      },
+      "bundle_composition_status": {
+        "module_present": false,
+        "required_for_product_family": false,
+        "component_count": 0,
+        "reason": null,
+        "missing_for_set": false,
+        "empty_for_set": false
+      },
+      "active_ingredients_status": {
+        "expected": false,
+        "live_item_count": 0,
+        "suppressed_for_product_family": null
+      },
+      "image_health": {
+        "scanned_count": 11,
+        "total_url_count": 11,
+        "broken_count": 0,
+        "broken_urls": [],
+        "transient_error_count": 0,
+        "transient_error_urls": [],
+        "dimension_check_enabled": false,
+        "dimension_error_count": 0,
+        "dimension_error_urls": [],
+        "low_resolution_count": 0,
+        "low_resolution_urls": [],
+        "min_long_edge": null,
+        "primary_long_edge": null,
+        "min_long_edge_threshold": 800,
+        "skipped": false,
+        "truncated": false
+      },
+      "gallery_status": {
+        "image_count": 11,
+        "duplicate_count": 0,
+        "content_leak_count": 0,
+        "seed_content_image_count": 0
+      },
+      "snapshot_contract": null,
+      "image_url_identity_stripped_count": 0,
+      "image_url_identity_stripped_examples": [],
+      "failure_reasons": [
+        "legacy_snapshot_not_quarantined"
+      ]
+    },
+    "similar_gate": {
+      "status": "passed",
+      "similar_count": 6,
+      "card_highlight_missing_count": 0,
+      "card_seller_only_fallback_count": 0,
+      "duplicate_count": 0,
+      "duplicate_examples": [],
+      "exempt": false,
+      "failure_reasons": []
+    },
+    "variant_gate": {
+      "status": "passed",
+      "visible_variant_row_count": 0,
+      "identity_option_visible_count": 0,
+      "wrong_axis_for_category_count": 0,
+      "makeup_shade_missing_visual_count": 0,
+      "size_value_generic_axis_count": 0,
+      "examples": {
+        "identity_option_visible": [],
+        "wrong_axis_for_category": [],
+        "makeup_shade_missing_visual": [],
+        "size_value_generic_axis": [],
+        "missing_variant_selector_from_size_evidence": [],
+        "identity_default_title_axis": [],
+        "size_siblings_split_product_line": []
+      },
+      "failure_reasons": []
+    },
+    "root_cause_classification": [
+      "snapshot_contract_gap",
+      "product_intel_gap"
+    ],
+    "failure_reasons": [
+      "product_intel_module_empty_or_blocked",
+      "legacy_snapshot_not_quarantined"
+    ],
+    "probed_product_id": "ext_52e9fce8bee97af26d6f77db",
+    "probed_id_type": "external_product_id"
+  },
+  {
+    "status": "failed",
+    "seed_id": "eps_ef1189fcc1414c309f574ee0",
+    "external_product_id": "ext_3dab0df3312e80e8dac97452",
+    "market": "US",
+    "domain": "ownist.com",
+    "canonical_url": "https://ownist.com/products/triple-shine-garden-gift-set",
+    "seed_gate": {
+      "status": "passed",
+      "findings_count": 1,
+      "blockers_count": 0
+    },
+    "extractor_gate": {
+      "status": "passed",
+      "failure_category": null,
+      "description_present": true,
+      "price_amount": 65.6,
+      "failure_reasons": []
+    },
+    "identity_gate": {
+      "status": "passed",
+      "product_group_id": "sig_d1486cb7ebda1f1d43ca5444",
+      "product_line_id": "pl_21f2f3d163f9667b23ee61ce",
+      "sellable_item_group_id": "sig_d1486cb7ebda1f1d43ca5444",
+      "failure_reasons": []
+    },
+    "product_intel_gate": {
+      "status": "exempt",
+      "has_product_intel": false,
+      "product_intel_status": "missing_blocked",
+      "exempt": true,
+      "skipped_reason": "product_intel_optional_set_or_collection",
+      "failure_reasons": []
+    },
+    "live_pdp_gate": {
+      "status": "failed",
+      "price_amount": 65.6,
+      "has_overview": true,
+      "live_modules": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "reviews_preview",
+        "similar",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "media_gallery",
+        "price_promo"
+      ],
+      "offers_status": {
+        "module_present": true,
+        "price_promo_present": true,
+        "offers_module_present": true,
+        "offer_count": 1,
+        "price_amount": 65.6,
+        "price_source": "price_promo",
+        "reference_price_amount": 65.6,
+        "missing_price": false
+      },
+      "reviews_status": {
+        "module_present": true,
+        "review_count": 0,
+        "rating": null,
+        "force_filled": false,
+        "estimated_public_social_proof": false,
+        "chart_present": false,
+        "distribution_bucket_count": 0,
+        "preview_count": 0,
+        "question_count": 0
+      },
+      "details_status": {
+        "section_count": 1,
+        "section_soup_count": 0,
+        "has_product_facts": false,
+        "seed_section_count": 0,
+        "compressed_structured_sections": false
+      },
+      "questions_status": {
+        "seed_faq_count": 0,
+        "live_question_count": 0,
+        "invalid_live_question_count": 0,
+        "invalid_live_question_examples": []
+      },
+      "bundle_composition_status": {
+        "module_present": false,
+        "required_for_product_family": true,
+        "component_count": 0,
+        "reason": null,
+        "missing_for_set": true,
+        "empty_for_set": false
+      },
+      "active_ingredients_status": {
+        "expected": false,
+        "live_item_count": 0,
+        "suppressed_for_product_family": "set_or_collection"
+      },
+      "image_health": {
+        "scanned_count": 11,
+        "total_url_count": 11,
+        "broken_count": 0,
+        "broken_urls": [],
+        "transient_error_count": 0,
+        "transient_error_urls": [],
+        "dimension_check_enabled": false,
+        "dimension_error_count": 0,
+        "dimension_error_urls": [],
+        "low_resolution_count": 0,
+        "low_resolution_urls": [],
+        "min_long_edge": null,
+        "primary_long_edge": null,
+        "min_long_edge_threshold": 800,
+        "skipped": false,
+        "truncated": false
+      },
+      "gallery_status": {
+        "image_count": 11,
+        "duplicate_count": 0,
+        "content_leak_count": 0,
+        "seed_content_image_count": 0
+      },
+      "snapshot_contract": null,
+      "image_url_identity_stripped_count": 0,
+      "image_url_identity_stripped_examples": [],
+      "failure_reasons": [
+        "bundle_composition_missing_for_set",
+        "legacy_snapshot_not_quarantined"
+      ]
+    },
+    "similar_gate": {
+      "status": "exempt",
+      "similar_count": 5,
+      "card_highlight_missing_count": 0,
+      "card_seller_only_fallback_count": 0,
+      "duplicate_count": 0,
+      "duplicate_examples": [],
+      "exempt": true,
+      "failure_reasons": []
+    },
+    "variant_gate": {
+      "status": "passed",
+      "visible_variant_row_count": 0,
+      "identity_option_visible_count": 0,
+      "wrong_axis_for_category_count": 0,
+      "makeup_shade_missing_visual_count": 0,
+      "size_value_generic_axis_count": 0,
+      "examples": {
+        "identity_option_visible": [],
+        "wrong_axis_for_category": [],
+        "makeup_shade_missing_visual": [],
+        "size_value_generic_axis": [],
+        "missing_variant_selector_from_size_evidence": [],
+        "identity_default_title_axis": [],
+        "size_siblings_split_product_line": []
+      },
+      "failure_reasons": []
+    },
+    "root_cause_classification": [
+      "pdp_shaping_issue",
+      "snapshot_contract_gap"
+    ],
+    "failure_reasons": [
+      "bundle_composition_missing_for_set",
+      "legacy_snapshot_not_quarantined"
+    ],
+    "probed_product_id": "ext_3dab0df3312e80e8dac97452",
+    "probed_id_type": "external_product_id"
+  },
+  {
+    "status": "failed",
+    "seed_id": "eps_c563537f86299bf556bd6761",
+    "external_product_id": "ext_3b2f5eaa044e309bf442a047",
+    "market": "US",
+    "domain": "ownist.com",
+    "canonical_url": "https://ownist.com/products/triple-collagen-garden-gift-set",
+    "seed_gate": {
+      "status": "passed",
+      "findings_count": 1,
+      "blockers_count": 0
+    },
+    "extractor_gate": {
+      "status": "passed",
+      "failure_category": null,
+      "description_present": true,
+      "price_amount": 65.6,
+      "failure_reasons": []
+    },
+    "identity_gate": {
+      "status": "passed",
+      "product_group_id": "sig_e624f2bb6e60ed18ab9647db",
+      "product_line_id": "pl_ba021098b65634822bca3d94",
+      "sellable_item_group_id": "sig_e624f2bb6e60ed18ab9647db",
+      "failure_reasons": []
+    },
+    "product_intel_gate": {
+      "status": "exempt",
+      "has_product_intel": false,
+      "product_intel_status": "missing_blocked",
+      "exempt": true,
+      "skipped_reason": "product_intel_optional_set_or_collection",
+      "failure_reasons": []
+    },
+    "live_pdp_gate": {
+      "status": "failed",
+      "price_amount": 65.6,
+      "has_overview": true,
+      "live_modules": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "reviews_preview",
+        "similar",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "media_gallery",
+        "price_promo"
+      ],
+      "offers_status": {
+        "module_present": true,
+        "price_promo_present": true,
+        "offers_module_present": true,
+        "offer_count": 1,
+        "price_amount": 65.6,
+        "price_source": "price_promo",
+        "reference_price_amount": 65.6,
+        "missing_price": false
+      },
+      "reviews_status": {
+        "module_present": true,
+        "review_count": 0,
+        "rating": null,
+        "force_filled": false,
+        "estimated_public_social_proof": false,
+        "chart_present": false,
+        "distribution_bucket_count": 0,
+        "preview_count": 0,
+        "question_count": 0
+      },
+      "details_status": {
+        "section_count": 1,
+        "section_soup_count": 0,
+        "has_product_facts": false,
+        "seed_section_count": 0,
+        "compressed_structured_sections": false
+      },
+      "questions_status": {
+        "seed_faq_count": 0,
+        "live_question_count": 0,
+        "invalid_live_question_count": 0,
+        "invalid_live_question_examples": []
+      },
+      "bundle_composition_status": {
+        "module_present": false,
+        "required_for_product_family": true,
+        "component_count": 0,
+        "reason": null,
+        "missing_for_set": true,
+        "empty_for_set": false
+      },
+      "active_ingredients_status": {
+        "expected": false,
+        "live_item_count": 0,
+        "suppressed_for_product_family": "set_or_collection"
+      },
+      "image_health": {
+        "scanned_count": 11,
+        "total_url_count": 11,
+        "broken_count": 0,
+        "broken_urls": [],
+        "transient_error_count": 0,
+        "transient_error_urls": [],
+        "dimension_check_enabled": false,
+        "dimension_error_count": 0,
+        "dimension_error_urls": [],
+        "low_resolution_count": 0,
+        "low_resolution_urls": [],
+        "min_long_edge": null,
+        "primary_long_edge": null,
+        "min_long_edge_threshold": 800,
+        "skipped": false,
+        "truncated": false
+      },
+      "gallery_status": {
+        "image_count": 11,
+        "duplicate_count": 0,
+        "content_leak_count": 0,
+        "seed_content_image_count": 0
+      },
+      "snapshot_contract": null,
+      "image_url_identity_stripped_count": 0,
+      "image_url_identity_stripped_examples": [],
+      "failure_reasons": [
+        "bundle_composition_missing_for_set",
+        "legacy_snapshot_not_quarantined"
+      ]
+    },
+    "similar_gate": {
+      "status": "exempt",
+      "similar_count": 6,
+      "card_highlight_missing_count": 0,
+      "card_seller_only_fallback_count": 0,
+      "duplicate_count": 0,
+      "duplicate_examples": [],
+      "exempt": true,
+      "failure_reasons": []
+    },
+    "variant_gate": {
+      "status": "passed",
+      "visible_variant_row_count": 0,
+      "identity_option_visible_count": 0,
+      "wrong_axis_for_category_count": 0,
+      "makeup_shade_missing_visual_count": 0,
+      "size_value_generic_axis_count": 0,
+      "examples": {
+        "identity_option_visible": [],
+        "wrong_axis_for_category": [],
+        "makeup_shade_missing_visual": [],
+        "size_value_generic_axis": [],
+        "missing_variant_selector_from_size_evidence": [],
+        "identity_default_title_axis": [],
+        "size_siblings_split_product_line": []
+      },
+      "failure_reasons": []
+    },
+    "root_cause_classification": [
+      "pdp_shaping_issue",
+      "snapshot_contract_gap"
+    ],
+    "failure_reasons": [
+      "bundle_composition_missing_for_set",
+      "legacy_snapshot_not_quarantined"
+    ],
+    "probed_product_id": "ext_3b2f5eaa044e309bf442a047",
+    "probed_id_type": "external_product_id"
+  }
+]

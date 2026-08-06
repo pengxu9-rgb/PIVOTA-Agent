@@ -57,6 +57,60 @@ function safeOfficialUrlExactConflict(overrides = {}) {
   });
 }
 
+function safeOfficialReviewedSet(overrides = {}) {
+  return safeReviewedSingleton({
+    source_product_id: 'ext_set',
+    source_listing_ref: 'external_seed:ext_set',
+    title: 'WH | Perfume Bundle Retail Display',
+    seed_title: 'WH | Perfume Bundle Retail Display',
+    brand: 'Miss Nella',
+    canonical_url: 'https://www.missnella.com/products/perfume-retail-display',
+    seed_canonical_url: 'https://www.missnella.com/products/perfume-retail-display',
+    destination_url: 'https://www.missnella.com/products/perfume-retail-display',
+    official_url: 'https://www.missnella.com/products/perfume-retail-display',
+    review_reason_codes: [],
+    matched_by_rule: 'official_url_route',
+    variant_axes: { pack: 'display', multi_variant: false },
+    product_sync_status: 'live',
+    price_amount: 119.8,
+    availability: 'in_stock',
+    seed_data: {
+      bundle_component_refs: [
+        { external_product_id: 'ext_cool', title: 'Cool like me', review_state: 'reviewed' },
+        { external_product_id: 'ext_sweet', title: 'Sweet like me', review_state: 'reviewed' },
+      ],
+      snapshot: {},
+    },
+    components: [
+      {
+        external_product_id: 'ext_cool',
+        ref_title: 'Cool like me',
+        review_state: 'reviewed',
+        seed_title: 'WH | Cool Like Me Roll On Perfume',
+        status: 'active',
+        canonical_url: 'https://www.missnella.com/products/cool-like-me-roll-on-oil-perfume',
+        price_amount: 5.99,
+        max_list_price: 5.99,
+        availability: 'in_stock',
+        sync_status: 'live',
+      },
+      {
+        external_product_id: 'ext_sweet',
+        ref_title: 'Sweet like me',
+        review_state: 'reviewed',
+        seed_title: 'WH | Sweet Like Me Roll On Perfume',
+        status: 'active',
+        canonical_url: 'https://www.missnella.com/products/sweet-like-me-roll-on-oil-perfume',
+        price_amount: 10.3,
+        max_list_price: 10.3,
+        availability: 'in_stock',
+        sync_status: 'live',
+      },
+    ],
+    ...overrides,
+  });
+}
+
 describe('align-external-seed-identity-to-catalog-sig reviewed singleton guard', () => {
   test('keeps review-required rows blocked by default', () => {
     const [plan] = buildPlans([safeReviewedSingleton()]);
@@ -156,5 +210,57 @@ describe('align-external-seed-identity-to-catalog-sig reviewed singleton guard',
 
     expect(plan.action).toBe('hold');
     expect(plan.blockers).toContain('reviewed_official_url_exact_conflict_cleanup_official_url_mismatch');
+  });
+
+  test('allows an official reviewed set when component refs are reviewed and price-sane', () => {
+    const [plan] = buildPlans([safeOfficialReviewedSet()], {
+      allowOfficialReviewedSetComponentRefs: true,
+    });
+
+    expect(plan.action).toBe('align_ready');
+    expect(plan.needs_update).toBe(true);
+    expect(plan.blockers).toEqual([]);
+    expect(plan.official_reviewed_set_component_ref.eligible).toBe(true);
+  });
+
+  test('blocks official reviewed set alignment when a component price is an outlier', () => {
+    const [plan] = buildPlans(
+      [
+        safeOfficialReviewedSet({
+          price_amount: 5.95,
+          components: [
+            {
+              external_product_id: 'ext_lip',
+              ref_title: 'Lip Gloss',
+              review_state: 'reviewed',
+              seed_title: 'WH | Pink Secret Lip Gloss',
+              status: 'active',
+              canonical_url: 'https://www.missnella.com/products/pink-secret-lip-gloss-pack-of-6',
+              price_amount: 3.3,
+              max_list_price: 3.3,
+              availability: 'in_stock',
+              sync_status: 'live',
+            },
+            {
+              external_product_id: 'ext_nail',
+              ref_title: 'Nail Polish',
+              review_state: 'reviewed',
+              seed_title: 'WH | Sparkles Nail Polish and Accessories Bundle',
+              status: 'active',
+              canonical_url: 'https://www.missnella.com/products/christmas-sparkles-nail-polish-and-accessories-bundle',
+              price_amount: 155,
+              max_list_price: 155,
+              availability: 'in_stock',
+              sync_status: 'live',
+            },
+          ],
+        }),
+      ],
+      { allowOfficialReviewedSetComponentRefs: true },
+    );
+
+    expect(plan.action).toBe('hold');
+    expect(plan.blockers).toContain('official_reviewed_set_component_ref_component_price_outlier');
+    expect(plan.blockers).toContain('official_reviewed_set_component_ref_component_total_price_outlier');
   });
 });

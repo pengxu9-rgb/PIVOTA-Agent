@@ -2,6 +2,16 @@
 
 const EXTERNAL_SEED_MERCHANT_ID = 'external_seed';
 
+// Merchant statuses whose catalog rows are eligible to serve.
+// 'observed' is the status `ensure_observed_seller` mints for ADR-009 observed
+// sellers (`merch_obs_*`). It must be admitted here: once an external-seed row is
+// re-keyed off the `external_seed` sentinel it stops matching branch 1 below and
+// falls to branch 2, so an 'active'-only gate would silently drop the entire
+// re-keyed corpus from serving.
+const SERVING_MERCHANT_STATUSES = Object.freeze(['active', 'observed']);
+
+const SERVING_MERCHANT_STATUS_SQL = SERVING_MERCHANT_STATUSES.map((s) => `'${s}'`).join(', ');
+
 function normalizeAlias(alias, fallback) {
   const text = String(alias || '').trim();
   return /^[a-z_][a-z0-9_]*$/i.test(text) ? text : fallback;
@@ -49,7 +59,7 @@ function activeCatalogProductSourceWhere(productAlias = 'cp', merchantAlias = 'c
     (
       ${p}.merchant_id = '${EXTERNAL_SEED_MERCHANT_ID}'
       OR (
-        lower(coalesce(${m}.status, 'active')) = 'active'
+        lower(coalesce(${m}.status, 'active')) IN (${SERVING_MERCHANT_STATUS_SQL})
         AND (
           NOT EXISTS (
             SELECT 1
@@ -75,6 +85,7 @@ function activeCatalogProductSourceWhere(productAlias = 'cp', merchantAlias = 'c
 
 module.exports = {
   EXTERNAL_SEED_MERCHANT_ID,
+  SERVING_MERCHANT_STATUSES,
   activeCatalogProductSourceWhere,
   activeProductsCacheSourceWhere,
 };

@@ -1,0 +1,52 @@
+{
+  "contract_version": "pdp_quality_upgrade_loop.state.v1",
+  "processed_product_ids": [
+    "ext_8b6bcbe031a743c1e607aa6a",
+    "ext_52e9fce8bee97af26d6f77db",
+    "ext_3dab0df3312e80e8dac97452",
+    "ext_3b2f5eaa044e309bf442a047"
+  ],
+  "category_patched_product_ids": [],
+  "cycles": [
+    {
+      "cycle": 1,
+      "audit_duration_ms": 9285,
+      "scanned": 4,
+      "plan_summary": {
+        "scanned": 4,
+        "by_action": {
+          "insight_rewrite": 4
+        },
+        "by_lane": {
+          "lane_3_kb_rewrite_review": 4
+        },
+        "by_reason": {
+          "kb_missing": 4
+        },
+        "auto_apply_count": 4
+      },
+      "selected_ids": [
+        "ext_8b6bcbe031a743c1e607aa6a",
+        "ext_52e9fce8bee97af26d6f77db",
+        "ext_3dab0df3312e80e8dac97452",
+        "ext_3b2f5eaa044e309bf442a047"
+      ],
+      "category_patch_ids": [],
+      "report_rows": 4,
+      "validated_entries": 4,
+      "published_entries": 4,
+      "category_patch_planned": 0,
+      "category_patch_applied": false,
+      "sync_applied": true,
+      "artifacts": {
+        "audit_dir": "/Users/pengchydan/dev/PIVOTA-Agent/reports/ownist_seed_ingest_20260530/pdp-quality-upgrade-loop-apply/cycle_001/audit",
+        "plan": "/Users/pengchydan/dev/PIVOTA-Agent/reports/ownist_seed_ingest_20260530/pdp-quality-upgrade-loop-apply/cycle_001/upgrade_plan.json",
+        "selected_inventory": "/Users/pengchydan/dev/PIVOTA-Agent/reports/ownist_seed_ingest_20260530/pdp-quality-upgrade-loop-apply/cycle_001/selected_inventory.json",
+        "report": "/Users/pengchydan/dev/PIVOTA-Agent/reports/ownist_seed_ingest_20260530/pdp-quality-upgrade-loop-apply/cycle_001/product_intel_report.json",
+        "publish_validate": "/Users/pengchydan/dev/PIVOTA-Agent/reports/ownist_seed_ingest_20260530/pdp-quality-upgrade-loop-apply/cycle_001/publish_validate.json",
+        "publish_write": "/Users/pengchydan/dev/PIVOTA-Agent/reports/ownist_seed_ingest_20260530/pdp-quality-upgrade-loop-apply/cycle_001/publish_write.json",
+        "serving_sync": "/Users/pengchydan/dev/PIVOTA-Agent/reports/ownist_seed_ingest_20260530/pdp-quality-upgrade-loop-apply/cycle_001/serving_sync.json"
+      }
+    }
+  ]
+}

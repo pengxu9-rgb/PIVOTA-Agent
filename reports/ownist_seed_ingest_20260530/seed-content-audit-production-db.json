@@ -1,0 +1,153 @@
+{
+  "options": {
+    "market": "US",
+    "seedId": null,
+    "externalProductId": null,
+    "domain": null,
+    "brand": "Ownist",
+    "limit": 20,
+    "offset": 0,
+    "includeInactive": false,
+    "format": "json",
+    "out": "reports/ownist_seed_ingest_20260530/seed-content-audit-production-db.json",
+    "onlyFlagged": false,
+    "includeSourceUnavailable": false,
+    "persistRun": false,
+    "stage": "initial"
+  },
+  "summary": {
+    "scanned": 4,
+    "flagged_rows": 4,
+    "findings_total": 4,
+    "by_severity": {
+      "blocker": 0,
+      "review": 4,
+      "info": 0
+    },
+    "by_anomaly_type": {
+      "seed_description_marketing_banner_prefix": 4
+    },
+    "by_domain": {
+      "ownist.com": 4
+    }
+  },
+  "audit_run_id": null,
+  "findings": [
+    {
+      "row": {
+        "id": "eps_8392f5063ab5890a5f8388ce",
+        "domain": "ownist.com",
+        "market": "US",
+        "canonical_url": "https://ownist.com/products/triple-shine-1-box",
+        "title": "Triple Shine Grape",
+        "description": "TRIPLE-THREAT FORMULATION: Made with three key ingredients for glowing skin: Belight®, niacin (vitamin B3), and vitamin C. \n\nREAL RESULTS: One powerful formula targets three main concerns to help your skin look brighter, clearer, and more refined. \n\nBASED IN SCIENCE: Formulated to work with the natural processes of your body for maximum impact with minimal ingredients. \n\nNOTHING ARTIFICIAL: Flavored with organic grape concentrate sourced from the French regions of Bordeaux and Champagne. Naturally sweet and sugar- gluten- and dairy-free. \n\nENJOY DAILY: No messy powders or water here. Just sip and enjoy wherever and whenever you like.",
+        "image_count": 11,
+        "variant_count": 1,
+        "last_extracted_at": "2026-05-30T10:05:15.418Z"
+      },
+      "findings": [
+        {
+          "seed_id": "eps_8392f5063ab5890a5f8388ce",
+          "domain": "ownist.com",
+          "market": "US",
+          "canonical_url": "https://ownist.com/products/triple-shine-1-box",
+          "anomaly_type": "seed_description_marketing_banner_prefix",
+          "severity": "review",
+          "evidence": {
+            "description_excerpt": "TRIPLE-THREAT FORMULATION: Made with three key ingredients for glowing skin: Belight®, niacin (vitamin B3), and vitamin C. \n\nREAL RESULTS: One powerful formula targets three main concerns to help your skin look brighter, clearer, and more refined. \n\nBASED IN SCIENCE: Formulated t"
+          },
+          "recommended_action": "Strip marketing banner prefixes and uppercase promo preambles from seed narrative text before PDP shaping and downstream recall.",
+          "auto_fixable": false,
+          "last_extracted_at": "2026-05-30T10:05:15.418Z"
+        }
+      ]
+    },
+    {
+      "row": {
+        "id": "eps_b81018b0147d2b7103a9ff50",
+        "domain": "ownist.com",
+        "market": "US",
+        "canonical_url": "https://ownist.com/products/ownist-triple-collagen-1-box",
+        "title": "Triple Collagen Orange",
+        "description": "•TRIPLE EFFECTIVE FORMULA: Made with the same three key elements that make up healthy skin: collagen, elastin, and hyaluronic acid.\n•REAL RESULTS: Improve skin elasticity, texture, and hydration with one powerful formula. It even supports healthier hair and nails too!\n•BASED IN SCIENCE: Formulated to work with the natural processes of your body for maximum impact with minimal ingredients.\n•NOTHING ARTIFICIAL: Flavored with organic Valencia orange concentrate for a naturally sweet taste that’s sugar-, gluten-, and dairy-free.\n•ENJOY DAILY: No messy powders or water here. Just sip and enjoy wherever and whenever you like.",
+        "image_count": 11,
+        "variant_count": 1,
+        "last_extracted_at": "2026-05-30T10:05:15.419Z"
+      },
+      "findings": [
+        {
+          "seed_id": "eps_b81018b0147d2b7103a9ff50",
+          "domain": "ownist.com",
+          "market": "US",
+          "canonical_url": "https://ownist.com/products/ownist-triple-collagen-1-box",
+          "anomaly_type": "seed_description_marketing_banner_prefix",
+          "severity": "review",
+          "evidence": {
+            "description_excerpt": "•TRIPLE EFFECTIVE FORMULA: Made with the same three key elements that make up healthy skin: collagen, elastin, and hyaluronic acid.\n•REAL RESULTS: Improve skin elasticity, texture, and hydration with one powerful formula. It even supports healthier hair and nails too!\n•BASED IN S"
+          },
+          "recommended_action": "Strip marketing banner prefixes and uppercase promo preambles from seed narrative text before PDP shaping and downstream recall.",
+          "auto_fixable": false,
+          "last_extracted_at": "2026-05-30T10:05:15.419Z"
+        }
+      ]
+    },
+    {
+      "row": {
+        "id": "eps_ef1189fcc1414c309f574ee0",
+        "domain": "ownist.com",
+        "market": "US",
+        "canonical_url": "https://ownist.com/products/triple-shine-garden-gift-set",
+        "title": "Triple Shine Garden edition",
+        "description": "TRIPLE-THREAT FORMULATION: Made with three key ingredients for glowing skin: Belight®, niacin (vitamin B3), and vitamin C. \n\nREAL RESULTS: One powerful formula targets three main concerns to help your skin look brighter, clearer, and more refined. \n\nBASED IN SCIENCE: Formulated to work with the natural processes of your body for maximum impact with minimal ingredients. \n\nNOTHING ARTIFICIAL: Flavored with organic grape concentrate sourced from the French regions of Bordeaux and Champagne. Naturally sweet and sugar- gluten- and dairy-free. \n\nENJOY DAILY: No messy powders or water here. Just sip and enjoy wherever and whenever you like.",
+        "image_count": 11,
+        "variant_count": 1,
+        "last_extracted_at": "2026-05-30T10:05:15.411Z"
+      },
+      "findings": [
+        {
+          "seed_id": "eps_ef1189fcc1414c309f574ee0",
+          "domain": "ownist.com",
+          "market": "US",
+          "canonical_url": "https://ownist.com/products/triple-shine-garden-gift-set",
+          "anomaly_type": "seed_description_marketing_banner_prefix",
+          "severity": "review",
+          "evidence": {
+            "description_excerpt": "TRIPLE-THREAT FORMULATION: Made with three key ingredients for glowing skin: Belight®, niacin (vitamin B3), and vitamin C. \n\nREAL RESULTS: One powerful formula targets three main concerns to help your skin look brighter, clearer, and more refined. \n\nBASED IN SCIENCE: Formulated t"
+          },
+          "recommended_action": "Strip marketing banner prefixes and uppercase promo preambles from seed narrative text before PDP shaping and downstream recall.",
+          "auto_fixable": false,
+          "last_extracted_at": "2026-05-30T10:05:15.411Z"
+        }
+      ]
+    },
+    {
+      "row": {
+        "id": "eps_c563537f86299bf556bd6761",
+        "domain": "ownist.com",
+        "market": "US",
+        "canonical_url": "https://ownist.com/products/triple-collagen-garden-gift-set",
+        "title": "Triple Collagen Garden edition",
+        "description": "•TRIPLE EFFECTIVE FORMULA: Made with the same three key elements that make up healthy skin: collagen, elastin, and hyaluronic acid.\n•REAL RESULTS: Improve skin elasticity, texture, and hydration with one powerful formula. It even supports healthier hair and nails too!\n•BASED IN SCIENCE: Formulated to work with the natural processes of your body for maximum impact with minimal ingredients.\n•NOTHING ARTIFICIAL: Flavored with organic Valencia orange concentrate for a naturally sweet taste that’s sugar-, gluten-, and dairy-free.\n•ENJOY DAILY: No messy powders or water here. Just sip and enjoy wherever and whenever you like.",
+        "image_count": 11,
+        "variant_count": 1,
+        "last_extracted_at": "2026-05-30T10:05:15.417Z"
+      },
+      "findings": [
+        {
+          "seed_id": "eps_c563537f86299bf556bd6761",
+          "domain": "ownist.com",
+          "market": "US",
+          "canonical_url": "https://ownist.com/products/triple-collagen-garden-gift-set",
+          "anomaly_type": "seed_description_marketing_banner_prefix",
+          "severity": "review",
+          "evidence": {
+            "description_excerpt": "•TRIPLE EFFECTIVE FORMULA: Made with the same three key elements that make up healthy skin: collagen, elastin, and hyaluronic acid.\n•REAL RESULTS: Improve skin elasticity, texture, and hydration with one powerful formula. It even supports healthier hair and nails too!\n•BASED IN S"
+          },
+          "recommended_action": "Strip marketing banner prefixes and uppercase promo preambles from seed narrative text before PDP shaping and downstream recall.",
+          "auto_fixable": false,
+          "last_extracted_at": "2026-05-30T10:05:15.417Z"
+        }
+      ]
+    }
+  ]
+}

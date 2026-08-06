@@ -13,6 +13,7 @@ const {
   _internals: {
     brandFromUrl,
     buildBundle,
+    filterReportRowsByDiagnostics,
     firstSentence,
     inferKind,
     isConservativeRewriteCandidate,
@@ -160,6 +161,107 @@ describe('build-reviewed-official-seed-product-intel-report', () => {
       blocking_issues: [],
     });
     expect(JSON.stringify(bundle)).not.toMatch(/beauty product|beauty_product/i);
+  });
+
+  test('classifies nail polish and lip gloss duos without leaking source emoji or entities', () => {
+    expect(
+      inferKind(
+        'Miss Nella Lip Gloss & Nail Duo (Croco Dazzle + Gloss Fairy Kiss)',
+        '',
+        '',
+        '🌟 Miss Nella Nail Polish &amp; Lip Gloss – A Burst of Colour and Fun.',
+      ),
+    ).toBe('nail_lip_set');
+
+    const bundle = buildBundle({
+      seed: {
+        external_product_id: 'ext_miss_nella_nail_lip_duo',
+        title: 'WH | Miss Nella Lip Gloss & Nail Duo (Croco Dazzle + Gloss Fairy Kiss)',
+        canonical_url: 'https://www.missnella.com/products/besties-duo-croco-dazzle-gloss-fairy-kiss-case-of-3',
+        seed_data: {
+          brand: 'Miss Nella',
+          description: '🌟 Miss Nella Nail Polish &amp; Lip Gloss – A Burst of Colour and Fun.',
+        },
+      },
+      inventoryRow: {
+        external_product_id: 'ext_miss_nella_nail_lip_duo',
+        sellable_item_group_id: 'sig_miss_nella_nail_lip_duo',
+      },
+      generatedAt: '2026-05-30T00:00:00.000Z',
+      batchName: 'test_batch',
+      reviewer: 'codex_test',
+    });
+
+    expect(bundle.shopping_card.subtitle).toBe('Nail + Lip Set');
+    expect(bundle.shopping_card.highlight).toBe('Nail polish and lip gloss duo');
+    expect(bundle.product_intel_core.what_it_is.headline).toBe('Nail polish and lip gloss duo identity');
+    expect(JSON.stringify(bundle)).not.toMatch(/🌟|&amp;|–/);
+    expect(classifyGeneratedBundle(bundle)).toMatchObject({
+      displayable: true,
+      high_quality_ready: true,
+      blocking_issues: [],
+    });
+  });
+
+  test('uses reviewed set component refs for source-backed set insight copy', () => {
+    const bundle = buildBundle({
+      seed: {
+        external_product_id: 'ext_lav_sun_ready_set',
+        title: 'Sun Ready Set',
+        canonical_url: 'https://lav-kids.com/products/sun-ready-set',
+        seed_data: {
+          brand: 'Lav Kids',
+          category: 'Skincare Set',
+          category_path: ['beauty', 'skincare', 'skincare-set'],
+          description:
+            "Moisturising Face Cream is crafted with naturally sourced, skin-loving ingredients to support your child's delicate skin.",
+          bundle_component_refs: [
+            {
+              external_product_id: 'ext_lav_face_cream',
+              title: 'Moisturising Face Cream',
+              review_state: 'reviewed',
+              source_kind: 'manual_reviewed_bundle_component_ref',
+            },
+            {
+              external_product_id: 'ext_lav_light_moisturiser',
+              title: 'Super Hydrate Light Moisturiser',
+              review_state: 'reviewed',
+              source_kind: 'manual_reviewed_bundle_component_ref',
+            },
+            {
+              external_product_id: 'ext_lav_spf_50',
+              title: 'SPF 50 Mineral Sunscreen',
+              review_state: 'reviewed',
+              source_kind: 'manual_reviewed_bundle_component_ref',
+            },
+            {
+              external_product_id: 'ext_lav_lip_butter',
+              title: 'Moisturising Lip Butter',
+              review_state: 'reviewed',
+              source_kind: 'manual_reviewed_bundle_component_ref',
+            },
+          ],
+        },
+      },
+      inventoryRow: {
+        external_product_id: 'ext_lav_sun_ready_set',
+        sellable_item_group_id: 'sig_lav_sun_ready_set',
+      },
+      generatedAt: '2026-05-30T00:00:00.000Z',
+      batchName: 'test_batch',
+      reviewer: 'codex_test',
+    });
+
+    expect(bundle.shopping_card.subtitle).toBe('Skincare Set');
+    expect(bundle.shopping_card.highlight).toBe('SPF skincare set');
+    expect(bundle.product_intel_core.what_it_is.body).toContain('SPF 50 Mineral Sunscreen');
+    expect(bundle.product_intel_core.what_it_is.body).toContain('Moisturising Lip Butter');
+    expect(bundle.product_intel_core.why_it_stands_out[0].body).toContain('SPF 50 Mineral Sunscreen');
+    expect(classifyGeneratedBundle(bundle)).toMatchObject({
+      displayable: true,
+      high_quality_ready: true,
+      blocking_issues: [],
+    });
   });
 
   test('classifies reviewed Pixi set and patch patterns by title before component copy', () => {
@@ -1055,6 +1157,97 @@ describe('build-reviewed-official-seed-product-intel-report', () => {
     expect(inferKind("Kylie’s Maison Margiela Show Look", '', '', 'Makeup look with lip and complexion items.')).toBe(
       'makeup_set',
     );
+  });
+
+  test('does not let stale Jurlique category text override source-backed sets or tools', () => {
+    const buildJurliqueBundle = ({ id, title, category = '', description }) =>
+      buildBundle({
+        seed: {
+          external_product_id: id,
+          title,
+          canonical_url: `https://www.jurlique.com/products/${id}`,
+          seed_data: {
+            brand: 'Jurlique',
+            category,
+            description,
+          },
+        },
+        inventoryRow: {
+          external_product_id: id,
+          sellable_item_group_id: `sig_${id}`,
+        },
+        generatedAt: '2026-05-30T00:00:00.000Z',
+        batchName: 'test_batch',
+        reviewer: 'codex_test',
+      });
+
+    expect(
+      inferKind(
+        'Iconic Starter Ritual',
+        'Foundation',
+        '',
+        'Discover the introduction to Jurlique’s most iconic skincare products with the Travel-Size Icons Starter Ritual.',
+      ),
+    ).toBe('skincare_set');
+    expect(
+      inferKind(
+        'Face Oils Discovery',
+        'Face Oil',
+        '',
+        'Discover the power of Jurlique’s most loved face oils with the Face Oil Discovery Set.',
+      ),
+    ).toBe('skincare_set');
+    expect(
+      inferKind(
+        'Activate Your Glow',
+        'Face Oil',
+        '',
+        'Hydrate, nourish, and glow with Jurlique’s Activate Your Glow bundle-the duo for soft, radiant skin.',
+      ),
+    ).toBe('skincare_set');
+    expect(
+      inferKind(
+        'Cooling Facial Spoons',
+        'Face Oil',
+        '',
+        'Use with your preferred Jurlique Face Oil, Moisturizer or Serum.',
+      ),
+    ).toBe('skincare_tool');
+
+    expect(
+      buildJurliqueBundle({
+        id: 'iconic-starter-ritual',
+        title: 'Iconic Starter Ritual',
+        category: 'Foundation',
+        description:
+          'Discover the introduction to Jurlique’s most iconic skincare products with the Travel-Size Icons Starter Ritual. Includes formulas with botanical oils.',
+      }).shopping_card,
+    ).toMatchObject({ subtitle: 'Skincare Set', highlight: 'Travel-size skincare set' });
+    expect(
+      buildJurliqueBundle({
+        id: 'face-oils-discovery',
+        title: 'Face Oils Discovery',
+        category: 'Face Oil',
+        description: 'Discover the power of Jurlique’s most loved face oils with the Face Oil Discovery Set.',
+      }).shopping_card,
+    ).toMatchObject({ subtitle: 'Skincare Set', highlight: 'Face oil discovery set' });
+    expect(
+      buildJurliqueBundle({
+        id: 'activate-your-glow',
+        title: 'Activate Your Glow',
+        category: 'Face Oil',
+        description:
+          'Hydrate, nourish, and glow with Jurlique’s Activate Your Glow bundle-the duo for soft, radiant skin.',
+      }).shopping_card,
+    ).toMatchObject({ subtitle: 'Skincare Set', highlight: 'Glow routine set' });
+    expect(
+      buildJurliqueBundle({
+        id: 'cooling-facial-spoons',
+        title: 'Cooling Facial Spoons',
+        category: 'Face Oil',
+        description: 'Use with your preferred Jurlique Face Oil, Moisturizer or Serum.',
+      }).shopping_card,
+    ).toMatchObject({ subtitle: 'Skincare Tool', highlight: 'Facial massage tool' });
   });
 
   test('does not let stale Kylie skincare category override lip-and-cheek source copy', () => {
@@ -2812,6 +3005,18 @@ describe('build-reviewed-official-seed-product-intel-report', () => {
       ),
     ).toBe(true);
     expect(
+      isConservativeRewriteCandidate(
+        {
+          ...base,
+          title: 'Day Dew Sunscreen',
+          kb_direct_quality_state: 'reviewed',
+          kb_direct_evidence_profile: 'seller_plus_formula',
+          main_blocker: 'kb_blocked',
+        },
+        { includeReviewedSellerOnly: true },
+      ),
+    ).toBe(true);
+    expect(
       isConservativeRewriteCandidate({
         ...base,
         title: 'Mini Makeup Fixing Mist',
@@ -2994,6 +3199,24 @@ describe('build-reviewed-official-seed-product-intel-report', () => {
         terminal_hold: false,
       },
       {
+        external_product_id: 'reviewed_seller_plus_formula',
+        domain: 'pixibeauty.com',
+        title: 'Day Dew Sunscreen',
+        recommended_lane: 'lane_3_kb_rewrite_review',
+        seed_missing_fields: '',
+        identity_status: 'approved',
+        identity_live_read_enabled: true,
+        kb_direct_high_quality_ready: false,
+        kb_direct_human_reviewed: true,
+        kb_direct_quality_state: 'reviewed',
+        kb_direct_evidence_profile: 'seller_plus_formula',
+        main_blocker: 'kb_blocked',
+        catalog_attached: true,
+        index_serving_eligible: true,
+        commerce_doc_public: true,
+        terminal_hold: false,
+      },
+      {
         external_product_id: 'not_reviewed_official_source',
         domain: 'pixibeauty.com',
         title: 'Vitamin-C Cleansing Cloths',
@@ -3088,7 +3311,7 @@ describe('build-reviewed-official-seed-product-intel-report', () => {
         singleItemOnly: true,
         includeReviewedSellerOnly: true,
       }).map((row) => row.external_product_id),
-    ).toEqual(['safe', 'reviewed_seller_only']);
+    ).toEqual(['safe', 'reviewed_seller_only', 'reviewed_seller_plus_formula']);
 
     expect(
       selectInventoryRows(rows, {
@@ -3122,5 +3345,30 @@ describe('build-reviewed-official-seed-product-intel-report', () => {
         includeHighQualityExisting: true,
       }).map((row) => row.external_product_id),
     ).toEqual(['high_quality_existing']);
+  });
+
+  test('filterReportRowsByDiagnostics drops only failed candidate product ids', () => {
+    const rows = [
+      {
+        selected: {
+          bundle: {
+            canonical_product_ref: { product_id: 'ext_ok' },
+          },
+        },
+      },
+      {
+        selected: {
+          bundle: {
+            canonical_product_ref: { product_id: 'ext_bad' },
+          },
+        },
+      },
+    ];
+    expect(
+      filterReportRowsByDiagnostics(rows, [
+        { product_id: 'ext_ok', ok: true },
+        { product_id: 'ext_bad', ok: false },
+      ]).map((row) => row.selected.bundle.canonical_product_ref.product_id),
+    ).toEqual(['ext_ok']);
   });
 });

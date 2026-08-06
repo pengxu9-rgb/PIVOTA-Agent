@@ -1,0 +1,277 @@
+{
+  "generated_at": "2026-05-30T11:11:46.569Z",
+  "source": "pdp_module_value_quality_audit_v1",
+  "query": {
+    "sig": "",
+    "externalProductId": "",
+    "brand": "Ownist",
+    "domain": "",
+    "market": "US",
+    "limit": 10,
+    "out": "reports/ownist_seed_ingest_20260530/pdp-module-value-quality-audit-production-db.json",
+    "includeInactive": false
+  },
+  "summary": {
+    "scanned": 4,
+    "by_bucket": [
+      {
+        "key": "needs_value_repair",
+        "count": 4
+      }
+    ],
+    "by_reason": [
+      {
+        "key": "ingredients_missing_source_backed_inci",
+        "count": 4
+      },
+      {
+        "key": "variant_default_or_placeholder_label",
+        "count": 4
+      }
+    ],
+    "by_module": [
+      {
+        "key": "ingredients",
+        "count": 4
+      },
+      {
+        "key": "variant",
+        "count": 4
+      }
+    ],
+    "top_brands": [
+      {
+        "key": "Ownist",
+        "count": 4
+      }
+    ],
+    "top_domains": [
+      {
+        "key": "ownist.com",
+        "count": 4
+      }
+    ]
+  },
+  "rows": [
+    {
+      "product_key": "prod::external_seed::external_seed::ext_8b6bcbe031a743c1e607aa6a",
+      "pivota_signature_id": "sig_c01623e2b15214a1a0a5612659ebe746",
+      "external_product_id": "ext_8b6bcbe031a743c1e607aa6a",
+      "title": "Triple Shine Grape",
+      "brand": "Ownist",
+      "domain": "ownist.com",
+      "market": "US",
+      "category_path": "beauty",
+      "canonical_url": "https://ownist.com/products/triple-shine-1-box",
+      "bucket": "needs_value_repair",
+      "issue_count": 2,
+      "module_status": {
+        "variant_label_count": 1,
+        "variant_labels_sample": [
+          "Default Title"
+        ],
+        "variant_count": 5,
+        "image_count": 11,
+        "root_image_count": 11,
+        "variant_image_count": 11,
+        "image_hosts_sample": [
+          "cdn.shopify.com"
+        ],
+        "ingredient_applicability_status": "",
+        "ingredient_applicability_evidence": [],
+        "ingredient_component_refs_status": "",
+        "ingredient_component_refs_count": 0,
+        "ingredient_component_refs_sample": [],
+        "ingredient_texts_sample": [],
+        "how_to_texts_sample": [],
+        "detail_section_count": 0,
+        "intel_kb_key": "product:ext_8b6bcbe031a743c1e607aa6a",
+        "review_count": 0,
+        "qna_count": 0
+      },
+      "issues": [
+        {
+          "module": "variant",
+          "reason_code": "variant_default_or_placeholder_label",
+          "severity": "high",
+          "evidence": [
+            "Default Title"
+          ],
+          "recommended_action": "replace with source-backed size/shade/count label or hide selector only after showing single-SKU spec"
+        },
+        {
+          "module": "ingredients",
+          "reason_code": "ingredients_missing_source_backed_inci",
+          "severity": "high",
+          "evidence": [],
+          "recommended_action": "fill from official INCI or verified retailer ingredient panel"
+        }
+      ]
+    },
+    {
+      "product_key": "prod::external_seed::external_seed::ext_52e9fce8bee97af26d6f77db",
+      "pivota_signature_id": "sig_9435f32d8c54d3ac2227664cbbd8a47e",
+      "external_product_id": "ext_52e9fce8bee97af26d6f77db",
+      "title": "Triple Collagen Orange",
+      "brand": "Ownist",
+      "domain": "ownist.com",
+      "market": "US",
+      "category_path": "beauty",
+      "canonical_url": "https://ownist.com/products/ownist-triple-collagen-1-box",
+      "bucket": "needs_value_repair",
+      "issue_count": 2,
+      "module_status": {
+        "variant_label_count": 1,
+        "variant_labels_sample": [
+          "Default Title"
+        ],
+        "variant_count": 5,
+        "image_count": 11,
+        "root_image_count": 11,
+        "variant_image_count": 11,
+        "image_hosts_sample": [
+          "cdn.shopify.com"
+        ],
+        "ingredient_applicability_status": "",
+        "ingredient_applicability_evidence": [],
+        "ingredient_component_refs_status": "",
+        "ingredient_component_refs_count": 0,
+        "ingredient_component_refs_sample": [],
+        "ingredient_texts_sample": [],
+        "how_to_texts_sample": [],
+        "detail_section_count": 0,
+        "intel_kb_key": "product:ext_52e9fce8bee97af26d6f77db",
+        "review_count": 0,
+        "qna_count": 0
+      },
+      "issues": [
+        {
+          "module": "variant",
+          "reason_code": "variant_default_or_placeholder_label",
+          "severity": "high",
+          "evidence": [
+            "Default Title"
+          ],
+          "recommended_action": "replace with source-backed size/shade/count label or hide selector only after showing single-SKU spec"
+        },
+        {
+          "module": "ingredients",
+          "reason_code": "ingredients_missing_source_backed_inci",
+          "severity": "high",
+          "evidence": [],
+          "recommended_action": "fill from official INCI or verified retailer ingredient panel"
+        }
+      ]
+    },
+    {
+      "product_key": "prod::external_seed::external_seed::ext_3dab0df3312e80e8dac97452",
+      "pivota_signature_id": "sig_804c13c0550e9c46cacdadd7616d3ffd",
+      "external_product_id": "ext_3dab0df3312e80e8dac97452",
+      "title": "Triple Shine Garden edition",
+      "brand": "Ownist",
+      "domain": "ownist.com",
+      "market": "US",
+      "category_path": "beauty/sets",
+      "canonical_url": "https://ownist.com/products/triple-shine-garden-gift-set",
+      "bucket": "needs_value_repair",
+      "issue_count": 2,
+      "module_status": {
+        "variant_label_count": 1,
+        "variant_labels_sample": [
+          "Default Title"
+        ],
+        "variant_count": 5,
+        "image_count": 11,
+        "root_image_count": 11,
+        "variant_image_count": 11,
+        "image_hosts_sample": [
+          "cdn.shopify.com"
+        ],
+        "ingredient_applicability_status": "",
+        "ingredient_applicability_evidence": [],
+        "ingredient_component_refs_status": "",
+        "ingredient_component_refs_count": 0,
+        "ingredient_component_refs_sample": [],
+        "ingredient_texts_sample": [],
+        "how_to_texts_sample": [],
+        "detail_section_count": 0,
+        "intel_kb_key": "product:ext_3dab0df3312e80e8dac97452",
+        "review_count": 0,
+        "qna_count": 0
+      },
+      "issues": [
+        {
+          "module": "variant",
+          "reason_code": "variant_default_or_placeholder_label",
+          "severity": "high",
+          "evidence": [
+            "Default Title"
+          ],
+          "recommended_action": "replace with source-backed size/shade/count label or hide selector only after showing single-SKU spec"
+        },
+        {
+          "module": "ingredients",
+          "reason_code": "ingredients_missing_source_backed_inci",
+          "severity": "high",
+          "evidence": [],
+          "recommended_action": "fill from official INCI or verified retailer ingredient panel"
+        }
+      ]
+    },
+    {
+      "product_key": "prod::external_seed::external_seed::ext_3b2f5eaa044e309bf442a047",
+      "pivota_signature_id": "sig_3baddcba272e0e635e6f1bcc602afeaa",
+      "external_product_id": "ext_3b2f5eaa044e309bf442a047",
+      "title": "Triple Collagen Garden edition",
+      "brand": "Ownist",
+      "domain": "ownist.com",
+      "market": "US",
+      "category_path": "beauty/sets",
+      "canonical_url": "https://ownist.com/products/triple-collagen-garden-gift-set",
+      "bucket": "needs_value_repair",
+      "issue_count": 2,
+      "module_status": {
+        "variant_label_count": 1,
+        "variant_labels_sample": [
+          "Default Title"
+        ],
+        "variant_count": 5,
+        "image_count": 11,
+        "root_image_count": 11,
+        "variant_image_count": 11,
+        "image_hosts_sample": [
+          "cdn.shopify.com"
+        ],
+        "ingredient_applicability_status": "",
+        "ingredient_applicability_evidence": [],
+        "ingredient_component_refs_status": "",
+        "ingredient_component_refs_count": 0,
+        "ingredient_component_refs_sample": [],
+        "ingredient_texts_sample": [],
+        "how_to_texts_sample": [],
+        "detail_section_count": 0,
+        "intel_kb_key": "product:ext_3b2f5eaa044e309bf442a047",
+        "review_count": 0,
+        "qna_count": 0
+      },
+      "issues": [
+        {
+          "module": "variant",
+          "reason_code": "variant_default_or_placeholder_label",
+          "severity": "high",
+          "evidence": [
+            "Default Title"
+          ],
+          "recommended_action": "replace with source-backed size/shade/count label or hide selector only after showing single-SKU spec"
+        },
+        {
+          "module": "ingredients",
+          "reason_code": "ingredients_missing_source_backed_inci",
+          "severity": "high",
+          "evidence": [],
+          "recommended_action": "fill from official INCI or verified retailer ingredient panel"
+        }
+      ]
+    }
+  ]
+}

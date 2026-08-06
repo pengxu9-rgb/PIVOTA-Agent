@@ -1,0 +1,145 @@
+{
+  "generated_at": "2026-05-30T10:06:40.292Z",
+  "manifest_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/ownist_seed_ingest_20260530/brand-manifest-all-products.json",
+  "mode": "dry_run",
+  "database_available": true,
+  "correction_script_available": true,
+  "apply_result": {
+    "generated_at": "2026-05-30T10:06:10.288Z",
+    "input_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/ownist_seed_ingest_20260530/brand-manifest-all-products.json",
+    "summary": {
+      "mode": "dry_run",
+      "database_available": true,
+      "scanned": 4,
+      "inserted": 0,
+      "skipped_existing": 0,
+      "would_insert": 4,
+      "would_insert_unverified": 0,
+      "invalid": 0,
+      "requires_seed_correction_count": 0
+    },
+    "correction_followups": [],
+    "items": [
+      {
+        "ingredient_id": "",
+        "ingredient_name": "",
+        "seed_id": "eps_ef1189fcc1414c309f574ee0",
+        "external_product_id": "ext_3dab0df3312e80e8dac97452",
+        "status": "would_insert",
+        "commerce_facts_gate": {
+          "status": "pass",
+          "market_id": "US",
+          "expected_currency": "USD",
+          "observed_currency": "USD",
+          "market_switch_status": "unknown",
+          "sellable_region_status": "unknown",
+          "shipping_status": "unknown",
+          "promotions_status": "unknown",
+          "availability_status": "in_stock",
+          "problems": []
+        },
+        "requires_seed_correction": false,
+        "ingredient_writeback_source": "none",
+        "seed_structured_ingredient_status": "missing",
+        "seed_kb_sync_status": "missing_both",
+        "runtime_ingredient_evidence_source": "none"
+      },
+      {
+        "ingredient_id": "",
+        "ingredient_name": "",
+        "seed_id": "eps_c563537f86299bf556bd6761",
+        "external_product_id": "ext_3b2f5eaa044e309bf442a047",
+        "status": "would_insert",
+        "commerce_facts_gate": {
+          "status": "pass",
+          "market_id": "US",
+          "expected_currency": "USD",
+          "observed_currency": "USD",
+          "market_switch_status": "unknown",
+          "sellable_region_status": "unknown",
+          "shipping_status": "unknown",
+          "promotions_status": "unknown",
+          "availability_status": "in_stock",
+          "problems": []
+        },
+        "requires_seed_correction": false,
+        "ingredient_writeback_source": "none",
+        "seed_structured_ingredient_status": "missing",
+        "seed_kb_sync_status": "missing_both",
+        "runtime_ingredient_evidence_source": "none"
+      },
+      {
+        "ingredient_id": "",
+        "ingredient_name": "",
+        "seed_id": "eps_8392f5063ab5890a5f8388ce",
+        "external_product_id": "ext_8b6bcbe031a743c1e607aa6a",
+        "status": "would_insert",
+        "commerce_facts_gate": {
+          "status": "pass",
+          "market_id": "US",
+          "expected_currency": "USD",
+          "observed_currency": "USD",
+          "market_switch_status": "unknown",
+          "sellable_region_status": "unknown",
+          "shipping_status": "unknown",
+          "promotions_status": "unknown",
+          "availability_status": "in_stock",
+          "problems": []
+        },
+        "requires_seed_correction": false,
+        "ingredient_writeback_source": "none",
+        "seed_structured_ingredient_status": "missing",
+        "seed_kb_sync_status": "missing_both",
+        "runtime_ingredient_evidence_source": "none"
+      },
+      {
+        "ingredient_id": "",
+        "ingredient_name": "",
+        "seed_id": "eps_b81018b0147d2b7103a9ff50",
+        "external_product_id": "ext_52e9fce8bee97af26d6f77db",
+        "status": "would_insert",
+        "commerce_facts_gate": {
+          "status": "pass",
+          "market_id": "US",
+          "expected_currency": "USD",
+          "observed_currency": "USD",
+          "market_switch_status": "unknown",
+          "sellable_region_status": "unknown",
+          "shipping_status": "unknown",
+          "promotions_status": "unknown",
+          "availability_status": "in_stock",
+          "problems": []
+        },
+        "requires_seed_correction": false,
+        "ingredient_writeback_source": "none",
+        "seed_structured_ingredient_status": "missing",
+        "seed_kb_sync_status": "missing_both",
+        "runtime_ingredient_evidence_source": "none"
+      }
+    ]
+  },
+  "correction_plans": [],
+  "correction_results": [],
+  "runtime_reprobe_targets": [
+    {
+      "ingredient_id": null,
+      "ingredient_name": null,
+      "expected_lane": "direct_explicit_supply"
+    },
+    {
+      "ingredient_id": null,
+      "ingredient_name": null,
+      "expected_lane": "direct_explicit_supply"
+    },
+    {
+      "ingredient_id": null,
+      "ingredient_name": null,
+      "expected_lane": "direct_explicit_supply"
+    },
+    {
+      "ingredient_id": null,
+      "ingredient_name": null,
+      "expected_lane": "direct_explicit_supply"
+    }
+  ]
+}

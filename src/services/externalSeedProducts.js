@@ -727,11 +727,35 @@ function normalizeReviewBrandCard(value) {
   };
 }
 
+const SYNTHETIC_REVIEW_SOURCE_RE =
+  /(?:pivota_force_fill|force_filled|force_fill|synthetic|simulation|mock|browser_fallback|legacy_fallback)/i;
+
+function isSyntheticReviewSummarySource(source) {
+  const safe = ensureJsonObject(source);
+  if (safe.force_filled === true) return true;
+  if (safe.distribution_estimated === true) return true;
+  const sourceSignals = [
+    safe.status,
+    safe.review_status,
+    safe.source,
+    safe.source_type,
+    safe.source_origin,
+    safe.source_kind,
+    safe.content_review_state,
+    safe.aggregation_scope,
+  ]
+    .map((value) => normalizeNonEmptyString(value))
+    .filter(Boolean)
+    .join(' ');
+  return SYNTHETIC_REVIEW_SOURCE_RE.test(sourceSignals) || /\bestimated\b/i.test(sourceSignals);
+}
+
 function normalizeSeedReviewSummary(...values) {
   const out = {};
   const absenceStatuses = new Set(['none', 'no_reviews', 'unavailable', 'no_review_source_captured']);
   for (const value of values) {
     const source = ensureJsonObject(value);
+    const syntheticReviewSummary = isSyntheticReviewSummarySource(source);
     const status = normalizeNonEmptyString(source.status || source.review_status);
     const unavailableReason = normalizeNonEmptyString(
       source.unavailable_reason || source.reason || source.review_unavailable_reason,
@@ -781,31 +805,46 @@ function normalizeSeedReviewSummary(...values) {
       source.star_distribution || source.rating_distribution,
     );
 
-    if (rating > 0 && out.rating == null) out.rating = rating;
-    if (reviewCount > 0) {
+    if (syntheticReviewSummary) {
+      if (out.review_count == null) out.review_count = 0;
+    } else if (rating > 0 && out.rating == null) {
+      out.rating = rating;
+    }
+    if (!syntheticReviewSummary && reviewCount > 0) {
       const existingReviewCount = normalizeAmount(out.review_count);
       if (!existingReviewCount || existingReviewCount <= 0) out.review_count = reviewCount;
-      if (out.status && absenceStatuses.has(String(out.status).toLowerCase())) delete out.status;
+      if (
+        out.status &&
+        (absenceStatuses.has(String(out.status).toLowerCase()) ||
+          String(out.status).toLowerCase() === 'estimated')
+      ) {
+        delete out.status;
+      }
       if (out.unavailable_reason) delete out.unavailable_reason;
-      if (out.content_review_state === 'approved_absence') delete out.content_review_state;
-      if (out.force_filled === true && source.force_filled !== true) delete out.force_filled;
+      if (
+        out.content_review_state === 'approved_absence' ||
+        out.content_review_state === 'approved_estimate'
+      ) {
+        delete out.content_review_state;
+      }
+      if (out.force_filled === true) delete out.force_filled;
       if (sourceLabel) out.source = sourceLabel;
     }
     if (scale > 0 && out.scale == null) out.scale = scale;
-    if (previewItems.length > 0 && !Array.isArray(out.preview_items)) out.preview_items = previewItems;
-    if (questions.length > 0 && !Array.isArray(out.questions)) out.questions = questions;
+    if (!syntheticReviewSummary && previewItems.length > 0 && !Array.isArray(out.preview_items)) out.preview_items = previewItems;
+    if (!syntheticReviewSummary && questions.length > 0 && !Array.isArray(out.questions)) out.questions = questions;
     if (brandCard && !out.brand_card) out.brand_card = brandCard;
-    if (starDistribution.length > 0 && !Array.isArray(out.star_distribution)) {
+    if (!syntheticReviewSummary && starDistribution.length > 0 && !Array.isArray(out.star_distribution)) {
       out.star_distribution = starDistribution;
       out.rating_distribution = starDistribution;
     }
     if (normalizeNonEmptyString(source.aggregation_scope) && !out.aggregation_scope) {
       out.aggregation_scope = normalizeNonEmptyString(source.aggregation_scope);
     }
-    if (normalizeAmount(source.exact_item_review_count) > 0 && out.exact_item_review_count == null) {
+    if (!syntheticReviewSummary && normalizeAmount(source.exact_item_review_count) > 0 && out.exact_item_review_count == null) {
       out.exact_item_review_count = normalizeAmount(source.exact_item_review_count);
     }
-    if (normalizeAmount(source.product_line_review_count) > 0 && out.product_line_review_count == null) {
+    if (!syntheticReviewSummary && normalizeAmount(source.product_line_review_count) > 0 && out.product_line_review_count == null) {
       out.product_line_review_count = normalizeAmount(source.product_line_review_count);
     }
     if (normalizeNonEmptyString(source.scope_label) && !out.scope_label) {

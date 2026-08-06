@@ -1,0 +1,37 @@
+{
+  "contract_version": "pdp_quality_upgrade_loop.category_patch_manifest.v1",
+  "market": "US",
+  "reviewed_by": "codex_quality_reviewer_owner_delegated",
+  "source_kind": "official_pdp_taxonomy_serving_review",
+  "generated_at": "2026-05-30T10:50:00.000Z",
+  "entries": [
+    {
+      "external_product_id": "ext_8b6bcbe031a743c1e607aa6a",
+      "market": "US",
+      "title": "Triple Shine Grape",
+      "canonical_url": "https://ownist.com/products/triple-shine-1-box",
+      "source_url": "https://ownist.com/products/triple-shine-1-box",
+      "category": "Beauty Supplement",
+      "product_type": "Beauty Supplement",
+      "category_path": "beauty",
+      "catalog_category_path": "beauty",
+      "reason": "reviewed_similar_recall_leaf_broadening",
+      "confidence": 0.91,
+      "evidence": "Official Ownist PDP still identifies an ingestible beauty supplement; production catalog-only similar recall underfilled at the narrow supplements leaf, so the serving taxonomy is broadened to the root beauty path while preserving product_type."
+    },
+    {
+      "external_product_id": "ext_52e9fce8bee97af26d6f77db",
+      "market": "US",
+      "title": "Triple Collagen Orange",
+      "canonical_url": "https://ownist.com/products/ownist-triple-collagen-1-box",
+      "source_url": "https://ownist.com/products/ownist-triple-collagen-1-box",
+      "category": "Beauty Supplement",
+      "product_type": "Beauty Supplement",
+      "category_path": "beauty",
+      "catalog_category_path": "beauty",
+      "reason": "reviewed_similar_recall_leaf_broadening",
+      "confidence": 0.91,
+      "evidence": "Official Ownist PDP still identifies an ingestible beauty supplement; production catalog-only similar recall underfilled at the narrow supplements leaf, so the serving taxonomy is broadened to the root beauty path while preserving product_type."
+    }
+  ]
+}

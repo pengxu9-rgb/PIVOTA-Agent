@@ -1,0 +1,95 @@
+{
+  "contract_version": "external_seed.reviewed_pdp_content_patch.v1",
+  "market": "US",
+  "reviewed_by": "codex_quality_reviewer_owner_delegated",
+  "reason": "owner_delegated_component_level_pdp_repair_for_ownist",
+  "source_kind": "official_pdp_structured_section",
+  "entries": [
+    {
+      "external_product_id": "ext_8b6bcbe031a743c1e607aa6a",
+      "source_url": "https://ownist.com/products/triple-shine-1-box",
+      "evidence": "Ownist Triple Shine Grape source PDP identifies Belight, niacin (vitamin B3), vitamin C, clean traceable ingredient lines, and daily ready-to-drink use without powders or water.",
+      "description": "Triple Shine Grape is an Ownist ready-to-drink beauty supplement built around Belight, niacin (vitamin B3), and vitamin C. The source page positions the grape packet format for daily use without powders or water, with organic grape concentrate for flavor.",
+      "pdp_how_to_use_raw": "No messy powders or water are needed. Sip the ready-to-drink packet daily wherever and whenever it fits your routine.",
+      "pdp_ingredients_raw": "Belight, Niacin (Vitamin B3), Vitamin C, Organic Agave Syrup, Organic Lemon Concentrate, Locust Bean Gum Powder, Organic Grape Concentrate",
+      "pdp_details_sections": [
+        {
+          "heading": "Key Ingredients",
+          "body": "The source page highlights Belight, niacin (vitamin B3), and vitamin C as the three key ingredients in the Triple Shine Grape formula."
+        },
+        {
+          "heading": "Clean and Traceable Ingredients",
+          "body": "The source page lists Belight as the main ingredient and also names niacin, Vitamin B Group and Vitamin C, organic agave syrup, organic lemon concentrate, locust bean gum powder, and organic grape concentrate."
+        },
+        {
+          "heading": "Daily Use Format",
+          "body": "The source page describes a ready-to-drink packet format with no powders or water required."
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_52e9fce8bee97af26d6f77db",
+      "source_url": "https://ownist.com/products/ownist-triple-collagen-1-box",
+      "evidence": "Ownist Triple Collagen Orange source PDP identifies hydrolyzed marine collagen, elastin, hyaluronic acid, vitamin C, source countries, and directions to enjoy 1-2 packets at least an hour after meals.",
+      "description": "Triple Collagen Orange is an Ownist ready-to-drink collagen beauty supplement built around hydrolyzed marine collagen, elastin, hyaluronic acid, and vitamin C. The source page positions the orange packet format for daily use without powders or water.",
+      "pdp_how_to_use_raw": "Enjoy 1-2 packets, best taken at least an hour after meals. Can be taken anytime. Store in a cool, dry place away from direct sunlight. Refrigeration is optional.",
+      "pdp_ingredients_raw": "Hydrolyzed Marine Collagen, Elastin, Hyaluronic Acid, Vitamin C, Organic Orange Juice Concentrate, Organic Fructooligosaccharide",
+      "pdp_details_sections": [
+        {
+          "heading": "Highlighted Formula",
+          "body": "The source page identifies hydrolyzed marine collagen, elastin, hyaluronic acid, and vitamin C as source-backed formula highlights."
+        },
+        {
+          "heading": "Sourcing Transparency",
+          "body": "The source page lists hydrolyzed marine collagen from Nova Scotia, Canada; elastin from Utah, United States; hyaluronic acid from Ansan, South Korea; vitamin C from Scotland, United Kingdom; organic orange juice concentrate from Valencia, Spain; and organic fructooligosaccharide from Iksan, South Korea."
+        },
+        {
+          "heading": "Daily Use Format",
+          "body": "The source directions say to enjoy 1-2 packets, best taken at least an hour after meals, and to store in a cool, dry place away from direct sunlight."
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_3dab0df3312e80e8dac97452",
+      "source_url": "https://ownist.com/products/triple-shine-garden-gift-set",
+      "evidence": "Ownist Triple Shine Garden gift set source PDP carries the Triple Shine formula description and the reviewed bundle component ref links this set to Triple Shine Grape.",
+      "description": "Triple Shine Garden edition is an Ownist gift set anchored by the Triple Shine Grape ready-to-drink beauty supplement formula. The source description highlights Belight, niacin (vitamin B3), vitamin C, organic grape concentrate, and daily use without powders or water.",
+      "pdp_how_to_use_raw": "Use the included ready-to-drink Triple Shine packets following the source guidance: no powders or water are needed, just sip as part of a daily routine.",
+      "pdp_details_sections": [
+        {
+          "heading": "Gift Set Format",
+          "body": "This PDP is the Garden edition gift set for the Ownist Triple Shine formula."
+        },
+        {
+          "heading": "Linked Formula Component",
+          "body": "The reviewed bundle component reference links this set to Triple Shine Grape for inherited ingredient, active ingredient, and use guidance."
+        },
+        {
+          "heading": "Source-Backed Formula Cues",
+          "body": "The source description highlights Belight, niacin (vitamin B3), vitamin C, organic grape concentrate, and a ready-to-drink daily packet format."
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_3b2f5eaa044e309bf442a047",
+      "source_url": "https://ownist.com/products/triple-collagen-garden-gift-set",
+      "evidence": "Ownist Triple Collagen Garden gift set source PDP carries the Triple Collagen formula description and the reviewed bundle component ref links this set to Triple Collagen Orange.",
+      "description": "Triple Collagen Garden edition is an Ownist gift set anchored by the Triple Collagen Orange ready-to-drink collagen supplement formula. The source description highlights collagen, elastin, hyaluronic acid, organic Valencia orange concentrate, and daily use without powders or water.",
+      "pdp_how_to_use_raw": "Use the included ready-to-drink Triple Collagen packets following the source guidance: no powders or water are needed, just sip as part of a daily routine.",
+      "pdp_details_sections": [
+        {
+          "heading": "Gift Set Format",
+          "body": "This PDP is the Garden edition gift set for the Ownist Triple Collagen formula."
+        },
+        {
+          "heading": "Linked Formula Component",
+          "body": "The reviewed bundle component reference links this set to Triple Collagen Orange for inherited ingredient, active ingredient, and use guidance."
+        },
+        {
+          "heading": "Source-Backed Formula Cues",
+          "body": "The source description highlights collagen, elastin, hyaluronic acid, organic Valencia orange concentrate, and a ready-to-drink daily packet format."
+        }
+      ]
+    }
+  ]
+}

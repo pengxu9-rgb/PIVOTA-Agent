@@ -1,0 +1,78 @@
+{
+  "generated_at": "2026-05-30T11:49:21.362Z",
+  "dry_run": false,
+  "filters": {
+    "external_product_ids": [
+      "ext_8b6bcbe031a743c1e607aa6a"
+    ],
+    "market": "US"
+  },
+  "requested_active_ingredients": [
+    "Belight",
+    "Niacin (Vitamin B3)",
+    "Vitamin C"
+  ],
+  "clear_active_ingredients": false,
+  "summary": {
+    "scanned_rows": 1,
+    "missing_rows": 0,
+    "blocked_missing_source_evidence": 0,
+    "change_candidates": 1,
+    "updated_rows": 1,
+    "catalog_product_updates": 1,
+    "identity_updates": 1
+  },
+  "results": [
+    {
+      "seed_id": "eps_8392f5063ab5890a5f8388ce",
+      "external_product_id": "ext_8b6bcbe031a743c1e607aa6a",
+      "market": "US",
+      "domain": "ownist.com",
+      "title": "Triple Shine Grape",
+      "canonical_url": "https://ownist.com/products/triple-shine-1-box",
+      "dry_run": false,
+      "status": "applied",
+      "source_evidence": {
+        "backed": true,
+        "missing": [],
+        "evidence_chars": 749
+      },
+      "before": {
+        "active_ingredients": [],
+        "snapshot_active_ingredients": [],
+        "ingredient_intel_active_ingredients": [],
+        "ingredient_tokens": [],
+        "key_ingredients": [],
+        "ingredient_intel_key_ingredients": [],
+        "ingredient_intel_has_inci": true,
+        "active_raw_len": 0,
+        "review_contract": null,
+        "structured_ingredient_remediation": null
+      },
+      "after": {
+        "active_ingredients": [
+          "Belight",
+          "Niacin (Vitamin B3)",
+          "Vitamin C"
+        ],
+        "snapshot_active_ingredients": [
+          "Belight",
+          "Niacin (Vitamin B3)",
+          "Vitamin C"
+        ],
+        "ingredient_intel_active_ingredients": [
+          "Belight",
+          "Niacin (Vitamin B3)",
+          "Vitamin C"
+        ],
+        "ingredient_tokens": [],
+        "key_ingredients": [],
+        "ingredient_intel_key_ingredients": [],
+        "ingredient_intel_has_inci": true,
+        "active_raw_len": 0,
+        "review_contract": "external_seed.reviewed_active_ingredients.v1",
+        "structured_ingredient_remediation": null
+      }
+    }
+  ]
+}

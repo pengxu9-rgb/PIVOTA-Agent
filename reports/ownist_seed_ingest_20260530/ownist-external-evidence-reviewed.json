@@ -1,0 +1,337 @@
+{
+  "contract_version": "pivota.external_evidence.reviewed.v1",
+  "generated_at": "2026-05-30T13:53:02Z",
+  "review_batch": "ownist_external_evidence_20260530",
+  "reviewer": "codex_quality_reviewer_owner_delegated",
+  "reviewer_kind": "assistant",
+  "policy_notes": [
+    "Visible highlights require reviewed pass or rewrite.",
+    "Gifted, sponsored, and editorial sources are retained as context only and do not independently support visible highlights or proof badges.",
+    "No direct external evidence was found for the two garden gift-set SKUs; component formula evidence is not treated as gift-set-specific social proof."
+  ],
+  "rows": [
+    {
+      "external_product_id": "ext_8b6bcbe031a743c1e607aa6a",
+      "case_id": "live_ext_8b6bcbe031a743c1e607aa6a",
+      "title": "Triple Shine Grape",
+      "review_decision": "rewrite",
+      "visible_card_highlight": "Reviews: grape jelly format",
+      "review_summary": {
+        "rating": 3.73,
+        "review_count": 11,
+        "primary_source": "Hwahae"
+      },
+      "source_coverage": {
+        "reviews": {
+          "available": true,
+          "count": 11,
+          "sources": [
+            "Hwahae",
+            "Shop",
+            "Loox"
+          ]
+        },
+        "creator": {
+          "available": false,
+          "count": 0
+        },
+        "editorial": {
+          "available": true,
+          "count": 1,
+          "surfaceable": false
+        }
+      },
+      "community_signals": {
+        "status": "available",
+        "source_counts": {
+          "reviews": 11,
+          "review_sources": 3,
+          "creator_mentions": 0,
+          "editorial": 1
+        },
+        "top_loves": [
+          "Review sources most consistently mention the jelly format, grape flavor, and portability."
+        ],
+        "mixed_feedback": [
+          "Visible-result feedback is mixed; reviewers repeatedly frame consistency and time as necessary."
+        ],
+        "top_complaints": [
+          "High price, occasional bitterness, and difficult opening appear as recurring review watchouts."
+        ]
+      },
+      "external_highlight_signals": [
+        {
+          "signal_id": "ownist_triple_shine_reviews_jelly_format",
+          "source_type": "verified_reviews",
+          "claim_type": "card_hook",
+          "claim_text": "Review sources most consistently mention the jelly format, grape flavor, and portability, while visible-result feedback is mixed.",
+          "surface_text": "Reviews: grape jelly format",
+          "stance": "mixed",
+          "rating_summary": {
+            "rating": 3.73,
+            "review_count": 11
+          },
+          "sponsorship_status": "unknown",
+          "evidence_strength": "moderate",
+          "independence_count": 11,
+          "supporting_sources": [
+            {
+              "label": "Hwahae Triple Shine Grape reviews",
+              "url": "https://www.hwahae.com/en/products/Ownist-triple-shine-grapes/2090301",
+              "sponsorship_status": "unknown"
+            },
+            {
+              "label": "Shop Triple Shine Grape reviews",
+              "url": "https://shop.app/p/7508774715575",
+              "sponsorship_status": "unknown"
+            },
+            {
+              "label": "Loox Ownist store reviews",
+              "url": "https://loox.io/s/M89oyfGTLZ",
+              "sponsorship_status": "unknown"
+            }
+          ]
+        },
+        {
+          "signal_id": "ownist_triple_shine_reviews_watchouts",
+          "source_type": "verified_reviews",
+          "claim_type": "watchout",
+          "claim_text": "Reviewers flag high price, occasional bitterness, difficult opening, and inconsistent visible results as watchouts.",
+          "stance": "mixed",
+          "surface_targets": [
+            "watchouts"
+          ],
+          "rating_summary": {
+            "rating": 3.73,
+            "review_count": 11
+          },
+          "sponsorship_status": "unknown",
+          "evidence_strength": "moderate",
+          "independence_count": 11,
+          "supporting_sources": [
+            {
+              "label": "Hwahae Triple Shine Grape reviews",
+              "url": "https://www.hwahae.com/en/products/Ownist-triple-shine-grapes/2090301",
+              "sponsorship_status": "unknown"
+            },
+            {
+              "label": "Shop Triple Shine Grape reviews",
+              "url": "https://shop.app/p/7508774715575",
+              "sponsorship_status": "unknown"
+            }
+          ]
+        },
+        {
+          "signal_id": "ownist_triple_shine_editorial_context",
+          "source_type": "editorial_support",
+          "claim_type": "standout",
+          "claim_text": "VentureSquare reports business context for Ownist and notes Triple Shine Grape surpassed one million packets after launch; retained as editorial context only.",
+          "stance": "positive",
+          "surfaceable": false,
+          "sponsorship_status": "unknown",
+          "evidence_strength": "weak",
+          "independence_count": 1,
+          "supporting_sources": [
+            {
+              "label": "VentureSquare Ownist profile",
+              "url": "https://www.venturesquare.net/1030611/",
+              "published_at": "2026-01-06T00:00:00.000Z",
+              "sponsorship_status": "unknown"
+            }
+          ]
+        }
+      ],
+      "external_evidence_summary": {
+        "visible_summary": "Reviewed visible evidence now supports a mixed review-backed highlight around grape jelly format, taste, and portability, with watchouts around price, bitterness, opening, and inconsistent visible results.",
+        "non_visible_context": [
+          "VentureSquare editorial/business context is retained but not used as a public proof badge or visible product highlight."
+        ]
+      }
+    },
+    {
+      "external_product_id": "ext_52e9fce8bee97af26d6f77db",
+      "case_id": "live_ext_52e9fce8bee97af26d6f77db",
+      "title": "Triple Collagen Orange",
+      "review_decision": "rewrite",
+      "visible_card_highlight": "Reviews: easy orange packets",
+      "review_summary": {
+        "rating": 4.17,
+        "review_count": 35,
+        "primary_source": "Hwahae"
+      },
+      "source_coverage": {
+        "reviews": {
+          "available": true,
+          "count": 35,
+          "sources": [
+            "Hwahae",
+            "Shop",
+            "Loox"
+          ]
+        },
+        "creator": {
+          "available": true,
+          "count": 350,
+          "surfaceable": false,
+          "reason": "Gopicky/Picky reviews disclose gifted or sponsored review context."
+        },
+        "editorial": {
+          "available": true,
+          "count": 1,
+          "surfaceable": false
+        }
+      },
+      "community_signals": {
+        "status": "available",
+        "source_counts": {
+          "reviews": 35,
+          "review_sources": 3,
+          "creator_mentions": 350,
+          "editorial": 1
+        },
+        "top_loves": [
+          "Review sources commonly mention orange flavor, easy single-use packets, and low fishy taste."
+        ],
+        "mixed_feedback": [
+          "Visible-result feedback is mixed across elasticity, brightening, hydration, and time-to-result themes."
+        ],
+        "top_complaints": [
+          "Price appears as a recurring watchout."
+        ]
+      },
+      "external_highlight_signals": [
+        {
+          "signal_id": "ownist_triple_collagen_reviews_orange_packets",
+          "source_type": "verified_reviews",
+          "claim_type": "card_hook",
+          "claim_text": "Review sources commonly mention the orange flavor, easy single-use packet format, and low fishy taste as positives.",
+          "surface_text": "Reviews: easy orange packets",
+          "stance": "positive",
+          "rating_summary": {
+            "rating": 4.17,
+            "review_count": 35
+          },
+          "sponsorship_status": "unknown",
+          "evidence_strength": "moderate",
+          "independence_count": 35,
+          "supporting_sources": [
+            {
+              "label": "Hwahae Triple Collagen Orange reviews",
+              "url": "https://www.hwahae.com/en/products/2056374",
+              "sponsorship_status": "unknown"
+            },
+            {
+              "label": "Shop Triple Collagen Orange reviews",
+              "url": "https://shop.app/products/7508760953015/triple-collagen-orange",
+              "sponsorship_status": "unknown"
+            },
+            {
+              "label": "Loox Ownist store reviews",
+              "url": "https://loox.io/s/M89oyfGTLZ",
+              "sponsorship_status": "unknown"
+            }
+          ]
+        },
+        {
+          "signal_id": "ownist_triple_collagen_reviews_watchouts",
+          "source_type": "verified_reviews",
+          "claim_type": "watchout",
+          "claim_text": "Reviewers also flag price and inconsistent visible effects, especially elasticity and brightening, as watchouts.",
+          "stance": "mixed",
+          "surface_targets": [
+            "watchouts"
+          ],
+          "rating_summary": {
+            "rating": 4.17,
+            "review_count": 35
+          },
+          "sponsorship_status": "unknown",
+          "evidence_strength": "moderate",
+          "independence_count": 35,
+          "supporting_sources": [
+            {
+              "label": "Hwahae Triple Collagen Orange reviews",
+              "url": "https://www.hwahae.com/en/products/2056374",
+              "sponsorship_status": "unknown"
+            },
+            {
+              "label": "Shop Triple Collagen Orange reviews",
+              "url": "https://shop.app/products/7508760953015/triple-collagen-orange",
+              "sponsorship_status": "unknown"
+            }
+          ]
+        },
+        {
+          "signal_id": "ownist_triple_collagen_gopicky_gifted_context",
+          "source_type": "creator_social_consensus",
+          "claim_type": "standout",
+          "claim_text": "Gopicky/Picky reviewers discuss orange flavor and the single-use sachet format, but the source discloses gifted or sponsored review context.",
+          "stance": "positive",
+          "surfaceable": false,
+          "sponsorship_status": "gifted",
+          "evidence_strength": "weak",
+          "independence_count": 350,
+          "supporting_sources": [
+            {
+              "label": "Gopicky Triple Collagen Orange reviews",
+              "url": "https://www.gopicky.com/product/1000018199/ownist-triple-collagen-orange",
+              "sponsorship_status": "gifted"
+            }
+          ]
+        },
+        {
+          "signal_id": "ownist_triple_collagen_editorial_context",
+          "source_type": "editorial_support",
+          "claim_type": "standout",
+          "claim_text": "VentureSquare reports editorial business context for Ownist and Triple Collagen Orange; retained as context only.",
+          "stance": "positive",
+          "surfaceable": false,
+          "sponsorship_status": "unknown",
+          "evidence_strength": "weak",
+          "independence_count": 1,
+          "supporting_sources": [
+            {
+              "label": "VentureSquare Ownist profile",
+              "url": "https://www.venturesquare.net/1030611/",
+              "published_at": "2026-01-06T00:00:00.000Z",
+              "sponsorship_status": "unknown"
+            }
+          ]
+        }
+      ],
+      "external_evidence_summary": {
+        "visible_summary": "Reviewed visible evidence now supports an orange-packet review highlight and balanced watchouts around price and inconsistent visible results.",
+        "non_visible_context": [
+          "Gopicky/Picky is retained as gifted creator-review context and is not used for public highlights.",
+          "VentureSquare editorial/business context is retained but not used as a public proof badge or visible product highlight."
+        ]
+      }
+    },
+    {
+      "external_product_id": "ext_3dab0df3312e80e8dac97452",
+      "case_id": "live_ext_3dab0df3312e80e8dac97452",
+      "title": "Triple Shine Garden edition",
+      "review_decision": "seller_only_fallback",
+      "direct_external_evidence": false,
+      "external_evidence_summary": {
+        "visible_summary": "No direct gift-set-specific review, social, or media evidence was found. Existing Pivota Insights should remain seller and component grounded.",
+        "non_visible_context": [
+          "Triple Shine Grape component evidence exists, but it should not be presented as direct proof for the garden gift set."
+        ]
+      }
+    },
+    {
+      "external_product_id": "ext_3b2f5eaa044e309bf442a047",
+      "case_id": "live_ext_3b2f5eaa044e309bf442a047",
+      "title": "Triple Collagen Garden edition",
+      "review_decision": "seller_only_fallback",
+      "direct_external_evidence": false,
+      "external_evidence_summary": {
+        "visible_summary": "No direct gift-set-specific review, social, or media evidence was found. Existing Pivota Insights should remain seller and component grounded.",
+        "non_visible_context": [
+          "Triple Collagen Orange component evidence exists, but it should not be presented as direct proof for the garden gift set."
+        ]
+      }
+    }
+  ]
+}

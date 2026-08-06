@@ -368,6 +368,11 @@ const {
   getCacheStats: getPdpRecsCacheStats,
   hydrateRecommendationItemsWithReviewedProductIntel,
 } = require('./services/RecommendationEngine');
+const {
+  buildAnchorRefsFromProduct: buildRelationshipGraphAnchorRefs,
+  listApprovedRelationshipEdgesForAnchor: listApprovedRelationshipEdges,
+  relationshipEdgeToSimilarItem,
+} = require('./auroraBff/productRelationshipGraph');
 const { getGeminiGlobalGate } = require('./lib/geminiGlobalGate');
 const {
   resolveProductRef,
@@ -3875,7 +3880,37 @@ function buildPdpSimilarInflightKey(args = {}) {
   const bypass = Boolean(
     args?.options?.no_cache || args?.options?.cache_bypass || args?.options?.bypass_cache,
   );
-  return `${merchantId}::${productId}::${limit}::${locale}::${currency}::${bypass ? '1' : '0'}`;
+  const excludeKey = collectPdpSimilarExcludeKeyTokens(args?.options).join(',');
+  return `${merchantId}::${productId}::${limit}::${locale}::${currency}::${bypass ? '1' : '0'}::${excludeKey}`;
+}
+
+function collectPdpSimilarExcludeKeyTokens(options = {}) {
+  const tokens = new Set();
+  const addProduct = (item) => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) return;
+    const merchantId = firstNonEmptyString(item.merchant_id, item.merchantId) || EXTERNAL_SEED_MERCHANT_ID;
+    const productId = firstNonEmptyString(
+      item.product_id,
+      item.productId,
+      item.id,
+      item.external_product_id,
+      item.externalProductId,
+      item.source_product_id,
+      item.sourceProductId,
+      item.platform_product_id,
+      item.platformProductId,
+    );
+    if (!productId) return;
+    tokens.add(`${merchantId}::${productId}`);
+  };
+  for (const item of Array.isArray(options?.exclude_items) ? options.exclude_items : []) {
+    addProduct(item);
+  }
+  for (const productId of Array.isArray(options?.exclude_ids) ? options.exclude_ids : []) {
+    const normalized = firstNonEmptyString(productId);
+    if (normalized) tokens.add(`${EXTERNAL_SEED_MERCHANT_ID}::${normalized}`);
+  }
+  return Array.from(tokens).sort();
 }
 
 function resolvePdpSimilarDisplayLimit(payload = {}) {
@@ -4056,6 +4091,8 @@ function buildPdpSimilarFetchArgs({
   bypassCache = false,
   debug = false,
   candidateLimit = null,
+  excludeItems = [],
+  excludeIds = [],
   requestMode = 'first_paint',
 } = {}) {
   const limit = resolvePdpSimilarDisplayLimit(payload);
@@ -4072,6 +4109,10 @@ function buildPdpSimilarFetchArgs({
       ? PDP_SIMILAR_BACKGROUND_EXTERNAL_FETCH_BUDGET_MS
       : PDP_SIMILAR_EXTERNAL_FETCH_BUDGET_MS;
   const catalogFetchLimit = resolvePdpSimilarCatalogFetchLimit(limit, resolvedCandidateLimit);
+  const normalizedExcludeItems = dedupeSimilarCandidatesByMerchantProductId(excludeItems);
+  const normalizedExcludeIds = Array.from(
+    new Set((Array.isArray(excludeIds) ? excludeIds : []).map((value) => firstNonEmptyString(value)).filter(Boolean)),
+  );
   return {
     displayLimit: limit,
     candidateLimit: resolvedCandidateLimit,
@@ -4100,6 +4141,8 @@ function buildPdpSimilarFetchArgs({
         catalog_fetch_overfetch_multiplier: 1,
         identity_dedupe_timeout_ms: PDP_SIMILAR_IDENTITY_DEDUPE_BUDGET_MS,
         hydrate_product_intel_cards: false,
+        ...(normalizedExcludeItems.length > 0 ? { exclude_items: normalizedExcludeItems } : {}),
+        ...(normalizedExcludeIds.length > 0 ? { exclude_ids: normalizedExcludeIds } : {}),
       },
     },
   };
@@ -4989,9 +5032,17 @@ function normalizeCatalogSignatureResolveOptions(options = {}) {
   const hydrateIdentityListing = options?.hydrateIdentityListing !== false;
   const hydrateIdentityGroupMembers =
     hydrateIdentityListing && options?.hydrateIdentityGroupMembers !== false;
+  const bypassCache =
+    options?.bypassCache === true ||
+    options?.no_cache === true ||
+    options?.cache_bypass === true ||
+    options?.bypass_cache === true ||
+    String(options?.no_cache || '').trim().toLowerCase() === 'true' ||
+    String(options?.cache_bypass || options?.bypass_cache || '').trim().toLowerCase() === 'true';
   return {
     hydrateIdentityListing,
     hydrateIdentityGroupMembers,
+    bypassCache,
     cacheVariant: hydrateIdentityListing
       ? hydrateIdentityGroupMembers
         ? 'rich'
@@ -5007,7 +5058,7 @@ async function resolveCatalogProductRefFromPivotaSignature(productId, options = 
   const resolveOptions = normalizeCatalogSignatureResolveOptions(options);
   const cacheKey = `${normalizedProductId}::${resolveOptions.cacheVariant}`;
 
-  if (RESOLVE_CATALOG_SIGNATURE_CACHE_ENABLED) {
+  if (RESOLVE_CATALOG_SIGNATURE_CACHE_ENABLED && !resolveOptions.bypassCache) {
     const cached = RESOLVE_CATALOG_SIGNATURE_CACHE.get(cacheKey);
     if (cached && cached.expiresAtMs > Date.now()) {
       return cached.value;
@@ -6493,6 +6544,18 @@ function buildExternalSeedProductFromSignatureCatalogRef(signatureProductRef) {
     externalSnapshot.category_path,
     externalSnapshot.catalog_category_path,
   );
+  const reviewSummary = [
+    payload.review_summary,
+    payload.pdp_review_summary,
+    payloadSeedData.review_summary,
+    payloadSeedData.pdp_review_summary,
+    payloadSnapshot.review_summary,
+    payloadSnapshot.pdp_review_summary,
+    externalSeed.review_summary,
+    externalSeed.pdp_review_summary,
+    externalSnapshot.review_summary,
+    externalSnapshot.pdp_review_summary,
+  ].find((value) => isPlainObject(value));
   const imageUrls = [
     imageUrl,
     ...(Array.isArray(payloadSeedData.image_urls) ? payloadSeedData.image_urls : []),
@@ -6516,6 +6579,7 @@ function buildExternalSeedProductFromSignatureCatalogRef(signatureProductRef) {
     ...(categoryPath ? { category_path: categoryPath, catalog_category_path: categoryPath } : {}),
     ...(signatureProductRef.pivota_signature_id ? { pivota_signature_id: signatureProductRef.pivota_signature_id } : {}),
     ...(signatureProductRef.pivota_canonical_url ? { pivota_canonical_url: signatureProductRef.pivota_canonical_url } : {}),
+    ...(reviewSummary ? { review_summary: reviewSummary, pdp_review_summary: reviewSummary } : {}),
     snapshot: {
       ...externalSnapshot,
       ...payloadSnapshot,
@@ -6531,6 +6595,7 @@ function buildExternalSeedProductFromSignatureCatalogRef(signatureProductRef) {
       ...(categoryPath ? { category_path: categoryPath, catalog_category_path: categoryPath } : {}),
       ...(signatureProductRef.pivota_signature_id ? { pivota_signature_id: signatureProductRef.pivota_signature_id } : {}),
       ...(signatureProductRef.pivota_canonical_url ? { pivota_canonical_url: signatureProductRef.pivota_canonical_url } : {}),
+      ...(reviewSummary ? { review_summary: reviewSummary, pdp_review_summary: reviewSummary } : {}),
     },
   };
   delete seedData.seed_data;
@@ -23934,16 +23999,65 @@ async function fetchReviewSummaryCached(args = {}) {
   return task;
 }
 
+// Curated product-relationship graph (human-approved edges in
+// `product_relationship_edges`) is the high-trust complement to the dynamic
+// recall engine. Default OFF — flip the flag only after staging verification.
+const RELATIONSHIP_GRAPH_SERVING_ENABLED =
+  String(process.env.AURORA_BFF_RELATIONSHIP_GRAPH_ENABLED || '').trim().toLowerCase() === 'true';
+
+async function fetchRelationshipGraphSimilarItems(anchorProduct, { market = 'US', limit = 24 } = {}) {
+  if (!RELATIONSHIP_GRAPH_SERVING_ENABLED) return [];
+  try {
+    const anchorRefs = buildRelationshipGraphAnchorRefs(anchorProduct || {});
+    if (!anchorRefs.length) return [];
+    const edges = await listApprovedRelationshipEdges({
+      anchorType: 'product',
+      anchorRefs,
+      market: firstNonEmptyString(market, anchorProduct?.market, 'US'),
+      limit: Math.max(1, Math.min(120, Number(limit) || 24)),
+    });
+    return (Array.isArray(edges) ? edges : []).map(relationshipEdgeToSimilarItem).filter(Boolean);
+  } catch (err) {
+    // The curated graph is additive — never let a reader failure break the PDP.
+    logger.warn?.({ err: err?.message }, 'relationship_graph_similar_fetch_failed');
+    return [];
+  }
+}
+
 async function fetchSimilarProductsDeduped(args = {}) {
   const inflightKey = buildPdpSimilarInflightKey(args);
   const runOnce = async () => {
     const rec = await recommendPdpProducts(args);
     const items = Array.isArray(rec?.items) ? rec.items : [];
+    let mergedItems = items;
+    let relationshipGraphMeta;
+    if (RELATIONSHIP_GRAPH_SERVING_ENABLED) {
+      const curated = await fetchRelationshipGraphSimilarItems(args?.pdp_product, {
+        market: args?.pdp_product?.market || 'US',
+        limit: Number(args?.k) || 24,
+      });
+      if (curated.length) {
+        // Curated (human-approved) edges rank ahead of dynamic recall; dedupe
+        // keeps the first occurrence, so curated wins on collisions.
+        mergedItems = dedupeSimilarCandidatesByMerchantProductId([...curated, ...items]);
+        const k = Number(args?.k);
+        if (Number.isFinite(k) && k > 0) mergedItems = mergedItems.slice(0, k);
+        relationshipGraphMeta = {
+          relationship_graph_curated_count: curated.length,
+          relationship_graph_served_count: mergedItems.filter(
+            (item) => item && item.source === 'relationship_graph',
+          ).length,
+        };
+      }
+    }
     return {
-      status: rec?.status || (items.length > 0 ? 'success' : 'empty'),
+      status: mergedItems.length > 0 ? 'success' : rec?.status || 'empty',
       strategy: rec?.strategy || 'related_products',
-      items,
-      metadata: rec?.metadata && typeof rec.metadata === 'object' ? rec.metadata : {},
+      items: mergedItems,
+      metadata: {
+        ...(rec?.metadata && typeof rec.metadata === 'object' ? rec.metadata : {}),
+        ...(relationshipGraphMeta || {}),
+      },
       ...(rec?.debug ? { debug: rec.debug } : {}),
       ...(rec?.cache ? { cache: rec.cache } : {}),
     };
@@ -25651,7 +25765,15 @@ function isBundleOrSetPdpForComponentScopedSimilar(product = {}) {
   return /\b(set|bundle|kit|duo|trio|routine|regimen|gift\s*set|minis?)\b/i.test(text);
 }
 
-function scopeBundleSimilarToReviewedComponents({
+function collectPdpComponentExternalSeedIds(componentCandidates = []) {
+  return new Set(
+    (Array.isArray(componentCandidates) ? componentCandidates : [])
+      .flatMap((item) => collectExternalSeedIdCandidatesForVisibleCatalogHydration(item))
+      .filter((value) => isExternalSeedProductId(value)),
+  );
+}
+
+function excludeBundleComponentProductsFromSimilar({
   products = [],
   baseProduct = {},
   componentCandidates = [],
@@ -25663,30 +25785,25 @@ function scopeBundleSimilarToReviewedComponents({
   if (!isBundleOrSetPdpForComponentScopedSimilar(baseProduct)) {
     return { products: list, applied: false, dropped_count: 0 };
   }
-  const componentIds = new Set(
-    componentCandidates
-      .map((item) => firstNonEmptyString(
-        item.product_id,
-        item.productId,
-        item.id,
-        item.external_product_id,
-        item.externalProductId,
-        item.platform_product_id,
-        item.platformProductId,
-      ))
-      .filter((value) => isExternalSeedProductId(value)),
-  );
-  const scoped = list.filter((item) => {
+  const componentIds = collectPdpComponentExternalSeedIds(componentCandidates);
+  if (componentIds.size <= 0) {
+    return { products: list, applied: false, dropped_count: 0 };
+  }
+  const filtered = list.filter((item) => {
     if (!item || typeof item !== 'object' || Array.isArray(item)) return false;
-    if (String(item.retrieval_source || '').trim() === 'reviewed_component_ref') return true;
+    if (String(item.retrieval_source || '').trim() === 'reviewed_component_ref') return false;
     const ids = collectExternalSeedIdCandidatesForVisibleCatalogHydration(item);
-    return ids.some((id) => componentIds.has(id));
+    return !ids.some((id) => componentIds.has(id));
   });
   return {
-    products: scoped,
+    products: filtered,
     applied: true,
-    dropped_count: Math.max(0, list.length - scoped.length),
+    dropped_count: Math.max(0, list.length - filtered.length),
   };
+}
+
+function scopeBundleSimilarToReviewedComponents(args = {}) {
+  return excludeBundleComponentProductsFromSimilar(args);
 }
 
 function collectPdpComponentSimilarCandidates(product = {}) {
@@ -25760,6 +25877,7 @@ async function prewarmPdpSimilarForProduct({
   bypassCache = false,
 } = {}) {
   if (bypassCache) return;
+  const componentCandidates = collectPdpComponentSimilarCandidates(canonicalProductForPdp);
   const { candidateLimit, fetchArgs } = buildPdpSimilarFetchArgs({
     payload,
     canonicalProductForPdp,
@@ -25767,6 +25885,7 @@ async function prewarmPdpSimilarForProduct({
     canonicalProduct,
     bypassCache: false,
     debug: false,
+    excludeItems: componentCandidates,
     requestMode: 'background',
   });
   const relatedProductsEnvelope = await fetchSimilarProductsDeduped(fetchArgs);
@@ -32092,14 +32211,17 @@ async function resolveProductIntelInvokeContext({
   ).trim();
   const platform = String(productRef.platform || payload.platform || '').trim() || null;
   const options = payload.options || {};
-  const bypassCache =
-    options.no_cache === true ||
-    options.cache_bypass === true ||
-    options.bypass_cache === true ||
-    String(options.no_cache || '').trim().toLowerCase() === 'true' ||
-    String(options.cache_bypass || options.bypass_cache || '')
-      .trim()
-      .toLowerCase() === 'true';
+			      const bypassCache =
+			        options.no_cache === true ||
+			        options.cache_bypass === true ||
+			        options.bypass_cache === true ||
+			        payload.no_cache === true ||
+			        payload.cache_bypass === true ||
+			        payload.bypass_cache === true ||
+			        String(options.no_cache || '').trim().toLowerCase() === 'true' ||
+			        String(options.cache_bypass || options.bypass_cache || payload.no_cache || payload.cache_bypass || payload.bypass_cache || '')
+			          .trim()
+			          .toLowerCase() === 'true';
 
   if (!requestedMerchantId && canonicalProductRef?.merchant_id) {
     requestedMerchantId = String(canonicalProductRef.merchant_id || '').trim();
@@ -32294,6 +32416,9 @@ async function resolveProductIntelInvokeContext({
   const relatedProductsDisplayLimit = resolvePdpSimilarDisplayLimit(payload);
   const relatedProductsCandidateLimit = resolvePdpSimilarCandidateLimit(relatedProductsDisplayLimit);
   const similarCacheBypass = resolvePdpSimilarCacheBypass(payload);
+  const componentSimilarCandidates = includeRecommendations
+    ? collectPdpComponentSimilarCandidates(product)
+    : [];
   const relatedProducts = includeRecommendations
     ? await fetchSimilarProductsDeduped({
         pdp_product: product,
@@ -32304,18 +32429,22 @@ async function resolveProductIntelInvokeContext({
           no_cache: similarCacheBypass,
           cache_bypass: similarCacheBypass,
           bypass_cache: similarCacheBypass,
+          ...(componentSimilarCandidates.length > 0 ? { exclude_items: componentSimilarCandidates } : {}),
         },
       }).catch(() => null)
     : [];
+  const filteredRelatedProducts = excludeBundleComponentProductsFromSimilar({
+    products: Array.isArray(relatedProducts?.items) ? relatedProducts.items : [],
+    baseProduct: product,
+    componentCandidates: componentSimilarCandidates,
+  }).products;
 
   return {
     canonicalProductRef,
     productGroupId,
     groupMembers,
     product,
-    relatedProducts: Array.isArray(relatedProducts?.items)
-      ? relatedProducts.items.slice(0, relatedProductsDisplayLimit)
-      : [],
+    relatedProducts: filteredRelatedProducts.slice(0, relatedProductsDisplayLimit),
   };
 }
 function buildOffersResolveResponse({
@@ -35389,6 +35518,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 		        const signatureProductRef = await resolveCatalogProductRefFromPivotaSignature(productId, {
               hydrateIdentityListing: true,
               hydrateIdentityGroupMembers: wantsOffers,
+              bypassCache,
             });
 		        markPdpV2Phase('resolve_catalog_signature', signatureResolveStartedAt);
 		        if (signatureProductRef?.product_id && signatureProductRef?.merchant_id) {
@@ -36476,6 +36606,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         product: canonicalProductForPdp,
         pdpSchemaProfile: preSimilarPdpSchemaProfile,
       });
+      const preSimilarComponentCandidates = wantsSimilar
+        ? collectPdpComponentSimilarCandidates(canonicalProductForPdp)
+        : [];
 
 	      // Similar products (non-blocking; can be requested by include=similar).
 	      // Run in parallel with reviews fetch to avoid additive latency on first paint.
@@ -36535,6 +36668,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 canonicalProduct,
                 bypassCache: similarCacheBypass,
                 debug,
+                excludeItems: preSimilarComponentCandidates,
                 requestMode: similarRequestMode,
               });
               return await resolvePdpSimilarWithBudget(
@@ -36726,10 +36860,13 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       }
 
       const componentSimilarCandidates = wantsSimilar
-        ? collectPdpComponentSimilarCandidates(canonicalProductForPdp)
+        ? dedupeSimilarCandidatesByMerchantProductId([
+            ...preSimilarComponentCandidates,
+            ...collectPdpComponentSimilarCandidates(canonicalProductForPdp),
+          ])
         : [];
 
-      if (wantsSimilar && (relatedProducts.length > 0 || componentSimilarCandidates.length > 0)) {
+      if (wantsSimilar && relatedProducts.length > 0) {
 	        const similarCardEnrichmentStartedAt = Date.now();
 	        const similarLimit = resolvePdpSimilarDisplayLimit(payload);
           const similarCandidateLimit = resolvePdpSimilarCandidateLimit(similarLimit);
@@ -36737,10 +36874,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             similarLimit,
             similarCandidateLimit,
           );
-        const relatedProductsForEnrichment = dedupeSimilarCandidatesByMerchantProductId([
-          ...componentSimilarCandidates,
-          ...relatedProducts,
-        ]);
+        const relatedProductsForEnrichment = dedupeSimilarCandidatesByMerchantProductId(relatedProducts);
 	        const enrichedRelatedProducts = await enrichSimilarProductsForPdpCards({
 	          items: relatedProductsForEnrichment,
 	          checkoutToken,
@@ -36763,12 +36897,12 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           { bypassCache },
         );
         const publicSimilarCandidates = filterPublicVisibleSimilarProducts(hydratedSimilarCandidates);
-        const componentScopedSimilar = scopeBundleSimilarToReviewedComponents({
+        const componentFilteredSimilar = excludeBundleComponentProductsFromSimilar({
           products: publicSimilarCandidates,
           baseProduct: canonicalProductForPdp,
           componentCandidates: componentSimilarCandidates,
         });
-        const displayableRelatedProducts = componentScopedSimilar.products.slice(0, similarLimit);
+        const displayableRelatedProducts = componentFilteredSimilar.products.slice(0, similarLimit);
         const publicExternalIdFilteredCount = Math.max(
           0,
           hydratedSimilarCandidates.length - publicSimilarCandidates.length,
@@ -36781,13 +36915,19 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         if (relatedProductsEnvelope && typeof relatedProductsEnvelope === 'object') {
           relatedProductsEnvelope = {
             ...relatedProductsEnvelope,
+            status: relatedProducts.length > 0 ? relatedProductsEnvelope.status : 'empty',
             items: relatedProducts,
             metadata: {
               ...calibrateSimilarMetadataForVisibleProducts({
                 metadata:
                   relatedProductsEnvelope.metadata && typeof relatedProductsEnvelope.metadata === 'object'
-                    ? relatedProductsEnvelope.metadata
-                    : {},
+                    ? {
+                        ...relatedProductsEnvelope.metadata,
+                        ...(relatedProducts.length <= 0 ? { similar_status: 'empty' } : {}),
+                      }
+                    : relatedProducts.length <= 0
+                      ? { similar_status: 'empty' }
+                      : {},
                 products: relatedProducts,
                 requestedLimit: similarLimit,
               }),
@@ -36802,8 +36942,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               card_highlight_filtered_count: filteredHighlightMissingCount,
               public_external_id_filtered_count: publicExternalIdFilteredCount,
               component_ref_candidate_count: componentSimilarCandidates.length,
-              component_ref_scope_applied: componentScopedSimilar.applied,
-              component_ref_scope_dropped_count: componentScopedSimilar.dropped_count,
+              component_ref_scope_applied: false,
+              component_ref_scope_dropped_count: 0,
+              component_ref_exclusion_applied: componentFilteredSimilar.applied,
+              component_ref_excluded_count: componentFilteredSimilar.dropped_count,
             },
           };
         } else {
@@ -36828,8 +36970,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               card_highlight_filtered_count: filteredHighlightMissingCount,
               public_external_id_filtered_count: publicExternalIdFilteredCount,
               component_ref_candidate_count: componentSimilarCandidates.length,
-              component_ref_scope_applied: componentScopedSimilar.applied,
-              component_ref_scope_dropped_count: componentScopedSimilar.dropped_count,
+              component_ref_scope_applied: false,
+              component_ref_scope_dropped_count: 0,
+              component_ref_exclusion_applied: componentFilteredSimilar.applied,
+              component_ref_excluded_count: componentFilteredSimilar.dropped_count,
             },
           };
         }
@@ -37613,7 +37757,15 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 `SELECT DISTINCT ON (external_product_id)
                    external_product_id, title, image_url, canonical_url,
                    price_amount, price_currency,
-                   COALESCE(seed_data->>'brand', seed_data->'snapshot'->>'brand') AS brand
+                   status, availability,
+                   COALESCE(seed_data->>'brand', seed_data->'snapshot'->>'brand') AS brand,
+                   COALESCE(seed_data->>'price_label', seed_data->'snapshot'->>'price_label') AS price_label,
+                   COALESCE(seed_data->>'price_status', seed_data->'snapshot'->>'price_status') AS price_status,
+                   COALESCE(seed_data->>'price_note', seed_data->'snapshot'->>'price_note') AS price_note,
+                   seed_data->'source_unavailable_v1' AS source_unavailable_v1,
+                   seed_data->'snapshot'->'source_unavailable_v1' AS snapshot_source_unavailable_v1,
+                   seed_data->'transaction_readiness_blocker_v1' AS transaction_readiness_blocker_v1,
+                   seed_data->'snapshot'->'transaction_readiness_blocker_v1' AS snapshot_transaction_readiness_blocker_v1
                  FROM external_product_seeds
                  WHERE status = 'active' AND external_product_id = ANY($1::text[])
                  ORDER BY external_product_id, updated_at DESC NULLS LAST, created_at DESC NULLS LAST`,
@@ -38119,6 +38271,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           payload?.options?.no_cache === true ||
           payload?.options?.cache_bypass === true ||
           payload?.options?.bypass_cache === true;
+        const componentSimilarCandidates = collectPdpComponentSimilarCandidates(product);
         try {
           const rec = await recommendPdpProducts({
             pdp_product: product,
@@ -38130,9 +38283,14 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               no_cache: bypassCache,
               cache_bypass: bypassCache,
               bypass_cache: bypassCache,
+              ...(componentSimilarCandidates.length > 0 ? { exclude_items: componentSimilarCandidates } : {}),
             },
           });
-          relatedProducts = Array.isArray(rec?.items) ? rec.items : [];
+          relatedProducts = excludeBundleComponentProductsFromSimilar({
+            products: Array.isArray(rec?.items) ? rec.items : [],
+            baseProduct: product,
+            componentCandidates: componentSimilarCandidates,
+          }).products;
         } catch (err) {
           logger.warn(
             { err: err?.message || String(err), merchantId, productId },
@@ -41245,6 +41403,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               resolvedSignatureRef = await resolveCatalogProductRefFromPivotaSignature(productId, {
                 hydrateIdentityListing: false,
                 hydrateIdentityGroupMembers: false,
+                bypassCache,
               }).catch(() => null);
               directRouteTimingMs.resolve_signature_ref = Date.now() - resolveSignatureStartedAt;
               const resolvedExternalSeedProductId =
@@ -45090,6 +45249,8 @@ module.exports._debug = {
   filterPublicVisibleSimilarProducts,
   dedupeSimilarCandidatesByMerchantProductId,
   isBundleOrSetPdpForComponentScopedSimilar,
+  collectPdpComponentExternalSeedIds,
+  excludeBundleComponentProductsFromSimilar,
   scopeBundleSimilarToReviewedComponents,
   collectPdpComponentSimilarCandidates,
   calibrateSimilarMetadataForVisibleProducts,

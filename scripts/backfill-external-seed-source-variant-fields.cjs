@@ -44,6 +44,7 @@ const TRUSTED_SOURCE_HOSTS = new Set([
   'costco.com',
   'harrods.com',
   'holtrenfrew.com',
+  'ownist.com',
 ]);
 
 function argValue(name) {

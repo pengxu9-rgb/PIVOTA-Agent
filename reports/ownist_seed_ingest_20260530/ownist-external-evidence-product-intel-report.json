@@ -1,0 +1,1550 @@
+{
+  "meta": {
+    "generated_at": "2026-05-30T11:58:07.330Z",
+    "source": "reviewed_official_seed_product_intel_report",
+    "batch_name": "ownist_component_repair_20260530",
+    "inventory": "reports/ownist_seed_ingest_20260530/pdp-quality-upgrade-loop-apply/cycle_001/selected_inventory.json",
+    "selected_cases": 4,
+    "reviewer": "codex_quality_reviewer_owner_delegated",
+    "reviewer_kind": "assistant",
+    "candidate_quality_summary": {
+      "public_ready": 4,
+      "high_quality_ready": 4,
+      "evidence_profile": {
+        "seller_plus_formula": 2,
+        "official_pdp_seed": 2
+      }
+    },
+    "skipped_candidate_diagnostics": []
+  },
+  "rows": [
+    {
+      "case_id": "live_ext_8b6bcbe031a743c1e607aa6a",
+      "review_status": "completed",
+      "review_decision": "rewrite",
+      "reviewer": "codex_quality_reviewer_owner_delegated",
+      "reviewer_kind": "assistant",
+      "reviewed_at": "2026-05-30T13:53:02Z",
+      "notes": [
+        "Added reviewed third-party evidence. Gifted/social and editorial sources are retained as non-visible context."
+      ],
+      "owner_delegated_review": {
+        "contract_version": "pivota.owner_delegated_review.v1",
+        "delegated_to": "codex_quality_reviewer_owner_delegated",
+        "reviewer_kind": "assistant",
+        "owner_instruction": "User delegated Codex to perform high-quality human review for Pivota Insights quality improvement.",
+        "guardrails": [
+          "Do not overwrite good content with lower-quality content.",
+          "No commerce-state claims in Pivota Insights.",
+          "Use official source facts only; keep evidence confidence explicit."
+        ]
+      },
+      "quality_improvement_review": {
+        "decision": "approved_replacement",
+        "reviewer_kind": "assistant",
+        "owner_delegated": true,
+        "reason": "Owner-delegated assistant review confirms the replacement adds source-bound external evidence without commerce-state, unsupported proof, or sponsored visible claims."
+      },
+      "baseline": {
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_8b6bcbe031a743c1e607aa6a",
+          "platform": "external_seed"
+        }
+      },
+      "selected": {
+        "selected_mode": "external_evidence_rewrite",
+        "selected_field_count": 11,
+        "field_sources": {
+          "what_it_is": "official_seed_description",
+          "best_for": "reviewed_category_and_official_title",
+          "why_it_stands_out": "official_seed_description_and_formula",
+          "routine_fit": "reviewed_category_and_official_title",
+          "watchouts": "owner_delegated_assistant_review",
+          "texture_finish": "reviewed_category_and_official_title",
+          "source_coverage": "manual_reviewed_external_evidence",
+          "community_signals": "manual_reviewed_external_evidence",
+          "external_highlight_signals": "manual_reviewed_external_evidence",
+          "review_summary": "manual_reviewed_external_evidence"
+        },
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_8b6bcbe031a743c1e607aa6a",
+            "platform": "external_seed"
+          },
+          "product_group_id": "sig_e0334b50a7a2ae80510b223d",
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Ready-to-drink beauty supplement identity",
+              "body": "An Ownist ready-to-drink beauty supplement listed on the brand source page as Triple Shine Grape. The source description identifies: Triple Shine Grape is an Ownist ready-to-drink beauty supplement built around Belight, niacin (vitamin B3), and vitamin C."
+            },
+            "best_for": [
+              {
+                "tag": "wellness_supplement_shoppers",
+                "label": "Wellness supplement shoppers",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "official_source_comparison",
+                "label": "Official-source comparison",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Source-backed product detail",
+                "body": "Triple Shine Grape is an Ownist ready-to-drink beauty supplement built around Belight, niacin (vitamin B3), and vitamin C.",
+                "evidence_strength": "seller_plus_formula"
+              },
+              {
+                "headline": "Formula context captured",
+                "body": "Captured formula fields include Belight, Niacin (Vitamin B3), Vitamin C, Organic Agave Syrup, Organic Lemon Concentrate. Agents should keep composition claims within those source fields.",
+                "evidence_strength": "seller_plus_formula"
+              },
+              {
+                "headline": "Review-backed signal",
+                "body": "Review sources most consistently mention the jelly format, grape flavor, and portability, while visible-result feedback is mixed.",
+                "evidence_strength": "external_highlight",
+                "source_type": "verified_reviews",
+                "claim_type": "card_hook",
+                "signal_id": "ownist_triple_shine_reviews_jelly_format"
+              }
+            ],
+            "routine_fit": {
+              "step": "wellness",
+              "am_pm": [
+                "as_needed"
+              ],
+              "pairing_notes": [
+                "Use within the ready-to-drink beauty supplement context; avoid inferring benefits not present in the source fields."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "formula_scope",
+                "label": "Formula details are source-derived; avoid medical, safety, or suitability claims not present in the source.",
+                "severity": "medium"
+              },
+              {
+                "type": "scope_guardrail",
+                "label": "Use the commerce mainline for offer facts; keep this insight focused on source-backed product identity.",
+                "severity": "medium"
+              },
+              {
+                "type": "external_highlight",
+                "label": "Reviewers flag high price, occasional bitterness, difficult opening, and inconsistent visible results as watchouts.",
+                "severity": "medium",
+                "signal_id": "ownist_triple_shine_reviews_watchouts"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-05-30T11:58:07.330Z",
+              "source_version": "ownist_component_repair_20260530"
+            },
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_reviews",
+            "source_coverage": {
+              "seller": {
+                "available": true,
+                "source_url": "https://ownist.com/products/triple-shine-1-box"
+              },
+              "formula": {
+                "available": true,
+                "ingredient_count": 7,
+                "source_url": "https://ownist.com/products/triple-shine-1-box"
+              },
+              "reviews": {
+                "available": true,
+                "count": 11,
+                "sources": [
+                  "Hwahae",
+                  "Shop",
+                  "Loox"
+                ]
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": true,
+                "count": 1,
+                "surfaceable": false
+              }
+            }
+          },
+          "texture_finish": {
+            "finish": "ready-to-drink beauty supplement",
+            "texture": "wellness_supplement",
+            "source": "reviewed_category_and_official_title"
+          },
+          "community_signals": {
+            "status": "available",
+            "source_counts": {
+              "reviews": 11,
+              "review_sources": 3,
+              "creator_mentions": 0,
+              "editorial": 1
+            },
+            "top_loves": [
+              "Review sources most consistently mention the jelly format, grape flavor, and portability."
+            ],
+            "mixed_feedback": [
+              "Visible-result feedback is mixed; reviewers repeatedly frame consistency and time as necessary."
+            ],
+            "top_complaints": [
+              "High price, occasional bitterness, and difficult opening appear as recurring review watchouts."
+            ]
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [
+            {
+              "signal_id": "ownist_triple_shine_reviews_jelly_format",
+              "source_type": "verified_reviews",
+              "claim_type": "card_hook",
+              "claim_text": "Review sources most consistently mention the jelly format, grape flavor, and portability, while visible-result feedback is mixed.",
+              "surface_text": "Reviews: grape jelly format",
+              "stance": "mixed",
+              "supporting_sources": [
+                {
+                  "label": "Hwahae Triple Shine Grape reviews",
+                  "url": "https://www.hwahae.com/en/products/Ownist-triple-shine-grapes/2090301",
+                  "sponsorship_status": "unknown"
+                },
+                {
+                  "label": "Shop Triple Shine Grape reviews",
+                  "url": "https://shop.app/p/7508774715575",
+                  "sponsorship_status": "unknown"
+                },
+                {
+                  "label": "Loox Ownist store reviews",
+                  "url": "https://loox.io/s/M89oyfGTLZ",
+                  "sponsorship_status": "unknown"
+                }
+              ],
+              "independence_count": 11,
+              "rating_summary": {
+                "rating": 3.73,
+                "review_count": 11
+              },
+              "sponsorship_status": "unknown",
+              "evidence_strength": "moderate",
+              "surface_targets": [
+                "shopping_card_highlight",
+                "search_card_intro"
+              ],
+              "surfaceable": true
+            },
+            {
+              "signal_id": "ownist_triple_shine_reviews_watchouts",
+              "source_type": "verified_reviews",
+              "claim_type": "watchout",
+              "claim_text": "Reviewers flag high price, occasional bitterness, difficult opening, and inconsistent visible results as watchouts.",
+              "stance": "mixed",
+              "supporting_sources": [
+                {
+                  "label": "Hwahae Triple Shine Grape reviews",
+                  "url": "https://www.hwahae.com/en/products/Ownist-triple-shine-grapes/2090301",
+                  "sponsorship_status": "unknown"
+                },
+                {
+                  "label": "Shop Triple Shine Grape reviews",
+                  "url": "https://shop.app/p/7508774715575",
+                  "sponsorship_status": "unknown"
+                }
+              ],
+              "independence_count": 11,
+              "rating_summary": {
+                "rating": 3.73,
+                "review_count": 11
+              },
+              "sponsorship_status": "unknown",
+              "evidence_strength": "moderate",
+              "surface_targets": [
+                "watchouts"
+              ],
+              "surfaceable": true
+            },
+            {
+              "signal_id": "ownist_triple_shine_editorial_context",
+              "source_type": "editorial_support",
+              "claim_type": "standout",
+              "claim_text": "VentureSquare reports business context for Ownist and notes Triple Shine Grape surpassed one million packets after launch; retained as editorial context only.",
+              "stance": "positive",
+              "supporting_sources": [
+                {
+                  "label": "VentureSquare Ownist profile",
+                  "url": "https://www.venturesquare.net/1030611/",
+                  "published_at": "2026-01-06T00:00:00.000Z",
+                  "sponsorship_status": "unknown"
+                }
+              ],
+              "independence_count": 1,
+              "sponsorship_status": "unknown",
+              "evidence_strength": "weak",
+              "surface_targets": [
+                "why_it_stands_out",
+                "shopping_card_highlight",
+                "search_card_intro"
+              ],
+              "surfaceable": false
+            }
+          ],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_reviews",
+          "source_coverage": {
+            "seller": {
+              "available": true,
+              "source_url": "https://ownist.com/products/triple-shine-1-box"
+            },
+            "formula": {
+              "available": true,
+              "ingredient_count": 7,
+              "source_url": "https://ownist.com/products/triple-shine-1-box"
+            },
+            "reviews": {
+              "available": true,
+              "count": 11,
+              "sources": [
+                "Hwahae",
+                "Shop",
+                "Loox"
+              ]
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": true,
+              "count": 1,
+              "surfaceable": false
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-05-30T11:58:07.330Z",
+            "source_version": "ownist_component_repair_20260530"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "owner_delegated_external_evidence_rewrite",
+            "generator": "owner_delegated_assistant_reviewed_external_evidence_rewrite",
+            "selection_strategy": "official_pdp_seed_plus_reviewed_external_evidence",
+            "field_sources": {
+              "what_it_is": "official_seed_description",
+              "best_for": "reviewed_category_and_official_title",
+              "why_it_stands_out": "official_seed_description_and_formula",
+              "routine_fit": "reviewed_category_and_official_title",
+              "watchouts": "owner_delegated_assistant_review",
+              "texture_finish": "reviewed_category_and_official_title",
+              "source_coverage": "manual_reviewed_external_evidence",
+              "community_signals": "manual_reviewed_external_evidence",
+              "external_highlight_signals": "manual_reviewed_external_evidence",
+              "review_summary": "manual_reviewed_external_evidence"
+            },
+            "review_status": "completed",
+            "review_decision": "rewrite",
+            "reviewer": "codex_quality_reviewer_owner_delegated",
+            "reviewer_kind": "assistant",
+            "reviewed_at": "2026-05-30T13:53:02Z",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "ownist_external_evidence_20260530",
+            "official_source_url": "https://ownist.com/products/triple-shine-1-box",
+            "official_source_ingredient_count": 7,
+            "rewrite_reason": "Owner-delegated assistant review added third-party review evidence and retained gifted/editorial sources as context only.",
+            "external_evidence_generated_at": "2026-05-30T13:53:02.000Z",
+            "external_evidence_model": "manual_reviewed_external_evidence_v1",
+            "external_highlight_applied": {
+              "why_it_stands_out_signal_ids": [
+                "ownist_triple_shine_reviews_jelly_format"
+              ],
+              "watchout_signal_ids": [
+                "ownist_triple_shine_reviews_watchouts"
+              ],
+              "texture_finish_notes": []
+            },
+            "external_evidence_summary": {
+              "visible_summary": "Reviewed visible evidence now supports a mixed review-backed highlight around grape jelly format, taste, and portability, with watchouts around price, bitterness, opening, and inconsistent visible results.",
+              "non_visible_context": [
+                "VentureSquare editorial/business context is retained but not used as a public proof badge or visible product highlight."
+              ]
+            },
+            "external_evidence_review_batch": "ownist_external_evidence_20260530",
+            "external_evidence_sources": [
+              {
+                "signal_id": "ownist_triple_shine_reviews_jelly_format",
+                "label": "Hwahae Triple Shine Grape reviews",
+                "url": "https://www.hwahae.com/en/products/Ownist-triple-shine-grapes/2090301",
+                "sponsorship_status": "unknown",
+                "surfaceable": true
+              },
+              {
+                "signal_id": "ownist_triple_shine_reviews_jelly_format",
+                "label": "Shop Triple Shine Grape reviews",
+                "url": "https://shop.app/p/7508774715575",
+                "sponsorship_status": "unknown",
+                "surfaceable": true
+              },
+              {
+                "signal_id": "ownist_triple_shine_reviews_jelly_format",
+                "label": "Loox Ownist store reviews",
+                "url": "https://loox.io/s/M89oyfGTLZ",
+                "sponsorship_status": "unknown",
+                "surfaceable": true
+              },
+              {
+                "signal_id": "ownist_triple_shine_reviews_watchouts",
+                "label": "Hwahae Triple Shine Grape reviews",
+                "url": "https://www.hwahae.com/en/products/Ownist-triple-shine-grapes/2090301",
+                "sponsorship_status": "unknown",
+                "surfaceable": true
+              },
+              {
+                "signal_id": "ownist_triple_shine_reviews_watchouts",
+                "label": "Shop Triple Shine Grape reviews",
+                "url": "https://shop.app/p/7508774715575",
+                "sponsorship_status": "unknown",
+                "surfaceable": true
+              },
+              {
+                "signal_id": "ownist_triple_shine_editorial_context",
+                "label": "VentureSquare Ownist profile",
+                "url": "https://www.venturesquare.net/1030611/",
+                "sponsorship_status": "unknown",
+                "surfaceable": false
+              }
+            ],
+            "external_review_notes": "Reviewed external evidence is additive. Visible highlight is review-backed; gifted/social and editorial sources are context only."
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "Triple Shine Grape",
+            "subtitle": "Wellness Supplement",
+            "highlight": "Reviews: grape jelly format",
+            "intro": "Ownist ready-to-drink supplement with Belight, niacin, and vitamin C.",
+            "external_highlight_signals": [
+              {
+                "signal_id": "ownist_triple_shine_reviews_jelly_format",
+                "source_type": "verified_reviews",
+                "claim_type": "card_hook",
+                "claim_text": "Review sources most consistently mention the jelly format, grape flavor, and portability, while visible-result feedback is mixed.",
+                "surface_text": "Reviews: grape jelly format",
+                "stance": "mixed",
+                "evidence_strength": "moderate",
+                "sponsorship_status": "unknown",
+                "independence_count": 11,
+                "surfaceable": true,
+                "surface_targets": [
+                  "shopping_card_highlight",
+                  "search_card_intro"
+                ]
+              },
+              {
+                "signal_id": "ownist_triple_shine_reviews_watchouts",
+                "source_type": "verified_reviews",
+                "claim_type": "watchout",
+                "claim_text": "Reviewers flag high price, occasional bitterness, difficult opening, and inconsistent visible results as watchouts.",
+                "stance": "mixed",
+                "evidence_strength": "moderate",
+                "sponsorship_status": "unknown",
+                "independence_count": 11,
+                "surfaceable": true,
+                "surface_targets": [
+                  "watchouts"
+                ]
+              }
+            ],
+            "evidence_profile": "seller_plus_reviews"
+          },
+          "search_card": {
+            "title_candidate": "Triple Shine Grape",
+            "compact_candidate": "Wellness Supplement",
+            "highlight_candidate": "Reviews: grape jelly format",
+            "intro_candidate": "Ownist ready-to-drink supplement with Belight, niacin, and vitamin C.",
+            "proof_badge_candidate": ""
+          },
+          "review_summary": {
+            "rating": 3.73,
+            "review_count": 11
+          }
+        }
+      }
+    },
+    {
+      "case_id": "live_ext_52e9fce8bee97af26d6f77db",
+      "review_status": "completed",
+      "review_decision": "rewrite",
+      "reviewer": "codex_quality_reviewer_owner_delegated",
+      "reviewer_kind": "assistant",
+      "reviewed_at": "2026-05-30T13:53:02Z",
+      "notes": [
+        "Added reviewed third-party evidence. Gifted/social and editorial sources are retained as non-visible context."
+      ],
+      "owner_delegated_review": {
+        "contract_version": "pivota.owner_delegated_review.v1",
+        "delegated_to": "codex_quality_reviewer_owner_delegated",
+        "reviewer_kind": "assistant",
+        "owner_instruction": "User delegated Codex to perform high-quality human review for Pivota Insights quality improvement.",
+        "guardrails": [
+          "Do not overwrite good content with lower-quality content.",
+          "No commerce-state claims in Pivota Insights.",
+          "Use official source facts only; keep evidence confidence explicit."
+        ]
+      },
+      "quality_improvement_review": {
+        "decision": "approved_replacement",
+        "reviewer_kind": "assistant",
+        "owner_delegated": true,
+        "reason": "Owner-delegated assistant review confirms the replacement adds source-bound external evidence without commerce-state, unsupported proof, or sponsored visible claims."
+      },
+      "baseline": {
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_52e9fce8bee97af26d6f77db",
+          "platform": "external_seed"
+        }
+      },
+      "selected": {
+        "selected_mode": "external_evidence_rewrite",
+        "selected_field_count": 11,
+        "field_sources": {
+          "what_it_is": "official_seed_description",
+          "best_for": "reviewed_category_and_official_title",
+          "why_it_stands_out": "official_seed_description_and_formula",
+          "routine_fit": "reviewed_category_and_official_title",
+          "watchouts": "owner_delegated_assistant_review",
+          "texture_finish": "reviewed_category_and_official_title",
+          "source_coverage": "manual_reviewed_external_evidence",
+          "community_signals": "manual_reviewed_external_evidence",
+          "external_highlight_signals": "manual_reviewed_external_evidence",
+          "review_summary": "manual_reviewed_external_evidence"
+        },
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_52e9fce8bee97af26d6f77db",
+            "platform": "external_seed"
+          },
+          "product_group_id": "sig_436f4ee7845feaf3fc4be912",
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Ready-to-drink collagen supplement identity",
+              "body": "An Ownist ready-to-drink collagen supplement listed on the brand source page as Triple Collagen Orange. The source description identifies: Triple Collagen Orange is an Ownist ready-to-drink collagen beauty supplement built around hydrolyzed marine collagen, elastin, hyaluronic acid, and vitamin C."
+            },
+            "best_for": [
+              {
+                "tag": "wellness_supplement_shoppers",
+                "label": "Wellness supplement shoppers",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "official_source_comparison",
+                "label": "Official-source comparison",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Source-backed product detail",
+                "body": "Triple Collagen Orange is an Ownist ready-to-drink collagen beauty supplement built around hydrolyzed marine collagen, elastin, hyaluronic acid, and vitamin C.",
+                "evidence_strength": "seller_plus_formula"
+              },
+              {
+                "headline": "Formula context captured",
+                "body": "Captured formula fields include Hydrolyzed Marine Collagen, Elastin, Hyaluronic Acid, Vitamin C, Organic Orange Juice Concentrate. Agents should keep composition claims within those source fields.",
+                "evidence_strength": "seller_plus_formula"
+              },
+              {
+                "headline": "Review-backed signal",
+                "body": "Review sources commonly mention the orange flavor, easy single-use packet format, and low fishy taste as positives.",
+                "evidence_strength": "external_highlight",
+                "source_type": "verified_reviews",
+                "claim_type": "card_hook",
+                "signal_id": "ownist_triple_collagen_reviews_orange_packets"
+              }
+            ],
+            "routine_fit": {
+              "step": "wellness",
+              "am_pm": [
+                "as_needed"
+              ],
+              "pairing_notes": [
+                "Use within the ready-to-drink collagen supplement context; avoid inferring benefits not present in the source fields."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "formula_scope",
+                "label": "Formula details are source-derived; avoid medical, safety, or suitability claims not present in the source.",
+                "severity": "medium"
+              },
+              {
+                "type": "scope_guardrail",
+                "label": "Use the commerce mainline for offer facts; keep this insight focused on source-backed product identity.",
+                "severity": "medium"
+              },
+              {
+                "type": "external_highlight",
+                "label": "Reviewers also flag price and inconsistent visible effects, especially elasticity and brightening, as watchouts.",
+                "severity": "medium",
+                "signal_id": "ownist_triple_collagen_reviews_watchouts"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-05-30T11:58:07.330Z",
+              "source_version": "ownist_component_repair_20260530"
+            },
+            "quality_state": "reviewed",
+            "evidence_profile": "seller_plus_reviews",
+            "source_coverage": {
+              "seller": {
+                "available": true,
+                "source_url": "https://ownist.com/products/ownist-triple-collagen-1-box"
+              },
+              "formula": {
+                "available": true,
+                "ingredient_count": 6,
+                "source_url": "https://ownist.com/products/ownist-triple-collagen-1-box"
+              },
+              "reviews": {
+                "available": true,
+                "count": 35,
+                "sources": [
+                  "Hwahae",
+                  "Shop",
+                  "Loox"
+                ]
+              },
+              "creator": {
+                "available": true,
+                "count": 350,
+                "surfaceable": false,
+                "reason": "Gopicky/Picky reviews disclose gifted or sponsored review context."
+              },
+              "editorial": {
+                "available": true,
+                "count": 1,
+                "surfaceable": false
+              }
+            }
+          },
+          "texture_finish": {
+            "finish": "ready-to-drink collagen supplement",
+            "texture": "wellness_supplement",
+            "source": "reviewed_category_and_official_title"
+          },
+          "community_signals": {
+            "status": "available",
+            "source_counts": {
+              "reviews": 35,
+              "review_sources": 3,
+              "creator_mentions": 350,
+              "editorial": 1
+            },
+            "top_loves": [
+              "Review sources commonly mention orange flavor, easy single-use packets, and low fishy taste."
+            ],
+            "mixed_feedback": [
+              "Visible-result feedback is mixed across elasticity, brightening, hydration, and time-to-result themes."
+            ],
+            "top_complaints": [
+              "Price appears as a recurring watchout."
+            ]
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [
+            {
+              "signal_id": "ownist_triple_collagen_reviews_orange_packets",
+              "source_type": "verified_reviews",
+              "claim_type": "card_hook",
+              "claim_text": "Review sources commonly mention the orange flavor, easy single-use packet format, and low fishy taste as positives.",
+              "surface_text": "Reviews: easy orange packets",
+              "stance": "positive",
+              "supporting_sources": [
+                {
+                  "label": "Hwahae Triple Collagen Orange reviews",
+                  "url": "https://www.hwahae.com/en/products/2056374",
+                  "sponsorship_status": "unknown"
+                },
+                {
+                  "label": "Shop Triple Collagen Orange reviews",
+                  "url": "https://shop.app/products/7508760953015/triple-collagen-orange",
+                  "sponsorship_status": "unknown"
+                },
+                {
+                  "label": "Loox Ownist store reviews",
+                  "url": "https://loox.io/s/M89oyfGTLZ",
+                  "sponsorship_status": "unknown"
+                }
+              ],
+              "independence_count": 35,
+              "rating_summary": {
+                "rating": 4.17,
+                "review_count": 35
+              },
+              "sponsorship_status": "unknown",
+              "evidence_strength": "moderate",
+              "surface_targets": [
+                "shopping_card_highlight",
+                "search_card_intro"
+              ],
+              "surfaceable": true
+            },
+            {
+              "signal_id": "ownist_triple_collagen_reviews_watchouts",
+              "source_type": "verified_reviews",
+              "claim_type": "watchout",
+              "claim_text": "Reviewers also flag price and inconsistent visible effects, especially elasticity and brightening, as watchouts.",
+              "stance": "mixed",
+              "supporting_sources": [
+                {
+                  "label": "Hwahae Triple Collagen Orange reviews",
+                  "url": "https://www.hwahae.com/en/products/2056374",
+                  "sponsorship_status": "unknown"
+                },
+                {
+                  "label": "Shop Triple Collagen Orange reviews",
+                  "url": "https://shop.app/products/7508760953015/triple-collagen-orange",
+                  "sponsorship_status": "unknown"
+                }
+              ],
+              "independence_count": 35,
+              "rating_summary": {
+                "rating": 4.17,
+                "review_count": 35
+              },
+              "sponsorship_status": "unknown",
+              "evidence_strength": "moderate",
+              "surface_targets": [
+                "watchouts"
+              ],
+              "surfaceable": true
+            },
+            {
+              "signal_id": "ownist_triple_collagen_gopicky_gifted_context",
+              "source_type": "creator_social_consensus",
+              "claim_type": "standout",
+              "claim_text": "Gopicky/Picky reviewers discuss orange flavor and the single-use sachet format, but the source discloses gifted or sponsored review context.",
+              "stance": "positive",
+              "supporting_sources": [
+                {
+                  "label": "Gopicky Triple Collagen Orange reviews",
+                  "url": "https://www.gopicky.com/product/1000018199/ownist-triple-collagen-orange",
+                  "sponsorship_status": "gifted"
+                }
+              ],
+              "independence_count": 350,
+              "sponsorship_status": "gifted",
+              "evidence_strength": "weak",
+              "surface_targets": [
+                "why_it_stands_out",
+                "shopping_card_highlight",
+                "search_card_intro"
+              ],
+              "surfaceable": false
+            },
+            {
+              "signal_id": "ownist_triple_collagen_editorial_context",
+              "source_type": "editorial_support",
+              "claim_type": "standout",
+              "claim_text": "VentureSquare reports editorial business context for Ownist and Triple Collagen Orange; retained as context only.",
+              "stance": "positive",
+              "supporting_sources": [
+                {
+                  "label": "VentureSquare Ownist profile",
+                  "url": "https://www.venturesquare.net/1030611/",
+                  "published_at": "2026-01-06T00:00:00.000Z",
+                  "sponsorship_status": "unknown"
+                }
+              ],
+              "independence_count": 1,
+              "sponsorship_status": "unknown",
+              "evidence_strength": "weak",
+              "surface_targets": [
+                "why_it_stands_out",
+                "shopping_card_highlight",
+                "search_card_intro"
+              ],
+              "surfaceable": false
+            }
+          ],
+          "quality_state": "reviewed",
+          "evidence_profile": "seller_plus_reviews",
+          "source_coverage": {
+            "seller": {
+              "available": true,
+              "source_url": "https://ownist.com/products/ownist-triple-collagen-1-box"
+            },
+            "formula": {
+              "available": true,
+              "ingredient_count": 6,
+              "source_url": "https://ownist.com/products/ownist-triple-collagen-1-box"
+            },
+            "reviews": {
+              "available": true,
+              "count": 35,
+              "sources": [
+                "Hwahae",
+                "Shop",
+                "Loox"
+              ]
+            },
+            "creator": {
+              "available": true,
+              "count": 350,
+              "surfaceable": false,
+              "reason": "Gopicky/Picky reviews disclose gifted or sponsored review context."
+            },
+            "editorial": {
+              "available": true,
+              "count": 1,
+              "surfaceable": false
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-05-30T11:58:07.330Z",
+            "source_version": "ownist_component_repair_20260530"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "owner_delegated_external_evidence_rewrite",
+            "generator": "owner_delegated_assistant_reviewed_external_evidence_rewrite",
+            "selection_strategy": "official_pdp_seed_plus_reviewed_external_evidence",
+            "field_sources": {
+              "what_it_is": "official_seed_description",
+              "best_for": "reviewed_category_and_official_title",
+              "why_it_stands_out": "official_seed_description_and_formula",
+              "routine_fit": "reviewed_category_and_official_title",
+              "watchouts": "owner_delegated_assistant_review",
+              "texture_finish": "reviewed_category_and_official_title",
+              "source_coverage": "manual_reviewed_external_evidence",
+              "community_signals": "manual_reviewed_external_evidence",
+              "external_highlight_signals": "manual_reviewed_external_evidence",
+              "review_summary": "manual_reviewed_external_evidence"
+            },
+            "review_status": "completed",
+            "review_decision": "rewrite",
+            "reviewer": "codex_quality_reviewer_owner_delegated",
+            "reviewer_kind": "assistant",
+            "reviewed_at": "2026-05-30T13:53:02Z",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "ownist_external_evidence_20260530",
+            "official_source_url": "https://ownist.com/products/ownist-triple-collagen-1-box",
+            "official_source_ingredient_count": 6,
+            "rewrite_reason": "Owner-delegated assistant review added third-party review evidence and retained gifted/editorial sources as context only.",
+            "external_evidence_generated_at": "2026-05-30T13:53:02.000Z",
+            "external_evidence_model": "manual_reviewed_external_evidence_v1",
+            "external_highlight_applied": {
+              "why_it_stands_out_signal_ids": [
+                "ownist_triple_collagen_reviews_orange_packets"
+              ],
+              "watchout_signal_ids": [
+                "ownist_triple_collagen_reviews_watchouts"
+              ],
+              "texture_finish_notes": []
+            },
+            "external_evidence_summary": {
+              "visible_summary": "Reviewed visible evidence now supports an orange-packet review highlight and balanced watchouts around price and inconsistent visible results.",
+              "non_visible_context": [
+                "Gopicky/Picky is retained as gifted creator-review context and is not used for public highlights.",
+                "VentureSquare editorial/business context is retained but not used as a public proof badge or visible product highlight."
+              ]
+            },
+            "external_evidence_review_batch": "ownist_external_evidence_20260530",
+            "external_evidence_sources": [
+              {
+                "signal_id": "ownist_triple_collagen_reviews_orange_packets",
+                "label": "Hwahae Triple Collagen Orange reviews",
+                "url": "https://www.hwahae.com/en/products/2056374",
+                "sponsorship_status": "unknown",
+                "surfaceable": true
+              },
+              {
+                "signal_id": "ownist_triple_collagen_reviews_orange_packets",
+                "label": "Shop Triple Collagen Orange reviews",
+                "url": "https://shop.app/products/7508760953015/triple-collagen-orange",
+                "sponsorship_status": "unknown",
+                "surfaceable": true
+              },
+              {
+                "signal_id": "ownist_triple_collagen_reviews_orange_packets",
+                "label": "Loox Ownist store reviews",
+                "url": "https://loox.io/s/M89oyfGTLZ",
+                "sponsorship_status": "unknown",
+                "surfaceable": true
+              },
+              {
+                "signal_id": "ownist_triple_collagen_reviews_watchouts",
+                "label": "Hwahae Triple Collagen Orange reviews",
+                "url": "https://www.hwahae.com/en/products/2056374",
+                "sponsorship_status": "unknown",
+                "surfaceable": true
+              },
+              {
+                "signal_id": "ownist_triple_collagen_reviews_watchouts",
+                "label": "Shop Triple Collagen Orange reviews",
+                "url": "https://shop.app/products/7508760953015/triple-collagen-orange",
+                "sponsorship_status": "unknown",
+                "surfaceable": true
+              },
+              {
+                "signal_id": "ownist_triple_collagen_gopicky_gifted_context",
+                "label": "Gopicky Triple Collagen Orange reviews",
+                "url": "https://www.gopicky.com/product/1000018199/ownist-triple-collagen-orange",
+                "sponsorship_status": "gifted",
+                "surfaceable": false
+              },
+              {
+                "signal_id": "ownist_triple_collagen_editorial_context",
+                "label": "VentureSquare Ownist profile",
+                "url": "https://www.venturesquare.net/1030611/",
+                "sponsorship_status": "unknown",
+                "surfaceable": false
+              }
+            ],
+            "external_review_notes": "Reviewed external evidence is additive. Visible highlight is review-backed; gifted/social and editorial sources are context only."
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "Triple Collagen Orange",
+            "subtitle": "Wellness Supplement",
+            "highlight": "Reviews: easy orange packets",
+            "intro": "Ownist liquid collagen supplement with collagen, elastin, hyaluronic acid, and vitamin C.",
+            "external_highlight_signals": [
+              {
+                "signal_id": "ownist_triple_collagen_reviews_orange_packets",
+                "source_type": "verified_reviews",
+                "claim_type": "card_hook",
+                "claim_text": "Review sources commonly mention the orange flavor, easy single-use packet format, and low fishy taste as positives.",
+                "surface_text": "Reviews: easy orange packets",
+                "stance": "positive",
+                "evidence_strength": "moderate",
+                "sponsorship_status": "unknown",
+                "independence_count": 35,
+                "surfaceable": true,
+                "surface_targets": [
+                  "shopping_card_highlight",
+                  "search_card_intro"
+                ]
+              },
+              {
+                "signal_id": "ownist_triple_collagen_reviews_watchouts",
+                "source_type": "verified_reviews",
+                "claim_type": "watchout",
+                "claim_text": "Reviewers also flag price and inconsistent visible effects, especially elasticity and brightening, as watchouts.",
+                "stance": "mixed",
+                "evidence_strength": "moderate",
+                "sponsorship_status": "unknown",
+                "independence_count": 35,
+                "surfaceable": true,
+                "surface_targets": [
+                  "watchouts"
+                ]
+              }
+            ],
+            "evidence_profile": "seller_plus_reviews"
+          },
+          "search_card": {
+            "title_candidate": "Triple Collagen Orange",
+            "compact_candidate": "Wellness Supplement",
+            "highlight_candidate": "Reviews: easy orange packets",
+            "intro_candidate": "Ownist liquid collagen supplement with collagen, elastin, hyaluronic acid, and vitamin C.",
+            "proof_badge_candidate": ""
+          },
+          "review_summary": {
+            "rating": 4.17,
+            "review_count": 35
+          }
+        }
+      }
+    },
+    {
+      "case_id": "live_ext_3dab0df3312e80e8dac97452",
+      "review_status": "completed",
+      "review_decision": "rewrite",
+      "reviewer": "codex_quality_reviewer_owner_delegated",
+      "reviewer_kind": "assistant",
+      "reviewed_at": "2026-05-30T11:58:07.330Z",
+      "notes": "Approved official-PDP-seed rewrite for Triple Shine Garden edition; evidence_profile=official_pdp_seed; source_url=https://ownist.com/products/triple-shine-garden-gift-set",
+      "owner_delegated_review": {
+        "contract_version": "pivota.owner_delegated_review.v1",
+        "delegated_to": "codex_quality_reviewer_owner_delegated",
+        "reviewer_kind": "assistant",
+        "owner_instruction": "User delegated Codex to perform high-quality human review for Pivota Insights quality improvement.",
+        "guardrails": [
+          "Do not overwrite good content with lower-quality content.",
+          "No commerce-state claims in Pivota Insights.",
+          "Use official source facts only; keep evidence confidence explicit."
+        ]
+      },
+      "quality_improvement_review": {
+        "decision": "approved_replacement",
+        "reviewer_kind": "assistant",
+        "owner_delegated": true,
+        "reason": "Owner-delegated assistant review confirms the replacement uses official PDP seed facts, avoids commerce and unsupported evidence claims, and explicitly marks evidence gaps instead of inventing claims."
+      },
+      "baseline": {
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_3dab0df3312e80e8dac97452",
+          "platform": "external_seed"
+        }
+      },
+      "selected": {
+        "selected_mode": "manual_reviewed_rewrite",
+        "selected_field_count": 7,
+        "field_sources": {
+          "what_it_is": "official_seed_description_and_reviewed_component_refs",
+          "best_for": "reviewed_category_and_official_title",
+          "why_it_stands_out": "official_seed_description_and_reviewed_component_refs",
+          "routine_fit": "reviewed_category_and_official_title",
+          "watchouts": "owner_delegated_assistant_review",
+          "texture_finish": "reviewed_category_and_official_title",
+          "source_coverage": "official_pdp_seed_snapshot",
+          "community_signals": "not_collected"
+        },
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_3dab0df3312e80e8dac97452",
+            "platform": "external_seed"
+          },
+          "product_group_id": "sig_d1486cb7ebda1f1d43ca5444",
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Beauty supplement gift set identity",
+              "body": "An Ownist beauty supplement gift set listed on the brand source page as Triple Shine Garden edition. The reviewed source component list identifies set components as Triple Shine Grape."
+            },
+            "best_for": [
+              {
+                "tag": "wellness_supplement_shoppers",
+                "label": "Wellness supplement shoppers",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "official_source_comparison",
+                "label": "Official-source comparison",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Source-backed product detail",
+                "body": "The reviewed source component list identifies set components as Triple Shine Grape.",
+                "evidence_strength": "official_pdp_seed"
+              },
+              {
+                "headline": "Linked formula component",
+                "body": "Formula handling is inherited through reviewed component references; agents should use the linked component guidance rather than inventing set-level formula claims.",
+                "evidence_strength": "official_pdp_seed"
+              }
+            ],
+            "routine_fit": {
+              "step": "wellness",
+              "am_pm": [
+                "as_needed"
+              ],
+              "pairing_notes": [
+                "Use within the beauty supplement gift set context; avoid inferring benefits not present in the source fields."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "formula_gap",
+                "label": "No complete ingredient list was captured for this review batch; avoid formula-level or safety claims.",
+                "severity": "medium"
+              },
+              {
+                "type": "evidence_gap",
+                "label": "No independent review or community evidence was approved for this row; keep public copy source-bound.",
+                "severity": "medium"
+              },
+              {
+                "type": "scope_guardrail",
+                "label": "Use the commerce mainline for offer facts; keep this insight focused on source-backed product identity.",
+                "severity": "medium"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-05-30T11:58:07.330Z",
+              "source_version": "ownist_component_repair_20260530"
+            },
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_seed",
+            "source_coverage": {
+              "seller": {
+                "available": true,
+                "source_url": "https://ownist.com/products/triple-shine-garden-gift-set"
+              },
+              "formula": {
+                "available": false,
+                "ingredient_count": 0,
+                "source_url": "https://ownist.com/products/triple-shine-garden-gift-set"
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "finish": "beauty supplement gift set",
+            "texture": "wellness_supplement",
+            "source": "reviewed_category_and_official_title"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "reason": "not_collected_for_this_review_batch"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_seed",
+          "source_coverage": {
+            "seller": {
+              "available": true,
+              "source_url": "https://ownist.com/products/triple-shine-garden-gift-set"
+            },
+            "formula": {
+              "available": false,
+              "ingredient_count": 0,
+              "source_url": "https://ownist.com/products/triple-shine-garden-gift-set"
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-05-30T11:58:07.330Z",
+            "source_version": "ownist_component_repair_20260530"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "owner_delegated_official_seed_rewrite",
+            "generator": "owner_delegated_assistant_reviewed_rewrite",
+            "selection_strategy": "official_pdp_seed_guarded_manual_review",
+            "field_sources": {
+              "what_it_is": "official_seed_description_and_reviewed_component_refs",
+              "best_for": "reviewed_category_and_official_title",
+              "why_it_stands_out": "official_seed_description_and_reviewed_component_refs",
+              "routine_fit": "reviewed_category_and_official_title",
+              "watchouts": "owner_delegated_assistant_review",
+              "texture_finish": "reviewed_category_and_official_title",
+              "source_coverage": "official_pdp_seed_snapshot",
+              "community_signals": "not_collected"
+            },
+            "review_status": "completed",
+            "review_decision": "rewrite",
+            "reviewer": "codex_quality_reviewer_owner_delegated",
+            "reviewer_kind": "assistant",
+            "reviewed_at": "2026-05-30T11:58:07.330Z",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "ownist_component_repair_20260530",
+            "official_source_url": "https://ownist.com/products/triple-shine-garden-gift-set",
+            "official_source_ingredient_count": 0,
+            "rewrite_reason": "Owner-delegated assistant review: official PDP seed rewrite; no commerce-state, community, medical, or unsupported safety claims added."
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "Triple Shine Garden edition",
+            "subtitle": "Wellness Supplement",
+            "highlight": "Triple Shine gift set",
+            "intro": "An Ownist beauty supplement gift set listed on the brand source page as Triple Shine Garden edition. The reviewed source component list identifies set components as Triple Shine Grape.",
+            "evidence_profile": "official_pdp_seed"
+          },
+          "search_card": {
+            "title_candidate": "Triple Shine Garden edition",
+            "compact_candidate": "Wellness Supplement",
+            "highlight_candidate": "Triple Shine gift set",
+            "intro_candidate": "An Ownist beauty supplement gift set listed on the brand source page as Triple Shine Garden edition. The reviewed source component list identifies set components as Triple Shine Grape.",
+            "proof_badge_candidate": ""
+          }
+        }
+      }
+    },
+    {
+      "case_id": "live_ext_3b2f5eaa044e309bf442a047",
+      "review_status": "completed",
+      "review_decision": "rewrite",
+      "reviewer": "codex_quality_reviewer_owner_delegated",
+      "reviewer_kind": "assistant",
+      "reviewed_at": "2026-05-30T11:58:07.330Z",
+      "notes": "Approved official-PDP-seed rewrite for Triple Collagen Garden edition; evidence_profile=official_pdp_seed; source_url=https://ownist.com/products/triple-collagen-garden-gift-set",
+      "owner_delegated_review": {
+        "contract_version": "pivota.owner_delegated_review.v1",
+        "delegated_to": "codex_quality_reviewer_owner_delegated",
+        "reviewer_kind": "assistant",
+        "owner_instruction": "User delegated Codex to perform high-quality human review for Pivota Insights quality improvement.",
+        "guardrails": [
+          "Do not overwrite good content with lower-quality content.",
+          "No commerce-state claims in Pivota Insights.",
+          "Use official source facts only; keep evidence confidence explicit."
+        ]
+      },
+      "quality_improvement_review": {
+        "decision": "approved_replacement",
+        "reviewer_kind": "assistant",
+        "owner_delegated": true,
+        "reason": "Owner-delegated assistant review confirms the replacement uses official PDP seed facts, avoids commerce and unsupported evidence claims, and explicitly marks evidence gaps instead of inventing claims."
+      },
+      "baseline": {
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_3b2f5eaa044e309bf442a047",
+          "platform": "external_seed"
+        }
+      },
+      "selected": {
+        "selected_mode": "manual_reviewed_rewrite",
+        "selected_field_count": 7,
+        "field_sources": {
+          "what_it_is": "official_seed_description_and_reviewed_component_refs",
+          "best_for": "reviewed_category_and_official_title",
+          "why_it_stands_out": "official_seed_description_and_reviewed_component_refs",
+          "routine_fit": "reviewed_category_and_official_title",
+          "watchouts": "owner_delegated_assistant_review",
+          "texture_finish": "reviewed_category_and_official_title",
+          "source_coverage": "official_pdp_seed_snapshot",
+          "community_signals": "not_collected"
+        },
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_3b2f5eaa044e309bf442a047",
+            "platform": "external_seed"
+          },
+          "product_group_id": "sig_e624f2bb6e60ed18ab9647db",
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Collagen supplement gift set identity",
+              "body": "An Ownist collagen supplement gift set listed on the brand source page as Triple Collagen Garden edition. The reviewed source component list identifies set components as Triple Collagen Orange."
+            },
+            "best_for": [
+              {
+                "tag": "wellness_supplement_shoppers",
+                "label": "Wellness supplement shoppers",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "official_source_comparison",
+                "label": "Official-source comparison",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Source-backed product detail",
+                "body": "The reviewed source component list identifies set components as Triple Collagen Orange.",
+                "evidence_strength": "official_pdp_seed"
+              },
+              {
+                "headline": "Linked formula component",
+                "body": "Formula handling is inherited through reviewed component references; agents should use the linked component guidance rather than inventing set-level formula claims.",
+                "evidence_strength": "official_pdp_seed"
+              }
+            ],
+            "routine_fit": {
+              "step": "wellness",
+              "am_pm": [
+                "as_needed"
+              ],
+              "pairing_notes": [
+                "Use within the collagen supplement gift set context; avoid inferring benefits not present in the source fields."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "formula_gap",
+                "label": "No complete ingredient list was captured for this review batch; avoid formula-level or safety claims.",
+                "severity": "medium"
+              },
+              {
+                "type": "evidence_gap",
+                "label": "No independent review or community evidence was approved for this row; keep public copy source-bound.",
+                "severity": "medium"
+              },
+              {
+                "type": "scope_guardrail",
+                "label": "Use the commerce mainline for offer facts; keep this insight focused on source-backed product identity.",
+                "severity": "medium"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-05-30T11:58:07.330Z",
+              "source_version": "ownist_component_repair_20260530"
+            },
+            "quality_state": "reviewed",
+            "evidence_profile": "official_pdp_seed",
+            "source_coverage": {
+              "seller": {
+                "available": true,
+                "source_url": "https://ownist.com/products/triple-collagen-garden-gift-set"
+              },
+              "formula": {
+                "available": false,
+                "ingredient_count": 0,
+                "source_url": "https://ownist.com/products/triple-collagen-garden-gift-set"
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "finish": "collagen supplement gift set",
+            "texture": "wellness_supplement",
+            "source": "reviewed_category_and_official_title"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "reason": "not_collected_for_this_review_batch"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "reviewed",
+          "evidence_profile": "official_pdp_seed",
+          "source_coverage": {
+            "seller": {
+              "available": true,
+              "source_url": "https://ownist.com/products/triple-collagen-garden-gift-set"
+            },
+            "formula": {
+              "available": false,
+              "ingredient_count": 0,
+              "source_url": "https://ownist.com/products/triple-collagen-garden-gift-set"
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-05-30T11:58:07.330Z",
+            "source_version": "ownist_component_repair_20260530"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "owner_delegated_official_seed_rewrite",
+            "generator": "owner_delegated_assistant_reviewed_rewrite",
+            "selection_strategy": "official_pdp_seed_guarded_manual_review",
+            "field_sources": {
+              "what_it_is": "official_seed_description_and_reviewed_component_refs",
+              "best_for": "reviewed_category_and_official_title",
+              "why_it_stands_out": "official_seed_description_and_reviewed_component_refs",
+              "routine_fit": "reviewed_category_and_official_title",
+              "watchouts": "owner_delegated_assistant_review",
+              "texture_finish": "reviewed_category_and_official_title",
+              "source_coverage": "official_pdp_seed_snapshot",
+              "community_signals": "not_collected"
+            },
+            "review_status": "completed",
+            "review_decision": "rewrite",
+            "reviewer": "codex_quality_reviewer_owner_delegated",
+            "reviewer_kind": "assistant",
+            "reviewed_at": "2026-05-30T11:58:07.330Z",
+            "external_highlight_review_status": "rewrite",
+            "external_review_batch": "ownist_component_repair_20260530",
+            "official_source_url": "https://ownist.com/products/triple-collagen-garden-gift-set",
+            "official_source_ingredient_count": 0,
+            "rewrite_reason": "Owner-delegated assistant review: official PDP seed rewrite; no commerce-state, community, medical, or unsupported safety claims added."
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "Triple Collagen Garden edition",
+            "subtitle": "Wellness Supplement",
+            "highlight": "Triple Collagen gift set",
+            "intro": "An Ownist collagen supplement gift set listed on the brand source page as Triple Collagen Garden edition. The reviewed source component list identifies set components as Triple Collagen Orange.",
+            "evidence_profile": "official_pdp_seed"
+          },
+          "search_card": {
+            "title_candidate": "Triple Collagen Garden edition",
+            "compact_candidate": "Wellness Supplement",
+            "highlight_candidate": "Triple Collagen gift set",
+            "intro_candidate": "An Ownist collagen supplement gift set listed on the brand source page as Triple Collagen Garden edition. The reviewed source component list identifies set components as Triple Collagen Orange.",
+            "proof_badge_candidate": ""
+          }
+        }
+      }
+    }
+  ],
+  "contract_version": "pivota.product_intel.reviewed_report.v1",
+  "generated_at": "2026-05-30T13:53:02Z",
+  "source_report": "/Users/pengchydan/dev/PIVOTA-Agent/reports/ownist_seed_ingest_20260530/ownist-component-repair-product-intel-report.json",
+  "external_evidence_path": "/Users/pengchydan/dev/PIVOTA-Agent/reports/ownist_seed_ingest_20260530/ownist-external-evidence-reviewed.json",
+  "review_batch": "ownist_external_evidence_20260530"
+}

@@ -1,0 +1,46 @@
+{
+  "contract_version": "external_seed.bundle_component_refs.mapping.v1",
+  "market": "US",
+  "generated_at": "2026-05-30T10:40:00.000Z",
+  "reviewed_by": "codex_quality_reviewer_owner_delegated",
+  "mappings": [
+    {
+      "external_product_id": "ext_3dab0df3312e80e8dac97452",
+      "evidence_source": "official_ownist_pdp_title_and_catalog",
+      "evidence_note": "Triple Shine Garden edition is the gift set counterpart of the Ownist Triple Shine Grape product.",
+      "component_refs": [
+        {
+          "external_product_id": "ext_8b6bcbe031a743c1e607aa6a",
+          "component_role": "included_formula",
+          "size_label": "Triple Shine Grape",
+          "inheritance_scope": [
+            "how_to_use",
+            "ingredients_inci",
+            "active_ingredients"
+          ],
+          "source_kind": "manual_reviewed_bundle_component_ref",
+          "evidence_note": "Reviewed against Ownist official PDP titles and matching Triple Shine formula."
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_3b2f5eaa044e309bf442a047",
+      "evidence_source": "official_ownist_pdp_title_and_catalog",
+      "evidence_note": "Triple Collagen Garden edition is the gift set counterpart of the Ownist Triple Collagen Orange product.",
+      "component_refs": [
+        {
+          "external_product_id": "ext_52e9fce8bee97af26d6f77db",
+          "component_role": "included_formula",
+          "size_label": "Triple Collagen Orange",
+          "inheritance_scope": [
+            "how_to_use",
+            "ingredients_inci",
+            "active_ingredients"
+          ],
+          "source_kind": "manual_reviewed_bundle_component_ref",
+          "evidence_note": "Reviewed against Ownist official PDP titles and matching Triple Collagen formula."
+        }
+      ]
+    }
+  ]
+}

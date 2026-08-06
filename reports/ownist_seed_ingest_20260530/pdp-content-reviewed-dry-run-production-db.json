@@ -1,0 +1,155 @@
+{
+  "generated_at": "2026-05-30T11:29:40.750Z",
+  "dry_run": true,
+  "manifest": "reports/ownist_seed_ingest_20260530/pdp-content-reviewed-manifest.json",
+  "summary": {
+    "scanned_rows": 4,
+    "missing_rows": 0,
+    "blocked_rows": 0,
+    "change_candidates": 4,
+    "updated_rows": 0,
+    "catalog_product_updates": 0,
+    "identity_updates": 0
+  },
+  "apply_results": [],
+  "plans": [
+    {
+      "external_product_id": "ext_8b6bcbe031a743c1e607aa6a",
+      "seed_id": "eps_8392f5063ab5890a5f8388ce",
+      "title": "Triple Shine Grape",
+      "canonical_url": "https://ownist.com/products/triple-shine-1-box",
+      "status": "ready",
+      "changed": true,
+      "blockers": [],
+      "skipped_fields": [],
+      "patched_fields": [
+        "description",
+        "pdp_description_raw",
+        "pdp_how_to_use_raw",
+        "pdp_details_sections",
+        "pdp_ingredients_raw",
+        "raw_ingredient_text_clean",
+        "ingredients_inci"
+      ],
+      "before": {
+        "description": "TRIPLE-THREAT FORMULATION: Made with three key ingredients for glowing skin: Belight®, niacin (vitamin B3), and vitamin C. REAL RESULTS: One powerful formula targets three main concerns to help your skin look brighter, clearer, and more refined. BASED IN SCIENCE: Formulated to work with the natural processes of your body for maximum impact with minimal ingredients. NOTHING ARTIFICIAL: Flavored with organic grape concentrate sourced from the French regions of Bordeaux and Champagne. Naturally sweet and sugar- gluten- and dairy-free. ENJOY DAILY: No messy powders or water here. Just sip and enjoy wherever and whenever you like.",
+        "pdp_description_raw": "",
+        "pdp_ingredients_raw": "",
+        "pdp_how_to_use_raw": "",
+        "ingredients_polluted": false,
+        "polluted_detail_section_count": 0
+      },
+      "after": {
+        "description": "Triple Shine Grape is an Ownist ready-to-drink beauty supplement built around Belight, niacin (vitamin B3), and vitamin C. The source page positions the grape packet format for daily use without powders or water, with organic grape concentrate for flavor.",
+        "pdp_description_raw": "Triple Shine Grape is an Ownist ready-to-drink beauty supplement built around Belight, niacin (vitamin B3), and vitamin C. The source page positions the grape packet format for daily use without powders or water, with organic grape concentrate for flavor.",
+        "pdp_how_to_use_raw": "No messy powders or water are needed. Sip the ready-to-drink packet daily wherever and whenever it fits your routine.",
+        "pdp_ingredients_raw": "Belight, Niacin (Vitamin B3), Vitamin C, Organic Agave Syrup, Organic Lemon Concentrate, Locust Bean Gum Powder, Organic Grape Concentrate",
+        "ingredients_polluted": false,
+        "detail_section_count": 3,
+        "polluted_detail_section_count": 0
+      }
+    },
+    {
+      "external_product_id": "ext_52e9fce8bee97af26d6f77db",
+      "seed_id": "eps_b81018b0147d2b7103a9ff50",
+      "title": "Triple Collagen Orange",
+      "canonical_url": "https://ownist.com/products/ownist-triple-collagen-1-box",
+      "status": "ready",
+      "changed": true,
+      "blockers": [],
+      "skipped_fields": [],
+      "patched_fields": [
+        "description",
+        "pdp_description_raw",
+        "pdp_how_to_use_raw",
+        "pdp_details_sections",
+        "pdp_ingredients_raw",
+        "raw_ingredient_text_clean",
+        "ingredients_inci"
+      ],
+      "before": {
+        "description": "•TRIPLE EFFECTIVE FORMULA: Made with the same three key elements that make up healthy skin: collagen, elastin, and hyaluronic acid. •REAL RESULTS: Improve skin elasticity, texture, and hydration with one powerful formula. It even supports healthier hair and nails too! •BASED IN SCIENCE: Formulated to work with the natural processes of your body for maximum impact with minimal ingredients. •NOTHING ARTIFICIAL: Flavored with organic Valencia orange concentrate for a naturally sweet taste that’s sugar-, gluten-, and dairy-free. •ENJOY DAILY: No messy powders or water here. Just sip and enjoy wherever and whenever you like.",
+        "pdp_description_raw": "",
+        "pdp_ingredients_raw": "",
+        "pdp_how_to_use_raw": "",
+        "ingredients_polluted": false,
+        "polluted_detail_section_count": 0
+      },
+      "after": {
+        "description": "Triple Collagen Orange is an Ownist ready-to-drink collagen beauty supplement built around hydrolyzed marine collagen, elastin, hyaluronic acid, and vitamin C. The source page positions the orange packet format for daily use without powders or water.",
+        "pdp_description_raw": "Triple Collagen Orange is an Ownist ready-to-drink collagen beauty supplement built around hydrolyzed marine collagen, elastin, hyaluronic acid, and vitamin C. The source page positions the orange packet format for daily use without powders or water.",
+        "pdp_how_to_use_raw": "Enjoy 1-2 packets, best taken at least an hour after meals. Can be taken anytime. Store in a cool, dry place away from direct sunlight. Refrigeration is optional.",
+        "pdp_ingredients_raw": "Hydrolyzed Marine Collagen, Elastin, Hyaluronic Acid, Vitamin C, Organic Orange Juice Concentrate, Organic Fructooligosaccharide",
+        "ingredients_polluted": false,
+        "detail_section_count": 3,
+        "polluted_detail_section_count": 0
+      }
+    },
+    {
+      "external_product_id": "ext_3dab0df3312e80e8dac97452",
+      "seed_id": "eps_ef1189fcc1414c309f574ee0",
+      "title": "Triple Shine Garden edition",
+      "canonical_url": "https://ownist.com/products/triple-shine-garden-gift-set",
+      "status": "ready",
+      "changed": true,
+      "blockers": [],
+      "skipped_fields": [],
+      "patched_fields": [
+        "description",
+        "pdp_description_raw",
+        "pdp_how_to_use_raw",
+        "pdp_details_sections"
+      ],
+      "before": {
+        "description": "TRIPLE-THREAT FORMULATION: Made with three key ingredients for glowing skin: Belight®, niacin (vitamin B3), and vitamin C. REAL RESULTS: One powerful formula targets three main concerns to help your skin look brighter, clearer, and more refined. BASED IN SCIENCE: Formulated to work with the natural processes of your body for maximum impact with minimal ingredients. NOTHING ARTIFICIAL: Flavored with organic grape concentrate sourced from the French regions of Bordeaux and Champagne. Naturally sweet and sugar- gluten- and dairy-free. ENJOY DAILY: No messy powders or water here. Just sip and enjoy wherever and whenever you like.",
+        "pdp_description_raw": "",
+        "pdp_ingredients_raw": "",
+        "pdp_how_to_use_raw": "",
+        "ingredients_polluted": false,
+        "polluted_detail_section_count": 0
+      },
+      "after": {
+        "description": "Triple Shine Garden edition is an Ownist gift set anchored by the Triple Shine Grape ready-to-drink beauty supplement formula. The source description highlights Belight, niacin (vitamin B3), vitamin C, organic grape concentrate, and daily use without powders or water.",
+        "pdp_description_raw": "Triple Shine Garden edition is an Ownist gift set anchored by the Triple Shine Grape ready-to-drink beauty supplement formula. The source description highlights Belight, niacin (vitamin B3), vitamin C, organic grape concentrate, and daily use without powders or water.",
+        "pdp_how_to_use_raw": "Use the included ready-to-drink Triple Shine packets following the source guidance: no powders or water are needed, just sip as part of a daily routine.",
+        "pdp_ingredients_raw": "",
+        "ingredients_polluted": false,
+        "detail_section_count": 3,
+        "polluted_detail_section_count": 0
+      }
+    },
+    {
+      "external_product_id": "ext_3b2f5eaa044e309bf442a047",
+      "seed_id": "eps_c563537f86299bf556bd6761",
+      "title": "Triple Collagen Garden edition",
+      "canonical_url": "https://ownist.com/products/triple-collagen-garden-gift-set",
+      "status": "ready",
+      "changed": true,
+      "blockers": [],
+      "skipped_fields": [],
+      "patched_fields": [
+        "description",
+        "pdp_description_raw",
+        "pdp_how_to_use_raw",
+        "pdp_details_sections"
+      ],
+      "before": {
+        "description": "•TRIPLE EFFECTIVE FORMULA: Made with the same three key elements that make up healthy skin: collagen, elastin, and hyaluronic acid. •REAL RESULTS: Improve skin elasticity, texture, and hydration with one powerful formula. It even supports healthier hair and nails too! •BASED IN SCIENCE: Formulated to work with the natural processes of your body for maximum impact with minimal ingredients. •NOTHING ARTIFICIAL: Flavored with organic Valencia orange concentrate for a naturally sweet taste that’s sugar-, gluten-, and dairy-free. •ENJOY DAILY: No messy powders or water here. Just sip and enjoy wherever and whenever you like.",
+        "pdp_description_raw": "",
+        "pdp_ingredients_raw": "",
+        "pdp_how_to_use_raw": "",
+        "ingredients_polluted": false,
+        "polluted_detail_section_count": 0
+      },
+      "after": {
+        "description": "Triple Collagen Garden edition is an Ownist gift set anchored by the Triple Collagen Orange ready-to-drink collagen supplement formula. The source description highlights collagen, elastin, hyaluronic acid, organic Valencia orange concentrate, and daily use without powders or water.",
+        "pdp_description_raw": "Triple Collagen Garden edition is an Ownist gift set anchored by the Triple Collagen Orange ready-to-drink collagen supplement formula. The source description highlights collagen, elastin, hyaluronic acid, organic Valencia orange concentrate, and daily use without powders or water.",
+        "pdp_how_to_use_raw": "Use the included ready-to-drink Triple Collagen packets following the source guidance: no powders or water are needed, just sip as part of a daily routine.",
+        "pdp_ingredients_raw": "",
+        "ingredients_polluted": false,
+        "detail_section_count": 3,
+        "polluted_detail_section_count": 0
+      }
+    }
+  ]
+}

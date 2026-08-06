@@ -1,0 +1,14 @@
+{
+  "status": "ok",
+  "mode": "write",
+  "report": "/Users/pengchydan/dev/PIVOTA-Agent/reports/ownist_seed_ingest_20260530/ownist-external-evidence-product-intel-report.json",
+  "rows": [
+    "live_ext_8b6bcbe031a743c1e607aa6a",
+    "live_ext_52e9fce8bee97af26d6f77db"
+  ],
+  "entries": [
+    "product:ext_8b6bcbe031a743c1e607aa6a",
+    "product:ext_52e9fce8bee97af26d6f77db"
+  ],
+  "skipped_rows": []
+}

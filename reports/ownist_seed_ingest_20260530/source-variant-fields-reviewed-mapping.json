@@ -1,0 +1,171 @@
+{
+  "contract_version": "external_seed.source_variant_fields.mapping.v1",
+  "market": "US",
+  "reviewed_by": "codex_quality_reviewer_owner_delegated",
+  "mappings": [
+    {
+      "external_product_id": "ext_8b6bcbe031a743c1e607aa6a",
+      "source_url": "https://ownist.com/products/triple-shine-1-box",
+      "source_origin": "official_pdp",
+      "variant_detail_label": "14 Servings, 2-Week Routine",
+      "allow_scalar_variant_label_correction": true,
+      "variants": [
+        {
+          "variant_id": "42327845699767",
+          "sku": "TS-01",
+          "title": "14 Servings, 2-Week Routine",
+          "display_label": "14 Servings, 2-Week Routine",
+          "options": [
+            {
+              "name": "Supply",
+              "value": "14 Servings, 2-Week Routine",
+              "axis_kind": "size"
+            }
+          ],
+          "price": 41,
+          "currency": "USD",
+          "available": true,
+          "url": "https://ownist.com/products/triple-shine-1-box"
+        }
+      ],
+      "variant_axes": {
+        "multi_variant": false,
+        "options": [
+          {
+            "name": "Supply",
+            "values": [
+              "14 Servings, 2-Week Routine"
+            ]
+          }
+        ]
+      },
+      "match_basis": {
+        "source": "official_pdp",
+        "reason": "Visible official PDP supply label replaces Shopify Default Title."
+      }
+    },
+    {
+      "external_product_id": "ext_52e9fce8bee97af26d6f77db",
+      "source_url": "https://ownist.com/products/ownist-triple-collagen-1-box",
+      "source_origin": "official_pdp",
+      "variant_detail_label": "14 Servings, 2-Week Routine",
+      "allow_scalar_variant_label_correction": true,
+      "variants": [
+        {
+          "variant_id": "42327805624503",
+          "sku": "TC-01_NEW",
+          "title": "14 Servings, 2-Week Routine",
+          "display_label": "14 Servings, 2-Week Routine",
+          "options": [
+            {
+              "name": "Supply",
+              "value": "14 Servings, 2-Week Routine",
+              "axis_kind": "size"
+            }
+          ],
+          "price": 41,
+          "currency": "USD",
+          "available": true,
+          "url": "https://ownist.com/products/ownist-triple-collagen-1-box"
+        }
+      ],
+      "variant_axes": {
+        "multi_variant": false,
+        "options": [
+          {
+            "name": "Supply",
+            "values": [
+              "14 Servings, 2-Week Routine"
+            ]
+          }
+        ]
+      },
+      "match_basis": {
+        "source": "official_pdp",
+        "reason": "Visible official PDP supply label replaces Shopify Default Title."
+      }
+    },
+    {
+      "external_product_id": "ext_3dab0df3312e80e8dac97452",
+      "source_url": "https://ownist.com/products/triple-shine-garden-gift-set",
+      "source_origin": "official_pdp",
+      "variant_detail_label": "Garden Gift Set",
+      "allow_scalar_variant_label_correction": true,
+      "variants": [
+        {
+          "variant_id": "48389624299703",
+          "sku": "SHOPIFY-48389624299703",
+          "title": "Garden Gift Set",
+          "display_label": "Garden Gift Set",
+          "options": [
+            {
+              "name": "Format",
+              "value": "Garden Gift Set",
+              "axis_kind": "format"
+            }
+          ],
+          "price": 65.6,
+          "currency": "USD",
+          "available": true,
+          "url": "https://ownist.com/products/triple-shine-garden-gift-set"
+        }
+      ],
+      "variant_axes": {
+        "multi_variant": false,
+        "options": [
+          {
+            "name": "Format",
+            "values": [
+              "Garden Gift Set"
+            ]
+          }
+        ]
+      },
+      "match_basis": {
+        "source": "official_pdp",
+        "reason": "Official PDP gift set title replaces Shopify Default Title."
+      }
+    },
+    {
+      "external_product_id": "ext_3b2f5eaa044e309bf442a047",
+      "source_url": "https://ownist.com/products/triple-collagen-garden-gift-set",
+      "source_origin": "official_pdp",
+      "variant_detail_label": "Garden Gift Set",
+      "allow_scalar_variant_label_correction": true,
+      "variants": [
+        {
+          "variant_id": "48389129306295",
+          "sku": "SHOPIFY-48389129306295",
+          "title": "Garden Gift Set",
+          "display_label": "Garden Gift Set",
+          "options": [
+            {
+              "name": "Format",
+              "value": "Garden Gift Set",
+              "axis_kind": "format"
+            }
+          ],
+          "price": 65.6,
+          "currency": "USD",
+          "available": true,
+          "url": "https://ownist.com/products/triple-collagen-garden-gift-set"
+        }
+      ],
+      "variant_axes": {
+        "multi_variant": false,
+        "options": [
+          {
+            "name": "Format",
+            "values": [
+              "Garden Gift Set"
+            ]
+          }
+        ]
+      },
+      "match_basis": {
+        "source": "official_pdp",
+        "reason": "Official PDP gift set title replaces Shopify Default Title."
+      }
+    }
+  ]
+}

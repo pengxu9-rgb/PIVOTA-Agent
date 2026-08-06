@@ -1,0 +1,41 @@
+{
+  "status": "ok",
+  "mode": "dry_run",
+  "out_dir": "/Users/pengchydan/dev/PIVOTA-Agent/reports/ownist_seed_ingest_20260530/pdp-quality-upgrade-loop-dry-run",
+  "cycles": [
+    {
+      "cycle": 1,
+      "audit_duration_ms": 7132,
+      "scanned": 4,
+      "plan_summary": {
+        "scanned": 4,
+        "by_action": {
+          "hold": 4
+        },
+        "by_lane": {
+          "seed_commerce_or_content_gap": 4
+        },
+        "by_reason": {
+          "seed_missing_fields:category": 4
+        },
+        "auto_apply_count": 0
+      },
+      "selected_ids": [],
+      "category_patch_ids": [],
+      "report_rows": 0,
+      "validated_entries": 0,
+      "published_entries": 0,
+      "category_patch_planned": 0,
+      "category_patch_applied": false,
+      "sync_applied": false,
+      "artifacts": {
+        "audit_dir": "/Users/pengchydan/dev/PIVOTA-Agent/reports/ownist_seed_ingest_20260530/pdp-quality-upgrade-loop-dry-run/cycle_001/audit",
+        "plan": "/Users/pengchydan/dev/PIVOTA-Agent/reports/ownist_seed_ingest_20260530/pdp-quality-upgrade-loop-dry-run/cycle_001/upgrade_plan.json",
+        "selected_inventory": "/Users/pengchydan/dev/PIVOTA-Agent/reports/ownist_seed_ingest_20260530/pdp-quality-upgrade-loop-dry-run/cycle_001/selected_inventory.json"
+      }
+    }
+  ],
+  "total_selected": 0,
+  "total_published": 0,
+  "stopped_reason": "no_safe_auto_apply_candidates"
+}

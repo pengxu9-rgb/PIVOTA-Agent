@@ -1,0 +1,231 @@
+{
+  "generated_at": "2026-05-30T11:56:07.762Z",
+  "source": "pdp_module_value_quality_audit_v1",
+  "query": {
+    "sig": "",
+    "externalProductId": "",
+    "brand": "Ownist",
+    "domain": "",
+    "market": "US",
+    "limit": 10,
+    "out": "reports/ownist_seed_ingest_20260530/pdp-module-value-quality-audit-after-component-repair-production-db.json",
+    "includeInactive": false
+  },
+  "summary": {
+    "scanned": 4,
+    "by_bucket": [
+      {
+        "key": "pass",
+        "count": 4
+      }
+    ],
+    "by_reason": [],
+    "by_module": [],
+    "top_brands": [
+      {
+        "key": "Ownist",
+        "count": 4
+      }
+    ],
+    "top_domains": [
+      {
+        "key": "ownist.com",
+        "count": 4
+      }
+    ]
+  },
+  "rows": [
+    {
+      "product_key": "prod::external_seed::external_seed::ext_8b6bcbe031a743c1e607aa6a",
+      "pivota_signature_id": "sig_c01623e2b15214a1a0a5612659ebe746",
+      "external_product_id": "ext_8b6bcbe031a743c1e607aa6a",
+      "title": "Triple Shine Grape",
+      "brand": "Ownist",
+      "domain": "ownist.com",
+      "market": "US",
+      "category_path": "beauty",
+      "canonical_url": "https://ownist.com/products/triple-shine-1-box",
+      "bucket": "pass",
+      "issue_count": 0,
+      "module_status": {
+        "variant_label_count": 2,
+        "variant_labels_sample": [
+          "14 Servings, 2-Week Routine",
+          "Supply: 14 Servings, 2-Week Routine"
+        ],
+        "variant_count": 5,
+        "image_count": 11,
+        "root_image_count": 11,
+        "variant_image_count": 0,
+        "image_hosts_sample": [
+          "cdn.shopify.com"
+        ],
+        "ingredient_applicability_status": "",
+        "ingredient_applicability_evidence": [],
+        "ingredient_component_refs_status": "",
+        "ingredient_component_refs_count": 0,
+        "ingredient_component_refs_sample": [],
+        "ingredient_texts_sample": [
+          "Belight,Niacin (Vitamin B3),Vitamin C,Organic Agave Syrup,Organic Lemon Concentrate,Locust Bean Gum Powder,Organic Grape Concentrate",
+          "Belight, Niacin (Vitamin B3), Vitamin C, Organic Agave Syrup, Organic Lemon Concentrate, Locust Bean Gum Powder, Organic Grape Concentrate"
+        ],
+        "how_to_texts_sample": [
+          "No messy powders or water are needed. Sip the ready-to-drink packet daily wherever and whenever it fits your routine."
+        ],
+        "detail_section_count": 9,
+        "intel_kb_key": "product:ext_8b6bcbe031a743c1e607aa6a",
+        "review_count": 0,
+        "qna_count": 0
+      },
+      "issues": []
+    },
+    {
+      "product_key": "prod::external_seed::external_seed::ext_52e9fce8bee97af26d6f77db",
+      "pivota_signature_id": "sig_9435f32d8c54d3ac2227664cbbd8a47e",
+      "external_product_id": "ext_52e9fce8bee97af26d6f77db",
+      "title": "Triple Collagen Orange",
+      "brand": "Ownist",
+      "domain": "ownist.com",
+      "market": "US",
+      "category_path": "beauty",
+      "canonical_url": "https://ownist.com/products/ownist-triple-collagen-1-box",
+      "bucket": "pass",
+      "issue_count": 0,
+      "module_status": {
+        "variant_label_count": 2,
+        "variant_labels_sample": [
+          "14 Servings, 2-Week Routine",
+          "Supply: 14 Servings, 2-Week Routine"
+        ],
+        "variant_count": 5,
+        "image_count": 11,
+        "root_image_count": 11,
+        "variant_image_count": 0,
+        "image_hosts_sample": [
+          "cdn.shopify.com"
+        ],
+        "ingredient_applicability_status": "",
+        "ingredient_applicability_evidence": [],
+        "ingredient_component_refs_status": "",
+        "ingredient_component_refs_count": 0,
+        "ingredient_component_refs_sample": [],
+        "ingredient_texts_sample": [
+          "Hydrolyzed Marine Collagen,Elastin,Hyaluronic Acid,Vitamin C,Organic Orange Juice Concentrate,Organic Fructooligosaccharide",
+          "Hydrolyzed Marine Collagen, Elastin, Hyaluronic Acid, Vitamin C, Organic Orange Juice Concentrate, Organic Fructooligosaccharide"
+        ],
+        "how_to_texts_sample": [
+          "Enjoy 1-2 packets, best taken at least an hour after meals. Can be taken anytime. Store in a cool, dry place away from direct sunlight. Refrigeration is optional."
+        ],
+        "detail_section_count": 9,
+        "intel_kb_key": "product:ext_52e9fce8bee97af26d6f77db",
+        "review_count": 0,
+        "qna_count": 0
+      },
+      "issues": []
+    },
+    {
+      "product_key": "prod::external_seed::external_seed::ext_3b2f5eaa044e309bf442a047",
+      "pivota_signature_id": "sig_3baddcba272e0e635e6f1bcc602afeaa",
+      "external_product_id": "ext_3b2f5eaa044e309bf442a047",
+      "title": "Triple Collagen Garden edition",
+      "brand": "Ownist",
+      "domain": "ownist.com",
+      "market": "US",
+      "category_path": "beauty/wellness/beauty-supplements/sets",
+      "canonical_url": "https://ownist.com/products/triple-collagen-garden-gift-set",
+      "bucket": "pass",
+      "issue_count": 0,
+      "module_status": {
+        "variant_label_count": 2,
+        "variant_labels_sample": [
+          "Garden Gift Set",
+          "Format: Garden Gift Set"
+        ],
+        "variant_count": 5,
+        "image_count": 11,
+        "root_image_count": 11,
+        "variant_image_count": 0,
+        "image_hosts_sample": [
+          "cdn.shopify.com"
+        ],
+        "ingredient_applicability_status": "",
+        "ingredient_applicability_evidence": [],
+        "ingredient_component_refs_status": "component_refs_linked",
+        "ingredient_component_refs_count": 1,
+        "ingredient_component_refs_sample": [
+          {
+            "external_product_id": "ext_52e9fce8bee97af26d6f77db",
+            "title": "Triple Collagen Orange",
+            "inheritance_scope": [
+              "how_to_use",
+              "ingredients_inci",
+              "active_ingredients"
+            ],
+            "review_state": "reviewed"
+          }
+        ],
+        "ingredient_texts_sample": [],
+        "how_to_texts_sample": [
+          "Use the included ready-to-drink Triple Collagen packets following the source guidance: no powders or water are needed, just sip as part of a daily routine."
+        ],
+        "detail_section_count": 9,
+        "intel_kb_key": "product:ext_3b2f5eaa044e309bf442a047",
+        "review_count": 0,
+        "qna_count": 0
+      },
+      "issues": []
+    },
+    {
+      "product_key": "prod::external_seed::external_seed::ext_3dab0df3312e80e8dac97452",
+      "pivota_signature_id": "sig_804c13c0550e9c46cacdadd7616d3ffd",
+      "external_product_id": "ext_3dab0df3312e80e8dac97452",
+      "title": "Triple Shine Garden edition",
+      "brand": "Ownist",
+      "domain": "ownist.com",
+      "market": "US",
+      "category_path": "beauty/wellness/beauty-supplements/sets",
+      "canonical_url": "https://ownist.com/products/triple-shine-garden-gift-set",
+      "bucket": "pass",
+      "issue_count": 0,
+      "module_status": {
+        "variant_label_count": 2,
+        "variant_labels_sample": [
+          "Garden Gift Set",
+          "Format: Garden Gift Set"
+        ],
+        "variant_count": 5,
+        "image_count": 11,
+        "root_image_count": 11,
+        "variant_image_count": 0,
+        "image_hosts_sample": [
+          "cdn.shopify.com"
+        ],
+        "ingredient_applicability_status": "",
+        "ingredient_applicability_evidence": [],
+        "ingredient_component_refs_status": "component_refs_linked",
+        "ingredient_component_refs_count": 1,
+        "ingredient_component_refs_sample": [
+          {
+            "external_product_id": "ext_8b6bcbe031a743c1e607aa6a",
+            "title": "Triple Shine Grape",
+            "inheritance_scope": [
+              "how_to_use",
+              "ingredients_inci",
+              "active_ingredients"
+            ],
+            "review_state": "reviewed"
+          }
+        ],
+        "ingredient_texts_sample": [],
+        "how_to_texts_sample": [
+          "Use the included ready-to-drink Triple Shine packets following the source guidance: no powders or water are needed, just sip as part of a daily routine."
+        ],
+        "detail_section_count": 9,
+        "intel_kb_key": "product:ext_3dab0df3312e80e8dac97452",
+        "review_count": 0,
+        "qna_count": 0
+      },
+      "issues": []
+    }
+  ]
+}
