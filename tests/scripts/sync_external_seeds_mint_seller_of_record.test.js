@@ -218,3 +218,64 @@ describe('terminality of the migration (source-level guards)', () => {
     expect(mirror.product.product_key).toBe('prod::merch_obs_7d65d696184c1023::external_seed::ext_rekeyed1');
   });
 });
+
+describe('ulta retailer sibling — same doctrine, retailer lane', () => {
+  const ULTA_SOURCE = fs.readFileSync(
+    path.join(__dirname, '../../scripts/sync-ulta-external-seeds-to-catalog.cjs'),
+    'utf8',
+  );
+  const {
+    _internals: { annotateUltaMirrorMerchants, buildMirror: buildUltaMirror },
+  } = require('../../scripts/sync-ulta-external-seeds-to-catalog.cjs');
+
+  test('an existing catalog row keeps its own merchant and key', () => {
+    const row = {
+      external_product_id: 'ulta:abc',
+      existing_merchant_id: 'merch_obs_aaaa000011112222',
+      existing_product_key: 'prod::merch_obs_aaaa000011112222::external_seed::ulta:abc',
+      seed_data: {}, status: 'active',
+      canonical_url: 'https://ulta.com/p/x', title: 'X',
+    };
+    annotateUltaMirrorMerchants([row]);
+    const mirror = buildUltaMirror(row);
+    expect(mirror.product.merchant_id).toBe('merch_obs_aaaa000011112222');
+    expect(mirror.productKey).toBe('prod::merch_obs_aaaa000011112222::external_seed::ulta:abc');
+    // The '::canonical' sku generation derives from the REAL key, not a template.
+    expect(mirror.skuKey).toBe('prod::merch_obs_aaaa000011112222::external_seed::ulta:abc::canonical');
+  });
+
+  // Ulta seeds carry per-BRAND seller_refs today — fragmenting one retailer
+  // into hundreds of merchants, the mirror image of the ADR-009 bug. Until the
+  // retailer seller model (W2) decides the identity, a NEW self-mint is
+  // BLOCKED and retried — never landed in the legacy bucket, never minted
+  // under a wrong per-brand identity.
+  test('a NEW ulta product is BLOCKED pending W2 — even with a seller_ref present', () => {
+    const row = {
+      external_product_id: 'ulta:new1',
+      existing_merchant_id: null,
+      seller_ref: 'merch_obs_039b8cd5c84730bc',
+      seed_data: {}, status: 'active',
+    };
+    const counts = annotateUltaMirrorMerchants([row]);
+    expect(row.mirror_merchant_id).toBeUndefined();
+    expect(row.mirror_mint_blocked_reason).toBe('retailer_seller_model_pending_w2');
+    expect(counts).toMatchObject({ blocked_pending_w2: 1 });
+    expect(() => buildUltaMirror(row)).toThrow(/annotateUltaMirrorMerchants/);
+  });
+
+  test('joins by source identity, never a merchant literal or key template', () => {
+    expect(ULTA_SOURCE).toContain('ON cp.source_product_id = e.external_product_id');
+    expect(ULTA_SOURCE).not.toMatch(/ON cp\.merchant_id = \$\d/);
+  });
+
+  test('no catalog-ownership ON CONFLICT list assigns merchant_id (terminality holds here too)', () => {
+    const upserts = ULTA_SOURCE.match(
+      /INSERT INTO (catalog_products|catalog_skus|catalog_offers|product_group_members)[\s\S]*?(?=`)/g,
+    ) || [];
+    expect(upserts.length).toBeGreaterThanOrEqual(4);
+    for (const stmt of upserts) {
+      const setList = stmt.split(/DO UPDATE SET/)[1] || '';
+      expect(setList).not.toMatch(/^\s*merchant_id\s*=/m);
+    }
+  });
+});

@@ -212,9 +212,18 @@ function buildMirror(row) {
   const snapshot = asObject(seedData.snapshot);
   const externalProductId = asString(row.external_product_id);
   const seedId = asString(row.id);
-  const productKey = `prod::external_seed::external_seed::${externalProductId}`;
+  // ADR-009 R1: an existing catalog row keeps ITS OWN key; the template is
+  // only for genuinely new rows (which are currently blocked, see
+  // annotateUltaMirrorMerchants). Keys are opaque plumbing — look up, never
+  // parse or reconstruct.
+  const productKey = asString(row.existing_product_key)
+    || `prod::external_seed::external_seed::${externalProductId}`;
   const skuKey = `${productKey}::canonical`;
   const sourceVariantId = productKey;
+  const mirrorMerchantId = asString(row.mirror_merchant_id);
+  if (!mirrorMerchantId) {
+    throw new Error(`buildMirror: row ${externalProductId} has no resolved mirror_merchant_id — run annotateUltaMirrorMerchants first`);
+  }
   const canonicalUrl = pickCanonicalUrl(row);
   const imageUrl = pickImageUrl(row);
   const title = asString(row.title || seedData.title || snapshot.title || externalProductId);
@@ -343,7 +352,7 @@ function buildMirror(row) {
     productGroupId,
     product: {
       product_key: productKey,
-      merchant_id: MERCHANT_ID,
+      merchant_id: mirrorMerchantId,
       platform: PLATFORM,
       source_product_id: externalProductId,
       catalog_track: 'external_referral',
@@ -383,7 +392,7 @@ function buildMirror(row) {
     sku: {
       sku_key: skuKey,
       product_key: productKey,
-      merchant_id: MERCHANT_ID,
+      merchant_id: mirrorMerchantId,
       platform: PLATFORM,
       source_product_id: externalProductId,
       source_variant_id: sourceVariantId,
@@ -401,7 +410,7 @@ function buildMirror(row) {
       offer_id: offerId,
       sku_key: skuKey,
       product_key: productKey,
-      merchant_id: MERCHANT_ID,
+      merchant_id: mirrorMerchantId,
       catalog_track: 'external_referral',
       truth_tier: 'observed',
       readiness_tier: 'referral_only',
@@ -420,31 +429,67 @@ function buildMirror(row) {
   };
 }
 
+// ADR-009 R1 — resolve the merchant each ulta mirror row is written under.
+// This is a RETAILER lane: current external_product_seeds.seller_ref values for
+// ulta seeds are per-BRAND observed sellers, which fragments one retailer into
+// hundreds of merchants — the mirror image of the bug ADR-009 fixes. The
+// retailer seller model (W2) decides the real identity, so until it lands:
+//   - an EXISTING catalog row keeps its own merchant (derive from the row);
+//   - a NEW self-mint is BLOCKED (skipped + retried), never landed in the
+//     legacy bucket and never minted under a wrong per-brand identity.
+function annotateUltaMirrorMerchants(rows) {
+  const counts = { existing: 0, blocked_pending_w2: 0 };
+  for (const row of rows || []) {
+    const existing = asString(row.existing_merchant_id);
+    if (existing) {
+      row.mirror_merchant_id = existing;
+      counts.existing += 1;
+    } else {
+      row.mirror_mint_blocked_reason = 'retailer_seller_model_pending_w2';
+      counts.blocked_pending_w2 += 1;
+    }
+  }
+  if (counts.blocked_pending_w2 > 0) {
+    console.error(JSON.stringify({ event: 'mirror_merchant_mint_blocked', lane: 'ulta_retailer', ...counts }));
+  }
+  return counts;
+}
+
 async function fetchRows(ids, market) {
   const res = await query(
     `
       SELECT
-        id,
-        external_product_id,
-        market,
-        tool,
-        domain,
-        title,
-        image_url,
-        price_amount,
-        price_currency,
-        availability,
-        canonical_url,
-        destination_url,
-        seed_data,
-        status,
-        updated_at
-      FROM external_product_seeds
-      WHERE external_product_id = ANY($1::text[])
-        AND ($2::text = '' OR market = $2::text)
-      ORDER BY array_position($1::text[], external_product_id::text)
+        e.id,
+        e.external_product_id,
+        e.market,
+        e.tool,
+        e.domain,
+        e.title,
+        e.image_url,
+        e.price_amount,
+        e.price_currency,
+        e.availability,
+        e.canonical_url,
+        e.destination_url,
+        e.seed_data,
+        e.status,
+        e.updated_at,
+        e.seller_ref,
+        cp.merchant_id AS existing_merchant_id,
+        cp.product_key AS existing_product_key
+      FROM external_product_seeds e
+      -- ADR-009 R1: join by SOURCE IDENTITY, never by merchant literal or a
+      -- reconstructed key template — re-keyed rows carry BOTH a different
+      -- merchant_id and a rewritten product_key (prod::merch_obs_…), and a
+      -- template upsert against them inserts a duplicate product.
+      LEFT JOIN catalog_products cp
+        ON cp.source_product_id = e.external_product_id
+       AND cp.source_system = $3
+      WHERE e.external_product_id = ANY($1::text[])
+        AND ($2::text = '' OR e.market = $2::text)
+      ORDER BY array_position($1::text[], e.external_product_id::text)
     `,
-    [ids, market || ''],
+    [ids, market || '', SOURCE_SYSTEM],
   );
   return res.rows || [];
 }
@@ -462,11 +507,10 @@ async function existingCounts(mirrors) {
       `
         SELECT count(*)::int AS n
         FROM product_group_members
-        WHERE merchant_id = $1
-          AND platform = $2
-          AND platform_product_id = ANY($3::text[])
+        WHERE platform = $1
+          AND platform_product_id = ANY($2::text[])
       `,
-      [MERCHANT_ID, PLATFORM, productIds],
+      [PLATFORM, productIds],
     ),
   ]);
   return {
@@ -757,7 +801,7 @@ async function applyMirrors(mirrors, dryRun) {
               updated_at = now()
             RETURNING product_group_id, product_group_id <> $1 AS preserved_existing_group
           `,
-          [mirror.productGroupId, MERCHANT_ID, PLATFORM, mirror.row.external_product_id],
+          [mirror.productGroupId, mirror.product.merchant_id, PLATFORM, mirror.row.external_product_id],
         );
         totals.group_member_upserts += Number(groupRes.rowCount || 0);
         if (groupRes.rows?.[0]?.preserved_existing_group) {
@@ -785,6 +829,7 @@ async function run() {
   const out = resolveOutPath(argValue('out'));
   if (!ids.length) throw new Error('missing_external_product_ids');
   const rows = await fetchRows(ids, market);
+  const mirrorMerchantCounts = annotateUltaMirrorMerchants(rows);
   const missingIds = ids.filter((id) => !rows.some((row) => asString(row.external_product_id) === id));
   const skipped = [];
   const mirrors = [];
@@ -795,6 +840,14 @@ async function run() {
     }
     if (!isUltaSeed(row)) {
       skipped.push({ external_product_id: row.external_product_id, reason: 'not_ulta_seed' });
+      continue;
+    }
+    if (row.mirror_mint_blocked_reason) {
+      skipped.push({
+        external_product_id: row.external_product_id,
+        reason: 'seller_of_record_unresolved',
+        detail: row.mirror_mint_blocked_reason,
+      });
       continue;
     }
     const mirror = buildMirror(row);
@@ -872,6 +925,7 @@ async function run() {
     requested_ids: ids.length,
     fetched_rows: rows.length,
     mirror_rows: mirrors.length,
+    mirror_merchant_resolution: mirrorMerchantCounts,
     missing_ids: missingIds,
     skipped,
     by_brand: Object.entries(byBrand)
@@ -905,9 +959,18 @@ async function run() {
   }
 }
 
-run()
-  .catch((err) => {
-    process.stderr.write(`${err?.stack || err?.message || String(err)}\n`);
-    process.exitCode = 1;
-  })
-  .finally(closePool);
+if (require.main === module) {
+  run()
+    .catch((err) => {
+      process.stderr.write(`${err?.stack || err?.message || String(err)}\n`);
+      process.exitCode = 1;
+    })
+    .finally(closePool);
+}
+
+module.exports = {
+  _internals: {
+    annotateUltaMirrorMerchants,
+    buildMirror,
+  },
+};
