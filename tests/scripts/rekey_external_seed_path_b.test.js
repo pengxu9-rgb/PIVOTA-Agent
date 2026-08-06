@@ -118,6 +118,50 @@ describe('rekey-external-seed-path-b sibling tables', () => {
       expect(sql).toContain('RETURNING');
     }
   });
+
+  // The ledger must key on each table's PRIMARY KEY, not on the column the
+  // re-key happens to join on. catalog_offers has up to 30 rows per product_key
+  // in this cohort, so a product_key row_ref would collapse 30 distinct rows
+  // into one entry and make rollback revert offers the batch never touched.
+  it('records each table PRIMARY KEY as row_ref, not the join column', () => {
+    const primaryKeys = {
+      catalog_products: 'tgt.product_key AS row_ref',
+      catalog_skus: 'tgt.sku_key AS row_ref',
+      catalog_offers: 'tgt.offer_id AS row_ref',
+      pdp_identity_listing: 'tgt.source_listing_ref AS row_ref',
+    };
+    for (const [table, returning] of Object.entries(primaryKeys)) {
+      expect(byTable[table]).toContain(returning);
+    }
+    expect(byTable.catalog_offers).not.toContain('tgt.product_key AS row_ref');
+    expect(byTable.pdp_identity_listing).not.toContain('tgt.product_id AS row_ref');
+  });
+});
+
+describe('rekey-external-seed-path-b rollback', () => {
+  const { ROLLBACK_STATEMENTS } = script;
+
+  it('covers every table the re-key writes', () => {
+    expect(Object.keys(ROLLBACK_STATEMENTS).sort()).toEqual(UPDATE_STATEMENTS.map((s) => s.table).sort());
+  });
+
+  // Without this scope a rollback would drag back rows that something else has
+  // since moved on, and — before row_ref became a primary key — offers the
+  // batch never touched at all.
+  it('reverts only rows still holding the merchant_id this batch wrote', () => {
+    for (const [table, sql] of Object.entries(ROLLBACK_STATEMENTS)) {
+      expect(sql).toContain('AND merchant_id = $3');
+      expect(sql).toMatch(/^UPDATE \w+ SET merchant_id = \$1 WHERE \w+ = \$2 AND merchant_id = \$3$/);
+      expect(table).toBeTruthy();
+    }
+  });
+
+  it('addresses rows by primary key', () => {
+    expect(ROLLBACK_STATEMENTS.catalog_products).toContain('WHERE product_key = $2');
+    expect(ROLLBACK_STATEMENTS.catalog_skus).toContain('WHERE sku_key = $2');
+    expect(ROLLBACK_STATEMENTS.catalog_offers).toContain('WHERE offer_id = $2');
+    expect(ROLLBACK_STATEMENTS.pdp_identity_listing).toContain('WHERE source_listing_ref = $2');
+  });
 });
 
 describe('rekey-external-seed-path-b serving admission', () => {
@@ -132,5 +176,14 @@ describe('rekey-external-seed-path-b serving admission', () => {
       expect(servingSql).toContain(`'${status}'`);
     }
     expect(ADMITTING_STATUSES).toEqual(['active', 'observed']);
+  });
+
+  // The per-batch admission check must evaluate the DEPLOYED predicate, not a
+  // copy of it — a copy would drift and start certifying batches against rules
+  // serving no longer uses.
+  it('measures admission with the deployed predicate itself', () => {
+    const deployed = require('../../src/services/activeCatalogSourceSql')
+      .activeCatalogProductSourceWhere('cp', 'cm');
+    expect(script.SERVING_PREDICATE).toBe(deployed);
   });
 });

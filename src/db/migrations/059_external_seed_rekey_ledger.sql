@@ -12,15 +12,21 @@
 -- One row per (table, row) actually written, not per row attempted, so the
 -- ledger count is the authoritative record of what moved. `source_table`
 -- distinguishes the product row from the three sibling tables that carry a
--- denormalized merchant_id for the same cohort and must move with it:
---   catalog_products      (product_key)
---   catalog_skus          (product_key)
---   catalog_offers        (product_key)
---   pdp_identity_listing  (product_id = catalog_products.source_product_id,
---                          NOT product_key — different key space)
+-- denormalized merchant_id for the same cohort and must move with it.
 --
--- `row_ref` holds whichever key identifies the row in its own table, so the
--- ledger stays uniform across the four shapes.
+-- `row_ref` always holds that table's PRIMARY KEY, so one ledger entry maps to
+-- exactly one row and rollback is unambiguous:
+--   catalog_products      product_key
+--   catalog_skus          sku_key
+--   catalog_offers        offer_id
+--   pdp_identity_listing  source_listing_ref
+--
+-- Note these are NOT the columns the re-key joins on. catalog_offers joins on
+-- product_key, which has up to 30 rows per product in this cohort, and
+-- pdp_identity_listing joins on product_id (= catalog_products.source_product_id,
+-- a different key space from product_key). Recording a join key instead of the
+-- primary key would collapse distinct rows into one ledger entry and make
+-- rollback revert rows the batch never touched.
 
 CREATE TABLE IF NOT EXISTS external_seed_rekey_ledger (
   id              BIGSERIAL PRIMARY KEY,
