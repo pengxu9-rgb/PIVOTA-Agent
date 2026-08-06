@@ -1093,7 +1093,16 @@ function buildMirror(row) {
     : '';
   const sigId = existingSigId || identitySigId || stableHash('sig', ['external_seed_catalog_sig', externalProductId], 32);
   const productGroupId = identitySigId || sigId;
-  const productKey = `prod::external_seed::external_seed::${externalProductId}`;
+  // ADR-009 R1: an existing catalog row keeps ITS OWN key — 1,365 re-keyed
+  // rows carry rewritten keys (prod::merch_obs_…), and reconstructing the
+  // template for them would miss ON CONFLICT (product_key) and insert a
+  // duplicate product. The template is only for genuinely new rows. Keys are
+  // opaque plumbing either way (ADR-009 D4.2): look up, never parse.
+  const productKey = asString(row.existing_product_key)
+    || `prod::external_seed::external_seed::${externalProductId}`;
+  // The merchant this mirror row is written under — resolved by
+  // annotateMirrorMerchants (existing row > seller_ref > legacy bucket).
+  const mirrorMerchantId = asString(row.mirror_merchant_id) || MERCHANT_ID;
   const facts = readCommerceFactsV1(row);
   const agentSafeCommerceFacts = buildAgentSafeCommerceFacts(row);
   const gate = validateCommerceFactsGateForSeedRow(row);
@@ -1261,7 +1270,7 @@ function buildMirror(row) {
       sku: {
         sku_key: skuKey,
         product_key: productKey,
-        merchant_id: MERCHANT_ID,
+        merchant_id: mirrorMerchantId,
         platform: PLATFORM,
         source_product_id: externalProductId,
         source_variant_id: variant.source_variant_id,
@@ -1281,7 +1290,7 @@ function buildMirror(row) {
         offer_id: offerId,
         sku_key: skuKey,
         product_key: productKey,
-        merchant_id: MERCHANT_ID,
+        merchant_id: mirrorMerchantId,
         catalog_track: 'external_referral',
         truth_tier: 'observed',
         readiness_tier: 'referral_only',
@@ -1308,7 +1317,7 @@ function buildMirror(row) {
     productGroupId,
     product: {
       product_key: productKey,
-      merchant_id: MERCHANT_ID,
+      merchant_id: mirrorMerchantId,
       platform: PLATFORM,
       source_product_id: externalProductId,
       catalog_track: 'external_referral',
@@ -1418,24 +1427,84 @@ async function fetchRows(ids, market) {
         e.seed_data,
         e.status,
         e.updated_at,
+        e.seller_ref,
+        cp.merchant_id AS existing_merchant_id,
+        cp.product_key AS existing_product_key,
         cp.pivota_signature_id AS existing_pivota_signature_id,
         cp.content_key AS existing_content_key,
         to_jsonb(pil.*) AS identity_listing
       FROM external_product_seeds e
+      -- ADR-009 R1: join the mirror row by SOURCE IDENTITY, not by a merchant
+      -- literal and not by a reconstructed key template. The catalog row may sit
+      -- under the legacy 'external_seed' bucket OR its observed seller
+      -- (merch_obs_…), and re-keyed rows ALSO carry rewritten product_keys
+      -- (prod::merch_obs_…), so both literal-joins and template-joins go blind
+      -- on exactly the rows that already migrated. (source_system,
+      -- source_product_id) is 1:1 across all mirror rows — measured 10,339 =
+      -- 10,339 distinct on prod, 2026-08-06.
       LEFT JOIN catalog_products cp
-        ON cp.merchant_id = $3
-       AND cp.platform = $4
-       AND cp.source_product_id = e.external_product_id
+        ON cp.source_product_id = e.external_product_id
+       AND cp.source_system = $4
+      -- The identity listing is keyed on the catalog row's LIVE merchant (the
+      -- graph mints refs from catalog_merchant_id; pdpIdentityGraph.js:4960);
+      -- the sentinel is only the documented fallback for seeds with no catalog
+      -- row yet.
       LEFT JOIN pdp_identity_listing pil
-        ON pil.merchant_id = $3
+        ON pil.merchant_id = COALESCE(cp.merchant_id, $3)
        AND pil.product_id = e.external_product_id
       WHERE e.external_product_id = ANY($1::text[])
         AND ($2::text = '' OR upper(e.market) = upper($2::text))
       ORDER BY array_position($1::text[], e.external_product_id::text)
     `,
-    [ids, market || '', MERCHANT_ID, PLATFORM],
+    [ids, market || '', MERCHANT_ID, SOURCE_SYSTEM],
   );
   return res.rows || [];
+}
+
+// ADR-009 R1 — resolve the merchant each mirror row is written under.
+// Precedence, strictly:
+//   1. the catalog row's existing merchant_id (derive from the row — the
+//      product upsert never changes merchant_id, so writing skus/offers/groups
+//      under anything else would split the product from its own children);
+//   2. for genuinely NEW products, the seed's seller_ref — but only when that
+//      merchant exists in catalog_merchants (a missing row would make the
+//      product silently unservable via the serving predicate's branch 2);
+//   3. the legacy 'external_seed' bucket, counted loudly — the documented
+//      shrinking-legacy posture for unresolvable rows, never a silent fallback.
+async function annotateMirrorMerchants(rows) {
+  const counts = { existing: 0, minted_from_seller_ref: 0, seller_ref_missing: 0, seller_ref_merchant_missing: 0 };
+  const candidates = new Set();
+  for (const row of rows || []) {
+    const sellerRef = asString(row.seller_ref);
+    if (!asString(row.existing_merchant_id) && /^merch_/.test(sellerRef)) candidates.add(sellerRef);
+  }
+  let known = new Set();
+  if (candidates.size > 0) {
+    const res = await query(
+      'SELECT merchant_id FROM catalog_merchants WHERE merchant_id = ANY($1::text[])',
+      [[...candidates]],
+    );
+    known = new Set((res.rows || []).map((r) => asString(r.merchant_id)));
+  }
+  for (const row of rows || []) {
+    const existing = asString(row.existing_merchant_id);
+    const sellerRef = asString(row.seller_ref);
+    if (existing) {
+      row.mirror_merchant_id = existing;
+      counts.existing += 1;
+    } else if (/^merch_/.test(sellerRef) && known.has(sellerRef)) {
+      row.mirror_merchant_id = sellerRef;
+      counts.minted_from_seller_ref += 1;
+    } else {
+      row.mirror_merchant_id = MERCHANT_ID;
+      if (!sellerRef) counts.seller_ref_missing += 1;
+      else counts.seller_ref_merchant_missing += 1;
+    }
+  }
+  if (counts.seller_ref_missing || counts.seller_ref_merchant_missing) {
+    console.log(JSON.stringify({ event: 'mirror_merchant_fallback_to_legacy_bucket', ...counts }));
+  }
+  return counts;
 }
 
 async function existingCounts(mirrors) {
@@ -1448,14 +1517,15 @@ async function existingCounts(mirrors) {
     query('SELECT count(*)::int AS n FROM catalog_skus WHERE sku_key = ANY($1::text[])', [skuKeys]),
     query('SELECT count(*)::int AS n FROM catalog_offers WHERE offer_id = ANY($1::text[])', [offerIds]),
     query(
+      // ADR-009 R1: diagnostic count — membership may sit under the legacy
+      // bucket or an observed seller; count both rather than a merchant literal.
       `
         SELECT count(*)::int AS n
         FROM product_group_members
-        WHERE merchant_id = $1
-          AND platform = $2
-          AND platform_product_id = ANY($3::text[])
+        WHERE platform = $1
+          AND platform_product_id = ANY($2::text[])
       `,
-      [MERCHANT_ID, PLATFORM, productIds],
+      [PLATFORM, productIds],
     ),
   ]);
   return {
@@ -1496,21 +1566,24 @@ async function staleDeletePreview(mirrors, sampleLimit = 50) {
           offer_ids jsonb
         )
       ),
+      -- ADR-009 R1: the preview must agree with the real prunes, which scope by
+      -- product_key + platform/source_system only. A merchant literal here made
+      -- the dry-run report 0 pending deletes for re-keyed products while the
+      -- (equally broken) real prune also deleted 0 — the two agreed on the
+      -- wrong answer.
       current_skus AS (
         SELECT cs.product_key, cs.sku_key, cs.source_variant_id, cs.title, cs.visible_attributes
         FROM planned p
         JOIN catalog_skus cs
           ON cs.product_key = p.product_key
-         AND cs.merchant_id = $2
-         AND cs.platform = $3
+         AND cs.platform = $2
       ),
       current_offers AS (
         SELECT co.product_key, co.offer_id, co.sku_key, co.list_price, co.merchant_effective_price
         FROM planned p
         JOIN catalog_offers co
           ON co.product_key = p.product_key
-         AND co.merchant_id = $2
-         AND co.source_system = $4
+         AND co.source_system = $3
       ),
       stale_skus AS (
         SELECT cs.*
@@ -1538,17 +1611,17 @@ async function staleDeletePreview(mirrors, sampleLimit = 50) {
         COALESCE((
           SELECT jsonb_agg(to_jsonb(s) ORDER BY s.product_key, s.sku_key)
           FROM (
-            SELECT * FROM stale_skus ORDER BY product_key, sku_key LIMIT $5
+            SELECT * FROM stale_skus ORDER BY product_key, sku_key LIMIT $4
           ) s
         ), '[]'::jsonb) AS sample_stale_skus,
         COALESCE((
           SELECT jsonb_agg(to_jsonb(o) ORDER BY o.product_key, o.offer_id)
           FROM (
-            SELECT * FROM stale_offers ORDER BY product_key, offer_id LIMIT $5
+            SELECT * FROM stale_offers ORDER BY product_key, offer_id LIMIT $4
           ) o
         ), '[]'::jsonb) AS sample_stale_offers
     `,
-    [JSON.stringify(plan), MERCHANT_ID, PLATFORM, SOURCE_SYSTEM, Number(sampleLimit || 50)],
+    [JSON.stringify(plan), PLATFORM, SOURCE_SYSTEM, Number(sampleLimit || 50)],
   );
   const row = res.rows[0] || {};
   return {
@@ -1866,7 +1939,9 @@ async function applyMirrors(
                   AND coalesce(live_read_enabled, false) = false
                 RETURNING source_listing_ref
               `,
-              [MERCHANT_ID, mirror.row.external_product_id],
+              // ADR-009 R1: the graph keys listings on the catalog row's live
+              // merchant — a sentinel literal here goes blind for re-keyed rows.
+              [mirror.product.merchant_id, mirror.row.external_product_id],
             );
             totals.identity_live_read_updates += Number(identityRes.rowCount || 0);
           }
@@ -2009,26 +2084,29 @@ async function applyMirrors(
 
         const plannedSkuKeys = mirror.skus.map((skuMirror) => skuMirror.sku.sku_key).filter(Boolean);
         const plannedOfferIds = mirror.skus.map((skuMirror) => skuMirror.offer.offer_id).filter(Boolean);
+        // ADR-009 R1: stale pruning is scoped by product_key (this mirror's
+        // deterministic storage key — no other writer produces it), NOT by a
+        // merchant literal. With the literal, pruning silently went dead for
+        // every re-keyed product: dead offers kept serving while
+        // totals.stale_offer_deletes reported 0.
         const staleOfferRes = await client.query(
           `
             DELETE FROM catalog_offers
             WHERE product_key = $1
-              AND merchant_id = $2
-              AND source_system = $3
-              AND NOT (offer_id = ANY($4::text[]))
+              AND source_system = $2
+              AND NOT (offer_id = ANY($3::text[]))
           `,
-          [p.product_key, MERCHANT_ID, SOURCE_SYSTEM, plannedOfferIds],
+          [p.product_key, SOURCE_SYSTEM, plannedOfferIds],
         );
         totals.stale_offer_deletes += Number(staleOfferRes.rowCount || 0);
         const staleSkuRes = await client.query(
           `
             DELETE FROM catalog_skus
             WHERE product_key = $1
-              AND merchant_id = $2
-              AND platform = $3
-              AND NOT (sku_key = ANY($4::text[]))
+              AND platform = $2
+              AND NOT (sku_key = ANY($3::text[]))
           `,
-          [p.product_key, MERCHANT_ID, PLATFORM, plannedSkuKeys],
+          [p.product_key, PLATFORM, plannedSkuKeys],
         );
         totals.stale_sku_deletes += Number(staleSkuRes.rowCount || 0);
 
@@ -2059,7 +2137,10 @@ async function applyMirrors(
               updated_at = now()
             RETURNING product_group_id, product_group_id <> $1 AS preserved_existing_group
           `,
-          [mirror.productGroupId, MERCHANT_ID, PLATFORM, mirror.row.external_product_id],
+          // ADR-009 R1: group membership rides under the same merchant as the
+          // product row — a sentinel literal here would strand membership when
+          // the product is (or gets) re-keyed to its observed seller.
+          [mirror.productGroupId, mirror.product.merchant_id, PLATFORM, mirror.row.external_product_id],
         );
         totals.group_member_upserts += Number(groupRes.rowCount || 0);
         if (groupRes.rows?.[0]?.preserved_existing_group) {
@@ -2203,6 +2284,7 @@ async function run() {
   const batchSize = normalizeBatchSize(argValue('batch-size') || argValue('batchSize'));
   if (!ids.length) throw new Error('missing_external_product_ids');
   const rows = await fetchRows(ids, market);
+  const mirrorMerchantCounts = await annotateMirrorMerchants(rows);
   const missingIds = ids.filter((id) => !rows.some((row) => asString(row.external_product_id) === id));
   const duplicateCanonicals = findDuplicateCanonicals(rows);
   const skipped = [];
@@ -2266,6 +2348,7 @@ async function run() {
     planned_sku_rows: mirrors.reduce((sum, item) => sum + item.skus.length, 0),
     planned_offer_rows: mirrors.reduce((sum, item) => sum + item.skus.length, 0),
     planned_index_state_rows: upsertServingState ? mirrors.length : 0,
+    mirror_merchant_resolution: mirrorMerchantCounts,
     missing_ids: missingIds,
     skipped,
     applied,
@@ -2319,6 +2402,7 @@ if (require.main === module) {
 
 module.exports = {
   _internals: {
+    annotateMirrorMerchants,
     inferCatalogMirrorCategory,
     normalizeCategoryToken,
     titleCategoryText,
