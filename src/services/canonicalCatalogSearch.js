@@ -807,42 +807,43 @@ async function fetchCanonicalChainRows(args = {}) {
           )
         )`;
   const joinSkuOffers = Boolean(includeSkuOffers);
-  // Price presence is part of the serving contract even when the caller skips
-  // the SKU/offer fan-out: shopping ingesters reject price-null items. When
-  // not fanning out, surface ONE representative offer's price via a no-fanout
-  // LATERAL — amount, currency, and availability MUST come from the same offer
-  // row (never mixed across rows), cheapest in-market first, and currency is
-  // never defaulted: an offer without a currency is not price-quotable.
+  // Price presence is part of the serving contract on BOTH branches: shopping
+  // ingesters reject price-null items. Either way this surfaces ONE
+  // representative offer via a LATERAL — amount, currency and availability MUST
+  // come from the same offer row (never mixed across rows), cheapest in-market
+  // first, and currency is never defaulted: an offer without a currency is not
+  // price-quotable. The branches differ only in whether the sku columns ride
+  // along, not in how the price is chosen.
   let bestOfferMarketOrder = '';
-  if (!joinSkuOffers && marketId) {
+  if (marketId) {
     params.push(String(marketId).toUpperCase());
     bestOfferMarketOrder = `CASE WHEN upper(coalesce(o.market, '')) = $${params.length} THEN 0 ELSE 1 END,`;
   }
   const skuOfferColumns = joinSkuOffers
     ? `
-      s.sku_key,
-      s.source_variant_id,
-      s.sku,
-      s.barcode,
-      s.title                    AS sku_title,
-      s.visible_attributes,
-      s.visible_option_labels,
-      s.ingredient_ids,
-      s.image_url                AS sku_image_url,
-      o.offer_id,
-      o.catalog_track            AS offer_catalog_track,
-      o.truth_tier               AS offer_truth_tier,
-      o.readiness_tier           AS offer_readiness_tier,
-      o.offer_mode,
-      o.availability,
-      o.inventory_quantity,
-      o.currency,
-      o.list_price,
-      o.merchant_effective_price,
-      o.estimated_best_price,
-      o.price_confidence,
-      o.source_system            AS offer_source_system,
-      o.offer_payload,
+      best_sku_offer.sku_key,
+      best_sku_offer.source_variant_id,
+      best_sku_offer.sku,
+      best_sku_offer.barcode,
+      best_sku_offer.sku_title,
+      best_sku_offer.visible_attributes,
+      best_sku_offer.visible_option_labels,
+      best_sku_offer.ingredient_ids,
+      best_sku_offer.sku_image_url,
+      best_sku_offer.offer_id,
+      best_sku_offer.offer_catalog_track,
+      best_sku_offer.offer_truth_tier,
+      best_sku_offer.offer_readiness_tier,
+      best_sku_offer.offer_mode,
+      best_sku_offer.availability,
+      best_sku_offer.inventory_quantity,
+      best_sku_offer.currency,
+      best_sku_offer.list_price,
+      best_sku_offer.merchant_effective_price,
+      best_sku_offer.estimated_best_price,
+      best_sku_offer.price_confidence,
+      best_sku_offer.offer_source_system,
+      best_sku_offer.offer_payload,
       -- Neutrality (P0.3 firewall): NO ownership boost. A first-party
       -- internal_merchant offer must NOT outrank an equally-relevant
       -- third-party offer for the same product — ownership is not a ranking
@@ -874,7 +875,9 @@ async function fetchCanonicalChainRows(args = {}) {
       NULL::text                 AS offer_source_system,
       NULL::jsonb                AS offer_payload,
       c.rank_score               AS rank_score`;
-  // GUARD, NOT A FIX — measured, and the measurement is the point.
+  // SUPPRESSION GUARD — measured, and the measurement is the point. (Written when the sku/offer
+  // branch was still a bare fan-out pair of LEFT JOINs; both branches are LATERALs now, and both
+  // still carry the `suppressed_at IS NULL` filters this describes.)
   //
   // These two joins were bare while the best_offer LATERAL below (the other half of this same function)
   // has always required `suppressed_at IS NULL`. That asymmetry looks alarming because the row mapper
@@ -888,12 +891,14 @@ async function fetchCanonicalChainRows(args = {}) {
   // PRODUCTS are excluded upstream, so they never fan out here.
   //
   // So this filter removes no rows today: no latency win, no live mispricing corrected. What it buys is a
-  // closed latent hole, and the hole is sharp — suppressing a row is itself a write, so 7,090 of the 7,294
-  // suppressed offers have updated_at >= suppressed_at. The outer ORDER BY ends `s.updated_at DESC,
-  // o.updated_at DESC` and both consuming lanes dedupe first-wins without preferring a priced row, so if a
-  // suppressed offer ever DID attach to a serving-eligible product it would not merely be present, it
-  // would sort ahead of its live siblings and take the price. The likeliest future instance is a
-  // source_currency_or_channel_defect row on a live product: a wrong-currency amount, first in line.
+  // closed latent hole, and the hole WAS sharp — suppressing a row is itself a write, so 7,090 of the 7,294
+  // suppressed offers have updated_at >= suppressed_at, and the outer ORDER BY then ended
+  // `s.updated_at DESC, o.updated_at DESC`, so a suppressed offer attaching to a serving-eligible product
+  // would not merely be present, it would sort ahead of its live siblings and take the price. The
+  // recency tie-break is gone now (one row per product, chosen cheapest-priced-first), so that specific
+  // edge is closed twice over — but the filter stays: without it a suppressed offer would still be a
+  // CANDIDATE in the LATERAL, and the likeliest instance is a source_currency_or_channel_defect row on a
+  // live product — a wrong-currency amount which, being wrong, may well also be the cheapest and win.
   //
   // catalog_skus carries the same suppressed_at / suppression_reason / suppression_metadata columns and was
   // joined just as bare, so the same latent hole existed one join up and is closed here too.
@@ -901,14 +906,77 @@ async function fetchCanonicalChainRows(args = {}) {
   // ON clause, never WHERE: these are LEFT JOINs and a WHERE would silently make them INNER, dropping every
   // product with no live sku/offer. In ON, such a product keeps its row with NULL columns and is judged by
   // the serving gate on its merits. A test asserts the outer query has no WHERE at all.
+  //
+  // ONE ROW PER PRODUCT, BOTH BRANCHES. The sku/offer branch used to be a bare
+  // pair of LEFT JOINs that FANNED OUT — one row per (product, sku, offer) —
+  // and the row mapper builds one product per ROW. Measured on prod 2026-08-05:
+  // 15,961 rows for 9,289 serving-eligible products, i.e. 6,672 surplus rows;
+  // 3,542 products emitted 2+ rows and one emitted 82. Three consequences, all
+  // live:
+  //
+  //   * 727 products were served at MULTIPLE DISTINCT PRICES at once and 16
+  //     under multiple currencies, because each duplicate row carried its own
+  //     offer's price and nothing collapsed them.
+  //   * The outer ORDER BY ended `s.updated_at DESC, o.updated_at DESC`, and
+  //     Postgres DESC defaults to NULLS FIRST — so a sku carrying NO offer
+  //     sorted AHEAD of the same product's priced rows. Verified on the server.
+  //     Both consuming lanes dedupe first-wins (mergeCanonicalChainProductsWithSeedProducts)
+  //     or not at all, so the price-less row WON: 2,816 products had an unpriced
+  //     first row while a priced row existed further down. That is the sharp
+  //     edge the PR #1921 comment predicted, already firing on the sku join.
+  //   * The outer LIMIT counts ROWS, so duplicates ate the caller's budget and
+  //     a request for N products returned fewer than N distinct ones.
+  //
+  // Collapsing to a LATERAL fixes all three at the source and makes the price
+  // contract identical on both branches: the row carries the cheapest
+  // in-market PRICED offer, with amount, currency and availability from that
+  // ONE offer row. Safe to collapse because nothing downstream groups these
+  // rows back into variants — of the sku/offer columns only `sku_image_url` is
+  // read by the mapper, and it now describes the variant actually being priced.
+  //
+  // A product with no priced offer still returns its row with NULL offer
+  // columns (LEFT JOIN LATERAL ... ON TRUE), emits no price, and is dropped by
+  // the serving gate on its merits — the same 13 products either way.
   const skuOfferJoinSql = joinSkuOffers
     ? `
-    LEFT JOIN catalog_skus s
-      ON s.product_key = c.product_key
-      AND s.suppressed_at IS NULL
-    LEFT JOIN catalog_offers o
-      ON o.sku_key = s.sku_key
-      AND o.suppressed_at IS NULL`
+    LEFT JOIN LATERAL (
+      SELECT
+        s.sku_key,
+        s.source_variant_id,
+        s.sku,
+        s.barcode,
+        s.title           AS sku_title,
+        s.visible_attributes,
+        s.visible_option_labels,
+        s.ingredient_ids,
+        s.image_url       AS sku_image_url,
+        o.offer_id,
+        o.catalog_track   AS offer_catalog_track,
+        o.truth_tier      AS offer_truth_tier,
+        o.readiness_tier  AS offer_readiness_tier,
+        o.offer_mode,
+        o.availability,
+        o.inventory_quantity,
+        o.currency,
+        o.list_price,
+        o.merchant_effective_price,
+        o.estimated_best_price,
+        o.price_confidence,
+        o.source_system   AS offer_source_system,
+        o.offer_payload
+      FROM catalog_skus s
+      JOIN catalog_offers o
+        ON o.sku_key = s.sku_key
+       AND o.suppressed_at IS NULL
+      WHERE s.product_key = c.product_key
+        AND s.suppressed_at IS NULL
+        AND COALESCE(o.merchant_effective_price, o.list_price) > 0
+        AND o.currency IS NOT NULL
+      ORDER BY ${bestOfferMarketOrder}
+        COALESCE(o.merchant_effective_price, o.list_price) ASC,
+        o.offer_id ASC
+      LIMIT 1
+    ) best_sku_offer ON TRUE`
     : `
     LEFT JOIN LATERAL (
       SELECT o.currency, o.list_price, o.merchant_effective_price, o.availability
@@ -922,7 +990,10 @@ async function fetchCanonicalChainRows(args = {}) {
         o.offer_id ASC
       LIMIT 1
     ) best_offer ON TRUE`;
-  const skuOfferOrderSql = joinSkuOffers ? ', s.updated_at DESC, o.updated_at DESC' : '';
+  // No sku/offer tie-break: there is exactly one row per product now, and the
+  // `s.updated_at DESC, o.updated_at DESC` that used to be here is precisely
+  // what sorted price-less rows first (DESC => NULLS FIRST).
+  const skuOfferOrderSql = '';
 
   // Rank score weights mirror pivot_query_service.py exactly so canonical
   // recall ranks identically across the backend's HTTP API and this gateway

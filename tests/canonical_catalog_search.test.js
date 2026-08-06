@@ -270,41 +270,100 @@ describe('canonicalCatalogSearch.fetchCanonicalChainRows', () => {
   // step5_test_rig_retirement / demo_retired_2026_07 / source_currency_or_channel_defect. The row mapper
   // reads price straight off the joined row, so such a row winning the ordering priced a result off
   // retired test-rig, retired demo, or currency-defective data.
-  test('sku/offer fan-out join excludes suppressed offers', async () => {
+  // Helper: the sku/offer LATERAL body for the includeSkuOffers:true branch.
+  const skuOfferLateralOf = (sql) => {
+    const m = sql.match(/LEFT JOIN LATERAL \(([\s\S]*?)\) best_sku_offer ON TRUE/);
+    expect(m).not.toBeNull();
+    return m[1];
+  };
+
+  test('sku/offer LATERAL excludes suppressed offers', async () => {
     const query = makeMockQuery([]);
     await fetchCanonicalChainRows({ query: 'lipstick', includeSkuOffers: true, deps: { query } });
-    const { sql } = query.calls[0];
-    const joinMatch = sql.match(/LEFT JOIN catalog_offers o\b[\s\S]*?(?=\n\s*(?:LEFT JOIN|INNER JOIN|JOIN|WHERE|GROUP BY|ORDER BY)\b)/);
-    expect(joinMatch).not.toBeNull();
-    expect(joinMatch[0]).toMatch(/o\.suppressed_at IS NULL/);
+    expect(skuOfferLateralOf(query.calls[0].sql)).toMatch(/o\.suppressed_at IS NULL/);
   });
 
-  test('the suppression filters are in ON clauses — the outer query has NO where at all', async () => {
-    // Putting these predicates in WHERE would turn both LEFT JOINs INNER and drop every product without a
-    // live sku/offer — a hidden deletion rather than a product judged by the serving gate.
+  test('sku/offer LATERAL excludes suppressed skus (same defect one join up)', async () => {
+    const query = makeMockQuery([]);
+    await fetchCanonicalChainRows({ query: 'lipstick', includeSkuOffers: true, deps: { query } });
+    expect(skuOfferLateralOf(query.calls[0].sql)).toMatch(/s\.suppressed_at IS NULL/);
+  });
+
+  test('the sku/offer LATERAL is LEFT ... ON TRUE — the outer query has NO where at all', async () => {
+    // The invariant this has always protected: a product with no live/priced
+    // sku+offer must KEEP its row (with NULL offer columns) and be judged by
+    // the serving gate, rather than being silently deleted by an INNER join.
+    // Under the old bare joins that meant "no predicate in an outer WHERE";
+    // under the LATERAL it means LEFT ... ON TRUE, with every predicate living
+    // INSIDE the subquery, where it selects the best offer instead of filtering
+    // the product away.
     //
-    // An earlier version of this test guarded that with `if (whereIdx !== -1) expect(...)`. The outer
-    // template can never emit a WHERE, so the branch never ran and the test could only pass: an inert
-    // assertion sitting behind a green tick, in the very test cited as the safety argument. It now asserts
-    // the real invariant unconditionally, and on ANY offer-alias predicate rather than suppressed_at alone
-    // (an outer `WHERE o.currency IS NOT NULL` would INNER-join just as effectively).
+    // An earlier version guarded this with `if (whereIdx !== -1) expect(...)`.
+    // The outer template can never emit a WHERE, so the branch never ran and the
+    // test could only pass — an inert assertion behind a green tick, in the very
+    // test cited as the safety argument. It asserts unconditionally now.
     const query = makeMockQuery([]);
     await fetchCanonicalChainRows({ query: 'lipstick', includeSkuOffers: true, deps: { query } });
     const { sql } = query.calls[0];
-    expect(sql).toMatch(/LEFT JOIN catalog_skus s/);
-    expect(sql).toMatch(/LEFT JOIN catalog_offers o/);
-    const afterJoin = sql.slice(sql.lastIndexOf('LEFT JOIN catalog_offers o'));
-    expect(afterJoin).not.toMatch(/\bWHERE\b/);
-    expect(afterJoin.replace(/ON o\.sku_key = s\.sku_key[\s\S]*?IS NULL/, '')).not.toMatch(/\bWHERE[\s\S]*\bo\./);
+    expect(sql).toMatch(/LEFT JOIN LATERAL \(/);
+    expect(sql).toMatch(/\) best_sku_offer ON TRUE/);
+    // Nothing after the LATERAL may re-filter on the offer/sku aliases: an outer
+    // `WHERE o.currency IS NOT NULL` would INNER-join just as effectively.
+    const afterLateral = sql.slice(sql.indexOf(') best_sku_offer ON TRUE'));
+    expect(afterLateral).not.toMatch(/\bWHERE\b/);
   });
 
-  test('sku fan-out join excludes suppressed skus (same defect one join up)', async () => {
+  // ONE ROW PER PRODUCT. This branch used to be a bare pair of LEFT JOINs that
+  // fanned out to one row per (product, sku, offer) while the row mapper builds
+  // one product per ROW — 15,961 rows for 9,289 serving-eligible products on
+  // prod 2026-08-05, with 727 products served at multiple distinct prices at
+  // once. Re-introducing the fan-out must fail here.
+  test('sku/offer LATERAL collapses to ONE row per product', async () => {
     const query = makeMockQuery([]);
     await fetchCanonicalChainRows({ query: 'lipstick', includeSkuOffers: true, deps: { query } });
     const { sql } = query.calls[0];
-    const skuJoin = sql.match(/LEFT JOIN catalog_skus s[\s\S]*?(?=LEFT JOIN catalog_offers)/);
-    expect(skuJoin).not.toBeNull();
-    expect(skuJoin[0]).toMatch(/s\.suppressed_at IS NULL/);
+    expect(skuOfferLateralOf(sql)).toMatch(/LIMIT 1/);
+    // The bare fan-out joins must not come back.
+    expect(sql).not.toMatch(/LEFT JOIN catalog_skus s\s+ON/);
+    expect(sql).not.toMatch(/LEFT JOIN catalog_offers o\s+ON/);
+  });
+
+  test('no recency tie-break on sku/offer — that is what sorted price-less rows first', async () => {
+    // `ORDER BY ... s.updated_at DESC, o.updated_at DESC`, with Postgres DESC
+    // defaulting to NULLS FIRST, put a sku carrying NO offer AHEAD of the same
+    // product's priced rows. Both consuming lanes take the first row per
+    // product, so the price-less row won: 2,816 products on prod 2026-08-05 had
+    // an unpriced first row while a priced row existed further down.
+    const query = makeMockQuery([]);
+    await fetchCanonicalChainRows({ query: 'lipstick', includeSkuOffers: true, deps: { query } });
+    const { sql } = query.calls[0];
+    expect(sql).not.toMatch(/s\.updated_at DESC/);
+    expect(sql).not.toMatch(/o\.updated_at DESC/);
+  });
+
+  test('sku/offer LATERAL selects only PRICED offers, cheapest first', async () => {
+    const query = makeMockQuery([]);
+    await fetchCanonicalChainRows({ query: 'lipstick', includeSkuOffers: true, deps: { query } });
+    const lateral = skuOfferLateralOf(query.calls[0].sql);
+    // Same buyable-price expression as services/pricedOfferSql and the
+    // offer-only best_offer LATERAL: amount and currency from ONE row.
+    expect(lateral).toMatch(/COALESCE\(o\.merchant_effective_price, o\.list_price\) > 0/);
+    expect(lateral).toMatch(/o\.currency IS NOT NULL/);
+    expect(lateral).toMatch(/ORDER BY[\s\S]*COALESCE\(o\.merchant_effective_price, o\.list_price\) ASC/);
+    // Deterministic final tie-break so equal prices cannot reshuffle per call.
+    expect(lateral).toMatch(/o\.offer_id ASC/);
+  });
+
+  test('sku/offer LATERAL prefers the caller market when one is supplied', async () => {
+    const query = makeMockQuery([]);
+    await fetchCanonicalChainRows({
+      query: 'lipstick', includeSkuOffers: true, marketId: 'us', deps: { query },
+    });
+    const { sql, params } = query.calls[0];
+    const lateral = skuOfferLateralOf(sql);
+    const m = lateral.match(/CASE WHEN upper\(coalesce\(o\.market, ''\)\) = \$(\d+) THEN 0 ELSE 1 END,/);
+    expect(m).not.toBeNull();
+    expect(params[Number(m[1]) - 1]).toBe('US');
   });
 
   test('default eligibility gates on serving_eligible (buyable)', async () => {
@@ -537,9 +596,16 @@ describe('canonicalCatalogSearch.fetchCanonicalChainRows', () => {
     const query = makeMockQuery([]);
     await fetchCanonicalChainRows({ query: 'lipstick', includeSkuOffers: true, deps: { query } });
     const { sql } = query.calls[0];
-    expect(sql).toMatch(/LEFT JOIN catalog_skus s\s+ON s\.product_key = c\.product_key/);
-    // Multi-line since the suppressed-offer predicate joined the ON clause.
-    expect(sql).toMatch(/LEFT JOIN catalog_offers o\s+ON o\.sku_key = s\.sku_key/);
+    // Sku and offer columns are surfaced through the collapsing LATERAL, which
+    // correlates on the product and joins the offer to its own sku.
+    const lateral = skuOfferLateralOf(sql);
+    expect(lateral).toMatch(/FROM catalog_skus s/);
+    expect(lateral).toMatch(/JOIN catalog_offers o\s+ON o\.sku_key = s\.sku_key/);
+    expect(lateral).toMatch(/WHERE s\.product_key = c\.product_key/);
+    // The columns callers actually read off the row.
+    expect(sql).toMatch(/best_sku_offer\.sku_image_url/);
+    expect(sql).toMatch(/best_sku_offer\.currency/);
+    expect(sql).toMatch(/best_sku_offer\.merchant_effective_price/);
   });
 
   test('returns the rows array as-is from the underlying query', async () => {
