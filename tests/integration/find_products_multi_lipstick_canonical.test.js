@@ -21,6 +21,15 @@ function canonicalLipstickRows(count = 18) {
     truth_tier: 'observed',
     readiness_tier: 'referral_only',
     pdp_scope: 'unverified',
+    // Offer-row columns from the catalog_offers join. These are the ONLY price
+    // source the canonical-chain mapper reads: amount and currency must come
+    // from the same offer row or the product ships no price and the serving
+    // gate drops it. This fixture previously carried price only in
+    // seed_data.price_amount and relied on the payload fallback that has since
+    // been deleted; on prod 2026-08-05, 9,276 of 9,289 serving-eligible
+    // products carry these columns, so this shape is the representative one.
+    merchant_effective_price: '24.00',
+    currency: 'USD',
     product_payload: {
       seed_data: {
         price_amount: '24.00',

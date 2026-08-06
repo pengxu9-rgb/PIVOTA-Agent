@@ -3488,10 +3488,18 @@ describe('external seed product detail hydration', () => {
         image_url: 'https://images.ulta.com/mac-russian-red.jpg',
         destination_url: 'https://www.ulta.com/p/macximal-silky-matte-lipstick-pimprod2044115',
         product_type: 'lipstick',
-        price: 25,
         in_stock: true,
       }),
     );
+    // This row carries NO joined catalog_offers columns, so it has no price —
+    // even though its seed payload says price_amount 25.00 / USD. That payload
+    // tier used to be a fallback and this assertion used to read `price: 25`.
+    // The fallback is gone on purpose: amount and currency must come from one
+    // offer row or the product ships no price and the serving gate drops it.
+    // See tests/canonical_chain_offer_derived_price.test.js for the contract.
+    expect(product.price).toBeUndefined();
+    expect(product.currency).toBeUndefined();
+    expect(product.price_absent_reason).toBe('no_offer_derived_price');
     expect(product.seed_data).toEqual(
       expect.objectContaining({
         title: 'MAC MACximal Silky Matte Lipstick',
