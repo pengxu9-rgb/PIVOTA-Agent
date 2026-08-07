@@ -585,12 +585,57 @@ const PIVOT_BEAUTY_SET_DEMOTION_ENABLED = parseBooleanEnv(
   process.env.PIVOT_BEAUTY_SET_DEMOTION_ENABLED,
   false,
 );
-// ACTIVE_AWARE_RECALL (WS2b+c): tokenize recall patterns with query-named active
-// surface forms, match derived.recall.{ingredient_tokens,alias_tokens} in the
-// external-seed fast lane, and enable the canonical tokenMatch tokenizer on the
-// buyable mainline lane. Recall-side complement to the Phase-1 rank bonus.
+// ACTIVE_AWARE_RECALL (WS2b): tokenize recall patterns with query-named active
+// surface forms and match derived.recall.{ingredient_tokens,alias_tokens} in the
+// external-seed fast lane. Recall-side complement to the Phase-1 rank bonus.
+//
+// #1933: this flag USED to also gate the canonical tokenMatch tokenizer on the
+// buyable mainline lane (the old "WS2c" half). That was a mis-grouping — see
+// PIVOT_BEAUTY_MAINLINE_TOKEN_MATCH below — and it is why the mainline rank
+// ladder sat dark in prod, where this flag is unset. What remains here is
+// genuinely active-aware: surface forms and ingredient/alias token columns.
 const PIVOT_BEAUTY_ACTIVE_AWARE_RECALL_ENABLED = parseBooleanEnv(
   process.env.PIVOT_BEAUTY_ACTIVE_AWARE_RECALL_ENABLED,
+  false,
+);
+// MAINLINE_TOKEN_MATCH (#1933): pass tokenMatch to the canonical helper on the
+// buyable beauty mainline lane, so the +25/token rank arm actually fires there.
+//
+// WHY IT NEEDED ITS OWN FLAG. The tokenizer behind `tokenMatch` is
+// buildSignificantTokens — the GENERIC one. It has nothing to do with the
+// active surface forms PIVOT_BEAUTY_ACTIVE_AWARE_RECALL_ENABLED otherwise
+// gates, so riding that flag chained a pure rank fix to an unrelated seed-lane
+// recall expansion; neither could ship without the other, and so neither did.
+// The other two canonical callers (citable supplement, ingredient-direct) both
+// pass tokenMatch unconditionally. The mainline was the odd one out.
+//
+// WHAT IT ACTUALLY CHANGES — measured, because the obvious reading is wrong.
+// The old call-site comment said this "only affects categoryless/text-mode
+// queries — category-bucket mode ignores tokenWhere by construction". Half
+// right, and the wrong half was load-bearing: under a category prefix the
+// token WHERE arm is indeed discarded, but the +25/token RANK arm is added to
+// rank_score regardless. Since every realistic beauty query resolves to a
+// bucket (prod 2026-08-07: 8 of 9 sampled), this lane is almost always in
+// bucket mode, where:
+//   * the matched pool and the query plan are UNCHANGED (the WHERE is the
+//     category branch either way) — this is a re-ranking, not a recall change,
+//   * what moves is WHICH candidates survive ORDER BY rank_score LIMIT $3.
+//
+// Prod EXPLAIN ANALYZE 2026-08-07, bucket mode, off -> on: 390->357ms
+// (moisturize), 326->369ms (cleanse), 533->677ms (treat) — inside run-to-run
+// noise, no plan change. Relevance, as the mean count of query tokens present
+// in the top-8 titles:
+//   "lightweight gel moisturizer for acne-prone skin"  0.00 -> 2.13
+//   "vitamin c serum for dark spots"                   1.13 -> 2.63
+//   "gentle cleanser"                                          -> 2.00
+// The first is the #1927 query: ZERO of the eight rows prod serves at the head
+// contained ANY word of the query, because the flat +90 bucket bonus tied every
+// row in the bucket — the same degeneration as the 2026-07-30 restamp incident.
+//
+// Default off, flipped in prod after soak: this reorders every buyable beauty
+// search, the same discipline CANONICAL_CATALOG_{RANK_V2,SET_DIVERSITY} follow.
+const PIVOT_BEAUTY_MAINLINE_TOKEN_MATCH_ENABLED = parseBooleanEnv(
+  process.env.PIVOT_BEAUTY_MAINLINE_TOKEN_MATCH_ENABLED,
   false,
 );
 const SEARCH_QUALITY_CONTRACT_V1_ENABLED = parseBooleanEnv(
@@ -21956,10 +22001,13 @@ async function searchBeautyExternalSeedProductsMainline({
     // changed here (this PR is contract-only, behavior-preserving).
     categoryMode: 'category_browse',
     verticalSearch: hasBeautyIngredientIntentSignal(queryText),
-    // WS2c: per-token title/brand matching on the buyable mainline lane (reuses
-    // the #1722 citable-lane tokenizer). Only affects categoryless/text-mode
-    // queries — category-bucket mode ignores tokenWhere by construction.
-    tokenMatch: PIVOT_BEAUTY_ACTIVE_AWARE_RECALL_ENABLED,
+    // Per-token title/brand matching on the buyable mainline lane (reuses the
+    // #1722 citable-lane tokenizer). #1933: gated on its own flag, NOT on
+    // ACTIVE_AWARE_RECALL — see PIVOT_BEAUTY_MAINLINE_TOKEN_MATCH_ENABLED for
+    // why that grouping kept the rank ladder dark, and for the measured effect
+    // in category-bucket mode (which is NOT a no-op: the token WHERE is
+    // dropped under a prefix but the +25/token rank arm still applies).
+    tokenMatch: PIVOT_BEAUTY_MAINLINE_TOKEN_MATCH_ENABLED,
     limit: canonicalLimit,
     // Market-aware filtering — pass the user's market (already computed
     // above for the external-seed-direct path's `safeQueryMarket`) so
@@ -22017,6 +22065,11 @@ async function searchBeautyExternalSeedProductsMainline({
     // up as candidate-pool composition rather than as served order — the quota
     // is what stops bundles eating the candidate budget before the scorer runs.
     canonical_set_diversity: isCanonicalSetDiversityEnabled(),
+    // #1933: whether the +25/token rank arm fired for this search. Reads the
+    // same constant passed to the call above — a free-floating literal here
+    // would keep reporting true if that arg ever becomes conditional again,
+    // which is exactly the drift the ingredient lane's stamp warns about.
+    canonical_token_match: PIVOT_BEAUTY_MAINLINE_TOKEN_MATCH_ENABLED,
     ...(canonicalQueryText !== queryText ? { canonical_recall_query_text: canonicalQueryText } : {}),
     canonical_duration_ms: Math.max(0, Number(canonicalResult?.duration_ms || 0) || 0),
     query_text: queryText,
@@ -52218,6 +52271,13 @@ module.exports._debug = {
   // Security property: the raw wire bytes of an ACP delegate_payment request (raw PAN + CVC) are never
   // stashed on `req.rawBody`. Exported so that can be asserted directly rather than inferred.
   shouldCaptureAcpRawBody,
+  // #1933 decoupling property: whether the buyable mainline lane runs the
+  // canonical token-match tokenizer must depend on THIS flag alone. It rode
+  // PIVOT_BEAUTY_ACTIVE_AWARE_RECALL_ENABLED for its whole life, which chained
+  // a pure rank fix to an unrelated seed-lane recall expansion and left the
+  // rank ladder dark in prod. Exported so re-coupling them fails a test
+  // instead of silently re-darkening the ladder.
+  PIVOT_BEAUTY_MAINLINE_TOKEN_MATCH_ENABLED,
   // Serving-order refinement over the fully merged beauty list. Exported so the
   // set-demotion ordering is asserted directly instead of inferred from an
   // end-to-end fixture that could pass without exercising it.
