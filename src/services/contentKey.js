@@ -39,11 +39,18 @@
  * NOT "byte-for-byte", and the difference matters. Node ships ICU's Unicode version;
  * this module's tables come from the Python runtime's (see PYTHON_UNICODE_VERSION).
  * Those versions differ, so a few thousand recently-assigned codepoints are letters
- * or digits to one and unassigned to the other. We ASSERT that rather than pin it:
- * pinning ICU across two runtimes is heavy machinery for codepoints no beauty catalog
- * contains, but a silent runtime upgrade moving keys is exactly the failure this
- * module exists to prevent — so the version is recorded here, exported, and asserted
- * in the test suite, where a change becomes a visible red instead of a quiet re-key.
+ * or digits to one and unassigned to the other.
+ *
+ * Node's ICU version is NOT pinned, and that is deliberate. It varies by machine —
+ * measured 16.0 on the author's laptop and 17.0 on CI — so an equality assertion tests
+ * the environment rather than the code, and an early revision of the test suite did
+ * exactly that and went red on CI for no real reason. Pinning ICU across two runtimes
+ * would be heavy machinery for codepoints no beauty catalogue contains. The guarantee
+ * is carried instead by the conformance fixture and the table tests, which run on
+ * every environment: when CI ran them on ICU 17.0 against tables derived from Python
+ * 14.0, all 30 fixture cases, both Indic/Thai keys, the GTIN cases and all 29
+ * whitespace codepoints reproduced exactly. If an ICU upgrade ever does move a key,
+ * that is where it surfaces — as a failing key, not a failing version string.
  *
  * An earlier revision of this file DID claim "byte-for-byte" while approximating two
  * Python behaviours with JS character classes (`\p{Mark}` for combining class, `\s`

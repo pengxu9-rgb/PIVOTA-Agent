@@ -136,14 +136,28 @@ describe('port equivalence where JS has no equivalent property (#1938 review)', 
     expect(ck.PYTHON_UNICODE_VERSION).toBe('14.0.0');
   });
 
-  test("...and so is NODE's Unicode version, which is the other half of the skew", () => {
-    // The tables come from Python's Unicode; \p{L}, \p{N}, \p{Nd}, NFKD and
-    // toLowerCase all come from Node's ICU. Asserting only the Python side left the
-    // Node side able to drift silently on a runtime upgrade — the same failure this
-    // module exists to prevent, pointed at the other runtime. Measured skew at these
-    // two versions: 10,301 codepoints assigned in ICU 16.0 but Cn in Python 14.0,
-    // none of them in Latin, Kana, CJK URO, Hangul, Thai, Devanagari or Arabic.
-    expect(process.versions.unicode).toBe('16.0');
+  test("NODE's Unicode version is recorded and floored, deliberately NOT pinned", () => {
+    // The Python side above IS pinnable: that table is checked-in data, so an exact
+    // equality is a statement about this repo. Node's ICU is not — it is a property of
+    // whatever machine runs the code, and it genuinely varies: this laptop reports
+    // 16.0, CI reports 17.0, and production may differ from both.
+    //
+    // The first version of this test asserted `toBe('16.0')` under a comment claiming
+    // the version was "asserted, not pinned". It was a pin, and it failed on the first
+    // machine that was not mine — 1 failed, 689 passed, the 689 including every
+    // fixture case, both Indic/Thai keys, the GTIN cases and all 29 whitespace
+    // codepoints. So ICU 16.0 -> 17.0 moves no key we mint; the skew is confined to
+    // recently-assigned codepoints no beauty catalogue contains.
+    //
+    // That result is the point: the behavioural guard is the FIXTURE, which runs on
+    // every environment and would fail loudly if an ICU upgrade ever did move a key.
+    // A version equality is a proxy for that, and a worse one — it red-lights on
+    // environment differences that change nothing and stays silent on a formula edit
+    // that changes everything. Floor only: \p{L}, \p{N}, \p{Nd}, NFKD and toLowerCase
+    // have been stable for our scripts since long before 15.0.
+    const unicodeMajor = Number.parseFloat(process.versions.unicode);
+    expect(Number.isFinite(unicodeMajor)).toBe(true);
+    expect(unicodeMajor).toBeGreaterThanOrEqual(15);
   });
 });
 
