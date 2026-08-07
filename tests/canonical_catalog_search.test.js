@@ -1379,3 +1379,225 @@ describe('canonicalCatalogSearch deterministic tie-break (Class 4, flag-gated)',
     }
   });
 });
+
+describe('canonicalCatalogSearch multi-product set diversity (#1927, flag-gated)', () => {
+  const SET_FLAG = 'CANONICAL_CATALOG_SET_DIVERSITY';
+  const saved = process.env[SET_FLAG];
+  const {
+    applyMultiProductSetTopCap,
+    rowIsMultiProductSet,
+    MULTI_PRODUCT_SET_QUOTA_SHARE,
+  } = __internal;
+
+  afterEach(() => {
+    if (saved === undefined) delete process.env[SET_FLAG];
+    else process.env[SET_FLAG] = saved;
+  });
+
+  async function capture(args, rows = []) {
+    const query = makeMockQuery(rows);
+    const out = await fetchCanonicalChainRows({ ...args, deps: { query } });
+    return { ...query.calls[0], out };
+  }
+
+  // A row as the driver returns it: product_family lives in the payload JSON.
+  const row = (key, family, rankScore = 20) => ({
+    product_key: key,
+    rank_score: rankScore,
+    product_payload: family ? { product_family: family } : {},
+  });
+  const set = (key, rankScore) => row(key, 'set_or_collection', rankScore);
+  const single = (key, rankScore) => row(key, 'single_formula', rankScore);
+  const shape = (rows) => rows.map((r) => (rowIsMultiProductSet(r) ? 'S' : 's')).join('');
+
+  describe('flag off', () => {
+    const COMBOS = [
+      { name: 'text mode', args: { query: 'gel moisturizer', marketId: 'US' } },
+      { name: 'sku/offer', args: { query: 'gel moisturizer', includeSkuOffers: true, limit: 48 } },
+      {
+        name: 'category browse',
+        args: {
+          query: 'gel moisturizer',
+          categoryPathPrefix: 'beauty/skincare/',
+          categoryMode: 'category_browse',
+        },
+      },
+      { name: 'token match', args: { query: 'gel moisturizer', tokenMatch: true, verticalSearch: true } },
+    ];
+
+    test.each(COMBOS)('combo $name: SQL + params identical across every off spelling', async ({ args }) => {
+      delete process.env[SET_FLAG];
+      const base = await capture(args);
+      for (const spelling of ['', 'disabled', 'off', '0', 'false', 'no']) {
+        process.env[SET_FLAG] = spelling;
+        const other = await capture(args);
+        expect(other.sql).toBe(base.sql);
+        expect(other.params).toEqual(base.params);
+      }
+    });
+
+    test('rows are returned in driver order, untouched', async () => {
+      delete process.env[SET_FLAG];
+      const rows = [set('a'), set('b'), set('c'), set('d'), single('e'), single('f')];
+      const { out } = await capture({ query: 'gel moisturizer' }, rows);
+      expect(out).toEqual(rows);
+      expect(shape(out)).toBe('SSSSss');
+    });
+  });
+
+  describe('flag on: quota at the candidate cut', () => {
+    test('splits the CTE and cuts with the quota, never before rank_score', async () => {
+      process.env[SET_FLAG] = 'enabled';
+      const { sql } = await capture({ query: 'gel moisturizer', includeSkuOffers: true, limit: 48 });
+      expect(sql).toMatch(/WITH matched_products AS \(/);
+      expect(sql).toMatch(/candidate_products AS \(/);
+      expect(sql).toMatch(/row_number\(\) OVER \(/);
+      // A demoted set must still outrank every row in a LOWER tie group, so the
+      // demotion flag sorts AFTER rank_score and the window partitions by it.
+      expect(sql).toMatch(/PARTITION BY m\.rank_score, m\.is_multi_product_set/);
+      expect(sql).toMatch(/ORDER BY rank_score DESC, set_quota_demoted ASC,/);
+      // The cut happens exactly once — in the quota CTE, not the inner one.
+      expect(sql.match(/LIMIT \$3/g)).toHaveLength(1);
+    });
+
+    test('quota bind is a share of the candidate budget, and no bind is orphaned', async () => {
+      process.env[SET_FLAG] = 'enabled';
+      const { sql, params } = await capture({ query: 'gel moisturizer', includeSkuOffers: true, limit: 48 });
+      const candidateLimit = params[2];
+      expect(params[params.length - 1]).toBe(
+        Math.max(1, Math.ceil(candidateLimit * MULTI_PRODUCT_SET_QUOTA_SHARE)),
+      );
+      // 08P01 idiom: every declared placeholder is supplied and vice versa.
+      const maxBind = Math.max(...[...sql.matchAll(/\$(\d+)/g)].map((m) => Number(m[1])));
+      expect(maxBind).toBe(params.length);
+    });
+
+    test('product_family is read from the payload, in projection only — never in a WHERE', async () => {
+      process.env[SET_FLAG] = 'enabled';
+      const { sql } = await capture({ query: 'gel moisturizer' });
+      expect(sql).toMatch(/p\.product_payload->>'external_seed_product_family'/);
+      expect(sql).toMatch(/p\.product_payload->>'product_family'/);
+      expect(sql).toMatch(/AS is_multi_product_set/);
+      const whereBlock = sql.slice(sql.indexOf('WHERE '), sql.indexOf('    )'));
+      expect(whereBlock).not.toMatch(/product_family/);
+    });
+
+    test('composes with rank v2 + recall-doc + deterministic tie-break without bind drift', async () => {
+      process.env[SET_FLAG] = 'enabled';
+      process.env.CANONICAL_CATALOG_RANK_V2 = 'enabled';
+      process.env.CANONICAL_CATALOG_RECALL_DOC_MATCH = 'enabled';
+      process.env.CANONICAL_CATALOG_DETERMINISTIC_TIEBREAK = 'enabled';
+      try {
+        const { sql, params } = await capture({
+          query: 'hydrating barrier moisturizer fragrance free',
+          marketId: 'US',
+          includeSkuOffers: true,
+          limit: 48,
+        });
+        expect(sql).toMatch(/ORDER BY m\.product_key ASC/);
+        const maxBind = Math.max(...[...sql.matchAll(/\$(\d+)/g)].map((m) => Number(m[1])));
+        expect(maxBind).toBe(params.length);
+      } finally {
+        delete process.env.CANONICAL_CATALOG_RANK_V2;
+        delete process.env.CANONICAL_CATALOG_RECALL_DOC_MATCH;
+        delete process.env.CANONICAL_CATALOG_DETERMINISTIC_TIEBREAK;
+      }
+    });
+
+    test('a query that ASKS for a set is exempt — SQL identical to flag off', async () => {
+      delete process.env[SET_FLAG];
+      const off = await capture({ query: 'korean skincare gift set', includeSkuOffers: true, limit: 48 });
+      process.env[SET_FLAG] = 'enabled';
+      for (const q of ['korean skincare gift set', 'starter kit for dry skin', 'discovery set', 'full routine bundle']) {
+        const on = await capture({ query: q, includeSkuOffers: true, limit: 48 });
+        expect(on.sql).toBe(off.sql.replace(/korean skincare gift set/g, q));
+        expect(on.sql).not.toMatch(/matched_products/);
+      }
+    });
+
+    test('"easy to pack for travel" is a SIZE intent, not a set intent — diversity still applies', async () => {
+      process.env[SET_FLAG] = 'enabled';
+      const { sql } = await capture({ query: 'easy to pack for travel' });
+      expect(sql).toMatch(/matched_products/);
+    });
+  });
+
+  describe('flag on: head cap over the returned rows', () => {
+    test('holds sets to 2 per rolling window of 8', async () => {
+      process.env[SET_FLAG] = 'enabled';
+      const rows = [
+        set('a'), set('b'), set('c'), set('d'),
+        single('e'), single('f'), single('g'), single('h'), single('i'), single('j'),
+      ];
+      const { out } = await capture({ query: 'gel moisturizer' }, rows);
+      expect(out.slice(0, 8).filter(rowIsMultiProductSet)).toHaveLength(2);
+      expect(shape(out)).toBe('SSssssssSS');
+    });
+
+    test('demotes but never drops: every input row appears exactly once', async () => {
+      process.env[SET_FLAG] = 'enabled';
+      const rows = [set('a'), set('b'), set('c'), single('d'), single('e'), set('f'), single('g')];
+      const { out } = await capture({ query: 'gel moisturizer' }, rows);
+      expect(out).toHaveLength(rows.length);
+      expect(out.map((r) => r.product_key).sort()).toEqual(rows.map((r) => r.product_key).sort());
+    });
+
+    test('never crosses a rank_score boundary — a matching set keeps its lead', async () => {
+      // The ladder firing is the case this must not touch: "korean skincare
+      // set" scores the set 140 and a single 80, so the set stays on top.
+      process.env[SET_FLAG] = 'enabled';
+      const rows = [
+        set('hit1', 140), set('hit2', 140), set('hit3', 140),
+        single('low1', 80), single('low2', 80),
+      ];
+      const { out } = await capture({ query: 'gel moisturizer' }, rows);
+      expect(out.map((r) => r.product_key)).toEqual(['hit1', 'hit2', 'hit3', 'low1', 'low2']);
+    });
+
+    test('reorders only inside a tie group', async () => {
+      process.env[SET_FLAG] = 'enabled';
+      const rows = [
+        set('s20a', 20), set('s20b', 20), set('s20c', 20), single('p20', 20),
+        single('p10', 10),
+      ];
+      const { out } = await capture({ query: 'gel moisturizer' }, rows);
+      // p20 is promoted over s20c (same score); p10 never moves up a group.
+      expect(out.map((r) => r.product_key)).toEqual(['s20a', 's20b', 'p20', 's20c', 'p10']);
+    });
+
+    test('an all-set tie group keeps its received order', async () => {
+      process.env[SET_FLAG] = 'enabled';
+      const rows = [set('a'), set('b'), set('c'), set('d')];
+      const { out } = await capture({ query: 'gel moisturizer' }, rows);
+      expect(out.map((r) => r.product_key)).toEqual(['a', 'b', 'c', 'd']);
+    });
+  });
+
+  describe('rowIsMultiProductSet reads the same payload precedence as the SQL', () => {
+    test.each([
+      ['product_family', { product_family: 'set_or_collection' }, true],
+      ['external_seed_product_family', { external_seed_product_family: 'set_or_collection' }, true],
+      ['external_seed_product_kind.family', { external_seed_product_kind: { family: 'set_or_collection' } }, true],
+      ['mixed case + padding', { product_family: '  Set_Or_Collection ' }, true],
+      ['single_formula', { product_family: 'single_formula' }, false],
+      ['unclassified row fails open', {}, false],
+      ['null payload fails open', null, false],
+    ])('%s -> %s', (_label, payload, expected) => {
+      expect(rowIsMultiProductSet({ product_payload: payload })).toBe(expected);
+    });
+
+    test('a payload delivered as JSON text is parsed, not ignored', () => {
+      expect(rowIsMultiProductSet({ product_payload: '{"product_family":"set_or_collection"}' })).toBe(true);
+      expect(rowIsMultiProductSet({ product_payload: 'not json' })).toBe(false);
+    });
+  });
+
+  test('applyMultiProductSetTopCap is pure — the input array is not mutated', () => {
+    const rows = [set('a'), set('b'), set('c'), single('d')];
+    const before = rows.map((r) => r.product_key);
+    const out = applyMultiProductSetTopCap(rows);
+    expect(rows.map((r) => r.product_key)).toEqual(before);
+    expect(out.rows).not.toBe(rows);
+    expect(out.deferred_count).toBe(1);
+  });
+});

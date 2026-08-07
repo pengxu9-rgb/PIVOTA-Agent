@@ -265,6 +265,7 @@ const {
 const {
   fetchCanonicalChainRows,
   isRecallDocMatchEnabled: isCanonicalRecallDocMatchEnabled,
+  isSetDiversityEnabled: isCanonicalSetDiversityEnabled,
 } = require('./services/canonicalCatalogSearch');
 const beautyRelevanceGate = require('./services/beautyRelevanceGate');
 const {
@@ -22012,6 +22013,10 @@ async function searchBeautyExternalSeedProductsMainline({
     canonical_product_count: canonicalProducts.length,
     canonical_category_path_prefix: canonicalCategoryPathPrefix,
     canonical_brand_filter_applied: Boolean(canonicalBrandFilter),
+    // #1927: this lane re-scores what it recalls, so set diversity here shows
+    // up as candidate-pool composition rather than as served order — the quota
+    // is what stops bundles eating the candidate budget before the scorer runs.
+    canonical_set_diversity: isCanonicalSetDiversityEnabled(),
     ...(canonicalQueryText !== queryText ? { canonical_recall_query_text: canonicalQueryText } : {}),
     canonical_duration_ms: Math.max(0, Number(canonicalResult?.duration_ms || 0) || 0),
     query_text: queryText,
@@ -45690,6 +45695,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           // sargableTextWhere only while the recall_doc arm is on (row-parity
           // guard), so deploy verification must see what actually ran.
           canonical_sargable_text_where: isCanonicalRecallDocMatchEnabled(),
+          // #1927: whether the recall this lane SERVES IN ORDER had the
+          // multi-product-set quota + head cap applied. This lane keeps raw
+          // recall order (see reorderBeautyIngredientDirectProducts below), so
+          // the helper's ordering is the one the shopper sees.
+          canonical_set_diversity: isCanonicalSetDiversityEnabled(),
           canonical_raw_count: Array.isArray(canonicalIngredientResult?.rows) ? canonicalIngredientResult.rows.length : 0,
           canonical_product_count: canonicalIngredientProducts.length,
           canonical_category_path_prefix: canonicalIngredientCategoryPathPrefix,
