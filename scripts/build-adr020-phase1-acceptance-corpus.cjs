@@ -183,6 +183,32 @@ function collapseQuery(query, meta, allCleanRows) {
   }
 
   const avg = (xs) => (xs.length ? Math.round((xs.reduce((a, b) => a + b, 0) / xs.length) * 100) / 100 : 0);
+
+  // What the CATALOG lane actually returned, judged, from the last clean pass.
+  // Without this the fixture records only seed-lane titles, so the headline
+  // catalog-precision figure cannot be audited from anything checked in — the
+  // rubric header promises product-by-product auditability and only delivered
+  // it for one lane. Also the only way a reader can see variant-stuffing.
+  const lastClean = cleanRows[cleanRows.length - 1];
+  const catalogJudged = catalogReturns(lastClean).map((item) => {
+    const j = judgeProduct(query, item);
+    return {
+      brand: item.brand || null,
+      title: item.title || null,
+      grade: j ? j.grade : null,
+      grade_label: j ? j.grade_label : null,
+      forms: j ? j.forms : [],
+    };
+  });
+  // Distinct brands among the relevant results. Precision alone cannot
+  // distinguish eight different good answers from eight shade variants of one
+  // product, and the catalog lane returns more variants than the seed lane
+  // (1.54 vs 1.27 relevant per brand corpus-wide).
+  const distinctRelevantBrands = new Set(
+    catalogJudged
+      .filter((p) => p.grade === GRADE.RELEVANT && p.brand)
+      .map((p) => String(p.brand).trim().toLowerCase()),
+  ).size;
   const seedRelevant = avg(seedRelevantPerPass);
   const catalogRelevant = avg(catalogRelevantPerPass);
 
@@ -209,6 +235,8 @@ function collapseQuery(query, meta, allCleanRows) {
     catalog_returned_avg: avg(catalogTotalPerPass),
     seed_relevant_avg: seedRelevant,
     catalog_relevant_avg: catalogRelevant,
+    catalog_relevant_distinct_brands: distinctRelevantBrands,
+    catalog_returns_last_clean_pass: catalogJudged,
     relevance_deficit: relevanceDeficit,
     // Acceptance targets: only the queries where the catalog lane actually
     // returns FEWER relevant answers than the seed lane.
@@ -341,6 +369,15 @@ function main() {
         catalog_precision_pct: pct(
           sumRelevant(measured, 'catalog_relevant_avg'),
           sumReturned(measured, 'catalog_returned_avg'),
+        ),
+        // Diversity guard, reported beside precision so the two are read
+        // together: precision cannot tell eight good answers from eight shade
+        // variants of one product, and the catalog lane returns more variants
+        // than the seed lane. A precision gain with a flat brand count is
+        // variant-stuffing, not better recall.
+        catalog_relevant_distinct_brands_total: measured.reduce(
+          (acc, q) => acc + (q.catalog_relevant_distinct_brands || 0),
+          0,
         ),
       },
       queries_catalog_returned_nothing: catalogEmpty.map((q) => q.query),

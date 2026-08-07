@@ -425,6 +425,43 @@ describe('phase 1 acceptance corpus fixture', () => {
     }
   });
 
+  test('the fixture is re-derivable from the checked-in rubric', () => {
+    // The fixture drifted from the rubric once already: a rubric commit landed
+    // and the fixture kept the pre-commit grades, so the report's headline
+    // (75.0% catalog precision) was one edit stale and nothing failed. This
+    // re-judges every stored product from the rubric at HEAD.
+    let checked = 0;
+    for (const q of gapScope.queries) {
+      for (const p of [
+        ...(q.true_gaps || []),
+        ...(q.rejected_by_relevance || []),
+        ...(q.catalog_returns_last_clean_pass || []),
+      ]) {
+        if (p.grade == null) continue;
+        const rejudged = judgeProduct(q.query, p);
+        expect({ q: q.query, t: p.title, stored: p.grade }).toEqual({
+          q: q.query,
+          t: p.title,
+          stored: rejudged.grade,
+        });
+        checked += 1;
+      }
+    }
+    expect(checked).toBeGreaterThan(100);
+  });
+
+  test('records the catalog lane too, so the precision headline is auditable', () => {
+    // Earlier fixtures stored seed-lane titles only. The catalog-precision
+    // figure is the report's headline and was uncheckable from the repo,
+    // because the raw parity passes live in a scratchpad, not in git.
+    const withCatalog = gapScope.queries.filter(
+      (q) => (q.catalog_returns_last_clean_pass || []).length > 0,
+    );
+    expect(withCatalog.length).toBeGreaterThan(15);
+    expect(gapScope.summary.lane_precision.catalog_relevant_distinct_brands_total)
+      .toBeGreaterThan(0);
+  });
+
   test('scopes the corpus to the beauty domain the catalog actually stocks', () => {
     for (const q of gapScope.queries) {
       expect(q.bucket).toMatch(/^(skincare|makeup|fragrance)/);

@@ -1,5 +1,5 @@
 {
- "generated_at": "2026-08-07T11:27:38.613Z",
+ "generated_at": "2026-08-07T12:34:41.168Z",
  "source": "build-adr020-phase1-acceptance-corpus.cjs over 3 audit-recall-lane-parity.cjs pass(es) vs prod",
  "corpus": "tests/fixtures/adr020_phase1_recall_corpus.jsonl",
  "rubric": "scripts/lib/adr020_recall_relevance.cjs",
@@ -19,20 +19,20 @@
   "both_lanes_judged": true,
   "passes": [
    {
-    "path": "/private/tmp/claude-501/-Users-pengchydan-dev-PIVOTA-Agent/7887048a-432f-419c-8898-698e572599d9/scratchpad/parity_tm11.json",
-    "generated_at": "2026-08-07T11:09:41.020Z",
+    "path": "/private/tmp/claude-501/-Users-pengchydan-dev-PIVOTA-Agent/7887048a-432f-419c-8898-698e572599d9/scratchpad/parity_fix30.json",
+    "generated_at": "2026-08-07T12:16:39.414Z",
     "market": "US",
     "limit": 8
    },
    {
-    "path": "/private/tmp/claude-501/-Users-pengchydan-dev-PIVOTA-Agent/7887048a-432f-419c-8898-698e572599d9/scratchpad/parity_tm12.json",
-    "generated_at": "2026-08-07T11:15:53.396Z",
+    "path": "/private/tmp/claude-501/-Users-pengchydan-dev-PIVOTA-Agent/7887048a-432f-419c-8898-698e572599d9/scratchpad/parity_fix31.json",
+    "generated_at": "2026-08-07T12:24:42.516Z",
     "market": "US",
     "limit": 8
    },
    {
-    "path": "/private/tmp/claude-501/-Users-pengchydan-dev-PIVOTA-Agent/7887048a-432f-419c-8898-698e572599d9/scratchpad/parity_tm13.json",
-    "generated_at": "2026-08-07T11:26:42.460Z",
+    "path": "/private/tmp/claude-501/-Users-pengchydan-dev-PIVOTA-Agent/7887048a-432f-419c-8898-698e572599d9/scratchpad/parity_fix32.json",
+    "generated_at": "2026-08-07T12:32:49.377Z",
     "market": "US",
     "limit": 8
    }
@@ -43,19 +43,20 @@
   "queries_judged": 37,
   "queries_unmeasured": 0,
   "queries_without_rubric": 0,
-  "gap_query_count": 2,
-  "gap_product_count": 14,
-  "products_rejected_by_relevance": 53,
-  "products_substitutable_not_gaps": 50,
-  "queries_catalog_beats_seed": 15,
+  "gap_query_count": 3,
+  "gap_product_count": 22,
+  "products_rejected_by_relevance": 56,
+  "products_substitutable_not_gaps": 43,
+  "queries_catalog_beats_seed": 18,
   "queries_measured": 23,
   "lane_precision": {
    "seed_relevant_total": 79,
    "seed_returned_total": 135,
    "seed_precision_pct": 58.5,
-   "catalog_relevant_total": 138,
+   "catalog_relevant_total": 162,
    "catalog_returned_total": 184,
-   "catalog_precision_pct": 75
+   "catalog_precision_pct": 88,
+   "catalog_relevant_distinct_brands_total": 105
   },
   "queries_catalog_returned_nothing": [
    "小众淡香水",
@@ -73,10 +74,7 @@
    "面霜",
    "防晒霜"
   ],
-  "queries_catalog_returned_nothing_relevant": [
-   "unisex fragrance for daily wear",
-   "woody fragrance under $80"
-  ]
+  "queries_catalog_returned_nothing_relevant": []
  },
  "unmeasured": [],
  "queries": [
@@ -89,7 +87,83 @@
    "seed_returned_avg": 2,
    "catalog_returned_avg": 8,
    "seed_relevant_avg": 0,
-   "catalog_relevant_avg": 0,
+   "catalog_relevant_avg": 7,
+   "catalog_relevant_distinct_brands": 3,
+   "catalog_returns_last_clean_pass": [
+    {
+     "brand": "Fenty Beauty",
+     "title": "Fenty Parfum Solid Fragrance",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "fragrance"
+     ]
+    },
+    {
+     "brand": "Tom Ford Beauty",
+     "title": "Oud Wood Eau de Parfum",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "fragrance"
+     ]
+    },
+    {
+     "brand": "Tom Ford Beauty",
+     "title": "Tobacco Vanille Eau de Parfum",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "fragrance"
+     ]
+    },
+    {
+     "brand": "Tom Ford Beauty",
+     "title": "Black Orchid Eau de Parfum",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "fragrance"
+     ]
+    },
+    {
+     "brand": "Tom Ford Beauty",
+     "title": "Lost Cherry Eau de Parfum",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "fragrance"
+     ]
+    },
+    {
+     "brand": "TONYMOLY USA",
+     "title": "Pocket Bunny Perfume Bar - Juicy Bunny",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "fragrance"
+     ]
+    },
+    {
+     "brand": "TONYMOLY USA",
+     "title": "Pocket Bunny Perfume Bars",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "fragrance"
+     ]
+    },
+    {
+     "brand": "KUNDAL",
+     "title": "Perfume Diffuser 3 set 6.76fl. oz. each - [7 SCENTS]",
+     "grade": 1,
+     "grade_label": "partial",
+     "forms": [
+      "fragrance",
+      "set_or_collection"
+     ]
+    }
+   ],
    "relevance_deficit": 0,
    "acceptance_target": false,
    "true_gap_count": 0,
@@ -131,7 +205,82 @@
    "seed_returned_avg": 8,
    "catalog_returned_avg": 8,
    "seed_relevant_avg": 0,
-   "catalog_relevant_avg": 6,
+   "catalog_relevant_avg": 2,
+   "catalog_relevant_distinct_brands": 2,
+   "catalog_returns_last_clean_pass": [
+    {
+     "brand": "COCODOR",
+     "title": "Rose Perfume",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "fragrance"
+     ]
+    },
+    {
+     "brand": "TIELA",
+     "title": "Perfume Nourishing Body Cream Pure",
+     "grade": 0,
+     "grade_label": "irrelevant",
+     "forms": [
+      "body_care"
+     ]
+    },
+    {
+     "brand": "TIELA",
+     "title": "Perfume Nourishing Body Cream Shine",
+     "grade": 0,
+     "grade_label": "irrelevant",
+     "forms": [
+      "body_care"
+     ]
+    },
+    {
+     "brand": "TIELA",
+     "title": "Perfume Nourishing Body Cream Sunset",
+     "grade": 0,
+     "grade_label": "irrelevant",
+     "forms": [
+      "body_care"
+     ]
+    },
+    {
+     "brand": "TIELA",
+     "title": "Perfume Nourishing Body Scrub Pure",
+     "grade": 0,
+     "grade_label": "irrelevant",
+     "forms": [
+      "body_care"
+     ]
+    },
+    {
+     "brand": "TIELA",
+     "title": "Perfume Nourishing Body Scrub Shine",
+     "grade": 0,
+     "grade_label": "irrelevant",
+     "forms": [
+      "body_care"
+     ]
+    },
+    {
+     "brand": "TIELA",
+     "title": "Perfume Nourishing Body Scrub Sunset",
+     "grade": 0,
+     "grade_label": "irrelevant",
+     "forms": [
+      "body_care"
+     ]
+    },
+    {
+     "brand": "TONYMOLY USA",
+     "title": "Pocket Bunny Perfume Bar - Juicy Bunny",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "fragrance"
+     ]
+    }
+   ],
    "relevance_deficit": 0,
    "acceptance_target": false,
    "true_gap_count": 0,
@@ -247,7 +396,83 @@
    "seed_returned_avg": 1,
    "catalog_returned_avg": 8,
    "seed_relevant_avg": 0,
-   "catalog_relevant_avg": 0,
+   "catalog_relevant_avg": 7,
+   "catalog_relevant_distinct_brands": 3,
+   "catalog_returns_last_clean_pass": [
+    {
+     "brand": "Fenty Beauty",
+     "title": "Fenty Parfum Solid Fragrance",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "fragrance"
+     ]
+    },
+    {
+     "brand": "Tom Ford Beauty",
+     "title": "Oud Wood Eau de Parfum",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "fragrance"
+     ]
+    },
+    {
+     "brand": "Tom Ford Beauty",
+     "title": "Tobacco Vanille Eau de Parfum",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "fragrance"
+     ]
+    },
+    {
+     "brand": "Tom Ford Beauty",
+     "title": "Black Orchid Eau de Parfum",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "fragrance"
+     ]
+    },
+    {
+     "brand": "Tom Ford Beauty",
+     "title": "Lost Cherry Eau de Parfum",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "fragrance"
+     ]
+    },
+    {
+     "brand": "TONYMOLY USA",
+     "title": "Pocket Bunny Perfume Bar - Juicy Bunny",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "fragrance"
+     ]
+    },
+    {
+     "brand": "TONYMOLY USA",
+     "title": "Pocket Bunny Perfume Bars",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "fragrance"
+     ]
+    },
+    {
+     "brand": "KUNDAL",
+     "title": "Perfume Diffuser 3 set 6.76fl. oz. each - [7 SCENTS]",
+     "grade": 1,
+     "grade_label": "partial",
+     "forms": [
+      "fragrance",
+      "set_or_collection"
+     ]
+    }
+   ],
    "relevance_deficit": 0,
    "acceptance_target": false,
    "true_gap_count": 0,
@@ -279,6 +504,8 @@
    "catalog_returned_avg": 0,
    "seed_relevant_avg": 0,
    "catalog_relevant_avg": 0,
+   "catalog_relevant_distinct_brands": 0,
+   "catalog_returns_last_clean_pass": [],
    "relevance_deficit": 0,
    "acceptance_target": false,
    "true_gap_count": 0,
@@ -296,6 +523,8 @@
    "catalog_returned_avg": 0,
    "seed_relevant_avg": 0,
    "catalog_relevant_avg": 0,
+   "catalog_relevant_distinct_brands": 0,
+   "catalog_returns_last_clean_pass": [],
    "relevance_deficit": 0,
    "acceptance_target": false,
    "true_gap_count": 0,
@@ -313,6 +542,81 @@
    "catalog_returned_avg": 8,
    "seed_relevant_avg": 2,
    "catalog_relevant_avg": 8,
+   "catalog_relevant_distinct_brands": 3,
+   "catalog_returns_last_clean_pass": [
+    {
+     "brand": "Sigma Beauty",
+     "title": "Warm Neutrals Eyeshadow Palette",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "eyeshadow"
+     ]
+    },
+    {
+     "brand": "Sigma Beauty",
+     "title": "Warm Neutrals Eyeshadow Palette",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "eyeshadow"
+     ]
+    },
+    {
+     "brand": "Sigma Beauty",
+     "title": "Cool Neutrals Eyeshadow Palette",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "eyeshadow"
+     ]
+    },
+    {
+     "brand": "Rare Beauty",
+     "title": "Essential Neutrals Eyeshadow Palette",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "eyeshadow"
+     ]
+    },
+    {
+     "brand": "Dasique",
+     "title": "Eyeshadow Palette - 01 Sugar Brownie",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "eyeshadow"
+     ]
+    },
+    {
+     "brand": "Dasique",
+     "title": "Eyeshadow Palette - 02 Rose Petal",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "eyeshadow"
+     ]
+    },
+    {
+     "brand": "Dasique",
+     "title": "Eyeshadow Palette - 07 Milk Latte",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "eyeshadow"
+     ]
+    },
+    {
+     "brand": "Dasique",
+     "title": "Eyeshadow Palette - 11 Chocolate Fudge",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "eyeshadow"
+     ]
+    }
+   ],
    "relevance_deficit": 0,
    "acceptance_target": false,
    "true_gap_count": 0,
@@ -356,6 +660,81 @@
    "catalog_returned_avg": 8,
    "seed_relevant_avg": 3,
    "catalog_relevant_avg": 8,
+   "catalog_relevant_distinct_brands": 4,
+   "catalog_returns_last_clean_pass": [
+    {
+     "brand": "Fenty Beauty",
+     "title": "Hella Thicc Volumizing Mascara — Cuz I'm Black",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "mascara"
+     ]
+    },
+    {
+     "brand": "Rare Beauty",
+     "title": "Perfect Strokes Universal Volumizing Mascara",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "mascara"
+     ]
+    },
+    {
+     "brand": "ILIA",
+     "title": "Fullest Volumizing Mascara",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "mascara"
+     ]
+    },
+    {
+     "brand": "rare beauty",
+     "title": "Perfect Strokes Universal Volumizing Mascara Mini",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "mascara"
+     ]
+    },
+    {
+     "brand": "Sigma Beauty",
+     "title": "Lash Icon Lengthening & Volumizing Tubing Mascara",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "mascara"
+     ]
+    },
+    {
+     "brand": "Fenty Beauty",
+     "title": "Hella Thicc Volumizing Mascara — Let'z Be Blunt",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "mascara"
+     ]
+    },
+    {
+     "brand": "Sigma Beauty",
+     "title": "Lash Icon Lengthening & Volumizing Tubing Mascara",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "mascara"
+     ]
+    },
+    {
+     "brand": "ILIA",
+     "title": "Fullest Volumizing Mascara",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "mascara"
+     ]
+    }
+   ],
    "relevance_deficit": 0,
    "acceptance_target": false,
    "true_gap_count": 0,
@@ -386,6 +765,8 @@
    "catalog_returned_avg": 0,
    "seed_relevant_avg": 0,
    "catalog_relevant_avg": 0,
+   "catalog_relevant_distinct_brands": 0,
+   "catalog_returns_last_clean_pass": [],
    "relevance_deficit": 0,
    "acceptance_target": false,
    "true_gap_count": 0,
@@ -402,7 +783,84 @@
    "seed_returned_avg": 5,
    "catalog_returned_avg": 8,
    "seed_relevant_avg": 0,
-   "catalog_relevant_avg": 8,
+   "catalog_relevant_avg": 6,
+   "catalog_relevant_distinct_brands": 4,
+   "catalog_returns_last_clean_pass": [
+    {
+     "brand": "Comfortzone",
+     "title": "Mascara",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "mascara"
+     ]
+    },
+    {
+     "brand": "ILIA",
+     "title": "Fullest Volumizing Mascara",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "mascara"
+     ]
+    },
+    {
+     "brand": "ILIA",
+     "title": "Limitless Lash Mascara",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "mascara"
+     ]
+    },
+    {
+     "brand": "ILIA",
+     "title": "Mascara is a Moment Set",
+     "grade": 1,
+     "grade_label": "partial",
+     "forms": [
+      "mascara",
+      "set_or_collection"
+     ]
+    },
+    {
+     "brand": "Kosas Cosmetics",
+     "title": "Soulgazer Mascara Ext",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "mascara"
+     ]
+    },
+    {
+     "brand": "Merit",
+     "title": "The Mascara Duo",
+     "grade": 1,
+     "grade_label": "partial",
+     "forms": [
+      "mascara",
+      "set_or_collection"
+     ]
+    },
+    {
+     "brand": "Missha",
+     "title": "4D Mascara",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "mascara"
+     ]
+    },
+    {
+     "brand": "Missha",
+     "title": "Ultra Powerproof Thin Mascara [Curling & Lengthening]",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "mascara"
+     ]
+    }
+   ],
    "relevance_deficit": 0,
    "acceptance_target": false,
    "true_gap_count": 0,
@@ -469,12 +927,14 @@
    "query": "睫毛膏",
    "bucket": "makeup_eye_bare_noun",
    "lang": "zh",
-   "passes_clean": 2,
+   "passes_clean": 3,
    "passes_dropped_as_stalled": 0,
    "seed_returned_avg": 0,
    "catalog_returned_avg": 0,
    "seed_relevant_avg": 0,
    "catalog_relevant_avg": 0,
+   "catalog_relevant_distinct_brands": 0,
+   "catalog_returns_last_clean_pass": [],
    "relevance_deficit": 0,
    "acceptance_target": false,
    "true_gap_count": 0,
@@ -491,7 +951,86 @@
    "seed_returned_avg": 8,
    "catalog_returned_avg": 8,
    "seed_relevant_avg": 0,
-   "catalog_relevant_avg": 1,
+   "catalog_relevant_avg": 7,
+   "catalog_relevant_distinct_brands": 6,
+   "catalog_returns_last_clean_pass": [
+    {
+     "brand": "Maybelline",
+     "title": "Instant Age Rewind Eraser Dark Circle Treatment Concealer - 095",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "concealer"
+     ]
+    },
+    {
+     "brand": "Dasique",
+     "title": "Pro Concealer Palette",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "eyeshadow",
+      "concealer"
+     ]
+    },
+    {
+     "brand": "Glossier",
+     "title": "Stretch Balm Concealer",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "concealer"
+     ]
+    },
+    {
+     "brand": "ILIA",
+     "title": "Skin Blur Serum Concealer",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "concealer",
+      "serum"
+     ]
+    },
+    {
+     "brand": "ILIA",
+     "title": "True Skin Serum Concealer - Sample",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "concealer",
+      "serum"
+     ]
+    },
+    {
+     "brand": "Saie",
+     "title": "Slip Tint Radiant All-Over Concealer",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "concealer"
+     ]
+    },
+    {
+     "brand": "Tower 28 Beauty",
+     "title": "Swipe Serum Concealer®",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "concealer",
+      "serum"
+     ]
+    },
+    {
+     "brand": "Oiad (US)",
+     "title": "Cover Perfecting Mirror-Brushed Concealer",
+     "grade": 0,
+     "grade_label": "irrelevant",
+     "forms": [
+      "tool"
+     ]
+    }
+   ],
    "relevance_deficit": 0,
    "acceptance_target": false,
    "true_gap_count": 0,
@@ -499,12 +1038,36 @@
    "substitutable_misses": [],
    "rejected_by_relevance": [
     {
+     "external_product_id": "ulta:a87305b9191cb279",
+     "brand": "Estée Lauder",
+     "title": "Advanced Night Repair Eye Gel-Cream for Dark Circles - 0.5 oz",
+     "grade": 0,
+     "grade_label": "irrelevant",
+     "forms": [
+      "moisturizer"
+     ],
+     "judgement": "no rubric form matched the product",
+     "missing_from_catalog_in_passes": "3/3"
+    },
+    {
      "external_product_id": "ext_918981bcc6d552cc2af0b535",
      "brand": "Olehenriksen",
      "title": "Banana Bright+ Eye Crème",
      "grade": 0,
      "grade_label": "irrelevant",
      "forms": [],
+     "judgement": "no rubric form matched the product",
+     "missing_from_catalog_in_passes": "3/3"
+    },
+    {
+     "external_product_id": "ulta:b54a43bbbb910104",
+     "brand": "The Ordinary",
+     "title": "Caffeine Solution 5% + EGCG Depuffing Eye Serum for Dark Circles",
+     "grade": 0,
+     "grade_label": "irrelevant",
+     "forms": [
+      "serum"
+     ],
      "judgement": "no rubric form matched the product",
      "missing_from_catalog_in_passes": "3/3"
     },
@@ -573,7 +1136,84 @@
    "seed_returned_avg": 8,
    "catalog_returned_avg": 8,
    "seed_relevant_avg": 4,
-   "catalog_relevant_avg": 7,
+   "catalog_relevant_avg": 6,
+   "catalog_relevant_distinct_brands": 1,
+   "catalog_returns_last_clean_pass": [
+    {
+     "brand": "TIRTIR Global",
+     "title": "Mask Fit Red Cushion",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "foundation"
+     ]
+    },
+    {
+     "brand": "Oiad (US)",
+     "title": "Pore Perfecting Mirror-Moon Cushion Foundation",
+     "grade": 0,
+     "grade_label": "irrelevant",
+     "forms": [
+      "tool"
+     ]
+    },
+    {
+     "brand": "TIRTIR Global",
+     "title": "Mask Fit AI Filter Cushion",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "foundation"
+     ]
+    },
+    {
+     "brand": "SKINTIFIC",
+     "title": "Glow Cushion & Serum Spray Set 2pcs",
+     "grade": 1,
+     "grade_label": "partial",
+     "forms": [
+      "foundation",
+      "serum",
+      "set_or_collection"
+     ]
+    },
+    {
+     "brand": "TIRTIR Global",
+     "title": "Mask Fit Cushion Refill",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "foundation"
+     ]
+    },
+    {
+     "brand": "TIRTIR Global",
+     "title": "Mask Fit Aura Cushion",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "foundation"
+     ]
+    },
+    {
+     "brand": "TIRTIR Global",
+     "title": "Mask Fit Red Cushion (Clearance)",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "foundation"
+     ]
+    },
+    {
+     "brand": "TIRTIR Global",
+     "title": "Mask Fit All Cover Cushion",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "foundation"
+     ]
+    }
+   ],
    "relevance_deficit": 0,
    "acceptance_target": false,
    "true_gap_count": 0,
@@ -675,7 +1315,85 @@
    "seed_returned_avg": 5,
    "catalog_returned_avg": 8,
    "seed_relevant_avg": 2,
-   "catalog_relevant_avg": 3,
+   "catalog_relevant_avg": 6,
+   "catalog_relevant_distinct_brands": 5,
+   "catalog_returns_last_clean_pass": [
+    {
+     "brand": "ILIA",
+     "title": "True Skin Serum Foundation",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "foundation",
+      "serum"
+     ]
+    },
+    {
+     "brand": "Saie",
+     "title": "Glowy Super Skin Tint Foundation",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "foundation"
+     ]
+    },
+    {
+     "brand": "Milktouch",
+     "title": "DEWY GLASS SKIN FOUNDATION",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "foundation"
+     ]
+    },
+    {
+     "brand": "kylie cosmetics",
+     "title": "Natural Blur Powder Foundation & Skin Tint Blurring Elixir Duo",
+     "grade": 1,
+     "grade_label": "partial",
+     "forms": [
+      "foundation",
+      "set_or_collection"
+     ]
+    },
+    {
+     "brand": "Glossier",
+     "title": "Stretch Fluid Foundation",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "foundation"
+     ]
+    },
+    {
+     "brand": "OBgE",
+     "title": "Natural Cover Foundation PRO",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "foundation"
+     ]
+    },
+    {
+     "brand": "OBgE",
+     "title": "[Upgraded] Natural Cover Foundation PRO",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "foundation"
+     ]
+    },
+    {
+     "brand": "Haroutine",
+     "title": "Foundation Glow Set",
+     "grade": 1,
+     "grade_label": "partial",
+     "forms": [
+      "foundation",
+      "set_or_collection"
+     ]
+    }
+   ],
    "relevance_deficit": 0,
    "acceptance_target": false,
    "true_gap_count": 0,
@@ -747,12 +1465,14 @@
    "query": "控油遮瑕粉底液",
    "bucket": "makeup_face",
    "lang": "zh",
-   "passes_clean": 2,
+   "passes_clean": 3,
    "passes_dropped_as_stalled": 0,
    "seed_returned_avg": 0,
    "catalog_returned_avg": 0,
    "seed_relevant_avg": 0,
    "catalog_relevant_avg": 0,
+   "catalog_relevant_distinct_brands": 0,
+   "catalog_returns_last_clean_pass": [],
    "relevance_deficit": 0,
    "acceptance_target": false,
    "true_gap_count": 0,
@@ -770,6 +1490,8 @@
    "catalog_returned_avg": 0,
    "seed_relevant_avg": 0,
    "catalog_relevant_avg": 0,
+   "catalog_relevant_distinct_brands": 0,
+   "catalog_returns_last_clean_pass": [],
    "relevance_deficit": 0,
    "acceptance_target": false,
    "true_gap_count": 0,
@@ -781,12 +1503,87 @@
    "query": "matte lipstick under $30",
    "bucket": "makeup_lip",
    "lang": "en",
-   "passes_clean": 1,
-   "passes_dropped_as_stalled": 2,
+   "passes_clean": 3,
+   "passes_dropped_as_stalled": 0,
    "seed_returned_avg": 1,
    "catalog_returned_avg": 8,
    "seed_relevant_avg": 0,
    "catalog_relevant_avg": 8,
+   "catalog_relevant_distinct_brands": 3,
+   "catalog_returns_last_clean_pass": [
+    {
+     "brand": "Fenty Beauty",
+     "title": "Fenty Icon The Case Semi-Matte Refillable Lipstick — Metallic Nude",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "lipstick"
+     ]
+    },
+    {
+     "brand": "Fenty Beauty",
+     "title": "Fenty Icon The Case Semi-Matte Refillable Lipstick — Red Edition",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "lipstick"
+     ]
+    },
+    {
+     "brand": "Kylie Cosmetics",
+     "title": "Matte Lipstick",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "lipstick"
+     ]
+    },
+    {
+     "brand": "Fenty Beauty",
+     "title": "Fenty Icon The Case Semi-Matte Refillable Lipstick — Matte Black",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "lipstick"
+     ]
+    },
+    {
+     "brand": "Rare Beauty",
+     "title": "Kind Words Matte Lipstick",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "lipstick"
+     ]
+    },
+    {
+     "brand": "Fenty Beauty",
+     "title": "Fenty Icon The Case Semi-Matte Refillable Lipstick — Navy Edition",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "lipstick"
+     ]
+    },
+    {
+     "brand": "Kylie Cosmetics",
+     "title": "Matte Liquid Lipstick",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "lipstick"
+     ]
+    },
+    {
+     "brand": "Fenty Beauty",
+     "title": "Fenty Icon The Case Semi-Matte Refillable Lipstick — Summatime Edition",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "lipstick"
+     ]
+    }
+   ],
    "relevance_deficit": 0,
    "acceptance_target": false,
    "true_gap_count": 0,
@@ -803,7 +1600,7 @@
       "lip_other"
      ],
      "judgement": "product form lip_other is adjacent to the query's target form",
-     "missing_from_catalog_in_passes": "1/1"
+     "missing_from_catalog_in_passes": "3/3"
     }
    ]
   },
@@ -811,12 +1608,87 @@
    "query": "nude lipstick everyday",
    "bucket": "makeup_lip",
    "lang": "en",
-   "passes_clean": 2,
+   "passes_clean": 3,
    "passes_dropped_as_stalled": 0,
    "seed_returned_avg": 0,
    "catalog_returned_avg": 8,
    "seed_relevant_avg": 0,
-   "catalog_relevant_avg": 5,
+   "catalog_relevant_avg": 8,
+   "catalog_relevant_distinct_brands": 7,
+   "catalog_returns_last_clean_pass": [
+    {
+     "brand": "Fenty Beauty",
+     "title": "Fenty Icon The Case Semi-Matte Refillable Lipstick — Metallic Nude",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "lipstick"
+     ]
+    },
+    {
+     "brand": "Clinique",
+     "title": "Almost Lipstick - Nude Honey",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "lipstick"
+     ]
+    },
+    {
+     "brand": "L'Oreal Paris",
+     "title": "Colour Riche Original Satin Lipstick - Fairest Nude",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "lipstick"
+     ]
+    },
+    {
+     "brand": "ILIA",
+     "title": "Color Block Lipstick",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "lipstick"
+     ]
+    },
+    {
+     "brand": "Merit",
+     "title": "Signature Lipstick",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "lipstick"
+     ]
+    },
+    {
+     "brand": "Heart Percent",
+     "title": "Heart Percent Dote On Mood Dewy Melting Lipstick",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "lipstick"
+     ]
+    },
+    {
+     "brand": "Muzigae Mansion",
+     "title": "MUZIGAE MANSION MOODWEAR BLUR LIPSTICK",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "lipstick"
+     ]
+    },
+    {
+     "brand": "Fenty Beauty",
+     "title": "Fenty Icon Velvet Liquid Lipstick — H.B.I.C.",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "lipstick"
+     ]
+    }
+   ],
    "relevance_deficit": 0,
    "acceptance_target": false,
    "true_gap_count": 0,
@@ -828,12 +1700,87 @@
    "query": "red lipstick long-lasting",
    "bucket": "makeup_lip",
    "lang": "en",
-   "passes_clean": 2,
+   "passes_clean": 3,
    "passes_dropped_as_stalled": 0,
    "seed_returned_avg": 8,
    "catalog_returned_avg": 8,
    "seed_relevant_avg": 0,
-   "catalog_relevant_avg": 6,
+   "catalog_relevant_avg": 8,
+   "catalog_relevant_distinct_brands": 5,
+   "catalog_returns_last_clean_pass": [
+    {
+     "brand": "Fenty Beauty",
+     "title": "Fenty Icon The Case Semi-Matte Refillable Lipstick — Red Edition",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "lipstick"
+     ]
+    },
+    {
+     "brand": "ILIA",
+     "title": "Color Block Lipstick",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "lipstick"
+     ]
+    },
+    {
+     "brand": "Merit",
+     "title": "Signature Lipstick",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "lipstick"
+     ]
+    },
+    {
+     "brand": "Heart Percent",
+     "title": "Heart Percent Dote On Mood Dewy Melting Lipstick",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "lipstick"
+     ]
+    },
+    {
+     "brand": "Muzigae Mansion",
+     "title": "MUZIGAE MANSION MOODWEAR BLUR LIPSTICK",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "lipstick"
+     ]
+    },
+    {
+     "brand": "Fenty Beauty",
+     "title": "Fenty Icon The Case Semi-Matte Refillable Lipstick — Metallic Nude",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "lipstick"
+     ]
+    },
+    {
+     "brand": "Fenty Beauty",
+     "title": "Fenty Icon Velvet Liquid Lipstick — H.B.I.C.",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "lipstick"
+     ]
+    },
+    {
+     "brand": "Fenty Beauty",
+     "title": "Fenty Icon Velvet Liquid Lipstick — Wicked Whine",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "lipstick"
+     ]
+    }
+   ],
    "relevance_deficit": 0,
    "acceptance_target": false,
    "true_gap_count": 0,
@@ -850,7 +1797,7 @@
       "cleanser"
      ],
      "judgement": "no rubric form matched the product",
-     "missing_from_catalog_in_passes": "2/2"
+     "missing_from_catalog_in_passes": "3/3"
     },
     {
      "external_product_id": "ext_332e0949ace181c1749e16e6",
@@ -862,7 +1809,7 @@
       "cleanser"
      ],
      "judgement": "no rubric form matched the product",
-     "missing_from_catalog_in_passes": "2/2"
+     "missing_from_catalog_in_passes": "3/3"
     },
     {
      "external_product_id": "ext_863f6f847c2b89f4f6bb4c79",
@@ -874,7 +1821,7 @@
       "moisturizer"
      ],
      "judgement": "no rubric form matched the product",
-     "missing_from_catalog_in_passes": "2/2"
+     "missing_from_catalog_in_passes": "3/3"
     },
     {
      "external_product_id": "ext_119f785907c2b90e5cfdaf43",
@@ -886,7 +1833,7 @@
       "serum"
      ],
      "judgement": "no rubric form matched the product",
-     "missing_from_catalog_in_passes": "2/2"
+     "missing_from_catalog_in_passes": "3/3"
     },
     {
      "external_product_id": "ext_06a3d186c9bae3e9f2e38a65",
@@ -898,7 +1845,7 @@
       "body_care"
      ],
      "judgement": "no rubric form matched the product",
-     "missing_from_catalog_in_passes": "2/2"
+     "missing_from_catalog_in_passes": "3/3"
     },
     {
      "external_product_id": "ext_6dfac1b57e6748969079805b",
@@ -910,7 +1857,7 @@
       "moisturizer"
      ],
      "judgement": "no rubric form matched the product",
-     "missing_from_catalog_in_passes": "2/2"
+     "missing_from_catalog_in_passes": "3/3"
     },
     {
      "external_product_id": "ext_5431dfb6427b84f0d3076a49",
@@ -920,7 +1867,7 @@
      "grade_label": "irrelevant",
      "forms": [],
      "judgement": "no rubric form matched the product",
-     "missing_from_catalog_in_passes": "2/2"
+     "missing_from_catalog_in_passes": "3/3"
     },
     {
      "external_product_id": "ext_ff7f4fcd1e538fce0891f1cd",
@@ -932,7 +1879,7 @@
       "lip_other"
      ],
      "judgement": "product form lip_other is adjacent to the query's target form",
-     "missing_from_catalog_in_passes": "2/2"
+     "missing_from_catalog_in_passes": "3/3"
     }
    ]
   },
@@ -946,6 +1893,8 @@
    "catalog_returned_avg": 0,
    "seed_relevant_avg": 0,
    "catalog_relevant_avg": 0,
+   "catalog_relevant_distinct_brands": 0,
+   "catalog_returns_last_clean_pass": [],
    "relevance_deficit": 0,
    "acceptance_target": false,
    "true_gap_count": 0,
@@ -963,6 +1912,8 @@
    "catalog_returned_avg": 0,
    "seed_relevant_avg": 0,
    "catalog_relevant_avg": 0,
+   "catalog_relevant_distinct_brands": 0,
+   "catalog_returns_last_clean_pass": [],
    "relevance_deficit": 0,
    "acceptance_target": false,
    "true_gap_count": 0,
@@ -980,6 +1931,8 @@
    "catalog_returned_avg": 0,
    "seed_relevant_avg": 0,
    "catalog_relevant_avg": 0,
+   "catalog_relevant_distinct_brands": 0,
+   "catalog_returns_last_clean_pass": [],
    "relevance_deficit": 0,
    "acceptance_target": false,
    "true_gap_count": 0,
@@ -991,12 +1944,87 @@
    "query": "lipstick",
    "bucket": "makeup_lip_bare_noun",
    "lang": "en",
-   "passes_clean": 1,
+   "passes_clean": 3,
    "passes_dropped_as_stalled": 0,
    "seed_returned_avg": 4,
    "catalog_returned_avg": 8,
    "seed_relevant_avg": 0,
    "catalog_relevant_avg": 8,
+   "catalog_relevant_distinct_brands": 5,
+   "catalog_returns_last_clean_pass": [
+    {
+     "brand": "ILIA",
+     "title": "Color Block Lipstick",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "lipstick"
+     ]
+    },
+    {
+     "brand": "Merit",
+     "title": "Signature Lipstick",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "lipstick"
+     ]
+    },
+    {
+     "brand": "Heart Percent",
+     "title": "Heart Percent Dote On Mood Dewy Melting Lipstick",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "lipstick"
+     ]
+    },
+    {
+     "brand": "Muzigae Mansion",
+     "title": "MUZIGAE MANSION MOODWEAR BLUR LIPSTICK",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "lipstick"
+     ]
+    },
+    {
+     "brand": "Fenty Beauty",
+     "title": "Fenty Icon The Case Semi-Matte Refillable Lipstick — Metallic Nude",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "lipstick"
+     ]
+    },
+    {
+     "brand": "Fenty Beauty",
+     "title": "Fenty Icon Velvet Liquid Lipstick — H.B.I.C.",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "lipstick"
+     ]
+    },
+    {
+     "brand": "Fenty Beauty",
+     "title": "Fenty Icon Velvet Liquid Lipstick — Wicked Whine",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "lipstick"
+     ]
+    },
+    {
+     "brand": "Fenty Beauty",
+     "title": "Slip Shine Sheer Shiny Lipstick — Cookies & Cocoa",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "lipstick"
+     ]
+    }
+   ],
    "relevance_deficit": 0,
    "acceptance_target": false,
    "true_gap_count": 0,
@@ -1013,7 +2041,7 @@
       "moisturizer"
      ],
      "judgement": "no rubric form matched the product",
-     "missing_from_catalog_in_passes": "1/1"
+     "missing_from_catalog_in_passes": "3/3"
     },
     {
      "external_product_id": "ext_ad7f85ce149b2626c9c890e3",
@@ -1025,7 +2053,7 @@
       "lip_other"
      ],
      "judgement": "product form lip_other is adjacent to the query's target form",
-     "missing_from_catalog_in_passes": "1/1"
+     "missing_from_catalog_in_passes": "3/3"
     },
     {
      "external_product_id": "ext_1249f6975246c43dca16bf93",
@@ -1037,7 +2065,7 @@
       "lip_other"
      ],
      "judgement": "product form lip_other is adjacent to the query's target form",
-     "missing_from_catalog_in_passes": "1/1"
+     "missing_from_catalog_in_passes": "3/3"
     },
     {
      "external_product_id": "ext_b0dab90da0bc8e1a26af4bd8",
@@ -1049,7 +2077,7 @@
       "lip_other"
      ],
      "judgement": "product form lip_other is adjacent to the query's target form",
-     "missing_from_catalog_in_passes": "1/1"
+     "missing_from_catalog_in_passes": "3/3"
     }
    ]
   },
@@ -1063,6 +2091,8 @@
    "catalog_returned_avg": 0,
    "seed_relevant_avg": 0,
    "catalog_relevant_avg": 0,
+   "catalog_relevant_distinct_brands": 0,
+   "catalog_returns_last_clean_pass": [],
    "relevance_deficit": 0,
    "acceptance_target": false,
    "true_gap_count": 0,
@@ -1080,6 +2110,8 @@
    "catalog_returned_avg": 0,
    "seed_relevant_avg": 0,
    "catalog_relevant_avg": 0,
+   "catalog_relevant_distinct_brands": 0,
+   "catalog_returns_last_clean_pass": [],
    "relevance_deficit": 0,
    "acceptance_target": false,
    "true_gap_count": 0,
@@ -1097,6 +2129,83 @@
    "catalog_returned_avg": 8,
    "seed_relevant_avg": 7,
    "catalog_relevant_avg": 6,
+   "catalog_relevant_distinct_brands": 4,
+   "catalog_returns_last_clean_pass": [
+    {
+     "brand": "Naturium",
+     "title": "Multi-Peptide Moisturizer",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "moisturizer"
+     ]
+    },
+    {
+     "brand": "ARENCIA",
+     "title": "Vitamin C Glow Booster Gel Cream, Lightweight Brightening Gel Moisturizer for Even Tone & Radiant Skin, 1.76 oz",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "serum",
+      "moisturizer"
+     ]
+    },
+    {
+     "brand": "COSRX",
+     "title": "AC Collection Lightweight Soothing Moisturizer",
+     "grade": 1,
+     "grade_label": "partial",
+     "forms": [
+      "moisturizer",
+      "set_or_collection"
+     ]
+    },
+    {
+     "brand": "Glossier",
+     "title": "Priming Moisturizer Balance",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "moisturizer"
+     ]
+    },
+    {
+     "brand": "Glossier",
+     "title": "Priming Moisturizer",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "moisturizer"
+     ]
+    },
+    {
+     "brand": "Glossier",
+     "title": "Priming Moisturizer Rich",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "moisturizer"
+     ]
+    },
+    {
+     "brand": "Merit",
+     "title": "Great Skin Moisturizer",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "moisturizer"
+     ]
+    },
+    {
+     "brand": "Saie",
+     "title": "Slip Tint™ Tinted Moisturizer",
+     "grade": 0,
+     "grade_label": "irrelevant",
+     "forms": [
+      "foundation"
+     ]
+    }
+   ],
    "relevance_deficit": 1,
    "acceptance_target": true,
    "true_gap_count": 7,
@@ -1213,12 +2322,88 @@
    "seed_returned_avg": 8,
    "catalog_returned_avg": 8,
    "seed_relevant_avg": 8,
-   "catalog_relevant_avg": 8,
-   "relevance_deficit": 0,
-   "acceptance_target": false,
-   "true_gap_count": 0,
-   "true_gaps": [],
-   "substitutable_misses": [
+   "catalog_relevant_avg": 6,
+   "catalog_relevant_distinct_brands": 4,
+   "catalog_returns_last_clean_pass": [
+    {
+     "brand": "Anua",
+     "title": "Invisible Matte Finish Sunscreen",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "sunscreen"
+     ]
+    },
+    {
+     "brand": "Anua",
+     "title": "Mineral Weightless Finish Sunscreen",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "sunscreen"
+     ]
+    },
+    {
+     "brand": "AXIS-Y",
+     "title": "Biome Double Defense Sunscreen",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "sunscreen"
+     ]
+    },
+    {
+     "brand": "AXIS-Y",
+     "title": "Complete No-Stress Physical Sunscreen V.3",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "sunscreen"
+     ]
+    },
+    {
+     "brand": "Beauty of Joseon",
+     "title": "All Day Sun Duo Sunscreen Set",
+     "grade": 1,
+     "grade_label": "partial",
+     "forms": [
+      "sunscreen",
+      "set_or_collection"
+     ]
+    },
+    {
+     "brand": "Beauty of Joseon",
+     "title": "Daily Relief Sunscreen SPF 40",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "sunscreen"
+     ]
+    },
+    {
+     "brand": "Beauty of Joseon",
+     "title": "Daily Relief Sunscreen Value Bundle",
+     "grade": 1,
+     "grade_label": "partial",
+     "forms": [
+      "sunscreen",
+      "set_or_collection"
+     ]
+    },
+    {
+     "brand": "Centellian24",
+     "title": "Madeca Derma Shield Vital Dewy Sunscreen SPF 50+ | 1.69 fl oz",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "sunscreen"
+     ]
+    }
+   ],
+   "relevance_deficit": 2,
+   "acceptance_target": true,
+   "true_gap_count": 8,
+   "true_gaps": [
     {
      "external_product_id": "ulta:44cf29ebff03af73",
      "brand": "COSRX",
@@ -1319,18 +2504,21 @@
      "missing_from_catalog_in_passes": "3/3"
     }
    ],
+   "substitutable_misses": [],
    "rejected_by_relevance": []
   },
   {
    "query": "精华",
    "bucket": "skincare_bare_noun",
    "lang": "zh",
-   "passes_clean": 2,
+   "passes_clean": 3,
    "passes_dropped_as_stalled": 0,
    "seed_returned_avg": 0,
    "catalog_returned_avg": 0,
    "seed_relevant_avg": 0,
    "catalog_relevant_avg": 0,
+   "catalog_relevant_distinct_brands": 0,
+   "catalog_returns_last_clean_pass": [],
    "relevance_deficit": 0,
    "acceptance_target": false,
    "true_gap_count": 0,
@@ -1348,6 +2536,8 @@
    "catalog_returned_avg": 0,
    "seed_relevant_avg": 0,
    "catalog_relevant_avg": 0,
+   "catalog_relevant_distinct_brands": 0,
+   "catalog_returns_last_clean_pass": [],
    "relevance_deficit": 0,
    "acceptance_target": false,
    "true_gap_count": 0,
@@ -1365,6 +2555,82 @@
    "catalog_returned_avg": 8,
    "seed_relevant_avg": 7,
    "catalog_relevant_avg": 8,
+   "catalog_relevant_distinct_brands": 6,
+   "catalog_returns_last_clean_pass": [
+    {
+     "brand": "Neutrogena",
+     "title": "Evenly Clear Acne Cleanser with Salicylic Acid",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "cleanser"
+     ]
+    },
+    {
+     "brand": "CeraVe",
+     "title": "Acne Control Cleanser - 8.0 oz",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "cleanser"
+     ]
+    },
+    {
+     "brand": "CeraVe",
+     "title": "Acne Clay-to-Foam Facial Cleanser",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "cleanser"
+     ]
+    },
+    {
+     "brand": "CeraVe",
+     "title": "Acne Foaming Cream Cleanser",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "cleanser",
+      "moisturizer"
+     ]
+    },
+    {
+     "brand": "TONYMOLY USA",
+     "title": "Azulene Acne Foam Cleanser",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "cleanser"
+     ]
+    },
+    {
+     "brand": "Arencia",
+     "title": "Arencia Fresh Green Rice Mochi Cleanser, Gentle Daily Cleanser for Acne-Prone Skin, 1.76oz / 4.23oz",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "cleanser"
+     ]
+    },
+    {
+     "brand": "celimax US",
+     "title": "The Real Noni Acne Bubble Cleanser",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "cleanser"
+     ]
+    },
+    {
+     "brand": "Murad",
+     "title": "Acne Control Clarifying Cleanser",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "cleanser"
+     ]
+    }
+   ],
    "relevance_deficit": 0,
    "acceptance_target": false,
    "true_gap_count": 0,
@@ -1433,6 +2699,83 @@
    "catalog_returned_avg": 8,
    "seed_relevant_avg": 8,
    "catalog_relevant_avg": 8,
+   "catalog_relevant_distinct_brands": 5,
+   "catalog_returns_last_clean_pass": [
+    {
+     "brand": "First Aid Beauty",
+     "title": "Ultra Gentle Cream-to-Foam Face Cleanser - 6.0 oz",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "cleanser",
+      "moisturizer"
+     ]
+    },
+    {
+     "brand": "LANEIGE US",
+     "title": "Water Bank Gentle Gel Cleanser",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "cleanser"
+     ]
+    },
+    {
+     "brand": "Anua",
+     "title": "8 Hyaluronic Acid Moisturizing Gentle Gel Cleanser",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "cleanser"
+     ]
+    },
+    {
+     "brand": "Anua",
+     "title": "8 Hyaluronic Acid Hydrating Gentle Foaming Cleanser",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "cleanser"
+     ]
+    },
+    {
+     "brand": "First Aid Beauty",
+     "title": "Ultra Gentle Cream-to-Foam Face Cleanser Jumbo",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "cleanser",
+      "moisturizer"
+     ]
+    },
+    {
+     "brand": "TONYMOLY USA",
+     "title": "Wonder Ceramide Mochi Gentle Foam Cleanser",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "cleanser"
+     ]
+    },
+    {
+     "brand": "Arencia",
+     "title": "Arencia Fresh Green Rice Mochi Cleanser, Gentle Daily Cleanser for Acne-Prone Skin, 1.76oz / 4.23oz",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "cleanser"
+     ]
+    },
+    {
+     "brand": "Arencia",
+     "title": "Arencia Calendula Rice Mochi Cleanser, Gentle Exfoliating Foam Wash for Sensitive, Dry, Rough Skin, 4.23oz / 120g",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "cleanser"
+     ]
+    }
+   ],
    "relevance_deficit": 0,
    "acceptance_target": false,
    "true_gap_count": 0,
@@ -1534,7 +2877,84 @@
    "seed_returned_avg": 8,
    "catalog_returned_avg": 8,
    "seed_relevant_avg": 6,
-   "catalog_relevant_avg": 8,
+   "catalog_relevant_avg": 7,
+   "catalog_relevant_distinct_brands": 5,
+   "catalog_returns_last_clean_pass": [
+    {
+     "brand": "COSRX",
+     "title": "The Ceramide Skin Barrier Moisturizer",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "moisturizer"
+     ]
+    },
+    {
+     "brand": "COSRX",
+     "title": "Ceramide Skin Barrier Moisturizer",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "moisturizer"
+     ]
+    },
+    {
+     "brand": "Arencia",
+     "title": "Eraser Soothing Cream, Lightweight Barrier Moisturizer with Centella & Ceramide NP for Hydration & Calm-Looking Skin, 1.69 fl. oz.",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "moisturizer"
+     ]
+    },
+    {
+     "brand": "Olehenriksen",
+     "title": "Après Skin Rich Rescue Barrier Moisturizer with Ceramides",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "moisturizer"
+     ]
+    },
+    {
+     "brand": "Murad",
+     "title": "Cellular Hydration Barrier Repair Cream Moisturizer",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "moisturizer"
+     ]
+    },
+    {
+     "brand": "Olehenriksen",
+     "title": "Moisture Barrier Duo Strength Trainer Moisturizer & Hydrabarrier Face Oil",
+     "grade": 1,
+     "grade_label": "partial",
+     "forms": [
+      "moisturizer",
+      "set_or_collection"
+     ]
+    },
+    {
+     "brand": "SKINTIFIC",
+     "title": "5% B5 Ceramide Barrier Relief Moisturizer",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "moisturizer"
+     ]
+    },
+    {
+     "brand": "ARENCIA",
+     "title": "Vitamin C Glow Booster Gel Cream, Lightweight Brightening Gel Moisturizer for Even Tone & Radiant Skin, 1.76 oz",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "serum",
+      "moisturizer"
+     ]
+    }
+   ],
    "relevance_deficit": 0,
    "acceptance_target": false,
    "true_gap_count": 0,
@@ -1646,11 +3066,100 @@
    "catalog_returned_avg": 8,
    "seed_relevant_avg": 5,
    "catalog_relevant_avg": 7,
+   "catalog_relevant_distinct_brands": 5,
+   "catalog_returns_last_clean_pass": [
+    {
+     "brand": "COSRX",
+     "title": "Ceramide Skin Barrier Moisturizer",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "moisturizer"
+     ]
+    },
+    {
+     "brand": "Olehenriksen",
+     "title": "Après Skin Rich Rescue Barrier Moisturizer with Ceramides",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "moisturizer"
+     ]
+    },
+    {
+     "brand": "Murad",
+     "title": "Cellular Hydration Barrier Repair Cream Moisturizer",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "moisturizer"
+     ]
+    },
+    {
+     "brand": "COSRX",
+     "title": "The Ceramide Skin Barrier Moisturizer",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "moisturizer"
+     ]
+    },
+    {
+     "brand": "Arencia",
+     "title": "Eraser Soothing Cream, Lightweight Barrier Moisturizer with Centella & Ceramide NP for Hydration & Calm-Looking Skin, 1.69 fl. oz.",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "moisturizer"
+     ]
+    },
+    {
+     "brand": "Murad",
+     "title": "Superactive Moisturizer SPF 50: Hydrating",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "sunscreen",
+      "moisturizer"
+     ]
+    },
+    {
+     "brand": "Olehenriksen",
+     "title": "Moisture Barrier Duo Strength Trainer Moisturizer & Hydrabarrier Face Oil",
+     "grade": 1,
+     "grade_label": "partial",
+     "forms": [
+      "moisturizer",
+      "set_or_collection"
+     ]
+    },
+    {
+     "brand": "First Aid Beauty",
+     "title": "Hydrating Dewy Gel Cream Moisturizer with Hyaluronic Acid + Ceramides",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "moisturizer"
+     ]
+    }
+   ],
    "relevance_deficit": 0,
    "acceptance_target": false,
    "true_gap_count": 0,
    "true_gaps": [],
    "substitutable_misses": [
+    {
+     "external_product_id": "ulta:7cd47ba7a283490c",
+     "brand": "TULA",
+     "title": "24-7 Moisture Fragrance Free Hydrating Day & Night Cream",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "moisturizer"
+     ],
+     "judgement": "product form moisturizer directly answers the query",
+     "missing_from_catalog_in_passes": "3/3"
+    },
     {
      "external_product_id": "ext_fc7af581263cef7037f9a3bc",
      "brand": "Naturium",
@@ -1724,8 +3233,86 @@
    "seed_returned_avg": 8,
    "catalog_returned_avg": 8,
    "seed_relevant_avg": 8,
-   "catalog_relevant_avg": 4,
-   "relevance_deficit": 4,
+   "catalog_relevant_avg": 7,
+   "catalog_relevant_distinct_brands": 6,
+   "catalog_returns_last_clean_pass": [
+    {
+     "brand": "The Ordinary",
+     "title": "Natural Moisturizing Factors + Beta Glucan Lightweight Gel Moisturizer",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "moisturizer"
+     ]
+    },
+    {
+     "brand": "ARENCIA",
+     "title": "Vitamin C Glow Booster Gel Cream, Lightweight Brightening Gel Moisturizer for Even Tone & Radiant Skin, 1.76 oz",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "serum",
+      "moisturizer"
+     ]
+    },
+    {
+     "brand": "Arencia",
+     "title": "Eraser Soothing Cream, Lightweight Barrier Moisturizer with Centella & Ceramide NP for Hydration & Calm-Looking Skin, 1.69 fl. oz.",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "moisturizer"
+     ]
+    },
+    {
+     "brand": "Olay",
+     "title": "Olay Super Cream with Sunscreen SPF 30, Ultra Lightweight SPF Face Moisturizer\n                        \n                                5 Skin Benefits In 1",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "sunscreen",
+      "moisturizer"
+     ]
+    },
+    {
+     "brand": "COSRX",
+     "title": "AC Collection Lightweight Soothing Moisturizer",
+     "grade": 1,
+     "grade_label": "partial",
+     "forms": [
+      "moisturizer",
+      "set_or_collection"
+     ]
+    },
+    {
+     "brand": "Merit",
+     "title": "Great Skin Moisturizer",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "moisturizer"
+     ]
+    },
+    {
+     "brand": "Dermalogica",
+     "title": "biolumin-c vitamin c gel moisturizer",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "moisturizer"
+     ]
+    },
+    {
+     "brand": "First Aid Beauty",
+     "title": "Hello FAB Coconut Skin Smoothie Priming Moisturizer",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "moisturizer"
+     ]
+    }
+   ],
+   "relevance_deficit": 1,
    "acceptance_target": true,
    "true_gap_count": 7,
    "true_gaps": [
@@ -1827,6 +3414,81 @@
    "catalog_returned_avg": 8,
    "seed_relevant_avg": 6,
    "catalog_relevant_avg": 8,
+   "catalog_relevant_distinct_brands": 6,
+   "catalog_returns_last_clean_pass": [
+    {
+     "brand": "The Ordinary",
+     "title": "Hyaluronic Acid 2% + B5 Hydrating Serum with Ceramides - Hydrating Serum 1.0 oz",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "serum"
+     ]
+    },
+    {
+     "brand": "heimish US",
+     "title": "RX HYALURONIC ACID 2% HYDRATING SERUM 35ml",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "serum"
+     ]
+    },
+    {
+     "brand": "Centellian24",
+     "title": "Revitalizing Serum | 1.69 fl oz | Hyaluronic Acid Seurm",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "serum"
+     ]
+    },
+    {
+     "brand": "Cos de BAHA",
+     "title": "Pure Hyaluronic Acid 1% Powder Solution Serum 10000ppm - Intense Hydration + Visibly Plumped Skin",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "serum"
+     ]
+    },
+    {
+     "brand": "Isntree",
+     "title": "Hyaluronic Acid Fresh Sun Serum 50ml",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "serum"
+     ]
+    },
+    {
+     "brand": "Isntree",
+     "title": "Ultra-Low Molecular Hyaluronic Acid Serum 50ml",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "serum"
+     ]
+    },
+    {
+     "brand": "Torriden",
+     "title": "[Amazon] DIVE-IN Hyaluronic Acid Serum",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "serum"
+     ]
+    },
+    {
+     "brand": "Torriden",
+     "title": "[Amazon] Hyaluronic Acid Serum",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "serum"
+     ]
+    }
+   ],
    "relevance_deficit": 0,
    "acceptance_target": false,
    "true_gap_count": 0,
@@ -1925,12 +3587,87 @@
    "query": "salicylic acid serum for acne and pores",
    "bucket": "skincare_serum",
    "lang": "en",
-   "passes_clean": 2,
-   "passes_dropped_as_stalled": 1,
+   "passes_clean": 3,
+   "passes_dropped_as_stalled": 0,
    "seed_returned_avg": 8,
    "catalog_returned_avg": 8,
    "seed_relevant_avg": 5,
-   "catalog_relevant_avg": 5,
+   "catalog_relevant_avg": 8,
+   "catalog_relevant_distinct_brands": 6,
+   "catalog_returns_last_clean_pass": [
+    {
+     "brand": "The Ordinary",
+     "title": "Salicylic Acid 2% Solution, Exfoliating Serum for Acne",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "serum"
+     ]
+    },
+    {
+     "brand": "The Ordinary",
+     "title": "Salicylic Acid 2% Anhydrous Solution, Gentle Exfoliating Serum for Blemishes",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "serum"
+     ]
+    },
+    {
+     "brand": "Cos de BAHA",
+     "title": "15% Azelaic Acid High-Strength Serum with MSM for Acne, Hyperpigmentation & Skin Clarity 30ml",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "serum"
+     ]
+    },
+    {
+     "brand": "KUNDAL",
+     "title": "NACIFIC Origin Red Salicylic Acid Serum 1.69 fl.oz",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "serum"
+     ]
+    },
+    {
+     "brand": "Naturium",
+     "title": "Salicylic Acid Serum 2%",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "serum"
+     ]
+    },
+    {
+     "brand": "Anua",
+     "title": "[Secret Deal] Azelaic Acid Redness Soothing Serum",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "serum"
+     ]
+    },
+    {
+     "brand": "Centellian24",
+     "title": "Madeca Azelaic Acid 10+ Calming Serum | 1.01 fl oz",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "serum"
+     ]
+    },
+    {
+     "brand": "Centellian24",
+     "title": "Revitalizing Serum | 1.69 fl oz | Hyaluronic Acid Seurm",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "serum"
+     ]
+    }
+   ],
    "relevance_deficit": 0,
    "acceptance_target": false,
    "true_gap_count": 0,
@@ -1946,7 +3683,7 @@
       "serum"
      ],
      "judgement": "product form serum directly answers the query",
-     "missing_from_catalog_in_passes": "2/2"
+     "missing_from_catalog_in_passes": "3/3"
     },
     {
      "external_product_id": "ext_fe0c55a05a505ad59ddd7f0c",
@@ -1958,7 +3695,7 @@
       "serum"
      ],
      "judgement": "product form serum directly answers the query",
-     "missing_from_catalog_in_passes": "2/2"
+     "missing_from_catalog_in_passes": "3/3"
     },
     {
      "external_product_id": "ext_d60e9219685d624c709918e8",
@@ -1970,10 +3707,20 @@
       "serum"
      ],
      "judgement": "product form serum directly answers the query",
-     "missing_from_catalog_in_passes": "2/2"
+     "missing_from_catalog_in_passes": "3/3"
     }
    ],
    "rejected_by_relevance": [
+    {
+     "external_product_id": "ulta:d29e14eff436f1f1",
+     "brand": "First Aid Beauty",
+     "title": "Acne Clearing Pads 2% Salicylic Acid Acne Treatment",
+     "grade": 0,
+     "grade_label": "irrelevant",
+     "forms": [],
+     "judgement": "no rubric form matched the product",
+     "missing_from_catalog_in_passes": "3/3"
+    },
     {
      "external_product_id": "ulta:96eaf0ef7d880d38",
      "brand": "Murad",
@@ -1984,7 +3731,7 @@
       "cleanser"
      ],
      "judgement": "no rubric form matched the product",
-     "missing_from_catalog_in_passes": "2/2"
+     "missing_from_catalog_in_passes": "3/3"
     },
     {
      "external_product_id": "ulta:2ca6616b801d7052",
@@ -1996,7 +3743,7 @@
       "cleanser"
      ],
      "judgement": "no rubric form matched the product",
-     "missing_from_catalog_in_passes": "2/2"
+     "missing_from_catalog_in_passes": "3/3"
     }
    ]
   },
@@ -2010,6 +3757,84 @@
    "catalog_returned_avg": 8,
    "seed_relevant_avg": 8,
    "catalog_relevant_avg": 8,
+   "catalog_relevant_distinct_brands": 7,
+   "catalog_returns_last_clean_pass": [
+    {
+     "brand": "Barr Cosmetics",
+     "title": "Centella Soothing Sun Essence 50ml (SPF 50+ PA++++)",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "sunscreen",
+      "serum"
+     ]
+    },
+    {
+     "brand": "Beauty of Joseon",
+     "title": "Hydra Shield Body Sun Lotion SPF 50+",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "sunscreen",
+      "moisturizer"
+     ]
+    },
+    {
+     "brand": "Centellian24",
+     "title": "Madeca Derma Shield Vital Airy Sun Stick SPF 50+ | 0.77 oz",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "sunscreen"
+     ]
+    },
+    {
+     "brand": "Centellian24",
+     "title": "Madeca Derma Shield Vital Dewy Sunscreen SPF 50+ | 1.69 fl oz",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "sunscreen"
+     ]
+    },
+    {
+     "brand": "COSRX",
+     "title": "COSRX AIRY-LIGHT OIL CONTROL CLEAR SUNSCREEN STICK SPF 50",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "sunscreen"
+     ]
+    },
+    {
+     "brand": "ILIA",
+     "title": "Sun Serum Mineral Sunscreen SPF 50",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "sunscreen",
+      "serum"
+     ]
+    },
+    {
+     "brand": "Missha",
+     "title": "All Around Vita C Sunscreen (SPF 50)",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "sunscreen"
+     ]
+    },
+    {
+     "brand": "Supergoop!",
+     "title": "Dewscreen Hydrating Primer SPF 50",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "sunscreen"
+     ]
+    }
+   ],
    "relevance_deficit": 0,
    "acceptance_target": false,
    "true_gap_count": 0,
@@ -2127,6 +3952,8 @@
    "catalog_returned_avg": 0,
    "seed_relevant_avg": 0,
    "catalog_relevant_avg": 0,
+   "catalog_relevant_distinct_brands": 0,
+   "catalog_returns_last_clean_pass": [],
    "relevance_deficit": 0,
    "acceptance_target": false,
    "true_gap_count": 0,
