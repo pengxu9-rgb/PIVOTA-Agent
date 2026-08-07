@@ -13,10 +13,12 @@
  *   2. The matching key (retailerOfferIdentity) is never used as a content key.
  */
 
+const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 
 const ck = require('../src/services/contentKey');
+const table = require('../src/services/contentKeyUnicodeTable');
 const identity = require('../src/services/retailerOfferIdentity');
 
 const CASES = JSON.parse(
@@ -92,6 +94,26 @@ describe('port equivalence where JS has no equivalent property (#1938 review)', 
     expect(ck.normalizeTitle('a\u00a0b')).toBe('a b'); // NBSP: both agree
   });
 
+  test('\\p{N} means ALL numbers, not just decimal digits', () => {
+    // Python's \w is isalnum(), which covers Nl and No as well as Nd. Narrowing to
+    // \p{Nd} survived every other test. NFKD folds most of these to Nd first
+    // (Ⅻ->XII, ½->1⁄2, ①->1); U+3007 IDEOGRAPHIC NUMBER ZERO does not, and is the
+    // realistic one for a CJK catalogue.
+    expect(ck.normalizeTitle('〇 〇 Cream')).toBe('〇 〇 cream');
+    expect(ck.normalizeTitle('፩፪ Serum')).toBe('፩፪ serum');
+    expect(ck.normalizeTitle('Brand ➓ Pack')).toBe('brand ➓ pack');
+  });
+
+  test('the suffix walk survives whitespace RUNS between stacked suffixes', () => {
+    // Every other suffix case uses single ASCII spaces, so a pythonSplit that emitted
+    // empty tokens passed: the empty string is not a suffix token, so the `while` loop
+    // stopped early and left "inc." on the brand. Needs two stacked suffixes with a
+    // run between them to expose.
+    expect(ck.normalizeBrand('Glow Recipe Inc.  Ltd.')).toBe('glow recipe');
+    expect(ck.normalizeBrand('Glow Recipe Inc.  Ltd.')).toBe('glow recipe');
+    expect(ck.normalizeBrand('  Glow Recipe  ')).toBe('glow recipe');
+  });
+
   test('every corporate suffix token is exercised, not just Inc.', () => {
     // The suffix walk is the likeliest place someone edits this module and was its
     // least-covered corner — only `Inc.` had a case, so dropping `company` from the
@@ -112,6 +134,78 @@ describe('port equivalence where JS has no equivalent property (#1938 review)', 
     // different Python moves keys for newly-assigned codepoints; that has to be a
     // deliberate, visible change rather than a quiet re-key.
     expect(ck.PYTHON_UNICODE_VERSION).toBe('14.0.0');
+  });
+
+  test("...and so is NODE's Unicode version, which is the other half of the skew", () => {
+    // The tables come from Python's Unicode; \p{L}, \p{N}, \p{Nd}, NFKD and
+    // toLowerCase all come from Node's ICU. Asserting only the Python side left the
+    // Node side able to drift silently on a runtime upgrade — the same failure this
+    // module exists to prevent, pointed at the other runtime. Measured skew at these
+    // two versions: 10,301 codepoints assigned in ICU 16.0 but Cn in Python 14.0,
+    // none of them in Latin, Kana, CJK URO, Hangul, Thai, Devanagari or Arabic.
+    expect(process.versions.unicode).toBe('16.0');
+  });
+});
+
+describe('the generated Unicode table is pinned as a whole, not sampled', () => {
+  // src/services/contentKeyUnicodeTable.js is the highest-leverage file in this change
+  // and was its least defended: any edit re-keys production silently. Spot-checks
+  // cannot cover it — 912 combining codepoints and 29 whitespace codepoints, of which
+  // the behavioural tests above pin only a handful. Mutation testing found three
+  // classes of silent edit that survived every other test:
+  //   - `cp <= end` -> `cp < end` in the range expansion, which drops U+309A and
+  //     re-keys every Japanese title containing パ ピ プ ペ ポ
+  //   - deleting U+3000 IDEOGRAPHIC SPACE, the standard word separator in Japanese
+  //     product titles
+  //   - truncating a single combining range, e.g. Thai [0x0e38,0x0e3a]
+  // A digest over the whole table catches all three, and anything else like them.
+  const DIGEST = '501c0dc38492f23561b665449a16db75b7ae68a08bbaba91ed399840fe9f9953';
+
+  function tableDigest() {
+    const canonical = JSON.stringify({
+      v: table.PYTHON_UNICODE_VERSION,
+      r: table.NONZERO_COMBINING_RANGES,
+      w: Array.from(table.PYTHON_WHITESPACE).sort((a, b) => a - b),
+    });
+    return crypto.createHash('sha256').update(canonical).digest('hex');
+  }
+
+  test('the table content is exactly what was generated from the authority', () => {
+    expect(tableDigest()).toBe(DIGEST);
+  });
+
+  test('the shape is what the generator reported, so a digest bump is reviewable', () => {
+    const covered = table.NONZERO_COMBINING_RANGES.reduce((n, [a, b]) => n + b - a + 1, 0);
+    expect(table.NONZERO_COMBINING_RANGES).toHaveLength(188);
+    expect(covered).toBe(912);
+    expect(table.PYTHON_WHITESPACE.size).toBe(29);
+  });
+
+  test('the range EXPANSION is inclusive at both ends of every range', () => {
+    // `cp <= end` vs `cp < end` is invisible to a digest — the data is unchanged, the
+    // reader is wrong. Probe the last codepoint of every range, which is exactly what
+    // an off-by-one drops.
+    for (const [start, end] of table.NONZERO_COMBINING_RANGES) {
+      expect(table.hasNonzeroCombiningClass(start)).toBe(true);
+      expect(table.hasNonzeroCombiningClass(end)).toBe(true);
+      expect(table.hasNonzeroCombiningClass(start - 1)).toBe(false);
+      expect(table.hasNonzeroCombiningClass(end + 1)).toBe(false);
+    }
+  });
+
+  test('every whitespace codepoint in the table actually behaves as a separator', () => {
+    // Pins all 29, not the 4 the behavioural tests happen to name. U+3000 is the one
+    // that matters commercially; the rest are here so none of them is special.
+    for (const cp of table.PYTHON_WHITESPACE) {
+      const ws = String.fromCodePoint(cp);
+      expect(table.isPythonWhitespace(cp)).toBe(true);
+      expect(ck.normalizeBrand(`Glow${ws}Recipe`)).toBe('glow recipe');
+      expect(ck.normalizeTitle(`a${ws}b`)).toBe('a b');
+    }
+  });
+
+  test('U+FEFF is NOT whitespace here, however much JS thinks it is', () => {
+    expect(table.isPythonWhitespace(0xfeff)).toBe(false);
   });
 });
 
