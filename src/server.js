@@ -646,8 +646,10 @@ const PIVOT_BEAUTY_MAINLINE_TOKEN_MATCH_ENABLED = parseBooleanEnv(
 // TEXT MODE ONLY, BY CONSTRUCTION. Under a category prefix the helper takes the
 // category branch and discards the text WHERE entirely, so this option has
 // nothing to act on: generated SQL and params are byte-identical with it on and
-// off (asserted in canonical_catalog_search.test.js). It is therefore free for
-// bucket-mode traffic and cannot regress it.
+// off — asserted in tests/find_products_multi_mainline_sargable.test.js, across
+// plain / verticalSearch / brandFilter+merchantId+non-US-market shapes, with a
+// liveness guard so the assertions cannot pass by never electing the lane. It
+// is therefore free for bucket-mode traffic and cannot regress it.
 //
 // Prod EXPLAIN ANALYZE 2026-08-07, text mode: 2798/2975ms -> 850/836ms, a 3.4x
 // cut. That win exists against production AS IT STANDS — it is not created by
@@ -662,18 +664,37 @@ const PIVOT_BEAUTY_MAINLINE_TOKEN_MATCH_ENABLED = parseBooleanEnv(
 // arms. The first two are near-dead for natural language. The third is NOT:
 // the helper records bare "glycerin" losing 22 of 25 rows when those arms went
 // away with the recall_doc arm off. recall_doc is what covers them, and it is
-// enabled in prod — but that parity run was for the INGREDIENT lane's call
-// shape, which is not this one.
+// enabled in prod.
 //
-// So it was re-measured on the MAINLINE's shape (includeSkuOffers, market
-// scoped), prod 2026-08-07, over 12 text-mode queries — 6 of them carrying an
-// ingredient signal so verticalSearch is on and the dropped catalog_skus arms
-// are live. Result: IDENTICAL rows and IDENTICAL order on every query, zero
-// lost, zero gained, and every query faster. The helper's own guard still
-// applies underneath: the opt-in is honored only while the recall_doc arm is
-// on, so a flag-off environment silently falls back to the complete WHERE
-// rather than serving a lossy one.
+// The ingredient lane already ran a parity pass, but it does not transfer —
+// and NOT for the reason first assumed. Its CALL SHAPE is near-identical to
+// this one (the only differing arg, includeSkuOffers, feeds the outer LATERAL
+// and never touches the candidate WHERE; generated WHERE + params are
+// byte-identical across it). What differs is the QUERY POPULATION each lane
+// sees: this lane serves category-phrased and brand-phrased beauty searches,
+// the ingredient lane serves ingredient-anchored ones.
 //
+// So it was re-measured on this lane's own traffic shapes, prod 2026-08-07,
+// over 18 text-mode queries in two cohorts:
+//   * 12 multi-token (6 carrying an ingredient signal, so verticalSearch is on
+//     and the dropped catalog_skus arms are live),
+//   * 6 SINGLE-significant-token — bare brands (laneige, cosrx, anua) and bare
+//     actives (glycerin, retinol). This cohort is the sharp one: tokenMatch
+//     needs >= 2 tokens, so tokenWhere is EMPTY and the WHERE collapses to
+//     title/brand + recall_doc — structurally the 22-of-25 glycerin shape. It
+//     also covers pools BELOW the 192 candidate cut (laneige 27, anua 75,
+//     cosrx 159), where a loss would actually be visible rather than masked by
+//     saturation.
+// Result across all 18: IDENTICAL rows and IDENTICAL order, zero lost, zero
+// gained. Bare "glycerin" itself: 192 -> 192, identical.
+//
+// The helper's own guard still applies underneath: the opt-in is honored only
+// while tokenMatch AND the recall_doc arm are on, so a flag-off environment
+// silently falls back to the complete WHERE rather than serving a lossy one.
+//
+// FLIP ORDER MATTERS. This flag is INERT unless
+// PIVOT_BEAUTY_MAINLINE_TOKEN_MATCH_ENABLED is also on (see citableSargableLane
+// in canonicalCatalogSearch.js) — enabling this one alone changes nothing.
 // Default off; flip after soak.
 const PIVOT_BEAUTY_MAINLINE_SARGABLE_TEXT_WHERE_ENABLED = parseBooleanEnv(
   process.env.PIVOT_BEAUTY_MAINLINE_SARGABLE_TEXT_WHERE_ENABLED,
@@ -22117,16 +22138,24 @@ async function searchBeautyExternalSeedProductsMainline({
     // would keep reporting true if that arg ever becomes conditional again,
     // which is exactly the drift the ingredient lane's stamp warns about.
     canonical_token_match: PIVOT_BEAUTY_MAINLINE_TOKEN_MATCH_ENABLED,
-    // #1935: the EFFECTIVE sargable state, not the requested opt-in. The helper
-    // honors sargableTextWhere only while tokenMatch is on AND the recall_doc
-    // arm is enabled (that arm is what covers the rows the dropped catalog_skus
-    // arms would otherwise recall), so a literal `true` here would lie in any
-    // environment where either is off — the same trap the ingredient lane's
-    // stamp calls out. Deploy verification must see what actually ran.
+    // #1935: the EFFECTIVE sargable state FOR THIS SEARCH, not the requested
+    // opt-in. Three env prerequisites plus one per-request condition:
+    //   * the helper honors sargableTextWhere only while tokenMatch is on AND
+    //     the recall_doc arm is enabled (that arm is what covers the rows the
+    //     dropped catalog_skus arms would otherwise recall), so a literal
+    //     `true` would lie wherever either is off;
+    //   * and under a category prefix the text WHERE is discarded entirely, so
+    //     the option did nothing for THIS request no matter how it is flagged.
+    // The prefix term is not cosmetic: ~70% of beauty searches resolve to a
+    // bucket, so without it this field reports true for the whole lane and the
+    // soak cannot be sliced to the ~30% actually affected — which is precisely
+    // the "must see what actually ran" failure the ingredient lane's stamp
+    // warns about, reintroduced one level up.
     canonical_sargable_text_where:
       PIVOT_BEAUTY_MAINLINE_SARGABLE_TEXT_WHERE_ENABLED &&
       PIVOT_BEAUTY_MAINLINE_TOKEN_MATCH_ENABLED &&
-      isCanonicalRecallDocMatchEnabled(),
+      isCanonicalRecallDocMatchEnabled() &&
+      !canonicalCategoryPathPrefix,
     ...(canonicalQueryText !== queryText ? { canonical_recall_query_text: canonicalQueryText } : {}),
     canonical_duration_ms: Math.max(0, Number(canonicalResult?.duration_ms || 0) || 0),
     query_text: queryText,
