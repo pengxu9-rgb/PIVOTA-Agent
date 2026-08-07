@@ -270,6 +270,12 @@ function mainlineLaneConfig(env = process.env) {
 // the authoritative form vocabulary. Over-inclusion on the QUERY side is still
 // unsafe (see "gel" and "fragrance" above); the two sides are separate.
 const PRODUCT_FORM_TITLE_PATTERNS = new Map([
+  // SCOPE: only forms the acceptance corpus actually exercises. 18 further
+  // entries (toner, mask, essence, blush, primer, shampoo, ...) were removed
+  // rather than shipped unmeasured — this corpus cannot falsify them, and the
+  // one that was checked misfired: 'mask' boosted six TIRTIR cushion
+  // foundations, whose line is literally titled "Mask Fit Red Cushion". Adding
+  // a form here should come with a query that exercises it.
   // skincare — query word and title word coincide
   ['cleanser', ['cleanser']],
   // Widened toward FORM_PATTERNS in the rubric: "1025 Dokdo Cream" and
@@ -277,9 +283,6 @@ const PRODUCT_FORM_TITLE_PATTERNS = new Map([
   ['moisturizer', ['moisturizer', 'moisturiser', 'moisture cream', 'water gel', 'gel cream', 'lotion', 'emulsion']],
   ['moisturiser', ['moisturizer', 'moisturiser', 'moisture cream', 'water gel', 'gel cream', 'lotion', 'emulsion']],
   ['serum', ['serum', 'ampoule']],
-  ['toner', ['toner']],
-  ['essence', ['essence']],
-  ['ampoule', ['ampoule']],
   // NOT 'spf': it is stamped across complexion titles ("Tinted Moisturizer
   // SPF 30", "Flawless Foundation SPF 15"), so it would boost foundations for
   // a sunscreen query. Per the monotonicity rule, under-include.
@@ -287,32 +290,24 @@ const PRODUCT_FORM_TITLE_PATTERNS = new Map([
   // nouns the rubric recognises are in: "Airy Sun Stick SPF 50+" is a
   // sunscreen whose title never says "sunscreen".
   ['sunscreen', ['sunscreen', 'sun cream', 'sun stick', 'sun milk', 'sun fluid', 'uv protector', 'uv shield']],
-  ['mask', ['mask']],
-  ['exfoliator', ['exfoliator', 'exfoliant']],
-  ['scrub', ['scrub']],
   // makeup
   ['lipstick', ['lipstick']],
-  ['lipgloss', ['lip gloss', 'lipgloss']],
   ['mascara', ['mascara']],
   ['eyeshadow', ['eyeshadow', 'eye shadow']],
-  ['eyeliner', ['eyeliner', 'eye liner']],
   ['foundation', ['foundation']],
   ['concealer', ['concealer', 'corrector']],
-  ['blush', ['blush']],
-  ['bronzer', ['bronzer']],
-  ['highlighter', ['highlighter']],
-  ['primer', ['primer']],
   ['palette', ['palette']],
   ['cushion', ['cushion']],
   // fragrance — query vocabulary and title vocabulary diverge; see above
-  ['fragrance', ['parfum', 'cologne', 'perfume']],
-  ['perfume', ['parfum', 'perfume', 'cologne']],
-  ['parfum', ['parfum', 'perfume']],
+  // 'perfume' is NOT a title pattern. Wearable fragrance is titled "Eau de
+  // Parfum"; the titles that literally say "Perfume" are a body-cream line and
+  // a reed diffuser ("Perfume Diffuser 3 set"). Including it ranked those
+  // above Tom Ford. Same lesson as 'fragrance', one level down.
+  ['fragrance', ['parfum', 'cologne']],
+  ['perfume', ['parfum', 'cologne']],
+  ['parfum', ['parfum', 'cologne']],
   ['cologne', ['cologne', 'parfum']],
   // hair / body
-  ['shampoo', ['shampoo']],
-  ['conditioner', ['conditioner']],
-  ['deodorant', ['deodorant']],
 ]);
 
 // ADR-020 / issue #1927: multi-product set diversity.
@@ -1065,8 +1060,20 @@ async function fetchCanonicalChainRows(args = {}) {
         // form word but is a tool, and "Cushion Puff Applicator" likewise. The
         // relevance rubric has a dedicated `tool` form for exactly these; this
         // is its SQL counterpart.
-        params.push(`\\y(brush|applicator|sponge|puff|tweezer|tools?)\\y`);
+        // Excluded outright: implements, and anything for a surface other than
+        // the face. Both mirror suppression rules the relevance rubric already
+        // applies (`tool`, and NON_FACE_FORMS); the SQL arm had neither, so it
+        // scored "TIELA Perfume Nourishing Body Cream" at token 25 + form 60 =
+        // 85 against Tom Ford "Lost Cherry Eau de Parfum" at 60 — ranking body
+        // cream ABOVE the eau de parfum on a perfume query. Plurals matter:
+        // "Foundation Brushes Set" collected the boost while "Foundation
+        // Brush" did not.
+        params.push(
+          `\\y(brushe?s?|applicators?|sponges?|puffs?|tweezers?|gua ?sha|massagers?|spatulas?|mirrors?|tools?)\\y`,
+        );
         const toolBind = `$${params.length}`;
+        params.push(`\\y(body|hand|hands|foot|feet|hair|beard|scalp|shower)\\y`);
+        const surfaceBind = `$${params.length}`;
         // MULTI-PRODUCT SETS ARE EXCLUDED, and this is load-bearing rather than
         // tidy. #1927's head cap (applyMultiProductSetTopCap) can only swap a
         // set with a single of EQUAL rank_score — it is tie-group scoped by
@@ -1081,6 +1088,7 @@ async function fetchCanonicalChainRows(args = {}) {
         v2Arms.push(
           `CASE WHEN LOWER(COALESCE(p.title, '')) ~ ${formBind}\n` +
             `            AND LOWER(COALESCE(p.title, '')) !~ ${toolBind}\n` +
+            `            AND LOWER(COALESCE(p.title, '')) !~ ${surfaceBind}\n` +
             `            ${setExclusion}  THEN  60 ELSE 0 END`,
         );
       }

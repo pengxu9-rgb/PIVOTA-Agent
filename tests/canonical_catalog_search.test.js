@@ -1650,7 +1650,7 @@ describe('canonicalCatalogSearch product-form agreement (ADR-020 phase 1, flag-g
     // Purely additive: one form-pattern bind and one tool-exclusion bind.
     expect(formArmBinds(on).form).toContain('moisturizer');
     expect(formArmBinds(on).form).toMatch(/^\\y\(.+\)\\y$/);
-    expect(on.params.length).toBe(off.params.length + 2);
+    expect(on.params.length).toBe(off.params.length + 3); // form + tool + surface
   });
 
   test('fires only under rank v2 — the legacy arm stays byte-identical', async () => {
@@ -1687,7 +1687,9 @@ describe('canonicalCatalogSearch product-form agreement (ADR-020 phase 1, flag-g
       });
     }
     expect(__internal.PRODUCT_FORM_TITLE_PATTERNS.has('moisturizer')).toBe(true);
-    expect(__internal.PRODUCT_FORM_TITLE_PATTERNS.has('mask')).toBe(true);
+    // 'mask' was REMOVED: it boosted six TIRTIR "Mask Fit ... Cushion"
+    // foundations, and no corpus query exercises it.
+    expect(__internal.PRODUCT_FORM_TITLE_PATTERNS.has('mask')).toBe(false);
   });
 
   test('a query naming no product form emits no arm (monotone: never a penalty)', async () => {
@@ -1709,7 +1711,7 @@ describe('canonicalCatalogSearch product-form agreement (ADR-020 phase 1, flag-g
     process.env.CANONICAL_CATALOG_RANK_V2 = 'enabled';
     process.env.CANONICAL_CATALOG_FORM_AGREEMENT = 'enabled';
     const binds = formArmBinds(await runQuery('woody fragrance under $80'));
-    expect(binds.form).toBe('\\y(parfum|cologne|perfume)\\y');
+    expect(binds.form).toBe('\\y(parfum|cologne)\\y');
     // The query word itself must never be a title pattern here.
     expect(binds.form).not.toContain('fragrance');
   });
@@ -1725,9 +1727,9 @@ describe('canonicalCatalogSearch product-form agreement (ADR-020 phase 1, flag-g
   test('multiple form nouns in one query all contribute (OR, not AND)', async () => {
     process.env.CANONICAL_CATALOG_RANK_V2 = 'enabled';
     process.env.CANONICAL_CATALOG_FORM_AGREEMENT = 'enabled';
-    const binds = formArmBinds(await runQuery('cleanser and toner set'));
-    expect(binds.form).toContain('cleanser');
-    expect(binds.form).toContain('toner');
+    const binds = formArmBinds(await runQuery('lipstick and mascara'));
+    expect(binds.form).toContain('lipstick');
+    expect(binds.form).toContain('mascara');
     expect(binds.form).toContain('|');
   });
 
@@ -1768,17 +1770,14 @@ describe('canonicalCatalogSearch product-form agreement (ADR-020 phase 1, flag-g
     // harness could never have falsified it.
     process.env.CANONICAL_CATALOG_RANK_V2 = 'enabled';
     process.env.CANONICAL_CATALOG_FORM_AGREEMENT = 'enabled';
-    const maskRe = new RegExp(
-      formArmBinds(await runQuery('sheet mask for hydration')).form.replace(/\\y/g, '\\b'),
-    );
-    expect(maskRe.test('damask rose hydrating toner')).toBe(false);
-    expect(maskRe.test('heartleaf soothing gel mask')).toBe(true);
-
     const perfumeRe = new RegExp(
       formArmBinds(await runQuery('vanilla perfume')).form.replace(/\\y/g, '\\b'),
     );
     expect(perfumeRe.test('perfumed body lotion')).toBe(false);
     expect(perfumeRe.test('tobacco vanille eau de parfum')).toBe(true);
+    // 'perfume' is not a title pattern at all now — the titles that say
+    // "Perfume" are a body-cream line and a reed diffuser.
+    expect(perfumeRe.test('perfume nourishing body cream pure')).toBe(false);
   });
 
   test('"spf" is not a sunscreen title pattern — it is stamped across complexion products', async () => {
@@ -1845,7 +1844,7 @@ describe('canonicalCatalogSearch product-form agreement (ADR-020 phase 1, flag-g
     expect(f(['moisturizer,'])).toEqual(M);
     expect(f(['moisturizer.'])).toEqual(M);
     expect(f(['moisturizers'])).toEqual(M);
-    expect(f(['masks'])).toEqual(['mask']);
+    expect(f(['lipsticks'])).toEqual(['lipstick']);
     expect(f(['glow', 'radiance'])).toEqual([]);
   });
 
