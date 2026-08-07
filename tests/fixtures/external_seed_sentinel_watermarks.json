@@ -6,8 +6,8 @@
  },
  "catalog_products:catalog_enrichment_agent_v1": {
   "watermark": 2175,
-  "mode": "report",
-  "note": "Path C still mints the sentinel until the retailer-model writer (W2) lands. Flip to enforce IN THE SAME PR as W2."
+  "mode": "enforce",
+  "note": "Path C mints the seller of record as of pivota-backend PR #1686 (W2, deployed 2026-08-07); this lane may only shrink from here (R3 drains it). Flipped report->enforce per the W2 deploy plan."
  },
  "seeds_missing_seller_ref": {
   "watermark": 2,
