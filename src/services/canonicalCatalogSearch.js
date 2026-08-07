@@ -217,8 +217,17 @@ const { parseBooleanEnv } = require('../api/gateway/access/invokeAuthEmergencyFa
 
 function mainlineLaneConfig(env = process.env) {
   return {
-    // Same parser AND same fallback as src/server.js.
+    // Same parser AND same fallback as src/server.js for each.
     tokenMatch: parseBooleanEnv(env.PIVOT_BEAUTY_MAINLINE_TOKEN_MATCH_ENABLED, false),
+    // #1935: the sargable text WHERE. Added here within hours of landing on the
+    // mainline, which is the point — this helper exists because that lag is
+    // where the instrument silently stops measuring the system. The sargable
+    // form DROPS three WHERE arms, so it changes recall, not just plan shape:
+    // a harness without it measures a different candidate set.
+    sargableTextWhere: parseBooleanEnv(
+      env.PIVOT_BEAUTY_MAINLINE_SARGABLE_TEXT_WHERE_ENABLED,
+      false,
+    ),
   };
 }
 

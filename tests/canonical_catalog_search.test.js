@@ -1831,7 +1831,23 @@ describe('canonicalCatalogSearch product-form agreement (ADR-020 phase 1, flag-g
         v,
         lane: mainlineLaneConfig({ PIVOT_BEAUTY_MAINLINE_TOKEN_MATCH_ENABLED: v }).tokenMatch,
       }).toEqual({ v, lane: parseBooleanEnv(v, false) });
+      expect({
+        v,
+        lane: mainlineLaneConfig({ PIVOT_BEAUTY_MAINLINE_SARGABLE_TEXT_WHERE_ENABLED: v })
+          .sargableTextWhere,
+      }).toEqual({ v, lane: parseBooleanEnv(v, false) });
     }
+  });
+
+  test('mainlineLaneConfig carries every flag-derived param the mainline passes', () => {
+    // The drift this helper exists to prevent recurred within hours: #1935 gave
+    // the mainline `sargableTextWhere` and the harness kept measuring without
+    // it. That form DROPS three WHERE arms, so it changes the candidate set,
+    // not just the plan. When a new flag-derived param is added to the mainline
+    // call site, add it here and to this list.
+    expect(Object.keys(mainlineLaneConfig({})).sort()).toEqual(
+      ['sargableTextWhere', 'tokenMatch'],
+    );
   });
 
   test('binds stay consistent with placeholders (Postgres 08P01 guard)', async () => {
