@@ -1648,7 +1648,8 @@ describe('canonicalCatalogSearch product-form agreement (ADR-020 phase 1, flag-g
     expect(on.sql).not.toBe(off.sql);
     expect(formArmBinds(off)).toBeNull();
     // Purely additive: one form-pattern bind and one tool-exclusion bind.
-    expect(formArmBinds(on).form).toBe('\\y(moisturizer|moisturiser)\\y');
+    expect(formArmBinds(on).form).toContain('moisturizer');
+    expect(formArmBinds(on).form).toMatch(/^\\y\(.+\)\\y$/);
     expect(on.params.length).toBe(off.params.length + 2);
   });
 
@@ -1808,13 +1809,42 @@ describe('canonicalCatalogSearch product-form agreement (ADR-020 phase 1, flag-g
     expect(re.test('liquid touch weightless foundation')).toBe(false);
   });
 
+  test('multi-product sets are excluded from the form boost (#1927 interaction)', async () => {
+    // applyMultiProductSetTopCap can only swap a set with a single of EQUAL
+    // rank_score — it is tie-group scoped. A set titled "Moisturizer Duo"
+    // taking +60 would land in a higher tie group and become undemotable,
+    // reintroducing the head-crowding #1927 shipped to prevent through a
+    // channel that cap cannot see.
+    process.env.CANONICAL_CATALOG_RANK_V2 = 'enabled';
+    process.env.CANONICAL_CATALOG_FORM_AGREEMENT = 'enabled';
+    const { sql } = await runQuery('hydrating moisturizer');
+    const arm = sql.slice(sql.indexOf('~ $'), sql.indexOf('THEN  60'));
+    expect(arm).toContain("IS DISTINCT FROM 'set_or_collection'");
+  });
+
+  test('title vocabulary is not narrower than the rubric for the forms it covers', () => {
+    // Two form vocabularies in one repo will drift. The rubric
+    // (scripts/lib/adr020_recall_relevance.cjs) is authoritative; a title
+    // pattern set narrower than it means real products of the right form are
+    // relatively DEMOTED for lacking a merchandiser keyword.
+    const f = __internal.queryFormTitlePatterns;
+    expect(f(['sunscreen'])).toEqual(expect.arrayContaining(['sun stick', 'sun milk']));
+    expect(f(['moisturizer'])).toEqual(expect.arrayContaining(['lotion', 'gel cream', 'water gel']));
+    expect(f(['serum'])).toEqual(expect.arrayContaining(['ampoule']));
+    expect(f(['concealer'])).toEqual(expect.arrayContaining(['corrector']));
+    // ...but 'spf' stays out: it is stamped across complexion titles.
+    expect(f(['sunscreen'])).not.toContain('spf');
+  });
+
   test('form lookup survives punctuation and plurals', () => {
     const f = __internal.queryFormTitlePatterns;
     // Each of these yielded NO form before: one comma, or a plural, was enough
     // to silence the arm on ordinary phrasing.
-    expect(f(['moisturizer,'])).toEqual(['moisturizer', 'moisturiser']);
-    expect(f(['moisturizer.'])).toEqual(['moisturizer', 'moisturiser']);
-    expect(f(['moisturizers'])).toEqual(['moisturizer', 'moisturiser']);
+    const M = f(['moisturizer']);
+    expect(M).toContain('moisturizer');
+    expect(f(['moisturizer,'])).toEqual(M);
+    expect(f(['moisturizer.'])).toEqual(M);
+    expect(f(['moisturizers'])).toEqual(M);
     expect(f(['masks'])).toEqual(['mask']);
     expect(f(['glow', 'radiance'])).toEqual([]);
   });

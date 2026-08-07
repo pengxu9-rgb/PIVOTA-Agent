@@ -252,21 +252,41 @@ function mainlineLaneConfig(env = process.env) {
 // to parfum/cologne/perfume (and NOT to "fragrance") boosts the actual
 // perfumes and leaves the mists alone.
 //
-// The arm is monotone: a form absent from this map yields no boost and leaves
-// ordering unchanged. Under-inclusion is safe; over-inclusion is not.
+// UNDER-INCLUSION IS NOT FREE — an earlier version of this comment claimed it
+// was, and that was wrong in a way worth stating. A form absent from the map
+// means the arm never fires for that query, so ordering is unchanged: monotone
+// BETWEEN queries. But once the arm fires, every row whose title the patterns
+// miss is relatively demoted by 60. Measured over the 247 titles in the
+// acceptance corpus, 21% carry no form-vocabulary word at all — "1025 Dokdo
+// Cream", "Beauty of Joseon Dynasty Cream", "Plum Plump Hyaluronic Cream" are
+// real moisturizers with no form noun in the title, and the unlabelled cohort
+// is brand-correlated (K-beauty naming conventions). A narrow vocabulary
+// therefore ranks by merchandiser naming convention rather than by merit,
+// which is the defect class the neutrality note further down this file exists
+// to forbid.
+//
+// So: keep the TITLE side as wide as the evidence supports, and keep it in
+// step with FORM_PATTERNS in scripts/lib/adr020_recall_relevance.cjs, which is
+// the authoritative form vocabulary. Over-inclusion on the QUERY side is still
+// unsafe (see "gel" and "fragrance" above); the two sides are separate.
 const PRODUCT_FORM_TITLE_PATTERNS = new Map([
   // skincare — query word and title word coincide
   ['cleanser', ['cleanser']],
-  ['moisturizer', ['moisturizer', 'moisturiser']],
-  ['moisturiser', ['moisturizer', 'moisturiser']],
-  ['serum', ['serum']],
+  // Widened toward FORM_PATTERNS in the rubric: "1025 Dokdo Cream" and
+  // "Dynasty Cream" are moisturizers whose titles never say "moisturizer".
+  ['moisturizer', ['moisturizer', 'moisturiser', 'moisture cream', 'water gel', 'gel cream', 'lotion', 'emulsion']],
+  ['moisturiser', ['moisturizer', 'moisturiser', 'moisture cream', 'water gel', 'gel cream', 'lotion', 'emulsion']],
+  ['serum', ['serum', 'ampoule']],
   ['toner', ['toner']],
   ['essence', ['essence']],
   ['ampoule', ['ampoule']],
   // NOT 'spf': it is stamped across complexion titles ("Tinted Moisturizer
   // SPF 30", "Flawless Foundation SPF 15"), so it would boost foundations for
   // a sunscreen query. Per the monotonicity rule, under-include.
-  ['sunscreen', ['sunscreen', 'sun cream', 'uv protector']],
+  // 'spf' stays OUT (stamped across complexion titles), but the sun-care
+  // nouns the rubric recognises are in: "Airy Sun Stick SPF 50+" is a
+  // sunscreen whose title never says "sunscreen".
+  ['sunscreen', ['sunscreen', 'sun cream', 'sun stick', 'sun milk', 'sun fluid', 'uv protector', 'uv shield']],
   ['mask', ['mask']],
   ['exfoliator', ['exfoliator', 'exfoliant']],
   ['scrub', ['scrub']],
@@ -277,7 +297,7 @@ const PRODUCT_FORM_TITLE_PATTERNS = new Map([
   ['eyeshadow', ['eyeshadow', 'eye shadow']],
   ['eyeliner', ['eyeliner', 'eye liner']],
   ['foundation', ['foundation']],
-  ['concealer', ['concealer']],
+  ['concealer', ['concealer', 'corrector']],
   ['blush', ['blush']],
   ['bronzer', ['bronzer']],
   ['highlighter', ['highlighter']],
@@ -1047,9 +1067,21 @@ async function fetchCanonicalChainRows(args = {}) {
         // is its SQL counterpart.
         params.push(`\\y(brush|applicator|sponge|puff|tweezer|tools?)\\y`);
         const toolBind = `$${params.length}`;
+        // MULTI-PRODUCT SETS ARE EXCLUDED, and this is load-bearing rather than
+        // tidy. #1927's head cap (applyMultiProductSetTopCap) can only swap a
+        // set with a single of EQUAL rank_score — it is tie-group scoped by
+        // construction. A set whose title carries the form noun ("Moisturizer
+        // Duo", "Lipstick Trio") would take +60, land in a strictly higher tie
+        // group, and become undemotable: the exact head-crowding #1927 shipped
+        // to prevent, reintroduced through a channel that cap cannot see.
+        // Boosting them would also contradict the relevance rubric, which caps
+        // every set at PARTIAL because a set may contain the right product but
+        // is not it.
+        const setExclusion = `AND ${PRODUCT_FAMILY_SQL} IS DISTINCT FROM 'set_or_collection'`;
         v2Arms.push(
           `CASE WHEN LOWER(COALESCE(p.title, '')) ~ ${formBind}\n` +
-            `            AND LOWER(COALESCE(p.title, '')) !~ ${toolBind}  THEN  60 ELSE 0 END`,
+            `            AND LOWER(COALESCE(p.title, '')) !~ ${toolBind}\n` +
+            `            ${setExclusion}  THEN  60 ELSE 0 END`,
         );
       }
     }
