@@ -15,6 +15,8 @@ const {
   buildDriftPredicateSql,
   normalizeAvailability,
   textOf,
+  fetchDriftMetric,
+  fetchOrphanedMirrorMetric,
   fetchDriftedBatch,
   landBatch,
   reconcile,
@@ -293,6 +295,73 @@ describe('seed clock precision round-trip', () => {
     const sql = db.query.mock.calls[0][0];
     expect(sql).toContain('eps.updated_at::text AS seed_updated_at');
     expect(sql).not.toMatch(/eps\.updated_at AS seed_updated_at/);
+  });
+});
+
+describe('orphaned mirror metric', () => {
+  beforeEach(() => {
+    db.query.mockClear();
+  });
+
+  test('counts external_referral rows with no ACTIVE attached seed, split by live sync_status', async () => {
+    db.query.mockResolvedValueOnce({
+      rows: [{ orphaned_mirror_count: 1963, orphaned_mirror_live_count: 1925 }],
+    });
+    await expect(fetchOrphanedMirrorMetric()).resolves.toEqual({
+      orphaned_mirror_count: 1963,
+      orphaned_mirror_live_count: 1925,
+    });
+
+    const sql = db.query.mock.calls[0][0];
+    // Anti-join over the same back-pointer the reconciler projects through:
+    // a row only counts as orphaned when no active seed carries its key.
+    expect(sql).toContain('NOT EXISTS');
+    expect(sql).toContain('eps.attached_product_key = cp.product_key');
+    expect(sql).toContain(`eps.status = 'active'`);
+    expect(sql).toContain(`cp.catalog_track = 'external_referral'`);
+    expect(sql).toContain(`cp.sync_status = 'live'`);
+  });
+
+  test('is null-safe on an empty result', async () => {
+    db.query.mockResolvedValueOnce({ rows: [] });
+    await expect(fetchOrphanedMirrorMetric()).resolves.toEqual({
+      orphaned_mirror_count: 0,
+      orphaned_mirror_live_count: 0,
+    });
+  });
+
+  test('fetchDriftMetric folds the orphan counters into the drift report', async () => {
+    // Orphans sit outside the attached-seed lateral join, so drift_total can
+    // read 0 while unprojectable rows exist — the folded counters make the
+    // --drift-only report surface that class (prod 2026-07-31: 3 gap-scope
+    // acceptance products were orphaned while drift_total showed 0).
+    db.query
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            attached_rows_total: 10579,
+            recall_doc_null: 0,
+            recall_doc_stale: 0,
+            drift_total: 0,
+            max_staleness: null,
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        rows: [{ orphaned_mirror_count: 1963, orphaned_mirror_live_count: 1925 }],
+      });
+
+    const metric = await fetchDriftMetric();
+    expect(metric).toEqual({
+      attached_rows_total: 10579,
+      recall_doc_null: 0,
+      recall_doc_stale: 0,
+      drift_total: 0,
+      converged_pct: 100,
+      max_staleness: null,
+      orphaned_mirror_count: 1963,
+      orphaned_mirror_live_count: 1925,
+    });
   });
 });
 
