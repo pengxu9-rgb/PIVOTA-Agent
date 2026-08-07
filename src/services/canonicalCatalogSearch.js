@@ -59,6 +59,7 @@
 'use strict';
 
 const { activeCatalogProductSourceWhere } = require('./activeCatalogSourceSql');
+const { queryWantsMultiProductSet } = require('./beautyRelevanceGate');
 
 const DEFAULT_LIMIT = 12;
 const CANDIDATE_LIMIT_MIN = 25;
@@ -152,6 +153,182 @@ function isRankV2Enabled(env = process.env) {
   return RANK_V2_FLAG_VALUES.has(
     String(env.CANONICAL_CATALOG_RANK_V2 || '').trim().toLowerCase(),
   );
+}
+
+// ADR-020 / issue #1927: multi-product set diversity.
+//
+// THE DEFECT, MEASURED ON PROD 2026-08-07. Every rank arm that carries text
+// signal needs a LITERAL match — the two phrase arms (+120 title, +60
+// recall_doc) need the WHOLE query contiguous, and the coverage arm (+80)
+// needs EVERY significant token. On a 5-6 token natural-language query none of
+// them fires for any candidate, so on the lanes that also run without
+// tokenMatch the ladder goes completely inert. Measured for "lightweight gel
+// moisturizer for acne-prone skin" (mainline lane params, rank v2 + recall_doc
+// on): all 192 candidates scored EXACTLY 20 — the flat
+// multi_merchant_canonical arm and nothing else. With the score constant,
+// every ordering decision falls to the tie-break, and the tie-break
+// (product_key ASC) knows nothing about what a row IS.
+//
+// WHY THAT SURFACES AS BUNDLES. product_key ASC is not a neutral sample of the
+// tied pool — it is alphabetical, and key-space is clustered by source, so the
+// cut lands in whichever corner sorts first. Measured on the same query: the
+// matched pool was 4,780 rows and 17.8% set_or_collection (the catalog base
+// rate), but the 192-row candidate cut came back 47% sets. The bundles did not
+// outrank anything; they won an arbitrary tie-break, and 43 candidate slots
+// that singles would have taken went to sets. Both singles named in #1927 were
+// in the matched pool and lost the cut.
+//
+// THE FIX IS TWO-PART, because the two symptoms have different causes:
+//   1. QUOTA AT THE CUT (SQL, below). Within a tie group, sets past
+//      `candidate_limit * SET_QUOTA_SHARE` sort behind everything else, so they
+//      lose the LIMIT $3 cut to singles. Restores the pool's own composition to
+//      the candidate set: 91/192 sets -> 48/192 on the measured query.
+//   2. WINDOW CAP AT THE HEAD (JS, applyMultiProductSetTopCap). The quota does
+//      not touch the FIRST sets, so the top-8 stayed at 4/8 sets after step 1
+//      alone. The cap holds sets to MULTI_PRODUCT_SET_TOP_CAP_MAX per rolling
+//      window of MULTI_PRODUCT_SET_TOP_CAP_WINDOW.
+//
+// NEITHER PART CAN OVERRIDE A REAL MATCH. Both are strictly TIE-GROUP SCOPED —
+// they only reorder rows whose rank_score is EQUAL, i.e. they replace an
+// arbitrary tie-break with an informed one and can never move a row past a row
+// that genuinely scored differently. When the ladder fires the way it is
+// supposed to ("gentle cleanser" -> [140] Water Bank Gentle Gel Cleanser) the
+// matching rows sit in higher tie groups and are untouched, set or not.
+//
+// AND NEITHER RUNS WHEN THE SHOPPER ASKED FOR A SET. queryWantsMultiProductSet
+// (the vocabulary already used by the serving-layer demotion in server.js —
+// same regex, one home) exempts "gift set", "starter kit", "discovery",
+// "routine". Note "easy to pack for travel" is a SIZE intent, not a
+// multi-product one, and is deliberately NOT in that vocabulary.
+//
+// Default OFF, per the ordering-change discipline this file already follows
+// for CANONICAL_CATALOG_RANK_V2 / _DETERMINISTIC_TIEBREAK: flag off emits
+// byte-identical SQL and returns the driver's rows untouched.
+const SET_DIVERSITY_FLAG_VALUES = RANK_V2_FLAG_VALUES;
+
+function isSetDiversityEnabled(env = process.env) {
+  return SET_DIVERSITY_FLAG_VALUES.has(
+    String(env.CANONICAL_CATALOG_SET_DIVERSITY || '').trim().toLowerCase(),
+  );
+}
+
+// The family value that means "this row is several products sold together".
+// Written by the sync path and backfilled across the catalog by PR #1928
+// (prod 2026-08-07: 2,000 set_or_collection of 11,820 live external_referral
+// rows; 617 still unclassified).
+const MULTI_PRODUCT_SET_FAMILY = 'set_or_collection';
+
+// Share of the candidate budget sets may hold. 0.25 sits deliberately ABOVE
+// the 17.8% measured pool rate: the quota is a ceiling on the pathological
+// case, not a target, so on a normally-composed pool it never binds and the
+// candidate set is byte-identical to flag-off.
+const MULTI_PRODUCT_SET_QUOTA_SHARE = 0.25;
+
+// Rolling head cap: at most 2 sets in any 8 consecutive served rows.
+const MULTI_PRODUCT_SET_TOP_CAP_WINDOW = 8;
+const MULTI_PRODUCT_SET_TOP_CAP_MAX = 2;
+
+// Read product_family out of the payload JSON, in the same precedence order as
+// every other reader (server.js resolveCatalogProductRef, pdpBuilder.js,
+// pdpSchemaProfile.js). The two eps.seed_data fallbacks those readers also
+// consult need a join this query does not have; they are the last resort for a
+// row whose payload carries nothing, and a row with no family is simply not
+// treated as a set (fail-open — an unclassified row keeps today's ordering).
+//
+// STAYS IN JSON, NO MIGRATION. This expression appears ONLY in the candidate
+// CTE's projection and the window that orders it — never in a WHERE clause —
+// so it runs over rows the text predicate already admitted and no index on it
+// would be usable. Measured on prod (EXPLAIN ANALYZE, "lightweight gel
+// moisturizer for acne-prone skin"): planner cost 159,387 -> 159,723 (+0.2%),
+// execution 3,404ms -> 3,321ms. The plan already sorts the full matched set,
+// so the WindowAgg rides along free. Promoting product_family to an indexed
+// column becomes worth doing when something FILTERS on it — the user-facing
+// "Sets & Kits" facet — not for this.
+const PRODUCT_FAMILY_SQL = `COALESCE(
+          p.product_payload->>'external_seed_product_family',
+          p.product_payload->>'product_family',
+          p.product_payload->'external_seed_product_kind'->>'family',
+          ''
+        )`;
+
+/** Is this returned row a multi-product set? Mirrors PRODUCT_FAMILY_SQL. */
+function rowIsMultiProductSet(row) {
+  const raw = row && row.product_payload;
+  let payload = raw;
+  if (typeof raw === 'string') {
+    try {
+      payload = JSON.parse(raw);
+    } catch {
+      return false;
+    }
+  }
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return false;
+  const family =
+    payload.external_seed_product_family ||
+    payload.product_family ||
+    (payload.external_seed_product_kind && payload.external_seed_product_kind.family) ||
+    '';
+  return String(family).trim().toLowerCase() === MULTI_PRODUCT_SET_FAMILY;
+}
+
+function sameRankScore(left, right) {
+  const a = Number(left && left.rank_score);
+  const b = Number(right && right.rank_score);
+  if (Number.isFinite(a) && Number.isFinite(b)) return a === b;
+  return (left && left.rank_score) === (right && right.rank_score);
+}
+
+/**
+ * Hold multi-product sets to `maxPerWindow` per rolling window of
+ * `windowSize` served rows.
+ *
+ * DEMOTES, NEVER DROPS: every input row is in the output exactly once, so
+ * callers' counts and pagination are unchanged. Reordering happens strictly
+ * INSIDE a run of equal rank_score — a deferred set is swapped with a later
+ * single from its OWN tie group, so a row can never cross a genuine score
+ * boundary in either direction. A tie group with no singles left to promote
+ * emits its sets in the order it received them.
+ *
+ * Pure; exported for tests and the dry-run harness.
+ *
+ * @returns {{rows: object[], deferred_count: number}}
+ */
+function applyMultiProductSetTopCap(rows, options = {}) {
+  const windowSize = Math.max(1, Math.floor(Number(options.windowSize) || MULTI_PRODUCT_SET_TOP_CAP_WINDOW));
+  const maxPerWindow = Math.max(0, Math.floor(
+    Number.isFinite(Number(options.maxPerWindow))
+      ? Number(options.maxPerWindow)
+      : MULTI_PRODUCT_SET_TOP_CAP_MAX,
+  ));
+  const input = Array.isArray(rows) ? rows : [];
+  if (input.length < 2) return { rows: input, deferred_count: 0 };
+
+  const out = [];
+  let deferredCount = 0;
+  let groupStart = 0;
+  while (groupStart < input.length) {
+    let groupEnd = groupStart + 1;
+    while (groupEnd < input.length && sameRankScore(input[groupEnd], input[groupStart])) groupEnd += 1;
+    const pending = input.slice(groupStart, groupEnd);
+    while (pending.length > 0) {
+      // Window is counted over GLOBAL output positions, not per group — "at
+      // most 2 sets in the top 8" is a statement about the served page.
+      const setsInWindow = out
+        .slice(Math.max(0, out.length - (windowSize - 1)))
+        .filter(rowIsMultiProductSet).length;
+      let pick = 0;
+      if (rowIsMultiProductSet(pending[0]) && setsInWindow >= maxPerWindow) {
+        const alternative = pending.findIndex((row) => !rowIsMultiProductSet(row));
+        if (alternative > 0) {
+          pick = alternative;
+          deferredCount += 1;
+        }
+      }
+      out.push(pending.splice(pick, 1)[0]);
+    }
+    groupStart = groupEnd;
+  }
+  return { rows: out, deferred_count: deferredCount };
 }
 
 // Significant query tokens: length >= 3, stopwords dropped, deduped, capped
@@ -373,6 +550,13 @@ async function fetchCanonicalChainRows(args = {}) {
   const outerTiebreakSql = deterministicTiebreak
     ? 'c.product_key ASC'
     : 'c.product_updated_at DESC';
+  // Set diversity (#1927). Skipped wholesale — SQL and JS alike — when the
+  // shopper asked for a set, so bundle queries keep today's ordering exactly.
+  const setDiversityEnabled = isSetDiversityEnabled() && !queryWantsMultiProductSet(lowered);
+  // Same tie-break, expressed against the quota CTE's alias. `p.updated_at` is
+  // projected as `product_updated_at`, so the legacy form has to be remapped
+  // rather than string-substituted.
+  const quotaTiebreakSql = deterministicTiebreak ? 'm.product_key ASC' : 'm.product_updated_at DESC';
 
   const normalizedLimit = clampLimit(limit, DEFAULT_LIMIT, 1, ROW_LIMIT_MAX);
   const candidateLimit = clampLimit(
@@ -995,6 +1179,49 @@ async function fetchCanonicalChainRows(args = {}) {
   // what sorted price-less rows first (DESC => NULLS FIRST).
   const skuOfferOrderSql = '';
 
+  // Set-diversity quota at the candidate cut (#1927 part 1 — see the
+  // MULTI_PRODUCT_SET_* block at the top of this file for the prod
+  // measurements). Flag off (or a set-seeking query) contributes ZERO bytes:
+  // the statement keeps its single `candidate_products` CTE carrying its own
+  // ORDER BY / LIMIT $3, exactly as before.
+  //
+  // Flag on, the CTE splits: `matched_products` computes rank over everything
+  // the WHERE admitted (no ordering, no cut), and `candidate_products` applies
+  // the cut with the quota in its ORDER BY. The window is PARTITIONed BY
+  // rank_score so a set is only ever ranked against sets it is TIED with, and
+  // `set_quota_demoted` sorts after rank_score for the same reason: a demoted
+  // set still outranks every row in a lower tie group.
+  const setDiversityProjectionSql = setDiversityEnabled
+    ? `\n        (${PRODUCT_FAMILY_SQL} = '${MULTI_PRODUCT_SET_FAMILY}') AS is_multi_product_set,`
+    : '';
+  let setDiversityCteSql = '';
+  let innerOrderLimitSql = `
+      ORDER BY rank_score DESC, ${innerTiebreakSql}
+      LIMIT $3`;
+  if (setDiversityEnabled) {
+    const setQuota = Math.max(1, Math.ceil(candidateLimit * MULTI_PRODUCT_SET_QUOTA_SHARE));
+    params.push(setQuota);
+    const setQuotaBind = `$${params.length}`;
+    innerOrderLimitSql = '';
+    setDiversityCteSql = `,
+    candidate_products AS (
+      SELECT
+        m.*,
+        CASE
+          WHEN m.is_multi_product_set
+           AND row_number() OVER (
+                 PARTITION BY m.rank_score, m.is_multi_product_set
+                 ORDER BY ${quotaTiebreakSql}
+               ) > ${setQuotaBind}
+          THEN 1 ELSE 0
+        END AS set_quota_demoted
+      FROM matched_products m
+      ORDER BY rank_score DESC, set_quota_demoted ASC, ${quotaTiebreakSql}
+      LIMIT $3
+    )`;
+  }
+  const candidateCteName = setDiversityEnabled ? 'matched_products' : 'candidate_products';
+
   // Rank score weights mirror pivot_query_service.py exactly so canonical
   // recall ranks identically across the backend's HTTP API and this gateway
   // helper. Drift here would surface as inconsistent top-N between the two.
@@ -1003,7 +1230,7 @@ async function fetchCanonicalChainRows(args = {}) {
   // the rank-v2 match-quality block built above (canonicalScopeRankArms) and
   // the gateway intentionally diverges from the backend's legacy weights.
   const sql = `
-    WITH candidate_products AS (
+    WITH ${candidateCteName} AS (
       SELECT
         COALESCE(m.merchant_id, p.merchant_id) AS merchant_id,
         m.merchant_name         AS merchant_name,
@@ -1043,7 +1270,7 @@ async function fetchCanonicalChainRows(args = {}) {
         p.size_guide,
         p.size_guide_source,
         p.size_guide_confidence,
-        p.updated_at            AS product_updated_at,
+        p.updated_at            AS product_updated_at,${setDiversityProjectionSql}
         (
           ${skuIdentityScore}
           CASE WHEN LOWER(COALESCE(p.source_product_id, '')) = $1         THEN 105 ELSE 0 END +
@@ -1065,10 +1292,8 @@ async function fetchCanonicalChainRows(args = {}) {
         ${externalSeedUnavailableWhere}
       ${merchantClause}
       ${marketWhere}
-      ${brandWhere}
-      ORDER BY rank_score DESC, ${innerTiebreakSql}
-      LIMIT $3
-    )
+      ${brandWhere}${innerOrderLimitSql}
+    )${setDiversityCteSql}
     SELECT
       c.merchant_id,
       c.merchant_name,
@@ -1112,7 +1337,16 @@ async function fetchCanonicalChainRows(args = {}) {
   `;
 
   const result = await pgQuery(sql, params);
-  return Array.isArray(result?.rows) ? result.rows : [];
+  const rows = Array.isArray(result?.rows) ? result.rows : [];
+  // #1927 part 2 — the head cap. The quota above changes WHICH rows survive the
+  // cut; it deliberately leaves the first `setQuota` sets in their natural
+  // positions, so on the measured query the top-8 was still 4/8 sets after the
+  // quota alone. This is the part the shopper sees. Applied here rather than in
+  // the outer ORDER BY because there is exactly one row per product (both
+  // LATERAL branches) and row_limit >= candidate_limit always, so the array is
+  // the full candidate set — reordering it in JS and in SQL are equivalent, and
+  // this form is directly unit-testable.
+  return setDiversityEnabled ? applyMultiProductSetTopCap(rows).rows : rows;
 }
 
 module.exports = {
@@ -1122,6 +1356,10 @@ module.exports = {
   // recall_doc arm is on (see citableSargableLane), so a literal `true`
   // stamp would lie in flag-off environments.
   isRecallDocMatchEnabled,
+  // Exported so callers whose lane preserves recall order (the
+  // ingredient-recall-direct lane) can stamp the EFFECTIVE set-diversity state
+  // into telemetry, the same way isRecallDocMatchEnabled is used above.
+  isSetDiversityEnabled,
   // Exposed for tests so the upper bounds can be asserted.
   __internal: {
     DEFAULT_LIMIT,
@@ -1139,5 +1377,12 @@ module.exports = {
     isRankV2Enabled,
     isDeterministicTiebreakEnabled,
     buildSignificantTokens,
+    isSetDiversityEnabled,
+    applyMultiProductSetTopCap,
+    rowIsMultiProductSet,
+    MULTI_PRODUCT_SET_FAMILY,
+    MULTI_PRODUCT_SET_QUOTA_SHARE,
+    MULTI_PRODUCT_SET_TOP_CAP_WINDOW,
+    MULTI_PRODUCT_SET_TOP_CAP_MAX,
   },
 };
