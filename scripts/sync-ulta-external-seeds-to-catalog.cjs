@@ -209,6 +209,36 @@ function isUltaSeed(row) {
   );
 }
 
+/**
+ * #1916: drop mirrors still holding a null content_key after resolve-first — they have
+ * neither a match to reuse nor mintable brand/title. `index_pipeline_state.content_key`
+ * is a PRIMARY KEY, so a null cannot be written, and a placeholder would collide every
+ * such row onto ONE serving decision. Drop and retry next run.
+ *
+ * Extracted so it is directly testable: mutation testing on PR #1938 deleted this
+ * guard and all 72 tests still passed, which meant the PR's main runtime behaviour
+ * change had no coverage at all.
+ *
+ * Runs AFTER the resolve-first loop, not at build time, because resolve-first
+ * legitimately fills the key in between. `self_mint` was counted before that loop knew
+ * the outcome, so it is corrected here rather than left over-counting the dropped rows.
+ */
+function dropUnmintableMirrors(mirrors, skipped, identityResolution = null) {
+  return (mirrors || []).filter((mirror) => {
+    if (mirror?.product?.content_key) return true;
+    skipped.push({
+      external_product_id: mirror?.row?.external_product_id,
+      reason: 'content_key_unmintable',
+      brand: mirror?.product?.brand,
+      title: mirror?.product?.title,
+    });
+    if (identityResolution && identityResolution.self_mint > 0) {
+      identityResolution.self_mint -= 1;
+    }
+    return false;
+  });
+}
+
 function buildMirror(row) {
   const seedData = asObject(row.seed_data);
   const snapshot = asObject(seedData.snapshot);
@@ -917,21 +947,7 @@ async function run() {
   }
   // -----------------------------------------------------------------------------
 
-  // #1916: a mirror still holding a null content_key after resolve-first has neither
-  // a match to reuse nor mintable brand/title. index_pipeline_state.content_key is a
-  // PRIMARY KEY, so it cannot be written; a placeholder would collide every such row
-  // onto one serving decision. Drop it and retry next run. Checked here, not at build
-  // time, because resolve-first legitimately fills the key in between.
-  mirrors = mirrors.filter((mirror) => {
-    if (mirror.product.content_key) return true;
-    skipped.push({
-      external_product_id: mirror.row?.external_product_id,
-      reason: 'content_key_unmintable',
-      brand: mirror.product.brand,
-      title: mirror.product.title,
-    });
-    return false;
-  });
+  mirrors = dropUnmintableMirrors(mirrors, skipped, identity_resolution);
 
   const applied = await applyMirrors(mirrors, dryRun);
   const byBrand = {};
@@ -992,5 +1008,6 @@ module.exports = {
   _internals: {
     annotateUltaMirrorMerchants,
     buildMirror,
+    dropUnmintableMirrors,
   },
 };
