@@ -1,6 +1,6 @@
 {
- "generated_at": "2026-08-07T05:46:50.667Z",
- "source": "build-adr020-phase1-acceptance-corpus.cjs over 4 audit-recall-lane-parity.cjs pass(es) vs prod",
+ "generated_at": "2026-08-07T11:27:38.613Z",
+ "source": "build-adr020-phase1-acceptance-corpus.cjs over 3 audit-recall-lane-parity.cjs pass(es) vs prod",
  "corpus": "tests/fixtures/adr020_phase1_recall_corpus.jsonl",
  "rubric": "scripts/lib/adr020_recall_relevance.cjs",
  "supersedes": {
@@ -19,26 +19,20 @@
   "both_lanes_judged": true,
   "passes": [
    {
-    "path": "/private/tmp/claude-501/-Users-pengchydan-dev-PIVOTA-Agent/7887048a-432f-419c-8898-698e572599d9/scratchpad/parity_pass1.json",
-    "generated_at": "2026-08-07T03:36:03.363Z",
+    "path": "/private/tmp/claude-501/-Users-pengchydan-dev-PIVOTA-Agent/7887048a-432f-419c-8898-698e572599d9/scratchpad/parity_tm11.json",
+    "generated_at": "2026-08-07T11:09:41.020Z",
     "market": "US",
     "limit": 8
    },
    {
-    "path": "/private/tmp/claude-501/-Users-pengchydan-dev-PIVOTA-Agent/7887048a-432f-419c-8898-698e572599d9/scratchpad/parity_pass2.json",
-    "generated_at": "2026-08-07T04:10:39.706Z",
+    "path": "/private/tmp/claude-501/-Users-pengchydan-dev-PIVOTA-Agent/7887048a-432f-419c-8898-698e572599d9/scratchpad/parity_tm12.json",
+    "generated_at": "2026-08-07T11:15:53.396Z",
     "market": "US",
     "limit": 8
    },
    {
-    "path": "/private/tmp/claude-501/-Users-pengchydan-dev-PIVOTA-Agent/7887048a-432f-419c-8898-698e572599d9/scratchpad/parity_pass3.json",
-    "generated_at": "2026-08-07T05:34:04.249Z",
-    "market": "US",
-    "limit": 8
-   },
-   {
-    "path": "/private/tmp/claude-501/-Users-pengchydan-dev-PIVOTA-Agent/7887048a-432f-419c-8898-698e572599d9/scratchpad/parity_pass4.json",
-    "generated_at": "2026-08-07T05:42:45.173Z",
+    "path": "/private/tmp/claude-501/-Users-pengchydan-dev-PIVOTA-Agent/7887048a-432f-419c-8898-698e572599d9/scratchpad/parity_tm13.json",
+    "generated_at": "2026-08-07T11:26:42.460Z",
     "market": "US",
     "limit": 8
    }
@@ -49,19 +43,19 @@
   "queries_judged": 37,
   "queries_unmeasured": 0,
   "queries_without_rubric": 0,
-  "gap_query_count": 5,
-  "gap_product_count": 27,
-  "products_rejected_by_relevance": 56,
-  "products_substitutable_not_gaps": 45,
-  "queries_catalog_beats_seed": 12,
+  "gap_query_count": 2,
+  "gap_product_count": 14,
+  "products_rejected_by_relevance": 53,
+  "products_substitutable_not_gaps": 50,
+  "queries_catalog_beats_seed": 15,
   "queries_measured": 23,
   "lane_precision": {
    "seed_relevant_total": 79,
    "seed_returned_total": 135,
    "seed_precision_pct": 58.5,
-   "catalog_relevant_total": 110,
+   "catalog_relevant_total": 138,
    "catalog_returned_total": 184,
-   "catalog_precision_pct": 59.8
+   "catalog_precision_pct": 75
   },
   "queries_catalog_returned_nothing": [
    "小众淡香水",
@@ -81,8 +75,7 @@
   ],
   "queries_catalog_returned_nothing_relevant": [
    "unisex fragrance for daily wear",
-   "concealer for dark circles",
-   "full coverage foundation oily skin"
+   "woody fragrance under $80"
   ]
  },
  "unmeasured": [],
@@ -138,7 +131,7 @@
    "seed_returned_avg": 8,
    "catalog_returned_avg": 8,
    "seed_relevant_avg": 0,
-   "catalog_relevant_avg": 4,
+   "catalog_relevant_avg": 6,
    "relevance_deficit": 0,
    "acceptance_target": false,
    "true_gap_count": 0,
@@ -254,7 +247,7 @@
    "seed_returned_avg": 1,
    "catalog_returned_avg": 8,
    "seed_relevant_avg": 0,
-   "catalog_relevant_avg": 3,
+   "catalog_relevant_avg": 0,
    "relevance_deficit": 0,
    "acceptance_target": false,
    "true_gap_count": 0,
@@ -369,33 +362,9 @@
    "true_gaps": [],
    "substitutable_misses": [
     {
-     "external_product_id": "ext_16046d8920b5daf5d7ab74ca",
-     "brand": "fenty beauty",
-     "title": "Hella Thicc Volumizing Mascara — Cuz I'm Black",
-     "grade": 2,
-     "grade_label": "relevant",
-     "forms": [
-      "mascara"
-     ],
-     "judgement": "product form mascara directly answers the query",
-     "missing_from_catalog_in_passes": "3/3"
-    },
-    {
      "external_product_id": "ext_0d1c5ae124190cdf0a6ac4de",
      "brand": "Fenty Beauty",
      "title": "Hella Thicc Volumizing Mascara — Elec'Trip Blue",
-     "grade": 2,
-     "grade_label": "relevant",
-     "forms": [
-      "mascara"
-     ],
-     "judgement": "product form mascara directly answers the query",
-     "missing_from_catalog_in_passes": "3/3"
-    },
-    {
-     "external_product_id": "ext_9a69b83edbb5de2280ec7b0a",
-     "brand": "rare beauty",
-     "title": "Perfect Strokes Universal Volumizing Mascara",
      "grade": 2,
      "grade_label": "relevant",
      "forms": [
@@ -428,7 +397,7 @@
    "query": "mascara",
    "bucket": "makeup_eye_bare_noun",
    "lang": "en",
-   "passes_clean": 2,
+   "passes_clean": 3,
    "passes_dropped_as_stalled": 0,
    "seed_returned_avg": 5,
    "catalog_returned_avg": 8,
@@ -448,7 +417,7 @@
      "grade_label": "irrelevant",
      "forms": [],
      "judgement": "no rubric form matched the product",
-     "missing_from_catalog_in_passes": "2/2"
+     "missing_from_catalog_in_passes": "3/3"
     },
     {
      "external_product_id": "ext_9c6c6fd03f39610fa3c144e5",
@@ -458,7 +427,7 @@
      "grade_label": "irrelevant",
      "forms": [],
      "judgement": "no rubric form matched the product",
-     "missing_from_catalog_in_passes": "2/2"
+     "missing_from_catalog_in_passes": "3/3"
     },
     {
      "external_product_id": "ext_44cf2db18c1ee5fc465625c4",
@@ -468,7 +437,7 @@
      "grade_label": "irrelevant",
      "forms": [],
      "judgement": "no rubric form matched the product",
-     "missing_from_catalog_in_passes": "2/2"
+     "missing_from_catalog_in_passes": "3/3"
     },
     {
      "external_product_id": "ext_140b49c03c28045227f5c320",
@@ -480,7 +449,7 @@
       "hair_care"
      ],
      "judgement": "no rubric form matched the product",
-     "missing_from_catalog_in_passes": "2/2"
+     "missing_from_catalog_in_passes": "3/3"
     },
     {
      "external_product_id": "ext_2d5176c8edd52a0c49a1ab55",
@@ -492,7 +461,7 @@
       "cleanser"
      ],
      "judgement": "no rubric form matched the product",
-     "missing_from_catalog_in_passes": "2/2"
+     "missing_from_catalog_in_passes": "3/3"
     }
    ]
   },
@@ -500,7 +469,7 @@
    "query": "睫毛膏",
    "bucket": "makeup_eye_bare_noun",
    "lang": "zh",
-   "passes_clean": 3,
+   "passes_clean": 2,
    "passes_dropped_as_stalled": 0,
    "seed_returned_avg": 0,
    "catalog_returned_avg": 0,
@@ -517,30 +486,18 @@
    "query": "concealer for dark circles",
    "bucket": "makeup_face",
    "lang": "en",
-   "passes_clean": 2,
+   "passes_clean": 3,
    "passes_dropped_as_stalled": 0,
    "seed_returned_avg": 8,
    "catalog_returned_avg": 8,
    "seed_relevant_avg": 0,
-   "catalog_relevant_avg": 0,
+   "catalog_relevant_avg": 1,
    "relevance_deficit": 0,
    "acceptance_target": false,
    "true_gap_count": 0,
    "true_gaps": [],
    "substitutable_misses": [],
    "rejected_by_relevance": [
-    {
-     "external_product_id": "ulta:a87305b9191cb279",
-     "brand": "Estée Lauder",
-     "title": "Advanced Night Repair Eye Gel-Cream for Dark Circles - 0.5 oz",
-     "grade": 0,
-     "grade_label": "irrelevant",
-     "forms": [
-      "moisturizer"
-     ],
-     "judgement": "no rubric form matched the product",
-     "missing_from_catalog_in_passes": "2/2"
-    },
     {
      "external_product_id": "ext_918981bcc6d552cc2af0b535",
      "brand": "Olehenriksen",
@@ -549,19 +506,7 @@
      "grade_label": "irrelevant",
      "forms": [],
      "judgement": "no rubric form matched the product",
-     "missing_from_catalog_in_passes": "2/2"
-    },
-    {
-     "external_product_id": "ulta:b54a43bbbb910104",
-     "brand": "The Ordinary",
-     "title": "Caffeine Solution 5% + EGCG Depuffing Eye Serum for Dark Circles",
-     "grade": 0,
-     "grade_label": "irrelevant",
-     "forms": [
-      "serum"
-     ],
-     "judgement": "no rubric form matched the product",
-     "missing_from_catalog_in_passes": "2/2"
+     "missing_from_catalog_in_passes": "3/3"
     },
     {
      "external_product_id": "ext_e8bfea30810d9de16c9d2180",
@@ -571,7 +516,7 @@
      "grade_label": "irrelevant",
      "forms": [],
      "judgement": "no rubric form matched the product",
-     "missing_from_catalog_in_passes": "2/2"
+     "missing_from_catalog_in_passes": "3/3"
     },
     {
      "external_product_id": "ext_04a5386edad9f55dbb397179",
@@ -583,7 +528,7 @@
       "moisturizer"
      ],
      "judgement": "no rubric form matched the product",
-     "missing_from_catalog_in_passes": "2/2"
+     "missing_from_catalog_in_passes": "3/3"
     },
     {
      "external_product_id": "ext_76bfd11a0bea190f4c9d32c7",
@@ -593,7 +538,7 @@
      "grade_label": "irrelevant",
      "forms": [],
      "judgement": "no rubric form matched the product",
-     "missing_from_catalog_in_passes": "2/2"
+     "missing_from_catalog_in_passes": "3/3"
     },
     {
      "external_product_id": "ext_7947573b26aeed2cffb52272",
@@ -603,7 +548,7 @@
      "grade_label": "irrelevant",
      "forms": [],
      "judgement": "no rubric form matched the product",
-     "missing_from_catalog_in_passes": "2/2"
+     "missing_from_catalog_in_passes": "3/3"
     },
     {
      "external_product_id": "ext_0b3d97758bc02698aaf31ed7",
@@ -615,7 +560,7 @@
       "serum"
      ],
      "judgement": "no rubric form matched the product",
-     "missing_from_catalog_in_passes": "2/2"
+     "missing_from_catalog_in_passes": "3/3"
     }
    ]
   },
@@ -725,16 +670,17 @@
    "query": "full coverage foundation oily skin",
    "bucket": "makeup_face",
    "lang": "en",
-   "passes_clean": 2,
-   "passes_dropped_as_stalled": 1,
+   "passes_clean": 3,
+   "passes_dropped_as_stalled": 0,
    "seed_returned_avg": 5,
    "catalog_returned_avg": 8,
    "seed_relevant_avg": 2,
-   "catalog_relevant_avg": 0,
-   "relevance_deficit": 2,
-   "acceptance_target": true,
-   "true_gap_count": 2,
-   "true_gaps": [
+   "catalog_relevant_avg": 3,
+   "relevance_deficit": 0,
+   "acceptance_target": false,
+   "true_gap_count": 0,
+   "true_gaps": [],
+   "substitutable_misses": [
     {
      "external_product_id": "ext_de37dcc9ce0c7dc636759499",
      "brand": "rare beauty",
@@ -745,7 +691,7 @@
       "foundation"
      ],
      "judgement": "product form foundation directly answers the query",
-     "missing_from_catalog_in_passes": "2/2"
+     "missing_from_catalog_in_passes": "3/3"
     },
     {
      "external_product_id": "ext_a663b50d44c3cc2c3f541e15",
@@ -757,10 +703,9 @@
       "foundation"
      ],
      "judgement": "product form foundation directly answers the query",
-     "missing_from_catalog_in_passes": "2/2"
+     "missing_from_catalog_in_passes": "3/3"
     }
    ],
-   "substitutable_misses": [],
    "rejected_by_relevance": [
     {
      "external_product_id": "ext_7f19a738b48efb924c7c5632",
@@ -772,7 +717,7 @@
       "serum"
      ],
      "judgement": "no rubric form matched the product",
-     "missing_from_catalog_in_passes": "2/2"
+     "missing_from_catalog_in_passes": "3/3"
     },
     {
      "external_product_id": "ext_8a7e86531f12be78d40e34b0",
@@ -784,7 +729,7 @@
       "tool"
      ],
      "judgement": "no rubric form matched the product",
-     "missing_from_catalog_in_passes": "2/2"
+     "missing_from_catalog_in_passes": "3/3"
     },
     {
      "external_product_id": "ext_a568dec0cf5230c5359ec824",
@@ -794,7 +739,7 @@
      "grade_label": "irrelevant",
      "forms": [],
      "judgement": "no rubric form matched the product",
-     "missing_from_catalog_in_passes": "2/2"
+     "missing_from_catalog_in_passes": "3/3"
     }
    ]
   },
@@ -802,7 +747,7 @@
    "query": "控油遮瑕粉底液",
    "bucket": "makeup_face",
    "lang": "zh",
-   "passes_clean": 3,
+   "passes_clean": 2,
    "passes_dropped_as_stalled": 0,
    "seed_returned_avg": 0,
    "catalog_returned_avg": 0,
@@ -836,12 +781,12 @@
    "query": "matte lipstick under $30",
    "bucket": "makeup_lip",
    "lang": "en",
-   "passes_clean": 3,
-   "passes_dropped_as_stalled": 0,
+   "passes_clean": 1,
+   "passes_dropped_as_stalled": 2,
    "seed_returned_avg": 1,
    "catalog_returned_avg": 8,
    "seed_relevant_avg": 0,
-   "catalog_relevant_avg": 2,
+   "catalog_relevant_avg": 8,
    "relevance_deficit": 0,
    "acceptance_target": false,
    "true_gap_count": 0,
@@ -858,7 +803,7 @@
       "lip_other"
      ],
      "judgement": "product form lip_other is adjacent to the query's target form",
-     "missing_from_catalog_in_passes": "3/3"
+     "missing_from_catalog_in_passes": "1/1"
     }
    ]
   },
@@ -866,12 +811,12 @@
    "query": "nude lipstick everyday",
    "bucket": "makeup_lip",
    "lang": "en",
-   "passes_clean": 3,
+   "passes_clean": 2,
    "passes_dropped_as_stalled": 0,
    "seed_returned_avg": 0,
    "catalog_returned_avg": 8,
    "seed_relevant_avg": 0,
-   "catalog_relevant_avg": 2,
+   "catalog_relevant_avg": 5,
    "relevance_deficit": 0,
    "acceptance_target": false,
    "true_gap_count": 0,
@@ -883,12 +828,12 @@
    "query": "red lipstick long-lasting",
    "bucket": "makeup_lip",
    "lang": "en",
-   "passes_clean": 3,
+   "passes_clean": 2,
    "passes_dropped_as_stalled": 0,
    "seed_returned_avg": 8,
    "catalog_returned_avg": 8,
    "seed_relevant_avg": 0,
-   "catalog_relevant_avg": 2,
+   "catalog_relevant_avg": 6,
    "relevance_deficit": 0,
    "acceptance_target": false,
    "true_gap_count": 0,
@@ -905,7 +850,7 @@
       "cleanser"
      ],
      "judgement": "no rubric form matched the product",
-     "missing_from_catalog_in_passes": "3/3"
+     "missing_from_catalog_in_passes": "2/2"
     },
     {
      "external_product_id": "ext_332e0949ace181c1749e16e6",
@@ -917,7 +862,7 @@
       "cleanser"
      ],
      "judgement": "no rubric form matched the product",
-     "missing_from_catalog_in_passes": "3/3"
+     "missing_from_catalog_in_passes": "2/2"
     },
     {
      "external_product_id": "ext_863f6f847c2b89f4f6bb4c79",
@@ -929,7 +874,7 @@
       "moisturizer"
      ],
      "judgement": "no rubric form matched the product",
-     "missing_from_catalog_in_passes": "3/3"
+     "missing_from_catalog_in_passes": "2/2"
     },
     {
      "external_product_id": "ext_119f785907c2b90e5cfdaf43",
@@ -941,7 +886,7 @@
       "serum"
      ],
      "judgement": "no rubric form matched the product",
-     "missing_from_catalog_in_passes": "3/3"
+     "missing_from_catalog_in_passes": "2/2"
     },
     {
      "external_product_id": "ext_06a3d186c9bae3e9f2e38a65",
@@ -953,7 +898,7 @@
       "body_care"
      ],
      "judgement": "no rubric form matched the product",
-     "missing_from_catalog_in_passes": "3/3"
+     "missing_from_catalog_in_passes": "2/2"
     },
     {
      "external_product_id": "ext_6dfac1b57e6748969079805b",
@@ -965,7 +910,7 @@
       "moisturizer"
      ],
      "judgement": "no rubric form matched the product",
-     "missing_from_catalog_in_passes": "3/3"
+     "missing_from_catalog_in_passes": "2/2"
     },
     {
      "external_product_id": "ext_5431dfb6427b84f0d3076a49",
@@ -975,7 +920,7 @@
      "grade_label": "irrelevant",
      "forms": [],
      "judgement": "no rubric form matched the product",
-     "missing_from_catalog_in_passes": "3/3"
+     "missing_from_catalog_in_passes": "2/2"
     },
     {
      "external_product_id": "ext_ff7f4fcd1e538fce0891f1cd",
@@ -987,7 +932,7 @@
       "lip_other"
      ],
      "judgement": "product form lip_other is adjacent to the query's target form",
-     "missing_from_catalog_in_passes": "3/3"
+     "missing_from_catalog_in_passes": "2/2"
     }
    ]
   },
@@ -1046,7 +991,7 @@
    "query": "lipstick",
    "bucket": "makeup_lip_bare_noun",
    "lang": "en",
-   "passes_clean": 3,
+   "passes_clean": 1,
    "passes_dropped_as_stalled": 0,
    "seed_returned_avg": 4,
    "catalog_returned_avg": 8,
@@ -1068,7 +1013,7 @@
       "moisturizer"
      ],
      "judgement": "no rubric form matched the product",
-     "missing_from_catalog_in_passes": "3/3"
+     "missing_from_catalog_in_passes": "1/1"
     },
     {
      "external_product_id": "ext_ad7f85ce149b2626c9c890e3",
@@ -1080,7 +1025,7 @@
       "lip_other"
      ],
      "judgement": "product form lip_other is adjacent to the query's target form",
-     "missing_from_catalog_in_passes": "3/3"
+     "missing_from_catalog_in_passes": "1/1"
     },
     {
      "external_product_id": "ext_1249f6975246c43dca16bf93",
@@ -1092,7 +1037,7 @@
       "lip_other"
      ],
      "judgement": "product form lip_other is adjacent to the query's target form",
-     "missing_from_catalog_in_passes": "3/3"
+     "missing_from_catalog_in_passes": "1/1"
     },
     {
      "external_product_id": "ext_b0dab90da0bc8e1a26af4bd8",
@@ -1104,7 +1049,7 @@
       "lip_other"
      ],
      "judgement": "product form lip_other is adjacent to the query's target form",
-     "missing_from_catalog_in_passes": "3/3"
+     "missing_from_catalog_in_passes": "1/1"
     }
    ]
   },
@@ -1380,7 +1325,7 @@
    "query": "精华",
    "bucket": "skincare_bare_noun",
    "lang": "zh",
-   "passes_clean": 3,
+   "passes_clean": 2,
    "passes_dropped_as_stalled": 0,
    "seed_returned_avg": 0,
    "catalog_returned_avg": 0,
@@ -1414,8 +1359,8 @@
    "query": "acne cleanser",
    "bucket": "skincare_cleanser",
    "lang": "en",
-   "passes_clean": 2,
-   "passes_dropped_as_stalled": 1,
+   "passes_clean": 3,
+   "passes_dropped_as_stalled": 0,
    "seed_returned_avg": 8,
    "catalog_returned_avg": 8,
    "seed_relevant_avg": 7,
@@ -1435,7 +1380,7 @@
       "cleanser"
      ],
      "judgement": "product form cleanser directly answers the query",
-     "missing_from_catalog_in_passes": "2/2"
+     "missing_from_catalog_in_passes": "3/3"
     },
     {
      "external_product_id": "ulta:ba4e155a288a5919",
@@ -1447,7 +1392,7 @@
       "cleanser"
      ],
      "judgement": "product form cleanser directly answers the query",
-     "missing_from_catalog_in_passes": "2/2"
+     "missing_from_catalog_in_passes": "3/3"
     },
     {
      "external_product_id": "ulta:b7bee03683b780a7",
@@ -1460,7 +1405,7 @@
       "moisturizer"
      ],
      "judgement": "product form cleanser directly answers the query",
-     "missing_from_catalog_in_passes": "2/2"
+     "missing_from_catalog_in_passes": "3/3"
     }
    ],
    "rejected_by_relevance": [
@@ -1474,7 +1419,7 @@
       "serum"
      ],
      "judgement": "no rubric form matched the product",
-     "missing_from_catalog_in_passes": "2/2"
+     "missing_from_catalog_in_passes": "3/3"
     }
    ]
   },
@@ -1482,8 +1427,8 @@
    "query": "gentle cleanser",
    "bucket": "skincare_cleanser",
    "lang": "en",
-   "passes_clean": 2,
-   "passes_dropped_as_stalled": 1,
+   "passes_clean": 3,
+   "passes_dropped_as_stalled": 0,
    "seed_returned_avg": 8,
    "catalog_returned_avg": 8,
    "seed_relevant_avg": 8,
@@ -1503,7 +1448,7 @@
       "cleanser"
      ],
      "judgement": "product form cleanser directly answers the query",
-     "missing_from_catalog_in_passes": "2/2"
+     "missing_from_catalog_in_passes": "3/3"
     },
     {
      "external_product_id": "ulta:70fe4a4bc2e296ad",
@@ -1515,7 +1460,7 @@
       "cleanser"
      ],
      "judgement": "product form cleanser directly answers the query",
-     "missing_from_catalog_in_passes": "2/2"
+     "missing_from_catalog_in_passes": "3/3"
     },
     {
      "external_product_id": "ext_ffb12fe6f5825dbc7ae8d71e",
@@ -1527,7 +1472,7 @@
       "cleanser"
      ],
      "judgement": "product form cleanser directly answers the query",
-     "missing_from_catalog_in_passes": "2/2"
+     "missing_from_catalog_in_passes": "3/3"
     },
     {
      "external_product_id": "ext_bd6713ee6541365fa172255d",
@@ -1539,7 +1484,7 @@
       "cleanser"
      ],
      "judgement": "product form cleanser directly answers the query",
-     "missing_from_catalog_in_passes": "2/2"
+     "missing_from_catalog_in_passes": "3/3"
     },
     {
      "external_product_id": "ext_0389cd34ac2b199ed7d155fd",
@@ -1551,7 +1496,7 @@
       "cleanser"
      ],
      "judgement": "product form cleanser directly answers the query",
-     "missing_from_catalog_in_passes": "2/2"
+     "missing_from_catalog_in_passes": "3/3"
     },
     {
      "external_product_id": "ext_218ac2ea5a9b179e1ca0fdcf",
@@ -1563,7 +1508,7 @@
       "cleanser"
      ],
      "judgement": "product form cleanser directly answers the query",
-     "missing_from_catalog_in_passes": "2/2"
+     "missing_from_catalog_in_passes": "3/3"
     },
     {
      "external_product_id": "ext_03f17d2497c42c4b759281f6",
@@ -1575,7 +1520,7 @@
       "cleanser"
      ],
      "judgement": "product form cleanser directly answers the query",
-     "missing_from_catalog_in_passes": "2/2"
+     "missing_from_catalog_in_passes": "3/3"
     }
    ],
    "rejected_by_relevance": []
@@ -1700,47 +1645,12 @@
    "seed_returned_avg": 8,
    "catalog_returned_avg": 8,
    "seed_relevant_avg": 5,
-   "catalog_relevant_avg": 1,
-   "relevance_deficit": 4,
-   "acceptance_target": true,
-   "true_gap_count": 5,
-   "true_gaps": [
-    {
-     "external_product_id": "ulta:7cd47ba7a283490c",
-     "brand": "TULA",
-     "title": "24-7 Moisture Fragrance Free Hydrating Day & Night Cream",
-     "grade": 2,
-     "grade_label": "relevant",
-     "forms": [
-      "moisturizer"
-     ],
-     "judgement": "product form moisturizer directly answers the query",
-     "missing_from_catalog_in_passes": "3/3"
-    },
-    {
-     "external_product_id": "ext_4729e70c78478cb6a57aa177",
-     "brand": "Olehenriksen",
-     "title": "Après Skin Rich Rescue Barrier Moisturizer with Ceramides",
-     "grade": 2,
-     "grade_label": "relevant",
-     "forms": [
-      "moisturizer"
-     ],
-     "judgement": "product form moisturizer directly answers the query",
-     "missing_from_catalog_in_passes": "3/3"
-    },
-    {
-     "external_product_id": "ext_db10285b875616e21b4e3cf4",
-     "brand": "COSRX",
-     "title": "Ceramide Skin Barrier Moisturizer",
-     "grade": 2,
-     "grade_label": "relevant",
-     "forms": [
-      "moisturizer"
-     ],
-     "judgement": "product form moisturizer directly answers the query",
-     "missing_from_catalog_in_passes": "3/3"
-    },
+   "catalog_relevant_avg": 7,
+   "relevance_deficit": 0,
+   "acceptance_target": false,
+   "true_gap_count": 0,
+   "true_gaps": [],
+   "substitutable_misses": [
     {
      "external_product_id": "ext_fc7af581263cef7037f9a3bc",
      "brand": "Naturium",
@@ -1766,7 +1676,6 @@
      "missing_from_catalog_in_passes": "3/3"
     }
    ],
-   "substitutable_misses": [],
    "rejected_by_relevance": [
     {
      "external_product_id": "ext_1c12835bab42c6dbd38cf71c",
@@ -1815,10 +1724,10 @@
    "seed_returned_avg": 8,
    "catalog_returned_avg": 8,
    "seed_relevant_avg": 8,
-   "catalog_relevant_avg": 1,
-   "relevance_deficit": 7,
+   "catalog_relevant_avg": 4,
+   "relevance_deficit": 4,
    "acceptance_target": true,
-   "true_gap_count": 8,
+   "true_gap_count": 7,
    "true_gaps": [
     {
      "external_product_id": "ext_624a12ac9aec83ba278950e0",
@@ -1893,18 +1802,6 @@
      "missing_from_catalog_in_passes": "3/3"
     },
     {
-     "external_product_id": "ext_8d1ef8a7e492c407c7f509d5",
-     "brand": "The Ordinary",
-     "title": "Natural Moisturizing Factors + Beta Glucan Lightweight Gel Moisturizer",
-     "grade": 2,
-     "grade_label": "relevant",
-     "forms": [
-      "moisturizer"
-     ],
-     "judgement": "product form moisturizer directly answers the query",
-     "missing_from_catalog_in_passes": "3/3"
-    },
-    {
      "external_product_id": "ext_7f86bf0eba830f16dae39f6c",
      "brand": "Beauty of Joseon",
      "title": "Red Bean Water Gel",
@@ -1924,16 +1821,17 @@
    "query": "hyaluronic acid hydrating serum",
    "bucket": "skincare_serum",
    "lang": "en",
-   "passes_clean": 3,
-   "passes_dropped_as_stalled": 0,
+   "passes_clean": 2,
+   "passes_dropped_as_stalled": 1,
    "seed_returned_avg": 8,
    "catalog_returned_avg": 8,
    "seed_relevant_avg": 6,
-   "catalog_relevant_avg": 5,
-   "relevance_deficit": 1,
-   "acceptance_target": true,
-   "true_gap_count": 5,
-   "true_gaps": [
+   "catalog_relevant_avg": 8,
+   "relevance_deficit": 0,
+   "acceptance_target": false,
+   "true_gap_count": 0,
+   "true_gaps": [],
+   "substitutable_misses": [
     {
      "external_product_id": "ulta:bd6582d4b14f5de7",
      "brand": "Estée Lauder",
@@ -1944,7 +1842,7 @@
       "serum"
      ],
      "judgement": "product form serum directly answers the query",
-     "missing_from_catalog_in_passes": "3/3"
+     "missing_from_catalog_in_passes": "2/2"
     },
     {
      "external_product_id": "ulta:4495b95446668dd4",
@@ -1956,7 +1854,7 @@
       "serum"
      ],
      "judgement": "product form serum directly answers the query",
-     "missing_from_catalog_in_passes": "3/3"
+     "missing_from_catalog_in_passes": "2/2"
     },
     {
      "external_product_id": "ext_41bf389f8c93f65d101bd36b",
@@ -1968,7 +1866,7 @@
       "serum"
      ],
      "judgement": "product form serum directly answers the query",
-     "missing_from_catalog_in_passes": "3/3"
+     "missing_from_catalog_in_passes": "2/2"
     },
     {
      "external_product_id": "ext_f7999d8a894435156eaccb24",
@@ -1980,7 +1878,7 @@
       "serum"
      ],
      "judgement": "product form serum directly answers the query",
-     "missing_from_catalog_in_passes": "3/3"
+     "missing_from_catalog_in_passes": "2/2"
     },
     {
      "external_product_id": "ext_6f885ffc900b6c99115c25e9",
@@ -1992,10 +1890,9 @@
       "serum"
      ],
      "judgement": "product form serum directly answers the query",
-     "missing_from_catalog_in_passes": "3/3"
+     "missing_from_catalog_in_passes": "2/2"
     }
    ],
-   "substitutable_misses": [],
    "rejected_by_relevance": [
     {
      "external_product_id": "ext_0feb1c58f18d9f6694955e7e",
@@ -2008,7 +1905,7 @@
       "sunscreen"
      ],
      "judgement": "no rubric form matched the product",
-     "missing_from_catalog_in_passes": "3/3"
+     "missing_from_catalog_in_passes": "2/2"
     },
     {
      "external_product_id": "ulta:071416c479b67915",
@@ -2020,7 +1917,7 @@
       "moisturizer"
      ],
      "judgement": "no rubric form matched the product",
-     "missing_from_catalog_in_passes": "3/3"
+     "missing_from_catalog_in_passes": "2/2"
     }
    ]
   },
@@ -2028,8 +1925,8 @@
    "query": "salicylic acid serum for acne and pores",
    "bucket": "skincare_serum",
    "lang": "en",
-   "passes_clean": 3,
-   "passes_dropped_as_stalled": 0,
+   "passes_clean": 2,
+   "passes_dropped_as_stalled": 1,
    "seed_returned_avg": 8,
    "catalog_returned_avg": 8,
    "seed_relevant_avg": 5,
@@ -2049,7 +1946,7 @@
       "serum"
      ],
      "judgement": "product form serum directly answers the query",
-     "missing_from_catalog_in_passes": "3/3"
+     "missing_from_catalog_in_passes": "2/2"
     },
     {
      "external_product_id": "ext_fe0c55a05a505ad59ddd7f0c",
@@ -2061,7 +1958,7 @@
       "serum"
      ],
      "judgement": "product form serum directly answers the query",
-     "missing_from_catalog_in_passes": "3/3"
+     "missing_from_catalog_in_passes": "2/2"
     },
     {
      "external_product_id": "ext_d60e9219685d624c709918e8",
@@ -2073,44 +1970,10 @@
       "serum"
      ],
      "judgement": "product form serum directly answers the query",
-     "missing_from_catalog_in_passes": "3/3"
-    },
-    {
-     "external_product_id": "ext_7db487fb062d3a8dc8fb330d",
-     "brand": "The Ordinary",
-     "title": "Salicylic Acid 2% Anhydrous Solution, Gentle Exfoliating Serum for Blemishes",
-     "grade": 2,
-     "grade_label": "relevant",
-     "forms": [
-      "serum"
-     ],
-     "judgement": "product form serum directly answers the query",
-     "missing_from_catalog_in_passes": "3/3"
-    },
-    {
-     "external_product_id": "ext_096ca97f62c5ac465279b217",
-     "brand": "The Ordinary",
-     "title": "Salicylic Acid 2% Solution, Exfoliating Serum for Acne",
-     "grade": 2,
-     "grade_label": "relevant",
-     "forms": [
-      "serum"
-     ],
-     "judgement": "product form serum directly answers the query",
-     "missing_from_catalog_in_passes": "3/3"
+     "missing_from_catalog_in_passes": "2/2"
     }
    ],
    "rejected_by_relevance": [
-    {
-     "external_product_id": "ulta:d29e14eff436f1f1",
-     "brand": "First Aid Beauty",
-     "title": "Acne Clearing Pads 2% Salicylic Acid Acne Treatment",
-     "grade": 0,
-     "grade_label": "irrelevant",
-     "forms": [],
-     "judgement": "no rubric form matched the product",
-     "missing_from_catalog_in_passes": "3/3"
-    },
     {
      "external_product_id": "ulta:96eaf0ef7d880d38",
      "brand": "Murad",
@@ -2121,7 +1984,7 @@
       "cleanser"
      ],
      "judgement": "no rubric form matched the product",
-     "missing_from_catalog_in_passes": "3/3"
+     "missing_from_catalog_in_passes": "2/2"
     },
     {
      "external_product_id": "ulta:2ca6616b801d7052",
@@ -2133,7 +1996,7 @@
       "cleanser"
      ],
      "judgement": "no rubric form matched the product",
-     "missing_from_catalog_in_passes": "3/3"
+     "missing_from_catalog_in_passes": "2/2"
     }
    ]
   },
