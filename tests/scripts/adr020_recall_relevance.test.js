@@ -90,6 +90,30 @@ describe('form classifier reads compound phrases before single tokens', () => {
   });
 });
 
+describe('multi-product sets are partial answers, never full ones', () => {
+  test('a mixed routine set is not the product it contains', () => {
+    // Graded RELEVANT before this rule, on the strength of the word "Cream".
+    expect(
+      gradeOf(
+        'lightweight gel moisturizer for acne-prone skin',
+        'EIOM',
+        'Korean Acne-prone skin daily care set - Targeting Serum & Cream',
+      ),
+    ).toBe(GRADE.PARTIAL);
+  });
+
+  test('even a same-form set caps at partial', () => {
+    expect(gradeOf('mascara', 'Merit', 'The Mascara Duo')).toBe(GRADE.PARTIAL);
+    expect(gradeOf('mascara', 'ILIA', 'Mascara is a Moment Set')).toBe(GRADE.PARTIAL);
+    expect(gradeOf('mascara', 'ILIA', 'Limitless Lash Mascara')).toBe(GRADE.RELEVANT);
+  });
+
+  test('set detection is word-bounded — "Sunset" is not a set', () => {
+    expect(classifyForms('Brand', 'Sunset Glow Moisturizer').forms).not.toContain('set_or_collection');
+    expect(gradeOf('moisturizer', 'Brand', 'Sunset Glow Moisturizer')).toBe(GRADE.RELEVANT);
+  });
+});
+
 describe('regression: the 2026-07-30 fixture handed acceptance targets to irrelevant products', () => {
   // Each row is a (query, product) pair the old parity-diff fixture recorded as
   // a recall gap the projection "must close". Every one is graded IRRELEVANT:

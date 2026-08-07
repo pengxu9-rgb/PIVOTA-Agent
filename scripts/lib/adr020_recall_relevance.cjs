@@ -116,6 +116,12 @@ const FORM_PATTERNS = Object.freeze([
   // token but is not a foundation, and a "Moisturizer Applicator" is not a
   // moisturizer — both were graded RELEVANT before this arm existed.
   ['tool', /\b(brush|applicator|sponge|puff|tweezer|gua\s*sha|massager|spatula|mirror|tool|tools)\b/],
+  // Multi-product sets. Not irrelevant — a set may well contain the right
+  // product — but not the thing asked for either, so these cap at PARTIAL.
+  // Without this, "EIOM Korean Acne-prone skin daily care set - Targeting
+  // Serum & Cream" graded RELEVANT for a moisturizer query on the strength of
+  // the word "Cream".
+  ['set_or_collection', /\b(set|sets|bundle|kit|trio|duo|collection|routine|\d+\s*step)\b/],
 ]);
 
 /**
@@ -294,6 +300,13 @@ function judgeProduct(query, product) {
   } else if (hitPartial.length) {
     grade = GRADE.PARTIAL;
     reason = `product form ${hitPartial.join('/')} is adjacent to the query's target form`;
+  }
+
+  // A multi-product set may contain the right product but is not the product;
+  // it can never be a full answer, only a partial one.
+  if (grade === GRADE.RELEVANT && forms.includes('set_or_collection')) {
+    grade = GRADE.PARTIAL;
+    reason = `a multi-product set containing ${hitRelevant.join('/')}, not the product itself`;
   }
 
   return {

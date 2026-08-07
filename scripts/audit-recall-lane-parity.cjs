@@ -35,8 +35,13 @@
  * (and its WHERE arm) stayed dark, while prod runs with
  * PIVOT_BEAUTY_MAINLINE_TOKEN_MATCH_ENABLED=true. Catalog-lane precision@8 over
  * the in-domain corpus was 59.8% measured that way and 75.0% measured as prod
- * serves it. The chosen value is recorded as `token_match` in the report; a
- * report without it cannot be compared to another.
+ * serves it.
+ *
+ * The structural fix is that this harness no longer RESTATES the lane params:
+ * it spreads `mainlineLaneConfig()` from canonicalCatalogSearch.js, so a new
+ * flag reaches this harness by construction rather than by someone remembering.
+ * The effective config is recorded as `token_match` / `form_agreement` in the
+ * report; a report without them cannot be compared to another.
  *
  * Usage:
  *   node scripts/audit-recall-lane-parity.cjs \
@@ -81,15 +86,6 @@ function hasFlag(name) {
 
 function asString(value) {
   return String(value == null ? '' : value).trim();
-}
-
-/** Mirrors parseBooleanEnv in src/server.js for the tokenMatch flag. */
-function parseBooleanEnvLike(raw, fallback = false) {
-  const v = asString(raw).toLowerCase();
-  if (!v) return fallback;
-  if (['1', 'true', 'yes', 'on', 'enabled'].includes(v)) return true;
-  if (['0', 'false', 'no', 'off', 'disabled'].includes(v)) return false;
-  return fallback;
 }
 
 // ---------------------------------------------------------------------------
@@ -472,11 +468,14 @@ async function main() {
   ).toUpperCase();
   process.env.CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET = market;
 
-  // Defaults to the prod mainline's setting so the harness measures the lane as
-  // production serves it; --no-token-match reproduces the pre-#1933 shape.
-  const tokenMatch = hasFlag('no-token-match')
-    ? false
-    : parseBooleanEnvLike(process.env.PIVOT_BEAUTY_MAINLINE_TOKEN_MATCH_ENABLED, true);
+  // Lane config is READ FROM THE SHARED SOURCE, never restated here. Listing
+  // params in this file is what let the harness drift from the mainline for
+  // months (see the LANE CONFIGURATION note above); taking them from
+  // mainlineLaneConfig means a new flag reaches this harness by construction.
+  // --no-token-match forces the pre-#1933 shape for A/B comparison.
+  const { mainlineLaneConfig } = require('../src/services/canonicalCatalogSearch');
+  const laneConfig = mainlineLaneConfig();
+  if (hasFlag('no-token-match')) laneConfig.tokenMatch = false;
 
   // routes.js boots a large module graph; keep require-time side effects
   // quiet (mirrors tests/aurora_bff_product_intel.test.js env stubs).
@@ -505,7 +504,7 @@ async function main() {
   if (typeof searchLocalExternalSeedProducts !== 'function') {
     throw new Error('routes.js __internal.searchLocalExternalSeedProducts is unavailable');
   }
-  const { fetchCanonicalChainRows } = require('../src/services/canonicalCatalogSearch');
+  const { fetchCanonicalChainRows, isFormAgreementEnabled } = require('../src/services/canonicalCatalogSearch');
   const dbQuery = (sql, params) => db.query(sql, params);
 
   console.log(
@@ -539,15 +538,8 @@ async function main() {
           query: entry.query,
           marketId: market,
           limit,
-          // MUST mirror the mainline. fetchCanonicalChainRows defaults
-          // tokenMatch to FALSE, but every production caller enables it — the
-          // buyable beauty mainline via PIVOT_BEAUTY_MAINLINE_TOKEN_MATCH_ENABLED
-          // (#1933, set to true in prod), the citable-supplement and
-          // ingredient-direct lanes unconditionally. Omitting it here measured a
-          // lane configuration NO caller uses: the +25/token rank arm never
-          // fired, so this harness reported a rank ladder far more inert than
-          // the one prod actually serves.
-          tokenMatch,
+          // Spread, never enumerated — see laneConfig above.
+          ...laneConfig,
           deps: { query: dbQuery },
         });
       } catch (error) {
@@ -606,7 +598,8 @@ async function main() {
     max_queries: maxQueries,
     // Recorded because it silently changes which rank arms fire; a report
     // without it cannot be compared to another.
-    token_match: tokenMatch,
+    token_match: laneConfig.tokenMatch,
+    form_agreement: isFormAgreementEnabled(),
     aggregate,
     per_query: perQuery,
   };

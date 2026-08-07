@@ -155,6 +155,125 @@ function isRankV2Enabled(env = process.env) {
   );
 }
 
+// ADR-020 phase 1: product-form agreement.
+//
+// THE DEFECT, MEASURED ON PROD 2026-08-07. Token overlap counts tokens without
+// asking what any of them MEAN, so a match on the query's product-form noun is
+// worth exactly as much as a match on a generic material or attribute word.
+// For "lightweight gel moisturizer for acne-prone skin" only 13 live US rows
+// clear the token WHERE arm (overlap >= 3) and TWELVE of them tie at exactly
+// 75 — the real gel moisturizers tied with a facial toner, a sheet mask, a
+// cleanser and two bundles, all of which match {acne, prone, skin}. With the
+// score tied, product_key ASC picks the cut, and 4 of the 8 served rows were
+// the wrong kind of product.
+//
+// WHY NOT IDF. The obvious fix is to weight tokens by inverse document
+// frequency, and it was measured before being rejected: it does not help here
+// and mildly hurts. The rarest token in that query is "prone" (df=10) — half
+// of the attribute "acne-prone" and semantically worthless — while the form
+// noun "moisturizer" sits at df=192. IDF therefore promotes the sheet mask,
+// the bundle and the toner into positions 2-4. Measured relevant-in-top-8:
+// flat 5/8, IDF 5/8, form agreement 8/8.
+//
+// WHAT THIS ARM DOES. When the query names a product form, rows whose TITLE
+// carries that same form get +60 — enough to clear a two-token overlap
+// difference (50) but deliberately below the coverage (+80) and title-phrase
+// (+120) arms, so a genuine phrase match still wins.
+//
+// Default OFF. Note the #1933 lesson: a rank fix that rides an unrelated flag
+// sits dark in prod. This has its own flag and must be enabled explicitly.
+const FORM_AGREEMENT_FLAG_VALUES = RANK_V2_FLAG_VALUES;
+
+function isFormAgreementEnabled(env = process.env) {
+  return FORM_AGREEMENT_FLAG_VALUES.has(
+    String(env.CANONICAL_CATALOG_FORM_AGREEMENT || '').trim().toLowerCase(),
+  );
+}
+
+// The FLAG-DERIVED params the buyable beauty mainline passes to
+// fetchCanonicalChainRows, which a replica lane (the recall-parity harness)
+// must mirror to measure the same thing. Read per call, like every other flag
+// here, so ops can flip a flag on a running process and the next measurement
+// reflects it.
+//
+// SCOPE — this does NOT make a caller equivalent to the mainline, and must not
+// be read as doing so. It carries only params fixed by configuration. The
+// mainline additionally passes QUERY-DERIVED params that no static config can
+// supply: categoryPathPrefix + categoryMode='category_browse' (which drops the
+// query text entirely and is the mode most beauty traffic takes),
+// verticalSearch, brandFilter, and includeSkuOffers. A harness spreading this
+// still measures TEXT mode; that divergence is real and documented in
+// reports/adr020_phase1_acceptance_rebaseline_2026-08-07.md rather than
+// papered over here.
+function mainlineLaneConfig(env = process.env) {
+  return {
+    tokenMatch: RANK_V2_FLAG_VALUES.has(
+      String(env.PIVOT_BEAUTY_MAINLINE_TOKEN_MATCH_ENABLED || '').trim().toLowerCase(),
+    ),
+  };
+}
+
+// Product forms: QUERY token -> the patterns that identify that form in a
+// TITLE. The two sides are deliberately allowed to differ, because shoppers and
+// merchandisers do not use the same words.
+//
+// TEXTURE AND FORMAT WORDS ARE EXCLUDED (gel, cream, oil, balm, powder, mist,
+// stick, water, milk, foam, spray). They modify a form noun far more often than
+// they are one, and including them would defeat the arm: "gel" is in
+// "lightweight gel moisturizer", so a "Heartleaf Soothing Gel MASK" would
+// collect the boost — exactly the row this arm exists to demote.
+//
+// "FRAGRANCE" IS THE CASE THAT PROVES THE TWO SIDES MUST DIFFER. It is a
+// category word: real perfumes are titled "Eau de Parfum", while the titles
+// that literally contain "fragrance" are body mists and layering balms.
+// Measured on prod 2026-08-07 for "woody fragrance under $80": enabling
+// tokenMatch dropped this query from 3 relevant results to 0, because the
+// +25/token arm promoted five "Find Comfort Body & Hair Fragrance Mist" rows
+// over Tom Ford's Oud Wood / Tobacco Vanille / Black Orchid Eau de Parfum —
+// none of which contain the token "fragrance" at all. Mapping the query token
+// to parfum/cologne/perfume (and NOT to "fragrance") boosts the actual
+// perfumes and leaves the mists alone.
+//
+// The arm is monotone: a form absent from this map yields no boost and leaves
+// ordering unchanged. Under-inclusion is safe; over-inclusion is not.
+const PRODUCT_FORM_TITLE_PATTERNS = new Map([
+  // skincare — query word and title word coincide
+  ['cleanser', ['cleanser']],
+  ['moisturizer', ['moisturizer', 'moisturiser']],
+  ['moisturiser', ['moisturizer', 'moisturiser']],
+  ['serum', ['serum']],
+  ['toner', ['toner']],
+  ['essence', ['essence']],
+  ['ampoule', ['ampoule']],
+  ['sunscreen', ['sunscreen', 'spf']],
+  ['mask', ['mask']],
+  ['exfoliator', ['exfoliator', 'exfoliant']],
+  ['scrub', ['scrub']],
+  // makeup
+  ['lipstick', ['lipstick']],
+  ['lipgloss', ['lip gloss', 'lipgloss']],
+  ['mascara', ['mascara']],
+  ['eyeshadow', ['eyeshadow', 'eye shadow']],
+  ['eyeliner', ['eyeliner', 'eye liner']],
+  ['foundation', ['foundation']],
+  ['concealer', ['concealer']],
+  ['blush', ['blush']],
+  ['bronzer', ['bronzer']],
+  ['highlighter', ['highlighter']],
+  ['primer', ['primer']],
+  ['palette', ['palette']],
+  ['cushion', ['cushion']],
+  // fragrance — query vocabulary and title vocabulary diverge; see above
+  ['fragrance', ['parfum', 'cologne', 'perfume']],
+  ['perfume', ['parfum', 'perfume', 'cologne']],
+  ['parfum', ['parfum', 'perfume']],
+  ['cologne', ['cologne', 'parfum']],
+  // hair / body
+  ['shampoo', ['shampoo']],
+  ['conditioner', ['conditioner']],
+  ['deodorant', ['deodorant']],
+]);
+
 // ADR-020 / issue #1927: multi-product set diversity.
 //
 // THE DEFECT, MEASURED ON PROD 2026-08-07. Every rank arm that carries text
@@ -859,6 +978,28 @@ async function fetchCanonicalChainRows(args = {}) {
         .join(' AND ');
       v2Arms.push(`CASE WHEN (${coverageSql})                          THEN  80 ELSE 0 END`);
     }
+    // Product-form agreement (+60). Only fires when the query itself names a
+    // form, and matches on TITLE only — a brand called "Mask" says nothing
+    // about what the product is. See PRODUCT_FORM_TOKENS for why texture words
+    // are excluded.
+    if (isFormAgreementEnabled()) {
+      // Query tokens that name a form, expanded to the title vocabulary for
+      // that form and deduped (two query tokens can share a title pattern).
+      const formPatterns = [
+        ...new Set(
+          v2Tokens.flatMap((t) => PRODUCT_FORM_TITLE_PATTERNS.get(t) || []),
+        ),
+      ];
+      if (formPatterns.length > 0) {
+        const formSql = formPatterns
+          .map((pattern) => {
+            params.push(`%${pattern}%`);
+            return `LOWER(COALESCE(p.title, '')) LIKE $${params.length}`;
+          })
+          .join(' OR ');
+        v2Arms.push(`CASE WHEN (${formSql})                            THEN  60 ELSE 0 END`);
+      }
+    }
     v2Arms.push(
       `CASE WHEN p.recall_doc IS NOT NULL AND p.recall_doc LIKE $2    THEN  60 ELSE 0 END`,
     );
@@ -1360,8 +1501,28 @@ module.exports = {
   // ingredient-recall-direct lane) can stamp the EFFECTIVE set-diversity state
   // into telemetry, the same way isRecallDocMatchEnabled is used above.
   isSetDiversityEnabled,
+  // Exported for the same telemetry reason as the two above, and so the
+  // recall-parity harness can stamp the lane config it actually measured.
+  isFormAgreementEnabled,
+  // THE LANE CONFIG THE BUYABLE BEAUTY MAINLINE SERVES WITH.
+  //
+  // Every optional param of fetchCanonicalChainRows defaults to OFF, and each
+  // caller opts in differently. Any measurement harness that restates those
+  // params instead of reading them measures a lane nobody serves — which is
+  // exactly what happened: scripts/audit-recall-lane-parity.cjs never passed
+  // tokenMatch, so ADR-020's designated parity instrument ran with the
+  // +25/token arm dark from its first run until 2026-08-07. Catalog-lane
+  // precision@8 over the in-domain corpus read 59.8% that way and 75.0%
+  // configured as prod serves. #1933 changed the mainline's params without
+  // touching the harness; nothing failed, the numbers just quietly meant
+  // something else.
+  //
+  // Callers that need to REPLICATE the mainline lane should spread this rather
+  // than listing params, so a new flag reaches them by construction.
+  mainlineLaneConfig,
   // Exposed for tests so the upper bounds can be asserted.
   __internal: {
+    PRODUCT_FORM_TITLE_PATTERNS,
     DEFAULT_LIMIT,
     CANDIDATE_LIMIT_MIN,
     CANDIDATE_LIMIT_MAX,
