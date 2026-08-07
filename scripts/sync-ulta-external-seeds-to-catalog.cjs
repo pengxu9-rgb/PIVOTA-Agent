@@ -11,12 +11,14 @@ const {
   validateCommerceFactsGateForSeedRow,
 } = require('../src/commerce/commerceFacts');
 // Fix Plan D · T1 — resolve retailer offers against existing catalog identity
-// BEFORE minting a self product/group, and use the ONE shared content_key formula.
+// BEFORE minting a self product/group. That resolve-first reuse is what collapses a
+// retailer offer onto its D2C product; the minter below is only for genuinely new ones.
 const {
-  contentKeyFallback,
   buildCatalogIdentityIndex,
   resolveAgainstIndex,
 } = require('../src/services/retailerOfferIdentity');
+// #1916 — the ONE content_key minter (Node mirror of the pivota-backend authority).
+const { makeContentKey } = require('../src/services/contentKey');
 
 const RETAILER_FUZZY_THRESHOLD = 0.72;
 
@@ -240,11 +242,13 @@ function buildMirror(row) {
   const facts = readCommerceFactsV1(row);
   const agentSafeCommerceFacts = buildAgentSafeCommerceFacts(row);
   const gate = validateCommerceFactsGateForSeedRow(row);
-  // Self-mint fallback content_key uses the ONE shared, URL-free formula
-  // (brandCore + strict titleCore) so two independent sellers of a brand-new item
-  // still converge. Resolve-first (run()) overrides this when an existing D2C
-  // product matches exactly.
-  const contentKey = contentKeyFallback(brand, title);
+  // Self-mint content_key for a genuinely new product, via the ONE minter that the
+  // pivota-backend authority also uses — so a Node-minted key lands in the same
+  // keyspace as the 12k keys already there (issue #1916). Resolve-first (run())
+  // overrides this whenever an existing D2C product matches exactly; that reuse, not
+  // this hash, is what makes a retailer offer share its D2C product's identity.
+  // Null when brand/title normalize to empty — the caller skips such rows.
+  const contentKey = makeContentKey(brand, title, null);
   const sigId = stableHash('sig', ['external_seed_catalog_sig', externalProductId], 32);
   const productGroupId = stableHash('pg', ['external_seed_self_group', externalProductId], 32);
   const offerId = `offer:external_seed:${crypto
@@ -832,7 +836,7 @@ async function run() {
   const mirrorMerchantCounts = annotateUltaMirrorMerchants(rows);
   const missingIds = ids.filter((id) => !rows.some((row) => asString(row.external_product_id) === id));
   const skipped = [];
-  const mirrors = [];
+  let mirrors = [];
   for (const row of rows) {
     if (asString(row.status).toLowerCase() !== 'active') {
       skipped.push({ external_product_id: row.external_product_id, reason: 'inactive_seed' });
@@ -912,6 +916,22 @@ async function run() {
     }
   }
   // -----------------------------------------------------------------------------
+
+  // #1916: a mirror still holding a null content_key after resolve-first has neither
+  // a match to reuse nor mintable brand/title. index_pipeline_state.content_key is a
+  // PRIMARY KEY, so it cannot be written; a placeholder would collide every such row
+  // onto one serving decision. Drop it and retry next run. Checked here, not at build
+  // time, because resolve-first legitimately fills the key in between.
+  mirrors = mirrors.filter((mirror) => {
+    if (mirror.product.content_key) return true;
+    skipped.push({
+      external_product_id: mirror.row?.external_product_id,
+      reason: 'content_key_unmintable',
+      brand: mirror.product.brand,
+      title: mirror.product.title,
+    });
+    return false;
+  });
 
   const applied = await applyMirrors(mirrors, dryRun);
   const byBrand = {};

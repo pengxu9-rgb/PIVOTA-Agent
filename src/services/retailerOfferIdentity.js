@@ -1,38 +1,45 @@
 'use strict';
 /**
- * Fix Plan D — cross-seller identity spine (ONE shared normalizer + resolver).
+ * Fix Plan D — cross-seller identity spine (ONE shared MATCHING normalizer + resolver).
  *
- * WHY THIS MODULE EXISTS
- * ----------------------
- * Historically the D2C mirror (scripts/sync-external-seeds-to-catalog.cjs) and the
- * retailer mirror (scripts/sync-ulta-external-seeds-to-catalog.cjs) computed
- * `content_key` with DIVERGENT formulas, so the same product sold by a brand's own
- * site and by Ulta could NEVER collapse to one content_key:
- *   - D2C:      ck = stableHash('ck', [brand, title, canonicalUrl])   (URL in key)
- *   - retailer: ck = stableHash('ck', [brand, title])                 (no URL, full title)
- * and neither stripped size/mini tokens, so real-world variants ("… 3.38 oz",
- * "… 100ml") failed equality anyway. The retailer mirror also minted a *self*
- * product-group per seed instead of resolving against existing catalog identity.
+ * WHAT THIS MODULE IS
+ * -------------------
+ * A *matching* key. `identityMatchKey(brand, title)` = `brandCore|titleCore`, used to
+ * resolve an incoming offer against catalog products that already exist, so the same
+ * product sold by a brand's own site and by Ulta lands on one identity. `titleCore`
+ * removes brand tokens and strips size/pack/mini/jumbo/travel/refill tokens while
+ * PRESERVING shades — deliberately stricter on SIZE than
+ * pdp_identity_listing.title_core_norm (which keeps "100ml" and so blocks the exact
+ * cross-size collapse this plan needs), and shade-preserving so distinct shades never
+ * silently merge.
  *
- * DECISION (2026-07-12, documented here as the single source of truth)
- * -------------------------------------------------------------------
- * 1. content_key fallback is UNIFIED and URL-FREE for both mirrors:
- *        contentKeyFallback(brand, title) = stableHash('ck', [brandCore, titleCore])
- *    `titleCore` is the STRICTER core (below): brand tokens removed, size/pack/mini/
- *    jumbo/travel/refill tokens stripped, shades/colors PRESERVED. This is the same
- *    philosophy as pdp_identity_listing.title_core_norm but deliberately stricter on
- *    SIZE (the identity graph keeps "100ml" in title_core_norm, which blocks the
- *    exact cross-size collapse this plan needs). We keep shades so distinct shades do
- *    NOT silently merge.
- * 2. RESOLVE-FIRST is the primary collapse mechanism. Before minting a self identity,
- *    a mirror resolves (brandCore + titleCore) against existing catalog products and
- *    REUSES the matched product's content_key / product_group_id. The unified hash is
- *    only the deterministic fallback for genuinely new products (so two independent
- *    sellers of a brand-new item still converge).
- * 3. CONSERVATIVE: only an EXACT (brandCore + titleCore) match auto-reuses identity.
- *    A near (token-jaccard) match is NEVER auto-merged — it is surfaced for review.
- *    Wrong merges (someone else's price/availability on your PDP) are worse than no
- *    merge, per the plan's risk note.
+ * WHAT THIS MODULE IS NOT (issue #1916)
+ * -------------------------------------
+ * It does NOT mint `content_key`. It used to: from 2026-07-12 it exported
+ * `contentKeyFallback(brand, title) = stableHash('ck', [brandCore, titleCore])`, the
+ * third formula this repo invented for a key it does not own. `content_key` is minted
+ * by pivota-backend/services/catalog_identity.py and mirrored in Node by
+ * `src/services/contentKey.js` — that is the only minter. Measured on prod 2026-08-07:
+ * of 14,104 stored keys, ZERO were produced by `contentKeyFallback`, including the 985
+ * mirror rows minted after it shipped. A key minted here could never collide with a
+ * Python-minted key, so the row would split away from its own product's serving
+ * decision (`index_pipeline_state.content_key` is a PRIMARY KEY).
+ *
+ * The two keys have OPPOSITE size policy on purpose — this one strips size to match
+ * across it, `contentKey.js` keeps size because the authority treats 30ml and 50ml as
+ * different products. That is precisely why one can never be substituted for the other.
+ *
+ * HOW COLLAPSE ACTUALLY HAPPENS
+ * -----------------------------
+ * 1. RESOLVE-FIRST is the collapse mechanism, and the only one. Before minting a self
+ *    identity, a mirror resolves `identityMatchKey` against existing catalog products
+ *    and REUSES the matched product's stored content_key / product_group_id. Two
+ *    spellings of one product converge because one row already holds the key — never
+ *    because two hashes happened to agree.
+ * 2. CONSERVATIVE: only an EXACT match auto-reuses identity. A near (token-jaccard)
+ *    match is NEVER auto-merged — it is surfaced for review. Wrong merges (someone
+ *    else's price/availability on your PDP) are worse than no merge, per the plan's
+ *    risk note.
  *
  * The pure functions here are ported/centralised from the offline merge tool
  * scripts/scan-beauty-sku-merge-candidates.js (lines ~95-152) so intake and the
@@ -143,11 +150,6 @@ function jaccard(left, right) {
 function stableHash(prefix, parts, length = 32) {
   const hash = crypto.createHash('sha256').update(parts.map(asString).join('\n')).digest('hex').slice(0, length);
   return `${prefix}_${hash}`;
-}
-
-/** UNIFIED, URL-free content_key fallback used by BOTH mirrors. */
-function contentKeyFallback(brand, title) {
-  return stableHash('ck', [brandCore(brand), titleCore(title, brand)], 32);
 }
 
 /** Deterministic exact-match identity key (brandCore | titleCore). */
@@ -311,7 +313,6 @@ module.exports = {
   coreTokens,
   jaccard,
   stableHash,
-  contentKeyFallback,
   identityMatchKey,
   SIZE_RE,
   FORM_VARIANT_RE,

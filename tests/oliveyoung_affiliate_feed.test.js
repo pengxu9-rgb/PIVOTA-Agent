@@ -9,7 +9,7 @@ const path = require('node:path');
 
 const oy = require('../src/services/oliveYoungAffiliateFeed');
 const { buildDiscoveredVia } = require('../src/services/seedProvenance');
-const { contentKeyFallback } = require('../src/services/retailerOfferIdentity');
+const { identityMatchKey } = require('../src/services/retailerOfferIdentity');
 
 const FIXTURE = path.join(__dirname, '..', 'fixtures', 'oliveyoung', 'affiliate_feed_sample.json');
 const feedPayload = fs.readFileSync(FIXTURE, 'utf8');
@@ -80,9 +80,12 @@ describe('buildSeedRowFromOYOffer', () => {
     expect(row2.external_product_id).toBe(row.external_product_id);
   });
 
-  test('cross-lane collapse: OY COSRX essence shares content_key with the D2C title', () => {
-    const oyKey = contentKeyFallback(row.seed_data.brand, row.seed_data.title);
-    const d2cKey = contentKeyFallback('COSRX', 'Advanced Snail 96 Mucin Power Essence 3.38 oz');
+  // #1916: the collapse is a resolve-first DB reuse keyed on identityMatchKey, not a
+  // shared hash — an OY offer inherits the D2C row's stored content_key. Asserting the
+  // match key is asserting the thing that actually makes that lookup hit.
+  test('cross-lane collapse: OY COSRX essence resolves onto the D2C title', () => {
+    const oyKey = identityMatchKey(row.seed_data.brand, row.seed_data.title);
+    const d2cKey = identityMatchKey('COSRX', 'Advanced Snail 96 Mucin Power Essence 3.38 oz');
     expect(oyKey).toBe(d2cKey);
   });
 });

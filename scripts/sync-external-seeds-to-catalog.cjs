@@ -14,8 +14,8 @@ const {
 } = require('../src/commerce/commerceFacts');
 const { classifyExternalSeedProductKind } = require('../src/services/externalSeedProductKind');
 const { deriveOfferSellerIdentity } = require('../src/services/offerSellerIdentity');
-// Fix Plan D · T1 — ONE shared, URL-free content_key fallback across both mirrors.
-const { contentKeyFallback } = require('../src/services/retailerOfferIdentity');
+// #1916 — the ONE content_key minter (Node mirror of the pivota-backend authority).
+const { makeContentKey } = require('../src/services/contentKey');
 
 const MERCHANT_ID = 'external_seed';
 const PLATFORM = 'external_seed';
@@ -1140,14 +1140,16 @@ function buildMirror(row) {
   else sourceRole = 'unknown';
   const sourceTier = offerTypeValue === 'brand_direct' ? 'brand' : (offerTypeValue === 'retailer' ? 'retailer' : 'unknown');
   const sellerName = sourceRole === 'official_brand_dtc' ? brand : asString(seedData.seller_or_retailer_name || snapshot.seller_or_retailer_name || extractHostname(canonicalUrl));
-  // Fix Plan D — resolve-first (existing key) then the ONE shared, URL-free
-  // fallback (brandCore + strict titleCore). Dropping the URL + stripping size
-  // tokens is what lets a brand-direct key and a retailer key ever be equal, so an
-  // independently-ingested D2C item and its Ulta/Sephora offer converge on one
-  // content_key. Existing rows keep their key via existing_content_key.
+  // Resolve-first (existing key), then the ONE content_key minter — the Node mirror
+  // of pivota-backend/services/catalog_identity.py, which is what actually owns this
+  // key and is still minting into it. gtin is null here to match the Python mirror
+  // (mirror_external_seeds_to_catalog_products.py passes None for external seeds).
+  // Cross-seller collapse is NOT this line's job: it happens by resolve-first reusing
+  // a matched row's stored key. See issue #1916 for the three formulas this replaced.
+  // Null when brand/title normalize to empty — callers must skip, never substitute.
   const contentKey =
     asString(row.existing_content_key) ||
-    contentKeyFallback(brand, title);
+    makeContentKey(brand, title, null);
   const freshness = {
     source: SOURCE_SYSTEM,
     mirrored_at: new Date().toISOString(),
@@ -1950,8 +1952,9 @@ async function applyMirrors(
               ON CONFLICT (content_key) DO UPDATE SET
                 pivota_signature_id = EXCLUDED.pivota_signature_id,
                 -- ADR-009 R1: heal-only restamp. content_key deliberately
-                -- converges a D2C row and its retailer row (contentKeyFallback),
-                -- so an unconditional restamp would thrash the shared IPS row's
+                -- converges a D2C row and its retailer row (resolve-first reuse of
+                -- the matched row's stored key), so an unconditional restamp would
+                -- thrash the shared IPS row's
                 -- merchant between two real sellers on alternating syncs. Legacy
                 -- sentinel stamps heal to the resolved merchant exactly once;
                 -- a real merchant is never overwritten by another.
@@ -2438,6 +2441,19 @@ async function run() {
         brand: mirror.product.brand,
         title: mirror.product.title,
         image_url: mirror.product.image_url,
+      });
+      continue;
+    }
+    if (!mirror.product.content_key) {
+      // #1916: makeContentKey returns null when brand/title normalize to empty
+      // (e.g. a title that is punctuation only). index_pipeline_state.content_key is
+      // a PRIMARY KEY, so a null would fail the serving upsert — and a placeholder
+      // key would collide every such row onto one serving decision. Skip and retry.
+      skipped.push({
+        external_product_id: id,
+        reason: 'content_key_unmintable',
+        brand: mirror.product.brand,
+        title: mirror.product.title,
       });
       continue;
     }
