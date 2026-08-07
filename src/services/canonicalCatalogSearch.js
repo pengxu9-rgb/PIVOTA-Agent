@@ -205,11 +205,20 @@ function isFormAgreementEnabled(env = process.env) {
 // still measures TEXT mode; that divergence is real and documented in
 // reports/adr020_phase1_acceptance_rebaseline_2026-08-07.md rather than
 // papered over here.
+// The mainline's own parser, imported rather than re-implemented. Using this
+// file's RANK_V2_FLAG_VALUES here would be a different parser wearing the same
+// name: it accepts `enabled` (which parseBooleanEnv rejects) and rejects
+// `yes`/`y` (which parseBooleanEnv accepts). Since every sibling flag in THIS
+// file is spelled `enabled`, an operator setting
+// PIVOT_BEAUTY_MAINLINE_TOKEN_MATCH_ENABLED=enabled would get a dark lane in
+// prod and a harness confidently stamping token_match:true — the instrument
+// defect this helper exists to prevent, inverted and self-certifying.
+const { parseBooleanEnv } = require('../api/gateway/access/invokeAuthEmergencyFallback');
+
 function mainlineLaneConfig(env = process.env) {
   return {
-    tokenMatch: RANK_V2_FLAG_VALUES.has(
-      String(env.PIVOT_BEAUTY_MAINLINE_TOKEN_MATCH_ENABLED || '').trim().toLowerCase(),
-    ),
+    // Same parser AND same fallback as src/server.js.
+    tokenMatch: parseBooleanEnv(env.PIVOT_BEAUTY_MAINLINE_TOKEN_MATCH_ENABLED, false),
   };
 }
 
@@ -245,7 +254,10 @@ const PRODUCT_FORM_TITLE_PATTERNS = new Map([
   ['toner', ['toner']],
   ['essence', ['essence']],
   ['ampoule', ['ampoule']],
-  ['sunscreen', ['sunscreen', 'spf']],
+  // NOT 'spf': it is stamped across complexion titles ("Tinted Moisturizer
+  // SPF 30", "Flawless Foundation SPF 15"), so it would boost foundations for
+  // a sunscreen query. Per the monotonicity rule, under-include.
+  ['sunscreen', ['sunscreen', 'sun cream', 'uv protector']],
   ['mask', ['mask']],
   ['exfoliator', ['exfoliator', 'exfoliant']],
   ['scrub', ['scrub']],
@@ -448,6 +460,32 @@ function applyMultiProductSetTopCap(rows, options = {}) {
     groupStart = groupEnd;
   }
   return { rows: out, deferred_count: deferredCount };
+}
+
+/**
+ * Query tokens -> the deduped TITLE patterns for whatever product forms they
+ * name. Empty when the query names no form (the arm then does not fire at all).
+ *
+ * buildSignificantTokens splits on whitespace only and does no stemming, so a
+ * raw Map lookup silently misses the most ordinary phrasings — measured:
+ * "moisturizer," (one comma) and "best moisturizers" (plural) both yielded no
+ * form. Strip non-letters and try a naive singular before giving up. This is
+ * deliberately local to the form lookup rather than a change to
+ * buildSignificantTokens, which is shared with the token WHERE and coverage
+ * arms and would alter recall if it started stripping punctuation.
+ */
+function queryFormTitlePatterns(tokens) {
+  const patterns = [];
+  for (const raw of Array.isArray(tokens) ? tokens : []) {
+    const token = String(raw || '').toLowerCase().replace(/[^a-z]/g, '');
+    if (!token) continue;
+    const hit =
+      PRODUCT_FORM_TITLE_PATTERNS.get(token) ||
+      (token.endsWith('es') ? PRODUCT_FORM_TITLE_PATTERNS.get(token.slice(0, -2)) : null) ||
+      (token.endsWith('s') ? PRODUCT_FORM_TITLE_PATTERNS.get(token.slice(0, -1)) : null);
+    if (hit) patterns.push(...hit);
+  }
+  return [...new Set(patterns)];
 }
 
 // Significant query tokens: length >= 3, stopwords dropped, deduped, capped
@@ -983,21 +1021,27 @@ async function fetchCanonicalChainRows(args = {}) {
     // about what the product is. See PRODUCT_FORM_TOKENS for why texture words
     // are excluded.
     if (isFormAgreementEnabled()) {
-      // Query tokens that name a form, expanded to the title vocabulary for
-      // that form and deduped (two query tokens can share a title pattern).
-      const formPatterns = [
-        ...new Set(
-          v2Tokens.flatMap((t) => PRODUCT_FORM_TITLE_PATTERNS.get(t) || []),
-        ),
-      ];
+      const formPatterns = queryFormTitlePatterns(v2Tokens);
       if (formPatterns.length > 0) {
-        const formSql = formPatterns
-          .map((pattern) => {
-            params.push(`%${pattern}%`);
-            return `LOWER(COALESCE(p.title, '')) LIKE $${params.length}`;
-          })
-          .join(' OR ');
-        v2Arms.push(`CASE WHEN (${formSql})                            THEN  60 ELSE 0 END`);
+        // WORD-BOUNDED REGEX, NOT LIKE '%...%'. Unanchored substring matching
+        // is wrong here in a way that is invisible to the acceptance harness
+        // (whose rubric is already \b-bounded, so it cannot falsify the SQL):
+        //   '%mask%'    matches "DaMASK Rose Hydrating Toner"  (a toner)
+        //   '%perfume%' matches "PERFUMEd Body Lotion"         (a lotion)
+        // Postgres \y is the word boundary. Patterns are module-owned literals
+        // ([a-z ] only), never user input, so alternation is safe to build.
+        params.push(`\\y(${formPatterns.join('|')})\\y`);
+        const formBind = `$${params.length}`;
+        // Applicators are excluded outright: a "Foundation Brush" carries the
+        // form word but is a tool, and "Cushion Puff Applicator" likewise. The
+        // relevance rubric has a dedicated `tool` form for exactly these; this
+        // is its SQL counterpart.
+        params.push(`\\y(brush|applicator|sponge|puff|tweezer|tools?)\\y`);
+        const toolBind = `$${params.length}`;
+        v2Arms.push(
+          `CASE WHEN LOWER(COALESCE(p.title, '')) ~ ${formBind}\n` +
+            `            AND LOWER(COALESCE(p.title, '')) !~ ${toolBind}  THEN  60 ELSE 0 END`,
+        );
       }
     }
     v2Arms.push(
@@ -1523,6 +1567,7 @@ module.exports = {
   // Exposed for tests so the upper bounds can be asserted.
   __internal: {
     PRODUCT_FORM_TITLE_PATTERNS,
+    queryFormTitlePatterns,
     DEFAULT_LIMIT,
     CANDIDATE_LIMIT_MIN,
     CANDIDATE_LIMIT_MAX,
