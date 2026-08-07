@@ -197,13 +197,27 @@ population).
    recall-parity harness replaying a query corpus through both lanes; use it to
    enumerate the *actual* recall gaps before committing projection scope. This
    is the same instrument the convergence plan's step A4 specifies for
-   gateway-vs-backend parity — reuse its golden corpus
+   gateway-vs-backend parity — ~~reuse its golden corpus
    (`pivota-agent-ui/scripts/eval_corpus_recall_v1.jsonl`) rather than minting
-   a new one.
+   a new one~~ (superseded, see below).
    (Adversarial review 2026-07-30 falsified an earlier premise here: graduation
    does **not** downgrade recall — attached seeds have dedicated indexes and
    the brand fastpath requires them. The real gap is that search still runs
    against the raw seeds table with per-request catalog joins.)
+   (**Re-baselined 2026-08-07 — the "reuse the golden corpus" instruction above
+   is withdrawn.** That corpus is a *generic multi-category* recall eval set
+   covering apparel, footwear, electronics and housewares; this catalog is
+   effectively beauty-only, so ~40% of its queries have **no correct answer in
+   the data at all**. Replaying it produced a parity diff in which seed-lane
+   substring noise — "black leather sneakers" → *Ombré **Leather** Eau de
+   Parfum*, "running shoes" → five tinted moisturizers — was recorded as recall
+   the projection "must close". A parity diff is not a recall gap: it carries
+   no relevance judgement, so it inherits whatever the incumbent lane got
+   wrong. Phase 1 now measures against the in-domain corpus
+   `tests/fixtures/adr020_phase1_recall_corpus.jsonl` with an explicit
+   relevance rubric, `scripts/lib/adr020_recall_relevance.cjs`, applied to
+   **both** lanes. A gap means "a product graded RELEVANT that the seed lane
+   returned and the catalog lane did not".)
 1. [ ] **Index completeness:** project the seed recall doc **plus market/tool
    scoping, availability, and brand-alias state** into `catalog_products` — per
    ADR-012, as a **convergent reconciler with a drift metric**, not a sync-time

@@ -31,10 +31,19 @@
  * '\n'-separated line so a pattern cannot span two fields.
  *
  * Acceptance corpus for this phase:
- *   tests/fixtures/adr020_phase1_gap_scope.json — 15 gap queries / 71 unique
- *   products measured 2026-07-30 by scripts/audit-recall-lane-parity.cjs
- *   against prod (queries the seed lane recalls that the catalog lane misses;
- *   the projection must close them).
+ *   tests/fixtures/adr020_phase1_gap_scope.json, built by
+ *   scripts/build-adr020-phase1-acceptance-corpus.cjs from prod parity passes
+ *   over the in-domain corpus tests/fixtures/adr020_phase1_recall_corpus.jsonl
+ *   and judged by scripts/lib/adr020_recall_relevance.cjs.
+ *
+ *   A gap means "a product graded RELEVANT that the seed lane returned and the
+ *   catalog lane did not" — NOT the raw parity diff. The 2026-07-30 corpus
+ *   (15 queries / 71 products) recorded the diff with no relevance judgement
+ *   over a generic multi-category query set run against a beauty catalog, so
+ *   seed-lane substring noise became acceptance targets ("black leather
+ *   sneakers" -> Ombré *Leather* Eau de Parfum; "running shoes" -> five tinted
+ *   moisturizers). Closing those was never the projection's job, and tuning
+ *   rank to reproduce them would degrade results.
  *
  * Read-only DRY-RUN by default. Writing requires BOTH --write and
  * --confirm RECONCILE_CATALOG_RECALL_DOC_PROJECTION.

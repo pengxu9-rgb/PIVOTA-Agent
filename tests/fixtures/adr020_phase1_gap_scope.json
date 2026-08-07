@@ -1,477 +1,2275 @@
 {
- "generated_at": "2026-07-30T11:36:39.299Z",
- "source": "audit-recall-lane-parity.cjs @48f78af4 vs prod",
- "gap_query_count": 15,
- "gap_queries": [
-  {
-   "query": "gentle cleanser",
-   "bucket": "skincare",
-   "seed_count": 8,
-   "only_in_seed": [
-    {
-     "external_product_id": "ulta:71310019b3bf4a10",
-     "brand": "Clinique",
-     "title": "All About Clean Liquid Facial Soap Cleanser - Mild - 6.7 oz"
-    },
-    {
-     "external_product_id": "ext_ffb12fe6f5825dbc7ae8d71e",
-     "brand": "Beauty of Joseon",
-     "title": "Beauty of Joseon Ginseng Cleansing Oil"
-    },
-    {
-     "external_product_id": "ext_218ac2ea5a9b179e1ca0fdcf",
-     "brand": "Jurlique",
-     "title": "Revitalising Cleansing Gel"
-    },
-    {
-     "external_product_id": "ext_0d4ffd13b899460cabb1f392",
-     "brand": "Seresilk",
-     "title": "Gentle Silk Cleanser"
-    },
-    {
-     "external_product_id": "ext_1fe8f24a0ae64ed8b3e756ba",
-     "brand": "AYA Skincare",
-     "title": "Clear & Control - Oily Skin Cleanser"
-    },
-    {
-     "external_product_id": "ext_99b5d36c01c7614a5de71fa1",
-     "brand": "Delicate Daisys Botanical Beauty",
-     "title": "Cleansing Face Milk Bulgarian Rose"
-    },
-    {
-     "external_product_id": "ext_b0e98400b870b8783629e14a",
-     "brand": "Reap & Glow",
-     "title": "Coffee Fruit Antioxidant Cleanser"
-    },
-    {
-     "external_product_id": "ulta:70fe4a4bc2e296ad",
-     "brand": "Clinique",
-     "title": "All About Clean Liquid Facial Soap Cleanser - Oily - 6.7 oz"
-    }
-   ]
+ "generated_at": "2026-08-07T05:46:50.667Z",
+ "source": "build-adr020-phase1-acceptance-corpus.cjs over 4 audit-recall-lane-parity.cjs pass(es) vs prod",
+ "corpus": "tests/fixtures/adr020_phase1_recall_corpus.jsonl",
+ "rubric": "scripts/lib/adr020_recall_relevance.cjs",
+ "supersedes": {
+  "fixture_generated_at": "2026-07-30T11:36:39.299Z",
+  "what_it_was": "raw seed-vs-catalog parity diff over a generic multi-category corpus, no relevance judgement",
+  "why_replaced": "the generic corpus had no correct answers in a beauty catalog, so seed-lane substring hits (Ombré Leather Eau de Parfum for \"black leather sneakers\", tinted moisturizers for \"running shoes\") became acceptance targets; tuning the ranker to reproduce it would degrade results"
+ },
+ "method": {
+  "gap_definition": "a product graded RELEVANT by the rubric that the seed lane returned and the catalog lane did not, in a majority of error-free passes, ON A QUERY WHERE THE CATALOG LANE RETURNS FEWER RELEVANT ANSWERS THAN THE SEED LANE",
+  "why_the_deficit_test": "the lanes barely overlap, so without it every relevant seed result scores as a gap even where the catalog returned eight equally-relevant different products",
+  "grades": {
+   "0": "irrelevant",
+   "1": "partial",
+   "2": "relevant"
   },
-  {
-   "query": "hydrating barrier moisturizer fragrance free",
-   "bucket": "skincare",
-   "seed_count": 8,
-   "only_in_seed": [
-    {
-     "external_product_id": "ulta:7cd47ba7a283490c",
-     "brand": "TULA",
-     "title": "24-7 Moisture Fragrance Free Hydrating Day & Night Cream"
-    },
-    {
-     "external_product_id": "ulta:e8664e1b44cae310",
-     "brand": "Neutrogena",
-     "title": "Collagen Bank Vitamin C Face Serum Fragrance Free"
-    },
-    {
-     "external_product_id": "ext_db10285b875616e21b4e3cf4",
-     "brand": "COSRX",
-     "title": "Ceramide Skin Barrier Moisturizer"
-    },
-    {
-     "external_product_id": "ext_4729e70c78478cb6a57aa177",
-     "brand": "Olehenriksen",
-     "title": "Après Skin Rich Rescue Barrier Moisturizer with Ceramides"
-    },
-    {
-     "external_product_id": "ext_0b16b7ab0f27aad5007e1c4e",
-     "brand": "Purito SEOUL",
-     "title": "Purito Cream Bamboo"
-    },
-    {
-     "external_product_id": "ext_54622d272663a9941ba758ae",
-     "brand": "The Ordinary",
-     "title": "Soothing & Barrier Support Serum for Sensitive Skin & Hydration"
-    },
-    {
-     "external_product_id": "ext_1c12835bab42c6dbd38cf71c",
-     "brand": "Naturium",
-     "title": "Skin-Renewing Retinol Body Lotion - Jumbo"
-    },
-    {
-     "external_product_id": "ext_fc7af581263cef7037f9a3bc",
-     "brand": "Naturium",
-     "title": "Multi-Peptide Moisturizer - Jumbo"
-    }
-   ]
+  "both_lanes_judged": true,
+  "passes": [
+   {
+    "path": "/private/tmp/claude-501/-Users-pengchydan-dev-PIVOTA-Agent/7887048a-432f-419c-8898-698e572599d9/scratchpad/parity_pass1.json",
+    "generated_at": "2026-08-07T03:36:03.363Z",
+    "market": "US",
+    "limit": 8
+   },
+   {
+    "path": "/private/tmp/claude-501/-Users-pengchydan-dev-PIVOTA-Agent/7887048a-432f-419c-8898-698e572599d9/scratchpad/parity_pass2.json",
+    "generated_at": "2026-08-07T04:10:39.706Z",
+    "market": "US",
+    "limit": 8
+   },
+   {
+    "path": "/private/tmp/claude-501/-Users-pengchydan-dev-PIVOTA-Agent/7887048a-432f-419c-8898-698e572599d9/scratchpad/parity_pass3.json",
+    "generated_at": "2026-08-07T05:34:04.249Z",
+    "market": "US",
+    "limit": 8
+   },
+   {
+    "path": "/private/tmp/claude-501/-Users-pengchydan-dev-PIVOTA-Agent/7887048a-432f-419c-8898-698e572599d9/scratchpad/parity_pass4.json",
+    "generated_at": "2026-08-07T05:42:45.173Z",
+    "market": "US",
+    "limit": 8
+   }
+  ]
+ },
+ "summary": {
+  "queries_in_corpus": 37,
+  "queries_judged": 37,
+  "queries_unmeasured": 0,
+  "queries_without_rubric": 0,
+  "gap_query_count": 5,
+  "gap_product_count": 27,
+  "products_rejected_by_relevance": 56,
+  "products_substitutable_not_gaps": 45,
+  "queries_catalog_beats_seed": 12,
+  "queries_measured": 23,
+  "lane_precision": {
+   "seed_relevant_total": 79,
+   "seed_returned_total": 135,
+   "seed_precision_pct": 58.5,
+   "catalog_relevant_total": 110,
+   "catalog_returned_total": 184,
+   "catalog_precision_pct": 59.8
   },
-  {
-   "query": "lightweight gel moisturizer for acne-prone skin",
-   "bucket": "skincare",
-   "seed_count": 8,
-   "only_in_seed": [
-    {
-     "external_product_id": "ext_074b575f32dd0f5048bf55ce",
-     "brand": "Beauty of Joseon",
-     "title": "Beauty of Joseon Red Bean Water Gel"
-    },
-    {
-     "external_product_id": "ulta:efbcea89a87d2f61",
-     "brand": "Neutrogena",
-     "title": "Evenly Clear Acne Gel Moisturizer"
-    },
-    {
-     "external_product_id": "ext_9de6c28d3bc9481c98afeebd",
-     "brand": "Aveeno",
-     "title": "Calm + Restore Oat Gel Moisturizer, Sensitive Skin"
-    },
-    {
-     "external_product_id": "ext_8d1ef8a7e492c407c7f509d5",
-     "brand": "The Ordinary",
-     "title": "Natural Moisturizing Factors + Beta Glucan Lightweight Gel Moisturizer"
-    },
-    {
-     "external_product_id": "ext_624a12ac9aec83ba278950e0",
-     "brand": "Round Lab",
-     "title": "1025 Dokdo Cream"
-    },
-    {
-     "external_product_id": "ext_d6716f08ba30aa68ed0120db",
-     "brand": "Haruharu Wonder",
-     "title": "5% Niacinamide Radiance Gel Cream / Unscented 40g"
-    },
-    {
-     "external_product_id": "ext_f2f0f159377aa5d2a9613e32",
-     "brand": "Haruharu Wonder",
-     "title": "5% Niacinamide Radiance Gel Cream / Unscented"
-    },
-    {
-     "external_product_id": "ext_7f86bf0eba830f16dae39f6c",
-     "brand": "Beauty of Joseon",
-     "title": "Red Bean Water Gel"
-    }
-   ]
-  },
-  {
-   "query": "matte lipstick under $30",
-   "bucket": "makeup",
-   "seed_count": 1,
-   "only_in_seed": [
-    {
-     "external_product_id": "ext_ad7f85ce149b2626c9c890e3",
-     "brand": "rare beauty",
-     "title": "Kind Words Matte Lip Liner"
-    }
-   ]
-  },
-  {
-   "query": "red lipstick long-lasting",
-   "bucket": "makeup",
-   "seed_count": 8,
-   "only_in_seed": [
-    {
-     "external_product_id": "ext_863f6f847c2b89f4f6bb4c79",
-     "brand": "SKINTIFIC",
-     "title": "Glow Bright Day Cream"
-    },
-    {
-     "external_product_id": "ext_332e0949ace181c1749e16e6",
-     "brand": "Round Lab",
-     "title": "Birch Moisturizing Cleanser"
-    },
-    {
-     "external_product_id": "ext_a0f7c9d52ef357fa5a7a0b6d",
-     "brand": "Round Lab",
-     "title": "[DEAL] Birch Moisturizing Cleanser"
-    },
-    {
-     "external_product_id": "ext_119f785907c2b90e5cfdaf43",
-     "brand": "COSRX",
-     "title": "Hydrium Triple Hyaluronic Moisture Ampoule"
-    },
-    {
-     "external_product_id": "ext_ff7f4fcd1e538fce0891f1cd",
-     "brand": "LANEIGE US",
-     "title": "JuicePop Box Lip Tint"
-    },
-    {
-     "external_product_id": "ext_06a3d186c9bae3e9f2e38a65",
-     "brand": "Tom Ford Beauty",
-     "title": "Oud Wood Hand and Body Moisturizer"
-    },
-    {
-     "external_product_id": "ext_6dfac1b57e6748969079805b",
-     "brand": "Glow Recipe",
-     "title": "Plum Plump Hyaluronic Cream"
-    },
-    {
-     "external_product_id": "ext_5431dfb6427b84f0d3076a49",
-     "brand": "Beekman 1802",
-     "title": "Pure Face Wipes"
-    }
-   ]
-  },
-  {
-   "query": "waterproof volumizing mascara",
-   "bucket": "makeup",
-   "seed_count": 3,
-   "only_in_seed": [
-    {
-     "external_product_id": "ext_0d1c5ae124190cdf0a6ac4de",
-     "brand": "Fenty Beauty",
-     "title": "Hella Thicc Volumizing Mascara — Elec'Trip Blue"
-    },
-    {
-     "external_product_id": "ext_16046d8920b5daf5d7ab74ca",
-     "brand": "fenty beauty",
-     "title": "Hella Thicc Volumizing Mascara — Cuz I'm Black"
-    },
-    {
-     "external_product_id": "ext_9a69b83edbb5de2280ec7b0a",
-     "brand": "rare beauty",
-     "title": "Perfect Strokes Universal Volumizing Mascara"
-    }
-   ]
-  },
-  {
-   "query": "neutral eyeshadow palette",
-   "bucket": "makeup",
-   "seed_count": 2,
-   "only_in_seed": [
-    {
-     "external_product_id": "ulta:28a43302dc9fdaac",
-     "brand": "e.l.f. Cosmetics",
-     "title": "Bite Size Eyeshadow Palette - Cream & Sugar"
-    },
-    {
-     "external_product_id": "ext_5f69a24fd9314e9ea535ea25",
-     "brand": "RMS Beauty",
-     "title": "ReDimension Hydra Eyes Quartet"
-    }
-   ]
-  },
+  "queries_catalog_returned_nothing": [
+   "小众淡香水",
+   "木质香水",
+   "防水睫毛膏",
+   "睫毛膏",
+   "控油遮瑕粉底液",
+   "气垫粉底",
+   "哑光口红",
+   "平价口红",
+   "适合黄皮的口红",
+   "口红",
+   "推荐口红",
+   "精华",
+   "面霜",
+   "防晒霜"
+  ],
+  "queries_catalog_returned_nothing_relevant": [
+   "unisex fragrance for daily wear",
+   "concealer for dark circles",
+   "full coverage foundation oily skin"
+  ]
+ },
+ "unmeasured": [],
+ "queries": [
   {
    "query": "unisex fragrance for daily wear",
    "bucket": "fragrance",
-   "seed_count": 2,
-   "only_in_seed": [
-    {
-     "external_product_id": "ext_c72a4eb40e754beaa43a39d0",
-     "brand": "Haruharu Wonder",
-     "title": "Moisture Pure Mineral Relief Sunscreen SPF50+/PA++++ /Unscented"
-    },
+   "lang": "en",
+   "passes_clean": 3,
+   "passes_dropped_as_stalled": 0,
+   "seed_returned_avg": 2,
+   "catalog_returned_avg": 8,
+   "seed_relevant_avg": 0,
+   "catalog_relevant_avg": 0,
+   "relevance_deficit": 0,
+   "acceptance_target": false,
+   "true_gap_count": 0,
+   "true_gaps": [],
+   "substitutable_misses": [],
+   "rejected_by_relevance": [
     {
      "external_product_id": "ext_8e3303506e188f00dc594bc9",
      "brand": "Then I Met You",
-     "title": "Bong² Bounce Cream"
+     "title": "Bong² Bounce Cream",
+     "grade": 0,
+     "grade_label": "irrelevant",
+     "forms": [
+      "moisturizer"
+     ],
+     "judgement": "no rubric form matched the product",
+     "missing_from_catalog_in_passes": "3/3"
+    },
+    {
+     "external_product_id": "ext_c72a4eb40e754beaa43a39d0",
+     "brand": "Haruharu Wonder",
+     "title": "Moisture Pure Mineral Relief Sunscreen SPF50+/PA++++ /Unscented",
+     "grade": 0,
+     "grade_label": "irrelevant",
+     "forms": [
+      "sunscreen"
+     ],
+     "judgement": "no rubric form matched the product",
+     "missing_from_catalog_in_passes": "3/3"
     }
    ]
   },
   {
    "query": "vanilla perfume",
    "bucket": "fragrance",
-   "seed_count": 8,
-   "only_in_seed": [
-    {
-     "external_product_id": "ext_8bd37dde2fd8981f456401be",
-     "brand": "Beekman 1802",
-     "title": "Lilac Dream Whipped Body Cream"
-    },
+   "lang": "en",
+   "passes_clean": 3,
+   "passes_dropped_as_stalled": 0,
+   "seed_returned_avg": 8,
+   "catalog_returned_avg": 8,
+   "seed_relevant_avg": 0,
+   "catalog_relevant_avg": 4,
+   "relevance_deficit": 0,
+   "acceptance_target": false,
+   "true_gap_count": 0,
+   "true_gaps": [],
+   "substitutable_misses": [],
+   "rejected_by_relevance": [
     {
      "external_product_id": "ext_82f082065005538cb466ed5c",
      "brand": "Beekman 1802",
-     "title": "Almond Honey Cookie Lotion"
+     "title": "Almond Honey Cookie Lotion",
+     "grade": 0,
+     "grade_label": "irrelevant",
+     "forms": [
+      "moisturizer"
+     ],
+     "judgement": "no rubric form matched the product",
+     "missing_from_catalog_in_passes": "3/3"
     },
     {
      "external_product_id": "ext_0feb1c58f18d9f6694955e7e",
      "brand": "Tom Ford Beauty",
-     "title": "Architecture Radiance Hydrating Foundation Broad Spectrum SPF 50+"
+     "title": "Architecture Radiance Hydrating Foundation Broad Spectrum SPF 50+",
+     "grade": 0,
+     "grade_label": "irrelevant",
+     "forms": [
+      "foundation",
+      "sunscreen"
+     ],
+     "judgement": "no rubric form matched the product",
+     "missing_from_catalog_in_passes": "3/3"
     },
     {
-     "external_product_id": "ext_b0dab90da0bc8e1a26af4bd8",
-     "brand": "Tom Ford Beauty",
-     "title": "Soleil Summer Spark Lip Balm Clutch Size"
+     "external_product_id": "ext_8bd37dde2fd8981f456401be",
+     "brand": "Beekman 1802",
+     "title": "Lilac Dream Whipped Body Cream",
+     "grade": 0,
+     "grade_label": "irrelevant",
+     "forms": [
+      "body_care"
+     ],
+     "judgement": "no rubric form matched the product",
+     "missing_from_catalog_in_passes": "3/3"
     },
     {
-     "external_product_id": "ext_c2a21ae12bae77cb44cdb52a",
-     "brand": "rare beauty",
-     "title": "Fragrance Layering Balm - Amber Vanilla"
-    },
-    {
-     "external_product_id": "ext_d02991027e0a0ce673fdd7fc",
-     "brand": "Naturium",
-     "title": "Phyto-Glow Lip Balm Shimmer Solar"
-    },
-    {
-     "external_product_id": "ext_66424865b4ae7950145699f3",
-     "brand": "Naturium",
-     "title": "Phyto-Glow Lip Balm Mocha"
+     "external_product_id": "ext_d12ff84d24e9efa1b2953881",
+     "brand": "Linhart Smile Care",
+     "title": "Lip Balm SPF 15",
+     "grade": 0,
+     "grade_label": "irrelevant",
+     "forms": [
+      "lip_other",
+      "sunscreen"
+     ],
+     "judgement": "no rubric form matched the product",
+     "missing_from_catalog_in_passes": "3/3"
     },
     {
      "external_product_id": "ext_bd18e7593f9d096c0ffbd17f",
      "brand": "Naturium",
-     "title": "Phyto-Glow Lip Balm Petal"
+     "title": "Phyto-Glow Lip Balm Petal",
+     "grade": 0,
+     "grade_label": "irrelevant",
+     "forms": [
+      "lip_other"
+     ],
+     "judgement": "no rubric form matched the product",
+     "missing_from_catalog_in_passes": "3/3"
+    },
+    {
+     "external_product_id": "ext_d02991027e0a0ce673fdd7fc",
+     "brand": "Naturium",
+     "title": "Phyto-Glow Lip Balm Shimmer Solar",
+     "grade": 0,
+     "grade_label": "irrelevant",
+     "forms": [
+      "lip_other"
+     ],
+     "judgement": "no rubric form matched the product",
+     "missing_from_catalog_in_passes": "3/3"
+    },
+    {
+     "external_product_id": "ext_b0dab90da0bc8e1a26af4bd8",
+     "brand": "Tom Ford Beauty",
+     "title": "Soleil Summer Spark Lip Balm Clutch Size",
+     "grade": 0,
+     "grade_label": "irrelevant",
+     "forms": [
+      "lip_other"
+     ],
+     "judgement": "no rubric form matched the product",
+     "missing_from_catalog_in_passes": "3/3"
+    },
+    {
+     "external_product_id": "ext_c2a21ae12bae77cb44cdb52a",
+     "brand": "rare beauty",
+     "title": "Fragrance Layering Balm - Amber Vanilla",
+     "grade": 1,
+     "grade_label": "partial",
+     "forms": [
+      "fragrance_adjacent"
+     ],
+     "judgement": "product form fragrance_adjacent is adjacent to the query's target form",
+     "missing_from_catalog_in_passes": "3/3"
     }
    ]
   },
   {
    "query": "woody fragrance under $80",
    "bucket": "fragrance",
-   "seed_count": 1,
-   "only_in_seed": [
+   "lang": "en",
+   "passes_clean": 3,
+   "passes_dropped_as_stalled": 0,
+   "seed_returned_avg": 1,
+   "catalog_returned_avg": 8,
+   "seed_relevant_avg": 0,
+   "catalog_relevant_avg": 3,
+   "relevance_deficit": 0,
+   "acceptance_target": false,
+   "true_gap_count": 0,
+   "true_gaps": [],
+   "substitutable_misses": [],
+   "rejected_by_relevance": [
     {
      "external_product_id": "ext_3691d49e7e0a215a024e3185",
      "brand": "NUXE",
-     "title": "Multi-Use Shower Gel Face, Beard, Body, Hair"
+     "title": "Multi-Use Shower Gel Face, Beard, Body, Hair",
+     "grade": 0,
+     "grade_label": "irrelevant",
+     "forms": [
+      "body_care",
+      "hair_care"
+     ],
+     "judgement": "no rubric form matched the product",
+     "missing_from_catalog_in_passes": "3/3"
     }
    ]
   },
   {
-   "query": "oversized hoodie",
-   "bucket": "fashion",
-   "seed_count": 5,
-   "only_in_seed": [
+   "query": "小众淡香水",
+   "bucket": "fragrance",
+   "lang": "zh",
+   "passes_clean": 3,
+   "passes_dropped_as_stalled": 0,
+   "seed_returned_avg": 0,
+   "catalog_returned_avg": 0,
+   "seed_relevant_avg": 0,
+   "catalog_relevant_avg": 0,
+   "relevance_deficit": 0,
+   "acceptance_target": false,
+   "true_gap_count": 0,
+   "true_gaps": [],
+   "substitutable_misses": [],
+   "rejected_by_relevance": []
+  },
+  {
+   "query": "木质香水",
+   "bucket": "fragrance",
+   "lang": "zh",
+   "passes_clean": 3,
+   "passes_dropped_as_stalled": 0,
+   "seed_returned_avg": 0,
+   "catalog_returned_avg": 0,
+   "seed_relevant_avg": 0,
+   "catalog_relevant_avg": 0,
+   "relevance_deficit": 0,
+   "acceptance_target": false,
+   "true_gap_count": 0,
+   "true_gaps": [],
+   "substitutable_misses": [],
+   "rejected_by_relevance": []
+  },
+  {
+   "query": "neutral eyeshadow palette",
+   "bucket": "makeup_eye",
+   "lang": "en",
+   "passes_clean": 3,
+   "passes_dropped_as_stalled": 0,
+   "seed_returned_avg": 2,
+   "catalog_returned_avg": 8,
+   "seed_relevant_avg": 2,
+   "catalog_relevant_avg": 8,
+   "relevance_deficit": 0,
+   "acceptance_target": false,
+   "true_gap_count": 0,
+   "true_gaps": [],
+   "substitutable_misses": [
     {
-     "external_product_id": "ext_078332aaca51a643b72e13b4",
+     "external_product_id": "ulta:28a43302dc9fdaac",
+     "brand": "e.l.f. Cosmetics",
+     "title": "Bite Size Eyeshadow Palette - Cream & Sugar",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "eyeshadow",
+      "moisturizer"
+     ],
+     "judgement": "product form eyeshadow directly answers the query",
+     "missing_from_catalog_in_passes": "3/3"
+    },
+    {
+     "external_product_id": "ext_5f69a24fd9314e9ea535ea25",
+     "brand": "RMS Beauty",
+     "title": "ReDimension Hydra Eyes Quartet",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "eyeshadow"
+     ],
+     "judgement": "product form eyeshadow directly answers the query",
+     "missing_from_catalog_in_passes": "3/3"
+    }
+   ],
+   "rejected_by_relevance": []
+  },
+  {
+   "query": "waterproof volumizing mascara",
+   "bucket": "makeup_eye",
+   "lang": "en",
+   "passes_clean": 3,
+   "passes_dropped_as_stalled": 0,
+   "seed_returned_avg": 3,
+   "catalog_returned_avg": 8,
+   "seed_relevant_avg": 3,
+   "catalog_relevant_avg": 8,
+   "relevance_deficit": 0,
+   "acceptance_target": false,
+   "true_gap_count": 0,
+   "true_gaps": [],
+   "substitutable_misses": [
+    {
+     "external_product_id": "ext_16046d8920b5daf5d7ab74ca",
+     "brand": "fenty beauty",
+     "title": "Hella Thicc Volumizing Mascara — Cuz I'm Black",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "mascara"
+     ],
+     "judgement": "product form mascara directly answers the query",
+     "missing_from_catalog_in_passes": "3/3"
+    },
+    {
+     "external_product_id": "ext_0d1c5ae124190cdf0a6ac4de",
+     "brand": "Fenty Beauty",
+     "title": "Hella Thicc Volumizing Mascara — Elec'Trip Blue",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "mascara"
+     ],
+     "judgement": "product form mascara directly answers the query",
+     "missing_from_catalog_in_passes": "3/3"
+    },
+    {
+     "external_product_id": "ext_9a69b83edbb5de2280ec7b0a",
+     "brand": "rare beauty",
+     "title": "Perfect Strokes Universal Volumizing Mascara",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "mascara"
+     ],
+     "judgement": "product form mascara directly answers the query",
+     "missing_from_catalog_in_passes": "3/3"
+    }
+   ],
+   "rejected_by_relevance": []
+  },
+  {
+   "query": "防水睫毛膏",
+   "bucket": "makeup_eye",
+   "lang": "zh",
+   "passes_clean": 3,
+   "passes_dropped_as_stalled": 0,
+   "seed_returned_avg": 0,
+   "catalog_returned_avg": 0,
+   "seed_relevant_avg": 0,
+   "catalog_relevant_avg": 0,
+   "relevance_deficit": 0,
+   "acceptance_target": false,
+   "true_gap_count": 0,
+   "true_gaps": [],
+   "substitutable_misses": [],
+   "rejected_by_relevance": []
+  },
+  {
+   "query": "mascara",
+   "bucket": "makeup_eye_bare_noun",
+   "lang": "en",
+   "passes_clean": 2,
+   "passes_dropped_as_stalled": 0,
+   "seed_returned_avg": 5,
+   "catalog_returned_avg": 8,
+   "seed_relevant_avg": 0,
+   "catalog_relevant_avg": 8,
+   "relevance_deficit": 0,
+   "acceptance_target": false,
+   "true_gap_count": 0,
+   "true_gaps": [],
+   "substitutable_misses": [],
+   "rejected_by_relevance": [
+    {
+     "external_product_id": "ext_4ba47905a64f1596e42bda76",
+     "brand": "Fenty Beauty",
+     "title": "Fine Linez Lash Line-Enhancing Eyeliner — Vanilla Killa",
+     "grade": 0,
+     "grade_label": "irrelevant",
+     "forms": [],
+     "judgement": "no rubric form matched the product",
+     "missing_from_catalog_in_passes": "2/2"
+    },
+    {
+     "external_product_id": "ext_9c6c6fd03f39610fa3c144e5",
+     "brand": "Fenty Beauty",
+     "title": "Fine Linez Lash Line-Enhancing Eyeliner — Wink O' Pink",
+     "grade": 0,
+     "grade_label": "irrelevant",
+     "forms": [],
+     "judgement": "no rubric form matched the product",
+     "missing_from_catalog_in_passes": "2/2"
+    },
+    {
+     "external_product_id": "ext_44cf2db18c1ee5fc465625c4",
+     "brand": "Fenty Beauty",
+     "title": "Fine Linez Precision Gel Eyeliner Pencil — Don't Clay Me",
+     "grade": 0,
+     "grade_label": "irrelevant",
+     "forms": [],
+     "judgement": "no rubric form matched the product",
+     "missing_from_catalog_in_passes": "2/2"
+    },
+    {
+     "external_product_id": "ext_140b49c03c28045227f5c320",
+     "brand": "the ordinary",
+     "title": "Lash Curl Finisher",
+     "grade": 0,
+     "grade_label": "irrelevant",
+     "forms": [
+      "hair_care"
+     ],
+     "judgement": "no rubric form matched the product",
+     "missing_from_catalog_in_passes": "2/2"
+    },
+    {
+     "external_product_id": "ext_2d5176c8edd52a0c49a1ab55",
+     "brand": "Olehenriksen",
+     "title": "Truth Juice Daily Cleanser",
+     "grade": 0,
+     "grade_label": "irrelevant",
+     "forms": [
+      "cleanser"
+     ],
+     "judgement": "no rubric form matched the product",
+     "missing_from_catalog_in_passes": "2/2"
+    }
+   ]
+  },
+  {
+   "query": "睫毛膏",
+   "bucket": "makeup_eye_bare_noun",
+   "lang": "zh",
+   "passes_clean": 3,
+   "passes_dropped_as_stalled": 0,
+   "seed_returned_avg": 0,
+   "catalog_returned_avg": 0,
+   "seed_relevant_avg": 0,
+   "catalog_relevant_avg": 0,
+   "relevance_deficit": 0,
+   "acceptance_target": false,
+   "true_gap_count": 0,
+   "true_gaps": [],
+   "substitutable_misses": [],
+   "rejected_by_relevance": []
+  },
+  {
+   "query": "concealer for dark circles",
+   "bucket": "makeup_face",
+   "lang": "en",
+   "passes_clean": 2,
+   "passes_dropped_as_stalled": 0,
+   "seed_returned_avg": 8,
+   "catalog_returned_avg": 8,
+   "seed_relevant_avg": 0,
+   "catalog_relevant_avg": 0,
+   "relevance_deficit": 0,
+   "acceptance_target": false,
+   "true_gap_count": 0,
+   "true_gaps": [],
+   "substitutable_misses": [],
+   "rejected_by_relevance": [
+    {
+     "external_product_id": "ulta:a87305b9191cb279",
+     "brand": "Estée Lauder",
+     "title": "Advanced Night Repair Eye Gel-Cream for Dark Circles - 0.5 oz",
+     "grade": 0,
+     "grade_label": "irrelevant",
+     "forms": [
+      "moisturizer"
+     ],
+     "judgement": "no rubric form matched the product",
+     "missing_from_catalog_in_passes": "2/2"
+    },
+    {
+     "external_product_id": "ext_918981bcc6d552cc2af0b535",
+     "brand": "Olehenriksen",
+     "title": "Banana Bright+ Eye Crème",
+     "grade": 0,
+     "grade_label": "irrelevant",
+     "forms": [],
+     "judgement": "no rubric form matched the product",
+     "missing_from_catalog_in_passes": "2/2"
+    },
+    {
+     "external_product_id": "ulta:b54a43bbbb910104",
+     "brand": "The Ordinary",
+     "title": "Caffeine Solution 5% + EGCG Depuffing Eye Serum for Dark Circles",
+     "grade": 0,
+     "grade_label": "irrelevant",
+     "forms": [
+      "serum"
+     ],
+     "judgement": "no rubric form matched the product",
+     "missing_from_catalog_in_passes": "2/2"
+    },
+    {
+     "external_product_id": "ext_e8bfea30810d9de16c9d2180",
+     "brand": "LA MAXIME",
+     "title": "Eye Oil for Dark Circles & Puffiness Over 50 | Regenerating Eye Oil – LA MAXIME",
+     "grade": 0,
+     "grade_label": "irrelevant",
+     "forms": [],
+     "judgement": "no rubric form matched the product",
+     "missing_from_catalog_in_passes": "2/2"
+    },
+    {
+     "external_product_id": "ext_04a5386edad9f55dbb397179",
+     "brand": "EMBRYOLISSE",
+     "title": "Radiant Complexion Cream - Apricot Glow",
+     "grade": 0,
+     "grade_label": "irrelevant",
+     "forms": [
+      "moisturizer"
+     ],
+     "judgement": "no rubric form matched the product",
+     "missing_from_catalog_in_passes": "2/2"
+    },
+    {
+     "external_product_id": "ext_76bfd11a0bea190f4c9d32c7",
+     "brand": "EMBRYOLISSE",
+     "title": "Radiant Eye Stick - Cool Treatment For A Brighter Look",
+     "grade": 0,
+     "grade_label": "irrelevant",
+     "forms": [],
+     "judgement": "no rubric form matched the product",
+     "missing_from_catalog_in_passes": "2/2"
+    },
+    {
+     "external_product_id": "ext_7947573b26aeed2cffb52272",
+     "brand": "EMBRYOLISSE",
+     "title": "Smoothing Eye Contour Care",
+     "grade": 0,
+     "grade_label": "irrelevant",
+     "forms": [],
+     "judgement": "no rubric form matched the product",
+     "missing_from_catalog_in_passes": "2/2"
+    },
+    {
+     "external_product_id": "ext_0b3d97758bc02698aaf31ed7",
+     "brand": "The INKEY List",
+     "title": "Tranexamic Acid Serum",
+     "grade": 0,
+     "grade_label": "irrelevant",
+     "forms": [
+      "serum"
+     ],
+     "judgement": "no rubric form matched the product",
+     "missing_from_catalog_in_passes": "2/2"
+    }
+   ]
+  },
+  {
+   "query": "cushion foundation",
+   "bucket": "makeup_face",
+   "lang": "en",
+   "passes_clean": 3,
+   "passes_dropped_as_stalled": 0,
+   "seed_returned_avg": 8,
+   "catalog_returned_avg": 8,
+   "seed_relevant_avg": 4,
+   "catalog_relevant_avg": 7,
+   "relevance_deficit": 0,
+   "acceptance_target": false,
+   "true_gap_count": 0,
+   "true_gaps": [],
+   "substitutable_misses": [
+    {
+     "external_product_id": "ulta:6a1e677ba8dcffb0",
+     "brand": "Clinique",
+     "title": "Almost Powder Makeup Broad Spectrum SPF 18 Foundation - 04 Neutral",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "foundation",
+      "sunscreen"
+     ],
+     "judgement": "product form foundation directly answers the query",
+     "missing_from_catalog_in_passes": "3/3"
+    },
+    {
+     "external_product_id": "ext_0feb1c58f18d9f6694955e7e",
+     "brand": "Tom Ford Beauty",
+     "title": "Architecture Radiance Hydrating Foundation Broad Spectrum SPF 50+",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "foundation",
+      "sunscreen"
+     ],
+     "judgement": "product form foundation directly answers the query",
+     "missing_from_catalog_in_passes": "3/3"
+    },
+    {
+     "external_product_id": "ext_322e6282831ebd8a41b48e20",
+     "brand": "the ordinary",
+     "title": "Serum Foundation",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "foundation",
+      "serum"
+     ],
+     "judgement": "product form foundation directly answers the query",
+     "missing_from_catalog_in_passes": "3/3"
+    }
+   ],
+   "rejected_by_relevance": [
+    {
+     "external_product_id": "ext_3541d0f1db78ebd93aa7a315",
+     "brand": "sigma beauty",
+     "title": "F48 Soft Coverage Brush",
+     "grade": 0,
+     "grade_label": "irrelevant",
+     "forms": [
+      "tool"
+     ],
+     "judgement": "no rubric form matched the product",
+     "missing_from_catalog_in_passes": "3/3"
+    },
+    {
+     "external_product_id": "ext_c06d189cb48120fd8e99365f",
+     "brand": "sigma beauty",
+     "title": "F80 Flat Kabuki™ Brush",
+     "grade": 0,
+     "grade_label": "irrelevant",
+     "forms": [
+      "tool"
+     ],
+     "judgement": "no rubric form matched the product",
+     "missing_from_catalog_in_passes": "3/3"
+    },
+    {
+     "external_product_id": "ext_9c5497bd80f09eb2b2c1592f",
+     "brand": "the ordinary",
+     "title": "Rice Lipids + Ectoin Microemulsion",
+     "grade": 0,
+     "grade_label": "irrelevant",
+     "forms": [],
+     "judgement": "no rubric form matched the product",
+     "missing_from_catalog_in_passes": "3/3"
+    },
+    {
+     "external_product_id": "ext_ae9bbc4e48205b602ad7f112",
+     "brand": "sigma beauty",
+     "title": "Sigmagic® Brushampoo™ Liquid",
+     "grade": 0,
+     "grade_label": "irrelevant",
+     "forms": [],
+     "judgement": "no rubric form matched the product",
+     "missing_from_catalog_in_passes": "3/3"
+    }
+   ]
+  },
+  {
+   "query": "full coverage foundation oily skin",
+   "bucket": "makeup_face",
+   "lang": "en",
+   "passes_clean": 2,
+   "passes_dropped_as_stalled": 1,
+   "seed_returned_avg": 5,
+   "catalog_returned_avg": 8,
+   "seed_relevant_avg": 2,
+   "catalog_relevant_avg": 0,
+   "relevance_deficit": 2,
+   "acceptance_target": true,
+   "true_gap_count": 2,
+   "true_gaps": [
+    {
+     "external_product_id": "ext_de37dcc9ce0c7dc636759499",
+     "brand": "rare beauty",
+     "title": "Liquid Touch Weightless Foundation",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "foundation"
+     ],
+     "judgement": "product form foundation directly answers the query",
+     "missing_from_catalog_in_passes": "2/2"
+    },
+    {
+     "external_product_id": "ext_a663b50d44c3cc2c3f541e15",
+     "brand": "TIRTIR Global",
+     "title": "Mask Fit Red Cushion",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "foundation"
+     ],
+     "judgement": "product form foundation directly answers the query",
+     "missing_from_catalog_in_passes": "2/2"
+    }
+   ],
+   "substitutable_misses": [],
+   "rejected_by_relevance": [
+    {
+     "external_product_id": "ext_7f19a738b48efb924c7c5632",
      "brand": "PIXI BEAUTY",
-     "title": "Pixi 25th Anniversary Hoodie"
+     "title": "Correction Concentrate",
+     "grade": 0,
+     "grade_label": "irrelevant",
+     "forms": [
+      "serum"
+     ],
+     "judgement": "no rubric form matched the product",
+     "missing_from_catalog_in_passes": "2/2"
     },
     {
-     "external_product_id": "ext_68fe130235ee92a8b0148267",
-     "brand": "COSRX",
-     "title": "One Step Original Clear Skin Calming Pad"
+     "external_product_id": "ext_8a7e86531f12be78d40e34b0",
+     "brand": "kylie cosmetics",
+     "title": "Foundation Brush 01",
+     "grade": 0,
+     "grade_label": "irrelevant",
+     "forms": [
+      "tool"
+     ],
+     "judgement": "no rubric form matched the product",
+     "missing_from_catalog_in_passes": "2/2"
     },
     {
-     "external_product_id": "ext_0a7067e05a7269fad74a53f2",
-     "brand": "COSRX",
-     "title": "One Step Original Peptide Collagen Lifting Glow Pad"
-    },
-    {
-     "external_product_id": "ext_f4ce1694d0f7c29a17b88426",
-     "brand": "COSRX",
-     "title": "One Step Original Tone Clarifying Moisture Pad"
-    },
-    {
-     "external_product_id": "ext_d1f1cf3e5bd1cd416a8d39fa",
-     "brand": "COSRX",
-     "title": "One Step Original Blemish Pore Clear Pad"
+     "external_product_id": "ext_a568dec0cf5230c5359ec824",
+     "brand": "PIXI BEAUTY",
+     "title": "Pat Away Concealing Base",
+     "grade": 0,
+     "grade_label": "irrelevant",
+     "forms": [],
+     "judgement": "no rubric form matched the product",
+     "missing_from_catalog_in_passes": "2/2"
     }
    ]
   },
   {
-   "query": "running shoes",
-   "bucket": "fashion",
-   "seed_count": 8,
-   "only_in_seed": [
+   "query": "控油遮瑕粉底液",
+   "bucket": "makeup_face",
+   "lang": "zh",
+   "passes_clean": 3,
+   "passes_dropped_as_stalled": 0,
+   "seed_returned_avg": 0,
+   "catalog_returned_avg": 0,
+   "seed_relevant_avg": 0,
+   "catalog_relevant_avg": 0,
+   "relevance_deficit": 0,
+   "acceptance_target": false,
+   "true_gap_count": 0,
+   "true_gaps": [],
+   "substitutable_misses": [],
+   "rejected_by_relevance": []
+  },
+  {
+   "query": "气垫粉底",
+   "bucket": "makeup_face",
+   "lang": "zh",
+   "passes_clean": 3,
+   "passes_dropped_as_stalled": 0,
+   "seed_returned_avg": 0,
+   "catalog_returned_avg": 0,
+   "seed_relevant_avg": 0,
+   "catalog_relevant_avg": 0,
+   "relevance_deficit": 0,
+   "acceptance_target": false,
+   "true_gap_count": 0,
+   "true_gaps": [],
+   "substitutable_misses": [],
+   "rejected_by_relevance": []
+  },
+  {
+   "query": "matte lipstick under $30",
+   "bucket": "makeup_lip",
+   "lang": "en",
+   "passes_clean": 3,
+   "passes_dropped_as_stalled": 0,
+   "seed_returned_avg": 1,
+   "catalog_returned_avg": 8,
+   "seed_relevant_avg": 0,
+   "catalog_relevant_avg": 2,
+   "relevance_deficit": 0,
+   "acceptance_target": false,
+   "true_gap_count": 0,
+   "true_gaps": [],
+   "substitutable_misses": [],
+   "rejected_by_relevance": [
     {
-     "external_product_id": "ext_4325616696001433e9e318ca",
-     "brand": "Fenty Beauty",
-     "title": "Hydra Vizor Huez Tinted Moisturizer Broad Spectrum Mineral SPF 30 Sunscreen Refill (EU) — 9"
-    },
-    {
-     "external_product_id": "ext_a0c23c9d3dac7c1f04cd7fdb",
-     "brand": "Fenty Beauty",
-     "title": "Hydra Vizor Huez Tinted Moisturizer Broad Spectrum Mineral SPF 30 Sunscreen Refill (EU) — 3"
-    },
-    {
-     "external_product_id": "ext_a872eaa0f93f8d62b7e32d0e",
-     "brand": "Fenty Beauty",
-     "title": "Hydra Vizor Huez Tinted Moisturizer Broad Spectrum Mineral SPF 30 Sunscreen Refill (EU) — 2"
-    },
-    {
-     "external_product_id": "ext_696fabdc21f712cc05c65b5b",
-     "brand": "Fenty Beauty",
-     "title": "Hydra Vizor Huez Tinted Moisturizer Broad Spectrum Mineral SPF 30 Sunscreen Refill (EU) — 5"
-    },
-    {
-     "external_product_id": "ext_22409c792ff6aae8ab490c2f",
-     "brand": "Fenty Beauty",
-     "title": "Hydra Vizor Huez Tinted Moisturizer Broad Spectrum Mineral SPF 30 Sunscreen Refill (EU) — 1"
-    },
-    {
-     "external_product_id": "ext_bd7f77f4a0b717b76b8aa899",
-     "brand": "Fenty Beauty",
-     "title": "Hydra Vizor Huez Tinted Moisturizer Broad Spectrum Mineral SPF 30 Sunscreen Refill (EU) — 6"
-    },
-    {
-     "external_product_id": "ext_4402d5c445f34c3b34890623",
-     "brand": "Fenty Beauty",
-     "title": "Hydra Vizor Huez Tinted Moisturizer Broad Spectrum Mineral SPF 30 Sunscreen Refill (EU) — 4"
-    },
-    {
-     "external_product_id": "ext_4ffb3baf1bd641c6665bf657",
-     "brand": "Fenty Beauty",
-     "title": "Hydra Vizor Huez Tinted Moisturizer Broad Spectrum Mineral SPF 30 Sunscreen Refill (EU) — 8"
+     "external_product_id": "ext_ad7f85ce149b2626c9c890e3",
+     "brand": "rare beauty",
+     "title": "Kind Words Matte Lip Liner",
+     "grade": 1,
+     "grade_label": "partial",
+     "forms": [
+      "lip_other"
+     ],
+     "judgement": "product form lip_other is adjacent to the query's target form",
+     "missing_from_catalog_in_passes": "3/3"
     }
    ]
   },
   {
-   "query": "black leather sneakers",
-   "bucket": "fashion",
-   "seed_count": 2,
-   "only_in_seed": [
-    {
-     "external_product_id": "ext_1e41e86897f6cf5e11592f59",
-     "brand": "Tom Ford Beauty",
-     "title": "Ombré Leather Eau de Parfum"
-    },
-    {
-     "external_product_id": "ext_23219e6e35e92245bd02a89b",
-     "brand": "Tom Ford Beauty",
-     "title": "Ombré Leather Parfum"
-    }
-   ]
+   "query": "nude lipstick everyday",
+   "bucket": "makeup_lip",
+   "lang": "en",
+   "passes_clean": 3,
+   "passes_dropped_as_stalled": 0,
+   "seed_returned_avg": 0,
+   "catalog_returned_avg": 8,
+   "seed_relevant_avg": 0,
+   "catalog_relevant_avg": 2,
+   "relevance_deficit": 0,
+   "acceptance_target": false,
+   "true_gap_count": 0,
+   "true_gaps": [],
+   "substitutable_misses": [],
+   "rejected_by_relevance": []
   },
   {
-   "query": "aroma diffuser",
-   "bucket": "home",
-   "seed_count": 8,
-   "only_in_seed": [
+   "query": "red lipstick long-lasting",
+   "bucket": "makeup_lip",
+   "lang": "en",
+   "passes_clean": 3,
+   "passes_dropped_as_stalled": 0,
+   "seed_returned_avg": 8,
+   "catalog_returned_avg": 8,
+   "seed_relevant_avg": 0,
+   "catalog_relevant_avg": 2,
+   "relevance_deficit": 0,
+   "acceptance_target": false,
+   "true_gap_count": 0,
+   "true_gaps": [],
+   "substitutable_misses": [],
+   "rejected_by_relevance": [
     {
-     "external_product_id": "ext_1b8432f4230a2c1b21b6cd7e",
-     "brand": "Tom Ford Beauty",
-     "title": "Neroli Portofino Hand and Body Moisturizer"
+     "external_product_id": "ext_a0f7c9d52ef357fa5a7a0b6d",
+     "brand": "Round Lab",
+     "title": "[DEAL] Birch Moisturizing Cleanser",
+     "grade": 0,
+     "grade_label": "irrelevant",
+     "forms": [
+      "cleanser"
+     ],
+     "judgement": "no rubric form matched the product",
+     "missing_from_catalog_in_passes": "3/3"
+    },
+    {
+     "external_product_id": "ext_332e0949ace181c1749e16e6",
+     "brand": "Round Lab",
+     "title": "Birch Moisturizing Cleanser",
+     "grade": 0,
+     "grade_label": "irrelevant",
+     "forms": [
+      "cleanser"
+     ],
+     "judgement": "no rubric form matched the product",
+     "missing_from_catalog_in_passes": "3/3"
+    },
+    {
+     "external_product_id": "ext_863f6f847c2b89f4f6bb4c79",
+     "brand": "SKINTIFIC",
+     "title": "Glow Bright Day Cream",
+     "grade": 0,
+     "grade_label": "irrelevant",
+     "forms": [
+      "moisturizer"
+     ],
+     "judgement": "no rubric form matched the product",
+     "missing_from_catalog_in_passes": "3/3"
+    },
+    {
+     "external_product_id": "ext_119f785907c2b90e5cfdaf43",
+     "brand": "COSRX",
+     "title": "Hydrium Triple Hyaluronic Moisture Ampoule",
+     "grade": 0,
+     "grade_label": "irrelevant",
+     "forms": [
+      "serum"
+     ],
+     "judgement": "no rubric form matched the product",
+     "missing_from_catalog_in_passes": "3/3"
     },
     {
      "external_product_id": "ext_06a3d186c9bae3e9f2e38a65",
      "brand": "Tom Ford Beauty",
-     "title": "Oud Wood Hand and Body Moisturizer"
+     "title": "Oud Wood Hand and Body Moisturizer",
+     "grade": 0,
+     "grade_label": "irrelevant",
+     "forms": [
+      "body_care"
+     ],
+     "judgement": "no rubric form matched the product",
+     "missing_from_catalog_in_passes": "3/3"
     },
     {
-     "external_product_id": "ext_38019560724349c61bc64497",
-     "brand": "Blind Barber",
-     "title": "Curl Defining Cream"
+     "external_product_id": "ext_6dfac1b57e6748969079805b",
+     "brand": "Glow Recipe",
+     "title": "Plum Plump Hyaluronic Cream",
+     "grade": 0,
+     "grade_label": "irrelevant",
+     "forms": [
+      "moisturizer"
+     ],
+     "judgement": "no rubric form matched the product",
+     "missing_from_catalog_in_passes": "3/3"
     },
     {
-     "external_product_id": "ext_82f082065005538cb466ed5c",
+     "external_product_id": "ext_5431dfb6427b84f0d3076a49",
      "brand": "Beekman 1802",
-     "title": "Almond Honey Cookie Lotion"
+     "title": "Pure Face Wipes",
+     "grade": 0,
+     "grade_label": "irrelevant",
+     "forms": [],
+     "judgement": "no rubric form matched the product",
+     "missing_from_catalog_in_passes": "3/3"
     },
     {
-     "external_product_id": "ext_e742231be6551fbca24b3920",
-     "brand": "Naturium",
-     "title": "The Energizer Mandelic Acid Body Wash"
-    },
-    {
-     "external_product_id": "ext_7fdc5419f5102b304021558e",
-     "brand": "Beekman 1802",
-     "title": "Vanilla Absolute Goat Milk Lotion"
-    },
-    {
-     "external_product_id": "ext_ad12f1257ab3899b13aa096f",
-     "brand": "Beekman 1802",
-     "title": "Honey & Orange Blossom Hand & Body Wash"
-    },
-    {
-     "external_product_id": "ext_dd10b87bdb34ae8c9656db85",
-     "brand": "rare beauty",
-     "title": "Find Comfort Stop & Soothe Aromatherapy Pen"
+     "external_product_id": "ext_ff7f4fcd1e538fce0891f1cd",
+     "brand": "LANEIGE US",
+     "title": "JuicePop Box Lip Tint",
+     "grade": 1,
+     "grade_label": "partial",
+     "forms": [
+      "lip_other"
+     ],
+     "judgement": "product form lip_other is adjacent to the query's target form",
+     "missing_from_catalog_in_passes": "3/3"
     }
    ]
   },
   {
-   "query": "insulated water bottle",
-   "bucket": "home",
-   "seed_count": 1,
-   "only_in_seed": [
+   "query": "哑光口红",
+   "bucket": "makeup_lip",
+   "lang": "zh",
+   "passes_clean": 3,
+   "passes_dropped_as_stalled": 0,
+   "seed_returned_avg": 0,
+   "catalog_returned_avg": 0,
+   "seed_relevant_avg": 0,
+   "catalog_relevant_avg": 0,
+   "relevance_deficit": 0,
+   "acceptance_target": false,
+   "true_gap_count": 0,
+   "true_gaps": [],
+   "substitutable_misses": [],
+   "rejected_by_relevance": []
+  },
+  {
+   "query": "平价口红",
+   "bucket": "makeup_lip",
+   "lang": "zh",
+   "passes_clean": 3,
+   "passes_dropped_as_stalled": 0,
+   "seed_returned_avg": 0,
+   "catalog_returned_avg": 0,
+   "seed_relevant_avg": 0,
+   "catalog_relevant_avg": 0,
+   "relevance_deficit": 0,
+   "acceptance_target": false,
+   "true_gap_count": 0,
+   "true_gaps": [],
+   "substitutable_misses": [],
+   "rejected_by_relevance": []
+  },
+  {
+   "query": "适合黄皮的口红",
+   "bucket": "makeup_lip",
+   "lang": "zh",
+   "passes_clean": 3,
+   "passes_dropped_as_stalled": 0,
+   "seed_returned_avg": 0,
+   "catalog_returned_avg": 0,
+   "seed_relevant_avg": 0,
+   "catalog_relevant_avg": 0,
+   "relevance_deficit": 0,
+   "acceptance_target": false,
+   "true_gap_count": 0,
+   "true_gaps": [],
+   "substitutable_misses": [],
+   "rejected_by_relevance": []
+  },
+  {
+   "query": "lipstick",
+   "bucket": "makeup_lip_bare_noun",
+   "lang": "en",
+   "passes_clean": 3,
+   "passes_dropped_as_stalled": 0,
+   "seed_returned_avg": 4,
+   "catalog_returned_avg": 8,
+   "seed_relevant_avg": 0,
+   "catalog_relevant_avg": 8,
+   "relevance_deficit": 0,
+   "acceptance_target": false,
+   "true_gap_count": 0,
+   "true_gaps": [],
+   "substitutable_misses": [],
+   "rejected_by_relevance": [
     {
-     "external_product_id": "ext_39dea73e212c850cc4ba3dfb",
-     "brand": "Supergoop!",
-     "title": "SPF! Glass Water Bottle"
+     "external_product_id": "ext_8298443d49393dce51d749e5",
+     "brand": "sigma beauty",
+     "title": "Lip Cream",
+     "grade": 0,
+     "grade_label": "irrelevant",
+     "forms": [
+      "moisturizer"
+     ],
+     "judgement": "no rubric form matched the product",
+     "missing_from_catalog_in_passes": "3/3"
+    },
+    {
+     "external_product_id": "ext_ad7f85ce149b2626c9c890e3",
+     "brand": "rare beauty",
+     "title": "Kind Words Matte Lip Liner",
+     "grade": 1,
+     "grade_label": "partial",
+     "forms": [
+      "lip_other"
+     ],
+     "judgement": "product form lip_other is adjacent to the query's target form",
+     "missing_from_catalog_in_passes": "3/3"
+    },
+    {
+     "external_product_id": "ext_1249f6975246c43dca16bf93",
+     "brand": "Tom Ford Beauty",
+     "title": "Soleil Summer Lip Balm",
+     "grade": 1,
+     "grade_label": "partial",
+     "forms": [
+      "lip_other"
+     ],
+     "judgement": "product form lip_other is adjacent to the query's target form",
+     "missing_from_catalog_in_passes": "3/3"
+    },
+    {
+     "external_product_id": "ext_b0dab90da0bc8e1a26af4bd8",
+     "brand": "Tom Ford Beauty",
+     "title": "Soleil Summer Spark Lip Balm Clutch Size",
+     "grade": 1,
+     "grade_label": "partial",
+     "forms": [
+      "lip_other"
+     ],
+     "judgement": "product form lip_other is adjacent to the query's target form",
+     "missing_from_catalog_in_passes": "3/3"
     }
    ]
+  },
+  {
+   "query": "口红",
+   "bucket": "makeup_lip_bare_noun",
+   "lang": "zh",
+   "passes_clean": 3,
+   "passes_dropped_as_stalled": 0,
+   "seed_returned_avg": 0,
+   "catalog_returned_avg": 0,
+   "seed_relevant_avg": 0,
+   "catalog_relevant_avg": 0,
+   "relevance_deficit": 0,
+   "acceptance_target": false,
+   "true_gap_count": 0,
+   "true_gaps": [],
+   "substitutable_misses": [],
+   "rejected_by_relevance": []
+  },
+  {
+   "query": "推荐口红",
+   "bucket": "makeup_lip_bare_noun",
+   "lang": "zh",
+   "passes_clean": 3,
+   "passes_dropped_as_stalled": 0,
+   "seed_returned_avg": 0,
+   "catalog_returned_avg": 0,
+   "seed_relevant_avg": 0,
+   "catalog_relevant_avg": 0,
+   "relevance_deficit": 0,
+   "acceptance_target": false,
+   "true_gap_count": 0,
+   "true_gaps": [],
+   "substitutable_misses": [],
+   "rejected_by_relevance": []
+  },
+  {
+   "query": "moisturizer",
+   "bucket": "skincare_bare_noun",
+   "lang": "en",
+   "passes_clean": 3,
+   "passes_dropped_as_stalled": 0,
+   "seed_returned_avg": 8,
+   "catalog_returned_avg": 8,
+   "seed_relevant_avg": 7,
+   "catalog_relevant_avg": 6,
+   "relevance_deficit": 1,
+   "acceptance_target": true,
+   "true_gap_count": 7,
+   "true_gaps": [
+    {
+     "external_product_id": "ulta:e64dcaf740c8e597",
+     "brand": "First Aid Beauty",
+     "title": "Daily Resurfacing Moisturizer with 2% Niacinamide",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "moisturizer"
+     ],
+     "judgement": "product form moisturizer directly answers the query",
+     "missing_from_catalog_in_passes": "3/3"
+    },
+    {
+     "external_product_id": "ulta:b77f6d66d57d960a",
+     "brand": "Naturium",
+     "title": "Dew-Glow Moisturizer SPF 50 - 0.7 oz",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "sunscreen",
+      "moisturizer"
+     ],
+     "judgement": "product form moisturizer directly answers the query",
+     "missing_from_catalog_in_passes": "3/3"
+    },
+    {
+     "external_product_id": "ulta:5875f2c8f63167dc",
+     "brand": "Murad",
+     "title": "Heartleaf Calming Cream Moisturizer",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "moisturizer"
+     ],
+     "judgement": "product form moisturizer directly answers the query",
+     "missing_from_catalog_in_passes": "3/3"
+    },
+    {
+     "external_product_id": "ulta:071416c479b67915",
+     "brand": "First Aid Beauty",
+     "title": "Hydrating Dewy Gel Cream Moisturizer with Hyaluronic Acid +Ceramides",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "moisturizer"
+     ],
+     "judgement": "product form moisturizer directly answers the query",
+     "missing_from_catalog_in_passes": "3/3"
+    },
+    {
+     "external_product_id": "ulta:d4314f791760abdd",
+     "brand": "BYOMA",
+     "title": "Hydrating Milky Moisturizer",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "moisturizer"
+     ],
+     "judgement": "product form moisturizer directly answers the query",
+     "missing_from_catalog_in_passes": "3/3"
+    },
+    {
+     "external_product_id": "ulta:c43a0e805e8b643c",
+     "brand": "Naturium",
+     "title": "Multi-Peptide Moisturizer",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "moisturizer"
+     ],
+     "judgement": "product form moisturizer directly answers the query",
+     "missing_from_catalog_in_passes": "3/3"
+    },
+    {
+     "external_product_id": "ulta:18c35d1886a0e785",
+     "brand": "First Aid Beauty",
+     "title": "Ultra Repair Cream Intense Hydration Moisturizer - 4.0 oz",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "moisturizer"
+     ],
+     "judgement": "product form moisturizer directly answers the query",
+     "missing_from_catalog_in_passes": "3/3"
+    }
+   ],
+   "substitutable_misses": [],
+   "rejected_by_relevance": [
+    {
+     "external_product_id": "ulta:fdb8ea72f5b052be",
+     "brand": "Tarte",
+     "title": "BB Blur Tinted Moisturizer Broad Spectrum SPF 30 Sunscreen - Medium",
+     "grade": 0,
+     "grade_label": "irrelevant",
+     "forms": [
+      "foundation",
+      "sunscreen"
+     ],
+     "judgement": "no rubric form matched the product",
+     "missing_from_catalog_in_passes": "3/3"
+    }
+   ]
+  },
+  {
+   "query": "sunscreen",
+   "bucket": "skincare_bare_noun",
+   "lang": "en",
+   "passes_clean": 3,
+   "passes_dropped_as_stalled": 0,
+   "seed_returned_avg": 8,
+   "catalog_returned_avg": 8,
+   "seed_relevant_avg": 8,
+   "catalog_relevant_avg": 8,
+   "relevance_deficit": 0,
+   "acceptance_target": false,
+   "true_gap_count": 0,
+   "true_gaps": [],
+   "substitutable_misses": [
+    {
+     "external_product_id": "ulta:44cf29ebff03af73",
+     "brand": "COSRX",
+     "title": "Airy-Light Clear Sunscreen Stick SPF 50",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "sunscreen"
+     ],
+     "judgement": "product form sunscreen directly answers the query",
+     "missing_from_catalog_in_passes": "3/3"
+    },
+    {
+     "external_product_id": "ulta:734d9e9c93243a46",
+     "brand": "La Roche-Posay",
+     "title": "Anthelios Clear Skin Dry Touch Face Sunscreen SPF 60 - 1.7 oz",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "sunscreen"
+     ],
+     "judgement": "product form sunscreen directly answers the query",
+     "missing_from_catalog_in_passes": "3/3"
+    },
+    {
+     "external_product_id": "ulta:ead28be8e8e7cdc8",
+     "brand": "La Roche-Posay",
+     "title": "Anthelios Glow Sunscreen SPF 35 - Bronze",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "sunscreen"
+     ],
+     "judgement": "product form sunscreen directly answers the query",
+     "missing_from_catalog_in_passes": "3/3"
+    },
+    {
+     "external_product_id": "ulta:b8561c71be2758a5",
+     "brand": "La Roche-Posay",
+     "title": "Anthelios UV Control Sunscreen SPF 50 with Azelaic Acid",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "sunscreen"
+     ],
+     "judgement": "product form sunscreen directly answers the query",
+     "missing_from_catalog_in_passes": "3/3"
+    },
+    {
+     "external_product_id": "ulta:fdb8ea72f5b052be",
+     "brand": "Tarte",
+     "title": "BB Blur Tinted Moisturizer Broad Spectrum SPF 30 Sunscreen - Medium",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "foundation",
+      "sunscreen"
+     ],
+     "judgement": "product form sunscreen directly answers the query",
+     "missing_from_catalog_in_passes": "3/3"
+    },
+    {
+     "external_product_id": "ulta:f90c41707d89f984",
+     "brand": "Supergoop!",
+     "title": "Every. Single. Face. Watery Lotion SPF 50 Sunscreen",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "sunscreen",
+      "moisturizer"
+     ],
+     "judgement": "product form sunscreen directly answers the query",
+     "missing_from_catalog_in_passes": "3/3"
+    },
+    {
+     "external_product_id": "ulta:11910bb3ebd2d4b8",
+     "brand": "Supergoop!",
+     "title": "Glowscreen SPF 40 Sunscreen with Hyaluronic Acid + Niacinamide - Dawn",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "sunscreen"
+     ],
+     "judgement": "product form sunscreen directly answers the query",
+     "missing_from_catalog_in_passes": "3/3"
+    },
+    {
+     "external_product_id": "ulta:fe02b542addcc07f",
+     "brand": "Supergoop!",
+     "title": "Lipscreen SPF 40 Lip Gloss Sunscreen",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "lip_other",
+      "sunscreen"
+     ],
+     "judgement": "product form sunscreen directly answers the query",
+     "missing_from_catalog_in_passes": "3/3"
+    }
+   ],
+   "rejected_by_relevance": []
+  },
+  {
+   "query": "精华",
+   "bucket": "skincare_bare_noun",
+   "lang": "zh",
+   "passes_clean": 3,
+   "passes_dropped_as_stalled": 0,
+   "seed_returned_avg": 0,
+   "catalog_returned_avg": 0,
+   "seed_relevant_avg": 0,
+   "catalog_relevant_avg": 0,
+   "relevance_deficit": 0,
+   "acceptance_target": false,
+   "true_gap_count": 0,
+   "true_gaps": [],
+   "substitutable_misses": [],
+   "rejected_by_relevance": []
+  },
+  {
+   "query": "面霜",
+   "bucket": "skincare_bare_noun",
+   "lang": "zh",
+   "passes_clean": 3,
+   "passes_dropped_as_stalled": 0,
+   "seed_returned_avg": 0,
+   "catalog_returned_avg": 0,
+   "seed_relevant_avg": 0,
+   "catalog_relevant_avg": 0,
+   "relevance_deficit": 0,
+   "acceptance_target": false,
+   "true_gap_count": 0,
+   "true_gaps": [],
+   "substitutable_misses": [],
+   "rejected_by_relevance": []
+  },
+  {
+   "query": "acne cleanser",
+   "bucket": "skincare_cleanser",
+   "lang": "en",
+   "passes_clean": 2,
+   "passes_dropped_as_stalled": 1,
+   "seed_returned_avg": 8,
+   "catalog_returned_avg": 8,
+   "seed_relevant_avg": 7,
+   "catalog_relevant_avg": 8,
+   "relevance_deficit": 0,
+   "acceptance_target": false,
+   "true_gap_count": 0,
+   "true_gaps": [],
+   "substitutable_misses": [
+    {
+     "external_product_id": "ulta:96eaf0ef7d880d38",
+     "brand": "Murad",
+     "title": "Clarifying Gel Cleanser with Salicylic Acid",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "cleanser"
+     ],
+     "judgement": "product form cleanser directly answers the query",
+     "missing_from_catalog_in_passes": "2/2"
+    },
+    {
+     "external_product_id": "ulta:ba4e155a288a5919",
+     "brand": "BYOMA",
+     "title": "Creamy Jelly Cleanser - 5.9 oz",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "cleanser"
+     ],
+     "judgement": "product form cleanser directly answers the query",
+     "missing_from_catalog_in_passes": "2/2"
+    },
+    {
+     "external_product_id": "ulta:b7bee03683b780a7",
+     "brand": "Naturium",
+     "title": "Multi-Calm Cream Cleanser",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "cleanser",
+      "moisturizer"
+     ],
+     "judgement": "product form cleanser directly answers the query",
+     "missing_from_catalog_in_passes": "2/2"
+    }
+   ],
+   "rejected_by_relevance": [
+    {
+     "external_product_id": "ulta:f350d8e6e3fad78d",
+     "brand": "Murad",
+     "title": "Biome-Balancing Clear & Prevent Acne Treatment Serum",
+     "grade": 0,
+     "grade_label": "irrelevant",
+     "forms": [
+      "serum"
+     ],
+     "judgement": "no rubric form matched the product",
+     "missing_from_catalog_in_passes": "2/2"
+    }
+   ]
+  },
+  {
+   "query": "gentle cleanser",
+   "bucket": "skincare_cleanser",
+   "lang": "en",
+   "passes_clean": 2,
+   "passes_dropped_as_stalled": 1,
+   "seed_returned_avg": 8,
+   "catalog_returned_avg": 8,
+   "seed_relevant_avg": 8,
+   "catalog_relevant_avg": 8,
+   "relevance_deficit": 0,
+   "acceptance_target": false,
+   "true_gap_count": 0,
+   "true_gaps": [],
+   "substitutable_misses": [
+    {
+     "external_product_id": "ulta:71310019b3bf4a10",
+     "brand": "Clinique",
+     "title": "All About Clean Liquid Facial Soap Cleanser - Mild - 6.7 oz",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "cleanser"
+     ],
+     "judgement": "product form cleanser directly answers the query",
+     "missing_from_catalog_in_passes": "2/2"
+    },
+    {
+     "external_product_id": "ulta:70fe4a4bc2e296ad",
+     "brand": "Clinique",
+     "title": "All About Clean Liquid Facial Soap Cleanser - Oily - 6.7 oz",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "cleanser"
+     ],
+     "judgement": "product form cleanser directly answers the query",
+     "missing_from_catalog_in_passes": "2/2"
+    },
+    {
+     "external_product_id": "ext_ffb12fe6f5825dbc7ae8d71e",
+     "brand": "Beauty of Joseon",
+     "title": "Beauty of Joseon Ginseng Cleansing Oil",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "cleanser"
+     ],
+     "judgement": "product form cleanser directly answers the query",
+     "missing_from_catalog_in_passes": "2/2"
+    },
+    {
+     "external_product_id": "ext_bd6713ee6541365fa172255d",
+     "brand": "Lav Kids",
+     "title": "Gel Yeah! Cleanser",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "cleanser"
+     ],
+     "judgement": "product form cleanser directly answers the query",
+     "missing_from_catalog_in_passes": "2/2"
+    },
+    {
+     "external_product_id": "ext_0389cd34ac2b199ed7d155fd",
+     "brand": "Miss Nella",
+     "title": "Lav Kids Skincare by Miss Nella Facial Foaming Cleanser 100ml",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "cleanser"
+     ],
+     "judgement": "product form cleanser directly answers the query",
+     "missing_from_catalog_in_passes": "2/2"
+    },
+    {
+     "external_product_id": "ext_218ac2ea5a9b179e1ca0fdcf",
+     "brand": "Jurlique",
+     "title": "Revitalising Cleansing Gel",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "cleanser"
+     ],
+     "judgement": "product form cleanser directly answers the query",
+     "missing_from_catalog_in_passes": "2/2"
+    },
+    {
+     "external_product_id": "ext_03f17d2497c42c4b759281f6",
+     "brand": "The Ordinary",
+     "title": "Squalane Cleanser Hydrating Makeup Remover - 1.7 oz",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "cleanser"
+     ],
+     "judgement": "product form cleanser directly answers the query",
+     "missing_from_catalog_in_passes": "2/2"
+    }
+   ],
+   "rejected_by_relevance": []
+  },
+  {
+   "query": "barrier moisturizer",
+   "bucket": "skincare_moisturizer",
+   "lang": "en",
+   "passes_clean": 3,
+   "passes_dropped_as_stalled": 0,
+   "seed_returned_avg": 8,
+   "catalog_returned_avg": 8,
+   "seed_relevant_avg": 6,
+   "catalog_relevant_avg": 8,
+   "relevance_deficit": 0,
+   "acceptance_target": false,
+   "true_gap_count": 0,
+   "true_gaps": [],
+   "substitutable_misses": [
+    {
+     "external_product_id": "ext_d09e4106ca9c607bcb259c0b",
+     "brand": "Beauty of Joseon",
+     "title": "Beauty of Joseon Dynasty Cream",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "moisturizer"
+     ],
+     "judgement": "product form moisturizer directly answers the query",
+     "missing_from_catalog_in_passes": "3/3"
+    },
+    {
+     "external_product_id": "ulta:d9abc547f236598a",
+     "brand": "Drunk Elephant",
+     "title": "Bora Barrier Repair Cream - 1.69 oz",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "moisturizer"
+     ],
+     "judgement": "product form moisturizer directly answers the query",
+     "missing_from_catalog_in_passes": "3/3"
+    },
+    {
+     "external_product_id": "ulta:9065a39a4d2eeac5",
+     "brand": "Murad",
+     "title": "Cellular Hydration Barrier Repair Cream",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "moisturizer"
+     ],
+     "judgement": "product form moisturizer directly answers the query",
+     "missing_from_catalog_in_passes": "3/3"
+    },
+    {
+     "external_product_id": "ulta:d4314f791760abdd",
+     "brand": "BYOMA",
+     "title": "Hydrating Milky Moisturizer",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "moisturizer"
+     ],
+     "judgement": "product form moisturizer directly answers the query",
+     "missing_from_catalog_in_passes": "3/3"
+    },
+    {
+     "external_product_id": "ext_c2ce069d1c2d4b78196097e6",
+     "brand": "Biossance",
+     "title": "Squalane + Omega Repair Cream",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "moisturizer"
+     ],
+     "judgement": "product form moisturizer directly answers the query",
+     "missing_from_catalog_in_passes": "3/3"
+    },
+    {
+     "external_product_id": "ulta:18c35d1886a0e785",
+     "brand": "First Aid Beauty",
+     "title": "Ultra Repair Cream Intense Hydration Moisturizer - 4.0 oz",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "moisturizer"
+     ],
+     "judgement": "product form moisturizer directly answers the query",
+     "missing_from_catalog_in_passes": "3/3"
+    }
+   ],
+   "rejected_by_relevance": [
+    {
+     "external_product_id": "ulta:4bf1b95aed508e9e",
+     "brand": "BYOMA",
+     "title": "Barrier + Repair Treatment",
+     "grade": 0,
+     "grade_label": "irrelevant",
+     "forms": [],
+     "judgement": "no rubric form matched the product",
+     "missing_from_catalog_in_passes": "3/3"
+    },
+    {
+     "external_product_id": "ext_11b138988a876c7f117db034",
+     "brand": "Beauty of Joseon",
+     "title": "Beauty of Joseon Glow Replenishing Rice Milk",
+     "grade": 0,
+     "grade_label": "irrelevant",
+     "forms": [],
+     "judgement": "no rubric form matched the product",
+     "missing_from_catalog_in_passes": "3/3"
+    }
+   ]
+  },
+  {
+   "query": "hydrating barrier moisturizer fragrance free",
+   "bucket": "skincare_moisturizer",
+   "lang": "en",
+   "passes_clean": 3,
+   "passes_dropped_as_stalled": 0,
+   "seed_returned_avg": 8,
+   "catalog_returned_avg": 8,
+   "seed_relevant_avg": 5,
+   "catalog_relevant_avg": 1,
+   "relevance_deficit": 4,
+   "acceptance_target": true,
+   "true_gap_count": 5,
+   "true_gaps": [
+    {
+     "external_product_id": "ulta:7cd47ba7a283490c",
+     "brand": "TULA",
+     "title": "24-7 Moisture Fragrance Free Hydrating Day & Night Cream",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "moisturizer"
+     ],
+     "judgement": "product form moisturizer directly answers the query",
+     "missing_from_catalog_in_passes": "3/3"
+    },
+    {
+     "external_product_id": "ext_4729e70c78478cb6a57aa177",
+     "brand": "Olehenriksen",
+     "title": "Après Skin Rich Rescue Barrier Moisturizer with Ceramides",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "moisturizer"
+     ],
+     "judgement": "product form moisturizer directly answers the query",
+     "missing_from_catalog_in_passes": "3/3"
+    },
+    {
+     "external_product_id": "ext_db10285b875616e21b4e3cf4",
+     "brand": "COSRX",
+     "title": "Ceramide Skin Barrier Moisturizer",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "moisturizer"
+     ],
+     "judgement": "product form moisturizer directly answers the query",
+     "missing_from_catalog_in_passes": "3/3"
+    },
+    {
+     "external_product_id": "ext_fc7af581263cef7037f9a3bc",
+     "brand": "Naturium",
+     "title": "Multi-Peptide Moisturizer - Jumbo",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "moisturizer"
+     ],
+     "judgement": "product form moisturizer directly answers the query",
+     "missing_from_catalog_in_passes": "3/3"
+    },
+    {
+     "external_product_id": "ext_0b16b7ab0f27aad5007e1c4e",
+     "brand": "Purito SEOUL",
+     "title": "Purito Cream Bamboo",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "moisturizer"
+     ],
+     "judgement": "product form moisturizer directly answers the query",
+     "missing_from_catalog_in_passes": "3/3"
+    }
+   ],
+   "substitutable_misses": [],
+   "rejected_by_relevance": [
+    {
+     "external_product_id": "ext_1c12835bab42c6dbd38cf71c",
+     "brand": "Naturium",
+     "title": "Skin-Renewing Retinol Body Lotion - Jumbo",
+     "grade": 0,
+     "grade_label": "irrelevant",
+     "forms": [
+      "body_care"
+     ],
+     "judgement": "no rubric form matched the product",
+     "missing_from_catalog_in_passes": "3/3"
+    },
+    {
+     "external_product_id": "ulta:e8664e1b44cae310",
+     "brand": "Neutrogena",
+     "title": "Collagen Bank Vitamin C Face Serum Fragrance Free",
+     "grade": 1,
+     "grade_label": "partial",
+     "forms": [
+      "serum"
+     ],
+     "judgement": "product form serum is adjacent to the query's target form",
+     "missing_from_catalog_in_passes": "3/3"
+    },
+    {
+     "external_product_id": "ext_54622d272663a9941ba758ae",
+     "brand": "The Ordinary",
+     "title": "Soothing & Barrier Support Serum for Sensitive Skin & Hydration",
+     "grade": 1,
+     "grade_label": "partial",
+     "forms": [
+      "serum"
+     ],
+     "judgement": "product form serum is adjacent to the query's target form",
+     "missing_from_catalog_in_passes": "3/3"
+    }
+   ]
+  },
+  {
+   "query": "lightweight gel moisturizer for acne-prone skin",
+   "bucket": "skincare_moisturizer",
+   "lang": "en",
+   "passes_clean": 3,
+   "passes_dropped_as_stalled": 0,
+   "seed_returned_avg": 8,
+   "catalog_returned_avg": 8,
+   "seed_relevant_avg": 8,
+   "catalog_relevant_avg": 1,
+   "relevance_deficit": 7,
+   "acceptance_target": true,
+   "true_gap_count": 8,
+   "true_gaps": [
+    {
+     "external_product_id": "ext_624a12ac9aec83ba278950e0",
+     "brand": "Round Lab",
+     "title": "1025 Dokdo Cream",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "moisturizer"
+     ],
+     "judgement": "product form moisturizer directly answers the query",
+     "missing_from_catalog_in_passes": "3/3"
+    },
+    {
+     "external_product_id": "ext_f2f0f159377aa5d2a9613e32",
+     "brand": "Haruharu Wonder",
+     "title": "5% Niacinamide Radiance Gel Cream / Unscented",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "moisturizer"
+     ],
+     "judgement": "product form moisturizer directly answers the query",
+     "missing_from_catalog_in_passes": "3/3"
+    },
+    {
+     "external_product_id": "ext_d6716f08ba30aa68ed0120db",
+     "brand": "Haruharu Wonder",
+     "title": "5% Niacinamide Radiance Gel Cream / Unscented 40g",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "moisturizer"
+     ],
+     "judgement": "product form moisturizer directly answers the query",
+     "missing_from_catalog_in_passes": "3/3"
+    },
+    {
+     "external_product_id": "ext_074b575f32dd0f5048bf55ce",
+     "brand": "Beauty of Joseon",
+     "title": "Beauty of Joseon Red Bean Water Gel",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "moisturizer"
+     ],
+     "judgement": "product form moisturizer directly answers the query",
+     "missing_from_catalog_in_passes": "3/3"
+    },
+    {
+     "external_product_id": "ext_9de6c28d3bc9481c98afeebd",
+     "brand": "Aveeno",
+     "title": "Calm + Restore Oat Gel Moisturizer, Sensitive Skin",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "moisturizer"
+     ],
+     "judgement": "product form moisturizer directly answers the query",
+     "missing_from_catalog_in_passes": "3/3"
+    },
+    {
+     "external_product_id": "ulta:efbcea89a87d2f61",
+     "brand": "Neutrogena",
+     "title": "Evenly Clear Acne Gel Moisturizer",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "moisturizer"
+     ],
+     "judgement": "product form moisturizer directly answers the query",
+     "missing_from_catalog_in_passes": "3/3"
+    },
+    {
+     "external_product_id": "ext_8d1ef8a7e492c407c7f509d5",
+     "brand": "The Ordinary",
+     "title": "Natural Moisturizing Factors + Beta Glucan Lightweight Gel Moisturizer",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "moisturizer"
+     ],
+     "judgement": "product form moisturizer directly answers the query",
+     "missing_from_catalog_in_passes": "3/3"
+    },
+    {
+     "external_product_id": "ext_7f86bf0eba830f16dae39f6c",
+     "brand": "Beauty of Joseon",
+     "title": "Red Bean Water Gel",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "moisturizer"
+     ],
+     "judgement": "product form moisturizer directly answers the query",
+     "missing_from_catalog_in_passes": "3/3"
+    }
+   ],
+   "substitutable_misses": [],
+   "rejected_by_relevance": []
+  },
+  {
+   "query": "hyaluronic acid hydrating serum",
+   "bucket": "skincare_serum",
+   "lang": "en",
+   "passes_clean": 3,
+   "passes_dropped_as_stalled": 0,
+   "seed_returned_avg": 8,
+   "catalog_returned_avg": 8,
+   "seed_relevant_avg": 6,
+   "catalog_relevant_avg": 5,
+   "relevance_deficit": 1,
+   "acceptance_target": true,
+   "true_gap_count": 5,
+   "true_gaps": [
+    {
+     "external_product_id": "ulta:bd6582d4b14f5de7",
+     "brand": "Estée Lauder",
+     "title": "Advanced Night Repair Multi-Recovery Complex Serum with Hyaluronic Acid & Peptides - 1.0 oz",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "serum"
+     ],
+     "judgement": "product form serum directly answers the query",
+     "missing_from_catalog_in_passes": "3/3"
+    },
+    {
+     "external_product_id": "ulta:4495b95446668dd4",
+     "brand": "COSRX",
+     "title": "Advanced The Vitamin C 23 Serum with Super Vitamin E & Hyaluronic Acid",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "serum"
+     ],
+     "judgement": "product form serum directly answers the query",
+     "missing_from_catalog_in_passes": "3/3"
+    },
+    {
+     "external_product_id": "ext_41bf389f8c93f65d101bd36b",
+     "brand": "Beauty of Joseon",
+     "title": "Beauty of Joseon Revive Serum : Ginseng + Snail Mucin",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "serum"
+     ],
+     "judgement": "product form serum directly answers the query",
+     "missing_from_catalog_in_passes": "3/3"
+    },
+    {
+     "external_product_id": "ext_f7999d8a894435156eaccb24",
+     "brand": "AYA Skincare",
+     "title": "Hydrate & Restore- Hydrating Hyaluronic Acid Serum",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "serum"
+     ],
+     "judgement": "product form serum directly answers the query",
+     "missing_from_catalog_in_passes": "3/3"
+    },
+    {
+     "external_product_id": "ext_6f885ffc900b6c99115c25e9",
+     "brand": "The Inkey List",
+     "title": "Supersize Hyaluronic Acid Serum - 100ml",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "serum"
+     ],
+     "judgement": "product form serum directly answers the query",
+     "missing_from_catalog_in_passes": "3/3"
+    }
+   ],
+   "substitutable_misses": [],
+   "rejected_by_relevance": [
+    {
+     "external_product_id": "ext_0feb1c58f18d9f6694955e7e",
+     "brand": "Tom Ford Beauty",
+     "title": "Architecture Radiance Hydrating Foundation Broad Spectrum SPF 50+",
+     "grade": 0,
+     "grade_label": "irrelevant",
+     "forms": [
+      "foundation",
+      "sunscreen"
+     ],
+     "judgement": "no rubric form matched the product",
+     "missing_from_catalog_in_passes": "3/3"
+    },
+    {
+     "external_product_id": "ulta:071416c479b67915",
+     "brand": "First Aid Beauty",
+     "title": "Hydrating Dewy Gel Cream Moisturizer with Hyaluronic Acid +Ceramides",
+     "grade": 0,
+     "grade_label": "irrelevant",
+     "forms": [
+      "moisturizer"
+     ],
+     "judgement": "no rubric form matched the product",
+     "missing_from_catalog_in_passes": "3/3"
+    }
+   ]
+  },
+  {
+   "query": "salicylic acid serum for acne and pores",
+   "bucket": "skincare_serum",
+   "lang": "en",
+   "passes_clean": 3,
+   "passes_dropped_as_stalled": 0,
+   "seed_returned_avg": 8,
+   "catalog_returned_avg": 8,
+   "seed_relevant_avg": 5,
+   "catalog_relevant_avg": 5,
+   "relevance_deficit": 0,
+   "acceptance_target": false,
+   "true_gap_count": 0,
+   "true_gaps": [],
+   "substitutable_misses": [
+    {
+     "external_product_id": "ext_8cde61a44057d77e03facc97",
+     "brand": "Paula's Choice",
+     "title": "10% Azelaic Acid Booster",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "serum"
+     ],
+     "judgement": "product form serum directly answers the query",
+     "missing_from_catalog_in_passes": "3/3"
+    },
+    {
+     "external_product_id": "ext_fe0c55a05a505ad59ddd7f0c",
+     "brand": "The Inkey List",
+     "title": "360° Acne Clearing Serum",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "serum"
+     ],
+     "judgement": "product form serum directly answers the query",
+     "missing_from_catalog_in_passes": "3/3"
+    },
+    {
+     "external_product_id": "ext_d60e9219685d624c709918e8",
+     "brand": "The Ordinary",
+     "title": "Multi-Peptide + Hyaluronic Acid Serum for Firmness and Elasticity",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "serum"
+     ],
+     "judgement": "product form serum directly answers the query",
+     "missing_from_catalog_in_passes": "3/3"
+    },
+    {
+     "external_product_id": "ext_7db487fb062d3a8dc8fb330d",
+     "brand": "The Ordinary",
+     "title": "Salicylic Acid 2% Anhydrous Solution, Gentle Exfoliating Serum for Blemishes",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "serum"
+     ],
+     "judgement": "product form serum directly answers the query",
+     "missing_from_catalog_in_passes": "3/3"
+    },
+    {
+     "external_product_id": "ext_096ca97f62c5ac465279b217",
+     "brand": "The Ordinary",
+     "title": "Salicylic Acid 2% Solution, Exfoliating Serum for Acne",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "serum"
+     ],
+     "judgement": "product form serum directly answers the query",
+     "missing_from_catalog_in_passes": "3/3"
+    }
+   ],
+   "rejected_by_relevance": [
+    {
+     "external_product_id": "ulta:d29e14eff436f1f1",
+     "brand": "First Aid Beauty",
+     "title": "Acne Clearing Pads 2% Salicylic Acid Acne Treatment",
+     "grade": 0,
+     "grade_label": "irrelevant",
+     "forms": [],
+     "judgement": "no rubric form matched the product",
+     "missing_from_catalog_in_passes": "3/3"
+    },
+    {
+     "external_product_id": "ulta:96eaf0ef7d880d38",
+     "brand": "Murad",
+     "title": "Clarifying Gel Cleanser with Salicylic Acid",
+     "grade": 0,
+     "grade_label": "irrelevant",
+     "forms": [
+      "cleanser"
+     ],
+     "judgement": "no rubric form matched the product",
+     "missing_from_catalog_in_passes": "3/3"
+    },
+    {
+     "external_product_id": "ulta:2ca6616b801d7052",
+     "brand": "Neutrogena",
+     "title": "Evenly Clear Acne Cleanser with Salicylic Acid",
+     "grade": 0,
+     "grade_label": "irrelevant",
+     "forms": [
+      "cleanser"
+     ],
+     "judgement": "no rubric form matched the product",
+     "missing_from_catalog_in_passes": "3/3"
+    }
+   ]
+  },
+  {
+   "query": "spf 50",
+   "bucket": "skincare_sun",
+   "lang": "en",
+   "passes_clean": 3,
+   "passes_dropped_as_stalled": 0,
+   "seed_returned_avg": 8,
+   "catalog_returned_avg": 8,
+   "seed_relevant_avg": 8,
+   "catalog_relevant_avg": 8,
+   "relevance_deficit": 0,
+   "acceptance_target": false,
+   "true_gap_count": 0,
+   "true_gaps": [],
+   "substitutable_misses": [
+    {
+     "external_product_id": "ulta:44cf29ebff03af73",
+     "brand": "COSRX",
+     "title": "Airy-Light Clear Sunscreen Stick SPF 50",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "sunscreen"
+     ],
+     "judgement": "product form sunscreen directly answers the query",
+     "missing_from_catalog_in_passes": "3/3"
+    },
+    {
+     "external_product_id": "ulta:7aaeae0b296639f2",
+     "brand": "CeraVe",
+     "title": "AM Facial Moisturizing Lotion SPF 50",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "sunscreen",
+      "moisturizer"
+     ],
+     "judgement": "product form sunscreen directly answers the query",
+     "missing_from_catalog_in_passes": "3/3"
+    },
+    {
+     "external_product_id": "ulta:f8e7123f58531c6d",
+     "brand": "La Roche-Posay",
+     "title": "Anthelios Mineral Tinted Ultra Light Face Sunscreen Fluid SPF 50",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "sunscreen"
+     ],
+     "judgement": "product form sunscreen directly answers the query",
+     "missing_from_catalog_in_passes": "3/3"
+    },
+    {
+     "external_product_id": "ulta:78ba9d633b55b688",
+     "brand": "La Roche-Posay",
+     "title": "Anthelios Mineral Ultra-Light Face Sunscreen Fluid SPF 50",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "sunscreen"
+     ],
+     "judgement": "product form sunscreen directly answers the query",
+     "missing_from_catalog_in_passes": "3/3"
+    },
+    {
+     "external_product_id": "ulta:b8561c71be2758a5",
+     "brand": "La Roche-Posay",
+     "title": "Anthelios UV Control Sunscreen SPF 50 with Azelaic Acid",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "sunscreen"
+     ],
+     "judgement": "product form sunscreen directly answers the query",
+     "missing_from_catalog_in_passes": "3/3"
+    },
+    {
+     "external_product_id": "ulta:d7b4d013a8fff960",
+     "brand": "Neutrogena",
+     "title": "Clear Face Oil-Free Sunscreen SPF 50",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "sunscreen"
+     ],
+     "judgement": "product form sunscreen directly answers the query",
+     "missing_from_catalog_in_passes": "3/3"
+    },
+    {
+     "external_product_id": "ulta:b77f6d66d57d960a",
+     "brand": "Naturium",
+     "title": "Dew-Glow Moisturizer SPF 50 - 0.7 oz",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "sunscreen",
+      "moisturizer"
+     ],
+     "judgement": "product form sunscreen directly answers the query",
+     "missing_from_catalog_in_passes": "3/3"
+    },
+    {
+     "external_product_id": "ulta:f90c41707d89f984",
+     "brand": "Supergoop!",
+     "title": "Every. Single. Face. Watery Lotion SPF 50 Sunscreen",
+     "grade": 2,
+     "grade_label": "relevant",
+     "forms": [
+      "sunscreen",
+      "moisturizer"
+     ],
+     "judgement": "product form sunscreen directly answers the query",
+     "missing_from_catalog_in_passes": "3/3"
+    }
+   ],
+   "rejected_by_relevance": []
+  },
+  {
+   "query": "防晒霜",
+   "bucket": "skincare_sun",
+   "lang": "zh",
+   "passes_clean": 3,
+   "passes_dropped_as_stalled": 0,
+   "seed_returned_avg": 0,
+   "catalog_returned_avg": 0,
+   "seed_relevant_avg": 0,
+   "catalog_relevant_avg": 0,
+   "relevance_deficit": 0,
+   "acceptance_target": false,
+   "true_gap_count": 0,
+   "true_gaps": [],
+   "substitutable_misses": [],
+   "rejected_by_relevance": []
   }
  ]
 }

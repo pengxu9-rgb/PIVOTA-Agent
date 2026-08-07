@@ -41,8 +41,17 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
-const DEFAULT_CORPUS_PATH =
-  '/Users/pengchydan/dev/pivota-agent-ui/scripts/eval_corpus_recall_v1.jsonl';
+/**
+ * The in-repo, in-domain corpus. This default used to point at an absolute path
+ * in a sibling checkout (pivota-agent-ui/scripts/eval_corpus_recall_v1.jsonl) —
+ * a GENERIC multi-category corpus covering apparel, footwear, electronics and
+ * housewares, run against what is effectively a beauty catalog. Queries like
+ * "running shoes" have no correct answer in this data, so the seed lane's
+ * substring hits on them ("Ombré *Leather* Eau de Parfum" for "black leather
+ * sneakers") were recorded as recall gaps and became Phase 1 acceptance
+ * targets. Keep the default in-repo and in-domain.
+ */
+const DEFAULT_CORPUS_PATH = path.join(__dirname, '..', 'tests', 'fixtures', 'adr020_phase1_recall_corpus.jsonl');
 const DEFAULT_LIMIT = 8;
 const DEFAULT_MAX_QUERIES = 50;
 const EXTERNAL_SEED_PRODUCT_KEY_PREFIX = 'prod::external_seed::external_seed::';

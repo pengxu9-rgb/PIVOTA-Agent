@@ -366,15 +366,68 @@ describe('orphaned mirror metric', () => {
 });
 
 describe('phase 1 acceptance corpus fixture', () => {
-  test('carries the 15 gap queries / 71 unique products measured 2026-07-30', () => {
-    expect(gapScope.gap_query_count).toBe(15);
-    expect(gapScope.gap_queries).toHaveLength(15);
-    const ids = new Set();
-    for (const q of gapScope.gap_queries) {
-      expect(Array.isArray(q.only_in_seed)).toBe(true);
-      for (const p of q.only_in_seed) ids.add(p.external_product_id);
-    }
-    expect(ids.size).toBe(71);
+  // Re-baselined 2026-08-07. The previous fixture asserted "15 gap queries / 71
+  // unique products" straight off a raw parity diff over a generic
+  // multi-category corpus — no relevance judgement, so seed-lane substring
+  // noise ("black leather sneakers" -> Ombré *Leather* Eau de Parfum) was
+  // pinned as recall the projection must close.
+  const { judgeProduct, GRADE } = require('../../scripts/lib/adr020_recall_relevance.cjs');
+
+  test('is built from the in-domain corpus and a named relevance rubric', () => {
+    expect(gapScope.corpus).toBe('tests/fixtures/adr020_phase1_recall_corpus.jsonl');
+    expect(gapScope.rubric).toBe('scripts/lib/adr020_recall_relevance.cjs');
     expect(gapScope.source).toContain('audit-recall-lane-parity.cjs');
+    // The re-baseline records what it replaced, so the old target cannot be
+    // silently reinstated.
+    expect(gapScope.supersedes.fixture_generated_at).toBe('2026-07-30T11:36:39.299Z');
+  });
+
+  test('a gap requires BOTH a relevance judgement and a catalog-lane deficit', () => {
+    expect(gapScope.method.gap_definition).toMatch(/RELEVANT/);
+    expect(gapScope.method.gap_definition).toMatch(/FEWER RELEVANT ANSWERS/);
+    expect(gapScope.method.both_lanes_judged).toBe(true);
+  });
+
+  test('every acceptance-target product is independently graded RELEVANT', () => {
+    // The property the old fixture violated: nothing irrelevant may be an
+    // acceptance target. Re-judged here from the rubric rather than trusting
+    // the grade the builder wrote into the fixture.
+    const targets = gapScope.queries.filter((q) => q.acceptance_target);
+    expect(targets.length).toBe(gapScope.summary.gap_query_count);
+    for (const q of targets) {
+      expect(q.relevance_deficit).toBeGreaterThan(0);
+      for (const p of q.true_gaps) {
+        const judged = judgeProduct(q.query, p);
+        expect({ q: q.query, t: p.title, g: judged.grade }).toEqual({
+          q: q.query,
+          t: p.title,
+          g: GRADE.RELEVANT,
+        });
+      }
+    }
+  });
+
+  test('queries where the catalog lane is already as good carry no acceptance targets', () => {
+    for (const q of gapScope.queries) {
+      if (q.acceptance_target) continue;
+      expect(q.true_gaps).toEqual([]);
+      expect(q.catalog_relevant_avg).toBeGreaterThanOrEqual(q.seed_relevant_avg);
+    }
+  });
+
+  test('the products the old parity diff would have pinned are retained and rejected', () => {
+    // Kept in-fixture so the re-baseline is auditable rather than asserted.
+    expect(gapScope.summary.products_rejected_by_relevance).toBeGreaterThan(0);
+    for (const q of gapScope.queries) {
+      for (const p of q.rejected_by_relevance) {
+        expect(p.grade).toBeLessThan(GRADE.RELEVANT);
+      }
+    }
+  });
+
+  test('scopes the corpus to the beauty domain the catalog actually stocks', () => {
+    for (const q of gapScope.queries) {
+      expect(q.bucket).toMatch(/^(skincare|makeup|fragrance)/);
+    }
   });
 });
