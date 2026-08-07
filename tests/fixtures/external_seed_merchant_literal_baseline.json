@@ -56,5 +56,6 @@
  "scripts/run_relationship_graph_launch_canary.cjs": 1,
  "scripts/scan-beauty-sku-merge-candidates.js": 1,
  "scripts/smoke_standard_pdp_prod.js": 7,
+ "scripts/sync-external-seeds-to-catalog.cjs": 1,
  "scripts/sync-source-backed-review-summaries-to-serving.cjs": 1
 }
