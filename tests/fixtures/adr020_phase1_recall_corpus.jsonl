@@ -1,0 +1,37 @@
+{"query":"acne cleanser","page":1,"limit":12,"lang":"en","bucket":"skincare_cleanser"}
+{"query":"salicylic acid serum for acne and pores","page":1,"limit":12,"lang":"en","bucket":"skincare_serum"}
+{"query":"gentle cleanser","page":1,"limit":12,"lang":"en","bucket":"skincare_cleanser"}
+{"query":"hyaluronic acid hydrating serum","page":1,"limit":12,"lang":"en","bucket":"skincare_serum"}
+{"query":"barrier moisturizer","page":1,"limit":12,"lang":"en","bucket":"skincare_moisturizer"}
+{"query":"hydrating barrier moisturizer fragrance free","page":1,"limit":12,"lang":"en","bucket":"skincare_moisturizer"}
+{"query":"lightweight gel moisturizer for acne-prone skin","page":1,"limit":12,"lang":"en","bucket":"skincare_moisturizer"}
+{"query":"moisturizer","page":1,"limit":12,"lang":"en","bucket":"skincare_bare_noun"}
+{"query":"sunscreen","page":1,"limit":12,"lang":"en","bucket":"skincare_bare_noun"}
+{"query":"spf 50","page":1,"limit":12,"lang":"en","bucket":"skincare_sun"}
+{"query":"lipstick","page":1,"limit":12,"lang":"en","bucket":"makeup_lip_bare_noun"}
+{"query":"matte lipstick under $30","page":1,"limit":12,"lang":"en","bucket":"makeup_lip"}
+{"query":"nude lipstick everyday","page":1,"limit":12,"lang":"en","bucket":"makeup_lip"}
+{"query":"red lipstick long-lasting","page":1,"limit":12,"lang":"en","bucket":"makeup_lip"}
+{"query":"cushion foundation","page":1,"limit":12,"lang":"en","bucket":"makeup_face"}
+{"query":"full coverage foundation oily skin","page":1,"limit":12,"lang":"en","bucket":"makeup_face"}
+{"query":"concealer for dark circles","page":1,"limit":12,"lang":"en","bucket":"makeup_face"}
+{"query":"mascara","page":1,"limit":12,"lang":"en","bucket":"makeup_eye_bare_noun"}
+{"query":"waterproof volumizing mascara","page":1,"limit":12,"lang":"en","bucket":"makeup_eye"}
+{"query":"neutral eyeshadow palette","page":1,"limit":12,"lang":"en","bucket":"makeup_eye"}
+{"query":"unisex fragrance for daily wear","page":1,"limit":12,"lang":"en","bucket":"fragrance"}
+{"query":"vanilla perfume","page":1,"limit":12,"lang":"en","bucket":"fragrance"}
+{"query":"woody fragrance under $80","page":1,"limit":12,"lang":"en","bucket":"fragrance"}
+{"query":"推荐口红","page":1,"limit":12,"lang":"zh","bucket":"makeup_lip_bare_noun"}
+{"query":"口红","page":1,"limit":12,"lang":"zh","bucket":"makeup_lip_bare_noun"}
+{"query":"平价口红","page":1,"limit":12,"lang":"zh","bucket":"makeup_lip"}
+{"query":"适合黄皮的口红","page":1,"limit":12,"lang":"zh","bucket":"makeup_lip"}
+{"query":"哑光口红","page":1,"limit":12,"lang":"zh","bucket":"makeup_lip"}
+{"query":"气垫粉底","page":1,"limit":12,"lang":"zh","bucket":"makeup_face"}
+{"query":"控油遮瑕粉底液","page":1,"limit":12,"lang":"zh","bucket":"makeup_face"}
+{"query":"睫毛膏","page":1,"limit":12,"lang":"zh","bucket":"makeup_eye_bare_noun"}
+{"query":"防水睫毛膏","page":1,"limit":12,"lang":"zh","bucket":"makeup_eye"}
+{"query":"精华","page":1,"limit":12,"lang":"zh","bucket":"skincare_bare_noun"}
+{"query":"面霜","page":1,"limit":12,"lang":"zh","bucket":"skincare_bare_noun"}
+{"query":"防晒霜","page":1,"limit":12,"lang":"zh","bucket":"skincare_sun"}
+{"query":"木质香水","page":1,"limit":12,"lang":"zh","bucket":"fragrance"}
+{"query":"小众淡香水","page":1,"limit":12,"lang":"zh","bucket":"fragrance"}

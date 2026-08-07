@@ -15,6 +15,7 @@
 
 const {
   fetchCanonicalChainRows,
+  mainlineLaneConfig,
   __internal,
 } = require('../src/services/canonicalCatalogSearch');
 
@@ -1599,5 +1600,315 @@ describe('canonicalCatalogSearch multi-product set diversity (#1927, flag-gated)
     expect(rows.map((r) => r.product_key)).toEqual(before);
     expect(out.rows).not.toBe(rows);
     expect(out.deferred_count).toBe(1);
+  });
+});
+
+describe('canonicalCatalogSearch product-form agreement (ADR-020 phase 1, flag-gated)', () => {
+  const ENV_KEYS = ['CANONICAL_CATALOG_RANK_V2', 'CANONICAL_CATALOG_FORM_AGREEMENT'];
+  let saved;
+
+  beforeEach(() => {
+    saved = {};
+    for (const k of ENV_KEYS) saved[k] = process.env[k];
+  });
+  afterEach(() => {
+    for (const k of ENV_KEYS) {
+      if (saved[k] === undefined) delete process.env[k];
+      else process.env[k] = saved[k];
+    }
+  });
+
+  async function runQuery(query) {
+    const q = makeMockQuery();
+    await fetchCanonicalChainRows({ query, marketId: 'US', limit: 8, deps: { query: q } });
+    return q.calls[0];
+  }
+
+  /**
+   * The bind VALUES belonging to the form arm alone. Asserting on the whole
+   * params array is wrong: the coverage arm already pushes `%<token>%` for
+   * every significant token, so `%fragrance%` and `%parfum%` can appear there
+   * for reasons that have nothing to do with this arm.
+   */
+  function formArmBinds({ sql, params }) {
+    // The arm spans two lines (form regex AND NOT tool regex).
+    const m = sql.match(/LOWER\(COALESCE\(p\.title, ''\)\) ~ \$(\d+)\s*\n\s*AND LOWER\(COALESCE\(p\.title, ''\)\) !~ \$(\d+)/);
+    if (!m) return null;
+    return { form: params[Number(m[1]) - 1], tool: params[Number(m[2]) - 1] };
+  }
+
+  test('flag off emits no form arm and pushes no binds', async () => {
+    process.env.CANONICAL_CATALOG_RANK_V2 = 'enabled';
+    delete process.env.CANONICAL_CATALOG_FORM_AGREEMENT;
+    const off = await runQuery('lightweight gel moisturizer for acne-prone skin');
+
+    process.env.CANONICAL_CATALOG_FORM_AGREEMENT = 'enabled';
+    const on = await runQuery('lightweight gel moisturizer for acne-prone skin');
+
+    expect(on.sql).not.toBe(off.sql);
+    expect(formArmBinds(off)).toBeNull();
+    // Purely additive: one form-pattern bind and one tool-exclusion bind.
+    expect(formArmBinds(on).form).toContain('moisturizer');
+    expect(formArmBinds(on).form).toMatch(/^\\y\(.+\)\\y$/);
+    expect(on.params.length).toBe(off.params.length + 3); // form + tool + surface
+  });
+
+  test('fires only under rank v2 — the legacy arm stays byte-identical', async () => {
+    delete process.env.CANONICAL_CATALOG_RANK_V2;
+    process.env.CANONICAL_CATALOG_FORM_AGREEMENT = 'enabled';
+    const legacy = await runQuery('gentle cleanser for dry skin');
+    expect(legacy.sql).toContain("p.pdp_scope = 'multi_merchant_canonical'              THEN 200");
+    expect(legacy.sql).not.toMatch(/THEN {2,}60 ELSE 0 END/);
+  });
+
+  test('boosts titles carrying the query form noun, at +60 and title-only', async () => {
+    process.env.CANONICAL_CATALOG_RANK_V2 = 'enabled';
+    process.env.CANONICAL_CATALOG_FORM_AGREEMENT = 'enabled';
+    const { sql, params } = await runQuery('lightweight gel moisturizer for acne-prone skin');
+
+    expect(params).toContain('%moisturizer%');
+    // The arm must not consult brand: a brand named "Mask" says nothing about
+    // what the product is.
+    expect(formArmBinds({ sql, params })).not.toBeNull();
+    // The arm must not consult brand.
+    const armText = sql.slice(sql.indexOf('~ $'), sql.indexOf('THEN  60'));
+    expect(armText).not.toContain('p.brand');
+  });
+
+  test('texture words are NOT forms — "gel" must not collect the boost', async () => {
+    // The regression this arm exists to prevent: if "gel" counted as a form,
+    // "Heartleaf Soothing Gel MASK" would be boosted for a gel-moisturizer
+    // query, which is exactly the row being demoted.
+    expect(__internal.PRODUCT_FORM_TITLE_PATTERNS.has('gel')).toBe(false);
+    for (const texture of ['cream', 'oil', 'balm', 'powder', 'mist', 'stick', 'water', 'milk', 'foam']) {
+      expect({ texture, isForm: __internal.PRODUCT_FORM_TITLE_PATTERNS.has(texture) }).toEqual({
+        texture,
+        isForm: false,
+      });
+    }
+    expect(__internal.PRODUCT_FORM_TITLE_PATTERNS.has('moisturizer')).toBe(true);
+    // 'mask' was REMOVED: it boosted six TIRTIR "Mask Fit ... Cushion"
+    // foundations, and no corpus query exercises it.
+    expect(__internal.PRODUCT_FORM_TITLE_PATTERNS.has('mask')).toBe(false);
+  });
+
+  test('a query naming no product form emits no arm (monotone: never a penalty)', async () => {
+    process.env.CANONICAL_CATALOG_RANK_V2 = 'enabled';
+    process.env.CANONICAL_CATALOG_FORM_AGREEMENT = 'enabled';
+    const withForm = await runQuery('hydrating moisturizer');
+    const withoutForm = await runQuery('hydrating glow radiance');
+    expect(withForm.params).toContain('%moisturizer%');
+    // No form token in the query -> only the recall_doc arm scores 60, and the
+    // query carries one fewer bind than the form-bearing one.
+    expect(withoutForm.sql.match(/THEN {2}60 ELSE 0 END/g) || []).toHaveLength(1);
+    expect(withForm.sql.match(/THEN {2}60 ELSE 0 END/g) || []).toHaveLength(2);
+  });
+
+  test('"fragrance" maps to the TITLE vocabulary, never to itself', async () => {
+    // Prod regression 2026-08-07: real perfumes are titled "Eau de Parfum";
+    // the titles literally containing "fragrance" are body mists. Boosting the
+    // query word itself would promote the mists this arm must leave alone.
+    process.env.CANONICAL_CATALOG_RANK_V2 = 'enabled';
+    process.env.CANONICAL_CATALOG_FORM_AGREEMENT = 'enabled';
+    const binds = formArmBinds(await runQuery('woody fragrance under $80'));
+    expect(binds.form).toBe('\\y(parfum|cologne)\\y');
+    // The query word itself must never be a title pattern here.
+    expect(binds.form).not.toContain('fragrance');
+  });
+
+  test('title patterns are deduped when two query tokens share one', async () => {
+    process.env.CANONICAL_CATALOG_RANK_V2 = 'enabled';
+    process.env.CANONICAL_CATALOG_FORM_AGREEMENT = 'enabled';
+    const binds = formArmBinds(await runQuery('perfume parfum cologne'));
+    const alts = binds.form.replace(/^\\y\(|\)\\y$/g, '').split('|');
+    expect(new Set(alts).size).toBe(alts.length);
+  });
+
+  test('multiple form nouns in one query all contribute (OR, not AND)', async () => {
+    process.env.CANONICAL_CATALOG_RANK_V2 = 'enabled';
+    process.env.CANONICAL_CATALOG_FORM_AGREEMENT = 'enabled';
+    const binds = formArmBinds(await runQuery('lipstick and mascara'));
+    expect(binds.form).toContain('lipstick');
+    expect(binds.form).toContain('mascara');
+    expect(binds.form).toContain('|');
+  });
+
+  test('category-bucket mode stays bind-consistent (the 08P01 trap this file warns about)', async () => {
+    // The recall_doc arm had to be suppressed under a category prefix because
+    // its binds live in the text WHERE branch, which category mode discards.
+    // The form arm is different — it lives in the RANK expression, which is
+    // emitted on both branches — so its binds are always referenced. Asserted
+    // rather than assumed, because getting this wrong fails every category
+    // query in prod, not in CI.
+    process.env.CANONICAL_CATALOG_RANK_V2 = 'enabled';
+    process.env.CANONICAL_CATALOG_FORM_AGREEMENT = 'enabled';
+    const q = makeMockQuery();
+    await fetchCanonicalChainRows({
+      query: 'red lipstick',
+      categoryPathPrefix: 'beauty/makeup/lip/',
+      categoryMode: 'category_browse',
+      marketId: 'US',
+      limit: 8,
+      deps: { query: q },
+    });
+    const { sql, params } = q.calls[0];
+    const maxPlaceholder = Math.max(...[...sql.matchAll(/\$(\d+)/g)].map((m) => Number(m[1])));
+    expect({ maxPlaceholder, supplied: params.length }).toEqual({
+      maxPlaceholder,
+      supplied: maxPlaceholder,
+    });
+    // ...and the form arm really is present on the category branch.
+    expect(params.some((p) => String(p).includes('lipstick'))).toBe(true);
+  });
+
+  // --- regressions found in adversarial review of the first cut ----------
+
+  test('form matching is word-bounded: "damask" is not a mask, "perfumed" is not a perfume', async () => {
+    // Unanchored LIKE '%mask%' matched "DaMASK Rose Hydrating Toner" (a toner)
+    // and '%perfume%' matched "PERFUMEd Body Lotion". Invisible to the
+    // acceptance rubric, whose own regexes are already \b-bounded — so the
+    // harness could never have falsified it.
+    process.env.CANONICAL_CATALOG_RANK_V2 = 'enabled';
+    process.env.CANONICAL_CATALOG_FORM_AGREEMENT = 'enabled';
+    const perfumeRe = new RegExp(
+      formArmBinds(await runQuery('vanilla perfume')).form.replace(/\\y/g, '\\b'),
+    );
+    expect(perfumeRe.test('perfumed body lotion')).toBe(false);
+    expect(perfumeRe.test('tobacco vanille eau de parfum')).toBe(true);
+    // 'perfume' is not a title pattern at all now — the titles that say
+    // "Perfume" are a body-cream line and a reed diffuser.
+    expect(perfumeRe.test('perfume nourishing body cream pure')).toBe(false);
+  });
+
+  test('"spf" is not a sunscreen title pattern — it is stamped across complexion products', async () => {
+    process.env.CANONICAL_CATALOG_RANK_V2 = 'enabled';
+    process.env.CANONICAL_CATALOG_FORM_AGREEMENT = 'enabled';
+    const { form } = formArmBinds(await runQuery('sunscreen for oily skin'));
+    expect(form).toContain('sunscreen');
+    // Would have boosted "Tinted Moisturizer SPF 30" and "Foundation SPF 15".
+    expect(form).not.toMatch(/\|spf\||\(spf\|/);
+    const re = new RegExp(form.replace(/\\y/g, '\\b'));
+    expect(re.test('laura mercier tinted moisturizer spf 30')).toBe(false);
+    expect(re.test('airbrush flawless foundation spf 15')).toBe(false);
+    expect(re.test('unseen sunscreen spf 40')).toBe(true);
+  });
+
+  test('applicators never collect the form boost', async () => {
+    process.env.CANONICAL_CATALOG_RANK_V2 = 'enabled';
+    process.env.CANONICAL_CATALOG_FORM_AGREEMENT = 'enabled';
+    const { tool } = formArmBinds(await runQuery('full coverage foundation'));
+    const re = new RegExp(tool.replace(/\\y/g, '\\b'));
+    for (const t of [
+      'foundation brush 01',
+      'cushion puff applicator',
+      'arocell face mask silicone brush skin care tools moisturizer applicator',
+    ]) {
+      expect({ t, excluded: re.test(t) }).toEqual({ t, excluded: true });
+    }
+    expect(re.test('liquid touch weightless foundation')).toBe(false);
+  });
+
+  test('multi-product sets are excluded from the form boost (#1927 interaction)', async () => {
+    // applyMultiProductSetTopCap can only swap a set with a single of EQUAL
+    // rank_score — it is tie-group scoped. A set titled "Moisturizer Duo"
+    // taking +60 would land in a higher tie group and become undemotable,
+    // reintroducing the head-crowding #1927 shipped to prevent through a
+    // channel that cap cannot see.
+    process.env.CANONICAL_CATALOG_RANK_V2 = 'enabled';
+    process.env.CANONICAL_CATALOG_FORM_AGREEMENT = 'enabled';
+    const { sql } = await runQuery('hydrating moisturizer');
+    const arm = sql.slice(sql.indexOf('~ $'), sql.indexOf('THEN  60'));
+    expect(arm).toContain("IS DISTINCT FROM 'set_or_collection'");
+  });
+
+  test('title vocabulary is not narrower than the rubric for the forms it covers', () => {
+    // Two form vocabularies in one repo will drift. The rubric
+    // (scripts/lib/adr020_recall_relevance.cjs) is authoritative; a title
+    // pattern set narrower than it means real products of the right form are
+    // relatively DEMOTED for lacking a merchandiser keyword.
+    const f = __internal.queryFormTitlePatterns;
+    expect(f(['sunscreen'])).toEqual(expect.arrayContaining(['sun stick', 'sun milk']));
+    expect(f(['moisturizer'])).toEqual(expect.arrayContaining(['lotion', 'gel cream', 'water gel']));
+    expect(f(['serum'])).toEqual(expect.arrayContaining(['ampoule']));
+    expect(f(['concealer'])).toEqual(expect.arrayContaining(['corrector']));
+    // ...but 'spf' stays out: it is stamped across complexion titles.
+    expect(f(['sunscreen'])).not.toContain('spf');
+  });
+
+  test('formAgreementEffectiveFor reports whether the arm FIRED, not the flag', async () => {
+    // A bare flag stamp would read true across the whole lane; this arm is
+    // query-conditional, so the soak could not be sliced to the requests
+    // actually reordered. Also guards the #1933 shape: inert without rank v2.
+    const { formAgreementEffectiveFor } = require('../src/services/canonicalCatalogSearch');
+    const on = { CANONICAL_CATALOG_RANK_V2: 'enabled', CANONICAL_CATALOG_FORM_AGREEMENT: 'enabled' };
+    expect(formAgreementEffectiveFor('hydrating moisturizer', on)).toBe(true);
+    expect(formAgreementEffectiveFor('moisturizers', on)).toBe(true);
+    // Query names no form the lexicon covers -> arm cannot fire.
+    expect(formAgreementEffectiveFor('glow radiance', on)).toBe(false);
+    // Chinese queries cannot reach the English lexicon.
+    expect(formAgreementEffectiveFor('红色口红', on)).toBe(false);
+    // Inert without either gate.
+    expect(formAgreementEffectiveFor('hydrating moisturizer', { CANONICAL_CATALOG_RANK_V2: 'enabled' })).toBe(false);
+    expect(formAgreementEffectiveFor('hydrating moisturizer', { CANONICAL_CATALOG_FORM_AGREEMENT: 'enabled' })).toBe(false);
+  });
+
+  test('form lookup survives punctuation and plurals', () => {
+    const f = __internal.queryFormTitlePatterns;
+    // Each of these yielded NO form before: one comma, or a plural, was enough
+    // to silence the arm on ordinary phrasing.
+    const M = f(['moisturizer']);
+    expect(M).toContain('moisturizer');
+    expect(f(['moisturizer,'])).toEqual(M);
+    expect(f(['moisturizer.'])).toEqual(M);
+    expect(f(['moisturizers'])).toEqual(M);
+    expect(f(['lipsticks'])).toEqual(['lipstick']);
+    expect(f(['glow', 'radiance'])).toEqual([]);
+  });
+
+  test('mainlineLaneConfig parses the flag exactly as src/server.js does', () => {
+    // Regression: this read the flag through this file's {enabled,on,1,true}
+    // set while server.js uses parseBooleanEnv {1,true,yes,y,on}. Since every
+    // sibling flag here is spelled `enabled`, setting the mainline flag to
+    // `enabled` gave a DARK lane in prod and a harness stamping
+    // token_match:true — the instrument defect, inverted and self-certifying.
+    const { parseBooleanEnv } = require('../src/api/gateway/access/invokeAuthEmergencyFallback');
+    for (const v of ['enabled', 'yes', 'y', 'true', '1', 'on', 'off', 'no', '', undefined]) {
+      expect({
+        v,
+        lane: mainlineLaneConfig({ PIVOT_BEAUTY_MAINLINE_TOKEN_MATCH_ENABLED: v }).tokenMatch,
+      }).toEqual({ v, lane: parseBooleanEnv(v, false) });
+      expect({
+        v,
+        lane: mainlineLaneConfig({ PIVOT_BEAUTY_MAINLINE_SARGABLE_TEXT_WHERE_ENABLED: v })
+          .sargableTextWhere,
+      }).toEqual({ v, lane: parseBooleanEnv(v, false) });
+    }
+  });
+
+  test('mainlineLaneConfig carries every flag-derived param the mainline passes', () => {
+    // The drift this helper exists to prevent recurred within hours: #1935 gave
+    // the mainline `sargableTextWhere` and the harness kept measuring without
+    // it. That form DROPS three WHERE arms, so it changes the candidate set,
+    // not just the plan. When a new flag-derived param is added to the mainline
+    // call site, add it here and to this list.
+    expect(Object.keys(mainlineLaneConfig({})).sort()).toEqual(
+      ['sargableTextWhere', 'tokenMatch'],
+    );
+  });
+
+  test('binds stay consistent with placeholders (Postgres 08P01 guard)', async () => {
+    process.env.CANONICAL_CATALOG_RANK_V2 = 'enabled';
+    process.env.CANONICAL_CATALOG_FORM_AGREEMENT = 'enabled';
+    for (const q of ['moisturizer', 'lightweight gel moisturizer for acne-prone skin', 'red lipstick']) {
+      const { sql, params } = await runQuery(q);
+      const maxPlaceholder = Math.max(
+        ...[...sql.matchAll(/\$(\d+)/g)].map((m) => Number(m[1])),
+      );
+      expect({ q, maxPlaceholder, supplied: params.length }).toEqual({
+        q,
+        maxPlaceholder,
+        supplied: maxPlaceholder,
+      });
+    }
   });
 });
