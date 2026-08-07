@@ -179,6 +179,45 @@ describe('run()', () => {
     }
   });
 
+  test('write mode steps the offset past skipped rows so they are not re-read', async () => {
+    // Regression: skipped rows stay in the cohort. Reading from offset 0 every
+    // batch re-read a growing head block — prod showed a 3,000-row window
+    // yielding 631 stamps and 2,369 re-reads.
+    db.query.mockReset();
+    // batch 1: 1 stamped + 1 skipped -> next offset must be 1, not 0
+    db.query.mockResolvedValueOnce({
+      rows: [
+        { j: { product_key: 'k1', title: 'Double Cleansing Duo Set', product_payload: {} } },
+        { j: { product_key: 'k2', title: 'Whatever', existing_family: 'accessory', product_payload: {} } },
+      ],
+    });
+    db.query.mockResolvedValueOnce({ rowCount: 1 });
+    db.query.mockResolvedValueOnce({ rows: [] });
+
+    await run({ write: true, confirm: CONFIRM_TOKEN, track: DEFAULT_TRACK, batchSize: 2, maxRows: 4 });
+
+    const selects = db.query.mock.calls.filter(([sql]) => sql.includes('row_to_json'));
+    expect(selects[0][1][2]).toBe(0); // first batch starts at 0
+    expect(selects[1][1][2]).toBe(1); // advanced by the 1 skipped row
+  });
+
+  test('dry-run advances the offset by the whole batch', async () => {
+    db.query.mockReset();
+    db.query.mockResolvedValueOnce({
+      rows: [
+        { j: { product_key: 'k1', title: 'Double Cleansing Duo Set', product_payload: {} } },
+        { j: { product_key: 'k2', title: 'Ceramide Skin Barrier Moisturizer', product_payload: {} } },
+      ],
+    });
+    db.query.mockResolvedValueOnce({ rows: [] });
+
+    await run({ write: false, track: DEFAULT_TRACK, batchSize: 2, maxRows: 4 });
+
+    const selects = db.query.mock.calls.filter(([sql]) => sql.includes('row_to_json'));
+    expect(selects[0][1][2]).toBe(0);
+    expect(selects[1][1][2]).toBe(2); // nothing left the cohort
+  });
+
   test('write mode stamps only planned rows', async () => {
     db.query.mockReset();
     db.query.mockResolvedValueOnce({

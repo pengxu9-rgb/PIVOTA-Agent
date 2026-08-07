@@ -206,9 +206,14 @@ async function run({ write, confirm, track, batchSize, maxRows }) {
   const samples = {};
   let scanned = 0;
   let stamped = 0;
-  // Write mode: landed rows leave the cohort, so always read from 0.
-  // Dry-run: nothing leaves, so paginate.
-  let dryRunOffset = 0;
+  // Stamped rows leave the cohort, so they do not shift the window — but
+  // SKIPPED rows (unknown_product, already_classified) stay in it. Reading from
+  // offset 0 every batch would therefore re-read a growing block of skips and
+  // stall: observed on prod, a 3,000-row window yielded 631 stamps and 2,369
+  // re-reads of the same head rows. The offset advances by the skipped count so
+  // each batch steps past them. Dry-run stamps nothing, so it advances by the
+  // full batch.
+  let offset = 0;
 
   for (;;) {
     const remaining = maxRows > 0 ? maxRows - scanned : batchSize;
@@ -216,11 +221,10 @@ async function run({ write, confirm, track, batchSize, maxRows }) {
     const rows = await fetchBatch({
       track,
       batchSize: Math.min(batchSize, remaining),
-      offset: write ? 0 : dryRunOffset,
+      offset,
     });
     if (!rows.length) break;
     scanned += rows.length;
-    dryRunOffset += rows.length;
 
     const updates = [];
     for (const row of rows) {
@@ -236,6 +240,8 @@ async function run({ write, confirm, track, batchSize, maxRows }) {
     }
 
     if (write && updates.length) stamped += await stampBatch(updates);
+    // Step past the rows that stayed in the cohort (see the offset note above).
+    offset += write ? rows.length - updates.length : rows.length;
     if (rows.length < Math.min(batchSize, remaining)) break;
   }
 
