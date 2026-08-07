@@ -173,6 +173,41 @@ describe('genuinely relevant seed-lane results still grade as gaps-in-waiting', 
   });
 });
 
+describe('regression: CATALOG-lane false positives (the rubric must cut both ways)', () => {
+  // Every other pinned case in this file is a seed-lane error from the old
+  // corpus. A rubric that only ever catches one lane's mistakes will report
+  // that lane as worse regardless of the truth, so these pin the other side.
+  const catalogFalsePositives = [
+    // Graded RELEVANT until `fragrance` joined the surface-suppressed forms.
+    // Five of the six results credited to "vanilla perfume" were these.
+    ['vanilla perfume', 'TIELA', 'Perfume Nourishing Body Scrub Pure'],
+    ['vanilla perfume', 'TIELA', 'Perfume Nourishing Body Cream Shine'],
+    ['vanilla perfume', 'TIELA', 'Perfume Nourishing Body Cream Sunset'],
+    // Tools that carry the form word.
+    ['moisturizer', 'Arocell', 'AROCELL Face Mask Soft Silicone Brush Skin Care Tools Moisturizer Applicator'],
+    ['full coverage foundation oily skin', 'kylie cosmetics', 'Foundation Brush 01'],
+    // Wrong sub-form on a skincare query.
+    ['lightweight gel moisturizer for acne-prone skin', 'AXIS-Y', 'Heartleaf Skin Soothing Gel Mask'],
+    ['lightweight gel moisturizer for acne-prone skin', 'Centellian24', 'Matcha Peeling Gel'],
+  ];
+
+  test.each(catalogFalsePositives)('%s -> "%s %s" is not a relevant answer', (query, brand, title) => {
+    expect(gradeOf(query, brand, title)).toBe(GRADE.IRRELEVANT);
+  });
+
+  test('a body-surface product never answers a fragrance query', () => {
+    // The rule the rubric already stated for moisturizers, now applied to
+    // perfume: "Hand and Body Moisturizer" is not a barrier moisturizer, and a
+    // "Perfume Nourishing Body Scrub" is not a perfume.
+    expect(classifyForms('TIELA', 'Perfume Nourishing Body Scrub Pure').forms).not.toContain(
+      'fragrance',
+    );
+    expect(classifyForms('Tom Ford Beauty', 'Tobacco Vanille Eau de Parfum').forms).toContain(
+      'fragrance',
+    );
+  });
+});
+
 describe('partial credit for right-family, wrong-sub-form', () => {
   test('a lip liner answers a lipstick query only partially', () => {
     expect(gradeOf('matte lipstick under $30', 'rare beauty', 'Kind Words Matte Lip Liner')).toBe(

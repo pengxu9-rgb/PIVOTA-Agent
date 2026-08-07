@@ -130,7 +130,29 @@ const FORM_PATTERNS = Object.freeze([
  * "Hand and Body Moisturizer" is not an answer to "barrier moisturizer".
  */
 const NON_FACE_FORMS = Object.freeze(['body_care', 'hair_care']);
-const FACE_CARE_FORMS = Object.freeze(['cleanser', 'serum', 'moisturizer', 'toner_pad', 'sunscreen']);
+
+/**
+ * Forms a body/hair surface suppresses — i.e. everything that describes a
+ * product for the face or a standalone cosmetic.
+ *
+ * This deliberately includes `fragrance`. It used to list only the five
+ * face-care forms, which left a hole big enough to invalidate a headline
+ * result: "TIELA Perfume Nourishing Body Scrub" classified as
+ * [fragrance, body_care] and graded RELEVANT for "vanilla perfume". Five of
+ * the six catalog results that query was credited with were TIELA body
+ * creams and scrubs; it returned no eau de parfum at all. The report,
+ * the builder docstring and this module's own header all cited that query as
+ * the worked example for the deficit clause, on the strength of an earlier
+ * run in a lane configuration that was later found invalid.
+ *
+ * The rule the old list already stated — a "Hand and Body Moisturizer" is not
+ * an answer to "barrier moisturizer" — simply was not applied to perfume.
+ */
+const SURFACE_SUPPRESSED_FORMS = Object.freeze([
+  'cleanser', 'serum', 'moisturizer', 'toner_pad', 'sunscreen',
+  'fragrance', 'fragrance_adjacent',
+  'lipstick', 'lip_other', 'mascara', 'eyeshadow', 'concealer', 'foundation',
+]);
 
 function normalizeTitleText(brand, title) {
   return `${String(brand ?? '')} ${String(title ?? '')}`
@@ -165,7 +187,7 @@ function classifyForms(brand, title) {
   if (forms.includes('tool')) return { forms: ['tool'], resolved_text: resolved };
   // A non-face surface suppresses face-care reads on the same product.
   const hasNonFace = forms.some((f) => NON_FACE_FORMS.includes(f));
-  const kept = hasNonFace ? forms.filter((f) => !FACE_CARE_FORMS.includes(f)) : forms;
+  const kept = hasNonFace ? forms.filter((f) => !SURFACE_SUPPRESSED_FORMS.includes(f)) : forms;
   return { forms: kept, resolved_text: resolved };
 }
 
@@ -330,6 +352,7 @@ module.exports = {
   GRADE_LABEL,
   PHRASE_RESOLUTIONS,
   FORM_PATTERNS,
+  SURFACE_SUPPRESSED_FORMS,
   QUERY_RUBRICS,
   normalizeTitleText,
   resolvePhrases,
