@@ -266,6 +266,7 @@ const {
   fetchCanonicalChainRows,
   isRecallDocMatchEnabled: isCanonicalRecallDocMatchEnabled,
   isSetDiversityEnabled: isCanonicalSetDiversityEnabled,
+  formAgreementEffectiveFor: canonicalFormAgreementEffectiveFor,
 } = require('./services/canonicalCatalogSearch');
 const beautyRelevanceGate = require('./services/beautyRelevanceGate');
 const {
@@ -22156,6 +22157,16 @@ async function searchBeautyExternalSeedProductsMainline({
       PIVOT_BEAUTY_MAINLINE_TOKEN_MATCH_ENABLED &&
       isCanonicalRecallDocMatchEnabled() &&
       !canonicalCategoryPathPrefix,
+    // Whether the +60 product-form arm actually FIRED for this search, not
+    // whether its flag is set. The arm is query-conditional — it only fires
+    // when the query names a form in the lexicon — so a bare flag stamp would
+    // report true for the whole lane and the soak could not be sliced to the
+    // requests actually reordered. Unlike the sargable stamp above there is no
+    // category-prefix term: bucket mode drops the text WHERE but the rank arms
+    // still apply, so the arm DOES reorder browse traffic. That is the mode
+    // most beauty searches take and the one with no relevance measurement
+    // behind it — this field is how that gets sliced after the flip.
+    canonical_form_agreement: canonicalFormAgreementEffectiveFor(canonicalQueryText),
     ...(canonicalQueryText !== queryText ? { canonical_recall_query_text: canonicalQueryText } : {}),
     canonical_duration_ms: Math.max(0, Number(canonicalResult?.duration_ms || 0) || 0),
     query_text: queryText,
@@ -45839,6 +45850,12 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           // recall order (see reorderBeautyIngredientDirectProducts below), so
           // the helper's ordering is the one the shopper sees.
           canonical_set_diversity: isCanonicalSetDiversityEnabled(),
+          // Whether the +60 product-form arm fired for THIS query. The flag is
+          // read inside the helper, so it reaches this lane too even though the
+          // arm was only ever measured on the mainline in text mode — which is
+          // exactly why the state needs stamping here rather than assumed.
+          // Same expression this lane passes as `query` above.
+          canonical_form_agreement: canonicalFormAgreementEffectiveFor(rawUserQuery || queryText),
           canonical_raw_count: Array.isArray(canonicalIngredientResult?.rows) ? canonicalIngredientResult.rows.length : 0,
           canonical_product_count: canonicalIngredientProducts.length,
           canonical_category_path_prefix: canonicalIngredientCategoryPathPrefix,

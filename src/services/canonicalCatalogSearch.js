@@ -215,6 +215,26 @@ function isFormAgreementEnabled(env = process.env) {
 // defect this helper exists to prevent, inverted and self-certifying.
 const { parseBooleanEnv } = require('../api/gateway/access/invokeAuthEmergencyFallback');
 
+/**
+ * Did the product-form arm actually FIRE for this query?
+ *
+ * A bare flag stamp is not enough for this arm, unlike its siblings: it is
+ * query-conditional, so CANONICAL_CATALOG_FORM_AGREEMENT=enabled says only that
+ * it *could* fire. Three conditions must hold — the flag, rank v2 (which gates
+ * the whole v2 block, and whose absence would reproduce #1933: a rank change
+ * live but inert), and the query naming a form this lexicon covers. Stamping
+ * the flag alone would report true across the entire lane, and the soak could
+ * not be sliced to the requests actually reordered — the same failure the
+ * sargable stamp one lane over already warns about.
+ *
+ * Serving lanes should AND this with their own per-request conditions, the way
+ * canonical_sargable_text_where does.
+ */
+function formAgreementEffectiveFor(queryText, env = process.env) {
+  if (!isFormAgreementEnabled(env) || !isRankV2Enabled(env)) return false;
+  return queryFormTitlePatterns(buildSignificantTokens(normalizeQuery(queryText))).length > 0;
+}
+
 function mainlineLaneConfig(env = process.env) {
   return {
     // Same parser AND same fallback as src/server.js for each.
@@ -1597,6 +1617,9 @@ module.exports = {
   // Exported for the same telemetry reason as the two above, and so the
   // recall-parity harness can stamp the lane config it actually measured.
   isFormAgreementEnabled,
+  // Exported so serving lanes can stamp whether the arm actually fired for a
+  // given request, not merely whether the flag is set.
+  formAgreementEffectiveFor,
   // THE LANE CONFIG THE BUYABLE BEAUTY MAINLINE SERVES WITH.
   //
   // Every optional param of fetchCanonicalChainRows defaults to OFF, and each

@@ -1835,6 +1835,23 @@ describe('canonicalCatalogSearch product-form agreement (ADR-020 phase 1, flag-g
     expect(f(['sunscreen'])).not.toContain('spf');
   });
 
+  test('formAgreementEffectiveFor reports whether the arm FIRED, not the flag', async () => {
+    // A bare flag stamp would read true across the whole lane; this arm is
+    // query-conditional, so the soak could not be sliced to the requests
+    // actually reordered. Also guards the #1933 shape: inert without rank v2.
+    const { formAgreementEffectiveFor } = require('../src/services/canonicalCatalogSearch');
+    const on = { CANONICAL_CATALOG_RANK_V2: 'enabled', CANONICAL_CATALOG_FORM_AGREEMENT: 'enabled' };
+    expect(formAgreementEffectiveFor('hydrating moisturizer', on)).toBe(true);
+    expect(formAgreementEffectiveFor('moisturizers', on)).toBe(true);
+    // Query names no form the lexicon covers -> arm cannot fire.
+    expect(formAgreementEffectiveFor('glow radiance', on)).toBe(false);
+    // Chinese queries cannot reach the English lexicon.
+    expect(formAgreementEffectiveFor('红色口红', on)).toBe(false);
+    // Inert without either gate.
+    expect(formAgreementEffectiveFor('hydrating moisturizer', { CANONICAL_CATALOG_RANK_V2: 'enabled' })).toBe(false);
+    expect(formAgreementEffectiveFor('hydrating moisturizer', { CANONICAL_CATALOG_FORM_AGREEMENT: 'enabled' })).toBe(false);
+  });
+
   test('form lookup survives punctuation and plurals', () => {
     const f = __internal.queryFormTitlePatterns;
     // Each of these yielded NO form before: one comma, or a plural, was enough
