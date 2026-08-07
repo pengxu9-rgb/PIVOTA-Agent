@@ -114,6 +114,25 @@ const ROGUE_MINTER_CLUSTER_MIN = 25;
 
 const PAGE_SIZE = 2500;
 
+const WATERMARK_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * Parse and VALIDATE. Both flags are compared/used without coercion downstream, so a
+ * malformed value does not error — it quietly changes the answer:
+ *
+ *   --watermark 2026-6-2   the natural non-zero-padded spelling of the default.
+ *                          `'2026-07-01' >= '2026-6-2'` is FALSE at index 5 ('0'<'6'),
+ *                          so EVERY row reads as below the line and a corpus holding a
+ *                          400-row rogue cluster reports a clean green, exit 0.
+ *   --limit -1 / 2.5       `rows.length = -1` throws RangeError, caught upstream, so
+ *                          the process exits 1 with EMPTY stdout — indistinguishable
+ *                          from a real audit failure to anything machine-readable.
+ *   --limit abc            Number('abc') is NaN, falsy, silently ignored: full scan
+ *                          under a flag that says otherwise.
+ *
+ * The header invites hand-typed watermarks, so this is a typo away, not an attack.
+ * Fail loudly on the flag rather than silently on the verdict.
+ */
 function parseArgs(argv) {
   const out = { watermark: DEFAULT_WATERMARK, out: '', limit: 0 };
   for (let i = 2; i < argv.length; i += 1) {
@@ -121,6 +140,15 @@ function parseArgs(argv) {
     if (arg === '--watermark') out.watermark = String(argv[++i] || DEFAULT_WATERMARK);
     else if (arg === '--out') out.out = String(argv[++i] || '');
     else if (arg === '--limit') out.limit = Number(argv[++i] || 0);
+  }
+  if (!WATERMARK_RE.test(out.watermark)) {
+    throw new Error(
+      `--watermark must be YYYY-MM-DD with zero padding, got ${JSON.stringify(out.watermark)}. ` +
+        'An unpadded or malformed date compares as below every row and reports a false green.',
+    );
+  }
+  if (out.limit !== 0 && !(Number.isInteger(out.limit) && out.limit > 0)) {
+    throw new Error(`--limit must be a positive integer (or omitted), got ${JSON.stringify(out.limit)}.`);
   }
   return out;
 }
@@ -265,6 +293,43 @@ function identifyGeneration(row) {
   return 'unreproducible';
 }
 
+/**
+ * Assemble the report — INCLUDING `ok`. Pure, exported, and directly tested.
+ *
+ * This is extracted for the same reason `computeVerdict` was, and the reason is worth
+ * stating because the mistake recurred: an earlier revision called `computeVerdict`,
+ * destructured its `ok`, and then re-derived the identical expression inline when
+ * building this object. The tested function's answer was discarded and the SHIPPED
+ * verdict was an untested copy — hardcoding `ok: true` there passed every test.
+ *
+ * A source-level test that greps for `computeVerdict(counts, allClusters)` does not
+ * help: the call still exists, its result is simply unused. Grepping for the wiring is
+ * not testing the wiring. The only fix that holds is making the object the tests
+ * construct the same object production emits, which is what this function is for.
+ *
+ * `generated_at` is injected so the output is deterministic under test.
+ */
+function buildReport({ counts, drift = [], suspects = [], allClusters = [], watermark, generatedAt }) {
+  const { rogue, retiredTotal, retiredMoved, ok } = computeVerdict(counts, allClusters);
+  return {
+    generated_at: generatedAt || new Date().toISOString(),
+    watermark,
+    timezone_note:
+      'created_at is `timestamp without time zone`; the day comes from Postgres via ' +
+      "to_char(), never from a JS Date in the runner's zone — see the header.",
+    counts,
+    retired_generation_baseline: RETIRED_GENERATION_BASELINE,
+    retired_generation_total: retiredTotal,
+    retiredMoved,
+    rogue_minter_cluster_min: ROGUE_MINTER_CLUSTER_MIN,
+    drift_sample: drift.slice(0, 50),
+    unreproducible_clusters: suspects,
+    suspected_rogue_minters: rogue,
+    rogue,
+    ok,
+  };
+}
+
 async function main() {
   const args = parseArgs(process.argv);
   // eslint-disable-next-line global-require
@@ -340,23 +405,8 @@ async function main() {
   // (one source_system, a tight created_at window, every row it wrote).
   const { shown: suspects, all: allClusters } = clusterUnreproducible(rows, args.watermark);
 
-  const { rogue, retiredTotal, retiredMoved, ok } = computeVerdict(counts, allClusters);
-
-  const report = {
-    generated_at: new Date().toISOString(),
-    watermark: args.watermark,
-    timezone_note:
-      'created_at is `timestamp without time zone`; the day comes from Postgres via ' +
-      "to_char(), never from a JS Date in the runner's zone — see the header.",
-    counts,
-    retired_generation_baseline: RETIRED_GENERATION_BASELINE,
-    retired_generation_total: retiredTotal,
-    rogue_minter_cluster_min: ROGUE_MINTER_CLUSTER_MIN,
-    drift_sample: drift.slice(0, 50),
-    unreproducible_clusters: suspects,
-    suspected_rogue_minters: rogue,
-    ok: counts.formula_drift === 0 && !retiredMoved && rogue.length === 0,
-  };
+  const report = buildReport({ counts, drift, suspects, allClusters, watermark: args.watermark });
+  const { rogue, retiredTotal, retiredMoved } = report;
 
   console.log(JSON.stringify(report, null, 2));
   if (args.out) {
@@ -446,6 +496,8 @@ if (require.main === module) {
 }
 
 module.exports = {
+  parseArgs,
+  buildReport,
   identifyGeneration,
   rowMintDay,
   computeVerdict,
