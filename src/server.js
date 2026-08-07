@@ -638,6 +638,47 @@ const PIVOT_BEAUTY_MAINLINE_TOKEN_MATCH_ENABLED = parseBooleanEnv(
   process.env.PIVOT_BEAUTY_MAINLINE_TOKEN_MATCH_ENABLED,
   false,
 );
+// MAINLINE_SARGABLE_TEXT_WHERE (#1935): opt the buyable mainline lane into the
+// sargable text WHERE — the shape the citable and ingredient-direct lanes
+// already use. Every disjunct becomes trigram-bitmap-able, flipping the plan
+// to a BitmapOr over idx_catalog_products_{title,brand,recall_doc}_trgm.
+//
+// TEXT MODE ONLY, BY CONSTRUCTION. Under a category prefix the helper takes the
+// category branch and discards the text WHERE entirely, so this option has
+// nothing to act on: generated SQL and params are byte-identical with it on and
+// off (asserted in canonical_catalog_search.test.js). It is therefore free for
+// bucket-mode traffic and cannot regress it.
+//
+// Prod EXPLAIN ANALYZE 2026-08-07, text mode: 2798/2975ms -> 850/836ms, a 3.4x
+// cut. That win exists against production AS IT STANDS — it is not created by
+// the #1933 tokenizer, it was simply never claimed. And text mode is not a
+// rarity: 11 of 37 sampled beauty queries (30%) resolve to no category prefix,
+// skewed toward the conversational phrasings a chat surface produces ("what
+// should i use for redness", "anti aging routine for 40s", "cosrx snail mucin").
+//
+// WHY IT NEEDS EVIDENCE, NOT JUST A FLAG. The sargable form DROPS three arms
+// from the text WHERE: merchant_name (cross-table), source_product_id (leading
+// wildcard, no trigram index), and the catalog_skus vertical/sku OR-EXISTS
+// arms. The first two are near-dead for natural language. The third is NOT:
+// the helper records bare "glycerin" losing 22 of 25 rows when those arms went
+// away with the recall_doc arm off. recall_doc is what covers them, and it is
+// enabled in prod — but that parity run was for the INGREDIENT lane's call
+// shape, which is not this one.
+//
+// So it was re-measured on the MAINLINE's shape (includeSkuOffers, market
+// scoped), prod 2026-08-07, over 12 text-mode queries — 6 of them carrying an
+// ingredient signal so verticalSearch is on and the dropped catalog_skus arms
+// are live. Result: IDENTICAL rows and IDENTICAL order on every query, zero
+// lost, zero gained, and every query faster. The helper's own guard still
+// applies underneath: the opt-in is honored only while the recall_doc arm is
+// on, so a flag-off environment silently falls back to the complete WHERE
+// rather than serving a lossy one.
+//
+// Default off; flip after soak.
+const PIVOT_BEAUTY_MAINLINE_SARGABLE_TEXT_WHERE_ENABLED = parseBooleanEnv(
+  process.env.PIVOT_BEAUTY_MAINLINE_SARGABLE_TEXT_WHERE_ENABLED,
+  false,
+);
 const SEARCH_QUALITY_CONTRACT_V1_ENABLED = parseBooleanEnv(
   process.env.SEARCH_QUALITY_CONTRACT_V1_ENABLED,
   true,
@@ -22008,6 +22049,12 @@ async function searchBeautyExternalSeedProductsMainline({
     // in category-bucket mode (which is NOT a no-op: the token WHERE is
     // dropped under a prefix but the +25/token rank arm still applies).
     tokenMatch: PIVOT_BEAUTY_MAINLINE_TOKEN_MATCH_ENABLED,
+    // #1935: sargable text WHERE. No-op in category-bucket mode (the text
+    // WHERE is discarded there), so this only affects the ~30% of beauty
+    // queries that resolve to no prefix — where it cut prod EXPLAIN execution
+    // 2798ms -> 850ms with byte-identical rows and order across 12 measured
+    // queries. See PIVOT_BEAUTY_MAINLINE_SARGABLE_TEXT_WHERE_ENABLED.
+    sargableTextWhere: PIVOT_BEAUTY_MAINLINE_SARGABLE_TEXT_WHERE_ENABLED,
     limit: canonicalLimit,
     // Market-aware filtering — pass the user's market (already computed
     // above for the external-seed-direct path's `safeQueryMarket`) so
@@ -22070,6 +22117,16 @@ async function searchBeautyExternalSeedProductsMainline({
     // would keep reporting true if that arg ever becomes conditional again,
     // which is exactly the drift the ingredient lane's stamp warns about.
     canonical_token_match: PIVOT_BEAUTY_MAINLINE_TOKEN_MATCH_ENABLED,
+    // #1935: the EFFECTIVE sargable state, not the requested opt-in. The helper
+    // honors sargableTextWhere only while tokenMatch is on AND the recall_doc
+    // arm is enabled (that arm is what covers the rows the dropped catalog_skus
+    // arms would otherwise recall), so a literal `true` here would lie in any
+    // environment where either is off — the same trap the ingredient lane's
+    // stamp calls out. Deploy verification must see what actually ran.
+    canonical_sargable_text_where:
+      PIVOT_BEAUTY_MAINLINE_SARGABLE_TEXT_WHERE_ENABLED &&
+      PIVOT_BEAUTY_MAINLINE_TOKEN_MATCH_ENABLED &&
+      isCanonicalRecallDocMatchEnabled(),
     ...(canonicalQueryText !== queryText ? { canonical_recall_query_text: canonicalQueryText } : {}),
     canonical_duration_ms: Math.max(0, Number(canonicalResult?.duration_ms || 0) || 0),
     query_text: queryText,
@@ -52278,6 +52335,10 @@ module.exports._debug = {
   // rank ladder dark in prod. Exported so re-coupling them fails a test
   // instead of silently re-darkening the ladder.
   PIVOT_BEAUTY_MAINLINE_TOKEN_MATCH_ENABLED,
+  // #1935: exported alongside the tokenMatch flag because the two compose —
+  // the helper ignores sargableTextWhere unless tokenMatch is also on, so a
+  // config that sets only this one is inert and should be visible as such.
+  PIVOT_BEAUTY_MAINLINE_SARGABLE_TEXT_WHERE_ENABLED,
   // Serving-order refinement over the fully merged beauty list. Exported so the
   // set-demotion ordering is asserted directly instead of inferred from an
   // end-to-end fixture that could pass without exercising it.
