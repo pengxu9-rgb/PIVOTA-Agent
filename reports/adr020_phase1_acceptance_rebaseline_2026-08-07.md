@@ -32,9 +32,10 @@ Three instrument defects were found and fixed before any number here could be tr
 - **56** of the products the seed lane surfaces are graded irrelevant; **43** more are
   relevant but *substitutable* — the catalog already returns equally-relevant different
   products for those queries.
-- A **product-form rank arm** (this PR) took catalog precision from 68.5% to 88.0% with
-  **no query regressing**. It closed both queries where *both* lanes previously returned
-  zero relevant results — a failure class a parity diff is structurally blind to.
+- A **product-form rank arm** (this PR) took catalog precision from 68.5% to 88.0%. It
+  closed both queries where *both* lanes previously returned zero relevant results — a
+  failure class a parity diff is structurally blind to. **That figure predates three
+  rounds of review fixes to the arm and has not been re-measured; see §7.**
 - Three deficits remain, all small: `sunscreen` (−2), `moisturizer` (−1), `lightweight
   gel moisturizer for acne-prone skin` (−1). Two of the three are **single-token
   queries**, which no text rank arm can reach — see §4.
@@ -158,8 +159,15 @@ Same corpus, same three-pass discipline, flag off vs on:
 | catalog precision@8 | 68.5% | **88.0%** |
 | distinct relevant brands | 84 | **105** |
 
-**No query regressed.** The brand count rising with precision is the check that this is
-better answers rather than more variants of the same answer.
+The brand count rising with precision is the check that this is better answers rather
+than more variants of the same answer.
+
+**A claim withdrawn.** An earlier draft bolded "No query regressed" here. That was a
+23-query claim supported by the 7-query excerpt above, and the arm-off pass is not
+checked in, so a reader cannot verify it. Worse, the query most likely to have regressed
+— "vanilla perfume", the corpus's worst at 2/8 — was absent from the excerpt and scored
+in the table above as a **+2 win**. It has since been shown to be an arm defect (§7).
+Treat the per-query rows as indicative and the aggregate as the result.
 
 Note what the top two rows mean: `unisex fragrance for daily wear` and `concealer for
 dark circles` previously returned **zero relevant results from both lanes**. A parity
@@ -292,8 +300,9 @@ suspect the instrument before concluding the fix did not work.**
 
 - **Trust the direction.** 18 wins / 3 losses, p < 0.001, and the largest deltas are
   0-vs-8 with titles anyone can inspect.
-- **Trust the form-arm delta.** 68.5% → 88.0% with distinct brands 84 → 105 and no query
-  regressing, measured across one code revision.
+- **The form-arm delta is provisional.** 68.5% → 88.0% with distinct brands 84 → 105 was
+  measured on one code revision, which three rounds of review have since changed
+  substantially (§7). The direction is well-supported; the number is not current.
 - **Do not trust any single-query delta of 1–2.** Rubric edits during this work moved
   catalog precision by 2.2pp and then 6.5pp. A per-query delta of 1 is inside the
   rubric-sensitivity band, and the band is not symmetric between lanes: the
@@ -340,3 +349,65 @@ node scripts/build-adr020-phase1-acceptance-corpus.cjs --report <report>.json ..
 - **Cross-pass variance is zero** for clean passes: the lanes are deterministic given DB
   state, so repeated passes guard against transport stalls, not sampling error. No claim
   here should be read as having a statistical noise floor from pass count.
+
+---
+
+## 7. What adversarial review changed, and why the flag is not enabled
+
+Three review rounds ran over this work. Each found defects the measurement could not,
+and each invalidated the measurement that preceded it. That pattern is the finding.
+
+### Defects found in the rank arm after it was first measured
+
+| # | defect | consequence |
+|---|---|---|
+| 1 | `mainlineLaneConfig` read the mainline's flag through the wrong value set (`{enabled,on,1,true}` vs `parseBooleanEnv`'s `{1,true,yes,y,on}`) | Setting the flag to `enabled` — the spelling every sibling flag here uses — would give a **dark lane in prod and a harness stamping `token_match: true`**. The instrument defect, inverted and self-certifying. |
+| 2 | `'spf'` in the sunscreen title vocabulary | Boosted "Tinted Moisturizer SPF 30" and "Foundation SPF 15" on sunscreen queries. **The rubric shared the error**, so the harness could never falsify it. |
+| 3 | Unanchored `LIKE '%...%'` | `%mask%` matched "Da**mask** Rose Toner"; `%perfume%` matched "**Perfume**d Body Lotion". |
+| 4 | Whitespace-only tokenization | The arm was silently dark on `"moisturizer,"` (one comma) and `"moisturizers"` (plural). |
+| 5 | No multi-product-set exclusion | `applyMultiProductSetTopCap` (#1927) only swaps within a tie group, so a set titled "Moisturizer Duo" would take +60, land in a higher group and become **undemotable** — reintroducing the head-crowding #1927 shipped to prevent, through a channel that cap cannot see. |
+| 6 | `'perfume'` as a title pattern, and no body-surface exclusion | On "vanilla perfume", "TIELA Perfume Nourishing Body Cream" scored 25 + 60 = **85** against Tom Ford "Lost Cherry Eau de Parfum" at **60** — the arm ranked body cream **above** the eau de parfum, on the query this work used as its showcase. |
+| 7 | 18 of 31 lexicon entries unexercised by any corpus query | Unfalsifiable by this corpus. The one that was checked misfired: `'mask'` boosted six TIRTIR cushion foundations, a line titled "Mask Fit Red Cushion". Removed. |
+
+Defect 6 is the one to remember: it is the same class as the corpus defect this entire
+report exists to correct — a claim carried forward from a superseded configuration
+without rechecking it against the data.
+
+### A reasoning error, corrected
+
+The arm was documented as monotone, with "under-inclusion is safe". That holds **between**
+queries — a form absent from the lexicon means the arm never fires. It is **false within a
+firing query**: every row the patterns miss is relatively demoted by 60. Measured over the
+247 corpus titles, ~20% carry no form-vocabulary word at all ("1025 Dokdo Cream",
+"Dynasty Cream", "Airy Sun Stick SPF 50+" are real products), and the unlabelled cohort is
+brand-correlated with K-beauty naming. A narrow vocabulary ranks by merchandiser naming
+convention rather than merit — the defect class this file's own neutrality note forbids.
+The title vocabulary was widened toward the rubric's `FORM_PATTERNS` in response.
+
+### ❱ DECISION 3 REVISED — do not enable the flag yet
+
+Both reviewers independently returned **ENABLE: BLOCK**, and the reasons are not about the
+code being wrong. They are about what has never been looked at:
+
+1. **~89% of mainline beauty traffic takes category-browse mode**, and the arm was
+   measured on 0% of it. Bucket mode drops the query text from the WHERE but **still
+   applies the rank arms**, so that traffic is reordered by a change no measurement covers.
+2. **The flag affects five callers, not one.** It is read inside the helper, so it reaches
+   the citable-supplement and ingredient-direct lanes and a general-shopping lane that
+   serves **non-beauty** — where "printer toner", "air conditioner", "sofa cushion" are
+   homographs of lexicon entries.
+3. **There is no telemetry stamp.** Every sibling flag has one (`canonical_token_match`,
+   `canonical_sargable_text_where`). Without it the soak cannot be sliced and a
+   post-flip regression cannot be attributed to this change.
+4. **The arm is inert unless `CANONICAL_CATALOG_RANK_V2` is on** — stated nowhere else,
+   and flipping it on a service without rank v2 reproduces #1933 exactly.
+
+Merging is safe regardless: flag-off SQL and params are byte-identical to `origin/main`
+across 114,688 verified combinations, and bind-safe across 229,376 with the flag on.
+
+**Before enabling:** add the telemetry stamp on all three serving lanes; measure
+category-browse mode the way #1933 did (top-8 relevance off vs on, plus one prod
+`EXPLAIN ANALYZE`); and run #1927's control-query discipline at prod candidate depth
+(`limit 48`, not the harness's 8). Rollback is
+`railway variables --unset CANONICAL_CATALOG_FORM_AGREEMENT`, effective on the next
+request with no persisted residue.
