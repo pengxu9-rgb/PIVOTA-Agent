@@ -31,6 +31,33 @@ describe('makeContentKey matches the cross-service authority', () => {
     expect(CASES.filter((c) => c.source === 'prod_catalog_products').length).toBeGreaterThanOrEqual(8);
   });
 
+  test('the classes that actually forked this port are still in the corpus', () => {
+    // A count floor does not protect these. Someone could regenerate a smaller corpus
+    // upstream, mirror it here, and the >= assertions above would still pass while the
+    // cases that caught a real 15.9% divergence quietly vanished. So name them.
+    //
+    // Each is a confirmed Node-vs-Python disagreement from the #1938 review, and each
+    // lives in the SHARED corpus rather than only in the Node-side tests below —
+    // those would not stop the Python side from drifting.
+    const names = new Set(CASES.map((c) => c.name));
+    for (const required of [
+      'mark_ccc_zero_devanagari',      // ccc=0 mark becomes a SPACE, not nothing
+      'mark_ccc_zero_thai',
+      'gtin_fullwidth_digits',         // Python \D is "not Nd"; bare JS \D is [^0-9]
+      'gtin_arabic_indic_digits',
+      'gtin_astral_digit',             // zfill counts codepoints, not UTF-16 units
+      'brand_leading_bom',             // U+FEFF: JS whitespace, NOT Python's
+      'brand_nel_separator',           // U+0085: Python whitespace, NOT JS's
+      'brand_file_separator',          // U+001C: same
+      'title_ideographic_number_zero', // \w is isalnum(), so Nl counts too
+      'suffix_company',                // the suffix walk, which nothing exercised
+      'suffix_stacked',
+      'suffix_comma_terminated',
+    ]) {
+      expect(names).toContain(required);
+    }
+  });
+
   test.each(CASES.map((c) => [c.name, c]))('%s', (_name, entry) => {
     expect(ck.makeContentKey(entry.brand, entry.title, entry.gtin)).toBe(entry.content_key);
   });
