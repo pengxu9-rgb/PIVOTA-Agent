@@ -45089,10 +45089,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	      const context = payload.context || {};
 	      const options = payload.options || {};
 
-      const productId = String(
+      let productId = String(
         productRef.product_id || productRef.productId || payload.product_id || payload.productId || '',
       ).trim();
-      const requestedMerchantId = String(
+      let requestedMerchantId = String(
         productRef.merchant_id || productRef.merchantId || payload.merchant_id || payload.merchantId || '',
       ).trim();
 
@@ -45117,8 +45117,83 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         });
       }
 
+      // ── sig_* lane ──────────────────────────────────────────────────────
+      // find_products_multi emits sig_* public ids (resolvePublicProductIdForEmit),
+      // but until now this operation could not consume them: both resolution
+      // legs key on merchant-source product ids (the group resolve, and a
+      // keyword search whose query text is the id), so every sig input fell
+      // through to the `pg:pid:` echo with a hollow `status: success` /
+      // 0 offers — the advertised "resolve what you found" flow was
+      // structurally broken for exactly the ids discovery hands out.
+      // Resolve the signature to its catalog anchor first (the same resolver
+      // get_pdp_v2's sig lane uses), then run the normal legs on the anchor's
+      // source ids.
+      let requestedSignatureId = null;
+      let signatureAnchorRef = null;
+      if (isPivotaSignatureProductId(productId)) {
+        let signatureProductRef = null;
+        try {
+          signatureProductRef = await resolveCatalogProductRefFromPivotaSignature(productId, {
+            hydrateIdentityListing: true,
+            // Deliberately false: this lane does not (yet) consume
+            // group_members, so don't pay the identity-group query for them.
+            // Follow-up: consume them into groupMembers (as get_pdp_v2 does)
+            // to recover multi-merchant offers for sigs whose siblings exist
+            // only in the catalog DB.
+            hydrateIdentityGroupMembers: false,
+            bypassCache,
+          });
+        } catch (err) {
+          if (
+            err?.code !== 'CATALOG_SIGNATURE_RESOLVE_TIMEOUT' &&
+            err?.code !== 'STAGE_TIMEOUT'
+          ) {
+            throw err;
+          }
+          // Mirror get_pdp_v2's sig-lane semantics: a bounded resolver failure
+          // is "temporarily unavailable", NOT "no such product" — and NOT a
+          // hollow success an agent would cache as "this index has no offers".
+          return res.status(503).json({
+            error: 'TEMPORARY_UNAVAILABLE',
+            message: 'Signature resolution is temporarily unavailable. Please retry shortly.',
+            details: { reason: 'catalog_signature_resolve_timeout' },
+          });
+        }
+        const sigMerchantId = String(signatureProductRef?.merchant_id || '').trim();
+        const sigProductId = String(signatureProductRef?.product_id || '').trim();
+        if (!sigMerchantId || !sigProductId) {
+          // A null ref with no DATABASE_URL is a config outage, not evidence
+          // the product doesn't exist — misreporting it as 404 would tell
+          // agents to drop a live product.
+          if (!process.env.DATABASE_URL) {
+            return res.status(503).json({
+              error: 'TEMPORARY_UNAVAILABLE',
+              message: 'Signature resolution is temporarily unavailable. Please retry shortly.',
+              details: { reason: 'catalog_database_unconfigured' },
+            });
+          }
+          // Honest 404: an unknown signature is not a successful resolution
+          // with zero offers.
+          return res.status(404).json({
+            error: 'PRODUCT_NOT_FOUND',
+            message: `No product resolves for signature '${productId}'`,
+          });
+        }
+        requestedSignatureId = productId;
+        signatureAnchorRef = {
+          merchant_id: sigMerchantId,
+          product_id: sigProductId,
+          ...(signatureProductRef?.platform
+            ? { platform: String(signatureProductRef.platform).trim() }
+            : {}),
+        };
+        productId = sigProductId;
+        if (!requestedMerchantId) requestedMerchantId = sigMerchantId;
+      }
+
       const cacheKey = JSON.stringify({
         productId,
+        signatureId: requestedSignatureId,
         merchantId: requestedMerchantId || null,
         country,
         postalCode,
@@ -45500,11 +45575,19 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 		            product_id: canonicalMember.product_id,
 		            ...(canonicalMember.platform ? { platform: canonicalMember.platform } : {}),
 		          }
-		        : null;
+		        // The sig lane already resolved a definite catalog anchor; when no
+		        // curated group exists, that anchor IS the canonical ref — a null
+		        // here would tell the agent the resolution found nothing.
+		        : signatureAnchorRef;
 
 		      const result = {
 		        status: 'success',
 		        product_group_id: productGroupId,
+		        // Disclose the sig-lane translation so an agent that asked about a
+		        // sig_* id can correlate the anchor these offers belong to.
+		        ...(requestedSignatureId
+		          ? { pivota_signature_id: requestedSignatureId, resolved_product_id: productId }
+		          : {}),
 		        canonical_product_ref: canonicalProductRef,
 		        offers_count: offers.length,
 		        ...(includeOffers ? { offers } : {}),
