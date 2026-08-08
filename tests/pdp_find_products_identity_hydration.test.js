@@ -275,4 +275,95 @@ describe('find_products catalog identity hydration', () => {
     expect(hydrated.rating).toBeUndefined();
     expect(hydrated.rating_count).toBeUndefined();
   });
+
+  test('sig-exact lane carries the migration-186 rating end to end', async () => {
+    // Review finding on #1943: the sig route builds identity from
+    // resolveCatalogProductRefFromPivotaSignature +
+    // buildCatalogIdentityFromSignatureProductRef — NOT the identity resolver —
+    // so a rating only wired into the latter never reached the canonical
+    // sitemap-indexed PDPs. Pin the whole sig chain: SELECT -> ref -> identity
+    // builder -> stamp.
+    const { db, debug } = loadServerWithDb();
+    const seenSql = [];
+    db.query.mockImplementation(async (sql) => {
+      seenSql.push(String(sql));
+      return {
+        rows:
+          seenSql.length === 1
+            ? [
+                {
+                  merchant_id: 'external_seed',
+                  platform: 'external_seed',
+                  source_product_id: 'ext_rated_9',
+                  product_key: 'prod::external_seed::external_seed::ext_rated_9',
+                  pivota_signature_id: 'sig_rated9',
+                  content_key: 'ck_rated9',
+                  catalog_title: 'Rated Ampoule',
+                  catalog_rating_value: '4.5999999999999996',
+                  catalog_rating_count: 148,
+                },
+              ]
+            : [],
+      };
+    });
+
+    const ref = await debug.resolveCatalogProductRefFromPivotaSignature('sig_rated9', {
+      hydrateIdentityListing: false,
+      hydrateIdentityGroupMembers: false,
+    });
+
+    expect(seenSql[0]).toContain('cp.rating_value AS catalog_rating_value');
+    expect(seenSql[0]).toContain('cp.rating_count AS catalog_rating_count');
+    expect(ref.catalog_rating_value).toBeCloseTo(4.6, 1);
+    expect(ref.catalog_rating_count).toBe(148);
+
+    const identity = debug.buildCatalogIdentityFromSignatureProductRef(ref, {
+      requestedSigId: 'sig_rated9',
+    });
+    expect(identity.catalog_rating_value).toBeCloseTo(4.6, 1);
+    expect(identity.catalog_rating_count).toBe(148);
+
+    const stamped = debug.applyCatalogIdentityToPdpProduct(
+      { product_id: 'ext_rated_9', merchant_id: 'external_seed' },
+      identity,
+    );
+    expect(stamped.rating).toBe(4.6);
+    expect(stamped.rating_count).toBe(148);
+  });
+
+  test('a visible reviews-module rating suppresses the catalog stamp', async () => {
+    // JSON-LD must match the visible page: when the rendered reviews module
+    // already shows a real rating, the catalog columns must not flip the
+    // structured data to numbers the reader cannot see.
+    const { db, debug } = loadServerWithDb();
+    db.query.mockResolvedValueOnce({
+      rows: [
+        {
+          merchant_id: 'external_seed',
+          platform: 'external_seed',
+          source_product_id: 'ext_rated_10',
+          product_key: 'prod::external_seed::external_seed::ext_rated_10',
+          pivota_signature_id: 'sig_rated10',
+          sellable_item_group_id: 'sig_rated10',
+          catalog_rating_value: '4.3',
+          catalog_rating_count: 215,
+        },
+      ],
+    });
+
+    const identity = await debug.resolveCatalogIdentityForProductRef({
+      merchantId: 'external_seed',
+      productId: 'ext_rated_10',
+    });
+    const suppressed = debug.applyCatalogIdentityToPdpProduct(
+      { product_id: 'ext_rated_10', merchant_id: 'external_seed' },
+      identity,
+      '',
+      { suppressRatingStamp: true },
+    );
+
+    expect(suppressed.rating).toBeUndefined();
+    expect(suppressed.rating_count).toBeUndefined();
+  });
+
 });

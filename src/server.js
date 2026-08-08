@@ -6052,6 +6052,12 @@ async function resolveCatalogProductRefFromPivotaSignatureInner(normalizedProduc
           cp.category_path,
           cp.category_label_source,
           cp.category_confidence,
+          -- Migration 186 (pivota-backend) aggregateRating columns. The sig
+          -- route builds its identity from THIS resolver (not
+          -- resolveCatalogIdentityForProductRef), so omitting them here drops
+          -- the rating on exactly the canonical sitemap-indexed pages.
+          cp.rating_value AS catalog_rating_value,
+          cp.rating_count AS catalog_rating_count,
           signature_ips.serving_eligible AS signature_serving_eligible,
           signature_ips.readiness_tier AS signature_readiness_tier,
           signature_ips.pipeline_stage AS signature_pipeline_stage,
@@ -6590,6 +6596,14 @@ async function resolveCatalogProductRefFromPivotaSignatureInner(normalizedProduc
         category_confidence: Number.isFinite(Number(exactRow?.category_confidence))
           ? Number(exactRow.category_confidence)
           : undefined,
+        // Migration 186 aggregateRating columns; undefined (not null) when
+        // uncaptured so the keys stay absent rather than asserting "no rating".
+        catalog_rating_value: Number.isFinite(Number(exactRow?.catalog_rating_value))
+          ? Number(exactRow.catalog_rating_value)
+          : undefined,
+        catalog_rating_count: Number.isFinite(Number(exactRow?.catalog_rating_count))
+          ? Number(exactRow.catalog_rating_count)
+          : undefined,
         product_group_id: exactEffectiveSellableGroupId,
         sellable_item_group_id: exactEffectiveSellableGroupId,
         canonical_sig_id: exactEffectiveSellableGroupId,
@@ -6892,6 +6906,15 @@ function buildCatalogIdentityFromSignatureProductRef(signatureProductRef, {
     // silently goes back to declaring itself canonical.
     content_canonical_sig_id:
       firstNonEmptyString(signatureProductRef.content_canonical_sig_id) || null,
+    // Migration 186 aggregateRating. Same dropped-key hazard as the election
+    // above: this builder is the sig route's ONLY identity source, so a rating
+    // not named here never reaches the canonical PDP's JSON-LD.
+    catalog_rating_value: Number.isFinite(Number(signatureProductRef.catalog_rating_value))
+      ? Number(signatureProductRef.catalog_rating_value)
+      : undefined,
+    catalog_rating_count: Number.isFinite(Number(signatureProductRef.catalog_rating_count))
+      ? Number(signatureProductRef.catalog_rating_count)
+      : undefined,
   };
 }
 
@@ -7061,7 +7084,7 @@ async function resolveCatalogIdentityForProductRef({ merchantId, productId, prod
 // pivota_canonical_url FIRST (lib/productHref.resolveProductRouteId), so the
 // keeper being correct on `canonical_url` alone still renders a self-canonical
 // page. Caught by tests/integration/get_pdp_v2_dedupe_keeper_canonical.
-function applyCatalogIdentityToPdpProduct(product, identity = {}, canonicalRouteSigId = '') {
+function applyCatalogIdentityToPdpProduct(product, identity = {}, canonicalRouteSigId = '', options = {}) {
   if (!product || typeof product !== 'object' || Array.isArray(product)) return product;
   const sigId = firstNonEmptyString(identity.pivota_signature_id, identity.signature_id);
   if (!isPivotaSignatureProductId(sigId)) return product;
@@ -7111,12 +7134,15 @@ function applyCatalogIdentityToPdpProduct(product, identity = {}, canonicalRoute
     ...(identity.category_confidence !== undefined ? { category_confidence: identity.category_confidence } : {}),
     ...(identity.product_line_id ? { product_line_id: identity.product_line_id } : {}),
     ...(identity.review_family_id ? { review_family_id: identity.review_family_id } : {}),
-    // Migration 186 aggregateRating: fill-if-absent only — a rating already on
-    // the product (seed review summary lane) wins, and a rating is emitted only
-    // with a positive review count behind it (never invented; NULL at the
-    // source means "no review data", not zero stars). rating/rating_count are
-    // the exact keys the UI's aggregateRating resolver reads.
-    ...(Number.isFinite(identity.catalog_rating_value) &&
+    // Migration 186 aggregateRating. Emitted only with a positive review count
+    // behind it (never invented; NULL at the source means "no review data",
+    // not zero stars), never over an existing product.rating, and suppressed
+    // by the caller when the rendered reviews module already shows a real
+    // rating — JSON-LD must never disagree with the visible page.
+    // rating/rating_count are the exact keys the UI's aggregateRating
+    // resolver reads.
+    ...(!options.suppressRatingStamp &&
+    Number.isFinite(identity.catalog_rating_value) &&
     Number.isFinite(identity.catalog_rating_count) &&
     identity.catalog_rating_count > 0 &&
     !Number.isFinite(Number(product.rating))
@@ -43679,12 +43705,22 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       ].includes(effectivePdpProductFamily);
       const structuredDetailsNotApplicablePdp = setOrCollectionPdp || accessoryOrNonFormulaPdp;
       if (catalogIdentity?.pivota_signature_id && canonicalPayload?.product) {
+        // JSON-LD must match the visible page: when the rendered reviews
+        // module already shows a real (non-synthetic — buildReviewsPreview
+        // zeroes those) rating, the catalog columns must not flip the
+        // structured data to different numbers than the reader can see.
+        const reviewsPreviewData = Array.isArray(canonicalPayload?.modules)
+          ? canonicalPayload.modules.find((m) => m?.type === 'reviews_preview')?.data || null
+          : null;
+        const visibleReviewsRating =
+          Number(reviewsPreviewData?.rating) > 0 && Number(reviewsPreviewData?.review_count) > 0;
         canonicalPayload = {
           ...canonicalPayload,
           product: applyCatalogIdentityToPdpProduct(
             canonicalPayload.product,
             catalogIdentity,
             requestedSigDedupeKeeperSigId,
+            { suppressRatingStamp: visibleReviewsRating },
           ),
         };
       }
