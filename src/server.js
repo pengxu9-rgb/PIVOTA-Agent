@@ -45135,7 +45135,12 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         try {
           signatureProductRef = await resolveCatalogProductRefFromPivotaSignature(productId, {
             hydrateIdentityListing: true,
-            hydrateIdentityGroupMembers: includeOffers,
+            // Deliberately false: this lane does not (yet) consume
+            // group_members, so don't pay the identity-group query for them.
+            // Follow-up: consume them into groupMembers (as get_pdp_v2 does)
+            // to recover multi-merchant offers for sigs whose siblings exist
+            // only in the catalog DB.
+            hydrateIdentityGroupMembers: false,
             bypassCache,
           });
         } catch (err) {
@@ -45157,6 +45162,16 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         const sigMerchantId = String(signatureProductRef?.merchant_id || '').trim();
         const sigProductId = String(signatureProductRef?.product_id || '').trim();
         if (!sigMerchantId || !sigProductId) {
+          // A null ref with no DATABASE_URL is a config outage, not evidence
+          // the product doesn't exist — misreporting it as 404 would tell
+          // agents to drop a live product.
+          if (!process.env.DATABASE_URL) {
+            return res.status(503).json({
+              error: 'TEMPORARY_UNAVAILABLE',
+              message: 'Signature resolution is temporarily unavailable. Please retry shortly.',
+              details: { reason: 'catalog_database_unconfigured' },
+            });
+          }
           // Honest 404: an unknown signature is not a successful resolution
           // with zero offers.
           return res.status(404).json({
