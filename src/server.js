@@ -6935,6 +6935,17 @@ async function resolveCatalogIdentityForProductRef({ merchantId, productId, prod
       identity_status: firstNonEmptyString(row?.identity_status),
       live_read_enabled: row?.live_read_enabled === true,
       review_required: row?.review_required === true,
+      // Migration 186 (pivota-backend) aggregateRating columns. Captured from
+      // schema.org storefronts; the seed-shaped review_summary lane never reads
+      // them, so serving products with a real stored rating emitted no
+      // aggregateRating in JSON-LD. undefined (not null) when uncaptured —
+      // NULL at the source means "no review data", never zero stars.
+      catalog_rating_value: Number.isFinite(Number(row?.catalog_rating_value))
+        ? Number(row.catalog_rating_value)
+        : undefined,
+      catalog_rating_count: Number.isFinite(Number(row?.catalog_rating_count))
+        ? Number(row.catalog_rating_count)
+        : undefined,
     };
   };
 
@@ -6952,6 +6963,8 @@ async function resolveCatalogIdentityForProductRef({ merchantId, productId, prod
           cp.category_path,
           cp.category_label_source,
           cp.category_confidence,
+          cp.rating_value AS catalog_rating_value,
+          cp.rating_count AS catalog_rating_count,
           pil.sellable_item_group_id,
           pil.product_line_id,
           pil.review_family_id,
@@ -7098,6 +7111,20 @@ function applyCatalogIdentityToPdpProduct(product, identity = {}, canonicalRoute
     ...(identity.category_confidence !== undefined ? { category_confidence: identity.category_confidence } : {}),
     ...(identity.product_line_id ? { product_line_id: identity.product_line_id } : {}),
     ...(identity.review_family_id ? { review_family_id: identity.review_family_id } : {}),
+    // Migration 186 aggregateRating: fill-if-absent only — a rating already on
+    // the product (seed review summary lane) wins, and a rating is emitted only
+    // with a positive review count behind it (never invented; NULL at the
+    // source means "no review data", not zero stars). rating/rating_count are
+    // the exact keys the UI's aggregateRating resolver reads.
+    ...(Number.isFinite(identity.catalog_rating_value) &&
+    Number.isFinite(identity.catalog_rating_count) &&
+    identity.catalog_rating_count > 0 &&
+    !Number.isFinite(Number(product.rating))
+      ? {
+          rating: Math.round(identity.catalog_rating_value * 100) / 100,
+          rating_count: identity.catalog_rating_count,
+        }
+      : {}),
     ...(identity.sellable_item_group_id
       ? {
           sellable_item_group_id: identity.sellable_item_group_id,

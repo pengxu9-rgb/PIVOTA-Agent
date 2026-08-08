@@ -209,4 +209,70 @@ describe('find_products catalog identity hydration', () => {
       }),
     );
   });
+  test('stamps migration-186 catalog rating onto the PDP product, fill-if-absent only', async () => {
+    const { db, debug } = loadServerWithDb();
+    const row = {
+      merchant_id: 'external_seed',
+      platform: 'external_seed',
+      source_product_id: 'ext_rated_1',
+      product_key: 'prod::external_seed::external_seed::ext_rated_1',
+      pivota_signature_id: 'sig_rated1',
+      sellable_item_group_id: 'sig_rated1',
+      catalog_rating_value: '4.5999999999999996',
+      catalog_rating_count: 148,
+    };
+    db.query.mockResolvedValueOnce({ rows: [row] });
+
+    const identity = await debug.resolveCatalogIdentityForProductRef({
+      merchantId: 'external_seed',
+      productId: 'ext_rated_1',
+    });
+    const hydrated = debug.applyCatalogIdentityToPdpProduct(
+      { product_id: 'ext_rated_1', merchant_id: 'external_seed', title: 'Rated Ampoule' },
+      identity,
+    );
+
+    // Float dirt rounded to what the source page displayed; keys are the exact
+    // pair the UI's aggregateRating resolver reads.
+    expect(hydrated.rating).toBe(4.6);
+    expect(hydrated.rating_count).toBe(148);
+
+    // An existing rating (seed review-summary lane) is never overwritten.
+    const kept = debug.applyCatalogIdentityToPdpProduct(
+      { product_id: 'ext_rated_1', merchant_id: 'external_seed', rating: 3.9, rating_count: 12 },
+      identity,
+    );
+    expect(kept.rating).toBe(3.9);
+    expect(kept.rating_count).toBe(12);
+  });
+
+  test('never invents a rating: zero-count or missing columns stamp nothing', async () => {
+    const { db, debug } = loadServerWithDb();
+    db.query.mockResolvedValueOnce({
+      rows: [
+        {
+          merchant_id: 'external_seed',
+          platform: 'external_seed',
+          source_product_id: 'ext_unrated_1',
+          product_key: 'prod::external_seed::external_seed::ext_unrated_1',
+          pivota_signature_id: 'sig_unrated1',
+          sellable_item_group_id: 'sig_unrated1',
+          catalog_rating_value: '5.0',
+          catalog_rating_count: 0,
+        },
+      ],
+    });
+
+    const identity = await debug.resolveCatalogIdentityForProductRef({
+      merchantId: 'external_seed',
+      productId: 'ext_unrated_1',
+    });
+    const hydrated = debug.applyCatalogIdentityToPdpProduct(
+      { product_id: 'ext_unrated_1', merchant_id: 'external_seed' },
+      identity,
+    );
+
+    expect(hydrated.rating).toBeUndefined();
+    expect(hydrated.rating_count).toBeUndefined();
+  });
 });
