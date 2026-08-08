@@ -39,24 +39,30 @@ describe('titleCore strips size/packaging, keeps shade', () => {
   });
 });
 
-describe('contentKeyFallback is URL-free, deterministic, and collapses variants', () => {
-  test('ml vs oz -> same content_key', () => {
-    expect(m.contentKeyFallback('COSRX', 'COSRX Advanced Snail 96 Mucin Power Essence 100ml')).toBe(
-      m.contentKeyFallback('COSRX', 'Advanced Snail 96 Mucin Power Essence 3.38 oz'),
+/* #1916: this module used to also export contentKeyFallback(), a THIRD formula for a
+ * key it does not own — it never minted a single prod key and could never collide with
+ * one that had. The cross-seller collapse those tests described is real, but it lives
+ * in identityMatchKey + resolve-first, which is what is asserted here instead. The
+ * content_key minter is src/services/contentKey.js (tests/content_key_authority.test.js). */
+describe('identityMatchKey is URL-free, deterministic, and collapses variants', () => {
+  test('ml vs oz -> same match key', () => {
+    expect(m.identityMatchKey('COSRX', 'COSRX Advanced Snail 96 Mucin Power Essence 100ml')).toBe(
+      m.identityMatchKey('COSRX', 'Advanced Snail 96 Mucin Power Essence 3.38 oz'),
     );
   });
-  test('accent + brand-suffix variance -> same content_key', () => {
-    expect(m.contentKeyFallback('Estée Lauder', 'Estée Lauder Advanced Night Repair Serum 50ml')).toBe(
-      m.contentKeyFallback('Estee Lauder', 'Advanced Night Repair Serum 1.7 oz'),
+  test('accent + brand-suffix variance -> same match key', () => {
+    expect(m.identityMatchKey('Estée Lauder', 'Estée Lauder Advanced Night Repair Serum 50ml')).toBe(
+      m.identityMatchKey('Estee Lauder', 'Advanced Night Repair Serum 1.7 oz'),
     );
   });
-  test('distinct products of same brand -> distinct content_key', () => {
-    expect(m.contentKeyFallback('COSRX', 'COSRX Snail Mucin Essence')).not.toBe(
-      m.contentKeyFallback('COSRX', 'COSRX Advanced Snail Peptide Eye Cream'),
+  test('distinct products of same brand -> distinct match key', () => {
+    expect(m.identityMatchKey('COSRX', 'COSRX Snail Mucin Essence')).not.toBe(
+      m.identityMatchKey('COSRX', 'COSRX Advanced Snail Peptide Eye Cream'),
     );
   });
-  test('has ck_ prefix and matches sync stableHash shape', () => {
-    expect(m.contentKeyFallback('COSRX', 'x')).toMatch(/^ck_[0-9a-f]{32}$/);
+  test('is a readable brandCore|titleCore pair, NOT a ck_ hash', () => {
+    expect(m.identityMatchKey('COSRX', 'COSRX Snail Mucin Essence')).toBe('cosrx|snail mucin essence');
+    expect(m.identityMatchKey('COSRX', 'x')).not.toMatch(/^ck_/);
   });
 });
 
