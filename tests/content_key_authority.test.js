@@ -21,9 +21,8 @@ const ck = require('../src/services/contentKey');
 const table = require('../src/services/contentKeyUnicodeTable');
 const identity = require('../src/services/retailerOfferIdentity');
 
-const CASES = JSON.parse(
-  fs.readFileSync(path.join(__dirname, 'fixtures', 'content_key_v1_cases.json'), 'utf8'),
-);
+const FIXTURE_PATH = path.join(__dirname, 'fixtures', 'content_key_v1_cases.json');
+const CASES = JSON.parse(fs.readFileSync(FIXTURE_PATH, 'utf8'));
 
 describe('makeContentKey matches the cross-service authority', () => {
   test('the fixture still covers both the Python cases and live prod rows', () => {
@@ -31,10 +30,28 @@ describe('makeContentKey matches the cross-service authority', () => {
     expect(CASES.filter((c) => c.source === 'prod_catalog_products').length).toBeGreaterThanOrEqual(8);
   });
 
+  test('the corpus is byte-for-byte the one pivota-backend generated', () => {
+    // THE MIRROR, ENFORCED. Both repos run their own suite against their own copy, each
+    // validating it against its own implementation — but until now nothing compared the
+    // two FILES. The coupling was a bullet in a docstring saying "mirror it into
+    // PIVOTA-Agent". A regeneration upstream that nobody mirrored therefore left this
+    // repo green on a stale corpus indefinitely: both sides passing, silently forked,
+    // which is exactly the 2026-05 incident this pair exists to prevent.
+    //
+    // This digest is committed in BOTH repos (pivota-backend
+    // tests/test_catalog_identity.py::CORPUS_SHA256). Regenerating breaks both
+    // assertions, so mirroring stops being something to remember and becomes something
+    // CI requires. It also subsumes the name check below: a corpus that drops cases
+    // fails the digest whether or not the surviving names look right.
+    const digest = crypto.createHash('sha256').update(fs.readFileSync(FIXTURE_PATH)).digest('hex');
+    expect(digest).toBe('3ba657415f44d3d2b2a87300d198a9510c9eff0881eba5d27406f853061dae30');
+  });
+
   test('the classes that actually forked this port are still in the corpus', () => {
-    // A count floor does not protect these. Someone could regenerate a smaller corpus
-    // upstream, mirror it here, and the >= assertions above would still pass while the
-    // cases that caught a real 15.9% divergence quietly vanished. So name them.
+    // Belt-and-braces behind the digest above, and deliberately kept: the digest says
+    // THAT the corpus changed, this says WHICH guarantees would be lost if it shrank.
+    // On its own it was too weak to rely on — a 28-case corpus keeping all 12 names
+    // below still passed every assertion in this file.
     //
     // Each is a confirmed Node-vs-Python disagreement from the #1938 review, and each
     // lives in the SHARED corpus rather than only in the Node-side tests below —
