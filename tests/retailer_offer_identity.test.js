@@ -144,3 +144,101 @@ describe('buildCatalogIdentityIndex (injected query)', () => {
     expect(r.match.content_key).toBe('ck_dtc');
   });
 });
+
+/* Pack-count guard. titleCore strips "10 sheets" the same way it strips "100ml", which
+ * is right for matching — but a count is a PACK SIZE, not a cosmetic variant. Measured
+ * on prod 2026-08-08: of the 51 folds reconcile-retailer-offers-into-d2c.cjs applied on
+ * 2026-07-12, exactly one put two different products on one content_key this way, and
+ * therefore on one index_pipeline_state row (a PRIMARY KEY). Replaying this guard over
+ * all 51 blocks that one and allows the other 50. */
+describe('packCounts / packCountMismatch', () => {
+  test('reads counts in the spellings real listings use', () => {
+    expect(m.packCounts('Sheet Mask - 1 ct')).toEqual([1]);
+    expect(m.packCounts('Sheet Mask 10 Sheets')).toEqual([10]);
+    expect(m.packCounts('Cotton Pads 60 pads')).toEqual([60]);
+    expect(m.packCounts('Ampoule 30 capsules')).toEqual([30]);
+    expect(m.packCounts('Serum 3-pack')).toEqual([3]);
+    expect(m.packCounts('Masks pack of 5')).toEqual([5]);
+  });
+
+  test('a title with no count states none — silence, not zero', () => {
+    expect(m.packCounts('Advanced Snail Mucin Power Essence')).toEqual([]);
+    expect(m.packCounts('Snail Essence 100ml')).toEqual([]); // volume is not a count
+    expect(m.packCounts('')).toEqual([]);
+  });
+
+  test('BLOCKS when both sides state a count and they disagree', () => {
+    // The exact prod case, un-folded 2026-08-08.
+    expect(m.packCountMismatch(
+      'Advanced Snail Mucin Power Sheet Mask - 1 ct',
+      'Advanced Snail Mucin Power Sheet Mask 10 Sheets',
+    )).toBe(true);
+  });
+
+  test('ALLOWS when only one side states a count — silence is not disagreement', () => {
+    // 13 of the 51 measured folds were this shape: the retailer states the pack, the
+    // brand's own site does not. Those folds are correct and must keep working.
+    expect(m.packCountMismatch('Sheet Mask 10 Sheets', 'Sheet Mask')).toBe(false);
+    expect(m.packCountMismatch('Sheet Mask', 'Sheet Mask 10 Sheets')).toBe(false);
+  });
+
+  test('counts are compared as a SET, not in title order', () => {
+    // A kit can state two counts, and two listings can state them in either order.
+    // Without sorting, an order flip reads as a mismatch and blocks a correct fold.
+    expect(m.packCounts('Recovery Kit 10 sheets 2 pads')).toEqual([2, 10]);
+    expect(m.packCounts('Recovery Kit 2 pads 10 sheets')).toEqual([2, 10]);
+    expect(m.packCountMismatch('Recovery Kit 10 sheets 2 pads', 'Recovery Kit 2 pads 10 sheets')).toBe(false);
+    // ...but a genuinely different multiset still blocks.
+    expect(m.packCountMismatch('Recovery Kit 10 sheets 2 pads', 'Recovery Kit 10 sheets 5 pads')).toBe(true);
+  });
+
+  test('ALLOWS when both agree, and when neither is a count at all', () => {
+    expect(m.packCountMismatch('Mask 10 Sheets', 'Mask - 10 ct')).toBe(false);
+    expect(m.packCountMismatch('Essence 100ml', 'Essence 3.38 oz')).toBe(false); // volume
+  });
+});
+
+describe('resolveAgainstIndex refuses to auto-merge a pack-count conflict', () => {
+  function indexOf(products) {
+    const exact = new Map();
+    const byBrand = new Map();
+    for (const p of products) {
+      exact.set(m.identityMatchKey(p.brand, p.title), { ...p, count: 1 });
+      const bc = m.brandCore(p.brand);
+      if (!byBrand.has(bc)) byBrand.set(bc, []);
+      byBrand.get(bc).push({ ...p, tokens: m.coreTokens(m.titleCore(p.title, p.brand)) });
+    }
+    return { exact, byBrand, candidateCount: products.length };
+  }
+  const index = indexOf([{
+    product_key: 'pk_d2c_10pack',
+    content_key: 'ck_d2c_10pack',
+    brand: 'COSRX',
+    title: 'Advanced Snail Mucin Power Sheet Mask 10 Sheets',
+  }]);
+
+  test('the 1-ct offer is surfaced for review, NOT folded onto the 10-pack', () => {
+    const r = m.resolveAgainstIndex(index, 'COSRX', 'Advanced Snail Mucin Power Sheet Mask - 1 ct');
+    expect(r.decision).toBe('review_fuzzy');
+    expect(r.blocked_by).toBe('pack_count_mismatch');
+    expect(r.pack_counts).toEqual({ incoming: [1], candidate: [10] });
+  });
+
+  test('review, not self_mint — the titles otherwise match, so a human should see it', () => {
+    // self_mint would silently create a second identity with no record of the near-miss.
+    const r = m.resolveAgainstIndex(index, 'COSRX', 'Advanced Snail Mucin Power Sheet Mask - 1 ct');
+    expect(r.decision).not.toBe('self_mint');
+    expect(r.match.content_key).toBe('ck_d2c_10pack');
+  });
+
+  test('the same offer WITHOUT a stated count still folds — the guard is not a blanket', () => {
+    const r = m.resolveAgainstIndex(index, 'COSRX', 'Advanced Snail Mucin Power Sheet Mask');
+    expect(r.decision).toBe('reuse_exact');
+    expect(r.match.content_key).toBe('ck_d2c_10pack');
+  });
+
+  test('a matching count still folds', () => {
+    const r = m.resolveAgainstIndex(index, 'COSRX', 'Advanced Snail Mucin Power Sheet Mask - 10 ct');
+    expect(r.decision).toBe('reuse_exact');
+  });
+});

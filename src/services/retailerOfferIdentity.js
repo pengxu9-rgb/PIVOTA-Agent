@@ -157,6 +157,56 @@ function identityMatchKey(brand, title) {
   return `${brandCore(brand)}|${titleCore(title, brand)}`;
 }
 
+/**
+ * Discrete PACK-COUNT units — the subset of SIZE_RE that counts *items in a box*
+ * rather than a volume or a weight.
+ *
+ * titleCore strips these alongside ml/oz/g, and for MATCHING that is right: a listing
+ * saying "10 Sheets" and one omitting it are the same product, and collapsing them is
+ * the point of the match key. But when BOTH listings state a count and the counts
+ * DISAGREE, that is not cosmetic variance — a 1-count sachet and a 10-pack are
+ * different products at different prices.
+ *
+ * Measured on prod 2026-08-08: of the 51 folds that
+ * scripts/reconcile-retailer-offers-into-d2c.cjs applied on 2026-07-12, exactly one was
+ * this shape — Ulta's "Advanced Snail Mucin Power Sheet Mask - 1 ct" folded onto D2C's
+ * "…Sheet Mask 10 Sheets", putting two products on one content_key and therefore one
+ * index_pipeline_state row (that column is a PRIMARY KEY, so it is one serving decision
+ * for both). Un-folded 2026-08-08; this guard stops it recurring.
+ */
+const PACK_COUNT_RE =
+  /\b(\d+(?:\.\d+)?)\s*(?:count|ct|pcs?|pieces?|sheets?|pads?|capsules?|tablets?)\b|\b(\d+(?:\.\d+)?)\s*(?:-|x)?\s*(?:pack|pk)\b|\bpack\s*of\s*(\d+(?:\.\d+)?)\b/gi;
+
+/** Sorted pack counts stated in a title, as numbers. Empty when the title states none. */
+function packCounts(title) {
+  const text = normalizeText(title);
+  const found = [];
+  PACK_COUNT_RE.lastIndex = 0;
+  let m = PACK_COUNT_RE.exec(text);
+  while (m) {
+    const value = Number(m[1] || m[2] || m[3]);
+    if (Number.isFinite(value)) found.push(value);
+    m = PACK_COUNT_RE.exec(text);
+  }
+  return found.sort((a, b) => a - b);
+}
+
+/**
+ * True when both titles state a pack count and the counts disagree — positive evidence
+ * that two listings are DIFFERENT products rather than two spellings of one.
+ *
+ * Deliberately requires BOTH sides to speak, because silence is not disagreement:
+ * "Snail Essence" vs "Snail Essence 10 Sheets" is the ordinary case where a retailer
+ * states the pack and the brand's own site does not, and folding those IS correct —
+ * 13 of the 51 measured folds were exactly that shape and must keep working.
+ */
+function packCountMismatch(titleA, titleB) {
+  const a = packCounts(titleA);
+  const b = packCounts(titleB);
+  if (!a.length || !b.length) return false;
+  return a.length !== b.length || a.some((value, i) => value !== b[i]);
+}
+
 // ---------------------------------------------------------------------------
 // DB resolver — resolve a {brand,title} against existing D2C/canonical catalog
 // identity. `queryFn(sql, params) -> {rows}` is injected (from ../src/db in the
@@ -282,6 +332,20 @@ function resolveAgainstIndex(index, brand, title, opts = {}) {
   const key = identityMatchKey(brand, title);
   const exact = index.exact.get(key);
   if (exact && exact.content_key) {
+    // The match key strips pack counts, so an exact hit can still be two DIFFERENT
+    // products when both sides state a count and disagree. Surface for review rather
+    // than auto-merging: the module's standing rule is that a wrong merge (someone
+    // else's price and pack on your PDP) is worse than no merge. Not self_mint —
+    // a human should see it, since the titles otherwise match exactly.
+    if (packCountMismatch(title, exact.title)) {
+      return {
+        decision: 'review_fuzzy',
+        match: exact,
+        score: 1,
+        blocked_by: 'pack_count_mismatch',
+        pack_counts: { incoming: packCounts(title), candidate: packCounts(exact.title) },
+      };
+    }
     return { decision: 'reuse_exact', match: exact, score: 1 };
   }
   const bc = brandCore(brand);
@@ -314,6 +378,9 @@ module.exports = {
   jaccard,
   stableHash,
   identityMatchKey,
+  packCounts,
+  packCountMismatch,
+  PACK_COUNT_RE,
   SIZE_RE,
   FORM_VARIANT_RE,
   // retailer-host guard
