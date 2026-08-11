@@ -2273,15 +2273,6 @@ describe('Aurora beauty orchestration facade', () => {
           },
         };
       },
-      applyDealsToResponse(response) {
-        return {
-          ...response,
-          metadata: {
-            ...(response?.metadata || {}),
-            deals_applied: true,
-          },
-        };
-      },
       withSearchDiagnostics(response, diagnostics) {
         return {
           ...response,
@@ -2364,7 +2355,6 @@ describe('Aurora beauty orchestration facade', () => {
             cross_merchant_cache: { attempted: true, cache_hit: false },
           },
           policy_applied: true,
-          deals_applied: true,
           route_health: {
             primaryPathUsed: 'cache_stage',
             primaryLatencyMs: 41,

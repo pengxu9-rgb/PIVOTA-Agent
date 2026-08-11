@@ -155,7 +155,7 @@ The API server becomes a thin controller:
 Layer 3 should reuse existing catalog/search infrastructure:
 
 - `products_cache` (+ embedding recall) where available
-- Promotions enrichment (`promotionStore`)
+- Promotions enrichment (`promotionStore`) — DELETED (ADR-022, pivota-backend)
 - Existing operation gateway (`/agent/shop/v1/invoke`) when needed for live price/availability
 
 ---

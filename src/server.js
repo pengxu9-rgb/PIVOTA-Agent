@@ -148,15 +148,6 @@ const {
 } = require('./services/pivotaInsightsCoverage');
 const { findExternalSeedProductById } = require('./services/externalSeedDetail');
 const {
-  getAllPromotions,
-  getPromotionsForMerchant,
-  getPromotionById,
-  upsertPromotion,
-  softDeletePromotion,
-  PROMO_MODE: PROMOTION_STORE_MODE,
-  USE_REMOTE_PROMO: PROMOTION_STORE_USE_REMOTE,
-} = require('./promotionStore');
-const {
   buildCreatorCategoryTree,
   getCreatorCategoryProducts,
   heuristicCategoryForProduct,
@@ -8413,6 +8404,13 @@ const SAVINGS_PRESENTATION_FIELDS = [
   'payment_offer_summary',
   'payment_offer_badges',
   'payment_pricing',
+  // Promotions lane deleted (ADR-022): nothing generates the store_discount_*
+  // keys any more. They stay in this shared field list because it serves two
+  // roles: strip call sites remove the keys from allowlist-built offer
+  // payloads (belt-and-braces — those payloads are constructed from scratch
+  // and never carry them), and pick call sites COPY them forward, which is the
+  // pinned PDP passthrough contract (pdp_builder_structured_modules,
+  // get_pdp_v2_identity_graph) for upstream payloads that still send them.
   'store_discount_evidence',
   'store_discount_summary',
   'store_discount_badges',
@@ -8437,590 +8435,6 @@ function hasSavingsPresentationFields(source) {
     if (typeof value === 'object') return Object.keys(value).length > 0;
     return true;
   });
-}
-
-const STORE_DISCOUNT_METADATA_SOURCES = Object.freeze({
-  shopify_discount_node: 'shopify',
-});
-
-const STORE_DISCOUNT_DISPLAY_ONLY_POLICY = Object.freeze({
-  final_authority: 'store_platform_quote',
-  affects_checkout_total_before_quote: false,
-  requires_storefront_allocation_for_applied_amount: true,
-});
-
-const PDP_STORE_DISCOUNT_EVIDENCE_ENABLED =
-  String(process.env.PDP_STORE_DISCOUNT_EVIDENCE_ENABLED || 'true').toLowerCase() !== 'false';
-const PDP_STORE_DISCOUNT_EVIDENCE_BUDGET_MS = Math.max(
-  0,
-  Math.min(1000, Number(process.env.PDP_STORE_DISCOUNT_EVIDENCE_BUDGET_MS ?? 180) || 180),
-);
-
-function asStoreDiscountArray(value) {
-  if (value == null) return [];
-  if (Array.isArray(value)) return value;
-  if (value instanceof Set) return Array.from(value);
-  return [value];
-}
-
-function textValue(value) {
-  if (value == null) return '';
-  if (typeof value === 'string') return value.trim();
-  if (typeof value === 'number' || typeof value === 'boolean') return String(value).trim();
-  if (typeof value === 'object') {
-    return firstNonEmptyString(
-      value.id,
-      value.gid,
-      value.admin_graphql_api_id,
-      value.productId,
-      value.product_id,
-      value.productGid,
-      value.product_gid,
-      value.variantId,
-      value.variant_id,
-      value.variantGid,
-      value.variant_gid,
-      value.code,
-      value.title,
-      value.name,
-    ) || '';
-  }
-  return String(value).trim();
-}
-
-function listTextValues(value) {
-  return asStoreDiscountArray(value)
-    .map((item) => textValue(item))
-    .filter(Boolean);
-}
-
-// GID-tolerant id-set helpers extracted to src/utils/shopifyGid.js.
-// Kept aliases for the existing call sites in this file (lines ~4885, 4915, 5254).
-const idCandidateSet = gidCandidateSet;
-const candidateSetMatchesList = gidCandidatesMatchList;
-
-function getNestedValue(obj, ...path) {
-  let current = obj;
-  for (const key of path) {
-    if (!current || typeof current !== 'object') return undefined;
-    current = current[key];
-  }
-  return current;
-}
-
-function numberFromMoneyLike(value) {
-  if (value == null || value === '') return null;
-  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
-  if (typeof value === 'string') {
-    const parsed = Number(value);
-    return Number.isFinite(parsed) ? parsed : null;
-  }
-  if (typeof value === 'object') {
-    return numberFromMoneyLike(
-      value.amount ??
-        value.current?.amount ??
-        value.price ??
-        value.value ??
-        value.subtotal ??
-        value.minimumSubtotal,
-    );
-  }
-  return null;
-}
-
-function moneyString(value) {
-  const amount = numberFromMoneyLike(value);
-  return amount == null ? null : amount.toFixed(2);
-}
-
-function parseDateMs(value) {
-  const text = textValue(value);
-  if (!text) return null;
-  const parsed = Date.parse(text);
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
-function emptyStoreDiscountEvidence(reason = 'no_store_discounts') {
-  return {
-    pricing_confidence: 'not_applicable',
-    offers: [],
-    resolver_scope: 'store_discount_metadata',
-    supported_platforms: Array.from(new Set(Object.values(STORE_DISCOUNT_METADATA_SOURCES))).sort(),
-    decisions: [{ type: 'store_discount_resolution', reason }],
-    presentation_contract_version: 'savings.v1',
-  };
-}
-
-function storeDiscountScopeStatus(promo, target) {
-  const scope = promo?.scope && typeof promo.scope === 'object' ? promo.scope : {};
-  const cfg = promo?.config && typeof promo.config === 'object' ? promo.config : {};
-  const productIds = target?.product_ids || idCandidateSet(target?.product_id);
-  const variantIds = target?.variant_ids || idCandidateSet(target?.variant_id);
-
-  if (scope.global === true) return { matches: true, status: 'available', reason: 'global_scope' };
-
-  const shopifyItems =
-    scope.shopifyItems && typeof scope.shopifyItems === 'object'
-      ? scope.shopifyItems
-      : scope.shopify_items && typeof scope.shopify_items === 'object'
-        ? scope.shopify_items
-        : null;
-
-  if (shopifyItems) {
-    const typename = textValue(shopifyItems.__typename);
-    if (typename === 'AllDiscountItems') {
-      return { matches: true, status: 'available', reason: 'all_discount_items' };
-    }
-    const explicitProductIds =
-      shopifyItems.productIds ||
-      shopifyItems.product_ids ||
-      shopifyItems.products ||
-      shopifyItems.productGids ||
-      shopifyItems.product_gids;
-    const explicitVariantIds =
-      shopifyItems.variantIds ||
-      shopifyItems.variant_ids ||
-      shopifyItems.variants ||
-      shopifyItems.variantGids ||
-      shopifyItems.variant_gids;
-    if (listTextValues(explicitProductIds).length || listTextValues(explicitVariantIds).length) {
-      if (candidateSetMatchesList(productIds, explicitProductIds)) {
-        return { matches: true, status: 'available', reason: 'product_scope_match' };
-      }
-      if (candidateSetMatchesList(variantIds, explicitVariantIds)) {
-        return { matches: true, status: 'available', reason: 'variant_scope_match' };
-      }
-      return { matches: false, status: 'not_applicable', reason: 'target_out_of_scope' };
-    }
-    if (typename) return { matches: true, status: 'unverified', reason: `shopify_scope_${typename}` };
-  }
-
-  const scopeProductIds = scope.productIds || scope.product_ids || scope.products || scope.productGids;
-  const scopeVariantIds = scope.variantIds || scope.variant_ids || scope.variants || scope.variantGids;
-  if (listTextValues(scopeProductIds).length || listTextValues(scopeVariantIds).length) {
-    if (candidateSetMatchesList(productIds, scopeProductIds)) {
-      return { matches: true, status: 'available', reason: 'product_scope_match' };
-    }
-    if (candidateSetMatchesList(variantIds, scopeVariantIds)) {
-      return { matches: true, status: 'available', reason: 'variant_scope_match' };
-    }
-    return { matches: false, status: 'not_applicable', reason: 'target_out_of_scope' };
-  }
-
-  const cfgItems = cfg.customerGets && typeof cfg.customerGets === 'object' ? cfg.customerGets.items : null;
-  if (cfgItems && typeof cfgItems === 'object') {
-    const typename = textValue(cfgItems.__typename);
-    if (typename === 'AllDiscountItems') {
-      return { matches: true, status: 'available', reason: 'all_discount_items' };
-    }
-    if (typename) return { matches: true, status: 'unverified', reason: `shopify_scope_${typename}` };
-  }
-
-  return { matches: true, status: 'unverified', reason: 'scope_missing' };
-}
-
-function storeDiscountMinimumStatus(promo, target) {
-  const cfg = promo?.config && typeof promo.config === 'object' ? promo.config : {};
-  const minimum = cfg.minimumRequirement && typeof cfg.minimumRequirement === 'object'
-    ? cfg.minimumRequirement
-    : null;
-  if (!minimum) return { status: 'available', minimum: {} };
-
-  const typename = textValue(minimum.__typename) || 'minimum_requirement';
-  const subtotalAmount =
-    getNestedValue(minimum, 'greaterThanOrEqualToSubtotal', 'amount') ||
-    getNestedValue(minimum, 'amount', 'amount') ||
-    minimum.subtotal ||
-    minimum.minimumSubtotal;
-  const quantityValue =
-    minimum.greaterThanOrEqualToQuantity ||
-    minimum.quantity ||
-    minimum.minimumQuantity;
-  const minimumDetails = { type: typename };
-
-  const subtotalRequired = numberFromMoneyLike(subtotalAmount);
-  if (subtotalRequired != null) {
-    const current = numberFromMoneyLike(target?.subtotal) || 0;
-    const remaining = Math.max(0, subtotalRequired - current);
-    return {
-      status: remaining <= 0 ? 'available' : 'unlockable',
-      minimum: {
-        ...minimumDetails,
-        subtotal_required: moneyString(subtotalRequired),
-        current_subtotal: moneyString(current),
-        remaining_subtotal: moneyString(remaining),
-        currency: target?.currency || null,
-      },
-    };
-  }
-
-  const quantityRequired =
-    quantityValue == null || quantityValue === '' ? null : Math.max(0, Math.floor(Number(quantityValue)));
-  if (quantityRequired != null && Number.isFinite(quantityRequired)) {
-    const currentQty = Math.max(0, Math.floor(Number(target?.quantity || 0)));
-    const remainingQty = Math.max(0, quantityRequired - currentQty);
-    return {
-      status: remainingQty <= 0 ? 'available' : 'unlockable',
-      minimum: {
-        ...minimumDetails,
-        quantity_required: quantityRequired,
-        current_quantity: currentQty,
-        remaining_quantity: remainingQty,
-      },
-    };
-  }
-
-  return { status: 'unlockable', minimum: minimumDetails };
-}
-
-function discountBadgeForPromotion(promo) {
-  const cfg = promo?.config && typeof promo.config === 'object' ? promo.config : {};
-  const discountType = textValue(cfg.discountType).toLowerCase();
-  const method = textValue(cfg.discountMethod).toLowerCase();
-  const codes = listTextValues(cfg.codes);
-  const summary = firstNonEmptyString(cfg.summary, promo?.humanReadableRule, promo?.description);
-  const name = firstNonEmptyString(promo?.name);
-
-  if (discountType === 'free_shipping' || promo?.type === 'FREE_SHIPPING') {
-    return codes.length ? 'Free shipping code' : 'Free shipping';
-  }
-  if (discountType === 'bxgy') return summary || name || 'Buy more, save';
-  if (method === 'code' && codes.length) return `Code ${codes[0]}`;
-  return summary || name || 'Store offer';
-}
-
-function displayForStoreDiscountPromotion(promo, status, minimum) {
-  const cfg = promo?.config && typeof promo.config === 'object' ? promo.config : {};
-  const summary = firstNonEmptyString(cfg.summary, promo?.humanReadableRule, promo?.description);
-  const badge = discountBadgeForPromotion(promo);
-  let shortCopy;
-  if (status === 'unlockable') {
-    shortCopy = summary || 'Add more to unlock this store offer.';
-  } else if (status === 'unverified') {
-    shortCopy = summary || 'Store offer may be available at checkout.';
-  } else {
-    shortCopy = summary || 'Store offer available at checkout.';
-  }
-  let detailCopy = summary || promo?.name || shortCopy;
-  if (minimum?.remaining_quantity) {
-    detailCopy = `Add ${minimum.remaining_quantity} more to unlock this offer.`;
-  } else if (minimum?.remaining_subtotal) {
-    detailCopy = `Add ${minimum.remaining_subtotal} more to unlock this offer.`;
-  }
-  return {
-    badge,
-    short_copy: shortCopy,
-    detail_copy: detailCopy,
-    disclaimer: 'Final eligibility and amounts are verified by the store platform quote and checkout.',
-  };
-}
-
-function normalizeStoreDiscountOffer(promo, target, decisions) {
-  const cfg = promo?.config && typeof promo.config === 'object' ? promo.config : {};
-  const metadataSource = textValue(cfg.source);
-  const platform = STORE_DISCOUNT_METADATA_SOURCES[metadataSource];
-  if (!platform) {
-    decisions.push({
-      type: 'store_discount_skipped',
-      store_discount_id: promo?.id,
-      reason: 'unsupported_store_discount_source',
-      source: metadataSource || null,
-    });
-    return null;
-  }
-
-  const now = Date.now();
-  const statusText = textValue(promo?.status).toUpperCase();
-  const startsAtMs = parseDateMs(promo?.startAt || promo?.start_at);
-  const endsAtMs = parseDateMs(promo?.endAt || promo?.end_at);
-  if (statusText === 'UPCOMING' || (startsAtMs != null && now < startsAtMs)) {
-    decisions.push({ type: 'store_discount_skipped', store_discount_id: promo?.id, reason: 'not_started' });
-    return null;
-  }
-  if (statusText === 'ENDED' || (endsAtMs != null && now >= endsAtMs)) {
-    decisions.push({ type: 'store_discount_skipped', store_discount_id: promo?.id, reason: 'expired' });
-    return null;
-  }
-  const shopifyStatus = textValue(cfg.status).toLowerCase();
-  if (shopifyStatus && !['active', 'scheduled'].includes(shopifyStatus)) {
-    decisions.push({
-      type: 'store_discount_skipped',
-      store_discount_id: promo?.id,
-      reason: 'inactive_shopify_status',
-      status: cfg.status,
-    });
-    return null;
-  }
-
-  const scope = storeDiscountScopeStatus(promo, target);
-  if (!scope.matches) {
-    decisions.push({ type: 'store_discount_skipped', store_discount_id: promo?.id, reason: scope.reason });
-    return null;
-  }
-
-  const requirement = storeDiscountMinimumStatus(promo, target);
-  const statePriority = { available: 0, unlockable: 1, unverified: 2 };
-  const status = [scope.status, requirement.status].sort(
-    (a, b) => (statePriority[b] ?? 2) - (statePriority[a] ?? 2),
-  )[0] || 'unverified';
-  const discountType = textValue(cfg.discountType || 'unknown') || 'unknown';
-  const isFreeShipping = discountType === 'free_shipping' || promo?.type === 'FREE_SHIPPING';
-
-  return {
-    store_discount_id: promo?.id,
-    label: firstNonEmptyString(promo?.name, cfg.summary, 'Store offer'),
-    source: 'store_discount_metadata',
-    source_system: metadataSource,
-    platform,
-    shopify_discount_node_id: cfg.shopifyDiscountNodeId,
-    discount_method: cfg.discountMethod,
-    discount_type: discountType,
-    discount_classes: cfg.discountClasses || [],
-    status,
-    scope_status: scope.status,
-    scope_reason: scope.reason,
-    codes: listTextValues(cfg.codes),
-    combines_with: cfg.combinesWith || {},
-    context: cfg.context && typeof cfg.context === 'object' ? cfg.context : {},
-    customer_gets: cfg.customerGets || {},
-    customer_buys: cfg.customerBuys || {},
-    minimum_requirement: Object.keys(requirement.minimum || {}).length
-      ? requirement.minimum
-      : cfg.minimumRequirement || {},
-    usage_limit: cfg.usageLimit,
-    applies_once_per_customer: cfg.appliesOncePerCustomer,
-    async_usage_count: cfg.asyncUsageCount,
-    starts_at: promo?.startAt || promo?.start_at || null,
-    ends_at: promo?.endAt || promo?.end_at || null,
-    display: displayForStoreDiscountPromotion(promo, status, requirement.minimum),
-    ...(isFreeShipping
-      ? {
-          shipping_coverage: {
-            status: 'address_dependent',
-            display_copy: 'Coverage depends on the delivery address and Shopify shipping zone.',
-          },
-        }
-      : {}),
-    application_policy: { ...STORE_DISCOUNT_DISPLAY_ONLY_POLICY },
-  };
-}
-
-function storeDiscountPricingConfidence(offers) {
-  if (!Array.isArray(offers) || !offers.length) return 'not_applicable';
-  const statuses = new Set(offers.map((offer) => textValue(offer?.status)).filter(Boolean));
-  if (statuses.has('available')) return 'metadata_available';
-  if (statuses.has('unlockable')) return 'metadata_unlockable';
-  return 'unverified';
-}
-
-function summarizeStoreDiscountEvidence(evidence) {
-  const offers = Array.isArray(evidence?.offers)
-    ? evidence.offers.filter((offer) => offer && typeof offer === 'object')
-    : [];
-  const badges = [];
-  const typeCounts = {};
-  offers.forEach((offer) => {
-    const badge = textValue(offer.display?.badge);
-    if (badge && !badges.includes(badge)) badges.push(badge);
-    const discountType = textValue(offer.discount_type || 'unknown') || 'unknown';
-    typeCounts[discountType] = (typeCounts[discountType] || 0) + 1;
-  });
-  return {
-    has_store_discounts: offers.length > 0,
-    pricing_confidence: evidence?.pricing_confidence || 'not_applicable',
-    offers_count: offers.length,
-    discount_type_counts: typeCounts,
-    badges,
-  };
-}
-
-function storeDiscountBadges(evidence) {
-  return summarizeStoreDiscountEvidence(evidence).badges;
-}
-
-function storeDiscountEvidenceHasOffers(evidence) {
-  return Array.isArray(evidence?.offers) && evidence.offers.length > 0;
-}
-
-function resolveStoreDiscountEvidenceFromPromotionMetadata({ promotions, targets }) {
-  const normalizedTargets = Array.isArray(targets) ? targets.filter((target) => target?.target_id) : [];
-  if (!normalizedTargets.length) return {};
-  const promoList = Array.isArray(promotions) ? promotions : [];
-  const out = {};
-  normalizedTargets.forEach((target) => {
-    const decisions = [];
-    const offers = [];
-    promoList.forEach((promo) => {
-      if (!promo || typeof promo !== 'object') return;
-      const merchantId = firstNonEmptyString(promo.merchantId, promo.merchant_id);
-      if (merchantId && merchantId !== target.merchant_id) return;
-      if (promo.deletedAt || promo.deleted_at) return;
-      const offer = normalizeStoreDiscountOffer(promo, target, decisions);
-      if (offer) offers.push(offer);
-    });
-    out[target.target_id] = {
-      pricing_confidence: storeDiscountPricingConfidence(offers),
-      offers,
-      resolver_scope: 'store_discount_metadata',
-      supported_platforms: Array.from(new Set(Object.values(STORE_DISCOUNT_METADATA_SOURCES))).sort(),
-      decisions,
-      presentation_contract_version: 'savings.v1',
-    };
-  });
-  return out;
-}
-
-function buildStoreDiscountTargetKey(member, product) {
-  const merchantId = firstNonEmptyString(member?.merchant_id, product?.merchant_id);
-  const productId = firstNonEmptyString(member?.product_id, product?.product_id, product?.id);
-  return merchantId && productId ? `${merchantId}:${productId}` : null;
-}
-
-function buildStoreDiscountTargetForOfferEntry(entry) {
-  const member = entry?.member || {};
-  const product = entry?.product || {};
-  const merchantId = firstNonEmptyString(member.merchant_id, product.merchant_id);
-  if (!merchantId || merchantId === EXTERNAL_SEED_MERCHANT_ID) return null;
-  const selectedVariant = findOfferVariantForAxes(product, member?.variant_axes);
-  const currency =
-    firstNonEmptyString(
-      selectedVariant?.currency,
-      selectedVariant?.price?.currency,
-      selectedVariant?.price?.current?.currency,
-      product.currency,
-      product.price?.currency,
-      product.price?.current?.currency,
-      'USD',
-    ) || 'USD';
-  const targetProductId = firstNonEmptyString(
-    product.platform_product_id,
-    product.platformProductId,
-    product.product_id,
-    product.productId,
-    product.id,
-    member.product_id,
-  );
-  const targetVariantId = firstNonEmptyString(
-    selectedVariant?.variant_id,
-    selectedVariant?.variantId,
-    selectedVariant?.id,
-    product.variant_id,
-    product.variantId,
-    product.sku_id,
-    product.skuId,
-  );
-  const priceAmount = numberFromMoneyLike(
-    selectedVariant?.price ??
-      selectedVariant?.price_amount ??
-      selectedVariant?.priceAmount ??
-      product.price ??
-      product.price_amount ??
-      product.priceAmount,
-  );
-  const targetId = buildStoreDiscountTargetKey(member, product);
-  if (!targetId || (!targetProductId && !targetVariantId)) return null;
-  return {
-    target_id: targetId,
-    merchant_id: merchantId,
-    product_id: targetProductId || '',
-    product_ids: idCandidateSet(targetProductId, product.product_id, product.productId, product.id, member.product_id),
-    variant_id: targetVariantId || '',
-    variant_ids: idCandidateSet(targetVariantId, selectedVariant?.sku_id, selectedVariant?.skuId),
-    quantity: 1,
-    subtotal: priceAmount == null ? null : priceAmount,
-    currency,
-  };
-}
-
-async function resolveStoreDiscountEvidenceForOfferEntries(entries) {
-  const startedAt = Date.now();
-  const diagnostics = {
-    enabled: PDP_STORE_DISCOUNT_EVIDENCE_ENABLED,
-    result: 'skipped',
-    target_count: 0,
-    promotion_count: 0,
-    duration_ms: 0,
-  };
-  if (!PDP_STORE_DISCOUNT_EVIDENCE_ENABLED) {
-    diagnostics.reason = 'disabled';
-    return { evidenceByEntryKey: new Map(), diagnostics };
-  }
-  const targets = (Array.isArray(entries) ? entries : [])
-    .map((entry) => buildStoreDiscountTargetForOfferEntry(entry))
-    .filter(Boolean);
-  diagnostics.target_count = targets.length;
-  const merchantIds = Array.from(new Set(targets.map((target) => target.merchant_id).filter(Boolean)));
-  diagnostics.merchant_count = merchantIds.length;
-  if (!targets.length) {
-    diagnostics.reason = 'no_internal_targets';
-    diagnostics.duration_ms = Date.now() - startedAt;
-    return { evidenceByEntryKey: new Map(), diagnostics };
-  }
-
-  try {
-    const promotionsPromise = Promise.all(
-      merchantIds.map((merchantId) =>
-        getPromotionsForMerchant(merchantId).then((promotions) =>
-          (Array.isArray(promotions) ? promotions : []).map((promotion) => ({
-            ...promotion,
-            merchantId: promotion?.merchantId || merchantId,
-          })),
-        ),
-      ),
-    ).then((groups) => groups.flat());
-    promotionsPromise.catch(() => {});
-    const timeoutPromise = new Promise((resolve) => {
-      if (PDP_STORE_DISCOUNT_EVIDENCE_BUDGET_MS <= 0) return;
-      setTimeout(() => resolve({ __timed_out: true }), PDP_STORE_DISCOUNT_EVIDENCE_BUDGET_MS);
-    });
-    const promotions =
-      PDP_STORE_DISCOUNT_EVIDENCE_BUDGET_MS > 0
-        ? await Promise.race([promotionsPromise, timeoutPromise])
-        : await promotionsPromise;
-    if (promotions && promotions.__timed_out) {
-      diagnostics.result = 'timeout';
-      diagnostics.reason = 'promotion_metadata_budget_exceeded';
-      diagnostics.budget_ms = PDP_STORE_DISCOUNT_EVIDENCE_BUDGET_MS;
-      diagnostics.duration_ms = Date.now() - startedAt;
-      return { evidenceByEntryKey: new Map(), diagnostics };
-    }
-    const promoList = Array.isArray(promotions) ? promotions : [];
-    diagnostics.promotion_count = promoList.length;
-    const evidenceByTarget = resolveStoreDiscountEvidenceFromPromotionMetadata({
-      promotions: promoList,
-      targets,
-    });
-    const evidenceByEntryKey = new Map();
-    Object.entries(evidenceByTarget).forEach(([key, evidence]) => {
-      if (storeDiscountEvidenceHasOffers(evidence)) evidenceByEntryKey.set(key, evidence);
-    });
-    diagnostics.result = 'success';
-    diagnostics.attached_count = evidenceByEntryKey.size;
-    diagnostics.duration_ms = Date.now() - startedAt;
-    return { evidenceByEntryKey, diagnostics };
-  } catch (err) {
-    diagnostics.result = 'error';
-    diagnostics.reason = 'promotion_metadata_error';
-    diagnostics.message = String(err?.message || err).slice(0, 240);
-    diagnostics.duration_ms = Date.now() - startedAt;
-    return { evidenceByEntryKey: new Map(), diagnostics };
-  }
-}
-
-function mergeGeneratedStoreDiscountEvidence(savingsFields, generatedEvidence) {
-  const out = savingsFields && typeof savingsFields === 'object' ? { ...savingsFields } : {};
-  const existing = out.store_discount_evidence;
-  if (storeDiscountEvidenceHasOffers(existing)) {
-    if (!out.store_discount_summary) out.store_discount_summary = summarizeStoreDiscountEvidence(existing);
-    if (!out.store_discount_badges) out.store_discount_badges = storeDiscountBadges(existing);
-    return out;
-  }
-  if (storeDiscountEvidenceHasOffers(generatedEvidence)) {
-    out.store_discount_evidence = generatedEvidence;
-    out.store_discount_summary = summarizeStoreDiscountEvidence(generatedEvidence);
-    out.store_discount_badges = storeDiscountBadges(generatedEvidence);
-  }
-  return out;
 }
 
 function stripSavingsPresentationFields(source) {
@@ -11119,13 +10533,6 @@ async function buildOffersFromGroupMembers(args) {
   const products = offerEligibleFetched.map((entry) => entry.product).filter(Boolean);
   if (!products.length) return null;
 
-  const storeDiscountStartedAt = Date.now();
-  const {
-    evidenceByEntryKey: storeDiscountEvidenceByEntryKey,
-    diagnostics: storeDiscountDiagnostics,
-  } = await resolveStoreDiscountEvidenceForOfferEntries(offerEligibleFetched);
-  timings.store_discount_evidence = Date.now() - storeDiscountStartedAt;
-
   const resolvedProductGroupId =
     productGroupId ||
     (canonicalProductRef?.platform
@@ -11198,16 +10605,10 @@ async function buildOffersFromGroupMembers(args) {
         ? [Number(etaRaw[0]) || 0, Number(etaRaw[1]) || 0]
         : undefined;
     const offerVariants = buildOfferVariantsForPayload(p, currency);
-    const generatedStoreDiscountEvidence = storeDiscountEvidenceByEntryKey.get(
-      buildStoreDiscountTargetKey(member, p),
-    );
-    const savingsPresentationFields = mergeGeneratedStoreDiscountEvidence(
-      {
-        ...pickSavingsPresentationFields(p),
-        ...pickSavingsPresentationFields(selectedVariant),
-      },
-      generatedStoreDiscountEvidence,
-    );
+    const savingsPresentationFields = {
+      ...pickSavingsPresentationFields(p),
+      ...pickSavingsPresentationFields(selectedVariant),
+    };
     const commerceFacts = p.commerce_facts_v1 || p.commerce_facts || null;
     const agentSafeCommerceFacts =
       p.agent_safe_commerce_facts ||
@@ -11340,7 +10741,6 @@ async function buildOffersFromGroupMembers(args) {
             unresolved_members: unresolvedMembers,
             member_fetches: memberFetchDiagnostics,
             merchant_name_lookup_enabled: merchantProfileNameLookupEnabled,
-            store_discount_evidence: storeDiscountDiagnostics,
             deduped_offer_count: dedupedOfferCount,
             same_merchant_collapsed_offer_count: sameMerchantCollapsedOfferCount,
             transaction_held_offer_count: transactionHeldOfferCount,
@@ -32187,331 +31587,6 @@ function registerCommercePaymentWebhookRoute() {
   });
 }
 
-function isPromoActive(promo, nowTs) {
-  if (!promo || promo.deletedAt) return false;
-  // Soft-deleted via DB column maps to `deletedAt`; older callers may use snake_case.
-  if (promo.deleted_at) return false;
-  // startAt: null/missing/invalid means "already started" (open-start).
-  // `new Date(null)` returns epoch 0, which would let any future nowTs through anyway,
-  // but invalid date strings produce NaN — Number.isFinite guards both.
-  if (promo.startAt != null) {
-    const start = new Date(promo.startAt).getTime();
-    if (Number.isFinite(start) && nowTs < start) return false;
-  }
-  // endAt: null/missing means "no end" (open-ended). Previously `new Date(null)` → 0,
-  // which trivially failed `nowTs <= 0` and silently filtered out every open-ended
-  // promo (FREESHIP, COMBO_B, AUDIT_*). Treat null/undefined as "no upper bound".
-  if (promo.endAt != null) {
-    const end = new Date(promo.endAt).getTime();
-    if (Number.isFinite(end) && nowTs > end) return false;
-  }
-  return true;
-}
-
-function matchesScope(promo, product) {
-  const scope = promo.scope || {};
-  if (scope.global === true) return true;
-
-  // Shopify-imported discounts mirror the Shopify GraphQL discount shape verbatim:
-  //   scope.shopifyItems.__typename ∈ { AllDiscountItems, DiscountProducts, DiscountCollections, ... }
-  // The legacy `scope.productIds` / `scope.categoryIds` / `scope.brandIds` paths only fire for promos
-  // authored via /api/merchant/promotions. Treat both shapes uniformly here.
-  const shopifyItems =
-    scope.shopifyItems && typeof scope.shopifyItems === 'object' && !Array.isArray(scope.shopifyItems)
-      ? scope.shopifyItems
-      : null;
-  if (shopifyItems) {
-    const typename = String(shopifyItems.__typename || '').trim();
-    if (typename === 'AllDiscountItems' || shopifyItems.allItems === true) return true;
-  }
-
-  const pid = String(product.product_id || product.id || '');
-
-  // Legacy productIds path (now GID-tolerant — `gid://shopify/Product/X` matches numeric `X`).
-  if (Array.isArray(scope.productIds) && scope.productIds.length > 0 && pid) {
-    if (gidMatchesList(pid, scope.productIds)) return true;
-  }
-
-  if (shopifyItems && pid) {
-    const shopifyProductIdSources = [
-      shopifyItems.productIds,
-      shopifyItems.product_ids,
-      shopifyItems.productGids,
-      shopifyItems.product_gids,
-      shopifyItems.products && Array.isArray(shopifyItems.products.nodes)
-        ? shopifyItems.products.nodes
-        : null,
-    ];
-    for (const src of shopifyProductIdSources) {
-      if (Array.isArray(src) && src.length > 0 && gidMatchesList(pid, src)) return true;
-    }
-
-    const productVariantIds = [];
-    if (Array.isArray(product.variants)) {
-      for (const v of product.variants) {
-        if (!v || typeof v !== 'object') continue;
-        if (v.id) productVariantIds.push(v.id);
-        if (v.variant_id) productVariantIds.push(v.variant_id);
-        if (v.sku_id) productVariantIds.push(v.sku_id);
-      }
-    }
-    if (product.variant_id) productVariantIds.push(product.variant_id);
-    if (productVariantIds.length > 0) {
-      const shopifyVariantIdSources = [
-        shopifyItems.variantIds,
-        shopifyItems.variant_ids,
-        shopifyItems.variantGids,
-        shopifyItems.variant_gids,
-        shopifyItems.variants && Array.isArray(shopifyItems.variants.nodes)
-          ? shopifyItems.variants.nodes
-          : null,
-      ];
-      for (const src of shopifyVariantIdSources) {
-        if (!Array.isArray(src) || src.length === 0) continue;
-        for (const variantId of productVariantIds) {
-          if (gidMatchesList(variantId, src)) return true;
-        }
-      }
-    }
-  }
-
-  const category = (product.category || product.product_type || '').toLowerCase();
-  if (
-    Array.isArray(scope.categoryIds) &&
-    scope.categoryIds.some((c) => category && category.includes(String(c).toLowerCase()))
-  ) {
-    return true;
-  }
-
-  const brand = (product.vendor || product.brand || '').toLowerCase();
-  if (
-    Array.isArray(scope.brandIds) &&
-    scope.brandIds.some((b) => brand && brand.includes(String(b).toLowerCase()))
-  ) {
-    return true;
-  }
-
-  return false;
-}
-
-function allowedForCreator(promo, creatorId) {
-  if (!creatorId) {
-    // If not exposing to creators, skip; otherwise allow when creator not specified
-    return promo.exposeToCreators !== false;
-  }
-  if (promo.exposeToCreators === false) return false;
-  if (promo.allowedCreatorIds && promo.allowedCreatorIds.length > 0) {
-    return promo.allowedCreatorIds.includes(creatorId);
-  }
-  return true;
-}
-
-function findApplicablePromotionsForProduct(product, now, promotions, creatorId) {
-  const nowTs = now.getTime();
-  const productMerchant = String(product.merchant_id || product.merchantId || '');
-  return promotions.filter(
-    (promo) =>
-      isPromoActive(promo, nowTs) &&
-      // Merchant ownership: promo.merchantId is the owner, scope is only targeting.
-      (!promo.merchantId ||
-        !productMerchant ||
-        String(promo.merchantId) === productMerchant) &&
-      matchesScope(promo, product) &&
-      Array.isArray(promo.channels) &&
-      promo.channels.includes(CHANNEL_CREATOR) &&
-      allowedForCreator(promo, creatorId)
-  );
-}
-
-function computeUrgency(endAt) {
-  if (!endAt) return 'LOW';
-  const end = new Date(endAt).getTime();
-  const now = Date.now();
-  const diffMs = end - now;
-  if (diffMs <= 0) return 'LOW';
-  const diffHours = diffMs / (1000 * 60 * 60);
-  if (diffHours <= 1) return 'HIGH';
-  if (diffHours <= 24) return 'MEDIUM';
-  return 'LOW';
-}
-
-function promotionToDealPayload(promo, productPrice) {
-  const base = {
-    id: promo.id,
-    type: promo.type,
-    label: promo.humanReadableRule || promo.name || 'Deal',
-  };
-
-  if (promo.config?.kind === 'FLASH_SALE') {
-    const flashPrice = promo.config.flashPrice || null;
-    const originalPrice =
-      promo.config.originalPrice || productPrice || (productPrice === 0 ? 0 : null);
-    const discountPercent =
-      originalPrice && originalPrice > 0 && flashPrice
-        ? Math.round((1 - flashPrice / originalPrice) * 100)
-        : undefined;
-
-    return {
-      ...base,
-      discount_percent: discountPercent,
-      flash_price: flashPrice || undefined,
-      end_at: promo.endAt,
-      urgency_level: computeUrgency(promo.endAt),
-    };
-  }
-
-  if (promo.config?.kind === 'MULTI_BUY_DISCOUNT') {
-    return {
-      ...base,
-      discount_percent: promo.config.discountPercent,
-      threshold_quantity: promo.config.thresholdQuantity,
-      end_at: promo.endAt,
-      urgency_level: computeUrgency(promo.endAt),
-    };
-  }
-
-  if (promo.config?.kind === 'FREE_SHIPPING' || promo.type === 'FREE_SHIPPING') {
-    return {
-      ...base,
-      free_shipping: true,
-      min_subtotal: promo.config?.minSubtotal,
-      end_at: promo.endAt,
-      urgency_level: computeUrgency(promo.endAt),
-    };
-  }
-
-  return base;
-}
-
-function enrichProductsWithDeals(products, promotions, now = new Date(), creatorId = null) {
-  if (!Array.isArray(products) || !products.length) return products;
-  return products.map((product) => {
-    const applicablePromos = findApplicablePromotionsForProduct(
-      product,
-      now,
-      promotions,
-      creatorId
-    );
-    const allDealsRaw = applicablePromos.map((p) =>
-      promotionToDealPayload(p, product.price || product.price_cents || product.unit_price)
-    );
-    // Dedupe by visible label so a merchant who provisions multiple
-    // identically-labeled promos (e.g. several AUDIT runs of the same
-    // MULTI_BUY_DISCOUNT, or repeated FREE_SHIPPING entries) doesn't surface
-    // N copies of the same chip in `all_deals`. Preserves first-seen order;
-    // bestDeal selection below still operates on the deduped list and stays
-    // deterministic.
-    const seenLabels = new Set();
-    const allDeals = allDealsRaw.filter((deal) => {
-      const key = String(deal?.label || '').trim();
-      if (!key) return true;
-      if (seenLabels.has(key)) return false;
-      seenLabels.add(key);
-      return true;
-    });
-
-    let bestDeal = null;
-    if (allDeals.length) {
-      bestDeal = allDeals.reduce((best, current) => {
-        if (!best) return current;
-        const bestDiscount = best.discount_percent || 0;
-        const currentDiscount = current.discount_percent || 0;
-        if (currentDiscount > bestDiscount) return current;
-        if (currentDiscount === bestDiscount) {
-          const rank = { LOW: 0, MEDIUM: 1, HIGH: 2 };
-          const bestUrgency = rank[best.urgency_level || 'LOW'];
-          const currentUrgency = rank[current.urgency_level || 'LOW'];
-          return currentUrgency > bestUrgency ? current : best;
-        }
-        return best;
-      }, null);
-    }
-
-    return {
-      ...product,
-      best_deal: bestDeal || product.best_deal || null,
-      all_deals: allDeals.length ? allDeals : product.all_deals,
-    };
-  });
-}
-
-/**
- * Apply deal enrichment to various response shapes:
- * - { products: [...] }
- * - { groups: [{ products: [...] }]}
- * - { results: { key: [...] } }
- */
-function applyDealsToResponse(upstreamData, promotions, now = new Date(), creatorId = null) {
-  if (!upstreamData || !promotions || !promotions.length) {
-    return upstreamData;
-  }
-
-  const clone = JSON.parse(JSON.stringify(upstreamData));
-
-  // Flat products
-  if (Array.isArray(clone.products)) {
-    clone.products = enrichProductsWithDeals(clone.products, promotions, now, creatorId);
-  }
-
-  // groups: [{ products: [...] }]
-  if (Array.isArray(clone.groups)) {
-    clone.groups = clone.groups.map((g) => {
-      if (Array.isArray(g.products)) {
-        return { ...g, products: enrichProductsWithDeals(g.products, promotions, now, creatorId) };
-      }
-      return g;
-    });
-  }
-
-  // results: { key: [...] }
-  if (clone.results && typeof clone.results === 'object') {
-    const newResults = {};
-    for (const key of Object.keys(clone.results)) {
-      const arr = clone.results[key];
-      newResults[key] = Array.isArray(arr)
-        ? enrichProductsWithDeals(arr, promotions, now, creatorId)
-        : arr;
-    }
-    clone.results = newResults;
-  }
-
-  // data.products (nested)
-  if (clone.data && Array.isArray(clone.data.products)) {
-    clone.data.products = enrichProductsWithDeals(
-      clone.data.products,
-      promotions,
-      now,
-      creatorId
-    );
-  }
-
-  // Similar-products style payloads:
-  // { base_product_id, strategy_used, items: [{ product: {...}, best_deal, all_deals, ... }] }
-  if (Array.isArray(clone.items)) {
-    clone.items = clone.items.map((item) => {
-      if (!item || !item.product) return item;
-
-      const enrichedList = enrichProductsWithDeals(
-        [item.product],
-        promotions,
-        now,
-        creatorId
-      );
-      const enrichedProduct = enrichedList && enrichedList[0] ? enrichedList[0] : item.product;
-
-      return {
-        ...item,
-        product: enrichedProduct,
-        best_deal: enrichedProduct.best_deal || item.best_deal || null,
-        all_deals: enrichedProduct.all_deals || item.all_deals || [],
-      };
-    });
-  }
-
-  return clone;
-}
-
-// Helper: compute similar products (simple heuristic: price band, exclude ids)
 function pickSimilarProducts(products, baseProductId, limit = 8, excludeIds = []) {
   if (!Array.isArray(products)) return [];
   const excludes = new Set(excludeIds || []);
@@ -32557,259 +31632,6 @@ function deriveQueryFromProduct(product) {
   const desc = (product.description || '').trim();
   if (desc) return desc.slice(0, 60);
   return String(product.product_id || product.id || '').trim();
-}
-
-function computeHumanReadableRule(promo) {
-  if (promo.humanReadableRule) return promo.humanReadableRule;
-  if (promo.config?.kind === 'MULTI_BUY_DISCOUNT') {
-    const t = promo.config.thresholdQuantity;
-    const d = promo.config.discountPercent;
-    if (t && d) return `Buy ${t}, get ${d}% off`;
-    return 'Bundle & save';
-  }
-  if (promo.config?.kind === 'FLASH_SALE') {
-    const fp = promo.config.flashPrice;
-    if (fp) return `Flash deal`;
-    return 'Flash deal';
-  }
-  return promo.name || 'Deal';
-}
-
-// Look up which of the given productIds are NOT present in products_cache for this
-// merchant — so admins authoring a promo get a warning when they reference dead
-// Shopify product GIDs (e.g. left over from a previous store integration). Matches
-// GID-tolerantly: `gid://shopify/Product/X` is alive if either form is in the cache.
-async function findDeadScopeProductIds(merchantId, productIds) {
-  if (!merchantId || !Array.isArray(productIds) || productIds.length === 0) return [];
-  const candidateValues = new Set();
-  for (const id of productIds) {
-    for (const v of gidCandidateSet(id)) candidateValues.add(v);
-  }
-  if (candidateValues.size === 0) return [];
-  try {
-    const r = await query(
-      `SELECT platform_product_id FROM products_cache
-        WHERE merchant_id = $1
-          AND ${activeProductsCacheSourceWhere('products_cache')}
-          AND platform_product_id = ANY($2::text[])`,
-      [merchantId, Array.from(candidateValues)]
-    );
-    const found = new Set((r?.rows || []).map((row) => String(row.platform_product_id)));
-    const dead = [];
-    for (const id of productIds) {
-      let alive = false;
-      for (const v of gidCandidateSet(id)) {
-        if (found.has(v)) { alive = true; break; }
-      }
-      if (!alive) dead.push(id);
-    }
-    return dead;
-  } catch (err) {
-    logger.warn(
-      { err: err?.message || String(err), merchantId },
-      'findDeadScopeProductIds: products_cache lookup failed; skipping warning'
-    );
-    return [];
-  }
-}
-
-function sanitizePromotionForResponse(promo) {
-  if (!promo) return promo;
-  const scope = promo.scope || {};
-  return {
-    ...promo,
-    // Ensure merchantId is always present at root
-    merchantId:
-      promo.merchantId ||
-      promo.merchant_id ||
-      scope.merchantIds?.[0] ||
-      scope.merchant_ids?.[0] ||
-      null,
-    scope: {
-      productIds: scope.productIds || scope.product_ids || [],
-      categoryIds: scope.categoryIds || scope.category_ids || [],
-      brandIds: scope.brandIds || scope.brand_ids || [],
-      global: scope.global === true,
-    },
-  };
-}
-
-function computePromotionStatus(promo, nowTs) {
-  if (promo.deletedAt) return 'ENDED';
-  const start = new Date(promo.startAt).getTime();
-  const end = new Date(promo.endAt).getTime();
-  if (Number.isNaN(start) || Number.isNaN(end)) return 'UNKNOWN';
-  if (nowTs < start) return 'UPCOMING';
-  if (nowTs > end) return 'ENDED';
-  return 'ACTIVE';
-}
-
-// Promo types the infra quote engine actually APPLIES at quote time. Mirrors
-// pivota-backend routes/merchant_promotions_api.py QUOTE_APPLIED_MANUAL_PROMO_TYPES
-// (backend PR #1728): a manually created FLASH_SALE or FREE_SHIPPING would
-// validate, store, and DISPLAY — and then silently never change a price.
-// Shopify-native flash sales / free shipping are different: they apply inside
-// Shopify's own pricing and arrive via sync, not via this route.
-const QUOTE_APPLIED_MANUAL_PROMO_TYPES = new Set(['MULTI_BUY_DISCOUNT']);
-// Types we name in the refusal. Anything else keeps the generic
-// INVALID_PROMOTION path from validateAndNormalizePromotion.
-const MANUAL_PROMO_TYPES_NOT_APPLIED_AT_QUOTE = new Set(['FLASH_SALE', 'FREE_SHIPPING']);
-
-function requestedPromotionType(payload) {
-  const body = payload?.promotion ?? payload ?? {};
-  return body.type || body.config?.kind || body.config?.type || null;
-}
-
-// Returns the 400 body ({ error, message }) when a manual create/convert asks for a
-// promo type the quote engine will never apply, else null. `existingType` lets a
-// PATCH that round-trips an existing (Shopify-synced) FLASH_SALE promo through
-// unchanged — only converting INTO a non-applied type is refused. (The exemption
-// is written for both names, but only FLASH_SALE can actually use it:
-// validateAndNormalizePromotion's own allowlist below still rejects FREE_SHIPPING,
-// so a synced FREE_SHIPPING promo cannot be edited through this route at all.
-// Pre-existing, tracked separately — not something this gate introduced.)
-//
-// The message text is byte-identical to the backend gate's so merchants read the
-// same guidance whichever layer refuses. The ENVELOPE is not identical: this
-// returns {error, message} flat, while the backend's error middleware rewrites
-// its {code, message} detail into {error: {code: 'INVALID_REQUEST', details: …}}.
-// A client wanting the named code must read both shapes.
-function manualPromoTypeRejection(requestedType, existingType = null) {
-  if (!requestedType) return null;
-  if (QUOTE_APPLIED_MANUAL_PROMO_TYPES.has(requestedType)) return null;
-  if (!MANUAL_PROMO_TYPES_NOT_APPLIED_AT_QUOTE.has(requestedType)) return null;
-  if (existingType && requestedType === existingType) return null;
-  return {
-    error: 'PROMO_TYPE_NOT_APPLIED_AT_QUOTE',
-    message:
-      `Manual ${requestedType} promotions are not applied by the quote engine — ` +
-      'they would display to shoppers but never change a price. Create the ' +
-      'discount in Shopify instead (it applies via Shopify pricing and syncs ' +
-      'back automatically), or use MULTI_BUY_DISCOUNT.',
-  };
-}
-
-function validateAndNormalizePromotion(payload, existing = {}, { requireAll = false } = {}) {
-  const body = payload?.promotion ?? payload ?? {};
-  const merged = { ...existing, ...body };
-  const errors = [];
-
-  const type = merged.type || merged.config?.kind || merged.config?.type;
-  if (!type && requireAll) errors.push('type is required');
-  if (type && !['MULTI_BUY_DISCOUNT', 'FLASH_SALE'].includes(type)) {
-    errors.push('type must be MULTI_BUY_DISCOUNT or FLASH_SALE');
-  }
-
-  if (!merged.name && requireAll) errors.push('name is required');
-
-  const startTs = merged.startAt ? new Date(merged.startAt).getTime() : NaN;
-  const endTs = merged.endAt ? new Date(merged.endAt).getTime() : NaN;
-  if (requireAll && Number.isNaN(startTs)) errors.push('startAt is required and must be a date');
-  if (requireAll && Number.isNaN(endTs)) errors.push('endAt is required and must be a date');
-  if (!Number.isNaN(startTs) && !Number.isNaN(endTs) && endTs <= startTs) {
-    errors.push('endAt must be after startAt');
-  }
-
-  const channels = Array.isArray(merged.channels) ? merged.channels : [];
-  if (requireAll && channels.length === 0) {
-    errors.push('channels must be a non-empty array');
-  }
-
-  const merchantId =
-    merged.merchantId ||
-    merged.merchant_id ||
-    merged.scope?.merchantIds?.[0] ||
-    merged.scope?.merchant_ids?.[0] ||
-    null;
-  if (requireAll && !merchantId) {
-    errors.push('merchantId is required');
-  }
-
-  const scope = merged.scope || {};
-  // Expand productIds with their numeric tails when the input is a Shopify GID so
-  // that any verbatim-comparison consumer matches both forms. See utils/shopifyGid.js.
-  const normalizedScope = {
-    productIds: expandProductIdScope(scope.productIds || []),
-    categoryIds: scope.categoryIds || [],
-    brandIds: scope.brandIds || [],
-    global: scope.global === true,
-  };
-
-  const config = merged.config || {};
-  if (type === 'FLASH_SALE') {
-    const flashPrice = Number(config.flashPrice ?? merged.flashPrice ?? 0);
-    const originalPrice = Number(config.originalPrice ?? merged.originalPrice ?? 0);
-    if (requireAll && Number.isNaN(flashPrice)) errors.push('flashPrice must be a number');
-    if (requireAll && Number.isNaN(originalPrice)) errors.push('originalPrice must be a number');
-    merged.config = {
-      kind: 'FLASH_SALE',
-      flashPrice,
-      originalPrice,
-      ...(config.stockLimit !== undefined ? { stockLimit: config.stockLimit } : {}),
-    };
-  } else if (type === 'MULTI_BUY_DISCOUNT') {
-    const thresholdQuantity = Number(config.thresholdQuantity ?? merged.thresholdQuantity ?? 0);
-    const discountPercent = Number(config.discountPercent ?? merged.discountPercent ?? 0);
-    if (requireAll && (!thresholdQuantity || Number.isNaN(thresholdQuantity))) {
-      errors.push('thresholdQuantity must be provided for MULTI_BUY_DISCOUNT');
-    }
-    if (requireAll && (Number.isNaN(discountPercent) || discountPercent <= 0 || discountPercent > 100)) {
-      errors.push('discountPercent must be between 1 and 100');
-    }
-    merged.config = {
-      kind: 'MULTI_BUY_DISCOUNT',
-      thresholdQuantity,
-      discountPercent,
-    };
-  }
-
-  if (errors.length) {
-    return { error: errors.join('; ') };
-  }
-
-  const normalized = {
-    id: merged.id || merged.promotion_id || randomUUID(),
-    name: merged.name,
-    type,
-    description: merged.description || '',
-    startAt: merged.startAt,
-    endAt: merged.endAt,
-    merchantId: merchantId,
-    channels: channels.length ? channels : merged.channels || [],
-    scope: normalizedScope,
-    config: merged.config,
-    exposeToCreators: merged.exposeToCreators !== false,
-    allowedCreatorIds: merged.allowedCreatorIds || [],
-    humanReadableRule: '',
-    createdAt: merged.createdAt || new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-    deletedAt: merged.deletedAt || null,
-  };
-
-  normalized.humanReadableRule = computeHumanReadableRule(normalized);
-
-  return { promotion: normalized };
-}
-
-async function getActivePromotions(now = new Date(), creatorId = null) {
-  let promos = [];
-  try {
-    promos = await getAllPromotions();
-  } catch (err) {
-    logger.error({ err: err.message }, 'Failed to load promotions');
-    promos = [];
-  }
-
-  // Temporary: keep filtering logic simple and permissive so that
-  // promotions reliably apply while we iterate on console flows.
-  // Each promotion already carries merchantId and channels; matching
-  // to products is handled in findApplicablePromotionsForProduct.
-  return promos
-    .filter((p) => !p.deletedAt)
-    .map((p) => ({
-      ...p,
-      humanReadableRule: computeHumanReadableRule(p),
-    }));
 }
 
 const SELLABLE_PRODUCT_STATUS_VALUES = [
@@ -36291,292 +35113,11 @@ app.get('/api/services/bookings/:booking_id', requireBookingFlagOn, bookingsApi.
 app.post('/api/services/bookings/:booking_id/cancel', requireBookingFlagOn, bookingsApi.cancelBooking);
 app.post('/api/services/bookings/:booking_id/provider-action', requireBookingFlagOn, bookingsApi.providerAction);
 
-// Debug endpoint to inspect promotions configuration on the gateway. No secrets,
-// but the backend base URL + key-presence booleans are still deployment topology —
-// admin-gated like /debug/promotions. Reports the store's EFFECTIVE mode (after
-// defaulting and production-like degradation) instead of recomputing its own view,
-// so it can never disagree with what promotionStore actually does.
-app.get('/debug/promotions-config', requireAdmin, (req, res) => {
-  const promoBackendBase =
-    process.env.PROMOTIONS_BACKEND_BASE_URL || process.env.PIVOTA_API_BASE || '';
-  const promoAdminKeyPresent =
-    !!(process.env.PROMOTIONS_ADMIN_KEY || process.env.ADMIN_API_KEY);
-
-  res.json({
-    promoMode: PROMOTION_STORE_MODE,
-    promoBackendBase,
-    useRemotePromo: PROMOTION_STORE_USE_REMOTE,
-    promoAdminKeyPresent,
-  });
-});
-
 // Internal endpoint for the pivota-backend Agent Center. Auth is its own
 // X-Pivota-Internal-Key header (distinct from X-ADMIN-KEY) so service auth and
 // human-ops admin auth can rotate independently. See
 // src/internal/agentCenterLlmProbe.js for the full V1 contract.
 mountAgentCenterLlmProbe(app);
-
-// Debug endpoint: inspect the raw promotions as seen by the gateway.
-// Protected by the same admin key as /api/merchant/promotions.
-app.get('/debug/promotions', requireAdmin, async (req, res) => {
-  try {
-    const promos = await getAllPromotions();
-    res.json(promos);
-  } catch (err) {
-    logger.error({ err: err.message }, 'Failed to load promotions in debug endpoint');
-    res.status(500).json({ error: 'FAILED_TO_LOAD_PROMOTIONS', message: err.message });
-  }
-});
-
-// Health check for a single promotion's scope.productIds — for each ID, says
-// whether it exists in products_cache for the promo's merchant (in_cache),
-// is missing (dead), or is unparseable (invalid). Covers both the legacy
-// `scope.productIds` path and Shopify-imported `scope.shopifyItems.*` paths.
-app.get('/debug/promotions/:id/scope-health', requireAdmin, async (req, res) => {
-  try {
-    const promo = await getPromotionById(req.params.id);
-    if (!promo || promo.deletedAt) {
-      return res.status(404).json({ error: 'NOT_FOUND' });
-    }
-    const scope = promo.scope || {};
-
-    // Collect every productId reference across both scope shapes.
-    const inputIds = [];
-    if (Array.isArray(scope.productIds)) inputIds.push(...scope.productIds);
-    const si = scope.shopifyItems && typeof scope.shopifyItems === 'object' ? scope.shopifyItems : null;
-    if (si) {
-      if (Array.isArray(si.productIds)) inputIds.push(...si.productIds);
-      if (Array.isArray(si.product_ids)) inputIds.push(...si.product_ids);
-      if (Array.isArray(si.productGids)) inputIds.push(...si.productGids);
-      if (Array.isArray(si.product_gids)) inputIds.push(...si.product_gids);
-      if (si.products && Array.isArray(si.products.nodes)) {
-        for (const n of si.products.nodes) {
-          if (n && (n.id || n.gid)) inputIds.push(n.id || n.gid);
-        }
-      }
-    }
-
-    const uniqueInputIds = Array.from(new Set(inputIds.filter((x) => x != null && x !== '')));
-
-    let scopeKind = 'other';
-    if (scope.global === true) scopeKind = 'global';
-    else if (si && (si.allItems === true || String(si.__typename || '') === 'AllDiscountItems')) {
-      scopeKind = 'shopify_all_items';
-    } else if (uniqueInputIds.length > 0) {
-      scopeKind = si ? `shopify_${String(si.__typename || 'DiscountProducts')}` : 'productIds';
-    }
-
-    const merchantId = promo.merchantId || promo.merchant_id || null;
-    let perIdStatus = [];
-    let deadCount = 0;
-    if (uniqueInputIds.length > 0 && merchantId) {
-      const dead = await findDeadScopeProductIds(merchantId, uniqueInputIds);
-      const deadSet = new Set(dead);
-      deadCount = dead.length;
-      perIdStatus = uniqueInputIds.map((id) => ({
-        id: typeof id === 'string' ? id : JSON.stringify(id),
-        status: typeof id !== 'string' ? 'invalid' : (deadSet.has(id) ? 'dead' : 'in_cache'),
-      }));
-    } else if (uniqueInputIds.length > 0) {
-      perIdStatus = uniqueInputIds.map((id) => ({
-        id: typeof id === 'string' ? id : JSON.stringify(id),
-        status: 'unknown_no_merchant',
-      }));
-    }
-
-    return res.json({
-      promotion_id: promo.id,
-      promotion_name: promo.name || null,
-      merchant_id: merchantId,
-      scope_kind: scopeKind,
-      total_product_ids: uniqueInputIds.length,
-      in_cache_count: uniqueInputIds.length - deadCount,
-      dead_count: deadCount,
-      product_ids: perIdStatus,
-    });
-  } catch (err) {
-    logger.error(
-      { err: err?.message || String(err), promoId: req.params.id },
-      'scope-health check failed'
-    );
-    return res.status(500).json({ error: 'INTERNAL_ERROR' });
-  }
-});
-
-// ---------------- Merchant promotions admin API (v0, admin-key protected) ----------------
-
-app.get('/api/merchant/promotions', requireAdmin, async (req, res) => {
-  try {
-    const { status, type, channel, creatorId, search } = req.query;
-    const nowTs = Date.now();
-    const allPromos = await getAllPromotions();
-    const promotions = allPromos
-      .filter((p) => !p.deletedAt)
-      .filter((p) => {
-        if (type && p.type !== type) return false;
-        if (channel && (!Array.isArray(p.channels) || !p.channels.includes(channel))) return false;
-        if (creatorId) {
-          if (p.exposeToCreators === false) return false;
-          if (p.allowedCreatorIds?.length && !p.allowedCreatorIds.includes(creatorId))
-            return false;
-        }
-        if (search) {
-          const s = String(search).toLowerCase();
-          const name = (p.name || '').toLowerCase();
-          const desc = (p.description || '').toLowerCase();
-          if (!name.includes(s) && !desc.includes(s)) return false;
-        }
-        if (status) {
-          const currentStatus = computePromotionStatus(p, nowTs);
-          if (currentStatus !== status) return false;
-        }
-        return true;
-      })
-      .map((p) => ({
-        ...sanitizePromotionForResponse(p),
-        humanReadableRule: computeHumanReadableRule(p),
-        status: computePromotionStatus(p, nowTs),
-      }));
-
-    res.json({ promotions, total: promotions.length });
-  } catch (err) {
-    logger.error(
-      { err: err?.message || String(err) },
-      'Failed to list merchant promotions'
-    );
-    return res.status(502).json({ error: 'UPSTREAM_UNAVAILABLE' });
-  }
-});
-
-app.get('/api/merchant/promotions/:id', requireAdmin, async (req, res) => {
-  try {
-    const promo = await getPromotionById(req.params.id);
-    if (!promo || promo.deletedAt) {
-      return res.status(404).json({ error: 'NOT_FOUND' });
-    }
-    const nowTs = Date.now();
-    return res.json({
-      promotion: {
-        ...sanitizePromotionForResponse(promo),
-        humanReadableRule: computeHumanReadableRule(promo),
-        status: computePromotionStatus(promo, nowTs),
-      },
-    });
-  } catch (err) {
-    logger.error(
-      { err: err?.message || String(err), promoId: req.params.id },
-      'Failed to fetch merchant promotion'
-    );
-    return res.status(502).json({ error: 'UPSTREAM_UNAVAILABLE' });
-  }
-});
-
-app.post('/api/merchant/promotions', requireAdmin, async (req, res) => {
-  try {
-    // Checked BEFORE the generic validator so FLASH_SALE/FREE_SHIPPING get the
-    // named refusal instead of a generic INVALID_PROMOTION.
-    const typeRejection = manualPromoTypeRejection(requestedPromotionType(req.body));
-    if (typeRejection) {
-      return res.status(400).json(typeRejection);
-    }
-    const { promotion, error } = validateAndNormalizePromotion(req.body, {}, { requireAll: true });
-    if (error) {
-      return res.status(400).json({ error: 'INVALID_PROMOTION', message: error });
-    }
-    const nowTs = Date.now();
-    await upsertPromotion(promotion);
-    const deadProductIds = await findDeadScopeProductIds(
-      promotion.merchantId,
-      promotion.scope?.productIds || []
-    );
-    return res.status(201).json({
-      promotion: {
-        ...sanitizePromotionForResponse(promotion),
-        status: computePromotionStatus(promotion, nowTs),
-      },
-      ...(deadProductIds.length
-        ? { validation_warnings: { dead_product_ids: deadProductIds } }
-        : {}),
-    });
-  } catch (err) {
-    const { code, message } = extractUpstreamErrorCode(err);
-    const status = (err && err.response && err.response.status) || err?.status || 502;
-    logger.error(
-      { status, code, err: message || err?.message || String(err) },
-      'Failed to create merchant promotion'
-    );
-    return res.status(status).json({ error: code || 'UPSTREAM_UNAVAILABLE', message });
-  }
-});
-
-app.patch('/api/merchant/promotions/:id', requireAdmin, async (req, res) => {
-  try {
-    const existing = await getPromotionById(req.params.id);
-    if (!existing || existing.deletedAt) {
-      return res.status(404).json({ error: 'NOT_FOUND' });
-    }
-    // Editing an existing (Shopify-synced) FLASH_SALE stays allowed; only
-    // CONVERTING a promo into a type the quote engine never applies is refused.
-    const typeRejection = manualPromoTypeRejection(
-      requestedPromotionType(req.body),
-      // Same field precedence requestedPromotionType uses, so a promo whose type
-      // lives only in config cannot be refused on its own round-trip edit.
-      existing.type || existing.config?.kind || existing.config?.type || null
-    );
-    if (typeRejection) {
-      return res.status(400).json(typeRejection);
-    }
-    const { promotion, error } = validateAndNormalizePromotion(
-      { ...req.body, id: existing.id },
-      existing,
-      { requireAll: true }
-    );
-    if (error) {
-      return res.status(400).json({ error: 'INVALID_PROMOTION', message: error });
-    }
-    const nowTs = Date.now();
-    await upsertPromotion(promotion);
-    const deadProductIds = await findDeadScopeProductIds(
-      promotion.merchantId,
-      promotion.scope?.productIds || []
-    );
-    return res.json({
-      promotion: {
-        ...sanitizePromotionForResponse(promotion),
-        status: computePromotionStatus(promotion, nowTs),
-      },
-      ...(deadProductIds.length
-        ? { validation_warnings: { dead_product_ids: deadProductIds } }
-        : {}),
-    });
-  } catch (err) {
-    const { code, message } = extractUpstreamErrorCode(err);
-    const status = (err && err.response && err.response.status) || err?.status || 502;
-    logger.error(
-      { status, code, err: message || err?.message || String(err), promoId: req.params.id },
-      'Failed to update merchant promotion'
-    );
-    return res.status(status).json({ error: code || 'UPSTREAM_UNAVAILABLE', message });
-  }
-});
-
-app.delete('/api/merchant/promotions/:id', requireAdmin, async (req, res) => {
-  try {
-    const ok = await softDeletePromotion(req.params.id);
-    if (!ok) {
-      return res.status(404).json({ error: 'NOT_FOUND' });
-    }
-    return res.json({ ok: true });
-  } catch (err) {
-    const { code, message } = extractUpstreamErrorCode(err);
-    const status = (err && err.response && err.response.status) || err?.status || 502;
-    logger.error(
-      { status, code, err: message || err?.message || String(err), promoId: req.params.id },
-      'Failed to delete merchant promotion'
-    );
-    return res.status(status).json({ error: code || 'UPSTREAM_UNAVAILABLE', message });
-  }
-});
 
 // ---------------- Merchant risk ops API (v0, admin-key protected) ----------------
 
@@ -41413,8 +39954,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         ? withPolicyRaw
         : base;
 
-    const promotions = await getActivePromotions(now, creatorId);
-    const enriched = applyDealsToResponse(withPolicy, promotions, now, creatorId);
+    const enriched = withPolicy;
     return res.json(enriched);
   }
 
@@ -41541,19 +40081,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
   if (operation === 'get_discovery_feed') {
     try {
       const discoveryResponse = await getDiscoveryFeed(effectivePayload);
-      // Apply deal enrichment so consumer-facing surfaces (brand landing page,
-      // anonymous browse) include `best_deal` / `all_deals` on each product.
-      let enriched = discoveryResponse;
-      try {
-        const promotions = await getActivePromotions(now, creatorId);
-        enriched = applyDealsToResponse(discoveryResponse, promotions, now, creatorId);
-      } catch (enrichErr) {
-        logger.warn(
-          { err: enrichErr?.message || String(enrichErr), operation },
-          'get_discovery_feed deal enrichment failed; returning raw response',
-        );
-      }
-      return res.status(200).json(enriched);
+      return res.status(200).json(discoveryResponse);
     } catch (err) {
       if (err instanceof DiscoveryCatalogUnavailableError) {
         return res.status(200).json(buildDiscoveryUnavailableInvokeResponse(effectivePayload, err));
@@ -46155,8 +44683,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 ingredientIntentIds,
                 ingredientIntentDetected: true,
               });
-        const promotions = await getActivePromotions(now, creatorId);
-        return res.json(applyDealsToResponse(directResponse, promotions, now, creatorId));
+        return res.json(directResponse);
       }
       const earlyMerchantIdForBeauty = String(search.merchant_id || search.merchantId || '').trim();
       const earlyMerchantIdsRawForBeauty = search.merchant_ids || search.merchantIds;
@@ -46207,8 +44734,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             routeSearchQualityContractApplied ||
             String(directResponse?.status || '').toLowerCase() === 'failed'
           ) {
-            const promotions = await getActivePromotions(now, creatorId);
-            return res.json(applyDealsToResponse(directResponse, promotions, now, creatorId));
+            return res.json(directResponse);
           }
         } catch (err) {
           logger.warn(
@@ -46282,8 +44808,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           // there is no concrete query yet.
           const withPolicy = upstreamData;
 
-          const promotions = await getActivePromotions(now, creatorId);
-          const enriched = applyDealsToResponse(withPolicy, promotions, now, creatorId);
+          const enriched = withPolicy;
           if (cacheHit && creatorCacheCanShortCircuit) {
             return res.json(enriched);
           }
@@ -46360,8 +44885,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 })
               : upstreamData;
 
-            const promotions = await getActivePromotions(now, creatorId);
-            const enriched = applyDealsToResponse(withPolicy, promotions, now, creatorId);
+            const enriched = withPolicy;
             return res.json(enriched);
           }
           if (fromCache.products && fromCache.products.length > 0) {
@@ -46599,8 +45123,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                   rawUserQuery,
                 })
               : responseForPolicy;
-            const promotions = await getActivePromotions(now, creatorId);
-            const enriched = applyDealsToResponse(withPolicy, promotions, now, creatorId);
+            const enriched = withPolicy;
             return res.json(enriched);
           }
         } catch (err) {
@@ -46651,8 +45174,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             routeSearchQualityContractApplied ||
             isSearchQualityContractSafeEmptyResponse(directResponse)
           ) {
-            const promotions = await getActivePromotions(now, creatorId);
-            const enriched = applyDealsToResponse(directResponse, promotions, now, creatorId);
+            const enriched = directResponse;
             return res.json(enriched);
           }
           if (directResponse?.metadata?.canonical_path_executed) {
@@ -46683,8 +45205,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               telemetry: canonicalResult?.telemetry || {},
               querySource: 'canonical_chain_catalog_direct',
             });
-            const promotions = await getActivePromotions(now, creatorId);
-            const enriched = applyDealsToResponse(directResponse, promotions, now, creatorId);
+            const enriched = directResponse;
             return res.json(enriched);
           }
         } catch (err) {
@@ -46747,8 +45268,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 
           const withPolicy = upstreamData;
 
-          const promotions = await getActivePromotions(now, creatorId);
-          const enriched = applyDealsToResponse(withPolicy, promotions, now, creatorId);
+          const enriched = withPolicy;
           if (cacheHit) {
             return res.json(enriched);
           }
@@ -47403,8 +45923,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               cacheIrrelevantShouldUseEarlyDecision;
           }
 
-          const promotions = await getActivePromotions(now, creatorId);
-          const enriched = applyDealsToResponse(withPolicy, promotions, now, creatorId);
+          const enriched = withPolicy;
           if (
             effectiveCacheHit &&
             internalProductsAfterAnchor.length > 0 &&
@@ -47413,14 +45932,14 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             crossMerchantCacheProtectedResponse =
               withPolicyProducts.length > 0
                 ? enriched
-                : applyDealsToResponse(upstreamData, promotions, now, creatorId);
+                : upstreamData;
           }
           if (effectiveCacheHit) {
             const cacheReturnResponse =
               crossMerchantCacheProtectedResponse ||
               (withPolicyProducts.length > 0
                 ? enriched
-                : applyDealsToResponse(upstreamData, promotions, now, creatorId));
+                : upstreamData);
             const cacheClarification =
               cacheReturnResponse &&
               typeof cacheReturnResponse === 'object' &&
@@ -47762,12 +46281,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 resolverFallback.status < 300 &&
                 resolverFallback.usableCount > 0
               ) {
-                const resolverEnriched = applyDealsToResponse(
-                  resolverFallback.data,
-                  promotions,
-                  now,
-                  creatorId,
-                );
+                const resolverEnriched = resolverFallback.data;
                 const resolverClarification =
                   resolverEnriched &&
                   typeof resolverEnriched === 'object' &&
@@ -47895,12 +46409,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                   rawUserQuery: cacheQueryText,
                 })
               : strictEmptyBase;
-            const strictEmptyEnriched = applyDealsToResponse(
-              strictEmptyWithPolicy,
-              promotions,
-              now,
-              creatorId,
-            );
+            const strictEmptyEnriched = strictEmptyWithPolicy;
             const strictEmptyClarification =
               strictEmptyEnriched &&
               typeof strictEmptyEnriched === 'object' &&
@@ -48065,8 +46574,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	              offset: (page - 1) * limit,
 	            }),
 	          );
-	          const promotions = await getActivePromotions(now, creatorId);
-	          const enriched = applyDealsToResponse(identityHydratedData, promotions, now, creatorId);
+	          const enriched = identityHydratedData;
 	          if (cacheHit) {
 	            return res.json(enriched);
 	          }
@@ -48314,8 +46822,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             const lim = sim.limit || payload.limit || 9;
             const cached = await findSimilarCreatorFromCache(creatorId, productId, lim);
             if (cached && Array.isArray(cached.items) && cached.items.length > 0) {
-              const promotions = await getActivePromotions(now, creatorId);
-              const enriched = applyDealsToResponse(cached, promotions, now, creatorId);
+              const enriched = cached;
               return res.json(enriched);
             }
           } catch (err) {
@@ -51131,12 +49638,6 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       };
     }
 
-    // Instrumented: on a cold promotions cache this blocks on an HTTP fetch with its own timeout+retry
-    // (up to ~16s) and sat between two recorded stages, so it never showed up in the breakdown.
-    const promotionsStartedAt = Date.now();
-    const promotions = await getActivePromotions(now, creatorId);
-    recordFpmStage('promotions_hydrate', promotionsStartedAt);
-
     // Normalize submit_payment responses so frontends always see a unified
     // payment object with PSP + payment_action, regardless of PSP type.
     if (operation === 'submit_payment') {
@@ -51715,7 +50216,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       recordFpmStage('pdp_identity_rescue', pdpIdentityRescueStartedAt);
     }
 
-    let enriched = applyDealsToResponse(maybePolicy, promotions, now, creatorId);
+    let enriched = maybePolicy;
     const requestBodyContext =
       req?.body?.context &&
       typeof req.body.context === 'object' &&
@@ -52596,16 +51097,6 @@ module.exports._debug = {
   resolveBlockedCommerceMcpOperation,
   resolveCanonicalCategoryPathPrefixForQuery,
   isNonBeautyCanonicalCategoryPathPrefix,
-  // Contract with pivota-backend's manual-promo gate (PR #1728): the refusal
-  // code and message must stay byte-identical across layers so the portal shows
-  // the same guidance regardless of which layer rejects first. Exported so the
-  // message text is asserted directly, not inferred from a route fixture.
-  manualPromoTypeRejection,
-  matchesScope,
-  isPromoActive,
-  allowedForCreator,
-  findApplicablePromotionsForProduct,
-  enrichProductsWithDeals,
   buildOffersFromGroupMembers,
   fetchApprovedLiveIdentityGroupMembersForOffers,
   resolveCatalogProductRefFromPivotaSignature,
@@ -52696,9 +51187,6 @@ module.exports._debug = {
   buildCacheStageDiagnosticBundle,
   buildCacheStageSnapshot,
   buildOffersFromGroupMembers,
-  resolveStoreDiscountEvidenceFromPromotionMetadata,
-  summarizeStoreDiscountEvidence,
-  storeDiscountBadges,
   resolvePdpSimilarCacheBypass,
   buildPdpSimilarFetchArgs,
   resolvePdpSimilarCatalogFetchLimit,
