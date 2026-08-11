@@ -127,7 +127,16 @@ async function getJob(jobId) {
   const okDb = await ensureDbReady();
   if (!okDb) return mem.get(jobId) || null;
 
-  const res = await query('SELECT * FROM look_replicator_jobs WHERE job_id = $1', [jobId]);
+  let res;
+  try {
+    res = await query('SELECT * FROM look_replicator_jobs WHERE job_id = $1', [jobId]);
+  } catch (err) {
+    // job_id is a UUID column, so Postgres rejects a malformed id at bind time
+    // (22P02) before it can match anything. That is a lookup miss, not a server
+    // failure. (share_id is TEXT, so getShare has no equivalent hazard.)
+    if (err?.code === '22P02') return mem.get(jobId) || null;
+    throw err;
+  }
   if (!res.rows || res.rows.length === 0) return mem.get(jobId) || null;
   return normalizeRow(res.rows[0]);
 }
