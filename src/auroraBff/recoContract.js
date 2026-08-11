@@ -94,20 +94,37 @@ function applyVerifiedCandidateRestoreToRecoPayload(payload, restoredRecommendat
     ? { ...nextPayload.recommendation_meta }
     : {};
 
-  delete restoredRecommendationMeta.primary_failure_reason;
-  delete restoredRecommendationMeta.telemetry_failure_reason;
-  delete restoredRecommendationMeta.failure_class;
-  delete restoredRecommendationMeta.effective_failure_class;
-  delete restoredRecommendationMeta.failure_origin;
-  delete restoredRecommendationMeta.surface_reason;
-  delete restoredRecommendationMeta.products_empty_reason;
-  delete restoredRecommendationMeta.catalog_skip_reason;
-  delete restoredRecommendationMeta.upstream_status;
-  delete restoredRecommendationMeta.weak_viable_pool;
-  delete restoredRecommendationMeta.same_family_success_threshold_met;
-  delete restoredRecommendationMeta.overall_target_fidelity_satisfied;
-  delete restoredRecommendationMeta.selected_candidate_count;
-  delete restoredRecommendationMeta.candidate_pool_signature;
+  // Fabrication-belt F4 (2026-08-11): the restore path used to DELETE the
+  // original failure telemetry outright — dashboards aggregating these fields
+  // were fed a scrubbed history. The restore still supersedes the failure (the
+  // buyer gets grounded recommendations), but the original context now travels
+  // under `restored_from_failure_context` instead of vanishing.
+  const RESTORE_SUPERSEDED_FIELDS = [
+    'primary_failure_reason',
+    'telemetry_failure_reason',
+    'failure_class',
+    'effective_failure_class',
+    'failure_origin',
+    'surface_reason',
+    'products_empty_reason',
+    'catalog_skip_reason',
+    'upstream_status',
+    'weak_viable_pool',
+    'same_family_success_threshold_met',
+    'overall_target_fidelity_satisfied',
+    'selected_candidate_count',
+    'candidate_pool_signature',
+  ];
+  const supersededContext = {};
+  for (const field of RESTORE_SUPERSEDED_FIELDS) {
+    if (field in restoredRecommendationMeta) {
+      supersededContext[field] = restoredRecommendationMeta[field];
+      delete restoredRecommendationMeta[field];
+    }
+  }
+  if (Object.keys(supersededContext).length > 0) {
+    restoredRecommendationMeta.restored_from_failure_context = supersededContext;
+  }
 
   nextPayload.source = 'catalog_grounded_v1';
   nextPayload.recommendations = restored;
@@ -116,10 +133,12 @@ function applyVerifiedCandidateRestoreToRecoPayload(payload, restoredRecommendat
   nextPayload.ungrounded_count = 0;
   nextPayload.recommendation_confidence_level =
     pickFirstString(nextPayload.recommendation_confidence_level, 'medium') || 'medium';
+  // F4: never invent a precise-looking score. If nothing computed one, say so
+  // with null (legacyChatRecoFinalize already defaults its view to null).
   nextPayload.recommendation_confidence_score =
     Number.isFinite(Number(nextPayload.recommendation_confidence_score))
       ? Number(nextPayload.recommendation_confidence_score)
-      : 0.61;
+      : null;
   nextPayload.recommendation_meta = {
     ...restoredRecommendationMeta,
     source_mode: 'catalog_grounded',
