@@ -37550,8 +37550,12 @@ function buildConfidenceNoticeCardPayload({
       .map((value) => sanitizeRecoClientVisibleToken(value, { allowDefault: true }))
       .filter(Boolean)
     : [];
-  const score = Number(confidence && confidence.score);
-  const level = String(confidence && confidence.level || '').trim().toLowerCase() || confidenceLevelFromScoreV1(score);
+  // F4: Number(null) === 0 — an uncomputed score must stay null in the
+  // client-visible card, never become an explicit rock-bottom 0.
+  const rawScore = confidence != null ? confidence.score : null;
+  const score = rawScore != null && Number.isFinite(Number(rawScore)) ? Number(rawScore) : null;
+  const level = String(confidence && confidence.level || '').trim().toLowerCase()
+    || (score != null ? confidenceLevelFromScoreV1(score) : 'low');
   const normalizedReason = sanitizeRecoClientVisibleToken(reason, { allowDefault: true }) || 'default';
   const messageByReason = {
     artifact_missing:
@@ -37646,7 +37650,7 @@ function buildConfidenceNoticeCardPayload({
     reason: normalizedReason,
     severity,
     confidence: {
-      score: Number.isFinite(score) ? Math.max(0, Math.min(1, score)) : 0,
+      score: score != null ? Math.max(0, Math.min(1, score)) : null,
       level,
       rationale,
     },

@@ -11,6 +11,11 @@
  * (envelopeRequiresConservativeRecoGuard, the conservative-fallback confidence
  * picker) are null-guarded so Number(null) === 0 cannot turn an ABSENT score
  * into an explicit rock-bottom one.
+ *
+ * Same class, pre-existing: buildConfidenceNoticeCardPayload stamped the
+ * client-visible confidence_notice card with score: 0 whenever the incoming
+ * node had a null score or no score at all. The Aurora client reads only
+ * severity/message/details/actions from this payload, so null is contract-safe.
  */
 
 const test = require('node:test');
@@ -195,6 +200,54 @@ test('conservative fallback notice: null score defers to the real confidence nod
   const notice = (envelope.cards || []).find((card) => card.type === 'confidence_notice');
   assert.ok(notice, 'guard must append a confidence notice when all recommendations are filtered');
   assert.equal(notice.payload.confidence.score, 0.55);
+});
+
+test('confidence notice card: a null score stays null (Number(null) === 0 trap)', () => {
+  const payload = __internal.buildConfidenceNoticeCardPayload({
+    language: 'EN',
+    reason: 'low_confidence',
+    confidence: { score: null, level: 'low', rationale: ['photo_quality'] },
+  });
+  assert.equal(payload.confidence.score, null);
+  assert.equal(payload.confidence.level, 'low');
+});
+
+test('confidence notice card: a level-only confidence node does not grow an invented score', () => {
+  const payload = __internal.buildConfidenceNoticeCardPayload({
+    language: 'EN',
+    reason: 'weak_viable_pool',
+    confidence: { level: 'medium' },
+  });
+  assert.equal(payload.confidence.score, null);
+  assert.equal(payload.confidence.level, 'medium');
+});
+
+test('confidence notice card: no confidence node -> score null, conservative low level', () => {
+  const payload = __internal.buildConfidenceNoticeCardPayload({
+    language: 'EN',
+    reason: 'artifact_missing',
+  });
+  assert.equal(payload.confidence.score, null);
+  assert.equal(payload.confidence.level, 'low');
+});
+
+test('confidence notice card: a real computed score is preserved and still derives the level', () => {
+  const payload = __internal.buildConfidenceNoticeCardPayload({
+    language: 'EN',
+    reason: 'low_confidence',
+    confidence: { score: 0.55 },
+  });
+  assert.equal(payload.confidence.score, 0.55);
+  assert.equal(payload.confidence.level, 'medium');
+});
+
+test('confidence notice card: an explicit computed 0 is a real value, not nulled', () => {
+  const payload = __internal.buildConfidenceNoticeCardPayload({
+    language: 'EN',
+    reason: 'low_confidence',
+    confidence: { score: 0, level: 'low' },
+  });
+  assert.equal(payload.confidence.score, 0);
 });
 
 test('no writer ships a numeric literal recommendation_confidence_score', () => {
