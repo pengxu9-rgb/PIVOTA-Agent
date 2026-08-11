@@ -114,21 +114,28 @@ function stripProductPrefix(ref) {
 
 // Cursor-paginated: the rows carry full anchor/candidate snapshots, and a
 // single unbounded SELECT of the whole backlog gets the connection dropped by
-// the Railway public proxy (and would balloon memory in the cron). Keyset
-// pagination on (expires_at, id) matches the ORDER BY, so batches are exact.
+// the Railway public proxy. Keyset pagination on (expires_at, id) matches the
+// ORDER BY, so batches are exact.
+//
+// Paging alone does NOT bound memory — see iterateExpiringAiApprovedRowBatches.
 const SELECT_BATCH_SIZE = 500;
 
-async function loadExpiringAiApprovedRows({
+// Yields one batch at a time and retains nothing. The snapshot columns are why
+// this has to stream rather than narrow: anchor_snapshot and candidate_snapshot
+// are full product blobs that getRelationshipEdgeServingSuppressionReasons
+// reads (titles and brands), so they cannot be dropped from the SELECT — the
+// only lever left is to never hold more than one batch of them at once.
+async function* iterateExpiringAiApprovedRowBatches({
   queryFn = query,
   windowDays = DEFAULT_WINDOW_DAYS,
   market = '',
   limit = 0,
   batchSize = SELECT_BATCH_SIZE,
 } = {}) {
-  const rows = [];
   let cursor = null;
+  let seen = 0;
   for (;;) {
-    const take = limit > 0 ? Math.min(batchSize, limit - rows.length) : batchSize;
+    const take = limit > 0 ? Math.min(batchSize, limit - seen) : batchSize;
     if (take <= 0) break;
     const params = [windowDays];
     const where = [
@@ -160,12 +167,54 @@ async function loadExpiringAiApprovedRows({
       params,
     );
     const batch = Array.isArray(res && res.rows) ? res.rows : [];
-    rows.push(...batch);
+    if (batch.length) {
+      seen += batch.length;
+      yield batch;
+    }
     if (batch.length < take) break;
     const last = batch[batch.length - 1];
     cursor = { expiresAt: last.expires_at, id: last.id };
   }
+}
+
+// Materializes the whole backlog. Kept for tests and bounded ad-hoc use — do
+// NOT put it on the cron path: retaining every row is exactly what produced the
+// 4GB V8 heap OOM in the 2026-08-11T10:37Z production run. runRenewal streams.
+async function loadExpiringAiApprovedRows(options = {}) {
+  const rows = [];
+  for await (const batch of iterateExpiringAiApprovedRowBatches(options)) {
+    rows.push(...batch);
+  }
   return rows;
+}
+
+// Per-batch evaluations fold into one report. Only ids and counters survive a
+// batch; the rows themselves are garbage as soon as the batch is folded.
+function createRenewalTally() {
+  return {
+    scannedRows: 0,
+    renewableIds: [],
+    skipped: {
+      suppressed: 0,
+      anchor_unresolvable: 0,
+      candidate_unresolvable: 0,
+      age_capped: 0,
+    },
+    suppressionReasons: {},
+  };
+}
+
+function foldRenewalBatch(tally, batchLength, evaluation = {}) {
+  const { renewableIds = [], skipped = {}, suppressionReasons = {} } = evaluation;
+  tally.scannedRows += batchLength;
+  for (const id of renewableIds) tally.renewableIds.push(id);
+  for (const key of Object.keys(tally.skipped)) {
+    tally.skipped[key] += Number(skipped[key] || 0);
+  }
+  for (const [reason, count] of Object.entries(suppressionReasons)) {
+    tally.suppressionReasons[reason] = Number(tally.suppressionReasons[reason] || 0) + Number(count || 0);
+  }
+  return tally;
 }
 
 // One union set of every id form edges are anchored on in this codebase (see
@@ -343,19 +392,35 @@ async function runRenewal({
   maxAgeDays = DEFAULT_MAX_AGE_DAYS,
   market = '',
   limit = 0,
+  batchSize = SELECT_BATCH_SIZE,
   operator = DEFAULT_OPERATOR,
   queryFn = query,
   suppressionFn = getRelationshipEdgeServingSuppressionReasons,
   generatedAt = new Date().toISOString(),
 } = {}) {
-  const rows = await loadExpiringAiApprovedRows({ queryFn, windowDays, market, limit });
+  // Ref set first: it is needed to evaluate the very first batch, and loading
+  // it up front keeps the streaming loop below free of per-batch setup.
   const resolvableRefs = await loadResolvableRefSet({ queryFn });
   const nowMs = new Date(generatedAt).getTime() || Date.now();
-  const { renewableIds, skipped, suppressionReasons } = evaluateRenewalCandidates(rows, resolvableRefs, {
-    suppressionFn,
-    maxAgeDays,
-    nowMs,
-  });
+
+  // Stream. Every row carries two full product snapshots, so holding the whole
+  // expiring backlog is what OOMed this step in production; only the id list
+  // and the counters cross a batch boundary here.
+  //
+  // READS MUST ALL FINISH BEFORE THE FIRST WRITE. applyRenewals sets
+  // expires_at = now() + interval, which moves a renewed row FORWARD past the
+  // (expires_at, id) keyset cursor — applying per batch mid-pagination would
+  // re-surface rows this run already processed. Do not "optimize" the apply
+  // into the loop.
+  const tally = createRenewalTally();
+  for await (const batch of iterateExpiringAiApprovedRowBatches({ queryFn, windowDays, market, limit, batchSize })) {
+    foldRenewalBatch(tally, batch.length, evaluateRenewalCandidates(batch, resolvableRefs, {
+      suppressionFn,
+      maxAgeDays,
+      nowMs,
+    }));
+  }
+  const { renewableIds, skipped, suppressionReasons } = tally;
 
   let renewed = 0;
   if (apply && renewableIds.length) {
@@ -374,7 +439,7 @@ async function runRenewal({
     window_days: windowDays,
     max_age_days: maxAgeDays,
     market: market || 'all',
-    scanned_rows: rows.length,
+    scanned_rows: tally.scannedRows,
     renewable_count: renewableIds.length,
     renewed_count: renewed,
     applied_count: renewed,
@@ -418,6 +483,7 @@ module.exports = {
   DEFAULT_WINDOW_DAYS,
   applyRenewals,
   evaluateRenewalCandidates,
+  iterateExpiringAiApprovedRowBatches,
   loadExpiringAiApprovedRows,
   loadResolvableRefSet,
   parseArgs,
