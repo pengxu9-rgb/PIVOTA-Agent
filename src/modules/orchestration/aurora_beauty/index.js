@@ -167,10 +167,6 @@ function createAuroraBeautyOrchestrationRuntime(deps = {}) {
     typeof deps.applyFindProductsMultiPolicyIfNeeded === 'function'
       ? deps.applyFindProductsMultiPolicyIfNeeded
       : ({ response }) => response;
-  const applyDealsToResponseImpl =
-    typeof deps.applyDealsToResponse === 'function'
-      ? deps.applyDealsToResponse
-      : (response) => response;
   const shouldAttemptCacheMissResolverFallbackImpl =
     typeof deps.shouldAttemptCacheMissResolverFallback === 'function'
       ? deps.shouldAttemptCacheMissResolverFallback
@@ -1816,12 +1812,7 @@ function createAuroraBeautyOrchestrationRuntime(deps = {}) {
       rawUserQuery,
       responseMetadata: strictEmptyBase?.metadata,
     });
-    const strictEmptyEnriched = applyDealsToResponseImpl(
-      strictEmptyWithPolicy,
-      promotions,
-      now,
-      creatorId,
-    );
+    const strictEmptyEnriched = strictEmptyWithPolicy;
     const strictEmptyClarification =
       strictEmptyEnriched &&
       typeof strictEmptyEnriched === 'object' &&

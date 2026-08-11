@@ -260,15 +260,6 @@ describe('Commerce resolution facade', () => {
 
   test('adopted resolver fallback response shaping preserves clarification and clarify final decision', () => {
     const runtime = createCommerceResolutionRuntime({
-      applyDealsToResponse(response) {
-        return {
-          ...response,
-          metadata: {
-            ...(response.metadata || {}),
-            deals_applied: true,
-          },
-        };
-      },
     });
 
     expect(
@@ -293,7 +284,6 @@ describe('Commerce resolution facade', () => {
         },
         metadata: {
           query_source: 'agent_products_resolver_fallback',
-          deals_applied: true,
         },
       },
       clarification: {
@@ -304,11 +294,7 @@ describe('Commerce resolution facade', () => {
   });
 
   test('adopted resolver fallback response shaping returns resolver_returned when no clarification exists', () => {
-    const runtime = createCommerceResolutionRuntime({
-      applyDealsToResponse(response) {
-        return response;
-      },
-    });
+    const runtime = createCommerceResolutionRuntime({});
 
     expect(
       runtime.shapeAdoptedResolverFallbackResponse({
@@ -383,15 +369,6 @@ describe('Commerce resolution facade', () => {
 
   test('cache-miss resolver diagnosed response builds route health and search trace through execution facade', () => {
     const runtime = createCommerceResolutionRuntime({
-      applyDealsToResponse(response) {
-        return {
-          ...response,
-          metadata: {
-            ...(response.metadata || {}),
-            deals_applied: true,
-          },
-        };
-      },
       buildSearchRouteHealth(routeHealth) {
         return {
           ...routeHealth,
@@ -446,7 +423,6 @@ describe('Commerce resolution facade', () => {
         products: [{ id: 'p1' }],
         metadata: {
           query_source: 'agent_products_resolver_fallback',
-          deals_applied: true,
         },
         route_health: {
           primaryPathUsed: 'resolver_stage',

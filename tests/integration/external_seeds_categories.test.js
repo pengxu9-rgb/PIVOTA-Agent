@@ -65,10 +65,6 @@ describe('external seed products in creator categories', () => {
       getTaxonomyView: async () => taxonomy,
     }));
 
-    jest.doMock('../../src/promotionStore', () => ({
-      getAllPromotions: async () => [],
-    }));
-
     jest.doMock('../../src/db', () => ({
       query: async (sql) => {
         const text = String(sql || '');

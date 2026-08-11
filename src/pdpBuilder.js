@@ -137,7 +137,6 @@ const SAVINGS_PRESENTATION_FIELDS = [
   'payment_offer_summary',
   'payment_offer_badges',
   'payment_pricing',
-  'store_discount_evidence',
   'store_discount_summary',
   'store_discount_badges',
   'discount_evidence',

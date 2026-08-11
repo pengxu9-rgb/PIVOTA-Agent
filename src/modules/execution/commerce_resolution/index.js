@@ -148,10 +148,6 @@ function createCommerceResolutionRuntime(deps = {}) {
     typeof deps.hasStrictPetHarnessCatalogSignal === 'function'
       ? deps.hasStrictPetHarnessCatalogSignal
       : () => false;
-  const applyDealsToResponseImpl =
-    typeof deps.applyDealsToResponse === 'function'
-      ? deps.applyDealsToResponse
-      : (response) => response;
   const isUpstreamQuotaExhaustedImpl =
     typeof deps.isUpstreamQuotaExhausted === 'function'
       ? deps.isUpstreamQuotaExhausted
@@ -1195,7 +1191,7 @@ function createCommerceResolutionRuntime(deps = {}) {
     now,
     creatorId,
   } = {}) {
-    const response = applyDealsToResponseImpl(result?.data, promotions, now, creatorId);
+    const response = result?.data;
     const clarification = extractResolverFallbackClarification(response);
     return {
       response,
