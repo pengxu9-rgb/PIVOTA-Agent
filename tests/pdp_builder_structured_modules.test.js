@@ -2604,8 +2604,10 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
     expect(payload.product.category_kind).toBe('generic');
   });
 
-  test('overlays sample fashion_meta for a known sample product_id', () => {
-    const payload = buildPdpPayload({
+  test('deleted sample_* demo ids get NO fabricated overlay (fabrication-belt F3)', () => {
+    // These ids used to receive hand-written demo meta (fictional garments, a
+    // warranty upsell). The curated registry forbids sample_* keys outright.
+    const fashion = buildPdpPayload({
       product: {
         product_id: 'sample_fashion_lingerie_001',
         merchant_id: 'm_sample',
@@ -2615,15 +2617,11 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
       relatedProducts: [],
       entryPoint: 'agent',
     });
-    expect(payload.product.category_kind).toBe('fashion');
-    expect(payload.product.fashion_meta).toBeDefined();
-    expect(payload.product.fashion_meta.material).toMatch(/nylon/i);
-    expect(payload.product.fashion_meta.size_fit_chart.rows.length).toBeGreaterThan(0);
-    expect(payload.product.fashion_meta.styling_pairings.length).toBeGreaterThan(0);
-  });
+    // category_kind may still classify as fashion via title heuristics — that is
+    // inference, not fabrication. The invariant is: no hand-written meta serves.
+    expect(fashion.product.fashion_meta).toBeUndefined();
 
-  test('overlays sample electronics_meta for a known sample product_id', () => {
-    const payload = buildPdpPayload({
+    const electronics = buildPdpPayload({
       product: {
         product_id: 'sample_electronics_macbook_air_m3',
         merchant_id: 'm_sample',
@@ -2633,29 +2631,26 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
       relatedProducts: [],
       entryPoint: 'agent',
     });
-    expect(payload.product.category_kind).toBe('electronics');
-    expect(payload.product.electronics_meta).toBeDefined();
-    expect(payload.product.electronics_meta.configurator_groups.length).toBeGreaterThan(0);
-    expect(payload.product.electronics_meta.in_box).toContain('MacBook Air');
+    expect(electronics.product.electronics_meta).toBeUndefined();
   });
 
-  test('upstream fashion_meta wins over the sample overlay', () => {
+  test('upstream electronics_meta wins over the curated overlay', () => {
     const payload = buildPdpPayload({
       product: {
-        product_id: 'sample_fashion_lingerie_001', // matches an overlay key
-        merchant_id: 'm_sample',
-        title: 'Sample',
-        fashion_meta: {
-          material: 'CUSTOM upstream material', // upstream override
+        product_id: 'sig_c08b9e75f8c297dbe23795f2b22d1214', // matches the curated key
+        merchant_id: 'external_seed',
+        title: 'WH-1000XM5',
+        electronics_meta: {
+          in_box: ['CUSTOM upstream contents'], // upstream override
         },
-        variants: [{ id: 'v_m', title: 'M', price: { amount: 28, currency: 'USD' } }],
+        variants: [{ id: 'v_black', title: 'Black', price: { amount: 399, currency: 'USD' } }],
       },
       relatedProducts: [],
       entryPoint: 'agent',
     });
-    expect(payload.product.fashion_meta.material).toBe('CUSTOM upstream material');
-    // Upstream-only field set; overlay-only fields (e.g. size_fit_chart) are NOT merged.
-    expect(payload.product.fashion_meta.size_fit_chart).toBeUndefined();
+    expect(payload.product.electronics_meta.in_box).toEqual(['CUSTOM upstream contents']);
+    // Upstream-only field set; curated-only fields (e.g. spec_groups) are NOT merged.
+    expect(payload.product.electronics_meta.spec_groups).toBeUndefined();
   });
 
   test('overlays Sony WH-1000XM5 manufacturer-spec electronics_meta on the real sig', () => {
