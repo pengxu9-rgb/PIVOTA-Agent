@@ -144,3 +144,220 @@ describe('buildCatalogIdentityIndex (injected query)', () => {
     expect(r.match.content_key).toBe('ck_dtc');
   });
 });
+
+/* Pack-count guard. titleCore strips "10 sheets" the same way it strips "100ml", which
+ * is right for matching — but a count is a PACK SIZE, not a cosmetic variant. Measured
+ * on prod 2026-08-08: of the 51 folds reconcile-retailer-offers-into-d2c.cjs applied on
+ * 2026-07-12, exactly one put two different products on one content_key this way, and
+ * therefore on one index_pipeline_state row (a PRIMARY KEY). Replaying this guard over
+ * all 51 blocks that one and allows the other 50. */
+describe('packCounts / packCountMismatch', () => {
+  test('reads counts in the spellings real listings use', () => {
+    expect(m.packCounts('Sheet Mask - 1 ct')).toEqual([1]);
+    expect(m.packCounts('Sheet Mask 10 Sheets')).toEqual([10]);
+    expect(m.packCounts('Cotton Pads 60 pads')).toEqual([60]);
+    expect(m.packCounts('Ampoule 30 capsules')).toEqual([30]);
+    expect(m.packCounts('Serum 3-pack')).toEqual([3]);
+    expect(m.packCounts('Masks pack of 5')).toEqual([5]);
+  });
+
+  test('a title with no count states none — silence, not zero', () => {
+    expect(m.packCounts('Advanced Snail Mucin Power Essence')).toEqual([]);
+    expect(m.packCounts('Snail Essence 100ml')).toEqual([]); // volume is not a count
+    expect(m.packCounts('')).toEqual([]);
+  });
+
+  test('BLOCKS when both sides state a count and they disagree', () => {
+    // The exact prod case, un-folded 2026-08-08.
+    expect(m.packCountMismatch(
+      'Advanced Snail Mucin Power Sheet Mask - 1 ct',
+      'Advanced Snail Mucin Power Sheet Mask 10 Sheets',
+    )).toBe(true);
+  });
+
+  test('ALLOWS when only one side states a count — silence is not disagreement', () => {
+    // 13 of the 51 measured folds were this shape: the retailer states the pack, the
+    // brand's own site does not. Those folds are correct and must keep working.
+    expect(m.packCountMismatch('Sheet Mask 10 Sheets', 'Sheet Mask')).toBe(false);
+    expect(m.packCountMismatch('Sheet Mask', 'Sheet Mask 10 Sheets')).toBe(false);
+  });
+
+  test('counts are compared as a SET, not in title order', () => {
+    // A kit can state two counts, and two listings can state them in either order.
+    // Without sorting, an order flip reads as a mismatch and blocks a correct fold.
+    expect(m.packCounts('Recovery Kit 10 sheets 2 pads')).toEqual([2, 10]);
+    expect(m.packCounts('Recovery Kit 2 pads 10 sheets')).toEqual([2, 10]);
+    expect(m.packCountMismatch('Recovery Kit 10 sheets 2 pads', 'Recovery Kit 2 pads 10 sheets')).toBe(false);
+    // ...but a genuinely different multiset still blocks.
+    expect(m.packCountMismatch('Recovery Kit 10 sheets 2 pads', 'Recovery Kit 10 sheets 5 pads')).toBe(true);
+  });
+
+  test('ALLOWS when both agree, and when neither is a count at all', () => {
+    expect(m.packCountMismatch('Mask 10 Sheets', 'Mask - 10 ct')).toBe(false);
+    expect(m.packCountMismatch('Essence 100ml', 'Essence 3.38 oz')).toBe(false); // volume
+  });
+});
+
+describe('resolveAgainstIndex refuses to auto-merge a pack-count conflict', () => {
+  function indexOf(products) {
+    const exact = new Map();
+    const byBrand = new Map();
+    for (const p of products) {
+      exact.set(m.identityMatchKey(p.brand, p.title), { ...p, count: 1 });
+      const bc = m.brandCore(p.brand);
+      if (!byBrand.has(bc)) byBrand.set(bc, []);
+      byBrand.get(bc).push({ ...p, tokens: m.coreTokens(m.titleCore(p.title, p.brand)) });
+    }
+    return { exact, byBrand, candidateCount: products.length };
+  }
+  const index = indexOf([{
+    product_key: 'pk_d2c_10pack',
+    content_key: 'ck_d2c_10pack',
+    brand: 'COSRX',
+    title: 'Advanced Snail Mucin Power Sheet Mask 10 Sheets',
+  }]);
+
+  test('the 1-ct offer is surfaced for review, NOT folded onto the 10-pack', () => {
+    const r = m.resolveAgainstIndex(index, 'COSRX', 'Advanced Snail Mucin Power Sheet Mask - 1 ct');
+    expect(r.decision).toBe('review_fuzzy');
+    expect(r.blocked_by).toBe('pack_count_mismatch');
+    expect(r.pack_counts).toEqual({ incoming: [1], candidate: [10] });
+  });
+
+  test('review, not self_mint — the titles otherwise match, so a human should see it', () => {
+    // self_mint would silently create a second identity with no record of the near-miss.
+    const r = m.resolveAgainstIndex(index, 'COSRX', 'Advanced Snail Mucin Power Sheet Mask - 1 ct');
+    expect(r.decision).not.toBe('self_mint');
+    expect(r.match.content_key).toBe('ck_d2c_10pack');
+  });
+
+  test('the same offer WITHOUT a stated count still folds — the guard is not a blanket', () => {
+    const r = m.resolveAgainstIndex(index, 'COSRX', 'Advanced Snail Mucin Power Sheet Mask');
+    expect(r.decision).toBe('reuse_exact');
+    expect(r.match.content_key).toBe('ck_d2c_10pack');
+  });
+
+  test('a matching count still folds', () => {
+    const r = m.resolveAgainstIndex(index, 'COSRX', 'Advanced Snail Mucin Power Sheet Mask - 10 ct');
+    expect(r.decision).toBe('reuse_exact');
+  });
+});
+
+/* The brand-suffix axis — the second deliberate divergence from the content_key
+ * authority, alongside size. Pinned because the module header now states it as fact:
+ * brandCore strips VERTICAL suffixes (beauty/cosmetics/skincare/paris/professional/
+ * makeup) that catalog_identity.py's normalize_brand keeps. Measured on prod
+ * 2026-08-08: 80 of 364 brands (3,915 rows) diverge, 6 brandCores span >1 authority
+ * brand. Four of the 51 reconcile folds were this shape and all four were correct. */
+describe('brandCore vs the content_key authority — the brand-suffix axis', () => {
+  const authority = require('../src/services/contentKey');
+
+  test('corporate suffixes: BOTH strip them, so no divergence there', () => {
+    for (const brand of ['Glow Recipe Inc.', 'Glow Recipe LLC', 'Glow Recipe Co.']) {
+      expect(m.brandCore(brand)).toBe('glow recipe');
+      expect(authority.normalizeBrand(brand)).toBe('glow recipe');
+    }
+  });
+
+  test('vertical suffixes: ONLY the match key strips them — this is the divergence', () => {
+    const cases = [
+      ['Tom Ford Beauty', 'tom ford', 'tom ford beauty'],
+      ['Benefit Cosmetics', 'benefit', 'benefit cosmetics'],
+      ['Kylie Cosmetics', 'kylie', 'kylie cosmetics'],
+      ["L'Oreal Paris", 'loreal', "l'oreal paris"],
+    ];
+    for (const [brand, matchKey, authorityBrand] of cases) {
+      expect(m.brandCore(brand)).toBe(matchKey);
+      expect(authority.normalizeBrand(brand)).toBe(authorityBrand);
+      expect(m.brandCore(brand)).not.toBe(authority.normalizeBrand(brand));
+    }
+  });
+
+  test('the divergence is what lets one brand spelled two ways match', () => {
+    // Ulta lists "Tom Ford", the brand's own site lists "Tom Ford Beauty". Four of the
+    // 51 prod folds were this, and folding them is correct — it is one brand.
+    expect(m.identityMatchKey('Tom Ford', 'Oud Wood Eau de Parfum'))
+      .toBe(m.identityMatchKey('Tom Ford Beauty', 'Oud Wood Eau de Parfum'));
+    // ...while the authority keeps them apart, which is why this key must never mint.
+    expect(authority.makeContentKey('Tom Ford', 'Oud Wood Eau de Parfum'))
+      .not.toBe(authority.makeContentKey('Tom Ford Beauty', 'Oud Wood Eau de Parfum'));
+  });
+
+  test('the word-boundary wart is real and pinned, not accidental', () => {
+    // "Beauty of Joseon" (103 prod rows) loses its leading word because the strip is
+    // word-boundary rather than suffix-anchored. Harmless — both sides get the same
+    // treatment and nothing else reduces to this core — but do not let it change
+    // silently.
+    expect(m.brandCore('Beauty of Joseon')).toBe('of joseon');
+    expect(authority.normalizeBrand('Beauty of Joseon')).toBe('beauty of joseon');
+  });
+});
+
+/* Gaps found by mutation testing the first revision — each of these mutants survived
+ * all 42 tests, and each would cause a wrong outcome in prod. */
+describe('pack-count guard: the mutation gaps', () => {
+  test('"Count" is the commonest Ulta spelling and must parse', () => {
+    // Dropping `count` from PACK_COUNT_RE survived every test. 17 prod titles use it,
+    // including all six Caraseoul rows, whose 44/74/102-count patches are exactly the
+    // conflict this guard exists to catch.
+    expect(m.packCounts('Spot Patches [44 Count]')).toEqual([44]);
+    expect(m.packCounts('Acne Patch 102 count')).toEqual([102]);
+    expect(m.packCountMismatch('Spot Patches [44 Count]', 'Spot Patches [74 Count]')).toBe(true);
+  });
+
+  test('pc / piece / tablets parse too — 72 prod titles between them', () => {
+    expect(m.packCounts('Nail Polish Set 4 Piece')).toEqual([4]);
+    expect(m.packCounts('Brush Set 12 pcs')).toEqual([12]);
+    expect(m.packCounts('Collagen 900mg x 84 tablets')).toEqual([84]);
+  });
+
+  test('a PREFIX multiset is a mismatch, not a match', () => {
+    // Dropping the length check survived: [2] vs [2,10] compared equal element-wise
+    // because `some` only walks the shorter array. A kit is not its own component.
+    expect(m.packCountMismatch('Kit 2 Pads', 'Kit 2 Pads 10 Sheets')).toBe(true);
+    expect(m.packCountMismatch('Kit 2 Pads 10 Sheets', 'Kit 2 Pads')).toBe(true);
+  });
+
+  test('decimals parse, so "1.0 ct" and "1 ct" are the same pack', () => {
+    expect(m.packCounts('Mask 1.0 ct')).toEqual([1]);
+    expect(m.packCountMismatch('Mask 1.0 ct', 'Mask 1 ct')).toBe(false);
+  });
+
+  test('a blocked result carries score 1 — and that value reaches a human', () => {
+    // reconcile-retailer-offers-into-d2c.cjs writes f.score into jaccard_score. It now
+    // nulls it when blocked_by is set, but the resolver's own contract is pinned here
+    // so the two cannot drift apart silently.
+    const index = { exact: new Map(), byBrand: new Map(), candidateCount: 1 };
+    const cand = { product_key: 'pk', content_key: 'ck_x', brand: 'COSRX', title: 'Mask 10 Sheets' };
+    index.exact.set(m.identityMatchKey(cand.brand, cand.title), cand);
+    const r = m.resolveAgainstIndex(index, 'COSRX', 'Mask 1 ct');
+    expect(r.score).toBe(1);
+    expect(r.blocked_by).toBe('pack_count_mismatch');
+  });
+});
+
+/* THE INVARIANT THAT MAKES THE GUARD FAIL-SAFE, pinned. A spelling the guard misses is
+ * harmless ONLY because SIZE_RE also fails to strip it — so the match key does not
+ * collapse, no exact match forms, and no fold is possible. That property is structural:
+ * PACK_COUNT_RE's unit set is exactly SIZE_RE's discrete-count subset. Nothing enforced
+ * it, and mutation testing showed SIZE_RE can lose `pads?` with every test still green,
+ * which would break it in the direction that folds silently. */
+describe('PACK_COUNT_RE and SIZE_RE agree on which units are counts', () => {
+  const COUNT_UNITS = ['count', 'ct', 'pc', 'pcs', 'piece', 'pieces', 'sheet', 'sheets',
+    'pad', 'pads', 'capsule', 'capsules', 'tablet', 'tablets'];
+
+  test.each(COUNT_UNITS)('"10 %s" is stripped by titleCore AND read by packCounts', (unit) => {
+    const title = `Widget 10 ${unit}`;
+    // titleCore strips it, so two listings differing only in the count share a match key
+    expect(m.titleCore(title, 'Brand')).toBe(m.titleCore('Widget', 'Brand'));
+    // ...and therefore packCounts MUST see it, or the fold happens unguarded
+    expect(m.packCounts(title)).toEqual([10]);
+  });
+
+  test('volume and weight units are stripped but are NOT counts', () => {
+    for (const unit of ['ml', 'oz', 'g', 'kg', 'fl oz']) {
+      expect(m.titleCore(`Widget 10 ${unit}`, 'Brand')).toBe(m.titleCore('Widget', 'Brand'));
+      expect(m.packCounts(`Widget 10 ${unit}`)).toEqual([]);
+    }
+  });
+});

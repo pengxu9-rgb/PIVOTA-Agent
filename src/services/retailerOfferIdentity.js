@@ -25,9 +25,43 @@
  * Python-minted key, so the row would split away from its own product's serving
  * decision (`index_pipeline_state.content_key` is a PRIMARY KEY).
  *
- * The two keys have OPPOSITE size policy on purpose — this one strips size to match
- * across it, `contentKey.js` keeps size because the authority treats 30ml and 50ml as
- * different products. That is precisely why one can never be substituted for the other.
+ * THE TWO KEYS DIVERGE ON TWO AXES, BOTH DELIBERATE
+ * -------------------------------------------------
+ * 1. SIZE. This key strips it to match across it; `contentKey.js` keeps it, because the
+ *    authority treats 30ml and 50ml as different products.
+ * 2. BRAND SUFFIX. `brandCore` below strips VERTICAL suffixes — beauty, cosmetics,
+ *    skincare, paris, professional, makeup — on top of the corporate ones (inc, llc,
+ *    ltd, co, corp, company). The authority's `normalize_brand` strips only the
+ *    corporate ones. So "Tom Ford" and "Tom Ford Beauty" are one brand here and two
+ *    brands there.
+ *
+ * HOW OFTEN, AND WHICH AXIS DOMINATES (prod, 2026-08-08, all 14,104 rows)
+ * 329 identityMatchKey groups (926 rows) span more than one authority content_key.
+ * The split is lopsided and NOT the way the brand axis above might suggest:
+ *
+ *     via the TITLE axis   324 groups
+ *     via the BRAND axis     5 groups
+ *
+ * So the title axis is the dominant one by ~65x, and the COSRX 1-ct/10-Sheets fold this
+ * module now guards against is itself a title-axis span with an identical authority
+ * brand. Do not read the brand axis as the main event; it is the smaller of the two.
+ *
+ * On the brand axis specifically: 80 of 364 distinct brands (3,915 rows) normalize
+ * differently under the two rules, and 6 `brandCore` values each cover more than one
+ * authority brand — kosas/kosas cosmetics, benefit/benefit cosmetics, tom ford/tom ford
+ * beauty, supergoop/supergoop!, catkin/catkin cosmetics, estee lauder/estée lauder.
+ * Only 4 of those 6 are suffix-driven: estee lauder/estée lauder is diacritic folding
+ * and supergoop/supergoop! is symbol stripping, both from `normalizeText`, not from the
+ * vertical-suffix list. Four of the 51 folds applied by
+ * reconcile-retailer-offers-into-d2c.cjs were the brand axis — Ulta's "Tom Ford" onto
+ * D2C's "Tom Ford Beauty" — and all four are CORRECT: it is one brand spelled two ways
+ * by two sellers, which is what this key is for.
+ *
+ * Both axes exist so the match key can be LOOSER than the content key. That is the
+ * point, and it is exactly why neither may ever be substituted for the other: minting
+ * from this key would merge products the authority keeps apart (see #1916, where a
+ * third formula built on brandCore+titleCore minted 0 of 14,104 prod keys and could
+ * never have collided with one that did).
  *
  * HOW COLLAPSE ACTUALLY HAPPENS
  * -----------------------------
@@ -86,8 +120,24 @@ function normalizeText(value) {
     .trim();
 }
 
-/** Brand core: normalized, minus corporate/vertical suffixes so "Benefit Cosmetics"
- * and "Benefit" collapse, and "Estée Lauder"/"Estee Lauder" match. */
+/**
+ * Brand core: normalized, minus corporate AND vertical suffixes so "Benefit Cosmetics"
+ * and "Benefit" collapse, and "Estée Lauder"/"Estee Lauder" match.
+ *
+ * THE VERTICAL SUFFIXES ARE THE DIVERGENCE FROM THE AUTHORITY. `catalog_identity.py`'s
+ * `normalize_brand` strips only the corporate ones (inc/llc/ltd/co/corp/company); the
+ * vertical list here — cosmetics, beauty, skincare, paris, professional, makeup — is
+ * this module's alone. Measured on prod 2026-08-08: 80 of 364 brands (3,915 rows)
+ * normalize differently as a result, and 6 brandCores each span >1 authority brand.
+ * See the header for the list and why that looseness is intended for MATCHING.
+ *
+ * KNOWN WART: the strip is word-boundary, not suffix-anchored, so a vertical word that
+ * is part of the actual name is removed too — "Beauty of Joseon" becomes "of joseon"
+ * (103 prod rows). Ugly, but harmless in practice because both sides of a comparison
+ * get the same treatment and no other brand reduces to the same core. Do not "fix" it
+ * by anchoring to the end without re-measuring: several real brands do carry a trailing
+ * vertical word that SHOULD collapse.
+ */
 function brandCore(value) {
   // Brands never carry meaningful decimals/percent/plus — drop the `.%+` that
   // normalizeText keeps for SIZE_RE, so "e.l.f." collapses to "e l f".
@@ -155,6 +205,75 @@ function stableHash(prefix, parts, length = 32) {
 /** Deterministic exact-match identity key (brandCore | titleCore). */
 function identityMatchKey(brand, title) {
   return `${brandCore(brand)}|${titleCore(title, brand)}`;
+}
+
+/**
+ * Discrete PACK-COUNT units — the subset of SIZE_RE that counts *items in a box*
+ * rather than a volume or a weight.
+ *
+ * titleCore strips these alongside ml/oz/g, and for MATCHING that is right: a listing
+ * saying "10 Sheets" and one omitting it are the same product, and collapsing them is
+ * the point of the match key. But when BOTH listings state a count and the counts
+ * DISAGREE, that is not cosmetic variance — a 1-count sachet and a 10-pack are
+ * different products at different prices.
+ *
+ * Measured on prod 2026-08-08: of the 51 folds that
+ * scripts/reconcile-retailer-offers-into-d2c.cjs applied on 2026-07-12, exactly one was
+ * this shape — Ulta's "Advanced Snail Mucin Power Sheet Mask - 1 ct" folded onto D2C's
+ * "…Sheet Mask 10 Sheets", putting two products on one content_key and therefore one
+ * index_pipeline_state row (that column is a PRIMARY KEY, so it is one serving decision
+ * for both). Un-folded 2026-08-08; this guard stops it recurring.
+ */
+const PACK_COUNT_RE =
+  /\b(\d+(?:\.\d+)?)\s*(?:count|ct|pcs?|pieces?|sheets?|pads?|capsules?|tablets?)\b|\b(\d+(?:\.\d+)?)\s*(?:-|x)?\s*(?:pack|pk)\b|\bpack\s*of\s*(\d+(?:\.\d+)?)\b/gi;
+
+/** Sorted pack counts stated in a title, as numbers. Empty when the title states none. */
+function packCounts(title) {
+  const text = normalizeText(title);
+  const found = [];
+  PACK_COUNT_RE.lastIndex = 0;
+  let m = PACK_COUNT_RE.exec(text);
+  while (m) {
+    const value = Number(m[1] || m[2] || m[3]);
+    if (Number.isFinite(value)) found.push(value);
+    m = PACK_COUNT_RE.exec(text);
+  }
+  return found.sort((a, b) => a - b);
+}
+
+/**
+ * True when both titles state a pack count and the counts disagree — positive evidence
+ * that two listings are DIFFERENT products rather than two spellings of one.
+ *
+ * Deliberately requires BOTH sides to speak, because silence is not disagreement:
+ * "Snail Essence" vs "Snail Essence 10 Sheets" is the ordinary case where a retailer
+ * states the pack and the brand's own site does not, and folding those IS correct.
+ *
+ * BE HONEST ABOUT THE EVIDENCE FOR THAT. Measured over the 51 folds
+ * reconcile-retailer-offers-into-d2c.cjs applied on 2026-07-12:
+ *
+ *     folds where exactly ONE side states a pack count     0
+ *     folds where NEITHER states one                      50
+ *     folds where BOTH state one (the COSRX bug)           1
+ *
+ * So the one-side-silent case has occurred ZERO times so far. An earlier revision of
+ * this comment claimed "13 of the 51", which was a misattributed number — 13 was the
+ * count of folds differing by a size or form token generally (oz, ml, "Jumbo"), none of
+ * them pack counts. Requiring both sides to speak is therefore a FORWARD-LOOKING
+ * choice, not a measured constraint, and it should be argued as one.
+ *
+ * It also means the placement argument is weaker than it first appeared: removing the
+ * discrete count units from SIZE_RE would have broken exactly ONE of the 51 folds — the
+ * defective one. (Removing all of SIZE_RE would have broken 11.) The decision-layer
+ * guard is still the better shape, because it keeps the match key permissive for the
+ * "X" vs "X 10 Sheets" case that will eventually arrive and blocks only on positive
+ * evidence of conflict — but that is a judgement about future data, not a measurement.
+ */
+function packCountMismatch(titleA, titleB) {
+  const a = packCounts(titleA);
+  const b = packCounts(titleB);
+  if (!a.length || !b.length) return false;
+  return a.length !== b.length || a.some((value, i) => value !== b[i]);
 }
 
 // ---------------------------------------------------------------------------
@@ -282,6 +401,20 @@ function resolveAgainstIndex(index, brand, title, opts = {}) {
   const key = identityMatchKey(brand, title);
   const exact = index.exact.get(key);
   if (exact && exact.content_key) {
+    // The match key strips pack counts, so an exact hit can still be two DIFFERENT
+    // products when both sides state a count and disagree. Surface for review rather
+    // than auto-merging: the module's standing rule is that a wrong merge (someone
+    // else's price and pack on your PDP) is worse than no merge. Not self_mint —
+    // a human should see it, since the titles otherwise match exactly.
+    if (packCountMismatch(title, exact.title)) {
+      return {
+        decision: 'review_fuzzy',
+        match: exact,
+        score: 1,
+        blocked_by: 'pack_count_mismatch',
+        pack_counts: { incoming: packCounts(title), candidate: packCounts(exact.title) },
+      };
+    }
     return { decision: 'reuse_exact', match: exact, score: 1 };
   }
   const bc = brandCore(brand);
@@ -314,6 +447,9 @@ module.exports = {
   jaccard,
   stableHash,
   identityMatchKey,
+  packCounts,
+  packCountMismatch,
+  PACK_COUNT_RE,
   SIZE_RE,
   FORM_VARIANT_RE,
   // retailer-host guard
