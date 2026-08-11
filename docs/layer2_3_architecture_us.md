@@ -22,11 +22,17 @@ Mounted by `mountLookReplicatorRoutes(app, ...)` in `src/server.js`.
 
 - `POST /uploads/signed-url`
   - Returns S3-compatible PUT signed URL + public URL.
-  - Auth: optional `LOOK_REPLICATOR_API_KEY` (Bearer or `X-API-Key`).
+  - Auth: **required** — `LOOK_REPLICATOR_API_KEY` (Bearer or `X-API-Key`). With no key
+    configured, every look-replicator route fails closed with
+    `503 LOOK_REPLICATOR_AUTH_UNCONFIGURED`.
   - Implementation: `src/lookReplicator/storage.js`
-- `POST /look-jobs`
-  - Creates a job and returns `{ jobId }`.
-  - Current behavior: schedules **mock progress** and writes a **mock result** on completion.
+- `POST /look-jobs` (legacy demo lane)
+  - **Disabled by default**: answers `501 LOOK_JOBS_DISABLED`. This lane never had a real
+    pipeline — it fake-progressed on timers and served `mockResult.js`, a canned fixture.
+    The real pipeline is `POST /api/look-replicate/jobs`.
+  - Dev-only opt-in: `LOOK_REPLICATOR_ALLOW_MOCK_JOBS=true` in a non-production-like env
+    (refused whenever NODE_ENV / RAILWAY_ENVIRONMENT / VERCEL_ENV say production). When it
+    serves, the result is labeled `mock: true, result_source: "mock_fixture"`.
   - Implementation: `src/lookReplicator/index.js`, `src/lookReplicator/store.js`, `src/lookReplicator/mockResult.js`
 - `GET /look-jobs/:jobId`
   - Poll job status + result snapshot.

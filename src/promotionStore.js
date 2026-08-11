@@ -67,9 +67,17 @@ if (process.env.NODE_ENV === 'production') {
 }
 
 if (PROMO_MODE === 'none') {
-  console.warn(
-    '[promotionStore] promotions disabled (mode "none"): no PROMOTIONS_MODE set and no ' +
-      'PROMOTIONS_BACKEND_BASE_URL/PIVOTA_API_BASE configured. Serving zero promotions.'
+  // Two ways to land here: the unconfigured default (no mode, no base) or an
+  // explicit/force-degraded 'none' — say which, so ops debugging an empty Deals
+  // surface reads the true cause, not the generic one.
+  const reason = PROMO_MODE_RAW
+    ? 'explicitly configured, or force-degraded from "local" (see error above)'
+    : 'no PROMOTIONS_MODE set and no PROMOTIONS_BACKEND_BASE_URL/PIVOTA_API_BASE configured';
+  console.warn(`[promotionStore] promotions disabled (mode "none"; ${reason}). Serving zero promotions.`);
+} else if (PROMO_MODE === 'remote' && !PROMO_BACKEND_BASE) {
+  console.error(
+    '[promotionStore] PROMOTIONS_MODE=remote but no PROMOTIONS_BACKEND_BASE_URL/PIVOTA_API_BASE is set; ' +
+      'serving zero promotions and refusing writes until a base is configured.'
   );
 }
 
@@ -404,9 +412,13 @@ async function upsertPromotion(promo) {
 
   if (!USE_REMOTE_PROMO) {
     if (!localModeEnabled()) {
-      // 'none' mode: refuse loudly rather than write to a file no reader serves.
+      // Refuse loudly rather than write to a file no reader serves. Reachable
+      // with effective mode 'none' OR explicit 'remote' without a backend base.
+      const detail =
+        PROMO_MODE === 'remote' && !PROMO_BACKEND_BASE ? ' (remote configured without a backend base)' : '';
       throw new Error(
-        '[promotionStore] promotions store not configured (mode "none"); set PROMOTIONS_MODE=remote with a backend base, or PROMOTIONS_MODE=local for the dev file store'
+        `[promotionStore] promotions store cannot accept writes (effective mode "${PROMO_MODE}"${detail}); ` +
+          'set PROMOTIONS_MODE=remote with a backend base, or PROMOTIONS_MODE=local for the dev file store'
       );
     }
     const promos = loadPromotionsLocal();
