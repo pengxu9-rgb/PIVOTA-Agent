@@ -5,6 +5,7 @@ const path = require('node:path');
 
 const {
   WRAPPER_CONFIRM_TOKEN,
+  formatRoutineFailure,
   parseArgs,
   runSyncRoutine,
 } = require('./run-relationship-graph-sync-routine');
@@ -244,12 +245,7 @@ async function main() {
 if (require.main === module) {
   main()
     .catch((err) => {
-      const summary = err && err.summary;
-      if (summary) {
-        process.stderr.write(`${err.message}\nsummary: ${summary.summary_path || summary.out_dir}\n`);
-      } else {
-        process.stderr.write(`${err && err.stack ? err.stack : String(err)}\n`);
-      }
+      process.stderr.write(`${formatRoutineFailure(err)}\n`);
       process.exitCode = 1;
     })
     .finally(() => {
