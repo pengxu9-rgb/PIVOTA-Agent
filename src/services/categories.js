@@ -1338,6 +1338,11 @@ async function buildCreatorCategoryTreeUncached(creatorId, options = {}) {
   }
 
   const { roots, categoryMap } = buildCategoryTree(indexedProducts);
+  // Preserve the legacy-path priority contract (previously assigned inside the
+  // deleted computeCategoryDeals): with no deals, priority is productCount.
+  for (const node of categoryMap.values()) {
+    node.category.priority = node.category.productCount;
+  }
   const hotDeals = [];
 
   let finalRoots = roots;

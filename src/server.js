@@ -8405,8 +8405,12 @@ const SAVINGS_PRESENTATION_FIELDS = [
   'payment_offer_badges',
   'payment_pricing',
   // Promotions lane deleted (ADR-022): nothing generates the store_discount_*
-  // keys any more, but they stay in this pick/strip list so stale upstream
-  // payloads that still carry them are stripped rather than leaked.
+  // keys any more. They stay in this shared field list because it serves two
+  // roles: strip call sites remove the keys from allowlist-built offer
+  // payloads (belt-and-braces — those payloads are constructed from scratch
+  // and never carry them), and pick call sites COPY them forward, which is the
+  // pinned PDP passthrough contract (pdp_builder_structured_modules,
+  // get_pdp_v2_identity_graph) for upstream payloads that still send them.
   'store_discount_evidence',
   'store_discount_summary',
   'store_discount_badges',
@@ -49634,7 +49638,6 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       };
     }
 
-    // Instrumented: on a cold promotions cache this blocks on an HTTP fetch with its own timeout+retry
     // Normalize submit_payment responses so frontends always see a unified
     // payment object with PSP + payment_action, regardless of PSP type.
     if (operation === 'submit_payment') {
