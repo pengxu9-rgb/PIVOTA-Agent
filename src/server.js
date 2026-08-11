@@ -153,6 +153,8 @@ const {
   getPromotionById,
   upsertPromotion,
   softDeletePromotion,
+  PROMO_MODE: PROMOTION_STORE_MODE,
+  USE_REMOTE_PROMO: PROMOTION_STORE_USE_REMOTE,
 } = require('./promotionStore');
 const {
   buildCreatorCategoryTree,
@@ -36258,20 +36260,21 @@ app.get('/api/services/bookings/:booking_id', requireBookingFlagOn, bookingsApi.
 app.post('/api/services/bookings/:booking_id/cancel', requireBookingFlagOn, bookingsApi.cancelBooking);
 app.post('/api/services/bookings/:booking_id/provider-action', requireBookingFlagOn, bookingsApi.providerAction);
 
-// Lightweight debug endpoint to inspect promotions configuration on the gateway.
-// Safe for now: does NOT return any secrets, only booleans and mode.
-app.get('/debug/promotions-config', (req, res) => {
+// Debug endpoint to inspect promotions configuration on the gateway. No secrets,
+// but the backend base URL + key-presence booleans are still deployment topology —
+// admin-gated like /debug/promotions. Reports the store's EFFECTIVE mode (after
+// defaulting and production-like degradation) instead of recomputing its own view,
+// so it can never disagree with what promotionStore actually does.
+app.get('/debug/promotions-config', requireAdmin, (req, res) => {
   const promoBackendBase =
     process.env.PROMOTIONS_BACKEND_BASE_URL || process.env.PIVOTA_API_BASE || '';
-  const promoMode = process.env.PROMOTIONS_MODE || 'local';
-  const useRemotePromo = !!promoBackendBase && promoMode !== 'local';
   const promoAdminKeyPresent =
     !!(process.env.PROMOTIONS_ADMIN_KEY || process.env.ADMIN_API_KEY);
 
   res.json({
-    promoMode,
+    promoMode: PROMOTION_STORE_MODE,
     promoBackendBase,
-    useRemotePromo,
+    useRemotePromo: PROMOTION_STORE_USE_REMOTE,
     promoAdminKeyPresent,
   });
 });

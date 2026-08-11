@@ -265,13 +265,46 @@ function requireLookReplicatorAuth(req, res) {
   ]
     .map((v) => String(v || '').trim())
     .filter(Boolean);
-  if (!requiredTokens.length) return true;
+  if (!requiredTokens.length) {
+    // FAIL CLOSED (fabrication-belt sweep 2026-08-11): a deployment with no key
+    // configured used to serve every look-replicator route wide open. Refuse with
+    // the actionable fact instead — deployed instances already set PIVOTA_API_KEY
+    // for the backend invoke, so this only changes bare/dev setups.
+    res.status(503).json({
+      error: 'LOOK_REPLICATOR_AUTH_UNCONFIGURED',
+      message:
+        'No look-replicator API key is configured; refusing unauthenticated access. ' +
+        'Set LOOK_REPLICATOR_API_KEY (or LOOK_REPLICATOR_BACKEND_API_KEY / PIVOTA_API_KEY / PIVOTA_AGENT_API_KEY).',
+    });
+    return false;
+  }
   const token = parseBearer(req.header('Authorization')) || req.header('X-API-Key') || req.header('x-api-key');
   if (!token || !requiredTokens.includes(String(token).trim())) {
     res.status(401).json({ error: 'UNAUTHORIZED' });
     return false;
   }
   return true;
+}
+
+// Production-like detection mirrors isProductionLikeAuroraBffEnv (src/auroraBff/routes.js):
+// NODE_ENV alone is not enough — the Dockerfile does not set it, so a Railway deploy can
+// run "production" traffic without NODE_ENV=production.
+function isProductionLikeEnv() {
+  const nodeEnv = String(process.env.NODE_ENV || '').trim().toLowerCase();
+  const railwayEnv = String(process.env.RAILWAY_ENVIRONMENT || '').trim().toLowerCase();
+  const vercelEnv = String(process.env.VERCEL_ENV || '').trim().toLowerCase();
+  return nodeEnv === 'production' || railwayEnv === 'production' || vercelEnv === 'production';
+}
+
+// The legacy POST /look-jobs lane never had a real pipeline: it fake-progressed
+// 25→50→75→100% on timers and served makeMockLookResult() — a canned fixture —
+// while the request's images were never looked at. Default is an honest refusal
+// (mirroring ONE_CLICK_DISABLED / TRYON_DISABLED on the real lanes); the mock is
+// dev-only opt-in behind an explicit flag AND a non-production environment (the
+// same double gate as USE_AURORA_BFF_MOCK). Read at call time so tests/ops can
+// flip it without a restart.
+function mockLookJobsEnabled() {
+  return parseBool(process.env.LOOK_REPLICATOR_ALLOW_MOCK_JOBS) && !isProductionLikeEnv();
 }
 
 function scheduleMockProgress({ jobId, market, locale, logger }) {
@@ -288,7 +321,13 @@ function scheduleMockProgress({ jobId, market, locale, logger }) {
     const timer = setTimeout(async () => {
       try {
         if (s.status === 'completed') {
-          const result = makeMockLookResult({ shareId: jobId, market, locale });
+          // Label the fixture as a fixture so no reader can mistake it for a
+          // real analysis (the dev-only mock lane is the sole producer here).
+          const result = {
+            ...makeMockLookResult({ shareId: jobId, market, locale }),
+            mock: true,
+            result_source: 'mock_fixture',
+          };
           await updateJob(jobId, { status: s.status, progress: s.progress, result });
         } else {
           await updateJob(jobId, { status: s.status, progress: s.progress });
@@ -764,6 +803,16 @@ function mountLookReplicatorRoutes(app, { logger }) {
 
   app.post('/look-jobs', async (req, res) => {
     if (!requireLookReplicatorAuth(req, res)) return;
+
+    if (!mockLookJobsEnabled()) {
+      return res.status(501).json({
+        error: 'LOOK_JOBS_DISABLED',
+        message:
+          'The legacy /look-jobs lane serves a canned demo result, not a real analysis, and is disabled. ' +
+          'Use POST /api/look-replicate/jobs (real pipeline), or set LOOK_REPLICATOR_ALLOW_MOCK_JOBS=true ' +
+          'in a non-production environment to run the demo fixture.',
+      });
+    }
 
     const parsed = CreateLookJobSchema.safeParse(req.body);
     if (!parsed.success) {

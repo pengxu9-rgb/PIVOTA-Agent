@@ -19,8 +19,15 @@ const PROMO_BACKEND_BASE =
   process.env.PROMOTIONS_BACKEND_BASE_URL || process.env.PIVOTA_API_BASE || '';
 const PROMO_ADMIN_KEY =
   process.env.PROMOTIONS_ADMIN_KEY || process.env.ADMIN_API_KEY || '';
-const PROMO_MODE = process.env.PROMOTIONS_MODE || 'local'; // 'local' | 'remote'
-const USE_REMOTE_PROMO = !!PROMO_BACKEND_BASE && PROMO_MODE !== 'local';
+// Mode: 'remote' | 'local' | 'none'.
+// - Default is remote when a backend base is configured, otherwise 'none' (serve
+//   NO promotions). 'local' — the JSON-file store — is EXPLICIT opt-in only: an
+//   unconfigured deployment must never invent discounts (fabrication-belt sweep
+//   2026-08-11; previously the default was 'local' and the tracked fixture
+//   carried a demo FLASH_SALE active through 2026).
+const PROMO_MODE_RAW = String(process.env.PROMOTIONS_MODE || '').trim().toLowerCase();
+let PROMO_MODE = PROMO_MODE_RAW || (PROMO_BACKEND_BASE ? 'remote' : 'none');
+const USE_REMOTE_PROMO = !!PROMO_BACKEND_BASE && PROMO_MODE === 'remote';
 const PROMO_DB_DIRECT_READ_ENABLED =
   String(process.env.PROMOTIONS_DB_DIRECT_READ_ENABLED || 'true').toLowerCase() !== 'false';
 
@@ -43,6 +50,31 @@ if (process.env.NODE_ENV === 'production') {
       '[promotionStore] PROMOTIONS_ADMIN_KEY (or ADMIN_API_KEY) must be set in production'
     );
   }
+} else if (PROMO_MODE === 'local') {
+  // The Dockerfile does not set NODE_ENV, so the guard above can be inert on a
+  // production Railway/Vercel deploy. Same detection as isProductionLikeAuroraBffEnv;
+  // force-degrade to 'none' (loudly, without failing the boot the way the NODE_ENV
+  // guard does) rather than serve file-store promotions to production traffic.
+  const railwayEnv = String(process.env.RAILWAY_ENVIRONMENT || '').trim().toLowerCase();
+  const vercelEnv = String(process.env.VERCEL_ENV || '').trim().toLowerCase();
+  if (railwayEnv === 'production' || vercelEnv === 'production') {
+    console.error(
+      '[promotionStore] production-like environment detected (RAILWAY_ENVIRONMENT/VERCEL_ENV) with ' +
+        `PROMOTIONS_MODE="${PROMO_MODE}"; forcing mode "none". Set PROMOTIONS_MODE=remote + backend base + admin key.`
+    );
+    PROMO_MODE = 'none';
+  }
+}
+
+if (PROMO_MODE === 'none') {
+  console.warn(
+    '[promotionStore] promotions disabled (mode "none"): no PROMOTIONS_MODE set and no ' +
+      'PROMOTIONS_BACKEND_BASE_URL/PIVOTA_API_BASE configured. Serving zero promotions.'
+  );
+}
+
+function localModeEnabled() {
+  return PROMO_MODE === 'local';
 }
 
 // Simple in-memory cache used when remote calls fail.
@@ -169,63 +201,10 @@ async function fetchMerchantPromotionsFromDb(merchantId) {
 
 // Note: Each promotion belongs to exactly one merchant (merchantId at root).
 // Scope only targets products/categories/brands; it should not carry merchantIds.
-const DEFAULT_PROMOTIONS = [
-  {
-    id: 'promo_flash_demo_001',
-    name: 'Flash deal - Winter picks',
-    type: 'FLASH_SALE',
-    description: 'Limited-time flash sale on featured items',
-    startAt: '2024-01-01T00:00:00Z',
-    endAt: '2026-12-31T23:59:59Z',
-    channels: ['creator_agents'],
-    merchantId: DEFAULT_MERCHANT_ID,
-    scope: {
-      productIds: [],
-      categoryIds: [],
-      brandIds: [],
-      global: true,
-    },
-    config: {
-      kind: 'FLASH_SALE',
-      flashPrice: 0,
-      originalPrice: 0,
-      stockLimit: undefined,
-    },
-    exposeToCreators: true,
-    allowedCreatorIds: [],
-    humanReadableRule: 'Flash deal',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-    deletedAt: null,
-  },
-  {
-    id: 'promo_bundle_demo_001',
-    name: 'Bundle & Save 3+',
-    type: 'MULTI_BUY_DISCOUNT',
-    description: 'Buy 3 items, get 15% off',
-    startAt: '2024-01-01T00:00:00Z',
-    endAt: '2026-12-31T23:59:59Z',
-    channels: ['creator_agents'],
-    merchantId: DEFAULT_MERCHANT_ID,
-    scope: {
-      productIds: [],
-      categoryIds: [],
-      brandIds: [],
-      global: true,
-    },
-    config: {
-      kind: 'MULTI_BUY_DISCOUNT',
-      thresholdQuantity: 3,
-      discountPercent: 15,
-    },
-    exposeToCreators: true,
-    allowedCreatorIds: [],
-    humanReadableRule: 'Bundle & save',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-    deletedAt: null,
-  },
-];
+// The DEFAULT_PROMOTIONS demo seed (a global FLASH_SALE + a 15%-off MULTI_BUY,
+// both "valid" through 2026) was removed in the 2026-08-11 fabrication-belt fix:
+// a promotions store must start empty — demo discounts are test fixtures, not
+// seed data. Local mode still persists real writes to STORE_PATH.
 
 function ensureStoreDir() {
   const dir = path.dirname(STORE_PATH);
@@ -235,14 +214,10 @@ function ensureStoreDir() {
 }
 
 function loadPromotionsLocal() {
+  // Only explicit local mode may read the file store; 'none' serves nothing.
+  if (!localModeEnabled()) return [];
   ensureStoreDir();
   if (!fs.existsSync(STORE_PATH)) {
-    // Only seed demo data when explicitly running in local mode; production
-    // should not silently create demo promotions.
-    if (PROMO_MODE === 'local' && DEFAULT_MERCHANT_ID) {
-      fs.writeFileSync(STORE_PATH, JSON.stringify(DEFAULT_PROMOTIONS, null, 2), 'utf-8');
-      return [...DEFAULT_PROMOTIONS];
-    }
     return [];
   }
   try {
@@ -428,6 +403,12 @@ async function upsertPromotion(promo) {
   const now = new Date().toISOString();
 
   if (!USE_REMOTE_PROMO) {
+    if (!localModeEnabled()) {
+      // 'none' mode: refuse loudly rather than write to a file no reader serves.
+      throw new Error(
+        '[promotionStore] promotions store not configured (mode "none"); set PROMOTIONS_MODE=remote with a backend base, or PROMOTIONS_MODE=local for the dev file store'
+      );
+    }
     const promos = loadPromotionsLocal();
     const idx = promos.findIndex((p) => p.id === promo.id);
     if (idx >= 0) {
@@ -472,6 +453,7 @@ async function upsertPromotion(promo) {
 
 async function softDeletePromotion(id) {
   if (!USE_REMOTE_PROMO) {
+    if (!localModeEnabled()) return false; // 'none' mode: nothing exists to delete
     const promos = loadPromotionsLocal();
     const idx = promos.findIndex((p) => p.id === id);
     if (idx >= 0) {
@@ -546,6 +528,11 @@ module.exports = {
   loadPromotions: loadPromotionsLocal,
   STORE_PATH,
   DEFAULT_MERCHANT_ID,
+  // Effective mode after defaulting + production-like degradation — the ONLY
+  // truth /debug/promotions-config should report (it used to recompute the old
+  // `|| 'local'` default independently and could disagree with the store).
+  PROMO_MODE,
+  USE_REMOTE_PROMO,
   normalizePromotionRecord,
   normalizeDbPromotionRow,
   fetchMerchantPromotionsFromDb,
