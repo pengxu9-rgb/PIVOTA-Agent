@@ -32644,6 +32644,51 @@ function computePromotionStatus(promo, nowTs) {
   return 'ACTIVE';
 }
 
+// Promo types the infra quote engine actually APPLIES at quote time. Mirrors
+// pivota-backend routes/merchant_promotions_api.py QUOTE_APPLIED_MANUAL_PROMO_TYPES
+// (backend PR #1728): a manually created FLASH_SALE or FREE_SHIPPING would
+// validate, store, and DISPLAY — and then silently never change a price.
+// Shopify-native flash sales / free shipping are different: they apply inside
+// Shopify's own pricing and arrive via sync, not via this route.
+const QUOTE_APPLIED_MANUAL_PROMO_TYPES = new Set(['MULTI_BUY_DISCOUNT']);
+// Types we name in the refusal. Anything else keeps the generic
+// INVALID_PROMOTION path from validateAndNormalizePromotion.
+const MANUAL_PROMO_TYPES_NOT_APPLIED_AT_QUOTE = new Set(['FLASH_SALE', 'FREE_SHIPPING']);
+
+function requestedPromotionType(payload) {
+  const body = payload?.promotion ?? payload ?? {};
+  return body.type || body.config?.kind || body.config?.type || null;
+}
+
+// Returns the 400 body ({ error, message }) when a manual create/convert asks for a
+// promo type the quote engine will never apply, else null. `existingType` lets a
+// PATCH that round-trips an existing (Shopify-synced) FLASH_SALE promo through
+// unchanged — only converting INTO a non-applied type is refused. (The exemption
+// is written for both names, but only FLASH_SALE can actually use it:
+// validateAndNormalizePromotion's own allowlist below still rejects FREE_SHIPPING,
+// so a synced FREE_SHIPPING promo cannot be edited through this route at all.
+// Pre-existing, tracked separately — not something this gate introduced.)
+//
+// The message text is byte-identical to the backend gate's so merchants read the
+// same guidance whichever layer refuses. The ENVELOPE is not identical: this
+// returns {error, message} flat, while the backend's error middleware rewrites
+// its {code, message} detail into {error: {code: 'INVALID_REQUEST', details: …}}.
+// A client wanting the named code must read both shapes.
+function manualPromoTypeRejection(requestedType, existingType = null) {
+  if (!requestedType) return null;
+  if (QUOTE_APPLIED_MANUAL_PROMO_TYPES.has(requestedType)) return null;
+  if (!MANUAL_PROMO_TYPES_NOT_APPLIED_AT_QUOTE.has(requestedType)) return null;
+  if (existingType && requestedType === existingType) return null;
+  return {
+    error: 'PROMO_TYPE_NOT_APPLIED_AT_QUOTE',
+    message:
+      `Manual ${requestedType} promotions are not applied by the quote engine — ` +
+      'they would display to shoppers but never change a price. Create the ' +
+      'discount in Shopify instead (it applies via Shopify pricing and syncs ' +
+      'back automatically), or use MULTI_BUY_DISCOUNT.',
+  };
+}
+
 function validateAndNormalizePromotion(payload, existing = {}, { requireAll = false } = {}) {
   const body = payload?.promotion ?? payload ?? {};
   const merged = { ...existing, ...body };
@@ -36428,6 +36473,12 @@ app.get('/api/merchant/promotions/:id', requireAdmin, async (req, res) => {
 
 app.post('/api/merchant/promotions', requireAdmin, async (req, res) => {
   try {
+    // Checked BEFORE the generic validator so FLASH_SALE/FREE_SHIPPING get the
+    // named refusal instead of a generic INVALID_PROMOTION.
+    const typeRejection = manualPromoTypeRejection(requestedPromotionType(req.body));
+    if (typeRejection) {
+      return res.status(400).json(typeRejection);
+    }
     const { promotion, error } = validateAndNormalizePromotion(req.body, {}, { requireAll: true });
     if (error) {
       return res.status(400).json({ error: 'INVALID_PROMOTION', message: error });
@@ -36463,6 +36514,17 @@ app.patch('/api/merchant/promotions/:id', requireAdmin, async (req, res) => {
     const existing = await getPromotionById(req.params.id);
     if (!existing || existing.deletedAt) {
       return res.status(404).json({ error: 'NOT_FOUND' });
+    }
+    // Editing an existing (Shopify-synced) FLASH_SALE stays allowed; only
+    // CONVERTING a promo into a type the quote engine never applies is refused.
+    const typeRejection = manualPromoTypeRejection(
+      requestedPromotionType(req.body),
+      // Same field precedence requestedPromotionType uses, so a promo whose type
+      // lives only in config cannot be refused on its own round-trip edit.
+      existing.type || existing.config?.kind || existing.config?.type || null
+    );
+    if (typeRejection) {
+      return res.status(400).json(typeRejection);
     }
     const { promotion, error } = validateAndNormalizePromotion(
       { ...req.body, id: existing.id },
@@ -52534,6 +52596,11 @@ module.exports._debug = {
   resolveBlockedCommerceMcpOperation,
   resolveCanonicalCategoryPathPrefixForQuery,
   isNonBeautyCanonicalCategoryPathPrefix,
+  // Contract with pivota-backend's manual-promo gate (PR #1728): the refusal
+  // code and message must stay byte-identical across layers so the portal shows
+  // the same guidance regardless of which layer rejects first. Exported so the
+  // message text is asserted directly, not inferred from a route fixture.
+  manualPromoTypeRejection,
   matchesScope,
   isPromoActive,
   allowedForCreator,
