@@ -10,6 +10,11 @@ const { LookReplicateResultV0Schema } = require('../src/schemas/lookReplicateRes
 const describeLookReplicate =
   process.env.RUN_LOOKREPLICATOR_TESTS === '1' ? describe : describe.skip;
 
+// requireLookReplicatorAuth fails closed (503) when no key env is configured, so
+// this suite provisions its own key and authenticates every request.
+const TEST_KEY = 'test_look_orchestration_key';
+const AUTH_HEADER = ['Authorization', `Bearer ${TEST_KEY}`];
+
 function writeTempJpeg() {
   const p = path.join(os.tmpdir(), `pivota-lookrep-${Date.now()}-${Math.random().toString(16).slice(2)}.jpg`);
   fs.writeFileSync(p, Buffer.from([0xff, 0xd8, 0xff, 0xd9])); // minimal JPEG markers
@@ -23,7 +28,7 @@ function sleep(ms) {
 async function waitForJobDone(app, jobId) {
   const maxAttempts = 60;
   for (let i = 0; i < maxAttempts; i += 1) {
-    const res = await request(app).get(`/api/look-replicate/jobs/${jobId}`);
+    const res = await request(app).get(`/api/look-replicate/jobs/${jobId}`).set(...AUTH_HEADER);
     if (res.status === 200 && (res.body.status === 'done' || res.body.status === 'error')) return res;
     await sleep(50);
   }
@@ -33,15 +38,19 @@ async function waitForJobDone(app, jobId) {
 describeLookReplicate('look replicator orchestration (US-only)', () => {
   let app;
   const prevApiMode = process.env.API_MODE;
+  const prevLookKey = process.env.LOOK_REPLICATOR_API_KEY;
 
   beforeAll(() => {
     process.env.API_MODE = 'MOCK';
+    process.env.LOOK_REPLICATOR_API_KEY = TEST_KEY;
     app = require('../src/server');
   });
 
   afterAll(() => {
     if (prevApiMode === undefined) delete process.env.API_MODE;
     else process.env.API_MODE = prevApiMode;
+    if (prevLookKey === undefined) delete process.env.LOOK_REPLICATOR_API_KEY;
+    else process.env.LOOK_REPLICATOR_API_KEY = prevLookKey;
   });
 
   test('POST /api/look-replicate/jobs rejects non-US market', async () => {
@@ -49,6 +58,7 @@ describeLookReplicate('look replicator orchestration (US-only)', () => {
     try {
       const res = await request(app)
         .post('/api/look-replicate/jobs')
+        .set(...AUTH_HEADER)
         .field('market', 'NA')
         .field('locale', 'en')
         .attach('referenceImage', img, { filename: 'ref.jpg', contentType: 'image/jpeg' });
@@ -65,6 +75,7 @@ describeLookReplicate('look replicator orchestration (US-only)', () => {
     try {
       const create = await request(app)
         .post('/api/look-replicate/jobs')
+        .set(...AUTH_HEADER)
         .field('market', 'US')
         .field('locale', 'en')
         .field('preferenceMode', 'structure')
@@ -95,23 +106,26 @@ describeLookReplicate('look replicator orchestration (US-only)', () => {
       const areas = Array.from(new Set((skeletons || []).map((s) => s?.impactArea).filter(Boolean))).sort();
       expect(areas).toEqual(['base', 'blush', 'brow', 'contour', 'eye', 'lip', 'prep']);
 
-      const shareCreate = await request(app).post('/api/look-replicate/shares').send({ jobId });
+      const shareCreate = await request(app)
+        .post('/api/look-replicate/shares')
+        .set(...AUTH_HEADER)
+        .send({ jobId });
       expect(shareCreate.status).toBe(200);
       expect(shareCreate.body.shareId).toBeTruthy();
 
       const shareId = shareCreate.body.shareId;
-      const shareGet = await request(app).get(`/api/look-replicate/shares/${shareId}`);
+      const shareGet = await request(app).get(`/api/look-replicate/shares/${shareId}`).set(...AUTH_HEADER);
       expect(shareGet.status).toBe(200);
       expect(shareGet.body.shareId).toBe(shareId);
       expect(shareGet.body.jobId).toBe(jobId);
       LookReplicateResultV0Schema.parse(shareGet.body.result);
 
-      const historyA = await request(app).get('/api/look-replicate/history');
+      const historyA = await request(app).get('/api/look-replicate/history').set(...AUTH_HEADER);
       expect(historyA.status).toBe(200);
       expect(Array.isArray(historyA.body.items)).toBe(true);
       expect(historyA.body.items.some((it) => it.jobId === jobId)).toBe(true);
 
-      const historyB = await request(app).get('/api/lookreplicate/history');
+      const historyB = await request(app).get('/api/lookreplicate/history').set(...AUTH_HEADER);
       expect(historyB.status).toBe(200);
       expect(Array.isArray(historyB.body.items)).toBe(true);
       expect(historyB.body.items.some((it) => it.jobId === jobId)).toBe(true);

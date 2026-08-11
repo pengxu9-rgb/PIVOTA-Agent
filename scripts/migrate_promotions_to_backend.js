@@ -21,6 +21,13 @@
 
 /* eslint-disable no-console */
 
+// This script's whole job is to read the LOCAL file store, so force local mode
+// BEFORE requiring promotionStore: with a backend base set and PROMOTIONS_MODE
+// unset, the store now resolves mode 'remote' and its gated loadPromotions()
+// returns [] without reading data/promotions.json — which would make this
+// script print "Nothing to migrate" as a false success.
+process.env.PROMOTIONS_MODE = 'local';
+
 const path = require('path');
 const axios = require('axios');
 const {
