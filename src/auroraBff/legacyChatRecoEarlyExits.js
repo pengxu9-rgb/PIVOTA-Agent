@@ -153,7 +153,14 @@ function createLegacyChatRecoEarlyExitsRuntime(deps = {}) {
       });
     }
 
-    const travelConfidenceScore = Number(travelPreview?.confidence?.score);
+    // F4: no invented 0.62 — an uncomputed travel confidence stays null. The
+    // `!= null` guard matters: Number(null) === 0 would otherwise read an
+    // absent score as an explicit rock-bottom one.
+    const travelConfidenceScore =
+      travelPreview?.confidence?.score != null &&
+      Number.isFinite(Number(travelPreview.confidence.score))
+        ? Number(travelPreview.confidence.score)
+        : null;
     const travelConfidenceLevel = pickFirstTrimmed(
       travelPreview?.confidence?.level,
       travelReadiness?.confidence?.level,
@@ -164,7 +171,7 @@ function createLegacyChatRecoEarlyExitsRuntime(deps = {}) {
       profile: summarizeProfileForContext(profile),
       recommendations: travelRecommendations,
       source: 'travel_reco_preview_v1',
-      recommendation_confidence_score: Number.isFinite(travelConfidenceScore) ? travelConfidenceScore : 0.62,
+      recommendation_confidence_score: travelConfidenceScore,
       recommendation_confidence_level: travelConfidenceLevel || 'medium',
       task_mode: recoTaskMode,
       recommendation_meta: {

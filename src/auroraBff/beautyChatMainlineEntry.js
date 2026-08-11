@@ -1302,7 +1302,8 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
             ? 'framework_mainline'
             : 'step_aware_mainline',
         basePayload: {
-          recommendation_confidence_score: 0.61,
+          // F4: no invented 0.61 — nothing computed a score on this hard path.
+          recommendation_confidence_score: null,
           recommendation_confidence_level: 'medium',
           recommendation_meta: {
             ...buildBeautyChatPlannerMeta(hardPathPlannerTrace),

@@ -69224,7 +69224,8 @@ function envelopeRequiresConservativeRecoGuard(envelope) {
     if (type === 'recommendations') {
       const hasExplicitRecommendationConfidence =
         pickFirstTrimmed(payload.recommendation_confidence_level) ||
-        Number.isFinite(Number(payload.recommendation_confidence_score));
+        (payload.recommendation_confidence_score != null &&
+          Number.isFinite(Number(payload.recommendation_confidence_score)));
       if (hasExplicitRecommendationConfidence) {
         if (isLowOrMediumConfidenceLevelToken(payload.recommendation_confidence_level)) return true;
         if (isLowOrMediumConfidenceScore(payload.recommendation_confidence_score)) return true;
@@ -69259,8 +69260,11 @@ function pickConfidenceNodeForConservativeRecoFallback(envelope) {
     const type = String(card.type || '').trim().toLowerCase();
     if (type === 'recommendations') {
       const explicitLevel = pickFirstTrimmed(payload.recommendation_confidence_level);
-      const explicitScoreRaw = Number(payload.recommendation_confidence_score);
-      const explicitScore = Number.isFinite(explicitScoreRaw) ? explicitScoreRaw : null;
+      const explicitScore =
+        payload.recommendation_confidence_score != null &&
+        Number.isFinite(Number(payload.recommendation_confidence_score))
+          ? Number(payload.recommendation_confidence_score)
+          : null;
       if (isLowOrMediumConfidenceLevelToken(explicitLevel) || isLowOrMediumConfidenceScore(explicitScore)) {
         return {
           score: explicitScore != null ? explicitScore : LOW_CONFIDENCE_THRESHOLD,
