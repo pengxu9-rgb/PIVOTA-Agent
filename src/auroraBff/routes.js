@@ -69194,6 +69194,9 @@ function isLowOrMediumConfidenceLevelToken(raw) {
 }
 
 function isLowOrMediumConfidenceScore(raw) {
+  // Number(null) === 0, which would read an ABSENT score as an explicit
+  // rock-bottom one (F4: uncomputed confidence is null, never a number).
+  if (raw == null) return false;
   const score = Number(raw);
   if (!Number.isFinite(score)) return false;
   return score <= MEDIUM_CONFIDENCE_UPPER_BOUND;

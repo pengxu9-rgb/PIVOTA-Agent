@@ -8,9 +8,9 @@ const {
   isBeautyToolPdpProfile,
 } = require('./pdpSchemaProfile');
 const {
-  lookupSampleFashionMeta,
-  lookupSampleElectronicsMeta,
-} = require('./fashionMetaSamples');
+  lookupCuratedFashionMeta,
+  lookupCuratedElectronicsMeta,
+} = require('./curatedPdpMeta');
 
 const BEAUTY_KEYWORDS = [
   'beauty',
@@ -576,8 +576,8 @@ function inferCategoryKind(product) {
     return explicit;
   }
   const productId = product.product_id || product.id || null;
-  if (lookupSampleElectronicsMeta(productId)) return 'electronics';
-  if (lookupSampleFashionMeta(productId)) return 'fashion';
+  if (lookupCuratedElectronicsMeta(productId)) return 'electronics';
+  if (lookupCuratedFashionMeta(productId)) return 'fashion';
   try {
     const profile = resolvePdpSchemaProfile(product);
     if (isBeautyFormulaPdpProfile(profile) || isBeautyToolPdpProfile(profile)) return 'beauty';
@@ -5212,7 +5212,7 @@ function buildPdpPayload(args) {
           extractFashionMetaFromMetafields(product.platform_metadata),
         );
         if (fromMetafields) return { fashion_meta: fromMetafields };
-        const sample = pickFashionMeta(lookupSampleFashionMeta(product.product_id || product.id));
+        const sample = pickFashionMeta(lookupCuratedFashionMeta(product.product_id || product.id));
         return sample ? { fashion_meta: sample } : {};
       })(),
       ...(() => {
@@ -5224,7 +5224,7 @@ function buildPdpPayload(args) {
         // its composer, not this reader.
         const upstream = pickElectronicsMeta(product.electronics_meta);
         if (upstream) return { electronics_meta: upstream };
-        const sample = pickElectronicsMeta(lookupSampleElectronicsMeta(product.product_id || product.id));
+        const sample = pickElectronicsMeta(lookupCuratedElectronicsMeta(product.product_id || product.id));
         return sample ? { electronics_meta: sample } : {};
       })(),
       image_url: productImageUrl,

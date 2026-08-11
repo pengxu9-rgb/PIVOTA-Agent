@@ -181,6 +181,7 @@ function createLegacyChatRecoEnvelopeRuntime(deps = {}) {
           recommendations: recoItems.slice(0, 16),
         },
         overallConfidence:
+          payload.recommendation_confidence_score != null &&
           Number.isFinite(Number(payload.recommendation_confidence_score))
             ? Number(payload.recommendation_confidence_score)
             : null,
