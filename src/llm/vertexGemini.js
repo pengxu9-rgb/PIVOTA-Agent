@@ -491,9 +491,27 @@ function embedTarget({ model, texts, apiKey, baseUrl = null }) {
  * on a workstation with `gcloud auth application-default login`.
  */
 function googleAuthForVertex() {
-  // Lazy require: google-auth-library ships transitively; a missing module
-  // should surface at the one consumer, not at every vertexGemini import.
-  const { GoogleAuth } = require('google-auth-library');
+  // THE VERSION SPLIT IS LOAD-BEARING. A bare require here resolves the
+  // repo's hoisted google-auth-library v9, but @anthropic-ai/vertex-sdk is
+  // built against v10 and npm nests its own copy. The two disagree on
+  // getRequestHeaders(): v9 returns a plain object, v10 a WHATWG Headers —
+  // and the SDK calls `.get()` on the result whenever authClient.projectId
+  // is unset (vertex-sdk client.js), which is exactly the ADC/workstation
+  // and stripped-credential shapes parsedCredentials() blesses. Injecting a
+  // v9 instance therefore crashes with a raw TypeError on every request for
+  // those shapes and survives full SA keys only by accident. Resolving the
+  // library FROM THE SDK'S OWN resolution context makes version agreement
+  // hold by construction, immune to hoisting layout.
+  let authLib;
+  try {
+    authLib = require(require.resolve('google-auth-library', {
+      paths: [require.resolve('@anthropic-ai/vertex-sdk')],
+    }));
+  } catch (_err) {
+    // SDK absent (tests, trimmed installs): the hoisted copy is the only one.
+    authLib = require('google-auth-library');
+  }
+  const { GoogleAuth } = authLib;
   const credentials = parsedCredentials();
   return new GoogleAuth({
     scopes: 'https://www.googleapis.com/auth/cloud-platform',

@@ -77,11 +77,14 @@ const GEMINI_MODEL = process.env.PIVOTA_AGENT_CENTER_GEMINI_MODEL || 'gemini-2.5
 // via `options.model`; there is intentionally no service-env model pin here.
 const DEFAULT_OPENAI_MODEL = 'chat-latest';
 const ANTHROPIC_MODEL = process.env.PIVOTA_AGENT_CENTER_ANTHROPIC_MODEL || 'claude-sonnet-4-20250514';
-// Claude on Vertex is served from SPECIFIC regions (us-east5 et al) — NOT the
-// "global" endpoint GOOGLE_CLOUD_LOCATION is set to for Gemini, so the region
-// is its own knob rather than a reuse of that variable.
+// Claude-on-Vertex region. Default "global", the endpoint Google now
+// recommends for Claude (it also carries the higher quota pool); the knob
+// exists because regional pinning (us-east5 et al) remains supported and a
+// project's org policy or quota grants may require it. Deliberately its own
+// variable rather than a reuse of GOOGLE_CLOUD_LOCATION, so Claude and
+// Gemini can be pinned independently.
 const ANTHROPIC_VERTEX_REGION =
-  process.env.PIVOTA_AGENT_CENTER_ANTHROPIC_VERTEX_REGION || 'us-east5';
+  process.env.PIVOTA_AGENT_CENTER_ANTHROPIC_VERTEX_REGION || 'global';
 
 /**
  * The model id for whichever transport is active. Vertex names Claude models
@@ -1827,7 +1830,13 @@ async function buildClaudeProbe(input) {
   return buildGroundedProviderProbe(input, {
     provider: 'claude',
     getClient: getAnthropicClient,
-    noKeyFallbackProvider: 'mock_fallback_no_anthropic_key',
+    // Transport-aware: on the Vertex path a null client means the ADC
+    // credential seam is unconfigured/broken — telling an operator to set
+    // ANTHROPIC_API_KEY there would send them to a variable the active
+    // branch never reads.
+    noKeyFallbackProvider: vertexGemini.vertexEnabled()
+      ? 'mock_fallback_no_vertex_credentials'
+      : 'mock_fallback_no_anthropic_key',
     pricing: ANTHROPIC_PRICE_PER_1K_TOKENS,
     invoke: async ({ client, input: probeInput, prompt, userText }) => {
       const resp = await withProbeCostGate(
