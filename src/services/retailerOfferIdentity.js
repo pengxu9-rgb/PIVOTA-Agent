@@ -25,9 +25,30 @@
  * Python-minted key, so the row would split away from its own product's serving
  * decision (`index_pipeline_state.content_key` is a PRIMARY KEY).
  *
- * The two keys have OPPOSITE size policy on purpose — this one strips size to match
- * across it, `contentKey.js` keeps size because the authority treats 30ml and 50ml as
- * different products. That is precisely why one can never be substituted for the other.
+ * THE TWO KEYS DIVERGE ON TWO AXES, BOTH DELIBERATE
+ * -------------------------------------------------
+ * 1. SIZE. This key strips it to match across it; `contentKey.js` keeps it, because the
+ *    authority treats 30ml and 50ml as different products.
+ * 2. BRAND SUFFIX. `brandCore` below strips VERTICAL suffixes — beauty, cosmetics,
+ *    skincare, paris, professional, makeup — on top of the corporate ones (inc, llc,
+ *    ltd, co, corp, company). The authority's `normalize_brand` strips only the
+ *    corporate ones. So "Tom Ford" and "Tom Ford Beauty" are one brand here and two
+ *    brands there.
+ *
+ * Measured on prod 2026-08-08: 80 of 364 distinct brands (3,915 rows) normalize
+ * differently under the two rules, and 6 `brandCore` values each cover more than one
+ * authority brand — kosas/kosas cosmetics, benefit/benefit cosmetics, tom ford/tom ford
+ * beauty, supergoop/supergoop!, catkin/catkin cosmetics, estee lauder/estée lauder.
+ * Those 6 are where an exact match here can span an authority boundary. Four of the 51
+ * folds applied by reconcile-retailer-offers-into-d2c.cjs were exactly that — Ulta's
+ * "Tom Ford" onto D2C's "Tom Ford Beauty" — and all four are CORRECT: it is one brand,
+ * spelled two ways by two sellers. Collapsing them is what this key is for.
+ *
+ * Both axes exist so the match key can be LOOSER than the content key. That is the
+ * point, and it is exactly why neither may ever be substituted for the other: minting
+ * from this key would merge products the authority keeps apart (see #1916, where a
+ * third formula built on brandCore+titleCore minted 0 of 14,104 prod keys and could
+ * never have collided with one that did).
  *
  * HOW COLLAPSE ACTUALLY HAPPENS
  * -----------------------------
@@ -86,8 +107,24 @@ function normalizeText(value) {
     .trim();
 }
 
-/** Brand core: normalized, minus corporate/vertical suffixes so "Benefit Cosmetics"
- * and "Benefit" collapse, and "Estée Lauder"/"Estee Lauder" match. */
+/**
+ * Brand core: normalized, minus corporate AND vertical suffixes so "Benefit Cosmetics"
+ * and "Benefit" collapse, and "Estée Lauder"/"Estee Lauder" match.
+ *
+ * THE VERTICAL SUFFIXES ARE THE DIVERGENCE FROM THE AUTHORITY. `catalog_identity.py`'s
+ * `normalize_brand` strips only the corporate ones (inc/llc/ltd/co/corp/company); the
+ * vertical list here — cosmetics, beauty, skincare, paris, professional, makeup — is
+ * this module's alone. Measured on prod 2026-08-08: 80 of 364 brands (3,915 rows)
+ * normalize differently as a result, and 6 brandCores each span >1 authority brand.
+ * See the header for the list and why that looseness is intended for MATCHING.
+ *
+ * KNOWN WART: the strip is word-boundary, not suffix-anchored, so a vertical word that
+ * is part of the actual name is removed too — "Beauty of Joseon" becomes "of joseon"
+ * (103 prod rows). Ugly, but harmless in practice because both sides of a comparison
+ * get the same treatment and no other brand reduces to the same core. Do not "fix" it
+ * by anchoring to the end without re-measuring: several real brands do carry a trailing
+ * vertical word that SHOULD collapse.
+ */
 function brandCore(value) {
   // Brands never carry meaningful decimals/percent/plus — drop the `.%+` that
   // normalizeText keeps for SIZE_RE, so "e.l.f." collapses to "e l f".

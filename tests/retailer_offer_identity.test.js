@@ -242,3 +242,53 @@ describe('resolveAgainstIndex refuses to auto-merge a pack-count conflict', () =
     expect(r.decision).toBe('reuse_exact');
   });
 });
+
+/* The brand-suffix axis — the second deliberate divergence from the content_key
+ * authority, alongside size. Pinned because the module header now states it as fact:
+ * brandCore strips VERTICAL suffixes (beauty/cosmetics/skincare/paris/professional/
+ * makeup) that catalog_identity.py's normalize_brand keeps. Measured on prod
+ * 2026-08-08: 80 of 364 brands (3,915 rows) diverge, 6 brandCores span >1 authority
+ * brand. Four of the 51 reconcile folds were this shape and all four were correct. */
+describe('brandCore vs the content_key authority — the brand-suffix axis', () => {
+  const authority = require('../src/services/contentKey');
+
+  test('corporate suffixes: BOTH strip them, so no divergence there', () => {
+    for (const brand of ['Glow Recipe Inc.', 'Glow Recipe LLC', 'Glow Recipe Co.']) {
+      expect(m.brandCore(brand)).toBe('glow recipe');
+      expect(authority.normalizeBrand(brand)).toBe('glow recipe');
+    }
+  });
+
+  test('vertical suffixes: ONLY the match key strips them — this is the divergence', () => {
+    const cases = [
+      ['Tom Ford Beauty', 'tom ford', 'tom ford beauty'],
+      ['Benefit Cosmetics', 'benefit', 'benefit cosmetics'],
+      ['Kylie Cosmetics', 'kylie', 'kylie cosmetics'],
+      ["L'Oreal Paris", 'loreal', "l'oreal paris"],
+    ];
+    for (const [brand, matchKey, authorityBrand] of cases) {
+      expect(m.brandCore(brand)).toBe(matchKey);
+      expect(authority.normalizeBrand(brand)).toBe(authorityBrand);
+      expect(m.brandCore(brand)).not.toBe(authority.normalizeBrand(brand));
+    }
+  });
+
+  test('the divergence is what lets one brand spelled two ways match', () => {
+    // Ulta lists "Tom Ford", the brand's own site lists "Tom Ford Beauty". Four of the
+    // 51 prod folds were this, and folding them is correct — it is one brand.
+    expect(m.identityMatchKey('Tom Ford', 'Oud Wood Eau de Parfum'))
+      .toBe(m.identityMatchKey('Tom Ford Beauty', 'Oud Wood Eau de Parfum'));
+    // ...while the authority keeps them apart, which is why this key must never mint.
+    expect(authority.makeContentKey('Tom Ford', 'Oud Wood Eau de Parfum'))
+      .not.toBe(authority.makeContentKey('Tom Ford Beauty', 'Oud Wood Eau de Parfum'));
+  });
+
+  test('the word-boundary wart is real and pinned, not accidental', () => {
+    // "Beauty of Joseon" (103 prod rows) loses its leading word because the strip is
+    // word-boundary rather than suffix-anchored. Harmless — both sides get the same
+    // treatment and nothing else reduces to this core — but do not let it change
+    // silently.
+    expect(m.brandCore('Beauty of Joseon')).toBe('of joseon');
+    expect(authority.normalizeBrand('Beauty of Joseon')).toBe('beauty of joseon');
+  });
+});
