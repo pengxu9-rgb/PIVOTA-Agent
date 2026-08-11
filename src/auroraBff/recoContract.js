@@ -136,6 +136,7 @@ function applyVerifiedCandidateRestoreToRecoPayload(payload, restoredRecommendat
   // F4: never invent a precise-looking score. If nothing computed one, say so
   // with null (legacyChatRecoFinalize already defaults its view to null).
   nextPayload.recommendation_confidence_score =
+    nextPayload.recommendation_confidence_score != null &&
     Number.isFinite(Number(nextPayload.recommendation_confidence_score))
       ? Number(nextPayload.recommendation_confidence_score)
       : null;

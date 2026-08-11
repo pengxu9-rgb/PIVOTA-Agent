@@ -105,7 +105,8 @@ function createLegacyChatRecoExecutionRuntime(deps = {}) {
           recommendations: [],
           source: 'catalog_grounded_v1',
           task_mode: recoTaskMode,
-          recommendation_confidence_score: artifactConfidenceScore != null ? artifactConfidenceScore : 0.61,
+          // F4: no invented 0.61 — an uncomputed artifact confidence stays null.
+          recommendation_confidence_score: artifactConfidenceScore != null ? artifactConfidenceScore : null,
           recommendation_confidence_level:
             artifactConfidenceLevel && artifactConfidenceLevel !== 'unknown'
               ? artifactConfidenceLevel

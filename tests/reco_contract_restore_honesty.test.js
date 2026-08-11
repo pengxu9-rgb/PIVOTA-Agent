@@ -67,6 +67,12 @@ describe('verified-candidate restore is honest about its history', () => {
     expect(payload.recommendation_confidence_score).toBeNull();
   });
 
+  test('an incoming null confidence stays null (Number(null) === 0 trap)', () => {
+    const input = { recommendations: [], recommendation_confidence_score: null };
+    const { payload } = destructure(applyVerifiedCandidateRestoreToRecoPayload(input, RESTORED));
+    expect(payload.recommendation_confidence_score).toBeNull();
+  });
+
   test('a real computed confidence is preserved verbatim', () => {
     const input = { recommendations: [], recommendation_confidence_score: 0.87 };
     const { payload } = destructure(applyVerifiedCandidateRestoreToRecoPayload(input, RESTORED));
