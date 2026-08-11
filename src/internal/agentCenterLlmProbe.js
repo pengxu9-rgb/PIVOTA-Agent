@@ -13,8 +13,11 @@
  *     surface introduced).
  *   - `chatgpt`: real OpenAI Responses API calls with web_search_preview.
  *     Requires OPENAI_API_KEY in env and uses the same probe gate.
- *   - `claude`: real Anthropic Messages API calls with web_search.
- *     Requires ANTHROPIC_API_KEY in env and uses the same probe gate.
+ *   - `claude`: real Anthropic Messages API calls with web_search. Two
+ *     transports behind one client seam: with VERTEX_AI_ENABLED=true it runs
+ *     Claude on Vertex AI under the same ADC credential every other lane in
+ *     this service uses (no ANTHROPIC_API_KEY anywhere); otherwise the legacy
+ *     direct-API path with ANTHROPIC_API_KEY. Same probe gate either way.
  *
  * Auth: shared-secret header `X-Pivota-Internal-Key` matched against
  * `process.env.PIVOTA_INTERNAL_API_KEY`. Distinct from the human-ops
@@ -74,6 +77,23 @@ const GEMINI_MODEL = process.env.PIVOTA_AGENT_CENTER_GEMINI_MODEL || 'gemini-2.5
 // via `options.model`; there is intentionally no service-env model pin here.
 const DEFAULT_OPENAI_MODEL = 'chat-latest';
 const ANTHROPIC_MODEL = process.env.PIVOTA_AGENT_CENTER_ANTHROPIC_MODEL || 'claude-sonnet-4-20250514';
+// Claude on Vertex is served from SPECIFIC regions (us-east5 et al) — NOT the
+// "global" endpoint GOOGLE_CLOUD_LOCATION is set to for Gemini, so the region
+// is its own knob rather than a reuse of that variable.
+const ANTHROPIC_VERTEX_REGION =
+  process.env.PIVOTA_AGENT_CENTER_ANTHROPIC_VERTEX_REGION || 'us-east5';
+
+/**
+ * The model id for whichever transport is active. Vertex names Claude models
+ * with an `@` before the date stamp (`claude-sonnet-4@20250514`) where the
+ * direct API uses a hyphen; translate the default form so one env override
+ * works for both transports, and pass through anything already `@`-shaped.
+ */
+function anthropicModelForTransport() {
+  if (!vertexGemini.vertexEnabled()) return ANTHROPIC_MODEL;
+  if (ANTHROPIC_MODEL.includes('@')) return ANTHROPIC_MODEL;
+  return ANTHROPIC_MODEL.replace(/-(\d{8})$/, '@$1');
+}
 const ANTHROPIC_WEB_SEARCH_TOOL_VERSION =
   process.env.PIVOTA_AGENT_CENTER_ANTHROPIC_WEB_SEARCH_TOOL_VERSION || 'web_search_20250305';
 
@@ -342,6 +362,27 @@ function getOpenAIClient() {
 function getAnthropicClient() {
   if (cachedAnthropicClient) return cachedAnthropicClient;
   if (anthropicInitFailed) return null;
+  // Vertex transport first: this service's prod runs entirely on ADC
+  // (VERTEX_AI_ENABLED=true, no per-provider API keys), and the Claude lane
+  // was the one lane still demanding a direct key — which is why the AEO
+  // baseline has reported it "unmeasured" since it shipped. AnthropicVertex
+  // exposes the same messages.create surface, so the invoke code is
+  // transport-agnostic.
+  if (vertexGemini.vertexEnabled()) {
+    if (!vertexGemini.credentialSourceConfigured()) return null;
+    try {
+      const { AnthropicVertex } = require('@anthropic-ai/vertex-sdk');
+      cachedAnthropicClient = new AnthropicVertex({
+        projectId: vertexGemini.vertexProject(),
+        region: ANTHROPIC_VERTEX_REGION,
+        googleAuth: vertexGemini.googleAuthForVertex(),
+      });
+      return cachedAnthropicClient;
+    } catch (_err) {
+      anthropicInitFailed = true;
+      return null;
+    }
+  }
   const apiKey = String(process.env.ANTHROPIC_API_KEY || '').trim();
   if (!apiKey) return null;
   try {
@@ -1794,7 +1835,7 @@ async function buildClaudeProbe(input) {
         'claude',
         () => withTimeout(
           client.messages.create({
-            model: ANTHROPIC_MODEL,
+            model: anthropicModelForTransport(),
             max_tokens: 900,
             temperature: 0,
             system: prompt.system,
@@ -1896,6 +1937,7 @@ module.exports = {
     dispatchProbe,
     getOpenAIClient,
     getAnthropicClient,
+    anthropicModelForTransport,
     requireInternalKey,
     handleProbeRequest,
     normalizeUrl,

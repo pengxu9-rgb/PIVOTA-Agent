@@ -202,6 +202,7 @@
   "license": "MIT",
   "dependencies": {
     "@anthropic-ai/sdk": "^0.95.2",
+    "@anthropic-ai/vertex-sdk": "^0.19.1",
     "@aws-sdk/client-s3": "^3.885.0",
     "@aws-sdk/client-ses": "^3.885.0",
     "@aws-sdk/s3-request-presigner": "^3.885.0",

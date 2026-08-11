@@ -480,6 +480,27 @@ function embedTarget({ model, texts, apiKey, baseUrl = null }) {
   };
 }
 
+/**
+ * A GoogleAuth instance for Vertex consumers that are NOT `@google/genai`
+ * (today: Claude via `@anthropic-ai/vertex-sdk`, which accepts a `googleAuth`
+ * option). Routed through parsedCredentials() so every credential reader in
+ * this module keeps agreeing on what "configured" means — google-auth-library
+ * on its own only reads GOOGLE_APPLICATION_CREDENTIALS as a FILE PATH and
+ * would silently miss the inline-JSON variable this deployment actually sets.
+ * With no inline credential configured it falls back to ADC, which is correct
+ * on a workstation with `gcloud auth application-default login`.
+ */
+function googleAuthForVertex() {
+  // Lazy require: google-auth-library ships transitively; a missing module
+  // should surface at the one consumer, not at every vertexGemini import.
+  const { GoogleAuth } = require('google-auth-library');
+  const credentials = parsedCredentials();
+  return new GoogleAuth({
+    scopes: 'https://www.googleapis.com/auth/cloud-platform',
+    ...(credentials ? { credentials } : {}),
+  });
+}
+
 module.exports = {
   vertexEnabled,
   vertexProject,
@@ -497,4 +518,5 @@ module.exports = {
   openAiCompatModel,
   openAiCompatHeaders,
   embedTarget,
+  googleAuthForVertex,
 };
