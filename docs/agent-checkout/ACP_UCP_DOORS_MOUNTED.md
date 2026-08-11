@@ -18,8 +18,8 @@ bind them to the existing executor rather than calling `composeProductionCommerc
 | ACP REST | `POST\|GET /acp/checkout_sessions[...]`, `GET /acp/feed` | `AGENT_CHECKOUT_STRICT=1` **and** `AGENT_CHECKOUT_ACP_REST_ENABLED=1` |
 | ACP complete (charge) | `POST /acp/checkout_sessions/:id/complete` | the above **and** `AGENT_CHECKOUT_STRICT_SUBMIT_PAYMENT_ENABLED=1` |
 
-- ACP is mounted under **`/acp`** (not bare `/checkout_sessions`) to avoid colliding with the existing
-  `src/lookReplicator/index.js` routes.
+- ACP is mounted under **`/acp`** (not bare `/checkout_sessions`). Originally namespaced to avoid
+  colliding with the since-removed lookReplicator routes; the namespaced path is now the published contract.
 - Each route returns **404** unless its flags are on; the complete endpoint returns **405 OPERATION_NOT_ALLOWED**
   while `submit_payment` is disabled (same kill-switch as `/mcp`).
 

@@ -609,7 +609,7 @@ const {
   resolveIngredientRecallProfile,
   stabilizeIngredientRecallProducts,
 } = require('../services/ingredientProductRecall');
-const { parseMultipart, rmrf } = require('../lookReplicator/multipart');
+const { parseMultipart, rmrf } = require('../lib/multipart');
 const {
   createArtifactId,
   createPlanId,
