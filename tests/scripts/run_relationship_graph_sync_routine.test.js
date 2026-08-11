@@ -9,6 +9,7 @@ const {
   SYNC_CONFIRM_TOKEN,
   WRAPPER_CONFIRM_TOKEN,
   buildSyncRoutineSteps,
+  formatRoutineFailure,
   parseArgs,
   runSyncRoutine,
 } = require('../../scripts/run-relationship-graph-sync-routine');
@@ -490,5 +491,149 @@ describe('run-relationship-graph-sync-routine', () => {
         }),
       }),
     });
+  });
+});
+
+describe('formatRoutineFailure', () => {
+  // Every field asserted below is sentinel-filled: the old formatter printed
+  // `err.message` and the summary path, so a test that asserted only on values
+  // which happen to be absent (or on the message itself) would pass against the
+  // broken version too. Each sentinel is a string the old output could not
+  // contain by construction.
+  function failureError({ steps, failedStep = 'relationship_graph_routine', extra = {} } = {}) {
+    const err = new Error('relationship graph sync routine failed at step: relationship_graph_routine');
+    err.summary = {
+      ok: false,
+      failed_step: failedStep,
+      summary_path: '/tmp/relgraph/sync_routine_summary.json',
+      steps,
+      ...extra,
+    };
+    return err;
+  }
+
+  const FAILED_STEP = {
+    id: 'relationship_graph_routine',
+    status: 'failed',
+    command: '/usr/local/bin/node',
+    args: ['/app/scripts/run-relationship-graph-routine.js', '--market', 'US'],
+    started_at: '2026-08-10T10:37:47.000Z',
+    completed_at: '2026-08-10T10:37:49.000Z',
+    exit_code: 3,
+    stdout_tail: 'STDOUT_SENTINEL_LAST_LINE',
+    stderr_tail: 'Error: STDERR_SENTINEL_ROOT_CAUSE\n    at Object.<anonymous> (/app/scripts/x.js:1:1)',
+  };
+
+  test('prints the failing step stderr, which is the only durable record of why a run died', () => {
+    const text = formatRoutineFailure(failureError({ steps: [FAILED_STEP] }));
+
+    // The point of the whole change: without this line a Railway operator sees
+    // a step name and nothing else.
+    expect(text).toContain('STDERR_SENTINEL_ROOT_CAUSE');
+    expect(text).toContain('exit_code=3');
+    expect(text).toContain('STDOUT_SENTINEL_LAST_LINE');
+    expect(text).toContain('/app/scripts/run-relationship-graph-routine.js');
+    expect(text).toContain('started_at=2026-08-10T10:37:47.000Z');
+    // Preserved from the old behaviour.
+    expect(text).toContain('relationship graph sync routine failed at step');
+    expect(text).toContain('/tmp/relgraph/sync_routine_summary.json');
+  });
+
+  test('reports a timeout kill distinctly from a non-zero exit', () => {
+    const text = formatRoutineFailure(failureError({
+      steps: [{
+        ...FAILED_STEP,
+        exit_code: 124,
+        signal: 'SIGKILL',
+        timed_out: true,
+        timeout_ms: 1200000,
+        stderr_tail: 'step timed out after 1200000ms',
+      }],
+    }));
+
+    expect(text).toContain('timed_out=true');
+    expect(text).toContain('timeout_ms=1200000');
+    expect(text).toContain('signal=SIGKILL');
+  });
+
+  test('surfaces optional-step warnings, which abort nothing and are otherwise invisible', () => {
+    const text = formatRoutineFailure(failureError({
+      steps: [FAILED_STEP],
+      extra: { warnings: ['optional step failed: ai_renewal (exit 9)'] },
+    }));
+
+    expect(text).toContain('optional step failed: ai_renewal (exit 9)');
+  });
+
+  test('appends the ledger error when the run also failed to record itself', () => {
+    const err = failureError({ steps: [FAILED_STEP] });
+    err.ledger_error = new Error('LEDGER_SENTINEL_UNAVAILABLE');
+
+    expect(formatRoutineFailure(err)).toContain('LEDGER_SENTINEL_UNAVAILABLE');
+  });
+
+  test('reports the step named by failed_step, not merely the last one', () => {
+    const text = formatRoutineFailure(failureError({
+      failedStep: 'catalog_sync',
+      steps: [
+        { ...FAILED_STEP, id: 'catalog_sync', stderr_tail: 'CHOSEN_BY_NAME' },
+        { ...FAILED_STEP, id: 'relationship_graph_routine', status: 'passed', stderr_tail: 'NOT_THIS_ONE' },
+      ],
+    }));
+
+    expect(text).toContain('CHOSEN_BY_NAME');
+    expect(text).not.toContain('NOT_THIS_ONE');
+  });
+
+  test('keeps the END of an oversized stderr, where the error actually is', () => {
+    const text = formatRoutineFailure(failureError({
+      steps: [{
+        ...FAILED_STEP,
+        stderr_tail: `${'x'.repeat(50000)}\nError: TAIL_SENTINEL_AT_THE_END`,
+      }],
+    }), { stderrChars: 200 });
+
+    expect(text).toContain('TAIL_SENTINEL_AT_THE_END');
+    expect(text.length).toBeLessThan(5000);
+  });
+
+  test('falls back to the stack when the error carries no summary', () => {
+    const err = new Error('BOOT_SENTINEL_FAILURE');
+    expect(formatRoutineFailure(err)).toContain('BOOT_SENTINEL_FAILURE');
+    expect(formatRoutineFailure(err)).toContain('run_relationship_graph_sync_routine.test.js');
+  });
+
+  test('does not throw when the summary carries no step records', () => {
+    const text = formatRoutineFailure(failureError({ steps: undefined }));
+    expect(text).toContain('no step record captured');
+    expect(text).toContain('relationship_graph_routine');
+  });
+
+  // The tests above build the error by hand, so they would still pass if
+  // runSyncRoutine named these fields differently. This one drives the real
+  // failure path and formats whatever it actually throws.
+  test('formats the error runSyncRoutine really throws, not a hand-built one', async () => {
+    const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'relgraph-sync-routine-fmt-'));
+    const options = parseArgs([
+      '--cutoff', CUTOFF,
+      '--external-product-ids', 'seed_1',
+      '--out-dir', outDir,
+    ], { now: NOW });
+    const runner = jest.fn(async () => ({
+      exitCode: 42,
+      stdout: 'REAL_STDOUT_SENTINEL',
+      stderr: 'Error: REAL_STDERR_SENTINEL_ROOT_CAUSE',
+    }));
+
+    const err = await runSyncRoutine(options, { runner, now: NOW }).catch((e) => e);
+    const text = formatRoutineFailure(err);
+
+    expect(text).toContain('REAL_STDERR_SENTINEL_ROOT_CAUSE');
+    expect(text).toContain('exit_code=42');
+    expect(text).toContain('REAL_STDOUT_SENTINEL');
+    expect(text).toContain('failed step: catalog_sync');
+    // The optional renewal step failed too; it aborts nothing, so this line is
+    // the only place an operator would ever see it.
+    expect(text).toContain('ai_approval_renewal');
   });
 });
