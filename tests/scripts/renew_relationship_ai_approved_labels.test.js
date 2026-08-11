@@ -46,6 +46,34 @@ function fakeQueryFn({ rows = [], seeds = [], catalog = [], groups = [], updateR
   };
 }
 
+// Serves `total` rows in pages of `batchSize`, recording an ordered event log of
+// label SELECTs and per-row evaluations. Interleaving is the observable proxy
+// for "does not materialize the backlog": a version that accumulates emits every
+// select before the first eval, a streaming one alternates.
+function pagingHarness({ total, batchSize }) {
+  const events = [];
+  let served = 0;
+  const queryFn = async (sql) => {
+    if (/UPDATE relationship_candidate_labels/.test(sql)) return { rowCount: 0, rows: [] };
+    if (/FROM relationship_candidate_labels/.test(sql)) {
+      events.push('select');
+      const take = Math.max(0, Math.min(batchSize, total - served));
+      const rows = [];
+      for (let i = 0; i < take; i += 1) {
+        served += 1;
+        rows.push(baseRow({ id: `lbl_${served}`, expires_at: `2026-08-${String(served).padStart(2, '0')}T00:00:00.000Z` }));
+      }
+      return { rows };
+    }
+    return { rows: [] };
+  };
+  const suppressionFn = (row) => {
+    events.push(`eval:${row.id}`);
+    return [];
+  };
+  return { events, queryFn, suppressionFn };
+}
+
 describe('renew-relationship-ai-approved-labels', () => {
   test('parseArgs is dry-run by default and fails closed on apply without confirmation', () => {
     const options = parseArgs([]);
@@ -198,6 +226,82 @@ describe('renew-relationship-ai-approved-labels', () => {
     expect(calls[1].sql).toContain('(expires_at, id) >');
     expect(calls[1].params).toContain('2026-08-11T00:00:00.000Z');
     expect(calls[1].params).toContain('lbl_1');
+  });
+
+  // The OOM guard. Keyset paging alone did NOT bound memory — the old loader
+  // pushed every page into one array, so a 4GB V8 heap died on the expiring
+  // backlog in production (2026-08-11T10:37Z) with the pagination test above
+  // still green. These assert the rows are CONSUMED per batch, not just fetched
+  // per batch, which is the property that actually caps resident memory.
+  test('runRenewal evaluates each batch before fetching the next', async () => {
+    const { events, queryFn, suppressionFn } = pagingHarness({ total: 6, batchSize: 2 });
+
+    await runRenewal({ queryFn, suppressionFn, batchSize: 2, generatedAt: '2026-08-04T00:00:00.000Z' });
+
+    const firstSelect = events.indexOf('select');
+    const secondSelect = events.indexOf('select', firstSelect + 1);
+    expect(secondSelect).toBeGreaterThan(-1);
+    // An accumulating loader emits select,select,select,... with no eval in between.
+    const betweenSelects = events.slice(firstSelect + 1, secondSelect);
+    expect(betweenSelects).toEqual(['eval:lbl_1', 'eval:lbl_2']);
+  });
+
+  test('runRenewal never holds more than one batch of rows in flight', async () => {
+    const { events, queryFn, suppressionFn } = pagingHarness({ total: 6, batchSize: 2 });
+
+    const report = await runRenewal({ queryFn, suppressionFn, batchSize: 2, generatedAt: '2026-08-04T00:00:00.000Z' });
+
+    // Every row is still scanned exactly once — streaming must not lose rows.
+    expect(report.scanned_rows).toBe(6);
+    expect(events.filter((e) => e.startsWith('eval:'))).toEqual([
+      'eval:lbl_1', 'eval:lbl_2', 'eval:lbl_3', 'eval:lbl_4', 'eval:lbl_5', 'eval:lbl_6',
+    ]);
+    // Max evals seen between two consecutive selects never exceeds one batch.
+    const selectIdx = events.reduce((acc, e, i) => (e === 'select' ? [...acc, i] : acc), []);
+    const spans = selectIdx.map((start, i) => (
+      events.slice(start + 1, selectIdx[i + 1] === undefined ? events.length : selectIdx[i + 1])
+    ));
+    for (const span of spans) expect(span.length).toBeLessThanOrEqual(2);
+  });
+
+  test('streaming still folds counters and ids across every batch', async () => {
+    // Half the rows suppressed, alternating, so a fold that drops or double-counts
+    // a batch cannot produce these totals by accident.
+    const events = [];
+    let served = 0;
+    const queryFn = async (sql) => {
+      if (/UPDATE relationship_candidate_labels/.test(sql)) return { rowCount: 2, rows: [] };
+      if (/FROM relationship_candidate_labels/.test(sql)) {
+        const take = Math.max(0, Math.min(2, 4 - served));
+        const rows = [];
+        for (let i = 0; i < take; i += 1) {
+          served += 1;
+          rows.push(baseRow({ id: `lbl_${served}`, expires_at: `2026-08-0${served}T00:00:00.000Z` }));
+        }
+        return { rows };
+      }
+      if (/FROM external_product_seeds/.test(sql)) return { rows: [{ k1: 'ext_active_seed' }] };
+      return { rows: [] };
+    };
+    const suppressionFn = (row) => {
+      events.push(row.id);
+      return Number(row.id.slice(-1)) % 2 === 0 ? ['ai_approved_dupe_quarantined'] : [];
+    };
+
+    const report = await runRenewal({
+      apply: true,
+      confirm: APPLY_CONFIRM_TOKEN,
+      queryFn,
+      suppressionFn,
+      batchSize: 2,
+      generatedAt: '2026-08-04T00:00:00.000Z',
+    });
+
+    expect(report.scanned_rows).toBe(4);
+    expect(report.renewable_count).toBe(2);          // lbl_1, lbl_3 — one per batch
+    expect(report.skipped.suppressed).toBe(2);       // lbl_2, lbl_4 — one per batch
+    expect(report.suppression_reasons).toEqual({ ai_approved_dupe_quarantined: 2 });
+    expect(report.skipped_total).toBe(2);
   });
 
   test('runRenewal apply that renews zero of a non-empty renewable set fails loudly', async () => {
