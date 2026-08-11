@@ -31630,6 +31630,27 @@ function deriveQueryFromProduct(product) {
   return String(product.product_id || product.id || '').trim();
 }
 
+const SELLABLE_PRODUCT_STATUS_VALUES = [
+  'active',
+  'published',
+  'online',
+  'live',
+  'enabled',
+  'available',
+];
+
+const NON_SELLABLE_PRODUCT_STATUS_VALUES = new Set([
+  'inactive',
+  'disabled',
+  'deleted',
+  'archived',
+  'archive',
+  'draft',
+  'hidden',
+  'unpublished',
+  'blocked',
+]);
+
 function buildSellableStatusPredicate(statusExpr) {
   const expr = `lower(coalesce(${statusExpr}, ''))`;
   const allowed = SELLABLE_PRODUCT_STATUS_VALUES.map((value) => `'${value}'`).join(', ');
