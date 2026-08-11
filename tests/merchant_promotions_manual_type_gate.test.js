@@ -111,15 +111,56 @@ describe('manual promo type gate on /api/merchant/promotions', () => {
     expect(storeMock.upsertPromotion).not.toHaveBeenCalled();
   });
 
-  test('POST with the type only in config.kind cannot bypass the gate', async () => {
-    const app = require('../src/server');
-    const payload = promoPayload(undefined, FLASH_SALE_CONFIG);
-    delete payload.type;
-    const resp = await post(app, payload);
-    expect(resp.status).toBe(400);
-    expect(resp.body.error).toBe('PROMO_TYPE_NOT_APPLIED_AT_QUOTE');
-    expect(storeMock.upsertPromotion).not.toHaveBeenCalled();
-  });
+  // Every shape validateAndNormalizePromotion will read a type out of. The gate
+  // has to read the SAME set, or a request refused on one spelling gets stored on
+  // another. Driven as a table because covering only `config.kind` left two
+  // mutants alive: dropping the `config.type` fallback, and dropping the
+  // {promotion: …} envelope unwrap — each of which makes a FLASH_SALE storable.
+  const BYPASS_SHAPES = [
+    ['type', (p) => p],
+    ['config.kind', (p) => ({ ...p, type: undefined, config: { kind: 'FLASH_SALE' } })],
+    ['config.type', (p) => ({ ...p, type: undefined, config: { type: 'FLASH_SALE' } })],
+    ['{promotion} envelope + type', (p) => ({ promotion: p })],
+    [
+      '{promotion} envelope + config.kind',
+      (p) => ({ promotion: { ...p, type: undefined, config: { kind: 'FLASH_SALE' } } }),
+    ],
+    [
+      '{promotion} envelope + config.type',
+      (p) => ({ promotion: { ...p, type: undefined, config: { type: 'FLASH_SALE' } } }),
+    ],
+  ];
+
+  test.each(BYPASS_SHAPES)(
+    'POST cannot smuggle FLASH_SALE past the gate via %s',
+    async (_label, shape) => {
+      const app = require('../src/server');
+      const resp = await post(app, shape(promoPayload('FLASH_SALE', FLASH_SALE_CONFIG)));
+      expect(resp.status).toBe(400);
+      expect(resp.body.error).toBe('PROMO_TYPE_NOT_APPLIED_AT_QUOTE');
+      expect(storeMock.upsertPromotion).not.toHaveBeenCalled();
+    }
+  );
+
+  test.each(BYPASS_SHAPES)(
+    'PATCH cannot convert MULTI_BUY_DISCOUNT into FLASH_SALE via %s',
+    async (_label, shape) => {
+      const existing = {
+        id: 'promo_multibuy_shape',
+        ...promoPayload('MULTI_BUY_DISCOUNT', MULTI_BUY_CONFIG),
+      };
+      storeMock.getPromotionById.mockResolvedValue(existing);
+      const app = require('../src/server');
+      const resp = await patch(
+        app,
+        existing.id,
+        shape(promoPayload('FLASH_SALE', FLASH_SALE_CONFIG))
+      );
+      expect(resp.status).toBe(400);
+      expect(resp.body.error).toBe('PROMO_TYPE_NOT_APPLIED_AT_QUOTE');
+      expect(storeMock.upsertPromotion).not.toHaveBeenCalled();
+    }
+  );
 
   test('POST MULTI_BUY_DISCOUNT passes the gate and is stored', async () => {
     const app = require('../src/server');
@@ -163,7 +204,14 @@ describe('manual promo type gate on /api/merchant/promotions', () => {
     expect(storeMock.upsertPromotion).not.toHaveBeenCalled();
   });
 
-  test('refusal message is byte-identical to the backend gate (cross-repo contract)', () => {
+  // NOTE ON SCOPE: this pins the GATEWAY's refusal text only. It does NOT detect
+  // drift from pivota-backend's copy of the same sentence — editing the string in
+  // both this repo's source and the constant above keeps it green while the two
+  // repos diverge. The message was verified byte-identical to
+  // routes/merchant_promotions_api.py by hand at authoring time; making that
+  // durable needs the digest-pinned mirror this repo pair already uses for
+  // contracts/protocol_vocabulary_v1.json, which is tracked as a follow-up.
+  test('refusal text and the exemption rules are pinned (gateway side)', () => {
     const app = require('../src/server');
     const rejection = app._debug.manualPromoTypeRejection('FLASH_SALE');
     expect(rejection).toEqual({

@@ -32663,9 +32663,17 @@ function requestedPromotionType(payload) {
 // Returns the 400 body ({ error, message }) when a manual create/convert asks for a
 // promo type the quote engine will never apply, else null. `existingType` lets a
 // PATCH that round-trips an existing (Shopify-synced) FLASH_SALE promo through
-// unchanged — only converting INTO a non-applied type is refused. The message is
-// kept byte-identical to the backend gate so merchants see the same guidance
-// regardless of which layer rejects first.
+// unchanged — only converting INTO a non-applied type is refused. (The exemption
+// is written for both names, but only FLASH_SALE can actually use it:
+// validateAndNormalizePromotion's own allowlist below still rejects FREE_SHIPPING,
+// so a synced FREE_SHIPPING promo cannot be edited through this route at all.
+// Pre-existing, tracked separately — not something this gate introduced.)
+//
+// The message text is byte-identical to the backend gate's so merchants read the
+// same guidance whichever layer refuses. The ENVELOPE is not identical: this
+// returns {error, message} flat, while the backend's error middleware rewrites
+// its {code, message} detail into {error: {code: 'INVALID_REQUEST', details: …}}.
+// A client wanting the named code must read both shapes.
 function manualPromoTypeRejection(requestedType, existingType = null) {
   if (!requestedType) return null;
   if (QUOTE_APPLIED_MANUAL_PROMO_TYPES.has(requestedType)) return null;
@@ -36511,7 +36519,9 @@ app.patch('/api/merchant/promotions/:id', requireAdmin, async (req, res) => {
     // CONVERTING a promo into a type the quote engine never applies is refused.
     const typeRejection = manualPromoTypeRejection(
       requestedPromotionType(req.body),
-      existing.type || existing.config?.kind || null
+      // Same field precedence requestedPromotionType uses, so a promo whose type
+      // lives only in config cannot be refused on its own round-trip edit.
+      existing.type || existing.config?.kind || existing.config?.type || null
     );
     if (typeRejection) {
       return res.status(400).json(typeRejection);
