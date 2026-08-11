@@ -35,14 +35,27 @@
  *    corporate ones. So "Tom Ford" and "Tom Ford Beauty" are one brand here and two
  *    brands there.
  *
- * Measured on prod 2026-08-08: 80 of 364 distinct brands (3,915 rows) normalize
+ * HOW OFTEN, AND WHICH AXIS DOMINATES (prod, 2026-08-08, all 14,104 rows)
+ * 329 identityMatchKey groups (926 rows) span more than one authority content_key.
+ * The split is lopsided and NOT the way the brand axis above might suggest:
+ *
+ *     via the TITLE axis   324 groups
+ *     via the BRAND axis     5 groups
+ *
+ * So the title axis is the dominant one by ~65x, and the COSRX 1-ct/10-Sheets fold this
+ * module now guards against is itself a title-axis span with an identical authority
+ * brand. Do not read the brand axis as the main event; it is the smaller of the two.
+ *
+ * On the brand axis specifically: 80 of 364 distinct brands (3,915 rows) normalize
  * differently under the two rules, and 6 `brandCore` values each cover more than one
  * authority brand — kosas/kosas cosmetics, benefit/benefit cosmetics, tom ford/tom ford
  * beauty, supergoop/supergoop!, catkin/catkin cosmetics, estee lauder/estée lauder.
- * Those 6 are where an exact match here can span an authority boundary. Four of the 51
- * folds applied by reconcile-retailer-offers-into-d2c.cjs were exactly that — Ulta's
- * "Tom Ford" onto D2C's "Tom Ford Beauty" — and all four are CORRECT: it is one brand,
- * spelled two ways by two sellers. Collapsing them is what this key is for.
+ * Only 4 of those 6 are suffix-driven: estee lauder/estée lauder is diacritic folding
+ * and supergoop/supergoop! is symbol stripping, both from `normalizeText`, not from the
+ * vertical-suffix list. Four of the 51 folds applied by
+ * reconcile-retailer-offers-into-d2c.cjs were the brand axis — Ulta's "Tom Ford" onto
+ * D2C's "Tom Ford Beauty" — and all four are CORRECT: it is one brand spelled two ways
+ * by two sellers, which is what this key is for.
  *
  * Both axes exist so the match key can be LOOSER than the content key. That is the
  * point, and it is exactly why neither may ever be substituted for the other: minting
@@ -234,8 +247,27 @@ function packCounts(title) {
  *
  * Deliberately requires BOTH sides to speak, because silence is not disagreement:
  * "Snail Essence" vs "Snail Essence 10 Sheets" is the ordinary case where a retailer
- * states the pack and the brand's own site does not, and folding those IS correct —
- * 13 of the 51 measured folds were exactly that shape and must keep working.
+ * states the pack and the brand's own site does not, and folding those IS correct.
+ *
+ * BE HONEST ABOUT THE EVIDENCE FOR THAT. Measured over the 51 folds
+ * reconcile-retailer-offers-into-d2c.cjs applied on 2026-07-12:
+ *
+ *     folds where exactly ONE side states a pack count     0
+ *     folds where NEITHER states one                      50
+ *     folds where BOTH state one (the COSRX bug)           1
+ *
+ * So the one-side-silent case has occurred ZERO times so far. An earlier revision of
+ * this comment claimed "13 of the 51", which was a misattributed number — 13 was the
+ * count of folds differing by a size or form token generally (oz, ml, "Jumbo"), none of
+ * them pack counts. Requiring both sides to speak is therefore a FORWARD-LOOKING
+ * choice, not a measured constraint, and it should be argued as one.
+ *
+ * It also means the placement argument is weaker than it first appeared: removing the
+ * discrete count units from SIZE_RE would have broken exactly ONE of the 51 folds — the
+ * defective one. (Removing all of SIZE_RE would have broken 11.) The decision-layer
+ * guard is still the better shape, because it keeps the match key permissive for the
+ * "X" vs "X 10 Sheets" case that will eventually arrive and blocks only on positive
+ * evidence of conflict — but that is a judgement about future data, not a measurement.
  */
 function packCountMismatch(titleA, titleB) {
   const a = packCounts(titleA);

@@ -292,3 +292,72 @@ describe('brandCore vs the content_key authority — the brand-suffix axis', () 
     expect(authority.normalizeBrand('Beauty of Joseon')).toBe('beauty of joseon');
   });
 });
+
+/* Gaps found by mutation testing the first revision — each of these mutants survived
+ * all 42 tests, and each would cause a wrong outcome in prod. */
+describe('pack-count guard: the mutation gaps', () => {
+  test('"Count" is the commonest Ulta spelling and must parse', () => {
+    // Dropping `count` from PACK_COUNT_RE survived every test. 17 prod titles use it,
+    // including all six Caraseoul rows, whose 44/74/102-count patches are exactly the
+    // conflict this guard exists to catch.
+    expect(m.packCounts('Spot Patches [44 Count]')).toEqual([44]);
+    expect(m.packCounts('Acne Patch 102 count')).toEqual([102]);
+    expect(m.packCountMismatch('Spot Patches [44 Count]', 'Spot Patches [74 Count]')).toBe(true);
+  });
+
+  test('pc / piece / tablets parse too — 72 prod titles between them', () => {
+    expect(m.packCounts('Nail Polish Set 4 Piece')).toEqual([4]);
+    expect(m.packCounts('Brush Set 12 pcs')).toEqual([12]);
+    expect(m.packCounts('Collagen 900mg x 84 tablets')).toEqual([84]);
+  });
+
+  test('a PREFIX multiset is a mismatch, not a match', () => {
+    // Dropping the length check survived: [2] vs [2,10] compared equal element-wise
+    // because `some` only walks the shorter array. A kit is not its own component.
+    expect(m.packCountMismatch('Kit 2 Pads', 'Kit 2 Pads 10 Sheets')).toBe(true);
+    expect(m.packCountMismatch('Kit 2 Pads 10 Sheets', 'Kit 2 Pads')).toBe(true);
+  });
+
+  test('decimals parse, so "1.0 ct" and "1 ct" are the same pack', () => {
+    expect(m.packCounts('Mask 1.0 ct')).toEqual([1]);
+    expect(m.packCountMismatch('Mask 1.0 ct', 'Mask 1 ct')).toBe(false);
+  });
+
+  test('a blocked result carries score 1 — and that value reaches a human', () => {
+    // reconcile-retailer-offers-into-d2c.cjs writes f.score into jaccard_score. It now
+    // nulls it when blocked_by is set, but the resolver's own contract is pinned here
+    // so the two cannot drift apart silently.
+    const index = { exact: new Map(), byBrand: new Map(), candidateCount: 1 };
+    const cand = { product_key: 'pk', content_key: 'ck_x', brand: 'COSRX', title: 'Mask 10 Sheets' };
+    index.exact.set(m.identityMatchKey(cand.brand, cand.title), cand);
+    const r = m.resolveAgainstIndex(index, 'COSRX', 'Mask 1 ct');
+    expect(r.score).toBe(1);
+    expect(r.blocked_by).toBe('pack_count_mismatch');
+  });
+});
+
+/* THE INVARIANT THAT MAKES THE GUARD FAIL-SAFE, pinned. A spelling the guard misses is
+ * harmless ONLY because SIZE_RE also fails to strip it — so the match key does not
+ * collapse, no exact match forms, and no fold is possible. That property is structural:
+ * PACK_COUNT_RE's unit set is exactly SIZE_RE's discrete-count subset. Nothing enforced
+ * it, and mutation testing showed SIZE_RE can lose `pads?` with every test still green,
+ * which would break it in the direction that folds silently. */
+describe('PACK_COUNT_RE and SIZE_RE agree on which units are counts', () => {
+  const COUNT_UNITS = ['count', 'ct', 'pc', 'pcs', 'piece', 'pieces', 'sheet', 'sheets',
+    'pad', 'pads', 'capsule', 'capsules', 'tablet', 'tablets'];
+
+  test.each(COUNT_UNITS)('"10 %s" is stripped by titleCore AND read by packCounts', (unit) => {
+    const title = `Widget 10 ${unit}`;
+    // titleCore strips it, so two listings differing only in the count share a match key
+    expect(m.titleCore(title, 'Brand')).toBe(m.titleCore('Widget', 'Brand'));
+    // ...and therefore packCounts MUST see it, or the fold happens unguarded
+    expect(m.packCounts(title)).toEqual([10]);
+  });
+
+  test('volume and weight units are stripped but are NOT counts', () => {
+    for (const unit of ['ml', 'oz', 'g', 'kg', 'fl oz']) {
+      expect(m.titleCore(`Widget 10 ${unit}`, 'Brand')).toBe(m.titleCore('Widget', 'Brand'));
+      expect(m.packCounts(`Widget 10 ${unit}`)).toEqual([]);
+    }
+  });
+});
