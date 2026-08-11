@@ -16,28 +16,12 @@ Scope: **design only**. No feature work is implemented in this step.
 - **Express** server in `src/server.js`.
 - Entrypoint in `package.json` (`main`: `src/server.js`, scripts `start`, `dev`).
 
-### Current “Look Replicator” endpoints (jobs / share / uploads)
+### Look Replicator endpoints (removed)
 
-Mounted by `mountLookReplicatorRoutes(app, ...)` in `src/server.js`.
-
-- `POST /uploads/signed-url`
-  - Returns S3-compatible PUT signed URL + public URL.
-  - Auth: **required** — `LOOK_REPLICATOR_API_KEY` (Bearer or `X-API-Key`). With no key
-    configured, every look-replicator route fails closed with
-    `503 LOOK_REPLICATOR_AUTH_UNCONFIGURED`.
-  - Implementation: `src/lookReplicator/storage.js`
-- `POST /look-jobs` (legacy demo lane)
-  - **Disabled by default**: answers `501 LOOK_JOBS_DISABLED`. This lane never had a real
-    pipeline — it fake-progressed on timers and served `mockResult.js`, a canned fixture.
-    The real pipeline is `POST /api/look-replicate/jobs`.
-  - Dev-only opt-in: `LOOK_REPLICATOR_ALLOW_MOCK_JOBS=true` in a non-production-like env
-    (refused whenever NODE_ENV / RAILWAY_ENVIRONMENT / VERCEL_ENV say production). When it
-    serves, the result is labeled `mock: true, result_source: "mock_fixture"`.
-  - Implementation: `src/lookReplicator/index.js`, `src/lookReplicator/store.js`, `src/lookReplicator/mockResult.js`
-- `GET /look-jobs/:jobId`
-  - Poll job status + result snapshot.
-- `GET /shares/:shareId`
-  - Fetches a share view (currently shareId == jobId).
+The Look Replicator HTTP surface (`/look-jobs`, `/shares`, `/uploads/signed-url`,
+`/api/look-replicate/*`) and `src/lookReplicator/` were removed on 2026-08-11 —
+dead legacy demo, retired with the `look-replicate-share` frontend. The Layer 1–3
+pipeline libraries documented below remain in the repo.
 
 ### Current Layer 1 endpoints (US-only)
 

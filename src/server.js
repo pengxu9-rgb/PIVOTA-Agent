@@ -318,16 +318,7 @@ const {
   scorePairOverlap,
 } = require('./services/productTagSignals');
 const noopMountRoute = () => {};
-let mountLookReplicatorRoutes = noopMountRoute;
-try {
-  ({ mountLookReplicatorRoutes } = require('./lookReplicator'));
-} catch (err) {
-  logger.error(
-    { err: err?.message || String(err) },
-    'lookReplicator module failed to load; disabling look replicator routes',
-  );
-}
-const { mountOutcomeTelemetryRoutes, mountLookReplicatorEventRoutes, mountUiEventRoutes } = require('./telemetry');
+const { mountOutcomeTelemetryRoutes, mountUiEventRoutes } = require('./telemetry');
 const { mountLayer1CompatibilityRoutes } = require('./layer1/routes/layer1Compatibility');
 const { mountLayer1BundleRoutes } = require('./layer1/routes/layer1BundleValidate');
 const { mountExternalOfferRoutes } = require('./layer3/routes/externalOffers');
@@ -29835,7 +29826,8 @@ function isAgentCheckoutHostedLinkEnabled() {
 }
 
 // Mount path for the OpenAI ACP (ChatGPT) REST checkout doors. Deliberately NOT bare `/checkout_sessions`
-// (which src/lookReplicator/index.js already serves) — namespaced to avoid the collision.
+// (originally namespaced to avoid a collision with the since-removed lookReplicator routes; the
+// namespaced path is now the published contract, so it stays).
 const COMMERCE_ACP_BASE_PATH = '/acp';
 
 // ACP delegated-payment vaulting. Pivota PERMANENTLY refuses this endpoint (it receives raw cardholder data
@@ -36012,17 +36004,12 @@ app.get('/healthz/db', async (req, res) => {
   }
 });
 
-// ---------------- Look Replicator (agent task) ----------------
-
-mountLookReplicatorRoutes(app, { logger });
+// (Look Replicator removed 2026-08-11 — dead legacy demo agent; the
+// look-replicate-share frontend is retired. See PR history for the module.)
 
 // ---------------- Telemetry (US): Outcome signals ----------------
 
 mountOutcomeTelemetryRoutes(app, { logger });
-
-// ---------------- Telemetry (internal): Look Replicator events ----------------
-
-mountLookReplicatorEventRoutes(app, { logger });
 
 // ---------------- Telemetry (internal): Aurora Chatbox UI events ----------------
 

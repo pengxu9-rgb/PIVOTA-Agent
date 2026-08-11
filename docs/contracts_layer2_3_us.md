@@ -1,6 +1,8 @@
 # Layer 2/3 Contracts (US-first) — v0
 
-This document defines the **wire contracts** for Layer 2/3 outputs consumed by `look-replicate-share`.
+This document defines the **wire contracts** for Layer 2/3 outputs. (Their original consumer,
+`look-replicate-share`, was retired with the lookReplicator module on 2026-08-11; the contracts are
+kept while the layer1-3 pipeline remains in the repo.)
 These are **US-only** (`market: "US"`).
 
 No engines are implemented in this step; this is schema-only.
