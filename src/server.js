@@ -35280,7 +35280,6 @@ app.use((req, res, next) => {
   const defaults = [
     'https://agent.pivota.cc',
     'https://creator.pivota.cc',
-    'https://look-replicator.pivota.cc',
     'https://aurora.pivota.cc',
     ...AURORA_CHATBOX_ORIGINS,
     'http://localhost:3000',
