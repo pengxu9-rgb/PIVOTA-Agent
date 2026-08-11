@@ -480,6 +480,45 @@ function embedTarget({ model, texts, apiKey, baseUrl = null }) {
   };
 }
 
+/**
+ * A GoogleAuth instance for Vertex consumers that are NOT `@google/genai`
+ * (today: Claude via `@anthropic-ai/vertex-sdk`, which accepts a `googleAuth`
+ * option). Routed through parsedCredentials() so every credential reader in
+ * this module keeps agreeing on what "configured" means — google-auth-library
+ * on its own only reads GOOGLE_APPLICATION_CREDENTIALS as a FILE PATH and
+ * would silently miss the inline-JSON variable this deployment actually sets.
+ * With no inline credential configured it falls back to ADC, which is correct
+ * on a workstation with `gcloud auth application-default login`.
+ */
+function googleAuthForVertex() {
+  // THE VERSION SPLIT IS LOAD-BEARING. A bare require here resolves the
+  // repo's hoisted google-auth-library v9, but @anthropic-ai/vertex-sdk is
+  // built against v10 and npm nests its own copy. The two disagree on
+  // getRequestHeaders(): v9 returns a plain object, v10 a WHATWG Headers —
+  // and the SDK calls `.get()` on the result whenever authClient.projectId
+  // is unset (vertex-sdk client.js), which is exactly the ADC/workstation
+  // and stripped-credential shapes parsedCredentials() blesses. Injecting a
+  // v9 instance therefore crashes with a raw TypeError on every request for
+  // those shapes and survives full SA keys only by accident. Resolving the
+  // library FROM THE SDK'S OWN resolution context makes version agreement
+  // hold by construction, immune to hoisting layout.
+  let authLib;
+  try {
+    authLib = require(require.resolve('google-auth-library', {
+      paths: [require.resolve('@anthropic-ai/vertex-sdk')],
+    }));
+  } catch (_err) {
+    // SDK absent (tests, trimmed installs): the hoisted copy is the only one.
+    authLib = require('google-auth-library');
+  }
+  const { GoogleAuth } = authLib;
+  const credentials = parsedCredentials();
+  return new GoogleAuth({
+    scopes: 'https://www.googleapis.com/auth/cloud-platform',
+    ...(credentials ? { credentials } : {}),
+  });
+}
+
 module.exports = {
   vertexEnabled,
   vertexProject,
@@ -497,4 +536,5 @@ module.exports = {
   openAiCompatModel,
   openAiCompatHeaders,
   embedTarget,
+  googleAuthForVertex,
 };
