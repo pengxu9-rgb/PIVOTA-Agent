@@ -597,3 +597,124 @@ test('travel context-missing notice: nothing scored -> null, never an invented 0
   assert.equal(notice.payload.confidence.score, null, 'was a hard-coded 0.2');
   assert.equal(notice.payload.confidence.level, 'low');
 });
+
+/* ---------------------------------------------------------------------------
+ * Remaining F4 sites from the 2026-08-12 belt sweep (all pre-existing).
+ *
+ *   - pdpProductIntel.buildRecommendationIntents: an edge with no x_score was
+ *     given 0.55, which cleared the 0.4 threshold and reported an UNRANKED
+ *     relationship as 'moderate' confidence in the public API.
+ *   - normalizeProgressLlmOutput: `confidence` is optional in the LLM output,
+ *     so an omitted one became a precise-looking midpoint 0.5 on the card.
+ *   - mergePhotoFindingsIntoAnalysis: unmeasured finding/takeaway confidence
+ *     became 0 / 0.5 / 0.55 depending on which of the three normalizers ran.
+ *
+ * In every case a genuine 0 is a real measurement and must survive.
+ * ------------------------------------------------------------------------- */
+
+const { buildRecommendationIntents } = require('../src/pdpProductIntel');
+
+test('pdp intents: an unranked edge reports low confidence, not a 0.55-derived "moderate"', () => {
+  const out = buildRecommendationIntents([
+    { product_id: 'p_unranked', title: 'Unranked' }, // producer omits x_score
+    { product_id: 'p_null', title: 'Null score', x_score: null },
+  ]);
+  assert.deepEqual(out.similar.map((i) => i.confidence), ['low', 'low']);
+});
+
+test('pdp intents: a real x_score still maps to its true confidence band', () => {
+  const out = buildRecommendationIntents([
+    { product_id: 'p_high', title: 'High', x_score: 0.82 },
+    { product_id: 'p_mid', title: 'Mid', x_score: 0.5 },
+    { product_id: 'p_low', title: 'Low', x_score: 0.1 },
+  ]);
+  assert.deepEqual(out.similar.map((i) => i.confidence), ['high', 'moderate', 'low']);
+});
+
+function progressRaw(extra) {
+  return {
+    overall_trend: 'improving',
+    concern_deltas: [
+      { concern_id: 'acne', direction: 'improved', magnitude: 'slight', note_en: 'Fewer breakouts', note_zh: '痘痘减少' },
+    ],
+    recommendation_en: 'Keep the current routine',
+    recommendation_zh: '保持当前流程',
+    ...extra,
+  };
+}
+
+test('progress summary: an omitted LLM confidence stays null, never an invented 0.5', () => {
+  assert.equal(__internal.normalizeProgressLlmOutput(progressRaw())?.confidence, null);
+  assert.equal(__internal.normalizeProgressLlmOutput(progressRaw({ confidence: null }))?.confidence, null);
+});
+
+test('progress summary: a real confidence is preserved, including a genuine 0', () => {
+  assert.equal(__internal.normalizeProgressLlmOutput(progressRaw({ confidence: 0.83 }))?.confidence, 0.83);
+  assert.equal(__internal.normalizeProgressLlmOutput(progressRaw({ confidence: 0 }))?.confidence, 0);
+});
+
+test('progress card: an unmeasured confidence reaches the card as null, not 0', () => {
+  const section = (raw) =>
+    __internal
+      .buildSkinProgressCard({
+        ctx: { request_id: 'req_progress' },
+        baseline: null,
+        progress: __internal.normalizeProgressLlmOutput(raw),
+        language: 'EN',
+      })
+      .payload.sections.find((s) => s.kind === 'progress_delta');
+  assert.equal(section(progressRaw()).confidence, null);
+  assert.equal(section(progressRaw({ confidence: 0.83 })).confidence, 0.83);
+});
+
+test('photo merge: unmeasured finding and takeaway confidence stay null, a genuine 0 survives', () => {
+  const merged = __internal.mergePhotoFindingsIntoAnalysis({
+    analysis: { findings: [], takeaways: [] },
+    diagnosisV1: {
+      photo_findings: [
+        { issue_type: 'acne', text: 'a', confidence: 0.77 },
+        { issue_type: 'redness', text: 'b' }, // never measured
+        { issue_type: 'dryness', text: 'c', confidence: 0 }, // measured as zero
+      ],
+      takeaways: [
+        { source: 'photo', issue_type: 'acne', text: 'Acne improving', confidence: 0.66 },
+        { source: 'photo', issue_type: 'redness', text: 'Redness present' }, // never measured
+      ],
+    },
+    language: 'EN',
+    profileSummary: {},
+  });
+  const byIssue = (rows) => Object.fromEntries((rows || []).map((r) => [r.issue_type, r.confidence]));
+  const findings = byIssue(merged.findings);
+  assert.equal(findings.acne, 0.77);
+  assert.equal(findings.redness, null, 'unmeasured must not become a confident 0');
+  assert.equal(findings.dryness, 0, 'a measured zero is a real value');
+  const takeaways = byIssue(merged.takeaways);
+  assert.equal(takeaways.acne, 0.66);
+  assert.equal(takeaways.redness, null);
+});
+
+test('concern confidence: nothing measured -> null, neither a 0 nor an invented 0.58', () => {
+  const unmeasured = __internal.deriveConcernConfidence({
+    issueType: 'acne',
+    analysis: { findings: [{ issue_type: 'acne', confidence: null }] },
+    defaultScore: null,
+  });
+  assert.equal(unmeasured, null);
+  const measured = __internal.deriveConcernConfidence({
+    issueType: 'acne',
+    analysis: { findings: [{ issue_type: 'acne', confidence: 0.7 }] },
+    defaultScore: null,
+  });
+  assert.equal(measured, 0.7);
+});
+
+test('artifact confidence: a null score yields no score and a conservative level', () => {
+  assert.deepEqual(__internal.buildArtifactConfidence(null, ['r']), {
+    score: null,
+    level: 'low',
+    rationale: ['r'],
+  });
+  assert.equal(__internal.buildArtifactConfidence(0.8, ['r']).score, 0.8);
+  assert.equal(__internal.buildArtifactConfidence(0, ['r']).score, 0, 'a measured zero survives');
+});
