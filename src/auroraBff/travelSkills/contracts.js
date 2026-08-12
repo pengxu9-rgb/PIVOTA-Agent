@@ -442,17 +442,24 @@ function buildRecoPreview({ travelReadiness, profile, language }) {
     });
 
   if (!seedProducts.length) {
+    // Fabrication-belt F4: with no grounded seed products nothing was scored,
+    // so there is no score to report. The level stays 'low' (a defensible
+    // categorical read of "no grounded evidence"), but the number is null
+    // instead of an invented 0.45.
     return {
       source: 'travel_readiness_only',
       recommendations: [],
-      confidence: { score: 0.45, level: 'low', rationale: ['no_grounded_seed_products'] },
+      confidence: { score: null, level: 'low', rationale: ['no_grounded_seed_products'] },
     };
   }
 
   const ingredientPlan = {
     targets: inferPseudoIngredientTargets(readiness),
     avoid: [],
-    confidence: isPlainObject(readiness.confidence) ? readiness.confidence : { score: 0.62, level: 'medium' },
+    // F4: when readiness carried no confidence, this handed the matcher an
+    // invented 0.62 that got blended into the shipped score. Pass the absence
+    // through so the matcher builds confidence only from what it measured.
+    confidence: isPlainObject(readiness.confidence) ? readiness.confidence : null,
   };
 
   const bundle = buildProductRecommendationsBundle({
@@ -478,7 +485,10 @@ function buildRecoPreview({ travelReadiness, profile, language }) {
       routine_slot: normalizeText(item && item.routine_slot, 40) || null,
       price_band: normalizeText(item && item.price_band, 24) || null,
     })),
-    confidence: isPlainObject(legacy && legacy.confidence) ? legacy.confidence : { score: 0.6, level: 'medium', rationale: [] },
+    // F4: no computed confidence means no score to report, not a 0.6.
+    confidence: isPlainObject(legacy && legacy.confidence)
+      ? legacy.confidence
+      : { score: null, level: 'low', rationale: ['matcher_confidence_unmeasured'] },
   };
 }
 
@@ -1669,7 +1679,10 @@ async function runTravelPipeline(input = {}) {
       forecast_window: [],
       adaptive_actions: [],
       alerts: [],
-      confidence: { score: 0.35, level: 'low', rationale: ['readiness_build_failed'] },
+      // F4: the build failed, so nothing was scored — the level is a
+      // categorical judgment, the number is null, and the matcher no longer
+      // blends an invented 0.35 into the shipped score.
+      confidence: { score: null, level: 'low', rationale: ['readiness_build_failed'] },
     };
     travelReadiness = mergeKbPrefillIntoReadiness(degradedReadiness, kbEntry);
     pushTrace(trace, {

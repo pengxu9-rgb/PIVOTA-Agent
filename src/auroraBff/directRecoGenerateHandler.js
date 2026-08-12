@@ -293,7 +293,8 @@ function createDirectRecoGenerateHandlerRuntime(deps = {}) {
           payload: buildConfidenceNoticeCardPayload({
             language: ctx.lang,
             reason: 'diagnosis_first',
-            confidence: { score: 0.45, level: 'low', rationale: ['profile_incomplete_assumptions_used'] },
+            // F4: nothing measured this — null score, categorical 'low' level.
+            confidence: { score: null, level: 'low', rationale: ['profile_incomplete_assumptions_used'] },
             non_blocking: true,
             details: [
               ...(Array.isArray(gate.missing) ? gate.missing.map((field) => `missing_${field}`) : []),
@@ -613,7 +614,8 @@ function createDirectRecoGenerateHandlerRuntime(deps = {}) {
                 payload: buildConfidenceNoticeCardPayload({
                   language: ctx.lang,
                   reason: directNoRecoReason || 'artifact_missing',
-                  confidence: { score: 0.35, level: 'low', rationale: [finalDirectContract.telemetry_failure_reason || directNoRecoReason || 'artifact_missing'] },
+                  // F4: no invented 0.35 — an uncomputed confidence stays null.
+                  confidence: { score: null, level: 'low', rationale: [finalDirectContract.telemetry_failure_reason || directNoRecoReason || 'artifact_missing'] },
                   actions: ['retry_recommendations', 'refine_profile'],
                 }),
               },
@@ -785,7 +787,8 @@ function createDirectRecoGenerateHandlerRuntime(deps = {}) {
             payload: buildConfidenceNoticeCardPayload({
               language: ctx.lang,
               reason: finalNoRecoReason || 'artifact_missing',
-              confidence: { score: 0.35, level: 'low', rationale: [finalContract.telemetry_failure_reason || finalNoRecoReason || 'artifact_missing'] },
+              // F4: no invented 0.35 — an uncomputed confidence stays null.
+              confidence: { score: null, level: 'low', rationale: [finalContract.telemetry_failure_reason || finalNoRecoReason || 'artifact_missing'] },
               actions: ['retry_recommendations', 'refine_profile'],
             }),
           },

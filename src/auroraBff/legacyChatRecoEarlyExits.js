@@ -92,7 +92,8 @@ function createLegacyChatRecoEarlyExitsRuntime(deps = {}) {
             payload: buildConfidenceNoticeCardPayload({
               language: ctx.lang,
               reason: 'travel_context_missing',
-              confidence: { score: 0.2, level: 'low', rationale: ['travel_reco_context_missing'] },
+              // F4: missing context means nothing was scored; null, not 0.2.
+              confidence: { score: null, level: 'low', rationale: ['travel_reco_context_missing'] },
               actions: ['return_to_travel_card', 'retry_recommendations'],
               details: ['travel_handoff_requires_last_travel_readiness'],
             }),
@@ -134,7 +135,9 @@ function createLegacyChatRecoEarlyExitsRuntime(deps = {}) {
             payload: buildConfidenceNoticeCardPayload({
               language: ctx.lang,
               reason: 'travel_reco_empty',
-              confidence: { score: 0.28, level: 'low', rationale: ['travel_reco_preview_empty'] },
+              // F4: the preview produced nothing, so nothing was scored. The
+              // level stays 'low'; the number is null instead of a made-up 0.28.
+              confidence: { score: null, level: 'low', rationale: ['travel_reco_preview_empty'] },
               actions: ['retry_recommendations', 'return_to_travel_card'],
               details: ['travel_handoff_no_supported_products'],
             }),
@@ -153,7 +156,14 @@ function createLegacyChatRecoEarlyExitsRuntime(deps = {}) {
       });
     }
 
-    const travelConfidenceScore = Number(travelPreview?.confidence?.score);
+    // F4: no invented 0.62 — an uncomputed travel confidence stays null. The
+    // `!= null` guard matters: Number(null) === 0 would otherwise read an
+    // absent score as an explicit rock-bottom one.
+    const travelConfidenceScore =
+      travelPreview?.confidence?.score != null &&
+      Number.isFinite(Number(travelPreview.confidence.score))
+        ? Number(travelPreview.confidence.score)
+        : null;
     const travelConfidenceLevel = pickFirstTrimmed(
       travelPreview?.confidence?.level,
       travelReadiness?.confidence?.level,
@@ -164,7 +174,7 @@ function createLegacyChatRecoEarlyExitsRuntime(deps = {}) {
       profile: summarizeProfileForContext(profile),
       recommendations: travelRecommendations,
       source: 'travel_reco_preview_v1',
-      recommendation_confidence_score: Number.isFinite(travelConfidenceScore) ? travelConfidenceScore : 0.62,
+      recommendation_confidence_score: travelConfidenceScore,
       recommendation_confidence_level: travelConfidenceLevel || 'medium',
       task_mode: recoTaskMode,
       recommendation_meta: {

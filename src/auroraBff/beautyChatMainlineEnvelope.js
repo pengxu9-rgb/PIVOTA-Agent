@@ -1061,11 +1061,14 @@ function createBeautyChatMainlineEnvelopeRuntime(deps = {}) {
       grounded_count: canonicalRecommendations.length,
       ungrounded_count: 0,
       mainline_status: mainlineStatus,
-      recommendation_confidence_score: Number.isFinite(
-        Number(basePayload?.recommendation_confidence_score),
-      )
-        ? Number(basePayload.recommendation_confidence_score)
-        : 0.61,
+      // F4: no invented 0.61 — an uncomputed confidence stays null. The
+      // `!= null` guard matters: Number(null) === 0 would otherwise read an
+      // absent score as an explicit rock-bottom one.
+      recommendation_confidence_score:
+        basePayload?.recommendation_confidence_score != null &&
+        Number.isFinite(Number(basePayload.recommendation_confidence_score))
+          ? Number(basePayload.recommendation_confidence_score)
+          : null,
       recommendation_confidence_level:
         pickFirstTrimmed(basePayload?.recommendation_confidence_level, 'medium') || 'medium',
       task_mode: taskMode,

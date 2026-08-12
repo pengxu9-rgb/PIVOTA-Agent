@@ -1878,9 +1878,13 @@ function buildRecommendationIntents(relatedProducts, { defaultLimit = 6 } = {}) 
         merchant_id: firstNonEmptyString(row.merchant_id, row.merchant?.id, row.merchant_uuid) || undefined,
         title: firstNonEmptyString(row.title, row.name) || undefined,
         reason: firstNonEmptyString(row.reason, row.recommendation_reason) || undefined,
-        confidence: clampConfidence(
-          confidenceFromScore(typeof row.x_score === 'number' ? row.x_score : 0.55),
-        ),
+        // Fabrication-belt F4: an edge with no x_score was never ranked, and
+        // the relationship-graph producer omits x_score whenever score_total is
+        // absent. Substituting 0.55 cleared the 0.4 threshold and reported an
+        // unranked edge as 'moderate' confidence in the public
+        // recommendation-intents response. confidenceFromScore already returns
+        // 'low' for a non-numeric input, so the honest answer needs no fallback.
+        confidence: clampConfidence(confidenceFromScore(row.x_score)),
       };
     })
     .filter(Boolean)
