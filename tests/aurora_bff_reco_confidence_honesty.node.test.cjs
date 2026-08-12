@@ -442,3 +442,158 @@ test('travel end to end: the REAL writer can now produce the null the reader was
   assert.equal(notice.payload.confidence.score, null, 'was a hard-coded 0.28');
   assert.equal(notice.payload.confidence.level, 'low');
 });
+
+/* ---------------------------------------------------------------------------
+ * Reader sweep for the null-scored matcher bundle (F4).
+ *
+ * Once productMatcherV1 can emit confidence.score = null, every reader that
+ * coerces with Number() before checking != null turns that null into an
+ * explicit 0. Two such readers existed: the async matcher-check telemetry log
+ * in legacyChatRecoPostProcessing, and the artifact_matcher KB write's
+ * overallConfidence in legacyChatRecoEnvelope (whose llm_primary sibling was
+ * already guarded in #1955).
+ * ------------------------------------------------------------------------- */
+
+const { createLegacyChatRecoPostProcessingRuntime } = require('../src/auroraBff/legacyChatRecoPostProcessing');
+const { createLegacyChatRecoEnvelopeRuntime } = require('../src/auroraBff/legacyChatRecoEnvelope');
+
+async function runAsyncMatcherCheck(bundleConfidence) {
+  const logged = [];
+  const runtime = createLegacyChatRecoPostProcessingRuntime({
+    normalizeRecoProductsEmptyReason: () => '',
+    applyRecoWarningVisibilityContract: (payload) => ({ payload }),
+    isTransientRecoUpstreamFailureCode: () => false,
+    recordAuroraSkinFlowMetric: () => {},
+    sanitizeRecoClientVisibleToken: (value) => String(value || ''),
+    inferRecoSourceMode: () => '',
+    mergeFieldMissing: (base) => base,
+  });
+  runtime.postProcessLegacyChatRecoResult({
+    ctx: { request_id: 'req_pp_1', trace_id: 'trace_pp_1' },
+    norm: {
+      payload: {
+        recommendations: [{ name: 'Serum X' }],
+        source: 'llm_primary_v1',
+        recommendation_meta: { source_mode: 'llm_primary' },
+      },
+      field_missing: [],
+    },
+    recoContract: { mainline_status: 'grounded_success' },
+    productMatcherEnabled: true,
+    latestArtifact: { artifact_id: 'artifact_1' },
+    computeMatcherIfNeeded: () => ({
+      matcherBundle: { confidence: bundleConfidence },
+      matcherPayload: { recommendations: [] },
+    }),
+    logger: { info: (fields, msg) => logged.push({ fields, msg }) },
+  });
+  // The matcher check is scheduled on setImmediate; flush it.
+  await new Promise((resolve) => setImmediate(() => setImmediate(resolve)));
+  const entry = logged.find((row) => String(row.msg || '').includes('matcher check finished asynchronously'));
+  assert.ok(entry, 'async matcher check must log its completion');
+  return entry.fields;
+}
+
+test('async matcher telemetry: a null bundle score logs null, not an explicit 0', async () => {
+  const fields = await runAsyncMatcherCheck({ score: null, level: 'low' });
+  assert.equal(fields.confidence, null);
+});
+
+test('async matcher telemetry: a real bundle score is logged verbatim', async () => {
+  const fields = await runAsyncMatcherCheck({ score: 0.44, level: 'low' });
+  assert.equal(fields.confidence, 0.44);
+});
+
+function runEnvelopeKbWrite({ matcherBundle, finalHasRecs = true, artifactConfidenceScore = null }) {
+  const savedRuns = [];
+  const runtime = createLegacyChatRecoEnvelopeRuntime({
+    buildEnvelope: (ctx, body) => body,
+    makeAssistantMessage: (text) => ({ text }),
+    makeEvent: (ctx, eventName, data) => ({ event_name: eventName, data }),
+    buildConfidenceNoticeCardPayload: __internal.buildConfidenceNoticeCardPayload,
+    buildIngredientPlanCard: () => ({ card_id: 'plan', type: 'ingredient_plan', payload: {} }),
+    appendLatestArtifactToSessionPatch: () => {},
+    appendLatestRecoContextToSessionPatch: () => {},
+    recordAuroraRecoKbWrite: () => {},
+    saveRecoRun: (run) => {
+      savedRuns.push(run);
+      return Promise.resolve();
+    },
+    applyRecoContractToRecoRequestedEvents: (events) => ({ events }),
+    buildRecoRequestedEventData: () => ({}),
+    normalizeRecoSourceDetail: (value) => value,
+    deriveRecoEmptyReason: () => 'artifact_missing',
+  });
+  const envelope = runtime.buildLegacyChatRecoEnvelope({
+    ctx: { request_id: 'req_env_1', trace_id: 'trace_env_1', lang: 'EN' },
+    payload: { recommendations: [{ name: 'Serum X' }] },
+    matcherFallbackUsed: Boolean(matcherBundle),
+    productMatcherEnabled: Boolean(matcherBundle),
+    matcherBundle,
+    finalHasRecs,
+    finalAssistantText: 'here you go',
+    artifactConfidenceScore,
+  });
+  return { savedRuns, envelope };
+}
+
+test('artifact_matcher KB write: a null bundle score persists null overallConfidence, not 0', () => {
+  const { savedRuns } = runEnvelopeKbWrite({
+    matcherBundle: { confidence: { score: null, level: 'low' }, recommendations: [] },
+  });
+  assert.equal(savedRuns.length, 1);
+  assert.equal(savedRuns[0].overallConfidence, null);
+});
+
+test('artifact_matcher KB write: a real bundle score persists verbatim', () => {
+  const { savedRuns } = runEnvelopeKbWrite({
+    matcherBundle: { confidence: { score: 0.72, level: 'medium' }, recommendations: [] },
+  });
+  assert.equal(savedRuns.length, 1);
+  assert.equal(savedRuns[0].overallConfidence, 0.72);
+});
+
+test('reco-missing notice: no artifact score -> null, never an invented 0.35', () => {
+  const { envelope } = runEnvelopeKbWrite({
+    matcherBundle: null,
+    finalHasRecs: false,
+    artifactConfidenceScore: null,
+  });
+  const notice = (envelope.cards || []).find((card) => card.type === 'confidence_notice');
+  assert.ok(notice, 'a rec-less envelope must degrade to a confidence notice');
+  assert.equal(notice.payload.confidence.score, null);
+  assert.equal(notice.payload.confidence.level, 'low');
+});
+
+test('reco-missing notice: a real artifact score is preserved verbatim', () => {
+  const { envelope } = runEnvelopeKbWrite({
+    matcherBundle: null,
+    finalHasRecs: false,
+    artifactConfidenceScore: 0.4,
+  });
+  const notice = (envelope.cards || []).find((card) => card.type === 'confidence_notice');
+  assert.equal(notice.payload.confidence.score, 0.4);
+});
+
+test('travel context-missing notice: nothing scored -> null, never an invented 0.2', () => {
+  const runtime = createLegacyChatRecoEarlyExitsRuntime({
+    buildEnvelope: (ctx, body) => body,
+    makeAssistantMessage: (text) => ({ text }),
+    makeEvent: (ctx, eventName, data) => ({ event_name: eventName, data }),
+    buildConfidenceNoticeCardPayload: __internal.buildConfidenceNoticeCardPayload,
+    summarizeProfileForContext: (profile) => profile || {},
+    appendLatestRecoContextToSessionPatch: () => {},
+  });
+  const envelope = runtime.maybeBuildLegacyTravelRecoEnvelope({
+    ctx: { request_id: 'req_travel_ctx', lang: 'EN' },
+    travelRecoHandoff: true,
+    travelSkillsContracts: null, // no preview builder and no readiness context
+    travelRecoContext: { destination: 'Tokyo' },
+    profile: {},
+    recoTaskMode: 'goal_based_products',
+  });
+  const notice = (envelope.cards || []).find((card) => card.type === 'confidence_notice');
+  assert.ok(notice, 'a context-less travel handoff must degrade to a confidence notice');
+  assert.equal(notice.payload.confidence.score, null, 'was a hard-coded 0.2');
+  assert.equal(notice.payload.confidence.level, 'low');
+});

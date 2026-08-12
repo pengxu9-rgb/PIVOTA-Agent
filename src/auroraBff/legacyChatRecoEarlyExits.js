@@ -92,7 +92,8 @@ function createLegacyChatRecoEarlyExitsRuntime(deps = {}) {
             payload: buildConfidenceNoticeCardPayload({
               language: ctx.lang,
               reason: 'travel_context_missing',
-              confidence: { score: 0.2, level: 'low', rationale: ['travel_reco_context_missing'] },
+              // F4: missing context means nothing was scored; null, not 0.2.
+              confidence: { score: null, level: 'low', rationale: ['travel_reco_context_missing'] },
               actions: ['return_to_travel_card', 'retry_recommendations'],
               details: ['travel_handoff_requires_last_travel_readiness'],
             }),

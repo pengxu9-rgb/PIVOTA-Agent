@@ -84,7 +84,9 @@ function createLegacyChatRecoEnvelopeRuntime(deps = {}) {
               language: ctx.lang,
               reason: deriveRecoEmptyReason(payload, recoContract) || 'artifact_missing',
               confidence: {
-                score: artifactConfidenceScore != null ? artifactConfidenceScore : 0.35,
+                // F4: no artifact score means nothing was measured; the level
+                // stays 'low', the number is null instead of an invented 0.35.
+                score: artifactConfidenceScore != null ? artifactConfidenceScore : null,
                 level: 'low',
                 rationale: [
                   recoContract?.telemetry_failure_reason ||
@@ -226,8 +228,12 @@ function createLegacyChatRecoEnvelopeRuntime(deps = {}) {
           source: 'artifact_matcher_v1',
         },
         reco: matcherBundle,
+        // F4: `!= null` before Number(), mirroring the llm_primary write above —
+        // a matcher bundle that measured nothing persists null, not 0.
         overallConfidence:
-          matcherBundle.confidence && Number.isFinite(Number(matcherBundle.confidence.score))
+          matcherBundle.confidence &&
+          matcherBundle.confidence.score != null &&
+          Number.isFinite(Number(matcherBundle.confidence.score))
             ? Number(matcherBundle.confidence.score)
             : null,
       })
