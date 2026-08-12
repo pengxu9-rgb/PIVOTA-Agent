@@ -1,3 +1,4 @@
+const { spawnSync } = require('node:child_process');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -611,5 +612,37 @@ describe('run-relationship-graph-routine-job', () => {
     expect(summary.steps[0].threshold_violations).toEqual([
       expect.objectContaining({ metric: 'suppressed_pct', observed: 5, max: 1 }),
     ]);
+  });
+
+  // The sync routine spawns this script and keeps only its stderr; the summary
+  // JSON it points at lives in a /tmp out-dir that dies with the cron
+  // container. On 2026-08-12 the cron failed with "failed at step:
+  // pba_sig_refresh" and no exit code, command, or child stderr — so the run
+  // was undiagnosable even though the routine had captured all three.
+  test('the CLI prints the failing step exit code, command, and stderr tail', () => {
+    const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'relgraph-job-cli-'));
+    const missingManifest = path.join(outDir, 'affected-products-does-not-exist.json');
+    const result = spawnSync(process.execPath, [
+      path.join(__dirname, '..', '..', 'scripts', 'run-relationship-graph-routine-job.js'),
+      '--market', 'US',
+      '--affected-products-file', missingManifest,
+      '--out-dir', path.join(outDir, 'routine'),
+      '--skip-build',
+      '--skip-validation',
+      '--skip-review',
+      '--skip-serving-audit',
+      '--skip-lock',
+    ], { encoding: 'utf8' });
+
+    expect(result.status).toBe(1);
+    const stderr = result.stderr || '';
+    expect(stderr).toContain('failed at step: pba_sig_refresh');
+    expect(stderr).toContain('exit_code=1');
+    expect(stderr).toContain('command:');
+    expect(stderr).toContain('refresh-product-beauty-attribute-sig-ids.js');
+    expect(stderr).toContain('stderr tail:');
+    // The child's own reason, not just the routine's step label.
+    expect(stderr).toContain('ENOENT');
+    expect(stderr).toContain(missingManifest);
   });
 });
