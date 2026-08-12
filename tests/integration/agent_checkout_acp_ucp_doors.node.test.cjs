@@ -70,7 +70,7 @@ describe('Agent checkout ACP REST + UCP discovery doors', () => {
       });
     });
 
-    it('serves /.well-known/ucp with version, REST service, and capabilities', async () => {
+    it('serves /.well-known/ucp with version and capabilities, and NO mis-typed REST transport', async () => {
       const res = await request(app).get('/.well-known/ucp');
       assert.equal(res.status, 200);
       assert.ok(res.body.ucp_version, 'has ucp_version');
@@ -78,9 +78,17 @@ describe('Agent checkout ACP REST + UCP discovery doors', () => {
       const capIds = res.body.capabilities.map((c) => c.id);
       // Strict ON: the money capabilities ARE advertised (their doors serve).
       assert.ok(capIds.includes('dev.ucp.shopping.checkout'), 'checkout advertised while strict is on');
+
+      // THIS ASSERTION USED TO PIN THE DEFECT. It required
+      //   rest.endpoint === 'https://agent.test.local/acp'
+      // i.e. UCP discovery telling platforms to transact at the OpenAI-ACP door, which speaks ACP wire
+      // shapes (`POST /checkout_sessions` with ACP bodies), not UCP's — so a platform following the profile
+      // failed on its first call. The profile now advertises a `rest` transport only when a door that
+      // genuinely speaks UCP REST is declared, and the gateway declares none.
       const rest = (res.body.services || []).find((s) => s.transport === 'rest');
-      assert.ok(rest, 'advertises a REST service');
-      assert.equal(rest.endpoint, 'https://agent.test.local/acp', 'REST endpoint is the ACP base path');
+      assert.equal(rest, undefined, 'must not advertise a REST transport nothing speaks');
+      const transports = (res.body.services || []).map((s) => s.transport);
+      assert.deepEqual(transports, ['mcp'], 'UCP transport is MCP JSON-RPC');
     });
 
     it('computes the active-capability intersection for a platform', async () => {
