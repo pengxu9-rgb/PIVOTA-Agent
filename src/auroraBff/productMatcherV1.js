@@ -444,10 +444,12 @@ function toLegacyRecommendationsPayload(bundle, { language } = {}) {
       score: Number(candidate.score || 0),
       price_band: candidate.price_band || null,
       grounding_status: 'ungrounded',
+      // F4: a bundle that carried no confidence has measured nothing; say so
+      // rather than defaulting to a precise-looking 0.6/medium.
       confidence: normalizeObject(bundle && bundle.confidence) || {
-        score: 0.6,
-        level: 'medium',
-        rationale: ['rule_based_matcher'],
+        score: null,
+        level: 'low',
+        rationale: ['rule_based_matcher', 'bundle_confidence_unmeasured'],
       },
       metadata: {
         grounding_status: 'ungrounded',
@@ -468,9 +470,9 @@ function toLegacyRecommendationsPayload(bundle, { language } = {}) {
     grounded_count: 0,
     ungrounded_count: recommendations.length,
     confidence: normalizeObject(bundle && bundle.confidence) || {
-      score: 0.6,
-      level: 'medium',
-      rationale: ['rule_based_matcher'],
+      score: null,
+      level: 'low',
+      rationale: ['rule_based_matcher', 'bundle_confidence_unmeasured'],
     },
   };
 }
@@ -550,23 +552,42 @@ function buildProductRecommendationsBundle({
     .sort((a, b) => (SLOT_PRIORITY[a] || 99) - (SLOT_PRIORITY[b] || 99))
     .flatMap((slot) => asArray(bySlot[slot]).slice(0, 2));
 
+  // Fabrication-belt F4: confidence must be built only from signals that were
+  // actually measured. This used to substitute 0.45 for "no candidates" and
+  // 0.62 for "the plan carried no confidence", then blend them into a precise
+  // score — so a run that measured nothing still reported a number, and the
+  // rationale tokens quoted the invented values back as if observed.
   const avgScore =
     flattened.length > 0
-      ? flattened.reduce((sum, item) => sum + Number(item.score || 0), 0) / flattened.length / 100
-      : 0.45;
-  const planConfidenceScore = clamp01(
-    normalizeObject(plan.confidence) && Number.isFinite(Number(plan.confidence.score))
-      ? Number(plan.confidence.score)
-      : 0.62,
-  );
-  const confidenceScore = clamp01(avgScore * 0.7 + planConfidenceScore * 0.3);
+      ? clamp01(flattened.reduce((sum, item) => sum + Number(item.score || 0), 0) / flattened.length / 100)
+      : null;
+  // `!= null` before Number(): Number(null) === 0 would read an absent plan
+  // confidence as an explicit rock-bottom one.
+  const planConfidenceScore =
+    normalizeObject(plan.confidence) &&
+    plan.confidence.score != null &&
+    Number.isFinite(Number(plan.confidence.score))
+      ? clamp01(Number(plan.confidence.score))
+      : null;
+  let confidenceScore = null;
+  if (avgScore != null && planConfidenceScore != null) {
+    confidenceScore = clamp01(avgScore * 0.7 + planConfidenceScore * 0.3);
+  } else if (avgScore != null) {
+    confidenceScore = avgScore;
+  } else if (planConfidenceScore != null) {
+    confidenceScore = planConfidenceScore;
+  }
   const confidence = {
     score: confidenceScore,
-    level: confidenceLevel(confidenceScore),
+    // No measured signal at all -> stay conservative rather than claim a level
+    // the evidence does not support.
+    level: confidenceScore != null ? confidenceLevel(confidenceScore) : 'low',
     rationale: [
       flattened.length ? 'slot_candidates_available' : 'limited_candidates',
-      `avg_slot_score_${Math.round(avgScore * 100)}`,
-      `plan_confidence_${Math.round(planConfidenceScore * 100)}`,
+      avgScore != null ? `avg_slot_score_${Math.round(avgScore * 100)}` : 'avg_slot_score_unmeasured',
+      planConfidenceScore != null
+        ? `plan_confidence_${Math.round(planConfidenceScore * 100)}`
+        : 'plan_confidence_unmeasured',
     ],
   };
 

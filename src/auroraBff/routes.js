@@ -47293,21 +47293,32 @@ function buildRoutineFitSummaryCard(fitResult, requestId) {
       summary: String(fit.summary || '').trim(),
       highlights: Array.isArray(fit.highlights) ? fit.highlights.filter((s) => typeof s === 'string' && s.trim()).slice(0, 3) : [],
       concerns: Array.isArray(fit.concerns) ? fit.concerns.filter((s) => typeof s === 'string' && s.trim()).slice(0, 3) : [],
-      dimension_scores: (() => {
+      // Fabrication-belt F4: an unmeasured dimension used to be stamped with a
+      // precise-looking 0.5, which then ranked as the routine's WEAKEST axis in
+      // the user-facing prose (collectRoutineFitLowDimensions sorts ascending).
+      // validateRoutineFitStructuredPayload deliberately accepts partial
+      // dimension sets, so this is a live path, not a defensive branch: the
+      // system knows the dimension is missing and said "50%" anyway. Unmeasured
+      // dimensions are now omitted and named in `unmeasured_dimensions`.
+      ...(() => {
         const dims = fit.dimension_scores && typeof fit.dimension_scores === 'object' ? fit.dimension_scores : {};
-        const normalize = (d) => {
-          const obj = d && typeof d === 'object' ? d : {};
-          return {
-            score: Number.isFinite(Number(obj.score)) ? Math.max(0, Math.min(1, Number(obj.score))) : 0.5,
-            note: String(obj.note || '').trim(),
-          };
-        };
-        return {
-          ingredient_match: normalize(dims.ingredient_match),
-          routine_completeness: normalize(dims.routine_completeness),
-          conflict_risk: normalize(dims.conflict_risk),
-          sensitivity_safety: normalize(dims.sensitivity_safety),
-        };
+        const measured = {};
+        const unmeasured = [];
+        for (const key of ROUTINE_FIT_DIMENSION_KEYS) {
+          const obj = dims[key] && typeof dims[key] === 'object' ? dims[key] : null;
+          // `!= null` before Number(): Number(null) === 0 would read an
+          // explicitly-null score as a real rock-bottom 0%.
+          const score =
+            obj && obj.score != null && Number.isFinite(Number(obj.score))
+              ? Math.max(0, Math.min(1, Number(obj.score)))
+              : null;
+          if (score == null) {
+            unmeasured.push(key);
+            continue;
+          }
+          measured[key] = { score, note: String(obj.note || '').trim() };
+        }
+        return { dimension_scores: measured, unmeasured_dimensions: unmeasured };
       })(),
       next_questions: Array.isArray(fit.next_questions) ? fit.next_questions.filter((s) => typeof s === 'string' && s.trim()).slice(0, 3) : [],
     },
@@ -47884,17 +47895,25 @@ function getRoutineFitPayloadFromLastAnalysis(lastAnalysis) {
 function collectRoutineFitLowDimensions(routineFit, { max = 2 } = {}) {
   const payload = isPlainObject(routineFit) ? routineFit : {};
   const dims = isPlainObject(payload.dimension_scores) ? payload.dimension_scores : {};
+  // F4: this used to substitute 0.5 for an unmeasured dimension and then sort
+  // ascending, so a dimension nobody scored was reported as the routine's
+  // lowest — displacing a real low score. A dimension that was never measured
+  // cannot be ranked; drop it instead of inventing a value for it.
   return ROUTINE_FIT_DIMENSION_KEYS
     .map((key) => {
       const value = isPlainObject(dims[key]) ? dims[key] : {};
-      const rawScore = Number(value.score);
-      const score = Number.isFinite(rawScore) ? Math.max(0, Math.min(1, rawScore)) : 0.5;
+      const score =
+        value.score != null && Number.isFinite(Number(value.score))
+          ? Math.max(0, Math.min(1, Number(value.score)))
+          : null;
+      if (score == null) return null;
       return {
         key,
         score,
         note: String(value.note || '').trim(),
       };
     })
+    .filter(Boolean)
     .sort((a, b) => a.score - b.score)
     .slice(0, Math.max(0, Math.trunc(Number(max) || 0)));
 }

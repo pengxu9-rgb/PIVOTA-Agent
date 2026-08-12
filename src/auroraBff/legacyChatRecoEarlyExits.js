@@ -134,7 +134,9 @@ function createLegacyChatRecoEarlyExitsRuntime(deps = {}) {
             payload: buildConfidenceNoticeCardPayload({
               language: ctx.lang,
               reason: 'travel_reco_empty',
-              confidence: { score: 0.28, level: 'low', rationale: ['travel_reco_preview_empty'] },
+              // F4: the preview produced nothing, so nothing was scored. The
+              // level stays 'low'; the number is null instead of a made-up 0.28.
+              confidence: { score: null, level: 'low', rationale: ['travel_reco_preview_empty'] },
               actions: ['retry_recommendations', 'return_to_travel_card'],
               details: ['travel_handoff_no_supported_products'],
             }),

@@ -251,9 +251,14 @@ test('confidence notice card: an explicit computed 0 is a real value, not nulled
 });
 
 test('no writer ships a numeric literal recommendation_confidence_score', () => {
-  // Kills a revert of any of the three fixed sites (including the entry
-  // hard path, which is not reachable as a unit): an uncomputed score is
-  // null or a computed expression, never an invented literal.
+  // Kills a revert of any of the fixed sites (including the entry hard path,
+  // which is not reachable as a unit): an uncomputed score is null or a
+  // computed expression, never an invented literal.
+  //
+  // The original form of this guard matched only `score: 0.62` and therefore
+  // MISSED `score: cond ? x : 0.62` and `score: x || 0.62` — precisely the two
+  // shapes the bug actually took. It now flags a numeric literal anywhere in
+  // the assigning expression.
   const files = [
     'src/auroraBff/beautyChatMainlineEnvelope.js',
     'src/auroraBff/beautyChatMainlineEntry.js',
@@ -261,11 +266,179 @@ test('no writer ships a numeric literal recommendation_confidence_score', () => 
   ];
   for (const file of files) {
     const source = fs.readFileSync(path.join(__dirname, '..', file), 'utf8');
-    const inventedLiteral = source.match(/recommendation_confidence_score\s*:\s*[\d.]+/);
-    assert.equal(
-      inventedLiteral,
-      null,
-      `${file} assigns a literal score: ${inventedLiteral && inventedLiteral[0]}`,
-    );
+    for (const line of source.split('\n')) {
+      if (!/recommendation_confidence_score\s*:/.test(line)) continue;
+      const expression = line.slice(line.indexOf('recommendation_confidence_score'));
+      const literal = expression.match(/:\s*[^,;]*?\b\d+\.\d+/);
+      assert.equal(literal, null, `${file} assigns a literal score: ${line.trim()}`);
+    }
   }
+});
+
+test('guard regex itself catches every fallback shape the bug took', () => {
+  // Mutation-check the guard above: a guard that misses the real bug shape is
+  // worse than no guard, because it reads as coverage.
+  const flags = (line) => {
+    const expression = line.slice(line.indexOf('recommendation_confidence_score'));
+    return expression.match(/:\s*[^,;]*?\b\d+\.\d+/) != null;
+  };
+  assert.equal(flags('  recommendation_confidence_score: 0.62,'), true, 'direct literal');
+  assert.equal(flags('  recommendation_confidence_score: Number.isFinite(x) ? x : 0.62,'), true, 'ternary fallback');
+  assert.equal(flags('  recommendation_confidence_score: x || 0.62,'), true, 'or-fallback');
+  assert.equal(flags('  recommendation_confidence_score: travelConfidenceScore,'), false, 'honest passthrough');
+  assert.equal(flags('  recommendation_confidence_score: null,'), false, 'honest null');
+});
+
+/* ---------------------------------------------------------------------------
+ * Routine-fit dimensions (F4, pre-existing).
+ *
+ * validateRoutineFitStructuredPayload deliberately accepts a partial dimension
+ * set (it returns ok:true plus partial_dimensions), so an unmeasured dimension
+ * is a live path, not a defensive branch. It used to be stamped with 0.5 in the
+ * card AND re-invented as 0.5 by collectRoutineFitLowDimensions, which sorts
+ * ascending — so an axis nobody scored was reported to the user as the
+ * routine's single weakest point, displacing a real low score.
+ * ------------------------------------------------------------------------- */
+
+const ROUTINE_FIT_BASE = {
+  overall_fit: 'partial_match',
+  fit_score: 0.8,
+  summary: 'Routine is mostly fine.',
+  highlights: ['good cleanser'],
+  concerns: ['no spf'],
+  next_questions: [],
+};
+
+function buildRoutineFitCard(dimensionScores) {
+  const validated = __internal.validateRoutineFitStructuredPayload({
+    ...ROUTINE_FIT_BASE,
+    dimension_scores: dimensionScores,
+  });
+  assert.equal(validated.ok, true, 'fixture must be a payload the validator accepts');
+  return __internal.buildRoutineFitSummaryCard(validated.value, 'req_fit_1').payload;
+}
+
+test('routine fit: an unmeasured dimension is omitted, not stamped with 0.5', () => {
+  const payload = buildRoutineFitCard({
+    ingredient_match: { score: 0.86, note: 'strong' },
+    routine_completeness: { score: 0.9, note: 'complete' },
+    sensitivity_safety: { score: 0.88, note: 'safe' },
+    // conflict_risk was never measured
+  });
+  assert.equal(payload.dimension_scores.conflict_risk, undefined);
+  assert.deepEqual(payload.unmeasured_dimensions, ['conflict_risk']);
+  assert.equal(payload.dimension_scores.ingredient_match.score, 0.86);
+});
+
+test('routine fit: an unmeasured dimension no longer displaces the real lowest score', () => {
+  const payload = buildRoutineFitCard({
+    ingredient_match: { score: 0.86, note: 'strong' },
+    routine_completeness: { score: 0.9, note: 'complete' },
+    sensitivity_safety: { score: 0.88, note: 'safe' },
+  });
+  const low = __internal.collectRoutineFitLowDimensions(payload, { max: 2 });
+  assert.deepEqual(low.map((item) => item.key), ['ingredient_match', 'sensitivity_safety']);
+  // Before the fix this was [conflict_risk 50%, ingredient_match 86%] and the
+  // user-facing prose led with a dimension that was never scored.
+  assert.equal(low.some((item) => item.key === 'conflict_risk'), false);
+});
+
+test('routine fit: an explicitly null dimension score is unmeasured, not 0%', () => {
+  const payload = buildRoutineFitCard({
+    ingredient_match: { score: null, note: '' },
+    routine_completeness: { score: 0.9, note: '' },
+    conflict_risk: { score: 0.4, note: '' },
+    sensitivity_safety: { score: 0.88, note: '' },
+  });
+  assert.deepEqual(payload.unmeasured_dimensions, ['ingredient_match']);
+  const low = __internal.collectRoutineFitLowDimensions(payload, { max: 1 });
+  assert.deepEqual(low.map((item) => item.key), ['conflict_risk']);
+});
+
+test('routine fit: a genuine 0 is a real measurement and survives', () => {
+  const payload = buildRoutineFitCard({
+    ingredient_match: { score: 0, note: 'nothing matched' },
+    routine_completeness: { score: 0.9, note: '' },
+    conflict_risk: { score: 0.4, note: '' },
+    sensitivity_safety: { score: 0.88, note: '' },
+  });
+  assert.deepEqual(payload.unmeasured_dimensions, []);
+  assert.equal(payload.dimension_scores.ingredient_match.score, 0);
+  assert.deepEqual(
+    __internal.collectRoutineFitLowDimensions(payload, { max: 1 }).map((i) => i.key),
+    ['ingredient_match'],
+  );
+});
+
+/* ---------------------------------------------------------------------------
+ * Travel writer (F4, and the reason #1957's travel fix was unreachable).
+ *
+ * legacyChatRecoEarlyExits was taught to carry a null travel confidence, but
+ * its upstream writer ALWAYS produced a finite score — buildRecoPreview
+ * substituted 0.45/0.6 and productMatcherV1 blended in 0.45/0.62 — so the null
+ * branch never executed in the live path and a fabricated number still shipped.
+ * The unit tests above only passed because they mock buildRecoPreview with
+ * shapes the real writer could not emit. These tests use the REAL writer.
+ * ------------------------------------------------------------------------- */
+
+const travelContracts = require('../src/auroraBff/travelSkills/contracts');
+const { buildProductRecommendationsBundle } = require('../src/auroraBff/productMatcherV1');
+
+test('travel writer: no grounded seed products -> null score, never 0.45', () => {
+  const preview = travelContracts.__internal.buildRecoPreview({
+    travelReadiness: { env_source: 'itinerary' },
+    profile: {},
+    language: 'EN',
+  });
+  assert.equal(preview.confidence.score, null);
+  assert.equal(preview.confidence.level, 'low');
+});
+
+test('product matcher: no measured signal at all -> null score, never 0.45/0.62 blended', () => {
+  const bundle = buildProductRecommendationsBundle({
+    ingredientPlan: { targets: [], avoid: [], confidence: null },
+    profile: {},
+    language: 'EN',
+    seedRecommendations: [],
+  });
+  assert.equal(bundle.confidence.score, null);
+  assert.equal(bundle.confidence.level, 'low');
+  assert.ok(bundle.confidence.rationale.includes('avg_slot_score_unmeasured'));
+  assert.ok(bundle.confidence.rationale.includes('plan_confidence_unmeasured'));
+});
+
+test('product matcher: a lone measured plan confidence is reported as itself, not blended with an invented average', () => {
+  const bundle = buildProductRecommendationsBundle({
+    ingredientPlan: { targets: [], avoid: [], confidence: { score: 0.3, level: 'low' } },
+    profile: {},
+    language: 'EN',
+    seedRecommendations: [],
+  });
+  assert.equal(bundle.confidence.score, 0.3);
+  assert.ok(bundle.confidence.rationale.includes('plan_confidence_30'));
+});
+
+test('travel end to end: the REAL writer can now produce the null the reader was taught to carry', () => {
+  // This is the anti-masking test. With the old writer this assertion was
+  // unreachable: every live travel run produced a fabricated number.
+  const runtime = createLegacyChatRecoEarlyExitsRuntime({
+    buildEnvelope: (ctx, body) => body,
+    makeAssistantMessage: (text) => ({ text }),
+    makeEvent: (ctx, eventName, data) => ({ event_name: eventName, data }),
+    buildConfidenceNoticeCardPayload: __internal.buildConfidenceNoticeCardPayload,
+    summarizeProfileForContext: (profile) => profile || {},
+    appendLatestRecoContextToSessionPatch: () => {},
+  });
+  const envelope = runtime.maybeBuildLegacyTravelRecoEnvelope({
+    ctx: { request_id: 'req_travel_real', lang: 'EN' },
+    travelRecoHandoff: true,
+    travelSkillsContracts: travelContracts, // the real module, not a mock
+    travelRecoContext: { travel_readiness: { env_source: 'itinerary' }, destination: 'Tokyo' },
+    profile: {},
+    recoTaskMode: 'goal_based_products',
+  });
+  const notice = (envelope.cards || []).find((card) => card.type === 'confidence_notice');
+  assert.ok(notice, 'an empty travel preview must degrade to a confidence notice');
+  assert.equal(notice.payload.confidence.score, null, 'was a hard-coded 0.28');
+  assert.equal(notice.payload.confidence.level, 'low');
 });
