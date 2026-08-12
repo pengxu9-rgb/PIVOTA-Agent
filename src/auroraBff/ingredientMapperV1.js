@@ -551,6 +551,15 @@ function clamp01(value) {
   return n;
 }
 
+// F4: clamp01(null) === 0, so clamping a score nothing measured cannot tell an
+// absent score from a measured rock-bottom one. This helper keeps them apart:
+// null in -> null out, a real number (including a genuine 0) clamped as before.
+// clamp01 itself is left alone — it is module-private with five call sites, all
+// of which are now guaranteed a real number before they reach it.
+function toMeasuredScoreOrNull(value) {
+  return value != null && Number.isFinite(Number(value)) ? clamp01(value) : null;
+}
+
 function normalizeToken(value) {
   return String(value || '')
     .trim()
@@ -790,24 +799,29 @@ function confidenceLevelFromScore(score) {
 }
 
 function normalizeValueNode(node) {
-  if (!node) return { value: null, confidence: 0, evidence: [] };
-  if (typeof node === 'string') return { value: node, confidence: 0.65, evidence: [] };
-  if (typeof node !== 'object' || Array.isArray(node)) return { value: null, confidence: 0, evidence: [] };
+  // F4: `confidence: null` means nothing measured this axis. It is NOT the same
+  // as a measured 0, and it is not the invented 0.65 the shorthand shapes used
+  // to claim. computeArtifactOverallConfidence decides what an unmeasured axis
+  // does to the mean; the normalizer only reports what is known.
+  if (!node) return { value: null, confidence: null, evidence: [] };
+  if (typeof node === 'string') return { value: node, confidence: null, evidence: [] };
+  if (typeof node !== 'object' || Array.isArray(node)) return { value: null, confidence: null, evidence: [] };
   const value = typeof node.value === 'string' ? node.value : null;
   const confidenceObj = node.confidence && typeof node.confidence === 'object' ? node.confidence : null;
-  const confidence = confidenceObj ? clamp01(confidenceObj.score) : 0.65;
+  const confidence = confidenceObj ? toMeasuredScoreOrNull(confidenceObj.score) : null;
   const evidence = Array.isArray(node.evidence) ? node.evidence : [];
   return { value, confidence, evidence };
 }
 
 function normalizeMultiNode(node) {
-  if (!node) return { values: [], confidence: 0, evidence: [] };
-  if (Array.isArray(node)) return { values: node.map((v) => normalizeToken(v)).filter(Boolean), confidence: 0.65, evidence: [] };
-  if (typeof node !== 'object') return { values: [], confidence: 0, evidence: [] };
+  // F4: see normalizeValueNode — unmeasured is null, not 0 and not 0.65.
+  if (!node) return { values: [], confidence: null, evidence: [] };
+  if (Array.isArray(node)) return { values: node.map((v) => normalizeToken(v)).filter(Boolean), confidence: null, evidence: [] };
+  if (typeof node !== 'object') return { values: [], confidence: null, evidence: [] };
   const rawValues = Array.isArray(node.values) ? node.values : [];
   const values = rawValues.map((v) => normalizeToken(v)).filter(Boolean);
   const confidenceObj = node.confidence && typeof node.confidence === 'object' ? node.confidence : null;
-  const confidence = confidenceObj ? clamp01(confidenceObj.score) : values.length ? 0.65 : 0;
+  const confidence = confidenceObj ? toMeasuredScoreOrNull(confidenceObj.score) : null;
   const evidence = Array.isArray(node.evidence) ? node.evidence : [];
   return { values, confidence, evidence };
 }
@@ -831,10 +845,7 @@ function pickConcerns(artifact) {
     const confidenceObj = item.confidence && typeof item.confidence === 'object' ? item.confidence : null;
     // F4: `!= null` before clamp01 — clamp01(null) reads an unmeasured score
     // as a measured 0, and an absent node used to get an invented 0.62.
-    const confidence =
-      confidenceObj && confidenceObj.score != null && Number.isFinite(Number(confidenceObj.score))
-        ? clamp01(confidenceObj.score)
-        : null;
+    const confidence = confidenceObj ? toMeasuredScoreOrNull(confidenceObj.score) : null;
     const evidence = Array.isArray(item.evidence) ? item.evidence : [];
     out.push({ id, confidence, evidence });
   }
@@ -875,18 +886,39 @@ function computeArtifactOverallConfidence(artifact) {
   const goals = normalizeMultiNode(artifact && artifact.goals);
   const concerns = pickConcerns(artifact);
 
-  const weighted = [
-    { score: skinType.value ? skinType.confidence : 0, weight: 0.25 },
-    { score: barrier.value ? barrier.confidence : 0, weight: 0.25 },
-    { score: sensitivity.value ? sensitivity.confidence : 0, weight: 0.25 },
-    { score: goals.values.length ? goals.confidence : 0, weight: 0.25 },
+  // F4: this is an AGGREGATE confidence, so an axis nobody measured contributes
+  // no confidence evidence — it adds 0 over a fixed four-axis denominator,
+  // exactly as an absent axis already did. That is not a claim the axis is bad;
+  // it is the same statement as "we have nothing from here".
+  //
+  // Deliberately NOT excluded from the denominator: renormalizing over only the
+  // measured axes lets missing evidence RAISE the aggregate (one axis measured
+  // 1.0 with three unmeasured would score 1.0/high instead of 0.25/low), and
+  // this score gates irritant rules — R_ACNE_005 benzoyl peroxide and
+  // R_TEXTURE_003 / R_ANTIAGE_001 retinol all key off minConfidence. Fewer
+  // measurements must never buy more permission.
+  //
+  // What actually changes here is the fabrication: an axis with no confidence
+  // key used to be handed an invented 0.65, INFLATING the mean, and an axis
+  // whose score was explicitly null scored clamp01(null) === 0 by accident
+  // rather than by decision. Both now contribute 0 by decision, and the
+  // rationale says so. A measured 0 is still a real measurement.
+  const axes = [
+    { present: Boolean(skinType.value), confidence: skinType.confidence },
+    { present: Boolean(barrier.value), confidence: barrier.confidence },
+    { present: Boolean(sensitivity.value), confidence: sensitivity.confidence },
+    { present: goals.values.length > 0, confidence: goals.confidence },
   ];
-  const weightedScore = weighted.reduce((sum, item) => sum + item.score * item.weight, 0);
+  const axisScores = axes.map((axis) => (axis.present ? toMeasuredScoreOrNull(axis.confidence) : 0));
+  const measuredAxisCount = axisScores.filter((value) => value != null).length;
+  const unmeasuredAxisCount = axes.length - measuredAxisCount;
+  const weightedScore =
+    axisScores.reduce((sum, value) => sum + (value != null ? value : 0), 0) / axes.length;
   // F4: boost only from concerns whose confidence was measured — an
   // unmeasured (null) concern is not a measured 0 and must not dilute (or,
   // via the old invented 0.62, inflate) the average.
   const measuredConcernScores = concerns
-    .map((item) => (item.confidence != null && Number.isFinite(Number(item.confidence)) ? clamp01(item.confidence) : null))
+    .map((item) => toMeasuredScoreOrNull(item.confidence))
     .filter((value) => value != null);
   const concernBoost =
     measuredConcernScores.length > 0
@@ -895,6 +927,12 @@ function computeArtifactOverallConfidence(artifact) {
 
   let score = clamp01(weightedScore + concernBoost);
   const rationale = [];
+  if (unmeasuredAxisCount > 0) {
+    // Names the state the score alone cannot distinguish from a measured 0.
+    rationale.push(
+      measuredAxisCount > 0 ? 'core4_unmeasured_axes_present' : 'no_measured_core4_confidence',
+    );
+  }
 
   const usePhoto = artifact && artifact.use_photo === true;
   const photos = asArray(artifact && artifact.photos);

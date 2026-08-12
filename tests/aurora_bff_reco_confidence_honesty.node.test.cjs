@@ -990,3 +990,146 @@ test('routes overall confidence: undiluted boost can cross a level boundary, rel
   assert.equal(out.level, 'high');
   assert.ok(out.score > 0.75, `expected a score above the medium ceiling, got ${out.score}`);
 });
+
+/* ---------------------------------------------------------------------------
+ * Core-4 axis confidences (F4 tail, #1959 review note N2).
+ *
+ * normalizeValueNode/normalizeMultiNode fed the core-4 weighted mean, at 2.5x
+ * the weight of the concern boost, and conflated three states into two:
+ * an axis whose confidence was explicitly null scored clamp01(null) === 0 by
+ * accident, while an axis with no confidence key at all was handed an invented
+ * 0.65 that INFLATED the mean. Both now contribute 0 by decision over a fixed
+ * four-axis denominator and are named in the rationale; a missing axis still
+ * scores 0 and a measured 0 is still a real measurement.
+ *
+ * The denominator stays fixed on purpose: renormalizing over only the measured
+ * axes would let missing evidence RAISE the aggregate, and this score gates
+ * irritant rules (benzoyl peroxide, retinol) via minConfidence.
+ *
+ * Unreachable from today's producers (buildArtifactValueNode returns null
+ * unless the value is non-empty, and then the score is numeric), so this is
+ * hardening: verified behavior-identical across all 96 producer-reachable
+ * shapes before landing.
+ * ------------------------------------------------------------------------- */
+
+const CORE4_AXIS = (value, score) => ({ value, confidence: { score }, evidence: [] });
+const CORE4_GOALS = (values, score) => ({ values, confidence: { score }, evidence: [] });
+
+function core4Artifact(overrides = {}) {
+  // The shape the real producer emits: full nodes, numeric confidences.
+  return {
+    use_photo: true,
+    skinType: CORE4_AXIS('oily', 0.74),
+    barrierStatus: CORE4_AXIS('healthy', 0.72),
+    sensitivity: CORE4_AXIS('low', 0.7),
+    goals: CORE4_GOALS(['acne'], 0.74),
+    concerns: [],
+    ...overrides,
+  };
+}
+
+const near = (actual, expected, what) =>
+  assert.ok(Math.abs(actual - expected) < 1e-9, `${what}: expected ~${expected}, got ${actual}`);
+
+test('core4: the producer-shaped artifact scores exactly as before the change', () => {
+  const out = computeArtifactOverallConfidence(core4Artifact());
+  near(out.score, 0.725, 'full core-4 mean');
+  assert.equal(out.level, 'medium');
+  assert.deepEqual(out.rationale, [], 'nothing was excluded, so nothing to explain');
+});
+
+test('core4: a missing axis still scores 0 and still counts — sparse profiles stay low', () => {
+  // Deliberately unchanged: an absent input is a measured coverage gap, not an
+  // unmeasured confidence. Two of four present -> (0.74 + 0 + 0 + 0.74)/4.
+  // goals is included in the absent set deliberately: its presence check has a
+  // different form (.values.length) from the other three (Boolean(.value)).
+  const out = computeArtifactOverallConfidence(
+    core4Artifact({ barrierStatus: null, sensitivity: null }),
+  );
+  near(out.score, 0.37, 'sparse mean');
+  assert.equal(out.level, 'low');
+  const goalsAbsent = computeArtifactOverallConfidence(core4Artifact({ goals: null }));
+  near(goalsAbsent.score, (0.74 + 0.72 + 0.7) / 4, 'an absent goals axis still counts in the denominator');
+  // The score alone cannot catch a broken presence check here — absent and
+  // unmeasured both contribute 0 — so assert the rationale, which is the only
+  // observable that separates them. (Mutating `.values.length > 0` to `>= 0`
+  // makes an absent goals axis look present-but-unmeasured.)
+  assert.deepEqual(goalsAbsent.rationale, [], 'an absent axis is not an unmeasured one');
+});
+
+test('core4: an unmeasured axis and a measured 0 score alike but are told apart in the rationale', () => {
+  // Both contribute no confidence, so the SCORE cannot separate them — but the
+  // score is no longer the only record. Reverting to clamp01(null) keeps the
+  // numbers and loses the token, which is what this pins.
+  const unmeasured = computeArtifactOverallConfidence(
+    core4Artifact({ skinType: { value: 'oily', confidence: { score: null } } }),
+  );
+  const measuredZero = computeArtifactOverallConfidence(
+    core4Artifact({ skinType: CORE4_AXIS('oily', 0) }),
+  );
+  near(unmeasured.score, 0.54, 'unmeasured contributes 0 over a fixed denominator');
+  near(measuredZero.score, 0.54, 'a real 0 contributes 0 too');
+  assert.deepEqual(unmeasured.rationale, ['core4_unmeasured_axes_present']);
+  assert.deepEqual(measuredZero.rationale, [], 'a measured 0 is a measurement, not a gap');
+});
+
+test('core4: an axis with no confidence key gets no invented 0.65', () => {
+  const out = computeArtifactOverallConfidence(core4Artifact({ skinType: { value: 'oily' } }));
+  // Pre-fix: (0.65 + 0.72 + 0.7 + 0.74)/4 = 0.7025 — an inflated mean built on
+  // a number nothing measured. Now the axis simply contributes nothing.
+  near(out.score, 0.54, 'mean over four axes, one contributing nothing');
+  assert.equal(out.level, 'low');
+  assert.deepEqual(out.rationale, ['core4_unmeasured_axes_present']);
+});
+
+test('core4: an unmeasured axis can never RAISE the aggregate', () => {
+  // The invariant that rules out renormalizing over measured axes only: under
+  // that scheme this artifact scored 1.0/high (one measured 1.0, three unknowns
+  // dropped from the denominator) and released the retinol/BPO minConfidence
+  // rules for a compromised barrier. Missing evidence must not buy permission.
+  const measuredOnly = computeArtifactOverallConfidence({
+    use_photo: true,
+    skinType: CORE4_AXIS('oily', 1),
+  });
+  const plusUnknowns = computeArtifactOverallConfidence({
+    use_photo: true,
+    skinType: CORE4_AXIS('oily', 1),
+    barrierStatus: { value: 'compromised', confidence: { score: null } },
+    sensitivity: { value: 'high', confidence: { score: null } },
+    goals: { values: ['acne'] },
+  });
+  assert.ok(
+    plusUnknowns.score <= measuredOnly.score,
+    `adding unmeasured axes must not raise confidence (${measuredOnly.score} -> ${plusUnknowns.score})`,
+  );
+  assert.equal(plusUnknowns.level, 'low');
+});
+
+test('core4: bare-string shorthand axes claim no confidence at all', () => {
+  // Pre-fix these invented 0.65 apiece and reported 0.65/'medium' overall.
+  const out = computeArtifactOverallConfidence({
+    use_photo: true,
+    skinType: 'oily',
+    barrierStatus: 'healthy',
+    sensitivity: 'low',
+    goals: ['acne'],
+  });
+  assert.equal(out.score, 0);
+  assert.equal(out.level, 'low', 'no measured basis routes to the conservative plan');
+  assert.deepEqual(out.rationale, ['no_measured_core4_confidence']);
+});
+
+test('core4: the unmeasured-axis fix cannot be undone by a genuine zero elsewhere', () => {
+  // Guards the over-fix: a future `.filter(Boolean)` would silently drop
+  // measured zeros and make this equal the all-unmeasured case.
+  const allZero = computeArtifactOverallConfidence(
+    core4Artifact({
+      skinType: CORE4_AXIS('oily', 0),
+      barrierStatus: CORE4_AXIS('healthy', 0),
+      sensitivity: CORE4_AXIS('low', 0),
+      goals: CORE4_GOALS(['acne'], 0),
+    }),
+  );
+  assert.equal(allZero.score, 0);
+  assert.deepEqual(allZero.rationale, [], 'four measured zeros are measurements, not gaps');
+});
