@@ -1679,7 +1679,10 @@ async function runTravelPipeline(input = {}) {
       forecast_window: [],
       adaptive_actions: [],
       alerts: [],
-      confidence: { score: 0.35, level: 'low', rationale: ['readiness_build_failed'] },
+      // F4: the build failed, so nothing was scored — the level is a
+      // categorical judgment, the number is null, and the matcher no longer
+      // blends an invented 0.35 into the shipped score.
+      confidence: { score: null, level: 'low', rationale: ['readiness_build_failed'] },
     };
     travelReadiness = mergeKbPrefillIntoReadiness(degradedReadiness, kbEntry);
     pushTrace(trace, {

@@ -23,6 +23,7 @@ const assert = require('node:assert/strict');
 const path = require('node:path');
 process.env.AURORA_BFF_USE_MOCK = 'true';
 process.env.AURORA_DECISION_BASE_URL = '';
+process.env.AURORA_DIAG_ARTIFACT_RETENTION_DAYS = '0';
 process.env.AURORA_PRODUCT_GROUNDING_STABLE_ALIAS_PATH = path.join(
   __dirname,
   'fixtures',
@@ -266,27 +267,58 @@ test('no writer ships a numeric literal recommendation_confidence_score', () => 
   ];
   for (const file of files) {
     const source = fs.readFileSync(path.join(__dirname, '..', file), 'utf8');
-    for (const line of source.split('\n')) {
-      if (!/recommendation_confidence_score\s*:/.test(line)) continue;
-      const expression = line.slice(line.indexOf('recommendation_confidence_score'));
-      const literal = expression.match(/:\s*[^,;]*?\b\d+\.\d+/);
-      assert.equal(literal, null, `${file} assigns a literal score: ${line.trim()}`);
-    }
+    const hits = findLiteralScoreAssignments(source);
+    assert.deepEqual(hits, [], `${file} assigns a literal score: ${hits[0]}`);
   }
 });
+
+// The assigning expression can span lines — the ORIGINAL 0.61 bug was a
+// multi-line ternary with the literal on its own continuation line, which a
+// line-scoped scan waves through. Scan a window from the field name to the
+// next object key instead.
+function findLiteralScoreAssignments(source) {
+  const lines = source.split('\n');
+  const hits = [];
+  for (let i = 0; i < lines.length; i += 1) {
+    if (!/recommendation_confidence_score\s*:/.test(lines[i])) continue;
+    const chunk = lines.slice(i, i + 6).join('\n');
+    const fromField = chunk.slice(chunk.search(/recommendation_confidence_score\s*:/));
+    const expression = fromField.split(/,\s*\n\s*[a-z_]+\s*:/)[0];
+    if (/\b\d+\.\d+/.test(expression)) hits.push(lines[i].trim());
+  }
+  return hits;
+}
 
 test('guard regex itself catches every fallback shape the bug took', () => {
   // Mutation-check the guard above: a guard that misses the real bug shape is
   // worse than no guard, because it reads as coverage.
-  const flags = (line) => {
-    const expression = line.slice(line.indexOf('recommendation_confidence_score'));
-    return expression.match(/:\s*[^,;]*?\b\d+\.\d+/) != null;
-  };
+  const flags = (line) => findLiteralScoreAssignments(line).length > 0;
   assert.equal(flags('  recommendation_confidence_score: 0.62,'), true, 'direct literal');
   assert.equal(flags('  recommendation_confidence_score: Number.isFinite(x) ? x : 0.62,'), true, 'ternary fallback');
   assert.equal(flags('  recommendation_confidence_score: x || 0.62,'), true, 'or-fallback');
   assert.equal(flags('  recommendation_confidence_score: travelConfidenceScore,'), false, 'honest passthrough');
   assert.equal(flags('  recommendation_confidence_score: null,'), false, 'honest null');
+});
+
+test('guard catches the ORIGINAL multi-line 0.61 shape (a verbatim revert)', () => {
+  const preFixShape = [
+    '      recommendation_confidence_score: Number.isFinite(',
+    '        Number(basePayload?.recommendation_confidence_score),',
+    '      )',
+    '        ? Number(basePayload.recommendation_confidence_score)',
+    '        : 0.61,',
+    '      recommendation_confidence_level:',
+  ].join('\n');
+  assert.equal(findLiteralScoreAssignments(preFixShape).length, 1, 'multi-line fallback must be flagged');
+  const fixedShape = [
+    '      recommendation_confidence_score:',
+    '        basePayload?.recommendation_confidence_score != null &&',
+    '        Number.isFinite(Number(basePayload.recommendation_confidence_score))',
+    '          ? Number(basePayload.recommendation_confidence_score)',
+    '          : null,',
+    '      recommendation_confidence_level:',
+  ].join('\n');
+  assert.deepEqual(findLiteralScoreAssignments(fixedShape), [], 'the fixed multi-line shape must pass');
 });
 
 /* ---------------------------------------------------------------------------
@@ -717,4 +749,113 @@ test('artifact confidence: a null score yields no score and a conservative level
   });
   assert.equal(__internal.buildArtifactConfidence(0.8, ['r']).score, 0.8);
   assert.equal(__internal.buildArtifactConfidence(0, ['r']).score, 0, 'a measured zero survives');
+});
+
+/* ---------------------------------------------------------------------------
+ * Review fixes (PR #1957 code review, 2026-08-12).
+ *
+ * The review found the null invariant defeated at three boundaries: the
+ * persistence layer (toConfidenceScore read null as 0), the conservative
+ * fallback picker (re-invented LOW_CONFIDENCE_THRESHOLD for level-only
+ * cards), and the routine-fit sibling field fit_score (null->0, absent->0.5,
+ * and a `|| 0.5` prose read that turned a genuine 0 into "50%"). Plus the
+ * last invented notice literals in direct-reco/chat/travel-degraded paths.
+ * ------------------------------------------------------------------------- */
+
+const { saveRecoRun } = require('../src/auroraBff/diagnosisArtifactStore');
+const { inferConfidenceScore } = require('../src/auroraBff/travelKbPolicy');
+
+test('persistence: saveRecoRun keeps a null overallConfidence null in the stored row', async () => {
+  const row = await saveRecoRun({ auroraUid: 'uid_test_1', overallConfidence: null });
+  assert.equal(row.overall_confidence, null);
+});
+
+test('persistence: a real overallConfidence is stored verbatim and a genuine 0 stays 0', async () => {
+  const real = await saveRecoRun({ auroraUid: 'uid_test_1', overallConfidence: 0.72 });
+  assert.equal(real.overall_confidence, 0.72);
+  const zero = await saveRecoRun({ auroraUid: 'uid_test_1', overallConfidence: 0 });
+  assert.equal(zero.overall_confidence, 0);
+});
+
+test('conservative fallback picker: a level-only card no longer grows an invented 0.55', () => {
+  const { envelope, applied, fallbackApplied } = __internal.applyLowOrMediumRecoGuardToEnvelope({
+    envelope: {
+      cards: [
+        {
+          type: 'recommendations',
+          payload: {
+            recommendation_confidence_score: null,
+            recommendation_confidence_level: 'medium',
+            recommendations: [{ name: 'Retinol Treatment Serum', step: 'treatment' }],
+          },
+        },
+      ],
+      events: [],
+    },
+    ctx: { request_id: 'req_guard_2' },
+    language: 'EN',
+  });
+  assert.equal(applied, true);
+  assert.equal(fallbackApplied, true);
+  const notice = (envelope.cards || []).find((card) => card.type === 'confidence_notice');
+  assert.ok(notice, 'guard must append a confidence notice');
+  assert.equal(notice.payload.confidence.score, null, 'was an invented LOW_CONFIDENCE_THRESHOLD');
+  assert.equal(notice.payload.confidence.level, 'medium');
+});
+
+test('routine fit: a null or absent fit_score is unmeasured, not 0% or an invented 50%', () => {
+  const nulled = __internal.buildRoutineFitSummaryCard(
+    { overall_fit: 'partial_match', fit_score: null, dimension_scores: {} },
+    'req_fit_2',
+  ).payload;
+  assert.equal(nulled.fit_score, null);
+  const absent = __internal.buildRoutineFitSummaryCard(
+    { overall_fit: 'partial_match', dimension_scores: {} },
+    'req_fit_3',
+  ).payload;
+  assert.equal(absent.fit_score, null);
+});
+
+test('routine fit: a genuine fit_score of 0 is a real measurement', () => {
+  const payload = __internal.buildRoutineFitSummaryCard(
+    { overall_fit: 'needs_adjustment', fit_score: 0, dimension_scores: {} },
+    'req_fit_4',
+  ).payload;
+  assert.equal(payload.fit_score, 0);
+});
+
+test('prefix prose: unmeasured fit renders without a percentage; a genuine 0 renders 0%, not 50%', () => {
+  const prose = (fitScore) => __internal.buildSkinAnalysisContextForPrefix({
+    lastAnalysis: {
+      routine_fit: { overall_fit: 'partial_match', fit_score: fitScore, dimension_scores: {} },
+    },
+  }) || '';
+  const unmeasured = prose(null);
+  assert.match(unmeasured, /Routine fit: partial_match(?!\s*\()/);
+  assert.doesNotMatch(unmeasured, /Routine fit: [^\n]*%/);
+  assert.match(prose(0), /Routine fit: partial_match \(0%\)/);
+  assert.match(prose(0.8), /Routine fit: partial_match \(80%\)/);
+});
+
+test('travel KB policy: a null readiness score falls through to the level, not to 0', () => {
+  assert.equal(inferConfidenceScore({ score: null, level: 'low' }), 0.5);
+  assert.equal(inferConfidenceScore({ score: 0, level: 'low' }), 0);
+  assert.equal(inferConfidenceScore({ score: 0.8, level: 'low' }), 0.8);
+});
+
+test('no touched notice writer ships a literal confidence score', () => {
+  // The direct-reco 0.35 twins, chat's 0.2, and the degraded-readiness 0.35
+  // were character-for-character the literals the earlier commits nulled.
+  const files = [
+    'src/auroraBff/directRecoGenerateHandler.js',
+    'src/auroraBff/routes/chat.js',
+    'src/auroraBff/travelSkills/contracts.js',
+    'src/auroraBff/legacyChatRecoEarlyExits.js',
+    'src/auroraBff/legacyChatRecoEnvelope.js',
+  ];
+  for (const file of files) {
+    const source = fs.readFileSync(path.join(__dirname, '..', file), 'utf8');
+    const literal = source.match(/confidence:\s*\{[^}]{0,160}?score:\s*\d+\.\d+/);
+    assert.equal(literal, null, `${file} ships a literal notice score: ${literal && literal[0]}`);
+  }
 });

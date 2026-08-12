@@ -384,7 +384,8 @@ function buildChatSkillFailurePayload({ ctx, body, error, status } = {}) {
         type: 'confidence_notice',
         payload: {
           reason: failureClass,
-          confidence: { score: 0.2, level: 'low', rationale: [failureClass] },
+          // F4: no invented 0.2 — an uncomputed confidence stays null.
+          confidence: { score: null, level: 'low', rationale: [failureClass] },
           details: [text],
           actions: ['retry', 'provide_text_context'],
         },

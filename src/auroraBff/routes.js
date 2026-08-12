@@ -37157,6 +37157,13 @@ function confidenceLevelFromScoreV1(score) {
   return 'high';
 }
 
+// F4: Number(null) === 0, so a bare Number()/isFinite() check reads an ABSENT
+// score as an explicit rock-bottom one. Route every confidence-score coercion
+// through this helper: null/undefined/non-numeric in, null out.
+function toFiniteScoreOrNull(value) {
+  return value != null && Number.isFinite(Number(value)) ? Number(value) : null;
+}
+
 function normalizeArtifactSourceMix(sources) {
   const out = [];
   const seen = new Set();
@@ -37571,10 +37578,7 @@ function buildConfidenceNoticeCardPayload({
       .map((value) => sanitizeRecoClientVisibleToken(value, { allowDefault: true }))
       .filter(Boolean)
     : [];
-  // F4: Number(null) === 0 — an uncomputed score must stay null in the
-  // client-visible card, never become an explicit rock-bottom 0.
-  const rawScore = confidence != null ? confidence.score : null;
-  const score = rawScore != null && Number.isFinite(Number(rawScore)) ? Number(rawScore) : null;
+  const score = toFiniteScoreOrNull(confidence != null ? confidence.score : null);
   const level = String(confidence && confidence.level || '').trim().toLowerCase()
     || (score != null ? confidenceLevelFromScoreV1(score) : 'low');
   const normalizedReason = sanitizeRecoClientVisibleToken(reason, { allowDefault: true }) || 'default';
@@ -39862,10 +39866,7 @@ function buildSkinProgressCard({ ctx, baseline, progress, language } = {}) {
           concern_deltas: Array.isArray(progress && progress.concern_deltas) ? progress.concern_deltas : [],
           // F4: `!= null` before Number() — an unmeasured progress confidence
           // must stay null on the card, not become an explicit 0.
-          confidence:
-            progress && progress.confidence != null && Number.isFinite(Number(progress.confidence))
-              ? Number(progress.confidence)
-              : null,
+          confidence: toFiniteScoreOrNull(progress ? progress.confidence : null),
           checkins_analyzed: Number.isFinite(Number(progress && progress.checkins_analyzed))
             ? Number(progress.checkins_analyzed)
             : 0,
@@ -47313,6 +47314,9 @@ const ANALYSIS_FOLLOWUP_ACTION_IDS = new Set([
 
 function buildRoutineFitSummaryCard(fitResult, requestId) {
   const fit = fitResult && typeof fitResult === 'object' ? fitResult : {};
+  // F4: fit_score follows the dimensions — a null/absent one is unmeasured
+  // (null), never an explicit 0 (the Number(null) trap) or an invented 0.5.
+  const fitScore = toFiniteScoreOrNull(fit.fit_score);
   const overallFitRaw = String(fit.overall_fit || '').trim().toLowerCase();
   const overallFit =
     overallFitRaw === 'good_match' || overallFitRaw === 'partial_match' || overallFitRaw === 'needs_adjustment'
@@ -47323,7 +47327,7 @@ function buildRoutineFitSummaryCard(fitResult, requestId) {
     type: 'routine_fit_summary',
     payload: {
       overall_fit: overallFit,
-      fit_score: Number.isFinite(Number(fit.fit_score)) ? Math.max(0, Math.min(1, Number(fit.fit_score))) : 0.5,
+      fit_score: fitScore != null ? Math.max(0, Math.min(1, fitScore)) : null,
       summary: String(fit.summary || '').trim(),
       highlights: Array.isArray(fit.highlights) ? fit.highlights.filter((s) => typeof s === 'string' && s.trim()).slice(0, 3) : [],
       concerns: Array.isArray(fit.concerns) ? fit.concerns.filter((s) => typeof s === 'string' && s.trim()).slice(0, 3) : [],
@@ -47340,12 +47344,8 @@ function buildRoutineFitSummaryCard(fitResult, requestId) {
         const unmeasured = [];
         for (const key of ROUTINE_FIT_DIMENSION_KEYS) {
           const obj = dims[key] && typeof dims[key] === 'object' ? dims[key] : null;
-          // `!= null` before Number(): Number(null) === 0 would read an
-          // explicitly-null score as a real rock-bottom 0%.
-          const score =
-            obj && obj.score != null && Number.isFinite(Number(obj.score))
-              ? Math.max(0, Math.min(1, Number(obj.score)))
-              : null;
+          const rawScore = toFiniteScoreOrNull(obj ? obj.score : null);
+          const score = rawScore != null ? Math.max(0, Math.min(1, rawScore)) : null;
           if (score == null) {
             unmeasured.push(key);
             continue;
@@ -47406,7 +47406,11 @@ function buildSkinAnalysisContextForPrefix(profile) {
     const lowDimensionSummary = lowDimensions.length
       ? lowDimensions.map((item) => `${item.key}=${Math.round(item.score * 100)}%`).join(', ')
       : '';
-    parts.push(`Routine fit: ${routineFit.overall_fit || 'partial_match'} (${Math.round(Number(routineFit.fit_score || 0.5) * 100)}%)`);
+    // F4: render the percentage only when a fit_score was measured; the old
+    // `|| 0.5` also read a genuine 0 as "50%".
+    const routineFitScore = toFiniteScoreOrNull(routineFit.fit_score);
+    const routineFitScorePart = routineFitScore != null ? ` (${Math.round(routineFitScore * 100)}%)` : '';
+    parts.push(`Routine fit: ${routineFit.overall_fit || 'partial_match'}${routineFitScorePart}`);
     if (lowDimensionSummary) parts.push(`Lowest routine-fit dimensions: ${lowDimensionSummary}`);
     if (Array.isArray(routineFit.concerns) && routineFit.concerns.length) {
       parts.push(`Routine concerns: ${routineFit.concerns.slice(0, 3).join('; ')}`);
@@ -47936,10 +47940,8 @@ function collectRoutineFitLowDimensions(routineFit, { max = 2 } = {}) {
   return ROUTINE_FIT_DIMENSION_KEYS
     .map((key) => {
       const value = isPlainObject(dims[key]) ? dims[key] : {};
-      const score =
-        value.score != null && Number.isFinite(Number(value.score))
-          ? Math.max(0, Math.min(1, Number(value.score)))
-          : null;
+      const rawScore = toFiniteScoreOrNull(value.score);
+      const score = rawScore != null ? Math.max(0, Math.min(1, rawScore)) : null;
       if (score == null) return null;
       return {
         key,
@@ -69281,8 +69283,7 @@ function envelopeRequiresConservativeRecoGuard(envelope) {
     if (type === 'recommendations') {
       const hasExplicitRecommendationConfidence =
         pickFirstTrimmed(payload.recommendation_confidence_level) ||
-        (payload.recommendation_confidence_score != null &&
-          Number.isFinite(Number(payload.recommendation_confidence_score)));
+        toFiniteScoreOrNull(payload.recommendation_confidence_score) != null;
       if (hasExplicitRecommendationConfidence) {
         if (isLowOrMediumConfidenceLevelToken(payload.recommendation_confidence_level)) return true;
         if (isLowOrMediumConfidenceScore(payload.recommendation_confidence_score)) return true;
@@ -69317,14 +69318,13 @@ function pickConfidenceNodeForConservativeRecoFallback(envelope) {
     const type = String(card.type || '').trim().toLowerCase();
     if (type === 'recommendations') {
       const explicitLevel = pickFirstTrimmed(payload.recommendation_confidence_level);
-      const explicitScore =
-        payload.recommendation_confidence_score != null &&
-        Number.isFinite(Number(payload.recommendation_confidence_score))
-          ? Number(payload.recommendation_confidence_score)
-          : null;
+      const explicitScore = toFiniteScoreOrNull(payload.recommendation_confidence_score);
       if (isLowOrMediumConfidenceLevelToken(explicitLevel) || isLowOrMediumConfidenceScore(explicitScore)) {
+        // F4: when only the LEVEL is known, the score stays null — substituting
+        // LOW_CONFIDENCE_THRESHOLD re-invented a number one reader downstream
+        // of the writers that were just taught to emit null.
         return {
-          score: explicitScore != null ? explicitScore : LOW_CONFIDENCE_THRESHOLD,
+          score: explicitScore,
           level: explicitLevel || (explicitScore != null && explicitScore <= LOW_CONFIDENCE_THRESHOLD ? 'low' : 'medium'),
           rationale: ['recommendation_confidence_contract'],
         };
@@ -69337,7 +69337,8 @@ function pickConfidenceNodeForConservativeRecoFallback(envelope) {
       return payload.confidence;
     }
   }
-  return { score: LOW_CONFIDENCE_THRESHOLD, level: 'medium', rationale: ['low_medium_reco_policy'] };
+  // F4: the policy fallback is a categorical judgment, not a measurement.
+  return { score: null, level: 'medium', rationale: ['low_medium_reco_policy'] };
 }
 
 function buildConservativeRecoNoticeCard({ ctx, language, confidence, details } = {}) {
