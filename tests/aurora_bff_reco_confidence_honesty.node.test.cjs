@@ -859,3 +859,102 @@ test('no touched notice writer ships a literal confidence score', () => {
     assert.equal(literal, null, `${file} ships a literal notice score: ${literal && literal[0]}`);
   }
 });
+
+/* ---------------------------------------------------------------------------
+ * Follow-up: the review's two PLAUSIBLE findings.
+ *
+ * Both concern-boost averages read an unmeasured concern confidence as a
+ * measured 0 (Number(null)/clamp01(null)), and ingredientMapper's pickConcerns
+ * additionally invented 0.62 for concerns with no confidence node at all.
+ * Unmeasured concerns now carry null and are excluded from the averages.
+ * ------------------------------------------------------------------------- */
+
+const { computeArtifactOverallConfidence } = require('../src/auroraBff/ingredientMapperV1');
+
+function mapperArtifact(concerns) {
+  return {
+    use_photo: true,
+    photos: [{ qc_status: 'pass' }],
+    skinType: { value: 'oily', confidence: { score: 0.8 } },
+    barrierStatus: { value: 'healthy', confidence: { score: 0.8 } },
+    sensitivity: { value: 'low', confidence: { score: 0.8 } },
+    goals: { values: ['hydration'], confidence: { score: 0.8 } },
+    concerns,
+  };
+}
+
+test('mapper overall confidence: an unmeasured concern does not dilute the measured boost', () => {
+  const measuredOnly = computeArtifactOverallConfidence(mapperArtifact([
+    { id: 'acne', confidence: { score: 0.9 } },
+  ]));
+  const withUnmeasured = computeArtifactOverallConfidence(mapperArtifact([
+    { id: 'acne', confidence: { score: 0.9 } },
+    { id: 'redness', confidence: { score: null } },
+  ]));
+  assert.equal(withUnmeasured.score, measuredOnly.score);
+});
+
+test('mapper overall confidence: unmeasured-only concerns add no invented 0.62 boost', () => {
+  const noConcerns = computeArtifactOverallConfidence(mapperArtifact([]));
+  const stringOnly = computeArtifactOverallConfidence(mapperArtifact(['acne', 'redness']));
+  const nullOnly = computeArtifactOverallConfidence(mapperArtifact([
+    { id: 'acne', confidence: { score: null } },
+  ]));
+  assert.equal(stringOnly.score, noConcerns.score);
+  assert.equal(nullOnly.score, noConcerns.score);
+});
+
+test('mapper overall confidence: a genuinely-zero concern is a real measurement and still counts', () => {
+  const measuredZero = computeArtifactOverallConfidence(mapperArtifact([
+    { id: 'acne', confidence: { score: 0.9 } },
+    { id: 'redness', confidence: { score: 0 } },
+  ]));
+  const measuredOnly = computeArtifactOverallConfidence(mapperArtifact([
+    { id: 'acne', confidence: { score: 0.9 } },
+  ]));
+  assert.ok(measuredZero.score < measuredOnly.score, 'a measured 0 must dilute the boost');
+});
+
+function routesConfidenceArgs(concerns) {
+  return {
+    usePhoto: true,
+    usedPhotos: [{ qc_status: 'pass' }],
+    photoQuality: 'pass',
+    analysisSource: 'photo',
+    profileSummary: {
+      skinType: 'oily',
+      barrierStatus: 'healthy',
+      sensitivity: 'low',
+      goals: ['hydration'],
+    },
+    concerns,
+  };
+}
+
+test('routes overall confidence: an unmeasured concern does not deflate the boost', () => {
+  const measuredOnly = __internal.deriveArtifactOverallConfidence(routesConfidenceArgs([
+    { id: 'acne', confidence: { score: 0.9 } },
+  ]));
+  const withUnmeasured = __internal.deriveArtifactOverallConfidence(routesConfidenceArgs([
+    { id: 'acne', confidence: { score: 0.9 } },
+    { id: 'redness', confidence: { score: null } },
+    { id: 'texture' },
+  ]));
+  assert.equal(withUnmeasured.score, measuredOnly.score);
+});
+
+test('routes overall confidence: unmeasured-only concerns contribute no boost, a measured 0 still counts', () => {
+  const noConcerns = __internal.deriveArtifactOverallConfidence(routesConfidenceArgs([]));
+  const nullOnly = __internal.deriveArtifactOverallConfidence(routesConfidenceArgs([
+    { id: 'acne', confidence: { score: null } },
+  ]));
+  assert.equal(nullOnly.score, noConcerns.score);
+  const withZero = __internal.deriveArtifactOverallConfidence(routesConfidenceArgs([
+    { id: 'acne', confidence: { score: 0.9 } },
+    { id: 'redness', confidence: { score: 0 } },
+  ]));
+  const measuredOnly = __internal.deriveArtifactOverallConfidence(routesConfidenceArgs([
+    { id: 'acne', confidence: { score: 0.9 } },
+  ]));
+  assert.ok(withZero.score < measuredOnly.score, 'a measured 0 must dilute the boost');
+});
