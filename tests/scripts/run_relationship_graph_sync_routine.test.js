@@ -314,6 +314,14 @@ describe('run-relationship-graph-sync-routine', () => {
     expect(renewalArgs).toContain('--apply');
     expect(renewalArgs).toContain(`--confirm ${RENEWAL_CONFIRM_TOKEN}`);
 
+    // The child has to stop itself before the parent SIGKILLs it, with room
+    // left to apply what it verified and write its report — on 2026-08-12 the
+    // kill landed first and the run renewed nothing and reported nothing.
+    const deadlineMs = Number(renewal.args[renewal.args.indexOf('--deadline-ms') + 1]);
+    expect(deadlineMs).toBeGreaterThan(0);
+    expect(deadlineMs).toBeLessThan(renewal.timeoutMs);
+    expect(renewal.timeoutMs - deadlineMs).toBeGreaterThanOrEqual(60 * 1000);
+
     // Renewal apply never leaks into build/review apply.
     const routineArgs = steps.find((step) => step.id === 'relationship_graph_routine').args.join(' ');
     expect(routineArgs).not.toContain('--apply-build');
@@ -425,6 +433,38 @@ describe('run-relationship-graph-sync-routine', () => {
       id: 'catalog_sync',
       status: 'failed',
     }));
+  });
+
+  // An optional step aborts nothing, so this warning is the only place its
+  // output is ever read. "(exit 124)" with the stderr dropped is what made the
+  // 2026-08-12 renewal timeout undiagnosable.
+  test('an optional step warning carries that step stderr, not just its exit code', async () => {
+    const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'relgraph-sync-routine-'));
+    const options = parseArgs([
+      '--cutoff',
+      CUTOFF,
+      '--external-product-ids',
+      'seed_1',
+      '--out-dir',
+      outDir,
+    ], { now: NOW });
+    const runner = jest.fn(async (_command, args) => (
+      args.join(' ').includes('renew-relationship-ai-approved-labels.js')
+        ? {
+          exitCode: 124,
+          stdout: '',
+          stderr: 'renewal progress {"phase":"scan","batch":7,"scanned_rows":3500}\nstep timed out after 1200000ms; sent SIGTERM',
+        }
+        : { exitCode: 0, stdout: '{}', stderr: '' }
+    ));
+
+    await runSyncRoutine(options, { runner, now: NOW, ledgerRecorder: async () => ({ run_id: 'r', status: 'ok' }) });
+
+    const summary = JSON.parse(fs.readFileSync(path.join(outDir, 'sync_routine_summary.json'), 'utf8'));
+    const warning = summary.warnings.join('\n');
+    expect(warning).toContain('exit 124');
+    expect(warning).toContain('"batch":7');
+    expect(warning).toContain('step timed out after 1200000ms');
   });
 
   test('runSyncRoutine records failed run ledger before throwing child step errors', async () => {
