@@ -904,22 +904,30 @@ test('mapper overall confidence: unmeasured-only concerns add no invented 0.62 b
   assert.equal(nullOnly.score, noConcerns.score);
 });
 
-test('mapper overall confidence: a genuinely-zero concern is a real measurement and still counts', () => {
+test('mapper overall confidence: a measured 0 dilutes the boost where an unmeasured concern does not', () => {
   const measuredZero = computeArtifactOverallConfidence(mapperArtifact([
     { id: 'acne', confidence: { score: 0.9 } },
     { id: 'redness', confidence: { score: 0 } },
   ]));
-  const measuredOnly = computeArtifactOverallConfidence(mapperArtifact([
+  const unmeasured = computeArtifactOverallConfidence(mapperArtifact([
     { id: 'acne', confidence: { score: 0.9 } },
+    { id: 'redness', confidence: { score: null } },
   ]));
-  assert.ok(measuredZero.score < measuredOnly.score, 'a measured 0 must dilute the boost');
+  // The two used to be IDENTICAL — clamp01(null) === 0 made the unmeasured
+  // concern indistinguishable from a measured zero. Comparing them (rather
+  // than measured-0 against a shorter list) is what constrains the fix:
+  // pre-fix both score 0.854 and this assertion fails.
+  assert.ok(
+    measuredZero.score < unmeasured.score,
+    `a measured 0 must dilute where an unmeasured concern does not (${measuredZero.score} vs ${unmeasured.score})`,
+  );
 });
 
 function routesConfidenceArgs(concerns) {
   return {
     usePhoto: true,
     usedPhotos: [{ qc_status: 'pass' }],
-    photoQuality: 'pass',
+    photoQuality: { grade: 'pass' },
     analysisSource: 'photo',
     profileSummary: {
       skinType: 'oily',
@@ -943,18 +951,42 @@ test('routes overall confidence: an unmeasured concern does not deflate the boos
   assert.equal(withUnmeasured.score, measuredOnly.score);
 });
 
-test('routes overall confidence: unmeasured-only concerns contribute no boost, a measured 0 still counts', () => {
+test('routes overall confidence: a measured 0 dilutes the boost where an unmeasured concern does not', () => {
+  const measuredZero = __internal.deriveArtifactOverallConfidence(routesConfidenceArgs([
+    { id: 'acne', confidence: { score: 0.9 } },
+    { id: 'redness', confidence: { score: 0 } },
+  ]));
+  const unmeasured = __internal.deriveArtifactOverallConfidence(routesConfidenceArgs([
+    { id: 'acne', confidence: { score: 0.9 } },
+    { id: 'redness', confidence: { score: null } },
+  ]));
+  // Pre-fix these were identical (Number(null) === 0); comparing them is what
+  // constrains the fix. Comparing measured-0 against a SHORTER list does not —
+  // that assertion holds before and after.
+  assert.ok(
+    measuredZero.score < unmeasured.score,
+    `a measured 0 must dilute where an unmeasured concern does not (${measuredZero.score} vs ${unmeasured.score})`,
+  );
+  // Secondary, and deliberately not load-bearing: with no measured concern at
+  // all, old and new agree that there is no boost.
   const noConcerns = __internal.deriveArtifactOverallConfidence(routesConfidenceArgs([]));
   const nullOnly = __internal.deriveArtifactOverallConfidence(routesConfidenceArgs([
     { id: 'acne', confidence: { score: null } },
   ]));
   assert.equal(nullOnly.score, noConcerns.score);
-  const withZero = __internal.deriveArtifactOverallConfidence(routesConfidenceArgs([
-    { id: 'acne', confidence: { score: 0.9 } },
-    { id: 'redness', confidence: { score: 0 } },
+});
+
+test('routes overall confidence: undiluted boost can cross a level boundary, releasing the conservative guard', () => {
+  const out = __internal.deriveArtifactOverallConfidence(routesConfidenceArgs([
+    { id: 'acne', confidence: { score: 0.34 } },
+    { id: 'redness', confidence: { score: null } },
+    { id: 'texture', confidence: { score: null } },
+    { id: 'dryness' },
   ]));
-  const measuredOnly = __internal.deriveArtifactOverallConfidence(routesConfidenceArgs([
-    { id: 'acne', confidence: { score: 0.9 } },
-  ]));
-  assert.ok(withZero.score < measuredOnly.score, 'a measured 0 must dilute the boost');
+  // Old: (0.34 + 0 + 0 + 0) / 4 * 0.12 = 0.0102 -> 0.7402 -> 'medium'.
+  // New: 0.34 * 0.12 = 0.0408 -> 0.7708 -> 'high'.
+  // The level is the user-visible consequence — 'high' releases the low/medium
+  // conservative reco guard — so pin the LEVEL, not just the score.
+  assert.equal(out.level, 'high');
+  assert.ok(out.score > 0.75, `expected a score above the medium ceiling, got ${out.score}`);
 });
