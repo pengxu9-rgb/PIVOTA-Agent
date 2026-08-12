@@ -782,6 +782,31 @@ export function commerceToolDefinitionsFor(dialect) {
   return dialect === TOOL_DIALECTS.ucp ? ucpCommerceToolDefinitions : commerceToolDefinitions;
 }
 
+/**
+ * A UCP-dialect VIEW of an existing commerce surface: the spec's tool names in `tools/list`, and
+ * `tools/call` routed through the SAME callTool with `dialect: 'ucp'`.
+ *
+ * Deliberately a projection, not a new surface. Everything that makes a charge safe — the executor,
+ * kernel, gates, quote-first, charge-once, ownership — is the object being wrapped, so a UCP call and an
+ * MCP call are the same code path with different spelling. Building a parallel surface here is how the
+ * safety invariants would fork per ecosystem.
+ */
+export function ucpDialectSurface(surface) {
+  if (!surface || typeof surface.callTool !== "function") {
+    throw new Error("ucpDialectSurface requires a commerce surface with callTool");
+  }
+  return Object.freeze({
+    ...surface,
+    tools: ucpCommerceToolDefinitions,
+    callTool: (name, args, sessionContext) =>
+      surface.callTool(name, args, sessionContext, { dialect: TOOL_DIALECTS.ucp }),
+    isCommerceTool: (name) =>
+      typeof surface.isCommerceTool === "function"
+        ? surface.isCommerceTool(name, TOOL_DIALECTS.ucp)
+        : Object.prototype.hasOwnProperty.call(OP_BY_UCP_TOOL, name),
+  });
+}
+
 // --- MCP result mapping (SDK-free so it is unit-tested here, not only in the wire-in) ---------------------
 
 // Error CLASSES whose curated message/code are safe to return to the model. Gated by instanceof (NOT a
