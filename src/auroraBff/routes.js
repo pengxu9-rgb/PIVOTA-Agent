@@ -37337,16 +37337,21 @@ function deriveArtifactOverallConfidence({
   baseParts.push(goalsPresent ? 0.76 : 0);
   const base = baseParts.reduce((sum, value) => sum + value, 0) / Math.max(1, baseParts.length);
 
+  // F4: average only the concerns whose confidence was actually measured —
+  // Number(null) === 0 read an unmeasured score as a measured rock-bottom
+  // one, deflating the boost and shifting borderline artifacts toward 'low'.
+  const measuredConcernScores = (Array.isArray(concerns) ? concerns : [])
+    .map((item) => {
+      const node = item && typeof item === 'object' ? item.confidence : null;
+      return toFiniteScoreOrNull(node && typeof node === 'object' ? node.score : null);
+    })
+    .filter((value) => value != null);
   const concernBoost =
-    Array.isArray(concerns) && concerns.length
+    measuredConcernScores.length > 0
       ? Math.min(
           0.1,
-          concerns.reduce((sum, item) => {
-            const node = item && typeof item === 'object' ? item.confidence : null;
-            const score = node && typeof node === 'object' ? Number(node.score) : 0;
-            return sum + (Number.isFinite(score) ? score : 0);
-          }, 0) /
-            concerns.length *
+          measuredConcernScores.reduce((sum, value) => sum + value, 0) /
+            measuredConcernScores.length *
             0.12,
         )
       : 0;
@@ -104071,6 +104076,7 @@ const __internal = {
   enrichPhotoModulesCardWithIngredientProductsBounded,
   isTreatmentLikeRecommendationForLowConfidence,
   applyLowConfidenceRecoGuard,
+  deriveArtifactOverallConfidence,
   envelopeRequiresConservativeRecoGuard,
   applyLowOrMediumRecoGuardToEnvelope,
   applyRecoContractToRecoRequestedEvents,

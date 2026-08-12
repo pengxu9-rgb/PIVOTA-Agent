@@ -820,14 +820,21 @@ function pickConcerns(artifact) {
     if (typeof item === 'string') {
       const id = normalizeToken(item);
       if (!id) continue;
-      out.push({ id, confidence: 0.62, evidence: [] });
+      // F4: a bare-string concern carries no measured confidence — null, not
+      // an invented 0.62.
+      out.push({ id, confidence: null, evidence: [] });
       continue;
     }
     if (typeof item !== 'object' || Array.isArray(item)) continue;
     const id = normalizeToken(item.id || item.concern_id || item.value);
     if (!id) continue;
     const confidenceObj = item.confidence && typeof item.confidence === 'object' ? item.confidence : null;
-    const confidence = confidenceObj ? clamp01(confidenceObj.score) : 0.62;
+    // F4: `!= null` before clamp01 — clamp01(null) reads an unmeasured score
+    // as a measured 0, and an absent node used to get an invented 0.62.
+    const confidence =
+      confidenceObj && confidenceObj.score != null && Number.isFinite(Number(confidenceObj.score))
+        ? clamp01(confidenceObj.score)
+        : null;
     const evidence = Array.isArray(item.evidence) ? item.evidence : [];
     out.push({ id, confidence, evidence });
   }
@@ -875,9 +882,15 @@ function computeArtifactOverallConfidence(artifact) {
     { score: goals.values.length ? goals.confidence : 0, weight: 0.25 },
   ];
   const weightedScore = weighted.reduce((sum, item) => sum + item.score * item.weight, 0);
+  // F4: boost only from concerns whose confidence was measured — an
+  // unmeasured (null) concern is not a measured 0 and must not dilute (or,
+  // via the old invented 0.62, inflate) the average.
+  const measuredConcernScores = concerns
+    .map((item) => (item.confidence != null && Number.isFinite(Number(item.confidence)) ? clamp01(item.confidence) : null))
+    .filter((value) => value != null);
   const concernBoost =
-    concerns.length > 0
-      ? Math.min(0.1, concerns.reduce((sum, item) => sum + clamp01(item.confidence), 0) / concerns.length * 0.12)
+    measuredConcernScores.length > 0
+      ? Math.min(0.1, measuredConcernScores.reduce((sum, value) => sum + value, 0) / measuredConcernScores.length * 0.12)
       : 0;
 
   let score = clamp01(weightedScore + concernBoost);
