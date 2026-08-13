@@ -216,6 +216,19 @@ jobs:
       # charges. The kernel-side routing invariants live in safety-kernel's own
       # suite; this file is the only proof the three gateway body builders it
       # crosses still agree.
+      # ADDED 2026-08-13: `mcp-server/test/ucpSpecVersion`, confirmed green (7/7)
+      # AND mutation-checked (6 mutants, all killed). It is the ONLY job that can
+      # catch the defect it guards: Pivota's two UCP profiles sit on opposite
+      # sides of the ESM/CJS line — the seller (`/.well-known/ucp`, safety-kernel
+      # ESM) and the buyer agent (src/services, CommonJS) — and each carried its
+      # own version pin, so the seller advertised 2026-01-23 while #1962 sourced
+      # its advertised tool names from the buyer's 2026-04-08 line. Both now read
+      # one constant, and this suite fails if either re-declares a literal, if the
+      # two published versions diverge, or if the pin regresses below the line the
+      # advertised vocabulary came from. Without it in this allowlist the guard
+      # would run nowhere: safety-kernel's own suite and the whole-directory
+      # `cd mcp-server && node --test` live only in the workflow_dispatch-only
+      # money-path gate, and jest's testMatch wants `tests/`, not `test/`.
       - name: Run node:test suites
         run: |
           node --test \
@@ -248,7 +261,8 @@ jobs:
             tests/upstream_retry_deadline_budget.node.test.cjs \
             tests/fpm_stage_attribution.node.test.cjs \
             tests/acp_spt_gateway_handoff.node.test.cjs \
-            tests/integration/agent_checkout_acp_ucp_doors.node.test.cjs
+            tests/integration/agent_checkout_acp_ucp_doors.node.test.cjs \
+            mcp-server/test/ucpSpecVersion.test.js
 
   jest:
     runs-on: ubuntu-latest
