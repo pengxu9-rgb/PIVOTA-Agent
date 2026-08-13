@@ -162,16 +162,35 @@ function createUcpBuyerAgentClient(options = {}) {
   // 2026-08-13: a UCP endpoint answers `422 / -32001 { code: 'profile_unreachable' }` and nothing else runs.
   // Production happens to set the env var, which is exactly why this stayed invisible.
   //
-  // The remaining fallback derives from the gateway's OWN configured origin — the same env the seller
-  // profile is built from (src/server.js getCommerceUcpRouteHandlers) — so it can only point at a host this
-  // service actually serves `/.well-known/ucp-agent` on. If nothing is configured the pointer stays ABSENT
-  // rather than wrong: a merchant then names the missing field, which is a far more actionable failure than
-  // chasing a 404 on a host that was never this service.
+  // The remaining fallback derives from the gateway's OWN configured origin — the same chain the seller
+  // profile resolves (src/server.js getCommerceUcpRouteHandlers: UCP_BASE_URL -> AGENT_CHECKOUT_UCP_BASE_URL
+  // -> the origin of MCP_OAUTH_RESOURCE). If nothing is configured the pointer stays ABSENT rather than
+  // wrong: a merchant then names the missing field, which is a far more actionable failure than chasing a
+  // 404 on a host that was never this service.
+  //
+  // AND IT IS GATED ON THE ROUTE ACTUALLY BEING LIT, because the origin alone does not tell us that.
+  // Deriving from an origin says "this gateway is reachable here"; it does NOT say `/.well-known/ucp-agent`
+  // answers there. That route is its own door (src/server.js registerUcpBuyerAgentProfileRoute) behind
+  // UCP_BUYER_AGENT_PROFILE_ENABLED, default OFF — whereas UCP_BASE_URL gates a DIFFERENT door (the seller
+  // profile, under AGENT_CHECKOUT_UCP_DISCOVERY_ENABLED). An environment that sets UCP_BASE_URL for the
+  // seller surface and leaves the buyer door dark is the DEFAULT state, and precisely the cohort this fix
+  // exists for; ungated, it would derive a pointer that 404s on our OWN host — the same failure one hostname
+  // over, while reporting success. A derived URL is only honest if the route behind it is serving.
+  //
+  // The flag is read in THIS process, which assumes the client and the profile route deploy together — true
+  // of this gateway (one service, both mounted in src/server.js). If they are ever split, set
+  // UCP_AGENT_PROFILE_URL explicitly: the explicit value is deliberately NOT gated, so an operator can
+  // always name a URL served elsewhere.
+  const buyerProfileDoorLit = ['1', 'true', 'on', 'yes']
+    .includes(String(process.env.UCP_BUYER_AGENT_PROFILE_ENABLED || '').trim().toLowerCase());
   const profileUrl = firstNonEmpty(
     options.profileUrl,
     process.env.UCP_AGENT_PROFILE_URL,
-    agentProfileUrlFromOrigin(process.env.UCP_BASE_URL),
-    agentProfileUrlFromOrigin(process.env.AGENT_CHECKOUT_UCP_BASE_URL),
+    ...(buyerProfileDoorLit ? [
+      agentProfileUrlFromOrigin(process.env.UCP_BASE_URL),
+      agentProfileUrlFromOrigin(process.env.AGENT_CHECKOUT_UCP_BASE_URL),
+      agentProfileUrlFromOrigin(process.env.MCP_OAUTH_RESOURCE),
+    ] : []),
   );
   const ucpVersion = firstNonEmpty(options.ucpVersion, process.env.UCP_AGENT_VERSION, DEFAULT_UCP_VERSION);
   const fetchImpl = typeof options.fetchImpl === 'function'
@@ -312,10 +331,16 @@ function createUcpBuyerAgentClient(options = {}) {
   // The UCP-agent profile pointer. Carried in JSON-RPC meta (MCP requirement) and, when signing, mirrored as a
   // structured-field HTTP header `ucp-agent: profile="<url>"` so the RFC 9421 signature can cover it.
   //
-  // With no pointer configured the key is OMITTED rather than emitted as the string "undefined", which is
-  // what naive interpolation produced and what would have been signed into the covered header. A merchant
-  // then rejects a MISSING required field — nameable and fixable — instead of chasing a fetch of a URL
-  // spelled `profile="undefined"`.
+  // With no pointer configured `profile` is left OFF the object rather than set to `undefined`.
+  //
+  // BE PRECISE ABOUT WHAT THIS BUYS, because an earlier version of this note overstated it: for the JSON
+  // body the two are indistinguishable — `JSON.stringify({profile: undefined})` is `{}` — so the meta path
+  // never emitted the string "undefined" and this branch is defensive, not load-bearing. Note also that
+  // `requestMeta` always sets the `ucp-agent` key, so the wire carries `"ucp-agent":{}`; it is `profile`
+  // that is absent, not the envelope.
+  //
+  // Where it IS load-bearing is `ucpAgentHeaderValue` below: that one interpolates, so an absent pointer
+  // there really did produce the literal string `profile="undefined"`.
   function ucpAgentMeta() {
     return profileUrl ? { profile: profileUrl } : {};
   }
@@ -477,10 +502,16 @@ function createUcpBuyerAgentClient(options = {}) {
     const bearer = tier === TRUST_TIER.TOKEN ? await resolveBearerToken() : null;
     const headers = authHeaders(bearer);
     if (tier === TRUST_TIER.SIGNED) {
-      // At SIGNED tier the `ucp-agent` header is a COVERED signature component (RFC 9421), so a missing
-      // profile cannot be shrugged off the way it can at anonymous tier: it would sign a header whose value
-      // is absent, producing a signature the merchant computes differently and rejects as tampering. Refuse
-      // by name instead — the cause is a missing config value, and that is what the message says.
+      // At SIGNED tier a missing profile cannot be shrugged off the way it can at anonymous tier.
+      //
+      // NOT for the reason an earlier version of this comment gave. `buildUcpSignatureBase` does
+      // `if (ucpAgentValue) fields.push(['ucp-agent', ucpAgentValue])`, so an absent value is simply NOT
+      // COVERED and the signature stays internally consistent — there is no tampering mismatch. The real
+      // hazard is one layer out: `headers['ucp-agent'] = undefined` is stringified by undici into a literal
+      // `ucp-agent: undefined` request header (`new Headers({'ucp-agent': undefined})` ->
+      // `[["ucp-agent","undefined"]]`), so we would ship junk in a header the signature does not cover — a
+      // request that is both malformed and unverifiable in that field. Refuse by name instead; the cause is
+      // a missing config value, and that is what the message says.
       if (!ucpAgentHeaderValue()) {
         throw new Error(
           'ucpBuyerAgentClient: signing requires an agent profile URL — set UCP_AGENT_PROFILE_URL (or '

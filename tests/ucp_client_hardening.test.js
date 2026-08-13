@@ -231,7 +231,13 @@ describe('H4 profile self-reference — no hardcoded host', () => {
  * already forbade that host in the served profile BODY; nothing forbade it in the pointer we send.
  */
 describe('the agent profile pointer is configured, never invented', () => {
-  const ENV_KEYS = ['UCP_AGENT_PROFILE_URL', 'UCP_BASE_URL', 'AGENT_CHECKOUT_UCP_BASE_URL'];
+  const ENV_KEYS = [
+    'UCP_AGENT_PROFILE_URL', 'UCP_BASE_URL', 'AGENT_CHECKOUT_UCP_BASE_URL',
+    'MCP_OAUTH_RESOURCE', 'UCP_BUYER_AGENT_PROFILE_ENABLED',
+  ];
+  // Deriving a pointer requires the buyer-profile ROUTE to be lit, not just an origin to exist — see the
+  // note at the resolution. Tests that exercise derivation must say so explicitly.
+  const LIT = () => { process.env.UCP_BUYER_AGENT_PROFILE_ENABLED = '1'; };
   let saved;
   beforeEach(() => {
     saved = new Map(ENV_KEYS.map((k) => [k, process.env[k]]));
@@ -256,6 +262,7 @@ describe('the agent profile pointer is configured, never invented', () => {
   });
 
   test('the gateway origin DERIVES the pointer, so it can only name a host we serve', () => {
+    LIT();
     process.env.UCP_BASE_URL = 'https://ucp.pivota.cc';
     expect(createUcpBuyerAgentClient({}).describeTier().profile_url)
       .toBe('https://ucp.pivota.cc/.well-known/ucp-agent');
@@ -271,9 +278,41 @@ describe('the agent profile pointer is configured, never invented', () => {
     process.env.AGENT_CHECKOUT_UCP_BASE_URL = 'https://alt.pivota.cc';
     expect(createUcpBuyerAgentClient({}).describeTier().profile_url)
       .toBe('https://alt.pivota.cc/.well-known/ucp-agent');
+    // …and the seller chain's third link, so the two roles resolve the same origins.
+    delete process.env.AGENT_CHECKOUT_UCP_BASE_URL;
+    process.env.MCP_OAUTH_RESOURCE = 'https://oauth.pivota.cc/some/resource';
+    expect(createUcpBuyerAgentClient({}).describeTier().profile_url)
+      .toBe('https://oauth.pivota.cc/.well-known/ucp-agent');
+  });
+
+  test('a DARK buyer-profile route derives NOTHING — an origin is not a served route', () => {
+    // The defect this closes: UCP_BASE_URL gates the SELLER door
+    // (AGENT_CHECKOUT_UCP_DISCOVERY_ENABLED); /.well-known/ucp-agent is its own door behind
+    // UCP_BUYER_AGENT_PROFILE_ENABLED, default OFF. An environment with UCP_BASE_URL set and the buyer door
+    // dark is the DEFAULT state — deriving there would hand merchants a URL that 404s on our own host,
+    // trading a frontend 404 for a gateway 404 while reporting success.
+    process.env.UCP_BASE_URL = 'https://ucp.pivota.cc';
+    process.env.AGENT_CHECKOUT_UCP_BASE_URL = 'https://alt.pivota.cc';
+    process.env.MCP_OAUTH_RESOURCE = 'https://oauth.pivota.cc/r';
+    expect(createUcpBuyerAgentClient({}).describeTier().profile_url).toBeFalsy();
+    // Lighting the door is what makes derivation honest.
+    LIT();
+    expect(createUcpBuyerAgentClient({}).describeTier().profile_url)
+      .toBe('https://ucp.pivota.cc/.well-known/ucp-agent');
+  });
+
+  test('an EXPLICIT pointer is never gated — an operator may name a URL served elsewhere', () => {
+    // Deliberate asymmetry: the flag describes THIS process. An explicit value is the operator saying they
+    // know better, which must keep working when the client and the route are deployed separately.
+    process.env.UCP_AGENT_PROFILE_URL = 'https://explicit.example/.well-known/ucp-agent';
+    expect(createUcpBuyerAgentClient({}).describeTier().profile_url)
+      .toBe('https://explicit.example/.well-known/ucp-agent');
+    expect(createUcpBuyerAgentClient({ profileUrl: 'https://opt.example/p' }).describeTier().profile_url)
+      .toBe('https://opt.example/p');
   });
 
   test('an explicit UCP_AGENT_PROFILE_URL wins over the derived one, and an option wins over both', () => {
+    LIT();
     process.env.UCP_BASE_URL = 'https://ucp.pivota.cc';
     process.env.UCP_AGENT_PROFILE_URL = 'https://explicit.example/.well-known/ucp-agent';
     expect(createUcpBuyerAgentClient({}).describeTier().profile_url)
@@ -285,6 +324,7 @@ describe('the agent profile pointer is configured, never invented', () => {
   test('an unusable origin yields NO pointer rather than a guess', () => {
     // http is not servable cross-origin for this fetch, and junk is not a host. Both must stay absent —
     // deriving something "close enough" is how a dead pointer gets shipped in the first place.
+    LIT();
     for (const bad of ['http://insecure.example', 'not a url', '   ', 'ftp://x.example']) {
       process.env.UCP_BASE_URL = bad;
       expect(createUcpBuyerAgentClient({}).describeTier().profile_url).toBeFalsy();
@@ -292,6 +332,7 @@ describe('the agent profile pointer is configured, never invented', () => {
   });
 
   test('the wire carries the real pointer — and never the string "undefined"', async () => {
+    LIT();
     process.env.UCP_BASE_URL = 'https://ucp.pivota.cc';
     const seen = [];
     await buildCart(createUcpBuyerAgentClient({ fetchImpl: captureFetch(seen) }));
@@ -319,6 +360,7 @@ describe('the agent profile pointer is configured, never invented', () => {
   });
 
   test('SIGNED tier proceeds once an origin IS configured', async () => {
+    LIT();
     process.env.UCP_BASE_URL = 'https://ucp.pivota.cc';
     const seen = [];
     const client = createUcpBuyerAgentClient({
