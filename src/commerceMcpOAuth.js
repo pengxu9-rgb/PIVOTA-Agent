@@ -35,18 +35,102 @@ function requestHost(req) {
     || undefined;
 }
 
-function resourceFor(req) {
+// THE DOORS THIS RESOURCE SERVER PROTECTS, and the ONE identifier each one publishes.
+//
+// `/ucp/mcp` is the same commerce surface as `/mcp` with the UCP spec's tool spelling, and both go
+// through this same OAuth front door. They are NOT the same RFC 9728 protected resource, though:
+// §3.3 requires the `resource` value in a metadata document to be the identifier the document's own
+// well-known URL was built from. When `/ucp/mcp` challenged with the ROOT metadata URL, a client
+// following the challenge read `resource: https://host/mcp` — an identifier for a different endpoint
+// than the one it had just called. A strict client that checks the two agree has nothing to request a
+// token for; a lenient one mints for `/mcp` and works by luck.
+const NATIVE_DOOR_PATH = '/mcp';
+const UCP_DOOR_PATH = '/ucp/mcp';
+const DOOR_PATHS = [UCP_DOOR_PATH, NATIVE_DOOR_PATH]; // longest first: /ucp/mcp before /mcp
+
+/**
+ * Which door is this request about, as a canonical path — for a door request (`POST /ucp/mcp`) and for
+ * a metadata request (`GET /.well-known/oauth-protected-resource/ucp/mcp`) alike, since both have to
+ * resolve to the same identifier or the document contradicts the challenge that pointed at it.
+ *
+ * Normalized (lowercase, trailing slashes stripped), never compared raw: Express routes
+ * case-insensitively and tolerates trailing slashes, so `/UCP/MCP` and `/ucp/mcp/` reach the door and
+ * are served. Same rule and same reason as `isCommerceMcpJsonRpcPath` in src/server.js — a raw compare
+ * there was already shown to hand the money path different hosted-payment defaults (#1971).
+ * Anything unrecognized falls back to the native door, which is the pre-existing behaviour.
+ */
+function doorPathFor(req) {
+  const raw = String((req && req.path) || '').toLowerCase().replace(/\/+$/, '');
+  const suffix = raw.startsWith(RESOURCE_METADATA_PATH) ? raw.slice(RESOURCE_METADATA_PATH.length) : raw;
+  return DOOR_PATHS.includes(suffix) ? suffix : NATIVE_DOOR_PATH;
+}
+
+/** The configured identifier for the NATIVE door — unchanged behaviour, and the origin every door inherits. */
+function nativeResource(req) {
   const explicit = firstEnv('MCP_OAUTH_RESOURCE');
   if (explicit) return explicit;
   const host = requestHost(req);
-  return host ? `https://${host}/mcp` : undefined;
+  return host ? `https://${host}${NATIVE_DOOR_PATH}` : undefined;
 }
 
+/**
+ * The resource identifier for the door this request is about.
+ *
+ * The UCP identifier is derived from the NATIVE one's origin, never from the request's Host header:
+ * this service answers on both `commerce.mcp.pivota.cc` and its Railway domain, and an audience that
+ * changed with the hostname a client happened to use would make tokens unverifiable across the two.
+ */
+function resourceFor(req) {
+  const native = nativeResource(req);
+  if (!native) return undefined;
+  if (doorPathFor(req) === NATIVE_DOOR_PATH) return native;
+  let origin;
+  try {
+    origin = new URL(native).origin;
+  } catch {
+    return native; // malformed config: keep today's single-identifier behaviour rather than invent one
+  }
+  return `${origin}${UCP_DOOR_PATH}`;
+}
+
+/**
+ * Audiences a token may carry AT THIS DOOR. The door's own identifier, plus — on the UCP door only —
+ * the native identifier, because `/ucp/mcp` shipped and went live advertising the native resource, so
+ * a client that already minted against it must not be broken by this fix. Both name this same server.
+ * Drop the legacy member once no client mints for it (see the PR).
+ */
+function acceptedResourcesFor(req) {
+  const primary = resourceFor(req);
+  if (!primary) return [];
+  const native = nativeResource(req);
+  return native && native !== primary ? [primary, native] : [primary];
+}
+
+/**
+ * RFC 9728 §3.3 path-insertion: the metadata for a resource at `https://host/ucp/mcp` lives at
+ * `https://host/.well-known/oauth-protected-resource/ucp/mcp`, so the document's own URL encodes the
+ * identifier it declares. Built on the RESOURCE's origin for the same cross-hostname reason above.
+ *
+ * `MCP_OAUTH_RESOURCE_METADATA_URL` still overrides — but only for the native door. It is a single
+ * value; honouring it on `/ucp/mcp` would point that door back at a document describing `/mcp` and
+ * re-create the exact mismatch this function exists to fix.
+ */
 function resourceMetadataUrlFor(req) {
-  const explicit = firstEnv('MCP_OAUTH_RESOURCE_METADATA_URL');
-  if (explicit) return explicit;
+  const doorPath = doorPathFor(req);
+  if (doorPath === NATIVE_DOOR_PATH) {
+    const explicit = firstEnv('MCP_OAUTH_RESOURCE_METADATA_URL');
+    if (explicit) return explicit;
+  }
+  const resource = resourceFor(req);
+  if (resource) {
+    try {
+      return `${new URL(resource).origin}${RESOURCE_METADATA_PATH}${doorPath}`;
+    } catch {
+      /* fall through to the request host */
+    }
+  }
   const host = requestHost(req);
-  return host ? `https://${host}${RESOURCE_METADATA_PATH}` : undefined;
+  return host ? `https://${host}${RESOURCE_METADATA_PATH}${doorPath}` : undefined;
 }
 
 function authorizationServers() {
@@ -89,15 +173,20 @@ function issuersConfig() {
   return parsed;
 }
 
-// verifiers are resource-scoped (aud === resource); cache per resource to avoid re-fetching JWKS.
+// verifiers are resource-scoped (aud ∈ resources); cache per resource SET to avoid re-fetching JWKS.
+// The cache key is the joined set, so the native door and the UCP door — which accept different sets —
+// never share a verifier and cannot borrow each other's audience rule.
 const verifierCache = new Map();
 
-async function getVerifier(resource) {
-  if (!resource) return null;
-  if (verifierCache.has(resource)) return verifierCache.get(resource);
+async function getVerifier(resources) {
+  const list = (Array.isArray(resources) ? resources : [resources]).filter(Boolean);
+  if (list.length === 0) return null;
+  const resource = list.length === 1 ? list[0] : list;
+  const cacheKey = list.join(' ');
+  if (verifierCache.has(cacheKey)) return verifierCache.get(cacheKey);
   const issuers = issuersConfig();
   if (!issuers) {
-    verifierCache.set(resource, null);
+    verifierCache.set(cacheKey, null);
     return null;
   }
   const { createMcpAccessTokenVerifier } = await import(PRIMITIVES);
@@ -106,7 +195,7 @@ async function getVerifier(resource) {
     resource,
     maxTokenAge: firstEnv('AGENT_CHECKOUT_IDENTITY_MAX_TOKEN_AGE', 'IDENTITY_MAX_TOKEN_AGE') || undefined,
   });
-  verifierCache.set(resource, verifier);
+  verifierCache.set(cacheKey, verifier);
   return verifier;
 }
 
@@ -163,8 +252,14 @@ function registerMcpOAuthDiscoveryRoutes(app, opts = {}) {
     }
   };
   app.get(RESOURCE_METADATA_PATH, handler);
-  // path-suffixed variant per the MCP spec convention for a resource at /mcp
-  app.get(`${RESOURCE_METADATA_PATH}/mcp`, handler);
+  // RFC 9728 §3.3 path-insertion, one document per door. The handler reads the door back out of its
+  // own path (doorPathFor), so each URL declares the identifier it was built from:
+  //   …/oauth-protected-resource/mcp      -> resource https://host/mcp
+  //   …/oauth-protected-resource/ucp/mcp  -> resource https://host/ucp/mcp
+  // The bare root path stays mounted and keeps describing the NATIVE door: it is what native clients
+  // discovered before this change, and re-pointing it would break them to fix nothing.
+  app.get(`${RESOURCE_METADATA_PATH}${NATIVE_DOOR_PATH}`, handler);
+  app.get(`${RESOURCE_METADATA_PATH}${UCP_DOOR_PATH}`, handler);
 }
 
 /**
@@ -196,7 +291,7 @@ async function resolveMcpOAuthIdentity(req) {
 
   let verifier;
   try {
-    verifier = await getVerifier(resourceFor(req));
+    verifier = await getVerifier(acceptedResourcesFor(req));
   } catch (err) {
     return challenge(401, 'invalid_token', `OAuth not configured: ${(err && err.message) || 'error'}`);
   }
@@ -223,6 +318,8 @@ function __resetVerifierCache() {
 module.exports = {
   mcpOAuthEnabled,
   resourceFor,
+  acceptedResourcesFor,
+  doorPathFor,
   resourceMetadataUrlFor,
   authorizationServers,
   scopesSupported,
