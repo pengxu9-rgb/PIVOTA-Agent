@@ -30,6 +30,13 @@ import {
 } from "../../safety-kernel/src/protocol/buyerIntake.js";
 import { deriveUserRef } from "../auth/userRef.js";
 import { createPublicReadCache, stableStringify } from "./publicReadCache.js";
+// The UCP wire-shape translation (step 3). It owns the UCP `tools/list` schemas AND the `tools/call` argument
+// mapping in one table, so what the dialect advertises is what it accepts.
+import {
+  UCP_INPUT_SCHEMAS,
+  UCP_TOOL_DESCRIPTIONS,
+  ucpToNativeToolArgs,
+} from "./ucpArgumentAdapter.js";
 
 export class UnknownToolError extends Error {
   constructor(name) {
@@ -76,13 +83,25 @@ export const TOOL_DIALECTS = Object.freeze({ mcp: "mcp", ucp: "ucp" });
 const UCP_COMMERCE_OPERATIONS = UCP_DIALECT_OPERATIONS.filter((op) => op.kernel !== "external");
 const OP_BY_UCP_TOOL = Object.freeze(Object.fromEntries(UCP_COMMERCE_OPERATIONS.map((op) => [op.ucpTool, op])));
 
-function opIndexFor(dialect) {
-  if (dialect === undefined || dialect === null || dialect === TOOL_DIALECTS.mcp) return OP_BY_MCP;
-  if (dialect === TOOL_DIALECTS.ucp) return OP_BY_UCP_TOOL;
-  // A typo'd dialect must NOT quietly resolve to the MCP vocabulary: that would make a "UCP" door accept
-  // Pivota-native names (review finding on #1962).
+// A typo'd dialect must NOT quietly resolve to the MCP vocabulary: that would make a "UCP" door accept
+// Pivota-native names (review finding on #1962).
+function normalizeDialect(dialect) {
+  if (dialect === undefined || dialect === null || dialect === TOOL_DIALECTS.mcp) return TOOL_DIALECTS.mcp;
+  if (dialect === TOOL_DIALECTS.ucp) return TOOL_DIALECTS.ucp;
   throw new Error(`unknown tool dialect: ${String(dialect)}`);
 }
+
+function opIndexFor(dialect) {
+  return normalizeDialect(dialect) === TOOL_DIALECTS.ucp ? OP_BY_UCP_TOOL : OP_BY_MCP;
+}
+
+// Which body field each dialect accepts a buyer email in. Threaded into the shared intake so its refusal names
+// a field the CALLER can actually send: buyerIntake's own note records that a message naming a field the door
+// strips makes a model retry the identical call and be refused identically.
+const EMAIL_BODY_FIELDS = Object.freeze({
+  [TOOL_DIALECTS.mcp]: Object.freeze(["quote.customer_email"]),
+  [TOOL_DIALECTS.ucp]: Object.freeze(["checkout.buyer.email"]),
+});
 
 // --- result cache (search_catalog ONLY) -------------------------------------------------------------------
 //
@@ -227,7 +246,8 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
    */
   async function callTool(toolName, toolArgs = {}, sessionContext = {}, options = {}) {
     // dialect defaults to MCP, so every existing caller is unchanged.
-    const op = opIndexFor(options.dialect)[toolName];
+    const dialect = normalizeDialect(options.dialect);
+    const op = (dialect === TOOL_DIALECTS.ucp ? OP_BY_UCP_TOOL : OP_BY_MCP)[toolName];
     if (!op) throw new UnknownToolError(toolName);
 
     // tool args must be a plain object. Omitted (undefined) → empty; anything else non-object (null, string,
@@ -250,14 +270,22 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
       throw new IdentityRequiredError();
     }
 
+    // 2b) DIALECT ARGUMENT TRANSLATION. A UCP platform sends the spec's wire shape
+    //     (`{ meta, checkout: { line_items: [{ item: { id }, quantity }] } }`), which shares no field name
+    //     with Pivota's native tool args. Translating here — before the allowlist — means everything
+    //     downstream (allowlist, buyer intake, executor, kernel) is the SAME code the MCP door runs; the
+    //     dialect difference ends at this line. See ucpArgumentAdapter.js for what maps and what deliberately
+    //     does not.
+    const nativeArgs = dialect === TOOL_DIALECTS.ucp ? ucpToNativeToolArgs(op, toolArgs) : toolArgs;
+
     // 3) build executor params by ALLOWLIST (only the fields this op defines). One move strips identity,
     //    extra money fields (e.g. a model-set refund amount), and prototype-polluting keys.
-    const params = toParams(op, toolArgs);
+    const params = toParams(op, nativeArgs);
 
     // 3b) BUYER INTAKE — the shared rules, applied before anything is priced. See the note below toParams.
     //     Deliberately AFTER the allowlist (so intake only ever sees fields this op defines) and BEFORE
     //     `executor.execute` (so a refused request performs no pricing call and takes no inventory hold).
-    await applyBuyerIntake(op, params, attested, resolveDefaultVariants, ctx);
+    await applyBuyerIntake(op, params, attested, resolveDefaultVariants, ctx, EMAIL_BODY_FIELDS[dialect]);
 
     const execute = async () => {
       // 4) the single execution bridge enforces the contract flags + routes to the kernel.
@@ -462,7 +490,7 @@ const QUOTE_INTAKE_OPS = Object.freeze(["create_checkout_session", "update_check
  * Apply the shared intake to an op's already-allowlisted params. Mutates `params` in place; THROWS a curated
  * PivotaCommerceError (surfaced by toToolError) on any refusal.
  */
-async function applyBuyerIntake(op, params, attested = {}, resolveDefaultVariants, ctx = {}) {
+async function applyBuyerIntake(op, params, attested = {}, resolveDefaultVariants, ctx = {}, emailBodyFields = ['quote.customer_email']) {
   if (QUOTE_INTAKE_OPS.includes(op.id)) {
     const quote = params.quote;
     // Items first: it is the cheapest refusal and the one that decides whether a read is even needed.
@@ -472,8 +500,10 @@ async function applyBuyerIntake(op, params, attested = {}, resolveDefaultVariant
     // PRECEDENCE: attested first, ALWAYS. A caller-supplied `customer_email` can only fill a gap — it can
     // never override the address the buyer's own verified credential asserts, which is what stopped an agent
     // picking the receipt address for a signed-in buyer.
+    // The accepted field name is the DIALECT's, not this door's: a UCP caller supplies it as
+    // `checkout.buyer.email` and has no `quote` object at all.
     quote.customer_email = resolveBuyerEmail(attested.attested_email, [quote.customer_email], {
-      acceptedBodyFields: ['quote.customer_email'],
+      acceptedBodyFields: emailBodyFields,
     });
     const customer_name = resolveBuyerName(attested.attested_name, [quote.customer_name]);
     if (customer_name) quote.customer_name = customer_name;
@@ -767,19 +797,43 @@ function annotationsFor(op) {
   });
 }
 
-function definitionsFor(ops, nameOf) {
-  return Object.freeze(ops.map((op) => Object.freeze({
-    name: nameOf(op),
-    description: describe(op),
-    inputSchema: INPUT_SCHEMAS[op.id],
-    annotations: annotationsFor(op),
-  })));
+function definitionsFor(ops, { nameOf, schemaOf, describeOf }) {
+  return Object.freeze(ops.map((op) => {
+    const inputSchema = schemaOf(op);
+    if (!inputSchema) {
+      // A tool published with no input schema teaches a platform nothing about what to send, which is the
+      // same failure mode as publishing the WRONG schema. Fail at construction rather than at a live call.
+      throw new Error(`commerceToolSurface: no input schema for operation "${op.id}"`);
+    }
+    return Object.freeze({
+      name: nameOf(op),
+      description: describeOf(op),
+      inputSchema,
+      annotations: annotationsFor(op),
+    });
+  }));
 }
 
-export const commerceToolDefinitions = definitionsFor(COMMERCE_OPERATIONS, (op) => op.mcp);
+export const commerceToolDefinitions = definitionsFor(COMMERCE_OPERATIONS, {
+  nameOf: (op) => op.mcp,
+  schemaOf: (op) => INPUT_SCHEMAS[op.id],
+  describeOf: describe,
+});
 
-/** Tool declarations for the UCP `tools/list` dialect (evidenced spec names only). */
-export const ucpCommerceToolDefinitions = definitionsFor(UCP_COMMERCE_OPERATIONS, (op) => op.ucpTool);
+/**
+ * Tool declarations for the UCP `tools/list` dialect (evidenced spec names only).
+ *
+ * The SCHEMAS AND DESCRIPTIONS ARE THE UCP ONES, not the native ones. Until step 3 this projection reused
+ * `INPUT_SCHEMAS`, so `create_checkout` advertised `required: ["idempotency_key","quote"]` — fields a UCP
+ * platform never sends. The names resolved and the arguments did not, which is the same
+ * "advertised but not executable" defect one layer down. Both now come from ucpArgumentAdapter.js, which
+ * defines each schema next to the mapper that consumes it.
+ */
+export const ucpCommerceToolDefinitions = definitionsFor(UCP_COMMERCE_OPERATIONS, {
+  nameOf: (op) => op.ucpTool,
+  schemaOf: (op) => UCP_INPUT_SCHEMAS[op.id],
+  describeOf: (op) => UCP_TOOL_DESCRIPTIONS[op.id],
+});
 
 /** Declarations for a dialect; defaults to MCP. */
 export function commerceToolDefinitionsFor(dialect) {
