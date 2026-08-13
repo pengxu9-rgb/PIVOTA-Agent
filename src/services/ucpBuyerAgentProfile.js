@@ -18,7 +18,8 @@
  *   - shopify.dev/docs/agents/profiles/auth-and-rate-limiting — for the SIGNED tier, the agent's public key is
  *     read from this profile (RFC 9421 / ECDSA P-256). We publish it in `ucp.signing_keys` as a PUBLIC JWK
  *     array; the `keyid` the client signs with is the JWK `kid`. Verifiers do `find_key_by_kid(profile
- *     .signing_keys, keyid)` (ucp.dev/2026-04-08/specification/signatures). The signing alg is derived from the
+ *     .signing_keys, keyid)` (`<UCP_SPEC_BASE>signatures`, i.e. the signatures document on the pinned spec
+ *     line — see safety-kernel/src/protocol/ucpSpecVersion.cjs). The signing alg is derived from the
  *     JWK `crv` (P-256), so no `alg` member is required.
  *
  * KEY SOURCING (public key only — it IS public, but is sourced from env so the founder controls rotation and
@@ -34,11 +35,20 @@
  * payment processor in this probe. `assertNoPurchaseCompletion()` enforces that at build time.
  */
 
-// UCP spec version we negotiate against. The live carts-and-checkout docs reference
-// `https://ucp.dev/2026-04-08/specification/...`, so we pin the 2026-04-08 line by default.
-const DEFAULT_UCP_VERSION = '2026-04-08';
-const DEFAULT_SPEC_BASE = 'https://ucp.dev/2026-04-08/specification/';
-const DEFAULT_SCHEMA_BASE = 'https://ucp.dev/2026-04-08/schema/';
+// UCP spec version we negotiate against, and the versioned spec/schema bases derived from it. The literal
+// lives in ONE place for both of Pivota's UCP roles — `safety-kernel/src/protocol/ucpSpecVersion.cjs` —
+// because the seller profile (`/.well-known/ucp`) previously pinned a different, older line than this file
+// did while advertising capabilities whose tool names came from THIS line. Read that file for the evidence
+// behind the pinned version; never re-declare a version literal here.
+const {
+  UCP_SPEC_VERSION,
+  UCP_SPEC_BASE,
+  UCP_SCHEMA_BASE,
+} = require('../../safety-kernel/src/protocol/ucpSpecVersion.cjs');
+
+const DEFAULT_UCP_VERSION = UCP_SPEC_VERSION;
+const DEFAULT_SPEC_BASE = UCP_SPEC_BASE;
+const DEFAULT_SCHEMA_BASE = UCP_SCHEMA_BASE;
 
 // The shopping capabilities Pivota requests. Deliberately EXCLUDES any `*.complete` / payment capability.
 const SHOPPING_SERVICE = 'dev.ucp.shopping';

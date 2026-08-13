@@ -163,6 +163,10 @@ function jsonResponse(obj, status = 200) {
 describe('buildUcpBuyerAgentProfile', () => {
   test('matches the shopify.dev/agents/profiles schema shape', () => {
     const p = buildUcpBuyerAgentProfile({ profileUrl: 'https://agent.pivota.cc/.well-known/ucp-agent' });
+    // Anchored literal on purpose: everything else asserts "equals the shared constant", which a wrong
+    // constant would satisfy. This states the value Pivota actually publishes on BOTH UCP roles today —
+    // the seller profile (/.well-known/ucp) reads the same pin, safety-kernel/src/protocol/ucpSpecVersion.cjs.
+    // A deliberate spec bump updates that file and this line together; nothing else needs touching.
     expect(p.ucp.version).toBe('2026-04-08');
     expect(p.ucp.services['dev.ucp.shopping'][0].transport).toBe('mcp');
     expect(Object.keys(p.ucp.capabilities)).toEqual(
