@@ -34467,11 +34467,20 @@ app.use((req, res, next) => {
 // would only keep a PAN and a CVC alive on the request object for the life of the request.
 //
 // Exported on `_debug` because that carve-out is a security property worth asserting directly.
+//
+// BOTH comparisons read `pathOnly`, never the raw url. The prefix test used to run against `u`, which is
+// case-sensitive and still carries the query string — so `/ACP/checkout_sessions` (which Express DOES route
+// to the ACP handler, caseSensitive default off) got no stash, and the adapter then HMAC'd `${timestamp}.`
+// against a signature the platform computed over the real bytes. That failed closed — signature_mismatch,
+// and trustedBody() throws missing_raw_body behind it — but it made one door reachable-yet-unusable by its
+// spelling, which is the same defect class as the surface Set at isCommerceMcpJsonRpcPath. One normalized
+// spelling for the whole function is the point; the delegate_payment carve-out above already read pathOnly,
+// so the PAN promise was never the half that drifted.
 function shouldCaptureAcpRawBody(url) {
   const u = typeof url === 'string' ? url : '';
   const pathOnly = u.split('?')[0].toLowerCase().replace(/\/+$/, '');
   if (pathOnly === `${COMMERCE_ACP_BASE_PATH}${ACP_DELEGATE_PAYMENT_SUBPATH}`) return false;
-  return u.startsWith(`${COMMERCE_ACP_BASE_PATH}/`) || pathOnly === '/ucp/order-webhook';
+  return pathOnly.startsWith(`${COMMERCE_ACP_BASE_PATH}/`) || pathOnly === '/ucp/order-webhook';
 }
 
 // Is this the ACP delegate_payment door? That request body carries raw cardholder data (FPAN + CVC) for a
