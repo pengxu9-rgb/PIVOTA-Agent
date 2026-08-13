@@ -251,8 +251,8 @@ describe('createUcpBuyerAgentClient over recorded UCP responses', () => {
     });
     const endpoint = 'https://cosrx.example.myshopify.com/ucp/mcp';
 
-    const search = await client.catalogSearch(endpoint, { query: 'cosrx' });
-    expect(search.ok).toBe(true);
+    const product = await client.getProduct(endpoint, { productId: 'gid://shopify/Product/1' });
+    expect(product.ok).toBe(true);
 
     const cart = await client.createCart(endpoint, {
       lineItems: [{ item: { id: 'gid://shopify/ProductVariant/111' }, quantity: 1 }],
