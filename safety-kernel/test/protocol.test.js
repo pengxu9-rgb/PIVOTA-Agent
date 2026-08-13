@@ -11,6 +11,7 @@ import {
   createUcpRouteHandlers, parsePlatformCapabilities,
   resolveBusinessSigningKeys, toPublicSigningJwk,
 } from '../src/protocol/ucpProfile.js';
+import { UCP_SPEC_VERSION } from '../src/protocol/ucpSpecVersion.cjs';
 
 // A structurally valid PUBLIC P-256 JWK (coordinates are dummy base64url — shape tests only).
 const PUBLIC_JWK = Object.freeze({
@@ -69,6 +70,11 @@ test('UCP profile: version, services, capabilities (dev.ucp.*), payment_handlers
     signingKeys: [PUBLIC_JWK],
   });
   assert.match(profile.ucp_version, /^\d{4}-\d{2}-\d{2}$/);
+  // The advertised version is the SHARED pin, never a literal of this module's own — the buyer-agent
+  // profile reads the same constant, so the two roles cannot negotiate different spec lines. (They did:
+  // this profile advertised the 2026-01-23 line while the buyer pinned, and #1962's tool vocabulary came
+  // from, the 2026-04-08 line.) mcp-server/test/ucpSpecVersion.test.js pins both sides together.
+  assert.equal(profile.ucp_version, UCP_SPEC_VERSION);
   // Mid-man rule: Pivota is NEVER merchant-of-record — the profile must say so
   // and state its actual role (the merchant settles on their own rails).
   assert.equal(profile.provider.merchant_of_record, false);

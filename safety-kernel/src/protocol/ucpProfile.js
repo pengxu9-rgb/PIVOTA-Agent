@@ -8,8 +8,15 @@
 // capabilities are backed by the one canonical contract (so safety is enforced once, never forked).
 
 import { CANONICAL_CAPABILITIES, CANONICAL_OPERATIONS, operationsForCapability } from './canonicalContract.js';
+import { UCP_SPEC_VERSION } from './ucpSpecVersion.cjs';
 
-const DEFAULT_UCP_VERSION = '2026-01-23'; // target spec version; negotiate per advertised version in prod
+// The spec line this profile advertises. It is NOT declared here: this file used to pin the 2026-01-23 line
+// while the buyer-agent profile pinned 2026-04-08, and #1962 sourced the advertised capabilities' tool names
+// from that same 2026-04-08 line — so the seller negotiated an older version than the vocabulary it
+// advertised (a platform reading `create_checkout` under a 2026-01-23 profile). Both
+// roles now read ONE constant (ucpSpecVersion.cjs), so a one-sided bump is not expressible.
+// Still negotiate per the platform's advertised version in prod; this is the version WE publish.
+const DEFAULT_UCP_VERSION = UCP_SPEC_VERSION;
 
 // Default kid for a business signing key published without one. Matches the kid the retired
 // `ucp-web-production` profile shipped, so platforms that pinned it keep verifying across the port.
