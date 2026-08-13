@@ -170,10 +170,55 @@ describe('buildUcpBuyerAgentProfile', () => {
     expect(p.ucp.version).toBe('2026-04-08');
     expect(p.ucp.services['dev.ucp.shopping'][0].transport).toBe('mcp');
     expect(Object.keys(p.ucp.capabilities)).toEqual(
-      expect.arrayContaining(['dev.ucp.shopping.catalog', 'dev.ucp.shopping.cart', 'dev.ucp.shopping.checkout']),
+      expect.arrayContaining([
+        'dev.ucp.shopping.catalog.search', 'dev.ucp.shopping.catalog.lookup',
+        'dev.ucp.shopping.cart', 'dev.ucp.shopping.checkout',
+      ]),
     );
     // payment_handlers must be present (may be empty) per the schema.
     expect(p.ucp.payment_handlers).toEqual({});
+  });
+
+  test('every requested capability id EXISTS in the UCP vocabulary', () => {
+    // Negotiation is a set INTERSECTION, so an id that exists nowhere intersects with nothing and fails
+    // SILENTLY — the profile is accepted and the tools are simply absent. `dev.ucp.shopping.catalog` was
+    // exactly that: no such capability at any version (2026-04-08 splits it into .search/.lookup, and
+    // 2026-01-23 has no catalog capability at all), and it cost us every catalog tool at a live merchant.
+    //
+    // This list is the SPEC's, transcribed from ucp.dev/2026-04-08 (specification/overview + /catalog) —
+    // deliberately not derived from the module under test, which would only assert our spelling against
+    // itself. That self-agreement is why the old id survived: the previous assertion named the same wrong
+    // string the code did.
+    const SPEC_SHOPPING_CAPABILITIES = [
+      'dev.ucp.shopping.catalog.search',
+      'dev.ucp.shopping.catalog.lookup',
+      'dev.ucp.shopping.cart',
+      'dev.ucp.shopping.checkout',
+      'dev.ucp.shopping.discount',
+      'dev.ucp.shopping.fulfillment',
+      'dev.ucp.shopping.order',
+      'dev.ucp.shopping.ap2_mandate',
+    ];
+    const p = buildUcpBuyerAgentProfile();
+    for (const id of Object.keys(p.ucp.capabilities)) {
+      expect(SPEC_SHOPPING_CAPABILITIES).toContain(id);
+    }
+    for (const id of p.agent.requested_scopes) {
+      expect(SPEC_SHOPPING_CAPABILITIES).toContain(id);
+    }
+    // The capability block and the requested scopes must not drift apart either: a merchant reads one or
+    // the other depending on implementation, and a mismatch grants a different set than we advertise.
+    expect([...p.agent.requested_scopes].sort()).toEqual(Object.keys(p.ucp.capabilities).sort());
+  });
+
+  test('BOTH catalog halves are requested — the client uses each', () => {
+    // searchCatalog is free text (.search); getProduct is retrieval by identifier (.lookup). Requesting one
+    // would leave the other method calling a tool the merchant never granted.
+    const caps = Object.keys(buildUcpBuyerAgentProfile().ucp.capabilities);
+    expect(caps).toContain('dev.ucp.shopping.catalog.search');
+    expect(caps).toContain('dev.ucp.shopping.catalog.lookup');
+    // and the id that never existed is gone
+    expect(caps).not.toContain('dev.ucp.shopping.catalog');
   });
 
   test('requests catalog+cart+checkout scopes but NOT purchase-completion / payment', () => {
