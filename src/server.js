@@ -30008,10 +30008,17 @@ function buildStrictSessionAuthInfo(req, sessionContext = deriveStrictCommerceCt
   });
 }
 
+// Every path that speaks MCP JSON-RPC on the COMMERCE lane. `/ucp/mcp` is on the list because UCP's own
+// transport IS MCP JSON-RPC — it is the same surface with the spec's tool spelling — and because
+// `surface === 'mcp'` is what arms maybeApplyStrictMcpHostedPaymentDefaults. Leaving the UCP door off this
+// list would hand its charges different hosted-payment defaults (no return_url, no payment_method_hint)
+// than /mcp gets: a money-path fork created by a missing string.
+const COMMERCE_MCP_JSON_RPC_PATHS = new Set(['/mcp', '/ucp/mcp']);
+
 function buildExternalInvokeContext(req) {
   return {
     path: req?.path || null,
-    surface: req?.path === '/mcp' ? 'mcp' : null,
+    surface: COMMERCE_MCP_JSON_RPC_PATHS.has(req?.path) ? 'mcp' : null,
     api_key: req?.invokeAuth?.raw_token || null,
     agent_id: req?.invokeAuth?.agent_id || null,
     auth_mode: req?.invokeAuth?.auth_mode || null,
@@ -30587,20 +30594,26 @@ function isMcpHeartbeatEligibleRequest(req) {
   return Boolean(body) && body.method === 'tools/call';
 }
 
-// Money-path kill-switches, decided from the parsed JSON-RPC body alone (no adapter, no session context) so
-// a refused op answers instantly. Returns null when nothing is blocked.
-function resolveBlockedCommerceMcpOperation(rpcBody) {
-  const toolName = rpcBody && rpcBody.method === 'tools/call' && rpcBody.params
-    ? rpcBody.params.name
-    : null;
-  if (toolName === 'complete_checkout_session' && !isAgentCheckoutStrictSubmitPaymentEnabled()) {
+function mcpToolNameFromRpcBody(rpcBody) {
+  return rpcBody && rpcBody.method === 'tools/call' && rpcBody.params ? rpcBody.params.name : null;
+}
+
+// THE RULE, keyed on the CANONICAL operation id — never on one dialect's spelling of it.
+//
+// This used to compare the wire tool name directly against 'complete_checkout_session'. That is the MCP
+// door's name for the charge; the UCP door calls the SAME canonical operation 'complete_checkout'. Mounting
+// the UCP door against a name-keyed switch would have left the submit_payment kill-switch DARK on it: a UCP
+// platform could charge while AGENT_CHECKOUT_STRICT_SUBMIT_PAYMENT_ENABLED=0 held the MCP door shut. Gating
+// on the canonical id is what makes one kill-switch cover every dialect, present and future.
+function blockedCommerceOperationForCanonicalOp(operationId) {
+  if (operationId === 'complete_checkout_session' && !isAgentCheckoutStrictSubmitPaymentEnabled()) {
     return {
       operation: 'complete_checkout_session',
       reason: 'strict_submit_payment_disabled',
       message: 'submit_payment is disabled in strict checkout mode.',
     };
   }
-  if (toolName === 'create_payment_link' && !isAgentCheckoutHostedLinkEnabled()) {
+  if (operationId === 'create_payment_link' && !isAgentCheckoutHostedLinkEnabled()) {
     return {
       operation: 'create_payment_link',
       reason: 'hosted_link_disabled',
@@ -30608,6 +30621,31 @@ function resolveBlockedCommerceMcpOperation(rpcBody) {
     };
   }
   return null;
+}
+
+// Money-path kill-switches, decided from the parsed JSON-RPC body alone (no adapter, no session context) so
+// a refused op answers instantly. Returns null when nothing is blocked.
+//
+// On the MCP dialect the tool name IS the canonical operation id — canonicalContract defines `mcp` equal to
+// `id` for every operation, which tests/commerce_ucp_mcp_door.node.test.cjs asserts rather than assumes, so
+// this stays a synchronous lookup with no contract import on the hot path.
+function resolveBlockedCommerceMcpOperation(rpcBody) {
+  const toolName = mcpToolNameFromRpcBody(rpcBody);
+  return toolName ? blockedCommerceOperationForCanonicalOp(toolName) : null;
+}
+
+// The same rule for the UCP dialect, whose tool names are the SPEC's (create_checkout, complete_checkout, …).
+// The name→operation map is the canonical contract's, imported rather than restated: a second copy of the
+// vocabulary here is exactly the drift that would silently re-dark this switch.
+async function resolveBlockedUcpMcpOperation(rpcBody) {
+  const toolName = mcpToolNameFromRpcBody(rpcBody);
+  if (!toolName) return null;
+  const { canonicalOpForUcpTool } = await getCommerceCanonicalContractModule();
+  const op = canonicalOpForUcpTool(toolName);
+  // An unknown UCP tool has no kill-switch to trip; the adapter answers it UNKNOWN_TOOL.
+  if (!op) return null;
+  const blocked = blockedCommerceOperationForCanonicalOp(op.id);
+  return blocked ? { ...blocked, dialect: 'ucp', tool: toolName } : null;
 }
 
 /**
@@ -30708,13 +30746,38 @@ function registerCommerceRemoteMcpRoute() {
     // The branded public app origin (mcp.pivota.cc) maps to this same service and path, so /mcp dispatches
     // those requests to the auth:none read tier BEFORE any commerce gating — the public app must never
     // depend on the checkout kill-switch or the commerce auth channel.
+    //
+    // DELIBERATELY NOT on the UCP door: /ucp/mcp is a commerce-only door. The public read tier is served at
+    // /mcp (branded host) and /public/mcp, and giving a second path an auth:none branch would widen the
+    // unauthenticated surface for no reader that asked for it.
     if (isPublicReadMcpEnabled() && isPublicReadMcpHostRequest(req)) {
       return handlePublicReadMcp(req, res);
     }
     if (!isAgentCheckoutStrictEnabled()) {
       return res.status(404).json({ error: 'not_found' });
     }
+    return serveCommerceMcpJsonRpc(req, res, {
+      handlerEnteredAtMs,
+      getAdapter: getCommerceRemoteMcpAdapter,
+      resolveBlockedOperation: async (rpcBody) => resolveBlockedCommerceMcpOperation(rpcBody),
+      failureLabel: 'Strict checkout remote MCP route failed',
+    });
+  });
+}
 
+/**
+ * The COMMERCE MCP JSON-RPC request pipeline, shared by every dialect door.
+ *
+ * Extracted rather than copied when /ucp/mcp was mounted. A charge-capable door needs the OAuth front door,
+ * the api-key channel, the invoke-auth context, the money kill-switches, the edge heartbeat and the
+ * non-leaky error mapping — all of them, in this order. A second hand-written copy is how one door quietly
+ * loses a guard the other keeps, which on this lane means a charge that should not have happened. The only
+ * things a door supplies are its adapter, its dialect's kill-switch resolution, and its log label.
+ *
+ * The caller owns whatever must happen BEFORE this (public-read host dispatch, per-door enable flags), so
+ * nothing here can accidentally re-open a door its own route decided to keep shut.
+ */
+async function serveCommerceMcpJsonRpc(req, res, { handlerEnteredAtMs, getAdapter, resolveBlockedOperation, failureLabel }) {
     // MCP OAuth front door (additive, gated by MCP_OAUTH_ENABLED). Lets a native frontier MCP
     // client (Claude/ChatGPT/Gemini) connect with an OAuth access token instead of a commerce
     // API key: the verified token is BOTH the channel credential and the user identity. Inert
@@ -30741,12 +30804,19 @@ function registerCommerceRemoteMcpRoute() {
         // them keeps a refused money op on the same instant, fully buffered path as the 404/401 refusals
         // instead of leaving a rarely-taken committed-wire branch behind the guard.
         const rpcBody = req?.body && typeof req.body === 'object' ? req.body : {};
-        const blockedOperation = resolveBlockedCommerceMcpOperation(rpcBody);
+        const blockedOperation = await resolveBlockedOperation(rpcBody);
         if (blockedOperation) {
           recordCommerceKernelAudit({
             event: 'operation_blocked',
+            // The CANONICAL operation, so one audit query covers every dialect; the dialect and the wire
+            // tool name ride in detail, so a blocked UCP charge is still distinguishable from an MCP one.
             operation: blockedOperation.operation,
-            detail: { code: 'OPERATION_NOT_ALLOWED', reason: blockedOperation.reason },
+            detail: pruneEmptyFields({
+              code: 'OPERATION_NOT_ALLOWED',
+              reason: blockedOperation.reason,
+              dialect: blockedOperation.dialect,
+              tool: blockedOperation.tool,
+            }),
           });
           return res.status(200).json(mcpToolErrorBody({
             id: Object.prototype.hasOwnProperty.call(rpcBody, 'id') ? rpcBody.id : null,
@@ -30769,7 +30839,7 @@ function registerCommerceRemoteMcpRoute() {
           elapsedMs: Date.now() - handlerEnteredAtMs,
         }));
         try {
-          const adapter = await getCommerceRemoteMcpAdapter();
+          const adapter = await getAdapter();
           const sessionContext = mcpOAuthOutcome.mode === 'oauth'
             ? buildOAuthCommerceCtx(req, mcpOAuthOutcome)
             : await deriveStrictCommerceCtxAsync(req);
@@ -30786,7 +30856,7 @@ function registerCommerceRemoteMcpRoute() {
           if (out.body == null) return res.status(out.status).end();
           return res.status(out.status).json(out.body);
         } catch (err) {
-          logger.error({ err: err?.message || String(err) }, 'Strict checkout remote MCP route failed');
+          logger.error({ err: err?.message || String(err) }, failureLabel);
           const rpcId = req?.body && typeof req.body === 'object' && req.body.id !== undefined ? req.body.id : null;
           if (heartbeat.fail({ jsonrpc: '2.0', id: rpcId, error: { code: -32603, message: 'Internal error.' } })) {
             return undefined;
@@ -30810,6 +30880,35 @@ function registerCommerceRemoteMcpRoute() {
       return runMcp();
     }
     return requireExternalInvokeAuth(req, res, runMcp);
+}
+
+/**
+ * POST /ucp/mcp — the UCP-DIALECT commerce door.
+ *
+ * The SAME executor, kernel, gates and money path as /mcp, addressed by the UCP spec's flat tool names and
+ * its argument shapes (mcp-server/src/ucpArgumentAdapter.js). It is a projection, not a second surface, so
+ * everything that makes a charge safe is the object being wrapped.
+ *
+ * TRIPLE-GATED, default dark:
+ *   1. AGENT_CHECKOUT_STRICT              — the master money kill-switch, shared with /mcp and the ACP door.
+ *   2. AGENT_CHECKOUT_UCP_TOOL_DOOR_ENABLED — this door's own flag.
+ *   3. the per-operation kill-switches     — resolved on the CANONICAL op, so submit_payment's switch covers
+ *      the UCP charge tool under its own name (see blockedCommerceOperationForCanonicalOp).
+ * Both flags 404 rather than 403: a dark door must be indistinguishable from a route that does not exist.
+ */
+function registerCommerceUcpMcpRoute() {
+  app.post('/ucp/mcp', async (req, res) => {
+    // Same reason as /mcp: the auth channel below can burn seconds of the edge's first-body-byte budget.
+    const handlerEnteredAtMs = Date.now();
+    if (!isAgentCheckoutStrictEnabled() || !isAgentCheckoutUcpToolDoorEnabled()) {
+      return res.status(404).json({ error: 'not_found' });
+    }
+    return serveCommerceMcpJsonRpc(req, res, {
+      handlerEnteredAtMs,
+      getAdapter: getCommerceUcpMcpAdapter,
+      resolveBlockedOperation: resolveBlockedUcpMcpOperation,
+      failureLabel: 'UCP dialect commerce MCP route failed',
+    });
   });
 }
 
@@ -31245,6 +31344,16 @@ async function getCommerceAcpRestAdapter() {
   return commerceAcpRestAdapterPromise;
 }
 
+let commerceCanonicalContractModulePromise = null;
+function getCommerceCanonicalContractModule() {
+  if (!commerceCanonicalContractModulePromise) {
+    commerceCanonicalContractModulePromise = import('../safety-kernel/src/protocol/canonicalContract.js');
+    // Never memoize a rejected import (same rationale as the ACP adapter / UCP profile modules).
+    commerceCanonicalContractModulePromise.catch(() => { commerceCanonicalContractModulePromise = null; });
+  }
+  return commerceCanonicalContractModulePromise;
+}
+
 function getCommerceUcpProfileModule() {
   if (!commerceUcpProfileModulePromise) {
     commerceUcpProfileModulePromise = import('../safety-kernel/src/protocol/ucpProfile.js');
@@ -31278,7 +31387,22 @@ async function getCommerceUcpRouteHandlers() {
     // transport pointing at the ACP door — which speaks ACP wire shapes, not UCP's. A platform following it
     // failed on the first call. buildUcpProfile now omits the transport unless a real UCP-REST door serves
     // there; UCP's own transport is MCP JSON-RPC (below).
-    mcpEndpoint: `${baseUrl.replace(/\/+$/, '')}/mcp`,
+    //
+    // THE MCP TRANSPORT POINTS AT THE UCP-DIALECT DOOR, AND ONLY WHEN THAT DOOR IS LIT.
+    //
+    // This used to be `${baseUrl}/mcp` unconditionally — the Pivota-NATIVE door. A platform that read the
+    // profile and called `create_checkout` there got an unknown-tool error, because /mcp only knows
+    // `create_checkout_session`. That is the same "advertised but not executable" defect the `rest`
+    // transport was fixed for, one transport over.
+    //
+    // When the door is dark the transport is OMITTED rather than pointed back at /mcp: an endpoint that
+    // cannot serve a single UCP call is not a UCP transport, and advertising one is worse than advertising
+    // none because it looks finished. buildUcpProfile drops the service entry for a falsy endpoint, so the
+    // profile then honestly carries no transport at all — matching the capability filter below, which
+    // already withholds the money capabilities while the checkout kill-switch is dark.
+    mcpEndpoint: (isAgentCheckoutStrictEnabled() && isAgentCheckoutUcpToolDoorEnabled())
+      ? `${baseUrl.replace(/\/+$/, '')}/ucp/mcp`
+      : undefined,
     // With the checkout kill-switch dark, the money capabilities are hard-404 — a profile advertising
     // them would be lying to the platform. Omitting the checkout capability also withholds every
     // operation it carries (create/update/complete/cancel _checkout_session AND create_payment_link);
@@ -50992,6 +51116,7 @@ registerCommerceConfirmationActionRoute();
 registerCommerceDelegatePaymentRefusalRoute();
 registerCommerceAcpRestRoutes();
 registerCommerceUcpRoutes();
+registerCommerceUcpMcpRoute();
 registerUcpOrderWebhookRoutes();
 registerUcpBuyerAgentProfileRoute();
 registerUcpWarmHandoffInternalRoute();
@@ -51136,6 +51261,16 @@ module.exports._debug = {
   isMcpHeartbeatEligibleRequest,
   mcpHeartbeatOptionsFromEnv,
   resolveBlockedCommerceMcpOperation,
+  // Security property of the UCP door: the money kill-switches are keyed on the CANONICAL operation, so
+  // submit_payment's switch covers the UCP charge tool under ITS name (`complete_checkout`). Keying on the
+  // wire name — what this did before the door was mounted — would have left that switch dark on /ucp/mcp.
+  // Exported so the dialect-crossing is asserted directly rather than inferred from the route.
+  resolveBlockedUcpMcpOperation,
+  blockedCommerceOperationForCanonicalOp,
+  // Money-path property: `surface === 'mcp'` is what arms maybeApplyStrictMcpHostedPaymentDefaults, so the
+  // UCP door must report it too or its charges silently lose the return_url / payment_method_hint defaults
+  // that /mcp charges get. Exported so that equivalence is asserted rather than inferred from a route.
+  buildExternalInvokeContext,
   resolveCanonicalCategoryPathPrefixForQuery,
   isNonBeautyCanonicalCategoryPathPrefix,
   buildOffersFromGroupMembers,
