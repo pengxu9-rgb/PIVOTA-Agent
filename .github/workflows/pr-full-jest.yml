@@ -260,6 +260,7 @@ jobs:
             mcp-server/test/ucpDialectSurface.test.js \
             mcp-server/test/ucpArgumentAdapter.test.js \
             tests/commerce_ucp_mcp_door.node.test.cjs \
+            tests/commerce_mcp_oauth.node.test.cjs \
             tests/commerce_kernel_error_body.node.test.cjs \
             tests/commerce_kernel_error_mapping.node.test.cjs \
             tests/asserted_privilege_observation.node.test.cjs \

@@ -51111,7 +51111,12 @@ function registerExternalInvokeRoute(path, clientChannel) {
 
 registerCommerceRemoteMcpRoute();
 registerPublicReadMcpRoute();
-commerceMcpOAuth.registerMcpOAuthDiscoveryRoutes(app, { logger });
+commerceMcpOAuth.registerMcpOAuthDiscoveryRoutes(app, {
+  logger,
+  // Mirrors the /mcp dispatch above: on a public-read host, /mcp is the anonymous read tier,
+  // so RFC 9728 metadata claiming OAuth protection there would misdescribe the auth model.
+  suppressForRequest: (req) => isPublicReadMcpEnabled() && isPublicReadMcpHostRequest(req),
+});
 registerCommerceConfirmationActionRoute();
 registerCommerceDelegatePaymentRefusalRoute();
 registerCommerceAcpRestRoutes();

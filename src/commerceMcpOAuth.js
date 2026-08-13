@@ -134,11 +134,17 @@ function hasApiKey(req) {
 /**
  * Mount the discovery routes. Safe to call unconditionally; returns the document only when the
  * front door is enabled AND has authorization servers configured (else 404, i.e. "no OAuth here").
+ *
+ * opts.suppressForRequest: predicate for hosts whose /mcp is NOT this OAuth-protected resource
+ * (the anonymous public read tier) — RFC 9728 metadata claiming OAuth protection there would be
+ * a false statement about the auth model, so those requests 404.
  */
 function registerMcpOAuthDiscoveryRoutes(app, opts = {}) {
   const logger = opts.logger;
+  const suppressForRequest = typeof opts.suppressForRequest === 'function' ? opts.suppressForRequest : null;
   const handler = async (req, res) => {
     if (!mcpOAuthEnabled()) return res.status(404).json({ error: 'not_found' });
+    if (suppressForRequest && suppressForRequest(req)) return res.status(404).json({ error: 'not_found' });
     try {
       const { buildProtectedResourceMetadata } = await import(PRIMITIVES);
       const doc = buildProtectedResourceMetadata({

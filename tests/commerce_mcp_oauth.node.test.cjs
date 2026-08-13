@@ -109,3 +109,50 @@ test('discovery route 404 when disabled', async () => {
   });
   assert.equal(status, 404);
 });
+
+function captureRes() {
+  const out = { status: undefined, body: undefined };
+  return {
+    out,
+    res: {
+      status(s) { out.status = s; return this; },
+      json(b) { out.body = b; return this; },
+      setHeader() {},
+    },
+  };
+}
+
+test('discovery route 404 on suppressed (public read tier) hosts, 200 elsewhere', async () => {
+  setBaseEnv();
+  const routes = {};
+  glue.registerMcpOAuthDiscoveryRoutes({ get: (p, h) => { routes[p] = h; } }, {
+    suppressForRequest: (req) => req.get('host') === 'public.test.example',
+  });
+
+  // the public host must NOT be described as OAuth-protected — its /mcp is anonymous
+  const a = captureRes();
+  await routes['/.well-known/oauth-protected-resource'](reqWith({ host: 'public.test.example' }), a.res);
+  assert.equal(a.out.status, 404);
+
+  // the path-suffixed variant is the same surface and must suppress identically
+  const b = captureRes();
+  await routes['/.well-known/oauth-protected-resource/mcp'](reqWith({ host: 'public.test.example' }), b.res);
+  assert.equal(b.out.status, 404);
+
+  // any other host keeps serving the real metadata
+  const c = captureRes();
+  await routes['/.well-known/oauth-protected-resource'](reqWith({ host: 'agent.test.example' }), c.res);
+  assert.equal(c.out.status, 200);
+  assert.equal(c.out.body.resource, RESOURCE);
+});
+
+test('discovery route ignores a non-function suppressForRequest', async () => {
+  setBaseEnv();
+  const routes = {};
+  glue.registerMcpOAuthDiscoveryRoutes({ get: (p, h) => { routes[p] = h; } }, {
+    suppressForRequest: 'not-a-function',
+  });
+  const a = captureRes();
+  await routes['/.well-known/oauth-protected-resource'](reqWith({ host: 'public.test.example' }), a.res);
+  assert.equal(a.out.status, 200);
+});
