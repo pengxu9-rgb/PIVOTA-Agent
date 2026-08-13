@@ -591,10 +591,16 @@ function createUcpBuyerAgentClient(options = {}) {
    * refusal no argument shape can fix.
    */
   async function getProduct(mcpEndpoint, { productId } = {}) {
-    const id = firstNonEmpty(productId);
     // `catalog.id` is the tool's only required member, so an absent one is a caller bug, not a merchant
-    // refusal to discover at runtime.
-    if (!id) throw new Error('getProduct requires productId');
+    // refusal to discover at runtime. `firstNonEmpty` accepts STRINGS only — the live schema types
+    // `catalog.id` as `type: "string"`, so refusing a number is right, but the message has to say which
+    // mistake was made or a caller who passed `12345` reads "requires productId" and supplies it again.
+    const id = firstNonEmpty(productId);
+    if (!id) {
+      throw new Error(productId === undefined || productId === null
+        ? 'getProduct requires productId'
+        : 'getProduct requires productId as a non-empty string (catalog.id is typed string)');
+    }
     // Read-only lookup: safe to retry on a transient error (H1).
     return callTool(mcpEndpoint, TOOL.GET_PRODUCT, { catalog: { id } }, { retry: true });
   }
@@ -1120,6 +1126,11 @@ async function withTimeout(run, ms) {
 module.exports = {
   createUcpBuyerAgentClient,
   TOOL,
+  // Exported so a test can pin the SET ITSELF, not just one tool's behaviour: this is the only thing
+  // standing between a transient 500 and a blind-retried mutating call (a duplicate cart, a re-priced
+  // checkout replayed after the merchant applied it). Adding a state-changing tool here previously passed
+  // the whole suite.
+  IDEMPOTENT_TOOLS,
   TRUST_TIER,
   FAILURE_REASON,
   SYNTHETIC_PREVIEW_ADDRESS,

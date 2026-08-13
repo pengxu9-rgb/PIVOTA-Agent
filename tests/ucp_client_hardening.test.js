@@ -9,6 +9,8 @@
 
 const {
   createUcpBuyerAgentClient,
+  TOOL,
+  IDEMPOTENT_TOOLS,
   TRUST_TIER,
   FAILURE_REASON,
   classifyUcpFailure,
@@ -256,6 +258,13 @@ describe('the catalog tools send the live nested-catalog shape', () => {
     // unanswerable by the very tool it was sent to.
     expect(nameOf(seen)).toBe('search_catalog');
     expect(argsOf(seen).catalog).toEqual({ query: 'cleanser' });
+    // `toEqual` on `catalog` says nothing about its SIBLINGS, and a flat member riding alongside `catalog`
+    // is the exact regression class this PR exists to end — so assert the absence directly, as the
+    // getProduct test does. Without this, `{ catalog, query }` passes.
+    expect(argsOf(seen).query).toBeUndefined();
+    expect(argsOf(seen).sku).toBeUndefined();
+    expect(argsOf(seen).id).toBeUndefined();
+    expect(Object.keys(argsOf(seen)).sort()).toEqual(['catalog', 'meta']);
   });
 
   test('search pagination rides inside `catalog`, and a query-less search is still legal', async () => {
@@ -263,6 +272,7 @@ describe('the catalog tools send the live nested-catalog shape', () => {
     await newClient(capture(seen)).searchCatalog(ENDPOINT, { pagination: { limit: 10 } });
     // `catalog` declares no required member on the live search schema.
     expect(argsOf(seen).catalog).toEqual({ pagination: { limit: 10 } });
+    expect(Object.keys(argsOf(seen)).sort()).toEqual(['catalog', 'meta']);
   });
 
   test('getProduct refuses a missing id rather than sending an empty catalog', async () => {
@@ -277,14 +287,32 @@ describe('the catalog tools send the live nested-catalog shape', () => {
     expect(newClient(capture([])).catalogSearch).toBeUndefined();
   });
 
-  test('both catalog reads are retry-eligible, like every other read', () => {
+  test('both catalog reads are retry-eligible, like every other read', async () => {
     // Adding search_catalog as a tool without adding it to IDEMPOTENT_TOOLS would silently drop its
     // transient-error retry. Driven, not asserted on the constant: a scripted 500-then-ok must be retried.
-    const fn = scriptedFetch(['500', 'ok'], CART_OK);
-    return newClient(fn).searchCatalog(ENDPOINT, { query: 'x' }).then((out) => {
-      expect(fn.calls).toBe(2);
-      expect(out.ok).toBe(true);
-    });
+    // BOTH are driven — the earlier version named "both" and exercised only searchCatalog, leaving
+    // getProduct's retry-eligibility constrained nowhere in the repo.
+    const searchFetch = scriptedFetch(['500', 'ok'], CART_OK);
+    const search = await newClient(searchFetch).searchCatalog(ENDPOINT, { query: 'x' });
+    expect(searchFetch.calls).toBe(2);
+    expect(search.ok).toBe(true);
+
+    const productFetch = scriptedFetch(['500', 'ok'], CART_OK);
+    const product = await newClient(productFetch).getProduct(ENDPOINT, { productId: 'p_1' });
+    expect(productFetch.calls).toBe(2);
+    expect(product.ok).toBe(true);
+  });
+
+  test('the retry set admits ONLY reads — no state-changing tool may leak in', () => {
+    // The set is the whole guard against blind-retrying a mutating call (a duplicate cart, or a re-priced
+    // checkout replayed after the merchant already applied it). Pinned by NAME so an addition has to be
+    // deliberate: adding update_checkout/create_cart here previously passed the entire suite.
+    expect([...IDEMPOTENT_TOOLS].sort()).toEqual(
+      ['get_cart', 'get_checkout', 'get_product', 'search_catalog'],
+    );
+    for (const mutating of [TOOL.CREATE_CART, TOOL.CREATE_CHECKOUT, TOOL.UPDATE_CHECKOUT, TOOL.COMPLETE_CHECKOUT]) {
+      expect(IDEMPOTENT_TOOLS.has(mutating)).toBe(false);
+    }
   });
 });
 
