@@ -155,19 +155,92 @@ function shouldKeepTypedRecoRequestOnV1Mainline(input) {
   );
 }
 
+/**
+ * The action id a chat payload names, in the SAME spellings the two chat routers resolve.
+ *
+ * `normalizeIncomingChatAction` (routes/chat.js and routes.js both carry a copy) accepts five: `action_id`,
+ * `id`, `data.action_id`, `data.aurora_action_id`, and `type`. Reading only `action_id` here made the gate
+ * below silently inert for the shape the CURRENT FRONTEND actually sends — `{ action: { id, type } }`, the
+ * one `V1ChatRequestSchema` documents and aurora_bff_v1_chat_rollout calls "current frontend action payload
+ * shape with id/type aliases". A router that recognises an action and a policy that does not is how the
+ * delegation cycle got in; matching the spelling list is what keeps them agreeing.
+ *
+ * Exported so the equivalence with `normalizeIncomingChatAction` is TESTED rather than assumed — this is a
+ * third copy of that precedence, and an untested twin is how the drift starts.
+ */
+function extractChatActionId(input) {
+  const payload = isPlainObject(input) ? input : {};
+  const rawAction = payload.action;
+  if (typeof rawAction === 'string') return pickFirstTrimmed(rawAction, payload.action_id);
+  const action = isPlainObject(rawAction) ? rawAction : {};
+  const data = isPlainObject(action.data) ? action.data : {};
+  return pickFirstTrimmed(
+    payload.action_id,
+    action.action_id,
+    action.id,
+    data.action_id,
+    data.aurora_action_id,
+    action.type,
+  );
+}
+
+/**
+ * Did the BUYER type something, as opposed to a chip supplying `reply_text` on their behalf?
+ *
+ * Mirrors the precedence in `extractRecoUserMessage`: every source it ranks ABOVE `action.data.reply_text`.
+ * A chip's own reply_text is generated copy, not a typed ask, which is exactly why an action may be judged by
+ * its id — but a real typed message must not be.
+ */
+function hasTypedUserMessage(input) {
+  const payload = isPlainObject(input) ? input : {};
+  const params = isPlainObject(payload.params) ? payload.params : {};
+  return Boolean(pickFirstTrimmed(
+    params.user_message,
+    params.message,
+    params.text,
+    payload.message,
+    payload.text,
+    extractLastUserMessage(payload.messages),
+  ));
+}
+
+/**
+ * Should this request be proxied from the v2 chat router to the v1 mainline?
+ *
+ * AN EXPLICIT ACTION IS DECIDED BY THE ACTION, NEVER BY ITS OWN reply_text. The typed-text heuristics used to
+ * run FIRST, ahead of the action gate below, which made that gate unreachable for any payload whose text
+ * happened to read like a reco ask: `chip.start.dupes` carrying "Find dupes for Barrier Cloud Cream" answered
+ * TRUE here and was proxied to the mainline, even though `chip.start.dupes` is a v2-owned action.
+ *
+ * That was not merely a mis-route. The mainline's own intent contract correctly classified the action as
+ * `delegate_target: 'v2'` and handed it straight back to the v2 router (routes.js, the handleChatV2 branch),
+ * which asked this function again, got TRUE again, and proxied again — an unbounded mutual delegation that
+ * pinned a CPU at 100% and never answered. The `withTimeoutCode` bound around the proxy call cannot save it:
+ * the recursion is a chain of promise continuations, so the microtask queue never drains and the timeout's
+ * timer never gets a turn. A guard that structurally cannot fire is not a guard.
+ *
+ * TWO BOUNDS keep that narrowing honest, and both were added because review showed the first cut was wrong:
+ *   - the action id is read in EVERY spelling the routers accept (see `extractChatActionId`), or the gate is
+ *     inert for the payload shape the frontend actually sends and only the kernel-side cycle guard is working;
+ *   - a payload carrying a TYPED message keeps the free-text treatment. `extractRecoUserMessage` ranks a real
+ *     `message` above a chip's `reply_text`, so judging "typed reco ask that happened to arrive with a
+ *     non-reco chip" by the chip id would drop genuine mainline traffic — trading a hang for a mis-route in
+ *     the other direction, on live `/v2/chat` and both stream surfaces.
+ */
 function shouldProxyFrameworkRecoToV1Mainline(input) {
   const payload = isPlainObject(input) ? input : {};
-  if (shouldKeepTypedRecoRequestOnV1Mainline(payload)) return true;
-  const action = isPlainObject(payload.action) ? payload.action : {};
-  const actionId = pickFirstTrimmed(payload.action_id, action.action_id);
-  if (actionId) {
+  const actionId = extractChatActionId(payload);
+  if (actionId && !hasTypedUserMessage(payload)) {
     const normalizedActionId = String(actionId).trim().toLowerCase();
     const isRecoAction =
       normalizedActionId === 'chip.start.reco_products' ||
       normalizedActionId === 'chip_start_reco_products';
     if (!isRecoAction) return false;
-    return looksLikeFrameworkRecoConcernAsk(payload);
+    // A reco action still gets the full typed-request treatment — the narrowing above is only about letting a
+    // NON-reco action be misread as one.
+    return shouldKeepTypedRecoRequestOnV1Mainline(payload) || looksLikeFrameworkRecoConcernAsk(payload);
   }
+  if (shouldKeepTypedRecoRequestOnV1Mainline(payload)) return true;
   return looksLikeFrameworkRecoConcernAsk(payload);
 }
 
@@ -206,6 +279,8 @@ module.exports = {
   shouldKeepFrameworkRecoOffLegacySkill,
   shouldKeepTypedRecoRequestOnV1Mainline,
   shouldProxyFrameworkRecoToV1Mainline,
+  extractChatActionId,
+  hasTypedUserMessage,
   resolveRecoOwnershipTargetContext,
   looksLikeFrameworkRecoConcernAsk,
   looksLikeBeautyExactProductAssistAsk,

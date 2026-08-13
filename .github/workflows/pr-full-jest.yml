@@ -280,9 +280,24 @@ jobs:
       # a FOREIGN token verify on a live charge door. Runs from the repo root
       # like the contract suite above (`jose` is a root dependency), so the
       # workflow_dispatch-only money-path gate is no longer its only home.
+      # ADDED 2026-08-14: `aurora_chat_v1_mainline_delegation_cycle`, confirmed
+      # green (4/4) in <1s AND mutation-checked (3 mutants — each fix reverted
+      # alone and both together — all killed, every one failing in UNDER A
+      # SECOND). It guards an infinite mutual delegation between the v2 chat
+      # router and the v1 mainline: each classified `chip.start.dupes` as the
+      # other's, so `POST /v1/chat` pinned a CPU at 100% and never answered. The
+      # `withTimeoutCode` bound around that proxy call cannot fire, because the
+      # recursion is a chain of promise continuations and the timeout's timer
+      # never gets a turn. The suite that owned this request
+      # (aurora_bff_v1_chat_rollout, 60 tests) hung at test 54 and is in NO CI
+      # job, so nothing noticed; it still carries pre-existing failures and is
+      # deliberately NOT swept in here (see the file-by-file rule above). This
+      # focused file is. Its end-to-end cases are budget-instrumented so a
+      # regression fails fast instead of pinning a runner until the job timeout.
       - name: Run node:test suites
         run: |
           node --test \
+            tests/aurora_chat_v1_mainline_delegation_cycle.node.test.cjs \
             mcp-server/test/ucpToolVocabulary.test.js \
             mcp-server/test/ucpDialectSurface.test.js \
             mcp-server/test/ucpArgumentAdapter.test.js \

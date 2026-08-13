@@ -2459,4 +2459,9 @@ module.exports = {
   __getAuroraV1MainlineProxyTimeoutMsForTests() {
     return getAuroraV1MainlineProxyTimeoutMs();
   },
+  // Exposed so the ownership policy's copy of this spelling list can be pinned against THIS one. Three copies
+  // of `normalizeIncomingChatAction`'s action-id precedence exist (here, routes.js, recoOwnershipPolicy); the
+  // policy's was silently missing `id`/`type`, which made its routing gate inert for the shape the frontend
+  // actually sends. Asserting the equivalence is what stops them drifting apart again.
+  __normalizeIncomingChatActionForTests: normalizeIncomingChatAction,
 };

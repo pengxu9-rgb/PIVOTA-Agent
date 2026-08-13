@@ -84499,6 +84499,19 @@ function getRequiredRouteContractsHealth() {
   return requiredRouteContractsHealth;
 }
 
+// Marks a request that is ALREADY running inside the v1 mainline because the v2 chat router proxied it here.
+// A Symbol, not a header: it must be un-forgeable from outside, and it must not survive onto a real HTTP hop.
+//
+// It exists to break a mutual delegation. The v2 router proxies a request in here; the mainline's intent
+// contract can independently classify that same request as `delegate_target: 'v2'` and hand it straight back
+// (see the handleChatV2 branch below); the v2 router then proxies it in again. That cycle pinned a CPU at 100%
+// and never answered — and the `withTimeoutCode` bound around the proxy call could not stop it, because the
+// recursion is a chain of promise continuations, so the microtask queue never drains and the timeout's timer
+// never gets a turn. One concrete instance is fixed at its source in recoOwnershipPolicy, but the shape is
+// general: any future disagreement between the two routers would reproduce it. So the second hop is refused
+// structurally rather than left to whichever classifier blinks first.
+const V1_MAINLINE_IN_PROCESS = Symbol('aurora.v1ChatMainlineInProcess');
+
 async function runV1ChatMainlineInProcess({ req, body } = {}) {
   if (typeof runMountedV1ChatHandlerImpl !== 'function') {
     throw new Error('v1_chat_mainline_handler_unmounted');
@@ -84506,6 +84519,7 @@ async function runV1ChatMainlineInProcess({ req, body } = {}) {
   const baseReq = req && typeof req === 'object' ? req : {};
   const headers = baseReq.headers && typeof baseReq.headers === 'object' ? { ...baseReq.headers } : {};
   const mockReq = Object.create(baseReq);
+  mockReq[V1_MAINLINE_IN_PROCESS] = true;
   mockReq.body = body && typeof body === 'object' ? body : {};
   mockReq.headers = headers;
   mockReq.method = 'POST';
@@ -97348,7 +97362,10 @@ function mountAuroraBffRoutes(app, { logger }) {
       ingressRequestClassForDebug = pickFirstTrimmed(ingressChatIntentContract?.request_class) || null;
       if (
         effectiveChatFlags.skill_router_v2 &&
-        ingressChatIntentContract?.delegate_target === 'v2'
+        ingressChatIntentContract?.delegate_target === 'v2' &&
+        // …unless the v2 router is what proxied this request into the mainline. Handing it back would ask the
+        // router to make the same decision that sent it here, forever. See V1_MAINLINE_IN_PROCESS.
+        !req?.[V1_MAINLINE_IN_PROCESS]
       ) {
         const { handleChat: handleChatV2 } = require('./routes/chat');
         return handleChatV2(req, res);
