@@ -150,7 +150,7 @@ const OPS_BY_ID = Object.freeze(Object.fromEntries(CANONICAL_OPERATIONS.map((o) 
  * The UCP spec's `create_cart` / `get_cart` have no canonical counterpart: Pivota is quote-first, so a UCP
  * cart maps onto a checkout session rather than a separate object.
  *
- * tests/ucp_tool_vocabulary.test.js pins this against the buyer client's constant, so drift on EITHER side
+ * mcp-server/test/ucpToolVocabulary.test.js pins this against the buyer client's constant, so drift on EITHER side
  * fails CI rather than being discovered by a platform integration.
  */
 export const UCP_TOOL_EVIDENCE = Object.freeze({

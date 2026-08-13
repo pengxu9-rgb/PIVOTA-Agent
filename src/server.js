@@ -30988,7 +30988,9 @@ async function getCommerceUcpMcpAdapter() {
       const executor = await getCommerceCanonicalExecutor();
       const { createCommerceToolSurface, ucpDialectSurface } = await import('../mcp-server/src/commerceToolSurface.js');
       const { createRemoteMcpAdapter } = await import('../mcp-server/src/remoteMcpAdapter.js');
-      const surface = ucpDialectSurface(createCommerceToolSurface(executor, { log: logger }));
+      // cache:false — the /mcp surface already owns the shared commerce read cache; a second
+      // instance would be a second ~60-entry cache for the same reads (review finding on #1962).
+      const surface = ucpDialectSurface(createCommerceToolSurface(executor, { log: logger, cache: false }));
       return createRemoteMcpAdapter(surface, {
         serverInfo: { name: 'pivota-commerce-ucp', version: '0.1.0' },
         authenticate: async (req) => {

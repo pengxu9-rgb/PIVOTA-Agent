@@ -77,7 +77,11 @@ const UCP_COMMERCE_OPERATIONS = UCP_DIALECT_OPERATIONS.filter((op) => op.kernel 
 const OP_BY_UCP_TOOL = Object.freeze(Object.fromEntries(UCP_COMMERCE_OPERATIONS.map((op) => [op.ucpTool, op])));
 
 function opIndexFor(dialect) {
-  return dialect === TOOL_DIALECTS.ucp ? OP_BY_UCP_TOOL : OP_BY_MCP;
+  if (dialect === undefined || dialect === null || dialect === TOOL_DIALECTS.mcp) return OP_BY_MCP;
+  if (dialect === TOOL_DIALECTS.ucp) return OP_BY_UCP_TOOL;
+  // A typo'd dialect must NOT quietly resolve to the MCP vocabulary: that would make a "UCP" door accept
+  // Pivota-native names (review finding on #1962).
+  throw new Error(`unknown tool dialect: ${String(dialect)}`);
 }
 
 // --- result cache (search_catalog ONLY) -------------------------------------------------------------------

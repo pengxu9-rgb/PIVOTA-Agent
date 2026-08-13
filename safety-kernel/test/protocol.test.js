@@ -99,6 +99,15 @@ test('UCP profile: version, services, capabilities (dev.ucp.*), payment_handlers
     withRest.services.find((s) => s.transport === 'rest').endpoint,
     'https://shop.pivota.cc/ucp/v1',
   );
+
+  // A blank path is not a declared door: `restBasePath !== undefined` would advertise
+  // `https://shop.pivota.cc` as a UCP REST endpoint (review finding on #1962).
+  const blankRest = buildUcpProfile({
+    baseUrl: 'https://shop.pivota.cc',
+    restBasePath: '   ',
+    mcpEndpoint: 'https://shop.pivota.cc/mcp',
+  });
+  assert.deepEqual(blankRest.services.map((s) => s.transport), ['mcp']);
   assert.deepEqual(profile.payment_handlers, [{ id: 'stripe_spt', psp: 'stripe', pci: false }]);
   assert.equal(profile.signing_keys.length, 1);
   assert.equal(profile.signing_keys[0].kid, 'k1');

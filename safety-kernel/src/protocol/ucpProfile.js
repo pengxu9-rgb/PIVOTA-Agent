@@ -63,7 +63,10 @@ export function resolveBusinessSigningKeys(config = {}) {
  *   restBasePath?: string,                 // UCP-REST base path. ONLY set this when a door that speaks UCP
  *                                          // REST wire shapes actually serves there — see the services note
  *                                          // in the body. Omitted => no `rest` transport is advertised.
- *   mcpEndpoint?: string,                  // UCP-dialect MCP endpoint (spec tool names: create_checkout, …)
+ *   mcpEndpoint?: string,                  // MCP endpoint advertised as UCP's transport. It SHOULD serve the
+ *                                          // UCP dialect (spec tool names: create_checkout, …); the gateway
+ *                                          // currently passes its MCP-native door, so UCP-named calls are not
+ *                                          // yet served — see the step-3 note in #1962.
  *   paymentHandlers?: Array<object>,       // declared handlers (id, name, version, psp, pci, ap2?, ...)
  *   signingKeys?: Array<object>,           // public JWKs Pivota signs responses/receipts with
  *   capabilities?: string[],               // which CANONICAL_CAPABILITIES keys to advertise (default: all)
