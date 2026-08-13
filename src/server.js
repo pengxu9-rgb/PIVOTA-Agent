@@ -34422,13 +34422,15 @@ app.use((req, res, next) => {
   if (req.method !== 'POST') return next();
   const p = req.path;
   // Express routes case-insensitively and tolerates trailing slashes (caseSensitive/strict default
-  // off), so the comparison must normalize the same way — otherwise `POST /ucp/order-webhook/` (or
-  // /UCP/...) reaches the handler while skipping this cap and buffering via the 10MB global parser.
+  // off), so EVERY comparison here must normalize the same way — otherwise `POST /PUBLIC/MCP`, `/mcp/`
+  // or `/ucp/order-webhook/` reaches the handler while skipping this cap and buffering via the 10MB
+  // global parser. The route's own content-length check cannot cover the gap: it is blind to a CHUNKED
+  // request, which is exactly what this middleware exists to stop.
   const pNorm = p.toLowerCase().replace(/\/+$/, '');
   const isPublicPath =
-    p === '/public/mcp' ||
+    pNorm === '/public/mcp' ||
     pNorm === '/ucp/order-webhook' ||
-    (p === '/mcp' && isPublicReadMcpEnabled() && isPublicReadMcpHostRequest(req));
+    (pNorm === '/mcp' && isPublicReadMcpEnabled() && isPublicReadMcpHostRequest(req));
   if (!isPublicPath) return next();
   const cap = PUBLIC_READ_MCP_MAX_BODY_BYTES;
   const cl = Number(req.headers['content-length']);
