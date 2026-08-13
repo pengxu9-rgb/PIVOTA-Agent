@@ -223,15 +223,18 @@ test('a lit door refuses Pivota-NATIVE tool names (the dialect is not additive)'
 
 test('the charge kill-switch fires on the LIT door, over the wire, under the UCP name', async () => {
   await withEnv({ ...DOOR_LIT, ...CHARGE_OFF }, async () => {
-    // A body valid against the LIVE complete_checkout schema ({ meta, id, checkout: { payment } }, verified
-    // against a real merchant 2026-08-13), so the ONLY possible reason for the refusal below is the
+    // A body valid against the PUBLISHED complete_checkout schema ({ meta, id, checkout: { payment } }, with
+    // the payment envelope this door advertises), so the ONLY possible reason for the refusal below is the
     // kill-switch — not an argument-shape rejection that would let this pass for the wrong reason.
+    // The envelope is `{ method, token }`, NOT the merchant's `instruments` shape: Pivota cannot charge a UCP
+    // payment-handler instrument and now refuses one at the door, so a body carrying instruments would be
+    // refused on shape and this test would assert the kill-switch while proving nothing about it.
     const resp = await supertest(app)
       .post('/ucp/mcp')
       .send(call('complete_checkout', {
         meta: { 'ucp-agent': { profile: 'https://agent.example/p' }, 'idempotency-key': 'k0123456789' },
         id: 'gid://shopify/Checkout/abc123',
-        checkout: { payment: { instruments: [{ id: 'i1', handler_id: 'h1', type: 'card' }] } },
+        checkout: { payment: { method: 'ucp_handler', token: 'signed.grant.jwt' } },
       }))
       .expect(200);
     const text = JSON.stringify(resp.body);

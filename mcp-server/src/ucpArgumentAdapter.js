@@ -273,19 +273,34 @@ const BUYER_SCHEMA = {
 // shape that completes, and `instruments` is REFUSED BY NAME (see `requirePaymentEnvelope`) rather than
 // accepted-and-dropped: a caller that attached an instrument believes it authorized a charge.
 //
-// The enum is DERIVED from the kernel's own vocabulary, so this door cannot drift from the gate it feeds.
+// The published method is a LITERAL, CHECKED against the kernel's vocabulary — not derived from it. The
+// distinction matters and an earlier version of this comment got it wrong: renaming the method in the kernel
+// does not silently re-point this door, it makes the check below fail. That is the intended direction (a
+// rename is a decision someone must make on both sides), but it is a guard, not a derivation.
+//
 // Only `ucp_handler` is published: it is the method productionWiring wires for this dialect, and advertising
 // `ap2_mandate` (whose carrier is a `mandate`, and which is off unless `enableAp2`) would re-open exactly the
 // advertised-but-not-executable gap this module exists to close.
 const UCP_PAYMENT_METHOD = "ucp_handler";
-if (!CANONICAL_PAYMENT_METHODS.includes(UCP_PAYMENT_METHOD)) {
-  // Fail at load, not at the charge: if the kernel's method vocabulary moves, this door must not keep
-  // publishing a discriminator the verifier will refuse.
-  throw new Error(
-    `ucpArgumentAdapter: "${UCP_PAYMENT_METHOD}" is not a canonical payment method `
-    + `(${CANONICAL_PAYMENT_METHODS.join(", ")}) — the published payment envelope would not verify`,
-  );
+
+/**
+ * Fail closed if the published discriminator is not one the kernel's verifier will accept.
+ *
+ * EXPORTED AND CALLED AT LOAD, deliberately both. Called at load because a door publishing a method the gate
+ * refuses is the exact defect this module exists to end, and it should not wait for a charge to surface.
+ * Exported because when this lived inline as a bare `if (…) throw`, deleting it left the whole suite green —
+ * and by this file's own standard (see the depth-walk test) a guard no test can kill is not a guard.
+ */
+export function assertPublishedPaymentMethodIsCanonical(method = UCP_PAYMENT_METHOD, canonical = CANONICAL_PAYMENT_METHODS) {
+  if (!canonical.includes(method)) {
+    throw new Error(
+      `ucpArgumentAdapter: "${method}" is not a canonical payment method `
+      + `(${canonical.join(", ")}) — the published payment envelope would not verify`,
+    );
+  }
+  return method;
 }
+assertPublishedPaymentMethodIsCanonical();
 
 const PAYMENT_METHOD_DESCRIPTION = [
   `REQUIRED. The payment-authorization method. Must be \`${UCP_PAYMENT_METHOD}\` on this dialect — it selects`,
@@ -365,18 +380,29 @@ function checkoutSchema() {
 // Fields this adapter deliberately ACCEPTS and does not carry into the canonical params. Exported so the
 // anti-drift test can assert that every advertised field is either mapped or listed here — i.e. that no field
 // is quietly ignored without a decision having been recorded.
+//
+// LEAF-EXACT, and matched that way by the test. An earlier version named ancestors (`checkout.context`) and
+// let the test treat an entry as covering everything beneath it. That was a blanket permit, not a shorthand:
+// a newly advertised `checkout.context.shipping_address` would have been accepted-and-unread with nothing
+// objecting — on the one lane whose live blocker is a missing address. `.*` denotes the members of a
+// free-form (additionalProperties:true) object, and `[]` an array element.
 export const UCP_ACCEPTED_BUT_UNMAPPED = Object.freeze({
   create_checkout_session: Object.freeze([
-    "checkout.cart_id", "checkout.context", "checkout.attribution",
+    "checkout.cart_id", "checkout.attribution.*",
+    "checkout.context.address_country", "checkout.context.address_region", "checkout.context.postal_code",
     "checkout.buyer.phone_number", "checkout.line_items[].id",
   ]),
   update_checkout_session: Object.freeze([
-    "checkout.cart_id", "checkout.context", "checkout.attribution",
+    "checkout.cart_id", "checkout.attribution.*",
+    "checkout.context.address_country", "checkout.context.address_region", "checkout.context.postal_code",
     "checkout.buyer.phone_number", "checkout.line_items[].id",
   ]),
   get_checkout_session: Object.freeze([]),
-  complete_checkout_session: Object.freeze(["checkout.attribution"]),
-  get_product: Object.freeze(["catalog.selected", "catalog.preferences", "catalog.context", "catalog.signals", "catalog.filters"]),
+  complete_checkout_session: Object.freeze(["checkout.attribution.*"]),
+  get_product: Object.freeze([
+    "catalog.selected[].*", "catalog.preferences[].*", "catalog.context.*", "catalog.signals.*",
+    "catalog.filters.*",
+  ]),
 });
 
 // ---- shared readers --------------------------------------------------------------------------------------
@@ -533,11 +559,15 @@ function requirePaymentEnvelope(checkout) {
       "authorize a charge here.",
     ].join(" "), { required_fields: ["checkout.payment.token"] });
   }
+  // `.trim()` matches every other reader here (`requireIdempotencyKey`, `requireTopLevelId`). Without it a
+  // padded token — a pure wire-shape slip — reaches the gate and comes back as `credential_signature_invalid`,
+  // an opaque crypto refusal several layers from the field the caller would have to fix.
+  //
   // Rebuilt from the two READ fields rather than passed through. `rejectUnknown` above already bounds the
   // envelope to those two, so this is belt-and-braces rather than the thing that stops an extra field — but it
   // makes the money-path contract structural: the verifier receives an object this function CONSTRUCTED from
   // values it checked, so a future relaxation of the unknown-field guard cannot quietly widen what travels.
-  return { method, token };
+  return { method, token: token.trim() };
 }
 
 /**

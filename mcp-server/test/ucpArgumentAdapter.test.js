@@ -562,7 +562,7 @@ describe('schema and mapper cannot drift', () => {
   // They used to be hand-written, and that quietly re-opened the hole this section exists to close: a field
   // could be ADVERTISED and then refused by the mapper, because the hand-built body simply never contained it.
   // Confirmed by mutation — adding `checkout.fulfillment` to the published schema (a real field on the live
-  // merchant, and the one this door still owes) left all 61 tests green while the mapper refused every body
+  // merchant, and the one this door still owes) left the entire suite green while the mapper refused every body
   // carrying it. Deriving the body from the schema makes "everything advertised is accepted" a fact about the
   // published contract rather than about the fixture.
   //
@@ -570,9 +570,43 @@ describe('schema and mapper cannot drift', () => {
   // attributable to an exact field.
   const sentinelFor = (path) => `S<${path}>`;
 
+  // EVERY generator below REFUSES an unrecognised schema construct rather than falling through to a default.
+  // That trap is the load-bearing part. An earlier version dispatched on `schema.type` with a `default:` arm,
+  // and three constructs slipped straight through it — all three demonstrated green while advertising a field
+  // the mapper never read:
+  //   - `integer`/`boolean` leaves produced no sentinel at all, so the mapped/unmapped ledger could not see them
+  //   - a node written `{ properties: {...}, additionalProperties: false }` with NO `type` collapsed to a
+  //     single string leaf AND escaped the strictness walk, so its own `additionalProperties:false` was
+  //     enforced nowhere
+  //   - `oneOf`/`anyOf`/`allOf`/`$ref`, tuple-form `items: [...]` and union `type: [...]` all collapsed silently
+  // A test fixture that quietly ignores what it cannot model is worse than no fixture: it reports green over
+  // exactly the drift it was written to catch. So an unknown construct is now a loud failure, and whoever adds
+  // one has to teach this generator about it.
+  const describeSchema = (schema, path) => `${path || '<root>'}: ${JSON.stringify(schema).slice(0, 120)}`;
+
+  /** The schema's effective type, refusing anything this fixture cannot faithfully model. */
+  function kindOf(schema, path) {
+    for (const combinator of ['oneOf', 'anyOf', 'allOf', 'not', '$ref']) {
+      assert.ok(!(combinator in schema), `${describeSchema(schema, path)} uses \`${combinator}\`, which this fixture cannot model — teach maximalFor/sentinelLeaves/strictPaths about it`);
+    }
+    assert.ok(!Array.isArray(schema.type), `${describeSchema(schema, path)} uses a union \`type\`, which this fixture cannot model`);
+    if (schema.type === undefined) {
+      // An omitted `type` beside `properties`/`items` is a routine authoring slip, and silently treating the
+      // node as a string is what let a strict object escape the walk. Infer it, and refuse if it is ambiguous.
+      if (schema.properties || schema.additionalProperties !== undefined) return 'object';
+      if (schema.items) return 'array';
+      if (schema.enum) return 'enum';
+      assert.fail(`${describeSchema(schema, path)} declares no \`type\` and none can be inferred`);
+    }
+    if (Array.isArray(schema.enum)) return 'enum';
+    const known = ['object', 'array', 'string', 'integer', 'number', 'boolean'];
+    assert.ok(known.includes(schema.type), `${describeSchema(schema, path)} has an unhandled type \`${schema.type}\``);
+    return schema.type;
+  }
+
   function maximalFor(schema, path = '') {
-    if (Array.isArray(schema.enum)) return schema.enum[0];
-    switch (schema.type) {
+    switch (kindOf(schema, path)) {
+      case 'enum': return schema.enum[0];
       case 'object': {
         const out = {};
         for (const [name, sub] of Object.entries(schema.properties ?? {})) {
@@ -586,57 +620,73 @@ describe('schema and mapper cannot drift', () => {
         return out;
       }
       case 'array': {
+        assert.ok(!Array.isArray(schema.items), `${describeSchema(schema, path)} uses tuple-form \`items\`, which this fixture cannot model`);
         const count = Math.max(schema.minItems ?? 1, 1);
         return Array.from({ length: count }, () => maximalFor(schema.items ?? {}, `${path}[]`));
       }
-      case 'integer':
-      case 'number':
-        return schema.minimum ?? 1;
-      case 'boolean':
-        return true;
-      default:
-        return sentinelFor(path);
+      // Non-string leaves get a sentinel VALUE too — a distinctive number / the non-default boolean — so the
+      // ledger below can see them. Previously they were invisible and could be advertised-and-unread forever.
+      case 'integer': case 'number': return schema.minimum ?? 424242;
+      case 'boolean': return true;
+      default: return sentinelFor(path);
     }
   }
 
-  /** Every string-sentinel path present in a generated body. */
-  function sentinelPaths(schema, path = '') {
-    if (Array.isArray(schema.enum)) return [];
-    switch (schema.type) {
+  /** Every leaf path in a generated body, paired with the value that marks it. */
+  function sentinelLeaves(schema, path = '') {
+    switch (kindOf(schema, path)) {
+      // An enum leaf carries no unique marker (its value is fixed by the schema), so it cannot be tracked by
+      // value. It is asserted directly by the contract suite instead — see the note on `method` below.
+      case 'enum': return [];
       case 'object': {
         const entries = Object.entries(schema.properties ?? {});
         if (entries.length === 0 && schema.additionalProperties !== false) {
-          return [path ? `${path}.*` : '*'];
+          const p = path ? `${path}.*` : '*';
+          return [{ path: p, marker: sentinelFor(p) }];
         }
-        return entries.flatMap(([name, sub]) => sentinelPaths(sub, path ? `${path}.${name}` : name));
+        return entries.flatMap(([name, sub]) => sentinelLeaves(sub, path ? `${path}.${name}` : name));
       }
-      case 'array':
-        return sentinelPaths(schema.items ?? {}, `${path}[]`);
-      case 'integer': case 'number': case 'boolean':
-        return [];
-      default:
-        return [path];
+      case 'array': return sentinelLeaves(schema.items ?? {}, `${path}[]`);
+      case 'integer': case 'number': return [{ path, marker: String(schema.minimum ?? 424242) }];
+      case 'boolean': return [{ path, marker: 'true' }];
+      default: return [{ path, marker: sentinelFor(path) }];
     }
   }
 
   const opFor = (tool) => canonicalOpForUcpTool(tool);
   const schemaFor = (tool) => UCP_INPUT_SCHEMAS[opFor(tool).id];
 
-  const MAXIMAL = Object.freeze(Object.fromEntries(
+  // BUILT LAZILY, INSIDE TESTS — never in this `describe` body. `node --test` (v24) reports a throwing
+  // describe callback as a failure and then EXITS 0, so a fixture that blew up at suite-construction time
+  // would print red locally and pass CI silently. Every trap in the generators above would have been
+  // unenforceable in exactly the automation it exists for. Reproduced minimally before this was written; the
+  // test immediately below is what gives those traps a home inside a real, counted test.
+  let cache = null;
+  const MAXIMAL = () => (cache ??= Object.fromEntries(
     ucpCommerceToolDefinitions.map((def) => [def.name, maximalFor(schemaFor(def.name))]),
   ));
+
+  test('every published schema uses only constructs this fixture can faithfully model', () => {
+    // The home for the generators' unknown-construct traps. A schema written with `oneOf`, a tuple `items`, a
+    // union `type`, or a node with no `type` at all fails HERE, loudly and with a non-zero exit — instead of
+    // being silently collapsed into a single string leaf and leaving the fields beneath it unchecked.
+    assert.doesNotThrow(() => MAXIMAL());
+    for (const def of ucpCommerceToolDefinitions) {
+      assert.doesNotThrow(() => sentinelLeaves(schemaFor(def.name)), `${def.name}: leaves must be enumerable`);
+    }
+  });
 
   test('the derived maximal bodies really are the live wire shapes (the derivation is not vacuous)', () => {
     // A generator that silently produced `{}` would make every test below pass while asserting nothing. Pin
     // the shapes that matter against the live merchant's spelling, so the derivation itself is load-bearing.
-    assert.equal(MAXIMAL.create_checkout.checkout.line_items.length, 1);
-    assert.equal(MAXIMAL.create_checkout.checkout.line_items[0].item.id, 'S<checkout.line_items[].item.id>');
-    assert.equal(MAXIMAL.create_checkout.checkout.line_items[0].quantity, 1);
-    assert.equal(MAXIMAL.update_checkout.id, 'S<id>');
-    assert.equal(MAXIMAL.get_product.catalog.id, 'S<catalog.id>');
+    assert.equal(MAXIMAL().create_checkout.checkout.line_items.length, 1);
+    assert.equal(MAXIMAL().create_checkout.checkout.line_items[0].item.id, 'S<checkout.line_items[].item.id>');
+    assert.equal(MAXIMAL().create_checkout.checkout.line_items[0].quantity, 1);
+    assert.equal(MAXIMAL().update_checkout.id, 'S<id>');
+    assert.equal(MAXIMAL().get_product.catalog.id, 'S<catalog.id>');
     // The payment envelope's discriminator comes from the schema's own enum, not from this file.
-    assert.equal(MAXIMAL.complete_checkout.checkout.payment.method, 'ucp_handler');
-    assert.equal(MAXIMAL.complete_checkout.checkout.payment.token, 'S<checkout.payment.token>');
+    assert.equal(MAXIMAL().complete_checkout.checkout.payment.method, 'ucp_handler');
+    assert.equal(MAXIMAL().complete_checkout.checkout.payment.token, 'S<checkout.payment.token>');
   });
 
   test('every published UCP tool has a UCP schema and an argument mapping', () => {
@@ -651,14 +701,14 @@ describe('schema and mapper cannot drift', () => {
       assert.equal(def.inputSchema.properties.idempotency_key, undefined);
       assert.equal(def.inputSchema.properties.quote, undefined);
       assert.equal(def.inputSchema.properties.session_id, undefined);
-      assert.ok(MAXIMAL[def.name], `${def.name} needs a maximal body in this test`);
+      assert.ok(MAXIMAL()[def.name], `${def.name} needs a maximal body in this test`);
     }
   });
 
   test('a maximal schema-valid body is ACCEPTED by the mapper for every tool', () => {
     for (const def of ucpCommerceToolDefinitions) {
       assert.doesNotThrow(
-        () => ucpToNativeToolArgs(opFor(def.name), MAXIMAL[def.name]),
+        () => ucpToNativeToolArgs(opFor(def.name), MAXIMAL()[def.name]),
         `${def.name}: a body built to the published schema must map`,
       );
     }
@@ -667,7 +717,7 @@ describe('schema and mapper cannot drift', () => {
   test('every field the schema declares REQUIRED is enforced by the mapper', () => {
     for (const def of ucpCommerceToolDefinitions) {
       for (const field of def.inputSchema.required) {
-        const body = { ...MAXIMAL[def.name] };
+        const body = { ...MAXIMAL()[def.name] };
         delete body[field];
         assert.throws(
           () => ucpToNativeToolArgs(opFor(def.name), body),
@@ -677,10 +727,10 @@ describe('schema and mapper cannot drift', () => {
       // …and the same for meta's own required member, which is where the idempotency key lives.
       const metaRequired = def.inputSchema.properties.meta.required ?? [];
       for (const field of metaRequired) {
-        const meta = { ...MAXIMAL[def.name].meta };
+        const meta = { ...MAXIMAL()[def.name].meta };
         delete meta[field];
         assert.throws(
-          () => ucpToNativeToolArgs(opFor(def.name), { ...MAXIMAL[def.name], meta }),
+          () => ucpToNativeToolArgs(opFor(def.name), { ...MAXIMAL()[def.name], meta }),
           `${def.name}: dropping the required \`meta.${field}\` must be refused`,
         );
       }
@@ -691,7 +741,7 @@ describe('schema and mapper cannot drift', () => {
     // Walk the schema for every strict object ANYWHERE — including through arrays — and prove the mapper
     // refuses an undeclared member there. Restricting this to top-level `properties` (as it did) left the
     // strict objects inside `checkout.line_items[]` and `.item` unguarded: deleting BOTH their `rejectUnknown`
-    // calls left all 52 tests green. A guard no test can kill is not a guard.
+    // calls left the entire suite green. A guard no test can kill is not a guard.
     const strictPaths = (schema, path = []) => {
       if (schema?.type === 'array') return strictPaths(schema.items ?? {}, [...path, '[]']);
       if (schema?.type !== 'object') return [];
@@ -715,7 +765,7 @@ describe('schema and mapper cannot drift', () => {
       assert.ok(paths.some((p) => p.length === 0), `${def.name}: the top level must be strict`);
       for (const path of paths) {
         assert.throws(
-          () => ucpToNativeToolArgs(opFor(def.name), injectAt(MAXIMAL[def.name], path)),
+          () => ucpToNativeToolArgs(opFor(def.name), injectAt(MAXIMAL()[def.name], path)),
           `${def.name}: an undeclared field at \`${['arguments', ...path].join('.')}\` must be refused`,
         );
         checked += 1;
@@ -733,16 +783,22 @@ describe('schema and mapper cannot drift', () => {
     // test will pass, which is the property the hand-written version lacked.
     const EXPECTED_SURVIVING = Object.freeze({
       get_product: ['catalog.id'],
-      create_checkout: ['meta.idempotency-key', 'checkout.line_items[].item.id', 'checkout.buyer.email'],
-      update_checkout: ['meta.idempotency-key', 'id', 'checkout.line_items[].item.id', 'checkout.buyer.email'],
+      create_checkout: [
+        'meta.idempotency-key', 'checkout.line_items[].item.id', 'checkout.line_items[].quantity',
+        'checkout.buyer.email',
+      ],
+      update_checkout: [
+        'meta.idempotency-key', 'id', 'checkout.line_items[].item.id', 'checkout.line_items[].quantity',
+        'checkout.buyer.email',
+      ],
       get_checkout: ['id'],
       complete_checkout: ['meta.idempotency-key', 'id', 'checkout.payment.token'],
     });
 
     for (const def of ucpCommerceToolDefinitions) {
-      const mapped = JSON.stringify(ucpToNativeToolArgs(opFor(def.name), MAXIMAL[def.name]));
-      const declared = sentinelPaths(schemaFor(def.name));
-      const surviving = declared.filter((p) => mapped.includes(sentinelFor(p)));
+      const mapped = JSON.stringify(ucpToNativeToolArgs(opFor(def.name), MAXIMAL()[def.name]));
+      const declared = sentinelLeaves(schemaFor(def.name));
+      const surviving = declared.filter((leaf) => mapped.includes(leaf.marker)).map((leaf) => leaf.path);
       // Set equality, not a one-way spot check: the complement (everything NOT listed) is asserted to be
       // absent from the canonical params by the same comparison.
       assert.deepEqual(
@@ -752,36 +808,27 @@ describe('schema and mapper cannot drift', () => {
     }
 
     // And the unmapped set is DECLARED, not merely observed — so dropping a field from the mapper without
-    // recording the decision fails this file rather than passing silently. Checked against the derived
-    // complement in both directions, so the declaration cannot go stale either:
-    //   - every accepted-but-unread leaf must be covered by an entry, and
-    //   - every entry must still cover a real leaf (a field deleted from the schema leaves a dead entry).
-    // An entry covers a leaf when it names the leaf itself or an ancestor of it — `checkout.context` covers
-    // `checkout.context.postal_code`, and `catalog.selected` covers `catalog.selected[].*`. The separator may
-    // therefore be `.` or `[`, which is why this is not a bare `startsWith(entry + '.')`.
-    const covers = (entry, leaf) => leaf === entry || leaf.startsWith(`${entry}.`) || leaf.startsWith(`${entry}[`);
-
+    // recording the decision fails this file rather than passing silently.
+    //
+    // MATCHED LEAF-EXACT, NOT BY ANCESTOR PREFIX. An earlier version let an entry cover any descendant, and
+    // that blanket permit was a hole rather than a convenience: with `checkout.context` declared, a NEWLY
+    // ADVERTISED `checkout.context.shipping_address` was silently accepted-and-unread with no test objecting
+    // — on the one lane whose live blocker is a missing address. Every accepted-but-unread leaf now has to be
+    // named, so the cost of adding a field is that someone classifies it.
     for (const def of ucpCommerceToolDefinitions) {
       const opId = opFor(def.name).id;
       const declaredUnmapped = UCP_ACCEPTED_BUT_UNMAPPED[opId];
       assert.ok(declaredUnmapped, `${def.name}: needs an UCP_ACCEPTED_BUT_UNMAPPED entry`);
-      const mapped = JSON.stringify(ucpToNativeToolArgs(opFor(def.name), MAXIMAL[def.name]));
-      const unread = sentinelPaths(schemaFor(def.name))
+      const mapped = JSON.stringify(ucpToNativeToolArgs(opFor(def.name), MAXIMAL()[def.name]));
+      const unread = sentinelLeaves(schemaFor(def.name))
         // `meta` is protocol plumbing (the profile pointer, the idempotency key) rather than a checkout field.
-        .filter((p) => !p.startsWith('meta.') && !mapped.includes(sentinelFor(p)));
+        .filter((leaf) => !leaf.path.startsWith('meta.') && !mapped.includes(leaf.marker))
+        .map((leaf) => leaf.path);
 
-      for (const leaf of unread) {
-        assert.ok(
-          declaredUnmapped.some((entry) => covers(entry, leaf)),
-          `${def.name}: \`${leaf}\` is advertised and silently unread — declare it in UCP_ACCEPTED_BUT_UNMAPPED`,
-        );
-      }
-      for (const entry of declaredUnmapped) {
-        assert.ok(
-          unread.some((leaf) => covers(entry, leaf)),
-          `${def.name}: UCP_ACCEPTED_BUT_UNMAPPED lists \`${entry}\`, which no longer exists or is now read`,
-        );
-      }
+      assert.deepEqual(
+        [...unread].sort(), [...declaredUnmapped].sort(),
+        `${def.name}: UCP_ACCEPTED_BUT_UNMAPPED must name EXACTLY the advertised leaves this door does not read`,
+      );
     }
   });
 

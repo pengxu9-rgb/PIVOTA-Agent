@@ -15,17 +15,32 @@
 //
 // The grant fixtures are signed with a locally generated ES256 key against a locally pinned JWKS, so the whole
 // crypto path (issuer selection, signature, alg allowlist, claim binding) runs for real.
+//
+// WHY IT LIVES IN safety-kernel/test AND NOT mcp-server/test, despite exercising an mcp-server adapter. It
+// needs `jose` to mint a real signed grant, and `mcp-server/` is DEPENDENCY-FREE BY CONSTRUCTION: the
+// money-path gate runs that suite as `(cd mcp-server && node --test)` with NO `npm ci`
+// (.github/workflows/agent-checkout-money-path-gate.yml, the `MCP + Adapters` job), and `node_modules` is a
+// tracked symlink that DANGLES on any fresh checkout. A bare third-party import there does not fail loudly —
+// the file aborts at module load, so every assertion in it runs NOWHERE in the very gate the money path is
+// protected by, while the gate goes red for a reason that looks unrelated. That is this change's own defect
+// shape (a guard that is advertised but does not execute) reappearing one layer up, in the test itself. The
+// `Safety Kernel` job DOES run `npm ci`, so the file lives there. The adapter it imports pulls in nothing but
+// safety-kernel modules, so importing across the boundary in this direction costs nothing.
 
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { generateKeyPair, exportJWK, SignJWT } from 'jose';
 
-import { ucpToNativeToolArgs, UCP_INPUT_SCHEMAS } from '../src/ucpArgumentAdapter.js';
+import {
+  ucpToNativeToolArgs,
+  UCP_INPUT_SCHEMAS,
+  assertPublishedPaymentMethodIsCanonical,
+} from '../../mcp-server/src/ucpArgumentAdapter.js';
 import {
   createPaymentAuthorizationVerifier,
   CANONICAL_PAYMENT_METHODS,
-} from '../../safety-kernel/src/protocol/paymentAuthorizationVerifier.js';
-import { createSignedGrantVerifier } from '../../safety-kernel/src/protocol/protocolPaymentVerifiers.js';
+} from '../src/protocol/paymentAuthorizationVerifier.js';
+import { createSignedGrantVerifier } from '../src/protocol/protocolPaymentVerifiers.js';
 
 // ---- the real gate, wired as production wires it -----------------------------------------------------------
 
@@ -72,7 +87,9 @@ const META = { 'ucp-agent': { profile: 'https://agent.example/.well-known/ucp-ag
 
 /** UCP wire body -> the canonical `payment_authorization` this door hands the kernel. */
 function authorizationFor(payment) {
-  return ucpToNativeToolArgs(COMPLETE_OP, { meta: META, id: SESSION_ID, checkout: { payment } }).payment_authorization;
+  // `undefined` means "no `payment` member at all", which is a distinct wire mistake from a malformed one.
+  const checkout = payment === undefined ? {} : { payment };
+  return ucpToNativeToolArgs(COMPLETE_OP, { meta: META, id: SESSION_ID, checkout }).payment_authorization;
 }
 
 /** Run the REAL gate over the REAL adapter output. Resolves to a verdict rather than throwing. */
@@ -118,6 +135,24 @@ describe('the payment envelope this door PUBLISHES verifies at the real gate', (
     }
     assert.deepEqual(Object.keys(built).sort(), ['method', 'token']);
     assert.equal((await wouldCharge(built)).charged, true, 'the schema`s required set must be sufficient to pay');
+  });
+
+  test('the door refuses to load at all if it would publish a method the kernel rejects', () => {
+    // The load-time guard, made killable. It used to be a bare inline `if (…) throw`, which meant deleting it
+    // left every test green — and this file's own standard is that a guard no test can kill is not a guard.
+    // Both directions matter: it must fire on a method outside the kernel's vocabulary...
+    assert.throws(
+      () => assertPublishedPaymentMethodIsCanonical('ucp_grant', CANONICAL_PAYMENT_METHODS),
+      /not a canonical payment method/,
+      'a discriminator the verifier would refuse must stop the door loading',
+    );
+    // ...and it must NOT fire on the real published one, or it would be a guard that only ever says no.
+    assert.doesNotThrow(() => assertPublishedPaymentMethodIsCanonical());
+    // The simulated vocabulary rename: the kernel drops `ucp_handler`, this door must refuse to publish it.
+    assert.throws(
+      () => assertPublishedPaymentMethodIsCanonical('ucp_handler', ['acp_delegated_token', 'ap2_mandate']),
+      /not a canonical payment method/,
+    );
   });
 
   test('the published `method` enum is a discriminator the kernel actually accepts', () => {
@@ -196,22 +231,34 @@ describe('a UCP payment-handler instrument cannot charge, and is refused where t
 // ---- 3. the door cannot be softer than the gate --------------------------------------------------------------
 
 describe('every envelope the door ACCEPTS is one the gate can verify', () => {
+  // Each row pins the REASON, not just "something was refused". `QUOTE_REQUIRED` is the module-wide code for
+  // every intake refusal on this lane, so asserting it alone cannot tell a refusal that names the field the
+  // caller must fix from one that names an unrelated field — and a refusal that misdirects burns a retry and
+  // teaches the wrong contract (this module's header cites exactly that happening). Verified by mutation:
+  // rewriting the method refusal to name `checkout.buyer.email` previously left the whole suite green.
   const REFUSED_AT_DOOR = [
-    ['no method', { token: 'x.y.z' }],
-    ['no token', { method: 'ucp_handler' }],
-    ['an empty token', { method: 'ucp_handler', token: '   ' }],
-    ['a method the kernel has no verifier for on this lane', { method: 'ap2_mandate', token: 'x.y.z' }],
-    ['a method spelled as `protocol`', { protocol: 'ucp_handler', token: 'x.y.z' }],
-    ['an undeclared extra field', { method: 'ucp_handler', token: 'x.y.z', capture: 'immediate' }],
-    ['a non-object envelope', 'ucp_handler'],
+    ['a missing payment envelope', undefined, 'ucp_payment_required', /checkout\.payment/],
+    ['a non-object envelope', 'ucp_handler', 'ucp_payment_required', /checkout\.payment/],
+    ['no method', { token: 'x.y.z' }, 'ucp_payment_method_required', /method/],
+    ['no token', { method: 'ucp_handler' }, 'ucp_payment_token_required', /token/],
+    ['an empty token', { method: 'ucp_handler', token: '   ' }, 'ucp_payment_token_required', /token/],
+    ['a method the kernel has no verifier for on this lane',
+      { method: 'ap2_mandate', token: 'x.y.z' }, 'ucp_payment_method_required', /method/],
+    ['a method spelled as `protocol`',
+      { protocol: 'ucp_handler', token: 'x.y.z' }, 'ucp_unknown_field', /protocol/],
+    ['an undeclared extra field',
+      { method: 'ucp_handler', token: 'x.y.z', capture: 'immediate' }, 'ucp_unknown_field', /capture/],
   ];
 
-  for (const [label, payment] of REFUSED_AT_DOOR) {
-    test(`${label} is refused at the door`, async () => {
+  for (const [label, payment, reason, namesTheField] of REFUSED_AT_DOOR) {
+    test(`${label} is refused at the door, naming the field to fix`, async () => {
       const verdict = await wouldCharge(payment);
       assert.equal(verdict.charged, false);
       assert.equal(verdict.refusedAt, 'door', `${label} must be caught at the door, not by the kernel`);
       assert.equal(verdict.code, 'QUOTE_REQUIRED');
+      assert.equal(verdict.reason, reason, `${label}: the refusal reason must be specific`);
+      // The curated message is what the calling model actually reads back.
+      assert.match(String(verdict.error.detail?.acp_message ?? verdict.error.message), namesTheField);
     });
   }
 
@@ -232,6 +279,17 @@ describe('every envelope the door ACCEPTS is one the gate can verify', () => {
       assert.equal(verdict.refusedAt, 'kernel', `${label} is a binding failure, not a wire-shape one`);
       assert.equal(verdict.reason, reason, label);
     }
+  });
+
+  test('a padded token is TRIMMED at the door, not passed through to fail as a crypto error', async () => {
+    // Whitespace around a token is a wire-shape slip. Untrimmed it reaches the gate and comes back
+    // `credential_signature_invalid` — an opaque crypto refusal several layers from the field the caller would
+    // have to fix, and the exact misdirection this door exists to prevent. Every sibling reader in the adapter
+    // trims; this asserts the payment token does too, by proving the padded grant still CHARGES.
+    const grant = await signGrant();
+    const verdict = await wouldCharge({ method: 'ucp_handler', token: `  ${grant}\n` });
+    assert.equal(verdict.charged, true, 'a padded but valid grant must still authorize');
+    assert.equal(authorizationFor({ method: 'ucp_handler', token: `  ${grant}\n` }).token, grant);
   });
 
   test('an unsigned / forged grant never charges', async () => {
