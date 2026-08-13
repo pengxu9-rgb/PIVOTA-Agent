@@ -30023,11 +30023,14 @@ const COMMERCE_MCP_JSON_RPC_PATHS = new Set(['/mcp', '/ucp/mcp']);
 // money door just answered. On this lane that is not cosmetic: `surface === 'mcp'` is the only thing that
 // arms maybeApplyStrictMcpHostedPaymentDefaults, so a platform posting to `https://…/ucp/mcp/` would
 // complete a charge with no return_url and no payment_method_hint — the buyer pays and lands nowhere.
-// Same normalization as shouldCaptureAcpRawBody, for the same Express reason. NOT the same as the public
-// body-cap middleware, which computes a `pNorm` but then applies it ONLY to its /ucp/order-webhook branch —
-// its `/mcp` and `/public/mcp` comparisons are still raw, so that 32KB cap is bypassable by spelling on a
-// chunked request. That is a live pre-existing hole on the auth:none tier, not a model to copy; do not read
-// this line as saying the two agree.
+// Same normalization as shouldCaptureAcpRawBody and as the public body-cap middleware, for the same Express
+// reason. All three now agree, which is the point — but they agree because each was fixed separately after
+// shipping the same bug: this Set matched req.path raw (#1971), the ACP stash ran its prefix test on the raw
+// url (#1975), and the body cap computed a `pNorm` it then applied to only one of three branches (this
+// commit's parent). Three independent instances of "reasoned about which PATHS belong to a surface, never
+// about which SPELLINGS Express serves". Anything added here that compares a path must normalize on EVERY
+// branch of the expression, not just the branch being edited — that partial-normalization shape is exactly
+// how two of the three survived review.
 //
 // No query-string strip here (unlike shouldCaptureAcpRawBody, which reads originalUrl): `req.path` is
 // already parseurl().pathname. It is also NOT percent-decoded, which is what keeps `/ucp%2Fmcp` out —
