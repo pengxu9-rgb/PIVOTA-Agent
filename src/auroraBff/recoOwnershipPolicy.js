@@ -155,9 +155,26 @@ function shouldKeepTypedRecoRequestOnV1Mainline(input) {
   );
 }
 
+/**
+ * Should this request be proxied from the v2 chat router to the v1 mainline?
+ *
+ * AN EXPLICIT ACTION IS DECIDED BY THE ACTION, NEVER BY ITS OWN reply_text. The typed-text heuristics used to
+ * run FIRST, ahead of the action gate below, which made that gate unreachable for any payload whose text
+ * happened to read like a reco ask: `chip.start.dupes` carrying "Find dupes for Barrier Cloud Cream" answered
+ * TRUE here and was proxied to the mainline, even though `chip.start.dupes` is a v2-owned action.
+ *
+ * That was not merely a mis-route. The mainline's own intent contract correctly classified the action as
+ * `delegate_target: 'v2'` and handed it straight back to the v2 router (routes.js, the handleChatV2 branch),
+ * which asked this function again, got TRUE again, and proxied again — an unbounded mutual delegation that
+ * pinned a CPU at 100% and never answered the request. The `withTimeoutCode` bound around the proxy call
+ * cannot save it: the recursion is a chain of promise continuations, so the microtask queue never drains and
+ * the timeout's timer never gets a turn. A guard that structurally cannot fire is not a guard.
+ *
+ * So the ordering is now load-bearing, not cosmetic: when the caller named an action, that action decides, and
+ * the text heuristics only apply to the free-text case they were written for.
+ */
 function shouldProxyFrameworkRecoToV1Mainline(input) {
   const payload = isPlainObject(input) ? input : {};
-  if (shouldKeepTypedRecoRequestOnV1Mainline(payload)) return true;
   const action = isPlainObject(payload.action) ? payload.action : {};
   const actionId = pickFirstTrimmed(payload.action_id, action.action_id);
   if (actionId) {
@@ -166,8 +183,11 @@ function shouldProxyFrameworkRecoToV1Mainline(input) {
       normalizedActionId === 'chip.start.reco_products' ||
       normalizedActionId === 'chip_start_reco_products';
     if (!isRecoAction) return false;
-    return looksLikeFrameworkRecoConcernAsk(payload);
+    // A reco action still gets the full typed-request treatment — the narrowing above is only about letting a
+    // NON-reco action be misread as one.
+    return shouldKeepTypedRecoRequestOnV1Mainline(payload) || looksLikeFrameworkRecoConcernAsk(payload);
   }
+  if (shouldKeepTypedRecoRequestOnV1Mainline(payload)) return true;
   return looksLikeFrameworkRecoConcernAsk(payload);
 }
 
