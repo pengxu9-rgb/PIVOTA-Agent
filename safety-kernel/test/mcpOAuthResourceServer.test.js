@@ -145,3 +145,56 @@ test('access token: symmetric alg config is rejected (no HS*/none)', () => {
     McpOAuthError,
   );
 });
+
+// ---------------------------------------------------------------------------------------------------
+// A resource SET. One MCP server can present more than one resource identifier — this gateway serves
+// the same commerce surface at /mcp (native tool names) and /ucp/mcp (UCP spec tool names), and RFC
+// 9728 §3.3 makes each door its own resource because each publishes its own metadata document. The
+// verifier therefore has to accept a token bound to ANY identifier of THIS server, while still
+// refusing one minted for somebody else's. The failure this guards is the one that matters on a live
+// charge door: widening `audience` to "anything" would make every foreign token verify.
+
+const UCP_RESOURCE = 'https://pivota-agent-production.up.railway.app/ucp/mcp';
+
+test('resource set: a token for ANY member verifies', async () => {
+  const { privateKey, issuerConfig } = await makeIssuer();
+  const verify = createMcpAccessTokenVerifier({
+    issuers: [issuerConfig],
+    resource: [UCP_RESOURCE, RESOURCE],
+  });
+  for (const aud of [UCP_RESOURCE, RESOURCE]) {
+    const { user_ref } = await verify(await mint(privateKey, {}, { aud }));
+    assert.equal(user_ref, deriveUserRefFromClaims(ISS, 'user-123'));
+  }
+});
+
+test('resource set: a token for a NON-member is still refused', async () => {
+  const { privateKey, issuerConfig } = await makeIssuer();
+  const verify = createMcpAccessTokenVerifier({
+    issuers: [issuerConfig],
+    resource: [UCP_RESOURCE, RESOURCE],
+  });
+  const foreign = await mint(privateKey, {}, { aud: 'https://someone-else.example/mcp' });
+  await assert.rejects(() => verify(foreign), (err) => err instanceof McpOAuthError && err.code === 'INVALID_TOKEN');
+});
+
+test('resource set: a single-member set behaves exactly like the string form', async () => {
+  const { privateKey, issuerConfig } = await makeIssuer();
+  const asArray = createMcpAccessTokenVerifier({ issuers: [issuerConfig], resource: [RESOURCE] });
+  const asString = createMcpAccessTokenVerifier({ issuers: [issuerConfig], resource: RESOURCE });
+  const ok = await mint(privateKey, {}, { aud: RESOURCE });
+  const other = await mint(privateKey, {}, { aud: UCP_RESOURCE });
+  for (const verify of [asArray, asString]) {
+    assert.ok((await verify(ok)).user_ref);
+    await assert.rejects(() => verify(other), McpOAuthError);
+  }
+});
+
+test('resource set: empty / blank / non-https members are a CONFIG error, never "accept anything"', () => {
+  const cfg = (resource) => () => createMcpAccessTokenVerifier({ issuers: [{ iss: ISS, jwks: { keys: [] } }], resource });
+  assert.throws(cfg([]), McpOAuthError);
+  assert.throws(cfg([RESOURCE, '']), McpOAuthError);
+  assert.throws(cfg([RESOURCE, undefined]), McpOAuthError);
+  assert.throws(cfg([RESOURCE, 'http://insecure.example/mcp']), McpOAuthError);
+  assert.throws(cfg([RESOURCE, 'not-a-url']), McpOAuthError);
+});

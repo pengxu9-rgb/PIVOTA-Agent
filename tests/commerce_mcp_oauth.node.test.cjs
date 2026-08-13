@@ -156,3 +156,187 @@ test('discovery route ignores a non-function suppressForRequest', async () => {
   await routes['/.well-known/oauth-protected-resource'](reqWith({ host: 'public.test.example' }), a.res);
   assert.equal(a.out.status, 200);
 });
+
+// ---------------------------------------------------------------------------------------------------
+// RFC 9728 §3.3: the document a challenge points at must declare the identifier of the door that
+// issued the challenge.
+//
+// THE DEFECT THIS CLOSES, observed live on 2026-08-13 after /ucp/mcp was lit: POST /ucp/mcp answered
+//   401 WWW-Authenticate: Bearer … resource_metadata="https://commerce.mcp.pivota.cc/.well-known/oauth-protected-resource"
+// and that document declared `resource: "https://commerce.mcp.pivota.cc/mcp"` — the NATIVE door. A
+// client following the challenge from /ucp/mcp was told the resource it had reached was /mcp. A strict
+// client that checks the two agree has no identifier to request a token for; a lenient one mints for
+// /mcp and works only because this server happened to accept that audience everywhere.
+//
+// Both doors are now their own resource, each with its own metadata document, and the UCP door still
+// accepts the native audience so the clients that were minting for it before this fix keep working.
+
+const UCP_RESOURCE = 'https://agent.test.example/ucp/mcp';
+const FOREIGN_RESOURCE = 'https://someone-else.example/mcp';
+const METADATA_ROOT = '/.well-known/oauth-protected-resource';
+
+function reqAt(path, headers = {}) {
+  const r = reqWith(headers);
+  r.path = path;
+  return r;
+}
+
+/** Mount the real discovery routes and return { path -> handler }. */
+function mountRoutes() {
+  const routes = {};
+  glue.registerMcpOAuthDiscoveryRoutes({ get: (p, h) => { routes[p] = h; } }, {});
+  return routes;
+}
+
+async function fetchMetadata(routes, path, headers) {
+  const { out, res } = captureRes();
+  const handler = routes[path];
+  assert.ok(handler, `no metadata route mounted at ${path}`);
+  await handler(reqAt(path, headers), res);
+  return out;
+}
+
+test('door identity: each door resolves to its own resource identifier', () => {
+  setBaseEnv();
+  assert.equal(glue.resourceFor(reqAt('/mcp')), RESOURCE);
+  assert.equal(glue.resourceFor(reqAt('/ucp/mcp')), UCP_RESOURCE);
+  // Express serves these spellings too, so they must not fall back to the native identifier.
+  assert.equal(glue.resourceFor(reqAt('/ucp/mcp/')), UCP_RESOURCE);
+  assert.equal(glue.resourceFor(reqAt('/UCP/MCP')), UCP_RESOURCE);
+});
+
+test('the UCP audience follows the CONFIGURED origin, not the Host header', () => {
+  setBaseEnv();
+  // This service answers on the branded host and on its Railway domain. If the identifier tracked
+  // Host, a token minted via one hostname would fail at the other.
+  const viaOtherHost = glue.resourceFor(reqAt('/ucp/mcp', { host: 'pivota-agent-production.up.railway.app' }));
+  assert.equal(viaOtherHost, UCP_RESOURCE);
+});
+
+test('CHALLENGE → METADATA is self-consistent for BOTH doors (the actual defect)', async () => {
+  setBaseEnv();
+  glue.__resetVerifierCache();
+  const routes = mountRoutes();
+
+  for (const [doorPath, expectedResource] of [['/mcp', RESOURCE], ['/ucp/mcp', UCP_RESOURCE]]) {
+    const challenge = await glue.resolveMcpOAuthIdentity(reqAt(doorPath, { host: 'agent.test.example' }));
+    assert.equal(challenge.mode, 'challenge');
+    const url = /resource_metadata="([^"]+)"/.exec(challenge.wwwAuthenticate)?.[1];
+    assert.ok(url, `${doorPath} challenge carries no resource_metadata`);
+
+    // Follow it exactly as a client would: fetch that URL and read `resource`.
+    const doc = await fetchMetadata(routes, new URL(url).pathname, { host: 'agent.test.example' });
+    assert.equal(doc.status, 200, `${url} did not serve metadata`);
+    assert.equal(
+      doc.body.resource,
+      expectedResource,
+      `${doorPath} pointed at a document describing ${doc.body.resource}`,
+    );
+    // ...and the identifier is exactly the door the client called.
+    assert.equal(new URL(doc.body.resource).pathname, doorPath);
+  }
+});
+
+test('the bare root metadata path keeps describing the NATIVE door (native clients discovered it)', async () => {
+  setBaseEnv();
+  const doc = await fetchMetadata(mountRoutes(), METADATA_ROOT, { host: 'agent.test.example' });
+  assert.equal(doc.status, 200);
+  assert.equal(doc.body.resource, RESOURCE);
+});
+
+test('a token minted for the UCP door is accepted THERE', async () => {
+  setBaseEnv();
+  const { token, issuers } = await makeToken({ aud: UCP_RESOURCE });
+  process.env.MCP_OAUTH_ISSUERS_JSON = issuers;
+  glue.__resetVerifierCache();
+  const r = await glue.resolveMcpOAuthIdentity(reqAt('/ucp/mcp', { Authorization: `Bearer ${token}` }));
+  assert.equal(r.mode, 'oauth', `expected oauth, got ${r.mode}: ${r.body?.message || ''}`);
+  assert.ok(r.user_ref);
+});
+
+test('a token minted for the NATIVE resource still works at the UCP door (no flag day)', async () => {
+  setBaseEnv();
+  const { token, issuers } = await makeToken({ aud: RESOURCE });
+  process.env.MCP_OAUTH_ISSUERS_JSON = issuers;
+  glue.__resetVerifierCache();
+  const r = await glue.resolveMcpOAuthIdentity(reqAt('/ucp/mcp', { Authorization: `Bearer ${token}` }));
+  assert.equal(r.mode, 'oauth', 'the UCP door must not break clients that minted before it had an identifier');
+});
+
+test('the NATIVE door does NOT widen: a UCP-audience token is refused there', async () => {
+  setBaseEnv();
+  const { token, issuers } = await makeToken({ aud: UCP_RESOURCE });
+  process.env.MCP_OAUTH_ISSUERS_JSON = issuers;
+  glue.__resetVerifierCache();
+  const r = await glue.resolveMcpOAuthIdentity(reqAt('/mcp', { Authorization: `Bearer ${token}` }));
+  assert.equal(r.mode, 'challenge');
+  assert.equal(r.status, 401);
+});
+
+test('a token for a FOREIGN resource is refused at both doors (RFC 8707 still holds)', async () => {
+  setBaseEnv();
+  const { token, issuers } = await makeToken({ aud: FOREIGN_RESOURCE });
+  process.env.MCP_OAUTH_ISSUERS_JSON = issuers;
+  for (const doorPath of ['/mcp', '/ucp/mcp']) {
+    glue.__resetVerifierCache();
+    const r = await glue.resolveMcpOAuthIdentity(reqAt(doorPath, { Authorization: `Bearer ${token}` }));
+    assert.equal(r.mode, 'challenge', `${doorPath} accepted a token for ${FOREIGN_RESOURCE}`);
+    assert.equal(r.status, 401);
+  }
+});
+
+test('MCP_OAUTH_RESOURCE_METADATA_URL overrides the NATIVE door only', async () => {
+  setBaseEnv();
+  process.env.MCP_OAUTH_RESOURCE_METADATA_URL = 'https://agent.test.example/custom-metadata';
+  try {
+    assert.equal(glue.resourceMetadataUrlFor(reqAt('/mcp')), 'https://agent.test.example/custom-metadata');
+    // Honouring a single-valued override on /ucp/mcp would point it back at a document describing
+    // /mcp — the exact mismatch this change removes.
+    assert.equal(
+      glue.resourceMetadataUrlFor(reqAt('/ucp/mcp')),
+      `https://agent.test.example${METADATA_ROOT}/ucp/mcp`,
+    );
+  } finally {
+    delete process.env.MCP_OAUTH_RESOURCE_METADATA_URL;
+  }
+});
+
+// The claim "the two doors never share a verifier" was a COMMENT with nothing behind it. Adversarial
+// review showed a constant cache key passes every other test in this file while the real app hands a
+// UCP-audience token a 200 at /mcp — because every other test calls __resetVerifierCache() first and so
+// never exercises the one thing the cache exists for: a warm process serving both doors in turn.
+// These two tests deliberately do NOT reset between doors.
+test('a WARM UCP verifier is not reused at the native door (no cache borrow)', async () => {
+  setBaseEnv();
+  const { token, issuers } = await makeToken({ aud: UCP_RESOURCE });
+  process.env.MCP_OAUTH_ISSUERS_JSON = issuers;
+  glue.__resetVerifierCache();
+
+  // Warm /ucp/mcp first, exactly as a live process would be warmed by real traffic.
+  const warm = await glue.resolveMcpOAuthIdentity(reqAt('/ucp/mcp', { Authorization: `Bearer ${token}` }));
+  assert.equal(warm.mode, 'oauth', 'precondition: the UCP door accepts its own audience');
+
+  // ...then the SAME token at the native door, with no reset in between.
+  const native = await glue.resolveMcpOAuthIdentity(reqAt('/mcp', { Authorization: `Bearer ${token}` }));
+  assert.equal(native.mode, 'challenge', 'the native door served the UCP door’s cached verifier');
+  assert.equal(native.status, 401);
+});
+
+test('cache keys are unambiguous: a spaced identifier cannot collide with a two-member set', async () => {
+  setBaseEnv();
+  delete process.env.MCP_OAUTH_RESOURCE; // Host fallback: the identifier becomes attacker-influenced
+  const { token, issuers } = await makeToken({ aud: 'https://agent.test.example/ucp/mcp' });
+  process.env.MCP_OAUTH_ISSUERS_JSON = issuers;
+  glue.__resetVerifierCache();
+
+  // A Host carrying a space makes the one-member set ["https://a b/mcp"], which a joined key renders
+  // identically to the two-member set ["https://a", "b/mcp"]. Poison the cache from the native door...
+  await glue.resolveMcpOAuthIdentity(
+    reqAt('/mcp', { host: 'agent.test.example/ucp/mcp https://agent.test.example', Authorization: `Bearer ${token}` }),
+  );
+  // ...then a legitimate client must still be verified on its own terms, not the poisoned entry's.
+  const legit = await glue.resolveMcpOAuthIdentity(
+    reqAt('/ucp/mcp', { host: 'agent.test.example', Authorization: `Bearer ${token}` }),
+  );
+  assert.equal(legit.mode, 'oauth', 'a poisoned cache entry denied service to a correctly-minted token');
+});

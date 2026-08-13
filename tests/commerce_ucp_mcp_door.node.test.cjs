@@ -390,3 +390,46 @@ test('the advertised endpoint is one the door actually answers on', async () => 
     );
   });
 });
+
+// ---- the 401 a platform actually receives points at metadata describing THIS door ------------------
+//
+// Observed live on 2026-08-13, minutes after the door was lit: POST /ucp/mcp answered
+//   401 … resource_metadata="https://commerce.mcp.pivota.cc/.well-known/oauth-protected-resource"
+// whose document declared `resource: "https://commerce.mcp.pivota.cc/mcp"` — the NATIVE door. A client
+// following the challenge from /ucp/mcp learned the identifier of a different endpoint, so it had
+// nothing correct to request a token for (RFC 9728 §3.3). Driven end to end through the real app,
+// because that mismatch lives in the HTTP response, not in any one function.
+const OAUTH_ON = {
+  MCP_OAUTH_ENABLED: '1',
+  MCP_OAUTH_RESOURCE: 'https://shop.pivota.cc/mcp',
+  MCP_OAUTH_AUTHORIZATION_SERVERS: 'https://auth.pivota.example',
+};
+
+test('an unauthenticated UCP call challenges with metadata for /ucp/mcp — and that document agrees', async () => {
+  await withEnv({ ...DOOR_LIT, ...OAUTH_ON }, async () => {
+    const resp = await supertest(app).post('/ucp/mcp').send(rpc('tools/list', undefined, 21)).expect(401);
+    const challenge = resp.headers['www-authenticate'];
+    assert.match(challenge, /^Bearer /);
+    const url = /resource_metadata="([^"]+)"/.exec(challenge)?.[1];
+    assert.ok(url, `no resource_metadata in: ${challenge}`);
+    assert.equal(new URL(url).pathname, '/.well-known/oauth-protected-resource/ucp/mcp');
+
+    // Follow it exactly as a client would, and require the identifier to be the door we just called.
+    const doc = await supertest(app).get(new URL(url).pathname).expect(200);
+    assert.equal(doc.body.resource, 'https://shop.pivota.cc/ucp/mcp');
+    assert.equal(new URL(doc.body.resource).pathname, '/ucp/mcp');
+  });
+});
+
+test('the NATIVE door still challenges with — and serves — its own unchanged identifier', async () => {
+  await withEnv(OAUTH_ON, async () => {
+    const resp = await supertest(app).post('/mcp').send(rpc('tools/list', undefined, 22)).expect(401);
+    const url = /resource_metadata="([^"]+)"/.exec(resp.headers['www-authenticate'])?.[1];
+    assert.equal(new URL(url).pathname, '/.well-known/oauth-protected-resource/mcp');
+    const doc = await supertest(app).get(new URL(url).pathname).expect(200);
+    assert.equal(doc.body.resource, 'https://shop.pivota.cc/mcp');
+    // The bare root document is what native clients discovered before path-insertion; it must not move.
+    const root = await supertest(app).get('/.well-known/oauth-protected-resource').expect(200);
+    assert.equal(root.body.resource, 'https://shop.pivota.cc/mcp');
+  });
+});

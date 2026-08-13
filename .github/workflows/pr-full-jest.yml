@@ -269,6 +269,17 @@ jobs:
       # have run all 15 of its assertions nowhere in that gate while turning it
       # red. Same allowlist reasoning as above: without this line the guard would
       # not run on PRs at all (the money-path gate is workflow_dispatch-only).
+      # ADDED 2026-08-13: `safety-kernel/test/mcpOAuthResourceServer`, confirmed
+      # green (14/14) and mutation-checked (2 mutants on the new hunk, both
+      # killed). It is where the access-token AUDIENCE rule lives, and this PR
+      # changes it: the verifier now accepts a resource SET so /ucp/mcp can
+      # publish its own RFC 9728 identifier without invalidating tokens minted
+      # for the native one. The mutants that matter are the ones that turn a set
+      # into "accept anything" — dropping per-member https validation, or letting
+      # an empty set through as "no audience check" — either of which would make
+      # a FOREIGN token verify on a live charge door. Runs from the repo root
+      # like the contract suite above (`jose` is a root dependency), so the
+      # workflow_dispatch-only money-path gate is no longer its only home.
       - name: Run node:test suites
         run: |
           node --test \
@@ -276,6 +287,7 @@ jobs:
             mcp-server/test/ucpDialectSurface.test.js \
             mcp-server/test/ucpArgumentAdapter.test.js \
             safety-kernel/test/ucpPaymentAuthorizationContract.test.js \
+            safety-kernel/test/mcpOAuthResourceServer.test.js \
             mcp-server/test/ucpFulfillmentAddressContract.test.js \
             tests/commerce_ucp_mcp_door.node.test.cjs \
             tests/commerce_mcp_oauth.node.test.cjs \
