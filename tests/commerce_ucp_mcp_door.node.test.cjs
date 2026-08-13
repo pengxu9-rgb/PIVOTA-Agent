@@ -55,7 +55,16 @@ function withEnv(vars, fn) {
       else process.env[k] = v;
     }
   };
-  const out = fn();
+  // try/catch on the SYNC path too: a throwing synchronous callback (i.e. a failing assertion) previously
+  // skipped `restore`, leaking AGENT_CHECKOUT_STRICT_SUBMIT_PAYMENT_ENABLED into every later test and
+  // turning one real failure into a cascade that hides its own cause.
+  let out;
+  try {
+    out = fn();
+  } catch (err) {
+    restore();
+    throw err;
+  }
   return out && typeof out.then === 'function' ? out.finally(restore) : (restore(), out);
 }
 
@@ -75,18 +84,22 @@ test('the canonical contract keeps mcp names == operation ids (what the MCP swit
   assert.deepEqual(drifted, [], 'an op whose mcp name differs from its id would dark the /mcp kill-switch');
 });
 
-test('submit_payment OFF blocks the UCP charge tool under ITS OWN name', () => {
-  withEnv(CHARGE_OFF, () => {
-    const blocked = resolveBlockedUcpMcpOperation(call('complete_checkout'));
-    return blocked.then((b) => {
-      assert.ok(b, 'the UCP charge must be blocked while submit_payment is disabled');
-      // Audited under the CANONICAL id, so one audit query covers both doors...
-      assert.equal(b.operation, 'complete_checkout_session');
-      assert.equal(b.reason, 'strict_submit_payment_disabled');
-      // ...while the dialect and the wire name stay distinguishable.
-      assert.equal(b.dialect, 'ucp');
-      assert.equal(b.tool, 'complete_checkout');
-    });
+// AWAITED, not fire-and-forget. This test used to be a SYNCHRONOUS callback that dropped the promise
+// (`withEnv(..., () => { ... return blocked.then(assertions) })` with no return/await on the outer callback),
+// so node:test scored it before a single assertion inside `.then` had run. Measured: with `dialect`/`tool`
+// deleted from resolveBlockedUcpMcpOperation — properties ONLY this test asserts — all 16 tests reported ✔,
+// and the file failed only with a bare, diagnostic-free rejection naming no test. The guard on the charge
+// kill-switch for this whole door was therefore unattributed. Every promise here is awaited now.
+test('submit_payment OFF blocks the UCP charge tool under ITS OWN name', async () => {
+  await withEnv(CHARGE_OFF, async () => {
+    const b = await resolveBlockedUcpMcpOperation(call('complete_checkout'));
+    assert.ok(b, 'the UCP charge must be blocked while submit_payment is disabled');
+    // Audited under the CANONICAL id, so one audit query covers both doors...
+    assert.equal(b.operation, 'complete_checkout_session');
+    assert.equal(b.reason, 'strict_submit_payment_disabled');
+    // ...while the dialect and the wire name stay distinguishable.
+    assert.equal(b.dialect, 'ucp');
+    assert.equal(b.tool, 'complete_checkout');
   });
 });
 
