@@ -50,6 +50,11 @@ const {
 // MCP tool names (verbatim from the live spec). complete_checkout is listed for the refusal guard ONLY.
 const TOOL = Object.freeze({
   GET_PRODUCT: 'get_product',
+  // `search_catalog` is a DISTINCT tool from `get_product` — free text vs one id — and this client used to
+  // send a `query` to the latter, which has no such member. Both names are verbatim from a live `tools/list`
+  // (cosrx, 2026-08-13). `lookup_catalog` (batch by `catalog.ids`) exists there too and is deliberately not
+  // listed: nothing here calls it, and an unused constant is a shape nobody has verified against a caller.
+  SEARCH_CATALOG: 'search_catalog',
   CREATE_CART: 'create_cart',
   GET_CART: 'get_cart',
   CREATE_CHECKOUT: 'create_checkout',
@@ -60,7 +65,9 @@ const TOOL = Object.freeze({
 
 // READ-ONLY / idempotent tools that MAY be retried on a transient error. Everything else (create/update cart &
 // checkout) is state-changing and must never be blind-retried.
-const IDEMPOTENT_TOOLS = Object.freeze(new Set([TOOL.GET_PRODUCT, TOOL.GET_CART, TOOL.GET_CHECKOUT]));
+const IDEMPOTENT_TOOLS = Object.freeze(new Set([
+  TOOL.GET_PRODUCT, TOOL.SEARCH_CATALOG, TOOL.GET_CART, TOOL.GET_CHECKOUT,
+]));
 
 // H1 error taxonomy — canonical fallback reasons. EVERY warm-handoff failure maps to one of these, then to a
 // clean null (cold-redirect fallback), tagged for observability (H2). No reason carries buyer PII or key material.
@@ -564,17 +571,56 @@ function createUcpBuyerAgentClient(options = {}) {
   }
 
   /**
-   * Catalog search via `get_product`. NOTE (live-verified cosrx 2026-07-13): the per-merchant UCP endpoint
-   * exposes cart + checkout tools ONLY and returns "Tool not found" for `get_product`. Product discovery is
-   * the Global Catalog / our own crawled index — do NOT point this at a per-merchant endpoint.
+   * Read ONE product by id — `get_product`.
+   *
+   * LIVE-VERIFIED SHAPE (cosrx `tools/list`, 2026-08-13): `{ meta, catalog: { id } }`, with the tool's
+   * `required = ["meta","catalog"]` and `catalog.required = ["id"]`. The id is NESTED under `catalog`.
+   *
+   * This replaces `catalogSearch`, which sent a FLAT `{ query, id, sku }` and conflated three different live
+   * tools into one call:
+   *   - `get_product`    takes `catalog.id`   — one product by id (this function)
+   *   - `search_catalog` takes `catalog.query` — free text (searchCatalog below)
+   *   - `lookup_catalog` takes `catalog.ids`   — a batch by id
+   * `sku` was not a member of ANY of them, so it is gone rather than renamed; nothing in the live catalog
+   * surface accepts one.
+   *
+   * WHERE TO POINT THIS. A per-merchant UCP endpoint does NOT serve the catalog tools to us — re-confirmed
+   * 2026-08-13, when `get_product` / `search_catalog` / `lookup_catalog` each answered
+   * `-32602 { data: "Tool not found: <tool>" }` while `get_cart` on the same connection ran fine. Product
+   * discovery is the Global Catalog / our own crawled index; pointing this at a merchant endpoint gets a
+   * refusal no argument shape can fix.
    */
-  async function catalogSearch(mcpEndpoint, { query, productId, sku } = {}) {
-    const args = {};
-    if (query) args.query = query;
-    if (productId) args.id = productId;
-    if (sku) args.sku = sku;
-    // Read-only catalog lookup: safe to retry on a transient error (H1).
-    return callTool(mcpEndpoint, TOOL.GET_PRODUCT, args, { retry: true });
+  async function getProduct(mcpEndpoint, { productId } = {}) {
+    // `catalog.id` is the tool's only required member, so an absent one is a caller bug, not a merchant
+    // refusal to discover at runtime. `firstNonEmpty` accepts STRINGS only — the live schema types
+    // `catalog.id` as `type: "string"`, so refusing a number is right, but the message has to say which
+    // mistake was made or a caller who passed `12345` reads "requires productId" and supplies it again.
+    const id = firstNonEmpty(productId);
+    if (!id) {
+      throw new Error(productId === undefined || productId === null
+        ? 'getProduct requires productId'
+        : 'getProduct requires productId as a non-empty string (catalog.id is typed string)');
+    }
+    // Read-only lookup: safe to retry on a transient error (H1).
+    return callTool(mcpEndpoint, TOOL.GET_PRODUCT, { catalog: { id } }, { retry: true });
+  }
+
+  /**
+   * Free-text catalog search — `search_catalog`, which is a DIFFERENT tool from `get_product`.
+   *
+   * LIVE-VERIFIED SHAPE (same listing): `{ meta, catalog: { query, ... } }`; the tool's
+   * `required = ["meta","catalog"]` and `catalog` itself declares no required member, so a query-less call is
+   * legal on the wire. `pagination` is passed through when supplied because the live schema declares it
+   * (alongside `context`/`signals`/`filters`, which this client has no use for yet).
+   *
+   * Same targeting caveat as getProduct: not served by a per-merchant endpoint.
+   */
+  async function searchCatalog(mcpEndpoint, { query, pagination } = {}) {
+    const catalog = {};
+    const q = firstNonEmpty(query);
+    if (q) catalog.query = q;
+    if (isPlainObjectLocal(pagination)) catalog.pagination = pagination;
+    return callTool(mcpEndpoint, TOOL.SEARCH_CATALOG, { catalog }, { retry: true });
   }
 
   /**
@@ -727,7 +773,8 @@ function createUcpBuyerAgentClient(options = {}) {
     discoverEndpoint,
     listTools,
     callTool,
-    catalogSearch,
+    getProduct,
+    searchCatalog,
     createCart,
     createCheckout,
     updateCheckout,
@@ -1079,6 +1126,11 @@ async function withTimeout(run, ms) {
 module.exports = {
   createUcpBuyerAgentClient,
   TOOL,
+  // Exported so a test can pin the SET ITSELF, not just one tool's behaviour: this is the only thing
+  // standing between a transient 500 and a blind-retried mutating call (a duplicate cart, a re-priced
+  // checkout replayed after the merchant applied it). Adding a state-changing tool here previously passed
+  // the whole suite.
+  IDEMPOTENT_TOOLS,
   TRUST_TIER,
   FAILURE_REASON,
   SYNTHETIC_PREVIEW_ADDRESS,
