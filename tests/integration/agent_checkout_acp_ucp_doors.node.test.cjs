@@ -265,6 +265,79 @@ describe('Agent checkout ACP REST + UCP discovery doors', () => {
       assert.ok(!JSON.stringify(noEmailRes.body).includes('@'), 'refusal body must not echo any address');
     });
 
+    it('a validly-signed create passes the HMAC gate under EVERY spelling Express routes to the door', async () => {
+      // The signature binds `${timestamp}.${rawBody}` — the PATH is not signed — so the identical signed bytes
+      // must authenticate at every spelling Express serves. They did not: `req.rawBody` was stashed by a
+      // prefix test against the RAW url, so `/ACP/checkout_sessions` reached the adapter with no stash and got
+      // HMAC'd as an empty body. Fail-closed (401 USER_AUTH_REQUIRED), but it made a live door unusable by
+      // capitalisation — the same defect class as the /MCP surface label, on the door whose auth IS the bytes.
+      const { SignJWT, generateKeyPair, exportJWK } = await import('jose');
+      const { publicKey, privateKey } = await generateKeyPair('ES256');
+      const pub = await exportJWK(publicKey);
+      pub.kid = 'buyer-k-spelling';
+      pub.alg = 'ES256';
+      const localApp = bootApp({
+        ...STRICT_BASE,
+        AGENT_CHECKOUT_ACP_REST_ENABLED: '1',
+        ACP_SIGNING_SECRET: ACP_SECRET,
+        IDENTITY_ISSUERS_JSON: JSON.stringify([
+          { iss: 'https://buyer.test.local', aud: BUYER_AUD, jwks: { keys: [pub] }, algs: ['ES256'] },
+        ]),
+      });
+      const buyerJwt = await new SignJWT({ email: 'buyer-spelling@example.com', email_verified: true })
+        .setProtectedHeader({ alg: 'ES256', kid: 'buyer-k-spelling' })
+        .setIssuer('https://buyer.test.local')
+        .setAudience(BUYER_AUD)
+        .setSubject('buyer-spelling')
+        .setIssuedAt()
+        .setExpirationTime('10m')
+        .sign(privateKey);
+
+      const rawBody = JSON.stringify({ items: [{ product_id: 'p1', variant_id: 'v1', quantity: 1 }], merchant_id: 'm1' });
+      const post = (p, idem) => {
+        const timestamp = String(Date.now());
+        return request(localApp)
+          .post(p)
+          .set('content-type', 'application/json')
+          .set('idempotency-key', idem)
+          .set('signature', crypto.createHmac('sha256', ACP_SECRET).update(`${timestamp}.${rawBody}`).digest('hex'))
+          .set('timestamp', timestamp)
+          .set('x-buyer-authorization', `Bearer ${buyerJwt}`)
+          .send(rawBody);
+      };
+
+      // Baseline: the canonical spelling gets past HMAC + identity and dies only on the absent backend.
+      const baseline = await post('/acp/checkout_sessions', 'idem-spell-base');
+      assert.equal(baseline.status, 503, `baseline: expected 503, got ${baseline.status}: ${JSON.stringify(baseline.body)}`);
+
+      // 503 is the discriminator: a request whose bytes were never stashed cannot reach the backend at all —
+      // it is refused at the HMAC gate with 401/USER_AUTH_REQUIRED, which is exactly what these returned
+      // before the prefix test was normalized.
+      for (const [p, idem] of [
+        ['/ACP/checkout_sessions', 'idem-spell-upper'],
+        ['/Acp/Checkout_Sessions', 'idem-spell-mixed'],
+        ['/acp/checkout_sessions/', 'idem-spell-slash'],
+      ]) {
+        const res = await post(p, idem);
+        assert.notEqual(res.body?.code, 'USER_AUTH_REQUIRED', `${p}: signed bytes must not be refused as unsigned`);
+        assert.equal(res.status, 503, `${p}: expected the baseline's 503, got ${res.status}: ${JSON.stringify(res.body)}`);
+      }
+
+      // CONTRAST: the gate is genuinely live at those spellings — it is the STASH that was missing, not the
+      // signature check. A bad signature to /ACP/... is still refused, so the equalities above are the fix
+      // and not a door that stopped verifying.
+      const forged = await request(localApp)
+        .post('/ACP/checkout_sessions')
+        .set('content-type', 'application/json')
+        .set('idempotency-key', 'idem-spell-forged')
+        .set('signature', 'deadbeef')
+        .set('timestamp', String(Date.now()))
+        .set('x-buyer-authorization', `Bearer ${buyerJwt}`)
+        .send(rawBody);
+      assert.equal(forged.status, 401);
+      assert.equal(forged.body.code, 'USER_AUTH_REQUIRED');
+    });
+
     it('an item with NO variant_id is resolved through the LIVE executor read, and fails CLOSED when that read cannot answer', async () => {
       // The door resolves an item's default variant through the canonical `get_product` read on the SAME
       // shared executor src/server.js wires for /mcp — no separate transport is threaded for it. That read

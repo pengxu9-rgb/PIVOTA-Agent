@@ -20,6 +20,7 @@ const {
 const {
   buildUcpBuyerAgentProfile,
   assertNoPurchaseCompletion,
+  ALLOWED_BUYER_CAPABILITIES,
   resolveSigningKeys,
   CHECKOUT_CAPABILITY,
 } = require('../src/services/ucpBuyerAgentProfile');
@@ -170,10 +171,55 @@ describe('buildUcpBuyerAgentProfile', () => {
     expect(p.ucp.version).toBe('2026-04-08');
     expect(p.ucp.services['dev.ucp.shopping'][0].transport).toBe('mcp');
     expect(Object.keys(p.ucp.capabilities)).toEqual(
-      expect.arrayContaining(['dev.ucp.shopping.catalog', 'dev.ucp.shopping.cart', 'dev.ucp.shopping.checkout']),
+      expect.arrayContaining([
+        'dev.ucp.shopping.catalog.search', 'dev.ucp.shopping.catalog.lookup',
+        'dev.ucp.shopping.cart', 'dev.ucp.shopping.checkout',
+      ]),
     );
     // payment_handlers must be present (may be empty) per the schema.
     expect(p.ucp.payment_handlers).toEqual({});
+  });
+
+  test('every requested capability id EXISTS in the UCP vocabulary', () => {
+    // Negotiation is a set INTERSECTION, so an id that exists nowhere intersects with nothing and fails
+    // SILENTLY — the profile is accepted and the tools are simply absent. `dev.ucp.shopping.catalog` was
+    // exactly that: no such capability at any version (2026-04-08 splits it into .search/.lookup, and
+    // 2026-01-23 has no catalog capability at all), and it cost us every catalog tool at a live merchant.
+    //
+    // This list is the SPEC's, transcribed from ucp.dev/2026-04-08 (specification/overview + /catalog) —
+    // deliberately not derived from the module under test, which would only assert our spelling against
+    // itself. That self-agreement is why the old id survived: the previous assertion named the same wrong
+    // string the code did.
+    const SPEC_SHOPPING_CAPABILITIES = [
+      'dev.ucp.shopping.catalog.search',
+      'dev.ucp.shopping.catalog.lookup',
+      'dev.ucp.shopping.cart',
+      'dev.ucp.shopping.checkout',
+      'dev.ucp.shopping.discount',
+      'dev.ucp.shopping.fulfillment',
+      'dev.ucp.shopping.order',
+      'dev.ucp.shopping.ap2_mandate',
+    ];
+    const p = buildUcpBuyerAgentProfile();
+    for (const id of Object.keys(p.ucp.capabilities)) {
+      expect(SPEC_SHOPPING_CAPABILITIES).toContain(id);
+    }
+    for (const id of p.agent.requested_scopes) {
+      expect(SPEC_SHOPPING_CAPABILITIES).toContain(id);
+    }
+    // The capability block and the requested scopes must not drift apart either: a merchant reads one or
+    // the other depending on implementation, and a mismatch grants a different set than we advertise.
+    expect([...p.agent.requested_scopes].sort()).toEqual(Object.keys(p.ucp.capabilities).sort());
+  });
+
+  test('BOTH catalog halves are requested — the client uses each', () => {
+    // searchCatalog is free text (.search); getProduct is retrieval by identifier (.lookup). Requesting one
+    // would leave the other method calling a tool the merchant never granted.
+    const caps = Object.keys(buildUcpBuyerAgentProfile().ucp.capabilities);
+    expect(caps).toContain('dev.ucp.shopping.catalog.search');
+    expect(caps).toContain('dev.ucp.shopping.catalog.lookup');
+    // and the id that never existed is gone
+    expect(caps).not.toContain('dev.ucp.shopping.catalog');
   });
 
   test('requests catalog+cart+checkout scopes but NOT purchase-completion / payment', () => {
@@ -187,9 +233,49 @@ describe('buildUcpBuyerAgentProfile', () => {
     expect(p.agent.is_payment_processor).toBe(false);
   });
 
-  test('checkout capability extends cart', () => {
+  test('checkout declares NO `extends` — it is a root capability, and `extends` is a pruning key', () => {
+    // This test previously asserted `extends === 'dev.ucp.shopping.cart'`, pinning a live hazard in place.
+    // Intersection step 3: "Remove any capability where `extends` is set but none of its parent capabilities
+    // are in the intersection." So a merchant advertising checkout but NOT cart pruned our checkout
+    // entirely — all five checkout tools gone, silently. The spec: `extends` is "Present for extensions,
+    // absent for ROOT capabilities", and both profile examples declare checkout with none.
     const p = buildUcpBuyerAgentProfile();
-    expect(p.ucp.capabilities[CHECKOUT_CAPABILITY][0].extends).toBe('dev.ucp.shopping.cart');
+    expect(p.ucp.capabilities[CHECKOUT_CAPABILITY][0].extends).toBeUndefined();
+    for (const root of ['dev.ucp.shopping.cart', 'dev.ucp.shopping.catalog.search', 'dev.ucp.shopping.catalog.lookup']) {
+      expect(p.ucp.capabilities[root][0].extends).toBeUndefined();
+    }
+  });
+
+  test('every capability entry carries the REQUIRED spec and schema members', () => {
+    // The spec marks both required on a capability entry and every profile example carries them; without
+    // them a validating merchant answers `profile_malformed` (422) — a negotiation failure for a reason
+    // nothing in the profile announces.
+    const p = buildUcpBuyerAgentProfile();
+    for (const [id, entries] of Object.entries(p.ucp.capabilities)) {
+      for (const e of entries) {
+        expect(typeof e.spec).toBe('string');
+        expect(typeof e.schema).toBe('string');
+        expect(e.spec.startsWith('https://')).toBe(true);
+        expect(e.schema.startsWith('https://')).toBe(true);
+        expect(e.version).toBe(p.ucp.version);
+        expect(id).toBeTruthy();
+      }
+    }
+  });
+
+  test('a payment-authorizing capability is REFUSED even though the denylist cannot spell it', () => {
+    // `dev.ucp.shopping.ap2_mandate` is THE money capability and matches none of
+    // /(complete|payment|charge|purchase)/i — so the denylist that existed to keep it out was the one thing
+    // that could not see it, and adding it to the requested set passed the entire suite. The allowlist
+    // refuses it for being ABSENT rather than for being predicted.
+    for (const money of [
+      'dev.ucp.shopping.ap2_mandate', 'com.google.pay', 'dev.shopify.shop_pay', 'dev.ucp.processor_tokenizer',
+    ]) {
+      expect(() => assertNoPurchaseCompletion([money])).toThrow();
+    }
+    // …and the vetted set is exactly what the profile requests — no drift between guard and profile.
+    const p = buildUcpBuyerAgentProfile();
+    expect([...ALLOWED_BUYER_CAPABILITIES].sort()).toEqual([...p.agent.requested_scopes].sort());
   });
 
   test('rejects a non-https profileUrl', () => {

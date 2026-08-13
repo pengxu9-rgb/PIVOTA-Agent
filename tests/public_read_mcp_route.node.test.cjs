@@ -103,6 +103,74 @@ test('POST /public/mcp rejects oversized CHUNKED bodies (no Content-Length)', as
   assert.ok(outcome === 413 || outcome === 'reset', `expected 413 or reset, got ${outcome}`);
 });
 
+// Express routes case-insensitively and tolerates a trailing slash (caseSensitive/strict default off), so
+// `/MCP`, `/mcp/`, `/PUBLIC/MCP` and `/public/mcp/` all reach the public read handler. The early body-cap
+// middleware must recognize them too. It has to be driven CHUNKED to mean anything: with a Content-Length,
+// the route's own header check (handlePublicReadMcp) answers 413 for every spelling, so a Content-Length
+// test would pass even with the cap bypassed. Chunked is the case only the middleware can see.
+function postChunked(port, { path, host, body }) {
+  const http = require('http');
+  return new Promise((resolve) => {
+    const req = http.request(
+      {
+        port,
+        path,
+        method: 'POST',
+        // Fresh socket per probe: the cap DESTROYS the request, and a pooled keep-alive socket carrying
+        // that reset would fail the next probe for a reason that has nothing to do with what it asserts.
+        agent: false,
+        headers: { 'Content-Type': 'application/json', ...(host ? { Host: host } : {}) },
+      },
+      (res) => { res.resume(); resolve(res.statusCode); }
+    );
+    req.on('error', () => resolve('reset'));
+    // Two writes with no Content-Length → Node uses Transfer-Encoding: chunked.
+    const half = Math.ceil(body.length / 2);
+    req.write(body.slice(0, half));
+    req.write(body.slice(half));
+    req.end();
+  });
+}
+
+const PUBLIC_MCP_PATH_SPELLINGS = [
+  { path: '/public/mcp' },
+  { path: '/PUBLIC/MCP' },
+  { path: '/public/mcp/' },
+  { path: '/mcp', host: 'mcp.pivota.cc' },
+  { path: '/MCP', host: 'mcp.pivota.cc' },
+  { path: '/mcp/', host: 'mcp.pivota.cc' },
+];
+
+test('every Express spelling of the public MCP paths caps oversized CHUNKED bodies', async () => {
+  const http = require('http');
+  const server = http.createServer(app);
+  await new Promise((r) => server.listen(0, r));
+  const { port } = server.address();
+  const big = JSON.stringify(rpc('tools/list', { padding: 'z'.repeat(64 * 1024) }, 20));
+  const small = JSON.stringify(rpc('tools/list', undefined, 21));
+  const results = [];
+  try {
+    for (const spelling of PUBLIC_MCP_PATH_SPELLINGS) {
+      results.push({
+        path: spelling.path,
+        // Premise check: this spelling really does reach the public handler, so a capped verdict below is
+        // the cap firing and not a 404. 429 also counts — it comes from the route, i.e. past the cap.
+        reached: await postChunked(port, { ...spelling, body: small }),
+        // The cap itself: 413 from the header-less stream guard, or a reset when it destroys the request.
+        capped: await postChunked(port, { ...spelling, body: big }),
+      });
+    }
+  } finally {
+    server.close();
+  }
+  // Report EVERY spelling in one run rather than aborting on the first — the bypass is per-spelling, so
+  // which ones leak is the finding.
+  const unreached = results.filter((r) => r.reached !== 200 && r.reached !== 429);
+  assert.deepEqual(unreached, [], `these spellings did not reach the public read handler: ${JSON.stringify(unreached)}`);
+  const leaked = results.filter((r) => r.capped !== 413 && r.capped !== 'reset');
+  assert.deepEqual(leaked, [], `these spellings accepted a ${big.length}B chunked body past the 32KB cap: ${JSON.stringify(leaked)}`);
+});
+
 test('rate limiter keys on the trusted (right-most) XFF hop, not the spoofable left-most', async () => {
   // Same real client (right-most), rotating a forged left-most XFF must NOT mint fresh buckets.
   // Drain the bucket (burst default 20) then confirm the 429 still fires despite rotating forged IPs.

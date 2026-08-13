@@ -91,21 +91,26 @@
 //     one real variant is REFUSED, never guessed (buyerIntake rule 3), and a UCP caller has no field in which
 //     to name the variant it wanted. That bound is real and is stated in the tool description.
 //
-//  3. THERE IS NO ADDRESS ON THIS LANE YET — AND THAT IS A KNOWN, MEASURED BLOCKER, NOT A SETTLED DESIGN.
-//     An earlier revision of this note said UCP "carries no shipping_address". That is wrong, and the wrong
-//     version is why the gap looked closed: the live create_checkout schema DOES carry a full destination at
-//     `checkout.fulfillment.methods[].destinations[]` — {first_name, last_name, street_address,
-//     extended_address, address_locality, address_region, postal_code, address_country} — which maps onto the
-//     canonical address without inventing anything (name = first+last, address_line1 = street_address,
-//     address_line2 = extended_address, city = address_locality). This door does not yet publish or read it.
-//     Consequence, verified against pivota-backend origin/main `routes/agent_v2.py::_coerce_shipping_address`
-//     (reached from `POST /agent/v2/orders`): the address is required UNCONDITIONALLY at order creation, and
-//     canonicalExecutor passes `params.shipping_address ?? {}`, so an address-less UCP completion is refused
-//     400 INVALID_BUYER_CONTEXT with all five fields missing — AFTER a valid authorization has verified. So
-//     the UCP lane cannot place an order today even with a good grant. Mapping `fulfillment` is the fix and is
-//     its own change (destination selection via `selected_destination_id`, multi-destination refusal, and the
-//     `dev.ucp.shopping.fulfillment` capability all have to be decided). Until then nothing here fabricates an
-//     address, and this stays recorded as a blocker rather than papered over.
+//  3. THE ADDRESS ARRIVES AS `fulfillment`, AND IT RIDES ON THE QUOTE. This note twice said the wrong thing,
+//     and each wrong version hid the same defect. It first said UCP "carries no shipping_address"; the live
+//     create_checkout schema DOES carry a full destination at `checkout.fulfillment.methods[].destinations[]`.
+//     It then recorded that as an open blocker: pivota-backend origin/main
+//     `routes/agent_v2.py::_coerce_shipping_address` (reached from `POST /agent/v2/orders`) requires a complete
+//     address UNCONDITIONALLY, so an address-less UCP completion was refused 400 INVALID_BUYER_CONTEXT AFTER a
+//     valid authorization had verified — the lane could not place an order even with a good grant.
+//     `mapFulfillment` closes it. What the mapping had to settle, and what decided each one:
+//       - WHERE IT RIDES: create/update, never complete. `complete_checkout`'s checkout object accepts only
+//         `{payment, attribution}` — there is no fulfillment member to put it in. It still reaches order
+//         creation because `kernel.createOrder` prefers the LOCKED quote's `buyer_context.shipping_address`
+//         over the payload's, so an address supplied at create survives to the order. Both create and update
+//         carry it because an update RE-MINTS the snapshot (QUOTE_INTAKE_OPS), so an omitted address is dropped.
+//       - MULTI-DESTINATION: REFUSED, not resolved. The canonical quote holds ONE address, and choosing among
+//         several would ship goods to an address the buyer did not pick for those lines. Pivota declares
+//         `allows_multi_destination: {shipping: false}` in its own profile and the door enforces exactly that,
+//         so `selected_destination_id` has nothing to select and is accepted-and-unread.
+//       - AN INCOMPLETE DESTINATION: refused AT THE DOOR, naming UCP's own field spellings — but by the SHARED
+//         `pickCompleteAddress`, not a second completeness rule. Only the names are translated.
+//     See the `DESTINATION_TO_CANONICAL` note for the per-field mapping and the four-file chain it relies on.
 //
 //  4. `payment` IS REFUSED, NOT DROPPED — ON BOTH LANES. The buyer client hard-bounds itself against ever
 //     emitting one on create/update; the server side must not accept one there either. A caller that sends
@@ -124,6 +129,8 @@
 import {
   MAX_CART_ITEMS,
   intakeRefusal,
+  pickCompleteAddress,
+  REQUIRED_ADDRESS_FIELDS,
 } from "../../safety-kernel/src/protocol/buyerIntake.js";
 import { CANONICAL_PAYMENT_METHODS } from "../../safety-kernel/src/protocol/paymentAuthorizationVerifier.js";
 
@@ -341,9 +348,372 @@ const CONTEXT_SCHEMA = {
   },
   description:
     "Destination HINTS. Accepted and NOT forwarded into pricing: Pivota's quote carries a destination only as a"
-    + " COMPLETE address (name, address_line1, city, postal_code, country), and these three fields cannot"
-    + " become one without inventing the rest. Nothing here is fabricated into an address.",
+    + " COMPLETE address, and these three fields cannot become one without inventing the rest. Nothing here is"
+    + " fabricated into an address — send the real destination as"
+    + " `checkout.fulfillment.methods[0].destinations[0]`, which IS read.",
 };
+
+// ---- fulfillment: the destination, and the ONE table that maps it -----------------------------------------
+//
+// LIVE-VERIFIED (cosrx `tools/list`, 2026-08-13) at `checkout.fulfillment.methods[].destinations[]`. This is
+// the field that makes the UCP lane able to place an order at all: pivota-backend `_coerce_shipping_address`
+// requires a complete address UNCONDITIONALLY at `POST /agent/v2/orders`, so before this mapping a UCP
+// completion was refused 400 INVALID_BUYER_CONTEXT *after* a valid payment authorization had verified.
+//
+// WHY IT RIDES ON create/update AND NOT ON complete. Not a preference — the live schemas leave no choice, and
+// the kernel makes it work:
+//   - `complete_checkout`'s checkout object accepts ONLY `{payment, attribution}` (checkout.required =
+//     ["payment"]). There is no fulfillment member, so a door that collected the address there would be
+//     advertising a field no conforming platform will ever send — the same defect in the other direction.
+//   - It still reaches order creation, because the address is carried by the LOCKED QUOTE, not by the
+//     completing call: create/update put it in `quote.shipping_address` -> kernel `buyerContextFromQuotePayload`
+//     -> the quote snapshot's `buyer_context.shipping_address` -> and `kernel.createOrder` prefers that LOCKED
+//     address over the one on the order payload (`lockedShipping || requestedShipping`). canonicalExecutor's
+//     `params.shipping_address ?? {}` at completion is therefore the FALLBACK, not the source.
+//   That chain crosses four files, so it is not asserted here — test/ucpFulfillmentAddressContract.test.js
+//   drives a real create through the real kernel and reads the address off the `create_order` body the backend
+//   would receive. This module's own history is why: a seam no test crosses is where the defect lives.
+//
+// ONE TABLE, BOTH DIRECTIONS. It builds the canonical address, and it names the missing fields back in UCP's
+// own spelling when the destination is incomplete. A refusal that says `address_line1` to a caller whose field
+// is called `street_address` names nothing it can fix — the same misdirection buyerIntake already records for
+// `buyer.email`, where it made models retry the identical call.
+const DESTINATION_TO_CANONICAL = Object.freeze({
+  street_address: "address_line1",
+  extended_address: "address_line2",
+  address_locality: "city",
+  address_region: "state",
+  postal_code: "postal_code",
+  address_country: "country",
+  phone_number: "phone",
+});
+
+// The reverse direction, as REAL FIELD NAMES rather than a display string — `detail.missing_fields` is a
+// structured contract clients branch on, so it must carry names they can look up, not prose. `name` is the one
+// canonical field with no single UCP counterpart: it is composed from first_name + last_name, so it maps to
+// BOTH.
+const CANONICAL_TO_DESTINATION_FIELDS = Object.freeze({
+  ...Object.fromEntries(Object.entries(DESTINATION_TO_CANONICAL).map(([ucp, canonical]) => [canonical, [ucp]])),
+  name: Object.freeze(["first_name", "last_name"]),
+});
+
+// The backend's five required fields, split by the RULE THAT ACTUALLY APPLIES to each. Every one is required,
+// but `name` is satisfied by EITHER part — `mapFulfillment` composes it from whichever arrived, so a buyer
+// with one name is not an error. Derived from REQUIRED_ADDRESS_FIELDS so a field added to the shared rule
+// cannot be missed here.
+const REQUIRED_ADDRESS_ANY_OF = CANONICAL_TO_DESTINATION_FIELDS.name;
+const REQUIRED_ADDRESS_ALL_OF = Object.freeze(
+  REQUIRED_ADDRESS_FIELDS.filter((f) => f !== "name")
+    .flatMap((f) => CANONICAL_TO_DESTINATION_FIELDS[f] ?? [f]),
+);
+
+const DESTINATION_FIELDS = Object.freeze(["id", "first_name", "last_name", ...Object.keys(DESTINATION_TO_CANONICAL)]);
+
+const DESTINATION_SCHEMA = {
+  type: "array",
+  // SINGLE destination, declared in the schema and enforced by the mapper. Pivota's canonical quote carries
+  // exactly ONE `shipping_address`; splitting a cart across destinations is a fulfillment capability this
+  // lane does not have. Choosing one of several would ship goods to an address the buyer did not pick for
+  // those lines — a silent, physical wrong answer — so the bound is advertised instead of guessed. It is also
+  // what Pivota declares in its own profile (`allows_multi_destination: {shipping: false}`), so the door
+  // enforces exactly the bound it publishes.
+  minItems: 1,
+  maxItems: 1,
+  items: {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      id: {
+        type: "string",
+        description:
+          "Accepted and NOT read. With a single destination there is nothing to select between; Pivota refuses"
+          + " a multi-destination checkout rather than choosing among them.",
+      },
+      first_name: { type: "string", description: "Recipient's first name; joined with `last_name`." },
+      last_name: { type: "string", description: "Recipient's last name; joined with `first_name`." },
+      phone_number: { type: "string", description: "Recipient phone, carried with the address." },
+      street_address: { type: "string", description: "Street address (canonical `address_line1`)." },
+      extended_address: { type: "string", description: "Apartment/suite (canonical `address_line2`)." },
+      address_locality: { type: "string", description: "City (canonical `city`)." },
+      address_region: { type: "string", description: "State/region." },
+      postal_code: { type: "string", description: "Postal code." },
+      address_country: { type: "string", description: "Country (canonical `country`)." },
+    },
+  },
+  description:
+    "The destination to ship to — EXACTLY ONE. Required together: `first_name`/`last_name`, `street_address`,"
+    + " `address_locality`, `postal_code`, `address_country`; a destination missing any of them is refused"
+    + " here, naming the missing fields, rather than failing later at order creation.",
+};
+
+/** The methods array. `required` differs between the two live tools, so it is a parameter, not a constant. */
+function fulfillmentSchema({ update }) {
+  return {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      methods: {
+        type: "array",
+        minItems: 1,
+        // ONE method, for the same reason as one destination: Pivota's quote has a single destination and
+        // prices one shipment. This matches the `allows_method_combinations: [["shipping"]]` Pivota declares.
+        maxItems: 1,
+        items: {
+          type: "object",
+          additionalProperties: false,
+          // LIVE-VERIFIED, and the two tools genuinely DIFFER: create_checkout's method requires `type`,
+          // update_checkout's requires `line_item_ids` and additionally permits a method `id`. Publishing one
+          // shape for both would refuse a conforming caller on whichever tool it got wrong.
+          required: update ? ["line_item_ids"] : ["type"],
+          properties: {
+            ...(update
+              ? { id: { type: "string", description: "Accepted and NOT read — the merchant's own method id." } }
+              : {}),
+            type: {
+              type: "string",
+              // NOT constrained to an enum. The only evidence for the vocabulary is the live capability config
+              // (`allows_method_combinations: [["shipping"]]`); ucp.dev's own fulfillment schema was
+              // unreachable from this network when this was written, and inventing an enum from one merchant's
+              // config would refuse conforming callers over a token never verified. Ambiguity is refused
+              // structurally instead — more than one method, or more than one destination.
+              description: "Accepted and NOT read. Pivota ships the cart to the single destination below.",
+            },
+            line_item_ids: {
+              type: "array",
+              items: { type: "string" },
+              description:
+                "Accepted and NOT read. With one destination the whole cart ships to it; Pivota cannot"
+                + " fulfil a subset of lines separately.",
+            },
+            selected_destination_id: {
+              type: "string",
+              description: "Accepted and NOT read — there is exactly one destination to select.",
+            },
+            destinations: DESTINATION_SCHEMA,
+            groups: {
+              type: "array",
+              items: {
+                type: "object",
+                additionalProperties: false,
+                // LIVE: update_checkout's group requires `id`; create_checkout's declares no required member.
+                // The key is OMITTED rather than set to `[]`, which is not a valid JSON Schema `required`.
+                ...(update ? { required: ["id"] } : {}),
+                properties: {
+                  id: { type: "string" },
+                  selected_option_id: { type: "string" },
+                },
+              },
+              description:
+                "Accepted and NOT read. Pivota prices and selects shipping itself; the locked quote's"
+                + " shipping total is authoritative.",
+            },
+          },
+        },
+      },
+    },
+    description:
+      "Where to ship. Supply it here (or on `update_checkout`) — `complete_checkout` has no fulfillment member,"
+      + " so an address given only at completion cannot exist. The address is held on the LOCKED quote and is"
+      + " what the order is created with.",
+  };
+}
+
+/** The method keys the mapper accepts, kept in lockstep with the schema above. */
+function methodFields({ update }) {
+  return [
+    ...(update ? ["id"] : []),
+    "type", "line_item_ids", "selected_destination_id", "destinations", "groups",
+  ];
+}
+
+/**
+ * UCP `checkout.fulfillment` -> the canonical `shipping_address`, or `undefined` when no destination was given
+ * (absent is legal — a checkout may be opened without one and the address supplied by `update_checkout`).
+ *
+ * Nothing here is fabricated: every canonical field comes from a field the caller actually sent, and the
+ * COMPLETENESS RULE IS THE SHARED ONE (`pickCompleteAddress`) rather than a second copy — only the refusal's
+ * field NAMES are translated back into UCP's spelling.
+ */
+function mapFulfillment(checkout, { update }) {
+  const code = CHECKOUT_REFUSAL_CODE;
+  const fulfillment = own(checkout, "fulfillment");
+  if (fulfillment === undefined) return undefined;
+  if (!isPlainObject(fulfillment)) {
+    throw ucpRefusal(code, "ucp_fulfillment_invalid",
+      "`checkout.fulfillment` must be an object carrying `methods`.",
+      { rejected_field: "checkout.fulfillment" });
+  }
+  rejectUnknown(fulfillment, ["methods"], "checkout.fulfillment", code);
+
+  const methods = own(fulfillment, "methods");
+  if (methods === undefined) return undefined;
+  if (!Array.isArray(methods)) {
+    throw ucpRefusal(code, "ucp_fulfillment_methods_invalid",
+      "`checkout.fulfillment.methods` must be an array.",
+      { rejected_field: "checkout.fulfillment.methods" });
+  }
+  if (methods.length > 1) {
+    throw ucpRefusal(code, "ucp_fulfillment_multi_method_unsupported", [
+      "`checkout.fulfillment.methods` may name at most ONE method. Pivota prices a single shipment to a",
+      "single destination and cannot split a cart across fulfilment methods, so combining them is refused",
+      "rather than partially honoured.",
+    ].join(" "), { rejected_field: "checkout.fulfillment.methods", max_methods: 1 });
+  }
+  // EMPTY IS REFUSED, NOT READ AS "NONE". The schema declares `minItems: 1`, and a mapper that quietly
+  // treated `[]` as "no fulfillment supplied" would be laxer than the contract it publishes — the drift this
+  // module exists to end, on the field that decides whether an order can be created. The cost is not
+  // cosmetic: a caller whose destination list came out empty (not yet chosen, or an upstream mapping bug)
+  // would be ACCEPTED here, open an address-less checkout, authorize payment, and only then be refused 400
+  // INVALID_BUYER_CONTEXT by pivota-backend at order creation — the exact blocker `mapFulfillment` closes,
+  // reappearing after a valid grant has verified and naming canonical fields UCP has no word for. Refusing
+  // now names the caller's own field while nothing has been priced.
+  if (methods.length === 0) {
+    throw ucpRefusal(code, "ucp_fulfillment_methods_empty", [
+      "`checkout.fulfillment.methods` must name one method if `fulfillment` is present. Send the shipping",
+      "destination as `fulfillment.methods[0].destinations[0]`, or omit `checkout.fulfillment` entirely and",
+      "supply the address later via `update_checkout` — an empty list is neither, and a checkout with no",
+      "address cannot be completed into an order.",
+    ].join(" "), { rejected_field: "checkout.fulfillment.methods", min_methods: 1 });
+  }
+
+  const method = methods[0];
+  if (!isPlainObject(method)) {
+    throw ucpRefusal(code, "ucp_fulfillment_method_invalid",
+      "`checkout.fulfillment.methods[]` entries must be objects.",
+      { rejected_field: "checkout.fulfillment.methods[]" });
+  }
+  rejectUnknown(method, methodFields({ update }), "checkout.fulfillment.methods[]", code);
+  const groups = own(method, "groups");
+  if (Array.isArray(groups)) {
+    for (const group of groups) {
+      rejectUnknown(group, ["id", "selected_option_id"], "checkout.fulfillment.methods[].groups[]", code);
+    }
+  }
+
+  const destinations = own(method, "destinations");
+  if (destinations === undefined) return undefined;
+  if (!Array.isArray(destinations)) {
+    throw ucpRefusal(code, "ucp_fulfillment_destinations_invalid",
+      "`checkout.fulfillment.methods[].destinations` must be an array.",
+      { rejected_field: "checkout.fulfillment.methods[].destinations" });
+  }
+  if (destinations.length > 1) {
+    throw ucpRefusal(code, "ucp_fulfillment_multi_destination_unsupported", [
+      "`checkout.fulfillment.methods[].destinations` may name EXACTLY ONE destination. Pivota's checkout",
+      "carries a single shipping address, and picking one of several would ship to an address the buyer did",
+      "not choose for those lines — so this is refused rather than resolved by guessing. Open one checkout",
+      "per destination.",
+    ].join(" "), {
+      rejected_field: "checkout.fulfillment.methods[].destinations",
+      max_destinations: 1,
+      destination_count: destinations.length,
+    });
+  }
+  // Same rule as the empty `methods` above, and the more likely of the two to arrive from a real platform:
+  // `destinations: []` is the shape a caller produces when its own destination lookup returned nothing.
+  if (destinations.length === 0) {
+    throw ucpRefusal(code, "ucp_fulfillment_destinations_empty", [
+      "`checkout.fulfillment.methods[].destinations` must name exactly ONE destination when `fulfillment` is",
+      "present. Send the shipping address there, or omit `checkout.fulfillment` entirely and supply it later",
+      "via `update_checkout` — an empty list is neither, and a checkout with no address cannot be completed",
+      "into an order.",
+    ].join(" "), {
+      rejected_field: "checkout.fulfillment.methods[].destinations",
+      min_destinations: 1,
+      max_destinations: 1,
+    });
+  }
+
+  const destination = destinations[0];
+  if (!isPlainObject(destination)) {
+    throw ucpRefusal(code, "ucp_fulfillment_destination_invalid",
+      "`checkout.fulfillment.methods[].destinations[]` entries must be objects.",
+      { rejected_field: "checkout.fulfillment.methods[].destinations[]" });
+  }
+  rejectUnknown(destination, DESTINATION_FIELDS, "checkout.fulfillment.methods[].destinations[]", code);
+
+  // ABSENT AND UNUSABLE ARE NOT THE SAME MISTAKE, and telling them apart is the difference between a refusal
+  // the caller can act on and one that burns a retry. `nonEmpty` requires a non-blank STRING, so a field sent
+  // as a JSON number (`postal_code: 90210` — a routine serialization slip for numeric postcodes) or as `""`
+  // is skipped here and would otherwise be reported as MISSING, telling the caller to supply a field it
+  // demonstrably just sent. `unusable` records those separately so the refusal can name the real problem.
+  const address = {};
+  const unusable = [];
+  for (const [ucpField, canonicalField] of Object.entries(DESTINATION_TO_CANONICAL)) {
+    const value = own(destination, ucpField);
+    if (nonEmpty(value)) address[canonicalField] = value.trim();
+    else if (value !== undefined) unusable.push(ucpField);
+  }
+  // `name` is COMPOSED, never invented: whichever of the two parts arrived is used, and if neither did the
+  // completeness rule below refuses naming both. A missing surname does not block an order.
+  const nameParts = ["first_name", "last_name"].map((part) => [part, own(destination, part)]);
+  for (const [part, value] of nameParts) {
+    if (value !== undefined && !nonEmpty(value)) unusable.push(part);
+  }
+  const name = nameParts
+    .map(([, value]) => value)
+    .filter((value) => nonEmpty(value))
+    .map((value) => value.trim())
+    .join(" ");
+  if (name) address.name = name;
+
+  let complete;
+  try {
+    // THE SHARED RULE, imported. A second completeness check here is exactly the twin-drift class this repo
+    // keeps paying for — pivota-backend `_coerce_shipping_address` is the authority and buyerIntake is its one
+    // mirror. Only the NAMES in the refusal are UCP's.
+    complete = pickCompleteAddress(address, { updateHint: "the `update_checkout` tool" });
+  } catch (error) {
+    // ONLY the shared completeness refusal is translated. `intakeRefusal` nests its structured extras under
+    // `detail.acp_detail` (the door-mapper opt-in), NOT on `detail` itself — reading the wrong level yields
+    // `[]` and a refusal that names nothing. Anything else — a future validation with a different detail
+    // shape, or a plain programming error inside buyerIntake — is RETHROWN UNCHANGED rather than dressed up
+    // as "your destination is incomplete", which would both mislead the caller and bury the real fault.
+    const missingCanonical = error?.detail?.acp_detail?.missing_fields;
+    if (!Array.isArray(missingCanonical) || missingCanonical.length === 0) throw error;
+
+    // ONE canonical field can map to SEVERAL UCP fields that satisfy it EITHER-OR — `name` is composed, so
+    // `first_name` ALONE is enough and a mononymous buyer is not an error. Walking per canonical field keeps
+    // that: if any of its UCP parts was sent-but-unusable, THAT part is the fix and none of the others is
+    // reported missing; only when nothing arrived for the field at all are its parts listed as absent.
+    // (Flattening first and filtering afterwards said `last_name` was missing when un-blanking `first_name`
+    // would have satisfied it — the same misdirection this refusal exists to remove.)
+    const absent = [];
+    const sentButUnusable = [];
+    for (const canonicalField of missingCanonical) {
+      const fields = CANONICAL_TO_DESTINATION_FIELDS[canonicalField] ?? [canonicalField];
+      const sent = fields.filter((f) => unusable.includes(f));
+      if (sent.length) sentButUnusable.push(...sent);
+      else absent.push(...fields);
+    }
+
+    // The address itself is PII and is never echoed — only field names travel.
+    throw ucpRefusal(code, "ucp_fulfillment_destination_incomplete", [
+      "`checkout.fulfillment.methods[].destinations[]` is incomplete. A destination is OPTIONAL — a checkout",
+      "may be opened without one and the address supplied later via `update_checkout` — but one that IS given",
+      `must carry ${REQUIRED_ADDRESS_ALL_OF.map((f) => `\`${f}\``).join(", ")}, and at least one of`,
+      `${REQUIRED_ADDRESS_ANY_OF.map((f) => `\`${f}\``).join(" or ")},`,
+      "because order creation requires a complete address.",
+      ...(absent.length ? [`Missing: ${absent.map((f) => `\`${f}\``).join(", ")}.`] : []),
+      ...(sentButUnusable.length ? [
+        `Sent but unusable: ${sentButUnusable.map((f) => `\`${f}\``).join(", ")} —`,
+        "each must be a NON-EMPTY JSON STRING (a number such as `90210` is not, and was ignored).",
+      ] : []),
+    ].join(" "), {
+      missing_fields: absent,
+      // Present but not a usable string. Distinct from `missing_fields` on purpose: the two need different
+      // fixes, and conflating them is what made the refusal unactionable.
+      invalid_fields: sentButUnusable,
+      // ALL-OF and ANY-OF are separate keys because they are separate rules. Listing `first_name` and
+      // `last_name` side by side in one required list says BOTH are needed, and a caller validating against
+      // it would refuse a mononymous buyer's address or invent a surname — fabricating buyer data, which is
+      // exactly what this door refuses to do anywhere else.
+      required_fields: [...REQUIRED_ADDRESS_ALL_OF],
+      required_any_of: [[...REQUIRED_ADDRESS_ANY_OF]],
+    });
+  }
+  return complete;
+}
 
 const CART_ID_SCHEMA = {
   type: "string",
@@ -359,7 +729,8 @@ const ATTRIBUTION_SCHEMA = {
   description: "Accepted and NOT read. Pivota's canonical quote carries no attribution field.",
 };
 
-function checkoutSchema() {
+/** The `checkout` object. `update` selects the live per-tool differences inside `fulfillment.methods[]`. */
+function checkoutSchema({ update } = {}) {
   return {
     type: "object",
     required: ["line_items"],
@@ -372,10 +743,14 @@ function checkoutSchema() {
       cart_id: CART_ID_SCHEMA,
       buyer: BUYER_SCHEMA,
       context: CONTEXT_SCHEMA,
+      fulfillment: fulfillmentSchema({ update }),
       attribution: ATTRIBUTION_SCHEMA,
     },
   };
 }
+
+/** The `checkout` members the mapper accepts, kept in lockstep with `checkoutSchema` above. */
+const CHECKOUT_FIELDS = Object.freeze(["line_items", "cart_id", "buyer", "context", "fulfillment", "attribution"]);
 
 // Fields this adapter deliberately ACCEPTS and does not carry into the canonical params. Exported so the
 // anti-drift test can assert that every advertised field is either mapped or listed here — i.e. that no field
@@ -387,15 +762,32 @@ function checkoutSchema() {
 // objecting — on the one lane whose live blocker is a missing address. `.*` denotes the members of a
 // free-form (additionalProperties:true) object, and `[]` an array element.
 export const UCP_ACCEPTED_BUT_UNMAPPED = Object.freeze({
+  // The fulfillment entries are the shape of a lane that ships ONE cart to ONE destination: the routing
+  // members (`type`, `line_item_ids`, `selected_destination_id`, `groups`) all describe choices Pivota does
+  // not have to make, because the door refuses more than one method and more than one destination outright.
+  // Everything inside `destinations[]` EXCEPT its `id` is read — that is the whole point of this mapping.
   create_checkout_session: Object.freeze([
     "checkout.cart_id", "checkout.attribution.*",
     "checkout.context.address_country", "checkout.context.address_region", "checkout.context.postal_code",
     "checkout.buyer.phone_number", "checkout.line_items[].id",
+    "checkout.fulfillment.methods[].type",
+    "checkout.fulfillment.methods[].line_item_ids[]",
+    "checkout.fulfillment.methods[].selected_destination_id",
+    "checkout.fulfillment.methods[].groups[].id",
+    "checkout.fulfillment.methods[].groups[].selected_option_id",
+    "checkout.fulfillment.methods[].destinations[].id",
   ]),
   update_checkout_session: Object.freeze([
     "checkout.cart_id", "checkout.attribution.*",
     "checkout.context.address_country", "checkout.context.address_region", "checkout.context.postal_code",
     "checkout.buyer.phone_number", "checkout.line_items[].id",
+    "checkout.fulfillment.methods[].id",
+    "checkout.fulfillment.methods[].type",
+    "checkout.fulfillment.methods[].line_item_ids[]",
+    "checkout.fulfillment.methods[].selected_destination_id",
+    "checkout.fulfillment.methods[].groups[].id",
+    "checkout.fulfillment.methods[].groups[].selected_option_id",
+    "checkout.fulfillment.methods[].destinations[].id",
   ]),
   get_checkout_session: Object.freeze([]),
   complete_checkout_session: Object.freeze(["checkout.attribution.*"]),
@@ -497,7 +889,7 @@ function requireCheckoutObject(args, tool) {
       "against the locked total this call returns.",
     ].join(" "), { rejected_field: "checkout.payment", authorization_tool: "complete_checkout" });
   }
-  rejectUnknown(checkout, ["line_items", "cart_id", "buyer", "context", "attribution"], "checkout", code);
+  rejectUnknown(checkout, CHECKOUT_FIELDS, "checkout", code);
   return checkout;
 }
 
@@ -614,8 +1006,12 @@ function mapLineItems(checkout) {
  * No `merchant_id`: the UCP checkout shape carries none, so this lands on the unscoped/canonical lane exactly
  * as an ACP-feed-discovered cart does. Nothing is invented to fill it.
  */
-function mapQuote(checkout) {
+function mapQuote(checkout, { update } = {}) {
   const quote = { items: mapLineItems(checkout) };
+  // The destination, when one was supplied. It rides on the QUOTE — which is what puts it on the locked
+  // snapshot's buyer_context, where kernel.createOrder reads it at completion (see the fulfillment note).
+  const shipping_address = mapFulfillment(checkout, { update });
+  if (shipping_address) quote.shipping_address = shipping_address;
   const buyer = own(checkout, "buyer");
   if (isPlainObject(buyer)) {
     // No rejectUnknown here: the live schema declares `buyer` with additionalProperties:true, so refusing an
@@ -640,16 +1036,21 @@ const CREATE_CHECKOUT_DESCRIPTION = [
   "Pivota product id — the product's default variant is resolved server-side and the call is REFUSED rather",
   "than guessed when that is ambiguous. `meta[\"idempotency-key\"]` is required. A buyer email is required",
   "unless the signed-in buyer's credential attests one, in which case the attested address wins.",
-  "`checkout.context` destination hints are accepted but not forwarded into pricing, and no shipping address",
-  "is collected here. This call NEVER charges: `checkout.payment` is refused, and payment authorization is",
+  "`checkout.context` destination hints are accepted but not forwarded into pricing. Supply the shipping",
+  "destination as `checkout.fulfillment.methods[0].destinations[0]` — EXACTLY ONE method and ONE destination,",
+  "carrying `first_name`/`last_name`, `street_address`, `address_locality`, `postal_code` and",
+  "`address_country`; it is optional here and may be supplied later via `update_checkout`, but an order cannot",
+  "be placed without it and `complete_checkout` has no field to carry it.",
+  "This call NEVER charges: `checkout.payment` is refused, and payment authorization is",
   "presented inline on `complete_checkout`.",
 ].join(" ");
 
 const UPDATE_CHECKOUT_DESCRIPTION = [
   "Re-price an existing checkout. Send `{ meta, id, checkout: { line_items } }` — the checkout id is a",
   "TOP-LEVEL `id`, not nested inside `checkout`. Send the COMPLETE checkout: an update RE-MINTS the locked",
-  "quote rather than merging into it, so anything omitted is dropped, and the same line-item and buyer rules as",
-  "create apply. `meta[\"idempotency-key\"]` is required. Never charges.",
+  "quote rather than merging into it, so anything omitted is dropped — INCLUDING the shipping destination, so",
+  "re-send `checkout.fulfillment` if one was already supplied. The same line-item, buyer and fulfillment rules",
+  "as create apply. `meta[\"idempotency-key\"]` is required. Never charges.",
 ].join(" ");
 
 const GET_CHECKOUT_DESCRIPTION = [
@@ -756,7 +1157,7 @@ const SPECS = Object.freeze({
       type: "object",
       required: ["meta", "checkout"],
       additionalProperties: false,
-      properties: { meta: metaSchema({ idempotency: true }), checkout: checkoutSchema() },
+      properties: { meta: metaSchema({ idempotency: true }), checkout: checkoutSchema({ update: false }) },
     },
     map(args) {
       const code = CHECKOUT_REFUSAL_CODE;
@@ -765,7 +1166,7 @@ const SPECS = Object.freeze({
       const meta = requireMeta(args, code);
       const idempotency_key = requireIdempotencyKey(meta, code);
       const checkout = requireCheckoutObject(args, "create_checkout");
-      return { idempotency_key, quote: mapQuote(checkout) };
+      return { idempotency_key, quote: mapQuote(checkout, { update: false }) };
     },
   }),
 
@@ -782,7 +1183,7 @@ const SPECS = Object.freeze({
           type: "string",
           description: "The checkout id to re-price. TOP-LEVEL — not a member of `checkout`.",
         },
-        checkout: checkoutSchema(),
+        checkout: checkoutSchema({ update: true }),
       },
     },
     map(args) {
@@ -795,7 +1196,7 @@ const SPECS = Object.freeze({
       // consulted — reading it would let a caller re-price a session it never named at the top level.
       const session_id = requireTopLevelId(args, code, "update_checkout");
       const checkout = requireCheckoutObject(args, "update_checkout");
-      return { idempotency_key, session_id, quote: mapQuote(checkout) };
+      return { idempotency_key, session_id, quote: mapQuote(checkout, { update: true }) };
     },
   }),
 

@@ -20,6 +20,23 @@ export const CANONICAL_CAPABILITIES = Object.freeze({
   order: { ucp: 'dev.ucp.shopping.order', title: 'Order lifecycle + after-sales' },
   identity: { ucp: 'dev.ucp.common.identity_linking', title: 'OAuth identity linking' },
   payment: { ucp: 'dev.ucp.shopping.ap2_mandate', title: 'Payment authorization (delegated token / AP2 mandate)' },
+  // A MODIFIER capability: it carries no operation of its own. UCP models fulfillment as something that
+  // EXTENDS checkout — it adds `checkout.fulfillment` to that capability's input shape and declares, in
+  // machine-readable `config`, which combinations the seller can honour. Pivota's UCP door accepts exactly
+  // ONE method and ONE destination (mcp-server/src/ucpArgumentAdapter.js `mapFulfillment`), because the
+  // canonical quote holds a single `shipping_address` and picking among several would ship to an address the
+  // buyer never chose for those lines. Declaring the bound is how a platform learns it from DISCOVERY instead
+  // of from a refusal mid-checkout; the door and this config are asserted equal by
+  // mcp-server/test/ucpFulfillmentAddressContract.test.js, so the advertisement cannot drift from the rule.
+  fulfillment: {
+    ucp: 'dev.ucp.shopping.fulfillment',
+    title: 'Shipping destination on checkout',
+    extends: ['dev.ucp.shopping.checkout'],
+    config: Object.freeze({
+      allows_multi_destination: Object.freeze({ shipping: false }),
+      allows_method_combinations: Object.freeze([Object.freeze(['shipping'])]),
+    }),
+  },
 });
 
 /**
