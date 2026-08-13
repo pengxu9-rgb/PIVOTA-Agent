@@ -218,6 +218,77 @@ describe('H4 profile self-reference — no hardcoded host', () => {
 });
 
 /*
+ * THE CATALOG TOOLS' WIRE SHAPES.
+ *
+ * `catalogSearch` sent a FLAT `{ query, id, sku }` to `get_product` and conflated three distinct live tools.
+ * Against the LIVE schemas (cosrx tools/list, 2026-08-13):
+ *   - `get_product`    required ["meta","catalog"], `catalog.required = ["id"]`  — the id is NESTED
+ *   - `search_catalog` required ["meta","catalog"], catalog carries `query`      — a DIFFERENT tool
+ *   - `lookup_catalog` required ["meta","catalog"], `catalog.required = ["ids"]` — batch by id
+ * and `sku` is a member of NONE of them. The old call could not have been answered by any of the three.
+ */
+describe('the catalog tools send the live nested-catalog shape', () => {
+  const capture = (seen) => async (url, init) => { seen.push({ url, init }); return res(CART_OK, 200); };
+  const argsOf = (seen) => JSON.parse(seen[0].init.body).params.arguments;
+  const nameOf = (seen) => JSON.parse(seen[0].init.body).params.name;
+  const ENDPOINT = 'https://brand.example.com/api/ucp/mcp';
+  const newClient = (fetchImpl) => createUcpBuyerAgentClient({
+    profileUrl: 'https://ucp.pivota.cc/.well-known/ucp-agent', fetchImpl,
+  });
+
+  test('getProduct nests the id under `catalog` and calls get_product', async () => {
+    const seen = [];
+    await newClient(capture(seen)).getProduct(ENDPOINT, { productId: 'gid://shopify/Product/42' });
+
+    expect(nameOf(seen)).toBe('get_product');
+    // The whole catalog object, exactly. A flat `id` beside it is the shape the merchant rejects.
+    expect(argsOf(seen).catalog).toEqual({ id: 'gid://shopify/Product/42' });
+    expect(argsOf(seen).id).toBeUndefined();
+    expect(argsOf(seen).sku).toBeUndefined();
+    expect(argsOf(seen).query).toBeUndefined();
+  });
+
+  test('a free-text query goes to search_catalog — NOT to get_product', async () => {
+    const seen = [];
+    await newClient(capture(seen)).searchCatalog(ENDPOINT, { query: 'cleanser' });
+
+    // The conflation this fixes: `query` is not a member of get_product at all, so the old call was
+    // unanswerable by the very tool it was sent to.
+    expect(nameOf(seen)).toBe('search_catalog');
+    expect(argsOf(seen).catalog).toEqual({ query: 'cleanser' });
+  });
+
+  test('search pagination rides inside `catalog`, and a query-less search is still legal', async () => {
+    const seen = [];
+    await newClient(capture(seen)).searchCatalog(ENDPOINT, { pagination: { limit: 10 } });
+    // `catalog` declares no required member on the live search schema.
+    expect(argsOf(seen).catalog).toEqual({ pagination: { limit: 10 } });
+  });
+
+  test('getProduct refuses a missing id rather than sending an empty catalog', async () => {
+    const seen = [];
+    await expect(newClient(capture(seen)).getProduct(ENDPOINT, {})).rejects.toThrow(/productId/);
+    expect(seen).toHaveLength(0);
+  });
+
+  test('the removed `catalogSearch` is gone, not silently kept alongside the fix', () => {
+    // Leaving the old name exported would let a caller keep sending the unanswerable shape while the new
+    // methods sit unused — the drift this fix exists to end.
+    expect(newClient(capture([])).catalogSearch).toBeUndefined();
+  });
+
+  test('both catalog reads are retry-eligible, like every other read', () => {
+    // Adding search_catalog as a tool without adding it to IDEMPOTENT_TOOLS would silently drop its
+    // transient-error retry. Driven, not asserted on the constant: a scripted 500-then-ok must be retried.
+    const fn = scriptedFetch(['500', 'ok'], CART_OK);
+    return newClient(fn).searchCatalog(ENDPOINT, { query: 'x' }).then((out) => {
+      expect(fn.calls).toBe(2);
+      expect(out.ok).toBe(true);
+    });
+  });
+});
+
+/*
  * THE POINTER THE MERCHANT ACTUALLY FETCHES.
  *
  * `meta["ucp-agent"].profile` is not decoration: the merchant FETCHES it during the handshake and refuses the
