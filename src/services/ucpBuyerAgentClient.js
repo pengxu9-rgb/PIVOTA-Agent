@@ -121,7 +121,9 @@ function normalizeBaseUrl(u, field) {
  * Create a UCP buyer-agent client.
  * @param {{
  *   credential?: string,        // JWT/token for the TOKEN tier. Defaults to env UCP_AGENT_CREDENTIAL. Never logged.
- *   profileUrl?: string,        // agent profile HTTPS URL. Defaults to env UCP_AGENT_PROFILE_URL.
+ *   profileUrl?: string,        // agent profile HTTPS URL the MERCHANT will FETCH. Defaults to env
+ *                               // UCP_AGENT_PROFILE_URL, else `${UCP_BASE_URL}/.well-known/ucp-agent`.
+ *                               // Never defaulted to an invented host — see the note at its resolution.
  *   ucpVersion?: string,
  *   fetchImpl?: Function,       // injectable fetch (default: global fetch). Tests pass a fixture fetch.
  *   userAgent?: string,
@@ -149,10 +151,27 @@ function createUcpBuyerAgentClient(options = {}) {
   const tokenRefreshSkewMs = Number.isFinite(options.tokenRefreshSkewMs)
     ? Number(options.tokenRefreshSkewMs)
     : 5 * 60 * 1000;
+  // THE AGENT PROFILE POINTER IS FETCHED BY THE MERCHANT, so it must be a URL that actually serves this
+  // agent's profile. It is resolved from CONFIGURATION only and never invented.
+  //
+  // What was wrong: the last resort here was the literal `https://agent.pivota.cc/.well-known/ucp-agent`.
+  // agent.pivota.cc is the FRONTEND web app (see DEVELOPMENT_COMPLETE_REPORT.md / PROJECT_COMPLETION_SUMMARY.md),
+  // not this gateway — it answers that path with the Next.js 404 page. So in any environment where
+  // UCP_AGENT_PROFILE_URL was unset, every outbound UCP call handed the merchant a pointer that could not
+  // resolve, and the merchant refused the whole call before looking at its arguments. Live-verified
+  // 2026-08-13: a UCP endpoint answers `422 / -32001 { code: 'profile_unreachable' }` and nothing else runs.
+  // Production happens to set the env var, which is exactly why this stayed invisible.
+  //
+  // The remaining fallback derives from the gateway's OWN configured origin — the same env the seller
+  // profile is built from (src/server.js getCommerceUcpRouteHandlers) — so it can only point at a host this
+  // service actually serves `/.well-known/ucp-agent` on. If nothing is configured the pointer stays ABSENT
+  // rather than wrong: a merchant then names the missing field, which is a far more actionable failure than
+  // chasing a 404 on a host that was never this service.
   const profileUrl = firstNonEmpty(
     options.profileUrl,
     process.env.UCP_AGENT_PROFILE_URL,
-    'https://agent.pivota.cc/.well-known/ucp-agent',
+    agentProfileUrlFromOrigin(process.env.UCP_BASE_URL),
+    agentProfileUrlFromOrigin(process.env.AGENT_CHECKOUT_UCP_BASE_URL),
   );
   const ucpVersion = firstNonEmpty(options.ucpVersion, process.env.UCP_AGENT_VERSION, DEFAULT_UCP_VERSION);
   const fetchImpl = typeof options.fetchImpl === 'function'
@@ -292,11 +311,16 @@ function createUcpBuyerAgentClient(options = {}) {
 
   // The UCP-agent profile pointer. Carried in JSON-RPC meta (MCP requirement) and, when signing, mirrored as a
   // structured-field HTTP header `ucp-agent: profile="<url>"` so the RFC 9421 signature can cover it.
+  //
+  // With no pointer configured the key is OMITTED rather than emitted as the string "undefined", which is
+  // what naive interpolation produced and what would have been signed into the covered header. A merchant
+  // then rejects a MISSING required field — nameable and fixable — instead of chasing a fetch of a URL
+  // spelled `profile="undefined"`.
   function ucpAgentMeta() {
-    return { profile: profileUrl };
+    return profileUrl ? { profile: profileUrl } : {};
   }
   function ucpAgentHeaderValue() {
-    return `profile="${profileUrl}"`;
+    return profileUrl ? `profile="${profileUrl}"` : undefined;
   }
 
   function requestMeta(idempotencyKey) {
@@ -453,6 +477,16 @@ function createUcpBuyerAgentClient(options = {}) {
     const bearer = tier === TRUST_TIER.TOKEN ? await resolveBearerToken() : null;
     const headers = authHeaders(bearer);
     if (tier === TRUST_TIER.SIGNED) {
+      // At SIGNED tier the `ucp-agent` header is a COVERED signature component (RFC 9421), so a missing
+      // profile cannot be shrugged off the way it can at anonymous tier: it would sign a header whose value
+      // is absent, producing a signature the merchant computes differently and rejects as tampering. Refuse
+      // by name instead — the cause is a missing config value, and that is what the message says.
+      if (!ucpAgentHeaderValue()) {
+        throw new Error(
+          'ucpBuyerAgentClient: signing requires an agent profile URL — set UCP_AGENT_PROFILE_URL (or '
+          + 'UCP_BASE_URL) to the https origin serving /.well-known/ucp-agent.',
+        );
+      }
       // Mirror the meta pointers as covered HTTP headers, then sign. The private key never leaves this scope.
       headers['ucp-agent'] = ucpAgentHeaderValue();
       headers['idempotency-key'] = idempotencyKey;
@@ -671,6 +705,25 @@ function createUcpBuyerAgentClient(options = {}) {
     refuseCompleteCheckout,
     extractHandoffUrl,
   };
+}
+
+/**
+ * `https://origin` -> `https://origin/.well-known/ucp-agent`, or undefined if the origin is unusable.
+ *
+ * DERIVED, NOT INVENTED: the only input is an origin this service was already configured to serve from, so
+ * the result can only ever name a host that answers this route. A non-https or unparseable origin yields
+ * undefined rather than a guess — sending a pointer the merchant cannot fetch is what this exists to stop.
+ */
+function agentProfileUrlFromOrigin(baseUrl) {
+  if (typeof baseUrl !== 'string' || !baseUrl.trim()) return undefined;
+  let url;
+  try {
+    url = new URL(baseUrl.trim());
+  } catch {
+    return undefined;
+  }
+  if (url.protocol !== 'https:') return undefined; // the profile is fetched cross-origin; http is not servable
+  return `${url.origin}/.well-known/ucp-agent`;
 }
 
 function isPlainObjectLocal(v) {

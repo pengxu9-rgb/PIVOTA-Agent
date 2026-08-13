@@ -31,6 +31,17 @@ function res(obj, status = 200) {
 }
 function netError() { return new Error('ECONNRESET simulated'); }
 
+// P-256 test key (same fixture as tests/ucp_buyer_agent_client.test.js) — a client holding one signs, which
+// is what makes the covered-header assertions below reachable.
+const SIGNING_PEM = [
+  '-----BEGIN PRIVATE KEY-----',
+  'MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQg2fN8OxOlC9VwiMwu',
+  'Q0tpTsXRIH3nnlwnWwQwLnsAQoKhRANCAASp8aRruLtbq+P9X5jOjbpOOrgSX+Mf',
+  'rx2Rl5cYEhcK8JJbntMGQeGDoTXqmaJskgNtd81kC+TOUjRLfzvvVRU4',
+  '-----END PRIVATE KEY-----',
+  '',
+].join('\n');
+
 // A fetch whose behavior is a scripted queue of ('throw'|'500'|'ok') outcomes; records call count.
 function scriptedFetch(script, okBody) {
   let i = 0;
@@ -203,5 +214,132 @@ describe('H4 profile self-reference — no hardcoded host', () => {
     const url = 'https://ucp.pivota.cc/.well-known/ucp-agent';
     const client = createUcpBuyerAgentClient({ profileUrl: url });
     expect(client.describeTier().profile_url).toBe(url);
+  });
+});
+
+/*
+ * THE POINTER THE MERCHANT ACTUALLY FETCHES.
+ *
+ * `meta["ucp-agent"].profile` is not decoration: the merchant FETCHES it during the handshake and refuses the
+ * whole call when it cannot resolve — live-verified 2026-08-13, where a UCP endpoint answered
+ * `422 / -32001 { code: 'profile_unreachable' }` and never looked at the arguments at all.
+ *
+ * The bug these lock: the last-resort default was the literal `https://agent.pivota.cc/.well-known/ucp-agent`,
+ * and agent.pivota.cc is the FRONTEND web app (see PROJECT_COMPLETION_SUMMARY.md), not this gateway — it
+ * answers that path with the Next.js 404 page. So every environment without UCP_AGENT_PROFILE_URL set failed
+ * EVERY outbound UCP call. Production sets the var, which is exactly why it stayed invisible. The test above
+ * already forbade that host in the served profile BODY; nothing forbade it in the pointer we send.
+ */
+describe('the agent profile pointer is configured, never invented', () => {
+  const ENV_KEYS = ['UCP_AGENT_PROFILE_URL', 'UCP_BASE_URL', 'AGENT_CHECKOUT_UCP_BASE_URL'];
+  let saved;
+  beforeEach(() => {
+    saved = new Map(ENV_KEYS.map((k) => [k, process.env[k]]));
+    for (const k of ENV_KEYS) delete process.env[k];
+  });
+  afterEach(() => {
+    for (const [k, v] of saved) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+  });
+
+  const captureFetch = (seen) => async (url, init) => { seen.push({ url, init }); return res(CART_OK, 200); };
+  const buildCart = (client) => client.createCart('https://brand.example.com/api/ucp/mcp', {
+    lineItems: [{ item: { id: 'gid://shopify/ProductVariant/1' }, quantity: 1 }],
+  });
+
+  test('with NOTHING configured it invents no host — least of all the frontend', () => {
+    // Absent, not guessed: a merchant then names the missing field, instead of reporting an unreachable URL
+    // for a host that was never this service.
+    expect(createUcpBuyerAgentClient({}).describeTier().profile_url).toBeFalsy();
+  });
+
+  test('the gateway origin DERIVES the pointer, so it can only name a host we serve', () => {
+    process.env.UCP_BASE_URL = 'https://ucp.pivota.cc';
+    expect(createUcpBuyerAgentClient({}).describeTier().profile_url)
+      .toBe('https://ucp.pivota.cc/.well-known/ucp-agent');
+    // A trailing slash or a path on the origin must not produce a doubled or nested path.
+    process.env.UCP_BASE_URL = 'https://ucp.pivota.cc/';
+    expect(createUcpBuyerAgentClient({}).describeTier().profile_url)
+      .toBe('https://ucp.pivota.cc/.well-known/ucp-agent');
+    process.env.UCP_BASE_URL = 'https://ucp.pivota.cc/some/base';
+    expect(createUcpBuyerAgentClient({}).describeTier().profile_url)
+      .toBe('https://ucp.pivota.cc/.well-known/ucp-agent');
+    // The seller door's alternate spelling works too, so one configured gateway origin is enough.
+    delete process.env.UCP_BASE_URL;
+    process.env.AGENT_CHECKOUT_UCP_BASE_URL = 'https://alt.pivota.cc';
+    expect(createUcpBuyerAgentClient({}).describeTier().profile_url)
+      .toBe('https://alt.pivota.cc/.well-known/ucp-agent');
+  });
+
+  test('an explicit UCP_AGENT_PROFILE_URL wins over the derived one, and an option wins over both', () => {
+    process.env.UCP_BASE_URL = 'https://ucp.pivota.cc';
+    process.env.UCP_AGENT_PROFILE_URL = 'https://explicit.example/.well-known/ucp-agent';
+    expect(createUcpBuyerAgentClient({}).describeTier().profile_url)
+      .toBe('https://explicit.example/.well-known/ucp-agent');
+    expect(createUcpBuyerAgentClient({ profileUrl: 'https://opt.example/p' }).describeTier().profile_url)
+      .toBe('https://opt.example/p');
+  });
+
+  test('an unusable origin yields NO pointer rather than a guess', () => {
+    // http is not servable cross-origin for this fetch, and junk is not a host. Both must stay absent —
+    // deriving something "close enough" is how a dead pointer gets shipped in the first place.
+    for (const bad of ['http://insecure.example', 'not a url', '   ', 'ftp://x.example']) {
+      process.env.UCP_BASE_URL = bad;
+      expect(createUcpBuyerAgentClient({}).describeTier().profile_url).toBeFalsy();
+    }
+  });
+
+  test('the wire carries the real pointer — and never the string "undefined"', async () => {
+    process.env.UCP_BASE_URL = 'https://ucp.pivota.cc';
+    const seen = [];
+    await buildCart(createUcpBuyerAgentClient({ fetchImpl: captureFetch(seen) }));
+
+    const body = JSON.parse(seen[0].init.body);
+    expect(body.params.arguments.meta['ucp-agent'].profile)
+      .toBe('https://ucp.pivota.cc/.well-known/ucp-agent');
+    expect(seen[0].init.body).not.toContain('agent.pivota.cc');
+  });
+
+  test('SIGNED tier REFUSES to sign without a profile rather than covering an absent header', async () => {
+    // At SIGNED tier `ucp-agent` is a COVERED RFC 9421 component. Signing it while the value is absent
+    // produces a signature the merchant recomputes differently and rejects as tampering — an authentication
+    // failure that reads like a key problem and is actually a missing config value. Refuse, and say which.
+    const seen = [];
+    const client = createUcpBuyerAgentClient({
+      signingPrivateKey: SIGNING_PEM,
+      signingKeyId: 'pivota-ucp-test',
+      fetchImpl: captureFetch(seen),
+    });
+    expect(client.describeTier().tier).toBe(TRUST_TIER.SIGNED);
+    await expect(buildCart(client)).rejects.toThrow(/UCP_AGENT_PROFILE_URL|UCP_BASE_URL/);
+    // and nothing was put on the wire under a signature it could not honestly produce
+    expect(seen).toHaveLength(0);
+  });
+
+  test('SIGNED tier proceeds once an origin IS configured', async () => {
+    process.env.UCP_BASE_URL = 'https://ucp.pivota.cc';
+    const seen = [];
+    const client = createUcpBuyerAgentClient({
+      signingPrivateKey: SIGNING_PEM,
+      signingKeyId: 'pivota-ucp-test',
+      fetchImpl: captureFetch(seen),
+    });
+    await buildCart(client);
+    expect(seen).toHaveLength(1);
+    // the covered header carries the derived pointer verbatim
+    expect(seen[0].init.headers['ucp-agent']).toBe('profile="https://ucp.pivota.cc/.well-known/ucp-agent"');
+    expect(seen[0].init.headers['ucp-agent']).not.toContain('undefined');
+  });
+
+  test('with no pointer configured the key is OMITTED, not shipped as the string "undefined"', async () => {
+    const seen = [];
+    await buildCart(createUcpBuyerAgentClient({ fetchImpl: captureFetch(seen) }));
+    const body = JSON.parse(seen[0].init.body);
+    // Naive interpolation would have sent `profile: "undefined"` — a string a merchant dutifully tries to
+    // fetch, turning a config gap into a mystery 404 on someone else's host.
+    expect(body.params.arguments.meta['ucp-agent'].profile).toBeUndefined();
+    expect(seen[0].init.body).not.toContain('undefined');
   });
 });
