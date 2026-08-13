@@ -32,14 +32,27 @@
 //   - meta            : required at params.arguments.meta on both tools/list and tools/call; it carries
 //                       `ucp-agent.profile` and, on state-changing calls, `idempotency-key`.
 //
-// CLIENT-DERIVED, NOT LIVE-VERIFIED: `get_product` takes flat `{ query, id, sku }` (buyer client
-// `catalogSearch`), which that client documents as never having answered on a per-merchant endpoint ("Tool not
-// found" — product discovery is the global catalog). `get_checkout` and `complete_checkout` have NO captured
-// shape at all: the buyer client hard-refuses complete_checkout and never calls get_checkout. Their mappings
-// below are extrapolated from update_checkout's top-level `id` and from the fact that `buildCheckoutArgs`
-// DELETES a `payment` key (which is why we believe the spec spells the payment envelope `payment`). Those two
-// are flagged in the PR as the weakest-evidenced mappings and must be re-verified against a live platform
-// before the door is mounted.
+// ALSO LIVE-VERIFIED (same merchant, `tools/list`, 2026-08-13) — this pass exists because the two shapes
+// below had NEVER been fetched, and one of them was wrong:
+//   - get_checkout      : required ["meta","id"]. The extrapolation was correct.
+//   - complete_checkout : required ["meta","id","checkout"], with `checkout.required = ["payment"]`. The
+//                         extrapolation put `payment` at the TOP LEVEL and was WRONG. Published that way,
+//                         this door would have refused every conforming platform ON THE CHARGE — the exact
+//                         "advertised but not executable" defect the module exists to end, on the one
+//                         operation where it costs a sale. An unverified shape is a guess; a guess on the
+//                         money path is not a small one.
+//   - the live schemas also permit `checkout.buyer.phone_number` and an optional flat `id` on a line item.
+//     Both are now accepted-and-unread: a door STRICTER than the spec turns conforming callers away, which
+//     fails in the same direction as advertising the wrong shape.
+//   - `checkout.payment` is additionally permitted on create/update by the live schema. Pivota REFUSES it
+//     there anyway — a create/update never authorizes a charge here, and silently dropping an instrument the
+//     caller believes authorized one is worse than an actionable refusal. That is a DELIBERATE narrowing,
+//     recorded rather than accidental, and the only one in this file.
+//
+// STILL NOT LIVE-VERIFIED: `get_product` takes flat `{ query, id, sku }` (buyer client `catalogSearch`). A
+// per-merchant UCP endpoint does not expose it at all — the 2026-08-13 `tools/list` returned only cart and
+// checkout tools, confirming that client's note that product discovery is the GLOBAL catalog lane. So this
+// one mapping remains client-derived, and is the only shape here still awaiting a live source.
 //
 // ---- WHAT THE CANONICAL SIDE CANNOT ACCEPT, AND WHY IT IS NOT PAPERED OVER -------------------------------
 //
@@ -168,6 +181,14 @@ const LINE_ITEMS_SCHEMA = {
         properties: { id: { type: "string", description: LINE_ITEM_ID_DESCRIPTION } },
       },
       quantity: { type: "integer", minimum: 1 },
+      // LIVE-VERIFIED (cosrx tools/list, 2026-08-13): the line may ALSO carry an optional flat `id` beside
+      // `item`. It is accepted and NOT read — `item.id` is the required identity and the only one this door
+      // prices from. Declaring it matters: without it a conforming platform that sends the optional field is
+      // refused by the strict unknown-field guard for a shape the spec allows.
+      id: {
+        type: "string",
+        description: "Optional line id. Accepted and NOT read — `item.id` is the purchasable identity.",
+      },
     },
   },
   description: "Required. The lines to price; the id is NESTED under `item`, per the UCP wire shape.",
@@ -175,7 +196,10 @@ const LINE_ITEMS_SCHEMA = {
 
 const BUYER_SCHEMA = {
   type: "object",
-  additionalProperties: false,
+  // LIVE-VERIFIED: the merchant declares `buyer` with additionalProperties:true and the members
+  // ["email","phone_number"]. Mirrored rather than narrowed — a stricter door than the spec refuses
+  // conforming callers, which is the same "not executable" failure as advertising the wrong shape.
+  additionalProperties: true,
   properties: {
     email: {
       type: "string",
@@ -184,7 +208,33 @@ const BUYER_SCHEMA = {
         + " an attested email always wins and this field is then ignored. Never assert an address on the"
         + " buyer's behalf.",
     },
+    phone_number: {
+      type: "string",
+      description: "Accepted and NOT read: Pivota's canonical quote carries no buyer phone.",
+    },
   },
+};
+
+// The payment envelope, LIVE-VERIFIED at `checkout.payment` on complete_checkout (cosrx, 2026-08-13). The
+// merchant declares additionalProperties:true around an `instruments` array; this door does NOT re-model
+// those instruments, because `payment_authorization` is OPAQUE to the kernel by contract and is verified by
+// verifyPaymentAuthorization downstream. Re-modelling it here would create a second, weaker validator for the
+// one field whose validation actually gates a charge.
+const PAYMENT_SCHEMA = {
+  type: "object",
+  additionalProperties: true,
+  properties: {
+    instruments: {
+      type: "array",
+      description:
+        "Payment instruments authorizing this checkout (each carries id, handler_id and type). Verified"
+        + " server-side against the session's locked total; never trusted blindly.",
+      items: { type: "object", additionalProperties: true },
+    },
+  },
+  description:
+    "The payment authorization for this checkout. Opaque at this door and VERIFIED server-side against the"
+    + " locked total.",
 };
 
 const CONTEXT_SCHEMA = {
@@ -237,10 +287,16 @@ function checkoutSchema() {
 // anti-drift test can assert that every advertised field is either mapped or listed here — i.e. that no field
 // is quietly ignored without a decision having been recorded.
 export const UCP_ACCEPTED_BUT_UNMAPPED = Object.freeze({
-  create_checkout_session: Object.freeze(["checkout.cart_id", "checkout.context", "checkout.attribution"]),
-  update_checkout_session: Object.freeze(["checkout.cart_id", "checkout.context", "checkout.attribution"]),
+  create_checkout_session: Object.freeze([
+    "checkout.cart_id", "checkout.context", "checkout.attribution",
+    "checkout.buyer.phone_number", "checkout.line_items[].id",
+  ]),
+  update_checkout_session: Object.freeze([
+    "checkout.cart_id", "checkout.context", "checkout.attribution",
+    "checkout.buyer.phone_number", "checkout.line_items[].id",
+  ]),
   get_checkout_session: Object.freeze([]),
-  complete_checkout_session: Object.freeze([]),
+  complete_checkout_session: Object.freeze(["checkout.attribution"]),
   get_product: Object.freeze([]),
 });
 
@@ -358,7 +414,8 @@ function mapLineItems(checkout) {
     ].join(" "), { required_fields: ["checkout.line_items"] });
   }
   return lineItems.map((line) => {
-    rejectUnknown(line, ["item", "quantity"], "checkout.line_items[]", code);
+    // `id` is the OPTIONAL flat line id the live schema also permits beside `item`; accepted, never read.
+    rejectUnknown(line, ["item", "quantity", "id"], "checkout.line_items[]", code);
     const item = own(line, "item");
     if (isPlainObject(item)) rejectUnknown(item, ["id"], "checkout.line_items[].item", code);
     const id = isPlainObject(item) ? own(item, "id") : undefined;
@@ -387,7 +444,9 @@ function mapQuote(checkout) {
   const quote = { items: mapLineItems(checkout) };
   const buyer = own(checkout, "buyer");
   if (isPlainObject(buyer)) {
-    rejectUnknown(buyer, ["email"], "checkout.buyer", CHECKOUT_REFUSAL_CODE);
+    // No rejectUnknown here: the live schema declares `buyer` with additionalProperties:true, so refusing an
+    // unlisted member would be stricter than the spec. Only `email` is READ — `phone_number` and anything
+    // else the platform sends are inert, because the canonical quote has nowhere truthful to put them.
     const email = own(buyer, "email");
     // Copied as a CANDIDATE only. buyerIntake `resolveBuyerEmail` reads the attested address first, so this
     // can fill a gap and can never override the verified buyer's own credential.
@@ -425,10 +484,10 @@ const GET_CHECKOUT_DESCRIPTION = [
 
 const COMPLETE_CHECKOUT_DESCRIPTION = [
   "Complete the checkout: verifies the buyer's payment authorization against the session's locked total, then",
-  "places the order and charges ONCE. Send `{ meta, id, payment }`, where `payment` is the delegated payment",
-  "token / mandate the agent obtained — it is verified server-side and never trusted blindly.",
-  "`meta[\"idempotency-key\"]` is required. Surface any requires_action (redirect_url/qr/instructions)",
-  "verbatim; never fabricate a payment URL or status.",
+  "places the order and charges ONCE. Send `{ meta, id, checkout: { payment } }` — the checkout id is",
+  "TOP-LEVEL and the payment instruments are nested under `checkout`. The payment envelope is verified",
+  "server-side and never trusted blindly. `meta[\"idempotency-key\"]` is required. Surface any requires_action",
+  "(redirect_url/qr/instructions) verbatim; never fabricate a payment URL or status.",
 ].join(" ");
 
 const GET_PRODUCT_DESCRIPTION = [
@@ -552,37 +611,52 @@ const SPECS = Object.freeze({
     description: COMPLETE_CHECKOUT_DESCRIPTION,
     inputSchema: {
       type: "object",
-      required: ["meta", "id", "payment"],
+      // LIVE-VERIFIED (cosrx tools/list, 2026-08-13): required = ["meta","id","checkout"], and the payment
+      // envelope is `checkout.payment` — NOT a top-level `payment`. This file's first revision extrapolated a
+      // top-level field from update_checkout's top-level `id`, and would have refused EVERY conforming
+      // platform on the charge itself. The lesson is the one this module already states about tool names:
+      // an unverified shape is a guess, and a guess on the money path is the defect it exists to prevent.
+      required: ["meta", "id", "checkout"],
       additionalProperties: false,
       properties: {
         meta: metaSchema({ idempotency: true }),
-        id: { type: "string", description: "The checkout id to complete. TOP-LEVEL." },
-        payment: {
+        id: { type: "string", description: "The checkout id to complete. TOP-LEVEL, a sibling of `meta`." },
+        checkout: {
           type: "object",
-          additionalProperties: true,
-          description:
-            "The delegated payment token / mandate the agent obtained. Opaque here and VERIFIED server-side"
-            + " against the session's locked total; never trusted blindly.",
+          required: ["payment"],
+          additionalProperties: false,
+          properties: {
+            payment: PAYMENT_SCHEMA,
+            attribution: ATTRIBUTION_SCHEMA,
+          },
         },
       },
     },
     map(args) {
       const code = CHECKOUT_REFUSAL_CODE;
       requireArgsObject(args, code);
-      rejectUnknown(args, ["meta", "id", "payment"], "arguments", code);
+      rejectUnknown(args, ["meta", "id", "checkout"], "arguments", code);
       const meta = requireMeta(args, code);
       const idempotency_key = requireIdempotencyKey(meta, code);
       const session_id = requireTopLevelId(args, code, "complete_checkout");
-      const payment = own(args, "payment");
+      const checkout = own(args, "checkout");
+      if (!isPlainObject(checkout)) {
+        throw ucpRefusal(code, "ucp_checkout_required",
+          "`complete_checkout` requires a `checkout` object carrying `payment`.",
+          { required_fields: ["checkout", "checkout.payment"] });
+      }
+      rejectUnknown(checkout, ["payment", "attribution"], "checkout", code);
+      const payment = own(checkout, "payment");
       if (!isPlainObject(payment)) {
         throw ucpRefusal(code, "ucp_payment_required", [
-          "`complete_checkout` requires `payment` — the delegated payment token / mandate authorizing this",
-          "checkout's locked total. It is verified server-side; an unauthorized completion is refused.",
-        ].join(" "), { required_fields: ["payment"] });
+          "`checkout.payment` is required — the payment instruments authorizing this checkout's locked total.",
+          "It is verified server-side; an unauthorized completion is refused.",
+        ].join(" "), { required_fields: ["checkout.payment"] });
       }
       // Passed through OPAQUELY as the canonical `payment_authorization` (which is defined as opaque to the
       // kernel and verified by verifyPaymentAuthorization). commerceToolSurface safe-clones it before it
-      // travels, so a hostile __proto__ key cannot pollute the verifier.
+      // travels, so a hostile __proto__ key cannot pollute the verifier. `checkout.attribution` is accepted
+      // and not read, exactly as on create/update.
       return { idempotency_key, session_id, payment_authorization: payment };
     },
   }),

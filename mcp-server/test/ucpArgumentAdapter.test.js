@@ -256,15 +256,25 @@ describe('update_checkout reads its checkout id from the top level only', () => 
     }
   });
 
-  test('get_checkout and complete_checkout take the same TOP-LEVEL id, with no `checkout` wrapper', async () => {
-    for (const tool of ['get_checkout', 'complete_checkout']) {
-      const { executor, ucp } = ucpSurface();
-      const err = await rejected(ucp.callTool(tool, {
-        meta: IDEMPOTENT_META, id: 'sess_TOP', payment: { token: 't' }, checkout: { id: 'sess_NESTED' },
-      }, SESSION));
-      assert.ok(err, `${tool} must refuse a checkout wrapper rather than reading an id out of it`);
-      assert.equal(JSON.stringify(executor.seen).includes('sess_NESTED'), false);
-    }
+  test('get_checkout takes a TOP-LEVEL id and has no `checkout` wrapper at all (live-verified)', async () => {
+    const { executor, ucp } = ucpSurface();
+    // LIVE: get_checkout's whole input is { meta, id }. A `checkout` object is not part of it.
+    const err = await rejected(ucp.callTool('get_checkout', {
+      meta: IDEMPOTENT_META, id: 'sess_TOP', checkout: { id: 'sess_NESTED' },
+    }, SESSION));
+    assert.ok(err, 'get_checkout must refuse a checkout wrapper rather than reading an id out of it');
+    assert.equal(JSON.stringify(executor.seen).includes('sess_NESTED'), false);
+  });
+
+  test('complete_checkout reads the session id from the TOP LEVEL, never from `checkout`', async () => {
+    const { executor, ucp } = ucpSurface();
+    // complete_checkout DOES have a `checkout` object (it carries `payment`) — but the id is still the
+    // top-level one. A body whose only id sits inside `checkout` must be refused, not re-priced blind.
+    const err = await rejected(ucp.callTool('complete_checkout', {
+      meta: IDEMPOTENT_META, checkout: { payment: { instruments: [] }, id: 'sess_NESTED' },
+    }, SESSION));
+    assert.ok(err, 'a nested id must not satisfy complete_checkout');
+    assert.equal(JSON.stringify(executor.seen).includes('sess_NESTED'), false);
   });
 
   test('a top-level id wins even when `checkout` also carries one — by refusing the ambiguous body outright', async () => {
@@ -398,24 +408,59 @@ describe('a payment field on create/update is refused, never forwarded', () => {
     });
   }
 
-  test('complete_checkout DOES carry payment through, opaquely, as payment_authorization', async () => {
+  // The LIVE complete_checkout shape (cosrx tools/list, 2026-08-13): { meta, id, checkout: { payment } }.
+  // The instrument shape below is the merchant's own — id + handler_id + type are its required members.
+  const LIVE_PAYMENT = {
+    instruments: [{ id: 'inst_1', handler_id: 'shopify_payments', type: 'card' }],
+  };
+
+  test('complete_checkout carries checkout.payment through, opaquely, as payment_authorization', async () => {
     const { executor, ucp } = ucpSurface();
     await ucp.callTool('complete_checkout', {
-      meta: IDEMPOTENT_META, id: 'sess_TOP', payment: { token: 'tok_live_1', kind: 'delegated' },
+      meta: IDEMPOTENT_META, id: 'sess_TOP', checkout: { payment: LIVE_PAYMENT },
     }, SESSION);
 
     const call = executor.only('complete_checkout_session');
     assert.equal(call.params.session_id, 'sess_TOP');
     assert.equal(call.params.idempotency_key, 'idem-key-0001');
-    // Opaque passthrough: the kernel does not interpret it, the executor's verifier does.
-    assert.deepEqual(call.params.payment_authorization, { token: 'tok_live_1', kind: 'delegated' });
+    // Opaque passthrough: this door does not interpret the instruments, the executor's verifier does.
+    assert.deepEqual(call.params.payment_authorization, LIVE_PAYMENT);
+  });
+
+  test('a TOP-LEVEL payment is refused — the live shape nests it under `checkout`', async () => {
+    const { executor, ucp } = ucpSurface();
+    // This is the shape this adapter's first revision extrapolated and published. Asserting it is REFUSED
+    // is what stops the wrong shape quietly coming back: the door would then accept a body no conforming
+    // platform sends, while refusing the one they all do.
+    const err = await rejected(ucp.callTool('complete_checkout', {
+      meta: IDEMPOTENT_META, id: 'sess_TOP', payment: LIVE_PAYMENT,
+    }, SESSION));
+    assert.ok(err, 'a top-level payment is not the live wire shape');
+    assert.equal(executor.seen.length, 0);
   });
 
   test('complete_checkout without a payment is refused rather than completed unauthorized', async () => {
+    for (const body of [
+      { meta: IDEMPOTENT_META, id: 'sess_TOP' },                    // no checkout at all
+      { meta: IDEMPOTENT_META, id: 'sess_TOP', checkout: {} },       // checkout with no payment
+    ]) {
+      const { executor, ucp } = ucpSurface();
+      const err = await rejected(ucp.callTool('complete_checkout', body, SESSION));
+      assert.ok(err, `must refuse: ${JSON.stringify(body)}`);
+      assert.equal(executor.seen.length, 0);
+    }
+  });
+
+  test('complete_checkout accepts checkout.attribution and does not forward it', async () => {
     const { executor, ucp } = ucpSurface();
-    const err = await rejected(ucp.callTool('complete_checkout', { meta: IDEMPOTENT_META, id: 'sess_TOP' }, SESSION));
-    assert.ok(err);
-    assert.equal(executor.seen.length, 0);
+    await ucp.callTool('complete_checkout', {
+      meta: IDEMPOTENT_META,
+      id: 'sess_TOP',
+      checkout: { payment: LIVE_PAYMENT, attribution: { source: 'ATTR_SENTINEL' } },
+    }, SESSION);
+    const wire = JSON.stringify(executor.only('complete_checkout_session').params);
+    assert.equal(wire.includes('ATTR_SENTINEL'), false);
+    assert.match(wire, /shopify_payments/, 'the payment envelope itself must still travel');
   });
 });
 
@@ -460,7 +505,12 @@ describe('schema and mapper cannot drift', () => {
       id: 'ID_SENTINEL',
     },
     get_checkout: { meta: AGENT_META, id: 'ID_SENTINEL' },
-    complete_checkout: { meta: IDEMPOTENT_META, id: 'ID_SENTINEL', payment: { token: 'PAY_SENTINEL' } },
+    complete_checkout: {
+      meta: IDEMPOTENT_META,
+      id: 'ID_SENTINEL',
+      // LIVE shape: payment is nested under `checkout`, alongside an optional `attribution`.
+      checkout: { payment: { token: 'PAY_SENTINEL' }, attribution: { source: 'ATTR_SENTINEL' } },
+    },
   });
 
   const opFor = (tool) => canonicalOpForUcpTool(tool);
@@ -560,11 +610,81 @@ describe('schema and mapper cannot drift', () => {
     }
 
     // And the unmapped set is declared, not merely observed — so dropping a field from the mapper without
-    // recording the decision fails this file rather than passing silently.
-    assert.deepEqual(UCP_ACCEPTED_BUT_UNMAPPED.create_checkout_session,
-      ['checkout.cart_id', 'checkout.context', 'checkout.attribution']);
-    assert.deepEqual(UCP_ACCEPTED_BUT_UNMAPPED.update_checkout_session,
-      ['checkout.cart_id', 'checkout.context', 'checkout.attribution']);
+    // recording the decision fails this file rather than passing silently. The last two entries on
+    // create/update were added when the LIVE schemas showed the merchant also permits them: a door stricter
+    // than the spec refuses conforming callers, which is the same "not executable" failure as a wrong shape.
+    const CART_UNMAPPED = [
+      'checkout.cart_id', 'checkout.context', 'checkout.attribution',
+      'checkout.buyer.phone_number', 'checkout.line_items[].id',
+    ];
+    assert.deepEqual(UCP_ACCEPTED_BUT_UNMAPPED.create_checkout_session, CART_UNMAPPED);
+    assert.deepEqual(UCP_ACCEPTED_BUT_UNMAPPED.update_checkout_session, CART_UNMAPPED);
+    assert.deepEqual(UCP_ACCEPTED_BUT_UNMAPPED.complete_checkout_session, ['checkout.attribution']);
+  });
+
+  test('the fields the LIVE schemas permit are accepted, not refused for being unlisted', () => {
+    // Every one of these was REFUSED by this adapter's first revision, which narrowed the shapes it had not
+    // yet verified. Each is a conforming platform being turned away at a door that advertised the tool.
+    const op = opFor('create_checkout');
+    assert.doesNotThrow(() => ucpToNativeToolArgs(op, createBody({
+      buyer: { email: 'shopper@example.test', phone_number: '+15551234567' },
+    })), 'buyer.phone_number is in the live schema');
+    assert.doesNotThrow(() => ucpToNativeToolArgs(op, {
+      meta: IDEMPOTENT_META,
+      checkout: {
+        line_items: [{ id: 'line_1', item: { id: 'p_alpha' }, quantity: 2 }],
+        buyer: { email: 'shopper@example.test' },
+      },
+    }), 'a flat line `id` beside `item` is in the live schema');
+
+    // …and being accepted must not mean being READ: `item.id` is still the priced identity.
+    const mapped = ucpToNativeToolArgs(op, {
+      meta: IDEMPOTENT_META,
+      checkout: {
+        line_items: [{ id: 'LINE_SENTINEL', item: { id: 'p_alpha' }, quantity: 2 }],
+        buyer: { email: 'shopper@example.test', phone_number: 'PHONE_SENTINEL' },
+      },
+    });
+    assert.deepEqual(mapped.quote.items, [{ product_id: 'p_alpha', quantity: 2 }]);
+    assert.equal(JSON.stringify(mapped).includes('LINE_SENTINEL'), false);
+    assert.equal(JSON.stringify(mapped).includes('PHONE_SENTINEL'), false);
+  });
+
+  test('the published schemas match the LIVE merchant schemas, field for field', () => {
+    // PROVENANCE: captured from a real UCP merchant via the buyer client's own `listTools` —
+    //   GET  https://cosrx.com/.well-known/ucp        -> services[mcp].endpoint
+    //        = https://cosrx-renewal.myshopify.com/api/ucp/mcp
+    //   POST that endpoint, JSON-RPC `tools/list`      -> 2026-08-13, anonymous tier, read-only
+    // These four `required` arrays are the merchant's, transcribed verbatim. They are the reason
+    // complete_checkout changed shape: it was the one tool whose arguments had never been fetched, and the
+    // extrapolated `{meta,id,payment}` would have refused every conforming platform ON THE CHARGE.
+    const LIVE_REQUIRED = Object.freeze({
+      get_product: null, // NOT exposed by a per-merchant endpoint (catalog is the global lane) — see below
+      create_checkout: ['meta', 'checkout'],
+      update_checkout: ['meta', 'checkout', 'id'],
+      get_checkout: ['meta', 'id'],
+      complete_checkout: ['meta', 'id', 'checkout'],
+    });
+    const LIVE_CHECKOUT_REQUIRED = Object.freeze({
+      create_checkout: ['line_items'],
+      update_checkout: ['line_items'],
+      complete_checkout: ['payment'],
+    });
+
+    for (const def of ucpCommerceToolDefinitions) {
+      const live = LIVE_REQUIRED[def.name];
+      if (!live) continue; // get_product: unverified against a merchant endpoint, deliberately not asserted
+      assert.deepEqual(
+        [...def.inputSchema.required].sort(), [...live].sort(),
+        `${def.name}: published required must equal the live merchant's`,
+      );
+      const liveCheckout = LIVE_CHECKOUT_REQUIRED[def.name];
+      if (!liveCheckout) continue;
+      assert.deepEqual(
+        [...def.inputSchema.properties.checkout.required].sort(), [...liveCheckout].sort(),
+        `${def.name}: published checkout.required must equal the live merchant's`,
+      );
+    }
   });
 
   test('the mapper refuses to translate an operation it has no mapping for', () => {
