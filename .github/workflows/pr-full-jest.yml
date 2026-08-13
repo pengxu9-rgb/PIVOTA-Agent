@@ -231,6 +231,15 @@ jobs:
       # platform. Mutations were applied one per hunk while writing it and the
       # survivors verified unreachable rather than assumed. Unlisted, every one of
       # those assertions guarded nothing on a PR.
+      # ADDED 2026-08-13: `commerce_ucp_mcp_door`, confirmed green (16/16) before
+      # landing and mutation-checked (9 applied one per hunk, all 9 killed). It is
+      # the ONLY coverage of the UCP-dialect money door POST /ucp/mcp, and it
+      # carries one property nothing else can: the per-operation kill-switches are
+      # keyed on the CANONICAL operation, so submit_payment's switch covers the UCP
+      # charge tool under ITS name (`complete_checkout`). Keyed on the wire name —
+      # which is how it was written before that door was mounted — the switch would
+      # have been DARK on /ucp/mcp while holding /mcp shut. It drives the real
+      # Express app via supertest, so it needs the npm ci above.
       # ADDED 2026-08-13: `mcp-server/test/ucpSpecVersion`, confirmed green (7/7)
       # AND mutation-checked (6 mutants, all killed). It is the ONLY job that can
       # catch the defect it guards: Pivota's two UCP profiles sit on opposite
@@ -250,6 +259,7 @@ jobs:
             mcp-server/test/ucpToolVocabulary.test.js \
             mcp-server/test/ucpDialectSurface.test.js \
             mcp-server/test/ucpArgumentAdapter.test.js \
+            tests/commerce_ucp_mcp_door.node.test.cjs \
             tests/commerce_kernel_error_body.node.test.cjs \
             tests/commerce_kernel_error_mapping.node.test.cjs \
             tests/asserted_privilege_observation.node.test.cjs \

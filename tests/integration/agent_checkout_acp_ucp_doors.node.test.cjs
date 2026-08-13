@@ -87,8 +87,44 @@ describe('Agent checkout ACP REST + UCP discovery doors', () => {
       // genuinely speaks UCP REST is declared, and the gateway declares none.
       const rest = (res.body.services || []).find((s) => s.transport === 'rest');
       assert.equal(rest, undefined, 'must not advertise a REST transport nothing speaks');
+
+      // ...AND NO MCP TRANSPORT EITHER, WHILE THE UCP-DIALECT DOOR IS DARK. This assertion used to read
+      // `deepEqual(transports, ['mcp'])`, from when the profile pointed at `/mcp` unconditionally. `/mcp`
+      // speaks Pivota's NATIVE tool names, so a platform reading the profile and calling `create_checkout`
+      // there got an unknown-tool error — the same "advertised but not executable" defect as the REST entry
+      // above, one transport over. This boot sets no AGENT_CHECKOUT_UCP_TOOL_DOOR_ENABLED, so `/ucp/mcp` is
+      // 404 and the profile must honestly carry no transport at all rather than name a door that cannot
+      // serve a single UCP call. The lit case is the next test — both sides, so neither direction can rot.
+      const transports = (res.body.services || []).map((s) => s.transport);
+      assert.deepEqual(transports, [], 'no transport is advertised while the UCP-dialect door is dark');
+      assert.equal(
+        JSON.stringify(res.body.services || []).includes('/mcp'),
+        false,
+        'the native /mcp door must never be advertised as a UCP transport',
+      );
+    });
+
+    it('advertises the UCP-dialect door as the mcp transport ONCE ITS FLAG IS LIT', async () => {
+      const litApp = bootApp({
+        ...STRICT_BASE,
+        AGENT_CHECKOUT_UCP_DISCOVERY_ENABLED: '1',
+        AGENT_CHECKOUT_UCP_TOOL_DOOR_ENABLED: '1',
+        UCP_BASE_URL: 'https://agent.test.local',
+      });
+      const res = await request(litApp).get('/.well-known/ucp');
+      assert.equal(res.status, 200);
       const transports = (res.body.services || []).map((s) => s.transport);
       assert.deepEqual(transports, ['mcp'], 'UCP transport is MCP JSON-RPC');
+      const mcp = res.body.services.find((s) => s.transport === 'mcp');
+      // The UCP-DIALECT endpoint, not the native one: this is the whole point of the flag.
+      assert.equal(mcp.endpoint, 'https://agent.test.local/ucp/mcp');
+      // ...and the door it names actually answers a UCP call, so the profile is executable, not just filled in.
+      const tools = await request(litApp)
+        .post('/ucp/mcp')
+        .send({ jsonrpc: '2.0', id: 1, method: 'tools/list' });
+      assert.equal(tools.status, 200, 'the advertised endpoint must serve the UCP dialect');
+      const names = (tools.body?.result?.tools || []).map((t) => t.name);
+      assert.ok(names.includes('create_checkout'), `advertised door must know the spec tool names, got ${names}`);
     });
 
     it('computes the active-capability intersection for a platform', async () => {
