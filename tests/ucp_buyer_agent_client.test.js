@@ -212,6 +212,25 @@ describe('buildUcpBuyerAgentProfile', () => {
     expect([...p.agent.requested_scopes].sort()).toEqual(Object.keys(p.ucp.capabilities).sort());
   });
 
+  test('fulfillment is requested — negotiation gates argument SHAPES, not just the tool list', () => {
+    // The spec's fulfillment extension "adds a `fulfillment` field to Checkout" (methods/destinations/groups).
+    // Without requesting it, a merchant's negotiated create_checkout schema omits that field entirely —
+    // measured 2026-08-13, cosrx's create_checkout for our profile contained no `fulfillment` at all, which
+    // is how an earlier note concluded, wrongly, that UCP carries no shipping address.
+    const p = buildUcpBuyerAgentProfile();
+    expect(Object.keys(p.ucp.capabilities)).toContain('dev.ucp.shopping.fulfillment');
+    // `extends` is the spec's CANONICAL single-parent string for this capability
+    // (`"extends": "dev.ucp.shopping.checkout"`, in both profile examples and in prose). An earlier revision
+    // used the array [checkout, cart] on one merchant's authority and claimed a string would be "our own
+    // spelling" — backwards. Multi-parent means "at least ONE parent must be present", so the array would
+    // let fulfillment survive a cart-only intersection where it means nothing.
+    const entry = p.ucp.capabilities['dev.ucp.shopping.fulfillment'][0];
+    expect(entry.extends).toBe('dev.ucp.shopping.checkout');
+    // Requesting it must NOT smuggle in a money capability: fulfillment ships goods, it does not pay.
+    expect(p.agent.completes_payment).toBe(false);
+    expect(p.ucp.payment_handlers).toEqual({});
+  });
+
   test('BOTH catalog halves are requested — the client uses each', () => {
     // searchCatalog is free text (.search); getProduct is retrieval by identifier (.lookup). Requesting one
     // would leave the other method calling a tool the merchant never granted.
@@ -244,6 +263,8 @@ describe('buildUcpBuyerAgentProfile', () => {
     for (const root of ['dev.ucp.shopping.cart', 'dev.ucp.shopping.catalog.search', 'dev.ucp.shopping.catalog.lookup']) {
       expect(p.ucp.capabilities[root][0].extends).toBeUndefined();
     }
+    // Only the extension carries one, and only to its real parent.
+    expect(p.ucp.capabilities['dev.ucp.shopping.fulfillment'][0].extends).toBe('dev.ucp.shopping.checkout');
   });
 
   test('every capability entry carries the REQUIRED spec and schema members', () => {

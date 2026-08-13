@@ -73,11 +73,26 @@ const DEFAULT_SCHEMA_BASE = UCP_SCHEMA_BASE;
 // `dev.ucp.shopping.order` is deliberately NOT requested — it would grant `get_order`, which is a capability
 // decision (do we track orders on the merchant's rails?) rather than part of fixing a wrong id.
 //
+// FULFILLMENT is requested because negotiation gates ARGUMENT SHAPES, not just the tool list — the same
+// lesson as the catalog ids, one level in. The spec (ucp.dev/2026-04-08/specification/fulfillment) says the
+// extension "adds a `fulfillment` field to Checkout" carrying `methods[]`, `destinations[]` and `groups[]`.
+// Without requesting it, a merchant's negotiated create_checkout schema OMITS that field entirely: measured
+// 2026-08-13, cosrx's create_checkout for our profile contained no `fulfillment` anywhere, which is why an
+// earlier note in the UCP argument adapter concluded — wrongly — that "UCP carries no shipping_address".
+// It carries one; we were not asking for the capability that reveals it.
+//
+// WHAT THIS DOES AND DOES NOT BUY. Requesting it means a merchant may now OFFER destination fields. This
+// client does not yet SEND a destination: `buildCheckoutArgs` still emits only `context` hints, so today the
+// observable behaviour is unchanged (`normalizePricedCheckout` reads `shipping_options`, not
+// `fulfillment.groups[].options[]`, so an unpopulated fulfillment block is inert rather than breaking).
+// Mapping `checkout.fulfillment` — destination selection, the single-destination bound, and what the in-chat
+// priced preview does with real shipping/tax — is the follow-up this unblocks, not something it completes.
 const SHOPPING_SERVICE = 'dev.ucp.shopping';
 const CATALOG_SEARCH_CAPABILITY = 'dev.ucp.shopping.catalog.search';
 const CATALOG_LOOKUP_CAPABILITY = 'dev.ucp.shopping.catalog.lookup';
 const CART_CAPABILITY = 'dev.ucp.shopping.cart';
 const CHECKOUT_CAPABILITY = 'dev.ucp.shopping.checkout';
+const FULFILLMENT_CAPABILITY = 'dev.ucp.shopping.fulfillment';
 
 // Any capability whose name implies completing a purchase / moving money. Requesting these is forbidden here.
 const FORBIDDEN_CAPABILITY_PATTERN = /(complete|payment|charge|purchase)/i;
@@ -161,6 +176,7 @@ const ALLOWED_BUYER_CAPABILITIES = Object.freeze(new Set([
   'dev.ucp.shopping.catalog.lookup',
   'dev.ucp.shopping.cart',
   'dev.ucp.shopping.checkout',
+  'dev.ucp.shopping.fulfillment',
 ]));
 
 function assertNoPurchaseCompletion(capabilityNames) {
@@ -211,6 +227,7 @@ function buildUcpBuyerAgentProfile(config = {}) {
   // NOT complete.
   const capabilityNames = [
     CATALOG_SEARCH_CAPABILITY, CATALOG_LOOKUP_CAPABILITY, CART_CAPABILITY, CHECKOUT_CAPABILITY,
+    FULFILLMENT_CAPABILITY,
   ];
   assertNoPurchaseCompletion(capabilityNames);
 
@@ -231,6 +248,19 @@ function buildUcpBuyerAgentProfile(config = {}) {
     // Root: no `extends`. Pivota still hands off to the storefront and never completes payment — that bound
     // lives in the non-money allowlist and `completes_payment: false`, not in a dependency edge.
     [CHECKOUT_CAPABILITY]: [{ version, spec: capabilitySpec('checkout'), schema: capabilitySchema('checkout') }],
+    // A STRING, matching the spec's canonical declaration for exactly this capability
+    // (`"extends": "dev.ucp.shopping.checkout"`, in both profile examples and in prose). An earlier revision
+    // used the array `[checkout, cart]` on one merchant's authority and claimed a string "would be our own
+    // spelling, not the spec's" — that had it backwards. Both forms are legal (`extends` is typed OneOf[]),
+    // but multi-parent means "at least ONE parent must be present", so the array would let fulfillment
+    // survive a cart-only intersection where it means nothing. The single parent is spec-canonical AND
+    // semantically tighter.
+    [FULFILLMENT_CAPABILITY]: [{
+      version,
+      spec: capabilitySpec('fulfillment'),
+      schema: capabilitySchema('fulfillment'),
+      extends: CHECKOUT_CAPABILITY,
+    }],
   };
 
   const ucp = {
@@ -288,5 +318,6 @@ module.exports = {
   CATALOG_LOOKUP_CAPABILITY,
   CART_CAPABILITY,
   CHECKOUT_CAPABILITY,
+  FULFILLMENT_CAPABILITY,
   FORBIDDEN_CAPABILITY_PATTERN,
 };
