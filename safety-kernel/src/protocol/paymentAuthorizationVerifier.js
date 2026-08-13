@@ -19,6 +19,15 @@
 import { PivotaCommerceError } from '../errors.js';
 
 const CANONICAL_METHODS = new Set(['acp_delegated_token', 'ucp_handler', 'ap2_mandate']);
+
+/**
+ * The method discriminators this verifier will even consider — exported so a protocol door can DERIVE the
+ * value it publishes instead of restating it. A door that hardcodes its own copy of this string publishes a
+ * contract that silently stops matching the gate the moment the vocabulary here moves; that is precisely how
+ * the UCP door came to advertise a payment envelope carrying no discriminator at all, and to refuse every
+ * conforming platform on the charge with `unknown_authorization_method`.
+ */
+export const CANONICAL_PAYMENT_METHODS = Object.freeze([...CANONICAL_METHODS]);
 const DEFAULT_CLOCK_TOLERANCE_MS = 60 * 1000;
 const nonEmpty = (s) => typeof s === 'string' && s.trim() !== '';
 const sameCurrency = (a, b) => typeof a === 'string' && typeof b === 'string' && a.toUpperCase() === b.toUpperCase();

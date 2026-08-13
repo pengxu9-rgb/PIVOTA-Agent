@@ -41,6 +41,14 @@
 //                         "advertised but not executable" defect the module exists to end, on the one
 //                         operation where it costs a sale. An unverified shape is a guess; a guess on the
 //                         money path is not a small one.
+//
+//     …AND THE SAME DEFECT SURVIVED ONE LEVEL DEEPER, in the envelope itself. Getting `payment`'s LOCATION
+//     right is not the same as getting its CONTENTS right: #1966 then published the merchant's own
+//     `payment.instruments[]` and forwarded it opaquely, and the kernel's verifier refused it for carrying no
+//     method discriminator. Advertised, and still not executable, on the same operation. What closed it was
+//     not re-reading the merchant's schema but driving the ADAPTER'S OUTPUT THROUGH THE REAL VERIFIER
+//     (test/ucpPaymentAuthorizationContract.test.js) — the mutation-checked argument suite could not see the
+//     gap, because no test crossed that seam. See PAYMENT_SCHEMA for the contract and the measurements.
 //   - the live schemas also permit `checkout.buyer.phone_number` and an optional flat `id` on a line item.
 //     Both are now accepted-and-unread: a door STRICTER than the spec turns conforming callers away, which
 //     fails in the same direction as advertising the wrong shape.
@@ -83,14 +91,30 @@
 //     one real variant is REFUSED, never guessed (buyerIntake rule 3), and a UCP caller has no field in which
 //     to name the variant it wanted. That bound is real and is stated in the tool description.
 //
-//  3. THERE IS NO ADDRESS ON THIS LANE. UCP create_checkout carries no shipping_address, so a UCP-created
-//     session's buyer_context has none — legal at quote time (both doors permit an address-less create) but
-//     pivota-backend requires one UNCONDITIONALLY at order creation. Nothing here fabricates one.
+//  3. THERE IS NO ADDRESS ON THIS LANE YET — AND THAT IS A KNOWN, MEASURED BLOCKER, NOT A SETTLED DESIGN.
+//     An earlier revision of this note said UCP "carries no shipping_address". That is wrong, and the wrong
+//     version is why the gap looked closed: the live create_checkout schema DOES carry a full destination at
+//     `checkout.fulfillment.methods[].destinations[]` — {first_name, last_name, street_address,
+//     extended_address, address_locality, address_region, postal_code, address_country} — which maps onto the
+//     canonical address without inventing anything (name = first+last, address_line1 = street_address,
+//     address_line2 = extended_address, city = address_locality). This door does not yet publish or read it.
+//     Consequence, verified against pivota-backend origin/main `routes/agent_v2.py::_coerce_shipping_address`
+//     (reached from `POST /agent/v2/orders`): the address is required UNCONDITIONALLY at order creation, and
+//     canonicalExecutor passes `params.shipping_address ?? {}`, so an address-less UCP completion is refused
+//     400 INVALID_BUYER_CONTEXT with all five fields missing — AFTER a valid authorization has verified. So
+//     the UCP lane cannot place an order today even with a good grant. Mapping `fulfillment` is the fix and is
+//     its own change (destination selection via `selected_destination_id`, multi-destination refusal, and the
+//     `dev.ucp.shopping.fulfillment` capability all have to be decided). Until then nothing here fabricates an
+//     address, and this stays recorded as a blocker rather than papered over.
 //
-//  4. `payment` IS REFUSED, NOT DROPPED. The buyer client hard-bounds itself against ever emitting one on
-//     create/update; the server side must not accept one there either. A caller that sends `payment` on
-//     create believes it is authorizing a charge, so it is told plainly that authorization arrives inline on
-//     complete_checkout — silently discarding it would leave that caller believing it had paid.
+//  4. `payment` IS REFUSED, NOT DROPPED — ON BOTH LANES. The buyer client hard-bounds itself against ever
+//     emitting one on create/update; the server side must not accept one there either. A caller that sends
+//     `payment` on create believes it is authorizing a charge, so it is told plainly that authorization
+//     arrives inline on complete_checkout — silently discarding it would leave that caller believing it had
+//     paid. The SAME rule is why `payment.instruments` is refused by name on complete_checkout (PAYMENT_SCHEMA
+//     and `requirePaymentEnvelope`): Pivota cannot charge a UCP payment-handler instrument, and accepting one
+//     into an opaque passthrough would leave that caller believing it had paid too — one refusal later, and
+//     several layers further from the field it would have to fix.
 //
 // IDENTITY IS NEVER READ FROM HERE. `checkout.buyer.email` is mapped to `quote.customer_email`, which is a
 // GAP-FILLER by construction: commerceToolSurface's intake runs it through buyerIntake `resolveBuyerEmail`,
@@ -101,6 +125,7 @@ import {
   MAX_CART_ITEMS,
   intakeRefusal,
 } from "../../safety-kernel/src/protocol/buyerIntake.js";
+import { CANONICAL_PAYMENT_METHODS } from "../../safety-kernel/src/protocol/paymentAuthorizationVerifier.js";
 
 // The prototype guard used across the doors: admits `Object.prototype` and a null prototype, nothing else.
 const isPlainObject = (v) => typeof v === "object" && v !== null && !Array.isArray(v)
@@ -223,26 +248,72 @@ const BUYER_SCHEMA = {
   },
 };
 
-// The payment envelope, LIVE-VERIFIED at `checkout.payment` on complete_checkout (cosrx, 2026-08-13). The
-// merchant declares additionalProperties:true around an `instruments` array; this door does NOT re-model
-// those instruments, because `payment_authorization` is OPAQUE to the kernel by contract and is verified by
-// verifyPaymentAuthorization downstream. Re-modelling it here would create a second, weaker validator for the
-// one field whose validation actually gates a charge.
+// The payment envelope. This is the ONE field on this dialect whose contents decide whether money moves, so it
+// is published as exactly what the gate downstream can actually verify — no more, and no less.
+//
+// WHAT THE GATE ACTUALLY REQUIRES (safety-kernel verifyPaymentAuthorization + createSignedGrantVerifier, both
+// exercised directly by test/ucpPaymentAuthorizationContract.test.js rather than described):
+//   1. a METHOD DISCRIMINATOR — `method` (or `protocol`) drawn from CANONICAL_PAYMENT_METHODS. Absent, the
+//      verifier throws CONFIRMATION_INVALID{unknown_authorization_method} and no charge happens.
+//   2. a SIGNED ALLOWANCE GRANT at `token` — a compact JWT from a registered issuer (pinned JWKS, asymmetric
+//      alg allowlist) whose claims carry max_amount/currency/merchant_id/checkout_session_id and an `exp`.
+//      The binding invariant is checked against THOSE claims, never the raw envelope.
+//
+// WHY THE MERCHANT'S OWN `instruments` SHAPE IS NOT PUBLISHED HERE. The live cosrx schema (2026-08-13) declares
+// `payment.instruments[]` as `{id, handler_id, type, credential:{token,type}, billing_address, display}`, where
+// `credential.token` is an OPAQUE PSP token (`stripe.token`, `google.pay`) — a payment-handler instrument the
+// MERCHANT charges on its own rail. Pivota is the merchant of record on this lane and holds no UCP
+// payment-handler integration, so that instrument authorizes nothing here. Measured, not assumed:
+//   - the live shape as published by #1966  -> unknown_authorization_method
+//   - the same shape + method:'ucp_handler' -> grant_token_missing      (the discriminator ALONE fixes nothing)
+//   - the same, credential.token lifted     -> malformed_credential     (a PSP token is not a signed grant)
+//   - method:'ucp_handler' + a signed grant -> OK
+// So mapping `handler_id` into a discriminator would have swapped one refusal for another one deeper in the
+// money path — a fallback that is valid-looking and still cannot charge. The envelope below publishes the one
+// shape that completes, and `instruments` is REFUSED BY NAME (see `requirePaymentEnvelope`) rather than
+// accepted-and-dropped: a caller that attached an instrument believes it authorized a charge.
+//
+// The enum is DERIVED from the kernel's own vocabulary, so this door cannot drift from the gate it feeds.
+// Only `ucp_handler` is published: it is the method productionWiring wires for this dialect, and advertising
+// `ap2_mandate` (whose carrier is a `mandate`, and which is off unless `enableAp2`) would re-open exactly the
+// advertised-but-not-executable gap this module exists to close.
+const UCP_PAYMENT_METHOD = "ucp_handler";
+if (!CANONICAL_PAYMENT_METHODS.includes(UCP_PAYMENT_METHOD)) {
+  // Fail at load, not at the charge: if the kernel's method vocabulary moves, this door must not keep
+  // publishing a discriminator the verifier will refuse.
+  throw new Error(
+    `ucpArgumentAdapter: "${UCP_PAYMENT_METHOD}" is not a canonical payment method `
+    + `(${CANONICAL_PAYMENT_METHODS.join(", ")}) — the published payment envelope would not verify`,
+  );
+}
+
+const PAYMENT_METHOD_DESCRIPTION = [
+  `REQUIRED. The payment-authorization method. Must be \`${UCP_PAYMENT_METHOD}\` on this dialect — it selects`,
+  "the server-side verifier that checks the grant against this checkout's locked total.",
+].join(" ");
+
+const PAYMENT_TOKEN_DESCRIPTION = [
+  "REQUIRED. The signed UCP payment-handler GRANT authorizing this checkout: a compact JWT from an issuer",
+  "Pivota has registered, whose claims carry `max_amount`, `currency`, `merchant_id`, `checkout_session_id`",
+  "(the id of THIS checkout) and `exp`. It is verified against a pinned key set and bound to the locked total,",
+  "the merchant of record, this session and this buyer; the charge is taken from the locked quote, never from",
+  "`max_amount`. An opaque PSP/wallet instrument token is NOT a grant and cannot authorize a charge here.",
+].join(" ");
+
 const PAYMENT_SCHEMA = {
   type: "object",
-  additionalProperties: true,
+  required: ["method", "token"],
+  // Strict, and the mapper enforces the SAME strictness. This is deliberately NARROWER than the merchant's own
+  // envelope (which is additionalProperties:true around `instruments`): publishing a field this door cannot
+  // honour on the money path is the defect, not the strictness.
+  additionalProperties: false,
   properties: {
-    instruments: {
-      type: "array",
-      description:
-        "Payment instruments authorizing this checkout (each carries id, handler_id and type). Verified"
-        + " server-side against the session's locked total; never trusted blindly.",
-      items: { type: "object", additionalProperties: true },
-    },
+    method: { type: "string", enum: [UCP_PAYMENT_METHOD], description: PAYMENT_METHOD_DESCRIPTION },
+    token: { type: "string", description: PAYMENT_TOKEN_DESCRIPTION },
   },
   description:
-    "The payment authorization for this checkout. Opaque at this door and VERIFIED server-side against the"
-    + " locked total.",
+    "The payment authorization for this checkout. VERIFIED server-side against the locked total, the merchant"
+    + " of record, this checkout session and this buyer — never trusted blindly.",
 };
 
 const CONTEXT_SCHEMA = {
@@ -405,6 +476,71 @@ function requireCheckoutObject(args, tool) {
 }
 
 /**
+ * The `checkout.payment` envelope on complete_checkout — the one read on this dialect that gates a charge.
+ *
+ * It validates HERE, at the door, rather than letting the envelope travel and die inside the kernel, because
+ * the two refusals are not equally useful: the verifier's `CONFIRMATION_INVALID{unknown_authorization_method}`
+ * names nothing the caller could send, arrives after the executor has taken the completion path, and reads to
+ * a platform like a Pivota fault rather than a wire-shape one. Every refusal below names UCP's own spelling of
+ * the field the caller must fix.
+ *
+ * `instruments` is refused BY NAME before the generic unknown-field refusal, for the same reason `payment` is
+ * refused by name on create/update: a caller that attached a payment instrument believes it authorized a
+ * charge, and a shrug about an unknown field would leave it believing it had paid.
+ */
+function requirePaymentEnvelope(checkout) {
+  const code = CHECKOUT_REFUSAL_CODE;
+  const payment = own(checkout, "payment");
+  if (!isPlainObject(payment)) {
+    throw ucpRefusal(code, "ucp_payment_required", [
+      "`checkout.payment` is required — the signed grant authorizing this checkout's locked total, as",
+      `\`{ method: "${UCP_PAYMENT_METHOD}", token }\`. It is verified server-side; an unauthorized completion`,
+      "is refused.",
+    ].join(" "), { required_fields: ["checkout.payment.method", "checkout.payment.token"] });
+  }
+  if (own(payment, "instruments") !== undefined) {
+    throw ucpRefusal(code, "ucp_payment_instruments_not_accepted", [
+      "`checkout.payment.instruments` is not accepted here and was NOT charged. A UCP payment-handler",
+      "instrument is charged on the handler's own rail by the merchant that issued it; Pivota is the merchant",
+      "of record for this checkout and holds no such integration, so an instrument authorizes nothing on this",
+      `lane. Authorize instead with \`checkout.payment = { method: "${UCP_PAYMENT_METHOD}", token }\`, where`,
+      "`token` is a signed grant from an issuer Pivota has registered, bound to this checkout id.",
+    ].join(" "), {
+      rejected_field: "checkout.payment.instruments",
+      required_fields: ["checkout.payment.method", "checkout.payment.token"],
+    });
+  }
+  rejectUnknown(payment, ["method", "token"], "checkout.payment", code);
+
+  const method = own(payment, "method");
+  if (method !== UCP_PAYMENT_METHOD) {
+    throw ucpRefusal(code, "ucp_payment_method_required", [
+      `\`checkout.payment.method\` must be \`"${UCP_PAYMENT_METHOD}"\` — it selects the server-side verifier`,
+      "that checks the grant against this checkout's locked total. A payment envelope carrying no method",
+      "cannot be verified and is refused rather than charged.",
+    ].join(" "), {
+      rejected_field: "checkout.payment.method",
+      accepted_values: [UCP_PAYMENT_METHOD],
+      required_fields: ["checkout.payment.method"],
+    });
+  }
+  const token = own(payment, "token");
+  if (!nonEmpty(token)) {
+    throw ucpRefusal(code, "ucp_payment_token_required", [
+      "`checkout.payment.token` is required — the signed grant (a compact JWT from an issuer Pivota has",
+      "registered) whose claims carry `max_amount`, `currency`, `merchant_id`, this checkout's",
+      "`checkout_session_id` and `exp`. An opaque PSP or wallet instrument token is not a grant and cannot",
+      "authorize a charge here.",
+    ].join(" "), { required_fields: ["checkout.payment.token"] });
+  }
+  // Rebuilt from the two READ fields rather than passed through. `rejectUnknown` above already bounds the
+  // envelope to those two, so this is belt-and-braces rather than the thing that stops an extra field — but it
+  // makes the money-path contract structural: the verifier receives an object this function CONSTRUCTED from
+  // values it checked, so a future relaxation of the unknown-field guard cannot quietly widen what travels.
+  return { method, token };
+}
+
+/**
  * UCP `line_items` -> canonical `quote.items`.
  *
  * `item.id` becomes `product_id` (see the header note); `quantity` is passed through UNTOUCHED so that
@@ -493,8 +629,14 @@ const GET_CHECKOUT_DESCRIPTION = [
 const COMPLETE_CHECKOUT_DESCRIPTION = [
   "Complete the checkout: verifies the buyer's payment authorization against the session's locked total, then",
   "places the order and charges ONCE. Send `{ meta, id, checkout: { payment } }` — the checkout id is",
-  "TOP-LEVEL and the payment instruments are nested under `checkout`. The payment envelope is verified",
-  "server-side and never trusted blindly. `meta[\"idempotency-key\"]` is required. Surface any requires_action",
+  "TOP-LEVEL and the payment envelope is nested under `checkout`.",
+  `The envelope MUST be \`{ method: "${UCP_PAYMENT_METHOD}", token }\`, where \`token\` is a SIGNED GRANT: a`,
+  "compact JWT from an issuer Pivota has registered, carrying `max_amount`, `currency`, `merchant_id`, this",
+  "checkout's `checkout_session_id` and `exp`. It is verified against a pinned key set and bound to the locked",
+  "total, the merchant of record, this session and this buyer; the charge is taken from the locked quote,",
+  "never from `max_amount`. A UCP payment-handler instrument (`payment.instruments`, carrying an opaque",
+  "PSP/wallet `credential.token`) is REFUSED and never charged: Pivota is the merchant of record here and has",
+  "no handler integration to charge it on. `meta[\"idempotency-key\"]` is required. Surface any requires_action",
   "(redirect_url/qr/instructions) verbatim; never fabricate a payment URL or status.",
 ].join(" ");
 
@@ -688,18 +830,10 @@ const SPECS = Object.freeze({
           { required_fields: ["checkout", "checkout.payment"] });
       }
       rejectUnknown(checkout, ["payment", "attribution"], "checkout", code);
-      const payment = own(checkout, "payment");
-      if (!isPlainObject(payment)) {
-        throw ucpRefusal(code, "ucp_payment_required", [
-          "`checkout.payment` is required — the payment instruments authorizing this checkout's locked total.",
-          "It is verified server-side; an unauthorized completion is refused.",
-        ].join(" "), { required_fields: ["checkout.payment"] });
-      }
-      // Passed through OPAQUELY as the canonical `payment_authorization` (which is defined as opaque to the
-      // kernel and verified by verifyPaymentAuthorization). commerceToolSurface safe-clones it before it
-      // travels, so a hostile __proto__ key cannot pollute the verifier. `checkout.attribution` is accepted
-      // and not read, exactly as on create/update.
-      return { idempotency_key, session_id, payment_authorization: payment };
+      // The envelope travels on as the canonical `payment_authorization`. commerceToolSurface safe-clones it
+      // before it travels, so a hostile __proto__ key cannot pollute the verifier. `checkout.attribution` is
+      // accepted and not read, exactly as on create/update.
+      return { idempotency_key, session_id, payment_authorization: requirePaymentEnvelope(checkout) };
     },
   }),
 });

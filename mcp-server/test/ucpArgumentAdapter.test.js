@@ -408,23 +408,52 @@ describe('a payment field on create/update is refused, never forwarded', () => {
     });
   }
 
-  // The LIVE complete_checkout shape (cosrx tools/list, 2026-08-13): { meta, id, checkout: { payment } }.
-  // The instrument shape below is the merchant's own — id + handler_id + type are its required members.
-  const LIVE_PAYMENT = {
-    instruments: [{ id: 'inst_1', handler_id: 'shopify_payments', type: 'card' }],
-  };
+  // The LIVE complete_checkout LOCATION (cosrx tools/list, 2026-08-13): { meta, id, checkout: { payment } }.
+  // The envelope CONTENTS are Pivota's published contract — a method discriminator plus a signed grant — and
+  // NOT the merchant's own `instruments` shape. That distinction is the #1966 defect: getting `payment`'s
+  // location right while publishing contents the kernel's verifier refuses left the charge unexecutable.
+  // test/ucpPaymentAuthorizationContract.test.js is what proves this envelope verifies at the real gate; here
+  // we only pin that the door maps it.
+  const GRANT_PAYMENT = { method: 'ucp_handler', token: 'signed.grant.jwt' };
 
-  test('complete_checkout carries checkout.payment through, opaquely, as payment_authorization', async () => {
+  test('complete_checkout carries the published payment envelope through as payment_authorization', async () => {
     const { executor, ucp } = ucpSurface();
     await ucp.callTool('complete_checkout', {
-      meta: IDEMPOTENT_META, id: 'sess_TOP', checkout: { payment: LIVE_PAYMENT },
+      meta: IDEMPOTENT_META, id: 'sess_TOP', checkout: { payment: GRANT_PAYMENT },
     }, SESSION);
 
     const call = executor.only('complete_checkout_session');
     assert.equal(call.params.session_id, 'sess_TOP');
     assert.equal(call.params.idempotency_key, 'idem-key-0001');
-    // Opaque passthrough: this door does not interpret the instruments, the executor's verifier does.
-    assert.deepEqual(call.params.payment_authorization, LIVE_PAYMENT);
+    assert.deepEqual(call.params.payment_authorization, GRANT_PAYMENT);
+  });
+
+  test('a UCP payment-handler INSTRUMENT is refused at the door, naming what to send instead', async () => {
+    const { executor, ucp } = ucpSurface();
+    // Exactly what #1966 advertised, and what a platform following that schema sent: an opaque PSP credential
+    // Pivota has no rail to charge. Forwarding it reached the kernel and died as
+    // CONFIRMATION_INVALID{unknown_authorization_method} — a code naming no field, raised on the money path.
+    const err = await rejected(ucp.callTool('complete_checkout', {
+      meta: IDEMPOTENT_META,
+      id: 'sess_TOP',
+      checkout: {
+        payment: {
+          instruments: [{
+            id: 'inst_1', handler_id: 'shopify.card', type: 'card',
+            credential: { token: 'INSTRUMENT_SENTINEL', type: 'stripe.token' },
+          }],
+        },
+      },
+    }, SESSION));
+
+    assert.ok(err, 'an instrument must not be accepted as authorization');
+    assert.equal(executor.seen.length, 0, 'nothing may reach the executor on an unauthorizable completion');
+    assert.equal(JSON.stringify(executor.seen).includes('INSTRUMENT_SENTINEL'), false);
+    // Refused, not dropped — and the message must name the remedy, not just the problem.
+    const message = String(err.detail?.acp_message ?? err.message);
+    assert.match(message, /instruments/);
+    assert.match(message, /ucp_handler/);
+    assert.match(message, /token/);
   });
 
   test('a TOP-LEVEL payment is refused — the live shape nests it under `checkout`', async () => {
@@ -433,7 +462,7 @@ describe('a payment field on create/update is refused, never forwarded', () => {
     // is what stops the wrong shape quietly coming back: the door would then accept a body no conforming
     // platform sends, while refusing the one they all do.
     const err = await rejected(ucp.callTool('complete_checkout', {
-      meta: IDEMPOTENT_META, id: 'sess_TOP', payment: LIVE_PAYMENT,
+      meta: IDEMPOTENT_META, id: 'sess_TOP', payment: GRANT_PAYMENT,
     }, SESSION));
     assert.ok(err, 'a top-level payment is not the live wire shape');
     assert.equal(executor.seen.length, 0);
@@ -456,11 +485,11 @@ describe('a payment field on create/update is refused, never forwarded', () => {
     await ucp.callTool('complete_checkout', {
       meta: IDEMPOTENT_META,
       id: 'sess_TOP',
-      checkout: { payment: LIVE_PAYMENT, attribution: { source: 'ATTR_SENTINEL' } },
+      checkout: { payment: GRANT_PAYMENT, attribution: { source: 'ATTR_SENTINEL' } },
     }, SESSION);
     const wire = JSON.stringify(executor.only('complete_checkout_session').params);
     assert.equal(wire.includes('ATTR_SENTINEL'), false);
-    assert.match(wire, /shopify_payments/, 'the payment envelope itself must still travel');
+    assert.match(wire, /signed\.grant\.jwt/, 'the payment envelope itself must still travel');
   });
 });
 
@@ -528,33 +557,87 @@ describe('get_product speaks the UCP nested-catalog shape', () => {
 // ---- 8. the published schema IS the accepted shape --------------------------------------------------------------
 
 describe('schema and mapper cannot drift', () => {
-  // One maximal, spec-valid body per tool, with a UNIQUE sentinel in every declared leaf. What survives into
-  // the mapped output is then a fact, not a claim — and the table below is what pins it.
-  const MAXIMAL = Object.freeze({
-    get_product: { meta: IDEMPOTENT_META, catalog: { id: 'ID_SENTINEL', context: { c: 'CTX_SENTINEL' } } },
-    create_checkout: createBody({
-      cart_id: 'CART_SENTINEL',
-      context: { address_country: 'CTRY_SENTINEL', address_region: 'RGN_SENTINEL', postal_code: 'ZIP_SENTINEL' },
-      attribution: { source: 'ATTR_SENTINEL' },
-    }),
-    update_checkout: {
-      ...createBody({
-        cart_id: 'CART_SENTINEL',
-        context: { address_country: 'CTRY_SENTINEL', address_region: 'RGN_SENTINEL', postal_code: 'ZIP_SENTINEL' },
-        attribution: { source: 'ATTR_SENTINEL' },
-      }),
-      id: 'ID_SENTINEL',
-    },
-    get_checkout: { meta: AGENT_META, id: 'ID_SENTINEL' },
-    complete_checkout: {
-      meta: IDEMPOTENT_META,
-      id: 'ID_SENTINEL',
-      // LIVE shape: payment is nested under `checkout`, alongside an optional `attribution`.
-      checkout: { payment: { token: 'PAY_SENTINEL' }, attribution: { source: 'ATTR_SENTINEL' } },
-    },
-  });
+  // THE MAXIMAL BODIES ARE DERIVED FROM `inputSchema`, NOT WRITTEN BY HAND.
+  //
+  // They used to be hand-written, and that quietly re-opened the hole this section exists to close: a field
+  // could be ADVERTISED and then refused by the mapper, because the hand-built body simply never contained it.
+  // Confirmed by mutation — adding `checkout.fulfillment` to the published schema (a real field on the live
+  // merchant, and the one this door still owes) left all 61 tests green while the mapper refused every body
+  // carrying it. Deriving the body from the schema makes "everything advertised is accepted" a fact about the
+  // published contract rather than about the fixture.
+  //
+  // Every string leaf gets a sentinel naming its own PATH, so what survives into the canonical params is
+  // attributable to an exact field.
+  const sentinelFor = (path) => `S<${path}>`;
+
+  function maximalFor(schema, path = '') {
+    if (Array.isArray(schema.enum)) return schema.enum[0];
+    switch (schema.type) {
+      case 'object': {
+        const out = {};
+        for (const [name, sub] of Object.entries(schema.properties ?? {})) {
+          out[name] = maximalFor(sub, path ? `${path}.${name}` : name);
+        }
+        // A free-form object (additionalProperties:true, nothing declared) still needs a sentinel, or "is it
+        // forwarded?" would be unanswerable for exactly the fields most likely to be forwarded by accident.
+        if (Object.keys(out).length === 0 && schema.additionalProperties !== false) {
+          out.free_form = sentinelFor(path ? `${path}.*` : '*');
+        }
+        return out;
+      }
+      case 'array': {
+        const count = Math.max(schema.minItems ?? 1, 1);
+        return Array.from({ length: count }, () => maximalFor(schema.items ?? {}, `${path}[]`));
+      }
+      case 'integer':
+      case 'number':
+        return schema.minimum ?? 1;
+      case 'boolean':
+        return true;
+      default:
+        return sentinelFor(path);
+    }
+  }
+
+  /** Every string-sentinel path present in a generated body. */
+  function sentinelPaths(schema, path = '') {
+    if (Array.isArray(schema.enum)) return [];
+    switch (schema.type) {
+      case 'object': {
+        const entries = Object.entries(schema.properties ?? {});
+        if (entries.length === 0 && schema.additionalProperties !== false) {
+          return [path ? `${path}.*` : '*'];
+        }
+        return entries.flatMap(([name, sub]) => sentinelPaths(sub, path ? `${path}.${name}` : name));
+      }
+      case 'array':
+        return sentinelPaths(schema.items ?? {}, `${path}[]`);
+      case 'integer': case 'number': case 'boolean':
+        return [];
+      default:
+        return [path];
+    }
+  }
 
   const opFor = (tool) => canonicalOpForUcpTool(tool);
+  const schemaFor = (tool) => UCP_INPUT_SCHEMAS[opFor(tool).id];
+
+  const MAXIMAL = Object.freeze(Object.fromEntries(
+    ucpCommerceToolDefinitions.map((def) => [def.name, maximalFor(schemaFor(def.name))]),
+  ));
+
+  test('the derived maximal bodies really are the live wire shapes (the derivation is not vacuous)', () => {
+    // A generator that silently produced `{}` would make every test below pass while asserting nothing. Pin
+    // the shapes that matter against the live merchant's spelling, so the derivation itself is load-bearing.
+    assert.equal(MAXIMAL.create_checkout.checkout.line_items.length, 1);
+    assert.equal(MAXIMAL.create_checkout.checkout.line_items[0].item.id, 'S<checkout.line_items[].item.id>');
+    assert.equal(MAXIMAL.create_checkout.checkout.line_items[0].quantity, 1);
+    assert.equal(MAXIMAL.update_checkout.id, 'S<id>');
+    assert.equal(MAXIMAL.get_product.catalog.id, 'S<catalog.id>');
+    // The payment envelope's discriminator comes from the schema's own enum, not from this file.
+    assert.equal(MAXIMAL.complete_checkout.checkout.payment.method, 'ucp_handler');
+    assert.equal(MAXIMAL.complete_checkout.checkout.payment.token, 'S<checkout.payment.token>');
+  });
 
   test('every published UCP tool has a UCP schema and an argument mapping', () => {
     assert.equal(ucpCommerceToolDefinitions.length, 5);
@@ -604,67 +687,102 @@ describe('schema and mapper cannot drift', () => {
     }
   });
 
-  test('additionalProperties:false is enforced by the mapper, not just advertised', () => {
-    for (const def of ucpCommerceToolDefinitions) {
-      assert.equal(def.inputSchema.additionalProperties, false);
-      assert.throws(
-        () => ucpToNativeToolArgs(opFor(def.name), { ...MAXIMAL[def.name], not_a_ucp_field: 'x' }),
-        `${def.name}: an undeclared top-level field must be refused`,
+  test('additionalProperties:false is enforced by the mapper at EVERY depth, not just advertised', () => {
+    // Walk the schema for every strict object ANYWHERE — including through arrays — and prove the mapper
+    // refuses an undeclared member there. Restricting this to top-level `properties` (as it did) left the
+    // strict objects inside `checkout.line_items[]` and `.item` unguarded: deleting BOTH their `rejectUnknown`
+    // calls left all 52 tests green. A guard no test can kill is not a guard.
+    const strictPaths = (schema, path = []) => {
+      if (schema?.type === 'array') return strictPaths(schema.items ?? {}, [...path, '[]']);
+      if (schema?.type !== 'object') return [];
+      const here = schema.additionalProperties === false ? [path] : [];
+      return here.concat(
+        Object.entries(schema.properties ?? {}).flatMap(([name, sub]) => strictPaths(sub, [...path, name])),
       );
-      // EVERY strict nested object, discovered from the schema — not just `checkout`. Hardcoding that one
-      // name left get_product's `catalog` unchecked, and a mutation removing its unknown-field guard survived
-      // the entire suite. Deriving the list is what makes this cover the next nested object too.
-      for (const [name, sub] of Object.entries(def.inputSchema.properties)) {
-        if (!sub || sub.type !== 'object' || sub.additionalProperties !== false) continue;
-        assert.ok(MAXIMAL[def.name][name], `${def.name}: the maximal body needs a \`${name}\``);
+    };
+    /** Clone `body`, adding an undeclared field at `path` ('[]' descends into the first array element). */
+    const injectAt = (body, path) => {
+      const clone = structuredClone(body);
+      let node = clone;
+      for (const step of path) node = step === '[]' ? node[0] : node[step];
+      node.not_a_ucp_field = 'UNDECLARED_SENTINEL';
+      return clone;
+    };
+
+    let checked = 0;
+    for (const def of ucpCommerceToolDefinitions) {
+      const paths = strictPaths(def.inputSchema);
+      assert.ok(paths.some((p) => p.length === 0), `${def.name}: the top level must be strict`);
+      for (const path of paths) {
         assert.throws(
-          () => ucpToNativeToolArgs(opFor(def.name), {
-            ...MAXIMAL[def.name],
-            [name]: { ...MAXIMAL[def.name][name], not_a_ucp_field: 'x' },
-          }),
-          `${def.name}: an undeclared \`${name}\` field must be refused`,
+          () => ucpToNativeToolArgs(opFor(def.name), injectAt(MAXIMAL[def.name], path)),
+          `${def.name}: an undeclared field at \`${['arguments', ...path].join('.')}\` must be refused`,
         );
+        checked += 1;
       }
     }
+    // The walk must actually reach the nested objects — a strictPaths that returned only the five top levels
+    // would make this test pass while checking nothing new.
+    assert.ok(checked >= 12, `expected the walk to reach nested strict objects, only checked ${checked}`);
   });
 
   test('every declared field is either MAPPED or recorded as deliberately unmapped', () => {
-    // The pin: sentinel -> does it survive into the canonical params? A field that starts being read (or stops
-    // being read) flips a boolean here and fails, instead of drifting quietly away from its description.
+    // The pin, now over the DERIVED sentinel set: for each declared string leaf, does it survive into the
+    // canonical params? Both directions fail loudly — a field that starts being read, and a field that stops.
+    // Because the paths come from the schema, a NEWLY ADVERTISED field has to be classified here before this
+    // test will pass, which is the property the hand-written version lacked.
     const EXPECTED_SURVIVING = Object.freeze({
-      get_product: ['ID_SENTINEL'],
-      create_checkout: ['idem-key-0001', 'p_alpha', 'p_beta', 'shopper@example.test'],
-      update_checkout: ['idem-key-0001', 'ID_SENTINEL', 'p_alpha', 'p_beta', 'shopper@example.test'],
-      get_checkout: ['ID_SENTINEL'],
-      complete_checkout: ['idem-key-0001', 'ID_SENTINEL', 'PAY_SENTINEL'],
+      get_product: ['catalog.id'],
+      create_checkout: ['meta.idempotency-key', 'checkout.line_items[].item.id', 'checkout.buyer.email'],
+      update_checkout: ['meta.idempotency-key', 'id', 'checkout.line_items[].item.id', 'checkout.buyer.email'],
+      get_checkout: ['id'],
+      complete_checkout: ['meta.idempotency-key', 'id', 'checkout.payment.token'],
     });
-    const NEVER_SURVIVING = [
-      'CART_SENTINEL', 'CTRY_SENTINEL', 'RGN_SENTINEL', 'ZIP_SENTINEL', 'ATTR_SENTINEL',
-      // the agent profile pointer is meta plumbing, never a canonical param
-      'agent.example',
-    ];
 
     for (const def of ucpCommerceToolDefinitions) {
       const mapped = JSON.stringify(ucpToNativeToolArgs(opFor(def.name), MAXIMAL[def.name]));
-      for (const sentinel of EXPECTED_SURVIVING[def.name]) {
-        assert.ok(mapped.includes(sentinel), `${def.name}: \`${sentinel}\` must reach the canonical args`);
-      }
-      for (const sentinel of NEVER_SURVIVING) {
-        assert.equal(mapped.includes(sentinel), false, `${def.name}: \`${sentinel}\` must NOT be forwarded`);
-      }
+      const declared = sentinelPaths(schemaFor(def.name));
+      const surviving = declared.filter((p) => mapped.includes(sentinelFor(p)));
+      // Set equality, not a one-way spot check: the complement (everything NOT listed) is asserted to be
+      // absent from the canonical params by the same comparison.
+      assert.deepEqual(
+        surviving.sort(), [...EXPECTED_SURVIVING[def.name]].sort(),
+        `${def.name}: the set of fields reaching the canonical args changed`,
+      );
     }
 
-    // And the unmapped set is declared, not merely observed — so dropping a field from the mapper without
-    // recording the decision fails this file rather than passing silently. The last two entries on
-    // create/update were added when the LIVE schemas showed the merchant also permits them: a door stricter
-    // than the spec refuses conforming callers, which is the same "not executable" failure as a wrong shape.
-    const CART_UNMAPPED = [
-      'checkout.cart_id', 'checkout.context', 'checkout.attribution',
-      'checkout.buyer.phone_number', 'checkout.line_items[].id',
-    ];
-    assert.deepEqual(UCP_ACCEPTED_BUT_UNMAPPED.create_checkout_session, CART_UNMAPPED);
-    assert.deepEqual(UCP_ACCEPTED_BUT_UNMAPPED.update_checkout_session, CART_UNMAPPED);
-    assert.deepEqual(UCP_ACCEPTED_BUT_UNMAPPED.complete_checkout_session, ['checkout.attribution']);
+    // And the unmapped set is DECLARED, not merely observed — so dropping a field from the mapper without
+    // recording the decision fails this file rather than passing silently. Checked against the derived
+    // complement in both directions, so the declaration cannot go stale either:
+    //   - every accepted-but-unread leaf must be covered by an entry, and
+    //   - every entry must still cover a real leaf (a field deleted from the schema leaves a dead entry).
+    // An entry covers a leaf when it names the leaf itself or an ancestor of it — `checkout.context` covers
+    // `checkout.context.postal_code`, and `catalog.selected` covers `catalog.selected[].*`. The separator may
+    // therefore be `.` or `[`, which is why this is not a bare `startsWith(entry + '.')`.
+    const covers = (entry, leaf) => leaf === entry || leaf.startsWith(`${entry}.`) || leaf.startsWith(`${entry}[`);
+
+    for (const def of ucpCommerceToolDefinitions) {
+      const opId = opFor(def.name).id;
+      const declaredUnmapped = UCP_ACCEPTED_BUT_UNMAPPED[opId];
+      assert.ok(declaredUnmapped, `${def.name}: needs an UCP_ACCEPTED_BUT_UNMAPPED entry`);
+      const mapped = JSON.stringify(ucpToNativeToolArgs(opFor(def.name), MAXIMAL[def.name]));
+      const unread = sentinelPaths(schemaFor(def.name))
+        // `meta` is protocol plumbing (the profile pointer, the idempotency key) rather than a checkout field.
+        .filter((p) => !p.startsWith('meta.') && !mapped.includes(sentinelFor(p)));
+
+      for (const leaf of unread) {
+        assert.ok(
+          declaredUnmapped.some((entry) => covers(entry, leaf)),
+          `${def.name}: \`${leaf}\` is advertised and silently unread — declare it in UCP_ACCEPTED_BUT_UNMAPPED`,
+        );
+      }
+      for (const entry of declaredUnmapped) {
+        assert.ok(
+          unread.some((leaf) => covers(entry, leaf)),
+          `${def.name}: UCP_ACCEPTED_BUT_UNMAPPED lists \`${entry}\`, which no longer exists or is now read`,
+        );
+      }
+    }
   });
 
   test('the fields the LIVE schemas permit are accepted, not refused for being unlisted', () => {
