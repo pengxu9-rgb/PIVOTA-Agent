@@ -249,7 +249,7 @@ test('UCP profile: the refused operation and its now-empty capability are never 
   assert.ok(!capIds.includes('dev.ucp.shopping.ap2_mandate'));
   // Everything executable is still advertised, and no capability is left empty.
   assert.ok(capIds.includes('dev.ucp.shopping.checkout'));
-  assert.ok(capIds.includes('dev.ucp.shopping.discovery'));
+  assert.ok(capIds.includes('dev.ucp.shopping.catalog.search'));
   assert.ok(capIds.includes('dev.ucp.shopping.order'));
   assert.ok(capIds.includes('dev.ucp.common.identity_linking'));
   // No capability is a title with nothing behind it. A MODIFIER (UCP `extends` + `config`, e.g.

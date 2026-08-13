@@ -153,7 +153,12 @@ describe('Agent checkout ACP REST + UCP discovery doors', () => {
       const capIds = res.body.capabilities.map((c) => c.id);
       assert.ok(!capIds.includes('dev.ucp.shopping.checkout'), 'checkout withheld while checkout is dark');
       assert.ok(!capIds.includes('dev.ucp.shopping.ap2_mandate'), 'ap2 mandate withheld while checkout is dark');
-      assert.ok(capIds.includes('dev.ucp.shopping.discovery'), 'read capabilities still advertised');
+      // The read capabilities, under the ids the SPEC defines. This asserted `dev.ucp.shopping.discovery`
+      // until that id turned out to exist nowhere in the UCP vocabulary — so this test passed while the
+      // capability it checks matched no platform on earth.
+      assert.ok(capIds.includes('dev.ucp.shopping.catalog.search'), 'read capabilities still advertised');
+      assert.ok(capIds.includes('dev.ucp.shopping.catalog.lookup'), 'read capabilities still advertised');
+      assert.ok(capIds.includes('cc.pivota.insights'), 'the vendor decision layer is still advertised');
     });
   });
 

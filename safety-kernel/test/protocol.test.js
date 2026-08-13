@@ -159,7 +159,7 @@ test('omitCapabilityIds withholds a capability (and its operations) from the pro
   const capIds = profile.capabilities.map((c) => c.id);
   assert.ok(!capIds.includes('dev.ucp.shopping.checkout'));
   assert.ok(!capIds.includes('dev.ucp.shopping.ap2_mandate'));
-  assert.ok(capIds.includes('dev.ucp.shopping.discovery'), 'non-omitted capabilities remain');
+  assert.ok(capIds.includes('dev.ucp.shopping.catalog.search'), 'non-omitted capabilities remain');
   const allOps = profile.capabilities.flatMap((c) => c.operations);
   assert.ok(!allOps.includes('create_payment_link'), 'operations of an omitted capability vanish with it');
   assert.ok(!allOps.includes('complete_checkout_session'));
@@ -214,8 +214,70 @@ test('UCP platform capability parser accepts JSON UCP-Agent and comma-separated 
   );
   assert.deepEqual(
     parsePlatformCapabilities({
-      headers: { 'ucp-agent-capabilities': 'dev.ucp.shopping.discovery, dev.ucp.shopping.checkout' },
+      headers: { 'ucp-agent-capabilities': 'dev.ucp.shopping.catalog.search, dev.ucp.shopping.checkout' },
     }),
-    ['dev.ucp.shopping.discovery', 'dev.ucp.shopping.checkout'],
+    ['dev.ucp.shopping.catalog.search', 'dev.ucp.shopping.checkout'],
   );
+});
+
+// ---- the advertised capability ids must exist in the UCP vocabulary ----------------------------------------
+//
+// `dev.ucp.shopping.discovery` was advertised here for the life of this file and exists nowhere in the spec.
+// Negotiation is a set INTERSECTION, so it matched no platform and our five discovery operations were
+// invisible to every caller — silently, because a profile that advertises a fiction still parses.
+//
+// The list below is the SPEC's, transcribed from ucp.dev/2026-04-08 (specification/overview + /catalog). It is
+// deliberately NOT derived from CANONICAL_CAPABILITIES: the tests that let the wrong id survive asserted our
+// own constant back at itself, which can never fail. A vendor id is allowed only under a reverse-DNS
+// namespace we actually own, which is the spec's own escape hatch for non-standard capabilities.
+test('every advertised capability id is a real UCP id, or a vendor id under a domain we own', () => {
+  const SPEC_CAPABILITY_IDS = [
+    'dev.ucp.shopping.catalog.search',
+    'dev.ucp.shopping.catalog.lookup',
+    'dev.ucp.shopping.cart',
+    'dev.ucp.shopping.checkout',
+    'dev.ucp.shopping.discount',
+    'dev.ucp.shopping.fulfillment',
+    'dev.ucp.shopping.order',
+    'dev.ucp.shopping.ap2_mandate',
+    'dev.ucp.common.identity_linking',
+  ];
+  // Reverse-DNS of pivota.cc — the domain this gateway serves from. The spec's example of a vendor
+  // capability is `com.example.installments`; Shopify publishes `dev.shopify.catalog` the same way.
+  const VENDOR_PREFIX = 'cc.pivota.';
+
+  for (const [key, cap] of Object.entries(CANONICAL_CAPABILITIES)) {
+    const known = SPEC_CAPABILITY_IDS.includes(cap.ucp);
+    const vendor = cap.ucp.startsWith(VENDOR_PREFIX);
+    assert.ok(known || vendor, `${key} advertises "${cap.ucp}", which is neither a spec id nor ours to mint`);
+    // A vendor id must NOT squat the standard namespace — that is how a fiction gets mistaken for a standard.
+    if (vendor) assert.ok(!cap.ucp.startsWith('dev.ucp.'), `${key} mints an id inside the spec's namespace`);
+  }
+});
+
+test('the three discovery operations are split by what each id actually promises', () => {
+  // The spec defines `.search` as "Search for products using query text and filters" and `.lookup` as
+  // "Retrieve products or variants by identifier". Pivota's alternatives/offers/intel are neither: they are
+  // its own decision layer, so they live under the vendor id rather than being advertised as something a
+  // platform can expect from a standard catalog capability.
+  assert.deepEqual(operationsForCapability('catalog_search', { includeRefusalOnly: false }), ['search_catalog']);
+  assert.deepEqual(operationsForCapability('catalog_lookup', { includeRefusalOnly: false }), ['get_product']);
+  assert.deepEqual(
+    operationsForCapability('insights', { includeRefusalOnly: false }).sort(),
+    ['get_alternatives', 'get_intel', 'get_offers'],
+  );
+  // and no operation was lost or duplicated in the split
+  const all = ['catalog_search', 'catalog_lookup', 'insights']
+    .flatMap((c) => operationsForCapability(c, { includeRefusalOnly: false }));
+  assert.equal(new Set(all).size, all.length, 'an operation must not appear under two capabilities');
+  assert.deepEqual(all.sort(), ['get_alternatives', 'get_intel', 'get_offers', 'get_product', 'search_catalog']);
+});
+
+test('the vendor capability is a ROOT capability — `extends` would make it prunable', () => {
+  // `extends` is a pruning key: intersection step 3 removes any capability whose declared parents are all
+  // absent. Declaring these reads as extending catalog.lookup would delete Pivota's whole decision layer for
+  // a platform that does not negotiate that standard capability — and they do not need it.
+  assert.equal(CANONICAL_CAPABILITIES.insights.extends, undefined);
+  assert.equal(CANONICAL_CAPABILITIES.catalog_search.extends, undefined);
+  assert.equal(CANONICAL_CAPABILITIES.catalog_lookup.extends, undefined);
 });
