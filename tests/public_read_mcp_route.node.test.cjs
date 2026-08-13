@@ -80,6 +80,17 @@ test('POST /public/mcp rejects oversized bodies (Content-Length path)', async ()
     .expect(413);
 });
 
+// Did a chunked probe get stopped by the cap? Either the guard answered 413 before the parser ran, or it
+// destroyed the request and the client saw the socket die mid-write.
+//
+// The error verdict carries the CODE rather than a flat 'reset'. A bare `resolve('reset')` on any error
+// makes the assertion pass for reasons that have nothing to do with the cap — a wrong port, a server torn
+// down early, a refused connection all surface as errors, and every one of them would read as "capped" on
+// a build where the cap had been deleted outright. Only the two codes a mid-body destroy actually produces
+// count: ECONNRESET (peer closed while we waited) and EPIPE (peer closed while we were still writing).
+const CAPPED_VERDICTS = new Set([413, 'error:ECONNRESET', 'error:EPIPE']);
+const isCapped = (verdict) => CAPPED_VERDICTS.has(verdict);
+
 test('POST /public/mcp rejects oversized CHUNKED bodies (no Content-Length)', async () => {
   // Raw request that writes chunks without setting Content-Length → Node uses chunked transfer-encoding, so
   // the route's header check can't catch it and the early STREAM guard must. Accept 413 or a connection
@@ -94,13 +105,13 @@ test('POST /public/mcp rejects oversized CHUNKED bodies (no Content-Length)', as
       { port, path: '/public/mcp', method: 'POST', headers: { 'Content-Type': 'application/json' } },
       (res) => { res.resume(); resolve(res.statusCode); }
     );
-    req.on('error', () => resolve('reset'));
+    req.on('error', (err) => resolve(`error:${err.code || err.message}`));
     req.write(big.slice(0, 40000));
     req.write(big.slice(40000));
     req.end();
   });
   server.close();
-  assert.ok(outcome === 413 || outcome === 'reset', `expected 413 or reset, got ${outcome}`);
+  assert.ok(isCapped(outcome), `expected 413 or a mid-body connection destroy, got ${outcome}`);
 });
 
 // Express routes case-insensitively and tolerates a trailing slash (caseSensitive/strict default off), so
@@ -123,7 +134,7 @@ function postChunked(port, { path, host, body }) {
       },
       (res) => { res.resume(); resolve(res.statusCode); }
     );
-    req.on('error', () => resolve('reset'));
+    req.on('error', (err) => resolve(`error:${err.code || err.message}`));
     // Two writes with no Content-Length → Node uses Transfer-Encoding: chunked.
     const half = Math.ceil(body.length / 2);
     req.write(body.slice(0, half));
@@ -156,7 +167,8 @@ test('every Express spelling of the public MCP paths caps oversized CHUNKED bodi
         // Premise check: this spelling really does reach the public handler, so a capped verdict below is
         // the cap firing and not a 404. 429 also counts — it comes from the route, i.e. past the cap.
         reached: await postChunked(port, { ...spelling, body: small }),
-        // The cap itself: 413 from the header-less stream guard, or a reset when it destroys the request.
+        // The cap itself: 413 from the header-less stream guard, or a mid-body destroy (see isCapped —
+        // only genuine reset-class codes count, so a probe that fails to connect cannot read as capped).
         capped: await postChunked(port, { ...spelling, body: big }),
       });
     }
@@ -167,7 +179,7 @@ test('every Express spelling of the public MCP paths caps oversized CHUNKED bodi
   // which ones leak is the finding.
   const unreached = results.filter((r) => r.reached !== 200 && r.reached !== 429);
   assert.deepEqual(unreached, [], `these spellings did not reach the public read handler: ${JSON.stringify(unreached)}`);
-  const leaked = results.filter((r) => r.capped !== 413 && r.capped !== 'reset');
+  const leaked = results.filter((r) => !isCapped(r.capped));
   assert.deepEqual(leaked, [], `these spellings accepted a ${big.length}B chunked body past the 32KB cap: ${JSON.stringify(leaked)}`);
 });
 
