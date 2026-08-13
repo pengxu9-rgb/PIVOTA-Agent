@@ -182,7 +182,14 @@ async function getVerifier(resources) {
   const list = (Array.isArray(resources) ? resources : [resources]).filter(Boolean);
   if (list.length === 0) return null;
   const resource = list.length === 1 ? list[0] : list;
-  const cacheKey = list.join(' ');
+  // JSON, not join(' '): a joined key is AMBIGUOUS — the one-member set ["a b"] and the two-member set
+  // ["a", "b"] collapse to the same string, so one door can be served the other's cached verifier. Not
+  // theoretical: with MCP_OAUTH_RESOURCE unset the identifier is built from the Host header, and Node
+  // accepts a Host containing a space, so a caller can choose which key it lands on. Nobody gains an
+  // audience they can mint for (the borrow hands over identifiers, not signing keys), but a legitimate
+  // client's correctly-minted token starts being refused — a denial of service on a live charge door,
+  // planted by an unauthenticated request.
+  const cacheKey = JSON.stringify(list);
   if (verifierCache.has(cacheKey)) return verifierCache.get(cacheKey);
   const issuers = issuersConfig();
   if (!issuers) {

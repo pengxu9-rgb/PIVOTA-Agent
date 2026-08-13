@@ -300,3 +300,43 @@ test('MCP_OAUTH_RESOURCE_METADATA_URL overrides the NATIVE door only', async () 
     delete process.env.MCP_OAUTH_RESOURCE_METADATA_URL;
   }
 });
+
+// The claim "the two doors never share a verifier" was a COMMENT with nothing behind it. Adversarial
+// review showed a constant cache key passes every other test in this file while the real app hands a
+// UCP-audience token a 200 at /mcp — because every other test calls __resetVerifierCache() first and so
+// never exercises the one thing the cache exists for: a warm process serving both doors in turn.
+// These two tests deliberately do NOT reset between doors.
+test('a WARM UCP verifier is not reused at the native door (no cache borrow)', async () => {
+  setBaseEnv();
+  const { token, issuers } = await makeToken({ aud: UCP_RESOURCE });
+  process.env.MCP_OAUTH_ISSUERS_JSON = issuers;
+  glue.__resetVerifierCache();
+
+  // Warm /ucp/mcp first, exactly as a live process would be warmed by real traffic.
+  const warm = await glue.resolveMcpOAuthIdentity(reqAt('/ucp/mcp', { Authorization: `Bearer ${token}` }));
+  assert.equal(warm.mode, 'oauth', 'precondition: the UCP door accepts its own audience');
+
+  // ...then the SAME token at the native door, with no reset in between.
+  const native = await glue.resolveMcpOAuthIdentity(reqAt('/mcp', { Authorization: `Bearer ${token}` }));
+  assert.equal(native.mode, 'challenge', 'the native door served the UCP door’s cached verifier');
+  assert.equal(native.status, 401);
+});
+
+test('cache keys are unambiguous: a spaced identifier cannot collide with a two-member set', async () => {
+  setBaseEnv();
+  delete process.env.MCP_OAUTH_RESOURCE; // Host fallback: the identifier becomes attacker-influenced
+  const { token, issuers } = await makeToken({ aud: 'https://agent.test.example/ucp/mcp' });
+  process.env.MCP_OAUTH_ISSUERS_JSON = issuers;
+  glue.__resetVerifierCache();
+
+  // A Host carrying a space makes the one-member set ["https://a b/mcp"], which a joined key renders
+  // identically to the two-member set ["https://a", "b/mcp"]. Poison the cache from the native door...
+  await glue.resolveMcpOAuthIdentity(
+    reqAt('/mcp', { host: 'agent.test.example/ucp/mcp https://agent.test.example', Authorization: `Bearer ${token}` }),
+  );
+  // ...then a legitimate client must still be verified on its own terms, not the poisoned entry's.
+  const legit = await glue.resolveMcpOAuthIdentity(
+    reqAt('/ucp/mcp', { host: 'agent.test.example', Authorization: `Bearer ${token}` }),
+  );
+  assert.equal(legit.mode, 'oauth', 'a poisoned cache entry denied service to a correctly-minted token');
+});
