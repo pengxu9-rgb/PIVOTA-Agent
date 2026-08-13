@@ -253,12 +253,29 @@ jobs:
       # would run nowhere: safety-kernel's own suite and the whole-directory
       # `cd mcp-server && node --test` live only in the workflow_dispatch-only
       # money-path gate, and jest's testMatch wants `tests/`, not `test/`.
+      # ADDED 2026-08-13: `safety-kernel/test/ucpPaymentAuthorizationContract`,
+      # confirmed green (15/15) and mutation-checked (6 mutants, all killed). It
+      # is the ONLY test in the repo that drives UCP ADAPTER OUTPUT through the
+      # REAL `createPaymentAuthorizationVerifier` + `createSignedGrantVerifier`,
+      # and that seam is precisely where #1966's defect lived: the published
+      # `checkout.payment` envelope carried no method discriminator, so every
+      # conforming platform would have been refused ON THE CHARGE with
+      # CONFIRMATION_INVALID{unknown_authorization_method} — invisible to an
+      # argument suite that stops at "what did the executor receive?", which is
+      # why a mutation-checked argument suite did not see it. It sits under
+      # safety-kernel/ rather than mcp-server/ because it needs `jose` to mint a
+      # real signed grant, and the money-path gate runs the mcp-server suite with
+      # NO `npm ci` — a bare import there aborts the file at load, which would
+      # have run all 15 of its assertions nowhere in that gate while turning it
+      # red. Same allowlist reasoning as above: without this line the guard would
+      # not run on PRs at all (the money-path gate is workflow_dispatch-only).
       - name: Run node:test suites
         run: |
           node --test \
             mcp-server/test/ucpToolVocabulary.test.js \
             mcp-server/test/ucpDialectSurface.test.js \
             mcp-server/test/ucpArgumentAdapter.test.js \
+            safety-kernel/test/ucpPaymentAuthorizationContract.test.js \
             tests/commerce_ucp_mcp_door.node.test.cjs \
             tests/commerce_kernel_error_body.node.test.cjs \
             tests/commerce_kernel_error_mapping.node.test.cjs \
