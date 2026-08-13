@@ -252,7 +252,20 @@ test('UCP profile: the refused operation and its now-empty capability are never 
   assert.ok(capIds.includes('dev.ucp.shopping.discovery'));
   assert.ok(capIds.includes('dev.ucp.shopping.order'));
   assert.ok(capIds.includes('dev.ucp.common.identity_linking'));
-  for (const c of profile.capabilities) assert.ok(c.operations.length > 0, `${c.id} advertises no empty capability`);
+  // No capability is a title with nothing behind it. A MODIFIER (UCP `extends` + `config`, e.g.
+  // dev.ucp.shopping.fulfillment) is the one entry with no operations of its OWN — what stands behind it is
+  // its config plus the capability it extends, which must itself be advertised. So the rule is not relaxed,
+  // it is stated exactly: operations, or an extends target that is present.
+  const capIdSet = new Set(capIds);
+  for (const c of profile.capabilities) {
+    if (c.extends) {
+      assert.equal(c.operations, undefined, `${c.id} is a modifier and must not ship an empty operations list`);
+      assert.ok(c.extends.length > 0 && c.extends.every((id) => capIdSet.has(id)),
+        `${c.id} extends a capability that is not advertised`);
+    } else {
+      assert.ok(c.operations.length > 0, `${c.id} advertises no empty capability`);
+    }
+  }
   // Payment authorization is NOT lost — it is presented inline on the complete operation.
   const checkout = profile.capabilities.find((c) => c.id === 'dev.ucp.shopping.checkout');
   assert.ok(checkout.operations.includes('complete_checkout_session'));

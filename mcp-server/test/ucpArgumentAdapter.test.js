@@ -781,15 +781,22 @@ describe('schema and mapper cannot drift', () => {
     // canonical params? Both directions fail loudly — a field that starts being read, and a field that stops.
     // Because the paths come from the schema, a NEWLY ADVERTISED field has to be classified here before this
     // test will pass, which is the property the hand-written version lacked.
+    // Every member of a `destinations[]` entry EXCEPT its `id` must survive: this is the destination mapping,
+    // and a field that stopped surviving would be one silently dropped out of a shipping address.
+    const DESTINATION_SURVIVES = [
+      'first_name', 'last_name', 'phone_number', 'street_address', 'extended_address',
+      'address_locality', 'address_region', 'postal_code', 'address_country',
+    ].map((f) => `checkout.fulfillment.methods[].destinations[].${f}`);
+
     const EXPECTED_SURVIVING = Object.freeze({
       get_product: ['catalog.id'],
       create_checkout: [
         'meta.idempotency-key', 'checkout.line_items[].item.id', 'checkout.line_items[].quantity',
-        'checkout.buyer.email',
+        'checkout.buyer.email', ...DESTINATION_SURVIVES,
       ],
       update_checkout: [
         'meta.idempotency-key', 'id', 'checkout.line_items[].item.id', 'checkout.line_items[].quantity',
-        'checkout.buyer.email',
+        'checkout.buyer.email', ...DESTINATION_SURVIVES,
       ],
       get_checkout: ['id'],
       complete_checkout: ['meta.idempotency-key', 'id', 'checkout.payment.token'],
@@ -880,6 +887,25 @@ describe('schema and mapper cannot drift', () => {
       update_checkout: ['line_items'],
       complete_checkout: ['payment'],
     });
+
+    // …and the FULFILLMENT method, whose `required` GENUINELY DIFFERS between the two tools — verified in the
+    // same 2026-08-13 listing. create_checkout's method requires `type`; update_checkout's requires
+    // `line_item_ids` and additionally permits a method `id`. Publishing one shape for both would refuse a
+    // conforming caller on whichever tool it got wrong, which is this module's whole failure mode.
+    const LIVE_METHOD_REQUIRED = Object.freeze({
+      create_checkout: ['type'],
+      update_checkout: ['line_item_ids'],
+    });
+
+    for (const [tool, methodRequired] of Object.entries(LIVE_METHOD_REQUIRED)) {
+      const def = ucpCommerceToolDefinitions.find((d) => d.name === tool);
+      const method = def.inputSchema.properties.checkout.properties.fulfillment.properties.methods.items;
+      assert.deepEqual([...method.required].sort(), [...methodRequired].sort(),
+        `${tool}: published fulfillment method required must equal the live merchant's`);
+      // The extra member is the OTHER live difference; asserted both ways so neither leaks into the wrong tool.
+      assert.equal(Object.hasOwn(method.properties, 'id'), tool === 'update_checkout',
+        `${tool}: only update_checkout's method carries an \`id\``);
+    }
 
     for (const def of ucpCommerceToolDefinitions) {
       const live = LIVE_REQUIRED[def.name];
