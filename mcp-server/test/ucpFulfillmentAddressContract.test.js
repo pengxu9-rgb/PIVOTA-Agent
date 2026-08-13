@@ -501,7 +501,11 @@ describe('update_checkout re-mints the locked quote', () => {
 // ---- 4. discovery cannot advertise a bound the door does not enforce ------------------------------------------
 
 describe('the published capability matches the rule the door enforces', () => {
-  const capabilityOf = (profile) => profile.capabilities.find((c) => c.id === 'dev.ucp.shopping.fulfillment');
+  // `capabilities` is a MAP keyed by id (the spec's shape); an entry is the first element of its array.
+const capabilityOf = (profile) => {
+  const entries = profile.ucp.capabilities['dev.ucp.shopping.fulfillment'];
+  return Array.isArray(entries) ? entries[0] : undefined;
+};
 
   test('the profile declares dev.ucp.shopping.fulfillment, extending checkout', async () => {
     const capability = capabilityOf(buildUcpProfile({
@@ -537,14 +541,15 @@ describe('the published capability matches the rule the door enforces', () => {
     });
 
     const orphaned = activeCapabilityIntersection(profile, ['dev.ucp.shopping.fulfillment']);
-    assert.deepEqual(orphaned.map((c) => c.id), [], 'a modifier alone is not an active capability');
+    // The intersection returns the spec's MAP of id -> [{version}], so the ids are its keys.
+    assert.deepEqual(Object.keys(orphaned), [], 'a modifier alone is not an active capability');
 
     // …and the modifier IS returned when the platform supports both — the guard must not cost the real case.
     const both = activeCapabilityIntersection(
       profile, ['dev.ucp.shopping.fulfillment', 'dev.ucp.shopping.checkout'],
     );
     assert.deepEqual(
-      both.map((c) => c.id).sort(),
+      Object.keys(both).sort(),
       ['dev.ucp.shopping.checkout', 'dev.ucp.shopping.fulfillment'],
       'both sides support fulfillment, so it is active',
     );
@@ -552,6 +557,6 @@ describe('the published capability matches the rule the door enforces', () => {
     // A platform that supports checkout but NOT the extension keeps checkout, and is not handed a modifier
     // it never asked for.
     const checkoutOnly = activeCapabilityIntersection(profile, ['dev.ucp.shopping.checkout']);
-    assert.deepEqual(checkoutOnly.map((c) => c.id), ['dev.ucp.shopping.checkout']);
+    assert.deepEqual(Object.keys(checkoutOnly), ['dev.ucp.shopping.checkout']);
   });
 });

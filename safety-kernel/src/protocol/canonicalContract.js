@@ -35,8 +35,23 @@ export const CANONICAL_CAPABILITIES = Object.freeze({
   // VENDOR-NAMESPACED capability (spec: "Vendor: com.example.installments"; Shopify publishes
   // `dev.shopify.catalog` alongside the standard ids). `cc.pivota.*` is the reverse-DNS of pivota.cc, the
   // domain this gateway actually serves from.
-  catalog_search: { ucp: 'dev.ucp.shopping.catalog.search', title: 'Catalog search (free text + filters)' },
-  catalog_lookup: { ucp: 'dev.ucp.shopping.catalog.lookup', title: 'Catalog lookup by identifier' },
+  // `spec` and `schema` are REQUIRED members of a published capability entry, so each capability carries the
+  // paths for its own. They are paths, not full URLs, so the version literal stays in ucpSpecVersion.cjs —
+  // and EVERY ONE was checked to return 200 on 2026-08-13 before being written here. That check is the
+  // point: a spec/schema URL is a promise a platform can dereference, and this file has already shipped one
+  // capability id that resolved to nothing.
+  catalog_search: {
+    ucp: 'dev.ucp.shopping.catalog.search',
+    title: 'Catalog search (free text + filters)',
+    specName: 'catalog',
+    schemaName: 'shopping/catalog_search.json',
+  },
+  catalog_lookup: {
+    ucp: 'dev.ucp.shopping.catalog.lookup',
+    title: 'Catalog lookup by identifier',
+    specName: 'catalog',
+    schemaName: 'shopping/catalog_lookup.json',
+  },
   // A ROOT vendor capability — deliberately NO `extends`. `extends` is a PRUNING KEY: intersection step 3
   // removes any capability whose declared parents are all absent from the intersection. Declaring these
   // reads as extending `catalog.lookup` would delete Pivota's entire decision layer for any platform that
@@ -46,11 +61,38 @@ export const CANONICAL_CAPABILITIES = Object.freeze({
   insights: {
     ucp: 'cc.pivota.insights',
     title: 'Pivota Insights — alternatives, cross-merchant offers, reviewed decision intelligence',
+    // NO specName/schemaName, deliberately. Those members are URLs a platform can dereference, and Pivota
+    // publishes no hosted spec or JSON Schema for this vendor capability today. Emitting a plausible-looking
+    // `https://pivota.cc/...` would advertise a document that does not exist — the same defect as advertising
+    // a capability id that does not exist, one field over. The entry ships without them until the documents
+    // are actually hosted; `vendorCapabilityDocs` on buildUcpProfile is the hook for supplying them then.
   },
-  checkout: { ucp: 'dev.ucp.shopping.checkout', title: 'Checkout session lifecycle' },
-  order: { ucp: 'dev.ucp.shopping.order', title: 'Order lifecycle + after-sales' },
-  identity: { ucp: 'dev.ucp.common.identity_linking', title: 'OAuth identity linking' },
-  payment: { ucp: 'dev.ucp.shopping.ap2_mandate', title: 'Payment authorization (delegated token / AP2 mandate)' },
+  checkout: {
+    ucp: 'dev.ucp.shopping.checkout',
+    title: 'Checkout session lifecycle',
+    specName: 'checkout',
+    schemaName: 'shopping/checkout.json',
+  },
+  order: {
+    ucp: 'dev.ucp.shopping.order',
+    title: 'Order lifecycle + after-sales',
+    specName: 'order',
+    schemaName: 'shopping/order.json',
+  },
+  identity: {
+    ucp: 'dev.ucp.common.identity_linking',
+    title: 'OAuth identity linking',
+    // NOTE the two spellings, both verified: the spec PAGE is hyphenated and the SCHEMA lives under
+    // `common/` (not `shopping/`), matching this capability's `dev.ucp.common.*` namespace.
+    specName: 'identity-linking',
+    schemaName: 'common/identity_linking.json',
+  },
+  payment: {
+    ucp: 'dev.ucp.shopping.ap2_mandate',
+    title: 'Payment authorization (delegated token / AP2 mandate)',
+    specName: 'ap2-mandates',
+    schemaName: 'shopping/ap2_mandate.json',
+  },
   // A MODIFIER capability: it carries no operation of its own. UCP models fulfillment as something that
   // EXTENDS checkout — it adds `checkout.fulfillment` to that capability's input shape and declares, in
   // machine-readable `config`, which combinations the seller can honour. Pivota's UCP door accepts exactly
@@ -62,6 +104,8 @@ export const CANONICAL_CAPABILITIES = Object.freeze({
   fulfillment: {
     ucp: 'dev.ucp.shopping.fulfillment',
     title: 'Shipping destination on checkout',
+    specName: 'fulfillment',
+    schemaName: 'shopping/fulfillment.json',
     extends: ['dev.ucp.shopping.checkout'],
     config: Object.freeze({
       allows_multi_destination: Object.freeze({ shipping: false }),

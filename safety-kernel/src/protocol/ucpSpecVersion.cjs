@@ -47,8 +47,17 @@ const UCP_SPEC_ORIGIN = 'https://ucp.dev';
 /** `https://ucp.dev/<version>/specification/` — advertised in the buyer profile's service entries. */
 const UCP_SPEC_BASE = `${UCP_SPEC_ORIGIN}/${UCP_SPEC_VERSION}/specification/`;
 
-/** `https://ucp.dev/<version>/schema/` — advertised in the buyer profile's service entries. */
-const UCP_SCHEMA_BASE = `${UCP_SPEC_ORIGIN}/${UCP_SPEC_VERSION}/schema/`;
+/**
+ * `https://ucp.dev/<version>/schemas/` — PLURAL, and that is not cosmetic: this constant said `schema/`
+ * (singular) and every schema URL built from it 404s. Measured 2026-08-13:
+ *   https://ucp.dev/2026-04-08/schemas/shopping/checkout.json -> 200
+ *   https://ucp.dev/2026-04-08/schema/shopping/checkout.json  -> 404
+ * The spec's own profile examples and a live conformant business profile (cosrx) both use the plural form.
+ * Because both of Pivota's UCP roles read this one constant, the singular spelling published dead schema
+ * URLs from the buyer profile as well — a platform that dereferences them to validate our capabilities gets
+ * nothing at every one.
+ */
+const UCP_SCHEMA_BASE = `${UCP_SPEC_ORIGIN}/${UCP_SPEC_VERSION}/schemas/`;
 
 module.exports = {
   UCP_SPEC_VERSION,

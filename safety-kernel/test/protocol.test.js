@@ -69,29 +69,38 @@ test('UCP profile: version, services, capabilities (dev.ucp.*), payment_handlers
     paymentHandlers: [{ id: 'stripe_spt', psp: 'stripe', pci: false }],
     signingKeys: [PUBLIC_JWK],
   });
-  assert.match(profile.ucp_version, /^\d{4}-\d{2}-\d{2}$/);
+  assert.match(profile.ucp.version, /^\d{4}-\d{2}-\d{2}$/);
   // The advertised version is the SHARED pin, never a literal of this module's own — the buyer-agent
   // profile reads the same constant, so the two roles cannot negotiate different spec lines. (They did:
   // this profile advertised the 2026-01-23 line while the buyer pinned, and #1962's tool vocabulary came
   // from, the 2026-04-08 line.) mcp-server/test/ucpSpecVersion.test.js pins both sides together.
-  assert.equal(profile.ucp_version, UCP_SPEC_VERSION);
+  assert.equal(profile.ucp.version, UCP_SPEC_VERSION);
   // Mid-man rule: Pivota is NEVER merchant-of-record — the profile must say so
   // and state its actual role (the merchant settles on their own rails).
   assert.equal(profile.provider.merchant_of_record, false);
   assert.equal(profile.provider.role, 'commerce_index_passthrough');
   // capability ids are the dev.ucp.* names
-  const capIds = profile.capabilities.map((c) => c.id);
+  // `capabilities` is a MAP keyed by id — the spec's shape, and a live conformant business profile's.
+  const capIds = Object.keys(profile.ucp.capabilities);
   assert.ok(capIds.includes('dev.ucp.shopping.checkout'));
   assert.ok(capIds.includes('dev.ucp.common.identity_linking'));
   assert.ok(capIds.includes('dev.ucp.shopping.order'));
-  // each capability lists its canonical operations
-  const checkout = profile.capabilities.find((c) => c.id === 'dev.ucp.shopping.checkout');
-  assert.ok(checkout.operations.includes('complete_checkout_session'));
+  // Each entry carries the REQUIRED members. `operations`/`title` are NOT spec members and are gone.
+  const checkout = profile.ucp.capabilities['dev.ucp.shopping.checkout'][0];
+  assert.equal(checkout.version, UCP_SPEC_VERSION);
+  assert.equal(checkout.spec, 'https://ucp.dev/2026-04-08/specification/checkout');
+  assert.equal(checkout.schema, 'https://ucp.dev/2026-04-08/schemas/shopping/checkout.json');
+  assert.equal(checkout.operations, undefined, 'operations is not a spec member');
+  assert.equal(checkout.title, undefined, 'title is not a spec member');
+  // payment_handlers is a MAP keyed by handler id, not an array.
+  assert.ok(!Array.isArray(profile.ucp.payment_handlers));
+  assert.ok(Array.isArray(profile.ucp.payment_handlers.stripe_spt));
   // TRANSPORTS ARE OPT-IN. No restBasePath was passed, so NO `rest` transport is advertised: the profile
   // must never point a platform at a door that does not speak UCP wire shapes. (It previously defaulted a
   // rest entry on unconditionally, and the gateway handed it the ACP base path — so UCP discovery advertised
   // the ACP door, which speaks ACP bodies. A platform following it failed on the first call.)
-  const transports = profile.services.map((s) => s.transport);
+  // `services` is a MAP keyed by service id, each value an array of transport bindings.
+  const transports = profile.ucp.services['dev.ucp.shopping'].map((s) => s.transport);
   assert.deepEqual(transports.sort(), ['mcp']);
 
   // ...and it IS advertised when a real UCP-REST door is declared.
@@ -100,9 +109,9 @@ test('UCP profile: version, services, capabilities (dev.ucp.*), payment_handlers
     restBasePath: '/ucp/v1',
     mcpEndpoint: 'https://shop.pivota.cc/mcp',
   });
-  assert.deepEqual(withRest.services.map((s) => s.transport).sort(), ['mcp', 'rest']);
+  assert.deepEqual(withRest.ucp.services['dev.ucp.shopping'].map((s) => s.transport).sort(), ['mcp', 'rest']);
   assert.equal(
-    withRest.services.find((s) => s.transport === 'rest').endpoint,
+    withRest.ucp.services['dev.ucp.shopping'].find((s) => s.transport === 'rest').endpoint,
     'https://shop.pivota.cc/ucp/v1',
   );
 
@@ -113,10 +122,10 @@ test('UCP profile: version, services, capabilities (dev.ucp.*), payment_handlers
     restBasePath: '   ',
     mcpEndpoint: 'https://shop.pivota.cc/mcp',
   });
-  assert.deepEqual(blankRest.services.map((s) => s.transport), ['mcp']);
-  assert.deepEqual(profile.payment_handlers, [{ id: 'stripe_spt', psp: 'stripe', pci: false }]);
-  assert.equal(profile.signing_keys.length, 1);
-  assert.equal(profile.signing_keys[0].kid, 'k1');
+  assert.deepEqual(blankRest.ucp.services['dev.ucp.shopping'].map((s) => s.transport), ['mcp']);
+  assert.deepEqual(profile.ucp.payment_handlers, { stripe_spt: [{ id: 'stripe_spt', psp: 'stripe', pci: false }] });
+  assert.equal(profile.ucp.signing_keys.length, 1);
+  assert.equal(profile.ucp.signing_keys[0].kid, 'k1');
 });
 
 test('business signing keys: env-sourced, validated, and NEVER private', () => {
@@ -156,18 +165,18 @@ test('omitCapabilityIds withholds a capability (and its operations) from the pro
     baseUrl: 'https://shop.pivota.cc',
     omitCapabilityIds: ['dev.ucp.shopping.checkout', 'dev.ucp.shopping.ap2_mandate'],
   });
-  const capIds = profile.capabilities.map((c) => c.id);
+  const capIds = Object.keys(profile.ucp.capabilities);
   assert.ok(!capIds.includes('dev.ucp.shopping.checkout'));
   assert.ok(!capIds.includes('dev.ucp.shopping.ap2_mandate'));
   assert.ok(capIds.includes('dev.ucp.shopping.catalog.search'), 'non-omitted capabilities remain');
-  const allOps = profile.capabilities.flatMap((c) => c.operations);
+  const allOps = [];  // operations are no longer published; the withholding is asserted by id below
   assert.ok(!allOps.includes('create_payment_link'), 'operations of an omitted capability vanish with it');
   assert.ok(!allOps.includes('complete_checkout_session'));
   // The intersection can never resurrect an omitted capability.
-  assert.deepEqual(activeCapabilityIntersection(profile, ['dev.ucp.shopping.checkout']), []);
+  assert.deepEqual(activeCapabilityIntersection(profile, ['dev.ucp.shopping.checkout']), {});
   // Omitting nothing is the identity.
   const full = buildUcpProfile({ baseUrl: 'https://shop.pivota.cc', omitCapabilityIds: [] });
-  assert.ok(full.capabilities.map((c) => c.id).includes('dev.ucp.shopping.checkout'));
+  assert.ok(Object.keys(full.ucp.capabilities).includes('dev.ucp.shopping.checkout'));
 });
 
 test('UCP profile requires an https baseUrl and rejects unknown advertised capabilities', () => {
@@ -179,8 +188,18 @@ test('UCP profile requires an https baseUrl and rejects unknown advertised capab
 test('activeCapabilityIntersection returns only capabilities both sides support', () => {
   const profile = buildUcpProfile({ baseUrl: 'https://shop.pivota.cc' });
   const active = activeCapabilityIntersection(profile, ['dev.ucp.shopping.checkout', 'dev.ucp.some.future.thing']);
-  assert.deepEqual(active.map((c) => c.id), ['dev.ucp.shopping.checkout']);
-  assert.deepEqual(activeCapabilityIntersection(profile, []), []);
+  // A MAP of id -> [{version}], per the spec's "Capability Declaration in Responses".
+  assert.deepEqual(Object.keys(active), ['dev.ucp.shopping.checkout']);
+  assert.deepEqual(active['dev.ucp.shopping.checkout'], [{ version: UCP_SPEC_VERSION }]);
+  assert.deepEqual(activeCapabilityIntersection(profile, []), {});
+
+  // Step 3 of the intersection algorithm: an extension whose parents are all absent is PRUNED, so a platform
+  // is never told a modifier is active while what it modifies is not.
+  assert.deepEqual(Object.keys(activeCapabilityIntersection(profile, ['dev.ucp.shopping.fulfillment'])), []);
+  assert.deepEqual(
+    Object.keys(activeCapabilityIntersection(profile, ['dev.ucp.shopping.fulfillment', 'dev.ucp.shopping.checkout'])).sort(),
+    ['dev.ucp.shopping.checkout', 'dev.ucp.shopping.fulfillment'],
+  );
 });
 
 test('UCP routes expose /.well-known/ucp and active capability intersection', async () => {
@@ -195,14 +214,18 @@ test('UCP routes expose /.well-known/ucp and active capability intersection', as
 
   const profileOut = await wellKnown.handler();
   assert.equal(profileOut.status, 200);
-  assert.equal(profileOut.body.services.find((s) => s.transport === 'rest').endpoint, 'https://shop.pivota.cc/acp');
-  assert.equal(profileOut.body.services.find((s) => s.transport === 'mcp').endpoint, 'https://shop.pivota.cc/mcp');
+  const bindings = profileOut.body.ucp.services['dev.ucp.shopping'];
+  assert.equal(bindings.find((s) => s.transport === 'rest').endpoint, 'https://shop.pivota.cc/acp');
+  assert.equal(bindings.find((s) => s.transport === 'mcp').endpoint, 'https://shop.pivota.cc/mcp');
 
   const activeOut = await active.handler({
     body: { capabilities: ['dev.ucp.shopping.checkout', 'dev.ucp.some.future.thing'] },
   });
   assert.equal(activeOut.status, 200);
-  assert.deepEqual(activeOut.body.active_capabilities.map((c) => c.id), ['dev.ucp.shopping.checkout']);
+  // The response is the spec's shape: `{ ucp: { version, capabilities: { id: [{version}] } } }`. It used to
+  // answer `{ ucp_version, active_capabilities: [...] }` — neither key exists in the spec.
+  assert.equal(activeOut.body.ucp.version, UCP_SPEC_VERSION);
+  assert.deepEqual(Object.keys(activeOut.body.ucp.capabilities), ['dev.ucp.shopping.checkout']);
 });
 
 test('UCP platform capability parser accepts JSON UCP-Agent and comma-separated capability headers', () => {

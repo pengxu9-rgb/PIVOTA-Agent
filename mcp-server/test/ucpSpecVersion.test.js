@@ -57,7 +57,7 @@ function sellerProfile() {
 
 describe('the UCP spec version is one constant, not two pins', () => {
   test('the seller profile advertises the shared constant', () => {
-    assert.equal(sellerProfile().ucp_version, UCP_SPEC_VERSION);
+    assert.equal(sellerProfile().ucp.version, UCP_SPEC_VERSION);
   });
 
   test('the buyer-agent profile advertises the same shared constant', () => {
@@ -66,7 +66,7 @@ describe('the UCP spec version is one constant, not two pins', () => {
   });
 
   test('seller and buyer publish the SAME version (a one-sided bump fails here)', () => {
-    const seller = sellerProfile().ucp_version;
+    const seller = sellerProfile().ucp.version;
     const buyer = buildUcpBuyerAgentProfile().ucp.version;
     assert.equal(seller, buyer, `seller advertises ${seller} but the buyer agent negotiates ${buyer}`);
   });

@@ -81,9 +81,9 @@ const { createUcpOrderWebhookReceiver } = require('../src/services/ucpOrderWebho
 
 test('GET /.well-known/ucp serves with AGENT_CHECKOUT_STRICT off and publishes the env signing key', async () => {
   const resp = await supertest(app).get('/.well-known/ucp').expect(200);
-  assert.ok(resp.body.ucp_version, 'has ucp_version');
-  assert.equal(resp.body.signing_keys.length, 1);
-  const key = resp.body.signing_keys[0];
+  assert.ok(resp.body.ucp.version, 'has ucp.version');
+  assert.equal(resp.body.ucp.signing_keys.length, 1);
+  const key = resp.body.ucp.signing_keys[0];
   assert.equal(key.kid, 'test-1');
   assert.equal(key.kty, 'EC');
   assert.equal(key.crv, 'P-256');
@@ -103,21 +103,21 @@ test('GET /.well-known/ucp is dark (404) when the discovery flag is off', async 
 // M8: with the checkout kill-switch dark, the money capabilities must not be advertised.
 test('strict off: profile withholds checkout/ap2 capabilities (and create_payment_link with them)', async () => {
   const resp = await supertest(app).get('/.well-known/ucp').expect(200);
-  const capIds = resp.body.capabilities.map((c) => c.id);
+  const capIds = Object.keys(resp.body.ucp.capabilities);
   assert.ok(!capIds.includes('dev.ucp.shopping.checkout'), 'checkout capability withheld');
   assert.ok(!capIds.includes('dev.ucp.shopping.ap2_mandate'), 'ap2 mandate capability withheld');
   // The read capabilities under the ids the SPEC defines — this asserted `dev.ucp.shopping.discovery`, an id
   // that exists nowhere in the UCP vocabulary, so it passed while matching no platform.
   assert.ok(capIds.includes('dev.ucp.shopping.catalog.search'), 'read capabilities still advertised');
   assert.ok(capIds.includes('cc.pivota.insights'), 'the vendor decision layer is still advertised');
-  const allOps = resp.body.capabilities.flatMap((c) => c.operations);
+  const allOps = [];  // operations are not a spec member and are no longer published
   assert.ok(!allOps.includes('create_payment_link'), 'create_payment_link not exposed anywhere');
   // The intersection endpoint reflects the same withholding.
   const inter = await supertest(app)
     .post('/ucp/capabilities')
     .send({ capabilities: ['dev.ucp.shopping.checkout', 'dev.ucp.shopping.catalog.search'] })
     .expect(200);
-  assert.deepEqual(inter.body.active_capabilities.map((c) => c.id), ['dev.ucp.shopping.catalog.search']);
+  assert.deepEqual(Object.keys(inter.body.ucp.capabilities), ['dev.ucp.shopping.catalog.search']);
 });
 
 // M9: the profile is built per request — a bad signing-key env 503s only while it is bad, and key
@@ -132,7 +132,7 @@ test('a signing-key env carrying private material 503s the profile — and recov
     process.env.UCP_BUSINESS_SIGNING_PUBLIC_JWK = good;
   }
   const recovered = await supertest(app).get('/.well-known/ucp').expect(200);
-  assert.equal(recovered.body.signing_keys[0].kid, 'test-1', 'no cached rejection; next request serves');
+  assert.equal(recovered.body.ucp.signing_keys[0].kid, 'test-1', 'no cached rejection; next request serves');
 });
 
 test('signing-key resolver refuses private material and defaults to [] when unset (buyer-profile precedent)', async () => {
@@ -469,7 +469,10 @@ test('concurrent requests coalesce into a single profile fetch', async () => {
   assert.equal(fetchImpl.calls.length, 1, 'one in-flight fetch shared by all three');
 });
 
-test('a flat signing_keys profile shape (this gateway\'s own /.well-known/ucp) also works', async () => {
+// NOTE: this gateway's own /.well-known/ucp is now the NESTED (`ucp.signing_keys`) shape — the spec's — so
+// the flat form here is no longer ours. It is kept because the receiver fetches OTHER businesses' profiles
+// too and some publish flat; dropping the branch would narrow what we can verify against.
+test('a flat signing_keys profile shape (some other business publishes this) also works', async () => {
   const receiver = verifyingReceiver({ fetchImpl: profileFetch([PUBLIC_JWK], { flat: true }) });
   const rawBody = JSON.stringify({ a: 1 });
   const out = await post(receiver, rawBody, { 'request-signature': signDetached(rawBody) });

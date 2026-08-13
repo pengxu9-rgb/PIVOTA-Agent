@@ -2,13 +2,36 @@
 // to autonomously discover + configure against Pivota, and computes the per-request active-capability
 // INTERSECTION (UCP requires the merchant to return only the capabilities both sides support).
 //
-// Grounded in the public UCP spec (MERCHANT_SIDE_READINESS_codex.md): the business publishes a profile with
-// `ucp_version`, `services` (transport bindings: REST / MCP / A2A), `capabilities`, `payment_handlers`, and
-// `signing_keys`; platforms advertise via a `UCP-Agent` header; capabilities map 1:1 to MCP tools. All
-// capabilities are backed by the one canonical contract (so safety is enforced once, never forked).
+// THE DOCUMENT SHAPE IS THE SPEC'S, and it did not used to be. An earlier version of this comment cited a
+// local readiness doc rather than the spec and published a structure of its own invention: top-level
+// `ucp_version` / `services` / `capabilities`, with `capabilities` an ARRAY of `{id, title, operations}`.
+// The spec (ucp.dev/2026-04-08/specification/overview, "Business Profile") nests EVERYTHING under `ucp` and
+// makes `services`, `capabilities` and `payment_handlers` MAPS keyed by id:
+//
+//   { ucp: { version: <pinned>,
+//            services:         { dev.ucp.shopping: [ { version, spec, transport, endpoint } ] },
+//            capabilities:     { dev.ucp.shopping.checkout: [ { version, spec, schema } ] },
+//            payment_handlers: { com.google.pay: [ { id, version, spec, schema } ] } } }
+// (written without quotes on purpose: mcp-server/test/ucpSpecVersion.test.js scans this file for a quoted
+// versioned ucp.dev URL, which is exactly the re-hardcoding it exists to prevent — a doc example is not an
+// exemption from that rule.)
+//
+// Confirmed against a LIVE conformant business profile (cosrx, 2026-08-13): its only top-level key is `ucp`,
+// its capability entries are `[{version, spec, schema}]`, and `payment_handlers` is a map. `spec` and
+// `schema` are marked REQUIRED on a capability entry and we published neither.
+//
+// This mattered the same way a wrong capability id does: a platform validating the profile answers
+// `profile_malformed` and never reaches negotiation, so the door looks dead for a reason nothing in the
+// document announces. Pivota's own BUYER profile (src/services/ucpBuyerAgentProfile.js) already emitted the
+// correct shape — the two roles had drifted and only one was right.
+//
+// `title` and `operations` are NOT spec members and are no longer published. Operations remain the internal
+// rule for whether a capability is advertisable at all (a capability with nothing behind it is withheld);
+// they are simply not part of the document, because the spec derives a capability's operations from its
+// schema rather than from a per-profile list.
 
 import { CANONICAL_CAPABILITIES, CANONICAL_OPERATIONS, operationsForCapability } from './canonicalContract.js';
-import { UCP_SPEC_VERSION } from './ucpSpecVersion.cjs';
+import { UCP_SPEC_VERSION, UCP_SPEC_BASE, UCP_SCHEMA_BASE } from './ucpSpecVersion.cjs';
 
 // The spec line this profile advertises. It is NOT declared here: this file used to pin the 2026-01-23 line
 // while the buyer-agent profile pinned 2026-04-08, and #1962 sourced the advertised capabilities' tool names
@@ -17,6 +40,9 @@ import { UCP_SPEC_VERSION } from './ucpSpecVersion.cjs';
 // roles now read ONE constant (ucpSpecVersion.cjs), so a one-sided bump is not expressible.
 // Still negotiate per the platform's advertised version in prod; this is the version WE publish.
 const DEFAULT_UCP_VERSION = UCP_SPEC_VERSION;
+
+// The UCP service these capabilities belong to. `services` is a MAP keyed by this id, per spec.
+const SHOPPING_SERVICE = 'dev.ucp.shopping';
 
 // Default kid for a business signing key published without one. Matches the kid the retired
 // `ucp-web-production` profile shipped, so platforms that pinned it keep verifying across the port.
@@ -135,6 +161,7 @@ export function buildUcpProfile(config = {}) {
         return {
           id: CANONICAL_CAPABILITIES[cap].ucp,
           title: CANONICAL_CAPABILITIES[cap].title,
+          ...capabilityDocUrls(CANONICAL_CAPABILITIES[cap], config),
           extends: [...CANONICAL_CAPABILITIES[cap].extends],
           ...(CANONICAL_CAPABILITIES[cap].config ? { config: CANONICAL_CAPABILITIES[cap].config } : {}),
         };
@@ -142,6 +169,7 @@ export function buildUcpProfile(config = {}) {
       return {
         id: CANONICAL_CAPABILITIES[cap].ucp,
         title: CANONICAL_CAPABILITIES[cap].title,
+        ...capabilityDocUrls(CANONICAL_CAPABILITIES[cap], config),
         // PERMANENTLY-refused operations are never advertised. A profile is a promise of what a platform can
         // call; listing an operation that always refuses is the "advertised but not executable" defect this
         // repo already fixed once for the checkout capabilities under a dark kill-switch (omitCapabilityIds
@@ -180,22 +208,51 @@ export function buildUcpProfile(config = {}) {
   // client's TOOL constant and canonicalContract's ucpTool vocabulary), which is what `mcpEndpoint`
   // carries. That endpoint must serve the UCP DIALECT: a platform calling `create_checkout` against a
   // door that only knows `create_checkout_session` gets an unknown-tool error.
-  const services = [];
+  const version = config.ucpVersion || DEFAULT_UCP_VERSION;
+  const services = {};
+  const serviceEntries = [];
   if (nonEmptyString(restBasePath)) {
-    services.push({ transport: 'rest', endpoint: `${baseUrl}${restBasePath}` });
+    serviceEntries.push({ version, spec: `${UCP_SPEC_BASE}overview`, transport: 'rest', endpoint: `${baseUrl}${restBasePath}` });
   }
   if (config.mcpEndpoint) {
-    services.push({ transport: 'mcp', endpoint: config.mcpEndpoint });
+    serviceEntries.push({ version, spec: `${UCP_SPEC_BASE}overview`, transport: 'mcp', endpoint: config.mcpEndpoint });
+  }
+  if (serviceEntries.length) services[SHOPPING_SERVICE] = serviceEntries;
+
+  // capabilities: a MAP of id -> [entry], each entry carrying the REQUIRED `version`/`spec`/`schema`.
+  const capabilityMap = {};
+  for (const c of liveCapabilities) {
+    capabilityMap[c.id] = [pruneUndefined({
+      version,
+      spec: c.specUrl,
+      schema: c.schemaUrl,
+      extends: c.extends,
+      config: c.config,
+    })];
   }
 
   return {
-    ucp_version: config.ucpVersion || DEFAULT_UCP_VERSION,
-    // Pivota is a MID-MAN, never merchant-of-record (founder rule, 2026-07-23):
-    // transactions pass through this edge and settle on the MERCHANT's side — the
-    // kernel's own quote schema carries the true per-transaction
-    // `merchant_of_record` (the merchant), and the previous `true` here
-    // contradicted both that schema and the design docs ("both ecosystems keep
-    // the merchant as MoR"). `role` states what this endpoint actually is.
+    ucp: pruneUndefined({
+      version,
+      services,
+      capabilities: capabilityMap,
+      // A MAP keyed by handler id, per spec and per cosrx's live profile. Callers still pass the array form
+      // this module has always accepted; it is keyed here by the handler's `type` (the reverse-DNS id a
+      // platform matches on, e.g. `dev.shopify.shop_pay`) falling back to `id`. An already-mapped value is
+      // passed through untouched.
+      payment_handlers: toPaymentHandlerMap(config.paymentHandlers),
+      // PUBLIC keys platforms verify Pivota's order webhooks / receipts against (ES256, P-256).
+      // Sourced from config.signingKeys or env UCP_BUSINESS_SIGNING_PUBLIC_JWK; validated so a
+      // private component (`d`) can never be published. Empty until the founder provisions a key.
+      signing_keys: resolveBusinessSigningKeys(config),
+    }),
+    // A Pivota extension, deliberately a SIBLING of `ucp` rather than inside it — the same placement the
+    // buyer profile uses for its `agent` block, and the spec's own profile object is `ucp` alone.
+    //
+    // Pivota is a MID-MAN, never merchant-of-record (founder rule, 2026-07-23): transactions pass through
+    // this edge and settle on the MERCHANT's side — the kernel's own quote schema carries the true
+    // per-transaction `merchant_of_record` (the merchant), and a previous `true` here contradicted both that
+    // schema and the design docs. `role` states what this endpoint actually is.
     provider: {
       merchant_of_record: false,
       role: 'commerce_index_passthrough',
@@ -204,14 +261,50 @@ export function buildUcpProfile(config = {}) {
         + 'sessions through to the merchant of record, who settles the '
         + 'transaction on their own rails.',
     },
-    services,
-    capabilities: liveCapabilities,
-    payment_handlers: Array.isArray(config.paymentHandlers) ? config.paymentHandlers : [],
-    // PUBLIC keys platforms verify Pivota's order webhooks / receipts against (ES256, P-256).
-    // Sourced from config.signingKeys or env UCP_BUSINESS_SIGNING_PUBLIC_JWK; validated so a
-    // private component (`d`) can never be published. Empty until the founder provisions a key.
-    signing_keys: resolveBusinessSigningKeys(config),
   };
+}
+
+/**
+ * The `spec` / `schema` URLs for one capability, or NOTHING when we have none to publish.
+ *
+ * A standard capability derives both from the pinned version bases plus its own verified paths. A VENDOR
+ * capability has neither unless the operator supplies them via `vendorCapabilityDocs` — Pivota hosts no spec
+ * or JSON Schema for `cc.pivota.insights`, and inventing a URL for a document that does not exist is the
+ * same defect as advertising a capability that does not exist.
+ */
+function capabilityDocUrls(cap, config = {}) {
+  const override = (config.vendorCapabilityDocs || {})[cap.ucp];
+  if (override) {
+    return pruneUndefined({ specUrl: override.spec, schemaUrl: override.schema });
+  }
+  if (!cap.specName && !cap.schemaName) return {};
+  return pruneUndefined({
+    specUrl: cap.specName ? `${UCP_SPEC_BASE}${cap.specName}` : undefined,
+    schemaUrl: cap.schemaName ? `${UCP_SCHEMA_BASE}${cap.schemaName}` : undefined,
+  });
+}
+
+/** Drop undefined members so an absent optional never ships as an explicit `undefined`. */
+function pruneUndefined(obj) {
+  const out = {};
+  for (const [k, v] of Object.entries(obj)) if (v !== undefined) out[k] = v;
+  return out;
+}
+
+/**
+ * Handler declarations -> the spec's MAP form. An array (what every caller passes today) is keyed by each
+ * handler's `type`, else its `id`; a value that is already a map is returned unchanged. A handler with
+ * neither key cannot be addressed by a platform and is dropped rather than published under a made-up name.
+ */
+function toPaymentHandlerMap(handlers) {
+  if (handlers && !Array.isArray(handlers) && typeof handlers === 'object') return handlers;
+  const out = {};
+  for (const h of Array.isArray(handlers) ? handlers : []) {
+    const key = nonEmptyString(h?.type) ? h.type : (nonEmptyString(h?.id) ? h.id : undefined);
+    if (!key) continue;
+    (out[key] = out[key] || []).push(h);
+  }
+  return out;
 }
 
 /**
@@ -223,12 +316,43 @@ export function buildUcpProfile(config = {}) {
  */
 export function activeCapabilityIntersection(ourProfile, platformCapabilityIds) {
   const platform = new Set(Array.isArray(platformCapabilityIds) ? platformCapabilityIds : []);
-  const mutual = (ourProfile?.capabilities || []).filter((c) => platform.has(c.id));
-  // The intersection can orphan a MODIFIER the profile itself did not: a platform whose advertised ids name
-  // `dev.ucp.shopping.fulfillment` but not the `dev.ucp.shopping.checkout` it extends would otherwise be told
-  // the modifier is ACTIVE while the capability it modifies is not — a self-contradictory answer it can read
-  // as permission to send `checkout.fulfillment`. Same invariant as the profile, same implementation.
-  return withoutOrphanedModifiers(mutual);
+  const ours = (ourProfile && ourProfile.ucp && ourProfile.ucp.capabilities) || {};
+
+  // Step 1-2: the ids BOTH sides carry. Entries keep only `version` — the spec's own "Capability Declaration
+  // in Responses" example declares active capabilities as `{ id: [{ version }] }`, not the full profile entry.
+  const mutual = {};
+  for (const [id, entries] of Object.entries(ours)) {
+    if (!platform.has(id)) continue;
+    const version = (Array.isArray(entries) && entries[0] && entries[0].version) || ourProfile.ucp.version;
+    mutual[id] = [{ version }];
+  }
+
+  // Step 3, REPEATED to a fixed point: "Remove any capability where `extends` is set but none of its parent
+  // capabilities are in the intersection." Repeated because pruning one extension can orphan another that
+  // extended IT — a single pass would leave a grandchild pointing at a parent that is already gone.
+  //
+  // Single-parent (`extends: "a"`) requires that parent; multi-parent (`extends: ["a","b"]`) requires at
+  // least one. Telling a platform a modifier is ACTIVE while what it modifies is not is a self-contradictory
+  // answer it can read as permission to send the modifier's fields.
+  const parentsOf = (id) => {
+    const entry = (ours[id] || [])[0] || {};
+    const ext = entry.extends;
+    if (!ext) return null;
+    return Array.isArray(ext) ? ext : [ext];
+  };
+  let pruned = true;
+  while (pruned) {
+    pruned = false;
+    for (const id of Object.keys(mutual)) {
+      const parents = parentsOf(id);
+      if (!parents) continue;
+      if (!parents.some((parent) => Object.prototype.hasOwnProperty.call(mutual, parent))) {
+        delete mutual[id];
+        pruned = true;
+      }
+    }
+  }
+  return mutual;
 }
 
 /**
@@ -272,9 +396,14 @@ export function mountUcpRoutes(app, routes) {
 
 function activeCapabilitiesResponse(profile, req) {
   const platformCapabilities = parsePlatformCapabilities(req);
+  // The spec's response shape: everything under `ucp`, capabilities as a MAP. This used to answer
+  // `{ ucp_version, active_capabilities: [...] }` — neither key exists in the spec, so a platform reading
+  // the negotiated set found nothing where it looked.
   return json(200, {
-    ucp_version: profile?.ucp_version,
-    active_capabilities: activeCapabilityIntersection(profile, platformCapabilities),
+    ucp: {
+      version: profile?.ucp?.version,
+      capabilities: activeCapabilityIntersection(profile, platformCapabilities),
+    },
   });
 }
 
