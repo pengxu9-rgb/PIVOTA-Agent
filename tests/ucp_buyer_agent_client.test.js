@@ -20,6 +20,7 @@ const {
 const {
   buildUcpBuyerAgentProfile,
   assertNoPurchaseCompletion,
+  ALLOWED_BUYER_CAPABILITIES,
   resolveSigningKeys,
   CHECKOUT_CAPABILITY,
 } = require('../src/services/ucpBuyerAgentProfile');
@@ -232,9 +233,49 @@ describe('buildUcpBuyerAgentProfile', () => {
     expect(p.agent.is_payment_processor).toBe(false);
   });
 
-  test('checkout capability extends cart', () => {
+  test('checkout declares NO `extends` — it is a root capability, and `extends` is a pruning key', () => {
+    // This test previously asserted `extends === 'dev.ucp.shopping.cart'`, pinning a live hazard in place.
+    // Intersection step 3: "Remove any capability where `extends` is set but none of its parent capabilities
+    // are in the intersection." So a merchant advertising checkout but NOT cart pruned our checkout
+    // entirely — all five checkout tools gone, silently. The spec: `extends` is "Present for extensions,
+    // absent for ROOT capabilities", and both profile examples declare checkout with none.
     const p = buildUcpBuyerAgentProfile();
-    expect(p.ucp.capabilities[CHECKOUT_CAPABILITY][0].extends).toBe('dev.ucp.shopping.cart');
+    expect(p.ucp.capabilities[CHECKOUT_CAPABILITY][0].extends).toBeUndefined();
+    for (const root of ['dev.ucp.shopping.cart', 'dev.ucp.shopping.catalog.search', 'dev.ucp.shopping.catalog.lookup']) {
+      expect(p.ucp.capabilities[root][0].extends).toBeUndefined();
+    }
+  });
+
+  test('every capability entry carries the REQUIRED spec and schema members', () => {
+    // The spec marks both required on a capability entry and every profile example carries them; without
+    // them a validating merchant answers `profile_malformed` (422) — a negotiation failure for a reason
+    // nothing in the profile announces.
+    const p = buildUcpBuyerAgentProfile();
+    for (const [id, entries] of Object.entries(p.ucp.capabilities)) {
+      for (const e of entries) {
+        expect(typeof e.spec).toBe('string');
+        expect(typeof e.schema).toBe('string');
+        expect(e.spec.startsWith('https://')).toBe(true);
+        expect(e.schema.startsWith('https://')).toBe(true);
+        expect(e.version).toBe(p.ucp.version);
+        expect(id).toBeTruthy();
+      }
+    }
+  });
+
+  test('a payment-authorizing capability is REFUSED even though the denylist cannot spell it', () => {
+    // `dev.ucp.shopping.ap2_mandate` is THE money capability and matches none of
+    // /(complete|payment|charge|purchase)/i — so the denylist that existed to keep it out was the one thing
+    // that could not see it, and adding it to the requested set passed the entire suite. The allowlist
+    // refuses it for being ABSENT rather than for being predicted.
+    for (const money of [
+      'dev.ucp.shopping.ap2_mandate', 'com.google.pay', 'dev.shopify.shop_pay', 'dev.ucp.processor_tokenizer',
+    ]) {
+      expect(() => assertNoPurchaseCompletion([money])).toThrow();
+    }
+    // …and the vetted set is exactly what the profile requests — no drift between guard and profile.
+    const p = buildUcpBuyerAgentProfile();
+    expect([...ALLOWED_BUYER_CAPABILITIES].sort()).toEqual([...p.agent.requested_scopes].sort());
   });
 
   test('rejects a non-https profileUrl', () => {
