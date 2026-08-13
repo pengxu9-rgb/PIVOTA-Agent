@@ -25,6 +25,9 @@ function recordingExecutor() {
 }
 
 const SESSION = { user_ref: 'buyer_1' };
+// The UCP wire shape: `meta` is required on every call (see ucpArgumentAdapter.js). These tests assert
+// ROUTING, so they send the minimum a real platform would.
+const UCP_META = { 'ucp-agent': { profile: 'https://agent.example/.well-known/ucp-agent' } };
 
 function surfaces() {
   const executor = recordingExecutor();
@@ -35,9 +38,19 @@ function surfaces() {
 describe('ucpDialectSurface routes UCP names to the canonical operation', () => {
   test('a UCP tool name reaches the executor as its canonical op (kills the dropped-dialect mutant)', async () => {
     const { executor, ucp } = surfaces();
-    await ucp.callTool('get_product', { product_id: 'p_1' }, SESSION).catch(() => {});
+    // UCP's own get_product shape: flat `id`, not Pivota's `product_id`.
+    await ucp.callTool('get_product', { meta: UCP_META, id: 'p_1' }, SESSION).catch(() => {});
     assert.equal(executor.seen.length, 1, 'the call must reach the executor at all');
     assert.equal(executor.seen[0].op, 'get_product');
+  });
+
+  test('a Pivota-NATIVE argument shape is refused on the UCP dialect (the names alone are not the contract)', async () => {
+    const { executor, ucp } = surfaces();
+    // This is what the dialect accepted before step 3: the tool NAME resolved, the ARGUMENTS were native, and
+    // the call sailed through to the executor with no product id at all.
+    const err = await ucp.callTool('get_product', { product_id: 'p_1' }, SESSION).then(() => null, (e) => e);
+    assert.ok(err, 'native args on the UCP dialect must be refused, not silently accepted');
+    assert.equal(executor.seen.length, 0, 'a refused wire shape must never reach the executor');
   });
 
   test('create_checkout routes to create_checkout_session, not to an unknown tool', async () => {
