@@ -37,7 +37,7 @@ import assert from 'node:assert/strict';
 import { createCommerceToolSurface, ucpDialectSurface } from '../src/commerceToolSurface.js';
 import { SafetyKernel } from '../../safety-kernel/src/kernel.js';
 import { createCanonicalExecutor } from '../../safety-kernel/src/protocol/canonicalExecutor.js';
-import { buildUcpProfile } from '../../safety-kernel/src/protocol/ucpProfile.js';
+import { buildUcpProfile, activeCapabilityIntersection } from '../../safety-kernel/src/protocol/ucpProfile.js';
 import { REQUIRED_ADDRESS_FIELDS } from '../../safety-kernel/src/protocol/buyerIntake.js';
 
 // ---- the real stack ----------------------------------------------------------------------------------------
@@ -399,5 +399,34 @@ describe('the published capability matches the rule the door enforces', () => {
       omitCapabilityIds: ['dev.ucp.shopping.checkout'],
     });
     assert.equal(capabilityOf(dark), undefined, 'no fulfillment modifier without the checkout it extends');
+  });
+
+  test('the PER-REQUEST active list cannot orphan the modifier either', async () => {
+    // REVIEW FINDING. The profile's own list was guarded; the negotiated one was not, and it can orphan a
+    // modifier the profile never did — a platform whose advertised ids name the extension but not what it
+    // extends. `POST /ucp/capabilities` would then answer that `dev.ucp.shopping.fulfillment` is ACTIVE while
+    // `dev.ucp.shopping.checkout` is not: self-contradictory, and readable as permission to send
+    // `checkout.fulfillment` at a checkout the same response says is unavailable.
+    const profile = buildUcpProfile({
+      baseUrl: 'https://shop.pivota.cc', mcpEndpoint: 'https://shop.pivota.cc/mcp',
+    });
+
+    const orphaned = activeCapabilityIntersection(profile, ['dev.ucp.shopping.fulfillment']);
+    assert.deepEqual(orphaned.map((c) => c.id), [], 'a modifier alone is not an active capability');
+
+    // …and the modifier IS returned when the platform supports both — the guard must not cost the real case.
+    const both = activeCapabilityIntersection(
+      profile, ['dev.ucp.shopping.fulfillment', 'dev.ucp.shopping.checkout'],
+    );
+    assert.deepEqual(
+      both.map((c) => c.id).sort(),
+      ['dev.ucp.shopping.checkout', 'dev.ucp.shopping.fulfillment'],
+      'both sides support fulfillment, so it is active',
+    );
+
+    // A platform that supports checkout but NOT the extension keeps checkout, and is not handed a modifier
+    // it never asked for.
+    const checkoutOnly = activeCapabilityIntersection(profile, ['dev.ucp.shopping.checkout']);
+    assert.deepEqual(checkoutOnly.map((c) => c.id), ['dev.ucp.shopping.checkout']);
   });
 });

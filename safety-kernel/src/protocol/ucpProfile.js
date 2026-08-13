@@ -87,6 +87,31 @@ function nonEmptyString(v) {
   return typeof v === 'string' && v.trim() !== '';
 }
 
+/**
+ * Drop every MODIFIER capability whose `extends` target is not in the same list.
+ *
+ * A modifier (UCP `extends` + `config`, today `dev.ucp.shopping.fulfillment`) has no operations of its own:
+ * it adds fields to the input shape of the capability it extends and publishes the bounds the door enforces
+ * on them. Emitted WITHOUT that capability it is self-contradictory — it describes the input shape of a door
+ * the very same response says is not available — and a platform can read it as permission to send
+ * `checkout.fulfillment` on a checkout that is not there. That is the "advertised but not executable" defect
+ * one level up.
+ *
+ * IT IS SHARED BECAUSE PIVOTA PUBLISHES TWO CAPABILITY LISTS, AND BOTH CAN ORPHAN A MODIFIER. The profile's
+ * own list orphans one via the checkout kill-switch (`omitCapabilityIds`); the per-request ACTIVE list
+ * orphans one whenever a platform's `UCP-Agent` capabilities name the modifier but not what it extends —
+ * plausible, since a platform advertising fulfillment support may enumerate only the extension. The first was
+ * guarded and the second was not, which is exactly the twin-drift this repo keeps paying for: one invariant,
+ * one implementation, both callers.
+ *
+ * Single-pass, matching the shape of the data: no modifier currently extends another modifier, and a chain
+ * would need a fixpoint. If one is ever added, this is the one place to teach.
+ */
+function withoutOrphanedModifiers(capabilities) {
+  const presentIds = new Set(capabilities.map((c) => c.id));
+  return capabilities.filter((c) => !c.extends || c.extends.every((id) => presentIds.has(id)));
+}
+
 export function buildUcpProfile(config = {}) {
   const baseUrl = requireHttps(config.baseUrl, 'baseUrl');
   const restBasePath = config.restBasePath;
@@ -138,14 +163,9 @@ export function buildUcpProfile(config = {}) {
     // `config` plus the operations of the capability it extends, which the next filter requires to be present.
     .filter((c) => c.extends || c.operations.length > 0);
 
-  // …but a modifier is only real while what it EXTENDS is still advertised. Under the checkout kill-switch
-  // (omitCapabilityIds) the checkout capability disappears, and a `dev.ucp.shopping.fulfillment` left behind
-  // would describe the input shape of a door that is not there — the "advertised but not executable" defect
-  // one level up. Dropped in the same pass, so the switch cannot be half-thrown.
-  const presentIds = new Set(capabilities.map((c) => c.id));
-  const liveCapabilities = capabilities.filter(
-    (c) => !c.extends || c.extends.every((id) => presentIds.has(id)),
-  );
+  // …but a modifier is only real while what it EXTENDS is still advertised — see `withoutOrphanedModifiers`,
+  // which BOTH capability lists Pivota publishes run through.
+  const liveCapabilities = withoutOrphanedModifiers(capabilities);
 
   // TRANSPORTS ARE ADVERTISED ONLY WHEN SOMETHING SPEAKS THEM.
   //
@@ -203,7 +223,12 @@ export function buildUcpProfile(config = {}) {
  */
 export function activeCapabilityIntersection(ourProfile, platformCapabilityIds) {
   const platform = new Set(Array.isArray(platformCapabilityIds) ? platformCapabilityIds : []);
-  return (ourProfile?.capabilities || []).filter((c) => platform.has(c.id));
+  const mutual = (ourProfile?.capabilities || []).filter((c) => platform.has(c.id));
+  // The intersection can orphan a MODIFIER the profile itself did not: a platform whose advertised ids name
+  // `dev.ucp.shopping.fulfillment` but not the `dev.ucp.shopping.checkout` it extends would otherwise be told
+  // the modifier is ACTIVE while the capability it modifies is not — a self-contradictory answer it can read
+  // as permission to send `checkout.fulfillment`. Same invariant as the profile, same implementation.
+  return withoutOrphanedModifiers(mutual);
 }
 
 /**
