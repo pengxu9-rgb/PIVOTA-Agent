@@ -38,7 +38,7 @@ import { createCommerceToolSurface, ucpDialectSurface } from '../src/commerceToo
 import { SafetyKernel } from '../../safety-kernel/src/kernel.js';
 import { createCanonicalExecutor } from '../../safety-kernel/src/protocol/canonicalExecutor.js';
 import { buildUcpProfile, activeCapabilityIntersection } from '../../safety-kernel/src/protocol/ucpProfile.js';
-import { REQUIRED_ADDRESS_FIELDS } from '../../safety-kernel/src/protocol/buyerIntake.js';
+import { REQUIRED_ADDRESS_FIELDS, pickCompleteAddress } from '../../safety-kernel/src/protocol/buyerIntake.js';
 
 // ---- the real stack ----------------------------------------------------------------------------------------
 
@@ -302,6 +302,100 @@ describe('the door refuses what it cannot represent instead of choosing', () => 
     assert.equal(/address_line1|\bcity\b/.test(message), false, 'must not name canonical fields UCP has no word for');
     assert.equal(stack.priced().length, 0, 'refused before pricing');
     assert.equal(JSON.stringify(error.detail ?? {}).includes('Lovelace'), false, 'no address value in the refusal');
+  });
+
+  test('a field that WAS sent is never reported as missing — wrong-typed is its own answer', async () => {
+    // REVIEW FINDING. `nonEmpty` requires a non-blank STRING, so a numeric postcode was dropped and then
+    // listed under `missing_fields` — telling the caller to supply a field it had demonstrably just sent.
+    // The likely repair is to re-send the identical body, burning a retry: the same "refusal that misdirects"
+    // failure this module documents for `buyer.email`.
+    const stack = realStack();
+    const error = await rejected(stack.ucp.callTool('create_checkout', createBody({
+      fulfillment: fulfillment({ ...DESTINATION, postal_code: 90210 }), // unquoted — a routine serialization slip
+    }), SESSION));
+
+    assert.ok(error);
+    assert.equal(error.detail?.reason, 'ucp_fulfillment_destination_incomplete');
+    assert.deepEqual(error.detail?.acp_detail?.missing_fields, [],
+      'postal_code was SENT, so it must not be called missing');
+    assert.deepEqual(error.detail?.acp_detail?.invalid_fields, ['postal_code'],
+      'it must be named as sent-but-unusable instead');
+    const message = String(error.detail?.acp_message ?? error.message);
+    assert.match(message, /Sent but unusable/);
+    assert.match(message, /NON-EMPTY JSON STRING/, 'the message must say what makes it unusable');
+    assert.equal(/Missing: /.test(message), false, 'nothing is missing here');
+    assert.equal(stack.priced().length, 0);
+  });
+
+  test('absent and unusable are reported SEPARATELY when both occur', async () => {
+    // The mixed case is what proves the two lists are really distinct rather than one relabelled: a blank
+    // string was sent (unusable) while another field never arrived (missing), and each lands in its own list.
+    const stack = realStack();
+    const { address_locality, ...noCity } = DESTINATION;
+    const error = await rejected(stack.ucp.callTool('create_checkout', createBody({
+      fulfillment: fulfillment({ ...noCity, street_address: '   ' }),
+    }), SESSION));
+
+    assert.deepEqual(error.detail?.acp_detail?.missing_fields, ['address_locality']);
+    assert.deepEqual(error.detail?.acp_detail?.invalid_fields, ['street_address']);
+    const message = String(error.detail?.acp_message ?? error.message);
+    assert.match(message, /Missing: `address_locality`/);
+    assert.match(message, /Sent but unusable: `street_address`/);
+  });
+
+  test('a BLANK name part is unusable too — the composed field is not exempt from the distinction', async () => {
+    // `name` is the one canonical field with no single UCP counterpart, so it is the one place the
+    // absent-vs-unusable split could quietly not apply: it is composed from two fields rather than copied
+    // from one. A blank `first_name` with no `last_name` at all is the case that separates them — one part
+    // was SENT (and is unusable), the other genuinely never arrived.
+    const stack = realStack();
+    const { last_name, ...noSurname } = DESTINATION;
+    const error = await rejected(stack.ucp.callTool('create_checkout', createBody({
+      fulfillment: fulfillment({ ...noSurname, first_name: '   ' }),
+    }), SESSION));
+
+    assert.ok(error);
+    assert.equal(error.detail?.reason, 'ucp_fulfillment_destination_incomplete');
+    assert.deepEqual(error.detail?.acp_detail?.invalid_fields, ['first_name'],
+      'a blank first_name was SENT — it is unusable, not missing');
+    assert.deepEqual(error.detail?.acp_detail?.missing_fields, ['last_name'],
+      'the part that never arrived is the only missing one');
+    assert.equal(stack.priced().length, 0);
+
+    // …and the MIRROR, because the two parts are handled by one loop and a mutant that walks only the first
+    // would leave a blank `last_name` reported as missing while the test above still passed.
+    const stack2 = realStack();
+    const { first_name, ...noFirst } = DESTINATION;
+    const mirrored = await rejected(stack2.ucp.callTool('create_checkout', createBody({
+      fulfillment: fulfillment({ ...noFirst, last_name: '   ' }),
+    }), SESSION));
+
+    assert.deepEqual(mirrored.detail?.acp_detail?.invalid_fields, ['last_name']);
+    assert.deepEqual(mirrored.detail?.acp_detail?.missing_fields, ['first_name']);
+  });
+
+  test('the narrowed catch rests on a shape the SHARED refusal really has', async () => {
+    // REVIEW FINDING. The translation used to catch EVERYTHING and rethrow it as
+    // `ucp_fulfillment_destination_incomplete`, so an unrelated fault inside buyerIntake would have been
+    // dressed up as "your destination is incomplete" with nothing named. It now translates only a refusal
+    // carrying `detail.acp_detail.missing_fields` and rethrows anything else UNCHANGED.
+    //
+    // That narrowing is only correct while the shared refusal really carries that shape, and the failure if
+    // it ever stops is silent in the other direction: every incomplete destination would propagate the raw
+    // kernel refusal naming `address_line1`/`city`, the canonical spellings this whole translation exists to
+    // avoid. So the assumption is pinned here against the REAL function rather than trusted.
+    let refusal;
+    try {
+      pickCompleteAddress({ city: 'London' });
+      assert.fail('an incomplete address must be refused');
+    } catch (error) {
+      refusal = error;
+    }
+    assert.ok(Array.isArray(refusal.detail?.acp_detail?.missing_fields),
+      'the UCP translation keys off this array; if it moves, the translation silently stops applying');
+    assert.ok(refusal.detail.acp_detail.missing_fields.length > 0);
+    // …and the canonical names it carries are exactly the ones the UCP door must translate away.
+    assert.ok(refusal.detail.acp_detail.missing_fields.includes('address_line1'));
   });
 
   test('the completeness rule is the SHARED one — every backend-required field is enforced', async () => {

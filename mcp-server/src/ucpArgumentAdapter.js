@@ -388,11 +388,18 @@ const DESTINATION_TO_CANONICAL = Object.freeze({
   phone_number: "phone",
 });
 
-// `name` is the one canonical field with no single UCP counterpart: it is composed from first_name + last_name.
-const CANONICAL_TO_DESTINATION = Object.freeze({
-  ...Object.fromEntries(Object.entries(DESTINATION_TO_CANONICAL).map(([ucp, canonical]) => [canonical, ucp])),
-  name: "first_name`/`last_name",
+// The reverse direction, as REAL FIELD NAMES rather than a display string — `detail.missing_fields` is a
+// structured contract clients branch on, so it must carry names they can look up, not prose. `name` is the one
+// canonical field with no single UCP counterpart: it is composed from first_name + last_name, so it maps to
+// BOTH.
+const CANONICAL_TO_DESTINATION_FIELDS = Object.freeze({
+  ...Object.fromEntries(Object.entries(DESTINATION_TO_CANONICAL).map(([ucp, canonical]) => [canonical, [ucp]])),
+  name: Object.freeze(["first_name", "last_name"]),
 });
+
+/** A canonical field named the way a UCP caller spells it, for prose. */
+const destinationLabel = (canonicalField) =>
+  (CANONICAL_TO_DESTINATION_FIELDS[canonicalField] ?? [canonicalField]).map((f) => `\`${f}\``).join("/");
 
 const DESTINATION_FIELDS = Object.freeze(["id", "first_name", "last_name", ...Object.keys(DESTINATION_TO_CANONICAL)]);
 
@@ -619,44 +626,71 @@ function mapFulfillment(checkout, { update }) {
   }
   rejectUnknown(destination, DESTINATION_FIELDS, "checkout.fulfillment.methods[].destinations[]", code);
 
+  // ABSENT AND UNUSABLE ARE NOT THE SAME MISTAKE, and telling them apart is the difference between a refusal
+  // the caller can act on and one that burns a retry. `nonEmpty` requires a non-blank STRING, so a field sent
+  // as a JSON number (`postal_code: 90210` — a routine serialization slip for numeric postcodes) or as `""`
+  // is skipped here and would otherwise be reported as MISSING, telling the caller to supply a field it
+  // demonstrably just sent. `unusable` records those separately so the refusal can name the real problem.
   const address = {};
+  const unusable = [];
   for (const [ucpField, canonicalField] of Object.entries(DESTINATION_TO_CANONICAL)) {
     const value = own(destination, ucpField);
     if (nonEmpty(value)) address[canonicalField] = value.trim();
+    else if (value !== undefined) unusable.push(ucpField);
   }
   // `name` is COMPOSED, never invented: whichever of the two parts arrived is used, and if neither did the
   // completeness rule below refuses naming both. A missing surname does not block an order.
-  const name = ["first_name", "last_name"]
-    .map((part) => own(destination, part))
-    .filter((part) => nonEmpty(part))
-    .map((part) => part.trim())
+  const nameParts = ["first_name", "last_name"].map((part) => [part, own(destination, part)]);
+  for (const [part, value] of nameParts) {
+    if (value !== undefined && !nonEmpty(value)) unusable.push(part);
+  }
+  const name = nameParts
+    .map(([, value]) => value)
+    .filter((value) => nonEmpty(value))
+    .map((value) => value.trim())
     .join(" ");
   if (name) address.name = name;
 
+  let complete;
   try {
     // THE SHARED RULE, imported. A second completeness check here is exactly the twin-drift class this repo
     // keeps paying for — pivota-backend `_coerce_shipping_address` is the authority and buyerIntake is its one
     // mirror. Only the NAMES in the refusal are UCP's.
-    return pickCompleteAddress(address, { updateHint: "the `update_checkout` tool" });
+    complete = pickCompleteAddress(address, { updateHint: "the `update_checkout` tool" });
   } catch (error) {
-    // `intakeRefusal` nests its structured extras under `detail.acp_detail` (the door-mapper opt-in), NOT on
-    // `detail` itself. Reading the wrong level yields `[]` and a refusal that names nothing the caller can
-    // fix — which is the exact failure this translation exists to prevent, so the join test asserts the names.
-    const missing = Array.isArray(error?.detail?.acp_detail?.missing_fields)
-      ? error.detail.acp_detail.missing_fields
-      : [];
+    // ONLY the shared completeness refusal is translated. `intakeRefusal` nests its structured extras under
+    // `detail.acp_detail` (the door-mapper opt-in), NOT on `detail` itself — reading the wrong level yields
+    // `[]` and a refusal that names nothing. Anything else — a future validation with a different detail
+    // shape, or a plain programming error inside buyerIntake — is RETHROWN UNCHANGED rather than dressed up
+    // as "your destination is incomplete", which would both mislead the caller and bury the real fault.
+    const missingCanonical = error?.detail?.acp_detail?.missing_fields;
+    if (!Array.isArray(missingCanonical) || missingCanonical.length === 0) throw error;
+
+    const missingUcp = missingCanonical.flatMap((f) => CANONICAL_TO_DESTINATION_FIELDS[f] ?? [f]);
+    // A field that WAS sent is never called missing — it is called unusable, with what to do about it.
+    const absent = missingUcp.filter((f) => !unusable.includes(f));
+    const sentButUnusable = unusable.filter((f) => missingUcp.includes(f));
+
     // The address itself is PII and is never echoed — only field names travel.
     throw ucpRefusal(code, "ucp_fulfillment_destination_incomplete", [
       "`checkout.fulfillment.methods[].destinations[]` is incomplete. A destination is OPTIONAL — a checkout",
       "may be opened without one and the address supplied later via `update_checkout` — but one that IS given",
-      "must carry all of `first_name`/`last_name`, `street_address`, `address_locality`, `postal_code` and",
-      "`address_country`, because order creation requires a complete address. Missing:",
-      `${missing.map((f) => CANONICAL_TO_DESTINATION[f] ?? f).join(", ")}.`,
+      `must carry all of ${REQUIRED_ADDRESS_FIELDS.map(destinationLabel).join(", ")},`,
+      "because order creation requires a complete address.",
+      ...(absent.length ? [`Missing: ${absent.map((f) => `\`${f}\``).join(", ")}.`] : []),
+      ...(sentButUnusable.length ? [
+        `Sent but unusable: ${sentButUnusable.map((f) => `\`${f}\``).join(", ")} —`,
+        "each must be a NON-EMPTY JSON STRING (a number such as `90210` is not, and was ignored).",
+      ] : []),
     ].join(" "), {
-      missing_fields: missing.map((f) => CANONICAL_TO_DESTINATION[f] ?? f),
-      required_fields: REQUIRED_ADDRESS_FIELDS.map((f) => CANONICAL_TO_DESTINATION[f] ?? f),
+      missing_fields: absent,
+      // Present but not a usable string. Distinct from `missing_fields` on purpose: the two need different
+      // fixes, and conflating them is what made the refusal unactionable.
+      invalid_fields: sentButUnusable,
+      required_fields: REQUIRED_ADDRESS_FIELDS.flatMap((f) => CANONICAL_TO_DESTINATION_FIELDS[f] ?? [f]),
     });
   }
+  return complete;
 }
 
 const CART_ID_SCHEMA = {
