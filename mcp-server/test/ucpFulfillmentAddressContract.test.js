@@ -227,6 +227,48 @@ describe('the door refuses what it cannot represent instead of choosing', () => 
     assert.equal(JSON.stringify(error.detail ?? {}).includes('Analytical'), false, 'no address value in the refusal');
   });
 
+  test('an EMPTY destinations/methods list is refused, not silently read as "no address"', async () => {
+    // REVIEW FINDING. The schema declares `minItems: 1` on both arrays, and the mapper used to return
+    // `undefined` for `[]` — laxer than the contract it publishes, on the one field that decides whether an
+    // order can be created. The failure it caused was not a rejected call but an ACCEPTED one: a platform
+    // whose destination lookup came back empty opened an address-less checkout, authorized payment, and was
+    // refused 400 INVALID_BUYER_CONTEXT by the backend at order creation — this blocker reappearing AFTER a
+    // valid grant verified, naming canonical fields UCP has no word for. These bodies must die at the door.
+    const EMPTY = [
+      ['destinations: []', { methods: [{ type: 'shipping', destinations: [] }] }, 'ucp_fulfillment_destinations_empty'],
+      ['methods: []', { methods: [] }, 'ucp_fulfillment_methods_empty'],
+    ];
+    for (const [label, ful, reason] of EMPTY) {
+      const stack = realStack();
+      const error = await rejected(stack.ucp.callTool('create_checkout', createBody({ fulfillment: ful }), SESSION));
+
+      assert.ok(error, `${label} must be refused, not accepted with no address`);
+      assert.equal(error.detail?.reason, reason, label);
+      assert.equal(stack.priced().length, 0, `${label}: refused before pricing`);
+      // The refusal has to be ACTIONABLE in both directions — supply one, or omit fulfillment entirely.
+      const message = String(error.detail?.acp_message ?? error.message);
+      assert.match(message, /update_checkout/, `${label}: must say the address can come later`);
+    }
+  });
+
+  test('omitting fulfillment is still legal — the empty-list refusal is not an address requirement', async () => {
+    // The other side of the rule above, so the fix cannot drift into "every checkout must carry an address".
+    // A create with NO `fulfillment` key must still price: the address is optional at quote time and only
+    // required by the time an order is created.
+    const stack = realStack();
+    await stack.ucp.callTool('create_checkout', createBody(), SESSION);
+    assert.equal(stack.priced().length, 1, 'an address-less create must still price');
+    assert.equal(stack.priced().at(-1).quote.shipping_address, undefined);
+
+    // …and so must a method that carries no `destinations` key at all (the caller has not chosen one yet).
+    const stack2 = realStack();
+    await stack2.ucp.callTool('create_checkout', createBody({
+      fulfillment: { methods: [{ type: 'shipping', line_item_ids: ['line_1'] }] },
+    }), SESSION);
+    assert.equal(stack2.priced().length, 1, 'a method with no destinations key must still price');
+    assert.equal(stack2.priced().at(-1).quote.shipping_address, undefined);
+  });
+
   test('combining fulfilment methods is refused', async () => {
     const stack = realStack();
     const error = await rejected(stack.ucp.callTool('create_checkout', createBody({

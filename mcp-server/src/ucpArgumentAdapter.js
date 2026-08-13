@@ -546,7 +546,22 @@ function mapFulfillment(checkout, { update }) {
       "rather than partially honoured.",
     ].join(" "), { rejected_field: "checkout.fulfillment.methods", max_methods: 1 });
   }
-  if (methods.length === 0) return undefined;
+  // EMPTY IS REFUSED, NOT READ AS "NONE". The schema declares `minItems: 1`, and a mapper that quietly
+  // treated `[]` as "no fulfillment supplied" would be laxer than the contract it publishes — the drift this
+  // module exists to end, on the field that decides whether an order can be created. The cost is not
+  // cosmetic: a caller whose destination list came out empty (not yet chosen, or an upstream mapping bug)
+  // would be ACCEPTED here, open an address-less checkout, authorize payment, and only then be refused 400
+  // INVALID_BUYER_CONTEXT by pivota-backend at order creation — the exact blocker `mapFulfillment` closes,
+  // reappearing after a valid grant has verified and naming canonical fields UCP has no word for. Refusing
+  // now names the caller's own field while nothing has been priced.
+  if (methods.length === 0) {
+    throw ucpRefusal(code, "ucp_fulfillment_methods_empty", [
+      "`checkout.fulfillment.methods` must name one method if `fulfillment` is present. Send the shipping",
+      "destination as `fulfillment.methods[0].destinations[0]`, or omit `checkout.fulfillment` entirely and",
+      "supply the address later via `update_checkout` — an empty list is neither, and a checkout with no",
+      "address cannot be completed into an order.",
+    ].join(" "), { rejected_field: "checkout.fulfillment.methods", min_methods: 1 });
+  }
 
   const method = methods[0];
   if (!isPlainObject(method)) {
@@ -581,7 +596,20 @@ function mapFulfillment(checkout, { update }) {
       destination_count: destinations.length,
     });
   }
-  if (destinations.length === 0) return undefined;
+  // Same rule as the empty `methods` above, and the more likely of the two to arrive from a real platform:
+  // `destinations: []` is the shape a caller produces when its own destination lookup returned nothing.
+  if (destinations.length === 0) {
+    throw ucpRefusal(code, "ucp_fulfillment_destinations_empty", [
+      "`checkout.fulfillment.methods[].destinations` must name exactly ONE destination when `fulfillment` is",
+      "present. Send the shipping address there, or omit `checkout.fulfillment` entirely and supply it later",
+      "via `update_checkout` — an empty list is neither, and a checkout with no address cannot be completed",
+      "into an order.",
+    ].join(" "), {
+      rejected_field: "checkout.fulfillment.methods[].destinations",
+      min_destinations: 1,
+      max_destinations: 1,
+    });
+  }
 
   const destination = destinations[0];
   if (!isPlainObject(destination)) {
