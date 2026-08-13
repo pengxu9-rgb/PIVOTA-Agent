@@ -397,9 +397,15 @@ const CANONICAL_TO_DESTINATION_FIELDS = Object.freeze({
   name: Object.freeze(["first_name", "last_name"]),
 });
 
-/** A canonical field named the way a UCP caller spells it, for prose. */
-const destinationLabel = (canonicalField) =>
-  (CANONICAL_TO_DESTINATION_FIELDS[canonicalField] ?? [canonicalField]).map((f) => `\`${f}\``).join("/");
+// The backend's five required fields, split by the RULE THAT ACTUALLY APPLIES to each. Every one is required,
+// but `name` is satisfied by EITHER part — `mapFulfillment` composes it from whichever arrived, so a buyer
+// with one name is not an error. Derived from REQUIRED_ADDRESS_FIELDS so a field added to the shared rule
+// cannot be missed here.
+const REQUIRED_ADDRESS_ANY_OF = CANONICAL_TO_DESTINATION_FIELDS.name;
+const REQUIRED_ADDRESS_ALL_OF = Object.freeze(
+  REQUIRED_ADDRESS_FIELDS.filter((f) => f !== "name")
+    .flatMap((f) => CANONICAL_TO_DESTINATION_FIELDS[f] ?? [f]),
+);
 
 const DESTINATION_FIELDS = Object.freeze(["id", "first_name", "last_name", ...Object.keys(DESTINATION_TO_CANONICAL)]);
 
@@ -666,16 +672,27 @@ function mapFulfillment(checkout, { update }) {
     const missingCanonical = error?.detail?.acp_detail?.missing_fields;
     if (!Array.isArray(missingCanonical) || missingCanonical.length === 0) throw error;
 
-    const missingUcp = missingCanonical.flatMap((f) => CANONICAL_TO_DESTINATION_FIELDS[f] ?? [f]);
-    // A field that WAS sent is never called missing — it is called unusable, with what to do about it.
-    const absent = missingUcp.filter((f) => !unusable.includes(f));
-    const sentButUnusable = unusable.filter((f) => missingUcp.includes(f));
+    // ONE canonical field can map to SEVERAL UCP fields that satisfy it EITHER-OR — `name` is composed, so
+    // `first_name` ALONE is enough and a mononymous buyer is not an error. Walking per canonical field keeps
+    // that: if any of its UCP parts was sent-but-unusable, THAT part is the fix and none of the others is
+    // reported missing; only when nothing arrived for the field at all are its parts listed as absent.
+    // (Flattening first and filtering afterwards said `last_name` was missing when un-blanking `first_name`
+    // would have satisfied it — the same misdirection this refusal exists to remove.)
+    const absent = [];
+    const sentButUnusable = [];
+    for (const canonicalField of missingCanonical) {
+      const fields = CANONICAL_TO_DESTINATION_FIELDS[canonicalField] ?? [canonicalField];
+      const sent = fields.filter((f) => unusable.includes(f));
+      if (sent.length) sentButUnusable.push(...sent);
+      else absent.push(...fields);
+    }
 
     // The address itself is PII and is never echoed — only field names travel.
     throw ucpRefusal(code, "ucp_fulfillment_destination_incomplete", [
       "`checkout.fulfillment.methods[].destinations[]` is incomplete. A destination is OPTIONAL — a checkout",
       "may be opened without one and the address supplied later via `update_checkout` — but one that IS given",
-      `must carry all of ${REQUIRED_ADDRESS_FIELDS.map(destinationLabel).join(", ")},`,
+      `must carry ${REQUIRED_ADDRESS_ALL_OF.map((f) => `\`${f}\``).join(", ")}, and at least one of`,
+      `${REQUIRED_ADDRESS_ANY_OF.map((f) => `\`${f}\``).join(" or ")},`,
       "because order creation requires a complete address.",
       ...(absent.length ? [`Missing: ${absent.map((f) => `\`${f}\``).join(", ")}.`] : []),
       ...(sentButUnusable.length ? [
@@ -687,7 +704,12 @@ function mapFulfillment(checkout, { update }) {
       // Present but not a usable string. Distinct from `missing_fields` on purpose: the two need different
       // fixes, and conflating them is what made the refusal unactionable.
       invalid_fields: sentButUnusable,
-      required_fields: REQUIRED_ADDRESS_FIELDS.flatMap((f) => CANONICAL_TO_DESTINATION_FIELDS[f] ?? [f]),
+      // ALL-OF and ANY-OF are separate keys because they are separate rules. Listing `first_name` and
+      // `last_name` side by side in one required list says BOTH are needed, and a caller validating against
+      // it would refuse a mononymous buyer's address or invent a surname — fabricating buyer data, which is
+      // exactly what this door refuses to do anywhere else.
+      required_fields: [...REQUIRED_ADDRESS_ALL_OF],
+      required_any_of: [[...REQUIRED_ADDRESS_ANY_OF]],
     });
   }
   return complete;

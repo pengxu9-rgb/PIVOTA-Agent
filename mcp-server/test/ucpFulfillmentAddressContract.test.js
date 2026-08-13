@@ -358,8 +358,11 @@ describe('the door refuses what it cannot represent instead of choosing', () => 
     assert.equal(error.detail?.reason, 'ucp_fulfillment_destination_incomplete');
     assert.deepEqual(error.detail?.acp_detail?.invalid_fields, ['first_name'],
       'a blank first_name was SENT — it is unusable, not missing');
-    assert.deepEqual(error.detail?.acp_detail?.missing_fields, ['last_name'],
-      'the part that never arrived is the only missing one');
+    // …and `last_name` is NOT reported missing: the two parts satisfy ONE canonical field either-or, so
+    // un-blanking `first_name` is the whole fix. Naming the part the caller does not need would be the same
+    // misdirection as calling a sent field missing.
+    assert.deepEqual(error.detail?.acp_detail?.missing_fields, [],
+      'the other name part is not required once one of them is the actual problem');
     assert.equal(stack.priced().length, 0);
 
     // …and the MIRROR, because the two parts are handled by one loop and a mutant that walks only the first
@@ -371,7 +374,35 @@ describe('the door refuses what it cannot represent instead of choosing', () => 
     }), SESSION));
 
     assert.deepEqual(mirrored.detail?.acp_detail?.invalid_fields, ['last_name']);
-    assert.deepEqual(mirrored.detail?.acp_detail?.missing_fields, ['first_name']);
+    assert.deepEqual(mirrored.detail?.acp_detail?.missing_fields, []);
+  });
+
+  test('the refusal never says a SURNAME is required — a mononymous buyer is not an error', async () => {
+    // REVIEW FINDING (a regression this branch introduced). `required_fields` flattened the composed `name`
+    // into two entries, so it read as "both `first_name` AND `last_name`" — while the door in fact accepts
+    // either alone. A platform validating its outgoing body against that list would refuse a valid
+    // mononymous address, or invent a surname to satisfy it: fabricating buyer data, which is precisely what
+    // this door refuses to do anywhere else.
+    const stack = realStack();
+    const { street_address, ...noStreet } = DESTINATION;
+    const error = await rejected(stack.ucp.callTool('create_checkout', createBody({
+      fulfillment: fulfillment(noStreet),
+    }), SESSION));
+
+    const detail = error.detail?.acp_detail;
+    assert.deepEqual(detail?.required_fields,
+      ['street_address', 'address_locality', 'postal_code', 'address_country'],
+      'the ALL-OF list must not contain either name part');
+    assert.deepEqual(detail?.required_any_of, [['first_name', 'last_name']],
+      'the either-or rule is its own key, not two entries in the all-of list');
+    assert.match(String(error.detail?.acp_message ?? ''), /at least one of `first_name` or `last_name`/);
+
+    // The claim has to match the door: a destination with ONLY a first name really is accepted.
+    const stack2 = realStack();
+    const { last_name, ...mononym } = DESTINATION;
+    await stack2.ucp.callTool('create_checkout', createBody({ fulfillment: fulfillment(mononym) }), SESSION);
+    assert.equal(stack2.priced().at(-1).quote.shipping_address.name, 'Ada',
+      'what required_fields promises and what the door accepts must be the same rule');
   });
 
   test('the narrowed catch rests on a shape the SHARED refusal really has', async () => {
