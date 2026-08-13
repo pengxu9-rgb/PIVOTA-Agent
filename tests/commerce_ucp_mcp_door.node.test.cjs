@@ -36,6 +36,8 @@ const {
   resolveBlockedUcpMcpOperation,
   blockedCommerceOperationForCanonicalOp,
   buildExternalInvokeContext,
+  maybeApplyStrictMcpHostedPaymentDefaults,
+  serveCommerceMcpJsonRpc,
 } = require('../src/server')._debug;
 
 test.after(() => { process.env = { ...ORIGINAL_ENV }; });
@@ -165,6 +167,98 @@ test('the UCP door reports surface `mcp`, so its charges keep the hosted-payment
   // …and it is the PATH that qualifies, not a blanket default: a non-MCP lane still reports no surface.
   assert.equal(buildExternalInvokeContext({ path: '/agent/shop/v1/invoke', header }).surface, null);
   assert.equal(ucp.path, '/ucp/mcp');
+});
+
+// ---- 1c. …and it says so for every spelling Express actually SERVES -----------------------------------------
+//
+// Express routes case-insensitively and ignores trailing slashes (caseSensitive/strict default off), so all
+// four spellings below reach the door and get answered. `req.path` reports the caller's spelling, so an
+// exact-match lookup against COMMERCE_MCP_JSON_RPC_PATHS misses them — and the money door answers with
+// `surface: null`. This was pre-existing on /mcp and inherited by /ucp/mcp on mount.
+
+const PATH_VARIANTS = ['/ucp/mcp/', '/UCP/MCP', '/Ucp/Mcp/', '/mcp/', '/MCP'];
+
+test('Express really does serve the path variants (so the surface question is live, not theoretical)', async () => {
+  await withEnv(DOOR_LIT, async () => {
+    for (const p of ['/ucp/mcp/', '/UCP/MCP']) {
+      const resp = await supertest(app).post(p).send(rpc('tools/list', undefined, 11)).expect(200);
+      assert.ok(
+        Array.isArray(resp.body.result.tools),
+        `${p} must be served by the UCP door — if this ever 404s, the variants below stop mattering`,
+      );
+    }
+  });
+});
+
+test('every served spelling reports surface `mcp`, so no variant loses the hosted-payment defaults', () => {
+  const header = () => undefined;
+  for (const p of PATH_VARIANTS) {
+    assert.equal(buildExternalInvokeContext({ path: p, header }).surface, 'mcp', `${p} must be the money surface`);
+  }
+  // Normalizing must not widen the set: a neighbour that merely SHARES a prefix is still not this surface.
+  for (const p of ['/ucp/mcp-preview', '/mcp/tools', '/ucp', '/agent/shop/v1/invoke', '', null]) {
+    assert.equal(buildExternalInvokeContext({ path: p, header }).surface, null, `${p} must not be the money surface`);
+  }
+});
+
+test('the VERDICT: a charge posted to /ucp/mcp/ gets the same hosted-payment defaults as one to /ucp/mcp', () => {
+  // Asserted through the real READER, not through ctx.surface: a test that only read the flag would still
+  // pass if maybeApplyStrictMcpHostedPaymentDefaults stopped honouring it, and the flag is not the money —
+  // return_url is. Without it the buyer pays at the PSP and lands nowhere.
+  withEnv({ AGENT_CHECKOUT_MCP_PAYMENT_RETURN_URL: 'https://shop.pivota.cc/order/success' }, () => {
+    const header = () => undefined;
+    const payment = { order_id: 'ord_1' };
+    const canonical = maybeApplyStrictMcpHostedPaymentDefaults(
+      payment,
+      buildExternalInvokeContext({ path: '/ucp/mcp', header }),
+    );
+    assert.ok(canonical.return_url, 'baseline: the canonical spelling must get a return_url');
+    for (const p of PATH_VARIANTS) {
+      const applied = maybeApplyStrictMcpHostedPaymentDefaults(
+        payment,
+        buildExternalInvokeContext({ path: p, header }),
+      );
+      assert.equal(applied.return_url, canonical.return_url, `${p} must get the same return_url`);
+      assert.equal(applied.payment_method_hint, canonical.payment_method_hint, `${p} must get the same hint`);
+    }
+    // CONTRAST: the defaults are genuinely surface-gated, so the equalities above are the fix and not a
+    // function that fills these fields in for everyone.
+    assert.equal(
+      maybeApplyStrictMcpHostedPaymentDefaults(payment, buildExternalInvokeContext({ path: '/ucp', header })).return_url,
+      undefined,
+    );
+  });
+});
+
+// ---- 1d. a rejecting kill-switch resolver must not take the gateway down -----------------------------------
+
+test('a REJECTING blocked-operation resolver answers 503 instead of crashing the process', async () => {
+  // The UCP door's resolver imports the canonical contract, so it can reject where /mcp's synchronous
+  // lookup cannot: a broken or partial deploy, on the first UCP tools/call after boot. Express 4 does not
+  // catch a rejected handler promise and this process installs no `unhandledRejection` handler, so an
+  // unguarded rejection here kills the WHOLE gateway — every lane, not just this request.
+  const sent = [];
+  const res = {
+    headersSent: false,
+    setHeader() {},
+    status(code) { sent.push({ code }); return { json: (body) => { sent[sent.length - 1].body = body; return res; }, end: () => res }; },
+  };
+  const req = { method: 'POST', path: '/ucp/mcp', headers: {}, header: () => undefined, body: rpc('tools/call', { name: 'complete_checkout', arguments: {} }) };
+
+  let adapterCalls = 0;
+  // Must RESOLVE. An assertion on the status alone would also pass on a rejected promise in some runners,
+  // so the await itself is half the test.
+  await serveCommerceMcpJsonRpc(req, res, {
+    handlerEnteredAtMs: Date.now(),
+    getAdapter: async () => { adapterCalls += 1; return { handleJsonRpc: async () => ({ status: 200, body: {} }) }; },
+    resolveBlockedOperation: async () => { throw new Error('canonical contract import failed'); },
+    failureLabel: 'test dialect route failed',
+  });
+
+  assert.deepEqual(sent.map((s) => s.code), [503]);
+  assert.deepEqual(sent[0].body, { error: 'mcp_unavailable' });
+  // Fail CLOSED: no kill-switch was evaluated, so the adapter must never have been reached.
+  assert.equal(adapterCalls, 0, 'a request whose kill-switch could not be resolved must not reach the adapter');
 });
 
 // ---- 2. the mount and its gates ----------------------------------------------------------------------------

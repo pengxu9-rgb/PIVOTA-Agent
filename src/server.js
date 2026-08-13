@@ -30015,10 +30015,25 @@ function buildStrictSessionAuthInfo(req, sessionContext = deriveStrictCommerceCt
 // than /mcp gets: a money-path fork created by a missing string.
 const COMMERCE_MCP_JSON_RPC_PATHS = new Set(['/mcp', '/ucp/mcp']);
 
+// Does this request's path speak commerce MCP JSON-RPC? Normalized, not compared raw.
+//
+// Express routes case-insensitively and tolerates trailing slashes (caseSensitive/strict default off), so
+// `POST /ucp/mcp/`, `/UCP/MCP` and `/mcp/` all reach the door and are served — but `req.path` hands back the
+// spelling the caller used, so a raw Set lookup MISSES them and reports `surface: null` for a request the
+// money door just answered. On this lane that is not cosmetic: `surface === 'mcp'` is the only thing that
+// arms maybeApplyStrictMcpHostedPaymentDefaults, so a platform posting to `https://…/ucp/mcp/` would
+// complete a charge with no return_url and no payment_method_hint — the buyer pays and lands nowhere.
+// Same normalization as shouldCaptureAcpRawBody and the public body cap, for the same Express reason.
+function isCommerceMcpJsonRpcPath(path) {
+  const normalized = String(path || '').toLowerCase().replace(/\/+$/, '');
+  return COMMERCE_MCP_JSON_RPC_PATHS.has(normalized);
+}
+
 function buildExternalInvokeContext(req) {
   return {
+    // The path as RECEIVED (this is a diagnostic field); only the surface decision is normalized.
     path: req?.path || null,
-    surface: COMMERCE_MCP_JSON_RPC_PATHS.has(req?.path) ? 'mcp' : null,
+    surface: isCommerceMcpJsonRpcPath(req?.path) ? 'mcp' : null,
     api_key: req?.invokeAuth?.raw_token || null,
     agent_id: req?.invokeAuth?.agent_id || null,
     auth_mode: req?.invokeAuth?.auth_mode || null,
@@ -30804,7 +30819,19 @@ async function serveCommerceMcpJsonRpc(req, res, { handlerEnteredAtMs, getAdapte
         // them keeps a refused money op on the same instant, fully buffered path as the 404/401 refusals
         // instead of leaving a rarely-taken committed-wire branch behind the guard.
         const rpcBody = req?.body && typeof req.body === 'object' ? req.body : {};
-        const blockedOperation = await resolveBlockedOperation(rpcBody);
+        // GUARDED because this await can REJECT on the UCP door. /mcp's resolver is a synchronous lookup
+        // that cannot throw; the UCP dialect's resolver reads its name→operation map from a dynamically imported
+        // canonical contract, so a broken or partial deploy rejects here on the first UCP tools/call after
+        // boot. Express 4 does not catch a rejected handler promise and this process installs no
+        // `unhandledRejection` handler, so an unguarded rejection would take down the WHOLE gateway, not
+        // just this request. 503 instead: no kill-switch was evaluated, so nothing is cleared to charge.
+        let blockedOperation;
+        try {
+          blockedOperation = await resolveBlockedOperation(rpcBody);
+        } catch (err) {
+          logger.error({ err: err?.message || String(err) }, failureLabel);
+          return res.status(503).json({ error: 'mcp_unavailable' });
+        }
         if (blockedOperation) {
           recordCommerceKernelAudit({
             event: 'operation_blocked',
@@ -51267,10 +51294,19 @@ module.exports._debug = {
   // Exported so the dialect-crossing is asserted directly rather than inferred from the route.
   resolveBlockedUcpMcpOperation,
   blockedCommerceOperationForCanonicalOp,
+  // Availability property of the shared door pipeline: the UCP dialect's kill-switch resolution is ASYNC
+  // (it imports the canonical contract), and Express 4 does not catch a rejected handler promise. Exported
+  // so a rejecting resolver can be driven directly — over the wire the only way to reject is a broken
+  // deploy, which a route test cannot stage.
+  serveCommerceMcpJsonRpc,
   // Money-path property: `surface === 'mcp'` is what arms maybeApplyStrictMcpHostedPaymentDefaults, so the
   // UCP door must report it too or its charges silently lose the return_url / payment_method_hint defaults
   // that /mcp charges get. Exported so that equivalence is asserted rather than inferred from a route.
   buildExternalInvokeContext,
+  // The READER of that surface flag, exported alongside it so the money assertion runs on the value the
+  // charge path actually consumes: a test that only reads `ctx.surface` would still pass if this function
+  // stopped honouring it.
+  maybeApplyStrictMcpHostedPaymentDefaults,
   resolveCanonicalCategoryPathPrefixForQuery,
   isNonBeautyCanonicalCategoryPathPrefix,
   buildOffersFromGroupMembers,
