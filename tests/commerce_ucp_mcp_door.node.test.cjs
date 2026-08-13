@@ -180,14 +180,30 @@ const PATH_VARIANTS = ['/ucp/mcp/', '/UCP/MCP', '/Ucp/Mcp/', '/mcp/', '/MCP'];
 
 test('Express really does serve the path variants (so the surface question is live, not theoretical)', async () => {
   await withEnv(DOOR_LIT, async () => {
-    for (const p of ['/ucp/mcp/', '/UCP/MCP']) {
+    // EVERY variant, not a sample: /mcp's spellings are the older half of this defect, and leaving them to
+    // the comment above would rest the whole /mcp claim on prose. Both doors, driven the same way.
+    for (const p of PATH_VARIANTS) {
       const resp = await supertest(app).post(p).send(rpc('tools/list', undefined, 11)).expect(200);
       assert.ok(
         Array.isArray(resp.body.result.tools),
-        `${p} must be served by the UCP door — if this ever 404s, the variants below stop mattering`,
+        `${p} must be served — if this ever 404s, its entry in PATH_VARIANTS stops meaning anything`,
       );
     }
   });
+});
+
+test('a DOUBLED trailing slash is normalized by the helper but NOT routed — so it never builds a context', async () => {
+  // The one place the helper is looser than the router: `\/+$` strips `//`, but Express's `/^\/mcp\/?$/i`
+  // does not match `/mcp//`. Harmless only because a 404'd path never reaches buildExternalInvokeContext —
+  // which is a property of the ROUTER, not of this helper, so it is pinned here rather than assumed. If a
+  // future route ever serves `/mcp//`, this test fails and says which half to fix.
+  const header = () => undefined;
+  for (const p of ['/mcp//', '/ucp/mcp//']) {
+    assert.equal(buildExternalInvokeContext({ path: p, header }).surface, 'mcp', `${p}: helper normalizes it`);
+    await withEnv(DOOR_LIT, async () => {
+      await supertest(app).post(p).send(rpc('tools/list', undefined, 12)).expect(404);
+    });
+  }
 });
 
 test('every served spelling reports surface `mcp`, so no variant loses the hosted-payment defaults', () => {

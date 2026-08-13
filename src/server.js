@@ -30023,7 +30023,15 @@ const COMMERCE_MCP_JSON_RPC_PATHS = new Set(['/mcp', '/ucp/mcp']);
 // money door just answered. On this lane that is not cosmetic: `surface === 'mcp'` is the only thing that
 // arms maybeApplyStrictMcpHostedPaymentDefaults, so a platform posting to `https://…/ucp/mcp/` would
 // complete a charge with no return_url and no payment_method_hint — the buyer pays and lands nowhere.
-// Same normalization as shouldCaptureAcpRawBody and the public body cap, for the same Express reason.
+// Same normalization as shouldCaptureAcpRawBody, for the same Express reason. NOT the same as the public
+// body-cap middleware, which computes a `pNorm` but then applies it ONLY to its /ucp/order-webhook branch —
+// its `/mcp` and `/public/mcp` comparisons are still raw, so that 32KB cap is bypassable by spelling on a
+// chunked request. That is a live pre-existing hole on the auth:none tier, not a model to copy; do not read
+// this line as saying the two agree.
+//
+// No query-string strip here (unlike shouldCaptureAcpRawBody, which reads originalUrl): `req.path` is
+// already parseurl().pathname. It is also NOT percent-decoded, which is what keeps `/ucp%2Fmcp` out —
+// verified, along with `//mcp`, `/mcp/../mcp` and `/mcp;x=1`, all of which Express 404s anyway.
 function isCommerceMcpJsonRpcPath(path) {
   const normalized = String(path || '').toLowerCase().replace(/\/+$/, '');
   return COMMERCE_MCP_JSON_RPC_PATHS.has(normalized);
