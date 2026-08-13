@@ -54,13 +54,24 @@
 //                   client's flat `{query,id,sku}` (`catalogSearch`), which is wrong against the live schema
 //                   — that client has the same bug and is flagged separately.
 //
-// A MEASUREMENT TRAP WORTH REMEMBERING. The first 2026-08-13 listing showed only 9 tools — cart and checkout —
-// and this file recorded that a per-merchant endpoint "does not expose get_product at all". That was wrong:
-// the merchant NEGOTIATES the tool list against the calling agent's profile, and ours is narrowed to
-// cart+checkout. Listing WITHOUT an agent profile returns 13 tools, `get_product` among them. Absence from one
-// negotiated listing is not evidence of absence — probe both ways before concluding a capability is missing.
-// (Pivota's own profile requests `dev.ucp.shopping.catalog` and still loses it in negotiation; that is a
-// separate open question, not something this file can fix.)
+// A MEASUREMENT TRAP WORTH REMEMBERING — and it cuts BOTH ways, which is the actual lesson.
+//
+// A merchant NEGOTIATES its tool list against the calling agent's profile. With Pivota's profile the 2026-08-13
+// listing was 9 tools (cart+checkout); WITHOUT a profile the same endpoint listed 13, `get_product` among them.
+// Reading only the first, this file recorded "a per-merchant endpoint does not expose get_product at all".
+// Reading only the second, the correction claimed the opposite — that the tool is exposed and our profile
+// merely loses it. BOTH single readings were wrong about something.
+//
+// What `tools/call` settles, which no listing can:
+//   - with our profile   -> get_product / search_catalog / lookup_catalog all answer
+//                           `-32602 { data: "Tool not found: <tool>" }`, while get_cart on the same
+//                           connection runs. So the catalog lane is genuinely NOT granted to us here.
+//   - without a profile  -> every call is refused `422 invalid_profile_url`. So the 13-tool listing is a
+//                           phantom: nobody can call those tools without a profile either.
+//
+// The two questions are separate and only one of them is a listing's business: what SHAPE a tool takes
+// (published in tools/list, and what this door mirrors) versus whether the caller is GRANTED it (only a
+// tools/call answers that). Probe both ways, and probe with a CALL before concluding either.
 //
 // ---- WHAT THE CANONICAL SIDE CANNOT ACCEPT, AND WHY IT IS NOT PAPERED OVER -------------------------------
 //
@@ -518,10 +529,13 @@ const SPECS = Object.freeze({
       // is no `sku`. The flat `{query,id,sku}` shape this file first published came from the buyer client's
       // `catalogSearch`, which is itself wrong against the live schema (flagged there for its own fix).
       //
-      // Why the earlier probe missed it: a per-merchant endpoint HIDES `get_product` from an agent whose
-      // profile it has negotiated down to cart+checkout, so that listing showed 9 tools and this file
-      // concluded the catalog lane was not exposed at all. Listing WITHOUT an agent profile returns 13,
-      // including this one. Absence from one negotiated listing is not evidence of absence.
+      // Where the schema came from, given the tool is NOT served to us: a merchant negotiates its tool list
+      // against the calling agent's profile. With ours the listing is 9 tools (cart+checkout) and a
+      // `get_product` call answers `-32602 { data: "Tool not found" }`; listing WITHOUT a profile returns 13,
+      // this one included, which is how the schema was captured. That larger listing is NOT a capability we
+      // hold — `tools/call` without a profile is refused outright (422 invalid_profile_url), so nobody can
+      // call those 13 — but it IS the merchant's own published shape for the tool, which is what this door
+      // mirrors. The shape and the grant are separate questions; only the first one is settled here.
       type: "object",
       required: ["meta", "catalog"],
       additionalProperties: false,
