@@ -216,9 +216,27 @@ jobs:
       # charges. The kernel-side routing invariants live in safety-kernel's own
       # suite; this file is the only proof the three gateway body builders it
       # crosses still agree.
+      # ADDED 2026-08-13: the three UCP-dialect suites, confirmed green before
+      # landing (`ucpToolVocabulary` 9, `ucpDialectSurface` 9, `ucpArgumentAdapter`
+      # 43 — 61 together). The first two shipped with #1962 and ran in NO workflow
+      # at all — the third instance of that on this list — so the dialect's contract was
+      # unguarded on PRs: `cd mcp-server && node --test` lives only in the
+      # workflow_dispatch money-path gate, and jest's testMatch is `**/tests/**`
+      # (plural), which cannot see `mcp-server/test/` (singular).
+      # `ucpArgumentAdapter` is the one that matters most: it is the money-path
+      # proof that what `tools/list` PUBLISHES is what `tools/call` ACCEPTS, pinned
+      # against the LIVE merchant schemas fetched 2026-08-13 — which is how
+      # complete_checkout's nested `checkout.payment` and get_product's nested
+      # `catalog.id` were caught, both of which would have refused every conforming
+      # platform. Mutations were applied one per hunk while writing it and the
+      # survivors verified unreachable rather than assumed. Unlisted, every one of
+      # those assertions guarded nothing on a PR.
       - name: Run node:test suites
         run: |
           node --test \
+            mcp-server/test/ucpToolVocabulary.test.js \
+            mcp-server/test/ucpDialectSurface.test.js \
+            mcp-server/test/ucpArgumentAdapter.test.js \
             tests/commerce_kernel_error_body.node.test.cjs \
             tests/commerce_kernel_error_mapping.node.test.cjs \
             tests/asserted_privilege_observation.node.test.cjs \

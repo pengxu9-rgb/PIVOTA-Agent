@@ -49,10 +49,18 @@
 //     caller believes authorized one is worse than an actionable refusal. That is a DELIBERATE narrowing,
 //     recorded rather than accidental, and the only one in this file.
 //
-// STILL NOT LIVE-VERIFIED: `get_product` takes flat `{ query, id, sku }` (buyer client `catalogSearch`). A
-// per-merchant UCP endpoint does not expose it at all — the 2026-08-13 `tools/list` returned only cart and
-// checkout tools, confirming that client's note that product discovery is the GLOBAL catalog lane. So this
-// one mapping remains client-derived, and is the only shape here still awaiting a live source.
+//   - get_product : required ["meta","catalog"], with `catalog.required = ["id"]`. The id is NESTED under
+//                   `catalog`; there is no flat `id` and no `sku`. This file first published the buyer
+//                   client's flat `{query,id,sku}` (`catalogSearch`), which is wrong against the live schema
+//                   — that client has the same bug and is flagged separately.
+//
+// A MEASUREMENT TRAP WORTH REMEMBERING. The first 2026-08-13 listing showed only 9 tools — cart and checkout —
+// and this file recorded that a per-merchant endpoint "does not expose get_product at all". That was wrong:
+// the merchant NEGOTIATES the tool list against the calling agent's profile, and ours is narrowed to
+// cart+checkout. Listing WITHOUT an agent profile returns 13 tools, `get_product` among them. Absence from one
+// negotiated listing is not evidence of absence — probe both ways before concluding a capability is missing.
+// (Pivota's own profile requests `dev.ucp.shopping.catalog` and still loses it in negotiation; that is a
+// separate open question, not something this file can fix.)
 //
 // ---- WHAT THE CANONICAL SIDE CANNOT ACCEPT, AND WHY IT IS NOT PAPERED OVER -------------------------------
 //
@@ -297,7 +305,7 @@ export const UCP_ACCEPTED_BUT_UNMAPPED = Object.freeze({
   ]),
   get_checkout_session: Object.freeze([]),
   complete_checkout_session: Object.freeze(["checkout.attribution"]),
-  get_product: Object.freeze([]),
+  get_product: Object.freeze(["catalog.selected", "catalog.preferences", "catalog.context", "catalog.signals", "catalog.filters"]),
 });
 
 // ---- shared readers --------------------------------------------------------------------------------------
@@ -491,9 +499,9 @@ const COMPLETE_CHECKOUT_DESCRIPTION = [
 ].join(" ");
 
 const GET_PRODUCT_DESCRIPTION = [
-  "Get full detail for one product. Send `{ meta, id }`, where `id` is the Pivota product id; `sku` is",
-  "optional. Read-only. Free-text catalog search is NOT exposed on the UCP dialect — this tool answers about",
-  "one identified product.",
+  "Get full detail for one product. Send `{ meta, catalog: { id } }` — the product id is NESTED under",
+  "`catalog`. Read-only. Free-text catalog search is NOT exposed on this dialect; this tool answers about one",
+  "identified product.",
 ].join(" ");
 
 /**
@@ -505,13 +513,44 @@ const SPECS = Object.freeze({
     ucpTool: "get_product",
     description: GET_PRODUCT_DESCRIPTION,
     inputSchema: {
+      // LIVE-VERIFIED (cosrx tools/list, 2026-08-13): required ["meta","catalog"], with
+      // `catalog.required = ["id"]`. The id is NESTED under `catalog` — NOT a flat top-level `id`, and there
+      // is no `sku`. The flat `{query,id,sku}` shape this file first published came from the buyer client's
+      // `catalogSearch`, which is itself wrong against the live schema (flagged there for its own fix).
+      //
+      // Why the earlier probe missed it: a per-merchant endpoint HIDES `get_product` from an agent whose
+      // profile it has negotiated down to cart+checkout, so that listing showed 9 tools and this file
+      // concluded the catalog lane was not exposed at all. Listing WITHOUT an agent profile returns 13,
+      // including this one. Absence from one negotiated listing is not evidence of absence.
       type: "object",
-      required: ["meta", "id"],
+      required: ["meta", "catalog"],
       additionalProperties: false,
       properties: {
         meta: metaSchema({ idempotency: false }),
-        id: { type: "string", description: "The Pivota product id to read." },
-        sku: { type: "string", description: "Optional SKU, when the caller has one." },
+        catalog: {
+          type: "object",
+          required: ["id"],
+          additionalProperties: false,
+          properties: {
+            id: { type: "string", description: "The Pivota product id to read." },
+            // Live members accepted and NOT read: variant narrowing is resolved server-side from the
+            // canonical product, so honouring a caller's pre-selection would answer about something the
+            // read never confirmed.
+            selected: {
+              type: "array",
+              items: { type: "object", additionalProperties: true },
+              description: "Accepted and NOT read — variant selection is resolved server-side.",
+            },
+            preferences: {
+              type: "array",
+              items: { type: "object", additionalProperties: true },
+              description: "Accepted and NOT read.",
+            },
+            context: { type: "object", additionalProperties: true, description: "Accepted and NOT read." },
+            signals: { type: "object", additionalProperties: true, description: "Accepted and NOT read." },
+            filters: { type: "object", additionalProperties: true, description: "Accepted and NOT read." },
+          },
+        },
       },
     },
     map(args) {
@@ -519,19 +558,22 @@ const SPECS = Object.freeze({
       // and the right retriable:false, and the curated message below is what the caller actually sees.
       const code = "UNKNOWN_PRODUCT_ID";
       requireArgsObject(args, code);
-      rejectUnknown(args, ["meta", "id", "sku"], "arguments", code);
+      rejectUnknown(args, ["meta", "catalog"], "arguments", code);
       requireMeta(args, code);
-      const id = own(args, "id");
+      const catalog = own(args, "catalog");
+      if (isPlainObject(catalog)) {
+        rejectUnknown(catalog, ["id", "selected", "preferences", "context", "signals", "filters"], "catalog", code);
+      }
+      const id = isPlainObject(catalog) ? own(catalog, "id") : undefined;
       if (!nonEmpty(id)) {
         throw ucpRefusal(code, "ucp_product_id_required", [
-          "`get_product` requires `id` — the Pivota product id to read. Free-text catalog search is not exposed",
-          "on the UCP dialect, so a `query` alone cannot be answered here.",
-        ].join(" "), { required_fields: ["id"] });
+          "`get_product` requires `catalog.id` — the Pivota product id to read, NESTED under `catalog`.",
+          "Free-text catalog search is not exposed on this dialect, so a query alone cannot be answered here.",
+        ].join(" "), { required_fields: ["catalog.id"] });
       }
-      const sku = own(args, "sku");
       // -> the NATIVE get_product tool args. No merchant_id exists in the UCP shape, so this reads the
       // unscoped lane, which is the same lane an ACP-feed `sig_*` id resolves through.
-      return { product_id: id.trim(), ...(nonEmpty(sku) ? { sku_id: sku.trim() } : {}) };
+      return { product_id: id.trim() };
     },
   }),
 

@@ -220,7 +220,7 @@ describe('the idempotency key comes from meta, and is never minted', () => {
 
   test('`meta` itself is required on every UCP call', async () => {
     const { executor, ucp } = ucpSurface();
-    const err = await rejected(ucp.callTool('get_product', { id: 'p_alpha' }, SESSION));
+    const err = await rejected(ucp.callTool('get_product', { catalog: { id: 'p_alpha' } }, SESSION));
     assert.ok(err);
     assert.equal(executor.seen.length, 0);
     assert.match(String(err.detail?.acp_message ?? err.message), /meta/);
@@ -466,21 +466,62 @@ describe('a payment field on create/update is refused, never forwarded', () => {
 
 // ---- 7. get_product -------------------------------------------------------------------------------------------
 
-describe('get_product speaks the UCP flat shape', () => {
-  test('`id` becomes the canonical product_id (and no merchant is invented)', async () => {
+describe('get_product speaks the UCP nested-catalog shape', () => {
+  test('`catalog.id` becomes the canonical product_id (and no merchant is invented)', async () => {
     const { executor, ucp } = ucpSurface();
-    await ucp.callTool('get_product', { meta: AGENT_META, id: 'sig_abc', sku: 'SKU-1' }, SESSION);
+    await ucp.callTool('get_product', { meta: AGENT_META, catalog: { id: 'sig_abc' } }, SESSION);
 
     const call = executor.only('get_product');
-    assert.deepEqual(call.params.payload.product, { product_id: 'sig_abc', sku_id: 'SKU-1' });
+    assert.deepEqual(call.params.payload.product, { product_id: 'sig_abc' });
     assert.equal(call.params.payload.product.merchant_id, undefined, 'the UCP shape names no merchant');
   });
 
-  test('a free-text query alone cannot be answered here, and says so', async () => {
+  test('a FLAT top-level id is refused — the live shape nests it under `catalog`', async () => {
+    const { executor, ucp } = ucpSurface();
+    // The shape this adapter first published, taken from the buyer client's `catalogSearch`. Asserting it is
+    // refused is what stops the flat spelling drifting back in.
+    const err = await rejected(ucp.callTool('get_product', { meta: AGENT_META, id: 'sig_abc', sku: 'SKU-1' }, SESSION));
+    assert.ok(err, 'a flat top-level id is not the live wire shape');
+    assert.equal(executor.seen.length, 0);
+  });
+
+  test('the live catalog members are accepted, and only `id` is read', async () => {
+    const { executor, ucp } = ucpSurface();
+    await ucp.callTool('get_product', {
+      meta: AGENT_META,
+      catalog: {
+        id: 'sig_abc',
+        selected: [{ name: 'Size', label: 'SEL_SENTINEL' }],
+        preferences: [{ name: 'PREF_SENTINEL' }],
+        context: { country: 'CTX_SENTINEL' },
+        signals: { s: 'SIG_SENTINEL' },
+        filters: { f: 'FIL_SENTINEL' },
+      },
+    }, SESSION);
+
+    const wire = JSON.stringify(executor.only('get_product').params);
+    // Variant narrowing is resolved server-side from the canonical product; honouring a caller's
+    // pre-selection here would answer about something the read never confirmed.
+    for (const s of ['SEL_SENTINEL', 'PREF_SENTINEL', 'CTX_SENTINEL', 'SIG_SENTINEL', 'FIL_SENTINEL']) {
+      assert.equal(wire.includes(s), false, `${s} must not be forwarded`);
+    }
+    assert.match(wire, /sig_abc/);
+  });
+
+  test('a free-text query alone cannot be answered here', async () => {
+    // `query` is not part of the live get_product input at all, so it is refused as an undeclared field.
     const { executor, ucp } = ucpSurface();
     const err = await rejected(ucp.callTool('get_product', { meta: AGENT_META, query: 'retinol serum' }, SESSION));
     assert.ok(err);
     assert.equal(executor.seen.length, 0);
+  });
+
+  test('a catalog with no id is refused, naming the nested field', async () => {
+    const { executor, ucp } = ucpSurface();
+    const err = await rejected(ucp.callTool('get_product', { meta: AGENT_META, catalog: {} }, SESSION));
+    assert.ok(err);
+    assert.equal(executor.seen.length, 0);
+    assert.match(String(err.detail?.acp_message ?? err.message), /catalog\.id/);
   });
 });
 
@@ -490,7 +531,7 @@ describe('schema and mapper cannot drift', () => {
   // One maximal, spec-valid body per tool, with a UNIQUE sentinel in every declared leaf. What survives into
   // the mapped output is then a fact, not a claim — and the table below is what pins it.
   const MAXIMAL = Object.freeze({
-    get_product: { meta: IDEMPOTENT_META, id: 'ID_SENTINEL', sku: 'SKU_SENTINEL' },
+    get_product: { meta: IDEMPOTENT_META, catalog: { id: 'ID_SENTINEL', context: { c: 'CTX_SENTINEL' } } },
     create_checkout: createBody({
       cart_id: 'CART_SENTINEL',
       context: { address_country: 'CTRY_SENTINEL', address_region: 'RGN_SENTINEL', postal_code: 'ZIP_SENTINEL' },
@@ -570,16 +611,20 @@ describe('schema and mapper cannot drift', () => {
         () => ucpToNativeToolArgs(opFor(def.name), { ...MAXIMAL[def.name], not_a_ucp_field: 'x' }),
         `${def.name}: an undeclared top-level field must be refused`,
       );
-      const checkout = def.inputSchema.properties.checkout;
-      if (!checkout) continue;
-      assert.equal(checkout.additionalProperties, false);
-      assert.throws(
-        () => ucpToNativeToolArgs(opFor(def.name), {
-          ...MAXIMAL[def.name],
-          checkout: { ...MAXIMAL[def.name].checkout, not_a_ucp_field: 'x' },
-        }),
-        `${def.name}: an undeclared checkout field must be refused`,
-      );
+      // EVERY strict nested object, discovered from the schema — not just `checkout`. Hardcoding that one
+      // name left get_product's `catalog` unchecked, and a mutation removing its unknown-field guard survived
+      // the entire suite. Deriving the list is what makes this cover the next nested object too.
+      for (const [name, sub] of Object.entries(def.inputSchema.properties)) {
+        if (!sub || sub.type !== 'object' || sub.additionalProperties !== false) continue;
+        assert.ok(MAXIMAL[def.name][name], `${def.name}: the maximal body needs a \`${name}\``);
+        assert.throws(
+          () => ucpToNativeToolArgs(opFor(def.name), {
+            ...MAXIMAL[def.name],
+            [name]: { ...MAXIMAL[def.name][name], not_a_ucp_field: 'x' },
+          }),
+          `${def.name}: an undeclared \`${name}\` field must be refused`,
+        );
+      }
     }
   });
 
@@ -587,7 +632,7 @@ describe('schema and mapper cannot drift', () => {
     // The pin: sentinel -> does it survive into the canonical params? A field that starts being read (or stops
     // being read) flips a boolean here and fails, instead of drifting quietly away from its description.
     const EXPECTED_SURVIVING = Object.freeze({
-      get_product: ['ID_SENTINEL', 'SKU_SENTINEL'],
+      get_product: ['ID_SENTINEL'],
       create_checkout: ['idem-key-0001', 'p_alpha', 'p_beta', 'shopper@example.test'],
       update_checkout: ['idem-key-0001', 'ID_SENTINEL', 'p_alpha', 'p_beta', 'shopper@example.test'],
       get_checkout: ['ID_SENTINEL'],
@@ -659,7 +704,7 @@ describe('schema and mapper cannot drift', () => {
     // complete_checkout changed shape: it was the one tool whose arguments had never been fetched, and the
     // extrapolated `{meta,id,payment}` would have refused every conforming platform ON THE CHARGE.
     const LIVE_REQUIRED = Object.freeze({
-      get_product: null, // NOT exposed by a per-merchant endpoint (catalog is the global lane) — see below
+      get_product: ['meta', 'catalog'],
       create_checkout: ['meta', 'checkout'],
       update_checkout: ['meta', 'checkout', 'id'],
       get_checkout: ['meta', 'id'],
@@ -673,7 +718,7 @@ describe('schema and mapper cannot drift', () => {
 
     for (const def of ucpCommerceToolDefinitions) {
       const live = LIVE_REQUIRED[def.name];
-      if (!live) continue; // get_product: unverified against a merchant endpoint, deliberately not asserted
+      if (!live) continue;
       assert.deepEqual(
         [...def.inputSchema.required].sort(), [...live].sort(),
         `${def.name}: published required must equal the live merchant's`,

@@ -38,8 +38,9 @@ function surfaces() {
 describe('ucpDialectSurface routes UCP names to the canonical operation', () => {
   test('a UCP tool name reaches the executor as its canonical op (kills the dropped-dialect mutant)', async () => {
     const { executor, ucp } = surfaces();
-    // UCP's own get_product shape: flat `id`, not Pivota's `product_id`.
-    await ucp.callTool('get_product', { meta: UCP_META, id: 'p_1' }, SESSION).catch(() => {});
+    // UCP's own get_product shape: the id is NESTED under `catalog` (live-verified), not Pivota's flat
+    // `product_id`.
+    await ucp.callTool('get_product', { meta: UCP_META, catalog: { id: 'p_1' } }, SESSION).catch(() => {});
     assert.equal(executor.seen.length, 1, 'the call must reach the executor at all');
     assert.equal(executor.seen[0].op, 'get_product');
   });
