@@ -100,17 +100,32 @@ export function buildUcpProfile(config = {}) {
 
   const omit = new Set(Array.isArray(config.omitCapabilityIds) ? config.omitCapabilityIds : []);
   const capabilities = advertised
-    .map((cap) => ({
-      id: CANONICAL_CAPABILITIES[cap].ucp,
-      title: CANONICAL_CAPABILITIES[cap].title,
-      // PERMANENTLY-refused operations are never advertised. A profile is a promise of what a platform can
-      // call; listing an operation that always refuses is the "advertised but not executable" defect this
-      // repo already fixed once for the checkout capabilities under a dark kill-switch (omitCapabilityIds
-      // below). Today this drops `exchange_payment_token` — ACP delegate_payment, which Pivota will never
-      // implement because it vaults cardholder data (see delegatedPaymentRefusal.js). The door still answers
-      // a named refusal; it is simply not advertised as a capability.
-      operations: operationsForCapability(cap, { includeRefusalOnly: false }),
-    }))
+    .map((cap) => {
+      // A MODIFIER capability (UCP's `extends` + `config`) has no operation of its own by definition: it adds
+      // fields to the input shape of the capability it extends — today `dev.ucp.shopping.fulfillment`, which
+      // adds `checkout.fulfillment` — and publishes, machine-readably, the bounds the door enforces on them.
+      // It carries no `operations` key at all rather than an empty one: `operations: []` would read as "this
+      // capability offers nothing", which is the opposite of what a modifier means.
+      if (CANONICAL_CAPABILITIES[cap].extends) {
+        return {
+          id: CANONICAL_CAPABILITIES[cap].ucp,
+          title: CANONICAL_CAPABILITIES[cap].title,
+          extends: [...CANONICAL_CAPABILITIES[cap].extends],
+          ...(CANONICAL_CAPABILITIES[cap].config ? { config: CANONICAL_CAPABILITIES[cap].config } : {}),
+        };
+      }
+      return {
+        id: CANONICAL_CAPABILITIES[cap].ucp,
+        title: CANONICAL_CAPABILITIES[cap].title,
+        // PERMANENTLY-refused operations are never advertised. A profile is a promise of what a platform can
+        // call; listing an operation that always refuses is the "advertised but not executable" defect this
+        // repo already fixed once for the checkout capabilities under a dark kill-switch (omitCapabilityIds
+        // below). Today this drops `exchange_payment_token` — ACP delegate_payment, which Pivota will never
+        // implement because it vaults cardholder data (see delegatedPaymentRefusal.js). The door still answers
+        // a named refusal; it is simply not advertised as a capability.
+        operations: operationsForCapability(cap, { includeRefusalOnly: false }),
+      };
+    })
     // Withheld capabilities (and every operation they carry) never appear in the profile.
     .filter((c) => !omit.has(c.id))
     // A capability with NO advertisable operation left is not a capability — it is a title with nothing behind
@@ -118,7 +133,19 @@ export function buildUcpProfile(config = {}) {
     // removes `dev.ucp.shopping.ap2_mandate` from the profile: its only operation was the refused
     // delegate_payment exchange. Payment authorization itself is NOT lost — an ACP delegated token / AP2
     // mandate is presented inline on `checkout.complete`, which the checkout capability already advertises.
-    .filter((c) => c.operations.length > 0);
+    //
+    // A modifier is not an exception to that rule but a different kind of entry: what stands behind it is its
+    // `config` plus the operations of the capability it extends, which the next filter requires to be present.
+    .filter((c) => c.extends || c.operations.length > 0);
+
+  // …but a modifier is only real while what it EXTENDS is still advertised. Under the checkout kill-switch
+  // (omitCapabilityIds) the checkout capability disappears, and a `dev.ucp.shopping.fulfillment` left behind
+  // would describe the input shape of a door that is not there — the "advertised but not executable" defect
+  // one level up. Dropped in the same pass, so the switch cannot be half-thrown.
+  const presentIds = new Set(capabilities.map((c) => c.id));
+  const liveCapabilities = capabilities.filter(
+    (c) => !c.extends || c.extends.every((id) => presentIds.has(id)),
+  );
 
   // TRANSPORTS ARE ADVERTISED ONLY WHEN SOMETHING SPEAKS THEM.
   //
@@ -158,7 +185,7 @@ export function buildUcpProfile(config = {}) {
         + 'transaction on their own rails.',
     },
     services,
-    capabilities,
+    capabilities: liveCapabilities,
     payment_handlers: Array.isArray(config.paymentHandlers) ? config.paymentHandlers : [],
     // PUBLIC keys platforms verify Pivota's order webhooks / receipts against (ES256, P-256).
     // Sourced from config.signingKeys or env UCP_BUSINESS_SIGNING_PUBLIC_JWK; validated so a
