@@ -81,9 +81,33 @@ test('UCP profile: version, services, capabilities (dev.ucp.*), payment_handlers
   // each capability lists its canonical operations
   const checkout = profile.capabilities.find((c) => c.id === 'dev.ucp.shopping.checkout');
   assert.ok(checkout.operations.includes('complete_checkout_session'));
-  // services include rest + mcp
+  // TRANSPORTS ARE OPT-IN. No restBasePath was passed, so NO `rest` transport is advertised: the profile
+  // must never point a platform at a door that does not speak UCP wire shapes. (It previously defaulted a
+  // rest entry on unconditionally, and the gateway handed it the ACP base path — so UCP discovery advertised
+  // the ACP door, which speaks ACP bodies. A platform following it failed on the first call.)
   const transports = profile.services.map((s) => s.transport);
-  assert.deepEqual(transports.sort(), ['mcp', 'rest']);
+  assert.deepEqual(transports.sort(), ['mcp']);
+
+  // ...and it IS advertised when a real UCP-REST door is declared.
+  const withRest = buildUcpProfile({
+    baseUrl: 'https://shop.pivota.cc',
+    restBasePath: '/ucp/v1',
+    mcpEndpoint: 'https://shop.pivota.cc/mcp',
+  });
+  assert.deepEqual(withRest.services.map((s) => s.transport).sort(), ['mcp', 'rest']);
+  assert.equal(
+    withRest.services.find((s) => s.transport === 'rest').endpoint,
+    'https://shop.pivota.cc/ucp/v1',
+  );
+
+  // A blank path is not a declared door: `restBasePath !== undefined` would advertise
+  // `https://shop.pivota.cc` as a UCP REST endpoint (review finding on #1962).
+  const blankRest = buildUcpProfile({
+    baseUrl: 'https://shop.pivota.cc',
+    restBasePath: '   ',
+    mcpEndpoint: 'https://shop.pivota.cc/mcp',
+  });
+  assert.deepEqual(blankRest.services.map((s) => s.transport), ['mcp']);
   assert.deepEqual(profile.payment_handlers, [{ id: 'stripe_spt', psp: 'stripe', pci: false }]);
   assert.equal(profile.signing_keys.length, 1);
   assert.equal(profile.signing_keys[0].kid, 'k1');

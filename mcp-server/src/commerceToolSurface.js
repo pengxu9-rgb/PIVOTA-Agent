@@ -13,7 +13,7 @@
 //   - Results are sanitized: tokens / ap2_state / client secrets / PANs are scrubbed, while the data the
 //     agent legitimately needs (status, requires_action redirect/qr/instructions, ids, amounts) is preserved.
 
-import { CANONICAL_OPERATIONS, canonicalOp } from "../../safety-kernel/src/protocol/canonicalContract.js";
+import { CANONICAL_OPERATIONS, canonicalOp, UCP_DIALECT_OPERATIONS } from "../../safety-kernel/src/protocol/canonicalContract.js";
 import { PivotaCommerceError } from "../../safety-kernel/src/errors.js";
 import { sanitizeResult } from "../../safety-kernel/src/protocol/resultSanitizer.js";
 // The SHARED buyer/address/item intake — the SAME module the ACP REST door uses. See the BUYER INTAKE note
@@ -60,6 +60,29 @@ export class ToolValidationError extends Error {
 // token/mandate is verified at complete time — neither is routed through the executor's kernel path.
 const COMMERCE_OPERATIONS = CANONICAL_OPERATIONS.filter((op) => op.kernel !== "external");
 const OP_BY_MCP = Object.freeze(Object.fromEntries(COMMERCE_OPERATIONS.map((op) => [op.mcp, op])));
+
+// --- protocol dialects -------------------------------------------------------------------------------------
+//
+// The SAME tool surface, addressed by two vocabularies. A UCP platform sends the spec's flat tool names
+// (`create_checkout`), Pivota's own MCP clients send ours (`create_checkout_session`); both resolve to the
+// same canonical operation and therefore the same executor, kernel and money path. This is a NAMING layer on
+// purpose — a second door with its own handlers is exactly the per-ecosystem fork the canonical contract
+// exists to prevent (and would fork the safety invariants with it).
+//
+// The UCP dialect exposes only operations with an EVIDENCED spec name (canonicalContract UCP_TOOL_EVIDENCE);
+// everything else is absent from that dialect rather than guessed at.
+export const TOOL_DIALECTS = Object.freeze({ mcp: "mcp", ucp: "ucp" });
+
+const UCP_COMMERCE_OPERATIONS = UCP_DIALECT_OPERATIONS.filter((op) => op.kernel !== "external");
+const OP_BY_UCP_TOOL = Object.freeze(Object.fromEntries(UCP_COMMERCE_OPERATIONS.map((op) => [op.ucpTool, op])));
+
+function opIndexFor(dialect) {
+  if (dialect === undefined || dialect === null || dialect === TOOL_DIALECTS.mcp) return OP_BY_MCP;
+  if (dialect === TOOL_DIALECTS.ucp) return OP_BY_UCP_TOOL;
+  // A typo'd dialect must NOT quietly resolve to the MCP vocabulary: that would make a "UCP" door accept
+  // Pivota-native names (review finding on #1962).
+  throw new Error(`unknown tool dialect: ${String(dialect)}`);
+}
 
 // --- result cache (search_catalog ONLY) -------------------------------------------------------------------
 //
@@ -202,8 +225,9 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
    * @returns {Promise<object>}     sanitized result; THROWS PivotaCommerceError / IdentityRequiredError /
    *                                UnknownToolError on failure (the MCP server formats these).
    */
-  async function callTool(toolName, toolArgs = {}, sessionContext = {}) {
-    const op = OP_BY_MCP[toolName];
+  async function callTool(toolName, toolArgs = {}, sessionContext = {}, options = {}) {
+    // dialect defaults to MCP, so every existing caller is unchanged.
+    const op = opIndexFor(options.dialect)[toolName];
     if (!op) throw new UnknownToolError(toolName);
 
     // tool args must be a plain object. Omitted (undefined) → empty; anything else non-object (null, string,
@@ -268,8 +292,8 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
     });
   }
 
-  function isCommerceTool(name) {
-    return Object.prototype.hasOwnProperty.call(OP_BY_MCP, name);
+  function isCommerceTool(name, dialect) {
+    return Object.prototype.hasOwnProperty.call(opIndexFor(dialect), name);
   }
 
   return { tools, callTool, isCommerceTool };
@@ -743,14 +767,49 @@ function annotationsFor(op) {
   });
 }
 
-export const commerceToolDefinitions = Object.freeze(
-  COMMERCE_OPERATIONS.map((op) => Object.freeze({
-    name: op.mcp,
+function definitionsFor(ops, nameOf) {
+  return Object.freeze(ops.map((op) => Object.freeze({
+    name: nameOf(op),
     description: describe(op),
     inputSchema: INPUT_SCHEMAS[op.id],
     annotations: annotationsFor(op),
-  }))
-);
+  })));
+}
+
+export const commerceToolDefinitions = definitionsFor(COMMERCE_OPERATIONS, (op) => op.mcp);
+
+/** Tool declarations for the UCP `tools/list` dialect (evidenced spec names only). */
+export const ucpCommerceToolDefinitions = definitionsFor(UCP_COMMERCE_OPERATIONS, (op) => op.ucpTool);
+
+/** Declarations for a dialect; defaults to MCP. */
+export function commerceToolDefinitionsFor(dialect) {
+  return dialect === TOOL_DIALECTS.ucp ? ucpCommerceToolDefinitions : commerceToolDefinitions;
+}
+
+/**
+ * A UCP-dialect VIEW of an existing commerce surface: the spec's tool names in `tools/list`, and
+ * `tools/call` routed through the SAME callTool with `dialect: 'ucp'`.
+ *
+ * Deliberately a projection, not a new surface. Everything that makes a charge safe — the executor,
+ * kernel, gates, quote-first, charge-once, ownership — is the object being wrapped, so a UCP call and an
+ * MCP call are the same code path with different spelling. Building a parallel surface here is how the
+ * safety invariants would fork per ecosystem.
+ */
+export function ucpDialectSurface(surface) {
+  if (!surface || typeof surface.callTool !== "function") {
+    throw new Error("ucpDialectSurface requires a commerce surface with callTool");
+  }
+  return Object.freeze({
+    ...surface,
+    tools: ucpCommerceToolDefinitions,
+    callTool: (name, args, sessionContext) =>
+      surface.callTool(name, args, sessionContext, { dialect: TOOL_DIALECTS.ucp }),
+    isCommerceTool: (name) =>
+      typeof surface.isCommerceTool === "function"
+        ? surface.isCommerceTool(name, TOOL_DIALECTS.ucp)
+        : Object.prototype.hasOwnProperty.call(OP_BY_UCP_TOOL, name),
+  });
+}
 
 // --- MCP result mapping (SDK-free so it is unit-tested here, not only in the wire-in) ---------------------
 

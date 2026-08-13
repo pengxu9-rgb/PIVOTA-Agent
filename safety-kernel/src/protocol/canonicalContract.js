@@ -30,6 +30,12 @@ export const CANONICAL_CAPABILITIES = Object.freeze({
  *  - requiresUserRef   : needs a verified buyer (the kernel's ownership key)
  *  - requiresPaymentAuthz : needs verified payment authorization (delegated token / AP2 Checkout Mandate)
  *  - acp / ucp / mcp   : the per-protocol surface name
+ *  - ucpTool           : the UCP SPEC tool name (flat, e.g. 'create_checkout') for the JSON-RPC
+ *                        `tools/call` dialect. DISTINCT from `ucp`, which is Pivota's internal dotted
+ *                        capability-operation label ('checkout.create') and is NOT what a UCP platform
+ *                        sends. `null` = deliberately not exposed on the UCP dialect: only names with
+ *                        EVIDENCE of the real spec name are mapped (see UCP_TOOL_EVIDENCE below).
+ *                        Inventing a spec name is the "advertised but not executable" defect.
  */
 export const CANONICAL_OPERATIONS = Object.freeze([
   {
@@ -40,7 +46,7 @@ export const CANONICAL_OPERATIONS = Object.freeze([
   {
     id: 'get_product', capability: 'discovery', kernel: 'get_product_detail',
     mutating: false, requiresUserRef: false, requiresPaymentAuthz: false,
-    acp: 'product_feed', ucp: 'catalog.get', mcp: 'get_product',
+    acp: 'product_feed', ucp: 'catalog.get', mcp: 'get_product', ucpTool: 'get_product',
   },
   {
     // Read-only intelligence projections (decision substrate, not catalog). kernel:'local' routes them to
@@ -63,16 +69,19 @@ export const CANONICAL_OPERATIONS = Object.freeze([
     id: 'create_checkout_session', capability: 'checkout', kernel: 'preview_quote',
     mutating: true, requiresUserRef: true, requiresPaymentAuthz: false,
     acp: 'POST /checkout_sessions', ucp: 'checkout.create', mcp: 'create_checkout_session',
+    ucpTool: 'create_checkout',
   },
   {
     id: 'update_checkout_session', capability: 'checkout', kernel: 'preview_quote', // re-quote on change
     mutating: true, requiresUserRef: true, requiresPaymentAuthz: false,
     acp: 'POST /checkout_sessions/{id}', ucp: 'checkout.update', mcp: 'update_checkout_session',
+    ucpTool: 'update_checkout',
   },
   {
     id: 'get_checkout_session', capability: 'checkout', kernel: 'get_quote_snapshot',
     mutating: false, requiresUserRef: true, requiresPaymentAuthz: false,
     acp: 'GET /checkout_sessions/{id}', ucp: 'checkout.get', mcp: 'get_checkout_session',
+    ucpTool: 'get_checkout',
   },
   {
     // complete = verify payment authorization → createOrder → mintConfirmation → submitPayment.
@@ -80,6 +89,7 @@ export const CANONICAL_OPERATIONS = Object.freeze([
     kernel: 'create_order+mint_confirmation+submit_payment',
     mutating: true, requiresUserRef: true, requiresPaymentAuthz: true,
     acp: 'POST /checkout_sessions/{id}/complete', ucp: 'checkout.complete', mcp: 'complete_checkout_session',
+    ucpTool: 'complete_checkout',
   },
   {
     // GUEST hosted checkout: createOrder (locked quote) -> mint a HOSTED Stripe checkout URL the buyer
@@ -127,6 +137,39 @@ export const CANONICAL_OPERATIONS = Object.freeze([
 ]);
 
 const OPS_BY_ID = Object.freeze(Object.fromEntries(CANONICAL_OPERATIONS.map((o) => [o.id, o])));
+
+/**
+ * WHERE THE UCP TOOL NAMES COME FROM. `src/services/ucpBuyerAgentClient.js` calls real UCP merchants and
+ * carries the spec's tool names verbatim in its `TOOL` constant ("MCP tool names (verbatim from the live
+ * spec)"). Those are the names a UCP platform will send US, so they are the names this contract maps.
+ *
+ * Deliberately NOT mapped (no evidenced spec name — inventing one would advertise an operation no platform
+ * can actually call, and would fail the moment the real name differs):
+ *   search_catalog, get_alternatives, get_offers, get_intel, cancel_checkout_session, create_payment_link,
+ *   get_order, request_after_sales, start_identity_linking, exchange_payment_token.
+ * The UCP spec's `create_cart` / `get_cart` have no canonical counterpart: Pivota is quote-first, so a UCP
+ * cart maps onto a checkout session rather than a separate object.
+ *
+ * mcp-server/test/ucpToolVocabulary.test.js pins this against the buyer client's constant, so drift on EITHER side
+ * fails CI rather than being discovered by a platform integration.
+ */
+export const UCP_TOOL_EVIDENCE = Object.freeze({
+  source: 'src/services/ucpBuyerAgentClient.js TOOL constant (verbatim from the live UCP spec)',
+  mapped: Object.freeze(['get_product', 'create_checkout', 'update_checkout', 'get_checkout', 'complete_checkout']),
+  unmappedSpecTools: Object.freeze(['create_cart', 'get_cart']),
+});
+
+const OPS_BY_UCP_TOOL = Object.freeze(Object.fromEntries(
+  CANONICAL_OPERATIONS.filter((o) => o.ucpTool).map((o) => [o.ucpTool, o]),
+));
+
+/** Canonical operations exposed on the UCP `tools/call` dialect (evidenced spec names only). */
+export const UCP_DIALECT_OPERATIONS = Object.freeze(CANONICAL_OPERATIONS.filter((o) => o.ucpTool));
+
+/** Look up a canonical operation by its UCP spec tool name; undefined when the name is not exposed. */
+export function canonicalOpForUcpTool(toolName) {
+  return OPS_BY_UCP_TOOL[toolName];
+}
 
 /** Look up a canonical operation by id (throws on unknown so adapters can't silently route an unknown op). */
 export function canonicalOp(id) {

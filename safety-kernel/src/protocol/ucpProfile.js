@@ -60,8 +60,13 @@ export function resolveBusinessSigningKeys(config = {}) {
  * Build the `/.well-known/ucp` profile object.
  * @param {{
  *   baseUrl: string,                       // https origin Pivota serves from
- *   restBasePath?: string,                 // default '/ucp'
- *   mcpEndpoint?: string,                  // MCP server URL (capabilities↔tools)
+ *   restBasePath?: string,                 // UCP-REST base path. ONLY set this when a door that speaks UCP
+ *                                          // REST wire shapes actually serves there — see the services note
+ *                                          // in the body. Omitted => no `rest` transport is advertised.
+ *   mcpEndpoint?: string,                  // MCP endpoint advertised as UCP's transport. It SHOULD serve the
+ *                                          // UCP dialect (spec tool names: create_checkout, …); the gateway
+ *                                          // currently passes its MCP-native door, so UCP-named calls are not
+ *                                          // yet served — see the step-3 note in #1962.
  *   paymentHandlers?: Array<object>,       // declared handlers (id, name, version, psp, pci, ap2?, ...)
  *   signingKeys?: Array<object>,           // public JWKs Pivota signs responses/receipts with
  *   capabilities?: string[],               // which CANONICAL_CAPABILITIES keys to advertise (default: all)
@@ -71,9 +76,13 @@ export function resolveBusinessSigningKeys(config = {}) {
  *   ucpVersion?: string,
  * }} config
  */
+function nonEmptyString(v) {
+  return typeof v === 'string' && v.trim() !== '';
+}
+
 export function buildUcpProfile(config = {}) {
   const baseUrl = requireHttps(config.baseUrl, 'baseUrl');
-  const restBasePath = config.restBasePath || '/ucp';
+  const restBasePath = config.restBasePath;
   const advertised = Array.isArray(config.capabilities) && config.capabilities.length
     ? config.capabilities
     : Object.keys(CANONICAL_CAPABILITIES);
@@ -104,9 +113,23 @@ export function buildUcpProfile(config = {}) {
     // mandate is presented inline on `checkout.complete`, which the checkout capability already advertises.
     .filter((c) => c.operations.length > 0);
 
-  const services = [
-    { transport: 'rest', endpoint: `${baseUrl}${restBasePath}` },
-  ];
+  // TRANSPORTS ARE ADVERTISED ONLY WHEN SOMETHING SPEAKS THEM.
+  //
+  // This list previously ALWAYS carried a `rest` entry, defaulted to `${baseUrl}/ucp`, and the gateway
+  // passed it `restBasePath: COMMERCE_ACP_BASE_PATH` — so the UCP profile pointed platforms at the ACP
+  // door, which speaks ACP wire shapes (`POST /checkout_sessions` with ACP bodies), not UCP's. A platform
+  // following it would fail on the first call. Advertising a transport nothing implements is the same
+  // "advertised but not executable" defect the capability filter above exists to prevent, so `rest` is now
+  // opt-in: pass restBasePath only when a real UCP-REST door serves there.
+  //
+  // UCP's own transport is MCP JSON-RPC (`tools/call` with the spec's flat tool names — see the buyer
+  // client's TOOL constant and canonicalContract's ucpTool vocabulary), which is what `mcpEndpoint`
+  // carries. That endpoint must serve the UCP DIALECT: a platform calling `create_checkout` against a
+  // door that only knows `create_checkout_session` gets an unknown-tool error.
+  const services = [];
+  if (nonEmptyString(restBasePath)) {
+    services.push({ transport: 'rest', endpoint: `${baseUrl}${restBasePath}` });
+  }
   if (config.mcpEndpoint) {
     services.push({ transport: 'mcp', endpoint: config.mcpEndpoint });
   }

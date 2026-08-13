@@ -29250,6 +29250,15 @@ function isAgentCheckoutUcpDiscoveryEnabled() {
   return ['1', 'true', 'on', 'yes'].includes(normalized);
 }
 
+function isAgentCheckoutUcpToolDoorEnabled() {
+  // The UCP-DIALECT MCP door (POST /ucp/mcp): the same commerce surface addressed by the UCP spec's flat
+  // tool names (create_checkout, complete_checkout, …). Double-gated like every money door — it also needs
+  // AGENT_CHECKOUT_STRICT, and its charge op still passes the submit_payment kill-switch, because it is the
+  // SAME executor as /mcp, not a second path. Default OFF.
+  const normalized = String(process.env.AGENT_CHECKOUT_UCP_TOOL_DOOR_ENABLED || '').trim().toLowerCase();
+  return ['1', 'true', 'on', 'yes'].includes(normalized);
+}
+
 function isUcpBuyerAgentProfileEnabled() {
   // OUTBOUND buyer-agent capability profile door (GET /.well-known/ucp-agent). This is the OPPOSITE role from
   // the seller `/.well-known/ucp` surface above: it advertises Pivota-as-shopping-agent so merchants/platforms
@@ -30970,6 +30979,35 @@ async function getPaymentWebhookHandler() {
 // then share one kernel. Each door is fail-closed and double-gated (AGENT_CHECKOUT_STRICT + its enable flag),
 // default OFF; the ACP charge endpoint is additionally gated by the submit_payment kill-switch.
 
+let commerceUcpMcpAdapterPromise = null;
+async function getCommerceUcpMcpAdapter() {
+  // The UCP door is a PROJECTION of the commerce surface, not a second surface: same executor, same kernel,
+  // same gates, different tool spelling. See mcp-server/src/commerceToolSurface.js ucpDialectSurface.
+  if (!commerceUcpMcpAdapterPromise) {
+    commerceUcpMcpAdapterPromise = (async () => {
+      const executor = await getCommerceCanonicalExecutor();
+      const { createCommerceToolSurface, ucpDialectSurface } = await import('../mcp-server/src/commerceToolSurface.js');
+      const { createRemoteMcpAdapter } = await import('../mcp-server/src/remoteMcpAdapter.js');
+      // cache:false — the /mcp surface already owns the shared commerce read cache; a second
+      // instance would be a second ~60-entry cache for the same reads (review finding on #1962).
+      const surface = ucpDialectSurface(createCommerceToolSurface(executor, { log: logger, cache: false }));
+      return createRemoteMcpAdapter(surface, {
+        serverInfo: { name: 'pivota-commerce-ucp', version: '0.1.0' },
+        authenticate: async (req) => {
+          if (req?.authInfo?.invoke_authenticated !== true) {
+            throw new Error('UCP channel authentication is required.');
+          }
+          return { sessionContext: req.authInfo.sessionContext || {} };
+        },
+        resolveSessionContext: (req, authResult) =>
+          authResult?.sessionContext || req?.authInfo?.sessionContext || {},
+      });
+    })();
+    commerceUcpMcpAdapterPromise.catch(() => { commerceUcpMcpAdapterPromise = null; });
+  }
+  return commerceUcpMcpAdapterPromise;
+}
+
 async function getCommerceCanonicalExecutor() {
   // Build (once) and return the shared executor. getCommerceRemoteMcpAdapter constructs it and publishes it to
   // commerceSharedExecutor as a side effect; calling it here just guarantees that has happened.
@@ -31236,7 +31274,10 @@ async function getCommerceUcpRouteHandlers() {
   const { buildUcpProfile, createUcpRouteHandlers } = await getCommerceUcpProfileModule();
   const profile = buildUcpProfile({
     baseUrl, // buildUcpProfile enforces https
-    restBasePath: COMMERCE_ACP_BASE_PATH,
+    // NO `restBasePath`. It used to be COMMERCE_ACP_BASE_PATH, so the UCP profile advertised a `rest`
+    // transport pointing at the ACP door — which speaks ACP wire shapes, not UCP's. A platform following it
+    // failed on the first call. buildUcpProfile now omits the transport unless a real UCP-REST door serves
+    // there; UCP's own transport is MCP JSON-RPC (below).
     mcpEndpoint: `${baseUrl.replace(/\/+$/, '')}/mcp`,
     // With the checkout kill-switch dark, the money capabilities are hard-404 — a profile advertising
     // them would be lying to the platform. Omitting the checkout capability also withholds every
