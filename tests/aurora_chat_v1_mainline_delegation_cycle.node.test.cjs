@@ -132,9 +132,97 @@ test('an explicit non-reco action is decided by the ACTION, not by its own reply
   }
 });
 
-test('the narrowing does not steal the reco action or free-text asks from the mainline', () => {
+test('the action is recognised in EVERY spelling the routers accept, not just `action_id`', () => {
   delete require.cache[POLICY_ID];
   const { shouldProxyFrameworkRecoToV1Mainline } = require('../src/auroraBff/recoOwnershipPolicy');
+
+  // The first cut of this fix read only `action_id`, so it was INERT for the shape the current frontend
+  // actually sends — `{ action: { id, type } }`, which `V1ChatRequestSchema` documents and which both routers
+  // resolve via `normalizeIncomingChatAction`. A router that recognises an action while the ownership policy
+  // does not is precisely how the cycle got in, so each spelling is pinned.
+  const spellings = [
+    ['action.action_id', (b, id) => { b.action.action_id = id; }],
+    ['action.id', (b, id) => { b.action.id = id; }],
+    ['action.type', (b, id) => { b.action.type = id; }],
+    ['action.data.action_id', (b, id) => { b.action.data.action_id = id; }],
+    ['action.data.aurora_action_id', (b, id) => { b.action.data.aurora_action_id = id; }],
+    ['top-level action_id', (b, id) => { b.action_id = id; }],
+  ];
+  for (const [label, apply] of spellings) {
+    const body = dupesBody();
+    delete body.action.action_id;
+    apply(body, 'chip.start.dupes');
+    assert.equal(shouldProxyFrameworkRecoToV1Mainline(body), false, `${label} must be recognised`);
+  }
+});
+
+test('the policy reads the action id exactly as the chat router does (no twin drift)', () => {
+  for (const id of [POLICY_ID, CHAT_ID]) delete require.cache[id];
+  const { extractChatActionId } = require('../src/auroraBff/recoOwnershipPolicy');
+  const { __normalizeIncomingChatActionForTests: normalize } = require('../src/auroraBff/routes/chat');
+
+  // This module carries a THIRD copy of `normalizeIncomingChatAction`'s spelling list (routes.js and
+  // routes/chat.js hold the other two). An untested copy is how the two sides drift back apart, so the
+  // equivalence is asserted rather than assumed: add a spelling to one and this fails.
+  const shapes = [
+    { action: { action_id: 'a1' } },
+    { action: { id: 'a2' } },
+    { action: { type: 'a3' } },
+    { action: { data: { action_id: 'a4' } } },
+    { action: { data: { aurora_action_id: 'a5' } } },
+    { action: { id: 'wins', type: 'loses' } },
+    { action: { action_id: 'wins', id: 'loses', type: 'loses' } },
+    { action: {} },
+    { action: 'bare.string.action' },
+    {},
+  ];
+  // `normalizeIncomingChatAction` returns a BARE STRING when handed one, and an object otherwise — so the
+  // router's effective action id is one or the other. Reading only `.action_id` here would have compared
+  // against `undefined` for the string form and reported drift that does not exist.
+  const routerActionId = (action) => {
+    const normalized = normalize(action);
+    return (typeof normalized === 'string' ? normalized : normalized?.action_id) ?? null;
+  };
+  for (const body of shapes) {
+    assert.equal(
+      extractChatActionId(body) ?? null,
+      routerActionId(body.action),
+      `spelling drift for ${JSON.stringify(body)}`,
+    );
+  }
+});
+
+test('a TYPED message keeps its free-text treatment even when a non-reco chip carried it', () => {
+  delete require.cache[POLICY_ID];
+  const { shouldProxyFrameworkRecoToV1Mainline } = require('../src/auroraBff/recoOwnershipPolicy');
+
+  // The narrowing must not swing the routing the other way. `extractRecoUserMessage` ranks a real `message`
+  // ABOVE a chip's generated `reply_text`, so a genuine typed reco ask that merely arrived alongside a
+  // non-reco chip still belongs to the mainline — deciding it by the chip id would drop live traffic on
+  // /v2/chat and both stream surfaces, trading a hang for a mis-route in the opposite direction.
+  const typed = 'im oily skin with clogged pores, what products should i use?';
+  for (const actionId of ['chip.clarify.budget.under_30', 'chip.action.reco_routine', 'chip.start.ingredients.reco']) {
+    assert.equal(
+      shouldProxyFrameworkRecoToV1Mainline({ action: { action_id: actionId }, message: typed }),
+      true,
+      `${actionId} carrying a typed reco ask must stay on the mainline`,
+    );
+    // …and the same id with only chip-generated copy is still decided by the action.
+    assert.equal(
+      shouldProxyFrameworkRecoToV1Mainline({ action: { action_id: actionId, data: { reply_text: typed } } }),
+      false,
+      `${actionId} with only reply_text must be decided by the action`,
+    );
+  }
+});
+
+test('the narrowing does not steal the reco action or free-text asks from the mainline', () => {
+  delete require.cache[POLICY_ID];
+  const {
+    shouldProxyFrameworkRecoToV1Mainline,
+    shouldKeepTypedRecoRequestOnV1Mainline,
+    looksLikeFrameworkRecoConcernAsk,
+  } = require('../src/auroraBff/recoOwnershipPolicy');
 
   // Both directions matter. A fix that simply answered `false` more often would "fix" the hang by breaking
   // the mainline's actual traffic, so pin what MUST still route there.
@@ -148,6 +236,24 @@ test('the narrowing does not steal the reco action or free-text asks from the ma
     shouldProxyFrameworkRecoToV1Mainline({ message: 'what moisturizer should I use for dry skin?' }),
     true,
     'a typed reco ask still routes to the mainline',
+  );
+
+  // The reco branch answers `typedRequest || concernAsk`, and until this case existed no test could tell the
+  // two apart — every fixture had BOTH true, so dropping the typed-request half left the suite green. This
+  // payload is a beauty exact-product ask: typed-request TRUE, concern-ask FALSE.
+  const exactProduct = {
+    action: { action_id: 'chip.start.reco_products' },
+    context: {
+      normalized_need: {
+        beauty_request: { domain: 'beauty', product_context: { canonical_product_ref: 'boj_relief_sun' } },
+      },
+    },
+  };
+  assert.equal(shouldKeepTypedRecoRequestOnV1Mainline(exactProduct), true);
+  assert.equal(looksLikeFrameworkRecoConcernAsk(exactProduct), false);
+  assert.equal(
+    shouldProxyFrameworkRecoToV1Mainline(exactProduct), true,
+    'a reco action must keep the FULL typed-request treatment, not just the concern-ask half',
   );
 });
 
@@ -180,10 +286,18 @@ test('the mainline refuses to hand a request back to the router that proxied it 
 
     const response = await supertest(app).post('/v1/chat').set(HEADERS).send(dupesBody()).expect(200);
 
-    assert.ok(response.body, 'the request must terminate rather than delegate forever');
+    // NOT `assert.ok(response.body)` — supertest sets `body` to `{}` for an empty response, so that can
+    // never fail. Assert the request was actually SERVED, and that the decision was taken at least once (a
+    // `<= 2` bound alone is satisfied by zero, i.e. by the harness never running).
+    assert.ok(state.calls >= 1, 'the ownership decision must actually have been consulted');
     assert.ok(
       state.calls <= 2,
       `a forced disagreement must not re-enter the router (took ${state.calls} decisions)`,
     );
+    assert.deepEqual(state.decisions, [true], 'the forced decision is what drove this request');
+    // The mainline must ANSWER, not crash into the error envelope: a guard that terminated by throwing would
+    // also stop the cycle, and would also have satisfied a bare "it responded" assertion.
+    assert.equal(typeof response.body, 'object');
+    assert.ok(Array.isArray(response.body.cards), 'the mainline must return a rendered envelope');
   });
 });
