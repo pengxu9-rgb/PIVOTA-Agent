@@ -838,6 +838,47 @@ test('/v1/chat names the actives for a typed concern instead of returning the in
   );
 });
 
+test('/v1/chat answers a typed barrier concern with barrier actives, not a retinol lookup', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'true',
+      AURORA_CHAT_V2_STUB_RESPONSES: '1',
+      AURORA_CHAT_SKILL_ROUTER_V2: 'true',
+    },
+    async () => {
+      const { __resetRouterForTests } = require('../src/auroraBff/routes/chat');
+      __resetRouterForTests();
+
+      const response = await supertest(createApp())
+        .post('/v1/chat')
+        .set(buildHeaders())
+        .send({
+          message: 'what ingredient is best for a damaged barrier?',
+          context: { locale: 'en', profile: {} },
+        })
+        .expect(200);
+
+      // This sentence names no ingredient at all. It used to resolve one anyway: the concept matcher strips
+      // whitespace before its substring stage, so "a damaged barrier" -> "adamagedbarrier" contained ADAPALENE's
+      // synonym "ADA", the retinoid lookup won ahead of the by-goal path, and the answer was a Retinol report —
+      // the one active class you would not put on a compromised barrier.
+      const answer = String(response.body.assistant_text || response.body.assistant_message?.content || '');
+      assert.doesNotMatch(answer, /retinol|retinoid|adapalene/i, `expected no retinoid answer, got: ${answer}`);
+
+      const goalCard = response.body.cards.find((card) => card && card.type === 'ingredient_goal_match');
+      assert.ok(
+        goalCard,
+        `expected the by-goal answer card, got: ${JSON.stringify(response.body.cards.map((card) => card && card.type))}`,
+      );
+      assert.equal(goalCard.payload?.goal, 'barrier');
+      const actives = (goalCard.payload?.candidate_ingredients || [])
+        .map((item) => String(item?.ingredient || ''))
+        .join(' | ');
+      assert.match(actives, /ceramide/i, `expected the barrier actives, got: ${actives}`);
+    },
+  );
+});
+
 test('shouldDelegateV1ChatToV2 keeps anchorless fit-check prompts on the legacy path', async () => {
   resetAuroraModules();
   const { __internal } = require('../src/auroraBff/routes');

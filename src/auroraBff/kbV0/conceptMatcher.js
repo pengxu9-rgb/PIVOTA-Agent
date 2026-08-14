@@ -30,6 +30,31 @@ function isAsciiToken(value) {
   return /^[a-z0-9 _+\-./]+$/i.test(String(value || ''));
 }
 
+// A term that is one ASCII word and nothing else. These are the terms the substring stage must anchor, because
+// they are also the ones the boundary-regex stage already covers wherever they stand on their own.
+function isSingleAsciiWord(term) {
+  const text = cleanText(term);
+  if (!text) return false;
+  return isAsciiToken(text) && !/\s/.test(text);
+}
+
+// The substring stage matches against text that has had its whitespace STRIPPED, so a bare `includes` reads
+// straight across the gap between two words. "a damaged barrier" compacts to "adamagedbarrier", which contains
+// ADAPALENE's synonym "ADA", so the barrier question was answered with a retinol lookup; "age" (AGE_BAND) lands
+// mid-word inside "dam-age-d" the same way. The KB carries 82 single-word ASCII synonyms of 3-5 chars — AHA, BHA,
+// PIE, SLS, wax, trip, cica — so this is a class, not one bad row.
+//
+// Requiring such a term to START a whitespace-delimited token keeps the reason this stage exists (a term glued to
+// what follows it, "niacinamide5%", which the boundary regex cannot see) while dropping both the cross-word
+// junction and the mid-word fragment. Terms that are CJK, or that contain whitespace themselves like "vitamin c",
+// are precisely what compaction is for and keep matching against the whole compacted text. A term glued to what
+// PRECEDES it ("0.3%retinol", "anti-aging") is not lost either: the boundary regex accepts a non-alphanumeric
+// neighbour, so the exact stage already claims it.
+function substringHitIsAnchored(row, tokens) {
+  if (!row.ascii_word) return true;
+  return tokens.some((token) => token.startsWith(row.compact));
+}
+
 function addUniqueEntry(target, keySet, entry, key) {
   const k = String(key || '').toLowerCase();
   if (!k || keySet.has(k)) return;
@@ -101,6 +126,7 @@ function buildConceptEntries(kbPayload) {
             compact,
             source: row.source,
             lang: row.lang,
+            ascii_word: isSingleAsciiWord(term),
           },
           `${conceptId}|${row.source}|${compact}`,
         );
@@ -324,10 +350,12 @@ function buildConceptMatchesDetailed({ text, language = 'EN', max = 64, includeS
   }
 
   if (includeSubstring) {
+    const tokens = lower.split(/\s+/).filter(Boolean);
     for (const row of compiled.substringEntries) {
       if (!languageMatches(row.lang, lang)) continue;
       if (row.compact.length < 3) continue;
       if (!compact.includes(row.compact)) continue;
+      if (!substringHitIsAnchored(row, tokens)) continue;
       const candidate = {
         concept_id: row.concept_id,
         stage: 'substring',
