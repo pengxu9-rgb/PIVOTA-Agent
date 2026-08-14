@@ -303,6 +303,13 @@ jobs:
       # #1987 found its new no-transport rule guarded here and nowhere a PR would
       # execute; the gateway suites cover the same rule end to end, but the unit
       # that states it should fail in CI when it breaks, not only its symptom.
+      # ADDED 2026-08-14: `ucp_conformance_probe`, confirmed green (22/22). It tests the PROBE, not
+      # the service — the probe itself runs against live prod and is not CI. A probe is a test that
+      # runs in production and has the same failure mode as any other: reporting PASS while the thing
+      # it names is broken. Every invariant it claims is driven twice here, once conformant and once
+      # violating, so the probe is proven able to go RED. Fixtures cover BOTH shapes the surface has
+      # served (spec `{ucp:{…}}` maps and the legacy flat arrays), because a probe that quietly
+      # stopped reading the document after a restructure would report a clean PASS forever.
       - name: Run node:test suites
         run: |
           node --test \
@@ -312,6 +319,7 @@ jobs:
             mcp-server/test/ucpArgumentAdapter.test.js \
             safety-kernel/test/ucpPaymentAuthorizationContract.test.js \
             safety-kernel/test/mcpOAuthResourceServer.test.js \
+            tests/ucp_conformance_probe.node.test.cjs \
             safety-kernel/test/protocol.test.js \
             safety-kernel/test/delegatedPaymentRefusal.test.js \
             mcp-server/test/ucpFulfillmentAddressContract.test.js \

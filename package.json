@@ -54,6 +54,7 @@
     "audit:stabilization:commerce-core": "bash scripts/run_celestial_commerce_core_stabilization_acceptance.sh",
     "audit:readiness:llm-agent": "bash scripts/run_llm_agent_readiness_audit.sh",
     "obs:snapshot:export": "node scripts/export_observability_snapshot.js",
+    "probe:ucp:conformance": "node scripts/probe-ucp-conformance.cjs",
     "probe:route:prod": "node scripts/probe_prod_route_chain.js",
     "probe:aurora:rollout": "node scripts/aurora_rollout_probe.js",
     "probe:relationship-graph:launch-canary": "node scripts/run_relationship_graph_launch_canary.cjs",
