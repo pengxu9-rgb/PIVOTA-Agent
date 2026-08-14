@@ -182,6 +182,43 @@ function createWarmHandoffService(deps = {}) {
   }
 
   /**
+   * Pull the REAL reason out of a fetch failure, for logging alongside `err.message`.
+   *
+   * undici collapses every network-layer failure into the same opaque `TypeError: fetch failed` and puts
+   * the actual reason on `.cause`. Measured on node 20 and 24:
+   *
+   *   refused redirect  message "fetch failed"  cause "unexpected redirect"          code undefined
+   *   dead host         message "fetch failed"  cause "getaddrinfo ENOTFOUND <host>" code ENOTFOUND
+   *   refused connect   message "fetch failed"  cause "connect ECONNREFUSED ..."     code ECONNREFUSED
+   *
+   * So logging `err.message` alone renders those three IDENTICAL. That matters now that the buyer client
+   * refuses redirected profiles (UCP requires it — ucpBuyerAgentClient.js `discoverEndpoint`): a brand
+   * that serves /.well-known/ucp only behind a 301 drops out of the UCP cohort and, with message-only
+   * logging, reads exactly like DNS death. One is a merchant misconfiguration someone can go fix; the
+   * other is not. `classifyUcpFailure` maps both to `profile_unreachable`, so this log line is the ONLY
+   * place they can be told apart.
+   *
+   * Takes the cause's MESSAGE as a string, never the cause object: an Error spread into a log record
+   * drags a stack (and, for some shapes, request detail) with it. One level only — nested `cause.cause`
+   * chains are not walked. Deliberately does NOT parse the message into a reason code: the strings above
+   * are undici's, not a contract, and a classifier built on them would rot silently across a node bump.
+   * Recording the raw string keeps the diagnosis available without pinning us to the wording.
+   */
+  function causeDetail(err) {
+    const cause = err && err.cause;
+    if (!cause) return {};
+    const message = typeof cause === 'string'
+      ? cause
+      : (cause && typeof cause.message === 'string' ? cause.message : undefined);
+    const code = cause && typeof cause.code === 'string' ? cause.code : undefined;
+    const out = {};
+    // Bounded: a pathological cause must not be able to bloat a log line.
+    if (message) out.cause = message.slice(0, 200);
+    if (code) out.cause_code = code;
+    return out;
+  }
+
+  /**
    * Discover the brand's UCP MCP endpoint with an explicit bounded TTL cache (+ negative cache for unreachable
    * domains) and reachability-drift detection. Returns { mcpEndpoint, reachable, reason }.
    */
@@ -200,7 +237,9 @@ function createWarmHandoffService(deps = {}) {
       }
     } catch (err) {
       entry = { mcpEndpoint: null, reachable: false, reason: classifyUcpFailure({ thrown: err, phase: 'discovery' }) };
-      note('warn', 'ucp_warm_handoff_discovery_error', { origin, message: err && err.message, reason: entry.reason });
+      note('warn', 'ucp_warm_handoff_discovery_error', {
+        origin, message: err && err.message, ...causeDetail(err), reason: entry.reason,
+      });
     }
 
     if (entry.reachable) {
@@ -274,7 +313,9 @@ function createWarmHandoffService(deps = {}) {
       });
     } catch (err) {
       const reason = classifyUcpFailure({ thrown: err, phase: 'create_cart' });
-      note('warn', 'ucp_warm_handoff_create_cart_error', { origin, message: err && err.message, reason });
+      note('warn', 'ucp_warm_handoff_create_cart_error', {
+        origin, message: err && err.message, ...causeDetail(err), reason,
+      });
       return fallback(reason, brandLabel);
     }
 
@@ -353,7 +394,7 @@ function createWarmHandoffService(deps = {}) {
         messages: Array.isArray(p.messages) ? p.messages : [],
       };
     } catch (err) {
-      note('warn', 'ucp_inchat_preview_error', { origin, message: err && err.message });
+      note('warn', 'ucp_inchat_preview_error', { origin, message: err && err.message, ...causeDetail(err) });
       return null;
     }
   }
