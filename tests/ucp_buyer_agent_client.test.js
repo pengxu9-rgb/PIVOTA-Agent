@@ -212,6 +212,25 @@ describe('buildUcpBuyerAgentProfile', () => {
     expect([...p.agent.requested_scopes].sort()).toEqual(Object.keys(p.ucp.capabilities).sort());
   });
 
+  test('fulfillment is requested — negotiation gates argument SHAPES, not just the tool list', () => {
+    // The spec's fulfillment extension "adds a `fulfillment` field to Checkout" (methods/destinations/groups).
+    // Without requesting it, a merchant's negotiated create_checkout schema omits that field entirely —
+    // measured 2026-08-13, cosrx's create_checkout for our profile contained no `fulfillment` at all, which
+    // is how an earlier note concluded, wrongly, that UCP carries no shipping address.
+    const p = buildUcpBuyerAgentProfile();
+    expect(Object.keys(p.ucp.capabilities)).toContain('dev.ucp.shopping.fulfillment');
+    // `extends` is the spec's CANONICAL single-parent string for this capability
+    // (`"extends": "dev.ucp.shopping.checkout"`, in both profile examples and in prose). An earlier revision
+    // used the array [checkout, cart] on one merchant's authority and claimed a string would be "our own
+    // spelling" — backwards. Multi-parent means "at least ONE parent must be present", so the array would
+    // let fulfillment survive a cart-only intersection where it means nothing.
+    const entry = p.ucp.capabilities['dev.ucp.shopping.fulfillment'][0];
+    expect(entry.extends).toBe('dev.ucp.shopping.checkout');
+    // Requesting it must NOT smuggle in a money capability: fulfillment ships goods, it does not pay.
+    expect(p.agent.completes_payment).toBe(false);
+    expect(p.ucp.payment_handlers).toEqual({});
+  });
+
   test('BOTH catalog halves are requested — the client uses each', () => {
     // searchCatalog is free text (.search); getProduct is retrieval by identifier (.lookup). Requesting one
     // would leave the other method calling a tool the merchant never granted.
@@ -244,6 +263,8 @@ describe('buildUcpBuyerAgentProfile', () => {
     for (const root of ['dev.ucp.shopping.cart', 'dev.ucp.shopping.catalog.search', 'dev.ucp.shopping.catalog.lookup']) {
       expect(p.ucp.capabilities[root][0].extends).toBeUndefined();
     }
+    // Only the extension carries one, and only to its real parent.
+    expect(p.ucp.capabilities['dev.ucp.shopping.fulfillment'][0].extends).toBe('dev.ucp.shopping.checkout');
   });
 
   test('every capability entry carries the REQUIRED spec and schema members', () => {
@@ -442,20 +463,44 @@ describe('hard safety bounds', () => {
 // ---- profile: signing_keys publication ------------------------------------
 
 describe('buildUcpBuyerAgentProfile signing_keys', () => {
+  // `signing_keys` is a SIBLING of `ucp`, not a member of it. Both of the spec's profile examples close the
+  // `ucp` object and then declare it beside them, and Key Discovery is "match `keyid` to a `kid` in
+  // `signing_keys[]`" of the FETCHED PROFILE — so nesting it makes every published key invisible to the
+  // merchant verifying our SIGNED-tier request, which answers `key_not_found` / 401. These assertions read
+  // `p.ucp.signing_keys` and so pinned the defect in place.
   test('defaults to an empty signing_keys array (anonymous/token only)', () => {
     const p = buildUcpBuyerAgentProfile({ signingKeys: [] });
-    expect(Array.isArray(p.ucp.signing_keys)).toBe(true);
-    expect(p.ucp.signing_keys.length).toBe(0);
+    expect(p.ucp.signing_keys).toBeUndefined();
+    expect(Array.isArray(p.signing_keys)).toBe(true);
+    expect(p.signing_keys.length).toBe(0);
   });
 
-  test('publishes a provided PUBLIC JWK with its kid', () => {
+  test('publishes a provided PUBLIC JWK with its kid, as a SIBLING of ucp', () => {
     const p = buildUcpBuyerAgentProfile({ signingKeys: [TEST_PUBLIC_JWK] });
-    expect(p.ucp.signing_keys).toHaveLength(1);
-    const k = p.ucp.signing_keys[0];
+    expect(p.ucp.signing_keys).toBeUndefined();
+    expect(p.signing_keys).toHaveLength(1);
+    const k = p.signing_keys[0];
     expect(k.kty).toBe('EC');
     expect(k.crv).toBe('P-256');
     expect(k.kid).toBe(TEST_KEY_ID);
     expect(k.use).toBe('sig');
+  });
+
+  // The service entry publishes DOCUMENTS a merchant can dereference, not directory bases. It carried the
+  // bare `.../specification/` and `.../schemas/` prefixes, and both 404 (measured 2026-08-14).
+  test('the service entry publishes real spec/schema documents, not directory bases', () => {
+    const { services } = buildUcpBuyerAgentProfile().ucp;
+    const entry = services['dev.ucp.shopping'][0];
+    expect(entry.spec).toMatch(/\/specification\/overview$/);
+    expect(entry.schema).toMatch(/\/services\/shopping\/mcp\.openrpc\.json$/);
+    // A trailing-slash directory base is what the defect looked like; neither may come back.
+    expect(entry.spec.endsWith('/')).toBe(false);
+    expect(entry.schema.endsWith('/')).toBe(false);
+    // The service schema tree is NOT the capability schema tree — handing a merchant the wrong one would
+    // describe the capabilities where the transport belongs.
+    const anyCapability = Object.values(buildUcpBuyerAgentProfile().ucp.capabilities)[0][0];
+    expect(entry.schema).not.toBe(anyCapability.schema);
+    expect(anyCapability.schema).toMatch(/\/schemas\/shopping\/.+\.json$/);
   });
 
   test('REFUSES to publish a private key (throws on a `d` member)', () => {
@@ -592,5 +637,88 @@ describe('SIGNED tier checkout-create reaches the handoff URL credential-free', 
     expect(ok).toBe(true);
     // No credential/private material anywhere on the wire.
     expect(JSON.stringify(call)).not.toMatch(/BEGIN PRIVATE KEY|MIGHAgEA/);
+  });
+});
+
+// ---- UCP spec: a profile fetch MUST NOT follow redirects -------------------
+//
+// ucp.dev/2026-04-08/specification/overview, "Profile Requirements" -> Hosting/Fetching: a profile
+// endpoint MUST NOT use redirects, and an implementation MUST NOT follow a 3xx when fetching one.
+// The profile URL is the identity anchor for the MCP endpoint the client then sends carts to, and
+// which ucpWarmHandoff caches per-domain. Follow a redirect and that anchor moves to an origin we
+// never resolved, while the resolved `wellKnownUrl` we log stays the one we asked for.
+describe('discoverEndpoint refuses a redirected /.well-known/ucp profile', () => {
+  // A profile served from SOMEWHERE ELSE, deliberately well-formed: if this body ever reaches
+  // extractMcpEndpoint the client walks away pointing at attacker.example. The control test below
+  // proves that is exactly what happens without the redirect refusal, so the refusal test can only
+  // be failing on the refusal itself and never on an unparseable fixture.
+  const REDIRECT_TARGET_PROFILE = {
+    ucp: {
+      version: '2026-04-08',
+      services: {
+        'dev.ucp.shopping': [
+          { version: '2026-04-08', transport: 'mcp', endpoint: 'https://attacker.example/ucp/mcp' },
+        ],
+      },
+    },
+  };
+
+  /**
+   * A fetch stub that HONOURS the `redirect` init option, modelling undici for the only two values
+   * this code can produce -- which is the only shape that can tell the behaviours apart:
+   *   redirect: 'error'  -> the fetch REJECTS on the 3xx (TypeError: fetch failed).
+   *   redirect: 'follow' -> the caller NEVER SEES the 302; it is handed the final 200 from the target.
+   * A stub that merely returns the 302 response would prove nothing: 302 is already `!res.ok`, so the
+   * UNFIXED code reports failure for it too and such a test passes with the fix reverted.
+   * NOT a faithful model of 'manual' (real undici hands back the 3xx itself, which `!res.ok` then
+   * refuses safely); everything that is not 'error' takes the follow branch here, so a mutation to
+   * 'manual' is reported as a kill even though it would not actually be exploitable.
+   */
+  function makeRedirectHonouringFetch() {
+    const inits = [];
+    const impl = async (url, init = {}) => {
+      inits.push({ url: String(url), ...init });
+      if (init.redirect === 'error') throw new TypeError('fetch failed');
+      return jsonResponse(REDIRECT_TARGET_PROFILE, 200);
+    };
+    impl.inits = inits;
+    return impl;
+  }
+
+  // retryAttempts: 0 -- fetchWithPolicy treats any non-timeout throw as a transient network error, so
+  // it would otherwise re-attempt (with real backoff sleeps) a refusal that is deterministic.
+  function clientWith(fetchImpl) {
+    return createUcpBuyerAgentClient({
+      credential: 'test-token',
+      profileUrl: 'https://agent.pivota.cc/.well-known/ucp-agent',
+      fetchImpl,
+      retryAttempts: 0,
+    });
+  }
+
+  test('the profile fetch is issued with redirect: "error"', async () => {
+    const fetchImpl = makeRedirectHonouringFetch();
+    await clientWith(fetchImpl).discoverEndpoint('https://cosrx.com').catch(() => {});
+    expect(fetchImpl.inits).toHaveLength(1);
+    expect(fetchImpl.inits[0].url).toBe('https://cosrx.com/.well-known/ucp');
+    expect(fetchImpl.inits[0].redirect).toBe('error');
+  });
+
+  test('a 302 fails discovery instead of following it to another origin', async () => {
+    const fetchImpl = makeRedirectHonouringFetch();
+    // Must REJECT. Drop the redirect option and the stub follows, this resolves, and the resolved value
+    // carries https://attacker.example/ucp/mcp -- the endpoint warm handoff caches and builds carts against.
+    await expect(clientWith(fetchImpl).discoverEndpoint('https://cosrx.com')).rejects.toThrow(/fetch failed/);
+  });
+
+  // NOT an endorsement of the endpoint's origin. `extractMcpEndpoint` does no origin pinning today, so
+  // a profile may advertise an MCP door on any host — pre-existing, out of scope here, and arguably
+  // legitimate (a brand can host its door off-domain). This test exists ONLY to prove the fixture is a
+  // live threat, so the refusal above cannot be passing on an unparseable body. If origin pinning is
+  // ever added, this test SHOULD go red: that is the pin moving, not a regression.
+  test('control: the SAME body is accepted when it arrives with no redirect', async () => {
+    const disco = await clientWith(async () => jsonResponse(REDIRECT_TARGET_PROFILE, 200))
+      .discoverEndpoint('https://cosrx.com');
+    expect(disco.mcpEndpoint).toBe('https://attacker.example/ucp/mcp');
   });
 });

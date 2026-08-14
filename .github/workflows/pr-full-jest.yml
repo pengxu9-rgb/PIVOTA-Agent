@@ -320,6 +320,15 @@ jobs:
       # All three are the same shape as the cycle above — ambient text or session
       # state outranking an explicit action — which is the class this suite exists
       # to catch and could not, running nowhere.
+      # ADDED 2026-08-13: `safety-kernel/test/protocol` and
+      # `safety-kernel/test/delegatedPaymentRefusal`, confirmed green from the
+      # repo root (30/30 together, the way this job invokes them). They own the
+      # /.well-known/ucp profile rules — which capabilities may be advertised at
+      # all — and ran in NO PR workflow: the whole-directory safety-kernel run is
+      # workflow_dispatch-only and jest cannot see this directory. Review of
+      # #1987 found its new no-transport rule guarded here and nowhere a PR would
+      # execute; the gateway suites cover the same rule end to end, but the unit
+      # that states it should fail in CI when it breaks, not only its symptom.
       - name: Run node:test suites
         run: |
           node --test \
@@ -330,6 +339,8 @@ jobs:
             mcp-server/test/ucpArgumentAdapter.test.js \
             safety-kernel/test/ucpPaymentAuthorizationContract.test.js \
             safety-kernel/test/mcpOAuthResourceServer.test.js \
+            safety-kernel/test/protocol.test.js \
+            safety-kernel/test/delegatedPaymentRefusal.test.js \
             mcp-server/test/ucpFulfillmentAddressContract.test.js \
             tests/commerce_ucp_mcp_door.node.test.cjs \
             tests/commerce_mcp_oauth.node.test.cjs \

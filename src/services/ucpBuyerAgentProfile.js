@@ -44,11 +44,13 @@ const {
   UCP_SPEC_VERSION,
   UCP_SPEC_BASE,
   UCP_SCHEMA_BASE,
+  UCP_SERVICE_SCHEMA_BASE,
 } = require('../../safety-kernel/src/protocol/ucpSpecVersion.cjs');
 
 const DEFAULT_UCP_VERSION = UCP_SPEC_VERSION;
 const DEFAULT_SPEC_BASE = UCP_SPEC_BASE;
 const DEFAULT_SCHEMA_BASE = UCP_SCHEMA_BASE;
+const DEFAULT_SERVICE_SCHEMA_BASE = UCP_SERVICE_SCHEMA_BASE;
 
 // The shopping capabilities Pivota requests. Deliberately EXCLUDES any `*.complete` / payment capability.
 //
@@ -73,11 +75,26 @@ const DEFAULT_SCHEMA_BASE = UCP_SCHEMA_BASE;
 // `dev.ucp.shopping.order` is deliberately NOT requested — it would grant `get_order`, which is a capability
 // decision (do we track orders on the merchant's rails?) rather than part of fixing a wrong id.
 //
+// FULFILLMENT is requested because negotiation gates ARGUMENT SHAPES, not just the tool list — the same
+// lesson as the catalog ids, one level in. The spec (ucp.dev/2026-04-08/specification/fulfillment) says the
+// extension "adds a `fulfillment` field to Checkout" carrying `methods[]`, `destinations[]` and `groups[]`.
+// Without requesting it, a merchant's negotiated create_checkout schema OMITS that field entirely: measured
+// 2026-08-13, cosrx's create_checkout for our profile contained no `fulfillment` anywhere, which is why an
+// earlier note in the UCP argument adapter concluded — wrongly — that "UCP carries no shipping_address".
+// It carries one; we were not asking for the capability that reveals it.
+//
+// WHAT THIS DOES AND DOES NOT BUY. Requesting it means a merchant may now OFFER destination fields. This
+// client does not yet SEND a destination: `buildCheckoutArgs` still emits only `context` hints, so today the
+// observable behaviour is unchanged (`normalizePricedCheckout` reads `shipping_options`, not
+// `fulfillment.groups[].options[]`, so an unpopulated fulfillment block is inert rather than breaking).
+// Mapping `checkout.fulfillment` — destination selection, the single-destination bound, and what the in-chat
+// priced preview does with real shipping/tax — is the follow-up this unblocks, not something it completes.
 const SHOPPING_SERVICE = 'dev.ucp.shopping';
 const CATALOG_SEARCH_CAPABILITY = 'dev.ucp.shopping.catalog.search';
 const CATALOG_LOOKUP_CAPABILITY = 'dev.ucp.shopping.catalog.lookup';
 const CART_CAPABILITY = 'dev.ucp.shopping.cart';
 const CHECKOUT_CAPABILITY = 'dev.ucp.shopping.checkout';
+const FULFILLMENT_CAPABILITY = 'dev.ucp.shopping.fulfillment';
 
 // Any capability whose name implies completing a purchase / moving money. Requesting these is forbidden here.
 const FORBIDDEN_CAPABILITY_PATTERN = /(complete|payment|charge|purchase)/i;
@@ -161,6 +178,7 @@ const ALLOWED_BUYER_CAPABILITIES = Object.freeze(new Set([
   'dev.ucp.shopping.catalog.lookup',
   'dev.ucp.shopping.cart',
   'dev.ucp.shopping.checkout',
+  'dev.ucp.shopping.fulfillment',
 ]));
 
 function assertNoPurchaseCompletion(capabilityNames) {
@@ -199,6 +217,7 @@ function buildUcpBuyerAgentProfile(config = {}) {
   const version = config.ucpVersion || DEFAULT_UCP_VERSION;
   const specBase = `${(config.specBase || DEFAULT_SPEC_BASE).replace(/\/+$/, '')}/`;
   const schemaBase = `${(config.schemaBase || DEFAULT_SCHEMA_BASE).replace(/\/+$/, '')}/`;
+  const serviceSchemaBase = `${(config.serviceSchemaBase || DEFAULT_SERVICE_SCHEMA_BASE).replace(/\/+$/, '')}/`;
   const profileUrl = config.profileUrl ? requireHttps(config.profileUrl, 'profileUrl') : undefined;
   // The spec marks `spec` and `schema` REQUIRED on a capability entry, and every profile example carries
   // both. We computed the bases and attached them only to the SERVICE entry, so a merchant that validates
@@ -211,6 +230,7 @@ function buildUcpBuyerAgentProfile(config = {}) {
   // NOT complete.
   const capabilityNames = [
     CATALOG_SEARCH_CAPABILITY, CATALOG_LOOKUP_CAPABILITY, CART_CAPABILITY, CHECKOUT_CAPABILITY,
+    FULFILLMENT_CAPABILITY,
   ];
   assertNoPurchaseCompletion(capabilityNames);
 
@@ -231,6 +251,19 @@ function buildUcpBuyerAgentProfile(config = {}) {
     // Root: no `extends`. Pivota still hands off to the storefront and never completes payment — that bound
     // lives in the non-money allowlist and `completes_payment: false`, not in a dependency edge.
     [CHECKOUT_CAPABILITY]: [{ version, spec: capabilitySpec('checkout'), schema: capabilitySchema('checkout') }],
+    // A STRING, matching the spec's canonical declaration for exactly this capability
+    // (`"extends": "dev.ucp.shopping.checkout"`, in both profile examples and in prose). An earlier revision
+    // used the array `[checkout, cart]` on one merchant's authority and claimed a string "would be our own
+    // spelling, not the spec's" — that had it backwards. Both forms are legal (`extends` is typed OneOf[]),
+    // but multi-parent means "at least ONE parent must be present", so the array would let fulfillment
+    // survive a cart-only intersection where it means nothing. The single parent is spec-canonical AND
+    // semantically tighter.
+    [FULFILLMENT_CAPABILITY]: [{
+      version,
+      spec: capabilitySpec('fulfillment'),
+      schema: capabilitySchema('fulfillment'),
+      extends: CHECKOUT_CAPABILITY,
+    }],
   };
 
   const ucp = {
@@ -239,9 +272,17 @@ function buildUcpBuyerAgentProfile(config = {}) {
       [SHOPPING_SERVICE]: [
         {
           version,
-          spec: specBase,
+          // DOCUMENTS, NOT DIRECTORY BASES. These were `specBase` and `schemaBase` — the bare
+          // `.../specification/` and `.../schemas/` prefixes — and BOTH 404 (measured 2026-08-14): the
+          // origin serves documents, not directory listings. Every merchant that dereferenced our service
+          // entry to validate this profile got nothing, twice. A service entry's `spec` is the overview
+          // document, and its `schema` is the TRANSPORT's machine description (OpenRPC for MCP) which lives
+          // in a DIFFERENT tree from the capability schemas — hence UCP_SERVICE_SCHEMA_BASE rather than a
+          // path under `schemaBase`. Both measured 200, and both match the spec's own profile example and
+          // cosrx's live profile.
+          spec: `${specBase}overview`,
           transport: 'mcp',
-          schema: schemaBase,
+          schema: `${serviceSchemaBase}shopping/mcp.openrpc.json`,
         },
       ],
     },
@@ -249,15 +290,24 @@ function buildUcpBuyerAgentProfile(config = {}) {
     // Empty object = Pivota declares NO payment handler. It never processes payment; the buyer completes on
     // the merchant's own storefront via the returned handoff URL.
     payment_handlers: {},
-    // PUBLIC keys for the SIGNED trust tier (RFC 9421 / ECDSA P-256). Sourced from env / config (public JWK
-    // only; private material rejected). Empty = anonymous/token tier only. Verifiers match the request's
-    // `keyid` against a JWK `kid` here.
-    signing_keys: resolveSigningKeys(config),
   };
   if (profileUrl) ucp.profile_url = profileUrl;
 
   return {
     ucp,
+    // PUBLIC keys for the SIGNED trust tier (RFC 9421 / ECDSA P-256). Sourced from env / config (public JWK
+    // only; private material rejected). Empty = anonymous/token tier only. Verifiers match the request's
+    // `keyid` against a JWK `kid` here.
+    //
+    // A SIBLING OF `ucp`, PER SPEC — it was inside `ucp`, and the seller profile had the identical defect.
+    // Both spec profile examples (Business AND Platform) close the `ucp` object and then declare
+    // `signing_keys` beside it: "The `ucp` object contains protocol metadata: version, services,
+    // capabilities, and payment handlers. The `signing_keys` array contains public keys…". Key Discovery is
+    // literally "extract `keyid` from Signature-Input and match to `kid` in `signing_keys[]`" of the fetched
+    // profile — so a merchant verifying one of our SIGNED-tier requests read `profile.signing_keys`, got
+    // undefined, and answered `key_not_found` / 401. The whole signed tier dark, for a reason nothing in the
+    // document announces.
+    signing_keys: resolveSigningKeys(config),
     // Human/founder-facing truthful descriptor of who Pivota is and what it will (and will NOT) do. Additive
     // metadata alongside the spec `ucp` block; kept small to stay under the profile payload size limit.
     agent: {
@@ -288,5 +338,6 @@ module.exports = {
   CATALOG_LOOKUP_CAPABILITY,
   CART_CAPABILITY,
   CHECKOUT_CAPABILITY,
+  FULFILLMENT_CAPABILITY,
   FORBIDDEN_CAPABILITY_PATTERN,
 };

@@ -15,11 +15,95 @@
  * tools 1:1. ACP has no capability ids (it's REST endpoints + a feed), noted per-operation instead.
  */
 export const CANONICAL_CAPABILITIES = Object.freeze({
-  discovery: { ucp: 'dev.ucp.shopping.discovery', title: 'Product discovery / catalog' },
-  checkout: { ucp: 'dev.ucp.shopping.checkout', title: 'Checkout session lifecycle' },
-  order: { ucp: 'dev.ucp.shopping.order', title: 'Order lifecycle + after-sales' },
-  identity: { ucp: 'dev.ucp.common.identity_linking', title: 'OAuth identity linking' },
-  payment: { ucp: 'dev.ucp.shopping.ap2_mandate', title: 'Payment authorization (delegated token / AP2 mandate)' },
+  // DISCOVERY WAS ONE KEY ADVERTISING AN ID THAT DOES NOT EXIST. `dev.ucp.shopping.discovery` appears
+  // nowhere in the UCP vocabulary — verified against ucp.dev/2026-04-08 (specification/overview lists cart,
+  // checkout, discount, fulfillment, order, ap2_mandate; specification/catalog lists exactly the two ids
+  // below). Because negotiation is a set INTERSECTION, an id that exists nowhere intersects with nothing:
+  // our discovery capability was dropped for EVERY platform, silently, and the five operations behind it
+  // were invisible. That is the seller-side twin of the buyer-side bug fixed in #1973, pointing outward.
+  //
+  // It is split three ways because one key cannot honestly carry all five operations:
+  //   catalog_search — free-text search                    -> `search_catalog`
+  //   catalog_lookup — retrieval by identifier             -> `get_product`
+  //   insights       — Pivota's OWN decision substrate     -> get_alternatives / get_offers / get_intel
+  //
+  // The spec's own words for the two catalog ids: `.search` is "Search for products using query text and
+  // filters", `.lookup` is "Retrieve products or variants by identifier". Our five operations do not all fit
+  // those two, and forcing the last three into either would advertise them as something a platform can
+  // reasonably expect from a standard catalog capability. They are not standard: alternatives, cross-merchant
+  // offers and reviewed intelligence are Pivota's decision layer, and UCP's answer for exactly this is a
+  // VENDOR-NAMESPACED capability (spec: "Vendor: com.example.installments"; Shopify publishes
+  // `dev.shopify.catalog` alongside the standard ids). `cc.pivota.*` is the reverse-DNS of pivota.cc, the
+  // domain this gateway actually serves from.
+  //
+  // `spec` and `schema` are REQUIRED members of a published capability entry, so each capability carries the
+  // PATHS for its own. Paths, not full URLs, so the version literal stays in ucpSpecVersion.cjs — and every
+  // one was measured 200 on 2026-08-14 before being written here. That check is the point: a spec/schema URL
+  // is a promise a platform can dereference, and this file has already shipped one capability id that
+  // resolved to nothing. A capability with no documents is WITHHELD rather than published partial (see
+  // `insights` below and `capabilityDocUrls` in ucpProfile.js).
+  catalog_search: {
+    ucp: 'dev.ucp.shopping.catalog.search',
+    title: 'Catalog search (free text + filters)',
+    specName: 'catalog',
+    schemaName: 'shopping/catalog_search.json',
+  },
+  catalog_lookup: {
+    ucp: 'dev.ucp.shopping.catalog.lookup',
+    title: 'Catalog lookup by identifier',
+    specName: 'catalog',
+    schemaName: 'shopping/catalog_lookup.json',
+  },
+  // A ROOT vendor capability — deliberately NO `extends`, though that is a judgement call rather than the
+  // only option. `extends` is a PRUNING KEY: intersection step 3 removes a capability whose declared parents
+  // are ALL absent (single-parent needs its parent; multi-parent needs at least one). Declaring these reads
+  // as extending `catalog.lookup` would delete Pivota's decision layer for any platform that does not
+  // negotiate that standard capability — and the layer does not need it: these operations take a product
+  // reference the platform already holds, from wherever it got it.
+  //
+  // Noting the divergence honestly: the live `dev.shopify.catalog` this file cites as the vendor-namespacing
+  // precedent DOES declare `extends: [catalog.search, catalog.lookup]`. Root-ness costs nothing at step 1
+  // (name matching ignores `extends`), so the only thing it changes is whether we can be pruned — which is
+  // why we take it.
+  //
+  // NO specName/schemaName, and that WITHHOLDS THE WHOLE CAPABILITY rather than shipping it partial. The
+  // spec: "The `spec` and `schema` fields are REQUIRED for all capabilities" — and a platform validating the
+  // profile against that rule answers `profile_malformed` for the ENTIRE DOCUMENT, so one incomplete vendor
+  // entry would take checkout, catalog and fulfillment down with it. Pivota hosts no spec or JSON Schema for
+  // its decision layer today, and emitting a plausible `https://pivota.cc/...` would advertise a document
+  // that does not exist — the same defect as advertising a capability id that does not exist, one field over.
+  // The capability re-appears the moment the documents are real: pass them via `vendorCapabilityDocs` on
+  // buildUcpProfile. Nothing here needs editing for that.
+  insights: {
+    ucp: 'cc.pivota.insights',
+    title: 'Pivota Insights — alternatives, cross-merchant offers, reviewed decision intelligence',
+  },
+  checkout: {
+    ucp: 'dev.ucp.shopping.checkout',
+    title: 'Checkout session lifecycle',
+    specName: 'checkout',
+    schemaName: 'shopping/checkout.json',
+  },
+  order: {
+    ucp: 'dev.ucp.shopping.order',
+    title: 'Order lifecycle + after-sales',
+    specName: 'order',
+    schemaName: 'shopping/order.json',
+  },
+  identity: {
+    ucp: 'dev.ucp.common.identity_linking',
+    title: 'OAuth identity linking',
+    // NOTE the two spellings, both measured: the spec PAGE is hyphenated, and the SCHEMA lives under
+    // `common/` (not `shopping/`), matching this capability's `dev.ucp.common.*` namespace.
+    specName: 'identity-linking',
+    schemaName: 'common/identity_linking.json',
+  },
+  payment: {
+    ucp: 'dev.ucp.shopping.ap2_mandate',
+    title: 'Payment authorization (delegated token / AP2 mandate)',
+    specName: 'ap2-mandates',
+    schemaName: 'shopping/ap2_mandate.json',
+  },
   // A MODIFIER capability: it carries no operation of its own. UCP models fulfillment as something that
   // EXTENDS checkout — it adds `checkout.fulfillment` to that capability's input shape and declares, in
   // machine-readable `config`, which combinations the seller can honour. Pivota's UCP door accepts exactly
@@ -31,6 +115,8 @@ export const CANONICAL_CAPABILITIES = Object.freeze({
   fulfillment: {
     ucp: 'dev.ucp.shopping.fulfillment',
     title: 'Shipping destination on checkout',
+    specName: 'fulfillment',
+    schemaName: 'shopping/fulfillment.json',
     extends: ['dev.ucp.shopping.checkout'],
     config: Object.freeze({
       allows_multi_destination: Object.freeze({ shipping: false }),
@@ -56,29 +142,29 @@ export const CANONICAL_CAPABILITIES = Object.freeze({
  */
 export const CANONICAL_OPERATIONS = Object.freeze([
   {
-    id: 'search_catalog', capability: 'discovery', kernel: 'find_products',
+    id: 'search_catalog', capability: 'catalog_search', kernel: 'find_products',
     mutating: false, requiresUserRef: false, requiresPaymentAuthz: false,
     acp: 'product_feed', ucp: 'catalog.search', mcp: 'search_catalog',
   },
   {
-    id: 'get_product', capability: 'discovery', kernel: 'get_product_detail',
+    id: 'get_product', capability: 'catalog_lookup', kernel: 'get_product_detail',
     mutating: false, requiresUserRef: false, requiresPaymentAuthz: false,
     acp: 'product_feed', ucp: 'catalog.get', mcp: 'get_product', ucpTool: 'get_product',
   },
   {
     // Read-only intelligence projections (decision substrate, not catalog). kernel:'local' routes them to
     // the executor's injected localReads handlers — they never touch the money kernel or upstream checkout.
-    id: 'get_alternatives', capability: 'discovery', kernel: 'local',
+    id: 'get_alternatives', capability: 'insights', kernel: 'local',
     mutating: false, requiresUserRef: false, requiresPaymentAuthz: false,
     acp: null, ucp: 'catalog.alternatives', mcp: 'get_alternatives',
   },
   {
-    id: 'get_offers', capability: 'discovery', kernel: 'local',
+    id: 'get_offers', capability: 'insights', kernel: 'local',
     mutating: false, requiresUserRef: false, requiresPaymentAuthz: false,
     acp: null, ucp: 'catalog.offers', mcp: 'get_offers',
   },
   {
-    id: 'get_intel', capability: 'discovery', kernel: 'local',
+    id: 'get_intel', capability: 'insights', kernel: 'local',
     mutating: false, requiresUserRef: false, requiresPaymentAuthz: false,
     acp: null, ucp: 'catalog.intel', mcp: 'get_intel',
   },

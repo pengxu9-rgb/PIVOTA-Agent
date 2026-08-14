@@ -400,7 +400,10 @@ function createUcpBuyerAgentClient(options = {}) {
       // Boolean only — the private key value is NEVER exposed.
       has_signing_key: canSign,
       signing_key_id: canSign ? signingKeyId : undefined,
-      published_signing_key_ids: (profile.ucp.signing_keys || []).map((k) => k && k.kid).filter(Boolean),
+      // `signing_keys` is a SIBLING of `ucp`, per spec — the `ucp` object carries protocol metadata only.
+      // Both placements are read so this self-report is correct whichever shape the profile was built in.
+      published_signing_key_ids: (profile.signing_keys || profile.ucp.signing_keys || [])
+        .map((k) => k && k.kid).filter(Boolean),
       profile_url: profileUrl,
       ucp_version: ucpVersion,
       requested_scopes: profile.agent.requested_scopes,
@@ -462,6 +465,16 @@ function createUcpBuyerAgentClient(options = {}) {
     const res = await fetchWithPolicy((signal) => doFetch(wellKnownUrl, {
       method: 'GET',
       headers: { accept: 'application/json', 'user-agent': userAgent },
+      // UCP 2026-04-08, "Profile Requirements" -> Hosting/Fetching: a profile endpoint MUST NOT use
+      // redirects, and an implementation MUST NOT follow a 3xx when fetching one. This URL is an IDENTITY
+      // ANCHOR: the MCP endpoint we read out of the response is trusted, and cached per-domain by
+      // ucpWarmHandoff, purely because it came from THIS origin. Following a redirect would move that
+      // anchor to an origin we never resolved, silently — we would go on logging the resolved
+      // `wellKnownUrl` while building carts against whatever the redirect target advertised. Refuse it:
+      // the same rule the order-webhook receiver applies to ITS profile fetch (ucpOrderWebhookReceiver.js;
+      // note that one resolves its own UCP_BUSINESS_PROFILE_URL for signing keys — it does not read the
+      // profile discovered here, which no caller consumes beyond the endpoint).
+      redirect: 'error',
       signal,
     }), { retry: true });
     if (!res.ok) {
