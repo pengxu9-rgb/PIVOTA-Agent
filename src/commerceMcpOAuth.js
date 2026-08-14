@@ -29,11 +29,8 @@ function firstEnv(...names) {
   return undefined;
 }
 
-function requestHost(req) {
-  return (req && typeof req.get === 'function' && req.get('host'))
-    || (req && req.headers && req.headers.host)
-    || undefined;
-}
+// (requestHost was removed with the Host fallback: nothing in this module may derive a resource
+// identifier, or a pointer to one, from a caller-controlled header. See nativeResource below.)
 
 // THE DOORS THIS RESOURCE SERVER PROTECTS, and the ONE identifier each one publishes.
 //
@@ -65,12 +62,28 @@ function doorPathFor(req) {
   return DOOR_PATHS.includes(suffix) ? suffix : NATIVE_DOOR_PATH;
 }
 
-/** The configured identifier for the NATIVE door — unchanged behaviour, and the origin every door inherits. */
-function nativeResource(req) {
-  const explicit = firstEnv('MCP_OAUTH_RESOURCE');
-  if (explicit) return explicit;
-  const host = requestHost(req);
-  return host ? `https://${host}${NATIVE_DOOR_PATH}` : undefined;
+/**
+ * The identifier for the NATIVE door — CONFIGURED ONLY, and the origin every door inherits.
+ *
+ * THIS DELIBERATELY HAS NO HOST FALLBACK. It used to end
+ *   `return host ? `https://${host}/mcp` : undefined;`
+ * which derived the token audience from the request's own `Host` header. The audience is the whole of
+ * RFC 8707's protection — "this token was minted for ME" — so deriving it from a caller-controlled
+ * header let the caller choose it: a request with `Host: evil.attacker.example` made the server accept
+ * a token whose `aud` was `https://evil.attacker.example/mcp`, i.e. one the attacker could have minted
+ * from their own authorization server. Measured on a live, charge-capable door (adversarial review of
+ * #1979) and confirmed to predate that PR.
+ *
+ * Unset now means NO identifier, which fails closed everywhere it is consumed: no verifier is built, so
+ * every OAuth request gets a 401 challenge, and the RFC 9728 metadata routes 404 rather than publishing
+ * a document about a resource nobody can name. That is the correct posture — an MCP resource server
+ * with no configured identity cannot verify an audience, and pretending otherwise is the bug.
+ *
+ * Operationally this is inert: production sets MCP_OAUTH_RESOURCE, and staging has MCP_OAUTH_ENABLED
+ * unset (the whole module short-circuits). A new deployment that turns OAuth on MUST set it.
+ */
+function nativeResource() {
+  return firstEnv('MCP_OAUTH_RESOURCE');
 }
 
 /**
@@ -114,6 +127,10 @@ function acceptedResourcesFor(req) {
  * `MCP_OAUTH_RESOURCE_METADATA_URL` still overrides — but only for the native door. It is a single
  * value; honouring it on `/ucp/mcp` would point that door back at a document describing `/mcp` and
  * re-create the exact mismatch this function exists to fix.
+ *
+ * No Host fallback here either. With no configured resource there is no document to point at — the
+ * metadata routes 404 in that state — so a challenge simply carries no `resource_metadata` parameter
+ * rather than sending the caller to a URL built from their own header.
  */
 function resourceMetadataUrlFor(req) {
   const doorPath = doorPathFor(req);
@@ -122,15 +139,15 @@ function resourceMetadataUrlFor(req) {
     if (explicit) return explicit;
   }
   const resource = resourceFor(req);
-  if (resource) {
-    try {
-      return `${new URL(resource).origin}${RESOURCE_METADATA_PATH}${doorPath}`;
-    } catch {
-      /* fall through to the request host */
-    }
+  if (!resource) return undefined;
+  try {
+    return `${new URL(resource).origin}${RESOURCE_METADATA_PATH}${doorPath}`;
+  } catch {
+    // Malformed MCP_OAUTH_RESOURCE: advertise nothing. The verifier rejects this config too
+    // (assertHttpsUrl throws BAD_CONFIG), so the door is already answering 401 — say nothing
+    // rather than point at a URL assembled from a value we just failed to parse.
+    return undefined;
   }
-  const host = requestHost(req);
-  return host ? `https://${host}${RESOURCE_METADATA_PATH}${doorPath}` : undefined;
 }
 
 function authorizationServers() {

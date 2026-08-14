@@ -322,21 +322,48 @@ test('a WARM UCP verifier is not reused at the native door (no cache borrow)', a
   assert.equal(native.status, 401);
 });
 
-test('cache keys are unambiguous: a spaced identifier cannot collide with a two-member set', async () => {
+test('an unset MCP_OAUTH_RESOURCE yields NO identifier — the Host header can never become one', async () => {
+  // THE VULNERABILITY THIS REMOVES. nativeResource() used to end
+  //     return host ? `https://${host}/mcp` : undefined;
+  // so with MCP_OAUTH_RESOURCE unset the token audience was derived from the caller's own Host header.
+  // The audience IS the protection in RFC 8707 — "this token was minted for ME" — so a caller who
+  // chose the Host chose the audience, and a token they minted from their own authorization server
+  // verified here. Measured live on a charge-capable door before removal.
   setBaseEnv();
-  delete process.env.MCP_OAUTH_RESOURCE; // Host fallback: the identifier becomes attacker-influenced
-  const { token, issuers } = await makeToken({ aud: 'https://agent.test.example/ucp/mcp' });
+  delete process.env.MCP_OAUTH_RESOURCE;
+
+  const evil = 'evil.attacker.example';
+  const { token, issuers } = await makeToken({ aud: `https://${evil}/mcp` });
   process.env.MCP_OAUTH_ISSUERS_JSON = issuers;
+
+  // No identifier at all, on either door — not a Host-derived one.
+  assert.equal(glue.resourceFor(reqAt('/mcp', { host: evil })), undefined);
+  assert.equal(glue.resourceFor(reqAt('/ucp/mcp', { host: evil })), undefined);
+  assert.deepEqual(glue.acceptedResourcesFor(reqAt('/mcp', { host: evil })), []);
+
+  // ...so the attacker-minted token is refused at both doors instead of authenticating.
+  for (const doorPath of ['/mcp', '/ucp/mcp']) {
+    glue.__resetVerifierCache();
+    const r = await glue.resolveMcpOAuthIdentity(reqAt(doorPath, { host: evil, Authorization: `Bearer ${token}` }));
+    assert.equal(r.mode, 'challenge', `${doorPath} accepted an audience derived from the Host header`);
+    assert.equal(r.status, 401);
+  }
+});
+
+test('with no configured resource the challenge advertises nothing, and metadata 404s', async () => {
+  // Fail closed rather than pointing the caller at a URL assembled from their own header.
+  setBaseEnv();
+  delete process.env.MCP_OAUTH_RESOURCE;
   glue.__resetVerifierCache();
 
-  // A Host carrying a space makes the one-member set ["https://a b/mcp"], which a joined key renders
-  // identically to the two-member set ["https://a", "b/mcp"]. Poison the cache from the native door...
-  await glue.resolveMcpOAuthIdentity(
-    reqAt('/mcp', { host: 'agent.test.example/ucp/mcp https://agent.test.example', Authorization: `Bearer ${token}` }),
-  );
-  // ...then a legitimate client must still be verified on its own terms, not the poisoned entry's.
-  const legit = await glue.resolveMcpOAuthIdentity(
-    reqAt('/ucp/mcp', { host: 'agent.test.example', Authorization: `Bearer ${token}` }),
-  );
-  assert.equal(legit.mode, 'oauth', 'a poisoned cache entry denied service to a correctly-minted token');
+  assert.equal(glue.resourceMetadataUrlFor(reqAt('/mcp', { host: 'evil.attacker.example' })), undefined);
+  const r = await glue.resolveMcpOAuthIdentity(reqAt('/ucp/mcp', { host: 'evil.attacker.example' }));
+  assert.equal(r.mode, 'challenge');
+  assert.equal(/resource_metadata=/.test(r.wwwAuthenticate), false, 'advertised a Host-derived metadata URL');
+
+  const routes = mountRoutes();
+  for (const path of [METADATA_ROOT, `${METADATA_ROOT}/mcp`, `${METADATA_ROOT}/ucp/mcp`]) {
+    const doc = await fetchMetadata(routes, path, { host: 'evil.attacker.example' });
+    assert.equal(doc.status, 404, `${path} published a document for an unconfigured resource`);
+  }
 });
