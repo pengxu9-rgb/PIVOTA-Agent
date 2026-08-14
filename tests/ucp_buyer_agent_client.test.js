@@ -16,6 +16,11 @@ const {
   signUcpRequest,
   contentDigestFor,
   loadSigningPrivateKey,
+  agentProfileUrlFromOrigin,
+  agentProfileUrlFromRequestHost,
+  isGeneratedInfraHost,
+  normalizeHostname,
+  configuredProfileHostnames,
 } = require('../src/services/ucpBuyerAgentClient');
 const {
   buildUcpBuyerAgentProfile,
@@ -552,6 +557,245 @@ describe('SIGNED tier identity + derivation', () => {
     // PEM carries no kid, and no keyid is supplied -> must fail loudly.
     expect(() => createUcpBuyerAgentClient({ signingPrivateKey: TEST_PRIVATE_PEM, fetchImpl: makeFetch({}) }))
       .toThrow(/keyid/i);
+  });
+});
+
+// ---- the profile URL is an IDENTITY, so it is never derived from infrastructure ----------------------
+//
+// The measured defect (2026-08-14): the live buyer profile self-declared
+// `https://pivota-agent-production.up.railway.app/.well-known/ucp-agent` — a Railway-generated deployment
+// hostname published as the stable anchor merchants bind identity to. These tests pin the RULE (branded
+// derives, generated does not) at the helper AND through the client's env chain, and prove the guard is the
+// thing doing the work by driving both sides of the split in the same position.
+
+const BRANDED_ENV = Object.freeze({
+  UCP_BASE_URL: 'https://mcp.pivota.cc',
+  MCP_OAUTH_RESOURCE: 'https://commerce.mcp.pivota.cc/mcp',
+});
+
+describe('a generated infrastructure host is never derived as the profile identity', () => {
+  const ENV_KEYS = ['UCP_AGENT_PROFILE_URL', 'UCP_BASE_URL', 'AGENT_CHECKOUT_UCP_BASE_URL',
+    'MCP_OAUTH_RESOURCE', 'UCP_BUYER_AGENT_PROFILE_ENABLED'];
+  let savedEnv;
+  beforeEach(() => {
+    savedEnv = {};
+    for (const k of ENV_KEYS) { savedEnv[k] = process.env[k]; delete process.env[k]; }
+  });
+  afterEach(() => {
+    for (const k of ENV_KEYS) {
+      if (savedEnv[k] === undefined) delete process.env[k]; else process.env[k] = savedEnv[k];
+    }
+  });
+
+  test('a domain we own derives; the PaaS hostnames do not', () => {
+    // Both sides in the same position: without the guard the second expectation returns a URL, not undefined.
+    expect(agentProfileUrlFromOrigin('https://mcp.pivota.cc'))
+      .toBe('https://mcp.pivota.cc/.well-known/ucp-agent');
+    expect(agentProfileUrlFromOrigin('https://pivota-agent-production.up.railway.app')).toBeUndefined();
+    for (const generated of [
+      'https://pivota-agent-production.up.railway.app/mcp',
+      'https://anything.railway.app',
+      'https://aurora-beauty-decision-system.vercel.app',
+      'https://svc.onrender.com',
+      'https://svc.herokuapp.com',
+      'https://svc.fly.dev',
+    ]) {
+      expect(agentProfileUrlFromOrigin(generated)).toBeUndefined();
+    }
+  });
+
+  test('the host rule matches on suffix, not substring — a lookalike domain we own still derives', () => {
+    expect(isGeneratedInfraHost('pivota-agent-production.up.railway.app')).toBe(true);
+    // Ours, not the platform's: the generated suffix appears IN FULL (leading dot and all) but does not
+    // TERMINATE the hostname. A substring test would call this infrastructure and silently drop our anchor.
+    expect(isGeneratedInfraHost('edge.railway.app.pivota.cc')).toBe(false);
+    expect(isGeneratedInfraHost('mcp.pivota.cc')).toBe(false);
+    expect(agentProfileUrlFromOrigin('https://edge.railway.app.pivota.cc'))
+      .toBe('https://edge.railway.app.pivota.cc/.well-known/ucp-agent');
+  });
+
+  test('the same hostname retyped cannot walk past the rule (case, trailing dot, port)', () => {
+    // Each of these is the SAME generated host in a form a caller chooses. The literals stay un-normalized
+    // on purpose: a test that lowercases its own input before passing it in asserts nothing about whether
+    // the code lowercases, which is precisely how a case-sensitivity hole survives a "case" test.
+    expect(isGeneratedInfraHost('PIVOTA-AGENT-PRODUCTION.UP.RAILWAY.APP')).toBe(true);
+    expect(isGeneratedInfraHost('pivota-agent-production.up.railway.app.')).toBe(true);
+    expect(isGeneratedInfraHost('PIVOTA-AGENT-PRODUCTION.UP.RAILWAY.APP.')).toBe(true);
+    // The root-labelled FQDN is the one WHATWG URL preserves in .hostname, so the origin path must fold it.
+    expect(agentProfileUrlFromOrigin('https://pivota-agent-production.up.railway.app.')).toBeUndefined();
+    expect(agentProfileUrlFromRequestHost('pivota-agent-production.up.railway.app.', { env: BRANDED_ENV }))
+      .toBeUndefined();
+    expect(agentProfileUrlFromRequestHost('PIVOTA-AGENT-PRODUCTION.UP.RAILWAY.APP:443', { env: BRANDED_ENV }))
+      .toBeUndefined();
+    // Control, same position: the branded host in those same retyped forms still resolves.
+    expect(agentProfileUrlFromRequestHost('MCP.PIVOTA.CC', { env: BRANDED_ENV }))
+      .toBe('https://MCP.PIVOTA.CC/.well-known/ucp-agent');
+    expect(agentProfileUrlFromRequestHost('mcp.pivota.cc.', { env: BRANDED_ENV }))
+      .toBe('https://mcp.pivota.cc./.well-known/ucp-agent');
+    expect(normalizeHostname('MCP.PIVOTA.CC.')).toBe('mcp.pivota.cc');
+  });
+
+  test('every suffix in the list is load-bearing — none is dead weight', () => {
+    // Pins the SET with literal hosts rather than by iterating the constant (which would assert the list
+    // against itself). Dropping any entry now fails a line here. `.up.railway.app` is deliberately NOT a
+    // separate entry — `.railway.app` subsumes it, so it could be deleted with no test noticing.
+    for (const [host, why] of [
+      ['pivota-agent-production.up.railway.app', 'railway, the measured production host'],
+      ['x.railway.app', 'railway without the up. label'],
+      ['x.vercel.app', 'vercel'],
+      ['x.onrender.com', 'render'],
+      ['x.herokuapp.com', 'heroku'],
+      ['x.fly.dev', 'fly'],
+    ]) {
+      expect([why, isGeneratedInfraHost(host)]).toEqual([why, true]);
+    }
+  });
+
+  test('a non-string hostname is refused, not thrown on', () => {
+    // normalizeHostname is exported and its callers are not all string-guaranteed forever. Without the type
+    // guard these throw TypeError instead of answering, which in the route path is a 503 on a static doc.
+    for (const bad of [undefined, null, 42, {}, [], true]) {
+      expect(normalizeHostname(bad)).toBe('');
+      expect(isGeneratedInfraHost(bad)).toBe(false);
+    }
+  });
+
+  test('client env chain: a generated origin yields NO pointer rather than an infra pointer', () => {
+    process.env.UCP_BUYER_AGENT_PROFILE_ENABLED = '1';
+    process.env.MCP_OAUTH_RESOURCE = 'https://pivota-agent-production.up.railway.app/mcp';
+    const client = createUcpBuyerAgentClient({ fetchImpl: makeFetch({}) });
+    // Absent, not wrong: a merchant names the missing field instead of caching a deployment slot as us.
+    expect(client.describeTier().profile_url).toBeUndefined();
+  });
+
+  test('client env chain: a branded origin still derives (the guard is not blanket-off)', () => {
+    process.env.UCP_BUYER_AGENT_PROFILE_ENABLED = '1';
+    process.env.MCP_OAUTH_RESOURCE = 'https://commerce.mcp.pivota.cc/mcp';
+    const client = createUcpBuyerAgentClient({ fetchImpl: makeFetch({}) });
+    expect(client.describeTier().profile_url).toBe('https://commerce.mcp.pivota.cc/.well-known/ucp-agent');
+  });
+
+  test('route Host fallback: mirrors a CONFIGURED host, refuses everything else', () => {
+    // This is the fallback the SERVED document uses when UCP_AGENT_PROFILE_URL is unset, and its input is
+    // whatever Host the caller sent. It is an ALLOWLIST: configured hosts mirror, nothing else does.
+    expect(agentProfileUrlFromRequestHost('mcp.pivota.cc', { env: BRANDED_ENV }))
+      .toBe('https://mcp.pivota.cc/.well-known/ucp-agent');
+    // A forwarded chain: the FIRST entry is what the client asked for, so it is what the rule judges.
+    expect(agentProfileUrlFromRequestHost('mcp.pivota.cc, edge.internal', { env: BRANDED_ENV }))
+      .toBe('https://mcp.pivota.cc/.well-known/ucp-agent');
+    expect(agentProfileUrlFromRequestHost('edge.internal, mcp.pivota.cc', { env: BRANDED_ENV }))
+      .toBeUndefined();
+    // A port survives into the emitted URL; only the hostname is judged.
+    expect(agentProfileUrlFromRequestHost('mcp.pivota.cc:8443', { env: BRANDED_ENV }))
+      .toBe('https://mcp.pivota.cc:8443/.well-known/ucp-agent');
+    expect(agentProfileUrlFromRequestHost(undefined, { env: BRANDED_ENV })).toBeUndefined();
+    expect(agentProfileUrlFromRequestHost('', { env: BRANDED_ENV })).toBeUndefined();
+    expect(agentProfileUrlFromRequestHost('   ', { env: BRANDED_ENV })).toBeUndefined();
+  });
+
+  test('an UNCONFIGURED host is never mirrored — a denylist of PaaS suffixes would pass these', () => {
+    // THE CASE A SUFFIX DENYLIST MISSED. Every host here is attacker-chosen and none is on any denylist, so
+    // the earlier shape published each one as the URL naming Pivota — under `Cache-Control: public`, one
+    // shared cache away from a merchant reading it as our identity anchor.
+    for (const host of [
+      'evil.example.com',
+      'localhost:3000',
+      '127.0.0.1:3000',
+      '10.0.0.4',
+      '[::1]:8080',
+      'svc.railway.internal',
+      'x.run.app',
+      'x.appspot.com',
+      'x.azurewebsites.net',
+      'x.netlify.app',
+      'x.pages.dev',
+      'x.workers.dev',
+      'x.ondigitalocean.app',
+      'x.awsapprunner.com',
+      'x.ngrok-free.app',
+      'x.deno.dev',
+      'railway.app',
+    ]) {
+      expect([host, agentProfileUrlFromRequestHost(host, { env: BRANDED_ENV })]).toEqual([host, undefined]);
+    }
+  });
+
+  test('a configured PaaS origin still cannot become the anchor (both rules, not either)', () => {
+    // The allowlist alone would mirror this: the operator DID configure it. The infra rule is what stops it,
+    // so this pins that the two rules compose rather than one standing in for the other.
+    const env = { UCP_BASE_URL: 'https://pivota-agent-production.up.railway.app' };
+    expect(configuredProfileHostnames(env).has('pivota-agent-production.up.railway.app')).toBe(true);
+    expect(agentProfileUrlFromRequestHost('pivota-agent-production.up.railway.app', { env })).toBeUndefined();
+  });
+
+  test('configuredProfileHostnames reads every origin var, https only', () => {
+    expect(configuredProfileHostnames({ UCP_BASE_URL: 'https://a.pivota.cc' }).has('a.pivota.cc')).toBe(true);
+    expect(configuredProfileHostnames({ AGENT_CHECKOUT_UCP_BASE_URL: 'https://b.pivota.cc' }).has('b.pivota.cc')).toBe(true);
+    expect(configuredProfileHostnames({ MCP_OAUTH_RESOURCE: 'https://c.pivota.cc/mcp' }).has('c.pivota.cc')).toBe(true);
+    expect(configuredProfileHostnames({ UCP_AGENT_PROFILE_URL: 'https://d.pivota.cc/.well-known/ucp-agent' }).has('d.pivota.cc')).toBe(true);
+    // http configures nothing — the profile is fetched cross-origin and http is not servable for it.
+    expect(configuredProfileHostnames({ UCP_BASE_URL: 'http://e.pivota.cc' }).has('e.pivota.cc')).toBe(false);
+    expect(configuredProfileHostnames({ UCP_BASE_URL: 'not a url' }).size).toBe(0);
+    expect(configuredProfileHostnames({}).size).toBe(0);
+    // Stored normalized, so a retyped Host still matches.
+    expect(configuredProfileHostnames({ UCP_BASE_URL: 'https://MCP.PIVOTA.CC.' }).has('mcp.pivota.cc')).toBe(true);
+  });
+
+  test('a refused generated origin is reported, not swallowed', () => {
+    // The refusal is otherwise silent: the only symptom is a missing field, or a throw at signing time whose
+    // old message told the operator to set UCP_BASE_URL — the exact knob that cannot fix it.
+    process.env.UCP_BUYER_AGENT_PROFILE_ENABLED = '1';
+    process.env.MCP_OAUTH_RESOURCE = 'https://pivota-agent-production.up.railway.app/mcp';
+    const warnings = [];
+    const client = createUcpBuyerAgentClient({
+      fetchImpl: makeFetch({}),
+      logger: { warn: (ctx, msg) => warnings.push({ ctx, msg }) },
+    });
+    expect(client.describeTier().profile_url).toBeUndefined();
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].ctx.refused_origins).toEqual(['https://pivota-agent-production.up.railway.app/mcp']);
+    expect(warnings[0].msg).toMatch(/UCP_AGENT_PROFILE_URL/);
+  });
+
+  test('a garbage origin cannot crash construction while computing the refusal', () => {
+    // The refusal scan runs precisely when no pointer resolved, which is exactly the state an unparseable
+    // origin produces — so the scan must tolerate the value that got it there. Throwing here takes down every
+    // client construction in the process, not just the profile pointer.
+    process.env.UCP_BUYER_AGENT_PROFILE_ENABLED = '1';
+    process.env.UCP_BASE_URL = 'not a url';
+    process.env.MCP_OAUTH_RESOURCE = 'also::::garbage';
+    let client;
+    expect(() => { client = createUcpBuyerAgentClient({ fetchImpl: makeFetch({}) }); }).not.toThrow();
+    expect(client.describeTier().profile_url).toBeUndefined();
+  });
+
+  test('no warning when the pointer resolves — the warn is not fired on every construction', () => {
+    process.env.UCP_BUYER_AGENT_PROFILE_ENABLED = '1';
+    process.env.MCP_OAUTH_RESOURCE = 'https://commerce.mcp.pivota.cc/mcp';
+    const warnings = [];
+    createUcpBuyerAgentClient({ fetchImpl: makeFetch({}), logger: { warn: () => warnings.push(1) } });
+    expect(warnings).toHaveLength(0);
+  });
+
+  test('SIGNED tier: the throw names the refusal, not the knob that cannot fix it', async () => {
+    process.env.UCP_BUYER_AGENT_PROFILE_ENABLED = '1';
+    process.env.MCP_OAUTH_RESOURCE = 'https://pivota-agent-production.up.railway.app/mcp';
+    const client = createUcpBuyerAgentClient({
+      signingPrivateKey: TEST_PRIVATE_PEM, signingKeyId: TEST_KEY_ID, fetchImpl: makeFetch({}),
+    });
+    expect(client.tier).toBe(TRUST_TIER.SIGNED);
+    await expect(client.callTool('https://m.example/mcp', TOOL.GET_CART, {}))
+      .rejects.toThrow(/PaaS-generated host.*pivota-agent-production\.up\.railway\.app/s);
+  });
+
+  test('an explicit UCP_AGENT_PROFILE_URL is deliberately NOT gated', () => {
+    // The documented escape hatch: an operator naming a URL wins over the derivation rule. If this ever
+    // starts failing, the guard was applied to the explicit value too and operators lost their override.
+    process.env.UCP_BUYER_AGENT_PROFILE_ENABLED = '1';
+    process.env.UCP_AGENT_PROFILE_URL = 'https://pivota-agent-production.up.railway.app/.well-known/ucp-agent';
+    const client = createUcpBuyerAgentClient({ fetchImpl: makeFetch({}) });
+    expect(client.describeTier().profile_url)
+      .toBe('https://pivota-agent-production.up.railway.app/.well-known/ucp-agent');
   });
 });
 

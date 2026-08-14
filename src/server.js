@@ -31741,17 +31741,29 @@ function registerUcpBuyerAgentProfileRoute() {
     try {
       // eslint-disable-next-line global-require
       const { buildUcpBuyerAgentProfile } = require('./services/ucpBuyerAgentProfile');
+      // The Host-header fallback mirrors back whichever hostname the fetch arrived on — a CALLER-CONTROLLED
+      // string being published as the identity anchor merchants bind to. `agentProfileUrlFromRequestHost`
+      // therefore mirrors only a host an operator actually configured, and never a PaaS-generated one; every
+      // other Host yields undefined and the builder OMITS `ucp.profile_url` (it invents no default). Absent
+      // beats an anchor naming a deployment slot — or someone else's domain — and it is exactly the state
+      // UCP_AGENT_PROFILE_URL exists to fix.
+      // eslint-disable-next-line global-require
+      const { agentProfileUrlFromRequestHost } = require('./services/ucpBuyerAgentClient');
       const profileUrl = firstNonEmptyString(
         process.env.UCP_AGENT_PROFILE_URL,
         (() => {
           try {
-            const host = req.headers['x-forwarded-host'] || req.headers.host;
-            return host ? `https://${host}/.well-known/ucp-agent` : undefined;
+            return agentProfileUrlFromRequestHost(req.headers['x-forwarded-host'] || req.headers.host);
           } catch { return undefined; }
         })(),
       );
       const profile = buildUcpBuyerAgentProfile(profileUrl ? { profileUrl } : {});
       res.setHeader('content-type', 'application/json');
+      // `Vary: Host` because the body CAN differ per Host (the fallback above mirrors the request's host), and
+      // this response is `public` — without it a shared cache is free to hand a merchant the document built
+      // for a different hostname, which for an identity anchor is the whole ballgame. Once
+      // UCP_AGENT_PROFILE_URL is set the body stops varying, but the header must not depend on that.
+      res.setHeader('vary', 'Host');
       res.setHeader('cache-control', 'public, max-age=300');
       return res.status(200).json(profile);
     } catch (err) {
