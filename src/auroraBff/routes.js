@@ -97375,29 +97375,35 @@ function mountAuroraBffRoutes(app, { logger }) {
             : {}),
         },
       };
-      // This fast path reads free text and session shape only — it never looks at the action. That is fine for
-      // the typed turns it was built for, but it sits AHEAD of the v2 delegation below, so on an explicit chip
-      // it answers a question the user did not ask. `chip.start.travel` carried with a stored
-      // `session.profile.travel_plan` matched here and returned a beauty envelope, while the travel skill that
-      // owns the chip never ran; the same chip with no stored plan delegated correctly, which is how a
-      // session-shaped heuristic silently outranking an explicit action reads from the outside.
+      // The contract is resolved BEFORE the Beauty Pivot fast path below, which needs its verdict. It still runs
+      // ahead of the v2 delegation, so dbbf4169's ordering — contract handling before intent/v2 routing — holds.
+      const ingressChatIntentContract = await buildChatIntentContract(req.body || {});
+      ingressDelegateTargetForDebug = pickFirstTrimmed(ingressChatIntentContract?.delegate_target) || null;
+      ingressRequestClassForDebug = pickFirstTrimmed(ingressChatIntentContract?.request_class) || null;
+
+      // The fast path reads free text and session shape and never the action, yet it answers before the v2
+      // delegation below — so a chip belonging to another surface got a beauty answer instead of its own.
+      // `chip.start.travel` carrying a stored `session.profile.travel_plan` matched here and returned a beauty
+      // envelope while the travel skill never ran; the same chip with no stored plan routed correctly.
       //
-      // So: an explicit action is decided by the action. Only free-text turns reach the contract fast path.
-      // (Same rule as the v2/v1 mainline proxy — see V1_MAINLINE_IN_PROCESS and shouldProxyFrameworkRecoToV1Mainline.)
-      const pivotBeautyEarlyChatEnvelope = earlyExplicitActionId
-        ? null
-        : buildPivotBeautyChatContractEnvelope({
-          message: earlyMessage,
-          session: pivotBeautySessionForContract,
-          source: 'ingress_fast_path',
-        });
+      // The skip is therefore narrow: an explicit action whose contract says v2 owns it. Skipping on the mere
+      // PRESENCE of an action would be far too broad — the beauty mainline owns plenty of chips, and this fast
+      // path is what answers them. `chip.start.reco_products` on a session carrying
+      // `safety_flags: ['pregnancy_avoid_retinoids']` is answered here with the retinoid warning; blanket-skipping
+      // replaced that with "I need a bit more context before narrowing products", which is a safety answer traded
+      // for a slot-filling stall. Ownership stays where it is already decided, in `buildChatIntentContract`.
+      const pivotBeautyEarlyChatEnvelope =
+        earlyExplicitActionId && ingressChatIntentContract?.delegate_target === 'v2'
+          ? null
+          : buildPivotBeautyChatContractEnvelope({
+            message: earlyMessage,
+            session: pivotBeautySessionForContract,
+            source: 'ingress_fast_path',
+          });
       if (pivotBeautyEarlyChatEnvelope) {
         return sendChatEnvelope(pivotBeautyEarlyChatEnvelope);
       }
 
-      const ingressChatIntentContract = await buildChatIntentContract(req.body || {});
-      ingressDelegateTargetForDebug = pickFirstTrimmed(ingressChatIntentContract?.delegate_target) || null;
-      ingressRequestClassForDebug = pickFirstTrimmed(ingressChatIntentContract?.request_class) || null;
       if (
         effectiveChatFlags.skill_router_v2 &&
         ingressChatIntentContract?.delegate_target === 'v2' &&
