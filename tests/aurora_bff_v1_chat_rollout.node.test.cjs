@@ -1155,9 +1155,6 @@ test('shouldEarlyLockBeautyOwnedChatReco locks current frontend beauty reco free
   assert.equal(
     __internal.shouldEarlyLockBeautyOwnedChatReco({
       ingressChatIntentContract: contract,
-      normalizedActionPayload: null,
-      actionId: '',
-      actionLabel: '',
       message: 'im oily skin, what products should i use?',
     }),
     true,
@@ -1209,11 +1206,12 @@ test('shouldEarlyLockBeautyOwnedChatReco does not steal action-driven reco paylo
       },
       client_state: { state: 'IDLE_CHAT' },
     });
+    // Deliberately the real contract rather than a literal: `shouldEarlyLockBeautyOwnedChatReco` takes no
+    // action id, so the ownership decision is `buildChatIntentContract`'s. Driving both together is the only
+    // way to test the invariant that actually matters — hand-building the contract here would assert the
+    // predicate against an ownership verdict no router ever produces.
     return __internal.shouldEarlyLockBeautyOwnedChatReco({
       ingressChatIntentContract: contract,
-      normalizedActionPayload: { action_id: actionId, kind: 'action', data: { reply_text: replyText } },
-      actionId,
-      actionLabel: '',
       message: replyText,
     });
   };

@@ -2212,11 +2212,28 @@ async function shouldDelegateV1ChatToV2(body) {
   return chatIntentContract?.delegate_target === 'v2';
 }
 
+/**
+ * Does this request lock onto the beauty mainline before identity resolution?
+ *
+ * This reads the intent contract and nothing else, and deliberately takes NO action id. Action ownership is
+ * already decided, once, in `buildChatIntentContract`: `canDelegateActionToV2` sends the chips v2 owns to
+ * `delegate_target: 'v2'` / `request_class: 'action_delegate'`, and travel/weather intents go to `v1`. None of
+ * those reach the `beauty_mainline` + `beauty_discovery` pair required below, so a chip another surface owns
+ * cannot be locked here — the contract filtered it out upstream.
+ *
+ * This function used to accept `normalizedActionPayload`, `actionId` and `actionLabel` and read none of them.
+ * They were removed rather than wired up: re-deriving ownership here would mean a second list of action ids
+ * beside the one in `buildChatIntentContract`, and two lists that must agree are a drift bug waiting to
+ * happen. The contract is the single owner of that decision; if a chip is ever locked that should not be, the
+ * fix belongs there, next to the allowlist, not in a shadow copy here.
+ *
+ * Note the remaining text dependency is intentional, not an oversight: an action id the contract does not
+ * recognise falls through to a text decision (see the `!canDelegateActionToV2` branch), so a beauty-reco
+ * continuation chip like `chip.clarify.budget` or `chip.action.reco_routine` keeps the mainline on its
+ * reply_text. That is why this cannot simply refuse every request carrying an action.
+ */
 function shouldEarlyLockBeautyOwnedChatReco({
   ingressChatIntentContract = null,
-  normalizedActionPayload = null,
-  actionId = '',
-  actionLabel = '',
   message = '',
   canonicalIntent = null,
 } = {}) {
@@ -97301,7 +97318,6 @@ function mountAuroraBffRoutes(app, { logger }) {
       });
 
       const earlyNormalizedActionPayload = ingressSignalSnapshot.normalizedActionPayload;
-      const earlyActionLabelFromPayload = ingressSignalSnapshot.actionLabel;
       const earlyExplicitActionId = ingressSignalSnapshot.explicitActionId;
       const earlyMessage = ingressSignalSnapshot.message;
       const earlyCanonicalIntent = ingressSignalSnapshot.canonicalIntent;
@@ -97411,9 +97427,6 @@ function mountAuroraBffRoutes(app, { logger }) {
       });
       const shouldEarlyBeautyRecoHardLockAtIngress = !shouldSkipEarlyBeautyLockForTravelHandoffAtIngress && shouldEarlyLockBeautyOwnedChatReco({
         ingressChatIntentContract,
-        normalizedActionPayload: earlyNormalizedActionPayload,
-        actionId: earlyExplicitActionId,
-        actionLabel: earlyActionLabelFromPayload,
         message: earlyMessage,
         canonicalIntent: earlyCanonicalIntent,
       });
@@ -99109,9 +99122,6 @@ function mountAuroraBffRoutes(app, { logger }) {
       }
       const shouldEarlyBeautyRecoHardLock = !shouldSkipEarlyBeautyLockForTravelHandoff && !travelBeautyAdviceRequest && shouldEarlyLockBeautyOwnedChatReco({
         ingressChatIntentContract: effectiveIngressChatIntentContract,
-        normalizedActionPayload,
-        actionId,
-        actionLabel,
         message,
         canonicalIntent,
       });
