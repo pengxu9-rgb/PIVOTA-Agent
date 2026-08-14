@@ -301,3 +301,39 @@ test('kb v0 loader: cache reuse and refresh by mtime/signature', async () => {
   assert.notEqual(refreshed, first);
   assert.ok(refreshed.concepts_by_id.RETINOID.synonyms_en.includes('retinoid_changed'));
 });
+
+// The substring stage matches against whitespace-STRIPPED text, so before this was anchored a bare `includes`
+// read across the gap between two words: "a damaged barrier" compacts to "adamagedbarrier", which contains
+// ADAPALENE's real synonym "ADA". That made /v1/chat answer "what ingredient is best for a damaged barrier?"
+// with a retinol lookup report. These run against the SHIPPED concept dictionary, not a fixture, because the
+// defect is in how real 3-5 char synonyms (ADA, AHA, PIE, SLS, age, wax) meet real user sentences.
+test('concept matcher: a single-word ASCII synonym never matches across a word gap or mid-word', () => {
+  const { collectConceptIdsFromText } = require('../src/auroraBff/kbV0/conceptMatcher');
+  const ids = (text) => collectConceptIdsFromText({ text, language: 'EN', max: 32, includeSubstring: true });
+
+  // "a da|maged" — the junction only exists once the space is stripped.
+  assert.equal(ids('a damaged barrier').includes('ADAPALENE'), false);
+  assert.equal(ids('what ingredient is best for a damaged barrier?').includes('ADAPALENE'), false);
+  assert.equal(ids('go ahead and use it twice a week').includes('ADAPALENE'), false);
+  // "dam-age-d" — same class, mid-word rather than cross-word.
+  assert.equal(ids('a damaged barrier').includes('AGE_BAND'), false);
+  assert.equal(ids('a gentle cleanser please').includes('AGE_BAND'), false);
+
+  // The concept the sentence actually names must survive.
+  assert.equal(ids('a damaged barrier').includes('BARRIER_COMPROMISED'), true);
+});
+
+test('concept matcher: anchoring keeps the matches the substring stage exists for', () => {
+  const { collectConceptIdsFromText } = require('../src/auroraBff/kbV0/conceptMatcher');
+  const ids = (text) => collectConceptIdsFromText({ text, language: 'EN', max: 32, includeSubstring: true });
+
+  // Standing on its own, the short synonym is still the concept.
+  assert.equal(ids('is ADA safe?').includes('ADAPALENE'), true);
+  assert.equal(ids('AHA and BHA together').includes('AHA'), true);
+  // Glued to what FOLLOWS it: the boundary regex cannot see this, which is why the substring stage is here.
+  assert.equal(ids('niacinamide5%').includes('NIACINAMIDE'), true);
+  // Glued to what PRECEDES it: the boundary regex accepts a non-alphanumeric neighbour and claims these.
+  assert.equal(ids('0.3%retinol').includes('RETINOL'), true);
+  // A term that contains whitespace is what compaction is for, so it still matches the compacted text.
+  assert.equal(ids('vitamincserum').includes('VITAMIN_C'), true);
+});
