@@ -156,19 +156,28 @@ test('business signing keys: env-sourced, validated, and NEVER private', () => {
 test('omitCapabilityIds withholds a capability (and its operations) from the profile', () => {
   const profile = buildUcpProfile({
     baseUrl: 'https://shop.pivota.cc',
+    // A transport is required for ANY capability to be advertised (the no-transport rule in
+    // ucpProfile.js); this test is about omitCapabilityIds, so give it a door and keep the subject single.
+    mcpEndpoint: 'https://shop.pivota.cc/ucp/mcp',
     omitCapabilityIds: ['dev.ucp.shopping.checkout', 'dev.ucp.shopping.ap2_mandate'],
   });
   const capIds = profile.capabilities.map((c) => c.id);
   assert.ok(!capIds.includes('dev.ucp.shopping.checkout'));
   assert.ok(!capIds.includes('dev.ucp.shopping.ap2_mandate'));
   assert.ok(capIds.includes('dev.ucp.shopping.catalog.lookup'), 'non-omitted capabilities remain');
-  const allOps = profile.capabilities.flatMap((c) => c.operations);
-  assert.ok(!allOps.includes('create_payment_link'), 'operations of an omitted capability vanish with it');
-  assert.ok(!allOps.includes('complete_checkout_session'));
+  const allOps = profile.capabilities.flatMap((c) => c.operations || []);
+  // NOT asserting create_payment_link here: with an mcp transport declared, the tool-reachability filter
+  // (#1981) drops it in EVERY configuration because it has no `ucpTool`, so the assertion would hold with
+  // the omit filter deleted — vacuous, not weak. The omitted capability's own operations are checked below.
+  assert.ok(!allOps.includes('complete_checkout_session'), 'operations of an omitted capability vanish with it');
   // The intersection can never resurrect an omitted capability.
   assert.deepEqual(activeCapabilityIntersection(profile, ['dev.ucp.shopping.checkout']), []);
   // Omitting nothing is the identity.
-  const full = buildUcpProfile({ baseUrl: 'https://shop.pivota.cc', omitCapabilityIds: [] });
+  const full = buildUcpProfile({
+    baseUrl: 'https://shop.pivota.cc',
+    mcpEndpoint: 'https://shop.pivota.cc/ucp/mcp',
+    omitCapabilityIds: [],
+  });
   assert.ok(full.capabilities.map((c) => c.id).includes('dev.ucp.shopping.checkout'));
 });
 
@@ -179,7 +188,7 @@ test('UCP profile requires an https baseUrl and rejects unknown advertised capab
 });
 
 test('activeCapabilityIntersection returns only capabilities both sides support', () => {
-  const profile = buildUcpProfile({ baseUrl: 'https://shop.pivota.cc' });
+  const profile = buildUcpProfile({ baseUrl: 'https://shop.pivota.cc', mcpEndpoint: 'https://shop.pivota.cc/ucp/mcp' });
   const active = activeCapabilityIntersection(profile, ['dev.ucp.shopping.checkout', 'dev.ucp.some.future.thing']);
   assert.deepEqual(active.map((c) => c.id), ['dev.ucp.shopping.checkout']);
   assert.deepEqual(activeCapabilityIntersection(profile, []), []);
@@ -349,9 +358,15 @@ test('a capability is advertised ONLY where the advertised door can actually ser
       assert.ok(op.ucpTool || op.kernel === 'external', `${c.id} advertises ${id}, which no UCP tool exposes`);
     }
   }
-  // With NO mcp transport there is no tool surface to be absent from, so nothing is filtered on that basis.
+  // With NO mcp transport this filter has nothing to act on — there is no tool surface for an operation
+  // to be absent from. It is the NO-TRANSPORT rule that decides that case, and it withholds everything:
+  // a capability with no door at all is not reachable by any measure. (This assertion previously required
+  // catalog.search to be PRESENT here, which was true while a transport-less profile still advertised its
+  // full set; founder decision 2026-08-13 changed that. The reachability filter below/above is unchanged —
+  // it still governs which capabilities appear when a door IS advertised.)
   const noTransport = buildUcpProfile({ baseUrl: 'https://shop.pivota.cc' });
-  assert.ok(noTransport.capabilities.map((c) => c.id).includes('dev.ucp.shopping.catalog.search'));
+  assert.deepEqual(noTransport.services, []);
+  assert.deepEqual(noTransport.capabilities, [], 'no door at all => nothing advertised');
 });
 
 test('the vendor capability is a ROOT capability — `extends` would make it prunable', () => {
@@ -361,4 +376,34 @@ test('the vendor capability is a ROOT capability — `extends` would make it pru
   assert.equal(CANONICAL_CAPABILITIES.insights.extends, undefined);
   assert.equal(CANONICAL_CAPABILITIES.catalog_search.extends, undefined);
   assert.equal(CANONICAL_CAPABILITIES.catalog_lookup.extends, undefined);
+});
+
+// NO TRANSPORT => NO CAPABILITIES (founder decision 2026-08-13). The same rule as the refusal-only and
+// empty-capability filters, one level up: a capability with no door to reach it is a promise a platform
+// cannot act on. This is the state the documented rollback produces — unsetting
+// AGENT_CHECKOUT_UCP_TOOL_DOOR_ENABLED withholds the only transport — and the profile used to keep
+// advertising checkout, order, catalog and identity with `services: []`.
+test('NO transport => NO capabilities advertised (and any transport restores them)', () => {
+  const dark = buildUcpProfile({ baseUrl: 'https://shop.pivota.cc' }); // no mcpEndpoint, no restBasePath
+  assert.deepEqual(dark.services, [], 'precondition: nothing speaks for this profile');
+  assert.deepEqual(dark.capabilities, [], 'a profile with no transport must promise nothing');
+  // The rest of the document still stands: this is an honest empty profile, not a broken one.
+  assert.match(dark.ucp_version, /^\d{4}-\d{2}-\d{2}$/);
+  assert.equal(dark.provider.merchant_of_record, false);
+  assert.ok(Array.isArray(dark.signing_keys));
+
+  // The SAME config with a door lit advertises the full set — the filter keys on the transport and on
+  // nothing else. Without this half, `capabilities: []` would also satisfy a profile that had simply
+  // stopped advertising anything at all.
+  const lit = buildUcpProfile({ baseUrl: 'https://shop.pivota.cc', mcpEndpoint: 'https://shop.pivota.cc/ucp/mcp' });
+  assert.ok(lit.capabilities.length > 0, 'a lit transport must advertise the capabilities behind it');
+  assert.ok(lit.capabilities.map((c) => c.id).includes('dev.ucp.shopping.checkout'));
+
+  // A REST-only door counts too: the rule is "some transport", not "the MCP one".
+  const restOnly = buildUcpProfile({ baseUrl: 'https://shop.pivota.cc', restBasePath: '/ucp/v1' });
+  assert.deepEqual(restOnly.services.map((s) => s.transport), ['rest']);
+  assert.ok(restOnly.capabilities.length > 0, 'a REST transport is a door like any other');
+
+  // An intersection cannot resurrect what the profile does not advertise.
+  assert.deepEqual(activeCapabilityIntersection(dark, ['dev.ucp.shopping.checkout']), []);
 });
