@@ -781,7 +781,7 @@ test('legacy and v2 routine normalization keep the same slot/product semantics f
 // This test used to assert the v2 card contract (card_type/next_actions) for this body. That never held: the
 // message is routed to the v1 ingredient surface, not to v2. What it did surface is guarded below — the ask
 // used to be swallowed as a product reco and answered with a slot-filling stall.
-test('/v1/chat answers an ingredient question on the v1 surface even when skill_router_v2 is enabled', async () => {
+test('/v1/chat names the actives for a typed concern instead of returning the ingredient menu', async () => {
   await withEnv(
     {
       AURORA_BFF_USE_MOCK: 'true',
@@ -816,6 +816,24 @@ test('/v1/chat answers an ingredient question on the v1 surface even when skill_
       );
       assert.doesNotMatch(answer, /more context before narrowing products/i);
       assert.notEqual(answer.trim(), 'Invalid request.');
+
+      // Reaching an ingredient surface is not the same as answering. `acne` is a CONCERN, so no INCI lookup
+      // resolves and the surface used to hand back `ingredient_hub` — the menu whose "Find by goal" chip leads to
+      // the actives. Typing the question must reach that answer directly, so assert the actives by NAME: an
+      // ingredient-typed card alone passed even while the body was the menu.
+      const goalCard = response.body.cards.find((card) => card && card.type === 'ingredient_goal_match');
+      assert.ok(
+        goalCard,
+        `expected the by-goal answer card, got: ${JSON.stringify(response.body.cards.map((card) => card && card.type))}`,
+      );
+      assert.equal(goalCard.payload?.goal, 'acne');
+      const actives = (goalCard.payload?.candidate_ingredients || [])
+        .map((item) => String(item?.ingredient || ''))
+        .join(' | ');
+      assert.match(actives, /salicylic acid/i, `expected the acne actives, got: ${actives}`);
+      assert.match(actives, /azelaic acid/i, `expected the acne actives, got: ${actives}`);
+      // A client that renders only the message must see the answer too, not a pointer at the card.
+      assert.match(answer, /salicylic acid/i, `expected the assistant text to name the actives, got: ${answer}`);
     },
   );
 });
