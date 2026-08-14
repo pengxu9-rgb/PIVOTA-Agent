@@ -37,12 +37,17 @@ export const CANONICAL_CAPABILITIES = Object.freeze({
   // domain this gateway actually serves from.
   catalog_search: { ucp: 'dev.ucp.shopping.catalog.search', title: 'Catalog search (free text + filters)' },
   catalog_lookup: { ucp: 'dev.ucp.shopping.catalog.lookup', title: 'Catalog lookup by identifier' },
-  // A ROOT vendor capability — deliberately NO `extends`. `extends` is a PRUNING KEY: intersection step 3
-  // removes any capability whose declared parents are all absent from the intersection. Declaring these
-  // reads as extending `catalog.lookup` would delete Pivota's entire decision layer for any platform that
-  // does not negotiate that standard capability — and the layer does not need it: these operations take a
-  // product reference the platform already holds, from wherever it got it. (This is the same hazard that
-  // made our own `checkout` silently prunable until #1973; a dependency edge is not documentation.)
+  // A ROOT vendor capability — deliberately NO `extends`, though that is a judgement call rather than the
+  // only option. `extends` is a PRUNING KEY: intersection step 3 removes a capability whose declared parents
+  // are ALL absent (single-parent needs its parent; multi-parent needs at least one). Declaring these reads
+  // as extending `catalog.lookup` would delete Pivota's decision layer for any platform that does not
+  // negotiate that standard capability — and the layer does not need it: these operations take a product
+  // reference the platform already holds, from wherever it got it.
+  //
+  // Noting the divergence honestly: the live `dev.shopify.catalog` this file cites as the vendor-namespacing
+  // precedent DOES declare `extends: [catalog.search, catalog.lookup]`. Root-ness costs nothing at step 1
+  // (name matching ignores `extends`), so the only thing it changes is whether we can be pruned — which is
+  // why we take it.
   insights: {
     ucp: 'cc.pivota.insights',
     title: 'Pivota Insights — alternatives, cross-merchant offers, reviewed decision intelligence',
