@@ -400,7 +400,10 @@ function createUcpBuyerAgentClient(options = {}) {
       // Boolean only — the private key value is NEVER exposed.
       has_signing_key: canSign,
       signing_key_id: canSign ? signingKeyId : undefined,
-      published_signing_key_ids: (profile.ucp.signing_keys || []).map((k) => k && k.kid).filter(Boolean),
+      // `signing_keys` is a SIBLING of `ucp`, per spec — the `ucp` object carries protocol metadata only.
+      // Both placements are read so this self-report is correct whichever shape the profile was built in.
+      published_signing_key_ids: (profile.signing_keys || profile.ucp.signing_keys || [])
+        .map((k) => k && k.kid).filter(Boolean),
       profile_url: profileUrl,
       ucp_version: ucpVersion,
       requested_scopes: profile.agent.requested_scopes,

@@ -73,9 +73,10 @@ describe('Agent checkout ACP REST + UCP discovery doors', () => {
     it('serves /.well-known/ucp with version and capabilities, and NO mis-typed REST transport', async () => {
       const res = await request(app).get('/.well-known/ucp');
       assert.equal(res.status, 200);
-      assert.ok(res.body.ucp_version, 'has ucp_version');
-      assert.ok(Array.isArray(res.body.capabilities) && res.body.capabilities.length > 0, 'has capabilities');
-      const capIds = res.body.capabilities.map((c) => c.id);
+      assert.ok(res.body.ucp.version, 'has ucp.version');
+      // `capabilities` is a MAP keyed by id — the spec's shape.
+      const capIds = Object.keys(res.body.ucp.capabilities);
+      assert.ok(capIds.length > 0, 'has capabilities');
       // Strict ON: the money capabilities ARE advertised (their doors serve).
       assert.ok(capIds.includes('dev.ucp.shopping.checkout'), 'checkout advertised while strict is on');
 
@@ -85,7 +86,7 @@ describe('Agent checkout ACP REST + UCP discovery doors', () => {
       // shapes (`POST /checkout_sessions` with ACP bodies), not UCP's — so a platform following the profile
       // failed on its first call. The profile now advertises a `rest` transport only when a door that
       // genuinely speaks UCP REST is declared, and the gateway declares none.
-      const rest = (res.body.services || []).find((s) => s.transport === 'rest');
+      const rest = (res.body.ucp?.services?.['dev.ucp.shopping'] || []).find((s) => s.transport === 'rest');
       assert.equal(rest, undefined, 'must not advertise a REST transport nothing speaks');
 
       // ...AND NO MCP TRANSPORT EITHER, WHILE THE UCP-DIALECT DOOR IS DARK. This assertion used to read
@@ -95,10 +96,10 @@ describe('Agent checkout ACP REST + UCP discovery doors', () => {
       // above, one transport over. This boot sets no AGENT_CHECKOUT_UCP_TOOL_DOOR_ENABLED, so `/ucp/mcp` is
       // 404 and the profile must honestly carry no transport at all rather than name a door that cannot
       // serve a single UCP call. The lit case is the next test — both sides, so neither direction can rot.
-      const transports = (res.body.services || []).map((s) => s.transport);
+      const transports = (res.body.ucp?.services?.['dev.ucp.shopping'] || []).map((s) => s.transport);
       assert.deepEqual(transports, [], 'no transport is advertised while the UCP-dialect door is dark');
       assert.equal(
-        JSON.stringify(res.body.services || []).includes('/mcp'),
+        JSON.stringify(res.body.ucp?.services || {}).includes('/mcp'),
         false,
         'the native /mcp door must never be advertised as a UCP transport',
       );
@@ -113,9 +114,9 @@ describe('Agent checkout ACP REST + UCP discovery doors', () => {
       });
       const res = await request(litApp).get('/.well-known/ucp');
       assert.equal(res.status, 200);
-      const transports = (res.body.services || []).map((s) => s.transport);
+      const transports = (res.body.ucp?.services?.['dev.ucp.shopping'] || []).map((s) => s.transport);
       assert.deepEqual(transports, ['mcp'], 'UCP transport is MCP JSON-RPC');
-      const mcp = res.body.services.find((s) => s.transport === 'mcp');
+      const mcp = res.body.ucp.services['dev.ucp.shopping'].find((s) => s.transport === 'mcp');
       // The UCP-DIALECT endpoint, not the native one: this is the whole point of the flag.
       assert.equal(mcp.endpoint, 'https://agent.test.local/ucp/mcp');
       // ...and the door it names actually answers a UCP call, so the profile is executable, not just filled in.
@@ -129,10 +130,13 @@ describe('Agent checkout ACP REST + UCP discovery doors', () => {
 
     it('computes the active-capability intersection for a platform', async () => {
       const profile = await request(app).get('/.well-known/ucp');
-      const someCapId = profile.body.capabilities[0].id;
+      // A ROOT capability: an extension alone would be pruned by intersection step 3, which is correct
+      // behaviour but would make this test read as a negotiation failure.
+      const someCapId = Object.entries(profile.body.ucp.capabilities)
+        .find(([, entries]) => entries[0].extends === undefined)[0];
       const res = await request(app).post('/ucp/capabilities').send({ capabilities: [someCapId] });
       assert.equal(res.status, 200);
-      const ids = (res.body.active_capabilities || []).map((c) => c.id);
+      const ids = Object.keys(res.body.ucp?.capabilities || {});
       assert.ok(ids.includes(someCapId), 'intersection includes the shared capability');
     });
   });
@@ -148,9 +152,9 @@ describe('Agent checkout ACP REST + UCP discovery doors', () => {
       delete process.env.AGENT_CHECKOUT_STRICT;
       const res = await request(localApp).get('/.well-known/ucp');
       assert.equal(res.status, 200);
-      assert.ok(res.body.ucp_version, 'profile stays up while checkout is dark');
+      assert.ok(res.body.ucp.version, 'profile stays up while checkout is dark');
       // ...but it must not advertise capabilities whose doors are hard-404 while the switch is dark.
-      const capIds = res.body.capabilities.map((c) => c.id);
+      const capIds = Object.keys(res.body.ucp.capabilities);
       assert.ok(!capIds.includes('dev.ucp.shopping.checkout'), 'checkout withheld while checkout is dark');
       assert.ok(!capIds.includes('dev.ucp.shopping.ap2_mandate'), 'ap2 mandate withheld while checkout is dark');
       // The read capabilities, under the ids the SPEC defines. This asserted `dev.ucp.shopping.discovery`
@@ -158,7 +162,11 @@ describe('Agent checkout ACP REST + UCP discovery doors', () => {
       // capability it checks matched no platform on earth.
       assert.ok(capIds.includes('dev.ucp.shopping.catalog.search'), 'read capabilities still advertised');
       assert.ok(capIds.includes('dev.ucp.shopping.catalog.lookup'), 'read capabilities still advertised');
-      assert.ok(capIds.includes('cc.pivota.insights'), 'the vendor decision layer is still advertised');
+      // The vendor decision layer is WITHHELD: `cc.pivota.insights` has no hosted spec/schema documents, and
+      // the spec marks both REQUIRED for every capability. A partial entry does not degrade itself — a
+      // validating platform answers `profile_malformed` for the whole document, taking the two read
+      // capabilities above down with it. It re-appears when the documents are real.
+      assert.ok(!capIds.includes('cc.pivota.insights'), 'no capability without its required documents');
     });
   });
 

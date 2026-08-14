@@ -81,13 +81,21 @@ const { createUcpOrderWebhookReceiver } = require('../src/services/ucpOrderWebho
 
 test('GET /.well-known/ucp serves with AGENT_CHECKOUT_STRICT off and publishes the env signing key', async () => {
   const resp = await supertest(app).get('/.well-known/ucp').expect(200);
-  assert.ok(resp.body.ucp_version, 'has ucp_version');
+  assert.ok(resp.body.ucp.version, 'has ucp.version');
+  // `signing_keys` is a SIBLING of `ucp`, per spec — Key Discovery reads `profile.signing_keys`, so nesting
+  // it makes every published key invisible to a verifier.
+  assert.equal(resp.body.ucp.signing_keys, undefined, 'must not be nested inside ucp');
   assert.equal(resp.body.signing_keys.length, 1);
   const key = resp.body.signing_keys[0];
   assert.equal(key.kid, 'test-1');
   assert.equal(key.kty, 'EC');
   assert.equal(key.crv, 'P-256');
   assert.equal(key.d, undefined, 'never a private component');
+  // Spec: profile responses MUST be publicly cacheable for at least 60s, and MUST NOT be private/no-store.
+  const cacheControl = resp.headers['cache-control'];
+  assert.match(cacheControl, /(^|[\s,])public([\s,]|$)/);
+  assert.ok(Number(/max-age=(\d+)/.exec(cacheControl)?.[1]) >= 60, `weak max-age: ${cacheControl}`);
+  assert.ok(!/private|no-store|no-cache/.test(cacheControl), `forbidden directive: ${cacheControl}`);
 });
 
 test('GET /.well-known/ucp is dark (404) when the discovery flag is off', async () => {
@@ -103,21 +111,31 @@ test('GET /.well-known/ucp is dark (404) when the discovery flag is off', async 
 // M8: with the checkout kill-switch dark, the money capabilities must not be advertised.
 test('strict off: profile withholds checkout/ap2 capabilities (and create_payment_link with them)', async () => {
   const resp = await supertest(app).get('/.well-known/ucp').expect(200);
-  const capIds = resp.body.capabilities.map((c) => c.id);
+  // `capabilities` is a MAP keyed by id — the spec's shape.
+  const capIds = Object.keys(resp.body.ucp.capabilities);
   assert.ok(!capIds.includes('dev.ucp.shopping.checkout'), 'checkout capability withheld');
   assert.ok(!capIds.includes('dev.ucp.shopping.ap2_mandate'), 'ap2 mandate capability withheld');
   // The read capabilities under the ids the SPEC defines — this asserted `dev.ucp.shopping.discovery`, an id
   // that exists nowhere in the UCP vocabulary, so it passed while matching no platform.
   assert.ok(capIds.includes('dev.ucp.shopping.catalog.search'), 'read capabilities still advertised');
-  assert.ok(capIds.includes('cc.pivota.insights'), 'the vendor decision layer is still advertised');
-  const allOps = resp.body.capabilities.flatMap((c) => c.operations);
-  assert.ok(!allOps.includes('create_payment_link'), 'create_payment_link not exposed anywhere');
+  // The vendor decision layer is WITHHELD: `cc.pivota.insights` has no hosted spec/schema, and the spec marks
+  // both REQUIRED for every capability — a validator rejects the WHOLE document over one partial entry, so a
+  // half-filled vendor entry would take the read capabilities above down with it.
+  assert.ok(!capIds.includes('cc.pivota.insights'), 'no capability without its required documents');
+  // Operations are not a spec member and are no longer published, so the withholding is asserted on the
+  // serialized body — the previous `[].includes(...)` form was vacuously true.
+  assert.ok(!JSON.stringify(resp.body).includes('create_payment_link'), 'create_payment_link not exposed anywhere');
+  // Every published entry carries the members the spec marks REQUIRED.
+  for (const [id, entries] of Object.entries(resp.body.ucp.capabilities)) {
+    assert.equal(typeof entries[0].spec, 'string', `${id} must publish a spec URL`);
+    assert.equal(typeof entries[0].schema, 'string', `${id} must publish a schema URL`);
+  }
   // The intersection endpoint reflects the same withholding.
   const inter = await supertest(app)
     .post('/ucp/capabilities')
     .send({ capabilities: ['dev.ucp.shopping.checkout', 'dev.ucp.shopping.catalog.search'] })
     .expect(200);
-  assert.deepEqual(inter.body.active_capabilities.map((c) => c.id), ['dev.ucp.shopping.catalog.search']);
+  assert.deepEqual(Object.keys(inter.body.ucp.capabilities), ['dev.ucp.shopping.catalog.search']);
 });
 
 // M9: the profile is built per request — a bad signing-key env 503s only while it is bad, and key
