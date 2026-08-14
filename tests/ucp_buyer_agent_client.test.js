@@ -16,6 +16,9 @@ const {
   signUcpRequest,
   contentDigestFor,
   loadSigningPrivateKey,
+  agentProfileUrlFromOrigin,
+  agentProfileUrlFromRequestHost,
+  isGeneratedInfraHost,
 } = require('../src/services/ucpBuyerAgentClient');
 const {
   buildUcpBuyerAgentProfile,
@@ -552,6 +555,100 @@ describe('SIGNED tier identity + derivation', () => {
     // PEM carries no kid, and no keyid is supplied -> must fail loudly.
     expect(() => createUcpBuyerAgentClient({ signingPrivateKey: TEST_PRIVATE_PEM, fetchImpl: makeFetch({}) }))
       .toThrow(/keyid/i);
+  });
+});
+
+// ---- the profile URL is an IDENTITY, so it is never derived from infrastructure ----------------------
+//
+// The measured defect (2026-08-14): the live buyer profile self-declared
+// `https://pivota-agent-production.up.railway.app/.well-known/ucp-agent` — a Railway-generated deployment
+// hostname published as the stable anchor merchants bind identity to. These tests pin the RULE (branded
+// derives, generated does not) at the helper AND through the client's env chain, and prove the guard is the
+// thing doing the work by driving both sides of the split in the same position.
+
+describe('a generated infrastructure host is never derived as the profile identity', () => {
+  const ENV_KEYS = ['UCP_AGENT_PROFILE_URL', 'UCP_BASE_URL', 'AGENT_CHECKOUT_UCP_BASE_URL',
+    'MCP_OAUTH_RESOURCE', 'UCP_BUYER_AGENT_PROFILE_ENABLED'];
+  let savedEnv;
+  beforeEach(() => {
+    savedEnv = {};
+    for (const k of ENV_KEYS) { savedEnv[k] = process.env[k]; delete process.env[k]; }
+  });
+  afterEach(() => {
+    for (const k of ENV_KEYS) {
+      if (savedEnv[k] === undefined) delete process.env[k]; else process.env[k] = savedEnv[k];
+    }
+  });
+
+  test('a domain we own derives; the PaaS hostnames do not', () => {
+    // Both sides in the same position: without the guard the second expectation returns a URL, not undefined.
+    expect(agentProfileUrlFromOrigin('https://mcp.pivota.cc'))
+      .toBe('https://mcp.pivota.cc/.well-known/ucp-agent');
+    expect(agentProfileUrlFromOrigin('https://pivota-agent-production.up.railway.app')).toBeUndefined();
+    for (const generated of [
+      'https://pivota-agent-production.up.railway.app/mcp',
+      'https://anything.railway.app',
+      'https://aurora-beauty-decision-system.vercel.app',
+      'https://svc.onrender.com',
+      'https://svc.herokuapp.com',
+      'https://svc.fly.dev',
+    ]) {
+      expect(agentProfileUrlFromOrigin(generated)).toBeUndefined();
+    }
+  });
+
+  test('the host rule matches on suffix, not substring — a lookalike domain we own still derives', () => {
+    expect(isGeneratedInfraHost('pivota-agent-production.up.railway.app')).toBe(true);
+    expect(isGeneratedInfraHost('UP.RAILWAY.APP'.toLowerCase())).toBe(true);
+    // Ours, not the platform's: the generated suffix appears IN FULL (leading dot and all) but does not
+    // TERMINATE the hostname. A substring test would call this infrastructure and silently drop our anchor.
+    expect(isGeneratedInfraHost('edge.railway.app.pivota.cc')).toBe(false);
+    expect(isGeneratedInfraHost('mcp.pivota.cc')).toBe(false);
+    expect(agentProfileUrlFromOrigin('https://edge.railway.app.pivota.cc'))
+      .toBe('https://edge.railway.app.pivota.cc/.well-known/ucp-agent');
+  });
+
+  test('client env chain: a generated origin yields NO pointer rather than an infra pointer', () => {
+    process.env.UCP_BUYER_AGENT_PROFILE_ENABLED = '1';
+    process.env.MCP_OAUTH_RESOURCE = 'https://pivota-agent-production.up.railway.app/mcp';
+    const client = createUcpBuyerAgentClient({ fetchImpl: makeFetch({}) });
+    // Absent, not wrong: a merchant names the missing field instead of caching a deployment slot as us.
+    expect(client.describeTier().profile_url).toBeUndefined();
+  });
+
+  test('client env chain: a branded origin still derives (the guard is not blanket-off)', () => {
+    process.env.UCP_BUYER_AGENT_PROFILE_ENABLED = '1';
+    process.env.MCP_OAUTH_RESOURCE = 'https://commerce.mcp.pivota.cc/mcp';
+    const client = createUcpBuyerAgentClient({ fetchImpl: makeFetch({}) });
+    expect(client.describeTier().profile_url).toBe('https://commerce.mcp.pivota.cc/.well-known/ucp-agent');
+  });
+
+  test('route Host fallback: mirrors a branded host, refuses the generated one', () => {
+    // Both sides in the same position. This is the fallback the SERVED document uses when the env var is
+    // unset — the path by which a fetch on the Railway hostname would otherwise make us self-declare it.
+    expect(agentProfileUrlFromRequestHost('mcp.pivota.cc'))
+      .toBe('https://mcp.pivota.cc/.well-known/ucp-agent');
+    expect(agentProfileUrlFromRequestHost('pivota-agent-production.up.railway.app')).toBeUndefined();
+    // A forwarded chain: the FIRST entry is what the client asked for, so it is what the rule judges.
+    expect(agentProfileUrlFromRequestHost('pivota-agent-production.up.railway.app, edge.internal'))
+      .toBeUndefined();
+    expect(agentProfileUrlFromRequestHost('commerce.mcp.pivota.cc, edge.internal'))
+      .toBe('https://commerce.mcp.pivota.cc/.well-known/ucp-agent');
+    // A port survives into the URL; only the hostname is judged.
+    expect(agentProfileUrlFromRequestHost('mcp.pivota.cc:8443'))
+      .toBe('https://mcp.pivota.cc:8443/.well-known/ucp-agent');
+    expect(agentProfileUrlFromRequestHost(undefined)).toBeUndefined();
+    expect(agentProfileUrlFromRequestHost('')).toBeUndefined();
+  });
+
+  test('an explicit UCP_AGENT_PROFILE_URL is deliberately NOT gated', () => {
+    // The documented escape hatch: an operator naming a URL wins over the derivation rule. If this ever
+    // starts failing, the guard was applied to the explicit value too and operators lost their override.
+    process.env.UCP_BUYER_AGENT_PROFILE_ENABLED = '1';
+    process.env.UCP_AGENT_PROFILE_URL = 'https://pivota-agent-production.up.railway.app/.well-known/ucp-agent';
+    const client = createUcpBuyerAgentClient({ fetchImpl: makeFetch({}) });
+    expect(client.describeTier().profile_url)
+      .toBe('https://pivota-agent-production.up.railway.app/.well-known/ucp-agent');
   });
 });
 

@@ -31741,12 +31741,19 @@ function registerUcpBuyerAgentProfileRoute() {
     try {
       // eslint-disable-next-line global-require
       const { buildUcpBuyerAgentProfile } = require('./services/ucpBuyerAgentProfile');
+      // The Host-header fallback mirrors back whichever hostname the fetch arrived on. That is fine for a
+      // branded custom domain, but this service also answers on its GENERATED Railway hostname — and the
+      // profile URL is an identity anchor a merchant binds to, not merely a fetchable address. Reuse the
+      // client's rule so an unconfigured deployment cannot publish infrastructure as its identity. With the
+      // fallback refused the builder OMITS `ucp.profile_url` entirely (it invents no default) — absent beats
+      // an anchor that names a deployment slot, and it is the state UCP_AGENT_PROFILE_URL exists to fix.
+      // eslint-disable-next-line global-require
+      const { agentProfileUrlFromRequestHost } = require('./services/ucpBuyerAgentClient');
       const profileUrl = firstNonEmptyString(
         process.env.UCP_AGENT_PROFILE_URL,
         (() => {
           try {
-            const host = req.headers['x-forwarded-host'] || req.headers.host;
-            return host ? `https://${host}/.well-known/ucp-agent` : undefined;
+            return agentProfileUrlFromRequestHost(req.headers['x-forwarded-host'] || req.headers.host);
           } catch { return undefined; }
         })(),
       );

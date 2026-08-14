@@ -798,12 +798,46 @@ function createUcpBuyerAgentClient(options = {}) {
   };
 }
 
+// Hostname suffixes a PaaS GENERATES for a deployment. They are infrastructure addresses, not identity: the
+// platform owns them, and they change when a service is renamed, moved between projects, or recreated. A
+// profile URL is the opposite — the UCP spec treats it as a stable identity anchor ("Profile URLs are
+// expected to remain consistent across requests") and merchants bind the authenticated identity to it, so
+// deriving one from a generated hostname publishes something we do not control as the thing that names us.
+// Matched on the eTLD+1-ish suffix, so every generated subdomain under them is covered.
+const GENERATED_INFRA_HOST_SUFFIXES = Object.freeze([
+  '.up.railway.app',
+  '.railway.app',
+  '.vercel.app',
+  '.onrender.com',
+  '.herokuapp.com',
+  '.fly.dev',
+]);
+
+/**
+ * True when `hostname` is a hostname a PaaS generated for us rather than a domain we own.
+ * Exported so the profile ROUTE can apply the same rule to its Host-header fallback.
+ */
+function isGeneratedInfraHost(hostname) {
+  if (typeof hostname !== 'string') return false;
+  const h = hostname.trim().toLowerCase();
+  if (!h) return false;
+  return GENERATED_INFRA_HOST_SUFFIXES.some((suffix) => h.endsWith(suffix));
+}
+
 /**
  * `https://origin` -> `https://origin/.well-known/ucp-agent`, or undefined if the origin is unusable.
  *
  * DERIVED, NOT INVENTED: the only input is an origin this service was already configured to serve from, so
  * the result can only ever name a host that answers this route. A non-https or unparseable origin yields
  * undefined rather than a guess — sending a pointer the merchant cannot fetch is what this exists to stop.
+ *
+ * A GENERATED INFRASTRUCTURE HOST IS ALSO REFUSED, even though it resolves today. Reachability is not the
+ * bar here: this URL is an IDENTITY, and *.up.railway.app names a Railway deployment slot, not Pivota. It
+ * survives a redeploy but not a project move or a rename, and the day it stops resolving is the day every
+ * merchant that cached our identity has to re-verify it. Refusing to derive it leaves the pointer ABSENT,
+ * which a merchant reports as a missing field — an actionable failure, unlike an anchor that quietly names
+ * infrastructure. An operator who genuinely wants to publish a generated host can still set
+ * UCP_AGENT_PROFILE_URL, which is deliberately not gated (see its resolution above).
  */
 function agentProfileUrlFromOrigin(baseUrl) {
   if (typeof baseUrl !== 'string' || !baseUrl.trim()) return undefined;
@@ -814,7 +848,29 @@ function agentProfileUrlFromOrigin(baseUrl) {
     return undefined;
   }
   if (url.protocol !== 'https:') return undefined; // the profile is fetched cross-origin; http is not servable
+  if (isGeneratedInfraHost(url.hostname)) return undefined;
   return `${url.origin}/.well-known/ucp-agent`;
+}
+
+/**
+ * The profile ROUTE's last-resort self-reference: mirror back the Host the fetch arrived on.
+ *
+ * Same identity rule as the derived chain, one hop earlier. This service answers on four branded domains AND
+ * on its generated Railway hostname, so a Host-mirroring fallback publishes whichever one the caller happened
+ * to use — including the one Railway owns. Mirroring a branded host is honest (the route demonstrably answers
+ * there, we just served it); mirroring a generated host is not, so it yields undefined and the profile omits
+ * `ucp.profile_url` entirely.
+ *
+ * @param {string|undefined} hostHeader raw Host / X-Forwarded-Host value (may carry a port).
+ */
+function agentProfileUrlFromRequestHost(hostHeader) {
+  if (typeof hostHeader !== 'string') return undefined;
+  // X-Forwarded-Host can be a comma-separated chain; the FIRST entry is the host the client asked for.
+  const host = hostHeader.split(',')[0].trim();
+  if (!host) return undefined;
+  // Only the hostname is tested for the infra rule — the URL keeps the host exactly as sent, port included.
+  if (isGeneratedInfraHost(host.split(':')[0])) return undefined;
+  return `https://${host}/.well-known/ucp-agent`;
 }
 
 function isPlainObjectLocal(v) {
@@ -1157,4 +1213,9 @@ module.exports = {
   signUcpRequest,
   normalizePricedCheckout,
   buildCheckoutArgs,
+  // Exported so the profile ROUTE applies the identical rule to its Host-header fallback, and so a test can
+  // pin the rule itself rather than one caller's behaviour.
+  agentProfileUrlFromOrigin,
+  agentProfileUrlFromRequestHost,
+  isGeneratedInfraHost,
 };
