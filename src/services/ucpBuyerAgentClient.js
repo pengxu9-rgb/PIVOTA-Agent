@@ -190,15 +190,29 @@ function createUcpBuyerAgentClient(options = {}) {
   // always name a URL served elsewhere.
   const buyerProfileDoorLit = ['1', 'true', 'on', 'yes']
     .includes(String(process.env.UCP_BUYER_AGENT_PROFILE_ENABLED || '').trim().toLowerCase());
+  const derivableOrigins = [
+    process.env.UCP_BASE_URL,
+    process.env.AGENT_CHECKOUT_UCP_BASE_URL,
+    process.env.MCP_OAUTH_RESOURCE,
+  ];
   const profileUrl = firstNonEmpty(
     options.profileUrl,
     process.env.UCP_AGENT_PROFILE_URL,
-    ...(buyerProfileDoorLit ? [
-      agentProfileUrlFromOrigin(process.env.UCP_BASE_URL),
-      agentProfileUrlFromOrigin(process.env.AGENT_CHECKOUT_UCP_BASE_URL),
-      agentProfileUrlFromOrigin(process.env.MCP_OAUTH_RESOURCE),
-    ] : []),
+    ...(buyerProfileDoorLit ? derivableOrigins.map(agentProfileUrlFromOrigin) : []),
   );
+  // Which configured origins were REFUSED for naming generated infrastructure. A refusal is otherwise
+  // completely silent — the operator's only symptom is a missing JSON field or, at the SIGNED tier, a throw
+  // at call time. Recorded here so the throw can name the real cause, and warned once at construction so the
+  // cause appears in logs BEFORE the first failed call rather than after it.
+  const refusedInfraOrigins = profileUrl ? [] : derivableOrigins
+    .filter((o) => typeof o === 'string' && o.trim() && isGeneratedInfraHost(safeHostnameOf(o)));
+  if (refusedInfraOrigins.length && typeof options.logger?.warn === 'function') {
+    options.logger.warn(
+      { surface: 'ucp_buyer_agent', refused_origins: refusedInfraOrigins },
+      'ucpBuyerAgentClient: refusing to derive an agent profile URL from a PaaS-generated host; '
+      + 'set UCP_AGENT_PROFILE_URL to a branded URL. The profile pointer will be omitted.',
+    );
+  }
   const ucpVersion = firstNonEmpty(options.ucpVersion, process.env.UCP_AGENT_VERSION, DEFAULT_UCP_VERSION);
   const fetchImpl = typeof options.fetchImpl === 'function'
     ? options.fetchImpl
@@ -533,9 +547,18 @@ function createUcpBuyerAgentClient(options = {}) {
       // request that is both malformed and unverifiable in that field. Refuse by name instead; the cause is
       // a missing config value, and that is what the message says.
       if (!ucpAgentHeaderValue()) {
+        // Name the ACTUAL cause. There are two ways to arrive here and they need opposite fixes: nothing is
+        // configured (point UCP_BASE_URL at the serving origin), or something IS configured but every origin
+        // named a PaaS-generated host and was refused — in which case "set UCP_BASE_URL" is advice that
+        // cannot work, because setting it to that same host is refused again.
         throw new Error(
-          'ucpBuyerAgentClient: signing requires an agent profile URL — set UCP_AGENT_PROFILE_URL (or '
-          + 'UCP_BASE_URL) to the https origin serving /.well-known/ucp-agent.',
+          refusedInfraOrigins.length
+            ? 'ucpBuyerAgentClient: signing requires an agent profile URL, and every configured origin named '
+              + `a PaaS-generated host, which is refused as an identity anchor (${refusedInfraOrigins.join(', ')}). `
+              + 'Set UCP_AGENT_PROFILE_URL to a branded https URL serving /.well-known/ucp-agent — an explicit '
+              + 'value is not subject to this rule.'
+            : 'ucpBuyerAgentClient: signing requires an agent profile URL — set UCP_AGENT_PROFILE_URL (or '
+              + 'UCP_BASE_URL) to the https origin serving /.well-known/ucp-agent.',
         );
       }
       // Mirror the meta pointers as covered HTTP headers, then sign. The private key never leaves this scope.
@@ -803,9 +826,10 @@ function createUcpBuyerAgentClient(options = {}) {
 // profile URL is the opposite — the UCP spec treats it as a stable identity anchor ("Profile URLs are
 // expected to remain consistent across requests") and merchants bind the authenticated identity to it, so
 // deriving one from a generated hostname publishes something we do not control as the thing that names us.
-// Matched on the eTLD+1-ish suffix, so every generated subdomain under them is covered.
+// Matched as a DOT-ANCHORED suffix, so every generated subdomain under them is covered — `.railway.app`
+// already covers the `*.up.railway.app` form we actually shipped, so listing that separately would be a line
+// no test could ever hold to account.
 const GENERATED_INFRA_HOST_SUFFIXES = Object.freeze([
-  '.up.railway.app',
   '.railway.app',
   '.vercel.app',
   '.onrender.com',
@@ -814,12 +838,37 @@ const GENERATED_INFRA_HOST_SUFFIXES = Object.freeze([
 ]);
 
 /**
- * True when `hostname` is a hostname a PaaS generated for us rather than a domain we own.
- * Exported so the profile ROUTE can apply the same rule to its Host-header fallback.
+ * Fold a hostname to the form host comparisons must use.
+ *
+ * Two normalizations, both load-bearing rather than cosmetic. DNS hostnames are case-insensitive but the
+ * `Host` header is case-PRESERVING, so a caller chooses the casing. And the root-labelled FQDN form
+ * (`host.example.com.`) is a legal `Host` that resolves to the same name — WHATWG `URL` preserves that
+ * trailing dot in `.hostname`, so a suffix test against the un-normalized value misses it. Skipping either
+ * one turns every host rule below into something a caller can step around by retyping the same hostname.
+ */
+function normalizeHostname(hostname) {
+  if (typeof hostname !== 'string') return '';
+  return hostname.trim().toLowerCase().replace(/\.+$/, '');
+}
+
+/** Hostname of an https URL string, or '' if it is not one. Never throws. */
+function safeHostnameOf(maybeUrl) {
+  try {
+    return new URL(String(maybeUrl).trim()).hostname;
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * True when `hostname` is a hostname a PaaS generated for a deployment.
+ *
+ * NOT the inverse of "a domain we own" — an arbitrary third-party hostname is not generated infrastructure
+ * and returns false here. This answers one narrow question; it is never sufficient on its own to decide that
+ * a hostname may be published as our identity.
  */
 function isGeneratedInfraHost(hostname) {
-  if (typeof hostname !== 'string') return false;
-  const h = hostname.trim().toLowerCase();
+  const h = normalizeHostname(hostname);
   if (!h) return false;
   return GENERATED_INFRA_HOST_SUFFIXES.some((suffix) => h.endsWith(suffix));
 }
@@ -852,24 +901,63 @@ function agentProfileUrlFromOrigin(baseUrl) {
   return `${url.origin}/.well-known/ucp-agent`;
 }
 
+// The env vars that can name an origin this service was CONFIGURED to serve from. Order is irrelevant — this
+// is a membership set, not a precedence chain (the precedence chain lives at the profileUrl resolution).
+const PROFILE_ORIGIN_ENV_VARS = Object.freeze([
+  'UCP_AGENT_PROFILE_URL',
+  'UCP_BASE_URL',
+  'AGENT_CHECKOUT_UCP_BASE_URL',
+  'MCP_OAUTH_RESOURCE',
+]);
+
+/** Normalized hostnames of every https origin an operator configured for this service. */
+function configuredProfileHostnames(env) {
+  const source = env || process.env;
+  const out = new Set();
+  for (const key of PROFILE_ORIGIN_ENV_VARS) {
+    const raw = source[key];
+    if (typeof raw !== 'string' || !raw.trim()) continue;
+    try {
+      const url = new URL(raw.trim());
+      if (url.protocol !== 'https:') continue;
+      const h = normalizeHostname(url.hostname);
+      if (h) out.add(h);
+    } catch { /* an unparseable env value configures nothing */ }
+  }
+  return out;
+}
+
 /**
  * The profile ROUTE's last-resort self-reference: mirror back the Host the fetch arrived on.
  *
- * Same identity rule as the derived chain, one hop earlier. This service answers on four branded domains AND
- * on its generated Railway hostname, so a Host-mirroring fallback publishes whichever one the caller happened
- * to use — including the one Railway owns. Mirroring a branded host is honest (the route demonstrably answers
- * there, we just served it); mirroring a generated host is not, so it yields undefined and the profile omits
- * `ucp.profile_url` entirely.
+ * THIS INPUT IS CALLER-CONTROLLED, which makes it a different problem from the derived chain even though it
+ * produces the same field. The derived chain reads our own env, so screening out known-bad values there is
+ * config hygiene. Here anyone who can reach the route chooses the string, so screening out known-bad values
+ * is the wrong shape entirely: a suffix denylist passed `evil.example.com` — and every PaaS not on the list —
+ * straight through as the URL that names us. Published under `Cache-Control: public`, that is a shared cache
+ * away from a merchant reading an attacker's hostname as Pivota's identity anchor.
+ *
+ * So this is an ALLOWLIST: mirror the Host only when it is one an operator actually configured (any origin in
+ * PROFILE_ORIGIN_ENV_VARS). Unconfigured hosts yield undefined and the profile omits `ucp.profile_url`, the
+ * same "absent beats wrong" outcome as everywhere else in this resolution. The generated-infra rule still
+ * applies on top, because an operator CAN configure a PaaS origin and it must not become our identity.
+ *
+ * Failing closed also disposes of the parsing edge cases: an IPv6 literal, a port, a trailing-dot FQDN or an
+ * odd-cased Host either normalizes to a configured hostname or is refused. None of them can invent a host.
  *
  * @param {string|undefined} hostHeader raw Host / X-Forwarded-Host value (may carry a port).
+ * @param {{env?: object}} [options] injectable env for tests.
  */
-function agentProfileUrlFromRequestHost(hostHeader) {
+function agentProfileUrlFromRequestHost(hostHeader, options = {}) {
   if (typeof hostHeader !== 'string') return undefined;
   // X-Forwarded-Host can be a comma-separated chain; the FIRST entry is the host the client asked for.
   const host = hostHeader.split(',')[0].trim();
   if (!host) return undefined;
-  // Only the hostname is tested for the infra rule — the URL keeps the host exactly as sent, port included.
-  if (isGeneratedInfraHost(host.split(':')[0])) return undefined;
+  // Compare on the normalized hostname; the emitted URL keeps the host as sent, port included.
+  const hostname = normalizeHostname(host.replace(/:\d+$/, ''));
+  if (!hostname) return undefined;
+  if (isGeneratedInfraHost(hostname)) return undefined;
+  if (!configuredProfileHostnames(options.env).has(hostname)) return undefined;
   return `https://${host}/.well-known/ucp-agent`;
 }
 
@@ -1218,4 +1306,6 @@ module.exports = {
   agentProfileUrlFromOrigin,
   agentProfileUrlFromRequestHost,
   isGeneratedInfraHost,
+  normalizeHostname,
+  configuredProfileHostnames,
 };
