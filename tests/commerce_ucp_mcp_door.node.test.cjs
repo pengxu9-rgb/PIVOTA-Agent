@@ -38,6 +38,7 @@ const {
   buildExternalInvokeContext,
   maybeApplyStrictMcpHostedPaymentDefaults,
   serveCommerceMcpJsonRpc,
+  ucpOmitCapabilityIdsForFlags,
 } = require('../src/server')._debug;
 
 test.after(() => { process.env = { ...ORIGINAL_ENV }; });
@@ -431,5 +432,27 @@ test('the NATIVE door still challenges with — and serves — its own unchanged
     // The bare root document is what native clients discovered before path-insertion; it must not move.
     const root = await supertest(app).get('/.well-known/oauth-protected-resource').expect(200);
     assert.equal(root.body.resource, 'https://shop.pivota.cc/mcp');
+  });
+});
+
+// ---- the money kill-switch still decides what the profile may advertise ------------------------------
+//
+// THE GAP THIS CLOSES, found by review of #1987. The withholding of checkout/ap2 while AGENT_CHECKOUT_STRICT
+// is dark used to be asserted through the SERVED profile ("strict off => checkout absent"). Once a
+// transport-less profile started advertising nothing at all, that assertion passed for the wrong reason:
+// the document is empty either way, so DELETING the omit guard passed every suite in the repo. It is
+// unobservable through the route only because strict-off also implies no transport — and the UCP door
+// already has its own flag, so the day someone decouples it from the money switch this guard is
+// load-bearing again. Driven directly here, where the served document cannot mask it.
+test('strict DARK withholds the money capabilities; strict ON withholds nothing', async () => {
+  await withEnv({ AGENT_CHECKOUT_STRICT: undefined }, () => {
+    assert.deepEqual(
+      ucpOmitCapabilityIdsForFlags().sort(),
+      ['dev.ucp.shopping.ap2_mandate', 'dev.ucp.shopping.checkout'],
+      'the checkout + AP2 capabilities must be withheld while the money doors are hard-404',
+    );
+  });
+  await withEnv({ AGENT_CHECKOUT_STRICT: '1' }, () => {
+    assert.deepEqual(ucpOmitCapabilityIdsForFlags(), [], 'nothing is withheld once the money doors serve');
   });
 });

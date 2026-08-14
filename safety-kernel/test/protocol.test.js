@@ -165,9 +165,11 @@ test('omitCapabilityIds withholds a capability (and its operations) from the pro
   assert.ok(!capIds.includes('dev.ucp.shopping.checkout'));
   assert.ok(!capIds.includes('dev.ucp.shopping.ap2_mandate'));
   assert.ok(capIds.includes('dev.ucp.shopping.catalog.lookup'), 'non-omitted capabilities remain');
-  const allOps = profile.capabilities.flatMap((c) => c.operations);
-  assert.ok(!allOps.includes('create_payment_link'), 'operations of an omitted capability vanish with it');
-  assert.ok(!allOps.includes('complete_checkout_session'));
+  const allOps = profile.capabilities.flatMap((c) => c.operations || []);
+  // NOT asserting create_payment_link here: with an mcp transport declared, the tool-reachability filter
+  // (#1981) drops it in EVERY configuration because it has no `ucpTool`, so the assertion would hold with
+  // the omit filter deleted — vacuous, not weak. The omitted capability's own operations are checked below.
+  assert.ok(!allOps.includes('complete_checkout_session'), 'operations of an omitted capability vanish with it');
   // The intersection can never resurrect an omitted capability.
   assert.deepEqual(activeCapabilityIntersection(profile, ['dev.ucp.shopping.checkout']), []);
   // Omitting nothing is the identity.

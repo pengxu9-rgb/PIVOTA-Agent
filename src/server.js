@@ -31401,6 +31401,22 @@ function getCommerceUcpProfileModule() {
   return commerceUcpProfileModulePromise;
 }
 
+// Which UCP capability ids the profile must WITHHOLD, given the money kill-switch.
+//
+// With AGENT_CHECKOUT_STRICT dark the money doors are hard-404, so advertising the checkout capability
+// would be lying to the platform; omitting it also withholds every operation it carries
+// (create/update/complete/cancel _checkout_session AND create_payment_link).
+//
+// EXTRACTED SO IT CAN BE ASSERTED DIRECTLY. It used to be an inline ternary, and the tests that covered it
+// asserted the SERVED profile with strict off. That stopped constraining anything once a strict-off profile
+// began advertising no capabilities at all (no transport => nothing advertised): the served document is
+// empty either way, so deleting this guard passed every suite. It is unobservable through the route today
+// only because strict-off also means no transport — decouple the UCP door from AGENT_CHECKOUT_STRICT, which
+// its own flag already invites, and this becomes load-bearing again with nothing watching it.
+function ucpOmitCapabilityIdsForFlags() {
+  return isAgentCheckoutStrictEnabled() ? [] : ['dev.ucp.shopping.checkout', 'dev.ucp.shopping.ap2_mandate'];
+}
+
 async function getCommerceUcpRouteHandlers() {
   // Built PER REQUEST (only the ESM import is memoized): env — base URL, signing keys, strict flag — is
   // read fresh each time, so a signing-key rotation or kill-switch flip is reflected on the next request
@@ -31441,13 +31457,7 @@ async function getCommerceUcpRouteHandlers() {
     mcpEndpoint: (isAgentCheckoutStrictEnabled() && isAgentCheckoutUcpToolDoorEnabled())
       ? `${baseUrl.replace(/\/+$/, '')}/ucp/mcp`
       : undefined,
-    // With the checkout kill-switch dark, the money capabilities are hard-404 — a profile advertising
-    // them would be lying to the platform. Omitting the checkout capability also withholds every
-    // operation it carries (create/update/complete/cancel _checkout_session AND create_payment_link);
-    // discovery/order/identity_linking stay advertised, matching what actually serves.
-    omitCapabilityIds: isAgentCheckoutStrictEnabled()
-      ? []
-      : ['dev.ucp.shopping.checkout', 'dev.ucp.shopping.ap2_mandate'],
+    omitCapabilityIds: ucpOmitCapabilityIdsForFlags(),
   });
   return createUcpRouteHandlers(profile);
 }
@@ -51279,6 +51289,10 @@ async function runPdpCorePrewarmPass() {
 
 module.exports = app;
 module.exports._debug = {
+  // Safety property: while the money kill-switch is dark the profile must WITHHOLD the checkout and AP2
+  // capabilities. Exported because the served document no longer distinguishes it — a strict-off profile
+  // advertises nothing at all — so the guard has to be driven directly or it is guarded by nothing.
+  ucpOmitCapabilityIdsForFlags,
   // Latency property: the loopback self-call gets its own budget and never timeout-retries. Exported so
   // the policy is asserted directly, not inferred from the 12k-line handler it protects.
   resolveSelfInvokeBudget,

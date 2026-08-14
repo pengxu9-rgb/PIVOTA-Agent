@@ -114,11 +114,13 @@ test('strict off: the profile is SERVED but advertises nothing callable', async 
   assert.ok(resp.body.ucp_version, 'the profile itself stays up while checkout is dark');
   assert.deepEqual(resp.body.services, [], 'nothing speaks for this profile');
   assert.deepEqual(resp.body.capabilities, [], 'no transport => no capability advertised');
-  // Which necessarily withholds the money capability and its operations — the original subject.
-  const serialized = JSON.stringify(resp.body);
-  assert.ok(!serialized.includes('dev.ucp.shopping.checkout'), 'checkout capability withheld');
-  assert.ok(!serialized.includes('dev.ucp.shopping.ap2_mandate'), 'ap2 mandate capability withheld');
-  assert.ok(!serialized.includes('create_payment_link'), 'create_payment_link not exposed anywhere');
+  // NOTE what is deliberately NOT asserted here. Substring checks for checkout / ap2_mandate /
+  // create_payment_link would be VACUOUS in this state: the whole document is
+  // {ucp_version, provider, services:[], capabilities:[], payment_handlers:[], signing_keys:[]}, so none of
+  // those strings can appear whatever the code does — they would pass with the kill-switch guard deleted.
+  // That guard (which ids to withhold while AGENT_CHECKOUT_STRICT is dark) is driven directly in
+  // tests/commerce_ucp_mcp_door.node.test.cjs against `ucpOmitCapabilityIdsForFlags`, where the served
+  // document cannot mask it.
   // The intersection endpoint reflects the same emptiness — it can never resurrect what is unadvertised.
   const inter = await supertest(app)
     .post('/ucp/capabilities')
