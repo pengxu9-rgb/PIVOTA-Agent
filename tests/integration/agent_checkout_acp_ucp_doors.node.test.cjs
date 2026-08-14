@@ -70,14 +70,15 @@ describe('Agent checkout ACP REST + UCP discovery doors', () => {
       });
     });
 
-    it('serves /.well-known/ucp with version and capabilities, and NO mis-typed REST transport', async () => {
+    it('serves /.well-known/ucp, advertising NO transport and therefore NO capabilities', async () => {
       const res = await request(app).get('/.well-known/ucp');
       assert.equal(res.status, 200);
       assert.ok(res.body.ucp_version, 'has ucp_version');
-      assert.ok(Array.isArray(res.body.capabilities) && res.body.capabilities.length > 0, 'has capabilities');
-      const capIds = res.body.capabilities.map((c) => c.id);
-      // Strict ON: the money capabilities ARE advertised (their doors serve).
-      assert.ok(capIds.includes('dev.ucp.shopping.checkout'), 'checkout advertised while strict is on');
+      // This boot lights discovery but NOT AGENT_CHECKOUT_UCP_TOOL_DOOR_ENABLED, so there is no door.
+      // It used to assert `capabilities.length > 0` and that checkout was among them — five promises a
+      // platform had no endpoint to act on. Under the no-transport rule the list is empty (founder
+      // decision 2026-08-13); the CONTRAST test below is the other half.
+      assert.deepEqual(res.body.capabilities, [], 'no transport => nothing advertised');
 
       // THIS ASSERTION USED TO PIN THE DEFECT. It required
       //   rest.endpoint === 'https://agent.test.local/acp'
@@ -128,9 +129,18 @@ describe('Agent checkout ACP REST + UCP discovery doors', () => {
     });
 
     it('computes the active-capability intersection for a platform', async () => {
-      const profile = await request(app).get('/.well-known/ucp');
+      // Needs a profile that HAS capabilities, so this one boots with the UCP door lit: the intersection
+      // is the subject here, and the enclosing describe's app deliberately leaves the door dark (which now
+      // means an empty capability list — see the test above).
+      const litApp = bootApp({
+        ...STRICT_BASE,
+        AGENT_CHECKOUT_UCP_DISCOVERY_ENABLED: '1',
+        AGENT_CHECKOUT_UCP_TOOL_DOOR_ENABLED: '1',
+        UCP_BASE_URL: 'https://agent.test.local',
+      });
+      const profile = await request(litApp).get('/.well-known/ucp');
       const someCapId = profile.body.capabilities[0].id;
-      const res = await request(app).post('/ucp/capabilities').send({ capabilities: [someCapId] });
+      const res = await request(litApp).post('/ucp/capabilities').send({ capabilities: [someCapId] });
       assert.equal(res.status, 200);
       const ids = (res.body.active_capabilities || []).map((c) => c.id);
       assert.ok(ids.includes(someCapId), 'intersection includes the shared capability');
@@ -138,7 +148,7 @@ describe('Agent checkout ACP REST + UCP discovery doors', () => {
   });
 
   describe('UCP discovery decoupled from the checkout kill-switch', () => {
-    it('serves /.well-known/ucp with AGENT_CHECKOUT_STRICT off (discovery is read-only; the kill-switch governs money paths)', async () => {
+    it('serves /.well-known/ucp with AGENT_CHECKOUT_STRICT off, advertising NOTHING callable', async () => {
       const { AGENT_CHECKOUT_STRICT, ...withoutStrict } = STRICT_BASE;
       const localApp = bootApp({
         ...withoutStrict,
@@ -147,18 +157,48 @@ describe('Agent checkout ACP REST + UCP discovery doors', () => {
       });
       delete process.env.AGENT_CHECKOUT_STRICT;
       const res = await request(localApp).get('/.well-known/ucp');
+
+      // THE DECOUPLING STILL HOLDS, and it is what this describe block is about: the discovery door is
+      // read-only and stays SERVED while the money kill-switch is dark. The profile answers 200 and still
+      // identifies Pivota.
       assert.equal(res.status, 200);
       assert.ok(res.body.ucp_version, 'profile stays up while checkout is dark');
-      // ...but it must not advertise capabilities whose doors are hard-404 while the switch is dark.
+      assert.equal(res.body.provider.merchant_of_record, false);
+
+      // WHAT CHANGED (founder decision 2026-08-13). This used to assert that the READ capabilities were
+      // still advertised here. With strict off there is no transport — the UCP-dialect door needs strict
+      // AND its own flag — so every one of those reads was a capability with no door behind it: the
+      // "advertised but not executable" defect the transport filter itself exists to prevent, one level up.
+      // A profile now advertises what a platform can CALL, so with no transport it advertises nothing.
+      assert.deepEqual(res.body.services, [], 'nothing speaks for this profile while strict is dark');
+      assert.deepEqual(res.body.capabilities, [], 'no transport => no capability may be advertised');
+
+      // ...and the intersection cannot resurrect what the profile does not advertise.
+      const inter = await request(localApp)
+        .post('/ucp/capabilities')
+        .send({ capabilities: ['dev.ucp.shopping.catalog.search', 'dev.ucp.shopping.checkout'] });
+      assert.equal(inter.status, 200);
+      assert.deepEqual(inter.body.active_capabilities, []);
+    });
+
+    it('CONTRAST: with strict on and the UCP door lit, the read capabilities ARE advertised', async () => {
+      // The other half of the rule. Without this, `capabilities: []` above would also be satisfied by a
+      // profile that had simply stopped advertising anything at all.
+      const localApp = bootApp({
+        ...STRICT_BASE,
+        AGENT_CHECKOUT_UCP_DISCOVERY_ENABLED: '1',
+        AGENT_CHECKOUT_UCP_TOOL_DOOR_ENABLED: '1',
+        UCP_BASE_URL: 'https://agent.test.local',
+      });
+      const res = await request(localApp).get('/.well-known/ucp');
+      assert.equal(res.status, 200);
+      assert.deepEqual(res.body.services.map((s) => s.transport), ['mcp']);
+      // Assert the RULE — a live door restores the capability list — not which ids are in it. Which
+      // capabilities Pivota publishes is the subject of the capability-vocabulary work (#1981/#1984) and
+      // moves independently; pinning ids here would make this test fail for reasons that are not its own.
+      assert.ok(res.body.capabilities.length > 0, 'a live transport restores the capability list');
       const capIds = res.body.capabilities.map((c) => c.id);
-      assert.ok(!capIds.includes('dev.ucp.shopping.checkout'), 'checkout withheld while checkout is dark');
-      assert.ok(!capIds.includes('dev.ucp.shopping.ap2_mandate'), 'ap2 mandate withheld while checkout is dark');
-      // The read capabilities, under the ids the SPEC defines. This asserted `dev.ucp.shopping.discovery`
-      // until that id turned out to exist nowhere in the UCP vocabulary — so this test passed while the
-      // capability it checks matched no platform on earth.
-      assert.ok(capIds.includes('dev.ucp.shopping.catalog.search'), 'read capabilities still advertised');
-      assert.ok(capIds.includes('dev.ucp.shopping.catalog.lookup'), 'read capabilities still advertised');
-      assert.ok(capIds.includes('cc.pivota.insights'), 'the vendor decision layer is still advertised');
+      assert.ok(capIds.includes('dev.ucp.shopping.checkout'), 'checkout advertised while strict is on');
     });
   });
 

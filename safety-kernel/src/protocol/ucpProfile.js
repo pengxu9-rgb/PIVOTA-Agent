@@ -236,7 +236,22 @@ export function buildUcpProfile(config = {}) {
         + 'transaction on their own rails.',
     },
     services,
-    capabilities: liveCapabilities,
+    // NO TRANSPORT => NO CAPABILITIES. The same rule as the two filters above, one level up: a
+    // permanently-refused operation is not advertised, a capability with no advertisable operation is
+    // not advertised, and a capability with no DOOR to reach it is not a capability either — it is a
+    // promise a platform cannot act on.
+    //
+    // This supersedes the older "discovery is decoupled from the checkout kill-switch" display, in which
+    // a strict-off profile kept advertising the read capabilities. That behaviour was written when the
+    // MCP transport was unconditional, so those capabilities really were callable; once #1966 made the
+    // transport conditional (a door that cannot serve one UCP call must not be advertised as one), the
+    // same profile started listing reads nothing could reach. Founder decision 2026-08-13: the profile
+    // states what a platform can CALL, so with no transport it advertises nothing.
+    //
+    // The profile itself stays up either way — `ucp_version`, `provider`, `payment_handlers` and
+    // `signing_keys` are unchanged, so discovery still answers 200 and still identifies Pivota. Only the
+    // list of things you could invoke goes empty, which is the honest answer when nothing serves.
+    capabilities: services.length > 0 ? liveCapabilities : [],
     payment_handlers: Array.isArray(config.paymentHandlers) ? config.paymentHandlers : [],
     // PUBLIC keys platforms verify Pivota's order webhooks / receipts against (ES256, P-256).
     // Sourced from config.signingKeys or env UCP_BUSINESS_SIGNING_PUBLIC_JWK; validated so a
