@@ -71982,6 +71982,35 @@ function normalizeIngredientGoalToken(raw) {
   return '';
 }
 
+// Free text names a CONCERN far more often than it names an INCI: "what ingredient is best for acne?".
+// Each alternative below is one the goal taxonomy in normalizeIngredientGoalToken already resolves, so the
+// mapping concern -> goal stays defined in exactly one place. Word boundaries matter on the EN cues: a bare
+// substring test reads "antioxidant" as an anti-aging goal. CN has no word boundaries, hence the separate cues.
+const INGREDIENT_GOAL_TEXT_CUES = [
+  /\b(acne|breakouts?|clogged pores?|pores?|oiliness|oily)\b/i,
+  /\b(dark spots?|hyperpigmentation|pigmentation|uneven tone|brightening)\b/i,
+  /\b(barrier|redness|sensitive)\b/i,
+  /\b(anti[-\s]?aging|aging|wrinkles?|fine lines?|firming|firmness)\b/i,
+  /\b(dryness|dry|dehydrated|dehydration)\b/i,
+  /(痘痘|闭口|粉刺|毛孔|出油|控痘)/,
+  /(淡斑|色沉|暗沉|提亮|美白)/,
+  /(屏障|修护|敏感|泛红)/,
+  /(抗老|抗衰|细纹|紧致|提拉)/,
+  /(干燥|补水|保湿)/,
+];
+
+function ingredientGoalTargetFromText(text) {
+  const raw = String(text || '').trim();
+  if (!raw) return '';
+  for (const cue of INGREDIENT_GOAL_TEXT_CUES) {
+    const hit = raw.match(cue);
+    if (!hit) continue;
+    const goal = normalizeIngredientGoalToken(hit[0]);
+    if (goal) return goal;
+  }
+  return '';
+}
+
 function normalizeIngredientSensitivityToken(raw) {
   const token = String(raw || '').trim().toLowerCase();
   if (!token) return 'unknown';
@@ -99195,6 +99224,9 @@ function mountAuroraBffRoutes(app, { logger }) {
       const ingredientLookupTargetFromText = ingredientTextTrigger
         ? await extractIngredientLookupTargetFromText(message, ctx.lang)
         : '';
+      const ingredientGoalTargetFromTextValue = ingredientTextTrigger
+        ? ingredientGoalTargetFromText(message)
+        : '';
       const ingredientEntityMatch = ingredientTextTrigger
         ? ingredientEntityMatchFromText(message, ctx.lang)
         : { normalized_query: '', entity_key: '', entity_match_type: 'none', entity_confidence: 0 };
@@ -99696,6 +99728,87 @@ function mountAuroraBffRoutes(app, { logger }) {
           events,
         });
       };
+      // The by-goal answer is reachable two ways: tapping the hub's "Find by goal" chip, and typing a question
+      // that names the concern. Both must produce the same card, so neither call site owns the body.
+      const buildIngredientGoalMatchEnvelope = async ({
+        goal = '',
+        sensitivity = 'unknown',
+        routeSource = 'chip',
+        queryFirstApplied = false,
+        explicitRouteReasons = [],
+      } = {}) => {
+        const requestedGoal = goal || 'barrier';
+        const contextSource = routeSource === 'text' ? 'text_goal' : 'chip_goal';
+        ingredientRecoContext = mergeIngredientRecoContextValue(ingredientRecoContext, {
+          goal: requestedGoal,
+          sensitivity,
+          source: contextSource,
+          updated_at_ms: Date.now(),
+        });
+        const goalPayloadBase = buildIngredientGoalMatchPayload({
+          language: ctx.lang,
+          goal: requestedGoal,
+          sensitivity,
+        });
+        const goalPayload = await enrichIngredientGoalMatchPayload({
+          basePayload: goalPayloadBase,
+          language: ctx.lang,
+          goal: requestedGoal,
+          sensitivity,
+          logger,
+        });
+        const candidateNames = Array.isArray(goalPayload && goalPayload.candidate_ingredients)
+          ? goalPayload.candidate_ingredients
+            .map((item) => pickFirstTrimmed(item && item.ingredient, item && item.name))
+            .filter(Boolean)
+          : [];
+        ingredientRecoContext = mergeIngredientRecoContextValue(ingredientRecoContext, {
+          candidates: candidateNames,
+          source: contextSource,
+          updated_at_ms: Date.now(),
+        });
+        // Name the actives in the assistant text too: a client that renders only the message must still see the
+        // answer, not just a pointer at the card.
+        const namedActives = candidateNames.slice(0, 4).join(ctx.lang === 'CN' ? '、' : ', ');
+        const assistantText =
+          ctx.lang === 'CN'
+            ? namedActives
+              ? `按“${goalPayload.goal_label}”，优先考虑：${namedActives}。下面是证据强度与避坑组合。`
+              : `已按“${goalPayload.goal_label}”给你整理候选成分与避坑组合。`
+            : namedActives
+              ? `For “${goalPayload.goal_label}”, the actives worth starting from are: ${namedActives}. Below are their evidence grades and the pairings to avoid.`
+              : `I mapped candidate ingredients and avoid-pairs for “${goalPayload.goal_label}”.`;
+        requestMessage = 'ingredient_goal_match';
+        return buildEnvelope(ctx, {
+          assistant_message: makeAssistantMessage(assistantText),
+          suggested_chips: buildIngredientHubQuickReplyChips({ language: ctx.lang }),
+          cards: [
+            {
+              card_id: `ingredient_goal_match_${ctx.request_id}`,
+              type: 'ingredient_goal_match',
+              payload: goalPayload,
+            },
+          ],
+          session_patch: attachIngredientContextMetaToSessionPatch(
+            attachAnalysisContextUsageToSessionPatch(
+              attachIngredientRouteMetaToSessionPatch(
+                nextStateOverride && stateChangeAllowed(ctx.trigger_source) ? { next_state: nextStateOverride } : {},
+                {
+                  queryFirstApplied,
+                  routeSource,
+                  routeDecisionReasons: Array.isArray(explicitRouteReasons)
+                    ? explicitRouteReasons.map((value) => String(value || '').trim()).filter(Boolean)
+                    : [],
+                  routeRuleVersion: INGREDIENT_ROUTE_RULE_VERSION,
+                },
+              ),
+              ingredientAnalysisTaskContext,
+            ),
+            ingredientRecoContext,
+          ),
+          events: [makeEvent(ctx, 'state_entered', { next_state: ctx.state || 'idle', reason: 'ingredient_goal_match' })],
+        });
+      };
       if (ingredientEntryRequested) {
         recordAuroraIngredientsFlowMetric({ stage: 'entry_opened', hit: true });
       }
@@ -99979,64 +100092,11 @@ function mountAuroraBffRoutes(app, { logger }) {
       }
 
       if (ingredientByGoalRequested) {
-        const requestedGoal = ingredientGoalRequest.goal || 'barrier';
-        ingredientRecoContext = mergeIngredientRecoContextValue(ingredientRecoContext, {
-          goal: requestedGoal,
+        const envelope = await buildIngredientGoalMatchEnvelope({
+          goal: ingredientGoalRequest.goal,
           sensitivity: ingredientGoalRequest.sensitivity,
-          source: ingredientTextTrigger ? 'text_goal' : 'chip_goal',
-          updated_at_ms: Date.now(),
-        });
-        const goalPayloadBase = buildIngredientGoalMatchPayload({
-          language: ctx.lang,
-          goal: requestedGoal,
-          sensitivity: ingredientGoalRequest.sensitivity,
-        });
-        const goalPayload = await enrichIngredientGoalMatchPayload({
-          basePayload: goalPayloadBase,
-          language: ctx.lang,
-          goal: requestedGoal,
-          sensitivity: ingredientGoalRequest.sensitivity,
-          logger,
-        });
-        ingredientRecoContext = mergeIngredientRecoContextValue(ingredientRecoContext, {
-          candidates: Array.isArray(goalPayload && goalPayload.candidate_ingredients)
-            ? goalPayload.candidate_ingredients.map((item) =>
-              pickFirstTrimmed(item && item.ingredient, item && item.name),
-            ).filter(Boolean)
-            : [],
-          source: ingredientTextTrigger ? 'text_goal' : 'chip_goal',
-          updated_at_ms: Date.now(),
-        });
-        const assistantText =
-          ctx.lang === 'CN'
-            ? `已按“${goalPayload.goal_label}”给你整理候选成分与避坑组合。`
-            : `I mapped candidate ingredients and avoid-pairs for “${goalPayload.goal_label}”.`;
-        requestMessage = 'ingredient_goal_match';
-        const envelope = buildEnvelope(ctx, {
-          assistant_message: makeAssistantMessage(assistantText),
-          suggested_chips: buildIngredientHubQuickReplyChips({ language: ctx.lang }),
-          cards: [
-            {
-              card_id: `ingredient_goal_match_${ctx.request_id}`,
-              type: 'ingredient_goal_match',
-              payload: goalPayload,
-            },
-          ],
-          session_patch: attachIngredientContextMetaToSessionPatch(
-            attachAnalysisContextUsageToSessionPatch(
-              attachIngredientRouteMetaToSessionPatch(
-                nextStateOverride && stateChangeAllowed(ctx.trigger_source) ? { next_state: nextStateOverride } : {},
-                {
-                  routeSource: 'chip',
-                  routeDecisionReasons: ['goal_match', ...ingredientRouteDecisionReasons],
-                  routeRuleVersion: INGREDIENT_ROUTE_RULE_VERSION,
-                },
-              ),
-              ingredientAnalysisTaskContext,
-            ),
-            ingredientRecoContext,
-          ),
-          events: [makeEvent(ctx, 'state_entered', { next_state: ctx.state || 'idle', reason: 'ingredient_goal_match' })],
+          routeSource: 'chip',
+          explicitRouteReasons: ['goal_match', ...ingredientRouteDecisionReasons],
         });
         return sendChatEnvelope(envelope);
       }
@@ -101745,6 +101805,20 @@ function mountAuroraBffRoutes(app, { logger }) {
               ingredientEntityMatch.entity_match_type === 'none' ? 'entity_fallback_from_text' : '',
               ...ingredientRouteDecisionReasons,
             ].filter(Boolean),
+          });
+          if (envelope) return sendChatEnvelope(envelope);
+        }
+
+        // No INCI resolved, but the question named a concern ("what ingredient is best for acne?"). That is the
+        // by-goal question typed out, so answer it through the by-goal path rather than handing back the menu the
+        // asker would have to tap through to reach the same answer.
+        if (ingredientGoalTargetFromTextValue) {
+          const envelope = await buildIngredientGoalMatchEnvelope({
+            goal: ingredientGoalTargetFromTextValue,
+            sensitivity: ingredientGoalRequest.sensitivity,
+            routeSource: 'text',
+            queryFirstApplied: true,
+            explicitRouteReasons: ['text_query_routed', 'goal_match_from_text', ...ingredientRouteDecisionReasons],
           });
           if (envelope) return sendChatEnvelope(envelope);
         }
