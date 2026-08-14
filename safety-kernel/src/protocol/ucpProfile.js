@@ -136,7 +136,14 @@ function nonEmptyString(v) {
   return typeof v === 'string' && v.trim() !== '';
 }
 
-/** `extends` in either of the spec's two forms (`"a"` or `["a","b"]`) as a list, or null for a ROOT. */
+/**
+ * `extends` in either of the spec's two forms (`"a"` or `["a","b"]`) as a list, or null for a ROOT.
+ *
+ * An EMPTY array is an extension with no reachable parent, NOT a root: the spec's rule is "remove any
+ * capability where `extends` is set but none of its parents are in the intersection", and `[]` satisfies
+ * "set" while having no parent present. Returning null for it would make a malformed platform document
+ * un-prunable — the one shape that turns this guard off comes from the counterparty, not from us.
+ */
 function parentList(ext) {
   if (ext === undefined || ext === null) return null;
   return Array.isArray(ext) ? ext : [ext];
@@ -310,15 +317,32 @@ export function buildUcpProfile(config = {}) {
   const services = serviceEntries.length ? { [SHOPPING_SERVICE]: serviceEntries } : {};
 
   // capabilities: a MAP of id -> [entry], each entry carrying the REQUIRED `version`/`spec`/`schema`.
+  //
+  // NO TRANSPORT => NO CAPABILITIES (#1987). The same rule as the filters above, one level up: a
+  // permanently-refused operation is not advertised, a capability with no advertisable operation is not
+  // advertised, and a capability with no DOOR to reach it is not a capability either — it is a promise a
+  // platform cannot act on. It is exactly what the documented rollback produces: unsetting
+  // AGENT_CHECKOUT_UCP_TOOL_DOOR_ENABLED withholds the only transport while strict keeps the capabilities.
+  //
+  // THE PREDICATE IS `serviceEntries.length`, NOT `services.length`. #1987 wrote `services.length > 0` when
+  // `services` was an ARRAY; this change makes it the spec's MAP, and `{}.length` is `undefined`, so the
+  // ported condition would be permanently FALSE — a production profile advertising nothing at all, with
+  // every suite still green because the no-transport case is the one that gets asserted. #1987's own merge
+  // note called this out in advance; it is reconciled here rather than rediscovered in production.
+  //
+  // The profile itself stays up either way — version, provider, payment_handlers and signing_keys are
+  // unchanged, so discovery still answers 200 and still identifies Pivota. Only the invocable list empties.
   const capabilityMap = {};
-  for (const c of liveCapabilities) {
-    capabilityMap[c.id] = [pruneUndefined({
-      version,
-      spec: c.specUrl,
-      schema: c.schemaUrl,
-      extends: c.extends,
-      config: c.config,
-    })];
+  if (serviceEntries.length > 0) {
+    for (const c of liveCapabilities) {
+      capabilityMap[c.id] = [pruneUndefined({
+        version,
+        spec: c.specUrl,
+        schema: c.schemaUrl,
+        extends: c.extends,
+        config: c.config,
+      })];
+    }
   }
 
   return {
@@ -378,11 +402,33 @@ function serviceEntry(version, transport, endpoint) {
  */
 function capabilityDocUrls(cap, config = {}) {
   const override = (config.vendorCapabilityDocs || {})[cap.ucp];
-  if (override) return pruneUndefined({ specUrl: override.spec, schemaUrl: override.schema });
+  if (override) {
+    // THE ORIGIN MUST MATCH THE NAMESPACE AUTHORITY. A vendor capability is named by reverse-DNS of a domain
+    // its documents live on (`cc.pivota.insights` -> pivota.cc), and a validating platform checks that. An
+    // override pointing `cc.pivota.insights` at ucp.dev would publish a document we do not control under a
+    // name that claims we do — so it is refused rather than published, which is the same call as withholding
+    // a capability with no documents at all.
+    const authority = vendorAuthorityHost(cap.ucp);
+    const ok = (u) => typeof u === 'string' && hostOf(u) === authority;
+    if (authority && !(ok(override.spec) && ok(override.schema))) return {};
+    return pruneUndefined({ specUrl: override.spec, schemaUrl: override.schema });
+  }
   return pruneUndefined({
     specUrl: cap.specName ? `${UCP_SPEC_BASE}${cap.specName}` : undefined,
     schemaUrl: cap.schemaName ? `${UCP_SCHEMA_BASE}${cap.schemaName}` : undefined,
   });
+}
+
+/** `cc.pivota.insights` -> `pivota.cc`. Null for a standard `dev.ucp.*` id, which is not vendor-namespaced. */
+function vendorAuthorityHost(capabilityId) {
+  const labels = String(capabilityId || '').split('.');
+  if (labels.length < 3) return null;
+  if (labels[0] === 'dev' && labels[1] === 'ucp') return null; // a standard id, not a vendor authority
+  return `${labels[1]}.${labels[0]}`;
+}
+
+function hostOf(url) {
+  try { return new URL(url).host; } catch { return null; }
 }
 
 /** Drop undefined members so an absent optional never ships as an explicit `undefined`. */
@@ -408,13 +454,26 @@ function pruneUndefined(obj) {
  * payment time. Nothing configures handlers today (`ucpPaymentHandlers` is unset everywhere), so this fixes
  * the shape before it has a chance to ship.
  */
+// At least TWO labels (`com.stripe`), lowercase, no leading/trailing dot, no empty label. The spec's own
+// examples are three (`com.google.pay`) but two is a legitimate authority, and requiring three would
+// silently drop a valid handler — the same "withheld for a reason nothing announces" failure this rule
+// exists to prevent, inverted. Case matters because a platform matches these keys literally.
 function isReverseDnsNamespace(v) {
-  return typeof v === 'string' && /^[a-z0-9-]+(\.[a-z0-9_-]+){2,}$/.test(v);
+  return typeof v === 'string' && /^[a-z0-9-]+(\.[a-z0-9_-]+)+$/.test(v);
 }
 
 function toPaymentHandlerMap(handlers) {
-  // Already the spec's map form — pass through untouched.
-  if (handlers && !Array.isArray(handlers) && typeof handlers === 'object') return handlers;
+  // The spec's map form, supplied directly. Its KEYS get the same rule as the array form's: an operator can
+  // hand-build this map, and passing it through unvalidated would leave exactly one way to publish a handler
+  // under a name no platform can match — which is the defect this function exists to close.
+  if (handlers && !Array.isArray(handlers) && typeof handlers === 'object') {
+    const out = {};
+    for (const [key, value] of Object.entries(handlers)) {
+      if (!isReverseDnsNamespace(key)) continue;
+      out[key] = value;
+    }
+    return out;
+  }
   const out = {};
   for (const h of Array.isArray(handlers) ? handlers : []) {
     if (!isReverseDnsNamespace(h?.namespace)) continue;

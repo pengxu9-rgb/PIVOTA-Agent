@@ -109,33 +109,33 @@ test('GET /.well-known/ucp is dark (404) when the discovery flag is off', async 
 });
 
 // M8: with the checkout kill-switch dark, the money capabilities must not be advertised.
-test('strict off: profile withholds checkout/ap2 capabilities (and create_payment_link with them)', async () => {
+test('strict off: the profile is SERVED but advertises nothing callable', async () => {
+  // This suite boots with AGENT_CHECKOUT_STRICT deleted, which is the point of the file's headline
+  // invariant: /.well-known/ucp is decoupled from the money kill-switch and keeps answering 200.
+  //
+  // WHAT CHANGED (founder decision 2026-08-13). It used to assert that checkout/ap2 were withheld while
+  // the READ capabilities stayed advertised. But strict-off also means no transport — the UCP-dialect
+  // door requires strict AND its own flag — so those reads named no reachable endpoint. A profile now
+  // advertises what a platform can CALL, so with no transport the capability list is empty and the
+  // withholding of checkout/ap2 is subsumed by it.
   const resp = await supertest(app).get('/.well-known/ucp').expect(200);
-  // `capabilities` is a MAP keyed by id — the spec's shape.
-  const capIds = Object.keys(resp.body.ucp.capabilities);
-  assert.ok(!capIds.includes('dev.ucp.shopping.checkout'), 'checkout capability withheld');
-  assert.ok(!capIds.includes('dev.ucp.shopping.ap2_mandate'), 'ap2 mandate capability withheld');
-  // The read capabilities under the ids the SPEC defines — this asserted `dev.ucp.shopping.discovery`, an id
-  // that exists nowhere in the UCP vocabulary, so it passed while matching no platform.
-  assert.ok(capIds.includes('dev.ucp.shopping.catalog.search'), 'read capabilities still advertised');
-  // The vendor decision layer is WITHHELD: `cc.pivota.insights` has no hosted spec/schema, and the spec marks
-  // both REQUIRED for every capability — a validator rejects the WHOLE document over one partial entry, so a
-  // half-filled vendor entry would take the read capabilities above down with it.
-  assert.ok(!capIds.includes('cc.pivota.insights'), 'no capability without its required documents');
-  // Operations are not a spec member and are no longer published, so the withholding is asserted on the
-  // serialized body — the previous `[].includes(...)` form was vacuously true.
-  assert.ok(!JSON.stringify(resp.body).includes('create_payment_link'), 'create_payment_link not exposed anywhere');
-  // Every published entry carries the members the spec marks REQUIRED.
-  for (const [id, entries] of Object.entries(resp.body.ucp.capabilities)) {
-    assert.equal(typeof entries[0].spec, 'string', `${id} must publish a spec URL`);
-    assert.equal(typeof entries[0].schema, 'string', `${id} must publish a schema URL`);
-  }
-  // The intersection endpoint reflects the same withholding.
+  assert.ok(resp.body.ucp.version, 'the profile itself stays up while checkout is dark');
+  // Both members are MAPS in the spec's shape, so empty is `{}` rather than `[]`.
+  assert.deepEqual(resp.body.ucp.services, {}, 'nothing speaks for this profile');
+  assert.deepEqual(resp.body.ucp.capabilities, {}, 'no transport => no capability advertised');
+  // NOTE what is deliberately NOT asserted here. Substring checks for checkout / ap2_mandate /
+  // create_payment_link would be VACUOUS in this state: the whole document is
+  // {ucp:{version,services:{},capabilities:{},payment_handlers:{}}, provider, signing_keys:[]}, so none of
+  // those strings can appear whatever the code does — they would pass with the kill-switch guard deleted.
+  // That guard (which ids to withhold while AGENT_CHECKOUT_STRICT is dark) is driven directly in
+  // tests/commerce_ucp_mcp_door.node.test.cjs against `ucpOmitCapabilityIdsForFlags`, where the served
+  // document cannot mask it.
+  // The intersection endpoint reflects the same emptiness — it can never resurrect what is unadvertised.
   const inter = await supertest(app)
     .post('/ucp/capabilities')
     .send({ capabilities: ['dev.ucp.shopping.checkout', 'dev.ucp.shopping.catalog.search'] })
     .expect(200);
-  assert.deepEqual(Object.keys(inter.body.ucp.capabilities), ['dev.ucp.shopping.catalog.search']);
+  assert.deepEqual(inter.body.ucp.capabilities, {});
 });
 
 // M9: the profile is built per request — a bad signing-key env 503s only while it is bad, and key

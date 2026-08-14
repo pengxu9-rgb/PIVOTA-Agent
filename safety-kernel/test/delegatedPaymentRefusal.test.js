@@ -242,7 +242,12 @@ test('contract: exchange_payment_token is flagged refusalOnly and the flag is di
 });
 
 test('UCP profile: the refused operation and its now-empty capability are never advertised', () => {
-  const profile = buildUcpProfile({ baseUrl: 'https://ucp.test.local' }); // no omissions: full advertisement
+  // no omissions: full advertisement. A transport is required for capabilities to appear at all
+  // (the no-transport rule in ucpProfile.js), so this declares one and keeps the subject the refusal.
+  const profile = buildUcpProfile({
+    baseUrl: 'https://ucp.test.local',
+    mcpEndpoint: 'https://ucp.test.local/ucp/mcp',
+  });
   const serialized = JSON.stringify(profile);
   assert.ok(!serialized.includes('exchange_payment_token'), 'canonical op not advertised');
   assert.ok(!serialized.includes('payment.token_exchange'), 'UCP surface name not advertised');
@@ -252,21 +257,23 @@ test('UCP profile: the refused operation and its now-empty capability are never 
   assert.ok(!capIds.includes('dev.ucp.shopping.ap2_mandate'));
   // Everything executable is still advertised, and no capability is left empty.
   assert.ok(capIds.includes('dev.ucp.shopping.checkout'));
-  // NOTE this fixture advertises NO transport, so the tool-reachability filter does not apply — there is no
-  // tool surface for an operation to be absent from, and the full capability set is the honest answer. The
-  // mcp-transport case (where catalog.search / insights / order ARE withheld) is asserted in
-  // protocol.test.js 'a capability is advertised ONLY where the advertised door can actually serve it'.
-  assert.ok(capIds.includes('dev.ucp.shopping.catalog.search'));
+  // This fixture now DECLARES a transport, because a transport-less profile advertises nothing at all
+  // (no-transport rule, founder decision 2026-08-13) and this test's subject is the refusal, not the
+  // empty case. With a door advertised the tool-reachability filter applies, so catalog.search / insights
+  // / order are withheld here — that filter is unchanged by this rule and is asserted in protocol.test.js
+  // 'a capability is advertised ONLY where the advertised door can actually serve it'.
   assert.ok(capIds.includes('dev.ucp.shopping.catalog.lookup'));
-  assert.ok(capIds.includes('dev.ucp.shopping.order'));
   assert.ok(capIds.includes('dev.ucp.common.identity_linking'));
-  // …but NOT the vendor capability, whose spec/schema documents are not hosted. Withholding it is what keeps
+  assert.ok(!capIds.includes('dev.ucp.shopping.catalog.search'), 'no ucpTool behind it on this door');
+  assert.ok(!capIds.includes('dev.ucp.shopping.order'), 'no ucpTool behind it on this door');
+  // …and NOT the vendor capability, whose spec/schema documents are not hosted. Withholding it is what keeps
   // the document valid; a partial entry would make a validator reject all of the above with it.
-  assert.ok(!capIds.includes('cc.pivota.insights'));
+  assert.ok(!capIds.includes('cc.pivota.insights'), 'no hosted spec/schema documents');
   // No capability is a title with nothing behind it. `operations` is not a spec member and is no longer
   // published, so the rule is asserted on what the document DOES carry plus the contract behind each id: a
-  // MODIFIER (UCP `extends` + `config`) is the one entry with no operations of its OWN — what stands behind
-  // it is its config plus the capability it extends, which must itself be advertised.
+  // MODIFIER (UCP `extends` + `config`, e.g. dev.ucp.shopping.fulfillment) is the one entry with no
+  // operations of its OWN — what stands behind it is its config plus the capability it extends, which must
+  // itself be advertised. So the rule is not relaxed, it is stated exactly: operations, or a present parent.
   const capIdSet = new Set(capIds);
   for (const [id, entries] of Object.entries(profile.ucp.capabilities)) {
     const entry = entries[0];

@@ -167,14 +167,29 @@ test('payment handlers are keyed by a reverse-DNS namespace, and un-addressable 
   // reverse-DNS handler name, which is the defect this rule exists to prevent.
   assert.deepEqual(build([{ id: 'stripe_spt', psp: 'stripe' }]), {});
   // A namespace that is not reverse-DNS is not a namespace — `id` smuggled into the field is still dropped.
-  assert.deepEqual(build([{ namespace: 'stripe_spt', id: 'stripe_spt' }]), {});
-  assert.deepEqual(build([{ namespace: 'pivota.cc', id: 'x' }]), {}, 'two labels is not reverse-DNS');
+  assert.deepEqual(build([{ namespace: 'stripe_spt', id: 'stripe_spt' }]), {}, 'a bare local name is not a namespace');
   // A real one is published under its namespace, with the entry (including its own local id) intact.
   assert.deepEqual(build([{ namespace: 'com.google.pay', id: 'gpay' }]), {
     'com.google.pay': [{ namespace: 'com.google.pay', id: 'gpay' }],
   });
-  // Callers may pass the spec's map form directly; it is passed through untouched.
+  // A TWO-label authority is legitimate (`com.stripe`); requiring three would silently drop a valid handler,
+  // which is the same "withheld for a reason nothing announces" failure inverted.
+  assert.deepEqual(build([{ namespace: 'com.stripe', id: 'spt' }]), {
+    'com.stripe': [{ namespace: 'com.stripe', id: 'spt' }],
+  });
+  // Case and shape are literal — a platform matches these keys byte-for-byte.
+  assert.deepEqual(build([{ namespace: 'COM.GOOGLE.PAY', id: 'gpay' }]), {}, 'uppercase is not the same key');
+  assert.deepEqual(build([{ namespace: 'com.google.pay.', id: 'gpay' }]), {}, 'a trailing dot is malformed');
+
+  // Callers may pass the spec's map form directly — and ITS KEYS get the same rule. Passing the map through
+  // unvalidated would leave exactly one route to publishing a handler under an unmatchable name.
   assert.deepEqual(build({ 'com.google.pay': [{ id: 'gpay' }] }), { 'com.google.pay': [{ id: 'gpay' }] });
+  assert.deepEqual(build({ stripe_spt: [{ id: 'stripe_spt' }] }), {}, 'a non-reverse-DNS map key is dropped');
+  assert.deepEqual(
+    build({ 'com.google.pay': [{ id: 'gpay' }], stripe_spt: [{ id: 'x' }] }),
+    { 'com.google.pay': [{ id: 'gpay' }] },
+    'the good key survives while the bad one is dropped',
+  );
   // Absent config is an empty MAP, not an empty array — the spec member is an object.
   assert.deepEqual(build(undefined), {});
 });
@@ -214,6 +229,9 @@ test('business signing keys: env-sourced, validated, and NEVER private', () => {
 test('omitCapabilityIds withholds a capability (and its operations) from the profile', () => {
   const profile = buildUcpProfile({
     baseUrl: 'https://shop.pivota.cc',
+    // A transport is required for ANY capability to be advertised (the no-transport rule in
+    // ucpProfile.js); this test is about omitCapabilityIds, so give it a door and keep the subject single.
+    mcpEndpoint: 'https://shop.pivota.cc/ucp/mcp',
     omitCapabilityIds: ['dev.ucp.shopping.checkout', 'dev.ucp.shopping.ap2_mandate'],
   });
   const capIds = Object.keys(profile.ucp.capabilities);
@@ -223,16 +241,28 @@ test('omitCapabilityIds withholds a capability (and its operations) from the pro
   // Operations are no longer a published member, so the withholding is asserted on what the document
   // ACTUALLY CARRIES — the serialized body. (A previous revision asserted `![].includes(...)`, which is
   // vacuously true and would have passed even if the operation were published in full.)
+  //
+  // NOT asserting `create_payment_link` here (#1987's finding, preserved): with an mcp transport declared,
+  // the tool-reachability filter (#1981) drops it in EVERY configuration because it has no `ucpTool`, so
+  // that assertion would hold with the omit filter deleted — vacuous, not weak. `complete_checkout_session`
+  // IS reachable and belongs to the omitted capability, so it is the one that constrains the omission.
   const serialized = JSON.stringify(profile);
-  assert.ok(!serialized.includes('create_payment_link'), 'operations of an omitted capability vanish with it');
-  assert.ok(!serialized.includes('complete_checkout_session'));
+  assert.ok(!serialized.includes('complete_checkout_session'), 'operations of an omitted capability vanish with it');
   // ...and the same assertion detects a real leak: a profile that DOES advertise checkout names it.
-  const withCheckout = JSON.stringify(buildUcpProfile({ baseUrl: 'https://shop.pivota.cc' }));
+  const withCheckout = JSON.stringify(buildUcpProfile({
+    baseUrl: 'https://shop.pivota.cc',
+    mcpEndpoint: 'https://shop.pivota.cc/ucp/mcp',
+  }));
   assert.ok(withCheckout.includes('dev.ucp.shopping.checkout'), 'the serialized check is not vacuous');
   // The intersection can never resurrect an omitted capability.
   assert.deepEqual(activeCapabilityIntersection(profile, ['dev.ucp.shopping.checkout']), {});
-  // Omitting nothing is the identity.
-  const full = buildUcpProfile({ baseUrl: 'https://shop.pivota.cc', omitCapabilityIds: [] });
+  // Omitting nothing is the identity. A transport is required for ANY capability to be advertised (#1987),
+  // so it is declared here rather than leaving the profile empty for an unrelated reason.
+  const full = buildUcpProfile({
+    baseUrl: 'https://shop.pivota.cc',
+    mcpEndpoint: 'https://shop.pivota.cc/ucp/mcp',
+    omitCapabilityIds: [],
+  });
   assert.ok(Object.keys(full.ucp.capabilities).includes('dev.ucp.shopping.checkout'));
 });
 
@@ -243,7 +273,7 @@ test('UCP profile requires an https baseUrl and rejects unknown advertised capab
 });
 
 test('activeCapabilityIntersection returns only capabilities both sides support', () => {
-  const profile = buildUcpProfile({ baseUrl: 'https://shop.pivota.cc' });
+  const profile = buildUcpProfile({ baseUrl: 'https://shop.pivota.cc', mcpEndpoint: 'https://shop.pivota.cc/ucp/mcp' });
   const active = activeCapabilityIntersection(profile, ['dev.ucp.shopping.checkout', 'dev.ucp.some.future.thing']);
   // A MAP of id -> [{version}], per the spec's "Capability Declaration in Responses".
   assert.deepEqual(Object.keys(active), ['dev.ucp.shopping.checkout']);
@@ -345,6 +375,77 @@ test('intersection step 4: pruning REPEATS to a fixed point, so a transitive cha
     ])).sort(),
     ['cc.pivota.child', 'cc.pivota.grandchild', 'dev.ucp.shopping.cart'],
   );
+});
+
+test('an EMPTY extends array is an orphan, not a root', () => {
+  // The spec prunes "any capability where `extends` is SET but none of its parents are in the intersection".
+  // `[]` is set and has no present parent, so it prunes. Treating it as a root instead would let a malformed
+  // platform document turn this guard off from the OUTSIDE — the counterparty controls this field, not us.
+  const profile = syntheticProfile({
+    'dev.ucp.shopping.checkout': entry(),
+    'cc.pivota.parentless': entry([]),
+  });
+  assert.deepEqual(
+    Object.keys(activeCapabilityIntersection(profile, ['dev.ucp.shopping.checkout', 'cc.pivota.parentless'])),
+    ['dev.ucp.shopping.checkout'],
+    'an extension declaring no parents can never satisfy "at least one parent present"',
+  );
+});
+
+test('the intersection reports each capability\'s OWN version, not the profile-level one', () => {
+  // Step 2 (mutual version selection) is not implemented, but the entry's own version is still what a
+  // platform reads back. Reporting the document-level version for every capability would silently flatten a
+  // per-capability version the day one exists — and nothing else distinguishes the two reads.
+  const profile = {
+    ucp: {
+      version: '2026-04-08',
+      services: {},
+      payment_handlers: {},
+      capabilities: {
+        'dev.ucp.shopping.checkout': [{ version: '2026-01-23' }], // deliberately NOT the profile version
+        'dev.ucp.shopping.cart': [{ version: '2026-04-08' }],
+      },
+    },
+  };
+  const active = activeCapabilityIntersection(profile, ['dev.ucp.shopping.checkout', 'dev.ucp.shopping.cart']);
+  assert.deepEqual(active['dev.ucp.shopping.checkout'], [{ version: '2026-01-23' }], 'the entry\'s own version');
+  assert.deepEqual(active['dev.ucp.shopping.cart'], [{ version: '2026-04-08' }]);
+  // ...and the profile-level version is the FALLBACK when an entry carries none, rather than `undefined`.
+  const noVersion = activeCapabilityIntersection(
+    { ucp: { version: '2026-04-08', capabilities: { 'dev.ucp.shopping.cart': [{}] } } },
+    ['dev.ucp.shopping.cart'],
+  );
+  assert.deepEqual(noVersion['dev.ucp.shopping.cart'], [{ version: '2026-04-08' }]);
+});
+
+test('a vendor capability override must be hosted on the authority its NAME claims', () => {
+  const build = (docs) => buildUcpProfile({
+    baseUrl: 'https://shop.pivota.cc', restBasePath: '/ucp/v1', vendorCapabilityDocs: docs,
+  }).ucp.capabilities['cc.pivota.insights'];
+
+  // `cc.pivota.*` claims pivota.cc. Documents hosted anywhere else are refused rather than published: the
+  // capability name asserts an authority, and a validating platform checks the origin against it.
+  assert.equal(build({
+    'cc.pivota.insights': {
+      spec: 'https://ucp.dev/2026-04-08/specification/catalog',
+      schema: 'https://ucp.dev/2026-04-08/schemas/shopping/catalog_search.json',
+    },
+  }), undefined, 'documents on someone else\'s origin are not ours to advertise');
+  // Half-matching is still refused — the mismatch is what matters, not which member carries it.
+  assert.equal(build({
+    'cc.pivota.insights': {
+      spec: 'https://pivota.cc/ucp/insights',
+      schema: 'https://ucp.dev/2026-04-08/schemas/shopping/catalog_search.json',
+    },
+  }), undefined);
+  // ...and the matching case still publishes, so this guard does not simply disable the escape hatch.
+  const ok = build({
+    'cc.pivota.insights': {
+      spec: 'https://pivota.cc/ucp/insights',
+      schema: 'https://pivota.cc/ucp/schemas/insights.json',
+    },
+  });
+  assert.ok(ok, 'documents on the claimed authority publish normally');
 });
 
 test('the profile builder and the intersection prune orphans by the SAME rule', () => {
@@ -576,27 +677,40 @@ test('a capability is advertised ONLY where the advertised door can actually ser
       });
     assert.ok(reachable.length > 0, `${id} is advertised but no operation behind it is reachable`);
   }
-  // With NO mcp transport there is no tool surface to be absent from, so nothing is filtered on that basis.
+  // With NO mcp transport this filter has nothing to act on — there is no tool surface for an operation
+  // to be absent from. It is the NO-TRANSPORT rule that decides that case, and it withholds everything:
+  // a capability with no door at all is not reachable by any measure. (This assertion previously required
+  // catalog.search to be PRESENT here, which was true while a transport-less profile still advertised its
+  // full set; founder decision 2026-08-13 changed that. The reachability filter below/above is unchanged —
+  // it still governs which capabilities appear when a door IS advertised.)
   const noTransport = buildUcpProfile({ baseUrl: 'https://shop.pivota.cc' });
-  assert.ok(Object.keys(noTransport.ucp.capabilities).includes('dev.ucp.shopping.catalog.search'));
+  assert.deepEqual(noTransport.ucp.services, {}, 'the map form is EMPTY, not an array');
+  assert.deepEqual(noTransport.ucp.capabilities, {}, 'no door at all => nothing advertised');
 });
 
 test('a capability with no hosted spec/schema is WITHHELD, never published as a partial entry', () => {
   // The spec marks `spec` and `schema` REQUIRED for ALL capabilities, and a validator that enforces that
   // answers `profile_malformed` for the WHOLE DOCUMENT — so a partial vendor entry does not degrade itself,
   // it takes checkout, catalog and fulfillment down with it. `cc.pivota.insights` has no hosted documents.
-  const withMcp = buildUcpProfile({ baseUrl: 'https://shop.pivota.cc', mcpEndpoint: 'https://shop.pivota.cc/ucp/mcp' });
-  const noTransport = buildUcpProfile({ baseUrl: 'https://shop.pivota.cc' });
-  // Withheld on BOTH paths. Reachability (#1981) already hides it behind an MCP transport, so without this
-  // rule the mcp-less profile — the one a REST-only or future deployment publishes — would still ship it.
-  assert.ok(!Object.keys(withMcp.ucp.capabilities).includes('cc.pivota.insights'));
-  assert.ok(!Object.keys(noTransport.ucp.capabilities).includes('cc.pivota.insights'),
-    'withholding must not depend on the transport — the missing documents are the reason');
-  assert.ok(!JSON.stringify(noTransport).includes('cc.pivota'), 'no trace of the vendor capability anywhere');
+  //
+  // ISOLATED WITH A **REST** TRANSPORT ON PURPOSE. Two other rules would otherwise mask this one and make
+  // the test vacuous: with no transport at all nothing is advertised (#1987), and behind an MCP transport
+  // the tool-reachability filter (#1981) withholds insights anyway because none of its operations has a
+  // `ucpTool`. A rest-only profile clears both — the transport exists, and reachability does not apply
+  // without an mcp endpoint — so the ONLY thing that can withhold insights here is the missing documents.
+  const restOnly = (extra) => buildUcpProfile({
+    baseUrl: 'https://shop.pivota.cc', restBasePath: '/ucp/v1', ...extra,
+  });
+
+  const withheld = restOnly();
+  assert.ok(Object.keys(withheld.ucp.capabilities).length > 0, 'the fixture must advertise SOMETHING');
+  assert.ok(Object.keys(withheld.ucp.capabilities).includes('dev.ucp.shopping.catalog.search'),
+    'a capability WITH documents is published over this transport — so the withholding below is specific');
+  assert.ok(!Object.keys(withheld.ucp.capabilities).includes('cc.pivota.insights'));
+  assert.ok(!JSON.stringify(withheld).includes('cc.pivota'), 'no trace of the vendor capability anywhere');
 
   // ...and it is WITHHELD, not deleted: hosting the documents publishes it again with no code change.
-  const withDocs = buildUcpProfile({
-    baseUrl: 'https://shop.pivota.cc',
+  const withDocs = restOnly({
     vendorCapabilityDocs: {
       'cc.pivota.insights': {
         spec: 'https://pivota.cc/ucp/insights',
@@ -609,11 +723,86 @@ test('a capability with no hosted spec/schema is WITHHELD, never published as a 
   assert.equal(insights[0].spec, 'https://pivota.cc/ucp/insights');
   assert.equal(insights[0].schema, 'https://pivota.cc/ucp/schemas/insights.json');
   // HALF an override is still a malformed entry, so it withholds exactly as an absent one does.
-  const halfDocs = buildUcpProfile({
-    baseUrl: 'https://shop.pivota.cc',
+  const halfDocs = restOnly({
     vendorCapabilityDocs: { 'cc.pivota.insights': { spec: 'https://pivota.cc/ucp/insights' } },
   });
   assert.equal(halfDocs.ucp.capabilities['cc.pivota.insights'], undefined);
+});
+
+// EVERY published spec/schema URL, as a LITERAL — not composed from the constants that produced it.
+//
+// This is the assertion class the whole workstream keeps failing. `assert.equal(checkout.spec,
+// `${UCP_SPEC_BASE}checkout`)` compares the output to a constant imported from the module under test, so it
+// pins the SUFFIX and nothing else: reverting UCP_SCHEMA_BASE to the singular `schema/` — the exact 404 this
+// change exists to fix — left every such assertion green. Measured: a `common/` -> `shopping/` typo on
+// identity_linking, a `fulfilment` misspelling, and a `catalog` -> `catalog-search` slip all shipped 404s
+// with the full suite passing.
+//
+// So the table below is written out by hand, and every entry was fetched and observed 200 on 2026-08-14.
+// If a path changes, this fails and someone must re-fetch the new one before editing it — which is the only
+// mechanism that has actually caught a dead URL in this repo.
+const PUBLISHED_CAPABILITY_DOCS = Object.freeze({
+  'dev.ucp.shopping.catalog.search': {
+    spec: 'https://ucp.dev/2026-04-08/specification/catalog',
+    schema: 'https://ucp.dev/2026-04-08/schemas/shopping/catalog_search.json',
+  },
+  'dev.ucp.shopping.catalog.lookup': {
+    spec: 'https://ucp.dev/2026-04-08/specification/catalog',
+    schema: 'https://ucp.dev/2026-04-08/schemas/shopping/catalog_lookup.json',
+  },
+  'dev.ucp.shopping.checkout': {
+    spec: 'https://ucp.dev/2026-04-08/specification/checkout',
+    schema: 'https://ucp.dev/2026-04-08/schemas/shopping/checkout.json',
+  },
+  'dev.ucp.shopping.order': {
+    spec: 'https://ucp.dev/2026-04-08/specification/order',
+    schema: 'https://ucp.dev/2026-04-08/schemas/shopping/order.json',
+  },
+  'dev.ucp.common.identity_linking': {
+    // Two spellings that do NOT follow from the id: the page is hyphenated, and the schema lives under
+    // `common/` rather than `shopping/`. Both were mutated to the "obvious" form and both 404'd.
+    spec: 'https://ucp.dev/2026-04-08/specification/identity-linking',
+    schema: 'https://ucp.dev/2026-04-08/schemas/common/identity_linking.json',
+  },
+  'dev.ucp.shopping.ap2_mandate': {
+    // The page is PLURAL and hyphenated where the capability id is singular with an underscore.
+    spec: 'https://ucp.dev/2026-04-08/specification/ap2-mandates',
+    schema: 'https://ucp.dev/2026-04-08/schemas/shopping/ap2_mandate.json',
+  },
+  'dev.ucp.shopping.fulfillment': {
+    spec: 'https://ucp.dev/2026-04-08/specification/fulfillment',
+    schema: 'https://ucp.dev/2026-04-08/schemas/shopping/fulfillment.json',
+  },
+});
+
+test('every capability publishes the EXACT measured spec/schema URL, not a composed one', () => {
+  // Built with a REST transport so the tool-reachability filter does not withhold most of the table: this
+  // test is about the URLs, and a capability that never appears cannot have its URL checked.
+  const profile = buildUcpProfile({ baseUrl: 'https://shop.pivota.cc', restBasePath: '/ucp/v1' });
+  const published = profile.ucp.capabilities;
+
+  for (const [id, entries] of Object.entries(published)) {
+    const expected = PUBLISHED_CAPABILITY_DOCS[id];
+    assert.ok(expected, `${id} is advertised but has no verified URL pair in this table — measure it first`);
+    assert.equal(entries[0].spec, expected.spec, `${id} spec URL`);
+    assert.equal(entries[0].schema, expected.schema, `${id} schema URL`);
+  }
+  // ...and the table is not aspirational: the capabilities it covers really are the advertised ones, so a
+  // capability silently dropping out of the profile cannot make this pass by vacancy.
+  assert.ok(Object.keys(published).length >= 5, `expected the full read+write set, got ${Object.keys(published).length}`);
+
+  // The SERVICE entries carry their own pair, from a third tree again (`/services/`, not `/schemas/`).
+  const bindings = profile.ucp.services['dev.ucp.shopping'];
+  assert.deepEqual(bindings.map((b) => b.spec), ['https://ucp.dev/2026-04-08/specification/overview']);
+  assert.deepEqual(bindings.map((b) => b.schema), ['https://ucp.dev/2026-04-08/services/shopping/rest.openapi.json']);
+  const withMcp = buildUcpProfile({ baseUrl: 'https://shop.pivota.cc', mcpEndpoint: 'https://shop.pivota.cc/ucp/mcp' });
+  assert.equal(
+    withMcp.ucp.services['dev.ucp.shopping'][0].schema,
+    'https://ucp.dev/2026-04-08/services/shopping/mcp.openrpc.json',
+  );
+
+  // Nothing anywhere in the document may use the SINGULAR schema base, which 404s at every path.
+  assert.ok(!JSON.stringify(profile).includes('/2026-04-08/schema/'), 'the singular schema base is a 404');
 });
 
 test('the vendor capability is a ROOT capability — `extends` would make it prunable', () => {
@@ -623,4 +812,40 @@ test('the vendor capability is a ROOT capability — `extends` would make it pru
   assert.equal(CANONICAL_CAPABILITIES.insights.extends, undefined);
   assert.equal(CANONICAL_CAPABILITIES.catalog_search.extends, undefined);
   assert.equal(CANONICAL_CAPABILITIES.catalog_lookup.extends, undefined);
+});
+
+// NO TRANSPORT => NO CAPABILITIES (founder decision 2026-08-13). The same rule as the refusal-only and
+// empty-capability filters, one level up: a capability with no door to reach it is a promise a platform
+// cannot act on. This is the state the documented rollback produces — unsetting
+// AGENT_CHECKOUT_UCP_TOOL_DOOR_ENABLED withholds the only transport — and the profile used to keep
+// advertising checkout, order, catalog and identity with `services: []`.
+test('NO transport => NO capabilities advertised (and any transport restores them)', () => {
+  const dark = buildUcpProfile({ baseUrl: 'https://shop.pivota.cc' }); // no mcpEndpoint, no restBasePath
+  assert.deepEqual(dark.ucp.services, {}, 'precondition: nothing speaks for this profile');
+  assert.deepEqual(dark.ucp.capabilities, {}, 'a profile with no transport must promise nothing');
+  // The rest of the document still stands: this is an honest empty profile, not a broken one.
+  assert.match(dark.ucp.version, /^\d{4}-\d{2}-\d{2}$/);
+  assert.equal(dark.provider.merchant_of_record, false);
+  assert.ok(Array.isArray(dark.signing_keys));
+
+  // The SAME config with a door lit advertises the full set — the filter keys on the transport and on
+  // nothing else. Without this half, an empty map would also satisfy a profile that had simply stopped
+  // advertising anything at all.
+  //
+  // THIS HALF IS THE ONE THAT CATCHES THE PORT HAZARD. #1987 wrote the rule as `services.length > 0` while
+  // `services` was an ARRAY; the spec's shape makes it a MAP, and `{}.length` is `undefined`, so a
+  // mechanical port yields `undefined > 0` === false and the profile advertises NOTHING IN PRODUCTION —
+  // while the dark half above stays green, because empty is exactly what it expects. Only asserting the LIT
+  // case can fail on that mistake, which is why both halves are mandatory here.
+  const lit = buildUcpProfile({ baseUrl: 'https://shop.pivota.cc', mcpEndpoint: 'https://shop.pivota.cc/ucp/mcp' });
+  assert.ok(Object.keys(lit.ucp.capabilities).length > 0, 'a lit transport must advertise the capabilities behind it');
+  assert.ok(Object.keys(lit.ucp.capabilities).includes('dev.ucp.shopping.checkout'));
+
+  // A REST-only door counts too: the rule is "some transport", not "the MCP one".
+  const restOnly = buildUcpProfile({ baseUrl: 'https://shop.pivota.cc', restBasePath: '/ucp/v1' });
+  assert.deepEqual(restOnly.ucp.services['dev.ucp.shopping'].map((s) => s.transport), ['rest']);
+  assert.ok(Object.keys(restOnly.ucp.capabilities).length > 0, 'a REST transport is a door like any other');
+
+  // An intersection cannot resurrect what the profile does not advertise.
+  assert.deepEqual(activeCapabilityIntersection(dark, ['dev.ucp.shopping.checkout']), {});
 });
