@@ -83,7 +83,9 @@ test('UCP profile: version, services, capabilities (dev.ucp.*), payment_handlers
   const capIds = profile.capabilities.map((c) => c.id);
   assert.ok(capIds.includes('dev.ucp.shopping.checkout'));
   assert.ok(capIds.includes('dev.ucp.common.identity_linking'));
-  assert.ok(capIds.includes('dev.ucp.shopping.order'));
+  // `order` is NOT advertised over an mcp-only profile: neither of its operations has a UCP tool name, so a
+  // platform could match the capability and then fail the call. See the reachability test below.
+  assert.ok(!capIds.includes('dev.ucp.shopping.order'));
   // each capability lists its canonical operations
   const checkout = profile.capabilities.find((c) => c.id === 'dev.ucp.shopping.checkout');
   assert.ok(checkout.operations.includes('complete_checkout_session'));
@@ -159,7 +161,7 @@ test('omitCapabilityIds withholds a capability (and its operations) from the pro
   const capIds = profile.capabilities.map((c) => c.id);
   assert.ok(!capIds.includes('dev.ucp.shopping.checkout'));
   assert.ok(!capIds.includes('dev.ucp.shopping.ap2_mandate'));
-  assert.ok(capIds.includes('dev.ucp.shopping.discovery'), 'non-omitted capabilities remain');
+  assert.ok(capIds.includes('dev.ucp.shopping.catalog.lookup'), 'non-omitted capabilities remain');
   const allOps = profile.capabilities.flatMap((c) => c.operations);
   assert.ok(!allOps.includes('create_payment_link'), 'operations of an omitted capability vanish with it');
   assert.ok(!allOps.includes('complete_checkout_session'));
@@ -214,8 +216,149 @@ test('UCP platform capability parser accepts JSON UCP-Agent and comma-separated 
   );
   assert.deepEqual(
     parsePlatformCapabilities({
-      headers: { 'ucp-agent-capabilities': 'dev.ucp.shopping.discovery, dev.ucp.shopping.checkout' },
+      headers: { 'ucp-agent-capabilities': 'dev.ucp.shopping.catalog.search, dev.ucp.shopping.checkout' },
     }),
-    ['dev.ucp.shopping.discovery', 'dev.ucp.shopping.checkout'],
+    ['dev.ucp.shopping.catalog.search', 'dev.ucp.shopping.checkout'],
   );
+});
+
+// ---- the advertised capability ids must exist in the UCP vocabulary ----------------------------------------
+//
+// `dev.ucp.shopping.discovery` was advertised here for the life of this file and exists nowhere in the spec.
+// Negotiation is a set INTERSECTION, so it matched no platform and our five discovery operations were
+// invisible to every caller — silently, because a profile that advertises a fiction still parses.
+//
+// The list below is the SPEC's, transcribed from ucp.dev/2026-04-08 (specification/overview + /catalog). It is
+// deliberately NOT derived from CANONICAL_CAPABILITIES: the tests that let the wrong id survive asserted our
+// own constant back at itself, which can never fail. A vendor id is allowed only under a reverse-DNS
+// namespace we actually own, which is the spec's own escape hatch for non-standard capabilities.
+test('every advertised capability id is a real UCP id, or a vendor id under a domain we own', () => {
+  const SPEC_CAPABILITY_IDS = [
+    'dev.ucp.shopping.catalog.search',
+    'dev.ucp.shopping.catalog.lookup',
+    'dev.ucp.shopping.cart',
+    'dev.ucp.shopping.checkout',
+    'dev.ucp.shopping.discount',
+    'dev.ucp.shopping.fulfillment',
+    'dev.ucp.shopping.order',
+    'dev.ucp.shopping.ap2_mandate',
+    'dev.ucp.shopping.buyer_consent',
+    'dev.ucp.common.identity_linking',
+  ];
+  // Reverse-DNS of pivota.cc — the domain this gateway serves from. The spec's example of a vendor
+  // capability is `com.example.installments`; Shopify publishes `dev.shopify.catalog` the same way.
+  const VENDOR_PREFIX = 'cc.pivota.';
+
+  for (const [key, cap] of Object.entries(CANONICAL_CAPABILITIES)) {
+    const known = SPEC_CAPABILITY_IDS.includes(cap.ucp);
+    const vendor = cap.ucp.startsWith(VENDOR_PREFIX);
+    assert.ok(known || vendor, `${key} advertises "${cap.ucp}", which is neither a spec id nor ours to mint`);
+    // A vendor id must NOT squat the standard namespace. Asserted on the PREFIX CONSTANT, not on `cap.ucp`:
+    // `cap.ucp.startsWith('cc.pivota.') && !cap.ucp.startsWith('dev.ucp.')` is a tautology, so the obvious
+    // spelling of this check constrains nothing. What must hold is that our vendor prefix itself is outside
+    // the spec's namespace — which is what makes `known || vendor` above a real disjunction.
+    assert.equal(VENDOR_PREFIX.startsWith('dev.ucp.'), false, 'the vendor prefix must be outside dev.ucp.*');
+  }
+});
+
+test('the three discovery operations are split by what each id actually promises', () => {
+  // The spec defines `.search` as "Search for products using query text and filters" and `.lookup` as
+  // "Retrieve products or variants by identifier". Pivota's alternatives/offers/intel are neither: they are
+  // its own decision layer, so they live under the vendor id rather than being advertised as something a
+  // platform can expect from a standard catalog capability.
+  assert.deepEqual(operationsForCapability('catalog_search', { includeRefusalOnly: false }), ['search_catalog']);
+  assert.deepEqual(operationsForCapability('catalog_lookup', { includeRefusalOnly: false }), ['get_product']);
+  assert.deepEqual(
+    operationsForCapability('insights', { includeRefusalOnly: false }).sort(),
+    ['get_alternatives', 'get_intel', 'get_offers'],
+  );
+  // and no operation was lost or duplicated in the split
+  const all = ['catalog_search', 'catalog_lookup', 'insights']
+    .flatMap((c) => operationsForCapability(c, { includeRefusalOnly: false }));
+  assert.equal(new Set(all).size, all.length, 'an operation must not appear under two capabilities');
+  assert.deepEqual(all.sort(), ['get_alternatives', 'get_intel', 'get_offers', 'get_product', 'search_catalog']);
+});
+
+test('every capability ID is bound to its operations IN THE CONTRACT, published or not', () => {
+  // Asserted on the contract rather than the profile, because the profile only publishes what is currently
+  // REACHABLE — so swapping the ids of two withheld capabilities changes no published byte and survives any
+  // profile-level check. It would ship silently the day those operations gain a UCP tool name. This is the
+  // binding the whole change is about, so it is pinned where it is always true.
+  const byUcpId = {};
+  for (const [key, cap] of Object.entries(CANONICAL_CAPABILITIES)) {
+    assert.equal(byUcpId[cap.ucp], undefined, `${cap.ucp} is advertised by two capabilities (${key})`);
+    byUcpId[cap.ucp] = operationsForCapability(key, { includeRefusalOnly: false });
+  }
+  assert.deepEqual(byUcpId, {
+    'dev.ucp.shopping.catalog.search': ['search_catalog'],
+    'dev.ucp.shopping.catalog.lookup': ['get_product'],
+    'cc.pivota.insights': ['get_alternatives', 'get_offers', 'get_intel'],
+    'dev.ucp.shopping.checkout': [
+      'create_checkout_session', 'update_checkout_session', 'get_checkout_session',
+      'complete_checkout_session', 'create_payment_link', 'cancel_checkout_session',
+    ],
+    'dev.ucp.shopping.order': ['get_order', 'request_after_sales'],
+    'dev.ucp.common.identity_linking': ['start_identity_linking'],
+    'dev.ucp.shopping.ap2_mandate': [],
+    'dev.ucp.shopping.fulfillment': [],
+  });
+});
+
+test('the PUBLISHED id is bound to its operations — not just the internal key', () => {
+  // The gap this closes: every other test here asserts `operationsForCapability('<internal key>')`, and the
+  // keys `catalog_search`/`catalog_lookup`/`insights` never appear on the wire. Swapping the two catalog
+  // `ucp` values — so the profile advertises "search" with operations ["get_product"] and "lookup" with
+  // ["search_catalog"], precisely inverted — passed the entire suite. Nothing bound an ID to its operations,
+  // which is the whole subject of this change.
+  const profile = buildUcpProfile({
+    baseUrl: 'https://shop.pivota.cc',
+    mcpEndpoint: 'https://shop.pivota.cc/ucp/mcp',
+  });
+  const byId = Object.fromEntries(profile.capabilities.map((c) => [c.id, c.operations]));
+  assert.deepEqual(byId, {
+    'dev.ucp.shopping.catalog.lookup': ['get_product'],
+    'dev.ucp.shopping.checkout': [
+      'create_checkout_session', 'update_checkout_session', 'get_checkout_session', 'complete_checkout_session',
+    ],
+    'dev.ucp.common.identity_linking': ['start_identity_linking'],
+    'dev.ucp.shopping.fulfillment': undefined, // a modifier carries no operations of its own
+  });
+  // No id may be advertised twice — two entries sharing one id is undetectable downstream.
+  const ids = profile.capabilities.map((c) => c.id);
+  assert.equal(new Set(ids).size, ids.length);
+});
+
+test('a capability is advertised ONLY where the advertised door can actually serve it', () => {
+  // Fixing a capability id turns a silently-DEAD advertisement into an actively-LYING one unless
+  // reachability is checked with it. `dev.ucp.shopping.discovery` matched no platform, so nothing behind it
+  // was called; the real `dev.ucp.shopping.catalog.search` makes the intersection SUCCEED and then
+  // `tools/call search_catalog` hard-fails, because the UCP dialect does not expose that tool.
+  const profile = buildUcpProfile({
+    baseUrl: 'https://shop.pivota.cc',
+    mcpEndpoint: 'https://shop.pivota.cc/ucp/mcp',
+  });
+  const ids = profile.capabilities.map((c) => c.id);
+  // Withheld: every operation behind these is absent from the UCP dialect today.
+  assert.ok(!ids.includes('dev.ucp.shopping.catalog.search'), 'search_catalog has no ucpTool — do not advertise it');
+  assert.ok(!ids.includes('cc.pivota.insights'), 'the insights ops have no ucpTool — do not advertise them');
+  assert.ok(!ids.includes('dev.ucp.shopping.order'), 'the order ops have no ucpTool — do not advertise them');
+  // …and every operation that IS advertised carries an evidenced UCP tool name, or is not tool-served at all.
+  for (const c of profile.capabilities) {
+    for (const id of c.operations || []) {
+      const op = CANONICAL_OPERATIONS.find((o) => o.id === id);
+      assert.ok(op.ucpTool || op.kernel === 'external', `${c.id} advertises ${id}, which no UCP tool exposes`);
+    }
+  }
+  // With NO mcp transport there is no tool surface to be absent from, so nothing is filtered on that basis.
+  const noTransport = buildUcpProfile({ baseUrl: 'https://shop.pivota.cc' });
+  assert.ok(noTransport.capabilities.map((c) => c.id).includes('dev.ucp.shopping.catalog.search'));
+});
+
+test('the vendor capability is a ROOT capability — `extends` would make it prunable', () => {
+  // `extends` is a pruning key: intersection step 3 removes any capability whose declared parents are all
+  // absent. Declaring these reads as extending catalog.lookup would delete Pivota's whole decision layer for
+  // a platform that does not negotiate that standard capability — and they do not need it.
+  assert.equal(CANONICAL_CAPABILITIES.insights.extends, undefined);
+  assert.equal(CANONICAL_CAPABILITIES.catalog_search.extends, undefined);
+  assert.equal(CANONICAL_CAPABILITIES.catalog_lookup.extends, undefined);
 });

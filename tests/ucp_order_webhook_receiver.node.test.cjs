@@ -106,15 +106,18 @@ test('strict off: profile withholds checkout/ap2 capabilities (and create_paymen
   const capIds = resp.body.capabilities.map((c) => c.id);
   assert.ok(!capIds.includes('dev.ucp.shopping.checkout'), 'checkout capability withheld');
   assert.ok(!capIds.includes('dev.ucp.shopping.ap2_mandate'), 'ap2 mandate capability withheld');
-  assert.ok(capIds.includes('dev.ucp.shopping.discovery'), 'read capabilities still advertised');
+  // The read capabilities under the ids the SPEC defines — this asserted `dev.ucp.shopping.discovery`, an id
+  // that exists nowhere in the UCP vocabulary, so it passed while matching no platform.
+  assert.ok(capIds.includes('dev.ucp.shopping.catalog.search'), 'read capabilities still advertised');
+  assert.ok(capIds.includes('cc.pivota.insights'), 'the vendor decision layer is still advertised');
   const allOps = resp.body.capabilities.flatMap((c) => c.operations);
   assert.ok(!allOps.includes('create_payment_link'), 'create_payment_link not exposed anywhere');
   // The intersection endpoint reflects the same withholding.
   const inter = await supertest(app)
     .post('/ucp/capabilities')
-    .send({ capabilities: ['dev.ucp.shopping.checkout', 'dev.ucp.shopping.discovery'] })
+    .send({ capabilities: ['dev.ucp.shopping.checkout', 'dev.ucp.shopping.catalog.search'] })
     .expect(200);
-  assert.deepEqual(inter.body.active_capabilities.map((c) => c.id), ['dev.ucp.shopping.discovery']);
+  assert.deepEqual(inter.body.active_capabilities.map((c) => c.id), ['dev.ucp.shopping.catalog.search']);
 });
 
 // M9: the profile is built per request — a bad signing-key env 503s only while it is bad, and key

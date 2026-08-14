@@ -7,7 +7,7 @@
 // `signing_keys`; platforms advertise via a `UCP-Agent` header; capabilities map 1:1 to MCP tools. All
 // capabilities are backed by the one canonical contract (so safety is enforced once, never forked).
 
-import { CANONICAL_CAPABILITIES, CANONICAL_OPERATIONS, operationsForCapability } from './canonicalContract.js';
+import { CANONICAL_CAPABILITIES, CANONICAL_OPERATIONS, canonicalOp, operationsForCapability } from './canonicalContract.js';
 import { UCP_SPEC_VERSION } from './ucpSpecVersion.cjs';
 
 // The spec line this profile advertises. It is NOT declared here: this file used to pin the 2026-01-23 line
@@ -112,6 +112,37 @@ function withoutOrphanedModifiers(capabilities) {
   return capabilities.filter((c) => !c.extends || c.extends.every((id) => presentIds.has(id)));
 }
 
+/**
+ * The operations of a capability that a platform can ACTUALLY INVOKE over the transport we advertise.
+ *
+ * WHY THIS EXISTS, and it is the sharpest lesson of this whole change: fixing a capability id turns a
+ * silently-DEAD advertisement into an actively-LYING one unless reachability is checked at the same time.
+ * `dev.ucp.shopping.discovery` matched no platform, so nothing behind it was ever called. Publishing the real
+ * `dev.ucp.shopping.catalog.search` makes the intersection SUCCEED — and then `tools/call search_catalog`
+ * hard-fails, because the UCP dialect does not expose that tool (mcp-server/src/ucpArgumentAdapter.js says so
+ * outright). A correct id in front of an absent tool is worse than a wrong id: the platform now gets far
+ * enough to fail on the money-adjacent call instead of skipping the capability.
+ *
+ * THE RULE. Our advertised transport is MCP JSON-RPC, where an operation is invoked as a TOOL. So an
+ * operation is invocable only if the canonical contract gives it a `ucpTool` — the same evidenced-spec-name
+ * gate the dialect itself uses, so this cannot drift from what the door serves. The one exception is an
+ * operation that is not tool-served at all: `kernel: 'external'` (identity linking happens at the OAuth
+ * edge, not via tools/call), which stays advertisable because no tool absence can make it unreachable.
+ *
+ * This is self-maintaining: the day `search_catalog` gains an evidenced `ucpTool` and a mapper, its
+ * capability starts advertising itself. Nothing here needs editing for that.
+ */
+function invocableOperations(cap, config = {}) {
+  const ops = operationsForCapability(cap, { includeRefusalOnly: false });
+  // Only the MCP transport implies tool-invocation. With no mcp endpoint advertised there is no tool surface
+  // to be absent from, so the unfiltered list is the honest answer.
+  if (!config.mcpEndpoint) return ops;
+  return ops.filter((id) => {
+    const op = canonicalOp(id);
+    return Boolean(op.ucpTool) || op.kernel === 'external';
+  });
+}
+
 export function buildUcpProfile(config = {}) {
   const baseUrl = requireHttps(config.baseUrl, 'baseUrl');
   const restBasePath = config.restBasePath;
@@ -148,7 +179,7 @@ export function buildUcpProfile(config = {}) {
         // below). Today this drops `exchange_payment_token` — ACP delegate_payment, which Pivota will never
         // implement because it vaults cardholder data (see delegatedPaymentRefusal.js). The door still answers
         // a named refusal; it is simply not advertised as a capability.
-        operations: operationsForCapability(cap, { includeRefusalOnly: false }),
+        operations: invocableOperations(cap, config),
       };
     })
     // Withheld capabilities (and every operation they carry) never appear in the profile.

@@ -249,7 +249,12 @@ test('UCP profile: the refused operation and its now-empty capability are never 
   assert.ok(!capIds.includes('dev.ucp.shopping.ap2_mandate'));
   // Everything executable is still advertised, and no capability is left empty.
   assert.ok(capIds.includes('dev.ucp.shopping.checkout'));
-  assert.ok(capIds.includes('dev.ucp.shopping.discovery'));
+  // NOTE this fixture advertises NO transport, so the tool-reachability filter does not apply — there is no
+  // tool surface for an operation to be absent from, and the full capability set is the honest answer. The
+  // mcp-transport case (where catalog.search / insights / order ARE withheld) is asserted in
+  // protocol.test.js 'a capability is advertised ONLY where the advertised door can actually serve it'.
+  assert.ok(capIds.includes('dev.ucp.shopping.catalog.search'));
+  assert.ok(capIds.includes('dev.ucp.shopping.catalog.lookup'));
   assert.ok(capIds.includes('dev.ucp.shopping.order'));
   assert.ok(capIds.includes('dev.ucp.common.identity_linking'));
   // No capability is a title with nothing behind it. A MODIFIER (UCP `extends` + `config`, e.g.
