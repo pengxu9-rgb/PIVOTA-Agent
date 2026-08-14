@@ -639,3 +639,78 @@ describe('SIGNED tier checkout-create reaches the handoff URL credential-free', 
     expect(JSON.stringify(call)).not.toMatch(/BEGIN PRIVATE KEY|MIGHAgEA/);
   });
 });
+
+// ---- UCP spec: a profile fetch MUST NOT follow redirects -------------------
+//
+// ucp.dev/2026-04-08/specification/overview, "Profile Requirements" -> Hosting/Fetching: a profile
+// endpoint MUST NOT use redirects, and an implementation MUST NOT follow a 3xx when fetching one.
+// The profile URL is the identity anchor for everything the client then trusts from that merchant --
+// the advertised MCP endpoint it sends carts to, and the `signing_keys` the order-webhook receiver
+// verifies against. Follow a redirect and that anchor moves to an origin we never resolved.
+describe('discoverEndpoint refuses a redirected /.well-known/ucp profile', () => {
+  // A profile served from SOMEWHERE ELSE, deliberately well-formed: if this body ever reaches
+  // extractMcpEndpoint the client walks away pointing at attacker.example. The control test below
+  // proves that is exactly what happens without the redirect refusal, so the refusal test can only
+  // be failing on the refusal itself and never on an unparseable fixture.
+  const REDIRECT_TARGET_PROFILE = {
+    ucp: {
+      version: '2026-04-08',
+      services: {
+        'dev.ucp.shopping': [
+          { version: '2026-04-08', transport: 'mcp', endpoint: 'https://attacker.example/ucp/mcp' },
+        ],
+      },
+    },
+  };
+
+  /**
+   * A fetch stub that HONOURS the `redirect` init option the way undici does -- the only shape that
+   * can tell the two behaviours apart:
+   *   redirect: 'error'  -> the fetch REJECTS on the 3xx (TypeError: fetch failed).
+   *   redirect: 'follow' -> the caller NEVER SEES the 302; it is handed the final 200 from the target.
+   * A stub that merely returns the 302 response would prove nothing: 302 is already `!res.ok`, so the
+   * UNFIXED code reports failure for it too and such a test passes with the fix reverted.
+   */
+  function makeRedirectHonouringFetch() {
+    const inits = [];
+    const impl = async (url, init = {}) => {
+      inits.push({ url: String(url), ...init });
+      if (init.redirect === 'error') throw new TypeError('fetch failed');
+      return jsonResponse(REDIRECT_TARGET_PROFILE, 200);
+    };
+    impl.inits = inits;
+    return impl;
+  }
+
+  // retryAttempts: 0 -- fetchWithPolicy treats any non-timeout throw as a transient network error, so
+  // it would otherwise re-attempt (with real backoff sleeps) a refusal that is deterministic.
+  function clientWith(fetchImpl) {
+    return createUcpBuyerAgentClient({
+      credential: 'test-token',
+      profileUrl: 'https://agent.pivota.cc/.well-known/ucp-agent',
+      fetchImpl,
+      retryAttempts: 0,
+    });
+  }
+
+  test('the profile fetch is issued with redirect: "error"', async () => {
+    const fetchImpl = makeRedirectHonouringFetch();
+    await clientWith(fetchImpl).discoverEndpoint('https://cosrx.com').catch(() => {});
+    expect(fetchImpl.inits).toHaveLength(1);
+    expect(fetchImpl.inits[0].url).toBe('https://cosrx.com/.well-known/ucp');
+    expect(fetchImpl.inits[0].redirect).toBe('error');
+  });
+
+  test('a 302 fails discovery instead of following it to another origin', async () => {
+    const fetchImpl = makeRedirectHonouringFetch();
+    // Must REJECT. Drop the redirect option and the stub follows, this resolves, and the resolved value
+    // carries https://attacker.example/ucp/mcp -- the endpoint warm handoff caches and builds carts against.
+    await expect(clientWith(fetchImpl).discoverEndpoint('https://cosrx.com')).rejects.toThrow(/fetch failed/);
+  });
+
+  test('control: the SAME body is accepted when it arrives with no redirect', async () => {
+    const disco = await clientWith(async () => jsonResponse(REDIRECT_TARGET_PROFILE, 200))
+      .discoverEndpoint('https://cosrx.com');
+    expect(disco.mcpEndpoint).toBe('https://attacker.example/ucp/mcp');
+  });
+});
