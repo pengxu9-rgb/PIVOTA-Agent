@@ -644,9 +644,9 @@ describe('SIGNED tier checkout-create reaches the handoff URL credential-free', 
 //
 // ucp.dev/2026-04-08/specification/overview, "Profile Requirements" -> Hosting/Fetching: a profile
 // endpoint MUST NOT use redirects, and an implementation MUST NOT follow a 3xx when fetching one.
-// The profile URL is the identity anchor for everything the client then trusts from that merchant --
-// the advertised MCP endpoint it sends carts to, and the `signing_keys` the order-webhook receiver
-// verifies against. Follow a redirect and that anchor moves to an origin we never resolved.
+// The profile URL is the identity anchor for the MCP endpoint the client then sends carts to, and
+// which ucpWarmHandoff caches per-domain. Follow a redirect and that anchor moves to an origin we
+// never resolved, while the resolved `wellKnownUrl` we log stays the one we asked for.
 describe('discoverEndpoint refuses a redirected /.well-known/ucp profile', () => {
   // A profile served from SOMEWHERE ELSE, deliberately well-formed: if this body ever reaches
   // extractMcpEndpoint the client walks away pointing at attacker.example. The control test below
@@ -664,12 +664,15 @@ describe('discoverEndpoint refuses a redirected /.well-known/ucp profile', () =>
   };
 
   /**
-   * A fetch stub that HONOURS the `redirect` init option the way undici does -- the only shape that
-   * can tell the two behaviours apart:
+   * A fetch stub that HONOURS the `redirect` init option, modelling undici for the only two values
+   * this code can produce -- which is the only shape that can tell the behaviours apart:
    *   redirect: 'error'  -> the fetch REJECTS on the 3xx (TypeError: fetch failed).
    *   redirect: 'follow' -> the caller NEVER SEES the 302; it is handed the final 200 from the target.
    * A stub that merely returns the 302 response would prove nothing: 302 is already `!res.ok`, so the
    * UNFIXED code reports failure for it too and such a test passes with the fix reverted.
+   * NOT a faithful model of 'manual' (real undici hands back the 3xx itself, which `!res.ok` then
+   * refuses safely); everything that is not 'error' takes the follow branch here, so a mutation to
+   * 'manual' is reported as a kill even though it would not actually be exploitable.
    */
   function makeRedirectHonouringFetch() {
     const inits = [];
@@ -708,6 +711,11 @@ describe('discoverEndpoint refuses a redirected /.well-known/ucp profile', () =>
     await expect(clientWith(fetchImpl).discoverEndpoint('https://cosrx.com')).rejects.toThrow(/fetch failed/);
   });
 
+  // NOT an endorsement of the endpoint's origin. `extractMcpEndpoint` does no origin pinning today, so
+  // a profile may advertise an MCP door on any host — pre-existing, out of scope here, and arguably
+  // legitimate (a brand can host its door off-domain). This test exists ONLY to prove the fixture is a
+  // live threat, so the refusal above cannot be passing on an unparseable body. If origin pinning is
+  // ever added, this test SHOULD go red: that is the pin moving, not a regression.
   test('control: the SAME body is accepted when it arrives with no redirect', async () => {
     const disco = await clientWith(async () => jsonResponse(REDIRECT_TARGET_PROFILE, 200))
       .discoverEndpoint('https://cosrx.com');
