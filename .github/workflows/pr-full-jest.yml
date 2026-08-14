@@ -310,6 +310,12 @@ jobs:
       # violating, so the probe is proven able to go RED. Fixtures cover BOTH shapes the surface has
       # served (spec `{ucp:{…}}` maps and the legacy flat arrays), because a probe that quietly
       # stopped reading the document after a restructure would report a clean PASS forever.
+      # ADDED 2026-08-14: `ucp_conformance_probe_io`, confirmed green (12/12). Review of #1990 found the
+      # evaluator tests exhaustive and the IO layer — run(), main(), fetch, the exit codes a cron
+      # branches on — covered by nothing, which is the usual shape of a false green: the easy half is
+      # tested and the half that talks to the world is asserted in prose. These spawn the real script
+      # against real local HTTP servers and pin the 0/1/2 contract, including that a 500 profile is an
+      # OUTAGE (1) and not a broken harness (2). Local sockets only; no network.
       - name: Run node:test suites
         run: |
           node --test \
@@ -320,6 +326,7 @@ jobs:
             safety-kernel/test/ucpPaymentAuthorizationContract.test.js \
             safety-kernel/test/mcpOAuthResourceServer.test.js \
             tests/ucp_conformance_probe.node.test.cjs \
+            tests/ucp_conformance_probe_io.node.test.cjs \
             safety-kernel/test/protocol.test.js \
             safety-kernel/test/delegatedPaymentRefusal.test.js \
             mcp-server/test/ucpFulfillmentAddressContract.test.js \

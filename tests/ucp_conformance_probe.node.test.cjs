@@ -25,6 +25,8 @@ const {
   evaluateDoor,
   evaluateIntersection,
   readActiveIds,
+  parseArgs,
+  UCP_SPEC_VERSION,
 } = require('../scripts/probe-ucp-conformance.cjs');
 
 const DOOR = 'https://commerce.mcp.pivota.cc/ucp/mcp';
@@ -93,6 +95,53 @@ describe('P2 — the version invariant (#1967: the seller silently lagged the bu
     const doc = specProfile({ ucp: { version: 'latest' } });
     assert.ok(fails(evaluateProfile(doc).findings).includes('P2_BAD_VERSION'));
   });
+  test('THE ACTUAL INCIDENT: a well-formed but STALE version FAILS', () => {
+    // An ISO-format check is not enough and never was — 2026-01-23 is a perfectly well-formed date, and
+    // serving it is precisely the defect #1967 fixed. The probe compares against the version THIS BUILD
+    // pins (safety-kernel/src/protocol/ucpSpecVersion.cjs), so a stale deploy cannot read as conformant.
+    const doc = specProfile({ ucp: { version: '2026-01-23' } });
+    assert.ok(fails(evaluateProfile(doc).findings).includes('P2_VERSION_BEHIND_BUILD'));
+  });
+  test('a version NEWER than the build only warns (the probe checkout may lag the deployment)', () => {
+    const doc = specProfile({ ucp: { version: '2099-01-01' } });
+    const f = evaluateProfile(doc).findings;
+    assert.deepEqual(fails(f), []);
+    assert.ok(codes(f).includes('P2_VERSION_AHEAD_OF_BUILD'));
+  });
+  test('the pin is read from the shared constant, not re-declared here', () => {
+    assert.match(UCP_SPEC_VERSION, /^\d{4}-\d{2}-\d{2}$/);
+    assert.deepEqual(fails(evaluateProfile(specProfile({ ucp: { version: UCP_SPEC_VERSION } })).findings), []);
+  });
+});
+
+describe('P9 — our own surface must be LIVE, not merely conformant', () => {
+  test('a dark surface FAILS by default (advertising nothing is a total outage)', () => {
+    const doc = specProfile({ ucp: { services: {}, capabilities: {} } });
+    assert.ok(fails(evaluateProfile(doc).findings).includes('P9_SURFACE_DARK'));
+  });
+  test('--allow-dark suppresses it, for a deployment legitimately serving nothing', () => {
+    const doc = specProfile({ ucp: { services: {}, capabilities: {} } });
+    assert.deepEqual(fails(evaluateProfile(doc, { requireLive: false }).findings), []);
+  });
+});
+
+describe('argument handling — a broken invocation is never a conformance verdict', () => {
+  test('--base with no value throws (the caller exits 2, not 1)', () => {
+    assert.throws(() => parseArgs(['--base']), /requires a URL/);
+    assert.throws(() => parseArgs(['--base', '--json']), /requires a URL/);
+  });
+  test('an unknown flag throws rather than being ignored', () => {
+    assert.throws(() => parseArgs(['--nope']), /unknown argument/);
+  });
+  test('a non-absolute base throws', () => {
+    assert.throws(() => parseArgs(['--base', 'commerce.mcp.pivota.cc']), /absolute http/);
+  });
+  test('valid invocations parse, and live-checking is ON by default', () => {
+    assert.deepEqual(parseArgs([]).requireLive, true);
+    assert.deepEqual(parseArgs(['--allow-dark']).requireLive, false);
+    assert.equal(parseArgs(['--base', 'https://x/']).base, 'https://x');
+    assert.equal(parseArgs(['--json']).json, true);
+  });
 });
 
 describe('P3 — signing keys where Key Discovery reads them (#1988)', () => {
@@ -129,9 +178,16 @@ describe('P5 — transports and capabilities agree in BOTH directions (#1987)', 
     const doc = specProfile({ ucp: { capabilities: {} } });
     assert.ok(fails(evaluateProfile(doc).findings).includes('P5_TRANSPORT_WITHOUT_CAPS'));
   });
-  test('neither transport nor capability is silent — an honestly dark profile is not a defect', () => {
+  test('neither transport nor capability is silent for P5 — the two rules are distinct', () => {
+    // P5 is the CONFORMANCE rule: a document advertising nothing is internally consistent, so P5 has
+    // nothing to say about it. P9 is the OPERATIONAL rule for our own live surface, where advertising
+    // nothing is a total outage. Keeping them separate is what lets --allow-dark exist without weakening
+    // the consistency check. Asserted with requireLive off so this test is about P5 alone.
     const doc = specProfile({ ucp: { services: {}, capabilities: {} } });
-    assert.deepEqual(fails(evaluateProfile(doc).findings), []);
+    const f = evaluateProfile(doc, { requireLive: false }).findings;
+    assert.deepEqual(fails(f), []);
+    // ...and with the operational rule on, the SAME document fails — for P9's reason, not P5's.
+    assert.deepEqual(fails(evaluateProfile(doc).findings), ['P9_SURFACE_DARK']);
   });
 });
 
@@ -162,6 +218,13 @@ describe('P4/P6 — an advertised door must exist, refuse, and name ITSELF (#196
     const f = evaluateDoor(DOOR, { status: 401, wwwAuthenticate: challenge, metadataStatus: 404 });
     assert.ok(fails(f).includes('P6_METADATA_UNFETCHABLE'));
   });
+  test('metadata reached through a REDIRECT FAILS (#1989 — a redirected document is not the document)', () => {
+    const f = evaluateDoor(DOOR, { status: 401, wwwAuthenticate: challenge, metadataRedirected: true });
+    assert.ok(fails(f).includes('P8_METADATA_REDIRECTED'));
+  });
+  test('an advertised door that cannot be reached at all FAILS about the SURFACE', () => {
+    assert.ok(fails(evaluateDoor(DOOR, { error: 'ECONNREFUSED' })).includes('P4_DOOR_UNREACHABLE'));
+  });
 });
 
 describe('P7 — the intersection may never invent a capability', () => {
@@ -172,6 +235,12 @@ describe('P7 — the intersection may never invent a capability', () => {
   test('returning an UNADVERTISED id FAILS', () => {
     const f = evaluateIntersection(advertised, ['dev.ucp.shopping.order'], ['dev.ucp.shopping.order']);
     assert.ok(fails(f).includes('P7_UNADVERTISED_IN_INTERSECTION'));
+  });
+  test('returning NOTHING FAILS — the likeliest failure, which a one-directional check could not catch', () => {
+    // An intersection endpoint that answers 200 with an empty (or unrecognised) body used to pass: the old
+    // check only iterated what came back, so "came back with nothing" was indistinguishable from "clean".
+    const f = evaluateIntersection(advertised, ['dev.ucp.shopping.checkout'], []);
+    assert.ok(fails(f).includes('P7_ADVERTISED_NOT_INTERSECTED'));
   });
   test('returning something the platform never asked for FAILS', () => {
     const f = evaluateIntersection(advertised, ['dev.ucp.shopping.checkout'], ['dev.ucp.shopping.catalog.lookup']);
