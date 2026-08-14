@@ -465,6 +465,16 @@ function createUcpBuyerAgentClient(options = {}) {
     const res = await fetchWithPolicy((signal) => doFetch(wellKnownUrl, {
       method: 'GET',
       headers: { accept: 'application/json', 'user-agent': userAgent },
+      // UCP 2026-04-08, "Profile Requirements" -> Hosting/Fetching: a profile endpoint MUST NOT use
+      // redirects, and an implementation MUST NOT follow a 3xx when fetching one. This URL is an IDENTITY
+      // ANCHOR: the MCP endpoint we read out of the response is trusted, and cached per-domain by
+      // ucpWarmHandoff, purely because it came from THIS origin. Following a redirect would move that
+      // anchor to an origin we never resolved, silently — we would go on logging the resolved
+      // `wellKnownUrl` while building carts against whatever the redirect target advertised. Refuse it:
+      // the same rule the order-webhook receiver applies to ITS profile fetch (ucpOrderWebhookReceiver.js;
+      // note that one resolves its own UCP_BUSINESS_PROFILE_URL for signing keys — it does not read the
+      // profile discovered here, which no caller consumes beyond the endpoint).
+      redirect: 'error',
       signal,
     }), { retry: true });
     if (!res.ok) {
