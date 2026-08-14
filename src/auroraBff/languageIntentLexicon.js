@@ -25,6 +25,12 @@ const INGREDIENT_SCIENCE_CUES = [
   /\b(ingredient|ingredients|active|actives)\b.{0,28}\b(science|evidence|mechanism|clinical|study|paper|research)\b/i,
   /\b(science|evidence|mechanism|clinical|study|paper|research)\b.{0,28}\b(ingredient|ingredients|active|actives)\b/i,
   /\b(mechanism of|how does)\b.{0,28}\b(niacinamide|retinol|retinoid|salicylic|aha|bha|vitamin c|azelaic|peptide)\b/i,
+  // "what ingredient is best for acne?" — asking WHICH ingredient is an ingredient question, even though the
+  // concern it names is also a reco cue. Without this it matched `acne` as a bare concern, entered the product
+  // funnel, and answered "I need a bit more context before narrowing products: skin_type" — slot-filling for a
+  // question that was never about a product. A genuine product ask still overrides this: `isRecommendationLikeText`
+  // only honours a science intent when nothing else in the text asks for products.
+  /\b(what|which)\b.{0,24}\b(ingredient|ingredients|active|actives)\b/i,
   /(成分(机理|机制|科学|证据|原理)|证据链|循证|临床证据|论文证据|机理是什么|机制是什么)/,
 ];
 
@@ -49,6 +55,28 @@ const RECOMMENDATION_CUES = [
   /(洁面|洗面奶|精华|面霜|乳液|防晒|面膜|爽肤水|化妆水).{0,16}(适合|给|for).{0,16}(油皮|干皮|混合皮|敏感肌|痘肌|泛红)/,
   /(想要|想买|要|求|求推荐|求推).*(精华|面霜|乳液|面膜|防晒|洁面|洗面奶|爽肤水|化妆水|护肤品|产品|平替|替代)/,
   /(怎么买|购买|下单|链接)/,
+];
+
+// Concerns a user names when they are shopping for a fix: durable goals, not today's symptoms. Naming one of
+// these on its own is a reasonable reco signal — "acne", "dark spots", "blackheads" is how people open a
+// product ask.
+const CONCERN_GOAL_CUES = [
+  /\b(anti[-\s]?aging|anti[-\s]?age|wrinkles?|fine lines?|firming|dark spots?|hyperpigmentation|acne|pores?|blackheads?|clogged pores?|clogged|redness|dull(?:ness)?)\b/i,
+  /(抗老|抗衰|抗皱|细纹|淡纹|紧致|提拉|痘痘|闭口|毛孔|泛红|暗沉|色沉|痘印|色斑)/,
+];
+
+// Transient skin STATES. These are the words people reach for when describing what is happening to them —
+// "my skin feels dry and tight lately", "I started adapalene and now it's peeling" — so a bare mention is a
+// description of a problem, not a request to be sold something. They only count as reco intent alongside an
+// actual product ask, which is exactly how they were introduced: every prompt that motivated adding them
+// ("...looks dull. What should I add?", "...is peeling. What should I use tonight?") carries one.
+//
+// Listing them as bare cues instead cost real answers. "My skin feels dry and tight lately. What should I do?"
+// matched on `tight`, was routed into the reco funnel as a product ask, and came back as a slot-filling stall
+// — "I need a bit more context before narrowing products: skin type" — asking for a skin type the request had
+// already supplied, instead of answering the question.
+const CONCERN_STATE_CUES = [
+  /\b(dehydrat(?:ed|ion)?|tight(?:ness)?|stinging|peeling|barrier|irritat(?:ed|ion)?)\b/i,
 ];
 
 const RECO_TRANSACTIONAL_CUES = [
@@ -105,8 +133,8 @@ function isRecommendationLikeText(text) {
 
   return (
     hasAny(raw, RECOMMENDATION_CUES) ||
-    /\b(anti[-\s]?aging|anti[-\s]?age|wrinkles?|fine lines?|firming|dark spots?|hyperpigmentation|acne|pores?|blackheads?|clogged pores?|clogged|redness|dull(?:ness)?|dehydrat(?:ed|ion)?|tight(?:ness)?|stinging|peeling|barrier|irritat(?:ed|ion)?)\b/i.test(raw) ||
-    /(抗老|抗衰|抗皱|细纹|淡纹|紧致|提拉|痘痘|闭口|毛孔|泛红|暗沉|色沉|痘印|色斑)/.test(raw) ||
+    hasAny(raw, CONCERN_GOAL_CUES) ||
+    (hasAny(raw, CONCERN_STATE_CUES) && askingProducts) ||
     /\bam\b/i.test(raw) ||
     /\bpm\b/i.test(raw)
   );

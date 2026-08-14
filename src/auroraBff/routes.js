@@ -97306,9 +97306,20 @@ function mountAuroraBffRoutes(app, { logger }) {
       const earlyMessage = ingressSignalSnapshot.message;
       const earlyCanonicalIntent = ingressSignalSnapshot.canonicalIntent;
       const earlyLatestRecoContextFromSession = ingressSignalSnapshot.latestRecoContextFromSession;
+      // Order is precedence: later sources overwrite earlier ones. The best-effort scrape goes FIRST, as the
+      // baseline it is, and the ingress overlay lands on top — that overlay already ranks its own sources
+      // (session < free text < request context < action), and the action patch has to stay at the top of that
+      // stack because it is the newest thing the user said this turn.
+      //
+      // It used to be the other way round, which was harmless only while the scrape came back empty here.
+      // `extractProfilePatchFromRequestContextPayload` then learned to descend into `session`, so a request
+      // carrying `chip.start.reco_products` with `profile_patch: { skin_type: 'oily' }` over a session profile
+      // of `combination` had the user's just-stated "im oily skin" overwritten by the stale stored value, and
+      // the beauty mainline recommended against the wrong skin type. Session is not a missing source here —
+      // the overlay already reads it, correctly ranked below the action.
       const earlyProfileForBeautyMainline = extractAnalysisProfileContextOverlay(
-        ingressSignalSnapshot.profileOverlay,
         rawProfilePatchFromRequestContext,
+        ingressSignalSnapshot.profileOverlay,
       );
       const earlyIncludeAlternatives = ingressSignalSnapshot.includeAlternatives;
       const earlyDebugHeader = req.get('X-Debug') ?? req.get('X-Aurora-Debug');
@@ -97348,11 +97359,22 @@ function mountAuroraBffRoutes(app, { logger }) {
             : {}),
         },
       };
-      const pivotBeautyEarlyChatEnvelope = buildPivotBeautyChatContractEnvelope({
-        message: earlyMessage,
-        session: pivotBeautySessionForContract,
-        source: 'ingress_fast_path',
-      });
+      // This fast path reads free text and session shape only — it never looks at the action. That is fine for
+      // the typed turns it was built for, but it sits AHEAD of the v2 delegation below, so on an explicit chip
+      // it answers a question the user did not ask. `chip.start.travel` carried with a stored
+      // `session.profile.travel_plan` matched here and returned a beauty envelope, while the travel skill that
+      // owns the chip never ran; the same chip with no stored plan delegated correctly, which is how a
+      // session-shaped heuristic silently outranking an explicit action reads from the outside.
+      //
+      // So: an explicit action is decided by the action. Only free-text turns reach the contract fast path.
+      // (Same rule as the v2/v1 mainline proxy — see V1_MAINLINE_IN_PROCESS and shouldProxyFrameworkRecoToV1Mainline.)
+      const pivotBeautyEarlyChatEnvelope = earlyExplicitActionId
+        ? null
+        : buildPivotBeautyChatContractEnvelope({
+          message: earlyMessage,
+          session: pivotBeautySessionForContract,
+          source: 'ingress_fast_path',
+        });
       if (pivotBeautyEarlyChatEnvelope) {
         return sendChatEnvelope(pivotBeautyEarlyChatEnvelope);
       }

@@ -773,7 +773,15 @@ test('legacy and v2 routine normalization keep the same slot/product semantics f
   assert.deepEqual(flattenV2('pm'), flattenLegacy('pm'));
 });
 
-test('/v1/chat delegates v2-compatible message+context bodies when skill_router_v2 is enabled', async () => {
+// Turning skill_router_v2 on delegates explicit chip actions (see the chip.* tests below) and free text the
+// contract classes as v2 — but an ingredient question is v1-owned, and it must keep answering exactly as it
+// does with the flag off. This is the flag-on half of '/v1/chat keeps legacy contract for message+context
+// bodies when skill_router_v2 is disabled'.
+//
+// This test used to assert the v2 card contract (card_type/next_actions) for this body. That never held: the
+// message is routed to the v1 ingredient surface, not to v2. What it did surface is guarded below — the ask
+// used to be swallowed as a product reco and answered with a slot-filling stall.
+test('/v1/chat answers an ingredient question on the v1 surface even when skill_router_v2 is enabled', async () => {
   await withEnv(
     {
       AURORA_BFF_USE_MOCK: 'true',
@@ -793,10 +801,21 @@ test('/v1/chat delegates v2-compatible message+context bodies when skill_router_
         })
         .expect(200);
 
+      // Enabling the flag must not switch a v1-owned body onto the v2 card contract.
       assert.ok(Array.isArray(response.body.cards));
-      assert.ok(Array.isArray(response.body.next_actions));
-      assert.equal(response.body.cards.some((card) => card && card.card_type === 'text_response'), true);
-      assert.equal(response.body.cards.some((card) => Object.prototype.hasOwnProperty.call(card || {}, 'type')), false);
+      assert.equal(response.body.cards.some((card) => Object.prototype.hasOwnProperty.call(card || {}, 'type')), true);
+      assert.equal(Object.prototype.hasOwnProperty.call(response.body, 'next_actions'), false);
+
+      // Asking WHICH ingredient is an ingredient question. It must reach an ingredient surface rather than the
+      // product-reco funnel, which answers by demanding profile slots the asker never needed to supply.
+      const answer = String(response.body.assistant_text || response.body.assistant_message?.content || '');
+      assert.equal(
+        response.body.cards.some((card) => card && /ingredient/i.test(String(card.type || ''))),
+        true,
+        `expected an ingredient card, got: ${JSON.stringify(response.body.cards.map((card) => card && card.type))}`,
+      );
+      assert.doesNotMatch(answer, /more context before narrowing products/i);
+      assert.notEqual(answer.trim(), 'Invalid request.');
     },
   );
 });
@@ -1168,41 +1187,50 @@ test('shouldEarlyLockBeautyOwnedChatReco allows contextual reco continuation eve
   );
 });
 
+// The early beauty lock reads the ingress intent contract, so a chip whose reply_text happens to read like a
+// reco ask must still be decided by the action. `chip.start.reco_products` is the one reco chip the beauty
+// mainline genuinely owns, so it SHOULD lock — the steal to guard against is a chip another surface owns
+// (dupes, travel, product analysis) being pulled onto the mainline by its own wording.
+//
+// Asserting `false` for `chip.start.reco_products` is what this test used to do, which contradicted
+// '/v1/chat early-locks beauty reco action payload before identity resolution' below and could never hold.
 test('shouldEarlyLockBeautyOwnedChatReco does not steal action-driven reco payloads from the chip path', async () => {
   resetAuroraModules();
   const { __internal } = require('../src/auroraBff/routes');
 
-  const contract = await __internal.buildChatIntentContract({
-    message: 'im oily skin, what products should i use?',
-    language: 'EN',
-    action: {
-      id: 'chip.start.reco_products',
-      type: 'chip.start.reco_products',
-      data: {
-        reply_text: 'im oily skin, what products should i use?',
-        profile_patch: {
-          skin_type: 'oily',
-        },
+  const earlyLockFor = async ({ actionId, replyText }) => {
+    const contract = await __internal.buildChatIntentContract({
+      message: replyText,
+      language: 'EN',
+      action: {
+        id: actionId,
+        type: actionId,
+        data: { reply_text: replyText, profile_patch: { skin_type: 'oily' } },
       },
-    },
-    client_state: { state: 'IDLE_CHAT' },
-  });
-
-  assert.equal(
-    __internal.shouldEarlyLockBeautyOwnedChatReco({
+      client_state: { state: 'IDLE_CHAT' },
+    });
+    return __internal.shouldEarlyLockBeautyOwnedChatReco({
       ingressChatIntentContract: contract,
-      normalizedActionPayload: {
-        action_id: 'chip.start.reco_products',
-        kind: 'action',
-        data: {
-          reply_text: 'im oily skin, what products should i use?',
-        },
-      },
-      actionId: 'chip.start.reco_products',
+      normalizedActionPayload: { action_id: actionId, kind: 'action', data: { reply_text: replyText } },
+      actionId,
       actionLabel: '',
-      message: 'im oily skin, what products should i use?',
-    }),
-    false,
+      message: replyText,
+    });
+  };
+
+  // Reco-shaped wording on a chip owned by another surface must not pull it onto the beauty mainline.
+  for (const actionId of ['chip.start.dupes', 'chip.start.travel', 'chip.action.analyze_product']) {
+    assert.equal(
+      await earlyLockFor({ actionId, replyText: 'im oily skin, what products should i use?' }),
+      false,
+      `early lock stole ${actionId} from its own chip path`,
+    );
+  }
+
+  // ...and the positive case, so the assertions above cannot pass by locking nothing at all.
+  assert.equal(
+    await earlyLockFor({ actionId: 'chip.start.reco_products', replyText: 'im oily skin, what products should i use?' }),
+    true,
   );
 });
 
