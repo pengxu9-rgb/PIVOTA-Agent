@@ -44,11 +44,13 @@ const {
   UCP_SPEC_VERSION,
   UCP_SPEC_BASE,
   UCP_SCHEMA_BASE,
+  UCP_SERVICE_SCHEMA_BASE,
 } = require('../../safety-kernel/src/protocol/ucpSpecVersion.cjs');
 
 const DEFAULT_UCP_VERSION = UCP_SPEC_VERSION;
 const DEFAULT_SPEC_BASE = UCP_SPEC_BASE;
 const DEFAULT_SCHEMA_BASE = UCP_SCHEMA_BASE;
+const DEFAULT_SERVICE_SCHEMA_BASE = UCP_SERVICE_SCHEMA_BASE;
 
 // The shopping capabilities Pivota requests. Deliberately EXCLUDES any `*.complete` / payment capability.
 //
@@ -199,6 +201,7 @@ function buildUcpBuyerAgentProfile(config = {}) {
   const version = config.ucpVersion || DEFAULT_UCP_VERSION;
   const specBase = `${(config.specBase || DEFAULT_SPEC_BASE).replace(/\/+$/, '')}/`;
   const schemaBase = `${(config.schemaBase || DEFAULT_SCHEMA_BASE).replace(/\/+$/, '')}/`;
+  const serviceSchemaBase = `${(config.serviceSchemaBase || DEFAULT_SERVICE_SCHEMA_BASE).replace(/\/+$/, '')}/`;
   const profileUrl = config.profileUrl ? requireHttps(config.profileUrl, 'profileUrl') : undefined;
   // The spec marks `spec` and `schema` REQUIRED on a capability entry, and every profile example carries
   // both. We computed the bases and attached them only to the SERVICE entry, so a merchant that validates
@@ -239,9 +242,17 @@ function buildUcpBuyerAgentProfile(config = {}) {
       [SHOPPING_SERVICE]: [
         {
           version,
-          spec: specBase,
+          // DOCUMENTS, NOT DIRECTORY BASES. These were `specBase` and `schemaBase` — the bare
+          // `.../specification/` and `.../schemas/` prefixes — and BOTH 404 (measured 2026-08-14): the
+          // origin serves documents, not directory listings. Every merchant that dereferenced our service
+          // entry to validate this profile got nothing, twice. A service entry's `spec` is the overview
+          // document, and its `schema` is the TRANSPORT's machine description (OpenRPC for MCP) which lives
+          // in a DIFFERENT tree from the capability schemas — hence UCP_SERVICE_SCHEMA_BASE rather than a
+          // path under `schemaBase`. Both measured 200, and both match the spec's own profile example and
+          // cosrx's live profile.
+          spec: `${specBase}overview`,
           transport: 'mcp',
-          schema: schemaBase,
+          schema: `${serviceSchemaBase}shopping/mcp.openrpc.json`,
         },
       ],
     },
@@ -249,15 +260,24 @@ function buildUcpBuyerAgentProfile(config = {}) {
     // Empty object = Pivota declares NO payment handler. It never processes payment; the buyer completes on
     // the merchant's own storefront via the returned handoff URL.
     payment_handlers: {},
-    // PUBLIC keys for the SIGNED trust tier (RFC 9421 / ECDSA P-256). Sourced from env / config (public JWK
-    // only; private material rejected). Empty = anonymous/token tier only. Verifiers match the request's
-    // `keyid` against a JWK `kid` here.
-    signing_keys: resolveSigningKeys(config),
   };
   if (profileUrl) ucp.profile_url = profileUrl;
 
   return {
     ucp,
+    // PUBLIC keys for the SIGNED trust tier (RFC 9421 / ECDSA P-256). Sourced from env / config (public JWK
+    // only; private material rejected). Empty = anonymous/token tier only. Verifiers match the request's
+    // `keyid` against a JWK `kid` here.
+    //
+    // A SIBLING OF `ucp`, PER SPEC — it was inside `ucp`, and the seller profile had the identical defect.
+    // Both spec profile examples (Business AND Platform) close the `ucp` object and then declare
+    // `signing_keys` beside it: "The `ucp` object contains protocol metadata: version, services,
+    // capabilities, and payment handlers. The `signing_keys` array contains public keys…". Key Discovery is
+    // literally "extract `keyid` from Signature-Input and match to `kid` in `signing_keys[]`" of the fetched
+    // profile — so a merchant verifying one of our SIGNED-tier requests read `profile.signing_keys`, got
+    // undefined, and answered `key_not_found` / 401. The whole signed tier dark, for a reason nothing in the
+    // document announces.
+    signing_keys: resolveSigningKeys(config),
     // Human/founder-facing truthful descriptor of who Pivota is and what it will (and will NOT) do. Additive
     // metadata alongside the spec `ucp` block; kept small to stay under the profile payload size limit.
     agent: {

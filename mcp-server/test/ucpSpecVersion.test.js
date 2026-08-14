@@ -34,6 +34,7 @@ import {
   UCP_SPEC_VERSION,
   UCP_SPEC_BASE,
   UCP_SCHEMA_BASE,
+  UCP_SERVICE_SCHEMA_BASE,
 } from '../../safety-kernel/src/protocol/ucpSpecVersion.cjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -57,7 +58,7 @@ function sellerProfile() {
 
 describe('the UCP spec version is one constant, not two pins', () => {
   test('the seller profile advertises the shared constant', () => {
-    assert.equal(sellerProfile().ucp_version, UCP_SPEC_VERSION);
+    assert.equal(sellerProfile().ucp.version, UCP_SPEC_VERSION);
   });
 
   test('the buyer-agent profile advertises the same shared constant', () => {
@@ -66,7 +67,7 @@ describe('the UCP spec version is one constant, not two pins', () => {
   });
 
   test('seller and buyer publish the SAME version (a one-sided bump fails here)', () => {
-    const seller = sellerProfile().ucp_version;
+    const seller = sellerProfile().ucp.version;
     const buyer = buildUcpBuyerAgentProfile().ucp.version;
     assert.equal(seller, buyer, `seller advertises ${seller} but the buyer agent negotiates ${buyer}`);
   });
@@ -80,11 +81,17 @@ describe('the UCP spec version is one constant, not two pins', () => {
     }
     for (const entry of services['dev.ucp.shopping']) {
       assert.equal(entry.version, UCP_SPEC_VERSION);
-      // The spec/schema bases are DERIVED from the version, so they cannot name a different line.
-      assert.equal(entry.spec, UCP_SPEC_BASE);
-      assert.equal(entry.schema, UCP_SCHEMA_BASE);
-      assert.ok(entry.spec.includes(`/${UCP_SPEC_VERSION}/`), 'spec base must name the pinned version');
-      assert.ok(entry.schema.includes(`/${UCP_SPEC_VERSION}/`), 'schema base must name the pinned version');
+      // DOCUMENTS, not directory bases. These asserted `entry.spec === UCP_SPEC_BASE` and
+      // `entry.schema === UCP_SCHEMA_BASE` — the bare `.../specification/` and `.../schemas/` prefixes —
+      // which is exactly why the two dead URLs survived: the test pinned our own constant back at us instead
+      // of anything a merchant could dereference. Both bare bases 404 (measured 2026-08-14).
+      assert.equal(entry.spec, `${UCP_SPEC_BASE}overview`);
+      assert.equal(entry.schema, `${UCP_SERVICE_SCHEMA_BASE}shopping/mcp.openrpc.json`);
+      assert.notEqual(entry.spec, UCP_SPEC_BASE, 'a directory base is not a spec document');
+      assert.notEqual(entry.schema, UCP_SCHEMA_BASE, 'a capability-schema base is not a service schema');
+      // …and they still cannot name a line other than the pinned one.
+      assert.ok(entry.spec.includes(`/${UCP_SPEC_VERSION}/`), 'spec URL must name the pinned version');
+      assert.ok(entry.schema.includes(`/${UCP_SPEC_VERSION}/`), 'schema URL must name the pinned version');
     }
   });
 });

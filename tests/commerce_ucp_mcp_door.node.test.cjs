@@ -359,12 +359,15 @@ test('the charge kill-switch fires on the LIT door, over the wire, under the UCP
 test('the UCP profile advertises the UCP-DIALECT endpoint when the door is lit', async () => {
   await withEnv({ ...DOOR_LIT, AGENT_CHECKOUT_UCP_DISCOVERY_ENABLED: '1' }, async () => {
     const resp = await supertest(app).get('/.well-known/ucp').expect(200);
-    const mcp = resp.body.services.find((s) => s.transport === 'mcp');
+    // `services` is a MAP keyed by service id, each value an array of transport bindings.
+    const mcp = (resp.body.ucp.services['dev.ucp.shopping'] || []).find((s) => s.transport === 'mcp');
     assert.ok(mcp, 'a lit door must be advertised');
     // The native door is what it used to point at: a platform calling `create_checkout` there got an
     // unknown-tool error, which is the defect this repoint fixes.
     assert.equal(mcp.endpoint, 'https://shop.pivota.cc/ucp/mcp');
     assert.notEqual(mcp.endpoint, 'https://shop.pivota.cc/mcp');
+    // The binding carries the transport's own machine description, which the spec requires for MCP.
+    assert.match(mcp.schema, /\/services\/shopping\/mcp\.openrpc\.json$/);
   });
 });
 
@@ -373,15 +376,15 @@ test('a DARK door is not advertised at all, rather than advertised as the native
     const resp = await supertest(app).get('/.well-known/ucp').expect(200);
     // An endpoint that cannot serve one UCP call is not a UCP transport. Omitting it is honest; pointing
     // back at /mcp is the "advertised but not executable" defect the rest of this profile already avoids.
-    assert.equal(resp.body.services.find((s) => s.transport === 'mcp'), undefined);
-    assert.equal(JSON.stringify(resp.body.services).includes('/ucp/mcp'), false);
+    assert.equal((resp.body.ucp.services['dev.ucp.shopping'] || []).find((s) => s.transport === 'mcp'), undefined);
+    assert.equal(JSON.stringify(resp.body.ucp.services).includes('/ucp/mcp'), false);
   });
 });
 
 test('the advertised endpoint is one the door actually answers on', async () => {
   await withEnv({ ...DOOR_LIT, AGENT_CHECKOUT_UCP_DISCOVERY_ENABLED: '1' }, async () => {
     const resp = await supertest(app).get('/.well-known/ucp').expect(200);
-    const advertised = resp.body.services.find((s) => s.transport === 'mcp').endpoint;
+    const advertised = resp.body.ucp.services['dev.ucp.shopping'].find((s) => s.transport === 'mcp').endpoint;
     // Follow the profile the way a platform would: take the advertised path and call it.
     const path = new URL(advertised).pathname;
     const listed = await supertest(app).post(path).send(rpc('tools/list', undefined, 9)).expect(200);

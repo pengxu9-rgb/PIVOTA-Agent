@@ -26,7 +26,9 @@ import {
   DELEGATED_PAYMENT_REFUSAL_HTTP_STATUS,
   delegatedPaymentRefusalAcpResponse,
 } from '../src/protocol/delegatedPaymentRefusal.js';
-import { canonicalOp, operationsForCapability, REFUSAL_ONLY_OPERATIONS } from '../src/protocol/canonicalContract.js';
+import {
+  canonicalOp, operationsForCapability, REFUSAL_ONLY_OPERATIONS, CANONICAL_CAPABILITIES,
+} from '../src/protocol/canonicalContract.js';
 import { createCanonicalExecutor } from '../src/protocol/canonicalExecutor.js';
 import { delegatePayment, createAcpRestAdapter } from '../src/protocol/acpRestAdapter.js';
 import { createAcpRouteHandlers } from '../src/protocol/acpRestRoutes.js';
@@ -249,8 +251,9 @@ test('UCP profile: the refused operation and its now-empty capability are never 
   const serialized = JSON.stringify(profile);
   assert.ok(!serialized.includes('exchange_payment_token'), 'canonical op not advertised');
   assert.ok(!serialized.includes('payment.token_exchange'), 'UCP surface name not advertised');
-  // Its capability held nothing else, so the capability itself is gone rather than shipping `operations: []`.
-  const capIds = profile.capabilities.map((c) => c.id);
+  // Its capability held nothing else, so the capability itself is gone rather than shipping an empty entry.
+  // `capabilities` is a MAP keyed by id — the spec's shape.
+  const capIds = Object.keys(profile.ucp.capabilities);
   assert.ok(!capIds.includes('dev.ucp.shopping.ap2_mandate'));
   // Everything executable is still advertised, and no capability is left empty.
   assert.ok(capIds.includes('dev.ucp.shopping.checkout'));
@@ -263,21 +266,33 @@ test('UCP profile: the refused operation and its now-empty capability are never 
   assert.ok(capIds.includes('dev.ucp.common.identity_linking'));
   assert.ok(!capIds.includes('dev.ucp.shopping.catalog.search'), 'no ucpTool behind it on this door');
   assert.ok(!capIds.includes('dev.ucp.shopping.order'), 'no ucpTool behind it on this door');
-  // No capability is a title with nothing behind it. A MODIFIER (UCP `extends` + `config`, e.g.
-  // dev.ucp.shopping.fulfillment) is the one entry with no operations of its OWN — what stands behind it is
-  // its config plus the capability it extends, which must itself be advertised. So the rule is not relaxed,
-  // it is stated exactly: operations, or an extends target that is present.
+  // …and NOT the vendor capability, whose spec/schema documents are not hosted. Withholding it is what keeps
+  // the document valid; a partial entry would make a validator reject all of the above with it.
+  assert.ok(!capIds.includes('cc.pivota.insights'), 'no hosted spec/schema documents');
+  // No capability is a title with nothing behind it. `operations` is not a spec member and is no longer
+  // published, so the rule is asserted on what the document DOES carry plus the contract behind each id: a
+  // MODIFIER (UCP `extends` + `config`, e.g. dev.ucp.shopping.fulfillment) is the one entry with no
+  // operations of its OWN — what stands behind it is its config plus the capability it extends, which must
+  // itself be advertised. So the rule is not relaxed, it is stated exactly: operations, or a present parent.
   const capIdSet = new Set(capIds);
-  for (const c of profile.capabilities) {
-    if (c.extends) {
-      assert.equal(c.operations, undefined, `${c.id} is a modifier and must not ship an empty operations list`);
-      assert.ok(c.extends.length > 0 && c.extends.every((id) => capIdSet.has(id)),
-        `${c.id} extends a capability that is not advertised`);
+  for (const [id, entries] of Object.entries(profile.ucp.capabilities)) {
+    const entry = entries[0];
+    const parents = entry.extends === undefined
+      ? null
+      : (Array.isArray(entry.extends) ? entry.extends : [entry.extends]);
+    if (parents) {
+      assert.ok(parents.some((parent) => capIdSet.has(parent)), `${id} extends a capability that is not advertised`);
     } else {
-      assert.ok(c.operations.length > 0, `${c.id} advertises no empty capability`);
+      const key = Object.keys(CANONICAL_CAPABILITIES).find((k) => CANONICAL_CAPABILITIES[k].ucp === id);
+      assert.ok(operationsForCapability(key, { includeRefusalOnly: false }).length > 0,
+        `${id} advertises no empty capability`);
     }
+    // Every entry carries the members the spec marks REQUIRED — one incomplete entry invalidates the lot.
+    assert.equal(typeof entry.spec, 'string', `${id} must publish a spec URL`);
+    assert.equal(typeof entry.schema, 'string', `${id} must publish a schema URL`);
   }
-  // Payment authorization is NOT lost — it is presented inline on the complete operation.
-  const checkout = profile.capabilities.find((c) => c.id === 'dev.ucp.shopping.checkout');
-  assert.ok(checkout.operations.includes('complete_checkout_session'));
+  // Payment authorization is NOT lost — it is presented inline on the complete operation, which the checkout
+  // capability still advertises (asserted through the contract, since operations are not in the document).
+  assert.ok(capIdSet.has('dev.ucp.shopping.checkout'));
+  assert.ok(operationsForCapability('checkout', { includeRefusalOnly: false }).includes('complete_checkout_session'));
 });

@@ -442,20 +442,44 @@ describe('hard safety bounds', () => {
 // ---- profile: signing_keys publication ------------------------------------
 
 describe('buildUcpBuyerAgentProfile signing_keys', () => {
+  // `signing_keys` is a SIBLING of `ucp`, not a member of it. Both of the spec's profile examples close the
+  // `ucp` object and then declare it beside them, and Key Discovery is "match `keyid` to a `kid` in
+  // `signing_keys[]`" of the FETCHED PROFILE — so nesting it makes every published key invisible to the
+  // merchant verifying our SIGNED-tier request, which answers `key_not_found` / 401. These assertions read
+  // `p.ucp.signing_keys` and so pinned the defect in place.
   test('defaults to an empty signing_keys array (anonymous/token only)', () => {
     const p = buildUcpBuyerAgentProfile({ signingKeys: [] });
-    expect(Array.isArray(p.ucp.signing_keys)).toBe(true);
-    expect(p.ucp.signing_keys.length).toBe(0);
+    expect(p.ucp.signing_keys).toBeUndefined();
+    expect(Array.isArray(p.signing_keys)).toBe(true);
+    expect(p.signing_keys.length).toBe(0);
   });
 
-  test('publishes a provided PUBLIC JWK with its kid', () => {
+  test('publishes a provided PUBLIC JWK with its kid, as a SIBLING of ucp', () => {
     const p = buildUcpBuyerAgentProfile({ signingKeys: [TEST_PUBLIC_JWK] });
-    expect(p.ucp.signing_keys).toHaveLength(1);
-    const k = p.ucp.signing_keys[0];
+    expect(p.ucp.signing_keys).toBeUndefined();
+    expect(p.signing_keys).toHaveLength(1);
+    const k = p.signing_keys[0];
     expect(k.kty).toBe('EC');
     expect(k.crv).toBe('P-256');
     expect(k.kid).toBe(TEST_KEY_ID);
     expect(k.use).toBe('sig');
+  });
+
+  // The service entry publishes DOCUMENTS a merchant can dereference, not directory bases. It carried the
+  // bare `.../specification/` and `.../schemas/` prefixes, and both 404 (measured 2026-08-14).
+  test('the service entry publishes real spec/schema documents, not directory bases', () => {
+    const { services } = buildUcpBuyerAgentProfile().ucp;
+    const entry = services['dev.ucp.shopping'][0];
+    expect(entry.spec).toMatch(/\/specification\/overview$/);
+    expect(entry.schema).toMatch(/\/services\/shopping\/mcp\.openrpc\.json$/);
+    // A trailing-slash directory base is what the defect looked like; neither may come back.
+    expect(entry.spec.endsWith('/')).toBe(false);
+    expect(entry.schema.endsWith('/')).toBe(false);
+    // The service schema tree is NOT the capability schema tree — handing a merchant the wrong one would
+    // describe the capabilities where the transport belongs.
+    const anyCapability = Object.values(buildUcpBuyerAgentProfile().ucp.capabilities)[0][0];
+    expect(entry.schema).not.toBe(anyCapability.schema);
+    expect(anyCapability.schema).toMatch(/\/schemas\/shopping\/.+\.json$/);
   });
 
   test('REFUSES to publish a private key (throws on a `d` member)', () => {

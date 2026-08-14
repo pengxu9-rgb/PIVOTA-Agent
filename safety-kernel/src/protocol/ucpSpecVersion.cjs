@@ -47,12 +47,33 @@ const UCP_SPEC_ORIGIN = 'https://ucp.dev';
 /** `https://ucp.dev/<version>/specification/` — advertised in the buyer profile's service entries. */
 const UCP_SPEC_BASE = `${UCP_SPEC_ORIGIN}/${UCP_SPEC_VERSION}/specification/`;
 
-/** `https://ucp.dev/<version>/schema/` — advertised in the buyer profile's service entries. */
-const UCP_SCHEMA_BASE = `${UCP_SPEC_ORIGIN}/${UCP_SPEC_VERSION}/schema/`;
+/**
+ * `https://ucp.dev/<version>/schemas/` — the CAPABILITY schema base. PLURAL, and that is not cosmetic: this
+ * constant said `schema/` (singular) and every schema URL built from it 404s. Measured 2026-08-14:
+ *   https://ucp.dev/2026-04-08/schemas/shopping/checkout.json -> 200
+ *   https://ucp.dev/2026-04-08/schema/shopping/checkout.json  -> 404
+ * The spec's own profile examples and a live conformant business profile (cosrx) both use the plural form.
+ * Because both of Pivota's UCP roles read this one constant, the singular spelling published dead schema
+ * URLs from the buyer profile as well — a merchant that dereferences them to validate our capabilities gets
+ * nothing at every one.
+ */
+const UCP_SCHEMA_BASE = `${UCP_SPEC_ORIGIN}/${UCP_SPEC_VERSION}/schemas/`;
+
+/**
+ * `https://ucp.dev/<version>/services/` — the SERVICE schema base, which is a DIFFERENT tree from the
+ * capability schemas above and must not be derived from it. A service entry's `schema` is the transport's
+ * machine description (OpenRPC for MCP, OpenAPI for REST), not a capability's JSON Schema:
+ *   .../services/shopping/mcp.openrpc.json   -> 200
+ *   .../services/shopping/rest.openapi.json  -> 200
+ * Both measured 2026-08-14, and both are what the spec's Business Profile example and cosrx's live profile
+ * carry. Kept here rather than inlined so neither role can spell it privately.
+ */
+const UCP_SERVICE_SCHEMA_BASE = `${UCP_SPEC_ORIGIN}/${UCP_SPEC_VERSION}/services/`;
 
 module.exports = {
   UCP_SPEC_VERSION,
   UCP_SPEC_ORIGIN,
   UCP_SPEC_BASE,
   UCP_SCHEMA_BASE,
+  UCP_SERVICE_SCHEMA_BASE,
 };

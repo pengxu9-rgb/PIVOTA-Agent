@@ -81,13 +81,21 @@ const { createUcpOrderWebhookReceiver } = require('../src/services/ucpOrderWebho
 
 test('GET /.well-known/ucp serves with AGENT_CHECKOUT_STRICT off and publishes the env signing key', async () => {
   const resp = await supertest(app).get('/.well-known/ucp').expect(200);
-  assert.ok(resp.body.ucp_version, 'has ucp_version');
+  assert.ok(resp.body.ucp.version, 'has ucp.version');
+  // `signing_keys` is a SIBLING of `ucp`, per spec — Key Discovery reads `profile.signing_keys`, so nesting
+  // it makes every published key invisible to a verifier.
+  assert.equal(resp.body.ucp.signing_keys, undefined, 'must not be nested inside ucp');
   assert.equal(resp.body.signing_keys.length, 1);
   const key = resp.body.signing_keys[0];
   assert.equal(key.kid, 'test-1');
   assert.equal(key.kty, 'EC');
   assert.equal(key.crv, 'P-256');
   assert.equal(key.d, undefined, 'never a private component');
+  // Spec: profile responses MUST be publicly cacheable for at least 60s, and MUST NOT be private/no-store.
+  const cacheControl = resp.headers['cache-control'];
+  assert.match(cacheControl, /(^|[\s,])public([\s,]|$)/);
+  assert.ok(Number(/max-age=(\d+)/.exec(cacheControl)?.[1]) >= 60, `weak max-age: ${cacheControl}`);
+  assert.ok(!/private|no-store|no-cache/.test(cacheControl), `forbidden directive: ${cacheControl}`);
 });
 
 test('GET /.well-known/ucp is dark (404) when the discovery flag is off', async () => {
@@ -111,12 +119,13 @@ test('strict off: the profile is SERVED but advertises nothing callable', async 
   // advertises what a platform can CALL, so with no transport the capability list is empty and the
   // withholding of checkout/ap2 is subsumed by it.
   const resp = await supertest(app).get('/.well-known/ucp').expect(200);
-  assert.ok(resp.body.ucp_version, 'the profile itself stays up while checkout is dark');
-  assert.deepEqual(resp.body.services, [], 'nothing speaks for this profile');
-  assert.deepEqual(resp.body.capabilities, [], 'no transport => no capability advertised');
+  assert.ok(resp.body.ucp.version, 'the profile itself stays up while checkout is dark');
+  // Both members are MAPS in the spec's shape, so empty is `{}` rather than `[]`.
+  assert.deepEqual(resp.body.ucp.services, {}, 'nothing speaks for this profile');
+  assert.deepEqual(resp.body.ucp.capabilities, {}, 'no transport => no capability advertised');
   // NOTE what is deliberately NOT asserted here. Substring checks for checkout / ap2_mandate /
   // create_payment_link would be VACUOUS in this state: the whole document is
-  // {ucp_version, provider, services:[], capabilities:[], payment_handlers:[], signing_keys:[]}, so none of
+  // {ucp:{version,services:{},capabilities:{},payment_handlers:{}}, provider, signing_keys:[]}, so none of
   // those strings can appear whatever the code does — they would pass with the kill-switch guard deleted.
   // That guard (which ids to withhold while AGENT_CHECKOUT_STRICT is dark) is driven directly in
   // tests/commerce_ucp_mcp_door.node.test.cjs against `ucpOmitCapabilityIdsForFlags`, where the served
@@ -126,7 +135,7 @@ test('strict off: the profile is SERVED but advertises nothing callable', async 
     .post('/ucp/capabilities')
     .send({ capabilities: ['dev.ucp.shopping.checkout', 'dev.ucp.shopping.catalog.search'] })
     .expect(200);
-  assert.deepEqual(inter.body.active_capabilities, []);
+  assert.deepEqual(inter.body.ucp.capabilities, {});
 });
 
 // M9: the profile is built per request — a bad signing-key env 503s only while it is bad, and key
