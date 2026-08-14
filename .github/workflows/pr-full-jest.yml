@@ -290,10 +290,36 @@ jobs:
       # recursion is a chain of promise continuations and the timeout's timer
       # never gets a turn. The suite that owned this request
       # (aurora_bff_v1_chat_rollout, 60 tests) hung at test 54 and is in NO CI
-      # job, so nothing noticed; it still carries pre-existing failures and is
-      # deliberately NOT swept in here (see the file-by-file rule above). This
-      # focused file is. Its end-to-end cases are budget-instrumented so a
-      # regression fails fast instead of pinning a runner until the job timeout.
+      # job, so nothing noticed. Its end-to-end cases are budget-instrumented so
+      # a regression fails fast instead of pinning a runner until the job
+      # timeout. (That rollout suite carried five pre-existing failures and was
+      # held back at the time; they are fixed and it is added below.)
+      # ADDED 2026-08-14: `aurora_bff_v1_chat_rollout`, confirmed green 60/60 —
+      # five consecutive standalone runs, ~3s each, so it costs this 10-minute
+      # job nothing — and mutation-checked (5 mutants, one per fix, each killed
+      # by exactly the test that owns it). It is the ONLY suite that covers the
+      # /v1/chat rollout seam end to end: which bodies `skill_router_v2` hands to
+      # the v2 router (explicit chip actions — dupes, travel, analyze_product,
+      # dupe_compare) versus which stay on the v1 mainline (ingredient, fit-check,
+      # compatibility and beauty-reco free text), and that enabling the flag never
+      # changes the contract of a v1-owned body. Like the file above it is
+      # `*.node.test.cjs`, so jest's testMatch cannot see it, and it was absent
+      # from `test:node` — 60 assertions running in no CI job at all.
+      #
+      # It was held back because it was red. The five failures were not noise: two
+      # were stale expectations asserting a v2 contract for bodies v1 owns and an
+      # early lock that contradicted the test below it, and three were REGRESSIONS
+      # this gap let through unseen — bisected to the commits that caused them.
+      # A concern-word widening (8c287b8b) made "my skin feels dry and tight
+      # lately. What should I do?" read as a product ask, answered by demanding a
+      # skin type the request had already supplied; a request-context scrape that
+      # learned to descend into `session` (442c2f76) let a stale stored profile
+      # overwrite the `profile_patch` a chip had just sent; and moving the Beauty
+      # Pivot contract ahead of intent routing (dbbf4169) let a session-shaped
+      # heuristic swallow `chip.start.travel` before the skill that owns it ran.
+      # All three are the same shape as the cycle above — ambient text or session
+      # state outranking an explicit action — which is the class this suite exists
+      # to catch and could not, running nowhere.
       # ADDED 2026-08-13: `safety-kernel/test/protocol` and
       # `safety-kernel/test/delegatedPaymentRefusal`, confirmed green from the
       # repo root (30/30 together, the way this job invokes them). They own the
@@ -307,6 +333,7 @@ jobs:
         run: |
           node --test \
             tests/aurora_chat_v1_mainline_delegation_cycle.node.test.cjs \
+            tests/aurora_bff_v1_chat_rollout.node.test.cjs \
             mcp-server/test/ucpToolVocabulary.test.js \
             mcp-server/test/ucpDialectSurface.test.js \
             mcp-server/test/ucpArgumentAdapter.test.js \

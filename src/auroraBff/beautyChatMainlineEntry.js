@@ -840,16 +840,34 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
         latestRecoContextFromSession?.user_request,
       )
       : '';
+    // Neither of these two is simply "the better source", so neither spread order is right.
+    //
+    // `profile` is the ranked overlay the caller built (session < free text < request context < action), so where
+    // it HAS a value that value is the newest thing the user said and must win — spreading the scrape last let a
+    // stale stored `skinType` overwrite the `profile_patch` a chip sent in the same request, and the mainline
+    // recommended against the wrong skin type. But `profile` also arrives carrying explicit `null`s and empty
+    // arrays for fields nobody has filled in yet, and those must NOT bury a real value: that is what
+    // `requestContextProfilePatch` is for, and spreading `profile` last let its nulls win instead.
+    //
+    // So: the scrape is the baseline, and only the MEANINGFUL entries of `profile` land on top. A field is
+    // meaningful when it is actually set — not null/undefined, not an empty string, not an empty array.
+    const hasMeaningfulProfileValue = (value) => {
+      if (value === null || value === undefined) return false;
+      if (Array.isArray(value)) return value.length > 0;
+      if (typeof value === 'string') return value.trim() !== '';
+      return true;
+    };
     const effectiveProfile =
       (requestContextProfilePatch && typeof requestContextProfilePatch === 'object' && !Array.isArray(requestContextProfilePatch))
         || (profile && typeof profile === 'object' && !Array.isArray(profile))
         ? {
-          ...(profile && typeof profile === 'object' && !Array.isArray(profile)
-            ? profile
-            : {}),
           ...(requestContextProfilePatch && typeof requestContextProfilePatch === 'object' && !Array.isArray(requestContextProfilePatch)
             ? requestContextProfilePatch
             : {}),
+          ...Object.fromEntries(
+            Object.entries(profile && typeof profile === 'object' && !Array.isArray(profile) ? profile : {})
+              .filter(([, value]) => hasMeaningfulProfileValue(value)),
+          ),
         }
         : profile;
     const profileSummary = summarizeProfileForContext(effectiveProfile);

@@ -16,8 +16,12 @@ function hasAny(text, patterns) {
   return patterns.some((re) => re.test(raw));
 }
 
+// `cream`, `lotion`, `balm`, `essence` and the British `moisturiser` were missing here while their Chinese
+// equivalents (面霜, 乳液) were already listed, so "barrier cream" carried no product cue at all. `repair` earns
+// its place the same way — "barrier repair" is a shelf category, not a verb, in "best barrier repair for
+// sensitive skin". The gap only became visible once `barrier` stopped being a bare reco cue on its own.
 const RECO_PRODUCT_CUES = [
-  /\b(product|products|routine|plan|cleanser|serum|moisturizer|sunscreen|toner|spf)\b/i,
+  /\b(product|products|routine|plan|cleanser|serum|moisturizer|moisturiser|sunscreen|toner|spf|cream|creams|lotion|lotions|balm|essence|repair)\b/i,
   /(产品|护肤品|方案|流程|精华|面霜|乳液|防晒|洁面|洗面奶|化妆水)/,
 ];
 
@@ -25,6 +29,16 @@ const INGREDIENT_SCIENCE_CUES = [
   /\b(ingredient|ingredients|active|actives)\b.{0,28}\b(science|evidence|mechanism|clinical|study|paper|research)\b/i,
   /\b(science|evidence|mechanism|clinical|study|paper|research)\b.{0,28}\b(ingredient|ingredients|active|actives)\b/i,
   /\b(mechanism of|how does)\b.{0,28}\b(niacinamide|retinol|retinoid|salicylic|aha|bha|vitamin c|azelaic|peptide)\b/i,
+  // "what ingredient is best for acne?" — asking WHICH ingredient is an ingredient question, even though the
+  // concern it names is also a reco cue. Without this it matched `acne` as a bare concern, entered the product
+  // funnel, and answered "I need a bit more context before narrowing products: skin_type" — slot-filling for a
+  // question that was never about a product.
+  //
+  // This cue is deliberately blind to purchase intent, because `isRecommendationLikeText` is what weighs the
+  // two: it only honours a science reading when nothing else in the text asks for products, and `askingProducts`
+  // there counts the transactional verbs as asking. That matters — "what actives should I BUY for acne?" names
+  // an active and a purchase, and it is a product ask.
+  /\b(what|which)\b.{0,24}\b(ingredient|ingredients|active|actives)\b/i,
   /(成分(机理|机制|科学|证据|原理)|证据链|循证|临床证据|论文证据|机理是什么|机制是什么)/,
 ];
 
@@ -51,9 +65,34 @@ const RECOMMENDATION_CUES = [
   /(怎么买|购买|下单|链接)/,
 ];
 
+// Concerns a user names when they are shopping for a fix: durable goals, not today's symptoms. Naming one of
+// these on its own is a reasonable reco signal — "acne", "dark spots", "blackheads" is how people open a
+// product ask.
+const CONCERN_GOAL_CUES = [
+  /\b(anti[-\s]?aging|anti[-\s]?age|wrinkles?|fine lines?|firming|dark spots?|hyperpigmentation|acne|pores?|blackheads?|clogged pores?|clogged|redness|dull(?:ness)?)\b/i,
+  /(抗老|抗衰|抗皱|细纹|淡纹|紧致|提拉|痘痘|闭口|毛孔|泛红|暗沉|色沉|痘印|色斑)/,
+];
+
+// Transient skin STATES. These are the words people reach for when describing what is happening to them —
+// "my skin feels dry and tight lately", "I started adapalene and now it's peeling" — so a bare mention is a
+// description of a problem, not a request to be sold something. They only count as reco intent alongside an
+// actual product ask, which is exactly how they were introduced: every prompt that motivated adding them
+// ("...looks dull. What should I add?", "...is peeling. What should I use tonight?") carries one.
+//
+// Listing them as bare cues instead cost real answers. "My skin feels dry and tight lately. What should I do?"
+// matched on `tight`, was routed into the reco funnel as a product ask, and came back as a slot-filling stall
+// — "I need a bit more context before narrowing products: skin type" — asking for a skin type the request had
+// already supplied, instead of answering the question.
+const CONCERN_STATE_CUES = [
+  /\b(dehydrat(?:ed|ion)?|tight(?:ness)?|stinging|peeling|barrier|irritat(?:ed|ion)?)\b/i,
+];
+
 const RECO_TRANSACTIONAL_CUES = [
   /\b(buy|use|get|pick|choose|shop|try)\b/i,
   /\b(i|we)\s*(want|need|would like|wanna|am looking for|are looking for)\b/i,
+  // Bare "looking for …", without the pronoun the pattern above requires — "looking for something to fix my
+  // damaged barrier" is shopping language whoever the subject is.
+  /\b(looking|searching)\s+for\b/i,
   /\bwhat\b.{0,24}\bproducts?\b.{0,24}\b(should i|to)\b.{0,12}\b(buy|use|get)\b/i,
   /\bwhich\b.{0,24}\b(products?|sunscreen|cleanser|serum|moisturizer|toner)\b.{0,24}\b(should i|to)\b.{0,12}\b(buy|use|get)\b/i,
   /(我|我们).{0,12}(想|要|需要).{0,20}(买|用|选).{0,20}(产品|护肤品|防晒|洁面|精华|面霜|乳液)/,
@@ -98,15 +137,21 @@ function isRecommendationLikeText(text) {
   if (!raw) return false;
 
   const scienceOnlyIntent = isIngredientScienceLikeText(raw);
-  const askingProducts = hasProductCue(raw) || hasAny(raw, RECOMMENDATION_CUES);
+  // "Asking for products" has to include the transactional verbs, not just product NOUNS and the recommendation
+  // phrasings. Leaving `RECO_TRANSACTIONAL_CUES` out of this made both readers below wrong in the same way:
+  // "what actives should I buy for acne?" was read as a pure science question and dropped out of the reco route
+  // entirely, and "I need something for my dehydrated skin" failed the state-cue test for want of a product noun.
+  // Neither names a cleanser or says "recommend", and both are plainly shopping.
+  const askingProducts =
+    hasProductCue(raw) || hasAny(raw, RECOMMENDATION_CUES) || hasAny(raw, RECO_TRANSACTIONAL_CUES);
   if (scienceOnlyIntent && !askingProducts) return false;
   const hasTransactionalProductIntent = hasProductCue(raw) && hasAny(raw, RECO_TRANSACTIONAL_CUES);
   if (hasTransactionalProductIntent) return true;
 
   return (
     hasAny(raw, RECOMMENDATION_CUES) ||
-    /\b(anti[-\s]?aging|anti[-\s]?age|wrinkles?|fine lines?|firming|dark spots?|hyperpigmentation|acne|pores?|blackheads?|clogged pores?|clogged|redness|dull(?:ness)?|dehydrat(?:ed|ion)?|tight(?:ness)?|stinging|peeling|barrier|irritat(?:ed|ion)?)\b/i.test(raw) ||
-    /(抗老|抗衰|抗皱|细纹|淡纹|紧致|提拉|痘痘|闭口|毛孔|泛红|暗沉|色沉|痘印|色斑)/.test(raw) ||
+    hasAny(raw, CONCERN_GOAL_CUES) ||
+    (hasAny(raw, CONCERN_STATE_CUES) && askingProducts) ||
     /\bam\b/i.test(raw) ||
     /\bpm\b/i.test(raw)
   );

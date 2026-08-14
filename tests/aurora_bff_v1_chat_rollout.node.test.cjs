@@ -773,7 +773,15 @@ test('legacy and v2 routine normalization keep the same slot/product semantics f
   assert.deepEqual(flattenV2('pm'), flattenLegacy('pm'));
 });
 
-test('/v1/chat delegates v2-compatible message+context bodies when skill_router_v2 is enabled', async () => {
+// Turning skill_router_v2 on delegates explicit chip actions (see the chip.* tests below) and free text the
+// contract classes as v2 — but an ingredient question is v1-owned, and it must keep answering exactly as it
+// does with the flag off. This is the flag-on half of '/v1/chat keeps legacy contract for message+context
+// bodies when skill_router_v2 is disabled'.
+//
+// This test used to assert the v2 card contract (card_type/next_actions) for this body. That never held: the
+// message is routed to the v1 ingredient surface, not to v2. What it did surface is guarded below — the ask
+// used to be swallowed as a product reco and answered with a slot-filling stall.
+test('/v1/chat answers an ingredient question on the v1 surface even when skill_router_v2 is enabled', async () => {
   await withEnv(
     {
       AURORA_BFF_USE_MOCK: 'true',
@@ -793,10 +801,21 @@ test('/v1/chat delegates v2-compatible message+context bodies when skill_router_
         })
         .expect(200);
 
+      // Enabling the flag must not switch a v1-owned body onto the v2 card contract.
       assert.ok(Array.isArray(response.body.cards));
-      assert.ok(Array.isArray(response.body.next_actions));
-      assert.equal(response.body.cards.some((card) => card && card.card_type === 'text_response'), true);
-      assert.equal(response.body.cards.some((card) => Object.prototype.hasOwnProperty.call(card || {}, 'type')), false);
+      assert.equal(response.body.cards.some((card) => Object.prototype.hasOwnProperty.call(card || {}, 'type')), true);
+      assert.equal(Object.prototype.hasOwnProperty.call(response.body, 'next_actions'), false);
+
+      // Asking WHICH ingredient is an ingredient question. It must reach an ingredient surface rather than the
+      // product-reco funnel, which answers by demanding profile slots the asker never needed to supply.
+      const answer = String(response.body.assistant_text || response.body.assistant_message?.content || '');
+      assert.equal(
+        response.body.cards.some((card) => card && /ingredient/i.test(String(card.type || ''))),
+        true,
+        `expected an ingredient card, got: ${JSON.stringify(response.body.cards.map((card) => card && card.type))}`,
+      );
+      assert.doesNotMatch(answer, /more context before narrowing products/i);
+      assert.notEqual(answer.trim(), 'Invalid request.');
     },
   );
 });
@@ -1136,9 +1155,6 @@ test('shouldEarlyLockBeautyOwnedChatReco locks current frontend beauty reco free
   assert.equal(
     __internal.shouldEarlyLockBeautyOwnedChatReco({
       ingressChatIntentContract: contract,
-      normalizedActionPayload: null,
-      actionId: '',
-      actionLabel: '',
       message: 'im oily skin, what products should i use?',
     }),
     true,
@@ -1168,41 +1184,51 @@ test('shouldEarlyLockBeautyOwnedChatReco allows contextual reco continuation eve
   );
 });
 
+// The early beauty lock reads the ingress intent contract, so a chip whose reply_text happens to read like a
+// reco ask must still be decided by the action. `chip.start.reco_products` is the one reco chip the beauty
+// mainline genuinely owns, so it SHOULD lock — the steal to guard against is a chip another surface owns
+// (dupes, travel, product analysis) being pulled onto the mainline by its own wording.
+//
+// Asserting `false` for `chip.start.reco_products` is what this test used to do, which contradicted
+// '/v1/chat early-locks beauty reco action payload before identity resolution' below and could never hold.
 test('shouldEarlyLockBeautyOwnedChatReco does not steal action-driven reco payloads from the chip path', async () => {
   resetAuroraModules();
   const { __internal } = require('../src/auroraBff/routes');
 
-  const contract = await __internal.buildChatIntentContract({
-    message: 'im oily skin, what products should i use?',
-    language: 'EN',
-    action: {
-      id: 'chip.start.reco_products',
-      type: 'chip.start.reco_products',
-      data: {
-        reply_text: 'im oily skin, what products should i use?',
-        profile_patch: {
-          skin_type: 'oily',
-        },
+  const earlyLockFor = async ({ actionId, replyText }) => {
+    const contract = await __internal.buildChatIntentContract({
+      message: replyText,
+      language: 'EN',
+      action: {
+        id: actionId,
+        type: actionId,
+        data: { reply_text: replyText, profile_patch: { skin_type: 'oily' } },
       },
-    },
-    client_state: { state: 'IDLE_CHAT' },
-  });
-
-  assert.equal(
-    __internal.shouldEarlyLockBeautyOwnedChatReco({
+      client_state: { state: 'IDLE_CHAT' },
+    });
+    // Deliberately the real contract rather than a literal: `shouldEarlyLockBeautyOwnedChatReco` takes no
+    // action id, so the ownership decision is `buildChatIntentContract`'s. Driving both together is the only
+    // way to test the invariant that actually matters — hand-building the contract here would assert the
+    // predicate against an ownership verdict no router ever produces.
+    return __internal.shouldEarlyLockBeautyOwnedChatReco({
       ingressChatIntentContract: contract,
-      normalizedActionPayload: {
-        action_id: 'chip.start.reco_products',
-        kind: 'action',
-        data: {
-          reply_text: 'im oily skin, what products should i use?',
-        },
-      },
-      actionId: 'chip.start.reco_products',
-      actionLabel: '',
-      message: 'im oily skin, what products should i use?',
-    }),
-    false,
+      message: replyText,
+    });
+  };
+
+  // Reco-shaped wording on a chip owned by another surface must not pull it onto the beauty mainline.
+  for (const actionId of ['chip.start.dupes', 'chip.start.travel', 'chip.action.analyze_product']) {
+    assert.equal(
+      await earlyLockFor({ actionId, replyText: 'im oily skin, what products should i use?' }),
+      false,
+      `early lock stole ${actionId} from its own chip path`,
+    );
+  }
+
+  // ...and the positive case, so the assertions above cannot pass by locking nothing at all.
+  assert.equal(
+    await earlyLockFor({ actionId: 'chip.start.reco_products', replyText: 'im oily skin, what products should i use?' }),
+    true,
   );
 });
 
@@ -1781,9 +1807,121 @@ test('/v1/chat early-locks beauty reco action payload before identity resolution
       assert.equal(captured?.profile?.skinType, 'oily');
       assert.deepEqual(captured?.profile?.goals, ['oil control']);
       assert.deepEqual(captured?.recentLogs, []);
+      // The route ALSO hands over the raw request-context scrape, which on a chip turn carries the stored
+      // session profile. Passing the right `profile` is only half the contract — see the test below for the
+      // half that decides which of the two the mainline actually recommends against.
+      assert.equal(captured?.requestContextProfilePatch?.skinType, 'combination');
     } finally {
       routes.__internal.__resetRouteDependencyOverridesForTest();
     }
+  });
+});
+
+// The test above stubs the beauty mainline, so it can only assert the ARGUMENTS the route hands over. That is
+// not the same as asserting what the mainline runs on, and the difference was hiding a live defect: the route
+// passed `profile.skinType = 'oily'` while `maybeHandleBeautyOwnedChatReco` merged the raw scrape on top of it
+// and recommended against `combination`. Every assertion above stayed green through all of it.
+//
+// So this crosses the seam with the real entry runtime and asserts the profile the reco actually consumes —
+// `summarizeProfileForContext` receives `effectiveProfile` directly, which makes it the cheapest honest probe.
+test('the beauty mainline recommends against the chip profile_patch, not the stale session profile', async () => {
+  const { createBeautyChatMainlineEntryRuntime } = require('../src/auroraBff/beautyChatMainlineEntry');
+
+  let effectiveProfile = null;
+  const runtime = createBeautyChatMainlineEntryRuntime({
+    resolveRecommendationTargetContext: () => ({ entry_type: 'chat', intent_mode: 'generic_concern', framework_roles: [] }),
+    summarizeProfileForContext: (profile) => {
+      if (effectiveProfile === null) effectiveProfile = profile;
+      return profile;
+    },
+    mergeIngredientRecoContextValue: (left, right) => ({ ...(left || {}), ...(right || {}) }),
+    appendLatestRecoContextToSessionPatch: () => {},
+    extractRecoFinalSelectionContract: () => ({}),
+    makeAssistantMessage: (content) => ({ role: 'assistant', format: 'text', content }),
+    buildEnvelope: (_ctx, envelope) => envelope,
+    makeEvent: (_ctx, kind, data) => ({ kind, data }),
+    applyRecoContractToRecoRequestedEvents: (events) => ({ events }),
+    buildRecoRequestedEventData: ({ payload, source }) => ({ payload, source }),
+    normalizeRecoSourceDetail: (value) => value,
+    stateChangeAllowed: () => false,
+  });
+
+  await runtime.maybeHandleBeautyOwnedChatReco({
+    ctx: { request_id: 'req_seam', lang: 'EN' },
+    message: 'im oily skin, what product should i use?',
+    // What the chip said this turn...
+    profile: { skinType: 'oily', goals: ['oil control'] },
+    // ...versus the best-effort scrape of the body, which walks into session and finds the stored profile.
+    requestContextProfilePatch: { skinType: 'combination', goals: ['hydration'] },
+    typedRecoOwnershipKeepsV1Mainline: true,
+    recentLogs: [],
+  });
+
+  assert.equal(effectiveProfile?.skinType, 'oily');
+  assert.deepEqual(effectiveProfile?.goals, ['oil control']);
+});
+
+// `isRecommendationLikeText` decides whether a turn enters the product route at all, and four modules read it
+// (gating, intentCanonical, agentStateMachine, and isExplicitTextTrigger here). Splitting durable GOAL words
+// from transient STATE words is what stops a symptom question being sold to, but the split only holds if
+// "asking for products" counts the transactional verbs — a purchase ask often names neither a product noun nor
+// the word "recommend". Both halves are asserted together because moving a token between the two lists, or
+// dropping the transactional clause, silently moves live traffic in opposite directions.
+test('isRecommendationLikeText separates shopping from symptom description', () => {
+  const { isRecommendationLikeText } = require('../src/auroraBff/languageIntentLexicon');
+
+  // Shopping. None of these names a cleanser/serum or says "recommend", so they rest entirely on the
+  // transactional verbs plus the product nouns.
+  for (const message of [
+    'What actives should I buy for acne?',
+    'which ingredients should I buy for dark spots?',
+    'which actives should I shop for redness?',
+    'I need something for my dehydrated skin',
+    'best barrier repair for sensitive skin',
+    'barrier cream',
+    'looking for something to fix my damaged barrier',
+  ]) {
+    assert.equal(isRecommendationLikeText(message), true, `expected a product ask: ${message}`);
+  }
+
+  // Describing what is happening to them, with no purchase anywhere in the sentence. These used to be swept
+  // into the reco funnel and answered by demanding profile slots.
+  for (const message of [
+    'My skin feels dry and tight lately. What should I do?',
+    'my skin is peeling',
+    'why is my barrier damaged?',
+    'my skin feels dehydrated',
+    'what ingredient is best for acne?',
+  ]) {
+    assert.equal(isRecommendationLikeText(message), false, `expected NOT a product ask: ${message}`);
+  }
+});
+
+// The Beauty Pivot ingress fast path must stop swallowing chips ANOTHER surface owns without also abandoning the
+// ones the beauty mainline owns. Those two live one boolean apart, and only the travel case below has a test —
+// so this pins the other side. A session flagged `pregnancy_avoid_retinoids` asking a reco chip for an
+// anti-aging swap must get the retinoid warning, not a request for more profile slots.
+test('/v1/chat keeps the pregnancy retinoid warning on a beauty-owned chip', async () => {
+  await withEnv({ AURORA_BFF_USE_MOCK: 'true' }, async () => {
+    const response = await supertest(createApp())
+      .post('/v1/chat')
+      .set(buildHeaders())
+      .send({
+        action: {
+          action_id: 'chip.start.reco_products',
+          kind: 'chip',
+          data: { reply_text: 'what should i buy instead for anti-aging?' },
+        },
+        session: {
+          state: 'IDLE_CHAT',
+          meta: { pivot_product_fit_context: { safety_flags: ['pregnancy_avoid_retinoids'] } },
+        },
+      })
+      .expect(200);
+
+    const answer = String(response.body.assistant_text || response.body.assistant_message?.content || '');
+    assert.match(answer, /retinol|retinoid/i, `expected the retinoid warning, got: ${JSON.stringify(answer.slice(0, 160))}`);
+    assert.doesNotMatch(answer, /more context before narrowing products/i);
   });
 });
 

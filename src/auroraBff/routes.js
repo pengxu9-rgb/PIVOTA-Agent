@@ -2212,11 +2212,28 @@ async function shouldDelegateV1ChatToV2(body) {
   return chatIntentContract?.delegate_target === 'v2';
 }
 
+/**
+ * Does this request lock onto the beauty mainline before identity resolution?
+ *
+ * This reads the intent contract and nothing else, and deliberately takes NO action id. Action ownership is
+ * already decided, once, in `buildChatIntentContract`: `canDelegateActionToV2` sends the chips v2 owns to
+ * `delegate_target: 'v2'` / `request_class: 'action_delegate'`, and travel/weather intents go to `v1`. None of
+ * those reach the `beauty_mainline` + `beauty_discovery` pair required below, so a chip another surface owns
+ * cannot be locked here — the contract filtered it out upstream.
+ *
+ * This function used to accept `normalizedActionPayload`, `actionId` and `actionLabel` and read none of them.
+ * They were removed rather than wired up: re-deriving ownership here would mean a second list of action ids
+ * beside the one in `buildChatIntentContract`, and two lists that must agree are a drift bug waiting to
+ * happen. The contract is the single owner of that decision; if a chip is ever locked that should not be, the
+ * fix belongs there, next to the allowlist, not in a shadow copy here.
+ *
+ * Note the remaining text dependency is intentional, not an oversight: an action id the contract does not
+ * recognise falls through to a text decision (see the `!canDelegateActionToV2` branch), so a beauty-reco
+ * continuation chip like `chip.clarify.budget` or `chip.action.reco_routine` keeps the mainline on its
+ * reply_text. That is why this cannot simply refuse every request carrying an action.
+ */
 function shouldEarlyLockBeautyOwnedChatReco({
   ingressChatIntentContract = null,
-  normalizedActionPayload = null,
-  actionId = '',
-  actionLabel = '',
   message = '',
   canonicalIntent = null,
 } = {}) {
@@ -97301,14 +97318,24 @@ function mountAuroraBffRoutes(app, { logger }) {
       });
 
       const earlyNormalizedActionPayload = ingressSignalSnapshot.normalizedActionPayload;
-      const earlyActionLabelFromPayload = ingressSignalSnapshot.actionLabel;
       const earlyExplicitActionId = ingressSignalSnapshot.explicitActionId;
       const earlyMessage = ingressSignalSnapshot.message;
       const earlyCanonicalIntent = ingressSignalSnapshot.canonicalIntent;
       const earlyLatestRecoContextFromSession = ingressSignalSnapshot.latestRecoContextFromSession;
+      // Order is precedence: later sources overwrite earlier ones. The best-effort scrape goes FIRST, as the
+      // baseline it is, and the ingress overlay lands on top — that overlay already ranks its own sources
+      // (session < free text < request context < action), and the action patch has to stay at the top of that
+      // stack because it is the newest thing the user said this turn.
+      //
+      // It used to be the other way round, which was harmless only while the scrape came back empty here.
+      // `extractProfilePatchFromRequestContextPayload` then learned to descend into `session`, so a request
+      // carrying `chip.start.reco_products` with `profile_patch: { skin_type: 'oily' }` over a session profile
+      // of `combination` had the user's just-stated "im oily skin" overwritten by the stale stored value, and
+      // the beauty mainline recommended against the wrong skin type. Session is not a missing source here —
+      // the overlay already reads it, correctly ranked below the action.
       const earlyProfileForBeautyMainline = extractAnalysisProfileContextOverlay(
-        ingressSignalSnapshot.profileOverlay,
         rawProfilePatchFromRequestContext,
+        ingressSignalSnapshot.profileOverlay,
       );
       const earlyIncludeAlternatives = ingressSignalSnapshot.includeAlternatives;
       const earlyDebugHeader = req.get('X-Debug') ?? req.get('X-Aurora-Debug');
@@ -97348,18 +97375,35 @@ function mountAuroraBffRoutes(app, { logger }) {
             : {}),
         },
       };
-      const pivotBeautyEarlyChatEnvelope = buildPivotBeautyChatContractEnvelope({
-        message: earlyMessage,
-        session: pivotBeautySessionForContract,
-        source: 'ingress_fast_path',
-      });
+      // The contract is resolved BEFORE the Beauty Pivot fast path below, which needs its verdict. It still runs
+      // ahead of the v2 delegation, so dbbf4169's ordering — contract handling before intent/v2 routing — holds.
+      const ingressChatIntentContract = await buildChatIntentContract(req.body || {});
+      ingressDelegateTargetForDebug = pickFirstTrimmed(ingressChatIntentContract?.delegate_target) || null;
+      ingressRequestClassForDebug = pickFirstTrimmed(ingressChatIntentContract?.request_class) || null;
+
+      // The fast path reads free text and session shape and never the action, yet it answers before the v2
+      // delegation below — so a chip belonging to another surface got a beauty answer instead of its own.
+      // `chip.start.travel` carrying a stored `session.profile.travel_plan` matched here and returned a beauty
+      // envelope while the travel skill never ran; the same chip with no stored plan routed correctly.
+      //
+      // The skip is therefore narrow: an explicit action whose contract says v2 owns it. Skipping on the mere
+      // PRESENCE of an action would be far too broad — the beauty mainline owns plenty of chips, and this fast
+      // path is what answers them. `chip.start.reco_products` on a session carrying
+      // `safety_flags: ['pregnancy_avoid_retinoids']` is answered here with the retinoid warning; blanket-skipping
+      // replaced that with "I need a bit more context before narrowing products", which is a safety answer traded
+      // for a slot-filling stall. Ownership stays where it is already decided, in `buildChatIntentContract`.
+      const pivotBeautyEarlyChatEnvelope =
+        earlyExplicitActionId && ingressChatIntentContract?.delegate_target === 'v2'
+          ? null
+          : buildPivotBeautyChatContractEnvelope({
+            message: earlyMessage,
+            session: pivotBeautySessionForContract,
+            source: 'ingress_fast_path',
+          });
       if (pivotBeautyEarlyChatEnvelope) {
         return sendChatEnvelope(pivotBeautyEarlyChatEnvelope);
       }
 
-      const ingressChatIntentContract = await buildChatIntentContract(req.body || {});
-      ingressDelegateTargetForDebug = pickFirstTrimmed(ingressChatIntentContract?.delegate_target) || null;
-      ingressRequestClassForDebug = pickFirstTrimmed(ingressChatIntentContract?.request_class) || null;
       if (
         effectiveChatFlags.skill_router_v2 &&
         ingressChatIntentContract?.delegate_target === 'v2' &&
@@ -97389,9 +97433,6 @@ function mountAuroraBffRoutes(app, { logger }) {
       });
       const shouldEarlyBeautyRecoHardLockAtIngress = !shouldSkipEarlyBeautyLockForTravelHandoffAtIngress && shouldEarlyLockBeautyOwnedChatReco({
         ingressChatIntentContract,
-        normalizedActionPayload: earlyNormalizedActionPayload,
-        actionId: earlyExplicitActionId,
-        actionLabel: earlyActionLabelFromPayload,
         message: earlyMessage,
         canonicalIntent: earlyCanonicalIntent,
       });
@@ -99087,9 +99128,6 @@ function mountAuroraBffRoutes(app, { logger }) {
       }
       const shouldEarlyBeautyRecoHardLock = !shouldSkipEarlyBeautyLockForTravelHandoff && !travelBeautyAdviceRequest && shouldEarlyLockBeautyOwnedChatReco({
         ingressChatIntentContract: effectiveIngressChatIntentContract,
-        normalizedActionPayload,
-        actionId,
-        actionLabel,
         message,
         canonicalIntent,
       });
