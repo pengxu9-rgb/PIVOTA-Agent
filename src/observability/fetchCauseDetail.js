@@ -16,8 +16,16 @@
  *
  * Shared by the two UCP lanes that fetch a profile — the warm-handoff service and the order-webhook
  * receiver — because both learned the same two non-obvious branches below the hard way, and two copies
- * would drift. Deliberately dependency-free: the receiver is import-light on purpose (its suite runs in
- * a CI job with no `npm ci`), so this module must never grow a require.
+ * would drift.
+ *
+ * Keep this module a LEAF (no requires). `ucpOrderWebhookReceiver` itself requires only `crypto`, and
+ * this runs on its failure path; a log-field extractor should not be what drags a dependency graph into
+ * an error handler. That is the whole reason — NOT any claim about running without an install. An
+ * earlier draft of this comment said the receiver's suite "runs in a CI job with no `npm ci`", which is
+ * false twice over: the node:test allowlist job in pr-full-jest.yml runs `npm ci` with a retry loop, and
+ * that suite pulls in supertest and ../src/server anyway. That workflow already carries a written
+ * correction of exactly this misconception ("The job is green because `npm ci` runs above, NOT because
+ * the files are leaves") — do not reintroduce it here.
  *
  * Takes the cause's MESSAGE as a string, never the cause object: a real fetch cause's own ENUMERABLE keys
  * are errno/code/syscall/hostname, so spreading it drags request detail into the record. (Note the trap:
@@ -50,8 +58,10 @@ function fetchCauseDetail(err) {
       const first = cause.errors[0];
       if (first && typeof first.message === 'string') message = first.message;
     }
-    // A non-string code is dropped rather than published: the only numeric one in these lanes is
-    // DOMException.code === 20 on an abort, a legacy constant that means nothing in a log.
+    // A non-string code is dropped rather than published: `code` is a string on every Node system error,
+    // and the numeric ones are DOMException's legacy constants (measured: the receiver's own
+    // AbortSignal.timeout rejects with name TimeoutError / code 23 — and with NO `.cause`, so it exits at
+    // the guard above and never reaches here). A bare `23` in a log field means nothing to a reader.
     const code = typeof cause.code === 'string' ? cause.code : undefined;
     const out = {};
     // Bounded: a pathological cause must not be able to bloat a log line.

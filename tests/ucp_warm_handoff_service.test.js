@@ -243,7 +243,7 @@ describe('warm handoff logs the underlying cause of a fetch failure', () => {
     numericCode.cause = Object.assign(new Error('aborted'), { code: 20 });
     expect(await discoveryWarn(numericCode)).not.toHaveProperty('cause_code');
 
-    // A throwing getter must not escape into the lane -- causeDetail is an ARGUMENT to note(), so it runs
+    // A throwing getter must not escape into the lane -- fetchCauseDetail is an ARGUMENT to note(), so it runs
     // BEFORE note()'s own try/catch. Discovery must still resolve (to an unreachable entry), not reject.
     const hostile = new TypeError('fetch failed');
     Object.defineProperty(hostile, 'cause', { get() { throw new Error('nope'); } });

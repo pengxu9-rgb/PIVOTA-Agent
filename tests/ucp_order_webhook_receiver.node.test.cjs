@@ -662,3 +662,59 @@ test('cause: a non-fetch warn gains no cause fields', async () => {
   const rec = warns.find((w) => w.msg === 'UCP business profile URL refused').rec;
   assert.deepEqual(Object.keys(rec).sort(), ['err', 'surface']);
 });
+
+// The three tests above cover the receiver's own WIRING. These two cover behaviour of the shared helper
+// that this lane specifically depends on. They deliberately duplicate coverage that also exists in
+// tests/ucp_warm_handoff_service.test.js, because coverage living only in the OTHER consumer's suite is
+// not coverage this lane owns: a mutation review found the two properties below killed by zero tests
+// here, in the lane this change argues has the higher stakes.
+
+test('cause: a throwing `cause` getter yields 401, not an exception out of the handler', async () => {
+  // This is a 500-vs-401 difference, not a logging nicety. `warn()` is called from inside the catch in
+  // loadSigningKeys, and nothing wraps the `await loadSigningKeys(env)` in handleOrderWebhook -- so a
+  // helper that throws escapes the handler entirely. Measured with the helper's try/catch removed:
+  // "handleOrderWebhook THREW -> boom from getter" instead of resolving 401.
+  const err = new TypeError('fetch failed');
+  Object.defineProperty(err, 'cause', { get() { throw new Error('boom from getter'); } });
+
+  const warns = [];
+  const receiver = createUcpOrderWebhookReceiver({
+    env: VERIFY_ENV,
+    fetchImpl: async () => { throw err; },
+    logger: { warn: (rec, msg) => warns.push({ rec, msg }) },
+  });
+  const rawBody = JSON.stringify({ checkout_id: 'chk_getter' });
+  const out = await receiver.handleOrderWebhook({
+    headers: { 'request-signature': signDetached(rawBody) }, rawBody, body: JSON.parse(rawBody),
+  });
+
+  assert.equal(out.status, 401, 'the lane still fails CLOSED rather than throwing');
+  const rec = warns.find((w) => w.msg === 'UCP business profile signing-key fetch failed').rec;
+  assert.deepEqual(Object.keys(rec).sort(), ['err', 'surface'], 'no cause fields, and no crash');
+});
+
+test('cause: a dual-stack connect failure still reports a reason, and a non-string code is dropped', async () => {
+  // AggregateError with an EMPTY message is the real shape for a host with both A and AAAA records; the
+  // per-family reasons live in .errors. Without the fallback this lane would log cause_code and NO cause
+  // -- on exactly the CDN-fronted profile hosts most likely to be dual-stack.
+  const agg = new AggregateError(
+    [new Error('connect ECONNREFUSED ::1:443'), new Error('connect ECONNREFUSED 127.0.0.1:443')],
+    '',
+  );
+  agg.code = 'ECONNREFUSED';
+  const dualStack = new TypeError('fetch failed');
+  dualStack.cause = agg;
+  const { warns } = await warnsFromProfileFetchFailure(dualStack);
+  const rec = warns.find((w) => w.msg === 'UCP business profile signing-key fetch failed').rec;
+  assert.equal(rec.cause, 'connect ECONNREFUSED ::1:443');
+  assert.equal(rec.cause_code, 'ECONNREFUSED');
+
+  // A NUMERIC code is dropped rather than published. Needs its own fixture: the redirect-refusal case
+  // above has no `code` at all, so it holds whether or not the string guard is there.
+  const numeric = new TypeError('fetch failed');
+  numeric.cause = Object.assign(new Error('aborted'), { code: 23 });
+  const rec2 = (await warnsFromProfileFetchFailure(numeric)).warns
+    .find((w) => w.msg === 'UCP business profile signing-key fetch failed').rec;
+  assert.equal(Object.hasOwn(rec2, 'cause_code'), false, 'a bare 23 is not a log field');
+  assert.equal(rec2.cause, 'aborted');
+});
