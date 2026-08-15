@@ -55,11 +55,18 @@ Set on the prod Agent (Railway → Pivota Agent):
 
 ```
 MCP_OAUTH_ENABLED=1
-MCP_OAUTH_RESOURCE=https://pivota-agent-production.up.railway.app/mcp
+MCP_OAUTH_RESOURCE=https://commerce.mcp.pivota.cc/mcp
 MCP_OAUTH_AUTHORIZATION_SERVERS=https://<your-AS-issuer>
 MCP_OAUTH_ISSUERS_JSON=[{"iss":"https://<your-AS-issuer>","jwksUri":"https://<your-AS>/.well-known/jwks.json","algs":["ES256"]}]
 # optional: MCP_OAUTH_SCOPES=pivota.checkout   MCP_OAUTH_RESOURCE_NAME="Pivota Commerce"
 ```
+
+`MCP_OAUTH_RESOURCE` is an IDENTITY, not just a reachable address — it is the `aud` every token is bound
+to, matched byte-exact. It moved from `https://pivota-agent-production.up.railway.app/mcp` to the branded
+host above on 2026-08-13 (verified live 2026-08-14). Before changing it again: the AS gates minting on a
+byte-exact `MCP_OAUTH_AS_ALLOWED_RESOURCES` allowlist in a separate deployment (update it FIRST), refresh
+grants pin the old value permanently, and this variable is also the last link in the UCP buyer-agent
+profile-URL derivation chain — which since #1992 refuses a PaaS-generated host.
 
 Then: redeploy → `GET /.well-known/oauth-protected-resource` returns 200 → connect Claude/ChatGPT to
 `https://…/mcp` (it discovers the AS, runs DCR + consent, gets a token) → it can `search_catalog`,

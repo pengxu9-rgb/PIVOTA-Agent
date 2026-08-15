@@ -8,7 +8,9 @@
 
 **Pivota already owns a purpose-built MCP Authorization Server: `pb-oauth-as`** (sibling repo,
 Python/FastAPI). It was built for *this exact front door* — its env vars are named `MCP_OAUTH_AS_*` and
-its tests pin the resource to `https://pivota-agent-production.up.railway.app/mcp`. There is **no
+its tests pinned the resource to `https://pivota-agent-production.up.railway.app/mcp` (the value as of this
+ADR's date — production has since moved to `https://commerce.mcp.pivota.cc/mcp`; see the update note under
+"Resource Server" below). There is **no
 build-vs-buy decision and no vendor selection** — we deploy `pb-oauth-as` and point PIVOTA-Agent's
 resource-server verifier at it.
 
@@ -57,13 +59,29 @@ MCP_OAUTH_AS_LOGIN_URL=<buyer login URL>                    # else unauthenticat
 
 ```text
 MCP_OAUTH_ENABLED=1
-MCP_OAUTH_RESOURCE=https://pivota-agent-production.up.railway.app/mcp
+MCP_OAUTH_RESOURCE=https://commerce.mcp.pivota.cc/mcp
 MCP_OAUTH_AUTHORIZATION_SERVERS=https://api.pivota.cc
 MCP_OAUTH_ISSUERS_JSON=[{"iss":"https://api.pivota.cc","jwksUri":"https://api.pivota.cc/.well-known/jwks.json","algs":["RS256"]}]
 ```
 
-`MCP_OAUTH_RESOURCE` must **exactly** equal the `resource`/`aud` the AS mints (the value its tests already
-pin), or audience verification fails closed.
+`MCP_OAUTH_RESOURCE` must **exactly** equal the `resource`/`aud` the AS mints, or audience verification
+fails closed.
+
+> **Update 2026-08-13 — the resource identifier moved to a branded host.** This ADR was decided against
+> `https://pivota-agent-production.up.railway.app/mcp` (still named at the top of this ADR as the value
+> `pb-oauth-as`'s tests pinned at the time). Production now uses `https://commerce.mcp.pivota.cc/mcp` —
+> verified live 2026-08-14: the door 401s with a `resource_metadata` pointer whose document names that exact
+> resource back. The env block above has been corrected so it can be copied safely. Three consequences worth
+> knowing before you change this value again:
+>
+> - **The AS gates minting on a byte-exact allowlist.** `MCP_OAUTH_AS_ALLOWED_RESOURCES` lives in the
+>   separate `pb-oauth-as` deployment. A new resource identifier must be added there FIRST, or every
+>   conforming client gets `invalid_target`.
+> - **Refresh grants pin the original resource forever** — stored on the grant and reused on re-mint — so
+>   existing chains do not migrate. Retire them by revoking rows for the old resource.
+> - **This value also feeds the UCP buyer-agent profile URL.** It is the third link in that derivation
+>   chain, and since #1992 the chain REFUSES a PaaS-generated host. Setting it back to a `*.railway.app`
+>   value now also omits `ucp.profile_url` and breaks SIGNED-tier outbound UCP calls.
 
 ## Validation (½ day, no vendor spike needed)
 
