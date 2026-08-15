@@ -205,17 +205,31 @@ function createWarmHandoffService(deps = {}) {
    * Recording the raw string keeps the diagnosis available without pinning us to the wording.
    */
   function causeDetail(err) {
-    const cause = err && err.cause;
-    if (!cause) return {};
-    const message = typeof cause === 'string'
-      ? cause
-      : (cause && typeof cause.message === 'string' ? cause.message : undefined);
-    const code = cause && typeof cause.code === 'string' ? cause.code : undefined;
-    const out = {};
-    // Bounded: a pathological cause must not be able to bloat a log line.
-    if (message) out.cause = message.slice(0, 200);
-    if (code) out.cause_code = code;
-    return out;
+    // Wrapped for the same reason `note` and `safeMetric` are: this runs on the failure path of the lane.
+    // It is evaluated as an ARGUMENT to note(), i.e. before note()'s own guard, so a throwing getter here
+    // would escape the catch block it sits in rather than merely losing a log line.
+    try {
+      const cause = err && err.cause;
+      if (!cause) return {};
+      let message = typeof cause === 'string'
+        ? cause
+        : (typeof cause.message === 'string' ? cause.message : undefined);
+      // Dual-stack hosts fail as an AggregateError with an EMPTY message: the per-family reasons live in
+      // `.errors` ("connect ECONNREFUSED ::1:443" / "...127.0.0.1:443"). Without this the record would carry
+      // cause_code and no cause at all, on exactly the brands most likely to be behind a CDN.
+      if (!message && Array.isArray(cause.errors) && cause.errors.length) {
+        const first = cause.errors[0];
+        if (first && typeof first.message === 'string') message = first.message;
+      }
+      const code = typeof cause.code === 'string' ? cause.code : undefined;
+      const out = {};
+      // Bounded: a pathological cause must not be able to bloat a log line.
+      if (message) out.cause = message.slice(0, 200);
+      if (code) out.cause_code = code;
+      return out;
+    } catch {
+      return {};
+    }
   }
 
   /**
