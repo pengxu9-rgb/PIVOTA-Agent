@@ -1,8 +1,13 @@
 # MCP OAuth Front Door — keyless frontier-model connection to `/mcp`
 
-**Status (2026-06-09):** resource-server side **built + tested** (28 unit + 5 e2e green), additive and
-flag-gated (`MCP_OAUTH_ENABLED`). Not yet enabled in prod. The remaining external dependency is the
-**authorization server** (decision below).
+**Status (2026-08-14): LIVE in prod.** `https://commerce.mcp.pivota.cc/mcp` 401s with a conformant
+`WWW-Authenticate` + `resource_metadata` pointer, and the authorization server is deployed at
+`https://api.pivota.cc` — verified live. Two sections below are kept as the historical record and are NOT
+current guidance: the original status (2026-06-09: built + tested, 28 unit + 5 e2e green, flag-gated on
+`MCP_OAUTH_ENABLED`, not yet enabled) and the managed-vendor comparison under
+"[The decision you still own](#the-decision-you-still-own-the-authorization-server)" — that decision is no
+longer owned. [`adr_mcp_oauth_authorization_server.md`](../adr_mcp_oauth_authorization_server.md)
+supersedes it: we deploy our own `pb-oauth-as` and there is no vendor selection to make.
 
 ## Why this exists
 
@@ -63,10 +68,19 @@ MCP_OAUTH_ISSUERS_JSON=[{"iss":"https://<your-AS-issuer>","jwksUri":"https://<yo
 
 `MCP_OAUTH_RESOURCE` is an IDENTITY, not just a reachable address — it is the `aud` every token is bound
 to, matched byte-exact. It moved from `https://pivota-agent-production.up.railway.app/mcp` to the branded
-host above on 2026-08-13 (verified live 2026-08-14). Before changing it again: the AS gates minting on a
-byte-exact `MCP_OAUTH_AS_ALLOWED_RESOURCES` allowlist in a separate deployment (update it FIRST), refresh
-grants pin the old value permanently, and this variable is also the last link in the UCP buyer-agent
-profile-URL derivation chain — which since #1992 refuses a PaaS-generated host.
+host above on 2026-08-13 (verified live 2026-08-14). Only line 1 of this block is a real value; the
+issuer/JWKS lines remain placeholders, and note the ADR's correction that `pb-oauth-as` signs **RS256**,
+not the `ES256` shown here. Before changing the resource again:
+
+- It defines **two** identifiers — the UCP door's is derived as `${origin}/ucp/mcp` and separately
+  advertised. Handle them as a pair.
+- The AS gates minting on a byte-exact `MCP_OAUTH_AS_ALLOWED_RESOURCES` allowlist in a separate
+  deployment; list both there FIRST. (An `pb-oauth-as` behaviour, not verifiable from this repo.)
+- The verifier accepts a SET of identifiers, so overlap old and new rather than cutting over; refresh
+  grants are reported to pin the resource they were issued for and will not migrate.
+- It is also the third and last derivable origin for the UCP buyer-agent profile URL — but only when
+  `UCP_AGENT_PROFILE_URL` is unset and `UCP_BUYER_AGENT_PROFILE_ENABLED` is on. Production sets that
+  variable explicitly, so the coupling is latent today.
 
 Then: redeploy → `GET /.well-known/oauth-protected-resource` returns 200 → connect Claude/ChatGPT to
 `https://…/mcp` (it discovers the AS, runs DCR + consent, gets a token) → it can `search_catalog`,

@@ -94,11 +94,16 @@ MCP_OAUTH_ISSUERS_JSON=[{"iss":"https://api.pivota.cc","jwksUri":"https://api.pi
 fails closed. Note **RS256**, not ES256.
 
 > **2026-08-13:** this value moved from `https://pivota-agent-production.up.railway.app/mcp` to the branded
-> host above (verified live 2026-08-14). Changing it is a THREE-service operation, not one env edit: the AS
-> (`pb-oauth-as`) gates minting on a byte-exact `MCP_OAUTH_AS_ALLOWED_RESOURCES` allowlist and must be
-> updated FIRST or clients get `invalid_target`; existing refresh grants pin the old resource permanently;
-> and this same value is the third link in the UCP buyer-agent profile-URL derivation chain, which since
-> #1992 refuses a PaaS-generated host outright.
+> host above (verified live 2026-08-14). Changing it again spans two services, and it defines **two**
+> identifiers: the UCP door's is derived from this one's origin as `${origin}/ucp/mcp` and is separately
+> advertised, so treat them as a pair or the charge-capable UCP door is left behind. The AS
+> (`pb-oauth-as`) gates minting on a byte-exact `MCP_OAUTH_AS_ALLOWED_RESOURCES` allowlist and must list
+> **both** before the switch, or clients get `invalid_target` — that, and the report that refresh grants
+> pin the resource they were issued for, are `pb-oauth-as` behaviours and are not verifiable from this
+> repo. The verifier accepts a SET of identifiers, so migrate by overlapping the old and new rather than
+> cutting over. This value is also the third and last derivable origin for the UCP buyer-agent profile
+> URL, but only when `UCP_AGENT_PROFILE_URL` is unset and `UCP_BUYER_AGENT_PROFILE_ENABLED` is on —
+> production sets that variable explicitly, so today that coupling is latent.
 
 **Note for read-only:** because discovery tools need no `user_ref`, you do **not** need
 `PAYMENT_ISSUERS_JSON`, and the `acp_session_id` binding review item (open item #1 in the OAuth front-door

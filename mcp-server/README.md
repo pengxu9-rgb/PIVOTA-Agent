@@ -61,11 +61,15 @@ treatment.
 ### Connecting Claude / ChatGPT / Gemini
 
 Add the **hosted `/mcp` URL** as a remote MCP server in the client (Claude/ChatGPT connector settings); the
-client performs the OAuth handshake automatically. Example resource value:
+client performs the OAuth handshake automatically. Resource value:
 
 ```
-https://pivota-agent-production.up.railway.app/mcp
+https://commerce.mcp.pivota.cc/mcp
 ```
+
+Use the branded commerce host, not `https://mcp.pivota.cc/mcp`: that host is the anonymous public read
+tier, so a client pointed there gets a 200 and never discovers that auth exists. (This value moved from
+`https://pivota-agent-production.up.railway.app/mcp` on 2026-08-13.)
 
 (There is no `node` command and no API key for the production surface — the URL + OAuth is the entire config.)
 
