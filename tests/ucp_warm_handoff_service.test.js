@@ -138,3 +138,179 @@ describe('createWarmHandoffService.resolveWarmHandoff', () => {
     expect(await svc.resolveWarmHandoff({ brandDomain: 'cosrx.com' })).toBeNull();
   });
 });
+
+// ---- fetch-failure diagnosis: log the CAUSE, not just "fetch failed" -------
+//
+// undici collapses every network-layer failure into the same opaque `TypeError: fetch failed` and puts the
+// real reason on `.cause`. These payloads are the shapes it really produces (measured on node 20 and 24).
+// Since the buyer client now REFUSES redirected profiles (UCP 2026-04-08 requires it), a brand that serves
+// /.well-known/ucp only behind a 301 silently leaves the UCP cohort — and with message-only logging that is
+// byte-identical to the brand's DNS being dead. `classifyUcpFailure` maps both to `profile_unreachable`, so
+// this log line is the only place the two can be told apart.
+describe('warm handoff logs the underlying cause of a fetch failure', () => {
+  /** Exactly what `fetch(url, { redirect: 'error' })` throws when the profile 302s. */
+  function redirectRefusal() {
+    const err = new TypeError('fetch failed');
+    err.cause = new Error('unexpected redirect');
+    return err;
+  }
+
+  /** Exactly what fetch throws for a host that does not resolve. */
+  function dnsFailure() {
+    const err = new TypeError('fetch failed');
+    const cause = new Error('getaddrinfo ENOTFOUND cosrx.com');
+    cause.code = 'ENOTFOUND';
+    err.cause = cause;
+    return err;
+  }
+
+  function serviceThatThrows(err) {
+    const warns = [];
+    const svc = createWarmHandoffService({
+      client: { async discoverEndpoint() { throw err; } },
+      logger: { warn: (rec) => warns.push(rec), info: () => {}, error: () => {} },
+    });
+    return { svc, warns };
+  }
+
+  async function discoveryWarn(err, origin = 'https://cosrx.com') {
+    const { svc, warns } = serviceThatThrows(err);
+    await svc.discoverBrandEndpointDetailed(origin);
+    return warns.find((w) => w.event === 'ucp_warm_handoff_discovery_error');
+  }
+
+  test('a refused redirect and a dead host are DISTINGUISHABLE in the log', async () => {
+    const redirect = await discoveryWarn(redirectRefusal());
+    const dns = await discoveryWarn(dnsFailure());
+
+    // The property that matters. Both carry the same useless `message` and the same `reason` -- the cause
+    // is the ONLY thing that separates "this merchant redirects its profile, go fix it" from "this host is
+    // gone". Asserted as a difference, not just as two literals, so the test states the discriminator.
+    expect(redirect.message).toBe(dns.message);
+    expect(redirect.reason).toBe(dns.reason);
+    expect(redirect.reason).toBe('profile_unreachable');
+    expect(redirect.cause).not.toBe(dns.cause);
+
+    expect(redirect.cause).toBe('unexpected redirect');
+    expect(dns.cause).toBe('getaddrinfo ENOTFOUND cosrx.com');
+    // The errno rides along when the platform supplies one, and is simply absent when it does not.
+    expect(dns.cause_code).toBe('ENOTFOUND');
+    expect(redirect).not.toHaveProperty('cause_code');
+  });
+
+  test('the cause OBJECT is never spread into the record', async () => {
+    // The REAL shape a node fetch failure carries. Its own enumerable keys are errno/code/syscall/hostname
+    // (measured on node 20 and 24) -- those, not the stack, are what a `{...cause}` spread would leak.
+    // An earlier version of this test injected a `stack` and asserted its absence, which proved nothing:
+    // Error.prototype's `stack` is NON-ENUMERABLE, so `{...err}` never carries it and the assertion held
+    // no matter what the code did. Assert an ALLOWLIST on the key set instead of denylisting field names.
+    const err = new TypeError('fetch failed');
+    const cause = new Error('getaddrinfo ENOTFOUND cosrx.com');
+    Object.assign(cause, { errno: -3008, code: 'ENOTFOUND', syscall: 'getaddrinfo', hostname: 'cosrx.com' });
+    const warn = await discoveryWarn(err.cause ? err : Object.assign(err, { cause }));
+
+    expect(Object.keys(warn).sort()).toEqual(['cause', 'cause_code', 'event', 'message', 'origin', 'reason']);
+    expect(typeof warn.cause).toBe('string');
+    // Named explicitly: a spread would land these, and only `code` is meant to survive (as cause_code).
+    expect(warn).not.toHaveProperty('errno');
+    expect(warn).not.toHaveProperty('syscall');
+    expect(warn).not.toHaveProperty('hostname');
+    expect(warn).not.toHaveProperty('code');
+  });
+
+  test('tolerates every other cause shape without adding noise', async () => {
+    const bare = new TypeError('fetch failed'); // no cause at all -- the pre-undici / non-fetch shape
+    const bareWarn = await discoveryWarn(bare);
+    expect(bareWarn).not.toHaveProperty('cause');
+    expect(bareWarn).not.toHaveProperty('cause_code');
+    expect(bareWarn.message).toBe('fetch failed');
+
+    const stringCause = new TypeError('fetch failed');
+    stringCause.cause = 'plain string cause';
+    expect((await discoveryWarn(stringCause)).cause).toBe('plain string cause');
+
+    const objectCause = new TypeError('fetch failed');
+    objectCause.cause = { notAnError: true }; // no .message -- must not emit `cause: undefined`
+    expect(await discoveryWarn(objectCause)).not.toHaveProperty('cause');
+
+    const longCause = new TypeError('fetch failed');
+    longCause.cause = new Error('x'.repeat(5000)); // bounded so one bad cause can't bloat the line
+    expect((await discoveryWarn(longCause)).cause).toHaveLength(200);
+
+    // A non-string code is dropped rather than published: the only numeric one in this lane is
+    // DOMException.code === 20 on an abort, a legacy constant that means nothing in a log.
+    const numericCode = new TypeError('fetch failed');
+    numericCode.cause = Object.assign(new Error('aborted'), { code: 20 });
+    expect(await discoveryWarn(numericCode)).not.toHaveProperty('cause_code');
+
+    // A throwing getter must not escape into the lane -- causeDetail is an ARGUMENT to note(), so it runs
+    // BEFORE note()'s own try/catch. Discovery must still resolve (to an unreachable entry), not reject.
+    const hostile = new TypeError('fetch failed');
+    Object.defineProperty(hostile, 'cause', { get() { throw new Error('nope'); } });
+    const hostileWarn = await discoveryWarn(hostile);
+    expect(hostileWarn.reason).toBe('profile_unreachable');
+    expect(hostileWarn).not.toHaveProperty('cause');
+  });
+
+  test('a dual-stack connect failure still reports a reason (AggregateError has an EMPTY message)', async () => {
+    // Real shape for a host with both A and AAAA records: message is '', the per-family reasons are in
+    // .errors. Reading `.message` alone would log cause_code with no cause -- on exactly the CDN-fronted
+    // brands most likely to be dual-stack.
+    const err = new TypeError('fetch failed');
+    const agg = new AggregateError(
+      [new Error('connect ECONNREFUSED ::1:443'), new Error('connect ECONNREFUSED 127.0.0.1:443')],
+      '',
+    );
+    agg.code = 'ECONNREFUSED';
+    err.cause = agg;
+    const warn = await discoveryWarn(err);
+    expect(warn.cause).toBe('connect ECONNREFUSED ::1:443');
+    expect(warn.cause_code).toBe('ECONNREFUSED');
+  });
+
+  // Both remaining call sites get their own test. Without them the helper can be wired at discovery and
+  // forgotten at the other two, and every assertion above still passes.
+  test('the in-chat preview lane carries the cause too', async () => {
+    const warns = [];
+    const svc = createWarmHandoffService({
+      previewEnabled: true,
+      client: {
+        async discoverEndpoint(origin) { return { mcpEndpoint: `${origin}/api/ucp/mcp`, status: 200 }; },
+        async createCart() {
+          return { ok: true, status: 200, response: { result: { content: [{ type: 'json', json: { id: 'gid://shopify/Cart/abc', continue_url: 'https://cosrx.example.myshopify.com/cart/c/abc' } }] } } };
+        },
+        extractHandoffUrl() { return 'https://cosrx.example.myshopify.com/cart/c/abc'; },
+        async createCheckoutPreview() { throw dnsFailure(); },
+      },
+      logger: { warn: (rec) => warns.push(rec), info: () => {}, error: () => {} },
+    });
+    const res = await svc.resolveWarmHandoff({
+      brandDomain: 'cosrx.com',
+      variantGid: 'gid://shopify/ProductVariant/51895645012184',
+    });
+    // The preview is best-effort: the handoff still resolves, and the failure is diagnosable.
+    expect(res).not.toBeNull();
+    const warn = warns.find((w) => w.event === 'ucp_inchat_preview_error');
+    expect(warn.cause).toBe('getaddrinfo ENOTFOUND cosrx.com');
+    expect(warn.cause_code).toBe('ENOTFOUND');
+  });
+
+  test('the cart lane carries the cause too, not only discovery', async () => {
+    const warns = [];
+    const svc = createWarmHandoffService({
+      client: {
+        async discoverEndpoint(origin) { return { mcpEndpoint: `${origin}/api/ucp/mcp`, status: 200 }; },
+        async createCart() { throw dnsFailure(); },
+        extractHandoffUrl() { return null; },
+      },
+      logger: { warn: (rec) => warns.push(rec), info: () => {}, error: () => {} },
+    });
+    await svc.resolveWarmHandoff({
+      brandDomain: 'cosrx.com',
+      variantGid: 'gid://shopify/ProductVariant/51895645012184',
+    });
+    const warn = warns.find((w) => w.event === 'ucp_warm_handoff_create_cart_error');
+    expect(warn.cause).toBe('getaddrinfo ENOTFOUND cosrx.com');
+    expect(warn.cause_code).toBe('ENOTFOUND');
+  });
+});
