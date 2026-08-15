@@ -45,6 +45,8 @@
  */
 
 const crypto = require('crypto');
+// Dependency-free by design, like this module: undici hides the real network reason on `.cause`.
+const { fetchCauseDetail } = require('../observability/fetchCauseDetail');
 
 const FLAG_ENV = 'UCP_ORDER_WEBHOOK_RECEIVER_ENABLED';
 const VERIFY_ENV = 'UCP_VERIFY_ORDER_WEBHOOK';
@@ -200,9 +202,18 @@ function createUcpOrderWebhookReceiver(deps = {}) {
   let jwksCache = null; // { url, keys, expiresAt, good }
   let jwksInFlight = null; // { url, promise } — coalesces concurrent refreshes into ONE fetch
 
+  // `err` is flattened to its message on purpose (never the Error object). `fetchCauseDetail` adds the
+  // underlying network reason, which for a fetch failure is the ONLY informative part: undici reports every
+  // one of them as `TypeError: fetch failed` and hides the real reason on `.cause`. Without it a business
+  // profile that 302s — which this receiver's own `redirect: 'error'` refuses, per UCP 2026-04-08 — logs
+  // byte-identically to the host being dead. That is not cosmetic here: a fetch that keeps failing with no
+  // previously-good key set falls back to an EMPTY key list (below), which rejects every inbound order
+  // webhook. This line is what tells you which of the two you are looking at.
   function warn(err, msg) {
     if (logger && typeof logger.warn === 'function') {
-      logger.warn({ err: err?.message || String(err), surface: 'ucp_order_webhook' }, msg);
+      logger.warn({
+        err: err?.message || String(err), ...fetchCauseDetail(err), surface: 'ucp_order_webhook',
+      }, msg);
     }
   }
 

@@ -24,6 +24,8 @@
 
 const { createUcpBuyerAgentClient, FAILURE_REASON, classifyUcpFailure } = require('./ucpBuyerAgentClient');
 const defaultWarmHandoffMetrics = require('../observability/ucpWarmHandoffMetrics');
+// Shared with ucpOrderWebhookReceiver: undici hides the real network reason on `.cause`. See that module.
+const { fetchCauseDetail } = require('../observability/fetchCauseDetail');
 
 const WARM_HANDOFF_DISPOSITION = 'warm_handoff';
 const FLAG_ENV = 'UCP_WARM_HANDOFF_ENABLED';
@@ -182,57 +184,6 @@ function createWarmHandoffService(deps = {}) {
   }
 
   /**
-   * Pull the REAL reason out of a fetch failure, for logging alongside `err.message`.
-   *
-   * undici collapses every network-layer failure into the same opaque `TypeError: fetch failed` and puts
-   * the actual reason on `.cause`. Measured on node 20 and 24:
-   *
-   *   refused redirect  message "fetch failed"  cause "unexpected redirect"          code undefined
-   *   dead host         message "fetch failed"  cause "getaddrinfo ENOTFOUND <host>" code ENOTFOUND
-   *   refused connect   message "fetch failed"  cause "connect ECONNREFUSED ..."     code ECONNREFUSED
-   *
-   * So logging `err.message` alone renders those three IDENTICAL. That matters now that the buyer client
-   * refuses redirected profiles (UCP requires it — ucpBuyerAgentClient.js `discoverEndpoint`): a brand
-   * that serves /.well-known/ucp only behind a 301 drops out of the UCP cohort and, with message-only
-   * logging, reads exactly like DNS death. One is a merchant misconfiguration someone can go fix; the
-   * other is not. `classifyUcpFailure` maps both to `profile_unreachable`, so this log line is the ONLY
-   * place they can be told apart.
-   *
-   * Takes the cause's MESSAGE as a string, never the cause object: an Error spread into a log record
-   * drags a stack (and, for some shapes, request detail) with it. One level only — nested `cause.cause`
-   * chains are not walked. Deliberately does NOT parse the message into a reason code: the strings above
-   * are undici's, not a contract, and a classifier built on them would rot silently across a node bump.
-   * Recording the raw string keeps the diagnosis available without pinning us to the wording.
-   */
-  function causeDetail(err) {
-    // Wrapped for the same reason `note` and `safeMetric` are: this runs on the failure path of the lane.
-    // It is evaluated as an ARGUMENT to note(), i.e. before note()'s own guard, so a throwing getter here
-    // would escape the catch block it sits in rather than merely losing a log line.
-    try {
-      const cause = err && err.cause;
-      if (!cause) return {};
-      let message = typeof cause === 'string'
-        ? cause
-        : (typeof cause.message === 'string' ? cause.message : undefined);
-      // Dual-stack hosts fail as an AggregateError with an EMPTY message: the per-family reasons live in
-      // `.errors` ("connect ECONNREFUSED ::1:443" / "...127.0.0.1:443"). Without this the record would carry
-      // cause_code and no cause at all, on exactly the brands most likely to be behind a CDN.
-      if (!message && Array.isArray(cause.errors) && cause.errors.length) {
-        const first = cause.errors[0];
-        if (first && typeof first.message === 'string') message = first.message;
-      }
-      const code = typeof cause.code === 'string' ? cause.code : undefined;
-      const out = {};
-      // Bounded: a pathological cause must not be able to bloat a log line.
-      if (message) out.cause = message.slice(0, 200);
-      if (code) out.cause_code = code;
-      return out;
-    } catch {
-      return {};
-    }
-  }
-
-  /**
    * Discover the brand's UCP MCP endpoint with an explicit bounded TTL cache (+ negative cache for unreachable
    * domains) and reachability-drift detection. Returns { mcpEndpoint, reachable, reason }.
    */
@@ -252,7 +203,7 @@ function createWarmHandoffService(deps = {}) {
     } catch (err) {
       entry = { mcpEndpoint: null, reachable: false, reason: classifyUcpFailure({ thrown: err, phase: 'discovery' }) };
       note('warn', 'ucp_warm_handoff_discovery_error', {
-        origin, message: err && err.message, ...causeDetail(err), reason: entry.reason,
+        origin, message: err && err.message, ...fetchCauseDetail(err), reason: entry.reason,
       });
     }
 
@@ -328,7 +279,7 @@ function createWarmHandoffService(deps = {}) {
     } catch (err) {
       const reason = classifyUcpFailure({ thrown: err, phase: 'create_cart' });
       note('warn', 'ucp_warm_handoff_create_cart_error', {
-        origin, message: err && err.message, ...causeDetail(err), reason,
+        origin, message: err && err.message, ...fetchCauseDetail(err), reason,
       });
       return fallback(reason, brandLabel);
     }
@@ -408,7 +359,7 @@ function createWarmHandoffService(deps = {}) {
         messages: Array.isArray(p.messages) ? p.messages : [],
       };
     } catch (err) {
-      note('warn', 'ucp_inchat_preview_error', { origin, message: err && err.message, ...causeDetail(err) });
+      note('warn', 'ucp_inchat_preview_error', { origin, message: err && err.message, ...fetchCauseDetail(err) });
       return null;
     }
   }

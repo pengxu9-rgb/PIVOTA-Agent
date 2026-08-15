@@ -568,3 +568,97 @@ test('events endpoint filters by body_sha256 / checkout_id / order_id', async ()
   const miss = await receiver.handleListEvents({ headers: EVENTS_AUTH, query: { order_id: 'nope' } });
   assert.equal(miss.body.count, 0);
 });
+
+// ---- fetch-failure diagnosis: log the CAUSE, not just "fetch failed" --------------------------------
+//
+// undici collapses every network-layer failure into the same opaque `TypeError: fetch failed` and hides
+// the real reason on `.cause` (measured on node 20 and 24). This receiver refuses a redirected profile
+// (`redirect: 'error'`, per UCP 2026-04-08) — so without the cause, a business profile that 302s logs
+// byte-identically to its host being dead. The stakes are higher here than in the warm-handoff lane: a
+// fetch that keeps failing with no previously-good key set falls back to an EMPTY key list, and that
+// rejects EVERY inbound order webhook. These tests pin that the log can tell the two apart.
+
+/** Exactly what `fetch(url, { redirect: 'error' })` throws when the profile 302s. */
+function redirectRefusalError() {
+  const err = new TypeError('fetch failed');
+  err.cause = new Error('unexpected redirect');
+  return err;
+}
+
+/** Exactly what fetch throws for a host that does not resolve, including the enumerable request detail. */
+function dnsFailureError() {
+  const err = new TypeError('fetch failed');
+  const cause = new Error('getaddrinfo ENOTFOUND ucp.test.local');
+  Object.assign(cause, {
+    errno: -3008, code: 'ENOTFOUND', syscall: 'getaddrinfo', hostname: 'ucp.test.local',
+  });
+  err.cause = cause;
+  return err;
+}
+
+/** Drive a real webhook through a receiver whose profile fetch throws `err`; return the warn records. */
+async function warnsFromProfileFetchFailure(err, envOverrides = {}) {
+  const warns = [];
+  const receiver = createUcpOrderWebhookReceiver({
+    env: { ...VERIFY_ENV, ...envOverrides },
+    fetchImpl: async () => { throw err; },
+    logger: { warn: (rec, msg) => warns.push({ rec, msg }) },
+  });
+  const rawBody = JSON.stringify({ checkout_id: 'chk_cause', order_id: 'ord_cause' });
+  const out = await receiver.handleOrderWebhook({
+    headers: { 'request-signature': signDetached(rawBody) },
+    rawBody,
+    body: JSON.parse(rawBody),
+  });
+  return { warns, out };
+}
+
+test('cause: a refused redirect and a dead host are DISTINGUISHABLE in the receiver log', async () => {
+  const redirect = await warnsFromProfileFetchFailure(redirectRefusalError());
+  const dns = await warnsFromProfileFetchFailure(dnsFailureError());
+
+  const rr = redirect.warns.find((w) => w.msg === 'UCP business profile signing-key fetch failed').rec;
+  const dr = dns.warns.find((w) => w.msg === 'UCP business profile signing-key fetch failed').rec;
+
+  // Both fail CLOSED to an empty key set, which is what makes this worth diagnosing at all.
+  assert.equal(redirect.out.status, 401, 'no keys -> every inbound webhook is rejected');
+  assert.equal(dns.out.status, 401);
+
+  // The property: identical `err`, identical surface -- the cause is the ONLY discriminator.
+  assert.equal(rr.err, dr.err);
+  assert.equal(rr.err, 'fetch failed');
+  assert.notEqual(rr.cause, dr.cause);
+
+  assert.equal(rr.cause, 'unexpected redirect');
+  assert.equal(dr.cause, 'getaddrinfo ENOTFOUND ucp.test.local');
+  assert.equal(dr.cause_code, 'ENOTFOUND');
+  assert.equal(Object.hasOwn(rr, 'cause_code'), false, 'no errno for a redirect refusal -> key absent');
+});
+
+test('cause: the cause object is never spread into the receiver record', async () => {
+  // A real fetch cause carries errno/syscall/hostname as its OWN ENUMERABLE keys -- those, not the stack,
+  // are what a `{...cause}` spread would leak. Asserted as an ALLOWLIST on the key set, never a denylist.
+  const { warns } = await warnsFromProfileFetchFailure(dnsFailureError());
+  const rec = warns.find((w) => w.msg === 'UCP business profile signing-key fetch failed').rec;
+
+  assert.deepEqual(Object.keys(rec).sort(), ['cause', 'cause_code', 'err', 'surface']);
+  assert.equal(typeof rec.cause, 'string');
+  assert.equal(rec.surface, 'ucp_order_webhook', 'the pre-existing fields still ride along');
+});
+
+test('cause: a non-fetch warn gains no cause fields', async () => {
+  // The https refusal path warns with a hand-built Error that has no `.cause`. The helper must add
+  // nothing there rather than emitting empty keys.
+  const warns = [];
+  const receiver = createUcpOrderWebhookReceiver({
+    env: { ...VERIFY_ENV, UCP_BUSINESS_PROFILE_URL: 'http://ucp.test.local/.well-known/ucp' },
+    fetchImpl: async () => { throw new Error('must never be called'); },
+    logger: { warn: (rec, msg) => warns.push({ rec, msg }) },
+  });
+  const rawBody = JSON.stringify({ checkout_id: 'chk_plain' });
+  await receiver.handleOrderWebhook({
+    headers: { 'request-signature': signDetached(rawBody) }, rawBody, body: JSON.parse(rawBody),
+  });
+  const rec = warns.find((w) => w.msg === 'UCP business profile URL refused').rec;
+  assert.deepEqual(Object.keys(rec).sort(), ['err', 'surface']);
+});
