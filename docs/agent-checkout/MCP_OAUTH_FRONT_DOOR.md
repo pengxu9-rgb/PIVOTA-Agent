@@ -74,10 +74,12 @@ not the `ES256` shown here. Before changing the resource again:
 
 - It defines **two** identifiers — the UCP door's is derived as `${origin}/ucp/mcp` and separately
   advertised. Handle them as a pair.
-- The AS gates minting on a byte-exact `MCP_OAUTH_AS_ALLOWED_RESOURCES` allowlist in a separate
-  deployment; list both there FIRST. (An `pb-oauth-as` behaviour, not verifiable from this repo.)
-- The verifier accepts a SET of identifiers, so overlap old and new rather than cutting over; refresh
-  grants are reported to pin the resource they were issued for and will not migrate.
+- The AS gates **`/oauth/authorize`** — not minting — on a byte-exact `MCP_OAUTH_AS_ALLOWED_RESOURCES`
+  allowlist; list both there FIRST or clients get `invalid_target`. It lives in the `pivota-backend` repo
+  (`services/mcp_oauth_flow.py`), on Railway service `web`.
+- Because only authorize is gated, removing an entry is **not** a kill switch: refresh grants store their
+  resource and re-mint with it unchecked for 30 days. That also makes migration safe — the verifier accepts
+  a SET, so allowlist the new identifier, run both, and let old chains age out.
 - It is also the third and last derivable origin for the UCP buyer-agent profile URL — but only when
   `UCP_AGENT_PROFILE_URL` is unset and `UCP_BUYER_AGENT_PROFILE_ENABLED` is on. Production sets that
   variable explicitly, so the coupling is latent today.

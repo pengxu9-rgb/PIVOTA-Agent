@@ -97,11 +97,12 @@ fails closed. Note **RS256**, not ES256.
 > host above (verified live 2026-08-14). Changing it again spans two services, and it defines **two**
 > identifiers: the UCP door's is derived from this one's origin as `${origin}/ucp/mcp` and is separately
 > advertised, so treat them as a pair or the charge-capable UCP door is left behind. The AS
-> (`pb-oauth-as`) gates minting on a byte-exact `MCP_OAUTH_AS_ALLOWED_RESOURCES` allowlist and must list
-> **both** before the switch, or clients get `invalid_target` — that, and the report that refresh grants
-> pin the resource they were issued for, are `pb-oauth-as` behaviours and are not verifiable from this
-> repo. The verifier accepts a SET of identifiers, so migrate by overlapping the old and new rather than
-> cutting over. This value is also the third and last derivable origin for the UCP buyer-agent profile
+> (`pb-oauth-as`, in the `pivota-backend` repo) gates **`/oauth/authorize`** on a byte-exact
+> `MCP_OAUTH_AS_ALLOWED_RESOURCES` allowlist and must list **both** before the switch, or clients get
+> `invalid_target`. It does NOT gate minting: refresh grants store the resource they were issued for and
+> re-mint with it unchecked for 30 days, so removing an entry is not a kill switch — source-verified in
+> `services/mcp_oauth_flow.py` 2026-08-14. The verifier accepts a SET of identifiers, so migrate by
+> overlapping old and new rather than cutting over. This value is also the third and last derivable origin for the UCP buyer-agent profile
 > URL, but only when `UCP_AGENT_PROFILE_URL` is unset and `UCP_BUYER_AGENT_PROFILE_ENABLED` is on —
 > production sets that variable explicitly, so today that coupling is latent.
 

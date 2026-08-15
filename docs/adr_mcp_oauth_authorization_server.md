@@ -79,16 +79,23 @@ fails closed.
 >   live 2026-08-14, `/.well-known/oauth-protected-resource/mcp` names `…/mcp` and
 >   `/.well-known/oauth-protected-resource/ucp/mcp` names `…/ucp/mcp`. Anything you do to the native
 >   identifier must be done to the derived one too, or the charge-capable UCP door is left behind.
-> - **The AS gates minting on a byte-exact allowlist.** `MCP_OAUTH_AS_ALLOWED_RESOURCES` lives in the
->   separate `pb-oauth-as` deployment; **both** identifiers above must be added there FIRST, or conforming
->   clients get `invalid_target`. (This is `pb-oauth-as` behaviour — it is not verifiable from this repo,
->   which contains no code, test, or config referencing that variable.)
+> - **The AS gates `/oauth/authorize` on a byte-exact allowlist — NOT minting.** The distinction is
+>   load-bearing, see the next bullet. `MCP_OAUTH_AS_ALLOWED_RESOURCES` is read in the `pivota-backend`
+>   repo (`services/mcp_oauth_as.py` `allowed_resources`, enforced in `services/mcp_oauth_flow.py`
+>   `validate_authorization_request`), and **both** identifiers above must be listed there FIRST or conforming clients get
+>   `invalid_target` at authorize. Matching is Python `in` over a `.split(",")`: no trailing-slash strip, no
+>   case fold, no URL parsing. Unset allows NOTHING. Confirmed 2026-08-14 against that repo's `main` and
+>   against the deployed value on Railway service `web` (project *Pivota Infra*), which already lists both.
+> - **Removing an entry is NOT a kill switch.** The allowlist is checked only at authorize;
+>   `exchange_refresh_token` re-mints via `_mint_grant(resource=rec["resource"])` using the resource stored
+>   on the grant and never re-checks it, and refresh tokens live 30 days. So a de-allowlisted resource keeps
+>   receiving freshly minted access tokens for up to a month. Stopping it early means marking that
+>   resource's rows revoked in `mcp_oauth_refresh` by hand — this ADR lists RFC 7009 revocation among the
+>   AS's MISSING pieces, so there is no endpoint to do it with.
 > - **Migrate by accepting both identifiers, not by cutting over.** The verifier takes a SET
 >   (`src/services/mcpOAuthResourceServer.js`, `commerceMcpOAuth.js`) precisely so a resource can move
->   without a flag day. Existing refresh grants are reported to pin the resource they were issued for and
->   so never migrate on their own — also `pb-oauth-as` behaviour, unverifiable from here — and note this
->   ADR lists revocation (RFC 7009) among the AS's MISSING pieces, so there is no endpoint to retire them
->   with. Overlap first; let the old chains age out.
+>   without a flag day, and the refresh behaviour above means old chains cannot be forced over anyway.
+>   Allowlist the new identifier, run both, let the old chains age out.
 > - **This value can also feed the UCP buyer-agent profile URL, but does not today.** It is the third and
 >   last of the three derivable origins, reached only when `UCP_AGENT_PROFILE_URL` is unset, the two
 >   earlier origins are unset, and `UCP_BUYER_AGENT_PROFILE_ENABLED` is on (default off). Production sets
