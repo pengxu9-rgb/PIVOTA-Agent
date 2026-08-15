@@ -32,8 +32,11 @@ process.env.UPSTREAM_RETRY_FIND_PRODUCTS_MULTI_ON_TIMEOUT = 'true';
 // 1500/2900 it was ~1400ms, and this file now runs in a `node --test` invocation with 40+ other files in
 // parallel processes, where a CORRECT run was measured at 2766ms — 1177ms of pure scheduling overhead, which
 // ate the window and failed a passing route. Scaling both up widens the gap to ~1950ms in the same shape.
-// G stays at 4000 deliberately: it sets the attempt timeout for the direct-call tests above (G/2 each), so
-// raising it would triple their runtime for nothing.
+// G stays at 4000 deliberately. The three direct-call tests below pass their own 150ms attempt timeout, so G
+// does not touch their first attempt — it sets their RETRY timeout, via
+// getTimeoutRetryMs = min(RETRY_MS, max(G, prev + 1200)) = 4000. That is where their ~4.16s comes from
+// (150 + 4000), and raising G raises it one-for-one: at G=12000 this file goes from ~10s to ~29s of test time
+// for no extra coverage.
 process.env.UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_ALLOW_UNSAFE_LOWER = 'true';
 process.env.UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_MS = '4000';
 process.env.FIND_PRODUCTS_MULTI_UPSTREAM_LOOKUP_TIMEOUT_MS = '2050';
@@ -131,8 +134,9 @@ const supertest = require('supertest');
 test('WIRING: the route threads its hard deadline into the retry decision', async () => {
   // The tests above pass deadlineAtMs themselves, so they prove the POLICY and not the WIRING — deleting
   // `deadlineAtMs` from the callTrackedUpstream call site leaves every one of them green. This drives the
-  // real invoke route with a hanging backend, in the production shape (1500ms attempt under a 2900ms
-  // deadline), and counts UPSTREAM ATTEMPTS: one with the wiring, two without it.
+  // real invoke route with a hanging backend, in the production shape (a 2050ms attempt under a 4000ms
+  // deadline — see the header for why those numbers and not smaller ones), and counts UPSTREAM ATTEMPTS: one
+  // with the wiring, two without it.
   let attempts = 0;
   nock.cleanAll();
   const hang = () => {
