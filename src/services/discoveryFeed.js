@@ -169,7 +169,13 @@ const DISCOVERY_GENERIC_BROWSE_EXTERNAL_SEED_VERTICAL_MIX = Object.freeze([
   { value: 'bodycare', share: 0.06 },
   { value: 'beauty_tools', share: 0.03 },
 ]);
+// buildProviderBreakdown maps over this list, so a provider missing from it is
+// dropped from the breakdown entirely — which also drops it from the
+// "successful providers" count that finalizeProviderResult requires, turning a
+// healthy recall into DiscoveryCatalogUnavailableError. Register every provider
+// that can serve a request.
 const DISCOVERY_PROVIDER_ORDER = [
+  'canonical_sig',
   'beauty_interest_mainline',
   'products_search',
   'internal_catalog',
@@ -7479,6 +7485,70 @@ async function loadCatalogCandidates({
 
   const shouldUseNoSignalExternalSeedFastpath = isGenericNoSignalDiscoveryRequest(request, profile);
   if (shouldUseNoSignalExternalSeedFastpath) {
+    // Main route: the canonical sig index. The external-seed lane below is the
+    // fallback and is skipped entirely when the index already covers the page,
+    // so a healthy catalog never pays for the seed ladder.
+    if (browseUsesCanonicalSig()) {
+      const canonicalSigStartedAt = Date.now();
+      let canonicalSigProducts = [];
+      let canonicalSigFailed = false;
+      try {
+        canonicalSigProducts = await fetchCanonicalSigBrowseCandidates({
+          request,
+          limit: safeLimit,
+        });
+      } catch (err) {
+        canonicalSigFailed = true;
+        providerResults.push(buildProviderErrorResult('canonical_sig', err));
+      }
+
+      if (!canonicalSigFailed) {
+        // Recorded even at zero recall: a main route that was consulted and came
+        // back empty is a different operational fact from one that never ran,
+        // and the breakdown is how the cutover is watched.
+        const annotated = annotateProviderProducts('canonical_sig', canonicalSigProducts);
+        providerResults.push({
+          provider: 'canonical_sig',
+          products: annotated,
+          recallSummary: [
+            buildDiscoveryProviderStepSummary({
+              provider: 'canonical_sig',
+              label: 'canonical_sig_browse',
+              query: 'canonical_sig_browse',
+              limit: safeLimit,
+              returned: annotated.length,
+              status: 200,
+              latencyMs: Date.now() - canonicalSigStartedAt,
+            }),
+          ],
+        });
+        if (annotated.length > 0) mergeProducts(annotated);
+      }
+
+      if (mergedProducts.length >= enoughThreshold) {
+        candidateSource = 'canonical_sig';
+        primaryPathUsed = 'canonical_sig';
+        for (const skippedProvider of ['external_seeds', 'internal_catalog', 'products_search']) {
+          providerResults.push(
+            buildSkippedProviderResult(skippedProvider, {
+              label: getProviderLabel(skippedProvider),
+              query: providerQueries.join(' | '),
+              limit: safeLimit,
+              skipReason: 'canonical_sig_sufficient',
+            }),
+          );
+        }
+        return finalizeProviderResult();
+      }
+
+      fallbackTriggered = true;
+      fallbackReason = canonicalSigFailed
+        ? 'canonical_sig_query_failed'
+        : canonicalSigProducts.length > 0
+          ? 'canonical_sig_insufficient'
+          : 'canonical_sig_zero_recall';
+    }
+
     // Opt-in: run internal_catalog in parallel with the external_seed fastpath so
     // real-merchant products (status=approved, psp_connected, fresh products_cache)
     // surface on anonymous Browse. Default off — flip per-env after staging
@@ -8867,6 +8937,63 @@ function buildDiscoveryAttachedSeedServingExistsSql(seedAlias = 'external_produc
   `;
 }
 
+// Product identity first, merchant identity second.
+//
+// The row is keyed by `pivota_signature_id` — the canonical product — and the
+// merchant is resolved off it: a connected first-party catalog row when one
+// exists, otherwise the external-seed mirror. Shared by the brand-page reader
+// and the generic browse reader so both spell identity the same way.
+function mapCanonicalIndexRowToProduct(row) {
+  const productId = String(row.pivota_signature_id || '').trim();
+  if (!productId) return null;
+  const offers = Array.isArray(row.offers) ? row.offers : null;
+  const imageUrls = Array.isArray(row.image_urls) ? row.image_urls : [];
+  const priceMin = Number(row.price_min);
+  // Prefer the first-party catalog row when one exists. The legacy mapper
+  // hardcoded merchant_id='external_seed', which works for Pivota-seeded
+  // brands like Fenty but mangles every first-party brand (MOYU, GR,
+  // PawStyle, etc.) — they ship without the real merchant/platform that
+  // downstream hydration needs.
+  const firstPartyMerchantId = row.first_party_merchant_id
+    ? String(row.first_party_merchant_id)
+    : null;
+  const isFirstParty = !!firstPartyMerchantId;
+  const merchantId = isFirstParty ? firstPartyMerchantId : 'external_seed';
+  const platform = isFirstParty
+    ? (row.first_party_platform ? String(row.first_party_platform) : 'shopify')
+    : 'external_seed';
+  const sourceProductId = isFirstParty
+    ? (row.first_party_source_product_id != null ? String(row.first_party_source_product_id) : null)
+    : (row.external_product_id != null ? String(row.external_product_id) : null);
+  const productKey = isFirstParty
+    ? (row.first_party_product_key ? String(row.first_party_product_key) : null)
+    : (row.external_product_key ? String(row.external_product_key) : null);
+  return {
+    id: productId,
+    product_id: productId,
+    merchant_id: merchantId,
+    platform,
+    pivota_signature_id: productId,
+    ...(sourceProductId ? { source_product_id: sourceProductId } : {}),
+    ...(productKey ? (isFirstParty ? { product_key: productKey } : { external_product_key: productKey }) : {}),
+    ...(!isFirstParty && row.external_product_id ? { external_product_id: String(row.external_product_id) } : {}),
+    ...(row.content_key ? { content_key: String(row.content_key) } : {}),
+    ...(row.canonical_url ? { pivota_canonical_url: String(row.canonical_url) } : {}),
+    title: String(row.title || '').trim() || productId,
+    ...(row.description ? { description: String(row.description) } : {}),
+    ...(row.brand ? { brand: String(row.brand), vendor: String(row.brand) } : {}),
+    ...(row.image_url ? { image_url: String(row.image_url) } : {}),
+    ...(imageUrls.length ? { image_urls: imageUrls, images: imageUrls } : {}),
+    price: Number.isFinite(priceMin) ? priceMin : null,
+    currency: String(row.currency || 'USD').trim() || 'USD',
+    ...(offers ? { offers, offers_count: Number(row.offer_count) || offers.length } : {}),
+    ...(Array.isArray(row.category_path) && row.category_path.length
+      ? { category_path: row.category_path, category: row.category_path[row.category_path.length - 1] }
+      : {}),
+    source: 'commerce_index',
+  };
+}
+
 async function fetchBrandScopedCanonicalCandidates({ brandAliases = [], limit = 120 } = {}) {
   if (!process.env.DATABASE_URL) return [];
   const normalizedAliases = uniqStrings(
@@ -8961,58 +9088,7 @@ async function fetchBrandScopedCanonicalCandidates({ brandAliases = [], limit = 
       `,
       [normalizedAliases, compactAliases, safeLimit],
     );
-    return (res.rows || [])
-      .map((row) => {
-        const productId = String(row.pivota_signature_id || '').trim();
-        if (!productId) return null;
-        const offers = Array.isArray(row.offers) ? row.offers : null;
-        const imageUrls = Array.isArray(row.image_urls) ? row.image_urls : [];
-        const priceMin = Number(row.price_min);
-        // Prefer the first-party catalog row when one exists. The legacy mapper
-        // hardcoded merchant_id='external_seed', which works for Pivota-seeded
-        // brands like Fenty but mangles every first-party brand (MOYU, GR,
-        // PawStyle, etc.) — they ship without the real merchant/platform that
-        // downstream hydration needs.
-        const firstPartyMerchantId = row.first_party_merchant_id
-          ? String(row.first_party_merchant_id)
-          : null;
-        const isFirstParty = !!firstPartyMerchantId;
-        const merchantId = isFirstParty ? firstPartyMerchantId : 'external_seed';
-        const platform = isFirstParty
-          ? (row.first_party_platform ? String(row.first_party_platform) : 'shopify')
-          : 'external_seed';
-        const sourceProductId = isFirstParty
-          ? (row.first_party_source_product_id != null ? String(row.first_party_source_product_id) : null)
-          : (row.external_product_id != null ? String(row.external_product_id) : null);
-        const productKey = isFirstParty
-          ? (row.first_party_product_key ? String(row.first_party_product_key) : null)
-          : (row.external_product_key ? String(row.external_product_key) : null);
-        return {
-          id: productId,
-          product_id: productId,
-          merchant_id: merchantId,
-          platform,
-          pivota_signature_id: productId,
-          ...(sourceProductId ? { source_product_id: sourceProductId } : {}),
-          ...(productKey ? (isFirstParty ? { product_key: productKey } : { external_product_key: productKey }) : {}),
-          ...(!isFirstParty && row.external_product_id ? { external_product_id: String(row.external_product_id) } : {}),
-          ...(row.content_key ? { content_key: String(row.content_key) } : {}),
-          ...(row.canonical_url ? { pivota_canonical_url: String(row.canonical_url) } : {}),
-          title: String(row.title || '').trim() || productId,
-          ...(row.description ? { description: String(row.description) } : {}),
-          ...(row.brand ? { brand: String(row.brand), vendor: String(row.brand) } : {}),
-          ...(row.image_url ? { image_url: String(row.image_url) } : {}),
-          ...(imageUrls.length ? { image_urls: imageUrls, images: imageUrls } : {}),
-          price: Number.isFinite(priceMin) ? priceMin : null,
-          currency: String(row.currency || 'USD').trim() || 'USD',
-          ...(offers ? { offers, offers_count: Number(row.offer_count) || offers.length } : {}),
-          ...(Array.isArray(row.category_path) && row.category_path.length
-            ? { category_path: row.category_path, category: row.category_path[row.category_path.length - 1] }
-            : {}),
-          source: 'commerce_index',
-        };
-      })
-      .filter(Boolean);
+    return (res.rows || []).map(mapCanonicalIndexRowToProduct).filter(Boolean);
   } catch (err) {
     const message = String(err?.message || err || '');
     if (
@@ -9030,6 +9106,132 @@ async function fetchBrandScopedCanonicalCandidates({ brandAliases = [], limit = 
         brand_aliases: normalizedAliases,
       },
       'brand scoped commerce-index query failed',
+    );
+    return [];
+  }
+}
+
+// Generic browse recalled from the canonical sig index rather than the legacy
+// external-seed lane.
+//
+// The seed lane recalls by facets the servable corpus does not carry: measured
+// 2026-08-17, the two cohorts that actually clear the serving gate
+// (external_brand_crawl 1,135 rows, catalog_enrichment_agent_v1 1,637) have ZERO
+// `derived.recall.category` and ZERO `derived.recall.vertical` between them, so
+// the curated head and the indexed ladder can never match them and browse fell
+// through to a 78-statement sweep that returned 9 products. The canonical index
+// is keyed the way the catalog is now keyed — one row per `pivota_signature_id`,
+// merchant resolved off the identity — and 2,467 of its 2,471 servable rows
+// carry a category.
+//
+// Default off. Flip DISCOVERY_BROWSE_USES_CANONICAL_SIG per environment once the
+// corpus backfill has run, so the cutover is observable rather than implicit.
+function browseUsesCanonicalSig() {
+  const raw = String(process.env.DISCOVERY_BROWSE_USES_CANONICAL_SIG || '')
+    .trim()
+    .toLowerCase();
+  return raw === '1' || raw === 'true' || raw === 'yes' || raw === 'on';
+}
+
+async function fetchCanonicalSigBrowseCandidates({ request = null, limit = 120 } = {}) {
+  if (!process.env.DATABASE_URL) return [];
+  const safeLimit = clampInt(limit, Math.max(limit, 120), 24, 400);
+  const categories = uniqStrings(
+    (request?.scope?.categories || [])
+      .map((value) => String(value || '').trim().toLowerCase())
+      .filter(Boolean),
+    16,
+  );
+
+  const params = [safeLimit];
+  let categoryWhereSql = '';
+  if (categories.length > 0) {
+    params.push(categories);
+    categoryWhereSql = `
+          AND EXISTS (
+            SELECT 1
+            FROM unnest(apv.category_path) AS category_value
+            WHERE lower(category_value) = ANY($${params.length}::text[])
+          )`;
+  }
+
+  try {
+    const res = await query(
+      `
+        SELECT
+          apv.content_key,
+          apv.pivota_signature_id,
+          first_party.merchant_id AS first_party_merchant_id,
+          first_party.platform AS first_party_platform,
+          first_party.source_product_id AS first_party_source_product_id,
+          first_party.product_key AS first_party_product_key,
+          ext_seed.source_product_id AS external_product_id,
+          ext_seed.product_key AS external_product_key,
+          apv.brand,
+          apv.title,
+          apv.description,
+          apv.image_url,
+          apv.image_urls,
+          apv.currency,
+          apv.price_min,
+          apv.price_max,
+          apv.offer_count,
+          apv.offers,
+          apv.category_path
+        FROM agent_pdp_view apv
+        LEFT JOIN LATERAL (
+          SELECT cp.merchant_id, cp.platform, cp.source_product_id, cp.product_key
+          FROM catalog_products cp
+          WHERE cp.content_key = apv.content_key
+            AND cp.platform <> 'external_seed'
+            AND cp.sync_status = 'live'
+            AND cp.suppression_reason IS NULL
+          ORDER BY cp.updated_at DESC NULLS LAST
+          LIMIT 1
+        ) first_party ON TRUE
+        LEFT JOIN LATERAL (
+          SELECT cp.source_product_id, cp.product_key
+          FROM catalog_products cp
+          WHERE cp.content_key = apv.content_key
+            AND cp.platform = 'external_seed'
+            AND (cp.source_product_id LIKE 'ext\\_%' OR cp.merchant_id LIKE 'merch\\_obs\\_%')
+            AND cp.suppression_reason IS NULL
+            AND cp.sync_status = 'live'
+          ORDER BY cp.updated_at DESC NULLS LAST
+          LIMIT 1
+        ) ext_seed ON TRUE
+        WHERE apv.pivota_signature_id IS NOT NULL
+          AND EXISTS (
+            SELECT 1
+            FROM catalog_products cp_trust
+            JOIN catalog_row_trust crt
+              ON crt.subject_type = 'product'
+             AND crt.subject_key = cp_trust.product_key
+            WHERE cp_trust.content_key = apv.content_key
+              AND crt.serving_decision = 'public'
+          )${categoryWhereSql}
+        -- pivota_signature_id breaks refreshed_at ties so paging is stable:
+        -- browse cursors re-run this query and a nondeterministic tail would
+        -- drop or repeat rows between pages.
+        ORDER BY apv.refreshed_at DESC NULLS LAST, apv.pivota_signature_id ASC
+        LIMIT $1
+      `,
+      params,
+    );
+    return (res.rows || []).map(mapCanonicalIndexRowToProduct).filter(Boolean);
+  } catch (err) {
+    const message = String(err?.message || err || '');
+    if (
+      err?.code === 'NO_DATABASE' ||
+      (message.includes('agent_pdp_view') && message.includes('does not exist')) ||
+      (message.includes('catalog_row_trust') && message.includes('does not exist'))
+    ) {
+      // Migrations not applied yet — fail open, caller falls back to the seed lane.
+      return [];
+    }
+    logger.warn(
+      { err: message, categories },
+      'canonical sig browse query failed',
     );
     return [];
   }
@@ -11623,6 +11825,9 @@ module.exports = {
     applyIdentityGraphDiscoveryDedupe,
     resolveDiscoveryCandidateLimit,
     buildStableBrowseCatalogCountQuery,
+    browseUsesCanonicalSig,
+    fetchCanonicalSigBrowseCandidates,
+    mapCanonicalIndexRowToProduct,
     buildDiscoveryCursor,
     buildDiscoveryCursorContextSignature,
     countStableBrowseCatalogTotal,
