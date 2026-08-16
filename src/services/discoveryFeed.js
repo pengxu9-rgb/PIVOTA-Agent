@@ -5907,71 +5907,104 @@ async function fetchGenericBrowseExternalSeedServingCandidates({
       if (rows.length >= safeLimit) break;
     }
   };
-  const runIndexedStage = async ({ axis, value, sqlField, score, maxRows = null }) => {
-    const normalizedValue = String(value || '').trim().toLowerCase();
-    if (!normalizedValue || rows.length >= safeLimit) return;
-    const numericMaxRows = Number(maxRows);
-    const stageQuota =
-      Number.isFinite(numericMaxRows) && numericMaxRows > 0
-        ? Math.max(1, Math.floor(numericMaxRows))
-        : safeLimit;
-    const stageTargetRows = Math.min(safeLimit, rows.length + stageQuota);
-    for (const toolScope of toolScopeValues.length > 0 ? toolScopeValues : ['*', 'creator_agents']) {
-      if (rows.length >= stageTargetRows) break;
-      const stageParams = [market, toolScope, normalizedValue];
-      const resolvedCap = Math.max(1, stageTargetRows - rows.length);
-      let sql = `
-        SELECT
-          ${selectSql},
-          ${Number(score || 0)}::int AS match_score,
-          '${stage}'::text AS match_stage
-        FROM external_product_seeds
-        WHERE status = 'active'
-          AND ${buildDiscoveryAttachedSeedServingExistsSql('external_product_seeds')}
-          AND market = $1
-          AND tool = $2
-          AND coalesce(lower(seed_data#>>'{suppression_flags,exclude_from_recall}'), 'false') <> 'true'
-          AND coalesce(lower(seed_data#>>'{derived,recall,suppression_flags,exclude_from_recall}'), 'false') <> 'true'
-          AND ${sqlField} = $3
-      `;
-      if (seenSqlIds.size > 0) {
-        stageParams.push(Array.from(seenSqlIds));
-        sql += `
-          AND id <> ALL($${stageParams.length}::bigint[])
-        `;
-      }
-      stageParams.push(resolvedCap);
+  // One query per axis, not one per (value × tool_scope).
+  //
+  // 2026-08-17: this ladder used to await a separate statement for every
+  // (value, tool_scope) pair — 6 verticals + 33 categories against 2 tool
+  // scopes. Each statement costs ~700ms (the serving-gate EXISTS join plus a
+  // JSON category extraction, neither of which is indexable here), and the
+  // ladder only advances while `rows.length < minimumRowsForServing`. On the
+  // real corpus that floor is never reached, so EVERY browse request ran the
+  // full 84-statement sweep and took ~56s to return 9 products. The public
+  // /products grid aborts at 15s, so the whole page rendered "No products
+  // found" while the feed was in fact healthy.
+  //
+  // The batched form issues the identical predicate once with `= ANY(...)` and
+  // reproduces the loop's priority order in SQL: `array_position` over the
+  // value array is the outer loop, over the tool-scope array the inner one, and
+  // the per-row tiebreak is unchanged. The old inner LIMIT was always
+  // `safeLimit - rows.length` (these callers pass no `maxRows`, so the stage
+  // quota degenerated to `safeLimit`), which is exactly the batched LIMIT.
+  const runIndexedLadder = async ({ axis, values, sqlField, score }) => {
+    const normalizedValues = uniqStrings(
+      (Array.isArray(values) ? values : [])
+        .map((value) => String(value || '').trim().toLowerCase())
+        .filter(Boolean),
+      64,
+    );
+    if (normalizedValues.length <= 0 || rows.length >= safeLimit) return;
+    const scopedTools = toolScopeValues.length > 0 ? toolScopeValues : ['*', 'creator_agents'];
+    const stageParams = [market, scopedTools, normalizedValues];
+    let sql = `
+      SELECT
+        ${selectSql},
+        ${Number(score || 0)}::int AS match_score,
+        '${stage}'::text AS match_stage,
+        ${sqlField} AS ladder_match_value,
+        tool AS ladder_tool_scope
+      FROM external_product_seeds
+      WHERE status = 'active'
+        AND ${buildDiscoveryAttachedSeedServingExistsSql('external_product_seeds')}
+        AND market = $1
+        AND tool = ANY($2::text[])
+        AND coalesce(lower(seed_data#>>'{suppression_flags,exclude_from_recall}'), 'false') <> 'true'
+        AND coalesce(lower(seed_data#>>'{derived,recall,suppression_flags,exclude_from_recall}'), 'false') <> 'true'
+        AND ${sqlField} = ANY($3::text[])
+    `;
+    if (seenSqlIds.size > 0) {
+      stageParams.push(Array.from(seenSqlIds));
       sql += `
-        ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST, id DESC
-        LIMIT $${stageParams.length}
+        AND id <> ALL($${stageParams.length}::bigint[])
       `;
-      const res = await query(sql, stageParams);
-      appendRows(Array.isArray(res?.rows) ? res.rows : [], axis, normalizedValue, toolScope, stageQuota);
+    }
+    stageParams.push(Math.max(1, safeLimit - rows.length));
+    sql += `
+      ORDER BY
+        array_position($3::text[], ${sqlField}) ASC,
+        array_position($2::text[], tool) ASC,
+        updated_at DESC NULLS LAST,
+        created_at DESC NULLS LAST,
+        id DESC
+      LIMIT $${stageParams.length}
+    `;
+    const res = await query(sql, stageParams);
+    const fetchedRows = Array.isArray(res?.rows) ? res.rows : [];
+
+    // Preserve the per-(value, tool_scope) stage metrics the sequential ladder
+    // emitted. Groups the batch returned nothing for are simply absent rather
+    // than reported as an attempted zero-row stage.
+    const groups = new Map();
+    for (const row of fetchedRows) {
+      const groupValue = String(row?.ladder_match_value || '').trim().toLowerCase();
+      const groupToolScope = String(row?.ladder_tool_scope || '').trim() || '*';
+      const groupKey = `${groupValue} ${groupToolScope}`;
+      if (!groups.has(groupKey)) {
+        groups.set(groupKey, { value: groupValue, toolScope: groupToolScope, rows: [] });
+      }
+      groups.get(groupKey).rows.push(row);
+    }
+    for (const group of groups.values()) {
+      if (rows.length >= safeLimit) break;
+      appendRows(group.rows, axis, group.value, group.toolScope, safeLimit);
     }
   };
 
   await runBalancedVerticalMixStage();
   if (rows.length < minimumRowsForServing) {
-    for (const vertical of DISCOVERY_GENERIC_BROWSE_EXTERNAL_SEED_VERTICALS) {
-      await runIndexedStage({
-        axis: 'vertical',
-        value: vertical,
-        sqlField: EXTERNAL_SEED_RECALL_SQL_FIELDS.vertical,
-        score: 58,
-      });
-      if (rows.length >= safeLimit) break;
-    }
+    await runIndexedLadder({
+      axis: 'vertical',
+      values: DISCOVERY_GENERIC_BROWSE_EXTERNAL_SEED_VERTICALS,
+      sqlField: EXTERNAL_SEED_RECALL_SQL_FIELDS.vertical,
+      score: 58,
+    });
   }
   if (rows.length < minimumRowsForServing) {
-    for (const category of DISCOVERY_GENERIC_BROWSE_EXTERNAL_SEED_CATEGORIES) {
-      await runIndexedStage({
-        axis: 'category',
-        value: category,
-        sqlField: DISCOVERY_EXTERNAL_SEED_INDEXED_RECALL_CATEGORY_SQL,
-        score: 52,
-      });
-      if (rows.length >= safeLimit) break;
-    }
+    await runIndexedLadder({
+      axis: 'category',
+      values: DISCOVERY_GENERIC_BROWSE_EXTERNAL_SEED_CATEGORIES,
+      sqlField: DISCOVERY_EXTERNAL_SEED_INDEXED_RECALL_CATEGORY_SQL,
+      score: 52,
+    });
   }
 
   const products = annotateProviderProducts(
