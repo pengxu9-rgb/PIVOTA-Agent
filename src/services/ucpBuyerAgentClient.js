@@ -277,6 +277,15 @@ function createUcpBuyerAgentClient(options = {}) {
         'user-agent': userAgent,
       },
       body: JSON.stringify({ client_id: clientId, client_secret: clientSecret, grant_type: 'client_credentials' }),
+      // NEVER follow a redirect on a credential-carrying request. This body holds the client secret, and a
+      // 307/308 REPLAYS the body verbatim at the redirect target — measured on node 24: undici does strip the
+      // `Authorization` header cross-origin, but the JSON body (and any `signature` header) go through
+      // untouched. So a token endpoint that redirects — compromised, misconfigured, or fronted by a catch-all
+      // rewrite — would hand the secret to whatever origin it names. Refuse instead: the exchange fails
+      // (opaque, status-only error above) and no secret leaves for anywhere we did not resolve. Same rule as
+      // the profile fetch in discoverEndpoint, for a stronger reason: that one protects what we TRUST, this
+      // one protects what we HOLD.
+      redirect: 'error',
       signal,
     }), timeoutMs);
     const text = await res.text();
@@ -584,6 +593,12 @@ function createUcpBuyerAgentClient(options = {}) {
       method: 'POST',
       headers,
       body: bodyString,
+      // Bearer token (TOKEN tier) or RFC 9421 signature (SIGNED tier), plus the cart/buyer payload and the
+      // idempotency key: none of it may be replayed at a URL we did not resolve. A 307/308 replays the body
+      // and non-Authorization headers cross-origin (measured; see exchangeClientCredentials), and ANY redirect
+      // keeps the Bearer same-origin. The endpoint came from the merchant's profile and is authoritative —
+      // a redirect on it is a failure to report, not a hop to take.
+      redirect: 'error',
       signal,
     }), { retry: retryOk });
     const text = await res.text();
@@ -696,7 +711,8 @@ function createUcpBuyerAgentClient(options = {}) {
     const bodyString = JSON.stringify(body);
     // tools/list is read-only discovery: safe to retry on a transient error (H1).
     const res = await fetchWithPolicy((signal) => doFetch(endpoint, {
-      method: 'POST', headers, body: bodyString, signal,
+      // Same rule as callTool: this carries the tier credential too.
+      method: 'POST', headers, body: bodyString, redirect: 'error', signal,
     }), { retry: true });
     const text = await res.text();
     let parsed;
