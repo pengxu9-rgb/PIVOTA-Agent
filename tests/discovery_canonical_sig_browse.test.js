@@ -142,6 +142,9 @@ describe('canonical sig browse main route', () => {
 
     const sigCall = calls.find((call) => isSigQuery(call.sql));
     expect(sigCall).toBeTruthy();
+    // Both halves of the gate: widening subject_type would let a colliding
+    // subject_key from another subject publish a product.
+    expect(sigCall.sql).toContain("crt.subject_type = 'product'");
     expect(sigCall.sql).toContain("crt.serving_decision = 'public'");
     // A refreshed_at-only sort has ties, and browse re-runs this query per page.
     expect(sigCall.sql).toContain('apv.pivota_signature_id ASC');
@@ -149,19 +152,49 @@ describe('canonical sig browse main route', () => {
     expect(sigCall.sql).not.toContain('unnest(apv.category_path)');
   });
 
-  test('category scope filters on the identity row own category path', async () => {
+  test('the external-seed leg is not narrowed by an id-prefix filter', async () => {
     process.env.DATABASE_URL = 'postgres://canonical-sig-test';
     const { mock, calls } = buildDbMock([makeSigRow(1)]);
     const internals = loadInternals(mock);
 
-    await internals.fetchCanonicalSigBrowseCandidates({
-      request: { ...GENERIC_BROWSE_REQUEST, scope: { categories: ['Skincare'] } },
-      limit: 60,
-    });
+    await internals.fetchCanonicalSigBrowseCandidates({ limit: 60 });
 
     const sigCall = calls.find((call) => isSigQuery(call.sql));
-    expect(sigCall.sql).toContain('unnest(apv.category_path)');
-    expect(sigCall.params).toContainEqual(['skincare']);
+    // `platform = 'external_seed'` is already a complete leg of the seed-lane
+    // predicate. An id-prefix filter can only narrow it, and the escaped form
+    // (`ext\_%`, a literal underscore) silently drops every live `ext:` id —
+    // losing the external identity the redirect path needs.
+    expect(sigCall.sql).toContain("cp.platform = 'external_seed'");
+    expect(sigCall.sql).not.toMatch(/LIKE\s+'ext/);
+    expect(sigCall.sql).not.toMatch(/LIKE\s+'merch/);
+  });
+
+  test('a real query failure is never reported as a successful empty provider', async () => {
+    process.env.DATABASE_URL = 'postgres://canonical-sig-test';
+    process.env.DISCOVERY_BROWSE_USES_CANONICAL_SIG = 'true';
+
+    // The sig index fails for a reason that is NOT "migrations pending", and
+    // every other provider is unreachable too.
+    const mock = jest.fn((sql) => {
+      const text = String(sql || '');
+      if (text.includes('information_schema.columns')) return Promise.resolve({ rows: REQUIRED_COLUMNS });
+      if (text.includes('pg_indexes')) return Promise.resolve({ rows: REQUIRED_INDEXES });
+      if (isSigQuery(text)) return Promise.reject(new Error('canceling statement due to statement timeout'));
+      return Promise.reject(new Error('ECONNREFUSED'));
+    });
+    const internals = loadInternals(mock);
+
+    // Flattening the failure to [] would record canonical_sig as a 200 with zero
+    // rows, which counts as a successful provider and suppresses this throw —
+    // turning a dead database into a healthy-looking empty page and making the
+    // discovery smoke gate pass on it.
+    await expect(
+      internals.loadCatalogCandidates({
+        request: internals.normalizeDiscoveryRequest(GENERIC_BROWSE_REQUEST),
+        profile: { hasInterestSignals: false },
+        limit: 120,
+      }),
+    ).rejects.toThrow(/Failed to load discovery candidates/);
   });
 
   test('a sufficient sig index skips the external seed lane entirely', async () => {
@@ -189,7 +222,33 @@ describe('canonical sig browse main route', () => {
     const seedProvider = (result.providerBreakdown || []).find(
       (entry) => entry.provider === 'external_seeds',
     );
-    expect(seedProvider).toMatchObject({ skipped: true, skip_reason: 'canonical_sig_sufficient' });
+    expect(seedProvider).toMatchObject({ skipped: true, skip_reason: 'canonical_sig_primary_used' });
+  });
+
+  // NOTE: this pins that a thin index still consults the fallbacks. It does NOT
+  // pin the quality-aware gate against a raw `mergedProducts.length` bar — at
+  // this row count both spellings fall back, so the distinction is not
+  // unit-observable here. `hasSufficientProviderCandidates` is shared with the
+  // beauty mainline path and covered by its tests.
+  test('a thin sig index still consults the fallbacks', async () => {
+    process.env.DATABASE_URL = 'postgres://canonical-sig-test';
+    process.env.DISCOVERY_BROWSE_USES_CANONICAL_SIG = 'true';
+    const { mock, calls } = buildDbMock([makeSigRow(1), makeSigRow(2)]);
+    const internals = loadInternals(mock);
+
+    const result = await internals.loadCatalogCandidates({
+      request: internals.normalizeDiscoveryRequest(GENERIC_BROWSE_REQUEST),
+      profile: { hasInterestSignals: false },
+      limit: 120,
+    });
+
+    expect(result.primaryPathUsed).not.toBe('canonical_sig');
+    expect(calls.filter((call) => isSeedQuery(call.sql)).length).toBeGreaterThan(0);
+
+    const sigProvider = (result.providerBreakdown || []).find(
+      (entry) => entry.provider === 'canonical_sig',
+    );
+    expect(sigProvider).toMatchObject({ attempted: true, returned: 2 });
   });
 
   test('an empty sig index falls back to the seed lane instead of serving nothing', async () => {

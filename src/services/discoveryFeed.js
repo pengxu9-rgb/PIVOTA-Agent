@@ -7237,6 +7237,7 @@ async function loadCatalogCandidates({
   };
 
   const getProviderLabel = (provider) => {
+    if (provider === 'canonical_sig') return 'canonical_sig_browse';
     if (provider === 'beauty_interest_mainline') return 'beauty_interest_mainline';
     if (provider === 'products_search') return 'products_search_pool';
     if (provider === 'internal_catalog') return 'internal_catalog_pool';
@@ -7490,19 +7491,19 @@ async function loadCatalogCandidates({
     // so a healthy catalog never pays for the seed ladder.
     if (browseUsesCanonicalSig()) {
       const canonicalSigStartedAt = Date.now();
-      let canonicalSigProducts = [];
+      // null == index not readable yet (no DATABASE_URL / migrations pending).
+      // A thrown error is a REAL failure and is recorded as one, so it can never
+      // masquerade as a successful provider returning zero rows.
+      let canonicalSigProducts = null;
       let canonicalSigFailed = false;
       try {
-        canonicalSigProducts = await fetchCanonicalSigBrowseCandidates({
-          request,
-          limit: safeLimit,
-        });
+        canonicalSigProducts = await fetchCanonicalSigBrowseCandidates({ limit: safeLimit });
       } catch (err) {
         canonicalSigFailed = true;
         providerResults.push(buildProviderErrorResult('canonical_sig', err));
       }
 
-      if (!canonicalSigFailed) {
+      if (!canonicalSigFailed && Array.isArray(canonicalSigProducts)) {
         // Recorded even at zero recall: a main route that was consulted and came
         // back empty is a different operational fact from one that never ran,
         // and the breakdown is how the cutover is watched.
@@ -7513,7 +7514,7 @@ async function loadCatalogCandidates({
           recallSummary: [
             buildDiscoveryProviderStepSummary({
               provider: 'canonical_sig',
-              label: 'canonical_sig_browse',
+              label: getProviderLabel('canonical_sig'),
               query: 'canonical_sig_browse',
               limit: safeLimit,
               returned: annotated.length,
@@ -7525,28 +7526,56 @@ async function loadCatalogCandidates({
         if (annotated.length > 0) mergeProducts(annotated);
       }
 
-      if (mergedProducts.length >= enoughThreshold) {
+      // Same bar as every other primary path: identity-deduped and quality
+      // filtered, against primaryPathEnoughThreshold. A raw merged count would
+      // let N low-quality or duplicate rows skip all three fallbacks and ship a
+      // near-empty page.
+      const canonicalSigSufficiencyProducts = await resolveIdentityAwareSufficiencyProducts(mergedProducts);
+      const canonicalSigEnough = hasSufficientProviderCandidates(canonicalSigSufficiencyProducts, {
+        request,
+        profile,
+        enoughThreshold: primaryPathEnoughThreshold,
+        qualityThreshold,
+      });
+
+      if (canonicalSigEnough) {
         candidateSource = 'canonical_sig';
         primaryPathUsed = 'canonical_sig';
-        for (const skippedProvider of ['external_seeds', 'internal_catalog', 'products_search']) {
-          providerResults.push(
-            buildSkippedProviderResult(skippedProvider, {
-              label: getProviderLabel(skippedProvider),
-              query: providerQueries.join(' | '),
-              limit: safeLimit,
-              skipReason: 'canonical_sig_sufficient',
-            }),
-          );
-        }
+        providerResults.push(
+          buildSkippedProviderResult('products_search', {
+            label: getProviderLabel('products_search'),
+            query: providerQueries.join(' | '),
+            limit: safeLimit,
+            skipReason: 'canonical_sig_sufficient',
+          }),
+        );
+        providerResults.push(
+          buildSkippedProviderResult('internal_catalog', {
+            label: getProviderLabel('internal_catalog'),
+            query: providerQueries.join(' | '),
+            limit: internalProviderLimit,
+            skipReason: 'canonical_sig_sufficient',
+          }),
+        );
+        providerResults.push(
+          buildSkippedProviderResult('external_seeds', {
+            label: getProviderLabel('external_seeds'),
+            query: externalProviderQueries.join(' | '),
+            limit: externalProviderLimit,
+            skipReason: 'canonical_sig_primary_used',
+          }),
+        );
         return finalizeProviderResult();
       }
 
       fallbackTriggered = true;
       fallbackReason = canonicalSigFailed
         ? 'canonical_sig_query_failed'
-        : canonicalSigProducts.length > 0
-          ? 'canonical_sig_insufficient'
-          : 'canonical_sig_zero_recall';
+        : !Array.isArray(canonicalSigProducts)
+          ? 'canonical_sig_unavailable'
+          : canonicalSigProducts.length > 0
+            ? 'canonical_sig_insufficient'
+            : 'canonical_sig_zero_recall';
     }
 
     // Opt-in: run internal_catalog in parallel with the external_seed fastpath so
@@ -9133,27 +9162,24 @@ function browseUsesCanonicalSig() {
   return raw === '1' || raw === 'true' || raw === 'yes' || raw === 'on';
 }
 
-async function fetchCanonicalSigBrowseCandidates({ request = null, limit = 120 } = {}) {
-  if (!process.env.DATABASE_URL) return [];
+// Returns `null` when the index is unreadable in a way the caller should treat
+// as "not available yet" (no DATABASE_URL, migrations not applied) and an array
+// otherwise. A REAL failure — timeout, dropped connection, schema drift — is
+// rethrown, never flattened to an empty array.
+//
+// Flattening every error to [] is what made an outage indistinguishable from an
+// empty catalog: the caller then recorded the provider as a 200 with zero rows,
+// which counts as a successful provider, which suppresses
+// DiscoveryCatalogUnavailableError and lets a dead database render as a healthy
+// empty page — and makes the discovery smoke gate pass on it.
+//
+// The request carries no category scope in practice: the only call site is
+// gated on isGenericNoSignalDiscoveryRequest, which is false whenever a category
+// scope is set. No category branch is built here for that reason.
+async function fetchCanonicalSigBrowseCandidates({ limit = 120 } = {}) {
+  if (!process.env.DATABASE_URL) return null;
   const safeLimit = clampInt(limit, Math.max(limit, 120), 24, 400);
-  const categories = uniqStrings(
-    (request?.scope?.categories || [])
-      .map((value) => String(value || '').trim().toLowerCase())
-      .filter(Boolean),
-    16,
-  );
-
   const params = [safeLimit];
-  let categoryWhereSql = '';
-  if (categories.length > 0) {
-    params.push(categories);
-    categoryWhereSql = `
-          AND EXISTS (
-            SELECT 1
-            FROM unnest(apv.category_path) AS category_value
-            WHERE lower(category_value) = ANY($${params.length}::text[])
-          )`;
-  }
 
   try {
     const res = await query(
@@ -9193,8 +9219,15 @@ async function fetchCanonicalSigBrowseCandidates({ request = null, limit = 120 }
           SELECT cp.source_product_id, cp.product_key
           FROM catalog_products cp
           WHERE cp.content_key = apv.content_key
+            -- ADR-009: this leg exists to keep the row EXTERNAL identity
+            -- (external_product_id / external_product_key) so the redirect path
+            -- still resolves. The platform check below is already a complete leg
+            -- of the canonical seed-lane predicate, so an id-prefix filter on top
+            -- can only narrow it. The brand reader LIKE ext_% matched the live
+            -- ext: prefix only because the unescaped underscore acted as a
+            -- wildcard; spelling it as a literal underscore silently dropped
+            -- every ext: row. Dropped entirely rather than re-spelled.
             AND cp.platform = 'external_seed'
-            AND (cp.source_product_id LIKE 'ext\\_%' OR cp.merchant_id LIKE 'merch\\_obs\\_%')
             AND cp.suppression_reason IS NULL
             AND cp.sync_status = 'live'
           ORDER BY cp.updated_at DESC NULLS LAST
@@ -9209,10 +9242,11 @@ async function fetchCanonicalSigBrowseCandidates({ request = null, limit = 120 }
              AND crt.subject_key = cp_trust.product_key
             WHERE cp_trust.content_key = apv.content_key
               AND crt.serving_decision = 'public'
-          )${categoryWhereSql}
-        -- pivota_signature_id breaks refreshed_at ties so paging is stable:
-        -- browse cursors re-run this query and a nondeterministic tail would
-        -- drop or repeat rows between pages.
+          )
+        -- pivota_signature_id makes refreshed_at TIES deterministic. It does not
+        -- make paging stable: browse re-runs this query with a larger LIMIT and
+        -- slices rather than keyset-paging, so a refreshed_at bump between page
+        -- requests still reorders the prefix. Same exposure as the seed lane.
         ORDER BY apv.refreshed_at DESC NULLS LAST, apv.pivota_signature_id ASC
         LIMIT $1
       `,
@@ -9226,14 +9260,11 @@ async function fetchCanonicalSigBrowseCandidates({ request = null, limit = 120 }
       (message.includes('agent_pdp_view') && message.includes('does not exist')) ||
       (message.includes('catalog_row_trust') && message.includes('does not exist'))
     ) {
-      // Migrations not applied yet — fail open, caller falls back to the seed lane.
-      return [];
+      // Migrations not applied yet — genuinely "no index to read", fail open.
+      return null;
     }
-    logger.warn(
-      { err: message, categories },
-      'canonical sig browse query failed',
-    );
-    return [];
+    // Everything else is a real failure and must stay one.
+    throw err;
   }
 }
 

@@ -356,10 +356,20 @@ async function runSmoke(options = {}) {
       'products_search+external_seed_fastpath',
       'external_seed_fastpath',
       'external_seed_fastpath+products_search',
+      // Generic cold-start browse serves from the canonical sig index once
+      // DISCOVERY_BROWSE_USES_CANONICAL_SIG is on, and that path skips the seed
+      // lane by design. Without these two entries the gate fails the moment the
+      // flag is flipped — on a healthy feed.
+      'canonical_sig',
     ],
     minProducts: 3,
     requireRankDebug: true,
-    requiredRecallLabels: [['cold_start_curated', 'cold_start_fill', 'external_seed_pool_fastpath']],
+    requiredRecallLabels: [
+      ['cold_start_curated', 'cold_start_fill', 'external_seed_pool_fastpath', 'canonical_sig_browse'],
+    ],
+    // Still required: these are breakdown-presence checks, and every registered
+    // provider gets an entry whether it ran or was skipped. Serving from
+    // canonical_sig does not remove them.
     requiredProviders: ['products_search', 'external_seeds'],
     disallowTopN: 3,
     disallowTitlePatterns: [
