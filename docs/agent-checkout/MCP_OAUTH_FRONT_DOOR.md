@@ -75,11 +75,15 @@ not the `ES256` shown here. Before changing the resource again:
 - It defines **two** identifiers — the UCP door's is derived as `${origin}/ucp/mcp` and separately
   advertised. Handle them as a pair.
 - The AS gates **`/oauth/authorize`** — not minting — on a byte-exact `MCP_OAUTH_AS_ALLOWED_RESOURCES`
-  allowlist; list both there FIRST or clients get `invalid_target`. It lives in the `pivota-backend` repo
-  (`services/mcp_oauth_flow.py`), on Railway service `web`.
-- Because only authorize is gated, removing an entry is **not** a kill switch: refresh grants store their
-  resource and re-mint with it unchecked for 30 days. That also makes migration safe — the verifier accepts
-  a SET, so allowlist the new identifier, run both, and let old chains age out.
+  allowlist; list both there FIRST or clients get `invalid_target`. It is the AS module inside the
+  `pivota-backend` repo (`services/mcp_oauth_flow.py`), deployed on Railway service `web`.
+- Because only authorize is gated, removing an entry is **not** a kill switch, and the window is **not**
+  bounded: refresh is rotating and each rotation rewrites `expires_at = now + REFRESH_TTL_SECONDS`, so an
+  actively-refreshing client keeps minting a de-allowlisted audience indefinitely. Only hand-revoking rows
+  in `mcp_oauth_refresh` stops it.
+- Changing the resource HOST is a forced re-authorization, not an overlap. `MCP_OAUTH_RESOURCE` is
+  single-valued and the accepted set is `{this door, the native door}` on one host — not two hostnames. At
+  the flip, connected clients 401, rediscover, and re-run OAuth. Schedule it.
 - It is also the third and last derivable origin for the UCP buyer-agent profile URL — but only when
   `UCP_AGENT_PROFILE_URL` is unset and `UCP_BUYER_AGENT_PROFILE_ENABLED` is on. Production sets that
   variable explicitly, so the coupling is latent today.

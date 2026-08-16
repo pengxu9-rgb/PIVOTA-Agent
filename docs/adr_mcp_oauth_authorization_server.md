@@ -6,8 +6,8 @@
 
 ## Decision
 
-**Pivota already owns a purpose-built MCP Authorization Server: `pb-oauth-as`** (sibling repo,
-Python/FastAPI). It was built for *this exact front door* — its env vars are named `MCP_OAUTH_AS_*` and
+**Pivota already owns a purpose-built MCP Authorization Server: `pb-oauth-as`** (Python/FastAPI). It was
+built for *this exact front door* — its env vars are named `MCP_OAUTH_AS_*` and
 its tests pinned the resource to `https://pivota-agent-production.up.railway.app/mcp` (the value as of this
 ADR's date — production has since moved to `https://commerce.mcp.pivota.cc/mcp`; see the update note under
 "Resource Server" below). There is **no
@@ -67,6 +67,13 @@ MCP_OAUTH_ISSUERS_JSON=[{"iss":"https://api.pivota.cc","jwksUri":"https://api.pi
 `MCP_OAUTH_RESOURCE` must **exactly** equal the `resource`/`aud` the AS mints, or audience verification
 fails closed.
 
+> **Naming, 2026-08-14:** `pb-oauth-as` is the AS **module inside the `pivota-backend` repo**
+> (`services/mcp_oauth_as.py`, `services/mcp_oauth_flow.py`, `routes/mcp_oauth_as.py`), deployed as part of
+> that app on Railway service `web` in project *Pivota Infra*. It is **not** a separate repo and **not** its
+> own service — verified 2026-08-14: no `pb-oauth-as` repo exists under the org and no such Railway service
+> exists. Read "deploy `pb-oauth-as`" below as "set the `MCP_OAUTH_AS_*` env on `web` and deploy
+> pivota-backend"; there is nothing separate to stand up.
+
 > **Update 2026-08-13 — the resource identifier moved to a branded host.** This ADR was decided against
 > `https://pivota-agent-production.up.railway.app/mcp` (still named at the top of this ADR as the value
 > `pb-oauth-as`'s tests pinned at the time). Production now uses `https://commerce.mcp.pivota.cc/mcp` —
@@ -84,18 +91,32 @@ fails closed.
 >   repo (`services/mcp_oauth_as.py` `allowed_resources`, enforced in `services/mcp_oauth_flow.py`
 >   `validate_authorization_request`), and **both** identifiers above must be listed there FIRST or conforming clients get
 >   `invalid_target` at authorize. Matching is Python `in` over a `.split(",")`: no trailing-slash strip, no
->   case fold, no URL parsing. Unset allows NOTHING. Confirmed 2026-08-14 against that repo's `main` and
->   against the deployed value on Railway service `web` (project *Pivota Infra*), which already lists both.
-> - **Removing an entry is NOT a kill switch.** The allowlist is checked only at authorize;
->   `exchange_refresh_token` re-mints via `_mint_grant(resource=rec["resource"])` using the resource stored
->   on the grant and never re-checks it, and refresh tokens live 30 days. So a de-allowlisted resource keeps
->   receiving freshly minted access tokens for up to a month. Stopping it early means marking that
->   resource's rows revoked in `mcp_oauth_refresh` by hand — this ADR lists RFC 7009 revocation among the
->   AS's MISSING pieces, so there is no endpoint to do it with.
-> - **Migrate by accepting both identifiers, not by cutting over.** The verifier takes a SET
->   (`src/services/mcpOAuthResourceServer.js`, `commerceMcpOAuth.js`) precisely so a resource can move
->   without a flag day, and the refresh behaviour above means old chains cannot be forced over anyway.
->   Allowlist the new identifier, run both, let the old chains age out.
+>   case fold, no URL parsing — though each entry AND the incoming value are `.strip()`ed, so spaces around
+>   the commas are fine. Unset allows NOTHING. Confirmed 2026-08-14 against that repo's `main` and against
+>   the deployed value on Railway service `web` (project *Pivota Infra*), which already lists both. The
+>   consent step does not re-check: `POST /oauth/authorize/decision` replays the signed request blob
+>   (`_verify_request`) straight into `issue_authorization_code` without consulting the allowlist, so a
+>   resource removed mid-consent still yields a code for the blob's TTL
+>   (`routes/mcp_oauth_as.py` `CONSENT_REQUEST_TTL_SECONDS` = 600s).
+> - **Removing an entry is NOT a kill switch, and the window is UNBOUNDED — not 30 days.** The allowlist is
+>   checked only at authorize; `exchange_refresh_token` re-mints via `_mint_grant(...)` with the resource
+>   stored on the grant and never re-checks it. Refresh is ROTATING, and `_mint_grant` writes
+>   `expires_at = now + REFRESH_TTL_SECONDS` on every rotation, so the 30-day TTL SLIDES and there is no
+>   absolute chain cap anywhere. A client that refreshes at least monthly holds a de-allowlisted audience
+>   indefinitely; 30 days bounds only a chain that goes silent. Do not wait it out. The only stop is marking
+>   that resource's rows revoked in `mcp_oauth_refresh` by hand (`get_refresh` filters
+>   `revoked_at IS NULL`) — this ADR lists RFC 7009 revocation among the AS's MISSING pieces, so there is no
+>   endpoint to do it with.
+> - **Moving to a new HOST is a forced re-authorization, not an overlap.** There is no "run both hosts"
+>   state to sit in: `MCP_OAUTH_RESOURCE` is single-valued (`src/commerceMcpOAuth.js` `nativeResource`), and
+>   the resource SET the verifier accepts (`acceptedResourcesFor` →
+>   `safety-kernel/src/identity/mcpOAuthResourceServer.js`) is `{this door's identifier, the native one}` —
+>   it exists so the UCP door still accepts tokens minted against `…/mcp`, NOT to span two hostnames. So:
+>   allowlist the new value on the AS first (additive, inert), then flip `MCP_OAUTH_RESOURCE`. At the flip
+>   every live token carries the old audience and is rejected — connected clients get 401, rediscover via
+>   `resource_metadata`, and re-run OAuth, which may re-prompt for consent. Schedule it. The orphaned
+>   refresh chains keep minting the old audience forever (previous bullet); they die by rejection, not by
+>   expiry, and only hand-revocation clears them.
 > - **This value can also feed the UCP buyer-agent profile URL, but does not today.** It is the third and
 >   last of the three derivable origins, reached only when `UCP_AGENT_PROFILE_URL` is unset, the two
 >   earlier origins are unset, and `UCP_BUYER_AGENT_PROFILE_ENABLED` is on (default off). Production sets

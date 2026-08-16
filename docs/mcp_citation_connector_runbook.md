@@ -97,12 +97,14 @@ fails closed. Note **RS256**, not ES256.
 > host above (verified live 2026-08-14). Changing it again spans two services, and it defines **two**
 > identifiers: the UCP door's is derived from this one's origin as `${origin}/ucp/mcp` and is separately
 > advertised, so treat them as a pair or the charge-capable UCP door is left behind. The AS
-> (`pb-oauth-as`, in the `pivota-backend` repo) gates **`/oauth/authorize`** on a byte-exact
-> `MCP_OAUTH_AS_ALLOWED_RESOURCES` allowlist and must list **both** before the switch, or clients get
-> `invalid_target`. It does NOT gate minting: refresh grants store the resource they were issued for and
-> re-mint with it unchecked for 30 days, so removing an entry is not a kill switch — source-verified in
-> `services/mcp_oauth_flow.py` 2026-08-14. The verifier accepts a SET of identifiers, so migrate by
-> overlapping old and new rather than cutting over. This value is also the third and last derivable origin for the UCP buyer-agent profile
+> (`pb-oauth-as`, the AS module inside the `pivota-backend` repo, deployed on Railway service `web`) gates
+> **`/oauth/authorize`** on a byte-exact `MCP_OAUTH_AS_ALLOWED_RESOURCES` allowlist and must list **both**
+> before the switch, or clients get `invalid_target`. It does NOT gate minting: refresh grants store the
+> resource they were issued for and re-mint with it unchecked, and because rotation rewrites the 30-day
+> TTL each time, an actively-refreshing client keeps that audience indefinitely — removing an entry is not
+> a kill switch and cannot be waited out (source-verified in `services/mcp_oauth_flow.py` 2026-08-14).
+> Changing the HOST is a forced re-authorization: `MCP_OAUTH_RESOURCE` is single-valued, so connected
+> clients 401 and re-run OAuth rather than overlapping. This value is also the third and last derivable origin for the UCP buyer-agent profile
 > URL, but only when `UCP_AGENT_PROFILE_URL` is unset and `UCP_BUYER_AGENT_PROFILE_ENABLED` is on —
 > production sets that variable explicitly, so today that coupling is latent.
 
