@@ -9,7 +9,7 @@ const NOW_MS = new Date('2026-08-04T00:00:00.000Z').getTime();
 const RESOLVABLE = new Set(['ext_active_seed', 'catalog_key_1', 'pg_group_1']);
 
 function baseRow(overrides = {}) {
-  return {
+  const row = {
     id: 'lbl_1',
     anchor_type: 'product',
     anchor_ref: 'product:ext_active_seed',
@@ -22,6 +22,68 @@ function baseRow(overrides = {}) {
     last_verified_at: '2026-07-01T00:00:00.000Z',
     ...overrides,
   };
+  // Postgres always returns the SELECTed `expires_at::text AS expires_at_cursor`
+  // column next to `expires_at`; fake rows carry it too unless a test
+  // deliberately withholds it.
+  if (!('expires_at_cursor' in overrides) && row.expires_at != null) row.expires_at_cursor = String(row.expires_at);
+  return row;
+}
+
+// What node-pg does to a Date parameter (pg/lib/utils prepareValue →
+// dateToString): ISO with MILLISECONDS plus an offset. Microseconds are gone.
+function pgSerializeParam(value) {
+  if (value instanceof Date) return value.toISOString().replace('Z', '+00:00');
+  return String(value);
+}
+
+// Postgres text output for a timestamptz, e.g. `2026-08-10 00:00:00.123456+00`.
+function pgTimestamptzText(isoMicros) {
+  const m = /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2}:\d{2})(?:\.(\d+))?Z$/.exec(isoMicros);
+  if (!m) throw new Error(`bad iso: ${isoMicros}`);
+  const digits = (m[3] || '').replace(/0+$/, '');
+  return `${m[1]} ${m[2]}${digits ? `.${digits}` : ''}+00`;
+}
+
+// Microsecond integer for either Postgres text or a pg-serialized parameter.
+function toMicros(text) {
+  const m = /^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2}:\d{2})(?:\.(\d+))?(?:\+00(?::00)?|Z)$/.exec(String(text));
+  if (!m) throw new Error(`bad timestamptz text: ${text}`);
+  const ms = Date.parse(`${m[1]}T${m[2]}Z`);
+  return ms * 1000 + Number(`${m[3] || ''}000000`.slice(0, 6));
+}
+
+// A fake Postgres for the label scan: rows have microsecond-precision
+// expires_at, and the keyset WHERE is evaluated the way Postgres evaluates it
+// against the parameter node-pg actually sends. This is the only harness in
+// the file that can tell a Date cursor from a text cursor.
+function microsecondPagingDb(rowsIn) {
+  const rows = rowsIn.map(({ id, expiresAtIsoMicros }) => baseRow({
+    id,
+    // node-pg parses a timestamptz into a JS Date, which is ms precision.
+    expires_at: new Date(expiresAtIsoMicros.replace(/(\.\d{3})\d+Z$/, '$1Z')),
+    expires_at_cursor: pgTimestamptzText(expiresAtIsoMicros),
+  }));
+  const calls = [];
+  const queryFn = async (sql, params) => {
+    calls.push({ sql, params });
+    if (/UPDATE relationship_candidate_labels/.test(sql)) return { rowCount: 0, rows: [] };
+    if (!/FROM relationship_candidate_labels/.test(sql)) return { rows: [] };
+    const take = Number(params[params.length - 1]);
+    let candidates = rows;
+    if (/\(expires_at, id\) >/.test(sql)) {
+      const cursorMicros = toMicros(pgSerializeParam(params[params.length - 3]));
+      const cursorId = String(params[params.length - 2]);
+      candidates = rows.filter((row) => {
+        const rowMicros = toMicros(row.expires_at_cursor);
+        return rowMicros > cursorMicros || (rowMicros === cursorMicros && row.id > cursorId);
+      });
+    }
+    candidates = [...candidates].sort((a, b) => (
+      toMicros(a.expires_at_cursor) - toMicros(b.expires_at_cursor) || a.id.localeCompare(b.id)
+    ));
+    return { rows: candidates.slice(0, take) };
+  };
+  return { calls, queryFn };
 }
 
 function fakeQueryFn({ rows = [], seeds = [], catalog = [], groups = [], updateRowCount = 0, calls = [] } = {}) {
@@ -226,6 +288,74 @@ describe('renew-relationship-ai-approved-labels', () => {
     expect(calls[1].sql).toContain('(expires_at, id) >');
     expect(calls[1].params).toContain('2026-08-11T00:00:00.000Z');
     expect(calls[1].params).toContain('lbl_1');
+  });
+
+  // The 2026-08-13..16 production failure. `expires_at` arrives as a JS Date
+  // and node-pg sends a Date parameter back at millisecond precision, so a
+  // cursor built from it is truncated below the µs-precision column value and
+  // `expires_at > cursor` re-selects the cursor row's whole tie group. Rows
+  // renewed together share one now(), so tie groups are page-sized and the
+  // scan never advanced (3.6M "renewable" ids from a 6,620-row backlog).
+  test('keyset cursor keeps microsecond precision across a page of tied expires_at values', async () => {
+    const { loadExpiringAiApprovedRows } = require('../../scripts/renew-relationship-ai-approved-labels');
+    const tied = '2026-08-10T00:00:00.207882Z';
+    const { calls, queryFn } = microsecondPagingDb([
+      { id: 'lbl_a', expiresAtIsoMicros: tied },
+      { id: 'lbl_b', expiresAtIsoMicros: tied },
+      { id: 'lbl_c', expiresAtIsoMicros: tied },
+      { id: 'lbl_d', expiresAtIsoMicros: '2026-08-10T00:00:00.207883Z' },
+      { id: 'lbl_e', expiresAtIsoMicros: '2026-08-11T00:00:00.000000Z' },
+    ]);
+
+    const rows = await loadExpiringAiApprovedRows({ queryFn, batchSize: 2 });
+
+    expect(rows.map((r) => r.id)).toEqual(['lbl_a', 'lbl_b', 'lbl_c', 'lbl_d', 'lbl_e']);
+    // The cursor is the Postgres text of the key, never the parsed Date.
+    expect(calls[0].sql).toContain('expires_at::text AS expires_at_cursor');
+    const cursorParams = calls.slice(1).map(({ params }) => params[params.length - 3]);
+    expect(cursorParams).toEqual([
+      '2026-08-10 00:00:00.207882+00',
+      '2026-08-10 00:00:00.207883+00',
+    ]);
+    cursorParams.forEach((value) => expect(value).not.toBeInstanceOf(Date));
+    // The comparison casts the text back so Postgres compares timestamptz, not text.
+    expect(calls[1].sql).toMatch(/\(expires_at, id\) > \(\$\d+::timestamptz, \$\d+::text\)/);
+  });
+
+  test('a scan whose page ends on the key it started after fails loudly instead of looping', async () => {
+    const { loadExpiringAiApprovedRows } = require('../../scripts/renew-relationship-ai-approved-labels');
+    const page = [
+      baseRow({ id: 'lbl_a', expires_at: '2026-08-10T00:00:00.000Z' }),
+      baseRow({ id: 'lbl_b', expires_at: '2026-08-10T00:00:00.000Z' }),
+    ];
+    let selects = 0;
+    // A broken WHERE that never excludes anything: the same full page forever.
+    const queryFn = async () => {
+      selects += 1;
+      if (selects > 50) throw new Error('scan did not stop');
+      return { rows: page };
+    };
+
+    await expect(loadExpiringAiApprovedRows({ queryFn, batchSize: 2 })).rejects.toMatchObject({
+      code: 'RENEWAL_CURSOR_DID_NOT_ADVANCE',
+      cursor: { expiresAt: '2026-08-10T00:00:00.000Z', id: 'lbl_b' },
+    });
+    // First page primes the cursor, the second identical page trips the guard.
+    expect(selects).toBe(2);
+  });
+
+  test('a full page without the text cursor column cannot be paged past', async () => {
+    const { loadExpiringAiApprovedRows } = require('../../scripts/renew-relationship-ai-approved-labels');
+    const queryFn = async () => ({
+      rows: [
+        baseRow({ id: 'lbl_a', expires_at: '2026-08-10T00:00:00.000Z', expires_at_cursor: undefined }),
+        baseRow({ id: 'lbl_b', expires_at: '2026-08-10T00:00:00.000Z', expires_at_cursor: undefined }),
+      ],
+    });
+
+    await expect(loadExpiringAiApprovedRows({ queryFn, batchSize: 2 })).rejects.toMatchObject({
+      code: 'RENEWAL_CURSOR_MISSING',
+    });
   });
 
   // The OOM guard. Keyset paging alone did NOT bound memory — the old loader
