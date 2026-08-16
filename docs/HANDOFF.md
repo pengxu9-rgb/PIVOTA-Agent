@@ -52,10 +52,13 @@ restored); broken writer + repair + debug endpoints removed (PR #1700).
     `AURORA_BFF_RELATIONSHIP_GRAPH_AGENT_ENABLED`) → `AGENT_CHECKOUT_STRICT=1` (makes `/mcp` reachable) →
     enable MCP OAuth (`MCP_OAUTH_ENABLED`) → **build + publish one connector** (ChatGPT app /
     Claude connector → `/mcp`).
-  - **AS is already ours:** `pb-oauth-as` is a purpose-built MCP Authorization Server (DCR/PKCE/RFC 8707/
-    RS256+JWKS/consent — its env is `MCP_OAUTH_AS_*`, issuer `https://api.pivota.cc`). No vendor decision.
-    Remaining work = deploy `pb-oauth-as` + point the Agent's `MCP_OAUTH_ISSUERS_JSON` at it (RS256). Full
-    wiring in `docs/adr_mcp_oauth_authorization_server.md` + `docs/mcp_citation_connector_runbook.md`.
+  - **AS is already ours, and already LIVE:** `pb-oauth-as` is a purpose-built MCP Authorization Server
+    (DCR/PKCE/RFC 8707/RS256+JWKS/consent — its env is `MCP_OAUTH_AS_*`, issuer `https://api.pivota.cc`).
+    No vendor decision. It is the AS **module inside `pivota-backend`**, not a separate repo or service, so
+    there is nothing standalone to deploy — it ships with that app on Railway service `web`. As of
+    2026-08-14 it is deployed and the door is live (`MCP_OAUTH_ENABLED=1`, `MCP_OAUTH_AS_ENABLED=1`), so
+    this is no longer "remaining work". Full wiring in `docs/adr_mcp_oauth_authorization_server.md` +
+    `docs/mcp_citation_connector_runbook.md`.
 - **D. Phase 2 WS2 (recall)** — searchable actives field + match in both canonical lanes + finish the
   external-seed agent↔backend mirror + tokenize query + trigram index. For *non-category* ingredient
   recall. Scoped in `docs/find_products_multi_phase2_scope.md`.
@@ -66,8 +69,9 @@ restored); broken writer + repair + debug endpoints removed (PR #1700).
   to compress organic citation.
 
 ## Access / key facts
-- **Repos:** `PIVOTA-Agent` (gateway, Node), `pivota-backend` (Python), `pivota-agent-ui`
-  (Next.js → Vercel), `pb-oauth-as` (auth).
+- **Repos:** `PIVOTA-Agent` (gateway, Node), `pivota-backend` (Python — this also contains `pb-oauth-as`,
+  the MCP authorization server, as a module rather than a repo of its own), `pivota-agent-ui`
+  (Next.js → Vercel).
 - **Gateway:** `pivota-agent-production.up.railway.app` (Railway "Pivota Agent"/production). DB = nozomi.
 - **Keys (Railway vars):** `AGENT_API_KEY` (agent rail — **leaked, rotate**),
   `ADMIN_API_KEY` (header `X-ADMIN-KEY`), `PROMOTIONS_ADMIN_KEY` (header `X-Pivota-Internal-Key`, for

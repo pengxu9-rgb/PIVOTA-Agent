@@ -109,8 +109,9 @@ fails closed.
 >   endpoint to do it with.
 > - **Moving to a new HOST is a forced re-authorization, not an overlap.** There is no "run both hosts"
 >   state to sit in: `MCP_OAUTH_RESOURCE` is single-valued (`src/commerceMcpOAuth.js` `nativeResource`), and
->   the resource SET the verifier accepts (`acceptedResourcesFor` →
->   `safety-kernel/src/identity/mcpOAuthResourceServer.js`) is `{this door's identifier, the native one}` —
+>   the resource SET the verifier accepts — built by `acceptedResourcesFor` in `src/commerceMcpOAuth.js`
+>   and handed to the verifier in `safety-kernel/src/identity/mcpOAuthResourceServer.js`, which reads no env
+>   of its own — is `{this door's identifier, the native one}` —
 >   it exists so the UCP door still accepts tokens minted against `…/mcp`, NOT to span two hostnames. So:
 >   allowlist the new value on the AS first (additive, inert), then flip `MCP_OAUTH_RESOURCE`. At the flip
 >   every live token carries the old audience and is rejected — connected clients get 401, rediscover via

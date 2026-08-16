@@ -71,7 +71,9 @@ server (built + tested, flag-gated by `MCP_OAUTH_ENABLED`). The Authorization Se
 `pb-oauth-as`** — already MCP-purpose-built (DCR / PKCE-S256 / RFC 8707 / RS256+JWKS / consent). **No
 external vendor.** See [`adr_mcp_oauth_authorization_server.md`](adr_mcp_oauth_authorization_server.md).
 
-**(a) Deploy `pb-oauth-as`** (issuer `https://api.pivota.cc`):
+**(a) Deploy `pb-oauth-as`** (issuer `https://api.pivota.cc`) — note `pb-oauth-as` is the AS **module inside
+`pivota-backend`**, not a separate repo or service, so "deploy" here means set the `MCP_OAUTH_AS_*` env on
+Railway service `web` and deploy that app:
 
 ```text
 MCP_OAUTH_AS_ENABLED=1
