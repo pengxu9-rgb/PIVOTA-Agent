@@ -73,6 +73,26 @@ describe('serving eligibility default-strict behavior', () => {
     };
 
     expect(shouldAllowPublishedPdpMissingQualitySnapshot(staleMissingSnapshot)).toBe(true);
+
+    // BOTH backend spellings of "never scored" must open this branch.
+    // pivota-backend #1758 renames the NULL-score blocker from `low_quality` to
+    // `not_scored`; this override exists for exactly those rows, so a version
+    // that accepted only the old code would hard-block every published,
+    // seed-matched, unscored PDP the moment that backend deployed — and the UI
+    // filters `serving_eligible !== true` out of browse entirely. Asserting
+    // only the old spelling is what would let that regression ship green.
+    expect(shouldAllowPublishedPdpMissingQualitySnapshot({
+      ...staleMissingSnapshot,
+      blocker_code: 'not_scored',
+      blocker_detail:
+        'no quality snapshot found (content_quality_score is null) — never scored, not scored below the bar',
+    })).toBe(true);
+
+    // The widening is exactly two codes, not "any blocker with that detail".
+    expect(shouldAllowPublishedPdpMissingQualitySnapshot({
+      ...staleMissingSnapshot,
+      blocker_code: 'short_description',
+    })).toBe(false);
     expect(shouldAllowPublishedPdpMissingQualitySnapshot({
       ...staleMissingSnapshot,
       blocker_code: 'missing_price',
