@@ -6,13 +6,17 @@
  * undici collapses every network-layer failure into the same opaque `TypeError: fetch failed` and puts the
  * actual reason on `.cause`. Measured on node 20 and 24:
  *
- *   refused redirect  message "fetch failed"  cause "unexpected redirect"          code undefined
  *   dead host         message "fetch failed"  cause "getaddrinfo ENOTFOUND <host>" code ENOTFOUND
  *   refused connect   message "fetch failed"  cause "connect ECONNREFUSED ..."     code ECONNREFUSED
+ *   TLS/socket        message "fetch failed"  cause "other side closed"            code UND_ERR_SOCKET
+ *   redirect: 'error' message "fetch failed"  cause "unexpected redirect"          code undefined
  *
- * So logging `err.message` alone renders those three IDENTICAL. That matters wherever we deliberately
- * refuse a redirected UCP profile (UCP 2026-04-08 requires it): a merchant that serves its profile only
- * behind a 301 reads exactly like DNS death, and one of those is a misconfiguration someone can go fix.
+ * So logging `err.message` alone renders all of those IDENTICAL, and only the cause says which one you are
+ * looking at. (History: the last row is what first made this helper necessary — the UCP profile fetches
+ * refused redirects with `redirect: 'error'`, so a merchant that put a 301 in front of its profile read
+ * exactly like DNS death. Those fetches now use `redirect: 'manual'`, which returns the 3xx as a
+ * first-class status and never throws, so that row no longer occurs in either UCP lane; it is kept because
+ * it is still what 'error' produces anywhere else. The other rows are the ongoing reason this exists.)
  *
  * Shared by the two UCP lanes that fetch a profile — the warm-handoff service and the order-webhook
  * receiver — because both learned the same two non-obvious branches below the hard way, and two copies

@@ -251,7 +251,11 @@ function createUcpOrderWebhookReceiver(deps = {}) {
         if (!fetchImpl) throw new Error('no fetch implementation available');
         const res = await fetchImpl(url, {
           headers: { accept: 'application/json' },
-          redirect: 'error', // a redirected profile is refused, never followed
+          // Never followed. 'manual' rather than 'error' so a redirected profile fails through the status
+          // check below as `business profile fetch failed (301)` — a first-class, greppable diagnosis —
+          // instead of undici's opaque `fetch failed` with the reason buried on `.cause`. Same reasoning,
+          // in full, at ucpBuyerAgentClient.discoverEndpoint. `!res.ok` guards `res.json()` from a 3xx body.
+          redirect: 'manual',
           signal: AbortSignal.timeout(JWKS_FETCH_TIMEOUT_MS),
         });
         if (!res || !res.ok) throw new Error(`business profile fetch failed (${res ? res.status : 'no response'})`);
