@@ -465,9 +465,10 @@ const FETCH_COHORT_SQL_BASE = `
     AND cp.sync_status = 'live'
     AND ips.pipeline_stage = 'extracted'
     -- Both spellings: pivota-backend #1758 split never-scored rows out of
-    -- `low_quality` into `not_scored`, and this cohort is defined by a NULL
+    -- low_quality into not_scored, and this cohort is defined by a NULL
     -- score, so keying on the old code alone silently makes this a zero-row
     -- no-op against exactly the rows it exists to graduate.
+    -- (No backticks in here: this SQL lives in a JS template literal.)
     AND ips.blocker_code IN ('low_quality', 'not_scored')
     AND ips.last_extracted_at IS NULL
     AND EXISTS (
