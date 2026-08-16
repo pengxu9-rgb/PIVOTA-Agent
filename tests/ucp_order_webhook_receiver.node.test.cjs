@@ -718,3 +718,45 @@ test('cause: a dual-stack connect failure still reports a reason, and a non-stri
   assert.equal(Object.hasOwn(rec2, 'cause_code'), false, 'a bare 23 is not a log field');
   assert.equal(rec2.cause, 'aborted');
 });
+
+// ---- a profile URL with userinfo must not put the password in the log ------------------------------
+//
+// `https://user:pass@host/.well-known/ucp` passes the https guard, then fetch rejects it with
+// `TypeError: Request cannot be constructed from a URL that includes credentials: <the full URL>` — which
+// the fetch catch logs as `err`, password included (measured on node 24). The URL is refused before fetch.
+
+// Each half of `username || password` gets its own row: a token-in-username config is the common real shape,
+// and fetch throws the URL-echoing TypeError for both (measured), so a guard on `password` alone still leaks.
+for (const [label, userinfo] of [
+  ['user:pass', 'svc:operator-typed-password-DO-NOT-LEAK'],
+  ['username only', 'operator-api-token-DO-NOT-LEAK'],
+  ['password only', ':operator-typed-password-DO-NOT-LEAK'],
+]) test(`userinfo (${label}): a credentialed UCP_BUSINESS_PROFILE_URL is refused before fetch and never logged`, async () => {
+  const PASSWORD = 'DO-NOT-LEAK';
+  const warns = [];
+  const fetchCalls = [];
+  const receiver = createUcpOrderWebhookReceiver({
+    env: { ...VERIFY_ENV, UCP_BUSINESS_PROFILE_URL: `https://${userinfo}@ucp.test.local/.well-known/ucp` },
+    // If this were reached, real fetch would throw a TypeError carrying the URL. Model exactly that, so a
+    // regression that lets the URL through is caught by the leak assertion, not just by the call count.
+    fetchImpl: async (url) => {
+      fetchCalls.push(String(url));
+      throw new TypeError(`Request cannot be constructed from a URL that includes credentials: ${url}`);
+    },
+    logger: { warn: (rec, msg) => warns.push({ rec, msg }) },
+  });
+  const rawBody = JSON.stringify({ checkout_id: 'chk_userinfo' });
+  const out = await receiver.handleOrderWebhook({
+    headers: { 'request-signature': signDetached(rawBody) }, rawBody, body: JSON.parse(rawBody),
+  });
+
+  assert.equal(out.status, 401, 'no keys -> fails closed, same as any other refused URL');
+  assert.equal(fetchCalls.length, 0, 'refused BEFORE fetch — the URL never reaches the network layer');
+  // The property: the password is in NOTHING we emitted. Checked over the whole serialized warn set, so a
+  // future field cannot smuggle it either.
+  const everything = JSON.stringify(warns);
+  assert.equal(everything.includes(PASSWORD), false, `password leaked into logs: ${everything}`);
+  const refused = warns.find((w) => w.msg === 'UCP business profile URL refused');
+  assert.ok(refused, 'the refusal is logged');
+  assert.equal(refused.rec.err, 'UCP_BUSINESS_PROFILE_URL must not contain userinfo');
+});

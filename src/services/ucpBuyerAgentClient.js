@@ -121,6 +121,11 @@ function normalizeBaseUrl(u, field) {
   let parsed;
   try { parsed = new URL(s); } catch { throw new Error(`${field} must be a valid URL: ${s}`); }
   if (parsed.protocol !== 'https:') throw new Error(`${field} must be https: ${s}`);
+  // No userinfo, and this branch deliberately does NOT echo the URL: the thing being refused is the
+  // credential in it, and these messages flow into warm-handoff logs. (fetch would refuse it too, but with
+  // the full URL in its TypeError.) A merchant-advertised endpoint or a configured base URL has no business
+  // carrying credentials.
+  if (parsed.username || parsed.password) throw new Error(`${field} must not contain userinfo`);
   return parsed;
 }
 
@@ -267,9 +272,30 @@ function createUcpBuyerAgentClient(options = {}) {
    * skew. NEVER logs/returns the secret or the JWT; on failure throws an error that carries only the HTTP
    * status (no credential material).
    */
+  // Diagnostic view of the token endpoint (describeTier / verifyTokenTier / the probe script). Never the raw
+  // configured string: it is operator-set and may carry userinfo, and those surfaces print. origin + path
+  // only -- enough to see WHERE the exchange goes, never a credential that was (wrongly) put in the URL.
+  // Returns undefined when the value does not parse, so a broken config is visible as absence, not echoed.
+  function tokenEndpointForDisplay() {
+    if (!hasClientCredentials) return undefined;
+    let u;
+    try { u = new URL(String(tokenEndpoint)); } catch { return undefined; }
+    return `${u.origin}${u.pathname}`;
+  }
+
   async function exchangeClientCredentials() {
+    // The token endpoint is operator-configured (UCP_AGENT_TOKEN_ENDPOINT) and receives the CLIENT SECRET in
+    // the request body, yet was previously not validated at all — an `http://` typo would post the secret
+    // in plaintext, and userinfo would put it in a fetch TypeError. Validate here, at the moment the secret
+    // would be sent (a client with no client-credentials never gets this far, so a bad default is inert),
+    // and throw the same opaque, status-free shape as the failure below: never the URL, never the secret.
+    let tokenUrl;
+    try { tokenUrl = normalizeBaseUrl(tokenEndpoint, 'tokenEndpoint'); } catch { tokenUrl = null; }
+    if (!tokenUrl) {
+      throw new Error('ucpBuyerAgentClient: token endpoint refused (must be an https URL without userinfo).');
+    }
     const doFetch = requireFetch();
-    const res = await withTimeout((signal) => doFetch(tokenEndpoint, {
+    const res = await withTimeout((signal) => doFetch(tokenUrl.toString(), {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
@@ -419,7 +445,7 @@ function createUcpBuyerAgentClient(options = {}) {
       has_client_credentials: hasClientCredentials,
       // True when SOME token-tier credential is available (static token OR exchangeable client credentials).
       has_token_tier_credential: hasTokenTierCredential,
-      token_endpoint: hasClientCredentials ? tokenEndpoint : undefined,
+      token_endpoint: tokenEndpointForDisplay(),
       // Boolean only — the private key value is NEVER exposed.
       has_signing_key: canSign,
       signing_key_id: canSign ? signingKeyId : undefined,
@@ -454,7 +480,7 @@ function createUcpBuyerAgentClient(options = {}) {
       has_credential: Boolean(credential),
       has_client_credentials: hasClientCredentials,
       has_token_tier_credential: hasTokenTierCredential,
-      token_endpoint: hasClientCredentials ? tokenEndpoint : undefined,
+      token_endpoint: tokenEndpointForDisplay(),
     };
     if (tier !== TRUST_TIER.TOKEN) {
       return { ok: false, ...base, token_present: false, minted_via_exchange: false };
