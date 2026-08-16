@@ -84,9 +84,12 @@ function writeJsonFile(filePath, payload) {
 function usage() {
   return [
     'Usage:',
-    '  node scripts/refresh-product-beauty-attribute-sig-ids.js [--affected-products-file path] [--external-product-ids a,b] [--sig-ids a,b] [--out path] [--apply --confirm REFRESH_PBA_SIG_IDS]',
+    '  node scripts/refresh-product-beauty-attribute-sig-ids.js [--affected-products-file path] [--external-product-ids a,b] [--sig-ids a,b] [--allow-empty-filter] [--out path] [--apply --confirm REFRESH_PBA_SIG_IDS]',
     '',
     'Dry-run by default. Updates product_beauty_attributes.sig_id from catalog_products only in apply mode.',
+    'Refuses to run without at least one id filter (a filterless refresh would be catalog-wide).',
+    '--allow-empty-filter turns an empty filter set into a recorded no-op instead: the scheduled',
+    'routine passes it, because a quiet day legitimately selects zero affected products.',
   ].join('\n');
 }
 
@@ -112,8 +115,41 @@ function parseArgs(argv = process.argv.slice(2)) {
     apply,
     externalProductIds,
     sigIds,
+    allowEmptyFilter: hasFlag(argv, 'allow-empty-filter'),
     out: normalizeString(argValue(argv, 'out'), 2000),
   };
+}
+
+// The refresh helper throws missing_pba_sig_refresh_filter on an empty filter
+// set, and rightly so for ad-hoc use — without a filter the UPDATE would be
+// catalog-wide. On the scheduled routine an empty filter is not a mistake: the
+// affected-products selector honestly returns zero rows on a day nothing was
+// updated (the 2026-08-16T10:37Z production tick), and the build step already
+// tolerates that via --allow-empty-build. So a no-op is the correct outcome
+// there, recorded in the same report shape the query path produces. The helper
+// stays the single judge of "empty" (it also discards mis-prefixed ids), so
+// this catches its error code rather than re-deriving the rule.
+async function refreshOrSkipEmpty(options, queryFn) {
+  try {
+    return await refreshBeautyAttributeSigIds({
+      externalProductIds: options.externalProductIds,
+      sigIds: options.sigIds,
+      apply: options.apply,
+      ...(queryFn ? { queryFn } : {}),
+    });
+  } catch (err) {
+    if (options.allowEmptyFilter && err && err.code === 'MISSING_PBA_SIG_REFRESH_FILTER') {
+      return {
+        dry_run: !options.apply,
+        skipped: true,
+        skip_reason: 'empty_filter',
+        matched_count: 0,
+        updated_count: 0,
+        rows: [],
+      };
+    }
+    throw err;
+  }
 }
 
 async function run(argv = process.argv.slice(2), { queryFn } = {}) {
@@ -122,12 +158,7 @@ async function run(argv = process.argv.slice(2), { queryFn } = {}) {
     process.stdout.write(`${usage()}\n`);
     return null;
   }
-  const result = await refreshBeautyAttributeSigIds({
-    externalProductIds: options.externalProductIds,
-    sigIds: options.sigIds,
-    apply: options.apply,
-    ...(queryFn ? { queryFn } : {}),
-  });
+  const result = await refreshOrSkipEmpty(options, queryFn);
   const report = {
     generated_at: new Date().toISOString(),
     dry_run: !options.apply,

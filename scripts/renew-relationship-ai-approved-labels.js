@@ -154,9 +154,17 @@ async function* iterateExpiringAiApprovedRowBatches({
     }
     if (cursor) {
       params.push(cursor.expiresAt, cursor.id);
-      where.push(`(expires_at, id) > ($${params.length - 1}, $${params.length})`);
+      where.push(`(expires_at, id) > ($${params.length - 1}::timestamptz, $${params.length}::text)`);
     }
     params.push(take);
+    // expires_at_cursor is the keyset key as Postgres text, microseconds and
+    // all. The `expires_at` column itself comes back as a JS Date, and node-pg
+    // serializes a Date parameter at MILLISECOND precision — so a cursor built
+    // from `last.expires_at` is truncated (…27.207882 → …27.207) and every row
+    // in the same tie group satisfies `expires_at > cursor` again. Rows renewed
+    // in one UPDATE chunk share one `now()`, so the tie groups are 500+ deep and
+    // the scan re-read the same page until the step timeout (2026-08-13..16
+    // production ticks: 3.6M "renewable" ids from a 6,620-row backlog).
     // eslint-disable-next-line no-await-in-loop
     const res = await queryFn(
       `
@@ -164,7 +172,8 @@ async function* iterateExpiringAiApprovedRowBatches({
                candidate_snapshot, relation_type, display_label, market, vertical,
                category_taxonomy, use_case, label_state, score_total, score_breakdown,
                price_evidence, source_refs, evidence_grade, why_candidate, tradeoffs,
-               watchouts, provenance, last_verified_at, expires_at
+               watchouts, provenance, last_verified_at, expires_at,
+               expires_at::text AS expires_at_cursor
         FROM relationship_candidate_labels
         WHERE ${where.join('\n          AND ')}
         ORDER BY expires_at ASC, id ASC
@@ -179,7 +188,22 @@ async function* iterateExpiringAiApprovedRowBatches({
     }
     if (batch.length < take) break;
     const last = batch[batch.length - 1];
-    cursor = { expiresAt: last.expires_at, id: last.id };
+    const next = { expiresAt: last.expires_at_cursor, id: last.id };
+    if (!next.expiresAt || !next.id) {
+      const err = new Error('renewal_cursor_missing');
+      err.code = 'RENEWAL_CURSOR_MISSING';
+      throw err;
+    }
+    // A keyset scan must strictly advance. If a full page ends on the exact key
+    // it started after, the WHERE clause is not excluding what it should and
+    // the loop would run until the step timeout — fail loudly instead.
+    if (cursor && cursor.expiresAt === next.expiresAt && cursor.id === next.id) {
+      const err = new Error('renewal_cursor_did_not_advance');
+      err.code = 'RENEWAL_CURSOR_DID_NOT_ADVANCE';
+      err.cursor = next;
+      throw err;
+    }
+    cursor = next;
   }
 }
 

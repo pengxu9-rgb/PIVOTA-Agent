@@ -241,6 +241,11 @@ function buildRoutineSteps(options) {
     pushArg(args, 'affected-products-file', options.affectedProductsFile);
     pushArg(args, 'external-product-ids-file', options.externalProductIdsFile);
     pushArg(args, 'sig-ids-file', options.sigIdsFile);
+    // --allow-empty-build already declares that the manifest may yield nothing
+    // (a quiet day); the sig refresh reads the same manifest and needs the same
+    // tolerance, or the routine dies at its first step on exactly those days
+    // (production 2026-08-16T10:37Z: missing_pba_sig_refresh_filter).
+    if (!options.requireAnchors) args.push('--allow-empty-filter');
     if (options.applyBuild) {
       args.push('--apply', '--confirm', 'REFRESH_PBA_SIG_IDS');
     }

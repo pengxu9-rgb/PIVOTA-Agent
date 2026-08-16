@@ -144,6 +144,31 @@ describe('run-relationship-graph-routine-job', () => {
     expect(refreshArgs).toContain('--confirm REFRESH_PBA_SIG_IDS');
   });
 
+  // The scheduled routine runs with --allow-empty-build because a quiet day
+  // selects zero affected products; the sig refresh reads that same manifest
+  // and must tolerate the same emptiness, or the job dies at its first step
+  // (production 2026-08-16T10:37Z: missing_pba_sig_refresh_filter).
+  test('--allow-empty-build extends the empty tolerance to the PBA sig refresh step', () => {
+    const argv = [
+      '--cutoff',
+      CUTOFF,
+      '--affected-products-file',
+      '/tmp/affected-products.json',
+      '--out-dir',
+      '/tmp/relgraph-routine-test',
+    ];
+
+    const strict = buildRoutineSteps(parseArgs(argv, { now: NOW })).steps;
+    expect(strict[0].id).toBe('pba_sig_refresh');
+    expect(strict[0].args).not.toContain('--allow-empty-filter');
+    expect(strict[1].args).toContain('--require-anchors');
+
+    const lenient = buildRoutineSteps(parseArgs([...argv, '--allow-empty-build'], { now: NOW })).steps;
+    expect(lenient[0].id).toBe('pba_sig_refresh');
+    expect(lenient[0].args).toContain('--allow-empty-filter');
+    expect(lenient[1].args).not.toContain('--require-anchors');
+  });
+
   test('buildRoutineSteps does not run PBA sig refresh without refresh-compatible filters', () => {
     const options = parseArgs([
       '--cutoff',
