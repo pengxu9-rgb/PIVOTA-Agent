@@ -118,7 +118,7 @@ function renderHistogram(lines, metricName, helpText, store, buckets) {
  * @param {{ outcome: 'success'|'fallback', reason?: string, brandDomain?: string }} params
  *   - success => the lane returned a warm cart + continue_url. reason defaults to 'ok'.
  *   - fallback => the lane fell back to the cold redirect; reason is the H1 taxonomy tag (e.g. not_ucp_reachable,
- *     timeout, out_of_stock, variant_invalid, tool_error, profile_unreachable, no_continue_url).
+ *     timeout, out_of_stock, variant_invalid, tool_error, profile_unreachable, profile_redirected, no_continue_url).
  */
 function recordWarmHandoffOutcome({ outcome, reason, brandDomain } = {}) {
   const outcomeLabel = cleanLabel(outcome, 'unknown');

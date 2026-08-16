@@ -148,13 +148,6 @@ describe('createWarmHandoffService.resolveWarmHandoff', () => {
 // byte-identical to the brand's DNS being dead. `classifyUcpFailure` maps both to `profile_unreachable`, so
 // this log line is the only place the two can be told apart.
 describe('warm handoff logs the underlying cause of a fetch failure', () => {
-  /** Exactly what `fetch(url, { redirect: 'error' })` throws when the profile 302s. */
-  function redirectRefusal() {
-    const err = new TypeError('fetch failed');
-    err.cause = new Error('unexpected redirect');
-    return err;
-  }
-
   /** Exactly what fetch throws for a host that does not resolve. */
   function dnsFailure() {
     const err = new TypeError('fetch failed');
@@ -179,23 +172,54 @@ describe('warm handoff logs the underlying cause of a fetch failure', () => {
     return warns.find((w) => w.event === 'ucp_warm_handoff_discovery_error');
   }
 
-  test('a refused redirect and a dead host are DISTINGUISHABLE in the log', async () => {
-    const redirect = await discoveryWarn(redirectRefusal());
+  test('a redirected profile and a dead host are DISTINGUISHABLE in the log', async () => {
+    // Under `redirect: 'manual'` (the buyer client's profile fetch) a redirected profile is not a thrown
+    // error at all: discovery RESOLVES with the 3xx as its status. The lane classifies that ON THE STATUS
+    // into its own reason and its own WARN-level event -- not folded into `not_ucp_reachable`, which is the
+    // highest-volume info path in the lane (every brand with no profile lands there) and would bury a
+    // fixable merchant misconfiguration as an info needle. A dead host still THROWS and lands on
+    // `discovery_error` with the cause. Different event, different field, different reason, different
+    // level -- and none of it is undici's wording.
+    const recs = [];
+    const svcRedirect = createWarmHandoffService({
+      client: { async discoverEndpoint(origin) { return { mcpEndpoint: undefined, businessProfile: null, wellKnownUrl: `${origin}/.well-known/ucp`, status: 301 }; } },
+      logger: { info: (rec) => recs.push({ level: 'info', ...rec }), warn: (rec) => recs.push({ level: 'warn', ...rec }), error: () => {} },
+    });
+    const redirectEntry = await svcRedirect.discoverBrandEndpointDetailed('https://cosrx.com');
+    const redirect = recs.find((w) => w.event === 'ucp_warm_handoff_profile_redirected');
     const dns = await discoveryWarn(dnsFailure());
 
-    // The property that matters. Both carry the same useless `message` and the same `reason` -- the cause
-    // is the ONLY thing that separates "this merchant redirects its profile, go fix it" from "this host is
-    // gone". Asserted as a difference, not just as two literals, so the test states the discriminator.
-    expect(redirect.message).toBe(dns.message);
-    expect(redirect.reason).toBe(dns.reason);
-    expect(redirect.reason).toBe('profile_unreachable');
-    expect(redirect.cause).not.toBe(dns.cause);
+    expect(redirectEntry.reachable).toBe(false);
+    expect(redirectEntry.reason).toBe('profile_redirected');
+    expect(redirect).toBeDefined();
+    expect(redirect.level).toBe('warn');
+    expect(redirect.status).toBe(301);
+    expect(redirect).not.toHaveProperty('cause');
+    // And it is NOT the no-profile path: that one stays info-level and keeps its reason.
+    expect(recs.find((w) => w.event === 'ucp_warm_handoff_not_reachable')).toBeUndefined();
+    const svc404 = createWarmHandoffService({
+      client: { async discoverEndpoint(origin) { return { mcpEndpoint: undefined, businessProfile: null, wellKnownUrl: `${origin}/.well-known/ucp`, status: 404 }; } },
+      logger: { info: (rec) => recs.push({ level: 'info', ...rec }), warn: (rec) => recs.push({ level: 'warn', ...rec }), error: () => {} },
+    });
+    expect((await svc404.discoverBrandEndpointDetailed('https://nope.example')).reason).toBe('not_ucp_reachable');
+    expect(recs.find((w) => w.event === 'ucp_warm_handoff_not_reachable').level).toBe('info');
 
-    expect(redirect.cause).toBe('unexpected redirect');
+    expect(dns.event).toBe('ucp_warm_handoff_discovery_error');
+    expect(dns.reason).toBe('profile_unreachable');
     expect(dns.cause).toBe('getaddrinfo ENOTFOUND cosrx.com');
     // The errno rides along when the platform supplies one, and is simply absent when it does not.
     expect(dns.cause_code).toBe('ENOTFOUND');
-    expect(redirect).not.toHaveProperty('cause_code');
+  });
+
+  test('a thrown fetch failure with an informative cause still logs it (the generic path is unchanged)', async () => {
+    // `redirect: 'error'` is no longer how the client refuses a redirect, but this shape -- a TypeError
+    // whose real reason is on .cause -- is exactly what every OTHER network-layer failure looks like.
+    const err = new TypeError('fetch failed');
+    err.cause = new Error('other side closed');
+    const warn = await discoveryWarn(err);
+    expect(warn.message).toBe('fetch failed');
+    expect(warn.cause).toBe('other side closed');
+    expect(warn).not.toHaveProperty('cause_code');
   });
 
   test('the cause OBJECT is never spread into the record', async () => {

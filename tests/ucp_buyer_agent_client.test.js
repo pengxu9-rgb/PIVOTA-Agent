@@ -891,10 +891,14 @@ describe('SIGNED tier checkout-create reaches the handoff URL credential-free', 
 // The profile URL is the identity anchor for the MCP endpoint the client then sends carts to, and
 // which ucpWarmHandoff caches per-domain. Follow a redirect and that anchor moves to an origin we
 // never resolved, while the resolved `wellKnownUrl` we log stays the one we asked for.
+//
+// The client uses `redirect: 'manual'`: the 3xx is RETURNED, never followed, and surfaces through the
+// `!res.ok` branch as a first-class `status` — so a redirecting merchant is diagnosable as exactly that,
+// is not retried (fetchWithPolicy retries only >= 500), and no undici error wording is involved.
 describe('discoverEndpoint refuses a redirected /.well-known/ucp profile', () => {
   // A profile served from SOMEWHERE ELSE, deliberately well-formed: if this body ever reaches
   // extractMcpEndpoint the client walks away pointing at attacker.example. The control test below
-  // proves that is exactly what happens without the redirect refusal, so the refusal test can only
+  // proves that is exactly what happens without the redirect refusal, so the refusal tests can only
   // be failing on the refusal itself and never on an unparseable fixture.
   const REDIRECT_TARGET_PROFILE = {
     ucp: {
@@ -908,57 +912,113 @@ describe('discoverEndpoint refuses a redirected /.well-known/ucp profile', () =>
   };
 
   /**
-   * A fetch stub that HONOURS the `redirect` init option, modelling undici for the only two values
-   * this code can produce -- which is the only shape that can tell the behaviours apart:
-   *   redirect: 'error'  -> the fetch REJECTS on the 3xx (TypeError: fetch failed).
+   * A fetch stub that HONOURS the `redirect` init option, modelling undici (measured on node 24) for
+   * the values this code can produce -- the only shape that can tell the behaviours apart:
+   *   redirect: 'manual' -> the 3xx itself is returned: status 302, ok false, redirected false. The
+   *                         body is HTML (json() would THROW), and the target is never contacted.
+   *   redirect: 'error'  -> the fetch REJECTS (TypeError: fetch failed). Also refuses; kept here so a
+   *                         regression to it is visible as a contract change rather than a leak.
    *   redirect: 'follow' -> the caller NEVER SEES the 302; it is handed the final 200 from the target.
-   * A stub that merely returns the 302 response would prove nothing: 302 is already `!res.ok`, so the
-   * UNFIXED code reports failure for it too and such a test passes with the fix reverted.
-   * NOT a faithful model of 'manual' (real undici hands back the 3xx itself, which `!res.ok` then
-   * refuses safely); everything that is not 'error' takes the follow branch here, so a mutation to
-   * 'manual' is reported as a kill even though it would not actually be exploitable.
+   * A stub that only ever returns a plain 302 proves nothing: 302 is already `!res.ok`, so code that
+   * follows in prod would still "fail" against it. The follow branch is what makes the mutant visible.
    */
   function makeRedirectHonouringFetch() {
     const inits = [];
+    let targetHits = 0;
     const impl = async (url, init = {}) => {
       inits.push({ url: String(url), ...init });
+      if (init.redirect === 'manual') {
+        return {
+          ok: false, status: 302, redirected: false,
+          headers: { get: (h) => (h.toLowerCase() === 'location' ? 'https://attacker.example/.well-known/ucp' : null) },
+          async json() { throw new SyntaxError('Unexpected token < in JSON'); },
+          async text() { return '<html>moved</html>'; },
+        };
+      }
       if (init.redirect === 'error') throw new TypeError('fetch failed');
+      targetHits += 1;
       return jsonResponse(REDIRECT_TARGET_PROFILE, 200);
     };
     impl.inits = inits;
+    impl.targetHits = () => targetHits;
     return impl;
   }
 
-  // retryAttempts: 0 -- fetchWithPolicy treats any non-timeout throw as a transient network error, so
-  // it would otherwise re-attempt (with real backoff sleeps) a refusal that is deterministic.
   function clientWith(fetchImpl) {
     return createUcpBuyerAgentClient({
       credential: 'test-token',
       profileUrl: 'https://agent.pivota.cc/.well-known/ucp-agent',
       fetchImpl,
+      // Not load-bearing for the refusal any more (a returned 3xx is < 500 so it is never retried), but
+      // pinned to 0 so the `toHaveLength(1)` below states "one request" and not "one request per policy".
       retryAttempts: 0,
     });
   }
 
-  test('the profile fetch is issued with redirect: "error"', async () => {
+  test('the profile fetch is issued with redirect: "manual" — the 3xx is returned, never followed', async () => {
     const fetchImpl = makeRedirectHonouringFetch();
-    await clientWith(fetchImpl).discoverEndpoint('https://cosrx.com').catch(() => {});
+    await clientWith(fetchImpl).discoverEndpoint('https://cosrx.com');
     expect(fetchImpl.inits).toHaveLength(1);
     expect(fetchImpl.inits[0].url).toBe('https://cosrx.com/.well-known/ucp');
-    expect(fetchImpl.inits[0].redirect).toBe('error');
+    expect(fetchImpl.inits[0].redirect).toBe('manual');
+    expect(fetchImpl.targetHits()).toBe(0);
   });
 
-  test('a 302 fails discovery instead of following it to another origin', async () => {
+  test('a 302 fails discovery with the 302 as its status, and never reaches the redirect target', async () => {
     const fetchImpl = makeRedirectHonouringFetch();
-    // Must REJECT. Drop the redirect option and the stub follows, this resolves, and the resolved value
-    // carries https://attacker.example/ucp/mcp -- the endpoint warm handoff caches and builds carts against.
-    await expect(clientWith(fetchImpl).discoverEndpoint('https://cosrx.com')).rejects.toThrow(/fetch failed/);
+    const disco = await clientWith(fetchImpl).discoverEndpoint('https://cosrx.com');
+    // Resolves (not rejects) to a first-class refusal. Under a 'follow' mutant this resolves with
+    // mcpEndpoint = https://attacker.example/ucp/mcp and status 200 -- the endpoint warm handoff would
+    // cache and build carts against -- so those are the two fields asserted.
+    expect(disco.mcpEndpoint).toBeUndefined();
+    expect(disco.status).toBe(302);
+    expect(disco.businessProfile).toBeNull();
+    expect(disco.wellKnownUrl).toBe('https://cosrx.com/.well-known/ucp');
+    expect(fetchImpl.targetHits()).toBe(0);
+  });
+
+  test('a SAME-ORIGIN redirect is refused too — MUST NOT follow is a rule about following, not about origins', async () => {
+    // Every other fixture here redirects to attacker.example, which pins the anchor-move property but would
+    // let a "follow only same-origin 3xx" mutant through 71/71 (found by review). The spec rule is that a
+    // profile endpoint MUST NOT redirect at all; a same-origin 301 (apex -> www, /.well-known -> /api) is
+    // still a merchant misconfiguration to report, not a hop to take.
+    const inits = [];
+    let followed = 0;
+    const fetchImpl = async (url, init = {}) => {
+      inits.push({ url: String(url), redirect: init.redirect });
+      if (String(url) === 'https://cosrx.com/.well-known/ucp' && init.redirect === 'manual') {
+        return {
+          ok: false, status: 301, redirected: false,
+          headers: { get: (h) => (h.toLowerCase() === 'location' ? 'https://cosrx.com/api/.well-known/ucp' : null) },
+          async json() { throw new SyntaxError('html'); }, async text() { return '<html>moved</html>'; },
+        };
+      }
+      followed += 1; // any second request, same-origin or not, is a follow
+      return jsonResponse(BUSINESS_PROFILE_FIXTURE, 200);
+    };
+    const disco = await clientWith(fetchImpl).discoverEndpoint('https://cosrx.com');
+    expect(disco.mcpEndpoint).toBeUndefined();
+    expect(disco.status).toBe(301);
+    expect(followed).toBe(0);
+    expect(inits).toHaveLength(1);
+  });
+
+  test('a redirect is not retried: it is a deterministic refusal, not a transient', async () => {
+    // With the default retry policy (2 extra attempts) a THROWN refusal would be re-fetched three times.
+    // A returned 3xx is < 500 and goes out once.
+    const fetchImpl = makeRedirectHonouringFetch();
+    const client = createUcpBuyerAgentClient({
+      credential: 'test-token', profileUrl: 'https://agent.pivota.cc/.well-known/ucp-agent', fetchImpl,
+      sleepImpl: async () => {},
+    });
+    await client.discoverEndpoint('https://cosrx.com');
+    expect(fetchImpl.inits).toHaveLength(1);
   });
 
   // NOT an endorsement of the endpoint's origin. `extractMcpEndpoint` does no origin pinning today, so
   // a profile may advertise an MCP door on any host — pre-existing, out of scope here, and arguably
   // legitimate (a brand can host its door off-domain). This test exists ONLY to prove the fixture is a
-  // live threat, so the refusal above cannot be passing on an unparseable body. If origin pinning is
+  // live threat, so the refusals above cannot be passing on an unparseable body. If origin pinning is
   // ever added, this test SHOULD go red: that is the pin moving, not a regression.
   test('control: the SAME body is accepted when it arrives with no redirect', async () => {
     const disco = await clientWith(async () => jsonResponse(REDIRECT_TARGET_PROFILE, 200))

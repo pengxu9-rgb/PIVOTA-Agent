@@ -578,10 +578,10 @@ test('events endpoint filters by body_sha256 / checkout_id / order_id', async ()
 // fetch that keeps failing with no previously-good key set falls back to an EMPTY key list, and that
 // rejects EVERY inbound order webhook. These tests pin that the log can tell the two apart.
 
-/** Exactly what `fetch(url, { redirect: 'error' })` throws when the profile 302s. */
-function redirectRefusalError() {
+/** A TLS/socket failure: another `fetch failed` whose only distinguishing content is on `.cause`. */
+function socketFailureError() {
   const err = new TypeError('fetch failed');
-  err.cause = new Error('unexpected redirect');
+  err.cause = Object.assign(new Error('other side closed'), { code: 'UND_ERR_SOCKET' });
   return err;
 }
 
@@ -613,26 +613,30 @@ async function warnsFromProfileFetchFailure(err, envOverrides = {}) {
   return { warns, out };
 }
 
-test('cause: a refused redirect and a dead host are DISTINGUISHABLE in the receiver log', async () => {
-  const redirect = await warnsFromProfileFetchFailure(redirectRefusalError());
+test('cause: two thrown fetch failures with the same message are DISTINGUISHABLE in the receiver log', async () => {
+  // Every network-layer failure undici throws is `TypeError: fetch failed`; only `.cause` differs. (A
+  // REDIRECTED profile is deliberately NOT one of these any more: `redirect: 'manual'` returns the 3xx as
+  // a status and never throws -- see the `redirect:` test below. An earlier version of this test modelled a
+  // redirect as a thrown `unexpected redirect`, a shape the receiver can no longer produce.)
+  const socket = await warnsFromProfileFetchFailure(socketFailureError());
   const dns = await warnsFromProfileFetchFailure(dnsFailureError());
 
-  const rr = redirect.warns.find((w) => w.msg === 'UCP business profile signing-key fetch failed').rec;
+  const sr = socket.warns.find((w) => w.msg === 'UCP business profile signing-key fetch failed').rec;
   const dr = dns.warns.find((w) => w.msg === 'UCP business profile signing-key fetch failed').rec;
 
   // Both fail CLOSED to an empty key set, which is what makes this worth diagnosing at all.
-  assert.equal(redirect.out.status, 401, 'no keys -> every inbound webhook is rejected');
+  assert.equal(socket.out.status, 401, 'no keys -> every inbound webhook is rejected');
   assert.equal(dns.out.status, 401);
 
   // The property: identical `err`, identical surface -- the cause is the ONLY discriminator.
-  assert.equal(rr.err, dr.err);
-  assert.equal(rr.err, 'fetch failed');
-  assert.notEqual(rr.cause, dr.cause);
+  assert.equal(sr.err, dr.err);
+  assert.equal(sr.err, 'fetch failed');
+  assert.notEqual(sr.cause, dr.cause);
 
-  assert.equal(rr.cause, 'unexpected redirect');
+  assert.equal(sr.cause, 'other side closed');
+  assert.equal(sr.cause_code, 'UND_ERR_SOCKET');
   assert.equal(dr.cause, 'getaddrinfo ENOTFOUND ucp.test.local');
   assert.equal(dr.cause_code, 'ENOTFOUND');
-  assert.equal(Object.hasOwn(rr, 'cause_code'), false, 'no errno for a redirect refusal -> key absent');
 });
 
 test('cause: the cause object is never spread into the receiver record', async () => {
@@ -759,4 +763,48 @@ for (const [label, userinfo] of [
   const refused = warns.find((w) => w.msg === 'UCP business profile URL refused');
   assert.ok(refused, 'the refusal is logged');
   assert.equal(refused.rec.err, 'UCP_BUSINESS_PROFILE_URL must not contain userinfo');
+});
+
+// ---- a redirected business profile is refused as a first-class status ------------------------------
+//
+// `redirect: 'manual'`: the 3xx is returned, never followed (measured on node 24: status 301, ok false,
+// redirected false, target never contacted). It fails through the existing `!res.ok` check as
+// `business profile fetch failed (301)` -- greppable, and not undici's wording. Under `redirect: 'error'`
+// the same event was an opaque `fetch failed` with the reason on `.cause`. Same rule, better diagnosis.
+
+test('redirect: a 301 business profile is refused with the 301 in the message, never followed', async () => {
+  const warns = [];
+  const inits = [];
+  let targetHits = 0;
+  const receiver = createUcpOrderWebhookReceiver({
+    env: VERIFY_ENV,
+    fetchImpl: async (url, init = {}) => {
+      inits.push(init);
+      if (init.redirect === 'manual') {
+        return {
+          ok: false, status: 301, redirected: false,
+          async json() { throw new SyntaxError('Unexpected token <'); },
+          async text() { return '<html>moved</html>'; },
+        };
+      }
+      if (init.redirect === 'error') throw new TypeError('fetch failed');
+      // 'follow' (or unset): the redirect target's 200, carrying a key set we must never adopt.
+      targetHits += 1;
+      return { ok: true, status: 200, async json() { return { ucp: { signing_keys: [PUBLIC_JWK] } }; } };
+    },
+    logger: { warn: (rec, msg) => warns.push({ rec, msg }) },
+  });
+  const rawBody = JSON.stringify({ checkout_id: 'chk_redirect' });
+  const out = await receiver.handleOrderWebhook({
+    headers: { 'request-signature': signDetached(rawBody) }, rawBody, body: JSON.parse(rawBody),
+  });
+
+  // Never followed: under a 'follow' mutant the target's keys VERIFY the signature and this is a 200 --
+  // trust anchored to an origin we never resolved. That is the assertion that fails first.
+  assert.equal(targetHits, 0, 'the redirect target is never contacted');
+  assert.equal(out.status, 401, 'no keys adopted -> fails closed');
+  assert.equal(inits[0].redirect, 'manual');
+  const rec = warns.find((w) => w.msg === 'UCP business profile signing-key fetch failed').rec;
+  assert.equal(rec.err, 'business profile fetch failed (301)');
+  assert.equal(Object.hasOwn(rec, 'cause'), false, 'a returned 3xx is not a thrown fetch failure');
 });

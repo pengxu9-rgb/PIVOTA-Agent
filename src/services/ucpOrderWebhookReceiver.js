@@ -204,11 +204,11 @@ function createUcpOrderWebhookReceiver(deps = {}) {
 
   // `err` is flattened to its message on purpose (never the Error object). `fetchCauseDetail` adds the
   // underlying network reason, which for a fetch failure is the ONLY informative part: undici reports every
-  // one of them as `TypeError: fetch failed` and hides the real reason on `.cause`. Without it a business
-  // profile that 302s — which this receiver's own `redirect: 'error'` refuses, per UCP 2026-04-08 — logs
-  // byte-identically to the host being dead. That is not cosmetic here: a fetch that keeps failing with no
-  // previously-good key set falls back to an EMPTY key list (below), which rejects every inbound order
-  // webhook. This line is what tells you which of the two you are looking at.
+  // one of them as `TypeError: fetch failed` and hides the real reason on `.cause` — DNS, refused connect,
+  // TLS/socket. That is not cosmetic here: a fetch that keeps failing with no previously-good key set falls
+  // back to an EMPTY key list (below), which rejects every inbound order webhook, and this line is what says
+  // why. (A REDIRECTED profile is a different, better-off case since `redirect: 'manual'` below: it does not
+  // throw at all — it arrives as `business profile fetch failed (301)`, no `cause` needed.)
   function warn(err, msg) {
     if (logger && typeof logger.warn === 'function') {
       logger.warn({
@@ -251,7 +251,11 @@ function createUcpOrderWebhookReceiver(deps = {}) {
         if (!fetchImpl) throw new Error('no fetch implementation available');
         const res = await fetchImpl(url, {
           headers: { accept: 'application/json' },
-          redirect: 'error', // a redirected profile is refused, never followed
+          // Never followed. 'manual' rather than 'error' so a redirected profile fails through the status
+          // check below as `business profile fetch failed (301)` — a first-class, greppable diagnosis —
+          // instead of undici's opaque `fetch failed` with the reason buried on `.cause`. Same reasoning,
+          // in full, at ucpBuyerAgentClient.discoverEndpoint. `!res.ok` guards `res.json()` from a 3xx body.
+          redirect: 'manual',
           signal: AbortSignal.timeout(JWKS_FETCH_TIMEOUT_MS),
         });
         if (!res || !res.ok) throw new Error(`business profile fetch failed (${res ? res.status : 'no response'})`);

@@ -73,6 +73,7 @@ const IDEMPOTENT_TOOLS = Object.freeze(new Set([
 // clean null (cold-redirect fallback), tagged for observability (H2). No reason carries buyer PII or key material.
 const FAILURE_REASON = Object.freeze({
   PROFILE_UNREACHABLE: 'profile_unreachable', // discovery threw a network/DNS error
+  PROFILE_REDIRECTED: 'profile_redirected', // discovery got a 3xx: refused (UCP MUST NOT follow), a merchant misconfiguration
   NOT_UCP_REACHABLE: 'not_ucp_reachable', // discovery succeeded but the brand exposes no UCP MCP endpoint
   TIMEOUT: 'timeout', // a per-call timeout (AbortError) or the total handoff budget was exceeded
   OUT_OF_STOCK: 'out_of_stock', // product-state: sold out / no inventory / not available for sale
@@ -519,14 +520,29 @@ function createUcpBuyerAgentClient(options = {}) {
       // ANCHOR: the MCP endpoint we read out of the response is trusted, and cached per-domain by
       // ucpWarmHandoff, purely because it came from THIS origin. Following a redirect would move that
       // anchor to an origin we never resolved, silently — we would go on logging the resolved
-      // `wellKnownUrl` while building carts against whatever the redirect target advertised. Refuse it:
-      // the same rule the order-webhook receiver applies to ITS profile fetch (ucpOrderWebhookReceiver.js;
-      // note that one resolves its own UCP_BUSINESS_PROFILE_URL for signing keys — it does not read the
-      // profile discovered here, which no caller consumes beyond the endpoint).
-      redirect: 'error',
+      // `wellKnownUrl` while building carts against whatever the redirect target advertised.
+      //
+      // 'manual', not 'error', and the difference is deliberate. Both satisfy MUST NOT follow — measured on
+      // node 24: 'manual' returns the 3xx itself (status 301, ok false, redirected false, the target is
+      // never contacted). But 'error' rejects with undici's opaque `TypeError: fetch failed`, which (a)
+      // fetchWithPolicy classes as a transient network error and RETRIES — three fetches of a deterministic
+      // refusal — and (b) leaves the reason only on `err.cause`, as a wording ("unexpected redirect") that
+      // is undici's to change. 'manual' lands in the `!res.ok` branch below with a first-class `status`,
+      // is not retried (< 500), and reaches ucpWarmHandoff's `not_ucp_reachable` log — which already
+      // carries `status` — as a 301/302 that says exactly what it is: a merchant misconfiguration someone
+      // can go fix. Do NOT read `res.json()` on that path: a 3xx body is HTML, and `!res.ok` guards it.
+      // One dependency to name: the fetch SPEC says 'manual' yields an opaque-redirect filtered response
+      // (type "opaqueredirect", status 0). Node/undici deliberately do not filter and return the real
+      // status (measured: type "basic", status 301, readable Location). The SAFETY property survives either
+      // way — status 0 is still `!res.ok` and lands in the same branch — only the diagnostic status is the
+      // deviation. If it ever regresses to 0, discovery still refuses; the log just says 0 instead of 301.
+      // (The receiver's own profile fetch applies the same rule to ITS URL — ucpOrderWebhookReceiver.js;
+      // it does not read the profile discovered here, which no caller consumes beyond the endpoint.)
+      redirect: 'manual',
       signal,
     }), { retry: true });
     if (!res.ok) {
+      // A 3xx here IS the refusal: the redirect was not followed, and its status is the diagnosis.
       return { mcpEndpoint: undefined, businessProfile: null, wellKnownUrl, status: res.status };
     }
     const businessProfile = await res.json();
