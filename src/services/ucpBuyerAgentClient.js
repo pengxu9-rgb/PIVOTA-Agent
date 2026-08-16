@@ -597,7 +597,16 @@ function createUcpBuyerAgentClient(options = {}) {
       // idempotency key: none of it may be replayed at a URL we did not resolve. A 307/308 replays the body
       // and non-Authorization headers cross-origin (measured; see exchangeClientCredentials), and ANY redirect
       // keeps the Bearer same-origin. The endpoint came from the merchant's profile and is authoritative —
-      // a redirect on it is a failure to report, not a hop to take.
+      // a redirect on it is a failure to report, not a hop to take. This holds at EVERY tier, including
+      // ANONYMOUS: with no credential there is still a cart payload (variant ids, attribution, buyer context,
+      // and under the preview flag a synthetic address) that must not land on an origin we did not resolve.
+      //
+      // 'error' rather than 'manual' here (the profile GET uses 'manual', see discoverEndpoint), and the
+      // reason is one layer OUT from this call: under 'manual' a 3xx returns `ok:false` with the redirect
+      // page's HTML as `error.message`, and ucpWarmHandoff feeds that message into classifyUcpFailure —
+      // measured: "Page not found. Redirecting..." classifies as variant_invalid, "Temporarily unavailable"
+      // as out_of_stock. An infrastructure fault laundered into a product-state verdict. A throw is
+      // deterministic tool_error, and it carries the reason on `.cause` for the log.
       redirect: 'error',
       signal,
     }), { retry: retryOk });

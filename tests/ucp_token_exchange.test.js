@@ -187,6 +187,8 @@ describe('credential-carrying requests refuse redirects', () => {
       inits.push({ url: String(url), redirect: init.redirect, method: init.method });
       if (init.redirect === 'error') throw new TypeError('fetch failed');
       // 'follow' (or unset): what a 307 replay actually delivers to the redirect target.
+      // Records headers verbatim; real undici would strip `Authorization` cross-origin (measured), so the
+      // Bearer assertions below are conservative -- the load-bearing leak is the BODY, which does replay.
       receivedAtTarget.push({ url: LEAK_TARGET, body: init.body, headers: init.headers || {} });
       const resp = leakedTokenResponse || CREATE_CART_FIXTURE;
       return jsonResponse(resp);
@@ -208,15 +210,16 @@ describe('credential-carrying requests refuse redirects', () => {
     const result = await client.createCart(MCP_ENDPOINT, { lineItems: [{ item: { id: '111' }, quantity: 1 }] })
       .catch((e) => ({ threw: e }));
 
-    // Refused, and refused OPAQUELY: the thrown error carries no credential material.
-    expect(result.threw).toBeInstanceOf(Error);
-    expect(String(result.threw && result.threw.message)).not.toContain(CLIENT_SECRET);
     // The redirect target got NOTHING. Under the mutant (redirect dropped) it gets the secret verbatim —
-    // this is deliberately the FIRST assertion, so the failure diff prints the secret sitting at the
-    // attacker rather than a missing init option.
+    // this is deliberately the FIRST assertion of all, so the failure diff prints the secret sitting at
+    // the attacker rather than a missing init option or a missing throw. Holds for the single-site and
+    // the all-three-sites revert alike.
     const leaked = fetchImpl.receivedAtTarget.map((r) => String(r.body)).join('\n');
     expect(leaked).not.toContain(CLIENT_SECRET);
     expect(fetchImpl.receivedAtTarget).toHaveLength(0);
+    // Refused, and refused OPAQUELY: the thrown error carries no credential material.
+    expect(result.threw).toBeInstanceOf(Error);
+    expect(String(result.threw && result.threw.message)).not.toContain(CLIENT_SECRET);
     // And the request went out with the refusal actually set (catches a stub-shaped false pass).
     const tokenInit = fetchImpl.inits.find((i) => i.url === TOKEN_ENDPOINT);
     expect(tokenInit).toBeDefined();
@@ -241,6 +244,22 @@ describe('credential-carrying requests refuse redirects', () => {
     expect(leaked).not.toContain('static-bearer-DO-NOT-LEAK');
     expect(leaked).not.toContain('variant-DO-NOT-LEAK');
     expect(fetchImpl.receivedAtTarget).toHaveLength(0);
+  });
+
+  test('ANONYMOUS tier too: no credential is not a licence to follow — the cart payload still must not travel', async () => {
+    // The live warm-handoff lane is built from env only; with no credential, no client credentials and no
+    // signing key it runs at ANONYMOUS tier, and createCart is explicitly the unauthenticated path. A future
+    // "there is nothing to protect at anonymous" exemption would still ship variant ids / attribution /
+    // buyer context to the redirect target -- and without this case, every other test here stays green.
+    const fetchImpl = makeRedirectingFetch();
+    const client = createUcpBuyerAgentClient({ fetchImpl, retryAttempts: 0 });
+    expect(client.describeTier().tier).toBe('anonymous');
+    const cart = await client.createCart(MCP_ENDPOINT, { lineItems: [{ item: { id: 'variant-ANON-DO-NOT-LEAK' }, quantity: 1 }] })
+      .catch((e) => ({ threw: e }));
+    expect(JSON.stringify(fetchImpl.receivedAtTarget)).not.toContain('variant-ANON-DO-NOT-LEAK');
+    expect(fetchImpl.receivedAtTarget).toHaveLength(0);
+    expect(cart.threw).toBeInstanceOf(Error);
+    for (const i of fetchImpl.inits) expect(i.redirect).toBe('error');
   });
 
   test('control: the same fixtures are accepted when no redirect is involved', async () => {
