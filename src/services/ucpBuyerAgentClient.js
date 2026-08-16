@@ -272,6 +272,17 @@ function createUcpBuyerAgentClient(options = {}) {
    * skew. NEVER logs/returns the secret or the JWT; on failure throws an error that carries only the HTTP
    * status (no credential material).
    */
+  // Diagnostic view of the token endpoint (describeTier / verifyTokenTier / the probe script). Never the raw
+  // configured string: it is operator-set and may carry userinfo, and those surfaces print. origin + path
+  // only -- enough to see WHERE the exchange goes, never a credential that was (wrongly) put in the URL.
+  // Returns undefined when the value does not parse, so a broken config is visible as absence, not echoed.
+  function tokenEndpointForDisplay() {
+    if (!hasClientCredentials) return undefined;
+    let u;
+    try { u = new URL(String(tokenEndpoint)); } catch { return undefined; }
+    return `${u.origin}${u.pathname}`;
+  }
+
   async function exchangeClientCredentials() {
     // The token endpoint is operator-configured (UCP_AGENT_TOKEN_ENDPOINT) and receives the CLIENT SECRET in
     // the request body, yet was previously not validated at all — an `http://` typo would post the secret
@@ -434,7 +445,7 @@ function createUcpBuyerAgentClient(options = {}) {
       has_client_credentials: hasClientCredentials,
       // True when SOME token-tier credential is available (static token OR exchangeable client credentials).
       has_token_tier_credential: hasTokenTierCredential,
-      token_endpoint: hasClientCredentials ? tokenEndpoint : undefined,
+      token_endpoint: tokenEndpointForDisplay(),
       // Boolean only — the private key value is NEVER exposed.
       has_signing_key: canSign,
       signing_key_id: canSign ? signingKeyId : undefined,
@@ -469,7 +480,7 @@ function createUcpBuyerAgentClient(options = {}) {
       has_credential: Boolean(credential),
       has_client_credentials: hasClientCredentials,
       has_token_tier_credential: hasTokenTierCredential,
-      token_endpoint: hasClientCredentials ? tokenEndpoint : undefined,
+      token_endpoint: tokenEndpointForDisplay(),
     };
     if (tier !== TRUST_TIER.TOKEN) {
       return { ok: false, ...base, token_present: false, minted_via_exchange: false };

@@ -725,12 +725,18 @@ test('cause: a dual-stack connect failure still reports a reason, and a non-stri
 // `TypeError: Request cannot be constructed from a URL that includes credentials: <the full URL>` — which
 // the fetch catch logs as `err`, password included (measured on node 24). The URL is refused before fetch.
 
-test('userinfo: a credentialed UCP_BUSINESS_PROFILE_URL is refused before fetch and never logged', async () => {
-  const PASSWORD = 'operator-typed-password-DO-NOT-LEAK';
+// Each half of `username || password` gets its own row: a token-in-username config is the common real shape,
+// and fetch throws the URL-echoing TypeError for both (measured), so a guard on `password` alone still leaks.
+for (const [label, userinfo] of [
+  ['user:pass', 'svc:operator-typed-password-DO-NOT-LEAK'],
+  ['username only', 'operator-api-token-DO-NOT-LEAK'],
+  ['password only', ':operator-typed-password-DO-NOT-LEAK'],
+]) test(`userinfo (${label}): a credentialed UCP_BUSINESS_PROFILE_URL is refused before fetch and never logged`, async () => {
+  const PASSWORD = 'DO-NOT-LEAK';
   const warns = [];
   const fetchCalls = [];
   const receiver = createUcpOrderWebhookReceiver({
-    env: { ...VERIFY_ENV, UCP_BUSINESS_PROFILE_URL: `https://svc:${PASSWORD}@ucp.test.local/.well-known/ucp` },
+    env: { ...VERIFY_ENV, UCP_BUSINESS_PROFILE_URL: `https://${userinfo}@ucp.test.local/.well-known/ucp` },
     // If this were reached, real fetch would throw a TypeError carrying the URL. Model exactly that, so a
     // regression that lets the URL through is caught by the leak assertion, not just by the call count.
     fetchImpl: async (url) => {
