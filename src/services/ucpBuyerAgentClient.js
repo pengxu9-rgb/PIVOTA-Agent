@@ -73,6 +73,7 @@ const IDEMPOTENT_TOOLS = Object.freeze(new Set([
 // clean null (cold-redirect fallback), tagged for observability (H2). No reason carries buyer PII or key material.
 const FAILURE_REASON = Object.freeze({
   PROFILE_UNREACHABLE: 'profile_unreachable', // discovery threw a network/DNS error
+  PROFILE_REDIRECTED: 'profile_redirected', // discovery got a 3xx: refused (UCP MUST NOT follow), a merchant misconfiguration
   NOT_UCP_REACHABLE: 'not_ucp_reachable', // discovery succeeded but the brand exposes no UCP MCP endpoint
   TIMEOUT: 'timeout', // a per-call timeout (AbortError) or the total handoff budget was exceeded
   OUT_OF_STOCK: 'out_of_stock', // product-state: sold out / no inventory / not available for sale
@@ -530,6 +531,11 @@ function createUcpBuyerAgentClient(options = {}) {
       // is not retried (< 500), and reaches ucpWarmHandoff's `not_ucp_reachable` log — which already
       // carries `status` — as a 301/302 that says exactly what it is: a merchant misconfiguration someone
       // can go fix. Do NOT read `res.json()` on that path: a 3xx body is HTML, and `!res.ok` guards it.
+      // One dependency to name: the fetch SPEC says 'manual' yields an opaque-redirect filtered response
+      // (type "opaqueredirect", status 0). Node/undici deliberately do not filter and return the real
+      // status (measured: type "basic", status 301, readable Location). The SAFETY property survives either
+      // way — status 0 is still `!res.ok` and lands in the same branch — only the diagnostic status is the
+      // deviation. If it ever regresses to 0, discovery still refuses; the log just says 0 instead of 301.
       // (The receiver's own profile fetch applies the same rule to ITS URL — ucpOrderWebhookReceiver.js;
       // it does not read the profile discovered here, which no caller consumes beyond the endpoint.)
       redirect: 'manual',

@@ -578,10 +578,10 @@ test('events endpoint filters by body_sha256 / checkout_id / order_id', async ()
 // fetch that keeps failing with no previously-good key set falls back to an EMPTY key list, and that
 // rejects EVERY inbound order webhook. These tests pin that the log can tell the two apart.
 
-/** Exactly what `fetch(url, { redirect: 'error' })` throws when the profile 302s. */
-function redirectRefusalError() {
+/** A TLS/socket failure: another `fetch failed` whose only distinguishing content is on `.cause`. */
+function socketFailureError() {
   const err = new TypeError('fetch failed');
-  err.cause = new Error('unexpected redirect');
+  err.cause = Object.assign(new Error('other side closed'), { code: 'UND_ERR_SOCKET' });
   return err;
 }
 
@@ -613,26 +613,30 @@ async function warnsFromProfileFetchFailure(err, envOverrides = {}) {
   return { warns, out };
 }
 
-test('cause: a refused redirect and a dead host are DISTINGUISHABLE in the receiver log', async () => {
-  const redirect = await warnsFromProfileFetchFailure(redirectRefusalError());
+test('cause: two thrown fetch failures with the same message are DISTINGUISHABLE in the receiver log', async () => {
+  // Every network-layer failure undici throws is `TypeError: fetch failed`; only `.cause` differs. (A
+  // REDIRECTED profile is deliberately NOT one of these any more: `redirect: 'manual'` returns the 3xx as
+  // a status and never throws -- see the `redirect:` test below. An earlier version of this test modelled a
+  // redirect as a thrown `unexpected redirect`, a shape the receiver can no longer produce.)
+  const socket = await warnsFromProfileFetchFailure(socketFailureError());
   const dns = await warnsFromProfileFetchFailure(dnsFailureError());
 
-  const rr = redirect.warns.find((w) => w.msg === 'UCP business profile signing-key fetch failed').rec;
+  const sr = socket.warns.find((w) => w.msg === 'UCP business profile signing-key fetch failed').rec;
   const dr = dns.warns.find((w) => w.msg === 'UCP business profile signing-key fetch failed').rec;
 
   // Both fail CLOSED to an empty key set, which is what makes this worth diagnosing at all.
-  assert.equal(redirect.out.status, 401, 'no keys -> every inbound webhook is rejected');
+  assert.equal(socket.out.status, 401, 'no keys -> every inbound webhook is rejected');
   assert.equal(dns.out.status, 401);
 
   // The property: identical `err`, identical surface -- the cause is the ONLY discriminator.
-  assert.equal(rr.err, dr.err);
-  assert.equal(rr.err, 'fetch failed');
-  assert.notEqual(rr.cause, dr.cause);
+  assert.equal(sr.err, dr.err);
+  assert.equal(sr.err, 'fetch failed');
+  assert.notEqual(sr.cause, dr.cause);
 
-  assert.equal(rr.cause, 'unexpected redirect');
+  assert.equal(sr.cause, 'other side closed');
+  assert.equal(sr.cause_code, 'UND_ERR_SOCKET');
   assert.equal(dr.cause, 'getaddrinfo ENOTFOUND ucp.test.local');
   assert.equal(dr.cause_code, 'ENOTFOUND');
-  assert.equal(Object.hasOwn(rr, 'cause_code'), false, 'no errno for a redirect refusal -> key absent');
 });
 
 test('cause: the cause object is never spread into the receiver record', async () => {

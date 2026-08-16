@@ -194,8 +194,17 @@ function createWarmHandoffService(deps = {}) {
     let entry = { mcpEndpoint: null, reachable: false, reason: FAILURE_REASON.NOT_UCP_REACHABLE };
     try {
       const disco = await client.discoverEndpoint(origin);
+      const status = disco && Number(disco.status);
       if (disco && disco.mcpEndpoint) {
         entry = { mcpEndpoint: disco.mcpEndpoint, reachable: true, reason: null };
+      } else if (status >= 300 && status < 400) {
+        // The client refuses a redirected profile (UCP MUST NOT follow) and hands the 3xx back as its
+        // status. That is NOT "the brand exposes no UCP" — it is a merchant that put a redirect in front of
+        // its profile, which someone can go fix — so it gets its own reason (a taxonomy/metric label of its
+        // own, not folded into not_ucp_reachable) and a WARN, not the info line the highest-volume
+        // no-profile path uses. Classified on the STATUS, never on any error wording.
+        entry = { mcpEndpoint: null, reachable: false, reason: FAILURE_REASON.PROFILE_REDIRECTED };
+        note('warn', 'ucp_warm_handoff_profile_redirected', { origin, status });
       } else {
         entry = { mcpEndpoint: null, reachable: false, reason: FAILURE_REASON.NOT_UCP_REACHABLE };
         note('info', 'ucp_warm_handoff_not_reachable', { origin, status: disco && disco.status });

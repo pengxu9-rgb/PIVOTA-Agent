@@ -174,24 +174,35 @@ describe('warm handoff logs the underlying cause of a fetch failure', () => {
 
   test('a redirected profile and a dead host are DISTINGUISHABLE in the log', async () => {
     // Under `redirect: 'manual'` (the buyer client's profile fetch) a redirected profile is not a thrown
-    // error at all: discovery RESOLVES with the 3xx as its status, and lands on the `not_reachable` log,
-    // which carries that status. A dead host still THROWS and lands on `discovery_error` with the cause.
-    // Different event, different field -- and neither is undici's wording. Both are asserted here so the
-    // two shapes stay told apart if either log line is later reshaped.
-    const warnsRedirect = [];
+    // error at all: discovery RESOLVES with the 3xx as its status. The lane classifies that ON THE STATUS
+    // into its own reason and its own WARN-level event -- not folded into `not_ucp_reachable`, which is the
+    // highest-volume info path in the lane (every brand with no profile lands there) and would bury a
+    // fixable merchant misconfiguration as an info needle. A dead host still THROWS and lands on
+    // `discovery_error` with the cause. Different event, different field, different reason, different
+    // level -- and none of it is undici's wording.
+    const recs = [];
     const svcRedirect = createWarmHandoffService({
       client: { async discoverEndpoint(origin) { return { mcpEndpoint: undefined, businessProfile: null, wellKnownUrl: `${origin}/.well-known/ucp`, status: 301 }; } },
-      logger: { info: (rec) => warnsRedirect.push(rec), warn: (rec) => warnsRedirect.push(rec), error: () => {} },
+      logger: { info: (rec) => recs.push({ level: 'info', ...rec }), warn: (rec) => recs.push({ level: 'warn', ...rec }), error: () => {} },
     });
     const redirectEntry = await svcRedirect.discoverBrandEndpointDetailed('https://cosrx.com');
-    const redirect = warnsRedirect.find((w) => w.event === 'ucp_warm_handoff_not_reachable');
+    const redirect = recs.find((w) => w.event === 'ucp_warm_handoff_profile_redirected');
     const dns = await discoveryWarn(dnsFailure());
 
     expect(redirectEntry.reachable).toBe(false);
-    expect(redirectEntry.reason).toBe('not_ucp_reachable');
+    expect(redirectEntry.reason).toBe('profile_redirected');
     expect(redirect).toBeDefined();
+    expect(redirect.level).toBe('warn');
     expect(redirect.status).toBe(301);
     expect(redirect).not.toHaveProperty('cause');
+    // And it is NOT the no-profile path: that one stays info-level and keeps its reason.
+    expect(recs.find((w) => w.event === 'ucp_warm_handoff_not_reachable')).toBeUndefined();
+    const svc404 = createWarmHandoffService({
+      client: { async discoverEndpoint(origin) { return { mcpEndpoint: undefined, businessProfile: null, wellKnownUrl: `${origin}/.well-known/ucp`, status: 404 }; } },
+      logger: { info: (rec) => recs.push({ level: 'info', ...rec }), warn: (rec) => recs.push({ level: 'warn', ...rec }), error: () => {} },
+    });
+    expect((await svc404.discoverBrandEndpointDetailed('https://nope.example')).reason).toBe('not_ucp_reachable');
+    expect(recs.find((w) => w.event === 'ucp_warm_handoff_not_reachable').level).toBe('info');
 
     expect(dns.event).toBe('ucp_warm_handoff_discovery_error');
     expect(dns.reason).toBe('profile_unreachable');

@@ -977,6 +977,32 @@ describe('discoverEndpoint refuses a redirected /.well-known/ucp profile', () =>
     expect(fetchImpl.targetHits()).toBe(0);
   });
 
+  test('a SAME-ORIGIN redirect is refused too — MUST NOT follow is a rule about following, not about origins', async () => {
+    // Every other fixture here redirects to attacker.example, which pins the anchor-move property but would
+    // let a "follow only same-origin 3xx" mutant through 71/71 (found by review). The spec rule is that a
+    // profile endpoint MUST NOT redirect at all; a same-origin 301 (apex -> www, /.well-known -> /api) is
+    // still a merchant misconfiguration to report, not a hop to take.
+    const inits = [];
+    let followed = 0;
+    const fetchImpl = async (url, init = {}) => {
+      inits.push({ url: String(url), redirect: init.redirect });
+      if (String(url) === 'https://cosrx.com/.well-known/ucp' && init.redirect === 'manual') {
+        return {
+          ok: false, status: 301, redirected: false,
+          headers: { get: (h) => (h.toLowerCase() === 'location' ? 'https://cosrx.com/api/.well-known/ucp' : null) },
+          async json() { throw new SyntaxError('html'); }, async text() { return '<html>moved</html>'; },
+        };
+      }
+      followed += 1; // any second request, same-origin or not, is a follow
+      return jsonResponse(BUSINESS_PROFILE_FIXTURE, 200);
+    };
+    const disco = await clientWith(fetchImpl).discoverEndpoint('https://cosrx.com');
+    expect(disco.mcpEndpoint).toBeUndefined();
+    expect(disco.status).toBe(301);
+    expect(followed).toBe(0);
+    expect(inits).toHaveLength(1);
+  });
+
   test('a redirect is not retried: it is a deterministic refusal, not a transient', async () => {
     // With the default retry policy (2 extra attempts) a THROWN refusal would be re-fetched three times.
     // A returned 3xx is < 500 and goes out once.
