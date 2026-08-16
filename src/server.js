@@ -8124,8 +8124,18 @@ function shouldAllowPublishedPdpMissingQualitySnapshot(servingEligibility) {
   const syncStatus = String(servingEligibility.sync_status || '').trim().toLowerCase();
   const lifecycleStage = String(servingEligibility.pdp_lifecycle_stage || '').trim().toLowerCase();
   const qualityScore = Number(servingEligibility.content_quality_score);
+  // ACCEPTS BOTH CODES ON PURPOSE. The backend used to file "never scored" and
+  // "scored below the bar" under one `low_quality` code, distinguishing them
+  // only in the detail prose; pivota-backend #1758 splits the never-scored case
+  // out as `not_scored` so a mass unscoring stops impersonating a quality
+  // verdict. This override targets EXACTLY the never-scored rows, so keying on
+  // the old spelling alone would have turned that rename into a serving
+  // regression: these published, seed-matched PDPs are served today via this
+  // branch, and they would have gone hard-blocked — and then vanished from
+  // browse, since the UI drops anything with serving_eligible !== true.
+  // Keep both spellings until every backend deploy is past the split.
   const hasMissingQualitySnapshot =
-    blockerCode === 'low_quality' &&
+    (blockerCode === 'low_quality' || blockerCode === 'not_scored') &&
     blockerDetail.includes('no quality snapshot found') &&
     (!Number.isFinite(qualityScore) || qualityScore <= 0);
 
