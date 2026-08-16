@@ -317,4 +317,133 @@ describe('renew-relationship-ai-approved-labels', () => {
     expect(report.renewed_count).toBe(0);
     expect(report.ok).toBe(false);
   });
+
+  // The 2026-08-12 production run spent the parent's whole 20-minute budget in
+  // this step and was SIGKILLed: no report, no renewals, no idea which phase was
+  // slow. These pin the three properties that stop that from repeating.
+  describe('scan deadline', () => {
+    // Advances 400ms per label SELECT, so a budget is spent in whole batches.
+    function timedPagingHarness({ total, batchSize, msPerSelect = 400 }) {
+      const harness = pagingHarness({ total, batchSize });
+      const state = { now: 0 };
+      const queryFn = async (sql, params) => {
+        if (/FROM relationship_candidate_labels/.test(sql)) state.now += msPerSelect;
+        return harness.queryFn(sql, params);
+      };
+      return { ...harness, queryFn, clock: () => state.now };
+    }
+
+    test('parseArgs reads --deadline-ms and defaults it off', () => {
+      expect(parseArgs([]).deadlineMs).toBe(0);
+      expect(parseArgs(['--deadline-ms', '90000']).deadlineMs).toBe(90000);
+    });
+
+    test('stops scanning at a batch boundary once the budget is spent', async () => {
+      const { queryFn, suppressionFn, clock, events } = timedPagingHarness({ total: 100, batchSize: 10 });
+
+      const report = await runRenewal({
+        queryFn,
+        suppressionFn,
+        clock,
+        batchSize: 10,
+        deadlineMs: 1000,
+        generatedAt: '2026-08-04T00:00:00.000Z',
+      });
+
+      // 3 selects * 400ms crosses 1000ms; the 4th is never issued.
+      expect(report.batches_scanned).toBe(3);
+      expect(report.scanned_rows).toBe(30);
+      expect(report.truncated).toBe(true);
+      expect(events.filter((e) => e === 'select')).toHaveLength(3);
+    });
+
+    test('applies what it verified before truncating — partial progress is durable', async () => {
+      const calls = [];
+      const { queryFn, suppressionFn, clock } = timedPagingHarness({ total: 100, batchSize: 10 });
+      const recordingQueryFn = async (sql, params) => {
+        calls.push({ sql, params });
+        if (/UPDATE relationship_candidate_labels/.test(sql)) return { rowCount: params[0].length, rows: [] };
+        // pagingHarness serves no ref rows; without a resolvable anchor every
+        // row would skip and there would be nothing to apply.
+        if (/FROM external_product_seeds/.test(sql)) return { rows: [{ k2: 'ext_active_seed' }] };
+        return queryFn(sql, params);
+      };
+
+      const report = await runRenewal({
+        apply: true,
+        queryFn: recordingQueryFn,
+        suppressionFn,
+        clock,
+        batchSize: 10,
+        deadlineMs: 1000,
+        generatedAt: '2026-08-04T00:00:00.000Z',
+      });
+
+      const update = calls.find(({ sql }) => /UPDATE relationship_candidate_labels/.test(sql));
+      expect(update).toBeDefined();
+      expect(update.params[0]).toHaveLength(30);
+      expect(report.renewed_count).toBe(30);
+      expect(report.truncated).toBe(true);
+      expect(report.ok).toBe(true);
+    });
+
+    test('a budget spent before the first batch is not reported as success', async () => {
+      const { queryFn, suppressionFn } = pagingHarness({ total: 100, batchSize: 10 });
+      // Start stamp, then a clock already past the budget: the ref-set load ate
+      // the whole thing before the first batch could be read.
+      let tick = 0;
+      const clock = () => (tick++ === 0 ? 0 : 5000);
+
+      const report = await runRenewal({
+        queryFn,
+        suppressionFn,
+        clock,
+        batchSize: 10,
+        deadlineMs: 1000,
+        generatedAt: '2026-08-04T00:00:00.000Z',
+      });
+
+      expect(report.scanned_rows).toBe(0);
+      expect(report.truncated).toBe(true);
+      expect(report.ok).toBe(false);
+    });
+
+    test('no deadline scans the whole backlog', async () => {
+      const { queryFn, suppressionFn, clock } = timedPagingHarness({ total: 100, batchSize: 10 });
+
+      const report = await runRenewal({
+        queryFn,
+        suppressionFn,
+        clock,
+        batchSize: 10,
+        generatedAt: '2026-08-04T00:00:00.000Z',
+      });
+
+      expect(report.scanned_rows).toBe(100);
+      expect(report.truncated).toBe(false);
+      expect(report.deadline_ms).toBeNull();
+    });
+
+    // stderr progress is the only output a run that outlives its parent leaves
+    // behind — the /tmp report dies with the container.
+    test('reports scan progress per batch as it goes', async () => {
+      const progress = [];
+      const { queryFn, suppressionFn, clock } = timedPagingHarness({ total: 30, batchSize: 10 });
+
+      await runRenewal({
+        queryFn,
+        suppressionFn,
+        clock,
+        batchSize: 10,
+        onProgress: (event) => progress.push(event),
+        generatedAt: '2026-08-04T00:00:00.000Z',
+      });
+
+      const scans = progress.filter((event) => event.phase === 'scan');
+      expect(scans).toHaveLength(3);
+      expect(scans[2]).toMatchObject({ batch: 3, rows: 10, scanned_rows: 30 });
+      expect(scans[2].elapsed_ms).toBeGreaterThan(scans[0].elapsed_ms);
+      expect(progress.some((event) => event.phase === 'ref_set')).toBe(true);
+    });
+  });
 });

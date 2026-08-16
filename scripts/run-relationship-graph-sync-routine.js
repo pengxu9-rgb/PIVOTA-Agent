@@ -23,6 +23,9 @@ const DEFAULT_LOCK_STALE_AFTER_MINUTES = 180;
 const DEFAULT_MAX_SERVING_SUPPRESSED_PCT = 1;
 const DEFAULT_MAX_SERVING_SUPPRESSED_ROWS = 25;
 const DEFAULT_STEP_TIMEOUT_MINUTES = 20;
+// Headroom left to the renewal child between its own scan deadline and the
+// parent's SIGKILL, so it can apply what it verified and write its report.
+const RENEWAL_APPLY_RESERVE_MS = 90 * 1000;
 const DEFAULT_DB_LOCK_HEARTBEAT_MS = 30000;
 const DEFAULT_SELECT_LIMIT = 250;
 const DEFAULT_SELECT_SOURCES = ['catalog_products', 'external_product_seeds'];
@@ -313,12 +316,26 @@ function buildSyncRoutineSteps(options = {}) {
   // sync / build / review / the serving audit (the daily expiry alarm in the
   // serving-guard-audit workflow catches a renewal path that stops working).
   if (!options.skipRenewal) {
+    const renewalTimeoutMs = options.stepTimeoutMs
+      || (options.stepTimeoutMinutes ? options.stepTimeoutMinutes * 60 * 1000 : DEFAULT_STEP_TIMEOUT_MINUTES * 60 * 1000);
+    // Stop the child scanning early enough that it can still apply what it
+    // verified and write its report. Letting the parent SIGKILL it at the step
+    // timeout instead — 2026-08-12 in production — renews nothing, reports
+    // nothing, and leaves the expiring backlog to drain never. The reserve
+    // covers the apply phase; if the apply itself overruns it the parent kill
+    // still lands, but by then the streamed progress says how far it got.
+    const renewalDeadlineMs = Math.max(
+      Math.trunc(renewalTimeoutMs / 2),
+      renewalTimeoutMs - RENEWAL_APPLY_RESERVE_MS,
+    );
     const renewalArgs = [
       scriptPath('renew-relationship-ai-approved-labels.js'),
       '--window-days',
       String(options.renewalWindowDays == null ? DEFAULT_RENEWAL_WINDOW_DAYS : options.renewalWindowDays),
       '--max-age-days',
       String(options.renewalMaxAgeDays == null ? DEFAULT_RENEWAL_MAX_AGE_DAYS : options.renewalMaxAgeDays),
+      '--deadline-ms',
+      String(renewalDeadlineMs),
       '--out',
       options.renewalOut,
     ];
@@ -331,8 +348,7 @@ function buildSyncRoutineSteps(options = {}) {
       args: renewalArgs,
       artifact: options.renewalOut,
       optional: true,
-      timeoutMs: options.stepTimeoutMs
-        || (options.stepTimeoutMinutes ? options.stepTimeoutMinutes * 60 * 1000 : DEFAULT_STEP_TIMEOUT_MINUTES * 60 * 1000),
+      timeoutMs: renewalTimeoutMs,
     });
   }
 
@@ -594,7 +610,14 @@ async function runSyncRoutine(
       // An optional step (renewal) must not abort the routine; surface it in
       // the summary/ledger instead of failing the whole run.
       summary.warnings = Array.isArray(summary.warnings) ? summary.warnings : [];
-      summary.warnings.push(`optional step failed: ${step.id} (exit ${result.exitCode})`);
+      // The stderr tail is the whole reason this warning is worth reading: an
+      // optional step's output is captured here and nowhere else, and on
+      // 2026-08-12 "optional step failed: ai_approval_renewal (exit 124)" was
+      // all production got out of a step that had burned 20 minutes.
+      const optionalStderr = tailOutput(record.stderr_tail, 2000).trim();
+      summary.warnings.push(
+        `optional step failed: ${step.id} (exit ${result.exitCode})${optionalStderr ? `\nstderr tail:\n${optionalStderr}` : ''}`,
+      );
       writeSummary(options.summaryOut, summary);
       continue;
     }

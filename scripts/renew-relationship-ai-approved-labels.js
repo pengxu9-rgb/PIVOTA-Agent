@@ -77,7 +77,7 @@ function parseNumber(value, fallback, { min = 0, max = Number.MAX_SAFE_INTEGER }
 function usage() {
   return [
     'Usage:',
-    '  DATABASE_URL=... node scripts/renew-relationship-ai-approved-labels.js [--window-days 14] [--max-age-days 180] [--market US] [--limit N] [--out path] [--apply --confirm APPLY_RELGRAPH_AI_RENEWAL]',
+    '  DATABASE_URL=... node scripts/renew-relationship-ai-approved-labels.js [--window-days 14] [--max-age-days 180] [--market US] [--limit N] [--deadline-ms N] [--out path] [--apply --confirm APPLY_RELGRAPH_AI_RENEWAL]',
     '',
     'Dry-run by default. Renews ai_approved relationship_candidate_labels rows whose',
     'expires_at falls within --window-days (already-expired rows included) when they',
@@ -85,6 +85,11 @@ function usage() {
     'actively-serving seed/catalog/group entity, and the row is younger than',
     '--max-age-days. Never modifies label_state and never touches human_approved rows.',
     'Exits non-zero if apply mode found renewable rows but renewed none.',
+    '',
+    '--deadline-ms stops SCANNING once the budget is spent, then applies what was',
+    'already verified and reports truncated=true. Renewed rows leave the expiring',
+    'window, so the next run resumes on what is left. Progress is written to stderr',
+    'as it happens so a killed run still leaves a trail.',
   ].join('\n');
 }
 
@@ -103,6 +108,7 @@ function parseArgs(argv = process.argv.slice(2)) {
     maxAgeDays: parseNumber(argValue(argv, 'max-age-days'), DEFAULT_MAX_AGE_DAYS, { min: 1, max: 3650 }),
     market: normalizeString(argValue(argv, 'market'), 24).toUpperCase(),
     limit: parseNumber(argValue(argv, 'limit'), 0, { min: 0, max: 250000 }),
+    deadlineMs: parseNumber(argValue(argv, 'deadline-ms'), 0, { min: 0, max: 12 * 60 * 60 * 1000 }),
     out: normalizeString(argValue(argv, 'out'), 2000),
     operator: normalizeString(argValue(argv, 'operator'), 120) || DEFAULT_OPERATOR,
   };
@@ -341,6 +347,7 @@ async function applyRenewals(renewableIds, {
   queryFn = query,
   operator = DEFAULT_OPERATOR,
   generatedAt = new Date().toISOString(),
+  onProgress = () => {},
 } = {}) {
   let renewed = 0;
   for (let i = 0; i < renewableIds.length; i += UPDATE_CHUNK_SIZE) {
@@ -382,6 +389,7 @@ async function applyRenewals(renewableIds, {
       [chunk, AI_APPROVAL_FRESHNESS_INTERVAL, generatedAt, RENEWAL_METHOD, operator],
     );
     renewed += Number(res && res.rowCount) || 0;
+    onProgress({ phase: 'apply', applied: Math.min(i + UPDATE_CHUNK_SIZE, renewableIds.length), total: renewableIds.length, renewed });
   }
   return renewed;
 }
@@ -397,10 +405,23 @@ async function runRenewal({
   queryFn = query,
   suppressionFn = getRelationshipEdgeServingSuppressionReasons,
   generatedAt = new Date().toISOString(),
+  deadlineMs = 0,
+  clock = () => Date.now(),
+  onProgress = () => {},
 } = {}) {
+  // The 2026-08-12 production tick spent the sync routine's entire 20-minute
+  // step budget here and was SIGKILLed, so it wrote no report, renewed nothing,
+  // and left no trace of which phase was slow. Two things follow from that: the
+  // run reports progress as it happens (stderr survives the kill; the /tmp
+  // report does not), and it stops itself before the parent does.
+  const startedMs = clock();
+  const elapsedMs = () => clock() - startedMs;
+  const outOfBudget = () => deadlineMs > 0 && elapsedMs() >= deadlineMs;
+
   // Ref set first: it is needed to evaluate the very first batch, and loading
   // it up front keeps the streaming loop below free of per-batch setup.
   const resolvableRefs = await loadResolvableRefSet({ queryFn });
+  onProgress({ phase: 'ref_set', refs: resolvableRefs.size, elapsed_ms: elapsedMs() });
   const nowMs = new Date(generatedAt).getTime() || Date.now();
 
   // Stream. Every row carries two full product snapshots, so holding the whole
@@ -413,23 +434,55 @@ async function runRenewal({
   // re-surface rows this run already processed. Do not "optimize" the apply
   // into the loop.
   const tally = createRenewalTally();
-  for await (const batch of iterateExpiringAiApprovedRowBatches({ queryFn, windowDays, market, limit, batchSize })) {
-    foldRenewalBatch(tally, batch.length, evaluateRenewalCandidates(batch, resolvableRefs, {
-      suppressionFn,
-      maxAgeDays,
-      nowMs,
-    }));
+  let batchesScanned = 0;
+  // Truncation stops READS ONLY, and only at a batch boundary — the apply below
+  // still runs on everything verified so far. Renewing pushes expires_at past
+  // the end of the window, so those rows are gone from the next run's SELECT
+  // and it resumes on the remainder: partial progress is durable progress.
+  // Rows that were skipped stay in the window and get re-evaluated next run,
+  // which is cheap (evaluation is pure and microseconds per row).
+  let truncated = outOfBudget();
+  if (!truncated) {
+    for await (const batch of iterateExpiringAiApprovedRowBatches({ queryFn, windowDays, market, limit, batchSize })) {
+      batchesScanned += 1;
+      foldRenewalBatch(tally, batch.length, evaluateRenewalCandidates(batch, resolvableRefs, {
+        suppressionFn,
+        maxAgeDays,
+        nowMs,
+      }));
+      onProgress({
+        phase: 'scan',
+        batch: batchesScanned,
+        rows: batch.length,
+        scanned_rows: tally.scannedRows,
+        renewable: tally.renewableIds.length,
+        elapsed_ms: elapsedMs(),
+      });
+      if (outOfBudget()) {
+        truncated = true;
+        break;
+      }
+    }
   }
   const { renewableIds, skipped, suppressionReasons } = tally;
 
   let renewed = 0;
   if (apply && renewableIds.length) {
-    renewed = await applyRenewals(renewableIds, { queryFn, operator, generatedAt });
+    onProgress({ phase: 'apply_start', renewable: renewableIds.length, elapsed_ms: elapsedMs() });
+    renewed = await applyRenewals(renewableIds, {
+      queryFn,
+      operator,
+      generatedAt,
+      onProgress: (progress) => onProgress({ ...progress, elapsed_ms: elapsedMs() }),
+    });
   }
 
   // Apply mode that found renewable rows but renewed none is an inert no-op
-  // behind a success signal — fail loudly instead.
-  const ok = !apply || !renewableIds.length || renewed > 0;
+  // behind a success signal — fail loudly instead. A run that burned its whole
+  // budget without reading a single batch is the same kind of lie: it renews
+  // nothing and would otherwise report success.
+  const ok = (!truncated || tally.scannedRows > 0)
+    && (!apply || !renewableIds.length || renewed > 0);
   const skippedTotal = Object.values(skipped).reduce((sum, n) => sum + n, 0);
 
   return {
@@ -439,6 +492,10 @@ async function runRenewal({
     window_days: windowDays,
     max_age_days: maxAgeDays,
     market: market || 'all',
+    deadline_ms: deadlineMs || null,
+    elapsed_ms: elapsedMs(),
+    truncated,
+    batches_scanned: batchesScanned,
     scanned_rows: tally.scannedRows,
     renewable_count: renewableIds.length,
     renewed_count: renewed,
@@ -458,7 +515,13 @@ async function main(argv = process.argv.slice(2)) {
     return null;
   }
 
-  const report = await runRenewal(options);
+  // stderr, not stdout: the parent routine captures stderr from a step it kills,
+  // and stdout here is the report itself. This is the only output a run that
+  // exceeds its parent's timeout will ever produce.
+  const report = await runRenewal({
+    ...options,
+    onProgress: (progress) => process.stderr.write(`renewal progress ${JSON.stringify(progress)}\n`),
+  });
   if (options.out) {
     fs.mkdirSync(path.dirname(options.out), { recursive: true });
     fs.writeFileSync(options.out, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
