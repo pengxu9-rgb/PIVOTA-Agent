@@ -121,6 +121,11 @@ function normalizeBaseUrl(u, field) {
   let parsed;
   try { parsed = new URL(s); } catch { throw new Error(`${field} must be a valid URL: ${s}`); }
   if (parsed.protocol !== 'https:') throw new Error(`${field} must be https: ${s}`);
+  // No userinfo, and this branch deliberately does NOT echo the URL: the thing being refused is the
+  // credential in it, and these messages flow into warm-handoff logs. (fetch would refuse it too, but with
+  // the full URL in its TypeError.) A merchant-advertised endpoint or a configured base URL has no business
+  // carrying credentials.
+  if (parsed.username || parsed.password) throw new Error(`${field} must not contain userinfo`);
   return parsed;
 }
 
@@ -268,8 +273,18 @@ function createUcpBuyerAgentClient(options = {}) {
    * status (no credential material).
    */
   async function exchangeClientCredentials() {
+    // The token endpoint is operator-configured (UCP_AGENT_TOKEN_ENDPOINT) and receives the CLIENT SECRET in
+    // the request body, yet was previously not validated at all — an `http://` typo would post the secret
+    // in plaintext, and userinfo would put it in a fetch TypeError. Validate here, at the moment the secret
+    // would be sent (a client with no client-credentials never gets this far, so a bad default is inert),
+    // and throw the same opaque, status-free shape as the failure below: never the URL, never the secret.
+    let tokenUrl;
+    try { tokenUrl = normalizeBaseUrl(tokenEndpoint, 'tokenEndpoint'); } catch { tokenUrl = null; }
+    if (!tokenUrl) {
+      throw new Error('ucpBuyerAgentClient: token endpoint refused (must be an https URL without userinfo).');
+    }
     const doFetch = requireFetch();
-    const res = await withTimeout((signal) => doFetch(tokenEndpoint, {
+    const res = await withTimeout((signal) => doFetch(tokenUrl.toString(), {
       method: 'POST',
       headers: {
         'content-type': 'application/json',

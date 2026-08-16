@@ -274,3 +274,49 @@ describe('credential-carrying requests refuse redirects', () => {
     expect(fetchImpl.tokenCalls()).toHaveLength(1);
   });
 });
+
+// ---- the token endpoint receives the client SECRET, so it is validated before the secret is sent --------
+//
+// UCP_AGENT_TOKEN_ENDPOINT is operator-configured and was previously not validated at all: an `http://` typo
+// would post the secret in plaintext; userinfo would put it in a fetch TypeError. Both are refused before
+// any request is made, with an opaque error that carries neither the URL nor the secret.
+describe('token endpoint is validated before the secret is sent', () => {
+  function recordingFetch() {
+    const calls = [];
+    const impl = async (url, init = {}) => { calls.push({ url: String(url), body: init.body }); return jsonResponse({ access_token: 'x' }); };
+    impl.calls = calls;
+    return impl;
+  }
+
+  test.each([
+    ['plaintext http', 'http://api.shopify.example/auth/access_token'],
+    ['userinfo', 'https://svc:endpoint-password-DO-NOT-LEAK@api.shopify.example/auth/access_token'],
+    ['not a URL', 'nope'],
+  ])('%s -> refused, nothing sent, nothing echoed', async (_label, tokenEndpoint) => {
+    const fetchImpl = recordingFetch();
+    const client = createUcpBuyerAgentClient({
+      clientId: CLIENT_ID, clientSecret: CLIENT_SECRET, tokenEndpoint, fetchImpl,
+    });
+    const result = await client.createCart(MCP_ENDPOINT, { lineItems: [{ item: { id: '111' }, quantity: 1 }] })
+      .catch((e) => ({ threw: e }));
+
+    expect(result.threw).toBeInstanceOf(Error);
+    // The property: NO request left (the secret was never put on the wire, plaintext or otherwise)...
+    expect(fetchImpl.calls).toHaveLength(0);
+    // ...and the thrown message is opaque: neither the configured URL (which may hold a password) nor the secret.
+    const msg = String(result.threw.message);
+    expect(msg).not.toContain(CLIENT_SECRET);
+    expect(msg).not.toContain('DO-NOT-LEAK');
+    expect(msg).not.toContain('api.shopify.example');
+    expect(msg).toMatch(/token endpoint refused/);
+  });
+
+  test('control: the https default is accepted and the exchange proceeds', async () => {
+    const fetchImpl = makeTokenFetch();
+    const client = createUcpBuyerAgentClient({ clientId: CLIENT_ID, clientSecret: CLIENT_SECRET, fetchImpl });
+    const cart = await client.createCart(MCP_ENDPOINT, { lineItems: [{ item: { id: '111' }, quantity: 1 }] });
+    expect(cart.ok).toBe(true);
+    expect(fetchImpl.tokenCalls()).toHaveLength(1);
+    expect(fetchImpl.tokenCalls()[0].url).toBe(TOKEN_ENDPOINT);
+  });
+});

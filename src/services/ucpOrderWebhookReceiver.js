@@ -229,6 +229,15 @@ function createUcpOrderWebhookReceiver(deps = {}) {
       warn(new Error('UCP_BUSINESS_PROFILE_URL must be a valid https URL'), 'UCP business profile URL refused');
       return [];
     }
+    // Refuse userinfo BEFORE fetch, and never echo the URL. `https://user:pass@host/...` passes the https
+    // check above and then fetch rejects it with `TypeError: Request cannot be constructed from a URL that
+    // includes credentials: <the full URL>` — which the catch below logs as `err`, password included.
+    // (Measured on node 24.) There is no legitimate reason for a public well-known profile URL to carry
+    // credentials, so this is a config error, and a config error must not print the config.
+    if (parsed.username || parsed.password) {
+      warn(new Error('UCP_BUSINESS_PROFILE_URL must not contain userinfo'), 'UCP business profile URL refused');
+      return [];
+    }
 
     const t = now();
     if (jwksCache && jwksCache.url === url && jwksCache.expiresAt > t) return jwksCache.keys;
