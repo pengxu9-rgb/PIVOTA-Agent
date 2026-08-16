@@ -71,7 +71,9 @@ server (built + tested, flag-gated by `MCP_OAUTH_ENABLED`). The Authorization Se
 `pb-oauth-as`** — already MCP-purpose-built (DCR / PKCE-S256 / RFC 8707 / RS256+JWKS / consent). **No
 external vendor.** See [`adr_mcp_oauth_authorization_server.md`](adr_mcp_oauth_authorization_server.md).
 
-**(a) Deploy `pb-oauth-as`** (issuer `https://api.pivota.cc`):
+**(a) Deploy `pb-oauth-as`** (issuer `https://api.pivota.cc`) — note `pb-oauth-as` is the AS **module inside
+`pivota-backend`**, not a separate repo or service, so "deploy" here means set the `MCP_OAUTH_AS_*` env on
+Railway service `web` and deploy that app:
 
 ```text
 MCP_OAUTH_AS_ENABLED=1
@@ -97,11 +99,14 @@ fails closed. Note **RS256**, not ES256.
 > host above (verified live 2026-08-14). Changing it again spans two services, and it defines **two**
 > identifiers: the UCP door's is derived from this one's origin as `${origin}/ucp/mcp` and is separately
 > advertised, so treat them as a pair or the charge-capable UCP door is left behind. The AS
-> (`pb-oauth-as`) gates minting on a byte-exact `MCP_OAUTH_AS_ALLOWED_RESOURCES` allowlist and must list
-> **both** before the switch, or clients get `invalid_target` — that, and the report that refresh grants
-> pin the resource they were issued for, are `pb-oauth-as` behaviours and are not verifiable from this
-> repo. The verifier accepts a SET of identifiers, so migrate by overlapping the old and new rather than
-> cutting over. This value is also the third and last derivable origin for the UCP buyer-agent profile
+> (`pb-oauth-as`, the AS module inside the `pivota-backend` repo, deployed on Railway service `web`) gates
+> **`/oauth/authorize`** on a byte-exact `MCP_OAUTH_AS_ALLOWED_RESOURCES` allowlist and must list **both**
+> before the switch, or clients get `invalid_target`. It does NOT gate minting: refresh grants store the
+> resource they were issued for and re-mint with it unchecked, and because rotation rewrites the 30-day
+> TTL each time, an actively-refreshing client keeps that audience indefinitely — removing an entry is not
+> a kill switch and cannot be waited out (source-verified in `services/mcp_oauth_flow.py` 2026-08-14).
+> Changing the HOST is a forced re-authorization: `MCP_OAUTH_RESOURCE` is single-valued, so connected
+> clients 401 and re-run OAuth rather than overlapping. This value is also the third and last derivable origin for the UCP buyer-agent profile
 > URL, but only when `UCP_AGENT_PROFILE_URL` is unset and `UCP_BUYER_AGENT_PROFILE_ENABLED` is on —
 > production sets that variable explicitly, so today that coupling is latent.
 
