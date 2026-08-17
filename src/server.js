@@ -87,7 +87,7 @@ const {
 // The renderability predicate this repo already owns. Reused verbatim to
 // validate an ELECTED canonical sig rather than restated — a fourth hand-kept
 // copy of it is how the surfaces would drift apart again.
-const { seedRoutedLaneSql, seedRouteResolvesSql } = require('./services/pdpRenderability');
+const { seedRoutedLaneSql, seedRouteResolvesSql, isSeedRoutedLane } = require('./services/pdpRenderability');
 const bookingsApi = require('./services/bookings/api');
 const requireBookingFlagOn = bookingsApi.requireBookingFlagOn;
 const {
@@ -41827,13 +41827,33 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             canonicalProduct?.source_product_id,
             canonicalProduct?.sourceProductId,
           );
+	        // ADR-009: the LANE, not the seller. This used to require
+	        // `merchant_id === 'external_seed'`, which the A9-4 re-key made
+	        // permanently false — every seed-routed row now sits under its
+	        // observed seller, so rich seed content stopped being preserved and
+	        // the identity graph's synthetic product replaced it wholesale.
+	        //
+	        // isSeedRoutedLane is the same predicate pdpRenderability uses to
+	        // call these rows renderable, so the route and the renderability
+	        // gate now agree by construction instead of drifting (the divergence
+	        // this file's comment above predicted). It also picks up
+	        // `catalog_enrichment_agent_v1`, which the inline source_system test
+	        // never covered — 2,175 minted rows the old shape missed even before
+	        // the re-key.
+	        //
+	        // The lane test is an OR, so it is wider than the conjunction it
+	        // replaces; `hasExternalSeedRichPdpContent` bounds it, since only a
+	        // row carrying real seed content can reach the merge at all.
 	        const shouldPreserveExternalSeedPdpContent =
-	          canonicalProductRef?.merchant_id === EXTERNAL_SEED_MERCHANT_ID &&
-	          (
-              isExternalSeedProductId(canonicalProductRef?.product_id) ||
-              isExternalSeedProductId(canonicalProductExternalId) ||
-              canonicalProductSourceSystem === 'external_product_seeds_mirror_v1'
-            ) &&
+	          isSeedRoutedLane({
+	            merchantId: canonicalProductRef?.merchant_id,
+	            platform: firstNonEmptyString(canonicalProduct?.platform, canonicalProduct?.source_platform),
+	            sourceSystem: canonicalProductSourceSystem,
+	            sourceProductId: firstNonEmptyString(
+	              canonicalProductRef?.product_id,
+	              canonicalProductExternalId,
+	            ),
+	          }) &&
 	          hasExternalSeedRichPdpContent(canonicalProduct);
 	        canonicalProductForPdp = shouldPreserveExternalSeedPdpContent
 	          ? mergeIdentitySyntheticWithRichExternalSeedProduct(
