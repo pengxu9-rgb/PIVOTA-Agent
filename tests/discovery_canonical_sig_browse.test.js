@@ -36,6 +36,12 @@ const makeSigRow = (index, overrides = {}) => ({
   first_party_product_key: null,
   external_product_id: `ext_${index}`,
   external_product_key: `external_seed:ext_${index}`,
+  external_merchant_id: `merch_obs_${index}`,
+  external_brand: 'Alpha',
+  external_canonical_url: `https://alpha.example.com/products/${index}`,
+  external_pivota_canonical_url: `https://agent.pivota.cc/products/sig_${String(index).padStart(4, '0')}`,
+  external_seed_id: `eps_${index}`,
+  external_destination_url: `https://alpha.example.com/products/${index}`,
   brand: 'Alpha',
   title: `Canonical Product ${index}`,
   description: `Description for canonical product ${index}`,
@@ -51,7 +57,15 @@ const makeSigRow = (index, overrides = {}) => ({
 });
 
 const isSigQuery = (sql) => String(sql).includes('FROM agent_pdp_view apv');
-const isSeedQuery = (sql) => String(sql).includes('external_product_seeds');
+// A seed-LANE query is one that recalls FROM the seeds table. The sig reader
+// also touches external_product_seeds — inside a lateral, to carry the seed id
+// and destination URL for the identity every other lane serves — so a bare
+// substring match would count the sig query itself as the seed lane and make
+// "the seed lane did not run" unprovable.
+const isSeedQuery = (sql) => {
+  const text = String(sql);
+  return text.includes('external_product_seeds') && !isSigQuery(text);
+};
 
 function buildDbMock(sigRows) {
   const calls = [];
@@ -97,6 +111,61 @@ describe('canonical sig browse main route', () => {
     if (prevFlag === undefined) delete process.env.DISCOVERY_BROWSE_USES_CANONICAL_SIG;
     else process.env.DISCOVERY_BROWSE_USES_CANONICAL_SIG = prevFlag;
     jest.resetModules();
+  });
+
+  // The consumer (agent-ui isKnownUnservableProduct) treats an external-seed
+  // product carrying a sig_ id but NONE of {external_seed_id, seed_id,
+  // external_redirect_url, action.redirect_url, seed_data, external_seed_recall}
+  // as unservable and drops it. The sig reader emitted exactly that shape, so
+  // with the flag on the API returned 24 products and the page rendered zero.
+  // This pins the fields the reader must carry — the same ones every other lane
+  // serves — using the consumer's own predicate, transcribed, so a future
+  // "tidy up" of the mapper cannot silently re-break the page.
+  function consumerWouldDrop(p) {
+    const seedEvidence = [p.external_seed_id, p.seed_id, p.external_redirect_url,
+      p.action && p.action.redirect_url, p.seed_data, p.external_seed_recall]
+      .some((v) => v != null && String(v).trim().length > 0);
+    const isExternalSeed = p.merchant_id === 'external_seed' || p.platform === 'external_seed'
+      || String(p.source_product_id || '').startsWith('ext_');
+    const hasSig = String(p.product_id || '').startsWith('sig_');
+    return isExternalSeed && !seedEvidence && hasSig;
+  }
+
+  test('an external-seed row carries the identity the consumer requires to render it', () => {
+    const internals = loadInternals(jest.fn());
+    const product = internals.mapCanonicalIndexRowToProduct(makeSigRow(7));
+
+    // The exact fields the seed lane serves and the UI keys on.
+    expect(product.external_seed_id).toBe('eps_7');
+    expect(product.merchant_name).toBe('Alpha');
+    expect(product.merchant_canonical_url).toBe('https://alpha.example.com/products/7');
+    expect(product.destination_url).toBe('https://alpha.example.com/products/7');
+    expect(product.pivota_canonical_url).toBe('https://agent.pivota.cc/products/sig_0007');
+    expect(product.platform_product_id).toBe('ext_7');
+    // Convention both lanes share: provenance sentinel here, real seller in merchant_name.
+    expect(product.merchant_id).toBe('external_seed');
+
+    expect(consumerWouldDrop(product)).toBe(false);
+  });
+
+  test('a first-party row does not borrow external identity', () => {
+    const internals = loadInternals(jest.fn());
+    const product = internals.mapCanonicalIndexRowToProduct(
+      makeSigRow(8, {
+        first_party_merchant_id: 'merch_live_8',
+        first_party_platform: 'shopify',
+        first_party_source_product_id: '8008',
+        first_party_product_key: 'shopify:8008',
+      }),
+    );
+    expect(product.merchant_id).toBe('merch_live_8');
+    // A connected storefront's product must not be dressed as an external seed:
+    // the redirect/purchase flow reads destination_url and would send the buyer
+    // off-platform.
+    expect(product.external_seed_id).toBeUndefined();
+    expect(product.destination_url).toBeUndefined();
+    expect(product.merchant_canonical_url).toBeUndefined();
+    expect(consumerWouldDrop(product)).toBe(false);
   });
 
   test('identity resolves product first, then merchant', () => {

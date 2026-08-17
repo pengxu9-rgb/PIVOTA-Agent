@@ -9054,7 +9054,31 @@ function mapCanonicalIndexRowToProduct(row) {
     ...(productKey ? (isFirstParty ? { product_key: productKey } : { external_product_key: productKey }) : {}),
     ...(!isFirstParty && row.external_product_id ? { external_product_id: String(row.external_product_id) } : {}),
     ...(row.content_key ? { content_key: String(row.content_key) } : {}),
-    ...(row.canonical_url ? { pivota_canonical_url: String(row.canonical_url) } : {}),
+    // The external identity every other lane already serves. `merchant_id`
+    // stays the 'external_seed' convention both lanes share; the real seller is
+    // carried in merchant_name, and the seed id / merchant canonical URL /
+    // destination URL are what the PDP purchase flow, the JSON-LD, and the
+    // consumer's servability check read. Without them this reader emitted a
+    // product the UI dropped as unservable — 24 in, 0 rendered — while the
+    // seed lane's identical products rendered, because only the seed lane
+    // carried these fields.
+    ...(!isFirstParty && row.external_seed_id ? { external_seed_id: String(row.external_seed_id) } : {}),
+    ...(!isFirstParty && (row.external_brand || row.brand)
+      ? { merchant_name: String(row.external_brand || row.brand) }
+      : {}),
+    ...(!isFirstParty && row.external_canonical_url
+      ? { merchant_canonical_url: String(row.external_canonical_url) }
+      : {}),
+    ...(!isFirstParty && (row.external_destination_url || row.external_canonical_url)
+      ? { destination_url: String(row.external_destination_url || row.external_canonical_url) }
+      : {}),
+    ...(!isFirstParty && sourceProductId ? { platform_product_id: sourceProductId } : {}),
+    // Was `row.canonical_url`, which neither reader selected — a dead read, so
+    // pivota_canonical_url was never populated by this mapper. Now sourced from
+    // catalog_products.pivota_canonical_url via the ext_seed lateral.
+    ...(row.external_pivota_canonical_url
+      ? { pivota_canonical_url: String(row.external_pivota_canonical_url) }
+      : {}),
     title: String(row.title || '').trim() || productId,
     ...(row.description ? { description: String(row.description) } : {}),
     ...(row.brand ? { brand: String(row.brand), vendor: String(row.brand) } : {}),
@@ -9113,6 +9137,12 @@ async function fetchBrandScopedCanonicalCandidates({ brandAliases = [], limit = 
           first_party.product_key AS first_party_product_key,
           ext_seed.source_product_id AS external_product_id,
           ext_seed.product_key AS external_product_key,
+          ext_seed.merchant_id AS external_merchant_id,
+          ext_seed.brand AS external_brand,
+          ext_seed.canonical_url AS external_canonical_url,
+          ext_seed.pivota_canonical_url AS external_pivota_canonical_url,
+          ext_seed.seed_id AS external_seed_id,
+          ext_seed.destination_url AS external_destination_url,
           apv.brand,
           apv.title,
           apv.description,
@@ -9143,8 +9173,30 @@ async function fetchBrandScopedCanonicalCandidates({ brandAliases = [], limit = 
           LIMIT 1
         ) first_party ON TRUE
         LEFT JOIN LATERAL (
-          SELECT cp.source_product_id, cp.product_key
+          -- The full external identity, not just the two ids. Every other lane
+          -- serves the merchant name, the merchant canonical URL, the Pivota
+          -- canonical URL and the seed id alongside the product; a reader that
+          -- omits them emits a product the rest of the system treats as
+          -- half-identified. Measured on prod 2026-08-18: 6,939/6,939 servable
+          -- external_seed rows carry canonical_url here, 6,936 an active seed.
+          SELECT
+            cp.source_product_id,
+            cp.product_key,
+            cp.merchant_id,
+            cp.brand,
+            cp.canonical_url,
+            cp.pivota_canonical_url,
+            seed.id AS seed_id,
+            seed.destination_url
           FROM catalog_products cp
+          LEFT JOIN LATERAL (
+            SELECT eps.id, eps.destination_url
+            FROM external_product_seeds eps
+            WHERE eps.attached_product_key = cp.product_key
+              AND eps.status = 'active'
+            ORDER BY eps.updated_at DESC NULLS LAST, eps.id DESC
+            LIMIT 1
+          ) seed ON TRUE
           WHERE cp.content_key = apv.content_key
             -- ADR-009: match external-seed content by platform + accept both the
             -- legacy 'ext_%' id scheme AND observed sellers (merch_obs_…, whose
@@ -9240,6 +9292,12 @@ async function fetchCanonicalSigBrowseCandidates({ limit = 120 } = {}) {
           first_party.product_key AS first_party_product_key,
           ext_seed.source_product_id AS external_product_id,
           ext_seed.product_key AS external_product_key,
+          ext_seed.merchant_id AS external_merchant_id,
+          ext_seed.brand AS external_brand,
+          ext_seed.canonical_url AS external_canonical_url,
+          ext_seed.pivota_canonical_url AS external_pivota_canonical_url,
+          ext_seed.seed_id AS external_seed_id,
+          ext_seed.destination_url AS external_destination_url,
           apv.brand,
           apv.title,
           apv.description,
@@ -9263,8 +9321,30 @@ async function fetchCanonicalSigBrowseCandidates({ limit = 120 } = {}) {
           LIMIT 1
         ) first_party ON TRUE
         LEFT JOIN LATERAL (
-          SELECT cp.source_product_id, cp.product_key
+          -- The full external identity, not just the two ids. Every other lane
+          -- serves the merchant name, the merchant canonical URL, the Pivota
+          -- canonical URL and the seed id alongside the product; a reader that
+          -- omits them emits a product the rest of the system treats as
+          -- half-identified. Measured on prod 2026-08-18: 6,939/6,939 servable
+          -- external_seed rows carry canonical_url here, 6,936 an active seed.
+          SELECT
+            cp.source_product_id,
+            cp.product_key,
+            cp.merchant_id,
+            cp.brand,
+            cp.canonical_url,
+            cp.pivota_canonical_url,
+            seed.id AS seed_id,
+            seed.destination_url
           FROM catalog_products cp
+          LEFT JOIN LATERAL (
+            SELECT eps.id, eps.destination_url
+            FROM external_product_seeds eps
+            WHERE eps.attached_product_key = cp.product_key
+              AND eps.status = 'active'
+            ORDER BY eps.updated_at DESC NULLS LAST, eps.id DESC
+            LIMIT 1
+          ) seed ON TRUE
           WHERE cp.content_key = apv.content_key
             -- ADR-009: this leg exists to keep the row EXTERNAL identity
             -- (external_product_id / external_product_key) so the redirect path
