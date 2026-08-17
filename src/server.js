@@ -41827,9 +41827,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             canonicalProduct?.source_product_id,
             canonicalProduct?.sourceProductId,
           );
-	        // ADR-009: the LANE, not the seller. This used to require
-	        // `merchant_id === 'external_seed'`, which the A9-4 re-key made
-	        // permanently false — every seed-routed row now sits under its
+	        // ADR-009: the LANE, not the seller. This used to require an equality
+	        // test against the retired sentinel merchant, which the A9-4 re-key
+	        // made permanently false — every seed-routed row now sits under its
 	        // observed seller, so rich seed content stopped being preserved and
 	        // the identity graph's synthetic product replaced it wholesale.
 	        //
