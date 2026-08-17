@@ -266,6 +266,85 @@ describe('canonical sig browse main route', () => {
   // this row count both spellings fall back, so the distinction is not
   // unit-observable here. `hasSufficientProviderCandidates` is shared with the
   // beauty mainline path and covered by its tests.
+  // The gate is domain-blind on volume alone, and every other fixture in this
+  // file is ['Beauty','Skincare'] — so the suite passed identically with or
+  // without a composition check until these existed.
+  test('a domain-skewed sig head does not skip the seed lane on browse', async () => {
+    process.env.DATABASE_URL = 'postgres://canonical-sig-test';
+    process.env.DISCOVERY_BROWSE_USES_CANONICAL_SIG = 'true';
+
+    // Volume clears enoughThreshold, but most of the head is apparel — which
+    // COLD_START_DEFERRED_DOMAINS sends to the tail bucket. Serving this page
+    // would render mostly rows the curator is about to bury.
+    const rows = Array.from({ length: 120 }, (_, index) =>
+      index < 100
+        ? makeSigRow(index + 1, {
+            brand: 'Denim Co',
+            title: `Slim Fit Jean ${index + 1}`,
+            description: `Cotton denim jean ${index + 1}`,
+            category_path: ['Apparel', 'Jeans'],
+          })
+        : makeSigRow(index + 1),
+    );
+    const { mock, calls } = buildDbMock(rows);
+    const internals = loadInternals(mock);
+
+    const result = await internals.loadCatalogCandidates({
+      request: internals.normalizeDiscoveryRequest({ ...GENERIC_BROWSE_REQUEST, limit: 24 }),
+      profile: { hasInterestSignals: false },
+      limit: 120,
+    });
+
+    expect(result.primaryPathUsed).not.toBe('canonical_sig');
+    expect(calls.filter((call) => isSeedQuery(call.sql)).length).toBeGreaterThan(0);
+  });
+
+  test('a non-beauty sig head does not skip the seed lane on home_hot_deals', async () => {
+    process.env.DATABASE_URL = 'postgres://canonical-sig-test';
+    process.env.DISCOVERY_BROWSE_USES_CANONICAL_SIG = 'true';
+
+    // external_seeds IS the beauty supply for home cold start, so a head of 24
+    // rows of any domain must not be allowed to skip it.
+    const rows = Array.from({ length: 24 }, (_, index) =>
+      index < 22
+        ? makeSigRow(index + 1, {
+            brand: 'Acme',
+            title: `Cordless Drill ${index + 1}`,
+            description: `Power tool ${index + 1}`,
+            category_path: ['Tools', 'Power Tools'],
+          })
+        : makeSigRow(index + 1),
+    );
+    const { mock, calls } = buildDbMock(rows);
+    const internals = loadInternals(mock);
+
+    const result = await internals.loadCatalogCandidates({
+      request: internals.normalizeDiscoveryRequest({
+        ...GENERIC_BROWSE_REQUEST,
+        surface: 'home_hot_deals',
+        limit: 6,
+      }),
+      profile: { hasInterestSignals: false },
+      limit: 48,
+    });
+
+    expect(result.primaryPathUsed).not.toBe('canonical_sig');
+    const seedProvider = (result.providerBreakdown || []).find(
+      (entry) => entry.provider === 'external_seeds',
+    );
+    expect(seedProvider?.skip_reason).not.toBe('canonical_sig_primary_used');
+  });
+
+  test('the volume bar is enoughThreshold, not the primary-path threshold', () => {
+    const internals = loadInternals(jest.fn());
+    const request = internals.normalizeDiscoveryRequest({ ...GENERIC_BROWSE_REQUEST, limit: 24 });
+
+    // Pins the divergence a future "harmonize the thresholds" refactor would
+    // silently collapse: 48 vs 24 at browse page 1 / limit 24.
+    expect(internals.getRecallEnoughThreshold(request, 120)).toBe(48);
+    expect(internals.getPrimaryPathEnoughThreshold(request)).toBe(24);
+  });
+
   test('a thin sig index still consults the fallbacks', async () => {
     process.env.DATABASE_URL = 'postgres://canonical-sig-test';
     process.env.DISCOVERY_BROWSE_USES_CANONICAL_SIG = 'true';

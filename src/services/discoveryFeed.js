@@ -7526,24 +7526,38 @@ async function loadCatalogCandidates({
         if (annotated.length > 0) mergeProducts(annotated);
       }
 
-      // `enoughThreshold`, deliberately — NOT the beauty mainline's gate.
+      // Volume AND composition.
       //
-      // Copying that gate here was tried and reverted: it LOOSENS this lane.
-      // `primaryPathEnoughThreshold` is `page*limit` (24 at page 1 / limit 24)
-      // against `enoughThreshold`'s `page*limit + max(limit,12)` (48), and its
-      // quality conjunct is near-vacuous for anonymous browse —
-      // isHighQualityProviderCandidate falls through to excluding only
-      // 'pet'/'sleepwear', so apparel and beauty-tools rows count. That halved
-      // the bar on the surface this PR exists to protect.
+      // `enoughThreshold` is the right VOLUME bar — measured, it is 48 at
+      // browse p1/l24 where the beauty mainline's `primaryPathEnoughThreshold`
+      // is 24, so copying that gate here (tried, reverted) halved it. But volume
+      // alone is domain-BLIND, and this reader selects everything public in
+      // agent_pdp_view with no domain filter, so `mergedProducts.length` happily
+      // counts rows the cold-start curator is about to bury:
+      // COLD_START_DEFERRED_DOMAINS is {pet, sleepwear, apparel} plus
+      // beautyBucket 'tools', which scoreColdStartCandidateQuality penalises by
+      // -0.85 to -1.7. 48 sig rows of which 40 are apparel would pass a count
+      // gate and render a page of deferred rows.
       //
-      // The identity dedupe went with it: mapCanonicalIndexRowToProduct sets
-      // product_id to the sig id, so every source_listing_ref it builds is
-      // `<merchant>:sig_*` and can never match pdp_identity_listing — a
-      // guaranteed no-op that still costs a pdp_identity_listing x
-      // catalog_row_trust round trip on every generic browse request, on a
-      // change whose entire purpose is latency. mergeProducts already collapses
-      // duplicate sig ids by merge key.
-      if (mergedProducts.length >= enoughThreshold) {
+      // This lane skips `external_seeds`, which the seed lane's own gate never
+      // does, so it has to clear the bars the seed lane itself would need to
+      // stop — on BOTH surfaces, since neither subsumes the other:
+      //   - countNoSignalMinimumFastpathCandidates is stricter on browse
+      //     (excludes apparel + tools; 24 at p1/l24, 120 at p5/l24)
+      //   - shouldSkipNoSignalProviderExpansion is stricter on home_hot_deals
+      //     (6 strictly-beauty-non-tools against the coverage arm's 3), where
+      //     external_seeds IS the beauty supply for cold start
+      //
+      // Deliberately NOT a filtered count at the same value: at p1/l60 and
+      // p5/l24 `enoughThreshold === safeLimit`, so a filtered-only bar would
+      // demand a 100%-clean fetch and the lane could never fire.
+      const canonicalSigCoversPage =
+        mergedProducts.length >= enoughThreshold &&
+        countNoSignalMinimumFastpathCandidates(mergedProducts, { request, profile }) >=
+          getNoSignalMinimumFastpathCoverageThreshold(request) &&
+        shouldSkipNoSignalProviderExpansion(mergedProducts, { request, profile });
+
+      if (canonicalSigCoversPage) {
         candidateSource = 'canonical_sig';
         primaryPathUsed = 'canonical_sig';
         providerResults.push(
@@ -11864,6 +11878,8 @@ module.exports = {
     browseUsesCanonicalSig,
     fetchCanonicalSigBrowseCandidates,
     mapCanonicalIndexRowToProduct,
+    getRecallEnoughThreshold,
+    getPrimaryPathEnoughThreshold,
     buildDiscoveryCursor,
     buildDiscoveryCursorContextSignature,
     countStableBrowseCatalogTotal,
