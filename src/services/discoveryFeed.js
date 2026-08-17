@@ -2031,6 +2031,23 @@ function buildStableBrowseCatalogCountQuery(request, { includeIdentityJoin = tru
     maxPhrases: 4,
     maxTokens: 8,
   });
+
+  // Project ONLY the columns a filter below actually reads.
+  //
+  // This is a COUNT. Its output is one integer, so any column computed in the
+  // source CTEs that no WHERE clause consumes is pure wasted work — and the
+  // waste is not small. `search_text` is lower(concat_ws(...)) over ~15
+  // seed_data JSON paths per row, which forces a full JSONB detoast of every
+  // qualifying seed. That cost is linear in the servable corpus: measured at
+  // 1.1s when 49 seeds cleared the serving gate and 8.9s once 3,681 did, on
+  // exactly the same plan. Generic browse — the only request shape that runs
+  // this count at all — has no brand pattern, no query text and no category
+  // scope, so it read NONE of the three. Skipping them: 8.9s -> 1.0s, same
+  // total. The columns stay in the CTE shape (as constants) so the filter
+  // clauses that DO reference them under other scopes are unchanged.
+  const needsSearchText = brandPatterns.length > 0 || Boolean(rawQueryText);
+  const needsBrandCompact = brandCompacts.length > 0;
+  const needsCategoryText = normalizedCategories.length > 0;
   const filteredClauses = ['TRUE'];
 
   if (brandCompacts.length > 0 || brandPatterns.length > 0) {
@@ -2160,9 +2177,9 @@ function buildStableBrowseCatalogCountQuery(request, { includeIdentityJoin = tru
           pc.merchant_id,
           ${internalListingIdExpr} AS product_id,
           pc.merchant_id || ':' || ${internalListingIdExpr} AS source_listing_ref,
-          regexp_replace(${internalBrandTextExpr}, '[^a-z0-9]+', '', 'g') AS brand_compact,
-          ${internalCategoryExpr} AS category_text,
-          ${internalSearchTextExpr} AS search_text
+          ${needsBrandCompact ? `regexp_replace(${internalBrandTextExpr}, '[^a-z0-9]+', '', 'g')` : "''::text"} AS brand_compact,
+          ${needsCategoryText ? internalCategoryExpr : "''::text"} AS category_text,
+          ${needsSearchText ? internalSearchTextExpr : "''::text"} AS search_text
         FROM products_cache pc
         JOIN merchant_onboarding mo
           ON mo.merchant_id = pc.merchant_id
@@ -2184,9 +2201,9 @@ function buildStableBrowseCatalogCountQuery(request, { includeIdentityJoin = tru
           '${EXTERNAL_SEED_MERCHANT_ID}'::text AS merchant_id,
           ${externalListingIdExpr} AS product_id,
           '${EXTERNAL_SEED_MERCHANT_ID}'::text || ':' || ${externalListingIdExpr} AS source_listing_ref,
-          regexp_replace(${EXTERNAL_SEED_RECALL_SQL_FIELDS.brand}, '[^a-z0-9]+', '', 'g') AS brand_compact,
-          trim(${EXTERNAL_SEED_RECALL_SQL_FIELDS.category}) AS category_text,
-          ${externalSearchTextExpr} AS search_text
+          ${needsBrandCompact ? `regexp_replace(${EXTERNAL_SEED_RECALL_SQL_FIELDS.brand}, '[^a-z0-9]+', '', 'g')` : "''::text"} AS brand_compact,
+          ${needsCategoryText ? `trim(${EXTERNAL_SEED_RECALL_SQL_FIELDS.category})` : "''::text"} AS category_text,
+          ${needsSearchText ? externalSearchTextExpr : "''::text"} AS search_text
         FROM external_product_seeds eps
         WHERE eps.status = 'active'
           AND ${buildDiscoveryAttachedSeedServingExistsSql('eps')}
