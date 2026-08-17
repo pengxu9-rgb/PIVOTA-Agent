@@ -9063,8 +9063,12 @@ function mapCanonicalIndexRowToProduct(row) {
     // seed lane's identical products rendered, because only the seed lane
     // carried these fields.
     ...(!isFirstParty && row.external_seed_id ? { external_seed_id: String(row.external_seed_id) } : {}),
-    ...(!isFirstParty && (row.external_brand || row.brand)
-      ? { merchant_name: String(row.external_brand || row.brand) }
+    // The SELLER, matching the seed lane's precedence (merchant_display_name ->
+    // merchant_name -> retailer_name), and only then the brand. 81 servable rows
+    // have a seed merchant name that differs from the brand; naming the brand
+    // there would print the manufacturer where the seed lane prints the retailer.
+    ...(!isFirstParty && (row.external_merchant_name || row.external_brand || row.brand)
+      ? { merchant_name: String(row.external_merchant_name || row.external_brand || row.brand) }
       : {}),
     ...(!isFirstParty && row.external_canonical_url
       ? { merchant_canonical_url: String(row.external_canonical_url) }
@@ -9073,12 +9077,21 @@ function mapCanonicalIndexRowToProduct(row) {
       ? { destination_url: String(row.external_destination_url || row.external_canonical_url) }
       : {}),
     ...(!isFirstParty && sourceProductId ? { platform_product_id: sourceProductId } : {}),
-    // Was `row.canonical_url`, which neither reader selected — a dead read, so
-    // pivota_canonical_url was never populated by this mapper. Now sourced from
-    // catalog_products.pivota_canonical_url via the ext_seed lateral.
-    ...(row.external_pivota_canonical_url
-      ? { pivota_canonical_url: String(row.external_pivota_canonical_url) }
-      : {}),
+    // pivota_canonical_url is deliberately NOT emitted.
+    //
+    // The mapper's old `row.canonical_url` was a dead read (neither reader
+    // selected it), so this field has never been populated here. Sourcing it
+    // from catalog_products.pivota_canonical_url was tried and REVERTED: that
+    // column is minted from its OWN row's sig, and the ext_seed lateral resolves
+    // a row by content_key, so for 49 servable rows the URL named a DIFFERENT
+    // product than the one being served. agent-ui's resolveProductRouteId reads
+    // pivota_canonical_url BEFORE pivota_signature_id, so the card would have
+    // rendered product A and linked to product B's PDP. 385 of those rows also
+    // hold an off-site retailer URL in that column, which would publish a
+    // competitor link under a field named "the Pivota canonical".
+    //
+    // Omitting it is both correct and the status quo: agent-ui falls back to
+    // pivota_signature_id, which is always this product.
     title: String(row.title || '').trim() || productId,
     ...(row.description ? { description: String(row.description) } : {}),
     ...(row.brand ? { brand: String(row.brand), vendor: String(row.brand) } : {}),
@@ -9137,11 +9150,10 @@ async function fetchBrandScopedCanonicalCandidates({ brandAliases = [], limit = 
           first_party.product_key AS first_party_product_key,
           ext_seed.source_product_id AS external_product_id,
           ext_seed.product_key AS external_product_key,
-          ext_seed.merchant_id AS external_merchant_id,
           ext_seed.brand AS external_brand,
           ext_seed.canonical_url AS external_canonical_url,
-          ext_seed.pivota_canonical_url AS external_pivota_canonical_url,
           ext_seed.seed_id AS external_seed_id,
+          ext_seed.seed_merchant_name AS external_merchant_name,
           ext_seed.destination_url AS external_destination_url,
           apv.brand,
           apv.title,
@@ -9182,15 +9194,24 @@ async function fetchBrandScopedCanonicalCandidates({ brandAliases = [], limit = 
           SELECT
             cp.source_product_id,
             cp.product_key,
-            cp.merchant_id,
             cp.brand,
             cp.canonical_url,
-            cp.pivota_canonical_url,
             seed.id AS seed_id,
-            seed.destination_url
+            seed.destination_url,
+            seed.merchant_name AS seed_merchant_name
           FROM catalog_products cp
           LEFT JOIN LATERAL (
-            SELECT eps.id, eps.destination_url
+            SELECT
+              eps.id,
+              eps.destination_url,
+              coalesce(
+                eps.seed_data->>'merchant_display_name',
+                eps.seed_data->>'merchant_name',
+                eps.seed_data->>'retailer_name',
+                eps.seed_data->'snapshot'->>'merchant_display_name',
+                eps.seed_data->'snapshot'->>'merchant_name',
+                eps.seed_data->'snapshot'->>'retailer_name'
+              ) AS merchant_name
             FROM external_product_seeds eps
             WHERE eps.attached_product_key = cp.product_key
               AND eps.status = 'active'
@@ -9206,7 +9227,13 @@ async function fetchBrandScopedCanonicalCandidates({ brandAliases = [], limit = 
             AND (cp.source_product_id LIKE 'ext_%' OR cp.merchant_id LIKE 'merch_obs_%')
             AND cp.suppression_reason IS NULL
             AND cp.sync_status = 'live'
-          ORDER BY cp.updated_at DESC NULLS LAST
+          -- 185 content_keys have more than one servable external_seed row, and
+          -- this leg now supplies the BUYER'S REDIRECT (destination_url), not
+          -- just ids. Picking by recency alone made that a coin flip across
+          -- co-identified rows; prefer the row that is this very identity.
+          ORDER BY (cp.pivota_signature_id = apv.pivota_signature_id) DESC,
+                   cp.updated_at DESC NULLS LAST,
+                   cp.product_key ASC
           LIMIT 1
         ) ext_seed ON TRUE
         WHERE apv.pivota_signature_id IS NOT NULL
@@ -9292,11 +9319,10 @@ async function fetchCanonicalSigBrowseCandidates({ limit = 120 } = {}) {
           first_party.product_key AS first_party_product_key,
           ext_seed.source_product_id AS external_product_id,
           ext_seed.product_key AS external_product_key,
-          ext_seed.merchant_id AS external_merchant_id,
           ext_seed.brand AS external_brand,
           ext_seed.canonical_url AS external_canonical_url,
-          ext_seed.pivota_canonical_url AS external_pivota_canonical_url,
           ext_seed.seed_id AS external_seed_id,
+          ext_seed.seed_merchant_name AS external_merchant_name,
           ext_seed.destination_url AS external_destination_url,
           apv.brand,
           apv.title,
@@ -9330,15 +9356,24 @@ async function fetchCanonicalSigBrowseCandidates({ limit = 120 } = {}) {
           SELECT
             cp.source_product_id,
             cp.product_key,
-            cp.merchant_id,
             cp.brand,
             cp.canonical_url,
-            cp.pivota_canonical_url,
             seed.id AS seed_id,
-            seed.destination_url
+            seed.destination_url,
+            seed.merchant_name AS seed_merchant_name
           FROM catalog_products cp
           LEFT JOIN LATERAL (
-            SELECT eps.id, eps.destination_url
+            SELECT
+              eps.id,
+              eps.destination_url,
+              coalesce(
+                eps.seed_data->>'merchant_display_name',
+                eps.seed_data->>'merchant_name',
+                eps.seed_data->>'retailer_name',
+                eps.seed_data->'snapshot'->>'merchant_display_name',
+                eps.seed_data->'snapshot'->>'merchant_name',
+                eps.seed_data->'snapshot'->>'retailer_name'
+              ) AS merchant_name
             FROM external_product_seeds eps
             WHERE eps.attached_product_key = cp.product_key
               AND eps.status = 'active'
@@ -9357,7 +9392,13 @@ async function fetchCanonicalSigBrowseCandidates({ limit = 120 } = {}) {
             AND cp.platform = 'external_seed'
             AND cp.suppression_reason IS NULL
             AND cp.sync_status = 'live'
-          ORDER BY cp.updated_at DESC NULLS LAST
+          -- 185 content_keys have more than one servable external_seed row, and
+          -- this leg now supplies the BUYER'S REDIRECT (destination_url), not
+          -- just ids. Picking by recency alone made that a coin flip across
+          -- co-identified rows; prefer the row that is this very identity.
+          ORDER BY (cp.pivota_signature_id = apv.pivota_signature_id) DESC,
+                   cp.updated_at DESC NULLS LAST,
+                   cp.product_key ASC
           LIMIT 1
         ) ext_seed ON TRUE
         WHERE apv.pivota_signature_id IS NOT NULL

@@ -36,12 +36,14 @@ const makeSigRow = (index, overrides = {}) => ({
   first_party_product_key: null,
   external_product_id: `ext_${index}`,
   external_product_key: `external_seed:ext_${index}`,
-  external_merchant_id: `merch_obs_${index}`,
   external_brand: 'Alpha',
-  external_canonical_url: `https://alpha.example.com/products/${index}`,
-  external_pivota_canonical_url: `https://agent.pivota.cc/products/sig_${String(index).padStart(4, '0')}`,
+  // Deliberately DIFFERENT from external_destination_url: identical fixture
+  // values made "destination_url reads the seed URL" and "merchant_canonical_url
+  // reads the catalog URL" mutually indistinguishable, so swapping them passed.
+  external_canonical_url: `https://alpha.example.com/catalog/${index}`,
   external_seed_id: `eps_${index}`,
-  external_destination_url: `https://alpha.example.com/products/${index}`,
+  external_merchant_name: 'Alpha Retail',
+  external_destination_url: `https://alpha.example.com/buy/${index}`,
   brand: 'Alpha',
   title: `Canonical Product ${index}`,
   description: `Description for canonical product ${index}`,
@@ -137,10 +139,16 @@ describe('canonical sig browse main route', () => {
 
     // The exact fields the seed lane serves and the UI keys on.
     expect(product.external_seed_id).toBe('eps_7');
-    expect(product.merchant_name).toBe('Alpha');
-    expect(product.merchant_canonical_url).toBe('https://alpha.example.com/products/7');
-    expect(product.destination_url).toBe('https://alpha.example.com/products/7');
-    expect(product.pivota_canonical_url).toBe('https://agent.pivota.cc/products/sig_0007');
+    // The SELLER, not the brand — the seed lane prefers merchant_display_name.
+    expect(product.merchant_name).toBe('Alpha Retail');
+    // Distinct URLs: the buyer's redirect is the SEED's destination, and the
+    // merchant canonical is the CATALOG url. Swapping them must fail.
+    expect(product.merchant_canonical_url).toBe('https://alpha.example.com/catalog/7');
+    expect(product.destination_url).toBe('https://alpha.example.com/buy/7');
+    // Never emitted: sourcing it from the co-identified catalog row pointed 49
+    // servable products at a DIFFERENT product's PDP, and agent-ui prefers it
+    // over pivota_signature_id when resolving the route.
+    expect(product.pivota_canonical_url).toBeUndefined();
     expect(product.platform_product_id).toBe('ext_7');
     // Convention both lanes share: provenance sentinel here, real seller in merchant_name.
     expect(product.merchant_id).toBe('external_seed');
@@ -165,7 +173,56 @@ describe('canonical sig browse main route', () => {
     expect(product.external_seed_id).toBeUndefined();
     expect(product.destination_url).toBeUndefined();
     expect(product.merchant_canonical_url).toBeUndefined();
+    expect(product.merchant_name).toBeUndefined();
     expect(consumerWouldDrop(product)).toBe(false);
+  });
+
+  test('a row with no active seed falls back to the catalog url and brand', () => {
+    const internals = loadInternals(jest.fn());
+    const row = makeSigRow(9);
+    delete row.external_seed_id;
+    delete row.external_destination_url;
+    delete row.external_merchant_name;
+    const product = internals.mapCanonicalIndexRowToProduct(row);
+
+    // 3 servable rows have no active seed. They still need a merchant link and
+    // a name; the catalog url and brand are the honest fallbacks.
+    expect(product.destination_url).toBe('https://alpha.example.com/catalog/9');
+    expect(product.merchant_canonical_url).toBe('https://alpha.example.com/catalog/9');
+    expect(product.merchant_name).toBe('Alpha');
+    // With no seed evidence the consumer WILL drop it — that is correct, the
+    // row genuinely has no seed backing it.
+    expect(product.external_seed_id).toBeUndefined();
+  });
+
+  test('the query selects every column the mapper depends on', () => {
+    process.env.DATABASE_URL = 'postgres://canonical-sig-test';
+    const { mock, calls } = buildDbMock([makeSigRow(1)]);
+    const internals = loadInternals(mock);
+    return internals.fetchCanonicalSigBrowseCandidates({ limit: 60 }).then(() => {
+      const sql = calls.find((call) => isSigQuery(call.sql)).sql;
+      // The mapper reads these; without the SELECT they are silently undefined
+      // and the page goes blank again. Deleting the lateral or the columns must
+      // fail HERE, not in production.
+      for (const column of [
+        'AS external_product_id',
+        'AS external_product_key',
+        'AS external_brand',
+        'AS external_canonical_url',
+        'AS external_seed_id',
+        'AS external_merchant_name',
+        'AS external_destination_url',
+      ]) {
+        expect(sql).toContain(column);
+      }
+      // The nested lateral that supplies the seed id / destination / seller.
+      expect(sql).toContain('FROM external_product_seeds eps');
+      expect(sql).toContain('eps.attached_product_key = cp.product_key');
+      // The row pick must prefer THIS identity, not merely the newest row.
+      expect(sql).toContain('cp.pivota_signature_id = apv.pivota_signature_id');
+      // And must never reintroduce the wrong-PDP column.
+      expect(sql).not.toContain('pivota_canonical_url AS');
+    });
   });
 
   test('identity resolves product first, then merchant', () => {
