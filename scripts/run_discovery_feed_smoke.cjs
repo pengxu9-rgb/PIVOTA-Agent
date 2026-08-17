@@ -364,8 +364,18 @@ async function runSmoke(options = {}) {
     ],
     minProducts: 3,
     requireRankDebug: true,
+    // Tracks the path that actually served, rather than accepting either.
+    //
+    // `canonical_sig_browse` is emitted even at ZERO recall (deliberately, so the
+    // breakdown can distinguish "consulted and empty" from "never ran"). Adding
+    // it to a flat any-of would let this gate pass on a state that used to fail:
+    // flag on, sig index empty, external_seeds errored, only products_search
+    // returning rows. Requiring it ONLY when canonical_sig actually served keeps
+    // both modes strict.
     requiredRecallLabels: [
-      ['cold_start_curated', 'cold_start_fill', 'external_seed_pool_fastpath', 'canonical_sig_browse'],
+      String(coldStart?.metadata?.candidate_source || '') === 'canonical_sig'
+        ? ['canonical_sig_browse']
+        : ['cold_start_curated', 'cold_start_fill', 'external_seed_pool_fastpath'],
     ],
     // Still required: these are breakdown-presence checks, and every registered
     // provider gets an entry whether it ran or was skipped. Serving from

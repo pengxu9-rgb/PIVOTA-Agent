@@ -11346,6 +11346,21 @@ describe('discovery feed service', () => {
       }
       if (isLadderSql(text)) {
         ladderCalls.push({ sql: text, params });
+        // Rows must actually flow through the batched path, in the order SQL
+        // would return them, or the JS re-assembly that consumes that order is
+        // unconstrained — reversing the group loop would pass on an empty mock.
+        if (String(params?.[2]?.[0] || '') === 'skincare') {
+          curatedHeadId += 1;
+          const skincareRow = makeSeedRow(curatedHeadId, 'skincare', 'Skincare');
+          curatedHeadId += 1;
+          const makeupRow = makeSeedRow(curatedHeadId, 'makeup', 'Makeup');
+          return Promise.resolve({
+            rows: [
+              { ...skincareRow, ladder_match_value: 'skincare', ladder_tool_scope: 'creator_agents' },
+              { ...makeupRow, ladder_match_value: 'makeup', ladder_tool_scope: 'creator_agents' },
+            ],
+          });
+        }
         return Promise.resolve({ rows: [] });
       }
       if (text.includes("'generic_browse_curated_head'::text AS match_stage")) {
@@ -11375,7 +11390,7 @@ describe('discovery feed service', () => {
         },
       });
 
-      await freshInternals.fetchBeautyInterestExternalSeedFastpathCandidates({
+      const result = await freshInternals.fetchBeautyInterestExternalSeedFastpathCandidates({
         request,
         profile: { hasInterestSignals: false },
         queries: ['niacinamide serum'],
@@ -11432,6 +11447,21 @@ describe('discovery feed service', () => {
       );
       expect(seenIds).toBeDefined();
       expect(seenIds.length).toBe(curatedHeadRows);
+
+      // The batched statement returns skincare before makeup, so the stage
+      // metrics — which are appended in group-iteration order — must preserve
+      // that. Reversing the group loop destroys the value-major ordering the
+      // SQL assertions above spend eight lines pinning, and an empty-row mock
+      // would never notice.
+      // Scoped to the ladder's own tool scope: the curated head above also
+      // reports on the `vertical` axis, but under the primary scope ('*').
+      const ladderStages = result.recallSummary[0].external_seed_stage_counts.filter(
+        (stage) =>
+          stage.match_axis === 'vertical' &&
+          stage.raw_rows > 0 &&
+          stage.tool_scope === 'creator_agents',
+      );
+      expect(ladderStages.map((stage) => stage.match_value)).toEqual(['skincare', 'makeup']);
 
       // The mutant this kills: reverting to a per-(value, tool_scope) loop puts
       // this well past 70 even on a corpus this small.

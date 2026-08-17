@@ -138,7 +138,7 @@ describe('canonical sig browse main route', () => {
     const { mock, calls } = buildDbMock([makeSigRow(1)]);
     const internals = loadInternals(mock);
 
-    await internals.fetchCanonicalSigBrowseCandidates({ request: GENERIC_BROWSE_REQUEST, limit: 60 });
+    await internals.fetchCanonicalSigBrowseCandidates({ limit: 60 });
 
     const sigCall = calls.find((call) => isSigQuery(call.sql));
     expect(sigCall).toBeTruthy();
@@ -148,8 +148,6 @@ describe('canonical sig browse main route', () => {
     expect(sigCall.sql).toContain("crt.serving_decision = 'public'");
     // A refreshed_at-only sort has ties, and browse re-runs this query per page.
     expect(sigCall.sql).toContain('apv.pivota_signature_id ASC');
-    // Unscoped browse must not filter on a category the corpus may not carry.
-    expect(sigCall.sql).not.toContain('unnest(apv.category_path)');
   });
 
   test('the external-seed leg is not narrowed by an id-prefix filter', async () => {
@@ -195,6 +193,44 @@ describe('canonical sig browse main route', () => {
         limit: 120,
       }),
     ).rejects.toThrow(/Failed to load discovery candidates/);
+  });
+
+  test('an unreadable index is not recorded as a successful empty provider', async () => {
+    process.env.DATABASE_URL = 'postgres://canonical-sig-test';
+    process.env.DISCOVERY_BROWSE_USES_CANONICAL_SIG = 'true';
+
+    // Migrations not applied yet. This must behave like "no index to read", NOT
+    // like a healthy read that returned nothing — otherwise a status-200
+    // zero-row provider counts as successful and suppresses the unavailable
+    // error, which is the same defect as a flattened query failure.
+    const mock = jest.fn((sql) => {
+      const text = String(sql || '');
+      if (text.includes('information_schema.columns')) return Promise.resolve({ rows: REQUIRED_COLUMNS });
+      if (text.includes('pg_indexes')) return Promise.resolve({ rows: REQUIRED_INDEXES });
+      if (isSigQuery(text)) {
+        return Promise.reject(new Error('relation "agent_pdp_view" does not exist'));
+      }
+      return Promise.reject(new Error('ECONNREFUSED'));
+    });
+    const internals = loadInternals(mock);
+
+    await expect(
+      internals.loadCatalogCandidates({
+        request: internals.normalizeDiscoveryRequest(GENERIC_BROWSE_REQUEST),
+        profile: { hasInterestSignals: false },
+        limit: 120,
+      }),
+    ).rejects.toThrow(/Failed to load discovery candidates/);
+  });
+
+  test('a missing DATABASE_URL is not recorded as a successful empty provider', async () => {
+    delete process.env.DATABASE_URL;
+    process.env.DISCOVERY_BROWSE_USES_CANONICAL_SIG = 'true';
+
+    const internals = loadInternals(jest.fn(() => Promise.resolve({ rows: [] })));
+    // Returns null — "there is no index here" — rather than an empty array that
+    // the caller would record as a healthy zero-row read.
+    await expect(internals.fetchCanonicalSigBrowseCandidates({ limit: 60 })).resolves.toBeNull();
   });
 
   test('a sufficient sig index skips the external seed lane entirely', async () => {

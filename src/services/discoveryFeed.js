@@ -7526,19 +7526,24 @@ async function loadCatalogCandidates({
         if (annotated.length > 0) mergeProducts(annotated);
       }
 
-      // Same bar as every other primary path: identity-deduped and quality
-      // filtered, against primaryPathEnoughThreshold. A raw merged count would
-      // let N low-quality or duplicate rows skip all three fallbacks and ship a
-      // near-empty page.
-      const canonicalSigSufficiencyProducts = await resolveIdentityAwareSufficiencyProducts(mergedProducts);
-      const canonicalSigEnough = hasSufficientProviderCandidates(canonicalSigSufficiencyProducts, {
-        request,
-        profile,
-        enoughThreshold: primaryPathEnoughThreshold,
-        qualityThreshold,
-      });
-
-      if (canonicalSigEnough) {
+      // `enoughThreshold`, deliberately — NOT the beauty mainline's gate.
+      //
+      // Copying that gate here was tried and reverted: it LOOSENS this lane.
+      // `primaryPathEnoughThreshold` is `page*limit` (24 at page 1 / limit 24)
+      // against `enoughThreshold`'s `page*limit + max(limit,12)` (48), and its
+      // quality conjunct is near-vacuous for anonymous browse —
+      // isHighQualityProviderCandidate falls through to excluding only
+      // 'pet'/'sleepwear', so apparel and beauty-tools rows count. That halved
+      // the bar on the surface this PR exists to protect.
+      //
+      // The identity dedupe went with it: mapCanonicalIndexRowToProduct sets
+      // product_id to the sig id, so every source_listing_ref it builds is
+      // `<merchant>:sig_*` and can never match pdp_identity_listing — a
+      // guaranteed no-op that still costs a pdp_identity_listing x
+      // catalog_row_trust round trip on every generic browse request, on a
+      // change whose entire purpose is latency. mergeProducts already collapses
+      // duplicate sig ids by merge key.
+      if (mergedProducts.length >= enoughThreshold) {
         candidateSource = 'canonical_sig';
         primaryPathUsed = 'canonical_sig';
         providerResults.push(
