@@ -2031,6 +2031,7 @@ function buildStableBrowseCatalogCountQuery(request, { includeIdentityJoin = tru
     maxPhrases: 4,
     maxTokens: 8,
   });
+
   const filteredClauses = ['TRUE'];
 
   if (brandCompacts.length > 0 || brandPatterns.length > 0) {
@@ -2065,6 +2066,33 @@ function buildStableBrowseCatalogCountQuery(request, { includeIdentityJoin = tru
     }
     filteredClauses.push(`(${queryClauses.join(' OR ')})`);
   }
+
+  // Project ONLY the columns a filter clause actually reads.
+  //
+  // This is a COUNT. Its output is one integer, so any column computed in the
+  // source CTEs that no WHERE clause consumes is pure wasted work — and the
+  // waste is not small. `search_text` is lower(concat_ws(...)) over ~15
+  // seed_data JSON paths per row, which forces a full JSONB detoast of every
+  // qualifying seed. That cost is linear in the servable corpus: measured at
+  // 1.1s when 49 seeds cleared the serving gate and 8.9s once 3,681 did, on
+  // exactly the same plan.
+  //
+  // Which shapes reach this count is decided by shouldUseStableBrowseCatalogTotal:
+  // generic browse, category-only, and query+category. Query-only and anything
+  // brand-scoped never get here. Of the three that do, generic and category-only
+  // read no `search_text` at all, and that is where the 8.9s -> 1.0s comes from.
+  // query+category still reads it and still pays the detoast; that shape is
+  // correct, just not faster.
+  //
+  // The gates are DERIVED from the built clauses rather than restating their
+  // conditions, so a future clause that reads one of these columns cannot be
+  // forgotten by the gate — that failure is a silently WRONG COUNT (comparing
+  // against ''), not an error. The columns stay in the CTE shape as constants
+  // so the clause text under every scope is byte-for-byte unchanged.
+  const filteredClauseSql = filteredClauses.join('\n');
+  const needsSearchText = filteredClauseSql.includes('search_text');
+  const needsBrandCompact = filteredClauseSql.includes('brand_compact');
+  const needsCategoryText = filteredClauseSql.includes('category_text');
 
   const internalListingIdExpr = `
     coalesce(
@@ -2160,9 +2188,9 @@ function buildStableBrowseCatalogCountQuery(request, { includeIdentityJoin = tru
           pc.merchant_id,
           ${internalListingIdExpr} AS product_id,
           pc.merchant_id || ':' || ${internalListingIdExpr} AS source_listing_ref,
-          regexp_replace(${internalBrandTextExpr}, '[^a-z0-9]+', '', 'g') AS brand_compact,
-          ${internalCategoryExpr} AS category_text,
-          ${internalSearchTextExpr} AS search_text
+          ${needsBrandCompact ? `regexp_replace(${internalBrandTextExpr}, '[^a-z0-9]+', '', 'g')` : "''::text"} AS brand_compact,
+          ${needsCategoryText ? internalCategoryExpr : "''::text"} AS category_text,
+          ${needsSearchText ? internalSearchTextExpr : "''::text"} AS search_text
         FROM products_cache pc
         JOIN merchant_onboarding mo
           ON mo.merchant_id = pc.merchant_id
@@ -2184,9 +2212,9 @@ function buildStableBrowseCatalogCountQuery(request, { includeIdentityJoin = tru
           '${EXTERNAL_SEED_MERCHANT_ID}'::text AS merchant_id,
           ${externalListingIdExpr} AS product_id,
           '${EXTERNAL_SEED_MERCHANT_ID}'::text || ':' || ${externalListingIdExpr} AS source_listing_ref,
-          regexp_replace(${EXTERNAL_SEED_RECALL_SQL_FIELDS.brand}, '[^a-z0-9]+', '', 'g') AS brand_compact,
-          trim(${EXTERNAL_SEED_RECALL_SQL_FIELDS.category}) AS category_text,
-          ${externalSearchTextExpr} AS search_text
+          ${needsBrandCompact ? `regexp_replace(${EXTERNAL_SEED_RECALL_SQL_FIELDS.brand}, '[^a-z0-9]+', '', 'g')` : "''::text"} AS brand_compact,
+          ${needsCategoryText ? `trim(${EXTERNAL_SEED_RECALL_SQL_FIELDS.category})` : "''::text"} AS category_text,
+          ${needsSearchText ? externalSearchTextExpr : "''::text"} AS search_text
         FROM external_product_seeds eps
         WHERE eps.status = 'active'
           AND ${buildDiscoveryAttachedSeedServingExistsSql('eps')}
