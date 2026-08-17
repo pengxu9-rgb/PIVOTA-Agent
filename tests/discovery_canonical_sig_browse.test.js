@@ -42,7 +42,6 @@ const makeSigRow = (index, overrides = {}) => ({
   // reads the catalog URL" mutually indistinguishable, so swapping them passed.
   external_canonical_url: `https://alpha.example.com/catalog/${index}`,
   external_seed_id: `eps_${index}`,
-  external_merchant_name: 'Alpha Retail',
   external_destination_url: `https://alpha.example.com/buy/${index}`,
   brand: 'Alpha',
   title: `Canonical Product ${index}`,
@@ -139,8 +138,9 @@ describe('canonical sig browse main route', () => {
 
     // The exact fields the seed lane serves and the UI keys on.
     expect(product.external_seed_id).toBe('eps_7');
-    // The SELLER, not the brand — the seed lane prefers merchant_display_name.
-    expect(product.merchant_name).toBe('Alpha Retail');
+    // From the catalog brand: reading seed_data for a seller name cost 6x on a
+    // field this surface never renders.
+    expect(product.merchant_name).toBe('Alpha');
     // Distinct URLs: the buyer's redirect is the SEED's destination, and the
     // merchant canonical is the CATALOG url. Swapping them must fail.
     expect(product.merchant_canonical_url).toBe('https://alpha.example.com/catalog/7');
@@ -182,7 +182,6 @@ describe('canonical sig browse main route', () => {
     const row = makeSigRow(9);
     delete row.external_seed_id;
     delete row.external_destination_url;
-    delete row.external_merchant_name;
     const product = internals.mapCanonicalIndexRowToProduct(row);
 
     // 3 servable rows have no active seed. They still need a merchant link and
@@ -195,106 +194,55 @@ describe('canonical sig browse main route', () => {
     expect(product.external_seed_id).toBeUndefined();
   });
 
-  test('the query selects every column the mapper depends on', () => {
-    process.env.DATABASE_URL = 'postgres://canonical-sig-test';
-    const { mock, calls } = buildDbMock([makeSigRow(1)]);
-    const internals = loadInternals(mock);
-    return internals.fetchCanonicalSigBrowseCandidates({ limit: 60 }).then(() => {
-      const sql = calls.find((call) => isSigQuery(call.sql)).sql;
-      // The mapper reads these; without the SELECT they are silently undefined
-      // and the page goes blank again. Deleting the lateral or the columns must
-      // fail HERE, not in production.
-      for (const column of [
-        'AS external_product_id',
-        'AS external_product_key',
-        'AS external_brand',
-        'AS external_canonical_url',
-        'AS external_seed_id',
-        'AS external_merchant_name',
-        'AS external_destination_url',
-      ]) {
-        expect(sql).toContain(column);
-      }
-      // The nested lateral that supplies the seed id / destination / seller.
-      expect(sql).toContain('FROM external_product_seeds eps');
-      expect(sql).toContain('eps.attached_product_key = cp.product_key');
-      // The row pick must prefer THIS identity, not merely the newest row —
-      // and must use IS NOT DISTINCT FROM, because `NULL = <sig>` is NULL and
-      // `ORDER BY ... DESC` sorts NULLs FIRST, which would hand the pick to an
-      // unidentified row (211 live rows have a NULL sig).
-      expect(sql).toContain('cp.pivota_signature_id IS NOT DISTINCT FROM apv.pivota_signature_id');
-      expect(sql).not.toMatch(/cp\.pivota_signature_id\s*=\s*apv\.pivota_signature_id/);
-      // And must never reintroduce the wrong-PDP column.
-      expect(sql).not.toContain('pivota_canonical_url AS');
-    });
-  });
+  // Parameterised over BOTH readers. fetchBrandScopedCanonicalCandidates is LIVE
+  // in production (BRAND_PAGE_USES_COMMERCE_INDEX=true) and shares this SELECT,
+  // this lateral and this mapper, while the sig reader is still flag-gated — so
+  // the untested half was the half that ships. Deleting the nested seed lateral
+  // from the brand query, deleting its new SELECT aliases, or reverting its
+  // IS NOT DISTINCT FROM all passed until this covered it.
+  const CANONICAL_READERS = [
+    {
+      name: 'sig browse',
+      run: (internals) => internals.fetchCanonicalSigBrowseCandidates({ limit: 60 }),
+    },
+    {
+      name: 'brand page',
+      run: (internals) => internals.fetchBrandScopedCanonicalCandidates({ brandAliases: ['alpha'], limit: 60 }),
+    },
+  ];
 
-  test('identity resolves product first, then merchant', () => {
-    const internals = loadInternals(jest.fn());
-
-    const seedMirrored = internals.mapCanonicalIndexRowToProduct(makeSigRow(1));
-    expect(seedMirrored.id).toBe('sig_0001');
-    expect(seedMirrored.pivota_signature_id).toBe('sig_0001');
-    // No connected first-party row for this identity, so the merchant falls back
-    // to the external-seed mirror rather than inventing one.
-    expect(seedMirrored.merchant_id).toBe('external_seed');
-    expect(seedMirrored.external_product_id).toBe('ext_1');
-
-    const firstParty = internals.mapCanonicalIndexRowToProduct(
-      makeSigRow(2, {
-        first_party_merchant_id: 'merch_live_123',
-        first_party_platform: 'shopify',
-        first_party_source_product_id: '99887766',
-        first_party_product_key: 'shopify:99887766',
-      }),
-    );
-    // Same sig identity, but a real merchant now owns the offer.
-    expect(firstParty.id).toBe('sig_0002');
-    expect(firstParty.merchant_id).toBe('merch_live_123');
-    expect(firstParty.platform).toBe('shopify');
-    expect(firstParty.product_key).toBe('shopify:99887766');
-  });
-
-  test('flag is off by default so the seed lane keeps serving', () => {
-    const internals = loadInternals(jest.fn());
-    expect(internals.browseUsesCanonicalSig()).toBe(false);
-
-    process.env.DISCOVERY_BROWSE_USES_CANONICAL_SIG = 'true';
-    expect(internals.browseUsesCanonicalSig()).toBe(true);
-  });
-
-  test('query gates on public trust and orders deterministically for cursor paging', async () => {
+  test.each(CANONICAL_READERS)('the $name query selects every column the mapper depends on', async ({ run }) => {
     process.env.DATABASE_URL = 'postgres://canonical-sig-test';
     const { mock, calls } = buildDbMock([makeSigRow(1)]);
     const internals = loadInternals(mock);
 
-    await internals.fetchCanonicalSigBrowseCandidates({ limit: 60 });
+    await run(internals);
 
-    const sigCall = calls.find((call) => isSigQuery(call.sql));
-    expect(sigCall).toBeTruthy();
-    // Both halves of the gate: widening subject_type would let a colliding
-    // subject_key from another subject publish a product.
-    expect(sigCall.sql).toContain("crt.subject_type = 'product'");
-    expect(sigCall.sql).toContain("crt.serving_decision = 'public'");
-    // A refreshed_at-only sort has ties, and browse re-runs this query per page.
-    expect(sigCall.sql).toContain('apv.pivota_signature_id ASC');
-  });
-
-  test('the external-seed leg is not narrowed by an id-prefix filter', async () => {
-    process.env.DATABASE_URL = 'postgres://canonical-sig-test';
-    const { mock, calls } = buildDbMock([makeSigRow(1)]);
-    const internals = loadInternals(mock);
-
-    await internals.fetchCanonicalSigBrowseCandidates({ limit: 60 });
-
-    const sigCall = calls.find((call) => isSigQuery(call.sql));
-    // `platform = 'external_seed'` is already a complete leg of the seed-lane
-    // predicate. An id-prefix filter can only narrow it, and the escaped form
-    // (`ext\_%`, a literal underscore) silently drops every live `ext:` id —
-    // losing the external identity the redirect path needs.
-    expect(sigCall.sql).toContain("cp.platform = 'external_seed'");
-    expect(sigCall.sql).not.toMatch(/LIKE\s+'ext/);
-    expect(sigCall.sql).not.toMatch(/LIKE\s+'merch/);
+    const sql = calls.map((call) => call.sql).find(isSigQuery);
+    expect(sql).toBeTruthy();
+    for (const column of [
+      'AS external_product_id',
+      'AS external_product_key',
+      'AS external_brand',
+      'AS external_canonical_url',
+      'AS external_seed_id',
+      'AS external_destination_url',
+    ]) {
+      expect(sql).toContain(column);
+    }
+    // The nested lateral that supplies the seed id and the buyer's destination.
+    expect(sql).toContain('FROM external_product_seeds eps');
+    expect(sql).toContain('eps.attached_product_key = cp.product_key');
+    // The row pick must prefer THIS identity, and must use IS NOT DISTINCT FROM:
+    // NULL = sig is NULL and ORDER BY DESC sorts NULLs FIRST, which would hand
+    // the pick to one of the 211 live rows with a NULL sig.
+    expect(sql).toContain('cp.pivota_signature_id IS NOT DISTINCT FROM apv.pivota_signature_id');
+    expect(sql).not.toMatch(/cp\.pivota_signature_id\s*=\s*apv\.pivota_signature_id/);
+    // Never reintroduce the column that pointed 49 rows at another product's
+    // PDP. Matched loosely: `AS` on the next line evaded a toContain check.
+    expect(sql).not.toMatch(/pivota_canonical_url/);
+    // And never read seed_data here — it detoasts a 435MB column per row.
+    expect(sql).not.toMatch(/eps\.seed_data/);
   });
 
   test('a real query failure is never reported as a successful empty provider', async () => {

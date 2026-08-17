@@ -9063,12 +9063,11 @@ function mapCanonicalIndexRowToProduct(row) {
     // seed lane's identical products rendered, because only the seed lane
     // carried these fields.
     ...(!isFirstParty && row.external_seed_id ? { external_seed_id: String(row.external_seed_id) } : {}),
-    // The SELLER, matching the seed lane's precedence (merchant_display_name ->
-    // merchant_name -> retailer_name), and only then the brand. 81 servable rows
-    // have a seed merchant name that differs from the brand; naming the brand
-    // there would print the manufacturer where the seed lane prints the retailer.
-    ...(!isFirstParty && (row.external_merchant_name || row.external_brand || row.brand)
-      ? { merchant_name: String(row.external_merchant_name || row.external_brand || row.brand) }
+    // From the catalog row's brand, not from seed_data — see the lateral above
+    // for why reading seed_data here cost 6x. Verified against the live seed
+    // lane over its 24 served products: 22 identical, 2 differing only in case.
+    ...(!isFirstParty && (row.external_brand || row.brand)
+      ? { merchant_name: String(row.external_brand || row.brand) }
       : {}),
     ...(!isFirstParty && row.external_canonical_url
       ? { merchant_canonical_url: String(row.external_canonical_url) }
@@ -9153,7 +9152,6 @@ async function fetchBrandScopedCanonicalCandidates({ brandAliases = [], limit = 
           ext_seed.brand AS external_brand,
           ext_seed.canonical_url AS external_canonical_url,
           ext_seed.seed_id AS external_seed_id,
-          ext_seed.seed_merchant_name AS external_merchant_name,
           ext_seed.destination_url AS external_destination_url,
           apv.brand,
           apv.title,
@@ -9197,21 +9195,22 @@ async function fetchBrandScopedCanonicalCandidates({ brandAliases = [], limit = 
             cp.brand,
             cp.canonical_url,
             seed.id AS seed_id,
-            seed.destination_url,
-            seed.merchant_name AS seed_merchant_name
+            seed.destination_url
           FROM catalog_products cp
           LEFT JOIN LATERAL (
-            SELECT
-              eps.id,
-              eps.destination_url,
-              coalesce(
-                eps.seed_data->>'merchant_display_name',
-                eps.seed_data->>'merchant_name',
-                eps.seed_data->>'retailer_name',
-                eps.seed_data->'snapshot'->>'merchant_display_name',
-                eps.seed_data->'snapshot'->>'merchant_name',
-                eps.seed_data->'snapshot'->>'retailer_name'
-              ) AS merchant_name
+            -- Only the two untoasted scalars. Reading ANY seed_data path here
+            -- detoasts the row: external_product_seeds is 460MB against a 25MB
+            -- heap, so a merchant-name coalesce cost 0.534ms x 406 loops and
+            -- took this query 36ms -> 257ms (+614%) with the lateral and its
+            -- index otherwise free. That is a 6x regression on the exact path
+            -- the blank-page incident was a latency failure of, bought for a
+            -- field CatalogProductCard -- the browse AND brand card -- does not
+            -- render; the PDP resolves its own merchant from offers. Four of
+            -- the six coalesce arms also matched ZERO rows across all 11,343
+            -- active attached seeds. merchant_name now comes from cp.brand,
+            -- already selected for free, which matched the live seed lane on
+            -- 22 of its 24 served products (the other 2 differed only in case).
+            SELECT eps.id, eps.destination_url
             FROM external_product_seeds eps
             WHERE eps.attached_product_key = cp.product_key
               AND eps.status = 'active'
@@ -9330,7 +9329,6 @@ async function fetchCanonicalSigBrowseCandidates({ limit = 120 } = {}) {
           ext_seed.brand AS external_brand,
           ext_seed.canonical_url AS external_canonical_url,
           ext_seed.seed_id AS external_seed_id,
-          ext_seed.seed_merchant_name AS external_merchant_name,
           ext_seed.destination_url AS external_destination_url,
           apv.brand,
           apv.title,
@@ -9367,21 +9365,22 @@ async function fetchCanonicalSigBrowseCandidates({ limit = 120 } = {}) {
             cp.brand,
             cp.canonical_url,
             seed.id AS seed_id,
-            seed.destination_url,
-            seed.merchant_name AS seed_merchant_name
+            seed.destination_url
           FROM catalog_products cp
           LEFT JOIN LATERAL (
-            SELECT
-              eps.id,
-              eps.destination_url,
-              coalesce(
-                eps.seed_data->>'merchant_display_name',
-                eps.seed_data->>'merchant_name',
-                eps.seed_data->>'retailer_name',
-                eps.seed_data->'snapshot'->>'merchant_display_name',
-                eps.seed_data->'snapshot'->>'merchant_name',
-                eps.seed_data->'snapshot'->>'retailer_name'
-              ) AS merchant_name
+            -- Only the two untoasted scalars. Reading ANY seed_data path here
+            -- detoasts the row: external_product_seeds is 460MB against a 25MB
+            -- heap, so a merchant-name coalesce cost 0.534ms x 406 loops and
+            -- took this query 36ms -> 257ms (+614%) with the lateral and its
+            -- index otherwise free. That is a 6x regression on the exact path
+            -- the blank-page incident was a latency failure of, bought for a
+            -- field CatalogProductCard -- the browse AND brand card -- does not
+            -- render; the PDP resolves its own merchant from offers. Four of
+            -- the six coalesce arms also matched ZERO rows across all 11,343
+            -- active attached seeds. merchant_name now comes from cp.brand,
+            -- already selected for free, which matched the live seed lane on
+            -- 22 of its 24 served products (the other 2 differed only in case).
+            SELECT eps.id, eps.destination_url
             FROM external_product_seeds eps
             WHERE eps.attached_product_key = cp.product_key
               AND eps.status = 'active'
