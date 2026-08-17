@@ -127,6 +127,77 @@ describe('the placeholder-seller label stays on the anonymous bucket only', () =
   });
 });
 
+// Review 2026-08-17: every other fixture here carries BOTH `source_kind` and an
+// `ext_` id, so the two live arms alias each other — dropping the source_kind
+// arm was killed by only one unrelated test. This suite isolates each arm so
+// they stop covering for one another.
+describe('each surviving arm is load-bearing on its own', () => {
+  const SLUG_ID = 'ilia-the-spf-and-go-makeup-edit'; // the minted lane's shape: no ext_ prefix
+  const namelessPayload = { title: 'Aurora Glow Serum', price: { amount: 79, currency: 'USD' } };
+
+  test('source_kind ALONE admits an observed seller whose id is a slug', () => {
+    // Only `source_kind` can fire here: merchant is merch_obs_ (the lane has no
+    // such arm) and the id has no ext_ prefix. Deleting the source_kind arm
+    // makes this row read as merchant supply and stops suppressing its
+    // unverified crawl-sourced savings.
+    const offer = buildIdentitySearchOffer(
+      {
+        merchant_id: OBSERVED_SELLER,
+        product_id: SLUG_ID,
+        source_kind: 'external_seed',
+        source_payload: { ...namelessPayload, store_discount_summary: 'Save 20%' },
+      },
+      'grp_slug',
+    );
+    expect(offer.store_discount_summary).toBeUndefined();
+  });
+
+  test('the ext_ id arm ALONE admits a row carrying no source_kind', () => {
+    // Mirror case: no source_kind at all, so only the lane's id-prefix arm can
+    // fire. Deleting the lane delegation makes this row merchant supply.
+    const offer = buildIdentitySearchOffer(
+      {
+        merchant_id: OBSERVED_SELLER,
+        product_id: SEED_PRODUCT_ID,
+        source_payload: { ...namelessPayload, store_discount_summary: 'Save 20%' },
+      },
+      'grp_extid',
+    );
+    expect(offer.store_discount_summary).toBeUndefined();
+  });
+
+  test('CONTROL: the field is real — a connected merchant carries it through', () => {
+    // Without this, every `toBeUndefined()` above would pass on a field the
+    // function never emits. compare_at_price was exactly that mistake.
+    const offer = buildIdentitySearchOffer(
+      {
+        merchant_id: 'merch_live_acme',
+        product_id: '7828421673004',
+        source_kind: 'internal',
+        source_payload: { ...namelessPayload, store_discount_summary: 'Save 20%' },
+      },
+      'grp_control',
+    );
+    expect(offer.store_discount_summary).toBe('Save 20%');
+  });
+
+  test('DISCLOSED RESIDUAL: observed seller + slug id + no source_kind is NOT reached', () => {
+    // Neither arm fires. isSeedRoutedLane has no merch_obs_ arm and a parsed
+    // listing carries no platform/source_system, so this row still reads as
+    // merchant supply. Pinned so the gap is a known fact, not a surprise —
+    // closing it means carrying platform/source_system through parseIdentityRow.
+    const offer = buildIdentitySearchOffer(
+      {
+        merchant_id: OBSERVED_SELLER,
+        product_id: SLUG_ID,
+        source_payload: { ...namelessPayload, store_discount_summary: 'Save 20%' },
+      },
+      'grp_residual',
+    );
+    expect(offer.store_discount_summary).toBe('Save 20%');
+  });
+});
+
 describe('fresh seed variants win over the stored payload for observed sellers', () => {
   const staleVariants = [{ id: 'v_stale', variant_id: 'v_stale', title: '30ml (stale)' }];
   const freshVariants = [{ id: 'v_fresh', variant_id: 'v_fresh', title: '30ml' }];

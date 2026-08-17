@@ -3211,10 +3211,23 @@ function normalizeIdentityRows(rows) {
 //      reached through the loose-object adapter in externalSeedLane).
 //
 // The lane predicate's FIRST arm is the equality against the retired sentinel
-// merchant that used to live here, so this is a strict widening — the legacy
-// bucket keeps every verdict it had — plus the per-brand observed sellers
-// (merch_obs_…) the re-key moved that supply onto, which a bare sentinel
-// equality reads as "not external seed" and silently drops.
+// merchant that used to live here, so this is a strict widening: the legacy
+// bucket keeps every verdict it had.
+//
+// WHAT THE WIDENING ACTUALLY REACHES — measured, because the honest answer is
+// narrower than "the canonical 4-arm lane". `parseIdentityRow` (~569) returns
+// only {source_listing_ref, merchant_id, product_id, source_kind, source_tier,
+// source_payload, merchant_name, variant_axes, is_primary}. The lane adapter
+// reads platform / source_system / product_data — NONE of which a parsed
+// listing carries (its payload key is source_payload). So the lane's platform
+// and source_system arms are structurally unreachable here, and the effective
+// predicate is:
+//     sentinel merchant  OR  source_kind='external_seed'  OR  ext_/ext: id
+// That is real coverage — source_kind is written by this file's own seed
+// writer and survives the re-key — but a per-brand observed seller
+// (merch_obs_…) carrying NEITHER source_kind NOR an ext_ id is NOT reached.
+// isSeedRoutedLane has no merch_obs_ arm. Widening further means carrying
+// platform/source_system through parseIdentityRow, which is its own change.
 function isExternalSeedIdentityRow(row) {
   if (!row || typeof row !== 'object') return false;
   if (asString(row.source_kind).toLowerCase() === 'external_seed') return true;
@@ -3386,8 +3399,10 @@ function buildIdentitySearchOffer(listing, groupId) {
     // OWNERSHIP question buildLegacyExternalSeedLumpPredicate asks, not the
     // supply question: the legacy anonymous bucket has a placeholder
     // catalog_merchants row and genuinely has no seller to name. A per-brand
-    // observed seller (merch_obs_…) DOES have one, so widening this to the seed
-    // lane would overwrite a real seller of record with a generic placeholder —
+    // observed seller (merch_obs_…) DOES have one — this function names it from
+    // the payload's vendor/brand, which the seed writer requires (~5041), not
+    // from catalog_merchants — so widening this to the seed lane would
+    // overwrite a real seller of record with a generic placeholder —
     // the opposite of what the re-key was for. Left as an equality against the
     // retired sentinel seller so it retires with the bucket itself.
     merchantId === EXTERNAL_SEED_MERCHANT_ID ? 'External reference' : '',
