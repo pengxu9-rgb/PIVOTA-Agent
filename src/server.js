@@ -41842,8 +41842,18 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	        // the re-key.
 	        //
 	        // The lane test is an OR, so it is wider than the conjunction it
-	        // replaces; `hasExternalSeedRichPdpContent` bounds it, since only a
-	        // row carrying real seed content can reach the merge at all.
+	        // replaces. What bounds it is the LANE TEST ITSELF, not the content
+	        // check beside it: every newly-admitted row must still carry
+	        // platform='external_seed', a seed source_system, or an ext_/ext: id
+	        // — each of which means the row IS seed-routed. A merchant-synced
+	        // row (platform 'shopify', source_system 'shopify_sync_v1', numeric
+	        // id) matches no arm and cannot reach the merge.
+	        //
+	        // Do NOT read `hasExternalSeedRichPdpContent` as the safety bound:
+	        // its first arm is `product.variants.length > 0`, which almost every
+	        // product satisfies, so it constrains the SELLER of the content, not
+	        // its lane. If the lane test is ever loosened, this merge widens with
+	        // it and nothing downstream will catch that.
 	        const shouldPreserveExternalSeedPdpContent =
 	          isSeedRoutedLane({
 	            merchantId: canonicalProductRef?.merchant_id,

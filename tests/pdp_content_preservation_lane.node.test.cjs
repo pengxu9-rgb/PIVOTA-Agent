@@ -81,3 +81,27 @@ test('the content-preservation gate is wired to the lane, not to the merchant li
     'isSeedRoutedLane must come from pdpRenderability — one definition, not a copy',
   );
 });
+
+test('the LANE test is the bound — the rich-content check is not', () => {
+  // The PR comment originally credited `hasExternalSeedRichPdpContent` with
+  // bounding the widening. It does not: its first arm is
+  // `product.variants.length > 0`, which nearly every product satisfies. The
+  // real bound is that a non-seed row matches NO arm of the lane test. Pinning
+  // it here so a future edit cannot loosen the lane on the belief that the
+  // content check will hold the line.
+  const merchantSynced = {
+    merchantId: 'merch_live_acme',
+    platform: 'shopify',
+    sourceSystem: 'shopify_sync_v1',
+    sourceProductId: '7828421673004',
+  };
+  assert.equal(isSeedRoutedLane(merchantSynced), false);
+  // ...and each seed signal ON ITS OWN is enough to admit the row, which is
+  // what makes the lane test — not the content check — the thing that decides.
+  assert.equal(isSeedRoutedLane({ ...merchantSynced, platform: 'external_seed' }), true);
+  assert.equal(
+    isSeedRoutedLane({ ...merchantSynced, sourceSystem: 'catalog_enrichment_agent_v1' }),
+    true,
+  );
+  assert.equal(isSeedRoutedLane({ ...merchantSynced, sourceProductId: 'ext_abc123' }), true);
+});
