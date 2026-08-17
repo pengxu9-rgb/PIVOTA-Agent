@@ -11258,6 +11258,220 @@ describe('discovery feed service', () => {
     }
   });
 
+  // Regression: a starved corpus never reaches `minimumRowsForServing`, so the
+  // indexed ladder runs in full on EVERY browse request. When it awaited one
+  // statement per (value, tool_scope) that was 6 verticals + 33 categories x 2
+  // scopes = 78 sequential round trips at ~700ms each, and prod browse took
+  // ~56s to return 9 products while the grid timed out at 15s. The ladder must
+  // stay batched: one statement per axis, with the loop's priority order moved
+  // into `array_position`.
+  test('starved generic browse batches the indexed ladder into one statement per axis', async () => {
+    jest.resetModules();
+    const prevDatabaseUrl = process.env.DATABASE_URL;
+    process.env.DATABASE_URL = 'postgres://discovery-ladder-batch-test';
+    const requiredColumns = [
+      { table_name: 'products_cache', column_name: 'id' },
+      { table_name: 'products_cache', column_name: 'merchant_id' },
+      { table_name: 'products_cache', column_name: 'product_data' },
+      { table_name: 'products_cache', column_name: 'expires_at' },
+      { table_name: 'products_cache', column_name: 'cached_at' },
+      { table_name: 'external_product_seeds', column_name: 'id' },
+      { table_name: 'external_product_seeds', column_name: 'external_product_id' },
+      { table_name: 'external_product_seeds', column_name: 'destination_url' },
+      { table_name: 'external_product_seeds', column_name: 'canonical_url' },
+      { table_name: 'external_product_seeds', column_name: 'title' },
+      { table_name: 'external_product_seeds', column_name: 'seed_data' },
+      { table_name: 'external_product_seeds', column_name: 'market' },
+      { table_name: 'external_product_seeds', column_name: 'tool' },
+      { table_name: 'external_product_seeds', column_name: 'status' },
+      { table_name: 'external_product_seeds', column_name: 'attached_product_key' },
+      { table_name: 'external_product_seeds', column_name: 'updated_at' },
+      { table_name: 'external_product_seeds', column_name: 'created_at' },
+    ];
+    const requiredIndexes = [
+      'idx_external_product_seeds_recall_title_trgm',
+      'idx_external_product_seeds_recall_summary_trgm',
+      'idx_external_product_seeds_recall_category_vertical_recency',
+      'idx_external_product_seeds_recall_vertical_recency',
+      'idx_external_product_seeds_recall_ingredient_tokens_trgm',
+      'idx_external_product_seeds_recall_alias_tokens_trgm',
+    ].map((indexname) => ({ tablename: 'external_product_seeds', indexname }));
+
+    const makeSeedRow = (id, vertical = 'skincare', category = 'Skincare') => ({
+      id,
+      external_product_id: `seed_${id}`,
+      destination_url: `https://example.com/products/${id}`,
+      canonical_url: `https://example.com/products/${id}`,
+      title: `${category} Product ${id}`,
+      tool: 'creator_agents',
+      seed_data: {
+        title: `${category} Product ${id}`,
+        snapshot: {
+          title: `${category} Product ${id}`,
+          brand: 'Alpha',
+          category,
+          product_type: category,
+          description: `${category} ${id}`,
+          destination_url: `https://example.com/products/${id}`,
+          canonical_url: `https://example.com/products/${id}`,
+          image_url: `https://example.com/images/${id}.jpg`,
+          price_amount: 24,
+          price_currency: 'USD',
+          availability: 'in_stock',
+        },
+        derived: {
+          recall: {
+            retrieval_title: `${category} Product ${id}`,
+            retrieval_summary: `${category} ${id}`,
+            brand: 'Alpha',
+            category,
+            vertical,
+          },
+        },
+      },
+    });
+
+    // The ladder is the only shape that orders by `array_position` over a value
+    // array; the curated head still binds a single value per statement.
+    const isLadderSql = (sql) => sql.includes('array_position($3::text[]');
+    const ladderCalls = [];
+    let curatedHeadId = 500;
+    const dbQueryMock = jest.fn((sql, params) => {
+      const text = String(sql || '');
+      if (text.includes('information_schema.columns')) {
+        return Promise.resolve({ rows: requiredColumns });
+      }
+      if (text.includes('pg_indexes')) {
+        return Promise.resolve({ rows: requiredIndexes });
+      }
+      if (isLadderSql(text)) {
+        ladderCalls.push({ sql: text, params });
+        // Rows must actually flow through the batched path, in the order SQL
+        // would return them, or the JS re-assembly that consumes that order is
+        // unconstrained — reversing the group loop would pass on an empty mock.
+        if (String(params?.[2]?.[0] || '') === 'skincare') {
+          curatedHeadId += 1;
+          const skincareRow = makeSeedRow(curatedHeadId, 'skincare', 'Skincare');
+          curatedHeadId += 1;
+          const makeupRow = makeSeedRow(curatedHeadId, 'makeup', 'Makeup');
+          return Promise.resolve({
+            rows: [
+              { ...skincareRow, ladder_match_value: 'skincare', ladder_tool_scope: 'creator_agents' },
+              { ...makeupRow, ladder_match_value: 'makeup', ladder_tool_scope: 'creator_agents' },
+            ],
+          });
+        }
+        return Promise.resolve({ rows: [] });
+      }
+      if (text.includes("'generic_browse_curated_head'::text AS match_stage")) {
+        // Starved: one row per rail, far below `minimumRowsForServing`.
+        curatedHeadId += 1;
+        return Promise.resolve({ rows: [makeSeedRow(curatedHeadId)] });
+      }
+      return Promise.resolve({ rows: [] });
+    });
+
+    jest.doMock('../src/db', () => ({
+      query: dbQueryMock,
+    }));
+
+    try {
+      const { _internals: freshInternals } = require('../src/services/discoveryFeed');
+      freshInternals.resetDiscoveryDependencyProbeCache();
+      const request = freshInternals.normalizeDiscoveryRequest({
+        surface: 'browse_products',
+        page: 1,
+        limit: 60,
+        context: {
+          auth_state: 'anonymous',
+          locale: 'en-US',
+          recent_views: [],
+          recent_queries: [],
+        },
+      });
+
+      const result = await freshInternals.fetchBeautyInterestExternalSeedFastpathCandidates({
+        request,
+        profile: { hasInterestSignals: false },
+        queries: ['niacinamide serum'],
+        limit: 120,
+        providerName: 'external_seeds',
+        productProvider: 'beauty_interest_mainline',
+        stepName: 'external_seed_pool_fastpath',
+        label: 'external_seed_pool_fastpath',
+      });
+
+      // One statement for the vertical axis, one for the category axis.
+      expect(ladderCalls).toHaveLength(2);
+
+      const [verticalLadder, categoryLadder] = ladderCalls;
+      // Each batches every value of its axis into a single bind, rather than
+      // issuing one statement per value.
+      expect(verticalLadder.sql).toContain('= ANY($3::text[])');
+      expect(verticalLadder.params[2]).toEqual(
+        expect.arrayContaining(['skincare', 'makeup', 'haircare', 'fragrance']),
+      );
+      expect(categoryLadder.params[2].length).toBeGreaterThan(20);
+      // Tool scopes collapse into one bind too, and priority order is preserved
+      // in SQL rather than by statement sequencing.
+      expect(categoryLadder.sql).toContain('tool = ANY($2::text[])');
+      expect(categoryLadder.sql).toContain('array_position($2::text[], tool) ASC');
+
+      // The sequential ladder was value-major and tool-minor: it walked every
+      // tool scope for value[0] before touching value[1]. The batched form only
+      // reproduces that if the VALUE array is the leading sort key. Swapping the
+      // two array_position clauses silently reorders the whole result.
+      for (const ladder of ladderCalls) {
+        const valueRank = ladder.sql.indexOf('array_position($3::text[]');
+        const toolRank = ladder.sql.indexOf('array_position($2::text[], tool)');
+        expect(valueRank).toBeGreaterThan(-1);
+        expect(toolRank).toBeGreaterThan(-1);
+        expect(valueRank).toBeLessThan(toolRank);
+      }
+
+      // The per-iteration LIMIT was `safeLimit - rows.length`, so the batched
+      // statement must also ask only for the REMAINING capacity. `LIMIT
+      // safeLimit` would over-fetch and, once rows are already collected, let a
+      // later axis overrun the window the caller sized.
+      const curatedHeadRows = 6; // one row per vertical rail, from the mock above
+      const verticalLimit = verticalLadder.params[verticalLadder.params.length - 1];
+      expect(typeof verticalLimit).toBe('number');
+      expect(verticalLimit).toBe(120 - curatedHeadRows);
+
+      // Rows already collected are excluded in SQL as well as in JS. Dropping the
+      // exclusion still dedupes (seenRowKeys keys on id first) but makes every
+      // later statement re-read and discard rows it already has.
+      expect(verticalLadder.sql).toContain('id <> ALL(');
+      const seenIds = verticalLadder.params.find(
+        (param) => Array.isArray(param) && param.every((value) => /^\d+$/.test(String(value))),
+      );
+      expect(seenIds).toBeDefined();
+      expect(seenIds.length).toBe(curatedHeadRows);
+
+      // The batched statement returns skincare before makeup, so the stage
+      // metrics — which are appended in group-iteration order — must preserve
+      // that. Reversing the group loop destroys the value-major ordering the
+      // SQL assertions above spend eight lines pinning, and an empty-row mock
+      // would never notice.
+      // Scoped to the ladder's own tool scope: the curated head above also
+      // reports on the `vertical` axis, but under the primary scope ('*').
+      const ladderStages = result.recallSummary[0].external_seed_stage_counts.filter(
+        (stage) =>
+          stage.match_axis === 'vertical' &&
+          stage.raw_rows > 0 &&
+          stage.tool_scope === 'creator_agents',
+      );
+      expect(ladderStages.map((stage) => stage.match_value)).toEqual(['skincare', 'makeup']);
+
+      // The mutant this kills: reverting to a per-(value, tool_scope) loop puts
+      // this well past 70 even on a corpus this small.
+      expect(dbQueryMock.mock.calls.length).toBeLessThanOrEqual(12);
+    } finally {
+      if (prevDatabaseUrl === undefined) delete process.env.DATABASE_URL;
+      else process.env.DATABASE_URL = prevDatabaseUrl;
+    }
+  });
+
   test('anonymous browse first page prefetches beyond a single page for generic runtime browsing', async () => {
     const prevDatabaseUrl = process.env.DATABASE_URL;
     delete process.env.DATABASE_URL;

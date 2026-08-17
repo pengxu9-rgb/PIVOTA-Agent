@@ -169,7 +169,13 @@ const DISCOVERY_GENERIC_BROWSE_EXTERNAL_SEED_VERTICAL_MIX = Object.freeze([
   { value: 'bodycare', share: 0.06 },
   { value: 'beauty_tools', share: 0.03 },
 ]);
+// buildProviderBreakdown maps over this list, so a provider missing from it is
+// dropped from the breakdown entirely — which also drops it from the
+// "successful providers" count that finalizeProviderResult requires, turning a
+// healthy recall into DiscoveryCatalogUnavailableError. Register every provider
+// that can serve a request.
 const DISCOVERY_PROVIDER_ORDER = [
+  'canonical_sig',
   'beauty_interest_mainline',
   'products_search',
   'internal_catalog',
@@ -5907,71 +5913,104 @@ async function fetchGenericBrowseExternalSeedServingCandidates({
       if (rows.length >= safeLimit) break;
     }
   };
-  const runIndexedStage = async ({ axis, value, sqlField, score, maxRows = null }) => {
-    const normalizedValue = String(value || '').trim().toLowerCase();
-    if (!normalizedValue || rows.length >= safeLimit) return;
-    const numericMaxRows = Number(maxRows);
-    const stageQuota =
-      Number.isFinite(numericMaxRows) && numericMaxRows > 0
-        ? Math.max(1, Math.floor(numericMaxRows))
-        : safeLimit;
-    const stageTargetRows = Math.min(safeLimit, rows.length + stageQuota);
-    for (const toolScope of toolScopeValues.length > 0 ? toolScopeValues : ['*', 'creator_agents']) {
-      if (rows.length >= stageTargetRows) break;
-      const stageParams = [market, toolScope, normalizedValue];
-      const resolvedCap = Math.max(1, stageTargetRows - rows.length);
-      let sql = `
-        SELECT
-          ${selectSql},
-          ${Number(score || 0)}::int AS match_score,
-          '${stage}'::text AS match_stage
-        FROM external_product_seeds
-        WHERE status = 'active'
-          AND ${buildDiscoveryAttachedSeedServingExistsSql('external_product_seeds')}
-          AND market = $1
-          AND tool = $2
-          AND coalesce(lower(seed_data#>>'{suppression_flags,exclude_from_recall}'), 'false') <> 'true'
-          AND coalesce(lower(seed_data#>>'{derived,recall,suppression_flags,exclude_from_recall}'), 'false') <> 'true'
-          AND ${sqlField} = $3
-      `;
-      if (seenSqlIds.size > 0) {
-        stageParams.push(Array.from(seenSqlIds));
-        sql += `
-          AND id <> ALL($${stageParams.length}::bigint[])
-        `;
-      }
-      stageParams.push(resolvedCap);
+  // One query per axis, not one per (value × tool_scope).
+  //
+  // 2026-08-17: this ladder used to await a separate statement for every
+  // (value, tool_scope) pair — 6 verticals + 33 categories against 2 tool
+  // scopes. Each statement costs ~700ms (the serving-gate EXISTS join plus a
+  // JSON category extraction, neither of which is indexable here), and the
+  // ladder only advances while `rows.length < minimumRowsForServing`. On the
+  // real corpus that floor is never reached, so EVERY browse request ran the
+  // full 84-statement sweep and took ~56s to return 9 products. The public
+  // /products grid aborts at 15s, so the whole page rendered "No products
+  // found" while the feed was in fact healthy.
+  //
+  // The batched form issues the identical predicate once with `= ANY(...)` and
+  // reproduces the loop's priority order in SQL: `array_position` over the
+  // value array is the outer loop, over the tool-scope array the inner one, and
+  // the per-row tiebreak is unchanged. The old inner LIMIT was always
+  // `safeLimit - rows.length` (these callers pass no `maxRows`, so the stage
+  // quota degenerated to `safeLimit`), which is exactly the batched LIMIT.
+  const runIndexedLadder = async ({ axis, values, sqlField, score }) => {
+    const normalizedValues = uniqStrings(
+      (Array.isArray(values) ? values : [])
+        .map((value) => String(value || '').trim().toLowerCase())
+        .filter(Boolean),
+      64,
+    );
+    if (normalizedValues.length <= 0 || rows.length >= safeLimit) return;
+    const scopedTools = toolScopeValues.length > 0 ? toolScopeValues : ['*', 'creator_agents'];
+    const stageParams = [market, scopedTools, normalizedValues];
+    let sql = `
+      SELECT
+        ${selectSql},
+        ${Number(score || 0)}::int AS match_score,
+        '${stage}'::text AS match_stage,
+        ${sqlField} AS ladder_match_value,
+        tool AS ladder_tool_scope
+      FROM external_product_seeds
+      WHERE status = 'active'
+        AND ${buildDiscoveryAttachedSeedServingExistsSql('external_product_seeds')}
+        AND market = $1
+        AND tool = ANY($2::text[])
+        AND coalesce(lower(seed_data#>>'{suppression_flags,exclude_from_recall}'), 'false') <> 'true'
+        AND coalesce(lower(seed_data#>>'{derived,recall,suppression_flags,exclude_from_recall}'), 'false') <> 'true'
+        AND ${sqlField} = ANY($3::text[])
+    `;
+    if (seenSqlIds.size > 0) {
+      stageParams.push(Array.from(seenSqlIds));
       sql += `
-        ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST, id DESC
-        LIMIT $${stageParams.length}
+        AND id <> ALL($${stageParams.length}::bigint[])
       `;
-      const res = await query(sql, stageParams);
-      appendRows(Array.isArray(res?.rows) ? res.rows : [], axis, normalizedValue, toolScope, stageQuota);
+    }
+    stageParams.push(Math.max(1, safeLimit - rows.length));
+    sql += `
+      ORDER BY
+        array_position($3::text[], ${sqlField}) ASC,
+        array_position($2::text[], tool) ASC,
+        updated_at DESC NULLS LAST,
+        created_at DESC NULLS LAST,
+        id DESC
+      LIMIT $${stageParams.length}
+    `;
+    const res = await query(sql, stageParams);
+    const fetchedRows = Array.isArray(res?.rows) ? res.rows : [];
+
+    // Preserve the per-(value, tool_scope) stage metrics the sequential ladder
+    // emitted. Groups the batch returned nothing for are simply absent rather
+    // than reported as an attempted zero-row stage.
+    const groups = new Map();
+    for (const row of fetchedRows) {
+      const groupValue = String(row?.ladder_match_value || '').trim().toLowerCase();
+      const groupToolScope = String(row?.ladder_tool_scope || '').trim() || '*';
+      const groupKey = `${groupValue} ${groupToolScope}`;
+      if (!groups.has(groupKey)) {
+        groups.set(groupKey, { value: groupValue, toolScope: groupToolScope, rows: [] });
+      }
+      groups.get(groupKey).rows.push(row);
+    }
+    for (const group of groups.values()) {
+      if (rows.length >= safeLimit) break;
+      appendRows(group.rows, axis, group.value, group.toolScope, safeLimit);
     }
   };
 
   await runBalancedVerticalMixStage();
   if (rows.length < minimumRowsForServing) {
-    for (const vertical of DISCOVERY_GENERIC_BROWSE_EXTERNAL_SEED_VERTICALS) {
-      await runIndexedStage({
-        axis: 'vertical',
-        value: vertical,
-        sqlField: EXTERNAL_SEED_RECALL_SQL_FIELDS.vertical,
-        score: 58,
-      });
-      if (rows.length >= safeLimit) break;
-    }
+    await runIndexedLadder({
+      axis: 'vertical',
+      values: DISCOVERY_GENERIC_BROWSE_EXTERNAL_SEED_VERTICALS,
+      sqlField: EXTERNAL_SEED_RECALL_SQL_FIELDS.vertical,
+      score: 58,
+    });
   }
   if (rows.length < minimumRowsForServing) {
-    for (const category of DISCOVERY_GENERIC_BROWSE_EXTERNAL_SEED_CATEGORIES) {
-      await runIndexedStage({
-        axis: 'category',
-        value: category,
-        sqlField: DISCOVERY_EXTERNAL_SEED_INDEXED_RECALL_CATEGORY_SQL,
-        score: 52,
-      });
-      if (rows.length >= safeLimit) break;
-    }
+    await runIndexedLadder({
+      axis: 'category',
+      values: DISCOVERY_GENERIC_BROWSE_EXTERNAL_SEED_CATEGORIES,
+      sqlField: DISCOVERY_EXTERNAL_SEED_INDEXED_RECALL_CATEGORY_SQL,
+      score: 52,
+    });
   }
 
   const products = annotateProviderProducts(
@@ -7198,6 +7237,7 @@ async function loadCatalogCandidates({
   };
 
   const getProviderLabel = (provider) => {
+    if (provider === 'canonical_sig') return 'canonical_sig_browse';
     if (provider === 'beauty_interest_mainline') return 'beauty_interest_mainline';
     if (provider === 'products_search') return 'products_search_pool';
     if (provider === 'internal_catalog') return 'internal_catalog_pool';
@@ -7446,6 +7486,117 @@ async function loadCatalogCandidates({
 
   const shouldUseNoSignalExternalSeedFastpath = isGenericNoSignalDiscoveryRequest(request, profile);
   if (shouldUseNoSignalExternalSeedFastpath) {
+    // Main route: the canonical sig index. The external-seed lane below is the
+    // fallback and is skipped entirely when the index already covers the page,
+    // so a healthy catalog never pays for the seed ladder.
+    if (browseUsesCanonicalSig()) {
+      const canonicalSigStartedAt = Date.now();
+      // null == index not readable yet (no DATABASE_URL / migrations pending).
+      // A thrown error is a REAL failure and is recorded as one, so it can never
+      // masquerade as a successful provider returning zero rows.
+      let canonicalSigProducts = null;
+      let canonicalSigFailed = false;
+      try {
+        canonicalSigProducts = await fetchCanonicalSigBrowseCandidates({ limit: safeLimit });
+      } catch (err) {
+        canonicalSigFailed = true;
+        providerResults.push(buildProviderErrorResult('canonical_sig', err));
+      }
+
+      if (!canonicalSigFailed && Array.isArray(canonicalSigProducts)) {
+        // Recorded even at zero recall: a main route that was consulted and came
+        // back empty is a different operational fact from one that never ran,
+        // and the breakdown is how the cutover is watched.
+        const annotated = annotateProviderProducts('canonical_sig', canonicalSigProducts);
+        providerResults.push({
+          provider: 'canonical_sig',
+          products: annotated,
+          recallSummary: [
+            buildDiscoveryProviderStepSummary({
+              provider: 'canonical_sig',
+              label: getProviderLabel('canonical_sig'),
+              query: 'canonical_sig_browse',
+              limit: safeLimit,
+              returned: annotated.length,
+              status: 200,
+              latencyMs: Date.now() - canonicalSigStartedAt,
+            }),
+          ],
+        });
+        if (annotated.length > 0) mergeProducts(annotated);
+      }
+
+      // Volume AND composition.
+      //
+      // `enoughThreshold` is the right VOLUME bar — measured, it is 48 at
+      // browse p1/l24 where the beauty mainline's `primaryPathEnoughThreshold`
+      // is 24, so copying that gate here (tried, reverted) halved it. But volume
+      // alone is domain-BLIND, and this reader selects everything public in
+      // agent_pdp_view with no domain filter, so `mergedProducts.length` happily
+      // counts rows the cold-start curator is about to bury:
+      // COLD_START_DEFERRED_DOMAINS is {pet, sleepwear, apparel} plus
+      // beautyBucket 'tools', which scoreColdStartCandidateQuality penalises by
+      // -0.85 to -1.7. 48 sig rows of which 40 are apparel would pass a count
+      // gate and render a page of deferred rows.
+      //
+      // This lane skips `external_seeds`, which the seed lane's own gate never
+      // does, so it has to clear the bars the seed lane itself would need to
+      // stop — on BOTH surfaces, since neither subsumes the other:
+      //   - countNoSignalMinimumFastpathCandidates is stricter on browse
+      //     (excludes apparel + tools; 24 at p1/l24, 120 at p5/l24)
+      //   - shouldSkipNoSignalProviderExpansion is stricter on home_hot_deals
+      //     (6 strictly-beauty-non-tools against the coverage arm's 3), where
+      //     external_seeds IS the beauty supply for cold start
+      //
+      // Deliberately NOT a filtered count at the same value: at p1/l60 and
+      // p5/l24 `enoughThreshold === safeLimit`, so a filtered-only bar would
+      // demand a 100%-clean fetch and the lane could never fire.
+      const canonicalSigCoversPage =
+        mergedProducts.length >= enoughThreshold &&
+        countNoSignalMinimumFastpathCandidates(mergedProducts, { request, profile }) >=
+          getNoSignalMinimumFastpathCoverageThreshold(request) &&
+        shouldSkipNoSignalProviderExpansion(mergedProducts, { request, profile });
+
+      if (canonicalSigCoversPage) {
+        candidateSource = 'canonical_sig';
+        primaryPathUsed = 'canonical_sig';
+        providerResults.push(
+          buildSkippedProviderResult('products_search', {
+            label: getProviderLabel('products_search'),
+            query: providerQueries.join(' | '),
+            limit: safeLimit,
+            skipReason: 'canonical_sig_sufficient',
+          }),
+        );
+        providerResults.push(
+          buildSkippedProviderResult('internal_catalog', {
+            label: getProviderLabel('internal_catalog'),
+            query: providerQueries.join(' | '),
+            limit: internalProviderLimit,
+            skipReason: 'canonical_sig_sufficient',
+          }),
+        );
+        providerResults.push(
+          buildSkippedProviderResult('external_seeds', {
+            label: getProviderLabel('external_seeds'),
+            query: externalProviderQueries.join(' | '),
+            limit: externalProviderLimit,
+            skipReason: 'canonical_sig_primary_used',
+          }),
+        );
+        return finalizeProviderResult();
+      }
+
+      fallbackTriggered = true;
+      fallbackReason = canonicalSigFailed
+        ? 'canonical_sig_query_failed'
+        : !Array.isArray(canonicalSigProducts)
+          ? 'canonical_sig_unavailable'
+          : canonicalSigProducts.length > 0
+            ? 'canonical_sig_insufficient'
+            : 'canonical_sig_zero_recall';
+    }
+
     // Opt-in: run internal_catalog in parallel with the external_seed fastpath so
     // real-merchant products (status=approved, psp_connected, fresh products_cache)
     // surface on anonymous Browse. Default off — flip per-env after staging
@@ -8834,6 +8985,63 @@ function buildDiscoveryAttachedSeedServingExistsSql(seedAlias = 'external_produc
   `;
 }
 
+// Product identity first, merchant identity second.
+//
+// The row is keyed by `pivota_signature_id` — the canonical product — and the
+// merchant is resolved off it: a connected first-party catalog row when one
+// exists, otherwise the external-seed mirror. Shared by the brand-page reader
+// and the generic browse reader so both spell identity the same way.
+function mapCanonicalIndexRowToProduct(row) {
+  const productId = String(row.pivota_signature_id || '').trim();
+  if (!productId) return null;
+  const offers = Array.isArray(row.offers) ? row.offers : null;
+  const imageUrls = Array.isArray(row.image_urls) ? row.image_urls : [];
+  const priceMin = Number(row.price_min);
+  // Prefer the first-party catalog row when one exists. The legacy mapper
+  // hardcoded merchant_id='external_seed', which works for Pivota-seeded
+  // brands like Fenty but mangles every first-party brand (MOYU, GR,
+  // PawStyle, etc.) — they ship without the real merchant/platform that
+  // downstream hydration needs.
+  const firstPartyMerchantId = row.first_party_merchant_id
+    ? String(row.first_party_merchant_id)
+    : null;
+  const isFirstParty = !!firstPartyMerchantId;
+  const merchantId = isFirstParty ? firstPartyMerchantId : 'external_seed';
+  const platform = isFirstParty
+    ? (row.first_party_platform ? String(row.first_party_platform) : 'shopify')
+    : 'external_seed';
+  const sourceProductId = isFirstParty
+    ? (row.first_party_source_product_id != null ? String(row.first_party_source_product_id) : null)
+    : (row.external_product_id != null ? String(row.external_product_id) : null);
+  const productKey = isFirstParty
+    ? (row.first_party_product_key ? String(row.first_party_product_key) : null)
+    : (row.external_product_key ? String(row.external_product_key) : null);
+  return {
+    id: productId,
+    product_id: productId,
+    merchant_id: merchantId,
+    platform,
+    pivota_signature_id: productId,
+    ...(sourceProductId ? { source_product_id: sourceProductId } : {}),
+    ...(productKey ? (isFirstParty ? { product_key: productKey } : { external_product_key: productKey }) : {}),
+    ...(!isFirstParty && row.external_product_id ? { external_product_id: String(row.external_product_id) } : {}),
+    ...(row.content_key ? { content_key: String(row.content_key) } : {}),
+    ...(row.canonical_url ? { pivota_canonical_url: String(row.canonical_url) } : {}),
+    title: String(row.title || '').trim() || productId,
+    ...(row.description ? { description: String(row.description) } : {}),
+    ...(row.brand ? { brand: String(row.brand), vendor: String(row.brand) } : {}),
+    ...(row.image_url ? { image_url: String(row.image_url) } : {}),
+    ...(imageUrls.length ? { image_urls: imageUrls, images: imageUrls } : {}),
+    price: Number.isFinite(priceMin) ? priceMin : null,
+    currency: String(row.currency || 'USD').trim() || 'USD',
+    ...(offers ? { offers, offers_count: Number(row.offer_count) || offers.length } : {}),
+    ...(Array.isArray(row.category_path) && row.category_path.length
+      ? { category_path: row.category_path, category: row.category_path[row.category_path.length - 1] }
+      : {}),
+    source: 'commerce_index',
+  };
+}
+
 async function fetchBrandScopedCanonicalCandidates({ brandAliases = [], limit = 120 } = {}) {
   if (!process.env.DATABASE_URL) return [];
   const normalizedAliases = uniqStrings(
@@ -8928,58 +9136,7 @@ async function fetchBrandScopedCanonicalCandidates({ brandAliases = [], limit = 
       `,
       [normalizedAliases, compactAliases, safeLimit],
     );
-    return (res.rows || [])
-      .map((row) => {
-        const productId = String(row.pivota_signature_id || '').trim();
-        if (!productId) return null;
-        const offers = Array.isArray(row.offers) ? row.offers : null;
-        const imageUrls = Array.isArray(row.image_urls) ? row.image_urls : [];
-        const priceMin = Number(row.price_min);
-        // Prefer the first-party catalog row when one exists. The legacy mapper
-        // hardcoded merchant_id='external_seed', which works for Pivota-seeded
-        // brands like Fenty but mangles every first-party brand (MOYU, GR,
-        // PawStyle, etc.) — they ship without the real merchant/platform that
-        // downstream hydration needs.
-        const firstPartyMerchantId = row.first_party_merchant_id
-          ? String(row.first_party_merchant_id)
-          : null;
-        const isFirstParty = !!firstPartyMerchantId;
-        const merchantId = isFirstParty ? firstPartyMerchantId : 'external_seed';
-        const platform = isFirstParty
-          ? (row.first_party_platform ? String(row.first_party_platform) : 'shopify')
-          : 'external_seed';
-        const sourceProductId = isFirstParty
-          ? (row.first_party_source_product_id != null ? String(row.first_party_source_product_id) : null)
-          : (row.external_product_id != null ? String(row.external_product_id) : null);
-        const productKey = isFirstParty
-          ? (row.first_party_product_key ? String(row.first_party_product_key) : null)
-          : (row.external_product_key ? String(row.external_product_key) : null);
-        return {
-          id: productId,
-          product_id: productId,
-          merchant_id: merchantId,
-          platform,
-          pivota_signature_id: productId,
-          ...(sourceProductId ? { source_product_id: sourceProductId } : {}),
-          ...(productKey ? (isFirstParty ? { product_key: productKey } : { external_product_key: productKey }) : {}),
-          ...(!isFirstParty && row.external_product_id ? { external_product_id: String(row.external_product_id) } : {}),
-          ...(row.content_key ? { content_key: String(row.content_key) } : {}),
-          ...(row.canonical_url ? { pivota_canonical_url: String(row.canonical_url) } : {}),
-          title: String(row.title || '').trim() || productId,
-          ...(row.description ? { description: String(row.description) } : {}),
-          ...(row.brand ? { brand: String(row.brand), vendor: String(row.brand) } : {}),
-          ...(row.image_url ? { image_url: String(row.image_url) } : {}),
-          ...(imageUrls.length ? { image_urls: imageUrls, images: imageUrls } : {}),
-          price: Number.isFinite(priceMin) ? priceMin : null,
-          currency: String(row.currency || 'USD').trim() || 'USD',
-          ...(offers ? { offers, offers_count: Number(row.offer_count) || offers.length } : {}),
-          ...(Array.isArray(row.category_path) && row.category_path.length
-            ? { category_path: row.category_path, category: row.category_path[row.category_path.length - 1] }
-            : {}),
-          source: 'commerce_index',
-        };
-      })
-      .filter(Boolean);
+    return (res.rows || []).map(mapCanonicalIndexRowToProduct).filter(Boolean);
   } catch (err) {
     const message = String(err?.message || err || '');
     if (
@@ -8999,6 +9156,134 @@ async function fetchBrandScopedCanonicalCandidates({ brandAliases = [], limit = 
       'brand scoped commerce-index query failed',
     );
     return [];
+  }
+}
+
+// Generic browse recalled from the canonical sig index rather than the legacy
+// external-seed lane.
+//
+// The seed lane recalls by facets the servable corpus does not carry: measured
+// 2026-08-17, the two cohorts that actually clear the serving gate
+// (external_brand_crawl 1,135 rows, catalog_enrichment_agent_v1 1,637) have ZERO
+// `derived.recall.category` and ZERO `derived.recall.vertical` between them, so
+// the curated head and the indexed ladder can never match them and browse fell
+// through to a 78-statement sweep that returned 9 products. The canonical index
+// is keyed the way the catalog is now keyed — one row per `pivota_signature_id`,
+// merchant resolved off the identity — and 2,467 of its 2,471 servable rows
+// carry a category.
+//
+// Default off. Flip DISCOVERY_BROWSE_USES_CANONICAL_SIG per environment once the
+// corpus backfill has run, so the cutover is observable rather than implicit.
+function browseUsesCanonicalSig() {
+  const raw = String(process.env.DISCOVERY_BROWSE_USES_CANONICAL_SIG || '')
+    .trim()
+    .toLowerCase();
+  return raw === '1' || raw === 'true' || raw === 'yes' || raw === 'on';
+}
+
+// Returns `null` when the index is unreadable in a way the caller should treat
+// as "not available yet" (no DATABASE_URL, migrations not applied) and an array
+// otherwise. A REAL failure — timeout, dropped connection, schema drift — is
+// rethrown, never flattened to an empty array.
+//
+// Flattening every error to [] is what made an outage indistinguishable from an
+// empty catalog: the caller then recorded the provider as a 200 with zero rows,
+// which counts as a successful provider, which suppresses
+// DiscoveryCatalogUnavailableError and lets a dead database render as a healthy
+// empty page — and makes the discovery smoke gate pass on it.
+//
+// The request carries no category scope in practice: the only call site is
+// gated on isGenericNoSignalDiscoveryRequest, which is false whenever a category
+// scope is set. No category branch is built here for that reason.
+async function fetchCanonicalSigBrowseCandidates({ limit = 120 } = {}) {
+  if (!process.env.DATABASE_URL) return null;
+  const safeLimit = clampInt(limit, Math.max(limit, 120), 24, 400);
+  const params = [safeLimit];
+
+  try {
+    const res = await query(
+      `
+        SELECT
+          apv.content_key,
+          apv.pivota_signature_id,
+          first_party.merchant_id AS first_party_merchant_id,
+          first_party.platform AS first_party_platform,
+          first_party.source_product_id AS first_party_source_product_id,
+          first_party.product_key AS first_party_product_key,
+          ext_seed.source_product_id AS external_product_id,
+          ext_seed.product_key AS external_product_key,
+          apv.brand,
+          apv.title,
+          apv.description,
+          apv.image_url,
+          apv.image_urls,
+          apv.currency,
+          apv.price_min,
+          apv.price_max,
+          apv.offer_count,
+          apv.offers,
+          apv.category_path
+        FROM agent_pdp_view apv
+        LEFT JOIN LATERAL (
+          SELECT cp.merchant_id, cp.platform, cp.source_product_id, cp.product_key
+          FROM catalog_products cp
+          WHERE cp.content_key = apv.content_key
+            AND cp.platform <> 'external_seed'
+            AND cp.sync_status = 'live'
+            AND cp.suppression_reason IS NULL
+          ORDER BY cp.updated_at DESC NULLS LAST
+          LIMIT 1
+        ) first_party ON TRUE
+        LEFT JOIN LATERAL (
+          SELECT cp.source_product_id, cp.product_key
+          FROM catalog_products cp
+          WHERE cp.content_key = apv.content_key
+            -- ADR-009: this leg exists to keep the row EXTERNAL identity
+            -- (external_product_id / external_product_key) so the redirect path
+            -- still resolves. The platform check below is already a complete leg
+            -- of the canonical seed-lane predicate, so an id-prefix filter on top
+            -- can only narrow it. The brand reader LIKE ext_% matched the live
+            -- ext: prefix only because the unescaped underscore acted as a
+            -- wildcard; spelling it as a literal underscore silently dropped
+            -- every ext: row. Dropped entirely rather than re-spelled.
+            AND cp.platform = 'external_seed'
+            AND cp.suppression_reason IS NULL
+            AND cp.sync_status = 'live'
+          ORDER BY cp.updated_at DESC NULLS LAST
+          LIMIT 1
+        ) ext_seed ON TRUE
+        WHERE apv.pivota_signature_id IS NOT NULL
+          AND EXISTS (
+            SELECT 1
+            FROM catalog_products cp_trust
+            JOIN catalog_row_trust crt
+              ON crt.subject_type = 'product'
+             AND crt.subject_key = cp_trust.product_key
+            WHERE cp_trust.content_key = apv.content_key
+              AND crt.serving_decision = 'public'
+          )
+        -- pivota_signature_id makes refreshed_at TIES deterministic. It does not
+        -- make paging stable: browse re-runs this query with a larger LIMIT and
+        -- slices rather than keyset-paging, so a refreshed_at bump between page
+        -- requests still reorders the prefix. Same exposure as the seed lane.
+        ORDER BY apv.refreshed_at DESC NULLS LAST, apv.pivota_signature_id ASC
+        LIMIT $1
+      `,
+      params,
+    );
+    return (res.rows || []).map(mapCanonicalIndexRowToProduct).filter(Boolean);
+  } catch (err) {
+    const message = String(err?.message || err || '');
+    if (
+      err?.code === 'NO_DATABASE' ||
+      (message.includes('agent_pdp_view') && message.includes('does not exist')) ||
+      (message.includes('catalog_row_trust') && message.includes('does not exist'))
+    ) {
+      // Migrations not applied yet — genuinely "no index to read", fail open.
+      return null;
+    }
+    // Everything else is a real failure and must stay one.
+    throw err;
   }
 }
 
@@ -11590,6 +11875,11 @@ module.exports = {
     applyIdentityGraphDiscoveryDedupe,
     resolveDiscoveryCandidateLimit,
     buildStableBrowseCatalogCountQuery,
+    browseUsesCanonicalSig,
+    fetchCanonicalSigBrowseCandidates,
+    mapCanonicalIndexRowToProduct,
+    getRecallEnoughThreshold,
+    getPrimaryPathEnoughThreshold,
     buildDiscoveryCursor,
     buildDiscoveryCursorContextSignature,
     countStableBrowseCatalogTotal,
