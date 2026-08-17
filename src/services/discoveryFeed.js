@@ -2032,22 +2032,6 @@ function buildStableBrowseCatalogCountQuery(request, { includeIdentityJoin = tru
     maxTokens: 8,
   });
 
-  // Project ONLY the columns a filter below actually reads.
-  //
-  // This is a COUNT. Its output is one integer, so any column computed in the
-  // source CTEs that no WHERE clause consumes is pure wasted work — and the
-  // waste is not small. `search_text` is lower(concat_ws(...)) over ~15
-  // seed_data JSON paths per row, which forces a full JSONB detoast of every
-  // qualifying seed. That cost is linear in the servable corpus: measured at
-  // 1.1s when 49 seeds cleared the serving gate and 8.9s once 3,681 did, on
-  // exactly the same plan. Generic browse — the only request shape that runs
-  // this count at all — has no brand pattern, no query text and no category
-  // scope, so it read NONE of the three. Skipping them: 8.9s -> 1.0s, same
-  // total. The columns stay in the CTE shape (as constants) so the filter
-  // clauses that DO reference them under other scopes are unchanged.
-  const needsSearchText = brandPatterns.length > 0 || Boolean(rawQueryText);
-  const needsBrandCompact = brandCompacts.length > 0;
-  const needsCategoryText = normalizedCategories.length > 0;
   const filteredClauses = ['TRUE'];
 
   if (brandCompacts.length > 0 || brandPatterns.length > 0) {
@@ -2082,6 +2066,33 @@ function buildStableBrowseCatalogCountQuery(request, { includeIdentityJoin = tru
     }
     filteredClauses.push(`(${queryClauses.join(' OR ')})`);
   }
+
+  // Project ONLY the columns a filter clause actually reads.
+  //
+  // This is a COUNT. Its output is one integer, so any column computed in the
+  // source CTEs that no WHERE clause consumes is pure wasted work — and the
+  // waste is not small. `search_text` is lower(concat_ws(...)) over ~15
+  // seed_data JSON paths per row, which forces a full JSONB detoast of every
+  // qualifying seed. That cost is linear in the servable corpus: measured at
+  // 1.1s when 49 seeds cleared the serving gate and 8.9s once 3,681 did, on
+  // exactly the same plan.
+  //
+  // Which shapes reach this count is decided by shouldUseStableBrowseCatalogTotal:
+  // generic browse, category-only, and query+category. Query-only and anything
+  // brand-scoped never get here. Of the three that do, generic and category-only
+  // read no `search_text` at all, and that is where the 8.9s -> 1.0s comes from.
+  // query+category still reads it and still pays the detoast; that shape is
+  // correct, just not faster.
+  //
+  // The gates are DERIVED from the built clauses rather than restating their
+  // conditions, so a future clause that reads one of these columns cannot be
+  // forgotten by the gate — that failure is a silently WRONG COUNT (comparing
+  // against ''), not an error. The columns stay in the CTE shape as constants
+  // so the clause text under every scope is byte-for-byte unchanged.
+  const filteredClauseSql = filteredClauses.join('\n');
+  const needsSearchText = filteredClauseSql.includes('search_text');
+  const needsBrandCompact = filteredClauseSql.includes('brand_compact');
+  const needsCategoryText = filteredClauseSql.includes('category_text');
 
   const internalListingIdExpr = `
     coalesce(
