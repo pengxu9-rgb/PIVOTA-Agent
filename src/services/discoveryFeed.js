@@ -9231,7 +9231,15 @@ async function fetchBrandScopedCanonicalCandidates({ brandAliases = [], limit = 
           -- this leg now supplies the BUYER'S REDIRECT (destination_url), not
           -- just ids. Picking by recency alone made that a coin flip across
           -- co-identified rows; prefer the row that is this very identity.
-          ORDER BY (cp.pivota_signature_id = apv.pivota_signature_id) DESC,
+          --
+          -- IS NOT DISTINCT FROM, not a plain equals. 211 live external_seed
+          -- rows have a NULL pivota_signature_id, and NULL = sig is NULL, which
+          -- ORDER BY DESC sorts FIRST (verified on the prod server:
+          -- bool DESC yields NULL, true, false). A plain equals therefore handed
+          -- the pick to an unidentified row ahead of the correctly matching
+          -- one — worse than the recency-only ordering it replaced. This form
+          -- is never NULL, so true sorts first and false last.
+          ORDER BY (cp.pivota_signature_id IS NOT DISTINCT FROM apv.pivota_signature_id) DESC,
                    cp.updated_at DESC NULLS LAST,
                    cp.product_key ASC
           LIMIT 1
@@ -9396,7 +9404,15 @@ async function fetchCanonicalSigBrowseCandidates({ limit = 120 } = {}) {
           -- this leg now supplies the BUYER'S REDIRECT (destination_url), not
           -- just ids. Picking by recency alone made that a coin flip across
           -- co-identified rows; prefer the row that is this very identity.
-          ORDER BY (cp.pivota_signature_id = apv.pivota_signature_id) DESC,
+          --
+          -- IS NOT DISTINCT FROM, not a plain equals. 211 live external_seed
+          -- rows have a NULL pivota_signature_id, and NULL = sig is NULL, which
+          -- ORDER BY DESC sorts FIRST (verified on the prod server:
+          -- bool DESC yields NULL, true, false). A plain equals therefore handed
+          -- the pick to an unidentified row ahead of the correctly matching
+          -- one — worse than the recency-only ordering it replaced. This form
+          -- is never NULL, so true sorts first and false last.
+          ORDER BY (cp.pivota_signature_id IS NOT DISTINCT FROM apv.pivota_signature_id) DESC,
                    cp.updated_at DESC NULLS LAST,
                    cp.product_key ASC
           LIMIT 1

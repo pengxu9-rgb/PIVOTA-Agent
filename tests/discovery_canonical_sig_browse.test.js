@@ -218,8 +218,12 @@ describe('canonical sig browse main route', () => {
       // The nested lateral that supplies the seed id / destination / seller.
       expect(sql).toContain('FROM external_product_seeds eps');
       expect(sql).toContain('eps.attached_product_key = cp.product_key');
-      // The row pick must prefer THIS identity, not merely the newest row.
-      expect(sql).toContain('cp.pivota_signature_id = apv.pivota_signature_id');
+      // The row pick must prefer THIS identity, not merely the newest row —
+      // and must use IS NOT DISTINCT FROM, because `NULL = <sig>` is NULL and
+      // `ORDER BY ... DESC` sorts NULLs FIRST, which would hand the pick to an
+      // unidentified row (211 live rows have a NULL sig).
+      expect(sql).toContain('cp.pivota_signature_id IS NOT DISTINCT FROM apv.pivota_signature_id');
+      expect(sql).not.toMatch(/cp\.pivota_signature_id\s*=\s*apv\.pivota_signature_id/);
       // And must never reintroduce the wrong-PDP column.
       expect(sql).not.toContain('pivota_canonical_url AS');
     });
