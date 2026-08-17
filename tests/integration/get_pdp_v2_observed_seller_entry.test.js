@@ -328,6 +328,62 @@ describe('get_pdp_v2 observed-seller (merch_obs_) entry serving', () => {
       expect.objectContaining({ amount: 229.99, currency: 'USD' }),
     );
   });
+  // ADR-009 task 4 — the catalog PDP-content merge follows the LANE.
+  //
+  // `enrichProductWithCatalogPdpContentFields` is gated, in the get_pdp_v2
+  // route, on the resolved row being seed-routed, and it queries
+  // `catalog_products WHERE merchant_id = $1 AND source_product_id = ANY($2)`.
+  // Both halves were dead for observed-seller rows after the A9-4 re-key: the
+  // gate tested `merchant_id === 'external_seed'` (permanently false), and the
+  // lookup was keyed on that same retired sentinel — so even an open gate found
+  // nothing. This test would have been RED before the fix on both counts: the
+  // query was never issued on this path, and when it ran anywhere it carried
+  // the sentinel, not the row's seller.
+  test('merch_obs_ entry issues the catalog PDP-content lookup keyed on the OBSERVED seller, not the retired sentinel', async () => {
+    const { app, db } = loadServerWithDb();
+    mockDbForObservedSellerGroup(db, { seedDetailAvailable: true });
+    mockUpstream404();
+
+    const contentLookups = [];
+    const inner = db.query.getMockImplementation();
+    db.query.mockImplementation(async (sql, params = []) => {
+      const normalized = normalizeSql(sql);
+      if (
+        normalized.includes('SELECT source_product_id, product_payload, updated_at') &&
+        normalized.includes('FROM catalog_products') &&
+        normalized.includes('WHERE merchant_id = $1')
+      ) {
+        contentLookups.push({ merchantId: params[0], sourceProductIds: params[1] });
+        return { rows: [] };
+      }
+      return inner(sql, params);
+    });
+
+    const res = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .set('X-Agent-API-Key', 'test-key')
+      .send({
+        operation: 'get_pdp_v2',
+        payload: {
+          product_ref: { merchant_id: OBS_MERCHANT, product_id: OBS_PRODUCT },
+          include: ['offers'],
+        },
+      });
+
+    expect(res.status).toBe(200);
+    // The lookup RAN — the lane gate admitted an observed-seller row.
+    expect(contentLookups.length).toBeGreaterThanOrEqual(1);
+    // ...and it is keyed on the row's real seller. The sentinel would find
+    // nothing (0 catalog rows carry it), so this is the difference between
+    // "merged" and "silently skipped".
+    for (const lookup of contentLookups) {
+      expect(lookup.merchantId).toBe(OBS_MERCHANT);
+      expect(lookup.merchantId).not.toBe('external_seed');
+      expect(Array.isArray(lookup.sourceProductIds)).toBe(true);
+      expect(lookup.sourceProductIds).toContain(OBS_PRODUCT);
+    }
+  });
+
 
   test('url_audit lane entry canonicalizes onto the observed seller and serves', async () => {
     const { app, db } = loadServerWithDb();

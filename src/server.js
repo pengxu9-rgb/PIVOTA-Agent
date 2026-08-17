@@ -40957,6 +40957,25 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	      // source_system signal the predicate uses, in one change, with the
 	      // legacy-lane blast radius measured. Tracked as a follow-up rather than
 	      // smuggled into P3.
+	      //
+	      // STATUS 2026-08-17 (ADR-009 task 4). The A9-4 re-key completed and the
+	      // gap fired: 0 catalog rows carry the sentinel; 12,514 seed-routed rows
+	      // sit under merch_obs_ sellers, EVERY one with a seed source_system —
+	      // measured, so source_system alone is the lane and the other arms admit
+	      // nothing extra. Every ROW-SIDE consumer in this route (the ones that
+	      // tested `canonicalProductRef.merchant_id === <sentinel>`, permanently
+	      // false on the sig path) now asks `resolvedRefIsSeedRouted()`, which is
+	      // pdpRenderability.isSeedRoutedLane over the resolved ref. That restored
+	      // the catalog PDP-content merge, which had been silently OFF for seed
+	      // rows since the flip. Live-verified beforehand: the public sig_ path
+	      // resolved these rows fine, so this was content quality, not a 404.
+	      //
+	      // Still merchant-shaped, deliberately: THIS entry expression and the
+	      // request-side tests (`requestedMerchantId === <sentinel>`). They read
+	      // what the CALLER sent, not a row — no row exists yet at entry — and a
+	      // legacy client or the ext_-id minters can still send the sentinel.
+	      // They stop mattering when the minters stop (their own PR), after which
+	      // they are deletable, not to be guarded.
 	      const entryProductIsExternalSeed =
 	        isExternalSeedProductId(entryProductId) ||
 	        requestedMerchantId === EXTERNAL_SEED_MERCHANT_ID;
@@ -41510,11 +41529,26 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	      canonicalizationReasonCodeCtx = canonicalizationReasonCode;
 	      identityResolutionSourceCtx = identityResolutionSource;
 
+          // ADR-009: is the RESOLVED row seed-routed? One question, one
+          // predicate — pdpRenderability.isSeedRoutedLane, the same one that
+          // calls these rows renderable. Every row-side test in this route
+          // used to ask `canonicalProductRef.merchant_id === <sentinel>`,
+          // which the A9-4 re-key made permanently false on the sig path (0
+          // catalog rows carry the sentinel; 12,514 seed-routed rows sit
+          // under merch_obs_ sellers, every one with a seed source_system).
+          // Read lazily: the ref is reassigned and patched further down.
+          const resolvedRefIsSeedRouted = () =>
+            isSeedRoutedLane({
+              merchantId: canonicalProductRef?.merchant_id,
+              platform: canonicalProductRef?.platform,
+              sourceSystem: canonicalProductRef?.source_system,
+              sourceProductId: canonicalProductRef?.product_id,
+            });
           if (servingEligibleOnly) {
             const servingEligibilityStartedAt = Date.now();
             let servingEligibility =
               signaturePrefetchedServingEligibility &&
-              canonicalProductRef?.merchant_id === EXTERNAL_SEED_MERCHANT_ID &&
+              resolvedRefIsSeedRouted() &&
               String(canonicalProductRef?.product_id || '').trim() ===
                 String(signatureExternalSeedPrecheckProduct?.product_id || productId || '').trim()
                 ? signaturePrefetchedServingEligibility
@@ -41723,8 +41757,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         }
         const shouldHydrateCatalogIdentityBeforeIdentityGraph =
           Boolean(requestedPivotaSignatureId) &&
-          canonicalProductRef?.merchant_id === EXTERNAL_SEED_MERCHANT_ID &&
-          isExternalSeedProductId(canonicalProductRef?.product_id);
+          resolvedRefIsSeedRouted();
         if (!catalogIdentity && shouldHydrateCatalogIdentityBeforeIdentityGraph) {
           const catalogIdentityStartedAt = Date.now();
           catalogIdentity = await resolveCatalogIdentityForProductRef({
@@ -41748,17 +41781,22 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         });
         const directExternalSeedGroupMembers = Array.isArray(groupMembers) ? groupMembers : [];
         const directExternalSeedHasRichPdpContent = hasExternalSeedRichPdpContent(canonicalProduct);
+        // ADR-009: "external merchant" = a member that is NOT seed supply.
+        // The old shape (`merchant_id !== <sentinel>`) became true for EVERY
+        // member after the re-key, so this read "has an external merchant" for
+        // all-seed groups and the identity-graph skip below never fired.
+        // memberIsExternalSeedSupply is the migration-aware test (source_kind
+        // first, then the merch_obs_ shape).
         const directExternalSeedGroupHasExternalMerchant = directExternalSeedGroupMembers.some((member) => {
           const memberMerchantId = String(member?.merchant_id || member?.merchantId || '').trim();
-          return memberMerchantId && memberMerchantId !== EXTERNAL_SEED_MERCHANT_ID;
+          return Boolean(memberMerchantId) && !memberIsExternalSeedSupply(member);
         });
         const directExternalSeedGroupCanSkipIdentityGraph =
           directExternalSeedGroupMembers.length === 0 ||
           (!directExternalSeedGroupHasExternalMerchant && directExternalSeedHasRichPdpContent);
         const shouldSkipDirectExternalSeedIdentityGraph =
           entryProductIsExternalSeed &&
-          canonicalProductRef?.merchant_id === EXTERNAL_SEED_MERCHANT_ID &&
-          isExternalSeedProductId(canonicalProductRef?.product_id) &&
+          resolvedRefIsSeedRouted() &&
           (!requestedMerchantId || requestedMerchantId === EXTERNAL_SEED_MERCHANT_ID) &&
           !variantId &&
           !offerId &&
@@ -41771,8 +41809,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           Boolean(requestedPivotaSignatureId) &&
           canonicalizationApplied &&
           canonicalizationReasonCode === 'PIVOTA_SIGNATURE_ID' &&
-          canonicalProductRef?.merchant_id === EXTERNAL_SEED_MERCHANT_ID &&
-          isExternalSeedProductId(canonicalProductRef?.product_id) &&
+          resolvedRefIsSeedRouted() &&
           (!requestedMerchantId || requestedMerchantId === EXTERNAL_SEED_MERCHANT_ID) &&
           !variantId &&
           !offerId &&
@@ -42146,9 +42183,27 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	        };
 	      }
 
+      // ADR-009: this block was DEAD on the sig path since the re-key — both
+      // arms tested the retired sentinel — so no seed row got its catalog PDP
+      // content merged (`enrichProductWithCatalogPdpContentFields` never ran).
+      // canonicalProductForPdp may still carry a STAMPED sentinel from
+      // buildExternalSeedProduct, so its own lane test keeps that path live.
       if (
-        canonicalProductRef?.merchant_id === EXTERNAL_SEED_MERCHANT_ID ||
-        canonicalProductForPdp?.merchant_id === EXTERNAL_SEED_MERCHANT_ID
+        resolvedRefIsSeedRouted() ||
+        isSeedRoutedLane({
+          merchantId: canonicalProductForPdp?.merchant_id,
+          platform: canonicalProductForPdp?.platform,
+          sourceSystem: firstNonEmptyString(
+            canonicalProductForPdp?.source_system,
+            canonicalProductForPdp?.sourceSystem,
+            canonicalProductForPdp?.source,
+          ),
+          sourceProductId: firstNonEmptyString(
+            canonicalProductForPdp?.source_product_id,
+            canonicalProductForPdp?.sourceProductId,
+            canonicalProductForPdp?.product_id,
+          ),
+        })
       ) {
         const canReuseSignatureCatalogPdpContent =
           signaturePrefetchedPdpContentProductId &&
@@ -42183,7 +42238,16 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               canonicalProductForPdp = await enrichProductWithCatalogPdpContentFields(
                 canonicalProductForPdp,
                 {
-                  merchantId: EXTERNAL_SEED_MERCHANT_ID,
+                  // The row's REAL seller. The lookup is
+                  // `WHERE merchant_id = $1 AND source_product_id = ANY($2)`,
+                  // so keying it on the retired sentinel returned nothing even
+                  // when the gate above was open. On the sig path the ref
+                  // carries the catalog row's merchant; the stamped-sentinel
+                  // fallback keeps the legacy request path exactly as it was.
+                  merchantId: firstNonEmptyString(
+                    canonicalProductRef?.merchant_id,
+                    canonicalProductForPdp?.merchant_id,
+                  ),
                   sourceProductIds: catalogPdpContentSourceProductIds,
                   bypassCache,
                 },
@@ -42457,7 +42521,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       if (!pdpServingEligibilityChecked) {
         pdpServingEligibility =
           signaturePrefetchedServingEligibility &&
-          canonicalProductRef?.merchant_id === EXTERNAL_SEED_MERCHANT_ID &&
+          resolvedRefIsSeedRouted() &&
           String(canonicalProductRef?.product_id || '').trim() ===
             String(signatureExternalSeedPrecheckProduct?.product_id || productId || '').trim()
             ? signaturePrefetchedServingEligibility
@@ -42626,8 +42690,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         identityGraphLive?.content_review_state ||
         (pdpContentSource === 'canonical_inherited' ? 'pending' : 'not_needed');
       const identityBackedExternalSeedGroupId =
-        canonicalProductRef?.merchant_id === EXTERNAL_SEED_MERCHANT_ID &&
-        isExternalSeedProductId(canonicalProductRef?.product_id)
+        resolvedRefIsSeedRouted()
           ? catalogIdentity?.sellable_item_group_id || catalogIdentity?.product_group_id || null
           : null;
       const identityBackedGroupExpected =
