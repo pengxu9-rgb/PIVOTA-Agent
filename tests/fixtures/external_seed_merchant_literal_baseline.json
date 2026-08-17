@@ -1,5 +1,5 @@
 {
- "src/server.js": 61,
+ "src/server.js": 51,
  "src/services/RecommendationEngine.js": 4,
  "src/services/canonicalCatalogSearch.js": 2,
  "src/services/catalogRowTrustUpserter.js": 1,
