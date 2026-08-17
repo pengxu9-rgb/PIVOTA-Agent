@@ -40762,6 +40762,17 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                   ...(signatureProductRef.content_key
                     ? { content_key: String(signatureProductRef.content_key).trim() }
                     : {}),
+                  // ADR-009: the row's LANE evidence. Every row-side gate in this
+                  // route asks isSeedRoutedLane over this ref, and source_system
+                  // is THE lane signal (measured: it alone covers every seed
+                  // row). Without it the sig path fired only through the
+                  // platform arm — correct today because every seed row carries
+                  // platform='external_seed', but a minted row on any other
+                  // platform would silently fall out. Same "not named here is
+                  // dropped" hazard the next comment describes.
+                  ...(signatureProductRef.source_system
+                    ? { source_system: String(signatureProductRef.source_system).trim() }
+                    : {}),
                   // The elected canonical URL for this content_key (migration
                   // 181). Threaded EXPLICITLY because this ref is rebuilt
                   // field-by-field rather than spread — a field that is not
@@ -40976,6 +40987,14 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	      // legacy client or the ext_-id minters can still send the sentinel.
 	      // They stop mattering when the minters stop (their own PR), after which
 	      // they are deletable, not to be guarded.
+	      //
+	      // One honest caveat on "caller sent": on the sig path
+	      // requestedMerchantId is OVERWRITTEN with the row's resolved seller
+	      // (the signature block above), so the two identity-graph SKIP
+	      // predicates — which also carry a request-side arm — still do not fire
+	      // for seed sig PDPs. That is the pre-existing state (latency, not
+	      // output: the identity graph runs where it used to be skipped) and is
+	      // the request-side follow-up's problem, not a row-side one.
 	      const entryProductIsExternalSeed =
 	        isExternalSeedProductId(entryProductId) ||
 	        requestedMerchantId === EXTERNAL_SEED_MERCHANT_ID;
