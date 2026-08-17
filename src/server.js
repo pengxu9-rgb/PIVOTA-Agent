@@ -41854,16 +41854,32 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	        // product satisfies, so it constrains the SELLER of the content, not
 	        // its lane. If the lane test is ever loosened, this merge widens with
 	        // it and nothing downstream will catch that.
+	        // The lane inputs come from canonicalProductRef FIRST, and that
+	        // ordering is the whole fix. `canonicalProduct` is built by
+	        // buildExternalSeedProduct, which sets platform:'external' and
+	        // source:'external_seed' — neither is the value isSeedRoutedLane
+	        // tests, so reading them left the platform AND source_system arms
+	        // permanently false and the gate collapsed to the ext_ id prefix
+	        // alone (caught in review, 2026-08-17). canonicalProductRef carries
+	        // the real catalog_products values (server.js:6541-6543).
+	        const seedLaneInput = {
+	          merchantId: canonicalProductRef?.merchant_id,
+	          platform: firstNonEmptyString(canonicalProductRef?.platform, canonicalProduct?.platform),
+	          sourceSystem: firstNonEmptyString(
+	            canonicalProductRef?.source_system,
+	            canonicalProductSourceSystem,
+	          ),
+	        };
+	        // The two id candidates are tested INDEPENDENTLY, as the predicate
+	        // this replaced did. Collapsing them with firstNonEmptyString
+	        // consults the external id only when the ref id is empty — i.e.
+	        // never — so a ref carrying a non-ext id would mask an ext_ external
+	        // id behind it.
 	        const shouldPreserveExternalSeedPdpContent =
-	          isSeedRoutedLane({
-	            merchantId: canonicalProductRef?.merchant_id,
-	            platform: firstNonEmptyString(canonicalProduct?.platform, canonicalProduct?.source_platform),
-	            sourceSystem: canonicalProductSourceSystem,
-	            sourceProductId: firstNonEmptyString(
-	              canonicalProductRef?.product_id,
-	              canonicalProductExternalId,
-	            ),
-	          }) &&
+	          (
+	            isSeedRoutedLane({ ...seedLaneInput, sourceProductId: canonicalProductRef?.product_id }) ||
+	            isSeedRoutedLane({ ...seedLaneInput, sourceProductId: canonicalProductExternalId })
+	          ) &&
 	          hasExternalSeedRichPdpContent(canonicalProduct);
 	        canonicalProductForPdp = shouldPreserveExternalSeedPdpContent
 	          ? mergeIdentitySyntheticWithRichExternalSeedProduct(

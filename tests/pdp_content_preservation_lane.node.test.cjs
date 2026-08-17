@@ -61,26 +61,43 @@ test('a genuinely unrelated merchant row is NOT dragged into the lane', () => {
   );
 });
 
-test('the content-preservation gate is wired to the lane, not to the merchant literal', () => {
+test('the content-preservation gate is wired to the lane, not the merchant literal', () => {
   // A source assertion, because the predicate is inline in the get_pdp_v2 route
-  // and cannot be imported. It pins the two halves that matter: the gate calls
-  // isSeedRoutedLane, and it no longer tests the sentinel merchant. Reverting
-  // either half fails this.
+  // and cannot be imported. Review (2026-08-17) showed the first version was
+  // nearly vacuous: inverting the gate to `!isSeedRoutedLane`, deleting the
+  // rich-content conjunct, and nulling `platform` ALL survived it, while a
+  // harmless reformat broke it. So the patterns below are whitespace-tolerant
+  // and assert the SHAPE, not the formatting.
   const source = fs.readFileSync(path.join(__dirname, '..', 'src', 'server.js'), 'utf8');
   const start = source.indexOf('const shouldPreserveExternalSeedPdpContent =');
   assert.ok(start > 0, 'the content-preservation gate has moved or been renamed');
-  const block = source.slice(start, start + 700);
-  assert.match(block, /isSeedRoutedLane\(\{/, 'the gate no longer routes through the lane predicate');
+  const block = source.slice(start, start + 900);
+
+  assert.match(block, /isSeedRoutedLane\s*\(/, 'the gate no longer routes through the lane predicate');
+  assert.doesNotMatch(block, /!\s*isSeedRoutedLane/, 'the lane test is INVERTED');
+  assert.match(
+    block, /hasExternalSeedRichPdpContent\s*\(/,
+    'the rich-content conjunct is gone — the gate would preserve content for any seed row',
+  );
   assert.doesNotMatch(
-    block,
-    /merchant_id === EXTERNAL_SEED_MERCHANT_ID/,
-    'the gate is testing the retired sentinel merchant again — it is permanently false in prod',
+    block, /merchant_id === EXTERNAL_SEED_MERCHANT_ID/,
+    'the gate is testing the retired sentinel merchant again — permanently false in prod',
   );
-  assert.ok(
-    source.includes("seedRouteResolvesSql, isSeedRoutedLane } = require('./services/pdpRenderability')"),
-    'isSeedRoutedLane must come from pdpRenderability — one definition, not a copy',
-  );
+
+  // The lane inputs must come from canonicalProductRef, which carries the real
+  // catalog_products platform/source_system. Reading them off canonicalProduct
+  // (platform:'external', source:'external_seed') silently kills two of the
+  // four arms — the defect review caught.
+  const inputs = source.slice(source.indexOf('const seedLaneInput = {', start - 800), start + 900);
+  assert.match(inputs, /platform:[\s\S]{0,120}canonicalProductRef\?\.platform/,
+    'platform must be read from canonicalProductRef first');
+  assert.match(inputs, /sourceSystem:[\s\S]{0,160}canonicalProductRef\?\.source_system/,
+    'source_system must be read from canonicalProductRef first');
+  // Both id candidates tested independently, not collapsed.
+  assert.match(block, /sourceProductId:\s*canonicalProductRef\?\.product_id/);
+  assert.match(block, /sourceProductId:\s*canonicalProductExternalId/);
 });
+
 
 test('the LANE test is the bound — the rich-content check is not', () => {
   // The PR comment originally credited `hasExternalSeedRichPdpContent` with
