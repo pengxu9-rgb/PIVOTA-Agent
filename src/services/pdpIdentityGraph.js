@@ -19,6 +19,7 @@ const {
   resolveCanonicalCatalogEntityGroup,
 } = require('./catalogEntityResolution');
 const { activeProductsCacheSourceWhere } = require('./activeCatalogSourceSql');
+const { isExternalSeedLaneProduct } = require('./externalSeedLane');
 const {
   summarizePdpPayloadContract,
 } = require('./pdpIdentityPayloadDrift');
@@ -262,9 +263,9 @@ function buildActiveExternalSeedIdentityPredicate(alias = 'pdp_identity_listing'
       FROM external_product_seeds eps
       JOIN catalog_products cp
         -- ADR-009: match the external-seed mirror row by platform +
-        -- source_system + source_product_id, NOT the legacy
-        -- merchant_id='external_seed' bucket. External seeds now mirror under
-        -- per-brand observed sellers (merch_obs_…), so the old merchant_id
+        -- source_system + source_product_id, NOT the legacy shared seller
+        -- bucket (the retired sentinel merchant). External seeds now mirror
+        -- under per-brand observed sellers (merch_obs_…), so the old seller
         -- conjunct excluded every served merch_obs_ seed from its own identity
         -- listing regardless of serving_eligible. Mirrors the #1772 inline fix
         -- in server.js; this shared helper (used by ~7 serving/PDP identity
@@ -2838,10 +2839,22 @@ function sameListingRef(left, right) {
   );
 }
 
+// ADR-009: gate on external-seed SUPPLY, not on the retired sentinel seller.
+// The stored payload of a seed listing goes stale between backfills, so the
+// freshly-built seed product is the better variant source — and that is true of
+// every seed listing, including the ~all of them the #1770 re-key moved onto
+// per-brand observed sellers. Asking only about the legacy bucket served those
+// rows their stale stored variants.
 function shouldPreserveFreshExternalSeedVariantFields(selectedListing, selectedPayload, fallbackProduct) {
-  const selectedMerchantId = asString(selectedListing?.merchant_id || selectedPayload?.merchant_id);
-  if (selectedMerchantId !== EXTERNAL_SEED_MERCHANT_ID) return false;
   const selectedProductId = asString(selectedListing?.product_id || selectedPayload?.product_id || selectedPayload?.id);
+  // Same precedence the sentinel comparison used: the listing names the seller
+  // when it has one, otherwise the payload does.
+  const selectedIsSeedSupply = isExternalSeedIdentityRow({
+    merchant_id: asString(selectedListing?.merchant_id || selectedPayload?.merchant_id),
+    source_kind: selectedListing?.source_kind,
+    product_id: selectedProductId,
+  });
+  if (!selectedIsSeedSupply) return false;
   const fallbackProductId = asString(fallbackProduct?.product_id || fallbackProduct?.id);
   if (selectedProductId && fallbackProductId && selectedProductId !== fallbackProductId) return false;
   return asArray(fallbackProduct?.variants).length > 0;
@@ -2854,10 +2867,19 @@ function overlaySelectedCommerceFields(product, selectedListing, fallbackProduct
 
   const next = { ...(product || {}) };
   const selectedMerchantId = asString(selectedListing?.merchant_id || selectedPayload.merchant_id);
+  // ADR-009: savings presentation ("was $X", store-discount badges) is only
+  // overlaid for a seller we transact with. Crawl-sourced seed payloads carry
+  // unverified compare-at claims, so external-seed supply is suppressed — and
+  // after the #1770 re-key that supply is mostly keyed on per-brand observed
+  // sellers, which a bare comparison against the retired sentinel seller reads
+  // as "real merchant" and lets the unverified claims through.
+  const selectedIsSeedSupply = isExternalSeedIdentityRow({
+    merchant_id: selectedMerchantId,
+    source_kind: selectedListing?.source_kind,
+    product_id: asString(selectedListing?.product_id || selectedPayload.product_id || selectedPayload.id),
+  });
   const savingsFields =
-    selectedMerchantId && selectedMerchantId !== EXTERNAL_SEED_MERCHANT_ID
-      ? SAVINGS_PRESENTATION_FIELDS
-      : [];
+    selectedMerchantId && !selectedIsSeedSupply ? SAVINGS_PRESENTATION_FIELDS : [];
   const directFields = [
     'price',
     'currency',
@@ -3174,11 +3196,29 @@ function normalizeIdentityRows(rows) {
   return out;
 }
 
+// ADR-009 — the ONE listing-side answer to "is this row external-seed SUPPLY?"
+// (crawl-sourced, no upstream merchant checkout/API, PDP served straight from
+// the seed payload). It is deliberately NOT the same question as "is this the
+// legacy anonymous placeholder seller?" — see buildLegacyExternalSeedLumpPredicate
+// and the seller-name fallback in buildIdentitySearchOffer, which keep asking
+// that narrower one.
+//
+// Two durable discriminators, in the order server.js's memberIsExternalSeedSupply
+// uses them:
+//   1. `source_kind`, written by this file's own external-seed writer and
+//      untouched by the #1770 re-key;
+//   2. the canonical seed-lane predicate (pdpRenderability.isSeedRoutedLane,
+//      reached through the loose-object adapter in externalSeedLane).
+//
+// The lane predicate's FIRST arm is the equality against the retired sentinel
+// merchant that used to live here, so this is a strict widening — the legacy
+// bucket keeps every verdict it had — plus the per-brand observed sellers
+// (merch_obs_…) the re-key moved that supply onto, which a bare sentinel
+// equality reads as "not external seed" and silently drops.
 function isExternalSeedIdentityRow(row) {
-  return (
-    asString(row?.merchant_id) === EXTERNAL_SEED_MERCHANT_ID ||
-    asString(row?.source_kind).toLowerCase() === 'external_seed'
-  );
+  if (!row || typeof row !== 'object') return false;
+  if (asString(row.source_kind).toLowerCase() === 'external_seed') return true;
+  return isExternalSeedLaneProduct(row);
 }
 
 function hydrateIdentityRowSourcePayloadFromSeed(row, seedRow) {
@@ -3341,10 +3381,22 @@ function buildIdentitySearchOffer(listing, groupId) {
     payload.vendor,
     payload.brand?.name,
     payload.brand,
+    // ADR-009 — KEPT ON PURPOSE, and it is the one comparison in this file that
+    // must stay narrow. This is a LABEL of last resort, and it asks the
+    // OWNERSHIP question buildLegacyExternalSeedLumpPredicate asks, not the
+    // supply question: the legacy anonymous bucket has a placeholder
+    // catalog_merchants row and genuinely has no seller to name. A per-brand
+    // observed seller (merch_obs_…) DOES have one, so widening this to the seed
+    // lane would overwrite a real seller of record with a generic placeholder —
+    // the opposite of what the re-key was for. Left as an equality against the
+    // retired sentinel seller so it retires with the bucket itself.
     merchantId === EXTERNAL_SEED_MERCHANT_ID ? 'External reference' : '',
   );
+  // ADR-009: suppress unverified crawl-sourced savings claims for ALL
+  // external-seed supply — the listing row carries the durable source_kind, so
+  // observed-seller seeds are covered here, not just the legacy bucket.
   const savingsFields =
-    merchantId && merchantId !== EXTERNAL_SEED_MERCHANT_ID
+    merchantId && !isExternalSeedIdentityRow(listing)
       ? pickSavingsPresentationFields(payload)
       : {};
   const commerceFacts = asPlainObject(payload.commerce_facts_v1) || asPlainObject(payload.commerce_facts);
@@ -3446,8 +3498,23 @@ function scoreIdentitySearchProductForQuery(product, normalizedQuery) {
     else if (queryText.includes(title)) score += 24;
     else if (title.includes(queryText)) score += 10;
   }
-  const selectedMerchant = asString(product.selected_commerce_ref?.merchant_id || product.merchant_id);
-  if (selectedMerchant && selectedMerchant !== EXTERNAL_SEED_MERCHANT_ID) score += 24;
+  // ADR-009: the bonus is for a group that resolved onto a seller we transact
+  // with, over one that only has crawl supply behind it. Comparing against the
+  // retired sentinel seller alone stopped discriminating once the re-key moved
+  // that same crawl supply onto per-brand observed sellers — every seed group
+  // then scored as if it were a connected merchant and tied with one.
+  //
+  // The composed product carries no source_kind (it is a fused view, not a
+  // listing row), so the lane verdict here rests on the ref's seller plus the
+  // seed id prefix. That covers the mirror corpus; a seed whose external id is
+  // neither sentinel-keyed nor `ext_`-prefixed still scores as a merchant.
+  const selectedRef = product.selected_commerce_ref || product;
+  const selectedMerchant = asString(selectedRef?.merchant_id || product.merchant_id);
+  const selectedIsSeedSupply = isExternalSeedIdentityRow({
+    merchant_id: selectedMerchant,
+    product_id: asString(selectedRef?.product_id || product.product_id || product.id),
+  });
+  if (selectedMerchant && !selectedIsSeedSupply) score += 24;
   if (product.has_multiple_offers === true || Number(product.offers_count || 0) > 1) score += 20;
   if (asString(product.pdp_content_source) === 'canonical_inherited') score += 10;
   if (asString(product.offer_source) === 'group_fused') score += 5;

@@ -7,7 +7,7 @@
  "src/services/categories.js": 1,
  "src/services/discoveryFeed.js": 4,
  "src/services/externalSeedLane.js": 1,
- "src/services/pdpIdentityGraph.js": 7,
+ "src/services/pdpIdentityGraph.js": 1,
  "src/services/pdpRenderability.js": 2,
  "src/services/pdpReviewedIngredientAuthority.js": 1,
  "scripts/align-external-seed-identity-to-catalog-sig.cjs": 1,
