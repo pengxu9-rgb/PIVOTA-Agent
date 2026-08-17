@@ -9054,7 +9054,43 @@ function mapCanonicalIndexRowToProduct(row) {
     ...(productKey ? (isFirstParty ? { product_key: productKey } : { external_product_key: productKey }) : {}),
     ...(!isFirstParty && row.external_product_id ? { external_product_id: String(row.external_product_id) } : {}),
     ...(row.content_key ? { content_key: String(row.content_key) } : {}),
-    ...(row.canonical_url ? { pivota_canonical_url: String(row.canonical_url) } : {}),
+    // The external identity every other lane already serves. `merchant_id`
+    // stays the 'external_seed' convention both lanes share; the real seller is
+    // carried in merchant_name, and the seed id / merchant canonical URL /
+    // destination URL are what the PDP purchase flow, the JSON-LD, and the
+    // consumer's servability check read. Without them this reader emitted a
+    // product the UI dropped as unservable — 24 in, 0 rendered — while the
+    // seed lane's identical products rendered, because only the seed lane
+    // carried these fields.
+    ...(!isFirstParty && row.external_seed_id ? { external_seed_id: String(row.external_seed_id) } : {}),
+    // From the catalog row's brand, not from seed_data — see the lateral above
+    // for why reading seed_data here cost 6x. Verified against the live seed
+    // lane over its 24 served products: 22 identical, 2 differing only in case.
+    ...(!isFirstParty && (row.external_brand || row.brand)
+      ? { merchant_name: String(row.external_brand || row.brand) }
+      : {}),
+    ...(!isFirstParty && row.external_canonical_url
+      ? { merchant_canonical_url: String(row.external_canonical_url) }
+      : {}),
+    ...(!isFirstParty && (row.external_destination_url || row.external_canonical_url)
+      ? { destination_url: String(row.external_destination_url || row.external_canonical_url) }
+      : {}),
+    ...(!isFirstParty && sourceProductId ? { platform_product_id: sourceProductId } : {}),
+    // pivota_canonical_url is deliberately NOT emitted.
+    //
+    // The mapper's old `row.canonical_url` was a dead read (neither reader
+    // selected it), so this field has never been populated here. Sourcing it
+    // from catalog_products.pivota_canonical_url was tried and REVERTED: that
+    // column is minted from its OWN row's sig, and the ext_seed lateral resolves
+    // a row by content_key, so for 49 servable rows the URL named a DIFFERENT
+    // product than the one being served. agent-ui's resolveProductRouteId reads
+    // pivota_canonical_url BEFORE pivota_signature_id, so the card would have
+    // rendered product A and linked to product B's PDP. 385 of those rows also
+    // hold an off-site retailer URL in that column, which would publish a
+    // competitor link under a field named "the Pivota canonical".
+    //
+    // Omitting it is both correct and the status quo: agent-ui falls back to
+    // pivota_signature_id, which is always this product.
     title: String(row.title || '').trim() || productId,
     ...(row.description ? { description: String(row.description) } : {}),
     ...(row.brand ? { brand: String(row.brand), vendor: String(row.brand) } : {}),
@@ -9113,6 +9149,10 @@ async function fetchBrandScopedCanonicalCandidates({ brandAliases = [], limit = 
           first_party.product_key AS first_party_product_key,
           ext_seed.source_product_id AS external_product_id,
           ext_seed.product_key AS external_product_key,
+          ext_seed.brand AS external_brand,
+          ext_seed.canonical_url AS external_canonical_url,
+          ext_seed.seed_id AS external_seed_id,
+          ext_seed.destination_url AS external_destination_url,
           apv.brand,
           apv.title,
           apv.description,
@@ -9143,8 +9183,40 @@ async function fetchBrandScopedCanonicalCandidates({ brandAliases = [], limit = 
           LIMIT 1
         ) first_party ON TRUE
         LEFT JOIN LATERAL (
-          SELECT cp.source_product_id, cp.product_key
+          -- The full external identity, not just the two ids. Every other lane
+          -- serves the merchant name, the merchant canonical URL, the Pivota
+          -- canonical URL and the seed id alongside the product; a reader that
+          -- omits them emits a product the rest of the system treats as
+          -- half-identified. Measured on prod 2026-08-18: 6,939/6,939 servable
+          -- external_seed rows carry canonical_url here, 6,936 an active seed.
+          SELECT
+            cp.source_product_id,
+            cp.product_key,
+            cp.brand,
+            cp.canonical_url,
+            seed.id AS seed_id,
+            seed.destination_url
           FROM catalog_products cp
+          LEFT JOIN LATERAL (
+            -- Only the two untoasted scalars. Reading ANY seed_data path here
+            -- detoasts the row: external_product_seeds is 460MB against a 25MB
+            -- heap, so a merchant-name coalesce cost 0.534ms x 406 loops and
+            -- took this query 36ms -> 257ms (+614%) with the lateral and its
+            -- index otherwise free. That is a 6x regression on the exact path
+            -- the blank-page incident was a latency failure of, bought for a
+            -- field CatalogProductCard -- the browse AND brand card -- does not
+            -- render; the PDP resolves its own merchant from offers. Four of
+            -- the six coalesce arms also matched ZERO rows across all 11,343
+            -- active attached seeds. merchant_name now comes from cp.brand,
+            -- already selected for free, which matched the live seed lane on
+            -- 22 of its 24 served products (the other 2 differed only in case).
+            SELECT eps.id, eps.destination_url
+            FROM external_product_seeds eps
+            WHERE eps.attached_product_key = cp.product_key
+              AND eps.status = 'active'
+            ORDER BY eps.updated_at DESC NULLS LAST, eps.id DESC
+            LIMIT 1
+          ) seed ON TRUE
           WHERE cp.content_key = apv.content_key
             -- ADR-009: match external-seed content by platform + accept both the
             -- legacy 'ext_%' id scheme AND observed sellers (merch_obs_…, whose
@@ -9154,7 +9226,21 @@ async function fetchBrandScopedCanonicalCandidates({ brandAliases = [], limit = 
             AND (cp.source_product_id LIKE 'ext_%' OR cp.merchant_id LIKE 'merch_obs_%')
             AND cp.suppression_reason IS NULL
             AND cp.sync_status = 'live'
-          ORDER BY cp.updated_at DESC NULLS LAST
+          -- 185 content_keys have more than one servable external_seed row, and
+          -- this leg now supplies the BUYER'S REDIRECT (destination_url), not
+          -- just ids. Picking by recency alone made that a coin flip across
+          -- co-identified rows; prefer the row that is this very identity.
+          --
+          -- IS NOT DISTINCT FROM, not a plain equals. 211 live external_seed
+          -- rows have a NULL pivota_signature_id, and NULL = sig is NULL, which
+          -- ORDER BY DESC sorts FIRST (verified on the prod server:
+          -- bool DESC yields NULL, true, false). A plain equals therefore handed
+          -- the pick to an unidentified row ahead of the correctly matching
+          -- one — worse than the recency-only ordering it replaced. This form
+          -- is never NULL, so true sorts first and false last.
+          ORDER BY (cp.pivota_signature_id IS NOT DISTINCT FROM apv.pivota_signature_id) DESC,
+                   cp.updated_at DESC NULLS LAST,
+                   cp.product_key ASC
           LIMIT 1
         ) ext_seed ON TRUE
         WHERE apv.pivota_signature_id IS NOT NULL
@@ -9240,6 +9326,10 @@ async function fetchCanonicalSigBrowseCandidates({ limit = 120 } = {}) {
           first_party.product_key AS first_party_product_key,
           ext_seed.source_product_id AS external_product_id,
           ext_seed.product_key AS external_product_key,
+          ext_seed.brand AS external_brand,
+          ext_seed.canonical_url AS external_canonical_url,
+          ext_seed.seed_id AS external_seed_id,
+          ext_seed.destination_url AS external_destination_url,
           apv.brand,
           apv.title,
           apv.description,
@@ -9263,8 +9353,40 @@ async function fetchCanonicalSigBrowseCandidates({ limit = 120 } = {}) {
           LIMIT 1
         ) first_party ON TRUE
         LEFT JOIN LATERAL (
-          SELECT cp.source_product_id, cp.product_key
+          -- The full external identity, not just the two ids. Every other lane
+          -- serves the merchant name, the merchant canonical URL, the Pivota
+          -- canonical URL and the seed id alongside the product; a reader that
+          -- omits them emits a product the rest of the system treats as
+          -- half-identified. Measured on prod 2026-08-18: 6,939/6,939 servable
+          -- external_seed rows carry canonical_url here, 6,936 an active seed.
+          SELECT
+            cp.source_product_id,
+            cp.product_key,
+            cp.brand,
+            cp.canonical_url,
+            seed.id AS seed_id,
+            seed.destination_url
           FROM catalog_products cp
+          LEFT JOIN LATERAL (
+            -- Only the two untoasted scalars. Reading ANY seed_data path here
+            -- detoasts the row: external_product_seeds is 460MB against a 25MB
+            -- heap, so a merchant-name coalesce cost 0.534ms x 406 loops and
+            -- took this query 36ms -> 257ms (+614%) with the lateral and its
+            -- index otherwise free. That is a 6x regression on the exact path
+            -- the blank-page incident was a latency failure of, bought for a
+            -- field CatalogProductCard -- the browse AND brand card -- does not
+            -- render; the PDP resolves its own merchant from offers. Four of
+            -- the six coalesce arms also matched ZERO rows across all 11,343
+            -- active attached seeds. merchant_name now comes from cp.brand,
+            -- already selected for free, which matched the live seed lane on
+            -- 22 of its 24 served products (the other 2 differed only in case).
+            SELECT eps.id, eps.destination_url
+            FROM external_product_seeds eps
+            WHERE eps.attached_product_key = cp.product_key
+              AND eps.status = 'active'
+            ORDER BY eps.updated_at DESC NULLS LAST, eps.id DESC
+            LIMIT 1
+          ) seed ON TRUE
           WHERE cp.content_key = apv.content_key
             -- ADR-009: this leg exists to keep the row EXTERNAL identity
             -- (external_product_id / external_product_key) so the redirect path
@@ -9277,7 +9399,21 @@ async function fetchCanonicalSigBrowseCandidates({ limit = 120 } = {}) {
             AND cp.platform = 'external_seed'
             AND cp.suppression_reason IS NULL
             AND cp.sync_status = 'live'
-          ORDER BY cp.updated_at DESC NULLS LAST
+          -- 185 content_keys have more than one servable external_seed row, and
+          -- this leg now supplies the BUYER'S REDIRECT (destination_url), not
+          -- just ids. Picking by recency alone made that a coin flip across
+          -- co-identified rows; prefer the row that is this very identity.
+          --
+          -- IS NOT DISTINCT FROM, not a plain equals. 211 live external_seed
+          -- rows have a NULL pivota_signature_id, and NULL = sig is NULL, which
+          -- ORDER BY DESC sorts FIRST (verified on the prod server:
+          -- bool DESC yields NULL, true, false). A plain equals therefore handed
+          -- the pick to an unidentified row ahead of the correctly matching
+          -- one — worse than the recency-only ordering it replaced. This form
+          -- is never NULL, so true sorts first and false last.
+          ORDER BY (cp.pivota_signature_id IS NOT DISTINCT FROM apv.pivota_signature_id) DESC,
+                   cp.updated_at DESC NULLS LAST,
+                   cp.product_key ASC
           LIMIT 1
         ) ext_seed ON TRUE
         WHERE apv.pivota_signature_id IS NOT NULL
