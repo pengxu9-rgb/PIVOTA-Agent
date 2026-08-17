@@ -11402,6 +11402,37 @@ describe('discovery feed service', () => {
       expect(categoryLadder.sql).toContain('tool = ANY($2::text[])');
       expect(categoryLadder.sql).toContain('array_position($2::text[], tool) ASC');
 
+      // The sequential ladder was value-major and tool-minor: it walked every
+      // tool scope for value[0] before touching value[1]. The batched form only
+      // reproduces that if the VALUE array is the leading sort key. Swapping the
+      // two array_position clauses silently reorders the whole result.
+      for (const ladder of ladderCalls) {
+        const valueRank = ladder.sql.indexOf('array_position($3::text[]');
+        const toolRank = ladder.sql.indexOf('array_position($2::text[], tool)');
+        expect(valueRank).toBeGreaterThan(-1);
+        expect(toolRank).toBeGreaterThan(-1);
+        expect(valueRank).toBeLessThan(toolRank);
+      }
+
+      // The per-iteration LIMIT was `safeLimit - rows.length`, so the batched
+      // statement must also ask only for the REMAINING capacity. `LIMIT
+      // safeLimit` would over-fetch and, once rows are already collected, let a
+      // later axis overrun the window the caller sized.
+      const curatedHeadRows = 6; // one row per vertical rail, from the mock above
+      const verticalLimit = verticalLadder.params[verticalLadder.params.length - 1];
+      expect(typeof verticalLimit).toBe('number');
+      expect(verticalLimit).toBe(120 - curatedHeadRows);
+
+      // Rows already collected are excluded in SQL as well as in JS. Dropping the
+      // exclusion still dedupes (seenRowKeys keys on id first) but makes every
+      // later statement re-read and discard rows it already has.
+      expect(verticalLadder.sql).toContain('id <> ALL(');
+      const seenIds = verticalLadder.params.find(
+        (param) => Array.isArray(param) && param.every((value) => /^\d+$/.test(String(value))),
+      );
+      expect(seenIds).toBeDefined();
+      expect(seenIds.length).toBe(curatedHeadRows);
+
       // The mutant this kills: reverting to a per-(value, tool_scope) loop puts
       // this well past 70 even on a corpus this small.
       expect(dbQueryMock.mock.calls.length).toBeLessThanOrEqual(12);
