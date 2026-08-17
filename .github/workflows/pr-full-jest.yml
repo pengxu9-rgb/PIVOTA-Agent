@@ -375,6 +375,7 @@ jobs:
             tests/public_read_chain_resolvability.node.test.cjs \
             tests/public_read_chain_seed_routed_probe.node.test.cjs \
             tests/external_seed_lane_reader_parity.node.test.cjs \
+            tests/pdp_content_preservation_lane.node.test.cjs \
             tests/ucp_order_webhook_receiver.node.test.cjs \
             tests/acp_delegate_payment_refusal.node.test.cjs \
             tests/public_read_mcp_heartbeat.node.test.cjs \
