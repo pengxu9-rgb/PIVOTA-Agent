@@ -297,7 +297,10 @@ export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArg
 
   if (opId === "create_checkout_session") {
     const quote = isPlainObject(own(params, "quote")) ? own(params, "quote") : {};
-    const items = Array.isArray(quote.items) ? quote.items.filter((it) => isPlainObject(it) && str(it.product_id)) : [];
+    // Trimmed at the door: memo key, target lookup and the minted id all agree on the same spelling.
+    const items = Array.isArray(quote.items)
+      ? quote.items.filter((it) => isPlainObject(it) && str(it.product_id)).map((it) => ({ ...it, product_id: str(it.product_id) }))
+      : [];
     if (items.length === 0 || items.length > MAX_ESCALATION_ITEMS) return null; // intake will refuse an empty/oversized cart itself
     // A quantity that is not a positive safe integer is NOT coerced to 1 (review of #2025: that would state a
     // one-unit total for a cart the caller believes is 2.5 or "3" — on the one number the agent compares
@@ -322,7 +325,7 @@ export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArg
         `Send one checkout per seller: ${[...hosts].join(", ")}.`,
       ].join(" "), { seller_hosts: [...hosts] });
     }
-    const normalized = items.map((it) => ({ product_id: it.product_id.trim(), quantity: it.quantity }));
+    const normalized = items.map((it) => ({ product_id: it.product_id, quantity: it.quantity }));
     const continueUrl = targets.get(normalized[0].product_id);
     return buildEscalationCheckout({
       id: encodeEscalationId(normalized),
