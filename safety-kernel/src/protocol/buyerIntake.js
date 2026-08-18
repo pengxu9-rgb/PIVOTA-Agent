@@ -275,7 +275,10 @@ export function pickCompleteAddress(raw, { updateHint } = {}) {
 //   identity mismatch          -> refuse (`identity_mismatch`)
 //   exactly one REAL variant   -> use it
 //   zero variants              -> refuse (`no_variants`)
-//   only restated product ids  -> refuse (`no_real_variant_identity`)
+//   PRODUCT-GRAIN row          -> use the product id (the read DECLARED `purchase_grain: 'product'` AND
+//                                 published exactly one candidate byte-equal to the product id — see the
+//                                 resolver body; this is the backend's own convention for a variant-less row)
+//   only restated product ids  -> refuse (`no_real_variant_identity`) — incl. `${pid}-N`, a lost variant axis
 //   more than one REAL variant -> refuse (`ambiguous`, with the count — a door will not guess an option)
 //   read errors/expires        -> refuse (`resolution_unavailable`)
 //
@@ -467,7 +470,7 @@ export function createDefaultVariantResolver({ executor, timeoutMs } = {}) {
     if (nonEmpty(merchant_id)) product.merchant_id = merchant_id;
     const result = await executor.execute('get_product', { payload: { product } }, { ...ctx, signal });
     assertProductIdentity(result, product_id, merchant_id);
-    return variantIdsFromProductRead(result);
+    return { ids: variantIdsFromProductRead(result), productGrain: isProductGrainRead(result) };
   }
 
   /**
@@ -507,7 +510,8 @@ export function createDefaultVariantResolver({ executor, timeoutMs } = {}) {
     }
     const byProduct = new Map(productIds.map((pid, i) => [pid, resolved[i]]));
     for (const it of needing) {
-      const candidates = byProduct.get(it.product_id) ?? [];
+      const read = byProduct.get(it.product_id) ?? { ids: [], productGrain: false };
+      const candidates = read.ids;
       // THE central filter. A candidate that is the requested product_id, or the requested product_id plus a
       // separator, carries no identity of its own — it is the product id restated. src/pdpBuilder.js
       // buildVariants MANUFACTURES exactly those two shapes when an upstream product has no variants
@@ -517,6 +521,21 @@ export function createDefaultVariantResolver({ executor, timeoutMs } = {}) {
       // pricing a cart nobody asked for.
       const real = candidates.filter((id) => !isRestatedProductId(id, it.product_id));
       if (real.length === 0) {
+        // PRODUCT-GRAIN ROW: the read SAID, in a typed field, that the row carries no variant axis and its one
+        // canonical variant IS the product (pdpBuilder `purchase_grain: 'product'`; the backend's own
+        // canonicalization makes the same choice — agent_v2 _canonicalize_search_product prices such a row as
+        // offer::<merchant>::<product_id>). For that row `variant_id === product_id` is not a forgery: it is
+        // the purchasable identity, priced at exactly what the PDP and search showed. Accept it ONLY under all
+        // three of: the read declared the grain (a typed field — property 1 is intact, nothing here reads the
+        // SHAPE of an id), the read published exactly ONE candidate, and that candidate is BYTE-EQUAL to the
+        // requested product_id (a `${pid}-N` restatement means a variant axis whose identity was lost, and
+        // there pricing WOULD guess — still refused below). Measured before this: every external-seed /
+        // brand-crawl row refused `no_real_variant_identity` on every door — checkout could not quote most of
+        // the public pool (review of #2021, 2026-08-18).
+        if (read.productGrain && candidates.length === 1 && candidates[0] === it.product_id) {
+          it.variant_id = it.product_id;
+          continue;
+        }
         // Distinguish "the catalog published no variant identity for this product" (it published only
         // restatements of the product id) from "the product genuinely has no variants". Ops needs both.
         if (candidates.length > 0) {
@@ -563,6 +582,16 @@ export function variantIdsFromProductRead(result) {
     if (id && !ids.includes(id)) ids.push(id);
   }
   return ids;
+}
+
+/**
+ * Did the product read DECLARE itself product-grain — a row with no variant axis whose one canonical variant is
+ * the product itself? Reads the TYPED field pdpBuilder publishes (`purchase_grain: 'product'`); a read that
+ * says nothing is NOT product-grain (fail closed — absence must never buy an acceptance).
+ */
+export function isProductGrainRead(result) {
+  const product = productOfRead(result);
+  return typeof product.purchase_grain === 'string' && product.purchase_grain.trim() === 'product';
 }
 
 /**

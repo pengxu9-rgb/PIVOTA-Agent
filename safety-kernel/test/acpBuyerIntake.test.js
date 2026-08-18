@@ -602,7 +602,24 @@ test('REAL CHAIN: pdpBuilder really does fabricate variant_id === product_id for
     'and `${product_id}-${idx+1}` for a variant with no id of its own');
 });
 
-test('REAL CHAIN P0: an UNSCOPED sig_* cart over the real pdpBuilder is REFUSED, not priced 201', async () => {
+test('REAL CHAIN: pdpBuilder DECLARES the grain — `product` for a variant-less row, `variant` when a variant axis exists', () => {
+  const none = buildPdpPayload({ product: { product_id: 'sig_9f2c1a', title: 'Serum', price: 42, in_stock: true } });
+  assert.equal(none.product.purchase_grain, 'product');
+  const lost = buildPdpPayload({ product: { product_id: 'sig_9f2c1a', title: 'Serum', price: 42, in_stock: true, variants: [{ title: 'Full size' }] } });
+  assert.equal(lost.product.purchase_grain, 'variant', 'a variant axis whose ids were lost is still a variant axis');
+  const real = buildPdpPayload({ product: { product_id: 'sig_9f2c1a', title: 'Serum', price: 42, in_stock: true, variants: [{ variant_id: '48930014462260' }] } });
+  assert.equal(real.product.purchase_grain, 'variant');
+});
+
+test('REAL CHAIN P0 (revised 2026-08-18): an UNSCOPED variant-less sig_* cart over the real pdpBuilder is PRICED at product grain', async () => {
+  // THE CHANGE, and why it is not the forgery the guard exists for. Before: this exact cart was refused
+  // `no_real_variant_identity` — and so was every external-seed / brand-crawl row on every door, because the
+  // read only ever published `variant_id === product_id` and the resolver could not tell "variant-less product"
+  // from "multi-variant product whose read fabricated ids" from the SHAPE of the id. Now pdpBuilder DECLARES
+  // `purchase_grain: 'product'` (a typed field) for the row it minted the single variant from, and the
+  // resolver accepts `variant_id === product_id` under exactly that declaration + one byte-equal candidate.
+  // The backend's own canonicalization (agent_v2 _canonicalize_search_product) makes the same choice, so the
+  // quote prices offer::<merchant>::<product_id> — the price the PDP and search showed. Nothing to forge.
   const { adapter, priced, productReads } = setup({
     productRead: unscopedPdpRead({ title: 'Niacinamide Serum', price: 42, currency: 'USD', in_stock: true }),
   });
@@ -611,9 +628,50 @@ test('REAL CHAIN P0: an UNSCOPED sig_* cart over the real pdpBuilder is REFUSED,
   }));
   assert.equal(productReads().length, 1, 'the read really happened, unscoped');
   assert.deepEqual(productReads()[0].payload.product, { product_id: 'sig_9f2c1a' }, 'no merchant_id invented');
-  assert.equal(r.status, 400, `the door must refuse the fabricated identity, got ${r.status}: ${JSON.stringify(r.body)}`);
-  assert.equal(r.body.detail.variant_resolution, 'no_real_variant_identity');
-  assert.equal(priced().length, 0, 'and price nothing');
+  assert.equal(r.status, 201, `a declared product-grain row must quote, got ${r.status}: ${JSON.stringify(r.body)}`);
+  assert.equal(idsFrom(priced()), 'sig_9f2c1a', 'priced at product grain: variant_id IS the product id, by declaration');
+});
+
+test('P0: the product-grain acceptance is a TYPED, ALL-THREE-CONDITIONS carve-out — every partial reading still refuses', async () => {
+  // Same read shapes a legacy/other-lane reader would produce, minus one condition each. Each must refuse
+  // exactly as before the change, or the carve-out has widened into the forgery it was cut around.
+  const cases = [
+    // 1. no declaration at all (an old pdpBuilder, or the Python merchant lane): the id shape alone buys nothing
+    { name: 'undeclared', read: { product: { product_id: 'sig_9f2c1a', variants: [{ variant_id: 'sig_9f2c1a' }] } }, reason: 'no_real_variant_identity' },
+    // 2. declared, but the wrong grain
+    { name: 'grain=variant', read: { product: { product_id: 'sig_9f2c1a', purchase_grain: 'variant', variants: [{ variant_id: 'sig_9f2c1a' }] } }, reason: 'no_real_variant_identity' },
+    // 3. declared product, but the candidate is a SUFFIX restatement (a lost variant axis) — pricing would guess
+    { name: 'grain=product + ${pid}-1', read: { product: { product_id: 'sig_9f2c1a', purchase_grain: 'product', variants: [{ variant_id: 'sig_9f2c1a-1' }] } }, reason: 'no_real_variant_identity' },
+    // 4. declared product, but TWO candidates (a declaration cannot make an ambiguous read unambiguous)
+    { name: 'grain=product + 2 restated', read: { product: { product_id: 'sig_9f2c1a', purchase_grain: 'product', variants: [{ variant_id: 'sig_9f2c1a' }, { variant_id: 'sig_9f2c1a-2' }] } }, reason: 'no_real_variant_identity' },
+    // 5. declared product, but NO candidate at all
+    { name: 'grain=product + no variants', read: { product: { product_id: 'sig_9f2c1a', purchase_grain: 'product', variants: [] } }, reason: 'no_variants' },
+    // 6. a truthy non-string / wrong-case declaration is not a declaration
+    { name: 'grain=PRODUCT (case)', read: { product: { product_id: 'sig_9f2c1a', purchase_grain: 'PRODUCT', variants: [{ variant_id: 'sig_9f2c1a' }] } }, reason: 'no_real_variant_identity' },
+    { name: 'grain=true', read: { product: { product_id: 'sig_9f2c1a', purchase_grain: true, variants: [{ variant_id: 'sig_9f2c1a' }] } }, reason: 'no_real_variant_identity' },
+  ];
+  for (const c of cases) {
+    const { adapter, priced } = setup({ productRead: () => c.read });
+    const r = await adapter.createCheckoutSession(req({
+      body: { customer_email: 'a@b.co', items: [{ product_id: 'sig_9f2c1a', quantity: 1 }] },
+    }));
+    assert.equal(r.status, 400, `${c.name}: expected refusal, got ${r.status}: ${JSON.stringify(r.body)}`);
+    assert.equal(r.body.detail.variant_resolution, c.reason, c.name);
+    assert.equal(priced().length, 0, `${c.name}: priced nothing`);
+  }
+  // …and the one shape that IS accepted, spelled out next to its near-misses.
+  const { adapter, priced } = setup({ productRead: () => ({ product: { product_id: 'sig_9f2c1a', purchase_grain: 'product', variants: [{ variant_id: 'sig_9f2c1a' }] } }) });
+  const ok = await adapter.createCheckoutSession(req({ body: { customer_email: 'a@b.co', items: [{ product_id: 'sig_9f2c1a', quantity: 1 }] } }));
+  assert.equal(ok.status, 201, JSON.stringify(ok.body));
+  assert.equal(idsFrom(priced()), 'sig_9f2c1a');
+});
+
+test('P0: a declared product-grain read that answers about ANOTHER product is still an identity mismatch (declaration cannot bypass identity)', async () => {
+  const { adapter, priced } = setup({ productRead: () => ({ product: { product_id: 'SOME_OTHER', purchase_grain: 'product', variants: [{ variant_id: 'SOME_OTHER' }] } }) });
+  const r = await adapter.createCheckoutSession(req({ body: { customer_email: 'a@b.co', items: [{ product_id: 'sig_9f2c1a', quantity: 1 }] } }));
+  assert.equal(r.status, 400, JSON.stringify(r.body));
+  assert.equal(r.body.detail.variant_resolution, 'identity_mismatch');
+  assert.equal(priced().length, 0);
 });
 
 test('REAL CHAIN P0: the `sig_9f2c1a-1` shape from an id-less upstream variant is REFUSED too', async () => {
