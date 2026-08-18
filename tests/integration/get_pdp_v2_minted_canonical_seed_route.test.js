@@ -158,7 +158,14 @@ describe('get_pdp_v2 minted-canonical seed route (P3)', () => {
     const { app, db } = loadServerWithDb();
     const { res } = await invokeMintedPdp({ app, db, signatureRow: mintedSignatureRow() });
     const identity = res.body?.metadata?.identity_resolution || {};
-    expect(identity.requested_product_id).toBe(ATTACHED_SEED_EPID);
+    // requested_product_id is the SIG the caller sent. It used to echo the
+    // resolved seed id here because this exit (PRODUCT_NOT_FOUND) read a
+    // post-resolution expression while the success exit already read the
+    // requested one — so the same route reported the field two different ways,
+    // and this body claimed requested == resolved while canonicalization was
+    // applied. ADR-009 made every exit report the request. The subject of this
+    // test — the resolved id — is unchanged below.
+    expect(identity.requested_product_id).toBe(MINTED_SIG);
     expect(identity.resolved_product_id).toBe(ATTACHED_SEED_EPID);
     // The slug answers nothing anywhere; carrying it forward is the 500.
     expect(identity.resolved_product_id).not.toBe(MINTED_SLUG);

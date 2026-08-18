@@ -40758,9 +40758,53 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 		      let canonicalProductRef = null;
 		      let canonicalizationApplied = false;
 		      let canonicalizationReasonCode = null;
+		      // ADR-009 — `canonicalizationReasonCode` was doing TWO jobs: it is an
+		      // attribution string in the response, and it is a CONJUNCT of
+		      // shouldSkipSigExternalSeedIdentityGraph. Those jobs disagree.
+		      //
+		      // The group-election arms below used to overwrite a signature
+		      // attribution with PRODUCT_ROUTE_MERCHANT_MISMATCH. That was wrong as
+		      // attribution — the sig id is why the request moved identity — but the
+		      // overwrite was ALSO the thing holding the sig skip shut once a group
+		      // election had moved the ref again. Fixing the attribution alone opens
+		      // the skip and drops `metadata.identity_graph` on the seed sig lane:
+		      // measured, `executed_without_line_member_hydration` ->
+		      // `skipped_sig_external_seed_catalog_identity`.
+		      //
+		      // So the gate gets its own symbol. This one answers "did anything move
+		      // the ref AFTER the signature resolved it?", which is what the skip
+		      // actually wants to know, and it cannot be changed by editing prose.
+		      //
+		      // Only the two group-election arms set it. The external-seed fallback
+		      // arm deliberately does not: it requires the CALLER to have pinned a
+		      // real seller, which is the exact condition that stops the signature
+		      // block from running, so it cannot coexist with a signature
+		      // attribution (verified — a no-group control is byte-identical on both
+		      // trees).
+		      let canonicalizationGroupElectionApplied = false;
 		      let identityResolutionSource = 'requested_route';
 		      const requestedProductIdForDiagnostics = productId || null;
-          const requestedMerchantIdForDiagnostics = requestedMerchantId || null;
+          // ADR-009 — THE SELLER THE CALLER ADDRESSED, frozen here.
+          //
+          // `requestedMerchantId` is a `let` that the signature block below
+          // REASSIGNS with the resolved row's own seller (a `merch_obs_` id
+          // since the A9-4 re-key). Every read of it after that point is a
+          // question about the ROW, not about the request. That is correct for
+          // the predicates that genuinely want the row, and silently wrong for
+          // the ones whose question is "did the caller pin a seller?". Three
+          // sites below ask exactly that — they raise
+          // `PRODUCT_ROUTE_MERCHANT_MISMATCH` — and on the signature lane they
+          // were comparing the resolved seller against a ref derived from that
+          // same resolved seller, reporting a route/merchant mismatch to a
+          // caller who sent no merchant at all and clobbering the true
+          // `PIVOTA_SIGNATURE_ID` reason code on the way out.
+          //
+          // Captured AFTER the offer-id fills above on purpose: a seller
+          // derived from the caller's own `offer_id` is still something the
+          // caller addressed. Captured BEFORE the signature block, which is
+          // where "the request" stops and "the row" begins.
+          const callerRequestedMerchantId = requestedMerchantId;
+          const requestedMerchantIdForDiagnostics = callerRequestedMerchantId || null;
           let requestedPivotaSignatureId = null;
           // Deliberately its OWN binding rather than a field on
           // canonicalProductRef: that ref is rebuilt from a whitelist here and
@@ -41033,7 +41077,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 'product_ref.product_id (or product_ref.variant_id + merchant_id, or product_ref.offer_id, or subject=product_group) is required for get_pdp_v2',
               reasonCode: 'MISSING_PARAMETERS',
               requestedProductId: productId || null,
-              requestedMerchantId: requestedMerchantId || null,
+              requestedMerchantId: requestedMerchantIdForDiagnostics,
               resolutionSource: identityResolutionSource,
             }),
 	        });
@@ -41060,7 +41104,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	      //
 	      // Widening THIS expression alone is a no-op and was tried and reverted:
 	      // the three consumers below re-test the bucket themselves
-	      // (`requestedMerchantId === EXTERNAL_SEED_MERCHANT_ID` at the seed-status
+	      // (a requestedMerchantId-vs-sentinel equality at the seed-status
 	      // precheck and the similar-prewarm block, and
 	      // `canonicalProductRef.merchant_id === … && isExternalSeedProductId(...)`
 	      // at the identity rescue), so a merch_obs_ minted row would still skip
@@ -41070,7 +41114,27 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	      // smuggled into P3.
 	      //
 	      // STATUS 2026-08-17 (ADR-009 task 4). The A9-4 re-key completed and the
-	      // gap fired: 0 catalog rows carry the sentinel; 12,514 seed-routed rows
+	      // gap fired. CORRECTED 2026-08-18: this used to read "0 catalog rows
+	      // carry the sentinel". That is not true and code must not assume it.
+	      // The enforced watermark
+	      // (tests/fixtures/external_seed_sentinel_watermarks.json, mode=enforce)
+	      // records a FLOOR of 50 surviving sentinel-merchant rows on
+	      // the mirror lane — the jwx893-fz.myshopify.com test rig — and the
+	      // nongrowth audit reads prod directly, so it would have reported the
+	      // lane lowerable if the real count had reached 0. "0" was true of the
+	      // cohort the re-key MOVED (11,099), not of catalog_products.
+	      //
+	      // Whether those 50 are servable is not decidable from this repo:
+	      // activeCatalogProductSourceWhere excludes rigs by merchant-id list and
+	      // by the `pivota-review-demo` domain prefix, and neither covers that rig
+	      // under the sentinel merchant; the remaining lever is the data-driven
+	      // catalog_source_quarantine table. Either way the sentinel is still
+	      // REACHABLE through this route — tests/external_seed_product_detail_fetch
+	      // exercises the sig identity-graph skip on a resolved_merchant_id
+	      // 'external_seed' row — so the merchant-shaped gates below are live code,
+	      // not vestigial.
+	      //
+	      // 12,514 seed-routed rows
 	      // sit under merch_obs_ sellers, EVERY one with a seed source_system —
 	      // measured, so source_system alone is the lane and the other arms admit
 	      // nothing extra. Every ROW-SIDE consumer in this route (the ones that
@@ -41081,20 +41145,45 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	      // rows since the flip. Live-verified beforehand: the public sig_ path
 	      // resolved these rows fine, so this was content quality, not a 404.
 	      //
-	      // Still merchant-shaped, deliberately: THIS entry expression and the
-	      // request-side tests (`requestedMerchantId === <sentinel>`). They read
-	      // what the CALLER sent, not a row — no row exists yet at entry — and a
-	      // legacy client or the ext_-id minters can still send the sentinel.
-	      // They stop mattering when the minters stop (their own PR), after which
-	      // they are deletable, not to be guarded.
+	      // STATUS 2026-08-18 (ADR-009, the request-side group). Still
+	      // merchant-shaped, deliberately, and now for a reason that was
+	      // measured rather than assumed.
 	      //
-	      // One honest caveat on "caller sent": on the sig path
-	      // requestedMerchantId is OVERWRITTEN with the row's resolved seller
-	      // (the signature block above), so the two identity-graph SKIP
-	      // predicates — which also carry a request-side arm — still do not fire
-	      // for seed sig PDPs. That is the pre-existing state (latency, not
-	      // output: the identity graph runs where it used to be skipped) and is
-	      // the request-side follow-up's problem, not a row-side one.
+	      // THIS entry expression and the `(!requestedMerchantId ||
+	      // requestedMerchantId === <the sentinel>)` gates below are kept. The
+	      // sentinel is retired as a stored VALUE, not as a request vocabulary:
+	      // a legacy client can still address the seed lane by name, and the
+	      // `!requestedMerchantId` arm already admits the seller-less shape the
+	      // lane routes with today (verified end to end — a bare
+	      // `{product_id:'ext_…'}` runs the seed-status precheck through the
+	      // `isExternalSeedProductId` arm of this very expression). Deleting the
+	      // sentinel arm would drop the legacy client and buy nothing.
+	      //
+	      // KNOWN LIMIT, not a regression: a seller-less request for a seed id
+	      // that is NOT `ext_`/`ext:`-shaped (the minted lane's `brand:hash`
+	      // ids) does not enter these branches, where `merchant_id=external_seed`
+	      // used to carry it in. No client sends that shape — those ids reach
+	      // this route through their `sig_` id — and widening this expression
+	      // alone was tried and reverted for the reason recorded above.
+	      //
+	      // On the signature lane `requestedMerchantId` is OVERWRITTEN with the
+	      // resolved row's seller, so every gate below it asks about the ROW.
+	      // Where the question is really "did the CALLER pin a seller?", read
+	      // `callerRequestedMerchantId` instead — see its binding above.
+	      //
+	      // The two identity-graph SKIP predicates keep reading
+	      // `requestedMerchantId`, i.e. they keep NOT firing on the signature
+	      // lane, and that is now a deliberate keep rather than an oversight.
+	      // The earlier note here called it "latency, not output". That was true
+	      // when it was written and is false now: pdpIdentityGraph's
+	      // maybeBuildLiveSyntheticPdp grew a catalog-entity-group branch that
+	      // "replaces the canonical product wholesale for per-brand observed
+	      // sellers (merch_obs_)" — precisely the rows the re-key created — and
+	      // it contributes product_group_id, offer counts, offer_source
+	      // `group_fused` and electronics_meta. Re-enabling the skip for those
+	      // rows would suppress the branch that exists for them. Any change
+	      // there is an output change on the main PDP route and needs its own
+	      // measurement, not a rename.
 	      const entryProductIsExternalSeed =
 	        isExternalSeedProductId(entryProductId) ||
 	        requestedMerchantId === EXTERNAL_SEED_MERCHANT_ID;
@@ -41178,8 +41267,16 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	          if (err?.code === 'STAGE_TIMEOUT') {
 	            logger.warn(
 	              {
+	                // ADR-009: report the seller the request actually carried.
+	                // Defaulting an absent seller to the retired sentinel put a
+	                // seller into the record that neither the caller nor any row
+	                // ever named, and the seed-status precheck this line reports
+	                // on is keyed on the PRODUCT ID alone — it never used the
+	                // value. Null is the honest reading, and the frozen caller
+	                // value is what "the request carried" means everywhere else
+	                // in this route.
+	                merchant_id: requestedMerchantIdForDiagnostics,
 	                product_id: entryProductId,
-	                merchant_id: requestedMerchantId || EXTERNAL_SEED_MERCHANT_ID,
 	                budget_ms: PDP_EXTERNAL_SEED_STATUS_PRECHECK_BUDGET_MS,
 	              },
 	              'get_pdp_v2 external_seed status precheck exceeded first-paint budget',
@@ -41188,8 +41285,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	            logger.warn(
 	              {
 	                err: err?.message || String(err),
+	                // Same reason as the budget-exceeded twin above.
+	                merchant_id: requestedMerchantIdForDiagnostics,
 	                product_id: entryProductId,
-	                merchant_id: requestedMerchantId || EXTERNAL_SEED_MERCHANT_ID,
 	              },
 	              'get_pdp_v2 external_seed status precheck failed',
 	            );
@@ -41210,8 +41308,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	                external_product_id:
 	                  externalSeedRouteStatus?.external_product_id || entryProductId || null,
 	              },
-	              requestedProductId: entryProductId || null,
-	              requestedMerchantId: requestedMerchantId || null,
+	              requestedProductId: requestedProductIdForDiagnostics || entryProductId || null,
+	              requestedMerchantId: requestedMerchantIdForDiagnostics,
 	              resolutionSource: 'external_seed_status_precheck',
 	            }),
 	          });
@@ -41236,7 +41334,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	        });
 	      }
 		        requestedProductIdCtx = requestedProductIdForDiagnostics || entryProductId || null;
-        requestedMerchantIdCtx = requestedMerchantId || null;
+        // Paired with requestedProductIdCtx, which already carries the
+        // diagnostics (pre-resolution) id — so this carries the pre-resolution
+        // seller, not the one the signature block substituted.
+        requestedMerchantIdCtx = requestedMerchantIdForDiagnostics;
         identityResolutionSourceCtx = identityResolutionSource;
 
 	      const shouldResolveVariantToProduct =
@@ -41275,8 +41376,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                   error: 'PRODUCT_NOT_FOUND',
                   message: 'Variant not found',
                   reasonCode: 'PRODUCT_NOT_FOUND',
-                  requestedProductId: entryProductId || productId || null,
-                  requestedMerchantId: requestedMerchantId || null,
+                  requestedProductId: requestedProductIdForDiagnostics || entryProductId || productId || null,
+                  requestedMerchantId: requestedMerchantIdForDiagnostics,
                   resolutionSource: identityResolutionSource,
                 }),
 		          });
@@ -41287,8 +41388,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 message:
                   'product_ref.product_id is required unless you provide product_ref.offer_id or subject=product_group',
                 reasonCode: 'MISSING_PARAMETERS',
-                requestedProductId: entryProductId || productId || null,
-                requestedMerchantId: requestedMerchantId || null,
+                requestedProductId: requestedProductIdForDiagnostics || entryProductId || productId || null,
+                requestedMerchantId: requestedMerchantIdForDiagnostics,
                 resolutionSource: identityResolutionSource,
               }),
 		        });
@@ -41419,13 +41520,30 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	            : groupMembers;
 	          canonicalProductRef = canonicalCatalogGroup.canonical_product_ref;
 	          identityResolutionSource = 'canonical_catalog_product_group';
+	          // Right operand is `requestedMerchantId` DELIBERATELY, not the
+	          // frozen caller value: the question here is "did the ref we just
+	          // elected move away from the identity this request had already
+	          // resolved to?", and on the signature lane that identity IS the
+	          // resolved row's seller. Freezing it here would call a sentinel-
+	          // addressed request a mismatch whenever the group elects any real
+	          // seller — pinned against by get_pdp_v2_stability's unscoped
+	          // external_seed case, which wants exactly that mismatch.
 	          if (
 	            requestedMerchantId &&
 	            String(canonicalProductRef?.merchant_id || '').trim() &&
 	            String(canonicalProductRef?.merchant_id || '').trim() !== requestedMerchantId
 	          ) {
 	            canonicalizationApplied = true;
-	            canonicalizationReasonCode = 'PRODUCT_ROUTE_MERCHANT_MISMATCH';
+	            canonicalizationGroupElectionApplied = true;
+	            // Do NOT clobber a canonicalization the SIGNATURE already
+	            // attributed. The reason code names the CAUSE, and it is read as
+	            // one: shouldSkipSigExternalSeedIdentityGraph gates on
+	            // 'PIVOTA_SIGNATURE_ID'. On the signature lane the sig id is why
+	            // this request moved identity at all; the group election is a
+	            // consequence of that, not a second, unrelated cause.
+	            if (canonicalizationReasonCode !== 'PIVOTA_SIGNATURE_ID') {
+	              canonicalizationReasonCode = 'PRODUCT_ROUTE_MERCHANT_MISMATCH';
+	            }
 	          }
 	        }
 	      }
@@ -41436,6 +41554,26 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 		      }
 
 		      const externalSeedRouteProductId = entryProductIsExternalSeed || isExternalSeedProductId(productId);
+	      // ADR-009 KEEP, and NOT dead weight — do not "simplify" this default
+	      // away. `precheckMerchantId` is consumed three ways below: as a
+	      // TRUTHINESS token by shouldPrecheckMerchantScoped, and as an equality
+	      // token by the prefetched-precheck reuse and the fallback-ref merchant.
+	      // Dropping the default to `requestedMerchantId` alone is therefore
+	      // OBSERVABLE, not a no-op: for a seller-less seed request it makes
+	      // shouldPrecheckMerchantScoped false, which skips the entry precheck
+	      // entirely, which leaves precheckedMerchantProduct null, which flips
+	      // shouldSkipExternalSeedUpstreamGroupResolve off and sends the request
+	      // out to the upstream group resolve that
+	      // PDP_EXTERNAL_SEED_UPSTREAM_GROUP_RESOLVE_ENABLED exists to avoid.
+	      // Pinned by get_pdp_v2_caller_requested_merchant's precheck test.
+	      //
+	      // It is a routing token, like the one #2017 retired, and it is
+	      // retire-ABLE — fetchProductDetailForOffers now admits the seller-less
+	      // seed call directly, and whenever requestedMerchantId is empty
+	      // `externalSeedRouteProductId` implies isExternalSeedProductId
+	      // (productId), which is exactly the shape that admission accepts. But
+	      // retiring it means widening shouldPrecheckMerchantScoped in the same
+	      // change, on the main PDP route. That is its own PR.
 	      const precheckMerchantId =
 	        requestedMerchantId || (externalSeedRouteProductId ? EXTERNAL_SEED_MERCHANT_ID : '');
 	      // Fast-fail for merchant-scoped PDP requests where the entry product doesn't exist.
@@ -41531,7 +41669,14 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	        if (precheckEntryProductMissing) {
 	          logger.info(
 	            {
-	              requested_merchant_id: requestedMerchantId,
+	              requested_merchant_id: requestedMerchantIdForDiagnostics,
+	              // The seller the precheck actually ran against. It is NOT
+	              // requested_merchant_id: on the signature lane it is the
+	              // resolved row's seller, and for a seller-less seed request it
+	              // is the seed-lane routing token. Without it this line reports
+	              // a null seller for a lookup that used a non-null one, and
+	              // cannot explain its own miss.
+	              precheck_merchant_id: precheckMerchantId || null,
 	              product_id: productId,
 	              has_product_group_hint: hasExplicitProductGroup || Boolean(offerProductGroupId),
 	            },
@@ -41581,6 +41726,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 		            identityResolutionSource = shouldAttemptUnscopedExternalSeedResolve
 		              ? 'product_group_unscoped'
 		              : 'product_group_scoped';
+	            // Same question and same answer source as the canonical-catalog
+	            // arm above — see that comment for why the operand is the
+	            // resolved seller and not the frozen caller value.
 	            if (
 	              shouldAttemptUnscopedExternalSeedResolve &&
 	              requestedMerchantId &&
@@ -41588,7 +41736,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	              String(canonicalProductRef?.merchant_id || '').trim() !== requestedMerchantId
 	            ) {
 	              canonicalizationApplied = true;
-	              canonicalizationReasonCode = 'PRODUCT_ROUTE_MERCHANT_MISMATCH';
+	              canonicalizationGroupElectionApplied = true;
+	              if (canonicalizationReasonCode !== 'PIVOTA_SIGNATURE_ID') {
+	                canonicalizationReasonCode = 'PRODUCT_ROUTE_MERCHANT_MISMATCH';
+	              }
 	            }
 	          } else if (pdpV2ProductGroupResolveMode.startsWith('started_')) {
 	            pdpV2ProductGroupResolveMode = shouldAttemptUnscopedExternalSeedResolve
@@ -41627,18 +41778,39 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	          product_id: productId,
 	          ...(platform ? { platform } : {}),
 	        };
+	          // `…_fallback` means "the caller pinned a real seller and we served
+	          // the seed ref anyway". Both arms therefore read the CALLER's
+	          // value: after the signature block `requestedMerchantId` is the
+	          // resolved row's seller, and this fallback IS reachable on a
+	          // signature request — the last-resort `catalog_products` lane in
+	          // resolveCatalogSignatureInner returns a ref with no `source`, so
+	          // it reassigns `requestedMerchantId` without ever setting
+	          // `canonicalProductRef`.
+	          //
+	          // The sentinel arm stays: a legacy client still sending
+	          // `merchant_id=external_seed` has not pinned a real seller, so it
+	          // is not a mismatch. It is retired as a VALUE, not as a request
+	          // vocabulary — see the entry-predicate comment above.
 	          if (shouldFallbackToExternalSeedProductRef) {
 	            identityResolutionSource =
-	              requestedMerchantId && requestedMerchantId !== EXTERNAL_SEED_MERCHANT_ID
+	              callerRequestedMerchantId && callerRequestedMerchantId !== EXTERNAL_SEED_MERCHANT_ID
 	                ? 'external_seed_product_id_fallback'
 	                : 'external_seed_product_id';
 	          }
 	          if (
 	            shouldFallbackToExternalSeedProductRef &&
-	            requestedMerchantId &&
-	            requestedMerchantId !== EXTERNAL_SEED_MERCHANT_ID
+	            callerRequestedMerchantId &&
+	            callerRequestedMerchantId !== EXTERNAL_SEED_MERCHANT_ID
 	          ) {
 	            canonicalizationApplied = true;
+	            // No PIVOTA_SIGNATURE_ID guard here, unlike the two arms above,
+	            // and the asymmetry is deliberate: this arm requires the caller
+	            // to have pinned a REAL seller, which is the exact condition
+	            // that stops the signature block from running at all (it
+	            // resolves only for a seller-less or sentinel-addressed
+	            // request). So the reason code cannot already be the
+	            // signature's. Verified by mutation — a guard here is
+	            // unreachable and no fixture can distinguish it.
 	            canonicalizationReasonCode = 'PRODUCT_ROUTE_MERCHANT_MISMATCH';
 	          }
 	      }
@@ -41842,8 +42014,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 error: 'PRODUCT_NOT_FOUND',
                 message: 'Product not found',
                 reasonCode: 'PRODUCT_NOT_FOUND',
-                requestedProductId: entryProductId || productId || null,
-                requestedMerchantId: requestedMerchantId || null,
+                requestedProductId: requestedProductIdForDiagnostics || entryProductId || productId || null,
+                requestedMerchantId: requestedMerchantIdForDiagnostics,
                 resolvedProductId: canonicalProductRef?.product_id || null,
                 resolvedMerchantId: canonicalProductRef?.merchant_id || null,
                 entryPrecheckMissing: precheckEntryProductMissing,
@@ -41928,6 +42100,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           Boolean(requestedPivotaSignatureId) &&
           canonicalizationApplied &&
           canonicalizationReasonCode === 'PIVOTA_SIGNATURE_ID' &&
+          // The gate, not the prose. Before ADR-009 stopped the group-election
+          // arms clobbering the reason code, the clobber was silently doing
+          // this job.
+          !canonicalizationGroupElectionApplied &&
           resolvedRefIsSeedRouted() &&
           (!requestedMerchantId || requestedMerchantId === EXTERNAL_SEED_MERCHANT_ID) &&
           !variantId &&
@@ -43664,9 +43840,22 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         {
           gateway_request_id: gatewayRequestId,
           operation: 'get_pdp_v2',
-          requested_product_id: entryProductId || null,
+          // Both `requested_*` fields report the REQUEST, as the response's
+          // metadata.identity_resolution does. They used to be post-resolution
+          // values on a line whose whole point is the requested-vs-resolved
+          // pair: on the signature lane `entryProductId` is the resolved seed
+          // id and `requestedMerchantId` is the resolved row's seller, so both
+          // columns showed the row and the pair read as "no canonicalization
+          // happened" for every sig PDP.
+          //
+          // Not literally the same expression as the response builder, which
+          // also falls back to `productId`. That asymmetry predates ADR-009 and
+          // is left alone: `entryProductId` is already `productId` at its
+          // snapshot, so the extra arm only differs for a request that carries
+          // no product id at all, which cannot reach this success path.
+          requested_product_id: requestedProductIdForDiagnostics || entryProductId || null,
           resolved_product_id: canonicalProductRef?.product_id || null,
-          requested_merchant_id: requestedMerchantId || null,
+          requested_merchant_id: requestedMerchantIdForDiagnostics,
           resolved_merchant_id: canonicalProductRef?.merchant_id || null,
           canonicalization_applied: canonicalizationApplied,
           canonicalization_reason_code: canonicalizationReasonCode || null,
