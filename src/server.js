@@ -42343,39 +42343,62 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	            // lane rows, so the suppression collapsed onto the three arms
 	            // below.
 	            //
-	            // Those three do NOT cover the lane. 5,847 of 12,514 seed-routed
-	            // rows carry an `ext_`-prefixed source id (arms 3/4); the
-	            // `'external'` platform arm fires only when `canonicalProduct`
-	            // came back from the seed detail store, which answers on the route
-	            // key for none of the 2,175 minted rows and 302 mirror rows.
+	            // Those three do NOT cover the lane. 5,847 of 12,514 rows carry an
+	            // `ext_`-prefixed source id (arms 3/4). The `'external'` platform
+	            // arm reads `canonicalProduct`, and only the seed detail store
+	            // stamps that value; it answers on the route key for 0 of the 2,175
+	            // minted rows and misses 302 mirror rows besides. So on 302 + 2,175
+	            // = 2,477 rows — ~20% of the lane — all three are false and only
+	            // the lane test below closes the gate.
 	            //
-	            // NO CURRENTLY-SERVING ROW CHANGES, and that was measured, not
-	            // assumed: probing the deployed gateway the same day (signature
-	            // path and direct seller+product path, minted and mirror rows,
-	            // with and without an identity listing) every seed PDP resolved
-	            // through the live identity graph, whose synthetic product always
-	            // carries a review_summary — so this block returns at its first
-	            // line and these arms are never evaluated (reviews module timing
-	            // 0ms on every probe). Where the identity graph is absent, an
-	            // observed seller's canonical product is either seed-built
-	            // (platform 'external', arm 2 covers) or null (the route 404s).
+	            // BLAST RADIUS IS ZERO, and this is the measurement that shows it
+	            // (not a control-flow argument): across all 12,514 lane rows, 0
+	            // have ANY active review reachable under either their own seller
+	            // key or the merchant-less import fallback key. 0 review rows exist
+	            // under any merch_obs_ seller at all — the key these newly
+	            // suppressed lookups would carry is an OBSERVED-SELLER key, so
+	            // "no seed-shaped key" would have been the wrong reassurance. And
+	            // no minted row sits under a connected merchant (2,175 of 2,175 are
+	            // observed sellers), so no reviewed merchant is dragged into the
+	            // lane by the source_system arm; the only 4 lane rows under a
+	            // connected merchant with a non-`ext_` id belong to a seller with 0
+	            // active reviews on every key form.
 	            //
-	            // What the conversion buys is that the suppression stops DEPENDING
-	            // on two unrelated accidents — the seed detail store stamping
-	            // 'external', and the identity graph always attaching a summary —
-	            // neither of which is a stated contract. The shape that reaches
-	            // this gate with every other arm false is a seed-lane row (mirror
-	            // platform + source_system) under a seller that is not an observed
-	            // one, with a non-`ext_` id; the seller column is exactly what
-	            // ADR-009 keeps moving, which is why the lane must not be read off
-	            // it. Pinned by get_pdp_v2_observed_seller_entry.
+	            // WHY the widening was not already visible — the mechanism, since
+	            // an earlier draft of this comment got it wrong. It is NOT that the
+	            // identity graph is always there: two named branches below
+	            // deliberately null it for seed-routed rows, and an existing test
+	            // (get_pdp_v2_caller_requested_merchant) asserts that state. What
+	            // holds is narrower:
+	            //   1. both of those skips require a seller-less or sentinel-
+	            //      addressed request, and on the signature path
+	            //      `requestedMerchantId` has already been reassigned to the
+	            //      resolved observed seller, so neither can fire for today's
+	            //      lane; where they DO fire the request named the retired
+	            //      seller, which the lane test's own first arm still catches.
+	            //   2. when the graph runs, only ONE of its two synthetic-product
+	            //      producers guarantees a `review_summary` (the composed one);
+	            //      the catalog-entity-group branch spreads the canonical
+	            //      product and never sets it, so this gate IS reached there.
+	            //   3. and there it is covered structurally:
+	            //      fetchProductDetailForOffers hard-returns null for seed-supply
+	            //      sellers when the seed store misses (so the route 404s), and
+	            //      where the seed answers the product is stamped
+	            //      platform:'external' — arm 2.
+	            // Note a probe timing of 0ms does NOT discriminate between "returned
+	            // at the top" and "returned at this gate"; both are 0ms.
 	            //
-	            // resolvedRefIsSeedRouted() is a strict SUPERSET of the arm it
-	            // replaces — the retired seller value is the lane predicate's own
-	            // first arm, so a legacy client still addressing it keeps
-	            // suppressing — and it adds the two columns the re-key left
-	            // untouched, platform and source_system, which together cover
-	            // 12,514 of 12,514 lane rows.
+	            // So the conversion buys independence from that stack of
+	            // accidents, not a live fix. resolvedRefIsSeedRouted() is a strict
+	            // SUPERSET of the arm it replaces — the retired seller value is the
+	            // lane predicate's own first arm, so a legacy client still
+	            // addressing it keeps suppressing — and it adds the two columns the
+	            // re-key left untouched. Both of those columns are pinned
+	            // separately in get_pdp_v2_observed_seller_entry: the platform arm
+	            // by the non-observed-seller fixture, the source_system arm by the
+	            // minted fixture whose platform has drifted (source_system is the
+	            // only lane signal that covers every seed row, and before that
+	            // second fixture nothing in the repo constrained it).
 	            //
 	            // The other three arms stay: they read `canonicalProduct`, whose
 	            // seed-built shape carries values the catalog ref never does
@@ -43305,16 +43328,13 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                   firstNonEmptyString(catalogIdentity?.identity_status) !== 'approved'
                 );
               // ADR-009 — KEPT DELIBERATELY, and NOT converted to the seed-lane
-              // predicate. Reviewed and measured 2026-08-17.
+              // predicate. Reviewed and measured 2026-08-17/18.
               //
               // This arm is the legacy ANONYMOUS-LUMP test, not a lane test. It
               // asks "is the resolved seller the retired shared bucket?", and
               // that bucket is a placeholder with no seller of record, so a
               // self-offer page built on it has nothing meaningful to attribute
-              // an offer to and no real seller to exclude siblings by. That is
-              // still true, and the request-side fallback ref can still carry
-              // that value (see the entry-predicate note above), so the arm is
-              // live, not dead.
+              // an offer to and no real seller to exclude siblings by.
               //
               // The A9-4 re-key DID widen this call site for seed rows, and the
               // widening is correct. `fetchApprovedLiveIdentityGroupMembersForOffers`
@@ -43322,7 +43342,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               // sellers as offer-bearing group members and to suppress only the
               // anonymous lump (buildLegacyExternalSeedLumpPredicate). Guarding
               // this call site on the LANE would re-close exactly what the callee
-              // was opened for.
+              // was opened for — which is why the observed-seller test in
+              // get_pdp_v2_observed_seller_entry fails under that conversion.
               //
               // Measured bounds, prod 2026-08-17: of 4,660 lane rows whose own
               // identity listing fails the gate above, 65 have ANY approved +
@@ -43332,22 +43353,32 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               // pairs are the SAME product under a second observed seller, i.e.
               // genuine multi-seller offers, not cross-contamination.
               //
-              // Reachability is bounded further: this branch needs
-              // `groupMembers.length === 0` AND `!identityGroupMembersMissing`.
-              // For a seed-routed row on the signature path — the public PDP path
-              // — `identityBackedExternalSeedGroupId` is non-null and every one of
-              // the 10,167 lane identity listings carries a `sig_`-shaped group
-              // id, so `identityGroupMembersMissing` fires first and this branch
-              // is unreachable. The widening only reaches direct product-id
-              // requests.
+              // WHY THE ARM IS KEPT, stated correctly — an earlier draft of this
+              // comment argued it was inert, and that was wrong twice over:
+              //   * There are TWO catalogIdentity producers, and the second one
+              //     (buildCatalogIdentityFromSignatureProductRef) copies the
+              //     signature ref's seller VERBATIM with no seller filter,
+              //     defaults the group id to the always-truthy sig id, and reads
+              //     live_read_enabled from a field hydrated only for seed-lane
+              //     refs — so on the signature path it yields a FAILING gate by
+              //     default, for any merchant. The legacy-client test below mocks
+              //     exactly that state. The arm is potentially LIVE, not inert.
+              //   * The signature path is not a blanket exemption either: ~2,347
+              //     lane rows carry no identity listing, hence no group id, and
+              //     do fall through here (harmless, but not a bound).
+              // What actually keeps the arm from firing on row-derived data is
+              // simply that no catalog row carries the retired seller, so neither
+              // producer can be handed it from a row. The one way in is the
+              // request-side fallback ref, which still mints that value for a
+              // legacy client — and that is precisely why the arm is kept: it is
+              // retired as a VALUE, not as a request vocabulary, exactly as the
+              // entry predicate above keeps it.
               //
-              // And the arm costs nothing to keep: on today's data it cannot
-              // fire, because the only catalogIdentity producer that can return
-              // the retired seller filters its listing read to approved + live +
-              // not-review-required, i.e. to a PASSING gate, and no catalog row
-              // carries that seller for the other producer to find. It is kept
-              // as a request vocabulary, exactly as #2019 kept it in the entry
-              // predicate — the value is retired, the request shape is not.
+              // Reachability note for the widening itself: this branch needs
+              // `groupMembers.length === 0` AND `!identityGroupMembersMissing`,
+              // and every one of the 10,167 lane identity listings carries a
+              // `sig_`-shaped group id, so where a listing exists on the
+              // signature path `identityGroupMembersMissing` fires first.
               const siblingGroupMembers =
                 identityGateFailed &&
                 canonicalProductRef?.merchant_id &&

@@ -605,6 +605,12 @@ const LANE_SIG = 'sig_aa11bb22cc33dd44ee55ff66';
 const CTL_MERCHANT = 'merch_connected_reviews_ctl';
 const CTL_PRODUCT = '9876543210';
 
+// The minted shape: a seed-lane row whose LANE evidence is source_system alone,
+// because its platform column has drifted off the seed vocabulary.
+const MINTED_LANE_MERCHANT = 'merch_connected_minted_lane';
+const MINTED_LANE_PRODUCT = 'brandm-centella-pdrn-calm-ampule';
+const MINTED_LANE_SIG = 'sig_cc33dd44ee55ff6600112233';
+
 function cacheDetailRow({ merchantId, productId, platform, title }) {
   return {
     product_data: {
@@ -829,6 +835,126 @@ describe('get_pdp_v2 — review suppression follows the seed LANE, not the retir
     const reviewsModule = (res.body?.modules || []).find((m) => m?.type === 'reviews_preview');
     expect(reviewsModule?.data?.review_count || 0).toBe(0);
     expect(reviewsModule?.data?.rating || 0).toBe(0);
+    expect(reviewsModule?.data?.source).not.toBe('merchant_review_source');
+  });
+
+  // The SECOND lane column, pinned on its own. The fixture above reaches the
+  // gate through `platform`, which `resolveCatalogIdentityForProductRef` patches
+  // onto the ref — so it leaves `source_system` (the other half of the predicate
+  // this installs, and the one server.js calls THE lane signal) completely
+  // unconstrained: deleting the sourceSystem input from the lane helper keeps
+  // that test, and every other suite in this route, green.
+  //
+  // This is the minted shape and the only one that kills that mutant: the ref's
+  // `source_system` arrives from the SIGNATURE resolver, the platform column has
+  // drifted off the seed vocabulary, no catalog-identity row exists to patch it
+  // back, and the id carries no seed prefix. Exactly the row the comment at the
+  // gate is written for.
+  test('a minted row whose platform has drifted suppresses through source_system ALONE', async () => {
+    const { app, db } = loadServerWithDb({ REVIEWS_API_BASE: REVIEWS_BASE });
+    db.query.mockImplementation(async (sql, params = []) => {
+      const normalizedSql = normalizeSql(sql);
+      if (isGroupMemberQuarantineQuery(normalizedSql)) {
+        return { rows: buildQuarantineSurvivorRows(params) };
+      }
+      // The exact-signature lane. `source_system` reaches canonicalProductRef
+      // ONLY from here (server.js:40917); nothing else on the route sets it.
+      if (normalizedSql.includes('cp.pivota_signature_id = $1')) {
+        return {
+          rows: [
+            {
+              merchant_id: MINTED_LANE_MERCHANT,
+              // Drifted OFF the seed platform vocabulary — so the platform arm,
+              // which is what carries the fixture above, is FALSE here.
+              platform: 'shopify',
+              source_product_id: MINTED_LANE_PRODUCT,
+              product_key: `prod::${MINTED_LANE_MERCHANT}::shopify::${MINTED_LANE_PRODUCT}`,
+              source_system: 'catalog_enrichment_agent_v1',
+              pivota_signature_id: MINTED_LANE_SIG,
+              content_key: 'ck_minted_lane_drifted_platform',
+              catalog_title: 'Minted Lane Ampule',
+              catalog_brand: 'BrandM',
+              signature_serving_eligible: true,
+            },
+          ],
+        };
+      }
+      // No catalog-identity row: nothing patches `platform` back onto the ref.
+      if (isCatalogIdentityForRefQuery(normalizedSql)) {
+        return { rows: [] };
+      }
+      if (isServingEligibilityQuery(normalizedSql)) {
+        return {
+          rows: [
+            servingEligibleRow({
+              merchantId: MINTED_LANE_MERCHANT,
+              productId: MINTED_LANE_PRODUCT,
+              platform: 'shopify',
+              sourceSystem: 'catalog_enrichment_agent_v1',
+              sigId: MINTED_LANE_SIG,
+            }),
+          ],
+        };
+      }
+      // Not an observed seller, so detail comes from products_cache and carries
+      // the merchant's own platform, never the seed store's 'external'.
+      if (isProductsCacheDetailQuery(normalizedSql) && params[0] === MINTED_LANE_MERCHANT) {
+        return {
+          rows: [
+            cacheDetailRow({
+              merchantId: MINTED_LANE_MERCHANT,
+              productId: MINTED_LANE_PRODUCT,
+              platform: 'shopify',
+              title: 'Minted Lane Ampule',
+            }),
+          ],
+        };
+      }
+      return { rows: [] };
+    });
+    mockCommerceUpstream404();
+    const reviewCalls = mockReviewsUpstream();
+
+    const res = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .set('X-Agent-API-Key', 'test-key')
+      .send({
+        operation: 'get_pdp_v2',
+        payload: {
+          product_ref: { product_id: MINTED_LANE_SIG },
+          include: ['reviews_preview'],
+        },
+      });
+
+    expect(res.status).toBe(200);
+
+    // --- every other arm of the gate, AND the platform arm of the lane
+    // --- predicate itself, are proven false in this fixture -----------------
+    const identity = res.body?.metadata?.identity_resolution || {};
+    expect(identity.resolved_merchant_id).toBe(MINTED_LANE_MERCHANT);
+    expect(identity.resolved_merchant_id).not.toBe('external_seed');
+    expect(/^ext[_:]/i.test(String(identity.resolved_product_id || ''))).toBe(false);
+    const canonicalDetail = await app._debug.fetchProductDetailForOffers({
+      merchantId: MINTED_LANE_MERCHANT,
+      productId: MINTED_LANE_PRODUCT,
+    });
+    expect(String(canonicalDetail?.platform || '').toLowerCase()).toBe('shopify');
+    expect(String(canonicalDetail?.platform || '').toLowerCase()).not.toBe('external');
+    expect(/^ext[_:]/i.test(String(canonicalDetail?.platform_product_id || ''))).toBe(false);
+    // The lane predicate's PLATFORM arm is false too — the ref's platform is the
+    // drifted value, not the seed vocabulary — so source_system is the only arm
+    // left holding this gate shut.
+    const canonicalRef =
+      (res.body?.modules || []).find((m) => m?.type === 'canonical')?.data?.canonical_product_ref ||
+      {};
+    expect(String(canonicalRef.platform || '').toLowerCase()).toBe('shopify');
+    expect(String(canonicalRef.platform || '').toLowerCase()).not.toBe('external_seed');
+    expect(canonicalRef.source_system).toBe('catalog_enrichment_agent_v1');
+
+    // --- the assertion ----------------------------------------------------
+    expect(reviewCalls).toEqual([]);
+    const reviewsModule = (res.body?.modules || []).find((m) => m?.type === 'reviews_preview');
+    expect(reviewsModule?.data?.review_count || 0).toBe(0);
     expect(reviewsModule?.data?.source).not.toBe('merchant_review_source');
   });
 
