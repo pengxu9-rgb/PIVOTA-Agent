@@ -432,13 +432,17 @@ describe('get_pdp_v2 request-side merchant is the CALLER’s, not the resolved r
     // `group_fused` and electronics_meta, so skipping it there is an OUTPUT
     // change on the main PDP route, not a latency one.
     test('a merch_obs_ seed sig PDP: held by the request-side merchant conjunct', async () => {
-      // This fixture is held open by `(!requestedMerchantId || … === sentinel)`
-      // — the resolved seller is a merch_obs_ id, so that conjunct is false and
-      // NOTHING behind it is observable here. Kept because it pins the
-      // documented KEEP (that conjunct still reads the resolved seller), but it
-      // says nothing about the reason-code conjunct; the tests below do that.
+      // Held open by `(!requestedMerchantId || … === sentinel)` — the resolved
+      // seller is a merch_obs_ id, so that conjunct is false. It must be the
+      // ONLY thing holding it: catalog identity is installed so conjunct 11
+      // (`Boolean(catalogIdentity?.pivota_signature_id)`) is TRUE and cannot
+      // hold the skip shut on its own. Without it this test passed for an
+      // unrelated reason and the claim above it was false.
       const { app, db } = loadServerWithDb();
-      install(db, { bareSig: bareSigRow(), scopedGroup: groupRow(OBS_MERCHANT) });
+      installWithCatalogIdentity(db, {
+        bareSig: bareSigRow(),
+        scopedGroup: groupRow(OBS_MERCHANT),
+      });
 
       const res = await pdp(app, { product_id: SIG_ID });
 
