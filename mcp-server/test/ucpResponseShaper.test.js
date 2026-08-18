@@ -247,6 +247,11 @@ describe('pagination', () => {
     assert.equal(shape({ products: rows(19) }).pagination.has_next_page, false);
     assert.equal(shape({ products: rows(10), page_size: 10 }).pagination.has_next_page, true, 'native page_size 10 with 10 rows');
     assert.equal(shape({ products: rows(10), page_size: 12 }).pagination.has_next_page, false, 'native page_size 12 with 10 rows');
+    // A native page_size that is not a positive integer is IGNORED (the default 20 governs): 0 would make
+    // page*0 < total true on every non-empty page — a false-positive walk — and 12.5 is not a page size.
+    assert.equal(shape({ products: rows(10), page_size: 0 }).pagination.has_next_page, false, 'native page_size 0 ignored -> default 20 -> 10 rows is a short page');
+    assert.equal(shape({ products: rows(13), page_size: 12.5 }).pagination.has_next_page, false, 'non-integer native page_size ignored -> default 20 -> 13 rows is a short page (12.5 would say full)');
+    assert.equal(shape({ products: rows(20), page_size: -3 }).pagination.has_next_page, true, 'negative ignored -> default 20 -> full page');
   });
 
   test('has_next_page NEVER comes from the returned count, and an EMPTY page is always the end (the review-found loop)', () => {
