@@ -40758,6 +40758,30 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 		      let canonicalProductRef = null;
 		      let canonicalizationApplied = false;
 		      let canonicalizationReasonCode = null;
+		      // ADR-009 — `canonicalizationReasonCode` was doing TWO jobs: it is an
+		      // attribution string in the response, and it is a CONJUNCT of
+		      // shouldSkipSigExternalSeedIdentityGraph. Those jobs disagree.
+		      //
+		      // The group-election arms below used to overwrite a signature
+		      // attribution with PRODUCT_ROUTE_MERCHANT_MISMATCH. That was wrong as
+		      // attribution — the sig id is why the request moved identity — but the
+		      // overwrite was ALSO the thing holding the sig skip shut once a group
+		      // election had moved the ref again. Fixing the attribution alone opens
+		      // the skip and drops `metadata.identity_graph` on the seed sig lane:
+		      // measured, `executed_without_line_member_hydration` ->
+		      // `skipped_sig_external_seed_catalog_identity`.
+		      //
+		      // So the gate gets its own symbol. This one answers "did anything move
+		      // the ref AFTER the signature resolved it?", which is what the skip
+		      // actually wants to know, and it cannot be changed by editing prose.
+		      //
+		      // Only the two group-election arms set it. The external-seed fallback
+		      // arm deliberately does not: it requires the CALLER to have pinned a
+		      // real seller, which is the exact condition that stops the signature
+		      // block from running, so it cannot coexist with a signature
+		      // attribution (verified — a no-group control is byte-identical on both
+		      // trees).
+		      let canonicalizationGroupElectionApplied = false;
 		      let identityResolutionSource = 'requested_route';
 		      const requestedProductIdForDiagnostics = productId || null;
           // ADR-009 — THE SELLER THE CALLER ADDRESSED, frozen here.
@@ -41090,7 +41114,27 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	      // smuggled into P3.
 	      //
 	      // STATUS 2026-08-17 (ADR-009 task 4). The A9-4 re-key completed and the
-	      // gap fired: 0 catalog rows carry the sentinel; 12,514 seed-routed rows
+	      // gap fired. CORRECTED 2026-08-18: this used to read "0 catalog rows
+	      // carry the sentinel". That is not true and code must not assume it.
+	      // The enforced watermark
+	      // (tests/fixtures/external_seed_sentinel_watermarks.json, mode=enforce)
+	      // records a FLOOR of 50 surviving sentinel-merchant rows on
+	      // the mirror lane — the jwx893-fz.myshopify.com test rig — and the
+	      // nongrowth audit reads prod directly, so it would have reported the
+	      // lane lowerable if the real count had reached 0. "0" was true of the
+	      // cohort the re-key MOVED (11,099), not of catalog_products.
+	      //
+	      // Whether those 50 are servable is not decidable from this repo:
+	      // activeCatalogProductSourceWhere excludes rigs by merchant-id list and
+	      // by the `pivota-review-demo` domain prefix, and neither covers that rig
+	      // under the sentinel merchant; the remaining lever is the data-driven
+	      // catalog_source_quarantine table. Either way the sentinel is still
+	      // REACHABLE through this route — tests/external_seed_product_detail_fetch
+	      // exercises the sig identity-graph skip on a resolved_merchant_id
+	      // 'external_seed' row — so the merchant-shaped gates below are live code,
+	      // not vestigial.
+	      //
+	      // 12,514 seed-routed rows
 	      // sit under merch_obs_ sellers, EVERY one with a seed source_system —
 	      // measured, so source_system alone is the lane and the other arms admit
 	      // nothing extra. Every ROW-SIDE consumer in this route (the ones that
@@ -41264,7 +41308,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	                external_product_id:
 	                  externalSeedRouteStatus?.external_product_id || entryProductId || null,
 	              },
-	              requestedProductId: entryProductId || null,
+	              requestedProductId: requestedProductIdForDiagnostics || entryProductId || null,
 	              requestedMerchantId: requestedMerchantIdForDiagnostics,
 	              resolutionSource: 'external_seed_status_precheck',
 	            }),
@@ -41490,6 +41534,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	            String(canonicalProductRef?.merchant_id || '').trim() !== requestedMerchantId
 	          ) {
 	            canonicalizationApplied = true;
+	            canonicalizationGroupElectionApplied = true;
 	            // Do NOT clobber a canonicalization the SIGNATURE already
 	            // attributed. The reason code names the CAUSE, and it is read as
 	            // one: shouldSkipSigExternalSeedIdentityGraph gates on
@@ -41691,6 +41736,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	              String(canonicalProductRef?.merchant_id || '').trim() !== requestedMerchantId
 	            ) {
 	              canonicalizationApplied = true;
+	              canonicalizationGroupElectionApplied = true;
 	              if (canonicalizationReasonCode !== 'PIVOTA_SIGNATURE_ID') {
 	                canonicalizationReasonCode = 'PRODUCT_ROUTE_MERCHANT_MISMATCH';
 	              }
@@ -42054,6 +42100,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           Boolean(requestedPivotaSignatureId) &&
           canonicalizationApplied &&
           canonicalizationReasonCode === 'PIVOTA_SIGNATURE_ID' &&
+          // The gate, not the prose. Before ADR-009 stopped the group-election
+          // arms clobbering the reason code, the clobber was silently doing
+          // this job.
+          !canonicalizationGroupElectionApplied &&
           resolvedRefIsSeedRouted() &&
           (!requestedMerchantId || requestedMerchantId === EXTERNAL_SEED_MERCHANT_ID) &&
           !variantId &&
@@ -43790,13 +43840,19 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         {
           gateway_request_id: gatewayRequestId,
           operation: 'get_pdp_v2',
-          // Both `requested_*` fields mirror the response's
-          // metadata.identity_resolution, expression for expression. They used
-          // to be POST-resolution values on a line whose whole point is the
-          // requested-vs-resolved pair: on the signature lane `entryProductId`
-          // is the resolved seed id and `requestedMerchantId` is the resolved
-          // row's seller, so both columns showed the row and the pair read as
-          // "no canonicalization happened" for every sig PDP.
+          // Both `requested_*` fields report the REQUEST, as the response's
+          // metadata.identity_resolution does. They used to be post-resolution
+          // values on a line whose whole point is the requested-vs-resolved
+          // pair: on the signature lane `entryProductId` is the resolved seed
+          // id and `requestedMerchantId` is the resolved row's seller, so both
+          // columns showed the row and the pair read as "no canonicalization
+          // happened" for every sig PDP.
+          //
+          // Not literally the same expression as the response builder, which
+          // also falls back to `productId`. That asymmetry predates ADR-009 and
+          // is left alone: `entryProductId` is already `productId` at its
+          // snapshot, so the extra arm only differs for a request that carries
+          // no product id at all, which cannot reach this success path.
           requested_product_id: requestedProductIdForDiagnostics || entryProductId || null,
           resolved_product_id: canonicalProductRef?.product_id || null,
           requested_merchant_id: requestedMerchantIdForDiagnostics,

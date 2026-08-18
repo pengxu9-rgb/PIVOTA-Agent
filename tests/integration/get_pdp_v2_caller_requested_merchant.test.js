@@ -128,6 +128,62 @@ function bareSigRow() {
   };
 }
 
+// The last-resort sig row resolving onto a row whose merchant_id IS the retired
+// sentinel. This is the ONLY shape for which
+// shouldSkipSigExternalSeedIdentityGraph's `(!requestedMerchantId || … ===
+// sentinel)` conjunct can be true, so it is the only shape in which the OTHER
+// conjuncts are observable at all. bareSigRow()'s merch_obs_ seller holds that
+// conjunct false and masks everything behind it.
+function sentinelBareSigRow() {
+  return {
+    merchant_id: SENTINEL,
+    platform: 'external_seed',
+    source_product_id: SEED_ID,
+    product_key: `prod::${SENTINEL}::external_seed::${SEED_ID}`,
+  };
+}
+
+const isCatalogIdentityQuery = (sql) =>
+  norm(sql).includes('LEFT JOIN pdp_identity_listing pil') &&
+  norm(sql).includes('cp.category_label_source');
+
+// catalogIdentity?.pivota_signature_id is the sig skip's last conjunct. Without
+// it the skip cannot fire at all and every test below would pass vacuously.
+function catalogIdentityRow() {
+  return {
+    merchant_id: SENTINEL,
+    platform: 'external_seed',
+    source_product_id: SEED_ID,
+    product_key: `prod::${SENTINEL}::external_seed::${SEED_ID}`,
+    pivota_signature_id: SIG_ID,
+    category: 'beauty',
+    product_type: 'Cream',
+    category_path: null,
+    category_label_source: null,
+    category_confidence: null,
+    catalog_rating_value: null,
+    catalog_rating_count: null,
+    sellable_item_group_id: SIG_ID,
+    product_line_id: null,
+    review_family_id: null,
+    identity_confidence: 0.9,
+    match_basis: [],
+    identity_status: 'approved',
+    live_read_enabled: true,
+    review_required: false,
+  };
+}
+
+function installWithCatalogIdentity(db, opts = {}) {
+  const seen = install(db, opts);
+  const base = db.query.getMockImplementation();
+  db.query.mockImplementation(async (sql, params) => {
+    if (isCatalogIdentityQuery(sql)) return { rows: [catalogIdentityRow()] };
+    return base(sql, params);
+  });
+  return seen;
+}
+
 function groupRow(merchantId) {
   return {
     product_key: `prod::${merchantId}::external_seed::${SEED_ID}`,
@@ -194,6 +250,7 @@ function install(db, opts = {}) {
     unscopedGroupForProductId = SEED_ID,
     seedDetail = true,
     eligible = true,
+    seedStatus = null,
   } = opts;
   const seen = [];
   db.query.mockImplementation(async (sql, params) => {
@@ -226,6 +283,9 @@ function install(db, opts = {}) {
     if (isEligibilityQuery(sql)) return { rows: eligible ? [eligibleRow()] : [] };
     if (isSeedDetailQuery(sql)) {
       return { rows: seedDetail && String(p[0] || '') === SEED_ID ? [seedDetailRow()] : [] };
+    }
+    if (seedStatus && norm(sql).includes('SELECT id, external_product_id, status')) {
+      return { rows: [{ id: 7, external_product_id: SEED_ID, status: seedStatus }] };
     }
     return { rows: [] };
   });
@@ -371,7 +431,12 @@ describe('get_pdp_v2 request-side merchant is the CALLER’s, not the resolved r
     // and contributes product_group_id, offer counts, offer_source
     // `group_fused` and electronics_meta, so skipping it there is an OUTPUT
     // change on the main PDP route, not a latency one.
-    test('the graph still runs on the signature lane', async () => {
+    test('a merch_obs_ seed sig PDP: held by the request-side merchant conjunct', async () => {
+      // This fixture is held open by `(!requestedMerchantId || … === sentinel)`
+      // — the resolved seller is a merch_obs_ id, so that conjunct is false and
+      // NOTHING behind it is observable here. Kept because it pins the
+      // documented KEEP (that conjunct still reads the resolved seller), but it
+      // says nothing about the reason-code conjunct; the tests below do that.
       const { app, db } = loadServerWithDb();
       install(db, { bareSig: bareSigRow(), scopedGroup: groupRow(OBS_MERCHANT) });
 
@@ -386,6 +451,68 @@ describe('get_pdp_v2 request-side merchant is the CALLER’s, not the resolved r
       expect(res.body?.metadata?.identity_graph).toEqual(
         expect.objectContaining({ canonical_scope: 'synthetic' }),
       );
+    });
+
+    // ---------------------------------------------------------------------
+    // The reason code is BOTH an attribution string and a conjunct of this
+    // skip. Preserving the attribution (which this PR does, deliberately) hands
+    // the skip a conjunct main was holding false by clobbering — so the gate
+    // now has its own symbol, canonicalizationGroupElectionApplied.
+    //
+    // These fixtures use a sentinel-merchant sig row on purpose: it is the only
+    // shape where the request-side merchant conjunct is TRUE, hence the only
+    // shape where the reason-code conjunct is observable.
+    // ---------------------------------------------------------------------
+    test('a sentinel-merchant seed sig PDP whose group re-elects still gets its graph', async () => {
+      const { app, db } = loadServerWithDb();
+      installWithCatalogIdentity(db, {
+        bareSig: sentinelBareSigRow(),
+        scopedGroup: groupRow(OTHER_MERCHANT),
+      });
+
+      const res = await pdp(app, { product_id: SIG_ID });
+
+      // The attribution is preserved — that is the PR's goal...
+      expect(identityOf(res).canonicalization_reason_code).toBe('PIVOTA_SIGNATURE_ID');
+      // ...and it must NOT have opened the skip.
+      expect(routeHealthOf(res).identity_graph_live_mode).toBe(
+        'executed_without_line_member_hydration',
+      );
+      expect(res.body?.metadata?.identity_graph).toEqual(
+        expect.objectContaining({ canonical_scope: 'synthetic' }),
+      );
+    });
+
+    test('the same via the unscoped group arm', async () => {
+      const { app, db } = loadServerWithDb();
+      installWithCatalogIdentity(db, {
+        bareSig: sentinelBareSigRow(),
+        unscopedGroup: groupRow(OTHER_MERCHANT),
+        seedDetail: false,
+      });
+
+      const res = await pdp(app, { product_id: SIG_ID });
+
+      expect(identityOf(res).canonicalization_reason_code).toBe('PIVOTA_SIGNATURE_ID');
+      expect(res.body?.metadata?.identity_graph).toEqual(
+        expect.objectContaining({ canonical_scope: 'synthetic' }),
+      );
+    });
+
+    test('CONTROL: with NO group election the skip still fires, exactly as on main', async () => {
+      // Without this the two tests above could pass by nailing the skip shut.
+      // Nothing re-elected the ref here, so the skip is correct and fires —
+      // byte-identical to main.
+      const { app, db } = loadServerWithDb();
+      installWithCatalogIdentity(db, { bareSig: sentinelBareSigRow() });
+
+      const res = await pdp(app, { product_id: SIG_ID });
+
+      expect(identityOf(res).canonicalization_reason_code).toBe('PIVOTA_SIGNATURE_ID');
+      expect(routeHealthOf(res).identity_graph_live_mode).toBe(
+        'skipped_sig_external_seed_catalog_identity',
+      );
+      expect(res.body?.metadata?.identity_graph).toBeNull();
     });
   });
 
@@ -544,6 +671,26 @@ describe('get_pdp_v2 request-side merchant is the CALLER’s, not the resolved r
       // meaningful rather than both being blank.
       expect(identity.resolved_product_id).toBe(SEED_ID);
       expect(identity.canonicalization_applied).toBe(true);
+    });
+  });
+
+  describe('the seed-status precheck 404 reports the request', () => {
+    test('it names the requested sig id, not the resolved seed id', async () => {
+      // The fourth error exit. Its merchant axis moved to the frozen value
+      // while its product axis still read `entryProductId` — which on this lane
+      // is the RESOLVED seed id, so the body claimed requested == resolved.
+      const { app, db } = loadServerWithoutIdentityGraph();
+      install(db, { bareSig: sentinelBareSigRow(), seedStatus: 'paused' });
+
+      const res = await pdp(app, { product_id: SIG_ID });
+
+      expect(res.status).toBe(404);
+      expect(res.body?.details?.reason).toBe('external_seed_not_active');
+      const identity = identityOf(res);
+      expect(identity.requested_product_id).toBe(SIG_ID);
+      // CONTROL: the seed id really is what the route resolved to, so requested
+      // != resolved is meaningful rather than one of them being blank.
+      expect(res.body?.details?.external_product_id).toBe(SEED_ID);
     });
   });
 
