@@ -536,6 +536,15 @@ export function createDefaultVariantResolver({ executor, timeoutMs } = {}) {
         // zero candidates stays `no_variants` (fail closed) exactly as before.
         // Sampled the same day: 18/24 seed rows already resolve on a REAL crawled variant id, 3 are honestly
         // ambiguous (multi-variant); this carve-out is for the remaining product-grain rows only.
+        //
+        // SCOPE, stated plainly (review of #2024): this closes the RESOLVER seam and nothing further down.
+        // A seed row that now passes intake still cannot be PRICED today — pivota-backend's quote engine is
+        // Shopify-only (services/quote_service.py -> shopify_storefront_pricing_service, which needs the
+        // seller's primary Shopify store and a real ProductVariant GID), and a UCP create_checkout reaches
+        // routes/agent_v2.py QuotePreviewBody with no merchant_id at all (required -> 422). So for the seed
+        // cohort the refusal moves from a curated intake refusal to a backend pricing error until an
+        // offer-grain pricing path exists. Demo checkouts must use Shopify-store products with real GIDs.
+        // This carve-out is still right — it is what lets that future path receive the row at all.
         // (`<= 1` is defense in depth: variantIdsFromProductRead already dedupes, so an all-equal list is at
         // most one long today — the bound is what keeps that true if a future reader stops deduping.)
         if (read.productGrain && candidates.every((id) => id === it.product_id) && candidates.length <= 1) {
