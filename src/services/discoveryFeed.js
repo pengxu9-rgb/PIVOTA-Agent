@@ -9229,8 +9229,25 @@ async function fetchBrandScopedCanonicalCandidates({ brandAliases = [], limit = 
             -- a seed with no destination would otherwise win the pick.
             ORDER BY (
                        eps.destination_url IS NOT NULL
-                       AND substring(eps.destination_url from '^https?://([^/]+)')
-                           IS NOT DISTINCT FROM substring(cp.canonical_url from '^https?://([^/]+)')
+                       -- Require a PARSEABLE canonical host too. Without this,
+                       -- two unparseable sides compare equal: a NULL or
+                       -- uppercase-scheme cp.canonical_url yields a NULL host,
+                       -- and a seed whose destination_url is relative or
+                       -- malformed also yields NULL, so IS NOT DISTINCT FROM
+                       -- scored them TRUE and PROMOTED the malformed seed above
+                       -- a well-formed absolute one — a wrong buy link, not
+                       -- merely a mismatched card. No such row exists today
+                       -- (0 NULL/unparseable across 11,352 active seeds and
+                       -- 12,514 external_seed catalog rows), so this closes a
+                       -- latent inversion rather than a live one.
+                       AND substring(cp.canonical_url from '^https?://([^/]+)') IS NOT NULL
+                       -- Hosts are case-insensitive; lower() on both sides so a
+                       -- scheme/host casing difference cannot demote the right
+                       -- seed. IS NOT DISTINCT FROM keeps the whole expression
+                       -- non-NULL, which matters because ORDER BY bool DESC
+                       -- sorts NULLs FIRST.
+                       AND lower(substring(eps.destination_url from '^https?://([^/]+)'))
+                           IS NOT DISTINCT FROM lower(substring(cp.canonical_url from '^https?://([^/]+)'))
                      ) DESC,
                      eps.updated_at DESC NULLS LAST,
                      eps.id DESC
@@ -9418,8 +9435,25 @@ async function fetchCanonicalSigBrowseCandidates({ limit = 120 } = {}) {
             -- a seed with no destination would otherwise win the pick.
             ORDER BY (
                        eps.destination_url IS NOT NULL
-                       AND substring(eps.destination_url from '^https?://([^/]+)')
-                           IS NOT DISTINCT FROM substring(cp.canonical_url from '^https?://([^/]+)')
+                       -- Require a PARSEABLE canonical host too. Without this,
+                       -- two unparseable sides compare equal: a NULL or
+                       -- uppercase-scheme cp.canonical_url yields a NULL host,
+                       -- and a seed whose destination_url is relative or
+                       -- malformed also yields NULL, so IS NOT DISTINCT FROM
+                       -- scored them TRUE and PROMOTED the malformed seed above
+                       -- a well-formed absolute one — a wrong buy link, not
+                       -- merely a mismatched card. No such row exists today
+                       -- (0 NULL/unparseable across 11,352 active seeds and
+                       -- 12,514 external_seed catalog rows), so this closes a
+                       -- latent inversion rather than a live one.
+                       AND substring(cp.canonical_url from '^https?://([^/]+)') IS NOT NULL
+                       -- Hosts are case-insensitive; lower() on both sides so a
+                       -- scheme/host casing difference cannot demote the right
+                       -- seed. IS NOT DISTINCT FROM keeps the whole expression
+                       -- non-NULL, which matters because ORDER BY bool DESC
+                       -- sorts NULLs FIRST.
+                       AND lower(substring(eps.destination_url from '^https?://([^/]+)'))
+                           IS NOT DISTINCT FROM lower(substring(cp.canonical_url from '^https?://([^/]+)'))
                      ) DESC,
                      eps.updated_at DESC NULLS LAST,
                      eps.id DESC

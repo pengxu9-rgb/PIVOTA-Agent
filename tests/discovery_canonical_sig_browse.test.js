@@ -245,11 +245,28 @@ describe('canonical sig browse main route', () => {
     expect(sql).not.toMatch(/eps\.seed_data/);
     // The seed pick must prefer the storefront the card's merchant_canonical_url
     // names, or one card shows merchant A and links the buy button to seller B
-    // (13 live rows before this). Same NULL hazard as the outer pick, so the
-    // guard and IS NOT DISTINCT FROM must both be present.
-    expect(sql).toContain("substring(eps.destination_url from '^https?://([^/]+)')");
-    expect(sql).toContain('eps.destination_url IS NOT NULL');
-    expect(sql).toMatch(/substring\(eps\.destination_url[\s\S]*?IS NOT DISTINCT FROM[\s\S]*?substring\(cp\.canonical_url/);
+    // (13 live rows before this).
+    //
+    // ONE anchored assertion over the whole clause, not three presence checks.
+    // Presence-only assertions left five mutants alive, all passing 14/14 while
+    // restoring every one of the 13 mismatches: reordering so eps.updated_at
+    // precedes the host term, flipping DESC to ASC, wrapping the expression in
+    // `false AND`, negating it, and reverting the ORDER BY while leaving the
+    // expression behind as a SQL comment. This pins POSITION (host term is the
+    // FIRST sort key, ahead of updated_at), POLARITY (DESC), and that it is
+    // live code — a `--` comment cannot satisfy a match that must run from
+    // `ORDER BY (` through `) DESC,` to `eps.updated_at DESC`.
+    // Anchored on STRUCTURE, not on keywords: an earlier attempt used a
+    // (?!ORDER BY) guard and was defeated by this file's own SQL comments,
+    // which contain the words ORDER BY.
+    expect(sql).toMatch(
+      /ORDER BY \(\s*\n\s*eps\.destination_url IS NOT NULL[\s\S]*?\n\s*\) DESC,\s*\n\s*eps\.updated_at DESC NULLS LAST,\s*\n\s*eps\.id DESC/,
+    );
+    // Both sides lower()'d, and a parseable canonical host required — otherwise
+    // two unparseable URLs compare equal and a malformed seed destination is
+    // promoted above a well-formed one (a wrong buy link).
+    expect(sql).toContain("substring(cp.canonical_url from '^https?://([^/]+)') IS NOT NULL");
+    expect(sql).toMatch(/lower\(substring\(eps\.destination_url[\s\S]*?lower\(substring\(cp\.canonical_url/);
   });
 
   test('a real query failure is never reported as a successful empty provider', async () => {
