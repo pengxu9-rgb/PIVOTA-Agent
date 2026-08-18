@@ -1134,7 +1134,11 @@ test('seed content is recognised by its LANE even under a seller that is neither
   const trust = call({
     product: activeMerchantProduct({
       merchant_id: 'merch_924da2be8503e5f7',
-      platform: 'external_seed',
+      // platform is the UPSTREAM's, not 'external_seed' — that is the whole
+      // point. An earlier version of this fixture used platform:'external_seed',
+      // which the old hand-rolled trio already matched, so it never exercised
+      // the arms this test claims to cover and the narrowing mutant survived.
+      platform: 'shopify',
       source_system: 'external_product_seeds_mirror_v1',
     }),
     identity: approvedIdentity({ identity_confidence: null }),

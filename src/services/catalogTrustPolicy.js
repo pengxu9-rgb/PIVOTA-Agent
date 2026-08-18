@@ -691,8 +691,17 @@ function deriveServingDecision({
   const _merchantId = product ? String(product.merchant_id || '') : '';
   // The lane predicate adds the source_system and seed-id arms this hand-rolled
   // trio lacked, so a mirrored row whose platform is its upstream's (the minted
-  // lane) is no longer missed. Widening direction is the safe one: more rows
-  // must clear the index/quality gate, never fewer.
+  // lane) is no longer missed.
+  //
+  // BE PRECISE ABOUT WHAT THIS GATES — an earlier version of this comment said
+  // "the index/quality gate", which is wrong. This flag has exactly ONE
+  // consumer, isIdentityCoverageExempt below; the index/quality gate (`!ips` ->
+  // blocked, and ipsEligible) never reads it. So widening does not gate more
+  // rows on quality — it strips the identity-COVERAGE exemption, i.e. public ->
+  // shadow. Safe for exposure, but a live serving demotion, which is why it
+  // needs a POLICY_VERSION bump and the Python twin moving with it.
+  // Measured on prod 2026-08-17: the new arms catch ZERO rows the old trio did
+  // not, so today's demotion blast radius is 0.
   const isExternalSeedContent =
     isExternalSeedLaneProduct(product) || isObservedSellerMerchantId(_merchantId);
   const isObservedSeller = isObservedSellerMerchantId(_merchantId);
