@@ -780,6 +780,18 @@ describe('search_catalog reads the live filters, pagination and currency the way
       await search({ query: 'q', context: { currency: 'BHD' }, filters: { price: { max: 1500 } } }),
       { query: 'q', currency: 'BHD', price_max: 1.5 },
     );
+    // UGX and ISK are exponent 0 in ISO 4217 but 2 in the kernel's CHARGE table (Stripe divisibility). A UCP
+    // filter is a counterparty amount "in minor units" = ISO, so 5000 UGX minor units is 5000 shillings — the
+    // charge exponent would read it as 50 and hide every real product. isoMinorUnitExponent, not
+    // minorUnitExponent, and this line is why.
+    assert.deepEqual(
+      await search({ query: 'q', context: { currency: 'UGX' }, filters: { price: { min: 5000, max: 20000 } } }),
+      { query: 'q', currency: 'UGX', price_min: 5000, price_max: 20000 },
+    );
+    assert.deepEqual(
+      await search({ query: 'q', context: { currency: 'ISK' }, filters: { price: { max: 3000 } } }),
+      { query: 'q', currency: 'ISK', price_max: 3000 },
+    );
     // Lower-case currency: the exponent lookup is case-insensitive; the code itself is forwarded trimmed,
     // otherwise verbatim (the native lane normalizes).
     assert.deepEqual(

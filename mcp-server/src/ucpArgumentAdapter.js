@@ -148,7 +148,7 @@ import {
   REQUIRED_ADDRESS_FIELDS,
 } from "../../safety-kernel/src/protocol/buyerIntake.js";
 import { CANONICAL_PAYMENT_METHODS } from "../../safety-kernel/src/protocol/paymentAuthorizationVerifier.js";
-import { minorUnitExponent } from "../../safety-kernel/src/money.js";
+import { isoMinorUnitExponent } from "../../safety-kernel/src/money.js";
 
 // The prototype guard used across the doors: admits `Object.prototype` and a null prototype, nothing else.
 const isPlainObject = (v) => typeof v === "object" && v !== null && !Array.isArray(v)
@@ -1169,9 +1169,10 @@ function mapSearchPagination(pagination, code) {
  *
  * PRICE IS IN MINOR UNITS ON THE WIRE and MAJOR units on the native lane (`min_price` reaches the search stack
  * as-is, and the catalog's own prices are majors: 6, 24, 38 USD in the live probe). The conversion uses the
- * kernel's minorUnitExponent — the same table the money path trusts — so JPY 1500 stays 1500 and BHD 1500 is
- * 1.5, rather than the "divide by 100" that is silently wrong for every zero- and three-decimal currency.
- * With no `context.currency` the exponent is USD's (2), the default market.
+ * kernel's money table via isoMinorUnitExponent — ISO 4217, which is what "minor currency units" means to a
+ * counterparty — so JPY 1500 stays 1500, BHD 1500 is 1.5 and UGX 5000 stays 5000, rather than the "divide by
+ * 100" that is silently wrong for every zero- and three-decimal currency (and the CHARGE exponent that is
+ * deliberately wrong for UGX/ISK). With no `context.currency` the exponent is USD's (2), the default market.
  *
  * `categories` is accepted and NOT read (see SEARCH_CATALOG_DESCRIPTION): the native `category` is one of
  * Pivota's own facet strings, and OR-of-many cannot be expressed on it either; forwarding a platform's label
@@ -1195,7 +1196,9 @@ function mapSearchFilters(filters, currency, code) {
         "`catalog.filters.price` must be an object `{ min?, max? }` in minor currency units when supplied.",
         { rejected_field: "catalog.filters.price" });
     }
-    const exp = minorUnitExponent(currency);
+    // ISO exponent, NOT the kernel's charge exponent: UCP says "minor currency units", which is ISO 4217,
+    // and the two differ for UGX/ISK (0 in ISO, 2 for a Stripe charge). See money.js isoMinorUnitExponent.
+    const exp = isoMinorUnitExponent(currency);
     const toMajor = (field) => {
       const v = own(price, field);
       if (v === undefined) return undefined;
