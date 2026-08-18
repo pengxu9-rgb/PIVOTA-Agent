@@ -35,6 +35,12 @@ const PATTERNS = [
   /(?:===|!==|==|!=)\s*EXTERNAL_SEED_MERCHANT_ID\b/g,
   /\bEXTERNAL_SEED_MERCHANT_ID\s*(?:===|!==|==|!=)/g,
   /merchantId:\s*EXTERNAL_SEED_MERCHANT_ID\b/g,
+  // ADR-009 follow-on: the re-key moved seed supply onto `merch_obs_` sellers,
+  // so a hardcoded observed-seller PREFIX is the same defect class in its next
+  // costume — and nothing above matches it. Review 2026-08-17 caught the
+  // convergence work itself introducing a second copy of one. Watched now, so
+  // the next re-key cannot silently blind these readers.
+  /startsWith\(\s*['"]merch_obs_['"]\s*\)/g,
 ];
 
 function countFile(filePath) {

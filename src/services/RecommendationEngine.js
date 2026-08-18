@@ -15,6 +15,7 @@ const {
   EXTERNAL_SEED_MERCHANT_ID,
   ensureJsonObject,
 } = require('./externalSeedProducts');
+const { isExternalSeedSupplyMerchantId } = require('./externalSeedLane');
 const {
   activeCatalogProductSourceWhere,
   activeProductsCacheSourceWhere,
@@ -4483,7 +4484,13 @@ async function fetchInternalCandidates({ merchantId, limit, excludeMerchantId, c
   if (isAbortSignalAborted(signal)) return [];
 
   try {
-    if (mid && mid !== EXTERNAL_SEED_MERCHANT_ID && categoryAliases.length) {
+    // ADR-009: seed supply has NO products_cache row — measured on prod
+    // 2026-08-17, products_cache holds 821 rows and ZERO under an observed
+    // seller or the retired sentinel. The guard used to name only the sentinel,
+    // so after the re-key moved that supply onto merch_obs_ sellers it stopped
+    // matching and these two lookups began running for merchants that can never
+    // answer them.
+    if (mid && !isExternalSeedSupplyMerchantId(mid) && categoryAliases.length) {
       const res = await query(
         `
           SELECT product_data
@@ -4518,7 +4525,7 @@ async function fetchInternalCandidates({ merchantId, limit, excludeMerchantId, c
   if (isAbortSignalAborted(signal)) return finish();
 
   try {
-    if (mid && mid !== EXTERNAL_SEED_MERCHANT_ID) {
+    if (mid && !isExternalSeedSupplyMerchantId(mid)) {
       const res = await query(
         `
           SELECT product_data

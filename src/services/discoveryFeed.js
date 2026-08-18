@@ -25,6 +25,7 @@ const {
   buildExternalSeedProduct,
   buildExternalSeedBrandSearchProduct,
 } = require('./externalSeedProducts');
+const { isExternalSeedSupplyMerchantId } = require('./externalSeedLane');
 const { EXTERNAL_SEED_RECALL_SQL_FIELDS } = require('./externalSeedRecall');
 const { classifyBeautyBucketFromText } = require('../findProductsMulti/beautyQueryProfile');
 const {
@@ -1773,7 +1774,11 @@ function buildDiscoveryDedupKey(product, { brandScoped = false } = {}) {
   const merchantId = String(product?.merchant_id || product?.merchantId || '').trim();
   const productId = String(product?.product_id || product?.productId || product?.id || '').trim();
   const baseKey = buildProductKey(merchantId, productId);
-  if (!brandScoped || merchantId !== EXTERNAL_SEED_MERCHANT_ID) return baseKey;
+  // ADR-009: the semantic key exists to collapse crawl-sourced duplicates of one
+  // product in a brand-scoped feed. The test named only the retired sentinel, so
+  // after the re-key moved that supply onto per-brand observed sellers those rows
+  // fell back to the plain product key and could surface as duplicate cards.
+  if (!brandScoped || !isExternalSeedSupplyMerchantId(merchantId)) return baseKey;
   return buildExternalSemanticProductKey(product) || baseKey;
 }
 
@@ -2571,7 +2576,7 @@ function inferCandidateTaxonomy({ merchantId, title, description, rawCategory, r
   const normalizedCategory = normalizeText(rawProductType || rawCategory || '');
   const normalizedParent = normalizeText(rawCategory || '');
   const needsInference =
-    merchantId === EXTERNAL_SEED_MERCHANT_ID ||
+    isExternalSeedSupplyMerchantId(merchantId) ||
     isWeakCategoryLabel(normalizedCategory) ||
     isWeakCategoryLabel(normalizedParent);
 
@@ -9634,7 +9639,7 @@ function scoreBeautyBucketAlignment(candidate, profile) {
 }
 
 function isExternalSeedMerchantCandidate(candidate) {
-  return String(candidate?.merchantId || '').trim() === EXTERNAL_SEED_MERCHANT_ID;
+  return isExternalSeedSupplyMerchantId(candidate?.merchantId);
 }
 
 function scoreColdStartCandidateQuality(candidate, surface) {
@@ -11978,6 +11983,13 @@ module.exports = {
   getDiscoveryHealthSnapshot,
   getDiscoveryFeed,
   _internals: {
+    // ADR-009: exported for test. These three read "is this seller seed
+    // supply?" and each silently flipped when the re-key moved that supply onto
+    // observed sellers — the brand cap in particular is a 4x change on the live
+    // home feed, so it does not ship unasserted again.
+    isExternalSeedMerchantCandidate,
+    getColdStartHomeBrandCap,
+    buildDiscoveryDedupKey,
     buildBrandScopeAliases,
     buildBeautyPersonalizedQueries,
     computeDiscoveryStepTimeoutMs,
