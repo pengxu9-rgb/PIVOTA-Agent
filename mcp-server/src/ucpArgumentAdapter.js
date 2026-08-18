@@ -1103,7 +1103,11 @@ const COMPLETE_CHECKOUT_DESCRIPTION = [
 const GET_PRODUCT_DESCRIPTION = [
   "Get full detail for one product. Send `{ meta, catalog: { id } }` — the product id is NESTED under",
   "`catalog`. Read-only. This tool answers about one identified product; for free text use `search_catalog`,",
-  "which returns the ids this tool reads.",
+  "which returns the ids this tool reads. The response is the UCP catalog_lookup get_product_response:",
+  "`{ ucp, product, messages? }` with prices in ISO 4217 minor units. The product carries ONE variant whose id",
+  "is the product id — the id a `create_checkout` line item accepts; a `messages` warning says so when the",
+  "product has several purchasable variants, because a variant choice cannot yet be expressed on this door.",
+  "`catalog.selected` / `preferences` are accepted and not read.",
 ].join(" ");
 
 const SEARCH_CATALOG_DESCRIPTION = [

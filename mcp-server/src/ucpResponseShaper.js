@@ -27,8 +27,23 @@
 //   category        : ["value"] (+ taxonomy)
 //   pagination(resp): ["has_next_page"]; `cursor` MUST be present when has_next_page is true; total_count
 //   message         : oneOf error|warning|info; warning requires ["type","code","content"], info ["type","content"]
+// FETCHED 2026-08-18 likewise: https://ucp.dev/2026-04-08/schemas/shopping/catalog_lookup.json —
+//   get_product_response : ["ucp","product"]; product is `detail_product` = product.json (allOf) plus optional
+//                          `selected[]` / `options[]` (availability signals per option value); optional messages
 // mcp-server/test/ucpResponseShaper.test.js pins these arrays with the same provenance, so a drift on either
 // side fails CI rather than surfacing in a platform integration.
+//
+// VARIANTS ON get_product — WHY IT IS STILL ONE. The native detail row DOES carry real variants
+// ({variant_id, sku_id, title, options[], price?, availability?}). UCP says variant.id is "used as item.id in
+// cart/checkout line items", and this door's create_checkout maps `item.id` to product_id: it has no field
+// for a variant, and buyerIntake refuses a multi-variant product rather than guessing (rule 3). Publishing
+// per-variant ids here would therefore advertise ids the checkout cannot take — the "advertised but not
+// executable" defect one operation over. So get_product publishes the SAME single variant as search (id =
+// the product id checkout accepts) and, when the row carries more than one REAL variant, SAYS SO in a
+// `messages` warning (`variants.selection_not_supported`) instead of hiding it. Real variants become
+// publishable the day create_checkout accepts a variant id on `item.id`; that is a checkout-mapper decision
+// and lives with it, not here. `selected` / `options` are omitted for the same reason: option axes a caller
+// cannot select would be a promise the door does not keep.
 //
 // ---- WHAT MAPS, AND THE THREE THINGS THAT DO NOT --------------------------------------------------------
 //
@@ -70,6 +85,7 @@
 // the other's cache hits.
 
 import { majorToIsoMinor } from "../../safety-kernel/src/money.js";
+import { PivotaCommerceError } from "../../safety-kernel/src/errors.js";
 
 export const UCP_RESPONSE_VERSION = "2026-04-08";
 
@@ -338,9 +354,63 @@ export function shapeUcpSearchResponse(native, { params, ucpArgs, pdpBase = DEFA
   });
 }
 
-/** canonical op id -> outbound shaper. Ops absent here return the native result unchanged (get_product today). */
+/**
+ * How many REAL variants a native detail row carries — ids that are not just the product id restated (the
+ * same test buyerIntake applies before it believes a variant list). Used only to decide whether to SAY that
+ * variant selection is not expressible on this door.
+ */
+function realVariantCount(row) {
+  const pid = productIdOf(row);
+  const seen = new Set();
+  for (const v of arr(row.variants)) {
+    const id = isPlainObject(v) ? str(v.variant_id) || str(v.id) : null;
+    if (!id || id === pid) continue;
+    seen.add(id);
+  }
+  return seen.size;
+}
+
+/**
+ * The native `get_product` result -> the UCP `catalog_lookup.json` get_product_response.
+ *
+ * `product` is REQUIRED on the wire, so a row that cannot become a spec product is not published as a
+ * half-envelope — it is refused with the taxonomy's own codes, exactly as the native door already refuses:
+ *   no row / no id  -> UNKNOWN_PRODUCT_ID   (retriable:false, "search again to obtain a valid product_id")
+ *   no priced offer -> NO_MERCHANT_OFFER    (retriable:false, "no purchasable merchant offer attached")
+ * Both are PivotaCommerceError, so toToolError surfaces the curated message and the retry classification.
+ */
+export function shapeUcpGetProductResponse(native, { params, ucpArgs, pdpBase = DEFAULT_PDP_BASE } = {}) {
+  const body = isPlainObject(native) ? native : {};
+  const row = isPlainObject(own(body, "product")) ? own(body, "product") : (productIdOf(body) ? body : undefined);
+  const { product, dropped } = shapeUcpProduct(row, { pdpBase });
+  if (!product) {
+    if (dropped === "no_price") {
+      throw new PivotaCommerceError("NO_MERCHANT_OFFER", { reason: "ucp_product_unpriced", dialect: "ucp" });
+    }
+    throw new PivotaCommerceError("UNKNOWN_PRODUCT_ID", { reason: "ucp_product_not_found", dialect: "ucp" });
+  }
+  const messages = [];
+  const variants = realVariantCount(row);
+  if (variants > 1) {
+    messages.push({
+      type: "warning",
+      code: "variants.selection_not_supported",
+      path: "$.product.variants",
+      content: `This product has ${variants} purchasable variants, but this catalog cannot yet take a variant choice on a checkout line item: only the product id is accepted as item.id, and checkout refuses rather than guesses among variants. The single variant published here is the product itself.`,
+      content_type: "plain",
+    });
+  }
+  return compact({
+    ucp: { version: UCP_RESPONSE_VERSION, status: "success" },
+    product,
+    messages: messages.length ? messages : undefined,
+  });
+}
+
+/** canonical op id -> outbound shaper. Ops absent here return the native result unchanged. */
 const SHAPERS = Object.freeze({
   search_catalog: shapeUcpSearchResponse,
+  get_product: shapeUcpGetProductResponse,
 });
 
 export const UCP_SHAPED_OPERATION_IDS = Object.freeze(Object.keys(SHAPERS));
