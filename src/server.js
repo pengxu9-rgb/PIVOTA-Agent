@@ -8984,8 +8984,24 @@ async function fetchProductDetailForOffers(args) {
   const bypassCache = args?.bypassCache === true;
   const skipUpstreamFallback = args?.skipUpstreamFallback === true;
   const totalTimeoutMs = Math.max(0, Number(args?.totalTimeoutMs || args?.stageTimeoutMs || 0) || 0);
-  if (!merchantId || !productId) return null;
-  const resolvedCacheTtlMs = resolveProductDetailCacheTtlMs(merchantId);
+  // ADR-009: a seed-shaped product id addresses the seed store on its own —
+  // fetchExternalSeedProductDetailFromDb keys on the product id ALONE and never
+  // names a seller. Before this, the only way to reach that lookup was to
+  // fabricate a seller from the id prefix and let the retired shared bucket act
+  // as a routing token; admitting the seller-less call here is what makes that
+  // fabrication deletable. It admits exactly one caller: every other call site
+  // either guards on a non-empty merchant or draws from a group-member list
+  // already filtered on one (buildOffersFromGroupMembers and both find_similar
+  // member normalizers), so no existing caller changes behaviour.
+  const seedRoutedWithoutMerchant = !merchantId && isExternalSeedProductId(productId);
+  if ((!merchantId && !seedRoutedWithoutMerchant) || !productId) return null;
+  // Freshness parity with the seller-addressed twin of this call, which resolves
+  // to a 0ms TTL (the retired bucket's historical cache bypass). Deriving the
+  // TTL from an empty merchant would hand this lane the DEFAULT ttl instead and
+  // silently start caching seed detail that is deliberately never cached.
+  const resolvedCacheTtlMs = seedRoutedWithoutMerchant
+    ? 0
+    : resolveProductDetailCacheTtlMs(merchantId);
   const useMemoryCache =
     PRODUCT_DETAIL_CACHE_ENABLED &&
     !bypassCache &&
@@ -9039,13 +9055,19 @@ async function fetchProductDetailForOffers(args) {
     // backend 404s for observed refs). Route them through the seed-DB detail
     // path alongside the legacy bucket, re-stamped with the observed seller id
     // so identity/offer keying stays on the resolved merchant.
-    if (process.env.DATABASE_URL && isExternalSeedListingMerchantId(merchantId)) {
+    if (
+      process.env.DATABASE_URL &&
+      (isExternalSeedListingMerchantId(merchantId) || seedRoutedWithoutMerchant)
+    ) {
       const seedDetail = await fetchExternalSeedProductDetailFromDb({ productId });
       if (seedDetail?.product) {
+        // Re-stamp onto the RESOLVED seller only. A seller-less call has nothing
+        // to re-stamp with, and stamping the empty string would overwrite the
+        // seed payload's own merchant_id with nothing.
         const seedProduct =
-          merchantId === EXTERNAL_SEED_MERCHANT_ID
-            ? seedDetail.product
-            : { ...seedDetail.product, merchant_id: merchantId };
+          merchantId && merchantId !== EXTERNAL_SEED_MERCHANT_ID
+            ? { ...seedDetail.product, merchant_id: merchantId }
+            : seedDetail.product;
         if (useMemoryCache) {
           setProductDetailCache(cacheKey, {
             status: 'success',
@@ -9066,9 +9088,9 @@ async function fetchProductDetailForOffers(args) {
         if (fromExternalSeeds) {
           const normalizedExternalSeed = attachProductDetailSource(
             normalizeProductDetailPrice(
-              merchantId === EXTERNAL_SEED_MERCHANT_ID
-                ? fromExternalSeeds
-                : { ...fromExternalSeeds, merchant_id: merchantId },
+              merchantId && merchantId !== EXTERNAL_SEED_MERCHANT_ID
+                ? { ...fromExternalSeeds, merchant_id: merchantId }
+                : fromExternalSeeds,
             ),
             'external_seed_db',
           );
@@ -9088,6 +9110,12 @@ async function fetchProductDetailForOffers(args) {
 
       return null;
     }
+
+    // The seller-less admission above unlocks the seed store and NOTHING else:
+    // products_cache and the upstream detail API are both seller-scoped, so with
+    // no seller there is no well-formed request left to make of them. (Reached
+    // only when the seed branch above was skipped for want of a database.)
+    if (seedRoutedWithoutMerchant) return null;
 
     if (process.env.DATABASE_URL) {
       const fromDb = await fetchProductDetailFromProductsCache({
@@ -36990,9 +37018,11 @@ async function resolveProductIntelInvokeContext({
   if (!productId && canonicalProductRef?.product_id) {
     productId = String(canonicalProductRef.product_id || '').trim();
   }
-  if (!requestedMerchantId && productId) {
-    requestedMerchantId = inferMerchantIdFromProductId(productId);
-  }
+  // ADR-009: no seller is derived from the product id here any more. The id
+  // prefix says how a product was SOURCED, never who sells it; deriving one put
+  // sourcing information into the seller field and produced refs that join
+  // nothing. The seed lane instead routes on the id itself — see the ref
+  // construction and the guard exemption below.
 
   const parsedOffer = offerId ? parseOfferId(offerId) : null;
   if (!requestedMerchantId && parsedOffer?.merchant_id) {
@@ -37116,15 +37146,40 @@ async function resolveProductIntelInvokeContext({
     }
   }
 
-  if (!canonicalProductRef && requestedMerchantId && productId) {
+  // A seed-shaped id is the one id form that is addressable WITHOUT a seller:
+  // the seed store looks it up by product id alone. So it gets a ref with no
+  // merchant_id rather than a fabricated one.
+  const seedRoutedWithoutMerchant = !requestedMerchantId && isExternalSeedProductId(productId);
+
+  if (!canonicalProductRef && productId && (requestedMerchantId || seedRoutedWithoutMerchant)) {
     canonicalProductRef = {
-      merchant_id: requestedMerchantId,
+      ...(requestedMerchantId ? { merchant_id: requestedMerchantId } : {}),
       product_id: productId,
       ...(platform ? { platform } : {}),
     };
   }
 
-  if (!canonicalProductRef?.merchant_id || !canonicalProductRef?.product_id) {
+  // The guard still exists for exactly the case it was written for: an id that
+  // cannot be addressed without a seller. A seed-shaped id can, and is the only
+  // exemption — anything else with no merchant still fails here.
+  //
+  // Its merchant conjunct is a SECOND gate, not a duplicate of the condition
+  // above: today no producer can hand this a seller-less ref with a non-seed id
+  // (the ref built above only omits a seller for a seed-shaped id, catalog group
+  // members are dropped when their seller is empty, and a caller-supplied
+  // canonical_product_ref is rejected without one), so the condition above
+  // already covers every reachable input. Mutation-checked rather than argued:
+  // widening the ref construction to build a seller-less ref for ANY id leaves
+  // the route's 400 contract intact — this guard catches it — and only removing
+  // BOTH loses it.
+  const canonicalRefIsSeedRoutedWithoutMerchant =
+    Boolean(canonicalProductRef) &&
+    !canonicalProductRef.merchant_id &&
+    isExternalSeedProductId(canonicalProductRef.product_id);
+  if (
+    !canonicalProductRef?.product_id ||
+    (!canonicalProductRef?.merchant_id && !canonicalRefIsSeedRoutedWithoutMerchant)
+  ) {
     const err = new Error(
       'product_ref.product_id + merchant_id, canonical_product_ref, subject=product_group, or offer_id is required',
     );
@@ -37144,6 +37199,31 @@ async function resolveProductIntelInvokeContext({
     err.status = 404;
     err.code = 'PRODUCT_NOT_FOUND';
     throw err;
+  }
+
+  // The ref reached the store with no seller; now that a row has answered,
+  // complete it from THAT ROW's own seller column, so every downstream reader
+  // (offer ids, the self-offer merchant, the emitted canonical_product_ref)
+  // keeps seeing the shape it has always seen.
+  //
+  // HONEST LIMIT, measured — do NOT read this as "ADR-009 is finished on this
+  // lane". On the seed path the row's merchant_id is NOT per-row provenance:
+  // services/externalSeedProducts.js and services/externalSeedDetail.js both
+  // stamp the retired sentinel as a literal, so this completion yields that
+  // same sentinel every time. Output is byte-identical to the mint it replaced
+  // (which is the point — no regression), but the value is still being MINTED,
+  // just one layer further in. Finishing the retirement means teaching the seed
+  // BUILDERS to carry the seed's own seller_ref / observed seller; until then
+  // this is a routing fix, not an identity fix.
+  //
+  // The `!merchant_id` guard is load-bearing: the products_cache lane returns
+  // its row unstamped, so an unconditional completion would let a row's own
+  // merchant_id overwrite a CALLER-SUPPLIED seller.
+  if (!canonicalProductRef.merchant_id) {
+    const resolvedMerchantId = String(product?.merchant_id || product?.merchantId || '').trim();
+    if (resolvedMerchantId) {
+      canonicalProductRef = { ...canonicalProductRef, merchant_id: resolvedMerchantId };
+    }
   }
 
   if (includeReviews) {
