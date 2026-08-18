@@ -106,6 +106,66 @@ function createBody(overrides = {}) {
 
 const rejected = (promise) => promise.then(() => null, (e) => e);
 
+// ---- 0. the seed-cohort landmine, on THIS door -------------------------------------------------------------
+//
+// UCP `item.id` is the ONLY identity a platform can send — there is no variant carrier — so on this door the
+// product-grain acceptance (safety-kernel buyerIntake, 2026-08-18) is the difference between "Minds can quote
+// most of the public pool" and "every seed row refuses no_real_variant_identity". Driven here through the real
+// UCP argument adapter + the real surface, with a fake executor standing in for the unscoped pdp read.
+
+describe('UCP create_checkout over a product-grain (variant-less) row', () => {
+  const productRead = (row) => {
+    const seen = [];
+    return {
+      seen,
+      async execute(op, params, ctx) {
+        seen.push({ op, params, ctx });
+        if (op === 'get_product') return { product: { ...row, product_id: params.payload.product.product_id } };
+        return { session_id: 'q_1' };
+      },
+    };
+  };
+  const oneLine = (id) => ({ meta: IDEMPOTENT_META, checkout: { line_items: [{ item: { id }, quantity: 1 }], buyer: { email: 'shopper@example.test' } } });
+
+  test('a DECLARED product-grain row (what pdpBuilder now says for a seed row) quotes, at product grain', async () => {
+    const executor = productRead({ title: 'Seed Serum', price: 42, currency: 'USD', purchase_grain: 'product', variants: [{ variant_id: 'sig_seed1' }] });
+    const ucp = ucpDialectSurface(createCommerceToolSurface(executor, { cache: false }));
+    await ucp.callTool('create_checkout', oneLine('sig_seed1'), SESSION);
+    const quote = executor.seen.find((c) => c.op === 'create_checkout_session').params.quote;
+    assert.deepEqual(quote.items.map((i) => [i.product_id, i.variant_id]), [['sig_seed1', 'sig_seed1']], 'variant_id IS the product id, by declaration');
+  });
+
+  test('a declared row whose placeholder the PDP hid (`variants: []`, the live shape for 3/24 seed rows) quotes too', async () => {
+    const executor = productRead({ title: 'Seed Serum', price: 42, currency: 'USD', purchase_grain: 'product', variants: [] });
+    const ucp = ucpDialectSurface(createCommerceToolSurface(executor, { cache: false }));
+    await ucp.callTool('create_checkout', oneLine('sig_seed1'), SESSION);
+    const quote = executor.seen.find((c) => c.op === 'create_checkout_session').params.quote;
+    assert.deepEqual(quote.items.map((i) => [i.product_id, i.variant_id]), [['sig_seed1', 'sig_seed1']]);
+    // …and undeclared + empty stays refused (fail closed).
+    const bare = productRead({ title: 'Seed Serum', price: 42, currency: 'USD', variants: [] });
+    const err = await rejected(ucpDialectSurface(createCommerceToolSurface(bare, { cache: false })).callTool('create_checkout', oneLine('sig_seed1'), SESSION));
+    assert.ok(err);
+    assert.equal(bare.seen.some((c) => c.op === 'create_checkout_session'), false);
+  });
+
+  test('the SAME row without the declaration still refuses — the id shape alone never buys a quote', async () => {
+    const executor = productRead({ title: 'Seed Serum', price: 42, currency: 'USD', variants: [{ variant_id: 'sig_seed1' }] });
+    const ucp = ucpDialectSurface(createCommerceToolSurface(executor, { cache: false }));
+    const err = await rejected(ucp.callTool('create_checkout', oneLine('sig_seed1'), SESSION));
+    assert.ok(err, 'must refuse');
+    assert.equal(err.detail?.acp_detail?.variant_resolution ?? err.detail?.variant_resolution, 'no_real_variant_identity');
+    assert.equal(executor.seen.some((c) => c.op === 'create_checkout_session'), false, 'nothing priced');
+  });
+
+  test('a declared row whose variant axis was merely LOST (`${pid}-1`) still refuses — pricing would guess', async () => {
+    const executor = productRead({ title: 'Seed Serum', price: 42, currency: 'USD', purchase_grain: 'product', variants: [{ variant_id: 'sig_seed1-1' }] });
+    const ucp = ucpDialectSurface(createCommerceToolSurface(executor, { cache: false }));
+    const err = await rejected(ucp.callTool('create_checkout', oneLine('sig_seed1'), SESSION));
+    assert.ok(err);
+    assert.equal(executor.seen.some((c) => c.op === 'create_checkout_session'), false);
+  });
+});
+
 // ---- 1. the cart --------------------------------------------------------------------------------------------
 
 describe('UCP create_checkout maps onto the canonical quote', () => {

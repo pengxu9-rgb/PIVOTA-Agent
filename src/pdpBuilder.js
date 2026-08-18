@@ -4866,6 +4866,8 @@ function buildPdpPayload(args) {
   const brandLabel = resolveProductBrandLabel(product);
   const currency = product.currency || 'USD';
   const variants = buildVariants(product);
+  // The same emptiness test buildVariants applies (its fabricated single variant exists iff this is 0).
+  const rawVariantCount = Array.isArray(product.variants) ? product.variants.length : 0;
   const defaultVariant = pickDefaultVariant(product, variants);
   const productLineOptions = normalizeProductLineOptions(product);
   const visibleVariants = shouldExposeProductVariants(product, variants, productLineOptions)
@@ -5245,6 +5247,17 @@ function buildPdpPayload(args) {
       source_url: sourceUrl || undefined,
       default_variant_id: visibleVariants.length ? defaultVariant.variant_id : undefined,
       variants: visibleVariants,
+      // PURCHASE GRAIN — a TYPED statement of what buildVariants above already knew and used to throw away.
+      // 'product': the canonical row carried NO variants, so the single variant published here was minted
+      // FROM the product (`variant_id: product_id`) — the product IS the purchasable unit, and that is the
+      // backend's own convention too (routes/agent_v2.py _canonicalize_search_product gives a variant-less
+      // product one canonical variant, id = product id, priced as offer::<merchant>::<product_id>).
+      // 'variant': the row carried a variant axis; ids are real (or, when upstream lost them, `${pid}-N`
+      // restatements that MUST still be refused at checkout, because pricing would guess).
+      // The checkout resolver (safety-kernel buyerIntake createDefaultVariantResolver) reads THIS FIELD to
+      // accept `variant_id === product_id` for a product-grain row — never the shape of the id, which it
+      // cannot tell apart from the forgery it guards against. Consumers other than the resolver may ignore it.
+      purchase_grain: rawVariantCount === 0 ? 'product' : 'variant',
       ...(productLineOptions.length > 1 ? { product_line_options: productLineOptions } : {}),
       ...(productLineOptions.length > 1 && productLineOptionName
         ? { product_line_option_name: productLineOptionName }

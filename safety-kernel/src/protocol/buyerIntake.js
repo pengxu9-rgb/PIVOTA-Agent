@@ -275,7 +275,10 @@ export function pickCompleteAddress(raw, { updateHint } = {}) {
 //   identity mismatch          -> refuse (`identity_mismatch`)
 //   exactly one REAL variant   -> use it
 //   zero variants              -> refuse (`no_variants`)
-//   only restated product ids  -> refuse (`no_real_variant_identity`)
+//   PRODUCT-GRAIN row          -> use the product id (the read DECLARED `purchase_grain: 'product'` AND
+//                                 published exactly one candidate byte-equal to the product id — see the
+//                                 resolver body; this is the backend's own convention for a variant-less row)
+//   only restated product ids  -> refuse (`no_real_variant_identity`) — incl. `${pid}-N`, a lost variant axis
 //   more than one REAL variant -> refuse (`ambiguous`, with the count — a door will not guess an option)
 //   read errors/expires        -> refuse (`resolution_unavailable`)
 //
@@ -467,7 +470,7 @@ export function createDefaultVariantResolver({ executor, timeoutMs } = {}) {
     if (nonEmpty(merchant_id)) product.merchant_id = merchant_id;
     const result = await executor.execute('get_product', { payload: { product } }, { ...ctx, signal });
     assertProductIdentity(result, product_id, merchant_id);
-    return variantIdsFromProductRead(result);
+    return { ids: variantIdsFromProductRead(result), productGrain: isProductGrainRead(result) };
   }
 
   /**
@@ -507,7 +510,8 @@ export function createDefaultVariantResolver({ executor, timeoutMs } = {}) {
     }
     const byProduct = new Map(productIds.map((pid, i) => [pid, resolved[i]]));
     for (const it of needing) {
-      const candidates = byProduct.get(it.product_id) ?? [];
+      const read = byProduct.get(it.product_id) ?? { ids: [], productGrain: false };
+      const candidates = read.ids;
       // THE central filter. A candidate that is the requested product_id, or the requested product_id plus a
       // separator, carries no identity of its own — it is the product id restated. src/pdpBuilder.js
       // buildVariants MANUFACTURES exactly those two shapes when an upstream product has no variants
@@ -517,6 +521,36 @@ export function createDefaultVariantResolver({ executor, timeoutMs } = {}) {
       // pricing a cart nobody asked for.
       const real = candidates.filter((id) => !isRestatedProductId(id, it.product_id));
       if (real.length === 0) {
+        // PRODUCT-GRAIN ROW: the read SAID, in a typed field, that the row carries no variant axis and its one
+        // canonical variant IS the product (pdpBuilder `purchase_grain: 'product'`; the backend's own
+        // canonicalization makes the same choice — agent_v2 _canonicalize_search_product prices such a row as
+        // offer::<merchant>::<product_id>). For that row `variant_id === product_id` is not a forgery: it is
+        // the purchasable identity, priced at exactly what the PDP and search showed. Accept it ONLY under all
+        // three of: the read declared the grain (a typed field — property 1 is intact, nothing here reads the
+        // SHAPE of an id), the read published AT MOST one candidate, and any candidate is BYTE-EQUAL to the
+        // requested product_id (a `${pid}-N` restatement means a variant axis whose identity was lost, and
+        // there pricing WOULD guess — still refused below). ZERO candidates under the declaration is the same
+        // row one step later: measured on prod 2026-08-18, 3 of 24 sampled seed rows publish `variants: []`
+        // because the PDP's visibility rules hide the builder's own placeholder — the declaration is computed
+        // from the RAW row before any of that, and says what the empty list cannot. Absent the declaration,
+        // zero candidates stays `no_variants` (fail closed) exactly as before.
+        // Sampled the same day: 18/24 seed rows already resolve on a REAL crawled variant id, 3 are honestly
+        // ambiguous (multi-variant); this carve-out is for the remaining product-grain rows only.
+        //
+        // SCOPE, stated plainly (review of #2024): this closes the RESOLVER seam and nothing further down.
+        // A seed row that now passes intake still cannot be PRICED today — pivota-backend's quote engine is
+        // Shopify-only (services/quote_service.py -> shopify_storefront_pricing_service, which needs the
+        // seller's primary Shopify store and a real ProductVariant GID), and a UCP create_checkout reaches
+        // routes/agent_v2.py QuotePreviewBody with no merchant_id at all (required -> 422). So for the seed
+        // cohort the refusal moves from a curated intake refusal to a backend pricing error until an
+        // offer-grain pricing path exists. Demo checkouts must use Shopify-store products with real GIDs.
+        // This carve-out is still right — it is what lets that future path receive the row at all.
+        // (`<= 1` is defense in depth: variantIdsFromProductRead already dedupes, so an all-equal list is at
+        // most one long today — the bound is what keeps that true if a future reader stops deduping.)
+        if (read.productGrain && candidates.every((id) => id === it.product_id) && candidates.length <= 1) {
+          it.variant_id = it.product_id;
+          continue;
+        }
         // Distinguish "the catalog published no variant identity for this product" (it published only
         // restatements of the product id) from "the product genuinely has no variants". Ops needs both.
         if (candidates.length > 0) {
@@ -563,6 +597,16 @@ export function variantIdsFromProductRead(result) {
     if (id && !ids.includes(id)) ids.push(id);
   }
   return ids;
+}
+
+/**
+ * Did the product read DECLARE itself product-grain — a row with no variant axis whose one canonical variant is
+ * the product itself? Reads the TYPED field pdpBuilder publishes (`purchase_grain: 'product'`); a read that
+ * says nothing is NOT product-grain (fail closed — absence must never buy an acceptance).
+ */
+export function isProductGrainRead(result) {
+  const product = productOfRead(result);
+  return typeof product.purchase_grain === 'string' && product.purchase_grain.trim() === 'product';
 }
 
 /**
