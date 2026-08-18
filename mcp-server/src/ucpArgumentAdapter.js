@@ -62,13 +62,20 @@
 //                   client's flat `{query,id,sku}` (`catalogSearch`), which is wrong against the live schema
 //                   — that client has the same bug and is flagged separately.
 //   - search_catalog : required ["meta","catalog"], and `catalog` declares NO required member — a query-less
-//                   call is legal on the wire. `catalog` carries `query` (free text) plus `pagination`,
-//                   `context`, `signals`, `filters` (same listing, 2026-08-13; the buyer client's
-//                   `searchCatalog` sends exactly this). It is a DIFFERENT tool from `get_product`, and
-//                   the two are the reason a UCP catalog has two capability ids. Only `query` is read here:
-//                   the inner shape of `pagination` was never captured, and mapping a guessed shape onto the
-//                   native `page`/`page_size` would be the extrapolation this file exists to end — so it is
-//                   accepted-and-unread until the live shape is fetched (UCP_ACCEPTED_BUT_UNMAPPED).
+//                   call is legal on the wire. It is a DIFFERENT tool from `get_product`, and the two are the
+//                   reason a UCP catalog has two capability ids. FULL `catalog` shape, LIVE-VERIFIED
+//                   (cosrx un-negotiated `tools/list`, 2026-08-18 — the first pass had only the member names):
+//                     query      : string
+//                     pagination : { cursor?: string, limit?: integer (default 10, minimum 1, NO maximum) }
+//                     filters    : { categories?: string[] (OR), price?: { min?: integer, max?: integer } in
+//                                    MINOR currency units, available?: boolean (default true) }
+//                     context    : { address_country, address_region, postal_code, language, currency, intent }
+//                     signals    : { "dev.ucp.buyer_ip", "dev.ucp.user_agent" }
+//                   Every one of these objects is PERMISSIVE on the live schema (additionalProperties true or
+//                   undeclared), so unknown members inside them are accepted; only the top level and
+//                   `catalog` itself are strict here, as for get_product. What is READ, and why the rest is
+//                   not, is the subject of the SPECS entry — see SEARCH_CATALOG_DESCRIPTION and
+//                   UCP_ACCEPTED_BUT_UNMAPPED.search_catalog.
 //
 // A MEASUREMENT TRAP WORTH REMEMBERING. The first 2026-08-13 listing showed only 9 tools — cart and checkout —
 // and this file recorded that a per-merchant endpoint "does not expose get_product at all". That was wrong:
@@ -141,6 +148,7 @@ import {
   REQUIRED_ADDRESS_FIELDS,
 } from "../../safety-kernel/src/protocol/buyerIntake.js";
 import { CANONICAL_PAYMENT_METHODS } from "../../safety-kernel/src/protocol/paymentAuthorizationVerifier.js";
+import { minorUnitExponent } from "../../safety-kernel/src/money.js";
 
 // The prototype guard used across the doors: admits `Object.prototype` and a null prototype, nothing else.
 const isPlainObject = (v) => typeof v === "object" && v !== null && !Array.isArray(v)
@@ -803,10 +811,17 @@ export const UCP_ACCEPTED_BUT_UNMAPPED = Object.freeze({
     "catalog.selected[].*", "catalog.preferences[].*", "catalog.context.*", "catalog.signals.*",
     "catalog.filters.*",
   ]),
-  // `pagination` is the one of these worth translating — the native lane pages by page/page_size — and it is
-  // deliberately NOT, because its inner shape was never fetched. Probe the live listing, then map it.
+  // Leaf-exact, per the live 2026-08-18 shape. READ: pagination.limit, filters.price.min/max,
+  // filters.available, context.currency. NOT read, each for a stated reason (SEARCH_CATALOG_DESCRIPTION):
+  // cursor (nothing in the native response to continue from), categories (vocabulary mismatch + OR-of-many
+  // has no native field), the other context members (nothing on the native search reads them), and signals
+  // (caller-identifying — this read is caller-independent by construction and shared through one cache).
   search_catalog: Object.freeze([
-    "catalog.pagination.*", "catalog.context.*", "catalog.signals.*", "catalog.filters.*",
+    "catalog.pagination.cursor",
+    "catalog.filters.categories[]",
+    "catalog.context.address_country", "catalog.context.address_region", "catalog.context.postal_code",
+    "catalog.context.language", "catalog.context.intent",
+    "catalog.signals.dev.ucp.buyer_ip", "catalog.signals.dev.ucp.user_agent",
   ]),
 });
 
@@ -1094,8 +1109,14 @@ const SEARCH_CATALOG_DESCRIPTION = [
   "Search Pivota's normalized multi-merchant catalog with free text. Send `{ meta, catalog: { query } }` —",
   "the query is NESTED under `catalog`. Read-only; no money, no state change. Returns Pivota product ids",
   "(`product_id`, e.g. `sig_…`) that `get_product` and `create_checkout` line items accept. The response is",
-  "Pivota's native product list. `catalog.pagination` / `context` / `signals` / `filters` are accepted and",
-  "not read.",
+  "Pivota's native product list (page-numbered; it carries no cursor).",
+  "Read: `catalog.pagination.limit` (results per page, 1..50 — larger values are capped at 50);",
+  "`catalog.filters.price.min` / `.max` (integers in MINOR units of `catalog.context.currency`, default USD",
+  "cents; `min` must not exceed `max`); `catalog.filters.available` (true = in-stock only, the default);",
+  "`catalog.context.currency` (ISO 4217).",
+  "Accepted and NOT read: `pagination.cursor` (no cursor exists in the native response to continue from),",
+  "`filters.categories` (Pivota filters on its own category vocabulary, which a platform's labels would not",
+  "match — filter client-side instead), the other `context` members, and `signals`.",
 ].join(" ");
 
 // The refusal code for a search wire-shape violation. No PivotaErrorCode means "malformed arguments": the
@@ -1105,6 +1126,100 @@ const SEARCH_CATALOG_DESCRIPTION = [
 // retriable:false, and the curated message + `reason` (`ucp_*`) are what the caller actually reads —
 // toToolError surfaces `{code, message, retriable, detail}` and never the catalog's recovery string.
 const SEARCH_REFUSAL_CODE = "OPERATION_NOT_ALLOWED";
+
+// The native tool's published page-size ceiling (commerceToolSurface NATIVE_INPUT_SCHEMAS.search_catalog
+// `page_size.maximum`). UCP's `pagination.limit` declares NO maximum, so a larger value is CAPPED here rather
+// than refused: capping a page size is an ordinary server bound and keeps a UCP call inside the native tool's
+// contract, whereas refusing would turn a conforming caller away over a number the lane would clamp anyway.
+// Exported ONLY so the test suite can pin it to the native schema's `page_size.maximum` (the adapter cannot
+// import commerceToolSurface — that module imports this one).
+export const SEARCH_PAGE_SIZE_MAX = 50;
+
+/** `catalog.context.currency` — a non-empty string when supplied, trimmed, else undefined. */
+function readSearchCurrency(context, code) {
+  if (!isPlainObject(context)) return undefined; // absent, or a non-object the permissive schema tolerates
+  const currency = own(context, "currency");
+  if (currency === undefined) return undefined;
+  if (!nonEmpty(currency)) {
+    throw ucpRefusal(code, "ucp_currency_string_required",
+      "`catalog.context.currency` must be a non-empty ISO 4217 code when supplied.", { rejected_field: "catalog.context.currency" });
+  }
+  return currency.trim();
+}
+
+/**
+ * `catalog.pagination` -> native `page_size`. `limit` is read (integer >= 1, capped at SEARCH_PAGE_SIZE_MAX);
+ * `cursor` is accepted and NOT read — the native lane pages by number and its response carries no cursor, so
+ * there is nothing a caller could have obtained to send back. Faking one would advertise a continuation that
+ * does not exist.
+ */
+function mapSearchPagination(pagination, code) {
+  if (!isPlainObject(pagination)) return {};
+  const limit = own(pagination, "limit");
+  if (limit === undefined) return {};
+  if (!Number.isInteger(limit) || limit < 1) {
+    throw ucpRefusal(code, "ucp_pagination_limit_invalid",
+      "`catalog.pagination.limit` must be an integer >= 1 when supplied.", { rejected_field: "catalog.pagination.limit" });
+  }
+  return { page_size: Math.min(limit, SEARCH_PAGE_SIZE_MAX) };
+}
+
+/**
+ * `catalog.filters` -> native `price_min` / `price_max` / `in_stock_only`.
+ *
+ * PRICE IS IN MINOR UNITS ON THE WIRE and MAJOR units on the native lane (`min_price` reaches the search stack
+ * as-is, and the catalog's own prices are majors: 6, 24, 38 USD in the live probe). The conversion uses the
+ * kernel's minorUnitExponent — the same table the money path trusts — so JPY 1500 stays 1500 and BHD 1500 is
+ * 1.5, rather than the "divide by 100" that is silently wrong for every zero- and three-decimal currency.
+ * With no `context.currency` the exponent is USD's (2), the default market.
+ *
+ * `categories` is accepted and NOT read (see SEARCH_CATALOG_DESCRIPTION): the native `category` is one of
+ * Pivota's own facet strings, and OR-of-many cannot be expressed on it either; forwarding a platform's label
+ * would filter to zero and read as "no products", which is worse than a broader page the caller can narrow.
+ */
+function mapSearchFilters(filters, currency, code) {
+  if (!isPlainObject(filters)) return {};
+  const out = {};
+  const available = own(filters, "available");
+  if (available !== undefined) {
+    if (typeof available !== "boolean") {
+      throw ucpRefusal(code, "ucp_filters_available_boolean_required",
+        "`catalog.filters.available` must be a boolean when supplied.", { rejected_field: "catalog.filters.available" });
+    }
+    out.in_stock_only = available;
+  }
+  const price = own(filters, "price");
+  if (price !== undefined) {
+    if (!isPlainObject(price)) {
+      throw ucpRefusal(code, "ucp_filters_price_object_required",
+        "`catalog.filters.price` must be an object `{ min?, max? }` in minor currency units when supplied.",
+        { rejected_field: "catalog.filters.price" });
+    }
+    const exp = minorUnitExponent(currency);
+    const toMajor = (field) => {
+      const v = own(price, field);
+      if (v === undefined) return undefined;
+      if (!Number.isInteger(v) || v < 0) {
+        throw ucpRefusal(code, "ucp_filters_price_bound_invalid",
+          `\`catalog.filters.price.${field}\` must be a non-negative integer in MINOR currency units when supplied.`,
+          { rejected_field: `catalog.filters.price.${field}` });
+      }
+      return v / 10 ** exp;
+    };
+    const min = toMajor("min");
+    const max = toMajor("max");
+    if (min !== undefined && max !== undefined && min > max) {
+      // An inverted range can only ever match nothing; answering it with an empty page would read as
+      // "no products", which is the wrong lesson for a caller that transposed two numbers.
+      throw ucpRefusal(code, "ucp_filters_price_range_inverted",
+        "`catalog.filters.price.min` must not exceed `catalog.filters.price.max`.",
+        { rejected_field: "catalog.filters.price", required_fields: ["catalog.filters.price.min <= catalog.filters.price.max"] });
+    }
+    if (min !== undefined) out.price_min = min;
+    if (max !== undefined) out.price_max = max;
+  }
+  return out;
+}
 
 /**
  * One entry per canonical operation on the UCP dialect. `inputSchema` is what `tools/list` publishes and
@@ -1128,13 +1243,61 @@ const SPECS = Object.freeze({
           additionalProperties: false,
           properties: {
             query: { type: "string", description: "Free-text search query. Optional on the wire." },
-            // Live members accepted and NOT read (see the header note and UCP_ACCEPTED_BUT_UNMAPPED). The
-            // native lane pages by `page`/`page_size`; UCP's `pagination` inner shape is unverified, so it is
-            // not translated onto them by guesswork.
-            pagination: { type: "object", additionalProperties: true, description: "Accepted and NOT read (inner shape unverified)." },
-            context: { type: "object", additionalProperties: true, description: "Accepted and NOT read." },
-            signals: { type: "object", additionalProperties: true, description: "Accepted and NOT read." },
-            filters: { type: "object", additionalProperties: true, description: "Accepted and NOT read." },
+            // The four live sub-objects, each declared with the members the live schema declares (2026-08-18
+            // listing) and PERMISSIVE like the live schema — an unknown member inside them is the platform's
+            // business. Which leaves are read is decided in map() and pinned leaf-exact by the test suite.
+            pagination: {
+              type: "object",
+              additionalProperties: true,
+              description: "Pagination. `limit` is read (capped at 50); `cursor` is accepted and NOT read — the native response is page-numbered and carries no cursor to continue from.",
+              properties: {
+                cursor: { type: "string", description: "Accepted and NOT read (no cursor exists in the native response)." },
+                limit: { type: "integer", minimum: 1, description: "Results per page. Read; values above 50 are capped at 50." },
+              },
+            },
+            filters: {
+              type: "object",
+              additionalProperties: true,
+              description: "Read: `price` (minor units of context.currency, default USD) and `available`. `categories` is accepted and NOT read.",
+              properties: {
+                categories: {
+                  type: "array", items: { type: "string" },
+                  description: "Accepted and NOT read: Pivota filters on its own category vocabulary, which a platform's labels would not match — filter client-side.",
+                },
+                price: {
+                  type: "object",
+                  additionalProperties: true,
+                  description: "Price range in MINOR currency units (cents for USD, yen for JPY). Read.",
+                  properties: {
+                    min: { type: "integer", description: "Minimum price in minor units. Read." },
+                    max: { type: "integer", description: "Maximum price in minor units. Read; must be >= min." },
+                  },
+                },
+                available: { type: "boolean", description: "true = in-stock only (the default when omitted). Read." },
+              },
+            },
+            context: {
+              type: "object",
+              additionalProperties: true,
+              description: "Buyer context. `currency` is read (ISO 4217; also sets the minor unit of filters.price). Other members are accepted and NOT read.",
+              properties: {
+                address_country: { type: "string", description: "Accepted and NOT read." },
+                address_region: { type: "string", description: "Accepted and NOT read." },
+                postal_code: { type: "string", description: "Accepted and NOT read." },
+                language: { type: "string", description: "Accepted and NOT read." },
+                currency: { type: "string", description: "ISO 4217 code. Read." },
+                intent: { type: "string", description: "Accepted and NOT read." },
+              },
+            },
+            signals: {
+              type: "object",
+              additionalProperties: true,
+              description: "Accepted and NEVER read: buyer signals are caller-identifying, and this read is caller-independent by construction (shared cache).",
+              properties: {
+                "dev.ucp.buyer_ip": { type: "string", description: "Accepted and NOT read." },
+                "dev.ucp.user_agent": { type: "string", description: "Accepted and NOT read." },
+              },
+            },
           },
         },
       },
@@ -1173,7 +1336,15 @@ const SPECS = Object.freeze({
       // routes this to the UNSCOPED multi-merchant lane (find_products_multi), which is caller-independent
       // and cached — the same lane the native tool takes for a merchant-less search. An absent or blank query
       // is passed through as ABSENT (never as ""), so the native lane sees the same call it would from /mcp.
-      return nonEmpty(query) ? { query: query.trim() } : {};
+      const native = nonEmpty(query) ? { query: query.trim() } : {};
+      // `context.currency` first: it names the native currency AND the minor unit `filters.price` is
+      // expressed in. Forwarded TRIMMED and otherwise verbatim — the native lane normalizes case; an unknown
+      // code falls back to exponent 2 in minorUnitExponent, exactly as it does for the kernel's own amounts.
+      const currency = readSearchCurrency(own(catalog, "context"), code);
+      if (currency !== undefined) native.currency = currency;
+      Object.assign(native, mapSearchPagination(own(catalog, "pagination"), code));
+      Object.assign(native, mapSearchFilters(own(catalog, "filters"), currency, code));
+      return native;
     },
   }),
 
