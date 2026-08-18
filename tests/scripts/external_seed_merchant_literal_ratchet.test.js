@@ -242,13 +242,17 @@ if (require.main === module && process.argv.includes('--regen')) {
     });
 
     test('CONTROL: a sourcing default is not counted merely for SHARING A LINE with a seller', () => {
-      // The fixtures in the control above all omit a merchant token, so every
-      // one of them passes on the anchor alone — they never exercise what the
-      // anchor is anchored ON. That made them green under an anchor widened to
-      // a bare `merchant`, or to a bare `[Ii]d`: the guard proved "there is
-      // some anchor" and not "the anchor is the seller axis", which is the only
-      // thing that justifies this pattern existing. A control that cannot fail
-      // for the reason it is named is the failure mode it was written to stop.
+      // This pins the FENCE — the negative lookahead that stops the run between
+      // the anchor and the fallback from crossing a sourcing field name.
+      // Without it the greedy run bridges from a seller to a sourcing default
+      // sharing one line and the ratchet accuses an honest lane label.
+      //
+      // It pins the fence and NOTHING ELSE. It cannot pin the anchor: the fence
+      // blocks the sourcing token whatever the anchor is, so every fixture here
+      // scores 0 under a degenerate anchor too. That is not a hypothetical —
+      // two anchor mutants survived a full green suite on exactly this
+      // confusion, with three people believing this test covered them. The
+      // anchor gets its own control below; see the note there.
       //
       // Co-occurrence on one line is NORMAL — the seller and the lane label are
       // written side by side on the same object all over this tree — so these
@@ -262,6 +266,36 @@ if (require.main === module && process.argv.includes('--regen')) {
       // three zeros above would also pass if the pattern had stopped matching
       // anything at all.
       expect(countMatches("  merchant_id: row.merchant_id, seller: x, m: y.merchant_id || 'external_seed',")).toBe(1);
+    });
+
+    test('CONTROL: the ANCHOR is the seller field, not merely some token near it', () => {
+      // These fixtures exist because the fence control above CANNOT pin the
+      // anchor, and for a while everyone involved believed it did. Two anchor
+      // mutants — `merchant_?[Ii]d` widened to a bare `merchant`, and to a bare
+      // `[Ii]d` — passed the whole suite. The earlier mutation run that claimed
+      // to kill them had changed the anchor AND removed the fence in one edit,
+      // so the kill came from the fence and was credited to the anchor.
+      //
+      // Each fixture below is chosen to score 0 on the real pattern and 1 on
+      // exactly ONE degenerate anchor, so each fails for its own reason:
+      //
+      //   fixture                        real   ->merchant   ->[Ii]d
+      //   merchant_name: ... || <lane>     0         1           0
+      //   seed_id: ... || <lane>           0         0           1
+      //
+      // Both are honest code. `merchant_name` is a DISPLAY string, not an
+      // identity — a seller's display name falling back to a lane label is not
+      // the seller-axis defect this file watches. `seed_id` is a row
+      // identifier with no seller in it at all. Counting either would be a
+      // false accusation, which is the same failure as missing a real mint.
+      expect(countMatches("  merchant_name: row.merchant_name || 'external_seed',")).toBe(0);
+      expect(countMatches("  seed_id: row.seed_id || 'external_seed',")).toBe(0);
+
+      // CONTROL for those two zeros, same discipline as the fence fixtures:
+      // change ONLY the field name to the seller and the identical line counts.
+      // So the zeros are about WHICH FIELD is being defaulted, not about the
+      // pattern having gone dark.
+      expect(countMatches("  merchant_id: row.merchant_id || 'external_seed',")).toBe(1);
     });
 
     test('CONTROL: two mints on one line count as two, not one', () => {
