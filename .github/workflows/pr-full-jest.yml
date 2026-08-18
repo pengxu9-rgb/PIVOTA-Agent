@@ -342,6 +342,12 @@ jobs:
       # tested and the half that talks to the world is asserted in prose. These spawn the real script
       # against real local HTTP servers and pin the 0/1/2 contract, including that a 500 profile is an
       # OUTAGE (1) and not a broken harness (2). Local sockets only; no network.
+      # ADDED 2026-08-18: `commerce_ucp_search_shared_cache`, confirmed green (1/1) and RED under both
+      # wirings it replaces (a second surface with `cache:false`, and a second surface with its own cache).
+      # Review of #2016: the UCP door built its own createCommerceToolSurface with `cache:false` on a false
+      # premise (the commerce read cache is per surface INSTANCE), so the first cacheable UCP tool —
+      # search_catalog — would have paid cold cost on every call. This drives BOTH doors on the wire against a
+      # counted loopback search upstream and asserts one cache. Local sockets only (nock); no network.
       - name: Run node:test suites
         run: |
           node --test \
@@ -358,6 +364,7 @@ jobs:
             safety-kernel/test/delegatedPaymentRefusal.test.js \
             mcp-server/test/ucpFulfillmentAddressContract.test.js \
             tests/commerce_ucp_mcp_door.node.test.cjs \
+            tests/commerce_ucp_search_shared_cache.node.test.cjs \
             tests/commerce_mcp_oauth.node.test.cjs \
             tests/commerce_kernel_error_body.node.test.cjs \
             tests/commerce_kernel_error_mapping.node.test.cjs \

@@ -31,6 +31,7 @@ import {
   ucpToNativeToolArgs,
 } from '../src/ucpArgumentAdapter.js';
 import { canonicalOpForUcpTool } from '../../safety-kernel/src/protocol/canonicalContract.js';
+import { surfaceableIntakeRefusal } from '../../safety-kernel/src/protocol/buyerIntake.js';
 
 // ---- harness ---------------------------------------------------------------------------------------------
 
@@ -554,6 +555,157 @@ describe('get_product speaks the UCP nested-catalog shape', () => {
   });
 });
 
+// ---- 7b. search_catalog ------------------------------------------------------------------------------------------
+
+describe('search_catalog speaks the UCP nested-catalog shape and takes the unscoped lane', () => {
+  test('`catalog.query` becomes the native `query`, and NO merchant is invented', async () => {
+    const { executor, ucp } = ucpSurface();
+    await ucp.callTool('search_catalog', { meta: AGENT_META, catalog: { query: 'niacinamide serum' } }, SESSION);
+
+    const call = executor.only('search_catalog');
+    // toParams' allowlist wraps the native args as payload.search; the query survives, nothing else appears.
+    assert.deepEqual(call.params.payload.search, { query: 'niacinamide serum' });
+
+    // …and it is trimmed on the way through, as `catalog.id` is: the cache key downstream is the allowlisted
+    // params, so " retinol" and "retinol" must be one entry, not two.
+    const { executor: ex2, ucp: ucp2 } = ucpSurface();
+    await ucp2.callTool('search_catalog', { meta: AGENT_META, catalog: { query: '  retinol  ' } }, SESSION);
+    assert.deepEqual(ex2.only('search_catalog').params.payload.search, { query: 'retinol' });
+    assert.equal(call.params.payload.search.merchant_id, undefined, 'the UCP shape names no merchant');
+    // The executor selects the lane from the ABSENCE of merchant_id (canonicalExecutor: unscoped ->
+    // find_products_multi). The op id it receives is the canonical one, so the dialect forked nothing.
+    assert.equal(call.op, 'search_catalog');
+  });
+
+  test('a FLAT top-level query is refused — the live shape nests it under `catalog`', async () => {
+    const { executor, ucp } = ucpSurface();
+    const err = await rejected(ucp.callTool('search_catalog', { meta: AGENT_META, query: 'retinol' }, SESSION));
+    assert.ok(err, 'a flat top-level query is not the live wire shape');
+    assert.equal(executor.seen.length, 0);
+    assert.match(String(err.detail?.acp_message ?? err.message), /catalog/);
+  });
+
+  test('a missing `catalog` object is refused, naming the nested field', async () => {
+    const { executor, ucp } = ucpSurface();
+    const err = await rejected(ucp.callTool('search_catalog', { meta: AGENT_META }, SESSION));
+    assert.ok(err);
+    assert.equal(executor.seen.length, 0);
+    assert.match(String(err.detail?.acp_message ?? err.message), /catalog\.query/);
+  });
+
+  test('a query-less call is LEGAL on the wire and reaches the lane with no query, not an empty string', async () => {
+    // The live schema declares no required member under `catalog`. A door stricter than the spec turns a
+    // conforming caller away; passing "" instead would change what the native lane sees for the same call.
+    const { executor, ucp } = ucpSurface();
+    await ucp.callTool('search_catalog', { meta: AGENT_META, catalog: {} }, SESSION);
+    const call = executor.only('search_catalog');
+    assert.equal(Object.prototype.hasOwnProperty.call(call.params.payload.search, 'query'), false);
+  });
+
+  test('a blank query is treated the same as an absent one, and a non-string query is refused', async () => {
+    const { executor, ucp } = ucpSurface();
+    await ucp.callTool('search_catalog', { meta: AGENT_META, catalog: { query: '   ' } }, SESSION);
+    assert.equal(Object.prototype.hasOwnProperty.call(executor.only('search_catalog').params.payload.search, 'query'), false);
+
+    // EVERY non-string, not just a number: a mutant that checked `typeof query === "number"` let an array
+    // or object query through as ABSENT and ran a query-less search — silently answering a different
+    // question than the one asked (review of #2016).
+    for (const bad of [12345, ['niacinamide'], { text: 'niacinamide' }, true, null]) {
+      const { executor: ex2, ucp: ucp2 } = ucpSurface();
+      const err = await rejected(ucp2.callTool('search_catalog', { meta: AGENT_META, catalog: { query: bad } }, SESSION));
+      assert.ok(err, `a ${Array.isArray(bad) ? 'array' : typeof bad} query must be refused`);
+      assert.equal(ex2.seen.length, 0, 'nothing may reach the executor');
+      assert.match(String(err.detail?.acp_message ?? err.message), /catalog\.query/);
+    }
+  });
+
+  test('the live catalog members are accepted, and only `query` is read', async () => {
+    const { executor, ucp } = ucpSurface();
+    await ucp.callTool('search_catalog', {
+      meta: AGENT_META,
+      catalog: {
+        query: 'vitamin c',
+        pagination: { limit: 'PAG_SENTINEL' },
+        context: { country: 'CTX_SENTINEL' },
+        signals: { s: 'SIG_SENTINEL' },
+        filters: { f: 'FIL_SENTINEL' },
+      },
+    }, SESSION);
+    const wire = JSON.stringify(executor.only('search_catalog').params);
+    for (const s of ['PAG_SENTINEL', 'CTX_SENTINEL', 'SIG_SENTINEL', 'FIL_SENTINEL']) {
+      assert.equal(wire.includes(s), false, `${s} must not be forwarded`);
+    }
+    assert.match(wire, /vitamin c/);
+  });
+
+  test('`meta` is required on the read, exactly as on every other UCP call', async () => {
+    const { executor, ucp } = ucpSurface();
+    const err = await rejected(ucp.callTool('search_catalog', { catalog: { query: 'toner' } }, SESSION));
+    assert.ok(err);
+    assert.equal(executor.seen.length, 0);
+    assert.match(String(err.detail?.acp_message ?? err.message), /meta/);
+  });
+
+  test('search is not user-scoped: it answers an ANONYMOUS session (no user_ref) as get_product does', async () => {
+    const { executor, ucp } = ucpSurface();
+    await ucp.callTool('search_catalog', { meta: AGENT_META, catalog: { query: 'sunscreen' } }, {});
+    assert.equal(executor.only('search_catalog').params.payload.search.query, 'sunscreen');
+  });
+
+  test('a `merchant_id` is refused at BOTH depths — the lane cannot be flipped from the wire', async () => {
+    // Review of #2016 found this unpinned: a mutant that let `catalog.merchant_id` through survived the
+    // whole suite. That value would flip canonicalExecutor's lane selection from the unscoped
+    // multi-merchant index to the merchant-scoped per-store `find_products` (the Python backend), AND
+    // enter the caller-independent cache key. The strict-depth walk only injects `not_a_ucp_field`, so a
+    // by-name allowlist widening was invisible to it. Both placements a caller might try are refused
+    // before anything reaches the executor.
+    for (const body of [
+      { meta: AGENT_META, catalog: { query: 'serum', merchant_id: 'm_1' } },
+      { meta: AGENT_META, merchant_id: 'm_1', catalog: { query: 'serum' } },
+    ]) {
+      const { executor, ucp } = ucpSurface();
+      const err = await rejected(ucp.callTool('search_catalog', body, SESSION));
+      assert.ok(err, `merchant_id must be refused: ${JSON.stringify(body)}`);
+      assert.equal(executor.seen.length, 0, 'nothing may reach the executor');
+      assert.equal(JSON.stringify(err.detail ?? {}).includes('m_1'), false, 'the refusal never echoes the value');
+    }
+  });
+
+  test('a search wire-shape refusal carries a stable code and retriable:false, and reads as intake', async () => {
+    // Also unpinned per the review: SEARCH_REFUSAL_CODE could be swapped for QUOTE_REQUIRED, or for
+    // MERCHANT_UNAVAILABLE (retriable:true — the property the code choice calls load-bearing) with every
+    // search test green. Pin what a client actually branches on. The comparison target is the OTHER read's
+    // refusal, so the two discovery tools cannot silently diverge in retry semantics either.
+    const { ucp } = ucpSurface();
+    const read = await rejected(ucp.callTool('get_product', { meta: AGENT_META, catalog: {} }, SESSION));
+    assert.equal(read.retriable, false, 'both discovery refusals must be terminal');
+    // EVERY search refusal site, not one: the verify pass found a per-site literal swap (`"MERCHANT_UNAVAILABLE"`
+    // at the query-string or catalog-object throw) survived a pin that only drove the flat-query path. Each
+    // reason is driven by the body that reaches it, and each must carry the shared code + retriable:false.
+    const SITES = [
+      ['ucp_query_must_nest_under_catalog', { meta: AGENT_META, query: 'flat' }],
+      ['ucp_unknown_field', { meta: AGENT_META, catalog: { query: 'x' }, extra: 1 }],
+      ['ucp_meta_required', { catalog: { query: 'x' } }],
+      ['ucp_catalog_object_required', { meta: AGENT_META }],
+      ['ucp_query_string_required', { meta: AGENT_META, catalog: { query: 42 } }],
+    ];
+    for (const [reason, body] of SITES) {
+      const err = await rejected(ucp.callTool('search_catalog', body, SESSION));
+      assert.ok(err, `${reason}: must refuse`);
+      assert.equal(err.code, 'OPERATION_NOT_ALLOWED', `${reason}: code`);
+      assert.equal(err.retriable, false, `${reason}: retriable`);
+      // …and it surfaces through the shared intake opt-in: a curated message + a field-naming detail block,
+      // not the catalog's generic userMessage. `reason` is the discriminator a client can branch on.
+      const surfaced = surfaceableIntakeRefusal(err);
+      assert.ok(surfaced, `${reason}: must be a surfaceable intake refusal`);
+      assert.equal(surfaced.detail.dialect, 'ucp', `${reason}: dialect`);
+      assert.equal(surfaced.detail.reason, reason);
+    }
+    const flat = surfaceableIntakeRefusal(await rejected(ucp.callTool('search_catalog', SITES[0][1], SESSION)));
+    assert.match(flat.message, /catalog\.query/);
+  });
+});
+
 // ---- 8. the published schema IS the accepted shape --------------------------------------------------------------
 
 describe('schema and mapper cannot drift', () => {
@@ -684,13 +836,14 @@ describe('schema and mapper cannot drift', () => {
     assert.equal(MAXIMAL().create_checkout.checkout.line_items[0].quantity, 1);
     assert.equal(MAXIMAL().update_checkout.id, 'S<id>');
     assert.equal(MAXIMAL().get_product.catalog.id, 'S<catalog.id>');
+    assert.equal(MAXIMAL().search_catalog.catalog.query, 'S<catalog.query>');
     // The payment envelope's discriminator comes from the schema's own enum, not from this file.
     assert.equal(MAXIMAL().complete_checkout.checkout.payment.method, 'ucp_handler');
     assert.equal(MAXIMAL().complete_checkout.checkout.payment.token, 'S<checkout.payment.token>');
   });
 
   test('every published UCP tool has a UCP schema and an argument mapping', () => {
-    assert.equal(ucpCommerceToolDefinitions.length, 5);
+    assert.equal(ucpCommerceToolDefinitions.length, 6);
     for (const def of ucpCommerceToolDefinitions) {
       const op = opFor(def.name);
       assert.ok(op, `${def.name} must resolve to a canonical operation`);
@@ -701,6 +854,9 @@ describe('schema and mapper cannot drift', () => {
       assert.equal(def.inputSchema.properties.idempotency_key, undefined);
       assert.equal(def.inputSchema.properties.quote, undefined);
       assert.equal(def.inputSchema.properties.session_id, undefined);
+      // …and the native search's flat top-level `query` / `merchant_id`: on the wire the query is nested.
+      assert.equal(def.inputSchema.properties.query, undefined);
+      assert.equal(def.inputSchema.properties.merchant_id, undefined);
       assert.ok(MAXIMAL()[def.name], `${def.name} needs a maximal body in this test`);
     }
   });
@@ -789,6 +945,7 @@ describe('schema and mapper cannot drift', () => {
     ].map((f) => `checkout.fulfillment.methods[].destinations[].${f}`);
 
     const EXPECTED_SURVIVING = Object.freeze({
+      search_catalog: ['catalog.query'],
       get_product: ['catalog.id'],
       create_checkout: [
         'meta.idempotency-key', 'checkout.line_items[].item.id', 'checkout.line_items[].quantity',
@@ -876,6 +1033,9 @@ describe('schema and mapper cannot drift', () => {
     // complete_checkout changed shape: it was the one tool whose arguments had never been fetched, and the
     // extrapolated `{meta,id,payment}` would have refused every conforming platform ON THE CHARGE.
     const LIVE_REQUIRED = Object.freeze({
+      // search_catalog: same 2026-08-13 listing, read via the buyer client's `searchCatalog` note — required
+      // ["meta","catalog"], and `catalog` declares no required member (a query-less call is legal).
+      search_catalog: ['meta', 'catalog'],
       get_product: ['meta', 'catalog'],
       create_checkout: ['meta', 'checkout'],
       update_checkout: ['meta', 'checkout', 'id'],

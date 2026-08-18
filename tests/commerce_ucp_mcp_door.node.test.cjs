@@ -126,7 +126,7 @@ test('submit_payment ON lets the UCP charge through to the adapter', async () =>
 
 test('a non-charging UCP tool is never blocked by the charge switch', async () => {
   await withEnv(CHARGE_OFF, async () => {
-    for (const tool of ['create_checkout', 'update_checkout', 'get_checkout', 'get_product']) {
+    for (const tool of ['search_catalog', 'create_checkout', 'update_checkout', 'get_checkout', 'get_product']) {
       assert.equal(await resolveBlockedUcpMcpOperation(call(tool)), null, `${tool} must not be blocked`);
     }
   });
@@ -302,8 +302,16 @@ test('a lit door publishes the UCP SPEC names with the UCP ARGUMENT schemas', as
     const tools = resp.body.result.tools;
     assert.deepEqual(
       tools.map((t) => t.name).sort(),
-      ['complete_checkout', 'create_checkout', 'get_checkout', 'get_product', 'update_checkout'],
+      ['complete_checkout', 'create_checkout', 'get_checkout', 'get_product', 'search_catalog', 'update_checkout'],
     );
+
+    // search_catalog is on the door as of 2026-08-18: the spec's required envelope, with the query NESTED
+    // under `catalog` and no flat `query`/`merchant_id` from the native schema.
+    const search = tools.find((t) => t.name === 'search_catalog');
+    assert.deepEqual(search.inputSchema.required, ['meta', 'catalog']);
+    assert.equal(search.inputSchema.properties.query, undefined, 'the native flat query must be gone');
+    assert.equal(search.inputSchema.properties.merchant_id, undefined, 'no merchant scoping on the UCP shape');
+    assert.equal(search.inputSchema.properties.catalog.properties.query.type, 'string');
 
     // The whole point of step 3 reaching the wire: the published schema is UCP's, not Pivota's native one.
     const create = tools.find((t) => t.name === 'create_checkout');

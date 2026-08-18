@@ -29195,6 +29195,13 @@ let commerceUserTokenVerifierPromise = null;
 // so charge-once/idempotency/ownership hold ACROSS all doors (no second-kernel hazard). Built once as a side
 // effect of getCommerceRemoteMcpAdapter and reused by getCommerceCanonicalExecutor.
 let commerceSharedExecutor = null;
+// The ONE commerce tool surface over that executor, published the same way. The UCP door is a PROJECTION of
+// it (ucpDialectSurface), not a second createCommerceToolSurface: the commerce read cache is PER SURFACE
+// INSTANCE (mcp-server/src/commerceToolSurface.js builds it inside the factory), so a second instance is a
+// second cache — or, as the UCP door was wired until 2026-08-18, `cache:false` and no cache at all. That was
+// moot while the dialect exposed no cacheable tool; the day search_catalog joined it, every UCP search would
+// have paid cold cost on a lane whose repeat is measured at 21.2s cold vs ~100ms cached.
+let commerceSharedToolSurface = null;
 let commerceAcpRestAdapterPromise = null;
 // Memoizes ONLY the ESM module import for the UCP profile — the profile/handlers themselves are built
 // PER REQUEST (cheap object construction). Memoizing the build froze env reads at the first request and
@@ -30420,6 +30427,8 @@ async function getCommerceRemoteMcpAdapter() {
       // Publish the executor for the ACP/UCP doors to reuse (one shared kernel — see commerceSharedExecutor).
       commerceSharedExecutor = executor;
       const surface = createCommerceToolSurface(executor, { log: logger });
+      // …and the surface, for the UCP door to project (one shared read cache — see commerceSharedToolSurface).
+      commerceSharedToolSurface = surface;
       return createRemoteMcpAdapter(surface, {
         serverInfo: { name: 'pivota-commerce-mcp', version: '0.1.0' },
         authenticate: async (req) => {
@@ -31133,12 +31142,14 @@ async function getCommerceUcpMcpAdapter() {
   // same gates, different tool spelling. See mcp-server/src/commerceToolSurface.js ucpDialectSurface.
   if (!commerceUcpMcpAdapterPromise) {
     commerceUcpMcpAdapterPromise = (async () => {
-      const executor = await getCommerceCanonicalExecutor();
-      const { createCommerceToolSurface, ucpDialectSurface } = await import('../mcp-server/src/commerceToolSurface.js');
+      const { ucpDialectSurface } = await import('../mcp-server/src/commerceToolSurface.js');
       const { createRemoteMcpAdapter } = await import('../mcp-server/src/remoteMcpAdapter.js');
-      // cache:false — the /mcp surface already owns the shared commerce read cache; a second
-      // instance would be a second ~60-entry cache for the same reads (review finding on #1962).
-      const surface = ucpDialectSurface(createCommerceToolSurface(executor, { log: logger, cache: false }));
+      // Project the /mcp door's OWN surface instance — same executor, same kernel, same gates, and the SAME
+      // read cache. This used to build a second surface with `cache:false` on the premise that "the /mcp
+      // surface already owns the shared commerce read cache"; the cache is per instance, so that premise was
+      // false and the UCP door simply had no cache. Harmless while the dialect had no cacheable tool; not once
+      // search_catalog is on it (tests/commerce_ucp_search_shared_cache.node.test.cjs pins the sharing).
+      const surface = ucpDialectSurface(await getCommerceToolSurface());
       return createRemoteMcpAdapter(surface, {
         serverInfo: { name: 'pivota-commerce-ucp', version: '0.1.0' },
         authenticate: async (req) => {
@@ -31162,6 +31173,14 @@ async function getCommerceCanonicalExecutor() {
   if (!commerceSharedExecutor) await getCommerceRemoteMcpAdapter();
   if (!commerceSharedExecutor) throw new Error('commerce canonical executor unavailable');
   return commerceSharedExecutor;
+}
+
+async function getCommerceToolSurface() {
+  // Same shape as getCommerceCanonicalExecutor, one level up: the /mcp door's surface instance, for the UCP
+  // door to project so both share ONE read cache (see commerceSharedToolSurface).
+  if (!commerceSharedToolSurface) await getCommerceRemoteMcpAdapter();
+  if (!commerceSharedToolSurface) throw new Error('commerce tool surface unavailable');
+  return commerceSharedToolSurface;
 }
 
 function extractAcpBuyerToken(req = {}) {

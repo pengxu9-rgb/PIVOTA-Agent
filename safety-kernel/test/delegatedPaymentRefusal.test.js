@@ -259,12 +259,12 @@ test('UCP profile: the refused operation and its now-empty capability are never 
   assert.ok(capIds.includes('dev.ucp.shopping.checkout'));
   // This fixture now DECLARES a transport, because a transport-less profile advertises nothing at all
   // (no-transport rule, founder decision 2026-08-13) and this test's subject is the refusal, not the
-  // empty case. With a door advertised the tool-reachability filter applies, so catalog.search / insights
-  // / order are withheld here — that filter is unchanged by this rule and is asserted in protocol.test.js
+  // empty case. With a door advertised the tool-reachability filter applies, so insights / order are
+  // withheld here — that filter is unchanged by this rule and is asserted in protocol.test.js
   // 'a capability is advertised ONLY where the advertised door can actually serve it'.
+  assert.ok(capIds.includes('dev.ucp.shopping.catalog.search'), 'search_catalog has a ucpTool since 2026-08-18');
   assert.ok(capIds.includes('dev.ucp.shopping.catalog.lookup'));
   assert.ok(capIds.includes('dev.ucp.common.identity_linking'));
-  assert.ok(!capIds.includes('dev.ucp.shopping.catalog.search'), 'no ucpTool behind it on this door');
   assert.ok(!capIds.includes('dev.ucp.shopping.order'), 'no ucpTool behind it on this door');
   // …and NOT the vendor capability, whose spec/schema documents are not hosted. Withholding it is what keeps
   // the document valid; a partial entry would make a validator reject all of the above with it.
