@@ -232,6 +232,65 @@ describe('tryEscalateUcpCheckout', () => {
     assert.deepEqual(out.buyer, { email: 'b@example.test' });
   });
 
+  test('money at quantity 3+ and per-line vs cart totals are exact (a capped-quantity mutant must fail)', async () => {
+    const executor = executorWith({ [SEED.product_id]: SEED, [SEED_B.product_id]: SEED_B });
+    const out = await tryEscalateUcpCheckout({ op: CREATE, params: params(items([SEED.product_id, 3], [SEED_B.product_id, 5])), ctx: SESSION, executor, ucpArgs: {}, now: NOW, env: ON });
+    assert.deepEqual(out.line_items.map((li) => [li.quantity, li.totals[1].amount]), [[3, 39300], [5, 12250]]);
+    assert.equal(out.totals.find((t) => t.type === 'total').amount, 51550);
+  });
+
+  test('continue_url is the FIRST line item\'s storefront page, not the last', async () => {
+    const executor = executorWith({ [SEED.product_id]: SEED, [SEED_B.product_id]: SEED_B });
+    const out = await tryEscalateUcpCheckout({ op: CREATE, params: params(items([SEED_B.product_id, 1], [SEED.product_id, 1])), ctx: SESSION, executor, ucpArgs: {}, now: NOW, env: ON });
+    assert.equal(out.continue_url, SEED_B.external_redirect_url);
+  });
+
+  test('`www.` is not a different seller: www.host and host share one checkout', async () => {
+    const executor = executorWith({ [SEED.product_id]: SEED, [SEED_B.product_id]: { ...SEED_B, external_redirect_url: 'https://www.comfortzone.us/products/toner' } });
+    const out = await tryEscalateUcpCheckout({ op: CREATE, params: params(items([SEED.product_id, 1], [SEED_B.product_id, 1])), ctx: SESSION, executor, ucpArgs: {}, now: NOW, env: ON });
+    assert.equal(out.status, 'requires_escalation');
+    assert.equal(out.line_items.length, 2);
+  });
+
+  test('a quantity that is not a positive safe integer is NOT coerced — the call falls through so intake refuses it', async () => {
+    const executor = executorWith({ [SEED.product_id]: SEED });
+    for (const q of [2.5, '3', 0, -1, Number.MAX_SAFE_INTEGER + 1, undefined]) {
+      const out = await tryEscalateUcpCheckout({ op: CREATE, params: params([{ product_id: SEED.product_id, quantity: q }]), ctx: SESSION, executor, ucpArgs: {}, now: NOW, env: ON });
+      assert.equal(out, null, `quantity ${String(q)} must not become an escalation checkout`);
+    }
+    assert.equal(executor.seen.length, 0, 'and no read is spent on it');
+  });
+
+  test('a cart with more distinct products than intake allows is refused BEFORE any read (same bound as intake)', async () => {
+    const executor = executorWith({});
+    const many = Array.from({ length: 26 }, (_, i) => [`sig_${i}`, 1]);
+    const err = await rejected(tryEscalateUcpCheckout({ op: CREATE, params: params(items(...many)), ctx: SESSION, executor, ucpArgs: {}, now: NOW, env: ON }));
+    assert.equal(err.detail.acp_detail.reason, 'acp_cart_too_many_products');
+    assert.equal(executor.seen.length, 0);
+    // …and a forged 26-product esc_ id on get_checkout is refused the same way
+    const err2 = await rejected(tryEscalateUcpCheckout({ op: GET, params: { session_id: encodeEscalationId(items(...many)) }, ctx: SESSION, executor, ucpArgs: {}, now: NOW, env: ON }));
+    assert.equal(err2.detail.acp_detail.reason, 'acp_cart_too_many_products');
+    assert.equal(executor.seen.length, 0);
+  });
+
+  test('reads are bounded by ONE deadline for the batch: a hanging read is a refusal, not a stall', async () => {
+    const executor = { seen: [], execute(op, p, ctx) { this.seen.push({ op }); return new Promise(() => {}); } };
+    const started = Date.now();
+    const err = await rejected(tryEscalateUcpCheckout({ op: CREATE, params: params(items([SEED.product_id, 1], [SEED_B.product_id, 1])), ctx: SESSION, executor, ucpArgs: {}, now: NOW, env: ON, timeoutMs: 40 }));
+    assert.equal(err.detail.acp_detail.variant_resolution, 'resolution_unavailable');
+    assert.ok(Date.now() - started < 2000, 'returned at the deadline');
+  });
+
+  test('buyer echo: ATTESTED wins over a body email, and a body email is normalized — never echoed raw', async () => {
+    const executor = executorWith({ [SEED.product_id]: SEED });
+    const attestedOut = await tryEscalateUcpCheckout({ op: CREATE, params: params(items([SEED.product_id, 1]), { customer_email: 'body@example.test' }), ctx: SESSION, executor, ucpArgs: {}, attested: { attested_email: 'signed-in@example.test' }, now: NOW, env: ON });
+    assert.deepEqual(attestedOut.buyer, { email: 'signed-in@example.test' });
+    const rawOut = await tryEscalateUcpCheckout({ op: CREATE, params: params(items([SEED.product_id, 1]), { customer_email: '  Body@Example.test ' }), ctx: SESSION, executor, ucpArgs: {}, attested: {}, now: NOW, env: ON });
+    assert.deepEqual(rawOut.buyer, { email: 'Body@Example.test' }, 'normalized (trimmed, shape-checked) — never the raw padded string');
+    const junkOut = await tryEscalateUcpCheckout({ op: CREATE, params: params(items([SEED.product_id, 1]), { customer_email: 'not an email' }), ctx: SESSION, executor, ucpArgs: {}, attested: {}, now: NOW, env: ON });
+    assert.equal(junkOut.buyer, undefined, 'junk is dropped, not echoed');
+  });
+
   test('a contracted cart returns null — the kernel path is untouched', async () => {
     const executor = executorWith({ [CONTRACTED.product_id]: CONTRACTED });
     const out = await tryEscalateUcpCheckout({ op: CREATE, params: params(items([CONTRACTED.product_id, 1])), ctx: SESSION, executor, ucpArgs: {}, now: NOW, env: ON });
@@ -322,6 +381,9 @@ describe('through createCommerceToolSurface on the UCP dialect', () => {
       assert.equal(out.continue_url, SEED.external_redirect_url);
       assert.deepEqual(out.buyer, { email: 'shopper@example.test' });
       assert.equal(executor.seen.some((c) => c.op === 'create_checkout_session'), false);
+      // attested wins through the real surface too: a session carrying a verified email displaces the body's
+      const attestedOut = await ucp.callTool('create_checkout', body(SEED.product_id, 1), { ...SESSION, claims: { email: 'verified@example.test', email_verified: true } });
+      assert.deepEqual(attestedOut.buyer, { email: 'verified@example.test' });
       // and get_checkout on the returned id round-trips through the SAME door
       const again = await ucp.callTool('get_checkout', { meta: AGENT_META, id: out.id }, SESSION);
       assert.equal(again.id, out.id);
@@ -329,6 +391,19 @@ describe('through createCommerceToolSurface on the UCP dialect', () => {
       // update / complete on it are refused
       const upd = await rejected(ucp.callTool('update_checkout', { meta: AGENT_META, id: out.id, checkout: { line_items: [{ item: { id: SEED.product_id }, quantity: 3 }] } }, SESSION));
       assert.equal(upd.code, 'OPERATION_NOT_ALLOWED');
+    } finally { if (saved === undefined) delete process.env[UCP_ESCALATION_FLAG]; else process.env[UCP_ESCALATION_FLAG] = saved; }
+  });
+
+  test('flag ON: a CONTRACTED cart reads each product ONCE — the classifier and the resolver share the read', async () => {
+    const saved = process.env[UCP_ESCALATION_FLAG]; process.env[UCP_ESCALATION_FLAG] = '1';
+    try {
+      const executor = executorWith({ [CONTRACTED.product_id]: CONTRACTED, p_shop_2: { ...CONTRACTED, product_id: 'p_shop_2' } });
+      const ucp = ucpDialectSurface(createCommerceToolSurface(executor, { cache: false }));
+      await ucp.callTool('create_checkout', { meta: AGENT_META, checkout: { line_items: [{ item: { id: CONTRACTED.product_id }, quantity: 1 }, { item: { id: 'p_shop_2' }, quantity: 2 }, { item: { id: CONTRACTED.product_id }, quantity: 1 }], buyer: { email: 'shopper@example.test' } } }, SESSION);
+      const reads = executor.seen.filter((c) => c.op === 'get_product').map((c) => c.params.payload.product.product_id).sort();
+      assert.deepEqual(reads, [CONTRACTED.product_id, 'p_shop_2'], 'two distinct products -> exactly two reads, not four');
+      const create = executor.seen.find((c) => c.op === 'create_checkout_session');
+      assert.deepEqual(create.params.quote.items.map((i) => i.variant_id), ['48930014462260', '48930014462260', '48930014462260'], 'and the resolver still resolved from the shared read');
     } finally { if (saved === undefined) delete process.env[UCP_ESCALATION_FLAG]; else process.env[UCP_ESCALATION_FLAG] = saved; }
   });
 

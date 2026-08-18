@@ -71,7 +71,18 @@
 // Off, this module returns null for every call and the door behaves exactly as before.
 
 import { PivotaCommerceError } from "../../safety-kernel/src/errors.js";
-import { assertProductIdentity, intakeRefusal } from "../../safety-kernel/src/protocol/buyerIntake.js";
+import {
+  assertProductIdentity,
+  intakeRefusal,
+  itemVariantRefusal,
+  normalizeEmail,
+  mapWithConcurrency,
+  withDeadline,
+  MAX_CART_DISTINCT_PRODUCTS,
+  VARIANT_RESOLUTION_CONCURRENCY,
+  DEFAULT_VARIANT_RESOLUTION_TIMEOUT_MS,
+  VARIANT_RESOLUTION_UNAVAILABLE_MESSAGE,
+} from "../../safety-kernel/src/protocol/buyerIntake.js";
 import { majorToIsoMinor } from "../../safety-kernel/src/money.js";
 
 export const UCP_ESCALATION_FLAG = "AGENT_CHECKOUT_UCP_ESCALATION_ENABLED";
@@ -130,7 +141,7 @@ export function decodeEscalationId(id) {
   for (const entry of parsed.i) {
     if (!Array.isArray(entry) || entry.length !== 2) return null;
     const [product_id, quantity] = entry;
-    if (!str(product_id) || !Number.isInteger(quantity) || quantity < 1) return null;
+    if (!str(product_id) || !Number.isSafeInteger(quantity) || quantity < 1) return null;
     items.push({ product_id: product_id.trim(), quantity });
   }
   return items;
@@ -141,17 +152,42 @@ export function isEscalationId(id) {
 }
 
 // ---- reads -------------------------------------------------------------------------------------------------
+//
+// THE SAME BOUNDS AS THE CHECKOUT RESOLVER, by the SAME helpers: at most MAX_CART_DISTINCT_PRODUCTS distinct
+// products (an oversized cart is refused here as cheaply as intake would refuse it), VARIANT_RESOLUTION_
+// CONCURRENCY reads in flight, ONE deadline for the batch, expiry = refusal. Review of #2025 found the first
+// cut reading serially with no cap and no deadline — a 50-distinct cart (or a forged 50-item esc_ id on
+// get_checkout) was 50 serial upstream reads before anything refused it.
+//
+// NO DOUBLE READ ON THE KERNEL PATH: callTool hands this module a per-call MEMOIZING executor view
+// (commerceToolSurface `memoizedProductReads`) and hands the SAME view to the checkout resolver, so a
+// contracted cart that classifies as "kernel path" has its products read ONCE and the resolver reuses them.
 
-async function readRows(items, executor, ctx) {
+async function readRows(items, executor, ctx, { timeoutMs = DEFAULT_VARIANT_RESOLUTION_TIMEOUT_MS } = {}) {
   const ids = [...new Set(items.map((it) => it.product_id))];
-  const rows = new Map();
-  for (const product_id of ids) {
-    const result = await executor.execute("get_product", { payload: { product: { product_id } } }, ctx);
-    assertProductIdentity(result, product_id, undefined);
-    const product = isPlainObject(own(result, "product")) ? own(result, "product") : result;
-    rows.set(product_id, product);
+  if (ids.length > MAX_CART_DISTINCT_PRODUCTS) {
+    throw intakeRefusal("QUOTE_REQUIRED", "acp_cart_too_many_products",
+      `A checkout may reference at most ${MAX_CART_DISTINCT_PRODUCTS} distinct products.`, { max_distinct_products: MAX_CART_DISTINCT_PRODUCTS });
   }
-  return rows;
+  const controller = new AbortController();
+  let results;
+  try {
+    results = await withDeadline(
+      mapWithConcurrency(ids, VARIANT_RESOLUTION_CONCURRENCY, async (product_id) => {
+        const result = await executor.execute("get_product", { payload: { product: { product_id } } }, { ...ctx, signal: controller.signal });
+        assertProductIdentity(result, product_id, undefined);
+        return isPlainObject(own(result, "product")) ? own(result, "product") : result;
+      }, controller),
+      timeoutMs,
+      controller,
+    );
+  } catch (err) {
+    // A named intake refusal (identity mismatch) is already curated: surface it. Anything else is an
+    // errored/expired read: internal cause never surfaced, caller told what is actionable.
+    if (err instanceof PivotaCommerceError && isPlainObject(err.detail?.acp_detail)) throw err;
+    throw itemVariantRefusal("resolution_unavailable", VARIANT_RESOLUTION_UNAVAILABLE_MESSAGE);
+  }
+  return new Map(ids.map((id, i) => [id, results[i]]));
 }
 
 function hostOf(url) {
@@ -189,6 +225,9 @@ export function buildEscalationCheckout({ id, items, rows, continueUrl, buyerEma
     }
     currency = price.currency;
     const lineTotal = price.amount * it.quantity;
+    if (!Number.isSafeInteger(lineTotal) || !Number.isSafeInteger(subtotal + lineTotal)) {
+      throw intakeRefusal("QUOTE_REQUIRED", "ucp_escalation_total_overflow", "The requested quantities exceed what this checkout can total.", { product_id: it.product_id });
+    }
     subtotal += lineTotal;
     const image = str(row.image_url) || (Array.isArray(row.images) ? str(row.images[0]) : null);
     lineItems.push({
@@ -237,6 +276,12 @@ export function buildEscalationCheckout({ id, items, rows, continueUrl, buyerEma
   });
 }
 
+function attestedEmailOrBody(attested, bodyValue) {
+  const att = isPlainObject(attested) ? str(attested.attested_email) : null;
+  if (att) return att;
+  return normalizeEmail(bodyValue) || undefined;
+}
+
 // ---- entry point ---------------------------------------------------------------------------------------------
 
 /**
@@ -246,7 +291,7 @@ export function buildEscalationCheckout({ id, items, rows, continueUrl, buyerEma
  *
  * @param {{ op:{id:string}, params:object, ctx:object, executor:{execute:Function}, ucpArgs:object, now?:number, env?:object }} a
  */
-export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArgs, now = Date.now(), env = process.env }) {
+export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArgs, attested = {}, now = Date.now(), env = process.env, timeoutMs }) {
   if (!ucpEscalationEnabled(env)) return null;
   const opId = op && op.id;
 
@@ -254,7 +299,11 @@ export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArg
     const quote = isPlainObject(own(params, "quote")) ? own(params, "quote") : {};
     const items = Array.isArray(quote.items) ? quote.items.filter((it) => isPlainObject(it) && str(it.product_id)) : [];
     if (items.length === 0 || items.length > MAX_ESCALATION_ITEMS) return null; // intake will refuse an empty/oversized cart itself
-    const rows = await readRows(items, executor, ctx);
+    // A quantity that is not a positive safe integer is NOT coerced to 1 (review of #2025: that would state a
+    // one-unit total for a cart the caller believes is 2.5 or "3" — on the one number the agent compares
+    // against the storefront). Fall through: intake refuses it with its own curated `item_bad_quantity`.
+    if (items.some((it) => !Number.isSafeInteger(it.quantity) || it.quantity < 1)) return null;
+    const rows = await readRows(items, executor, ctx, { timeoutMs });
     const targets = new Map();
     for (const [pid, row] of rows) targets.set(pid, escalationTargetOf(row));
     const escalating = [...targets.values()].filter(Boolean).length;
@@ -273,14 +322,20 @@ export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArg
         `Send one checkout per seller: ${[...hosts].join(", ")}.`,
       ].join(" "), { seller_hosts: [...hosts] });
     }
-    const normalized = items.map((it) => ({ product_id: it.product_id.trim(), quantity: Number.isInteger(it.quantity) && it.quantity > 0 ? it.quantity : 1 }));
+    const normalized = items.map((it) => ({ product_id: it.product_id.trim(), quantity: it.quantity }));
     const continueUrl = targets.get(normalized[0].product_id);
     return buildEscalationCheckout({
       id: encodeEscalationId(normalized),
       items: normalized,
       rows,
       continueUrl,
-      buyerEmail: str(quote.customer_email),
+      // ATTESTED WINS, exactly as intake rule 1: the verified session's email displaces any body value, and a
+      // body value is only ever echoed after normalizeEmail. `buyer.email` is what a platform pre-fills on
+      // the storefront, so a body-supplied address displacing a signed-in buyer's is the misdirection rule 1
+      // exists to stop (review of #2025). UNLIKE a Pivota quote, an email is OPTIONAL here — `buyer` is an
+      // optional member of the checkout and the storefront collects its own — so nothing is refused for its
+      // absence (resolveBuyerEmail would; this is the same precedence without the throw).
+      buyerEmail: attestedEmailOrBody(attested, quote.customer_email),
       now,
       env,
     });
@@ -291,7 +346,7 @@ export async function tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArg
   if (!decoded) return null; // not one of ours: kernel path
 
   if (opId === "get_checkout_session") {
-    const rows = await readRows(decoded, executor, ctx);
+    const rows = await readRows(decoded, executor, ctx, { timeoutMs });
     const targets = decoded.map((it) => escalationTargetOf(rows.get(it.product_id)));
     if (targets.some((t) => !t)) {
       // The row stopped being an escalation row since the id was minted (it became a contracted merchant, or

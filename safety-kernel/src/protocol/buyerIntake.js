@@ -699,7 +699,7 @@ function variantIdOf(v) {
  * (or a sibling's failure) aborts, no further read is launched — the number of reads that outlive a refused
  * request is bounded by `limit`, not by the cart size. The first failure aborts the rest.
  */
-async function mapWithConcurrency(values, limit, fn, controller) {
+export async function mapWithConcurrency(values, limit, fn, controller) {
   const out = new Array(values.length);
   let next = 0;
   const worker = async () => {
@@ -729,7 +729,7 @@ async function mapWithConcurrency(values, limit, fn, controller) {
 // The timer is unref'd so it never holds the process open. Under a live server that is invisible (the HTTP
 // server already keeps the loop alive); in a bare script whose only pending work is this timer, the process
 // may exit before it fires. That is the intended trade — a refusal timer must not be a reason to stay up.
-function withDeadline(promise, ms, controller) {
+export function withDeadline(promise, ms, controller) {
   if (!(ms > 0)) return promise;
   let timer;
   const expiry = new Promise((_, reject) => {
