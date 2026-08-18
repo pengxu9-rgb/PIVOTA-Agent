@@ -9214,7 +9214,26 @@ async function fetchBrandScopedCanonicalCandidates({ brandAliases = [], limit = 
             FROM external_product_seeds eps
             WHERE eps.attached_product_key = cp.product_key
               AND eps.status = 'active'
-            ORDER BY eps.updated_at DESC NULLS LAST, eps.id DESC
+            -- Prefer the seed that sells the SAME storefront the card's
+            -- merchant_canonical_url names. 151 product_keys carry more than one
+            -- active seed with a distinct destination, and this leg supplies the
+            -- buyer's redirect while merchant_canonical_url comes from
+            -- cp.canonical_url — so ordering by recency alone let one card show
+            -- beautyofjoseon.com as the merchant and link the buy button to
+            -- ohlolly.com. Both are real sellers, so this is a disagreement
+            -- between two fields on one card, not a wrong destination; measured
+            -- on all 10,222 live seeded rows it drops host mismatches 13 -> 0.
+            --
+            -- IS NOT DISTINCT FROM, and the IS NOT NULL guard, keep this
+            -- expression non-NULL: ORDER BY bool DESC sorts NULLs FIRST, so
+            -- a seed with no destination would otherwise win the pick.
+            ORDER BY (
+                       eps.destination_url IS NOT NULL
+                       AND substring(eps.destination_url from '^https?://([^/]+)')
+                           IS NOT DISTINCT FROM substring(cp.canonical_url from '^https?://([^/]+)')
+                     ) DESC,
+                     eps.updated_at DESC NULLS LAST,
+                     eps.id DESC
             LIMIT 1
           ) seed ON TRUE
           WHERE cp.content_key = apv.content_key
@@ -9384,7 +9403,26 @@ async function fetchCanonicalSigBrowseCandidates({ limit = 120 } = {}) {
             FROM external_product_seeds eps
             WHERE eps.attached_product_key = cp.product_key
               AND eps.status = 'active'
-            ORDER BY eps.updated_at DESC NULLS LAST, eps.id DESC
+            -- Prefer the seed that sells the SAME storefront the card's
+            -- merchant_canonical_url names. 151 product_keys carry more than one
+            -- active seed with a distinct destination, and this leg supplies the
+            -- buyer's redirect while merchant_canonical_url comes from
+            -- cp.canonical_url — so ordering by recency alone let one card show
+            -- beautyofjoseon.com as the merchant and link the buy button to
+            -- ohlolly.com. Both are real sellers, so this is a disagreement
+            -- between two fields on one card, not a wrong destination; measured
+            -- on all 10,222 live seeded rows it drops host mismatches 13 -> 0.
+            --
+            -- IS NOT DISTINCT FROM, and the IS NOT NULL guard, keep this
+            -- expression non-NULL: ORDER BY bool DESC sorts NULLs FIRST, so
+            -- a seed with no destination would otherwise win the pick.
+            ORDER BY (
+                       eps.destination_url IS NOT NULL
+                       AND substring(eps.destination_url from '^https?://([^/]+)')
+                           IS NOT DISTINCT FROM substring(cp.canonical_url from '^https?://([^/]+)')
+                     ) DESC,
+                     eps.updated_at DESC NULLS LAST,
+                     eps.id DESC
             LIMIT 1
           ) seed ON TRUE
           WHERE cp.content_key = apv.content_key

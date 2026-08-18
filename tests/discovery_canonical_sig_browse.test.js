@@ -243,6 +243,13 @@ describe('canonical sig browse main route', () => {
     expect(sql).not.toMatch(/pivota_canonical_url/);
     // And never read seed_data here — it detoasts a 435MB column per row.
     expect(sql).not.toMatch(/eps\.seed_data/);
+    // The seed pick must prefer the storefront the card's merchant_canonical_url
+    // names, or one card shows merchant A and links the buy button to seller B
+    // (13 live rows before this). Same NULL hazard as the outer pick, so the
+    // guard and IS NOT DISTINCT FROM must both be present.
+    expect(sql).toContain("substring(eps.destination_url from '^https?://([^/]+)')");
+    expect(sql).toContain('eps.destination_url IS NOT NULL');
+    expect(sql).toMatch(/substring\(eps\.destination_url[\s\S]*?IS NOT DISTINCT FROM[\s\S]*?substring\(cp\.canonical_url/);
   });
 
   test('a real query failure is never reported as a successful empty provider', async () => {
