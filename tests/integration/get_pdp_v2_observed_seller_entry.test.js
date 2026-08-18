@@ -552,3 +552,570 @@ describe('fetchProductDetailForOffers — observed-seller seed-store routing', (
     // No upstream call was attempted (nock would have thrown on a real request).
   });
 });
+
+// ---------------------------------------------------------------------------
+// ADR-009 row-side conversion, part 2 — the review-suppression gate in
+// get_pdp_v2 asks the LANE, not the retired seller value.
+//
+// Unlike the three defects #2006/#2008 fixed (protective gates that went dead
+// and LOST content), this one is an EXCLUSION arm that went dead, so the route
+// can now do MORE than it used to. Everything below is measured, on prod
+// 2026-08-17, not reasoned about:
+//
+//   * 12,514 catalog rows are seed-routed; 0 still carry the retired seller, so
+//     the arm this replaces matches nothing. 12,514 of 12,514 carry
+//     platform='external_seed' and a seed source_system — the two columns the
+//     A9-4 re-key left untouched, and the two the lane predicate reads.
+//   * Only 5,847 carry an `ext_` source id, so the two id arms cover under half
+//     the lane.
+//   * The `'external'` platform arm reads `canonicalProduct`, and only the seed
+//     detail store stamps that value. It answers on the route key for 9,473 of
+//     10,339 mirror rows and 0 of 2,175 minted rows.
+//
+//  REACHABILITY, measured live the same day (probes against the deployed
+//  gateway, sig path and direct merchant+product path, minted and mirror rows,
+//  with and without a pdp_identity_listing): every serving path resolved
+//  through `identity_graph_live`, whose synthetic product always carries a
+//  review_summary, so the gate SHORT-CIRCUITS above these arms and the merchant
+//  review service is never called for a seed row today (reviews module timing
+//  0ms on all four probes). Where the identity graph is absent, an observed
+//  seller's canonical product is either seed-built (platform 'external', arm 2
+//  covers) or null (the route 404s). So NO currently-serving row changes.
+//
+//  What the conversion buys is that the suppression stops DEPENDING on those
+//  two unrelated accidents. The first test below is the shape that reaches the
+//  gate with every other arm false — a seed-lane row (the platform and
+//  source_system the mirror writer sets) under a seller that is not an observed
+//  one, with a non-`ext_` id. The seller column is precisely what ADR-009 keeps
+//  moving, which is why the lane must not be read off it.
+// ---------------------------------------------------------------------------
+
+const REVIEWS_BASE = 'http://reviews.test.local';
+
+// Seed-lane row (mirror platform + mirror source_system, brand:hash id) whose
+// seller is NOT an observed one, so the canonical detail comes from
+// products_cache rather than the seed store.
+const LANE_MERCHANT = 'merch_connected_seed_lane';
+const LANE_PRODUCT = 'brandx:9f2a11c4d7e60b83';
+const LANE_SIG = 'sig_aa11bb22cc33dd44ee55ff66';
+
+// Connected-merchant control lane. Its whole job is to prove the "no review
+// lookup happened" assertion is capable of being false: an unpaired absence
+// assertion also passes against a route that never fetches anything.
+const CTL_MERCHANT = 'merch_connected_reviews_ctl';
+const CTL_PRODUCT = '9876543210';
+
+function cacheDetailRow({ merchantId, productId, platform, title }) {
+  return {
+    product_data: {
+      id: productId,
+      product_id: productId,
+      merchant_id: merchantId,
+      platform,
+      platform_product_id: productId,
+      title,
+      brand: 'BrandX',
+      price: { amount: 42, currency: 'USD' },
+      currency: 'USD',
+      in_stock: true,
+      image_url: 'https://cdn.example.com/lane.png',
+    },
+    cached_at: '2026-08-01T00:00:00Z',
+  };
+}
+
+function isProductsCacheDetailQuery(normalizedSql) {
+  return (
+    normalizedSql.includes('SELECT product_data, cached_at') &&
+    normalizedSql.includes('FROM products_cache')
+  );
+}
+
+function isServingEligibilityQuery(normalizedSql) {
+  return (
+    normalizedSql.includes('FROM catalog_products cp') &&
+    normalizedSql.includes('LEFT JOIN index_pipeline_state ips')
+  );
+}
+
+// resolveCatalogIdentityForProductRef's primary read — the one that patches
+// `platform` onto the canonical ref just above the reviews block.
+function isCatalogIdentityForRefQuery(normalizedSql) {
+  return (
+    normalizedSql.includes('FROM catalog_products cp') &&
+    normalizedSql.includes('LEFT JOIN pdp_identity_listing pil') &&
+    normalizedSql.includes('WHERE cp.merchant_id = $1')
+  );
+}
+
+function servingEligibleRow({ merchantId, productId, platform, sourceSystem, sigId }) {
+  return {
+    content_key: `ck_${productId.replace(/[^a-z0-9]/gi, '')}`,
+    product_key: `prod::${merchantId}::${platform}::${productId}`,
+    source_system: sourceSystem,
+    source_product_id: productId,
+    pivota_signature_id: sigId,
+    catalog_title: 'Lane Product',
+    catalog_image_url: null,
+    catalog_description: null,
+    external_seed_product_family: null,
+    catalog_image_urls_count: 1,
+    sync_status: 'live',
+    pdp_lifecycle_stage: 'published',
+    serving_eligible: true,
+    readiness_tier: 'serving',
+    pipeline_stage: 'serving',
+    blocker_code: null,
+    blocker_detail: null,
+    content_quality_score: 88,
+    active_external_seed_source_match: sourceSystem !== 'shopify_sync_v1',
+  };
+}
+
+// Local twin of the first describe's helper (that one is block-scoped).
+function mockCommerceUpstream404() {
+  nock(process.env.PIVOTA_API_BASE)
+    .persist()
+    .post('/agent/shop/v1/invoke')
+    .reply(404, { status: 'error', error: { code: 'PRODUCT_NOT_FOUND' } });
+}
+
+function mockReviewsUpstream() {
+  const calls = [];
+  nock(REVIEWS_BASE)
+    .persist()
+    .post('/agent/shop/v1/invoke', (body) => {
+      if (body?.operation === 'get_review_summary') {
+        calls.push(body?.payload?.sku || {});
+        return true;
+      }
+      return false;
+    })
+    .reply(200, {
+      review_summary: {
+        scale: 5,
+        rating: 4.6,
+        review_count: 31,
+        source: 'merchant_review_source',
+      },
+    });
+  return calls;
+}
+
+describe('get_pdp_v2 — review suppression follows the seed LANE, not the retired seller value', () => {
+  afterEach(() => {
+    nock.cleanAll();
+  });
+
+  afterAll(() => {
+    process.env = ORIGINAL_ENV;
+  });
+
+  test('a seed-lane row under a NON-observed seller with a non-ext_ id suppresses the merchant review lookup', async () => {
+    const { app, db } = loadServerWithDb({ REVIEWS_API_BASE: REVIEWS_BASE });
+    db.query.mockImplementation(async (sql, params = []) => {
+      const normalizedSql = normalizeSql(sql);
+      if (isGroupMemberQuarantineQuery(normalizedSql)) {
+        return { rows: buildQuarantineSurvivorRows(params) };
+      }
+      // Seed-lane catalog identity: this is what carries platform ='external_seed'
+      // and is what the lane predicate reads off the canonical ref.
+      if (isCatalogIdentityForRefQuery(normalizedSql) && params[0] === LANE_MERCHANT) {
+        return {
+          rows: [
+            {
+              merchant_id: LANE_MERCHANT,
+              platform: 'external_seed',
+              source_product_id: LANE_PRODUCT,
+              product_key: `prod::${LANE_MERCHANT}::external_seed::${LANE_PRODUCT}`,
+              pivota_signature_id: LANE_SIG,
+              category: 'skincare',
+              product_type: 'Serum',
+              category_path: null,
+              category_label_source: null,
+              category_confidence: null,
+              catalog_rating_value: null,
+              catalog_rating_count: null,
+              // No identity listing for this ref — so the identity graph builds
+              // nothing and the reviews gate is actually REACHED.
+              sellable_item_group_id: null,
+              product_line_id: null,
+              review_family_id: null,
+              identity_confidence: null,
+              match_basis: [],
+              identity_status: null,
+              live_read_enabled: null,
+              review_required: null,
+            },
+          ],
+        };
+      }
+      if (isServingEligibilityQuery(normalizedSql)) {
+        return {
+          rows: [
+            servingEligibleRow({
+              merchantId: LANE_MERCHANT,
+              productId: LANE_PRODUCT,
+              platform: 'external_seed',
+              sourceSystem: 'external_product_seeds_mirror_v1',
+              sigId: LANE_SIG,
+            }),
+          ],
+        };
+      }
+      // Not an observed seller, so the detail comes from products_cache and
+      // carries the merchant's own platform — NOT the seed store's 'external'.
+      if (isProductsCacheDetailQuery(normalizedSql) && params[0] === LANE_MERCHANT) {
+        return {
+          rows: [
+            cacheDetailRow({
+              merchantId: LANE_MERCHANT,
+              productId: LANE_PRODUCT,
+              platform: 'shopify',
+              title: 'Lane Product',
+            }),
+          ],
+        };
+      }
+      return { rows: [] };
+    });
+    mockCommerceUpstream404();
+    const reviewCalls = mockReviewsUpstream();
+
+    const res = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .set('X-Agent-API-Key', 'test-key')
+      .send({
+        operation: 'get_pdp_v2',
+        payload: {
+          product_ref: { merchant_id: LANE_MERCHANT, product_id: LANE_PRODUCT },
+          include: ['reviews_preview'],
+        },
+      });
+
+    expect(res.status).toBe(200);
+
+    // --- every OTHER arm of this gate is proven FALSE in this fixture ------
+    // (a test named after one conjunct that passes because a different conjunct
+    // held the gate shut is how green lies in this route).
+    const identity = res.body?.metadata?.identity_resolution || {};
+    const servedProduct =
+      (res.body?.modules || []).find((m) => m?.type === 'canonical')?.data?.pdp_payload?.product ||
+      {};
+    // arm 1, the one being replaced: the resolved seller is a real seller, not
+    // the retired shared bucket.
+    expect(identity.resolved_merchant_id).toBe(LANE_MERCHANT);
+    expect(identity.resolved_merchant_id).not.toBe('external_seed');
+    // arms 2 and 4: read the canonical product this same fixture produces (the
+    // projected payload drops `platform`, so assert it at the source). It comes
+    // from products_cache, not the seed store, so it carries the merchant's own
+    // platform and a non-seed platform_product_id.
+    const canonicalDetail = await app._debug.fetchProductDetailForOffers({
+      merchantId: LANE_MERCHANT,
+      productId: LANE_PRODUCT,
+    });
+    expect(String(canonicalDetail?.platform || '').toLowerCase()).toBe('shopify');
+    expect(String(canonicalDetail?.platform || '').toLowerCase()).not.toBe('external');
+    expect(/^ext[_:]/i.test(String(canonicalDetail?.platform_product_id || ''))).toBe(false);
+    // arm 3: the resolved ref id carries no seed prefix either.
+    expect(/^ext[_:]/i.test(String(identity.resolved_product_id || ''))).toBe(false);
+    expect(servedProduct).toBeTruthy();
+    // ...and the reviews block is genuinely REACHED (the CONTROL below proves
+    // this same fixture shape does call the review service when the row is not
+    // seed-lane; here the only thing stopping it is the lane test).
+
+    // --- the assertion the conversion is about ----------------------------
+    expect(reviewCalls).toEqual([]);
+    const reviewsModule = (res.body?.modules || []).find((m) => m?.type === 'reviews_preview');
+    expect(reviewsModule?.data?.review_count || 0).toBe(0);
+    expect(reviewsModule?.data?.rating || 0).toBe(0);
+    expect(reviewsModule?.data?.source).not.toBe('merchant_review_source');
+  });
+
+  // CONTROL — identical fixture shape, identical include, identical reviews
+  // upstream; only the lane columns differ. Without this the assertion above
+  // would also pass against a route that had simply stopped fetching reviews.
+  test('CONTROL: the same shape on a NON-seed lane still fetches and renders its merchant review summary', async () => {
+    const { app, db } = loadServerWithDb({ REVIEWS_API_BASE: REVIEWS_BASE });
+    db.query.mockImplementation(async (sql, params = []) => {
+      const normalizedSql = normalizeSql(sql);
+      if (isGroupMemberQuarantineQuery(normalizedSql)) {
+        return { rows: buildQuarantineSurvivorRows(params) };
+      }
+      if (isServingEligibilityQuery(normalizedSql)) {
+        return {
+          rows: [
+            servingEligibleRow({
+              merchantId: CTL_MERCHANT,
+              productId: CTL_PRODUCT,
+              platform: 'shopify',
+              sourceSystem: 'shopify_sync_v1',
+              sigId: null,
+            }),
+          ],
+        };
+      }
+      if (isProductsCacheDetailQuery(normalizedSql) && params[0] === CTL_MERCHANT) {
+        return {
+          rows: [
+            cacheDetailRow({
+              merchantId: CTL_MERCHANT,
+              productId: CTL_PRODUCT,
+              platform: 'shopify',
+              title: 'Control Serum',
+            }),
+          ],
+        };
+      }
+      return { rows: [] };
+    });
+    mockCommerceUpstream404();
+    const reviewCalls = mockReviewsUpstream();
+
+    const res = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .set('X-Agent-API-Key', 'test-key')
+      .send({
+        operation: 'get_pdp_v2',
+        payload: {
+          product_ref: { merchant_id: CTL_MERCHANT, product_id: CTL_PRODUCT },
+          include: ['reviews_preview'],
+        },
+      });
+
+    expect(res.status).toBe(200);
+    expect(reviewCalls.length).toBeGreaterThanOrEqual(1);
+    expect(reviewCalls[0]).toEqual(
+      expect.objectContaining({
+        merchant_id: CTL_MERCHANT,
+        platform: 'shopify',
+        platform_product_id: CTL_PRODUCT,
+      }),
+    );
+    const ctlReviewsModule = (res.body?.modules || []).find((m) => m?.type === 'reviews_preview');
+    expect(ctlReviewsModule?.data).toEqual(
+      expect.objectContaining({ rating: 4.6, review_count: 31, source: 'merchant_review_source' }),
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ADR-009 row-side conversion, part 2, site 2 — the sibling-offer guard in the
+// self-offer fallback. KEPT DELIBERATELY; these two tests exist to make that a
+// decision rather than an oversight, and each one fails under the change it
+// argues against.
+//
+// The A9-4 re-key DID widen this call site: seed rows used to be addressed by
+// the retired shared seller, which this arm excluded, and now sit under
+// per-brand observed sellers, which it admits. Measured on prod 2026-08-17 the
+// widening is small and correct — of 4,660 seed-lane rows whose own identity
+// listing fails the gate, 65 have ANY approved + live sibling in their
+// sellable-item group (43 under a different seller, 87 sibling rows in total,
+// before the callee's own serving-eligibility and quarantine filters), and
+// every sampled pair is the SAME product under a second observed seller.
+// `fetchApprovedLiveIdentityGroupMembersForOffers` was itself rewritten under
+// ADR-009 to admit exactly those members, so re-closing this call site on the
+// lane would defeat the callee's own change.
+// ---------------------------------------------------------------------------
+
+const SIB_OBS_MERCHANT = 'merch_obs_5c1d0e8a77b3f210';
+const SIB_PRODUCT = 'brandy:41ba77e0c9d51236';
+const SIB_GROUP_SIG = 'sig_bb22cc33dd44ee55ff660011';
+const SIB_MEMBER_MERCHANT = 'merch_obs_9a0f2b6c4d8e1357';
+const SIB_MEMBER_PRODUCT = 'brandy:772ac0e91f34d885';
+
+// fetchApprovedLiveIdentityGroupMembersForOffers — identified by the exclude
+// pair, which no other pdp_identity_listing read carries.
+function isSiblingGroupMemberQuery(normalizedSql) {
+  return (
+    normalizedSql.includes('FROM pdp_identity_listing pil') &&
+    normalizedSql.includes('NOT (pil.merchant_id = $2 AND pil.product_id = $3)')
+  );
+}
+
+function gateFailedCatalogIdentityRow(merchantId, productId) {
+  return {
+    merchant_id: merchantId,
+    platform: 'external_seed',
+    source_product_id: productId,
+    product_key: `prod::${merchantId}::external_seed::${productId}`,
+    pivota_signature_id: SIB_GROUP_SIG,
+    category: 'skincare',
+    product_type: 'Cream',
+    category_path: null,
+    category_label_source: null,
+    category_confidence: null,
+    catalog_rating_value: null,
+    catalog_rating_count: null,
+    sellable_item_group_id: SIB_GROUP_SIG,
+    product_line_id: null,
+    review_family_id: null,
+    identity_confidence: 0.71,
+    match_basis: [],
+    // THE GATE FAILS — this row's own listing is not approved for live read,
+    // which is the whole precondition for looking at its siblings.
+    identity_status: 'pending',
+    live_read_enabled: false,
+    review_required: true,
+  };
+}
+
+function seedStoreRow(productId) {
+  return {
+    id: `external_brand_crawl::${productId}`,
+    external_product_id: productId,
+    destination_url: 'https://brandy.example/products/cream',
+    canonical_url: 'https://brandy.example/products/cream',
+    domain: 'brandy.example',
+    title: 'Brandy Barrier Cream',
+    image_url: 'https://cdn.example.com/brandy.png',
+    price_amount: 31.5,
+    price_currency: 'USD',
+    availability: 'in_stock',
+    attached_product_key: null,
+    seed_data: { title: 'Brandy Barrier Cream', brand: 'Brandy', category: 'skincare' },
+    updated_at: '2026-08-01T00:00:00Z',
+    created_at: '2026-08-01T00:00:00Z',
+    status: 'active',
+  };
+}
+
+// One shared mock; the only difference between the two tests is which seller
+// addresses the PDP.
+function mockDbForSelfOfferFallback(db, { addressedMerchantId, siblingCalls }) {
+  db.query.mockImplementation(async (sql, params = []) => {
+    const normalizedSql = normalizeSql(sql);
+    if (isGroupMemberQuarantineQuery(normalizedSql)) {
+      return { rows: buildQuarantineSurvivorRows(params) };
+    }
+    if (isSiblingGroupMemberQuery(normalizedSql)) {
+      siblingCalls.push({ groupId: params[0], excludeMerchantId: params[1], excludeProductId: params[2] });
+      return {
+        rows: [
+          {
+            source_listing_ref: `${SIB_MEMBER_MERCHANT}:${SIB_MEMBER_PRODUCT}`,
+            merchant_id: SIB_MEMBER_MERCHANT,
+            product_id: SIB_MEMBER_PRODUCT,
+            source_kind: 'external_seed',
+            source_tier: 'brand',
+            source_payload: { title: 'Brandy Barrier Cream', currency: 'USD', in_stock: true },
+            variant_axes: {},
+            platform: 'external_seed',
+            merchant_name: 'Brandy Depot',
+            catalog_title: 'Brandy Barrier Cream',
+            catalog_brand: 'Brandy',
+            catalog_canonical_url: null,
+            catalog_image_url: null,
+            catalog_electronics_meta: null,
+            catalog_offer_id: null,
+            catalog_sku_key: null,
+            catalog_offer_currency: 'USD',
+            catalog_offer_price: 29.0,
+            catalog_offer_source_system: null,
+            catalog_offer_source_ref: null,
+          },
+        ],
+      };
+    }
+    if (isCatalogIdentityForRefQuery(normalizedSql)) {
+      // Keyed on whatever seller addressed the page — the pre-re-key shape
+      // returned a retired-seller row here, the post-re-key shape an observed
+      // one. Both reach the gate failure.
+      return { rows: [gateFailedCatalogIdentityRow(params[0], params[1] || SIB_PRODUCT)] };
+    }
+    if (isServingEligibilityQuery(normalizedSql)) {
+      return {
+        rows: [
+          servingEligibleRow({
+            merchantId: addressedMerchantId,
+            productId: SIB_PRODUCT,
+            platform: 'external_seed',
+            sourceSystem: 'external_product_seeds_mirror_v1',
+            sigId: SIB_GROUP_SIG,
+          }),
+        ],
+      };
+    }
+    if (
+      normalizedSql.includes('FROM external_product_seeds') &&
+      normalizedSql.includes("status = 'active'") &&
+      (normalizedSql.includes('external_product_id = $1') || normalizedSql.includes('id::text = $1'))
+    ) {
+      return params[0] === SIB_PRODUCT ? { rows: [seedStoreRow(SIB_PRODUCT)] } : { rows: [] };
+    }
+    return { rows: [] };
+  });
+}
+
+describe('get_pdp_v2 self-offer fallback — the sibling-offer guard is the legacy anonymous-lump test', () => {
+  afterEach(() => {
+    nock.cleanAll();
+  });
+
+  afterAll(() => {
+    process.env = ORIGINAL_ENV;
+  });
+
+  // Kills the tempting conversion: re-closing this call site on the seed LANE
+  // would skip the sibling fetch for every observed seller, which is exactly
+  // the cohort the callee's own ADR-009 rewrite exists to serve.
+  test('an OBSERVED seller whose identity gate fails DOES fetch sibling group members, keyed on itself', async () => {
+    const { app, db } = loadServerWithDb();
+    const siblingCalls = [];
+    mockDbForSelfOfferFallback(db, { addressedMerchantId: SIB_OBS_MERCHANT, siblingCalls });
+    mockCommerceUpstream404();
+
+    const res = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .set('X-Agent-API-Key', 'test-key')
+      .send({
+        operation: 'get_pdp_v2',
+        payload: {
+          product_ref: { merchant_id: SIB_OBS_MERCHANT, product_id: SIB_PRODUCT },
+          include: ['offers'],
+        },
+      });
+
+    expect(res.status).toBe(200);
+    // The other three conjuncts of this guard are all true in this fixture:
+    // the identity gate failed (the catalog identity above is pending +
+    // review_required + not live-read enabled, with a group id), and the
+    // resolved ref carries both a seller and a product id — which the call's
+    // own exclude pair proves.
+    expect(siblingCalls).toHaveLength(1);
+    expect(siblingCalls[0]).toEqual({
+      groupId: SIB_GROUP_SIG,
+      excludeMerchantId: SIB_OBS_MERCHANT,
+      excludeProductId: SIB_PRODUCT,
+    });
+    expect(siblingCalls[0].excludeMerchantId).not.toBe('external_seed');
+  });
+
+  // Kills the other tempting change: deleting the arm as "dead". It is dead on
+  // catalog rows (0 carry the retired seller today), but the request-side
+  // fallback ref still mints it for a legacy client, and that ref names no
+  // seller of record — nothing to attribute a self-offer to, nothing meaningful
+  // to exclude siblings by.
+  test('a legacy client addressing the retired seller does NOT fetch sibling group members', async () => {
+    const { app, db } = loadServerWithDb();
+    const siblingCalls = [];
+    mockDbForSelfOfferFallback(db, { addressedMerchantId: 'external_seed', siblingCalls });
+    mockCommerceUpstream404();
+
+    const res = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .set('X-Agent-API-Key', 'test-key')
+      .send({
+        operation: 'get_pdp_v2',
+        payload: {
+          product_ref: { merchant_id: 'external_seed', product_id: SIB_PRODUCT },
+          include: ['offers'],
+        },
+      });
+
+    expect(res.status).toBe(200);
+    const identity = res.body?.metadata?.identity_resolution || {};
+    expect(identity.resolved_merchant_id).toBe('external_seed');
+    expect(siblingCalls).toEqual([]);
+  });
+});
