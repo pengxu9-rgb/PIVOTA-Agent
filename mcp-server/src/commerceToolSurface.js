@@ -32,6 +32,7 @@ import { deriveUserRef } from "../auth/userRef.js";
 import { createPublicReadCache, stableStringify } from "./publicReadCache.js";
 // The UCP wire-shape translation (step 3). It owns the UCP `tools/list` schemas AND the `tools/call` argument
 // mapping in one table, so what the dialect advertises is what it accepts.
+import { shapeUcpResult } from "./ucpResponseShaper.js";
 import {
   UCP_INPUT_SCHEMAS,
   UCP_TOOL_DESCRIPTIONS,
@@ -308,16 +309,23 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
     //    identical upstream call (`{query, _cb: <nonce>}`) — a 0% hit rate, and 60 such requests evict
     //    every real entry. Keying on what actually reaches the executor makes that impossible by
     //    construction: junk properties are already gone by this line.
-    if (!cache || !CACHEABLE_TOOLS.includes(op.id)) return execute();
+    // 7) DIALECT RESULT SHAPING — the outbound twin of step 2b, applied to whatever the steps above produced
+    //    (fresh or cached). Deliberately AFTER the cache: the cache stores the NATIVE sanitized value keyed on
+    //    dialect-agnostic params, and both dialects read the same entry — shaping before the cache would let
+    //    a UCP call poison the entry the next /mcp call reads, and vice versa. The shaper is pure and runs on
+    //    the clone `cloneCachedValue` hands out. See mcp-server/src/ucpResponseShaper.js for what maps.
+    const shape = (value) => (dialect === TOOL_DIALECTS.ucp ? shapeUcpResult(op, value, { params, ucpArgs: toolArgs }) : value);
+
+    if (!cache || !CACHEABLE_TOOLS.includes(op.id)) return shape(await execute());
     const value = await cache.getOrCompute(`${op.id}:${stableStringify(params ?? {})}`, execute);
-    return cloneCachedValue(value, (err) => {
+    return shape(cloneCachedValue(value, (err) => {
       if (logger) {
         logger.warn(
           { err: err?.message || String(err), tool: op.id },
           "commerce read cache: value not cloneable, serving shared reference",
         );
       }
-    });
+    }));
   }
 
   function isCommerceTool(name, dialect) {

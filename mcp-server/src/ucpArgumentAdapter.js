@@ -149,6 +149,7 @@ import {
 } from "../../safety-kernel/src/protocol/buyerIntake.js";
 import { CANONICAL_PAYMENT_METHODS } from "../../safety-kernel/src/protocol/paymentAuthorizationVerifier.js";
 import { isoMinorUnitExponent } from "../../safety-kernel/src/money.js";
+import { decodeSearchCursor, encodeSearchCursor } from "./ucpResponseShaper.js";
 
 // The prototype guard used across the doors: admits `Object.prototype` and a null prototype, nothing else.
 const isPlainObject = (v) => typeof v === "object" && v !== null && !Array.isArray(v)
@@ -811,13 +812,13 @@ export const UCP_ACCEPTED_BUT_UNMAPPED = Object.freeze({
     "catalog.selected[].*", "catalog.preferences[].*", "catalog.context.*", "catalog.signals.*",
     "catalog.filters.*",
   ]),
-  // Leaf-exact, per the live 2026-08-18 shape. READ: pagination.limit, filters.price.min/max,
-  // filters.available, context.currency. NOT read, each for a stated reason (SEARCH_CATALOG_DESCRIPTION):
-  // cursor (nothing in the native response to continue from), categories (vocabulary mismatch + OR-of-many
-  // has no native field), the other context members (nothing on the native search reads them), and signals
-  // (caller-identifying — this read is caller-independent by construction and shared through one cache).
+  // Leaf-exact, per the live 2026-08-18 shape. READ: pagination.limit, pagination.cursor (-> native page),
+  // filters.price.min/max, filters.available, context.currency. NOT read, each for a stated reason
+  // (SEARCH_CATALOG_DESCRIPTION): categories (vocabulary mismatch + OR-of-many has no native field — the
+  // response SAYS so in `messages`), the other context members (nothing on the native search reads them),
+  // and signals (caller-identifying — this read is caller-independent by construction and shared through
+  // one cache).
   search_catalog: Object.freeze([
-    "catalog.pagination.cursor",
     "catalog.filters.categories[]",
     "catalog.context.address_country", "catalog.context.address_region", "catalog.context.postal_code",
     "catalog.context.language", "catalog.context.intent",
@@ -1109,14 +1110,16 @@ const SEARCH_CATALOG_DESCRIPTION = [
   "Search Pivota's normalized multi-merchant catalog with free text. Send `{ meta, catalog: { query } }` —",
   "the query is NESTED under `catalog`. Read-only; no money, no state change. Returns Pivota product ids",
   "(`product_id`, e.g. `sig_…`) that `get_product` and `create_checkout` line items accept. The response is",
-  "Pivota's native product list (page-numbered; it carries no cursor).",
+  "the UCP catalog_search response: `{ ucp, products[], pagination, messages? }` with prices in ISO 4217",
+  "minor units and `pagination.has_next_page` + an opaque `cursor` when more results exist.",
   "Read: `catalog.pagination.limit` (results per page, 1..50 — larger values are capped at 50);",
-  "`catalog.filters.price.min` / `.max` (integers in MINOR units of `catalog.context.currency`, default USD",
-  "cents; `min` must not exceed `max`); `catalog.filters.available` (true = in-stock only, the default);",
-  "`catalog.context.currency` (ISO 4217).",
-  "Accepted and NOT read: `pagination.cursor` (no cursor exists in the native response to continue from),",
-  "`filters.categories` (Pivota filters on its own category vocabulary, which a platform's labels would not",
-  "match — filter client-side instead), the other `context` members, and `signals`.",
+  "`catalog.pagination.cursor` (send back the `pagination.cursor` from the previous response, unchanged, to",
+  "fetch the next page); `catalog.filters.price.min` / `.max` (integers in MINOR units of",
+  "`catalog.context.currency`, default USD cents; `min` must not exceed `max`); `catalog.filters.available`",
+  "(true = in-stock only, the default); `catalog.context.currency` (ISO 4217).",
+  "Accepted and NOT read: `filters.categories` (Pivota filters on its own category vocabulary, which a",
+  "platform's labels would not match — filter client-side; a `messages` warning says so in the response),",
+  "the other `context` members, and `signals`.",
 ].join(" ");
 
 // The refusal code for a search wire-shape violation. No PivotaErrorCode means "malformed arguments": the
@@ -1135,6 +1138,9 @@ const SEARCH_REFUSAL_CODE = "OPERATION_NOT_ALLOWED";
 // import commerceToolSurface — that module imports this one).
 export const SEARCH_PAGE_SIZE_MAX = 50;
 
+// A REAL cursor (page 2), published as the schema's `examples[0]` and used by the schema-derived fixture.
+export const SEARCH_CURSOR_EXAMPLE = encodeSearchCursor(2);
+
 /** `catalog.context.currency` — a string when supplied; trimmed, blank => undefined (as for `query`). */
 function readSearchCurrency(context, code) {
   if (!isPlainObject(context)) return undefined; // absent, or a non-object the permissive schema tolerates
@@ -1150,20 +1156,40 @@ function readSearchCurrency(context, code) {
 }
 
 /**
- * `catalog.pagination` -> native `page_size`. `limit` is read (integer >= 1, capped at SEARCH_PAGE_SIZE_MAX);
- * `cursor` is accepted and NOT read — the native lane pages by number and its response carries no cursor, so
- * there is nothing a caller could have obtained to send back. Faking one would advertise a continuation that
- * does not exist.
+ * `catalog.pagination` -> native `page_size` / `page`. `limit` is read (integer >= 1, capped at
+ * SEARCH_PAGE_SIZE_MAX). `cursor` is read: it is the opaque token ucpResponseShaper minted on the previous
+ * response, and decodes to the native page number. Since #2016 (native response, no cursor emitted) it was
+ * accepted-and-unread; a cursor is only honest once the response side emits one and the request side reads it
+ * back, which both landed together.
  */
 function mapSearchPagination(pagination, code) {
   if (!isPlainObject(pagination)) return {};
+  const out = {};
   const limit = own(pagination, "limit");
-  if (limit === undefined) return {};
-  if (!Number.isInteger(limit) || limit < 1) {
-    throw ucpRefusal(code, "ucp_pagination_limit_invalid",
-      "`catalog.pagination.limit` must be an integer >= 1 when supplied.", { rejected_field: "catalog.pagination.limit" });
+  if (limit !== undefined) {
+    if (!Number.isInteger(limit) || limit < 1) {
+      throw ucpRefusal(code, "ucp_pagination_limit_invalid",
+        "`catalog.pagination.limit` must be an integer >= 1 when supplied.", { rejected_field: "catalog.pagination.limit" });
+    }
+    out.page_size = Math.min(limit, SEARCH_PAGE_SIZE_MAX);
   }
-  return { page_size: Math.min(limit, SEARCH_PAGE_SIZE_MAX) };
+  const cursor = own(pagination, "cursor");
+  // Blank -> ABSENT, the rule `query` and `currency` follow: a platform that sends `cursor: ""` for its first
+  // page is asking for page 1, not presenting a token. Anything NON-blank is a token and must be ours.
+  if (cursor !== undefined && !(typeof cursor === "string" && cursor.trim() === "")) {
+    // The cursor is OURS (minted by ucpResponseShaper) and opaque to the caller. Anything that does not
+    // decode is refused, not treated as page 1: silently restarting a paginating client at the top is the
+    // classic infinite-page loop, and it looks exactly like "the catalog has infinitely many products".
+    const page = typeof cursor === "string" ? decodeSearchCursor(cursor) : undefined;
+    if (page === undefined) {
+      throw ucpRefusal(code, "ucp_pagination_cursor_invalid", [
+        "`catalog.pagination.cursor` is not a cursor this catalog issued. Send back the `pagination.cursor`",
+        "from the previous response unchanged, or omit it to start from the first page.",
+      ].join(" "), { rejected_field: "catalog.pagination.cursor" });
+    }
+    out.page = page;
+  }
+  return out;
 }
 
 /**
@@ -1254,9 +1280,15 @@ const SPECS = Object.freeze({
             pagination: {
               type: "object",
               additionalProperties: true,
-              description: "Pagination. `limit` is read (capped at 50); `cursor` is accepted and NOT read — the native response is page-numbered and carries no cursor to continue from.",
+              description: "Pagination. `limit` is read (capped at 50). `cursor` is read: send back the `pagination.cursor` from the previous response, unchanged, to fetch the next page.",
               properties: {
-                cursor: { type: "string", description: "Accepted and NOT read (no cursor exists in the native response)." },
+                cursor: {
+                  type: "string",
+                  description: "Opaque continuation token from a previous response's `pagination.cursor`. Read. Send it back unchanged and keep `limit` the same across pages — the token continues a page sequence, and changing the page size mid-walk shifts the window.",
+                  // JSON Schema `examples` (an annotation, not a constraint): a REAL cursor, so a platform sees
+                  // the token shape and the schema-derived test fixture can send a valid one.
+                  examples: [SEARCH_CURSOR_EXAMPLE],
+                },
                 limit: { type: "integer", minimum: 1, description: "Results per page. Read; values above 50 are capped at 50." },
               },
             },

@@ -30,8 +30,10 @@ import {
   UCP_INPUT_SCHEMAS,
   UCP_ACCEPTED_BUT_UNMAPPED,
   SEARCH_PAGE_SIZE_MAX,
+  SEARCH_CURSOR_EXAMPLE,
   ucpToNativeToolArgs,
 } from '../src/ucpArgumentAdapter.js';
+import { encodeSearchCursor } from '../src/ucpResponseShaper.js';
 import { canonicalOpForUcpTool } from '../../safety-kernel/src/protocol/canonicalContract.js';
 import { surfaceableIntakeRefusal } from '../../safety-kernel/src/protocol/buyerIntake.js';
 
@@ -627,7 +629,7 @@ describe('search_catalog speaks the UCP nested-catalog shape and takes the unsco
       meta: AGENT_META,
       catalog: {
         query: 'vitamin c',
-        pagination: { cursor: 'CUR_SENTINEL', unknown_member: 'PAG_SENTINEL' },
+        pagination: { unknown_member: 'PAG_SENTINEL' },
         context: {
           address_country: 'CTRY_SENTINEL', address_region: 'REG_SENTINEL', postal_code: 'PC_SENTINEL',
           language: 'LANG_SENTINEL', intent: 'INT_SENTINEL', unknown_member: 'CTX_SENTINEL',
@@ -638,7 +640,7 @@ describe('search_catalog speaks the UCP nested-catalog shape and takes the unsco
     }, SESSION);
     const wire = JSON.stringify(executor.only('search_catalog').params);
     for (const s of [
-      'CUR_SENTINEL', 'PAG_SENTINEL', 'CTRY_SENTINEL', 'REG_SENTINEL', 'PC_SENTINEL', 'LANG_SENTINEL',
+      'PAG_SENTINEL', 'CTRY_SENTINEL', 'REG_SENTINEL', 'PC_SENTINEL', 'LANG_SENTINEL',
       'INT_SENTINEL', 'CTX_SENTINEL', 'IP_SENTINEL', 'UA_SENTINEL', 'SIG_SENTINEL', 'CAT_SENTINEL', 'FIL_SENTINEL',
     ]) {
       assert.equal(wire.includes(s), false, `${s} must not be forwarded`);
@@ -740,17 +742,36 @@ describe('search_catalog reads the live filters, pagination and currency the way
       'a UCP call must not be able to ask the lane for more than the native tool advertises');
   });
 
-  test('`pagination.limit` becomes `page_size`, capped at the native ceiling; `cursor` never reaches the lane', async () => {
+  test('`pagination.limit` becomes `page_size`, capped at the native ceiling', async () => {
     assert.deepEqual(await search({ query: 'q', pagination: { limit: 24 } }), { query: 'q', page_size: 24 });
     assert.deepEqual(await search({ query: 'q', pagination: { limit: 1 } }), { query: 'q', page_size: 1 });
     // The live schema declares no maximum; the native tool publishes 50. Capped, not refused.
     assert.deepEqual(await search({ query: 'q', pagination: { limit: 500 } }), { query: 'q', page_size: 50 });
     assert.deepEqual(await search({ query: 'q', pagination: { limit: 50 } }), { query: 'q', page_size: 50 });
-    // A cursor alone maps to nothing — there is no native continuation to hand it to.
-    assert.deepEqual(await search({ query: 'q', pagination: { cursor: 'abc' } }), { query: 'q' });
     for (const bad of [0, -1, 1.5, '10', true, null]) {
       assert.match(await refused({ query: 'q', pagination: { limit: bad } }), /pagination\.limit/);
     }
+  });
+
+  test('`pagination.cursor` is OUR token and decodes to the native `page`; anything else is refused, never page 1', async () => {
+    // A cursor minted by the response shaper for page 2 / page 7 comes back as exactly that page.
+    assert.deepEqual(await search({ query: 'q', pagination: { cursor: encodeSearchCursor(2) } }), { query: 'q', page: 2 });
+    assert.deepEqual(
+      await search({ query: 'q', pagination: { cursor: encodeSearchCursor(7), limit: 10 } }),
+      { query: 'q', page: 7, page_size: 10 },
+    );
+    // The schema's published example IS a real cursor (page 2) — the fixture relies on it.
+    assert.deepEqual(await search({ query: 'q', pagination: { cursor: SEARCH_CURSOR_EXAMPLE } }), { query: 'q', page: 2 });
+    // Junk, a foreign token, a tampered page, an empty string, a non-string: refused. Treating any of these as
+    // "start over" is the infinite-page loop, and it looks exactly like an infinite catalog.
+    const forged = Buffer.from(JSON.stringify({ v: 1, page: 1 }), 'utf8').toString('base64url');   // page 1 is not a continuation
+    const wrongVersion = Buffer.from(JSON.stringify({ v: 2, page: 3 }), 'utf8').toString('base64url');
+    for (const bad of ['abc', 'opaque', forged, wrongVersion, 'eyJwYWdlIjozfQ', 12, null, { page: 2 }]) {
+      assert.match(await refused({ query: 'q', pagination: { cursor: bad } }), /pagination\.cursor/);
+    }
+    // A BLANK cursor is not a token — it is a first-page request, and is absent, as for query/currency.
+    assert.deepEqual(await search({ query: 'q', pagination: { cursor: '' } }), { query: 'q' });
+    assert.deepEqual(await search({ query: 'q', pagination: { cursor: '   ', limit: 5 } }), { query: 'q', page_size: 5 });
   });
 
   test('`filters.available` becomes `in_stock_only` verbatim, and only when supplied', async () => {
@@ -860,7 +881,7 @@ describe('search_catalog reads the live filters, pagination and currency the way
     // FULL output.
     const params = await search({
       query: '  niacinamide serum ',
-      pagination: { cursor: 'opaque', limit: 20, page: 7, unknown_member: 'PAG_X' },
+      pagination: { cursor: encodeSearchCursor(3), limit: 20, page: 7, unknown_member: 'PAG_X' },
       filters: {
         categories: ['skincare'], available: true, unknown_member: 'FIL_X',
         price: { min: 1000, max: 4000, currency: 'JPY', unknown_member: 'PRC_X' },
@@ -872,12 +893,12 @@ describe('search_catalog reads the live filters, pagination and currency the way
       signals: { 'dev.ucp.buyer_ip': '198.51.100.9', 'dev.ucp.user_agent': 'ua', unknown_member: 'SIG_X' },
     });
     assert.deepEqual(params, {
-      query: 'niacinamide serum', page_size: 20, price_min: 10, price_max: 40, in_stock_only: true, currency: 'USD',
+      query: 'niacinamide serum', page_size: 20, page: 3, price_min: 10, price_max: 40, in_stock_only: true, currency: 'USD',
     });
-    // No merchant_id and no page — the lane stays unscoped and un-paged no matter how much arrives; the
-    // exponent came from context.currency (USD), never from a `price.currency` the live schema does not have.
+    // No merchant_id — the lane stays unscoped no matter how much arrives. `page` came from OUR cursor (3),
+    // never from the undeclared `pagination.page: 7`; the exponent came from context.currency (USD), never
+    // from a `price.currency` the live schema does not have.
     assert.equal(params.merchant_id, undefined);
-    assert.equal(params.page, undefined);
   });
 });
 
@@ -957,7 +978,10 @@ describe('schema and mapper cannot drift', () => {
       // emit), so it falls through to the sentinel, which is still schema-valid for a minimum of 0.
       case 'integer': case 'number': return schema.minimum || 424242;
       case 'boolean': return true;
-      default: return sentinelFor(path);
+      // A string leaf whose VALID values are constrained beyond `type` (an opaque cursor this door itself
+      // minted) declares a real one in the schema's `examples` — a standard JSON Schema annotation, not a
+      // constraint — and the fixture sends that, so "a maximal schema-valid body is ACCEPTED" stays true.
+      default: return typeof schema.examples?.[0] === 'string' ? schema.examples[0] : sentinelFor(path);
     }
   }
 
@@ -978,7 +1002,7 @@ describe('schema and mapper cannot drift', () => {
       case 'array': return sentinelLeaves(schema.items ?? {}, `${path}[]`);
       case 'integer': case 'number': return [{ path, marker: String(schema.minimum || 424242) }];
       case 'boolean': return [{ path, marker: 'true' }];
-      default: return [{ path, marker: sentinelFor(path) }];
+      default: return [{ path, marker: typeof schema.examples?.[0] === 'string' ? schema.examples[0] : sentinelFor(path) }];
     }
   }
 
@@ -1128,13 +1152,16 @@ describe('schema and mapper cannot drift', () => {
     const SURVIVES_AS = Object.freeze({
       'catalog.filters.price.min': (marker) => String(Number(marker) / 100),
       'catalog.filters.price.max': (marker) => String(Number(marker) / 100),
+      // The cursor leaf is the schema's example (a real page-2 cursor) and survives as native `page: 2`.
+      'catalog.pagination.cursor': (marker) => (marker === SEARCH_CURSOR_EXAMPLE ? '"page":2' : marker),
     });
     const markerFor = (leaf) => (SURVIVES_AS[leaf.path] ? SURVIVES_AS[leaf.path](leaf.marker) : leaf.marker);
 
     const EXPECTED_SURVIVING = Object.freeze({
       search_catalog: [
-        'catalog.query', 'catalog.pagination.limit', 'catalog.filters.price.min', 'catalog.filters.price.max',
-        'catalog.filters.available', 'catalog.context.currency',
+        'catalog.query', 'catalog.pagination.limit', 'catalog.pagination.cursor',
+        'catalog.filters.price.min', 'catalog.filters.price.max', 'catalog.filters.available',
+        'catalog.context.currency',
       ],
       get_product: ['catalog.id'],
       create_checkout: [
