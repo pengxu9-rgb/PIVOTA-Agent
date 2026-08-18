@@ -644,8 +644,10 @@ test('P0: the product-grain acceptance is a TYPED, ALL-THREE-CONDITIONS carve-ou
     { name: 'grain=product + ${pid}-1', read: { product: { product_id: 'sig_9f2c1a', purchase_grain: 'product', variants: [{ variant_id: 'sig_9f2c1a-1' }] } }, reason: 'no_real_variant_identity' },
     // 4. declared product, but TWO candidates (a declaration cannot make an ambiguous read unambiguous)
     { name: 'grain=product + 2 restated', read: { product: { product_id: 'sig_9f2c1a', purchase_grain: 'product', variants: [{ variant_id: 'sig_9f2c1a' }, { variant_id: 'sig_9f2c1a-2' }] } }, reason: 'no_real_variant_identity' },
-    // 5. declared product, but NO candidate at all
-    { name: 'grain=product + no variants', read: { product: { product_id: 'sig_9f2c1a', purchase_grain: 'product', variants: [] } }, reason: 'no_variants' },
+    // 5. NO candidate and NO declaration (an old builder, another lane) — still fail closed
+    { name: 'undeclared + no variants', read: { product: { product_id: 'sig_9f2c1a', variants: [] } }, reason: 'no_variants' },
+    // 5b. no candidate, declared as a VARIANT axis (hidden real variants — a different bug, still refuse)
+    { name: 'grain=variant + no variants', read: { product: { product_id: 'sig_9f2c1a', purchase_grain: 'variant', variants: [] } }, reason: 'no_variants' },
     // 6. a truthy non-string / wrong-case declaration is not a declaration
     { name: 'grain=PRODUCT (case)', read: { product: { product_id: 'sig_9f2c1a', purchase_grain: 'PRODUCT', variants: [{ variant_id: 'sig_9f2c1a' }] } }, reason: 'no_real_variant_identity' },
     { name: 'grain=true', read: { product: { product_id: 'sig_9f2c1a', purchase_grain: true, variants: [{ variant_id: 'sig_9f2c1a' }] } }, reason: 'no_real_variant_identity' },
@@ -659,11 +661,15 @@ test('P0: the product-grain acceptance is a TYPED, ALL-THREE-CONDITIONS carve-ou
     assert.equal(r.body.detail.variant_resolution, c.reason, c.name);
     assert.equal(priced().length, 0, `${c.name}: priced nothing`);
   }
-  // …and the one shape that IS accepted, spelled out next to its near-misses.
-  const { adapter, priced } = setup({ productRead: () => ({ product: { product_id: 'sig_9f2c1a', purchase_grain: 'product', variants: [{ variant_id: 'sig_9f2c1a' }] } }) });
-  const ok = await adapter.createCheckoutSession(req({ body: { customer_email: 'a@b.co', items: [{ product_id: 'sig_9f2c1a', quantity: 1 }] } }));
-  assert.equal(ok.status, 201, JSON.stringify(ok.body));
-  assert.equal(idsFrom(priced()), 'sig_9f2c1a');
+  // …and the TWO shapes that ARE accepted, spelled out next to their near-misses: the declared row with its
+  // one placeholder published, and the SAME declared row with the placeholder hidden (`variants: []`) — the
+  // shape 3 of 24 live seed rows actually served on 2026-08-18.
+  for (const variants of [[{ variant_id: 'sig_9f2c1a' }], []]) {
+    const { adapter, priced } = setup({ productRead: () => ({ product: { product_id: 'sig_9f2c1a', purchase_grain: 'product', variants } }) });
+    const ok = await adapter.createCheckoutSession(req({ body: { customer_email: 'a@b.co', items: [{ product_id: 'sig_9f2c1a', quantity: 1 }] } }));
+    assert.equal(ok.status, 201, `variants=${JSON.stringify(variants)}: ${JSON.stringify(ok.body)}`);
+    assert.equal(idsFrom(priced()), 'sig_9f2c1a');
+  }
 });
 
 test('P0: a declared product-grain read that answers about ANOTHER product is still an identity mismatch (declaration cannot bypass identity)', async () => {

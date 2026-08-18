@@ -527,12 +527,18 @@ export function createDefaultVariantResolver({ executor, timeoutMs } = {}) {
         // offer::<merchant>::<product_id>). For that row `variant_id === product_id` is not a forgery: it is
         // the purchasable identity, priced at exactly what the PDP and search showed. Accept it ONLY under all
         // three of: the read declared the grain (a typed field — property 1 is intact, nothing here reads the
-        // SHAPE of an id), the read published exactly ONE candidate, and that candidate is BYTE-EQUAL to the
+        // SHAPE of an id), the read published AT MOST one candidate, and any candidate is BYTE-EQUAL to the
         // requested product_id (a `${pid}-N` restatement means a variant axis whose identity was lost, and
-        // there pricing WOULD guess — still refused below). Measured before this: every external-seed /
-        // brand-crawl row refused `no_real_variant_identity` on every door — checkout could not quote most of
-        // the public pool (review of #2021, 2026-08-18).
-        if (read.productGrain && candidates.length === 1 && candidates[0] === it.product_id) {
+        // there pricing WOULD guess — still refused below). ZERO candidates under the declaration is the same
+        // row one step later: measured on prod 2026-08-18, 3 of 24 sampled seed rows publish `variants: []`
+        // because the PDP's visibility rules hide the builder's own placeholder — the declaration is computed
+        // from the RAW row before any of that, and says what the empty list cannot. Absent the declaration,
+        // zero candidates stays `no_variants` (fail closed) exactly as before.
+        // Sampled the same day: 18/24 seed rows already resolve on a REAL crawled variant id, 3 are honestly
+        // ambiguous (multi-variant); this carve-out is for the remaining product-grain rows only.
+        // (`<= 1` is defense in depth: variantIdsFromProductRead already dedupes, so an all-equal list is at
+        // most one long today — the bound is what keeps that true if a future reader stops deduping.)
+        if (read.productGrain && candidates.every((id) => id === it.product_id) && candidates.length <= 1) {
           it.variant_id = it.product_id;
           continue;
         }

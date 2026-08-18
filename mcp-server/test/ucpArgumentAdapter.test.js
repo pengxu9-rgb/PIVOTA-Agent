@@ -135,6 +135,19 @@ describe('UCP create_checkout over a product-grain (variant-less) row', () => {
     assert.deepEqual(quote.items.map((i) => [i.product_id, i.variant_id]), [['sig_seed1', 'sig_seed1']], 'variant_id IS the product id, by declaration');
   });
 
+  test('a declared row whose placeholder the PDP hid (`variants: []`, the live shape for 3/24 seed rows) quotes too', async () => {
+    const executor = productRead({ title: 'Seed Serum', price: 42, currency: 'USD', purchase_grain: 'product', variants: [] });
+    const ucp = ucpDialectSurface(createCommerceToolSurface(executor, { cache: false }));
+    await ucp.callTool('create_checkout', oneLine('sig_seed1'), SESSION);
+    const quote = executor.seen.find((c) => c.op === 'create_checkout_session').params.quote;
+    assert.deepEqual(quote.items.map((i) => [i.product_id, i.variant_id]), [['sig_seed1', 'sig_seed1']]);
+    // …and undeclared + empty stays refused (fail closed).
+    const bare = productRead({ title: 'Seed Serum', price: 42, currency: 'USD', variants: [] });
+    const err = await rejected(ucpDialectSurface(createCommerceToolSurface(bare, { cache: false })).callTool('create_checkout', oneLine('sig_seed1'), SESSION));
+    assert.ok(err);
+    assert.equal(bare.seen.some((c) => c.op === 'create_checkout_session'), false);
+  });
+
   test('the SAME row without the declaration still refuses — the id shape alone never buys a quote', async () => {
     const executor = productRead({ title: 'Seed Serum', price: 42, currency: 'USD', variants: [{ variant_id: 'sig_seed1' }] });
     const ucp = ucpDialectSurface(createCommerceToolSurface(executor, { cache: false }));
