@@ -30,19 +30,29 @@ const ROOTS = ['src', 'scripts', 'mcp-server/src'];
 const BASELINE_PATH = path.join(REPO_ROOT, 'tests/fixtures/external_seed_merchant_literal_baseline.json');
 
 // READERS — code that COMPARES against the sentinel seller.
-//
-// KNOWN GAP, deliberately left open here: these name `merchant_id` in
-// snake_case only, so a camelCase comparison (`merchantId === 'external_seed'`)
-// is still invisible. It is a reader defect, not a mint, so closing it is
-// outside this change's mandate and would move the baseline a third time; the
-// control at the bottom of this file pins the gap so it stays a documented
-// hole rather than a silent one.
 const READER_PATTERNS = [
   /merchant_id\s*[=:]\s*['"]external_seed['"]/g,
   /merchant_id\s*(?:==|!=|===|!==)\s*['"]external_seed['"]/g,
   /(?:===|!==|==|!=)\s*EXTERNAL_SEED_MERCHANT_ID\b/g,
   /\bEXTERNAL_SEED_MERCHANT_ID\s*(?:===|!==|==|!=)/g,
   /merchantId:\s*EXTERNAL_SEED_MERCHANT_ID\b/g,
+  // Every pattern above names the seller in snake_case, so a camelCase
+  // comparison was invisible — 11 live sites across 10 files, 8 of which were
+  // absent from the baseline entirely. The variable spelling is the ONLY
+  // difference between these and the watched snake_case ones; a defect class
+  // that a rename can hide from its own guard is not guarded.
+  //
+  // `[Mm]erchant[A-Za-z]*[Ii]d` rather than a bare `merchantId` so the local
+  // renamings of the same value (requestedMerchantId, entryMerchantId, ...)
+  // are covered too — the leading capital is what those spellings need, and a
+  // guard a rename can slip past is the defect this whole pattern is fixing.
+  // Measured: identical to the bare-lowercase form on today's tree (11 sites),
+  // so the widening buys future robustness at zero baseline cost.
+  //
+  // Comparison operators only: the assignment spellings are mints and belong
+  // in the writer set below. The underscore in `merchant_id` cannot be crossed
+  // by `[A-Za-z]*`, so this can never double-count a snake_case site.
+  /[Mm]erchant[A-Za-z]*[Ii]d\s*(?:===|!==|==|!=)\s*['"]external_seed['"]/g,
 ];
 
 // WRITERS — code that MINTS the sentinel seller.
@@ -78,10 +88,18 @@ const WRITER_MINT_PATTERNS = [
   /\|\|\s*EXTERNAL_SEED_MERCHANT_ID\b/g,
   // 3. The same default written with the raw string instead of the constant.
   //    Anchored on a merchant token EARLIER ON THE SAME LINE rather than on the
-  //    bare fallback, because `source`/`platform`/`source_system` defaults to
-  //    the same word are SOURCING labels — honest, deliberately kept, and not
-  //    this defect. The controls below pin that distinction.
-  /merchant_?[Ii]d[^;\n]*\|\|\s*['"]external_seed['"]/g,
+  //    bare fallback, because the sourcing fields default to the very same word
+  //    and those labels are honest, deliberately kept, and not this defect.
+  //
+  //    The run between the anchor and the fallback is FENCED: it may not cross
+  //    a sourcing field name, and it is lazy rather than greedy. Both matter.
+  //    An unfenced greedy run bridges from a merchant field to a sourcing
+  //    default sharing one line — `merchant_id: row.merchant_id, source:
+  //    row.source ...` — counting an honest label as a defect, which is the
+  //    accusation this pattern must never make. Laziness also stops two real
+  //    mints on one line collapsing into a single match, an UNDER-count that a
+  //    shrink-only ratchet can never see. Both are pinned below.
+  /merchant_?[Ii]d(?:(?!\b(?:source|platform|retrieval_source|source_kind|source_system)\b)[^;\n])*?\|\|\s*['"]external_seed['"]/g,
   // 4. camelCase spelled as a raw string. `[=:]` and never `==`, so this stays
   //    a mint pattern: an equality comparison is a reader and belongs above.
   /merchantId\s*[=:]\s*['"]external_seed['"]/g,
@@ -223,6 +241,48 @@ if (require.main === module && process.argv.includes('--regen')) {
       expect(countMatches("  source_kind: item.source_kind || 'external_seed',")).toBe(0);
     });
 
+    test('CONTROL: a sourcing default is not counted merely for SHARING A LINE with a seller', () => {
+      // The fixtures in the control above all omit a merchant token, so every
+      // one of them passes on the anchor alone — they never exercise what the
+      // anchor is anchored ON. That made them green under an anchor widened to
+      // a bare `merchant`, or to a bare `[Ii]d`: the guard proved "there is
+      // some anchor" and not "the anchor is the seller axis", which is the only
+      // thing that justifies this pattern existing. A control that cannot fail
+      // for the reason it is named is the failure mode it was written to stop.
+      //
+      // Co-occurrence on one line is NORMAL — the seller and the lane label are
+      // written side by side on the same object all over this tree — so these
+      // fixtures are the realistic case, not a contrived one.
+      expect(countMatches("  merchant_id: row.merchant_id, source: row.source || 'external_seed',")).toBe(0);
+      expect(countMatches("  const o = { merchantId, retrieval_source: tag || 'external_seed' };")).toBe(0);
+      expect(countMatches("  merchant_id: mid, platform: row.platform || 'external_seed',")).toBe(0);
+
+      // CONTROL for those zeros: the same anchor and the same fallback DO count
+      // once the field being defaulted is the seller. Without this pairing the
+      // three zeros above would also pass if the pattern had stopped matching
+      // anything at all.
+      expect(countMatches("  merchant_id: row.merchant_id, seller: x, m: y.merchant_id || 'external_seed',")).toBe(1);
+    });
+
+    test('CONTROL: two mints on one line count as two, not one', () => {
+      // A greedy run from the first anchor to the LAST fallback collapses two
+      // real mints into a single match. That is an UNDER-count, and a
+      // shrink-only ratchet is structurally blind to it: the baseline would be
+      // satisfied while a second mint sat in the file unwatched. The lazy
+      // quantifier is what prevents it, so it is pinned here.
+      expect(
+        countMatches("  a: x.merchant_id || 'external_seed', b: y.merchant_id || 'external_seed',"),
+      ).toBe(2);
+
+      // CONTROL: laziness must not stop at the FIRST `||` of a real mint whose
+      // anchor and fallback are separated by other arguments — this is the
+      // exact shape of a live site (travelReadinessBuilder), so an over-lazy
+      // pattern would silently drop it from the baseline.
+      expect(
+        countMatches("  merchant_id: normalizeText(sku.merchant_id || row.merchant_id, 80) || 'external_seed',"),
+      ).toBe(1);
+    });
+
     test('CONTROL: the mint patterns do not widen into counting comparisons', () => {
       // The mint patterns use `[=:]`, never `==`, so a reader stays a reader
       // and is counted once by the reader set rather than twice. Without this,
@@ -239,19 +299,51 @@ if (require.main === module && process.argv.includes('--regen')) {
       expect(countMatches(snakeComparison)).toBe(1);
     });
 
-    test('KNOWN GAP: a camelCase comparison is still unwatched', () => {
-      // Not an endorsement — a record. `merchantId === 'external_seed'` is a
-      // reader defect of exactly the class this file exists to catch, and no
-      // pattern sees it, because every reader pattern names the snake_case
-      // spelling. It is left open here because this change's mandate is the
-      // MINT forms and closing it moves the baseline again.
+    test('a camelCase comparison is watched exactly like its snake_case twin', () => {
+      // This was pinned at 0 as a documented gap. It was hiding 11 live reader
+      // sites across 10 files, 8 of which were absent from the baseline
+      // entirely — so "documented" was doing much less work than it sounded
+      // like. The deferral reason did not survive contact either: this change
+      // already regenerates the baseline, so closing the gap costs one more
+      // regen in the same commit rather than a separate round.
       //
-      // Pinned at 0 so the hole is documented rather than silent: whoever
-      // closes it has to delete this test on purpose, which is the moment to
-      // regenerate the baseline. Contrast with its snake_case twin above,
-      // which proves the gap is a spelling gap and not a dead scan.
-      expect(countMatches("  if (merchantId === 'external_seed') return true;")).toBe(0);
+      // Both spellings must count ONE. Not two: the camelCase pattern and the
+      // snake_case ones must stay disjoint, or every existing snake_case site
+      // inflates and the baseline stops being lowerable.
+      expect(countMatches("  if (merchantId === 'external_seed') return true;")).toBe(1);
       expect(countMatches("  if (merchant_id === 'external_seed') return true;")).toBe(1);
+
+      // Locally renamed spellings of the same value are the reason the pattern
+      // is not a bare `merchantId` — these are how the sentinel is actually
+      // compared in the request path.
+      expect(countMatches("  if (requestedMerchantId === 'external_seed') return true;")).toBe(1);
+      expect(countMatches("  if (entryMerchantId !== 'external_seed') return false;")).toBe(1);
+
+      // CONTROL: still a READER pattern. The assignment spellings belong to the
+      // mint set, and a line must never be counted by both.
+      const readerMatches = (text) =>
+        READER_PATTERNS.reduce((total, pattern) => total + (text.match(pattern)?.length || 0), 0);
+      expect(readerMatches("  merchantId: 'external_seed',")).toBe(0);
+      expect(countMatches("  merchantId: 'external_seed',")).toBe(1);
+    });
+
+    test('CONTROL: no line is counted twice across the whole pattern set', () => {
+      // The scan sums every pattern, so two patterns matching one line inflate
+      // the baseline permanently and silently. Each of these is a shape some
+      // pattern owns; every one must total exactly 1.
+      for (const line of [
+        "  merchant_id: 'external_seed',",
+        "  merchantId: 'external_seed',",
+        '  merchant_id: EXTERNAL_SEED_MERCHANT_ID,',
+        '  merchantId: EXTERNAL_SEED_MERCHANT_ID,',
+        "  if (merchant_id === 'external_seed') return true;",
+        "  if (merchantId === 'external_seed') return true;",
+        '  if (mid !== EXTERNAL_SEED_MERCHANT_ID) return false;',
+        "  const m = row.merchant_id || 'external_seed';",
+        '  const m = row.merchant_id || EXTERNAL_SEED_MERCHANT_ID;',
+      ]) {
+        expect({ line, count: countMatches(line) }).toEqual({ line, count: 1 });
+      }
     });
   });
 }
