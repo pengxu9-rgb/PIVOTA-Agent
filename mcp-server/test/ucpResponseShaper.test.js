@@ -152,10 +152,35 @@ describe('one native row -> one UCP product', () => {
     assert.equal(shapeUcpProduct({ ...ROW, availability: 'unknown', in_stock: undefined }).product.variants[0].availability, undefined);
   });
 
-  test('description is `{plain}` when the row has prose and `{}` when it does not — never a fabricated sentence', () => {
+  test('description is `{plain: prose}` when the row has prose, and `{plain: title}` when it does not — never `{}` (minProperties 1) and never invented copy', () => {
     assert.deepEqual(shapeUcpProduct(ROW).product.description, { plain: 'A 10% niacinamide serum.' });
-    assert.deepEqual(shapeUcpProduct({ ...ROW, description: undefined }).product.description, {});
+    // description.json declares minProperties:1 — `{}` is INVALID (review of #2020). The title is a true
+    // statement about the row, so it is the fallback; a variant carries the same.
+    const bare = shapeUcpProduct({ ...ROW, description: undefined }).product;
+    assert.deepEqual(bare.description, { plain: 'Niacinamide Serum' });
+    assert.deepEqual(bare.variants[0].description, { plain: 'Niacinamide Serum' });
+    assert.ok(Object.keys(bare.description).length >= 1, 'minProperties 1');
     assert.deepEqual(shapeUcpProduct({ ...ROW, description: undefined, summary_short: 'Short.' }).product.description, { plain: 'Short.' });
+  });
+
+  test('`price.currency` is published uppercase and must be ^[A-Z]{3}$ — anything else cannot be a price', () => {
+    assert.equal(shapeUcpProduct({ ...ROW, currency: 'usd' }).product.price_range.min.currency, 'USD');
+    assert.equal(shapeUcpProduct({ ...ROW, currency: ' eur ' }).product.variants[0].price.currency, 'EUR');
+    for (const bad of ['US', 'USDD', 'US$', '$', '840', 'us d']) {
+      assert.deepEqual(shapeUcpProduct({ ...ROW, currency: bad }), { product: undefined, dropped: 'no_price' }, `currency ${JSON.stringify(bad)}`);
+    }
+  });
+
+  test('categories fall back to product_type; media is de-duplicated and capped', () => {
+    assert.deepEqual(shapeUcpProduct({ ...ROW, category: undefined, product_type: 'Toner' }).product.categories, [{ value: 'Toner' }]);
+    const many = shapeUcpProduct({
+      ...ROW, image_url: 'https://cdn.example/a.jpg',
+      images: ['https://cdn.example/a.jpg', 'https://cdn.example/b.jpg'],
+      image_urls: Array.from({ length: 20 }, (_, i) => `https://cdn.example/x${i}.jpg`),
+    }).product;
+    assert.equal(many.media.length, 8, 'capped at 8');
+    assert.equal(new Set(many.media.map((m) => m.url)).size, many.media.length, 'de-duplicated');
+    assert.equal(many.media[0].url, 'https://cdn.example/a.jpg', 'featured image first');
   });
 
   test('a row with no title gets brand, then id — a true statement, not an invented title', () => {
@@ -212,12 +237,39 @@ describe('pagination', () => {
     assert.equal(decodeSearchCursor(shape({ products: rows(10, 11), total: 30 }, { page_size: 10, page: 2 }).pagination.cursor), 3);
   });
 
-  test('without a total: only a FULL page can claim a next page; without a page_size, nothing is claimed', () => {
+  test('without a total: only a FULL page can claim a next page', () => {
     assert.equal(shape({ products: rows(10) }, { page_size: 10 }).pagination.has_next_page, true);
     assert.equal(shape({ products: rows(7) }, { page_size: 10 }).pagination.has_next_page, false);
     assert.equal(shape({ products: rows(0) }, { page_size: 10 }).pagination.has_next_page, false);
-    // No page_size and no total: we do not know the lane's page size, so we do not claim a next page.
-    assert.deepEqual(shape({ products: rows(20) }).pagination, { has_next_page: false });
+    // No page_size requested and no total: the lane's default size (20) governs — a full 20 has a next page,
+    // 19 does not, and a size the lane reports on the response wins over the default.
+    assert.equal(shape({ products: rows(20) }).pagination.has_next_page, true);
+    assert.equal(shape({ products: rows(19) }).pagination.has_next_page, false);
+    assert.equal(shape({ products: rows(10), page_size: 10 }).pagination.has_next_page, true, 'native page_size 10 with 10 rows');
+    assert.equal(shape({ products: rows(10), page_size: 12 }).pagination.has_next_page, false, 'native page_size 12 with 10 rows');
+  });
+
+  test('has_next_page NEVER comes from the returned count, and an EMPTY page is always the end (the review-found loop)', () => {
+    // total 25, no page_size requested, lane default 20: page 2 returns the last 5. Computing the page size
+    // from the 5 returned rows gave 2*5=10 < 25 -> "next", then the empty page 3 gave 0 < 25 -> "next", ...
+    // forever, up to the cursor bound. Reproduced by the #2020 review.
+    const p2 = shape({ products: rows(5, 21), total: 25 }, { page: 2 });
+    assert.deepEqual(p2.pagination, { has_next_page: false, total_count: 25 }, 'page 2 of 25 at the default size is the last page');
+    // An empty page is the end regardless of what a (stale, estimated) total says.
+    for (const total of [25, 1000, undefined]) {
+      const empty = shape({ products: [], ...(total !== undefined ? { total } : {}) }, { page: 3, page_size: 10 });
+      assert.equal(empty.pagination.has_next_page, false, `empty page with total ${total} must not claim a next page`);
+      assert.equal(empty.pagination.cursor, undefined);
+    }
+    // …and a page that IS full under a stale total still says next (the lane, not the total, is the truth for "more").
+    assert.equal(shape({ products: rows(10), total: 1000 }, { page: 5, page_size: 10 }).pagination.has_next_page, true);
+  });
+
+  test('total_count is emitted only for a non-negative INTEGER total (schema: integer, minimum 0)', () => {
+    assert.equal(shape({ products: rows(1), total: 25 }).pagination.total_count, 25);
+    assert.equal(shape({ products: rows(1), total: 25.5 }).pagination.total_count, undefined);
+    assert.equal(shape({ products: rows(1), total: -1 }).pagination.total_count, undefined);
+    assert.equal(shape({ products: rows(1), total: '25' }).pagination.total_count, 25, 'a numeric string total still counts');
   });
 
   test('has_next_page is computed from what the LANE returned, not from what survived our drops', () => {
@@ -265,7 +317,7 @@ describe('messages', () => {
     const out = shape({ products: [ROW] }, { query: 'q', filters: { categories: ['skincare'] } });
     const w = out.messages.find((m) => m.type === 'warning');
     assert.equal(w.code, 'filters.categories_not_applied');
-    assert.equal(w.path, '$.filters.categories');
+    assert.equal(w.path, '$.products', 'the path addresses the RESPONSE object the message rides in');
     assert.match(w.content, /not narrowed by category/);
     // …and NO warning when categories were not sent (empty array counts as not sent).
     assert.equal(shape({ products: [ROW] }, { query: 'q' }).messages, undefined);

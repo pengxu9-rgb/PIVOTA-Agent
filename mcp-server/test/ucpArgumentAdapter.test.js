@@ -766,9 +766,12 @@ describe('search_catalog reads the live filters, pagination and currency the way
     // "start over" is the infinite-page loop, and it looks exactly like an infinite catalog.
     const forged = Buffer.from(JSON.stringify({ v: 1, page: 1 }), 'utf8').toString('base64url');   // page 1 is not a continuation
     const wrongVersion = Buffer.from(JSON.stringify({ v: 2, page: 3 }), 'utf8').toString('base64url');
-    for (const bad of ['abc', 'opaque', '', '   ', forged, wrongVersion, 'eyJwYWdlIjozfQ', 12, null, { page: 2 }]) {
+    for (const bad of ['abc', 'opaque', forged, wrongVersion, 'eyJwYWdlIjozfQ', 12, null, { page: 2 }]) {
       assert.match(await refused({ query: 'q', pagination: { cursor: bad } }), /pagination\.cursor/);
     }
+    // A BLANK cursor is not a token — it is a first-page request, and is absent, as for query/currency.
+    assert.deepEqual(await search({ query: 'q', pagination: { cursor: '' } }), { query: 'q' });
+    assert.deepEqual(await search({ query: 'q', pagination: { cursor: '   ', limit: 5 } }), { query: 'q', page_size: 5 });
   });
 
   test('`filters.available` becomes `in_stock_only` verbatim, and only when supplied', async () => {

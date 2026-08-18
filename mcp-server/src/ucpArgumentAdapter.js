@@ -1174,7 +1174,9 @@ function mapSearchPagination(pagination, code) {
     out.page_size = Math.min(limit, SEARCH_PAGE_SIZE_MAX);
   }
   const cursor = own(pagination, "cursor");
-  if (cursor !== undefined) {
+  // Blank -> ABSENT, the rule `query` and `currency` follow: a platform that sends `cursor: ""` for its first
+  // page is asking for page 1, not presenting a token. Anything NON-blank is a token and must be ours.
+  if (cursor !== undefined && !(typeof cursor === "string" && cursor.trim() === "")) {
     // The cursor is OURS (minted by ucpResponseShaper) and opaque to the caller. Anything that does not
     // decode is refused, not treated as page 1: silently restarting a paginating client at the top is the
     // classic infinite-page loop, and it looks exactly like "the catalog has infinitely many products".
@@ -1282,7 +1284,7 @@ const SPECS = Object.freeze({
               properties: {
                 cursor: {
                   type: "string",
-                  description: "Opaque continuation token from a previous response's `pagination.cursor`. Read.",
+                  description: "Opaque continuation token from a previous response's `pagination.cursor`. Read. Send it back unchanged and keep `limit` the same across pages — the token continues a page sequence, and changing the page size mid-walk shifts the window.",
                   // JSON Schema `examples` (an annotation, not a constraint): a REAL cursor, so a platform sees
                   // the token shape and the schema-derived test fixture can send a valid one.
                   examples: [SEARCH_CURSOR_EXAMPLE],

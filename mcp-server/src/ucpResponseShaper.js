@@ -19,8 +19,10 @@
 //   product         : ["id","title","description","price_range","variants"]; variants minItems 1
 //   variant         : ["id","title","description","price"]
 //   price_range     : ["min","max"], each a price
-//   price           : ["amount","currency"]; amount = INTEGER in ISO 4217 MINOR units, minimum 0
-//   description     : no required member ({} is valid); plain / html / markdown
+//   price           : ["amount","currency"]; amount = INTEGER in ISO 4217 MINOR units, minimum 0;
+//                     currency pattern ^[A-Z]{3}$
+//   description     : plain / html / markdown, minProperties 1 — {} is NOT valid (review of #2020 caught the
+//                     first transcription saying it was)
 //   media           : ["type","url"]; type well-known: image | video | model_3d
 //   category        : ["value"] (+ taxonomy)
 //   pagination(resp): ["has_next_page"]; `cursor` MUST be present when has_next_page is true; total_count
@@ -70,6 +72,12 @@
 import { majorToIsoMinor } from "../../safety-kernel/src/money.js";
 
 export const UCP_RESPONSE_VERSION = "2026-04-08";
+
+// The native lane's default page size when the caller sends none (src/server.js find_products_multi:
+// `Number(search?.page_size || search?.limit || 20)`). Used ONLY to compute has_next_page when neither the
+// request nor the native response names a size; a hand-copy, so pinned by test against nothing stronger than
+// this comment — keep it in step if the lane's default moves.
+const LANE_DEFAULT_PAGE_SIZE = 20;
 
 // The canonical PDP host — the SAME constant the public projector constructs `pivota_url` from. Row URL fields
 // are not trustworthy for reseller rows (verified live: `pivota_canonical_url` was the reseller's page), so
@@ -155,10 +163,14 @@ function availabilityOf(p) {
   return undefined;
 }
 
+const ISO_CURRENCY_RE = /^[A-Z]{3}$/;
 function priceOf(p) {
-  const currency = str(p.currency);
+  // price.json: `currency` pattern ^[A-Z]{3}$. Uppercased (a row may carry "usd"), and a value that is not
+  // three letters cannot be published as a price — the row is dropped as no_price and SAID.
+  const currency = str(p.currency)?.toUpperCase();
+  if (!currency || !ISO_CURRENCY_RE.test(currency)) return undefined;
   const amount = majorToIsoMinor(p.price, currency);
-  if (amount === undefined || !currency) return undefined;
+  if (amount === undefined) return undefined;
   return { amount, currency };
 }
 
@@ -175,11 +187,12 @@ function imagesOf(p) {
   return out.slice(0, 8);
 }
 
-function descriptionOf(p) {
-  // `description` is REQUIRED on product and variant but has no required member: `{}` is valid, and it is
-  // what a row with no prose gets — never a fabricated sentence.
-  const plain = str(p.description) || str(p.summary_short) || str(p.short_description);
-  return plain ? { plain } : {};
+function descriptionOf(p, title) {
+  // `description` is REQUIRED on product and variant AND declares minProperties:1, so `{}` is invalid. A row
+  // with no prose gets `{plain: <title>}` — a true statement about the row, not a fabricated sentence — so
+  // the product stays spec-valid without inventing copy.
+  const plain = str(p.description) || str(p.summary_short) || str(p.short_description) || title;
+  return { plain };
 }
 
 /**
@@ -196,7 +209,7 @@ export function shapeUcpProduct(row, { pdpBase = DEFAULT_PDP_BASE } = {}) {
   // `title` is required. A row with none is not fabricated a title: brand, then the id — both are true
   // statements about the row, and a platform can tell them apart from a real title.
   const title = str(row.title) || str(row.brand) || id;
-  const description = descriptionOf(row);
+  const description = descriptionOf(row, title);
   const url = `${pdpBase}/products/${id}`;
   const media = imagesOf(row).map((u) => ({ type: "image", url: u }));
   const category = str(row.category) || str(row.product_type);
@@ -254,15 +267,28 @@ export function shapeUcpSearchResponse(native, { params, ucpArgs, pdpBase = DEFA
   // from a cursor), `page_size` what they asked for; the lane's own default page size is unknown to us, so
   // without a requested size a next page is only claimed when a total says so.
   const page = Number.isInteger(requested.page) && requested.page >= 1 ? requested.page : 1;
-  const pageSize = Number.isInteger(requested.page_size) && requested.page_size >= 1 ? requested.page_size : undefined;
+  // The page size that ACTUALLY governed this page: what the caller asked for, else what the lane reports it
+  // used, else the lane's default (src/server.js find_products_multi: `page_size || 20`). NEVER the count of
+  // rows returned — a short last page (5 of 25 at size 20) would then compute 2*5=10 < 25 and claim a next
+  // page, and the empty page after it 3*0=0 < 25 again, forever (review of #2020, reproduced). The public
+  // projector avoids the same trap the same way ("so clients paginating by total/page_size aren't skewed
+  // by a short final page").
+  const nativeSize = finiteNum(body.page_size);
+  const pageSize = Number.isInteger(requested.page_size) && requested.page_size >= 1
+    ? requested.page_size
+    : Number.isInteger(nativeSize) && nativeSize >= 1 ? nativeSize : LANE_DEFAULT_PAGE_SIZE;
   const total = finiteNum(body.total);
   const returned = arr(body.products).length; // rows the LANE returned, before our drops — paging is the lane's
   let hasNext = false;
-  if (total !== null && total >= 0) {
-    const consumed = pageSize !== undefined ? page * pageSize : (page - 1) * returned + returned;
-    hasNext = consumed < total;
-  } else if (pageSize !== undefined) {
-    hasNext = returned >= pageSize && returned > 0;
+  if (returned === 0) {
+    // An empty page is the end, whatever a (possibly estimated, possibly stale) total says. Claiming a next
+    // page here is the one shape of lie that never terminates.
+    hasNext = false;
+  } else if (total !== null && total >= 0) {
+    hasNext = page * pageSize < total;
+  } else {
+    // No total: only a FULL page can have a next page.
+    hasNext = returned >= pageSize;
   }
   const cursor = hasNext ? encodeSearchCursor(page + 1) : undefined;
   if (hasNext && !cursor) hasNext = false; // beyond the cursor bound: say "no more" rather than emit nothing
@@ -280,8 +306,8 @@ export function shapeUcpSearchResponse(native, { params, ucpArgs, pdpBase = DEFA
     messages.push({
       type: "warning",
       code: "filters.categories_not_applied",
-      path: "$.filters.categories",
-      content: "This catalog does not apply `filters.categories`: results are not narrowed by category. Filter client-side, or narrow the query text.",
+      path: "$.products",
+      content: "This catalog does not apply the request's `filters.categories`: `products` are not narrowed by category. Filter client-side, or narrow the query text.",
       content_type: "plain",
     });
   }
