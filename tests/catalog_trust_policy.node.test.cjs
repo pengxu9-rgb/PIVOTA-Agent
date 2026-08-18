@@ -758,7 +758,17 @@ test('POLICY_VERSION is pinned to the Python twin', () => {
   // (NON_CANONICAL_DUPLICATE), which moves 121 measured prod rows
   // 'public' -> 'shadow'. This repo is the SECOND half of that pair —
   // pivota-backend#1649 is the first. Until both deploy, the twins disagree.
-  assert.equal(POLICY_VERSION, 'c1.v0.7');
+  //
+  // c1.v0.7 -> c1.v0.8 on 2026-08-17 (ADR-009): both seed-lane predicates here
+  // stopped naming the retired sentinel seller. deriveVerificationSource tested
+  // it and so labelled scraped rows 'shopify_sync'; isExternalSeedContent was a
+  // hand-rolled trio missing the source_system and seed-id arms, so a mirrored
+  // row on its UPSTREAM's platform (the minted lane) skipped the
+  // identity-coverage gate. Measured on prod: the widened arms catch ZERO rows
+  // the old trio did not, so the serving blast radius is 0 — the bump is for
+  // the DERIVATION change the twin has to agree with. This repo is again the
+  // SECOND half: pivota-backend adr009/trust-policy-lane-parity merges FIRST.
+  assert.equal(POLICY_VERSION, 'c1.v0.8');
 });
 
 // ---- TEST/DEMO MERCHANT GATE (2026-07-27) -----------------------------------

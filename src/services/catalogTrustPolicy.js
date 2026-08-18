@@ -85,7 +85,7 @@ const {
 // Worked example 4 — the canonical-election gate, 2026-07-31. Bumps: it moves
 // 121 measured prod rows from 'public' to 'shadow'. Pairs with pivota-backend,
 // backend first.
-const POLICY_VERSION = 'c1.v0.7';
+const POLICY_VERSION = 'c1.v0.8';
 
 // ---- Reason codes (authoritative vocabulary) -------------------------------
 //
