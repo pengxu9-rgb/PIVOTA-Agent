@@ -130,6 +130,23 @@ export function parseDecimalToMinor(value, currency) {
   return signed === 0 ? 0 : signed; // normalize -0 → 0
 }
 
+/**
+ * A MAJOR-unit amount (the catalog's own prices: 6, 24, 25.99 USD) -> an integer of ISO 4217 MINOR units, for
+ * an amount PUBLISHED TO A COUNTERPARTY (a UCP catalog response's `price.amount`, an outbound feed).
+ *
+ * NOT FOR CHARGES, and NOT exact: this ROUNDS (a catalog price of 25.99 is 2599; a synthetic 25.995 becomes
+ * 2600), where parseDecimalToMinor FAILS CLOSED on over-precision because a charge amount must already be at
+ * currency precision. A displayed search price may round; a charged one may not. Uses the ISO exponent (what
+ * "minor units" means to a counterparty), not the PSP charge exponent — see isoMinorUnitExponent.
+ * Returns undefined for anything that is not a finite, non-negative number.
+ */
+export function majorToIsoMinor(major, currency) {
+  const n = typeof major === 'number' ? major : typeof major === 'string' && major.trim() !== '' ? Number(major) : NaN;
+  if (!Number.isFinite(n) || n < 0) return undefined;
+  const minor = Math.round(n * 10 ** isoMinorUnitExponent(currency));
+  return Number.isSafeInteger(minor) ? minor : undefined;
+}
+
 /** Coerce an already-minor amount (integer) defensively; returns undefined if not a safe integer. */
 export function asMinor(value) {
   if (typeof value === 'number' && Number.isSafeInteger(value)) return value;

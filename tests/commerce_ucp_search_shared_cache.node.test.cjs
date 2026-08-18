@@ -107,9 +107,16 @@ test('the UCP door and the /mcp door answer an identical search from ONE shared 
     // A query no other test in this process could have warmed.
     const query = `shared-cache-probe-${process.pid}-a`;
 
-    // 1) cold over the UCP door: exactly one upstream hit.
-    await post('/ucp/mcp', ucpSearch(query, 1));
+    // 1) cold over the UCP door: exactly one upstream hit — and the body on the wire is the SPEC envelope
+    //    (catalog_search.json search_response), not the native list: `ucp.version`, `products[]` with
+    //    minor-unit prices, `pagination.has_next_page`. The same upstream row is read natively below.
+    const first = await post('/ucp/mcp', ucpSearch(query, 1));
     assert.equal(upstream.attempts, 1, 'the first UCP search must reach the search upstream once');
+    const ucpBody = first.structuredContent ?? JSON.parse(first.content?.[0]?.text ?? '{}');
+    assert.equal(ucpBody.ucp?.version, '2026-04-08', `UCP door must answer the spec envelope: ${JSON.stringify(ucpBody).slice(0, 200)}`);
+    assert.equal(ucpBody.products?.[0]?.id, 'sig_probe');
+    assert.deepEqual(ucpBody.products?.[0]?.price_range?.min, { amount: 1000, currency: 'USD' }, 'MAJOR 10 -> MINOR 1000');
+    assert.equal(typeof ucpBody.pagination?.has_next_page, 'boolean');
 
     // 2) repeat over the UCP door: served from cache. This is the line `cache:false` on the UCP door fails.
     await post('/ucp/mcp', ucpSearch(query, 2));
@@ -117,8 +124,13 @@ test('the UCP door and the /mcp door answer an identical search from ONE shared 
 
     // 3) the SAME query over the NATIVE door: also from cache. This is the line "two surfaces, two caches"
     //    fails — the argument adapter maps the UCP shape to the same allowlisted params, so the key matches.
-    await post('/mcp', mcpSearch(query, 3));
+    const third = await post('/mcp', mcpSearch(query, 3));
     assert.equal(upstream.attempts, 1, 'the /mcp door must read the entry the UCP door populated (one cache)');
+    //    …and the /mcp body is NATIVE (major-unit price, no `ucp` envelope): the cache entry was not poisoned
+    //    by the UCP read that populated it. This is the reason shaping runs AFTER the cache.
+    const mcpBody = third.structuredContent ?? JSON.parse(third.content?.[0]?.text ?? '{}');
+    assert.equal(mcpBody.ucp, undefined, 'native dialect must not carry the UCP envelope');
+    assert.equal(mcpBody.products?.[0]?.price, 10, 'native keeps MAJOR units');
 
     // 4) …and the other direction, on a fresh key: /mcp populates, /ucp/mcp reads.
     const query2 = `shared-cache-probe-${process.pid}-b`;
