@@ -792,6 +792,12 @@ describe('search_catalog reads the live filters, pagination and currency the way
       await search({ query: 'q', context: { currency: 'ISK' }, filters: { price: { max: 3000 } } }),
       { query: 'q', currency: 'ISK', price_max: 3000 },
     );
+    // …and LOWERCASE, because the currency is forwarded verbatim: a case-sensitive ISO table would fall
+    // back to the charge exponent and reproduce the ×100 under-read one commit after fixing it.
+    assert.deepEqual(
+      await search({ query: 'q', context: { currency: 'ugx' }, filters: { price: { min: 5000 } } }),
+      { query: 'q', currency: 'ugx', price_min: 5000 },
+    );
     // Lower-case currency: the exponent lookup is case-insensitive; the code itself is forwarded trimmed,
     // otherwise verbatim (the native lane normalizes).
     assert.deepEqual(
@@ -821,7 +827,15 @@ describe('search_catalog reads the live filters, pagination and currency the way
       await search({ query: 'q', context: { currency: 'EUR', address_country: 'FR', language: 'fr-FR', intent: 'gift' } }),
       { query: 'q', currency: 'EUR' },
     );
-    for (const bad of ['', '   ', 840, null]) {
+    // Blank is ABSENT, as for `query` — the schema types it as a string and a blank string is a string.
+    assert.deepEqual(await search({ query: 'q', context: { currency: '' } }), { query: 'q' });
+    assert.deepEqual(await search({ query: 'q', context: { currency: '   ' } }), { query: 'q' });
+    // …and with a blank currency the price exponent is the default (USD), not something minted from ''.
+    assert.deepEqual(
+      await search({ query: 'q', context: { currency: '' }, filters: { price: { min: 500 } } }),
+      { query: 'q', price_min: 5 },
+    );
+    for (const bad of [840, null, ['USD'], { code: 'USD' }]) {
       assert.match(await refused({ query: 'q', context: { currency: bad } }), /context\.currency/);
     }
   });
@@ -839,18 +853,31 @@ describe('search_catalog reads the live filters, pagination and currency the way
   });
 
   test('a fully-populated live body maps to exactly the documented native args and nothing else', async () => {
+    // Every permissive sub-object — INCLUDING `price` — also carries an UNDECLARED member, and the exact
+    // deepEqual below is what proves none of them is read. The review of this PR found the previous form
+    // unpinned: a mapper reading `price.currency` for the exponent, or forwarding `pagination.page` as the
+    // native `page`, stayed green because nothing sent an unknown member at those depths and asserted the
+    // FULL output.
     const params = await search({
       query: '  niacinamide serum ',
-      pagination: { cursor: 'opaque', limit: 20 },
-      filters: { categories: ['skincare'], price: { min: 1000, max: 4000 }, available: true },
-      context: { address_country: 'US', address_region: 'CA', postal_code: '94107', language: 'en-US', currency: 'USD', intent: 'buy' },
-      signals: { 'dev.ucp.buyer_ip': '198.51.100.9', 'dev.ucp.user_agent': 'ua' },
+      pagination: { cursor: 'opaque', limit: 20, page: 7, unknown_member: 'PAG_X' },
+      filters: {
+        categories: ['skincare'], available: true, unknown_member: 'FIL_X',
+        price: { min: 1000, max: 4000, currency: 'JPY', unknown_member: 'PRC_X' },
+      },
+      context: {
+        address_country: 'US', address_region: 'CA', postal_code: '94107', language: 'en-US', currency: 'USD',
+        intent: 'buy', merchant_id: 'm_ctx', unknown_member: 'CTX_X',
+      },
+      signals: { 'dev.ucp.buyer_ip': '198.51.100.9', 'dev.ucp.user_agent': 'ua', unknown_member: 'SIG_X' },
     });
     assert.deepEqual(params, {
       query: 'niacinamide serum', page_size: 20, price_min: 10, price_max: 40, in_stock_only: true, currency: 'USD',
     });
-    // No merchant_id — the lane stays unscoped no matter how much context arrives.
+    // No merchant_id and no page — the lane stays unscoped and un-paged no matter how much arrives; the
+    // exponent came from context.currency (USD), never from a `price.currency` the live schema does not have.
     assert.equal(params.merchant_id, undefined);
+    assert.equal(params.page, undefined);
   });
 });
 
@@ -926,7 +953,9 @@ describe('schema and mapper cannot drift', () => {
       }
       // Non-string leaves get a sentinel VALUE too — a distinctive number / the non-default boolean — so the
       // ledger below can see them. Previously they were invisible and could be advertised-and-unread forever.
-      case 'integer': case 'number': return schema.minimum ?? 424242;
+      // A `minimum` of 0 is NOT a distinctive marker ("0" is a substring of half the numbers a mapper can
+      // emit), so it falls through to the sentinel, which is still schema-valid for a minimum of 0.
+      case 'integer': case 'number': return schema.minimum || 424242;
       case 'boolean': return true;
       default: return sentinelFor(path);
     }
@@ -947,7 +976,7 @@ describe('schema and mapper cannot drift', () => {
         return entries.flatMap(([name, sub]) => sentinelLeaves(sub, path ? `${path}.${name}` : name));
       }
       case 'array': return sentinelLeaves(schema.items ?? {}, `${path}[]`);
-      case 'integer': case 'number': return [{ path, marker: String(schema.minimum ?? 424242) }];
+      case 'integer': case 'number': return [{ path, marker: String(schema.minimum || 424242) }];
       case 'boolean': return [{ path, marker: 'true' }];
       default: return [{ path, marker: sentinelFor(path) }];
     }

@@ -2,7 +2,7 @@
 // (NO float multiply), zero-/three-decimal currencies, rounding, round-trip, and the safety guards.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { minorUnitExponent, parseDecimalToMinor, asMinor, formatMinor, sameMinor, chargeAmountMultiple, violatesChargeMultiple } from '../src/money.js';
+import { minorUnitExponent, isoMinorUnitExponent, parseDecimalToMinor, asMinor, formatMinor, sameMinor, chargeAmountMultiple, violatesChargeMultiple } from '../src/money.js';
 
 test('minorUnitExponent: default 2, zero-decimal, three-decimal, case-insensitive', () => {
   assert.equal(minorUnitExponent('USD'), 2);
@@ -22,6 +22,32 @@ test('Codex P0: Stripe charge SPECIAL CASES are NOT zero-decimal (HUF/TWD/UGX de
   assert.equal(minorUnitExponent('UGX'), 2);
   assert.equal(parseDecimalToMinor('175.00', 'HUF'), 17500); // NOT 175
   assert.equal(parseDecimalToMinor('800.45', 'TWD'), 80045); // NOT 800
+});
+
+test('isoMinorUnitExponent: ISO 4217, standalone from the charge table, case- and whitespace-insensitive', () => {
+  // Where ISO and the Stripe CHARGE table agree, both say the same thing.
+  for (const c of ['USD', 'EUR', 'JPY', 'KRW', 'BHD', 'HUF', 'TWD', 'XYZ']) {
+    assert.equal(isoMinorUnitExponent(c), minorUnitExponent(c), c);
+  }
+  // Where they DISAGREE, the ISO function must NOT follow the charge table — a UCP `filters.price` in
+  // UGX/ISK is "minor units" per ISO (0), and reading it with the charge exponent (2) hides every product.
+  assert.equal(isoMinorUnitExponent('UGX'), 0);
+  assert.equal(isoMinorUnitExponent('ISK'), 0);
+  assert.equal(minorUnitExponent('UGX'), 2, 'the CHARGE exponent is unchanged — a charge must still be sent as 2-decimal');
+  assert.equal(minorUnitExponent('ISK'), 2);
+  // MGA: Stripe zero-decimal, ISO 2. UYI 0, CLF/UYW 4: ISO-only currencies the charge table has no row for.
+  assert.equal(isoMinorUnitExponent('MGA'), 2);
+  assert.equal(minorUnitExponent('MGA'), 0);
+  assert.equal(isoMinorUnitExponent('UYI'), 0);
+  assert.equal(isoMinorUnitExponent('CLF'), 4);
+  assert.equal(isoMinorUnitExponent('UYW'), 4);
+  // Case and whitespace: the adapter forwards the caller's currency TRIMMED but otherwise verbatim, so a
+  // lowercase code reaches this lookup. A case-sensitive table would silently reproduce the ×100 under-read.
+  assert.equal(isoMinorUnitExponent('ugx'), 0);
+  assert.equal(isoMinorUnitExponent(' isk '), 0);
+  assert.equal(isoMinorUnitExponent('jpy'), 0);
+  assert.equal(isoMinorUnitExponent(undefined), 2);
+  assert.equal(isoMinorUnitExponent(840), 2);
 });
 
 test('parseDecimalToMinor: 2-decimal currencies (USD) — exact, no float drift', () => {

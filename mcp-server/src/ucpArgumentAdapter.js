@@ -1135,16 +1135,18 @@ const SEARCH_REFUSAL_CODE = "OPERATION_NOT_ALLOWED";
 // import commerceToolSurface — that module imports this one).
 export const SEARCH_PAGE_SIZE_MAX = 50;
 
-/** `catalog.context.currency` — a non-empty string when supplied, trimmed, else undefined. */
+/** `catalog.context.currency` — a string when supplied; trimmed, blank => undefined (as for `query`). */
 function readSearchCurrency(context, code) {
   if (!isPlainObject(context)) return undefined; // absent, or a non-object the permissive schema tolerates
   const currency = own(context, "currency");
   if (currency === undefined) return undefined;
-  if (!nonEmpty(currency)) {
+  if (typeof currency !== "string") {
     throw ucpRefusal(code, "ucp_currency_string_required",
-      "`catalog.context.currency` must be a non-empty ISO 4217 code when supplied.", { rejected_field: "catalog.context.currency" });
+      "`catalog.context.currency` must be an ISO 4217 code string when supplied.", { rejected_field: "catalog.context.currency" });
   }
-  return currency.trim();
+  // Blank -> ABSENT, the same rule `catalog.query` follows: the schema types it as a string and a blank
+  // string is a string, so a door that refused it would be stricter than what it advertises.
+  return nonEmpty(currency) ? currency.trim() : undefined;
 }
 
 /**
@@ -1272,8 +1274,8 @@ const SPECS = Object.freeze({
                   additionalProperties: true,
                   description: "Price range in MINOR currency units (cents for USD, yen for JPY). Read.",
                   properties: {
-                    min: { type: "integer", description: "Minimum price in minor units. Read." },
-                    max: { type: "integer", description: "Maximum price in minor units. Read; must be >= min." },
+                    min: { type: "integer", minimum: 0, description: "Minimum price in minor units. Read." },
+                    max: { type: "integer", minimum: 0, description: "Maximum price in minor units. Read; must be >= min." },
                   },
                 },
                 available: { type: "boolean", description: "true = in-stock only (the default when omitted). Read." },
