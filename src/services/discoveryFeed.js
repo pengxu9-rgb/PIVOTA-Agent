@@ -94,6 +94,9 @@ const MAX_PRODUCTS_SEARCH_CALLS = 2;
 const DISCOVERY_CURSOR_VERSION = 'pivota.discovery.cursor.v1';
 const DISCOVERY_SERVING_CONTRACT_VERSION = 'pivota.discovery.serving.v1';
 const DISCOVERY_CURATED_HEAD_LIMIT = 120;
+// Matches DEFAULT_MAX_BROWSE_CANDIDATE_FETCH so the canonical readers never cap
+// below what resolveDiscoveryCandidateLimit asked them to fetch.
+const MAX_CANONICAL_SIG_FETCH = 720;
 const DEFAULT_DISCOVERY_SERVING_SHADOW_TIMEOUT_MS = 600;
 const DISCOVERY_PRODUCTS_SEARCH_PRIMARY_BASE_URL_ENV = 'DISCOVERY_PRODUCTS_SEARCH_BASE_URL';
 const DISCOVERY_PRODUCTS_SEARCH_PRIMARY_API_KEY_ENV = 'DISCOVERY_PRODUCTS_SEARCH_API_KEY';
@@ -3687,11 +3690,17 @@ function resolveDiscoveryCandidateLimit(request) {
     const pageNeed = request.page * request.limit + Math.max(request.limit, 24);
     const genericBrowsePrefetchFloor = resolveGenericBrowsePrefetchFloor(request);
     const explicitBrowseCursorPrefetch = resolveExplicitBrowseCursorPrefetchNeed(request);
+    const genericBrowseCursorPrefetch = resolveGenericBrowseCursorPrefetchNeed(request);
     if (hasBrandScope(request)) {
       return clampInt(Math.max(pageNeed, 48), 72, 48, fetchCap);
     }
     return clampInt(
-      Math.max(pageNeed, genericBrowsePrefetchFloor, explicitBrowseCursorPrefetch),
+      Math.max(
+        pageNeed,
+        genericBrowsePrefetchFloor,
+        explicitBrowseCursorPrefetch,
+        genericBrowseCursorPrefetch,
+      ),
       72,
       24,
       fetchCap,
@@ -3703,6 +3712,31 @@ function resolveDiscoveryCandidateLimit(request) {
 
 function resolveExplicitBrowseCursorPrefetchNeed(request, multiplier = 4) {
   if (!isExplicitQueryScopedBrowseRequest(request)) return 0;
+  if (!request?.cursor) return 0;
+  const fetchCap = getDiscoveryCandidateFetchCap(request);
+  const safeLimit = clampInt(request?.limit, 24, 1, 120);
+  const safeMultiplier = clampInt(multiplier, 4, 1, 8);
+  const absoluteOffset = getDiscoveryCursorAbsoluteOffset(request.cursor, safeLimit);
+  return Math.min(fetchCap, absoluteOffset + safeLimit * safeMultiplier);
+}
+
+// The generic-browse twin of resolveExplicitBrowseCursorPrefetchNeed.
+//
+// The candidate pool is fetched as a PREFIX and the selection layer slices the
+// cursor's window out of it, so the prefix has to reach as deep as the cursor
+// has walked. pageNeed is computed from request.page, but cursor paging keeps
+// page=1 and advances cursor.absolute_offset instead — so for generic browse the
+// pool stayed pinned at the 120-row prefetch floor no matter how far the shopper
+// scrolled. Explicit-query browse already grows with its cursor; generic browse
+// did not, and nothing else compensated.
+//
+// Measured on prod 2026-08-18 before this: paging the canonical sig route to
+// exhaustion reached 207 distinct products out of 6,829 servable (3%), and
+// next_cursor disappeared at page 11. The two facet-poor cohorts sit at
+// refreshed_at ranks 969 and 1005, so they were not merely outranked — no window
+// the route could fetch ever contained them.
+function resolveGenericBrowseCursorPrefetchNeed(request, multiplier = 4) {
+  if (!isBehaviorlessGenericBrowseRequest(request)) return 0;
   if (!request?.cursor) return 0;
   const fetchCap = getDiscoveryCandidateFetchCap(request);
   const safeLimit = clampInt(request?.limit, 24, 1, 120);
@@ -9123,7 +9157,10 @@ async function fetchBrandScopedCanonicalCandidates({ brandAliases = [], limit = 
     16,
   );
 
-  const safeLimit = clampInt(limit, Math.max(limit, 120), 24, 400);
+  // Clamp to the platform's own browse fetch cap, not a tighter local 400: the
+  // caller sizes `limit` to cover the cursor's window, and clamping below that
+  // silently truncated deep pages back to the head of the list.
+  const safeLimit = clampInt(limit, Math.max(limit, 120), 24, MAX_CANONICAL_SIG_FETCH);
   const gateJoinSql = '';
   const gateWhereSql = `AND EXISTS (
             SELECT 1 FROM catalog_products cp_trust
@@ -9352,7 +9389,10 @@ function browseUsesCanonicalSig() {
 // scope is set. No category branch is built here for that reason.
 async function fetchCanonicalSigBrowseCandidates({ limit = 120 } = {}) {
   if (!process.env.DATABASE_URL) return null;
-  const safeLimit = clampInt(limit, Math.max(limit, 120), 24, 400);
+  // Clamp to the platform's own browse fetch cap, not a tighter local 400: the
+  // caller sizes `limit` to cover the cursor's window, and clamping below that
+  // silently truncated deep pages back to the head of the list.
+  const safeLimit = clampInt(limit, Math.max(limit, 120), 24, MAX_CANONICAL_SIG_FETCH);
   const params = [safeLimit];
 
   try {
@@ -9503,11 +9543,34 @@ async function fetchCanonicalSigBrowseCandidates({ limit = 120 } = {}) {
             WHERE cp_trust.content_key = apv.content_key
               AND crt.serving_decision = 'public'
           )
-        -- pivota_signature_id makes refreshed_at TIES deterministic. It does not
-        -- make paging stable: browse re-runs this query with a larger LIMIT and
-        -- slices rather than keyset-paging, so a refreshed_at bump between page
-        -- requests still reorders the prefix. Same exposure as the seed lane.
-        ORDER BY apv.refreshed_at DESC NULLS LAST, apv.pivota_signature_id ASC
+        -- Diversified, not recency-ordered, and that is the point.
+        --
+        -- The candidate pool is a PREFIX of this ordering, and the prefix is
+        -- bounded: measured on prod 2026-08-18, paging to exhaustion reaches
+        -- ~450 distinct products however large the fetch cap is set. Under
+        -- refreshed_at DESC the whole prefix belonged to two source cohorts —
+        -- external_brand_crawl's best rank was 969 and
+        -- catalog_enrichment_agent_v1's was 1005, so 3,124 servable products
+        -- (46% of the catalog) could never appear on browse at any depth. That
+        -- is not a ranking preference, it is a structural exclusion by
+        -- ingestion provenance.
+        --
+        -- md5 over the signature is a stable pseudo-random total order: it is
+        -- deterministic (same order every request, so the cursor's prefix does
+        -- not shuffle underneath a shopper mid-scroll), and it is uncorrelated
+        -- with provenance, so every cohort is represented in any prefix in
+        -- proportion to its size. Measured over the same ~450 reach:
+        -- external_brand_crawl 0 -> 127, catalog_enrichment_agent_v1 0 -> 101,
+        -- and every major cohort's best rank is 1-5.
+        --
+        -- It is also MORE stable than what it replaces: refreshed_at changes
+        -- under us as the catalog re-crawls, which reordered the prefix between
+        -- page requests; a signature's md5 never changes.
+        --
+        -- The brand reader deliberately keeps refreshed_at: a brand page is
+        -- scoped to one brand and its whole result set fits inside the prefix,
+        -- so there is nothing to diversify and recency is the useful order.
+        ORDER BY md5(apv.pivota_signature_id)
         LIMIT $1
       `,
       params,

@@ -269,6 +269,58 @@ describe('canonical sig browse main route', () => {
     expect(sql).toMatch(/lower\(substring\(eps\.destination_url[\s\S]*?lower\(substring\(cp\.canonical_url/);
   });
 
+  test('browse orders diversified, brand page keeps recency', async () => {
+    process.env.DATABASE_URL = 'postgres://canonical-sig-test';
+    const { mock, calls } = buildDbMock([makeSigRow(1)]);
+    const internals = loadInternals(mock);
+
+    await internals.fetchCanonicalSigBrowseCandidates({ limit: 60 });
+    const browseSql = calls.map((c) => c.sql).find(isSigQuery);
+    // The pool is a bounded PREFIX of this order, so the order decides who can
+    // ever be served. Under refreshed_at DESC the prefix belonged entirely to
+    // two source cohorts and 3,124 servable products (46% of the catalog) had a
+    // best rank of 969+ — unreachable at any depth. md5 over the signature is
+    // stable and uncorrelated with provenance, so every cohort lands in the
+    // prefix in proportion to its size.
+    expect(browseSql).toContain('ORDER BY md5(apv.pivota_signature_id)');
+    expect(browseSql).not.toMatch(/ORDER BY apv\.refreshed_at/);
+
+    calls.length = 0;
+    await internals.fetchBrandScopedCanonicalCandidates({ brandAliases: ['alpha'], limit: 60 });
+    const brandSql = calls.map((c) => c.sql).find(isSigQuery);
+    // A brand page is scoped to one brand and fits inside the prefix, so there
+    // is nothing to diversify and recency is the useful order. Diversifying it
+    // would reshuffle live brand pages for no gain.
+    expect(brandSql).toContain('ORDER BY apv.refreshed_at DESC NULLS LAST');
+    expect(brandSql).not.toContain('md5(apv.pivota_signature_id)');
+  });
+
+  test('the generic browse pool grows as the cursor walks', () => {
+    const internals = loadInternals(jest.fn());
+    const mk = (absoluteOffset) =>
+      internals.resolveDiscoveryCandidateLimit({
+        surface: 'browse_products',
+        page: 1,
+        limit: 24,
+        scope: {},
+        query: { text: '' },
+        context: { recent_views: [], recent_queries: [] },
+        ...(absoluteOffset == null
+          ? {}
+          : { cursor: { mode: 'exhaustive', offset: absoluteOffset, absolute_offset: absoluteOffset } }),
+      });
+
+    // Cursor paging keeps page=1 and advances absolute_offset, so a pool sized
+    // only from `page` stayed pinned at the 120 prefetch floor however far the
+    // shopper scrolled — next_cursor died at page 11, 207 of 6,829 products.
+    const head = mk(null);
+    expect(head).toBe(120);
+    expect(mk(200)).toBeGreaterThan(head);
+    expect(mk(400)).toBeGreaterThan(mk(200));
+    // And it stays bounded by the platform fetch cap rather than growing freely.
+    expect(mk(100000)).toBeLessThanOrEqual(720);
+  });
+
   test('a real query failure is never reported as a successful empty provider', async () => {
     process.env.DATABASE_URL = 'postgres://canonical-sig-test';
     process.env.DISCOVERY_BROWSE_USES_CANONICAL_SIG = 'true';
