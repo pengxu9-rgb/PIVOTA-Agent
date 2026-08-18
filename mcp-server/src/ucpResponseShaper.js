@@ -86,6 +86,7 @@
 
 import { majorToIsoMinor } from "../../safety-kernel/src/money.js";
 import { PivotaCommerceError } from "../../safety-kernel/src/errors.js";
+import { isRestatedProductId, variantIdsFromProductRead } from "../../safety-kernel/src/protocol/buyerIntake.js";
 
 export const UCP_RESPONSE_VERSION = "2026-04-08";
 
@@ -355,19 +356,17 @@ export function shapeUcpSearchResponse(native, { params, ucpArgs, pdpBase = DEFA
 }
 
 /**
- * How many REAL variants a native detail row carries — ids that are not just the product id restated (the
- * same test buyerIntake applies before it believes a variant list). Used only to decide whether to SAY that
- * variant selection is not expressible on this door.
+ * How many REAL variants a native detail row carries — by buyerIntake's OWN readers, not a re-implementation.
+ * `variantIdsFromProductRead` collects the ids the way the checkout resolver does; `isRestatedProductId`
+ * discards the fabrications the unscoped lane's pdpBuilder mints when a row has no real variant identity
+ * (`variant_id: product_id` and `` `${product_id}-${idx+1}` `` — the product id restated, or restated plus a
+ * separator). Reusing the two is the point: the warning this drives claims what checkout WILL do, so it must
+ * count exactly what checkout will count (review of #2021 found the first version stricter than buyerIntake
+ * — `id === pid` only — and therefore warning about "variants" checkout would refuse as no identity at all).
  */
 function realVariantCount(row) {
   const pid = productIdOf(row);
-  const seen = new Set();
-  for (const v of arr(row.variants)) {
-    const id = isPlainObject(v) ? str(v.variant_id) || str(v.id) : null;
-    if (!id || id === pid) continue;
-    seen.add(id);
-  }
-  return seen.size;
+  return variantIdsFromProductRead({ product: row }).filter((id) => !isRestatedProductId(id, pid)).length;
 }
 
 /**

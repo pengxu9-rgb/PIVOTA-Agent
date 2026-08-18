@@ -379,11 +379,25 @@ describe('get_product answers the spec get_product_response', () => {
     assert.equal(w.path, '$.product.variants');
     assert.match(w.content, /2 purchasable variants/);
     assert.match(w.content, /only the product id is accepted as item\.id/);
-    // Variants that merely RESTATE the product id, or carry no id, are not "real" and earn no warning
-    // (the same test buyerIntake applies before it believes a variant list).
-    const restated = { ...ROW, variants: [{ variant_id: ROW.pivota_signature_id }, { title: 'no id' }, { variant_id: 'v_only' }] };
+    // Variants that merely RESTATE the product id, or carry no id, are not "real" and earn no warning —
+    // by buyerIntake's OWN test (isRestatedProductId), which also discards the unscoped lane's fabricated
+    // `${product_id}-${n}` ids. The warning claims what checkout will do, so it must count what checkout counts.
+    const pid = ROW.pivota_signature_id;
+    const restated = { ...ROW, variants: [{ variant_id: pid }, { title: 'no id' }, { variant_id: 'v_only' }] };
     assert.equal(shape({ product: restated }).messages, undefined, 'one real variant -> no warning');
     assert.equal(shape({ product: { ...ROW, variants: [] } }).messages, undefined);
+    assert.equal(shape({ product: { ...ROW, variants: 'not an array' } }).messages, undefined);
+    // pdpBuilder fabrications: `${pid}-1`, `${pid}-2` are NOT real variants (checkout would refuse them as
+    // no identity), so they must not be announced as "2 purchasable variants".
+    assert.equal(shape({ product: { ...ROW, variants: [{ variant_id: `${pid}-1` }, { variant_id: `${pid}-2` }] } }).messages, undefined, 'fabricated ids are not variants');
+    assert.equal(shape({ product: { ...ROW, variants: [{ variant_id: `${pid}-1` }, { variant_id: 'v_real' }, { variant_id: 'v_real2' }] } }).messages[0].code, 'variants.selection_not_supported', 'two real among fabricated -> warning');
+    // Duplicate ids are ONE variant.
+    assert.equal(shape({ product: { ...ROW, variants: [{ variant_id: 'v_dup' }, { variant_id: 'v_dup' }, { id: 'v_dup' }] } }).messages, undefined, 'duplicates collapse');
+    // …and the count in the message is exact, not capped.
+    assert.match(shape({ product: { ...ROW, variants: [1, 2, 3, 4, 5].map((n) => ({ variant_id: `v_${n}` })) } }).messages[0].content, /5 purchasable variants/);
+    // The warning is a SPEC warning: type/code/content present, content_type in the enum.
+    assert.equal(w.content_type, 'plain');
+    assert.ok(['plain', 'markdown'].includes(w.content_type));
   });
 
   test('not found is a REFUSAL, not a half-envelope: no row / no id -> UNKNOWN_PRODUCT_ID, unpriced -> NO_MERCHANT_OFFER, both terminal', () => {
