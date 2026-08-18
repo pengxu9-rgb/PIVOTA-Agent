@@ -142,9 +142,15 @@ export const CANONICAL_CAPABILITIES = Object.freeze({
  */
 export const CANONICAL_OPERATIONS = Object.freeze([
   {
+    // `ucpTool: 'search_catalog'` is the spec's flat name, evidenced the same way as the checkout tools
+    // (UCP_TOOL_EVIDENCE below): the buyer client took it from a live `tools/list` (cosrx, 2026-08-13),
+    // alongside `lookup_catalog`, and it is a DIFFERENT tool from `get_product` — free text vs one id. Until
+    // this field existed the profile builder's reachability rule (ucpProfile.js `invocableOperations`)
+    // withheld `dev.ucp.shopping.catalog.search` entirely, so a UCP platform could look a product up but
+    // could not ask a question. Mapping the tool is what lets that capability advertise itself.
     id: 'search_catalog', capability: 'catalog_search', kernel: 'find_products',
     mutating: false, requiresUserRef: false, requiresPaymentAuthz: false,
-    acp: 'product_feed', ucp: 'catalog.search', mcp: 'search_catalog',
+    acp: 'product_feed', ucp: 'catalog.search', mcp: 'search_catalog', ucpTool: 'search_catalog',
   },
   {
     id: 'get_product', capability: 'catalog_lookup', kernel: 'get_product_detail',
@@ -248,8 +254,14 @@ const OPS_BY_ID = Object.freeze(Object.fromEntries(CANONICAL_OPERATIONS.map((o) 
  *
  * Deliberately NOT mapped (no evidenced spec name — inventing one would advertise an operation no platform
  * can actually call, and would fail the moment the real name differs):
- *   search_catalog, get_alternatives, get_offers, get_intel, cancel_checkout_session, create_payment_link,
+ *   get_alternatives, get_offers, get_intel, cancel_checkout_session, create_payment_link,
  *   get_order, request_after_sales, start_identity_linking, exchange_payment_token.
+ * `search_catalog` left that list on 2026-08-18: its spec name AND wire shape (`{ meta, catalog: { query,
+ * pagination?, context?, signals?, filters? } }`, required ["meta","catalog"], no required member under
+ * `catalog`) come from the same live cosrx listing as `get_product`'s, and the buyer client's
+ * `searchCatalog` sends exactly that. `lookup_catalog` (batch by `catalog.ids`) is in that listing too and
+ * stays unmapped: no canonical operation answers a batch, and mapping it onto N `get_product` reads here
+ * would be a second composition to drift.
  * The UCP spec's `create_cart` / `get_cart` have no canonical counterpart: Pivota is quote-first, so a UCP
  * cart maps onto a checkout session rather than a separate object.
  *
@@ -258,7 +270,7 @@ const OPS_BY_ID = Object.freeze(Object.fromEntries(CANONICAL_OPERATIONS.map((o) 
  */
 export const UCP_TOOL_EVIDENCE = Object.freeze({
   source: 'src/services/ucpBuyerAgentClient.js TOOL constant (verbatim from the live UCP spec)',
-  mapped: Object.freeze(['get_product', 'create_checkout', 'update_checkout', 'get_checkout', 'complete_checkout']),
+  mapped: Object.freeze(['search_catalog', 'get_product', 'create_checkout', 'update_checkout', 'get_checkout', 'complete_checkout']),
   unmappedSpecTools: Object.freeze(['create_cart', 'get_cart']),
 });
 

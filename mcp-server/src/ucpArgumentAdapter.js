@@ -61,6 +61,14 @@
 //                   `catalog`; there is no flat `id` and no `sku`. This file first published the buyer
 //                   client's flat `{query,id,sku}` (`catalogSearch`), which is wrong against the live schema
 //                   — that client has the same bug and is flagged separately.
+//   - search_catalog : required ["meta","catalog"], and `catalog` declares NO required member — a query-less
+//                   call is legal on the wire. `catalog` carries `query` (free text) plus `pagination`,
+//                   `context`, `signals`, `filters` (same listing, 2026-08-13; the buyer client's
+//                   `searchCatalog` sends exactly this). It is a DIFFERENT tool from `get_product`, and
+//                   the two are the reason a UCP catalog has two capability ids. Only `query` is read here:
+//                   the inner shape of `pagination` was never captured, and mapping a guessed shape onto the
+//                   native `page`/`page_size` would be the extrapolation this file exists to end — so it is
+//                   accepted-and-unread until the live shape is fetched (UCP_ACCEPTED_BUT_UNMAPPED).
 //
 // A MEASUREMENT TRAP WORTH REMEMBERING. The first 2026-08-13 listing showed only 9 tools — cart and checkout —
 // and this file recorded that a per-merchant endpoint "does not expose get_product at all". That was wrong:
@@ -795,6 +803,11 @@ export const UCP_ACCEPTED_BUT_UNMAPPED = Object.freeze({
     "catalog.selected[].*", "catalog.preferences[].*", "catalog.context.*", "catalog.signals.*",
     "catalog.filters.*",
   ]),
+  // `pagination` is the one of these worth translating — the native lane pages by page/page_size — and it is
+  // deliberately NOT, because its inner shape was never fetched. Probe the live listing, then map it.
+  search_catalog: Object.freeze([
+    "catalog.pagination.*", "catalog.context.*", "catalog.signals.*", "catalog.filters.*",
+  ]),
 });
 
 // ---- shared readers --------------------------------------------------------------------------------------
@@ -1073,15 +1086,97 @@ const COMPLETE_CHECKOUT_DESCRIPTION = [
 
 const GET_PRODUCT_DESCRIPTION = [
   "Get full detail for one product. Send `{ meta, catalog: { id } }` — the product id is NESTED under",
-  "`catalog`. Read-only. Free-text catalog search is NOT exposed on this dialect; this tool answers about one",
-  "identified product.",
+  "`catalog`. Read-only. This tool answers about one identified product; for free text use `search_catalog`,",
+  "which returns the ids this tool reads.",
 ].join(" ");
+
+const SEARCH_CATALOG_DESCRIPTION = [
+  "Search Pivota's normalized multi-merchant catalog with free text. Send `{ meta, catalog: { query } }` —",
+  "the query is NESTED under `catalog`. Read-only; no money, no state change. Returns Pivota product ids",
+  "(`product_id`, e.g. `sig_…`) that `get_product` and `create_checkout` line items accept. The response is",
+  "Pivota's native product list. `catalog.pagination` / `context` / `signals` / `filters` are accepted and",
+  "not read.",
+].join(" ");
+
+// The refusal code for a search wire-shape violation. No PivotaErrorCode means "malformed arguments": the
+// two discovery-adjacent codes both misdirect a caller here — UNKNOWN_PRODUCT_ID's recovery is "re-run search"
+// (this IS the search), and QUOTE_REQUIRED belongs to the checkout lane. OPERATION_NOT_ALLOWED is the one code
+// whose meaning is "this call, as made, is not something this tool performs", it carries the right
+// retriable:false, and the curated message + `reason` (`ucp_*`) are what the caller actually reads —
+// toToolError surfaces `{code, message, retriable, detail}` and never the catalog's recovery string.
+const SEARCH_REFUSAL_CODE = "OPERATION_NOT_ALLOWED";
 
 /**
  * One entry per canonical operation on the UCP dialect. `inputSchema` is what `tools/list` publishes and
  * `map` is what `tools/call` runs; they are written together so neither can move without the other.
  */
 const SPECS = Object.freeze({
+  search_catalog: Object.freeze({
+    ucpTool: "search_catalog",
+    description: SEARCH_CATALOG_DESCRIPTION,
+    inputSchema: {
+      // LIVE-VERIFIED (cosrx tools/list, 2026-08-13, via the buyer client's `searchCatalog`): required
+      // ["meta","catalog"]; `catalog` has NO required member, and carries query/pagination/context/signals/
+      // filters. Same nesting rule as get_product — the payload rides under `catalog`, never flat.
+      type: "object",
+      required: ["meta", "catalog"],
+      additionalProperties: false,
+      properties: {
+        meta: metaSchema({ idempotency: false }),
+        catalog: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            query: { type: "string", description: "Free-text search query. Optional on the wire." },
+            // Live members accepted and NOT read (see the header note and UCP_ACCEPTED_BUT_UNMAPPED). The
+            // native lane pages by `page`/`page_size`; UCP's `pagination` inner shape is unverified, so it is
+            // not translated onto them by guesswork.
+            pagination: { type: "object", additionalProperties: true, description: "Accepted and NOT read (inner shape unverified)." },
+            context: { type: "object", additionalProperties: true, description: "Accepted and NOT read." },
+            signals: { type: "object", additionalProperties: true, description: "Accepted and NOT read." },
+            filters: { type: "object", additionalProperties: true, description: "Accepted and NOT read." },
+          },
+        },
+      },
+    },
+    map(args) {
+      const code = SEARCH_REFUSAL_CODE;
+      requireArgsObject(args, code);
+      // A FLAT `query` is refused BY NAME before the generic unknown-field refusal — it is the exact shape our
+      // own buyer client used to send (`catalogSearch`, since fixed), so it is the likeliest wrong shape a
+      // caller brings, and "not part of this schema" would leave that caller no closer to `catalog.query`.
+      if (own(args, "query") !== undefined) {
+        throw ucpRefusal(code, "ucp_query_must_nest_under_catalog", [
+          "`search_catalog` takes the query NESTED as `catalog.query`, never as a flat top-level `query`.",
+          "Send `{ meta, catalog: { query } }`.",
+        ].join(" "), { rejected_field: "query", required_fields: ["catalog.query"] });
+      }
+      rejectUnknown(args, ["meta", "catalog"], "arguments", code);
+      requireMeta(args, code);
+      const catalog = own(args, "catalog");
+      if (!isPlainObject(catalog)) {
+        throw ucpRefusal(code, "ucp_catalog_object_required", [
+          "`search_catalog` requires a `catalog` object — the query rides NESTED under it as `catalog.query`,",
+          "never as a flat top-level field.",
+        ].join(" "), { required_fields: ["catalog"] });
+      }
+      rejectUnknown(catalog, ["query", "pagination", "context", "signals", "filters"], "catalog", code);
+      const query = own(catalog, "query");
+      if (query !== undefined && typeof query !== "string") {
+        // The live schema types `catalog.query` as a string. Refusing a number here mirrors getProduct's
+        // rule for `catalog.id`, and the message says WHICH mistake was made so the caller does not just
+        // resend the same non-string.
+        throw ucpRefusal(code, "ucp_query_string_required",
+          "`catalog.query` must be a string when supplied.", { rejected_field: "catalog.query" });
+      }
+      // -> the NATIVE search_catalog tool args. No merchant_id exists in the UCP shape, so canonicalExecutor
+      // routes this to the UNSCOPED multi-merchant lane (find_products_multi), which is caller-independent
+      // and cached — the same lane the native tool takes for a merchant-less search. An absent or blank query
+      // is passed through as ABSENT (never as ""), so the native lane sees the same call it would from /mcp.
+      return nonEmpty(query) ? { query: query.trim() } : {};
+    },
+  }),
+
   get_product: Object.freeze({
     ucpTool: "get_product",
     description: GET_PRODUCT_DESCRIPTION,
@@ -1141,7 +1236,8 @@ const SPECS = Object.freeze({
       if (!nonEmpty(id)) {
         throw ucpRefusal(code, "ucp_product_id_required", [
           "`get_product` requires `catalog.id` — the Pivota product id to read, NESTED under `catalog`.",
-          "Free-text catalog search is not exposed on this dialect, so a query alone cannot be answered here.",
+          "For free text call `search_catalog` with `{ meta, catalog: { query } }`; it returns the ids this",
+          "tool reads.",
         ].join(" "), { required_fields: ["catalog.id"] });
       }
       // -> the NATIVE get_product tool args. No merchant_id exists in the UCP shape, so this reads the

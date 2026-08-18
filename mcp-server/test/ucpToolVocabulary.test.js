@@ -85,6 +85,7 @@ describe('UCP tool vocabulary is the one platforms actually send', () => {
 describe('the UCP dialect shares one surface and never forks the money path', () => {
   test('every UCP tool resolves to the SAME canonical operation object as its MCP twin', () => {
     const pairs = [
+      ['search_catalog', 'search_catalog'],
       ['get_product', 'get_product'],
       ['create_checkout', 'create_checkout_session'],
       ['update_checkout', 'update_checkout_session'],

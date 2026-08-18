@@ -200,10 +200,10 @@ function pruneOrphanedExtensions(ids, parentsOf) {
  * WHY THIS EXISTS, and it is the sharpest lesson of this whole change: fixing a capability id turns a
  * silently-DEAD advertisement into an actively-LYING one unless reachability is checked at the same time.
  * `dev.ucp.shopping.discovery` matched no platform, so nothing behind it was ever called. Publishing the real
- * `dev.ucp.shopping.catalog.search` makes the intersection SUCCEED — and then `tools/call search_catalog`
- * hard-fails, because the UCP dialect does not expose that tool (mcp-server/src/ucpArgumentAdapter.js says so
- * outright). A correct id in front of an absent tool is worse than a wrong id: the platform now gets far
- * enough to fail on the money-adjacent call instead of skipping the capability.
+ * `dev.ucp.shopping.catalog.search` would have made the intersection SUCCEED — and then `tools/call
+ * search_catalog` hard-fail, because until 2026-08-18 the UCP dialect did not expose that tool. A correct id
+ * in front of an absent tool is worse than a wrong id: the platform gets far enough to fail on the
+ * money-adjacent call instead of skipping the capability.
  *
  * THE RULE. Our advertised transport is MCP JSON-RPC, where an operation is invoked as a TOOL. So an
  * operation is invocable only if the canonical contract gives it a `ucpTool` — the same evidenced-spec-name
@@ -211,8 +211,10 @@ function pruneOrphanedExtensions(ids, parentsOf) {
  * operation that is not tool-served at all: `kernel: 'external'` (identity linking happens at the OAuth
  * edge, not via tools/call), which stays advertisable because no tool absence can make it unreachable.
  *
- * This is self-maintaining: the day `search_catalog` gains an evidenced `ucpTool` and a mapper, its
- * capability starts advertising itself. Nothing here needs editing for that.
+ * This is self-maintaining, and it has now been exercised in both directions: `search_catalog` gained its
+ * evidenced `ucpTool` and mapper on 2026-08-18 (#2016) and its capability started advertising itself with no
+ * edit here — while `dev.ucp.shopping.order` (no ucpTool) stays withheld by the same line. Both are pinned
+ * in test/protocol.test.js 'a capability is advertised ONLY where the advertised door can actually serve it'.
  */
 function invocableOperations(cap, config = {}) {
   const ops = operationsForCapability(cap, { includeRefusalOnly: false });

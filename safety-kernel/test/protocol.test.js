@@ -624,8 +624,9 @@ test('the PUBLISHED id is bound to its operations — not just the internal key'
   // this assertion: it is what a platform reading the id actually gets to invoke, and it needs no restatement
   // of the reachability filter (an operation with no `ucpTool` contributes no tool by definition).
   //
-  // The swapped-ids mutant still dies: id `…catalog.lookup` would resolve to the key holding `search_catalog`,
-  // which has no UCP tool at all, so its tool list would be empty instead of ['get_product'].
+  // The swapped-ids mutant still dies: id `…catalog.lookup` would resolve to the key holding `search_catalog`
+  // and publish ['search_catalog'] where ['get_product'] is asserted (and vice versa) — the two catalog ids
+  // now each carry exactly one tool, so the swap is visible as an exact inversion of the map below.
   const keyForId = (id) => Object.keys(CANONICAL_CAPABILITIES).find((k) => CANONICAL_CAPABILITIES[k].ucp === id);
   const toolsFor = (id) => {
     const key = keyForId(id);
@@ -636,6 +637,7 @@ test('the PUBLISHED id is bound to its operations — not just the internal key'
   assert.deepEqual(
     Object.fromEntries(Object.keys(profile.ucp.capabilities).map((id) => [id, toolsFor(id)])),
     {
+      'dev.ucp.shopping.catalog.search': ['search_catalog'],
       'dev.ucp.shopping.catalog.lookup': ['get_product'],
       'dev.ucp.shopping.checkout': ['complete_checkout', 'create_checkout', 'get_checkout', 'update_checkout'],
       // No tool: identity linking happens at the OAuth edge, which is why it stays advertisable with none.
@@ -653,15 +655,18 @@ test('the PUBLISHED id is bound to its operations — not just the internal key'
 test('a capability is advertised ONLY where the advertised door can actually serve it', () => {
   // Fixing a capability id turns a silently-DEAD advertisement into an actively-LYING one unless
   // reachability is checked with it. `dev.ucp.shopping.discovery` matched no platform, so nothing behind it
-  // was called; the real `dev.ucp.shopping.catalog.search` makes the intersection SUCCEED and then
-  // `tools/call search_catalog` hard-fails, because the UCP dialect does not expose that tool.
+  // was called; the real `dev.ucp.shopping.catalog.search` would have made the intersection SUCCEED and then
+  // `tools/call search_catalog` hard-fail, because the UCP dialect did not expose that tool. It was withheld
+  // for exactly that reason until 2026-08-18, when `search_catalog` gained its evidenced `ucpTool` + mapper —
+  // and the SAME rule, unchanged, is what now publishes it. Both directions of the rule are asserted here.
   const profile = buildUcpProfile({
     baseUrl: 'https://shop.pivota.cc',
     mcpEndpoint: 'https://shop.pivota.cc/ucp/mcp',
   });
   const ids = Object.keys(profile.ucp.capabilities);
-  // Withheld: every operation behind these is absent from the UCP dialect today.
-  assert.ok(!ids.includes('dev.ucp.shopping.catalog.search'), 'search_catalog has no ucpTool — do not advertise it');
+  // Published BECAUSE its operation is now reachable — not by an edit to the builder.
+  assert.ok(ids.includes('dev.ucp.shopping.catalog.search'), 'search_catalog carries a ucpTool — advertise it');
+  // Withheld: every operation behind this is still absent from the UCP dialect.
   assert.ok(!ids.includes('dev.ucp.shopping.order'), 'the order ops have no ucpTool — do not advertise them');
   // …and every advertised capability leaves at least one operation a platform can actually reach: an
   // evidenced UCP tool name, or an operation that is not tool-served at all (`kernel: 'external'`). A
