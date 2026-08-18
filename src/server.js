@@ -37183,10 +37183,23 @@ async function resolveProductIntelInvokeContext({
   }
 
   // The ref reached the store with no seller; now that a row has answered,
-  // complete it from THAT ROW's own seller column. The seller therefore comes
-  // from the resolved record, never from the request's id shape — and every
-  // downstream reader (offer ids, the self-offer merchant, the emitted
-  // canonical_product_ref) keeps seeing the shape it has always seen.
+  // complete it from THAT ROW's own seller column, so every downstream reader
+  // (offer ids, the self-offer merchant, the emitted canonical_product_ref)
+  // keeps seeing the shape it has always seen.
+  //
+  // HONEST LIMIT, measured — do NOT read this as "ADR-009 is finished on this
+  // lane". On the seed path the row's merchant_id is NOT per-row provenance:
+  // services/externalSeedProducts.js and services/externalSeedDetail.js both
+  // stamp the retired sentinel as a literal, so this completion yields that
+  // same sentinel every time. Output is byte-identical to the mint it replaced
+  // (which is the point — no regression), but the value is still being MINTED,
+  // just one layer further in. Finishing the retirement means teaching the seed
+  // BUILDERS to carry the seed's own seller_ref / observed seller; until then
+  // this is a routing fix, not an identity fix.
+  //
+  // The `!merchant_id` guard is load-bearing: the products_cache lane returns
+  // its row unstamped, so an unconditional completion would let a row's own
+  // merchant_id overwrite a CALLER-SUPPLIED seller.
   if (!canonicalProductRef.merchant_id) {
     const resolvedMerchantId = String(product?.merchant_id || product?.merchantId || '').trim();
     if (resolvedMerchantId) {

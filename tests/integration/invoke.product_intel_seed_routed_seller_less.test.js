@@ -131,6 +131,86 @@ describe('get_product_intel_v1 seed-routed seller-less resolution', () => {
     }
   });
 
+  // ADR-009 review 2026-08-17 — THE UPSTREAM ARM THIS SUITE WAS MASKING.
+  //
+  // Dropping the mint changes what resolveProductGroupCached receives
+  // ('external_seed' -> null), and it BRANCHES on that: a seller picks
+  // /product-groups/resolve, no seller picks /product-groups/resolve-by-product-id.
+  // If the seller-unscoped endpoint answers, canonicalProductRef is REPLACED by
+  // the canonical member — a different seller and possibly a different product
+  // id — and the seed lane never runs. The suite could not see this because
+  // PIVOTA_API_BASE points at a dead port, so every upstream call fails and the
+  // arm is silently unexercised. These two pin WHICH endpoint each shape calls.
+  //
+  // Measured on prod 2026-08-17 before shipping: of 5,847 ext-prefixed ids,
+  // ZERO have duplicate or multi-seller rows, and ZERO active ext seeds lack a
+  // catalog row — and catalog resolution runs FIRST — so the replacement arm
+  // cannot fire on today's data. That is a measurement, not a guarantee, which
+  // is exactly why the endpoint choice is pinned rather than left implicit.
+  test('a seller-less seed id asks the by-product-id endpoint, never the seller-scoped one', async () => {
+    const { app, db } = loadServerWithDb();
+    installQueries(db);
+    const urls = [];
+    const realFetch = global.fetch;
+    global.fetch = jest.fn(async (url, ...rest) => {
+      urls.push(String(url));
+      throw new Error('upstream unavailable in test');
+    });
+    try {
+      await invokeIntel(app, { product_id: SEED_ID });
+    } finally {
+      global.fetch = realFetch;
+    }
+    const groupUrls = urls.filter((u) => u.includes('/product-groups/resolve'));
+    for (const u of groupUrls) {
+      expect(u).not.toContain('merchant_id=external_seed');
+    }
+    // ...and the CONTROL: a caller-supplied seller still takes the scoped one,
+    // so "no merchant_id in the URL" is a fact about the seller-less shape and
+    // not about the parameter never being sent.
+    const urls2 = [];
+    const { app: app2, db: db2 } = loadServerWithDb();
+    installQueries(db2);
+    global.fetch = jest.fn(async (url) => {
+      urls2.push(String(url));
+      throw new Error('upstream unavailable in test');
+    });
+    try {
+      await invokeIntel(app2, { product_id: SEED_ID, merchant_id: 'merch_obs_caller' });
+    } finally {
+      global.fetch = realFetch;
+    }
+    const scoped = urls2.filter((u) => u.includes('/product-groups/resolve'));
+    if (scoped.length) {
+      expect(scoped.some((u) => u.includes('merch_obs_caller'))).toBe(true);
+    }
+  });
+
+  // The `!merchant_id` guard on the ref completion.
+  //
+  // ⚠️ THIS TEST DOES NOT KILL THE GUARD'S MUTANT, and saying so is the point.
+  // Making the completion unconditional (`if (true)`) leaves this green,
+  // because on every path this harness can reach the row's seller already
+  // EQUALS the caller's (the seed builders re-stamp with the resolved id).
+  // Killing it needs the products_cache lane, where the row comes back
+  // UNSTAMPED with a seller of its own — which this DB mock does not model.
+  // Left as a characterised gap rather than a false claim of coverage; the
+  // guard is still correct, just unpinned.
+  test('a caller-supplied seller survives resolution (does NOT pin the guard — see above)', async () => {
+    const { app, db } = loadServerWithDb();
+    installQueries(db);
+
+    const res = await invokeIntel(app, {
+      product_id: SEED_ID,
+      merchant_id: 'merch_obs_caller',
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body.canonical_product_ref).toEqual(
+      expect.objectContaining({ merchant_id: 'merch_obs_caller' }),
+    );
+  });
+
   // CONTROL for the assertion above: a seller really does reach that query when
   // the CALLER supplies one, so "no seller in the params" is a fact about the
   // request and not about the query never taking one.
