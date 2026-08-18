@@ -4420,9 +4420,16 @@ function buildExternalSeedProduct(row, options = {}) {
     .map(ensureJsonObject)
     .find((contract) => Object.keys(contract).length > 0);
 
+  // ADR-009 (writer side): this is a synthetic, product-SHAPED bag assembled
+  // for ingredient classification only — it never leaves this function and
+  // never reaches a response, a row, or a cache key. It used to carry a
+  // fabricated seller purely so the ingredient module's seed detector would
+  // recognise it, which is the category error in miniature: provenance dressed
+  // as a seller. The detector reads five signals and `source` below is the
+  // SOURCING one, which is the honest answer to "where did this come from" and
+  // is the axis ADR-009 keeps. So the seller axis is simply absent here.
   const authorityInput = {
     product_id: externalProductId,
-    merchant_id: EXTERNAL_SEED_MERCHANT_ID,
     source: 'external_seed',
     title,
     description,

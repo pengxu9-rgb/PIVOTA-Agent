@@ -35,6 +35,15 @@ const PATTERNS = [
   /(?:===|!==|==|!=)\s*EXTERNAL_SEED_MERCHANT_ID\b/g,
   /\bEXTERNAL_SEED_MERCHANT_ID\s*(?:===|!==|==|!=)/g,
   /merchantId:\s*EXTERNAL_SEED_MERCHANT_ID\b/g,
+  // ADR-009 WRITER side. Everything above this line watches code that COMPARES
+  // against the sentinel seller — readers. None of them can see the sentinel
+  // being BORN: a snake_case object-literal mint spelled with the constant
+  // matched no pattern at all, which is why the two files that mint it for the
+  // seed lane were not even in the baseline. Reaching zero on a reader-only
+  // ratchet would not have meant the sentinel stopped being produced. This
+  // pattern closes that blind spot; the camelCase twin two lines up already
+  // watched the same shape under the other spelling.
+  /merchant_id:\s*EXTERNAL_SEED_MERCHANT_ID\b/g,
   // ADR-009 follow-on: the re-key moved seed supply onto `merch_obs_` sellers,
   // so a hardcoded observed-seller PREFIX is the same defect class in its next
   // costume — and nothing above matches it. Review 2026-08-17 caught the
@@ -113,6 +122,25 @@ if (require.main === module && process.argv.includes('--regen')) {
         n += matches ? matches.length : 0;
       }
       expect(n).toBeGreaterThanOrEqual(2);
+    });
+
+    test('the ratchet bites on a WRITE, not just a comparison', () => {
+      // Guard-of-the-guard for the writer pattern specifically. Asserted apart
+      // from the reader synthetic above because that one already scores >= 2
+      // from the reader patterns alone: folding a mint into it would let the
+      // writer pattern rot away with the combined test still green.
+      const mint = '  merchant_id: EXTERNAL_SEED_MERCHANT_ID,';
+      const countMatches = (text) =>
+        PATTERNS.reduce((total, pattern) => total + (text.match(pattern)?.length || 0), 0);
+
+      expect(countMatches(mint)).toBe(1);
+
+      // CONTROL: the seller axis is what is watched, not the word. The sourcing
+      // axes travel beside the mint on the very same objects and must stay
+      // invisible to the ratchet, or every honest lane label reads as a defect.
+      expect(countMatches("  source: 'external_seed',")).toBe(0);
+      expect(countMatches("  platform: 'external_seed',")).toBe(0);
+      expect(countMatches("  source_system: 'external_product_seeds_mirror_v1',")).toBe(0);
     });
   });
 }
