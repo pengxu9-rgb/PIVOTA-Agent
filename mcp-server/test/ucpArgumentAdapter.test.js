@@ -62,7 +62,10 @@ function recordingExecutor() {
       seen.push({ op, params, ctx });
       if (op === 'get_product') {
         const product_id = params?.payload?.product?.product_id;
-        return { product: { product_id, variants: [{ variant_id: `v_${product_id}` }] } };
+        // A PRICED row: on the UCP dialect the response is now shaped to the spec, and a row with no priced
+        // offer is (correctly) refused as NO_MERCHANT_OFFER — which would fail every get_product test here for
+        // a reason unrelated to argument mapping. Native rows carry major-unit price + currency; so does this.
+        return { product: { product_id, title: `Product ${product_id}`, price: 12.5, currency: 'USD', variants: [{ variant_id: `v_${product_id}` }] } };
       }
       return { session_id: 'q_1' };
     },

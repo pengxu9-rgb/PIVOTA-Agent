@@ -8,6 +8,7 @@ import assert from 'node:assert/strict';
 import {
   shapeUcpProduct,
   shapeUcpSearchResponse,
+  shapeUcpGetProductResponse,
   shapeUcpResult,
   encodeSearchCursor,
   decodeSearchCursor,
@@ -335,6 +336,93 @@ describe('messages', () => {
   });
 });
 
+// ---- 4b. get_product -> catalog_lookup get_product_response ----------------------------------------------------
+
+describe('get_product answers the spec get_product_response', () => {
+  // PROVENANCE: https://ucp.dev/2026-04-08/schemas/shopping/catalog_lookup.json, fetched 2026-08-18.
+  const REQUIRED_GET_PRODUCT_RESPONSE = ['ucp', 'product'];
+  const REQUIRED_PRODUCT = ['id', 'title', 'description', 'price_range', 'variants'];
+  const DETAIL_ROW = Object.freeze({
+    ...ROW,
+    variants: [
+      { variant_id: 'v_30ml', title: '30ml', price: 25.99, options: [{ name: 'Size', value: '30ml' }] },
+      { variant_id: 'v_50ml', title: '50ml', price: 39.99, options: [{ name: 'Size', value: '50ml' }] },
+    ],
+  });
+  const shape = (native) => shapeUcpGetProductResponse(native, { params: { payload: { product: { product_id: ROW.pivota_signature_id } } }, ucpArgs: { meta: AGENT_META, catalog: { id: ROW.pivota_signature_id } } });
+
+  test('the envelope is `{ucp, product}` and the product is a spec product — the same mapper search uses', () => {
+    const out = shape({ product: ROW });
+    for (const k of REQUIRED_GET_PRODUCT_RESPONSE) assert.ok(k in out, `missing ${k}`);
+    for (const k of REQUIRED_PRODUCT) assert.ok(k in out.product, `product missing ${k}`);
+    assert.equal(out.ucp.version, UCP_RESPONSE_VERSION);
+    assert.equal(out.product.id, ROW.pivota_signature_id);
+    assert.deepEqual(out.product.price_range.min, { amount: 2599, currency: 'USD' });
+    assert.equal(out.product.variants.length, 1);
+    assert.equal(out.product.variants[0].id, out.product.id, 'the one variant IS the product — the id checkout accepts');
+    assert.equal(out.messages, undefined, 'a single-variant row earns no warning');
+    // and byte-for-byte the product search would publish for the same row
+    assert.deepEqual(out.product, shapeUcpProduct(ROW).product);
+  });
+
+  test('a native body that IS the row (no `product` wrapper) is accepted too', () => {
+    assert.equal(shape(ROW).product.id, ROW.pivota_signature_id);
+  });
+
+  test('a row with several REAL variants still publishes ONE — and SAYS SO, because checkout cannot take a variant id yet', () => {
+    const out = shape({ product: DETAIL_ROW });
+    assert.equal(out.product.variants.length, 1);
+    assert.equal(out.product.variants[0].id, ROW.pivota_signature_id, 'never a per-variant id the checkout would refuse');
+    assert.equal(JSON.stringify(out).includes('v_30ml'), false, 'variant ids the door cannot accept are not advertised');
+    const w = out.messages.find((m) => m.code === 'variants.selection_not_supported');
+    assert.equal(w.type, 'warning');
+    assert.equal(w.path, '$.product.variants');
+    assert.match(w.content, /2 purchasable variants/);
+    assert.match(w.content, /only the product id is accepted as item\.id/);
+    // Variants that merely RESTATE the product id, or carry no id, are not "real" and earn no warning —
+    // by buyerIntake's OWN test (isRestatedProductId), which also discards the unscoped lane's fabricated
+    // `${product_id}-${n}` ids. The warning claims what checkout will do, so it must count what checkout counts.
+    const pid = ROW.pivota_signature_id;
+    const restated = { ...ROW, variants: [{ variant_id: pid }, { title: 'no id' }, { variant_id: 'v_only' }] };
+    assert.equal(shape({ product: restated }).messages, undefined, 'one real variant -> no warning');
+    assert.equal(shape({ product: { ...ROW, variants: [] } }).messages, undefined);
+    assert.equal(shape({ product: { ...ROW, variants: 'not an array' } }).messages, undefined);
+    // pdpBuilder fabrications: `${pid}-1`, `${pid}-2` are NOT real variants (checkout would refuse them as
+    // no identity), so they must not be announced as "2 purchasable variants".
+    assert.equal(shape({ product: { ...ROW, variants: [{ variant_id: `${pid}-1` }, { variant_id: `${pid}-2` }] } }).messages, undefined, 'fabricated ids are not variants');
+    assert.equal(shape({ product: { ...ROW, variants: [{ variant_id: `${pid}-1` }, { variant_id: 'v_real' }, { variant_id: 'v_real2' }] } }).messages[0].code, 'variants.selection_not_supported', 'two real among fabricated -> warning');
+    // Duplicate ids are ONE variant.
+    assert.equal(shape({ product: { ...ROW, variants: [{ variant_id: 'v_dup' }, { variant_id: 'v_dup' }, { id: 'v_dup' }] } }).messages, undefined, 'duplicates collapse');
+    // …and the count in the message is exact, not capped.
+    assert.match(shape({ product: { ...ROW, variants: [1, 2, 3, 4, 5].map((n) => ({ variant_id: `v_${n}` })) } }).messages[0].content, /5 purchasable variants/);
+    // The warning is a SPEC warning: type/code/content present, content_type in the enum.
+    assert.equal(w.content_type, 'plain');
+    assert.ok(['plain', 'markdown'].includes(w.content_type));
+  });
+
+  test('not found is a REFUSAL, not a half-envelope: no row / no id -> UNKNOWN_PRODUCT_ID, unpriced -> NO_MERCHANT_OFFER, both terminal', () => {
+    for (const native of [{ product: null }, {}, { product: 'nope' }, { product: { title: 'no id at all' } }, null]) {
+      let err;
+      try { shape(native); } catch (e) { err = e; }
+      assert.ok(err, `expected a refusal for ${JSON.stringify(native)}`);
+      assert.equal(err.code, 'UNKNOWN_PRODUCT_ID', JSON.stringify(native));
+      assert.equal(err.retriable, false);
+    }
+    let err;
+    try { shape({ product: { ...ROW, price: undefined } }); } catch (e) { err = e; }
+    assert.equal(err.code, 'NO_MERCHANT_OFFER');
+    assert.equal(err.retriable, false, 'a missing offer does not heal on retry');
+    try { err = undefined; shape({ product: { ...ROW, currency: 'US$' } }); } catch (e) { err = e; }
+    assert.equal(err.code, 'NO_MERCHANT_OFFER');
+  });
+
+  test('a description that names the product, never {} — and internal fields never leak', () => {
+    const out = shape({ product: { ...ROW, description: undefined, merchant_id: 'merch_obs_LEAK', destination_url: 'https://reseller.example/LEAK' } });
+    assert.deepEqual(out.product.description, { plain: 'Niacinamide Serum' });
+    assert.equal(JSON.stringify(out).includes('LEAK'), false);
+  });
+});
+
 // ---- 5. wiring: through the real surface, per dialect, after the cache, on a clone ---------------------------
 
 describe('the shaper is applied on the UCP dialect only, after the shared cache, and never mutates the cached value', () => {
@@ -370,6 +458,27 @@ describe('the shaper is applied on the UCP dialect only, after the shared cache,
     assert.equal(viaUcp2.products[0].price_range.min.amount, 2599);
   });
 
+  test('get_product: shaped on the UCP dialect, native on /mcp; and a UCP not-found is a tool ERROR, not a success envelope', async () => {
+    const detail = { product: { ...ROW, variants: [{ variant_id: 'v_a', price: 25.99 }, { variant_id: 'v_b', price: 30 }] } };
+    const executor = executorReturning(detail);
+    const native = createCommerceToolSurface(executor, { cache: true });
+    const ucp = ucpDialectSurface(native);
+    const viaUcp = await ucp.callTool('get_product', { meta: AGENT_META, catalog: { id: ROW.pivota_signature_id } }, SESSION);
+    assert.equal(viaUcp.ucp.version, UCP_RESPONSE_VERSION);
+    assert.equal(viaUcp.product.variants.length, 1);
+    assert.equal(viaUcp.messages[0].code, 'variants.selection_not_supported');
+    const viaMcp = await native.callTool('get_product', { merchant_id: 'm', product_id: ROW.pivota_signature_id }, SESSION);
+    assert.equal(viaMcp.ucp, undefined, 'native dialect not shaped');
+    assert.equal(viaMcp.product.variants.length, 2, 'native keeps its real variants');
+    assert.equal(viaMcp.product.price, 25.99, 'native keeps major units');
+
+    const missing = ucpDialectSurface(createCommerceToolSurface(executorReturning({ product: null }), { cache: false }));
+    await assert.rejects(
+      missing.callTool('get_product', { meta: AGENT_META, catalog: { id: 'sig_nope' } }, SESSION),
+      (e) => e.code === 'UNKNOWN_PRODUCT_ID' && e.retriable === false,
+    );
+  });
+
   test('the shaper does not mutate its input (a cache entry must stay native for the next reader)', () => {
     const input = structuredClone(NATIVE);
     const before = JSON.stringify(input);
@@ -377,11 +486,11 @@ describe('the shaper is applied on the UCP dialect only, after the shared cache,
     assert.equal(JSON.stringify(input), before);
   });
 
-  test('only search_catalog is shaped today; other ops pass through native (get_product remains native)', () => {
-    assert.deepEqual([...UCP_SHAPED_OPERATION_IDS], ['search_catalog']);
-    const getProduct = canonicalOpForUcpTool('get_product');
-    const passthrough = { product: { product_id: 'sig_x' } };
-    assert.equal(shapeUcpResult(getProduct, passthrough, {}), passthrough);
+  test('search_catalog and get_product are shaped; any other op passes through native', () => {
+    assert.deepEqual([...UCP_SHAPED_OPERATION_IDS].sort(), ['get_product', 'search_catalog']);
+    const other = canonicalOpForUcpTool('get_checkout');
+    const passthrough = { session_id: 'q_1' };
+    assert.equal(shapeUcpResult(other, passthrough, {}), passthrough);
   });
 
   test('a native error result is not dressed up as a success envelope', async () => {
