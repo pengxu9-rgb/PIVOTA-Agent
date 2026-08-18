@@ -11983,6 +11983,13 @@ module.exports = {
   getDiscoveryHealthSnapshot,
   getDiscoveryFeed,
   _internals: {
+    // ADR-009: exported for test. These three read "is this seller seed
+    // supply?" and each silently flipped when the re-key moved that supply onto
+    // observed sellers — the brand cap in particular is a 4x change on the live
+    // home feed, so it does not ship unasserted again.
+    isExternalSeedMerchantCandidate,
+    getColdStartHomeBrandCap,
+    buildDiscoveryDedupKey,
     buildBrandScopeAliases,
     buildBeautyPersonalizedQueries,
     computeDiscoveryStepTimeoutMs,

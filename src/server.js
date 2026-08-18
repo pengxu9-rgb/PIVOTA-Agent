@@ -88,6 +88,7 @@ const {
 // validate an ELECTED canonical sig rather than restated — a fourth hand-kept
 // copy of it is how the surfaces would drift apart again.
 const { seedRoutedLaneSql, seedRouteResolvesSql, isSeedRoutedLane } = require('./services/pdpRenderability');
+const { isExternalSeedSupplyMerchantId } = require('./services/externalSeedLane');
 const bookingsApi = require('./services/bookings/api');
 const requireBookingFlagOn = bookingsApi.requireBookingFlagOn;
 const {
@@ -1850,10 +1851,10 @@ function offerSellerNameLooksLikeProductBrand(value, product, member) {
 // Serving-path branches that ask "is this external-seed supply?" (skip upstream
 // fetch, serve straight from the identity payload) must therefore treat the two
 // alike. Use this when only a merchant_id is in hand.
+// Delegates: externalSeedLane owns this test. Keeping a twin here is how the
+// class regressed in the first place — two copies of a prefix nothing watches.
 function isExternalSeedListingMerchantId(merchantId) {
-  const mid = String(merchantId || '').trim();
-  if (!mid) return false;
-  return mid === EXTERNAL_SEED_MERCHANT_ID || mid.startsWith('merch_obs_');
+  return isExternalSeedSupplyMerchantId(merchantId);
 }
 
 // Member/listing-aware variant: prefer the durable `source_kind` discriminator
