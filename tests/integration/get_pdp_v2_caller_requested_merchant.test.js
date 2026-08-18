@@ -57,6 +57,10 @@ function loadServerWithDb(envOverrides = {}) {
     // catch, so a dead base proves the answer came from the mocked DB.
     PIVOTA_API_BASE: 'http://127.0.0.1:9',
     PIVOTA_API_KEY: 'test-token',
+    // ON, as prod is. With it off maybeBuildLiveSyntheticPdp returns at its
+    // first line, so every assertion about what the identity graph CONTRIBUTES
+    // would pass vacuously while only the skip bookkeeping was really tested.
+    PDP_IDENTITY_GRAPH_ENABLED: 'true',
     ...envOverrides,
   };
   const db = require('../../src/db');
@@ -64,6 +68,15 @@ function loadServerWithDb(envOverrides = {}) {
   const app = require('../../src/server');
   return { app, db };
 }
+
+// The identity graph RE-ANCHORS `identity_resolution.resolution_source` to
+// `identity_graph_live` whenever it produces a synthetic product, which erases
+// the signal that says WHICH reconstruction arm ran. The three mismatch arms
+// are upstream of the graph and independent of it, so the arm tests disable it
+// to keep that observable sharp. Everything that is ABOUT the graph uses the
+// default (on, as prod is) and asserts metadata.identity_graph directly.
+const loadServerWithoutIdentityGraph = () =>
+  loadServerWithDb({ PDP_IDENTITY_GRAPH_ENABLED: 'false' });
 
 const norm = (sql) => String(sql || '').replace(/\s+/g, ' ').trim();
 
@@ -235,7 +248,7 @@ describe('get_pdp_v2 request-side merchant is the CALLER’s, not the resolved r
 
   describe('the external-seed product-id fallback arm', () => {
     test('a sig_ request that named no seller is not reported as a merchant mismatch', async () => {
-      const { app, db } = loadServerWithDb();
+      const { app, db } = loadServerWithoutIdentityGraph();
       install(db, { bareSig: bareSigRow() });
 
       const res = await pdp(app, { product_id: SIG_ID });
@@ -253,7 +266,7 @@ describe('get_pdp_v2 request-side merchant is the CALLER’s, not the resolved r
     });
 
     test('CONTROL: a caller that really did pin another seller still gets the mismatch', async () => {
-      const { app, db } = loadServerWithDb();
+      const { app, db } = loadServerWithoutIdentityGraph();
       install(db);
 
       const res = await pdp(app, { merchant_id: OTHER_MERCHANT, product_id: SEED_ID });
@@ -269,7 +282,7 @@ describe('get_pdp_v2 request-side merchant is the CALLER’s, not the resolved r
       // The sentinel arm of this predicate is deliberately kept: addressing the
       // seed lane by its retired name is not pinning a real seller. Delete that
       // arm and this flips to `..._fallback` + MISMATCH.
-      const { app, db } = loadServerWithDb();
+      const { app, db } = loadServerWithoutIdentityGraph();
       install(db);
 
       const res = await pdp(app, { merchant_id: SENTINEL, product_id: SEED_ID });
@@ -284,8 +297,8 @@ describe('get_pdp_v2 request-side merchant is the CALLER’s, not the resolved r
   });
 
   describe('the canonical-catalog-group arm', () => {
-    test('a sig_ request whose group elects another seller is not a merchant mismatch', async () => {
-      const { app, db } = loadServerWithDb();
+    test('a sig_ request whose group elects another seller keeps the signature reason', async () => {
+      const { app, db } = loadServerWithoutIdentityGraph();
       install(db, { bareSig: bareSigRow(), scopedGroup: groupRow(OTHER_MERCHANT) });
 
       const res = await pdp(app, { product_id: SIG_ID });
@@ -301,7 +314,7 @@ describe('get_pdp_v2 request-side merchant is the CALLER’s, not the resolved r
     });
 
     test('CONTROL: a caller-pinned seller re-elected by the group still mismatches', async () => {
-      const { app, db } = loadServerWithDb();
+      const { app, db } = loadServerWithoutIdentityGraph();
       install(db, { scopedGroup: groupRow(OBS_MERCHANT) });
 
       const res = await pdp(app, { merchant_id: OTHER_MERCHANT, product_id: SEED_ID });
@@ -315,8 +328,8 @@ describe('get_pdp_v2 request-side merchant is the CALLER’s, not the resolved r
   });
 
   describe('the unscoped product-group arm', () => {
-    test('a sig_ request resolved unscoped is not a merchant mismatch', async () => {
-      const { app, db } = loadServerWithDb();
+    test('a sig_ request resolved unscoped keeps the signature reason', async () => {
+      const { app, db } = loadServerWithoutIdentityGraph();
       // seedDetail:false makes the entry precheck MISS, which is what opens the
       // unscoped resolve for a request that carries a seller.
       install(db, {
@@ -335,7 +348,7 @@ describe('get_pdp_v2 request-side merchant is the CALLER’s, not the resolved r
     });
 
     test('CONTROL: a caller-pinned seller resolved unscoped still mismatches', async () => {
-      const { app, db } = loadServerWithDb();
+      const { app, db } = loadServerWithoutIdentityGraph();
       install(db, { unscopedGroup: groupRow(OBS_MERCHANT), seedDetail: false });
 
       const res = await pdp(app, { merchant_id: OTHER_MERCHANT, product_id: SEED_ID });
@@ -360,7 +373,7 @@ describe('get_pdp_v2 request-side merchant is the CALLER’s, not the resolved r
     // change on the main PDP route, not a latency one.
     test('the graph still runs on the signature lane', async () => {
       const { app, db } = loadServerWithDb();
-      install(db, { bareSig: bareSigRow() });
+      install(db, { bareSig: bareSigRow(), scopedGroup: groupRow(OBS_MERCHANT) });
 
       const res = await pdp(app, { product_id: SIG_ID });
 
@@ -368,12 +381,201 @@ describe('get_pdp_v2 request-side merchant is the CALLER’s, not the resolved r
       expect(routeHealthOf(res).identity_graph_live_mode).toBe(
         'executed_without_line_member_hydration',
       );
+      // Not just "the skip did not fire" — the graph actually produced the
+      // block. This is what re-enabling the skip would delete.
+      expect(res.body?.metadata?.identity_graph).toEqual(
+        expect.objectContaining({ canonical_scope: 'synthetic' }),
+      );
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // The sentinel exemption, and the two lanes it separates.
+  //
+  // All three mismatch arms read ONE normalisation (callerPinnedMerchantId).
+  // Two of them used to test truthiness alone, so they disagreed with the third
+  // about `{merchant_id:'external_seed', …}` — a shape
+  // scripts/audit-pdp-entity-truth.cjs still sends.
+  // ---------------------------------------------------------------------------
+  describe('a caller addressing the seed lane by its retired name is not a mismatch', () => {
+    test('SIGNATURE lane, canonical-catalog-group arm: reason code survives', async () => {
+      const { app, db } = loadServerWithoutIdentityGraph();
+      // The group elects the SAME seller the signature resolved to. Without the
+      // exemption the arm compares 'external_seed' to that seller and fires.
+      install(db, { bareSig: bareSigRow(), scopedGroup: groupRow(OBS_MERCHANT) });
+
+      const res = await pdp(app, { merchant_id: SENTINEL, product_id: SIG_ID });
+
+      const identity = identityOf(res);
+      expect(identity.requested_merchant_id).toBe(SENTINEL);
+      expect(identity.canonicalization_reason_code).toBe('PIVOTA_SIGNATURE_ID');
+      expect(identity.resolution_source).toBe('canonical_catalog_product_group');
+    });
+
+    test('SIGNATURE lane, unscoped product-group arm: reason code survives', async () => {
+      const { app, db } = loadServerWithoutIdentityGraph();
+      install(db, {
+        bareSig: bareSigRow(),
+        unscopedGroup: groupRow(OBS_MERCHANT),
+        seedDetail: false,
+      });
+
+      const res = await pdp(app, { merchant_id: SENTINEL, product_id: SIG_ID });
+
+      const identity = identityOf(res);
+      expect(identity.requested_merchant_id).toBe(SENTINEL);
+      expect(identity.canonicalization_reason_code).toBe('PIVOTA_SIGNATURE_ID');
+      expect(identity.resolution_source).toBe('product_group_unscoped');
+    });
+
+    // THE DIRECT LANE IS NOT TOUCHED, and that is a decision, not an omission.
+    //
+    // A sentinel caller whose group elects a real seller HAS had its identity
+    // moved, and the client is told so. Exempting the sentinel in these two
+    // arms — the tidy-looking "make all three obey one rule" edit — was tried
+    // and reverted: it flips this lane to canonicalization_applied=false,
+    // which frees `!canonicalizationApplied` in
+    // shouldSkipDirectExternalSeedIdentityGraph, and MEASURED consequence, the
+    // skip then fires and metadata.identity_graph disappears from the
+    // response. get_pdp_v2_stability's unscoped external_seed case pins the
+    // mismatch these two tests pin.
+    //
+    // The third arm is genuinely different and keeps its sentinel exemption:
+    // its ref is the seed ref itself, so nothing moves and there is nothing to
+    // report.
+    test('DIRECT lane: a sentinel caller whose group elects a real seller still mismatches', async () => {
+      const { app, db } = loadServerWithoutIdentityGraph();
+      install(db, { scopedGroup: groupRow(OBS_MERCHANT) });
+
+      const res = await pdp(app, { merchant_id: SENTINEL, product_id: SEED_ID });
+
+      const identity = identityOf(res);
+      expect(identity.requested_merchant_id).toBe(SENTINEL);
+      expect(identity.resolved_merchant_id).toBe(OBS_MERCHANT);
+      expect(identity.canonicalization_applied).toBe(true);
+      expect(identity.canonicalization_reason_code).toBe('PRODUCT_ROUTE_MERCHANT_MISMATCH');
+    });
+
+    test('DIRECT lane: and the identity graph keeps running there', async () => {
+      // The companion to the test above: canonicalization_applied staying true
+      // is what keeps shouldSkipDirectExternalSeedIdentityGraph shut on this
+      // lane. Pinned so the "harmonise the arms" edit cannot come back without
+      // this failing.
+      const { app, db } = loadServerWithDb();
+      install(db, { scopedGroup: groupRow(OBS_MERCHANT) });
+
+      const res = await pdp(app, { merchant_id: SENTINEL, product_id: SEED_ID });
+
+      expect(routeHealthOf(res).identity_graph_live_mode).toBe(
+        'executed_without_line_member_hydration',
+      );
+      expect(res.body?.metadata?.identity_graph).toEqual(
+        expect.objectContaining({ canonical_scope: 'synthetic' }),
+      );
+    });
+
+    test('CONTROL: a REAL pinned seller mismatches on the same fixture', async () => {
+      const { app, db } = loadServerWithoutIdentityGraph();
+      install(db, { scopedGroup: groupRow(OBS_MERCHANT) });
+
+      const res = await pdp(app, { merchant_id: OTHER_MERCHANT, product_id: SEED_ID });
+
+      const identity = identityOf(res);
+      expect(identity.canonicalization_applied).toBe(true);
+      expect(identity.canonicalization_reason_code).toBe('PRODUCT_ROUTE_MERCHANT_MISMATCH');
+    });
+
+    test('CONTROL: the direct skip still fires when nothing was remapped', async () => {
+      // Proves the pin above did not simply nail the skip shut: a seller-less
+      // request with no group still skips, exactly as on main.
+      const { app, db } = loadServerWithDb();
+      install(db);
+
+      const res = await pdp(app, { product_id: SEED_ID });
+
+      expect(routeHealthOf(res).identity_graph_live_mode).toBe(
+        'skipped_direct_external_seed_no_group',
+      );
+    });
+  });
+
+  describe('the seed-lane routing token on the entry precheck', () => {
+    test('a seller-less seed request still prechecks, and skips the upstream group resolve', async () => {
+      // precheckMerchantId's sentinel default is a KEEP, and it is OBSERVABLE:
+      // without it shouldPrecheckMerchantScoped goes false for this shape, the
+      // entry precheck never runs, precheckedMerchantProduct stays null and the
+      // request falls through to the upstream group resolve that
+      // PDP_EXTERNAL_SEED_UPSTREAM_GROUP_RESOLVE_ENABLED exists to avoid.
+      const { app, db } = loadServerWithoutIdentityGraph();
+      const seen = install(db);
+
+      const res = await pdp(app, { product_id: SEED_ID });
+
+      expect(res.status).toBe(200);
+      expect(identityOf(res).entry_precheck_missing).toBe(false);
+      expect(routeHealthOf(res).product_group_resolve_mode).toBe(
+        'skipped_external_seed_upstream_disabled',
+      );
+      // CONTROL: the precheck really did reach the seed store.
+      expect(seen.some((q) => q.sql.includes('destination_url'))).toBe(true);
+    });
+  });
+
+  describe('error bodies report the request at one grain', () => {
+    test('a PRODUCT_NOT_FOUND on the signature lane names the requested sig id', async () => {
+      // The merchant axis was moved to the frozen value while the product axis
+      // still read `entryProductId` — post-resolution on this lane. The body
+      // then said requested == resolved while canonicalization_applied was
+      // true, which is self-contradictory.
+      const { app, db } = loadServerWithoutIdentityGraph();
+      // eligible stays TRUE: the serving-eligibility 404 is a DIFFERENT exit
+      // that already used the diagnostics expression, so routing through it
+      // proved nothing (checked — the mutant survived that fixture).
+      install(db, { bareSig: bareSigRow(), seedDetail: false });
+
+      const res = await pdp(app, { product_id: SIG_ID });
+
+      expect(res.status).toBe(404);
+      expect(res.body?.error).toBe('PRODUCT_NOT_FOUND');
+      const identity = identityOf(res);
+      expect(identity.requested_product_id).toBe(SIG_ID);
+      expect(identity.requested_merchant_id).toBeNull();
+      // CONTROL: the resolved axis really did move, so requested != resolved is
+      // meaningful rather than both being blank.
+      expect(identity.resolved_product_id).toBe(SEED_ID);
+      expect(identity.canonicalization_applied).toBe(true);
+    });
+  });
+
+  describe('the entry-precheck-miss log can explain its own miss', () => {
+    test('it reports the seller the precheck actually used', async () => {
+      const { app, db } = loadServerWithoutIdentityGraph();
+      install(db, { bareSig: bareSigRow(), seedDetail: false });
+      const logger = require('../../src/logger');
+      const infoSpy = jest.spyOn(logger, 'info');
+
+      try {
+        await pdp(app, { product_id: SIG_ID });
+
+        const miss = infoSpy.mock.calls.find(
+          (call) =>
+            call[1] === 'get_pdp_v2 entry precheck miss; continuing with canonical/group resolution',
+        );
+        expect(miss).toBeTruthy();
+        // The caller sent no seller...
+        expect(miss[0].requested_merchant_id).toBeNull();
+        // ...but the lookup that missed was scoped to the resolved one. Without
+        // this field the line reports a null seller for a non-null lookup.
+        expect(miss[0].precheck_merchant_id).toBe(OBS_MERCHANT);
+      } finally {
+        infoSpy.mockRestore();
+      }
     });
   });
 
   describe('the completion log reports the request, not the resolved row', () => {
     test('a sig_ PDP logs the requested sig id and a null merchant', async () => {
-      const { app, db } = loadServerWithDb();
+      const { app, db } = loadServerWithoutIdentityGraph();
       install(db, { bareSig: bareSigRow() });
       const logger = require('../../src/logger');
       const infoSpy = jest.spyOn(logger, 'info');
@@ -439,7 +641,7 @@ describe('get_pdp_v2 request-side merchant is the CALLER’s, not the resolved r
     ];
 
     test.each(shapes)('%s', async (_name, productRef, expected) => {
-      const { app, db } = loadServerWithDb();
+      const { app, db } = loadServerWithoutIdentityGraph();
       install(db);
       const res = await pdp(app, productRef);
       expect(res.status).toBe(200);
@@ -450,7 +652,7 @@ describe('get_pdp_v2 request-side merchant is the CALLER’s, not the resolved r
       // The ordinary signature lane: `source` is set, so canonicalProductRef is
       // built inside the signature block and none of the reconstruction arms
       // above run at all.
-      const { app, db } = loadServerWithDb();
+      const { app, db } = loadServerWithoutIdentityGraph();
       const seen = install(db);
       db.query.mockImplementation(async (sql, params) => {
         const p = Array.isArray(params) ? params : [];
