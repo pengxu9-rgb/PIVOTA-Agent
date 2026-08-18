@@ -33,6 +33,7 @@ import { createPublicReadCache, stableStringify } from "./publicReadCache.js";
 // The UCP wire-shape translation (step 3). It owns the UCP `tools/list` schemas AND the `tools/call` argument
 // mapping in one table, so what the dialect advertises is what it accepts.
 import { shapeUcpResult } from "./ucpResponseShaper.js";
+import { tryEscalateUcpCheckout } from "./ucpCheckoutEscalation.js";
 import {
   UCP_INPUT_SCHEMAS,
   UCP_TOOL_DESCRIPTIONS,
@@ -282,6 +283,19 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
     // 3) build executor params by ALLOWLIST (only the fields this op defines). One move strips identity,
     //    extra money fields (e.g. a model-set refund amount), and prototype-polluting keys.
     const params = toParams(op, nativeArgs);
+
+    // 3a) UCP CHECKOUT ESCALATION (path 2 — rows Pivota does not transact). On the UCP dialect only, for the
+    //     checkout operations, a cart of OBSERVED-seller rows is answered with a spec `requires_escalation`
+    //     checkout whose continue_url is the seller's storefront — no intake, no quote, no kernel, no charge:
+    //     there is nothing Pivota could honestly price or charge for such a row. Contracted rows return null
+    //     here and take the kernel path below unchanged. Kill-switched (AGENT_CHECKOUT_UCP_ESCALATION_ENABLED,
+    //     default OFF). Deliberately AFTER the identity check (2) — an escalated checkout is still a buyer's
+    //     checkout — and after the allowlist, so it only ever sees fields this op defines. See
+    //     ucpCheckoutEscalation.js for the classification rule and the wire shape.
+    if (dialect === TOOL_DIALECTS.ucp && op.capability === "checkout") {
+      const escalated = await tryEscalateUcpCheckout({ op, params, ctx, executor, ucpArgs: toolArgs });
+      if (escalated) return escalated;
+    }
 
     // 3b) BUYER INTAKE — the shared rules, applied before anything is priced. See the note below toParams.
     //     Deliberately AFTER the allowlist (so intake only ever sees fields this op defines) and BEFORE
