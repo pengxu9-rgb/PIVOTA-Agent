@@ -24,10 +24,12 @@ import {
   createCommerceToolSurface,
   ucpDialectSurface,
   ucpCommerceToolDefinitions,
+  commerceToolDefinitions,
 } from '../src/commerceToolSurface.js';
 import {
   UCP_INPUT_SCHEMAS,
   UCP_ACCEPTED_BUT_UNMAPPED,
+  SEARCH_PAGE_SIZE_MAX,
   ucpToNativeToolArgs,
 } from '../src/ucpArgumentAdapter.js';
 import { canonicalOpForUcpTool } from '../../safety-kernel/src/protocol/canonicalContract.js';
@@ -619,23 +621,31 @@ describe('search_catalog speaks the UCP nested-catalog shape and takes the unsco
     }
   });
 
-  test('the live catalog members are accepted, and only `query` is read', async () => {
+  test('the live catalog members are accepted; the declared-unread ones never reach the lane', async () => {
     const { executor, ucp } = ucpSurface();
     await ucp.callTool('search_catalog', {
       meta: AGENT_META,
       catalog: {
         query: 'vitamin c',
-        pagination: { limit: 'PAG_SENTINEL' },
-        context: { country: 'CTX_SENTINEL' },
-        signals: { s: 'SIG_SENTINEL' },
-        filters: { f: 'FIL_SENTINEL' },
+        pagination: { cursor: 'CUR_SENTINEL', unknown_member: 'PAG_SENTINEL' },
+        context: {
+          address_country: 'CTRY_SENTINEL', address_region: 'REG_SENTINEL', postal_code: 'PC_SENTINEL',
+          language: 'LANG_SENTINEL', intent: 'INT_SENTINEL', unknown_member: 'CTX_SENTINEL',
+        },
+        signals: { 'dev.ucp.buyer_ip': 'IP_SENTINEL', 'dev.ucp.user_agent': 'UA_SENTINEL', s: 'SIG_SENTINEL' },
+        filters: { categories: ['CAT_SENTINEL'], unknown_member: 'FIL_SENTINEL' },
       },
     }, SESSION);
     const wire = JSON.stringify(executor.only('search_catalog').params);
-    for (const s of ['PAG_SENTINEL', 'CTX_SENTINEL', 'SIG_SENTINEL', 'FIL_SENTINEL']) {
+    for (const s of [
+      'CUR_SENTINEL', 'PAG_SENTINEL', 'CTRY_SENTINEL', 'REG_SENTINEL', 'PC_SENTINEL', 'LANG_SENTINEL',
+      'INT_SENTINEL', 'CTX_SENTINEL', 'IP_SENTINEL', 'UA_SENTINEL', 'SIG_SENTINEL', 'CAT_SENTINEL', 'FIL_SENTINEL',
+    ]) {
       assert.equal(wire.includes(s), false, `${s} must not be forwarded`);
     }
     assert.match(wire, /vitamin c/);
+    // …and nothing but the query reached the lane from that body: no page_size, no filter, no currency.
+    assert.deepEqual(executor.only('search_catalog').params.payload.search, { query: 'vitamin c' });
   });
 
   test('`meta` is required on the read, exactly as on every other UCP call', async () => {
@@ -703,6 +713,171 @@ describe('search_catalog speaks the UCP nested-catalog shape and takes the unsco
     }
     const flat = surfaceableIntakeRefusal(await rejected(ucp.callTool('search_catalog', SITES[0][1], SESSION)));
     assert.match(flat.message, /catalog\.query/);
+  });
+});
+
+// ---- 7c. search_catalog filters / pagination / currency ---------------------------------------------------------
+
+describe('search_catalog reads the live filters, pagination and currency the way the native lane means them', () => {
+  const search = async (catalog) => {
+    const { executor, ucp } = ucpSurface();
+    await ucp.callTool('search_catalog', { meta: AGENT_META, catalog }, SESSION);
+    return executor.only('search_catalog').params.payload.search;
+  };
+  const refused = async (catalog) => {
+    const { executor, ucp } = ucpSurface();
+    const err = await rejected(ucp.callTool('search_catalog', { meta: AGENT_META, catalog }, SESSION));
+    assert.ok(err, `expected a refusal for ${JSON.stringify(catalog)}`);
+    assert.equal(executor.seen.length, 0, 'nothing may reach the executor');
+    assert.equal(err.code, 'OPERATION_NOT_ALLOWED');
+    assert.equal(err.retriable, false);
+    return String(err.detail?.acp_message ?? err.message);
+  };
+
+  test('the UCP page-size cap IS the native tool\'s published `page_size.maximum` (hand-copied, so pinned)', () => {
+    const native = commerceToolDefinitions.find((d) => d.name === 'search_catalog');
+    assert.equal(native.inputSchema.properties.page_size.maximum, SEARCH_PAGE_SIZE_MAX,
+      'a UCP call must not be able to ask the lane for more than the native tool advertises');
+  });
+
+  test('`pagination.limit` becomes `page_size`, capped at the native ceiling; `cursor` never reaches the lane', async () => {
+    assert.deepEqual(await search({ query: 'q', pagination: { limit: 24 } }), { query: 'q', page_size: 24 });
+    assert.deepEqual(await search({ query: 'q', pagination: { limit: 1 } }), { query: 'q', page_size: 1 });
+    // The live schema declares no maximum; the native tool publishes 50. Capped, not refused.
+    assert.deepEqual(await search({ query: 'q', pagination: { limit: 500 } }), { query: 'q', page_size: 50 });
+    assert.deepEqual(await search({ query: 'q', pagination: { limit: 50 } }), { query: 'q', page_size: 50 });
+    // A cursor alone maps to nothing — there is no native continuation to hand it to.
+    assert.deepEqual(await search({ query: 'q', pagination: { cursor: 'abc' } }), { query: 'q' });
+    for (const bad of [0, -1, 1.5, '10', true, null]) {
+      assert.match(await refused({ query: 'q', pagination: { limit: bad } }), /pagination\.limit/);
+    }
+  });
+
+  test('`filters.available` becomes `in_stock_only` verbatim, and only when supplied', async () => {
+    assert.deepEqual(await search({ query: 'q', filters: { available: false } }), { query: 'q', in_stock_only: false });
+    assert.deepEqual(await search({ query: 'q', filters: { available: true } }), { query: 'q', in_stock_only: true });
+    // Omitted => the native default (in-stock only) applies downstream; nothing is minted here.
+    assert.deepEqual(await search({ query: 'q', filters: {} }), { query: 'q' });
+    for (const bad of ['true', 1, null]) {
+      assert.match(await refused({ query: 'q', filters: { available: bad } }), /filters\.available/);
+    }
+  });
+
+  test('`filters.price` is MINOR units on the wire and MAJOR on the lane — by the currency exponent, not ÷100', async () => {
+    // USD (default when context.currency is absent): cents -> dollars.
+    assert.deepEqual(
+      await search({ query: 'q', filters: { price: { min: 500, max: 2599 } } }),
+      { query: 'q', price_min: 5, price_max: 25.99 },
+    );
+    // JPY is ZERO-decimal: 1500 minor units IS 1500 yen. A ÷100 mapper would filter to ¥15 — every real
+    // product silently gone.
+    assert.deepEqual(
+      await search({ query: 'q', context: { currency: 'JPY' }, filters: { price: { min: 1500, max: 8000 } } }),
+      { query: 'q', currency: 'JPY', price_min: 1500, price_max: 8000 },
+    );
+    // BHD is THREE-decimal: 1500 fils is 1.5 dinar.
+    assert.deepEqual(
+      await search({ query: 'q', context: { currency: 'BHD' }, filters: { price: { max: 1500 } } }),
+      { query: 'q', currency: 'BHD', price_max: 1.5 },
+    );
+    // UGX and ISK are exponent 0 in ISO 4217 but 2 in the kernel's CHARGE table (Stripe divisibility). A UCP
+    // filter is a counterparty amount "in minor units" = ISO, so 5000 UGX minor units is 5000 shillings — the
+    // charge exponent would read it as 50 and hide every real product. isoMinorUnitExponent, not
+    // minorUnitExponent, and this line is why.
+    assert.deepEqual(
+      await search({ query: 'q', context: { currency: 'UGX' }, filters: { price: { min: 5000, max: 20000 } } }),
+      { query: 'q', currency: 'UGX', price_min: 5000, price_max: 20000 },
+    );
+    assert.deepEqual(
+      await search({ query: 'q', context: { currency: 'ISK' }, filters: { price: { max: 3000 } } }),
+      { query: 'q', currency: 'ISK', price_max: 3000 },
+    );
+    // …and LOWERCASE, because the currency is forwarded verbatim: a case-sensitive ISO table would fall
+    // back to the charge exponent and reproduce the ×100 under-read one commit after fixing it.
+    assert.deepEqual(
+      await search({ query: 'q', context: { currency: 'ugx' }, filters: { price: { min: 5000 } } }),
+      { query: 'q', currency: 'ugx', price_min: 5000 },
+    );
+    // Lower-case currency: the exponent lookup is case-insensitive; the code itself is forwarded trimmed,
+    // otherwise verbatim (the native lane normalizes).
+    assert.deepEqual(
+      await search({ query: 'q', context: { currency: ' jpy ' }, filters: { price: { min: 300 } } }),
+      { query: 'q', currency: 'jpy', price_min: 300 },
+    );
+    // One bound alone is fine; zero is a legal bound.
+    assert.deepEqual(await search({ query: 'q', filters: { price: { min: 0 } } }), { query: 'q', price_min: 0 });
+  });
+
+  test('a price bound that is not a non-negative integer, or an inverted range, is refused — not answered empty', async () => {
+    for (const bad of [-1, 1.5, '500', true, null]) {
+      assert.match(await refused({ query: 'q', filters: { price: { min: bad } } }), /price\.min/);
+      assert.match(await refused({ query: 'q', filters: { price: { max: bad } } }), /price\.max/);
+    }
+    assert.match(await refused({ query: 'q', filters: { price: { min: 2000, max: 1000 } } }), /min.*max|max.*min/);
+    // …but an equal pair is a legal (point) range.
+    assert.deepEqual(await search({ query: 'q', filters: { price: { min: 1000, max: 1000 } } }), { query: 'q', price_min: 10, price_max: 10 });
+    for (const bad of ['500-2000', 5, [5, 20], null]) {
+      assert.match(await refused({ query: 'q', filters: { price: bad } }), /filters\.price/);
+    }
+  });
+
+  test('`context.currency` reaches the lane; an empty one is refused; other context members do not', async () => {
+    assert.deepEqual(await search({ query: 'q', context: { currency: 'EUR' } }), { query: 'q', currency: 'EUR' });
+    assert.deepEqual(
+      await search({ query: 'q', context: { currency: 'EUR', address_country: 'FR', language: 'fr-FR', intent: 'gift' } }),
+      { query: 'q', currency: 'EUR' },
+    );
+    // Blank is ABSENT, as for `query` — the schema types it as a string and a blank string is a string.
+    assert.deepEqual(await search({ query: 'q', context: { currency: '' } }), { query: 'q' });
+    assert.deepEqual(await search({ query: 'q', context: { currency: '   ' } }), { query: 'q' });
+    // …and with a blank currency the price exponent is the default (USD), not something minted from ''.
+    assert.deepEqual(
+      await search({ query: 'q', context: { currency: '' }, filters: { price: { min: 500 } } }),
+      { query: 'q', price_min: 5 },
+    );
+    for (const bad of [840, null, ['USD'], { code: 'USD' }]) {
+      assert.match(await refused({ query: 'q', context: { currency: bad } }), /context\.currency/);
+    }
+  });
+
+  test('`filters.categories` and `signals` are accepted and NEVER forwarded, whatever they carry', async () => {
+    assert.deepEqual(
+      await search({ query: 'q', filters: { categories: ['skincare', 'Serums'] } }),
+      { query: 'q' },
+    );
+    // Signals are caller-identifying. The shared cache key is the allowlisted params, so if either of these
+    // ever reached the params two shoppers' searches would stop sharing an entry — and an IP would sit in it.
+    const params = await search({ query: 'q', signals: { 'dev.ucp.buyer_ip': '203.0.113.7', 'dev.ucp.user_agent': 'Minds/1.0' } });
+    assert.deepEqual(params, { query: 'q' });
+    assert.equal(JSON.stringify(params).includes('203.0.113.7'), false);
+  });
+
+  test('a fully-populated live body maps to exactly the documented native args and nothing else', async () => {
+    // Every permissive sub-object — INCLUDING `price` — also carries an UNDECLARED member, and the exact
+    // deepEqual below is what proves none of them is read. The review of this PR found the previous form
+    // unpinned: a mapper reading `price.currency` for the exponent, or forwarding `pagination.page` as the
+    // native `page`, stayed green because nothing sent an unknown member at those depths and asserted the
+    // FULL output.
+    const params = await search({
+      query: '  niacinamide serum ',
+      pagination: { cursor: 'opaque', limit: 20, page: 7, unknown_member: 'PAG_X' },
+      filters: {
+        categories: ['skincare'], available: true, unknown_member: 'FIL_X',
+        price: { min: 1000, max: 4000, currency: 'JPY', unknown_member: 'PRC_X' },
+      },
+      context: {
+        address_country: 'US', address_region: 'CA', postal_code: '94107', language: 'en-US', currency: 'USD',
+        intent: 'buy', merchant_id: 'm_ctx', unknown_member: 'CTX_X',
+      },
+      signals: { 'dev.ucp.buyer_ip': '198.51.100.9', 'dev.ucp.user_agent': 'ua', unknown_member: 'SIG_X' },
+    });
+    assert.deepEqual(params, {
+      query: 'niacinamide serum', page_size: 20, price_min: 10, price_max: 40, in_stock_only: true, currency: 'USD',
+    });
+    // No merchant_id and no page — the lane stays unscoped and un-paged no matter how much arrives; the
+    // exponent came from context.currency (USD), never from a `price.currency` the live schema does not have.
+    assert.equal(params.merchant_id, undefined);
+    assert.equal(params.page, undefined);
   });
 });
 
@@ -778,7 +953,9 @@ describe('schema and mapper cannot drift', () => {
       }
       // Non-string leaves get a sentinel VALUE too — a distinctive number / the non-default boolean — so the
       // ledger below can see them. Previously they were invisible and could be advertised-and-unread forever.
-      case 'integer': case 'number': return schema.minimum ?? 424242;
+      // A `minimum` of 0 is NOT a distinctive marker ("0" is a substring of half the numbers a mapper can
+      // emit), so it falls through to the sentinel, which is still schema-valid for a minimum of 0.
+      case 'integer': case 'number': return schema.minimum || 424242;
       case 'boolean': return true;
       default: return sentinelFor(path);
     }
@@ -799,7 +976,7 @@ describe('schema and mapper cannot drift', () => {
         return entries.flatMap(([name, sub]) => sentinelLeaves(sub, path ? `${path}.${name}` : name));
       }
       case 'array': return sentinelLeaves(schema.items ?? {}, `${path}[]`);
-      case 'integer': case 'number': return [{ path, marker: String(schema.minimum ?? 424242) }];
+      case 'integer': case 'number': return [{ path, marker: String(schema.minimum || 424242) }];
       case 'boolean': return [{ path, marker: 'true' }];
       default: return [{ path, marker: sentinelFor(path) }];
     }
@@ -944,8 +1121,21 @@ describe('schema and mapper cannot drift', () => {
       'address_locality', 'address_region', 'postal_code', 'address_country',
     ].map((f) => `checkout.fulfillment.methods[].destinations[].${f}`);
 
+    // A leaf that survives TRANSFORMED cannot be found by its raw marker: `filters.price.min/max` arrive in
+    // MINOR units (marker 424242) and leave in MAJOR units (4242.42 under the default USD exponent). The
+    // transform is declared here, per leaf, so the ledger still asks "does THIS leaf reach the params?" —
+    // and a mapper that divided by 1000, or forgot the currency exponent, changes the answer.
+    const SURVIVES_AS = Object.freeze({
+      'catalog.filters.price.min': (marker) => String(Number(marker) / 100),
+      'catalog.filters.price.max': (marker) => String(Number(marker) / 100),
+    });
+    const markerFor = (leaf) => (SURVIVES_AS[leaf.path] ? SURVIVES_AS[leaf.path](leaf.marker) : leaf.marker);
+
     const EXPECTED_SURVIVING = Object.freeze({
-      search_catalog: ['catalog.query'],
+      search_catalog: [
+        'catalog.query', 'catalog.pagination.limit', 'catalog.filters.price.min', 'catalog.filters.price.max',
+        'catalog.filters.available', 'catalog.context.currency',
+      ],
       get_product: ['catalog.id'],
       create_checkout: [
         'meta.idempotency-key', 'checkout.line_items[].item.id', 'checkout.line_items[].quantity',
@@ -962,7 +1152,7 @@ describe('schema and mapper cannot drift', () => {
     for (const def of ucpCommerceToolDefinitions) {
       const mapped = JSON.stringify(ucpToNativeToolArgs(opFor(def.name), MAXIMAL()[def.name]));
       const declared = sentinelLeaves(schemaFor(def.name));
-      const surviving = declared.filter((leaf) => mapped.includes(leaf.marker)).map((leaf) => leaf.path);
+      const surviving = declared.filter((leaf) => mapped.includes(markerFor(leaf))).map((leaf) => leaf.path);
       // Set equality, not a one-way spot check: the complement (everything NOT listed) is asserted to be
       // absent from the canonical params by the same comparison.
       assert.deepEqual(
@@ -986,7 +1176,7 @@ describe('schema and mapper cannot drift', () => {
       const mapped = JSON.stringify(ucpToNativeToolArgs(opFor(def.name), MAXIMAL()[def.name]));
       const unread = sentinelLeaves(schemaFor(def.name))
         // `meta` is protocol plumbing (the profile pointer, the idempotency key) rather than a checkout field.
-        .filter((leaf) => !leaf.path.startsWith('meta.') && !mapped.includes(leaf.marker))
+        .filter((leaf) => !leaf.path.startsWith('meta.') && !mapped.includes(markerFor(leaf)))
         .map((leaf) => leaf.path);
 
       assert.deepEqual(

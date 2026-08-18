@@ -17,6 +17,13 @@ on:
       - "src/**"
       - "tests/**"
       - "scripts/**"
+      # The two ESM packages the node:test allowlist below actually names — the safety kernel and the MCP
+      # commerce surface, i.e. the money path. Without these a PR that touched ONLY them ran NO gate at all:
+      # #2018 (mcp-server/src/ucpArgumentAdapter.js + its test, the "file that matters most" per the note
+      # below) produced a single green "CI Entrypoint" that had correctly computed "nothing expected". A
+      # green that means "nothing ran" is the failure mode this whole file is about; do not narrow this back.
+      - "mcp-server/**"
+      - "safety-kernel/**"
       - "package.json"
       - "package-lock.json"
       - "jest.config.js"

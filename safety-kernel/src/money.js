@@ -34,6 +34,30 @@ export function minorUnitExponent(currency) {
   return exp === undefined ? 2 : exp;
 }
 
+// ISO 4217 minor-unit exponents — a STANDALONE table, deliberately NOT layered on EXPONENT above. That
+// table is Stripe's CHARGE table and is edited for Stripe reasons (a currency moving to zero-decimal at the
+// PSP, a divisibility rule); an ISO reading that fell through to it would silently move with every such edit.
+// The two disagree today on: UGX, ISK (ISO 0; Stripe charges as 2-decimal), MGA (ISO 2; Stripe zero-decimal),
+// and the ISO-only UYI (0), CLF/UYW (4), which the charge table has no opinion on. Everything else matches.
+const ISO_EXPONENT = Object.freeze({
+  BIF: 0, CLP: 0, DJF: 0, GNF: 0, ISK: 0, JPY: 0, KMF: 0, KRW: 0, PYG: 0, RWF: 0, UGX: 0, UYI: 0, VND: 0,
+  VUV: 0, XAF: 0, XOF: 0, XPF: 0,
+  BHD: 3, IQD: 3, JOD: 3, KWD: 3, LYD: 3, OMR: 3, TND: 3,
+  CLF: 4, UYW: 4,
+});
+
+/**
+ * ISO 4217 minor-unit exponent for a currency (default 2) — for interpreting amounts a COUNTERPARTY sends
+ * "in minor units" (UCP `filters.price`, a partner feed, an invoice line). NOT for building a charge: use
+ * minorUnitExponent for that, so the two never get mixed — a search filter read with the charge exponent
+ * under-reads UGX/ISK ×100; a charge built with the ISO exponent under-charges them ×100.
+ */
+export function isoMinorUnitExponent(currency) {
+  if (typeof currency !== 'string') return 2;
+  const exp = ISO_EXPONENT[currency.trim().toUpperCase()];
+  return exp === undefined ? 2 : exp;
+}
+
 // Stripe CHARGE divisibility constraints (Codex round-2 P2). Some currencies are represented at a given
 // exponent but cannot charge arbitrary minor amounts:
 //   • HUF, TWD, UGX, ISK — represented at exponent 2 but the charge amount must be a WHOLE major unit,
