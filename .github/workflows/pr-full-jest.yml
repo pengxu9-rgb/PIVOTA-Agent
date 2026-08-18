@@ -360,6 +360,11 @@ jobs:
       # transcribed with provenance), ISO minor-unit prices, computed pagination + a real cursor the request
       # side reads back, and the wiring proven through the real surface: shaped on /ucp only, AFTER the
       # shared cache, on a clone — a shaper before the cache would poison /mcp's entry.
+      # ADDED 2026-08-18: `mcp-server/test/ucpCheckoutEscalation`, confirmed green (28/28). Path 2 of the
+      # two-path checkout model: for OBSERVED-seller rows (typed: the read's external_redirect_url) the UCP
+      # dialect answers a spec `requires_escalation` checkout whose continue_url is the seller's storefront —
+      # no intake, no quote, no charge; contracted rows and the native /mcp dialect take the kernel path
+      # byte-identically. Kill-switched (AGENT_CHECKOUT_UCP_ESCALATION_ENABLED, default OFF).
       - name: Run node:test suites
         run: |
           node --test \
@@ -369,6 +374,7 @@ jobs:
             mcp-server/test/ucpDialectSurface.test.js \
             mcp-server/test/ucpArgumentAdapter.test.js \
             mcp-server/test/ucpResponseShaper.test.js \
+            mcp-server/test/ucpCheckoutEscalation.test.js \
             safety-kernel/test/ucpPaymentAuthorizationContract.test.js \
             safety-kernel/test/mcpOAuthResourceServer.test.js \
             tests/ucp_conformance_probe.node.test.cjs \

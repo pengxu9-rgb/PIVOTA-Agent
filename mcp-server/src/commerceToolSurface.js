@@ -33,6 +33,7 @@ import { createPublicReadCache, stableStringify } from "./publicReadCache.js";
 // The UCP wire-shape translation (step 3). It owns the UCP `tools/list` schemas AND the `tools/call` argument
 // mapping in one table, so what the dialect advertises is what it accepts.
 import { shapeUcpResult } from "./ucpResponseShaper.js";
+import { tryEscalateUcpCheckout } from "./ucpCheckoutEscalation.js";
 import {
   UCP_INPUT_SCHEMAS,
   UCP_TOOL_DESCRIPTIONS,
@@ -283,10 +284,29 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
     //    extra money fields (e.g. a model-set refund amount), and prototype-polluting keys.
     const params = toParams(op, nativeArgs);
 
+    // 3a) UCP CHECKOUT ESCALATION (path 2 — rows Pivota does not transact). On the UCP dialect only, for the
+    //     checkout operations, a cart of OBSERVED-seller rows is answered with a spec `requires_escalation`
+    //     checkout whose continue_url is the seller's storefront — no intake, no quote, no kernel, no charge:
+    //     there is nothing Pivota could honestly price or charge for such a row. Contracted rows return null
+    //     here and take the kernel path below unchanged. Kill-switched (AGENT_CHECKOUT_UCP_ESCALATION_ENABLED,
+    //     default OFF). Deliberately AFTER the identity check (2) — an escalated checkout is still a buyer's
+    //     checkout — and after the allowlist, so it only ever sees fields this op defines. See
+    //     ucpCheckoutEscalation.js for the classification rule and the wire shape.
+    let resolveVariantsForThisCall = resolveDefaultVariants;
+    if (dialect === TOOL_DIALECTS.ucp && op.capability === "checkout") {
+      // ONE read per product per call: the escalation classifier and the checkout resolver both perform the
+      // unscoped `get_product` read; a memoizing view of the executor lets a contracted cart (classified
+      // "kernel path" here) be read once and the resolver reuse the same result. Scoped to this call.
+      const reads = memoizedProductReads(executor);
+      const escalated = await tryEscalateUcpCheckout({ op, params, ctx, executor: reads, ucpArgs: toolArgs, attested });
+      if (escalated) return escalated;
+      resolveVariantsForThisCall = createDefaultVariantResolver({ executor: reads });
+    }
+
     // 3b) BUYER INTAKE — the shared rules, applied before anything is priced. See the note below toParams.
     //     Deliberately AFTER the allowlist (so intake only ever sees fields this op defines) and BEFORE
     //     `executor.execute` (so a refused request performs no pricing call and takes no inventory hold).
-    await applyBuyerIntake(op, params, attested, resolveDefaultVariants, ctx, EMAIL_BODY_FIELDS[dialect]);
+    await applyBuyerIntake(op, params, attested, resolveVariantsForThisCall, ctx, EMAIL_BODY_FIELDS[dialect]);
 
     const execute = async () => {
       // 4) the single execution bridge enforces the contract flags + routes to the kernel.
@@ -871,6 +891,26 @@ export function ucpDialectSurface(surface) {
         ? surface.isCommerceTool(name, TOOL_DIALECTS.ucp)
         : Object.prototype.hasOwnProperty.call(OP_BY_UCP_TOOL, name),
   });
+}
+
+/**
+ * A per-call view of the executor that answers repeated UNSCOPED `get_product` reads for the same product id
+ * from one upstream call. Only `get_product` with `{payload:{product:{product_id}}}` and NO merchant_id is
+ * memoized (that is the read both the escalation classifier and the checkout resolver perform); every other
+ * op passes straight through. The memo holds the PROMISE, so concurrent readers share one in-flight call.
+ * Results are shared by reference — both consumers are pure readers of the product.
+ */
+function memoizedProductReads(executor) {
+  const memo = new Map();
+  return {
+    execute(op, params, ctx) {
+      const product = op === "get_product" && isPlainObject(params?.payload) && isPlainObject(params.payload.product) ? params.payload.product : null;
+      const key = product && nonEmpty(product.product_id) && !nonEmpty(product.merchant_id) && Object.keys(product).length === 1 ? product.product_id : null;
+      if (!key) return executor.execute(op, params, ctx);
+      if (!memo.has(key)) memo.set(key, executor.execute(op, params, ctx));
+      return memo.get(key);
+    },
+  };
 }
 
 // --- MCP result mapping (SDK-free so it is unit-tested here, not only in the wire-in) ---------------------
