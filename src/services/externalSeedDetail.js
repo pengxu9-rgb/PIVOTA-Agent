@@ -1,8 +1,5 @@
 const { query } = require('../db');
-const {
-  EXTERNAL_SEED_MERCHANT_ID,
-  buildExternalSeedProduct,
-} = require('./externalSeedProducts');
+const { buildExternalSeedProduct } = require('./externalSeedProducts');
 
 const EXTERNAL_SEED_DETAIL_SCAN_LIMIT = Math.max(
   100,
@@ -26,12 +23,20 @@ function looksLikeStableExternalSeedId(productId) {
   return /^ext_[0-9a-f]{24}$/i.test(asTrimmedString(productId));
 }
 
+// ADR-009 (writer side): this used to re-stamp the seller axis on top of the
+// builder's own output. Today the value is identical — buildExternalSeedProduct
+// returns either null or a shape that already carries the seller — so the stamp
+// bought nothing, while making the detail lane an INDEPENDENT producer of the
+// seed seller: whatever the builder decides the seller is, this overwrote it.
+// That is exactly the conflation ADR-009 exists to remove, and it would have
+// silently reverted the builder the day it learns to read the row's observed
+// seller. The seller now flows through from the one producer; this lane layers
+// on only the columns it genuinely owns (market / tool / seed row id).
 function materializeExternalSeedProduct(row) {
   const product = buildExternalSeedProduct(row);
   if (!product || typeof product !== 'object') return null;
   return {
     ...product,
-    merchant_id: EXTERNAL_SEED_MERCHANT_ID,
     market: asTrimmedString(row?.market) || product.market || undefined,
     tool: asTrimmedString(row?.tool) || product.tool || undefined,
     external_seed_id: product.external_seed_id || row?.id || null,
