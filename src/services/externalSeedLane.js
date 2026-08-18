@@ -195,11 +195,21 @@ function isExternalSeedSupplyMerchantId(merchantId) {
   return mid === EXTERNAL_SEED_MERCHANT_ID || mid.startsWith('merch_obs_');
 }
 
+// ADR-009 — "is this seller the brand's OWN D2C crawl?" (a per-brand observed
+// seller). Narrower than isExternalSeedSupplyMerchantId on purpose: the retired
+// shared bucket is scraped supply but is NOT anyone's own storefront, so callers
+// that exempt a brand from identity-coverage gates must ask THIS, not that.
+// Owned here so the prefix lives in one watched place instead of being retyped.
+function isObservedSellerMerchantId(merchantId) {
+  return firstNonEmptyString(merchantId).startsWith('merch_obs_');
+}
+
 module.exports = {
   EXTERNAL_SEED_MERCHANT_ID,
   SEED_ROUTED_SOURCE_SYSTEMS,
   isExternalSeedLaneProduct,
   isExternalSeedSupplyMerchantId,
+  isObservedSellerMerchantId,
   readSeedLaneFields,
   readSeedLaneIdCandidates,
   // Re-exported so a SQL call site needs one import, and so the JS and SQL
