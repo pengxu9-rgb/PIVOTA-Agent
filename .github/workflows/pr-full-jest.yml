@@ -365,9 +365,19 @@ jobs:
       # dialect answers a spec `requires_escalation` checkout whose continue_url is the seller's storefront —
       # no intake, no quote, no charge; contracted rows and the native /mcp dialect take the kernel path
       # byte-identically. Kill-switched (AGENT_CHECKOUT_UCP_ESCALATION_ENABLED, default OFF).
+      # ADDED 2026-08-19: the two platform suites, confirmed green (20/20 and 22/22).
+      # `src/config/platform.js` is the single reader of the deployment platform's env vars.
+      # Prod sets no NODE_ENV, so `RAILWAY_ENVIRONMENT` is the arm actually carrying the
+      # mock-upstream refusals and the forced-rollout-variant refusal — and on Cloud Run
+      # that variable is unset. A missed read there does not fail loudly: it answers "not
+      # production" and turns the guard OFF in production. Both files are `*.node.test.cjs`,
+      # so jest's `**/tests/**/*.test.(js|ts)` cannot see them; without these two lines they
+      # would run in NO PR workflow at all.
       - name: Run node:test suites
         run: |
           node --test \
+            tests/platform_config.node.test.cjs \
+            tests/platform_production_guards.node.test.cjs \
             tests/aurora_chat_v1_mainline_delegation_cycle.node.test.cjs \
             tests/aurora_bff_v1_chat_rollout.node.test.cjs \
             mcp-server/test/ucpToolVocabulary.test.js \

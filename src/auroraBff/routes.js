@@ -103792,6 +103792,13 @@ function mountAuroraBffRoutes(app, { logger }) {
 }
 
 const __internal = {
+  // Exported so the platform-guard suite can drive them directly. These are the env
+  // predicates that gate USE_AURORA_BFF_MOCK and the shared-truth self-base default;
+  // before the shim they read RAILWAY_ENVIRONMENT, which is unset on Cloud Run, and
+  // nothing in the tree could observe whether they still fire.
+  isProductionLikeAuroraBffEnv,
+  isTestLikeAuroraBffEnv,
+  isAuroraBeautySharedTruthSelfBaseEnabled,
   runV1ChatMainlineInProcess,
   hasMountedV1ChatMainlineHandler() {
     return typeof runMountedV1ChatHandlerImpl === 'function';
