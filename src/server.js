@@ -30284,7 +30284,10 @@ async function deriveStrictCommerceCtxAsync(req) {
       logger.warn({ path: req?.path || null, code: err?.code || null }, 'federated agent user JWT verification failed');
       return stripStrictUserContext(base, {
         agent_user_jwt_present: true,
-        verifier_configured: true,
+        // No STATIC verifier exists in this branch; only the federated registry answered. Reporting
+        // verifier_configured:true here would hide exactly the misconfiguration worth seeing.
+        verifier_configured: false,
+        federated_attempted: true,
         verified: false,
         failure_code: err?.code || 'USER_TOKEN_INVALID',
       });

@@ -10,8 +10,11 @@
 //  3. registry unreachable + nothing cached ⇒ REGISTRY_UNAVAILABLE; stale cache keeps working;
 //  4. disabled without base URL / internal key / with the kill switch;
 //  5. deriveStrictCommerceCtxAsync: the static verifier's unknown-issuer failure falls through to the
-//     agent's binding; a KNOWN static issuer with a bad signature does NOT; no static config + a binding
-//     still verifies; the agent_id on the request is the binding key.
+//     agent's binding; a KNOWN static issuer with a bad signature does NOT; the agent_id on the request is
+//     the binding key.
+//  6. a binding that names a PLATFORM-TRUSTED issuer is dropped at ingest (second enforcement point after
+//     the backend's reserved-issuer refusal) — including in the no-static-verifier branch;
+//  7. bounded staleness: past maxStalenessMs an unrefreshable map fails closed.
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -217,6 +220,80 @@ test('5. deriveStrictCommerceCtxAsync falls through to the calling agent\'s bind
     const bad = await derive(mockReq({ 'X-Agent-User-JWT': `Bearer ${forged}` }));
     assert.equal(bad.user_ref, undefined);
     assert.equal(bad.identity_diagnostics.failure_code, 'TOKEN_VERIFY_FAILED');
+  } finally {
+    globalThis.fetch = savedFetch;
+  }
+});
+
+
+test('6. a binding naming a platform-trusted issuer is dropped at ingest', async () => {
+  const trusted = await issuerFixture({ iss: 'https://identity.pivota.local', aud: 'pivota' });
+  const attacker = await issuerFixture({ iss: 'https://identity.pivota.local', aud: 'pivota', kid: 'evil' });
+  const f = fakeFetch({
+    registry: () => [entryFor('agent_evil', { ...trusted, jwksUri: attacker.jwksUri })],
+    jwksByUri: { [attacker.jwksUri]: attacker.jwks },
+  });
+  const savedFetch = globalThis.fetch; globalThis.fetch = f;
+  try {
+    const reg = createAgentIdentityIssuerRegistry({
+      baseUrl: 'http://api.test', internalKey: 'internal-secret', fetchImpl: f,
+      // the gateway's OWN view of what the platform trusts
+      env: { IDENTITY_ISSUERS_JSON: JSON.stringify([{ iss: 'https://identity.pivota.local/', aud: 'pivota', jwks: trusted.jwks }]) },
+    });
+    assert.equal(reg.trustedIssuerCount, 1);
+    const forged = await attacker.sign({}, { sub: 'victim' });
+    await assert.rejects(reg.verifyForAgent(forged, 'agent_evil'), (e) => e.code === 'ISSUER_NOT_ALLOWED');
+    assert.equal(reg._debug.has('agent_evil', trusted.iss), false, 'the binding must not be in the map at all');
+  } finally {
+    globalThis.fetch = savedFetch;
+  }
+});
+
+test('6b. the no-static-verifier branch still refuses a trusted-issuer binding and honours a legitimate one', async () => {
+  // The C1(a) path: IDENTITY_ISSUERS_JSON unset ⇒ getCommerceUserTokenVerifier() is undefined and the
+  // ONLY verifier is federated. A binding for an issuer named in MCP_OAUTH_ISSUERS_JSON (which the static
+  // user-token registry does not contain) must still be refused.
+  const own = await issuerFixture({ iss: 'https://oauth.pivota.local', aud: 'pivota' });
+  const mine = await issuerFixture({ iss: 'https://id.legit.example', aud: 'pivota', kid: 'legit' });
+  const f = fakeFetch({
+    registry: () => [entryFor('agent_x', own), entryFor('agent_x', mine)],
+    jwksByUri: { [own.jwksUri]: own.jwks, [mine.jwksUri]: mine.jwks },
+  });
+  const savedFetch = globalThis.fetch; globalThis.fetch = f;
+  try {
+    const reg = createAgentIdentityIssuerRegistry({
+      baseUrl: 'http://api.test', internalKey: 'internal-secret', fetchImpl: f,
+      env: { MCP_OAUTH_ISSUERS_JSON: JSON.stringify([{ iss: 'https://oauth.pivota.local' }]) },
+    });
+    await assert.rejects(reg.verifyForAgent(await own.sign(), 'agent_x'), (e) => e.code === 'ISSUER_NOT_ALLOWED');
+    assert.ok((await reg.verifyForAgent(await mine.sign(), 'agent_x')).user_ref);
+  } finally {
+    globalThis.fetch = savedFetch;
+  }
+});
+
+test('7. an unrefreshable map fails closed past maxStalenessMs', async () => {
+  const fx = await issuerFixture({ iss: 'https://id.stale2.example', aud: 'pivota' });
+  let up = true;
+  let t = 9_000_000;
+  const dyn = async (url, init) =>
+    fakeFetch({ registry: () => [entryFor('agent_s', fx)], jwksByUri: { [fx.jwksUri]: fx.jwks }, registryStatus: up ? 200 : 503 })(url, init);
+  const savedFetch = globalThis.fetch; globalThis.fetch = dyn;
+  try {
+    const reg = createAgentIdentityIssuerRegistry({
+      baseUrl: 'http://api.test', internalKey: 'internal-secret', fetchImpl: dyn, env: {},
+      now: () => t, ttlMs: 1_000, maxStalenessMs: 60_000,
+    });
+    const token = await fx.sign();
+    assert.ok((await reg.verifyForAgent(token, 'agent_s')).user_ref);
+    up = false;
+    t += 30_000; // stale but within the window: still answers
+    assert.ok((await reg.verifyForAgent(token, 'agent_s')).user_ref);
+    t += 40_000; // past maxStaleness: fails closed
+    await assert.rejects(reg.verifyForAgent(token, 'agent_s'), (e) => e.code === 'REGISTRY_UNAVAILABLE');
+    up = true;
+    t += 10_000; // backend returns: the forced refresh inside the staleness check recovers it
+    assert.ok((await reg.verifyForAgent(token, 'agent_s')).user_ref);
   } finally {
     globalThis.fetch = savedFetch;
   }

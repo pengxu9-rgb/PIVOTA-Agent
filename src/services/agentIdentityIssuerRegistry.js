@@ -25,6 +25,10 @@
 const DEFAULT_TTL_MS = 60_000;
 const MIN_FORCED_REFRESH_GAP_MS = 5_000;
 const FETCH_TIMEOUT_MS = 5_000;
+// A stale map is served while the backend is unreachable — but not forever: a disabled issuer or a
+// revoked key must stop working within a bounded window even during an outage. Past this, verification
+// fails closed (REGISTRY_UNAVAILABLE) rather than trusting an unrefreshable binding.
+const DEFAULT_MAX_STALENESS_MS = 15 * 60_000;
 
 function nonEmpty(v) {
   return typeof v === 'string' && v.trim() !== '';
@@ -46,6 +50,39 @@ function peekIssuer(token) {
   } catch {
     return null;
   }
+}
+
+/**
+ * Issuer strings the PLATFORM already trusts (static user-token registry + the MCP OAuth registry).
+ * A federated binding may never name one: that is an agent claiming to mint tokens for an issuer whose
+ * subjects already map to real people's kernel user_refs (usr_ = sha256(iss|sub), agent-independent).
+ * The backend refuses to register these, and this is the second, independent enforcement point — the
+ * gateway is the only place that can see IDENTITY_ISSUERS_JSON / MCP_OAUTH_ISSUERS_JSON.
+ */
+function platformTrustedIssuers(env = process.env) {
+  const out = new Set();
+  const add = (v) => {
+    if (typeof v === 'string' && v.trim()) out.add(v.trim().replace(/\/+$/, '').toLowerCase());
+  };
+  for (const name of [
+    'IDENTITY_ISSUERS_JSON', 'AGENT_CHECKOUT_IDENTITY_ISSUERS_JSON', 'PIVOTA_IDENTITY_ISSUERS_JSON',
+    'MCP_OAUTH_ISSUERS_JSON',
+  ]) {
+    const raw = env[name];
+    if (!raw) continue;
+    try {
+      const parsed = JSON.parse(raw);
+      for (const entry of Array.isArray(parsed) ? parsed : []) add(entry?.iss);
+    } catch { /* a malformed registry is the static verifier's problem, not ours */ }
+  }
+  for (const name of ['MCP_OAUTH_AUTHORIZATION_SERVERS', 'AGENT_IDENTITY_RESERVED_ISSUERS']) {
+    for (const part of String(env[name] || '').split(',')) add(part);
+  }
+  return out;
+}
+
+function issuerKey(iss) {
+  return String(iss || '').trim().replace(/\/+$/, '').toLowerCase();
 }
 
 function bindingKey(agentId, iss) {
@@ -87,6 +124,12 @@ function createAgentIdentityIssuerRegistry(opts = {}) {
   const baseUrl = String(opts.baseUrl ?? env.PIVOTA_API_BASE ?? '').replace(/\/+$/, '');
   const internalKey = String(opts.internalKey ?? env.AGENT_AUTH_INTROSPECT_INTERNAL_KEY ?? '').trim();
   const ttlMs = Number.isFinite(opts.ttlMs) ? opts.ttlMs : DEFAULT_TTL_MS;
+  const maxStalenessMs = Number.isFinite(opts.maxStalenessMs)
+    ? opts.maxStalenessMs
+    : (Number(env.AGENT_FEDERATED_IDENTITY_MAX_STALENESS_MS) > 0
+      ? Number(env.AGENT_FEDERATED_IDENTITY_MAX_STALENESS_MS)
+      : DEFAULT_MAX_STALENESS_MS);
+  const trustedIssuers = opts.trustedIssuers instanceof Set ? opts.trustedIssuers : platformTrustedIssuers(env);
   const fetchImpl = opts.fetchImpl || globalThis.fetch;
   const logger = opts.logger || { warn() {}, info() {} };
   const now = opts.now || (() => Date.now());
@@ -122,7 +165,14 @@ function createAgentIdentityIssuerRegistry(opts = {}) {
       const next = new Map();
       for (const raw of Array.isArray(body?.issuers) ? body.issuers : []) {
         const e = normalizeEntry(raw);
-        if (e) next.set(bindingKey(e.agentId, e.iss), e);
+        if (!e) continue;
+        if (trustedIssuers.has(issuerKey(e.iss))) {
+          // Refused at ingest, not at verification: such a binding must never be usable, and the drop
+          // is loud because it means the backend's own reserved-issuer guard let one through.
+          logger.warn({ agent_id: e.agentId, iss: e.iss }, 'federated issuer binding names a platform-trusted issuer; dropped');
+          continue;
+        }
+        next.set(bindingKey(e.agentId, e.iss), e);
       }
       bindings = next;
       fetchedAt = now();
@@ -138,6 +188,11 @@ function createAgentIdentityIssuerRegistry(opts = {}) {
     if (!force && fetchedAt && age < ttlMs) return true;
     if (force && lastForcedAt && now() - lastForcedAt < MIN_FORCED_REFRESH_GAP_MS) return fetchedAt > 0;
     if (force) lastForcedAt = now();
+    if (force && inflight) {
+      // Do not adopt an in-flight NON-forced fetch as "the forced refresh": await it, then fetch again
+      // so a just-registered binding is genuinely re-read.
+      await inflight;
+    }
     if (!inflight) {
       inflight = fetchOnce()
         .catch((err) => {
@@ -172,7 +227,12 @@ function createAgentIdentityIssuerRegistry(opts = {}) {
       // Bound the memo: a rotating set of registrations must not grow without limit.
       if (verifiers.size > 512) verifiers.delete(verifiers.keys().next().value);
     }
-    return verifiers.get(key);
+    const v = verifiers.get(key);
+    // Touch: re-inserting moves the key to the end so the size-cap eviction below drops the LEAST
+    // recently used verifier rather than the oldest-created one.
+    verifiers.delete(key);
+    verifiers.set(key, v);
+    return v;
   }
 
   /**
@@ -186,6 +246,14 @@ function createAgentIdentityIssuerRegistry(opts = {}) {
     if (!iss) throw makeError('malformed token', 'TOKEN_MALFORMED');
 
     const ok = await refresh();
+    if (fetchedAt > 0 && now() - fetchedAt > maxStalenessMs) {
+      // One last forced attempt, then fail closed: an unrefreshable map cannot be trusted to reflect a
+      // revocation.
+      await refresh({ force: true });
+      if (now() - fetchedAt > maxStalenessMs) {
+        throw makeError('identity issuer registry is stale', 'REGISTRY_UNAVAILABLE');
+      }
+    }
     let entry = bindings.get(bindingKey(agentId, iss));
     if (!entry) {
       // A registration made moments ago: one forced refresh before refusing.
@@ -203,6 +271,7 @@ function createAgentIdentityIssuerRegistry(opts = {}) {
 
   return Object.freeze({
     enabled,
+    trustedIssuerCount: trustedIssuers.size,
     verifyForAgent,
     refresh,
     _debug: {
