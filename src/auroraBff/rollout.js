@@ -1,4 +1,5 @@
 const crypto = require('crypto');
+const { isProduction, commitSha } = require('../config/platform');
 
 const ROLLOUT_VARIANT = Object.freeze({
   LEGACY: 'legacy',
@@ -98,9 +99,12 @@ function resolveForcedVariant({ req }) {
   const forced = normalizeVariant(req && typeof req.get === 'function' ? req.get('x-aurora-force-variant') : '');
   if (!forced) return null;
 
-  const envName = String(process.env.RAILWAY_ENVIRONMENT || process.env.NODE_ENV || '').trim().toLowerCase();
-  const isProduction = envName === 'production';
-  if (!isProduction) return forced;
+  // SAFETY GUARD: outside production the `x-aurora-force-variant` header is honoured
+  // freely; in production it requires an explicit enable plus a matching debug key.
+  // The env test was `RAILWAY_ENVIRONMENT || NODE_ENV === 'production'` — RAILWAY_ENVIRONMENT
+  // is the arm that fires in prod (prod sets no NODE_ENV) and is unset on Cloud Run, where
+  // this guard would have gone silent and let any caller pin their own rollout variant.
+  if (!isProduction()) return forced;
 
   if (!toBool(process.env.AURORA_FORCE_VARIANT_ENABLED, false)) return null;
   const expectedDebugKey = String(process.env.AURORA_FORCE_VARIANT_DEBUG_KEY || '').trim();
@@ -204,7 +208,7 @@ function inferVariantFromGlobals(globals) {
 function resolveBuildSha() {
   const candidates = [
     process.env.AURORA_CHAT_BUILD_SHA,
-    process.env.RAILWAY_GIT_COMMIT_SHA,
+    commitSha(),
     process.env.SOURCE_COMMIT,
     process.env.VERCEL_GIT_COMMIT_SHA,
   ];

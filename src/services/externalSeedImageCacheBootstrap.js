@@ -1,6 +1,7 @@
 const path = require('path');
 
 const logger = require('../logger');
+const { deploymentId: platformDeploymentId } = require('../config/platform');
 const { hasCatalogImageCacheConfig } = require('./catalogImageCacheStorage');
 
 const bootstrapState = {
@@ -77,7 +78,9 @@ function buildBootstrapConfig(env = process.env) {
 
 function buildReportPath(config, env = process.env) {
   if (config.out) return config.out;
-  const deploymentId = normalizeString(env.RAILWAY_DEPLOYMENT_ID || env.DEPLOYMENT_ID || 'local');
+  // The injected `env` is forwarded rather than ignored: this function is called with a
+  // synthetic env object in tests, and the shim's accessors take one for exactly that.
+  const deploymentId = normalizeString(platformDeploymentId(env) || 'local');
   const mode = config.apply ? 'apply' : 'dry-run';
   const target =
     config.productIds[0] ||
