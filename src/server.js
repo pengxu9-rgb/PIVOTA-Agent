@@ -15,6 +15,13 @@ const { createHash, createHmac, randomUUID, timingSafeEqual } = require('crypto'
 const { AsyncLocalStorage } = require('async_hooks');
 const { InvokeRequestSchema, OperationEnum } = require('./schema');
 const commerceMcpOAuth = require('./commerceMcpOAuth');
+const {
+  commitSha: platformCommitSha,
+  deploymentId: platformDeploymentId,
+  gitBranch: platformGitBranch,
+  serviceName: platformServiceName,
+  requirePlatformEnv,
+} = require('./config/platform');
 const logger = require('./logger');
 const { runMigrations } = require('./db/migrate');
 const { query, withClient } = require('./db');
@@ -472,20 +479,20 @@ const getAuroraRequiredRouteContractsHealth =
 const PORT = process.env.PORT || 3000;
 const SERVICE_STARTED_AT = new Date().toISOString();
 const SERVICE_DEPLOYMENT_ID = String(
-  process.env.RAILWAY_DEPLOYMENT_ID ||
-  process.env.DEPLOYMENT_ID ||
+  platformDeploymentId() ||
   ''
 ).trim();
+// AURORA_GIT_SHA stays a site-local last resort: it is this service's own name for the
+// sha, not a platform-injected one, so it belongs after the platform chain rather than
+// inside src/config/platform.js.
 const SERVICE_GIT_SHA = String(
-  process.env.RAILWAY_GIT_COMMIT_SHA ||
-  process.env.GIT_COMMIT_SHA ||
-  process.env.SOURCE_VERSION ||
+  platformCommitSha() ||
   process.env.AURORA_GIT_SHA ||
   ''
 ).trim();
 const SERVICE_GIT_SHA_SHORT = SERVICE_GIT_SHA ? SERVICE_GIT_SHA.slice(0, 12) : null;
-const SERVICE_GIT_BRANCH = String(process.env.RAILWAY_GIT_BRANCH || process.env.GIT_BRANCH || '').trim();
-const SERVICE_NAME = String(process.env.RAILWAY_SERVICE_NAME || process.env.SERVICE_NAME || 'pivota-agent-gateway').trim();
+const SERVICE_GIT_BRANCH = String(platformGitBranch() || '').trim();
+const SERVICE_NAME = String(platformServiceName() || 'pivota-agent-gateway').trim();
 const SERVICE_BUILD_ID = SERVICE_GIT_SHA_SHORT || `started-${SERVICE_STARTED_AT}`;
 const DEFAULT_MERCHANT_ID = String(
   process.env.PIVOTA_DEFAULT_MERCHANT_ID ||
@@ -52096,6 +52103,17 @@ module.exports._debug = {
 
 if (require.main === module) {
   (async () => {
+    // Boot-time assertion, deliberately FIRST and deliberately inside `require.main`:
+    // hundreds of tests require this file, and none of them should be able to trip it.
+    //
+    // It throws only when a managed platform (Cloud Run's K_SERVICE, or any RAILWAY_*)
+    // named no environment. On Railway today RAILWAY_ENVIRONMENT resolves and this is a
+    // no-op. On a Cloud Run revision deployed without PIVOTA_ENV it kills the boot — which
+    // is the point: an unnamed environment means every production guard downstream is
+    // running on a fail-closed guess, and that state must not take traffic silently.
+    const platformInfo = requirePlatformEnv();
+    logger.info({ event: 'platform_detected', ...platformInfo }, 'platform environment resolved');
+
     if (AURORA_ROUTES_FAIL_CLOSED && !auroraRoutesReady) {
       logger.error(
         {

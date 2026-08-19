@@ -1,5 +1,7 @@
 'use strict';
 
+const { isProduction } = require('../config/platform');
+
 const TEMPORARY_UNIFIED_GEMINI_MODEL = 'gemini-2.5-flash';
 const TEMPORARY_UNIFIED_GEMINI_RUNTIME_MODEL = 'gemini-2.5-flash';
 const LEGACY_GEMINI_FLASH_PREVIEW_ALIAS = 'gemini-2.5-flash-preview';
@@ -73,18 +75,14 @@ function isExplicitTrue(value) {
   return ['1', 'true', 'yes', 'on'].includes(String(value || '').trim().toLowerCase());
 }
 
+/**
+ * Was a hand-rolled union over NODE_ENV / PIVOTA_ENV / APP_ENV / RAILWAY_ENVIRONMENT /
+ * RAILWAY_ENVIRONMENT_NAME, each matched against 'production' or 'prod'.
+ * `isProduction()` is that same union plus VERCEL_ENV and the Cloud Run fail-closed case,
+ * so this keeps its meaning and gains the new platform.
+ */
 function isProductionLikeRuntime() {
-  const values = [
-    process.env.NODE_ENV,
-    process.env.PIVOTA_ENV,
-    process.env.APP_ENV,
-    process.env.RAILWAY_ENVIRONMENT,
-    process.env.RAILWAY_ENVIRONMENT_NAME,
-  ];
-  return values.some((value) => {
-    const token = String(value || '').trim().toLowerCase();
-    return token === 'production' || token === 'prod';
-  });
+  return isProduction();
 }
 
 function isTemporaryUnifiedGeminiModelEnabled() {

@@ -275,10 +275,25 @@ describe('tryEscalateUcpCheckout', () => {
 
   test('reads are bounded by ONE deadline for the batch: a hanging read is a refusal, not a stall', async () => {
     const executor = { seen: [], execute(op, p, ctx) { this.seen.push({ op }); return new Promise(() => {}); } };
-    const started = Date.now();
-    const err = await rejected(tryEscalateUcpCheckout({ op: CREATE, params: params(items([SEED.product_id, 1], [SEED_B.product_id, 1])), ctx: SESSION, executor, ucpArgs: {}, now: NOW, env: ON, timeoutMs: 40 }));
-    assert.equal(err.detail.acp_detail.variant_resolution, 'resolution_unavailable');
-    assert.ok(Date.now() - started < 2000, 'returned at the deadline');
+    // THE KEEPALIVE IS LOAD-BEARING, not tidying. `withDeadline` UNREFS its timer on purpose
+    // ("a refusal timer must not be a reason to stay up", buyerIntake.js), and the executor above
+    // returns a promise that never settles and holds no handle. So in a bare test worker the ONLY
+    // pending work is that unref'd timer: the loop drains, the timer never fires, and this test's
+    // promise never settles — node:test reports "Promise resolution is still pending but the event
+    // loop has already resolved" and CANCELS every later test in this file. Whether that happened
+    // depended on whether the worker had other work in flight during these 40ms, so it passed
+    // locally and failed on a 2-core CI runner. A real server always has a ref'd handle keeping the
+    // loop alive; this stands in for it. Verified both ways: bare = never settles, ref'd = rejects
+    // at ~41ms. Do NOT "simplify" this away, and do NOT drop the unref() in buyerIntake.js instead.
+    const keepAlive = setInterval(() => {}, 10);
+    try {
+      const started = Date.now();
+      const err = await rejected(tryEscalateUcpCheckout({ op: CREATE, params: params(items([SEED.product_id, 1], [SEED_B.product_id, 1])), ctx: SESSION, executor, ucpArgs: {}, now: NOW, env: ON, timeoutMs: 40 }));
+      assert.equal(err.detail.acp_detail.variant_resolution, 'resolution_unavailable');
+      assert.ok(Date.now() - started < 2000, 'returned at the deadline');
+    } finally {
+      clearInterval(keepAlive);
+    }
   });
 
   test('buyer echo: ATTESTED wins over a body email, and a body email is normalized — never echoed raw', async () => {

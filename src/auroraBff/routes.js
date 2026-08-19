@@ -222,6 +222,10 @@ const {
 } = require('./skinLlmGateway');
 const { resolveNonImageGeminiModel } = require('../lib/geminiModelFloor');
 const {
+  isProduction: platformIsProduction,
+  isTestRuntime: platformIsTestRuntime,
+} = require('../config/platform');
+const {
   classifyPhotoQuality,
   inferDetectorConfidence,
   summarizeRoutineConfidenceSignals,
@@ -708,16 +712,19 @@ const RECO_ALTERNATIVES_PROMPT_TEMPLATE_ID = 'reco_alternatives_v1_0';
 const RECO_ALTERNATIVES_HYBRID_PROMPT_TEMPLATE_ID = 'reco_alternatives_hybrid_v1';
 const recoPromptTemplateCache = new Map();
 const INCLUDE_RAW_AURORA_CONTEXT = String(process.env.AURORA_BFF_INCLUDE_RAW_CONTEXT || '').toLowerCase() === 'true';
+/**
+ * SAFETY GUARD: gates USE_AURORA_BFF_MOCK (mock upstreams must never serve prod traffic)
+ * and the shared-truth self-base default, and is reported in the reco debug payloads.
+ *
+ * Was `NODE_ENV==='production' || RAILWAY_ENVIRONMENT==='production' || VERCEL_ENV==='production'`.
+ * Production sets no NODE_ENV, so RAILWAY_ENVIRONMENT was the load-bearing arm, and it is
+ * unset on Cloud Run. Routed through the platform shim so the guard survives the move.
+ */
 function isProductionLikeAuroraBffEnv() {
-  const nodeEnv = String(process.env.NODE_ENV || '').trim().toLowerCase();
-  const railwayEnv = String(process.env.RAILWAY_ENVIRONMENT || '').trim().toLowerCase();
-  const vercelEnv = String(process.env.VERCEL_ENV || '').trim().toLowerCase();
-  return nodeEnv === 'production' || railwayEnv === 'production' || vercelEnv === 'production';
+  return platformIsProduction();
 }
 function isTestLikeAuroraBffEnv() {
-  const nodeEnv = String(process.env.NODE_ENV || '').trim().toLowerCase();
-  const nodeTestContext = String(process.env.NODE_TEST_CONTEXT || '').trim();
-  return nodeEnv === 'test' || Boolean(nodeTestContext);
+  return platformIsTestRuntime();
 }
 const REQUESTED_AURORA_BFF_MOCK = String(process.env.AURORA_BFF_USE_MOCK || '').toLowerCase() === 'true';
 const USE_AURORA_BFF_MOCK =
@@ -103785,6 +103792,13 @@ function mountAuroraBffRoutes(app, { logger }) {
 }
 
 const __internal = {
+  // Exported so the platform-guard suite can drive them directly. These are the env
+  // predicates that gate USE_AURORA_BFF_MOCK and the shared-truth self-base default;
+  // before the shim they read RAILWAY_ENVIRONMENT, which is unset on Cloud Run, and
+  // nothing in the tree could observe whether they still fire.
+  isProductionLikeAuroraBffEnv,
+  isTestLikeAuroraBffEnv,
+  isAuroraBeautySharedTruthSelfBaseEnabled,
   runV1ChatMainlineInProcess,
   hasMountedV1ChatMainlineHandler() {
     return typeof runMountedV1ChatHandlerImpl === 'function';
