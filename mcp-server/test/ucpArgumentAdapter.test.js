@@ -1107,7 +1107,7 @@ describe('schema and mapper cannot drift', () => {
   });
 
   test('every published UCP tool has a UCP schema and an argument mapping', () => {
-    assert.equal(ucpCommerceToolDefinitions.length, 6);
+    assert.equal(ucpCommerceToolDefinitions.length, 9);
     for (const def of ucpCommerceToolDefinitions) {
       const op = opFor(def.name);
       assert.ok(op, `${def.name} must resolve to a canonical operation`);
@@ -1237,6 +1237,13 @@ describe('schema and mapper cannot drift', () => {
       ],
       get_checkout: ['id'],
       complete_checkout: ['meta.idempotency-key', 'id', 'checkout.payment.token'],
+      // cc.pivota.insights: every advertised leaf reaches the native args (`relation` is an enum leaf and is
+      // asserted directly below, like `payment.method`).
+      get_alternatives: [
+        'insights.id', 'insights.include_dupes', 'insights.market', 'insights.max_price_ratio', 'insights.limit',
+      ],
+      get_offers: ['insights.id', 'insights.currency', 'insights.limit'],
+      get_intel: ['insights.id'],
     });
 
     for (const def of ucpCommerceToolDefinitions) {

@@ -392,6 +392,7 @@ jobs:
             mcp-server/test/ucpArgumentAdapter.test.js \
             mcp-server/test/ucpResponseShaper.test.js \
             mcp-server/test/ucpCheckoutEscalation.test.js \
+            mcp-server/test/ucpInsightsDialect.test.js \
             safety-kernel/test/ucpPaymentAuthorizationContract.test.js \
             safety-kernel/test/mcpOAuthResourceServer.test.js \
             tests/ucp_conformance_probe.node.test.cjs \
