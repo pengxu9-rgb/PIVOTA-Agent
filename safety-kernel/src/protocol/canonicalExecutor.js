@@ -199,8 +199,10 @@ export function createCanonicalExecutor({
 
       case 'get_alternatives':
       case 'get_offers':
-      case 'get_intel': {
-        // Read-only intelligence projections (relationships, cross-merchant offers, why/fit/evidence) → Signal envelope.
+      case 'get_intel':
+      case 'recommend_products': {
+        // Read-only intelligence projections (relationships, cross-merchant offers, why/fit/evidence, and the
+        // need-anchored recommendation shortlist) → Signal envelope.
         // Handled by an app-layer handler injected as localReads[opId] (the relationship graph + offers
         // live in the app DB, not the kernel). No money, no state; the contract gates above already passed
         // (requiresUserRef:false, mutating:false). Fail closed if no handler is wired.

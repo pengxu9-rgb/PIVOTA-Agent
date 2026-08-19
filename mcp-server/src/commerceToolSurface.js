@@ -431,6 +431,15 @@ function toParams(op, toolArgs) {
       return { payload: pick(a, ["merchant_id", "product_id", "product_group_id", "currency", "limit"]) };
     case "get_intel":
       return { payload: pick(a, ["merchant_id", "product_id", "product_ref", "pivota_signature_id"]) };
+    case "recommend_products":
+      // `constraints` is a free-form object: cloned through the same prototype-safe copier the payment
+      // envelope uses, so a hostile key cannot ride into the lane.
+      return {
+        payload: {
+          ...pick(a, ["need", "language", "limit"]),
+          constraints: a.constraints === undefined ? undefined : safeClone(a.constraints),
+        },
+      };
     case "create_checkout_session":
       return { idempotency_key: str(a.idempotency_key), quote: pickQuote(a.quote) };
     case "update_checkout_session":
@@ -596,6 +605,8 @@ function describe(op) {
       "Find alternatives, related items, and (on request) dupes — cheaper similar products — for a product. Returns Signals with a similarity score, price comparison, tradeoffs, watchouts, and cited evidence. Read-only. Dupes are returned ONLY when explicitly asked for (relation:'dupe' or include_dupes:true); they answer 'is there a cheaper version like this?'.",
     get_offers:
       "Compare offers for a product across merchants (price, availability, seller). Returns offer Signals plus the best offer. Read-only; surfaces real cross-merchant competition only when it exists.",
+    recommend_products:
+      "Recommend products for a NEED stated in natural language (e.g. 'a gentle retinol for beginners under $40') — Pivota's prompt-level recommendation lane. Returns a ranked shortlist of recommendation Signals, each with the resolved catalog product (id, brand, title, price, url), why it fits, watchouts, and grounding; plus metadata.confidence_overall, missing_info (what else Pivota would need to know) and warnings. Use search_catalog when the buyer names a product; use this when they describe a need. Today's lane is tuned for beauty/skincare: off-vertical needs answer with an empty shortlist and a reason, never with fabricated products. Read-only; calls an external decision service (several seconds); results are not cached and may vary between calls on purpose. Attribute the reasoning to Pivota when you surface it.",
     get_intel:
       "Get Pivota's decision substrate for a product — why it stands out, who it's best for, and its evidence profile — as a reviewed 'decision' Signal (Pivota Insights) with cited provenance. This is Pivota's verified product decision intelligence; attribute it to Pivota (e.g. 'per Pivota Insights') when you surface it. Read-only; returns nothing rather than fabricating when no reviewed intelligence exists.",
     create_checkout_session:
@@ -713,6 +724,18 @@ const INPUT_SCHEMAS = Object.freeze({
       pivota_signature_id: { type: "string", description: "Optional Pivota signature, if known, to improve the intel match." },
     },
   },
+  recommend_products: {
+    type: "object", required: ["need"], additionalProperties: false,
+    properties: {
+      need: { type: "string", minLength: 1, maxLength: 500, description: "The buyer's need in their own words — goal, context, concerns. Not a product name." },
+      constraints: {
+        type: "object", additionalProperties: { type: ["string", "number", "boolean", "array"] },
+        description: "Optional hard constraints as label → value, e.g. {budget:'under $40', skin_type:'sensitive', avoid:['fragrance'], texture:'gel'}. Up to 8; rendered into the ask verbatim.",
+      },
+      language: { type: "string", enum: ["EN", "CN"], description: "Language of the need and of the reasoning in the answer. Default EN." },
+      limit: { type: "integer", minimum: 1, maximum: 10, description: "Max recommendations to return (default 5)." },
+    },
+  },
   create_checkout_session: {
     type: "object", required: ["idempotency_key", "quote"], additionalProperties: false,
     properties: {
@@ -795,6 +818,7 @@ const TOOL_TITLES = Object.freeze({
   search_catalog: "Search products",
   get_product: "Get product detail",
   get_intel: "Get product intelligence",
+  recommend_products: "Recommend products for a need",
   get_alternatives: "Find alternatives",
   get_offers: "Compare offers",
   get_checkout_session: "Get checkout session",
@@ -809,6 +833,7 @@ const TOOL_TITLES = Object.freeze({
 // Per-op deviations from the mutating/read base.
 const ANNOTATION_OVERRIDES = Object.freeze({
   get_order: { openWorldHint: true }, // reads an order's status from the merchant's system
+  recommend_products: { openWorldHint: true, idempotentHint: false }, // calls the external decision service; answers may vary on purpose
   create_checkout_session: { destructiveHint: false }, // additive: mints a quote, destroys nothing
   update_checkout_session: { destructiveHint: false }, // additive re-quote
   create_payment_link: { destructiveHint: false }, // mints a hosted payment page; charges nothing itself

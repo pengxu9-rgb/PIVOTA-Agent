@@ -574,13 +574,13 @@ test('the three discovery operations are split by what each id actually promises
   assert.deepEqual(operationsForCapability('catalog_lookup', { includeRefusalOnly: false }), ['get_product']);
   assert.deepEqual(
     operationsForCapability('insights', { includeRefusalOnly: false }).sort(),
-    ['get_alternatives', 'get_intel', 'get_offers'],
+    ['get_alternatives', 'get_intel', 'get_offers', 'recommend_products'],
   );
   // and no operation was lost or duplicated in the split
   const all = ['catalog_search', 'catalog_lookup', 'insights']
     .flatMap((c) => operationsForCapability(c, { includeRefusalOnly: false }));
   assert.equal(new Set(all).size, all.length, 'an operation must not appear under two capabilities');
-  assert.deepEqual(all.sort(), ['get_alternatives', 'get_intel', 'get_offers', 'get_product', 'search_catalog']);
+  assert.deepEqual(all.sort(), ['get_alternatives', 'get_intel', 'get_offers', 'get_product', 'recommend_products', 'search_catalog']);
 });
 
 test('every capability ID is bound to its operations IN THE CONTRACT, published or not', () => {
@@ -596,7 +596,7 @@ test('every capability ID is bound to its operations IN THE CONTRACT, published 
   assert.deepEqual(byUcpId, {
     'dev.ucp.shopping.catalog.search': ['search_catalog'],
     'dev.ucp.shopping.catalog.lookup': ['get_product'],
-    'cc.pivota.insights': ['get_alternatives', 'get_offers', 'get_intel'],
+    'cc.pivota.insights': ['get_alternatives', 'get_offers', 'get_intel', 'recommend_products'],
     'dev.ucp.shopping.checkout': [
       'create_checkout_session', 'update_checkout_session', 'get_checkout_session',
       'complete_checkout_session', 'create_payment_link', 'cancel_checkout_session',
