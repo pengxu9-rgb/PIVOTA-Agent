@@ -30215,6 +30215,36 @@ function stripStrictUserContext(ctx = {}, identityDiagnostics = undefined) {
   });
 }
 
+// Federated buyer identity (per-agent issuers registered in the developer portal; backend table
+// agent_identity_issuers). Built once per process; the registry itself refreshes on its own TTL and does a
+// single forced refresh on a miss, so a registration made seconds ago is honoured. Disabled (and every call
+// throws) unless PIVOTA_API_BASE + AGENT_AUTH_INTROSPECT_INTERNAL_KEY are set — the same pair the api-key
+// introspection uses — or when AGENT_FEDERATED_IDENTITY_ENABLED=false.
+let agentIdentityIssuerRegistry = null;
+function getAgentIdentityIssuerRegistry() {
+  if (!agentIdentityIssuerRegistry) {
+    const { createAgentIdentityIssuerRegistry } = require('./services/agentIdentityIssuerRegistry');
+    agentIdentityIssuerRegistry = createAgentIdentityIssuerRegistry({ logger });
+  }
+  return agentIdentityIssuerRegistry;
+}
+
+/**
+ * The static verifier does not know this issuer (or is not configured at all) — is it an issuer the CALLING
+ * agent registered? Only then is the token verified, and only against that agent's binding. Any outcome
+ * other than a verified token throws, exactly like the static verifier, so the caller's fail-closed branch
+ * is shared. `null` means "not applicable" (no agent on the request), which keeps the static error.
+ */
+async function verifyFederatedUserJwt(req, token) {
+  const agentId = req?.invokeAuth?.agent_id;
+  if (!agentId) return null;
+  return getAgentIdentityIssuerRegistry().verifyForAgent(token, agentId);
+}
+
+function isUnknownIssuerError(err) {
+  return err?.code === 'ISSUER_NOT_ALLOWED';
+}
+
 async function deriveStrictCommerceCtxAsync(req) {
   const base = deriveStrictCommerceCtx(req);
   const rawUserJwt = extractAgentUserJwt(req);
@@ -30224,9 +30254,41 @@ async function deriveStrictCommerceCtxAsync(req) {
       identity_diagnostics: { agent_user_jwt_present: false },
     });
   }
+  const token = parseBearerToken(rawUserJwt) || rawUserJwt;
+
+  const verified = (verifiedResult, source) => {
+    const verifiedSessionId = resolveVerifiedCommerceSessionId(verifiedResult?.claims);
+    return pruneEmptyFields({
+      ...base,
+      user_ref: verifiedResult.user_ref,
+      acp_session_id: verifiedSessionId || base.acp_session_id,
+      claims: verifiedResult.claims,
+      identity_source: source,
+      identity_diagnostics: {
+        agent_user_jwt_present: true,
+        verifier_configured: true,
+        verified: true,
+        ...(verifiedResult.issuer_binding ? { issuer_binding: verifiedResult.issuer_binding } : {}),
+      },
+    });
+  };
 
   const verifier = await getCommerceUserTokenVerifier();
   if (typeof verifier !== 'function') {
+    // No static issuers configured. A federated binding can still verify the token — for the calling agent
+    // only. Everything else keeps the original NO_IDENTITY_ISSUER_CONFIG outcome.
+    try {
+      const fed = await verifyFederatedUserJwt(req, token);
+      if (fed) return verified(fed, 'x_agent_user_jwt_federated');
+    } catch (err) {
+      logger.warn({ path: req?.path || null, code: err?.code || null }, 'federated agent user JWT verification failed');
+      return stripStrictUserContext(base, {
+        agent_user_jwt_present: true,
+        verifier_configured: true,
+        verified: false,
+        failure_code: err?.code || 'USER_TOKEN_INVALID',
+      });
+    }
     logger.warn(
       {
         path: req?.path || null,
@@ -30242,21 +30304,25 @@ async function deriveStrictCommerceCtxAsync(req) {
   }
 
   try {
-    const verified = await verifier(parseBearerToken(rawUserJwt) || rawUserJwt);
-    const verifiedSessionId = resolveVerifiedCommerceSessionId(verified?.claims);
-    return pruneEmptyFields({
-      ...base,
-      user_ref: verified.user_ref,
-      acp_session_id: verifiedSessionId || base.acp_session_id,
-      claims: verified.claims,
-      identity_source: 'x_agent_user_jwt',
-      identity_diagnostics: {
-        agent_user_jwt_present: true,
-        verifier_configured: true,
-        verified: true,
-      },
-    });
+    return verified(await verifier(token), 'x_agent_user_jwt');
   } catch (err) {
+    // The static registry does not know the issuer → try the calling agent's own binding. Any other static
+    // failure (bad signature, expired, wrong aud for a KNOWN issuer) is final: a federated retry there would
+    // let an agent re-register a global issuer and get a second opinion.
+    if (isUnknownIssuerError(err)) {
+      try {
+        const fed = await verifyFederatedUserJwt(req, token);
+        if (fed) return verified(fed, 'x_agent_user_jwt_federated');
+      } catch (fedErr) {
+        logger.warn({ path: req?.path || null, code: fedErr?.code || null }, 'federated agent user JWT verification failed');
+        return stripStrictUserContext(base, {
+          agent_user_jwt_present: true,
+          verifier_configured: true,
+          verified: false,
+          failure_code: fedErr?.code || 'USER_TOKEN_INVALID',
+        });
+      }
+    }
     logger.warn(
       {
         path: req?.path || null,
