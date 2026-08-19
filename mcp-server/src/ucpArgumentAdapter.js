@@ -180,6 +180,12 @@ function ucpRefusal(code, reason, message, extra = {}) {
 // intake problem on these operations, so a client's existing branch on the code keeps working.
 const CHECKOUT_REFUSAL_CODE = "QUOTE_REQUIRED";
 
+// cc.pivota.insights wire-shape refusals. NOT UNKNOWN_PRODUCT_ID: that code means "no product matches
+// that id" (404 + "search again"), which is the wrong instruction for a caller whose id is valid and
+// whose envelope is malformed.
+const INSIGHTS_REFUSAL_CODE = "OPERATION_NOT_ALLOWED";
+const ALTERNATIVE_RELATIONS = Object.freeze(["competitive_alternative", "niche_specialist", "related_product", "dupe"]);
+
 // ---- shared pieces of the wire shape ---------------------------------------------------------------------
 
 const META_DESCRIPTION = [
@@ -1694,7 +1700,7 @@ const SPECS = Object.freeze({
             id: { type: "string", description: "The Pivota product id (from search_catalog / get_product)." },
             relation: {
               type: "string",
-              enum: ["competitive_alternative", "niche_specialist", "related_product", "dupe"],
+              enum: [...ALTERNATIVE_RELATIONS],
               description: "Restrict to one relation. `dupe` is the only way (with include_dupes) to get dupes.",
             },
             include_dupes: { type: "boolean", description: "Include cheaper similar products (dupes). Off by default." },
@@ -1706,15 +1712,31 @@ const SPECS = Object.freeze({
       },
     },
     map(args) {
-      const code = "UNKNOWN_PRODUCT_ID";
+      // A WIRE-SHAPE refusal, not "no such product": UNKNOWN_PRODUCT_ID carries "search again to get a
+      // valid product_id" and maps to 404, which misdirects a caller whose id was fine and whose
+      // envelope was not. Same reasoning (and same code) as search_catalog's refusals.
+      const code = INSIGHTS_REFUSAL_CODE;
       const insights = readInsightsEnvelope(args, code, "get_alternatives",
         ["id", "relation", "include_dupes", "market", "max_price_ratio", "limit"]);
+      const relation = readOptionalString(insights.raw, "relation");
+      if (relation !== undefined && !ALTERNATIVE_RELATIONS.includes(relation)) {
+        throw ucpRefusal(code, "ucp_insights_relation_invalid", [
+          "`insights.relation` must be one of " + ALTERNATIVE_RELATIONS.map((r) => "`" + r + "`").join(", ") + ".",
+          "Omit it for every relation except dupes (which need `include_dupes: true` or `relation: \"dupe\"`).",
+        ].join(" "), { rejected_field: "insights.relation", accepted_values: [...ALTERNATIVE_RELATIONS] });
+      }
+      const maxPriceRatio = readOptionalNumber(insights.raw, "max_price_ratio");
+      if (maxPriceRatio !== undefined && maxPriceRatio < 0) {
+        throw ucpRefusal(code, "ucp_insights_max_price_ratio_invalid",
+          "`insights.max_price_ratio` must be >= 0 (it caps candidate / anchor price; 1.0 = equal or cheaper).",
+          { rejected_field: "insights.max_price_ratio" });
+      }
       return pruneUndefinedArgs({
         product_id: insights.id,
-        relation: readOptionalString(insights.raw, "relation"),
+        relation,
         include_dupes: readOptionalBoolean(insights.raw, "include_dupes"),
         market: readOptionalString(insights.raw, "market"),
-        max_price_ratio: readOptionalNumber(insights.raw, "max_price_ratio"),
+        max_price_ratio: maxPriceRatio,
         limit: readOptionalInteger(insights.raw, "limit", 1, 20),
       });
     },
@@ -1742,7 +1764,7 @@ const SPECS = Object.freeze({
       },
     },
     map(args) {
-      const code = "UNKNOWN_PRODUCT_ID";
+      const code = INSIGHTS_REFUSAL_CODE;
       const insights = readInsightsEnvelope(args, code, "get_offers", ["id", "currency", "limit"]);
       return pruneUndefinedArgs({
         product_id: insights.id,
@@ -1772,7 +1794,7 @@ const SPECS = Object.freeze({
       },
     },
     map(args) {
-      const code = "UNKNOWN_PRODUCT_ID";
+      const code = INSIGHTS_REFUSAL_CODE;
       const insights = readInsightsEnvelope(args, code, "get_intel", ["id"]);
       return { product_id: insights.id };
     },

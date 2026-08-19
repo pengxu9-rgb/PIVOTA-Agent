@@ -42,7 +42,12 @@ function relationshipEdgeToSignal(edge, { anchorId = null } = {}) {
         ref: edge.candidate_product_ref || null,
         title: snapshot.title || null,
         brand: snapshot.brand || null,
-        price: snapshot.price != null ? snapshot.price : null,
+        // COERCED, not passed through: the snapshot is a raw DB row spread and node-pg returns NUMERIC
+        // as a string, which would break the published `number|null` contract (offerToSignal already
+        // coerces for the same reason).
+        price: Number.isFinite(Number(snapshot.price)) && snapshot.price !== null && snapshot.price !== ''
+          ? Number(snapshot.price)
+          : null,
         currency: snapshot.currency || null,
         image_url: snapshot.image_url || null,
       },
