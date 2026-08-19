@@ -12,8 +12,10 @@
 //  - the lane is the Aurora BEAUTY engine today: its prompts, catalog grounding and guardrails are tuned for
 //    skincare/beauty. An off-vertical need answers with an empty shortlist + `missing_info`, not with
 //    fabricated products;
-//  - it calls an external decision service (AURORA_DECISION_BASE_URL) — seconds, not milliseconds; the door's
-//    heartbeat keeps the connection alive; `budgetMs` bounds the call;
+//  - it calls an external decision service (AURORA_DECISION_BASE_URL) — seconds, not milliseconds; the
+//    door's heartbeat keeps the connection alive. `budgetMs` is passed to the lane's own deadline for its
+//    enrichment/framework passes; the upstream LLM leg is bounded separately by the lane's
+//    AURORA_BFF_RECO_UPSTREAM_TIMEOUT_MS (8s, hard cap 12s), so it is a hint, not a hard ceiling;
 //  - results are NOT cached: the lane keeps a per-caller diversity memory, so two identical calls may differ
 //    on purpose.
 //
@@ -51,16 +53,47 @@ function asStringArray(v, max = 6) {
   if (nonEmpty(v)) return [v.trim()];
   return [];
 }
+function dedupe(values) {
+  const seen = new Set();
+  const out = [];
+  for (const v of values) {
+    const key = v.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(v);
+  }
+  return out;
+}
+
+/** The lane's integer 0-100 score as a band an agent can act on (never the raw score: see `fit`). */
+function scoreBand(score) {
+  if (score === null) return null;
+  if (score >= 80) return 'high';
+  if (score >= 55) return 'medium';
+  return 'low';
+}
+
 function finiteNumber(v) {
   if (typeof v === 'number' && Number.isFinite(v)) return v;
   if (typeof v === 'string' && v.trim() !== '' && Number.isFinite(Number(v))) return Number(v);
   return null;
 }
 
-/** The agent's uid for the lane: namespaced, stable per calling agent, never a consumer uid. */
+/**
+ * The agent's uid for the lane: namespaced, stable per calling agent, never a consumer uid.
+ *
+ * The lane keys its anti-repeat diversity memory on this, so it must be stable per caller AND
+ * distinct between callers: one shared `agent:anonymous` bucket would let one caller's history
+ * filter another's results. Callers with no resolved agent_id fall back to the auth key's
+ * fingerprint (already non-reversible), and only a wholly unauthenticated context lands in the
+ * shared bucket.
+ */
 function agentLaneUid(ctx) {
   const agentId = str(ctx?.agent_id) || str(ctx?.invokeAuth?.agent_id);
-  return `agent:${agentId || 'anonymous'}`;
+  if (agentId) return `agent:${agentId}`;
+  const fingerprint = str(ctx?.invokeAuth?.key_fingerprint);
+  if (fingerprint) return `agentkey:${fingerprint}`;
+  return 'agent:anonymous';
 }
 
 /** Normalize + bound the model's constraints into the lane's free-form map (strings only, bounded). */
@@ -84,33 +117,58 @@ function normalizeConstraints(raw) {
   return out;
 }
 
-/** One lane recommendation item → one `recommendation` Signal. Returns null for an item with no identity. */
+/**
+ * One lane recommendation item → one `recommendation` Signal. Returns null for an item with no identity.
+ *
+ * THE FIELD NAMES COME FROM THE LANE'S OWN OUTPUT CONTRACT — prompts/reco_main_v1_2.user_schema.json
+ * (`output_schema.recommendations[]`): slot, step, score, product_type, brand, name, display_name,
+ * use_case, concern_match, skin_fit, constraint_notes, query_terms, reasons, sku{…}, missing_info,
+ * warnings — plus what `buildRecoVisibleProductFields` attaches on the grounded path (price as a
+ * `{amount, currency}` OBJECT, image_url, url/pdp_url/product_url) and what `coerceRecoItemForUi`
+ * normalizes (notes, pdp_open, grounding_status). An earlier version read `why_candidate`,
+ * `watchouts`, `fit_level`, `evidence_grade` and `pdp_open.directUrl` — none of which this lane
+ * emits — so every real call answered with empty reasoning and a null price.
+ */
 function recommendationItemToSignal(item, { rank } = {}) {
   if (!isPlainObject(item)) return null;
   const sku = isPlainObject(item.sku) ? item.sku : isPlainObject(item.product) ? item.product : {};
   const pdpOpen = isPlainObject(item.pdp_open) ? item.pdp_open : {};
-  const canonicalRef = isPlainObject(pdpOpen.canonicalProductRef) ? pdpOpen.canonicalProductRef : {};
   const external = isPlainObject(pdpOpen.external) ? pdpOpen.external : {};
+  const pdpSubject = isPlainObject(pdpOpen.subject) ? pdpOpen.subject : {};
 
-  const productId = firstString(sku.product_id, sku.productId, item.product_id, item.productId, canonicalRef.product_id);
-  const merchantId = firstString(sku.merchant_id, item.merchant_id, canonicalRef.merchant_id);
+  const productId = firstString(sku.product_id, sku.productId, item.product_id, item.productId);
+  const merchantId = firstString(sku.merchant_id, item.merchant_id);
   const title = firstString(sku.display_name, sku.displayName, sku.name, item.display_name, item.displayName, item.name, item.title);
   const brand = firstString(sku.brand, item.brand);
-  const category = firstString(sku.category, item.category);
-  const url = firstString(pdpOpen.directUrl, external.url, item.pdp_url, item.pdpUrl, item.url, item.product_url);
+  const category = firstString(sku.category, item.category, item.product_type);
+  const url = firstString(external.url, item.pdp_url, item.pdpUrl, item.url, item.product_url, sku.pdp_url);
+  // Internally-grounded items open through Pivota rather than a direct URL: surface the ref the
+  // platform can hand back to get_product instead of leaving the agent with an id it cannot open.
+  const productRef = firstString(pdpOpen.product_ref, pdpSubject.product_group_id, pdpSubject.id);
   const imageUrl = firstString(sku.image_url, sku.imageUrl, item.image_url, item.imageUrl);
-  const price = finiteNumber(sku.price ?? item.price);
-  const currency = firstString(sku.currency, item.currency);
+  // The lane's price is a normalized OBJECT ({amount, currency, unknown}) built by
+  // extractCatalogCandidatePrice; a bare number/string only appears on unnormalized rows.
+  const priceObj = isPlainObject(item.price) ? item.price : isPlainObject(sku.price) ? sku.price : null;
+  const price = finiteNumber(priceObj ? priceObj.amount : (sku.price ?? item.price));
+  const currency = firstString(priceObj && priceObj.currency, sku.currency, item.currency);
   const grounded = item.grounding_status !== 'ungrounded';
 
   // A recommendation with neither an id nor a name is not something an agent can act on.
   if (!productId && !title) return null;
 
-  const why = isPlainObject(item.why_candidate)
-    ? [str(item.why_candidate.summary), ...asStringArray(item.why_candidate.reasons_user_visible ?? item.why_candidate.reasons)].filter(Boolean)
-    : asStringArray(item.why_candidate ?? item.why ?? item.reason);
-  const notes = asStringArray(item.notes);
-  const watchouts = asStringArray(item.watchouts ?? item.cautions ?? item.boundary_user_visible, 4);
+  // `reasons` is the lane's per-item rationale; `use_case`, `concern_match` and `skin_fit` say who
+  // and what it is for. coerceRecoItemForUi folds some of these into `notes`, so both are read and
+  // deduplicated.
+  const why = [
+    ...asStringArray(item.reasons, 6),
+    ...asStringArray(item.use_case, 1),
+    ...asStringArray(item.concern_match, 3),
+    ...asStringArray(item.skin_fit, 3),
+  ];
+  const notes = asStringArray(item.notes, 6).filter((n) => !why.includes(n));
+  // Real caution content: constraint_notes (why a constraint forced or blocked something) and the
+  // per-item warnings the lane emits.
+  const watchouts = [...asStringArray(item.constraint_notes, 4), ...asStringArray(item.warnings, 4)];
 
   return {
     signal_type: 'recommendation',
@@ -126,25 +184,30 @@ function recommendationItemToSignal(item, { rank } = {}) {
         price,
         currency: currency || null,
         url: url || null,
+        // A canonical ref the platform can pass to get_product when there is no direct URL.
+        product_ref: productRef || null,
         image_url: imageUrl || null,
       },
-      why: why.slice(0, 6),
-      watchouts,
+      why: dedupe(why).slice(0, 8),
+      watchouts: dedupe(watchouts).slice(0, 6),
       notes: notes.slice(0, 4),
       routine_step: firstString(item.step, item.slot),
+      product_type: firstString(item.product_type),
       // Grounded = resolved to a product in Pivota's catalog; ungrounded = the lane named a product it could
       // not resolve, and such items carry NO url/price by construction (the lane strips them).
       grounding: grounded ? 'catalog' : 'ungrounded',
       fit: {
-        // Not a bare `confidence`: the sanitizer removes that key from product-shaped nodes. Lane-level
-        // certainty is on metadata.confidence_overall.
-        level: firstString(item.fit_level, item.confidence_level) || null,
+        // Not a bare `confidence`/`score`: the sanitizer removes those keys from product-shaped nodes.
+        // The lane emits an integer 0-100 `score`; it is surfaced as a BAND, which is what an agent can
+        // act on, and lane-level certainty stays on metadata.confidence_overall.
+        level: scoreBand(finiteNumber(item.score)),
       },
     },
     evidence: {
-      grade: firstString(item.evidence_grade) || null,
+      // This lane is an LLM recommendation grounded (or not) in Pivota's catalog — it carries no
+      // graded evidence bundle. `get_intel` is the tool that does; the description says so, and
+      // inventing a grade here would be exactly the fabrication this repo keeps removing.
       method: grounded ? 'llm_recommendation_catalog_grounded' : 'llm_recommendation',
-      sources: asStringArray(item.evidence_refs ?? item.sources, 6),
     },
     visibility: 'buyer_safe',
   };
@@ -169,7 +232,10 @@ function makeRecommendProducts(deps = {}) {
   return async function recommendProducts(params = {}, ctx = {}) {
     const p = (params && params.payload) || params || {};
     const need = str(p.need).slice(0, MAX_NEED_CHARS);
-    const subject = { kind: 'need', id: need || null };
+    // `text`, NOT `id`: resultSanitizer exempts id-shaped keys from PAN redaction on the premise that
+    // their values are Pivota's own identifiers. This is buyer-authored prose, so it must sit under a
+    // key that stays scrubbed.
+    const subject = { kind: 'need', text: need || null };
 
     if (typeof isEnabled === 'function' && !isEnabled()) {
       return { subject, signals: [], metadata: { reason: 'disabled' } };

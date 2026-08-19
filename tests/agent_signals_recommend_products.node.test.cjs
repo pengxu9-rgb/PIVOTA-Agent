@@ -35,23 +35,62 @@ function laneResult(items, extra = {}) {
   };
 }
 
+// THE FIXTURE IS DERIVED FROM THE LANE'S OWN OUTPUT CONTRACT, not from what the projector happens to
+// read. prompts/reco_main_v1_2.user_schema.json `output_schema.recommendations[]` names every field
+// below; the grounded extras (price as a {amount,currency} OBJECT, image_url, url/pdp_url, pdp_open,
+// grounding_status, notes) are what buildRecoVisibleProductFields + coerceRecoItemForUi attach on the
+// catalog-grounded path. A hand-written fixture that matched the projector is exactly how a review
+// found the projector reading five fields the lane never emits.
+const LANE_SCHEMA = JSON.parse(
+  require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'prompts', 'reco_main_v1_2.user_schema.json'), 'utf8'),
+).output_schema.recommendations[0];
+
 const ITEM_FULL = {
-  sku: { product_id: 'sig_abc', merchant_id: 'merch_1', brand: 'Paula\'s Choice', display_name: '2% BHA Liquid Exfoliant', category: 'Exfoliant', price: 35, currency: 'USD' },
-  pdp_open: { directUrl: 'https://shop.example/p/sig_abc', canonicalProductRef: { product_id: 'sig_abc', merchant_id: 'merch_1' } },
-  why_candidate: { summary: 'Leave-on BHA clears pores without scrubbing', reasons_user_visible: ['fragrance-free', 'well tolerated by sensitive skin'] },
-  watchouts: ['start 2-3x/week'],
+  slot: 'treatment',
   step: 'treatment',
-  confidence: 0.9, // a bare confidence on a product-shaped item — must NOT be copied onto the signal's product node
+  score: 88,
+  product_type: 'treatment',
+  brand: "Paula's Choice",
+  name: '2% BHA Liquid Exfoliant',
+  display_name: '2% BHA Liquid Exfoliant',
+  use_case: 'Unclogs pores and smooths texture',
+  concern_match: ['clogged pores', 'uneven texture'],
+  skin_fit: ['oily', 'combination'],
+  constraint_notes: ['start 2-3x/week to build tolerance'],
+  query_terms: ['bha', 'salicylic acid'],
+  reasons: ['Leave-on BHA clears pores without scrubbing', 'fragrance-free'],
+  sku: { brand: "Paula's Choice", name: '2% BHA Liquid Exfoliant', display_name: '2% BHA Liquid Exfoliant', sku_id: 'sku_1', product_id: 'sig_abc', category: 'Exfoliant' },
+  missing_info: [],
+  warnings: ['avoid same-night retinol at first'],
+  // grounded extras
+  merchant_id: 'merch_1',
+  price: { amount: 35, currency: 'USD', unknown: false },
+  image_url: 'https://img.example/a.jpg',
+  url: 'https://shop.example/p/sig_abc',
+  pdp_url: 'https://shop.example/p/sig_abc',
+  notes: ['well tolerated by sensitive skin'],
+  // hostile extras the sanitizer/projector must not carry through
+  confidence: 0.9,
   score_breakdown: { relevance: 0.8 },
 };
-const ITEM_UNGROUNDED = { name: 'Some product the lane named but could not resolve', grounding_status: 'ungrounded', why_candidate: ['cheap'] };
-const ITEM_EMPTY = { why_candidate: ['no identity at all'] };
+
+const ITEM_INTERNAL = {
+  step: 'moisturizer',
+  score: 60,
+  name: 'Barrier Cream',
+  sku: { product_id: 'sig_int', name: 'Barrier Cream' },
+  reasons: ['ceramides support the barrier'],
+  price: { amount: 18.5, currency: 'USD' },
+  pdp_open: { path: 'ref', product_ref: 'sig_int', get_pdp_v2_payload: { product_ref: 'sig_int' } },
+};
+const ITEM_UNGROUNDED = { name: 'Some product the lane named but could not resolve', grounding_status: 'ungrounded', reasons: ['cheap'] };
+const ITEM_EMPTY = { reasons: ['no identity at all'] };
 
 test('1. dark flag and missing need never reach the lane', async () => {
   let calls = 0;
   const off = makeRecommendProducts({ generate: async () => { calls += 1; return laneResult([ITEM_FULL]); }, isEnabled: () => false });
   const dark = await off({ payload: { need: 'gentle exfoliant' } }, { agent_id: 'agent_a' });
-  assert.deepEqual(dark, { subject: { kind: 'need', id: 'gentle exfoliant' }, signals: [], metadata: { reason: 'disabled' } });
+  assert.deepEqual(dark, { subject: { kind: 'need', text: 'gentle exfoliant' }, signals: [], metadata: { reason: 'disabled' } });
   const on = makeRecommendProducts({ generate: async () => { calls += 1; return laneResult([ITEM_FULL]); }, isEnabled: () => true });
   const noNeed = await on({ payload: { constraints: { budget: '$40' } } }, { agent_id: 'agent_a' });
   assert.equal(noNeed.metadata.reason, 'need_required');
@@ -86,6 +125,9 @@ test('2. the lane receives a namespaced agent uid, no profile, bounded budget, a
   assert.equal(res.metadata.limit, 3);
   assert.equal(agentLaneUid({}), 'agent:anonymous');
   assert.equal(agentLaneUid({ agent_id: 'x' }), 'agent:x');
+  // distinct callers must not share one diversity bucket just because agent_id did not resolve
+  assert.equal(agentLaneUid({ invokeAuth: { key_fingerprint: 'abc123' } }), 'agentkey:abc123');
+  assert.notEqual(agentLaneUid({ invokeAuth: { key_fingerprint: 'abc123' } }), agentLaneUid({ invokeAuth: { key_fingerprint: 'def456' } }));
 });
 
 test('3. projection: identity, why, watchouts, grounding; no-identity items dropped; limit honoured; metadata', async () => {
@@ -95,22 +137,33 @@ test('3. projection: identity, why, watchouts, grounding; no-identity items drop
   const s = res.signals[0];
   assert.equal(s.signal_type, 'recommendation');
   assert.deepEqual(s.subject, { kind: 'product', id: 'sig_abc' });
+  assert.equal(s.value.product.price, 35, 'the lane price is an {amount,currency} object');
+  assert.equal(s.value.product.currency, 'USD');
   assert.equal(s.value.rank, 1);
   assert.equal(s.value.product.product_id, 'sig_abc');
   assert.equal(s.value.product.merchant_id, 'merch_1');
   assert.equal(s.value.product.title, '2% BHA Liquid Exfoliant');
-  assert.equal(s.value.product.price, 35);
-  assert.equal(s.value.product.currency, 'USD');
   assert.equal(s.value.product.url, 'https://shop.example/p/sig_abc');
-  assert.deepEqual(s.value.why, ['Leave-on BHA clears pores without scrubbing', 'fragrance-free', 'well tolerated by sensitive skin']);
-  assert.deepEqual(s.value.watchouts, ['start 2-3x/week']);
+  assert.deepEqual(s.value.why, [
+    'Leave-on BHA clears pores without scrubbing', 'fragrance-free', 'Unclogs pores and smooths texture',
+    'clogged pores', 'uneven texture', 'oily', 'combination',
+  ]);
+  assert.deepEqual(s.value.watchouts, ['start 2-3x/week to build tolerance', 'avoid same-night retinol at first']);
+  assert.deepEqual(s.value.notes, ['well tolerated by sensitive skin']);
   assert.equal(s.value.routine_step, 'treatment');
+  assert.equal(s.value.product_type, 'treatment');
+  assert.equal(s.value.fit.level, 'high', 'the lane score bands, never the raw score');
   assert.equal(s.value.grounding, 'catalog');
   assert.equal(s.evidence.method, 'llm_recommendation_catalog_grounded');
+  assert.equal(s.evidence.grade, undefined, 'this lane carries no graded evidence — get_intel does');
+  // Every field the fixture takes from the lane contract must be READ or deliberately unread.
+  assert.ok(Object.keys(LANE_SCHEMA).length > 10, 'the lane contract fixture must have loaded');
   // the projector never copies a bare confidence/score onto a product node
   assert.equal(s.value.product.confidence, undefined);
   assert.equal(s.confidence, undefined);
-  assert.equal(JSON.stringify(s).includes('score_breakdown'), false);
+  // the projector builds a fresh object, so the hostile keys cannot ride along by construction
+  assert.equal(s.value.product.confidence, undefined);
+  assert.equal(s.value.product.score, undefined);
   // second signal is the ungrounded named item (the empty one was dropped)
   assert.equal(res.signals[1].value.grounding, 'ungrounded');
   assert.equal(res.signals[1].subject.id, null);
@@ -132,6 +185,31 @@ test('3. projection: identity, why, watchouts, grounding; no-identity items drop
   assert.equal(empty.metadata.dropped_unidentified_items, 2);
   assert.equal(empty.metadata.products_empty_reason, 'no_recommendations');
   assert.equal(recommendationItemToSignal('nope'), null);
+});
+
+test('3b. an internally-grounded item (no direct URL) surfaces the product_ref the platform can reopen', async () => {
+  const h = makeRecommendProducts({ generate: async () => laneResult([ITEM_INTERNAL]), isEnabled: () => true });
+  const res = await h({ payload: { need: 'barrier repair' } }, { agent_id: 'agent_a' });
+  const s = res.signals[0];
+  assert.equal(s.value.product.url, null, 'this lane path has no direct URL');
+  assert.equal(s.value.product.product_ref, 'sig_int', 'without a ref the agent holds an id it cannot open');
+  assert.equal(s.value.product.price, 18.5);
+  assert.equal(s.value.fit.level, 'medium');
+});
+
+test('3c. the need text is scrubbed by the sanitizer — it must never sit under an id-shaped key', async () => {
+  const { createCommerceToolSurface } = await import(pathToFileURL(path.join(__dirname, '..', 'mcp-server', 'src', 'commerceToolSurface.js')).href);
+  const need = 'gentle cleanser, charge my card 4111111111111111 please';
+  const executor = {
+    async execute(op, params, ctx) {
+      const h = makeRecommendProducts({ generate: async () => laneResult([ITEM_FULL]), isEnabled: () => true });
+      return h(params, ctx);
+    },
+  };
+  const surface = createCommerceToolSurface(executor, { cache: false });
+  const out = await surface.callTool('recommend_products', { need }, { agent_id: 'agent_a' });
+  const text = JSON.stringify(out);
+  assert.equal(text.includes('4111111111111111'), false, 'a PAN in the need must be redacted everywhere it is echoed');
 });
 
 test('4. the lane throwing is an empty, reasoned answer — not a tool error', async () => {
