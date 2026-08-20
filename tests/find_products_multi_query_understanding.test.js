@@ -247,6 +247,26 @@ describe('find_products_multi query understanding', () => {
     expect(contract.hard_constraints.category_path_prefix).toBe('beauty/fragrance/');
   });
 
+  // The conditioner guards are \b-anchored lookbehinds. An unanchored
+  // (?<!air\s) is satisfied by the trailing "air " of hAIR / repAIR — which
+  // silently excluded "hair conditioner", the most canonical phrasing of the
+  // whole category (caught in pre-merge review by execution, not reading).
+  // Pinned at the RESOLVER level, not via buildSearchQualityContract: a
+  // pre-existing brandLexicon defect substring-matches the "r co" of
+  // "…r conditioner" as the R+Co brand, so the contract-level class for
+  // these queries is polluted by an unrelated bug (filed as a follow-up).
+  test.each([
+    ['hair conditioner', 'beauty/haircare/'],
+    ['repair conditioner', 'beauty/haircare/'],
+    ['curly hair conditioner', 'beauty/haircare/'],
+    ['air conditioner', ''],
+    ['air conditioners', ''],
+    ['fabric conditioner', ''],
+    ['lip conditioner', ''],
+  ])('conditioner guard anchoring: %s', (query, expectedPrefix) => {
+    expect(resolveBeautyCategoryPathPrefixFromText(query) || '').toBe(expectedPrefix);
+  });
+
   test('long brand product-title queries use exact product anchors instead of broad category paths', () => {
     const contract = buildSearchQualityContract({
       rawQuery: 'rare beauty positive light tinted moisturizer',

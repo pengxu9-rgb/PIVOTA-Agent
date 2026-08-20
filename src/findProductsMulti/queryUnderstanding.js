@@ -63,8 +63,12 @@ const CATEGORY_ALIAS_RULES = Object.freeze([
   {
     category: 'haircare',
     categoryPathPrefix: 'beauty/haircare/',
+    // The lookbehinds are \b-anchored on the guard word: an unanchored
+    // (?<!air\s) is satisfied by the trailing "air " of hAIR, repAIR, chAIR,
+    // which blocked the single most canonical phrasing of this category —
+    // "hair conditioner" (caught in the pre-merge review, by execution).
     pattern:
-      /\b(shampoos?|dry\s+shampoos?|(?<!lip\s)(?<!air\s)(?<!fabric\s)conditioners?|leave[-\s]?in\s+conditioners?|(?:hair|scalp)\s+(?:masks?|oils?|serums?|mists?|tonics?|treatments?|creams?)|hair\s?care)\b|洗发|洗髮|护发素|護髮素|护发|護髮|发膜|髮膜/i,
+      /\b(shampoos?|dry\s+shampoos?|(?<!\blip\s)(?<!\bair\s)(?<!\bfabric\s)conditioners?|leave[-\s]?in\s+conditioners?|(?:hair|scalp)\s+(?:masks?|oils?|serums?|mists?|tonics?|treatments?|creams?)|hair\s?care)\b|洗发|洗髮|护发素|護髮素|护发|護髮|发膜|髮膜/i,
   },
   {
     category: 'mascara',
