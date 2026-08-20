@@ -39,6 +39,7 @@ const DEFAULT_BUDGET_MS = 9000;
 // tool call — the race resolves null and the item degrades to its snapshot price, explicitly marked.
 const PRICE_VERIFY_EXTRA = 2;
 const PRICE_VERIFY_RACE_MS = 2500;
+const PRICE_VERIFY_MAX_CHECKS = 8;
 
 function nonEmpty(v) {
   return typeof v === 'string' && v.trim() !== '';
@@ -385,9 +386,13 @@ function recommendationItemToSignal(item, { rank } = {}) {
     ...asStringArray(item.skin_fit, 3),
   ];
   const notes = asStringArray(item.notes, 6).filter((n) => !why.includes(n));
-  // Real caution content: constraint_notes (why a constraint forced or blocked something) and the
-  // per-item warnings the lane emits.
-  const watchouts = [...asStringArray(item.constraint_notes, 4), ...asStringArray(item.warnings, 4)];
+  // Real caution content: the per-item warnings the lane emits (its SAFETY field — photosensitivity,
+  // patch-testing, interactions) and constraint_notes (why a constraint forced or blocked something).
+  // WARNINGS LEAD on purpose: downstream passes prepend up to three bookkeeping lines (ceiling marker,
+  // price-update, out-of-stock) against the 6-slot cap, and whatever sits LAST in this array is what
+  // eviction takes first. With constraint_notes first, four of them plus the markers pushed every
+  // safety warning off the list — the #2036 failure class reached by eviction instead of deletion.
+  const watchouts = [...asStringArray(item.warnings, 4), ...asStringArray(item.constraint_notes, 4)];
 
   return {
     signal_type: 'recommendation',
@@ -518,8 +523,6 @@ function makeRecommendProducts(deps = {}) {
       logger?.warn?.({ err: err?.message || String(err) }, 'recommend_products lane failed');
       return { subject, signals: [], metadata: { reason: 'lane_unavailable', latency_ms: now() - startedAt } };
     }
-    const latencyMs = now() - startedAt;
-
     const norm = isPlainObject(result?.norm) ? result.norm : null;
     const payload = isPlainObject(norm?.payload) ? norm.payload : isPlainObject(norm) ? norm : {};
     const items = Array.isArray(payload.recommendations) ? payload.recommendations : [];
@@ -554,8 +557,18 @@ function makeRecommendProducts(deps = {}) {
     // a dropped item. Each signal records the outcome so a partner agent knows what it is holding.
     let verification = null;
     if (typeof verifyPrice === 'function' && groundedSignals.length > 0) {
-      const toVerify = groundedSignals.slice(0, limit + PRICE_VERIFY_EXTRA);
-      verification = { checked: toVerify.length, confirmed: 0, updated: 0, unavailable: 0 };
+      // The window is sized to what can actually RETURN: without a ceiling the first `limit` grounded
+      // items ARE the shortlist, so nothing beyond them is checked (each check is a loopback invoke —
+      // fanning out for items that cannot appear is pure backend load); with a ceiling, re-slotting can
+      // pull items from just past the limit, so a small margin rides along. Hard-capped regardless: a
+      // limit-10 caller must not turn one tool call into 12 concurrent PDP lookups against a pool this
+      // repo has wedged before. Anything returned UNCHECKED is marked `price_verified: false` and
+      // counted below — an absent key must never read as "checked and clean".
+      const toVerify = groundedSignals.slice(0, Math.min(
+        enforcing ? limit + PRICE_VERIFY_EXTRA : limit,
+        PRICE_VERIFY_MAX_CHECKS,
+      ));
+      verification = { checked: toVerify.length, confirmed: 0, updated: 0, unavailable: 0, unchecked: 0 };
       await Promise.all(toVerify.map(async (s) => {
         const product = s.value.product;
         let live = null;
@@ -567,7 +580,13 @@ function makeRecommendProducts(deps = {}) {
         } catch { live = null; }
         const livePrice = finiteNumber(isPlainObject(live) ? live.price : null);
         const liveCurrency = isPlainObject(live) ? str(live.currency).toUpperCase() : '';
-        if (livePrice === null || !liveCurrency) {
+        // A live answer is trusted only when it is a POSITIVE amount in a KNOWN currency. `price: 0` is a
+        // documented broken-offer shape in this catalog (offer_price_missing) — writing it through would
+        // flip a $45 violator to "live-verified, within budget" at price 0, the strongest claim this
+        // surface can make, on a fabrication. And an unrecognized currency must not launder a hard
+        // violation into "unverifiable" — the same allowlist that guards the CEILING side (a caller's
+        // `price_max_currency: 'XYZ'` cannot suppress enforcement) guards the live side here.
+        if (livePrice === null || livePrice <= 0 || !liveCurrency || !KNOWN_CURRENCIES.has(liveCurrency)) {
           product.price_verified = false;
           verification.unavailable += 1;
           return;
@@ -620,8 +639,25 @@ function makeRecommendProducts(deps = {}) {
     }
     signals.forEach((s, i) => { s.value.rank = i + 1; });
     const ungroundedReturned = signals.filter((s) => s.value.grounding !== 'catalog').length;
+    // Coverage honesty: with a ceiling, re-slotting can return a grounded item from beyond the
+    // verification window (a conforming item the lane ranked low). It carries `price_verified: false`
+    // like any other unchecked price, and `unchecked` counts it — otherwise "checked N, unavailable 0"
+    // over a shortlist containing an unexamined #1 reads as full coverage, the exact absence-as-clean
+    // misreading this metadata exists to prevent.
+    if (verification) {
+      for (const s of signals) {
+        if (s.value.grounding !== 'catalog') continue;
+        if (s.value.product.price_verified === undefined) {
+          s.value.product.price_verified = false;
+          verification.unchecked += 1;
+        }
+      }
+    }
     const meta = isPlainObject(payload.recommendation_meta) ? payload.recommendation_meta : {};
     const confidence = finiteNumber(payload.confidence);
+    // Measured HERE, after verification and slotting: a 2s live-price pass is real wall time the
+    // partner waited; stamping the lane's latency alone would understate the call by that much.
+    const latencyMs = now() - startedAt;
 
     return {
       subject,
