@@ -5148,6 +5148,28 @@ const recoCatalogFailFastState = {
 // One shared, lazily created cache handle. `db.query` is the canonical gateway accessor and returns a
 // sentinel NO_DATABASE error when DATABASE_URL is unset, which the cache swallows -- so a deployment
 // without a database behaves exactly as it does today.
+// Per-key single-flight for stale-pool revalidation (see the guard at the hit_stale path). In-process
+// on purpose: coalescing only needs to hold within one instance, and a bounded Set cannot leak — the
+// cap is a backstop far above the ~dozens-string recall vocabulary.
+const recoRecallPoolRevalidationInFlight = new Set();
+const RECO_RECALL_POOL_REVALIDATION_MAX_IN_FLIGHT = 64;
+
+// True = the caller owns the refresh for this key and MUST call endRecoRecallPoolRevalidation when it
+// settles. False = another refresh already owns the key (or the backstop cap is reached): serve the
+// stale row and schedule nothing.
+function beginRecoRecallPoolRevalidation(cacheKey) {
+  const key = String(cacheKey || '');
+  if (!key) return false;
+  if (recoRecallPoolRevalidationInFlight.has(key)) return false;
+  if (recoRecallPoolRevalidationInFlight.size >= RECO_RECALL_POOL_REVALIDATION_MAX_IN_FLIGHT) return false;
+  recoRecallPoolRevalidationInFlight.add(key);
+  return true;
+}
+
+function endRecoRecallPoolRevalidation(cacheKey) {
+  recoRecallPoolRevalidationInFlight.delete(String(cacheKey || ''));
+}
+
 let recoRecallPoolCacheInstance = null;
 function getRecoRecallPoolCache() {
   if (!isRecoRecallPoolCacheEnabled()) return null;
@@ -29546,18 +29568,28 @@ async function buildRecoGenerateFromCatalog({
     poolCacheOutcome = 'hit';
     collected = buildRecoCollectedFromCachedPool(cachedEntry.pool);
     if (shouldRevalidateRecoRecallPoolCacheEntry(cachedEntry, Date.now())) {
-      poolCacheOutcome = 'hit_stale_revalidating';
-      // OFF the request path. The caller already has an answer; a refresh must never extend its
-      // latency, and a failed refresh must never surface as a request error.
-      setImmediate(() => {
-        runLiveRecall()
-          .then((fresh) => {
-            const freshPool = extractRecoRecallPoolForCache(fresh);
-            if (!Array.isArray(freshPool) || freshPool.length === 0) return null;
-            return poolCache.write(poolCacheKey, { pool: freshPool, ...poolCacheDims });
-          })
-          .catch(() => null);
-      });
+      // SINGLE-FLIGHT, per key. A popular need means MANY concurrent requests land on the same stale
+      // key in the same tick, and without this guard each of them schedules its own runLiveRecall —
+      // a thundering herd of full live-search fan-outs against the exact slow dependency this cache
+      // exists to shield, which is the same shape as the ensure_database_ready wedge this repo has
+      // already lived through. One refresh per key at a time; everyone else just serves the stale row.
+      if (beginRecoRecallPoolRevalidation(poolCacheKey)) {
+        poolCacheOutcome = 'hit_stale_revalidating';
+        // OFF the request path. The caller already has an answer; a refresh must never extend its
+        // latency, and a failed refresh must never surface as a request error.
+        setImmediate(() => {
+          runLiveRecall()
+            .then((fresh) => {
+              const freshPool = extractRecoRecallPoolForCache(fresh);
+              if (!Array.isArray(freshPool) || freshPool.length === 0) return null;
+              return poolCache.write(poolCacheKey, { pool: freshPool, ...poolCacheDims });
+            })
+            .catch(() => null)
+            .finally(() => endRecoRecallPoolRevalidation(poolCacheKey));
+        });
+      } else {
+        poolCacheOutcome = 'hit_stale_revalidation_coalesced';
+      }
     }
   } else {
     collected = await runLiveRecall();
@@ -104361,6 +104393,8 @@ const __internal = {
   getRecoRecallPoolCache,
   scheduleRecoCatalogFailFastOffRequestProbe,
   runRecoCatalogFailFastOffRequestProbe,
+  beginRecoRecallPoolRevalidation,
+  endRecoRecallPoolRevalidation,
   hasConcernFrameworkFinishFitSameRoleTradeoffCoverage,
   shouldStopConcernFrameworkFinishFitPrimaryExternalEarly,
   runConcernSelectorRace,

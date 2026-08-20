@@ -356,6 +356,29 @@ function resetCircuit() {
   state.last_off_request_probe_failed_at = 0;
 }
 
+test('stale-pool revalidation is SINGLE-FLIGHT per key — a popular key never fans out', () => {
+  // REVIEW FINDING (2026-08-20): the hit_stale path scheduled one runLiveRecall PER REQUEST with no
+  // coalescing. N concurrent requests on one stale popular key = N full live-search fan-outs against
+  // the exact dependency this cache shields — the ensure_database_ready wedge shape. Mutant killed:
+  // removing the begin/end guard makes the second begin() return true and this test fails.
+  const key = 'k_' + Math.random().toString(36).slice(2);
+  assert.equal(__internal.beginRecoRecallPoolRevalidation(key), true, 'first caller owns the refresh');
+  assert.equal(__internal.beginRecoRecallPoolRevalidation(key), false, 'second caller coalesces');
+  __internal.endRecoRecallPoolRevalidation(key);
+  assert.equal(__internal.beginRecoRecallPoolRevalidation(key), true, 'after settle the key is free again');
+  __internal.endRecoRecallPoolRevalidation(key);
+  // the backstop cap refuses new keys rather than growing without bound
+  const opened = [];
+  for (let i = 0; i < 200; i += 1) {
+    const k = `cap_${i}`;
+    if (__internal.beginRecoRecallPoolRevalidation(k)) opened.push(k);
+  }
+  assert.ok(opened.length <= 64, `at most 64 concurrent refreshes, got ${opened.length}`);
+  for (const k of opened) __internal.endRecoRecallPoolRevalidation(k);
+  // an empty key is never registered
+  assert.equal(__internal.beginRecoRecallPoolRevalidation(''), false);
+});
+
 test('a REQUEST is never conscripted as a circuit probe once off-request probing is on', () => {
   resetCircuit();
   const now = Date.now();
