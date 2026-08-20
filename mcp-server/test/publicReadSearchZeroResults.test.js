@@ -99,29 +99,62 @@ test("the query crossing the boundary is whitespace-canonical, with case preserv
   assert.ok(/[A-Z]/.test(seen[0]), "upstream query must keep the caller's casing");
 });
 
-test("an empty search page is never cached — a transient zero cannot be replayed", async () => {
+test("an empty search page decays fast — a transient zero cannot outlive the shopper", async () => {
+  process.env.PUBLIC_READ_EMPTY_TTL_MS = "1";
   const seen = [];
   // First call answers empty (a transient lane failure), every later call answers normally.
   const surface = createPublicReadToolSurface(
     recordingExecutor(seen, (_query, n) => (n === 1 ? { products: [] } : { products: [ROW] })),
   );
+  delete process.env.PUBLIC_READ_EMPTY_TTL_MS;
 
   const first = await surface.callTool("search_catalog", { query: "makeup remover" });
   assert.equal(first.returned, 0, "fixture precondition: the first call is the transient zero");
 
+  await new Promise((r) => setTimeout(r, 15)); // past the 1ms empty TTL
   const second = await surface.callTool("search_catalog", { query: "makeup remover" });
   assert.deepEqual(
     productTitles(second),
     [ROW.title],
-    "the empty page was served from cache — a zero must never be pinned",
+    "the empty was still being served after its TTL — a zero must never be pinned",
   );
-  assert.equal(seen.length, 2, "the second identical query must recompute, not hit the cache");
+  assert.equal(seen.length, 2, "an expired empty must recompute");
 
-  // And the good answer IS cached, so this is a targeted exclusion and not a
-  // cache that stopped working.
+  // And the good answer IS cached on the normal clock, so this is a targeted short lease and not a cache
+  // that stopped working.
   const third = await surface.callTool("search_catalog", { query: "makeup remover" });
   assert.deepEqual(productTitles(third), [ROW.title]);
   assert.equal(seen.length, 2, "a non-empty page must still be served from cache");
+});
+
+test("within its short TTL an empty IS reused — a zero-result flood collapses to one lane run", async () => {
+  // The other half of the contract. Refusing to cache empties outright removes caching from the ~27-33%
+  // of live queries that currently return nothing, and hands an anonymous caller a free recompute of an
+  // 8-15s lane on every request. The lease must be SHORT, not absent.
+  const seen = [];
+  const surface = createPublicReadToolSurface(recordingExecutor(seen, () => ({ products: [] })));
+  for (let i = 0; i < 5; i += 1) await surface.callTool("search_catalog", { query: "no such product" });
+  assert.equal(seen.length, 1, `5 identical zero-result calls ran the lane ${seen.length} times`);
+});
+
+test("an empty is never served STALE — that is the confident false negative itself", async () => {
+  // publicReadCache serves a stale entry immediately and revalidates in the background. For an empty page
+  // that means answering "no products exist" from an expired guess. The empty policy sets staleMs === ttlMs
+  // so the stale window is zero-width and an expired empty always recomputes inline.
+  const { createPublicReadCache } = await import("../src/publicReadCache.js");
+  let t = 0;
+  let computes = 0;
+  const cache = createPublicReadCache({
+    ttlMs: 1000,
+    staleMs: 60_000,
+    now: () => t,
+    cachePolicy: (v) => (v.empty ? { ttlMs: 100, staleMs: 100 } : { ttlMs: 1000, staleMs: 60_000 }),
+  });
+  const compute = async () => { computes += 1; return { empty: true }; };
+  await cache.getOrCompute("k", compute);
+  t = 500; // past the empty ttl AND past its stale window, but well inside the global stale window
+  await cache.getOrCompute("k", compute);
+  assert.equal(computes, 2, "an expired empty was served stale instead of recomputed");
 });
 
 test("a degraded upstream envelope is never cached, even carrying products", async () => {
@@ -189,4 +222,87 @@ test("an empty caused by this tier's OWN filters says so, not that nothing match
     "rows this tier filtered out must not be reported as an absence in the catalog",
   );
   assert.match(out.note, /coverage limit of this surface/i);
+});
+
+// ---- gaps found by review: predicates that were correct but freely mutable ---------------------------------
+
+test("degradation OUTRANKS filtering when a degraded lane still carries rows", async () => {
+  // The ternary order in computeTool is load-bearing and was asserted only by its own comment: no fixture
+  // set both conditions, so swapping the branches passed the whole suite. A degraded lane carrying rows
+  // must not be reported as "products matched, we removed them" — the lane never answered.
+  const surface = createPublicReadToolSurface(
+    recordingExecutor([], () => ({
+      ok: false,
+      error: "STAGE_TIMEOUT",
+      products: [{ ...ROW, canonical_url: "https://www.yesstyle.com/en/x/info.html/pid.1" }],
+    })),
+  );
+  const out = await surface.callTool("search_catalog", { query: "toner" });
+  assert.equal(out.returned, 0);
+  assert.equal(out.empty_reason, "upstream_degraded");
+});
+
+// Every degraded fixture used {ok:false, error:"..."} — two flags at once, so no single disjunct was
+// pinned and `success:false` was entirely dead. One case per envelope flavour, the disjunctive twin of
+// the repo's "audit EVERY conjunct in a gating predicate" rule.
+for (const [label, envelope] of [
+  ["status not success", { status: "error", products: [] }],
+  ["success:false", { success: false, products: [] }],
+  ["ok:false", { ok: false, products: [] }],
+  ["truthy error", { error: "STAGE_TIMEOUT", products: [] }],
+]) {
+  test(`degradation is detected from ${label} on its own`, async () => {
+    const surface = createPublicReadToolSurface(recordingExecutor([], () => envelope));
+    const out = await surface.callTool("search_catalog", { query: "toner" });
+    assert.equal(out.empty_reason, "upstream_degraded", `${label} was not read as degraded`);
+  });
+}
+
+// The real live envelope is {status:"success", success:true} with NO ok and NO error key. If this stops
+// being read as healthy, the whole tier stops caching and every search runs cold.
+test("the REAL live envelope shape is healthy, and falsy error fields are not degradation", async () => {
+  for (const envelope of [
+    { status: "success", success: true, products: [ROW] },
+    { status: "SUCCESS", products: [ROW] },
+    { error: null, products: [ROW] },
+    { error: "", products: [ROW] },
+    { error: false, products: [ROW] },
+  ]) {
+    const seen = [];
+    const surface = createPublicReadToolSurface(recordingExecutor(seen, () => envelope));
+    const out = await surface.callTool("search_catalog", { query: "serum" });
+    assert.equal(out.returned, 1, `${JSON.stringify(envelope)} was misread as degraded`);
+    await surface.callTool("search_catalog", { query: "serum" });
+    assert.equal(seen.length, 1, `${JSON.stringify(envelope)} was not cached — misread as degraded`);
+  }
+});
+
+test("junk arguments cannot mint a fresh cache entry", async () => {
+  // The key is derived from the executor's own allowlist, so a field the lane never sees cannot split the
+  // key. Before this, {query:"serum", __nonce:i} bought a full cold lane run per call.
+  const seen = [];
+  const surface = createPublicReadToolSurface(recordingExecutor(seen));
+  for (let i = 0; i < 5; i += 1) {
+    await surface.callTool("search_catalog", { query: "serum", __nonce: i, tracking_id: `t${i}` });
+  }
+  assert.equal(seen.length, 1, `junk args minted ${seen.length} entries`);
+});
+
+test("the key's NEGATIVE half: meaningfully different queries must NOT share an entry", async () => {
+  // Every other key test asserts that variants COLLAPSE. Without this, over-normalizing the key (stripping
+  // punctuation, say) would pass everything while serving one query's products for another.
+  const seen = [];
+  const surface = createPublicReadToolSurface(recordingExecutor(seen));
+  for (const query of ["vitamin c", "vitamin-c", "vitaminc", "l'oreal", "loreal", "vitamin b"]) {
+    await surface.callTool("search_catalog", { query });
+  }
+  assert.equal(seen.length, 6, `distinct queries collapsed: ${JSON.stringify(seen)}`);
+
+  // Paging must stay distinct too — a shared entry here would serve the wrong slice.
+  const paged = [];
+  const s2 = createPublicReadToolSurface(recordingExecutor(paged));
+  await s2.callTool("search_catalog", { query: "serum", page_size: 5 });
+  await s2.callTool("search_catalog", { query: "serum", page_size: 10 });
+  await s2.callTool("search_catalog", { query: "serum", page: 2, page_size: 10 });
+  assert.equal(paged.length, 3, "page/page_size must remain part of the key");
 });

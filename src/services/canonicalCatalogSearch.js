@@ -143,23 +143,49 @@ function isRecallDocMatchEnabled(env = process.env) {
 //     relevance gate then deletes all of them and the route answers
 //     "No products matched this search."
 //
-// The union fixes the first (text matches are admitted even when the bucket is
-// empty or wrong) and `categoryBrowseTextScore` below fixes the second (text
-// matches outrank pure-bucket rows, so they survive the candidate cut).
-// Neither can REMOVE a row browse mode returned before — the category arm is
-// still there, OR'd — so this is additive to recall by construction.
+// The union addresses the FIRST case: text matches are admitted even when the
+// bucket is empty or mis-aimed. That is the half with prod measurements behind
+// it (toner/shampoo above), and it is where this change does real work.
+//
+// TWO HONEST LIMITS, both found in review and neither yet closed:
+//
+//   * The second case is only PARTLY addressed. `categoryBrowseTextScore` keys
+//     on $2, the whole lowered query, so for a multi-word browse query like
+//     "hair care" essentially no title contains the literal phrase and the arm
+//     contributes 0 — while the WHERE union adds nothing either, since every
+//     candidate is already inside `beauty/`. Only tokenScore (max 2x25=50,
+//     under the flat +90 category arm) differentiates there. The over-broad
+//     bucket therefore still ranks close to arbitrarily; a per-token arm would
+//     be the fix, and is deliberately not attempted here.
+//
+//   * "Additive to recall" is true of the WHERE and FALSE of the returned rows.
+//     The category arm is still there, OR'd, so the admitted set is a strict
+//     superset. But the candidate cut is a fixed LIMIT over a RE-RANKED
+//     superset (see the ORDER BY in the candidate CTE), so a row admitted only
+//     by a new arm can outscore and displace a bucket row that previously made
+//     the cut — e.g. a 4/4 token-overlap row at 100 over a zero-overlap bucket
+//     row at 90. This is a RERANKING change, not a pure recall add, and it
+//     wants the prod row-diff discipline applied elsewhere in this file before
+//     anyone calls it behaviour-preserving.
 //
 // DEFAULT ON, unlike the other flags in this file. Those gate optional
 // improvements where flag-off is the correct, safe baseline. This one gates a
 // defect: flag-off is the broken behaviour, so it ships as a kill-switch
 // (`CANONICAL_CATALOG_CATEGORY_BROWSE_TEXT_UNION=off`) rather than an opt-in.
 // Read per call, same discipline as the flags above.
-const CATEGORY_BROWSE_TEXT_UNION_OFF_VALUES = new Set(['off', '0', 'false', 'disabled']);
+// A KILL SWITCH IS THE ONE PLACE TO BE GENEROUS about what counts as "off". The other flags in this file
+// gate optional improvements, where an unrecognised value failing OFF is harmless. This one is the escape
+// hatch for a live regression: an operator typing `=no` or `=disabled` mid-incident must get the kill, not
+// a silent no-op and no error. parseBooleanEnv alone covers {0,false,no,n,off} but not {disabled,none,
+// never,kill}, and a hand-rolled set covered `disabled` but not `no` — so accept the union of both.
+// Anything unrecognised (and unset, and blank) leaves the fix ON, because flag-off here is the DEFECT.
+const CATEGORY_BROWSE_TEXT_UNION_OFF_VALUES = new Set([
+  '0', 'false', 'no', 'n', 'off', 'disabled', 'disable', 'none', 'never', 'kill',
+]);
 
 function isCategoryBrowseTextUnionEnabled(env = process.env) {
-  return !CATEGORY_BROWSE_TEXT_UNION_OFF_VALUES.has(
-    String(env.CANONICAL_CATALOG_CATEGORY_BROWSE_TEXT_UNION || '').trim().toLowerCase(),
-  );
+  const raw = String(env.CANONICAL_CATALOG_CATEGORY_BROWSE_TEXT_UNION ?? '').trim().toLowerCase();
+  return !CATEGORY_BROWSE_TEXT_UNION_OFF_VALUES.has(raw);
 }
 
 // ADR-020 rank-recalibration slice: env-flag gate for rank v2 (match-quality
@@ -769,7 +795,7 @@ async function fetchCanonicalChainRows(args = {}) {
   // allowed: browse intent with no resolvable bucket degrades to text mode.
   if (categoryPathPrefix && categoryMode !== 'category_browse') {
     throw new TypeError(
-      "canonicalCatalogSearch: categoryPathPrefix switches recall to category-browse mode and DROPS the query-text predicate; pass categoryMode: 'category_browse' to confirm, or drop the prefix for text recall",
+      "canonicalCatalogSearch: categoryPathPrefix switches recall to category-browse mode; pass categoryMode: 'category_browse' to confirm, or drop the prefix for text recall. (Browse mode no longer DROPS the query-text predicate by default — it ORs the two, see isCategoryBrowseTextUnionEnabled — but it does change ranking, and with the union kill-switched the text predicate is dropped outright.)",
     );
   }
   // The eligibility gate column. Default 'serving_eligible' (has a buyable offer
@@ -849,8 +875,24 @@ async function fetchCanonicalChainRows(args = {}) {
   // union widens the WHERE but the candidate cut still throws the matches
   // away. Browse mode only: in text mode every surviving row already matched
   // some text arm, so a flat bonus there would be uniform and meaningless.
+  //
+  // SETS ARE EXCLUDED, for the same load-bearing reason the +60 form-agreement arm excludes them (see its
+  // comment): applyMultiProductSetTopCap can only swap a set with a single of EQUAL rank_score — it is
+  // tie-group scoped by construction — so any arm that lifts a set into a strictly HIGHER tie group makes
+  // it undemotable and re-opens the #1927 head-crowding this repo already fixed. An arm five times the
+  // size of the +60 one is five times the hazard, and sets are exactly the rows whose titles carry the
+  // bare category noun a browse query is made of ("Hydrating Moisturizer Duo" for "moisturizer").
+  // Demonstrated pre-fix: three sets tied at 90 were demotable; at 390 against singles at 90 the cap went
+  // inert and all three sat at the head.
+  //
+  // WEIGHT. It must exceed what a NON-text-matching bucket row can accumulate, which under rank v1 is
+  // provenance 200 + categoryScore 90 = 290 — not 200. The first version of this arm shipped 300, clearing
+  // the real threshold by 10; anything in 201..289 silently reverted the fix with every test green. 400
+  // leaves headroom that does not depend on either constant staying put, and the test asserts against the
+  // SUM parsed out of the SQL rather than against a literal.
   const categoryBrowseTextScore = categoryBrowseTextUnion
-    ? `+ CASE WHEN LOWER(COALESCE(p.title, '')) LIKE $2 OR LOWER(COALESCE(p.brand, '')) LIKE $2 THEN 300 ELSE 0 END`
+    ? `+ CASE WHEN (LOWER(COALESCE(p.title, '')) LIKE $2 OR LOWER(COALESCE(p.brand, '')) LIKE $2)
+              AND ${PRODUCT_FAMILY_SQL} IS DISTINCT FROM '${MULTI_PRODUCT_SET_FAMILY}' THEN 400 ELSE 0 END`
     : '';
 
   // Market-aware recall. When the caller passes the user's market (e.g.
@@ -1287,6 +1329,12 @@ async function fetchCanonicalChainRows(args = {}) {
   const categoryPredicate = categoryBind
     ? `p.category_path IS NOT NULL AND (p.category_path = ${categoryExactBind} OR p.category_path LIKE ${categoryBind})`
     : '';
+  // Carry the leading newline+indent INSIDE the fragment so that with the union off the interpolation
+  // contributes zero bytes and the generated SQL is byte-identical to pre-union output — the same
+  // technique recallDocArm uses above, and the reason its comment spells it out. The first version
+  // interpolated on its own line and added 11 bytes to every non-browse and every kill-switched
+  // statement, quietly falsifying the byte-identity claim below.
+  const categoryBrowseTextArm = categoryBrowseTextScore ? `\n          ${categoryBrowseTextScore}` : '';
   let whereClause;
   if (!categoryBind) {
     whereClause = `(${textWhereClause})`;
@@ -1630,8 +1678,7 @@ async function fetchCanonicalChainRows(args = {}) {
           CASE WHEN LOWER(COALESCE(m.merchant_name, '')) = $1             THEN  90 ELSE 0 END +
           CASE WHEN LOWER(COALESCE(p.brand, '')) = $1                     THEN  80 ELSE 0 END +
           ${canonicalScopeRankArms}
-          ${categoryScore}
-          ${categoryBrowseTextScore}
+          ${categoryScore}${categoryBrowseTextArm}
           ${verticalScore}
           ${tokenScore}
         ) AS rank_score

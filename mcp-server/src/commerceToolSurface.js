@@ -946,6 +946,29 @@ function memoizedProductReads(executor) {
 const SAFE_ERROR_CLASSES = [PivotaCommerceError, IdentityRequiredError, UnknownToolError, ToolValidationError];
 
 /** Resolve TRUSTED identity from server-verified MCP context only (never tool args). */
+// THE CACHE KEY FOR A READ TOOL CALL, derived from the SAME allowlist the executor runs on.
+//
+// A cache key is a claim that two requests will do identical work. Building it from the caller's raw tool
+// args breaks that claim in both directions: `toParams` DISCARDS everything outside each op's allowlist, so
+// two calls that differ only in a field the lane never sees still minted separate entries. Measured on the
+// public tier 2026-08-20: 50 calls to {query:"serum", __nonce:i} produced 50 cold runs of an 8-15s lane
+// while upstream received a byte-identical payload every time.
+//
+// Deriving the key from `toParams` output makes drift impossible by construction — a new field reaches the
+// key the moment it reaches the executor, with nobody having to remember. Same reason mainlineLaneConfig
+// exists in canonicalCatalogSearch.js.
+//
+// Callers may pre-normalize args (the public read tier folds query case) — that happens BEFORE this call, so
+// it composes rather than competing.
+export function commerceToolParamsKey(toolName, toolArgs = {}, { dialect } = {}) {
+  const resolved = normalizeDialect(dialect);
+  const op = (resolved === TOOL_DIALECTS.ucp ? OP_BY_UCP_TOOL : OP_BY_MCP)[toolName];
+  if (!op) throw new UnknownToolError(toolName);
+  const args = isPlainObject(toolArgs) ? toolArgs : {};
+  const nativeArgs = resolved === TOOL_DIALECTS.ucp ? ucpToNativeToolArgs(op, args) : args;
+  return `${op.id}:${stableStringify(toParams(op, nativeArgs) ?? {})}`;
+}
+
 export function resolveSessionIdentity(extra) {
   const auth = extra?.authInfo ?? extra?.sessionContext ?? {};
   const out = {};

@@ -21550,24 +21550,36 @@ async function searchBeautyExternalSeedProductsMainline({
     categoryPathPrefix: canonicalCategoryPathPrefix,
     // Deliberate category-browse: mainline recalls the bucket and then runs
     // its own relevance gate (scoreBeautyMainlineProduct + relevant===true),
-    // which is what masks bucket noise on this lane. Known recall-quality
-    // follow-up: the lane burns its candidate budget on bucket rows for
-    // query-specific searches — tracked in the recall-lane assessment, not
-    // changed here (this PR is contract-only, behavior-preserving).
+    // which is what masks bucket noise on this lane.
+    //
+    // The "burns its candidate budget on bucket rows" follow-up noted here is
+    // now PARTLY addressed in the helper: browse mode ORs the query text into
+    // the WHERE and boosts title/brand matches (isCategoryBrowseTextUnionEnabled).
+    // Read that flag's comment for what it does NOT fix — multi-word browse
+    // queries, and the fact that this is a reranking change rather than a pure
+    // recall add.
     categoryMode: 'category_browse',
     verticalSearch: hasBeautyIngredientIntentSignal(queryText),
     // Per-token title/brand matching on the buyable mainline lane (reuses the
     // #1722 citable-lane tokenizer). #1933: gated on its own flag, NOT on
     // ACTIVE_AWARE_RECALL — see PIVOT_BEAUTY_MAINLINE_TOKEN_MATCH_ENABLED for
     // why that grouping kept the rank ladder dark, and for the measured effect
-    // in category-bucket mode (which is NOT a no-op: the token WHERE is
-    // dropped under a prefix but the +25/token rank arm still applies).
+    // in category-bucket mode. NOTE: with the category-browse text union on
+    // (the default) the token WHERE is no longer dropped under a prefix — the
+    // union carries the PLAIN text clause, token arm included.
     tokenMatch: PIVOT_BEAUTY_MAINLINE_TOKEN_MATCH_ENABLED,
-    // #1935: sargable text WHERE. No-op in category-bucket mode (the text
-    // WHERE is discarded there), so this only affects the ~30% of beauty
-    // queries that resolve to no prefix — where it cut prod EXPLAIN execution
-    // 2798ms -> 850ms with byte-identical rows and order across 12 measured
-    // queries. See PIVOT_BEAUTY_MAINLINE_SARGABLE_TEXT_WHERE_ENABLED.
+    // #1935: sargable text WHERE. Still a no-op in category-bucket mode, but
+    // for a DIFFERENT reason than when this was written: the text WHERE used to
+    // be discarded there, whereas now the union deliberately routes past the
+    // sargable form and takes the plain clause (see the whereClause comment in
+    // canonicalCatalogSearch.js for why extending an unmeasured plan change to
+    // every prefix-resolving query would be wrong). So this still only affects
+    // the ~30% of beauty queries that resolve to no prefix — where it cut prod
+    // EXPLAIN execution 2798ms -> 850ms with byte-identical rows and order
+    // across 12 measured queries. The COROLLARY, unmeasured and called out in
+    // review: prefix-resolving queries now run the plain disjunction, which
+    // this file's own prod EXPLAINs put at 3.2-3.9s.
+    // See PIVOT_BEAUTY_MAINLINE_SARGABLE_TEXT_WHERE_ENABLED.
     sargableTextWhere: PIVOT_BEAUTY_MAINLINE_SARGABLE_TEXT_WHERE_ENABLED,
     limit: canonicalLimit,
     // Market-aware filtering — pass the user's market (already computed

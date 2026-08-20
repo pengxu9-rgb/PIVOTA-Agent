@@ -8,7 +8,7 @@
 // get_offers is deliberately NOT on the v1 surface: cross-merchant offers concentrate reseller-sourced
 // listings, which the app-directory sourcing policy excludes (docs/openai_apps_v1_plan.md §1, §5).
 
-import { createCommerceToolSurface, UnknownToolError } from "./commerceToolSurface.js";
+import { createCommerceToolSurface, UnknownToolError, commerceToolParamsKey } from "./commerceToolSurface.js";
 import { projectPublicReadResult, MAX_SEARCH_RESULTS } from "./publicReadProjection.js";
 import {
   filterFirstPartyRows,
@@ -16,7 +16,7 @@ import {
   resellerHostSet,
   isFirstPartyOnlyEnabled,
 } from "./publicReadSourcing.js";
-import { createPublicReadCache, stableStringify } from "./publicReadCache.js";
+import { createPublicReadCache } from "./publicReadCache.js";
 
 export const PUBLIC_READ_TOOL_NAMES = Object.freeze([
   "search_catalog",
@@ -72,32 +72,78 @@ function canonicalizeToolArgs(toolArgs) {
   return query === toolArgs.query ? toolArgs : { ...toolArgs, query };
 }
 
-function cacheKeyArgs(toolArgs) {
-  if (!toolArgs || typeof toolArgs !== "object" || typeof toolArgs.query !== "string") return toolArgs ?? {};
-  return { ...toolArgs, query: canonicalizeQueryText(toolArgs.query).toLowerCase() };
+// Fold query case for the KEY ONLY. This is NOT a claim that the lane is case-insensitive — the 2026-08-20
+// measurement says the opposite: 4 of 8 zero-result queries were rescued ONLY by Title Case, which is
+// exactly a case-sensitivity defect in the lane. Folding here masks that defect at the boundary so one
+// shopper's capitalisation cannot decide another's results. The lane-side repair is the category-browse
+// text union in src/services/canonicalCatalogSearch.js; once that is measured on prod this fold becomes
+// belt-and-braces rather than the load-bearing fix.
+//
+// Everything else about the key comes from `commerceToolParamsKey`, which derives it from the SAME
+// allowlist the executor runs on — see its comment for why keying on the caller's raw object was wrong.
+function cacheKeyFor(toolName, toolArgs) {
+  const src = toolArgs && typeof toolArgs === "object" ? toolArgs : {};
+  const folded = typeof src.query === "string"
+    ? { ...src, query: canonicalizeQueryText(src.query).toLowerCase() }
+    : src;
+  return commerceToolParamsKey(toolName, folded);
 }
 
-// WHAT MAY BE PINNED FOR THE TTL.
+// DID THE LANE ACTUALLY ANSWER?
 //
-// The cache had no store predicate, so a zero-product page was kept for 10 minutes fresh and served stale
-// for up to 60 — and this tier's own post-hoc filters (first-party sourcing, chain-resolvability) can empty
-// a page that the upstream filled, while a degraded-but-HTTP-200 envelope empties it without the catalog
-// having been consulted at all. Every one of those renders as "No products matched this search.", a
-// confident factual claim about the catalog that an agent relays to the shopper.
+// WHAT THIS CAN AND CANNOT SEE — read before extending. The live capture in
+// test/fixtures/live_search_raw.json is the only ground truth we have for this envelope, and its top-level
+// keys are {status, success, products, total, page, page_size, reply, metadata, ...}: `status:"success"`,
+// `success:true`, and NO `ok` and NO `error` key at all. So:
 //
-// So: an empty search page is never stored, and neither is a page built from a degraded upstream answer.
-// A genuine zero recomputes at full cold cost on the next identical query, which is the correct trade —
-// zero-result queries are the rare case, and the alternative is broadcasting a false negative for an hour.
-// Non-empty pages from a healthy lane cache exactly as before.
+//   * `status` and `success` are the markers this lane really uses; they are checked first and are what
+//     actually fires in production.
+//   * `ok` / `error` are kept as defensive arms for the other doors that share this executor, which do use
+//     them. `error` is checked for TRUTHINESS, not for presence: `error:""` / `error:false` / `error:{}` are
+//     not degradation, and treating them as such silently switched caching off for a whole tool.
 //
-// THE PREDICATE CANNOT READ THE PROJECTED VALUE ALONE. Projection is what makes the public shape leak-free,
-// and stripping the upstream's `ok`/`error` envelope is part of that job — by the time a value reaches the
-// cache, the evidence that the lane failed is gone. (A degraded answer that still carries products projects
-// to an ordinary-looking page with no marker at all.) So `computeTool` returns its verdict alongside the
-// value in a wrapper that `callTool` unwraps; the wrapper never escapes this module.
-function isCacheableComputed(computed) {
-  if (!computed || typeof computed !== "object") return false;
-  return computed.cacheable === true;
+//   * KNOWN GAP, deliberately not papered over: a recall leg that times out INSIDE a `success:true` envelope
+//     is invisible here — the lane reports that shape as an ordinary empty result, and its own degradation
+//     marker (`canonical_error`) is nested per-lane under metadata.route_debug.<lane>, too fragile to key
+//     on from this tier. Such an empty is therefore still labelled `no_match`. The short empty-page TTL
+//     above bounds the damage to ~45s rather than an hour, but the NOTE will still read as a clean
+//     negative. Closing this properly needs a top-level degradation marker on the search envelope; until
+//     one exists, do not invent a deeper heuristic here — an unvalidated guess about metadata shape is how
+//     a confident-sounding wrong answer gets built a second time.
+function isDegradedUpstream(raw) {
+  if (!raw || typeof raw !== "object") return false;
+  if (typeof raw.status === "string" && !["success", "ok"].includes(raw.status.trim().toLowerCase())) return true;
+  if (raw.success === false) return true;
+  if (raw.ok === false) return true;
+  if (raw.error) return true;
+  return false;
+}
+
+// HOW LONG AN ANSWER MAY BE PINNED — three tiers, not two.
+//
+// The cache originally had no store predicate at all, so a zero-product page was kept 10 minutes fresh and
+// served stale for up to 60. This tier's own post-hoc filters (first-party sourcing, chain-resolvability)
+// can empty a page the upstream filled, and a degraded-but-HTTP-200 envelope empties it without the catalog
+// having been consulted. Every one of those rendered as "No products matched this search." — a confident
+// factual claim an agent relays to the shopper.
+//
+// The first fix simply refused to store empties. Review measured the cost of that: with 27-33% of live
+// queries currently returning nothing, it removes caching from roughly a third of traffic and hands an
+// anonymous caller a free recompute of an 8-15s lane on every request, bounded only by a 60 rpm/IP,
+// process-local token bucket. Refusal is the right answer for an answer that is WRONG; it is the wrong
+// answer for one that is merely EXPENSIVE TO BE WRONG ABOUT. So:
+//
+//   degraded          -> never stored. The lane did not answer; there is nothing to keep.
+//   empty search page -> stored on a SHORT clock (PUBLIC_READ_EMPTY_TTL_MS, default 45s) with NO stale
+//                        window. A false negative now decays in under a minute instead of an hour, while a
+//                        flood of identical zero-result queries still collapses onto one lane run. The
+//                        stale window is deliberately zero: serving a STALE empty is precisely the
+//                        confident-false-negative behaviour this whole change exists to end.
+//   everything else   -> the normal clock, exactly as before.
+function publicReadCachePolicy(computed, { ttlMs, staleMs, emptyTtlMs }) {
+  if (!computed || typeof computed !== "object" || computed.cacheable !== true) return null;
+  if (computed.emptySearchPage) return { ttlMs: emptyTtlMs, staleMs: emptyTtlMs };
+  return { ttlMs, staleMs };
 }
 
 // Public PDP base for citable URLs, overridable via env so a domain move needs no code change.
@@ -177,12 +223,17 @@ export function createPublicReadToolSurface(executor, { log, filterChainResolvab
   // PUBLIC_READ_CACHE_MAX.
   const env = (typeof process !== "undefined" && process.env) || {};
   const cacheEnabled = !["0", "false", "off", "no"].includes(String(env.PUBLIC_READ_CACHE_ENABLED ?? "").trim().toLowerCase() || "on");
+  const cacheTtlMs = Number(env.PUBLIC_READ_CACHE_TTL_MS) > 0 ? Number(env.PUBLIC_READ_CACHE_TTL_MS) : 10 * 60 * 1000;
+  const cacheStaleMs = Number(env.PUBLIC_READ_CACHE_STALE_MS) > 0 ? Number(env.PUBLIC_READ_CACHE_STALE_MS) : 60 * 60 * 1000;
+  // Short clock for empty search pages. Long enough to collapse a burst onto one lane run, short enough
+  // that a false negative cannot outlive the shopper's session.
+  const emptyTtlMs = Number(env.PUBLIC_READ_EMPTY_TTL_MS) > 0 ? Number(env.PUBLIC_READ_EMPTY_TTL_MS) : 45 * 1000;
   const cache = cacheEnabled
     ? createPublicReadCache({
-        ttlMs: Number(env.PUBLIC_READ_CACHE_TTL_MS) > 0 ? Number(env.PUBLIC_READ_CACHE_TTL_MS) : 10 * 60 * 1000,
-        staleMs: Number(env.PUBLIC_READ_CACHE_STALE_MS) > 0 ? Number(env.PUBLIC_READ_CACHE_STALE_MS) : 60 * 60 * 1000,
+        ttlMs: cacheTtlMs,
+        staleMs: cacheStaleMs,
         maxEntries: Number(env.PUBLIC_READ_CACHE_MAX) > 0 ? Number(env.PUBLIC_READ_CACHE_MAX) : 300,
-        shouldCache: isCacheableComputed,
+        cachePolicy: (computed) => publicReadCachePolicy(computed, { ttlMs: cacheTtlMs, staleMs: cacheStaleMs, emptyTtlMs }),
         onRevalidateError: (err, key) => {
           if (logger) logger.warn({ err: err?.message || String(err), key }, "public_read cache revalidation failed (stale kept)");
         },
@@ -195,8 +246,7 @@ export function createPublicReadToolSurface(executor, { log, filterChainResolvab
     }
     const args = canonicalizeToolArgs(toolArgs);
     if (!cache) return (await computeTool(toolName, args)).value;
-    const key = `${toolName}:${stableStringify(cacheKeyArgs(args))}`;
-    return (await cache.getOrCompute(key, () => computeTool(toolName, args))).value;
+    return (await cache.getOrCompute(cacheKeyFor(toolName, args), () => computeTool(toolName, args))).value;
   }
 
   async function computeTool(toolName, toolArgs) {
@@ -227,10 +277,7 @@ export function createPublicReadToolSurface(executor, { log, filterChainResolvab
     // "No products matched this search."
     const upstreamMatchedCount =
       toolName === "search_catalog" && raw && Array.isArray(raw.products) ? raw.products.length : 0;
-    const upstreamDegraded = Boolean(
-      raw && typeof raw === "object"
-        && (raw.ok === false || raw.success === false || (raw.error !== undefined && raw.error !== null)),
-    );
+    const upstreamDegraded = isDegradedUpstream(raw);
 
     // First-party / brand-official sourcing filter (docs/openai_apps_v1_plan.md §5): drop reseller-sourced
     // rows BEFORE projection (the projector strips the destination host the filter needs). ON by default
@@ -296,7 +343,7 @@ export function createPublicReadToolSurface(executor, { log, filterChainResolvab
     const value = projectPublicReadResult(toolName, raw, { base: PUBLIC_PDP_BASE, limit, emptyReason });
     const emptySearchPage =
       toolName === "search_catalog" && Array.isArray(value.products) && value.products.length === 0;
-    return { value, cacheable: !upstreamDegraded && !emptySearchPage };
+    return { value, cacheable: !upstreamDegraded, emptySearchPage };
   }
 
   function isPublicReadTool(name) {

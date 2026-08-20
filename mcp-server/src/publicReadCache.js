@@ -27,13 +27,28 @@ function createPublicReadCache({
   maxEntries = 300,
   now = () => Date.now(),
   onRevalidateError = () => {},
-  // Optional store predicate. Default keeps every computed value, which is the behaviour the public read
-  // tier has always had. A caller whose upstream can answer HTTP-200 with a DEGRADED envelope (ok:false,
-  // or an error code, with an empty list) uses this so a transient degradation is not pinned for the whole
-  // TTL — `compute` throwing is not the only way an answer can be worth not keeping.
+  // Optional PER-VALUE cache policy. Returns `null` to refuse the value entirely, or `{ttlMs, staleMs}` to
+  // store it on its own clock. Default: keep everything on the shared clock, which is the behaviour the
+  // public read tier has always had.
+  //
+  // TWO DISTINCT NEEDS, and they are not the same knob:
+  //   REFUSE  — a caller whose upstream can answer HTTP-200 with a DEGRADED envelope uses `null` so a
+  //             transient failure is not pinned for the whole TTL. `compute` throwing is not the only way
+  //             an answer can be worth not keeping.
+  //   SHORTEN — an answer that is probably true but expensive to be wrong about (an EMPTY search page,
+  //             which renders as a confident negative) wants a much shorter clock, not exclusion. Refusing
+  //             it outright removes caching from whatever share of traffic legitimately returns nothing —
+  //             measured at 27-33% on this tier in 2026-08 — and hands an anonymous caller a free
+  //             recompute of an 8-15s lane on every request.
+  // Retained and still honored: the commerce surface (the AUTHENTICATED door) constructs this same cache
+  // with `shouldCache: isCacheableSearchResult`. Renaming this option out from under it would not fail
+  // loudly — the option would simply be ignored and degraded commerce responses would start being cached.
+  // `cachePolicy` defaults to expressing `shouldCache`, so every existing caller keeps its exact behaviour
+  // and only a caller that wants per-value clocks needs to know the new option exists.
   shouldCache = () => true,
+  cachePolicy = (value) => (shouldCache(value) ? { ttlMs, staleMs } : null),
 } = {}) {
-  const entries = new Map(); // key → { value, at }
+  const entries = new Map(); // key → { value, at, ttlMs, staleMs } — clocks are PER ENTRY, see cachePolicy
   const inflight = new Set(); // keys with a background revalidation running
 
   function touch(key, entry) {
@@ -52,22 +67,39 @@ function createPublicReadCache({
    * @param {() => Promise<any>} compute produces the value on miss/expiry (and on background revalidation)
    * @returns {Promise<any>}
    */
+  // Store `value` under its own clock, or drop the key when the policy refuses it. Dropping matters on the
+  // revalidate path: an entry that has become un-storable (the lane started answering degraded) must not
+  // keep being served from the previous good copy indefinitely.
+  function store(key, value) {
+    const policy = cachePolicy(value);
+    if (!policy) return false;
+    touch(key, {
+      value,
+      at: now(),
+      ttlMs: Number.isFinite(policy.ttlMs) ? policy.ttlMs : ttlMs,
+      staleMs: Number.isFinite(policy.staleMs) ? policy.staleMs : staleMs,
+    });
+    return true;
+  }
+
   async function getOrCompute(key, compute) {
     const t = now();
     const hit = entries.get(key);
     if (hit) {
       const age = t - hit.at;
-      if (age < ttlMs) {
+      const hitTtl = Number.isFinite(hit.ttlMs) ? hit.ttlMs : ttlMs;
+      const hitStale = Number.isFinite(hit.staleMs) ? hit.staleMs : staleMs;
+      if (age < hitTtl) {
         touch(key, hit); // LRU bump
         return hit.value;
       }
-      if (age < staleMs) {
+      if (age < hitStale) {
         // Serve stale now; revalidate once in the background.
         if (!inflight.has(key)) {
           inflight.add(key);
           Promise.resolve()
             .then(compute)
-            .then((value) => { if (shouldCache(value)) touch(key, { value, at: now() }); })
+            .then((value) => { store(key, value); })
             .catch((err) => onRevalidateError(err, key)) // keep the stale entry on failure
             .finally(() => inflight.delete(key));
         }
@@ -76,7 +108,7 @@ function createPublicReadCache({
       entries.delete(key); // fully expired
     }
     const value = await compute(); // errors propagate, nothing cached
-    if (shouldCache(value)) touch(key, { value, at: now() });
+    store(key, value);
     return value;
   }
 

@@ -2010,27 +2010,46 @@ describe('canonicalCatalogSearch category-browse text union (Mechanism 1)', () =
     expect(sql).toMatch(/THEN 90 ELSE 0 END/); // categoryScore still applied
   });
 
-  test('text matches outrank pure-bucket rows, clearing the rank-v1 provenance arm', async () => {
+  test('text matches outrank EVERY arm a non-matching bucket row can accumulate', async () => {
     const { sql } = await browse();
-    // The over-broad-bucket half of the defect: with `beauty/` as the prefix the
-    // WHERE admits everything, so only the ORDER BY can keep the shopper's rows
-    // inside the candidate cut. 300 must exceed the largest competing arm — the
-    // flat +200 rank-v1 bonus for pdp_scope='multi_merchant_canonical'.
+    // The over-broad-bucket half of the defect: with `beauty/` as the prefix the WHERE admits everything,
+    // so only the ORDER BY can keep the shopper's rows inside the candidate cut.
+    //
+    // THE THRESHOLD IS THE SUM, NOT THE LARGEST ARM. A pure-bucket row collects provenance AND
+    // categoryScore together — under rank v1 that is 200 + 90 = 290, not 200. Asserting `boost > 200`
+    // passed for any weight in 201..289, every one of which silently reverts this fix. Parse both arms out
+    // of the emitted SQL and compare against their sum, so the assertion tracks the constants instead of
+    // restating one of them.
     const boost = sql.match(
-      /CASE WHEN LOWER\(COALESCE\(p\.title, ''\)\) LIKE \$2 OR LOWER\(COALESCE\(p\.brand, ''\)\) LIKE \$2 THEN (\d+) ELSE 0 END/,
+      /LIKE \$2 OR LOWER\(COALESCE\(p\.brand, ''\)\) LIKE \$2\)[\s\S]{0,600}?THEN (\d+) ELSE 0 END/,
     );
     expect(boost).not.toBeNull();
     const provenance = sql.match(/pdp_scope = 'multi_merchant_canonical'\s+THEN (\d+) ELSE 0 END/);
+    const category = sql.match(/p\.category_path LIKE \$6\) THEN (\d+) ELSE 0 END/);
     expect(provenance).not.toBeNull();
-    expect(Number(boost[1])).toBeGreaterThan(Number(provenance[1]));
+    expect(category).not.toBeNull();
+    expect(Number(boost[1])).toBeGreaterThan(Number(provenance[1]) + Number(category[1]));
+  });
+
+  test('multi-product sets are excluded from the boost — the top cap can only swap EQUAL ranks', async () => {
+    const { sql } = await browse();
+    // applyMultiProductSetTopCap is tie-group scoped by construction, so an arm that lifts a set into a
+    // strictly higher tie group makes it undemotable and re-opens #1927. The +60 form arm carries this
+    // exclusion for exactly this reason; an arm several times larger needs it more, not less.
+    const boostArm = sql.match(
+      /CASE WHEN \(LOWER\(COALESCE\(p\.title, ''\)\) LIKE \$2[\s\S]{0,600}?THEN \d+ ELSE 0 END/,
+    );
+    expect(boostArm).not.toBeNull();
+    expect(boostArm[0]).toMatch(/IS DISTINCT FROM 'set_or_collection'/);
   });
 
   test('the boost is browse-only — in text mode every surviving row already matched', async () => {
     const query = makeMockQuery([]);
     await fetchCanonicalChainRows({ query: 'shampoo', deps: { query } });
-    expect(query.calls[0].sql).not.toMatch(
-      /LIKE \$2 OR LOWER\(COALESCE\(p\.brand, ''\)\) LIKE \$2 THEN 300 ELSE 0 END/,
-    );
+    // Keyed on the arm's SHAPE, never on its weight. A negative assertion pinned to a magic literal goes
+    // vacuous the moment the literal moves — which is how re-weighting and deleting this gate could have
+    // shipped together, applying the boost to every text-mode query, with the whole suite green.
+    expect(query.calls[0].sql).not.toMatch(/IS DISTINCT FROM 'set_or_collection' THEN \d+ ELSE 0 END/);
   });
 
   test('MUTANT CHECK: the kill-switch restores the pre-union SQL exactly', async () => {
@@ -2042,7 +2061,7 @@ describe('canonicalCatalogSearch category-browse text union (Mechanism 1)', () =
     expect(sql).not.toMatch(
       /LOWER\(COALESCE\(p\.title, ''\)\) LIKE \$2\s*\n\s*OR LOWER\(COALESCE\(p\.brand, ''\)\) LIKE \$2/,
     );
-    expect(sql).not.toMatch(/THEN 300 ELSE 0 END/);
+    expect(sql).not.toMatch(/IS DISTINCT FROM 'set_or_collection' THEN \d+ ELSE 0 END/);
   });
 
   test('the union is ON by default — this fixes a defect, so flag-off is the broken state', async () => {
@@ -2051,12 +2070,14 @@ describe('canonicalCatalogSearch category-browse text union (Mechanism 1)', () =
     expect(sql).not.toMatch(/AND \$2::text IS NOT NULL/);
     // Only these four spellings disable it; anything else (including a typo)
     // leaves the fix ON rather than silently reverting serving to the defect.
-    for (const value of ['', 'on', 'true', '1', 'yes', 'enabled', 'nonsense']) {
+    for (const value of ['', '   ', 'on', 'true', '1', 'yes', 'enabled', 'nonsense']) {
       process.env[UNION_FLAG] = value;
       const call = await browse();
       expect(call.sql).not.toMatch(/AND \$2::text IS NOT NULL/);
     }
-    for (const value of ['off', 'OFF', '0', 'false', 'disabled']) {
+    // A kill switch must accept every plausible spelling an operator types mid-incident, including
+    // whitespace-padded values (a very live hazard given this repo's env-console history).
+    for (const value of ['off', 'OFF', ' Off ', '0', 'false', 'False', 'disabled', 'no', 'NO', 'n', 'never']) {
       process.env[UNION_FLAG] = value;
       const call = await browse();
       expect(call.sql).toMatch(/AND \$2::text IS NOT NULL/);
@@ -2071,5 +2092,47 @@ describe('canonicalCatalogSearch category-browse text union (Mechanism 1)', () =
       const maxBind = Math.max(...[...sql.matchAll(/\$(\d+)/g)].map((m) => Number(m[1])));
       expect(maxBind).toBe(params.length);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// An EMPTY rank arm must contribute ZERO BYTES.
+//
+// The file already documents this technique for recallDocArm — carry the leading newline+indent inside
+// the fragment, so that with the feature off the interpolation adds nothing and the generated SQL is
+// byte-identical to pre-feature output. The union's boost arm originally interpolated on its own line and
+// silently added 11 bytes to EVERY non-browse and every kill-switched statement, falsifying the
+// byte-identity claim its own comment made.
+//
+// Nothing caught that: this repo's "byte-identical" tests compare two calls of the SAME build against each
+// other, never against main, so a constant offset present in both sides is invisible to them. This test
+// pins the shape of the rank block's tail instead, which is where such an offset lands.
+describe('canonicalCatalogSearch empty rank arms contribute zero bytes', () => {
+  const UNION_FLAG = 'CANONICAL_CATALOG_CATEGORY_BROWSE_TEXT_UNION';
+  afterEach(() => { delete process.env[UNION_FLAG]; });
+
+  // categoryScore, verticalScore and tokenScore are all empty on this call, and each is interpolated on
+  // its own line by long-standing code — so exactly THREE indent-only lines are expected between the
+  // provenance arm and the closing paren. A fourth means a newly added arm is padding every statement
+  // that does not use it.
+  const TAIL = /THEN 200 ELSE 0 END\n( {10}\n){3} {8}\) AS rank_score/;
+
+  test('text mode: the boost arm adds no bytes when it is not built', async () => {
+    const query = makeMockQuery([]);
+    await fetchCanonicalChainRows({ query: 'shampoo', deps: { query } });
+    expect(query.calls[0].sql).toMatch(TAIL);
+  });
+
+  test('kill-switched browse mode: likewise', async () => {
+    process.env[UNION_FLAG] = 'off';
+    const query = makeMockQuery([]);
+    await fetchCanonicalChainRows({
+      query: 'shampoo',
+      categoryPathPrefix: 'beauty/haircare/',
+      categoryMode: 'category_browse',
+      deps: { query },
+    });
+    // categoryScore IS built here, so the tail has two indent-only lines, not three.
+    expect(query.calls[0].sql).toMatch(/THEN 90 ELSE 0 END\n( {10}\n){2} {8}\) AS rank_score/);
   });
 });
