@@ -2294,3 +2294,68 @@ describe('canonicalCatalogSearch union text arm is the narrow, sargable-shaped o
     expect(whereOf(sql)).not.toMatch(/LOWER\(COALESCE\(p\.title, ''\)\) LIKE \$2/);
   });
 });
+
+// ---------------------------------------------------------------------------
+// The union's ingredient carve-out: restored at 1 token, dropped at 2+.
+//
+// `plainTokenWhere` needs 2+ significant tokens, so a BARE ingredient query collapses the union arm to
+// title/brand alone — and bare ingredient queries are exactly what reaches here with verticalSearch on
+// (`niacinamide` resolves beauty/skincare/treat/ AND sets it). The sibling citableSargableLane refuses
+// the identical narrowing for this reason: bare "glycerin" measured 22/25 rows lost. recall_doc does not
+// cover the gap — migration 058 projects external-seed text only.
+//
+// Both directions are driven. Restoring the arm unconditionally would put the 18.6s shape back; never
+// restoring it loses the rows.
+describe('canonicalCatalogSearch union ingredient carve-out', () => {
+  const UNION_FLAG = 'CANONICAL_CATALOG_CATEGORY_BROWSE_TEXT_UNION';
+  beforeEach(() => { process.env[UNION_FLAG] = 'on'; });
+  afterEach(() => { delete process.env[UNION_FLAG]; });
+
+  async function unionWhere(overrides) {
+    const query = makeMockQuery([]);
+    await fetchCanonicalChainRows({
+      categoryPathPrefix: 'beauty/skincare/treat/',
+      categoryMode: 'category_browse',
+      tokenMatch: true,
+      verticalSearch: true,
+      sargableTextWhere: true,
+      deps: { query },
+      ...overrides,
+    });
+    const { sql, params } = query.calls[0];
+    const start = sql.indexOf('WHERE (');
+    return { where: sql.slice(start, sql.indexOf('\n        AND ', start)), sql, params };
+  }
+
+  test('a BARE ingredient query keeps the ingredient_ids arm — nothing else could recall it', async () => {
+    const { where } = await unionWhere({ query: 'niacinamide' });
+    expect(where).not.toMatch(/\) >= 2\)/);          // token arm genuinely absent (the precondition)
+    expect(where).toMatch(/ingredient_ids/);          // so the carve-out must fire
+    // The OTHER sku arm stays out: sku codes and variant labels are not ingredient names, so it is all
+    // cost and none of the measured recall.
+    expect(where).not.toMatch(/sw\.sku/);
+  });
+
+  test('a MULTI-token query drops it again — the fast path is the default', async () => {
+    const { where } = await unionWhere({ query: 'salicylic acid toner' });
+    expect(where).toMatch(/\) >= 2\)/);               // token arm present
+    expect(where).not.toMatch(/ingredient_ids/);      // so the carve-out must NOT fire
+    expect(where).not.toMatch(/OR EXISTS/);
+  });
+
+  test('without verticalSearch there is no arm to restore, at any token count', async () => {
+    for (const query of ['niacinamide', 'salicylic acid toner']) {
+      const { where } = await unionWhere({ query, verticalSearch: false });
+      expect(where).not.toMatch(/OR EXISTS/);
+      expect(where).not.toMatch(/ingredient_ids/);
+    }
+  });
+
+  test('the carve-out is bind-integral (08P01), single- and multi-token', async () => {
+    for (const query of ['niacinamide', 'salicylic acid toner']) {
+      const { sql, params } = await unionWhere({ query, marketId: 'US', merchantId: 'merch_x' });
+      const maxBind = Math.max(...[...sql.matchAll(/\$(\d+)/g)].map((m) => Number(m[1])));
+      expect({ query, maxBind }).toEqual({ query, maxBind: params.length });
+    }
+  });
+});

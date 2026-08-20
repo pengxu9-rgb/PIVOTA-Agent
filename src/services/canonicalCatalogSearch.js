@@ -203,12 +203,6 @@ function isRecallDocMatchEnabled(env = process.env) {
 // (`shampoo`, `conditioner`, `hair care`), which that measurement did not
 // sample. Do not read a green zero-rate after the cache fix as evidence that
 // this flag is unnecessary.
-// A KILL SWITCH IS THE ONE PLACE TO BE GENEROUS about what counts as "off". The other flags in this file
-// gate optional improvements, where an unrecognised value failing OFF is harmless. This one is the escape
-// hatch for a live regression: an operator typing `=no` or `=disabled` mid-incident must get the kill, not
-// a silent no-op and no error. parseBooleanEnv alone covers {0,false,no,n,off} but not {disabled,none,
-// never,kill}, and a hand-rolled set covered `disabled` but not `no` — so accept the union of both.
-// Anything unrecognised (and unset, and blank) leaves the fix ON, because flag-off here is the DEFECT.
 // Generous on BOTH sides, because this flag will be flipped by hand under time
 // pressure in both directions: on during a recall incident, off if the plan
 // regresses. Anything unrecognised (and unset, and blank) leaves it OFF.
@@ -1362,6 +1356,18 @@ async function fetchCanonicalChainRows(args = {}) {
   //     (prod EXPLAIN: 6.9s vs 3.2s for the same rows). They are also the least relevant arm for browse:
   //     they match variant labels and ingredient ids, whereas the union exists to recover rows whose TITLE
   //     matches a category word the bucket misfiled.
+  //
+  //     BUT DO NOT EXPECT A PLAN FLIP — the win here is PER-ROW FILTER COST, not a switch to a bitmap
+  //     scan, and the difference matters for whoever measures this next. A BitmapOr needs EVERY disjunct
+  //     indexable and two of them are not: `plainTokenWhere` is opaque CASE arithmetic that bypasses the
+  //     title/brand trigram GINs (see its own comment, ~2.8s for that leg alone), and the category arm
+  //     cannot use idx_catalog_products_category_path_active either, because that index is PARTIAL on
+  //     `catalog_track = 'internal_merchant' AND truth_tier = 'primary'` and this predicate carries
+  //     neither conjunct. So the plan stays scan-and-filter. What actually goes away is two correlated
+  //     EXISTS subplans that ran on every row the category arm did NOT already satisfy — OR
+  //     short-circuits, so bucket rows skipped them and the non-bucket majority did not. That is very
+  //     plausibly most of the 7.5 -> 18.6s delta, but "back to 7.0-7.5s" is a hypothesis, not a
+  //     prediction: re-measure the four flip queries AND at least one multi-token prefix-resolving query.
   //   * `m.merchant_name` — a cross-table predicate that defeats a catalog_products-only index, and a
   //     merchant is ~never named by a category query like "shampoo".
   //   * `p.source_product_id` — a leading-wildcard LIKE with no trigram index, over an opaque platform id.
@@ -1375,9 +1381,31 @@ async function fetchCanonicalChainRows(args = {}) {
   // TEXT_WHERE_ENABLED and of the recall_doc flag. Routing through citableSargableLane would make the
   // union's recall silently depend on two unrelated flags — with recall_doc off, `recallDocArm` is empty
   // and the arm degrades to title/brand/token, which is still the core of the win rather than a surprise.
+  //
+  // ONE CARVE-OUT: the ingredient arm comes back when the token arm is EMPTY.
+  //
+  // `plainTokenWhere` is only built at 2+ significant tokens (see buildSignificantTokens), so a BARE
+  // ingredient query collapses this arm to title/brand alone — and bare ingredient queries are exactly the
+  // ones that reach here with `verticalSearch` on. Measured: `niacinamide` resolves the prefix
+  // beauty/skincare/treat/ AND sets verticalSearch, is 1 token, and with recall_doc off the whole union arm
+  // becomes two LIKEs. The sibling lane already refuses the identical narrowing for this reason —
+  // citableSargableLane will not drop these arms unless the recall_doc arm is present, because bare
+  // "glycerin" measured 22/25 rows lost without it. recall_doc does not close the gap either: migration 058
+  // projects EXTERNAL-SEED text only, so internal_merchant rows have recall_doc IS NULL and get no cover.
+  //
+  // The cost is bounded, and the shape is what makes it safe: the sku arms match the WHOLE `$2` phrase,
+  // which for a multi-word query never appears in an ingredient-id array — they are near-dead there. So
+  // they can only do useful work in precisely the case this carve-out restores them for. Keeping them at
+  // 1 token and dropping them at 2+ is therefore both the recall-correct and the latency-correct rule,
+  // not a compromise between the two.
+  //
+  // skuTextWhere (sku code / variant title / source_variant_id) is deliberately NOT restored: those fields
+  // carry identifiers and variant labels, not ingredient names, so it is the arm with the cost and none of
+  // the measured recall.
+  const unionIngredientArm = plainTokenWhere ? '' : verticalWhere;
   const unionTextWhereClause = `
         LOWER(COALESCE(p.title, '')) LIKE $2
-        OR LOWER(COALESCE(p.brand, '')) LIKE $2
+        OR LOWER(COALESCE(p.brand, '')) LIKE $2${unionIngredientArm}
         ${plainTokenWhere}${recallDocArm}
   `;
   const textWhereClause = citableSargableLane
