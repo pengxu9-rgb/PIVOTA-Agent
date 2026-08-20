@@ -142,6 +142,88 @@ function extractModelError(err) {
   return asString(err?.code || err?.message || err) || 'gemini_failed';
 }
 
+/**
+ * Is this skip reason a CREDENTIAL failure — i.e. we were unable to authenticate,
+ * as opposed to the model being unhappy, busy, or deliberately not called?
+ *
+ * WHY THIS IS NOT JUST `=== 'missing_gemini_api_key'`, which is where this
+ * started. `credentialsAvailable()` only checks that a credential SOURCE is
+ * configured and parses — so a REVOKED, EXPIRED, or WRONG-PROJECT service
+ * account passes it, `runGeminiDraft` proceeds, and the failure surfaces from
+ * the API instead. `runStage` catches everything and labels it
+ * `model_call_failed:…`, and once all models are exhausted it becomes
+ * `model_fallback_exhausted:…`. So the exact case that motivated this guard —
+ * a credential rotation — would have landed in the NON-fatal bucket and exited
+ * 0. Classifying on the transport status is what actually closes it.
+ *
+ * DELIBERATELY NOT credential-class: 429 (rate limit) and 5xx (upstream) are
+ * transient and must stay soft, or a busy afternoon turns into a red pipeline.
+ * Quality gates are outcomes the report exists to express.
+ */
+/**
+ * Did this row actually get a draft back from Gemini?
+ *
+ * THIS, not the skip reason, is the signal that matters — and getting that wrong
+ * is what made the first two revisions of this guard inert. When both model
+ * stages throw, control falls through to `buildHumanStandardRewriteOutput`, a
+ * LOCAL non-LLM rewrite, which returns `skipped:false` with
+ * `model_used: HUMAN_STANDARD_REWRITE_MODEL`. So a revoked or expired credential
+ * produces a row that looks like a success and carries no reason at all — the
+ * earlier `row.gemini?.skipped` conjunct excluded it before any classifier ran.
+ *
+ * Verified by execution with a service-account key that parses but is not a real
+ * account: `credentialsAvailable()` true, token mint throws `invalid_grant`,
+ * every row `skipped:false`, `reason: undefined`, CLI exit 0.
+ */
+function rowUsedRealGemini(row) {
+  const gemini = row?.gemini;
+  if (!gemini || gemini.skipped !== false) return false;
+  const model = String(gemini.model || '');
+  if (!model) return false;
+  // The deterministic rewrite is a POST-PROCESSING pass, not a substitute — it is
+  // the reported model whether or not Gemini answered. When it ran, the only
+  // honest signal is whether it had a Gemini seed to rewrite.
+  if (model === HUMAN_STANDARD_REWRITE_MODEL) return gemini.gemini_seed_available === true;
+  return true;
+}
+
+/**
+ * Should the run refuse to report success?
+ *
+ * Extracted and exported so it can be tested as the SHIPPED function rather than
+ * re-implemented in a test. An earlier revision kept the logic inline and pinned
+ * it with `expect(src).toContain(...)`; a review showed that wrapping the guard
+ * in `if (false && …)` left every test green while the CLI exited 0. A predicate
+ * that only a grep can see is not covered.
+ *
+ * ALL, not ANY: `realGeminiRows.length === 0`. This is both the correct question
+ * ("did Gemini work at all?") and the thing that keeps the guard off a healthy
+ * run — `credentialsAvailable()` fails closed on its FIRST call on a GCP runtime
+ * with no env markers while a background probe resolves, so an ANY-style
+ * predicate would redden a run whose first case merely lost that race.
+ */
+function shouldFailForUnusableGemini(reportRows, { vertexEnabled, skipGemini } = {}) {
+  if (!vertexEnabled || skipGemini) return false;
+  const geminiRows = (reportRows || []).filter((row) => row && row.gemini);
+  if (geminiRows.length === 0) return false;
+  return geminiRows.filter(rowUsedRealGemini).length === 0;
+}
+
+function isCredentialFailureReason(reason) {
+  const text = String(reason || '');
+  if (!text) return false;
+  if (text === 'missing_gemini_api_key') return true;
+  // `extractModelError` renders an HTTP failure as `model_call_failed_<status>`,
+  // which is then wrapped again by runStage / the fallback-exhausted path — so
+  // match the status token anywhere in the chain rather than anchoring.
+  if (/model_call_failed_(401|403)\b/.test(text)) return true;
+  // Vertex and AI Studio both use these gRPC-style status names in the body, and
+  // a token-mint failure surfaces with no HTTP response at all.
+  if (/\b(UNAUTHENTICATED|PERMISSION_DENIED)\b/.test(text)) return true;
+  if (/could not (load|refresh) the default credentials|invalid_grant|invalid_client/i.test(text)) return true;
+  return false;
+}
+
 function normalizeGeminiGroundingMetadata(value) {
   const source = value && typeof value === 'object' ? value : {};
   const webSources = toList(source.groundingChunks)
@@ -3675,6 +3757,7 @@ async function runGeminiDraft(caseRow, baselineDraft, model) {
   const requestedCandidates = parseGeminiModelList(model);
   const modelCandidates = requestedCandidates.length ? requestedCandidates : GEMINI_MODEL_DEFAULTS;
   const attemptedModels = [];
+  const modelErrors = [];
   let lastError = 'all_gemini_models_failed';
 
   const runStage = async (modelCandidate, stageLabel) => {
@@ -3699,6 +3782,11 @@ async function runGeminiDraft(caseRow, baselineDraft, model) {
       };
     } catch (err) {
       lastError = extractModelError(err);
+      // RECORD IT. Until now a model failure left no trace in the artifact: the
+      // local rewrite rescued the row, `reason` stayed undefined, and the only
+      // way to learn that Gemini never answered was to reproduce it locally.
+      // That is why a dead credential went unnoticed across three sessions.
+      modelErrors.push({ model: normalizedModel, stage: stageLabel, error: lastError });
       return { skipped: true, reason: `model_call_failed:${lastError}`, model_used: normalizedModel, stage: stageLabel };
     }
   };
@@ -3757,6 +3845,18 @@ async function runGeminiDraft(caseRow, baselineDraft, model) {
           model_used: HUMAN_STANDARD_REWRITE_MODEL,
           model_candidates: modelCandidates,
           attempted_models: attemptedModels,
+          // THE FIELD THAT ACTUALLY DISCRIMINATES. `deterministic-human-standard-
+          // rewrite` is a post-processing pass applied to whatever seed exists —
+          // so it is the reported `model_used` BOTH when Gemini answered and was
+          // then rewritten, AND when Gemini never answered and the rewrite ran off
+          // the baseline alone. Measured on both: `model`, `selection_strategy`,
+          // `quality_gate.candidate_available`, `overall_pass` and `raw` are
+          // IDENTICAL in the two cases, because the gate scores the rewrite, not a
+          // Gemini candidate. Keying a health check on any of them reports a
+          // healthy run as broken. This is the only honest signal, so it is
+          // recorded rather than inferred.
+          gemini_seed_available: Boolean(rewriteSeedOutput),
+          model_errors: modelErrors,
           quality_gate: {
             ...humanRewriteQuality,
             human_standard_rewrite: true,
@@ -4670,6 +4770,17 @@ async function main() {
           attempted_models: geminiRaw.attempted_models || [],
           quality_gate: qualityGate,
           selection_strategy: geminiRaw.selection_strategy || 'gemini_completed',
+          // Carried onto the row so the health check and any operator reading the
+          // artifact can tell "Gemini answered and was rewritten" from "Gemini
+          // never answered and the rewrite ran off the baseline". Absent for the
+          // gemini_flash_pass / gemini_upgrade_pass strategies, where the model id
+          // itself already proves a real draft.
+          ...(geminiRaw.gemini_seed_available === undefined
+            ? {}
+            : { gemini_seed_available: geminiRaw.gemini_seed_available }),
+          ...(geminiRaw.model_errors && geminiRaw.model_errors.length
+            ? { model_errors: geminiRaw.model_errors }
+            : {}),
         },
       manual_override: manualOverride ? deepClone(manualOverride) : null,
       quality_gate: qualityGate,
@@ -4702,7 +4813,15 @@ async function main() {
         reportRows.map((row) => asString(row.gemini?.model)).filter(Boolean),
       ),
     ),
-    gemini_completed: reportRows.filter((row) => row.gemini && row.gemini.skipped === false).length,
+    // `gemini_completed` counted every non-skipped row, including ones the LOCAL
+    // deterministic rewrite produced after Gemini failed — so a totally dead
+    // credential reported `gemini_completed: N`. That counter WAS the false
+    // success signal. It now counts real Gemini drafts only; the rewrites are
+    // reported separately rather than dropped.
+    gemini_completed: reportRows.filter(rowUsedRealGemini).length,
+    gemini_deterministic_rewrite: reportRows.filter(
+      (row) => row.gemini && row.gemini.skipped === false && !rowUsedRealGemini(row),
+    ).length,
     gemini_skipped: reportRows.filter((row) => row.gemini && row.gemini.skipped !== false).length,
     hybrid_selected: reportRows.filter((row) => row.selected?.selected_mode === 'hybrid_gemini').length,
     human_standard_rewrites: reportRows.filter((row) => row.selected?.selected_mode === 'human_standard_rewrite').length,
@@ -4711,6 +4830,66 @@ async function main() {
 
   writeJson(jsonOut, { meta, rows: reportRows });
   writeText(markdownOut, buildMarkdownReport(reportRows, meta));
+
+  // FAIL LOUDLY when Vertex was explicitly demanded and NOT ONE row got a real
+  // Gemini draft.
+  //
+  // THE PREDICATE IS "no row used Gemini", not "some row reported a credential
+  // error" — the first two revisions of this guard gated on skip reasons and were
+  // structurally unreachable. A revoked, expired, or wrong-project credential
+  // never yields `skipped:true`: both model stages throw, control falls through
+  // to the LOCAL `buildHumanStandardRewriteOutput`, and the row comes back
+  // `skipped:false` with `model_used: deterministic-human-standard-rewrite` and
+  // no reason. The report then counted it as `gemini_completed`. So the run did
+  // not merely fail to flag the degradation — it asserted the opposite.
+  //
+  // ALL rows, not ANY, and that is load-bearing twice over. It is the correct
+  // question ("did Gemini work at all?"), and it is immune to the probe race:
+  // `credentialsAvailable()` fails closed on its FIRST call on a GCP runtime with
+  // no env markers, so an ANY-style predicate would fire on a healthy run whose
+  // first case lost that race. Verified: guard stays quiet when case 1 degrades
+  // and case 2 gets a real draft.
+  //
+  // Still NOT fatal, deliberately: VERTEX_AI_ENABLED off (AI Studio is the
+  // legitimate local default), `--skip-gemini` (the operator asked), and an empty
+  // case set (nothing was attempted, so nothing failed).
+  const geminiRows = reportRows.filter((row) => row.gemini);
+  if (shouldFailForUnusableGemini(reportRows, {
+    vertexEnabled: vertexGemini.vertexEnabled(),
+    skipGemini: args.skipGemini,
+  })) {
+    // Best-effort cause, for the operator. Diagnosis only — never the gate,
+    // because the credential-class reason is frequently absent (see above).
+    const causes = Array.from(new Set(
+      geminiRows
+        .map((row) => String(row.gemini?.reason || ''))
+        .filter(Boolean),
+    ));
+    const credentialCause = causes.some(isCredentialFailureReason);
+    process.stderr.write(
+      `${JSON.stringify({
+        status: 'error',
+        error: 'VERTEX_GEMINI_UNUSABLE',
+        message:
+          'VERTEX_AI_ENABLED=true but not one of '
+          + `${geminiRows.length} case(s) received a Gemini draft — every row fell back to the `
+          + 'local deterministic rewrite or was skipped. Refusing to report success. '
+          + (credentialCause
+            ? 'At least one failure looks credential-related: check GOOGLE_APPLICATION_CREDENTIALS_JSON '
+              + 'is current and its project_id matches GOOGLE_CLOUD_PROJECT.'
+            : 'No credential-class reason was recorded, so check model availability and quota too.')
+          + ' Pass --skip-gemini to request a baseline-only run deliberately.',
+        cases: reportRows.length,
+        gemini_rows: geminiRows.length,
+        gemini_completed: 0,
+        observed_reasons: causes,
+        json: jsonOut,
+        markdown: markdownOut,
+      })}\n`,
+    );
+    process.exitCode = 1;
+    return;
+  }
 
   process.stdout.write(
     `${JSON.stringify({ status: 'ok', cases: reportRows.length, json: jsonOut, markdown: markdownOut })}\n`,
@@ -4741,4 +4920,7 @@ module.exports = {
   buildShoppingCardPayload,
   parseGeminiModelList,
   runGeminiDraft,
+  isCredentialFailureReason,
+  rowUsedRealGemini,
+  shouldFailForUnusableGemini,
 };
