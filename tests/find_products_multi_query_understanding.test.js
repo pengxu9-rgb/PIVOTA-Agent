@@ -326,10 +326,6 @@ describe('find_products_multi query understanding', () => {
   // (?<!air\s) is satisfied by the trailing "air " of hAIR / repAIR — which
   // silently excluded "hair conditioner", the most canonical phrasing of the
   // whole category (caught in pre-merge review by execution, not reading).
-  // Pinned at the RESOLVER level, not via buildSearchQualityContract: a
-  // pre-existing brandLexicon defect substring-matches the "r co" of
-  // "…r conditioner" as the R+Co brand, so the contract-level class for
-  // these queries is polluted by an unrelated bug (filed as a follow-up).
   test.each([
     ['hair conditioner', 'beauty/haircare/'],
     ['repair conditioner', 'beauty/haircare/'],
@@ -340,6 +336,36 @@ describe('find_products_multi query understanding', () => {
     ['lip conditioner', ''],
   ])('conditioner guard anchoring: %s', (query, expectedPrefix) => {
     expect(resolveBeautyCategoryPathPrefixFromText(query) || '').toBe(expectedPrefix);
+  });
+
+  // Contract-level graduation of the pins above: brandLexicon used to
+  // substring-match the "r co" (r_and_co) alias across the word gap of
+  // "hai[r co]nditioner", so these queries classed brand_category with an
+  // R+Co brand constraint — and brand_mismatch then served only R+Co
+  // products or near-zero. With token-boundary alias matching they are
+  // plain brand-free haircare browses; real R+Co phrasings keep the brand.
+  test.each([
+    ['hair conditioner'],
+    ['repair conditioner'],
+    ['color conditioner'],
+    ['silver conditioner'],
+    ['curly hair conditioner'],
+  ])('%s is a brand-free haircare browse, not an R+Co brand query', (query) => {
+    const contract = buildSearchQualityContract({ rawQuery: query, market: 'US' });
+    expect(contract.target_domain).toBe('beauty');
+    expect(contract.query_class).toBe('category_browse');
+    expect(contract.hard_constraints.category_path_prefix).toBe('beauty/haircare/');
+    expect(contract.hard_constraints.brand).toBeNull();
+  });
+
+  test('an explicit R+Co query still carries the brand constraint', () => {
+    const contract = buildSearchQualityContract({ rawQuery: 'r+co conditioner', market: 'US' });
+    expect(contract.target_domain).toBe('beauty');
+    expect(contract.query_class).toBe('brand_category');
+    expect(contract.hard_constraints.category_path_prefix).toBe('beauty/haircare/');
+    expect(contract.hard_constraints.brand).toEqual(
+      expect.objectContaining({ brand_key: 'r_and_co' }),
+    );
   });
 
   test('long brand product-title queries use exact product anchors instead of broad category paths', () => {
