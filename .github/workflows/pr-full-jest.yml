@@ -440,6 +440,19 @@ jobs:
       # key map is memory exhaustion with no credential. The jsonb merge was additionally verified
       # against a real Postgres 15 using the repo's own commerce_kv migration, including the two-replica
       # case a read-modify-write would silently lose.
+      # ADDED 2026-08-20: `tests/reco_direct_recall_before_llm`, confirmed green (19/19). The direct
+      # reco lane (consumer POST /v1/reco/generate and the agent-door tool `recommend_products`, both
+      # entryType 'direct') prompted the LLM with `candidates: []` and only ran catalog recall
+      # afterwards, gated on a missing/schema_invalid/empty answer — so a FLUENT INVENTED answer
+      # suppressed recall entirely and the caller got archetypes with no product_id and no price.
+      # `legacyRecoMainlineExecution` is a dependency-free DI factory, so the suite drives the real
+      # branch with fake deps and asserts what the LLM prompt actually received; the chat-lane cases
+      # are the ones that pin "this PR does not touch chat". Eleven mutants were run against the
+      # source hunks (drop the pre-LLM recall, drop the direct-lane gate, ignore the kill switch,
+      # absorb the catalog answer unconditionally, re-search in the recovery branch, revert the
+      # exfoliant vocabulary, unanchor its regex, append instead of unshift the need seeds, treat
+      # maxQueries=0 as zero, skip boilerplate/price stripping, drop the need seed + budget) and all
+      # eleven fail the suite.
       - name: Run node:test suites
         run: |
           node --test \
@@ -503,7 +516,8 @@ jobs:
             tests/aurora_surface_host_guard.node.test.cjs \
             tests/recommendations_internal_key_double_send.node.test.cjs \
             tests/aurora_surface_auth.node.test.cjs \
-            tests/aurora_surface_auth_rollup.node.test.cjs
+            tests/aurora_surface_auth_rollup.node.test.cjs \
+            tests/reco_direct_recall_before_llm.node.test.cjs
 
   jest:
     runs-on: ubuntu-latest

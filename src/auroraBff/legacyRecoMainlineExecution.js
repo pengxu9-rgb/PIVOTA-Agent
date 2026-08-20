@@ -1,3 +1,42 @@
+// The direct lane = consumer POST /v1/reco/generate and the agent-door tool `recommend_products`.
+// Both reach generateProductRecommendations with entryType 'direct'; the chat lane uses 'chat' and is
+// deliberately untouched by the pre-LLM recall below.
+function isDirectRecoEntryType(entryType) {
+  const token = String(entryType || '').trim().toLowerCase();
+  return token === 'direct' || token === 'agent_tool';
+}
+
+// Should a fluent LLM answer that grounded to ZERO products be replaced by the catalog answer?
+//
+// The mainline's own recovery gate fires only on a missing / schema_invalid / empty answer, so an
+// invented-but-well-formed list of archetypes counts as success today. This is the missing trigger.
+//
+// It is deliberately a pure predicate: the caller performs at most ONE swap and re-derives the tail
+// with structuredSource 'catalog_grounded', which the grounding pass ignores — so it cannot loop.
+function shouldRecoverFullyUngroundedDirectAnswer({
+  enabled = true,
+  entryType = 'chat',
+  structuredSource = null,
+  groundingApplied = false,
+  groundedCount = 0,
+  answerRecommendationCount = 0,
+  catalogRecommendationCount = 0,
+} = {}) {
+  if (enabled !== true) return false;
+  if (!isDirectRecoEntryType(entryType)) return false;
+  // Only an LLM-primary answer can be ungrounded in this sense; a catalog answer is grounded by
+  // construction and swapping it for itself would be a no-op at best.
+  if (structuredSource !== 'llm_primary') return false;
+  if (groundingApplied !== true) return false;
+  if (Number(groundedCount || 0) !== 0) return false;
+  // An EMPTY answer is already handled by the mainline recovery gate; this trigger is specifically the
+  // "non-empty but 100% ungrounded" case.
+  if (Number(answerRecommendationCount || 0) <= 0) return false;
+  // Nothing to swap in: keep the ungrounded answer rather than emptying the response.
+  if (Number(catalogRecommendationCount || 0) <= 0) return false;
+  return true;
+}
+
 function createLegacyRecoMainlineExecutionRuntime(deps = {}) {
   const {
     pickFirstTrimmed,
@@ -40,6 +79,8 @@ function createLegacyRecoMainlineExecutionRuntime(deps = {}) {
     mainlineStageTimingsMs = {},
     RECO_MAIN_PROMPT_TEMPLATE_ID = 'reco_main_v1_2',
     RECO_PDP_FAST_EXTERNAL_FALLBACK_ENABLED = false,
+    RECO_DIRECT_RECALL_BEFORE_LLM_ENABLED = true,
+    RECO_DIRECT_RECALL_BEFORE_LLM_MAX_QUERIES = 3,
   } = {}) {
     let upstream = null;
     let contextMeta = {};
@@ -78,6 +119,14 @@ function createLegacyRecoMainlineExecutionRuntime(deps = {}) {
     let failureOrigin = 'none';
     let preLlmSelectedCandidateCount = null;
     let finalSelectedCandidateCount = null;
+    // Branch-B pre-LLM recall result, kept separate from `catalogStructured` so the LLM-success path
+    // keeps reporting exactly what it reports today. It is the recovery source when the LLM answer is
+    // missing/schema-invalid/empty, AND the recovery source for a fluent-but-fully-ungrounded answer
+    // (see legacyRecoGenerationEngine).
+    let preLlmCatalogStructured = null;
+    let preLlmCatalogCandidateState = null;
+    let preLlmCatalogDebug = null;
+    let directRecallBeforeLlmApplied = false;
 
     if (concernSemanticPlanBlockedReason) {
       structured = {
@@ -271,6 +320,64 @@ function createLegacyRecoMainlineExecutionRuntime(deps = {}) {
         failureSignals.effective_failure_class || 'none';
       failureOrigin = failureSignals.failure_origin || 'none';
     } else {
+      // Recall BEFORE the LLM on the direct lane.
+      //
+      // Without this the LLM is asked to recommend products with `candidates: []` (catalogCandidatePool
+      // is still the initial empty array here), and catalog recovery below only runs when the answer is
+      // missing/schema-invalid/empty — so a fluent, entirely invented answer SUPPRESSES recall and the
+      // caller gets archetypes with no product_id and no price. Bounded: one call, need-seeded queries,
+      // the existing per-query timeouts, and the fail-fast circuit still short-circuits inside
+      // buildRecoGenerateFromCatalog. The chat lane is untouched.
+      const directRecallBeforeLlm =
+        RECO_DIRECT_RECALL_BEFORE_LLM_ENABLED === true && isDirectRecoEntryType(entryType);
+      if (directRecallBeforeLlm) {
+        const preLlmRecallStartedAt = Date.now();
+        const preLlmCatalogOut = await buildRecoGenerateFromCatalog({
+          ctx,
+          profileSummary,
+          ingredientContext: normalizedIngredientContext,
+          recommendationTaskContext,
+          targetContext,
+          externalSeedStrategyOverride: catalogExternalSeedStrategy,
+          allowStepAwareAdjacentFamilyFallback: false,
+          needSeedText: userAsk,
+          maxGenericQueries: RECO_DIRECT_RECALL_BEFORE_LLM_MAX_QUERIES,
+          debug,
+          logger,
+        });
+        mainlineStageTimingsMs.catalog_recall = Math.max(
+          Number(mainlineStageTimingsMs.catalog_recall || 0),
+          Math.max(0, Date.now() - preLlmRecallStartedAt),
+        );
+        directRecallBeforeLlmApplied = true;
+        preLlmCatalogStructured =
+          preLlmCatalogOut &&
+          typeof preLlmCatalogOut === 'object' &&
+          preLlmCatalogOut.structured &&
+          typeof preLlmCatalogOut.structured === 'object'
+            ? preLlmCatalogOut.structured
+            : null;
+        preLlmCatalogCandidateState =
+          preLlmCatalogOut &&
+          typeof preLlmCatalogOut === 'object' &&
+          preLlmCatalogOut.candidate_pool_state &&
+          typeof preLlmCatalogOut.candidate_pool_state === 'object'
+            ? preLlmCatalogOut.candidate_pool_state
+            : null;
+        preLlmCatalogDebug =
+          preLlmCatalogOut &&
+          typeof preLlmCatalogOut === 'object' &&
+          preLlmCatalogOut.debug &&
+          typeof preLlmCatalogOut.debug === 'object'
+            ? preLlmCatalogOut.debug
+            : null;
+        catalogCandidatePool =
+          preLlmCatalogOut &&
+          typeof preLlmCatalogOut === 'object' &&
+          Array.isArray(preLlmCatalogOut.candidate_pool)
+            ? preLlmCatalogOut.candidate_pool
+            : [];
+      }
       const promptState = buildRecoLlmPromptState({
         prefix,
         profileSummary,
@@ -314,17 +421,26 @@ function createLegacyRecoMainlineExecutionRuntime(deps = {}) {
         !llmStructured || llmStructuredRecoEmpty;
       if (shouldAttemptCatalogRecovery) {
         const catalogRecoveryStartedAt = Date.now();
-        const catalogOut = await buildRecoGenerateFromCatalog({
-          ctx,
-          profileSummary,
-          ingredientContext: normalizedIngredientContext,
-          recommendationTaskContext,
-          targetContext,
-          externalSeedStrategyOverride: catalogExternalSeedStrategy,
-          allowStepAwareAdjacentFamilyFallback: String(entryType || '').trim().toLowerCase() === 'chat',
-          debug,
-          logger,
-        });
+        // When the direct lane already ran recall before the LLM, that call used the same arguments
+        // (plus the need seed) — re-running it would double the upstream cost for the same answer.
+        const catalogOut = directRecallBeforeLlmApplied
+          ? {
+              structured: preLlmCatalogStructured,
+              candidate_pool: catalogCandidatePool,
+              candidate_pool_state: preLlmCatalogCandidateState,
+              debug: preLlmCatalogDebug,
+            }
+          : await buildRecoGenerateFromCatalog({
+              ctx,
+              profileSummary,
+              ingredientContext: normalizedIngredientContext,
+              recommendationTaskContext,
+              targetContext,
+              externalSeedStrategyOverride: catalogExternalSeedStrategy,
+              allowStepAwareAdjacentFamilyFallback: String(entryType || '').trim().toLowerCase() === 'chat',
+              debug,
+              logger,
+            });
         mainlineStageTimingsMs.catalog_recall = Math.max(
           Number(mainlineStageTimingsMs.catalog_recall || 0),
           Math.max(0, Date.now() - catalogRecoveryStartedAt),
@@ -448,6 +564,10 @@ function createLegacyRecoMainlineExecutionRuntime(deps = {}) {
       catalogCandidatePool,
       catalogCandidateState,
       catalogDebug,
+      preLlmCatalogStructured,
+      preLlmCatalogCandidateState,
+      preLlmCatalogDebug,
+      directRecallBeforeLlmApplied,
       pdpFastFallbackReasonCode,
       pdpFastExternalFallbackReasonCode,
       catalogTransientFallbackStructured,
@@ -480,4 +600,6 @@ function createLegacyRecoMainlineExecutionRuntime(deps = {}) {
 
 module.exports = {
   createLegacyRecoMainlineExecutionRuntime,
+  isDirectRecoEntryType,
+  shouldRecoverFullyUngroundedDirectAnswer,
 };

@@ -15,6 +15,7 @@ const {
 } = require('./legacyRecoFrameworkPass');
 const {
   createLegacyRecoMainlineExecutionRuntime,
+  shouldRecoverFullyUngroundedDirectAnswer,
 } = require('./legacyRecoMainlineExecution');
 const {
   createLegacyRecoPostMainlineRuntime,
@@ -110,6 +111,9 @@ function createLegacyRecoGenerationEngineRuntime(deps = {}) {
     RECO_PDP_LIGHT_ENRICH_ENABLED,
     AURORA_BFF_RECO_STEP_AWARE_CATALOG_FIRST_ENABLED,
     AURORA_BFF_RECO_CENTRALIZED_FAILURE_MAPPING_ENABLED,
+    AURORA_BFF_RECO_DIRECT_RECALL_BEFORE_LLM_ENABLED = true,
+    AURORA_BFF_RECO_DIRECT_RECALL_BEFORE_LLM_MAX_QUERIES = 3,
+    AURORA_BFF_RECO_DIRECT_UNGROUNDED_RECOVERY_ENABLED = true,
     CONCERN_SEMANTIC_PLAN_VERSION,
     CONCERN_SELECTOR_RACE_VERSION,
     RECOMMENDATION_STEP_QUERY_POLICY_V1,
@@ -346,6 +350,10 @@ function createLegacyRecoGenerationEngineRuntime(deps = {}) {
       mainlineStageTimingsMs,
       RECO_MAIN_PROMPT_TEMPLATE_ID,
       RECO_PDP_FAST_EXTERNAL_FALLBACK_ENABLED,
+      RECO_DIRECT_RECALL_BEFORE_LLM_ENABLED:
+        AURORA_BFF_RECO_DIRECT_RECALL_BEFORE_LLM_ENABLED,
+      RECO_DIRECT_RECALL_BEFORE_LLM_MAX_QUERIES:
+        AURORA_BFF_RECO_DIRECT_RECALL_BEFORE_LLM_MAX_QUERIES,
     });
     let upstream = mainlineExecution.upstream;
     let contextMeta = mainlineExecution.contextMeta;
@@ -410,35 +418,86 @@ function createLegacyRecoGenerationEngineRuntime(deps = {}) {
       recommendationTaskContext,
     });
     let alternativesDebug = null;
-    const postMainline = await runLegacyRecoPostMainline({
-      structured,
-      structuredSource,
-      ctx,
-      logger,
-      targetContext,
-      catalogDebug,
-      catalogCandidateState,
-      recommendationTaskContext,
-      preLlmSelectedCandidateCount,
-      stepAwareFailurePolicyEnabled,
-      initialLlmOutcome,
-      llmFailureClass,
-      upstreamFailureCode,
-      promptContract,
-      concernSemanticPlanBlockedReason,
-      concernSemanticPlanBlockedTelemetryReason,
-      concernSemanticPlanBlockedFailureClass,
-      concernSelectorRaceTrace,
-      concernOpenWorldExpansionUsed,
-      effectiveFailureClass,
-      failureOrigin,
-      presentationMode,
-      successMode,
-      profileSummary,
-      includeAlternatives,
-      upstreamDebug,
-      ingredientContext,
-    });
+    const runPostMainlinePass = () =>
+      runLegacyRecoPostMainline({
+        structured,
+        structuredSource,
+        ctx,
+        logger,
+        targetContext,
+        catalogDebug,
+        catalogCandidateState,
+        recommendationTaskContext,
+        preLlmSelectedCandidateCount,
+        stepAwareFailurePolicyEnabled,
+        initialLlmOutcome,
+        llmFailureClass,
+        upstreamFailureCode,
+        promptContract,
+        concernSemanticPlanBlockedReason,
+        concernSemanticPlanBlockedTelemetryReason,
+        concernSemanticPlanBlockedFailureClass,
+        concernSelectorRaceTrace,
+        concernOpenWorldExpansionUsed,
+        effectiveFailureClass,
+        failureOrigin,
+        presentationMode,
+        successMode,
+        profileSummary,
+        includeAlternatives,
+        upstreamDebug,
+        ingredientContext,
+      });
+    let postMainline = await runPostMainlinePass();
+
+    // A fluent LLM answer that grounds to ZERO products is the archetype failure, not a success — and
+    // the mainline's own recovery gate (missing / schema_invalid / empty) never fires for it. Swap in
+    // the pre-LLM catalog answer the direct lane already paid for and re-derive the tail exactly once.
+    //
+    // Bounded by construction: the second pass carries structuredSource 'catalog_grounded', and
+    // runLegacyRecoPostMainline only grounds when structuredSource === 'llm_primary', so this cannot
+    // recurse. No extra upstream call is made — the pool comes from the pre-LLM recall.
+    let ungroundedCatalogRecoveryApplied = false;
+    if (
+      shouldRecoverFullyUngroundedDirectAnswer({
+        enabled: AURORA_BFF_RECO_DIRECT_UNGROUNDED_RECOVERY_ENABLED,
+        entryType,
+        structuredSource,
+        groundingApplied: Boolean(postMainline.groundingResult),
+        groundedCount: postMainline.effectiveGroundedCount,
+        answerRecommendationCount: Array.isArray(postMainline.norm?.payload?.recommendations)
+          ? postMainline.norm.payload.recommendations.length
+          : 0,
+        catalogRecommendationCount:
+          isPlainObject(mainlineExecution.preLlmCatalogStructured) &&
+          Array.isArray(mainlineExecution.preLlmCatalogStructured.recommendations)
+            ? mainlineExecution.preLlmCatalogStructured.recommendations.length
+            : 0,
+      })
+    ) {
+      ungroundedCatalogRecoveryApplied = true;
+      structured = mainlineExecution.preLlmCatalogStructured;
+      structuredSource = 'catalog_grounded';
+      catalogStructured = mainlineExecution.preLlmCatalogStructured;
+      if (isPlainObject(mainlineExecution.preLlmCatalogCandidateState)) {
+        catalogCandidateState = mainlineExecution.preLlmCatalogCandidateState;
+      }
+      if (isPlainObject(mainlineExecution.preLlmCatalogDebug)) {
+        catalogDebug = mainlineExecution.preLlmCatalogDebug;
+      }
+      initialLlmOutcome = 'catalog_recovered_ungrounded_answer';
+      recordAuroraRecoLlmCall({
+        stage: 'main',
+        outcome: 'catalog_grounded_ungrounded_recovery',
+      });
+      postMainline = await runPostMainlinePass();
+    }
+    if (upstreamDebug && typeof upstreamDebug === 'object') {
+      upstreamDebug.direct_recall_before_llm_applied = Boolean(
+        mainlineExecution.directRecallBeforeLlmApplied,
+      );
+      upstreamDebug.ungrounded_catalog_recovery_applied = ungroundedCatalogRecoveryApplied;
+    }
     let mapped = postMainline.mapped;
     let groundingResult = postMainline.groundingResult;
     catalogDebug = postMainline.catalogDebug;
