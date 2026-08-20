@@ -248,16 +248,35 @@ function matchesBrandAliasInNormalizedText(normalizedText, normalizedAlias) {
     );
   }
 
-  const compactText = text.replace(/\s+/g, '');
-  const compactAlias = alias.replace(/\s+/g, '');
-  return (
+  // Token-boundary matches only. A bare `text.includes(alias)` lets a
+  // multi-word alias span the gap between OTHER words' characters: the
+  // "r co" of r_and_co is a substring of "hai[r co]nditioner", so every
+  // "<word ending in r> conditioner" query resolved the R+Co brand — and a
+  // compacted `includes` ("rco" in "hairconditioner") has the same hole.
+  if (
     text === alias ||
     text.includes(` ${alias} `) ||
     text.startsWith(`${alias} `) ||
-    text.endsWith(` ${alias}`) ||
-    text.includes(alias) ||
-    (compactAlias && compactText.includes(compactAlias))
-  );
+    text.endsWith(` ${alias}`)
+  ) {
+    return true;
+  }
+
+  // Compact form ("tomford" for "tom ford", "randco" for "r and co"): a
+  // contiguous run of whole text tokens, joined without spaces, must equal
+  // the compacted alias — never a substring of the middle of a token run.
+  const compactAlias = alias.replace(/\s+/g, '');
+  if (!compactAlias) return false;
+  const textTokens = tokenizeBrandText(text);
+  for (let start = 0; start < textTokens.length; start += 1) {
+    let joined = '';
+    for (let end = start; end < textTokens.length; end += 1) {
+      joined += textTokens[end];
+      if (joined.length > compactAlias.length) break;
+      if (joined === compactAlias) return true;
+    }
+  }
+  return false;
 }
 
 function collectDynamicBrandAliases(candidateProducts = []) {
