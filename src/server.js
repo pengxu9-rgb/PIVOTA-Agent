@@ -30690,7 +30690,11 @@ function publicReadMcpHosts() {
 }
 
 function isPublicReadMcpHostRequest(req) {
-  const host = String(req?.headers?.host || '').trim().toLowerCase().split(':')[0];
+  // Trailing dot: `mcp.pivota.cc.` is a valid absolute-FQDN spelling of the same name and any
+  // scanner tries it. The Railway edge refuses to route it today, so this is latent — but the GCP
+  // migration replaces that edge, and an unstripped dot slips BOTH this predicate and the Aurora
+  // host guard downstream of it.
+  const host = String(req?.headers?.host || '').trim().toLowerCase().replace(/\.+$/, '').split(':')[0];
   return Boolean(host) && publicReadMcpHosts().includes(host);
 }
 
@@ -34832,6 +34836,42 @@ app.use((req, res, next) => {
   next();
 });
 
+// ---------------- Aurora BFF surface: not served on the branded public hosts ----------------
+//
+// Registered HERE, above every route registration, and that position is load-bearing.
+//
+// The first version of this sat immediately before mountAuroraBffRoutes(). Review found five /v1
+// routes that are mounted EARLIER — mountUiEventRoutes (/v1/events), mountExternalOfferRoutes
+// (/v1/offers/external/{resolve,batchResolve}) and mountRecommendationRoutes
+// (/v1/recommendations/{feed,roles/normalize}) — so Express matched and terminated in those layers
+// and the guard never ran. They were reachable anonymously on the anchor and the partner host, and
+// /v1/events is anonymous ingest that fans out to PostHog and writes a budget-preference signal
+// against a CALLER-SUPPLIED aurora_uid. "Matched by prefix, so a route added later defaults to
+// refused" was only true for routes registered after the guard; from up here it is true of all of
+// them, in both directions.
+//
+// See services/auroraSurfaceHostGuard.js for the measurement behind the host set, and for why this
+// is a shape decision (Host is caller-controlled) rather than the lock.
+app.use(function auroraSurfaceHostGuardMiddleware(req, res, next) {
+  const access = decideAuroraSurfaceAccess({
+    path: req.path,
+    host: req.headers?.host,
+    isPublicReadHost: isPublicReadMcpHostRequest(req),
+  });
+  if (access.allow) return next();
+  logger.warn(
+    {
+      reason: access.reason,
+      host: String(req.headers?.host || ''),
+      path: req.path,
+      method: req.method,
+      status: access.status,
+    },
+    'aurora surface refused on a branded host',
+  );
+  return res.status(access.status).json(access.body);
+});
+
 function resolveAuroraChatContractConfig() {
   const responseFormatRaw = String(process.env.AURORA_CHAT_RESPONSE_FORMAT || 'chatcards').trim().toLowerCase();
   const responseFormat = responseFormatRaw === 'legacy' ? 'legacy' : 'chatcards';
@@ -35330,33 +35370,6 @@ mountExternalOfferRoutes(app);
 mountRecommendationRoutes(app);
 
 // ---------------- Aurora BFF (Lifecycle Skincare Partner) ----------------
-
-// The Aurora surface is not served on the branded public hosts. Its only gate is a client-invented
-// X-Aurora-UID, so on those names it is an anonymous LLM door — see services/auroraSurfaceHostGuard.js
-// for the measurement (zero legitimate /v1 traffic on any branded host) and for why this is a shape
-// decision rather than a lock.
-//
-// Registered BEFORE the mount so it runs first for these paths, and matched by prefix rather than by
-// route list: the /v1 handlers are spread over four files under auroraBff/, and a route added later
-// must default to refused on the anchor rather than to served.
-app.use((req, res, next) => {
-  const access = decideAuroraSurfaceAccess({
-    path: req.path,
-    host: req.headers?.host,
-    isPublicReadHost: isPublicReadMcpHostRequest(req),
-  });
-  if (access.allow) return next();
-  logger.warn(
-    {
-      reason: access.reason,
-      host: String(req.headers?.host || ''),
-      path: req.path,
-      status: access.status,
-    },
-    'aurora surface refused on a branded host',
-  );
-  return res.status(access.status).json(access.body);
-});
 
 mountAuroraBffRoutes(app, { logger });
 if (!auroraRoutesReady) {

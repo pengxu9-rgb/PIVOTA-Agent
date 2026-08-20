@@ -36,13 +36,36 @@
  * (authenticate the Vercel->gateway hop, and/or a quota), which needs a cross-repo rollout and must
  * not ship fail-closed ahead of the consumer.
  *
- * DENYLIST, NOT ALLOWLIST — a deliberate choice against the usual rule, and its cost. An allowlist
- * of "hosts that may serve Aurora" would also deny commerce.mcp.pivota.cc, and 2.4 days of retained
- * logs is not enough evidence to take the primary service domain away from a consumer I cannot see.
- * The cost is real and must be paid attention to: a NEW branded host — and the GCP migration is
- * actively adding them — serves the Aurora surface again until it is added here. Anything that
- * terminates a public name for this service belongs in AURORA_SURFACE_DENIED_HOSTS.
+ * WHY gateway.pivota.cc IS NOT DENIED BY DEFAULT — and why the measurement above did not settle it.
+ * The first version of this shipped `gateway.pivota.cc` as the default denied host on the strength of
+ * that sweep. Review caught it: pivota-agent-ui PR #308 ("R1: use gateway.pivota.cc / api.pivota.cc
+ * instead of Railway hostnames") merged at 2026-08-20T14:41:59Z, FORTY-TWO MINUTES after the log
+ * window above closed at 14:00:08Z, and its live main now defaults two server-side callers —
+ * /v1/analysis/skin and /v1/photos/upload — to that host. pivota-backend-gcp's env.prod.yaml already
+ * sets RECOMMENDATIONS_SERVICE_BASE_URL to it for /v1/recommendations/*. The R1 migration is actively
+ * pointing consumers AT this name while this guard would have pointed it away.
+ *
+ * The lesson is not "measure more"; the window was correct for the window. It is that a traffic sweep
+ * answers "who called yesterday", never "who ships tomorrow", and on a host that is mid-migration
+ * those are different questions. So the default denies NOTHING beyond the public-read names, and any
+ * additional host is opted in explicitly via AURORA_SURFACE_DENIED_HOSTS once its consumers are
+ * reconciled. Add gateway.pivota.cc there after the pivota-agent-ui env vars and the /v1/auth/me
+ * migration branch are settled.
+ *
+ * The public-read names are NOT configurable here and are always refused: mcp.pivota.cc is the UCP
+ * identity anchor, it is the hole that was actually reported, and it has zero measured /v1 traffic
+ * from anyone.
  */
+
+/**
+ * Lowercase, trim, drop a trailing FQDN dot, drop the port — the same normalisation
+ * isPublicReadMcpHostRequest applies, so the two host decisions cannot disagree about what a name is.
+ * `gateway.pivota.cc.` is a valid spelling of the same host and every scanner tries it; the Railway
+ * edge refuses to route it today, but the GCP migration replaces that edge.
+ */
+function normalizeHost(value) {
+  return String(value == null ? '' : value).trim().toLowerCase().replace(/\.+$/, '').split(':')[0];
+}
 
 function firstNonEmptyString(...values) {
   for (const v of values) {
@@ -53,7 +76,7 @@ function firstNonEmptyString(...values) {
 }
 
 const DENIED_HOSTS_ENV = 'AURORA_SURFACE_DENIED_HOSTS';
-const DEFAULT_DENIED_HOSTS = 'gateway.pivota.cc';
+const DEFAULT_DENIED_HOSTS = '';
 
 /**
  * Hosts where the Aurora surface must not be served, beyond the public-read names (those come from
@@ -64,7 +87,7 @@ function auroraDeniedHosts(env = process.env) {
   const raw = env[DENIED_HOSTS_ENV] === undefined ? DEFAULT_DENIED_HOSTS : env[DENIED_HOSTS_ENV];
   return String(raw)
     .split(',')
-    .map((h) => h.trim().toLowerCase().split(':')[0])
+    .map((h) => normalizeHost(h))
     .filter(Boolean);
 }
 
@@ -79,9 +102,23 @@ function auroraDeniedHosts(env = process.env) {
  * Express routes case-insensitively and tolerates trailing slashes, so `/V1/Chat` and `/v1/chat/`
  * reach the same handlers. This runs as middleware rather than inside a route handler, so unlike
  * uiChatAccessGuard it cannot inherit that normalisation and has to do it explicitly.
+ *
+ * /metrics is here because mountAuroraBffRoutes registers it too and it sits outside the version
+ * prefix. It is not a cost surface — it is the full Prometheus dump (vision, reco, chat-quality, QA,
+ * discovery, PDP, relationship-graph, UCP counters), verified answering 200 unauthenticated on the
+ * anchor and the partner host. Operational telemetry does not belong on the UCP identity anchor or
+ * on a name being handed to a partner. Edge logs show one hit in the retained window, and the
+ * consumer reaches it over the railway.app name (vercel.json rewrites /metrics), which is untouched.
+ *
+ * NOT included: mountAuroraBffRoutes also registers /internal/prelabel, /internal/prelabel/suggestions
+ * and /internal/label-queue, which do reach Gemini. They are already triple-gated (dogfood_mode +
+ * prelabel.enabled + a timingSafeEqual admin key) and verified 404 unauthenticated, and `/internal/`
+ * is shared with separately-gated routes whose branded-host traffic has not been measured. Left alone
+ * deliberately rather than swept in.
  */
 function isAuroraSurfacePath(path) {
   const p = String(path || '').toLowerCase();
+  if (p === '/metrics') return true; // see below
   return p === '/v1' || p === '/v2' || p.startsWith('/v1/') || p.startsWith('/v2/');
 }
 
@@ -105,7 +142,7 @@ function decideAuroraSurfaceAccess({
     };
   }
 
-  const normalized = firstNonEmptyString(host).toLowerCase().split(':')[0];
+  const normalized = normalizeHost(host);
   if (normalized && auroraDeniedHosts(env).includes(normalized)) {
     return {
       allow: false,
