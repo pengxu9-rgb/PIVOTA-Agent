@@ -71,10 +71,22 @@ describe('UCP tool vocabulary is the one platforms actually send', () => {
     for (const t of UCP_TOOL_EVIDENCE.vendor) assert.ok(!UCP_TOOL_EVIDENCE.mapped.includes(t), t);
   });
 
-  test('the vendor tools are exactly the insights operations, spelled like their native twins', () => {
+  test('the vendor tools are exactly the ADVERTISED insights operations, spelled like their native twins', () => {
+    // Membership of `cc.pivota.insights` and presence on the UCP DIALECT are two different facts. An
+    // insights op joins the dialect only when the hosted capability document describes it — until then it
+    // carries no `ucpTool` and is native-/mcp-only (recommend_products is the first such op). So the vendor
+    // evidence list is the ADVERTISED subset, and the un-advertised ones are asserted to be exactly that:
+    // no ucpTool, hence absent from every UCP listing. Asserting over ALL insights ops would force the next
+    // native-only decision-layer tool to be advertised before its document exists — the
+    // advertised-but-not-executable defect this whole file guards.
     const insights = CANONICAL_OPERATIONS.filter((o) => o.capability === 'insights');
-    assert.deepEqual(insights.map((o) => o.ucpTool).sort(), [...UCP_TOOL_EVIDENCE.vendor].sort());
-    for (const op of insights) assert.equal(op.ucpTool, op.mcp, `${op.id}: one vocabulary on every door`);
+    const advertised = insights.filter((o) => o.ucpTool);
+    assert.deepEqual(advertised.map((o) => o.ucpTool).sort(), [...UCP_TOOL_EVIDENCE.vendor].sort());
+    for (const op of advertised) assert.equal(op.ucpTool, op.mcp, `${op.id}: one vocabulary on every door`);
+    for (const op of insights.filter((o) => !o.ucpTool)) {
+      assert.equal(canonicalOpForUcpTool(op.mcp), undefined, `${op.id} has no hosted document: it must not resolve on the UCP dialect`);
+      assert.ok(!UCP_TOOL_EVIDENCE.vendor.includes(op.mcp), `${op.id} must not be listed as vendor evidence while unadvertised`);
+    }
   });
 
   test('the dotted internal label is NOT what the dialect dispatches on', () => {
