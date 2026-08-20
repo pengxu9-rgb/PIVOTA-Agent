@@ -158,6 +158,13 @@ async function requestChatOnce({ base, message, uid, lang, timeoutMs }) {
         'content-type': 'application/json',
         'x-aurora-uid': uid,
         'x-lang': lang,
+        // The gateway's Aurora-surface guard (#2038) runs in `observe` mode today and will 401
+        // uncredentialed callers at the flip. This canary runs hourly against the live gateway, so
+        // without this it becomes 24 failed runs a day the moment that happens — and it is one of
+        // the callers currently showing up as `missing_key` in the gateway's own rollup.
+        ...(process.env.AURORA_SURFACE_INTERNAL_KEY
+          ? { 'x-internal-key': process.env.AURORA_SURFACE_INTERNAL_KEY }
+          : {}),
       },
       body: JSON.stringify({ message, session: { state: 'S0' } }),
     },

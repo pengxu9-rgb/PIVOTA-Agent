@@ -19,6 +19,8 @@ jobs:
     runs-on: ubuntu-latest
     env:
       BASE_URL: ${{ inputs.base_url || vars.AURORA_BFF_BASE_URL || 'https://pivota-agent-production.up.railway.app' }}
+      # Gateway caller auth (#2038). Absent -> the header is simply omitted, which is today's behaviour.
+      AURORA_SURFACE_INTERNAL_KEY: ${{ secrets.AURORA_SURFACE_INTERNAL_KEY }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
