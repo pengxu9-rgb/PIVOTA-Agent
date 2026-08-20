@@ -241,6 +241,81 @@ describe('find_products_multi query understanding', () => {
     expect(contract.hard_constraints.category_path_prefix).toBeNull();
   });
 
+  // 2026-08-20 — measured tail of the same Mechanism-3 defect (flip-day
+  // probe): setting powder, brow pencil/gel, contour stick, eye shadow
+  // palette, micellar water, clay mask, bronzer, makeup remover all
+  // classified ambiguous and safe-emptied before any SQL. Buckets verified
+  // on prod the same day: beauty/makeup/face/powder 99 serving-eligible
+  // rows, beauty/makeup/eye/brow 44, beauty/makeup/eye/eyeshadow 58,
+  // beauty/makeup/face/bronzer 33 (13 contour-titled — why contour shares
+  // the bronzer leaf), beauty/skincare/cleanse 425, beauty/skincare/treat/mask 407.
+  test.each([
+    ['setting powder', 'category_browse', 'beauty/makeup/face/powder/'],
+    ['best setting powder', 'category_browse', 'beauty/makeup/face/powder/'],
+    ['translucent powder', 'category_browse', 'beauty/makeup/face/powder/'],
+    ['loose powder', 'category_browse', 'beauty/makeup/face/powder/'],
+    ['pressed powder', 'category_browse', 'beauty/makeup/face/powder/'],
+    ['brow pencil', 'category_browse', 'beauty/makeup/eye/brow/'],
+    ['eyebrow pencil', 'category_browse', 'beauty/makeup/eye/brow/'],
+    ['brow gel', 'category_browse', 'beauty/makeup/eye/brow/'],
+    ['brow pomade', 'category_browse', 'beauty/makeup/eye/brow/'],
+    // brow powder belongs to the brow rule, not the face-powder rule.
+    ['brow powder', 'category_browse', 'beauty/makeup/eye/brow/'],
+    ['eye shadow palette', 'category_browse', 'beauty/makeup/eye/eyeshadow/'],
+    ['eyeshadow palette', 'category_browse', 'beauty/makeup/eye/eyeshadow/'],
+    ['eyeshadow', 'category_browse', 'beauty/makeup/eye/eyeshadow/'],
+    ['bronzer', 'category_browse', 'beauty/makeup/face/bronzer/'],
+    ['contour stick', 'category_browse', 'beauty/makeup/face/bronzer/'],
+    ['contour palette', 'category_browse', 'beauty/makeup/face/bronzer/'],
+    // contour cream must be claimed here, NOT by the moisturizer rule's bare
+    // `cream` arm that sits later in the rule list.
+    ['contour cream', 'category_browse', 'beauty/makeup/face/bronzer/'],
+    ['micellar water', 'category_browse', 'beauty/skincare/cleanse/'],
+    ['makeup remover', 'category_browse', 'beauty/skincare/cleanse/'],
+    ['make up remover', 'category_browse', 'beauty/skincare/cleanse/'],
+    ['eye makeup remover', 'category_browse', 'beauty/skincare/cleanse/'],
+    ['clay mask', 'category_browse', 'beauty/skincare/treat/mask/'],
+    ['mud mask', 'category_browse', 'beauty/skincare/treat/mask/'],
+  ])('beauty category vocabulary tail covers %s', (query, queryClass, categoryPathPrefix) => {
+    const contract = buildSearchQualityContract({ rawQuery: query, market: 'US' });
+    expect(contract.target_domain).toBe('beauty');
+    expect(contract.query_class).toBe(queryClass);
+    expect(contract.hard_constraints.category_path_prefix).toBe(categoryPathPrefix);
+  });
+
+  test.each([
+    // Unanchored or non-beauty senses of the tail nouns stay unclassified —
+    // safe-empty (or clarify) is CORRECT for these.
+    ['powder'],
+    ['baby powder'],
+    ['protein powder'],
+    ['palette'],
+    ['contour'],
+    ['contour pillow'],
+    ['nail polish remover'],
+    // Measured on prod 2026-08-20: ZERO catalog rows anywhere (any
+    // eligibility) title-match pore strips or vitamin e oil, so there is no
+    // bucket a rule could name — the safe-empty is at least honest here.
+    // Remove these two rows when a producer starts minting those buckets.
+    ['pore strips'],
+    ['vitamin e oil'],
+  ])('unanchored tail noun %s stays unclassified', (query) => {
+    const contract = buildSearchQualityContract({ rawQuery: query, market: 'US' });
+    expect(contract.query_class).toBe('ambiguous_or_non_shopping');
+    expect(contract.hard_constraints.category_path_prefix).toBeNull();
+  });
+
+  test.each([
+    // First match wins — earlier rules keep their claims over the tail rules.
+    ['powder foundation', 'beauty/makeup/face/'],
+    ['lip mask', 'beauty/makeup/lip/'],
+    ['hair mask', 'beauty/haircare/'],
+  ])('%s keeps its earlier-rule claim over the tail rules', (query, categoryPathPrefix) => {
+    const contract = buildSearchQualityContract({ rawQuery: query, market: 'US' });
+    expect(contract.query_class).toBe('category_browse');
+    expect(contract.hard_constraints.category_path_prefix).toBe(categoryPathPrefix);
+  });
+
   test('body mist keeps its fragrance claim over the toner mist arm', () => {
     const contract = buildSearchQualityContract({ rawQuery: 'body mist', market: 'US' });
     expect(contract.query_class).toBe('category_browse');
