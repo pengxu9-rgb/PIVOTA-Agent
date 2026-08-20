@@ -2248,6 +2248,44 @@ describe('canonicalCatalogSearch union text arm is the narrow, sargable-shaped o
     }
   });
 
+  // THE DESIGN CLAIM, PINNED. Every other assertion in this block runs in ONE flag state
+  // (sargableTextWhere on, recall_doc on) — and that is exactly the state in which
+  // `citableSargableLane` is true and `textWhereClause` HAPPENS to already be the narrow form. So a
+  // refactor swapping `unionTextWhereClause` for `textWhereClause` looks harmless there while
+  // reintroducing the OR-EXISTS plan — the measured 18.6s shape — in the other flag states. Review
+  // caught exactly that: two mutants survived the rest of this block for this reason.
+  //
+  // The union's text arm must depend on NEITHER PIVOT_BEAUTY_MAINLINE_SARGABLE_TEXT_WHERE_ENABLED nor
+  // the recall_doc flag. Byte-identity across the sargable axis states that directly.
+  test('the union arm is independent of sargableTextWhere — byte-identical either way', async () => {
+    for (const doc of ['enabled', undefined]) {
+      process.env[UNION_FLAG] = 'on';
+      if (doc) process.env[DOC_FLAG] = doc; else delete process.env[DOC_FLAG];
+      const on = whereOf((await capture({ ...BROWSE, sargableTextWhere: true })).sql);
+      const off = whereOf((await capture({ ...BROWSE, sargableTextWhere: false })).sql);
+      expect(on).toBe(off);
+    }
+  });
+
+  test('no flag state can put an OR-EXISTS back into the union, or narrow its token arm', async () => {
+    for (const doc of ['enabled', undefined]) {
+      for (const sargableTextWhere of [true, false]) {
+        process.env[UNION_FLAG] = 'on';
+        if (doc) process.env[DOC_FLAG] = doc; else delete process.env[DOC_FLAG];
+        const where = whereOf((await capture({ ...BROWSE, sargableTextWhere })).sql);
+        const label = `doc=${doc || 'off'} sargable=${sargableTextWhere}`;
+        expect({ label, m: /OR EXISTS/.test(where) }).toEqual({ label, m: false });
+        expect({ label, m: /m\.merchant_name/.test(where) }).toEqual({ label, m: false });
+        expect({ label, m: /p\.source_product_id/.test(where) }).toEqual({ label, m: false });
+        // The token arm must be the PLAIN form. plainTokenWhere opens `OR (((CASE WHEN`; the sargable
+        // variant opens `OR ((LOWER(...) LIKE $n OR ...) AND ((` — a strictly narrower, recall-reducing
+        // conjunct that the union must never take. Both forms contain `) >= 2)`, so the pre-existing
+        // token assertion cannot tell them apart.
+        expect({ label, m: /OR \(\(\(CASE WHEN/.test(where) }).toEqual({ label, m: true });
+      }
+    }
+  });
+
   test('with the union off, verticalSearch browse SQL is unchanged from the kill-switch form', async () => {
     process.env[UNION_FLAG] = 'off';
     const { sql } = await capture(BROWSE);
