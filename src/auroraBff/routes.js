@@ -386,7 +386,7 @@ const {
   buildChatAnalysisContextFromSnapshot,
   buildAnalysisContextPromptBlock,
 } = require('./analysisContextSnapshot');
-const { normalizeRecoTargetStep } = require('./recoTargetStep');
+const { normalizeRecoTargetStep, extractRecoTargetStepFromText } = require('./recoTargetStep');
 const {
   RECOMMENDATION_STEP_QUERY_POLICY_V1,
   RECOMMENDATION_VIABLE_THRESHOLD_POLICY_V1,
@@ -424,6 +424,26 @@ const AURORA_BFF_RECO_STEP_AWARE_CATALOG_FIRST_ENABLED = (() => {
 
 const AURORA_BFF_RECO_CENTRALIZED_FAILURE_MAPPING_ENABLED = (() => {
   const raw = String(process.env.AURORA_BFF_RECO_CENTRALIZED_FAILURE_MAPPING_ENABLED || 'false').trim().toLowerCase();
+  return raw === '1' || raw === 'true' || raw === 'yes' || raw === 'on';
+})();
+
+// Kill switch for the direct-lane pre-LLM recall. Default ON: with it OFF the direct lane goes back to
+// prompting the LLM with an empty candidate pool, which is the defect this exists to fix.
+const AURORA_BFF_RECO_DIRECT_RECALL_BEFORE_LLM_ENABLED = (() => {
+  const raw = String(process.env.AURORA_BFF_RECO_DIRECT_RECALL_BEFORE_LLM_ENABLED || 'true').trim().toLowerCase();
+  return raw === '1' || raw === 'true' || raw === 'yes' || raw === 'on';
+})();
+
+const AURORA_BFF_RECO_DIRECT_RECALL_BEFORE_LLM_MAX_QUERIES = (() => {
+  const n = Number(process.env.AURORA_BFF_RECO_DIRECT_RECALL_BEFORE_LLM_MAX_QUERIES || 3);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 3;
+  return Math.max(1, Math.min(6, v));
+})();
+
+// A fluent LLM answer that grounds to ZERO products is not a success — it is the archetype failure the
+// caller sees. Default ON; one recovery attempt, never a loop.
+const AURORA_BFF_RECO_DIRECT_UNGROUNDED_RECOVERY_ENABLED = (() => {
+  const raw = String(process.env.AURORA_BFF_RECO_DIRECT_UNGROUNDED_RECOVERY_ENABLED || 'true').trim().toLowerCase();
   return raw === '1' || raw === 'true' || raw === 'yes' || raw === 'on';
 })();
 
@@ -20183,7 +20203,96 @@ function buildRecoGoalDrivenQueryItems({ profileSummary, lang } = {}) {
   return items.slice(0, 6);
 }
 
-function buildRecoCatalogQueries({ profileSummary, lang, ingredientContext } = {}) {
+// Boilerplate that shows up in every reco ask ("recommend a few products for ...") and carries no
+// retrieval signal. Dropping it is what turns a raw need sentence into a query the catalog can match.
+const RECO_NEED_SEED_STOPWORDS = new Set([
+  'a', 'an', 'and', 'any', 'are', 'around', 'as', 'at', 'be', 'below', 'best', 'budget', 'but', 'buy',
+  'can', 'cheap', 'could', 'do', 'find', 'for', 'from', 'get', 'give', 'good', 'great', 'have', 'help',
+  'i', 'im', 'in', 'is', 'it', 'just', 'like', 'looking', 'me', 'my', 'need', 'of', 'on', 'or', 'please',
+  'product', 'products', 'recommend', 'recommendation', 'recommendations', 'she', 'should', 'some',
+  'something', 'suggest', 'that', 'the', 'their', 'they', 'this', 'to', 'under', 'use', 'want', 'what',
+  'which', 'with', 'would', 'you', 'your',
+]);
+
+// Strips currency/price tails so "under $40" never becomes part of a text query. The price constraint
+// is carried structurally elsewhere; leaving it in the text only dilutes the match.
+function stripRecoNeedPriceTokens(value) {
+  return String(value || '')
+    .replace(/[$€£¥₩]\s*\d[\d,.]*/g, ' ')
+    .replace(/\b\d[\d,.]*\s*(usd|eur|gbp|jpy|cny|rmb|dollars?|bucks?)\b/gi, ' ')
+    .replace(/\b(under|below|less than|no more than|up to|within|至多|低于|以内)\b/gi, ' ')
+    .replace(/\d+\s*(元|円|块)/g, ' ');
+}
+
+// Need-derived catalog queries for the generic (non step-aware) recall ladder.
+//
+// The generic ladder is otherwise seeded from the STATIC ['cleanser','moisturizer','sunscreen'] base,
+// which cannot retrieve anything for a need the base does not name. `maxQueries` is deliberately small:
+// this runs BEFORE the LLM on the direct lane, so every query is latency the caller pays.
+function buildRecoNeedSeedQueries(needSeedText, { lang = 'EN', maxQueries = 2 } = {}) {
+  const rawText = String(needSeedText || '').trim();
+  if (!rawText) return [];
+  const bounded = Math.max(0, Math.min(4, Math.trunc(Number(maxQueries) || 0)));
+  if (bounded === 0) return [];
+
+  const priceStripped = stripRecoNeedPriceTokens(rawText);
+  const hasLatinWords = /[a-z]{2,}/i.test(priceStripped);
+  const out = [];
+  const push = (value) => {
+    const normalized = String(value || '').replace(/\s+/g, ' ').trim();
+    if (!normalized) return;
+    if (normalized.length < 3) return;
+    const key = normalized.toLowerCase();
+    if (out.some((item) => item.toLowerCase() === key)) return;
+    out.push(normalized.length > 80 ? normalized.slice(0, 80).trim() : normalized);
+  };
+
+  if (!hasLatinWords) {
+    // CJK asks do not whitespace-tokenize; the cleaned sentence is the most honest query available.
+    push(priceStripped.replace(/[，。！？、,.!?]/g, ' '));
+    return out.slice(0, bounded);
+  }
+
+  const tokens = priceStripped
+    .toLowerCase()
+    .replace(/[^a-z0-9+\-\s]/g, ' ')
+    .split(/\s+/)
+    .map((token) => token.trim())
+    .filter(Boolean)
+    .filter((token) => token.length > 1)
+    .filter((token) => !RECO_NEED_SEED_STOPWORDS.has(token));
+
+  const meaningful = [];
+  for (const token of tokens) {
+    if (meaningful.includes(token)) continue;
+    meaningful.push(token);
+    if (meaningful.length >= 6) break;
+  }
+  if (!meaningful.length) return [];
+
+  push(meaningful.join(' '));
+
+  // A second, broader query. A 4+ token phrase can under-recall, so pair the product-type token the
+  // caller actually used (NOT the canonical family name — "exfoliant", not "treatment") with its
+  // nearest modifier, keeping the order they appeared in so the phrase arm still has something to hit.
+  if (bounded > 1 && meaningful.length >= 3) {
+    const stepTokenIndex = meaningful.findIndex((token) => Boolean(normalizeRecoTargetStep(token)));
+    const modifierIndex = meaningful.findIndex(
+      (token, index) =>
+        index !== stepTokenIndex && !normalizeRecoTargetStep(token) && token !== 'skin',
+    );
+    const pair = [stepTokenIndex, modifierIndex]
+      .filter((index) => index >= 0)
+      .sort((a, b) => a - b)
+      .map((index) => meaningful[index]);
+    if (pair.length === 2) push(pair.join(' '));
+    else push(meaningful.slice(0, 2).join(' '));
+  }
+
+  return out.slice(0, bounded);
+}
+
+function buildRecoCatalogQueries({ profileSummary, lang, ingredientContext, needSeedText = '', maxQueries = 0 } = {}) {
   const raw = RECO_CATALOG_GROUNDED_QUERIES;
   const fromEnv = raw
     ? raw
@@ -20255,6 +20364,24 @@ function buildRecoCatalogQueries({ profileSummary, lang, ingredientContext } = {
     }
   }
 
+  // Need-derived queries go in FRONT of every static/profile seed: they are the only entries that can
+  // retrieve for a need the static base (cleanser/moisturizer/sunscreen) does not name.
+  const needSeedQueries = buildRecoNeedSeedQueries(needSeedText, {
+    lang,
+    maxQueries: 2,
+  });
+  for (const query of [...needSeedQueries].reverse()) {
+    const needStep = normalizeRecoTargetStep(extractRecoTargetStepFromText(query) || '');
+    items.unshift({
+      query,
+      step: (needStep && stepLabels[needStep]) || stepLabels.treatment,
+      slot: 'other',
+    });
+  }
+
+  const boundedMaxQueries = Number.isFinite(Number(maxQueries)) && Number(maxQueries) > 0
+    ? Math.max(1, Math.min(8, Math.trunc(Number(maxQueries))))
+    : 8;
   const deduped = [];
   const seen = new Set();
   for (const item of items) {
@@ -20266,7 +20393,7 @@ function buildRecoCatalogQueries({ profileSummary, lang, ingredientContext } = {
     if (seen.has(key)) continue;
     seen.add(key);
     deduped.push({ query, step, slot: slot || 'other' });
-    if (deduped.length >= 8) break;
+    if (deduped.length >= boundedMaxQueries) break;
   }
 
   return deduped;
@@ -20279,6 +20406,8 @@ function buildRecoCatalogQueryLevels({
   recommendationTaskContext = null,
   lang,
   seedTerms = [],
+  needSeedText = '',
+  maxGenericQueries = 0,
 } = {}) {
   if (targetContext && Array.isArray(targetContext.framework_roles) && targetContext.framework_roles.length > 0) {
     const recallPlan = buildRecoRecallPlan({
@@ -20338,7 +20467,13 @@ function buildRecoCatalogQueryLevels({
       })),
     })).filter((level) => Array.isArray(level.queries) && level.queries.length > 0);
   }
-  const queries = buildRecoCatalogQueries({ profileSummary, lang, ingredientContext });
+  const queries = buildRecoCatalogQueries({
+    profileSummary,
+    lang,
+    ingredientContext,
+    needSeedText,
+    maxQueries: maxGenericQueries,
+  });
   return queries.length
     ? [
         {
@@ -29004,6 +29139,8 @@ async function buildRecoGenerateFromCatalog({
   targetContext = null,
   externalSeedStrategyOverride = '',
   allowStepAwareAdjacentFamilyFallback = true,
+  needSeedText = '',
+  maxGenericQueries = 0,
   debug,
   logger,
 } = {}) {
@@ -29110,6 +29247,8 @@ async function buildRecoGenerateFromCatalog({
     ingredientContext,
     recommendationTaskContext,
     lang: ctx && ctx.lang ? ctx.lang : 'EN',
+    needSeedText,
+    maxGenericQueries,
   });
   if (!queryLevels.length) {
     return { structured: null, debug: { ...debugInfo, skipped_reason: 'queries_empty', total_ms: Date.now() - startedAt } };
@@ -83166,6 +83305,9 @@ const {
   RECO_PDP_LIGHT_ENRICH_ENABLED,
   AURORA_BFF_RECO_STEP_AWARE_CATALOG_FIRST_ENABLED,
   AURORA_BFF_RECO_CENTRALIZED_FAILURE_MAPPING_ENABLED,
+  AURORA_BFF_RECO_DIRECT_RECALL_BEFORE_LLM_ENABLED,
+  AURORA_BFF_RECO_DIRECT_RECALL_BEFORE_LLM_MAX_QUERIES,
+  AURORA_BFF_RECO_DIRECT_UNGROUNDED_RECOVERY_ENABLED,
   CONCERN_SEMANTIC_PLAN_VERSION,
   CONCERN_SELECTOR_RACE_VERSION,
   RECOMMENDATION_STEP_QUERY_POLICY_V1,
@@ -103903,6 +104045,8 @@ const __internal = {
   buildRecoRecallTransportPolicy,
   resolveRecoRecallTransportModeForPlannerMode,
   buildRecoCatalogQueryLevels,
+  buildRecoCatalogQueries,
+  buildRecoNeedSeedQueries,
   hasConcernFrameworkFinishFitSameRoleTradeoffCoverage,
   shouldStopConcernFrameworkFinishFitPrimaryExternalEarly,
   runConcernSelectorRace,
