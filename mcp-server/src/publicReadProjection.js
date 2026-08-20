@@ -221,7 +221,37 @@ function claimsFrom(raw) {
 
 // ---- per-tool projectors ---------------------------------------------------------------------------------
 
-function projectSearchCatalog(raw, { base = DEFAULT_PDP_BASE, limit } = {}) {
+// WHY AN EMPTY PAGE IS EMPTY — the note is a factual claim, so it has to be true.
+//
+// "No products matched this search." asserts something about the CATALOG, and an LLM agent relays it to the
+// shopper as "no such products exist". This tier can produce an empty page three different ways and only one
+// of them justifies that sentence:
+//
+//   no_match          — the upstream lane ran and genuinely matched nothing. The sentence is true.
+//   filtered_out      — the upstream MATCHED, and this tier's own post-hoc filters (first-party sourcing,
+//                       chain-resolvability) removed every row. The products exist; this tier will not show
+//                       them. Saying "no products matched" here is a false negative the shopper acts on.
+//   upstream_degraded — the lane did not answer successfully (ok:false / error envelope). Nothing was
+//                       learned about the catalog at all.
+//
+// The reason is also emitted as a machine-readable `empty_reason` so an agent does not have to parse prose
+// to tell a coverage gap from an absence.
+const EMPTY_SEARCH_NOTES = {
+  no_match: 'No products matched this search.',
+  filtered_out:
+    'Products matched this search, but none can be shown on this tier: every match was removed by the '
+    + 'first-party sourcing and product-page resolvability filters. This is a coverage limit of this '
+    + 'surface, not evidence that no such products exist.',
+  upstream_degraded:
+    'This search could not be completed — the catalog service returned a degraded response. No conclusion '
+    + 'about the catalog can be drawn from this result; retry shortly.',
+};
+
+function emptySearchNote(emptyReason) {
+  return EMPTY_SEARCH_NOTES[emptyReason] || EMPTY_SEARCH_NOTES.no_match;
+}
+
+function projectSearchCatalog(raw, { base = DEFAULT_PDP_BASE, limit, emptyReason } = {}) {
   const r = isObj(raw) ? raw : {};
   const cap = Math.min(
     MAX_SEARCH_RESULTS,
@@ -241,7 +271,12 @@ function projectSearchCatalog(raw, { base = DEFAULT_PDP_BASE, limit } = {}) {
     page_size: cap,
     returned: products.length,
     ...(total != null ? { total } : {}),
-    ...(products.length === 0 ? { note: 'No products matched this search.' } : {}),
+    ...(products.length === 0
+      ? {
+          note: emptySearchNote(emptyReason),
+          empty_reason: EMPTY_SEARCH_NOTES[emptyReason] ? emptyReason : 'no_match',
+        }
+      : {}),
   };
 }
 
@@ -383,6 +418,7 @@ function findLeakedFields(value, denylist = DENYLIST_FIELDS, path = '$') {
 
 export {
   projectPublicReadResult,
+  EMPTY_SEARCH_NOTES,
   projectSearchCatalog,
   projectGetProduct,
   projectGetIntel,
