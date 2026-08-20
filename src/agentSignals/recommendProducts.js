@@ -79,56 +79,154 @@ function finiteNumber(v) {
   return null;
 }
 
-// Structured price-ceiling constraint keys (canonicalized: lowercased, separators removed). Only a
-// NUMERIC value under one of these counts — `budget: "under $40"` is free text the LLM may honour or
-// not, and parsing dollar amounts out of prose is exactly the guessing this pass must not do.
+// Structured price-ceiling constraint keys (canonicalized: lowercased, separators removed). The VALUE
+// must be a number, or a bare currency-marked numeral under one of these keys (`40`, `"40.00"`,
+// `"40 USD"`, `"USD 40"`). Prose is refused: `budget: "under $40"` is free text the LLM may honour or
+// not, and parsing an amount out of a sentence is exactly the guessing this pass must not do.
 const PRICE_MAX_KEYS = new Set(['pricemax', 'maxprice', 'budget', 'budgetmax', 'maxbudget', 'pricelimit', 'priceceiling']);
-// A why/notes line that asserts price/budget fit. Only consulted on an item that FAILED the price
-// comparison, where any such claim is by definition false or unverifiable.
-const BUDGET_FIT_CLAIM_RE = /budget|price|afford|cheap|inexpensive|\$\s*\d/i;
+// Keys whose value declares the CURRENCY the ceiling is denominated in.
+const PRICE_CURRENCY_KEYS = new Set(['pricemaxcurrency', 'budgetcurrency', 'currency', 'pricecurrency']);
+// Currencies the catalog plausibly carries. An allowlist, not a shape test: it keeps a key like
+// `budget_cap` from being read as a ceiling denominated in "CAP".
+const KNOWN_CURRENCIES = new Set(['USD', 'EUR', 'GBP', 'JPY', 'CNY', 'CAD', 'AUD', 'KRW', 'HKD', 'SGD', 'TWD', 'CHF', 'SEK', 'NZD']);
+// The serving path normalizes catalog prices to USD (Shopify Markets USD; see the no_us_offer work), so
+// an undeclared ceiling is read as USD. `metadata.price_max_currency` reports which it used, and a
+// declared currency always wins — the assumption is visible to the caller, never silent.
+const DEFAULT_PRICE_MAX_CURRENCY = 'USD';
+// A line asserting price/budget FIT. Consulted only on an item that FAILED the comparison, where such a
+// claim is necessarily false. Word-anchored so "Priceless glow" is not mistaken for a price claim, and
+// bilingual because `language: 'CN'` is a first-class parameter of this tool.
+const BUDGET_FIT_CLAIM_RE = /\b(budget|price[ds]?|pricing|afford\w*|cheap\w*|inexpensive|value|cost\w*|spend\w*|dollars?|usd|cap|limit)\b|[$£€¥]\s*\d|预算|价格|便宜|实惠|美元|划算/i;
+
+/**
+ * Canonical form of a constraint key: lowercased, separators and punctuation removed. DIGITS ARE KEPT —
+ * stripping them would fold a distinct key like `budget2` into `budget` and enforce a ceiling the caller
+ * never asked for.
+ */
+function canonKey(key) {
+  return str(key).toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+/** A ceiling value → `{ amount, currency }`, or null when it is not a bare numeral. */
+function parseCeilingValue(value) {
+  const n = finiteNumber(value);
+  if (n !== null) return { amount: n, currency: null };
+  // A structured numeral carrying its own ISO code — "40 USD" / "USD 40". NOT prose: anything with a
+  // surrounding word ("under $40") fails this anchor and is refused.
+  const m = /^([A-Z]{3})\s*([0-9]+(?:\.[0-9]+)?)$|^([0-9]+(?:\.[0-9]+)?)\s*([A-Z]{3})$/.exec(str(value).toUpperCase());
+  if (!m) return null;
+  const currency = m[1] || m[4];
+  if (!KNOWN_CURRENCIES.has(currency)) return null;
+  return { amount: Number(m[2] !== undefined ? m[2] : m[3]), currency };
+}
 
 /**
  * The buyer's structured price ceiling, read from the RAW constraints object (pre-normalization, so a
- * numeric 40 is still a number). Returns the smallest recognized ceiling, or null when none is present.
+ * numeric 40 is still a number). Returns `{ limit, currency, declared }` for the smallest recognized
+ * ceiling, or null when none is present. `unstructured` reports a budget-shaped key whose value was
+ * prose — enforcement did not run, and the caller is told so rather than left to assume it did.
  */
 function extractPriceMax(raw) {
   if (!isPlainObject(raw)) return null;
-  let min = null;
+  let best = null;
+  let declaredCurrency = null;
+  let unstructured = false;
   for (const [key, value] of Object.entries(raw)) {
-    const k = str(key).toLowerCase().replace(/[^a-z]/g, '');
-    if (!PRICE_MAX_KEYS.has(k)) continue;
-    const n = finiteNumber(value);
-    if (n === null || n <= 0) continue;
-    if (min === null || n < min) min = n;
+    const k = canonKey(key);
+    if (PRICE_CURRENCY_KEYS.has(k)) {
+      const c = str(value).toUpperCase();
+      if (KNOWN_CURRENCIES.has(c)) declaredCurrency = c;
+      continue;
+    }
+    // A currency-suffixed ceiling key: `price_max_usd` → ceiling in USD.
+    let keyCurrency = null;
+    let base = k;
+    if (!PRICE_MAX_KEYS.has(k) && k.length > 3) {
+      const suffix = k.slice(-3).toUpperCase();
+      if (KNOWN_CURRENCIES.has(suffix) && PRICE_MAX_KEYS.has(k.slice(0, -3))) {
+        base = k.slice(0, -3);
+        keyCurrency = suffix;
+      }
+    }
+    if (!PRICE_MAX_KEYS.has(base)) continue;
+    const parsed = parseCeilingValue(value);
+    if (parsed === null || parsed.amount <= 0) {
+      if (nonEmpty(value)) unstructured = true;
+      continue;
+    }
+    // The winning (smallest) ceiling carries its own currency; a losing ceiling never lends it one.
+    if (best === null || parsed.amount < best.limit) best = { limit: parsed.amount, currency: parsed.currency || keyCurrency };
   }
-  return min;
+  if (best === null) return unstructured ? { unstructured: true } : null;
+  const currency = best.currency || declaredCurrency;
+  return { limit: best.limit, currency: currency || DEFAULT_PRICE_MAX_CURRENCY, declared: Boolean(currency), unstructured };
 }
 
 /**
- * Deterministic enforcement of a structured price ceiling against the GROUNDED catalog price on a
+ * Deterministic comparison of a structured price ceiling against the GROUNDED catalog price on a
  * projected signal — the check the LLM cannot be trusted to do (live 2026-08-20: a $45 product answered
- * "under $40" with a why[] line claiming budget fit). An item whose price is unknown cannot be verified
- * and is left alone; ungrounded items carry no price by construction.
+ * "under $40" with a why[] line claiming budget fit).
+ *
+ * Returns 'ok' | 'violation' | 'unverifiable'. A price in a DIFFERENT currency than the ceiling is
+ * `unverifiable`, never a violation: this bridge holds no FX rates, and comparing 4500 JPY against a
+ * ceiling of 40 would fabricate both directions — a clean pass for 35 GBP over a $40 cap, and a bogus
+ * violation for a ¥4500 item well under it. An item with no resolvable price is likewise unverifiable
+ * (ungrounded items carry no price by construction).
  */
-function violatesPriceMax(signal, priceMax) {
-  const price = signal?.value?.product?.price;
-  return typeof price === 'number' && price > priceMax;
+function checkPriceMax(signal, ceiling) {
+  const product = signal?.value?.product || {};
+  const price = product.price;
+  if (typeof price !== 'number') return 'unverifiable';
+  // A missing currency is read as the ceiling's own: the lane's normalized prices are store-currency,
+  // and refusing every currency-less row would leave a hole wider than the defect being fixed.
+  const currency = nonEmpty(product.currency) ? product.currency.toUpperCase() : ceiling.currency;
+  if (currency !== ceiling.currency) return 'unverifiable';
+  return price > ceiling.limit ? 'violation' : 'ok';
 }
 
-/** Mark a violating signal in place: fit downgraded, machine-readable violation, false why lines stripped. */
-function markPriceViolation(signal, priceMax) {
+function stripBudgetClaims(lines) {
+  return lines.filter((line) => !BUDGET_FIT_CLAIM_RE.test(line));
+}
+
+/** Mark a violating signal in place: fit downgraded, machine-readable violation, false claims stripped. */
+function markPriceViolation(signal, ceiling) {
   const v = signal.value;
   const price = v.product.price;
-  const currency = v.product.currency;
-  // Any budget/price-fit claim on an item that FAILED the comparison is false — strip rather than
-  // forward it to a partner agent that will trust it. This is the bridge's job, not the sanitizer's.
-  v.why = v.why.filter((line) => !BUDGET_FIT_CLAIM_RE.test(line));
-  v.notes = v.notes.filter((line) => !BUDGET_FIT_CLAIM_RE.test(line));
-  const marker = `exceeds price_max ${priceMax}: price ${price}${currency ? ` ${currency}` : ''}`;
+  const currency = v.product.currency || ceiling.currency;
+  // Any budget-fit claim on an item that FAILED the comparison is false — strip it rather than forward
+  // it to a partner agent that will trust it. This is the bridge's job, not the sanitizer's. watchouts
+  // is stripped too: `constraint_notes` is the lane's OWN field for constraint commentary, so it is the
+  // likeliest home for "stays under your $40 budget" — the very claim this pass exists to kill.
+  v.why = stripBudgetClaims(v.why);
+  v.notes = stripBudgetClaims(v.notes);
+  const marker = `exceeds price_max ${ceiling.limit} ${ceiling.currency}: price ${price} ${currency}`;
   // The marker leads so the 6-item watchouts cap can never truncate it away.
-  v.watchouts = dedupe([marker, ...v.watchouts]).slice(0, 6);
-  v.fit = { ...v.fit, level: 'low' };
-  v.constraint_violations = [{ constraint: 'price_max', limit: priceMax, price, currency: currency || null }];
+  v.watchouts = dedupe([marker, ...stripBudgetClaims(v.watchouts)]).slice(0, 6);
+  // Only ever a DOWNGRADE: where the lane emitted no score there is no band to assert, and inventing
+  // one would be the same fabrication this file's header guards against.
+  v.fit = { ...v.fit, level: v.fit.level === null ? null : 'low' };
+  v.constraint_violations = [{
+    constraint: 'price_max',
+    limit: ceiling.limit,
+    limit_currency: ceiling.currency,
+    price,
+    currency,
+  }];
+  return signal;
+}
+
+/**
+ * An item whose price could not be compared (different currency, or no price) keeps its reasoning — an
+ * unverified claim is not a proven-false one — but carries an explicit marker so a partner agent can
+ * tell "checked and clean" from "could not be checked".
+ */
+function markPriceUnverifiable(signal, ceiling) {
+  const v = signal.value;
+  const product = v.product;
+  const detail = typeof product.price !== 'number'
+    ? 'no catalog price'
+    : `price in ${product.currency}, ceiling in ${ceiling.currency}`;
+  v.watchouts = dedupe([`price_max ${ceiling.limit} ${ceiling.currency} not verified: ${detail}`, ...v.watchouts]).slice(0, 6);
   return signal;
 }
 
@@ -355,25 +453,31 @@ function makeRecommendProducts(deps = {}) {
     // order preserved); violating items are kept only in slots left over, each carrying an explicit
     // machine-readable violation — so a near-miss is still visible when the shortlist is thin, but can
     // never displace a conforming item, and never travels as a clean recommendation.
-    const priceMax = extractPriceMax(isPlainObject(p.constraints) ? p.constraints : null);
+    const ceiling = extractPriceMax(isPlainObject(p.constraints) ? p.constraints : null);
+    const enforcing = ceiling !== null && Number.isFinite(ceiling.limit);
     const projected = [];
     for (const item of items) {
       const s = recommendationItemToSignal(item, {});
       if (s) projected.push(s);
-      if (priceMax === null && projected.length >= limit) break;
+      if (!enforcing && projected.length >= limit) break;
     }
     let signals;
     let violationsReturned = 0;
-    if (priceMax === null) {
+    let unverifiedReturned = 0;
+    if (!enforcing) {
       signals = projected;
     } else {
-      const conforming = projected.filter((s) => !violatesPriceMax(s, priceMax));
-      signals = conforming.slice(0, limit);
-      for (const s of projected) {
-        if (signals.length >= limit) break;
-        if (!violatesPriceMax(s, priceMax)) continue;
-        signals.push(markPriceViolation(s, priceMax));
-        violationsReturned += 1;
+      const verdicts = new Map(projected.map((s) => [s, checkPriceMax(s, ceiling)]));
+      // Verified-conforming first, then unverifiable, then violations: a slot never goes to an item
+      // known to breach the ceiling while one that honours it is waiting.
+      signals = projected.filter((s) => verdicts.get(s) === 'ok').slice(0, limit);
+      for (const rung of ['unverifiable', 'violation']) {
+        for (const s of projected) {
+          if (signals.length >= limit) break;
+          if (verdicts.get(s) !== rung) continue;
+          if (rung === 'violation') { signals.push(markPriceViolation(s, ceiling)); violationsReturned += 1; }
+          else { signals.push(markPriceUnverifiable(s, ceiling)); unverifiedReturned += 1; }
+        }
       }
     }
     signals.forEach((s, i) => { s.value.rank = i + 1; });
@@ -398,10 +502,20 @@ function makeRecommendProducts(deps = {}) {
         products_empty_reason: signals.length === 0 ? firstString(payload.products_empty_reason, result?.upstreamFailureCode) || 'no_recommendations' : null,
         vertical: 'beauty',
         latency_ms: latencyMs,
-        // The ceiling this pass actually enforced (null = no structured ceiling, nothing was checked)
-        // and how many returned signals carry a price violation marker — so a partner agent can tell
-        // "all conforming" from "the shortlist includes flagged near-misses" without rescanning items.
-        ...(priceMax !== null ? { price_max_enforced: priceMax, constraint_violations_returned: violationsReturned } : {}),
+        // What this pass actually enforced, so a partner agent can tell "all conforming" from "includes
+        // flagged near-misses" from "could not be checked" — without rescanning items, and without
+        // reading an absent marker as a clean bill of health.
+        ...(enforcing ? {
+          price_max_enforced: ceiling.limit,
+          price_max_currency: ceiling.currency,
+          // false = the ceiling's currency was assumed (see DEFAULT_PRICE_MAX_CURRENCY), not declared.
+          price_max_currency_declared: ceiling.declared,
+          constraint_violations_returned: violationsReturned,
+          price_unverified_returned: unverifiedReturned,
+        } : {}),
+        // A budget-shaped constraint whose value was prose: nothing was enforced. Said out loud so the
+        // absence of `price_max_enforced` is never read as "checked and clean".
+        ...(ceiling !== null && ceiling.unstructured && !enforcing ? { price_constraint_unenforced: 'unstructured_value' } : {}),
         ...(signals.length === 0 && items.length > 0 ? { dropped_unidentified_items: items.length } : {}),
       },
     };

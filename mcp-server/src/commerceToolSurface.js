@@ -730,7 +730,7 @@ const INPUT_SCHEMAS = Object.freeze({
       need: { type: "string", minLength: 1, maxLength: 500, description: "The buyer's need in their own words — goal, context, concerns. Not a product name." },
       constraints: {
         type: "object", additionalProperties: { type: ["string", "number", "boolean", "array"] },
-        description: "Optional hard constraints as label → value, e.g. {budget:'under $40', skin_type:'sensitive', avoid:['fragrance'], texture:'gel'}. Up to 8; rendered into the ask verbatim.",
+        description: "Optional hard constraints as label → value, e.g. {price_max:40, skin_type:'sensitive', avoid:['fragrance'], texture:'gel'}. Up to 8; rendered into the ask verbatim. A price ceiling is ENFORCED deterministically against the catalog price only when sent as a NUMBER under price_max (or max_price/budget), optionally with currency:'USD'; a prose budget like 'under $40' is only a hint to the model and cannot be checked.",
       },
       language: { type: "string", enum: ["EN", "CN"], description: "Language of the need and of the reasoning in the answer. Default EN." },
       limit: { type: "integer", minimum: 1, maximum: 10, description: "Max recommendations to return (default 5)." },

@@ -241,20 +241,63 @@ test('4b. mutant-killer: a $45 product against price_max 40 never passes as a cl
   assert.equal(res.signals[0].value.rank, 1);
   assert.equal(res.signals[0].value.fit.level, 'high', 'a conforming item is untouched');
   assert.equal(res.signals[0].value.constraint_violations, undefined);
+  assert.equal(res.signals[0].value.watchouts.some((w) => /price_max/.test(w)), false, 'a conforming item carries no price marker');
 
   const v = res.signals[1];
   assert.equal(v.subject.id, 'sig_2c7636bb');
   assert.equal(v.value.rank, 2);
   assert.notEqual(v.value.fit.level, 'high', 'the violating item must not pass as fit=high');
   assert.equal(v.value.fit.level, 'low');
-  assert.deepEqual(v.value.constraint_violations, [{ constraint: 'price_max', limit: 40, price: 45, currency: 'USD' }]);
-  assert.equal(v.value.watchouts[0], 'exceeds price_max 40: price 45 USD', 'the marker leads so the cap cannot truncate it');
+  assert.deepEqual(v.value.constraint_violations, [{ constraint: 'price_max', limit: 40, limit_currency: 'USD', price: 45, currency: 'USD' }]);
+  assert.equal(v.value.watchouts[0], 'exceeds price_max 40 USD: price 45 USD', 'the marker leads so the cap cannot truncate it');
   assert.equal(v.value.why.some((line) => /budget|price/i.test(line)), false, 'the false budget-fit claim is stripped in the bridge');
   assert.deepEqual(v.value.why, ['PHA is the gentlest exfoliating acid'], 'true non-price reasons survive');
   assert.deepEqual(v.value.notes, [], 'price-praising notes on a violator are stripped too');
 
   assert.equal(res.metadata.price_max_enforced, 40);
+  assert.equal(res.metadata.price_max_currency, 'USD');
+  assert.equal(res.metadata.price_max_currency_declared, false, 'an undeclared ceiling currency is reported as assumed');
   assert.equal(res.metadata.constraint_violations_returned, 1);
+  assert.equal(res.metadata.price_unverified_returned, 0);
+});
+
+// REVIEW FINDING (both reviewers, independently): the lane's OWN field for constraint commentary is
+// `constraint_notes`, which projects into watchouts[] — so it is the likeliest home for the false
+// budget claim, and stripping only why[]/notes[] shipped it adjacent to the marker contradicting it.
+test('4b-2. a false budget claim in constraint_notes/warnings is stripped from watchouts too', async () => {
+  const item = {
+    ...ITEM_OVERPRICED,
+    constraint_notes: ['Comfortably within your $40 budget', 'introduce slowly on sensitive skin'],
+    warnings: ['an affordable pick for the size', 'patch test first'],
+  };
+  const h = makeRecommendProducts({ generate: async () => laneResult([item]), isEnabled: () => true });
+  const res = await h({ payload: { need: 'exfoliant', constraints: { price_max: 40 } } }, { agent_id: 'agent_a' });
+  const w = res.signals[0].value.watchouts;
+  assert.equal(w[0], 'exceeds price_max 40 USD: price 45 USD');
+  assert.deepEqual(w.slice(1), ['introduce slowly on sensitive skin', 'patch test first'], 'true cautions survive');
+  assert.equal(w.some((line) => /budget|affordable/i.test(line)), false, 'no false budget claim rides in watchouts');
+});
+
+test('4b-3. the marker survives a full watchouts list — it is never truncated by the 6-item cap', async () => {
+  const item = {
+    ...ITEM_OVERPRICED,
+    constraint_notes: ['c1', 'c2', 'c3', 'c4'],
+    warnings: ['w1', 'w2', 'w3', 'w4'],
+  };
+  const h = makeRecommendProducts({ generate: async () => laneResult([item]), isEnabled: () => true });
+  const res = await h({ payload: { need: 'exfoliant', constraints: { price_max: 40 } } }, { agent_id: 'agent_a' });
+  const w = res.signals[0].value.watchouts;
+  assert.equal(w.length, 6);
+  assert.equal(w[0], 'exceeds price_max 40 USD: price 45 USD', 'the marker leads even when 8 watchouts compete for 6 slots');
+});
+
+test('4b-4. marking a violator only ever DOWNGRADES fit — it never invents a band the lane withheld', async () => {
+  const noScore = { ...ITEM_OVERPRICED, score: undefined };
+  const h = makeRecommendProducts({ generate: async () => laneResult([noScore]), isEnabled: () => true });
+  const res = await h({ payload: { need: 'exfoliant', constraints: { price_max: 40 } } }, { agent_id: 'agent_a' });
+  const s = res.signals[0];
+  assert.equal(s.value.fit.level, null, 'no lane score ⇒ no band, even on a violator: the marker carries the signal');
+  assert.equal(s.value.constraint_violations.length, 1, 'the violation itself is still recorded');
 });
 
 test('4c. a violator only takes a LEFTOVER slot — it can never displace a conforming item', async () => {
@@ -264,9 +307,59 @@ test('4c. a violator only takes a LEFTOVER slot — it can never displace a conf
   assert.equal(res.metadata.constraint_violations_returned, 0);
   assert.equal(res.metadata.price_max_enforced, 40);
   assert.equal(res.signals.every((s) => s.value.constraint_violations === undefined), true);
+
+  // limit still binds on the conforming path when a ceiling is present
+  const res1 = await h({ payload: { need: 'exfoliant', constraints: { max_price: 40 }, limit: 1 } }, { agent_id: 'agent_a' });
+  assert.deepEqual(res1.signals.map((s) => s.subject.id), ['sig_abc'], 'limit=1 returns exactly one conforming item');
+  assert.equal(res1.metadata.returned, 1);
 });
 
-test('4d. free-text-only budget is OUT of scope: no prose parsing, no enforcement', async () => {
+test('4c-2. the ceiling is a MAXIMUM: a price exactly at the ceiling conforms', async () => {
+  const atCeiling = { ...ITEM_OVERPRICED, price: { amount: 40, currency: 'USD' } };
+  const h = makeRecommendProducts({ generate: async () => laneResult([atCeiling]), isEnabled: () => true });
+  const res = await h({ payload: { need: 'exfoliant', constraints: { price_max: 40 } } }, { agent_id: 'agent_a' });
+  assert.equal(res.signals[0].value.constraint_violations, undefined, 'price == price_max is within the ceiling');
+  assert.equal(res.signals[0].value.fit.level, 'high');
+  assert.equal(res.metadata.constraint_violations_returned, 0);
+});
+
+// REVIEW FINDING (both reviewers, independently): the comparison was currency-blind, which fabricated
+// BOTH directions — a clean pass for 35 GBP over a $40 cap, and a bogus violation for ¥4500 under it.
+test('4c-3. a price in a different currency is UNVERIFIABLE, never a silent pass or a bogus violation', async () => {
+  const gbp = { ...ITEM_OVERPRICED, price: { amount: 35, currency: 'GBP' } };
+  const h = makeRecommendProducts({ generate: async () => laneResult([gbp]), isEnabled: () => true });
+  const res = await h({ payload: { need: 'exfoliant', constraints: { price_max: 40 } } }, { agent_id: 'agent_a' });
+  const s = res.signals[0];
+  assert.equal(s.value.constraint_violations, undefined, 'no FX rates here — 35 GBP vs a USD ceiling is not a violation');
+  assert.equal(s.value.watchouts[0], 'price_max 40 USD not verified: price in GBP, ceiling in USD', 'the caller is told the check did not run');
+  assert.equal(res.metadata.price_unverified_returned, 1, 'unverified is distinguishable from checked-and-clean');
+  assert.equal(res.metadata.constraint_violations_returned, 0);
+
+  // ...and the mirror: a ¥4500 item under a ¥-denominated ceiling of 40 must not be asserted as a violation
+  const jpy = { ...ITEM_OVERPRICED, price: { amount: 4500, currency: 'JPY' } };
+  const h2 = makeRecommendProducts({ generate: async () => laneResult([jpy]), isEnabled: () => true });
+  const res2 = await h2({ payload: { need: 'exfoliant', constraints: { price_max: 40 } } }, { agent_id: 'agent_a' });
+  assert.equal(res2.signals[0].value.constraint_violations, undefined, 'a unit-less 40 must never be asserted against 4500 JPY');
+  assert.equal(res2.metadata.price_unverified_returned, 1);
+});
+
+test('4c-4. a DECLARED ceiling currency is enforced against a matching price', async () => {
+  const jpy = { ...ITEM_OVERPRICED, price: { amount: 6000, currency: 'JPY' } };
+  const h = makeRecommendProducts({ generate: async () => laneResult([jpy]), isEnabled: () => true });
+  const res = await h({ payload: { need: 'exfoliant', constraints: { price_max: 5000, currency: 'JPY' } } }, { agent_id: 'agent_a' });
+  const s = res.signals[0];
+  assert.deepEqual(s.value.constraint_violations, [{ constraint: 'price_max', limit: 5000, limit_currency: 'JPY', price: 6000, currency: 'JPY' }]);
+  assert.equal(s.value.watchouts[0], 'exceeds price_max 5000 JPY: price 6000 JPY');
+  assert.equal(res.metadata.price_max_currency, 'JPY');
+  assert.equal(res.metadata.price_max_currency_declared, true);
+  // the same ceiling expressed on the KEY rather than as a sibling constraint
+  const res2 = await h({ payload: { need: 'exfoliant', constraints: { price_max_jpy: 5000 } } }, { agent_id: 'agent_a' });
+  assert.equal(res2.metadata.price_max_currency, 'JPY');
+  assert.equal(res2.metadata.price_max_currency_declared, true);
+  assert.equal(res2.signals[0].value.constraint_violations.length, 1);
+});
+
+test('4d. free-text-only budget is OUT of scope: no prose parsing, but the caller is TOLD', async () => {
   const h = makeRecommendProducts({ generate: async () => laneResult([ITEM_OVERPRICED]), isEnabled: () => true });
   const res = await h({ payload: { need: 'a gentle exfoliant under $40', constraints: { budget: 'under $40' } } }, { agent_id: 'agent_a' });
   const s = res.signals[0];
@@ -275,25 +368,92 @@ test('4d. free-text-only budget is OUT of scope: no prose parsing, no enforcemen
   assert.deepEqual(s.value.why, ['Fits comfortably within the under $40 budget constraint', 'PHA is the gentlest exfoliating acid']);
   assert.equal(res.metadata.price_max_enforced, undefined);
   assert.equal(res.metadata.constraint_violations_returned, undefined);
+  // the absence of price_max_enforced must not read as "checked and clean"
+  assert.equal(res.metadata.price_constraint_unenforced, 'unstructured_value');
 });
 
-test('4e. extractPriceMax: numeric ceilings only, key variants, smallest wins, prose refused', () => {
-  assert.equal(extractPriceMax({ price_max: 40 }), 40);
-  assert.equal(extractPriceMax({ max_price: '38', budget: 45 }), 38, 'numeric strings count; the smallest ceiling wins');
-  assert.equal(extractPriceMax({ 'price-max': 40 }), 40, 'separator variants canonicalize');
-  assert.equal(extractPriceMax({ budget: 'under $40' }), null, 'free text is never parsed');
+test('4e. extractPriceMax: every allowlisted key, numerals only, smallest wins, prose refused', () => {
+  // EVERY key in the allowlist is driven — a shrunken allowlist must fail this test, not slip through
+  for (const key of ['price_max', 'max_price', 'budget', 'budget_max', 'max_budget', 'price_limit', 'price_ceiling']) {
+    assert.equal(extractPriceMax({ [key]: 40 })?.limit, 40, `${key} must be recognized as a ceiling`);
+  }
+  assert.equal(extractPriceMax({ max_price: '38', budget: 45 }).limit, 38, 'numeric strings count; the smallest ceiling wins');
+  assert.equal(extractPriceMax({ budget: 45, max_price: 38 }).limit, 38, 'order does not decide the winner');
+  assert.equal(extractPriceMax({ 'price-max': 40 }).limit, 40, 'separator variants canonicalize');
+  assert.equal(extractPriceMax({ priceMax: 40 }).limit, 40, 'camelCase canonicalizes');
+  assert.equal(extractPriceMax({ price_max: '40 USD' }).limit, 40, 'a bare currency-marked numeral is structured, not prose');
+  assert.equal(extractPriceMax({ price_max: '40 USD' }).currency, 'USD');
+  assert.equal(extractPriceMax({ price_max: 'USD 40' }).currency, 'USD');
+  assert.equal(extractPriceMax({ price_max: 40 }).currency, 'USD', 'an undeclared ceiling defaults to USD...');
+  assert.equal(extractPriceMax({ price_max: 40 }).declared, false, '...and says that it was assumed');
+  // refusals
+  assert.equal(extractPriceMax({ budget: 'under $40' }).limit, undefined, 'prose is never parsed');
+  assert.equal(extractPriceMax({ budget: 'under $40' }).unstructured, true);
   assert.equal(extractPriceMax({ price_max: 0 }), null);
   assert.equal(extractPriceMax({ price_max: -5 }), null);
+  assert.equal(extractPriceMax({ price_min: 40 }), null, 'a FLOOR is not a ceiling');
+  assert.equal(extractPriceMax({ budget_cap: 40 }), null, 'a currency-suffix read must not turn "cap" into a currency');
+  assert.equal(extractPriceMax({ budget2: 40 }), null, 'a distinct key must not fold into an allowlisted one');
+  assert.equal(extractPriceMax({ 'price max': 40 }).limit, 40, 'spaces and punctuation still canonicalize');
   assert.equal(extractPriceMax({ avoid: 'fragrance' }), null);
+  assert.equal(extractPriceMax({ price_max: true }), null);
+  assert.equal(extractPriceMax({ price_max: [40] }), null);
   assert.equal(extractPriceMax(undefined), null);
-  // an item with no verifiable price is left alone (ungrounded items carry no price by construction)
+});
+
+test('4f. an item with no resolvable price is unverifiable — never marked, never silently clean', async () => {
   const noPrice = { name: 'Named but unresolved', grounding_status: 'ungrounded', reasons: ['gentle'] };
   const h = makeRecommendProducts({ generate: async () => laneResult([noPrice]), isEnabled: () => true });
-  return h({ payload: { need: 'x', constraints: { price_max: 40 } } }, {}).then((res) => {
-    assert.equal(res.signals[0].value.constraint_violations, undefined);
-    assert.equal(res.signals[0].value.fit.level, null);
-    assert.equal(res.metadata.constraint_violations_returned, 0);
-  });
+  const res = await h({ payload: { need: 'x', constraints: { price_max: 40 } } }, {});
+  assert.equal(res.signals[0].value.constraint_violations, undefined);
+  assert.equal(res.signals[0].value.fit.level, null, 'no lane score ⇒ no invented band, in either direction');
+  assert.equal(res.signals[0].value.watchouts[0], 'price_max 40 USD not verified: no catalog price');
+  assert.equal(res.metadata.constraint_violations_returned, 0);
+  assert.equal(res.metadata.price_unverified_returned, 1);
+});
+
+test('4g. budget-fit claims are stripped in CN too — `language` is a first-class parameter', async () => {
+  const cn = { ...ITEM_OVERPRICED, reasons: ['价格在40美元预算之内', '温和不刺激'], notes: [] };
+  const h = makeRecommendProducts({ generate: async () => laneResult([cn]), isEnabled: () => true });
+  const res = await h({ payload: { need: '温和去角质', language: 'CN', constraints: { price_max: 40 } } }, { agent_id: 'agent_a' });
+  assert.deepEqual(res.signals[0].value.why, ['温和不刺激'], 'a CN budget claim on a violator is stripped like an EN one');
+});
+
+test('4h. the regex alternatives all fire, and do not over-strip', async () => {
+  const wordy = {
+    ...ITEM_OVERPRICED,
+    reasons: ['Comes in well under your 40 dollar cap', 'Great value for the money', 'Sits inside your stated spend limit', 'Priceless glow for sensitive skin'],
+    notes: [],
+  };
+  const h = makeRecommendProducts({ generate: async () => laneResult([wordy]), isEnabled: () => true });
+  const res = await h({ payload: { need: 'exfoliant', constraints: { price_max: 40 } } }, { agent_id: 'agent_a' });
+  assert.deepEqual(res.signals[0].value.why, ['Priceless glow for sensitive skin'],
+    'realistic budget phrasings are stripped; "Priceless" is not a price claim');
+});
+
+test('4i. the enforcement markers survive the REAL commerce surface and its sanitizer', async () => {
+  const { createCommerceToolSurface } = await import(pathToFileURL(path.join(__dirname, '..', 'mcp-server', 'src', 'commerceToolSurface.js')).href);
+  const executor = {
+    async execute(op, params, ctx) {
+      const h = makeRecommendProducts({ generate: async () => laneResult([ITEM_OVERPRICED]), isEnabled: () => true });
+      return h(params, ctx);
+    },
+  };
+  const surface = createCommerceToolSurface(executor, { cache: false });
+  const out = await surface.callTool('recommend_products', { need: 'gentle exfoliant', constraints: { price_max: 40 } }, { agent_id: 'agent_a' });
+  const body = typeof out === 'string' ? JSON.parse(out) : (out?.content?.[0]?.text ? JSON.parse(out.content[0].text) : out);
+  const sig = body.signals[0];
+  // a key DENYLIST is what lets these through today; pin it so a future denylist entry cannot silently
+  // strip the machine-readable violation and leave a green suite behind
+  assert.deepEqual(sig.value.constraint_violations, [{ constraint: 'price_max', limit: 40, limit_currency: 'USD', price: 45, currency: 'USD' }]);
+  assert.equal(sig.value.watchouts[0], 'exceeds price_max 40 USD: price 45 USD');
+  assert.equal(sig.value.fit.level, 'low');
+  assert.equal(body.metadata.price_max_enforced, 40);
+  assert.equal(body.metadata.constraint_violations_returned, 1);
+  // and the advertised schema must teach the shape that is actually enforced
+  const tool = surface.tools.find((t) => t.name === 'recommend_products');
+  assert.match(tool.inputSchema.properties.constraints.description, /price_max/,
+    'the constraints schema must teach the enforced numeric ceiling, not only a prose budget');
 });
 
 test('4. the lane throwing is an empty, reasoned answer — not a tool error', async () => {
