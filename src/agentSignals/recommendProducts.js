@@ -109,8 +109,20 @@ for (const k of PRICE_MAX_KEYS) PRICE_CURRENCY_KEYS.add(`${k}currency`);
 // parameter of this tool.
 const AFFORDABILITY_CLAIM_RE = /\b(afford\w*|cheap\w*|inexpensive|budget-friendly|bargain)\b|便宜|实惠|划算|预算友好/i;
 // A price token names MONEY. `value` is deliberately absent: it earns no strip on its own, and pairing
-// it with a fit word deletes true copy ("a great-value serum that layers under makeup").
-const PRICE_TOKEN_RE = /\b(budget|price[ds]?|pricing|cost\w*|spend\w*|dollars?|usd)\b|[$£€¥]\s*\d|预算|价格|美元|价钱/i;
+// it with a fit word deletes true copy ("a great-value serum that layers under makeup"). `spend`/`cost`
+// are NOT bare tokens: in this lane's safety copy they are routinely about TIME and TOLERANCE ("limit
+// the time you spend in the sun", "this acid costs you UV tolerance"), and a bare match pairs them with
+// the fit word `limit` to delete a photosensitivity warning — a worse trade than the claim it suppresses.
+// They count as money only inside an explicitly monetary construction (MONETARY_PHRASE_RE); when they sit
+// next to an actual amount, the `[$£€¥]\s*\d` alternative already carries the line without their help.
+const PRICE_TOKEN_RE = /\b(budget|price[ds]?|pricing|dollars?|usd)\b|[$£€¥]\s*\d|预算|价格|美元|价钱/i;
+// The monetary idioms of `spend`/`cost` that appear WITHOUT an amount: a ceiling compound ("your stated
+// spend limit", "spending cap") with the gap clause-bounded so "the time you spend in the sun … cap" in a
+// later clause never joins, and a cost comparative ("costs less than you allowed", "the cost is lower
+// than your maximum"). `spend under/below` is deliberately NOT here: that shape is the sunlight warning
+// ("reduce the time you spend under direct sunlight"), while a real monetary "spends under your budget"
+// still strips via its budget/amount token.
+const MONETARY_PHRASE_RE = /\b(?:spend\w*|costs?)\b[^.;,，。；]{0,30}?\b(?:limit|cap|ceiling|budget|maximum|max)\b|\bcosts?\s+(?:is\s+|are\s+)?(?:much\s+|far\s+)?(?:less|lower|below|under)\b/i;
 // A fit assertion names the CONSTRAINT being met — containment, comparison, or negated exceedance.
 // `limit`/`cap`/`ceiling`/`maximum` live HERE rather than among the price tokens: alone they are
 // ordinary skincare copy ("limit use to 2-3x per week", "keep the cap closed") and strip nothing; they
@@ -125,7 +137,8 @@ const FIT_ASSERTION_RE = new RegExp([
 ].join('|'), 'i');
 
 function assertsBudgetFit(line) {
-  return AFFORDABILITY_CLAIM_RE.test(line) || (PRICE_TOKEN_RE.test(line) && FIT_ASSERTION_RE.test(line));
+  return AFFORDABILITY_CLAIM_RE.test(line)
+    || ((PRICE_TOKEN_RE.test(line) || MONETARY_PHRASE_RE.test(line)) && FIT_ASSERTION_RE.test(line));
 }
 
 /**
@@ -570,9 +583,14 @@ function makeRecommendProducts(deps = {}) {
             ? { price_constraint_unenforced: 'nothing_verifiable' }
             : {}),
         } : {}),
-        // A budget-shaped constraint whose value could not be read as a ceiling: nothing was enforced.
-        // Said out loud so the absence of `price_max_enforced` is never read as "checked and clean".
-        ...(ceiling !== null && ceiling.unstructured && !enforcing ? { price_constraint_unenforced: ceiling.unstructured } : {}),
+        // A budget-shaped constraint whose value could not be read as a ceiling: that constraint was not
+        // enforced — including when a DIFFERENT, structured ceiling WAS (`{price_max: 40, budget: "under
+        // $30"}` must not read as "enforced at 40, all clean" when the buyer asked for 30). Said out loud
+        // so absence is never read as "checked and clean". Order matters: this spread sits after the
+        // enforcing block, so in the corner where both fire (enforced ceiling, nothing verifiable, plus an
+        // unreadable second constraint) the key reports the unread constraint — either value already means
+        // "do not treat this shortlist as fully price-checked".
+        ...(ceiling !== null && ceiling.unstructured ? { price_constraint_unenforced: ceiling.unstructured } : {}),
         ...(signals.length === 0 && items.length > 0 ? { dropped_unidentified_items: items.length } : {}),
       },
     };
