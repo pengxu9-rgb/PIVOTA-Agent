@@ -30626,6 +30626,7 @@ async function getCommerceConfirmationActionHandler() {
 // nothing serves it, UNKNOWN_PRODUCT_ID when it resolves to nothing at all.
 const { chainRowResolvable } = require('./services/publicReadChainResolvability');
 const { describeCaller } = require('./services/callerIdentity');
+const { decideUiChatAccess } = require('./services/uiChatAccessGuard');
 
 const PUBLIC_READ_CHAIN_FILTER_CONCURRENCY = 8;
 
@@ -34787,7 +34788,21 @@ async function handleCatalogImageCacheAsset(req, res) {
 app.get('/catalog-image-cache/*', handleCatalogImageCacheAsset);
 app.head('/catalog-image-cache/*', handleCatalogImageCacheAsset);
 
-app.use(express.static(path.join(__dirname, '..', 'public')));
+// public/ holds exactly one file: index.html, the "Pivota Shopping Agent (Internal UI)" chat page
+// that POSTs to /ui/chat. It must not be served on the PUBLIC read tier hosts. mcp.pivota.cc is the
+// UCP identity anchor (UCP_AGENT_PROFILE_URL) and was chosen because it is the public,
+// unauthenticated, STATIC read tier; serving an interactive internal console at its root both
+// contradicts that rationale and hands every crawler a working recipe for the LLM endpoint. Edge
+// logs for 2026-08-18..20 show that page returned 200 to 22 outside IPs, GPTBot included.
+//
+// Skipping the mount (rather than 404ing inside it) leaves the request to fall through to the
+// normal not-found handling, so the public host's shape is "this path does not exist" — the same
+// answer it gives for any other absent path.
+const internalUiStatic = express.static(path.join(__dirname, '..', 'public'));
+app.use((req, res, next) => {
+  if (isPublicReadMcpHostRequest(req)) return next();
+  return internalUiStatic(req, res, next);
+});
 
 // Lightweight request logging.
 //
@@ -52875,8 +52890,27 @@ async function runAgentWithTools(messages) {
   }
 }
 
+// Access decision lives in services/uiChatAccessGuard.js — see that file for why the public-host
+// branch is keyed on the Host alone and why an unconfigured key means 404 rather than open.
+//
+// The check runs INSIDE the route handler on purpose. Express routes case-insensitively and
+// tolerates trailing slashes (caseSensitive/strict both default off), so `POST /UI/Chat` and
+// `POST /ui/chat/` reach this same handler; a separate app.use() comparing req.path would have to
+// re-implement that normalization and would leak on the first spelling it missed.
 app.post('/ui/chat', async (req, res) => {
   try {
+    const access = decideUiChatAccess({
+      isPublicReadHost: isPublicReadMcpHostRequest(req),
+      headers: req.headers,
+    });
+    if (!access.allow) {
+      logger.warn(
+        { reason: access.reason, host: String(req.headers?.host || ''), status: access.status },
+        '/ui/chat refused before the agent loop',
+      );
+      return res.status(access.status).json(access.body);
+    }
+
     const clientMessages = req.body.messages;
 
     if (!Array.isArray(clientMessages)) {

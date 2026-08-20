@@ -395,6 +395,14 @@ jobs:
       # reach the lane, namespaced agent uid + no profile + bounded budget, projection built from the LANE'S
       # OWN output contract (a hand-written fixture hid five dead field reads), the need text scrubbed by the
       # sanitizer, lane failure = reasoned empty answer, and the real commerce surface end to end.
+      # ADDED 2026-08-20: `tests/ui_chat_access_guard`, confirmed green (15/15). /ui/chat ran an LLM agent
+      # loop with tools and had NO auth of any kind, on every hostname this service answers — including
+      # mcp.pivota.cc, the public read tier whose premise is "no public tier = no unauthenticated LLM
+      # spend". Verified live: an anonymous POST returned 200 and a model answer. The file boots the server
+      # with no LLM provider configured, so a request that gets past the guard answers 500 and every
+      # refusal has an observable difference from a permission; six mutants were run against it (drop the
+      # host branch, AND in isPublicReadMcpEnabled, fall open on an unconfigured key, drop the static host
+      # gate, delete the guard block) and all six fail the suite.
       - name: Run node:test suites
         run: |
           node --test \
@@ -452,7 +460,8 @@ jobs:
             tests/fpm_stage_attribution.node.test.cjs \
             tests/acp_spt_gateway_handoff.node.test.cjs \
             tests/integration/agent_checkout_acp_ucp_doors.node.test.cjs \
-            mcp-server/test/ucpSpecVersion.test.js
+            mcp-server/test/ucpSpecVersion.test.js \
+            tests/ui_chat_access_guard.node.test.cjs
 
   jest:
     runs-on: ubuntu-latest

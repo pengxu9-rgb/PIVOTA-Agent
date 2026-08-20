@@ -19,6 +19,12 @@ function parseArgs(argv) {
     authToken: process.env.AUTH_TOKEN || process.env.CELESTIAL_COMMERCE_PROMPT_AUTH_TOKEN || '',
     agentApiKey:
       process.env.AGENT_API_KEY || process.env.CELESTIAL_COMMERCE_PROMPT_AGENT_API_KEY || '',
+    // /ui/chat is no longer anonymous on any host (services/uiChatAccessGuard.js). This smoke
+    // targets it by default, so it must carry the service's PIVOTA_UI_CHAT_INTERNAL_KEY.
+    internalKey:
+      process.env.PIVOTA_UI_CHAT_INTERNAL_KEY ||
+      process.env.CELESTIAL_COMMERCE_PROMPT_INTERNAL_KEY ||
+      '',
     timeoutMs: Math.max(500, Number(process.env.CELESTIAL_COMMERCE_PROMPT_TIMEOUT_MS || 25000) || 25000),
     retries: Math.max(0, Number(process.env.CELESTIAL_COMMERCE_PROMPT_RETRIES || 1) || 0),
     retryBackoffMs: Math.max(
@@ -36,6 +42,7 @@ function parseArgs(argv) {
     if (token === '--out-dir' && next) args.outDir = path.resolve(String(next));
     if (token === '--auth-token' && next) args.authToken = String(next);
     if (token === '--agent-api-key' && next) args.agentApiKey = String(next);
+    if (token === '--internal-key' && next) args.internalKey = String(next);
     if (token === '--timeout-ms' && next) {
       args.timeoutMs = Math.max(500, Number(next) || 25000);
     }
@@ -401,6 +408,9 @@ async function main() {
     }
     if (testCase.requires_auth && args.authToken) {
       headers.Authorization = /^Bearer\s+/i.test(args.authToken) ? args.authToken : `Bearer ${args.authToken}`;
+    }
+    if (args.internalKey && !hasHeader(headers, 'X-Internal-Key')) {
+      headers['X-Internal-Key'] = args.internalKey;
     }
     if (testCase.requires_auth && args.agentApiKey) {
       headers['X-Agent-API-Key'] = args.agentApiKey;
