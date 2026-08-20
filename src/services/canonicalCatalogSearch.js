@@ -168,24 +168,57 @@ function isRecallDocMatchEnabled(env = process.env) {
 //     wants the prod row-diff discipline applied elsewhere in this file before
 //     anyone calls it behaviour-preserving.
 //
-// DEFAULT ON, unlike the other flags in this file. Those gate optional
-// improvements where flag-off is the correct, safe baseline. This one gates a
-// defect: flag-off is the broken behaviour, so it ships as a kill-switch
-// (`CANONICAL_CATALOG_CATEGORY_BROWSE_TEXT_UNION=off`) rather than an opt-in.
-// Read per call, same discipline as the flags above.
+// SHIPS DARK (default OFF), like every other flag in this file — and not for
+// the usual reason. This one gates a DEFECT fix, so flag-off is the broken
+// behaviour and the instinct is to default it on. Review produced two reasons
+// not to, neither of which is answerable without prod:
+//
+//   1. UNMEASURED PLAN. Browse mode now emits the full plain disjunction,
+//      including two OR EXISTS on catalog_skus. This file's own prod EXPLAINs
+//      put that shape at 3.2-3.9s / ~262k buffers, and at 6.9s once an
+//      OR EXISTS forces the plan off the bitmap path. The candidate LIMIT sits
+//      AFTER the WHERE and ORDER BY, so it bounds output size, not scan cost.
+//      #1935 and #1900 both shipped on measured EXPLAINs; this lane serves most
+//      beauty search and this repo has a standing history of pool exhaustion
+//      from exactly this class of misestimate.
+//   2. POSSIBLY A NO-OP END TO END. The caller's hard-constraint gate uses
+//      `productMatchesCategoryPathPrefix` — byte-for-byte the same predicate as
+//      the SQL category arm — and drops any product whose category_path does
+//      not match as `category_mismatch`. That is precisely the set of rows this
+//      union newly admits. Until someone measures how many survive the gate,
+//      "shampoo returns shampoos" is a hypothesis, not a result.
+//
+// With the flag off the generated SQL is byte-identical to pre-union serving,
+// verified across 49,152 flag/argument combinations, so merging this is inert.
+//
+// TO TURN IT ON: run an EXPLAIN ANALYZE on the browse+union statement for a
+// prefix-resolving query, and run the toner/shampoo probes END TO END (not at
+// the SQL layer) to confirm rows survive the caller gate. Then set
+// CANONICAL_CATALOG_CATEGORY_BROWSE_TEXT_UNION=on. Read per call, so it can be
+// flipped on a running process and rolled back the same way.
+//
+// NOTE FOR WHOEVER FLIPS IT: the accompanying MCP-tier cache fix is live and
+// unconditional. It is what addresses the 8/8 cold zeros actually measured on
+// 2026-08-20; this flag addresses the separate never-rescuable class
+// (`shampoo`, `conditioner`, `hair care`), which that measurement did not
+// sample. Do not read a green zero-rate after the cache fix as evidence that
+// this flag is unnecessary.
 // A KILL SWITCH IS THE ONE PLACE TO BE GENEROUS about what counts as "off". The other flags in this file
 // gate optional improvements, where an unrecognised value failing OFF is harmless. This one is the escape
 // hatch for a live regression: an operator typing `=no` or `=disabled` mid-incident must get the kill, not
 // a silent no-op and no error. parseBooleanEnv alone covers {0,false,no,n,off} but not {disabled,none,
 // never,kill}, and a hand-rolled set covered `disabled` but not `no` — so accept the union of both.
 // Anything unrecognised (and unset, and blank) leaves the fix ON, because flag-off here is the DEFECT.
-const CATEGORY_BROWSE_TEXT_UNION_OFF_VALUES = new Set([
-  '0', 'false', 'no', 'n', 'off', 'disabled', 'disable', 'none', 'never', 'kill',
+// Generous on BOTH sides, because this flag will be flipped by hand under time
+// pressure in both directions: on during a recall incident, off if the plan
+// regresses. Anything unrecognised (and unset, and blank) leaves it OFF.
+const CATEGORY_BROWSE_TEXT_UNION_ON_VALUES = new Set([
+  '1', 'true', 'yes', 'y', 'on', 'enabled', 'enable',
 ]);
 
 function isCategoryBrowseTextUnionEnabled(env = process.env) {
   const raw = String(env.CANONICAL_CATALOG_CATEGORY_BROWSE_TEXT_UNION ?? '').trim().toLowerCase();
-  return !CATEGORY_BROWSE_TEXT_UNION_OFF_VALUES.has(raw);
+  return CATEGORY_BROWSE_TEXT_UNION_ON_VALUES.has(raw);
 }
 
 // ADR-020 rank-recalibration slice: env-flag gate for rank v2 (match-quality

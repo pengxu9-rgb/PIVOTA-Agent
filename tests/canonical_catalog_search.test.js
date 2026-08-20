@@ -902,7 +902,7 @@ describe('canonicalCatalogSearch recall_doc match lane (ADR-020, flag-gated)', (
   // for and it holds either way.
   test('flag on + categoryPathPrefix + union ON -> recall_doc arm present, binds integral (08P01 guard)', async () => {
     process.env[FLAG] = 'enabled';
-    delete process.env.CANONICAL_CATALOG_CATEGORY_BROWSE_TEXT_UNION;
+    process.env.CANONICAL_CATALOG_CATEGORY_BROWSE_TEXT_UNION = 'on';
     const query = makeMockQuery([]);
     await fetchCanonicalChainRows({
       query: 'vitamin c serum',
@@ -1231,6 +1231,8 @@ describe('canonicalCatalogSearch rank v2 + market-exemption fix (ADR-020, flag-g
   test('flag on + categoryPathPrefix: rank-arm binds stay integral on the category branch (08P01 guard)', async () => {
     process.env[RANK_FLAG] = 'enabled';
     delete process.env[DOC_FLAG];
+    // The union ships dark; this test asserts the UNION form, so switch it on.
+    process.env.CANONICAL_CATALOG_CATEGORY_BROWSE_TEXT_UNION = 'on';
     const { sql, params } = await capture({
       query: 'vitamin c serum',
       categoryPathPrefix: 'beauty/skincare/serum/',
@@ -1266,6 +1268,7 @@ describe('canonicalCatalogSearch rank v2 + market-exemption fix (ADR-020, flag-g
       ...[...sql.matchAll(/\$(\d+)/g)].map((x) => Number(x[1])),
     );
     expect(maxBind).toBe(params.length);
+    delete process.env.CANONICAL_CATALOG_CATEGORY_BROWSE_TEXT_UNION;
   });
 
   test('rank v2 flag is read per call, not at module load', async () => {
@@ -1970,7 +1973,23 @@ describe('canonicalCatalogSearch category-browse text union (Mechanism 1)', () =
     delete process.env[UNION_FLAG];
   });
 
+  // Same call as browse() but WITHOUT forcing the flag on, so the default-state
+  // test can observe whatever the env actually says.
+  async function browseRaw() {
+    const query = makeMockQuery([]);
+    await fetchCanonicalChainRows({
+      query: 'shampoo',
+      categoryPathPrefix: 'beauty/haircare/',
+      categoryMode: 'category_browse',
+      deps: { query },
+    });
+    return query.calls[0];
+  }
+
+  // The union SHIPS DARK, so every test of its behaviour must switch it on
+  // explicitly. Tests of the default state set the env themselves.
   async function browse(overrides = {}) {
+    if (process.env[UNION_FLAG] === undefined) process.env[UNION_FLAG] = 'on';
     const query = makeMockQuery([]);
     await fetchCanonicalChainRows({
       query: 'shampoo',
@@ -2064,23 +2083,24 @@ describe('canonicalCatalogSearch category-browse text union (Mechanism 1)', () =
     expect(sql).not.toMatch(/IS DISTINCT FROM 'set_or_collection' THEN \d+ ELSE 0 END/);
   });
 
-  test('the union is ON by default — this fixes a defect, so flag-off is the broken state', async () => {
+  test('the union ships DARK — default off, and only explicit on-values enable it', async () => {
+    // Inverted from the first cut of this PR, deliberately. The union fixes a
+    // defect, so flag-off is the broken behaviour and default-on was the
+    // instinct — but the plan cost is unmeasured and the caller-gate
+    // interaction may make it a no-op, so it merges inert. See the flag's
+    // comment for the two measurements required before flipping it.
     delete process.env[UNION_FLAG];
-    const { sql } = await browse();
-    expect(sql).not.toMatch(/AND \$2::text IS NOT NULL/);
-    // Only these four spellings disable it; anything else (including a typo)
-    // leaves the fix ON rather than silently reverting serving to the defect.
-    for (const value of ['', '   ', 'on', 'true', '1', 'yes', 'enabled', 'nonsense']) {
+    const { sql } = await browseRaw();
+    expect(sql).toMatch(/AND \$2::text IS NOT NULL/);
+
+    for (const value of ['', '   ', 'off', '0', 'false', 'no', 'n', 'disabled', 'never', 'nonsense']) {
       process.env[UNION_FLAG] = value;
-      const call = await browse();
-      expect(call.sql).not.toMatch(/AND \$2::text IS NOT NULL/);
+      expect((await browseRaw()).sql).toMatch(/AND \$2::text IS NOT NULL/);
     }
-    // A kill switch must accept every plausible spelling an operator types mid-incident, including
-    // whitespace-padded values (a very live hazard given this repo's env-console history).
-    for (const value of ['off', 'OFF', ' Off ', '0', 'false', 'False', 'disabled', 'no', 'NO', 'n', 'never']) {
+    // Generous on the ON side too: this gets flipped by hand under time pressure.
+    for (const value of ['on', 'ON', ' On ', '1', 'true', 'yes', 'y', 'enabled']) {
       process.env[UNION_FLAG] = value;
-      const call = await browse();
-      expect(call.sql).toMatch(/AND \$2::text IS NOT NULL/);
+      expect((await browseRaw()).sql).not.toMatch(/AND \$2::text IS NOT NULL/);
     }
   });
 
