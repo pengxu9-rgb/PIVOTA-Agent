@@ -2156,3 +2156,103 @@ describe('canonicalCatalogSearch empty rank arms contribute zero bytes', () => {
     expect(query.calls[0].sql).toMatch(/THEN 90 ELSE 0 END\n( {10}\n){2} {8}\) AS rank_score/);
   });
 });
+
+// ---------------------------------------------------------------------------
+// The union's text arm is NARROWER than the plain clause, for a measured reason.
+//
+// The union shipped taking the plain clause. Flipped on in prod 2026-08-20, cold prefix-resolving
+// queries that return rows went from a 7.0-7.5s baseline to 9.3s / 9.5s / 14.2s / 18.6s. This file
+// already measured why: one `OR EXISTS` disjunct forces the whole disjunction off the bitmap path
+// (6.9s vs 3.2s for the same rows). An 18s query holds a pool connection for 18s, which is the shape
+// that has wedged this service before.
+//
+// Both directions are driven. Removing an arm from the union must not remove it from TEXT recall, and
+// the arms must not creep back into the union.
+describe('canonicalCatalogSearch union text arm is the narrow, sargable-shaped one', () => {
+  const UNION_FLAG = 'CANONICAL_CATALOG_CATEGORY_BROWSE_TEXT_UNION';
+  const DOC_FLAG = 'CANONICAL_CATALOG_RECALL_DOC_MATCH';
+
+  afterEach(() => {
+    delete process.env[UNION_FLAG];
+    delete process.env[DOC_FLAG];
+  });
+
+  async function capture(args) {
+    const query = makeMockQuery([]);
+    await fetchCanonicalChainRows({ ...args, deps: { query } });
+    return query.calls[0];
+  }
+
+  // Everything from `WHERE (` up to the eligibility guard that follows it.
+  function whereOf(sql) {
+    const start = sql.indexOf('WHERE (');
+    return sql.slice(start, sql.indexOf('\n        AND ', start));
+  }
+
+  const BROWSE = {
+    query: 'hair mask',
+    categoryPathPrefix: 'beauty/haircare/',
+    categoryMode: 'category_browse',
+    tokenMatch: true,
+    verticalSearch: true,
+    sargableTextWhere: true,
+    marketId: 'US',
+  };
+
+  test('the catalog_skus OR-EXISTS arms are NOT in the union, even with verticalSearch on', async () => {
+    process.env[UNION_FLAG] = 'on';
+    process.env[DOC_FLAG] = 'enabled';
+    const { sql } = await capture(BROWSE);
+    const where = whereOf(sql);
+    expect(where).not.toMatch(/OR EXISTS/);
+    expect(where).not.toMatch(/catalog_skus/);
+    // The cross-table and leading-wildcard arms go too, for the same plan reason.
+    expect(where).not.toMatch(/m\.merchant_name/);
+    expect(where).not.toMatch(/p\.source_product_id/);
+  });
+
+  test('what the union KEEPS is exactly what the measured win runs through', async () => {
+    process.env[UNION_FLAG] = 'on';
+    process.env[DOC_FLAG] = 'enabled';
+    const where = whereOf((await capture(BROWSE)).sql);
+    // toner and shampoo recovered as TITLE matches; brand/token/recall_doc carry the rest.
+    expect(where).toMatch(/LOWER\(COALESCE\(p\.title, ''\)\) LIKE \$2/);
+    expect(where).toMatch(/LOWER\(COALESCE\(p\.brand, ''\)\) LIKE \$2/);
+    expect(where).toMatch(/\) >= 2\)/);          // token-overlap arm
+    expect(where).toMatch(/p\.recall_doc LIKE ANY/); // recall_doc arm
+    // And the category arm is of course still there — the union is an OR, not a replacement.
+    expect(where).toMatch(/p\.category_path = \$5 OR p\.category_path LIKE \$6/);
+  });
+
+  test('TEXT recall is untouched — the EXISTS arms are dropped from the UNION, not from the lane', async () => {
+    // The inverse assertion. Without it, "narrow the union" and "delete vertical recall everywhere" are
+    // indistinguishable to the suite.
+    process.env[UNION_FLAG] = 'on';
+    const { sql } = await capture({ query: 'niacinamide serum', tokenMatch: true, verticalSearch: true });
+    const where = whereOf(sql);
+    expect(where).toMatch(/OR EXISTS/);
+    expect(where).toMatch(/catalog_skus/);
+    expect(where).toMatch(/m\.merchant_name/);
+    expect(where).toMatch(/p\.source_product_id/);
+  });
+
+  test('the union stays bind-integral with every expensive option on (08P01 guard)', async () => {
+    // The dropped fragments reference $1/$2 only and push no binds of their own, so removing them cannot
+    // orphan a param — but that is a property of the current code, not a law, so it is pinned.
+    for (const doc of ['enabled', undefined]) {
+      process.env[UNION_FLAG] = 'on';
+      if (doc) process.env[DOC_FLAG] = doc; else delete process.env[DOC_FLAG];
+      const { sql, params } = await capture({ ...BROWSE, brandFilter: 'laneige', merchantId: 'merch_x' });
+      const maxBind = Math.max(...[...sql.matchAll(/\$(\d+)/g)].map((m) => Number(m[1])));
+      expect(maxBind).toBe(params.length);
+    }
+  });
+
+  test('with the union off, verticalSearch browse SQL is unchanged from the kill-switch form', async () => {
+    process.env[UNION_FLAG] = 'off';
+    const { sql } = await capture(BROWSE);
+    expect(sql).toMatch(/AND \$2::text IS NOT NULL/);
+    // Browse-with-prefix has never carried the text arms at all in this mode.
+    expect(whereOf(sql)).not.toMatch(/LOWER\(COALESCE\(p\.title, ''\)\) LIKE \$2/);
+  });
+});

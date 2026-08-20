@@ -1348,6 +1348,38 @@ async function fetchCanonicalChainRows(args = {}) {
         ${verticalWhere}
         ${plainTokenWhere}${recallDocArm}
   `;
+  // THE UNION'S OWN TEXT ARM — deliberately NARROWER than plainTextWhereClause.
+  //
+  // The union shipped taking the plain clause, on the reasoning that the sargable form DROPS recall arms
+  // and a recall fix should not drop recall. Then it was measured on prod (2026-08-20, flag flipped on):
+  // cold prefix-resolving queries that return rows went from a 7.0-7.5s baseline to 9.3s / 9.5s / 14.2s /
+  // 18.6s. A query holding a pool connection for 18s is the shape that has wedged this service before, so
+  // the trade was wrong in that direction too.
+  //
+  // WHAT COMES OUT, and why each one is safe to lose HERE specifically:
+  //   * the two `OR EXISTS` on catalog_skus (skuTextWhere, verticalWhere) — the decisive ones. This file
+  //     already measured that a single OR-EXISTS disjunct forces the whole disjunction off the bitmap path
+  //     (prod EXPLAIN: 6.9s vs 3.2s for the same rows). They are also the least relevant arm for browse:
+  //     they match variant labels and ingredient ids, whereas the union exists to recover rows whose TITLE
+  //     matches a category word the bucket misfiled.
+  //   * `m.merchant_name` — a cross-table predicate that defeats a catalog_products-only index, and a
+  //     merchant is ~never named by a category query like "shampoo".
+  //   * `p.source_product_id` — a leading-wildcard LIKE with no trigram index, over an opaque platform id.
+  //
+  // WHAT STAYS: title, brand, the token-overlap arm, and the recall_doc arm. That is exactly the set the
+  // measured win depends on — `toner` (BROWSE 0 / TEXT 48/48) and `shampoo` (BROWSE 0 / TEXT 48/48) are
+  // TITLE matches, and the six queries the flip actually fixed on prod all recovered through title/brand.
+  //
+  // This is the same shape citableSargableLane uses, but it is NOT that variable, and the difference
+  // matters: this arm applies whenever the union runs, independently of PIVOT_BEAUTY_MAINLINE_SARGABLE_
+  // TEXT_WHERE_ENABLED and of the recall_doc flag. Routing through citableSargableLane would make the
+  // union's recall silently depend on two unrelated flags — with recall_doc off, `recallDocArm` is empty
+  // and the arm degrades to title/brand/token, which is still the core of the win rather than a surprise.
+  const unionTextWhereClause = `
+        LOWER(COALESCE(p.title, '')) LIKE $2
+        OR LOWER(COALESCE(p.brand, '')) LIKE $2
+        ${plainTokenWhere}${recallDocArm}
+  `;
   const textWhereClause = citableSargableLane
     ? `
         LOWER(COALESCE(p.title, '')) LIKE $2
@@ -1388,7 +1420,7 @@ async function fetchCanonicalChainRows(args = {}) {
     // to recover recall. So the union takes the plain form and #1935's
     // byte-identity invariant survives intact.
     whereClause = `((${categoryPredicate})
-        OR (${plainTextWhereClause}))`;
+        OR (${unionTextWhereClause}))`;
   } else {
     whereClause = `(${categoryPredicate} AND $2::text IS NOT NULL)`;
   }
