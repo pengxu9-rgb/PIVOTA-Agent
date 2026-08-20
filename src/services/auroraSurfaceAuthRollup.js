@@ -22,11 +22,9 @@
  *     k  = '2026-08-20'
  *     v  = { total, buckets: { "<path>|<reason>|<caller_class>": n }, first_seen, last_seen }
  *
- * PATH CARDINALITY IS BOUNDED, and that is a security property, not tidiness. `req.path` is
- * caller-controlled: anyone can request /v1/<random> forever, and an unbounded key map is a memory
- * exhaustion vector reachable without a credential. Distinct buckets are capped; everything past the
- * cap folds into a single `__other__` path bucket, so the counter degrades in accuracy rather than
- * falling over. The cap is deliberately generous relative to the real surface (~52 Aurora routes).
+ * KEY CARDINALITY IS BOUNDED BY CONSTRUCTION, and that is a security property, not tidiness.
+ * `req.path` is caller-controlled: anyone can request /v1/<random> forever. See normalizePath below
+ * for why a cap on the in-memory map was NOT enough, and what the database growth actually measured.
  *
  * INSTRUMENTATION MUST NEVER BREAK A REQUEST. record() only mutates an in-memory map and returns
  * synchronously; nothing in the request path awaits a database. A timer flushes to postgres, and
@@ -35,21 +33,65 @@
  *
  * With no DATABASE_URL the module still counts in memory and the read endpoint says so, so local and
  * CI runs behave sensibly rather than erroring.
+ *
+ * KNOWN GAP, DELIBERATELY NOT CLOSED HERE: up to one flush interval of counts is lost on every
+ * process exit. There is no SIGTERM handler anywhere in src/server.js, and adding one is not free —
+ * registering a SIGTERM listener SUPPRESSES Node's default exit, so a handler that hangs (precisely
+ * when the database is unreachable, which is when a flush would hang) turns every deploy into a
+ * stalled shutdown. Trading a reliable deploy for ~15s of counts is the wrong trade.
+ *
+ * What that means for the gate: it is looking for ZERO, and a lost window is exactly where a lone
+ * non-zero could hide. At ~6 deploys a day that is ~90s of 86,400 (~0.1%), so a reading of exactly 0
+ * over a day with deploys in it is "0 that could be hiding a handful". Read the gate over a window
+ * with no deploy in it, or corroborate a borderline reading against the per-request log line before
+ * flipping.
  */
 
 const DEFAULT_NS = 'aurora_surface_auth_rollup';
-const DEFAULT_MAX_BUCKETS = 500;
 const DEFAULT_FLUSH_MS = 15_000;
+const OVERFLOW_PATH = '__other__';
+// reason (5) x caller_class (7) = 35 possible overflow buckets by construction; the headroom is that
+// bound plus slack, so the backstop below is unreachable from the middleware and exists only for a
+// direct caller passing arbitrary values.
 
 function utcDay(now) {
   return new Date(now).toISOString().slice(0, 10);
 }
 
+/*
+ * The path component is normalised to a FIXED literal set. This is the difference between bounding
+ * memory and bounding the database.
+ *
+ * The in-memory map is cleared on every flush, so capping it bounds only one 15-second window: a
+ * caller inventing new paths gets a fresh 500 keys every window, and those keys accumulate in the
+ * same jsonb row forever. Measured on real PG 15: 120 windows of 500 new paths persisted 60,000
+ * keys, grew the row to 287KB, and pushed merge time from 4ms to 237ms — linear, so a day of it is
+ * millions of keys, merges longer than the flush interval, and eventually the 1GB jsonb ceiling,
+ * after which the merge fails permanently. Raw paths were also stored untruncated, so a 7KB request
+ * path became a 7KB key.
+ *
+ * Normalising to a literal set makes the durable key space bounded BY CONSTRUCTION —
+ * (paths + 1) x reason x caller_class — with no cap logic, no growth, and nothing to tune. It also
+ * keeps exactly what step 2 needs: which known consumer path is still missing the header.
+ */
+const KNOWN_PATHS = [
+  '/v1/chat', '/v1/chat/stream', '/v2/chat', '/v2/chat/stream',
+  '/v1/analysis/skin', '/v1/photos/upload', '/v1/photos/presign', '/v1/photos/confirm',
+  '/v1/product/parse', '/v1/product/analyze', '/v1/dupe/suggest', '/v1/dupe/compare',
+  '/v1/reco/generate', '/v1/reco/alternatives', '/v1/routine/simulate',
+  '/v1/auth/me', '/v1/session/bootstrap', '/v1/events', '/v1/diagnosis/start',
+];
+const KNOWN_PATH_SET = new Set(KNOWN_PATHS);
+
+function normalizePath(path) {
+  const p = String(path || '').toLowerCase().replace(/\/+$/, '') || '/';
+  return KNOWN_PATH_SET.has(p) ? p : OVERFLOW_PATH;
+}
+
 function bucketKey({ path, reason, callerClass }) {
-  const p = String(path || '').toLowerCase() || '/';
-  const r = String(reason || 'unknown');
-  const c = String(callerClass || 'unknown');
-  return `${p}|${r}|${c}`;
+  const r = String(reason || 'unknown').slice(0, 40);
+  const c = String(callerClass || 'unknown').slice(0, 40);
+  return `${normalizePath(path)}|${r}|${c}`;
 }
 
 /**
@@ -63,12 +105,14 @@ function bucketKey({ path, reason, callerClass }) {
 function createAuroraAuthRollup(deps = {}) {
   const now = typeof deps.now === 'function' ? deps.now : () => Date.now();
   const logger = deps.logger || { warn() {}, info() {} };
-  const maxBuckets = Number.isFinite(deps.maxBuckets) && deps.maxBuckets > 0 ? deps.maxBuckets : DEFAULT_MAX_BUCKETS;
   const ns = deps.ns || DEFAULT_NS;
 
   // day -> { total, buckets: Map, firstSeen, lastSeen }
   const pending = new Map();
   let timer = null;
+  // A sustained outage retries every 15s forever (deliberate — counts are preserved). Without
+  // throttling that is ~5,760 identical warn lines a day, which buries every other signal.
+  let consecutiveFailures = 0;
 
   function dayState(day) {
     let st = pending.get(day);
@@ -85,15 +129,17 @@ function createAuroraAuthRollup(deps = {}) {
       const t = now();
       const day = utcDay(t);
       const st = dayState(day);
-      let key = bucketKey(observation);
-      // Bounded cardinality — see the header note. Existing keys always increment; only a NEW key
-      // past the cap is folded, so the common case never degrades.
-      if (!st.buckets.has(key) && st.buckets.size >= maxBuckets) {
-        key = bucketKey({ path: '__other__', reason: observation.reason, callerClass: observation.callerClass });
-        if (!st.buckets.has(key) && st.buckets.size >= maxBuckets + 1) return;
-      }
-      st.buckets.set(key, (st.buckets.get(key) || 0) + 1);
+
+      // total counts EVERY observation, before any capping decision. The first version incremented
+      // it only on the paths that produced a bucket, so a path flood silently stopped counting: 250
+      // observations reported 200, with `total` still equal to the sum of buckets, so there was no
+      // internal tell that anything had been lost.
       st.total += 1;
+
+      // No cap needed: bucketKey normalises the path to a literal set, so the key space is bounded
+      // by construction at (KNOWN_PATHS + 1) x reason x caller_class regardless of what is requested.
+      const key = bucketKey(observation);
+      st.buckets.set(key, (st.buckets.get(key) || 0) + 1);
       if (!st.firstSeen) st.firstSeen = new Date(t).toISOString();
       st.lastSeen = new Date(t).toISOString();
     } catch {
@@ -150,6 +196,7 @@ function createAuroraAuthRollup(deps = {}) {
           [ns, day, JSON.stringify(delta)],
         );
         flushed += 1;
+        consecutiveFailures = 0;
       } catch (err) {
         // Put the delta back so the next flush retries it rather than dropping the counts.
         const back = dayState(day);
@@ -157,7 +204,14 @@ function createAuroraAuthRollup(deps = {}) {
         for (const [k, v] of Object.entries(delta.buckets)) back.buckets.set(k, (back.buckets.get(k) || 0) + v);
         back.firstSeen = back.firstSeen && back.firstSeen < delta.first_seen ? back.firstSeen : delta.first_seen;
         back.lastSeen = back.lastSeen && back.lastSeen > delta.last_seen ? back.lastSeen : delta.last_seen;
-        logger.warn({ err: err?.message || String(err), day }, 'aurora surface auth rollup flush failed');
+        consecutiveFailures += 1;
+        // First three, then every 40th (~10 minutes at the default interval).
+        if (consecutiveFailures <= 3 || consecutiveFailures % 40 === 0) {
+          logger.warn(
+            { err: err?.message || String(err), day, consecutive_failures: consecutiveFailures },
+            'aurora surface auth rollup flush failed',
+          );
+        }
       }
     }
     return { flushed };
@@ -192,4 +246,4 @@ function createAuroraAuthRollup(deps = {}) {
   return { record, flush, read, snapshot, start, stop };
 }
 
-module.exports = { createAuroraAuthRollup, utcDay, bucketKey, DEFAULT_NS, DEFAULT_MAX_BUCKETS };
+module.exports = { createAuroraAuthRollup, utcDay, bucketKey, normalizePath, KNOWN_PATHS, DEFAULT_NS, OVERFLOW_PATH };

@@ -34925,28 +34925,16 @@ app.use(function auroraSurfaceHostGuardMiddleware(req, res, next) {
 // step 3 is gated on — it returns only the live deployment and minutes of history — so the counts are
 // kept in commerce_kv instead. See services/auroraSurfaceAuthRollup.js.
 //
-// max: 1 deliberately. This writes once per flush interval, not per request, and this service has a
-// documented history of wedging on pool proliferation; a counter does not get its own connection
-// budget. Lazily constructed so a deploy without DATABASE_URL never builds a client.
-let auroraAuthRollupPool = null;
-function auroraAuthRollupQuery(sql, params) {
-  if (!process.env.DATABASE_URL) return null;
-  if (!auroraAuthRollupPool) {
-    const { Pool } = require('pg');
-    auroraAuthRollupPool = new Pool({
-      connectionString: process.env.DATABASE_URL,
-      max: 1,
-      idleTimeoutMillis: Number(process.env.DB_IDLE_TIMEOUT_MS || 30000),
-      connectionTimeoutMillis: Number(process.env.DB_CONN_TIMEOUT_MS || 10000),
-      ssl: /sslmode=require/.test(String(process.env.DATABASE_URL)) ? { rejectUnauthorized: false } : undefined,
-    });
-  }
-  return auroraAuthRollupPool.query(sql, params);
-}
-
+// Uses the CANONICAL pool from src/db, not a new one. The first version built its own `pg` Pool, which
+// had no 'error' listener: an idle connection killed server-side (a Postgres restart, a failover, a
+// Railway proxy recycle, an ops pg_terminate_backend) emits on the pool, and with no listener Node
+// terminates the process. Reproduced. src/db/index.js already registers that handler and resets the
+// pool, and also sets statement_timeout/query_timeout and the repo's full SSL predicate — all three
+// of which the hand-rolled pool got wrong or omitted. A counter does not get its own connection
+// budget, and this service has a documented history of wedging on pool proliferation.
 const auroraAuthRollup = createAuroraAuthRollup({
   logger,
-  query: process.env.DATABASE_URL ? auroraAuthRollupQuery : undefined,
+  query: process.env.DATABASE_URL ? (sql, params) => require('./db').query(sql, params) : undefined,
 });
 auroraAuthRollup.start();
 
