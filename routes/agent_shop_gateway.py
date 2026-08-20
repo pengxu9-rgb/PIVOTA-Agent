@@ -37,7 +37,7 @@ from models.standard_product import StandardProduct, ProductStatus
 AGENT_API_BASE = os.getenv("AGENT_API_BASE", "https://web-production-fedb.up.railway.app").rstrip("/")
 SHOP_MAINLINE_INVOKE_BASE = os.getenv(
     "SHOP_MAINLINE_INVOKE_BASE",
-    os.getenv("PIVOTA_MAINLINE_INVOKE_BASE", "https://pivota-agent-production.up.railway.app"),
+    os.getenv("PIVOTA_MAINLINE_INVOKE_BASE", "https://gateway.pivota.cc"),
 ).rstrip("/")
 AGENT_API_KEY = os.getenv("SHOP_GATEWAY_AGENT_API_KEY") or os.getenv("PIVOTA_API_KEY") or os.getenv("AGENT_API_KEY")
 

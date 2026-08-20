@@ -14,6 +14,10 @@ const SAFE_ORIGINAL_IMAGE_HOSTS = [
   'images.unsplash.com',
   'web-production-fedb.up.railway.app',
   'pivota-agent-production.up.railway.app',
+  // Pivota-owned names for the same two services, kept ALONGSIDE the Railway hosts: image URLs
+  // already persisted carry the old host, and an unlisted host fails silently.
+  'api.pivota.cc',
+  'gateway.pivota.cc',
 ];
 
 function normalizeNonEmptyString(value) {
