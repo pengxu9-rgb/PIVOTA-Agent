@@ -34,6 +34,11 @@ const MAX_CONSTRAINT_VALUE_CHARS = 120;
 const DEFAULT_LIMIT = 5;
 const MAX_LIMIT = 10;
 const DEFAULT_BUDGET_MS = 9000;
+// Live price re-verification bounds: check only the items that could reach the shortlist (limit plus a
+// small margin for slots freed by the ceiling pass), and never let one slow PDP lookup hold the whole
+// tool call — the race resolves null and the item degrades to its snapshot price, explicitly marked.
+const PRICE_VERIFY_EXTRA = 2;
+const PRICE_VERIFY_RACE_MS = 2500;
 
 function nonEmpty(v) {
   return typeof v === 'string' && v.trim() !== '';
@@ -414,7 +419,13 @@ function recommendationItemToSignal(item, { rank } = {}) {
         // Not a bare `confidence`/`score`: the sanitizer removes those keys from product-shaped nodes.
         // The lane emits an integer 0-100 `score`; it is surfaced as a BAND, which is what an agent can
         // act on, and lane-level certainty stays on metadata.confidence_overall.
-        level: scoreBand(finiteNumber(item.score)),
+        //
+        // UNGROUNDED items carry NO band (live 2026-08-20: an invented "Hydrating Amino Acid Gel
+        // Cleanser" rode fit=high above a real catalog item — while the deterministic price gate had
+        // capped the REAL item to fit=low, so the model's own score outranked the only thing an agent
+        // could actually buy). Fit-to-catalog is unmeasurable for a product that is not in the catalog;
+        // an asserted band there is a model claim with no object, the class this file exists to strip.
+        level: grounded ? scoreBand(finiteNumber(item.score)) : null,
       },
     },
     evidence: {
@@ -432,13 +443,16 @@ function recommendationItemToSignal(item, { rank } = {}) {
  *   generate: (args:object) => Promise<object>,   // Aurora routes.__internal.generateProductRecommendations
  *   buildAsk?: ({focus, constraints, lang}) => string, // routes.__internal.buildRecoGenerateUserAsk
  *   isEnabled?: () => boolean,                     // agent-surface flag (fail-closed when absent)
+ *   verifyPrice?: ({product_id, merchant_id, product_ref}) => Promise<{price, currency, in_stock?}|null>,
+ *     // live PDP/offer lookup for a grounded item (server.js wires get_pdp_v2 over loopback); absent =
+ *     // no re-verification, items keep their catalog-snapshot price with no price_verified key at all
  *   logger?: { warn?: Function, info?: Function },
  *   budgetMs?: number,
  *   now?: () => number,
  * }} deps
  */
 function makeRecommendProducts(deps = {}) {
-  const { generate, buildAsk, isEnabled, logger } = deps;
+  const { generate, buildAsk, isEnabled, logger, verifyPrice } = deps;
   const now = typeof deps.now === 'function' ? deps.now : () => Date.now();
   const budgetMs = Number.isFinite(deps.budgetMs) && deps.budgetMs > 0 ? deps.budgetMs : DEFAULT_BUDGET_MS;
   if (typeof generate !== 'function') throw new Error('makeRecommendProducts requires generate');
@@ -522,28 +536,90 @@ function makeRecommendProducts(deps = {}) {
     for (const item of items) {
       const s = recommendationItemToSignal(item, {});
       if (s) projected.push(s);
-      if (!enforcing && projected.length >= limit) break;
     }
+    // GROUNDED BEFORE UNGROUNDED, always. An ungrounded item is the lane's advisory ("look for this
+    // kind of product") with no product_id, no price and nothing to open or buy — it may take a
+    // leftover slot, but a commerce door must never rank it above a real catalog item (live
+    // 2026-08-20: an invented cleanser sat at #1 above the only purchasable result). Lane order is
+    // preserved within each group.
+    const groundedSignals = projected.filter((s) => s.value.grounding === 'catalog');
+    const ungroundedSignals = projected.filter((s) => s.value.grounding !== 'catalog');
+
+    // LIVE PRICE RE-VERIFICATION (grounded items only; there is nothing to verify on an invented
+    // product). The lane's price is a catalog-offer snapshot; the injected `verifyPrice` resolves the
+    // same PDP/offer lane the public product page renders from, so a stale snapshot is corrected
+    // BEFORE the ceiling is enforced — the gate must judge the price the buyer would actually see.
+    // Bounded: only items that could reach the shortlist are checked, in parallel, and a failed or
+    // slow check degrades to the snapshot price with `price_verified: false` — never an error, never
+    // a dropped item. Each signal records the outcome so a partner agent knows what it is holding.
+    let verification = null;
+    if (typeof verifyPrice === 'function' && groundedSignals.length > 0) {
+      const toVerify = groundedSignals.slice(0, limit + PRICE_VERIFY_EXTRA);
+      verification = { checked: toVerify.length, confirmed: 0, updated: 0, unavailable: 0 };
+      await Promise.all(toVerify.map(async (s) => {
+        const product = s.value.product;
+        let live = null;
+        try {
+          live = await Promise.race([
+            verifyPrice({ product_id: product.product_id, merchant_id: product.merchant_id, product_ref: product.product_ref }),
+            new Promise((resolve) => { const t = setTimeout(() => resolve(null), PRICE_VERIFY_RACE_MS); if (t.unref) t.unref(); }),
+          ]);
+        } catch { live = null; }
+        const livePrice = finiteNumber(isPlainObject(live) ? live.price : null);
+        const liveCurrency = isPlainObject(live) ? str(live.currency).toUpperCase() : '';
+        if (livePrice === null || !liveCurrency) {
+          product.price_verified = false;
+          verification.unavailable += 1;
+          return;
+        }
+        const changed = product.price !== livePrice || str(product.currency).toUpperCase() !== liveCurrency;
+        if (changed) {
+          // Said out loud on the item: a partner that cached the snapshot price learns it moved.
+          s.value.watchouts = dedupe([
+            `price updated by live check: ${product.price ?? 'unknown'} ${product.currency || ''} -> ${livePrice} ${liveCurrency}`.replace(/\s+/g, ' '),
+            ...s.value.watchouts,
+          ]).slice(0, 6);
+          product.price = livePrice;
+          product.currency = liveCurrency;
+          verification.updated += 1;
+        } else {
+          verification.confirmed += 1;
+        }
+        product.price_verified = true;
+        if (isPlainObject(live) && live.in_stock === false) {
+          s.value.watchouts = dedupe(['live availability check: out of stock', ...s.value.watchouts]).slice(0, 6);
+        }
+      }));
+    }
+
     let signals;
     let violationsReturned = 0;
     let unverifiedReturned = 0;
     if (!enforcing) {
-      signals = projected;
+      signals = [...groundedSignals, ...ungroundedSignals].slice(0, limit);
     } else {
-      const verdicts = new Map(projected.map((s) => [s, checkPriceMax(s, ceiling)]));
-      // Verified-conforming first, then unverifiable, then violations: a slot never goes to an item
-      // known to breach the ceiling while one that honours it is waiting.
-      signals = projected.filter((s) => verdicts.get(s) === 'ok').slice(0, limit);
+      // Verified-conforming first, then price-unverifiable, then known violations — and only then
+      // ungrounded advisories: a slot never goes to an item known to breach the ceiling while one that
+      // honours it is waiting, and never to an invented product while any real one (even a flagged
+      // near-miss) is waiting.
+      const verdicts = new Map(groundedSignals.map((s) => [s, checkPriceMax(s, ceiling)]));
+      signals = groundedSignals.filter((s) => verdicts.get(s) === 'ok').slice(0, limit);
       for (const rung of ['unverifiable', 'violation']) {
-        for (const s of projected) {
+        for (const s of groundedSignals) {
           if (signals.length >= limit) break;
           if (verdicts.get(s) !== rung) continue;
           if (rung === 'violation') { signals.push(markPriceViolation(s, ceiling)); violationsReturned += 1; }
           else { signals.push(markPriceUnverifiable(s, ceiling)); unverifiedReturned += 1; }
         }
       }
+      for (const s of ungroundedSignals) {
+        if (signals.length >= limit) break;
+        signals.push(markPriceUnverifiable(s, ceiling));
+        unverifiedReturned += 1;
+      }
     }
     signals.forEach((s, i) => { s.value.rank = i + 1; });
+    const ungroundedReturned = signals.filter((s) => s.value.grounding !== 'catalog').length;
     const meta = isPlainObject(payload.recommendation_meta) ? payload.recommendation_meta : {};
     const confidence = finiteNumber(payload.confidence);
 
@@ -565,6 +641,14 @@ function makeRecommendProducts(deps = {}) {
         products_empty_reason: signals.length === 0 ? firstString(payload.products_empty_reason, result?.upstreamFailureCode) || 'no_recommendations' : null,
         vertical: 'beauty',
         latency_ms: latencyMs,
+        // How many returned signals are advisory archetypes rather than catalog products — said out
+        // loud so "returned: 2" is never read as "2 purchasable products" when one of them cannot be
+        // opened or bought.
+        ...(ungroundedReturned > 0 ? { ungrounded_returned: ungroundedReturned } : {}),
+        // Live-price check tallies (only when a verifier is wired and grounded items existed):
+        // checked = confirmed + updated + unavailable; `updated` items carry the corrected price and a
+        // watchout naming the move; `unavailable` items keep the snapshot with price_verified: false.
+        ...(verification ? { price_verification: verification } : {}),
         // What this pass actually enforced, so a partner agent can tell "all conforming" from "includes
         // flagged near-misses" from "could not be checked" — without rescanning items, and without
         // reading an absent marker as a clean bill of health.

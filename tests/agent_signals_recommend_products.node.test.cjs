@@ -169,10 +169,22 @@ test('3. projection: identity, why, watchouts, grounding; no-identity items drop
   // the projector builds a fresh object, so the hostile keys cannot ride along by construction
   assert.equal(s.value.product.confidence, undefined);
   assert.equal(s.value.product.score, undefined);
-  // second signal is the ungrounded named item (the empty one was dropped)
-  assert.equal(res.signals[1].value.grounding, 'ungrounded');
-  assert.equal(res.signals[1].subject.id, null);
-  assert.equal(res.signals[1].value.product.title, 'Some product the lane named but could not resolve');
+  // GROUNDED BEFORE UNGROUNDED: the second slot goes to the later CATALOG item, not to the ungrounded
+  // advisory the lane ranked ahead of it (live 2026-08-20: an invented product sat at #1 above the only
+  // purchasable result). The empty item is still dropped.
+  assert.equal(res.signals[1].value.grounding, 'catalog');
+  assert.equal(res.signals[1].subject.id, 'sig_abc');
+  // With room for it, the ungrounded item is still returned — last, with NO fit band (fit-to-catalog is
+  // unmeasurable for a product that is not in the catalog) and counted out loud in metadata.
+  const wide = await h({ payload: { need: 'exfoliant', limit: 5 } }, { agent_id: 'agent_a' });
+  const tail = wide.signals[wide.signals.length - 1];
+  assert.equal(wide.signals.length, 3);
+  assert.equal(tail.value.grounding, 'ungrounded');
+  assert.equal(tail.subject.id, null);
+  assert.equal(tail.value.product.title, 'Some product the lane named but could not resolve');
+  assert.equal(tail.value.fit.level, null, 'an ungrounded item never asserts a fit band');
+  assert.equal(wide.metadata.ungrounded_returned, 1);
+  assert.equal(res.metadata.ungrounded_returned, undefined, 'zero ungrounded returned ⇒ no key at all');
 
   assert.equal(res.metadata.confidence_overall, 0.72);
   assert.deepEqual(res.metadata.missing_info, ['skin type']);
@@ -526,6 +538,108 @@ test('4k. an unreadable second constraint is disclosed even when a structured ce
   assert.equal(res.metadata.price_max_enforced, 40, 'the readable ceiling is still enforced');
   assert.equal(res.metadata.price_constraint_unenforced, 'unstructured_value',
     'the dropped prose ceiling is said out loud alongside the enforced one');
+});
+
+// THE LIVE SHAPE OF 2026-08-20, SECOND ROUND: an invented "Hydrating Amino Acid Gel Cleanser"
+// (ungrounded, no price, no url) rode fit=high at rank #1 ABOVE the flagged $45 catalog item — the
+// model's own score outranked the only thing an agent could buy, while the deterministic gate had
+// capped the real item to fit=low. Ungrounded items are advisory: last slot, no fit band, counted.
+test('5. an ungrounded advisory never outranks a real catalog item, and never asserts a fit band', async () => {
+  const phantom = {
+    name: 'Hydrating Amino Acid Gel Cleanser',
+    grounding_status: 'ungrounded',
+    score: 92, // the lane scored its own invention highly — the band must NOT survive projection
+    reasons: ['Amino acid surfactants cleanse without stripping'],
+  };
+  // lane order deliberately puts the phantom first, as the live lane did
+  const h = makeRecommendProducts({ generate: async () => laneResult([phantom, ITEM_OVERPRICED]), isEnabled: () => true });
+  const res = await h({ payload: { need: 'a gentle exfoliant for sensitive skin under $40', constraints: { price_max: 40 } } }, { agent_id: 'agent_a' });
+  assert.deepEqual(res.signals.map((s) => [s.value.grounding, s.value.rank]), [['catalog', 1], ['ungrounded', 2]],
+    'the flagged real item leads; the invented one takes the leftover slot');
+  assert.equal(res.signals[0].value.fit.level, 'low', 'the violator stays flagged');
+  assert.equal(res.signals[1].value.fit.level, null, 'a 92-scored invention still carries no band');
+  assert.match(res.signals[1].value.watchouts[0], /not verified: no catalog price/);
+  assert.equal(res.metadata.ungrounded_returned, 1);
+  assert.equal(res.metadata.constraint_violations_returned, 1);
+
+  // and without a ceiling the same demotion holds
+  const h2 = makeRecommendProducts({ generate: async () => laneResult([phantom, ITEM_FULL]), isEnabled: () => true });
+  const res2 = await h2({ payload: { need: 'cleanser' } }, { agent_id: 'agent_a' });
+  assert.deepEqual(res2.signals.map((s) => s.value.grounding), ['catalog', 'ungrounded']);
+  assert.equal(res2.signals[1].value.fit.level, null);
+});
+
+// LIVE PRICE RE-VERIFICATION: the lane's price is a catalog snapshot; the injected verifyPrice resolves
+// the live PDP/offer lane BEFORE the ceiling is enforced, so the gate judges the price the buyer would
+// actually see. A failed or slow check degrades to the snapshot, explicitly marked — never an error.
+test('6. verifyPrice corrects a stale snapshot BEFORE the ceiling pass, and marks every outcome', async () => {
+  // catalog says 35 (conforming) but the live offer is 45: the gate must flag it
+  const stale = { ...ITEM_FULL };
+  const calls = [];
+  const h = makeRecommendProducts({
+    generate: async () => laneResult([stale]),
+    isEnabled: () => true,
+    verifyPrice: async ({ product_id }) => { calls.push(product_id); return { price: 45, currency: 'USD', in_stock: true }; },
+  });
+  const res = await h({ payload: { need: 'exfoliant', constraints: { price_max: 40 } } }, { agent_id: 'agent_a' });
+  assert.deepEqual(calls, ['sig_abc'], 'the grounded item is verified exactly once');
+  const v = res.signals[0].value;
+  assert.equal(v.product.price, 45, 'the live price replaces the snapshot');
+  assert.equal(v.product.price_verified, true);
+  assert.deepEqual(v.constraint_violations, [{ constraint: 'price_max', limit: 40, limit_currency: 'USD', price: 45, currency: 'USD' }],
+    'the ceiling is enforced against the LIVE price, not the stale snapshot');
+  assert.equal(v.watchouts.some((w) => /price updated by live check: 35 USD -> 45 USD/.test(w)), true);
+  assert.deepEqual(res.metadata.price_verification, { checked: 1, confirmed: 0, updated: 1, unavailable: 0 });
+});
+
+test('6b. a confirmed price is marked verified; a failed check degrades to the snapshot, marked', async () => {
+  const h = makeRecommendProducts({
+    generate: async () => laneResult([ITEM_FULL, ITEM_INTERNAL]),
+    isEnabled: () => true,
+    verifyPrice: async ({ product_id }) => {
+      if (product_id === 'sig_abc') return { price: 35, currency: 'USD' };
+      throw new Error('pdp lane down');
+    },
+  });
+  const res = await h({ payload: { need: 'exfoliant', constraints: { price_max: 40 } } }, { agent_id: 'agent_a' });
+  const [a, b] = res.signals.map((s) => s.value);
+  assert.equal(a.product.price_verified, true);
+  assert.equal(a.watchouts.some((w) => /price updated/.test(w)), false, 'a confirmed price earns no watchout');
+  assert.equal(b.product.price_verified, false, 'a thrown check degrades to the snapshot, marked');
+  assert.equal(b.product.price, 18.5, 'the snapshot price is kept');
+  assert.deepEqual(res.metadata.price_verification, { checked: 2, confirmed: 1, updated: 0, unavailable: 1 });
+  // both still conform to the ceiling on the prices the bridge holds
+  assert.equal(res.metadata.constraint_violations_returned, 0);
+});
+
+test('6c. no verifier wired ⇒ no price_verified keys, no metadata block — old behavior, byte-stable', async () => {
+  const h = makeRecommendProducts({ generate: async () => laneResult([ITEM_FULL]), isEnabled: () => true });
+  const res = await h({ payload: { need: 'exfoliant' } }, { agent_id: 'agent_a' });
+  assert.equal(res.signals[0].value.product.price_verified, undefined);
+  assert.equal(res.metadata.price_verification, undefined);
+});
+
+test('6d. ungrounded items are never sent to the verifier — there is nothing to verify', async () => {
+  const calls = [];
+  const h = makeRecommendProducts({
+    generate: async () => laneResult([ITEM_UNGROUNDED, ITEM_FULL]),
+    isEnabled: () => true,
+    verifyPrice: async ({ product_id }) => { calls.push(product_id); return { price: 35, currency: 'USD' }; },
+  });
+  const res = await h({ payload: { need: 'cleanser' } }, { agent_id: 'agent_a' });
+  assert.deepEqual(calls, ['sig_abc']);
+  assert.equal(res.signals[1].value.product.price_verified, undefined, 'no phantom price_verified on advisories');
+  assert.deepEqual(res.metadata.price_verification, { checked: 1, confirmed: 1, updated: 0, unavailable: 0 });
+});
+
+test('6e. an out-of-stock live check is said out loud on the item', async () => {
+  const h = makeRecommendProducts({
+    generate: async () => laneResult([ITEM_FULL]),
+    isEnabled: () => true,
+    verifyPrice: async () => ({ price: 35, currency: 'USD', in_stock: false }),
+  });
+  const res = await h({ payload: { need: 'exfoliant' } }, { agent_id: 'agent_a' });
+  assert.equal(res.signals[0].value.watchouts[0], 'live availability check: out of stock');
 });
 
 // REVIEW FINDING: assuming the ceiling's currency for a currency-less price re-introduced the very
