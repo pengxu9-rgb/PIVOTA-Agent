@@ -599,6 +599,9 @@ describe('a generated infrastructure host is never derived as the profile identi
       'https://svc.onrender.com',
       'https://svc.herokuapp.com',
       'https://svc.fly.dev',
+      // Cloud Run, in both the regional and the project-hashed form we will actually be issued.
+      'https://gateway-184498324954.us-west1.run.app',
+      'https://gateway-42ogcsuwxq-uw.a.run.app',
     ]) {
       expect(agentProfileUrlFromOrigin(generated)).toBeUndefined();
     }
@@ -610,6 +613,8 @@ describe('a generated infrastructure host is never derived as the profile identi
     // TERMINATE the hostname. A substring test would call this infrastructure and silently drop our anchor.
     expect(isGeneratedInfraHost('edge.railway.app.pivota.cc')).toBe(false);
     expect(isGeneratedInfraHost('mcp.pivota.cc')).toBe(false);
+    expect(isGeneratedInfraHost('gateway-42ogcsuwxq-uw.a.run.app')).toBe(true);
+    expect(isGeneratedInfraHost('gateway.pivota.cc')).toBe(false);
     expect(agentProfileUrlFromOrigin('https://edge.railway.app.pivota.cc'))
       .toBe('https://edge.railway.app.pivota.cc/.well-known/ucp-agent');
   });

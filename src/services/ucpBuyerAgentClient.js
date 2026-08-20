@@ -902,6 +902,9 @@ const GENERATED_INFRA_HOST_SUFFIXES = Object.freeze([
   '.onrender.com',
   '.herokuapp.com',
   '.fly.dev',
+  // Cloud Run. Absent, this refusal would simply stop firing the moment we deploy there, and a
+  // generated `*.a.run.app` host would be published as the thing that names us.
+  '.run.app',
 ]);
 
 /**

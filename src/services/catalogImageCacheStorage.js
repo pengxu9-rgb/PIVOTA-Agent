@@ -86,7 +86,9 @@ function getCatalogImageCacheRuntimePublicBaseUrl() {
     process.env.CATALOG_IMAGE_CACHE_PROXY_PUBLIC_BASE_URL ||
       process.env.CATALOG_IMAGE_CACHE_RUNTIME_PUBLIC_BASE_URL ||
       process.env.PIVOTA_AGENT_PUBLIC_BASE_URL ||
-      'https://pivota-agent-production.up.railway.app',
+      // Emitted into PUBLIC catalog image URLs, so it must be a Pivota-owned name: every URL
+      // minted with a PaaS host outlives the platform it names.
+      'https://gateway.pivota.cc',
   );
 }
 
