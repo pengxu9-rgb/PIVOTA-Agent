@@ -453,6 +453,7 @@ jobs:
             tests/commerce_mcp_heartbeat_gate.node.test.cjs \
             tests/commerce_search_self_invoke_budget.node.test.cjs \
             mcp-server/test/commerceReadCache.test.js \
+            mcp-server/test/publicReadSearchZeroResults.test.js \
             mcp-server/test/commerceToolSurface.test.js \
             mcp-server/test/mcpBuyerIntake.test.js \
             mcp-server/test/crossProtocolConformance.test.js \
