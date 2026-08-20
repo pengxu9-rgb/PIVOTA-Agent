@@ -75,6 +75,25 @@ const CATEGORY_ALIAS_RULES = Object.freeze([
     categoryPathPrefix: 'beauty/makeup/eye/',
     pattern: /\bmascara\b|睫毛膏/i,
   },
+  // Brow + eyeshadow. Tail of the same measured gap as haircare/toner above
+  // (2026-08-20 probe): `brow pencil` / `brow gel` / `eye shadow palette`
+  // classified ambiguous and safe-emptied before any SQL. Buckets verified on
+  // prod 2026-08-20: beauty/makeup/eye/brow 44 serving-eligible rows,
+  // beauty/makeup/eye/eyeshadow 58. Brow claims only anchored compounds
+  // (brow + product noun) — bare `brow`/`brows` stays unclassified.
+  {
+    category: 'brow',
+    categoryPathPrefix: 'beauty/makeup/eye/brow/',
+    pattern: /\b(?:eye\s*)?brow\s+(?:pencils?|gels?|pomades?|powders?|waxes?|tints?)\b|眉笔|眉筆/i,
+  },
+  // Bare `palette` is deliberately NOT claimed (paint palette, color
+  // palette) — only the eyeshadow anchor routes here, and `eyeshadow
+  // palette` matches via its `eyeshadow` token.
+  {
+    category: 'eyeshadow',
+    categoryPathPrefix: 'beauty/makeup/eye/eyeshadow/',
+    pattern: /\beye\s*shadows?\b|眼影/i,
+  },
   {
     category: 'blush',
     categoryPathPrefix: 'beauty/makeup/face/blush/',
@@ -85,15 +104,49 @@ const CATEGORY_ALIAS_RULES = Object.freeze([
     categoryPathPrefix: 'beauty/makeup/face/',
     pattern: /\b(foundation|skin\s*tint|tinted\s+moisturi[sz]er|concealer|base\s+makeup)\b|粉底|遮瑕|底妆|底妝/i,
   },
+  // Bronzer + contour. Same 2026-08-20 tail: both safe-emptied. Contour-titled
+  // rows live mostly IN the bronzer bucket on prod (13 of the 33 eligible
+  // beauty/makeup/face/bronzer rows; concealer/highlighter hold the rest), so
+  // both nouns share the bronzer leaf and the union's title boost sorts the
+  // queried form to the head. Contour claims only product-anchored compounds —
+  // bare `contour` stays unclassified (contour pillow, contour map).
+  //
+  // MUST SIT ABOVE the moisturizer rule: `contour cream` would otherwise be
+  // claimed by its bare `cream` arm and browse the skincare tree. Sits BELOW
+  // foundation on purpose: `powder foundation` / `foundation stick` are
+  // foundation.
+  {
+    category: 'bronzer_or_contour',
+    categoryPathPrefix: 'beauty/makeup/face/bronzer/',
+    pattern: /\bbronzers?\b|\bcontour(?:ing)?\s+(?:sticks?|palettes?|wands?|kits?|powders?|creams?)\b|修容/i,
+  },
+  // Face powder. `setting powder` was the highest-traffic zero in the
+  // 2026-08-20 probe. Bucket: beauty/makeup/face/powder, 99 eligible rows
+  // (the two-row `setting-powder` leaf is too sparse — same broad-vs-leaf
+  // trade as haircare above). Qualifier is REQUIRED: bare `powder` stays
+  // unclassified (baby powder, protein powder), `brow powder` belongs to the
+  // brow rule above, and `powder foundation` to the foundation rule above.
+  {
+    category: 'face_powder',
+    categoryPathPrefix: 'beauty/makeup/face/powder/',
+    pattern: /\b(?:setting|face|translucent|loose|pressed|compact|finishing)\s+powders?\b|散粉|蜜粉/i,
+  },
   {
     category: 'sunscreen',
     categoryPathPrefix: 'beauty/skincare/sun/',
     pattern: /\b(sunscreen|sun\s*screen|sunblock|spf\b|broad spectrum|uv|uva|uvb|pa\+{1,4})\b|防晒|防曬|日焼け止め/i,
   },
+  // `micellar water` and `makeup remover` arms added 2026-08-20 (same tail):
+  // `micellar cleansing water` already routed here via `cleansing`, but the
+  // commonly typed short forms safe-emptied. Their rows live in
+  // beauty/skincare/cleanse/cleanser on prod (5 micellar + 8 remover titled;
+  // the cleanse tree holds 425 eligible rows). `remov...` requires the
+  // makeup anchor, so `nail polish remover` stays unclassified.
   {
     category: 'cleanser',
     categoryPathPrefix: 'beauty/skincare/cleanse/',
-    pattern: /\b(cleanser|cleansing|face wash|facial wash|cleansing foam|cleansing gel|wash)\b|洁面|潔面|洗顔料/i,
+    pattern:
+      /\b(cleanser|cleansing|face wash|facial wash|cleansing foam|cleansing gel|wash|micellar(?:\s+water)?|make\s?up\s+remov(?:ers?|ing|al)?)\b|洁面|潔面|洗顔料|卸妆|卸妝/i,
   },
   {
     category: 'moisturizer',
@@ -114,6 +167,18 @@ const CATEGORY_ALIAS_RULES = Object.freeze([
     categoryPathPrefix: 'beauty/skincare/tone/',
     pattern:
       /\b(?<!printer\s)toners?\b(?!\s+cartridges?)|\btoner\s+pads?\b|\b(?:face|facial)\s+mists?\b|爽肤水|爽膚水|化妆水|化妝水|化粧水/i,
+  },
+  // Clay/mud mask. Same 2026-08-20 tail. The mask leaf is a real bucket —
+  // beauty/skincare/treat/mask held 407 eligible rows — so unlike the sparse
+  // haircare leaves this one is browsable directly. Only the clay/mud
+  // anchored forms are claimed: `lip mask` belongs to the lip rule and
+  // `hair mask` to the haircare rule (both sit earlier), and bare `mask` /
+  // `face mask` / `sheet mask` are deliberately left unclassified for now
+  // (non-beauty senses; recorded as remaining tail in the PR body).
+  {
+    category: 'clay_or_mud_mask',
+    categoryPathPrefix: 'beauty/skincare/treat/mask/',
+    pattern: /\b(?:clay|mud)\s+masks?\b|泥膜/i,
   },
   {
     category: 'serum',
@@ -141,6 +206,11 @@ const GENERIC_CATEGORY_BY_PREFIX = Object.freeze({
   'beauty/skincare/treat/': 'serum',
   'beauty/skincare/tone/': 'toner',
   'beauty/haircare/': 'shampoo',
+  'beauty/makeup/eye/brow/': 'brow pencil',
+  'beauty/makeup/eye/eyeshadow/': 'eyeshadow',
+  'beauty/makeup/face/bronzer/': 'bronzer',
+  'beauty/makeup/face/powder/': 'setting powder',
+  'beauty/skincare/treat/mask/': 'clay mask',
 });
 
 function normalizeQueryTextForUnderstanding(value) {
