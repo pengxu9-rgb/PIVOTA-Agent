@@ -412,6 +412,13 @@ jobs:
       # every refusal is observably distinct from a permission, and the positive control asserts it.
       # Eleven mutants run; all eleven fail the suite. Note the surface is matched by PREFIX, and a test
       # pins that an invented /v1 path is refused, so a route added later defaults to closed.
+      # ADDED 2026-08-20: `tests/recommendations_internal_key_double_send`, confirmed green (3/3) and
+      # confirmed RED (0/3) against the pre-fix code. requireInternalKey ended its refusal paths with
+      # `return res.status(401).json(...)` — an Express Response, which is TRUTHY — while both call
+      # sites guard with `if (!requireInternalKey(req, res)) return;`. The early return never fired,
+      # the handler called res.json() a second time, and ERR_HTTP_HEADERS_SENT inside an async handler
+      # with no unhandledRejection hook TERMINATED THE PROCESS. Prod's own config (key set, NODE_ENV
+      # unset) is the branch that reaches it, so one uncredentialed request restarted the gateway.
       - name: Run node:test suites
         run: |
           node --test \
@@ -472,7 +479,8 @@ jobs:
             tests/integration/agent_checkout_acp_ucp_doors.node.test.cjs \
             mcp-server/test/ucpSpecVersion.test.js \
             tests/ui_chat_access_guard.node.test.cjs \
-            tests/aurora_surface_host_guard.node.test.cjs
+            tests/aurora_surface_host_guard.node.test.cjs \
+            tests/recommendations_internal_key_double_send.node.test.cjs
 
   jest:
     runs-on: ubuntu-latest
