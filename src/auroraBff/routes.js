@@ -1362,7 +1362,12 @@ const RECO_CATALOG_MAIN_PATH_TIMEOUT_FLOOR_MS = (() => {
 const RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS = (() => {
   const n = Number(process.env.AURORA_BFF_RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS || 5000);
   const v = Number.isFinite(n) ? Math.trunc(n) : 5000;
-  return Math.max(300, Math.min(8000, v));
+  // Clamp max 12000, aligned with normalizedTimeoutCap: the 8000 clamp silently defeated the env on
+  // 2026-08-20 when the search union flag pushed cold-prefix latency to 9-18.6s — recalls timed out at
+  // exactly 8000ms with the env set higher, every slot came back empty, and the reco lanes answered
+  // with ungrounded archetypes (no product, no price). A knob whose clamp sits INSIDE the dependency's
+  // real latency distribution is a recall kill-switch wearing a tuning knob's name.
+  return Math.max(300, Math.min(12000, v));
 })();
 const RECO_CATALOG_SUNSCREEN_HANDOFF_TIMEOUT_MS = (() => {
   const n = Number(process.env.AURORA_BFF_RECO_CATALOG_SUNSCREEN_HANDOFF_TIMEOUT_MS || 65000);
