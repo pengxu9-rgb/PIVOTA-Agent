@@ -30676,6 +30676,7 @@ const { describeCaller } = require('./services/callerIdentity');
 const { decideUiChatAccess } = require('./services/uiChatAccessGuard');
 const { decideAuroraSurfaceAccess, isAuroraSurfacePath } = require('./services/auroraSurfaceHostGuard');
 const { decideAuroraSurfaceAuth } = require('./services/auroraSurfaceAuth');
+const { createAuroraAuthRollup } = require('./services/auroraSurfaceAuthRollup');
 
 const PUBLIC_READ_CHAIN_FILTER_CONCURRENCY = 8;
 
@@ -34920,6 +34921,23 @@ app.use(function auroraSurfaceHostGuardMiddleware(req, res, next) {
   return res.status(access.status).json(access.body);
 });
 
+// The durable rollup behind the Phase 1 flip gate. `railway logs` cannot supply the full traffic day
+// step 3 is gated on — it returns only the live deployment and minutes of history — so the counts are
+// kept in commerce_kv instead. See services/auroraSurfaceAuthRollup.js.
+//
+// Uses the CANONICAL pool from src/db, not a new one. The first version built its own `pg` Pool, which
+// had no 'error' listener: an idle connection killed server-side (a Postgres restart, a failover, a
+// Railway proxy recycle, an ops pg_terminate_backend) emits on the pool, and with no listener Node
+// terminates the process. Reproduced. src/db/index.js already registers that handler and resets the
+// pool, and also sets statement_timeout/query_timeout and the repo's full SSL predicate — all three
+// of which the hand-rolled pool got wrong or omitted. A counter does not get its own connection
+// budget, and this service has a documented history of wedging on pool proliferation.
+const auroraAuthRollup = createAuroraAuthRollup({
+  logger,
+  query: process.env.DATABASE_URL ? (sql, params) => require('./db').query(sql, params) : undefined,
+});
+auroraAuthRollup.start();
+
 // ---------------- Aurora BFF surface: caller authentication (OBSERVE by default) ----------------
 //
 // Phase 1 step 1. See services/auroraSurfaceAuth.js for the rollout and for why enforce mode is
@@ -34963,6 +34981,9 @@ app.use(function auroraSurfaceAuthMiddleware(req, res, next) {
     },
     'aurora surface auth',
   );
+
+  // Synchronous, never throws, never awaited — the counter must not sit in the request path.
+  auroraAuthRollup.record({ path: req.path, reason: auth.reason, callerClass: caller.caller_class });
 
   if (auth.allow) return next();
   return res.status(auth.status).json(auth.body);
@@ -35696,6 +35717,26 @@ app.post('/api/services/bookings/:booking_id/provider-action', requireBookingFla
 mountAgentCenterLlmProbe(app);
 
 // ---------------- Merchant risk ops API (v0, admin-key protected) ----------------
+
+// The Phase 1 flip gate, readable. Both criteria come off this: `would_refuse` must be 0 for real
+// traffic over a full traffic day, and there must be zero browser/browser_app callers (enforcing a
+// shared secret a browser has to send would ship it into a JS bundle).
+app.get('/internal/aurora-surface-auth/rollup', requireAdmin, async (req, res) => {
+  try {
+    const days = Number(req.query.days) || 7;
+    const out = await auroraAuthRollup.read({ days });
+    return res.json({
+      ...out,
+      // Stated explicitly so nobody reads a fresh process's in-memory count as a full day of history.
+      note: out.durable
+        ? 'rows are durable; `pending` is this instance not yet flushed'
+        : 'NOT DURABLE — no DATABASE_URL or the read failed; `pending` is this instance only',
+    });
+  } catch (err) {
+    logger.warn({ err: err?.message || String(err) }, 'aurora surface auth rollup endpoint failed');
+    return res.status(500).json({ error: 'ROLLUP_READ_FAILED' });
+  }
+});
 
 app.get('/api/merchant/disputes', requireAdmin, async (req, res) => {
   const { merchantId, orderId, status, source, limit, offset } = req.query;

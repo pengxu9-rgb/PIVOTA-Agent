@@ -430,6 +430,16 @@ jobs:
       # code. Ten mutants run; all ten fail the suite — including "default mode becomes enforce" and \
       # "auth registered before the host guard" (the latter survived until a test was added for an \
       # ANONYMOUS request on the anchor, which must be 404, never 401).
+      # ADDED 2026-08-20: `tests/aurora_surface_auth_rollup`, confirmed green (10/10). The durable counter
+      # behind the Phase 1 flip gate — `railway logs` cannot supply the full traffic day step 3 requires
+      # (measured: 5,000 lines requested returned 248 rows spanning 9 minutes; --since 3d returned 0), so
+      # the counts live in commerce_kv. Tests target the two ways an INSTRUMENT fails: under-counting
+      # (someone flips enforce on a bad reading) and throwing (it breaks the requests it measures). So:
+      # record() never throws for any hostile input, counts survive a failed flush instead of being
+      # dropped, and path cardinality is BOUNDED because req.path is caller-controlled and an unbounded
+      # key map is memory exhaustion with no credential. The jsonb merge was additionally verified
+      # against a real Postgres 15 using the repo's own commerce_kv migration, including the two-replica
+      # case a read-modify-write would silently lose.
       - name: Run node:test suites
         run: |
           node --test \
@@ -492,7 +502,8 @@ jobs:
             tests/ui_chat_access_guard.node.test.cjs \
             tests/aurora_surface_host_guard.node.test.cjs \
             tests/recommendations_internal_key_double_send.node.test.cjs \
-            tests/aurora_surface_auth.node.test.cjs
+            tests/aurora_surface_auth.node.test.cjs \
+            tests/aurora_surface_auth_rollup.node.test.cjs
 
   jest:
     runs-on: ubuntu-latest
