@@ -418,7 +418,18 @@ jobs:
       # sites guard with `if (!requireInternalKey(req, res)) return;`. The early return never fired,
       # the handler called res.json() a second time, and ERR_HTTP_HEADERS_SENT inside an async handler
       # with no unhandledRejection hook TERMINATED THE PROCESS. Prod's own config (key set, NODE_ENV
-      # unset) is the branch that reaches it, so one uncredentialed request restarted the gateway.
+      # unset) is the branch that reaches it, so one uncredentialed request restarted the gateway. \
+      # ADDED 2026-08-20: `tests/aurora_surface_auth`, confirmed green (16/16). Phase 1 step 1 — caller \
+      # auth for the Aurora surface, shipped in OBSERVE mode so it changes nothing for any caller until \
+      # AURORA_SURFACE_AUTH_MODE=enforce. "Changes nothing" is the hard thing to test (it is also what an \
+      # unwired guard looks like), so the file leans on three distinct response shapes: reached-Aurora is \
+      # a 400 with the Aurora envelope, auth-refused is 401, host-refused is 404. Observe tests assert the \
+      # first for uncredentialed requests, enforce tests assert the second for the identical request, so \
+      # neither an absent guard nor an over-eager one can pass. Enforce mode is implemented and pinned \
+      # HERE rather than in the flip PR, so the flip is a revertible env change, not first-run-in-prod \
+      # code. Ten mutants run; all ten fail the suite — including "default mode becomes enforce" and \
+      # "auth registered before the host guard" (the latter survived until a test was added for an \
+      # ANONYMOUS request on the anchor, which must be 404, never 401).
       - name: Run node:test suites
         run: |
           node --test \
@@ -480,7 +491,8 @@ jobs:
             mcp-server/test/ucpSpecVersion.test.js \
             tests/ui_chat_access_guard.node.test.cjs \
             tests/aurora_surface_host_guard.node.test.cjs \
-            tests/recommendations_internal_key_double_send.node.test.cjs
+            tests/recommendations_internal_key_double_send.node.test.cjs \
+            tests/aurora_surface_auth.node.test.cjs
 
   jest:
     runs-on: ubuntu-latest

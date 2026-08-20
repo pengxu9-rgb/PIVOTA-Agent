@@ -30674,7 +30674,8 @@ async function getCommerceConfirmationActionHandler() {
 const { chainRowResolvable } = require('./services/publicReadChainResolvability');
 const { describeCaller } = require('./services/callerIdentity');
 const { decideUiChatAccess } = require('./services/uiChatAccessGuard');
-const { decideAuroraSurfaceAccess } = require('./services/auroraSurfaceHostGuard');
+const { decideAuroraSurfaceAccess, isAuroraSurfacePath } = require('./services/auroraSurfaceHostGuard');
+const { decideAuroraSurfaceAuth } = require('./services/auroraSurfaceAuth');
 
 const PUBLIC_READ_CHAIN_FILTER_CONCURRENCY = 8;
 
@@ -34917,6 +34918,54 @@ app.use(function auroraSurfaceHostGuardMiddleware(req, res, next) {
     'aurora surface refused on a branded host',
   );
   return res.status(access.status).json(access.body);
+});
+
+// ---------------- Aurora BFF surface: caller authentication (OBSERVE by default) ----------------
+//
+// Phase 1 step 1. See services/auroraSurfaceAuth.js for the rollout and for why enforce mode is
+// implemented now rather than in the flip PR.
+//
+// Registered immediately after the host guard so both decisions cover the SAME set of paths — the
+// surface is defined once, in isAuroraSurfacePath, and imported here rather than re-derived. A
+// second copy of that predicate is a predicate that drifts, and the two guards disagreeing about
+// what "the Aurora surface" means is exactly how a route ends up host-refused but never auth-checked.
+//
+// In observe mode this middleware CANNOT change a response: it logs and calls next(). The log line is
+// the deliverable — `would_refuse` is the measurement that gates the flip, and it must reach 0 for
+// real traffic over a full traffic day before AURORA_SURFACE_AUTH_MODE=enforce is set. Query it with:
+//   railway logs --service PIVOTA-Agent --filter 'aurora_surface_auth' --json
+app.use(function auroraSurfaceAuthMiddleware(req, res, next) {
+  if (!isAuroraSurfacePath(req.path)) return next();
+
+  const auth = decideAuroraSurfaceAuth({ path: req.path, headers: req.headers });
+  // Excluded paths get no line at all: they are not this guard's business, and a line would also
+  // pollute the would_refuse measurement the rollout is gated on.
+  if (auth.skipped) return next();
+
+  const caller = describeCaller(req);
+  logger.info(
+    {
+      event: 'aurora_surface_auth',
+      mode: auth.mode,
+      path: req.path,
+      method: req.method,
+      host: String(req.headers?.host || '').slice(0, 120),
+      has_key: auth.hasKey,
+      key_valid: auth.keyValid,
+      key_configured: auth.keyConfigured,
+      would_refuse: auth.wouldRefuse,
+      reason: auth.reason,
+      // Caller identity, headers only — never the client IP, never a key value. This is what makes
+      // "which consumer is still missing the header" answerable rather than a guess.
+      caller_class: caller.caller_class,
+      caller_ua: caller.ua,
+      caller_origin: caller.origin,
+    },
+    'aurora surface auth',
+  );
+
+  if (auth.allow) return next();
+  return res.status(auth.status).json(auth.body);
 });
 
 function resolveAuroraChatContractConfig() {
