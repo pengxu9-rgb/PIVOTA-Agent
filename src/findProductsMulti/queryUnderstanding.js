@@ -437,6 +437,16 @@ function inferExactProductAnchor({ correctedQuery, categoryPathPrefix, brandBrow
   return null;
 }
 
+// A caller that DECLARES its step family (the Aurora reco recall client does, on every catalog search)
+// knows the category better than the query text does — the planner may have rewritten that text. This
+// resolves the declared family through the SAME shipped CATEGORY_ALIAS_RULES the text path uses, so no
+// second family->prefix mapping is introduced and the two can never disagree.
+function resolveBeautyCategoryPathPrefixFromDeclaredStepFamily(declaredTargetStepFamily) {
+  const family = String(declaredTargetStepFamily || '').trim().toLowerCase();
+  if (!family) return '';
+  return resolveBeautyCategoryPathPrefixFromText(family) || '';
+}
+
 function buildSearchQualityContract({
   rawQuery,
   conversationMessages = [],
@@ -444,6 +454,7 @@ function buildSearchQualityContract({
   market = null,
   source = null,
   allowContextBinding = true,
+  declaredTargetStepFamily = '',
 } = {}) {
   const understanding = understandShoppingQuery({
     rawQuery,
@@ -455,8 +466,14 @@ function buildSearchQualityContract({
   });
   const effectiveQuery = understanding.effective_query || understanding.corrected_query || understanding.raw_query || '';
   const normalized = normalizeQueryTextForUnderstanding(effectiveQuery);
+  // Text first, declared family only as a FILL-IN. A declared family never overrides a prefix the text
+  // already produced, so this can only add a constraint where there was none — it cannot move a search
+  // out of the category its own words asked for.
   const inferredCategoryPathPrefix =
-    understanding.category_path_prefix || resolveBeautyCategoryPathPrefixFromText(effectiveQuery) || null;
+    understanding.category_path_prefix ||
+    resolveBeautyCategoryPathPrefixFromText(effectiveQuery) ||
+    resolveBeautyCategoryPathPrefixFromDeclaredStepFamily(declaredTargetStepFamily) ||
+    null;
   const beautyBrandBrowse = resolveBeautyBrandBrowseQuery(effectiveQuery);
   const brandCandidates = Array.isArray(understanding.brand_candidates) ? understanding.brand_candidates : [];
   const brand = beautyBrandBrowse.matched
@@ -905,6 +922,7 @@ module.exports = {
   buildSearchQualityContract,
   normalizeQueryTextForUnderstanding,
   resolveBeautyCategoryPathPrefixFromText,
+  resolveBeautyCategoryPathPrefixFromDeclaredStepFamily,
   hasFragranceFreeSkincareSignal,
   hasFragranceProductQuerySignal,
   isStrictLipstickQuery,

@@ -306,6 +306,7 @@ const {
 } = require('./observability/pdpMetrics');
 const {
   normalizeRecommendationDecisionMode,
+  normalizeQueryStepStrength,
 } = require('./shared/recommendationDecisionCapability');
 const { maybeRerankFindProductsMultiResponse } = require('./findProductsMulti/rerankLlm');
 const { embedText } = require('./services/embeddings');
@@ -22645,6 +22646,29 @@ function getFallbackAdoptUsableThreshold({
   return baseThreshold;
 }
 
+// Canonical step families, taken from the one place that defines them so this cannot drift.
+const FIND_PRODUCTS_MULTI_STEP_FAMILY_ALLOWLIST = Object.freeze(
+  Object.keys(require('./auroraBff/recoTargetStep').CANONICAL_STEP_FAMILY_MAP),
+);
+
+// ALLOWLIST, not a coercer: an unrecognised value is DROPPED so the mainline keeps inferring the step
+// from text exactly as it does today. A caller cannot widen the vocabulary from the query string.
+function normalizeFindProductsMultiStepFamilyParam(value) {
+  const token = String(value == null ? '' : value).trim().toLowerCase();
+  if (!token) return '';
+  return FIND_PRODUCTS_MULTI_STEP_FAMILY_ALLOWLIST.includes(token) ? token : '';
+}
+
+// semantic_family is an open vocabulary (oil_control, barrier_repair, ...), so this is a SHAPE
+// allowlist: lowercase snake tokens only, bounded length. It reaches a JS post-filter and the semantic
+// contract derivation, never a SQL predicate.
+function normalizeFindProductsMultiSemanticFamilyParam(value) {
+  const token = String(value == null ? '' : value).trim().toLowerCase();
+  if (!token) return '';
+  if (token.length > 40) return '';
+  return /^[a-z][a-z0-9_]*$/.test(token) ? token : '';
+}
+
 function buildFindProductsMultiPayloadFromQuery(rawQuery, options = {}) {
   const query = rawQuery && typeof rawQuery === 'object' ? rawQuery : {};
   const search = {};
@@ -22695,6 +22719,26 @@ function buildFindProductsMultiPayloadFromQuery(rawQuery, options = {}) {
     firstQueryParamValue(query.external_seed_strategy || query.externalSeedStrategy) || '',
   ).trim();
   if (externalSeedStrategy) search.external_seed_strategy = externalSeedStrategy;
+
+  // Structured recall params. The Aurora reco recall client already SENDS these on every catalog
+  // search (src/auroraBff/routes.js ~5703-5713) and this builder parsed none of them, so the declared
+  // step was thrown away at the HTTP boundary and the mainline re-inferred it from query text that the
+  // planner had already polluted. All three are OPTIONAL and allowlist-normalized: an unknown or
+  // malformed value is dropped, never forwarded, so every existing caller is unaffected.
+  const targetStepFamily = normalizeFindProductsMultiStepFamilyParam(
+    firstQueryParamValue(query.target_step_family || query.targetStepFamily),
+  );
+  if (targetStepFamily) search.target_step_family = targetStepFamily;
+
+  const semanticFamily = normalizeFindProductsMultiSemanticFamilyParam(
+    firstQueryParamValue(query.semantic_family || query.semanticFamily),
+  );
+  if (semanticFamily) search.semantic_family = semanticFamily;
+
+  const queryStepStrength = normalizeQueryStepStrength(
+    firstQueryParamValue(query.query_step_strength || query.queryStepStrength),
+  );
+  if (queryStepStrength) search.query_step_strength = queryStepStrength;
 
   const limit = parseQueryNumber(query.limit ?? query.page_size);
   if (limit !== undefined) search.limit = Math.max(1, Math.min(SEARCH_LIMIT_MAX, Math.floor(limit)));

@@ -1652,6 +1652,61 @@ function normalizeSemanticQueryLabel(value) {
     .toLowerCase();
 }
 
+// Structural tokens that identify a role's POSITION in a plan, not the product being asked for.
+// A role id is an identifier; these tokens are part of the identifier and must never survive into a
+// query string. `cleanser_primary` -> "cleanser primary", and "primary" is 7 characters and not a
+// search stopword, so it becomes a first-class significant token: it kills the phrase arm
+// (`LIKE '%cleanser primary%'` matches no title), zeroes the all-token coverage arm (the AND-chain
+// then requires "%primary%" in the title or brand), raises the token-overlap threshold, and eats one
+// of the six token slots — while paying the full union scan cost.
+// NOTE: 'first' is deliberately NOT here — "first essence" is a real product noun and a real entry in
+// STEP_QUERY_ALIASES.essence, so stripping it would lose a query rather than clean one.
+const SEMANTIC_ROLE_STRUCTURAL_TOKENS = new Set([
+  'primary', 'secondary', 'tertiary', 'support', 'supporting', 'core', 'main', 'slot', 'role', 'rank',
+]);
+
+// The query anchor for a bare step family, when the family token alone is not the noun a shopper (or
+// a product title) would use. MUST stay in sync with STEP_QUERY_ALIASES[step][0] in
+// src/auroraBff/recommendationSharedStack.js — a test asserts the two agree, so drift fails CI rather
+// than silently degrading recall.
+const STEP_FAMILY_QUERY_ANCHORS = Object.freeze({
+  oil: 'face oil',
+});
+
+function resolveStepFamilyQueryAnchor(targetStepFamily) {
+  const family = normalizeSemanticStepFamily(targetStepFamily);
+  if (!family) return '';
+  return STEP_FAMILY_QUERY_ANCHORS[family] || family;
+}
+
+// Turn a role id into query TEXT. Strips the structural tokens above, then falls back to the step
+// family's anchor when nothing usable survives (or when the survivor is just the bare family).
+function normalizeSemanticRoleQueryLabel(roleId, targetStepFamily = '') {
+  const label = normalizeSemanticQueryLabel(roleId);
+  const anchor = resolveStepFamilyQueryAnchor(targetStepFamily);
+  if (!label) return anchor;
+  const kept = label
+    .split(' ')
+    .filter((token) => token && !SEMANTIC_ROLE_STRUCTURAL_TOKENS.has(token));
+  const stripped = kept.join(' ').trim();
+  if (!stripped) return anchor;
+  // The role id carried no information beyond the family it belongs to -> use the family's anchor.
+  // Anything richer than the bare family token (e.g. "daily sunscreen", "barrier repair moisturizer")
+  // is a real query and is kept verbatim.
+  if (anchor && stripped === normalizeSemanticStepFamily(targetStepFamily)) return anchor;
+  return stripped;
+}
+
+// A "generic anchor" is the bare, undecorated query for a step family. It is the one query in a pack
+// that is guaranteed to be a real product noun, so the substring dedupe must never let a decorated
+// sibling suppress it — nor may it suppress a more specific query in turn.
+function isGenericSemanticAnchorLabel(value, targetStepFamily = '') {
+  const normalized = normalizeSemanticQueryLabel(value);
+  if (!normalized) return false;
+  const anchor = resolveStepFamilyQueryAnchor(targetStepFamily);
+  return Boolean(anchor) && normalized === anchor;
+}
+
 function normalizeSemanticContractIdentifier(value, fallback = '') {
   const normalized = String(value || '')
     .trim()
@@ -2032,9 +2087,21 @@ function buildDeterministicStrictSemanticQueryPack({
   const push = (value) => {
     const normalized = normalizeSemanticQueryLabel(value);
     if (!normalized) return;
-    if (out.some((item) => item === normalized || item.includes(normalized) || normalized.includes(item))) {
-      return;
-    }
+    if (out.includes(normalized)) return;
+    // Substring dedupe, with one exemption. The bare family anchor ("cleanser") and a decorated
+    // sibling ("cleanser sensitive skin") are NOT redundant with each other: the anchor is the only
+    // query guaranteed to hit the phrase / all-token-coverage / title-dominance arms, while the
+    // decorated one carries the caller's constraint. The unexempted rule dropped whichever of the two
+    // arrived second, which is how a junk role label ("cleanser primary") could delete the honest
+    // "cleanser" from the pack entirely.
+    const incomingIsAnchor = isGenericSemanticAnchorLabel(normalized, targetStepFamily);
+    const redundant = out.some((item) => {
+      if (!(item.includes(normalized) || normalized.includes(item))) return false;
+      if (incomingIsAnchor) return false;
+      if (isGenericSemanticAnchorLabel(item, targetStepFamily)) return false;
+      return true;
+    });
+    if (redundant) return;
     out.push(normalized);
   };
   const pushExactUnique = (value) => {
@@ -2046,7 +2113,12 @@ function buildDeterministicStrictSemanticQueryPack({
 
   const raw = normalizeSemanticQueryLabel(rawQuery);
   const targetStepFamily = normalizeSemanticStepFamily(contract?.target_step_family);
-  const primaryRoleLabel = normalizeSemanticQueryLabel(contract?.primary_role_id);
+  // Role ids are IDENTIFIERS, not query text. `${family}_primary` must never reach the search as
+  // "cleanser primary" — see SEMANTIC_ROLE_STRUCTURAL_TOKENS for what that costs.
+  const primaryRoleLabel = normalizeSemanticRoleQueryLabel(
+    contract?.primary_role_id,
+    targetStepFamily,
+  );
   const semanticFamily = normalizeSemanticQueryLabel(contract?.semantic_family);
   const concernClass =
     normalizeSemanticContractIdentifier(
@@ -2129,7 +2201,7 @@ function buildDeterministicStrictSemanticQueryPack({
       Number(ambiguityScorePre) >= 0.7 &&
       targetStepFamily
     ) {
-      push(targetStepFamily);
+      push(resolveStepFamilyQueryAnchor(targetStepFamily));
     }
     return out.slice(0, 3);
   }
@@ -2237,7 +2309,9 @@ function buildDeterministicStrictSemanticQueryPack({
     }
     push(raw);
   } else if (targetStepFamily) {
-    push(targetStepFamily);
+    // The family ANCHOR, not the bare family token: for "oil" the bare token is a substring of
+    // ordinary words like "oily", which the substring dedupe would then use to delete real queries.
+    push(resolveStepFamilyQueryAnchor(targetStepFamily));
     push(raw);
   } else {
     push(raw);
@@ -2249,7 +2323,7 @@ function buildDeterministicStrictSemanticQueryPack({
     Number(ambiguityScorePre) >= 0.7 &&
     targetStepFamily
   ) {
-    push(targetStepFamily);
+    push(resolveStepFamilyQueryAnchor(targetStepFamily));
   }
 
   return out.slice(0, 3);
@@ -4453,6 +4527,11 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
     sessionRecentQueries,
     market: search?.market || payload?.market || metadata?.market,
     source: metadata?.source || search?.source || payload?.source,
+    // Honour a DECLARED step family as a fill-in when the text yields no category prefix. Before this,
+    // the declared family was carried on `search` and then dropped: the prefix was a function of query
+    // text alone, and the reco planner had already replaced that text with its own pack.
+    declaredTargetStepFamily:
+      String(search?.target_step_family || search?.targetStepFamily || '').trim(),
   });
   const latestUserQuery = queryUnderstanding?.effective_query || rawLatestUserQuery;
   const recentQueries =
@@ -6363,6 +6442,10 @@ module.exports = {
   BEAUTY_DISCOVERY_MAINLINE_OWNER,
   buildBeautyDiscoverySemanticContract,
   buildBeautyDiscoveryQueryPackFromContract,
+  normalizeSemanticRoleQueryLabel,
+  resolveStepFamilyQueryAnchor,
+  STEP_FAMILY_QUERY_ANCHORS,
+  SEMANTIC_ROLE_STRUCTURAL_TOKENS,
   isBeautyDiscoverySemanticContract,
   hasFashionConstraintQuerySignal,
   pruneRecentQueries,

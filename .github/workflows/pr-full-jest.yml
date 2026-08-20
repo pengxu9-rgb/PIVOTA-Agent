@@ -453,6 +453,21 @@ jobs:
       # exfoliant vocabulary, unanchor its regex, append instead of unshift the need seeds, treat
       # maxQueries=0 as zero, skip boilerplate/price stripping, drop the need seed + budget) and all
       # eleven fail the suite.
+      # ADDED 2026-08-20: `tests/reco_recall_honest_queries`, confirmed green (18/18). The step-aware
+      # recall pack was anchored on a SYNTHESIZED role id — recoRecallPlanner builds
+      # `${targetStepFamily}_primary` and normalizeSemanticQueryLabel turned that IDENTIFIER into query
+      # TEXT ("cleanser primary"). "primary" is 7 chars and not a search stopword, so it is a
+      # first-class significant token: it kills the phrase arm (no title contains the literal run),
+      # zeroes the all-token coverage arm (the AND-chain then requires "%primary%" in title or brand),
+      # raises the ceil(n*0.5) overlap threshold and eats one of six token slots — while paying the
+      # full union scan cost. The pack's substring dedupe then deleted the honest bare "cleanser".
+      # Twelve mutants were run (revert the role-label sanitizer, remove the dedupe anchor exemption,
+      # delete the dedupe outright, always return the family anchor, drop the oil anchor override, add
+      # 'first' to the structural tokens, coerce instead of allowlist on each of the two new step
+      # params, let a declared family override text, ignore the declared family, always-set the new
+      # keys, leave query_step_strength unvalidated) and all twelve fail the suite. The blast radius of
+      # the dedupe change was MEASURED, not reasoned: 4,320 contract combinations diffed old vs new,
+      # ZERO packs lost a non-structural query and zero shrank.
       - name: Run node:test suites
         run: |
           node --test \
@@ -517,7 +532,8 @@ jobs:
             tests/recommendations_internal_key_double_send.node.test.cjs \
             tests/aurora_surface_auth.node.test.cjs \
             tests/aurora_surface_auth_rollup.node.test.cjs \
-            tests/reco_direct_recall_before_llm.node.test.cjs
+            tests/reco_direct_recall_before_llm.node.test.cjs \
+            tests/reco_recall_honest_queries.node.test.cjs
 
   jest:
     runs-on: ubuntu-latest
