@@ -51,6 +51,15 @@ OPENAI_API_KEY=<your-openai-key>      # From platform.openai.com
 # host and the console goes dark. It 404s on the PUBLIC_READ_MCP_HOSTS names regardless of this key.
 PIVOTA_UI_CHAT_INTERNAL_KEY=<random-32-byte-hex>   # openssl rand -hex 32; send as X-Internal-Key
 
+# Aurora BFF host denylist (/v1, /v2, /metrics)
+# The Aurora surface is gated only by a client-invented X-Aurora-UID and 9 of its routes reach an
+# LLM, so it must not be served on branded public names. PUBLIC_READ_MCP_HOSTS is ALWAYS refused and
+# needs no entry here. Optional, default empty: list any OTHER hostname to refuse.
+# NOTE gateway.pivota.cc is intentionally absent — the R1 migration is pointing consumers AT it
+# (pivota-agent-ui #308: /v1/analysis/skin, /v1/photos/upload; pivota-backend-gcp:
+# /v1/recommendations/*). Add it once those are reconciled.
+AURORA_SURFACE_DENIED_HOSTS=
+
 # Gateway Configuration
 PIVOTA_GATEWAY_URL=<your-gateway-url>  # e.g., https://your-domain.com/agent/shop/v1/invoke
 

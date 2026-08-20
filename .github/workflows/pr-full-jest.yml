@@ -403,6 +403,15 @@ jobs:
       # refusal has an observable difference from a permission; six mutants were run against it (drop the
       # host branch, AND in isPublicReadMcpEnabled, fall open on an unconfigured key, drop the static host
       # gate, delete the guard block) and all six fail the suite.
+      # ADDED 2026-08-20: `tests/aurora_surface_host_guard`, confirmed green (15/15). Phase 0 of the
+      # anonymous-LLM work: the Aurora BFF surface is mounted on the bare app and gated only by
+      # requireAuroraUid() — a client-invented X-Aurora-UID that sits in the CORS allow-list, not a
+      # credential — while 9 of its /v1 routes reach an LLM. Measured on prod: POST /v1/chat with {} and
+      # no credential answered 400 carrying a full Aurora envelope on mcp.pivota.cc and
+      # gateway.pivota.cc. The suite reads that envelope as the signal that the handler was REACHED, so
+      # every refusal is observably distinct from a permission, and the positive control asserts it.
+      # Eleven mutants run; all eleven fail the suite. Note the surface is matched by PREFIX, and a test
+      # pins that an invented /v1 path is refused, so a route added later defaults to closed.
       - name: Run node:test suites
         run: |
           node --test \
@@ -461,7 +470,8 @@ jobs:
             tests/acp_spt_gateway_handoff.node.test.cjs \
             tests/integration/agent_checkout_acp_ucp_doors.node.test.cjs \
             mcp-server/test/ucpSpecVersion.test.js \
-            tests/ui_chat_access_guard.node.test.cjs
+            tests/ui_chat_access_guard.node.test.cjs \
+            tests/aurora_surface_host_guard.node.test.cjs
 
   jest:
     runs-on: ubuntu-latest
