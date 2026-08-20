@@ -8,6 +8,11 @@
 //     items with no identity are dropped (and counted); limit is honoured; metadata carries confidence_overall,
 //     missing_info, warnings
 //  4. the lane throwing ⇒ empty + 'lane_unavailable' (never a tool error)
+//  4b. a structured price ceiling (price_max/max_price/budget, NUMERIC) is enforced deterministically
+//     against the grounded catalog price: conforming items fill the limit first, a violating item is kept
+//     only in a leftover slot with fit=low + machine-readable constraint_violations + a leading watchout,
+//     and its false budget-fit why[] lines are stripped IN THE BRIDGE (the sanitizer is never asked to
+//     catch this). Free-text budgets are out of scope: no parsing of prose.
 //  5. through createCommerceToolSurface: the tool is listed with the strict schema, toParams keeps need /
 //     constraints / language / limit (and clones constraints), and the SANITIZER keeps why/fit/grounding/
 //     confidence_overall while the projector never places a bare `confidence`/`score` on a product node
@@ -17,7 +22,7 @@ const assert = require('node:assert/strict');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 
-const { makeRecommendProducts, recommendationItemToSignal, normalizeConstraints, agentLaneUid } = require('../src/agentSignals/recommendProducts');
+const { makeRecommendProducts, recommendationItemToSignal, normalizeConstraints, agentLaneUid, extractPriceMax } = require('../src/agentSignals/recommendProducts');
 
 function laneResult(items, extra = {}) {
   return {
@@ -210,6 +215,85 @@ test('3c. the need text is scrubbed by the sanitizer — it must never sit under
   const out = await surface.callTool('recommend_products', { need }, { agent_id: 'agent_a' });
   const text = JSON.stringify(out);
   assert.equal(text.includes('4111111111111111'), false, 'a PAN in the need must be redacted everywhere it is echoed');
+});
+
+// THE LIVE FAILURE, AS A FIXTURE (2026-08-20): "under $40" answered with a $45 product
+// (sig_2c7636bb109fc25526b6bd799a5f08a9) whose why[] asserted budget fit. This item must never again
+// leave the bridge as fit=high with that line intact when a structured ceiling is present.
+const ITEM_OVERPRICED = {
+  step: 'treatment',
+  score: 90,
+  name: 'Gentle PHA Exfoliant',
+  sku: { product_id: 'sig_2c7636bb', name: 'Gentle PHA Exfoliant' },
+  reasons: ['Fits comfortably within the under $40 budget constraint', 'PHA is the gentlest exfoliating acid'],
+  notes: ['a great price for the size'],
+  price: { amount: 45, currency: 'USD' },
+  url: 'https://shop.example/p/sig_2c7636bb',
+};
+
+test('4b. mutant-killer: a $45 product against price_max 40 never passes as a clean fit', async () => {
+  const h = makeRecommendProducts({ generate: async () => laneResult([ITEM_OVERPRICED, ITEM_FULL]), isEnabled: () => true });
+  const res = await h({ payload: { need: 'a gentle exfoliant for sensitive skin under $40', constraints: { price_max: 40 } } }, { agent_id: 'agent_a' });
+
+  // conforming items fill the shortlist FIRST — the lane ranked the violator #1, the bridge does not
+  assert.equal(res.signals.length, 2);
+  assert.equal(res.signals[0].subject.id, 'sig_abc');
+  assert.equal(res.signals[0].value.rank, 1);
+  assert.equal(res.signals[0].value.fit.level, 'high', 'a conforming item is untouched');
+  assert.equal(res.signals[0].value.constraint_violations, undefined);
+
+  const v = res.signals[1];
+  assert.equal(v.subject.id, 'sig_2c7636bb');
+  assert.equal(v.value.rank, 2);
+  assert.notEqual(v.value.fit.level, 'high', 'the violating item must not pass as fit=high');
+  assert.equal(v.value.fit.level, 'low');
+  assert.deepEqual(v.value.constraint_violations, [{ constraint: 'price_max', limit: 40, price: 45, currency: 'USD' }]);
+  assert.equal(v.value.watchouts[0], 'exceeds price_max 40: price 45 USD', 'the marker leads so the cap cannot truncate it');
+  assert.equal(v.value.why.some((line) => /budget|price/i.test(line)), false, 'the false budget-fit claim is stripped in the bridge');
+  assert.deepEqual(v.value.why, ['PHA is the gentlest exfoliating acid'], 'true non-price reasons survive');
+  assert.deepEqual(v.value.notes, [], 'price-praising notes on a violator are stripped too');
+
+  assert.equal(res.metadata.price_max_enforced, 40);
+  assert.equal(res.metadata.constraint_violations_returned, 1);
+});
+
+test('4c. a violator only takes a LEFTOVER slot — it can never displace a conforming item', async () => {
+  const h = makeRecommendProducts({ generate: async () => laneResult([ITEM_OVERPRICED, ITEM_FULL, ITEM_INTERNAL]), isEnabled: () => true });
+  const res = await h({ payload: { need: 'exfoliant', constraints: { max_price: 40 }, limit: 2 } }, { agent_id: 'agent_a' });
+  assert.deepEqual(res.signals.map((s) => s.subject.id), ['sig_abc', 'sig_int'], 'two conforming items fill limit=2; the violator is dropped');
+  assert.equal(res.metadata.constraint_violations_returned, 0);
+  assert.equal(res.metadata.price_max_enforced, 40);
+  assert.equal(res.signals.every((s) => s.value.constraint_violations === undefined), true);
+});
+
+test('4d. free-text-only budget is OUT of scope: no prose parsing, no enforcement', async () => {
+  const h = makeRecommendProducts({ generate: async () => laneResult([ITEM_OVERPRICED]), isEnabled: () => true });
+  const res = await h({ payload: { need: 'a gentle exfoliant under $40', constraints: { budget: 'under $40' } } }, { agent_id: 'agent_a' });
+  const s = res.signals[0];
+  assert.equal(s.value.fit.level, 'high', 'no structured ceiling ⇒ the bridge must not guess one from prose');
+  assert.equal(s.value.constraint_violations, undefined);
+  assert.deepEqual(s.value.why, ['Fits comfortably within the under $40 budget constraint', 'PHA is the gentlest exfoliating acid']);
+  assert.equal(res.metadata.price_max_enforced, undefined);
+  assert.equal(res.metadata.constraint_violations_returned, undefined);
+});
+
+test('4e. extractPriceMax: numeric ceilings only, key variants, smallest wins, prose refused', () => {
+  assert.equal(extractPriceMax({ price_max: 40 }), 40);
+  assert.equal(extractPriceMax({ max_price: '38', budget: 45 }), 38, 'numeric strings count; the smallest ceiling wins');
+  assert.equal(extractPriceMax({ 'price-max': 40 }), 40, 'separator variants canonicalize');
+  assert.equal(extractPriceMax({ budget: 'under $40' }), null, 'free text is never parsed');
+  assert.equal(extractPriceMax({ price_max: 0 }), null);
+  assert.equal(extractPriceMax({ price_max: -5 }), null);
+  assert.equal(extractPriceMax({ avoid: 'fragrance' }), null);
+  assert.equal(extractPriceMax(undefined), null);
+  // an item with no verifiable price is left alone (ungrounded items carry no price by construction)
+  const noPrice = { name: 'Named but unresolved', grounding_status: 'ungrounded', reasons: ['gentle'] };
+  const h = makeRecommendProducts({ generate: async () => laneResult([noPrice]), isEnabled: () => true });
+  return h({ payload: { need: 'x', constraints: { price_max: 40 } } }, {}).then((res) => {
+    assert.equal(res.signals[0].value.constraint_violations, undefined);
+    assert.equal(res.signals[0].value.fit.level, null);
+    assert.equal(res.metadata.constraint_violations_returned, 0);
+  });
 });
 
 test('4. the lane throwing is an empty, reasoned answer — not a tool error', async () => {

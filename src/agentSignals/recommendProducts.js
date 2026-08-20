@@ -79,6 +79,59 @@ function finiteNumber(v) {
   return null;
 }
 
+// Structured price-ceiling constraint keys (canonicalized: lowercased, separators removed). Only a
+// NUMERIC value under one of these counts — `budget: "under $40"` is free text the LLM may honour or
+// not, and parsing dollar amounts out of prose is exactly the guessing this pass must not do.
+const PRICE_MAX_KEYS = new Set(['pricemax', 'maxprice', 'budget', 'budgetmax', 'maxbudget', 'pricelimit', 'priceceiling']);
+// A why/notes line that asserts price/budget fit. Only consulted on an item that FAILED the price
+// comparison, where any such claim is by definition false or unverifiable.
+const BUDGET_FIT_CLAIM_RE = /budget|price|afford|cheap|inexpensive|\$\s*\d/i;
+
+/**
+ * The buyer's structured price ceiling, read from the RAW constraints object (pre-normalization, so a
+ * numeric 40 is still a number). Returns the smallest recognized ceiling, or null when none is present.
+ */
+function extractPriceMax(raw) {
+  if (!isPlainObject(raw)) return null;
+  let min = null;
+  for (const [key, value] of Object.entries(raw)) {
+    const k = str(key).toLowerCase().replace(/[^a-z]/g, '');
+    if (!PRICE_MAX_KEYS.has(k)) continue;
+    const n = finiteNumber(value);
+    if (n === null || n <= 0) continue;
+    if (min === null || n < min) min = n;
+  }
+  return min;
+}
+
+/**
+ * Deterministic enforcement of a structured price ceiling against the GROUNDED catalog price on a
+ * projected signal — the check the LLM cannot be trusted to do (live 2026-08-20: a $45 product answered
+ * "under $40" with a why[] line claiming budget fit). An item whose price is unknown cannot be verified
+ * and is left alone; ungrounded items carry no price by construction.
+ */
+function violatesPriceMax(signal, priceMax) {
+  const price = signal?.value?.product?.price;
+  return typeof price === 'number' && price > priceMax;
+}
+
+/** Mark a violating signal in place: fit downgraded, machine-readable violation, false why lines stripped. */
+function markPriceViolation(signal, priceMax) {
+  const v = signal.value;
+  const price = v.product.price;
+  const currency = v.product.currency;
+  // Any budget/price-fit claim on an item that FAILED the comparison is false — strip rather than
+  // forward it to a partner agent that will trust it. This is the bridge's job, not the sanitizer's.
+  v.why = v.why.filter((line) => !BUDGET_FIT_CLAIM_RE.test(line));
+  v.notes = v.notes.filter((line) => !BUDGET_FIT_CLAIM_RE.test(line));
+  const marker = `exceeds price_max ${priceMax}: price ${price}${currency ? ` ${currency}` : ''}`;
+  // The marker leads so the 6-item watchouts cap can never truncate it away.
+  v.watchouts = dedupe([marker, ...v.watchouts]).slice(0, 6);
+  v.fit = { ...v.fit, level: 'low' };
+  v.constraint_violations = [{ constraint: 'price_max', limit: priceMax, price, currency: currency || null }];
+  return signal;
+}
+
 /**
  * The agent's uid for the lane: namespaced, stable per calling agent, never a consumer uid.
  *
@@ -295,12 +348,35 @@ function makeRecommendProducts(deps = {}) {
     const norm = isPlainObject(result?.norm) ? result.norm : null;
     const payload = isPlainObject(norm?.payload) ? norm.payload : isPlainObject(norm) ? norm : {};
     const items = Array.isArray(payload.recommendations) ? payload.recommendations : [];
-    const signals = [];
+    // DETERMINISTIC CONSTRAINT ENFORCEMENT. The lane only ever sees constraints as prompt text
+    // (normalizeConstraints → buildAsk), so nothing upstream guarantees the shortlist honours them —
+    // live 2026-08-20 a "under $40" need answered with a $45 product whose why[] asserted budget fit.
+    // With a structured price ceiling present, verified-conforming items fill the limit FIRST (lane
+    // order preserved); violating items are kept only in slots left over, each carrying an explicit
+    // machine-readable violation — so a near-miss is still visible when the shortlist is thin, but can
+    // never displace a conforming item, and never travels as a clean recommendation.
+    const priceMax = extractPriceMax(isPlainObject(p.constraints) ? p.constraints : null);
+    const projected = [];
     for (const item of items) {
-      const s = recommendationItemToSignal(item, { rank: signals.length + 1 });
-      if (s) signals.push(s);
-      if (signals.length >= limit) break;
+      const s = recommendationItemToSignal(item, {});
+      if (s) projected.push(s);
+      if (priceMax === null && projected.length >= limit) break;
     }
+    let signals;
+    let violationsReturned = 0;
+    if (priceMax === null) {
+      signals = projected;
+    } else {
+      const conforming = projected.filter((s) => !violatesPriceMax(s, priceMax));
+      signals = conforming.slice(0, limit);
+      for (const s of projected) {
+        if (signals.length >= limit) break;
+        if (!violatesPriceMax(s, priceMax)) continue;
+        signals.push(markPriceViolation(s, priceMax));
+        violationsReturned += 1;
+      }
+    }
+    signals.forEach((s, i) => { s.value.rank = i + 1; });
     const meta = isPlainObject(payload.recommendation_meta) ? payload.recommendation_meta : {};
     const confidence = finiteNumber(payload.confidence);
 
@@ -322,10 +398,14 @@ function makeRecommendProducts(deps = {}) {
         products_empty_reason: signals.length === 0 ? firstString(payload.products_empty_reason, result?.upstreamFailureCode) || 'no_recommendations' : null,
         vertical: 'beauty',
         latency_ms: latencyMs,
+        // The ceiling this pass actually enforced (null = no structured ceiling, nothing was checked)
+        // and how many returned signals carry a price violation marker — so a partner agent can tell
+        // "all conforming" from "the shortlist includes flagged near-misses" without rescanning items.
+        ...(priceMax !== null ? { price_max_enforced: priceMax, constraint_violations_returned: violationsReturned } : {}),
         ...(signals.length === 0 && items.length > 0 ? { dropped_unidentified_items: items.length } : {}),
       },
     };
   };
 }
 
-module.exports = { makeRecommendProducts, recommendationItemToSignal, normalizeConstraints, agentLaneUid };
+module.exports = { makeRecommendProducts, recommendationItemToSignal, normalizeConstraints, agentLaneUid, extractPriceMax };
