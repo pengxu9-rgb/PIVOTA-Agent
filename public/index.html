@@ -144,9 +144,24 @@
       const keyEl = document.getElementById("internalKey");
 
       // Survives a reload of this tab and nothing more.
-      keyEl.value = sessionStorage.getItem("pivotaUiChatInternalKey") || "";
+      //
+      // Both calls are guarded: sessionStorage THROWS (not returns null) when storage is blocked for
+      // the site — "block all cookies" in Chrome, the Firefox/Safari equivalents, a sandboxed iframe
+      // without allow-same-origin. This is module top-level code and the send/keydown listeners are
+      // registered below it, so an unguarded throw here would abort the module and leave a page that
+      // renders perfectly and whose Send button does nothing, with the only evidence in the console.
+      // Persistence is a convenience; losing it must never cost the operator the console.
+      try {
+        keyEl.value = sessionStorage.getItem("pivotaUiChatInternalKey") || "";
+      } catch {
+        /* storage blocked — the operator retypes the key each load */
+      }
       keyEl.addEventListener("change", () => {
-        sessionStorage.setItem("pivotaUiChatInternalKey", keyEl.value.trim());
+        try {
+          sessionStorage.setItem("pivotaUiChatInternalKey", keyEl.value.trim());
+        } catch {
+          /* see above */
+        }
       });
 
       /** 本地维护的对话消息数组（不包含 system） */

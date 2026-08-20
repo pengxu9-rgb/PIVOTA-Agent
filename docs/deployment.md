@@ -46,6 +46,11 @@ PIVOTA_API_KEY=<your-api-key>          # From Pivota console
 # OpenAI Configuration (for /ui/chat)
 OPENAI_API_KEY=<your-openai-key>      # From platform.openai.com
 
+# Internal shopping-agent console access (/ and /ui/chat)
+# REQUIRED. /ui/chat runs an LLM agent loop, so it is fail-closed: unset, the route 404s on every
+# host and the console goes dark. It 404s on the PUBLIC_READ_MCP_HOSTS names regardless of this key.
+PIVOTA_UI_CHAT_INTERNAL_KEY=<random-32-byte-hex>   # openssl rand -hex 32; send as X-Internal-Key
+
 # Gateway Configuration
 PIVOTA_GATEWAY_URL=<your-gateway-url>  # e.g., https://your-domain.com/agent/shop/v1/invoke
 

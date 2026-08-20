@@ -32,19 +32,28 @@ process.env.PUBLIC_READ_MCP_HOSTS = 'mcp.pivota.cc';
 // in server.js uses — would re-open the LLM the moment the read tier went dark.
 delete process.env.PUBLIC_READ_MCP_ENABLED;
 
-// No provider credentials: see the header note. Vertex is switched off explicitly because
-// credentialsAvailable() consults ADC instead of a key when VERTEX_AI_ENABLED is true.
-delete process.env.OPENAI_API_KEY;
-delete process.env.GEMINI_API_KEY;
-delete process.env.PIVOTA_GEMINI_API_KEY;
-delete process.env.GOOGLE_API_KEY;
-delete process.env.VERTEX_AI_ENABLED;
-delete process.env.PIVOTA_UI_CHAT_LLM_PROVIDER;
 delete process.env.PIVOTA_UI_CHAT_INTERNAL_KEY;
 
 const app = require('../src/server');
 
-const KEY = 'test-internal-key-0123456789';
+// Deliberately AFTER the require, and assigned rather than deleted.
+//
+// src/server.js:6 calls require('dotenv').config(). dotenv does not overwrite a variable that is
+// already set — but a variable this file DELETED is not set, so a .env in the working directory
+// (gitignored, and present on most dev machines) silently refills OPENAI_API_KEY during that
+// require. Deleting these before the require therefore does nothing on exactly the machines where
+// it matters most: the suite stays green, the positive control's 500 starts coming from a live
+// call to api.openai.com instead of an unconfigured client, and with a VALID key in .env the route
+// answers 200, the control fails for a reason unrelated to the guard, and it costs money to find
+// out. Assigning '' afterwards cannot be undone by dotenv and pins the provider either way.
+process.env.PIVOTA_UI_CHAT_LLM_PROVIDER = 'openai';
+process.env.OPENAI_API_KEY = '';
+process.env.GEMINI_API_KEY = '';
+process.env.PIVOTA_GEMINI_API_KEY = '';
+process.env.GOOGLE_API_KEY = '';
+process.env.VERTEX_AI_ENABLED = '';
+
+const KEY = 'Test-Internal-Key-AbCdEf0123456789';
 const PUBLIC_HOST = 'mcp.pivota.cc';
 const INTERNAL_HOST = 'commerce.mcp.pivota.cc';
 const BODY = { messages: [{ role: 'user', content: 'hello' }] };
@@ -133,6 +142,70 @@ test('a configured key cannot re-open the identity anchor', async () => {
   assertNoLlmAnswer(resp);
 });
 
+test('the public host 404s while a key IS configured — this is what prod actually runs', async () => {
+  // The single most load-bearing case, and the one the rest of this file could not see. Every other
+  // public-host test here leaves the key UNSET, so its 404 is equally explained by branch 2's
+  // key_not_configured — they cannot tell the two branches apart. Now that
+  // PIVOTA_UI_CHAT_INTERNAL_KEY is set on the service, "key configured" is the ONLY state the
+  // public host will ever be in, and a guard whose branches were ordered the other way round would
+  // answer 401 here: advertising the surface on the identity anchor, which is the exact thing the
+  // 404-not-401 choice exists to prevent.
+  withKey(KEY);
+  const resp = await supertest(app).post('/ui/chat').set('Host', PUBLIC_HOST).send(BODY);
+  assert.equal(resp.status, 404);
+  assertNoLlmAnswer(resp);
+});
+
+test('a Host carrying a port is still the public host', async () => {
+  // isPublicReadMcpHostRequest strips the port with .split(':')[0]. Nothing exercised that, so
+  // dropping it would have turned `Host: mcp.pivota.cc:443` into an internal host.
+  withKey(KEY);
+  const resp = await supertest(app).post('/ui/chat').set('Host', `${PUBLIC_HOST}:443`).send(BODY);
+  assert.equal(resp.status, 404);
+  assertNoLlmAnswer(resp);
+});
+
+test('the refused host set comes from PUBLIC_READ_MCP_HOSTS, not from a hardcoded name', async () => {
+  // publicReadMcpHosts() DEFAULTS to 'mcp.pivota.cc', so setting the env var to that same value
+  // asserts nothing whatsoever — a call site that hardcoded the literal would pass every other test
+  // in this file. Point the env at a different name and both directions have to move with it.
+  withKey(KEY);
+  process.env.PUBLIC_READ_MCP_HOSTS = 'gateway.pivota.cc';
+  try {
+    const nowPublic = await supertest(app).post('/ui/chat').set('Host', 'gateway.pivota.cc').send(BODY);
+    assert.equal(nowPublic.status, 404, 'the configured host must be refused');
+    assertNoLlmAnswer(nowPublic);
+
+    // ...and the name that is no longer in the list must fall through to branch 2, not stay 404.
+    const noLongerPublic = await supertest(app).post('/ui/chat').set('Host', PUBLIC_HOST).send(BODY);
+    assert.equal(noLongerPublic.status, 401, 'a host outside the list must reach the key check');
+  } finally {
+    process.env.PUBLIC_READ_MCP_HOSTS = PUBLIC_HOST;
+  }
+});
+
+test('the key comparison is case-SENSITIVE on the value', async () => {
+  withKey(KEY);
+  const resp = await supertest(app)
+    .post('/ui/chat')
+    .set('Host', INTERNAL_HOST)
+    .set('X-Internal-Key', KEY.toLowerCase())
+    .send(BODY);
+  assert.equal(resp.status, 401);
+  assertNoLlmAnswer(resp);
+});
+
+test('a whitespace-only key counts as unconfigured, not as a key', async () => {
+  withKey('   ');
+  const resp = await supertest(app)
+    .post('/ui/chat')
+    .set('Host', INTERNAL_HOST)
+    .set('X-Internal-Key', '   ')
+    .send(BODY);
+  assert.equal(resp.status, 404, 'a blank key must fail closed, never become a matchable secret');
+  assertNoLlmAnswer(resp);
+});
+
 test('darkening the read tier does not re-open /ui/chat on the public host', async () => {
   withKey(null);
   process.env.PUBLIC_READ_MCP_ENABLED = '0';
@@ -193,6 +266,14 @@ test('the internal UI page is still served on an internal host', async () => {
 });
 
 // ---- positive control ---------------------------------------------------------------------------
+
+test('the provider env this file depends on is actually unconfigured', () => {
+  // If this ever fails, the positive control below has quietly stopped meaning what it says and is
+  // talking to a real provider. Fail here, loudly, rather than there, expensively.
+  for (const name of ['OPENAI_API_KEY', 'GEMINI_API_KEY', 'PIVOTA_GEMINI_API_KEY', 'GOOGLE_API_KEY']) {
+    assert.equal(process.env[name], '', `${name} must be empty for the positive control to mean anything`);
+  }
+});
 
 test('with the right key on an internal host the request DOES reach the agent loop', async () => {
   // 500 because no LLM provider is configured in this file — that is the point. It is the observable
