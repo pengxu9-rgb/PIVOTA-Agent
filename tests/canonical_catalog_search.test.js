@@ -893,8 +893,16 @@ describe('canonicalCatalogSearch recall_doc match lane (ADR-020, flag-gated)', (
     expect(query.calls[0].sql).toMatch(/p\.recall_doc LIKE ANY/);
   });
 
-  test('flag on + categoryPathPrefix -> no recall_doc arm and no orphan binds (08P01 guard)', async () => {
+  // The recall-doc arm's presence under a category prefix follows the
+  // category-browse text union, because that is what decides whether the text
+  // branch of whereClause is used at all. Both sides are driven: with the
+  // union ON the arm belongs in the statement, with the kill-switch thrown it
+  // must not be built. The 08P01 pin (highest $n referenced === params
+  // supplied) is asserted on BOTH — that invariant is what these tests exist
+  // for and it holds either way.
+  test('flag on + categoryPathPrefix + union ON -> recall_doc arm present, binds integral (08P01 guard)', async () => {
     process.env[FLAG] = 'enabled';
+    delete process.env.CANONICAL_CATALOG_CATEGORY_BROWSE_TEXT_UNION;
     const query = makeMockQuery([]);
     await fetchCanonicalChainRows({
       query: 'vitamin c serum',
@@ -904,15 +912,35 @@ describe('canonicalCatalogSearch recall_doc match lane (ADR-020, flag-gated)', (
       deps: { query },
     });
     const { sql, params } = query.calls[0];
-    // The category branch of whereClause discards textWhereClause, so the
+    expect(sql).toMatch(/p\.recall_doc LIKE ANY/);
+    expect(sql).toMatch(/p\.recall_market/);
+    expect(params.some((p) => Array.isArray(p))).toBe(true);
+    const maxBind = Math.max(
+      ...[...sql.matchAll(/\$(\d+)/g)].map((m) => Number(m[1])),
+    );
+    expect(maxBind).toBe(params.length);
+  });
+
+  test('flag on + categoryPathPrefix + union OFF -> no recall_doc arm and no orphan binds (08P01 guard)', async () => {
+    process.env[FLAG] = 'enabled';
+    process.env.CANONICAL_CATALOG_CATEGORY_BROWSE_TEXT_UNION = 'off';
+    const query = makeMockQuery([]);
+    await fetchCanonicalChainRows({
+      query: 'vitamin c serum',
+      categoryPathPrefix: 'beauty/skincare/serum/',
+      categoryMode: 'category_browse',
+      marketId: 'US',
+      deps: { query },
+    });
+    delete process.env.CANONICAL_CATALOG_CATEGORY_BROWSE_TEXT_UNION;
+    const { sql, params } = query.calls[0];
+    // Kill-switch thrown: the category branch discards textWhereClause, so the
     // recall-doc arm (and its patterns/market-guard binds) must not be built
     // at all — otherwise the statement declares fewer $n placeholders than
     // supplied params and Postgres rejects every category-lane query (08P01).
     expect(sql).not.toMatch(/recall_doc/);
     expect(sql).not.toMatch(/recall_market/);
     expect(params.some((p) => Array.isArray(p))).toBe(false);
-    // The assertion that would have caught the bug: the highest $n referenced
-    // in the SQL must equal the number of supplied params.
     const maxBind = Math.max(
       ...[...sql.matchAll(/\$(\d+)/g)].map((m) => Number(m[1])),
     );
@@ -1211,12 +1239,15 @@ describe('canonicalCatalogSearch rank v2 + market-exemption fix (ADR-020, flag-g
       tokenMatch: true,
     });
 
-    // Category branch active: whereClause takes the category form and
-    // discards the text arms — but rank_score is always computed, so every
-    // rank-v2 bind pushed above must still be referenced there.
+    // Category branch active. Under the default text union the category arm
+    // is OR'd with the text arms rather than replacing them; rank_score is
+    // computed in both modes, so every rank-v2 bind pushed above must still be
+    // referenced. The `AND $2::text IS NOT NULL` no-op belongs to the
+    // kill-switch form only and must be gone here.
     expect(sql).toMatch(
-      /p\.category_path IS NOT NULL AND \(p\.category_path = \$\d+ OR p\.category_path LIKE \$\d+\) AND \$2::text IS NOT NULL/,
+      /\(\(p\.category_path IS NOT NULL AND \(p\.category_path = \$\d+ OR p\.category_path LIKE \$\d+\)\)\n *OR \(/,
     );
+    expect(sql).not.toMatch(/\$2::text IS NOT NULL/);
 
     // Coverage-arm binds ('vitamin' + 'serum'; 'c' < 3 chars dropped) are
     // pushed AND referenced inside the rank_score coverage CASE.
@@ -1909,6 +1940,136 @@ describe('canonicalCatalogSearch product-form agreement (ADR-020 phase 1, flag-g
         maxPlaceholder,
         supplied: maxPlaceholder,
       });
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// MECHANISM 1: a resolved category prefix must never discard the query text.
+//
+// Measured live on prod 2026-08-20 through the public read tier: "shampoo",
+// "conditioner", "hair mask", "hair care" and "hair oil" all returned ZERO
+// products, and a trailing space did NOT rescue them (unlike the cache-keyed
+// zeros — see mcp-server/test/publicReadSearchZeroResults.test.js). Those
+// queries resolve a category prefix, and a prefix used to REPLACE the
+// query-text predicate outright.
+//
+// The catalog breaks that in two directions, both already measured in
+// src/services/beautyTaxonomy.js:14-18 —
+//   sparse/mis-aimed bucket: "shampoo" -> BROWSE 0 rows, TEXT 48/48 hits.
+//   over-broad bucket:       "hair care" -> the PARENT prefix `beauty/`, where
+//                            categoryScore is a flat +90 on every row.
+//
+// Both sides of each contract are driven, and each test is written so the
+// kill-switch (CANONICAL_CATALOG_CATEGORY_BROWSE_TEXT_UNION=off) restores the
+// old SQL and fails it — a fix that no-ops cannot pass.
+describe('canonicalCatalogSearch category-browse text union (Mechanism 1)', () => {
+  const UNION_FLAG = 'CANONICAL_CATALOG_CATEGORY_BROWSE_TEXT_UNION';
+
+  afterEach(() => {
+    delete process.env[UNION_FLAG];
+  });
+
+  async function browse(overrides = {}) {
+    const query = makeMockQuery([]);
+    await fetchCanonicalChainRows({
+      query: 'shampoo',
+      categoryPathPrefix: 'beauty/haircare/',
+      categoryMode: 'category_browse',
+      deps: { query },
+      ...overrides,
+    });
+    return query.calls[0];
+  }
+
+  test('browse mode recalls the bucket OR the query text — a sparse bucket cannot hide text matches', async () => {
+    const { sql } = await browse();
+    // The two arms are OR'd, so a row that matches the title but sits OUTSIDE
+    // the (empty / mis-aimed) bucket is still recalled. This is the assertion
+    // that "shampoo -> BROWSE 0 rows" can no longer produce a zero page.
+    expect(sql).toMatch(
+      /WHERE \(\(p\.category_path IS NOT NULL AND \(p\.category_path = \$\d+ OR p\.category_path LIKE \$\d+\)\)\n\s+OR \(/,
+    );
+    // Title AND brand arms adjacent — this pair exists ONLY in textWhereClause,
+    // so it cannot be satisfied by the rank-v2 CASE arm (which is built in both
+    // modes and would make a bare /title LIKE \$2/ assertion vacuous).
+    expect(sql).toMatch(
+      /LOWER\(COALESCE\(p\.title, ''\)\) LIKE \$2\s*\n\s*OR LOWER\(COALESCE\(p\.brand, ''\)\) LIKE \$2/,
+    );
+  });
+
+  test('the category arm SURVIVES the union — browse recall is widened, never narrowed', async () => {
+    const { sql, params } = await browse();
+    // A row under the prefix that matches no text arm must still be recalled,
+    // exactly as before. The union is additive by construction; if the category
+    // predicate were replaced rather than OR'd this would be a recall
+    // REGRESSION dressed as a fix.
+    expect(sql).toMatch(/p\.category_path = \$5 OR p\.category_path LIKE \$6/);
+    expect(params[4]).toBe('beauty/haircare');
+    expect(params[5]).toBe('beauty/haircare/%');
+    expect(sql).toMatch(/THEN 90 ELSE 0 END/); // categoryScore still applied
+  });
+
+  test('text matches outrank pure-bucket rows, clearing the rank-v1 provenance arm', async () => {
+    const { sql } = await browse();
+    // The over-broad-bucket half of the defect: with `beauty/` as the prefix the
+    // WHERE admits everything, so only the ORDER BY can keep the shopper's rows
+    // inside the candidate cut. 300 must exceed the largest competing arm — the
+    // flat +200 rank-v1 bonus for pdp_scope='multi_merchant_canonical'.
+    const boost = sql.match(
+      /CASE WHEN LOWER\(COALESCE\(p\.title, ''\)\) LIKE \$2 OR LOWER\(COALESCE\(p\.brand, ''\)\) LIKE \$2 THEN (\d+) ELSE 0 END/,
+    );
+    expect(boost).not.toBeNull();
+    const provenance = sql.match(/pdp_scope = 'multi_merchant_canonical'\s+THEN (\d+) ELSE 0 END/);
+    expect(provenance).not.toBeNull();
+    expect(Number(boost[1])).toBeGreaterThan(Number(provenance[1]));
+  });
+
+  test('the boost is browse-only — in text mode every surviving row already matched', async () => {
+    const query = makeMockQuery([]);
+    await fetchCanonicalChainRows({ query: 'shampoo', deps: { query } });
+    expect(query.calls[0].sql).not.toMatch(
+      /LIKE \$2 OR LOWER\(COALESCE\(p\.brand, ''\)\) LIKE \$2 THEN 300 ELSE 0 END/,
+    );
+  });
+
+  test('MUTANT CHECK: the kill-switch restores the pre-union SQL exactly', async () => {
+    process.env[UNION_FLAG] = 'off';
+    const { sql } = await browse();
+    // Old behaviour: the category branch REPLACES the text predicate, keeping
+    // the $2 bind alive only through the `AND $2::text IS NOT NULL` no-op.
+    expect(sql).toMatch(/AND \$2::text IS NOT NULL/);
+    expect(sql).not.toMatch(
+      /LOWER\(COALESCE\(p\.title, ''\)\) LIKE \$2\s*\n\s*OR LOWER\(COALESCE\(p\.brand, ''\)\) LIKE \$2/,
+    );
+    expect(sql).not.toMatch(/THEN 300 ELSE 0 END/);
+  });
+
+  test('the union is ON by default — this fixes a defect, so flag-off is the broken state', async () => {
+    delete process.env[UNION_FLAG];
+    const { sql } = await browse();
+    expect(sql).not.toMatch(/AND \$2::text IS NOT NULL/);
+    // Only these four spellings disable it; anything else (including a typo)
+    // leaves the fix ON rather than silently reverting serving to the defect.
+    for (const value of ['', 'on', 'true', '1', 'yes', 'enabled', 'nonsense']) {
+      process.env[UNION_FLAG] = value;
+      const call = await browse();
+      expect(call.sql).not.toMatch(/AND \$2::text IS NOT NULL/);
+    }
+    for (const value of ['off', 'OFF', '0', 'false', 'disabled']) {
+      process.env[UNION_FLAG] = value;
+      const call = await browse();
+      expect(call.sql).toMatch(/AND \$2::text IS NOT NULL/);
+    }
+  });
+
+  test('binds stay integral on both sides of the switch (08P01 guard)', async () => {
+    for (const value of [undefined, 'off']) {
+      if (value === undefined) delete process.env[UNION_FLAG];
+      else process.env[UNION_FLAG] = value;
+      const { sql, params } = await browse({ marketId: 'US', tokenMatch: true, verticalSearch: true });
+      const maxBind = Math.max(...[...sql.matchAll(/\$(\d+)/g)].map((m) => Number(m[1])));
+      expect(maxBind).toBe(params.length);
     }
   });
 });

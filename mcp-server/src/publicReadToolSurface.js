@@ -41,6 +41,65 @@ function isFirstPage(toolArgs) {
   return page === undefined || page === null || page === 1;
 }
 
+// QUERY-STRING HYGIENE AT THE TIER BOUNDARY.
+//
+// Measured on prod 2026-08-20 via this surface: `search_catalog {"query":"makeup remover"}` returned 0
+// products while `"makeup remover "` and `"MAKEUP REMOVER"` returned 10 — the same ten. Nothing about the
+// shopper's intent differs between those three; the divergence was structural. The result cache below keys
+// on the tool arguments, so a trailing space or a capital letter bought a DIFFERENT cache entry, and any
+// transient zero pinned to one of them was replayed for the rest of the TTL while its neighbours ran the
+// real lane.
+//
+// Two separate normalizations, deliberately not the same one:
+//
+//   canonicalizeToolArgs — what is sent UPSTREAM. Trims and collapses runs of whitespace. Leading, trailing
+//     and doubled spaces carry no shopper meaning, and the downstream lanes are string-sensitive in places
+//     (buildSearchProductsV2Body forwards the query untrimmed), so canonicalizing here is what makes
+//     whitespace variants take a byte-identical path. Case is PRESERVED: it reaches lanes this tier does not
+//     own, and it is not this boundary's business to decide that "CeraVe" and "cerave" are the same token.
+//
+//   cacheKeyArgs — what the cache is KEYED on. Additionally lowercases the query, so case variants share one
+//     entry instead of racing to populate several. Sharing an entry across case is safe precisely because
+//     the measurement above shows the lane answers case-insensitively; the divergence was the cache, not the
+//     search.
+function canonicalizeQueryText(value) {
+  return String(value).replace(/\s+/g, " ").trim();
+}
+
+function canonicalizeToolArgs(toolArgs) {
+  if (!toolArgs || typeof toolArgs !== "object" || typeof toolArgs.query !== "string") return toolArgs;
+  const query = canonicalizeQueryText(toolArgs.query);
+  return query === toolArgs.query ? toolArgs : { ...toolArgs, query };
+}
+
+function cacheKeyArgs(toolArgs) {
+  if (!toolArgs || typeof toolArgs !== "object" || typeof toolArgs.query !== "string") return toolArgs ?? {};
+  return { ...toolArgs, query: canonicalizeQueryText(toolArgs.query).toLowerCase() };
+}
+
+// WHAT MAY BE PINNED FOR THE TTL.
+//
+// The cache had no store predicate, so a zero-product page was kept for 10 minutes fresh and served stale
+// for up to 60 — and this tier's own post-hoc filters (first-party sourcing, chain-resolvability) can empty
+// a page that the upstream filled, while a degraded-but-HTTP-200 envelope empties it without the catalog
+// having been consulted at all. Every one of those renders as "No products matched this search.", a
+// confident factual claim about the catalog that an agent relays to the shopper.
+//
+// So: an empty search page is never stored, and neither is a page built from a degraded upstream answer.
+// A genuine zero recomputes at full cold cost on the next identical query, which is the correct trade —
+// zero-result queries are the rare case, and the alternative is broadcasting a false negative for an hour.
+// Non-empty pages from a healthy lane cache exactly as before.
+//
+// THE PREDICATE CANNOT READ THE PROJECTED VALUE ALONE. Projection is what makes the public shape leak-free,
+// and stripping the upstream's `ok`/`error` envelope is part of that job — by the time a value reaches the
+// cache, the evidence that the lane failed is gone. (A degraded answer that still carries products projects
+// to an ordinary-looking page with no marker at all.) So `computeTool` returns its verdict alongside the
+// value in a wrapper that `callTool` unwraps; the wrapper never escapes this module.
+function isCacheableComputed(computed) {
+  if (!computed || typeof computed !== "object") return false;
+  return computed.cacheable === true;
+}
+
 // Public PDP base for citable URLs, overridable via env so a domain move needs no code change.
 const PUBLIC_PDP_BASE =
   (typeof process !== "undefined" && process.env && process.env.PUBLIC_READ_PDP_BASE) ||
@@ -123,6 +182,7 @@ export function createPublicReadToolSurface(executor, { log, filterChainResolvab
         ttlMs: Number(env.PUBLIC_READ_CACHE_TTL_MS) > 0 ? Number(env.PUBLIC_READ_CACHE_TTL_MS) : 10 * 60 * 1000,
         staleMs: Number(env.PUBLIC_READ_CACHE_STALE_MS) > 0 ? Number(env.PUBLIC_READ_CACHE_STALE_MS) : 60 * 60 * 1000,
         maxEntries: Number(env.PUBLIC_READ_CACHE_MAX) > 0 ? Number(env.PUBLIC_READ_CACHE_MAX) : 300,
+        shouldCache: isCacheableComputed,
         onRevalidateError: (err, key) => {
           if (logger) logger.warn({ err: err?.message || String(err), key }, "public_read cache revalidation failed (stale kept)");
         },
@@ -133,9 +193,10 @@ export function createPublicReadToolSurface(executor, { log, filterChainResolvab
     if (!PUBLIC_READ_TOOL_NAMES.includes(toolName)) {
       throw new UnknownToolError(toolName);
     }
-    if (!cache) return computeTool(toolName, toolArgs);
-    const key = `${toolName}:${stableStringify(toolArgs ?? {})}`;
-    return cache.getOrCompute(key, () => computeTool(toolName, toolArgs));
+    const args = canonicalizeToolArgs(toolArgs);
+    if (!cache) return (await computeTool(toolName, args)).value;
+    const key = `${toolName}:${stableStringify(cacheKeyArgs(args))}`;
+    return (await cache.getOrCompute(key, () => computeTool(toolName, args))).value;
   }
 
   async function computeTool(toolName, toolArgs) {
@@ -160,6 +221,17 @@ export function createPublicReadToolSurface(executor, { log, filterChainResolvab
         : toolArgs;
     let raw = await commerce.callTool(toolName, upstreamArgs, {});
 
+    // Accounting for the empty-page note (see EMPTY_SEARCH_NOTES in publicReadProjection.js). Captured
+    // BEFORE this tier's own filters run, because "the upstream matched rows and we removed them all" and
+    // "the upstream matched nothing" are different facts and only the second one licenses the sentence
+    // "No products matched this search."
+    const upstreamMatchedCount =
+      toolName === "search_catalog" && raw && Array.isArray(raw.products) ? raw.products.length : 0;
+    const upstreamDegraded = Boolean(
+      raw && typeof raw === "object"
+        && (raw.ok === false || raw.success === false || (raw.error !== undefined && raw.error !== null)),
+    );
+
     // First-party / brand-official sourcing filter (docs/openai_apps_v1_plan.md §5): drop reseller-sourced
     // rows BEFORE projection (the projector strips the destination host the filter needs). ON by default
     // within the public tier; PUBLIC_READ_FIRST_PARTY_ONLY=0 disables. Runs on the raw list-bearing shape.
@@ -176,7 +248,8 @@ export function createPublicReadToolSurface(executor, { log, filterChainResolvab
         const detail = raw && typeof raw === "object" && raw.product && typeof raw.product === "object" ? raw.product : raw;
         if (isResellerRow(detail, resellerHostSet(extraHostsCsv))) {
           if (logger) logger.info({ tool: toolName }, "public_read sourcing filter: reseller product withheld");
-          return { note: "Product not found." };
+          // A withheld reseller product is a deterministic policy verdict, not a lane failure: cacheable.
+          return { value: { note: "Product not found." }, cacheable: true };
         }
       }
     }
@@ -212,7 +285,18 @@ export function createPublicReadToolSurface(executor, { log, filterChainResolvab
       toolName === "search_catalog" && toolArgs && typeof toolArgs.page_size === "number"
         ? toolArgs.page_size
         : undefined;
-    return projectPublicReadResult(toolName, raw, { base: PUBLIC_PDP_BASE, limit });
+    // Degradation outranks filtering: if the lane never answered, nothing was learned about the catalog and
+    // no filter verdict is meaningful. Otherwise, rows that arrived and were removed here are a coverage
+    // limit of THIS tier, which the note must say rather than deny the products exist.
+    const emptyReason = upstreamDegraded
+      ? "upstream_degraded"
+      : upstreamMatchedCount > 0
+        ? "filtered_out"
+        : "no_match";
+    const value = projectPublicReadResult(toolName, raw, { base: PUBLIC_PDP_BASE, limit, emptyReason });
+    const emptySearchPage =
+      toolName === "search_catalog" && Array.isArray(value.products) && value.products.length === 0;
+    return { value, cacheable: !upstreamDegraded && !emptySearchPage };
   }
 
   function isPublicReadTool(name) {

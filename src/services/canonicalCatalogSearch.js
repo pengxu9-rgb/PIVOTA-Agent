@@ -122,6 +122,46 @@ function isRecallDocMatchEnabled(env = process.env) {
   );
 }
 
+// Category-browse text UNION. A resolved category prefix used to REPLACE the
+// query-text predicate outright (`whereClause` below): recall became "rows
+// under the prefix", and the query the shopper typed contributed nothing to
+// either the WHERE or — under rank v1 — the ORDER BY. That is the defect
+// PR #1889 fixed on the ingredient-direct lane and never fixed on the
+// mainline, and it fails in BOTH directions the catalog actually exhibits:
+//
+//   sparse/mis-aimed bucket — beautyTaxonomy.js measured on prod 2026-08-04:
+//     "toner"   prefix beauty/skincare/tone/ -> BROWSE 0 rows, TEXT 48/48
+//     "shampoo" prefix beauty/hair/          -> BROWSE 0 rows, TEXT 48/48
+//     The bucket names a leaf the data does not use, so browse recalls
+//     NOTHING while the products sit in plain sight under a text match.
+//
+//   over-broad bucket — "hair care" resolves to the PARENT prefix `beauty/`
+//     (categoryPathParentPrefix of beauty/haircare), i.e. the whole beauty
+//     catalog. categoryScore is a flat +90 across every one of those rows, so
+//     rank_score is near-constant and the candidate cut keeps the most
+//     RECENTLY UPDATED rows, not the ones the shopper asked for. The caller's
+//     relevance gate then deletes all of them and the route answers
+//     "No products matched this search."
+//
+// The union fixes the first (text matches are admitted even when the bucket is
+// empty or wrong) and `categoryBrowseTextScore` below fixes the second (text
+// matches outrank pure-bucket rows, so they survive the candidate cut).
+// Neither can REMOVE a row browse mode returned before — the category arm is
+// still there, OR'd — so this is additive to recall by construction.
+//
+// DEFAULT ON, unlike the other flags in this file. Those gate optional
+// improvements where flag-off is the correct, safe baseline. This one gates a
+// defect: flag-off is the broken behaviour, so it ships as a kill-switch
+// (`CANONICAL_CATALOG_CATEGORY_BROWSE_TEXT_UNION=off`) rather than an opt-in.
+// Read per call, same discipline as the flags above.
+const CATEGORY_BROWSE_TEXT_UNION_OFF_VALUES = new Set(['off', '0', 'false', 'disabled']);
+
+function isCategoryBrowseTextUnionEnabled(env = process.env) {
+  return !CATEGORY_BROWSE_TEXT_UNION_OFF_VALUES.has(
+    String(env.CANONICAL_CATALOG_CATEGORY_BROWSE_TEXT_UNION || '').trim().toLowerCase(),
+  );
+}
+
 // ADR-020 rank-recalibration slice: env-flag gate for rank v2 (match-quality
 // dominance over provenance) + the market-exemption fix for
 // pdp_scope='multi_merchant_canonical'. Same per-call read discipline as
@@ -795,6 +835,24 @@ async function fetchCanonicalChainRows(args = {}) {
     categoryScore = `+ CASE WHEN p.category_path IS NOT NULL AND (p.category_path = ${categoryExactBind} OR p.category_path LIKE ${categoryBind}) THEN 90 ELSE 0 END`;
   }
 
+  // Whether this call runs the category-browse text union (see
+  // isCategoryBrowseTextUnionEnabled). Resolved HERE, before `recallDocWhere`
+  // is built below, because that arm's bind-emission is conditional on the
+  // text branch of `whereClause` actually being used.
+  const categoryBrowseTextUnion = Boolean(categoryBind) && isCategoryBrowseTextUnionEnabled();
+
+  // Text-match dominance inside the bucket. Weight 300 is chosen to clear the
+  // largest single competing arm — the flat +200 rank-v1 provenance bonus for
+  // pdp_scope='multi_merchant_canonical' (see canonicalScopeRankArms) — so a
+  // row the shopper's words actually match outranks a bucket row that merely
+  // carries canonical provenance, under rank v1 AND rank v2. Without this the
+  // union widens the WHERE but the candidate cut still throws the matches
+  // away. Browse mode only: in text mode every surviving row already matched
+  // some text arm, so a flat bonus there would be uniform and meaningless.
+  const categoryBrowseTextScore = categoryBrowseTextUnion
+    ? `+ CASE WHEN LOWER(COALESCE(p.title, '')) LIKE $2 OR LOWER(COALESCE(p.brand, '')) LIKE $2 THEN 300 ELSE 0 END`
+    : '';
+
   // Market-aware recall. When the caller passes the user's market (e.g.
   // 'US'), exclude Path B mirrored rows whose source seed has a
   // non-matching market — mirrors the market filter on the
@@ -1001,6 +1059,11 @@ async function fetchCanonicalChainRows(args = {}) {
     (eligibilityColumn === 'index_eligible' ||
       (sargableTextWhere === true && isRecallDocMatchEnabled()));
   let tokenWhere = '';
+  // The non-sargable token arm, kept separately so `plainTextWhereClause` below
+  // is the plain clause in EVERY respect. Identical to `tokenWhere` whenever the
+  // sargable lane is not elected; the two diverge only when it is, and the union
+  // must take this one (see the whereClause comment).
+  let plainTokenWhere = '';
   let tokenScore = '';
   if (tokenMatch) {
     const tokens = buildSignificantTokens(lowered);
@@ -1015,13 +1078,14 @@ async function fetchCanonicalChainRows(args = {}) {
       const overlapSql = overlapParts.join(' + ');
       const minTokens = Math.max(2, Math.ceil(tokens.length * 0.5));
       tokenScore = `+ ((${overlapSql}) * 25)`;
+      plainTokenWhere = `OR ((${overlapSql}) >= ${minTokens})`;
       if (citableSargableLane) {
         const anyTokenSql = tokenBinds
           .map((b) => `LOWER(COALESCE(p.title, '')) LIKE ${b} OR LOWER(COALESCE(p.brand, '')) LIKE ${b}`)
           .join(' OR ');
         tokenWhere = `OR ((${anyTokenSql}) AND ((${overlapSql}) >= ${minTokens}))`;
       } else {
-        tokenWhere = `OR ((${overlapSql}) >= ${minTokens})`;
+        tokenWhere = plainTokenWhere;
       }
     }
   }
@@ -1148,8 +1212,13 @@ async function fetchCanonicalChainRows(args = {}) {
   // placeholders than supplied params (Postgres 08P01) and every category-lane
   // query would fail. The category lane simply doesn't get recall-doc matching
   // in this slice.
+  //
+  // Under the category-browse text union the text branch IS used, so the arm
+  // (and its binds) belong in the statement exactly as in text mode; the 08P01
+  // hazard the paragraph above describes only exists when the text branch is
+  // discarded.
   let recallDocWhere = '';
-  if (!categoryBind && isRecallDocMatchEnabled()) {
+  if ((!categoryBind || categoryBrowseTextUnion) && isRecallDocMatchEnabled()) {
     const recallDocPatterns = buildRecallDocMatchPatterns(lowered);
     if (recallDocPatterns.length > 0) {
       params.push(recallDocPatterns);
@@ -1195,24 +1264,53 @@ async function fetchCanonicalChainRows(args = {}) {
   // the generated SQL is byte-identical to the pre-recall-doc output (no stray
   // blank line where the arm would sit).
   const recallDocArm = recallDocWhere ? `\n        ${recallDocWhere}` : '';
-  const textWhereClause = citableSargableLane
-    ? `
-        LOWER(COALESCE(p.title, '')) LIKE $2
-        OR LOWER(COALESCE(p.brand, '')) LIKE $2
-        ${tokenWhere}${recallDocArm}
-  `
-    : `
+  const plainTextWhereClause = `
         LOWER(COALESCE(p.title, '')) LIKE $2
         OR LOWER(COALESCE(p.brand, '')) LIKE $2
         OR LOWER(COALESCE(m.merchant_name, '')) LIKE $2
         ${skuTextWhere}
         OR LOWER(COALESCE(p.source_product_id, '')) LIKE $2
         ${verticalWhere}
-        ${tokenWhere}${recallDocArm}
+        ${plainTokenWhere}${recallDocArm}
   `;
-  const whereClause = categoryBind
-    ? `(p.category_path IS NOT NULL AND (p.category_path = ${categoryExactBind} OR p.category_path LIKE ${categoryBind}) AND $2::text IS NOT NULL)`
-    : `(${textWhereClause})`;
+  const textWhereClause = citableSargableLane
+    ? `
+        LOWER(COALESCE(p.title, '')) LIKE $2
+        OR LOWER(COALESCE(p.brand, '')) LIKE $2
+        ${tokenWhere}${recallDocArm}
+  `
+    : plainTextWhereClause;
+  // `AND $2::text IS NOT NULL` in the legacy category branch is a no-op that
+  // exists only to keep the $2 bind referenced once the text predicate is
+  // gone. It is retained verbatim on the kill-switch path so flag-off SQL
+  // stays byte-identical to pre-union serving.
+  const categoryPredicate = categoryBind
+    ? `p.category_path IS NOT NULL AND (p.category_path = ${categoryExactBind} OR p.category_path LIKE ${categoryBind})`
+    : '';
+  let whereClause;
+  if (!categoryBind) {
+    whereClause = `(${textWhereClause})`;
+  } else if (categoryBrowseTextUnion) {
+    // THE PLAIN FORM, NEVER THE SARGABLE ONE, on the union's text arm.
+    //
+    // `sargableTextWhere` picks a NARROWER text clause: it drops the
+    // merchant_name, source_product_id and sku/vertical OR-EXISTS arms in
+    // exchange for a trigram-bitmap-able plan (#1935). That trade was measured
+    // on the text-only lane, where the recall it gives up is covered by the
+    // recall_doc arm. It was a provable no-op in browse mode only because
+    // browse discarded the text clause outright — which is precisely the
+    // invariant tests/find_products_multi_mainline_sargable.test.js pins.
+    //
+    // Routing the union through `textWhereClause` would silently extend an
+    // unmeasured plan-and-recall change to every prefix-resolving query, and
+    // would do it by DROPPING recall arms inside a fix whose whole purpose is
+    // to recover recall. So the union takes the plain form and #1935's
+    // byte-identity invariant survives intact.
+    whereClause = `((${categoryPredicate})
+        OR (${plainTextWhereClause}))`;
+  } else {
+    whereClause = `(${categoryPredicate} AND $2::text IS NOT NULL)`;
+  }
   // Suppress source-unavailable / discontinued external-seed products from
   // recall. ADR-009: gate on platform, NOT the legacy merchant_id='external_seed'
   // bucket — external seeds now mirror under per-brand observed sellers
@@ -1533,6 +1631,7 @@ async function fetchCanonicalChainRows(args = {}) {
           CASE WHEN LOWER(COALESCE(p.brand, '')) = $1                     THEN  80 ELSE 0 END +
           ${canonicalScopeRankArms}
           ${categoryScore}
+          ${categoryBrowseTextScore}
           ${verticalScore}
           ${tokenScore}
         ) AS rank_score
@@ -1610,6 +1709,10 @@ module.exports = {
   // recall_doc arm is on (see citableSargableLane), so a literal `true`
   // stamp would lie in flag-off environments.
   isRecallDocMatchEnabled,
+  // Exported so a browse-mode caller can stamp into telemetry whether the
+  // union actually ran, rather than asserting the intent — the same reason
+  // isRecallDocMatchEnabled is exported above.
+  isCategoryBrowseTextUnionEnabled,
   // Exported so callers whose lane preserves recall order (the
   // ingredient-recall-direct lane) can stamp the EFFECTIVE set-diversity state
   // into telemetry, the same way isRecallDocMatchEnabled is used above.
@@ -1651,6 +1754,7 @@ module.exports = {
     buildBrandFilterTerms,
     RECALL_DOC_PATTERN_CAP,
     isRecallDocMatchEnabled,
+    isCategoryBrowseTextUnionEnabled,
     buildRecallDocMatchPatterns,
     isRankV2Enabled,
     isDeterministicTiebreakEnabled,
