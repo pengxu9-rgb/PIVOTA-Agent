@@ -30627,6 +30627,7 @@ async function getCommerceConfirmationActionHandler() {
 const { chainRowResolvable } = require('./services/publicReadChainResolvability');
 const { describeCaller } = require('./services/callerIdentity');
 const { decideUiChatAccess } = require('./services/uiChatAccessGuard');
+const { decideAuroraSurfaceAccess } = require('./services/auroraSurfaceHostGuard');
 
 const PUBLIC_READ_CHAIN_FILTER_CONCURRENCY = 8;
 
@@ -35329,6 +35330,33 @@ mountExternalOfferRoutes(app);
 mountRecommendationRoutes(app);
 
 // ---------------- Aurora BFF (Lifecycle Skincare Partner) ----------------
+
+// The Aurora surface is not served on the branded public hosts. Its only gate is a client-invented
+// X-Aurora-UID, so on those names it is an anonymous LLM door — see services/auroraSurfaceHostGuard.js
+// for the measurement (zero legitimate /v1 traffic on any branded host) and for why this is a shape
+// decision rather than a lock.
+//
+// Registered BEFORE the mount so it runs first for these paths, and matched by prefix rather than by
+// route list: the /v1 handlers are spread over four files under auroraBff/, and a route added later
+// must default to refused on the anchor rather than to served.
+app.use((req, res, next) => {
+  const access = decideAuroraSurfaceAccess({
+    path: req.path,
+    host: req.headers?.host,
+    isPublicReadHost: isPublicReadMcpHostRequest(req),
+  });
+  if (access.allow) return next();
+  logger.warn(
+    {
+      reason: access.reason,
+      host: String(req.headers?.host || ''),
+      path: req.path,
+      status: access.status,
+    },
+    'aurora surface refused on a branded host',
+  );
+  return res.status(access.status).json(access.body);
+});
 
 mountAuroraBffRoutes(app, { logger });
 if (!auroraRoutesReady) {
