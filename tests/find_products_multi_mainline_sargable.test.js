@@ -4,11 +4,20 @@
  * #1935 — the buyable beauty mainline lane opts into the sargable text WHERE.
  *
  * THE PROPERTY THAT MAKES THIS SAFE is not the flag, it is that the option is
- * INERT IN CATEGORY-BUCKET MODE: under a category prefix the helper takes the
- * category branch and discards the text WHERE, so there is nothing for the
- * sargable shape to change. Since ~70% of beauty queries resolve to a prefix,
- * that is most of the lane's traffic provably untouched. These tests assert
- * byte-identical SQL in that mode rather than trusting the reading.
+ * INERT IN CATEGORY-BUCKET MODE: under a category prefix (with the
+ * category-browse text union kill-switched, which is how these tests run) the
+ * helper takes the category branch and discards the text WHERE, so there is
+ * nothing for the sargable shape to change. Since ~70% of beauty queries
+ * resolve to a prefix, that is most of the lane's traffic provably untouched.
+ * These tests assert byte-identical SQL in that mode rather than trusting the
+ * reading. With the union ON, browse mode carries a text arm again — but the
+ * arm's NARROWING (dropping merchant_name / source_product_id / catalog_skus)
+ * is keyed on the recall_doc flag, NOT on this option (see unionTextArm in
+ * canonicalCatalogSearch.js and its tests). The only thing this option still
+ * changes under the union is the token arm's spelling — sargable
+ * (any-token AND overlap>=min) vs plain (overlap>=min) — which admits the
+ * same rows by construction, since overlap>=min implies at least one token
+ * matches.
  *
  * In text mode the option DOES change the WHERE — it drops merchant_name,
  * source_product_id and the catalog_skus vertical/sku OR-EXISTS arms. Prod

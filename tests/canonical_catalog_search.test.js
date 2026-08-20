@@ -2083,6 +2083,100 @@ describe('canonicalCatalogSearch category-browse text union (Mechanism 1)', () =
     expect(sql).not.toMatch(/IS DISTINCT FROM 'set_or_collection' THEN \d+ ELSE 0 END/);
   });
 
+  // ---------------------------------------------------------------------------
+  // The union's text arm: single-table while the recall_doc arm covers.
+  //
+  // Prod, 2026-08-20, flag-flip day: the plain union arm's cross-table
+  // `m.merchant_name LIKE $2` disjunct forced the whole OR to evaluate after
+  // the merchants join, which made the payload-JSON conjuncts detoast all
+  // ~8.5k serving-eligible products per query — EXPLAIN ANALYZE 4,366ms /
+  // 285k buffers on "toner". With the cross-table and un-indexable arms
+  // dropped the OR pushes into the catalog_products scan: 420-1,022ms across
+  // toner/shampoo/hair mask/niacinamide toner/cleanser, identical rows AND
+  // order on all five, and zero rows over the 15-word browse vocabulary were
+  // admitted ONLY by a dropped arm. The narrowing is keyed on the recall_doc
+  // arm being present (the #1935 coverage condition — bare "glycerin" lost
+  // 22/25 rows when the catalog_skus arms were dropped WITHOUT recall_doc),
+  // never on the caller's tokenMatch/sargableTextWhere election, so
+  // non-electing browse callers get the fast shape too.
+  // ---------------------------------------------------------------------------
+
+  test('with the recall_doc arm present the union text arm is SINGLE-TABLE — merchant_name / source_product_id / catalog_skus arms dropped', async () => {
+    const prev = process.env.CANONICAL_CATALOG_RECALL_DOC_MATCH;
+    process.env.CANONICAL_CATALOG_RECALL_DOC_MATCH = 'enabled';
+    try {
+      const { sql, params } = await browse({
+        query: 'hair mask',
+        verticalSearch: true,
+        tokenMatch: true,
+        marketId: 'US',
+      });
+      // The two arms that block predicate pushdown are gone from the WHERE...
+      expect(sql).not.toContain("LOWER(COALESCE(m.merchant_name, '')) LIKE $2");
+      expect(sql).not.toContain("LOWER(COALESCE(p.source_product_id, '')) LIKE $2");
+      // ...as are the catalog_skus OR-EXISTS recall arms (aliases sw/sv exist
+      // ONLY in skuTextWhere/verticalWhere)...
+      expect(sql).not.toMatch(/FROM catalog_skus sw/);
+      expect(sql).not.toMatch(/FROM catalog_skus sv/);
+      // ...while the coverage arm, the category arm, the title/brand pair and
+      // the token arm are all still there.
+      expect(sql).toMatch(/recall_doc LIKE ANY/);
+      expect(sql).toMatch(/p\.category_path = \$5 OR p\.category_path LIKE \$6/);
+      expect(sql).toMatch(
+        /LOWER\(COALESCE\(p\.title, ''\)\) LIKE \$2\s*\n\s*OR LOWER\(COALESCE\(p\.brand, ''\)\) LIKE \$2/,
+      );
+      expect(sql).toMatch(/>= 2\)/); // token overlap arm ("hair mask" -> 2 tokens)
+      // Binds stay integral (08P01 guard).
+      const maxBind = Math.max(...[...sql.matchAll(/\$(\d+)/g)].map((m) => Number(m[1])));
+      expect(maxBind).toBe(params.length);
+    } finally {
+      if (prev == null) delete process.env.CANONICAL_CATALOG_RECALL_DOC_MATCH;
+      else process.env.CANONICAL_CATALOG_RECALL_DOC_MATCH = prev;
+    }
+  });
+
+  test('the RANK arms still probe catalog_skus — only the WHERE was narrowed', async () => {
+    const prev = process.env.CANONICAL_CATALOG_RECALL_DOC_MATCH;
+    process.env.CANONICAL_CATALOG_RECALL_DOC_MATCH = 'enabled';
+    try {
+      const { sql } = await browse({ verticalSearch: true, tokenMatch: true });
+      // verticalScore (ss/si) and skuIdentityScore (sx) are projection arms
+      // outside the WHERE disjunction; they carry rank signal (+35 moved 6
+      // niacinamide rows across the candidate cut) and do not block pushdown.
+      // Deleting them alongside the WHERE arms would be a silent rank change.
+      expect(sql).toMatch(/FROM catalog_skus ss/);
+      expect(sql).toMatch(/FROM catalog_skus si/);
+      expect(sql).toMatch(/FROM catalog_skus sx/);
+    } finally {
+      if (prev == null) delete process.env.CANONICAL_CATALOG_RECALL_DOC_MATCH;
+      else process.env.CANONICAL_CATALOG_RECALL_DOC_MATCH = prev;
+    }
+  });
+
+  test('WITHOUT the recall_doc arm the union keeps the complete plain clause (the glycerin guard)', async () => {
+    const prev = process.env.CANONICAL_CATALOG_RECALL_DOC_MATCH;
+    delete process.env.CANONICAL_CATALOG_RECALL_DOC_MATCH;
+    try {
+      const { sql, params } = await browse({
+        query: 'hair mask',
+        verticalSearch: true,
+        tokenMatch: true,
+        marketId: 'US',
+      });
+      // No coverage arm -> every recall arm stays, exactly as #2035 shipped.
+      expect(sql).not.toMatch(/recall_doc LIKE ANY/);
+      expect(sql).toContain("LOWER(COALESCE(m.merchant_name, '')) LIKE $2");
+      expect(sql).toContain("LOWER(COALESCE(p.source_product_id, '')) LIKE $2");
+      expect(sql).toMatch(/FROM catalog_skus sw/);
+      expect(sql).toMatch(/FROM catalog_skus sv/);
+      const maxBind = Math.max(...[...sql.matchAll(/\$(\d+)/g)].map((m) => Number(m[1])));
+      expect(maxBind).toBe(params.length);
+    } finally {
+      if (prev == null) delete process.env.CANONICAL_CATALOG_RECALL_DOC_MATCH;
+      else process.env.CANONICAL_CATALOG_RECALL_DOC_MATCH = prev;
+    }
+  });
+
   test('the union ships DARK — default off, and only explicit on-values enable it', async () => {
     // Inverted from the first cut of this PR, deliberately. The union fixes a
     // defect, so flag-off is the broken behaviour and default-on was the

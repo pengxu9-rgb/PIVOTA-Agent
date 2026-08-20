@@ -1372,23 +1372,60 @@ async function fetchCanonicalChainRows(args = {}) {
   if (!categoryBind) {
     whereClause = `(${textWhereClause})`;
   } else if (categoryBrowseTextUnion) {
-    // THE PLAIN FORM, NEVER THE SARGABLE ONE, on the union's text arm.
+    // THE UNION'S TEXT ARM: single-table when the recall_doc arm covers, plain
+    // otherwise.
     //
-    // `sargableTextWhere` picks a NARROWER text clause: it drops the
-    // merchant_name, source_product_id and sku/vertical OR-EXISTS arms in
-    // exchange for a trigram-bitmap-able plan (#1935). That trade was measured
-    // on the text-only lane, where the recall it gives up is covered by the
-    // recall_doc arm. It was a provable no-op in browse mode only because
-    // browse discarded the text clause outright — which is precisely the
-    // invariant tests/find_products_multi_mainline_sargable.test.js pins.
+    // The first cut of the union took the PLAIN clause unconditionally, on the
+    // argument that the sargable trade (#1935: drop merchant_name,
+    // source_product_id and the sku/vertical OR-EXISTS arms in exchange for an
+    // indexable plan) was unmeasured in browse mode. Prod then measured it,
+    // the hard way — the flag flip on 2026-08-20 regressed cold prefix-query
+    // latency from ~7.5s to 9-18.6s and broke the Aurora reco recall timeout:
     //
-    // Routing the union through `textWhereClause` would silently extend an
-    // unmeasured plan-and-recall change to every prefix-resolving query, and
-    // would do it by DROPPING recall arms inside a fix whose whole purpose is
-    // to recover recall. So the union takes the plain form and #1935's
-    // byte-identity invariant survives intact.
+    //   * The plain arm's `m.merchant_name LIKE $2` disjunct is CROSS-TABLE,
+    //     so the whole OR can only be evaluated after the merchants join. That
+    //     forces the payload-JSON conjuncts (externalSeedUnavailableWhere) to
+    //     run per SCANNED row instead of per MATCHED row — 8,490 detoasts of a
+    //     235MB-TOAST table per query. EXPLAIN ANALYZE on prod, "toner"
+    //     browse+union, 2026-08-20: 4,366ms, 285k shared buffers.
+    //   * With the cross-table and un-indexable (source_product_id: btree
+    //     only, no trgm) arms removed, the identical statement pushes the OR
+    //     into the catalog_products scan and detoasts only the ~453 OR-passing
+    //     rows: 420ms, 55k buffers. Same 192 candidates out.
+    //
+    //   * Recall parity, measured the way #1935 measured text mode: over the
+    //     15-word browse vocabulary (toner, shampoo, cleanser, serum,
+    //     sunscreen, moisturizer, conditioner, exfoliant, hair mask, hair oil,
+    //     essence, lip balm, foundation, mascara, hair care), rows admitted by
+    //     the dropped arms and NOT by title/brand/recall_doc: ZERO of 255
+    //     dropped-arm matches, on every word. The category arm additionally
+    //     still admits the whole bucket.
+    //
+    // THE GATE IS THE COVERAGE ARM ITSELF, not the caller's sargable opt-in.
+    // The #1935 lesson (bare "glycerin" lost 22/25 rows when the vertical
+    // EXISTS arms were dropped with the recall_doc flag off) applies here
+    // verbatim, so the narrowed arm is emitted only while `recallDocArm` is
+    // actually in the statement. Keying on the caller's
+    // tokenMatch/sargableTextWhere election instead would leave every
+    // non-electing browse caller (the shopping browse lane passes neither) on
+    // the 4.4s plan for no recall benefit. `tokenWhere` rides along in
+    // whatever shape the caller elected — both shapes are single-table, so
+    // either pushes down; the sargable shape additionally stays
+    // bitmap-eligible.
+    //
+    // Kill switches, outermost first: CANONICAL_CATALOG_CATEGORY_BROWSE_TEXT_UNION=off
+    // removes the union entirely (re-breaking the Mechanism-1 zeros);
+    // CANONICAL_CATALOG_RECALL_DOC_MATCH=off restores the plain
+    // complete-recall arm (re-slowing browse, keeping the zeros fixed).
+    const unionTextArm = recallDocArm
+      ? `
+        LOWER(COALESCE(p.title, '')) LIKE $2
+        OR LOWER(COALESCE(p.brand, '')) LIKE $2
+        ${tokenWhere}${recallDocArm}
+  `
+      : plainTextWhereClause;
     whereClause = `((${categoryPredicate})
-        OR (${plainTextWhereClause}))`;
+        OR (${unionTextArm}))`;
   } else {
     whereClause = `(${categoryPredicate} AND $2::text IS NOT NULL)`;
   }
