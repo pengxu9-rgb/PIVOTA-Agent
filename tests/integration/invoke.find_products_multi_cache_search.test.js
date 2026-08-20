@@ -628,7 +628,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
         return (
           String(q.merchant_id || '') === 'external_seed' &&
           String(q.external_seed_only || '') === 'true' &&
-          String(q.query || '') === 'ipsa toner' &&
+          String(q.query || '') === 'ipsa luminizer' &&
           String(q.allow_external_seed) === 'true' &&
           String(q.allow_stale_cache) === 'false' &&
           ['unified_relevance', 'supplement_internal_first'].includes(
@@ -649,7 +649,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
       .query((q) => {
         return (
           String(q.search_all_merchants || '') === 'true' &&
-          String(q.query || '') === 'ipsa toner' &&
+          String(q.query || '') === 'ipsa luminizer' &&
           String(q.allow_external_seed) === 'true' &&
           String(q.allow_stale_cache) === 'false' &&
           ['unified_relevance', 'supplement_internal_first'].includes(
@@ -671,7 +671,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
         operation: 'find_products_multi',
         payload: {
           search: {
-            query: 'ipsa toner',
+            query: 'ipsa luminizer',
             page: 1,
             limit: 10,
             in_stock_only: true,
@@ -766,7 +766,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
         return (
           String(q.merchant_id || '') === 'external_seed' &&
           String(q.external_seed_only || '') === 'true' &&
-          String(q.query || '') === 'ipsa toner' &&
+          String(q.query || '') === 'ipsa luminizer' &&
           String(q.allow_external_seed) === 'true' &&
           String(q.allow_stale_cache) === 'false' &&
           ['unified_relevance', 'supplement_internal_first'].includes(
@@ -787,7 +787,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
       .query((q) => {
         return (
           String(q.search_all_merchants || '') === 'true' &&
-          String(q.query || '') === 'ipsa toner' &&
+          String(q.query || '') === 'ipsa luminizer' &&
           String(q.allow_external_seed) === 'true' &&
           String(q.allow_stale_cache) === 'false' &&
           ['unified_relevance', 'supplement_internal_first'].includes(
@@ -809,7 +809,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
         operation: 'find_products_multi',
         payload: {
           search: {
-            query: 'ipsa toner',
+            query: 'ipsa luminizer',
             page: 1,
             limit: 10,
             in_stock_only: true,
@@ -840,7 +840,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
         return (
           String(q.merchant_id || '') === 'external_seed' &&
           String(q.external_seed_only || '') === 'true' &&
-          String(q.query || '') === 'ipsa toner' &&
+          String(q.query || '') === 'ipsa luminizer' &&
           String(q.allow_external_seed) === 'true' &&
           String(q.allow_stale_cache) === 'false' &&
           ['unified_relevance', 'supplement_internal_first'].includes(
@@ -861,7 +861,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
       .query((q) => {
         return (
           String(q.search_all_merchants || '') === 'true' &&
-          String(q.query || '') === 'ipsa toner' &&
+          String(q.query || '') === 'ipsa luminizer' &&
           String(q.allow_external_seed) === 'true' &&
           String(q.allow_stale_cache) === 'false' &&
           ['unified_relevance', 'supplement_internal_first'].includes(
@@ -883,7 +883,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
         operation: 'find_products_multi',
         payload: {
           search: {
-            query: 'ipsa toner',
+            query: 'ipsa luminizer',
             page: 1,
             limit: 10,
             in_stock_only: true,

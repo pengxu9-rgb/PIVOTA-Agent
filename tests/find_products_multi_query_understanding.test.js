@@ -191,6 +191,82 @@ describe('find_products_multi query understanding', () => {
     expect(contract.hard_constraints.exclusions).toEqual(expect.arrayContaining(['lip_gloss_oil_balm_mask']));
   });
 
+  // 2026-08-20 — Mechanism 3 of the "No products matched this search" zeros.
+  // The contract's category vocabulary had no rule for toner or any haircare
+  // noun, so bare `toner` / `shampoo` / `conditioner` / `hair mask` /
+  // `hair oil` classified other/ambiguous_or_non_shopping and the safe-empty
+  // branch answered a confident zero in ~0.2s, BEFORE any SQL — silently
+  // nullifying the #2035/#2039 category-browse union for exactly its target
+  // vocabulary (measured live on search_catalog: 8 fast-zeros, every one of
+  // them a contract miss; `gentle shampoo` only survived because "gentle" is
+  // a constraint signal). These rows pin the repaired vocabulary; buckets
+  // verified on prod the same day (beauty/skincare/tone/toner: 333
+  // serving-eligible rows, 58 mist-titled; beauty/haircare/*: 473).
+  test.each([
+    ['toner', 'category_browse', 'beauty/skincare/tone/'],
+    ['best toner', 'category_browse', 'beauty/skincare/tone/'],
+    ['toner pads', 'category_browse', 'beauty/skincare/tone/'],
+    ['face mist', 'category_browse', 'beauty/skincare/tone/'],
+    ['shampoo', 'category_browse', 'beauty/haircare/'],
+    ['dry shampoo', 'category_browse', 'beauty/haircare/'],
+    ['conditioner', 'category_browse', 'beauty/haircare/'],
+    ['leave-in conditioner', 'category_browse', 'beauty/haircare/'],
+    ['hair mask', 'category_browse', 'beauty/haircare/'],
+    ['hair oil', 'category_browse', 'beauty/haircare/'],
+    ['hair care', 'category_browse', 'beauty/haircare/'],
+    ['gentle shampoo', 'constraint_search', 'beauty/haircare/'],
+    // hair-anchored forms must be claimed HERE, not by the skincare
+    // cream/serum/treatment arms that sit later in the rule list.
+    ['hair serum', 'category_browse', 'beauty/haircare/'],
+    ['hair cream', 'category_browse', 'beauty/haircare/'],
+    ['hair treatment', 'category_browse', 'beauty/haircare/'],
+  ])('beauty category vocabulary covers %s', (query, queryClass, categoryPathPrefix) => {
+    const contract = buildSearchQualityContract({ rawQuery: query, market: 'US' });
+    expect(contract.target_domain).toBe('beauty');
+    expect(contract.query_class).toBe(queryClass);
+    expect(contract.hard_constraints.category_path_prefix).toBe(categoryPathPrefix);
+  });
+
+  test.each([
+    // Non-beauty senses of the new nouns stay out of the beauty domain: a
+    // safe-empty (or clarify) is CORRECT for these, and a haircare browse is
+    // not.
+    ['printer toner'],
+    ['toner cartridge'],
+    ['fabric conditioner'],
+    ['lip conditioner'],
+  ])('non-beauty sense of %s stays unclassified', (query) => {
+    const contract = buildSearchQualityContract({ rawQuery: query, market: 'US' });
+    expect(contract.query_class).toBe('ambiguous_or_non_shopping');
+    expect(contract.hard_constraints.category_path_prefix).toBeNull();
+  });
+
+  test('body mist keeps its fragrance claim over the toner mist arm', () => {
+    const contract = buildSearchQualityContract({ rawQuery: 'body mist', market: 'US' });
+    expect(contract.query_class).toBe('category_browse');
+    expect(contract.hard_constraints.category_path_prefix).toBe('beauty/fragrance/');
+  });
+
+  // The conditioner guards are \b-anchored lookbehinds. An unanchored
+  // (?<!air\s) is satisfied by the trailing "air " of hAIR / repAIR — which
+  // silently excluded "hair conditioner", the most canonical phrasing of the
+  // whole category (caught in pre-merge review by execution, not reading).
+  // Pinned at the RESOLVER level, not via buildSearchQualityContract: a
+  // pre-existing brandLexicon defect substring-matches the "r co" of
+  // "…r conditioner" as the R+Co brand, so the contract-level class for
+  // these queries is polluted by an unrelated bug (filed as a follow-up).
+  test.each([
+    ['hair conditioner', 'beauty/haircare/'],
+    ['repair conditioner', 'beauty/haircare/'],
+    ['curly hair conditioner', 'beauty/haircare/'],
+    ['air conditioner', ''],
+    ['air conditioners', ''],
+    ['fabric conditioner', ''],
+    ['lip conditioner', ''],
+  ])('conditioner guard anchoring: %s', (query, expectedPrefix) => {
+    expect(resolveBeautyCategoryPathPrefixFromText(query) || '').toBe(expectedPrefix);
+  });
+
   test('long brand product-title queries use exact product anchors instead of broad category paths', () => {
     const contract = buildSearchQualityContract({
       rawQuery: 'rare beauty positive light tinted moisturizer',
