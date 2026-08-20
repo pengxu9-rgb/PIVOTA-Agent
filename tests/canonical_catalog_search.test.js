@@ -2156,3 +2156,206 @@ describe('canonicalCatalogSearch empty rank arms contribute zero bytes', () => {
     expect(query.calls[0].sql).toMatch(/THEN 90 ELSE 0 END\n( {10}\n){2} {8}\) AS rank_score/);
   });
 });
+
+// ---------------------------------------------------------------------------
+// The union's text arm is NARROWER than the plain clause, for a measured reason.
+//
+// The union shipped taking the plain clause. Flipped on in prod 2026-08-20, cold prefix-resolving
+// queries that return rows went from a 7.0-7.5s baseline to 9.3s / 9.5s / 14.2s / 18.6s. This file
+// already measured why: one `OR EXISTS` disjunct forces the whole disjunction off the bitmap path
+// (6.9s vs 3.2s for the same rows). An 18s query holds a pool connection for 18s, which is the shape
+// that has wedged this service before.
+//
+// Both directions are driven. Removing an arm from the union must not remove it from TEXT recall, and
+// the arms must not creep back into the union.
+describe('canonicalCatalogSearch union text arm is the narrow, sargable-shaped one', () => {
+  const UNION_FLAG = 'CANONICAL_CATALOG_CATEGORY_BROWSE_TEXT_UNION';
+  const DOC_FLAG = 'CANONICAL_CATALOG_RECALL_DOC_MATCH';
+
+  afterEach(() => {
+    delete process.env[UNION_FLAG];
+    delete process.env[DOC_FLAG];
+  });
+
+  async function capture(args) {
+    const query = makeMockQuery([]);
+    await fetchCanonicalChainRows({ ...args, deps: { query } });
+    return query.calls[0];
+  }
+
+  // Everything from `WHERE (` up to the eligibility guard that follows it.
+  function whereOf(sql) {
+    const start = sql.indexOf('WHERE (');
+    return sql.slice(start, sql.indexOf('\n        AND ', start));
+  }
+
+  const BROWSE = {
+    query: 'hair mask',
+    categoryPathPrefix: 'beauty/haircare/',
+    categoryMode: 'category_browse',
+    tokenMatch: true,
+    verticalSearch: true,
+    sargableTextWhere: true,
+    marketId: 'US',
+  };
+
+  test('the catalog_skus OR-EXISTS arms are NOT in the union, even with verticalSearch on', async () => {
+    process.env[UNION_FLAG] = 'on';
+    process.env[DOC_FLAG] = 'enabled';
+    const { sql } = await capture(BROWSE);
+    const where = whereOf(sql);
+    expect(where).not.toMatch(/OR EXISTS/);
+    expect(where).not.toMatch(/catalog_skus/);
+    // The cross-table and leading-wildcard arms go too, for the same plan reason.
+    expect(where).not.toMatch(/m\.merchant_name/);
+    expect(where).not.toMatch(/p\.source_product_id/);
+  });
+
+  test('what the union KEEPS is exactly what the measured win runs through', async () => {
+    process.env[UNION_FLAG] = 'on';
+    process.env[DOC_FLAG] = 'enabled';
+    const where = whereOf((await capture(BROWSE)).sql);
+    // toner and shampoo recovered as TITLE matches; brand/token/recall_doc carry the rest.
+    expect(where).toMatch(/LOWER\(COALESCE\(p\.title, ''\)\) LIKE \$2/);
+    expect(where).toMatch(/LOWER\(COALESCE\(p\.brand, ''\)\) LIKE \$2/);
+    expect(where).toMatch(/\) >= 2\)/);          // token-overlap arm
+    expect(where).toMatch(/p\.recall_doc LIKE ANY/); // recall_doc arm
+    // And the category arm is of course still there — the union is an OR, not a replacement.
+    expect(where).toMatch(/p\.category_path = \$5 OR p\.category_path LIKE \$6/);
+  });
+
+  test('TEXT recall is untouched — the EXISTS arms are dropped from the UNION, not from the lane', async () => {
+    // The inverse assertion. Without it, "narrow the union" and "delete vertical recall everywhere" are
+    // indistinguishable to the suite.
+    process.env[UNION_FLAG] = 'on';
+    const { sql } = await capture({ query: 'niacinamide serum', tokenMatch: true, verticalSearch: true });
+    const where = whereOf(sql);
+    expect(where).toMatch(/OR EXISTS/);
+    expect(where).toMatch(/catalog_skus/);
+    expect(where).toMatch(/m\.merchant_name/);
+    expect(where).toMatch(/p\.source_product_id/);
+  });
+
+  test('the union stays bind-integral with every expensive option on (08P01 guard)', async () => {
+    // The dropped fragments reference $1/$2 only and push no binds of their own, so removing them cannot
+    // orphan a param — but that is a property of the current code, not a law, so it is pinned.
+    for (const doc of ['enabled', undefined]) {
+      process.env[UNION_FLAG] = 'on';
+      if (doc) process.env[DOC_FLAG] = doc; else delete process.env[DOC_FLAG];
+      const { sql, params } = await capture({ ...BROWSE, brandFilter: 'laneige', merchantId: 'merch_x' });
+      const maxBind = Math.max(...[...sql.matchAll(/\$(\d+)/g)].map((m) => Number(m[1])));
+      expect(maxBind).toBe(params.length);
+    }
+  });
+
+  // THE DESIGN CLAIM, PINNED. Every other assertion in this block runs in ONE flag state
+  // (sargableTextWhere on, recall_doc on) — and that is exactly the state in which
+  // `citableSargableLane` is true and `textWhereClause` HAPPENS to already be the narrow form. So a
+  // refactor swapping `unionTextWhereClause` for `textWhereClause` looks harmless there while
+  // reintroducing the OR-EXISTS plan — the measured 18.6s shape — in the other flag states. Review
+  // caught exactly that: two mutants survived the rest of this block for this reason.
+  //
+  // The union's text arm must depend on NEITHER PIVOT_BEAUTY_MAINLINE_SARGABLE_TEXT_WHERE_ENABLED nor
+  // the recall_doc flag. Byte-identity across the sargable axis states that directly.
+  test('the union arm is independent of sargableTextWhere — byte-identical either way', async () => {
+    for (const doc of ['enabled', undefined]) {
+      process.env[UNION_FLAG] = 'on';
+      if (doc) process.env[DOC_FLAG] = doc; else delete process.env[DOC_FLAG];
+      const on = whereOf((await capture({ ...BROWSE, sargableTextWhere: true })).sql);
+      const off = whereOf((await capture({ ...BROWSE, sargableTextWhere: false })).sql);
+      expect(on).toBe(off);
+    }
+  });
+
+  test('no flag state can put an OR-EXISTS back into the union, or narrow its token arm', async () => {
+    for (const doc of ['enabled', undefined]) {
+      for (const sargableTextWhere of [true, false]) {
+        process.env[UNION_FLAG] = 'on';
+        if (doc) process.env[DOC_FLAG] = doc; else delete process.env[DOC_FLAG];
+        const where = whereOf((await capture({ ...BROWSE, sargableTextWhere })).sql);
+        const label = `doc=${doc || 'off'} sargable=${sargableTextWhere}`;
+        expect({ label, m: /OR EXISTS/.test(where) }).toEqual({ label, m: false });
+        expect({ label, m: /m\.merchant_name/.test(where) }).toEqual({ label, m: false });
+        expect({ label, m: /p\.source_product_id/.test(where) }).toEqual({ label, m: false });
+        // The token arm must be the PLAIN form. plainTokenWhere opens `OR (((CASE WHEN`; the sargable
+        // variant opens `OR ((LOWER(...) LIKE $n OR ...) AND ((` — a strictly narrower, recall-reducing
+        // conjunct that the union must never take. Both forms contain `) >= 2)`, so the pre-existing
+        // token assertion cannot tell them apart.
+        expect({ label, m: /OR \(\(\(CASE WHEN/.test(where) }).toEqual({ label, m: true });
+      }
+    }
+  });
+
+  test('with the union off, verticalSearch browse SQL is unchanged from the kill-switch form', async () => {
+    process.env[UNION_FLAG] = 'off';
+    const { sql } = await capture(BROWSE);
+    expect(sql).toMatch(/AND \$2::text IS NOT NULL/);
+    // Browse-with-prefix has never carried the text arms at all in this mode.
+    expect(whereOf(sql)).not.toMatch(/LOWER\(COALESCE\(p\.title, ''\)\) LIKE \$2/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The union's ingredient carve-out: restored at 1 token, dropped at 2+.
+//
+// `plainTokenWhere` needs 2+ significant tokens, so a BARE ingredient query collapses the union arm to
+// title/brand alone — and bare ingredient queries are exactly what reaches here with verticalSearch on
+// (`niacinamide` resolves beauty/skincare/treat/ AND sets it). The sibling citableSargableLane refuses
+// the identical narrowing for this reason: bare "glycerin" measured 22/25 rows lost. recall_doc does not
+// cover the gap — migration 058 projects external-seed text only.
+//
+// Both directions are driven. Restoring the arm unconditionally would put the 18.6s shape back; never
+// restoring it loses the rows.
+describe('canonicalCatalogSearch union ingredient carve-out', () => {
+  const UNION_FLAG = 'CANONICAL_CATALOG_CATEGORY_BROWSE_TEXT_UNION';
+  beforeEach(() => { process.env[UNION_FLAG] = 'on'; });
+  afterEach(() => { delete process.env[UNION_FLAG]; });
+
+  async function unionWhere(overrides) {
+    const query = makeMockQuery([]);
+    await fetchCanonicalChainRows({
+      categoryPathPrefix: 'beauty/skincare/treat/',
+      categoryMode: 'category_browse',
+      tokenMatch: true,
+      verticalSearch: true,
+      sargableTextWhere: true,
+      deps: { query },
+      ...overrides,
+    });
+    const { sql, params } = query.calls[0];
+    const start = sql.indexOf('WHERE (');
+    return { where: sql.slice(start, sql.indexOf('\n        AND ', start)), sql, params };
+  }
+
+  test('a BARE ingredient query keeps the ingredient_ids arm — nothing else could recall it', async () => {
+    const { where } = await unionWhere({ query: 'niacinamide' });
+    expect(where).not.toMatch(/\) >= 2\)/);          // token arm genuinely absent (the precondition)
+    expect(where).toMatch(/ingredient_ids/);          // so the carve-out must fire
+    // The OTHER sku arm stays out: sku codes and variant labels are not ingredient names, so it is all
+    // cost and none of the measured recall.
+    expect(where).not.toMatch(/sw\.sku/);
+  });
+
+  test('a MULTI-token query drops it again — the fast path is the default', async () => {
+    const { where } = await unionWhere({ query: 'salicylic acid toner' });
+    expect(where).toMatch(/\) >= 2\)/);               // token arm present
+    expect(where).not.toMatch(/ingredient_ids/);      // so the carve-out must NOT fire
+    expect(where).not.toMatch(/OR EXISTS/);
+  });
+
+  test('without verticalSearch there is no arm to restore, at any token count', async () => {
+    for (const query of ['niacinamide', 'salicylic acid toner']) {
+      const { where } = await unionWhere({ query, verticalSearch: false });
+      expect(where).not.toMatch(/OR EXISTS/);
+      expect(where).not.toMatch(/ingredient_ids/);
+    }
+  });
+
+  test('the carve-out is bind-integral (08P01), single- and multi-token', async () => {
+    for (const query of ['niacinamide', 'salicylic acid toner']) {
+      const { sql, params } = await unionWhere({ query, marketId: 'US', merchantId: 'merch_x' });
+      const maxBind = Math.max(...[...sql.matchAll(/\$(\d+)/g)].map((m) => Number(m[1])));
+      expect({ query, maxBind }).toEqual({ query, maxBind: params.length });
+    }
+  });
+});
