@@ -2,6 +2,7 @@ const {
   detectBrandEntities,
   hasExplicitCategoryHint,
   buildBrandQueryVariants,
+  resolveBeautyBrandBrowseQuery,
 } = require('../src/findProductsMulti/brandLexicon');
 
 describe('findProductsMulti brand lexicon', () => {
@@ -176,6 +177,53 @@ describe('findProductsMulti brand lexicon', () => {
         brand_like: false,
         brands: [],
       }),
+    );
+  });
+
+  // A multi-word alias must never span the gap between OTHER words'
+  // characters: "r co" (r_and_co) is a substring of "hai[r co]nditioner",
+  // so every "<word ending in r> conditioner" query resolved the R+Co brand
+  // and — through the search-quality contract's brand_mismatch constraint —
+  // served only R+Co products or near-zero. Same for the compacted form
+  // ("rco" inside "hairconditioner"). 156 of the 168 static aliases were
+  // mid-word matchable before the token-boundary fix.
+  test.each([
+    ['hair conditioner'],
+    ['repair conditioner'],
+    ['color conditioner'],
+    ['silver conditioner'],
+    ['lavender conditioner'],
+    ['curly hair conditioner'],
+    ['leave-in conditioner'],
+  ])('multi-word alias "r co" does not span the word gap in %s', (query) => {
+    const resolved = resolveBeautyBrandBrowseQuery(query);
+    expect(resolved.matched).toBe(false);
+    expect(detectBrandEntities(query, { candidateProducts: [] })).toEqual(
+      expect.objectContaining({ brand_like: false, brands: [] }),
+    );
+  });
+
+  test.each([
+    ['r co'],
+    ['r+co'],
+    ['r and co'],
+    ['randco'],
+    ['r co shampoo'],
+    ['r+co conditioner'],
+  ])('real R+Co queries still resolve the brand: %s', (query) => {
+    const resolved = resolveBeautyBrandBrowseQuery(query);
+    expect(resolved.matched).toBe(true);
+    expect(resolved.brand_key).toBe('r_and_co');
+  });
+
+  test('compact alias forms still match as whole token runs, not mid-word', () => {
+    expect(detectBrandEntities('tomford lipstick', { candidateProducts: [] })).toEqual(
+      expect.objectContaining({ brand_like: true, brands: expect.arrayContaining(['tom ford']) }),
+    );
+    // "dior" inside "diorshow" / "nars" inside "lunars" no longer fire:
+    // brand credit requires a whole token (run), not a substring of one.
+    expect(detectBrandEntities('lunars eyeshadow', { candidateProducts: [] })).toEqual(
+      expect.objectContaining({ brand_like: false, brands: [] }),
     );
   });
 
