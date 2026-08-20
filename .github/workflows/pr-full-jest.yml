@@ -468,6 +468,21 @@ jobs:
       # keys, leave query_step_strength unvalidated) and all twelve fail the suite. The blast radius of
       # the dedupe change was MEASURED, not reasoned: 4,320 contract combinations diffed old vs new,
       # ZERO packs lost a non-structural query and zero shrank.
+      # ADDED 2026-08-20: `tests/reco_recall_pool_cache`, confirmed green (28/28). Two things ship here
+      # and both are the kind that look fine until production. (1) A DURABLE candidate-pool cache: every
+      # cache on the reco path is in-process and this service deploys ~20x/day, so none of them survives
+      # a cold-search spike. The SQL tests run the EXACT DDL src/db/migrations/059 ships -- READ FROM THE
+      # FILE, not retyped -- against pg-mem, and one test asserts the code's lazy-ensure DDL is
+      # byte-equivalent to that migration, because two copies of a CREATE TABLE that drift create two
+      # different tables. (2) The fail-fast circuit repair: the on-request probe timeout is capped at
+      # 6000ms (default 1500ms) against a dependency whose measured COLD latency is 9-18.6s, so the probe
+      # could NEVER succeed -- the circuit stayed open, its own failing probe re-opened it, and recall
+      # plus the grounding pass were skipped for as long as traffic arrived. Tests pin that a request is
+      # never conscripted as a probe, that a FAILING probe does not extend the cooldown, that the timer
+      # is unref'd, and that the grounding pass serves the durable pool instead of the wholesale skip.
+      # Twenty-three mutants were run and all twenty-three fail the suite -- including two that survived
+      # a first pass and forced stronger assertions (a replayed cached pool used as a ranking, and
+      # deleting the query-pack substring dedupe).
       - name: Run node:test suites
         run: |
           node --test \
@@ -533,7 +548,8 @@ jobs:
             tests/aurora_surface_auth.node.test.cjs \
             tests/aurora_surface_auth_rollup.node.test.cjs \
             tests/reco_direct_recall_before_llm.node.test.cjs \
-            tests/reco_recall_honest_queries.node.test.cjs
+            tests/reco_recall_honest_queries.node.test.cjs \
+            tests/reco_recall_pool_cache.node.test.cjs
 
   jest:
     runs-on: ubuntu-latest
