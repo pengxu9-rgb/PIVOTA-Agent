@@ -33,10 +33,18 @@ const CATEGORY_ALIAS_RULES = Object.freeze([
     categoryPathPrefix: 'beauty/makeup/lip/',
     pattern: /\b(lipsticks?|lip\s*sticks?|lip\s*colors?|lip\s*colours?|liquid\s*lips?|rouge)\b|口红|口紅/i,
   },
+  // lip liner/pencil/tint arms added 2026-08-20 (second residue pass): all
+  // three safe-emptied as ambiguous. Their rows split across competing lip
+  // taxonomies (beauty/makeup/lip/liner 30 eligible + beauty/makeup/lips/
+  // lip-liner 8 — note lip vs lipS trees; tint leaf only 4), so the broad
+  // beauty/makeup/lip/ prefix (519 eligible) is the only one that doesn't
+  // orphan a subtree, and the union's title boost sorts the queried form to
+  // the head. The lipS/ tree is still excluded by the prefix — recorded.
   {
     category: 'lip_care_or_gloss',
     categoryPathPrefix: 'beauty/makeup/lip/',
-    pattern: /\b(lip\s*oils?|lip\s*balms?|lip\s*treatments?|lip\s*masks?|lip\s*gloss(?:es)?)\b|唇油|润唇|潤唇|唇膜|唇彩/i,
+    pattern:
+      /\b(lip\s*oils?|lip\s*balms?|lip\s*treatments?|lip\s*masks?|lip\s*gloss(?:es)?|lip\s*liners?|lip\s*pencils?|lip\s*tints?)\b|唇油|润唇|潤唇|唇膜|唇彩|唇线|唇線/i,
   },
   // Haircare. MEASURED GAP, 2026-08-20: bare `shampoo` / `conditioner` /
   // `hair mask` / `hair oil` had no rule here and no entry in
@@ -67,8 +75,11 @@ const CATEGORY_ALIAS_RULES = Object.freeze([
     // (?<!air\s) is satisfied by the trailing "air " of hAIR, repAIR, chAIR,
     // which blocked the single most canonical phrasing of this category —
     // "hair conditioner" (caught in the pre-merge review, by execution).
+    // hairspray/hair spray arm added 2026-08-20 (second residue pass): both
+    // spellings safe-emptied; 13 eligible hairspray-titled rows live in
+    // beauty/haircare/general, inside this rule's existing broad prefix.
     pattern:
-      /\b(shampoos?|dry\s+shampoos?|(?<!\blip\s)(?<!\bair\s)(?<!\bfabric\s)conditioners?|leave[-\s]?in\s+conditioners?|(?:hair|scalp)\s+(?:masks?|oils?|serums?|mists?|tonics?|treatments?|creams?)|hair\s?care)\b|洗发|洗髮|护发素|護髮素|护发|護髮|发膜|髮膜/i,
+      /\b(shampoos?|dry\s+shampoos?|(?<!\blip\s)(?<!\bair\s)(?<!\bfabric\s)conditioners?|leave[-\s]?in\s+conditioners?|(?:hair|scalp)\s+(?:masks?|oils?|serums?|mists?|tonics?|treatments?|creams?|sprays?)|hairsprays?|hair\s?care)\b|洗发|洗髮|护发素|護髮素|护发|護髮|发膜|髮膜|发胶|髮膠/i,
   },
   {
     category: 'mascara',
@@ -93,6 +104,15 @@ const CATEGORY_ALIAS_RULES = Object.freeze([
     category: 'eyeshadow',
     categoryPathPrefix: 'beauty/makeup/eye/eyeshadow/',
     pattern: /\beye\s*shadows?\b|眼影/i,
+  },
+  // Eyeliner. Second residue pass, 2026-08-20: `eyeliner` / `eye liner` /
+  // `liquid eyeliner` safe-emptied. Bucket verified on prod the same day:
+  // beauty/makeup/eye/eyeliner, 48 serving-eligible rows (41 of them
+  // eyeliner-titled).
+  {
+    category: 'eyeliner',
+    categoryPathPrefix: 'beauty/makeup/eye/eyeliner/',
+    pattern: /\beye\s?liners?\b|眼线|眼線/i,
   },
   {
     category: 'blush',
@@ -131,6 +151,25 @@ const CATEGORY_ALIAS_RULES = Object.freeze([
     categoryPathPrefix: 'beauty/makeup/face/powder/',
     pattern: /\b(?:setting|face|translucent|loose|pressed|compact|finishing)\s+powders?\b|散粉|蜜粉/i,
   },
+  // Highlighter. Second residue pass, 2026-08-20: safe-emptied. Bucket:
+  // beauty/makeup/face/highlighter, 69 eligible rows (49 highlighter-titled).
+  // The lookahead keeps the stationery sense (`highlighter pens`/`markers`)
+  // unclassified — same guard style as printer toner.
+  {
+    category: 'highlighter',
+    categoryPathPrefix: 'beauty/makeup/face/highlighter/',
+    pattern: /\bhighlighters?\b(?!\s+(?:pens?|markers?)\b)|高光/i,
+  },
+  // Primer. Second residue pass, 2026-08-20: `primer` / `face primer` /
+  // `makeup primer` / `eye primer` all safe-emptied. Bucket:
+  // beauty/makeup/face/primer, 30 eligible rows (23 primer-titled). The
+  // lookbehind/lookahead keep the hardware sense (`paint/wall/wood primer`,
+  // `primer paint`) unclassified.
+  {
+    category: 'primer',
+    categoryPathPrefix: 'beauty/makeup/face/primer/',
+    pattern: /(?<!\bpaints?\s)(?<!\bwall\s)(?<!\bwood\s)\bprimers?\b(?!\s+paints?\b)|妆前乳|妝前乳/i,
+  },
   {
     category: 'sunscreen',
     categoryPathPrefix: 'beauty/skincare/sun/',
@@ -168,17 +207,75 @@ const CATEGORY_ALIAS_RULES = Object.freeze([
     pattern:
       /\b(?<!printer\s)toners?\b(?!\s+cartridges?)|\btoner\s+pads?\b|\b(?:face|facial)\s+mists?\b|爽肤水|爽膚水|化妆水|化妝水|化粧水/i,
   },
-  // Clay/mud mask. Same 2026-08-20 tail. The mask leaf is a real bucket —
-  // beauty/skincare/treat/mask held 407 eligible rows — so unlike the sparse
-  // haircare leaves this one is browsable directly. Only the clay/mud
-  // anchored forms are claimed: `lip mask` belongs to the lip rule and
-  // `hair mask` to the haircare rule (both sit earlier), and bare `mask` /
-  // `face mask` / `sheet mask` are deliberately left unclassified for now
-  // (non-beauty senses; recorded as remaining tail in the PR body).
+  // Face masks. Same 2026-08-20 tail (clay/mud in the first pass; face/sheet/
+  // overnight/sleeping added in the second residue pass — 68 of the eligible
+  // face|sheet-mask-titled rows live in this bucket). The mask leaf is a real
+  // bucket — beauty/skincare/treat/mask held 407 eligible rows — so unlike
+  // the sparse haircare leaves this one is browsable directly. Only anchored
+  // forms are claimed: `lip mask` belongs to the lip rule and `hair mask` to
+  // the haircare rule (both sit earlier), and bare `mask` stays unclassified
+  // (PPE/costume senses).
   {
-    category: 'clay_or_mud_mask',
+    category: 'face_mask',
     categoryPathPrefix: 'beauty/skincare/treat/mask/',
-    pattern: /\b(?:clay|mud)\s+masks?\b|泥膜/i,
+    pattern: /\b(?:clay|mud|face|facial|sheet|overnight|sleeping)\s+masks?\b|泥膜|面膜/i,
+  },
+  // Exfoliants. Second residue pass, 2026-08-20: `exfoliant` / `exfoliator` /
+  // `chemical peel` / `body scrub` safe-emptied. Bucket:
+  // beauty/skincare/treat/exfoliant, 69 eligible rows (peel-titled 31 +
+  // exfoli-titled 11 + scrub-titled 8 live there). MUST SIT BELOW the
+  // cleanser and toner rules: `exfoliating cleanser` (13 eligible
+  // exfoli-titled rows in cleanse/) and `exfoliating toner` (8 in tone/)
+  // belong to those buckets. Bare `peel` and bare `scrub` stay unclassified
+  // (fruit/kitchen senses) — only anchored compounds are claimed.
+  {
+    category: 'exfoliant',
+    categoryPathPrefix: 'beauty/skincare/treat/exfoliant/',
+    pattern:
+      /\bexfolia(?:nts?|tors?|ting|te)\b|\b(?:chemical|face|facial)\s+peels?\b|\bpeeling\s+(?:gels?|solutions?|pads?)\b|\b(?:body|face|facial|sugar|salt)\s+scrubs?\b|磨砂|去角质|去角質/i,
+  },
+  // Face oil. Second residue pass, 2026-08-20: safe-emptied. The catalog runs
+  // competing taxonomies here — beauty/skincare/face-oil (18 eligible, 15
+  // face-oil-titled) AND beauty/skincare/moisturize/oil (24 eligible, 8
+  // face-oil-titled). The dedicated face-oil leaf wins on titled density; the
+  // moisturize/oil subtree is excluded by the prefix — recorded. `hair oil`
+  // keeps its earlier haircare claim; bare `oil` stays unclassified.
+  {
+    category: 'face_oil',
+    categoryPathPrefix: 'beauty/skincare/face-oil/',
+    pattern: /\b(?:face|facial)\s+oils?\b/i,
+  },
+  // Nail polish. Second residue pass, 2026-08-20: `nail polish` / `gel nail
+  // polish` safe-emptied. Bucket: beauty/makeup/nails/nail-polish, 38
+  // eligible rows. The lookahead keeps `nail polish remover` unclassified —
+  // its bucket (nails/nail-polish-remover) holds only 2 rows, too sparse to
+  // browse, and routing removers into the polish bucket would be wrong.
+  {
+    category: 'nail_polish',
+    categoryPathPrefix: 'beauty/makeup/nails/nail-polish/',
+    pattern: /\bnail\s+(?:polish(?:es)?(?!\s+removers?\b)|lacquers?|varnish(?:es)?)\b|指甲油|甲油/i,
+  },
+  // Deodorant. Second residue pass, 2026-08-20: safe-emptied. The bodycare
+  // taxonomy is fragmented (body-care/ vs bodycare/ vs personal_care/ vs
+  // fragrance/deodorant); beauty/body-care/deodorant is the largest home
+  // (11 eligible rows of the ~20 deodorant-titled) — the other spellings'
+  // subtrees are excluded by the prefix, recorded.
+  {
+    category: 'deodorant',
+    categoryPathPrefix: 'beauty/body-care/deodorant/',
+    pattern: /\bdeodorants?\b|\bantiperspirants?\b|止汗/i,
+  },
+  // Shower gel. Second residue pass, 2026-08-20: safe-emptied. Same
+  // fragmented bodycare taxonomy: beauty/body-care/body-wash is the largest
+  // home (8 eligible; bath/shower_gel holds 5 more, excluded by the prefix —
+  // recorded). NOTE `body wash` itself never safe-emptied — the cleanser
+  // rule's bare `wash` arm claims it into the skincare/cleanse tree (the
+  // wrong tree, but a served result; changing that arm is out of scope and
+  // recorded).
+  {
+    category: 'shower_gel',
+    categoryPathPrefix: 'beauty/body-care/body-wash/',
+    pattern: /\bshower\s+gels?\b|沐浴露|沐浴乳/i,
   },
   {
     category: 'serum',
@@ -210,7 +307,15 @@ const GENERIC_CATEGORY_BY_PREFIX = Object.freeze({
   'beauty/makeup/eye/eyeshadow/': 'eyeshadow',
   'beauty/makeup/face/bronzer/': 'bronzer',
   'beauty/makeup/face/powder/': 'setting powder',
-  'beauty/skincare/treat/mask/': 'clay mask',
+  'beauty/skincare/treat/mask/': 'face mask',
+  'beauty/makeup/face/highlighter/': 'highlighter',
+  'beauty/makeup/face/primer/': 'primer',
+  'beauty/makeup/eye/eyeliner/': 'eyeliner',
+  'beauty/makeup/nails/nail-polish/': 'nail polish',
+  'beauty/skincare/treat/exfoliant/': 'exfoliant',
+  'beauty/skincare/face-oil/': 'face oil',
+  'beauty/body-care/deodorant/': 'deodorant',
+  'beauty/body-care/body-wash/': 'shower gel',
 });
 
 function normalizeQueryTextForUnderstanding(value) {
