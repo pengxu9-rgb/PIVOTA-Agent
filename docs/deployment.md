@@ -60,6 +60,19 @@ PIVOTA_UI_CHAT_INTERNAL_KEY=<random-32-byte-hex>   # openssl rand -hex 32; send 
 # /v1/recommendations/*). Add it once those are reconciled.
 AURORA_SURFACE_DENIED_HOSTS=
 
+# Aurora BFF surface caller auth (/v1, /v2) — Phase 1.
+# MODE: `observe` (default) logs what enforcement WOULD do and allows everything through;
+# `enforce` requires X-Internal-Key. Anything that is not exactly "enforce" means observe, so a typo
+# can never take the consumer app down. Do NOT set enforce until every consumer sends the header AND
+# a full traffic day of logs shows would_refuse=0 — photo-analysis is low-volume, so a short window
+# reports "no consumer" for one that is live.
+AURORA_SURFACE_AUTH_MODE=observe
+AURORA_SURFACE_INTERNAL_KEY=
+# ^ Set this AT THE SAME TIME as deploying observe mode, not at the flip. With no key configured
+# every log line reads reason=key_not_configured, which cannot distinguish "this consumer has not
+# shipped the header yet" from "we forgot to set the key" — and that distinction IS the measurement.
+# With the key set, reason becomes missing_key / bad_key / ok per caller, which is what gates step 4.
+
 # Gateway Configuration
 PIVOTA_GATEWAY_URL=<your-gateway-url>  # e.g., https://your-domain.com/agent/shop/v1/invoke
 
