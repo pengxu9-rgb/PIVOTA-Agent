@@ -30533,6 +30533,41 @@ async function getCommerceRemoteMcpAdapter() {
           budgetMs: Number(process.env.AURORA_BFF_RECOMMEND_PRODUCTS_AGENT_BUDGET_MS) > 0
             ? Number(process.env.AURORA_BFF_RECOMMEND_PRODUCTS_AGENT_BUDGET_MS)
             : undefined,
+          // Live price re-verification: the same unscoped sig-detail lane get_product_detail routes to
+          // (loopback get_pdp_v2 → normalizePdpV2ToProductDetail), so the shortlist's prices are the
+          // PDP's, not a catalog snapshot. Identity-free on purpose (no buyer_ref, no agent JWT): this
+          // is a cached-read-class lookup and the upstream should see one identity, same rationale as
+          // the cached search lane. The bridge bounds concurrency/latency and treats null as
+          // "unavailable" — so this function only ever answers {price, currency, in_stock} or null.
+          verifyPrice: !['0', 'false', 'off'].includes(String(process.env.AGENT_RECOMMEND_PRODUCTS_PRICE_VERIFY_ENABLED || '').trim().toLowerCase())
+            ? async ({ product_id: productId }) => {
+              const pid = String(productId || '').trim();
+              if (!pid) return null;
+              const response = await axios.post(
+                `${selfInvokeBase()}/agent/shop/v1/invoke`,
+                { operation: 'get_pdp_v2', payload: { product_ref: { product_id: pid }, include: ['product_overview'] } },
+                {
+                  timeout: Number(process.env.AGENT_RECOMMEND_PRODUCTS_PRICE_VERIFY_TIMEOUT_MS) > 0
+                    ? Number(process.env.AGENT_RECOMMEND_PRODUCTS_PRICE_VERIFY_TIMEOUT_MS)
+                    : 2000,
+                  headers: {
+                    'Content-Type': 'application/json',
+                    ...buildInvokeUpstreamAuthHeaders({
+                      allowInternalFallback: true,
+                      preferInternalFallback: true,
+                      forwardAgentUserJwt: false,
+                      forwardBuyerRef: false,
+                    }),
+                  },
+                  validateStatus: () => true,
+                },
+              );
+              if (response.status < 200 || response.status >= 300) return null;
+              const { product } = normalizePdpV2ToProductDetail(response.data);
+              if (!product || typeof product.price !== 'number') return null;
+              return { price: product.price, currency: product.currency, in_stock: product.in_stock };
+            }
+            : undefined,
         }),
       };
       const executor = createCanonicalExecutor({
