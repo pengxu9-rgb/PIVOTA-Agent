@@ -107,9 +107,22 @@ for (const k of PRICE_MAX_KEYS) PRICE_CURRENCY_KEYS.add(`${k}currency`);
 // left alone: the marker and `constraint_violations` already carry the truth. Word-anchored so
 // "Priceless glow" is not read as a price claim, and bilingual — `language: 'CN'` is a first-class
 // parameter of this tool.
-const AFFORDABILITY_CLAIM_RE = /\b(afford\w*|cheap\w*|inexpensive|budget-friendly|bargain)\b|便宜|实惠|划算/i;
-const PRICE_TOKEN_RE = /\b(budget|price[ds]?|pricing|cost\w*|spend\w*|dollars?|usd|value)\b|[$£€¥]\s*\d|预算|价格|美元|价钱/i;
-const FIT_ASSERTION_RE = /\b(within|under|below|inside|beneath|fits?|fitting|comfortably|meets?|stays?|keeps?)\b|之内|以内|不超过|低于|范围内/i;
+const AFFORDABILITY_CLAIM_RE = /\b(afford\w*|cheap\w*|inexpensive|budget-friendly|bargain)\b|便宜|实惠|划算|预算友好/i;
+// A price token names MONEY. `value` is deliberately absent: it earns no strip on its own, and pairing
+// it with a fit word deletes true copy ("a great-value serum that layers under makeup").
+const PRICE_TOKEN_RE = /\b(budget|price[ds]?|pricing|cost\w*|spend\w*|dollars?|usd)\b|[$£€¥]\s*\d|预算|价格|美元|价钱/i;
+// A fit assertion names the CONSTRAINT being met — containment, comparison, or negated exceedance.
+// `limit`/`cap`/`ceiling`/`maximum` live HERE rather than among the price tokens: alone they are
+// ordinary skincare copy ("limit use to 2-3x per week", "keep the cap closed") and strip nothing; they
+// only ever fire alongside a money word, which is exactly when they mean the buyer's ceiling.
+const FIT_ASSERTION_RE = new RegExp([
+  '\\b(within|under|below|inside|beneath|fits?|fitting|comfortably|meets?|stays?|keeps?)\\b',
+  '\\b(less than|lower than|cheaper than|no more than|at most|respects?)\\b',
+  '\\b(limit|cap|ceiling|maximum|max)\\b',
+  "\\b(wo|do|does|will|is|are)n'?t\\s+(exceed|break|go over|top)\\b",
+  '\\bwill not exceed\\b',
+  '之内|以内|不超过|低于|范围内|预算内|不会超出|不高于',
+].join('|'), 'i');
 
 function assertsBudgetFit(line) {
   return AFFORDABILITY_CLAIM_RE.test(line) || (PRICE_TOKEN_RE.test(line) && FIT_ASSERTION_RE.test(line));

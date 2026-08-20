@@ -546,6 +546,100 @@ test('4e-4. the ceiling\'s OWN currency beats a generic currency constraint', as
   assert.equal(extractPriceMax({ budget_max: 5000, budget_max_currency: 'JPY' }).declared, true);
 });
 
+// REVIEW FINDING: the first regex caught containment verbs only, so comparison and negated-exceed
+// phrasings walked through — and the CN half caught 2 of 5 natural phrasings while the one CN test
+// happened to use a covered form (a fixture matching the implementation rather than the language).
+test('4h-3. comparison and negated-exceed claims are stripped, in EN and CN', async () => {
+  const claims = [
+    "Won't break your budget",
+    'Costs less than you allowed',
+    'The cost is lower than your maximum',
+    'A $45 serum that still respects your $40 budget',
+    'Priced right at your limit',
+    '在预算内',
+    '这款不会超出你的预算',
+    '预算友好的选择',
+    '价格低于你的上限',
+  ];
+  // ONE claim per call: asStringArray caps `reasons` at 6, so a batched fixture silently truncates the
+  // control line and every assertion below would pass for the wrong reason.
+  for (const claim of claims) {
+    const item = { ...ITEM_OVERPRICED, reasons: [claim, 'PHA is the gentlest exfoliating acid'], notes: [] };
+    const h = makeRecommendProducts({ generate: async () => laneResult([item]), isEnabled: () => true });
+    const res = await h({ payload: { need: 'x', constraints: { price_max: 40 } } }, {});
+    assert.deepEqual(res.signals[0].value.why, ['PHA is the gentlest exfoliating acid'],
+      `"${claim}" asserts the ceiling is met and must be stripped`);
+  }
+});
+
+test('4h-4. a fit word alone never strips — only paired with a money word', async () => {
+  // `limit`/`cap`/`maximum` are fit words, not price words: alone they are ordinary skincare copy.
+  const item = {
+    ...ITEM_OVERPRICED,
+    reasons: ['A great-value serum that layers under makeup without pilling', 'Use within 6 months of opening'],
+    notes: [],
+    constraint_notes: ['Limit use to 2-3 times per week', 'Keep the cap closed'],
+    warnings: ['Stays below SPF 30 protection on its own'],
+  };
+  const h = makeRecommendProducts({ generate: async () => laneResult([item]), isEnabled: () => true });
+  const res = await h({ payload: { need: 'x', constraints: { price_max: 40 } } }, {});
+  const v = res.signals[0].value;
+  assert.deepEqual(v.why, ['A great-value serum that layers under makeup without pilling', 'Use within 6 months of opening'],
+    '"under makeup" and "within 6 months" carry no money word — they are not budget claims');
+  assert.deepEqual(v.watchouts.slice(1), ['Limit use to 2-3 times per week', 'Keep the cap closed', 'Stays below SPF 30 protection on its own']);
+});
+
+// BOTH guards on price_constraint_unenforced are pinned here. This key exists so a caller never
+// misreads enforcement state, so a guard that silently stops working is the "green that means nothing
+// ran" shape — the failure mode this repo keeps hitting.
+test('4j. nothing_verifiable fires only when the shortlist is non-empty AND wholly unchecked', async () => {
+  // guard 1: an EMPTY shortlist must not emit it (0 === 0)
+  const h0 = makeRecommendProducts({ generate: async () => laneResult([ITEM_EMPTY]), isEnabled: () => true });
+  const empty = await h0({ payload: { need: 'x', constraints: { price_max: 40 } } }, {});
+  assert.equal(empty.signals.length, 0);
+  assert.equal(empty.metadata.price_constraint_unenforced, undefined,
+    'with nothing returned there is no clean bill of health to misread');
+  assert.equal(empty.metadata.dropped_unidentified_items, 1);
+
+  // guard 2: a PARTIALLY checked shortlist must not claim nothing could be checked
+  const jpy = { ...ITEM_OVERPRICED, sku: { product_id: 'sig_jpy' }, price: { amount: 20, currency: 'JPY' } };
+  const h1 = makeRecommendProducts({ generate: async () => laneResult([ITEM_FULL, jpy]), isEnabled: () => true });
+  const mixed = await h1({ payload: { need: 'x', constraints: { price_max: 40 } } }, {});
+  assert.equal(mixed.signals.length, 2);
+  assert.equal(mixed.metadata.price_unverified_returned, 1);
+  assert.equal(mixed.metadata.price_constraint_unenforced, undefined,
+    'one conforming item WAS verified — the shortlist is half-checked, not unchecked');
+});
+
+test('4j-2. the unverifiable rung strips claims from watchouts and notes, not just why', async () => {
+  const item = {
+    ...ITEM_OVERPRICED,
+    price: { amount: 4500, currency: 'JPY' },
+    reasons: ['PHA is gentle'],
+    notes: ['stays under your budget'],
+    constraint_notes: ['Fits within your $40 budget'],
+    warnings: ['patch test first'],
+  };
+  const h = makeRecommendProducts({ generate: async () => laneResult([item]), isEnabled: () => true });
+  const res = await h({ payload: { need: 'x', constraints: { price_max: 40 } } }, {});
+  const v = res.signals[0].value;
+  assert.deepEqual(v.notes, [], 'a fit claim in notes is not relayed on an unchecked item');
+  assert.deepEqual(v.watchouts, ['price_max 40 USD not verified: price in JPY, ceiling in USD', 'patch test first'],
+    'a fit claim must not sit beside the marker saying it could not be checked');
+});
+
+test('4j-3. the violation record normalizes the currency it reports', async () => {
+  // an unnormalized row can carry a lowercase code; firstString trims but never uppercases, and the
+  // comparison is case-insensitive — so without normalization a consumer testing
+  // `currency === limit_currency` would get false on a genuine violation
+  const lower = { name: 'Unnormalized', sku: { product_id: 'sig_low' }, price: 45, currency: 'usd', score: 90 };
+  const h = makeRecommendProducts({ generate: async () => laneResult([lower]), isEnabled: () => true });
+  const res = await h({ payload: { need: 'x', constraints: { price_max: 40 } } }, {});
+  const cv = res.signals[0].value.constraint_violations[0];
+  assert.equal(cv.currency, 'USD');
+  assert.equal(cv.currency, cv.limit_currency, 'the two currency fields of one record must be comparable');
+});
+
 test('4i. the enforcement markers survive the REAL commerce surface and its sanitizer', async () => {
   const { createCommerceToolSurface } = await import(pathToFileURL(path.join(__dirname, '..', 'mcp-server', 'src', 'commerceToolSurface.js')).href);
   const executor = {
