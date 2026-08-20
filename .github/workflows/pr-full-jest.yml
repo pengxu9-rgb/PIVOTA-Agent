@@ -373,11 +373,18 @@ jobs:
       # production" and turns the guard OFF in production. Both files are `*.node.test.cjs`,
       # so jest's `**/tests/**/*.test.(js|ts)` cannot see them; without these two lines they
       # would run in NO PR workflow at all.
+      # ADDED 2026-08-19: `tests/agent_identity_issuer_registry`, confirmed green (9/9). Federated buyer
+      # identity: the per-agent issuer registry (pulled from the backend's internal endpoint under the
+      # introspection key) + its wiring into deriveStrictCommerceCtxAsync — a token from an issuer the CALLING
+      # agent registered verifies for that agent only; a binding naming a PLATFORM-TRUSTED issuer is dropped at
+      # ingest; an unrefreshable map fails closed past the staleness bound. Real jose keys, real safety-kernel
+      # verifier; fetch served from memory.
       - name: Run node:test suites
         run: |
           node --test \
             tests/platform_config.node.test.cjs \
             tests/platform_production_guards.node.test.cjs \
+            tests/agent_identity_issuer_registry.node.test.cjs \
             tests/aurora_chat_v1_mainline_delegation_cycle.node.test.cjs \
             tests/aurora_bff_v1_chat_rollout.node.test.cjs \
             mcp-server/test/ucpToolVocabulary.test.js \
