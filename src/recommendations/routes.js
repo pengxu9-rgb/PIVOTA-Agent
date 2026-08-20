@@ -344,12 +344,16 @@ function mountRecommendationRoutes(app) {
     const env = String(process.env.NODE_ENV || process.env.APP_ENV || '').toLowerCase();
     const isProd = env === 'production' || env === 'prod';
     if (!expected) {
-      if (isProd) return res.status(500).json({ error: 'CONFIG_MISSING', message: 'Missing RECOMMENDATIONS_INTERNAL_KEY' });
+      if (isProd) {
+        res.status(500).json({ error: 'CONFIG_MISSING', message: 'Missing RECOMMENDATIONS_INTERNAL_KEY' });
+        return false;
+      }
       return true; // dev default
     }
     const provided = String(req.header('X-Internal-Key') || '').trim();
     if (provided && provided === expected) return true;
-    return res.status(401).json({ error: 'UNAUTHORIZED', message: 'Missing or invalid X-Internal-Key' });
+    res.status(401).json({ error: 'UNAUTHORIZED', message: 'Missing or invalid X-Internal-Key' });
+    return false;
   }
 
   app.post('/v1/recommendations/roles/normalize', async (req, res) => {
