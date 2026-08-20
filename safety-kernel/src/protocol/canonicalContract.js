@@ -160,19 +160,24 @@ export const CANONICAL_OPERATIONS = Object.freeze([
   {
     // Read-only intelligence projections (decision substrate, not catalog). kernel:'local' routes them to
     // the executor's injected localReads handlers — they never touch the money kernel or upstream checkout.
+    //
+    // Their `ucpTool` names are VENDOR names under `cc.pivota.insights`, not dev.ucp spec names: the evidence
+    // for them is Pivota's own hosted capability document (UCP_TOOL_EVIDENCE.vendor), which is the only
+    // authority a vendor capability can have. They are spelled identically to the native MCP names on purpose:
+    // one vocabulary for the decision layer on every door.
     id: 'get_alternatives', capability: 'insights', kernel: 'local',
     mutating: false, requiresUserRef: false, requiresPaymentAuthz: false,
-    acp: null, ucp: 'catalog.alternatives', mcp: 'get_alternatives',
+    acp: null, ucp: 'catalog.alternatives', mcp: 'get_alternatives', ucpTool: 'get_alternatives',
   },
   {
     id: 'get_offers', capability: 'insights', kernel: 'local',
     mutating: false, requiresUserRef: false, requiresPaymentAuthz: false,
-    acp: null, ucp: 'catalog.offers', mcp: 'get_offers',
+    acp: null, ucp: 'catalog.offers', mcp: 'get_offers', ucpTool: 'get_offers',
   },
   {
     id: 'get_intel', capability: 'insights', kernel: 'local',
     mutating: false, requiresUserRef: false, requiresPaymentAuthz: false,
-    acp: null, ucp: 'catalog.intel', mcp: 'get_intel',
+    acp: null, ucp: 'catalog.intel', mcp: 'get_intel', ucpTool: 'get_intel',
   },
   {
     id: 'create_checkout_session', capability: 'checkout', kernel: 'preview_quote',
@@ -254,8 +259,11 @@ const OPS_BY_ID = Object.freeze(Object.fromEntries(CANONICAL_OPERATIONS.map((o) 
  *
  * Deliberately NOT mapped (no evidenced spec name — inventing one would advertise an operation no platform
  * can actually call, and would fail the moment the real name differs):
- *   get_alternatives, get_offers, get_intel, cancel_checkout_session, create_payment_link,
- *   get_order, request_after_sales, start_identity_linking, exchange_payment_token.
+ *   cancel_checkout_session, create_payment_link, get_order, request_after_sales, start_identity_linking,
+ *   exchange_payment_token.
+ * get_alternatives / get_offers / get_intel left that list on 2026-08-19 as VENDOR tools of
+ * `cc.pivota.insights` — a vendor capability's names are evidenced by the vendor's own hosted document, not
+ * by a dev.ucp listing (see UCP_TOOL_EVIDENCE.vendor).
  * `search_catalog` left that list on 2026-08-18: its spec name AND wire shape (`{ meta, catalog: { query,
  * pagination?, context?, signals?, filters? } }`, required ["meta","catalog"], no required member under
  * `catalog`) come from the same live cosrx listing as `get_product`'s, and the buyer client's
@@ -272,6 +280,12 @@ export const UCP_TOOL_EVIDENCE = Object.freeze({
   source: 'src/services/ucpBuyerAgentClient.js TOOL constant (verbatim from the live UCP spec)',
   mapped: Object.freeze(['search_catalog', 'get_product', 'create_checkout', 'update_checkout', 'get_checkout', 'complete_checkout']),
   unmappedSpecTools: Object.freeze(['create_cart', 'get_cart']),
+  // VENDOR tools under `cc.pivota.insights`. Not in any dev.ucp listing and never will be — their evidence is
+  // the capability document Pivota hosts on pivota.cc (UCP_INSIGHTS_SPEC_URL / UCP_INSIGHTS_SCHEMA_URL; the
+  // profile builder publishes the capability ONLY when both resolve on that host). The vocabulary test pins
+  // every vendor tool here so a name cannot be added to the dialect without also being declared as ours.
+  vendorSource: 'cc.pivota.insights capability document hosted on pivota.cc (see src/server.js ucpVendorCapabilityDocs)',
+  vendor: Object.freeze(['get_alternatives', 'get_offers', 'get_intel']),
 });
 
 const OPS_BY_UCP_TOOL = Object.freeze(Object.fromEntries(

@@ -302,8 +302,17 @@ test('a lit door publishes the UCP SPEC names with the UCP ARGUMENT schemas', as
     const tools = resp.body.result.tools;
     assert.deepEqual(
       tools.map((t) => t.name).sort(),
-      ['complete_checkout', 'create_checkout', 'get_checkout', 'get_product', 'search_catalog', 'update_checkout'],
+      [
+        'complete_checkout', 'create_checkout', 'get_alternatives', 'get_checkout', 'get_intel', 'get_offers',
+        'get_product', 'search_catalog', 'update_checkout',
+      ],
     );
+
+    // cc.pivota.insights (2026-08-19): the vendor tools speak `{ meta, insights: { id } }` — no flat product_id.
+    const intel = tools.find((t) => t.name === 'get_intel');
+    assert.deepEqual(intel.inputSchema.required, ['meta', 'insights']);
+    assert.equal(intel.inputSchema.properties.product_id, undefined, 'the native flat product_id must be gone');
+    assert.deepEqual(intel.inputSchema.properties.insights.required, ['id']);
 
     // search_catalog is on the door as of 2026-08-18: the spec's required envelope, with the query NESTED
     // under `catalog` and no flat `query`/`merchant_id` from the native schema.

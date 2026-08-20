@@ -48,17 +48,33 @@ function buyerClientToolNames() {
 }
 
 describe('UCP tool vocabulary is the one platforms actually send', () => {
-  test('every mapped ucpTool is a name our own buyer client took from the live spec', () => {
+  test('every mapped ucpTool is a name our own buyer client took from the live spec — or a declared vendor tool', () => {
     const spec = buyerClientToolNames();
     assert.ok(spec.size > 0, 'failed to parse the buyer client TOOL constant');
+    const vendor = new Set(UCP_TOOL_EVIDENCE.vendor);
     for (const op of UCP_DIALECT_OPERATIONS) {
+      if (vendor.has(op.ucpTool)) {
+        // A vendor tool's evidence is Pivota's OWN hosted capability document, so it must belong to the
+        // vendor capability — a dev.ucp capability may never carry a name the spec does not know.
+        assert.equal(op.capability, 'insights', `${op.ucpTool} is a vendor tool but not on the vendor capability`);
+        assert.ok(!spec.has(op.ucpTool), `${op.ucpTool} is declared vendor but IS a spec name — pick one`);
+        continue;
+      }
       assert.ok(spec.has(op.ucpTool), `${op.ucpTool} is not a spec tool name the buyer client knows`);
     }
   });
 
   test('the evidence record matches the contract (drift on either side fails here)', () => {
     const mapped = UCP_DIALECT_OPERATIONS.map((o) => o.ucpTool).sort();
-    assert.deepEqual(mapped, [...UCP_TOOL_EVIDENCE.mapped].sort());
+    assert.deepEqual(mapped, [...UCP_TOOL_EVIDENCE.mapped, ...UCP_TOOL_EVIDENCE.vendor].sort());
+    // The two evidence lists are disjoint: a name is spec-evidenced or vendor-evidenced, never both.
+    for (const t of UCP_TOOL_EVIDENCE.vendor) assert.ok(!UCP_TOOL_EVIDENCE.mapped.includes(t), t);
+  });
+
+  test('the vendor tools are exactly the insights operations, spelled like their native twins', () => {
+    const insights = CANONICAL_OPERATIONS.filter((o) => o.capability === 'insights');
+    assert.deepEqual(insights.map((o) => o.ucpTool).sort(), [...UCP_TOOL_EVIDENCE.vendor].sort());
+    for (const op of insights) assert.equal(op.ucpTool, op.mcp, `${op.id}: one vocabulary on every door`);
   });
 
   test('the dotted internal label is NOT what the dialect dispatches on', () => {
@@ -91,6 +107,9 @@ describe('the UCP dialect shares one surface and never forks the money path', ()
       ['update_checkout', 'update_checkout_session'],
       ['get_checkout', 'get_checkout_session'],
       ['complete_checkout', 'complete_checkout_session'],
+      ['get_alternatives', 'get_alternatives'],
+      ['get_offers', 'get_offers'],
+      ['get_intel', 'get_intel'],
     ];
     for (const [ucpName, mcpName] of pairs) {
       const viaUcp = canonicalOpForUcpTool(ucpName);
@@ -111,7 +130,7 @@ describe('the UCP dialect shares one surface and never forks the money path', ()
 
   test('UCP declarations expose spec names and never add an operation the MCP door lacks', () => {
     const ucpNames = ucpCommerceToolDefinitions.map((d) => d.name).sort();
-    assert.deepEqual(ucpNames, [...UCP_TOOL_EVIDENCE.mapped].sort());
+    assert.deepEqual(ucpNames, [...UCP_TOOL_EVIDENCE.mapped, ...UCP_TOOL_EVIDENCE.vendor].sort());
     assert.ok(ucpCommerceToolDefinitions.length <= commerceToolDefinitions.length);
     for (const def of ucpCommerceToolDefinitions) {
       assert.ok(def.inputSchema, `${def.name} must carry an input schema`);

@@ -31592,8 +31592,33 @@ async function getCommerceUcpRouteHandlers() {
       ? `${baseUrl.replace(/\/+$/, '')}/ucp/mcp`
       : undefined,
     omitCapabilityIds: ucpOmitCapabilityIdsForFlags(),
+    vendorCapabilityDocs: ucpVendorCapabilityDocs(),
   });
   return createUcpRouteHandlers(profile);
+}
+
+/**
+ * Documents for Pivota's VENDOR capability `cc.pivota.insights` (get_alternatives / get_offers / get_intel on
+ * the UCP door). The builder publishes the capability ONLY when BOTH a spec and a schema URL are supplied AND
+ * both live on the namespace authority (pivota.cc); anything else withholds it — the same rule as a standard
+ * capability with no hosted documents. So: set both env vars AFTER the documents return 200 on pivota.cc,
+ * never before. Unset = withheld (today's behaviour), and the three tools stay callable on /ucp/mcp for a
+ * platform that already knows them — callable-but-unadvertised is the harmless direction of that asymmetry.
+ *
+ * ALSO GATED ON THE RUNTIME FLAGS. Publishing the capability while the handlers are dark would advertise
+ * a decision layer that answers `signals: []` for every call — indistinguishable, to the platform, from
+ * "we have no reviewed intelligence for this product", which is exactly the advertised-but-not-executable
+ * defect the withholding filter exists to prevent. Both agent-surface flags must be on.
+ */
+function ucpVendorCapabilityDocs() {
+  const spec = firstNonEmptyString(process.env.UCP_INSIGHTS_SPEC_URL);
+  const schema = firstNonEmptyString(process.env.UCP_INSIGHTS_SCHEMA_URL);
+  if (!spec || !schema) return {};
+  const flagOn = (name) => /^(1|true|yes|on|enabled)$/i.test(String(process.env[name] || '').trim());
+  if (!flagOn('AURORA_BFF_RELATIONSHIP_GRAPH_AGENT_ENABLED') || !flagOn('AURORA_BFF_PRODUCT_INTEL_AGENT_ENABLED')) {
+    return {};
+  }
+  return { 'cc.pivota.insights': { spec, schema } };
 }
 
 const ACP_PUBLIC_FEED_MAX_BODY_BYTES = 32 * 1024;

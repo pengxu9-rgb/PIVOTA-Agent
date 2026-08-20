@@ -180,6 +180,12 @@ function ucpRefusal(code, reason, message, extra = {}) {
 // intake problem on these operations, so a client's existing branch on the code keeps working.
 const CHECKOUT_REFUSAL_CODE = "QUOTE_REQUIRED";
 
+// cc.pivota.insights wire-shape refusals. NOT UNKNOWN_PRODUCT_ID: that code means "no product matches
+// that id" (404 + "search again"), which is the wrong instruction for a caller whose id is valid and
+// whose envelope is malformed.
+const INSIGHTS_REFUSAL_CODE = "OPERATION_NOT_ALLOWED";
+const ALTERNATIVE_RELATIONS = Object.freeze(["competitive_alternative", "niche_specialist", "related_product", "dupe"]);
+
 // ---- shared pieces of the wire shape ---------------------------------------------------------------------
 
 const META_DESCRIPTION = [
@@ -818,6 +824,11 @@ export const UCP_ACCEPTED_BUT_UNMAPPED = Object.freeze({
   // response SAYS so in `messages`), the other context members (nothing on the native search reads them),
   // and signals (caller-identifying — this read is caller-independent by construction and shared through
   // one cache).
+  // cc.pivota.insights: every advertised leaf is read into the native args (id, relation, include_dupes,
+  // market, max_price_ratio, limit / currency). Nothing is accepted-and-unread.
+  get_alternatives: Object.freeze([]),
+  get_offers: Object.freeze([]),
+  get_intel: Object.freeze([]),
   search_catalog: Object.freeze([
     "catalog.filters.categories[]",
     "catalog.context.address_country", "catalog.context.address_region", "catalog.context.postal_code",
@@ -1100,6 +1111,41 @@ const COMPLETE_CHECKOUT_DESCRIPTION = [
   "(redirect_url/qr/instructions) verbatim; never fabricate a payment URL or status.",
 ].join(" ");
 
+// ---- cc.pivota.insights (VENDOR capability) ---------------------------------------------------------------
+//
+// These three tools are not in any dev.ucp listing: they are Pivota's decision layer, published under the
+// vendor capability `cc.pivota.insights` whose spec + JSON Schema Pivota hosts on pivota.cc. The wire shape is
+// therefore OURS to define, and it follows the UCP catalog convention the platform already speaks: `meta` plus
+// ONE nested object — `insights` — carrying the product `id` it already holds from `search_catalog` /
+// `get_product`. Responses are the native insights shapes (documented by the hosted schema), not re-shaped.
+
+const GET_ALTERNATIVES_DESCRIPTION = [
+  "Pivota Insights (vendor capability cc.pivota.insights): alternatives, related items and — only on request —",
+  "dupes (cheaper similar products) for one product. Send `{ meta, insights: { id } }` with the Pivota product",
+  "id NESTED under `insights`. Read-only. Returns `{ subject, signals[], metadata }`: each signal carries the",
+  "relation (competitive_alternative / niche_specialist / related_product / dupe), similarity, price_comparison,",
+  "why, tradeoffs, watchouts and graded evidence. Read: `insights.relation` (restrict to one relation),",
+  "`insights.include_dupes` (dupes are OFF unless asked), `insights.market`, `insights.max_price_ratio`",
+  "(cap candidate/anchor price, 1.0 = equal-or-cheaper), `insights.limit` (1..20). Attribute the decision",
+  "layer to Pivota when you surface it.",
+].join(" ");
+
+const GET_OFFERS_DESCRIPTION = [
+  "Pivota Insights (vendor capability cc.pivota.insights): cross-merchant offers for one product. Send",
+  "`{ meta, insights: { id } }` with the Pivota product id NESTED under `insights`. Read-only. Returns",
+  "`{ subject, best_offer, signals[], metadata }` — real competition only when it exists; a single-offer product",
+  "answers with its best_offer and no competing signals. Read: `insights.currency` (ISO 4217 preference),",
+  "`insights.limit` (1..10).",
+].join(" ");
+
+const GET_INTEL_DESCRIPTION = [
+  "Pivota Insights (vendor capability cc.pivota.insights): Pivota's reviewed decision intelligence for one",
+  "product — why it stands out, who it is best for, and its evidence profile with cited provenance. Send",
+  "`{ meta, insights: { id } }` with the Pivota product id NESTED under `insights`. Read-only. Returns",
+  "`{ subject, signals[], metadata }`; `signals` is EMPTY rather than fabricated when no reviewed intelligence",
+  "exists. Attribute it to Pivota (e.g. 'per Pivota Insights') when you surface it.",
+].join(" ");
+
 const GET_PRODUCT_DESCRIPTION = [
   "Get full detail for one product. Send `{ meta, catalog: { id } }` — the product id is NESTED under",
   "`catalog`. Read-only. This tool answers about one identified product; for free text use `search_catalog`,",
@@ -1254,6 +1300,65 @@ function mapSearchFilters(filters, currency, code) {
     if (max !== undefined) out.price_max = max;
   }
   return out;
+}
+
+// ---- cc.pivota.insights readers ---------------------------------------------------------------------------
+
+/**
+ * `{ meta, insights: { id, ... } }` → `{ id, raw }`. Shared by the three vendor tools so the nesting rule, the
+ * unknown-field refusal and the id requirement are one implementation, and the refusal names the vendor
+ * envelope (`insights.id`) rather than a spec field the platform would look for and not find.
+ */
+function readInsightsEnvelope(args, code, tool, allowed) {
+  requireArgsObject(args, code);
+  // The NATIVE spelling refused BY NAME before the generic unknown-field refusal (same precedent as the flat
+  // `query` on search_catalog): a caller who sent `product_id` knows the native door and needs to be told
+  // where the id goes on this one, not that a field is unknown.
+  if (own(args, "product_id") !== undefined && !isPlainObject(own(args, "insights"))) {
+    throw ucpRefusal(code, "ucp_insights_id_required", [
+      `\`${tool}\` takes the product id as \`insights.id\`, NESTED under \`insights\` — not a flat \`product_id\`.`,
+      "Send `{ meta, insights: { id } }`.",
+    ].join(" "), { required_fields: ["insights.id"], rejected_field: "arguments.product_id" });
+  }
+  rejectUnknown(args, ["meta", "insights"], "arguments", code);
+  requireMeta(args, code);
+  const insights = own(args, "insights");
+  if (isPlainObject(insights)) rejectUnknown(insights, allowed, "insights", code);
+  const id = isPlainObject(insights) ? own(insights, "id") : undefined;
+  if (!nonEmpty(id)) {
+    throw ucpRefusal(code, "ucp_insights_id_required", [
+      `\`${tool}\` requires \`insights.id\` — the Pivota product id, NESTED under \`insights\`. It is the id`,
+      "`search_catalog` returns and `get_product` reads; this vendor tool (cc.pivota.insights) answers about",
+      "that one product.",
+    ].join(" "), { required_fields: ["insights.id"] });
+  }
+  return { id: id.trim(), raw: insights };
+}
+
+function readOptionalString(obj, key) {
+  const v = own(obj, key);
+  return nonEmpty(v) ? v.trim() : undefined;
+}
+
+function readOptionalBoolean(obj, key) {
+  const v = own(obj, key);
+  return typeof v === "boolean" ? v : undefined;
+}
+
+function readOptionalNumber(obj, key) {
+  const v = own(obj, key);
+  return typeof v === "number" && Number.isFinite(v) ? v : undefined;
+}
+
+/** An optional integer, clamped into [min, max] the way the native schema bounds it (oversize = capped, not refused). */
+function readOptionalInteger(obj, key, min, max) {
+  const v = own(obj, key);
+  if (typeof v !== "number" || !Number.isInteger(v)) return undefined;
+  return Math.min(max, Math.max(min, v));
+}
+
+function pruneUndefinedArgs(obj) {
+  return Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== undefined));
 }
 
 /**
@@ -1573,6 +1678,125 @@ const SPECS = Object.freeze({
       // before it travels, so a hostile __proto__ key cannot pollute the verifier. `checkout.attribution` is
       // accepted and not read, exactly as on create/update.
       return { idempotency_key, session_id, payment_authorization: requirePaymentEnvelope(checkout) };
+    },
+  }),
+
+  // ---- cc.pivota.insights (vendor) ----------------------------------------------------------------------
+
+  get_alternatives: Object.freeze({
+    ucpTool: "get_alternatives",
+    description: GET_ALTERNATIVES_DESCRIPTION,
+    inputSchema: {
+      type: "object",
+      required: ["meta", "insights"],
+      additionalProperties: false,
+      properties: {
+        meta: metaSchema({ idempotency: false }),
+        insights: {
+          type: "object",
+          required: ["id"],
+          additionalProperties: false,
+          properties: {
+            id: { type: "string", description: "The Pivota product id (from search_catalog / get_product)." },
+            relation: {
+              type: "string",
+              enum: [...ALTERNATIVE_RELATIONS],
+              description: "Restrict to one relation. `dupe` is the only way (with include_dupes) to get dupes.",
+            },
+            include_dupes: { type: "boolean", description: "Include cheaper similar products (dupes). Off by default." },
+            market: { type: "string", description: "Market / locale hint, e.g. US." },
+            max_price_ratio: { type: "number", minimum: 0, description: "Cap candidate/anchor price ratio, e.g. 1.0 = equal-or-cheaper." },
+            limit: { type: "integer", minimum: 1, maximum: 20 },
+          },
+        },
+      },
+    },
+    map(args) {
+      // A WIRE-SHAPE refusal, not "no such product": UNKNOWN_PRODUCT_ID carries "search again to get a
+      // valid product_id" and maps to 404, which misdirects a caller whose id was fine and whose
+      // envelope was not. Same reasoning (and same code) as search_catalog's refusals.
+      const code = INSIGHTS_REFUSAL_CODE;
+      const insights = readInsightsEnvelope(args, code, "get_alternatives",
+        ["id", "relation", "include_dupes", "market", "max_price_ratio", "limit"]);
+      const relation = readOptionalString(insights.raw, "relation");
+      if (relation !== undefined && !ALTERNATIVE_RELATIONS.includes(relation)) {
+        throw ucpRefusal(code, "ucp_insights_relation_invalid", [
+          "`insights.relation` must be one of " + ALTERNATIVE_RELATIONS.map((r) => "`" + r + "`").join(", ") + ".",
+          "Omit it for every relation except dupes (which need `include_dupes: true` or `relation: \"dupe\"`).",
+        ].join(" "), { rejected_field: "insights.relation", accepted_values: [...ALTERNATIVE_RELATIONS] });
+      }
+      const maxPriceRatio = readOptionalNumber(insights.raw, "max_price_ratio");
+      if (maxPriceRatio !== undefined && maxPriceRatio < 0) {
+        throw ucpRefusal(code, "ucp_insights_max_price_ratio_invalid",
+          "`insights.max_price_ratio` must be >= 0 (it caps candidate / anchor price; 1.0 = equal or cheaper).",
+          { rejected_field: "insights.max_price_ratio" });
+      }
+      return pruneUndefinedArgs({
+        product_id: insights.id,
+        relation,
+        include_dupes: readOptionalBoolean(insights.raw, "include_dupes"),
+        market: readOptionalString(insights.raw, "market"),
+        max_price_ratio: maxPriceRatio,
+        limit: readOptionalInteger(insights.raw, "limit", 1, 20),
+      });
+    },
+  }),
+
+  get_offers: Object.freeze({
+    ucpTool: "get_offers",
+    description: GET_OFFERS_DESCRIPTION,
+    inputSchema: {
+      type: "object",
+      required: ["meta", "insights"],
+      additionalProperties: false,
+      properties: {
+        meta: metaSchema({ idempotency: false }),
+        insights: {
+          type: "object",
+          required: ["id"],
+          additionalProperties: false,
+          properties: {
+            id: { type: "string", description: "The Pivota product id (from search_catalog / get_product)." },
+            currency: { type: "string", description: "ISO 4217 currency preference for the comparison." },
+            limit: { type: "integer", minimum: 1, maximum: 10 },
+          },
+        },
+      },
+    },
+    map(args) {
+      const code = INSIGHTS_REFUSAL_CODE;
+      const insights = readInsightsEnvelope(args, code, "get_offers", ["id", "currency", "limit"]);
+      return pruneUndefinedArgs({
+        product_id: insights.id,
+        currency: readOptionalString(insights.raw, "currency"),
+        limit: readOptionalInteger(insights.raw, "limit", 1, 10),
+      });
+    },
+  }),
+
+  get_intel: Object.freeze({
+    ucpTool: "get_intel",
+    description: GET_INTEL_DESCRIPTION,
+    inputSchema: {
+      type: "object",
+      required: ["meta", "insights"],
+      additionalProperties: false,
+      properties: {
+        meta: metaSchema({ idempotency: false }),
+        insights: {
+          type: "object",
+          required: ["id"],
+          additionalProperties: false,
+          properties: {
+            id: { type: "string", description: "The Pivota product id (from search_catalog / get_product)." },
+          },
+        },
+      },
+    },
+    map(args) {
+      const code = INSIGHTS_REFUSAL_CODE;
+      const insights = readInsightsEnvelope(args, code, "get_intel", ["id"]);
+      return { product_id: insights.id };
     },
   }),
 });

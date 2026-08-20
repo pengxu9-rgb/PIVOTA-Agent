@@ -379,6 +379,17 @@ jobs:
       # agent registered verifies for that agent only; a binding naming a PLATFORM-TRUSTED issuer is dropped at
       # ingest; an unrefreshable map fails closed past the staleness bound. Real jose keys, real safety-kernel
       # verifier; fetch served from memory.
+      # ADDED 2026-08-19: `mcp-server/test/ucpInsightsDialect`, confirmed green (10/10). The VENDOR capability
+      # cc.pivota.insights on the UCP door: get_alternatives / get_offers / get_intel speak `{ meta, insights:
+      # { id, … } }`, every advertised leaf reaches the native args, refusals name `insights.id`, and the
+      # capability is advertised ONLY when both documents live on pivota.cc (env UCP_INSIGHTS_SPEC_URL +
+      # UCP_INSIGHTS_SCHEMA_URL).
+      # ADDED 2026-08-19: `mcp-server/test/ucpInsightsHostedSchema`, confirmed green (6/6). The CROSS-REPO
+      # contract: the JSON Schema pivota-marketing serves at pivota.cc/ucp/schemas/insights.json is vendored
+      # as a fixture and driven both ways — the door's published inputSchemas must match it leaf for leaf, and
+      # REAL handler output (relationship edge / offers / a reviewed intel bundle) must ajv-validate against
+      # its response definitions. A review found the two had already diverged where only a NON-EMPTY answer
+      # could show it.
       - name: Run node:test suites
         run: |
           node --test \
@@ -392,6 +403,8 @@ jobs:
             mcp-server/test/ucpArgumentAdapter.test.js \
             mcp-server/test/ucpResponseShaper.test.js \
             mcp-server/test/ucpCheckoutEscalation.test.js \
+            mcp-server/test/ucpInsightsDialect.test.js \
+            mcp-server/test/ucpInsightsHostedSchema.test.js \
             safety-kernel/test/ucpPaymentAuthorizationContract.test.js \
             safety-kernel/test/mcpOAuthResourceServer.test.js \
             tests/ucp_conformance_probe.node.test.cjs \

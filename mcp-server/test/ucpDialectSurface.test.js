@@ -88,7 +88,7 @@ describe('ucpDialectSurface routes UCP names to the canonical operation', () => 
   test('tools/list on the projection advertises only the spec names', () => {
     const { ucp, mcp } = surfaces();
     const ucpNames = ucp.tools.map((t) => t.name).sort();
-    assert.deepEqual(ucpNames, ['complete_checkout', 'create_checkout', 'get_checkout', 'get_product', 'search_catalog', 'update_checkout']);
+    assert.deepEqual(ucpNames, ['complete_checkout', 'create_checkout', 'get_alternatives', 'get_checkout', 'get_intel', 'get_offers', 'get_product', 'search_catalog', 'update_checkout']);
     // and the wrapped surface is untouched
     assert.ok(mcp.tools.some((t) => t.name === 'create_checkout_session'));
     assert.ok(!mcp.tools.some((t) => t.name === 'create_checkout'));
