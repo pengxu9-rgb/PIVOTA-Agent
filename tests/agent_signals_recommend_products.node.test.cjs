@@ -464,6 +464,70 @@ test('4h-2. stripping never deletes a safety warning that merely shares a word w
   ], 'usage-frequency and storage cautions survive: "cap"/"limit" are ordinary skincare words');
 });
 
+// POST-MERGE REVIEW BLOCKER (2026-08-20, reproduced by execution): bare `spend`/`cost` in the price-token
+// set paired with the fit word `limit` deleted PHOTOSENSITIVITY WARNINGS — "Limit the time you spend in
+// the sun" — on exactly the AHA/PHA population this tool serves. These fixtures are the reviewer's
+// reproduced deletions, verbatim. They must survive on EVERY enforcement path.
+const SUN_SAFETY_WARNINGS = [
+  'Limit the time you spend in the sun while using this',
+  'Reduce the time you spend under direct sunlight after applying',
+  'Keep sun exposure to a minimum; this acid costs you UV tolerance',
+  'Wear SPF 30 or higher - AHAs increase sun sensitivity',
+];
+
+test('4h-3. photosensitivity warnings with time-spend/cost wording survive on a violator', async () => {
+  const item = { ...ITEM_OVERPRICED, warnings: SUN_SAFETY_WARNINGS, constraint_notes: [] };
+  const h = makeRecommendProducts({ generate: async () => laneResult([item]), isEnabled: () => true });
+  const res = await h({ payload: { need: 'exfoliant', constraints: { price_max: 40 } } }, { agent_id: 'agent_a' });
+  const w = res.signals[0].value.watchouts;
+  assert.equal(w[0], 'exceeds price_max 40 USD: price 45 USD');
+  assert.deepEqual(w.slice(1), SUN_SAFETY_WARNINGS,
+    '"time you spend in the sun" / "costs you UV tolerance" are not budget claims — deleting a safety '
+    + 'warning to suppress a price claim is a worse defect than the one being fixed');
+});
+
+test('4h-4. the same warnings survive the UNVERIFIABLE path — it strips with the same regexes', async () => {
+  // blast radius: unverifiable fires for EVERY item when the catalog currency ≠ ceiling currency, so an
+  // over-strip here hits whole non-USD populations, not just violators.
+  const item = { ...ITEM_OVERPRICED, price: { amount: 4500, currency: 'JPY' }, warnings: SUN_SAFETY_WARNINGS, constraint_notes: [] };
+  const h = makeRecommendProducts({ generate: async () => laneResult([item]), isEnabled: () => true });
+  const res = await h({ payload: { need: 'exfoliant', constraints: { price_max: 40 } } }, { agent_id: 'agent_a' });
+  const w = res.signals[0].value.watchouts;
+  assert.match(w[0], /not verified/, 'the unverifiable marker still leads');
+  assert.deepEqual(w.slice(1), SUN_SAFETY_WARNINGS, 'no safety warning is deleted on the unverifiable path');
+});
+
+test('4h-5. amount-free monetary idioms of spend/cost still strip — the fix is a re-expression, not a retreat', async () => {
+  const item = {
+    ...ITEM_OVERPRICED,
+    reasons: [
+      'Sits inside your stated spend limit',
+      'Costs less than you allowed',
+      'The cost is lower than your maximum',
+      'Her spending cap is respected here',
+      'PHA is the gentlest exfoliating acid',
+    ],
+    notes: [],
+  };
+  const h = makeRecommendProducts({ generate: async () => laneResult([item]), isEnabled: () => true });
+  const res = await h({ payload: { need: 'exfoliant', constraints: { price_max: 40 } } }, { agent_id: 'agent_a' });
+  assert.deepEqual(res.signals[0].value.why, ['PHA is the gentlest exfoliating acid'],
+    'compound-noun ("spend limit", "spending cap") and comparative ("costs less", "cost is lower") money '
+    + 'idioms are still recognized without a dollar amount in the line');
+});
+
+// POST-MERGE REVIEW MAJOR: the unenforced-constraint disclosure was guarded on `!enforcing`, so
+// `{price_max: 40, budget: 'under $30'}` reported "enforced at 40" with NO hint that the buyer's tighter
+// prose ceiling was dropped — exactly the "absent marker read as a clean bill of health" failure the
+// disclosure exists to prevent.
+test('4k. an unreadable second constraint is disclosed even when a structured ceiling IS enforced', async () => {
+  const h = makeRecommendProducts({ generate: async () => laneResult([ITEM_OVERPRICED, ITEM_FULL]), isEnabled: () => true });
+  const res = await h({ payload: { need: 'exfoliant', constraints: { price_max: 40, budget: 'under $30' } } }, { agent_id: 'agent_a' });
+  assert.equal(res.metadata.price_max_enforced, 40, 'the readable ceiling is still enforced');
+  assert.equal(res.metadata.price_constraint_unenforced, 'unstructured_value',
+    'the dropped prose ceiling is said out loud alongside the enforced one');
+});
+
 // REVIEW FINDING: assuming the ceiling's currency for a currency-less price re-introduced the very
 // fabrication the currency work removed — and wrote the assumed unit into constraint_violations.
 test('4c-5. a price with NO currency is unverifiable — its unit is never assumed', async () => {
