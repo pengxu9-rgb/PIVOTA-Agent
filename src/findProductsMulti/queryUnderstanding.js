@@ -38,6 +38,34 @@ const CATEGORY_ALIAS_RULES = Object.freeze([
     categoryPathPrefix: 'beauty/makeup/lip/',
     pattern: /\b(lip\s*oils?|lip\s*balms?|lip\s*treatments?|lip\s*masks?|lip\s*gloss(?:es)?)\b|唇油|润唇|潤唇|唇膜|唇彩/i,
   },
+  // Haircare. MEASURED GAP, 2026-08-20: bare `shampoo` / `conditioner` /
+  // `hair mask` / `hair oil` had no rule here and no entry in
+  // hasBeautySearchSignal, so the contract classified them
+  // other/ambiguous_or_non_shopping and the safe-empty branch answered
+  // "No products matched this search." in ~0.2s — BEFORE any SQL ran. That
+  // silently nullified the #2035/#2039 category-browse union for exactly the
+  // vocabulary it was built to fix (the union's own end-to-end trap #2,
+  // "possibly a no-op", turned out to live one layer up).
+  //
+  // MUST SIT ABOVE the moisturizer / serum / skincare_treatment rules:
+  // first match wins, and `hair cream` / `hair serum` / `hair treatment`
+  // would otherwise be claimed by the `cream` / `serum` / `treatment` arms
+  // of those skincare rules and browse the wrong tree. Hair words with no
+  // hair/scalp anchor (bare `mask`, bare `oil`) are deliberately NOT
+  // claimed. The lookbehind keeps `lip conditioner` out — it is a lip
+  // product; it had no rule before and keeps having none.
+  //
+  // Prefix is the broad beauty/haircare/ tree (measured 2026-08-20:
+  // shampoo 130 + conditioner 42 + general 244 + root 47 serving-eligible
+  // rows): the leaf buckets (mask 2, hair-oil 1) are too sparse to browse,
+  // and the category-browse union's title boost sorts the queried form to
+  // the head inside the broad bucket.
+  {
+    category: 'haircare',
+    categoryPathPrefix: 'beauty/haircare/',
+    pattern:
+      /\b(shampoos?|dry\s+shampoos?|(?<!lip\s)(?<!air\s)(?<!fabric\s)conditioners?|leave[-\s]?in\s+conditioners?|(?:hair|scalp)\s+(?:masks?|oils?|serums?|mists?|tonics?|treatments?|creams?)|hair\s?care)\b|洗发|洗髮|护发素|護髮素|护发|護髮|发膜|髮膜/i,
+  },
   {
     category: 'mascara',
     categoryPathPrefix: 'beauty/makeup/eye/',
@@ -68,6 +96,21 @@ const CATEGORY_ALIAS_RULES = Object.freeze([
     categoryPathPrefix: 'beauty/skincare/moisturize/',
     pattern: /\b(moisturi(?:z|s)er|cream|lotion|gel cream|gel-cream|barrier cream)\b|面霜|乳液|クリーム/i,
   },
+  // Toner. Same measured gap as haircare above: bare `toner` (and `best
+  // toner`, `toner pads`, `face mist`) safe-emptied before any SQL. The
+  // bucket is real — beauty/skincare/tone/toner held 333 serving-eligible
+  // rows on 2026-08-20 (the backfill that repaired the once-empty tone/
+  // target), 58 of them mist-titled, which is why face/facial mist maps
+  // here rather than to fragrance (whose rule only claims BODY mist, and
+  // sits earlier so body mist still wins there). The lookbehind/lookahead
+  // keep `printer toner` / `toner cartridge` out of the beauty domain —
+  // they stay unclassified exactly as before.
+  {
+    category: 'toner',
+    categoryPathPrefix: 'beauty/skincare/tone/',
+    pattern:
+      /\b(?<!printer\s)toners?\b(?!\s+cartridges?)|\btoner\s+pads?\b|\b(?:face|facial)\s+mists?\b|爽肤水|爽膚水|化妆水|化妝水|化粧水/i,
+  },
   {
     category: 'serum',
     categoryPathPrefix: 'beauty/skincare/treat/',
@@ -92,6 +135,8 @@ const GENERIC_CATEGORY_BY_PREFIX = Object.freeze({
   'beauty/skincare/cleanse/': 'cleanser',
   'beauty/skincare/moisturize/': 'moisturizer',
   'beauty/skincare/treat/': 'serum',
+  'beauty/skincare/tone/': 'toner',
+  'beauty/haircare/': 'shampoo',
 });
 
 function normalizeQueryTextForUnderstanding(value) {
@@ -269,6 +314,12 @@ function hasBeautySearchSignal(text) {
     resolveBeautyCategoryPathPrefixFromText(raw) ||
       extractBeautyConcernSignals(raw).has_concern_signal ||
       extractConstraintSignals(raw).length ||
+      // toner/shampoo/conditioner are deliberately NOT in this bare-noun list
+      // even though they gained alias rules on 2026-08-20: the first arm of
+      // this predicate (resolveBeautyCategoryPathPrefixFromText) already
+      // covers every phrasing the alias patterns accept, and the alias
+      // patterns carry the non-beauty guards (printer toner, air
+      // conditioner) that a bare noun here would bypass.
       /\b(makeup|cosmetics?|beauty|skincare|skin\s+care|haircare|hair\s+care|fragrance|perfume|pdp|spf|serum|cleanser|moisturi[sz]er|lipstick|mascara|blush|foundation|concealer)\b/.test(normalized) ||
       /护肤|護膚|彩妆|彩妝|美妆|美妝|香水|粉底|口红|口紅|睫毛膏|腮红|腮紅/.test(raw)
   );
