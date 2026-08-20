@@ -68,10 +68,30 @@ AURORA_SURFACE_DENIED_HOSTS=
 # reports "no consumer" for one that is live.
 AURORA_SURFACE_AUTH_MODE=observe
 AURORA_SURFACE_INTERNAL_KEY=
-# ^ Set this AT THE SAME TIME as deploying observe mode, not at the flip. With no key configured
-# every log line reads reason=key_not_configured, which cannot distinguish "this consumer has not
-# shipped the header yet" from "we forgot to set the key" — and that distinction IS the measurement.
-# With the key set, reason becomes missing_key / bad_key / ok per caller, which is what gates step 4.
+# ^ Before flipping to enforce, TWO criteria must hold in the aurora_surface_auth logs:
+#     (a) would_refuse=false for all real traffic over a full traffic day, AND
+#     (b) zero lines with caller_class=browser or caller_class=browser_app.
+#   (b) matters because CORS reflects Access-Control-Request-Headers, so X-Internal-Key is reachable
+#   from a browser. A consumer calling /v1 straight from the browser cannot be fixed by sending the
+#   key — that ships a shared secret in a JS bundle. It needs a server-side proxy instead.
+# ^ Set this AT THE SAME TIME as deploying observe mode, not at the flip. With no key configured,
+# would_refuse is pinned TRUE for every request, so the would_refuse=0 gate is unreachable and a
+# correct key cannot be told from a wrong one. (has_key and key_configured are on the same line and
+# do distinguish "consumer hasn't shipped" from "we forgot the key" — that was never the problem.)
+#
+# CONSUMERS THAT MUST SEND THE HEADER BEFORE THE FLIP — this repo's own CI is on the list:
+#   .github/workflows/chat-followup-canary.yml   hourly cron, hits /v1/chat and /metrics
+#   .github/workflows/aurora-bff-release-gate.yml  smoke_aurora_bff_runtime.sh and siblings
+#   pivota-agent-ui, pivota-backend, pivota-backend-gcp, Aurora-Beauty-Decision-System,
+#   pivota-aurora-chatbox (needs a Vercel middleware — a vercel.json rewrite cannot add a header)
+#
+# MEASUREMENT NEEDS A DURABLE LOG SINK. `railway logs` returns only the live deployment and roughly
+# minutes of history (measured: asking for 5,000 lines returned 248 spanning 9 minutes; --since 3d
+# returned 0). A full traffic day is not obtainable from the CLI, so a drain or dashboard export is a
+# PREREQUISITE for step 3, not a nicety.
+#
+# AFTER THE FLIP, demote or remove this log line — would_refuse=false lines have no ongoing value and
+# cost one info line per Aurora request forever.
 
 # Gateway Configuration
 PIVOTA_GATEWAY_URL=<your-gateway-url>  # e.g., https://your-domain.com/agent/shop/v1/invoke

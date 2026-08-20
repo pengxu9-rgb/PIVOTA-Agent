@@ -34937,7 +34937,11 @@ app.use(function auroraSurfaceHostGuardMiddleware(req, res, next) {
 app.use(function auroraSurfaceAuthMiddleware(req, res, next) {
   if (!isAuroraSurfacePath(req.path)) return next();
 
-  const auth = decideAuroraSurfaceAuth({ headers: req.headers });
+  const auth = decideAuroraSurfaceAuth({ path: req.path, headers: req.headers });
+  // Excluded paths get no line at all: they are not this guard's business, and a line would also
+  // pollute the would_refuse measurement the rollout is gated on.
+  if (auth.skipped) return next();
+
   const caller = describeCaller(req);
   logger.info(
     {
@@ -34945,7 +34949,7 @@ app.use(function auroraSurfaceAuthMiddleware(req, res, next) {
       mode: auth.mode,
       path: req.path,
       method: req.method,
-      host: String(req.headers?.host || ''),
+      host: String(req.headers?.host || '').slice(0, 120),
       has_key: auth.hasKey,
       key_valid: auth.keyValid,
       key_configured: auth.keyConfigured,
