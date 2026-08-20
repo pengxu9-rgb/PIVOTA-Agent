@@ -252,7 +252,8 @@ test('4b. mutant-killer: a $45 product against price_max 40 never passes as a cl
   assert.equal(v.value.watchouts[0], 'exceeds price_max 40 USD: price 45 USD', 'the marker leads so the cap cannot truncate it');
   assert.equal(v.value.why.some((line) => /budget|price/i.test(line)), false, 'the false budget-fit claim is stripped in the bridge');
   assert.deepEqual(v.value.why, ['PHA is the gentlest exfoliating acid'], 'true non-price reasons survive');
-  assert.deepEqual(v.value.notes, [], 'price-praising notes on a violator are stripped too');
+  assert.deepEqual(v.value.notes, ['a great price for the size'],
+    'a subjective quality judgment asserts nothing about the ceiling — only FIT claims are stripped');
 
   assert.equal(res.metadata.price_max_enforced, 40);
   assert.equal(res.metadata.price_max_currency, 'USD');
@@ -334,6 +335,10 @@ test('4c-3. a price in a different currency is UNVERIFIABLE, never a silent pass
   assert.equal(s.value.watchouts[0], 'price_max 40 USD not verified: price in GBP, ceiling in USD', 'the caller is told the check did not run');
   assert.equal(res.metadata.price_unverified_returned, 1, 'unverified is distinguishable from checked-and-clean');
   assert.equal(res.metadata.constraint_violations_returned, 0);
+  assert.equal(res.metadata.price_constraint_unenforced, 'nothing_verifiable',
+    'price_max_enforced + 0 violations must not read as "checked and all clean"');
+  assert.equal(s.value.why.some((l) => /within|budget/i.test(l)), false,
+    'a budget-FIT claim is not relayed on an item the bridge just declared uncheckable');
 
   // ...and the mirror: a ¥4500 item under a ¥-denominated ceiling of 40 must not be asserted as a violation
   const jpy = { ...ITEM_OVERPRICED, price: { amount: 4500, currency: 'JPY' } };
@@ -388,16 +393,19 @@ test('4e. extractPriceMax: every allowlisted key, numerals only, smallest wins, 
   assert.equal(extractPriceMax({ price_max: 40 }).declared, false, '...and says that it was assumed');
   // refusals
   assert.equal(extractPriceMax({ budget: 'under $40' }).limit, undefined, 'prose is never parsed');
-  assert.equal(extractPriceMax({ budget: 'under $40' }).unstructured, true);
-  assert.equal(extractPriceMax({ price_max: 0 }), null);
-  assert.equal(extractPriceMax({ price_max: -5 }), null);
+  assert.equal(extractPriceMax({ budget: 'under $40' }).unstructured, 'unstructured_value');
+  // a REFUSED ceiling still enforces nothing — but it is disclosed rather than silent (see 4e-3)
+  assert.equal(extractPriceMax({ price_max: 0 }).limit, undefined);
+  assert.equal(extractPriceMax({ price_max: -5 }).limit, undefined);
+  assert.equal(extractPriceMax({ price_max: true }).limit, undefined);
+  assert.equal(extractPriceMax({ price_max: [40] }).limit, undefined);
+  // a key that is not a ceiling key at all yields NOTHING — not even a disclosure, since the caller
+  // never asked for a ceiling
   assert.equal(extractPriceMax({ price_min: 40 }), null, 'a FLOOR is not a ceiling');
   assert.equal(extractPriceMax({ budget_cap: 40 }), null, 'a currency-suffix read must not turn "cap" into a currency');
   assert.equal(extractPriceMax({ budget2: 40 }), null, 'a distinct key must not fold into an allowlisted one');
   assert.equal(extractPriceMax({ 'price max': 40 }).limit, 40, 'spaces and punctuation still canonicalize');
   assert.equal(extractPriceMax({ avoid: 'fragrance' }), null);
-  assert.equal(extractPriceMax({ price_max: true }), null);
-  assert.equal(extractPriceMax({ price_max: [40] }), null);
   assert.equal(extractPriceMax(undefined), null);
 });
 
@@ -410,6 +418,7 @@ test('4f. an item with no resolvable price is unverifiable — never marked, nev
   assert.equal(res.signals[0].value.watchouts[0], 'price_max 40 USD not verified: no catalog price');
   assert.equal(res.metadata.constraint_violations_returned, 0);
   assert.equal(res.metadata.price_unverified_returned, 1);
+  assert.equal(res.metadata.price_constraint_unenforced, 'nothing_verifiable');
 });
 
 test('4g. budget-fit claims are stripped in CN too — `language` is a first-class parameter', async () => {
@@ -427,8 +436,114 @@ test('4h. the regex alternatives all fire, and do not over-strip', async () => {
   };
   const h = makeRecommendProducts({ generate: async () => laneResult([wordy]), isEnabled: () => true });
   const res = await h({ payload: { need: 'exfoliant', constraints: { price_max: 40 } } }, { agent_id: 'agent_a' });
-  assert.deepEqual(res.signals[0].value.why, ['Priceless glow for sensitive skin'],
-    'realistic budget phrasings are stripped; "Priceless" is not a price claim');
+  assert.deepEqual(res.signals[0].value.why, ['Great value for the money', 'Priceless glow for sensitive skin'],
+    'FIT claims ("under your 40 dollar cap", "inside your stated spend limit") are stripped; a subjective '
+    + 'value judgment and "Priceless" are not claims about the ceiling');
+});
+
+// REVIEW FINDING (both reviewers, independently): broadening the strip regex to `cap`/`limit` made it
+// delete DERMATOLOGICAL SAFETY CONTENT — watchouts is fed by the lane's `warnings` field, where "limit
+// use to 2-3x per week" is ordinary copy. Deleting a safety warning to suppress a budget claim is a
+// worse defect than the one being fixed.
+test('4h-2. stripping never deletes a safety warning that merely shares a word with price copy', async () => {
+  const item = {
+    ...ITEM_OVERPRICED,
+    reasons: ['Limit sun exposure while using', 'Fits within your $40 budget'],
+    notes: [],
+    constraint_notes: ['Keep the cap closed; the formula oxidises'],
+    warnings: ['Limit use to 2-3 times per week to avoid over-exfoliation'],
+  };
+  const h = makeRecommendProducts({ generate: async () => laneResult([item]), isEnabled: () => true });
+  const res = await h({ payload: { need: 'exfoliant', constraints: { price_max: 40 } } }, { agent_id: 'agent_a' });
+  const v = res.signals[0].value;
+  assert.deepEqual(v.why, ['Limit sun exposure while using'], 'a photosensitivity warning is not a budget claim');
+  assert.deepEqual(v.watchouts, [
+    'exceeds price_max 40 USD: price 45 USD',
+    'Keep the cap closed; the formula oxidises',
+    'Limit use to 2-3 times per week to avoid over-exfoliation',
+  ], 'usage-frequency and storage cautions survive: "cap"/"limit" are ordinary skincare words');
+});
+
+// REVIEW FINDING: assuming the ceiling's currency for a currency-less price re-introduced the very
+// fabrication the currency work removed — and wrote the assumed unit into constraint_violations.
+test('4c-5. a price with NO currency is unverifiable — its unit is never assumed', async () => {
+  const bare = { name: 'Unnormalized row', sku: { product_id: 'sig_bare' }, price: 4500, reasons: ['Fits within your $40 budget'] };
+  const h = makeRecommendProducts({ generate: async () => laneResult([bare]), isEnabled: () => true });
+  const res = await h({ payload: { need: 'x', constraints: { price_max: 40 } } }, {});
+  const v = res.signals[0].value;
+  assert.equal(v.product.currency, null);
+  assert.equal(v.constraint_violations, undefined, 'a currency the bridge does not know is never asserted');
+  assert.equal(v.watchouts[0], 'price_max 40 USD not verified: price carries no currency');
+  assert.equal(res.metadata.price_unverified_returned, 1);
+  // and the mirror: a bare 35 (which might be GBP) must not pass as verified-clean either
+  const cheap = { ...bare, price: 35 };
+  const h2 = makeRecommendProducts({ generate: async () => laneResult([cheap]), isEnabled: () => true });
+  const res2 = await h2({ payload: { need: 'x', constraints: { price_max: 40 } } }, {});
+  assert.equal(res2.metadata.price_unverified_returned, 1, 'a currency-less amount is never "checked and clean"');
+});
+
+test('4c-6. rung priority: verified-clean, then unchecked, then known violators', async () => {
+  const violation = { ...ITEM_OVERPRICED, sku: { product_id: 'sig_v' } };
+  const unverifiable = { ...ITEM_OVERPRICED, sku: { product_id: 'sig_u' }, price: { amount: 20, currency: 'JPY' } };
+  const ok = { ...ITEM_FULL };
+  // lane order deliberately puts the violator first
+  const h = makeRecommendProducts({ generate: async () => laneResult([violation, unverifiable, ok]), isEnabled: () => true });
+  const res = await h({ payload: { need: 'x', constraints: { price_max: 40 }, limit: 2 } }, {});
+  assert.deepEqual(res.signals.map((s) => s.subject.id), ['sig_abc', 'sig_u'],
+    'a KNOWN violator never takes a slot an unchecked item could hold');
+  assert.deepEqual(res.signals.map((s) => s.value.rank), [1, 2]);
+  assert.equal(res.metadata.constraint_violations_returned, 0);
+  assert.equal(res.metadata.price_unverified_returned, 1);
+  assert.equal(res.metadata.returned, 2, 'the counters agree with what is actually in signals[]');
+});
+
+test('4c-7. the unverifiable marker leads watchouts too — the cap can never truncate it', async () => {
+  const item = {
+    ...ITEM_OVERPRICED,
+    price: { amount: 20, currency: 'JPY' },
+    constraint_notes: ['c1', 'c2', 'c3', 'c4'],
+    warnings: ['w1', 'w2', 'w3', 'w4'],
+  };
+  const h = makeRecommendProducts({ generate: async () => laneResult([item]), isEnabled: () => true });
+  const res = await h({ payload: { need: 'x', constraints: { price_max: 40 } } }, {});
+  const w = res.signals[0].value.watchouts;
+  assert.equal(w.length, 6);
+  assert.equal(w[0], 'price_max 40 USD not verified: price in JPY, ceiling in USD');
+});
+
+test('4e-2. an unknown currency code can never be used to suppress enforcement', async () => {
+  // if "40 XYZ" were accepted, the ceiling would be denominated in a currency nothing matches — and
+  // every item would silently become unverifiable. The allowlist is what blocks that.
+  assert.equal(extractPriceMax({ price_max: '40 XYZ' }).limit, undefined);
+  assert.equal(extractPriceMax({ price_max: '40 XYZ' }).unstructured, 'unstructured_value');
+  const h = makeRecommendProducts({ generate: async () => laneResult([ITEM_OVERPRICED]), isEnabled: () => true });
+  const res = await h({ payload: { need: 'x', constraints: { price_max: '40 XYZ' } } }, {});
+  assert.equal(res.metadata.price_max_enforced, undefined);
+  assert.equal(res.metadata.price_constraint_unenforced, 'unstructured_value', 'refusal is disclosed, not silent');
+});
+
+test('4e-3. a refused ceiling is disclosed whatever its TYPE, with an accurate reason', async () => {
+  const h = makeRecommendProducts({ generate: async () => laneResult([ITEM_OVERPRICED]), isEnabled: () => true });
+  // [40] is schema-legal (constraints allows arrays) and used to produce NO metadata at all —
+  // byte-identical to sending no constraint, the exact ambiguity this key exists to remove
+  for (const value of [[40], true]) {
+    const res = await h({ payload: { need: 'x', constraints: { price_max: value } } }, {});
+    assert.equal(res.metadata.price_max_enforced, undefined);
+    assert.equal(res.metadata.price_constraint_unenforced, 'unstructured_value', `${JSON.stringify(value)} must be disclosed`);
+  }
+  const zero = await h({ payload: { need: 'x', constraints: { price_max: 0 } } }, {});
+  assert.equal(zero.metadata.price_constraint_unenforced, 'out_of_range_value', 'a numeric 0 was structured, just unusable');
+  assert.equal(extractPriceMax({ price_max: -5 }).unstructured, 'out_of_range_value');
+});
+
+test('4e-4. the ceiling\'s OWN currency beats a generic currency constraint', async () => {
+  assert.equal(extractPriceMax({ price_max_gbp: 40, currency: 'USD' }).currency, 'GBP',
+    'a currency bound to the ceiling key is more specific than a loose sibling declaration');
+  assert.equal(extractPriceMax({ price_max: '40 GBP', currency: 'USD' }).currency, 'GBP');
+  assert.equal(extractPriceMax({ price_max: 40, currency: 'USD' }).currency, 'USD', 'a sibling declaration still applies when the key carries none');
+  // every ceiling key gets its matching <key>_currency, not just the hand-listed ones
+  assert.equal(extractPriceMax({ budget_max: 5000, budget_max_currency: 'JPY' }).currency, 'JPY');
+  assert.equal(extractPriceMax({ budget_max: 5000, budget_max_currency: 'JPY' }).declared, true);
 });
 
 test('4i. the enforcement markers survive the REAL commerce surface and its sanitizer', async () => {
