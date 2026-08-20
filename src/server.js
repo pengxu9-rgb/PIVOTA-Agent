@@ -30353,6 +30353,7 @@ async function getCommerceRemoteMcpAdapter() {
       // Read-only intelligence reads (get_alternatives/get_offers) injected as localReads — the relationship
       // graph + offers live in the app DB, so the handlers are wired here (not in the safety kernel).
       const { makeGetAlternatives, makeGetOffers, makeGetIntel, mapOffersResolveResponse } = require('./agentSignals/intelligenceReads');
+      const { makeRecommendProducts } = require('./agentSignals/recommendProducts');
       const {
         listApprovedRelationshipEdgesForAnchor,
         buildAnchorRefsFromProduct,
@@ -30370,6 +30371,11 @@ async function getCommerceRemoteMcpAdapter() {
       // public PDP stamp); a lazy require avoids the pivotaInsightsQuality → … → pdpProductIntel cycle.
       const agentIntelPublicClaimsEnabled = () =>
         /^(1|true|yes|on|enabled)$/i.test(String(process.env.AGENT_INTEL_PUBLIC_CLAIMS_ENABLED || '').trim());
+      // Independent gate for the need-anchored recommendation shortlist (the Aurora reco lane bridged to the
+      // agent doors). Off unless explicitly enabled: it calls the external decision service and costs an LLM
+      // generation per call, so lighting it is an ops decision, not a deploy side effect.
+      const agentRecommendProductsEnabled = () =>
+        /^(1|true|yes|on|enabled)$/i.test(String(process.env.AURORA_BFF_RECOMMEND_PRODUCTS_AGENT_ENABLED || '').trim());
       const filterPublicSafeClaimsGated = (claims) => {
         if (!agentIntelPublicClaimsEnabled()) return [];
         try {
@@ -30492,6 +30498,29 @@ async function getCommerceRemoteMcpAdapter() {
             push(p.product_ref);
             return keys;
           },
+        }),
+        // The need-anchored shortlist: Pivota's prompt-level recommendation lane (the engine behind
+        // POST /v1/reco/generate), bridged as a local read. The lane instance is the one the Aurora routes
+        // module built at load (auroraBffInternal); when that module failed to load — or the flag is dark —
+        // the handler answers an empty, reasoned result rather than throwing. Identity: a namespaced synthetic
+        // uid per calling agent (see recommendProducts.js); no bearer, so nothing consumer-side is read or
+        // written.
+        recommend_products: makeRecommendProducts({
+          generate: async (args) => {
+            const fn = auroraBffInternal && typeof auroraBffInternal.generateProductRecommendations === 'function'
+              ? auroraBffInternal.generateProductRecommendations
+              : null;
+            if (!fn) throw new Error('aurora reco lane unavailable');
+            return fn(args);
+          },
+          buildAsk: auroraBffInternal && typeof auroraBffInternal.buildRecoGenerateUserAsk === 'function'
+            ? auroraBffInternal.buildRecoGenerateUserAsk
+            : undefined,
+          isEnabled: agentRecommendProductsEnabled,
+          logger,
+          budgetMs: Number(process.env.AURORA_BFF_RECOMMEND_PRODUCTS_AGENT_BUDGET_MS) > 0
+            ? Number(process.env.AURORA_BFF_RECOMMEND_PRODUCTS_AGENT_BUDGET_MS)
+            : undefined,
         }),
       };
       const executor = createCanonicalExecutor({

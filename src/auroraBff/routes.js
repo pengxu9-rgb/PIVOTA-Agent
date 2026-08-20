@@ -104026,6 +104026,7 @@ const __internal = {
   buildRecoAlternativesCandidatePool,
   applyIngredientRecoConstraint,
   generateProductRecommendations,
+  buildRecoGenerateUserAsk,
   resolveIngredientReferenceRuntimeMatch,
   resolveIngredientSignalRuntimeMatch,
   extractIngredientLookupTargetFromText,

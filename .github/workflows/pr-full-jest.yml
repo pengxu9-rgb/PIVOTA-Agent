@@ -390,12 +390,18 @@ jobs:
       # REAL handler output (relationship edge / offers / a reviewed intel bundle) must ajv-validate against
       # its response definitions. A review found the two had already diverged where only a NON-EMPTY answer
       # could show it.
+      # ADDED 2026-08-19: `tests/agent_signals_recommend_products`, confirmed green (8/8). The need-anchored
+      # `recommend_products` tool (Aurora reco lane bridged as a local read): dark flag / missing need never
+      # reach the lane, namespaced agent uid + no profile + bounded budget, projection built from the LANE'S
+      # OWN output contract (a hand-written fixture hid five dead field reads), the need text scrubbed by the
+      # sanitizer, lane failure = reasoned empty answer, and the real commerce surface end to end.
       - name: Run node:test suites
         run: |
           node --test \
             tests/platform_config.node.test.cjs \
             tests/platform_production_guards.node.test.cjs \
             tests/agent_identity_issuer_registry.node.test.cjs \
+            tests/agent_signals_recommend_products.node.test.cjs \
             tests/aurora_chat_v1_mainline_delegation_cycle.node.test.cjs \
             tests/aurora_bff_v1_chat_rollout.node.test.cjs \
             mcp-server/test/ucpToolVocabulary.test.js \

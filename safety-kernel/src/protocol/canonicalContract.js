@@ -180,6 +180,16 @@ export const CANONICAL_OPERATIONS = Object.freeze([
     acp: null, ucp: 'catalog.intel', mcp: 'get_intel', ucpTool: 'get_intel',
   },
   {
+    // NEED-anchored, not product-anchored: a natural-language need (+ constraints) → a reasoned shortlist.
+    // The bridge to Pivota's prompt-level recommendation lane (src/agentSignals/recommendProducts.js).
+    // It BELONGS to cc.pivota.insights (the decision layer) and `ucp` carries its dotted internal label,
+    // but it has NO ucpTool: the hosted capability document does not describe it yet, so the UCP dialect
+    // neither lists nor accepts it. Adding it is a docs + mapper change, exactly like the other three.
+    id: 'recommend_products', capability: 'insights', kernel: 'local',
+    mutating: false, requiresUserRef: false, requiresPaymentAuthz: false,
+    acp: null, ucp: 'catalog.recommend', mcp: 'recommend_products',
+  },
+  {
     id: 'create_checkout_session', capability: 'checkout', kernel: 'preview_quote',
     mutating: true, requiresUserRef: true, requiresPaymentAuthz: false,
     acp: 'POST /checkout_sessions', ucp: 'checkout.create', mcp: 'create_checkout_session',
