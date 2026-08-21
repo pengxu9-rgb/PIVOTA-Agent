@@ -912,9 +912,10 @@ jobs:
       # repair, and the only four that lose a price are `1,,2` -- a doubled separator that used to
       # parse as 12. No US-grouped or plain form moves at all.
       # Both directions are pinned, including that `$X` and `X` must agree for every convention.
-      # ADDED 2026-08-21: `tests/reco_framework_prose_budget_currency`, confirmed green (22/22) and
-      # mutation-checked (28 mutants applied one per hunk against a file backup, all 28 killed; no
-      # survivors, so nothing here is documented-as-equivalent). It is the ONLY coverage of the
+      # ADDED 2026-08-21: `tests/reco_framework_prose_budget_currency`, confirmed green (35/35) and
+      # mutation-checked (28 mutants for the marker, plus 17 more for the ordering change below --
+      # applied one per hunk against a file backup, all killed; no survivors, so nothing here is
+      # documented-as-equivalent). It is the ONLY coverage of the
       # currency branch of the framework lane's budget gate, which had NO test at all.
       # isConcernFrameworkCandidateOverBudget is a HARD DROP -- addSelectedCandidate refuses any row it
       # calls over budget -- and resolveConcernFrameworkBudgetCeiling hardcodes `currency: 'USD'` on the
@@ -934,7 +935,7 @@ jobs:
       # does not name reaches the model as nothing at all -- and the price-hint suppression branch
       # ("under $40" does not match the price-comparison detector, so a routine_mix answer to a budgeted
       # request lands there) nulls price_label right next to it. Two mutants cover exactly those.
-      # FIVE of the twenty-two tests are GUARDS: they pass against 822cd9f5f and pin the drop semantics
+      # FIVE of the marker tests are GUARDS: they pass against 822cd9f5f and pin the drop semantics
       # this change must not move (exclusive "under $40" excludes 40; a same-unit overage is still
       # dropped; the foreign-currency predicate stays false). They are labelled as such in the file,
       # because a `Mutant killed:` label on a test that cannot fail is the house failure mode.
@@ -948,6 +949,37 @@ jobs:
       # through it), and being an allowlist literal it dropped the marker one function after selection
       # built it. Every other card test passed while that hole was open, which is why one test drives
       # that builder directly.
+      # EXTENDED same day with the ORDERING half, which the marker only made visible. Selection admits
+      # in framework-score order and nothing sorted these rows against the budget at all, so a pool of
+      # [GBP 88, EUR 60, AUD 54, USD 12, USD 19] spent all three cards on the three rows whose currency
+      # could not be compared while a conforming $12 and $19 sat unused -- main orders identically, so
+      # this is a defect #2070 disclosed rather than one it caused. The fix is the partition this repo
+      # already makes for a STRUCTURED ceiling (applyRecoPriceCeilingPreference, conforming > unknown >
+      # over, stable, nothing removed) applied to the prose path, which never reaches that stack because
+      # it holds no structured priceCeiling. 'over' stays the only hard drop.
+      # The THIRD bucket is not decoration: addRoutineSupportCandidates picks a support role's FIRST
+      # unused row and adds at most one per role, so an over-budget row at the head of that bucket
+      # consumed the role's only pick, failed the drop, and the role surfaced nothing while an
+      # admissible row waited behind it. A two-bucket version was written first and REJECTED on that
+      # measurement -- taken against the changed file, not reasoned about.
+      # TWO of the ordering mutants were SURVIVORS found by review, not by the first sweep: deleting
+      # the finish-fit spread from the primary call site, and destabilising the 'over' bucket. Both
+      # were real coverage holes -- the spread one because the pool's within-bucket order happened to
+      # match with and without the spread, so the test's own stated rationale ("this order proves the
+      # spread ran") was FALSE while the test still passed. It is now pinned by a pool that separates
+      # all three readings: spread deleted, partition on the spread's INPUT, and partition on its
+      # OUTPUT -- the input variant pulls an uncheckable GBP row into a card ahead of a conforming one.
+      # TWO tests are labelled KNOWN TRADE-OFF: adversarial review measured two places where the
+      # reorder changes what the buyer sees without dropping anything -- a conforming SPF hybrid can
+      # take the lead card over dedicated sunscreens the spread defers, and one product recalled for
+      # TWO roles can have its primary slot taken and leave the support role empty (8 card losses
+      # against 138 gains over 4,000 randomised pools). Both are pinned so a later change to the
+      # ordering has to move a test, not discover them in production.
+      # TWO of the ordering tests are GUARDS that no mutant of the partition can move: the drop guard
+      # (the drop lives in addSelectedCandidate) and the no-budget order guard (with no ceiling every
+      # row lands in ONE bucket and a stable partition of one bucket is the identity). Both are pinned
+      # by probe mutants that delete the drop, and that delete the early return AND destabilise the
+      # bucket together -- because a guard nobody has shown can fail is the house failure mode.
       # That concentration is also why the prompt RULE line is conditional: a sibling suite pins
       # same-role prompts under 8000 chars, and an unconditional line broke it.
       - name: Run node:test suites
