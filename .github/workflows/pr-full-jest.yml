@@ -912,6 +912,44 @@ jobs:
       # repair, and the only four that lose a price are `1,,2` -- a doubled separator that used to
       # parse as 12. No US-grouped or plain form moves at all.
       # Both directions are pinned, including that `$X` and `X` must agree for every convention.
+      # ADDED 2026-08-21: `tests/reco_framework_prose_budget_currency`, confirmed green (22/22) and
+      # mutation-checked (28 mutants applied one per hunk against a file backup, all 28 killed; no
+      # survivors, so nothing here is documented-as-equivalent). It is the ONLY coverage of the
+      # currency branch of the framework lane's budget gate, which had NO test at all.
+      # isConcernFrameworkCandidateOverBudget is a HARD DROP -- addSelectedCandidate refuses any row it
+      # calls over budget -- and resolveConcernFrameworkBudgetCeiling hardcodes `currency: 'USD'` on the
+      # PROSE path, the one that parses "under $40" out of the request text. The gate refuses to compare
+      # across units, which #2065 made REACHABLE: before it every scalar-priced row was stamped USD, so
+      # {price_amount: 88, currency: 'GBP'} read as USD 88, was judged over a USD 40 budget and dropped;
+      # after it the row reads GBP 88, the units differ, and a BOOLEAN gate reported "not over budget".
+      # The row was selected and shown -- a GBP 88 card against a $40 ask with nothing on screen saying
+      # the budget could not be checked, and no structured priceCeiling on this path, so neither
+      # recoPriceCeiling nor the agent bridge's markPriceUnverifiable ever ran either.
+      # Admitting it is right and this suite PINS that: the lane holds no FX rates, and the same reader
+      # also dropped a 4500 JPY item (about 30 USD) that HONOURED the budget. Admitting it SILENTLY was
+      # not. The row now carries a marker to the card (a sentence naming both currencies, placed FIRST
+      # so a role blurb cannot push it off) and to the prompt.
+      # The trap the suite exists for is the PROMPT leg: buildStrictSelectedOnlyRecoAssistantPromptContext
+      # rebuilds selected_product_details from an ALLOWLIST, so a field the card carries and that map
+      # does not name reaches the model as nothing at all -- and the price-hint suppression branch
+      # ("under $40" does not match the price-comparison detector, so a routine_mix answer to a budgeted
+      # request lands there) nulls price_label right next to it. Two mutants cover exactly those.
+      # FIVE of the twenty-two tests are GUARDS: they pass against 822cd9f5f and pin the drop semantics
+      # this change must not move (exclusive "under $40" excludes 40; a same-unit overage is still
+      # dropped; the foreign-currency predicate stays false). They are labelled as such in the file,
+      # because a `Mutant killed:` label on a test that cannot fail is the house failure mode.
+      # Measured before writing it, against the live catalog search this lane recalls from: ~1.3% of
+      # rows declare a non-USD currency on a broad 66-query sweep, but 0/24 on single-word category
+      # queries and 4-5/24 (17-21%) on multi-word natural/organic phrasings -- the phrasing that also
+      # carries a prose budget; re-measured on a sample weighted to those, 10.4% of rows / 13.8% of
+      # PRICED rows. Of 17 distinct non-USD rows, 3 exceed a $40 prose budget and 9 exceed $20.
+      # It also covers a REGRESSION review caught: buildRecoRowsFromMainlineProducts is a SECOND card
+      # builder for the same selected rows (isBeautyOwnedChatRecoRequest routes every framework request
+      # through it), and being an allowlist literal it dropped the marker one function after selection
+      # built it. Every other card test passed while that hole was open, which is why one test drives
+      # that builder directly.
+      # That concentration is also why the prompt RULE line is conditional: a sibling suite pins
+      # same-role prompts under 8000 chars, and an unconditional line broke it.
       - name: Run node:test suites
         run: |
           node --test \
@@ -995,7 +1033,8 @@ jobs:
             tests/crawler_inline_price_prefix.node.test.cjs \
             tests/reco_alternatives_price_coercion_guards.node.test.cjs \
             tests/price_decimal_comma_locale.node.test.cjs \
-            tests/reco_card_price_label_currency.node.test.cjs
+            tests/reco_card_price_label_currency.node.test.cjs \
+            tests/reco_framework_prose_budget_currency.node.test.cjs
 
   jest:
     runs-on: ubuntu-latest

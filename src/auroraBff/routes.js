@@ -23187,6 +23187,12 @@ function buildConcernRecommendationsFromSelectedCandidates(selectedCandidates, {
       ? asStringArray(selectionNotesByProductId[productId], 3)
       : [];
     const displayProductType = resolveFrameworkRecoDisplayProductType(picked, normalizedStep);
+    // The prose-budget path parses "under $40" out of the request text and holds no structured
+    // priceCeiling, so NOTHING downstream -- not recoPriceCeiling, not the agent bridge's
+    // markPriceUnverifiable -- ever attaches an unverifiable marker to these rows. This is the only
+    // place that can say it, so it says it in words on the card rather than only in a debug field.
+    const budgetCheckMarker = pickConcernFrameworkBudgetCheckMarker(picked);
+    const budgetCheckNote = formatConcernFrameworkBudgetCheckNote(budgetCheckMarker, { language });
     const alternativesCount = Math.max(
       0,
       Number.isFinite(Number(picked?.alternatives_count))
@@ -23264,8 +23270,14 @@ function buildConcernRecommendationsFromSelectedCandidates(selectedCandidates, {
       alternatives_count: alternativesCount,
       see_more: true,
       ...(Array.isArray(picked?.alternatives) ? { alternatives: picked.alternatives.filter((row) => isPlainObject(row)).slice(0, 8) } : {}),
+      ...(budgetCheckMarker
+        ? { budget_check: budgetCheckNote ? { ...budgetCheckMarker, note: budgetCheckNote } : budgetCheckMarker }
+        : {}),
       sku: picked,
+      // The budget note goes FIRST, and outside buildFrameworkRecommendationNotes' own slice(3): a role
+      // blurb must never be the reason the buyer is not told the budget could not be checked.
       notes: [
+        budgetCheckNote,
         ...buildFrameworkRecommendationNotes({
           language,
           role: matchedRole,
@@ -23407,6 +23419,16 @@ function buildRecoRowsFromMainlineProducts(products, {
       { requireMerchant: true, allowOpaqueProductId: false },
     );
     const displayProductType = resolveFrameworkRecoDisplayProductType(picked, normalizedStep);
+    // The SECOND card builder for the same selected rows. `products` here is
+    // effectiveCandidateState.selected_recommendations (routes.js, buildBeautyMainlineLocalSearchResult),
+    // i.e. the very rows addSelectedCandidate marked -- and isBeautyOwnedChatRecoRequest routes every
+    // request with framework_roles down this path, so this is where most marked rows actually land.
+    // This object is an allowlist literal, not a spread, so without these two lines the marker is
+    // built during selection and thrown away one function later, leaving the buyer with a GBP 88 card
+    // against a "$40" ask and no disclosure -- exactly the silent admission this change exists to
+    // close. Kept byte-identical to buildConcernRecommendationsFromSelectedCandidates on purpose.
+    const budgetCheckMarker = pickConcernFrameworkBudgetCheckMarker(picked);
+    const budgetCheckNote = formatConcernFrameworkBudgetCheckNote(budgetCheckMarker, { language });
     const alternativesCount = Math.max(
       0,
       Number.isFinite(Number(picked?.alternatives_count))
@@ -23497,8 +23519,12 @@ function buildRecoRowsFromMainlineProducts(products, {
             ...(Array.isArray(picked?.alternatives) ? { alternatives: picked.alternatives.filter((row) => isPlainObject(row)).slice(0, 8) } : {}),
           }
         : {}),
+      ...(budgetCheckMarker
+        ? { budget_check: budgetCheckNote ? { ...budgetCheckMarker, note: budgetCheckNote } : budgetCheckMarker }
+        : {}),
       sku: picked,
       notes: [
+        budgetCheckNote,
         ...(debug
           ? [String(language || '').toUpperCase() === 'CN'
             ? '来自 Pivota 商品库（beauty mainline）'
@@ -27049,16 +27075,108 @@ function resolveConcernFrameworkBudgetCeiling(targetContext = null) {
   };
 }
 
-function isConcernFrameworkCandidateOverBudget(candidate = null, targetContext = null) {
+// 'no_budget' | 'no_price' | 'conforming' | 'over' | 'unverifiable_currency'.
+//
+// The gate below drops ONLY 'over'. A candidate priced in a currency other than the budget's is
+// 'unverifiable_currency' -- never 'over' -- because this lane holds no FX rates, the same refusal
+// classifyRecoCandidateAgainstPriceCeiling and the agent bridge's checkPriceMax already make. Reading
+// 88 GBP as 88 USD to call it "over $40" fabricates a verdict in both directions: it also dropped a
+// 4500 JPY item (about 30 USD) that HONOURED the budget.
+//
+// That refusal only became reachable here with #2065. Before it, extractCatalogCandidatePrice stamped
+// every scalar-priced row USD, so a declared currency never reached this comparison and every foreign
+// row was silently judged in the wrong unit. #2065 fixed the reader, which turned a fabricated 'over'
+// into an honest 'cannot compare' -- and, because the gate answers a BOOLEAN, an honest 'cannot
+// compare' read as "not over budget", i.e. admitted with nothing on screen saying so. That silent
+// loosening is what the marker below closes: the row is still SHOWN (suppressing it would re-introduce
+// the JPY defect from the other side), but it is shown MARKED.
+//
+// Measured 2026-08-21 over the live catalog search this lane recalls from. Across a broad 66-query
+// sweep ~1.3% of recalled rows declare a non-USD currency, but the incidence is CONCENTRATED, not
+// uniform: 0/24 on single-word category queries (serum, moisturizer) and 4-5/24 (17-21%) on
+// multi-word natural/organic phrasings -- "organic face cream", "natural face oil", "gentle cleanser
+// for sensitive skin" -- which is exactly the phrasing that also carries a prose budget. Re-measured
+// on a sample weighted to those phrasings it is 10.4% of rows / 13.8% of PRICED rows, so the global
+// figure is a floor, not the number that matters here. Of 17 distinct non-USD rows, 3 exceed a $40
+// prose budget numerically and 9 exceed a $20 one: those are the rows that flip dropped -> shown.
+//
+// A row with NO declared currency is a different case and is NOT affected: measured over 144 rows,
+// every PRICED row declared a currency (0 priced-but-currency-less), and the unpriced rows classify
+// 'no_price' above, so they are never compared to a budget at all.
+function classifyConcernFrameworkCandidateAgainstBudget(candidate = null, targetContext = null) {
   const budget = resolveConcernFrameworkBudgetCeiling(targetContext);
-  if (!budget) return false;
+  if (!budget) return { status: 'no_budget', budget: null, price: null };
   const price = extractCatalogCandidatePrice(candidate) || extractCatalogCandidatePrice(candidate?.sku) || null;
-  if (!price || price.unknown === true) return false;
+  if (!price || price.unknown === true) return { status: 'no_price', budget, price: null };
   const amount = Number(price.amount);
-  if (!Number.isFinite(amount) || amount <= 0) return false;
+  if (!Number.isFinite(amount) || amount <= 0) return { status: 'no_price', budget, price: null };
+  // Both sides are already normalized to a 3-letter code with a USD fallback (normalizeCurrencyCode
+  // never returns a falsy value for either), so the old `currency && budget.currency &&` guards could
+  // not fire; dropping them changes no verdict.
   const currency = normalizeCurrencyCode(price.currency, 'USD') || 'USD';
-  if (currency && budget.currency && currency !== budget.currency) return false;
-  return budget.exclusive ? amount >= budget.amount : amount > budget.amount;
+  if (currency !== budget.currency) {
+    return { status: 'unverifiable_currency', budget, price: { amount, currency } };
+  }
+  const over = budget.exclusive ? amount >= budget.amount : amount > budget.amount;
+  return { status: over ? 'over' : 'conforming', budget, price: { amount, currency } };
+}
+
+function isConcernFrameworkCandidateOverBudget(candidate = null, targetContext = null) {
+  return classifyConcernFrameworkCandidateAgainstBudget(candidate, targetContext).status === 'over';
+}
+
+// The marker a currency-unverifiable row carries from selection to the card and the prompt.
+//
+// Selection holds no language, so this stays STRUCTURED ONLY. The user-facing sentence is formatted
+// once, in the card builder, which is the only place that knows EN/CN -- and the prompt then reads
+// that same sentence back off the card rather than re-deriving it, so the card and the assistant text
+// can never disagree about what was checked.
+function buildConcernFrameworkBudgetCheckMarker(verdict = null) {
+  if (!isPlainObject(verdict) || verdict.status !== 'unverifiable_currency') return null;
+  const budget = isPlainObject(verdict.budget) ? verdict.budget : null;
+  const price = isPlainObject(verdict.price) ? verdict.price : null;
+  if (!budget || !price) return null;
+  return {
+    status: 'unverifiable_currency',
+    requested_amount: budget.amount,
+    requested_currency: budget.currency,
+    price_currency: price.currency,
+  };
+}
+
+// ONE CARD, ONE DIALECT -- and on this lane that dialect is the ISO code, not the glyph.
+//
+// #2069 split price rendering in two (formatDisplayPriceLabel for a person, formatPromptPriceLabel
+// for a model), and the obvious reading is that a card sentence should take the display half. It must
+// not, HERE: this lane sets the card's own `price_label` with formatRecoAssistantPromptPriceLabel,
+// and normalizeRecommendationProductCard KEEPS a price_label the row already carries
+// (chatCardFactory.js: `...(asString(row.price_label) ? {price_label: ...} : {})`, only computing the
+// display form when the field is absent). So the buyer sees `GBP 88` for the product price, and a
+// budget rendered `\u00a340` beside it would print two currency dialects on one card. The budget label
+// is a price on the same card as the product price, so it uses the same renderer the card already
+// uses -- which also makes the card and the prompt agree for free, since they now share one string.
+function formatConcernFrameworkBudgetCheckNote(marker = null, { language = 'EN' } = {}) {
+  if (!isPlainObject(marker) || marker.status !== 'unverifiable_currency') return '';
+  const currency = normalizeCurrencyCode(marker.price_currency, '');
+  const amount = Number(marker.requested_amount);
+  const budgetCurrency = normalizeCurrencyCode(marker.requested_currency, '');
+  if (!currency || !budgetCurrency || !Number.isFinite(amount) || amount <= 0) return '';
+  const budgetLabel = formatRecoAssistantPromptPriceLabel({ amount, currency: budgetCurrency })
+    || `${budgetCurrency} ${amount}`;
+  return String(language || '').trim().toUpperCase() === 'CN'
+    ? `该商品以 ${currency} 计价，无法与你的 ${budgetLabel} 预算直接比较。`
+    : `Priced in ${currency}; we could not check it against your ${budgetLabel} budget.`;
+}
+
+// TOP LEVEL ONLY, deliberately. Both readers see the marker there: the card builder reads the
+// selected candidate, which is where addSelectedCandidate wrote it, and the prompt reads the CARD --
+// including after normalizeRecommendationProductCard rebuilds it as a canonical display row, which
+// spreads the raw row and so carries the field through. A `sku`/`product` fallback here would be a
+// branch no call site can reach, and an unreachable branch is a mutant no test can kill.
+function pickConcernFrameworkBudgetCheckMarker(row = null) {
+  if (!isPlainObject(row)) return null;
+  const marker = row.budget_check;
+  return isPlainObject(marker) && String(marker.status || '').trim() ? marker : null;
 }
 
 function hasConcernFrameworkExplicitNoAdditionalActiveConstraint(targetContext = null) {
@@ -27589,9 +27707,16 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
     if (selected.length >= 3) return false;
     const productId = pickFirstString(item?.product_id, item?.productId, item?.id);
     if (!productId || usedProductIds.has(productId)) return false;
-    if (isConcernFrameworkCandidateOverBudget(item, targetContext)) return false;
+    const budgetVerdict = classifyConcernFrameworkCandidateAgainstBudget(item, targetContext);
+    if (budgetVerdict.status === 'over') return false;
+    // ADMIT, MARKED -- not suppress. Suppressing a currency we cannot convert would re-create the
+    // defect from the other side (a 4500 JPY item, about 30 USD, dropped as "over $40"), and this lane
+    // reports 'unknown' rather than guessing everywhere else. But admitting it SILENTLY is a budget
+    // filter loosened with nothing on screen: the buyer asked for under $40 and gets a GBP 88 card.
+    // The marker rides on the selected row so the card and the prompt both see it.
+    const budgetCheck = buildConcernFrameworkBudgetCheckMarker(budgetVerdict);
     usedProductIds.add(productId);
-    selected.push(item);
+    selected.push(budgetCheck ? { ...item, budget_check: budgetCheck } : item);
     return true;
   };
   const addRoutineSupportCandidates = (maxAdds = Number.POSITIVE_INFINITY) => {
@@ -60741,6 +60866,11 @@ function buildStrictSelectedOnlyRecoAssistantPromptContext(context = {}) {
         same_role_peer_count: Number.isFinite(Number(item?.same_role_peer_count)) ? Number(item.same_role_peer_count) : null,
         price_label: compactRecoAssistantPromptField(item?.price_label, { maxLen: 40 }),
         price_position: compactRecoAssistantPromptField(item?.price_position, { maxLen: 24 }),
+        // This object is an ALLOWLIST REBUILD, not a spread: a field the caller sets and this map does
+        // not name never reaches the model. The budget disclosure has to be named here or the prompt
+        // silently loses it while the card still carries it.
+        budget_check_status: compactRecoAssistantPromptField(item?.budget_check_status, { maxLen: 32 }),
+        budget_check_note: compactRecoAssistantPromptField(item?.budget_check_note, { maxLen: 120 }),
         description_snippet: compactRecoAssistantPromptField(item?.description_snippet, { maxLen: 92 }),
         why_this_one: compactRecoAssistantPromptField(item?.why_this_one, { maxLen: 82 }),
         key_features: asStringArray(item?.key_features, 2).map((value) =>
@@ -60771,6 +60901,7 @@ function buildStructuredRecoAssistantReasonPromptLines({
   retryInstruction = null,
   allowPriceComparisonHints = true,
   enforceFinishFitPrimerCalibration = false,
+  hasUnverifiableBudgetRow = false,
 } = {}) {
   const lines = [
     'Return strict JSON only.',
@@ -60796,6 +60927,13 @@ function buildStructuredRecoAssistantReasonPromptLines({
     'Keep cosmetic evidence conservative: do not say a product regulates sebum production, repairs skin, counteracts dryness, treats acne, or prevents irritation; use phrasing like "supports visible shine control", "barrier-support", or "for dryness-prone routines" when the record only supports product-fit evidence.',
     'Price may be included only when Context provides price_label or price_order_summary, and it must be paired with a non-price fit reason.',
   ];
+  // Only when a selected row actually carries the disclosure. This prompt runs under a size budget
+  // (a suite pins same-role payloads under 8000 chars), and the marker fires on a small, concentrated
+  // slice of requests -- roughly 1% of recalled rows overall -- so an unconditional line would spend
+  // its bytes on every request that has nothing to disclose.
+  if (hasUnverifiableBudgetRow) {
+    lines.push('If a selected_product_details entry has budget_check_status "unverifiable_currency", never state or imply that product meets the stated budget: it is priced in another currency and was not converted. Use its budget_check_note wording if you mention the budget at all.');
+  }
   if (enforceFinishFitPrimerCalibration) {
     lines.push('Do not say a sunscreen doubles as, acts as, works as, or serves as a primer. Translate soft-focus cues into smoother under-makeup wear without implying primer replacement.');
     lines.push('For finish-fit sunscreen comparisons, keep every reason on wear, texture, finish, white-cast, sensitivity, or richer-versus-lighter tradeoffs; avoid generic SPF utility phrasing like "for AM UV protection" or "for daily protection" unless that tradeoff is explicit.');
@@ -61102,12 +61240,19 @@ function buildRecoAssistantRewritePrompt({
         : effectiveItem.framework_semantic_fit === false || effectiveItem.sku?.framework_semantic_fit === false
           ? false
           : null;
+    // Rendered from the CARD'S OWN marker, so the answer text and the card can never disagree about
+    // what was checked. One dialect for both (see formatConcernFrameworkBudgetCheckNote), so this is
+    // byte-identical to the card's sentence rather than a second rendering of it.
+    const budgetCheckMarker = pickConcernFrameworkBudgetCheckMarker(effectiveItem);
+    const budgetCheckNote = formatConcernFrameworkBudgetCheckNote(budgetCheckMarker, { language: lang });
     return {
       name: pickFirstTrimmed(effectiveItem.display_name, effectiveItem.displayName, effectiveItem.name, effectiveItem.title, effectiveItem.sku?.display_name, effectiveItem.sku?.name),
       brand: pickFirstTrimmed(effectiveItem.brand, effectiveItem.sku?.brand),
       category: pickFirstTrimmed(effectiveItem.category, effectiveItem.step, effectiveItem.sku?.category, effectiveItem.sku?.product_type),
       price,
       price_label: formatRecoAssistantPromptPriceLabel(price),
+      budget_check_status: budgetCheckMarker ? String(budgetCheckMarker.status || '') || null : null,
+      budget_check_note: budgetCheckNote || null,
       short_description: promptShortDescription || null,
       description_snippet: formatRecoRoleAnchoredVisibleNarrative(
         cleanRecoNarrativeForRoleVisibleUse(descriptionSnippet, {
@@ -61241,6 +61386,11 @@ function buildRecoAssistantRewritePrompt({
   const suppressPriceComparisonHints =
     (selectedProductRoleMix === 'same_role_comparison' || selectedProductRoleMix === 'routine_mix') &&
     !priceComparisonRequested;
+  // Deliberately NOT stripped here alongside price/price_label/price_position: budget_check_* is not a
+  // price-comparison hint, it is a disclosure that a constraint the buyer stated could not be checked.
+  // Suppressing it would leave the model free to claim the budget was met on the very rows where the
+  // card says it could not be verified. (`under $40` does not match the price-comparison detector, so
+  // a routine_mix or same_role_comparison answer to a budgeted request lands in exactly this branch.)
   const promptSelectedProductDetails = suppressPriceComparisonHints
     ? selectedProductDetails.map((item) => ({
         ...item,
@@ -61369,6 +61519,12 @@ function buildRecoAssistantRewritePrompt({
     retryInstruction,
     allowPriceComparisonHints: priceComparisonRequested,
     enforceFinishFitPrimerCalibration: finishFitPrimerCalibration,
+    // Read off promptSelectedProductDetails, not selectedProductDetails: those are the rows the model
+    // is actually handed, so the rule can never be emitted for a disclosure the Context dropped, nor
+    // dropped for one it kept.
+    hasUnverifiableBudgetRow: promptSelectedProductDetails.some(
+      (item) => String(item?.budget_check_status || '').trim() === 'unverifiable_currency',
+    ),
   });
   lines.push(`Context: ${JSON.stringify(context)}`);
   return lines.join('\n');
@@ -104907,6 +105063,14 @@ const __internal = {
   applyConcernSelectorRaceOrdering,
   runConcernSemanticPlanner,
   finalizeConcernFrameworkCandidatePools,
+  resolveConcernFrameworkBudgetCeiling,
+  classifyConcernFrameworkCandidateAgainstBudget,
+  isConcernFrameworkCandidateOverBudget,
+  buildConcernFrameworkBudgetCheckMarker,
+  formatConcernFrameworkBudgetCheckNote,
+  pickConcernFrameworkBudgetCheckMarker,
+  buildConcernRecommendationsFromSelectedCandidates,
+  buildStrictSelectedOnlyRecoAssistantPromptContext,
   collectRecoCandidatesFromRecallPlan,
   executeRecoRecallPlanEntry,
   resolveRecoSearchRequestLimit,
