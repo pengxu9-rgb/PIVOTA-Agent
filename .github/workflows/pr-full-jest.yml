@@ -555,7 +555,9 @@ jobs:
       # (面膜 -> ["面膜","mask"]), an explicit step captures no token, and a token equal to the family
       # anchor is dropped so no-token plans stay byte-stable.
       # ADDED 2026-08-21: `invoke_auth_introspect_load_shedding`, confirmed green
-      # 13/13 and mutation-checked (9 mutants, all killed). It is the follow-up
+      # 15/15 and mutation-checked (10 mutants, all killed — 3 of them exposed
+      # assertions that could not fail, incl. one that cleared the very state it
+      # was about to assert on). It is the follow-up
       # to the suite above: #2055 let a verified key survive an introspection
       # outage, but every request still dialled a backend it had just watched
       # fail, paid the full timeout, and only then read a verdict already in the
