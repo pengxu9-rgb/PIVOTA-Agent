@@ -590,7 +590,7 @@ jobs:
       # latching cooldown passed every earlier version of this suite); and the
       # STAGE_TIMEOUT settlement branch is driven through an injected dial,
       # being unreachable over the wire and therefore deletable unnoticed.
-      # ADDED 2026-08-21: `tests/reco_strict_conforming_fill`, confirmed green (20/20). STRICT FILL --
+      # ADDED 2026-08-21: `tests/reco_strict_conforming_fill`, confirmed green (27/27). STRICT FILL --
       # when the catalog holds enough conforming products, every shortlist slot should hold one. Live
       # probe 2026-08-21 (PRICE_MAX=40): The Ordinary $5.16 conforming, Naturium $19 UNKNOWN at
       # selection (no catalog price, later rescued by the live price check), OleHenriksen $62 flagged.
@@ -608,9 +608,36 @@ jobs:
       # is called out in the PR body rather than covered by a vacuous test. Two process notes: an
       # apply-check against `git diff` is USELESS while the PR is uncommitted -- it never reports
       # quiet, so a no-op mutation pattern reads as a killed mutant -- and the check here compares
-      # against a file backup instead. Also pinned as a KNOWN HAZARD:
-      # mergeRecoPlanWithGroundedCandidate takes ids/name/category from the grounded candidate but NO
-      # price, so a grounded row can carry product A's identity with product B's price.
+      # against a file backup instead.
+      # UPDATED 2026-08-21: the KNOWN HAZARD this suite pinned is now FIXED and the pin flipped to the
+      # repaired contract. mergeRecoPlanWithGroundedCandidate took ids/name/category from the grounded
+      # candidate but NO price, so a grounded llm_primary row carried product A's identity with product
+      # B's price on BOTH lanes; the agent door is backstopped by verifyPrice, the consumer
+      # POST /v1/reco/generate door is not, so a buyer saw a real product at a price no merchant would
+      # honour. The merge now takes price AND currency from the SAME candidate it takes identity from,
+      # and nulls both when that candidate carries none -- a missing price is honest, a mismatched one
+      # is not. Every price-carrying ALIAS is stripped off the plan item too (price_amount, offer_price,
+      # price_usd, priceCurrency, ...), since extractCatalogCandidatePrice reads them all back whenever
+      # a MERGED row is re-read -- which the framework budget gate and the assistant rewrite prompt
+      # both do (NOT the pool cache, which stores recall candidates before the merge, and NOT the
+      # ceiling top-up, which reads through readRecoCandidatePriceForCeiling).
+      # That includes the NESTED carriers `subject` and `product`: their price keys are stripped in
+      # place (the objects also carry product_group_id and category, so the objects themselves stay),
+      # while `sku` needs no handling because the merge re-sources it wholesale from the candidate.
+      # A leak through a nested carrier is invisible on the merged row -- merged.price is null either
+      # way -- and only appears on the round trip, so a test drives ALL 32 seeds the extractor reads,
+      # one at a time, against an unpriced candidate and names any that survive.
+      # Mutants: forty-eight run, FORTY-SIX fail the suite. The two survivors are dropping 'price' or
+      # 'currency' from the strip list: both are also assigned explicitly after the spread, so those
+      # entries buy order-independence rather than behavior, and the COMBINED mutant (move the
+      # assignments above the spread AND drop both keys) -- the refactor they defend against -- is
+      # killed by four tests. They are documented in the source rather than covered by a vacuous test.
+      # A third survivor was real and was removed instead of tested: a finite/positive guard on the
+      # candidate amount that normalizeRecoCatalogProduct already makes unreachable. The invariant the
+      # merge now leans on (the normalizer never emits a non-positive amount) is pinned directly.
+      # Note for whoever touches the currency axis: every OTHER fixture in that file is USD on both
+      # sides, so a merge taking the amount from the candidate and the currency from the plan passed
+      # all of them. One non-USD candidate closes it and is now present.
       # ADDED 2026-08-21: `tests/reco_gentleness_ranking`, confirmed green (18/18). Ranking WITHIN the
       # conforming pool. Live 2026-08-21 (PRICE_MAX=40) "a gentle exfoliant for SENSITIVE skin"
       # returned 3/3 conforming and semantically wrong -- The Ordinary Salicylic 2% $5.16, then NUXE
