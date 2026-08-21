@@ -459,15 +459,21 @@ function ttlSnapshotUnderEnv(staleEnvValue) {
     const snap = app._debug.agentAuthCacheTtlSnapshot();
     const put = app._debug.putCachedInvokeAuthResult;
     const outage = app._debug.getOutageServableInvokeAuthResult;
-    put('kill-switch-probe', { valid: true, agent_id: 'a', is_active: true }, 1000);
+    // ONE KEY PER PROBE, deliberately. getOutageServableInvokeAuthResult DELETES an entry it finds
+    // past the stale horizon, so a single shared key would let the first probe (at 2000) evict the
+    // entry and leave the second probe (at 1500) reading an empty cache — an assertion that cannot
+    // fail. That is exactly how this test first passed against a mutant that removed the guard.
+    const verdict = { valid: true, agent_id: 'a', is_active: true };
+    put('probe-past-fresh', verdict, 1000);
+    put('probe-inside-fresh', verdict, 1000);
     process.stdout.write('<<SNAP' + JSON.stringify({
       snap,
-      // Positive TTL is 1000 here, so the entry's FRESH horizon is 2000.
-      replayable: outage('kill-switch-probe', 2000) !== null,
-      // …and this probes INSIDE that fresh window. A disabled switch must refuse here too: the
-      // collapsed stale horizon alone does not cover this instant, so only the reader's own guard
-      // does. Without that probe the guard is unkillable and therefore untested.
-      replayable_inside_fresh_window: outage('kill-switch-probe', 1500) !== null,
+      // Positive TTL is 1000 here, so each entry's FRESH horizon is 2000.
+      replayable: outage('probe-past-fresh', 2000) !== null,
+      // …and this probes INSIDE that window, on its own untouched entry. A disabled switch must
+      // refuse here too: the collapsed stale horizon does not cover this instant, so only the
+      // reader's own guard does. Without this the guard is unkillable and therefore untested.
+      replayable_inside_fresh_window: outage('probe-inside-fresh', 1500) !== null,
     }) + 'SNAP>>');
     process.exit(0);
   `;
