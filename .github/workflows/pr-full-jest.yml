@@ -891,6 +891,27 @@ jobs:
       # `'1e999'` used to bucket as `over` and trip isConcernFrameworkCandidateOverBudget; it now
       # buckets as `unknown` and passes. applyRecoPriceCeilingPreference feeds
       # `selected = viable.slice(0, 3)`, so a row that could not appear before now can.
+      # ADDED 2026-08-21: `tests/price_decimal_comma_locale`. toPositiveNumberOrNull had TWO string
+      # parsers that disagreed, and both were wrong in opposite directions.
+      # The fast path did `Number(compact.replace(/,/g, ''))` -- every comma a thousands separator --
+      # so `35,30` read as 3530. Roughly half the world writes prices with a decimal comma, and this
+      # feeds alternatives[].product.price and the analyze-a-URL anchor price.
+      # The salvage path (anything with a currency symbol, since that makes Number() NaN) did the
+      # opposite: "comma and no dot -> the comma is the decimal point". So `$1,299` read as $1.30,
+      # `$1,000` as $1 and `$1,234,567` as $1.23 -- a grouped whole-dollar price, which is ordinary
+      # markup, three orders of magnitude low. A price therefore meant different things depending on
+      # whether it was written with a symbol. That is the worse of the two bugs and it was found by a
+      # test written to check the two paths AGREE, not by reading either one.
+      # Both now run one rule: BOTH separators present -> the LAST is the decimal point (this is what
+      # separates `1,299.00` from `1.234.567,89` without knowing the locale); commas only -> a
+      # trailing run of 1-2 digits is decimal, 3 is grouping; dots only -> more than one can only be
+      # grouping. Three digits after the final comma is the one genuinely ambiguous case and reads as
+      # grouping, which is both the commoner convention and the reading this code already had.
+      # Measured against e7493ca60 over 954 probes (14 numeric forms x 12 symbol/suffix wrappers, plus
+      # the catalog, scalar-alias, on-page and inline readers): 184 answers change, every one a
+      # repair, and the only four that lose a price are `1,,2` -- a doubled separator that used to
+      # parse as 12. No US-grouped or plain form moves at all.
+      # Both directions are pinned, including that `$X` and `X` must agree for every convention.
       - name: Run node:test suites
         run: |
           node --test \
@@ -972,7 +993,8 @@ jobs:
             tests/reco_alternatives_candidate_price_contract.node.test.cjs \
             tests/reco_buyer_region_dimension.node.test.cjs \
             tests/crawler_inline_price_prefix.node.test.cjs \
-            tests/reco_alternatives_price_coercion_guards.node.test.cjs
+            tests/reco_alternatives_price_coercion_guards.node.test.cjs \
+            tests/price_decimal_comma_locale.node.test.cjs
 
   jest:
     runs-on: ubuntu-latest
