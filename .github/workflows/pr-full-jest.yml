@@ -554,6 +554,21 @@ jobs:
       # other through the pack and had to be driven directly. Also pinned: a CN token round-trips
       # (面膜 -> ["面膜","mask"]), an explicit step captures no token, and a token equal to the family
       # anchor is dropped so no-token plans stay byte-stable.
+      # ADDED 2026-08-21: `invoke_auth_introspect_load_shedding`, confirmed green
+      # 13/13 and mutation-checked (9 mutants, all killed). It is the follow-up
+      # to the suite above: #2055 let a verified key survive an introspection
+      # outage, but every request still dialled a backend it had just watched
+      # fail, paid the full timeout, and only then read a verdict already in the
+      # Map — while axios's single 128-socket-per-origin agent starved every
+      # other gateway->backend call. The properties only this suite pins are
+      # invisible to a status code, because a coalesced request and a duplicated
+      # one both return the same one: it counts DIALS at the wire. Load-bearing
+      # cases: concurrent requests for one key share exactly one dial; two
+      # DIFFERENT keys in flight together are never coalesced (that would hand
+      # one caller the other's identity with both responses looking normal); a
+      # REJECTED response never opens the cooldown, since the cooldown throws a
+      # synthetic AUTH_INTROSPECT_UNAVAILABLE and that code is what licenses
+      # verdict replay; and a cold cache still 503s while shedding.
       - name: Run node:test suites
         run: |
           node --test \
@@ -624,7 +639,8 @@ jobs:
             tests/aurora_surface_auth_curl_wrapper.node.test.cjs \
             tests/invoke_auth_introspect_outage_cache.node.test.cjs \
             tests/reco_price_aware_recall.node.test.cjs \
-            tests/reco_token_anchored_recall.node.test.cjs
+            tests/reco_token_anchored_recall.node.test.cjs \
+            tests/invoke_auth_introspect_load_shedding.node.test.cjs
 
   jest:
     runs-on: ubuntu-latest
