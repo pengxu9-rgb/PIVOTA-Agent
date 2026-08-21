@@ -760,14 +760,26 @@ const AGENT_AUTH_CACHE_NEGATIVE_TTL_MS = parsePositiveInt(
 // verdict's total lifetime from the introspection that minted it, so a revoked or rotated key keeps
 // working for at most this window even mid-outage. Floored at the positive TTL so a misconfigured
 // smaller value cannot expire entries out from under the fresh window.
-const AGENT_AUTH_CACHE_STALE_IF_ERROR_TTL_MS = Math.max(
-  AGENT_AUTH_CACHE_POSITIVE_TTL_MS,
-  parsePositiveInt(
-    process.env.AGENT_AUTH_CACHE_STALE_IF_ERROR_TTL_MS,
-    120_000,
-    { min: 1_000, max: 10 * 60_000 },
-  ),
+//
+// KILL SWITCH. This is the one invoke-auth knob that is permissive — it decides how long a REVOKED
+// key keeps transacting during an outage — so an incident responder must be able to turn it off from
+// config alone. `parsePositiveInt` returns its FALLBACK for any non-positive input, so a bare `=0`
+// would silently mean "120s", the opposite of what an operator typing it intends. Recognise the
+// disable words explicitly and hard-zero the window: at 0 a positive entry's stale horizon collapses
+// onto its fresh horizon, so nothing is replayable and the feature is inert without a redeploy.
+const AGENT_AUTH_CACHE_STALE_IF_ERROR_DISABLED = ['0', 'off', 'false', 'no', 'disabled'].includes(
+  String(process.env.AGENT_AUTH_CACHE_STALE_IF_ERROR_TTL_MS || '').trim().toLowerCase(),
 );
+const AGENT_AUTH_CACHE_STALE_IF_ERROR_TTL_MS = AGENT_AUTH_CACHE_STALE_IF_ERROR_DISABLED
+  ? 0
+  : Math.max(
+      AGENT_AUTH_CACHE_POSITIVE_TTL_MS,
+      parsePositiveInt(
+        process.env.AGENT_AUTH_CACHE_STALE_IF_ERROR_TTL_MS,
+        120_000,
+        { min: 1_000, max: 10 * 60_000 },
+      ),
+    );
 const AGENT_AUTH_CACHE_MAX_ENTRIES = parsePositiveInt(
   process.env.AGENT_AUTH_CACHE_MAX_ENTRIES,
   20_000,
@@ -28955,6 +28967,14 @@ function shouldBypassInvokeAuthForTest() {
   return true;
 }
 
+// The ONE reading of "when does this entry stop existing". Every horizon test goes through this, so
+// the prune sweep and the two readers can never disagree about an entry's lifetime — a divergence
+// would produce entries the sweep keeps alive but no reader will serve, or vice versa. A shapeless
+// entry reads as 0 and is therefore already dead everywhere, which is the safe direction.
+function staleHorizonOf(entry) {
+  return Number(entry?.stale_expires_at_ms || 0);
+}
+
 function pruneInvokeAuthCache(nowMs = Date.now()) {
   for (const [cacheKey, entry] of invokeAuthCache.entries()) {
     if (!entry || typeof entry !== 'object') {
@@ -28963,7 +28983,7 @@ function pruneInvokeAuthCache(nowMs = Date.now()) {
     }
     // Prune on the OUTAGE horizon, not the fresh one: an expired-fresh positive entry is exactly
     // what the stale-if-error path exists to find. (For negatives the two horizons are equal.)
-    if (Number(entry.stale_expires_at_ms || entry.expires_at_ms || 0) <= nowMs) {
+    if (staleHorizonOf(entry) <= nowMs) {
       invokeAuthCache.delete(cacheKey);
     }
   }
@@ -28983,7 +29003,7 @@ function getCachedInvokeAuthResult(apiKey, nowMs = Date.now()) {
     // Fresh window over. Delete only once the outage window is also over — a positive entry inside
     // the stale-if-error window stays put (and is NOT direct-served) so an introspection outage in
     // the gap can still replay it.
-    if (Number(entry.stale_expires_at_ms || 0) <= nowMs) {
+    if (staleHorizonOf(entry) <= nowMs) {
       invokeAuthCache.delete(cacheKey);
     }
     return null;
@@ -28997,22 +29017,36 @@ function getCachedInvokeAuthResult(apiKey, nowMs = Date.now()) {
 // AUTH_INTROSPECT_UNAVAILABLE. Serves POSITIVE verdicts exclusively — a cached `valid: false` must
 // never decide anything during an outage — and never extends an entry's life: replaying a verdict
 // does not re-mint it, so the stale horizon set at introspection time stays the hard stop.
+//
+// It marks the verdict `auth_replayed`, NOT `auth_degraded`, and the distinction is load-bearing
+// rather than cosmetic. `auth_degraded` is an ACTUATOR: shouldPreferInternalInvokeUpstreamAuth reads
+// it and makes buildInvokeUpstreamAuthHeaders send PIVOTA_API_KEY — the gateway's own service
+// credential — INSTEAD of the caller's key on every site passing preferInternalFallback (PDP
+// revalidation, product-detail/variant/product-group resolve, the recommend_products price check).
+// That substitution is right for the emergency fallback, which fires precisely because it CANNOT
+// identify the caller. It is wrong here: a replayed verdict carries a real agent_id from a real
+// introspection, so swapping in the service key would buy nothing and would silently strip
+// per-agent scoping, quota and audit attribution from every partner request for the whole outage.
 function getOutageServableInvokeAuthResult(apiKey, nowMs = Date.now()) {
+  if (AGENT_AUTH_CACHE_STALE_IF_ERROR_TTL_MS <= 0) return null;
   const cacheKey = hashSecretForCache(apiKey);
   if (!cacheKey) return null;
   const entry = invokeAuthCache.get(cacheKey);
   if (!entry || typeof entry !== 'object') return null;
   if (entry.result?.valid !== true) return null;
-  if (Number(entry.stale_expires_at_ms || 0) <= nowMs) {
+  if (staleHorizonOf(entry) <= nowMs) {
     invokeAuthCache.delete(cacheKey);
     return null;
   }
   return {
     ...entry.result,
     cache_hit: true,
-    verdict_age_ms: Math.max(0, nowMs - Number(entry.minted_at_ms || 0)),
-    auth_degraded: true,
-    auth_degraded_reason: 'introspect_unavailable_cached_verdict',
+    // `??` not `||`: a minted_at_ms of 0 is not "missing", and reading it as missing would report a
+    // verdict's age as the raw epoch (~55 years) in the one log field an operator uses mid-incident
+    // to judge how stale a replayed verdict is.
+    verdict_age_ms: Math.max(0, nowMs - Number(entry.minted_at_ms ?? nowMs)),
+    auth_replayed: true,
+    auth_replayed_reason: 'introspect_unavailable_cached_verdict',
   };
 }
 
@@ -29025,9 +29059,11 @@ function putCachedInvokeAuthResult(apiKey, result, nowMs = Date.now()) {
     minted_at_ms: nowMs,
     expires_at_ms: nowMs + ttlMs,
     // Negatives get NO outage window: stale horizon == fresh horizon, so they are unreadable by the
-    // stale-if-error path even before the sweep collects them.
+    // stale-if-error path even before the sweep collects them. The same collapse is what the kill
+    // switch does to positives when the window is configured to 0.
     stale_expires_at_ms:
-      nowMs + (valid ? AGENT_AUTH_CACHE_STALE_IF_ERROR_TTL_MS : ttlMs),
+      nowMs +
+      (valid ? Math.max(ttlMs, AGENT_AUTH_CACHE_STALE_IF_ERROR_TTL_MS) : ttlMs),
     result: {
       valid,
       agent_id: result.agent_id || null,
@@ -29088,7 +29124,18 @@ async function introspectInvokeApiKey(apiKey) {
     auth_source: String(data.auth_source || '').trim() || null,
     cache_hit: false,
   };
-  putCachedInvokeAuthResult(apiKey, result);
+  // `auth_source: 'error'` alongside `valid: false` is the backend reporting that IT failed, not a
+  // verdict that this key is bad — requireExternalInvokeAuth already reads it that way
+  // (AUTH_INTROSPECT_ERROR_RESULT). Caching it as a negative would be the saturated backend talking
+  // us into overwriting a good positive entry with a verdict that has NO outage window, so a valid
+  // partner key would 401 for the negative TTL and then, once introspection starts timing out
+  // outright, find nothing left to replay. That is this feature nullified by the exact incident it
+  // exists for — a soft error and a hung socket are the same illness. Leave the entry untouched and
+  // let the existing refusal path answer this request on its own.
+  const isBackendErrorResult = result.valid !== true && result.auth_source === 'error';
+  if (!isBackendErrorResult) {
+    putCachedInvokeAuthResult(apiKey, result);
+  }
   return result;
 }
 
@@ -29168,7 +29215,11 @@ async function requireExternalInvokeAuth(req, res, next) {
     // the introspection contract itself is broken (missing config, backend refused our internal
     // key) — a cached verdict must not paper over those. The replayed verdict falls through the
     // SAME valid/is_active checks a live one gets, so a cached deactivated agent still 403s here.
-    if ((err?.code || 'AUTH_INTROSPECT_UNAVAILABLE') === 'AUTH_INTROSPECT_UNAVAILABLE') {
+    // STRICT equality, no `|| 'AUTH_INTROSPECT_UNAVAILABLE'` default. Everything this try block runs
+    // beyond the network call — the cache read, the response parse, the cache write — can throw
+    // WITHOUT a code, and defaulting a codeless throw to "outage" would make an unrelated TypeError
+    // authenticate a caller from cache instead of refusing. Unknown errors fail closed.
+    if (err?.code === 'AUTH_INTROSPECT_UNAVAILABLE') {
       const outageVerdict = getOutageServableInvokeAuthResult(provided);
       if (outageVerdict) {
         logger.warn(
@@ -29179,6 +29230,7 @@ async function requireExternalInvokeAuth(req, res, next) {
             err: err?.message || String(err),
             agent_id: outageVerdict.agent_id || null,
             verdict_age_ms: outageVerdict.verdict_age_ms,
+            stale_if_error_ttl_ms: AGENT_AUTH_CACHE_STALE_IF_ERROR_TTL_MS,
           },
           'invoke auth served cached verdict during introspection outage',
         );
@@ -29254,9 +29306,18 @@ async function requireExternalInvokeAuth(req, res, next) {
     raw_token: provided,
     cache_hit: introspection.cache_hit === true,
     introspect_auth_source: introspection.auth_source || null,
-    // Live and fresh-cache verdicts carry no degraded marker; only a stale-if-error replay does.
-    auth_degraded: introspection.auth_degraded === true,
-    auth_degraded_reason: introspection.auth_degraded_reason || null,
+    // Stays hardcoded false. `auth_degraded` means "we could not identify this caller, so use the
+    // gateway's own credential upstream" — shouldPreferInternalInvokeUpstreamAuth reads it and
+    // swaps PIVOTA_API_KEY in for the caller's key. Only adoptInvokeEmergencyAuthFallback, which
+    // builds its own req.invokeAuth and returns before this point, may set it. Every verdict
+    // reaching HERE has a real agent_id — live, fresh-cache, or replayed — so none of them wants
+    // that substitution.
+    auth_degraded: false,
+    auth_degraded_reason: null,
+    // The replay marker is observability ONLY: nothing branches on it, which is the entire point of
+    // keeping it separate from the field above.
+    auth_replayed: introspection.auth_replayed === true,
+    auth_replayed_reason: introspection.auth_replayed_reason || null,
   };
   return next();
 }
@@ -52305,7 +52366,13 @@ module.exports._debug = {
     positive_ttl_ms: AGENT_AUTH_CACHE_POSITIVE_TTL_MS,
     negative_ttl_ms: AGENT_AUTH_CACHE_NEGATIVE_TTL_MS,
     stale_if_error_ttl_ms: AGENT_AUTH_CACHE_STALE_IF_ERROR_TTL_MS,
+    stale_if_error_disabled: AGENT_AUTH_CACHE_STALE_IF_ERROR_DISABLED,
   }),
+  // Exported for the one assertion that matters most on this path and cannot be made any other way:
+  // that a REPLAYED verdict does not flip the upstream credential to the gateway's service key. The
+  // predicate reads AsyncLocalStorage, so it has to be driven inside a store the test controls.
+  shouldPreferInternalInvokeUpstreamAuth,
+  INVOKE_AUTH_CONTEXT,
   // Safety property: while the money kill-switch is dark the profile must WITHHOLD the checkout and AP2
   // capabilities. Exported because the served document no longer distinguishes it — a strict-off profile
   // advertises nothing at all — so the guard has to be driven directly or it is guarded by nothing.

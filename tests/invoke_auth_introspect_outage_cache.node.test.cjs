@@ -24,6 +24,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { createHash } = require('crypto');
+const { execFileSync } = require('child_process');
 const supertest = require('supertest');
 const nock = require('nock');
 
@@ -55,6 +56,8 @@ const {
   putCachedInvokeAuthResult,
   getOutageServableInvokeAuthResult,
   agentAuthCacheTtlSnapshot,
+  shouldPreferInternalInvokeUpstreamAuth,
+  INVOKE_AUTH_CONTEXT,
 } = app._debug;
 
 test.after(() => {
@@ -220,7 +223,10 @@ test('malformed and missing keys refuse instantly without touching introspection
 // ---- 2. the TTL rules, on a deterministic clock ----------------------------------------------------
 
 // Far-future base so route-era prunes (which run at real Date.now()) can never collect these entries
-// mid-test, and unit-era prunes (at T0-relative times) can never collect route-era entries.
+// mid-test. The converse is NOT true and must not be claimed: a unit-era write calls
+// pruneInvokeAuthCache(T0), which collects every route-era entry. That is harmless only because
+// node:test runs these top-level tests in declaration order and the route block above has already
+// finished — so keep the route tests above this line.
 const T0 = 4_000_000_000_000;
 const POSITIVE = { valid: true, agent_id: 'agent_x', is_active: true, auth_source: 'api_keys' };
 
@@ -248,7 +254,7 @@ test('a positive verdict is direct-served only inside the fresh window, but surv
   assert.equal(stale?.valid, true);
 });
 
-test('the outage-served verdict carries the introspected identity, degraded markers, and its age', () => {
+test('the outage-served verdict carries the introspected identity, replay markers, and its age', () => {
   const k = 'unit-key-identity';
   putCachedInvokeAuthResult(
     k,
@@ -262,9 +268,18 @@ test('the outage-served verdict carries the introspected identity, degraded mark
   assert.equal(v.is_active, true);
   assert.equal(v.auth_source, 'api_keys');
   assert.equal(v.cache_hit, true);
-  assert.equal(v.auth_degraded, true);
-  assert.equal(v.auth_degraded_reason, 'introspect_unavailable_cached_verdict');
+  assert.equal(v.auth_replayed, true);
+  assert.equal(v.auth_replayed_reason, 'introspect_unavailable_cached_verdict');
   assert.equal(v.verdict_age_ms, 59_999);
+});
+
+test('verdict_age_ms reports an age, never the raw epoch, when minted_at_ms is 0', () => {
+  // `||` here would read a legitimate 0 as "missing" and report ~55 years — in the one log field an
+  // operator reads mid-incident to judge how stale a replayed verdict is.
+  const k = 'unit-key-epoch-guard';
+  putCachedInvokeAuthResult(k, POSITIVE, T0);
+  invokeAuthCache.get(cacheHashOf(k)).minted_at_ms = 0;
+  assert.equal(getOutageServableInvokeAuthResult(k, T0 + 5).verdict_age_ms, T0 + 5);
 });
 
 test('the outage window is a hard stop measured from mint, and serving does not extend it', () => {
@@ -313,4 +328,144 @@ test('a fresh negative verdict overwrites the positive entry: revocation is neve
   putCachedInvokeAuthResult(k, { valid: false, agent_id: null, is_active: false }, T0 + 500);
   // …and from that instant the outage path has nothing to serve.
   assert.equal(getOutageServableInvokeAuthResult(k, T0 + 600), null);
+});
+
+// ---- 3. the replay must not become a credential swap -----------------------------------------------
+
+// THE assertion this feature most needs and the one a route-status test cannot make. `auth_degraded`
+// is not a label: shouldPreferInternalInvokeUpstreamAuth reads it, and a true value makes
+// buildInvokeUpstreamAuthHeaders send PIVOTA_API_KEY — the gateway's own service credential —
+// upstream INSTEAD of the caller's key, at every site passing preferInternalFallback (PDP
+// revalidation, product-detail/variant/product-group resolve, the recommend_products price check).
+// Marking a replayed verdict degraded would therefore strip per-agent scoping, quota and audit
+// attribution from every partner request for the length of an outage, while every status code in
+// this file stayed green.
+test('a replayed verdict never flips the upstream credential to the gateway service key', () => {
+  const replayed = {
+    key_fingerprint: 'ffff', auth_source: 'x-agent-api-key', auth_mode: 'api_key',
+    agent_id: 'agent_partner_1', api_key: key('2'),
+    auth_degraded: false, auth_degraded_reason: null,
+    auth_replayed: true, auth_replayed_reason: 'introspect_unavailable_cached_verdict',
+  };
+  INVOKE_AUTH_CONTEXT.run(replayed, () => {
+    // preferInternalFallback is what the eight PDP/product call sites pass.
+    assert.equal(shouldPreferInternalInvokeUpstreamAuth(true), false);
+  });
+
+  // The contrast that proves the assertion above has teeth: the EMERGENCY fallback — which cannot
+  // identify its caller — is exactly the case that SHOULD swap in the service credential.
+  INVOKE_AUTH_CONTEXT.run({ ...replayed, auth_degraded: true }, () => {
+    assert.equal(shouldPreferInternalInvokeUpstreamAuth(true), true);
+  });
+});
+
+test('the outage verdict carries a replay marker and NOT the degraded actuator', () => {
+  const k = 'unit-key-marker';
+  putCachedInvokeAuthResult(k, POSITIVE, T0);
+  const v = getOutageServableInvokeAuthResult(k, T0 + 1);
+  assert.equal(v.auth_replayed, true);
+  assert.equal(v.auth_replayed_reason, 'introspect_unavailable_cached_verdict');
+  assert.equal(v.auth_degraded, undefined);
+  assert.equal(v.auth_degraded_reason, undefined);
+});
+
+// ---- 4. the backend's own failures must not poison the cache ---------------------------------------
+
+test('a soft backend error (200 valid:false auth_source:error) never overwrites the positive entry', async () => {
+  const partnerKey = key('7');
+
+  introspectOk(partnerKey);
+  assert.equal((await invoke(partnerKey)).status, 400);
+
+  await sleep(1200);
+
+  // The saturated backend answers, but reports ITS OWN failure rather than a verdict about the key.
+  const soft = nock(INTROSPECT_BASE)
+    .post(INTROSPECT_PATH)
+    .matchHeader('X-Internal-Key', 'internal_test_key')
+    .reply(200, { valid: false, agent_id: null, is_active: false, auth_source: 'error' });
+  const softRes = await invoke(partnerKey);
+  // This request itself is still refused — the refusal path is untouched.
+  assert.equal(softRes.status, 401);
+  assert.equal(soft.isDone(), true);
+
+  // …but the good verdict must SURVIVE it. Caching that error as a negative would delete the replay
+  // window, so the next request — a real timeout — would 503 a valid partner key: the incident this
+  // whole feature exists to prevent, reproduced by a softer flavour of the same backend illness.
+  introspectTimeout();
+  const outageRes = await invoke(partnerKey);
+  assert.equal(outageRes.status, 400);
+});
+
+test('a genuine revocation (valid:false, real auth_source) DOES overwrite — the fix above is scoped', () => {
+  const k = 'unit-key-real-revocation';
+  putCachedInvokeAuthResult(k, POSITIVE, T0);
+  putCachedInvokeAuthResult(
+    k,
+    { valid: false, agent_id: null, is_active: false, auth_source: 'api_keys' },
+    T0 + 100,
+  );
+  assert.equal(getOutageServableInvokeAuthResult(k, T0 + 200), null);
+});
+
+// ---- 5. the kill switch ----------------------------------------------------------------------------
+
+// The TTL constants bind at module load, so an in-process test cannot change them — it would assert
+// against the values THIS process already froze. Drive a real child process per env value instead.
+function ttlSnapshotUnderEnv(staleEnvValue) {
+  const script = `
+    process.env.NODE_ENV = 'test';
+    process.env.AGENT_AUTH_INTROSPECT_URL = ${JSON.stringify(`${INTROSPECT_BASE}${INTROSPECT_PATH}`)};
+    process.env.AGENT_AUTH_INTROSPECT_INTERNAL_KEY = 'internal_test_key';
+    process.env.AGENT_AUTH_CACHE_POSITIVE_TTL_MS = '1000';
+    ${
+      staleEnvValue === undefined
+        ? "delete process.env.AGENT_AUTH_CACHE_STALE_IF_ERROR_TTL_MS;"
+        : `process.env.AGENT_AUTH_CACHE_STALE_IF_ERROR_TTL_MS = ${JSON.stringify(staleEnvValue)};`
+    }
+    const app = require(${JSON.stringify(require.resolve('../src/server'))});
+    const snap = app._debug.agentAuthCacheTtlSnapshot();
+    const put = app._debug.putCachedInvokeAuthResult;
+    const outage = app._debug.getOutageServableInvokeAuthResult;
+    put('kill-switch-probe', { valid: true, agent_id: 'a', is_active: true }, 1000);
+    process.stdout.write('<<SNAP' + JSON.stringify({
+      snap,
+      replayable: outage('kill-switch-probe', 2000) !== null,
+    }) + 'SNAP>>');
+    process.exit(0);
+  `;
+  const out = execFileSync(process.execPath, ['-e', script], {
+    cwd: require('path').join(__dirname, '..'),
+    encoding: 'utf8',
+    timeout: 60_000,
+  });
+  // The booted server logs its own JSON lines to stdout, so fence the payload rather than parsing
+  // the whole stream — an unfenced JSON.parse fails on the first pino line and reads as a real bug.
+  const fenced = out.match(/<<SNAP([\s\S]*?)SNAP>>/);
+  assert.ok(fenced, `child produced no snapshot payload; stdout was:\n${out.slice(0, 400)}`);
+  return JSON.parse(fenced[1]);
+}
+
+test('AGENT_AUTH_CACHE_STALE_IF_ERROR_TTL_MS=0 disables replay instead of meaning "use the default"', () => {
+  // parsePositiveInt returns its FALLBACK for any non-positive input, so a bare `=0` would otherwise
+  // arm the full 120s window — the exact opposite of what an operator typing 0 mid-incident wants.
+  const off = ttlSnapshotUnderEnv('0');
+  assert.equal(off.snap.stale_if_error_disabled, true);
+  assert.equal(off.snap.stale_if_error_ttl_ms, 0);
+  assert.equal(off.replayable, false, 'a disabled window must leave nothing replayable');
+
+  for (const word of ['off', 'false', 'no', 'disabled']) {
+    assert.equal(ttlSnapshotUnderEnv(word).snap.stale_if_error_ttl_ms, 0, `"${word}" must disable`);
+  }
+});
+
+test('an unset or normal stale TTL leaves replay armed — the kill switch is not always-on', () => {
+  const unset = ttlSnapshotUnderEnv(undefined);
+  assert.equal(unset.snap.stale_if_error_disabled, false);
+  assert.equal(unset.snap.stale_if_error_ttl_ms, 120_000);
+  assert.equal(unset.replayable, true);
+
+  const set = ttlSnapshotUnderEnv('30000');
+  assert.equal(set.snap.stale_if_error_ttl_ms, 30_000);
+  assert.equal(set.replayable, true);
 });
