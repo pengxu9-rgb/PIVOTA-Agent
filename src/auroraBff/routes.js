@@ -12647,13 +12647,22 @@ function normalizePriceObject(rawPrice, { fallbackCurrency = 'USD' } = {}) {
       rawPrice.offerPrice,
   );
   if (directAmount != null) {
+    // `price_currency` belongs in this list. It is the spelling this repo's own rows use --
+    // LOCAL_EXTERNAL_SEED_SELECT_FIELDS selects `price_amount, price_currency`, server.js emits
+    // that pair, and every OTHER currency reader here already accepts it
+    // (readRecoCandidateRowCurrency, extractProductPriceFromJsonLd,
+    // RECO_PLAN_PRICE_CARRYING_KEYS, extractRecoAlternativeVisiblePrice). Omitting it here meant a
+    // row-shaped element inside `offers[]` had its stated currency dropped and the amount stamped
+    // `fallbackCurrency` -- the same defect #2065 fixed one level up, still live one level down.
     const directCurrency = normalizeCurrencyCode(
       rawPrice.currency ??
         rawPrice.currency_code ??
         rawPrice.currencyCode ??
+        rawPrice.price_currency ??
         rawPrice.priceCurrency ??
         nestedPrice?.currency ??
         nestedPrice?.currencyCode ??
+        nestedPrice?.price_currency ??
         nestedPrice?.priceCurrency,
       fallbackCurrency,
     );
@@ -70501,6 +70510,40 @@ function toRecoPromptPriceOrNull(value) {
   return Number.isFinite(num) ? num : null;
 }
 
+// F4b: the catalog leg could never deliver a price at all.
+//
+// normalizeRecoCatalogProduct emits price as an OBJECT — `price: { amount, currency, unknown }`,
+// built by extractCatalogCandidatePrice — and never a scalar `price_usd`. Both legs above read
+// scalars, and `Number({ amount: 62, currency: 'USD' })` is NaN, so the price fell through to
+// null for EVERY catalog-sourced candidate. Verified against HEAD: a raw row stating
+// `price_usd: 41.5` normalized to `price: {amount:41.5,...}` and reached the prompt as
+// `"price_usd": null`. Pre-existing — the old `Number(item.price)` was NaN here too — but it
+// means the model has been doing budget and value-framing reasoning with no prices in front of it.
+//
+// USD ONLY, deliberately. This lane holds no FX rates, the same reason recoPriceCeiling.js
+// refuses cross-currency comparisons rather than fabricating a verdict. Publishing a 4500 JPY
+// amount under a field named `price_usd` would read to the model as $4500, which is a worse
+// failure than the null it replaces. A non-USD price therefore stays null: no price beats a
+// wrong one.
+//
+// `unknown === true` is normalizePriceObject's own "we could not read a price" marker; it is
+// honoured here rather than reinterpreted. A currency that is not a 3-letter code — including a
+// missing one — is not USD, so it fails the check too.
+function toRecoPromptUsdPriceFromObjectOrNull(value) {
+  // The Array.isArray arm is belt-and-braces: an array carries no `currency`, so the check below
+  // already rejects it, and a mutant that deletes this arm survives the suite for that reason. Kept
+  // because `typeof [] === 'object'` is the trap this whole family of defects is made of, and every
+  // other object guard in this file spells it out the same way.
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  if (value.unknown === true) return null;
+  const currency = normalizeCurrencyCode(
+    value.currency ?? value.currency_code ?? value.currencyCode ?? value.priceCurrency,
+    '',
+  );
+  if (currency !== 'USD') return null;
+  return toRecoPromptPriceOrNull(value.amount ?? value.value ?? value.price_amount ?? value.priceAmount);
+}
+
 function normalizeRecoPromptCandidates(candidates, region) {
   const out = [];
   const seen = new Set();
@@ -70523,8 +70566,12 @@ function normalizeRecoPromptCandidates(candidates, region) {
       name: name || null,
       display_name: pickFirstTrimmed(item.display_name, item.displayName, name) || null,
       category: pickFirstTrimmed(item.category) || 'other',
-      // An unknown price is null here, never 0 — see toRecoPromptPriceOrNull.
-      price_usd: toRecoPromptPriceOrNull(item.price_usd) ?? toRecoPromptPriceOrNull(item.price),
+      // An unknown price is null here, never 0 — see toRecoPromptPriceOrNull. The object leg is
+      // last and USD-gated: it can only turn a null into a stated price, never change one of the
+      // scalar answers above — see toRecoPromptUsdPriceFromObjectOrNull.
+      price_usd: toRecoPromptPriceOrNull(item.price_usd)
+        ?? toRecoPromptPriceOrNull(item.price)
+        ?? toRecoPromptUsdPriceFromObjectOrNull(item.price),
       keyActives: uniqCaseInsensitiveStrings(
         Array.isArray(item.keyActives) ? item.keyActives : Array.isArray(item.key_actives) ? item.key_actives : [],
         10,
@@ -77288,11 +77335,31 @@ function normalizeAlternativesSelectorCandidate(row, { index = 0 } = {}) {
     ? String(idMaterial).trim()
     : `cand_${stableHashBase36(`${name || ''}|${brand || ''}|${pdpUrl || ''}|${index}`).slice(0, 18)}`;
   if (!id || !name) return null;
+  // Same fabricated-zero family as the reco prompt (see toRecoPromptPriceOrNull): a bare
+  // `Number.isFinite(Number(x))` accepted null, '', false and [] as prices, because Number()
+  // maps all of them to 0 and 0 is finite — so a row carrying no price was published as a FREE
+  // product, and `price_usd: true` as a $1 one.
+  //
+  // Reachable from the request body, not latent. `normalized` falls back to the RAW row whenever
+  // normalizeRecoCatalogProduct returns null, which it does for any row without a string
+  // product_id/productId/id. buildRecoAlternativesCandidatePool reads product.candidates[],
+  // product.alternatives[], product.competitors.candidates[] and five more lists straight off
+  // `productObj`, and that is the caller's own `product` — RecoAlternativesRequestSchema types it
+  // `z.record(z.string(), z.any())`, as DupeSuggestRequestSchema does for `original`. Reproduced
+  // through the real pool builder: `{ name: 'X', price_usd: null }` came back as
+  // `{ amount: 0, currency: 'USD' }`.
+  //
+  // Blast radius is the RESPONSE, not the prompt: buildRecoAlternativesPromptPayload projects
+  // candidates down to seven fields and price is not one of them, but
+  // mapSelectorCandidatesToAlternatives copies this object into `alternatives[].product.price`,
+  // so a client renders the fabricated $0. (recoPriceCeiling already coalesces amount <= 0 with
+  // null into 'unknown', so ranking is unaffected either way.)
+  const scalarPriceUsd = toRecoPromptPriceOrNull(normalized.price_usd);
   const priceObj = normalized.price && typeof normalized.price === 'object' && !Array.isArray(normalized.price)
     ? normalized.price
-    : Number.isFinite(Number(normalized.price_usd))
-      ? { amount: Number(normalized.price_usd), currency: 'USD' }
-      : null;
+    : scalarPriceUsd == null
+      ? null
+      : { amount: scalarPriceUsd, currency: 'USD' };
   return {
     id: String(id).trim().slice(0, 120),
     product_id: productId || null,

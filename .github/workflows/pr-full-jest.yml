@@ -785,6 +785,32 @@ jobs:
       # The guard is an ALLOWLIST (finite number, or a string that trims to one) rather than a
       # denylist of known-bad shapes, so a shape nobody anticipated defaults to null instead of
       # needing a new line here.
+      #
+      # ADDED 2026-08-21: `tests/reco_alternatives_candidate_price_contract`, a NEW file, green
+      # (3/3) and mutation-checked alongside the prompt-contract suite above (10 mutants, one per
+      # hunk, 9 killed; the survivor is an `Array.isArray` arm the currency check already covers and
+      # is documented as such at the helper). Listed here because jest's testMatch is
+      # `**/tests/**/*.test.(js|ts)` and CANNOT see `.node.test.cjs` -- without this line the file
+      # would run in no workflow at all, which is exactly how the suite above sat unguarded.
+      # What it guards, two defects of the same family found reviewing the commit above:
+      #   1. normalizeAlternativesSelectorCandidate had the identical unfixed
+      #      `Number.isFinite(Number(price_usd))` shape, so a candidate with no price was published
+      #      as a FREE product (and `price_usd: true` as a $1 one). Reachable from the REQUEST BODY,
+      #      not latent: the function falls back to the raw row whenever normalizeRecoCatalogProduct
+      #      returns null (any row with no string product_id), and buildRecoAlternativesCandidatePool
+      #      reads product.candidates[] and seven sibling lists straight off the caller's `product`,
+      #      which RecoAlternativesRequestSchema types `z.record(z.string(), z.any())`. The blast
+      #      radius is the RESPONSE, not the prompt -- price is not in the alternatives prompt
+      #      projection, but mapSelectorCandidatesToAlternatives copies it into
+      #      alternatives[].product.price, so a client renders the fabricated $0. The suite pins the
+      #      projection too, so adding price to the prompt cannot widen that silently.
+      #   2. The catalog leg never delivered ANY price to the reco LLM: normalizeRecoCatalogProduct
+      #      emits price as an OBJECT and never a scalar price_usd, and `Number({amount: 62})` is
+      #      NaN, so every catalog-sourced candidate reached the model as `"price_usd": null`. Fixed
+      #      USD-ONLY -- this lane holds no FX rates (the same reason recoPriceCeiling refuses
+      #      cross-currency comparisons), so a JPY amount under a field named `price_usd` stays null
+      #      rather than reading to the model as dollars. That case is asserted in the prompt-
+      #      contract suite above, whose `price_object` row previously pinned the defect as correct.
       - name: Run node:test suites
         run: |
           node --test \
@@ -862,7 +888,8 @@ jobs:
             tests/reco_gentleness_ranking.node.test.cjs \
             tests/reco_implement_scope.node.test.cjs \
             tests/reco_scrub_step_vocabulary.node.test.cjs \
-            tests/aurora_legacy_reco_prompt_contract.node.test.cjs
+            tests/aurora_legacy_reco_prompt_contract.node.test.cjs \
+            tests/reco_alternatives_candidate_price_contract.node.test.cjs
 
   jest:
     runs-on: ubuntu-latest
