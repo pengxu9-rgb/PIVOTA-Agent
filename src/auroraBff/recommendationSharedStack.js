@@ -10,6 +10,11 @@ const {
 } = require('./recoTargetStep');
 const { __internal: recoHybridInternal } = require('./usecases/recoHybridResolveCandidates');
 const {
+  deriveRecoNeedIntentSignals,
+  applyRecoGentlenessPreference,
+  classifyRecoCandidateAbrasion,
+} = require('./recoGentlenessSignals');
+const {
   applyRecoPriceCeilingPreference,
   countRecoPriceCeilingConforming,
   normalizeRecoPriceCeiling,
@@ -934,6 +939,11 @@ function resolveRecommendationTargetContext({
     ...resolved,
     resolved_target_step: step,
     resolved_target_step_token: targetStepToken,
+    // RANKING-ONLY intent flags read off the buyer's own words, for the callers that have no profile
+    // (the agent lane passes profile: null). These must never reach computeCandidateContextSignals --
+    // its sensitivity/barrier rules set constraint_conflict, and feeding "gentle ... sensitive skin"
+    // in there would hard-zero every chemical exfoliant and fill the shortlist with scrubs.
+    need_intent_signals: deriveRecoNeedIntentSignals({ focus, text }),
     entry_type: normalizedEntryType,
     step_aware_intent: stepAwareIntent,
     mainline_mode: hasFrameworkRoles ? 'framework' : stepAwareIntent ? mainlineMode : 'generic',
@@ -1550,7 +1560,17 @@ function finalizeRecommendationCandidatePools(rawCandidates, { targetContext, re
   // products existed in the catalog. This is a STABLE PARTITION, not a re-rank: relevance order is
   // preserved inside each bucket, nothing is dropped, and with no ceiling the array is untouched, so
   // every existing caller (the whole chat lane included) is byte-stable.
-  const viable = applyRecoPriceCeilingPreference(relevanceSortedViable, priceCeiling, {
+  // GENTLENESS INSIDE, PRICE OUTSIDE.
+  //
+  // The gentleness partition runs FIRST and the price partition runs over its output. Because the
+  // price partition is stable, price conformance stays the OUTER key and gentleness becomes the inner
+  // one -- a gentle scrub over the ceiling can never outrank a conforming chemical exfoliant.
+  const gentlenessOrderedViable = applyRecoGentlenessPreference(
+    relevanceSortedViable,
+    targetContext?.need_intent_signals,
+    { getCandidate: (row) => row.product },
+  );
+  const viable = applyRecoPriceCeilingPreference(gentlenessOrderedViable, priceCeiling, {
     getCandidate: (row) => row.product,
   });
   const priceCeilingConformingCount = countRecoPriceCeilingConforming(viable, priceCeiling, {
@@ -1627,6 +1647,18 @@ function finalizeRecommendationCandidatePools(rawCandidates, { targetContext, re
     hard_constraint_conflict: hardConstraintConflict,
     constraint_conflict: hardConstraintConflict,
     average_context_fit_score: Number(averageContextFit.toFixed(4)),
+    need_intent_signals: isPlainObject(targetContext?.need_intent_signals)
+      ? targetContext.need_intent_signals
+      : null,
+    gentleness_rank_applied: Boolean(
+      targetContext?.need_intent_signals?.gentleness_preferred === true &&
+      targetContext?.need_intent_signals?.scrub_requested !== true,
+    ),
+    abrasion_class_counts: relevanceSortedViable.reduce((acc, row) => {
+      const key = classifyRecoCandidateAbrasion(row.product);
+      acc[key] = (acc[key] || 0) + 1;
+      return acc;
+    }, {}),
     price_ceiling: normalizeRecoPriceCeiling(priceCeiling),
     price_ceiling_conforming_count: priceCeilingConformingCount,
     price_ceiling_conforming_selected_count: countRecoPriceCeilingConforming(selected, priceCeiling, {

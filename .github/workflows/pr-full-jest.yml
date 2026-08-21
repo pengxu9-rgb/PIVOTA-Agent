@@ -611,6 +611,32 @@ jobs:
       # against a file backup instead. Also pinned as a KNOWN HAZARD:
       # mergeRecoPlanWithGroundedCandidate takes ids/name/category from the grounded candidate but NO
       # price, so a grounded row can carry product A's identity with product B's price.
+      # ADDED 2026-08-21: `tests/reco_gentleness_ranking`, confirmed green (18/18). Ranking WITHIN the
+      # conforming pool. Live 2026-08-21 (PRICE_MAX=40) "a gentle exfoliant for SENSITIVE skin"
+      # returned 3/3 conforming and semantically wrong -- The Ordinary Salicylic 2% $5.16, then NUXE
+      # Radiance Face SCRUB $29 and TIRTIR Matcha Bubble Tea SCRUB $20 -- while the catalog held
+      # conforming chemical options (AXIS-Y PHA $6, COSRX AHA/BHA $23, Naturium BHA 2% $19). Price and
+      # recall were already solved by #2057/#2059/#2060.
+      #
+      # THE TRAP THIS SUITE PINS, and the reason the obvious fix is worse than the bug:
+      # computeCandidateContextSignals already scores sensitivity, but off the PROFILE, and the agent
+      # lane passes profile:null. Deriving sensitivity from the need text would hit the SAME function's
+      # `constraint_conflict` rule -- sensitivity==='high' AND /\b(retinol|retinoid|aha|bha|acid|peel|
+      # exfoliat|benzoyl)\b/ forces the score to 0 -- HARD-ZEROING every chemical exfoliant and filling
+      # the shortlist with scrubs. So the need-text signals are RANKING-ONLY and reach nothing else. A
+      # mutant that routes them into the clinical sensitivity input fails FOUR tests here, and a
+      # separate test pins that a PROFILE with sensitivity:'high' still hard-rejects 3 of 5 exactly as
+      # it does on main.
+      #
+      # Composition: gentleness partitions FIRST and price partitions over it, so price conformance
+      # stays the OUTER key -- a gentle chemical over the ceiling never outranks a conforming scrub.
+      # A buyer who asks for a scrub still gets scrubs (the demotion is suppressed), unknown-abrasion
+      # candidates are NEUTRAL (most of the catalog is unknown; a penalty there is a silent global
+      # re-rank), and "strong" is keyed on CONCENTRATION not the word "peel" -- the catalog's own
+      # gentle option is named "AXIS-Y PHA Resurfacing Glow Peel". Seventeen mutants run, all
+      # seventeen fail the suite. Three survived a first pass: two were masked by guards duplicated
+      # between the partition and the tier resolver (the real mutant removes both), and one had not
+      # actually wired the trap it claimed to test.
       - name: Run node:test suites
         run: |
           node --test \
@@ -683,7 +709,8 @@ jobs:
             tests/reco_price_aware_recall.node.test.cjs \
             tests/reco_token_anchored_recall.node.test.cjs \
             tests/invoke_auth_introspect_load_shedding.node.test.cjs \
-            tests/reco_strict_conforming_fill.node.test.cjs
+            tests/reco_strict_conforming_fill.node.test.cjs \
+            tests/reco_gentleness_ranking.node.test.cjs
 
   jest:
     runs-on: ubuntu-latest
