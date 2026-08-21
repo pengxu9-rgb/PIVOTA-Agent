@@ -29041,9 +29041,10 @@ function getOutageServableInvokeAuthResult(apiKey, nowMs = Date.now()) {
   return {
     ...entry.result,
     cache_hit: true,
-    // `??` not `||`: a minted_at_ms of 0 is not "missing", and reading it as missing would report a
-    // verdict's age as the raw epoch (~55 years) in the one log field an operator uses mid-incident
-    // to judge how stale a replayed verdict is.
+    // Falls back to nowMs (age 0), NOT to 0 (age = the raw epoch, ~55 years). Only an entry with no
+    // minted_at_ms at all can take this branch, and this is the one log field an operator reads
+    // mid-incident to judge how stale a replayed verdict is — "55 years" would be read as a bug in
+    // the cache rather than as the missing timestamp it actually is.
     verdict_age_ms: Math.max(0, nowMs - Number(entry.minted_at_ms ?? nowMs)),
     auth_replayed: true,
     auth_replayed_reason: 'introspect_unavailable_cached_verdict',

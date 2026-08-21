@@ -186,6 +186,37 @@ test('REJECTED introspection (backend refuses OUR internal key) is never papered
   assert.equal(rejected.isDone(), true);
 });
 
+test('an unexpected CODELESS throw fails closed — it is not an outage, even with a warm verdict', async () => {
+  const partnerKey = key('8');
+
+  introspectOk(partnerKey);
+  assert.equal((await invoke(partnerKey)).status, 400);
+  await sleep(1200);
+
+  // Everything inside the middleware's try — the cache read, the response parse, the cache write —
+  // can throw WITHOUT a `code`. Simulate one by making the cache Map throw exactly once, on the read
+  // that introspectInvokeApiKey does first. `code` is undefined, so the door must REFUSE (503) and
+  // must not treat it as an introspection outage; the warm verdict is still there, and a 400 here
+  // would mean an unrelated TypeError had just authenticated a caller from cache.
+  const realGet = invokeAuthCache.get;
+  let thrown = false;
+  invokeAuthCache.get = function patchedGet(...args) {
+    if (!thrown) {
+      thrown = true;
+      throw new Error('simulated codeless failure inside the introspection try scope');
+    }
+    return realGet.apply(this, args);
+  };
+  try {
+    const res = await invoke(partnerKey);
+    assert.equal(res.status, 503);
+    assert.equal(res.body.error, 'AUTH_INTROSPECT_UNAVAILABLE');
+    assert.equal(thrown, true, 'the patched read must actually have been exercised');
+  } finally {
+    invokeAuthCache.get = realGet;
+  }
+});
+
 test('a cached verdict for a deactivated agent still 403s during an outage', async () => {
   const partnerKey = key('6');
 
@@ -273,13 +304,14 @@ test('the outage-served verdict carries the introspected identity, replay marker
   assert.equal(v.verdict_age_ms, 59_999);
 });
 
-test('verdict_age_ms reports an age, never the raw epoch, when minted_at_ms is 0', () => {
-  // `||` here would read a legitimate 0 as "missing" and report ~55 years — in the one log field an
-  // operator reads mid-incident to judge how stale a replayed verdict is.
+test('verdict_age_ms reports an age, never the raw epoch, when minted_at_ms is absent', () => {
+  // The field must be DELETED, not set to 0: `?? nowMs` and `|| 0` produce the identical answer for
+  // a 0, so a test that writes 0 asserts nothing and lets the epoch bug back in. (This test was
+  // written that way first; the mutant that restores `|| 0` survived it and exposed the hole.)
   const k = 'unit-key-epoch-guard';
   putCachedInvokeAuthResult(k, POSITIVE, T0);
-  invokeAuthCache.get(cacheHashOf(k)).minted_at_ms = 0;
-  assert.equal(getOutageServableInvokeAuthResult(k, T0 + 5).verdict_age_ms, T0 + 5);
+  delete invokeAuthCache.get(cacheHashOf(k)).minted_at_ms;
+  assert.equal(getOutageServableInvokeAuthResult(k, T0 + 5).verdict_age_ms, 0);
 });
 
 test('the outage window is a hard stop measured from mint, and serving does not extend it', () => {
