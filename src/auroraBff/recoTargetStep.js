@@ -78,8 +78,10 @@ const STEP_PATTERNS = Object.freeze([
   {
     step: 'treatment',
     patterns: [
-      /\b(treatment|spot treatment|retinol|retinoid|acid treatment|bha|aha|blemish treatment|acne treatment|exfoliators?|exfoliants?|exfoliating treatment|liquid exfoliant|resurfacing treatment)\b/i,
+      /\b(treatment|spot treatment|retinol|retinoid|acid treatment|bha|aha|blemish treatment|acne treatment|exfoliators?|exfoliants?|exfoliating treatment|liquid exfoliant|resurfacing treatment|face scrubs?|facial scrubs?|exfoliating scrubs?|sugar scrubs?|salt scrubs?|scrubs?|gommages?|face polish|facial polish)\b/i,
       /功效/,
+      /磨砂膏/,
+      /磨砂/,
       /祛痘/,
       /刷酸/,
       /维A/,
