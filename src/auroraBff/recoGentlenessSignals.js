@@ -58,7 +58,13 @@ const CANDIDATE_PHYSICAL_PATTERNS = Object.freeze([
   /\b(sugar scrub|salt scrub|apricot scrub|walnut|crushed shell|pumice)\b/i,
   // "polish" but NOT "polishing" (word-anchored) and not nail polish.
   /\bpolish\b/i,
-  /磨砂/,
+  // DEFENSE IN DEPTH. Implements are hard-rejected upstream by classifySkincareCandidate, but if one
+  // is ever admitted -- a new lane, a relaxed classifier, a row whose title hides the head word --
+  // it must rank LAST under a gentleness need, not sit neutral. Live 2026-08-21 a "Loofah" took slot
+  // 3 of "a gentle exfoliant for sensitive skin" precisely because it classified UNKNOWN and so
+  // out-ranked the actual scrubs.
+  /\b(loofah|luffas?|sponges?|mitts?|pumice|washcloths?|wash cloths?|scrubbers?)\b/i,
+  /浴球|丝瓜络|絲瓜絡|海绵|海綿/,
 ]);
 
 // Chemical / enzymatic.
