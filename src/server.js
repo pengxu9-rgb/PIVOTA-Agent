@@ -30591,9 +30591,13 @@ async function getCommerceRemoteMcpAdapter() {
                 `${selfInvokeBase()}/agent/shop/v1/invoke`,
                 { operation: 'get_pdp_v2', payload: { product_ref: { product_id: pid }, include: ['product_overview'] } },
                 {
+                  // Default 5000, raised from 2000: the loopback get_pdp_v2 measures ~4.7s on the
+                  // sig->ext resolution path (2026-08-21), so the old default aborted every live-price
+                  // check exactly when a price needed verifying. The bridge's own race backstop is 6500ms
+                  // and must stay ABOVE this number.
                   timeout: Number(process.env.AGENT_RECOMMEND_PRODUCTS_PRICE_VERIFY_TIMEOUT_MS) > 0
                     ? Number(process.env.AGENT_RECOMMEND_PRODUCTS_PRICE_VERIFY_TIMEOUT_MS)
-                    : 2000,
+                    : 5000,
                   headers: {
                     'Content-Type': 'application/json',
                     ...buildInvokeUpstreamAuthHeaders({
