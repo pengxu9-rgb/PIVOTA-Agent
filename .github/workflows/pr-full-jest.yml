@@ -686,6 +686,33 @@ jobs:
       # "Brush Cleanser" are already explicit_non_skincare on main via the unconditional
       # SKINCARE_FATAL_BLOCK_RE. Making them admissible means WEAKENING a shipped guard -- the
       # opposite direction from this PR -- so it is pinned and flagged, not silently changed.
+      # ADDED 2026-08-21: `tests/reco_scrub_step_vocabulary`, confirmed green (12/12). "A face scrub for
+      # dull skin" returned a Jurlique Revitalising Cleansing GEL. Root cause: "scrub" was in NO step
+      # vocabulary. recoTargetStep's treatment patterns carried exfoliators?|exfoliants?|exfoliating
+      # treatment|liquid exfoliant|resurfacing treatment but never scrub/polish/gommage, and the
+      # cleanser patterns are cleanser|face wash|facial wash|cleansing gel|cleansing foam|cleansing
+      # milk -- "face scrub" matched NEITHER, so the need resolved to step 'none' and fell to the
+      # generic Branch B. Same class as the "exfoliant" gap #2059 fixed, one vocabulary hop down.
+      #
+      # THE FAMILY WAS CHOSEN EMPIRICALLY, NOT ASSUMED. normalizeCandidateStep resolves CANDIDATE rows
+      # through the SAME STEP_PATTERNS as the NEED, so adding scrub to `treatment` moves both sides
+      # together. MEASURED before: every scrub title -> candidate_step null. After: treatment, and
+      # same_family against the need. Mapping the need to `cleanser` instead would have left the rows
+      # on treatment while the need sat on cleanser -- and those two are not even ADJACENT in
+      # CANONICAL_STEP_FAMILY_MAP, so every recalled scrub would have been hard-rejected. That mutant
+      # fails 8 of 12 tests here. CANONICAL_STEP_FAMILY_MAP itself needed no change: scrub joins the
+      # existing treatment family rather than creating one.
+      #
+      # Composition with tonight's chain is pinned end to end, not just in unit signals: #2059's token
+      # anchor makes "face scrub" the LEAD query, #2062's scrub_requested suppresses the gentleness
+      # demotion (including the case that actually needs it -- "a gentle face scrub", where BOTH
+      # signals fire), #2064's implement rule still admits scrub FORMULATIONS while rejecting a
+      # Loofah and a Body Scrubber, and title-only BODY scrubs stay non_face_supportive. The
+      # gentle-exfoliant ordering from #2062 is re-pinned unchanged. Nine mutants run, all nine fail
+      # the suite; four survived a first pass and each exposed a real gap (a redundant alias block
+      # that was dead code and is now deleted, an unanchored pattern that would swallow "scrubber", a
+      # suppression only observable when both signals fire, and a body assertion that was passing
+      # incidentally via `perfume` in the fatal list).
       - name: Run node:test suites
         run: |
           node --test \
@@ -760,7 +787,8 @@ jobs:
             tests/invoke_auth_introspect_load_shedding.node.test.cjs \
             tests/reco_strict_conforming_fill.node.test.cjs \
             tests/reco_gentleness_ranking.node.test.cjs \
-            tests/reco_implement_scope.node.test.cjs
+            tests/reco_implement_scope.node.test.cjs \
+            tests/reco_scrub_step_vocabulary.node.test.cjs
 
   jest:
     runs-on: ubuntu-latest
