@@ -52536,6 +52536,11 @@ module.exports._debug = {
   isInvokeAuthIntrospectCooldownActive,
   openInvokeAuthIntrospectCooldown,
   clearInvokeAuthIntrospectCooldown,
+  // Exported so the gate ORDER can be asserted. Over the wire a cooldown gate placed above the
+  // fresh-cache read is indistinguishable from one placed below it — both answer 400, because the
+  // stale-replay path silently rescues the request the hoisted gate broke. Only the return value
+  // here separates a fresh hit from a degraded replay.
+  introspectInvokeApiKey,
   // Exported for the one assertion that matters most on this path and cannot be made any other way:
   // that a REPLAYED verdict does not flip the upstream credential to the gateway's service key. The
   // predicate reads AsyncLocalStorage, so it has to be driven inside a store the test controls.

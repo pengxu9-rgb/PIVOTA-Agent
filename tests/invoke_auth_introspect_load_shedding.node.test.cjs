@@ -54,6 +54,7 @@ const {
   openInvokeAuthIntrospectCooldown,
   clearInvokeAuthIntrospectCooldown,
   agentAuthCacheTtlSnapshot,
+  introspectInvokeApiKey,
 } = app._debug;
 
 test.after(() => {
@@ -212,17 +213,85 @@ test('a warm fresh-cache hit is served even with the cooldown open — the gate 
   assert.equal(state.dials, 1);
 });
 
-test('a successful dial closes the cooldown immediately', async () => {
-  const partnerKey = key('9');
-  openInvokeAuthIntrospectCooldown();
-  assert.equal(isInvokeAuthIntrospectCooldownActive(), true);
+test('a dial that succeeds AFTER the cooldown opened closes it — positive evidence ends the shed', async () => {
+  // The only state in which closing-on-success is observable, and therefore the only honest way to
+  // test it. Once the cooldown is open no NEW dial starts, so a success can only arrive from a dial
+  // that was already in flight when some other key's dial failed. That success is direct evidence
+  // the backend is alive, and it must end the shed immediately rather than making every caller wait
+  // out a window we now know is wrong.
+  // (An earlier version of this test cleared the cooldown by hand before dialling, which made the
+  // final assertion true no matter what the code did — the mutant that deleted the close survived
+  // it.)
+  const slowKey = key('9');
+  const failingKey = key('d');
 
-  // Simulate the cooldown lapsing, then a recovered backend.
-  clearInvokeAuthIntrospectCooldown();
-  const state = countingIntrospect({ replyFn: () => okFor('agent_recovered') });
+  nock(INTROSPECT_BASE)
+    .post(INTROSPECT_PATH, (body) => body?.api_key === slowKey)
+    .delay(300)
+    .reply(...okFor('agent_recovered'));
+  nock(INTROSPECT_BASE)
+    .post(INTROSPECT_PATH, (body) => body?.api_key === failingKey)
+    .reply(503, { error: 'UPSTREAM_DOWN' });
+
+  // `.then()` is what actually FIRES a supertest request — building it does not. Without this the
+  // "slow" dial would not start until awaited, i.e. after the cooldown had already opened, and it
+  // would be shed rather than landing: the test would then be staging the opposite scenario.
+  const slowPending = invoke(slowKey).then((res) => res);
+  await sleep(60); // let the slow dial genuinely leave before anything fails
+
+  // Now open the cooldown underneath the in-flight healthy dial.
+  const failed = await invoke(failingKey);
+  assert.equal(failed.status, 503, 'cold cache + outage is still a refusal');
+  assert.equal(isInvokeAuthIntrospectCooldownActive(), true, 'the failure must open the cooldown');
+
+  assert.equal((await slowPending).status, 400, 'the in-flight healthy dial still lands');
+  assert.equal(
+    isInvokeAuthIntrospectCooldownActive(),
+    false,
+    'a success proves the backend is alive and must close the cooldown',
+  );
+});
+
+test('a network TIMEOUT opens the cooldown, not just a 5xx — the incident shape was a timeout', async () => {
+  // The 2026-08-21 outage did not answer 503; it hung until axios aborted. That path throws from a
+  // different branch than the status check, so it needs its own assertion or the most
+  // incident-relevant trigger is the one nothing covers.
+  const partnerKey = key('e');
+  const warm = countingIntrospect({ replyFn: () => okFor('agent_timeout_case') });
+  assert.equal((await invoke(partnerKey)).status, 400);
+  assert.equal(warm.dials, 1);
+  await sleep(1200);
+  nock.cleanAll();
+
+  // Outlives the 800ms axios budget, so axios aborts: a real timeout, not a synthesized error.
+  // Register ONLY this interceptor — nock matches in registration order, so a counting interceptor
+  // added first would answer instantly and there would be no timeout to observe at all.
+  nock(INTROSPECT_BASE).post(INTROSPECT_PATH).delay(2_000).reply(...okFor('never_arrives'));
+
+  assert.equal((await invoke(partnerKey)).status, 400, 'served from the stale verdict');
+  assert.equal(
+    isInvokeAuthIntrospectCooldownActive(),
+    true,
+    'a timeout is an outage and must open the cooldown',
+  );
+});
+
+test('the cooldown gate sits BELOW the fresh-cache read, not above it', async () => {
+  // Driven directly, because over the wire both orderings return 400: with the gate hoisted the
+  // request throws UNAVAILABLE and is then rescued by the stale-replay path, which looks identical
+  // in a status code but is a degraded serve plus a warn line for a key that needed neither.
+  const partnerKey = key('f');
+  const state = countingIntrospect({ replyFn: () => okFor('agent_below') });
   assert.equal((await invoke(partnerKey)).status, 400);
   assert.equal(state.dials, 1);
-  assert.equal(isInvokeAuthIntrospectCooldownActive(), false, 'recovery must close the cooldown');
+
+  openInvokeAuthIntrospectCooldown();
+  const verdict = await introspectInvokeApiKey(partnerKey);
+  assert.equal(verdict.valid, true);
+  assert.equal(verdict.agent_id, 'agent_below');
+  assert.equal(verdict.cache_hit, true, 'a fresh entry must be served as a fresh hit');
+  assert.equal(verdict.auth_replayed, undefined, 'and NOT as a degraded outage replay');
+  assert.equal(state.dials, 1);
 });
 
 test('the cooldown lapses on its own clock and the next request re-probes', async () => {
