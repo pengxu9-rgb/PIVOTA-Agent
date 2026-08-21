@@ -12671,45 +12671,84 @@ function extractCatalogCandidatePrice(rawProduct) {
   const base = rawProduct && typeof rawProduct === 'object' && !Array.isArray(rawProduct) ? rawProduct : null;
   if (!base) return null;
 
+  // The ROW's own currency, used as the fallback for every seed below.
+  //
+  // Most seeds are SCALARS (price_amount, offer_price, sale_price, ...) and a scalar carries no
+  // currency of its own, so without this the row's sibling `currency` was discarded and the price was
+  // stamped USD. That relabels a real price rather than losing it: 88 GBP served as 88 USD. It fires
+  // on the recall pool cache round trip, which flattens an object price into exactly this shape
+  // (price_amount + currency -- see sanitizeRecoRecallPoolCandidate), so every non-USD product served
+  // from a cached pool was relabelled. Downstream, classifyRecoCandidateAgainstPriceCeiling compares
+  // by unit and is documented to return 'unknown' for a foreign currency precisely because this lane
+  // holds no FX rates; a USD relabel defeated that and produced a fabricated conforming/over verdict.
+  //
+  // This is a FALLBACK, never an override: normalizePriceObject still prefers a currency carried by
+  // the seed itself, and inferCurrencyFromPriceText still wins for a string like '£88'. An
+  // unrecognized token normalizes away and the historical USD default stands.
+  // normalizeCurrencyCode validates to a 3-letter code and falls back to USD, so an unrecognized or
+  // absent declaration keeps the historical default. It is re-validated inside normalizePriceObject,
+  // so this call is for readability at the seam rather than a second gate.
+  const declaredCurrencyOf = (holder, fallback) => {
+    if (!holder || typeof holder !== 'object' || Array.isArray(holder)) return fallback;
+    const found = [holder.currency, holder.currency_code, holder.currencyCode, holder.price_currency, holder.priceCurrency]
+      .find((value) => normalizeCurrencyCode(value, ''));
+    return normalizeCurrencyCode(found, fallback);
+  };
+  const rowCurrency = declaredCurrencyOf(base, 'USD');
+
+  // A NESTED carrier that declares its own currency keeps it; otherwise it inherits the row's. Without
+  // this, {subject: {price: 88, currency: 'GBP'}} lost the GBP exactly as the row-level shape did --
+  // the same defect one level down, because the seed handed to normalizePriceObject is the bare
+  // scalar `88` and the carrier's sibling currency is never seen.
+  const nested = (key) => {
+    const holder = base[key];
+    if (!holder || typeof holder !== 'object' || Array.isArray(holder)) return { price: null, offers: null, currency: rowCurrency };
+    return { price: holder.price, offers: holder.offers, currency: declaredCurrencyOf(holder, rowCurrency) };
+  };
+  const subject = nested('subject');
+  const sku = nested('sku');
+  const product = nested('product');
+
+  // [value, currencyForThisSeed]
   const seeds = [
-    base.price,
-    base.price_amount,
-    base.priceAmount,
-    base.price_value,
-    base.priceValue,
-    base.offer_price,
-    base.offerPrice,
-    base.sale_price,
-    base.salePrice,
-    base.list_price,
-    base.listPrice,
-    base.min_price,
-    base.minPrice,
-    base.max_price,
-    base.maxPrice,
-    base.pricing,
-    base.price_info,
-    base.priceInfo,
-    base.offer,
-    base.offers,
-    base.subject && typeof base.subject === 'object' && !Array.isArray(base.subject) ? base.subject.price : null,
-    base.subject && typeof base.subject === 'object' && !Array.isArray(base.subject) ? base.subject.offers : null,
-    base.sku && typeof base.sku === 'object' && !Array.isArray(base.sku) ? base.sku.price : null,
-    base.sku && typeof base.sku === 'object' && !Array.isArray(base.sku) ? base.sku.offers : null,
-    base.product && typeof base.product === 'object' && !Array.isArray(base.product) ? base.product.price : null,
-    base.product && typeof base.product === 'object' && !Array.isArray(base.product) ? base.product.offers : null,
+    [base.price, rowCurrency],
+    [base.price_amount, rowCurrency],
+    [base.priceAmount, rowCurrency],
+    [base.price_value, rowCurrency],
+    [base.priceValue, rowCurrency],
+    [base.offer_price, rowCurrency],
+    [base.offerPrice, rowCurrency],
+    [base.sale_price, rowCurrency],
+    [base.salePrice, rowCurrency],
+    [base.list_price, rowCurrency],
+    [base.listPrice, rowCurrency],
+    [base.min_price, rowCurrency],
+    [base.minPrice, rowCurrency],
+    [base.max_price, rowCurrency],
+    [base.maxPrice, rowCurrency],
+    [base.pricing, rowCurrency],
+    [base.price_info, rowCurrency],
+    [base.priceInfo, rowCurrency],
+    [base.offer, rowCurrency],
+    [base.offers, rowCurrency],
+    [subject.price, subject.currency],
+    [subject.offers, subject.currency],
+    [sku.price, sku.currency],
+    [sku.offers, sku.currency],
+    [product.price, product.currency],
+    [product.offers, product.currency],
   ];
 
-  for (const seed of seeds) {
+  for (const [seed, seedCurrency] of seeds) {
     if (seed == null) continue;
     if (Array.isArray(seed)) {
       for (const item of seed) {
-        const parsed = normalizePriceObject(item, { fallbackCurrency: 'USD' });
+        const parsed = normalizePriceObject(item, { fallbackCurrency: seedCurrency });
         if (parsed) return parsed;
       }
       continue;
     }
-    const parsed = normalizePriceObject(seed, { fallbackCurrency: 'USD' });
+    const parsed = normalizePriceObject(seed, { fallbackCurrency: seedCurrency });
     if (parsed) return parsed;
   }
 
@@ -59568,6 +59607,9 @@ function buildRecoAssistantPromptPriceDiagnostics(items = []) {
     })
     .filter(Boolean)
     .sort((left, right) => {
+      // Unreachable once the mixed-currency guard below returns early -- a list that gets here holds a
+      // single currency. Kept so the sort stays total if that guard is ever relaxed; an equivalent
+      // mutant, documented rather than covered by a test that cannot fail.
       if (left.currency !== right.currency) return left.currency.localeCompare(right.currency);
       if (left.amount !== right.amount) return left.amount - right.amount;
       return left.index - right.index;
@@ -59577,6 +59619,25 @@ function buildRecoAssistantPromptPriceDiagnostics(items = []) {
   const uniquePriceKeys = new Set(
     knownPrices.map((entry) => `${entry.currency}:${entry.amount.toFixed(2)}`),
   );
+  // A position is a COMPARISON, and this lane holds no FX rates. The sort below breaks ties on the
+  // currency code first, so a mixed-currency list would rank alphabetically and then label by
+  // position: [EUR 200, GBP 5, USD 50] made EUR 200 the "lowest" and GBP 5 the "middle". That reaches
+  // the buyer as price_order_summary, price_position and a "Lower-priced same-slot option"
+  // tradeoff_hint. It is the same fabricated cross-currency verdict that recoPriceCeiling and the
+  // agent bridge both refuse -- when they cannot compare, they say 'unknown' rather than guess.
+  //
+  // Reachable before this change through an OBJECT price that declared its currency, and reachable on
+  // the common path after it, since a scalar price beside a sibling currency now keeps its unit too.
+  // With more than one currency in play, emit no positions at all: no claim beats a false one.
+  const distinctCurrencies = new Set(knownPrices.map((entry) => entry.currency));
+  if (knownPrices.length > 0 && distinctCurrencies.size > 1) {
+    return {
+      known_price_count: knownPrices.length,
+      price_position_by_index: pricePositionByIndex,
+      price_order_summary: [],
+      price_comparison_skipped_reason: 'mixed_currency',
+    };
+  }
   if (knownPrices.length > 0) {
     if (uniquePriceKeys.size <= 1) {
       for (const entry of knownPrices) pricePositionByIndex.set(entry.index, 'similar');
@@ -104574,6 +104635,7 @@ const __internal = {
   markRecoCatalogFailFastSuccess,
   beginRecoCatalogFailFastProbe,
   recoCatalogFailFastState,
+  buildRecoAssistantPromptPriceDiagnostics,
   buildRecoGenerateFromCatalog,
   groundRecoRecommendationsFromCatalog,
   mergeRecoPlanWithGroundedCandidate,
