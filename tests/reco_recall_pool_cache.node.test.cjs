@@ -316,6 +316,12 @@ test('the version bump orphans every price-less v1 row — no v1 key can ever be
   // table is full of price-less v1 payloads with 24h serve windows, and without the bump the fixed
   // reader would keep serving them for a day.
   assert.notEqual(key, 'df91032da2eecf5bf73b4784e4b457d8f51f63801a321b7be33ed120ae4d70b9');
+  // The RECORDED v4 key for the same dims, measured against origin/main before ADR-024 Phase 1 added
+  // the `region` dimension. Same argument one version on: every v4 row was written by a REGION-BLIND
+  // writer, so it carries no honest region attribution and must never be served as if it were US.
+  // Mutant killed: adding the region dimension without bumping the version — the dims object changes,
+  // but a reviewer cannot tell from the version string that the table went cold on purpose.
+  assert.notEqual(key, '8db46b29f150dce7aca04c9eb0ce7c7fb46a14215bdf9c893a9f269c9865fa64');
 });
 
 // ---------------------------------------------------------------------------

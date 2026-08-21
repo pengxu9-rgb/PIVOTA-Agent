@@ -41,6 +41,7 @@ function createLegacyRecoGenerationEngineRuntime(deps = {}) {
     resolveRecommendationTargetContext,
     runConcernSemanticPlanner,
     buildConcernTargetContextFromSemanticPlan,
+    buyerRegionFromContext,
     normalizeRecoEffectiveFailureClass,
     normalizeRecoFailureClass,
     normalizeRecoFailureOrigin,
@@ -204,6 +205,7 @@ function createLegacyRecoGenerationEngineRuntime(deps = {}) {
       resolveRecommendationTargetContext,
       runConcernSemanticPlanner,
       buildConcernTargetContextFromSemanticPlan,
+      buyerRegionFromContext,
     });
     const {
       buildLegacyRecoGenerationResult,

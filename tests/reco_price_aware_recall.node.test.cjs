@@ -344,8 +344,9 @@ test('the cache version was bumped, orphaning pools built without a ceiling dime
   const { RECO_RECALL_POOL_CACHE_VERSION } = require('../src/auroraBff/recoRecallPoolCache');
   // Mutant killed: changing pool CONTENT without a bump. v3 recorded the ceiling key dimension; v4
   // records the deeper constrained arm (~18 rows instead of 6), without which an existing ceiling'd
-  // key would keep serving its shallow pool for the rest of its 24h window.
-  assert.equal(RECO_RECALL_POOL_CACHE_VERSION, 'reco_recall_pool_cache_v4');
+  // key would keep serving its shallow pool for the rest of its 24h window. v5 adds the `region`
+  // dimension (ADR-024 Phase 1) and orphans every region-blind row for the same reason.
+  assert.equal(RECO_RECALL_POOL_CACHE_VERSION, 'reco_recall_pool_cache_v5');
 });
 
 // ---------------------------------------------------------------------------
