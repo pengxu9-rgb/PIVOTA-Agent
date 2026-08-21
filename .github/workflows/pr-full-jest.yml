@@ -994,7 +994,8 @@ jobs:
             tests/reco_buyer_region_dimension.node.test.cjs \
             tests/crawler_inline_price_prefix.node.test.cjs \
             tests/reco_alternatives_price_coercion_guards.node.test.cjs \
-            tests/price_decimal_comma_locale.node.test.cjs
+            tests/price_decimal_comma_locale.node.test.cjs \
+            tests/reco_card_price_label_currency.node.test.cjs
 
   jest:
     runs-on: ubuntu-latest
