@@ -1,5 +1,6 @@
 const { lookupBrandForRow } = require('./recommendationBrandBackfill');
 const { formatDisplayPriceLabel, readFiniteAmount } = require('./priceLabelFormat');
+const { inferCurrencyFromPriceText } = require('./priceAmountText');
 
 function isPlainObject(value) {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -442,8 +443,19 @@ function looksLikeRecommendationCardMarketingHeavyCopy(value) {
 // the product was free"); the card side still did it. asNumber itself is left alone -- its other
 // callers read ratings and counts, where coercion is a separate question.
 function priceAmount(value) {
-  if (isPlainObject(value)) return readFiniteAmount(value.amount);
-  return readFiniteAmount(value);
+  const amount = isPlainObject(value) ? readFiniteAmount(value.amount) : readFiniteAmount(value);
+  // A NEGATIVE amount is not a price under any reading, and it used to render: a row carrying -5 put
+  // "$-5" on a card and, via inferPriceTierFromAmount, called the product 'budget'. The reco lane's
+  // own reader (toPositiveNumberOrNull) has always refused it. ZERO is deliberately kept: a declared
+  // 0 is a statement about the product, and the card renders it as "$0" rather than hiding it. That
+  // one difference from the prompt lane is a decision; this one was an oversight.
+  if (amount != null && amount < 0) return null;
+  if (amount == null) return null;
+  // Money to the cent, the same rounding the reco lane applies at parse (toRoundedPositiveOrNull).
+  // Without it the card SHOWED "$1.30" for '1.299' while shipping price.amount 1.299 in the same
+  // payload -- the label and the field disagreeing about one price, and the card disagreeing with the
+  // lane about the same row.
+  return Number(amount.toFixed(2));
 }
 
 function normalizePrice(value, fallbackCurrency = '') {
@@ -464,7 +476,12 @@ function normalizePrice(value, fallbackCurrency = '') {
   if (amount == null) return null;
   return {
     amount,
-    currency: fallbackCurrency || 'USD',
+    // A price written as TEXT carries its currency in the text, and that is the most specific
+    // evidence there is -- '£88' is 88 GBP no matter what a sibling field says. Mirrors the scalar
+    // leg of normalizePriceObject (routes.js), which infers here and only here, so the card and the
+    // prompt resolve one row to one currency. Without this, sharing the number parser alone would
+    // have made the card read '£88' as 88 and then label it "$88".
+    currency: inferCurrencyFromPriceText(value) || fallbackCurrency || 'USD',
     unknown: false,
   };
 }

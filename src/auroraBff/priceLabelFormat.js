@@ -1,5 +1,7 @@
 'use strict';
 
+const { parsePriceAmount } = require('./priceAmountText');
+
 // The one place that turns an (amount, currency) pair into a price string a human or a prompt reads.
 //
 // Why this module exists: the card factory and the reco assistant prompt each grew their own
@@ -49,12 +51,11 @@ const PROMPT_PRICE_SYMBOLS = Object.freeze({
 // confident "$0". Only a real number, or a string that is entirely one, is an amount.
 function finiteAmount(value) {
   if (typeof value === 'number') return Number.isFinite(value) ? value : null;
-  if (typeof value === 'string') {
-    const trimmed = value.trim();
-    if (!trimmed) return null;
-    const num = Number(trimmed);
-    return Number.isFinite(num) ? num : null;
-  }
+  // Text goes through the SHARED parser, so the card reads '1,299' and '$12.30' as the same amounts
+  // the prompt reads. Number() alone said NaN for both, and the card answered "Price unavailable" for
+  // a row the prompt priced. The currency written INTO such a string is read alongside it, in
+  // normalizePrice -- parsing the number without the currency is what turns '£88' into "$88".
+  if (typeof value === 'string') return parsePriceAmount(value);
   // A single-element list IS an amount, because the catalog and crawl surfaces genuinely deliver one:
   // toPositiveNumberOrNull (routes.js) documents `offers: [{ price: ['19.99'] }]`, `price_info: {
   // price: ['19.99'] }` and `{ amount: ['19.99'] }` as real shapes, and records that rejecting arrays
