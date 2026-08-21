@@ -494,6 +494,26 @@ jobs:
       # version matched by bare prefix and did, and the test caught it. The last case walks every \
       # smoke that targets the gateway and asserts it sources the wrapper, so a ninth script added \
       # later fails rather than silently 401ing.
+      # ADDED 2026-08-21: `invoke_auth_introspect_outage_cache`, confirmed green
+      # 22/22 and mutation-checked (16 mutants: 15 killed; the 16th — deriving
+      # `auth_degraded` from the verdict instead of hardcoding false — is a true
+      # EQUIVALENT mutant, since no verdict object reaching that line carries the
+      # field, and the hardcode is kept as defence for a future path that might).
+      # Three of those mutants killed assertions that could not fail: two probes
+      # sharing a cache key the first one evicted, and a `?? nowMs` guard probed
+      # with a 0 that `|| 0` answers identically. It owns
+      # the stale-if-error contract of the invoke-auth verdict cache — added with
+      # the fix for the 2026-08-21T05:24Z incident where a backend DB-pool
+      # saturation timed out introspection and the commerce door 503'd a VALID
+      # partner key for several minutes. The rules only this suite pins: a
+      # positive verdict may be replayed ONLY while introspection is unavailable
+      # and only inside a hard window measured from the introspection that minted
+      # it (serving never extends it); a negative verdict is never outage-servable
+      # and its TTL clamp cannot be raised past 10s by env; a live `valid: false`
+      # overwrites the cached positive at once; REJECTED introspection is never
+      # papered over; malformed keys still 401 without touching the network. It
+      # is `*.node.test.cjs`, so jest's testMatch cannot see it — outside this
+      # allowlist it runs nowhere on PRs.
       - name: Run node:test suites
         run: |
           node --test \
@@ -561,7 +581,8 @@ jobs:
             tests/reco_direct_recall_before_llm.node.test.cjs \
             tests/reco_recall_honest_queries.node.test.cjs \
             tests/reco_recall_pool_cache.node.test.cjs \
-            tests/aurora_surface_auth_curl_wrapper.node.test.cjs
+            tests/aurora_surface_auth_curl_wrapper.node.test.cjs \
+            tests/invoke_auth_introspect_outage_cache.node.test.cjs
 
   jest:
     runs-on: ubuntu-latest
