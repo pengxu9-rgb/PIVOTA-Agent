@@ -71669,7 +71669,16 @@ function buildConcernSelectorDisplayCandidates(recommendations = []) {
           : null,
         retrieval_source: pickFirstTrimmed(row.retrieval_source, row.retrievalSource, row.source),
         category: pickFirstTrimmed(row.category, row.product_type, row.step),
-        price_label: formatRecoAssistantPromptPriceLabel(row.price) || null,
+        // Read the price the way every other lane reads it. Passing the RAW `row.price` sent a bare
+        // scalar into normalizePriceObject with a flat 'USD' fallback, so a row that declared its
+        // currency in a sibling field had it discarded and the price relabelled: 88 GBP was stated to
+        // the model as "$88", and 4500 JPY as "$4500". That is the defect #2065 closed for the
+        // catalog reader, at the one call site that never used that reader. extractCatalogCandidatePrice
+        // resolves the row's declared currency across its ~26 price seeds, so this also stops the
+        // selector missing prices carried as price_amount / offer_price / offers[] rather than `price`.
+        price_label: formatRecoAssistantPromptPriceLabel(
+          extractCatalogCandidatePrice(row) || extractCatalogCandidatePrice(row.sku),
+        ) || null,
         short_description: pickFirstTrimmed(row.short_description, row.shortDescription),
         why_this_one: pickFirstTrimmed(row.why_this_one, row.whyThisOne),
         key_features: asStringArray(row.key_features || row.keyFeatures, 4),
@@ -105110,6 +105119,7 @@ const __internal = {
   extractProductPriceFromHtml,
   normalizePriceObject,
   formatRecoAssistantPromptPriceLabel,
+  buildConcernSelectorDisplayCandidates,
   runOpenAIVisionSkinAnalysis,
   runGeminiVisionSkinAnalysis,
   runVisionSkinAnalysis,
