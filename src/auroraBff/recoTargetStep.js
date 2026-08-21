@@ -230,32 +230,57 @@ function normalizeRecoTargetStep(value) {
   return null;
 }
 
-function collectHighConfidenceMatches(input) {
+// The SURFACE TOKEN a step pattern matched, normalized for use as a query.
+//
+// Resolution used to return only the family, discarding what the buyer actually wrote. That is why
+// "a gentle exfoliant for sensitive skin under $40" could only ever be queried as "treatment" -- and
+// the catalog's "treatment" vocabulary is full of HAIRCARE products ("Lador ACV Treatment",
+// "Paul Mitchell Color Depositing Treatment"), so the pool conformed on price and not on meaning.
+//
+// Deliberately taken from the SAME regex pass that decided the family: a second scan with different
+// rules could disagree with the family it is supposed to describe.
+function normalizeMatchedStepToken(value) {
+  return String(value || '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase()
+    .slice(0, 40);
+}
+
+function collectStepPatternMatchDetails(input, entries) {
   const text = normalizeText(input);
   if (!text) return [];
-  const matches = [];
-  for (const entry of STEP_PATTERNS) {
+  const details = [];
+  const seen = new Set();
+  for (const entry of entries) {
     for (const pattern of entry.patterns) {
-      if (!pattern.test(text)) continue;
-      matches.push(entry.step);
+      // exec, not test: `test` throws the matched surface away, which is the whole defect.
+      const match = pattern.exec(text);
+      if (!match) continue;
+      if (seen.has(entry.step)) break;
+      seen.add(entry.step);
+      details.push({ step: entry.step, token: normalizeMatchedStepToken(match[0]) });
       break;
     }
+    if (details.length >= 8) break;
   }
-  return uniqStrings(matches, 8);
+  return details;
+}
+
+function collectHighConfidenceMatchDetails(input) {
+  return collectStepPatternMatchDetails(input, STEP_PATTERNS);
+}
+
+function collectMediumConfidenceMatchDetails(input) {
+  return collectStepPatternMatchDetails(input, MEDIUM_CONFIDENCE_HINTS);
+}
+
+function collectHighConfidenceMatches(input) {
+  return uniqStrings(collectHighConfidenceMatchDetails(input).map((row) => row.step), 8);
 }
 
 function collectMediumConfidenceMatches(input) {
-  const text = normalizeText(input);
-  if (!text) return [];
-  const matches = [];
-  for (const entry of MEDIUM_CONFIDENCE_HINTS) {
-    for (const pattern of entry.patterns) {
-      if (!pattern.test(text)) continue;
-      matches.push(entry.step);
-      break;
-    }
-  }
-  return uniqStrings(matches, 8);
+  return uniqStrings(collectMediumConfidenceMatchDetails(input).map((row) => row.step), 8);
 }
 
 function extractRecoTargetStepFromText(text) {
@@ -281,54 +306,38 @@ function resolveRecoTargetStepIntent({ explicitStep = '', focus = '', text = '' 
       resolved_target_step: explicit,
       resolved_target_step_confidence: 'high',
       resolved_target_step_source: 'explicit_target_step',
+      // An EXPLICIT step is already a family, not something the buyer wrote. There is no surface
+      // token to preserve, and inventing one from the family label would just re-emit the family.
+      resolved_target_step_token: null,
       step_resolution_version: RECOMMENDATION_STEP_RESOLUTION_RULES_V1,
     };
   }
 
   const focusText = normalizeText(focus);
   const textBody = normalizeText(text);
-  const focusHigh = collectHighConfidenceMatches(focusText);
-  if (focusHigh.length === 1) {
-    return {
-      resolved_target_step: focusHigh[0],
-      resolved_target_step_confidence: 'high',
-      resolved_target_step_source: 'focus_alias',
-      step_resolution_version: RECOMMENDATION_STEP_RESOLUTION_RULES_V1,
-    };
-  }
-  const textHigh = collectHighConfidenceMatches(textBody);
-  if (textHigh.length === 1) {
-    return {
-      resolved_target_step: textHigh[0],
-      resolved_target_step_confidence: 'high',
-      resolved_target_step_source: 'message_alias',
-      step_resolution_version: RECOMMENDATION_STEP_RESOLUTION_RULES_V1,
-    };
-  }
+  const resolveFromDetails = (details, confidence, source) => ({
+    resolved_target_step: details[0].step,
+    resolved_target_step_confidence: confidence,
+    resolved_target_step_source: source,
+    resolved_target_step_token: details[0].token || null,
+    step_resolution_version: RECOMMENDATION_STEP_RESOLUTION_RULES_V1,
+  });
 
-  const focusMedium = collectMediumConfidenceMatches(focusText);
-  if (focusMedium.length === 1) {
-    return {
-      resolved_target_step: focusMedium[0],
-      resolved_target_step_confidence: 'medium',
-      resolved_target_step_source: 'focus_concept',
-      step_resolution_version: RECOMMENDATION_STEP_RESOLUTION_RULES_V1,
-    };
-  }
-  const textMedium = collectMediumConfidenceMatches(textBody);
-  if (textMedium.length === 1) {
-    return {
-      resolved_target_step: textMedium[0],
-      resolved_target_step_confidence: 'medium',
-      resolved_target_step_source: 'message_concept',
-      step_resolution_version: RECOMMENDATION_STEP_RESOLUTION_RULES_V1,
-    };
-  }
+  const focusHigh = collectHighConfidenceMatchDetails(focusText);
+  if (focusHigh.length === 1) return resolveFromDetails(focusHigh, 'high', 'focus_alias');
+  const textHigh = collectHighConfidenceMatchDetails(textBody);
+  if (textHigh.length === 1) return resolveFromDetails(textHigh, 'high', 'message_alias');
+
+  const focusMedium = collectMediumConfidenceMatchDetails(focusText);
+  if (focusMedium.length === 1) return resolveFromDetails(focusMedium, 'medium', 'focus_concept');
+  const textMedium = collectMediumConfidenceMatchDetails(textBody);
+  if (textMedium.length === 1) return resolveFromDetails(textMedium, 'medium', 'message_concept');
 
   return {
     resolved_target_step: null,
     resolved_target_step_confidence: 'none',
     resolved_target_step_source: 'none',
+    resolved_target_step_token: null,
     step_resolution_version: RECOMMENDATION_STEP_RESOLUTION_RULES_V1,
   };
 }
@@ -337,6 +346,8 @@ module.exports = {
   RECOMMENDATION_STEP_RESOLUTION_RULES_V1,
   CANONICAL_STEP_FAMILY_MAP,
   normalizeRecoTargetStep,
+  normalizeMatchedStepToken,
+  collectHighConfidenceMatchDetails,
   extractRecoTargetStepFromText,
   getRecoTargetFamilyRelation,
   resolveRecoTargetStepIntent,

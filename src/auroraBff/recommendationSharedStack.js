@@ -6,6 +6,7 @@ const {
   resolveRecoTargetStepIntent,
   getRecoTargetFamilyRelation,
   normalizeRecoTargetStep,
+  normalizeMatchedStepToken,
 } = require('./recoTargetStep');
 const { __internal: recoHybridInternal } = require('./usecases/recoHybridResolveCandidates');
 const {
@@ -920,9 +921,19 @@ function resolveRecommendationTargetContext({
       : confidence === 'medium'
         ? 'soft_target'
         : 'generic';
+  // The surface token the buyer actually wrote ("exfoliant"), not just the family it belongs to
+  // ("treatment"). Only meaningful when a step resolved AND the token says something the family label
+  // does not -- otherwise it is dropped, so every existing plan stays byte-identical.
+  const resolvedStepToken = normalizeMatchedStepToken(resolved.resolved_target_step_token);
+  const stepQueryAnchor = step ? String((STEP_QUERY_ALIASES[step] || [step])[0] || step).toLowerCase() : '';
+  const targetStepToken =
+    step && resolvedStepToken && resolvedStepToken !== stepQueryAnchor && resolvedStepToken !== step
+      ? resolvedStepToken
+      : null;
   return {
     ...resolved,
     resolved_target_step: step,
+    resolved_target_step_token: targetStepToken,
     entry_type: normalizedEntryType,
     step_aware_intent: stepAwareIntent,
     mainline_mode: hasFrameworkRoles ? 'framework' : stepAwareIntent ? mainlineMode : 'generic',
@@ -960,6 +971,10 @@ function buildSameFamilyQueryLevels({
     8,
   );
   const stepPrimary = aliases[0] || step;
+  // The buyer's own token anchors the ladder when it says more than the family label. `stepPrimary`
+  // stays the family alias -- it still labels every row's `step` and still gets its own query -- so a
+  // context with no token produces a byte-identical ladder.
+  const stepQueryAnchor = normalizeQueryToken(targetContext?.resolved_target_step_token) || stepPrimary;
   const rawGoalTerms = collectProfileGoalTerms(profileSummary, recoContext).slice(0, 2);
   const goalTerms = step === 'sunscreen'
     ? []
@@ -1002,27 +1017,30 @@ function buildSameFamilyQueryLevels({
       ladder_level: 'step_goal_ingredient_concern',
       queries: uniqCaseInsensitiveStrings([
         ...goalTerms.flatMap((goal) => ingredientTerms.flatMap((ingredient) => concernTerms.length
-          ? concernTerms.map((concern) => joinUniqueQueryParts(stepPrimary, goal, ingredient, concern))
-          : [joinUniqueQueryParts(stepPrimary, goal, ingredient)])),
-        ...normalizedSeedTerms.flatMap((seed) => goalTerms.flatMap((goal) => [joinUniqueQueryParts(stepPrimary, seed, goal)])),
+          ? concernTerms.map((concern) => joinUniqueQueryParts(stepQueryAnchor, goal, ingredient, concern))
+          : [joinUniqueQueryParts(stepQueryAnchor, goal, ingredient)])),
+        ...normalizedSeedTerms.flatMap((seed) => goalTerms.flatMap((goal) => [joinUniqueQueryParts(stepQueryAnchor, seed, goal)])),
       ], 8),
     },
     {
       ladder_level: 'step_goal',
       queries: uniqCaseInsensitiveStrings([
-        ...goalTerms.map((goal) => joinUniqueQueryParts(stepPrimary, goal)),
+        ...goalTerms.map((goal) => joinUniqueQueryParts(stepQueryAnchor, goal)),
       ], 8),
     },
     {
       ladder_level: 'step_concern',
       queries: uniqCaseInsensitiveStrings([
-        ...concernTerms.map((concern) => joinUniqueQueryParts(stepPrimary, concern)),
-        ...normalizedSeedTerms.map((seed) => joinUniqueQueryParts(stepPrimary, seed)),
+        ...concernTerms.map((concern) => joinUniqueQueryParts(stepQueryAnchor, concern)),
+        ...normalizedSeedTerms.map((seed) => joinUniqueQueryParts(stepQueryAnchor, seed)),
       ], 8),
     },
     {
       ladder_level: 'step_only',
       queries: uniqCaseInsensitiveStrings([
+        // Token first, family alias second. The token can be over-narrow ("first essence"), and this
+        // second query is what rescues that -- it is never dropped, only out-ranked.
+        stepQueryAnchor,
         stepPrimary,
       ], 8),
     },

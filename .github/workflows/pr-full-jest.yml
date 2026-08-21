@@ -536,6 +536,24 @@ jobs:
       # assertions: a cached pool replayed without the request context, and the cache-hit CALL SITE
       # (as opposed to the helper) losing its options -- which is how the #2049 regression this PR
       # also fixes went unnoticed.
+      # ADDED 2026-08-21: `tests/reco_token_anchored_recall`, confirmed green (25/25). THE FAMILY LABEL
+      # IS THE WIDEST WORD IN ITS OWN VOCABULARY. After #2057 the founder's "gentle exfoliant ... under
+      # $40" probe returned ONE conforming item against a limit of 3, and the ceiling-keyed pool cache
+      # row showed why: the conforming arm's pool was COSRX exfoliant 23 plus Lador ACV Treatment 36,
+      # Paul Mitchell Color Depositing Treatment 28.5, Lador Hydro LPP 24, Park Jun LPP Protein 34 --
+      # every row under the ceiling, four of them HAIRCARE. The pool conformed on price and not on
+      # meaning, the LLM correctly refused the hair products, and one item survived. resolveRecoTarget-
+      # StepIntent had matched "exfoliant" and then DISCARDED the matched surface, returning only the
+      # family, so the recall plan could query nothing but "treatment" -- a word this catalog shares
+      # with haircare. The token is now captured from the SAME regex pass that chose the family (exec,
+      # not test) and leads the query pack, with the family alias KEPT immediately behind it because a
+      # token can be over-narrow. Seventeen mutants were run and all seventeen fail the suite. Four
+      # survived a first pass and are worth knowing about: two of them were vacuous (a perl pattern
+      # that silently did not apply -- the run now asserts a non-empty diff before trusting a result),
+      # and two were real, where a pair of guards in buildFamilyQualifiedSemanticQuery masked each
+      # other through the pack and had to be driven directly. Also pinned: a CN token round-trips
+      # (面膜 -> ["面膜","mask"]), an explicit step captures no token, and a token equal to the family
+      # anchor is dropped so no-token plans stay byte-stable.
       - name: Run node:test suites
         run: |
           node --test \
@@ -605,7 +623,8 @@ jobs:
             tests/reco_recall_pool_cache.node.test.cjs \
             tests/aurora_surface_auth_curl_wrapper.node.test.cjs \
             tests/invoke_auth_introspect_outage_cache.node.test.cjs \
-            tests/reco_price_aware_recall.node.test.cjs
+            tests/reco_price_aware_recall.node.test.cjs \
+            tests/reco_token_anchored_recall.node.test.cjs
 
   jest:
     runs-on: ubuntu-latest

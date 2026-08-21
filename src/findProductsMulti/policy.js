@@ -1454,6 +1454,10 @@ function normalizeSearchSemanticContract(raw) {
       contract.target_step_family || contract.targetStepFamily,
     ),
     primary_role_id: String(contract.primary_role_id || contract.primaryRoleId || '').trim() || null,
+    // The surface token the buyer wrote, when it says more than the family label does.
+    target_step_token:
+      normalizeSemanticQueryLabel(contract.target_step_token || contract.targetStepToken).slice(0, 40)
+      || null,
     support_role_ids: normalizeSemanticStringList(
       contract.support_role_ids || contract.supportRoleIds,
       6,
@@ -1700,6 +1704,24 @@ function normalizeSemanticRoleQueryLabel(roleId, targetStepFamily = '') {
 // A "generic anchor" is the bare, undecorated query for a step family. It is the one query in a pack
 // that is guaranteed to be a real product noun, so the substring dedupe must never let a decorated
 // sibling suppress it — nor may it suppress a more specific query in turn.
+// "<qualifier> <family>", skipping the degenerate cases.
+//
+// `${semanticFamily} treatment` produces the literal query "treatment treatment" whenever the
+// semantic family IS the step family -- which is the common case for treatment and serum. It matches
+// no title, and since #2047 the bare-anchor dedupe exemption lets it through instead of collapsing it,
+// so it burns one of only three query slots. Verified on main: a treatment contract packs
+// ["treatment", "treatment treatment", <raw>] and a serum one ["serum", "serum serum", <raw>].
+function buildFamilyQualifiedSemanticQuery(qualifier, family) {
+  const q = normalizeSemanticQueryLabel(qualifier);
+  const f = normalizeSemanticQueryLabel(family);
+  if (!q) return '';
+  if (!f) return q;
+  if (q === f) return '';
+  // Already qualified ("acne treatment"): appending the family again would only repeat it.
+  if (q.split(' ').includes(f)) return q;
+  return `${q} ${f}`;
+}
+
 function isGenericSemanticAnchorLabel(value, targetStepFamily = '') {
   const normalized = normalizeSemanticQueryLabel(value);
   if (!normalized) return false;
@@ -2084,6 +2106,11 @@ function buildDeterministicStrictSemanticQueryPack({
 } = {}) {
   const contract = normalizeSearchSemanticContract(semanticContract);
   const out = [];
+  // Labels that anchor this pack: the bare family word, and (below) the buyer's own step token. An
+  // anchor is never suppressed by a decorated sibling, and never suppresses one -- see push().
+  const packAnchors = new Set();
+  const isPackAnchor = (value) =>
+    packAnchors.has(value) || isGenericSemanticAnchorLabel(value, contract?.target_step_family);
   const push = (value) => {
     const normalized = normalizeSemanticQueryLabel(value);
     if (!normalized) return;
@@ -2094,11 +2121,11 @@ function buildDeterministicStrictSemanticQueryPack({
     // decorated one carries the caller's constraint. The unexempted rule dropped whichever of the two
     // arrived second, which is how a junk role label ("cleanser primary") could delete the honest
     // "cleanser" from the pack entirely.
-    const incomingIsAnchor = isGenericSemanticAnchorLabel(normalized, targetStepFamily);
+    const incomingIsAnchor = isPackAnchor(normalized);
     const redundant = out.some((item) => {
       if (!(item.includes(normalized) || normalized.includes(item))) return false;
       if (incomingIsAnchor) return false;
-      if (isGenericSemanticAnchorLabel(item, targetStepFamily)) return false;
+      if (isPackAnchor(item)) return false;
       return true;
     });
     if (redundant) return;
@@ -2151,11 +2178,11 @@ function buildDeterministicStrictSemanticQueryPack({
       ? (() => {
           if (targetStepFamily === 'treatment') {
             if (concernClass === 'oil_control') {
-              push(primaryRoleLabel || `${semanticFamily || 'oil control'} treatment`);
+              push(primaryRoleLabel || buildFamilyQualifiedSemanticQuery(semanticFamily || 'oil control', 'treatment'));
             } else if (primaryRoleLabel) {
               push(primaryRoleLabel);
             } else if (semanticFamily) {
-              push(`${semanticFamily} treatment`);
+              push(buildFamilyQualifiedSemanticQuery(semanticFamily, 'treatment'));
             } else {
               push('treatment');
             }
@@ -2213,6 +2240,28 @@ function buildDeterministicStrictSemanticQueryPack({
       (concernClass === 'hydration' || concernClass === 'barrier_repair')
     );
 
+  // TOKEN FIRST, FAMILY SECOND.
+  //
+  // The family label is the widest word in its own vocabulary, and in this catalog "treatment" is
+  // shared with haircare: the $40 exfoliant ask came back with Lador ACV Treatment, Paul Mitchell
+  // Color Depositing Treatment and two more hair products -- every one under the ceiling, none of
+  // them an exfoliant. Leading with what the buyer actually wrote puts the conforming AND relevant
+  // rows in the primary arm (which is also the only arm that carries the price ceiling, per #2057).
+  //
+  // The family anchor is KEPT, immediately after: a token can be over-narrow ("first essence"), and
+  // the second arm is what rescues that. Nothing is removed from the pack.
+  const targetStepToken = normalizeSemanticQueryLabel(contract?.target_step_token);
+  const stepFamilyAnchor = resolveStepFamilyQueryAnchor(targetStepFamily);
+  const leadWithStepToken = Boolean(
+    targetStepToken && stepFamilyAnchor && targetStepToken !== stepFamilyAnchor,
+  );
+  if (leadWithStepToken) {
+    // Registered as an anchor BEFORE it is pushed: "exfoliant" and "exfoliant sensitive skin" are not
+    // redundant with each other, exactly as "treatment" and "gentle treatment" are not.
+    packAnchors.add(targetStepToken);
+    pushExactUnique(targetStepToken);
+  }
+
   if (shouldAutoSeedPrimaryRole) {
     push(primaryRoleLabel);
   }
@@ -2251,14 +2300,14 @@ function buildDeterministicStrictSemanticQueryPack({
     pushExactUnique(raw);
   } else if (targetStepFamily === 'treatment') {
     if (concernClass === 'oil_control') {
-      push(primaryRoleLabel || `${semanticFamily || 'oil control'} treatment`);
+      push(primaryRoleLabel || buildFamilyQualifiedSemanticQuery(semanticFamily || 'oil control', 'treatment'));
       for (const hypothesis of ingredientHypotheses.slice(0, 2)) {
         push(`${hypothesis} treatment`);
       }
       if (allowedStepFamilies.includes('serum')) push('oil control serum');
       push(raw);
     } else if (concernClass === 'brightening') {
-      push(primaryRoleLabel || `${semanticFamily || 'brightening'} treatment`);
+      push(primaryRoleLabel || buildFamilyQualifiedSemanticQuery(semanticFamily || 'brightening', 'treatment'));
       if (ingredientHypotheses.some((value) => value === 'vitamin c')) push('vitamin c treatment');
       if (ingredientHypotheses.some((value) => value === 'tranexamic acid')) push('tranexamic acid treatment');
       for (const hypothesis of ingredientHypotheses.slice(0, 2)) {
@@ -2266,7 +2315,7 @@ function buildDeterministicStrictSemanticQueryPack({
       }
       push(raw);
     } else if (concernClass === 'acne_urgent') {
-      push(primaryRoleLabel || `${semanticFamily || 'acne'} treatment`);
+      push(primaryRoleLabel || buildFamilyQualifiedSemanticQuery(semanticFamily || 'acne', 'treatment'));
       push('spot treatment');
       for (const hypothesis of ingredientHypotheses.slice(0, 1)) {
         push(`${hypothesis} treatment`);
@@ -2274,7 +2323,7 @@ function buildDeterministicStrictSemanticQueryPack({
       push(raw);
     } else {
       if (semanticFamily) {
-        push(`${semanticFamily} treatment`);
+        push(buildFamilyQualifiedSemanticQuery(semanticFamily, 'treatment'));
       }
       for (const hypothesis of ingredientHypotheses.slice(0, 2)) {
         push(`${hypothesis} treatment`);
@@ -2284,7 +2333,7 @@ function buildDeterministicStrictSemanticQueryPack({
     }
   } else if (targetStepFamily === 'serum') {
     if (primaryRoleLabel) push(primaryRoleLabel);
-    if (semanticFamily) push(`${semanticFamily} serum`);
+    if (semanticFamily) push(buildFamilyQualifiedSemanticQuery(semanticFamily, 'serum'));
     for (const hypothesis of ingredientHypotheses.slice(0, 2)) {
       push(`${hypothesis} serum`);
     }
@@ -6442,6 +6491,7 @@ module.exports = {
   BEAUTY_DISCOVERY_MAINLINE_OWNER,
   buildBeautyDiscoverySemanticContract,
   buildBeautyDiscoveryQueryPackFromContract,
+  buildFamilyQualifiedSemanticQuery,
   normalizeSemanticRoleQueryLabel,
   resolveStepFamilyQueryAnchor,
   STEP_FAMILY_QUERY_ANCHORS,
