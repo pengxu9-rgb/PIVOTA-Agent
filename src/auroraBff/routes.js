@@ -12598,12 +12598,29 @@ function inferCurrencyFromPriceText(value, fallback = '') {
 
 function toPositiveNumberOrNull(value) {
   if (value == null) return null;
+  // `true` is not a dollar. Number(true) is 1 — finite and positive — so a boolean priced a product
+  // at $1 on every path that resolves a price through here. That includes the CATALOG leg of
+  // normalizeAlternativesSelectorCandidate: extractCatalogCandidatePrice reads price_usd off a
+  // caller-supplied row, so the raw-leg guard added by #2068 never sees it. No price is a boolean.
+  if (typeof value === 'boolean') return null;
+  // NOT rejected here: an array. Number([5]) is 5 while Number([5, 6]) is NaN, which is arbitrary —
+  // but this helper is the price reader for the whole catalog and crawl surface, and a list arrives
+  // legitimately one level inside an offer or carrier object (`offers: [{ price: ['19.99'] }]`,
+  // `price_info: { price: ['19.99'] }`, `{ amount: ['19.99'] }`). Rejecting arrays here was measured
+  // against 4b5412658 and dropped every one of those to "no price", which also lets a candidate
+  // through isConcernFrameworkCandidateOverBudget, since that returns false when there is no price.
+  // The arbitrary split is closed at the scalar row fields instead — see readRowScalarPriceOrNull.
   if (typeof value === 'string') {
     const text = String(value).trim();
     if (!text) return null;
     const compact = text.replace(/\s+/g, '');
     const direct = Number(compact.replace(/,/g, ''));
     if (Number.isFinite(direct) && direct > 0) return Number(direct.toFixed(2));
+    // The salvage below exists for text that is NOT a number ('$12.30', '12.5 USD'): it strips the
+    // non-numeric characters and re-parses. A string that DID parse must not reach it —
+    // Number('1e999') is Infinity, and stripping the exponent marker reads the digits back as
+    // $1999, a price from nowhere. Numeric-but-unusable (overflow, 0, negative) is "no price".
+    if (!Number.isNaN(direct)) return null;
     const numeric = compact.replace(/[^0-9.,-]/g, '');
     if (!numeric) return null;
     let normalized = numeric;
@@ -12676,11 +12693,39 @@ function normalizePriceObject(rawPrice, { fallbackCurrency = 'USD' } = {}) {
     return { amount: directAmount, currency: directCurrency || 'USD', unknown: false };
   }
 
-  const usd = toPositiveNumberOrNull(rawPrice.usd ?? rawPrice.price_usd ?? rawPrice.priceUsd);
+  // Same scoped rule as the row-level reads: these name ONE amount in ONE currency, so a list is
+  // malformed here too. Without this the split the helper exists to close was still live one level
+  // down — `{offers: [{price_usd: [5]}]}` priced at $5 while `{price_usd: [5]}` did not.
+  const usd = readRowScalarPriceOrNull(rawPrice.usd ?? rawPrice.price_usd ?? rawPrice.priceUsd);
   if (usd != null) return { amount: usd, currency: 'USD', unknown: false };
-  const cny = toPositiveNumberOrNull(rawPrice.cny ?? rawPrice.price_cny ?? rawPrice.priceCny);
+  const cny = readRowScalarPriceOrNull(rawPrice.cny ?? rawPrice.price_cny ?? rawPrice.priceCny);
   if (cny != null) return { amount: cny, currency: 'CNY', unknown: false };
   return null;
+}
+
+// The SCALAR price fields on a product row — price_usd, price_cny and their aliases. Each names one
+// amount in one stated currency, so a list is malformed there, unlike the `price`/`offers` carriers
+// below where a list is an ordinary shape and is unwrapped deliberately. This is where the
+// `price_usd: [5]` divergence is closed: Number([5]) is 5 while Number([5, 6]) is NaN, so a
+// one-element list priced a product and a two-element one did not. Scoped to these fields rather
+// than pushed down into toPositiveNumberOrNull, because that helper also reads crawled offer
+// objects, where rejecting lists silently loses real prices.
+function readRowScalarPriceOrNull(value) {
+  if (Array.isArray(value)) return null;
+  return toPositiveNumberOrNull(value);
+}
+
+// The currency a row DECLARES in a sibling field, for the readers that hand normalizePriceObject a
+// bare scalar amount — the amount carries no unit of its own, so without this the declaration is
+// discarded and the price stamped USD, relabelling 88 GBP as 88 USD (#2065). Module-level rather
+// than a closure because two lanes need the same answer: extractCatalogCandidatePrice (the catalog
+// leg) and normalizeAlternativesSelectorCandidate (the raw request-row leg), which are the two
+// branches that write alternatives[].product.price.
+function declaredPriceCurrencyOf(holder, fallback) {
+  if (!holder || typeof holder !== 'object' || Array.isArray(holder)) return fallback;
+  const found = [holder.currency, holder.currency_code, holder.currencyCode, holder.price_currency, holder.priceCurrency]
+    .find((value) => normalizeCurrencyCode(value, ''));
+  return normalizeCurrencyCode(found, fallback);
 }
 
 function extractCatalogCandidatePrice(rawProduct) {
@@ -12704,13 +12749,7 @@ function extractCatalogCandidatePrice(rawProduct) {
   // normalizeCurrencyCode validates to a 3-letter code and falls back to USD, so an unrecognized or
   // absent declaration keeps the historical default. It is re-validated inside normalizePriceObject,
   // so this call is for readability at the seam rather than a second gate.
-  const declaredCurrencyOf = (holder, fallback) => {
-    if (!holder || typeof holder !== 'object' || Array.isArray(holder)) return fallback;
-    const found = [holder.currency, holder.currency_code, holder.currencyCode, holder.price_currency, holder.priceCurrency]
-      .find((value) => normalizeCurrencyCode(value, ''));
-    return normalizeCurrencyCode(found, fallback);
-  };
-  const rowCurrency = declaredCurrencyOf(base, 'USD');
+  const rowCurrency = declaredPriceCurrencyOf(base, 'USD');
 
   // A NESTED carrier that declares its own currency keeps it; otherwise it inherits the row's. Without
   // this, {subject: {price: 88, currency: 'GBP'}} lost the GBP exactly as the row-level shape did --
@@ -12719,7 +12758,7 @@ function extractCatalogCandidatePrice(rawProduct) {
   const nested = (key) => {
     const holder = base[key];
     if (!holder || typeof holder !== 'object' || Array.isArray(holder)) return { price: null, offers: null, currency: rowCurrency };
-    return { price: holder.price, offers: holder.offers, currency: declaredCurrencyOf(holder, rowCurrency) };
+    return { price: holder.price, offers: holder.offers, currency: declaredPriceCurrencyOf(holder, rowCurrency) };
   };
   const subject = nested('subject');
   const sku = nested('sku');
@@ -12768,9 +12807,9 @@ function extractCatalogCandidatePrice(rawProduct) {
     if (parsed) return parsed;
   }
 
-  const usd = toPositiveNumberOrNull(base.price_usd ?? base.priceUsd ?? base.usd);
+  const usd = readRowScalarPriceOrNull(base.price_usd ?? base.priceUsd ?? base.usd);
   if (usd != null) return { amount: usd, currency: 'USD', unknown: false };
-  const cny = toPositiveNumberOrNull(base.price_cny ?? base.priceCny ?? base.cny);
+  const cny = readRowScalarPriceOrNull(base.price_cny ?? base.priceCny ?? base.cny);
   if (cny != null) return { amount: cny, currency: 'CNY', unknown: false };
   return null;
 }
@@ -77437,8 +77476,25 @@ function normalizeAlternativesSelectorCandidate(row, { index = 0 } = {}) {
   // so a client renders the fabricated $0. (recoPriceCeiling already coalesces amount <= 0 with
   // null into 'unknown', so ranking is unaffected either way.)
   const scalarPriceUsd = toRecoPromptPriceOrNull(normalized.price_usd);
+  // The object leg keeps #2068's passthrough semantics — a stated amount is a stated price,
+  // including 0 — but a MISSING unit is filled from what the row declares. #2065 fixed that discard
+  // inside extractCatalogCandidatePrice, i.e. for the CATALOG leg, so it never reached here.
+  // '' and not 'USD' as the fallback on BOTH reads: this fills in a unit the row actually declared
+  // and otherwise leaves the object exactly as it arrived. Defaulting to USD would stamp a currency
+  // onto prices where nothing anywhere stated one, adding a key the response never carried and
+  // making a previously-unevaluable price evaluable by a ceiling reader. The "does it declare its
+  // own?" test uses the SAME alias list as the fill — testing only `.currency` let a price
+  // declaring GBP as currency_code/currencyCode/price_currency/priceCurrency be overwritten with
+  // USD, which then WON downstream, reintroducing the very relabel #2065 removed.
   const priceObj = normalized.price && typeof normalized.price === 'object' && !Array.isArray(normalized.price)
-    ? normalized.price
+    // ...and only onto an object that actually states an amount. Filling `{}`, `{unknown: true}` or
+    // `{amount: true}` would attach a unit to a non-price — harmless downstream today, but it is a
+    // key the response never carried.
+    ? (normalizePriceObject(normalized.price, { fallbackCurrency: 'USD' }) == null
+      || declaredPriceCurrencyOf(normalized.price, '')
+      || !declaredPriceCurrencyOf(normalized, '')
+      ? normalized.price
+      : { ...normalized.price, currency: declaredPriceCurrencyOf(normalized, '') })
     : scalarPriceUsd == null
       ? null
       : { amount: scalarPriceUsd, currency: 'USD' };
