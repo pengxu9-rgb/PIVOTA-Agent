@@ -746,10 +746,27 @@ const AGENT_AUTH_CACHE_POSITIVE_TTL_MS = parsePositiveInt(
   60_000,
   { min: 1_000, max: 10 * 60_000 },
 );
+// A negative verdict must never outlive a key rotation by more than a few seconds: the moment the
+// backend starts answering `valid: true` for a re-minted key, a lingering cached `valid: false` is a
+// self-inflicted outage. The 10s ceiling is a hard clamp — env cannot raise it past that.
 const AGENT_AUTH_CACHE_NEGATIVE_TTL_MS = parsePositiveInt(
   process.env.AGENT_AUTH_CACHE_NEGATIVE_TTL_MS,
-  15_000,
-  { min: 1_000, max: 5 * 60_000 },
+  5_000,
+  { min: 1_000, max: 10_000 },
+);
+// Outage retention for POSITIVE verdicts only. Past the fresh TTL a verified key's verdict is kept
+// (never direct-served) and may be replayed ONLY while introspection itself is unavailable
+// (AUTH_INTROSPECT_UNAVAILABLE: timeout / network error / upstream 5xx). This is the hard cap on a
+// verdict's total lifetime from the introspection that minted it, so a revoked or rotated key keeps
+// working for at most this window even mid-outage. Floored at the positive TTL so a misconfigured
+// smaller value cannot expire entries out from under the fresh window.
+const AGENT_AUTH_CACHE_STALE_IF_ERROR_TTL_MS = Math.max(
+  AGENT_AUTH_CACHE_POSITIVE_TTL_MS,
+  parsePositiveInt(
+    process.env.AGENT_AUTH_CACHE_STALE_IF_ERROR_TTL_MS,
+    120_000,
+    { min: 1_000, max: 10 * 60_000 },
+  ),
 );
 const AGENT_AUTH_CACHE_MAX_ENTRIES = parsePositiveInt(
   process.env.AGENT_AUTH_CACHE_MAX_ENTRIES,
@@ -28944,7 +28961,9 @@ function pruneInvokeAuthCache(nowMs = Date.now()) {
       invokeAuthCache.delete(cacheKey);
       continue;
     }
-    if (Number(entry.expires_at_ms || 0) <= nowMs) {
+    // Prune on the OUTAGE horizon, not the fresh one: an expired-fresh positive entry is exactly
+    // what the stale-if-error path exists to find. (For negatives the two horizons are equal.)
+    if (Number(entry.stale_expires_at_ms || entry.expires_at_ms || 0) <= nowMs) {
       invokeAuthCache.delete(cacheKey);
     }
   }
@@ -28955,14 +28974,18 @@ function pruneInvokeAuthCache(nowMs = Date.now()) {
   }
 }
 
-function getCachedInvokeAuthResult(apiKey) {
+function getCachedInvokeAuthResult(apiKey, nowMs = Date.now()) {
   const cacheKey = hashSecretForCache(apiKey);
   if (!cacheKey) return null;
-  const nowMs = Date.now();
   const entry = invokeAuthCache.get(cacheKey);
   if (!entry || typeof entry !== 'object') return null;
   if (Number(entry.expires_at_ms || 0) <= nowMs) {
-    invokeAuthCache.delete(cacheKey);
+    // Fresh window over. Delete only once the outage window is also over — a positive entry inside
+    // the stale-if-error window stays put (and is NOT direct-served) so an introspection outage in
+    // the gap can still replay it.
+    if (Number(entry.stale_expires_at_ms || 0) <= nowMs) {
+      invokeAuthCache.delete(cacheKey);
+    }
     return null;
   }
   invokeAuthCache.delete(cacheKey);
@@ -28970,13 +28993,41 @@ function getCachedInvokeAuthResult(apiKey) {
   return { ...entry.result, cache_hit: true };
 }
 
-function putCachedInvokeAuthResult(apiKey, result) {
+// The stale-if-error read: ONLY consulted when live introspection failed with
+// AUTH_INTROSPECT_UNAVAILABLE. Serves POSITIVE verdicts exclusively — a cached `valid: false` must
+// never decide anything during an outage — and never extends an entry's life: replaying a verdict
+// does not re-mint it, so the stale horizon set at introspection time stays the hard stop.
+function getOutageServableInvokeAuthResult(apiKey, nowMs = Date.now()) {
+  const cacheKey = hashSecretForCache(apiKey);
+  if (!cacheKey) return null;
+  const entry = invokeAuthCache.get(cacheKey);
+  if (!entry || typeof entry !== 'object') return null;
+  if (entry.result?.valid !== true) return null;
+  if (Number(entry.stale_expires_at_ms || 0) <= nowMs) {
+    invokeAuthCache.delete(cacheKey);
+    return null;
+  }
+  return {
+    ...entry.result,
+    cache_hit: true,
+    verdict_age_ms: Math.max(0, nowMs - Number(entry.minted_at_ms || 0)),
+    auth_degraded: true,
+    auth_degraded_reason: 'introspect_unavailable_cached_verdict',
+  };
+}
+
+function putCachedInvokeAuthResult(apiKey, result, nowMs = Date.now()) {
   const cacheKey = hashSecretForCache(apiKey);
   if (!cacheKey || !result || typeof result !== 'object') return;
   const valid = result.valid === true;
   const ttlMs = valid ? AGENT_AUTH_CACHE_POSITIVE_TTL_MS : AGENT_AUTH_CACHE_NEGATIVE_TTL_MS;
   invokeAuthCache.set(cacheKey, {
-    expires_at_ms: Date.now() + ttlMs,
+    minted_at_ms: nowMs,
+    expires_at_ms: nowMs + ttlMs,
+    // Negatives get NO outage window: stale horizon == fresh horizon, so they are unreadable by the
+    // stale-if-error path even before the sweep collects them.
+    stale_expires_at_ms:
+      nowMs + (valid ? AGENT_AUTH_CACHE_STALE_IF_ERROR_TTL_MS : ttlMs),
     result: {
       valid,
       agent_id: result.agent_id || null,
@@ -28984,7 +29035,7 @@ function putCachedInvokeAuthResult(apiKey, result) {
       auth_source: result.auth_source || null,
     },
   });
-  pruneInvokeAuthCache();
+  pruneInvokeAuthCache(nowMs);
 }
 
 async function introspectInvokeApiKey(apiKey) {
@@ -29113,27 +29164,50 @@ async function requireExternalInvokeAuth(req, res, next) {
   try {
     introspection = await introspectInvokeApiKey(provided);
   } catch (err) {
-    const fallback = adoptInvokeEmergencyAuthFallback({
-      req,
-      provided,
-      keyFingerprint,
-      errorCode: err?.code || 'AUTH_INTROSPECT_UNAVAILABLE',
-      reason: 'introspection_exception',
-    });
-    if (fallback) return next();
-    logger.error(
-      {
-        path: req?.path || null,
-        key_fingerprint: keyFingerprint,
-        code: err?.code || null,
-        err: err?.message || String(err),
-      },
-      'invoke auth introspection unavailable',
-    );
-    return res.status(503).json({
-      error: 'AUTH_INTROSPECT_UNAVAILABLE',
-      message: 'Authentication service unavailable',
-    });
+    // Stale-if-error: scoped to AUTH_INTROSPECT_UNAVAILABLE alone. NOT_CONFIGURED and REJECTED mean
+    // the introspection contract itself is broken (missing config, backend refused our internal
+    // key) — a cached verdict must not paper over those. The replayed verdict falls through the
+    // SAME valid/is_active checks a live one gets, so a cached deactivated agent still 403s here.
+    if ((err?.code || 'AUTH_INTROSPECT_UNAVAILABLE') === 'AUTH_INTROSPECT_UNAVAILABLE') {
+      const outageVerdict = getOutageServableInvokeAuthResult(provided);
+      if (outageVerdict) {
+        logger.warn(
+          {
+            path: req?.path || null,
+            key_fingerprint: keyFingerprint,
+            code: err?.code || null,
+            err: err?.message || String(err),
+            agent_id: outageVerdict.agent_id || null,
+            verdict_age_ms: outageVerdict.verdict_age_ms,
+          },
+          'invoke auth served cached verdict during introspection outage',
+        );
+        introspection = outageVerdict;
+      }
+    }
+    if (!introspection) {
+      const fallback = adoptInvokeEmergencyAuthFallback({
+        req,
+        provided,
+        keyFingerprint,
+        errorCode: err?.code || 'AUTH_INTROSPECT_UNAVAILABLE',
+        reason: 'introspection_exception',
+      });
+      if (fallback) return next();
+      logger.error(
+        {
+          path: req?.path || null,
+          key_fingerprint: keyFingerprint,
+          code: err?.code || null,
+          err: err?.message || String(err),
+        },
+        'invoke auth introspection unavailable',
+      );
+      return res.status(503).json({
+        error: 'AUTH_INTROSPECT_UNAVAILABLE',
+        message: 'Authentication service unavailable',
+      });
+    }
   }
 
   if (!introspection || introspection.valid !== true) {
@@ -29180,8 +29254,9 @@ async function requireExternalInvokeAuth(req, res, next) {
     raw_token: provided,
     cache_hit: introspection.cache_hit === true,
     introspect_auth_source: introspection.auth_source || null,
-    auth_degraded: false,
-    auth_degraded_reason: null,
+    // Live and fresh-cache verdicts carry no degraded marker; only a stale-if-error replay does.
+    auth_degraded: introspection.auth_degraded === true,
+    auth_degraded_reason: introspection.auth_degraded_reason || null,
   };
   return next();
 }
@@ -52216,6 +52291,21 @@ async function runPdpCorePrewarmPass() {
 
 module.exports = app;
 module.exports._debug = {
+  // Availability/security property of the invoke-auth verdict cache: positive verdicts may be
+  // replayed during an introspection outage for at most the stale-if-error window measured from the
+  // introspection that minted them; negative verdicts are clamped to seconds and are NEVER
+  // outage-servable. Route tests can show one outcome but not the TTL boundaries or the
+  // no-life-extension rule — those need deterministic clocks, so the cache trio is exported and
+  // driven with explicit `nowMs`.
+  invokeAuthCache,
+  getCachedInvokeAuthResult,
+  putCachedInvokeAuthResult,
+  getOutageServableInvokeAuthResult,
+  agentAuthCacheTtlSnapshot: () => ({
+    positive_ttl_ms: AGENT_AUTH_CACHE_POSITIVE_TTL_MS,
+    negative_ttl_ms: AGENT_AUTH_CACHE_NEGATIVE_TTL_MS,
+    stale_if_error_ttl_ms: AGENT_AUTH_CACHE_STALE_IF_ERROR_TTL_MS,
+  }),
   // Safety property: while the money kill-switch is dark the profile must WITHHOLD the checkout and AP2
   // capabilities. Exported because the served document no longer distinguishes it — a strict-off profile
   // advertises nothing at all — so the guard has to be driven directly or it is guarded by nothing.
