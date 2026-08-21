@@ -495,7 +495,13 @@ jobs:
       # smoke that targets the gateway and asserts it sources the wrapper, so a ninth script added \
       # later fails rather than silently 401ing.
       # ADDED 2026-08-21: `invoke_auth_introspect_outage_cache`, confirmed green
-      # 14/14 and mutation-checked (8 mutants, one per hunk, all killed). It owns
+      # 22/22 and mutation-checked (16 mutants: 15 killed; the 16th — deriving
+      # `auth_degraded` from the verdict instead of hardcoding false — is a true
+      # EQUIVALENT mutant, since no verdict object reaching that line carries the
+      # field, and the hardcode is kept as defence for a future path that might).
+      # Three of those mutants killed assertions that could not fail: two probes
+      # sharing a cache key the first one evicted, and a `?? nowMs` guard probed
+      # with a 0 that `|| 0` answers identically. It owns
       # the stale-if-error contract of the invoke-auth verdict cache — added with
       # the fix for the 2026-08-21T05:24Z incident where a backend DB-pool
       # saturation timed out introspection and the commerce door 503'd a VALID
