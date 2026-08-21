@@ -316,6 +316,89 @@ describe('find_products_multi query understanding', () => {
     expect(contract.hard_constraints.category_path_prefix).toBe(categoryPathPrefix);
   });
 
+  // 2026-08-20 — second residue pass over the Mechanism-3 vocabulary.
+  // Every term here classified ambiguous and safe-emptied before any SQL;
+  // buckets verified on prod the same day: face/highlighter 69 eligible
+  // rows, face/primer 30, eye/eyeliner 48, makeup/lip 519 (lip liner rows
+  // split across the competing lip/ and lips/ trees), treat/mask 407 (68
+  // face|sheet-mask-titled), nails/nail-polish 38, treat/exfoliant 69,
+  // skincare/face-oil 18, body-care/deodorant 11, body-care/body-wash 8,
+  // haircare/general 244 (13 hairspray-titled).
+  test.each([
+    ['highlighter', 'category_browse', 'beauty/makeup/face/highlighter/'],
+    ['liquid highlighter', 'category_browse', 'beauty/makeup/face/highlighter/'],
+    ['primer', 'category_browse', 'beauty/makeup/face/primer/'],
+    ['face primer', 'category_browse', 'beauty/makeup/face/primer/'],
+    ['makeup primer', 'category_browse', 'beauty/makeup/face/primer/'],
+    ['eyeliner', 'category_browse', 'beauty/makeup/eye/eyeliner/'],
+    ['eye liner', 'category_browse', 'beauty/makeup/eye/eyeliner/'],
+    ['lip liner', 'category_browse', 'beauty/makeup/lip/'],
+    ['lip pencil', 'category_browse', 'beauty/makeup/lip/'],
+    ['lip tint', 'category_browse', 'beauty/makeup/lip/'],
+    ['face mask', 'category_browse', 'beauty/skincare/treat/mask/'],
+    ['sheet mask', 'category_browse', 'beauty/skincare/treat/mask/'],
+    ['overnight mask', 'category_browse', 'beauty/skincare/treat/mask/'],
+    ['nail polish', 'category_browse', 'beauty/makeup/nails/nail-polish/'],
+    ['gel nail polish', 'category_browse', 'beauty/makeup/nails/nail-polish/'],
+    ['nail lacquer', 'category_browse', 'beauty/makeup/nails/nail-polish/'],
+    ['exfoliant', 'category_browse', 'beauty/skincare/treat/exfoliant/'],
+    ['exfoliator', 'category_browse', 'beauty/skincare/treat/exfoliant/'],
+    ['chemical peel', 'category_browse', 'beauty/skincare/treat/exfoliant/'],
+    ['peeling gel', 'category_browse', 'beauty/skincare/treat/exfoliant/'],
+    ['body scrub', 'category_browse', 'beauty/skincare/treat/exfoliant/'],
+    ['face oil', 'category_browse', 'beauty/skincare/face-oil/'],
+    ['facial oil', 'category_browse', 'beauty/skincare/face-oil/'],
+    ['deodorant', 'category_browse', 'beauty/body-care/deodorant/'],
+    ['antiperspirant', 'category_browse', 'beauty/body-care/deodorant/'],
+    ['shower gel', 'category_browse', 'beauty/body-care/body-wash/'],
+    ['hairspray', 'category_browse', 'beauty/haircare/'],
+    ['hair spray', 'category_browse', 'beauty/haircare/'],
+  ])('beauty category vocabulary second pass covers %s', (query, queryClass, categoryPathPrefix) => {
+    const contract = buildSearchQualityContract({ rawQuery: query, market: 'US' });
+    expect(contract.target_domain).toBe('beauty');
+    expect(contract.query_class).toBe(queryClass);
+    expect(contract.hard_constraints.category_path_prefix).toBe(categoryPathPrefix);
+  });
+
+  test.each([
+    // Non-beauty senses of the second-pass nouns stay unclassified.
+    ['highlighter pen'],
+    ['highlighter markers'],
+    ['paint primer'],
+    ['primer paint'],
+    ['wall primer'],
+    // Bare nouns whose dominant sense is not a beauty product.
+    ['peel'],
+    ['scrub'],
+    ['mask'],
+    // Measured on prod 2026-08-20 and deliberately NOT claimed: setting
+    // spray's bucket (makeup/setting-spray) holds 2 rows with ~5 more
+    // scattered — no browsable home; bath bomb has 8 rows all in the bare
+    // `beauty` root — no bucket a rule could name. Remove these rows when a
+    // producer starts minting those buckets.
+    ['setting spray'],
+    ['bath bomb'],
+  ])('second-pass non-claim %s stays unclassified', (query) => {
+    const contract = buildSearchQualityContract({ rawQuery: query, market: 'US' });
+    expect(contract.query_class).toBe('ambiguous_or_non_shopping');
+    expect(contract.hard_constraints.category_path_prefix).toBeNull();
+  });
+
+  test.each([
+    // Ordering: the exfoliant rule sits BELOW cleanser and toner, so the
+    // exfoliating variants of those categories browse their own buckets
+    // (13 exfoli-titled eligible rows live in cleanse/, 8 in tone/).
+    ['exfoliating cleanser', 'beauty/skincare/cleanse/'],
+    ['exfoliating toner', 'beauty/skincare/tone/'],
+    // hair oil/mask keep the haircare claim over face_oil/face_mask.
+    ['hair oil', 'beauty/haircare/'],
+    ['hair mask', 'beauty/haircare/'],
+  ])('%s keeps its earlier-rule claim over the second-pass rules', (query, categoryPathPrefix) => {
+    const contract = buildSearchQualityContract({ rawQuery: query, market: 'US' });
+    expect(contract.query_class).toBe('category_browse');
+    expect(contract.hard_constraints.category_path_prefix).toBe(categoryPathPrefix);
+  });
+
   test('body mist keeps its fragrance claim over the toner mist arm', () => {
     const contract = buildSearchQualityContract({ rawQuery: 'body mist', market: 'US' });
     expect(contract.query_class).toBe('category_browse');
