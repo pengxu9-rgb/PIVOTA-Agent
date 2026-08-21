@@ -360,45 +360,60 @@ test('legacy reco main query includes task_mode and candidate constraint payload
 // normalizeRecoPromptCandidates used to decide "is this a price?" with a bare
 // `Number.isFinite(Number(x))`, and Number() maps null, '', '   ', false and [] all to 0 — a
 // finite number — so every one of those "no price" shapes serialized into the prompt as
-// `"price_usd": 0`, i.e. "this product is free". `true` priced the product at $1.
+// `"price_usd": 0`, i.e. "this product is free". `true` priced the product at $1. It cost real
+// prices too: `{price_usd: null, price: 62}` returned 0, because the null passed the finite check
+// and the `price` leg was never reached.
 //
 // The shapes are caller-supplied: the ingredient leg passes
 // `session.meta.ingredient_context.product_candidates[]` from the request body through
 // normalizeIngredientRecoContextValue, which only drops non-objects and slices — no price
 // normalization at all — so the guard has to hold here.
+//
+// Every no-price shape is placed in the first 12 rows deliberately: that is the ingredient leg's
+// cap (see RECO_PROMPT_PRICE_INGREDIENT_CAP), so the shapes that can actually arrive from a
+// request body are exercised on the leg that can actually receive them.
 const RECO_PROMPT_PRICE_ROWS = [
   // No price, in every shape Number() silently turns into 0 (or 1).
   { product_id: 'price_null', row: { price: null }, expected: null },
   { product_id: 'price_usd_null', row: { price_usd: null }, expected: null },
   { product_id: 'price_empty_string', row: { price: '' }, expected: null },
+  { product_id: 'price_blank_string', row: { price: '   ' }, expected: null },
   { product_id: 'price_false', row: { price: false }, expected: null },
   { product_id: 'price_true', row: { price: true }, expected: null },
+  { product_id: 'price_empty_array', row: { price: [] }, expected: null },
   { product_id: 'price_absent', row: {}, expected: null },
+  { product_id: 'price_object', row: { price: { amount: 62, currency: 'USD' } }, expected: null },
+  // Non-finite numbers are not prices either. `Infinity` matters on its own: JSON.stringify emits
+  // it as `null`, so the prompt STRING self-heals and only the payload object would carry it —
+  // which is exactly the kind of defect a prompt-text-only assertion cannot see.
+  { product_id: 'price_infinity', row: { price: Infinity }, expected: null },
+  { product_id: 'price_infinity_string', row: { price: 'Infinity' }, expected: null },
+  { product_id: 'price_nan', row: { price: NaN }, expected: null },
+  // --- everything above is a no-price shape and rides on BOTH legs; the rows below are stated
+  // prices and fall past the ingredient leg's cap. ---
   // A real price still passes through untouched.
   { product_id: 'price_number', row: { price: 62 }, expected: 62 },
   { product_id: 'price_usd_number', row: { price_usd: 41.5 }, expected: 41.5 },
+  { product_id: 'price_numeric_string', row: { price: '62' }, expected: 62 },
+  { product_id: 'price_padded_numeric_string', row: { price: '  62  ' }, expected: 62 },
   // The price_usd leg must FALL THROUGH to price when price_usd carries no price — rejecting
-  // price_usd must not also discard a perfectly good `price`.
+  // price_usd must not also discard a perfectly good `price`. This is the pair the pre-fix code
+  // got wrong in the expensive direction: it answered 0 and threw the 62 away.
   { product_id: 'price_usd_null_price_set', row: { price_usd: null, price: 62 }, expected: 62 },
   { product_id: 'price_usd_empty_price_set', row: { price_usd: '', price: 62 }, expected: 62 },
   // ...but an explicit numeric 0 in price_usd IS a stated price, so it wins over `price`. This is
-  // the `??` vs `||` distinction: `||` would skip the stated 0 and report 62.
+  // the `??` vs `||` distinction: `||` would skip the stated zero and report 62.
   { product_id: 'price_usd_zero_price_set', row: { price_usd: 0, price: 62 }, expected: 0 },
   // The guard keys on the no-price SHAPES above, not on falsiness: a caller that explicitly
   // states 0 is asserting a price, not omitting one.
   { product_id: 'price_explicit_zero', row: { price: 0 }, expected: 0 },
-  // --- rows past this point are exercised on the candidates[] leg only; see
-  // RECO_PROMPT_PRICE_INGREDIENT_ROWS below. ---
-  { product_id: 'price_blank_string', row: { price: '   ' }, expected: null },
-  { product_id: 'price_empty_array', row: { price: [] }, expected: null },
-  { product_id: 'price_object', row: { price: { amount: 62, currency: 'USD' } }, expected: null },
-  { product_id: 'price_numeric_string', row: { price: '62' }, expected: 62 },
 ];
 
-// normalizeIngredientRecoContextValue caps product_candidates at 12 rows, so the ingredient leg
-// sees the first 12 of the table above. Pinned deliberately: if that cap moves, this count is the
-// thing that tells us the two legs stopped covering the same shapes.
-const RECO_PROMPT_PRICE_INGREDIENT_ROWS = RECO_PROMPT_PRICE_ROWS.slice(0, 12);
+// normalizeIngredientRecoContextValue caps product_candidates at 12 rows. The test feeds it MORE
+// than the cap and asserts exactly the cap comes back, so a cap that moves in EITHER direction
+// fails here — feeding exactly 12 would only catch a cap that shrinks.
+const RECO_PROMPT_PRICE_INGREDIENT_CAP = 12;
+const RECO_PROMPT_PRICE_INGREDIENT_ROWS = RECO_PROMPT_PRICE_ROWS.slice(0, RECO_PROMPT_PRICE_INGREDIENT_CAP);
 
 function buildRecoPromptPriceCandidates(rows) {
   return rows.map((entry) => ({
@@ -432,6 +447,15 @@ function assertRecoPromptPrices(normalized, rows, legLabel) {
 }
 
 test('reco prompt candidates report an unknown price as null, never a fabricated zero', () => {
+  // Without this the suite goes vacuous if the table is ever emptied: every assertion below
+  // degrades to `0 === 0` and passes against any implementation at all.
+  assert.equal(RECO_PROMPT_PRICE_ROWS.length, 20, 'the price table must keep its full shape coverage');
+  assert.equal(
+    RECO_PROMPT_PRICE_ROWS.filter((entry) => entry.expected === null).length,
+    RECO_PROMPT_PRICE_INGREDIENT_CAP,
+    'every no-price shape must sit inside the ingredient leg cap, where request-supplied rows land',
+  );
+
   const { moduleId, __internal } = loadRouteInternals();
   try {
     const bundle = __internal.buildAuroraProductRecommendationsPromptBundle({
@@ -443,7 +467,8 @@ test('reco prompt candidates report an unknown price as null, never a fabricated
       ingredientContext: {
         query: 'ceramide',
         goal: 'barrier',
-        product_candidates: buildRecoPromptPriceCandidates(RECO_PROMPT_PRICE_INGREDIENT_ROWS),
+        // Deliberately over the cap: the assertion below pins where the truncation lands.
+        product_candidates: buildRecoPromptPriceCandidates(RECO_PROMPT_PRICE_ROWS),
       },
     });
 
@@ -456,8 +481,10 @@ test('reco prompt candidates report an unknown price as null, never a fabricated
       'product_candidates[]',
     );
 
-    // The prompt STRING is what the LLM actually reads, and it is where a fabricated zero would
-    // do its damage. The only zeros allowed there are the rows that state 0 outright.
+    // The prompt STRING is where a fabricated zero would do its damage, but it is the WEAKER of
+    // the two checks and cannot replace the payload assertions above: JSON.stringify renders both
+    // NaN and Infinity as `null`, so a non-finite price looks correct here while the payload
+    // object carries it. Kept as a belt-and-braces check on what actually reaches the model.
     const serializedPrices = String(bundle.query).match(/"price_usd":\s*[^,\s}]+/g) || [];
     assert.equal(
       serializedPrices.length,

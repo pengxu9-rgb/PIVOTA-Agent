@@ -728,12 +728,19 @@ jobs:
       # REQUEST BODY -- normalizeIngredientRecoContextValue only drops non-objects and slices, and
       # V1ChatRequestSchema types `session` as a permissive record -- so a caller-supplied price
       # arrives untouched. Reproduced on unmodified main: the prompt string carried `"price_usd": 0`.
-      # The suite drives BOTH legs through the real prompt builder and asserts on the serialized
-      # prompt, not just the payload object, because the prompt string is what the LLM reads. Two
-      # rows deliberately keep a value: `{price_usd: 0, price: 62}` must report 0 (that is the `??`
-      # vs `||` distinction -- `||` skips the stated zero) and `{price_usd: null, price: 62}` must
-      # fall through to 62, so a guard that rejects too much fails here as loudly as one that
-      # rejects too little.
+      # The suite drives BOTH legs through the real prompt builder. It asserts on the payload
+      # objects AND on the serialized prompt, but the payload assertions are the load-bearing
+      # ones -- measured, not assumed: gutting them leaves 3 mutants alive, gutting the
+      # prompt-string regexes leaves none. JSON.stringify renders NaN and Infinity as `null`, so a
+      # non-finite price looks CORRECT in the prompt text while the payload object carries it.
+      # Two rows deliberately keep a value: `{price_usd: 0, price: 62}` must report 0 (that is the
+      # `??` vs `||` distinction -- `||` skips the stated zero) and `{price_usd: null, price: 62}`
+      # must fall through to 62, so a guard that rejects too much fails here as loudly as one that
+      # rejects too little. That second pair is also what the pre-fix code got wrong in the
+      # expensive direction: it answered 0 and threw a real $62 away.
+      # The guard is an ALLOWLIST (finite number, or a string that trims to one) rather than a
+      # denylist of known-bad shapes, so a shape nobody anticipated defaults to null instead of
+      # needing a new line here.
       - name: Run node:test suites
         run: |
           node --test \

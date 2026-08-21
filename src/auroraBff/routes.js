@@ -70413,7 +70413,9 @@ function normalizeRecoPromptContraindications(profile) {
 // `Number.isFinite(Number(x))` alone does NOT say "x is a number": Number() maps null, '',
 // '   ', false and [] all to 0, and 0 IS finite. Any of those "no price" shapes therefore used
 // to serialize into the reco prompt as `"price_usd": 0`, which tells the LLM the product is
-// free. (`true` was worse still — it priced the product at $1.)
+// free. (`true` was worse still — it priced the product at $1.) It also cost real prices, not
+// just missing ones: `{price_usd: null, price: 62}` overwrote a stated $62 with that same zero,
+// because the null passed the finite check and the `price` leg was never consulted.
 //
 // These are real inputs, not hypotheticals. normalizeRecoPromptCandidates is fed from two
 // places, and only one of them normalizes price: the catalog leg goes through
@@ -70425,12 +70427,16 @@ function normalizeRecoPromptContraindications(profile) {
 //
 // A missing price stays null, the same rule a broken offer row follows: store no price rather
 // than a fabricated zero.
+// Allowlist, not denylist: a price is a finite number, or a string that trims to one. Everything
+// else — null, undefined, booleans, arrays, objects (including a boxed String or anything with a
+// numeric valueOf, e.g. a Date) — is "no price". Enumerating the bad shapes instead would need a
+// new line every time a caller invents one; this way an unanticipated shape defaults to null.
 function toRecoPromptPriceOrNull(value) {
-  if (value == null) return null;
-  if (typeof value === 'boolean') return null;
-  if (Array.isArray(value)) return null;
-  if (typeof value === 'string' && !value.trim()) return null;
-  const num = Number(value);
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const num = Number(trimmed);
   return Number.isFinite(num) ? num : null;
 }
 
