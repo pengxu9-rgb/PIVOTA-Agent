@@ -8,6 +8,11 @@ const {
   normalizeRecoTargetStep,
 } = require('./recoTargetStep');
 const { __internal: recoHybridInternal } = require('./usecases/recoHybridResolveCandidates');
+const {
+  applyRecoPriceCeilingPreference,
+  countRecoPriceCeilingConforming,
+  normalizeRecoPriceCeiling,
+} = require('./recoPriceCeiling');
 
 const normalizeProductType =
   recoHybridInternal && typeof recoHybridInternal.normalizeProductType === 'function'
@@ -1501,7 +1506,7 @@ function summarizePrimaryDisplayGroups(selected) {
   ];
 }
 
-function finalizeRecommendationCandidatePools(rawCandidates, { targetContext, recoContext = null } = {}) {
+function finalizeRecommendationCandidatePools(rawCandidates, { targetContext, recoContext = null, priceCeiling = null } = {}) {
   const deduped = [];
   const seen = new Set();
   for (const raw of Array.isArray(rawCandidates) ? rawCandidates : []) {
@@ -1517,9 +1522,22 @@ function finalizeRecommendationCandidatePools(rawCandidates, { targetContext, re
     .map((row) => classifyRecommendationCandidate(row, { targetContext, recoContext }))
     .filter(Boolean);
 
-  const viable = classified
+  const relevanceSortedViable = classified
     .filter((row) => row.bucket === 'viable')
     .sort((left, right) => right.selection_score - left.selection_score || right.step_fit_score - left.step_fit_score);
+  // CONFORMING-FIRST, and only when a ceiling was actually supplied.
+  //
+  // `selected` below is `viable.slice(0, 3)` off a pure-relevance ordering. Live 2026-08-21 that took
+  // the top 3 of a premium-heavy pool -- 45/45/60 USD against a $40 ceiling -- while 40+ conforming
+  // products existed in the catalog. This is a STABLE PARTITION, not a re-rank: relevance order is
+  // preserved inside each bucket, nothing is dropped, and with no ceiling the array is untouched, so
+  // every existing caller (the whole chat lane included) is byte-stable.
+  const viable = applyRecoPriceCeilingPreference(relevanceSortedViable, priceCeiling, {
+    getCandidate: (row) => row.product,
+  });
+  const priceCeilingConformingCount = countRecoPriceCeilingConforming(viable, priceCeiling, {
+    getCandidate: (row) => row.product,
+  });
   const softMismatch = classified
     .filter((row) => row.bucket === 'soft_mismatch')
     .sort((left, right) => right.selection_score - left.selection_score || right.step_fit_score - left.step_fit_score);
@@ -1591,6 +1609,11 @@ function finalizeRecommendationCandidatePools(rawCandidates, { targetContext, re
     hard_constraint_conflict: hardConstraintConflict,
     constraint_conflict: hardConstraintConflict,
     average_context_fit_score: Number(averageContextFit.toFixed(4)),
+    price_ceiling: normalizeRecoPriceCeiling(priceCeiling),
+    price_ceiling_conforming_count: priceCeilingConformingCount,
+    price_ceiling_conforming_selected_count: countRecoPriceCeilingConforming(selected, priceCeiling, {
+      getCandidate: (row) => row.product,
+    }),
     artifact_context_applied: artifactContextApplied,
     terminal_success: terminalSuccess,
     reco_policy_version: RECOMMENDATION_RECO_POLICY_V1,

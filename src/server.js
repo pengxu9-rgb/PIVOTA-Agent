@@ -22676,9 +22676,26 @@ function getFallbackAdoptUsableThreshold({
 }
 
 // Canonical step families, taken from the one place that defines them so this cannot drift.
+const { RECO_PRICE_CEILING_KNOWN_CURRENCIES } = require('./auroraBff/recoPriceCeiling');
 const FIND_PRODUCTS_MULTI_STEP_FAMILY_ALLOWLIST = Object.freeze(
   Object.keys(require('./auroraBff/recoTargetStep').CANONICAL_STEP_FAMILY_MAP),
 );
+
+// Positive, finite, and bounded. Anything else is DROPPED (returns undefined), never coerced.
+function normalizeFindProductsMultiMaxPriceParam(value) {
+  const parsed = parseQueryNumber(value);
+  if (parsed === undefined) return undefined;
+  if (!Number.isFinite(parsed) || parsed <= 0) return undefined;
+  return parsed;
+}
+
+// Currency codes this lane can compare against, mirroring the agent bridge's KNOWN_CURRENCIES and
+// src/auroraBff/recoPriceCeiling.js. A test pins the three lists together.
+function normalizeFindProductsMultiPriceCurrencyParam(value) {
+  const token = String(value == null ? '' : value).trim().toUpperCase();
+  if (!token) return '';
+  return RECO_PRICE_CEILING_KNOWN_CURRENCIES.includes(token) ? token : '';
+}
 
 // ALLOWLIST, not a coercer: an unrecognised value is DROPPED so the mainline keeps inferring the step
 // from text exactly as it does today. A caller cannot widen the vocabulary from the query string.
@@ -22732,8 +22749,26 @@ function buildFindProductsMultiPayloadFromQuery(rawQuery, options = {}) {
   const minPrice = parseQueryNumber(query.min_price ?? query.price_min);
   if (minPrice !== undefined) search.min_price = minPrice;
 
-  const maxPrice = parseQueryNumber(query.max_price ?? query.price_max);
-  if (maxPrice !== undefined) search.max_price = maxPrice;
+  // The buyer's price ceiling. The Aurora recall client now sends this on its primary query arm
+  // (src/auroraBff/routes.js searchPivotaBackendProducts), so it must survive the GET boundary with
+  // the same allowlist discipline as target_step_family / semantic_family / query_step_strength.
+  //
+  // TIGHTENED: a non-positive or non-finite max price used to be forwarded verbatim. `max_price=0`
+  // reaches a HARD post-filter downstream (filterFindProductsMultiDirectProductsByBudget), where it
+  // drops every priced product and answers zero results for what is almost always a client bug.
+  // A refused value is DROPPED, which is exactly today's behavior for callers that send none.
+  const maxPrice = normalizeFindProductsMultiMaxPriceParam(query.max_price ?? query.price_max);
+  const priceCurrencyRaw = firstQueryParamValue(query.price_currency ?? query.priceCurrency);
+  const priceCurrency = normalizeFindProductsMultiPriceCurrencyParam(priceCurrencyRaw);
+  const priceCurrencyDeclaredButUnknown =
+    priceCurrencyRaw != null && String(priceCurrencyRaw).trim() !== '' && !priceCurrency;
+  // A DECLARED but unrecognized currency disables the ceiling outright rather than letting it be read
+  // in an assumed unit -- the same refusal the enforcement gate makes (`checkPriceMax` returns
+  // 'unverifiable', never a pass, when the currencies differ). This lane holds no FX rates.
+  if (maxPrice !== undefined && !priceCurrencyDeclaredButUnknown) {
+    search.max_price = maxPrice;
+    if (priceCurrency) search.price_currency = priceCurrency;
+  }
 
   const allowExternalSeed = parseQueryBoolean(query.allow_external_seed ?? query.allowExternalSeed);
   if (allowExternalSeed !== undefined) search.allow_external_seed = allowExternalSeed;

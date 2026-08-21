@@ -514,6 +514,28 @@ jobs:
       # papered over; malformed keys still 401 without touching the network. It
       # is `*.node.test.cjs`, so jest's testMatch cannot see it — outside this
       # allowlist it runs nowhere on PRs.
+      # ADDED 2026-08-21: `tests/reco_price_aware_recall`, confirmed green (32/32). RECALL WAS
+      # PRICE-BLIND. The founder's probe for "a gentle exfoliant for sensitive skin under $40" with
+      # constraints {price_max: 40} returned 3 grounded items at 45/45/60 USD -- honestly flagged by
+      # the bridge's gate, but the WHOLE shortlist -- while the catalog held 40+ conforming products
+      # at or under 40 USD (AXIS-Y PHA Resurfacing Glow Peel at 6 USD among them, the near-exact
+      # product the LLM used to invent as an archetype). The ceiling was parsed in the agent bridge
+      # and reached the lane only as PROSE inside buildAsk, so the ~5-candidate pool was pure
+      # relevance -- premium-heavy -- and the gate downstream could only flag what recall had already
+      # decided. The suite pins BIAS, NOT CENSORSHIP: conforming items fill the pool first, every
+      # count in the pool state is unchanged (it is a re-ordering, not a filter), and an
+      # all-violating catalog still answers with flagged near-misses rather than zero results. It
+      # also pins the FX refusal (a JPY price against a USD ceiling is `unknown`, never a violation),
+      # that only ONE query arm carries the ceiling upstream (the local mainline treats max_price as
+      # a HARD drop, so constraining every arm would turn "nothing conforms" into zero results), and
+      # the cache-key separation without which a constrained call poisons the unconstrained pool for
+      # 24h. Twenty-three mutants were run; 22 fail the suite. The one that does NOT is a single-line
+      # pass-through in legacyRecoGenerationEngine (generateProductRecommendations takes ~95 injected
+      # deps and this repo has no harness that drives it end to end) -- called out in the PR body
+      # rather than covered by a vacuous test. Two mutants survived a first pass and forced stronger
+      # assertions: a cached pool replayed without the request context, and the cache-hit CALL SITE
+      # (as opposed to the helper) losing its options -- which is how the #2049 regression this PR
+      # also fixes went unnoticed.
       - name: Run node:test suites
         run: |
           node --test \
@@ -582,7 +604,8 @@ jobs:
             tests/reco_recall_honest_queries.node.test.cjs \
             tests/reco_recall_pool_cache.node.test.cjs \
             tests/aurora_surface_auth_curl_wrapper.node.test.cjs \
-            tests/invoke_auth_introspect_outage_cache.node.test.cjs
+            tests/invoke_auth_introspect_outage_cache.node.test.cjs \
+            tests/reco_price_aware_recall.node.test.cjs
 
   jest:
     runs-on: ubuntu-latest

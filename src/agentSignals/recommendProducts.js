@@ -505,6 +505,15 @@ function makeRecommendProducts(deps = {}) {
       ? buildAsk({ focus: need, constraints, lang })
       : `Recommend a few products for me with focus on ${need}.`;
 
+    // Extracted BEFORE the lane runs, not only after it answers. Until now the ceiling reached the
+    // lane exclusively as PROSE inside buildAsk, so recall was price-blind: live 2026-08-21 a
+    // {price_max: 40} call returned 3 grounded items at 45/45/60 USD -- honestly flagged, but the
+    // whole shortlist -- while the catalog held 40+ conforming products at or under 40 USD. Passing
+    // it as a first-class argument lets the recall pool prefer conforming candidates; the post-hoc
+    // enforcement below is unchanged and still has the last word.
+    const ceiling = extractPriceMax(isPlainObject(p.constraints) ? p.constraints : null);
+    const enforcing = ceiling !== null && Number.isFinite(ceiling.limit);
+
     const startedAt = now();
     let result;
     try {
@@ -522,6 +531,10 @@ function makeRecommendProducts(deps = {}) {
         recoTriggerSource: 'agent_tool',
         entryType: 'direct',
         budgetMs,
+        // Only an ENFORCING ceiling is threaded. A `price_max` the extractor refused (prose, an array,
+        // a non-positive number) must leave recall exactly as it is today rather than silently biasing
+        // it on a value nobody could parse.
+        ...(enforcing ? { priceCeiling: { limit: ceiling.limit, currency: ceiling.currency } } : {}),
       });
     } catch (err) {
       logger?.warn?.({ err: err?.message || String(err) }, 'recommend_products lane failed');
@@ -537,8 +550,6 @@ function makeRecommendProducts(deps = {}) {
     // order preserved); violating items are kept only in slots left over, each carrying an explicit
     // machine-readable violation — so a near-miss is still visible when the shortlist is thin, but can
     // never displace a conforming item, and never travels as a clean recommendation.
-    const ceiling = extractPriceMax(isPlainObject(p.constraints) ? p.constraints : null);
-    const enforcing = ceiling !== null && Number.isFinite(ceiling.limit);
     const projected = [];
     for (const item of items) {
       const s = recommendationItemToSignal(item, {});

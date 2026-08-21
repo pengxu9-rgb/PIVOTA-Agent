@@ -139,6 +139,10 @@ function createLegacyRecoGenerationEngineRuntime(deps = {}) {
     budgetMs = null,
     entryType = 'chat',
     catalogExternalSeedStrategy = '',
+    // The buyer's STRUCTURED price ceiling, when the caller extracted one. Prose in the prompt is not
+    // a constraint on RECALL: it only reaches the LLM, and recall is what decides which ~5 candidates
+    // the LLM (and the deterministic gate after it) ever get to choose from.
+    priceCeiling = null,
   }) {
     const {
       buildLegacyRecoUpstreamDebug,
@@ -354,6 +358,7 @@ function createLegacyRecoGenerationEngineRuntime(deps = {}) {
         AURORA_BFF_RECO_DIRECT_RECALL_BEFORE_LLM_ENABLED,
       RECO_DIRECT_RECALL_BEFORE_LLM_MAX_QUERIES:
         AURORA_BFF_RECO_DIRECT_RECALL_BEFORE_LLM_MAX_QUERIES,
+      priceCeiling,
     });
     let upstream = mainlineExecution.upstream;
     let contextMeta = mainlineExecution.contextMeta;
