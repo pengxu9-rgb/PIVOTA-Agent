@@ -93,11 +93,19 @@ function formatRecoPriceCeilingCacheToken(ceiling) {
 // and the ones the pool-cache sanitizer writes (`price_amount` + `currency`, since PR #2056). A test
 // asserts this agrees with extractCatalogCandidatePrice across a matrix of candidate shapes, so the two
 // readers cannot drift into disagreeing about what a row costs.
-function readRecoCandidatePriceForCeiling(candidate) {
+//
+// `normalizeCurrency` is an injection point for READERS THAT ARE NOT COMPARING, and it defaults to
+// exactly today's behavior so no caller changes. The ceiling asks "can I compare against this?", so
+// its allowlist must reject an unrecognized unit and refuse a verdict. ADR-024's served-price census
+// asks the different question "was this priced in a unit that is not the buyer's?", where a
+// well-formed but unmodelled code (INR) is the loudest possible YES. Passing a looser normalizer
+// cannot loosen the ceiling: classifyRecoCandidateAgainstPriceCeiling re-runs normalizeCurrencyToken
+// on whatever comes back, so an unallowlisted currency is still `unknown` there. A test pins that.
+function readRecoCandidatePriceForCeiling(candidate, { normalizeCurrency = normalizeCurrencyToken } = {}) {
   if (!isPlainObject(candidate)) return null;
   const currencyOf = (...values) => {
     for (const value of values) {
-      const token = normalizeCurrencyToken(value);
+      const token = normalizeCurrency(value);
       if (token) return token;
     }
     return '';
