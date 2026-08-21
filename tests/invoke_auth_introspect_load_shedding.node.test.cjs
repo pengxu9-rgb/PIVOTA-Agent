@@ -321,22 +321,49 @@ test('REJECTED (backend up, refusing OUR internal key) never opens the cooldown'
   assert.equal(rejected.dials, 2, 'without a cooldown the door keeps asking');
 });
 
-test('a soft backend error does NOT clear an open cooldown', async () => {
+test("a soft backend error does NOT clear that key's own cooldown", async () => {
   // 200 {valid:false, auth_source:'error'} is the backend reporting that IT failed — the same
   // illness as a hung socket, which is why it is not cached either. Clearing the shed on it made
   // mixed-mode saturation (some hangs, some soft errors) re-arm the dial storm on every soft error.
-  const shedKey = key('1');
-  openInvokeAuthIntrospectCooldown(shedKey);
+  //
+  // The cooldown must be open for THE SAME KEY that receives the soft error, or the assertion is
+  // vacuous under per-key semantics — a first version opened it for a different key, where the
+  // per-key clear could not have touched it either way, and the mutant survived. Driven through the
+  // network path directly because an open shed would otherwise refuse the request before it dials.
   const softKey = key('2');
+  openInvokeAuthIntrospectCooldown(softKey);
   countingIntrospect({ replyFn: () => [200, { valid: false, auth_source: 'error' }] });
 
-  assert.equal((await invoke(softKey)).status, 401);
+  const result = await runBoundedInvokeAuthIntrospectFlight(softKey);
+  assert.equal(result.valid, false);
+  assert.equal(result.auth_source, 'error');
   assert.equal(
-    isInvokeAuthIntrospectCooldownActive(shedKey),
+    isInvokeAuthIntrospectCooldownActive(softKey),
     true,
-    'a soft error must not clear a shed',
+    'a soft error is not evidence the backend is healthy, so the shed must stand',
   );
-  assert.equal(isInvokeAuthIntrospectCooldownActive(softKey), false, 'nor open one');
+  // And it is still not cached, so no positive was overwritten either.
+  assert.equal(invokeAuthCache.has(cacheHashOf(softKey)), false);
+});
+
+test('a network failure (not just a 5xx) opens that key\'s cooldown', async () => {
+  // The 2026-08-21 outage did not answer 503 — it hung until axios aborted. That throw comes from a
+  // different branch than the status check, so without its own assertion the most incident-relevant
+  // trigger is the one nothing covers.
+  const partnerKey = key('6');
+  await warmThenLapse(partnerKey, 'agent_timeout_case');
+
+  // Outlives the 800ms axios budget, so axios aborts: a real timeout, not a synthesized error.
+  // Only this interceptor is registered — nock matches in registration order, and a counting one
+  // added first would answer instantly and erase the timeout under test.
+  nock(INTROSPECT_BASE).post(INTROSPECT_PATH).delay(2_000).reply(...okFor('never_arrives'));
+
+  assert.equal((await invoke(partnerKey)).status, 400, 'served from the stale verdict');
+  assert.equal(
+    isInvokeAuthIntrospectCooldownActive(partnerKey),
+    true,
+    'a timeout is an outage and must shed this key',
+  );
 });
 
 test("a genuine verdict clears that key's own cooldown", async () => {
