@@ -15,7 +15,10 @@ CHECK_POSITIVE_TONE="${CHECK_POSITIVE_TONE:-true}"
 BANNED_PHRASES_CN="${BANNED_PHRASES_CN:-焦虑,别慌,恐慌,慌了}"
 BANNED_PHRASES_EN="${BANNED_PHRASES_EN:-low-stress,anxious,panic}"
 
-CURL_BIN="${CURL_BIN:-/usr/bin/curl}"
+# Deliberately the bare name, not /usr/bin/curl: scripts/lib/aurora_surface_auth.sh shadows
+# `curl` with a shell function to attach X-Internal-Key, and a function cannot shadow an
+# absolute path. With the absolute path this script looked patched and sent no header.
+CURL_BIN="${CURL_BIN:-curl}"
 PY_BIN="${PY_BIN:-/usr/bin/python3}"
 CURL_CONN_RESET_RETRIES="${CURL_CONN_RESET_RETRIES:-1}"
 CURL_CONN_RESET_SLEEP_SEC="${CURL_CONN_RESET_SLEEP_SEC:-1}"

@@ -17,7 +17,10 @@ CURL_RETRY_DELAY_SEC="${CURL_RETRY_DELAY_SEC:-1}"
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 OUT_DIR="${OUT_DIR:-reports/aurora_skill_routes_prod_smoke_${STAMP}}"
 
-CURL_BIN="${CURL_BIN:-$(command -v curl)}"
+# Bare name on purpose — see smoke_entry_routes.sh. `$(command -v curl)` happens to work only
+# because it resolves to the wrapper FUNCTION once sourced; reorder the source line and it
+# silently reverts to the binary and stops sending the header.
+CURL_BIN="${CURL_BIN:-curl}"
 JQ_BIN="${JQ_BIN:-$(command -v jq)}"
 PY_BIN="${PY_BIN:-$(command -v python3)}"
 LOCAL_HEAD_COMMIT="$(git rev-parse --short=12 HEAD 2>/dev/null || true)"
