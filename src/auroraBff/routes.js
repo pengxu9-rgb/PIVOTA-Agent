@@ -454,6 +454,16 @@ const AURORA_BFF_RECO_DIRECT_RECALL_BEFORE_LLM_MAX_QUERIES = (() => {
 
 // A fluent LLM answer that grounds to ZERO products is not a success — it is the archetype failure the
 // caller sees. Default ON; one recovery attempt, never a loop.
+// DEPTH on the constrained arm. The upstream applies `price_max` as a hard filter, so a request
+// limit of 6 leaves it almost nothing to keep: live 2026-08-21 the conforming arm came back with a
+// single KNOWN-conforming candidate, and viable.slice(0,3) then had to fill two slots from the
+// unconstrained legs. More conforming supply is the precondition for a strict shortlist.
+const AURORA_BFF_RECO_PRICE_CEILING_ARM_LIMIT = (() => {
+  const n = Number(process.env.AURORA_BFF_RECO_PRICE_CEILING_ARM_LIMIT || 18);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 18;
+  return Math.max(6, Math.min(48, v));
+})();
+
 const AURORA_BFF_RECO_DIRECT_UNGROUNDED_RECOVERY_ENABLED = (() => {
   const raw = String(process.env.AURORA_BFF_RECO_DIRECT_UNGROUNDED_RECOVERY_ENABLED || 'true').trim().toLowerCase();
   return raw === '1' || raw === 'true' || raw === 'yes' || raw === 'on';
@@ -5726,6 +5736,18 @@ async function searchInternalProductsPrimitive({
   }
 }
 
+// How many rows to ask the upstream for.
+//
+// The shared cap is 12. A request that carries a price ceiling is the ONLY one allowed past it,
+// because it is the only one whose rows the upstream is about to hard-filter: at a cap of 12 a
+// constrained query can come back with almost nothing, which is how the live run reached selection
+// with a single known-conforming candidate.
+function resolveRecoSearchRequestLimit(limit, priceCeiling) {
+  const cap = normalizeRecoPriceCeiling(priceCeiling) ? AURORA_BFF_RECO_PRICE_CEILING_ARM_LIMIT : 12;
+  const requested = Number.isFinite(Number(limit)) ? Math.trunc(Number(limit)) : 6;
+  return Math.max(1, Math.min(cap, requested));
+}
+
 async function searchPivotaBackendProducts({
   query,
   limit = 6,
@@ -5789,7 +5811,8 @@ async function searchPivotaBackendProducts({
   const forceGenericOnly =
     effectiveTransportPolicy.force_generic_only === true ||
     strictSingleOwnerSelfProxyMainPath;
-  const normalizedLimit = Math.max(1, Math.min(12, Number.isFinite(Number(limit)) ? Math.trunc(Number(limit)) : 6));
+  const normalizedPriceCeiling = normalizeRecoPriceCeiling(priceCeiling);
+  const normalizedLimit = resolveRecoSearchRequestLimit(limit, normalizedPriceCeiling);
   const normalizedTargetStepFamily = normalizeRecoTargetStep(targetStepFamily);
   const hasSemanticContract =
     semanticContract && typeof semanticContract === 'object' && !Array.isArray(semanticContract);
@@ -5870,7 +5893,6 @@ async function searchPivotaBackendProducts({
   // treats max_price as a HARD drop (filterFindProductsMultiDirectProductsByBudget, src/server.js
   // ~34580), so constraining every arm would turn "nothing conforms" into zero results — the exact
   // failure this work exists to prevent.
-  const normalizedPriceCeiling = normalizeRecoPriceCeiling(priceCeiling);
   if (normalizedPriceCeiling) {
     params.price_max = normalizedPriceCeiling.limit;
     params.price_currency = normalizedPriceCeiling.currency;
@@ -20797,7 +20819,15 @@ async function executeRecoRecallPlanEntry({
   // emptied by the ceiling alone.
   if (shouldSendPriceCeilingOnQueryArm({ queryIndex })) {
     const normalizedEntryPriceCeiling = normalizeRecoPriceCeiling(priceCeiling);
-    if (normalizedEntryPriceCeiling) runSearchParams.priceCeiling = normalizedEntryPriceCeiling;
+    if (normalizedEntryPriceCeiling) {
+      runSearchParams.priceCeiling = normalizedEntryPriceCeiling;
+      // Deeper ONLY on the arm that carries the ceiling: the upstream hard-filters this one, so it
+      // needs headroom before the filter to return anything. Never narrows an arm.
+      runSearchParams.limit = Math.max(
+        Number.isFinite(Number(limit)) ? Math.trunc(Number(limit)) : 0,
+        AURORA_BFF_RECO_PRICE_CEILING_ARM_LIMIT,
+      );
+    }
   }
   if (sourceScope === 'external_seed') {
     runSearchParams.catalogSurface = 'beauty';
@@ -104477,6 +104507,8 @@ const __internal = {
   runConcernSemanticPlanner,
   finalizeConcernFrameworkCandidatePools,
   collectRecoCandidatesFromRecallPlan,
+  executeRecoRecallPlanEntry,
+  resolveRecoSearchRequestLimit,
   collectRecoCandidatesFromQueryLevels,
   resolveRecoQueryEntryTimeoutMs,
   runBeautyMainlineLocalHandoffSearch,

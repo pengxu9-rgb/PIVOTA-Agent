@@ -143,14 +143,21 @@ function classifyRecoCandidateAgainstPriceCeiling(candidate, ceiling, { readPric
 }
 
 /**
- * Stable conforming-first partition.
+ * Stable conforming-first partition: conforming > unknown > over.
  *
- * TWO buckets, not three: conforming items, then everything else in its original order. The input is
- * already sorted by relevance, and this preserves that order WITHIN each bucket -- so the change is
- * "a conforming item outranks a non-conforming one of similar relevance", not a re-ranking.
+ * THREE buckets. #2057 shipped TWO on the reasoning that "at recall time an unpriced row is not
+ * 'possibly conforming', it is unevaluable" -- a price-less row was strictly worse than a priced
+ * near-miss, because nothing downstream could ever resolve it.
  *
- * Nothing is ever removed. With no ceiling, or when nothing conforms, the returned array is the input
- * array's own order, element for element.
+ * THAT PREMISE HAS SINCE CHANGED. The agent bridge's live re-verification (verifyPrice, added
+ * alongside the enforcement gate) now RESOLVES unknowns before the shortlist is cut -- measured live
+ * 2026-08-21: "price updated by live check: unknown -> 19 USD" turned a Naturium exfoliant with no
+ * catalog price into a conforming $19 item. So an unknown is now "possibly conforming, and
+ * CHECKABLE", while an `over` is a certain violation that no later step can rescue. Ranking a
+ * certain violation above a checkable unknown was correct when nothing could check; it is not now.
+ *
+ * Still a stable partition: relevance order is preserved WITHIN each bucket, and nothing is ever
+ * removed. With no ceiling the returned array is the input array's own order, element for element.
  */
 function applyRecoPriceCeilingPreference(rows, ceiling, { readPrice = readRecoCandidatePriceForCeiling, getCandidate = null } = {}) {
   const list = Array.isArray(rows) ? rows : [];
@@ -158,13 +165,97 @@ function applyRecoPriceCeilingPreference(rows, ceiling, { readPrice = readRecoCa
   if (!normalized || list.length < 2) return list.slice();
   const pick = typeof getCandidate === 'function' ? getCandidate : (row) => row;
   const conforming = [];
-  const rest = [];
+  const unknown = [];
+  const over = [];
   for (const row of list) {
     const verdict = classifyRecoCandidateAgainstPriceCeiling(pick(row), normalized, { readPrice });
-    (verdict === 'conforming' ? conforming : rest).push(row);
+    if (verdict === 'conforming') conforming.push(row);
+    else if (verdict === 'over') over.push(row);
+    else unknown.push(row);
   }
-  if (!conforming.length || !rest.length) return list.slice();
-  return [...conforming, ...rest];
+  return [...conforming, ...unknown, ...over];
+}
+
+// Identity for shortlist dedupe. The canonical ref is the strongest signal; merchant+product is the
+// shipped pair everywhere else in this lane; the display name is the last resort so an ungrounded
+// LLM row (no ids at all) still blocks a duplicate of itself.
+function recoRowIdentityKey(row) {
+  if (!isPlainObject(row)) return '';
+  const str = (...values) => {
+    for (const value of values) {
+      const token = String(value == null ? '' : value).trim();
+      if (token) return token;
+    }
+    return '';
+  };
+  // ONE namespace for the (merchant, product) pair, whatever shape it arrives in. A catalog-built row
+  // carries a canonical_product_ref AND flat ids; an LLM row carries only the flat ids. Keying those
+  // into separate namespaces made the same product look like two, which is how the top-up appended a
+  // product the answer already named.
+  const canonical = row.canonical_product_ref || row.canonicalProductRef;
+  const canonicalObj = isPlainObject(canonical) ? canonical : {};
+  const productId = str(
+    row.product_id,
+    row.productId,
+    canonicalObj.product_id,
+    canonicalObj.productId,
+    row.sku && row.sku.product_id,
+  );
+  if (productId) {
+    const merchant = str(
+      row.merchant_id,
+      row.merchantId,
+      canonicalObj.merchant_id,
+      canonicalObj.merchantId,
+      row.sku && row.sku.merchant_id,
+    );
+    return `pid:${merchant.toLowerCase()}::${productId.toLowerCase()}`;
+  }
+  // An opaque string ref is the only remaining id-shaped signal.
+  if (typeof canonical === 'string' && canonical.trim()) return `ref:${canonical.trim().toLowerCase()}`;
+  const name = str(row.display_name, row.displayName, row.name, row.title);
+  return name ? `name:${name.replace(/\s+/g, ' ').trim().toLowerCase()}` : '';
+}
+
+/**
+ * STRICT FILL: which catalog rows should be appended so the shortlist reaches `target` CONFORMING
+ * recommendations.
+ *
+ * Returns ONLY rows that are (a) verified conforming against the ceiling, and (b) not already in the
+ * answer. Never pads with non-conforming filler: when conforming supply runs out the shortfall stays
+ * a shortfall, and the existing flagged near-misses keep the leftover slots.
+ */
+function selectRecoPriceCeilingTopUpRows({
+  recommendations = [],
+  catalogRows = [],
+  ceiling = null,
+  target = 0,
+  readPrice = readRecoCandidatePriceForCeiling,
+} = {}) {
+  const normalized = normalizeRecoPriceCeiling(ceiling);
+  const boundedTarget = Number.isFinite(Number(target)) ? Math.max(0, Math.trunc(Number(target))) : 0;
+  if (!normalized || boundedTarget <= 0) return [];
+  const answer = Array.isArray(recommendations) ? recommendations : [];
+  const conformingInAnswer = countRecoPriceCeilingConforming(answer, normalized, { readPrice });
+  const shortfall = boundedTarget - conformingInAnswer;
+  if (shortfall <= 0) return [];
+
+  const seen = new Set();
+  for (const row of answer) {
+    const key = recoRowIdentityKey(row);
+    if (key) seen.add(key);
+  }
+  const out = [];
+  for (const row of Array.isArray(catalogRows) ? catalogRows : []) {
+    if (out.length >= shortfall) break;
+    if (!isPlainObject(row)) continue;
+    if (classifyRecoCandidateAgainstPriceCeiling(row, normalized, { readPrice }) !== 'conforming') continue;
+    const key = recoRowIdentityKey(row);
+    if (key && seen.has(key)) continue;
+    if (key) seen.add(key);
+    out.push(row);
+  }
+  return out;
 }
 
 function countRecoPriceCeilingConforming(rows, ceiling, { readPrice = readRecoCandidatePriceForCeiling, getCandidate = null } = {}) {
@@ -206,5 +297,7 @@ module.exports = {
   classifyRecoCandidateAgainstPriceCeiling,
   applyRecoPriceCeilingPreference,
   countRecoPriceCeilingConforming,
+  recoRowIdentityKey,
+  selectRecoPriceCeilingTopUpRows,
   shouldSendPriceCeilingOnQueryArm,
 };

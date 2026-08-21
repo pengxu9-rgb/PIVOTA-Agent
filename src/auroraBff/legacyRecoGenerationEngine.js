@@ -16,6 +16,7 @@ const {
 const {
   createLegacyRecoMainlineExecutionRuntime,
   shouldRecoverFullyUngroundedDirectAnswer,
+  applyStrictConformingTopUp,
 } = require('./legacyRecoMainlineExecution');
 const {
   createLegacyRecoPostMainlineRuntime,
@@ -143,6 +144,9 @@ function createLegacyRecoGenerationEngineRuntime(deps = {}) {
     // a constraint on RECALL: it only reaches the LLM, and recall is what decides which ~5 candidates
     // the LLM (and the deterministic gate after it) ever get to choose from.
     priceCeiling = null,
+    // How many recommendations the CALLER asked for. With an enforcing ceiling this is the number of
+    // CONFORMING products the shortlist should hold before a flagged near-miss may take a slot.
+    shortlistTarget = 0,
   }) {
     const {
       buildLegacyRecoUpstreamDebug,
@@ -453,6 +457,23 @@ function createLegacyRecoGenerationEngineRuntime(deps = {}) {
         upstreamDebug,
         ingredientContext,
       });
+    // STRICT FILL, before the tail so the appended rows go through grounding, enrichment and dedupe
+    // exactly like every other recommendation. One bounded pass; nothing loops.
+    const strictTopUp = applyStrictConformingTopUp({
+      structured,
+      catalogStructured,
+      preLlmCatalogStructured: mainlineExecution.preLlmCatalogStructured,
+      priceCeiling,
+      shortlistTarget,
+    });
+    // Unconditional assignment: applyStrictConformingTopUp returns the SAME object when it appends
+    // nothing, so this branch cannot alter a no-top-up answer -- one less untested branch at a call
+    // site this repo has no harness to drive.
+    structured = strictTopUp.structured;
+    if (strictTopUp.appendedCount > 0) {
+      recordAuroraRecoLlmCall({ stage: 'main', outcome: 'strict_conforming_top_up' });
+    }
+
     let postMainline = await runPostMainlinePass();
 
     // A fluent LLM answer that grounds to ZERO products is the archetype failure, not a success — and
@@ -502,6 +523,7 @@ function createLegacyRecoGenerationEngineRuntime(deps = {}) {
         mainlineExecution.directRecallBeforeLlmApplied,
       );
       upstreamDebug.ungrounded_catalog_recovery_applied = ungroundedCatalogRecoveryApplied;
+      upstreamDebug.strict_conforming_top_up_count = strictTopUp.appendedCount;
     }
     let mapped = postMainline.mapped;
     let groundingResult = postMainline.groundingResult;

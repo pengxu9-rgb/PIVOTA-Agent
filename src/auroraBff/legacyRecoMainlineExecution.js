@@ -1,6 +1,12 @@
+const { selectRecoPriceCeilingTopUpRows } = require('./recoPriceCeiling');
+
 // The direct lane = consumer POST /v1/reco/generate and the agent-door tool `recommend_products`.
 // Both reach generateProductRecommendations with entryType 'direct'; the chat lane uses 'chat' and is
 // deliberately untouched by the pre-LLM recall below.
+function isPlainObjectValue(value) {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
 function isDirectRecoEntryType(entryType) {
   const token = String(entryType || '').trim().toLowerCase();
   return token === 'direct' || token === 'agent_tool';
@@ -35,6 +41,58 @@ function shouldRecoverFullyUngroundedDirectAnswer({
   // Nothing to swap in: keep the ungrounded answer rather than emptying the response.
   if (Number(catalogRecommendationCount || 0) <= 0) return false;
   return true;
+}
+
+/**
+ * STRICT FILL. When the buyer set a price ceiling and the catalog can supply enough CONFORMING
+ * products, every shortlist slot should hold one -- flagged near-misses only when conforming supply
+ * is genuinely short.
+ *
+ * Live 2026-08-21 (PRICE_MAX=40): the shortlist came back The Ordinary $5.16 (conforming), Naturium
+ * $19 (no catalog price at selection time, rescued later by the live price check) and OleHenriksen
+ * $62 (a flagged violation). At selection the pool held ONE known-conforming candidate, so the
+ * partition's slice took 1 conforming + 2 rest and the LLM kept all three -- while conforming stock
+ * existed.
+ *
+ * This appends the lane's OWN catalog rows -- built by buildRecoGenerateFromCatalog from real catalog
+ * fields, never invented prose -- for conforming products the answer does not already name. It is a
+ * single bounded pass: nothing loops, nothing is removed, and an all-violating catalog appends
+ * NOTHING rather than padding with filler.
+ */
+function applyStrictConformingTopUp({
+  structured = null,
+  catalogStructured = null,
+  preLlmCatalogStructured = null,
+  priceCeiling = null,
+  shortlistTarget = 0,
+  selectTopUpRows = selectRecoPriceCeilingTopUpRows,
+} = {}) {
+  const noop = { structured, appended: [], appendedCount: 0 };
+  if (!isPlainObjectValue(structured) || !Array.isArray(structured.recommendations)) return noop;
+  const catalogRows = [
+    ...(isPlainObjectValue(catalogStructured) && Array.isArray(catalogStructured.recommendations)
+      ? catalogStructured.recommendations
+      : []),
+    ...(isPlainObjectValue(preLlmCatalogStructured) && Array.isArray(preLlmCatalogStructured.recommendations)
+      ? preLlmCatalogStructured.recommendations
+      : []),
+  ];
+  if (!catalogRows.length) return noop;
+  const appended = selectTopUpRows({
+    recommendations: structured.recommendations,
+    catalogRows,
+    ceiling: priceCeiling,
+    target: shortlistTarget,
+  });
+  if (!Array.isArray(appended) || appended.length === 0) return noop;
+  return {
+    structured: {
+      ...structured,
+      recommendations: [...structured.recommendations, ...appended],
+    },
+    appended,
+    appendedCount: appended.length,
+  };
 }
 
 function createLegacyRecoMainlineExecutionRuntime(deps = {}) {
@@ -606,6 +664,7 @@ function createLegacyRecoMainlineExecutionRuntime(deps = {}) {
 
 module.exports = {
   createLegacyRecoMainlineExecutionRuntime,
+  applyStrictConformingTopUp,
   isDirectRecoEntryType,
   shouldRecoverFullyUngroundedDirectAnswer,
 };
