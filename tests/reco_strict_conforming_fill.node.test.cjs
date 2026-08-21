@@ -393,20 +393,20 @@ test('the pool cache version was bumped so shallow ceiling pools go cold', () =>
 });
 
 // ---------------------------------------------------------------------------
-// 6. KNOWN HAZARD, documented so it cannot change silently
+// 6. PRICE FOLLOWS IDENTITY (the hazard pinned by #2060, fixed here)
 // ---------------------------------------------------------------------------
+//
+// mergeRecoPlanWithGroundedCandidate takes product_id, merchant_id, name, title, display_name and
+// category from the grounded candidate. Before this fix it took NO price field, so `...plan` kept the
+// LLM's price and a grounded row carried product A's identity with product B's price. It applied to
+// every llm_primary row on both lanes. The agent lane's live verifyPrice re-resolves by product_id and
+// corrects it; the consumer /v1/reco/generate lane has no such backstop, so a buyer saw a real product
+// with a price no merchant would honour.
+//
+// The contract now: on a grounded row the price comes from the SAME candidate the identity came from,
+// or is null when that candidate carries none. A missing price is honest; a mismatched one is not.
 
-test('KNOWN HAZARD: grounding re-points a row at another product but keeps the old price', async () => {
-  // mergeRecoPlanWithGroundedCandidate (src/auroraBff/routes.js) takes product_id, merchant_id, name,
-  // title, display_name and category from the grounded candidate -- and NO price field, so `...plan`
-  // keeps the ORIGINAL price. A grounded row can therefore carry product A's identity with product
-  // B's price.
-  //
-  // This is PRE-EXISTING and applies to every llm_primary row, not only to top-up rows; it is not
-  // fixed here because the right fix touches every grounded row on every lane and wants its own
-  // measurement. This test exists so the behavior is visible and cannot drift unnoticed. On the agent
-  // lane the bridge's live verifyPrice re-resolves by product_id and corrects it; the consumer
-  // /v1/reco/generate lane has no such backstop.
+test('a grounded row takes its price from the SAME candidate it takes its identity from', async () => {
   const original = dbModule.query;
   dbModule.query = async (sql) => (/SELECT payload/.test(sql)
     ? { rows: [{ payload: [OLEHENRIKSEN], refreshed_at: new Date().toISOString() }] }
@@ -420,9 +420,242 @@ test('KNOWN HAZARD: grounding re-points a row at another product but keeps the o
     });
     const row = out.recommendations[0];
     assert.equal(row.product_id, 'o62', 'identity comes from the grounded candidate');
-    assert.deepEqual(row.price, { amount: 19, currency: 'USD' }, 'price does NOT');
+    // Mutant killed: restoring the `...plan` spread over the price. 19 was the LLM's Naturium price and
+    // o62 is the $62 OleHenriksen -- the exact live mismatch a consumer had no backstop against.
+    assert.equal(row.price.amount, 62, 'and so does the price');
+    assert.equal(row.price.currency, 'USD');
+    // NOTE: `row.currency` is deliberately NOT asserted here -- the plan item is already USD, so the
+    // assertion could not fail. The currency axis is driven by the non-USD test below instead.
+    // Mutant killed: reading the ceiling off the row must now agree with the row's own identity.
+    assert.equal(classifyRecoCandidateAgainstPriceCeiling(row, USD40), 'over');
   } finally {
     dbModule.query = original;
+  }
+});
+
+test('a grounded candidate with NO price nulls the price rather than keeping the LLM\'s', async () => {
+  const original = dbModule.query;
+  dbModule.query = async (sql) => (/SELECT payload/.test(sql)
+    ? { rows: [{ payload: [catalogRow('u1', null, 'Unpriced Exfoliant')], refreshed_at: new Date().toISOString() }] }
+    : { rows: [], rowCount: 0 });
+  try {
+    const out = await __internal.groundRecoRecommendationsFromCatalog({
+      recommendations: [{ ...NATURIUM, step: 'Treatment', price: { amount: 19, currency: 'USD' } }],
+      ctx: { lang: 'EN' },
+      logger: null,
+      defaultTargetContext: null,
+    });
+    const row = out.recommendations[0];
+    assert.equal(row.product_id, 'u1');
+    // Mutant killed: falling back to the plan's price when the candidate has none -- the most tempting
+    // "don't lose data" edit, and the one that reintroduces the exact defect for unpriced candidates.
+    assert.equal(row.price, null, 'no price at all beats a price belonging to another product');
+    assert.equal(row.currency, null);
+    // Mutant killed: an unpriced grounded row must read as UNKNOWN, never as conforming-by-inheritance.
+    assert.equal(classifyRecoCandidateAgainstPriceCeiling(row, USD40), 'unknown');
+  } finally {
+    dbModule.query = original;
+  }
+});
+
+// The merge unit itself, driven directly: the ALIAS keys are the part a spread quietly reintroduces.
+test('every price-carrying alias on the plan item is dropped, not just `price`', () => {
+  const merged = __internal.mergeRecoPlanWithGroundedCandidate(
+    {
+      product_id: 'c19',
+      name: 'Naturium PHA Exfoliant',
+      step: 'Treatment',
+      // The full alias family that extractCatalogCandidatePrice / normalizePriceObject read back.
+      price: { amount: 19, currency: 'USD' },
+      price_amount: 19,
+      priceAmount: 19,
+      price_value: 19,
+      priceValue: 19,
+      offer_price: 19,
+      offerPrice: 19,
+      sale_price: 19,
+      salePrice: 19,
+      list_price: 19,
+      listPrice: 19,
+      min_price: 19,
+      minPrice: 19,
+      max_price: 19,
+      maxPrice: 19,
+      pricing: { amount: 19, currency: 'USD' },
+      price_info: { amount: 19, currency: 'USD' },
+      priceInfo: { amount: 19, currency: 'USD' },
+      offer: { price: 19, currency: 'USD' },
+      offers: [{ price: 19, currency: 'USD' }],
+      price_usd: 19,
+      priceUsd: 19,
+      usd: 19,
+      price_cny: 130,
+      priceCny: 130,
+      cny: 130,
+      currency: 'USD',
+      currency_code: 'USD',
+      currencyCode: 'USD',
+      price_currency: 'USD',
+      priceCurrency: 'USD',
+    },
+    OLEHENRIKSEN,
+  );
+  assert.equal(merged.product_id, 'o62');
+  assert.equal(merged.price.amount, 62);
+  // Mutant killed: overriding only `price` and `currency` and letting the aliases ride. Feeding the
+  // served row back through the catalog normalizer -- which the pool cache and the top-up both do --
+  // would then resurrect the LLM's 19 from `price_amount` or `offer_price`.
+  const roundTripped = __internal.normalizeRecoCatalogProduct(merged);
+  assert.equal(roundTripped.price.amount, 62, 'and it survives a re-normalize');
+  for (const key of ['price_amount', 'priceAmount', 'price_value', 'priceValue', 'offer_price',
+    'offerPrice', 'sale_price', 'salePrice', 'list_price', 'listPrice', 'min_price', 'minPrice',
+    'max_price', 'maxPrice', 'pricing', 'price_info', 'priceInfo', 'offer', 'offers', 'price_usd',
+    'priceUsd', 'usd', 'price_cny', 'priceCny', 'cny', 'currency_code', 'currencyCode',
+    'price_currency', 'priceCurrency']) {
+    assert.equal(Object.prototype.hasOwnProperty.call(merged, key), false, `${key} must not survive the merge`);
+  }
+  // The sku mirror was already candidate-sourced; pin it so the two halves cannot drift apart.
+  assert.equal(merged.sku.price.amount, 62);
+});
+
+// Every other fixture in this file is USD on BOTH sides, so a merge that took the AMOUNT from the
+// candidate and the CURRENCY from the plan would pass all of them. Currency is half of "price follows
+// identity": 62 GBP and 62 USD are different prices, and the ceiling reader compares them by unit.
+test('the CURRENCY follows the candidate too, not just the amount', () => {
+  // The OBJECT price shape. NOTE the scalar shape ({price_amount: 88, currency: 'GBP'}) does NOT
+  // survive normalizeRecoCatalogProduct today -- extractCatalogCandidatePrice hands the scalar to
+  // normalizePriceObject, which never consults the row's sibling `currency`, so it is relabelled USD.
+  // That is a SEPARATE pre-existing defect upstream of this merge (it also fires on the recall pool
+  // cache round-trip, which persists exactly that shape) and is tracked on its own; the merge itself
+  // faithfully carries whatever currency the normalizer produced, which is what this test pins.
+  const GBP_CANDIDATE = {
+    product_id: 'g88', merchant_id: 'm1', name: 'London Exfoliant',
+    price: { amount: 88, currency: 'GBP' },
+  };
+  const merged = __internal.mergeRecoPlanWithGroundedCandidate(
+    { name: 'Naturium PHA Exfoliant', step: 'Treatment', price: { amount: 19, currency: 'USD' }, currency: 'USD' },
+    GBP_CANDIDATE,
+  );
+  assert.equal(merged.product_id, 'g88');
+  assert.equal(merged.price.amount, 88);
+  // Mutant killed: `currency: plan.currency || groundedPrice.currency`, and the variant that rebuilds
+  // groundedPrice with the plan's currency. Both survive every USD-only fixture in this file.
+  assert.equal(merged.price.currency, 'GBP');
+  assert.equal(merged.currency, 'GBP', 'the scalar the ceiling reader consults follows the candidate');
+  // A GBP row against a USD ceiling is UNKNOWN, never conforming: this lane holds no FX rates. Before
+  // the fix this row carried the LLM's 19 USD and read as CONFORMING against a USD ceiling -- a
+  // fabricated verdict on top of a fabricated price.
+  assert.equal(classifyRecoCandidateAgainstPriceCeiling(merged, USD40), 'unknown');
+});
+
+// extractCatalogCandidatePrice reads NESTED carriers too: subject.price, subject.offers,
+// product.price, product.offers, sku.price, sku.offers. Stripping only the top level left the LLM's
+// number reachable through `subject`/`product` -- invisible on the merged row (merged.price is null),
+// but resurrected the moment the row is re-normalized, which the pool cache and the top-up both do.
+// `sku` is safe on its own because the merge re-sources it wholesale from the candidate; pin all three
+// so a future reader does not have to re-derive which ones need handling.
+test('a nested subject/product price cannot resurrect through a re-normalize', () => {
+  const UNPRICED = { product_id: 'u1', merchant_id: 'm1', name: 'Unpriced Exfoliant' };
+  for (const carrier of ['subject', 'product', 'sku']) {
+    const merged = __internal.mergeRecoPlanWithGroundedCandidate(
+      {
+        name: 'Naturium PHA Exfoliant',
+        step: 'Treatment',
+        [carrier]: { product_group_id: 'pg1', price: { amount: 19, currency: 'USD' }, offers: [{ price: 19 }] },
+      },
+      UNPRICED,
+    );
+    assert.equal(merged.product_id, 'u1');
+    assert.equal(merged.price, null, `${carrier}: the merged row itself carries no price`);
+    // Mutant killed: stripping only the TOP-LEVEL alias keys. merged.price is null either way, so only
+    // the round trip exposes it -- and the round trip is what the pool cache actually does.
+    assert.equal(
+      __internal.normalizeRecoCatalogProduct(merged).price,
+      undefined,
+      `${carrier}: and none comes back when the row is re-normalized`,
+    );
+  }
+  // The strip must remove the PRICE from those objects, not the objects: they also carry identity.
+  const kept = __internal.mergeRecoPlanWithGroundedCandidate(
+    { name: 'x', step: 'Treatment', subject: { product_group_id: 'pg1', price: { amount: 19 } } },
+    UNPRICED,
+  );
+  assert.equal(kept.subject.product_group_id, 'pg1', 'non-price fields on the carrier survive');
+});
+
+// EXHAUSTIVE. The two tests above pin the alias list and the nested carriers by hand; this one drives
+// every seed extractCatalogCandidatePrice actually reads, one at a time, against an UNPRICED candidate
+// -- the only configuration where a leak is observable. It is the claim "no price path survives the
+// merge" stated as a test rather than as a comment, so adding a seed to the extractor without adding
+// it to the strip list fails here. Keep in sync with extractCatalogCandidatePrice (routes.js).
+test('NO price seed the extractor reads survives the merge onto an unpriced candidate', () => {
+  const UNPRICED = { product_id: 'u1', merchant_id: 'm1', name: 'Unpriced Exfoliant' };
+  const TOP_LEVEL_SEEDS = [
+    'price', 'price_amount', 'priceAmount', 'price_value', 'priceValue',
+    'offer_price', 'offerPrice', 'sale_price', 'salePrice', 'list_price', 'listPrice',
+    'min_price', 'minPrice', 'max_price', 'maxPrice',
+    'pricing', 'price_info', 'priceInfo', 'offer', 'offers',
+    'price_usd', 'priceUsd', 'usd', 'price_cny', 'priceCny', 'cny',
+  ];
+  const leaks = [];
+  for (const seed of TOP_LEVEL_SEEDS) {
+    const merged = __internal.mergeRecoPlanWithGroundedCandidate(
+      { name: 'Naturium PHA Exfoliant', step: 'Treatment', [seed]: 19 },
+      UNPRICED,
+    );
+    if (__internal.normalizeRecoCatalogProduct(merged).price !== undefined) leaks.push(seed);
+  }
+  for (const carrier of ['subject', 'product', 'sku']) {
+    for (const seed of ['price', 'offers']) {
+      const merged = __internal.mergeRecoPlanWithGroundedCandidate(
+        {
+          name: 'Naturium PHA Exfoliant',
+          step: 'Treatment',
+          [carrier]: { [seed]: seed === 'offers' ? [{ price: 19 }] : 19 },
+        },
+        UNPRICED,
+      );
+      if (__internal.normalizeRecoCatalogProduct(merged).price !== undefined) leaks.push(`${carrier}.${seed}`);
+    }
+  }
+  // Guard the guard: if the loops above stopped executing, this test would pass vacuously.
+  assert.equal(TOP_LEVEL_SEEDS.length + 6, 32, 'every extractor seed is covered');
+  assert.deepEqual(leaks, [], `these price seeds survived the merge: ${leaks.join(', ')}`);
+});
+
+// A plan item the LLM never priced must not gain a price it did not earn -- and must gain the
+// candidate's when the candidate has one. This is the 72586 call site's shape (basePlanItem carries no
+// price at all), where the fix is a strict improvement rather than a correction.
+test('an unpriced plan item grounded on a PRICED candidate gets the candidate price', () => {
+  const merged = __internal.mergeRecoPlanWithGroundedCandidate(
+    { name: 'some treatment', step: 'Treatment' },
+    COSRX,
+  );
+  assert.equal(merged.product_id, 'c23');
+  assert.equal(merged.price.amount, 23);
+  assert.equal(merged.currency, 'USD');
+  assert.equal(classifyRecoCandidateAgainstPriceCeiling(merged, USD40), 'conforming');
+});
+
+// The merge treats "the candidate has a `price` key" as "the candidate has a real price", so the
+// normalizer's refusal of a non-positive or non-finite amount is load-bearing. Pin BOTH halves: if the
+// extractor ever starts emitting {amount: 0}, this fails here rather than quoting a buyer $0.
+test('a broken candidate amount yields NO price, never a fabricated zero', () => {
+  for (const broken of [{ amount: 0, currency: 'USD' }, { amount: -3, currency: 'USD' }, { amount: 'abc' }]) {
+    const candidate = { product_id: 'z0', merchant_id: 'm1', name: 'Broken Offer', price: broken };
+    // Mutant killed: loosening extractCatalogCandidatePrice to accept a non-positive amount.
+    assert.equal(
+      __internal.normalizeRecoCatalogProduct(candidate).price,
+      undefined,
+      `the normalizer must refuse ${JSON.stringify(broken)} outright`,
+    );
+    const merged = __internal.mergeRecoPlanWithGroundedCandidate(
+      { name: 'x', step: 'Treatment', price: { amount: 19, currency: 'USD' } },
+      candidate,
+    );
+    assert.equal(merged.product_id, 'z0');
+    assert.equal(merged.price, null, 'and the merge carries no price rather than the LLM\'s 19');
+    assert.equal(merged.currency, null);
   }
 });
 

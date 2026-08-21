@@ -28590,6 +28590,51 @@ function buildRecoGroundingQueriesFromPlanItem(item, { lang = 'EN' } = {}) {
   return normalizeRecoPlanQueryTerms(queries, 4);
 }
 
+// Every key a reco reader consults when it wants a price. `mergeRecoPlanWithGroundedCandidate` re-points
+// a row at a DIFFERENT product than the LLM named, so each of these has to be re-sourced from the
+// grounded candidate instead of surviving the `...plan` spread. Readers this list has to cover:
+//   - readRecoCandidatePriceForCeiling (src/auroraBff/recoPriceCeiling.js): price, price_amount,
+//     priceAmount, currency, price_currency, priceCurrency
+//   - the agent bridge (src/agentSignals/recommendProducts.js:375): item.price, item.currency
+//   - extractCatalogCandidatePrice (this file): the whole alias family below, reached whenever a
+//     MERGED row is read back. The two call sites that do this are isConcernFrameworkCandidateOverBudget
+//     (routes.js ~26860, the framework budget gate) and buildRecoAssistantRewritePrompt (~60776, which
+//     turns the price into user-facing prose). NOT the recall pool cache -- it stores recall candidates
+//     and its write happens BEFORE these rows are merged -- and NOT the ceiling top-up, which reads via
+//     readRecoCandidatePriceForCeiling instead. Check those two sites when auditing this list.
+//
+// `price` and `currency` are in the list even though the merge also assigns both explicitly after the
+// spread: stripping them makes the result independent of where those two assignments sit, so moving
+// them above the spread can never quietly restore the LLM's price.
+const RECO_PLAN_PRICE_CARRYING_KEYS = Object.freeze([
+  'price', 'price_amount', 'priceAmount', 'price_value', 'priceValue',
+  'offer_price', 'offerPrice', 'sale_price', 'salePrice', 'list_price', 'listPrice',
+  'min_price', 'minPrice', 'max_price', 'maxPrice',
+  'pricing', 'price_info', 'priceInfo', 'offer', 'offers',
+  'price_usd', 'priceUsd', 'usd', 'price_cny', 'priceCny', 'cny',
+  'currency', 'currency_code', 'currencyCode', 'price_currency', 'priceCurrency',
+]);
+
+// extractCatalogCandidatePrice also reaches NESTED carriers -- `subject.price`, `subject.offers`,
+// `product.price`, `product.offers`, `sku.price`, `sku.offers`. `sku` needs no handling here because
+// the merge re-sources it wholesale from the candidate, but `subject` and `product` ride through on
+// the plan item, so an unpriced candidate would let the LLM's number come back on re-normalization --
+// the exact failure the top-level strip exists to prevent. Strip the price keys OUT of those objects
+// rather than dropping the objects, which also carry product_group_id, category and sku identity.
+const RECO_PLAN_NESTED_PRICE_CARRIERS = Object.freeze(['subject', 'product']);
+
+function stripRecoPlanPriceCarryingFields(plan) {
+  const next = { ...plan };
+  for (const key of RECO_PLAN_PRICE_CARRYING_KEYS) delete next[key];
+  for (const carrier of RECO_PLAN_NESTED_PRICE_CARRIERS) {
+    if (!isPlainObject(next[carrier])) continue;
+    const nested = { ...next[carrier] };
+    for (const key of RECO_PLAN_PRICE_CARRYING_KEYS) delete nested[key];
+    next[carrier] = nested;
+  }
+  return next;
+}
+
 function mergeRecoPlanWithGroundedCandidate(planItem, product) {
   const plan = normalizeRecoPlanRecommendation(planItem);
   const normalizedProduct = normalizeRecoCatalogProduct(product);
@@ -28610,8 +28655,17 @@ function mergeRecoPlanWithGroundedCandidate(planItem, product) {
     ],
     4,
   );
+  // PRICE FOLLOWS IDENTITY. The identity fields below all come from the grounded candidate, so the
+  // price has to come from the SAME candidate -- otherwise a row carries product A's name and product
+  // B's price and a buyer is quoted a number no merchant will honour. When the candidate carries no
+  // price the row carries none either: a missing price is honest, a mismatched one is not.
+  // normalizeRecoCatalogProduct only sets `price` when extractCatalogCandidatePrice produced a
+  // POSITIVE finite amount, so presence is the whole test here -- a test pins that so this stays true.
+  const groundedPrice = isPlainObject(normalizedProduct.price) ? normalizedProduct.price : null;
   return {
-    ...plan,
+    ...stripRecoPlanPriceCarryingFields(plan),
+    price: groundedPrice,
+    currency: groundedPrice && groundedPrice.currency ? groundedPrice.currency : null,
     grounding_status: 'grounded',
     product_id: pickFirstTrimmed(normalizedProduct.product_id, normalizedProduct.productId, plan.product_id),
     merchant_id: pickFirstTrimmed(normalizedProduct.merchant_id, normalizedProduct.merchantId, plan.merchant_id),
@@ -104493,6 +104547,7 @@ const __internal = {
   recoCatalogFailFastState,
   buildRecoGenerateFromCatalog,
   groundRecoRecommendationsFromCatalog,
+  mergeRecoPlanWithGroundedCandidate,
   buildRecoCollectedFromCachedPool,
   extractRecoRecallPoolForCache,
   getRecoRecallPoolCache,
