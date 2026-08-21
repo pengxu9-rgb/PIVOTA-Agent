@@ -27125,6 +27125,71 @@ function isConcernFrameworkCandidateOverBudget(candidate = null, targetContext =
   return classifyConcernFrameworkCandidateAgainstBudget(candidate, targetContext).status === 'over';
 }
 
+// Stable conforming-first partition, brought to the PROSE budget path.
+//
+// applyRecoPriceCeilingPreference (src/auroraBff/recoPriceCeiling.js) already makes exactly this
+// partition -- "Stable conforming-first partition: conforming > unknown > over", nothing ever
+// removed, relevance order preserved WITHIN each bucket -- and recommendProducts.js states the
+// doctrine in prose: a slot never goes to an item known to breach the ceiling while one that honours
+// it is waiting. That module runs from recommendationSharedStack.js only when a STRUCTURED
+// priceCeiling exists. This lane's ceiling is parsed out of the request text ("one serum under $40")
+// and never becomes one, so until now NOTHING ordered these rows against the budget at all: a pool of
+// [GBP 88, EUR 60, AUD 54, USD 12, USD 19] spent all three cards on the three rows whose currency
+// could not be compared, while a conforming $12 and $19 sat unused. The buyer asked for under $40 and
+// got three cards, none of which could be checked against it. That is not a #2070 regression -- the
+// order was identical before it; #2070 only made it visible by disclosing what could not be checked.
+//
+// THREE buckets, the same three: conforming > unknown > over. 'no_price' and 'unverifiable_currency'
+// share the middle for the reason recoPriceCeiling gives for merging them into 'unknown' -- neither is
+// a KNOWN breach, so neither may be ranked below the other on evidence this lane does not hold --
+// while 'over' is a certain violation nothing downstream can rescue.
+//
+// The third bucket is NOT decoration on top of the fix, and it is not free of behaviour. 'over' is
+// this lane's only hard drop, so it never occupies a card either way; but addRoutineSupportCandidates
+// reads a support role's bucket with `find`, takes the FIRST unused row, and adds at most ONE row per
+// role. An 'over' row at the head of that bucket therefore consumes the role's only pick, fails the
+// drop, and the role surfaces NOTHING -- while an admissible row sat behind it. Verified against this
+// file before the change: a support bucket of [USD 99, GBP 70] under a $40 budget selected the primary
+// alone. Ranking a certain violation ahead of a checkable unknown was never defensible, and here it
+// silently cost a card. Nothing is dropped that was not already dropped; a row is un-starved.
+//
+// The partition is the OUTER key, so it also reorders across a same-role spread
+// (buildConcernFrameworkFinishFitSpreadPrimaryBucket) -- deliberately: that spread decides which
+// tradeoffs to contrast, and contrasting two rows that cannot be checked against a stated budget over
+// one that can is the same defect in a narrower lane. Its ordering survives within each bucket.
+//
+// TWO BOUNDED CONSEQUENCES, both measured and both pinned in the suite rather than left to be found:
+//   - Being the outer key means it also overrides the spread's DEFERRALS. That spread pushes tinted
+//     rows and lower-coverage moisturizer-SPF hybrids to the very end when dedicated sunscreens could
+//     fill the cards; a CONFORMING hybrid now jumps them and can take the lead card, so "which daily
+//     sunscreen, under $40" can be answered by an SPF-30 moisturizer. It only happens when no
+//     DEDICATED conforming row exists, and the alternative is leading with a price we cannot check
+//     against the budget the buyer just stated -- but it is a judgement, not a derivation.
+//   - usedProductIds is keyed by product_id while the pool dedup key is product+retrieval_role, so one
+//     product recalled for TWO roles can have its primary slot taken by this reorder and leave the
+//     support role with nothing, costing a card. Measured over 4,000 randomised pools with an
+//     artificially high id-collision rate: 8 card losses against 138 card gains, and in every loss the
+//     surviving card was the only conforming one. Avoiding it needs cross-role lookahead, which is a
+//     scheduling change and not a reordering one.
+//
+// With no budget the input array is returned BY REFERENCE, not re-partitioned into an equal copy.
+// Every row would classify 'no_budget' into one bucket and the order would match anyway; the early
+// return is here because classifyConcernFrameworkCandidateAgainstBudget re-parses the request text
+// per row, and this runs once per role bucket per fill pass on every framework request, budget or not.
+function applyConcernFrameworkBudgetConformingFirst(items, targetContext = null) {
+  if (!resolveConcernFrameworkBudgetCeiling(targetContext)) return items;
+  const conforming = [];
+  const unknown = [];
+  const over = [];
+  for (const item of items) {
+    const { status } = classifyConcernFrameworkCandidateAgainstBudget(item, targetContext);
+    if (status === 'conforming') conforming.push(item);
+    else if (status === 'over') over.push(item);
+    else unknown.push(item);
+  }
+  return [...conforming, ...unknown, ...over];
+}
+
 // The marker a currency-unverifiable row carries from selection to the card and the prompt.
 //
 // Selection holds no language, so this stays STRUCTURED ONLY. The user-facing sentence is formatted
@@ -27726,7 +27791,10 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
       const roleId = String(role?.role_id || '').trim();
       if (roleId && roleId === primaryRoleId) continue;
       if (roleId && selected.some((item) => String(item?.matched_role_id || '').trim() === roleId)) continue;
-      const bucket = roleBuckets.get(String(role?.role_id || '').trim()) || [];
+      const bucket = applyConcernFrameworkBudgetConformingFirst(
+        roleBuckets.get(String(role?.role_id || '').trim()) || [],
+        targetContext,
+      );
       const picked = bucket.find((item) => {
         const productId = pickFirstString(item.product_id, item.productId, item.id);
         if (!productId || usedProductIds.has(productId)) return false;
@@ -27753,9 +27821,12 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
   };
 
   const primaryBucket = primaryRoleId ? (roleBuckets.get(primaryRoleId) || []) : [];
-  const primarySelectionBucket = finishFitSameRoleComparison
-    ? buildConcernFrameworkFinishFitSpreadPrimaryBucket(primaryBucket, targetContext)
-    : primaryBucket;
+  const primarySelectionBucket = applyConcernFrameworkBudgetConformingFirst(
+    finishFitSameRoleComparison
+      ? buildConcernFrameworkFinishFitSpreadPrimaryBucket(primaryBucket, targetContext)
+      : primaryBucket,
+    targetContext,
+  );
   const roleCoverageFirst = shouldUseConcernFrameworkRoleCoverageFirst(targetContext, orderedRoles);
   const primaryPreSupportLimit = roleCoverageFirst ? 1 : 3;
   for (const item of primarySelectionBucket) {
@@ -105075,6 +105146,7 @@ const __internal = {
   resolveConcernFrameworkBudgetCeiling,
   classifyConcernFrameworkCandidateAgainstBudget,
   isConcernFrameworkCandidateOverBudget,
+  applyConcernFrameworkBudgetConformingFirst,
   buildConcernFrameworkBudgetCheckMarker,
   formatConcernFrameworkBudgetCheckNote,
   pickConcernFrameworkBudgetCheckMarker,

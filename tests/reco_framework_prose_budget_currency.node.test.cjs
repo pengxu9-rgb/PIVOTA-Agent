@@ -600,3 +600,381 @@ test('the disclosure reaches the prompt in CN too', () => {
   assert.match(prompt, /"budget_check_status":"unverifiable_currency"/);
   assert.match(prompt, /该商品以 GBP 计价，无法与你的 \$40 预算直接比较。/);
 });
+
+// --- ordering: a conforming row is admitted before one that could not be checked -----------------
+//
+// #2070 made the unverifiable verdict VISIBLE. It did not change who gets the three slots, and this
+// is what that left standing: selection admits in framework-score order, so with a pool of
+// [GBP 88, EUR 60, AUD 54, USD 12, USD 19] -- one framework score, broken by display name -- all
+// three cards went to the three rows whose currency cannot be compared to the budget, while a
+// conforming $12 and $19 sat unused. The buyer asked for one serum under $40 and got three cards,
+// none of which could be checked against it. main orders identically today; this is not a #2070
+// regression, it is a defect #2070 disclosed.
+//
+// The fix is the partition this repo already makes for a STRUCTURED ceiling and cites in #2070's own
+// comments -- applyRecoPriceCeilingPreference, "Stable conforming-first partition: conforming >
+// unknown > over", and recommendProducts.js's "a slot never goes to an item known to breach the
+// ceiling while one that honours it is waiting". The prose path never reaches that stack, because it
+// holds no structured priceCeiling to reach it with.
+
+test('the repro: three cards no longer go to three uncheckable rows while conforming ones wait', () => {
+  const state = __internal.finalizeConcernFrameworkCandidatePools(
+    [
+      candidate('gbp_88', 88, 'GBP'),
+      candidate('eur_60', 60, 'EUR'),
+      candidate('aud_54', 54, 'AUD'),
+      candidate('usd_12', 12, 'USD'),
+      candidate('usd_19', 19, 'USD'),
+    ],
+    { targetContext: targetContext() },
+  );
+  // Both conforming rows lead, in the relevance order they already had between themselves, and the
+  // best uncheckable row still takes the remaining slot -- nothing is suppressed.
+  assert.deepEqual(selectedIds(state), ['usd_12', 'usd_19', 'aud_54']);
+  // Before this change the same pool selected exactly the three uncheckable rows.
+  assert.equal(markerFor(state, 'aud_54')?.status, 'unverifiable_currency');
+  assert.equal(markerFor(state, 'usd_12'), null);
+  assert.equal(markerFor(state, 'usd_19'), null);
+});
+
+test('an uncheckable row still WINS a slot no conforming row is waiting for', () => {
+  // The partition is a preference, not a filter. With one conforming row in the pool the other two
+  // slots still go to the uncheckable ones, marked -- suppressing them would re-create the defect
+  // #2070 refused from the other side (a 4500 JPY item, about 30 USD, dropped as "over $40").
+  const state = __internal.finalizeConcernFrameworkCandidatePools(
+    [candidate('aud_54', 54, 'AUD'), candidate('eur_60', 60, 'EUR'), candidate('usd_19', 19, 'USD')],
+    { targetContext: targetContext() },
+  );
+  assert.deepEqual(selectedIds(state), ['usd_19', 'aud_54', 'eur_60']);
+});
+
+test('GUARD: the partition rescues no over-budget row -- "over" is still the only hard drop', () => {
+  // A conforming-first order must not be read as "everything else is now admissible in rank order".
+  // The point is that two over-budget rows are absent from a set with two free slots. No mutant of
+  // the partition can move this -- the drop lives in addSelectedCandidate -- so it is pinned instead
+  // by deleting that drop, which is how this guard was shown to be capable of failing at all.
+  const state = __internal.finalizeConcernFrameworkCandidatePools(
+    [candidate('usd_45', 45, 'USD'), candidate('usd_41', 41, 'USD'), candidate('usd_12', 12, 'USD')],
+    { targetContext: targetContext() },
+  );
+  assert.deepEqual(selectedIds(state), ['usd_12']);
+});
+
+test('GUARD: with no budget the selection order is byte-identical to the unpartitioned one', () => {
+  const ctx = targetContext({
+    request_text: 'I have acne-prone oily skin. What serum should I get?',
+    semantic_plan: { routine_mode: 'single_product', comparison_mode: 'single_product', must_satisfy_constraints: [] },
+  });
+  const state = __internal.finalizeConcernFrameworkCandidatePools(
+    [
+      candidate('gbp_88', 88, 'GBP'),
+      candidate('eur_60', 60, 'EUR'),
+      candidate('aud_54', 54, 'AUD'),
+      candidate('usd_12', 12, 'USD'),
+      candidate('usd_19', 19, 'USD'),
+    ],
+    { targetContext: ctx },
+  );
+  // The display-name tiebreak, untouched. This is the order the SAME pool produced with a budget
+  // before this change. Labelled GUARD deliberately: no single mutant of the partition can move it,
+  // because with no ceiling every row classifies 'no_budget' into ONE bucket and a stable partition
+  // of one bucket is the identity. It takes deleting the early return AND destabilising that bucket
+  // together to break it -- which is exactly the pair applied to prove it is not a vacuous assertion.
+  assert.deepEqual(selectedIds(state), ['aud_54', 'eur_60', 'gbp_88']);
+});
+
+test('a SUPPORT role gives its one slot to a conforming row, not to the uncheckable one ahead of it', () => {
+  // Support roles are filled by a different reader: addRoutineSupportCandidates takes the FIRST
+  // unused row of each role's bucket and adds at most one per role, so a bucket led by an uncheckable
+  // row spends that role's only slot on it. "gbp_..." sorts ahead of "usd_..." on the display-name
+  // tiebreak, which is what put it first.
+  const ctx = targetContext({
+    framework_roles: [ROLE_PRIMARY, ROLE_SUPPORT],
+    semantic_plan: {
+      routine_mode: 'routine_mix',
+      comparison_mode: 'routine_mix',
+      must_satisfy_constraints: ['one serum under $40'],
+    },
+  });
+  const state = __internal.finalizeConcernFrameworkCandidatePools(
+    [
+      candidate('usd_12', 12, 'USD'),
+      supportCandidate('gbp_support_70', 70, 'GBP'),
+      supportCandidate('usd_support_18', 18, 'USD'),
+    ],
+    { targetContext: ctx },
+  );
+  const ids = selectedIds(state);
+  assert.ok(ids.includes('usd_support_18'), `expected the conforming support row, got ${ids.join(',')}`);
+  assert.ok(!ids.includes('gbp_support_70'), `expected the uncheckable support row unused, got ${ids.join(',')}`);
+});
+
+// --- the partition itself -------------------------------------------------------------------------
+
+test('the partition is stable, removes nothing, and puts conforming first', () => {
+  const ctx = targetContext();
+  const pool = [
+    candidate('gbp_88', 88, 'GBP'),
+    candidate('usd_19', 19, 'USD'),
+    candidate('usd_45', 45, 'USD'),
+    candidate('eur_60', 60, 'EUR'),
+    candidate('usd_12', 12, 'USD'),
+    candidate('unpriced', null, null),
+    // A SECOND over-budget row, so "stable" is asserted for all three buckets and not just the two
+    // that happened to hold more than one element. Without it `over.unshift` survives, and a title
+    // saying "stable" would be promising more than the pool can show.
+    candidate('usd_50', 50, 'USD'),
+  ];
+  const ordered = __internal.applyConcernFrameworkBudgetConformingFirst(pool, ctx);
+  assert.deepEqual(
+    ordered.map((row) => row.product_id),
+    // conforming > unknown > over, each in input order. Same three buckets, same order, as
+    // applyRecoPriceCeilingPreference: an unpriced or uncheckable row is not a KNOWN breach, an
+    // over-budget one is.
+    ['usd_19', 'usd_12', 'gbp_88', 'eur_60', 'unpriced', 'usd_45', 'usd_50'],
+  );
+  // NOTHING is removed -- not the over-budget row this lane drops later, not the unpriced one.
+  assert.equal(ordered.length, pool.length);
+});
+
+test('an unpriced row and an uncheckable one share the middle bucket, and "over" goes last', () => {
+  // 'no_price' shares the middle bucket with 'unverifiable_currency' for the reason recoPriceCeiling
+  // gives for merging them into 'unknown': neither is a KNOWN breach, so neither may be ranked below
+  // the other on evidence this lane does not hold. 'over' is a certain violation and goes behind both.
+  const ctx = targetContext();
+  const pool = [
+    candidate('usd_45', 45, 'USD'),
+    candidate('gbp_88', 88, 'GBP'),
+    candidate('unpriced', null, null),
+  ];
+  assert.deepEqual(
+    __internal.applyConcernFrameworkBudgetConformingFirst(pool, ctx).map((row) => row.product_id),
+    ['gbp_88', 'unpriced', 'usd_45'],
+  );
+});
+
+test('an over-budget row at the head of a SUPPORT bucket no longer costs that role its card', () => {
+  // addRoutineSupportCandidates reads a support role's bucket with `find` and adds at most ONE row per
+  // role. An 'over' row at the head consumed that single pick, failed the hard drop, and the role
+  // surfaced nothing -- while an admissible row sat behind it. This is the third bucket earning its
+  // place: 'over' never occupies a card either way, but it must not occupy the ATTEMPT.
+  const ctx = targetContext({
+    framework_roles: [ROLE_PRIMARY, ROLE_SUPPORT],
+    semantic_plan: {
+      routine_mode: 'routine_mix',
+      comparison_mode: 'routine_mix',
+      must_satisfy_constraints: ['one serum under $40'],
+    },
+  });
+  const state = __internal.finalizeConcernFrameworkCandidatePools(
+    [
+      candidate('usd_12', 12, 'USD'),
+      // "a_..." sorts ahead of "g_..." on the display-name tiebreak, so the over-budget row led.
+      supportCandidate('a_usd_support_99', 99, 'USD'),
+      supportCandidate('g_gbp_support_70', 70, 'GBP'),
+    ],
+    { targetContext: ctx },
+  );
+  const ids = selectedIds(state);
+  assert.deepEqual(ids, ['usd_12', 'g_gbp_support_70']);
+  // Still dropped, not reordered into a card.
+  assert.ok(!ids.includes('a_usd_support_99'));
+  // And it is admitted MARKED, because it is the row whose currency could not be checked.
+  assert.equal(markerFor(state, 'g_gbp_support_70')?.status, 'unverifiable_currency');
+});
+
+test('with no ceiling the partition returns the input array itself, unread', () => {
+  // Not "an equal copy": classifyConcernFrameworkCandidateAgainstBudget re-parses the request text
+  // per row, and this runs once per role bucket per fill pass on every framework request. The early
+  // return is what keeps a request with no budget from paying for a partition that cannot reorder it.
+  const ctx = targetContext({
+    request_text: 'I have acne-prone oily skin. What serum should I get?',
+    semantic_plan: { routine_mode: 'single_product', comparison_mode: 'single_product', must_satisfy_constraints: [] },
+  });
+  const pool = [candidate('gbp_88', 88, 'GBP'), candidate('usd_12', 12, 'USD')];
+  assert.equal(__internal.applyConcernFrameworkBudgetConformingFirst(pool, ctx), pool);
+});
+
+test('the partition follows a STRUCTURED ceiling too, in the ceiling\'s own currency', () => {
+  // The mirror of the suite\'s symmetry test above: against a GBP budget it is the USD rows that
+  // cannot be checked, so the same code must move them behind the GBP ones rather than behind
+  // anything hardcoded as foreign.
+  const ctx = targetContext({
+    request_text: 'I have acne-prone oily skin. What serum should I get?',
+    budget_ceiling: { amount: 40, currency: 'GBP', exclusive_upper_bound: true },
+    semantic_plan: { routine_mode: 'single_product', comparison_mode: 'single_product', must_satisfy_constraints: [] },
+  });
+  const pool = [candidate('usd_12', 12, 'USD'), candidate('gbp_9', 9, 'GBP')];
+  assert.deepEqual(
+    __internal.applyConcernFrameworkBudgetConformingFirst(pool, ctx).map((row) => row.product_id),
+    ['gbp_9', 'usd_12'],
+  );
+});
+
+// --- the same-role finish-fit spread ---------------------------------------------------------------
+
+const ROLE_FINISH_FIT = {
+  role_id: 'daily_sunscreen_finish_fit',
+  rank: 1,
+  preferred_step: 'sunscreen',
+  alternate_steps: ['sunscreen'],
+  label: 'Daily sunscreen finish fit',
+  query_terms: ['daily sunscreen spf 50 lightweight'],
+  fit_keywords: ['sunscreen', 'spf', 'uv', 'sun protection', 'finish'],
+};
+
+const FINISH_FIT_REQUEST = 'Which daily sunscreen should I get? I want one under $40.';
+
+function finishFitContext() {
+  return {
+    framework_id: 'recofw_finish_fit_budget',
+    primary_role_id: ROLE_FINISH_FIT.role_id,
+    request_text: FINISH_FIT_REQUEST,
+    comparison_mode: 'same_role_comparison',
+    semantic_plan: {
+      routine_mode: 'same_role_comparison',
+      comparison_mode: 'same_role_comparison',
+      must_satisfy_constraints: ['one sunscreen under $40'],
+    },
+    framework_roles: [ROLE_FINISH_FIT],
+  };
+}
+
+// Distinct finish tradeoff buckets (mineral / matte / invisible / richer), which is what
+// buildConcernFrameworkFinishFitSpreadPrimaryBucket reorders the bucket to contrast. Brand is a
+// parameter because the spread also diversifies by brand, and three same-brand rows at the head of
+// the bucket are what make the spread's contribution visible in the top three.
+const MATTE_FINISH = 'A matte oil-control sunscreen for oily skin.';
+const MINERAL_FINISH = 'A mineral zinc sunscreen for sensitive skin.';
+const RICH_FINISH = 'A richer moisturizing sunscreen cream.';
+const INVISIBLE_FINISH = 'A light invisible sunscreen fluid.';
+
+function sunscreenCandidate(productId, priceAmount, currency, brand, name, shortDescription) {
+  return {
+    product_id: productId,
+    merchant_id: `merchant_${productId}`,
+    brand,
+    name,
+    display_name: `${productId} ${name}`,
+    category: 'sunscreen',
+    product_type: 'sunscreen',
+    retrieval_source: 'catalog',
+    retrieval_query: 'daily sunscreen spf 50 lightweight',
+    retrieval_step: 'sunscreen',
+    retrieval_role_id: ROLE_FINISH_FIT.role_id,
+    benefit_tags: ['spf 50', 'uv protection'],
+    short_description: shortDescription,
+    price_amount: priceAmount,
+    currency,
+  };
+}
+
+test('the conforming-first partition is the OUTER key over the finish-fit spread, and the spread survives inside it', () => {
+  // A same-role comparison rebuilds the primary bucket to contrast finishes
+  // (buildConcernFrameworkFinishFitSpreadPrimaryBucket). Contrasting rows that cannot be checked
+  // against a stated budget over rows that can is the same defect in a narrower lane, so the
+  // partition wraps that spread's OUTPUT rather than its input.
+  //
+  // The pool is built to separate THREE readings, because two of them look identical on an
+  // undifferentiated pool: three near-identical Acme mattes lead the bucket, a mineral and a rich
+  // sunscreen sit behind them, and one uncheckable GBP row sits last.
+  //   spread deleted      -> [a1, a2, a3]  three near-identical mattes, no contrast at all
+  //   partition on INPUT  -> [a1, b1, z1]  the spread pulls the GBP 88 row back into a CARD, ahead
+  //                                        of a conforming $19 -- the very defect being fixed
+  //   partition on OUTPUT -> [b1, a1, c1]  three contrasting finishes, all three checkable
+  const state = __internal.finalizeConcernFrameworkCandidatePools(
+    [
+      sunscreenCandidate('a1', 12, 'USD', 'Acme', 'Matte Sunscreen SPF 50', MATTE_FINISH),
+      sunscreenCandidate('a2', 14, 'USD', 'Acme', 'Matte Sunscreen SPF 50 Plus', MATTE_FINISH),
+      sunscreenCandidate('a3', 16, 'USD', 'Acme', 'Matte Sunscreen SPF 50 Max', MATTE_FINISH),
+      sunscreenCandidate('b1', 18, 'USD', 'Borea', 'Mineral Sunscreen SPF 50', MINERAL_FINISH),
+      sunscreenCandidate('c1', 19, 'USD', 'Cirrus', 'Rich Sunscreen SPF 50', RICH_FINISH),
+      sunscreenCandidate('z1', 88, 'GBP', 'Zephyr', 'Invisible Sunscreen SPF 50', INVISIBLE_FINISH),
+    ],
+    { targetContext: finishFitContext() },
+  );
+  assert.deepEqual(selectedIds(state), ['b1', 'a1', 'c1']);
+  // The uncheckable row is BEHIND every conforming one and never reaches a card here -- but it is
+  // not suppressed: with fewer conforming rows it still wins a slot, marked (see the tests above).
+  assert.equal(markerFor(state, 'b1'), null);
+  assert.equal(markerFor(state, 'a1'), null);
+  assert.equal(markerFor(state, 'c1'), null);
+});
+
+// --- two bounded consequences of the reorder, MEASURED and pinned rather than left to be found ---
+//
+// Both were found by adversarial review of this change, not by the sweep that wrote it. Neither is a
+// drop -- 'over' is still the only hard drop -- but both are places where the reorder changes what the
+// buyer sees, and an unpinned behaviour change is one nobody can notice regressing later.
+
+test('KNOWN TRADE-OFF: one product recalled for two roles can cost the support role its card', () => {
+  // usedProductIds is keyed by product_id while the pool dedup key is product+retrieval_role, so one
+  // product recalled for two roles survives as two rows in two buckets. When the partition moves the
+  // PRIMARY slot onto that shared product -- because it is the conforming one -- the support role's
+  // only admissible row is already used and that role surfaces nothing. Before the change the primary
+  // slot went to the uncheckable row instead, leaving the shared product free for the support role,
+  // so this pool returned TWO cards and now returns one.
+  //
+  // NOT fixed here: avoiding it needs cross-role lookahead ("do not spend a product on the primary
+  // role when it is the only option for a support role"), which is a scheduling change well outside a
+  // reordering fix. Measured over 4,000 randomised pools with an artificially high id-collision rate:
+  // 8 card losses against 138 card gains. Net strongly positive, and in every loss the surviving card
+  // was the only CONFORMING one -- but it is a real count regression and it is pinned here so that
+  // whoever changes this next sees it deliberately rather than discovering it in production.
+  const ctx = targetContext({
+    framework_roles: [ROLE_PRIMARY, ROLE_SUPPORT],
+    // The beauty-chat hard path sets this unconditionally, so the precondition is the norm on the
+    // live lane; the id collision is what makes the case rare.
+    mainline_fallback_policy: 'strict_no_runtime_fallback',
+    semantic_plan: {
+      routine_mode: 'routine_mix',
+      comparison_mode: 'routine_mix',
+      must_satisfy_constraints: ['one serum under $40'],
+    },
+  });
+  const shared = supportCandidate('shared_x', 12, 'USD');
+  const state = __internal.finalizeConcernFrameworkCandidatePools(
+    [candidate('a_gbp_88', 88, 'GBP'), candidate('shared_x', 12, 'USD'), shared],
+    { targetContext: ctx },
+  );
+  assert.deepEqual(selectedIds(state), ['shared_x']);
+  // The card that IS returned is the conforming one. The buyer loses a second role, not the budget.
+  assert.equal(markerFor(state, 'shared_x'), null);
+});
+
+test('KNOWN TRADE-OFF: a conforming SPF hybrid leads when no dedicated sunscreen can be checked', () => {
+  // buildConcernFrameworkFinishFitSpreadPrimaryBucket deliberately defers lower-coverage
+  // moisturizer-SPF hybrids to the END of the bucket when dedicated sunscreens could fill the cards.
+  // The partition is the OUTER key, so a CONFORMING hybrid jumps all of them and takes the lead card:
+  // "which daily sunscreen" is answered by an SPF-30 daily moisturizer.
+  //
+  // Bounded: it only happens when no DEDICATED conforming row exists -- the spread's order survives
+  // inside the conforming bucket. It is also the honest reading of the request: the hybrid is the only
+  // product that provably honours "under $40", and the deferred alternatives cannot be checked against
+  // it at all. Pinned because it is a judgement, not a derivation, and the next person to touch the
+  // ordering should have to change a test to change it.
+  const pool = [
+    sunscreenCandidate('a_gbp_88', 88, 'GBP', 'Acme', 'Mineral Sunscreen SPF 50', MINERAL_FINISH),
+    sunscreenCandidate('b_eur_60', 60, 'EUR', 'Borea', 'Matte Sunscreen SPF 50', MATTE_FINISH),
+    sunscreenCandidate('c_aud_54', 54, 'AUD', 'Cirrus', 'Invisible Sunscreen SPF 50', INVISIBLE_FINISH),
+    sunscreenCandidate('e_usd_16_hybrid', 16, 'USD', 'Ember', 'Daily Moisturizer SPF 30', 'A daily moisturizer with SPF 30 sun protection.'),
+  ];
+  const budgeted = __internal.finalizeConcernFrameworkCandidatePools(pool, {
+    targetContext: finishFitContext(),
+  });
+  assert.equal(budgeted.primary_recommendation_id, 'e_usd_16_hybrid');
+
+  // Without a budget the spread's deferral stands and a DEDICATED sunscreen leads, unchanged.
+  const unbudgeted = __internal.finalizeConcernFrameworkCandidatePools(pool, {
+    targetContext: {
+      ...finishFitContext(),
+      request_text: 'Which daily sunscreen should I get?',
+      semantic_plan: {
+        routine_mode: 'same_role_comparison',
+        comparison_mode: 'same_role_comparison',
+        must_satisfy_constraints: [],
+      },
+    },
+  });
+  assert.equal(unbudgeted.primary_recommendation_id, 'c_aud_54');
+});
