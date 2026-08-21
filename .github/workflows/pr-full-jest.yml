@@ -811,6 +811,22 @@ jobs:
       #      cross-currency comparisons), so a JPY amount under a field named `price_usd` stays null
       #      rather than reading to the model as dollars. That case is asserted in the prompt-
       #      contract suite above, whose `price_object` row previously pinned the defect as correct.
+      # ADDED 2026-08-21: `tests/reco_buyer_region_dimension`, a NEW file, green (24/24) and
+      # mutation-checked per hunk. ADR-024 Phase 1 (backend PR #1796) makes `buyer_region` an explicit
+      # request dimension on the consumer reco lane -- threaded onto ctx, added to the recall pool
+      # cache key, and reported as `region_source: explicit|defaulted` -- with zero behavior change
+      # for a request that sends none. Listed here because jest's testMatch is
+      # `**/tests/**/*.test.(js|ts)` and CANNOT see `.node.test.cjs`.
+      # What it guards, and why CI is the only thing that can: a missing region dimension produces NO
+      # error, NO log line and NO failed test -- it produces a shared 24h cache row that serves one
+      # region's pool to another. Measured on origin/main before the change:
+      # buildRecoRecallPoolCacheKey with region 'GB' returned the IDENTICAL hash to the US call
+      # (8db46b29...), because the parameter did not exist. Three of this file's assertions fail
+      # against reverted source for exactly that reason; the rest are pinned as GUARDs in the file.
+      # The ceiling rule is pinned in a comment AND a test because it is the piece most likely to be
+      # "fixed" wrongly later: the region-derived currency fills a HOLE and never overrides a declared
+      # one, so a GB buyer's "under $40" stays 40 USD (the `$` is a declaration -- same rule PR #2065
+      # restored on the read side) while "under 40" becomes 40 GBP.
       - name: Run node:test suites
         run: |
           node --test \
@@ -889,7 +905,8 @@ jobs:
             tests/reco_implement_scope.node.test.cjs \
             tests/reco_scrub_step_vocabulary.node.test.cjs \
             tests/aurora_legacy_reco_prompt_contract.node.test.cjs \
-            tests/reco_alternatives_candidate_price_contract.node.test.cjs
+            tests/reco_alternatives_candidate_price_contract.node.test.cjs \
+            tests/reco_buyer_region_dimension.node.test.cjs
 
   jest:
     runs-on: ubuntu-latest

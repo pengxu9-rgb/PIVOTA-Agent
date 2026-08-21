@@ -389,7 +389,11 @@ test('the pool cache version was bumped so shallow ceiling pools go cold', () =>
   // Mutant killed: raising the arm depth without the bump. An existing ceiling'd key would keep
   // serving its SHALLOW pool for the rest of its 24h window -- the exact pool this change exists to
   // make deeper.
-  assert.equal(RECO_RECALL_POOL_CACHE_VERSION, 'reco_recall_pool_cache_v4');
+  //
+  // Moved to v5 by ADR-024 Phase 1, which added the `region` key dimension. This assertion is still
+  // load-bearing for THIS suite's contract: the deeper constrained arm must never be reachable from a
+  // key written before it existed, and any future version string keeps that true only by moving.
+  assert.equal(RECO_RECALL_POOL_CACHE_VERSION, 'reco_recall_pool_cache_v5');
 });
 
 // ---------------------------------------------------------------------------

@@ -33,7 +33,14 @@ const RECO_RECALL_POOL_CACHE_TABLE = 'reco_recall_pool_cache';
 // v4: the ceiling-carrying arm now requests ~18 rows instead of 6, so an existing ceiling'd key would
 // otherwise keep serving its SHALLOW pool for the rest of its 24h window -- the exact pool whose
 // thinness this change exists to fix. Bumping orphans them at once; the sweep deletes them.
-const RECO_RECALL_POOL_CACHE_VERSION = 'reco_recall_pool_cache_v4';
+// v5: the key gained a `region` dimension (ADR-024 Phase 1). This table is a SHARED GLOBAL cache with
+// a 24h serve window, so without the dimension a GB request and a US request for the same need share
+// one row and whichever wrote it first serves the other -- a cross-region leak that produces no error,
+// no log line and no failed test. Every row already in the table was written by a region-blind writer
+// and so carries no honest region attribution; the bump orphans all of them at once rather than
+// letting them serve as if they were US. Region defaults to 'US' in the key, so a request that sends
+// no region hashes to the same dims it always did -- only the version string differs.
+const RECO_RECALL_POOL_CACHE_VERSION = 'reco_recall_pool_cache_v5';
 
 // Belt-and-braces lazy DDL, byte-identical to src/db/migrations/059_reco_recall_pool_cache.sql. The
 // migration is the primary mechanism; this only recovers a 42P01 on a deployment whose migrations have
@@ -114,6 +121,7 @@ function buildRecoRecallPoolCacheKey({
   plannerMode = '',
   externalSeedStrategy = '',
   priceCeiling = null,
+  region = '',
 } = {}) {
   const normalizedQueries = [];
   const seen = new Set();
@@ -137,6 +145,13 @@ function buildRecoRecallPoolCacheKey({
     // selection), so a constrained call and an unconstrained one must never share a row -- otherwise
     // one poisons the other for up to 24 hours, fleet-wide.
     ceil: formatRecoPriceCeilingCacheToken(priceCeiling),
+    // ADR-024 Phase 1. The pool a region produces is not the pool another region produces (the
+    // eligibility and pricing that feed recall are region-scoped), and this table is shared across
+    // every buyer on the fleet -- so a missing region dimension is a cross-region leak, not a cache
+    // inefficiency. Normalized through the SAME normalizeKeyToken as every other dimension, and
+    // DEFAULTED to 'us': an absent region must hash identically to today's implicit US, otherwise the
+    // "zero behavior change" claim would be false for every request that does not send one.
+    region: normalizeKeyToken(region) || 'us',
   };
   return crypto.createHash('sha256').update(JSON.stringify(dims)).digest('hex');
 }

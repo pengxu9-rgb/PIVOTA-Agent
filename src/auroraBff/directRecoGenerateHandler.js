@@ -105,6 +105,8 @@ function createDirectRecoGenerateHandlerRuntime(deps = {}) {
     normalizeRecoGroundingStatus,
     attachRecoContractMeta,
     restorePlanOnlyRecommendations,
+    resolveBuyerRegion,
+    isRejectedBuyerRegionInput,
     logger,
   } = deps;
 
@@ -168,6 +170,36 @@ function createDirectRecoGenerateHandlerRuntime(deps = {}) {
       if (!parsed.success) {
         return res.status(400).json(buildBadRequestEnvelope(ctx, parsed.error.format()));
       }
+      // ADR-024 Phase 1. Resolve the buyer's region ONCE, at the entry to the lane, and hang it on
+      // `ctx` -- the same object that already carries `lang` into recall, grounding and every cache
+      // key below, so region rides an existing wire instead of a new parameter on nine signatures.
+      //
+      // With no buyer_region in the body this yields exactly {US, defaulted}, which is what every one
+      // of those call sites already assumed, so today's traffic is unchanged end to end.
+      const resolvedBuyerRegion = resolveBuyerRegion(parsed.data.buyer_region);
+      ctx.buyer_region = resolvedBuyerRegion.region;
+      ctx.buyer_region_source = resolvedBuyerRegion.regionSource;
+      if (isRejectedBuyerRegionInput(parsed.data.buyer_region)) {
+        // The caller SENT a region and we could not read it. Not an error -- the request proceeds on
+        // the default -- but silence here is how a partner ships `"buyer_region": "usa"` and never
+        // learns that every one of its buyers was served US pricing.
+        logger?.warn(
+          {
+            request_id: ctx.request_id,
+            event: 'reco_buyer_region_rejected',
+            buyer_region_type: typeof parsed.data.buyer_region,
+            // The raw value is a 2-letter-ish country token, not buyer text; bounded anyway.
+            buyer_region_raw: String(parsed.data.buyer_region).slice(0, 16),
+            region: ctx.buyer_region,
+            region_source: ctx.buyer_region_source,
+          },
+          'aurora bff: reco_generate buyer_region unreadable, defaulting',
+        );
+      }
+      const buyerRegionMeta = {
+        buyer_region: ctx.buyer_region,
+        region_source: ctx.buyer_region_source,
+      };
       const debugHeaderRaw = req.get('X-Debug') ?? req.get('X-Aurora-Debug');
       const includeDebugFromHeader = debugHeaderRaw == null || debugHeaderRaw === '' ? null : coerceBoolean(debugHeaderRaw);
       const includeDebug = includeDebugFromHeader == null ? Boolean(parsed.data.include_debug) : includeDebugFromHeader;
@@ -513,6 +545,12 @@ function createDirectRecoGenerateHandlerRuntime(deps = {}) {
         const payloadMeta = isPlainObject(payload.recommendation_meta) ? payload.recommendation_meta : {};
         payload.recommendation_meta = {
           ...payloadMeta,
+          // ADR-024 Phase 1 telemetry. recommendation_meta is the lane's existing reporting surface --
+          // it already carries the signature versions, the target-step resolution and its SOURCE, and
+          // buildRecoRequestedEventData reads this same object to build the reco_requested event. So
+          // the region rides it too, rather than inventing a channel. `region_source` is the half that
+          // matters: it is what turns "we served US" into "we ASSUMED US, and nobody told us".
+          ...buyerRegionMeta,
           analysis_context_usage: recommendationAnalysisContextMeta,
           request_context_signature_version:
             pickFirstTrimmed(payloadMeta.request_context_signature_version, REQUEST_CONTEXT_SIGNATURE_VERSION)
@@ -675,6 +713,11 @@ function createDirectRecoGenerateHandlerRuntime(deps = {}) {
         const guardedMeta = isPlainObject(guardedRecoCard.payload.recommendation_meta) ? guardedRecoCard.payload.recommendation_meta : {};
         guardedRecoCard.payload.recommendation_meta = {
           ...guardedMeta,
+          // Same two fields on the guardrail'd copy. This block REBUILDS recommendation_meta from
+          // `guardedMeta` rather than extending the object stamped above, so omitting them here would
+          // make the region visible only on the AURORA_RECO_GENERATE_GUARDRAIL_V1=off path -- i.e.
+          // invisible in prod, which is the one place the measurement is for.
+          ...buyerRegionMeta,
           analysis_context_usage: recommendationAnalysisContextMeta,
           request_context_signature_version:
             pickFirstTrimmed(guardedMeta.request_context_signature_version, REQUEST_CONTEXT_SIGNATURE_VERSION)

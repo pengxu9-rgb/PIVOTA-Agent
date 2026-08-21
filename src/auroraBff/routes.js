@@ -393,6 +393,13 @@ const {
   shouldSendPriceCeilingOnQueryArm,
 } = require('./recoPriceCeiling');
 const {
+  DEFAULT_BUYER_REGION,
+  resolveBuyerRegion,
+  isRejectedBuyerRegionInput,
+  currencyForBuyerRegion,
+  buyerRegionFromContext,
+} = require('./buyerRegion');
+const {
   buildRecoRecallPoolCacheKey,
   isRecoRecallPoolCacheEnabled,
   shouldServeRecoRecallPoolCacheEntry,
@@ -26874,13 +26881,47 @@ function shouldAllowConcernFrameworkComparisonFill() {
   return false;
 }
 
+// ADR-024 Phase 1. The ceiling's currency, when the input does NOT declare one.
+//
+// THE RULE, pinned here and in tests/reco_buyer_region_dimension.node.test.cjs:
+//   A DECLARATION ALWAYS WINS. The region-derived currency fills a hole; it never overrides something
+//   the caller or the buyer actually said. That is the same rule PR #2065 restored on the read side,
+//   where discarding a row's declared currency and stamping USD read 1,172 offers as falsely
+//   conforming -- the defect this repo has now shipped in four separate layers.
+//
+// Concretely: a GB buyer who types "under $40" gets a ceiling of 40 USD, because the `$` is a
+// declaration and we do not get to reinterpret it as £40. A GB buyer who types "under 40" gets 40 GBP,
+// because nothing was declared and the request's resolved region is the only honest source. A region
+// we do not price for keeps USD -- today's value -- rather than acquiring a unit we cannot serve.
+//
+// KNOWN LIMITATION, deliberately not guessed at: `$` is ambiguous across the dollar family (AUD, CAD,
+// SGD, HKD all write it). Phase 1 reads a bare `$` as USD-as-written for every region rather than
+// inferring the buyer's local dollar from their region -- resolving it the other way would be an
+// inference layered on top of a declaration, which is the exact move that produced defects 1-4.
+function resolveConcernFrameworkBudgetCeilingRegionCurrency(targetContext = null) {
+  // NEVER inferred from language, from the candidate pool's currencies, or from the ceiling text: the
+  // request's resolved buyer_region is the only source (ADR-024 commitment 4). Absent -> US -> USD,
+  // which is byte-for-byte what this function returned before region existed.
+  const region = isPlainObject(targetContext) ? targetContext.buyer_region : '';
+  return currencyForBuyerRegion(region) || currencyForBuyerRegion(DEFAULT_BUYER_REGION);
+}
+
+// A budget written in prose DECLARES its unit when the matched text carries a currency marker -- the
+// `$` symbol, or a literal "usd" token, which are the only two the regexes below can match.
+function concernFrameworkBudgetProseDeclaresCurrency(matchedText) {
+  return /\$|usd/i.test(String(matchedText || ''));
+}
+
 function resolveConcernFrameworkBudgetCeiling(targetContext = null) {
+  const regionCurrency = resolveConcernFrameworkBudgetCeilingRegionCurrency(targetContext);
   const directBudget = isPlainObject(targetContext?.budget_ceiling) ? targetContext.budget_ceiling : null;
   const directAmount = Number(directBudget?.amount);
   if (Number.isFinite(directAmount) && directAmount > 0) {
+    // A DECLARED currency on the structured budget still wins outright -- normalizeCurrencyCode's
+    // first argument is tried before the fallback. Only an undeclared one now follows the region.
     return {
       amount: directAmount,
-      currency: normalizeCurrencyCode(directBudget.currency, 'USD') || 'USD',
+      currency: normalizeCurrencyCode(directBudget.currency, regionCurrency) || regionCurrency,
       exclusive: directBudget.exclusive_upper_bound === true,
     };
   }
@@ -26895,10 +26936,12 @@ function resolveConcernFrameworkBudgetCeiling(targetContext = null) {
     text.match(/\$\s*([0-9]+(?:\.[0-9]{1,2})?)\s*(?:or less|and under|max|maximum)?\b/i);
   const amount = match ? Number(match[1]) : null;
   if (!Number.isFinite(amount) || amount <= 0) return null;
+  const matchedText = String(match[0] || '');
   return {
     amount,
-    currency: 'USD',
-    exclusive: /\b(?:under|below|less than)\b/i.test(String(match[0] || '')),
+    // "under $40" and "under usd 40" declare USD; "under 40" declares nothing and follows the region.
+    currency: concernFrameworkBudgetProseDeclaresCurrency(matchedText) ? 'USD' : regionCurrency,
+    exclusive: /\b(?:under|below|less than)\b/i.test(matchedText),
   };
 }
 
@@ -28850,6 +28893,11 @@ async function groundRecoRecommendationsFromCatalog({
           lang: ctx && ctx.lang ? ctx.lang : 'EN',
           catalogSurface: 'beauty',
           plannerMode: 'step_aware',
+          // ADR-024 Phase 1. This is a SHARED GLOBAL table: without the region dimension a GB buyer's
+          // pool and a US buyer's pool collide on one row for 24h, and whichever landed first serves
+          // both -- a silent cross-region leak with no error anywhere. Defaulted to US, so a request
+          // with no region keys exactly as it does today.
+          region: buyerRegionFromContext(ctx),
         })
       : null;
     const itemCachedEntry = itemPoolCacheKey ? await groundingPoolCache.read(itemPoolCacheKey) : null;
@@ -29722,6 +29770,8 @@ async function buildRecoGenerateFromCatalog({
         plannerMode: recallPlan?.mode || 'generic',
         externalSeedStrategy: effectiveExternalSeedStrategy,
         priceCeiling: normalizedRecallPriceCeiling,
+        // ADR-024 Phase 1 -- see the grounding-lane key above. Same shared table, same leak.
+        region: buyerRegionFromContext(ctx),
       })
     : null;
   const poolCacheDims = {
@@ -45307,6 +45357,12 @@ function buildRecoRequestedEventData({
     ...(pickFirstTrimmed(meta.primary_target_id) ? { primary_target_id: pickFirstTrimmed(meta.primary_target_id) } : {}),
     ...(pickFirstTrimmed(upstreamFailureCode, meta.upstream_failure_code) ? { upstream_failure_code: pickFirstTrimmed(upstreamFailureCode, meta.upstream_failure_code) } : {}),
     ...(isPlainObject(llmTraceRef) ? { llm_trace_ref: llmTraceRef } : {}),
+    // ADR-024 Phase 1. Projected from recommendation_meta, which the consumer lane stamps -- so the
+    // region reaches the reco_requested event through the SAME surface every other dimension here
+    // uses, rather than a parallel channel. A lane that does not stamp it (chat, agent-signals) emits
+    // neither field, so its events are unchanged.
+    ...(pickFirstTrimmed(meta.buyer_region) ? { buyer_region: pickFirstTrimmed(meta.buyer_region) } : {}),
+    ...(pickFirstTrimmed(meta.region_source) ? { region_source: pickFirstTrimmed(meta.region_source) } : {}),
   };
   return data;
 }
@@ -83882,6 +83938,7 @@ const {
   resolveRecommendationTargetContext,
   runConcernSemanticPlanner,
   buildConcernTargetContextFromSemanticPlan,
+  buyerRegionFromContext,
   normalizeRecoEffectiveFailureClass,
   normalizeRecoFailureClass,
   normalizeRecoFailureOrigin,
@@ -90567,6 +90624,8 @@ function mountAuroraBffRoutes(app, { logger }) {
     normalizeRecoGroundingStatus,
     attachRecoContractMeta,
     restorePlanOnlyRecommendations,
+    resolveBuyerRegion,
+    isRejectedBuyerRegionInput,
     logger,
   });
 
@@ -104594,6 +104653,10 @@ const __internal = {
   isProductionLikeAuroraBffEnv,
   isTestLikeAuroraBffEnv,
   isAuroraBeautySharedTruthSelfBaseEnabled,
+  // ADR-024 Phase 1. Exported so the buyer-region suite can drive the ceiling resolver directly:
+  // its only production caller is isConcernFrameworkCandidateOverBudget, several hundred lines of
+  // candidate scoring away, and a currency defect there is invisible through that seam.
+  resolveConcernFrameworkBudgetCeiling,
   runV1ChatMainlineInProcess,
   hasMountedV1ChatMainlineHandler() {
     return typeof runMountedV1ChatHandlerImpl === 'function';
