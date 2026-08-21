@@ -713,6 +713,27 @@ jobs:
       # that was dead code and is now deleted, an unanchored pattern that would swallow "scrubber", a
       # suppression only observable when both signals fire, and a body assertion that was passing
       # incidentally via `perfume` in the fatal list).
+      # ADDED 2026-08-21: `tests/aurora_legacy_reco_prompt_contract`, confirmed green (10/10) and
+      # mutation-checked (10 mutants applied one per hunk, all 10 killed -- including "restore the
+      # original expression", so the suite is confirmed RED against the pre-fix code). The file
+      # already existed and ran in NO workflow, so all nine of its prompt-contract assertions were
+      # guarding nothing on a PR; this line lights those up too.
+      # What the new test guards: normalizeRecoPromptCandidates decided "is this a price?" with a
+      # bare `Number.isFinite(Number(x))`, and Number() maps null, '', '   ', false and [] all to 0
+      # -- a finite number -- so every one of those "no price" shapes serialized into the reco
+      # prompt as `"price_usd": 0`, which tells the LLM the product is FREE (`true` priced it at
+      # $1). Not hypothetical: the function is fed from two legs and only one normalizes price. The
+      # catalog leg goes through normalizeRecoCatalogProduct, which omits a falsy price outright,
+      # but the ingredient leg takes `session.meta.ingredient_context.product_candidates[]` off the
+      # REQUEST BODY -- normalizeIngredientRecoContextValue only drops non-objects and slices, and
+      # V1ChatRequestSchema types `session` as a permissive record -- so a caller-supplied price
+      # arrives untouched. Reproduced on unmodified main: the prompt string carried `"price_usd": 0`.
+      # The suite drives BOTH legs through the real prompt builder and asserts on the serialized
+      # prompt, not just the payload object, because the prompt string is what the LLM reads. Two
+      # rows deliberately keep a value: `{price_usd: 0, price: 62}` must report 0 (that is the `??`
+      # vs `||` distinction -- `||` skips the stated zero) and `{price_usd: null, price: 62}` must
+      # fall through to 62, so a guard that rejects too much fails here as loudly as one that
+      # rejects too little.
       - name: Run node:test suites
         run: |
           node --test \
@@ -788,7 +809,8 @@ jobs:
             tests/reco_strict_conforming_fill.node.test.cjs \
             tests/reco_gentleness_ranking.node.test.cjs \
             tests/reco_implement_scope.node.test.cjs \
-            tests/reco_scrub_step_vocabulary.node.test.cjs
+            tests/reco_scrub_step_vocabulary.node.test.cjs \
+            tests/aurora_legacy_reco_prompt_contract.node.test.cjs
 
   jest:
     runs-on: ubuntu-latest

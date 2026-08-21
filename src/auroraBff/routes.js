@@ -70408,6 +70408,32 @@ function normalizeRecoPromptContraindications(profile) {
   return uniqCaseInsensitiveStrings(out, 8);
 }
 
+// F4: an unknown price is null, never a fabricated zero.
+//
+// `Number.isFinite(Number(x))` alone does NOT say "x is a number": Number() maps null, '',
+// '   ', false and [] all to 0, and 0 IS finite. Any of those "no price" shapes therefore used
+// to serialize into the reco prompt as `"price_usd": 0`, which tells the LLM the product is
+// free. (`true` was worse still — it priced the product at $1.)
+//
+// These are real inputs, not hypotheticals. normalizeRecoPromptCandidates is fed from two
+// places, and only one of them normalizes price: the catalog leg goes through
+// normalizeRecoCatalogProduct, which omits a falsy price outright, but the ingredient leg takes
+// `ingredient_context.product_candidates[]` straight off the request body —
+// normalizeIngredientRecoContextValue only drops non-objects and slices, and
+// V1ChatRequestSchema types `session` as a permissive record — so whatever a caller sends for
+// `price` arrives here untouched.
+//
+// A missing price stays null, the same rule a broken offer row follows: store no price rather
+// than a fabricated zero.
+function toRecoPromptPriceOrNull(value) {
+  if (value == null) return null;
+  if (typeof value === 'boolean') return null;
+  if (Array.isArray(value)) return null;
+  if (typeof value === 'string' && !value.trim()) return null;
+  const num = Number(value);
+  return Number.isFinite(num) ? num : null;
+}
+
 function normalizeRecoPromptCandidates(candidates, region) {
   const out = [];
   const seen = new Set();
@@ -70430,11 +70456,8 @@ function normalizeRecoPromptCandidates(candidates, region) {
       name: name || null,
       display_name: pickFirstTrimmed(item.display_name, item.displayName, name) || null,
       category: pickFirstTrimmed(item.category) || 'other',
-      price_usd: Number.isFinite(Number(item.price_usd))
-        ? Number(item.price_usd)
-        : Number.isFinite(Number(item.price))
-          ? Number(item.price)
-          : null,
+      // An unknown price is null here, never 0 — see toRecoPromptPriceOrNull.
+      price_usd: toRecoPromptPriceOrNull(item.price_usd) ?? toRecoPromptPriceOrNull(item.price),
       keyActives: uniqCaseInsensitiveStrings(
         Array.isArray(item.keyActives) ? item.keyActives : Array.isArray(item.key_actives) ? item.key_actives : [],
         10,

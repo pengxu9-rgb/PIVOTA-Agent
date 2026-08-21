@@ -354,3 +354,131 @@ test('legacy reco main query includes task_mode and candidate constraint payload
     delete require.cache[moduleId];
   }
 });
+
+// A candidate with no price must reach the reco LLM as `price_usd: null`, never 0.
+//
+// normalizeRecoPromptCandidates used to decide "is this a price?" with a bare
+// `Number.isFinite(Number(x))`, and Number() maps null, '', '   ', false and [] all to 0 — a
+// finite number — so every one of those "no price" shapes serialized into the prompt as
+// `"price_usd": 0`, i.e. "this product is free". `true` priced the product at $1.
+//
+// The shapes are caller-supplied: the ingredient leg passes
+// `session.meta.ingredient_context.product_candidates[]` from the request body through
+// normalizeIngredientRecoContextValue, which only drops non-objects and slices — no price
+// normalization at all — so the guard has to hold here.
+const RECO_PROMPT_PRICE_ROWS = [
+  // No price, in every shape Number() silently turns into 0 (or 1).
+  { product_id: 'price_null', row: { price: null }, expected: null },
+  { product_id: 'price_usd_null', row: { price_usd: null }, expected: null },
+  { product_id: 'price_empty_string', row: { price: '' }, expected: null },
+  { product_id: 'price_false', row: { price: false }, expected: null },
+  { product_id: 'price_true', row: { price: true }, expected: null },
+  { product_id: 'price_absent', row: {}, expected: null },
+  // A real price still passes through untouched.
+  { product_id: 'price_number', row: { price: 62 }, expected: 62 },
+  { product_id: 'price_usd_number', row: { price_usd: 41.5 }, expected: 41.5 },
+  // The price_usd leg must FALL THROUGH to price when price_usd carries no price — rejecting
+  // price_usd must not also discard a perfectly good `price`.
+  { product_id: 'price_usd_null_price_set', row: { price_usd: null, price: 62 }, expected: 62 },
+  { product_id: 'price_usd_empty_price_set', row: { price_usd: '', price: 62 }, expected: 62 },
+  // ...but an explicit numeric 0 in price_usd IS a stated price, so it wins over `price`. This is
+  // the `??` vs `||` distinction: `||` would skip the stated 0 and report 62.
+  { product_id: 'price_usd_zero_price_set', row: { price_usd: 0, price: 62 }, expected: 0 },
+  // The guard keys on the no-price SHAPES above, not on falsiness: a caller that explicitly
+  // states 0 is asserting a price, not omitting one.
+  { product_id: 'price_explicit_zero', row: { price: 0 }, expected: 0 },
+  // --- rows past this point are exercised on the candidates[] leg only; see
+  // RECO_PROMPT_PRICE_INGREDIENT_ROWS below. ---
+  { product_id: 'price_blank_string', row: { price: '   ' }, expected: null },
+  { product_id: 'price_empty_array', row: { price: [] }, expected: null },
+  { product_id: 'price_object', row: { price: { amount: 62, currency: 'USD' } }, expected: null },
+  { product_id: 'price_numeric_string', row: { price: '62' }, expected: 62 },
+];
+
+// normalizeIngredientRecoContextValue caps product_candidates at 12 rows, so the ingredient leg
+// sees the first 12 of the table above. Pinned deliberately: if that cap moves, this count is the
+// thing that tells us the two legs stopped covering the same shapes.
+const RECO_PROMPT_PRICE_INGREDIENT_ROWS = RECO_PROMPT_PRICE_ROWS.slice(0, 12);
+
+function buildRecoPromptPriceCandidates(rows) {
+  return rows.map((entry) => ({
+    product_id: entry.product_id,
+    sku_id: `sku_${entry.product_id}`,
+    brand: 'Price Guard Brand',
+    name: `Price Guard ${entry.product_id}`,
+    category: 'serum',
+    ...entry.row,
+  }));
+}
+
+function assertRecoPromptPrices(normalized, rows, legLabel) {
+  assert.equal(normalized.length, rows.length, `${legLabel}: every row must survive normalization`);
+  for (const [index, entry] of rows.entries()) {
+    const got = normalized[index];
+    assert.equal(got.product_id, entry.product_id, `${legLabel}: row order must match`);
+    assert.equal(
+      got.price_usd,
+      entry.expected,
+      `${legLabel}: ${entry.product_id} must serialize price_usd as ${JSON.stringify(entry.expected)}, got ${JSON.stringify(got.price_usd)}`,
+    );
+    if (entry.expected === null) {
+      assert.equal(
+        Object.is(got.price_usd, null),
+        true,
+        `${legLabel}: ${entry.product_id} must be null, not 0/undefined/NaN`,
+      );
+    }
+  }
+}
+
+test('reco prompt candidates report an unknown price as null, never a fabricated zero', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const bundle = __internal.buildAuroraProductRecommendationsPromptBundle({
+      profile: { skinType: 'combination', sensitivity: 'high', goals: ['barrier repair'] },
+      requestText: 'Recommend a barrier serum',
+      lang: 'EN',
+      globalStatus: { budget_known: false, itinerary_provided: false, recent_logs_provided: false },
+      candidates: buildRecoPromptPriceCandidates(RECO_PROMPT_PRICE_ROWS),
+      ingredientContext: {
+        query: 'ceramide',
+        goal: 'barrier',
+        product_candidates: buildRecoPromptPriceCandidates(RECO_PROMPT_PRICE_INGREDIENT_ROWS),
+      },
+    });
+
+    // Both legs run through normalizeRecoPromptCandidates: the catalog pool lands on
+    // `candidates`, the request-supplied ingredient rows on `product_candidates`.
+    assertRecoPromptPrices(bundle.user_payload.candidates, RECO_PROMPT_PRICE_ROWS, 'candidates[]');
+    assertRecoPromptPrices(
+      bundle.user_payload.product_candidates,
+      RECO_PROMPT_PRICE_INGREDIENT_ROWS,
+      'product_candidates[]',
+    );
+
+    // The prompt STRING is what the LLM actually reads, and it is where a fabricated zero would
+    // do its damage. The only zeros allowed there are the rows that state 0 outright.
+    const serializedPrices = String(bundle.query).match(/"price_usd":\s*[^,\s}]+/g) || [];
+    assert.equal(
+      serializedPrices.length,
+      RECO_PROMPT_PRICE_ROWS.length + RECO_PROMPT_PRICE_INGREDIENT_ROWS.length,
+      'every candidate on both legs must serialize a price_usd',
+    );
+    const zeroCount = serializedPrices.filter((entry) => /"price_usd":\s*0$/.test(entry)).length;
+    const expectedZeroCount =
+      RECO_PROMPT_PRICE_ROWS.filter((entry) => entry.expected === 0).length
+      + RECO_PROMPT_PRICE_INGREDIENT_ROWS.filter((entry) => entry.expected === 0).length;
+    assert.equal(
+      zeroCount,
+      expectedZeroCount,
+      `only explicitly-stated zero prices may appear in the prompt; got ${zeroCount} of "price_usd": 0`,
+    );
+    assert.equal(
+      /"price_usd":\s*1(?![\d.])/.test(String(bundle.query)),
+      false,
+      '`price: true` must not price a product at $1',
+    );
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
