@@ -19,13 +19,18 @@
 // Both are enforced here rather than at the call site, because a call site is easy to add.
 
 const crypto = require('crypto');
+const { formatRecoPriceCeilingCacheToken } = require('./recoPriceCeiling');
 
 const RECO_RECALL_POOL_CACHE_TABLE = 'reco_recall_pool_cache';
 // v2: v1 payloads were written WITHOUT prices — the sanitizer kept scalars only while the lane's
 // price is an OBJECT ({amount, currency}) — so every pool served from cache produced "no price"
 // items (live 2026-08-21: three grounded products, all price-less, all "not verified"). The version
 // rides in the cache KEY, so bumping it orphans every v1 row at once; the purge sweep deletes them.
-const RECO_RECALL_POOL_CACHE_VERSION = 'reco_recall_pool_cache_v2';
+// v3: the pool now depends on the buyer's price ceiling — conforming-first selection changes WHICH 24
+// candidates land in the payload — so the key gained a `ceil` dimension. Adding a dimension already
+// changes every hash, orphaning v2 rows; the bump makes that intentional rather than incidental, and
+// keeps the reason readable next to v2's.
+const RECO_RECALL_POOL_CACHE_VERSION = 'reco_recall_pool_cache_v3';
 
 // Belt-and-braces lazy DDL, byte-identical to src/db/migrations/059_reco_recall_pool_cache.sql. The
 // migration is the primary mechanism; this only recovers a 42P01 on a deployment whose migrations have
@@ -105,6 +110,7 @@ function buildRecoRecallPoolCacheKey({
   catalogSurface = '',
   plannerMode = '',
   externalSeedStrategy = '',
+  priceCeiling = null,
 } = {}) {
   const normalizedQueries = [];
   const seen = new Set();
@@ -124,6 +130,10 @@ function buildRecoRecallPoolCacheKey({
     surface: normalizeKeyToken(catalogSurface),
     mode: normalizeKeyToken(plannerMode),
     seed: normalizeKeyToken(externalSeedStrategy),
+    // The ceiling changes WHICH candidates survive into the 24-row payload (conforming-first
+    // selection), so a constrained call and an unconstrained one must never share a row -- otherwise
+    // one poisons the other for up to 24 hours, fleet-wide.
+    ceil: formatRecoPriceCeilingCacheToken(priceCeiling),
   };
   return crypto.createHash('sha256').update(JSON.stringify(dims)).digest('hex');
 }

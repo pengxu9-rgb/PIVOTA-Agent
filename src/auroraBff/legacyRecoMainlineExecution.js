@@ -81,6 +81,7 @@ function createLegacyRecoMainlineExecutionRuntime(deps = {}) {
     RECO_PDP_FAST_EXTERNAL_FALLBACK_ENABLED = false,
     RECO_DIRECT_RECALL_BEFORE_LLM_ENABLED = true,
     RECO_DIRECT_RECALL_BEFORE_LLM_MAX_QUERIES = 3,
+    priceCeiling = null,
   } = {}) {
     let upstream = null;
     let contextMeta = {};
@@ -149,6 +150,7 @@ function createLegacyRecoMainlineExecutionRuntime(deps = {}) {
         : finalizeRecommendationCandidatePools([], {
             targetContext,
             recoContext: recommendationTaskContext,
+            priceCeiling,
           });
       catalogDebug = {
         recall_plan_version:
@@ -179,6 +181,7 @@ function createLegacyRecoMainlineExecutionRuntime(deps = {}) {
         targetContext,
         externalSeedStrategyOverride: catalogExternalSeedStrategy,
         allowStepAwareAdjacentFamilyFallback: String(entryType || '').trim().toLowerCase() === 'chat',
+        priceCeiling,
         debug,
         logger,
       });
@@ -208,6 +211,7 @@ function createLegacyRecoMainlineExecutionRuntime(deps = {}) {
           : finalizeRecommendationCandidatePools([], {
               targetContext,
               recoContext: recommendationTaskContext,
+              priceCeiling,
             });
       catalogDebug =
         catalogOut &&
@@ -342,6 +346,7 @@ function createLegacyRecoMainlineExecutionRuntime(deps = {}) {
           allowStepAwareAdjacentFamilyFallback: false,
           needSeedText: userAsk,
           maxGenericQueries: RECO_DIRECT_RECALL_BEFORE_LLM_MAX_QUERIES,
+          priceCeiling,
           debug,
           logger,
         });
@@ -438,6 +443,7 @@ function createLegacyRecoMainlineExecutionRuntime(deps = {}) {
               targetContext,
               externalSeedStrategyOverride: catalogExternalSeedStrategy,
               allowStepAwareAdjacentFamilyFallback: String(entryType || '').trim().toLowerCase() === 'chat',
+              priceCeiling,
               debug,
               logger,
             });

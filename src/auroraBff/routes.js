@@ -388,6 +388,11 @@ const {
 } = require('./analysisContextSnapshot');
 const { normalizeRecoTargetStep, extractRecoTargetStepFromText } = require('./recoTargetStep');
 const {
+  normalizeRecoPriceCeiling,
+  applyRecoPriceCeilingPreference,
+  shouldSendPriceCeilingOnQueryArm,
+} = require('./recoPriceCeiling');
+const {
   buildRecoRecallPoolCacheKey,
   isRecoRecallPoolCacheEnabled,
   shouldServeRecoRecallPoolCacheEntry,
@@ -5750,6 +5755,7 @@ async function searchPivotaBackendProducts({
   merchantId = '',
   merchantIds = [],
   externalSeedOnly = undefined,
+  priceCeiling = null,
 } = {}) {
   const startedAt = Date.now();
   const q = String(query || '').trim();
@@ -5856,6 +5862,19 @@ async function searchPivotaBackendProducts({
   if (normalizedTargetStepFamily) params.target_step_family = normalizedTargetStepFamily;
   const normalizedSemanticFamily = String(semanticFamily || '').trim().toLowerCase();
   if (normalizedSemanticFamily) params.semantic_family = normalizedSemanticFamily;
+  // The buyer's structured ceiling, made visible to the upstream that owns the price data. This lane
+  // has no FX rates, so the currency rides along and an unrecognized one disables the ceiling upstream
+  // (normalizeRecoPriceCeiling returns null) rather than being read in an assumed unit.
+  //
+  // The CALLER decides which arms carry it (see shouldSendPriceCeilingOnQueryArm): the local mainline
+  // treats max_price as a HARD drop (filterFindProductsMultiDirectProductsByBudget, src/server.js
+  // ~34580), so constraining every arm would turn "nothing conforms" into zero results — the exact
+  // failure this work exists to prevent.
+  const normalizedPriceCeiling = normalizeRecoPriceCeiling(priceCeiling);
+  if (normalizedPriceCeiling) {
+    params.price_max = normalizedPriceCeiling.limit;
+    params.price_currency = normalizedPriceCeiling.currency;
+  }
   if (productOnly !== undefined) params.product_only = productOnly === true;
   if (localMainlineChild === true) params.local_mainline_child = true;
   if (Number.isFinite(Number(queryIndex))) params.query_index = Math.max(0, Math.trunc(Number(queryIndex)));
@@ -20615,12 +20634,13 @@ function buildRecoCatalogQueryLevels({
     : [];
 }
 
-function buildRecoCandidateStateFromRawCandidates(rawCandidates, { targetContext, recommendationTaskContext = null } = {}) {
+function buildRecoCandidateStateFromRawCandidates(rawCandidates, { targetContext, recommendationTaskContext = null, priceCeiling = null } = {}) {
   return targetContext && Array.isArray(targetContext.framework_roles) && targetContext.framework_roles.length > 0
     ? finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext })
     : finalizeRecommendationCandidatePools(rawCandidates, {
         targetContext,
         recoContext: recommendationTaskContext,
+        priceCeiling,
       });
 }
 
@@ -20677,6 +20697,7 @@ async function executeRecoRecallPlanEntry({
   queryTotal = null,
   authHeaders = null,
   searchFn = null,
+  priceCeiling = null,
 } = {}) {
   const sourceScope = (() => {
     const normalizedSourceScope = String(entry?.source_scope || 'internal').trim().toLowerCase();
@@ -20770,6 +20791,13 @@ async function executeRecoRecallPlanEntry({
     preferredStep: normalizedPreferredStep,
     sourceScope,
   };
+  // ONE arm carries the ceiling. See shouldSendPriceCeilingOnQueryArm: the upstream may treat
+  // price_max as a hard filter, so the remaining arms stay unconstrained and the pool can never be
+  // emptied by the ceiling alone.
+  if (shouldSendPriceCeilingOnQueryArm({ queryIndex })) {
+    const normalizedEntryPriceCeiling = normalizeRecoPriceCeiling(priceCeiling);
+    if (normalizedEntryPriceCeiling) runSearchParams.priceCeiling = normalizedEntryPriceCeiling;
+  }
   if (sourceScope === 'external_seed') {
     runSearchParams.catalogSurface = 'beauty';
     if (normalizedPreferredStep) runSearchParams.targetStepFamily = normalizedPreferredStep;
@@ -20936,6 +20964,7 @@ async function collectRecoCandidatesFromRecallPlan({
   traceId = null,
   authHeaders = null,
   searchFn = null,
+  priceCeiling = null,
 } = {}) {
   const rawCandidates = [];
   const boundaryRejects = [];
@@ -20945,6 +20974,7 @@ async function collectRecoCandidatesFromRecallPlan({
   let candidateState = buildRecoCandidateStateFromRawCandidates([], {
     targetContext,
     recommendationTaskContext,
+    priceCeiling,
   });
   let stopLevel = null;
   let plannerStopReason = 'plan_exhausted';
@@ -20988,6 +21018,7 @@ async function collectRecoCandidatesFromRecallPlan({
       queryTotal: Array.isArray(recallPlan?.entries) ? recallPlan.entries.length : null,
       authHeaders,
       searchFn,
+      priceCeiling,
     });
   };
   const buildStageAggregate = () => ({
@@ -21132,6 +21163,7 @@ async function collectRecoCandidatesFromRecallPlan({
         candidateState = buildRecoCandidateStateFromRawCandidates(rawCandidates, {
           targetContext,
           recommendationTaskContext,
+          priceCeiling,
         });
         if (shouldStopRecallStageOnViableMatch(stage, stageRows.length)) break;
       }
@@ -21159,6 +21191,7 @@ async function collectRecoCandidatesFromRecallPlan({
     candidateState = buildRecoCandidateStateFromRawCandidates(rawCandidates, {
       targetContext,
       recommendationTaskContext,
+      priceCeiling,
     });
 
     const stageSelectedCount = getRecoRecallSelectedCount(candidateState);
@@ -27714,6 +27747,7 @@ async function executeRecoRecallPlanEntryWithWallClockGuard({
   queryTotal = null,
   authHeaders = null,
   searchFn = null,
+  priceCeiling = null,
 } = {}) {
   const { remainingDeadlineMs, queryTimeoutMs, normalizedDeadlineMs } = resolveRecoWallClockTimeoutBudget(
     entry,
@@ -27753,6 +27787,7 @@ async function executeRecoRecallPlanEntryWithWallClockGuard({
           queryTotal,
           authHeaders,
           searchFn,
+          priceCeiling,
         }),
       ),
       queryTimeoutMs,
@@ -27794,6 +27829,7 @@ async function collectRecoCandidatesFromQueryLevels({
   searchFn = null,
   initialRawCandidates = [],
   initialSearchResults = [],
+  priceCeiling = null,
 } = {}) {
   const rawCandidates = (Array.isArray(initialRawCandidates) ? initialRawCandidates : [])
     .map((candidate) => normalizeRecoCatalogProduct(candidate))
@@ -27819,6 +27855,7 @@ async function collectRecoCandidatesFromQueryLevels({
   let candidateState = buildRecoCandidateStateFromRawCandidates(rawCandidates, {
     targetContext,
     recommendationTaskContext,
+    priceCeiling,
   });
   let stopLevel = null;
   let plannerStopReason = 'query_levels_exhausted';
@@ -27932,6 +27969,7 @@ async function collectRecoCandidatesFromQueryLevels({
       queryTotal: flattenedQueryEntries.length,
       authHeaders,
       searchFn,
+      priceCeiling,
     });
   };
   const accumulateQueryLevelRow = (stageId, row, aggregate) => {
@@ -28200,6 +28238,7 @@ async function collectRecoCandidatesFromQueryLevels({
         candidateState = buildRecoCandidateStateFromRawCandidates(rawCandidates, {
           targetContext,
           recommendationTaskContext,
+          priceCeiling,
         });
       } else {
         for (const queryEntry of primaryExternalLeadQueries) {
@@ -28214,6 +28253,7 @@ async function collectRecoCandidatesFromQueryLevels({
           candidateState = buildRecoCandidateStateFromRawCandidates(rawCandidates, {
             targetContext,
             recommendationTaskContext,
+            priceCeiling,
           });
           if (shouldStopQueryLevelOnViableMatch(level, primaryExternalLeadQueries, levelResults.length)) break;
         }
@@ -28265,6 +28305,7 @@ async function collectRecoCandidatesFromQueryLevels({
         candidateState = buildRecoCandidateStateFromRawCandidates(rawCandidates, {
           targetContext,
           recommendationTaskContext,
+          priceCeiling,
         });
         if (shouldStopQueryLevelOnViableMatch(level, runnableQueries, levelResults.length)) break;
       }
@@ -28290,6 +28331,7 @@ async function collectRecoCandidatesFromQueryLevels({
     candidateState = buildRecoCandidateStateFromRawCandidates(rawCandidates, {
       targetContext,
       recommendationTaskContext,
+      priceCeiling,
     });
     stageResults.push({
       stage_id: stageId,
@@ -29333,7 +29375,7 @@ function collectRecoRecallPlanQueryTexts({ recallPlan = null, queryLevels = [] }
 // Shape a cached pool like a `collected` result so the rest of buildRecoGenerateFromCatalog does not
 // need to know where the candidates came from. Selection is re-run against THIS request's target
 // context: only recall is cached, never the ranking.
-function buildRecoCollectedFromCachedPool(pool, { targetContext = null, recommendationTaskContext = null } = {}) {
+function buildRecoCollectedFromCachedPool(pool, { targetContext = null, recommendationTaskContext = null, priceCeiling = null } = {}) {
   const rawCandidates = Array.isArray(pool) ? pool.slice(0, 24) : [];
   const frameworkMode = Boolean(
     targetContext && Array.isArray(targetContext.framework_roles) && targetContext.framework_roles.length > 0,
@@ -29343,6 +29385,7 @@ function buildRecoCollectedFromCachedPool(pool, { targetContext = null, recommen
     : finalizeRecommendationCandidatePools(rawCandidates, {
         targetContext,
         recoContext: recommendationTaskContext,
+        priceCeiling,
       });
   return {
     searchResults: [],
@@ -29379,10 +29422,15 @@ async function buildRecoGenerateFromCatalog({
   allowStepAwareAdjacentFamilyFallback = true,
   needSeedText = '',
   maxGenericQueries = 0,
+  priceCeiling = null,
   debug,
   logger,
 } = {}) {
   const startedAt = Date.now();
+  // Normalized ONCE at the entry to the recall path: everything below (transport, selection, cache
+  // key) reads this value, so a malformed or unrecognized ceiling degrades to "no ceiling" in all
+  // three places at the same time instead of in two of them.
+  const normalizedRecallPriceCeiling = normalizeRecoPriceCeiling(priceCeiling);
   const failFastBefore = getRecoCatalogFailFastSnapshot(startedAt);
   let probeWhileOpen = false;
   let searchTimeoutEffectiveMs = RECO_CATALOG_SEARCH_TIMEOUT_MS;
@@ -29511,6 +29559,7 @@ async function buildRecoGenerateFromCatalog({
           semanticContract,
           traceId: pickFirstTrimmed(ctx?.trace_id, ctx?.request_id) || null,
           authHeaders: ctx?.backend_auth_headers || null,
+          priceCeiling: normalizedRecallPriceCeiling,
         })
       : collectRecoCandidatesFromQueryLevels({
           queryLevels,
@@ -29523,6 +29572,7 @@ async function buildRecoGenerateFromCatalog({
           allowExternalSeed: allowExternalSeedSupplement,
           externalSeedStrategy: effectiveExternalSeedStrategy,
           authHeaders: ctx?.backend_auth_headers || null,
+          priceCeiling: normalizedRecallPriceCeiling,
         });
 
   const poolCache = getRecoRecallPoolCache();
@@ -29534,6 +29584,7 @@ async function buildRecoGenerateFromCatalog({
         catalogSurface: 'beauty',
         plannerMode: recallPlan?.mode || 'generic',
         externalSeedStrategy: effectiveExternalSeedStrategy,
+        priceCeiling: normalizedRecallPriceCeiling,
       })
     : null;
   const poolCacheDims = {
@@ -29552,7 +29603,11 @@ async function buildRecoGenerateFromCatalog({
     // NOTHING and the grounding pass is skipped too, so the caller gets archetypes for 15s at a time.
     if (cacheServable) {
       poolCacheOutcome = 'served_while_circuit_open';
-      collected = buildRecoCollectedFromCachedPool(cachedEntry.pool, { targetContext, recommendationTaskContext });
+      collected = buildRecoCollectedFromCachedPool(cachedEntry.pool, {
+        targetContext,
+        recommendationTaskContext,
+        priceCeiling: normalizedRecallPriceCeiling,
+      });
     } else {
       return {
         structured: null,
@@ -29566,7 +29621,15 @@ async function buildRecoGenerateFromCatalog({
     }
   } else if (cacheServable) {
     poolCacheOutcome = 'hit';
-    collected = buildRecoCollectedFromCachedPool(cachedEntry.pool);
+    // The context is NOT optional here. Shipped in #2049 as `buildRecoCollectedFromCachedPool(pool)`,
+    // this branch finalized every cache hit against targetContext=null: no step filtering, no reco
+    // context, so a cleanser request served the cached toner too (measured: selected p1,p2 instead of
+    // p1, exact_step_viable_count 0). Only the circuit-open sibling twelve lines up passed it.
+    collected = buildRecoCollectedFromCachedPool(cachedEntry.pool, {
+      targetContext,
+      recommendationTaskContext,
+      priceCeiling: normalizedRecallPriceCeiling,
+    });
     if (shouldRevalidateRecoRecallPoolCacheEntry(cachedEntry, Date.now())) {
       // SINGLE-FLIGHT, per key. A popular need means MANY concurrent requests land on the same stale
       // key in the same tick, and without this guard each of them schedules its own runLiveRecall —
@@ -29611,6 +29674,7 @@ async function buildRecoGenerateFromCatalog({
     }
   }
   debugInfo.pool_cache_outcome = poolCacheOutcome;
+  debugInfo.price_ceiling = normalizedRecallPriceCeiling;
   debugInfo.pool_cache_age_ms = cachedEntry ? Number(cachedEntry.age_ms || 0) : null;
   const results = Array.isArray(collected.searchResults) ? collected.searchResults : [];
   let rawCandidates = Array.isArray(collected.rawCandidates) ? collected.rawCandidates.slice() : [];
@@ -29624,7 +29688,11 @@ async function buildRecoGenerateFromCatalog({
       ? finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext })
       : isPlainObject(collected.candidateState)
         ? collected.candidateState
-        : finalizeRecommendationCandidatePools([], { targetContext, recoContext: recommendationTaskContext });
+        : finalizeRecommendationCandidatePools([], {
+            targetContext,
+            recoContext: recommendationTaskContext,
+            priceCeiling: normalizedRecallPriceCeiling,
+          });
   const verifiedContextCandidates = buildVerifiedRecoContextCandidates({
     recoContext: ingredientContext,
     targetContext,
@@ -29654,6 +29722,7 @@ async function buildRecoGenerateFromCatalog({
         : finalizeRecommendationCandidatePools(rawCandidates, {
             targetContext: effectiveTargetContext,
             recoContext: verifiedContextCandidates.normalizedContext || recommendationTaskContext,
+            priceCeiling: normalizedRecallPriceCeiling,
           });
   }
   if (frameworkMode && Array.isArray(candidateState?.viable_candidate_pool) && candidateState.viable_candidate_pool.length > 1) {
@@ -104378,6 +104447,7 @@ const __internal = {
   buildRecoRecallTransportPolicy,
   resolveRecoRecallTransportModeForPlannerMode,
   buildRecoCatalogQueryLevels,
+  extractCatalogCandidatePrice,
   buildRecoCatalogQueries,
   buildRecoNeedSeedQueries,
   collectRecoRecallPlanQueryTexts,
