@@ -107,6 +107,7 @@ function createDirectRecoGenerateHandlerRuntime(deps = {}) {
     restorePlanOnlyRecommendations,
     resolveBuyerRegion,
     isRejectedBuyerRegionInput,
+    buildServedPriceRegionCensus,
     logger,
   } = deps;
 
@@ -200,6 +201,24 @@ function createDirectRecoGenerateHandlerRuntime(deps = {}) {
         buyer_region: ctx.buyer_region,
         region_source: ctx.buyer_region_source,
       };
+      // ADR-024's TRIPWIRE, taken over the rows a given path ACTUALLY SERVES.
+      //
+      // The decision owner declined the FX ranker and asked for this count instead: "count
+      // `unknown`-classified rows actually served, per region; materially nonzero means clean data,
+      // not convert it." A materially nonzero `served_priced_foreign` for a region is MISLABELED
+      // SUPPLY -- an ingestion defect of the 433-EUR-offers-stamped-`market='US'` family -- and the
+      // correct response is to quarantine and fix those rows, NEVER to convert their prices into the
+      // buyer's currency. Conversion is the fifth layer of a defect this repo has already shipped in
+      // four (ADR-024, "The recurring failure mode this ADR must not feed").
+      //
+      // Taken as a closure over `rows` rather than once, because the two stamp sites below serve
+      // DIFFERENT lists: the guardrail path can drop rows, and a census of the pre-guardrail answer
+      // would report prices no buyer saw.
+      //
+      // READ-ONLY, and it must stay that way: the census is computed AFTER selection, ranking and the
+      // guardrail, and nothing reads it back. If a count ever becomes an input to what we serve, this
+      // has quietly become the ranker the ADR refused.
+      const servedPriceCensusMetaFor = (rows) => buildServedPriceRegionCensus(rows, ctx.buyer_region);
       const debugHeaderRaw = req.get('X-Debug') ?? req.get('X-Aurora-Debug');
       const includeDebugFromHeader = debugHeaderRaw == null || debugHeaderRaw === '' ? null : coerceBoolean(debugHeaderRaw);
       const includeDebug = includeDebugFromHeader == null ? Boolean(parsed.data.include_debug) : includeDebugFromHeader;
@@ -551,6 +570,9 @@ function createDirectRecoGenerateHandlerRuntime(deps = {}) {
           // the region rides it too, rather than inventing a channel. `region_source` is the half that
           // matters: it is what turns "we served US" into "we ASSUMED US, and nobody told us".
           ...buyerRegionMeta,
+          // The census of THIS path's served rows, beside the region they were served into -- the two
+          // are only meaningful together, so they ride the same surface.
+          ...servedPriceCensusMetaFor(payload.recommendations),
           analysis_context_usage: recommendationAnalysisContextMeta,
           request_context_signature_version:
             pickFirstTrimmed(payloadMeta.request_context_signature_version, REQUEST_CONTEXT_SIGNATURE_VERSION)
@@ -718,6 +740,11 @@ function createDirectRecoGenerateHandlerRuntime(deps = {}) {
           // make the region visible only on the AURORA_RECO_GENERATE_GUARDRAIL_V1=off path -- i.e.
           // invisible in prod, which is the one place the measurement is for.
           ...buyerRegionMeta,
+          // Re-censused over `guardedRecommendations`, NOT re-used from `guardedMeta`. The guardrail
+          // REJECTS rows, so the pre-guardrail census counts prices this buyer was never shown, and
+          // over-reporting foreign supply sends someone hunting an ingestion defect that the guardrail
+          // already caught. This is the FINAL served list; it is the only one the tripwire may count.
+          ...servedPriceCensusMetaFor(guardedRecommendations),
           analysis_context_usage: recommendationAnalysisContextMeta,
           request_context_signature_version:
             pickFirstTrimmed(guardedMeta.request_context_signature_version, REQUEST_CONTEXT_SIGNATURE_VERSION)

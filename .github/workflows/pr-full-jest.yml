@@ -982,6 +982,33 @@ jobs:
       # bucket together -- because a guard nobody has shown can fail is the house failure mode.
       # That concentration is also why the prompt RULE line is conditional: a sibling suite pins
       # same-role prompts under 8000 chars, and an unconditional line broke it.
+      # ADDED 2026-08-21: `tests/reco_unknown_served_tripwire`, a NEW file, green (25/25) and
+      # mutation-checked per hunk. It guards ADR-024's TRIPWIRE -- the per-region census of the prices
+      # we actually served on POST /v1/reco/generate (`served_priced_in_region`,
+      # `served_priced_foreign`, `served_unpriced`), stamped into recommendation_meta beside
+      # buyer_region/region_source (#2071) and projected into the reco_requested event.
+      # WHY CI IS THE ONLY THING THAT CAN GUARD IT. The census is the decision owner's ENFORCEMENT ARM
+      # for "no FX-ranking": the ADR's resolved question declines the ranker and asks instead to "count
+      # `unknown`-classified rows actually served, per region; materially nonzero means clean data, not
+      # convert it". A census that silently reports zero forever -- a key-name typo in the event
+      # projection, a reader that cannot see the lane's real row shape, a stamp on the non-guardrail
+      # path only -- produces NO error and NO failed request. It produces a permanently green dashboard
+      # for a claim ("every served pool is single-currency by construction") that nobody is checking.
+      # So four of these tests drive the REAL serving path (buildRecoGenerateFromCatalog /
+      # groundRecoRecommendationsFromCatalog against a stubbed pool row) rather than hand-built rows,
+      # and the guardrail test pins that the count describes the POST-guardrail list -- the guardrail
+      # path being the only one prod takes.
+      # TWO tests are labelled GUARD and are the other half of the contract: the served rows, and the
+      # whole response minus the three meta keys, must be BYTE-IDENTICAL with the census wired in and
+      # with it stubbed out. The tripwire is a read-only measurement taken after selection, ranking and
+      # the guardrail; the moment a count moves a row it has become the ranker ADR-024 refused, and
+      # those two assertions are the only thing standing between the two.
+      # Section 6 pins the one shared-code change: readRecoCandidatePriceForCeiling gains an optional
+      # `normalizeCurrency` injection (default unchanged) so the census can see a well-formed currency
+      # the ceiling's 14-code allowlist does not carry -- INR must count as FOREIGN supply, not as "no
+      # price at all", or ADR-024's own founding defect (the Mintree INR prices) files itself under
+      # `served_unpriced`. classifyRecoCandidateAgainstPriceCeiling re-normalizes with its own
+      # allowlist, so 4500 INR is still `unknown` against a 40 USD ceiling and never `over`.
       - name: Run node:test suites
         run: |
           node --test \
@@ -1068,7 +1095,8 @@ jobs:
             tests/reco_card_price_label_currency.node.test.cjs \
             tests/reco_framework_prose_budget_currency.node.test.cjs \
             tests/reco_selector_prompt_declared_currency.node.test.cjs \
-            tests/price_text_shared_reader.node.test.cjs
+            tests/price_text_shared_reader.node.test.cjs \
+            tests/reco_unknown_served_tripwire.node.test.cjs
 
   jest:
     runs-on: ubuntu-latest

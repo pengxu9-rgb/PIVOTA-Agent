@@ -60,6 +60,7 @@ const {
 const {
   createDirectRecoGenerateHandlerRuntime,
 } = require('../src/auroraBff/directRecoGenerateHandler');
+const { buildServedPriceRegionCensus } = require('../src/auroraBff/servedPriceRegionCensus');
 const { RecoGenerateRequestSchema } = require('../src/auroraBff/schemas');
 const { buildRequestContext } = require('../src/auroraBff/requestContext');
 const { __internal } = require('../src/auroraBff/routes');
@@ -426,6 +427,11 @@ function makeHandler({ guardrail = false, logs = [] } = {}) {
     RecoGenerateRequestSchema,
     resolveBuyerRegion,
     isRejectedBuyerRegionInput,
+    // ADR-024's served-price census rides the same stamp as the region below and is a REQUIRED dep
+    // with no default -- a silent no-op default would let a wiring omission report "0 foreign rows"
+    // forever, which is the one failure mode a tripwire cannot have. Its own suite is
+    // tests/reco_unknown_served_tripwire.
+    buildServedPriceRegionCensus,
     buildEnvelope: (ctx, spec) => ({ request_id: ctx.request_id, ...spec }),
     makeAssistantMessage: (content) => ({ content }),
     makeEvent: (ctx, type, data) => ({ type, data }),

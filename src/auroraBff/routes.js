@@ -402,6 +402,10 @@ const {
   buyerRegionFromContext,
 } = require('./buyerRegion');
 const {
+  buildServedPriceRegionCensus,
+  pickServedPriceRegionCensusEventFields,
+} = require('./servedPriceRegionCensus');
+const {
   buildRecoRecallPoolCacheKey,
   isRecoRecallPoolCacheEnabled,
   shouldServeRecoRecallPoolCacheEntry,
@@ -45598,6 +45602,12 @@ function buildRecoRequestedEventData({
     // neither field, so its events are unchanged.
     ...(pickFirstTrimmed(meta.buyer_region) ? { buyer_region: pickFirstTrimmed(meta.buyer_region) } : {}),
     ...(pickFirstTrimmed(meta.region_source) ? { region_source: pickFirstTrimmed(meta.region_source) } : {}),
+    // ADR-024's tripwire, projected the same way and from the same surface as the region above -- the
+    // counts are only readable NEXT TO the region they were counted against, so they must not travel
+    // on a different channel or through a different lane's stamp. All three or none: a lane that does
+    // not take the census (chat, the agent-signals door) emits no census fields and its events are
+    // unchanged, and a half-stamped meta emits nothing rather than a numerator with no denominator.
+    ...pickServedPriceRegionCensusEventFields(meta),
   };
   return data;
 }
@@ -90922,6 +90932,7 @@ function mountAuroraBffRoutes(app, { logger }) {
     restorePlanOnlyRecommendations,
     resolveBuyerRegion,
     isRejectedBuyerRegionInput,
+    buildServedPriceRegionCensus,
     logger,
   });
 
