@@ -20603,6 +20603,7 @@ function buildRecoCatalogQueryLevels({
     const recallPlan = buildRecoRecallPlan({
       mode: 'step_aware',
       queryLevels: stepQueryLevels,
+      targetStepToken: targetContext?.resolved_target_step_token || '',
     });
     return (Array.isArray(recallPlan?.stages) ? recallPlan.stages : []).map((stage, index) => ({
       level_index: index,
@@ -28706,6 +28707,9 @@ async function groundRecoRecommendationsFromCatalog({
     const recallPlan = buildRecoRecallPlan({
       mode: 'step_aware',
       queryLevels: stepQueryLevels,
+      // itemTargetContext, not the request-level context: the grounding pass resolves a step PER LLM
+      // ITEM, and `targetContext` is not even in scope in this function.
+      targetStepToken: itemTargetContext?.resolved_target_step_token || '',
     });
     const itemPoolCacheKey = groundingPoolCache
       ? buildRecoRecallPoolCacheKey({
@@ -29489,6 +29493,7 @@ async function buildRecoGenerateFromCatalog({
       ? buildRecoRecallPlan({
           mode: 'step_aware',
           queryLevels: sameFamilyQueryLevels,
+          targetStepToken: targetContext?.resolved_target_step_token || '',
         })
       : null;
   const semanticContract = recallPlan
