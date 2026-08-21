@@ -482,7 +482,18 @@ jobs:
       # is unref'd, and that the grounding pass serves the durable pool instead of the wholesale skip.
       # Twenty-three mutants were run and all twenty-three fail the suite -- including two that survived
       # a first pass and forced stronger assertions (a replayed cached pool used as a ranking, and
-      # deleting the query-pack substring dedupe).
+      # deleting the query-pack substring dedupe). \
+      # ADDED 2026-08-20: `tests/aurora_surface_auth_curl_wrapper`, confirmed green (6/6). Step 2 of the \
+      # Phase 1 rollout for this repo's OWN CI: eight smoke scripts default BASE to the live gateway and \
+      # would 401 the release gate at the flip. They share no request helper, so scripts/lib/ \
+      # aurora_surface_auth.sh shadows `curl` with a shell function and each script sources it — no \
+      # call-site edits. The property under test is NOT that the header is added but that it is added \
+      # ONLY for gateway URLs: a blanket approach (~/.curlrc, or an unconditional header) would ship the \
+      # shared secret to every host the job touches. It also pins that a lookalike host \
+      # (https://gw.example.evil.test for base https://gw.example) does NOT get the key — the first \
+      # version matched by bare prefix and did, and the test caught it. The last case walks every \
+      # smoke that targets the gateway and asserts it sources the wrapper, so a ninth script added \
+      # later fails rather than silently 401ing.
       - name: Run node:test suites
         run: |
           node --test \
@@ -549,7 +560,8 @@ jobs:
             tests/aurora_surface_auth_rollup.node.test.cjs \
             tests/reco_direct_recall_before_llm.node.test.cjs \
             tests/reco_recall_honest_queries.node.test.cjs \
-            tests/reco_recall_pool_cache.node.test.cjs
+            tests/reco_recall_pool_cache.node.test.cjs \
+            tests/aurora_surface_auth_curl_wrapper.node.test.cjs
 
   jest:
     runs-on: ubuntu-latest

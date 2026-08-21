@@ -2,6 +2,12 @@
 set -euo pipefail
 
 BASE="${BASE:-https://pivota-agent-production.up.railway.app}"
+
+# Attach X-Internal-Key to gateway requests (PIVOTA-Agent #2038). Sourced AFTER BASE is set, because
+# the wrapper scopes the header to that host. No-op until AURORA_SURFACE_INTERNAL_KEY is present.
+# shellcheck source=scripts/lib/aurora_surface_auth.sh
+. "$(dirname "${BASH_SOURCE[0]}")/lib/aurora_surface_auth.sh"
+
 AURORA_LANG="${AURORA_LANG:-CN}"
 AURORA_UID="${AURORA_UID:-test_uid_entry_smoke_$(date +%s)}"
 LANG_UPPER="$(printf "%s" "${AURORA_LANG}" | tr '[:lower:]' '[:upper:]')"
@@ -9,7 +15,10 @@ CHECK_POSITIVE_TONE="${CHECK_POSITIVE_TONE:-true}"
 BANNED_PHRASES_CN="${BANNED_PHRASES_CN:-焦虑,别慌,恐慌,慌了}"
 BANNED_PHRASES_EN="${BANNED_PHRASES_EN:-low-stress,anxious,panic}"
 
-CURL_BIN="${CURL_BIN:-/usr/bin/curl}"
+# Deliberately the bare name, not /usr/bin/curl: scripts/lib/aurora_surface_auth.sh shadows
+# `curl` with a shell function to attach X-Internal-Key, and a function cannot shadow an
+# absolute path. With the absolute path this script looked patched and sent no header.
+CURL_BIN="${CURL_BIN:-curl}"
 PY_BIN="${PY_BIN:-/usr/bin/python3}"
 CURL_CONN_RESET_RETRIES="${CURL_CONN_RESET_RETRIES:-1}"
 CURL_CONN_RESET_SLEEP_SEC="${CURL_CONN_RESET_SLEEP_SEC:-1}"

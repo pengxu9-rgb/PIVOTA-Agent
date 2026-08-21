@@ -100,6 +100,9 @@ jobs:
       COMMERCE_CORE_PROD_SMOKE_ENDPOINT: /agent/shop/v1/invoke
       COMMERCE_CORE_PROD_AUTH_TOKEN: ${{ secrets.COMMERCE_CORE_PROD_AUTH_TOKEN || secrets.PIVOTA_AGENT_PROD_AUTH_TOKEN || '' }}
       COMMERCE_CORE_PROD_AGENT_API_KEY: ${{ secrets.COMMERCE_CORE_PROD_AGENT_API_KEY || secrets.PIVOTA_AGENT_PROD_AGENT_API_KEY || '' }}
+      # Gateway caller auth (#2038). The smokes source scripts/lib/aurora_surface_auth.sh, which
+      # attaches the header only to BASE-host requests. Absent -> omitted, which is today's behaviour.
+      AURORA_SURFACE_INTERNAL_KEY: ${{ secrets.AURORA_SURFACE_INTERNAL_KEY }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4

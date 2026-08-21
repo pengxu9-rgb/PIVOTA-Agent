@@ -16,6 +16,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
+      # Gateway caller auth (#2038); absent -> header omitted, today's behaviour.
+      AURORA_SURFACE_INTERNAL_KEY: ${{ secrets.AURORA_SURFACE_INTERNAL_KEY }}
       PROD_DEPLOY_WEBHOOK_URL: ${{ secrets.RAILWAY_PRODUCTION_DEPLOY_WEBHOOK_URL || secrets.PIVOTA_AGENT_PROD_DEPLOY_WEBHOOK_URL || secrets.RAILWAY_DEPLOY_WEBHOOK_URL || '' }}
       PROD_SMOKE_BASE_URL: ${{ vars.PIVOTA_AGENT_PROD_INVOKE_BASE_URL || vars.COMMERCE_CORE_PROD_SMOKE_BASE_URL || 'https://pivota-agent-production.up.railway.app' }}
     steps:

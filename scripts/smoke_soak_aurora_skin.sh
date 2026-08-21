@@ -6,6 +6,12 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/_utils/photo_fixture_defaults.sh"
 
 BASE="${BASE:-https://pivota-agent-production.up.railway.app}"
+
+# Attach X-Internal-Key to gateway requests (PIVOTA-Agent #2038). Sourced AFTER BASE is set, because
+# the wrapper scopes the header to that host. No-op until AURORA_SURFACE_INTERNAL_KEY is present.
+# shellcheck source=scripts/lib/aurora_surface_auth.sh
+. "$(dirname "${BASH_SOURCE[0]}")/lib/aurora_surface_auth.sh"
+
 DURATION_MIN="${DURATION_MIN:-10}"
 REQUESTS_PER_MIN="${REQUESTS_PER_MIN:-5}"
 LANGS="${LANGS:-EN,CN}"
