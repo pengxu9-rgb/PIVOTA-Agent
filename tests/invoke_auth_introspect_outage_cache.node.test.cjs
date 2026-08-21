@@ -462,7 +462,12 @@ function ttlSnapshotUnderEnv(staleEnvValue) {
     put('kill-switch-probe', { valid: true, agent_id: 'a', is_active: true }, 1000);
     process.stdout.write('<<SNAP' + JSON.stringify({
       snap,
+      // Positive TTL is 1000 here, so the entry's FRESH horizon is 2000.
       replayable: outage('kill-switch-probe', 2000) !== null,
+      // …and this probes INSIDE that fresh window. A disabled switch must refuse here too: the
+      // collapsed stale horizon alone does not cover this instant, so only the reader's own guard
+      // does. Without that probe the guard is unkillable and therefore untested.
+      replayable_inside_fresh_window: outage('kill-switch-probe', 1500) !== null,
     }) + 'SNAP>>');
     process.exit(0);
   `;
@@ -485,6 +490,11 @@ test('AGENT_AUTH_CACHE_STALE_IF_ERROR_TTL_MS=0 disables replay instead of meanin
   assert.equal(off.snap.stale_if_error_disabled, true);
   assert.equal(off.snap.stale_if_error_ttl_ms, 0);
   assert.equal(off.replayable, false, 'a disabled window must leave nothing replayable');
+  assert.equal(
+    off.replayable_inside_fresh_window,
+    false,
+    'a disabled switch must refuse at EVERY instant, not only past the fresh horizon',
+  );
 
   for (const word of ['off', 'false', 'no', 'disabled']) {
     assert.equal(ttlSnapshotUnderEnv(word).snap.stale_if_error_ttl_ms, 0, `"${word}" must disable`);
@@ -496,6 +506,7 @@ test('an unset or normal stale TTL leaves replay armed — the kill switch is no
   assert.equal(unset.snap.stale_if_error_disabled, false);
   assert.equal(unset.snap.stale_if_error_ttl_ms, 120_000);
   assert.equal(unset.replayable, true);
+  assert.equal(unset.replayable_inside_fresh_window, true);
 
   const set = ttlSnapshotUnderEnv('30000');
   assert.equal(set.snap.stale_if_error_ttl_ms, 30_000);
