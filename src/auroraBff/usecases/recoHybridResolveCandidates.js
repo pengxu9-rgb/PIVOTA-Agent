@@ -49,6 +49,20 @@ const SKINCARE_BLOCK_RE = /\b(brush|applicator|blender|tool|makeup|eyeshadow|blu
 const SKINCARE_FATAL_BLOCK_RE = /\b(brush|applicator|blender|tool|eyeshadow|blush|lipstick|foundation|concealer|palette|mascara|brow|nail|perfume|supplement|vitamin gummies|brush set|lingerie|underwear|bra|panties|bodysuit|overalls|onesie|dress|jacket|coat|hoodie|sweater|sweatshirt|shirt|tee|vest|apparel|clothing|pet|dog|dogs|cat|cats|puppy|kitten|harness|leash|collar|toy|toys|doll|plush|costume|化妆刷|彩妆|眼影|粉底|口红|睫毛膏|眉笔|指甲|香水|营养补剂|配件|内衣|文胸|胸罩|下着|ランジェリー|宠物|寵物|狗|猫|犬|项圈|項圈|牵引|牽引|玩具|娃娃)\b/i;
 const STRONG_SUNSCREEN_ALLOW_RE = /\b(sunscreen|sun screen|sunblock|sun fluid|sun cream|sun lotion|broad spectrum|uv filters?|防晒|防曬)\b/i;
 const SUNSCREEN_FATAL_BLOCK_RE = /\b(brush|applicator|blender|tool|eyeshadow|blush brush|foundation brush|concealer brush|palette|mascara|brow|nail|perfume|supplement|vitamin gummies|brush set|lingerie|underwear|bra|panties|bodysuit|overalls|onesie|dress|jacket|coat|hoodie|sweater|sweatshirt|shirt|tee|vest|apparel|clothing|pet|dog|dogs|cat|cats|puppy|kitten|harness|leash|collar|toy|toys|doll|plush|costume|化妆刷|彩妆刷|刷具|粉扑|睫毛夹|眼影|口红|睫毛膏|眉笔|指甲|香水|营养补剂|配件|内衣|文胸|胸罩|下着|ランジェリー|宠物|寵物|狗|猫|犬|项圈|項圈|牵引|牽引|玩具|娃娃)\b/i;
+// TOOLS AND IMPLEMENTS. Live 2026-08-21 the shortlist's slot 3 for "a gentle exfoliant for sensitive
+// skin" was "kylie cosmetics -- Loofah", $4, fit=high: a bath implement with no formulation at all,
+// maximally abrasive, recommended as gentle.
+//
+// HEAD-ANCHORED, not substring. These words appear inside legitimate formulation names ("Vitamin C
+// Serum Roller" is a serum, "Brush Cleanser" is a cleanser), so the implement reading only applies
+// when the word is the HEAD of the title -- the thing the product IS -- and never when the title also
+// names a formulation. brush/applicator/blender/tool are deliberately NOT added here: they are
+// already in SKINCARE_FATAL_BLOCK_RE and adding them again would change nothing.
+const IMPLEMENT_HEAD_RE = /(?:^|[\s\-\u2013\u2014/(,])(loofah|luffas?|luffa|sponges?|konjac sponge|washcloths?|wash cloths?|face cloths?|facial cloths?|cloths?|mitts?|gloves?|pumice|pumice stones?|gua sha|gua sha stones?|spatulas?|headbands?|head bands?|towels?|puffs?|rollers?|extractors?|tweezers|combs?|scrubbers?|nail files?|dry brushes?|body brushes?)\s*$/i;
+const IMPLEMENT_HEAD_CN_RE = /(浴球|丝瓜络|絲瓜絡|海绵|海綿|洁面刷|潔面刷|手套|毛巾|刮痧板)\s*$/;
+// A title that also names a formulation is a formulation, whatever it is packaged with or applied by.
+const IMPLEMENT_FORMULATION_CARVE_OUT_RE = /\b(serum|ampoule|cleanser|cream|lotion|essence|toner|emulsion|moisturi[sz]er|balm|gel|oil|mask|treatment|solution|sunscreen|spf|exfoliant|peel|wash|foam|milk|mist|concentrate|elixir|精华|精華|面霜|乳液|洁面乳|化妆水|爽肤水|面膜)\b/i;
+
 const NON_FACE_SUPPORT_RE = /\b(hand|body|foot|feet|hair|scalp|nail|cuticle|lip\b|lips\b|deodorant|shampoo|conditioner|hand cream|body lotion|body cream|body wash|hand wash|护手|身体|足部|头皮|头发|洗发|护发|润唇)\b/i;
 
 function isPlainObject(value) {
@@ -592,6 +606,13 @@ function productText(product) {
     row.category,
     row.category_name,
     row.categoryName,
+    // category_label and a STRING category_path were never read. The founder's loofah row carries
+    // category_label="Body Care" and category_path="beauty" (a string, so the Array.isArray spread
+    // below skipped it), which is why NON_FACE_SUPPORT_RE -- a regex that DOES match "body" -- never
+    // saw the one field that said this was a body product. Verified against the deployed row.
+    row.category_label,
+    row.categoryLabel,
+    typeof row.category_path === 'string' ? row.category_path : '',
     row.product_category,
     row.productCategory,
     row.product_type,
@@ -609,6 +630,8 @@ function productText(product) {
     sku.category,
     sku.category_name,
     sku.categoryName,
+    sku.category_label,
+    sku.categoryLabel,
     sku.product_type,
     sku.productType,
     row.short_description,
@@ -638,6 +661,32 @@ function productText(product) {
     .join(' ');
 }
 
+// The product's own head text -- what it IS -- as opposed to the full haystack, which mixes in brand,
+// category and description. The implement rule must read the TITLE only: a loofah sold under a
+// category called "Skincare" is still a loofah, and a serum whose description mentions a sponge is
+// still a serum.
+function productHeadText(product) {
+  const row = isPlainObject(product) ? product : {};
+  const sku = isPlainObject(row.sku) ? row.sku : {};
+  const nested = isPlainObject(row.product) ? row.product : {};
+  for (const value of [
+    row.display_name, row.displayName, row.name, row.title, row.product_name, row.productName,
+    nested.display_name, nested.displayName, nested.name, nested.title,
+    sku.display_name, sku.displayName, sku.name, sku.title,
+  ]) {
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+  return '';
+}
+
+function isImplementProduct(product) {
+  const head = productHeadText(product);
+  if (!head) return false;
+  // A formulation noun anywhere in the title wins: "Vitamin C Serum Roller" is a serum.
+  if (IMPLEMENT_FORMULATION_CARVE_OUT_RE.test(head)) return false;
+  return IMPLEMENT_HEAD_RE.test(head) || IMPLEMENT_HEAD_CN_RE.test(head);
+}
+
 function classifySkincareCandidate(product) {
   const joined = productText(product);
   if (!joined) {
@@ -652,6 +701,20 @@ function classifySkincareCandidate(product) {
   const strongSunscreenProduct =
     STRONG_SUNSCREEN_ALLOW_RE.test(joined)
     && !SUNSCREEN_FATAL_BLOCK_RE.test(joined);
+  // explicit_non_skincare, NOT explicit_non_face_supportive. An implement has no formulation, so it is
+  // never a candidate for a product recommendation on any lane -- and only this class carries
+  // hard_reject: true at the source, which every consumer honours. non_face_supportive is a 0.28
+  // DEMOTION (a body lotion is still a real product, just the wrong one), which would leave a loofah
+  // recommendable whenever the pool was thin. This is also the class brush/applicator/blender/tool
+  // already use, so implements stay in one taxonomy bucket rather than two.
+  if (isImplementProduct(product)) {
+    return {
+      classification: 'explicit_non_skincare',
+      hard_reject: true,
+      penalty: 1,
+      reason: 'explicit_non_skincare_implement',
+    };
+  }
   const hardBlocked = SKINCARE_FATAL_BLOCK_RE.test(joined)
     || (SKINCARE_BLOCK_RE.test(joined) && !strongSunscreenProduct && !explicitSkincareProduct);
   if (hardBlocked) {

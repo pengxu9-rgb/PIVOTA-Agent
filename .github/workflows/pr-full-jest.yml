@@ -664,6 +664,28 @@ jobs:
       # seventeen fail the suite. Three survived a first pass: two were masked by guards duplicated
       # between the partition and the tier resolver (the real mutant removes both), and one had not
       # actually wired the trap it claimed to test.
+      # ADDED 2026-08-21: `tests/reco_implement_scope`, confirmed green (13/13). A LOOFAH IS NOT A
+      # GENTLE EXFOLIANT. Live after #2062 deployed, the founder probe's slot 3 was
+      # "kylie cosmetics -- Loofah", $4, fit=high: a bath IMPLEMENT with no formulation, maximally
+      # abrasive, recommended for sensitive skin. Two defects, both VERIFIED against the shipped code
+      # before anything changed. (A) No implement vocabulary existed, so the row classified `ambiguous`
+      # -- a 0.18 penalty, i.e. admissible. (B) The row's only body signal lives in `category_label`,
+      # and productText read that field NOWHERE; it also skipped `category_path` unless it was an
+      # Array, and this row's is the string "beauty". NON_FACE_SUPPORT_RE already matched "body" --
+      # measured: the same row with category:"Body Care" DID classify non_face_supportive on main.
+      #
+      # Implements go to explicit_non_skincare, NOT explicit_non_face_supportive: only that class
+      # carries hard_reject at the SOURCE so every consumer honours it, the softer class is a 0.28
+      # demotion that would leave a loofah recommendable whenever the pool was thin, and
+      # brush/applicator/blender/tool already live in that same bucket. The rule is HEAD-ANCHORED on
+      # the TITLE with a formulation carve-out, because these words appear inside real product names:
+      # "Vitamin C Serum Roller" is a serum, "Charcoal Sponge Cleanser" is a cleanser. Eleven mutants
+      # run, all eleven fail the suite.
+      #
+      # One test pins PRE-EXISTING behavior this PR does NOT change: "Beauty Blender Cleanser" and
+      # "Brush Cleanser" are already explicit_non_skincare on main via the unconditional
+      # SKINCARE_FATAL_BLOCK_RE. Making them admissible means WEAKENING a shipped guard -- the
+      # opposite direction from this PR -- so it is pinned and flagged, not silently changed.
       - name: Run node:test suites
         run: |
           node --test \
@@ -737,7 +759,8 @@ jobs:
             tests/reco_token_anchored_recall.node.test.cjs \
             tests/invoke_auth_introspect_load_shedding.node.test.cjs \
             tests/reco_strict_conforming_fill.node.test.cjs \
-            tests/reco_gentleness_ranking.node.test.cjs
+            tests/reco_gentleness_ranking.node.test.cjs \
+            tests/reco_implement_scope.node.test.cjs
 
   jest:
     runs-on: ubuntu-latest
