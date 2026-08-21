@@ -852,6 +852,45 @@ jobs:
       # 13 mutants, 13 killed, one per regex dimension: the EU-comma inflation, both lookahead legs,
       # the grouping alternation, the decimal cap, the /i flag, leading commas, mandatory quotes and
       # the whitespace-after-colon leg. Five of those dimensions survived a first pass unpinned.
+      # ADDED 2026-08-21: `tests/reco_alternatives_price_coercion_guards`, companion to #2068's
+      # contract suite (named apart from it on purpose). It asserts NOTHING about a stated zero:
+      # `price_usd: 0` surviving as {amount: 0} is #2068's contract and is pinned there.
+      # #2068 fixed the RAW request-row leg of normalizeAlternativesSelectorCandidate. A row carrying
+      # an id takes the other leg -- normalizeRecoCatalogProduct -> extractCatalogCandidatePrice ->
+      # toPositiveNumberOrNull -- which carried the same Number() coercion: `price_usd: true` priced a
+      # product at $1 and `'1e999'` at $1999 (Infinity, so it fell past the fast path into the salvage
+      # that strips non-numeric characters, exponent marker included).
+      # NOT MERELY HARDENING. Before #2068 the catalog leg's price never reached the prompt at all
+      # (normalizeRecoCatalogProduct emits an object; Number({...}) is NaN), so these were
+      # response-only. #2068 connected that leg -- correctly -- and carried the fabrications into the
+      # prompt with it. Verified on 4b5412658: '1e999' arrived as `"price_usd": 1999`. Prompt
+      # assertions here are on the payload OBJECT, never a regex over the serialized prompt, because
+      # JSON.stringify renders NaN and Infinity alike as `null`.
+      # SCOPE, learned the hard way. An earlier revision rejected arrays in toPositiveNumberOrNull
+      # itself. Adversarial review measured that and it silently dropped REAL prices one level inside
+      # an offer or carrier (`offers:[{price:['19.99']}]`, `price_info:{price:['19.99']}`,
+      # `sku:{offers:[...]}`, `{amount:['19.99']}`) -- and a null price also PASSES
+      # isConcernFrameworkCandidateOverBudget, which returns false when there is no price. The
+      # rejection is now scoped to the SCALAR row fields (readRowScalarPriceOrNull), where a list is
+      # genuinely malformed. Both sides of that boundary are pinned.
+      # Same lesson on currency: the "does the price object declare its own?" test must use the SAME
+      # alias list as the fill. Testing only `.currency` let a price declaring GBP as
+      # currency_code/currencyCode/price_currency/priceCurrency be overwritten with USD, which then
+      # WON downstream -- the exact #2065 relabel, reintroduced by the guard meant to prevent it. The
+      # fill also uses '' and not 'USD' as its fallback, so no unit is invented where none was stated.
+      # SCOPE, round two. Review also found the same scalar aliases read one level down, inside a
+      # price object (normalizePriceObject's usd/cny), still coercing -- so `{offers:[{price_usd:[5]}]}`
+      # priced at $5 while `{price_usd:[5]}` did not. Both levels now take readRowScalarPriceOrNull.
+      # The raw-leg currency fill is also gated on the price object RESOLVING, not merely on who
+      # declared a unit, so `{}`/`{unknown:true}`/`{amount:true}` no longer gain a currency key. And
+      # declaredPriceCurrencyOf takes the first VALID alias rather than the first PRESENT one -- a
+      # mutant swapping those survived an earlier pass because nothing exercised a holder whose first
+      # alias is present-but-junk alongside a valid later one (`{currency:'zz', price_currency:'GBP'}`
+      # is the #2065 relabel if you get it wrong). That shape is pinned now.
+      # KNOWN AND DELIBERATE: rejecting a fabricated price is a LOOSENING for expensive ones.
+      # `'1e999'` used to bucket as `over` and trip isConcernFrameworkCandidateOverBudget; it now
+      # buckets as `unknown` and passes. applyRecoPriceCeilingPreference feeds
+      # `selected = viable.slice(0, 3)`, so a row that could not appear before now can.
       - name: Run node:test suites
         run: |
           node --test \
@@ -932,7 +971,8 @@ jobs:
             tests/aurora_legacy_reco_prompt_contract.node.test.cjs \
             tests/reco_alternatives_candidate_price_contract.node.test.cjs \
             tests/reco_buyer_region_dimension.node.test.cjs \
-            tests/crawler_inline_price_prefix.node.test.cjs
+            tests/crawler_inline_price_prefix.node.test.cjs \
+            tests/reco_alternatives_price_coercion_guards.node.test.cjs
 
   jest:
     runs-on: ubuntu-latest
