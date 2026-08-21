@@ -12596,6 +12596,48 @@ function inferCurrencyFromPriceText(value, fallback = '') {
   return normalizeCurrencyCode(fallback, '');
 }
 
+// A price is a positive, finite amount, rounded to cents. Not-a-number, an overflow, zero and
+// negatives are all "no price" rather than something to coerce.
+function toRoundedPositiveOrNull(amount) {
+  if (!Number.isFinite(amount) || amount <= 0) return null;
+  return Number(amount.toFixed(2));
+}
+
+// A money string and nothing else: digits with `.`/`,` between them, each separator followed by
+// digits, optionally ending in a bare separator (`5.`, `1.299,`). A doubled separator, an exponent
+// or any letter fails this, and then there is no price to read.
+const PRICE_SEPARATOR_TEXT_RE = /^[+-]?(?:\d+(?:[.,]\d+)*[.,]?|[.,]\d+)$/;
+
+// Which separator is the DECIMAL point, for a string that already matched the pattern above.
+//
+// `Number(text.replace(/,/g, ''))` — the rule this replaces — treats every comma as a thousands
+// separator, so `35,30` came back as 3530. Serving €35.30 as €3530 is a 100x inflation of a price
+// a buyer is shown, and roughly half the world writes prices that way. (The salvage path further
+// down already got this right; only the fast path did not, so the defect fired precisely on the
+// clean numeric strings that need no salvaging.)
+//
+// The rules, in order:
+//   * BOTH separators present — the LAST one is the decimal point and the other is grouping. This
+//     is what distinguishes `1,299.00` from `1.234.567,89` without knowing the locale.
+//   * Commas only — a trailing run of 1 or 2 digits is a decimal comma (`35,30`, `1,2`); a run of 3
+//     is grouping (`1,299`). Three digits after the final comma is the one genuinely ambiguous
+//     case, and grouping is both the commoner convention and the reading this code already had.
+//   * Dots only — more than one dot can only be grouping (`1.234.567`); a single dot is decimal.
+function resolvePriceSeparators(text) {
+  const lastComma = text.lastIndexOf(',');
+  const lastDot = text.lastIndexOf('.');
+  let decimalAt = -1;
+  if (lastComma >= 0 && lastDot >= 0) decimalAt = Math.max(lastComma, lastDot);
+  else if (lastComma >= 0) decimalAt = /,\d{1,2}$/.test(text) ? lastComma : -1;
+  else if (lastDot >= 0) decimalAt = (text.match(/\./g) || []).length > 1 ? -1 : lastDot;
+  // A TRAILING separator is still the decimal point — it simply has no cents after it. Trimming it
+  // instead would throw away the very signal that resolves the rest: the comma in `1.299,` is what
+  // says the dot is grouping, so `1.299,` is 1299 and a bare `1.299` is 1.30.
+  const whole = (decimalAt >= 0 ? text.slice(0, decimalAt) : text).replace(/[.,]/g, '');
+  const fraction = decimalAt >= 0 ? text.slice(decimalAt + 1).replace(/[.,]/g, '') : '';
+  return fraction ? `${whole}.${fraction}` : whole;
+}
+
 function toPositiveNumberOrNull(value) {
   if (value == null) return null;
   // `true` is not a dollar. Number(true) is 1 — finite and positive — so a boolean priced a product
@@ -12614,23 +12656,19 @@ function toPositiveNumberOrNull(value) {
     const text = String(value).trim();
     if (!text) return null;
     const compact = text.replace(/\s+/g, '');
-    const direct = Number(compact.replace(/,/g, ''));
-    if (Number.isFinite(direct) && direct > 0) return Number(direct.toFixed(2));
-    // The salvage below exists for text that is NOT a number ('$12.30', '12.5 USD'): it strips the
-    // non-numeric characters and re-parses. A string that DID parse must not reach it —
-    // Number('1e999') is Infinity, and stripping the exponent marker reads the digits back as
-    // $1999, a price from nowhere. Numeric-but-unusable (overflow, 0, negative) is "no price".
-    if (!Number.isNaN(direct)) return null;
-    const numeric = compact.replace(/[^0-9.,-]/g, '');
-    if (!numeric) return null;
-    let normalized = numeric;
-    const commaCount = (numeric.match(/,/g) || []).length;
-    const dotCount = (numeric.match(/\./g) || []).length;
-    if (commaCount && !dotCount) normalized = numeric.replace(',', '.');
-    normalized = normalized.replace(/,(?=\d{3}\b)/g, '');
-    const parsed = Number(normalized);
-    if (!Number.isFinite(parsed) || parsed <= 0) return null;
-    return Number(parsed.toFixed(2));
+    // With no comma there is nothing to misread, so parse it as written. This runs FIRST because an
+    // overflow or a non-positive value is "no price" and must NOT reach the salvage below —
+    // Number('1e999') is Infinity, and salvaging its digits reads it back as $1999.
+    if (!compact.includes(',')) {
+      const direct = Number(compact);
+      if (!Number.isNaN(direct)) return toRoundedPositiveOrNull(direct);
+    }
+    // Everything else: strip whatever is not part of a number ('$12.30', '12,5 EUR', 'From
+    // $1,299.00') and resolve the separators by convention. ONE rule for symbol and no-symbol
+    // alike — the two used to disagree, so `1,299` was $1299 and `$1,299` was $1.30.
+    const numericOnly = compact.replace(/[^0-9.,+-]/g, '');
+    if (!PRICE_SEPARATOR_TEXT_RE.test(numericOnly)) return null;
+    return toRoundedPositiveOrNull(Number(resolvePriceSeparators(numericOnly)));
   }
   const n = Number(value);
   if (!Number.isFinite(n) || n <= 0) return null;
