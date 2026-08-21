@@ -1,4 +1,5 @@
 const { lookupBrandForRow } = require('./recommendationBrandBackfill');
+const { formatDisplayPriceLabel, readFiniteAmount } = require('./priceLabelFormat');
 
 function isPlainObject(value) {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -429,9 +430,25 @@ function looksLikeRecommendationCardMarketingHeavyCopy(value) {
     || /\b(?:evaluation\s+tied|filter\s+cues?|clear\s+filter\s+identity|reapplication\s+expectations?\s+explicit|moisturizer[-\s]?style\s+claims?|shoppers?\s+who\s+need\s+a\s+daily\s+sunscreen\s+step)\b/i.test(text);
 }
 
+// A price amount, read strictly. asNumber reaches for Number() on anything that is not already a
+// number, and Number(null), Number(''), Number(false) and Number([]) are each a finite 0 -- so four
+// different kinds of "no amount" became a real price of zero. The `unknown` test below was written to
+// key on `amount == null` and only ever saw it for `undefined`, which is the one no-amount shape
+// Number() maps to NaN. Everything else shipped a card that said the product was FREE: price_label
+// '$0' and, via inferPriceTierFromAmount, price_tier 'budget'. A row whose price is literally `null`
+// took the scalar path and produced { amount: 0, currency: 'USD' } out of nothing at all.
+//
+// Same class as #2063, which closed this on the prompt side ("a candidate with no price told the LLM
+// the product was free"); the card side still did it. asNumber itself is left alone -- its other
+// callers read ratings and counts, where coercion is a separate question.
+function priceAmount(value) {
+  if (isPlainObject(value)) return readFiniteAmount(value.amount);
+  return readFiniteAmount(value);
+}
+
 function normalizePrice(value, fallbackCurrency = '') {
   if (isPlainObject(value)) {
-    const amount = asNumber(value.amount);
+    const amount = priceAmount(value.amount);
     const currency = asString(value.currency) || fallbackCurrency || 'USD';
     const unknown = value.unknown === true || amount == null;
     if (unknown) {
@@ -443,7 +460,7 @@ function normalizePrice(value, fallbackCurrency = '') {
       unknown: false,
     };
   }
-  const amount = asNumber(value);
+  const amount = priceAmount(value);
   if (amount == null) return null;
   return {
     amount,
@@ -452,22 +469,19 @@ function normalizePrice(value, fallbackCurrency = '') {
   };
 }
 
+// Rendering lives in priceLabelFormat.js, shared with the reco prompt formatter, because these two
+// had already drifted: this function printed '$' for every currency it did not special-case, so a JPY
+// card said '$4500' beside a price.currency of 'JPY'. What stays here is this surface's own policy for
+// a price it cannot render -- the card says so in words rather than omitting the field.
 function formatPriceLabel(price) {
   if (!isPlainObject(price)) return '';
   if (price.unknown === true || price.amount == null) return 'Price unavailable';
-  const amount = Number(price.amount);
-  if (!Number.isFinite(amount)) return 'Price unavailable';
-  const currency = asString(price.currency).toUpperCase();
-  const symbol =
-    currency === 'CNY' || currency === 'RMB'
-      ? '¥'
-      : currency === 'EUR'
-        ? '€'
-        : currency === 'GBP'
-          ? '£'
-          : '$';
-  const rounded = Math.round(amount * 100) / 100;
-  return `${symbol}${rounded}`;
+  // Unreachable today: normalizePrice returns either an explicitly unknown price or one whose amount
+  // is a finite number, so the formatter has nothing to fail on. Kept because this function accepts
+  // any price-shaped object, and a surviving mutant here is documented rather than covered by a test
+  // that cannot fail -- the precondition itself is pinned, by 'a priced card always carries an amount
+  // its formatter can render' in tests/reco_card_price_label_currency.node.test.cjs.
+  return formatDisplayPriceLabel(price.amount, price.currency) || 'Price unavailable';
 }
 
 function inferPriceTierFromAmount(amount) {
@@ -1129,6 +1143,9 @@ function normalizeRecommendationProductCard(raw, options = {}) {
     normalizePrice(row.price, asString(row.currency || product.currency || sku.currency)) ||
     normalizePrice(product.price, asString(product.currency || row.currency)) ||
     normalizePrice(sku.price, asString(sku.currency || row.currency));
+  // Whether any source CLAIMED a price, as opposed to never mentioning one. Distinguishes "no price
+  // here" (key absent) from "a price we could not read" (key null) at the card literal below.
+  const priceDeclared = row.price !== undefined || product.price !== undefined || sku.price !== undefined;
   const priceTierRaw = asString(row.price_tier) || asString(row.priceTier) || asString(row.item_type);
   const priceTier =
     ['budget', 'mid', 'premium'].includes(priceTierRaw)
@@ -1306,7 +1323,13 @@ function normalizeRecommendationProductCard(raw, options = {}) {
     ...(asString(row.image_url) || asString(product.image_url) || asString(sku.image_url)
       ? { image_url: asString(row.image_url) || asString(product.image_url) || asString(sku.image_url) }
       : {}),
-    ...(price ? { price } : {}),
+    // `...row` above copies the row's own `price` verbatim, so whenever normalizePrice declines a
+    // value this key would otherwise keep the RAW one: `price: ['19.99']` shipped a card whose
+    // `price` was an array, and '' / false / 'abc' shipped those. Before the strict amount reader
+    // every one of them normalized to a (fabricated) price object, so nothing downstream ever saw a
+    // non-object here. Always decide this key: the normalized price, or an explicit null when a
+    // source declared a price we could not read, and nothing at all when none of them mentioned one.
+    ...(price ? { price } : priceDeclared ? { price: null } : {}),
     ...(asString(row.price_label) ? { price_label: asString(row.price_label) } : {}),
     ...(!asString(row.price_label) && price ? { price_label: formatPriceLabel(price) } : {}),
     ...(asString(row.price_position) ? { price_position: asString(row.price_position) } : {}),

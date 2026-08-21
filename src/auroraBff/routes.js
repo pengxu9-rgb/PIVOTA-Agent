@@ -245,6 +245,7 @@ const {
   normalizeRecommendationProductCard,
   buildRecommendationCardContext,
 } = require('./chatCardFactory');
+const { formatPromptPriceLabel } = require('./priceLabelFormat');
 const {
   VisionUnavailabilityReason,
   classifyVisionAvailability,
@@ -59750,14 +59751,18 @@ function inferRecoAssistantRequestMode(userRequestText) {
   return 'generic';
 }
 
+// Rendering lives in priceLabelFormat.js, shared with the card formatter, so the two cannot drift
+// again -- they already had: this one emitted 'JPY 4500' while the card printed '$4500' for the very
+// same price. The prompt table is USD-symbol-only on purpose (see that module); this function's own
+// output is unchanged, and null still means "no price to state" rather than a zero.
 function formatRecoAssistantPromptPriceLabel(rawPrice) {
   const price = normalizePriceObject(rawPrice, { fallbackCurrency: 'USD' });
-  if (!price || price.unknown === true || !Number.isFinite(Number(price.amount))) return null;
-  const amount = Number(price.amount);
-  const currency = normalizeCurrencyCode(price.currency, 'USD') || 'USD';
-  const amountLabel = Number.isInteger(amount) ? String(amount) : amount.toFixed(2);
-  if (currency === 'USD') return `$${amountLabel}`;
-  return `${currency} ${amountLabel}`;
+  if (!price || price.unknown === true) return null;
+  // The `|| null` is unreachable for the same reason as the card's fallback (see chatCardFactory.js):
+  // normalizePriceObject yields null or a finite positive amount. It matters if that ever changes --
+  // callers spread this into the prompt payload, where '' would state an empty price rather than omit
+  // one -- so it stays, documented, with its precondition pinned by the card/prompt agreement tests.
+  return formatPromptPriceLabel(price.amount, price.currency) || null;
 }
 
 function buildRecoAssistantPromptPriceDiagnostics(items = []) {
@@ -104940,6 +104945,7 @@ const __internal = {
   resolveProductIntelKbKeyQuality,
   extractProductPriceFromHtml,
   normalizePriceObject,
+  formatRecoAssistantPromptPriceLabel,
   runOpenAIVisionSkinAnalysis,
   runGeminiVisionSkinAnalysis,
   runVisionSkinAnalysis,
