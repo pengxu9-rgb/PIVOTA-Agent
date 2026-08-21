@@ -21,7 +21,11 @@
 const crypto = require('crypto');
 
 const RECO_RECALL_POOL_CACHE_TABLE = 'reco_recall_pool_cache';
-const RECO_RECALL_POOL_CACHE_VERSION = 'reco_recall_pool_cache_v1';
+// v2: v1 payloads were written WITHOUT prices — the sanitizer kept scalars only while the lane's
+// price is an OBJECT ({amount, currency}) — so every pool served from cache produced "no price"
+// items (live 2026-08-21: three grounded products, all price-less, all "not verified"). The version
+// rides in the cache KEY, so bumping it orphans every v1 row at once; the purge sweep deletes them.
+const RECO_RECALL_POOL_CACHE_VERSION = 'reco_recall_pool_cache_v2';
 
 // Belt-and-braces lazy DDL, byte-identical to src/db/migrations/059_reco_recall_pool_cache.sql. The
 // migration is the primary mechanism; this only recovers a 42P01 on a deployment whose migrations have
@@ -152,6 +156,21 @@ function sanitizeRecoRecallPoolCandidate(candidate) {
     }
     if (typeof value === 'number' || typeof value === 'boolean') {
       out[field] = value;
+      continue;
+    }
+    // The lane's price is an OBJECT ({amount, currency, unknown}) built by
+    // extractCatalogCandidatePrice. Dropping it (the v1 behavior) served whole pools of price-less
+    // products. It is flattened into the scalar fields the SAME extractor reads back
+    // (price_amount + currency are both allowlisted and both extractor seeds), so a cached
+    // candidate round-trips to the identical price. amount <= 0 is a broken offer row and is
+    // skipped on purpose -- the reader must see "no price", never a fabricated zero.
+    if (field === 'price' && isPlainObject(value)) {
+      const amount = Number(value.amount);
+      if (Number.isFinite(amount) && amount > 0 && out.price_amount === undefined) {
+        out.price_amount = amount;
+        const cur = String(value.currency == null ? '' : value.currency).trim().toUpperCase();
+        if (cur && out.currency === undefined) out.currency = cur.slice(0, 8);
+      }
     }
   }
   return Object.keys(out).length > 0 ? out : null;

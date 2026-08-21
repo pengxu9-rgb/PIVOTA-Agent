@@ -38,7 +38,11 @@ const DEFAULT_BUDGET_MS = 9000;
 // small margin for slots freed by the ceiling pass), and never let one slow PDP lookup hold the whole
 // tool call — the race resolves null and the item degrades to its snapshot price, explicitly marked.
 const PRICE_VERIFY_EXTRA = 2;
-const PRICE_VERIFY_RACE_MS = 2500;
+// The race is a BACKSTOP against a verifier dep with no timeout of its own -- it must sit ABOVE the
+// dep's real latency, not inside it. Measured 2026-08-21: the loopback get_pdp_v2 answers in ~4.7s
+// (sig -> ext resolution does real work), so the old 2500ms race (and the wiring's old 2000ms axios
+// timeout) killed every live-price check exactly when it mattered.
+const PRICE_VERIFY_RACE_MS = 6500;
 const PRICE_VERIFY_MAX_CHECKS = 8;
 
 function nonEmpty(v) {

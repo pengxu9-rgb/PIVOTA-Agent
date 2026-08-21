@@ -281,6 +281,43 @@ test('long string fields are truncated rather than stored whole', () => {
   assert.equal(sanitized[0].name.length, 512);
 });
 
+// LIVE REGRESSION (2026-08-21): the lane's price is an OBJECT ({amount, currency, unknown}) built by
+// extractCatalogCandidatePrice, and v1's scalar-only sanitizer silently dropped it — every pool served
+// from cache produced grounded products with NO price, which the price gate then honestly reported as
+// "not verified: no catalog price" on all of them. The object must round-trip as the scalar fields the
+// SAME extractor reads back (price_amount + currency are both extractor seeds).
+test('an OBJECT price round-trips as price_amount + currency — a cached pool never loses prices', () => {
+  const sanitized = sanitizeRecoRecallPoolCandidates([
+    { product_id: 'p1', name: 'Murad Deep Relief', price: { amount: 45, currency: 'USD', unknown: false } },
+    { product_id: 'p2', name: 'lowercase currency', price: { amount: 17.5, currency: 'usd' } },
+    // amount <= 0 is a broken offer row: no price is stored, never a fabricated zero
+    { product_id: 'p3', name: 'broken offer', price: { amount: 0, currency: 'USD' } },
+    { product_id: 'p4', name: 'negative', price: { amount: -3, currency: 'USD' } },
+    // an explicit scalar price_amount is never overwritten by the object
+    { product_id: 'p5', name: 'scalar wins', price_amount: 30, price: { amount: 99, currency: 'EUR' } },
+  ]);
+  // Mutant killed: reverting to the scalar-only sanitizer — p1 loses its price entirely.
+  assert.equal(sanitized[0].price_amount, 45);
+  assert.equal(sanitized[0].currency, 'USD');
+  assert.equal(sanitized[1].price_amount, 17.5);
+  assert.equal(sanitized[1].currency, 'USD', 'currency is upcased so the reader compares like-for-like');
+  assert.equal(sanitized[2].price_amount, undefined, 'a zero amount is a broken row, not a price');
+  assert.equal(sanitized[3].price_amount, undefined);
+  assert.equal(sanitized[4].price_amount, 30, 'an explicit scalar is authoritative');
+  // and no raw object ever reaches the payload
+  for (const c of sanitized) assert.notEqual(typeof c.price, 'object');
+});
+
+test('the version bump orphans every price-less v1 row — no v1 key can ever be read again', () => {
+  const key = buildRecoRecallPoolCacheKey({
+    queries: ['cleanser'], stepFamily: 'cleanser', lang: 'en', catalogSurface: 'beauty', plannerMode: 'step_aware',
+  });
+  // The RECORDED v1 key for these exact dims. Mutant killed: leaving the version at v1 — the deployed
+  // table is full of price-less v1 payloads with 24h serve windows, and without the bump the fixed
+  // reader would keep serving them for a day.
+  assert.notEqual(key, 'df91032da2eecf5bf73b4784e4b457d8f51f63801a321b7be33ed120ae4d70b9');
+});
+
 // ---------------------------------------------------------------------------
 // 5. Stale-while-revalidate semantics
 // ---------------------------------------------------------------------------
