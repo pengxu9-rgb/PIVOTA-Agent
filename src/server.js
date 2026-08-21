@@ -785,6 +785,22 @@ const AGENT_AUTH_CACHE_MAX_ENTRIES = parsePositiveInt(
   20_000,
   { min: 100, max: 200_000 },
 );
+// Fail-fast cooldown after an introspection outage. #2055 made a verified key survive a backend
+// outage, but every request still paid the FULL introspect timeout (10s in prod) before reaching a
+// cached verdict that could answer in microseconds — and axios shares ONE 128-socket agent per
+// origin with every other backend call, so above ~13 rps of that traffic the socket budget for the
+// whole gateway→backend lane is gone. This collapses N doomed dials into roughly one per cooldown.
+// Deliberately short: it is a load-shedding window, not a circuit that latches. Same disable words
+// as the stale-if-error switch.
+const AGENT_AUTH_INTROSPECT_COOLDOWN_DISABLED = ['0', 'off', 'false', 'no', 'disabled'].includes(
+  String(process.env.AGENT_AUTH_INTROSPECT_COOLDOWN_MS || '').trim().toLowerCase(),
+);
+const AGENT_AUTH_INTROSPECT_COOLDOWN_MS = AGENT_AUTH_INTROSPECT_COOLDOWN_DISABLED
+  ? 0
+  : parsePositiveInt(process.env.AGENT_AUTH_INTROSPECT_COOLDOWN_MS, 2_000, {
+      min: 100,
+      max: 60_000,
+    });
 const INVOKE_AUTH_CONTEXT = new AsyncLocalStorage();
 
 // Agent budgeting & loop protection (per /ui/chat turn)
@@ -29110,9 +29126,95 @@ function putCachedInvokeAuthResult(apiKey, result, nowMs = Date.now()) {
   pruneInvokeAuthCache(nowMs);
 }
 
-async function introspectInvokeApiKey(apiKey) {
+// ---- introspection fail-fast cooldown + single flight ------------------------------------------
+//
+// Two separate amplifiers, both measured on the 2026-08-21 incident shape:
+//   COOLDOWN collapses the time axis. Without it EVERY request re-dials an endpoint we just watched
+//   time out, waits the full budget, and only then reads a verdict the cache already holds.
+//   SINGLE FLIGHT collapses the concurrency axis. Without it N simultaneous requests for the SAME
+//   key each open their own connection to ask one question with one answer.
+// Together the worst case per cooldown window is one dial per distinct key, instead of one per
+// request.
+//
+// THE COOLDOWN IS PER-KEY, AND THAT IS A SECURITY PROPERTY, NOT A DETAIL. A global "the backend is
+// down, stop dialling" window reads as the obvious design — the backend IS down for everyone — and
+// it is wrong here, because the dial this shed suppresses is also the dial that ENFORCES REVOCATION.
+// A successful dial returning `valid: false` overwrites the cached positive and collapses its stale
+// horizon (putCachedInvokeAuthResult); that is the mechanism by which a revoked key stops working.
+// Under a global window, one unrelated key's failure suppresses that dial for every other key, so:
+//   - a key revoked seconds ago keeps transacting off its stale positive even against a backend
+//     that has already recovered, and
+//   - an attacker can OPEN the window on demand — introspection is dialled pre-authentication for
+//     any well-formed key string, on unthrottled routes, so a flood of random keys saturates the
+//     backend until one dial fails — and then present their own recently-revoked key while no
+//     revoking dial can land, converting the 120s stale cap from a best case into a guarantee.
+// Keying the window on the caller's OWN key removes both: a key is shed only by its own recent
+// failure, so revocation lands within one window, and failing other keys buys an attacker nothing.
+// The load win is preserved because it was never per-request — it is one dial per active key per
+// window, and the real partner-key population is small.
+const invokeAuthIntrospectInflight = new Map(); // cacheKey -> Promise<result>
+const invokeAuthIntrospectCooldown = new Map(); // cacheKey -> cooldownUntilMs
+
+function pruneInvokeAuthIntrospectCooldown(nowMs = Date.now()) {
+  for (const [cacheKey, untilMs] of invokeAuthIntrospectCooldown.entries()) {
+    if (!(Number(untilMs) > nowMs)) invokeAuthIntrospectCooldown.delete(cacheKey);
+  }
+  // Same bound as the verdict cache: this map is keyed by the same hashes and must not become an
+  // unbounded sink for a flood of one-shot keys.
+  while (invokeAuthIntrospectCooldown.size > AGENT_AUTH_CACHE_MAX_ENTRIES) {
+    const oldest = invokeAuthIntrospectCooldown.keys().next();
+    if (!oldest || oldest.done) break;
+    invokeAuthIntrospectCooldown.delete(oldest.value);
+  }
+}
+
+function isInvokeAuthIntrospectCooldownActive(apiKey, nowMs = Date.now()) {
+  if (AGENT_AUTH_INTROSPECT_COOLDOWN_MS <= 0) return false;
+  const cacheKey = hashSecretForCache(apiKey);
+  if (!cacheKey) return false;
+  return Number(invokeAuthIntrospectCooldown.get(cacheKey) || 0) > nowMs;
+}
+
+function openInvokeAuthIntrospectCooldown(apiKey, nowMs = Date.now()) {
+  if (AGENT_AUTH_INTROSPECT_COOLDOWN_MS <= 0) return 0;
+  const cacheKey = hashSecretForCache(apiKey);
+  if (!cacheKey) return 0;
+  const untilMs = nowMs + AGENT_AUTH_INTROSPECT_COOLDOWN_MS;
+  invokeAuthIntrospectCooldown.set(cacheKey, untilMs);
+  pruneInvokeAuthIntrospectCooldown(nowMs);
+  return untilMs;
+}
+
+function clearInvokeAuthIntrospectCooldown(apiKey) {
+  if (apiKey === undefined) {
+    invokeAuthIntrospectCooldown.clear();
+    return;
+  }
+  const cacheKey = hashSecretForCache(apiKey);
+  if (cacheKey) invokeAuthIntrospectCooldown.delete(cacheKey);
+}
+
+function buildInvokeAuthIntrospectUnavailableError(message) {
+  const err = new Error(message);
+  // MUST be UNAVAILABLE and nothing else. That code is what licenses the stale-if-error replay, and
+  // it is only honest for a backend that failed to answer. A REJECTED (backend up, refusing OUR
+  // internal key) must never be laundered through here into a replay — so the cooldown never opens
+  // on one, and this builder is never called for one.
+  err.code = 'AUTH_INTROSPECT_UNAVAILABLE';
+  return err;
+}
+
+// `telemetry` records what this CALL actually did with the wire, so the log line can say it instead
+// of guessing. A pre-sampled "was the cooldown open when I arrived?" is wrong for the two cases that
+// matter most: a follower that coalesced onto someone else's dial never touched the wire but would
+// have sampled `false`, and during a burst on one hot key that is N-1 log lines each claiming a dial
+// the wire never saw — in the one field added to make the shed observable.
+async function introspectInvokeApiKey(apiKey, telemetry = {}) {
   const cached = getCachedInvokeAuthResult(apiKey);
-  if (cached) return cached;
+  if (cached) {
+    telemetry.dial = 'fresh_cache';
+    return cached;
+  }
 
   if (!AGENT_AUTH_INTROSPECT_URL || !AGENT_AUTH_INTROSPECT_INTERNAL_KEY) {
     const err = new Error('agent auth introspect is not configured');
@@ -29120,6 +29222,95 @@ async function introspectInvokeApiKey(apiKey) {
     throw err;
   }
 
+  const inflightKey = hashSecretForCache(apiKey);
+  if (!inflightKey) {
+    telemetry.dial = 'dialled';
+    return runBoundedInvokeAuthIntrospectFlight(apiKey);
+  }
+
+  // THE JOIN COMES FIRST, BEFORE THE SHED. Riding a dial that is already in the air costs nothing at
+  // the wire, which is the only thing the shed protects — and that dial is the authoritative answer
+  // for THIS key, possibly the `valid: false` that revokes it. Shedding ahead of the join would
+  // refuse a request while the process holds a promise about to answer it, and would replay a stale
+  // positive over a live revocation.
+  //
+  // Keyed on the FULL sha256 of the key, never on a truncated fingerprint and never on a shared
+  // token: coalescing two different keys onto one flight would hand caller B the identity that was
+  // minted for caller A — a silent cross-tenant identity swap that every status code would call OK.
+  const inflight = invokeAuthIntrospectInflight.get(inflightKey);
+  if (inflight) {
+    telemetry.dial = 'coalesced';
+    return inflight;
+  }
+
+  // Below the fresh-cache read (a warm key is never shed) and below the join, above the wire.
+  if (isInvokeAuthIntrospectCooldownActive(apiKey)) {
+    telemetry.dial = 'skipped_cooldown';
+    throw buildInvokeAuthIntrospectUnavailableError(
+      'introspect skipped: this key dialled recently and the dial failed',
+    );
+  }
+
+  telemetry.dial = 'dialled';
+  const flight = runBoundedInvokeAuthIntrospectFlight(apiKey).finally(() => {
+    if (invokeAuthIntrospectInflight.get(inflightKey) === flight) {
+      invokeAuthIntrospectInflight.delete(inflightKey);
+    }
+  });
+  // Nothing is swallowed — followers still see the leader's rejection and each run their own
+  // stale-cache recovery. This only stops an unconsumed rejection from surfacing as an unhandled
+  // rejection when the leader settles before a follower has attached.
+  flight.catch(() => {});
+  invokeAuthIntrospectInflight.set(inflightKey, flight);
+  return flight;
+}
+
+// The flight stored in the map above MUST be guaranteed to settle. This repo has already paid for
+// that lesson once, in RESOLVE_CATALOG_SIGNATURE_INFLIGHT: a promise that never settles is never
+// evicted by `.finally()`, so every later request for that key is handed the SAME dead promise and
+// the key is poisoned for the life of the process.
+//
+// The budget is NOT a substitute for axios's own `timeout`, and the difference matters here more
+// than it looks. axios implements `timeout` with `req.setTimeout`, a SOCKET timeout that does not
+// start counting until the agent hands the request a socket — so under the very socket exhaustion
+// this shed exists to relieve, a queued introspect can sit in `agent.requests[]` with its timer
+// unstarted and only this budget settles it.
+//
+// Which is why the abandoned request must be ABORTED, not merely raced. `Promise.race` drops the
+// loser but leaves it running: an orphan that lands later would still open or clear the cooldown on
+// evidence about a moment that has passed, and — worst — a late 2xx would reach
+// putCachedInvokeAuthResult, which stamps `minted_at_ms` with the COMPLETION time and would hand a
+// verdict sampled a minute ago a fresh full TTL plus a fresh stale window. That silently breaks the
+// "hard cap measured from the introspection that minted it" invariant the cache is built on. The
+// signal makes the orphan impossible instead of arguing about who wins the race.
+// `dial` is injectable for ONE reason: the STAGE_TIMEOUT branch below is unreachable over the wire.
+// The budget is always axios's timeout + 1s, so axios always wins unless its socket timer never
+// started — the queued-socket case — which no HTTP mock can stage. Left uninjectable, the branch
+// that exists to guarantee settlement is the one branch nothing can drive, and deleting it passes
+// every test while turning the incident shape into a 503 for every warm key (a raw STAGE_TIMEOUT
+// fails the strict `=== 'AUTH_INTROSPECT_UNAVAILABLE'` check and so skips the stale replay).
+async function runBoundedInvokeAuthIntrospectFlight(apiKey, dial = introspectInvokeApiKeyOverNetwork) {
+  const budgetMs = AGENT_AUTH_INTROSPECT_TIMEOUT_MS + 1_000;
+  const controller = new AbortController();
+  try {
+    return await withStageBudget(
+      dial(apiKey, controller.signal),
+      budgetMs,
+      'invoke_auth_introspect',
+    );
+  } catch (err) {
+    if (err?.code === 'STAGE_TIMEOUT') {
+      controller.abort();
+      openInvokeAuthIntrospectCooldown(apiKey);
+      throw buildInvokeAuthIntrospectUnavailableError(
+        `introspect exceeded its flight budget: ${budgetMs}ms`,
+      );
+    }
+    throw err;
+  }
+}
+
+async function introspectInvokeApiKeyOverNetwork(apiKey, signal) {
   let response;
   try {
     response = await axios.post(
@@ -29127,6 +29318,7 @@ async function introspectInvokeApiKey(apiKey) {
       { api_key: apiKey },
       {
         timeout: AGENT_AUTH_INTROSPECT_TIMEOUT_MS,
+        signal,
         headers: {
           'Content-Type': 'application/json',
           'X-Internal-Key': AGENT_AUTH_INTROSPECT_INTERNAL_KEY,
@@ -29135,18 +29327,18 @@ async function introspectInvokeApiKey(apiKey) {
       },
     );
   } catch (err) {
-    const e = new Error(err?.message || 'introspect request failed');
-    e.code = 'AUTH_INTROSPECT_UNAVAILABLE';
-    throw e;
+    openInvokeAuthIntrospectCooldown(apiKey);
+    throw buildInvokeAuthIntrospectUnavailableError(err?.message || 'introspect request failed');
   }
 
   if (response.status >= 500) {
-    const err = new Error(`introspect upstream status=${response.status}`);
-    err.code = 'AUTH_INTROSPECT_UNAVAILABLE';
-    throw err;
+    openInvokeAuthIntrospectCooldown(apiKey);
+    throw buildInvokeAuthIntrospectUnavailableError(`introspect upstream status=${response.status}`);
   }
 
   if (response.status < 200 || response.status >= 300) {
+    // NOT an outage and NOT a cooldown trigger: the backend answered, it just refused us. Opening
+    // the cooldown here would convert a config error into a licence to replay cached verdicts.
     const err = new Error(`introspect rejected status=${response.status}`);
     err.code = 'AUTH_INTROSPECT_REJECTED';
     throw err;
@@ -29171,6 +29363,12 @@ async function introspectInvokeApiKey(apiKey) {
   const isBackendErrorResult = result.valid !== true && result.auth_source === 'error';
   if (!isBackendErrorResult) {
     putCachedInvokeAuthResult(apiKey, result);
+    // Cleared HERE, not on the bare 2xx above, and for the same reason the line above refuses to
+    // cache: a soft error is the backend reporting its own failure, so treating it as "answered on
+    // the merits" would clear the shed on the evidence that most argues for keeping it. Under mixed
+    // saturation — some calls hanging, some returning fast soft errors — clearing on the 2xx made
+    // every soft error re-arm the full-timeout dial storm the shed exists to stop.
+    clearInvokeAuthIntrospectCooldown(apiKey);
   }
   return result;
 }
@@ -29244,8 +29442,11 @@ async function requireExternalInvokeAuth(req, res, next) {
   }
 
   let introspection;
+  // Filled in by introspectInvokeApiKey with what it actually did: 'fresh_cache' | 'coalesced' |
+  // 'skipped_cooldown' | 'dialled'.
+  const introspectTelemetry = {};
   try {
-    introspection = await introspectInvokeApiKey(provided);
+    introspection = await introspectInvokeApiKey(provided, introspectTelemetry);
   } catch (err) {
     // Stale-if-error: scoped to AUTH_INTROSPECT_UNAVAILABLE alone. NOT_CONFIGURED and REJECTED mean
     // the introspection contract itself is broken (missing config, backend refused our internal
@@ -29267,6 +29468,10 @@ async function requireExternalInvokeAuth(req, res, next) {
             agent_id: outageVerdict.agent_id || null,
             verdict_age_ms: outageVerdict.verdict_age_ms,
             stale_if_error_ttl_ms: AGENT_AUTH_CACHE_STALE_IF_ERROR_TTL_MS,
+            // What this request actually did with the wire: 'dialled' (and it failed), 'coalesced'
+            // onto another request's dial, or 'skipped_cooldown'. The difference between a 10s reply
+            // and an instant one, and the only way to see from the logs that the shed is working.
+            introspect_dial: introspectTelemetry.dial || 'dialled',
           },
           'invoke auth served cached verdict during introspection outage',
         );
@@ -52407,7 +52612,27 @@ module.exports._debug = {
     negative_ttl_ms: AGENT_AUTH_CACHE_NEGATIVE_TTL_MS,
     stale_if_error_ttl_ms: AGENT_AUTH_CACHE_STALE_IF_ERROR_TTL_MS,
     stale_if_error_disabled: AGENT_AUTH_CACHE_STALE_IF_ERROR_DISABLED,
+    introspect_cooldown_ms: AGENT_AUTH_INTROSPECT_COOLDOWN_MS,
+    introspect_cooldown_disabled: AGENT_AUTH_INTROSPECT_COOLDOWN_DISABLED,
   }),
+  // Load-shedding property: after an introspection outage the door stops re-dialling a backend it
+  // just watched fail, and concurrent requests for one key share a single dial. Neither is visible
+  // in a status code — a coalesced request and a duplicated one both return 200 — so the only way
+  // to assert them is to count dials at the wire and to drive the cooldown on a controlled clock.
+  invokeAuthIntrospectInflight,
+  invokeAuthIntrospectCooldown,
+  isInvokeAuthIntrospectCooldownActive,
+  openInvokeAuthIntrospectCooldown,
+  clearInvokeAuthIntrospectCooldown,
+  // Exported so the STAGE_TIMEOUT branch can be driven directly. It is the settlement guarantee the
+  // whole single-flight design rests on, and it is unreachable over the wire: axios's own timeout
+  // always wins unless the request is stuck in the agent's socket queue, which nock cannot stage.
+  runBoundedInvokeAuthIntrospectFlight,
+  // Exported so the gate ORDER can be asserted. Over the wire a cooldown gate placed above the
+  // fresh-cache read is indistinguishable from one placed below it — both answer 400, because the
+  // stale-replay path silently rescues the request the hoisted gate broke. Only the return value
+  // here separates a fresh hit from a degraded replay.
+  introspectInvokeApiKey,
   // Exported for the one assertion that matters most on this path and cannot be made any other way:
   // that a REPLAYED verdict does not flip the upstream credential to the gateway's service key. The
   // predicate reads AsyncLocalStorage, so it has to be driven inside a store the test controls.

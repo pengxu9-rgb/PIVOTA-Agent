@@ -554,6 +554,42 @@ jobs:
       # other through the pack and had to be driven directly. Also pinned: a CN token round-trips
       # (面膜 -> ["面膜","mask"]), an explicit step captures no token, and a token equal to the family
       # anchor is dropped so no-token plans stay byte-stable.
+      # ADDED 2026-08-21: `invoke_auth_introspect_load_shedding`, confirmed green
+      # 20/20 and mutation-checked against 17 mutants, 16 killed; the 17th is an
+      # equivalent mutant (dropping the disable guard from the cooldown READER
+      # alone changes nothing, because the guard on the writer already means a
+      # disabled switch records no horizon to read). That count is the honest
+      # one: an earlier revision of this comment claimed "10 mutants, all
+      # killed", which was true only of the ten mutants chosen — review then
+      # found three more that survived, so the claim bought confidence it had
+      # not earned. It is the follow-up to the suite above: #2055 let a verified
+      # key survive an introspection outage, but every request still dialled a
+      # backend it had just watched fail, paid the full timeout, and only then
+      # read a verdict already in the Map — while axios's single
+      # 128-socket-per-origin agent starved every other gateway->backend call.
+      # The properties only this suite pins are invisible to a status code,
+      # because a coalesced request and a duplicated one both return the same
+      # one: it counts DIALS at the wire.
+      #
+      # THE SHED IS PER-KEY, AND THAT IS A SECURITY PROPERTY. The dial it
+      # suppresses is also the dial that enforces revocation (a successful
+      # valid:false overwrites the cached positive and collapses its stale
+      # horizon). The first version of this change used ONE GLOBAL window, and
+      # review found that let one key's failure suppress every other key's
+      # revoking dial — and, because introspection is dialled PRE-auth on
+      # unthrottled routes, let an attacker open the window on demand with a
+      # flood of random well-formed keys and then ride their own recently
+      # revoked key for the full 120s stale cap. The two tests marked SECURITY
+      # fail against that design and are the reason this file exists in its
+      # current shape. Other load-bearing cases: concurrent requests for one key
+      # share exactly one dial; two DIFFERENT keys in flight are never coalesced
+      # (that would hand one caller the other's identity with both responses
+      # looking normal); a REJECTED response never opens the cooldown, since the
+      # cooldown throws a synthetic AUTH_INTROSPECT_UNAVAILABLE and that code is
+      # what licenses verdict replay; the window lapses on the REAL clock (a
+      # latching cooldown passed every earlier version of this suite); and the
+      # STAGE_TIMEOUT settlement branch is driven through an injected dial,
+      # being unreachable over the wire and therefore deletable unnoticed.
       - name: Run node:test suites
         run: |
           node --test \
@@ -624,7 +660,8 @@ jobs:
             tests/aurora_surface_auth_curl_wrapper.node.test.cjs \
             tests/invoke_auth_introspect_outage_cache.node.test.cjs \
             tests/reco_price_aware_recall.node.test.cjs \
-            tests/reco_token_anchored_recall.node.test.cjs
+            tests/reco_token_anchored_recall.node.test.cjs \
+            tests/invoke_auth_introspect_load_shedding.node.test.cjs
 
   jest:
     runs-on: ubuntu-latest

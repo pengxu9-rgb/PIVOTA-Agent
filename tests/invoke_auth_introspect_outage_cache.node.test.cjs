@@ -58,6 +58,7 @@ const {
   agentAuthCacheTtlSnapshot,
   shouldPreferInternalInvokeUpstreamAuth,
   INVOKE_AUTH_CONTEXT,
+  clearInvokeAuthIntrospectCooldown,
 } = app._debug;
 
 test.after(() => {
@@ -67,6 +68,13 @@ test.after(() => {
 
 test.beforeEach(() => {
   nock.cleanAll();
+  // The introspection fail-fast cooldown is PROCESS-GLOBAL: one failed dial suppresses dials for
+  // every key until it lapses. That is correct in production — the backend is down for everyone —
+  // but across tests it means an outage staged here leaks into the next test, whose nock scope then
+  // goes unconsumed and whose `isDone()` assertion fails for a reason that has nothing to do with
+  // what it is testing. Reset it so each test states its own preconditions.
+  // (Load-shedding itself is owned by tests/invoke_auth_introspect_load_shedding.node.test.cjs.)
+  clearInvokeAuthIntrospectCooldown();
 });
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
