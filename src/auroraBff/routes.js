@@ -388,6 +388,13 @@ const {
 } = require('./analysisContextSnapshot');
 const { normalizeRecoTargetStep, extractRecoTargetStepFromText } = require('./recoTargetStep');
 const {
+  buildRecoRecallPoolCacheKey,
+  isRecoRecallPoolCacheEnabled,
+  shouldServeRecoRecallPoolCacheEntry,
+  shouldRevalidateRecoRecallPoolCacheEntry,
+  createRecoRecallPoolCache,
+} = require('./recoRecallPoolCache');
+const {
   RECOMMENDATION_STEP_QUERY_POLICY_V1,
   RECOMMENDATION_VIABLE_THRESHOLD_POLICY_V1,
   RECOMMENDATION_RECO_POLICY_V1,
@@ -1295,6 +1302,26 @@ const RECO_CATALOG_FAIL_FAST_PROBE_SEARCH_TIMEOUT_MS = (() => {
   const n = Number(process.env.AURORA_BFF_RECO_CATALOG_FAIL_FAST_PROBE_SEARCH_TIMEOUT_MS || 1500);
   const v = Number.isFinite(n) ? Math.trunc(n) : 1500;
   return Math.max(300, Math.min(6000, v));
+})();
+// The ON-REQUEST probe above is capped at 6000ms and defaults to 1500ms, against a dependency whose
+// COLD latency is 9-18.6s. It can therefore never succeed, so the circuit could not close on its own:
+// it stayed open, was re-opened by its own failing probe, and recall plus the grounding pass were
+// skipped for as long as traffic kept arriving. The repair is to probe OFF the request path with a
+// timeout that can actually clear a cold search.
+const RECO_CATALOG_FAIL_FAST_OFF_REQUEST_PROBE_ENABLED = (() => {
+  const raw = String(process.env.AURORA_BFF_RECO_CATALOG_FAIL_FAST_OFF_REQUEST_PROBE || 'true')
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
+const RECO_CATALOG_FAIL_FAST_OFF_REQUEST_PROBE_TIMEOUT_MS = (() => {
+  const n = Number(process.env.AURORA_BFF_RECO_CATALOG_FAIL_FAST_OFF_REQUEST_PROBE_TIMEOUT_MS || 20000);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 20000;
+  return Math.max(5000, Math.min(60000, v));
+})();
+const RECO_CATALOG_FAIL_FAST_OFF_REQUEST_PROBE_QUERY = (() => {
+  const raw = String(process.env.AURORA_BFF_RECO_CATALOG_FAIL_FAST_OFF_REQUEST_PROBE_QUERY || '').trim();
+  return raw || 'moisturizer';
 })();
 const RECO_CATALOG_SEARCH_BASE_URLS = String(
   process.env.AURORA_BFF_RECO_CATALOG_SEARCH_BASE_URLS ||
@@ -5112,7 +5139,45 @@ const recoCatalogFailFastState = {
   last_reason: null,
   last_failed_at: 0,
   last_probe_started_at: 0,
+  off_request_probe_timer: null,
+  off_request_probe_in_flight: false,
+  last_off_request_probe_ok_at: 0,
+  last_off_request_probe_failed_at: 0,
 };
+
+// One shared, lazily created cache handle. `db.query` is the canonical gateway accessor and returns a
+// sentinel NO_DATABASE error when DATABASE_URL is unset, which the cache swallows -- so a deployment
+// without a database behaves exactly as it does today.
+// Per-key single-flight for stale-pool revalidation (see the guard at the hit_stale path). In-process
+// on purpose: coalescing only needs to hold within one instance, and a bounded Set cannot leak — the
+// cap is a backstop far above the ~dozens-string recall vocabulary.
+const recoRecallPoolRevalidationInFlight = new Set();
+const RECO_RECALL_POOL_REVALIDATION_MAX_IN_FLIGHT = 64;
+
+// True = the caller owns the refresh for this key and MUST call endRecoRecallPoolRevalidation when it
+// settles. False = another refresh already owns the key (or the backstop cap is reached): serve the
+// stale row and schedule nothing.
+function beginRecoRecallPoolRevalidation(cacheKey) {
+  const key = String(cacheKey || '');
+  if (!key) return false;
+  if (recoRecallPoolRevalidationInFlight.has(key)) return false;
+  if (recoRecallPoolRevalidationInFlight.size >= RECO_RECALL_POOL_REVALIDATION_MAX_IN_FLIGHT) return false;
+  recoRecallPoolRevalidationInFlight.add(key);
+  return true;
+}
+
+function endRecoRecallPoolRevalidation(cacheKey) {
+  recoRecallPoolRevalidationInFlight.delete(String(cacheKey || ''));
+}
+
+let recoRecallPoolCacheInstance = null;
+function getRecoRecallPoolCache() {
+  if (!isRecoRecallPoolCacheEnabled()) return null;
+  if (!recoRecallPoolCacheInstance) {
+    recoRecallPoolCacheInstance = createRecoRecallPoolCache({ query: (sql, params) => db.query(sql, params) });
+  }
+  return recoRecallPoolCacheInstance;
+}
 
 const recoGuardrailCircuitStateByMode = new Map();
 
@@ -5207,6 +5272,13 @@ function getRecoCatalogFailFastSnapshot(nowMs = Date.now()) {
     last_probe_started_at: lastProbeStartedAt || 0,
     can_probe_while_open: canProbeWhileOpen,
     next_probe_in_ms: nextProbeInMs,
+    off_request_probe_enabled: RECO_CATALOG_FAIL_FAST_OFF_REQUEST_PROBE_ENABLED,
+    off_request_probe_timeout_ms: RECO_CATALOG_FAIL_FAST_OFF_REQUEST_PROBE_TIMEOUT_MS,
+    off_request_probe_in_flight: Boolean(recoCatalogFailFastState.off_request_probe_in_flight),
+    last_off_request_probe_ok_at: Number(recoCatalogFailFastState.last_off_request_probe_ok_at || 0),
+    last_off_request_probe_failed_at: Number(
+      recoCatalogFailFastState.last_off_request_probe_failed_at || 0,
+    ),
   };
 }
 
@@ -5226,14 +5298,72 @@ function markRecoCatalogFailFastFailure(reason, nowMs = Date.now()) {
   if (recoCatalogFailFastState.consecutive_failures >= RECO_CATALOG_FAIL_FAST_THRESHOLD) {
     recoCatalogFailFastState.open_until_ms = nowMs + RECO_CATALOG_FAIL_FAST_COOLDOWN_MS;
     recoCatalogFailFastState.last_probe_started_at = nowMs;
+    scheduleRecoCatalogFailFastOffRequestProbe();
   }
 }
 
 function beginRecoCatalogFailFastProbe(nowMs = Date.now()) {
   if (!RECO_CATALOG_FAIL_FAST_ENABLED) return false;
+  // With the off-request probe running, a REQUEST must never be conscripted as a probe: the on-request
+  // probe timeout is capped at 6s against a 9-18.6s cold search, so it could only ever fail, re-open
+  // the circuit, and make the caller pay for the privilege.
+  if (RECO_CATALOG_FAIL_FAST_OFF_REQUEST_PROBE_ENABLED) return false;
   const snapshot = getRecoCatalogFailFastSnapshot(nowMs);
   if (!snapshot.open || !snapshot.can_probe_while_open) return false;
   recoCatalogFailFastState.last_probe_started_at = nowMs;
+  return true;
+}
+
+// Off-request probe: a single unref'd timer, never more than one in flight, that runs a real search
+// with a timeout long enough to clear a cold query. Unref'd so it cannot hold the process open, and
+// self-cancelling once the circuit closes.
+async function runRecoCatalogFailFastOffRequestProbe() {
+  recoCatalogFailFastState.off_request_probe_timer = null;
+  if (!RECO_CATALOG_FAIL_FAST_ENABLED || !RECO_CATALOG_FAIL_FAST_OFF_REQUEST_PROBE_ENABLED) return;
+  const snapshot = getRecoCatalogFailFastSnapshot(Date.now());
+  if (!snapshot.open) return;
+  if (recoCatalogFailFastState.off_request_probe_in_flight) return;
+  recoCatalogFailFastState.off_request_probe_in_flight = true;
+  recoCatalogFailFastState.last_probe_started_at = Date.now();
+  let healthy = false;
+  try {
+    const result = await searchInternalProductsPrimitive({
+      query: RECO_CATALOG_FAIL_FAST_OFF_REQUEST_PROBE_QUERY,
+      limit: 1,
+      logger: null,
+      timeoutMs: RECO_CATALOG_FAIL_FAST_OFF_REQUEST_PROBE_TIMEOUT_MS,
+      catalogSurface: 'beauty',
+    });
+    healthy = Boolean(result && result.ok === true);
+  } catch (_err) {
+    healthy = false;
+  } finally {
+    recoCatalogFailFastState.off_request_probe_in_flight = false;
+  }
+  if (healthy) {
+    // Close the circuit directly. markRecoCatalogFailFastSuccess also clears the failure counter, so a
+    // recovered dependency starts from a clean slate rather than one failure below the threshold.
+    markRecoCatalogFailFastSuccess();
+    recoCatalogFailFastState.last_off_request_probe_ok_at = Date.now();
+    return;
+  }
+  recoCatalogFailFastState.last_off_request_probe_failed_at = Date.now();
+  // Do NOT call markRecoCatalogFailFastFailure here: the probe failing is not new evidence about
+  // request traffic, and counting it would extend the cooldown indefinitely (the metastable shape this
+  // whole change exists to remove). Just try again after the probe interval, while still open.
+  scheduleRecoCatalogFailFastOffRequestProbe();
+}
+
+function scheduleRecoCatalogFailFastOffRequestProbe(delayMs = RECO_CATALOG_FAIL_FAST_PROBE_INTERVAL_MS) {
+  if (!RECO_CATALOG_FAIL_FAST_ENABLED || !RECO_CATALOG_FAIL_FAST_OFF_REQUEST_PROBE_ENABLED) return false;
+  if (recoCatalogFailFastState.off_request_probe_timer) return false;
+  const timer = setTimeout(() => {
+    runRecoCatalogFailFastOffRequestProbe().catch(() => {
+      recoCatalogFailFastState.off_request_probe_timer = null;
+    });
+  }, Math.max(250, Math.trunc(Number(delayMs) || 5000)));
+  if (typeof timer.unref === 'function') timer.unref();
+  recoCatalogFailFastState.off_request_probe_timer = timer;
   return true;
 }
 
@@ -28480,7 +28610,10 @@ async function groundRecoRecommendationsFromCatalog({
   }
 
   const failFastSnapshot = getRecoCatalogFailFastSnapshot(Date.now());
-  if (failFastSnapshot && failFastSnapshot.open) {
+  const groundingPoolCache = getRecoRecallPoolCache();
+  const failFastOpen = Boolean(failFastSnapshot && failFastSnapshot.open);
+  if (failFastOpen) scheduleRecoCatalogFailFastOffRequestProbe();
+  if (failFastOpen && !groundingPoolCache) {
     return {
       recommendations: recs,
       grounding_status: 'ungrounded',
@@ -28501,6 +28634,7 @@ async function groundRecoRecommendationsFromCatalog({
   }
 
   const usedProductIds = new Set();
+  let poolCacheServedItemCount = 0;
   const next = [];
   let queryCount = 0;
   let candidateCountBeforeFilter = 0;
@@ -28531,15 +28665,60 @@ async function groundRecoRecommendationsFromCatalog({
       mode: 'step_aware',
       queryLevels: stepQueryLevels,
     });
-    const collected = await collectRecoCandidatesFromRecallPlan({
-      recallPlan,
-      targetContext: itemTargetContext,
-      logger,
-      timeoutMs: RECO_CATALOG_SEARCH_TIMEOUT_MS,
-      limit: 6,
-      usePurchasableFallback: false,
-      authHeaders: ctx?.backend_auth_headers || null,
-    });
+    const itemPoolCacheKey = groundingPoolCache
+      ? buildRecoRecallPoolCacheKey({
+          queries: collectRecoRecallPlanQueryTexts({ recallPlan, queryLevels: stepQueryLevels }),
+          stepFamily: itemTargetContext?.resolved_target_step || '',
+          lang: ctx && ctx.lang ? ctx.lang : 'EN',
+          catalogSurface: 'beauty',
+          plannerMode: 'step_aware',
+        })
+      : null;
+    const itemCachedEntry = itemPoolCacheKey ? await groundingPoolCache.read(itemPoolCacheKey) : null;
+    const itemCacheServable =
+      Boolean(itemCachedEntry) && shouldServeRecoRecallPoolCacheEntry(itemCachedEntry, Date.now());
+
+    let collected;
+    if (failFastOpen) {
+      // While the circuit is open the grounding pass used to be skipped WHOLESALE, which is what turns
+      // a 15s dependency blip into "every recommendation is an archetype". Serve the durable pool
+      // instead; an item with no cached pool simply stays ungrounded, as it would have anyway.
+      if (!itemCacheServable) {
+        next.push(rec);
+        continue;
+      }
+      poolCacheServedItemCount += 1;
+      collected = buildRecoCollectedFromCachedPool(itemCachedEntry.pool, { targetContext: itemTargetContext });
+    } else if (itemCacheServable) {
+      poolCacheServedItemCount += 1;
+      collected = buildRecoCollectedFromCachedPool(itemCachedEntry.pool, { targetContext: itemTargetContext });
+    } else {
+      collected = await collectRecoCandidatesFromRecallPlan({
+        recallPlan,
+        targetContext: itemTargetContext,
+        logger,
+        timeoutMs: RECO_CATALOG_SEARCH_TIMEOUT_MS,
+        limit: 6,
+        usePurchasableFallback: false,
+        authHeaders: ctx?.backend_auth_headers || null,
+      });
+      if (itemPoolCacheKey) {
+        const itemPool = extractRecoRecallPoolForCache(collected);
+        if (Array.isArray(itemPool)) {
+          setImmediate(() => {
+            groundingPoolCache
+              .write(itemPoolCacheKey, {
+                pool: itemPool,
+                stepFamily: itemTargetContext?.resolved_target_step || '',
+                lang: ctx && ctx.lang ? ctx.lang : 'EN',
+                catalogSurface: 'beauty',
+                plannerMode: 'step_aware',
+              })
+              .catch(() => null);
+          });
+        }
+      }
+    }
     const results = Array.isArray(collected.searchResults) ? collected.searchResults : [];
     const poolState = isPlainObject(collected.candidateState) ? collected.candidateState : finalizeRecommendationCandidatePools([], { targetContext: itemTargetContext });
     queryCount += Number.isFinite(Number(collected?.executedQueryCount)) ? Number(collected.executedQueryCount) : results.length;
@@ -28600,8 +28779,8 @@ async function groundRecoRecommendationsFromCatalog({
     grounded_count: groundedCount,
     ungrounded_count: ungroundedCount,
     mainline_status: mainlineStatus,
-    catalog_skip_reason: null,
-    telemetry_reason: timeoutCount > 0 ? 'timeout_degraded' : null,
+    catalog_skip_reason: failFastOpen ? 'fail_fast_open_served_from_pool_cache' : null,
+    telemetry_reason: timeoutCount > 0 ? 'timeout_degraded' : failFastOpen ? 'timeout_degraded' : null,
     debug: {
       enabled: true,
       query_count: queryCount,
@@ -28613,6 +28792,8 @@ async function groundRecoRecommendationsFromCatalog({
       same_family_viable_count: sameFamilyViableCount,
       soft_mismatch_count: softMismatchCount,
       hard_reject_count: hardRejectCount,
+      pool_cache_served_item_count: poolCacheServedItemCount,
+      fail_fast_open: failFastOpen,
       step_query_policy_version: RECOMMENDATION_STEP_QUERY_POLICY_V1,
       viability_policy_version: RECOMMENDATION_VIABLE_THRESHOLD_POLICY_V1,
     },
@@ -29131,6 +29312,63 @@ async function buildPurchasableFallbackCandidates({
   };
 }
 
+// The query strings the plan is about to execute. This is the cache key material: it is the ONLY
+// thing that determines which catalog rows come back, so two requests with the same plan are
+// interchangeable regardless of who made them.
+function collectRecoRecallPlanQueryTexts({ recallPlan = null, queryLevels = [] } = {}) {
+  const out = [];
+  const push = (value) => {
+    const query = String(value || '').trim();
+    if (query) out.push(query);
+  };
+  for (const entry of Array.isArray(recallPlan?.entries) ? recallPlan.entries : []) push(entry?.query);
+  if (!out.length) {
+    for (const level of Array.isArray(queryLevels) ? queryLevels : []) {
+      for (const entry of Array.isArray(level?.queries) ? level.queries : []) push(entry?.query);
+    }
+  }
+  return out;
+}
+
+// Shape a cached pool like a `collected` result so the rest of buildRecoGenerateFromCatalog does not
+// need to know where the candidates came from. Selection is re-run against THIS request's target
+// context: only recall is cached, never the ranking.
+function buildRecoCollectedFromCachedPool(pool, { targetContext = null, recommendationTaskContext = null } = {}) {
+  const rawCandidates = Array.isArray(pool) ? pool.slice(0, 24) : [];
+  const frameworkMode = Boolean(
+    targetContext && Array.isArray(targetContext.framework_roles) && targetContext.framework_roles.length > 0,
+  );
+  const candidateState = frameworkMode
+    ? finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext })
+    : finalizeRecommendationCandidatePools(rawCandidates, {
+        targetContext,
+        recoContext: recommendationTaskContext,
+      });
+  return {
+    searchResults: [],
+    rawCandidates,
+    candidateState,
+    executedQueryCount: 0,
+    executedUpstreamAttemptCount: 0,
+    actualHttpAttemptCount: 0,
+    stageTimeoutCounts: {},
+    stageResults: [],
+    transportPolicyMode: 'pool_cache',
+    plannerStopReason: 'pool_cache_hit',
+  };
+}
+
+// What to persist from a live recall. Returns null when the recall produced no OK result at all --
+// caching a pool assembled from timeouts would pin a transient failure into a durable store.
+function extractRecoRecallPoolForCache(collected) {
+  if (!isPlainObject(collected)) return null;
+  const results = Array.isArray(collected.searchResults) ? collected.searchResults : [];
+  const okCount = results.filter((r) => r && r.ok === true).length;
+  if (results.length > 0 && okCount === 0) return null;
+  const rawCandidates = Array.isArray(collected.rawCandidates) ? collected.rawCandidates : [];
+  return rawCandidates.slice(0, 24);
+}
+
 async function buildRecoGenerateFromCatalog({
   ctx,
   profileSummary,
@@ -29170,12 +29408,18 @@ async function buildRecoGenerateFromCatalog({
   if (!RECO_CATALOG_GROUNDED_ENABLED) {
     return { structured: null, debug: { ...debugInfo, skipped_reason: 'disabled', total_ms: Date.now() - startedAt } };
   }
+  // The fail-fast decision is DEFERRED until the recall plan exists, because the persistent pool is
+  // keyed on that plan: while the circuit is open we want to serve the cached pool, not nothing.
+  let failFastOpenSkip = false;
   if (failFastBefore.open) {
     probeWhileOpen = beginRecoCatalogFailFastProbe(startedAt);
     if (!probeWhileOpen) {
-      return { structured: null, debug: { ...debugInfo, skipped_reason: 'fail_fast_open', total_ms: Date.now() - startedAt } };
+      failFastOpenSkip = true;
+      // Make sure a probe is actually pending. Cheap and idempotent: a no-op when one is scheduled.
+      scheduleRecoCatalogFailFastOffRequestProbe();
+    } else {
+      searchTimeoutEffectiveMs = Math.min(RECO_CATALOG_SEARCH_TIMEOUT_MS, RECO_CATALOG_FAIL_FAST_PROBE_SEARCH_TIMEOUT_MS);
     }
-    searchTimeoutEffectiveMs = Math.min(RECO_CATALOG_SEARCH_TIMEOUT_MS, RECO_CATALOG_FAIL_FAST_PROBE_SEARCH_TIMEOUT_MS);
   }
 
   const sameFamilyQueryLevels =
@@ -29254,31 +29498,120 @@ async function buildRecoGenerateFromCatalog({
     return { structured: null, debug: { ...debugInfo, skipped_reason: 'queries_empty', total_ms: Date.now() - startedAt } };
   }
 
-  const collected = recallPlan
-    ? await collectRecoCandidatesFromRecallPlan({
-        recallPlan,
-        targetContext,
-        recommendationTaskContext,
-        logger,
-        timeoutMs: searchTimeoutEffectiveMs,
-        limit: 6,
-        usePurchasableFallback: frameworkMode ? useParallelSupplementedSearch : false,
-        semanticContract,
-        traceId: pickFirstTrimmed(ctx?.trace_id, ctx?.request_id) || null,
-        authHeaders: ctx?.backend_auth_headers || null,
-      })
-    : await collectRecoCandidatesFromQueryLevels({
-        queryLevels,
-        targetContext,
-        recommendationTaskContext,
-        logger,
-        timeoutMs: searchTimeoutEffectiveMs,
-        limit: 6,
-        usePurchasableFallback: useParallelSupplementedSearch,
-        allowExternalSeed: allowExternalSeedSupplement,
+  const runLiveRecall = () =>
+    recallPlan
+      ? collectRecoCandidatesFromRecallPlan({
+          recallPlan,
+          targetContext,
+          recommendationTaskContext,
+          logger,
+          timeoutMs: searchTimeoutEffectiveMs,
+          limit: 6,
+          usePurchasableFallback: frameworkMode ? useParallelSupplementedSearch : false,
+          semanticContract,
+          traceId: pickFirstTrimmed(ctx?.trace_id, ctx?.request_id) || null,
+          authHeaders: ctx?.backend_auth_headers || null,
+        })
+      : collectRecoCandidatesFromQueryLevels({
+          queryLevels,
+          targetContext,
+          recommendationTaskContext,
+          logger,
+          timeoutMs: searchTimeoutEffectiveMs,
+          limit: 6,
+          usePurchasableFallback: useParallelSupplementedSearch,
+          allowExternalSeed: allowExternalSeedSupplement,
+          externalSeedStrategy: effectiveExternalSeedStrategy,
+          authHeaders: ctx?.backend_auth_headers || null,
+        });
+
+  const poolCache = getRecoRecallPoolCache();
+  const poolCacheKey = poolCache
+    ? buildRecoRecallPoolCacheKey({
+        queries: collectRecoRecallPlanQueryTexts({ recallPlan, queryLevels }),
+        stepFamily: targetContext?.resolved_target_step || '',
+        lang: ctx && ctx.lang ? ctx.lang : 'EN',
+        catalogSurface: 'beauty',
+        plannerMode: recallPlan?.mode || 'generic',
         externalSeedStrategy: effectiveExternalSeedStrategy,
-        authHeaders: ctx?.backend_auth_headers || null,
-      });
+      })
+    : null;
+  const poolCacheDims = {
+    stepFamily: targetContext?.resolved_target_step || '',
+    lang: ctx && ctx.lang ? ctx.lang : 'EN',
+    catalogSurface: 'beauty',
+    plannerMode: recallPlan?.mode || 'generic',
+  };
+  const cachedEntry = poolCacheKey ? await poolCache.read(poolCacheKey) : null;
+  const cacheServable = Boolean(cachedEntry) && shouldServeRecoRecallPoolCacheEntry(cachedEntry, Date.now());
+
+  let collected;
+  let poolCacheOutcome = poolCacheKey ? 'miss' : 'disabled';
+  if (failFastOpenSkip) {
+    // The circuit is open. Serving the durable pool is the whole point: without it recall returns
+    // NOTHING and the grounding pass is skipped too, so the caller gets archetypes for 15s at a time.
+    if (cacheServable) {
+      poolCacheOutcome = 'served_while_circuit_open';
+      collected = buildRecoCollectedFromCachedPool(cachedEntry.pool, { targetContext, recommendationTaskContext });
+    } else {
+      return {
+        structured: null,
+        debug: {
+          ...debugInfo,
+          skipped_reason: 'fail_fast_open',
+          pool_cache_outcome: poolCacheKey ? 'miss_while_circuit_open' : 'disabled',
+          total_ms: Date.now() - startedAt,
+        },
+      };
+    }
+  } else if (cacheServable) {
+    poolCacheOutcome = 'hit';
+    collected = buildRecoCollectedFromCachedPool(cachedEntry.pool);
+    if (shouldRevalidateRecoRecallPoolCacheEntry(cachedEntry, Date.now())) {
+      // SINGLE-FLIGHT, per key. A popular need means MANY concurrent requests land on the same stale
+      // key in the same tick, and without this guard each of them schedules its own runLiveRecall —
+      // a thundering herd of full live-search fan-outs against the exact slow dependency this cache
+      // exists to shield, which is the same shape as the ensure_database_ready wedge this repo has
+      // already lived through. One refresh per key at a time; everyone else just serves the stale row.
+      if (beginRecoRecallPoolRevalidation(poolCacheKey)) {
+        poolCacheOutcome = 'hit_stale_revalidating';
+        // OFF the request path. The caller already has an answer; a refresh must never extend its
+        // latency, and a failed refresh must never surface as a request error.
+        setImmediate(() => {
+          runLiveRecall()
+            .then((fresh) => {
+              const freshPool = extractRecoRecallPoolForCache(fresh);
+              if (!Array.isArray(freshPool) || freshPool.length === 0) return null;
+              return poolCache.write(poolCacheKey, { pool: freshPool, ...poolCacheDims });
+            })
+            .catch(() => null)
+            .finally(() => endRecoRecallPoolRevalidation(poolCacheKey));
+        });
+      } else {
+        poolCacheOutcome = 'hit_stale_revalidation_coalesced';
+      }
+    }
+  } else {
+    collected = await runLiveRecall();
+    if (poolCacheKey) {
+      const livePool = extractRecoRecallPoolForCache(collected);
+      if (Array.isArray(livePool)) {
+        // An EMPTY pool is written too, but the read side gives it only a 60s window (see
+        // getEmptyServeMaxAgeMs): worth absorbing a burst, worthless after that.
+        poolCacheOutcome = livePool.length > 0 ? 'miss_written' : 'miss_written_negative';
+        setImmediate(() => {
+          poolCache
+            .write(poolCacheKey, { pool: livePool, ...poolCacheDims })
+            .then(() => (Math.random() < 0.02 ? poolCache.purgeExpired({ maxRows: 200 }) : null))
+            .catch(() => null);
+        });
+      } else {
+        poolCacheOutcome = 'miss_not_written_transient';
+      }
+    }
+  }
+  debugInfo.pool_cache_outcome = poolCacheOutcome;
+  debugInfo.pool_cache_age_ms = cachedEntry ? Number(cachedEntry.age_ms || 0) : null;
   const results = Array.isArray(collected.searchResults) ? collected.searchResults : [];
   let rawCandidates = Array.isArray(collected.rawCandidates) ? collected.rawCandidates.slice() : [];
   if (frameworkMode && rawCandidates.length > 0) {
@@ -104047,6 +104380,21 @@ const __internal = {
   buildRecoCatalogQueryLevels,
   buildRecoCatalogQueries,
   buildRecoNeedSeedQueries,
+  collectRecoRecallPlanQueryTexts,
+  getRecoCatalogFailFastSnapshot,
+  markRecoCatalogFailFastFailure,
+  markRecoCatalogFailFastSuccess,
+  beginRecoCatalogFailFastProbe,
+  recoCatalogFailFastState,
+  buildRecoGenerateFromCatalog,
+  groundRecoRecommendationsFromCatalog,
+  buildRecoCollectedFromCachedPool,
+  extractRecoRecallPoolForCache,
+  getRecoRecallPoolCache,
+  scheduleRecoCatalogFailFastOffRequestProbe,
+  runRecoCatalogFailFastOffRequestProbe,
+  beginRecoRecallPoolRevalidation,
+  endRecoRecallPoolRevalidation,
   hasConcernFrameworkFinishFitSameRoleTradeoffCoverage,
   shouldStopConcernFrameworkFinishFitPrimaryExternalEarly,
   runConcernSelectorRace,
