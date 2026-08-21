@@ -827,6 +827,31 @@ jobs:
       # "fixed" wrongly later: the region-derived currency fills a HOLE and never overrides a declared
       # one, so a GB buyer's "under $40" stays 40 USD (the `$` is a declaration -- same rule PR #2065
       # restored on the read side) while "under 40" becomes 40 GBP.
+      # ADDED 2026-08-21: `tests/crawler_inline_price_prefix`. extractProductPriceFromHtml's
+      # `inline_price` leg scraped `"price": <number>` from raw page text with
+      # `[0-9]+(?:\.[0-9]{1,2})?`, which matched a PREFIX and stopped at the first character it did
+      # not recognise. `"price":"1,299.00"` was therefore read as $1 -- three orders of magnitude
+      # under the real price, for a shape that is ordinary in embedded product JSON -- and
+      # `"price":"1e999"` as $1 too. This is the user-facing "analyze this product URL" path
+      # (buildProductAnalysisFromUrlIngredients) and the result becomes the anchor price.
+      # OVER-CORRECTION IS THE REAL HAZARD HERE, and a first attempt hit it. toPositiveNumberOrNull's
+      # fast path does `Number(compact.replace(/,/g, ''))` -- it strips EVERY comma as a thousands
+      # separator -- so a capture that swallowed any comma handed it `19,99`, an ordinary EU/LatAm
+      # decimal comma, and got 1999 back. Inflating a price 100x is worse than the truncation being
+      # fixed. A comma is therefore only consumed where it can ONLY be grouping (`,[0-9]{3}`), and
+      # `19,99` falls through to the meta and on-page readers -- the honest answer for a locale this
+      # leg cannot determine. The trailing guard is `(?!,[0-9])` rather than `(?![0-9,.eE])` because
+      # an unquoted JSON number is ordinarily followed by a comma (`"price": 19.99,`); a first cut
+      # used the broader guard and silently rejected that shape.
+      # Both directions are pinned. The suite asserts the repair AND that every ordinary shape still
+      # parses -- unquoted, trailing-garbage, uppercase key, 3+ decimals -- because this leg exists
+      # precisely to salvage from text that is not well-formed JSON. Measured against 4b5412658 over
+      # 35 HTML/JSON-LD fixtures: 4 answers change -- the $1 repair, the overflow now rejected, and
+      # two 3+ decimal prices that round rather than truncate ('19.999' 19.99 -> 20). The JSON-LD,
+      # meta-tag and on-page-text readers are asserted unchanged.
+      # 13 mutants, 13 killed, one per regex dimension: the EU-comma inflation, both lookahead legs,
+      # the grouping alternation, the decimal cap, the /i flag, leading commas, mandatory quotes and
+      # the whitespace-after-colon leg. Five of those dimensions survived a first pass unpinned.
       - name: Run node:test suites
         run: |
           node --test \
@@ -906,7 +931,8 @@ jobs:
             tests/reco_scrub_step_vocabulary.node.test.cjs \
             tests/aurora_legacy_reco_prompt_contract.node.test.cjs \
             tests/reco_alternatives_candidate_price_contract.node.test.cjs \
-            tests/reco_buyer_region_dimension.node.test.cjs
+            tests/reco_buyer_region_dimension.node.test.cjs \
+            tests/crawler_inline_price_prefix.node.test.cjs
 
   jest:
     runs-on: ubuntu-latest

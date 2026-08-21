@@ -12852,7 +12852,27 @@ function extractProductPriceFromHtml(html) {
     text.match(/"priceCurrency"\s*:\s*"([A-Za-z]{3})"/i)?.[1] || '',
     metaCurrency,
   );
-  const inlineAmount = toPositiveNumberOrNull(text.match(/"price"\s*:\s*"?([0-9]+(?:\.[0-9]{1,2})?)"?/i)?.[1]);
+  // The captured number must END where the match ends, and a comma is only taken when it sits in a
+  // real thousands position. `[0-9]+(?:\.[0-9]{1,2})?` matched a PREFIX and stopped at the first
+  // character it did not recognise, so `"price":"1,299.00"` was read as $1 — three orders of
+  // magnitude under, for a shape that is ordinary in embedded product JSON. `"price":"1e999"` was
+  // read as $1 the same way.
+  //
+  // The grouping alternation is not cosmetic. toPositiveNumberOrNull's fast path does
+  // `Number(compact.replace(/,/g, ''))`, i.e. it strips EVERY comma as a separator, so a capture
+  // of `[0-9][0-9,]*` would hand it `19,99` — an ordinary EU/LatAm decimal comma — and get 1999
+  // back. Inflating a price 100x is worse than the truncation being fixed. Requiring `,[0-9]{3}`
+  // means a comma is only consumed where it can only be grouping; `19,99` matches nothing here and
+  // falls through to the meta and on-page readers, which is the honest answer for a locale this
+  // leg cannot determine.
+  //
+  // Every trailing guard is keyed on a DIGIT following, not on the punctuation alone. An unquoted
+  // JSON number is ordinarily followed by a comma (`"price": 19.99,`) and a price in prose by a
+  // full stop (`"price": 19.99. Free shipping`), so rejecting on `,` or `.` outright threw away
+  // real prices. `.`/`e`/`E`/`,` only mean "the number continued" when a digit follows them.
+  const inlineAmount = toPositiveNumberOrNull(
+    text.match(/"price"\s*:\s*"?([0-9]{1,3}(?:,[0-9]{3})+(?:\.[0-9]+)?|[0-9]+(?:\.[0-9]+)?)(?![0-9])(?![.eE][0-9])(?!,[0-9])"?/i)?.[1],
+  );
   if (inlineAmount != null) {
     return {
       amount: inlineAmount,
@@ -12864,7 +12884,13 @@ function extractProductPriceFromHtml(html) {
 
   const plainText = stripHtmlToText(text).replace(/\s+/g, ' ').trim();
   if (plainText) {
-    const prefixed = /(?:\b(USD|EUR|GBP|CNY|JPY)\b|([$€£¥]))\s*([0-9]{1,4}(?:[.,][0-9]{1,2})?)/gi;
+    // Grouped thousands, and the number must end where the match ends. `[0-9]{1,4}(?:[.,][0-9]{1,2})?`
+    // is the same prefix defect fixed in the inline leg above: `$1,299.00` matched `1,29` and was
+    // reported as $129. This leg now takes MORE traffic, because rejecting a fabricated JSON-LD
+    // price falls through to here. (Not addressed: `€35,30` still reads as 3530, because
+    // toPositiveNumberOrNull's fast path strips every comma. Pre-existing on both sides of this
+    // change and independent of it — a decimal-comma locale needs its own fix.)
+    const prefixed = /(?:\b(USD|EUR|GBP|CNY|JPY)\b|([$€£¥]))\s*([0-9]{1,3}(?:,[0-9]{3})+(?:\.[0-9]{1,2})?|[0-9]{1,4}(?:[.,][0-9]{1,2})?)(?![0-9])/gi;
     let mPrefixed;
     while ((mPrefixed = prefixed.exec(plainText))) {
       const rawCurrency = mPrefixed[1] || mPrefixed[2] || '';
@@ -12879,7 +12905,7 @@ function extractProductPriceFromHtml(html) {
       };
     }
 
-    const suffixed = /([0-9]{1,4}(?:[.,][0-9]{1,2})?)\s*(USD|EUR|GBP|CNY|JPY)\b/gi;
+    const suffixed = /([0-9]{1,3}(?:,[0-9]{3})+(?:\.[0-9]{1,2})?|[0-9]{1,4}(?:[.,][0-9]{1,2})?)(?![0-9])\s*(USD|EUR|GBP|CNY|JPY)\b/gi;
     let mSuffixed;
     while ((mSuffixed = suffixed.exec(plainText))) {
       const amount = toPositiveNumberOrNull(mSuffixed[1]);
