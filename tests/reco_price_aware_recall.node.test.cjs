@@ -243,6 +243,11 @@ test('the price reader agrees with the shipped extractCatalogCandidatePrice, exc
     { price: 45, currency: 'USD' },
     { price_amount: 45, currency: 'USD' },
     { price_amount: 45, price_currency: 'usd' },
+    // A DECLARED non-USD currency now survives the extractor, so both readers agree here too.
+    { price_amount: 45, currency: 'GBP' },
+    { price_amount: 4500, currency: 'JPY' },
+    // NOTE: offer_price/sale_price are deliberately NOT listed -- the ceiling reader reads a narrower
+    // set of seeds than the extractor, which is a pre-existing coverage difference, not a currency one.
     { price: { amount: 0, currency: 'USD' } },
     { price: { amount: -3, currency: 'USD' } },
     { price_amount: '6', currency: 'USD' },
@@ -256,12 +261,22 @@ test('the price reader agrees with the shipped extractCatalogCandidatePrice, exc
     assert.deepEqual(norm(mine), norm(shipped), `disagreed on ${JSON.stringify(shape)}`);
   }
 
-  // TWO DELIBERATE DIVERGENCES. extractCatalogCandidatePrice stamps `fallbackCurrency: 'USD'` on any
-  // amount whose seed carries no currency -- correct for DISPLAY, wrong for COMPARISON, because it
-  // makes "asserted USD" and "no currency at all" indistinguishable.
-  // Mutant killed: reusing extractCatalogCandidatePrice as the ceiling reader.
-  assert.equal(__internal.extractCatalogCandidatePrice({ price_amount: 4500, currency: 'JPY' }).currency, 'USD');
+  // ONE DELIBERATE DIVERGENCE, down from two.
+  //
+  // The JPY case used to be listed here as deliberate: extractCatalogCandidatePrice returned USD for
+  // {price_amount: 4500, currency: 'JPY'}. That was NOT a display default, it was the extractor
+  // discarding a currency the row had explicitly declared, and it is now fixed -- the two readers
+  // agree. The rationale below only ever applied to the second case, where NO currency exists
+  // anywhere; it was stretched over a row that declared one.
+  // Mutant killed: reverting the extractor to a flat `fallbackCurrency: 'USD'`.
+  assert.equal(__internal.extractCatalogCandidatePrice({ price_amount: 4500, currency: 'JPY' }).currency, 'JPY');
   assert.equal(readRecoCandidatePriceForCeiling({ price_amount: 4500, currency: 'JPY' }).currency, 'JPY');
+
+  // Still deliberate: with no currency ANYWHERE, the extractor stamps USD (correct for DISPLAY) while
+  // the ceiling reader returns '' (correct for COMPARISON) -- otherwise "asserted USD" and "no
+  // currency at all" would be indistinguishable and an unpriced-currency row would be compared
+  // against a USD ceiling as though it had declared USD.
+  // Mutant killed: reusing extractCatalogCandidatePrice as the ceiling reader.
   assert.equal(__internal.extractCatalogCandidatePrice({ price: { amount: 17 } }).currency, 'USD');
   assert.equal(readRecoCandidatePriceForCeiling({ price: { amount: 17 } }).currency, '');
 });

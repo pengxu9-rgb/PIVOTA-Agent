@@ -128,7 +128,7 @@ jobs:
       # byte-identical buffered responses. Dependency-free (node builtins + the
       # pure module), but per the npm-ci note above, green proves the job
       # passes, not that the file is a leaf.
-      # ADDED 2026-08-04: `commerce_mcp_route_heartbeat`, confirmed green (7/7)
+      # ADDED 2026-08-04: `commerce_mcp_route_heartbeat`, confirmed green (12/12)
       # before landing. It is the ONLY suite covering the same edge-timeout
       # guard on the AUTHENTICATED commerce /mcp lane: a slow tools/call
       # commits 200 + heartbeat whitespace with a still-parseable JSON-RPC
@@ -609,6 +609,50 @@ jobs:
       # apply-check against `git diff` is USELESS while the PR is uncommitted -- it never reports
       # quiet, so a no-op mutation pattern reads as a killed mutant -- and the check here compares
       # against a file backup instead.
+      # ADDED 2026-08-21: `tests/reco_scalar_price_currency`, confirmed green (7/7). A DECLARED currency
+      # must survive extractCatalogCandidatePrice. Most of its ~26 seeds are SCALARS (price_amount,
+      # offer_price, sale_price, ...) and a scalar carries no currency, but every seed was handed a flat
+      # `fallbackCurrency: 'USD'` that never saw the ROW -- so a row declaring its currency in a sibling
+      # field had it discarded and the price stamped USD. 88 GBP served as 88 USD: a RELABEL, not a loss.
+      # Not hypothetical -- sanitizeRecoRecallPoolCandidate deliberately flattens an object price to
+      # exactly `price_amount` + `currency` so it round-trips through this extractor, and its comment
+      # claims the round trip is identical. It was, for USD only; every non-USD product served from a
+      # cached recall pool was relabelled. classifyRecoCandidateAgainstPriceCeiling then compared by
+      # unit and returned a confident conforming/over verdict where its own doc says a foreign currency
+      # must be 'unknown', because this lane holds no FX rates.
+      # The fix is a FALLBACK, never an override: a currency on the seed itself still wins, and '£88'
+      # still infers GBP. An unrecognized token keeps the historical USD default.
+      # A test in reco_price_aware_recall had PINNED this as one of "two deliberate divergences"
+      # between the two price readers. Only one was deliberate: {price:{amount:17}} with no currency
+      # anywhere is a display default, but {price_amount:4500, currency:'JPY'} declared JPY and the
+      # extractor threw it away. That pin is flipped; the genuine divergence is kept and re-explained.
+      # The fix also covers the NESTED carriers: a `subject`/`sku`/`product` that declares its OWN
+      # currency keeps it and outranks the row's, and inherits the row's when it declares none. The
+      # nearest declaration wins, the same rule the flat seeds follow. Without that, {subject: {price:
+      # 88, currency: 'GBP'}} returned USD -- the identical defect one level down. And the alias chain
+      # takes the first VALID code rather than the first non-null one, so a blank or malformed
+      # `currency` no longer swallows a good `price_currency` sitting behind it.
+      # It ALSO closes a cross-currency comparison this change would otherwise have widened.
+      # buildRecoAssistantPromptPriceDiagnostics sorts on the CURRENCY CODE first, then the amount,
+      # then labels lowest/middle/highest by position -- so [EUR 200, GBP 5, USD 50] made EUR 200 the
+      # "lowest" and GBP 5 the "middle", reaching the buyer as price_order_summary, price_position and
+      # a "Lower-priced same-slot option" tradeoff_hint. Reachable BEFORE this change through an object
+      # price that declared its currency (so pre-existing, not introduced), but reachable on the COMMON
+      # path after it. With more than one currency in play it now emits no positions at all: the same
+      # refusal recoPriceCeiling and the agent bridge already make when they cannot compare.
+      # Mutants: nineteen run, SIXTEEN fail the suite. Two survivors, both verified equivalent by a
+      # differential fuzz rather than by a passing test: passing '' instead of 'USD' as the fallback
+      # argument, and dropping the normalizeCurrencyCode wrapper -- normalizePriceObject re-validates
+      # and enforces the USD default itself on both legs, so those document the seam, not a gate.
+      # The array-seed leg (`offers`) is a SEPARATE normalizePriceObject call site invisible to every
+      # scalar test, so it has its own case.
+      # TWO of the ten tests are GUARDS, not regression tests -- they pass against the pre-fix code and
+      # are labelled as such in the file, because a `Mutant killed:` label on a test that cannot fail
+      # is the house failure mode. The other eight fail against the merge-base. In particular the
+      # ceiling test must normalize the row first: handing the RAW cached row to the classifier proves
+      # nothing, since readRecoCandidatePriceForCeiling reads `currency` off the row and always got it
+      # right. The relabel only happens once the row passes through normalizeRecoCatalogProduct, which
+      # is what production feeds the classifier.
       # UPDATED 2026-08-21: the KNOWN HAZARD this suite pinned is now FIXED and the pin flipped to the
       # repaired contract. mergeRecoPlanWithGroundedCandidate took ids/name/category from the grounded
       # candidate but NO price, so a grounded llm_primary row carried product A's identity with product
@@ -786,6 +830,7 @@ jobs:
             tests/reco_token_anchored_recall.node.test.cjs \
             tests/invoke_auth_introspect_load_shedding.node.test.cjs \
             tests/reco_strict_conforming_fill.node.test.cjs \
+            tests/reco_scalar_price_currency.node.test.cjs \
             tests/reco_gentleness_ranking.node.test.cjs \
             tests/reco_implement_scope.node.test.cjs \
             tests/reco_scrub_step_vocabulary.node.test.cjs
