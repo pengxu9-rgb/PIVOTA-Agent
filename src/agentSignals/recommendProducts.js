@@ -535,6 +535,10 @@ function makeRecommendProducts(deps = {}) {
         // a non-positive number) must leave recall exactly as it is today rather than silently biasing
         // it on a value nobody could parse.
         ...(enforcing ? { priceCeiling: { limit: ceiling.limit, currency: ceiling.currency } } : {}),
+        // The caller's own limit, so the lane knows how many CONFORMING products the shortlist should
+        // hold. Without it the lane has no idea whether one conforming item is the whole answer or a
+        // third of it.
+        shortlistTarget: limit,
       });
     } catch (err) {
       logger?.warn?.({ err: err?.message || String(err) }, 'recommend_products lane failed');

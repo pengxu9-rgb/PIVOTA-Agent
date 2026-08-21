@@ -30,7 +30,10 @@ const RECO_RECALL_POOL_CACHE_TABLE = 'reco_recall_pool_cache';
 // candidates land in the payload — so the key gained a `ceil` dimension. Adding a dimension already
 // changes every hash, orphaning v2 rows; the bump makes that intentional rather than incidental, and
 // keeps the reason readable next to v2's.
-const RECO_RECALL_POOL_CACHE_VERSION = 'reco_recall_pool_cache_v3';
+// v4: the ceiling-carrying arm now requests ~18 rows instead of 6, so an existing ceiling'd key would
+// otherwise keep serving its SHALLOW pool for the rest of its 24h window -- the exact pool whose
+// thinness this change exists to fix. Bumping orphans them at once; the sweep deletes them.
+const RECO_RECALL_POOL_CACHE_VERSION = 'reco_recall_pool_cache_v4';
 
 // Belt-and-braces lazy DDL, byte-identical to src/db/migrations/059_reco_recall_pool_cache.sql. The
 // migration is the primary mechanism; this only recovers a 42P01 on a deployment whose migrations have

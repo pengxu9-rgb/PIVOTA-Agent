@@ -217,18 +217,24 @@ test('a price in a different currency is UNKNOWN, never a violation', () => {
   assert.equal(classifyRecoCandidateAgainstPriceCeiling({ price_amount: 40.01, currency: 'USD' }, USD40), 'over');
 });
 
-test('an UNKNOWN-price candidate never outranks a priced near-miss', () => {
+test('an UNKNOWN price outranks a certain violation', () => {
   const pool = [
     { product_id: 'v45', price_amount: 45, currency: 'USD' },
     { product_id: 'nop', name: 'no price at all' },
     { product_id: 'c10', price_amount: 10, currency: 'USD' },
   ];
-  // TWO buckets, deliberately -- not the bridge's three rungs (ok / unverifiable / violation). At
-  // RECALL time an unpriced row is not "possibly conforming", it is unevaluable, and PR #2056 exists
-  // precisely because price-less rows were the failure. A flagged $45 item is more useful to a buyer
-  // than a row whose price nobody can read.
-  // Mutant killed: promoting 'unknown' above 'over' -- the shortlist would then be c10, nop, v45.
-  assert.equal(ids(applyRecoPriceCeilingPreference(pool, USD40)), 'c10,v45,nop');
+  // THIS ASSERTION FLIPPED, on purpose. It originally pinned TWO buckets, on the reasoning that "at
+  // recall time an unpriced row is not 'possibly conforming', it is unevaluable" -- true when nothing
+  // downstream could resolve it.
+  //
+  // The premise changed: the agent bridge's live re-verification now RESOLVES unknowns before the
+  // shortlist is cut. Measured live 2026-08-21 -- "price updated by live check: unknown -> 19 USD"
+  // turned an unpriced Naturium exfoliant into a conforming $19 item. So an unknown is "possibly
+  // conforming, and CHECKABLE" while an `over` is a certain violation nothing can rescue.
+  // See the applyRecoPriceCeilingPreference doc comment for the full record.
+  //
+  // Mutant killed: reverting to two buckets -- the order would be c10, v45, nop again.
+  assert.equal(ids(applyRecoPriceCeilingPreference(pool, USD40)), 'c10,nop,v45');
 });
 
 test('the price reader agrees with the shipped extractCatalogCandidatePrice, except where it must not', () => {
@@ -321,9 +327,10 @@ test('the ceiling cache token is normalized so trivial variants share a row', ()
 
 test('the cache version was bumped, orphaning pools built without a ceiling dimension', () => {
   const { RECO_RECALL_POOL_CACHE_VERSION } = require('../src/auroraBff/recoRecallPoolCache');
-  // Mutant killed: adding the dimension without the bump. Adding a key already changes every hash, so
-  // this is documentation-as-a-test: the version records WHY the previous generation went cold.
-  assert.equal(RECO_RECALL_POOL_CACHE_VERSION, 'reco_recall_pool_cache_v3');
+  // Mutant killed: changing pool CONTENT without a bump. v3 recorded the ceiling key dimension; v4
+  // records the deeper constrained arm (~18 rows instead of 6), without which an existing ceiling'd
+  // key would keep serving its shallow pool for the rest of its 24h window.
+  assert.equal(RECO_RECALL_POOL_CACHE_VERSION, 'reco_recall_pool_cache_v4');
 });
 
 // ---------------------------------------------------------------------------

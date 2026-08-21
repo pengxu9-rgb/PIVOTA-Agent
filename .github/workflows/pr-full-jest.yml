@@ -590,6 +590,27 @@ jobs:
       # latching cooldown passed every earlier version of this suite); and the
       # STAGE_TIMEOUT settlement branch is driven through an injected dial,
       # being unreachable over the wire and therefore deletable unnoticed.
+      # ADDED 2026-08-21: `tests/reco_strict_conforming_fill`, confirmed green (20/20). STRICT FILL --
+      # when the catalog holds enough conforming products, every shortlist slot should hold one. Live
+      # probe 2026-08-21 (PRICE_MAX=40): The Ordinary $5.16 conforming, Naturium $19 UNKNOWN at
+      # selection (no catalog price, later rescued by the live price check), OleHenriksen $62 flagged.
+      # At selection the pool held exactly ONE known-conforming candidate, so viable.slice(0,3) filled
+      # two slots from the unconstrained legs -- while conforming stock existed. Three gated changes:
+      # the ceiling-carrying arm now requests ~18 rows (the upstream HARD-FILTERS that arm, so a limit
+      # of 6 leaves it nothing to keep), the partition became conforming > unknown > over (#2057 chose
+      # two buckets because nothing could resolve an unknown; verifyPrice now does, so an unknown is
+      # "checkable" while an over is a certain violation), and a bounded top-up appends the lane's OWN
+      # catalog rows -- never invented prose, never non-conforming filler -- before the tail. An
+      # all-violating catalog still answers with flagged near-misses: never zero, never padded.
+      # Seventeen mutants run, SIXTEEN fail the suite. The survivor is the engine call site
+      # (generateProductRecommendations takes ~95 injected deps and this repo has no harness for it);
+      # it was reduced to an unconditional assignment so the untested surface is one statement, and it
+      # is called out in the PR body rather than covered by a vacuous test. Two process notes: an
+      # apply-check against `git diff` is USELESS while the PR is uncommitted -- it never reports
+      # quiet, so a no-op mutation pattern reads as a killed mutant -- and the check here compares
+      # against a file backup instead. Also pinned as a KNOWN HAZARD:
+      # mergeRecoPlanWithGroundedCandidate takes ids/name/category from the grounded candidate but NO
+      # price, so a grounded row can carry product A's identity with product B's price.
       - name: Run node:test suites
         run: |
           node --test \
@@ -661,7 +682,8 @@ jobs:
             tests/invoke_auth_introspect_outage_cache.node.test.cjs \
             tests/reco_price_aware_recall.node.test.cjs \
             tests/reco_token_anchored_recall.node.test.cjs \
-            tests/invoke_auth_introspect_load_shedding.node.test.cjs
+            tests/invoke_auth_introspect_load_shedding.node.test.cjs \
+            tests/reco_strict_conforming_fill.node.test.cjs
 
   jest:
     runs-on: ubuntu-latest
