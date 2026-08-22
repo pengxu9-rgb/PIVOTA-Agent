@@ -501,8 +501,30 @@ function formatPriceLabel(price) {
   return formatDisplayPriceLabel(price.amount, price.currency) || 'Price unavailable';
 }
 
-function inferPriceTierFromAmount(amount) {
-  if (!Number.isFinite(amount)) return 'mid';
+// The tier bands are US DOLLARS -- 20 and 45 are dollar amounts, not numbers. Applied to a raw
+// foreign amount they read the unit as if it were a dollar, so 4500 JPY (about 30 USD, an ordinary
+// mid-priced product) came back 'premium', and so did 1500 JPY, 40000 KRW and 200 SEK -- every
+// currency whose unit is smaller than a dollar is systematically called expensive. The bug is as old
+// as the bands; what made it reachable is #2065 and #2069, which stopped a declared non-USD currency
+// being discarded and stamped USD before it got here.
+//
+// Converting is not available: this lane holds no FX rates, which is exactly why
+// classifyRecoCandidateAgainstPriceCeiling returns 'unknown' for a foreign currency rather than a
+// verdict (recoPriceCeiling.js), and why the ceiling upstream disables itself on an unrecognized one.
+// So this returns NOTHING for a currency it cannot measure in, and the caller falls back to a
+// declared tier or to the neutral 'mid'. A missing band is recoverable; a confident wrong one is not.
+// The `!Number.isFinite` guard is unreachable from the card -- the one call site tests the amount
+// first -- and returning null there is equivalent to returning 'mid', because the caller defaults a
+// missing band to 'mid' anyway. Documented rather than covered by a test that cannot fail.
+//
+// A currency is only "dollars" if it says so. The DEFAULT parameter carries the absent case: an
+// undeclared currency is USD on this path, the same assumption normalizePrice and the serving layer
+// already make. An unreadable token is not banded, because a band we cannot justify is worse than no
+// band -- which is why this is `!== 'USD'` and not `&& !== 'USD'`.
+function inferPriceTierFromAmount(amount, currency = 'USD') {
+  if (!Number.isFinite(amount)) return null;
+  const code = String(currency == null ? '' : currency).trim().toUpperCase().replace(/[^A-Z]/g, '');
+  if (code !== 'USD') return null;
   if (amount < 20) return 'budget';
   if (amount >= 45) return 'premium';
   return 'mid';
@@ -1164,12 +1186,16 @@ function normalizeRecommendationProductCard(raw, options = {}) {
   // here" (key absent) from "a price we could not read" (key null) at the card literal below.
   const priceDeclared = row.price !== undefined || product.price !== undefined || sku.price !== undefined;
   const priceTierRaw = asString(row.price_tier) || asString(row.priceTier) || asString(row.item_type);
+  // A tier the ROW declares still wins: price_tier is a real independent signal here, not only a
+  // derived one -- the research lane emits {name, price_tier} with no price at all (routes.js), and so
+  // do the LLM candidate shapes. Dropping an unbacked tier would discard that, so the only thing that
+  // changed is what happens when we DERIVE: a band we cannot compute honestly is no band at all.
   const priceTier =
     ['budget', 'mid', 'premium'].includes(priceTierRaw)
       ? priceTierRaw
-      : price && price.unknown !== true && Number.isFinite(Number(price.amount))
-        ? inferPriceTierFromAmount(Number(price.amount))
-        : 'mid';
+      : (price && price.unknown !== true && Number.isFinite(Number(price.amount))
+        ? inferPriceTierFromAmount(Number(price.amount), price.currency)
+        : null) || 'mid';
   const bestFor = normalizeStringList(
     row.best_for || row.bestFor || row.best_for_tags || row.bestForTags || row.use_cases || row.useCases,
     4,
