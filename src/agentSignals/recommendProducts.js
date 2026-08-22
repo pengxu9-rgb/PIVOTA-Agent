@@ -484,11 +484,20 @@ function makeRecommendProducts(deps = {}) {
     // key that stays scrubbed.
     const subject = { kind: 'need', text: need || null };
 
+    // Minted BEFORE the guards, not at the end, because three of this function's four
+    // exits are early returns and an empty shortlist is exactly the case the key exists
+    // for. `lane_unavailable` matters most: it is the only empty class that is a DEFECT
+    // rather than a legitimate answer, and this lane has gone dark in prod before
+    // (decision-service prompt-template skew). Those are the events an outcome graph most
+    // needs to count, and minting at the end left them as the only ones with no key —
+    // collapsing every lane outage into one null bucket.
+    const recommendationSetId = `rset_${newId()}`;
+
     if (typeof isEnabled === 'function' && !isEnabled()) {
-      return { subject, signals: [], metadata: { reason: 'disabled' } };
+      return { subject, signals: [], metadata: { reason: 'disabled', recommendation_set_id: recommendationSetId } };
     }
     if (!need) {
-      return { subject, signals: [], metadata: { reason: 'need_required' } };
+      return { subject, signals: [], metadata: { reason: 'need_required', recommendation_set_id: recommendationSetId } };
     }
 
     const constraints = normalizeConstraints(p.constraints);
@@ -552,7 +561,7 @@ function makeRecommendProducts(deps = {}) {
       });
     } catch (err) {
       logger?.warn?.({ err: err?.message || String(err) }, 'recommend_products lane failed');
-      return { subject, signals: [], metadata: { reason: 'lane_unavailable', latency_ms: now() - startedAt } };
+      return { subject, signals: [], metadata: { reason: 'lane_unavailable', latency_ms: now() - startedAt, recommendation_set_id: recommendationSetId } };
     }
     const norm = isPlainObject(result?.norm) ? result.norm : null;
     const payload = isPlainObject(norm?.payload) ? norm.payload : isPlainObject(norm) ? norm : {};
@@ -689,6 +698,12 @@ function makeRecommendProducts(deps = {}) {
     // item's own url is unattributable by construction.
     //
     // TWO ids, because they answer different questions:
+    // NOT `primary_recommendation_id`, which already exists on the consumer /v1/reco/generate
+    // envelope (src/auroraBff/legacyRecoGenerationResult.js and friends) and whose value is a
+    // PRODUCT id, not a minted join key. Two similarly-named keys with different types in one lane
+    // is a foot-gun for whoever wires the outcome table; they never meet, because both the item
+    // projector and the metadata block pick fields explicitly and neither spreads the lane payload.
+    //
     //   recommendation_id      per ITEM — the handoff key. An agent hands off ONE item and the
     //                          outcome is about that item, so this is what an outcome row keys on.
     //                          Self-contained on purpose: reporting an outcome must not require
@@ -701,14 +716,20 @@ function makeRecommendProducts(deps = {}) {
     // with the item exactly as returned and cannot be dropped by an earlier pass that rewrites part
     // of the node — the failure mode that lost a budget marker in #2070.
     //
-    // THE `rec_` / `rset_` PREFIX IS LOAD-BEARING, not decoration. resultSanitizer treats any key
-    // ending in "id" as an id key, but `recommendationid` is NOT in its PAN_EXEMPT_ID_KEYS set, so
-    // these values are still Luhn-gated PAN-scanned. A bare hex id that came up all-digits (~1e-5 of
-    // the time at 24 chars) and passed Luhn would be silently rewritten to [REDACTED_PAN] — a join
-    // key that corrupts one recommendation in a few million, which is exactly the kind of defect
-    // nobody ever traces. `PAN_RE` starts with `\b` and `_` is a word character, so a digit run
-    // immediately after an underscore can never begin a match. Do not "tidy" the prefix away.
-    const recommendationSetId = `rset_${newId()}`;
+    // KEEP THE `rec_` / `rset_` PREFIX — but for the reason below, not the one first written here.
+    // resultSanitizer treats any key ending in "id" as an id key, and `recommendationid` is NOT in
+    // its PAN_EXEMPT_ID_KEYS set, so these VALUES are Luhn-gated PAN-scanned. The original comment
+    // claimed a bare all-digit body would therefore be redacted. It would not, at today's length:
+    // `PAN_RE` is /\b(?:\d[ -]*?){13,19}\b/ and needs a word boundary at BOTH ends, so a 24-digit
+    // run contains no bounded 13-19 substring and never matches (verified: '4'.repeat(24) -> null),
+    // and luhnValid rejects anything longer than 19 anyway.
+    //
+    // The prefix is DEFENCE-IN-DEPTH against the id body ever getting shorter. Drop it and shorten
+    // `newId` to 8 bytes and the body becomes 16 digits — a matchable, Luhn-checkable length — and a
+    // join key would silently become [REDACTED_PAN] for roughly one recommendation in a few million:
+    // the kind of defect nobody ever traces. `PAN_RE` starts with `\b` and `_` is a word character,
+    // so a digit run immediately after an underscore can never begin a match at ANY length. That is
+    // what makes the prefix worth keeping regardless of what `newId` later returns.
     for (const s of signals) {
       s.value.recommendation_id = `rec_${newId()}`;
     }
@@ -781,4 +802,8 @@ function makeRecommendProducts(deps = {}) {
   };
 }
 
-module.exports = { makeRecommendProducts, recommendationItemToSignal, normalizeConstraints, agentLaneUid, extractPriceMax };
+// markPriceViolation/markPriceUnverifiable are exported ONLY so a test can pin that they mutate
+// `signal.value` in place rather than rebuilding it. That is not an implementation detail — the
+// join-key mint above is ordered after them precisely because of it, and without a direct
+// assertion the ordering is unfalsifiable (verified: moving the mint earlier left every test green).
+module.exports = { makeRecommendProducts, recommendationItemToSignal, normalizeConstraints, agentLaneUid, extractPriceMax, markPriceViolation, markPriceUnverifiable };
