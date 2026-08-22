@@ -22,7 +22,7 @@ const assert = require('node:assert/strict');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 
-const { makeRecommendProducts, recommendationItemToSignal, normalizeConstraints, agentLaneUid, extractPriceMax } = require('../src/agentSignals/recommendProducts');
+const { makeRecommendProducts, recommendationItemToSignal, normalizeConstraints, agentLaneUid, extractPriceMax, markPriceViolation, markPriceUnverifiable } = require('../src/agentSignals/recommendProducts');
 
 function laneResult(items, extra = {}) {
   return {
@@ -95,6 +95,11 @@ test('1. dark flag and missing need never reach the lane', async () => {
   let calls = 0;
   const off = makeRecommendProducts({ generate: async () => { calls += 1; return laneResult([ITEM_FULL]); }, isEnabled: () => false });
   const dark = await off({ payload: { need: 'gentle exfoliant' } }, { agent_id: 'agent_a' });
+  // The set id is minted before the flag guard (it identifies the REQUEST, not the shortlist), so it
+  // is asserted by shape and then removed — keeping this a STRICT whole-response comparison rather
+  // than relaxing it to a subset check, which would stop catching an unintended extra key.
+  assert.match(dark.metadata.recommendation_set_id, /^rset_[0-9a-f]{24}$/);
+  delete dark.metadata.recommendation_set_id;
   assert.deepEqual(dark, { subject: { kind: 'need', text: 'gentle exfoliant' }, signals: [], metadata: { reason: 'disabled' } });
   const on = makeRecommendProducts({ generate: async () => { calls += 1; return laneResult([ITEM_FULL]); }, isEnabled: () => true });
   const noNeed = await on({ payload: { constraints: { budget: '$40' } } }, { agent_id: 'agent_a' });
@@ -993,4 +998,131 @@ test('5. through the real commerce surface: listed, strict schema, toParams, and
   assert.equal(sig.value.grounding, 'catalog');
   assert.equal(body.metadata.confidence_overall, 0.72, 'lane-level confidence on metadata survives the sanitizer');
   assert.equal(JSON.stringify(body).includes('score_breakdown'), false);
+});
+
+// ---------------------------------------------------------------------------------------------
+// 6. OUTCOME-GRAPH JOIN KEYS (recommendation_id / recommendation_set_id)
+//
+// The card rail cannot measure completion, price delta or failure reason unless an outcome can be
+// joined back to the recommendation that produced it. `click_id` is minted at redirect-build time
+// and only on the /r?token= path, so an agent that drives checkout from the item's own url is
+// unattributable. These pin that the keys exist, are per-item, and survive the real surface.
+// ---------------------------------------------------------------------------------------------
+
+test('7a. every returned signal carries a unique recommendation_id, and metadata carries the set id', async () => {
+  const h = makeRecommendProducts({ generate: async () => laneResult([ITEM_FULL, ITEM_INTERNAL]), isEnabled: () => true });
+  const res = await h({ payload: { need: 'gentle exfoliant' } }, {});
+
+  assert.equal(res.signals.length, 2);
+  const ids = res.signals.map((s) => s.value.recommendation_id);
+  for (const id of ids) assert.match(id, /^rec_[0-9a-f]{24}$/, 'per-item handoff key');
+  assert.equal(new Set(ids).size, 2, 'two handoffs must not share one outcome row');
+  assert.match(res.metadata.recommendation_set_id, /^rset_[0-9a-f]{24}$/);
+});
+
+test('7b. EVERY empty exit is addressable, not just the successful one', async () => {
+  // Found by review: the set id was minted at the END, so three of the four empty exits carried no
+  // key at all. `lane_unavailable` is the one that matters — it is the only empty class that is a
+  // DEFECT rather than a legitimate answer, and this lane has gone dark in prod before. Those are
+  // exactly the events an outcome graph needs to count. A table, so a fourth exit added later
+  // without a key is a visible omission rather than an untested path.
+  const cases = [
+    ['disabled', makeRecommendProducts({ generate: async () => laneResult([]), isEnabled: () => false }), { need: 'x' }],
+    ['need_required', makeRecommendProducts({ generate: async () => laneResult([]), isEnabled: () => true }), {}],
+    ['lane_unavailable', makeRecommendProducts({ generate: async () => { throw new Error('AURORA_NOT_CONFIGURED'); }, isEnabled: () => true }), { need: 'x' }],
+    [null, makeRecommendProducts({ generate: async () => laneResult([]), isEnabled: () => true }), { need: 'no answer' }],
+  ];
+  for (const [reason, handler, payload] of cases) {
+    const res = await handler({ payload }, {});
+    assert.deepEqual(res.signals, [], `${reason || 'empty_ok'}: no signals`);
+    assert.equal(res.metadata.reason ?? null, reason, `${reason || 'empty_ok'}: reason`);
+    assert.match(res.metadata.recommendation_set_id, /^rset_[0-9a-f]{24}$/,
+      `${reason || 'empty_ok'}: an unrecordable outage is an outage the outcome graph cannot count`);
+  }
+});
+
+test('7c. the id survives the price-violation marker pass, which mutates value in place', async () => {
+  // markPriceViolation rewrites why/notes/watchouts/fit on s.value. Stamping the id after that pass
+  // is what guarantees it cannot be dropped the way a budget marker was in #2070.
+  const h = makeRecommendProducts({ generate: async () => laneResult([ITEM_OVERPRICED]), isEnabled: () => true });
+  const res = await h({ payload: { need: 'exfoliant', constraints: { price_max: 40 } } }, {});
+
+  assert.equal(res.signals.length, 1);
+  assert.ok(Array.isArray(res.signals[0].value.constraint_violations), 'the marker pass did run');
+  assert.match(res.signals[0].value.recommendation_id, /^rec_[0-9a-f]{24}$/);
+});
+
+test('7d. the join keys survive the REAL commerce surface and its sanitizer', async () => {
+  // Same reasoning as 4i: a key DENYLIST is what lets these through today, so pin them — a future
+  // denylist entry must not be able to strip the outcome-graph join key and leave a green suite.
+  const { createCommerceToolSurface } = await import(pathToFileURL(path.join(__dirname, '..', 'mcp-server', 'src', 'commerceToolSurface.js')).href);
+  const executor = {
+    async execute(op, params, ctx) {
+      const h = makeRecommendProducts({ generate: async () => laneResult([ITEM_FULL]), isEnabled: () => true });
+      return h(params, ctx);
+    },
+  };
+  const surface = createCommerceToolSurface(executor, { cache: false });
+  const out = await surface.callTool('recommend_products', { need: 'gentle exfoliant' }, { agent_id: 'agent_a' });
+  const body = typeof out === 'string' ? JSON.parse(out) : (out?.content?.[0]?.text ? JSON.parse(out.content[0].text) : out);
+
+  assert.match(body.signals[0].value.recommendation_id, /^rec_[0-9a-f]{24}$/);
+  assert.match(body.metadata.recommendation_set_id, /^rset_[0-9a-f]{24}$/);
+});
+
+test('7e. the rec_ prefix is what keeps a join key out of the PAN redactor', async () => {
+  // resultSanitizer treats any key ending in "id" as an id key, but `recommendationid` is NOT in its
+  // PAN_EXEMPT_ID_KEYS set — so the VALUE is still Luhn-gated PAN-scanned. A random hex body that
+  // came up all-digits and passed Luhn would be silently rewritten to [REDACTED_PAN], corrupting the
+  // join key for one recommendation in a few million.
+  //
+  // This forces that corner: the id body is a real Luhn-valid test PAN. It survives ONLY because
+  // PAN_RE starts with \b and `_` is a word character, so the digit run cannot begin a match. Delete
+  // the `rec_` prefix and this test fails — which is the point of writing it.
+  const LUHN_VALID_ALL_DIGITS = '4111111111111111';
+  const { createCommerceToolSurface } = await import(pathToFileURL(path.join(__dirname, '..', 'mcp-server', 'src', 'commerceToolSurface.js')).href);
+  const executor = {
+    async execute(op, params, ctx) {
+      const h = makeRecommendProducts({
+        generate: async () => laneResult([ITEM_FULL]),
+        isEnabled: () => true,
+        newId: () => LUHN_VALID_ALL_DIGITS,
+      });
+      return h(params, ctx);
+    },
+  };
+  const surface = createCommerceToolSurface(executor, { cache: false });
+  const out = await surface.callTool('recommend_products', { need: 'gentle exfoliant' }, { agent_id: 'agent_a' });
+  const body = typeof out === 'string' ? JSON.parse(out) : (out?.content?.[0]?.text ? JSON.parse(out.content[0].text) : out);
+
+  // ORDER MATTERS. The redaction assertions come FIRST so that deleting the prefix fails this test
+  // for the REASON the test exists, not merely because a format regex stopped matching — otherwise
+  // the failure message sends the next reader chasing the wrong thing.
+  assert.ok(!JSON.stringify(body).includes('REDACTED_PAN'),
+    'a Luhn-valid id body must not reach the PAN redactor — the id prefix is what prevents it');
+  assert.ok(String(body.signals[0].value.recommendation_id).includes(LUHN_VALID_ALL_DIGITS),
+    'the id body must survive verbatim');
+  assert.ok(String(body.metadata.recommendation_set_id).includes(LUHN_VALID_ALL_DIGITS),
+    'the set id body must survive verbatim');
+  assert.equal(body.signals[0].value.recommendation_id, `rec_${LUHN_VALID_ALL_DIGITS}`);
+  assert.equal(body.metadata.recommendation_set_id, `rset_${LUHN_VALID_ALL_DIGITS}`);
+});
+
+
+test('7f. the marker passes mutate value IN PLACE — the invariant "stamp last" depends on', () => {
+  // Review found that moving the mint earlier left all tests green, i.e. the PR's own headline
+  // ordering claim had no protection. Ordering is only load-bearing because both marker passes
+  // mutate `signal.value` rather than rebuilding it; the day one of them becomes
+  // `signal.value = { ...v, ... }`, a field stamped BEFORE it is silently dropped — the #2070
+  // failure. That object identity is the thing that can actually break, so pin it directly.
+  const ceiling = { limit: 40, currency: 'USD' };
+  for (const [name, mark] of [['markPriceViolation', markPriceViolation], ['markPriceUnverifiable', markPriceUnverifiable]]) {
+    const signal = recommendationItemToSignal(ITEM_OVERPRICED, {});
+    const before = signal.value;
+    before.__identity_probe = 'sentinel';
+    const out = mark(signal, ceiling);
+    assert.equal(out.value, before, `${name} must not rebuild signal.value`);
+    assert.equal(out.value.__identity_probe, 'sentinel',
+      `${name} dropped a field stamped before it — anything minted earlier is unsafe`);
+  }
 });
