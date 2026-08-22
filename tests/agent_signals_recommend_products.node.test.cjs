@@ -1126,3 +1126,28 @@ test('7f. the marker passes mutate value IN PLACE — the invariant "stamp last"
       `${name} dropped a field stamped before it — anything minted earlier is unsafe`);
   }
 });
+
+test('7g. a lane outage is JOINABLE — the set id reaches the log, not just the response', async () => {
+  // Round-2 review of #2080: minting the set id before the guards made every response
+  // addressable, but on `lane_unavailable` there are zero items, so the agent has no outcome
+  // to report and nothing server-side recorded the id — every outage still landed in one
+  // unjoinable bucket. The response half without the log half does not close that gap.
+  const warnings = [];
+  const h = makeRecommendProducts({
+    generate: async () => { throw new Error('AURORA_NOT_CONFIGURED'); },
+    isEnabled: () => true,
+    logger: { warn: (fields, msg) => warnings.push({ fields, msg }) },
+  });
+
+  const res = await h({ payload: { need: 'anything' } }, {});
+
+  assert.equal(res.metadata.reason, 'lane_unavailable');
+  assert.equal(warnings.length, 1);
+  assert.equal(warnings[0].msg, 'recommend_products lane failed');
+  assert.equal(
+    warnings[0].fields.recommendation_set_id,
+    res.metadata.recommendation_set_id,
+    'the logged id must be the SAME one the caller received, or the join is fiction',
+  );
+  assert.match(warnings[0].fields.recommendation_set_id, /^rset_[0-9a-f]{24}$/);
+});
