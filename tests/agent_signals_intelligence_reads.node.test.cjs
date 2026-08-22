@@ -280,3 +280,41 @@ test('get_offers over a CROSS-MERCHANT offers.resolve response → best = lowest
   assert.equal(res.best_offer.value.merchant_id, 'm2'); // lowest price
   assert.equal(res.metadata.product_group_id, 'grp1');
 });
+
+// ---------------------------------------------------------------------------------------------
+// EXECUTION SPEC v0 — cart_prefilled.
+//
+// The card rail's handoff is only useful if the agent knows what it is handing off TO. The
+// backend's redirect builder already decides whether `affiliate_url` resolves to a pre-filled
+// cart or a bare PDP, but it stamped that into the signed token as `join_mode` and never
+// returned it — so the agent holding the link could not tell. These pin the passthrough and,
+// more importantly, that ABSENCE never reads as a promise.
+// ---------------------------------------------------------------------------------------------
+
+test('offer signal reports a pre-filled cart when the backend says so', () => {
+  const { offerToSignal } = require('../src/agentSignals/offerToSignal');
+  const sig = offerToSignal(
+    { merchant_id: 'm1', price: 19, currency: 'USD', affiliate_url: 'https://api.pivota.cc/r?token=x',
+      purchase_route: 'affiliate_outbound', cart_prefilled: true },
+    { productId: 'sig_1' },
+  );
+  assert.equal(sig.value.cart_prefilled, true);
+  assert.equal(sig.value.affiliate_url, 'https://api.pivota.cc/r?token=x');
+});
+
+test('an offer that does not say so is NOT promised as a cart', () => {
+  // An older backend, or any non-external offer, carries no such field. Absence means "we do
+  // not know", which for a promise about where a buyer lands must read the same as "no".
+  const { offerToSignal } = require('../src/agentSignals/offerToSignal');
+  for (const offer of [
+    { merchant_id: 'm1' },                                   // absent
+    { merchant_id: 'm1', cart_prefilled: false },            // explicit false
+    { merchant_id: 'm1', cart_prefilled: 'true' },           // a string is not a promise
+    { merchant_id: 'm1', cart_prefilled: 1 },                // nor is a truthy number
+    { merchant_id: 'm1', cart_prefilled: null },
+  ]) {
+    const sig = offerToSignal(offer, { productId: 'sig_1' });
+    assert.equal(sig.value.cart_prefilled, false,
+      `must not promise a cart for ${JSON.stringify(offer.cart_prefilled)}`);
+  }
+});

@@ -32,6 +32,19 @@ function offerToSignal(offer, { productId = null } = {}) {
       // verbatim (shape-gated) so agents can send buyers through the attributed hop.
       affiliate_url: nonEmptyString(offer.affiliate_url) ? offer.affiliate_url : null,
       purchase_route: nonEmptyString(offer.purchase_route) ? offer.purchase_route : null,
+      // WHAT FOLLOWING `affiliate_url` ACTUALLY DOES. It resolves either to a PRE-FILLED CART
+      // on the merchant's own storefront or to a bare product page, and an agent could not
+      // previously tell which: the decision was made inside the backend's redirect builder,
+      // stamped into the signed token as `join_mode`, and never returned. For a card-rail
+      // handoff that is the difference between "the buyer lands on a checkout with the item in
+      // it" and "the buyer lands on a PDP and has to find the variant themselves" — a
+      // materially different completion path, and the first field of the execution spec.
+      //
+      // Strict boolean, and only from an EXPLICIT backend true: an offer from an older backend
+      // (or any non-external offer) has no such field, and absence must read as "we do not
+      // know", which is the same as not promising a cart. `=== true` rather than truthiness so
+      // a stray string can never be read as a promise.
+      cart_prefilled: offer.cart_prefilled === true,
     },
     evidence: {
       grade: null,
