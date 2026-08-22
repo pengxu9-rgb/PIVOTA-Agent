@@ -395,6 +395,12 @@ jobs:
       # reach the lane, namespaced agent uid + no profile + bounded budget, projection built from the LANE'S
       # OWN output contract (a hand-written fixture hid five dead field reads), the need text scrubbed by the
       # sanitizer, lane failure = reasoned empty answer, and the real commerce surface end to end.
+      # ADDED 2026-08-22: `tests/agent_signals_intelligence_reads`, confirmed green (26/26). It was
+      # ALREADY 280 lines old and running NOWHERE: absent from this list, and jest cannot see it either
+      # because `testMatch` is `**/tests/**/*.test.(js|ts)` and this file is `.cjs`. Every assertion in
+      # it — get_alternatives relation gating, get_offers failing CLOSED when no fetcher is wired, the
+      # cross-merchant best-offer pick — guarded nothing on a PR. #2082 added `cart_prefilled` coverage
+      # to it, which is what surfaced the gap: a green `node:test (allowlist)` job never NAMED this file.
       # ADDED 2026-08-20: `tests/ui_chat_access_guard`, confirmed green (15/15). /ui/chat ran an LLM agent
       # loop with tools and had NO auth of any kind, on every hostname this service answers — including
       # mcp.pivota.cc, the public read tier whose premise is "no public tier = no unauthenticated LLM
@@ -1015,6 +1021,7 @@ jobs:
             tests/platform_config.node.test.cjs \
             tests/platform_production_guards.node.test.cjs \
             tests/agent_identity_issuer_registry.node.test.cjs \
+            tests/agent_signals_intelligence_reads.node.test.cjs \
             tests/agent_signals_recommend_products.node.test.cjs \
             tests/aurora_chat_v1_mainline_delegation_cycle.node.test.cjs \
             tests/aurora_bff_v1_chat_rollout.node.test.cjs \
