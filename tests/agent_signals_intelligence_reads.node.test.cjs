@@ -303,8 +303,7 @@ test('offer signal reports a pre-filled cart when the backend says so', () => {
 });
 
 test('an offer that does not say so is NOT promised as a cart', () => {
-  // An older backend, or any non-external offer, carries no such field. Absence means "we do
-  // not know", which for a promise about where a buyer lands must read the same as "no".
+  // Nothing short of an explicit backend `true` may be read as a promise of a cart.
   const { offerToSignal } = require('../src/agentSignals/offerToSignal');
   for (const offer of [
     { merchant_id: 'm1' },                                   // absent
@@ -314,7 +313,31 @@ test('an offer that does not say so is NOT promised as a cart', () => {
     { merchant_id: 'm1', cart_prefilled: null },
   ]) {
     const sig = offerToSignal(offer, { productId: 'sig_1' });
-    assert.equal(sig.value.cart_prefilled, false,
+    assert.notEqual(sig.value.cart_prefilled, true,
       `must not promise a cart for ${JSON.stringify(offer.cart_prefilled)}`);
+  }
+});
+
+test('"nobody said" is null, NOT false — false is its own claim about where the buyer lands', () => {
+  // The mirror of the test above, and the reason this field is not a boolean. An agent reading
+  // `false` will tell the buyer "this link goes to a product page, you'll have to pick the
+  // variant yourself". That is a POSITIVE claim, and it is fabricated whenever the backend
+  // simply never said — an older backend, a non-external offer, or the ordinary state before
+  // the backend half ships. Only an explicit backend `false` earns that sentence.
+  const { offerToSignal } = require('../src/agentSignals/offerToSignal');
+
+  const said = offerToSignal({ merchant_id: 'm1', cart_prefilled: false }, { productId: 'sig_1' });
+  assert.equal(said.value.cart_prefilled, false, 'an explicit backend false IS a claim: keep it');
+
+  for (const offer of [
+    { merchant_id: 'm1' },                                   // older backend / non-external
+    { merchant_id: 'm1', cart_prefilled: null },
+    { merchant_id: 'm1', cart_prefilled: undefined },
+    { merchant_id: 'm1', cart_prefilled: 'false' },          // a string is not a claim either
+    { merchant_id: 'm1', cart_prefilled: 0 },
+  ]) {
+    const sig = offerToSignal(offer, { productId: 'sig_1' });
+    assert.equal(sig.value.cart_prefilled, null,
+      `absence must stay unknown, not become a PDP claim, for ${JSON.stringify(offer.cart_prefilled)}`);
   }
 });

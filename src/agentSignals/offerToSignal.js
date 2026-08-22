@@ -40,11 +40,19 @@ function offerToSignal(offer, { productId = null } = {}) {
       // it" and "the buyer lands on a PDP and has to find the variant themselves" — a
       // materially different completion path, and the first field of the execution spec.
       //
-      // Strict boolean, and only from an EXPLICIT backend true: an offer from an older backend
-      // (or any non-external offer) has no such field, and absence must read as "we do not
-      // know", which is the same as not promising a cart. `=== true` rather than truthiness so
-      // a stray string can never be read as a promise.
-      cart_prefilled: offer.cart_prefilled === true,
+      // THREE states, because there are three facts. `true` = the backend resolved a cart
+      // permalink; `false` = the backend resolved this to a bare PDP; `null` = nobody said.
+      // Collapsing the third into `false` would be a fabrication in the other direction: an
+      // agent reading `false` has every reason to tell the buyer "this goes to a product page,
+      // you'll have to pick the variant yourself", and that sentence is FALSE whenever the
+      // field was merely absent — an older backend, a non-external offer, or the ordinary
+      // state before the backend half of this ships. A boolean cannot say "I do not know",
+      // so it would have to lie; `null` can.
+      //
+      // Only an EXPLICIT backend boolean is believed. `=== true` / `=== false` rather than
+      // truthiness so a stray string, `1`, or `0` can never be read as either claim.
+      cart_prefilled:
+        offer.cart_prefilled === true ? true : offer.cart_prefilled === false ? false : null,
     },
     evidence: {
       grade: null,
