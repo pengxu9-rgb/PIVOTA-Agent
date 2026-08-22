@@ -280,3 +280,64 @@ test('get_offers over a CROSS-MERCHANT offers.resolve response → best = lowest
   assert.equal(res.best_offer.value.merchant_id, 'm2'); // lowest price
   assert.equal(res.metadata.product_group_id, 'grp1');
 });
+
+// ---------------------------------------------------------------------------------------------
+// EXECUTION SPEC v0 — cart_prefilled.
+//
+// The card rail's handoff is only useful if the agent knows what it is handing off TO. The
+// backend's redirect builder already decides whether `affiliate_url` resolves to a pre-filled
+// cart or a bare PDP, but it stamped that into the signed token as `join_mode` and never
+// returned it — so the agent holding the link could not tell. These pin the passthrough and,
+// more importantly, that ABSENCE never reads as a promise.
+// ---------------------------------------------------------------------------------------------
+
+test('offer signal reports a pre-filled cart when the backend says so', () => {
+  const { offerToSignal } = require('../src/agentSignals/offerToSignal');
+  const sig = offerToSignal(
+    { merchant_id: 'm1', price: 19, currency: 'USD', affiliate_url: 'https://api.pivota.cc/r?token=x',
+      purchase_route: 'affiliate_outbound', cart_prefilled: true },
+    { productId: 'sig_1' },
+  );
+  assert.equal(sig.value.cart_prefilled, true);
+  assert.equal(sig.value.affiliate_url, 'https://api.pivota.cc/r?token=x');
+});
+
+test('an offer that does not say so is NOT promised as a cart', () => {
+  // Nothing short of an explicit backend `true` may be read as a promise of a cart.
+  const { offerToSignal } = require('../src/agentSignals/offerToSignal');
+  for (const offer of [
+    { merchant_id: 'm1' },                                   // absent
+    { merchant_id: 'm1', cart_prefilled: false },            // explicit false
+    { merchant_id: 'm1', cart_prefilled: 'true' },           // a string is not a promise
+    { merchant_id: 'm1', cart_prefilled: 1 },                // nor is a truthy number
+    { merchant_id: 'm1', cart_prefilled: null },
+  ]) {
+    const sig = offerToSignal(offer, { productId: 'sig_1' });
+    assert.notEqual(sig.value.cart_prefilled, true,
+      `must not promise a cart for ${JSON.stringify(offer.cart_prefilled)}`);
+  }
+});
+
+test('"nobody said" is null, NOT false — false is its own claim about where the buyer lands', () => {
+  // The mirror of the test above, and the reason this field is not a boolean. An agent reading
+  // `false` will tell the buyer "this link goes to a product page, you'll have to pick the
+  // variant yourself". That is a POSITIVE claim, and it is fabricated whenever the backend
+  // simply never said — an older backend, a non-external offer, or the ordinary state before
+  // the backend half ships. Only an explicit backend `false` earns that sentence.
+  const { offerToSignal } = require('../src/agentSignals/offerToSignal');
+
+  const said = offerToSignal({ merchant_id: 'm1', cart_prefilled: false }, { productId: 'sig_1' });
+  assert.equal(said.value.cart_prefilled, false, 'an explicit backend false IS a claim: keep it');
+
+  for (const offer of [
+    { merchant_id: 'm1' },                                   // older backend / non-external
+    { merchant_id: 'm1', cart_prefilled: null },
+    { merchant_id: 'm1', cart_prefilled: undefined },
+    { merchant_id: 'm1', cart_prefilled: 'false' },          // a string is not a claim either
+    { merchant_id: 'm1', cart_prefilled: 0 },
+  ]) {
+    const sig = offerToSignal(offer, { productId: 'sig_1' });
+    assert.equal(sig.value.cart_prefilled, null,
+      `absence must stay unknown, not become a PDP claim, for ${JSON.stringify(offer.cart_prefilled)}`);
+  }
+});

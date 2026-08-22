@@ -32,6 +32,27 @@ function offerToSignal(offer, { productId = null } = {}) {
       // verbatim (shape-gated) so agents can send buyers through the attributed hop.
       affiliate_url: nonEmptyString(offer.affiliate_url) ? offer.affiliate_url : null,
       purchase_route: nonEmptyString(offer.purchase_route) ? offer.purchase_route : null,
+      // WHAT FOLLOWING `affiliate_url` ACTUALLY DOES. It resolves either to a PRE-FILLED CART
+      // on the merchant's own storefront or to a bare product page, and an agent could not
+      // previously tell which: the decision was made inside the backend's redirect builder,
+      // stamped into the signed token as `join_mode`, and never returned. For a card-rail
+      // handoff that is the difference between "the buyer lands on a checkout with the item in
+      // it" and "the buyer lands on a PDP and has to find the variant themselves" — a
+      // materially different completion path, and the first field of the execution spec.
+      //
+      // THREE states, because there are three facts. `true` = the backend resolved a cart
+      // permalink; `false` = the backend resolved this to a bare PDP; `null` = nobody said.
+      // Collapsing the third into `false` would be a fabrication in the other direction: an
+      // agent reading `false` has every reason to tell the buyer "this goes to a product page,
+      // you'll have to pick the variant yourself", and that sentence is FALSE whenever the
+      // field was merely absent — an older backend, a non-external offer, or the ordinary
+      // state before the backend half of this ships. A boolean cannot say "I do not know",
+      // so it would have to lie; `null` can.
+      //
+      // Only an EXPLICIT backend boolean is believed. `=== true` / `=== false` rather than
+      // truthiness so a stray string, `1`, or `0` can never be read as either claim.
+      cart_prefilled:
+        offer.cart_prefilled === true ? true : offer.cart_prefilled === false ? false : null,
     },
     evidence: {
       grade: null,
