@@ -560,7 +560,15 @@ function makeRecommendProducts(deps = {}) {
         shortlistTarget: limit,
       });
     } catch (err) {
-      logger?.warn?.({ err: err?.message || String(err) }, 'recommend_products lane failed');
+      // The set id goes IN THE LOG, not just the response. `lane_unavailable` returns zero
+      // items, so the agent has no outcome to report and nothing would otherwise record this
+      // id server-side — leaving every lane outage in one unjoinable bucket, which is the
+      // exact gap minting-before-the-guards was meant to close. Minting alone did not close
+      // it; this line is the other half.
+      logger?.warn?.(
+        { err: err?.message || String(err), recommendation_set_id: recommendationSetId },
+        'recommend_products lane failed',
+      );
       return { subject, signals: [], metadata: { reason: 'lane_unavailable', latency_ms: now() - startedAt, recommendation_set_id: recommendationSetId } };
     }
     const norm = isPlainObject(result?.norm) ? result.norm : null;
@@ -726,8 +734,11 @@ function makeRecommendProducts(deps = {}) {
     //
     // The prefix is DEFENCE-IN-DEPTH against the id body ever getting shorter. Drop it and shorten
     // `newId` to 8 bytes and the body becomes 16 digits — a matchable, Luhn-checkable length — and a
-    // join key would silently become [REDACTED_PAN] for roughly one recommendation in a few million:
-    // the kind of defect nobody ever traces. `PAN_RE` starts with `\b` and `_` is a word character,
+    // join key would silently become [REDACTED_PAN] for roughly ONE RECOMMENDATION IN 18,000:
+    // (10/16)^16 = 5.4e-4 that 16 hex chars are all digits, times ~1/10 for Luhn. (Earlier revisions
+    // of this comment said "a few million"; that was wrong by ~150x, and it is the third arithmetic
+    // claim here to not survive being checked — so it is now shown, not asserted.) A defect at that
+    // rate is frequent enough to corrupt real joins and rare enough that nobody ever traces it. `PAN_RE` starts with `\b` and `_` is a word character,
     // so a digit run immediately after an underscore can never begin a match at ANY length. That is
     // what makes the prefix worth keeping regardless of what `newId` later returns.
     for (const s of signals) {
