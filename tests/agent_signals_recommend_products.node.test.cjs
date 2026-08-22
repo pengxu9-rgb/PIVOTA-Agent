@@ -994,3 +994,99 @@ test('5. through the real commerce surface: listed, strict schema, toParams, and
   assert.equal(body.metadata.confidence_overall, 0.72, 'lane-level confidence on metadata survives the sanitizer');
   assert.equal(JSON.stringify(body).includes('score_breakdown'), false);
 });
+
+// ---------------------------------------------------------------------------------------------
+// 6. OUTCOME-GRAPH JOIN KEYS (recommendation_id / recommendation_set_id)
+//
+// The card rail cannot measure completion, price delta or failure reason unless an outcome can be
+// joined back to the recommendation that produced it. `click_id` is minted at redirect-build time
+// and only on the /r?token= path, so an agent that drives checkout from the item's own url is
+// unattributable. These pin that the keys exist, are per-item, and survive the real surface.
+// ---------------------------------------------------------------------------------------------
+
+test('6a. every returned signal carries a unique recommendation_id, and metadata carries the set id', async () => {
+  const h = makeRecommendProducts({ generate: async () => laneResult([ITEM_FULL, ITEM_INTERNAL]), isEnabled: () => true });
+  const res = await h({ payload: { need: 'gentle exfoliant' } }, {});
+
+  assert.equal(res.signals.length, 2);
+  const ids = res.signals.map((s) => s.value.recommendation_id);
+  for (const id of ids) assert.match(id, /^rec_[0-9a-f]{24}$/, 'per-item handoff key');
+  assert.equal(new Set(ids).size, 2, 'two handoffs must not share one outcome row');
+  assert.match(res.metadata.recommendation_set_id, /^rset_[0-9a-f]{24}$/);
+});
+
+test('6b. an empty shortlist is still an addressable recommendation event', async () => {
+  // "we were asked and returned nothing" is a measurable outcome; without a set id it is unrecordable.
+  const h = makeRecommendProducts({ generate: async () => laneResult([]), isEnabled: () => true });
+  const res = await h({ payload: { need: 'something with no answer' } }, {});
+
+  assert.deepEqual(res.signals, []);
+  assert.match(res.metadata.recommendation_set_id, /^rset_[0-9a-f]{24}$/);
+});
+
+test('6c. the id survives the price-violation marker pass, which mutates value in place', async () => {
+  // markPriceViolation rewrites why/notes/watchouts/fit on s.value. Stamping the id after that pass
+  // is what guarantees it cannot be dropped the way a budget marker was in #2070.
+  const h = makeRecommendProducts({ generate: async () => laneResult([ITEM_OVERPRICED]), isEnabled: () => true });
+  const res = await h({ payload: { need: 'exfoliant', constraints: { price_max: 40 } } }, {});
+
+  assert.equal(res.signals.length, 1);
+  assert.ok(Array.isArray(res.signals[0].value.constraint_violations), 'the marker pass did run');
+  assert.match(res.signals[0].value.recommendation_id, /^rec_[0-9a-f]{24}$/);
+});
+
+test('6d. the join keys survive the REAL commerce surface and its sanitizer', async () => {
+  // Same reasoning as 4i: a key DENYLIST is what lets these through today, so pin them — a future
+  // denylist entry must not be able to strip the outcome-graph join key and leave a green suite.
+  const { createCommerceToolSurface } = await import(pathToFileURL(path.join(__dirname, '..', 'mcp-server', 'src', 'commerceToolSurface.js')).href);
+  const executor = {
+    async execute(op, params, ctx) {
+      const h = makeRecommendProducts({ generate: async () => laneResult([ITEM_FULL]), isEnabled: () => true });
+      return h(params, ctx);
+    },
+  };
+  const surface = createCommerceToolSurface(executor, { cache: false });
+  const out = await surface.callTool('recommend_products', { need: 'gentle exfoliant' }, { agent_id: 'agent_a' });
+  const body = typeof out === 'string' ? JSON.parse(out) : (out?.content?.[0]?.text ? JSON.parse(out.content[0].text) : out);
+
+  assert.match(body.signals[0].value.recommendation_id, /^rec_[0-9a-f]{24}$/);
+  assert.match(body.metadata.recommendation_set_id, /^rset_[0-9a-f]{24}$/);
+});
+
+test('6e. the rec_ prefix is what keeps a join key out of the PAN redactor', async () => {
+  // resultSanitizer treats any key ending in "id" as an id key, but `recommendationid` is NOT in its
+  // PAN_EXEMPT_ID_KEYS set — so the VALUE is still Luhn-gated PAN-scanned. A random hex body that
+  // came up all-digits and passed Luhn would be silently rewritten to [REDACTED_PAN], corrupting the
+  // join key for one recommendation in a few million.
+  //
+  // This forces that corner: the id body is a real Luhn-valid test PAN. It survives ONLY because
+  // PAN_RE starts with \b and `_` is a word character, so the digit run cannot begin a match. Delete
+  // the `rec_` prefix and this test fails — which is the point of writing it.
+  const LUHN_VALID_ALL_DIGITS = '4111111111111111';
+  const { createCommerceToolSurface } = await import(pathToFileURL(path.join(__dirname, '..', 'mcp-server', 'src', 'commerceToolSurface.js')).href);
+  const executor = {
+    async execute(op, params, ctx) {
+      const h = makeRecommendProducts({
+        generate: async () => laneResult([ITEM_FULL]),
+        isEnabled: () => true,
+        newId: () => LUHN_VALID_ALL_DIGITS,
+      });
+      return h(params, ctx);
+    },
+  };
+  const surface = createCommerceToolSurface(executor, { cache: false });
+  const out = await surface.callTool('recommend_products', { need: 'gentle exfoliant' }, { agent_id: 'agent_a' });
+  const body = typeof out === 'string' ? JSON.parse(out) : (out?.content?.[0]?.text ? JSON.parse(out.content[0].text) : out);
+
+  // ORDER MATTERS. The redaction assertions come FIRST so that deleting the prefix fails this test
+  // for the REASON the test exists, not merely because a format regex stopped matching — otherwise
+  // the failure message sends the next reader chasing the wrong thing.
+  assert.ok(!JSON.stringify(body).includes('REDACTED_PAN'),
+    'a Luhn-valid id body must not reach the PAN redactor — the id prefix is what prevents it');
+  assert.ok(String(body.signals[0].value.recommendation_id).includes(LUHN_VALID_ALL_DIGITS),
+    'the id body must survive verbatim');
+  assert.ok(String(body.metadata.recommendation_set_id).includes(LUHN_VALID_ALL_DIGITS),
+    'the set id body must survive verbatim');
+  assert.equal(body.signals[0].value.recommendation_id, `rec_${LUHN_VALID_ALL_DIGITS}`);
+  assert.equal(body.metadata.recommendation_set_id, `rset_${LUHN_VALID_ALL_DIGITS}`);
+});

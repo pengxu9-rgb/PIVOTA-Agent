@@ -458,11 +458,21 @@ function recommendationItemToSignal(item, { rank } = {}) {
  *   logger?: { warn?: Function, info?: Function },
  *   budgetMs?: number,
  *   now?: () => number,
+ *   newId?: () => string,
+ *     // opaque id body for the outcome-graph join keys (recommendation_id / recommendation_set_id);
+ *     // defaults to 12 random bytes as hex. Injected only so tests can pin them.
  * }} deps
  */
 function makeRecommendProducts(deps = {}) {
   const { generate, buildAsk, isEnabled, logger, verifyPrice } = deps;
   const now = typeof deps.now === 'function' ? deps.now : () => Date.now();
+  // Injectable so a test can pin the join keys; `crypto.randomBytes` by default rather than
+  // Math.random because these ids are the primary key of the outcome graph and a collision silently
+  // merges two buyers' outcomes onto one row. 12 bytes = 96 bits, which is far past birthday-collision
+  // risk at any plausible recommendation volume.
+  const newId = typeof deps.newId === 'function'
+    ? deps.newId
+    : () => require('crypto').randomBytes(12).toString('hex');
   const budgetMs = Number.isFinite(deps.budgetMs) && deps.budgetMs > 0 ? deps.budgetMs : DEFAULT_BUDGET_MS;
   if (typeof generate !== 'function') throw new Error('makeRecommendProducts requires generate');
 
@@ -672,6 +682,37 @@ function makeRecommendProducts(deps = {}) {
         }
       }
     }
+    // OUTCOME-GRAPH JOIN KEYS. Everything the card rail needs to measure — did the agent complete,
+    // at what actual total, and if not then why — has to join back to the specific recommendation it
+    // acted on. Today nothing here is addressable: `click_id` is minted at REDIRECT-BUILD time, one
+    // hop too late and only on the `/r?token=` path, so a partner that drives checkout from the
+    // item's own url is unattributable by construction.
+    //
+    // TWO ids, because they answer different questions:
+    //   recommendation_id      per ITEM — the handoff key. An agent hands off ONE item and the
+    //                          outcome is about that item, so this is what an outcome row keys on.
+    //                          Self-contained on purpose: reporting an outcome must not require
+    //                          sending back a tuple.
+    //   recommendation_set_id  per RESPONSE — correlates the shortlist, so "which of the three did
+    //                          they pick, and were the others cheaper?" stays answerable.
+    //
+    // STAMPED LAST, deliberately. Ordering, live re-verification and the price-marker passes all
+    // MUTATE `s.value` in place above (see markPriceViolation). Minting here means the id travels
+    // with the item exactly as returned and cannot be dropped by an earlier pass that rewrites part
+    // of the node — the failure mode that lost a budget marker in #2070.
+    //
+    // THE `rec_` / `rset_` PREFIX IS LOAD-BEARING, not decoration. resultSanitizer treats any key
+    // ending in "id" as an id key, but `recommendationid` is NOT in its PAN_EXEMPT_ID_KEYS set, so
+    // these values are still Luhn-gated PAN-scanned. A bare hex id that came up all-digits (~1e-5 of
+    // the time at 24 chars) and passed Luhn would be silently rewritten to [REDACTED_PAN] — a join
+    // key that corrupts one recommendation in a few million, which is exactly the kind of defect
+    // nobody ever traces. `PAN_RE` starts with `\b` and `_` is a word character, so a digit run
+    // immediately after an underscore can never begin a match. Do not "tidy" the prefix away.
+    const recommendationSetId = `rset_${newId()}`;
+    for (const s of signals) {
+      s.value.recommendation_id = `rec_${newId()}`;
+    }
+
     const meta = isPlainObject(payload.recommendation_meta) ? payload.recommendation_meta : {};
     const confidence = finiteNumber(payload.confidence);
     // Measured HERE, after verification and slotting: a 2s live-price pass is real wall time the
@@ -686,6 +727,10 @@ function makeRecommendProducts(deps = {}) {
         constraints,
         limit,
         returned: signals.length,
+        // See the join-key block above. On metadata rather than on each item because it identifies
+        // the RESPONSE, not a product — and an empty shortlist is still a recommendation event worth
+        // being able to point at ("we were asked and returned nothing" is a measurable outcome).
+        recommendation_set_id: recommendationSetId,
         // Lane-level certainty. On metadata on purpose: the sanitizer strips `confidence` from PRODUCT nodes;
         // this node carries no product identity.
         confidence_overall: confidence,
