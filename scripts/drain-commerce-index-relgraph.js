@@ -115,12 +115,18 @@ async function finishBatch({ jobIds, workerId, error = null }) {
     `
       UPDATE commerce_index_publication_jobs
       SET status = $3, error_message = $4,
-          published_at = CASE WHEN $3 = 'completed' THEN NOW() ELSE NULL END,
+          published_at = CASE WHEN $5::boolean THEN NOW() ELSE NULL END,
           claimed_by = NULL, claimed_at = NULL, lease_until = NULL, updated_at = NOW()
       WHERE job_id = ANY($1::text[]) AND status = 'processing' AND claimed_by = $2
       RETURNING job_id
     `,
-    [jobIds, workerId, error ? 'pending' : 'completed', error ? String(error).slice(0, 1000) : null],
+    [
+      jobIds,
+      workerId,
+      error ? 'pending' : 'completed',
+      error ? String(error).slice(0, 1000) : null,
+      !error,
+    ],
   );
   return (result.rows || []).length;
 }
