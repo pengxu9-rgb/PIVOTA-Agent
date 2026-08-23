@@ -89,7 +89,10 @@ async function claimBatch({ workerId, limit }) {
     `
       UPDATE commerce_index_publication_jobs
       SET status = 'processing', claimed_by = $1, claimed_at = NOW(),
-          lease_until = NOW() + INTERVAL '15 minutes', attempts = attempts + 1,
+          -- Cloud Run permits this job to execute for up to 30 minutes. Keep
+          -- the database lease comfortably above that ceiling so the next
+          -- 10-minute scheduler tick cannot reclaim an in-flight graph build.
+          lease_until = NOW() + INTERVAL '45 minutes', attempts = attempts + 1,
           updated_at = NOW()
       WHERE job_id IN (
         SELECT job_id FROM commerce_index_publication_jobs

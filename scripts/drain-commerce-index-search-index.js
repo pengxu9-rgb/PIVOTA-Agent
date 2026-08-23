@@ -10,6 +10,7 @@
  * OpenSearch is disabled or the exact scoped rebuild fails.
  */
 
+const axios = require('axios');
 const { closePool, query } = require('../src/db');
 const {
   backfillCatalogServingIndex,
@@ -104,7 +105,10 @@ async function claimBatch({ workerId, limit }) {
     `
       UPDATE commerce_index_publication_jobs
       SET status = 'processing', claimed_by = $1, claimed_at = NOW(),
-          lease_until = NOW() + INTERVAL '15 minutes', attempts = attempts + 1,
+          -- Search has a 15-minute Cloud Run timeout. The extra headroom keeps
+          -- overlapping 5-minute scheduler ticks from duplicating a slow bulk
+          -- index publication after its worker has already claimed the batch.
+          lease_until = NOW() + INTERVAL '30 minutes', attempts = attempts + 1,
           updated_at = NOW()
       WHERE job_id IN (
         SELECT job_id FROM commerce_index_publication_jobs
@@ -127,12 +131,18 @@ async function finishBatch({ jobIds, workerId, error = null }) {
     `
       UPDATE commerce_index_publication_jobs
       SET status = $3, error_message = $4,
-          published_at = CASE WHEN $3 = 'completed' THEN NOW() ELSE NULL END,
+          published_at = CASE WHEN $5::boolean THEN NOW() ELSE NULL END,
           claimed_by = NULL, claimed_at = NULL, lease_until = NULL, updated_at = NOW()
       WHERE job_id = ANY($1::text[]) AND status = 'processing' AND claimed_by = $2
       RETURNING job_id
     `,
-    [jobIds, workerId, error ? 'pending' : 'completed', error ? String(error).slice(0, 1000) : null],
+    [
+      jobIds,
+      workerId,
+      error ? 'pending' : 'completed',
+      error ? String(error).slice(0, 1000) : null,
+      !error,
+    ],
   );
   return (result.rows || []).length;
 }
@@ -208,6 +218,92 @@ async function resolveGroupProductRows(productKeys) {
   return result.rows || [];
 }
 
+async function resolvePublishedMembershipRepair(productKeys) {
+  const sourceRefsResult = await query(
+    `SELECT merchant_id || ':' || source_product_id AS source_ref
+       FROM catalog_products
+      WHERE product_key = ANY($1::text[])`,
+    [productKeys],
+  );
+  const changedSourceRefs = dedupe((sourceRefsResult.rows || []).map((row) => row.source_ref));
+  if (!changedSourceRefs.length) return { priorDocumentIds: [], productKeys: [] };
+  const priorDocuments = await query(
+    `SELECT DISTINCT document_id
+       FROM commerce_index_search_memberships
+      WHERE source_ref = ANY($1::text[])`,
+    [changedSourceRefs],
+  );
+  const priorDocumentIds = dedupe((priorDocuments.rows || []).map((row) => row.document_id));
+  if (!priorDocumentIds.length) return { priorDocumentIds, productKeys: [] };
+  const priorSourceRefs = await query(
+    `SELECT source_ref
+       FROM commerce_index_search_memberships
+      WHERE document_id = ANY($1::text[])`,
+    [priorDocumentIds],
+  );
+  const sourceRefs = dedupe((priorSourceRefs.rows || []).map((row) => row.source_ref));
+  if (!sourceRefs.length) return { priorDocumentIds, productKeys: [] };
+  const priorProducts = await query(
+    `SELECT product_key
+       FROM catalog_products
+      WHERE merchant_id || ':' || source_product_id = ANY($1::text[])`,
+    [sourceRefs],
+  );
+  return {
+    priorDocumentIds,
+    productKeys: dedupe((priorProducts.rows || []).map((row) => row.product_key)),
+  };
+}
+
+async function replacePublishedMemberships({ priorDocumentIds = [], memberships = [] }) {
+  const documentIds = dedupe(priorDocumentIds);
+  if (documentIds.length) {
+    await query(
+      `DELETE FROM commerce_index_search_memberships WHERE document_id = ANY($1::text[])`,
+      [documentIds],
+    );
+  }
+  const sourceRefs = [];
+  const nextDocumentIds = [];
+  for (const membership of memberships || []) {
+    const documentId = String(membership?.doc_id || '').trim();
+    for (const sourceRef of dedupe(membership?.source_refs)) {
+      sourceRefs.push(sourceRef);
+      nextDocumentIds.push(documentId);
+    }
+  }
+  if (!sourceRefs.length) return 0;
+  const result = await query(
+    `INSERT INTO commerce_index_search_memberships (source_ref, document_id, updated_at)
+     SELECT source_ref, document_id, NOW()
+       FROM UNNEST($1::text[], $2::text[]) AS t(source_ref, document_id)
+     ON CONFLICT (source_ref) DO UPDATE
+       SET document_id = EXCLUDED.document_id, updated_at = EXCLUDED.updated_at`,
+    [sourceRefs, nextDocumentIds],
+  );
+  return Number(result.rowCount || sourceRefs.length);
+}
+
+async function deleteStaleDocuments({ documentIds = [], currentDocumentIds = [], config, httpClient = axios }) {
+  const current = new Set(dedupe(currentDocumentIds));
+  const stale = dedupe(documentIds).filter((documentId) => !current.has(documentId));
+  if (!stale.length) return 0;
+  const response = await httpClient.post(
+    `${config.base_url}/${encodeURIComponent(config.index_name)}/_delete_by_query?conflicts=proceed&refresh=true`,
+    { query: { ids: { values: stale } } },
+    {
+      headers: {
+        'Content-Type': 'application/json',
+        ...(config.api_key ? { Authorization: `ApiKey ${config.api_key}` } : {}),
+      },
+    },
+  );
+  if (response?.data?.timed_out === true || (response?.data?.failures || []).length) {
+    throw new Error('OpenSearch stale-document deletion was incomplete');
+  }
+  return Number(response?.data?.deleted || 0);
+}
+
 async function main(argv = process.argv.slice(2)) {
   if (!enabled(process.env[APPLY_ENV])) {
     throw new Error(`${APPLY_ENV}=true is required; refusing to claim or complete search publication jobs`);
@@ -224,7 +320,9 @@ async function main(argv = process.argv.slice(2)) {
   try {
     const scopedProductKeys = await resolveScopedProductKeys(jobs);
     if (!scopedProductKeys.length) throw new Error('search-index product resolution returned no canonical products');
-    const rows = await resolveGroupProductRows(scopedProductKeys);
+    const membershipRepair = await resolvePublishedMembershipRepair(scopedProductKeys);
+    const productKeys = dedupe([...scopedProductKeys, ...membershipRepair.productKeys]);
+    const rows = await resolveGroupProductRows(productKeys);
     if (!rows.length) throw new Error('search-index group expansion returned no catalog rows');
     const result = await backfillCatalogServingIndex(
       { limit: rows.length, includeNonPublic: true, refresh: true },
@@ -233,8 +331,24 @@ async function main(argv = process.argv.slice(2)) {
     if (result.source !== 'opensearch_compatible') {
       throw new Error(`search-index publication did not reach OpenSearch: source=${result.source}`);
     }
+    const memberships = result.document_memberships || [];
+    const deleted = await deleteStaleDocuments({
+      documentIds: membershipRepair.priorDocumentIds,
+      currentDocumentIds: memberships.map((membership) => membership.doc_id),
+      config,
+    });
+    await replacePublishedMemberships({
+      priorDocumentIds: membershipRepair.priorDocumentIds,
+      memberships,
+    });
     const completed = await finishBatch({ jobIds, workerId });
-    return { claimed: jobs.length, completed, product_keys: scopedProductKeys, indexed: result.indexed };
+    return {
+      claimed: jobs.length,
+      completed,
+      product_keys: productKeys,
+      indexed: result.indexed,
+      stale_documents_deleted: deleted,
+    };
   } catch (error) {
     await finishBatch({ jobIds, workerId, error: error?.message || String(error) });
     throw error;
@@ -255,6 +369,9 @@ module.exports = {
   claimBatch,
   finishBatch,
   main,
+  deleteStaleDocuments,
+  replacePublishedMemberships,
+  resolvePublishedMembershipRepair,
   resolveGroupProductRows,
   resolveScopedProductKeys,
 };
