@@ -962,6 +962,13 @@ async function backfillCatalogServingIndex(
     non_public_docs_built:
       Number(publishStateBreakdown.shadow || 0) + Number(publishStateBreakdown.eligible || 0),
     publish_state_breakdown: publishStateBreakdown,
+    // Publication workers retain only these stable membership pointers. They
+    // are enough to repair an old grouped document when a source listing moves
+    // to another sellable-item group, without persisting the full document.
+    document_memberships: docs.map((doc) => ({
+      doc_id: asString(doc?.doc_id),
+      source_refs: uniqStrings(doc?.source_refs || [], 5000),
+    })).filter((entry) => entry.doc_id && entry.source_refs.length > 0),
     ...writeResult,
   };
 }
