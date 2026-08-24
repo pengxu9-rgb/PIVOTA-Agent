@@ -86,4 +86,10 @@ test('audit evidence refuses buyer and session data', () => {
     sku_id: 'unsafe:1',
     cart: { status: 'verified', email: 'buyer@example.com' },
   }), /sensitive data/);
+
+  assert.throws(() => buildCommerceAuditEvidence({
+    merchant_id: 'public:unsafe',
+    audit_run_id: 'audit-session=opaque-secret',
+    guest_checkout: { status: 'security_challenge email=buyer@example.com&token=opaque-token' },
+  }), /sensitive data/);
 });

@@ -7,6 +7,7 @@ const ROUTE_USER_TAKEOVER = 'user_takeover_required';
 const ROUTE_AGENT_CHECKOUT = 'agent_checkout_eligible';
 const CHECKOUT_ROUTE_EVIDENCE = 'commerce_checkout_route';
 const SENSITIVE_KEY = /(address|email|phone|name|token|secret|cookie|session|authorization|card|payment|checkout_?url|continue_?url)/i;
+const SENSITIVE_VALUE = /(?:https?:\/\/|\b[\w.+-]+@[\w.-]+\.[a-z]{2,}\b|\b(?:token|secret|cookie|session(?:[_ -]?id)?|authorization|card|payment|email|phone|address)\s*[=:]\s*[^\s&]+)/i;
 
 function text(value, max = 512) {
   const normalized = String(value == null ? '' : value).trim().replace(/\s+/g, ' ');
@@ -18,6 +19,7 @@ function plainObject(value) {
 }
 
 function containsSensitiveData(value) {
+  if (typeof value === 'string') return SENSITIVE_VALUE.test(value);
   if (Array.isArray(value)) return value.some(containsSensitiveData);
   if (!plainObject(value)) return false;
   return Object.entries(value).some(([key, nested]) => SENSITIVE_KEY.test(key) || containsSensitiveData(nested));
@@ -63,7 +65,10 @@ function buildCommerceAuditEvidence(observation = {}) {
   const merchantId = text(observation.merchant_id, 255);
   const skuId = text(observation.sku_id, 255);
   if (!merchantId) throw new Error('Store Audit evidence requires merchant_id');
-  for (const field of ['cart', 'guest_checkout', 'integration']) {
+  for (const field of [
+    'merchant_id', 'sku_id', 'audit_run_id', 'market', 'platform', 'checkout_provider',
+    'cart', 'guest_checkout', 'integration',
+  ]) {
     if (containsSensitiveData(observation[field])) {
       throw new Error('Store Audit observation contains sensitive data');
     }
