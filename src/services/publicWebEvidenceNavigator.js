@@ -10,6 +10,7 @@ const { validatePublicBrowserUrl } = require('./commerceStorefrontAudit');
 
 const POLICY = /return|refund|exchange|shipping|delivery|policy/i;
 const REVIEWS = /review|rating|testimonial|feedback/i;
+const NON_AFTER_SALES = /privacy|cookie|security|accessibility/i;
 const FORBIDDEN_PATH = /\/(?:cart|checkout|checkouts|products?|collections?|api)(?:\/|$)/i;
 
 function canonicalHttps(value) {
@@ -77,26 +78,39 @@ function candidateLinks(links, hosts) {
     const url = canonicalHttps(link && link.href); if (!url || !hosts.has(url.hostname.toLowerCase()) || FORBIDDEN_PATH.test(url.pathname) || seen.has(url.toString())) continue;
     seen.add(url.toString()); const candidate = { url: url.toString(), label: String(link.text || '').replace(/\s+/g, ' ').trim().slice(0, 160) || null };
     const marker = `${candidate.url} ${candidate.label || ''}`;
-    if (POLICY.test(marker) && result.return_policy.length < 8) result.return_policy.push(candidate);
+    if (POLICY.test(marker) && !NON_AFTER_SALES.test(marker) && result.return_policy.length < 8) result.return_policy.push(candidate);
     if (REVIEWS.test(marker) && result.after_sales_reviews.length < 8) result.after_sales_reviews.push(candidate);
   }
   return result;
 }
 
 function createPublicWebEvidenceNavigator({ playwright, fetchImpl = global.fetch, validateUrl = validatePublicBrowserUrl, connectProxyFactory = createPublicOnlyConnectProxy, userAgent = 'PivotaCommerceIndexBot/0.1 (+https://pivota.cc/bot)', now = () => new Date() } = {}) {
+  async function fetchRobots(base, hosts) {
+    let robotsUrl = new URL('/robots.txt', base).toString();
+    for (let hop = 0; hop < 2; hop += 1) {
+      if (!(await validateUrl(robotsUrl)).ok) return { url: robotsUrl, response: null };
+      const response = await fetchImpl(robotsUrl, { headers: { 'user-agent': userAgent }, redirect: 'manual' });
+      if (![301, 302, 307, 308].includes(response && response.status)) return { url: robotsUrl, response };
+      const location = canonicalHttps(response.headers && response.headers.get('location'));
+      if (!location || !hosts.has(location.hostname.toLowerCase())) return { url: robotsUrl, response: null };
+      robotsUrl = location.toString();
+    }
+    return { url: robotsUrl, response: null };
+  }
+
   async function discover({ targets } = {}) {
     const results = [];
     for (const target of normalizeTargets(targets)) {
-      const robotsUrl = new URL('/robots.txt', target.base).toString();
+      const hosts = hostSet(target.base); const robotsUrl = new URL('/robots.txt', target.base).toString();
       const row = { merchant_id: target.merchant_id, market: target.market, base_url: target.base.toString(), observed_at: now().toISOString(), mode: 'browser_navigation_dry_run', facts_written: 0, projections_written: 0, robots: { url: robotsUrl, decision: 'unverified_blocked' }, proposed_evidence: { return_policy: [], after_sales_reviews: [] } };
       try {
-        if (!(await validateUrl(robotsUrl)).ok) { results.push(row); continue; }
-        const robots = await fetchImpl(robotsUrl, { headers: { 'user-agent': userAgent }, redirect: 'manual' });
+        const fetched = await fetchRobots(target.base, hosts); const robots = fetched.response;
+        row.robots.url = fetched.url;
         row.robots.status = robots && robots.status;
         if (!robots || robots.status !== 200 || !robotsAllows(await robots.text(), userAgent, target.base)) { row.robots.decision = 'disallowed_or_unverified'; results.push(row); continue; }
         row.robots.decision = 'allowed';
         if (!playwright || !playwright.chromium) { row.outcome = 'browser_unavailable'; results.push(row); continue; }
-        const hosts = hostSet(target.base); const proxyServer = connectProxyFactory(); const proxy = await proxyServer.start();
+        const proxyServer = connectProxyFactory(); const proxy = await proxyServer.start();
         let browser;
         try {
           browser = await playwright.chromium.launch({ headless: true, args: ['--disable-dev-shm-usage', '--disable-quic'], proxy });
