@@ -3,6 +3,7 @@
 const nodeDns = require('node:dns');
 const nodeNet = require('node:net');
 const { validatePublicHttpsImageUrl } = require('../photoBackendClient');
+const { createPublicOnlyConnectProxy } = require('./publicOnlyConnectProxy');
 
 /*
  * Anonymous, bounded storefront probe. It may add one item and follow the
@@ -61,7 +62,7 @@ async function shortPageText(page) {
   try { return String(await page.locator('body').innerText({ timeout: 1500 })).slice(0, 4000); } catch { return ''; }
 }
 
-function createCommerceStorefrontAudit({ playwright, now = () => new Date(), validateUrl = validatePublicBrowserUrl } = {}) {
+function createCommerceStorefrontAudit({ playwright, now = () => new Date(), validateUrl = validatePublicBrowserUrl, connectProxyFactory = createPublicOnlyConnectProxy } = {}) {
   async function audit({ targetUrl } = {}) {
     const startUrl = httpsUrl(targetUrl);
     if (!startUrl || !playwright || !playwright.chromium) {
@@ -70,9 +71,15 @@ function createCommerceStorefrontAudit({ playwright, now = () => new Date(), val
     if (!(await validateUrl(startUrl)).ok) {
       return { verification_status: 'blocked', outcome_code: 'invalid_probe', observed_at: now().toISOString() };
     }
-    let browser;
+    let browser; let connectProxy;
     try {
-      browser = await playwright.chromium.launch({ headless: true, args: ['--disable-dev-shm-usage'] });
+      // Every browser connection is tunnelled through a local proxy which
+      // resolves and connects to one validated public IP itself. URL/route
+      // checks are defense in depth; the proxy closes DNS-rebinding TOCTOU.
+      connectProxy = connectProxyFactory();
+      const proxy = await connectProxy.start();
+      if (!proxy || !proxy.server) throw new Error('public_connect_proxy_unavailable');
+      browser = await playwright.chromium.launch({ headless: true, args: ['--disable-dev-shm-usage', '--disable-quic'], proxy });
       const context = await browser.newContext({ serviceWorkers: 'block' });
       // This guard runs on the initial navigation, every redirect, and every
       // subrequest. Merchant-controlled browser navigation never reaches an
@@ -111,6 +118,7 @@ function createCommerceStorefrontAudit({ playwright, now = () => new Date(), val
       return { verification_status: message.includes('timeout') ? 'failed' : 'blocked', outcome_code: message.includes('timeout') ? 'timeout' : 'network', observed_at: now().toISOString() };
     } finally {
       await browser?.close().catch(() => {});
+      await connectProxy?.close().catch(() => {});
     }
   }
   return { audit };
