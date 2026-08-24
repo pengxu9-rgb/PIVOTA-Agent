@@ -11,6 +11,7 @@ function createCommerceStoreAuditWorker({
   internalKey = process.env.STORE_AUDIT_COMMERCE_PROBE_INTERNAL_KEY,
   workerId = process.env.STORE_AUDIT_COMMERCE_WORKER_ID,
   cloudRunAudience = process.env.STORE_AUDIT_COMMERCE_PROBE_ID_TOKEN_AUDIENCE,
+  armed = String(process.env.STORE_AUDIT_COMMERCE_REPROBE_ARMED || '').trim().toLowerCase() === 'true',
   idTokenProvider, fetchImpl = global.fetch, auditService, claimTimeoutMs = 5000,
   receiptClient,
 } = {}) {
@@ -20,6 +21,10 @@ function createCommerceStoreAuditWorker({
   const auditor = auditService || createCommerceStorefrontAudit({ playwright: require('playwright') });
   const sender = receiptClient || createCommerceStoreAuditReceiptClient({ internalKey: key, fetchImpl, cloudRunAudience, idTokenProvider: identity });
   async function runOnce() {
+    // Scheduler pause is not a complete boundary: an operator can manually
+    // execute a Cloud Run Job. Refuse before auth, claim, browser launch, or
+    // merchant network access unless the separate deployment gate is armed.
+    if (!armed) return { ok: true, code: 'worker_disarmed' };
     if (!claimEndpoint || !key || !id || !identity || typeof identity.getToken !== 'function' || typeof fetchImpl !== 'function') return { ok: false, code: 'worker_not_configured' };
     const token = await identity.getToken();
     if (!token) return { ok: false, code: 'service_auth_unavailable' };
