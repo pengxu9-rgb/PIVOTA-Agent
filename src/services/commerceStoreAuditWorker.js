@@ -11,7 +11,7 @@ function createCommerceStoreAuditWorker({
   internalKey = process.env.STORE_AUDIT_COMMERCE_PROBE_INTERNAL_KEY,
   workerId = process.env.STORE_AUDIT_COMMERCE_WORKER_ID,
   cloudRunAudience = process.env.STORE_AUDIT_COMMERCE_PROBE_ID_TOKEN_AUDIENCE,
-  idTokenProvider, fetchImpl = global.fetch, auditService,
+  idTokenProvider, fetchImpl = global.fetch, auditService, claimTimeoutMs = 5000,
   receiptClient,
 } = {}) {
   const claimEndpoint = httpsUrl(claimUrl);
@@ -24,7 +24,8 @@ function createCommerceStoreAuditWorker({
     const token = await identity.getToken();
     if (!token) return { ok: false, code: 'service_auth_unavailable' };
     let response;
-    try { response = await fetchImpl(claimEndpoint, { method: 'POST', redirect: 'error', headers: { 'content-type': 'application/json', 'x-internal-key': key, authorization: `Bearer ${token}` }, body: JSON.stringify({ worker_id: id }) }); } catch { return { ok: false, code: 'claim_delivery_failed' }; }
+    const controller = new AbortController(); const timer = setTimeout(() => controller.abort(), claimTimeoutMs);
+    try { response = await fetchImpl(claimEndpoint, { method: 'POST', redirect: 'error', headers: { 'content-type': 'application/json', 'x-internal-key': key, authorization: `Bearer ${token}` }, body: JSON.stringify({ worker_id: id }), signal: controller.signal }); } catch { return { ok: false, code: 'claim_delivery_failed' }; } finally { clearTimeout(timer); }
     if (response && response.status === 204) return { ok: true, code: 'no_work' };
     if (!response || !response.ok) return { ok: false, code: 'claim_rejected', status: response && response.status };
     let claim;

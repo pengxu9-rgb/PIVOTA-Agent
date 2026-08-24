@@ -25,3 +25,13 @@ test('does not audit an invalid claimed target', async () => {
   });
   await expect(worker.runOnce()).resolves.toEqual({ ok: false, code: 'claim_invalid_payload' });
 });
+
+test('bounds a stalled claim request', async () => {
+  const worker = createCommerceStoreAuditWorker({
+    claimUrl: 'https://backend.example/claims', internalKey: 'key', workerId: 'worker-1', claimTimeoutMs: 5,
+    idTokenProvider: { getToken: async () => 'id-token' },
+    fetchImpl: (_url, options) => new Promise((_resolve, reject) => options.signal.addEventListener('abort', () => reject(new Error('aborted')))),
+    auditService: { audit: jest.fn() }, receiptClient: { submit: jest.fn() },
+  });
+  await expect(worker.runOnce()).resolves.toEqual({ ok: false, code: 'claim_delivery_failed' });
+});

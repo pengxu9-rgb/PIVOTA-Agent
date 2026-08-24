@@ -1,5 +1,9 @@
 'use strict';
 
+const nodeDns = require('node:dns');
+const nodeNet = require('node:net');
+const { validatePublicHttpsImageUrl } = require('../photoBackendClient');
+
 /*
  * Anonymous, bounded storefront probe. It may add one item and follow the
  * checkout route, but it must never type buyer data, use payment, or submit.
@@ -14,10 +18,19 @@ const CART_STATUSES = new Set(['verified', 'unavailable', 'blocked', 'selection_
 function httpsUrl(value) {
   try {
     const url = new URL(String(value || '').trim());
-    return url.protocol === 'https:' && !url.username && !url.password && !url.search && !url.hash ? url.toString() : null;
+    return url.protocol === 'https:' && !url.username && !url.password && !url.port
+      && !url.search && !url.hash && !nodeNet.isIP(url.hostname) ? url.toString() : null;
   } catch {
     return null;
   }
+}
+
+async function validatePublicBrowserUrl(value, { lookup = nodeDns.promises.lookup, validateUrl = validatePublicHttpsImageUrl } = {}) {
+  let url;
+  try { url = new URL(String(value || '').trim()); } catch { return { ok: false }; }
+  if (url.protocol !== 'https:' || url.username || url.password || url.port || !url.hostname || nodeNet.isIP(url.hostname)) return { ok: false };
+  const result = await validateUrl(url.toString(), { lookup });
+  return result && result.ok ? { ok: true } : { ok: false };
 }
 
 function classifyCheckoutPage({ url = '', text = '' } = {}) {
@@ -48,16 +61,27 @@ async function shortPageText(page) {
   try { return String(await page.locator('body').innerText({ timeout: 1500 })).slice(0, 4000); } catch { return ''; }
 }
 
-function createCommerceStorefrontAudit({ playwright, now = () => new Date() } = {}) {
+function createCommerceStorefrontAudit({ playwright, now = () => new Date(), validateUrl = validatePublicBrowserUrl } = {}) {
   async function audit({ targetUrl } = {}) {
     const startUrl = httpsUrl(targetUrl);
     if (!startUrl || !playwright || !playwright.chromium) {
       return { verification_status: 'failed', outcome_code: 'invalid_probe', observed_at: now().toISOString() };
     }
+    if (!(await validateUrl(startUrl)).ok) {
+      return { verification_status: 'blocked', outcome_code: 'invalid_probe', observed_at: now().toISOString() };
+    }
     let browser;
     try {
       browser = await playwright.chromium.launch({ headless: true, args: ['--disable-dev-shm-usage'] });
       const context = await browser.newContext({ serviceWorkers: 'block' });
+      // This guard runs on the initial navigation, every redirect, and every
+      // subrequest. Merchant-controlled browser navigation never reaches an
+      // IP literal, localhost/private DNS answer, non-HTTPS host, or alternate port.
+      await context.route('**/*', async (route) => {
+        const allowed = await validateUrl(route.request().url());
+        if (!allowed.ok) return route.abort('blockedbyclient');
+        return route.continue();
+      });
       const page = await context.newPage();
       await page.goto(startUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
       const generator = await page.locator('meta[name="generator"]').first().getAttribute('content').catch(() => null);
@@ -92,4 +116,4 @@ function createCommerceStorefrontAudit({ playwright, now = () => new Date() } = 
   return { audit };
 }
 
-module.exports = { CART_STATUSES, CHECKOUT_STATUSES, classifyCheckoutPage, createCommerceStorefrontAudit, httpsUrl, platformFromGenerator };
+module.exports = { CART_STATUSES, CHECKOUT_STATUSES, classifyCheckoutPage, createCommerceStorefrontAudit, httpsUrl, platformFromGenerator, validatePublicBrowserUrl };

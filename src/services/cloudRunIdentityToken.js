@@ -19,11 +19,14 @@ function createCloudRunIdTokenProvider({ audience = process.env.STORE_AUDIT_COMM
   async function getToken() {
     if (!validAudience || typeof fetchImpl !== 'function') return null;
     if (!pending) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 3000);
       pending = Promise.resolve(fetchImpl(`${METADATA_IDENTITY_URL}?audience=${encodeURIComponent(validAudience)}&format=full`, {
-        headers: { 'metadata-flavor': 'Google' }, redirect: 'error',
+        headers: { 'metadata-flavor': 'Google' }, redirect: 'error', signal: controller.signal,
       }))
         .then(async (response) => (response && response.ok ? String(await response.text()).trim() || null : null))
-        .catch(() => null);
+        .catch(() => null)
+        .finally(() => clearTimeout(timer));
     }
     return pending;
   }
