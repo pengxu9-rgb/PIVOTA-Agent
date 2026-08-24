@@ -92,4 +92,15 @@ test('audit evidence refuses buyer and session data', () => {
     audit_run_id: 'audit-session=opaque-secret',
     guest_checkout: { status: 'security_challenge email=buyer@example.com&token=opaque-token' },
   }), /sensitive data/);
+
+  for (const status of [
+    'customer name Jane Doe',
+    'card number 4111 1111 1111 1111',
+    'phone +1 415 555 0123',
+  ]) {
+    assert.throws(() => buildCommerceAuditEvidence({
+      merchant_id: 'public:unsafe',
+      guest_checkout: { status },
+    }), /unsupported guest_checkout\.status/);
+  }
 });
