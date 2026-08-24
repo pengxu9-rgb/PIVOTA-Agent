@@ -1,0 +1,22 @@
+# Build the isolated Playwright runtime used only by Store Audit's anonymous
+# checkout-route probe. Run from a PIVOTA-Agent checkout:
+#   gcloud builds submit --config infra/gcp/cloudbuild.store-audit-browser.yaml \
+#     --project pivota-shared --substitutions=COMMIT_SHA=$(git rev-parse HEAD) .
+substitutions:
+  _REGION: us-west1
+  _REPO: pivota
+  _IMAGE: store-audit-browser
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args: ['build',
+           '-f', 'Dockerfile.store-audit-browser',
+           '-t', '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_IMAGE}:${COMMIT_SHA}',
+           '-t', '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_IMAGE}:latest',
+           '.']
+images:
+  - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_IMAGE}:${COMMIT_SHA}'
+  - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_IMAGE}:latest'
+options:
+  machineType: E2_HIGHCPU_8
+  logging: CLOUD_LOGGING_ONLY
+timeout: 1800s
