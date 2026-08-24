@@ -5,6 +5,7 @@ const ROUTE_DISCOVERY_ONLY = 'discovery_only';
 const ROUTE_MERCHANT_HANDOFF = 'merchant_handoff';
 const ROUTE_USER_TAKEOVER = 'user_takeover_required';
 const ROUTE_AGENT_CHECKOUT = 'agent_checkout_eligible';
+const CHECKOUT_ROUTE_EVIDENCE = 'commerce_checkout_route';
 const SENSITIVE_KEY = /(address|email|phone|name|token|secret|cookie|session|authorization|card|payment|checkout_?url|continue_?url)/i;
 
 function text(value, max = 512) {
@@ -95,8 +96,15 @@ function buildCommerceAuditEvidence(observation = {}) {
     const status = text(observation.guest_checkout.status, 100).toLowerCase() || 'unknown';
     const challengeStage = text(observation.guest_checkout.challenge_stage, 100).toLowerCase();
     records.push(createEvidence({
-      ...common, subjectType: 'merchant', subjectId: merchantId, evidenceType: 'commerce_guest_checkout', ttlHours: 24,
-      payload: { status, ...(challengeStage ? { challenge_stage: challengeStage } : {}) },
+      ...common, subjectType: 'merchant', subjectId: merchantId, evidenceType: CHECKOUT_ROUTE_EVIDENCE, ttlHours: 24,
+      // A representative SKU may be used to reach checkout, but the resulting
+      // route/challenge finding is a merchant-level fact and is reused for the store.
+      payload: {
+        audit_scope: 'merchant_checkout',
+        status,
+        ...(challengeStage ? { challenge_stage: challengeStage } : {}),
+        ...(skuId ? { probe_sku_id: skuId } : {}),
+      },
     }));
   }
   if (plainObject(observation.integration) && observation.integration.agent_checkout_authorized === true) {
@@ -121,7 +129,9 @@ function resolveCommerceCapabilities({ merchant_id, sku_id, evidence = [], now }
     item.evidence_type === type && item.subject_type === subjectType && item.subject_id === subjectId,
   ) || null;
   const platform = latest('commerce_platform', 'merchant', merchantId);
-  const guest = latest('commerce_guest_checkout', 'merchant', merchantId);
+  const guest = latest(CHECKOUT_ROUTE_EVIDENCE, 'merchant', merchantId)
+    // Accept the pre-release name while any early producer is being upgraded.
+    || latest('commerce_guest_checkout', 'merchant', merchantId);
   const authorization = latest('commerce_integration_authorization', 'merchant', merchantId);
   const cart = skuId ? latest('commerce_cartability', 'sku', skuId) : null;
   const guestStatus = text(guest?.payload?.status, 100) || 'unknown';
@@ -160,13 +170,31 @@ function resolveCommerceCapabilities({ merchant_id, sku_id, evidence = [], now }
   };
 }
 
+function merchantCheckoutAuditDecision({ merchant_id, evidence = [], now } = {}) {
+  const merchantId = text(merchant_id, 255);
+  if (!merchantId) throw new Error('Merchant checkout audit decision requires merchant_id');
+  const cutoff = new Date(now || Date.now()).getTime();
+  const current = (Array.isArray(evidence) ? evidence : [])
+    .filter((item) => plainObject(item)
+      && item.subject_type === 'merchant'
+      && item.subject_id === merchantId
+      && (item.evidence_type === CHECKOUT_ROUTE_EVIDENCE || item.evidence_type === 'commerce_guest_checkout')
+      && new Date(item.expires_at || 0).getTime() > cutoff)
+    .sort((a, b) => new Date(b.observed_at || 0) - new Date(a.observed_at || 0))[0];
+  return current
+    ? { should_audit: false, reason: 'fresh_merchant_checkout_evidence', next_eligible_at: current.expires_at, evidence_ref: current }
+    : { should_audit: true, reason: 'missing_or_expired_merchant_checkout_evidence' };
+}
+
 module.exports = {
   EVIDENCE_SOURCE_STORE_AUDIT,
   ROUTE_DISCOVERY_ONLY,
   ROUTE_MERCHANT_HANDOFF,
   ROUTE_USER_TAKEOVER,
   ROUTE_AGENT_CHECKOUT,
+  CHECKOUT_ROUTE_EVIDENCE,
   buildCommerceAuditEvidence,
   containsSensitiveData,
+  merchantCheckoutAuditDecision,
   resolveCommerceCapabilities,
 };
