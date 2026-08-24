@@ -1,7 +1,9 @@
 'use strict';
 
 const assert = require('node:assert/strict');
-const test = require('node:test');
+// The focused contract command uses node --test, while the repository-wide
+// gate discovers this file with Jest. Reuse Jest's global when available.
+const test = global.test || require('node:test');
 
 const {
   ROUTE_AGENT_CHECKOUT,
