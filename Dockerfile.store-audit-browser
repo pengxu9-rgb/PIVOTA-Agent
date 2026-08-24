@@ -1,0 +1,7 @@
+FROM mcr.microsoft.com/playwright:v1.62.1-noble
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci --omit=dev
+COPY . .
+ENV NODE_ENV=production
+CMD ["node", "scripts/run_store_audit_commerce_worker.js"]
