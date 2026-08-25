@@ -192,6 +192,15 @@ function buildRelationshipGraphDisplaySnapshot(row = {}) {
     payloadSnapshot.price_amount,
     payloadSnapshot.price,
   );
+  // The price's currency, from the same payload the price came from — a price must never travel without
+  // its currency (key precedence mirrors the pdp identity readers: price_currency, then currency).
+  const currency = firstNonEmptyString(
+    productPayload.price_currency,
+    productPayload.priceCurrency,
+    productPayload.currency,
+    payloadSnapshot.price_currency,
+    payloadSnapshot.currency,
+  );
   return {
     ...(canonicalEntityId ? { id: canonicalEntityId, product_id: canonicalEntityId, canonical_entity_id: canonicalEntityId } : {}),
     ...(sourceProductId
@@ -213,6 +222,7 @@ function buildRelationshipGraphDisplaySnapshot(row = {}) {
     ...(merchantCanonicalUrl && merchantCanonicalUrl !== publicUrl ? { merchant_canonical_url: merchantCanonicalUrl } : {}),
     ...(imageUrl ? { image_url: imageUrl } : {}),
     ...(price ? { price } : {}),
+    ...(currency ? { currency } : {}),
   };
 }
 

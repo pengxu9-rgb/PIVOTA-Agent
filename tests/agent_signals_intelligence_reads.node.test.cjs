@@ -8,7 +8,13 @@ const assert = require('node:assert/strict');
 
 const { relationshipEdgeToSignal, relationshipEdgesToSignals } = require('../src/agentSignals/relationshipEdgeToSignal');
 const { offerToSignal, offersToSignals } = require('../src/agentSignals/offerToSignal');
-const { makeGetAlternatives, makeGetOffers, mapOffersResolveResponse } = require('../src/agentSignals/intelligenceReads');
+const {
+  makeGetAlternatives,
+  makeGetOffers,
+  mapOffersResolveResponse,
+  candidateSnapshotNeedsHydration,
+  hydrateCandidateSnapshotFromEntity,
+} = require('../src/agentSignals/intelligenceReads');
 
 function sampleEdge(over = {}) {
   return {
@@ -50,6 +56,31 @@ test('relationshipEdgeToSignal: 1:1 field map incl. evidence/freshness/review_st
   assert.equal(s.freshness.fresh_until, '2026-07-01T00:00:00Z');
   assert.equal(s.review_state, 'human_approved');
   assert.equal(s.visibility, 'buyer_safe');
+});
+
+test('relationshipEdgeToSignal: currency read tolerates producer key variants (price_currency)', () => {
+  // The stored candidate_snapshot is a raw product spread whose currency key varies by producer.
+  // Verified in prod 2026-08-25: a one-key `snapshot.currency` read served a $49 alternative with an
+  // amount and no currency next to a currency-carrying anchor.
+  const viaPriceCurrency = relationshipEdgeToSignal(
+    sampleEdge({ candidate_snapshot: { title: 'T', brand: 'B', price: 49, price_currency: 'USD' } }),
+  );
+  assert.equal(viaPriceCurrency.value.related.price, 49);
+  assert.equal(viaPriceCurrency.value.related.currency, 'USD');
+  const viaCamel = relationshipEdgeToSignal(
+    sampleEdge({ candidate_snapshot: { title: 'T', brand: 'B', price: 49, priceCurrency: 'EUR' } }),
+  );
+  assert.equal(viaCamel.value.related.currency, 'EUR');
+  // `currency` stays the first-read key when several are present.
+  const both = relationshipEdgeToSignal(
+    sampleEdge({ candidate_snapshot: { title: 'T', brand: 'B', price: 49, currency: 'GBP', price_currency: 'USD' } }),
+  );
+  assert.equal(both.value.related.currency, 'GBP');
+  // Still honest when nothing carries a currency: null, never a guess.
+  const none = relationshipEdgeToSignal(
+    sampleEdge({ candidate_snapshot: { title: 'T', brand: 'B', price: 49 } }),
+  );
+  assert.equal(none.value.related.currency, null);
 });
 
 test('related_product → signal_type "related"', () => {
@@ -192,6 +223,73 @@ test('makeGetAlternatives: hydrateCandidates fills title-less candidate snapshot
   assert.equal(hydrateRanWith, 1);
   assert.equal(res.signals[0].value.related.title, 'Resolved Lip Gloss');
   assert.equal(res.signals[0].value.related.brand, '786 Cosmetics');
+});
+
+test('candidateSnapshotNeedsHydration: title-less, or priced without any currency key', () => {
+  assert.equal(candidateSnapshotNeedsHydration({ brand: 'B', price: 19.99, currency: 'USD' }), true, 'no title');
+  assert.equal(candidateSnapshotNeedsHydration({ title: 'T', price: 49 }), true, 'priced, currency-less');
+  assert.equal(candidateSnapshotNeedsHydration({ title: 'T', price: 49, price_currency: 'USD' }), false);
+  assert.equal(candidateSnapshotNeedsHydration({ title: 'T', price: 49, currency: 'USD' }), false);
+  // EVERY currency key the signal mapper reads must count as "has a currency" here, or hydration
+  // overrides a producer's own currency (review F1).
+  assert.equal(candidateSnapshotNeedsHydration({ title: 'T', price: 4900, priceCurrency: 'JPY' }), false);
+  assert.equal(candidateSnapshotNeedsHydration({ title: 'T', brand: 'B' }), false, 'unpriced needs no currency');
+});
+
+test('hydrateCandidateSnapshotFromEntity: fills the stored amount’s missing currency from the canonical row', () => {
+  const snap = { title: 'T', brand: 'B', price: 49 };
+  const hydrated = hydrateCandidateSnapshotFromEntity(snap, {
+    title: 'T',
+    display_snapshot: { title: 'T', price: '49.00', currency: 'USD' },
+  });
+  assert.equal(hydrated.currency, 'USD');
+  assert.equal(hydrated.price, 49, 'the STORED amount is kept — only its currency is filled');
+});
+
+test('hydrateCandidateSnapshotFromEntity: never overwrites a currency the snapshot already carries', () => {
+  const kept = hydrateCandidateSnapshotFromEntity(
+    { title: 'T', price: 49, price_currency: 'EUR' },
+    { display_snapshot: { price: '49.00', currency: 'USD' } },
+  );
+  assert.equal(kept, null, 'nothing to fill — edge kept as-is');
+  // The camelCase producer key counts too — the mapper reads it, so hydration must respect it (review F1).
+  const keptCamel = hydrateCandidateSnapshotFromEntity(
+    { title: 'T', price: 4900, priceCurrency: 'JPY' },
+    { display_snapshot: { price: '4900', currency: 'USD' } },
+  );
+  assert.equal(keptCamel, null, 'a priceCurrency:JPY snapshot must not be re-badged USD');
+});
+
+test('hydrateCandidateSnapshotFromEntity: an amount MISMATCH refuses the pairing (different member listing)', () => {
+  // A sig/group-keyed ref can resolve to the group's PRIMARY member — a different merchant's listing,
+  // possibly in another currency (review F2). Only a matching amount licenses the currency pairing;
+  // otherwise the price stays currency-less and the projection withholds it (honest omission).
+  const mismatched = hydrateCandidateSnapshotFromEntity(
+    { title: 'T', price: 4900 },
+    { title: 'T', display_snapshot: { price: '49.00', currency: 'USD' } },
+  );
+  assert.equal(mismatched, null, 'stored 4900 vs canonical 49.00 — no currency fill');
+  // A canonical row with a currency but NO price cannot prove it is the same listing either.
+  assert.equal(
+    hydrateCandidateSnapshotFromEntity({ title: 'T', price: 49 }, { title: 'T', display_snapshot: { currency: 'USD' } }),
+    null,
+  );
+});
+
+test('hydrateCandidateSnapshotFromEntity: fills title (with brand fallback) and is null on a no-op', () => {
+  const titled = hydrateCandidateSnapshotFromEntity(
+    { price: 19.99, currency: 'USD' },
+    { title: 'Resolved Lip Gloss', brand: '786 Cosmetics' },
+  );
+  assert.equal(titled.title, 'Resolved Lip Gloss');
+  assert.equal(titled.brand, '786 Cosmetics');
+  assert.equal(hydrateCandidateSnapshotFromEntity({ title: 'T', brand: 'B' }, { title: 'X' }), null);
+  assert.equal(hydrateCandidateSnapshotFromEntity({ price: 49 }, null), null, 'unresolved ref is a no-op');
+  // A resolved row with no currency of its own fills nothing rather than guessing.
+  assert.equal(
+    hydrateCandidateSnapshotFromEntity({ title: 'T', price: 49 }, { title: 'T', display_snapshot: { price: '49.00' } }),
+    null,
+  );
 });
 
 test('makeGetAlternatives: a hydrateCandidates throw is fail-open (edges still served)', async () => {

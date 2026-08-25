@@ -332,6 +332,7 @@ function projectGetAlternatives(raw, { base = DEFAULT_PDP_BASE } = {}) {
       const related = isObj(v.related) ? v.related : {};
       const e = isObj(sig.evidence) ? sig.evidence : {};
       const priceAmt = finiteNum(related.price);
+      const priceCurrency = str(related.currency);
       const ratio = isObj(v.price_comparison) ? finiteNum(v.price_comparison.price_ratio) : null;
       const productId = str(related.ref) || null;
       return compact({
@@ -339,7 +340,10 @@ function projectGetAlternatives(raw, { base = DEFAULT_PDP_BASE } = {}) {
         brand: clamp(related.brand, 120),
         title: clamp(related.title, 200),
         relation: str(v.relation),
-        price: priceAmt != null ? compact({ amount: priceAmt, currency: str(related.currency) }) : null,
+        // amount and currency travel together or not at all: a bare amount invites the reader to assume
+        // the anchor's currency, which fabricates a price when they differ. The currency-free comparison
+        // survives as price_vs_anchor.
+        price: priceAmt != null && priceCurrency ? { amount: priceAmt, currency: priceCurrency } : null,
         price_vs_anchor: ratio != null ? formatRatio(ratio) : null,
         why: clamp(v.why, TEXT_MAX),
         tradeoffs: strList(v.tradeoffs, MAX_LIST_ITEMS),
