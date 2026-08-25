@@ -35852,13 +35852,26 @@ app.get('/healthz/gemini', (req, res) => {
     const gate = getGeminiGlobalGate();
     const snap = gate.snapshot();
     const reasons = [];
-    if (Number(snap.gate.keyCount || 0) <= 0) reasons.push('missing_keys');
+    // Under Vertex the key pool is legitimately empty - auth is ADC, not API keys - so an
+    // empty pool is only a problem on the AI Studio path. The STARTUP check already knew
+    // this (see the 'no API keys expected' branch) but this endpoint did not, so a correctly
+    // configured Vertex deployment reported ok:false / missing_keys forever.
+    //
+    // That is not a cosmetic mismatch. A 2026-08-22 security audit read this endpoint, saw
+    // missing_keys, and concluded a credential had been dropped during the Railway->GCP
+    // migration. Nothing had been dropped: both platforms authenticate the same way, and
+    // both reported ok:false. A health endpoint that is wrong about health costs more than
+    // one that does not exist, because people act on it.
+    const vertexActive = vertexGemini.vertexEnabled() && vertexGemini.credentialsAvailable(null);
+    if (!vertexActive && Number(snap.gate.keyCount || 0) <= 0) reasons.push('missing_keys');
     if (snap.gate.circuitOpen) reasons.push('circuit_open');
     const ready = reasons.length === 0;
     return res.json({
       ok: ready,
       ready,
       reasons,
+      auth_mode: vertexActive ? 'vertex_adc' : 'ai_studio_api_key',
+      vertex_project: vertexActive ? vertexGemini.vertexProject() || null : null,
       circuit_open: snap.gate.circuitOpen,
       concurrency_max: snap.gate.concurrencyMax,
       rate_per_min: snap.gate.ratePerMin,
