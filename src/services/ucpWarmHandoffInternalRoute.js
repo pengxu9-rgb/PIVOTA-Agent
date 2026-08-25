@@ -35,6 +35,8 @@ const { toVariantGid, resolveShopifyVariant, extractProductHandle } = require('.
 const ROUTE_FLAG_ENV = 'UCP_WARM_HANDOFF_INTERNAL_ROUTE_ENABLED';
 const INTERNAL_KEY_ENV = 'UCP_WARM_HANDOFF_INTERNAL_KEY';
 const CLICK_BUDGET_ENV = 'UCP_WARM_HANDOFF_CLICK_BUDGET_MS';
+// Kill switch for the out-of-stock decline. DEFAULT ON — see requireAvailable() below.
+const REQUIRE_AVAILABLE_ENV = 'UCP_WARM_HANDOFF_REQUIRE_AVAILABLE';
 
 const DEFAULT_CLICK_BUDGET_MS = 2000; // shopper is waiting on the 302 — much tighter than the 9s serving budget
 const DEFAULT_VARIANT_FETCH_TIMEOUT_MS = 1200; // products.json fallback fetch
@@ -57,6 +59,17 @@ function firstNonEmptyString(...values) {
 function isFlagOn(value) {
   const raw = firstNonEmptyString(value).toLowerCase();
   return raw === '1' || raw === 'true' || raw === 'yes' || raw === 'on';
+}
+
+/**
+ * A DEFAULT-ON knob. `isFlagOn` cannot express this: under it an unset var reads as OFF, which for
+ * this guard would mean a deploy that simply forgot the var quietly builds dead carts again. So the
+ * decline is on unless someone explicitly turns it off, and only an explicit off-value counts —
+ * a typo'd value leaves the protection ON rather than silently disarming it.
+ */
+function requireAvailable(env) {
+  const raw = firstNonEmptyString(env[REQUIRE_AVAILABLE_ENV]).toLowerCase();
+  return !(raw === '0' || raw === 'false' || raw === 'no' || raw === 'off');
 }
 
 /** Constant-time key comparison (length leak is fine; content leak is not). */
@@ -105,17 +118,25 @@ function createUcpWarmHandoffInternalHandler(deps = {}) {
     return serviceSingleton;
   }
 
+  /**
+   * @returns {Promise<{ gid: string|null, reason: string|null }>} `reason` is set only on a miss, and
+   *   distinguishes "we could not name a variant" from "we named one and it is sold out".
+   */
   async function resolveVariantGid({ body, brandDomain, env }) {
+    // The caller-supplied hint (pivota-backend Constraint 6) is authoritative and BYPASSES the picker
+    // entirely — including the stock guard. The backend chose that variant against the seed prices it
+    // published; second-guessing its stock here would silently drop the hinted lane, which is the
+    // population the hint exists to serve.
     const direct = toVariantGid(body.variant_gid) || toVariantGid(body.variant_id);
-    if (direct) return direct;
+    if (direct) return { gid: direct, reason: null };
 
     const handle = firstNonEmptyString(body.product_handle) || extractProductHandle(body.product_url);
     const cacheKey = `${brandDomain}::${handle || firstNonEmptyString(body.product_title)}`;
     if (handle || firstNonEmptyString(body.product_title)) {
       const cached = variantCache.get(cacheKey);
-      if (cached !== undefined) return cached; // may be null (negative-cached miss)
+      if (cached !== undefined) return cached; // may be a negative-cached miss
     } else {
-      return null; // nothing to resolve from
+      return { gid: null, reason: 'variant_unresolved' }; // nothing to resolve from
     }
 
     let resolved = null;
@@ -138,9 +159,19 @@ function createUcpWarmHandoffInternalHandler(deps = {}) {
     } catch {
       resolved = null; // resolution must never throw the lane
     }
-    const gid = resolved && resolved.variantGid ? resolved.variantGid : null;
-    variantCache.set(cacheKey, gid, gid ? VARIANT_CACHE_TTL_MS : VARIANT_NEGATIVE_TTL_MS);
-    return gid;
+
+    // Decline a KNOWN sold-out variant: a cold redirect lands the shopper on a PDP that says "sold
+    // out" honestly, which beats a cart that dies at checkout. Only `out_of_stock` declines — an
+    // UNKNOWN stock state (a storefront that does not publish `available`) must still resolve, or
+    // this guard would drop every such brand. See shopifyVariantResolver.pickVariantFromProductNode.
+    const soldOut = Boolean(resolved && resolved.availability === 'out_of_stock' && requireAvailable(env));
+    const gid = !soldOut && resolved && resolved.variantGid ? resolved.variantGid : null;
+    const reason = gid ? null : (soldOut ? 'variant_out_of_stock' : 'variant_unresolved');
+    const entry = { gid, reason };
+    // A sold-out verdict rides the SHORT negative TTL, never the 10-minute positive memo — stock is
+    // the one input here that changes under us, and re-stocking must not wait out a long cache.
+    variantCache.set(cacheKey, entry, gid ? VARIANT_CACHE_TTL_MS : VARIANT_NEGATIVE_TTL_MS);
+    return entry;
   }
 
   return async function handleWarmHandoffResolve({ headers = {}, body = {} } = {}) {
@@ -165,9 +196,9 @@ function createUcpWarmHandoffInternalHandler(deps = {}) {
       return { status: 400, body: { error: 'brand_domain_required' } };
     }
 
-    const variantGid = await resolveVariantGid({ body, brandDomain, env });
+    const { gid: variantGid, reason: variantMissReason } = await resolveVariantGid({ body, brandDomain, env });
     if (!variantGid) {
-      return { status: 200, body: { continue_url: null, reason: 'variant_unresolved' } };
+      return { status: 200, body: { continue_url: null, reason: variantMissReason || 'variant_unresolved' } };
     }
 
     const quantity = Number.isInteger(body.quantity) && body.quantity > 0 ? body.quantity : 1;

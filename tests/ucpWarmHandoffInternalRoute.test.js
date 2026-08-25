@@ -233,3 +233,122 @@ describe('ucpWarmHandoffInternalRoute — products.json variant fallback + memo'
     expect(service.resolveWarmHandoff).not.toHaveBeenCalled();
   });
 });
+
+/*
+ * OUT-OF-STOCK DECLINE. The lane would rather cold-redirect to a PDP that honestly says "sold out"
+ * than hand the shopper a cart that dies at checkout. MEASURED 2026-08-25: 123/968 products across
+ * the six warm-handoff brands lead with an out-of-stock variants[0], and 115 of those are fully sold
+ * out — no variant choice rescues them, so declining is the only honest outcome.
+ */
+describe('ucpWarmHandoffInternalRoute — requireAvailable (out-of-stock decline)', () => {
+  const SOLD_OUT_HANDLE = 'all-gone-kit';
+  const LIVE_GID = 'gid://shopify/ProductVariant/51895645012184';
+
+  // `.js` is the surface that carries stock; the resolver asks it first.
+  function fetchSoldOut() {
+    return jest.fn().mockImplementation(async (url) => ({
+      ok: true,
+      status: 200,
+      json: async () => (String(url).includes(`/products/${SOLD_OUT_HANDLE}.js`)
+        ? { handle: SOLD_OUT_HANDLE, variants: [{ id: 51895645012184, available: false }] }
+        : { products: [{ handle: SOLD_OUT_HANDLE, variants: [{ id: 51895645012184, available: false }] }] }),
+    }));
+  }
+
+  // A storefront that publishes no stock at all — `available` absent everywhere.
+  function fetchStockSilent() {
+    return jest.fn().mockImplementation(async (url) => ({
+      ok: true,
+      status: 200,
+      json: async () => (String(url).includes(`/products/${SOLD_OUT_HANDLE}.json`)
+        ? { product: { handle: SOLD_OUT_HANDLE, variants: [{ id: 51895645012184, sku: 'X' }] } }
+        : { products: [{ handle: SOLD_OUT_HANDLE, variants: [{ id: 51895645012184, sku: 'X' }] }] }),
+    }));
+  }
+
+  const service = () => ({
+    resolveWarmHandoff: jest.fn().mockResolvedValue({ continue_url: 'https://x.myshopify.com/cart/c/1?key=k' }),
+  });
+
+  test('declines a sold-out product with a DISTINCT reason, and never builds a cart', async () => {
+    const svc = service();
+    const handler = makeHandler({ service: svc, fetchImpl: fetchSoldOut() });
+    const out = await handler(authedRequest({ brand_domain: 'cosrx.com', product_handle: SOLD_OUT_HANDLE }));
+
+    expect(out.status).toBe(200);
+    expect(out.body.continue_url).toBeNull();
+    expect(out.body.reason).toBe('variant_out_of_stock');
+    // The whole point: the cart-building service is never reached for a dead variant.
+    expect(svc.resolveWarmHandoff).not.toHaveBeenCalled();
+  });
+
+  test('the decline is DEFAULT-ON — an env that never mentions the knob still declines', async () => {
+    const env = envOn();
+    expect(env.UCP_WARM_HANDOFF_REQUIRE_AVAILABLE).toBeUndefined(); // guard: the knob really is unset
+    const handler = makeHandler({ env, service: service(), fetchImpl: fetchSoldOut() });
+    const out = await handler(authedRequest({ brand_domain: 'cosrx.com', product_handle: SOLD_OUT_HANDLE }));
+    expect(out.body.reason).toBe('variant_out_of_stock');
+  });
+
+  test('the kill switch restores the old permissive behaviour', async () => {
+    const svc = service();
+    const handler = makeHandler({
+      env: envOn({ UCP_WARM_HANDOFF_REQUIRE_AVAILABLE: '0' }),
+      service: svc,
+      fetchImpl: fetchSoldOut(),
+    });
+    const out = await handler(authedRequest({ brand_domain: 'cosrx.com', product_handle: SOLD_OUT_HANDLE }));
+    expect(out.body.continue_url).toBe('https://x.myshopify.com/cart/c/1?key=k');
+    expect(svc.resolveWarmHandoff).toHaveBeenCalled();
+  });
+
+  test('a typo’d knob value leaves the protection ON (only an explicit off-value disarms)', async () => {
+    const handler = makeHandler({
+      env: envOn({ UCP_WARM_HANDOFF_REQUIRE_AVAILABLE: 'flase' }),
+      service: service(),
+      fetchImpl: fetchSoldOut(),
+    });
+    const out = await handler(authedRequest({ brand_domain: 'cosrx.com', product_handle: SOLD_OUT_HANDLE }));
+    expect(out.body.reason).toBe('variant_out_of_stock');
+  });
+
+  test('UNKNOWN stock is not a decline — a storefront that publishes no `available` still resolves', async () => {
+    const svc = service();
+    const handler = makeHandler({ service: svc, fetchImpl: fetchStockSilent() });
+    const out = await handler(authedRequest({ brand_domain: 'cosrx.com', product_handle: SOLD_OUT_HANDLE }));
+    expect(out.body.continue_url).toBe('https://x.myshopify.com/cart/c/1?key=k');
+    expect(out.body.variant_gid).toBe(LIVE_GID);
+  });
+
+  test('a caller-supplied variant hint BYPASSES the stock guard entirely', async () => {
+    const svc = service();
+    const fetchImpl = fetchSoldOut();
+    const handler = makeHandler({ service: svc, fetchImpl });
+    const out = await handler(authedRequest({
+      brand_domain: 'cosrx.com',
+      product_handle: SOLD_OUT_HANDLE,
+      variant_id: '51895645012184',
+    }));
+    expect(out.body.continue_url).toBe('https://x.myshopify.com/cart/c/1?key=k');
+    expect(out.body.variant_gid).toBe(LIVE_GID);
+    // The hint short-circuits before any resolution, so no stock lookup happens at all.
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  test('a sold-out verdict is memoised on the SHORT negative TTL, not the 10-minute positive one', async () => {
+    const clock = { t: 1_000_000 };
+    const fetchImpl = fetchSoldOut();
+    const handler = createUcpWarmHandoffInternalHandler({
+      env: envOn(), service: service(), fetchImpl, now: () => clock.t,
+    });
+    const req = () => handler(authedRequest({ brand_domain: 'cosrx.com', product_handle: SOLD_OUT_HANDLE }));
+
+    expect((await req()).body.reason).toBe('variant_out_of_stock');
+    await req();
+    expect(fetchImpl).toHaveBeenCalledTimes(1); // second call served from the memo
+
+    clock.t += 61 * 1000; // past the 60s negative TTL, well inside the 10min positive one
+    expect((await req()).body.reason).toBe('variant_out_of_stock');
+    expect(fetchImpl.mock.calls.length).toBeGreaterThan(1); // re-checked, so a restock is picked up
+  });
+});
