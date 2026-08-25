@@ -341,3 +341,146 @@ test('"nobody said" is null, NOT false — false is its own claim about where th
       `absence must stay unknown, not become a PDP claim, for ${JSON.stringify(offer.cart_prefilled)}`);
   }
 });
+
+// ---------------------------------------------------------------------------------------------
+// EXECUTION SPEC v0 — the rest of the handoff contract.
+//
+// `cart_prefilled` answers "is there a cart". This answers "where exactly, with what in it, until
+// when, and how is the click attributed". The backend composes every url in one function, so the
+// gateway must PASS IT THROUGH rather than re-derive anything — but must also refuse to relay a
+// value that is not the shape it claims to be, because every field here is a sentence an agent
+// will say to a buyer.
+// ---------------------------------------------------------------------------------------------
+
+const FULL_SPEC = {
+  merchant_domain: 'brand.com',
+  pdp_url: 'https://brand.com/products/serum?utm_source=pivota&pvt_click_id=clk_abc',
+  cart_url: 'https://brand.com/cart/40064041844877:1?attributes[pivota_click_id]=clk_abc',
+  variant_id: '40064041844877',
+  rail: 'shopify_cart',
+  expires_at: '2026-09-01T00:00:00Z',
+  tracking: {
+    click_id: 'clk_abc',
+    param: 'attributes[pivota_click_id]',
+    join_mode: 'cart_permalink',
+  },
+};
+
+test('the execution spec reaches the agent verbatim — the gateway re-derives nothing', () => {
+  const { offerToSignal } = require('../src/agentSignals/offerToSignal');
+  const sig = offerToSignal(
+    { merchant_id: 'm1', execution_spec: FULL_SPEC },
+    { productId: 'sig_1' },
+  );
+  assert.deepEqual(sig.value.execution_spec, FULL_SPEC);
+});
+
+test('an offer with no spec reports null, NOT an empty spec', () => {
+  // `{}` reads as "a spec exists and it is blank". `null` reads as "nobody said" — the truth for an
+  // older backend or a non-external offer. Same reasoning as cart_prefilled.
+  const { offerToSignal } = require('../src/agentSignals/offerToSignal');
+  for (const offer of [
+    { merchant_id: 'm1' },
+    { merchant_id: 'm1', execution_spec: null },
+    { merchant_id: 'm1', execution_spec: 'not an object' },
+    { merchant_id: 'm1', execution_spec: 42 },
+    { merchant_id: 'm1', execution_spec: [FULL_SPEC] }, // an array is not a spec
+  ]) {
+    const sig = offerToSignal(offer, { productId: 'sig_1' });
+    assert.equal(sig.value.execution_spec, null,
+      `must be null for ${JSON.stringify(offer.execution_spec)}`);
+  }
+});
+
+test('a malformed field degrades alone and never costs a good one', () => {
+  // A bad `expires_at` must not take `cart_url` down with it. Whole-spec rejection would make one
+  // sloppy field silently remove a working handoff.
+  const { offerToSignal } = require('../src/agentSignals/offerToSignal');
+  const sig = offerToSignal(
+    {
+      merchant_id: 'm1',
+      execution_spec: { ...FULL_SPEC, expires_at: 1756684800, merchant_domain: '   ' },
+    },
+    { productId: 'sig_1' },
+  );
+  const spec = sig.value.execution_spec;
+  assert.equal(spec.expires_at, null, 'a numeric timestamp is not the ISO string we promised');
+  assert.equal(spec.merchant_domain, null, 'whitespace is not a domain');
+  assert.equal(spec.cart_url, FULL_SPEC.cart_url, 'and the good fields are untouched');
+  assert.equal(spec.variant_id, FULL_SPEC.variant_id);
+});
+
+test('a withheld pdp_url stays null rather than being back-filled', () => {
+  // The backend withholds `pdp_url` when its host is not the one the domain allowlist approved.
+  // Null here means "we will not vouch for a product page", never "there isn't one" — and the
+  // gateway must not helpfully substitute cart_url or affiliate_url for it.
+  const { offerToSignal } = require('../src/agentSignals/offerToSignal');
+  const sig = offerToSignal(
+    {
+      merchant_id: 'm1',
+      affiliate_url: 'https://api.pivota.cc/r?token=abc.def',
+      execution_spec: { ...FULL_SPEC, pdp_url: null },
+    },
+    { productId: 'sig_1' },
+  );
+  const spec = sig.value.execution_spec;
+  assert.equal(spec.pdp_url, null);
+  assert.equal(spec.cart_url, FULL_SPEC.cart_url, 'the cart is unaffected');
+});
+
+test('tracking is always an object, so reading tracking.click_id can never throw', () => {
+  const { offerToSignal } = require('../src/agentSignals/offerToSignal');
+  for (const tracking of [undefined, null, 'nope', 7, []]) {
+    const sig = offerToSignal(
+      { merchant_id: 'm1', execution_spec: { ...FULL_SPEC, tracking } },
+      { productId: 'sig_1' },
+    );
+    const t = sig.value.execution_spec.tracking;
+    assert.ok(t && typeof t === 'object' && !Array.isArray(t),
+      `tracking must stay an object for ${JSON.stringify(tracking)}`);
+    assert.equal(t.click_id, null);
+    assert.equal(t.param, null);
+    assert.equal(t.join_mode, null);
+  }
+});
+
+test('tracking.param is relayed as sent — the carrier differs by join mode', () => {
+  // A cart carries the join key as `attributes[pivota_click_id]`; a referral as a plain query
+  // param. The gateway must not normalise these to one value: an agent uses `param` to FIND the
+  // key in the url it was handed, and the wrong name means the key looks missing.
+  const { offerToSignal } = require('../src/agentSignals/offerToSignal');
+
+  const cart = offerToSignal(
+    { merchant_id: 'm1', execution_spec: FULL_SPEC }, { productId: 'sig_1' },
+  ).value.execution_spec;
+  assert.equal(cart.tracking.param, 'attributes[pivota_click_id]');
+  assert.ok(cart.cart_url.includes(`${cart.tracking.param}=${cart.tracking.click_id}`),
+    'the named carrier must literally appear in the url it describes');
+
+  const referral = offerToSignal(
+    {
+      merchant_id: 'm1',
+      execution_spec: {
+        ...FULL_SPEC,
+        cart_url: null,
+        rail: 'referral',
+        tracking: { click_id: 'clk_abc', param: 'pvt_click_id', join_mode: 'referral_only' },
+      },
+    },
+    { productId: 'sig_1' },
+  ).value.execution_spec;
+  assert.equal(referral.tracking.param, 'pvt_click_id');
+  assert.ok(referral.pdp_url.includes(`${referral.tracking.param}=${referral.tracking.click_id}`));
+});
+
+test('an unknown rail from a newer backend is relayed, not nulled', () => {
+  // `rail` is a label, not a promise about a url. Checking it against a hardcoded set would mean a
+  // rail added on the backend silently disappears here — the allowlist-drops-the-new-value trap
+  // this repo has paid for before. An agent can ignore a rail it does not recognise.
+  const { offerToSignal } = require('../src/agentSignals/offerToSignal');
+  const sig = offerToSignal(
+    { merchant_id: 'm1', execution_spec: { ...FULL_SPEC, rail: 'ucp_checkout' } },
+    { productId: 'sig_1' },
+  );
+  assert.equal(sig.value.execution_spec.rail, 'ucp_checkout');
+});

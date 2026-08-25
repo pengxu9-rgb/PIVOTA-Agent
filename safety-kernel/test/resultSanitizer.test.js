@@ -166,3 +166,93 @@ test('no regression: ?token= on ordinary URL keys is still scrubbed everywhere',
   assert.match(out.url, /token=\[REDACTED\]/, 'plain url key gets no attributed-link exemption');
   assert.match(out.link, /token=\[REDACTED\]/);
 });
+
+
+// ---------------------------------------------------------------------------------------------
+// Execution spec v0 — Shopify identifiers inside storefront URLs must survive the PAN scrub,
+// and NOTHING ELSE in those URLs may.
+//
+// `cart_url` embeds `/cart/<variant>:<qty>`; `pdp_url` embeds `?variant=<id>`. A Shopify variant
+// id is always a 13-19 digit run — exactly PAN_RE's shape — and ~1 in 10 is Luhn-valid by chance.
+// Unprotected, the cart url 404s and the product url silently lands the buyer on the DEFAULT
+// variant rather than the one the agent described.
+//
+// The exemption is per-SPAN. An earlier cut exempted the whole value once it matched a cart shape,
+// which made it a PREFIX gate — everything below marked "must be redacted" passed through it.
+// ---------------------------------------------------------------------------------------------
+
+const LUHN_VALID_VARIANT_ID = '40064041844877';
+const PAN = '4111111111111111';
+
+test('the fixture ids really are Luhn-valid — otherwise this suite proves nothing', () => {
+  const luhn = (digits) => {
+    let sum = 0;
+    let dbl = false;
+    for (let i = digits.length - 1; i >= 0; i -= 1) {
+      let d = digits.charCodeAt(i) - 48;
+      if (dbl) { d *= 2; if (d > 9) d -= 9; }
+      sum += d;
+      dbl = !dbl;
+    }
+    return sum % 10 === 0;
+  };
+  assert.ok(luhn(LUHN_VALID_VARIANT_ID), 'a Luhn-INVALID id is never redacted — nothing would be tested');
+  assert.ok(luhn(PAN), 'the PAN fixture must be Luhn-valid or the negative cases prove nothing');
+});
+
+const spec = (k, v) => sanitizeResult({ offers: [{ execution_spec: { [k]: v } }] }).offers[0].execution_spec[k];
+
+test('the identifier we wrote survives, in both storefront url shapes', () => {
+  const cart = `https://brand.com/cart/${LUHN_VALID_VARIANT_ID}:1?attributes[pivota_click_id]=clk_abc`;
+  assert.equal(spec('cart_url', cart), cart, 'a redacted variant id is a 404');
+
+  const pdp = `https://brand.com/products/serum?variant=${LUHN_VALID_VARIANT_ID}&utm_source=pivota`;
+  assert.equal(spec('pdp_url', pdp), pdp, 'a redacted variant selector silently serves the DEFAULT variant');
+});
+
+test('everything OUTSIDE the identifier span is still scrubbed', () => {
+  // Each of these defeated the earlier whole-value exemption. They are the reason it is per-span.
+  const cases = [
+    [`https://a.co/cart/1:1?x=${PAN}`, 'PAN in the query'],
+    [`https://brand.com/cart/${LUHN_VALID_VARIANT_ID}:1?note=${PAN}`, 'PAN in the query beside a real variant'],
+    [`https://${PAN}.evil.com/cart/1:1`, 'PAN in the host'],
+    ['https://a.co/cart/1:1?n=4111-1111-1111-1111', 'dashed PAN in the query'],
+    [`https://a.co/cart/1:1#${PAN}`, 'PAN after a fragment'],
+    [`${PAN} https://a.co/cart/1:1`, 'PAN before the url'],
+    [`https://a.co/cart/1:1?a=${PAN}&b=5555555555554444`, 'two PANs in the query'],
+    // The cart span is anchored to the `/cart/` PATH. Without that anchor a bare `<digits>:<digits>`
+    // anywhere in the string would be preserved, so a PAN only has to be followed by `:1` to pass.
+    [`https://a.co/cart/1:1?x=${PAN}:99`, 'PAN wearing a :qty suffix outside the cart path'],
+    [`https://a.co/collections/${PAN}:1`, 'cart-looking pair on a non-cart path'],
+  ];
+  for (const [value, label] of cases) {
+    assert.match(spec('cart_url', value), /\[REDACTED_PAN\]/, `must be redacted: ${label}`);
+  }
+  assert.match(spec('pdp_url', `https://a.co/products/x?variant=${LUHN_VALID_VARIANT_ID}&note=${PAN}`),
+    /\[REDACTED_PAN\]/, 'pdp_url: PAN beside a legitimate variant selector');
+});
+
+test('a real variant beside a PAN keeps the variant AND kills the PAN', () => {
+  const got = spec('cart_url', `https://brand.com/cart/${LUHN_VALID_VARIANT_ID}:1?note=${PAN}`);
+  assert.ok(got.includes(LUHN_VALID_VARIANT_ID), 'the identifier we wrote must survive');
+  assert.ok(!got.includes(PAN), 'the PAN must not');
+});
+
+test('the exemption applies only to the storefront url keys', () => {
+  const cart = `https://brand.com/cart/${LUHN_VALID_VARIANT_ID}:1`;
+  // Same string, different key -> no exemption.
+  assert.match(sanitizeResult({ offers: [{ some_other_url: cart }] }).offers[0].some_other_url,
+    /\[REDACTED_PAN\]/);
+  // Keyless (bare array element) -> keyCanon is undefined, so no exemption.
+  assert.match(sanitizeResult({ offers: [{ notes: [cart] }] }).offers[0].notes[0], /\[REDACTED_PAN\]/);
+});
+
+test('the exemption covers PAN scanning ONLY — secrets in the query are still scrubbed', () => {
+  const got = spec('cart_url', `https://brand.com/cart/${LUHN_VALID_VARIANT_ID}:1?secret=hunter2`);
+  assert.ok(!got.includes('hunter2'), 'a secret query param must not survive');
+  assert.ok(got.includes(LUHN_VALID_VARIANT_ID), 'while the variant id still must');
+});
+
+test('variant_id itself is PAN-exempt as a system-issued id key', () => {
+  assert.equal(spec('variant_id', LUHN_VALID_VARIANT_ID), LUHN_VALID_VARIANT_ID);
+});
