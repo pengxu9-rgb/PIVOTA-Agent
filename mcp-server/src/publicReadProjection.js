@@ -102,11 +102,48 @@ function pdpUrl(p, base) {
   const canonical = str(p.pivota_canonical_url);
   return canonical && PIVOTA_HOST_RE.test(canonical) ? canonical : null;
 }
+// An ISO-4217 alpha code or nothing. Seed-lane currency keys are raw firstNonEmptyString chains over
+// scraped snapshots, so '$', 'usd', or worse can arrive here; a wrong or ambiguous currency label
+// fabricates a price just as surely as a missing one. Uppercase the honest spellings, refuse the rest
+// (the UCP shaper's priceOf enforces the same rule).
+function currencyCodeOf(v) {
+  const s = str(v);
+  if (s == null) return null;
+  const code = s.toUpperCase();
+  return /^[A-Z]{3}$/.test(code) ? code : null;
+}
 function priceOf(p) {
-  const amount = finiteNum(p.price);
-  const currency = str(p.currency);
-  if (amount == null) return null;
-  return compact({ amount, currency });
+  // amount and currency travel together or not at all (the same invariant projectGetAlternatives enforces):
+  // a bare amount invites the reader to assume a currency, which fabricates a price when they differ. The
+  // upstream row union is multi-producer and spells the pair three ways — flat price/currency (plus
+  // currency_code on merchant payloads), seed-lane price_amount/price_currency, and a self-contained
+  // price:{amount,currency} object — so each spelling is read as a PAIR, never amount from one price and
+  // currency from another:
+  //   * a stated-but-unparseable flat price never falls through to price_amount (that substitutes a
+  //     different number under the stated price's currency);
+  //   * price_currency may complete a flat price only when no price_amount competes for it (rows carry the
+  //     pair as sibling DB columns, but when both spellings coexist price_currency belongs to price_amount);
+  //   * a zero or negative amount is withheld: 0 is this repo's not-buyable / transaction-hold sentinel
+  //     (resolveCanonicalOfferDerivedPrice; applyTransactionHoldToVariant), not a price.
+  // When the pair cannot be completed honestly, the price is withheld — never served half-dressed.
+  if (isObj(p.price)) {
+    const amount = finiteNum(p.price.amount);
+    const currency = currencyCodeOf(p.price.currency);
+    if (amount != null && amount > 0 && currency != null) return { amount, currency };
+    // An incomplete price object does not price the row by itself; the builders that emit it write
+    // price_amount/currency beside it, so fall through to the flat spellings.
+  }
+  const flatPrice = isObj(p.price) ? null : p.price;
+  const flatPriceStated = flatPrice != null && flatPrice !== '';
+  const amount = flatPriceStated ? finiteNum(flatPrice) : finiteNum(p.price_amount);
+  if (amount == null || amount <= 0) return null;
+  const currency = flatPriceStated
+    ? currencyCodeOf(p.currency)
+      ?? currencyCodeOf(p.currency_code)
+      ?? (p.price_amount == null ? currencyCodeOf(p.price_currency) : null)
+    : currencyCodeOf(p.price_currency) ?? currencyCodeOf(p.currency) ?? currencyCodeOf(p.currency_code);
+  if (currency == null) return null;
+  return { amount, currency };
 }
 const AVAILABILITY_IN_STOCK = new Set(['in_stock', 'in stock', 'instock', 'available']);
 const AVAILABILITY_OUT_OF_STOCK = new Set([
