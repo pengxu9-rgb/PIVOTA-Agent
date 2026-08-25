@@ -30,7 +30,33 @@
 const crypto = require('crypto');
 
 const { createWarmHandoffService, createTtlCache, isWarmHandoffEnabled } = require('./ucpWarmHandoff');
-const { toVariantGid, resolveShopifyVariant, extractProductHandle } = require('./shopifyVariantResolver');
+const {
+  toVariantGid, resolveShopifyVariant, extractProductHandle, normalizeBrandOrigin,
+} = require('./shopifyVariantResolver');
+
+/*
+ * The variant-miss returns below never reach the warm-handoff service, which is what normally records
+ * the H1 outcome — so before this, a decline was completely invisible. That matters most for the
+ * DEFAULT-ON sold-out guard: without a dial you cannot tell whether it is declining 1% of clicks or
+ * 90%, which makes its kill switch un-actionable exactly when you need it.
+ *
+ * The metric reason is the CANONICAL H1 taxonomy tag, not the route's wire string: `out_of_stock`
+ * already exists in that taxonomy (see ucpWarmHandoffMetrics.recordWarmHandoffOutcome), so these
+ * declines land in whatever already watches it. The HTTP `reason` stays `variant_out_of_stock` —
+ * that is a published response contract, and two names for one condition is a reporting problem,
+ * not a reason to break a wire format.
+ */
+const METRIC_REASON_BY_MISS = {
+  variant_out_of_stock: 'out_of_stock',
+  variant_unresolved: 'variant_invalid',
+};
+
+// Required eagerly, exactly as ucpWarmHandoff.js does. A lazy try/catch loader here would defend
+// against nothing: that module already requires this same metrics module at ITS top level, and this
+// route requires that module at top level in turn — so a metrics require failure takes the route
+// down before any lazy branch could run. An unreachable guard is worse than no guard; it reads as
+// protection that does not exist.
+const defaultMetrics = require('../observability/ucpWarmHandoffMetrics');
 
 const ROUTE_FLAG_ENV = 'UCP_WARM_HANDOFF_INTERNAL_ROUTE_ENABLED';
 const INTERNAL_KEY_ENV = 'UCP_WARM_HANDOFF_INTERNAL_KEY';
@@ -99,6 +125,48 @@ function clickBudgetMs(env) {
  * @param {object} [deps.logger]
  * @param {Function} [deps.now]
  */
+/**
+ * The `brand_domain` metric label MUST be the bare host, for two reasons.
+ *
+ * 1. The service lane records `hostOf(normalizeBrandOrigin(...))`. Recording the raw caller string
+ *    here would split one brand across series — `cosrx.com` and `https://cosrx.com/` are the same
+ *    brand — and silently under-report the very dial this exists to provide.
+ * 2. CARDINALITY. `cleanLabel` sanitises the charset but bounds neither cardinality nor length, and
+ *    the outcome counter is a Map that is never trimmed. `brand_domain` is caller-supplied, so
+ *    every distinct string is a permanent time series. Collapsing to a host shrinks that surface.
+ */
+function brandLabelFor(brandDomain) {
+  const origin = normalizeBrandOrigin(brandDomain);
+  if (!origin) return 'unknown';
+  try { return new URL(origin).host; } catch { return 'unknown'; }
+}
+
+/**
+ * Count a variant-resolution miss on the H1 outcome counter. Never throws: a metrics failure must not
+ * turn a cold-redirect into a 5xx on a path where a shopper is waiting on the 302.
+ *
+ * Latency is observed alongside the counter because the service lane pairs them — recording one
+ * without the other makes any panel that derives a rate from the histogram disagree with the counter.
+ */
+function recordVariantMiss({ reason, brandDomain, metrics, latencyMs }) {
+  // The typeof checks stay: `deps.metrics` is an injection seam and a partial sink is a legitimate
+  // thing to inject. A null check on `sink` would NOT stay — `defaultMetrics` is a required module,
+  // so it can never be falsy, and an unreachable guard reads as protection that does not exist.
+  const sink = metrics || defaultMetrics;
+  try {
+    if (typeof sink.recordWarmHandoffOutcome === 'function') {
+      sink.recordWarmHandoffOutcome({
+        outcome: 'fallback',
+        reason: METRIC_REASON_BY_MISS[reason] || 'variant_invalid',
+        brandDomain: brandLabelFor(brandDomain),
+      });
+    }
+    if (typeof sink.observeWarmHandoffLatency === 'function') {
+      sink.observeWarmHandoffLatency({ outcome: 'fallback', latencyMs });
+    }
+  } catch { /* metrics must never throw the lane */ }
+}
+
 function createUcpWarmHandoffInternalHandler(deps = {}) {
   const now = typeof deps.now === 'function' ? deps.now : () => Date.now();
   const variantCache = createTtlCache({ maxEntries: VARIANT_CACHE_MAX_ENTRIES, now });
@@ -150,7 +218,10 @@ function createUcpWarmHandoffInternalHandler(deps = {}) {
       const cached = variantCache.get(cacheKey);
       if (cached !== undefined) return cached; // may be a negative-cached miss
     } else {
-      return { gid: null, reason: 'variant_unresolved' }; // nothing to resolve from
+      // Nothing to resolve FROM — a malformed request, not a lane outcome. Deliberately NOT counted:
+      // this return needs no network, so counting it would let a caller mint an unbounded number of
+      // permanent `brand_domain` series at zero cost. Every other miss costs a real fetch first.
+      return { gid: null, reason: 'no_variant_input' };
     }
 
     let resolved = null;
@@ -210,9 +281,16 @@ function createUcpWarmHandoffInternalHandler(deps = {}) {
       return { status: 400, body: { error: 'brand_domain_required' } };
     }
 
+    const variantStartedAt = now();
     const { gid: variantGid, reason: variantMissReason } = await resolveVariantGid({ body, brandDomain, env });
     if (!variantGid) {
-      return { status: 200, body: { continue_url: null, reason: variantMissReason || 'variant_unresolved' } };
+      const reason = variantMissReason || 'variant_unresolved';
+      if (reason !== 'no_variant_input') {
+        recordVariantMiss({ reason, brandDomain, metrics: deps.metrics, latencyMs: now() - variantStartedAt });
+      }
+      // The wire reason stays in the shipped vocabulary; `no_variant_input` is reported as the
+      // generic unresolved so the response contract is unchanged.
+      return { status: 200, body: { continue_url: null, reason: reason === 'no_variant_input' ? 'variant_unresolved' : reason } };
     }
 
     const quantity = Number.isInteger(body.quantity) && body.quantity > 0 ? body.quantity : 1;
