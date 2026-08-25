@@ -9,6 +9,7 @@ const {
   createUcpWarmHandoffInternalHandler,
   ROUTE_FLAG_ENV,
   INTERNAL_KEY_ENV,
+  REQUIRE_AVAILABLE_ENV,
 } = require('../src/services/ucpWarmHandoffInternalRoute');
 
 const KEY = 'test-internal-key-1';
@@ -284,7 +285,7 @@ describe('ucpWarmHandoffInternalRoute — requireAvailable (out-of-stock decline
 
   test('the decline is DEFAULT-ON — an env that never mentions the knob still declines', async () => {
     const env = envOn();
-    expect(env.UCP_WARM_HANDOFF_REQUIRE_AVAILABLE).toBeUndefined(); // guard: the knob really is unset
+    expect(env[REQUIRE_AVAILABLE_ENV]).toBeUndefined(); // guard: the knob really is unset
     const handler = makeHandler({ env, service: service(), fetchImpl: fetchSoldOut() });
     const out = await handler(authedRequest({ brand_domain: 'cosrx.com', product_handle: SOLD_OUT_HANDLE }));
     expect(out.body.reason).toBe('variant_out_of_stock');
@@ -293,7 +294,7 @@ describe('ucpWarmHandoffInternalRoute — requireAvailable (out-of-stock decline
   test('the kill switch restores the old permissive behaviour', async () => {
     const svc = service();
     const handler = makeHandler({
-      env: envOn({ UCP_WARM_HANDOFF_REQUIRE_AVAILABLE: '0' }),
+      env: envOn({ [REQUIRE_AVAILABLE_ENV]: '0' }),
       service: svc,
       fetchImpl: fetchSoldOut(),
     });
@@ -304,7 +305,7 @@ describe('ucpWarmHandoffInternalRoute — requireAvailable (out-of-stock decline
 
   test('a typo’d knob value leaves the protection ON (only an explicit off-value disarms)', async () => {
     const handler = makeHandler({
-      env: envOn({ UCP_WARM_HANDOFF_REQUIRE_AVAILABLE: 'flase' }),
+      env: envOn({ [REQUIRE_AVAILABLE_ENV]: 'flase' }),
       service: service(),
       fetchImpl: fetchSoldOut(),
     });
@@ -350,5 +351,136 @@ describe('ucpWarmHandoffInternalRoute — requireAvailable (out-of-stock decline
     clock.t += 61 * 1000; // past the 60s negative TTL, well inside the 10min positive one
     expect((await req()).body.reason).toBe('variant_out_of_stock');
     expect(fetchImpl.mock.calls.length).toBeGreaterThan(1); // re-checked, so a restock is picked up
+  });
+});
+
+/*
+ * Gaps closed after review. Each of these covers a path that a surviving mutant proved untested.
+ */
+describe('ucpWarmHandoffInternalRoute — seed lane, kill-switch vocabulary, memo keying', () => {
+  const HANDLE = 'peptide-132-hair-home-care-kit';
+  const GID = 'gid://shopify/ProductVariant/51895645012184';
+  const seedWith = (stock) => ({
+    snapshot: { variants: [{ sku: 'SHOPIFY-51895645012184', variant_id: '51895645012184', ...(stock ? { stock } : {}) }] },
+  });
+  const svc = () => ({
+    resolveWarmHandoff: jest.fn().mockResolvedValue({ continue_url: 'https://x.myshopify.com/cart/c/1?key=k' }),
+  });
+
+  // The seed lane resolves BEFORE the network and is the resolver's documented primary path, so the
+  // guard has to fire here too. It previously fired for exactly one of these spellings.
+  test.each(['out_of_stock', 'Out of Stock', 'out of stock', 'sold_out', 'Sold Out', 'unavailable', 'OutOfStock'])(
+    'declines a seed-resolved sold-out variant spelled %p',
+    async (stock) => {
+      const service = svc();
+      const handler = makeHandler({ service, fetchImpl: jest.fn() });
+      const out = await handler(authedRequest({ brand_domain: 'cosrx.com', product_handle: HANDLE, seed_data: seedWith(stock) }));
+      expect([stock, out.body.continue_url, out.body.reason]).toEqual([stock, null, 'variant_out_of_stock']);
+      expect(service.resolveWarmHandoff).not.toHaveBeenCalled();
+    },
+  );
+
+  test('an IN-STOCK seed still builds the cart — the guard is not a blanket seed refusal', async () => {
+    const service = svc();
+    const handler = makeHandler({ service, fetchImpl: jest.fn() });
+    const out = await handler(authedRequest({ brand_domain: 'cosrx.com', product_handle: HANDLE, seed_data: seedWith('In Stock') }));
+    expect(out.body.continue_url).toBe('https://x.myshopify.com/cart/c/1?key=k');
+    expect(out.body.variant_gid).toBe(GID);
+  });
+
+  test('a seed with NO stock signal is unknown, not sold out, and still resolves', async () => {
+    const handler = makeHandler({ service: svc(), fetchImpl: jest.fn() });
+    const out = await handler(authedRequest({ brand_domain: 'cosrx.com', product_handle: HANDLE, seed_data: seedWith(null) }));
+    expect(out.body.variant_gid).toBe(GID);
+  });
+
+  // An operator reaching for the kill switch mid-incident is as likely to type `false` as `0`.
+  test.each(['0', 'false', 'FALSE', 'no', 'off', 'OFF', ' false '])('kill-switch off-value %p disarms the guard', async (value) => {
+    const service = svc();
+    const handler = makeHandler({
+      env: envOn({ [REQUIRE_AVAILABLE_ENV]: value }),
+      service,
+      fetchImpl: jest.fn(),
+    });
+    const out = await handler(authedRequest({ brand_domain: 'cosrx.com', product_handle: HANDLE, seed_data: seedWith('Out of Stock') }));
+    expect([value, out.body.continue_url]).toEqual([value, 'https://x.myshopify.com/cart/c/1?key=k']);
+  });
+
+  test.each(['1', 'true', '', 'flase', 'disabled', 'null'])('non-off value %p leaves the guard ON', async (value) => {
+    const handler = makeHandler({
+      env: envOn({ [REQUIRE_AVAILABLE_ENV]: value }),
+      service: svc(),
+      fetchImpl: jest.fn(),
+    });
+    const out = await handler(authedRequest({ brand_domain: 'cosrx.com', product_handle: HANDLE, seed_data: seedWith('Out of Stock') }));
+    expect([value, out.body.reason]).toEqual([value, 'variant_out_of_stock']);
+  });
+
+  test("one request's sold-out seed does not suppress another request that sent none", async () => {
+    // Same brand + handle, different seed_data. Without seed in the memo key the first verdict
+    // would silently answer the second request for the whole negative TTL.
+    const service = svc();
+    const fetchImpl = jest.fn().mockImplementation(async (url) => ({
+      ok: true,
+      status: 200,
+      json: async () => (String(url).includes(`/products/${HANDLE}.js`)
+        ? { handle: HANDLE, variants: [{ id: 51895645012184, available: true }] }
+        : { products: [{ handle: HANDLE, variants: [{ id: 51895645012184, available: true }] }] }),
+    }));
+    const handler = makeHandler({ service, fetchImpl });
+
+    const withStaleSeed = await handler(authedRequest({
+      brand_domain: 'cosrx.com', product_handle: HANDLE, seed_data: seedWith('Out of Stock'),
+    }));
+    expect(withStaleSeed.body.reason).toBe('variant_out_of_stock');
+
+    const noSeed = await handler(authedRequest({ brand_domain: 'cosrx.com', product_handle: HANDLE }));
+    expect(noSeed.body.continue_url).toBe('https://x.myshopify.com/cart/c/1?key=k');
+  });
+
+  test('a successful resolve is memoised on the LONG positive TTL', async () => {
+    const clock = { t: 5_000_000 };
+    const fetchImpl = jest.fn().mockImplementation(async () => ({
+      ok: true, status: 200, json: async () => ({ handle: HANDLE, variants: [{ id: 51895645012184, available: true }] }),
+    }));
+    const handler = createUcpWarmHandoffInternalHandler({ env: envOn(), service: svc(), fetchImpl, now: () => clock.t });
+    const req = () => handler(authedRequest({ brand_domain: 'cosrx.com', product_handle: HANDLE }));
+
+    expect((await req()).body.variant_gid).toBe(GID);
+    clock.t += 61 * 1000; // past the 60s NEGATIVE ttl — a positive entry must survive it
+    expect((await req()).body.variant_gid).toBe(GID);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  test('flipping the kill switch takes effect IMMEDIATELY, not after the memo ages out', async () => {
+    // env is read per request, so the cached verdict must not outlive the setting that produced it.
+    const env = envOn();
+    const service = svc();
+    const handler = makeHandler({ env, service, fetchImpl: jest.fn() });
+    const body = { brand_domain: 'cosrx.com', product_handle: HANDLE, seed_data: seedWith('Out of Stock') };
+
+    expect((await handler(authedRequest(body))).body.reason).toBe('variant_out_of_stock');
+
+    env[REQUIRE_AVAILABLE_ENV] = '0'; // operator disarms the guard mid-incident
+    expect((await handler(authedRequest(body))).body.continue_url).toBe('https://x.myshopify.com/cart/c/1?key=k');
+
+    env[REQUIRE_AVAILABLE_ENV] = '1'; // and re-arms it
+    expect((await handler(authedRequest(body))).body.reason).toBe('variant_out_of_stock');
+  });
+
+  test('a non-ASCII handle is percent-encoded in the URL but kept raw in the reported source', async () => {
+    // cosrx.com's first listed product really is `advanced-the-vitamin-c-23-serum-번들`.
+    const unicodeHandle = 'advanced-the-vitamin-c-23-serum-번들';
+    const seen = [];
+    const fetchImpl = jest.fn().mockImplementation(async (url) => {
+      seen.push(String(url));
+      return { ok: true, status: 200, json: async () => ({ handle: unicodeHandle, variants: [{ id: 51895645012184, available: true }] }) };
+    });
+    const handler = makeHandler({ service: svc(), fetchImpl });
+    const out = await handler(authedRequest({ brand_domain: 'cosrx.com', product_handle: unicodeHandle }));
+
+    expect(out.body.variant_gid).toBe(GID);
+    expect(seen[0]).toBe(`https://cosrx.com/products/${encodeURIComponent(unicodeHandle)}.js`);
+    expect(seen[0]).not.toContain('번들'); // the raw form would be an invalid request target
   });
 });

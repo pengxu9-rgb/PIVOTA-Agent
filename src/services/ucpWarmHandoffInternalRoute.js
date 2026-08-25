@@ -37,6 +37,7 @@ const INTERNAL_KEY_ENV = 'UCP_WARM_HANDOFF_INTERNAL_KEY';
 const CLICK_BUDGET_ENV = 'UCP_WARM_HANDOFF_CLICK_BUDGET_MS';
 // Kill switch for the out-of-stock decline. DEFAULT ON — see requireAvailable() below.
 const REQUIRE_AVAILABLE_ENV = 'UCP_WARM_HANDOFF_REQUIRE_AVAILABLE';
+const OFF_VALUES = new Set(['0', 'false', 'no', 'off']);
 
 const DEFAULT_CLICK_BUDGET_MS = 2000; // shopper is waiting on the 302 — much tighter than the 9s serving budget
 const DEFAULT_VARIANT_FETCH_TIMEOUT_MS = 1200; // products.json fallback fetch
@@ -68,8 +69,8 @@ function isFlagOn(value) {
  * a typo'd value leaves the protection ON rather than silently disarming it.
  */
 function requireAvailable(env) {
-  const raw = firstNonEmptyString(env[REQUIRE_AVAILABLE_ENV]).toLowerCase();
-  return !(raw === '0' || raw === 'false' || raw === 'no' || raw === 'off');
+  const raw = firstNonEmptyString(env && env[REQUIRE_AVAILABLE_ENV]).toLowerCase();
+  return !OFF_VALUES.has(raw);
 }
 
 /** Constant-time key comparison (length leak is fine; content leak is not). */
@@ -131,7 +132,20 @@ function createUcpWarmHandoffInternalHandler(deps = {}) {
     if (direct) return { gid: direct, reason: null };
 
     const handle = firstNonEmptyString(body.product_handle) || extractProductHandle(body.product_url);
-    const cacheKey = `${brandDomain}::${handle || firstNonEmptyString(body.product_title)}`;
+    // The memo key must cover EVERY input that can change the verdict. `seed_data` is caller-supplied
+    // and resolves BEFORE the network, so without it in the key one request's stale sold-out seed
+    // blob would suppress a live cart for every other request on the same handle until the TTL
+    // expired. The kill-switch state is in the key for the same reason: flipping it must take effect
+    // immediately, not after a cached verdict from the previous setting ages out.
+    const seedFingerprint = isPlainObject(body.seed_data)
+      ? crypto.createHash('sha1').update(JSON.stringify(body.seed_data)).digest('hex').slice(0, 12)
+      : '-';
+    const cacheKey = [
+      brandDomain,
+      handle || firstNonEmptyString(body.product_title),
+      seedFingerprint,
+      requireAvailable(env) ? 'ra1' : 'ra0',
+    ].join('::');
     if (handle || firstNonEmptyString(body.product_title)) {
       const cached = variantCache.get(cacheKey);
       if (cached !== undefined) return cached; // may be a negative-cached miss
@@ -229,6 +243,7 @@ function createUcpWarmHandoffInternalHandler(deps = {}) {
 }
 
 module.exports = {
+  REQUIRE_AVAILABLE_ENV,
   createUcpWarmHandoffInternalHandler,
   ROUTE_FLAG_ENV,
   INTERNAL_KEY_ENV,

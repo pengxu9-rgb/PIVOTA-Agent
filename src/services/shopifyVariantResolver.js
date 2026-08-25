@@ -40,6 +40,34 @@ function isPlainObject(v) {
   return Boolean(v && typeof v === 'object' && !Array.isArray(v));
 }
 
+/*
+ * ONE stock vocabulary for every source, because the sources do not speak the same language:
+ * products.json carries a BOOLEAN `available`, while the crawled seed carries FREE TEXT — "Out of
+ * Stock", "sold_out", "unavailable", schema.org's "OutOfStock". A guard that compares against a
+ * single literal silently misses every other spelling; `checkoutHandoffResolver.UNAVAILABLE_STATUSES`
+ * already documents five of them. Normalising at the SOURCE means the downstream guard compares one
+ * canonical token and cannot drift from whichever producer it happens to be reading.
+ */
+const AVAILABILITY_AVAILABLE = 'available';
+const AVAILABILITY_OUT_OF_STOCK = 'out_of_stock';
+const UNAVAILABLE_TEXT_RE = /out.?of.?stock|sold.?out|unavailable|discontinued|backorder/i;
+const AVAILABLE_TEXT_RE = /^(available|in.?stock|instock|true|yes)$/i;
+
+/**
+ * Map any source's stock signal onto `'available' | 'out_of_stock' | null`.
+ * `null` means "we could not determine it" — an unparseable string is NEVER read as a negative,
+ * because a false "sold out" silently deletes a live product from the lane.
+ */
+function normalizeAvailability(raw) {
+  if (raw === true) return AVAILABILITY_AVAILABLE;
+  if (raw === false) return AVAILABILITY_OUT_OF_STOCK;
+  const s = firstNonEmptyString(raw);
+  if (!s) return null;
+  if (UNAVAILABLE_TEXT_RE.test(s)) return AVAILABILITY_OUT_OF_STOCK;
+  if (AVAILABLE_TEXT_RE.test(s)) return AVAILABILITY_AVAILABLE;
+  return null;
+}
+
 function firstNonEmptyString(...values) {
   for (const v of values) {
     const s = String(v == null ? '' : v).trim();
@@ -97,17 +125,19 @@ function resolveVariantFromSeed(seedData, opts = {}) {
         || toVariantGid(v.id)
         || toVariantGid(v.sku);
       if (!gid) continue;
-      const availability = firstNonEmptyString(v.stock, v.availability, v.availability_status).toLowerCase() || null;
-      const looksInStock = availability
-        && !/out.?of.?stock|sold.?out|unavailable|out_of_stock/.test(availability);
+      const rawAvailability = firstNonEmptyString(v.stock, v.availability, v.availability_status);
+      // Normalised to the SAME token the products.json paths emit, so one guard covers both lanes.
+      const availability = normalizeAvailability(rawAvailability);
+      const looksInStock = Boolean(rawAvailability) && availability !== AVAILABILITY_OUT_OF_STOCK;
       const record = {
         variantGid: gid,
         source: `${pathBase}[${i}].variant_id`,
         sku: firstNonEmptyString(v.sku) || null,
         availability,
+        rawAvailability: rawAvailability || null,
         // Same contract as the products.json paths: `false` means "the source told us nothing about
         // stock", NOT "out of stock". A caller must never read an absent field as a negative.
-        stockKnown: Boolean(availability),
+        stockKnown: availability !== null,
         preferAvailableApplied: Boolean(preferAvailable && looksInStock),
       };
       if (!preferAvailable || looksInStock) return record;
@@ -177,20 +207,26 @@ function pickVariantFromProductNode(product, opts = {}) {
   if (variants.length === 0) return null;
   const preferAvailable = opts.preferAvailable !== false;
 
-  // Stock is knowable only if at least one variant actually carries a boolean `available`.
-  const stockKnown = variants.some((v) => typeof v.available === 'boolean');
-  const available = stockKnown ? variants.find((v) => v.available === true) : null;
-  const preferAvailableApplied = Boolean(preferAvailable && available && available !== variants[0]);
+  // Prefer a variant that is BOTH in stock and actually usable — a variant whose id yields no GID is
+  // not a candidate, or the preference could turn a previously-resolvable product into a miss.
+  const available = variants.find((v) => normalizeAvailability(v.available) === AVAILABILITY_AVAILABLE
+    && (toVariantGid(v.id) || toVariantGid(v.sku)));
   const chosen = (preferAvailable && available) || variants[0];
 
   const gid = toVariantGid(chosen.id) || toVariantGid(chosen.sku);
   if (!gid) return null;
+  const availability = normalizeAvailability(chosen.available);
   return {
     variantGid: gid,
     sku: firstNonEmptyString(chosen.sku) || null,
-    availability: chosen.available === true ? 'available' : (chosen.available === false ? 'out_of_stock' : null),
-    stockKnown,
-    preferAvailableApplied,
+    availability,
+    // Describes the variant we ACTUALLY RETURN, not the node it came from: a node can publish stock
+    // for some variants and not the one we picked, and the guard downstream reads this one's state.
+    stockKnown: availability !== null,
+    // True whenever the preference selected an in-stock variant — NOT only when it changed position.
+    // Keying it on `!== variants[0]` made it read false for every healthy single-variant product,
+    // i.e. a dial that reads zero precisely when things are fine.
+    preferAvailableApplied: Boolean(preferAvailable && available),
   };
 }
 
@@ -250,8 +286,16 @@ async function resolveVariantViaProductsJson(target = {}, opts = {}) {
   }
 
   // Fallback: page the catalog listing and match by handle, then by normalized title.
+  //
+  // TRAFFIC GUARD: if we already hold a usable (stock-blind) pick we are here only to UPGRADE stock
+  // knowledge, and that is not worth a ten-page walk on a click path — each page is limit=250, and
+  // `fetchProductsJson` cannot tell a 429 from a 404, so an unanswered `.js` under rate limiting
+  // would otherwise make us send 12 requests instead of 1: being throttled would cause us to
+  // generate MORE traffic. All six warm-handoff brands' catalogs fit in one or two pages, so a
+  // single page keeps the stock rescue for essentially the whole cohort while capping the burst.
   const maxPages = Number.isFinite(opts.maxPages) ? Number(opts.maxPages) : 10;
-  for (let page = 1; page <= maxPages; page += 1) {
+  const pageLimit = unknownStockPick ? Math.min(maxPages, 1) : maxPages;
+  for (let page = 1; page <= pageLimit; page += 1) {
     const listing = await fetchProductsJson(`${origin}/products.json?limit=250&page=${page}`, { fetchImpl, timeoutMs, userAgent });
     const products = isPlainObject(listing) && Array.isArray(listing.products) ? listing.products : [];
     if (products.length === 0) break;
@@ -306,7 +350,7 @@ async function resolveShopifyVariant(input = {}, opts = {}) {
   // Decline a KNOWN out-of-stock variant only when the caller opted in. An UNKNOWN stock state is not a
   // negative — declining on `stockKnown === false` would silently drop every storefront that does not
   // publish `available`, which is the mirror of the bug this guard exists to prevent.
-  if (opts.requireAvailable === true && resolved && resolved.availability === 'out_of_stock') return null;
+  if (opts.requireAvailable === true && resolved && resolved.availability === AVAILABILITY_OUT_OF_STOCK) return null;
   return resolved;
 }
 
@@ -322,6 +366,9 @@ async function resolveShopifyVariantInner(input = {}, opts = {}) {
 }
 
 module.exports = {
+  AVAILABILITY_AVAILABLE,
+  AVAILABILITY_OUT_OF_STOCK,
+  normalizeAvailability,
   toVariantGid,
   resolveVariantFromSeed,
   resolveVariantViaProductsJson,

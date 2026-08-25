@@ -8,6 +8,7 @@ const {
   extractProductHandle,
   normalizeBrandOrigin,
   pickVariantFromProductNode,
+  normalizeAvailability,
 } = require('../src/services/shopifyVariantResolver');
 
 // A trimmed real-shape crawled seed_data (merch_obs_ cohort, prod 2026-07-13): the Shopify variant id lives
@@ -269,6 +270,38 @@ describe('stock awareness (preferAvailable is honoured or honestly reported as u
     expect(picked.availability).toBe('available');
   });
 
+  test('preferAvailableApplied is TRUE even when the in-stock variant was already first', () => {
+    // The dial must not read false on a healthy product. Keying it on "the pick moved position"
+    // made it report false for every single-variant SKU and every product whose first variant is
+    // in stock — i.e. it read zero precisely when the lane was working.
+    const firstIsLive = {
+      variants: [
+        realPerHandleJsVariant({ id: 222222222, sku: 'LIVE', available: true }),
+        realPerHandleJsVariant({ id: 111111111, sku: 'OOS', available: false }),
+      ],
+    };
+    const picked = pickVariantFromProductNode(firstIsLive, { preferAvailable: true });
+    expect(picked.variantGid).toBe('gid://shopify/ProductVariant/222222222');
+    expect(picked.preferAvailableApplied).toBe(true);
+
+    const single = pickVariantFromProductNode(
+      { variants: [realPerHandleJsVariant({ id: 222222222, available: true })] },
+      { preferAvailable: true },
+    );
+    expect(single.preferAvailableApplied).toBe(true);
+  });
+
+  test('a variant that is in stock but yields NO gid is not a candidate', () => {
+    // Otherwise the default flip to preferAvailable could turn a resolvable product into a miss.
+    const picked = pickVariantFromProductNode({
+      variants: [
+        realPerHandleJsVariant({ id: 111111111, sku: 'OOS', available: false }),
+        { id: 42, available: true }, // too short to be a Shopify variant id
+      ],
+    }, { preferAvailable: true });
+    expect(picked.variantGid).toBe('gid://shopify/ProductVariant/111111111');
+  });
+
   test('preferAvailable:false does NOT reorder — the flag is respected in BOTH directions', () => {
     const picked = pickVariantFromProductNode(OOS_THEN_LIVE_JS, { preferAvailable: false });
     expect(picked.variantGid).toBe('gid://shopify/ProductVariant/111111111');
@@ -290,6 +323,50 @@ describe('stock awareness (preferAvailable is honoured or honestly reported as u
     expect(fetchImpl.calls[0]).toBe('https://cosrx.com/products/hydrium-watery-toner.js');
     // .json was never needed, so the click lane still spends exactly ONE fetch.
     expect(fetchImpl.calls).toHaveLength(1);
+    // `source` is the only forensic record of WHICH surface answered, and this change made that
+    // distinction load-bearing — pin it, or a mislabelled pick is undetectable after the fact.
+    expect(r.source).toBe('products.json:https://cosrx.com/products/hydrium-watery-toner.js');
+  });
+
+  test('a .js failure does not unleash a ten-page listing walk on the click path', async () => {
+    // `fetchProductsJson` cannot tell a 429 from a 404, so escalating here would mean that being
+    // rate-limited causes us to send MORE traffic. Bound it: 1 x .js + 1 x .json + 1 listing page.
+    const fetchImpl = recordingFetch({
+      'https://cosrx.com/products/hydrium-watery-toner.json': OOS_THEN_LIVE_JSON,
+      // every listing page answers, full and non-matching, so nothing else stops the walk
+      ...Object.fromEntries(Array.from({ length: 10 }, (_, i) => [
+        `https://cosrx.com/products.json?limit=250&page=${i + 1}`,
+        { products: Array.from({ length: 250 }, (_, j) => ({ handle: `other-${i}-${j}`, variants: [{ id: 900000000000 + j, available: true }] })) },
+      ])),
+    });
+    const r = await resolveVariantViaProductsJson(
+      { brandDomain: 'cosrx.com', handle: 'hydrium-watery-toner' },
+      { fetchImpl, preferAvailable: true },
+    );
+    // Still answers — never worse than the pre-change behaviour...
+    expect(r.variantGid).toBe('gid://shopify/ProductVariant/111111111');
+    expect(r.stockKnown).toBe(false);
+    // ...but at a bounded cost. Unbounded, this scenario cost 12 fetches.
+    expect(fetchImpl.calls).toHaveLength(3);
+    expect(fetchImpl.calls.filter((u) => u.includes('products.json?limit=250'))).toHaveLength(1);
+  });
+
+  test('with NO usable pick at all the full listing walk still runs — the cap is not a blanket cut', async () => {
+    const fetchImpl = recordingFetch({
+      ...Object.fromEntries(Array.from({ length: 9 }, (_, i) => [
+        `https://cosrx.com/products.json?limit=250&page=${i + 1}`,
+        { products: Array.from({ length: 250 }, (_, j) => ({ handle: `other-${i}-${j}`, variants: [{ id: 900000000000 + j, available: true }] })) },
+      ])),
+      'https://cosrx.com/products.json?limit=250&page=10': {
+        products: [{ handle: 'hydrium-watery-toner', variants: [{ id: 222222222, available: true }] }],
+      },
+    });
+    const r = await resolveVariantViaProductsJson(
+      { brandDomain: 'cosrx.com', handle: 'hydrium-watery-toner' },
+      { fetchImpl, preferAvailable: true },
+    );
+    expect(r.variantGid).toBe('gid://shopify/ProductVariant/222222222');
+    expect(r.source).toBe('products.json:https://cosrx.com/products.json (page 10)');
   });
 
   test('when .js is absent, a stock-blind .json pick does not end the search — the listing is consulted', async () => {
@@ -366,7 +443,11 @@ describe('stock awareness (preferAvailable is honoured or honestly reported as u
   test('the seed path reports the same stockKnown contract', () => {
     const known = resolveVariantFromSeed(seedFixture(), { preferAvailable: true });
     expect(known.stockKnown).toBe(true);       // seed carried stock: 'Out of Stock'
-    expect(known.availability).toBe('out of stock');
+    // NORMALISED to the same token products.json emits — the raw crawler text is kept separately.
+    // An earlier version of this test asserted the raw 'out of stock' and thereby PINNED a
+    // vocabulary divergence that made the sold-out guard unable to fire on this path.
+    expect(known.availability).toBe('out_of_stock');
+    expect(known.rawAvailability).toBe('Out of Stock');
     expect(known.preferAvailableApplied).toBe(false);
 
     const silent = resolveVariantFromSeed(
@@ -375,5 +456,54 @@ describe('stock awareness (preferAvailable is honoured or honestly reported as u
     );
     expect(silent.stockKnown).toBe(false);
     expect(silent.availability).toBeNull();
+
+    // An IN-STOCK seed row, so `preferAvailableApplied: true` is actually reachable. Without this
+    // row the false-assertion above cannot fail, whatever the code does.
+    const live = resolveVariantFromSeed(
+      seedFixture({ variants: [{ sku: 'SHOPIFY-56707045261692', variant_id: '56707045261692', stock: 'In Stock' }], snapshot: undefined }),
+      { preferAvailable: true },
+    );
+    expect(live.availability).toBe('available');
+    expect(live.preferAvailableApplied).toBe(true);
+  });
+
+  /*
+   * THE SOURCES DO NOT SPEAK THE SAME LANGUAGE. products.json says `available: false`; the crawled
+   * seed says "Out of Stock" / "sold_out" / "Unavailable" / schema.org "OutOfStock". The sold-out
+   * guard compares ONE canonical token, so every spelling must normalise onto it — otherwise the
+   * guard silently covers only the one spelling someone happened to write it against.
+   */
+  describe('normalizeAvailability — one vocabulary across every source', () => {
+    test.each([
+      [true, 'available'], [false, 'out_of_stock'],
+      ['out_of_stock', 'out_of_stock'], ['Out of Stock', 'out_of_stock'], ['out of stock', 'out_of_stock'],
+      ['sold_out', 'out_of_stock'], ['Sold Out', 'out_of_stock'], ['SOLD OUT', 'out_of_stock'],
+      ['unavailable', 'out_of_stock'], ['Unavailable', 'out_of_stock'], ['OutOfStock', 'out_of_stock'],
+      ['discontinued', 'out_of_stock'], ['backorder', 'out_of_stock'],
+      ['available', 'available'], ['In Stock', 'available'], ['in_stock', 'available'], ['instock', 'available'],
+    ])('%p -> %p', (raw, expected) => {
+      expect(normalizeAvailability(raw)).toBe(expected);
+    });
+
+    test('an unparseable or absent signal is UNKNOWN, never a false negative', () => {
+      // A wrong "sold out" silently deletes a live product from the lane, so anything we cannot
+      // read must land on null and let the caller decide — never on out_of_stock.
+      for (const raw of ['', null, undefined, 'wibble', '???', 42]) {
+        expect(normalizeAvailability(raw)).toBeNull();
+      }
+    });
+
+    test('EVERY spelling the repo already documents as unavailable actually declines', async () => {
+      // checkoutHandoffResolver.UNAVAILABLE_STATUSES is the existing catalogue of real seed values.
+      const spellings = ['out_of_stock', 'out of stock', 'sold_out', 'sold out', 'unavailable', 'Out of Stock', 'OutOfStock'];
+      for (const stock of spellings) {
+        const seedData = { variants: [{ sku: 'SHOPIFY-56707045261692', variant_id: '56707045261692', stock }] };
+        const declined = await resolveShopifyVariant(
+          { seedData },
+          { preferAvailable: true, requireAvailable: true, allowNetworkFallback: false },
+        );
+        expect([stock, declined]).toEqual([stock, null]);
+      }
+    });
   });
 });
