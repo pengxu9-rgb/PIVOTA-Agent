@@ -21,15 +21,24 @@ function nonEmpty(v) {
 // read time from the canonical catalog row the ref resolves to:
 //   - title (the uncollapsed serving path stores none — titles are resolved at read time);
 //   - the currency of an already-stored price amount (the snapshot writer never normalized a currency key,
-//     and an amount must never reach an agent without its currency). The canonical row is the SAME listing
-//     the amount was crawled from, so pairing its currency with the stored amount stays honest.
+//     and an amount must never reach an agent without its currency).
+// A sig- or group-keyed ref can resolve to a DIFFERENT member listing than the one the amount was crawled
+// from (the resolver collapses to the group's primary member), and members of one group can list in
+// different currencies — so the currency is paired ONLY when the canonical row's own price amount equals
+// the stored amount. No match → no fill: the projection then withholds the price, which is the honest
+// outcome; a confidently wrong currency is the exact fabrication this repairs.
 // The resolver I/O lives in the caller (server wiring); these stay pure and unit-testable.
+
+// The currency keys relationshipEdgeToSignal reads — the predicate and the merge must mirror that full
+// set, or a resolver currency can override a producer's own (e.g. a priceCurrency:'JPY' snapshot).
+function snapshotHasOwnCurrency(snap) {
+  return Boolean(snap.currency || snap.price_currency || snap.priceCurrency);
+}
 
 function candidateSnapshotNeedsHydration(snapshot) {
   const snap = snapshot && typeof snapshot === 'object' ? snapshot : {};
   const needsTitle = !snap.title;
-  const needsCurrency =
-    snap.price != null && snap.price !== '' && !snap.currency && !snap.price_currency;
+  const needsCurrency = snap.price != null && snap.price !== '' && !snapshotHasOwnCurrency(snap);
   return needsTitle || needsCurrency;
 }
 
@@ -41,10 +50,15 @@ function hydrateCandidateSnapshotFromEntity(snapshot, entity) {
   if (!ent) return null;
   const title = !snap.title ? ent.title || ent.name || null : null;
   const displaySnap = ent.display_snapshot && typeof ent.display_snapshot === 'object' ? ent.display_snapshot : null;
-  const currency =
-    snap.price != null && snap.price !== '' && !snap.currency && !snap.price_currency && displaySnap
-      ? displaySnap.currency || null
-      : null;
+  let currency = null;
+  if (snap.price != null && snap.price !== '' && !snapshotHasOwnCurrency(snap) && displaySnap) {
+    const storedAmt = Number(snap.price);
+    const canonicalAmt = Number(displaySnap.price);
+    // Same-listing guard (see header): only an amount match licenses the pairing.
+    if (Number.isFinite(storedAmt) && Number.isFinite(canonicalAmt) && storedAmt === canonicalAmt) {
+      currency = displaySnap.currency || null;
+    }
+  }
   if (!title && !currency) return null;
   return {
     ...snap,

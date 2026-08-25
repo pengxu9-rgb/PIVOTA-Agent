@@ -230,6 +230,9 @@ test('candidateSnapshotNeedsHydration: title-less, or priced without any currenc
   assert.equal(candidateSnapshotNeedsHydration({ title: 'T', price: 49 }), true, 'priced, currency-less');
   assert.equal(candidateSnapshotNeedsHydration({ title: 'T', price: 49, price_currency: 'USD' }), false);
   assert.equal(candidateSnapshotNeedsHydration({ title: 'T', price: 49, currency: 'USD' }), false);
+  // EVERY currency key the signal mapper reads must count as "has a currency" here, or hydration
+  // overrides a producer's own currency (review F1).
+  assert.equal(candidateSnapshotNeedsHydration({ title: 'T', price: 4900, priceCurrency: 'JPY' }), false);
   assert.equal(candidateSnapshotNeedsHydration({ title: 'T', brand: 'B' }), false, 'unpriced needs no currency');
 });
 
@@ -246,9 +249,31 @@ test('hydrateCandidateSnapshotFromEntity: fills the stored amount’s missing cu
 test('hydrateCandidateSnapshotFromEntity: never overwrites a currency the snapshot already carries', () => {
   const kept = hydrateCandidateSnapshotFromEntity(
     { title: 'T', price: 49, price_currency: 'EUR' },
-    { display_snapshot: { currency: 'USD' } },
+    { display_snapshot: { price: '49.00', currency: 'USD' } },
   );
   assert.equal(kept, null, 'nothing to fill — edge kept as-is');
+  // The camelCase producer key counts too — the mapper reads it, so hydration must respect it (review F1).
+  const keptCamel = hydrateCandidateSnapshotFromEntity(
+    { title: 'T', price: 4900, priceCurrency: 'JPY' },
+    { display_snapshot: { price: '4900', currency: 'USD' } },
+  );
+  assert.equal(keptCamel, null, 'a priceCurrency:JPY snapshot must not be re-badged USD');
+});
+
+test('hydrateCandidateSnapshotFromEntity: an amount MISMATCH refuses the pairing (different member listing)', () => {
+  // A sig/group-keyed ref can resolve to the group's PRIMARY member — a different merchant's listing,
+  // possibly in another currency (review F2). Only a matching amount licenses the currency pairing;
+  // otherwise the price stays currency-less and the projection withholds it (honest omission).
+  const mismatched = hydrateCandidateSnapshotFromEntity(
+    { title: 'T', price: 4900 },
+    { title: 'T', display_snapshot: { price: '49.00', currency: 'USD' } },
+  );
+  assert.equal(mismatched, null, 'stored 4900 vs canonical 49.00 — no currency fill');
+  // A canonical row with a currency but NO price cannot prove it is the same listing either.
+  assert.equal(
+    hydrateCandidateSnapshotFromEntity({ title: 'T', price: 49 }, { title: 'T', display_snapshot: { currency: 'USD' } }),
+    null,
+  );
 });
 
 test('hydrateCandidateSnapshotFromEntity: fills title (with brand fallback) and is null on a no-op', () => {
