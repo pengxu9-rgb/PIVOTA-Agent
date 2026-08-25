@@ -1,0 +1,160 @@
+# Does the production GATEWAY actually run what `main` says it runs?
+#
+# Since the 2026-08-22 cutover the gateway serves from GCP Cloud Run behind gateway.pivota.cc, and
+# it only moves when somebody runs deploy_gateway.sh by hand. Nothing reported the gap, and on
+# 2026-08-25 production was found running 6aa49526db95 while main was 27 commits ahead - eleven
+# weeks of merges that no user was ever served.
+#
+# It was not that nobody built a guard. `production-deploy-drift-guard.yml` existed and was
+# supposed to be exactly this. It watched agent.pivota.cc (a Vercel host that 404s on /health) and
+# a Railway URL, and on failure it fired RAILWAY_ROLLBACK_WEBHOOK_URL. It failed its last five
+# scheduled runs, was switched off by hand on 2026-06-08, and has not run since. A guard aimed at
+# the wrong host does not degrade into a weaker guard - it degrades into an annoyance, gets
+# disabled, and leaves the same silence as having none, plus the belief that one exists.
+#
+# This job does not deploy. Deploying the gateway to a payments path on merge is a bigger decision
+# than this file should make. It only says out loud when live != main.
+name: gateway prod drift
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    # :37 rather than the backend alarm's :17 - two red jobs in the same minute read as one
+    # incident and get triaged as one.
+    - cron: '37 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  # How long production may lag main before this job goes red. Long enough that a normal
+  # merge-then-deploy never trips it; short enough that a forgotten deploy is caught the same
+  # morning. Only applies when production is BEHIND main, never when it has diverged.
+  GRACE_MINUTES: '120'
+
+jobs:
+  drift:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history, deliberately. Every question below - is the live commit an ancestor of
+          # main, how many commits behind, is the gap docs-only - can only be answered if the live
+          # commit exists in this checkout. Under a shallow clone it never does, and the job falls
+          # through to "cannot classify" on every run: the backend's copy of this alarm shipped
+          # that way and reported a divergence that had not happened, which also made its docs-only
+          # exemption unreachable dead code. blob:none keeps it cheap - the diffs here are
+          # --name-only, which needs trees, not file contents.
+          fetch-depth: 0
+          filter: blob:none
+
+      - name: Compare live gateway against this commit
+        run: |
+          set -uo pipefail
+          MAIN_SHA="$(git rev-parse HEAD)"
+          echo "main:      $MAIN_SHA"
+
+          # gateway.pivota.cc, NOT agent.pivota.cc. The latter is the Vercel frontend and 404s on
+          # /health - pointing at it is what made the previous guard useless.
+          LIVE_JSON="$(curl -fsS --max-time 25 https://gateway.pivota.cc/health || true)"
+          if [ -z "$LIVE_JSON" ]; then
+            echo "::error::could not reach https://gateway.pivota.cc/health - the gateway's health is unknown"
+            exit 1
+          fi
+
+          # This service reports version.commit, a 12-character SHORT sha - not the full_sha the
+          # backend reports. Resolving it through git rather than comparing strings is what makes
+          # the ancestry checks below work at all, and it fails loudly if the short sha is unknown
+          # or ambiguous instead of silently comparing unequal.
+          LIVE_SHORT="$(printf '%s' "$LIVE_JSON" | python3 -c 'import json,sys; print((json.load(sys.stdin).get("version") or {}).get("commit",""))')"
+          if [ -z "$LIVE_SHORT" ]; then
+            echo "::error::/health returned no version.commit - cannot verify what the gateway runs"
+            exit 1
+          fi
+          LIVE_SHA="$(git rev-parse --verify --quiet "${LIVE_SHORT}^{commit}" || true)"
+          echo "live prod: ${LIVE_SHORT}${LIVE_SHA:+ -> $LIVE_SHA}"
+
+          if [ -n "$LIVE_SHA" ] && [ "$LIVE_SHA" = "$MAIN_SHA" ]; then
+            echo "the gateway is running main"
+            exit 0
+          fi
+
+          # Not every commit needs a deploy. Anything NOT exempted here is treated as
+          # runtime-affecting, so the default is to alarm and a new top-level directory is a deploy
+          # until someone says otherwise.
+          #
+          # This list is SHORTER than the backend's, on purpose. The image is built with `COPY . .`
+          # and a .dockerignore that drops only tests, README and a few doc/demo globs, so most of
+          # this repo really does ship. In particular `scripts/` is NOT exempt here: several
+          # scheduled workflows invoke scripts in it as production jobs, so a change there can
+          # change what runs even though nothing in src/ moved. Copying the backend's list verbatim
+          # would have quietly exempted them.
+          if [ -n "$LIVE_SHA" ]; then
+            RUNTIME_CHANGED="$(git diff --name-only "$LIVE_SHA..HEAD" \
+              | grep -vE '^(docs/|\.github/|tests/|README|CHANGELOG)' \
+              | grep -vE '\.md$' || true)"
+            if [ -z "$RUNTIME_CHANGED" ]; then
+              echo "the gateway is $(git rev-list --count "$LIVE_SHA..HEAD") commit(s) behind main,"
+              echo "but none of them touch code the container runs:"
+              git diff --name-only "$LIVE_SHA..HEAD" | sed 's/^/  /'
+              echo "no deploy needed."
+              exit 0
+            fi
+            echo "runtime-affecting files not in the gateway:"
+            printf '%s\n' "$RUNTIME_CHANGED" | sed 's/^/  /'
+          else
+            echo "::warning::$LIVE_SHORT is not in this repository at all. With full history that"
+            echo "means the gateway runs a build from a commit that was force-pushed away, or from"
+            echo "another repo. Treating as runtime drift."
+          fi
+
+          # A merge that landed seconds ago is a PENDING DEPLOY, not drift. Deploys here are
+          # manual, so every merge of runtime code would otherwise make this job red instantly -
+          # before any human could have deployed it. That is not an alarm, it is a notification on
+          # every merge, and it trains people to ignore the job. Which is precisely how the
+          # previous guard ended up switched off.
+          #
+          # Measure when the code LANDED ON MAIN, not when it was written: a branch developed over
+          # two hours has commits that look two hours stale the instant they merge. Walking
+          # --first-parent gives the merge that put the change on main, whose committer date IS the
+          # moment production fell behind. Anchored to files whose CONTENT still differs, so a
+          # commit re-introducing already-deployed content does not restart the clock.
+          #
+          # The window applies ONLY to "behind". A DIVERGED gateway means someone deployed
+          # something that is not on main, which is never a pending deploy and is never delayed.
+          if [ -n "$LIVE_SHA" ] && git merge-base --is-ancestor "$LIVE_SHA" HEAD 2>/dev/null; then
+            RT_LIST="$(mktemp)"; printf '%s\n' "$RUNTIME_CHANGED" > "$RT_LIST"
+            LANDED=""
+            for c in $(git rev-list --reverse --first-parent "$LIVE_SHA..HEAD"); do
+              if git diff --name-only "$c^" "$c" 2>/dev/null | grep -qFxf "$RT_LIST"; then
+                LANDED="$(git show -s --format=%ct "$c")"; break
+              fi
+            done
+            rm -f "$RT_LIST"
+            if [ -n "$LANDED" ]; then
+              AGE_MIN=$(( ( $(date -u +%s) - LANDED ) / 60 ))
+              if [ "$AGE_MIN" -lt "$GRACE_MINUTES" ]; then
+                echo "::notice::undeployed runtime code landed on main ${AGE_MIN}m ago, inside the ${GRACE_MINUTES}m deploy window - not alarming yet. The hourly run will."
+                exit 0
+              fi
+              echo "this gap has been on main for ${AGE_MIN} minutes (window is ${GRACE_MINUTES})."
+            fi
+            BEHIND="$(git rev-list --count "$LIVE_SHA..HEAD" 2>/dev/null || echo '?')"
+            echo "::error::the gateway is $BEHIND commit(s) BEHIND main and will stay there until someone deploys."
+            echo "commits not in the gateway:"
+            git log --oneline "$LIVE_SHA..HEAD" | sed 's/^/  /'
+          else
+            echo "::error::the gateway runs $LIVE_SHORT, which is NOT an ancestor of main - the two have diverged."
+          fi
+
+          # The build config and deploy script live in the BACKEND repo (pivota-backend), which is
+          # why this is spelled out rather than pointing at a script in this tree.
+          cat <<'EOF'
+          To ship main to the gateway, from a checkout of THIS repo with pivota-backend alongside:
+            gcloud builds submit --config ../pivota-backend/infra/gcp/cloudbuild.gateway.yaml \
+              --project pivota-shared --substitutions=COMMIT_SHA=$(git rev-parse HEAD) .
+            ../pivota-backend/infra/gcp/deploy_gateway.sh prod <sha>
+          EOF
+          exit 1
