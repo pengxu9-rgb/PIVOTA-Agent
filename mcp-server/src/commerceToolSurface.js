@@ -615,9 +615,9 @@ function describe(op) {
       "Re-quote a checkout session after a change (address, items). Returns a fresh locked session. Requires sign-in + an idempotency_key. Send the COMPLETE quote: an update re-mints the locked snapshot rather than merging into it, so anything omitted is dropped, and the same item/buyer/address rules as create apply.",
     get_checkout_session: "Read a checkout session (the locked quote) you own. Read-only.",
     complete_checkout_session:
-      "Complete the checkout: verifies the buyer's payment authorization (delegated token / AP2 mandate) bound to the session total, then places the order and charges ONCE. Requires sign-in, an idempotency_key, and payment_authorization. Surface any requires_action (redirect_url/qr/instructions) verbatim; never fabricate payment URLs or statuses.",
+      "Complete the checkout: verifies the buyer's payment authorization (delegated token / AP2 mandate) bound to the session total, then places the order and charges ONCE. Requires sign-in, an idempotency_key, payment_authorization, and a COMPLETE shipping_address (name, address_line1, city, postal_code, country) — the address the session was quoted with is stored minimized and cannot be reused for the order. Surface any requires_action (redirect_url/qr/instructions) verbatim; never fabricate payment URLs or statuses.",
     create_payment_link:
-      "Turn a checkout session into a HOSTED payment page (Stripe Checkout) and return its URL for the buyer to pay on — guest checkout with just an email, no sign-in. Does NOT charge and does NOT need a payment_authorization; the buyer authorizes by paying on the page. Surface the returned checkout_url verbatim; never fabricate it. Requires an idempotency_key.",
+      "Turn a checkout session into a HOSTED payment page (Stripe Checkout) and return its URL for the buyer to pay on — no sign-in needed to pay. Does NOT charge and does NOT need a payment_authorization; the buyer authorizes by paying on the page. Surface the returned checkout_url verbatim; never fabricate it. Requires an idempotency_key, a customer_email, and a COMPLETE shipping_address (name, address_line1, city, postal_code, country) — this op mints a real order before the page, and the order cannot be created without one.",
     cancel_checkout_session: "Cancel a checkout session / unpaid order you own. Requires sign-in + an idempotency_key.",
     get_order: "Track an order you own. Read-only.",
     request_after_sales:
@@ -636,7 +636,12 @@ const ADDRESS = {
   },
   additionalProperties: false,
   description:
-    "Optional — but COMPLETE if supplied: name (or recipient_name), address_line1, city, postal_code and country are all required together, because order creation requires them. A partial address is refused rather than priced against a destination the order will be rejected for.",
+    "COMPLETE or absent, never partial: name (or recipient_name), address_line1, city, postal_code and country " +
+    "are required together, because order creation requires them. A partial address is refused rather than priced " +
+    "against a destination the order will be rejected for. Optional on create/update_checkout_session (quoting " +
+    "tolerates no address); REQUIRED on complete_checkout_session and create_payment_link, which mint a real order " +
+    "— and note the session's own address is stored MINIMIZED (no name/address_line1), so it cannot satisfy the " +
+    "order and the address must be supplied again to those two ops.",
 };
 
 // The cart shape, shared by create and update because the runtime intake is shared. Every `description`
@@ -760,7 +765,7 @@ const INPUT_SCHEMAS = Object.freeze({
     properties: { session_id: { type: "string" } },
   },
   complete_checkout_session: {
-    type: "object", required: ["idempotency_key", "session_id", "payment_authorization"], additionalProperties: false,
+    type: "object", required: ["idempotency_key", "session_id", "payment_authorization", "shipping_address"], additionalProperties: false,
     properties: {
       idempotency_key: IDEMPOTENCY,
       session_id: { type: "string", description: "The checkout session (locked quote) id to complete." },
@@ -772,7 +777,7 @@ const INPUT_SCHEMAS = Object.freeze({
     },
   },
   create_payment_link: {
-    type: "object", required: ["idempotency_key", "session_id", "customer_email"], additionalProperties: false,
+    type: "object", required: ["idempotency_key", "session_id", "customer_email", "shipping_address"], additionalProperties: false,
     properties: {
       idempotency_key: IDEMPOTENCY,
       session_id: { type: "string", description: "The checkout session (locked quote) id to turn into a hosted payment page." },

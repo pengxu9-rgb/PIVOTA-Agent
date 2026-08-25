@@ -285,3 +285,52 @@ test("P2: malformed OAuth claims do not break read-only tools (anonymous read pr
   await surface.callTool("search_catalog", { query: "x" }, { claims: { iss: "issuer-only" } }); // sub missing
   assert.equal(reads.length, 1);
 });
+
+// ---- shipping_address contract on the two ORDER-MINTING ops -------------------------------------------
+//
+// Both create_payment_link and complete_checkout_session mint a REAL order via kernel.createOrder, and
+// pivota-backend's POST /agent/v2/orders refuses INVALID_BUYER_CONTEXT (400) unless the order carries a
+// COMPLETE shipping_address (name, address_line1, city, postal_code, country -- routes/agent_v2.py
+// _coerce_shipping_address). Its only fallback, the quote's stored request_json, is written by
+// quote_service._normalize_shipping_for_fingerprint which keeps ONLY {country, postal_code, city, state} --
+// it strips name and address_line1, exactly two required fields, so it can never satisfy the check.
+//
+// So an address-less call to either op is guaranteed to 400 at order creation. Advertising the field as
+// optional is the "advertised but not executable" defect: the schema tells a model to send a body the
+// door will always be refused for. Verified live 2026-08-25 -- an otherwise identical create_payment_link
+// went 400 without an address and past that check with one.
+test("create_payment_link and complete_checkout_session REQUIRE shipping_address in their schemas", () => {
+  const { surface } = setup();
+  for (const name of ["create_payment_link", "complete_checkout_session"]) {
+    const tool = surface.tools.find((t) => t.name === name);
+    assert.ok(tool, `${name} missing from the surface`);
+    assert.ok(
+      (tool.inputSchema?.required ?? []).includes("shipping_address"),
+      `${name} must REQUIRE shipping_address: the backend order create refuses without a complete one`,
+    );
+    assert.ok("shipping_address" in (tool.inputSchema?.properties ?? {}), `${name} must still declare the property`);
+  }
+});
+
+// The quoting ops are the other half of the contract and must STAY optional -- previewing a price with no
+// destination is legitimate, and tightening them would break every quote-before-address flow.
+test("create/update_checkout_session keep shipping_address OPTIONAL (quoting tolerates no address)", () => {
+  const { surface } = setup();
+  for (const name of ["create_checkout_session", "update_checkout_session"]) {
+    const tool = surface.tools.find((t) => t.name === name);
+    assert.ok(tool, `${name} missing from the surface`);
+    assert.ok(
+      !(tool.inputSchema?.required ?? []).includes("shipping_address"),
+      `${name} must NOT require shipping_address`,
+    );
+  }
+});
+
+// A description that still promises "just an email" would teach a model to omit the address and eat a 400,
+// which is the exact failure this change exists to remove -- so the copy is pinned alongside the schema.
+test("create_payment_link description no longer promises a checkout with just an email", () => {
+  const { surface } = setup();
+  const desc = surface.tools.find((t) => t.name === "create_payment_link").description;
+  assert.ok(!/just an email/i.test(desc), "description must not promise checkout with just an email");
+  assert.match(desc, /shipping_address/, "description must name the shipping_address requirement");
+});
