@@ -277,15 +277,23 @@ test("the REAL live envelope shape is healthy, and falsy error fields are not de
   }
 });
 
-test("junk arguments cannot mint a fresh cache entry", async () => {
-  // The key is derived from the executor's own allowlist, so a field the lane never sees cannot split the
-  // key. Before this, {query:"serum", __nonce:i} bought a full cold lane run per call.
+test("junk arguments are refused and cannot mint a fresh cache entry", async () => {
+  // The commerce surface's declared-schema guard now refuses undeclared argument properties outright, so
+  // {query:"serum", __nonce:i} — which once bought a full cold lane run per call — never reaches the lane
+  // at all. The key stays derived from the executor's own allowlist as defense in depth.
   const seen = [];
   const surface = createPublicReadToolSurface(recordingExecutor(seen));
   for (let i = 0; i < 5; i += 1) {
-    await surface.callTool("search_catalog", { query: "serum", __nonce: i, tracking_id: `t${i}` });
+    await assert.rejects(
+      surface.callTool("search_catalog", { query: "serum", __nonce: i, tracking_id: `t${i}` }),
+      (e) => e.code === "INVALID_ARGUMENTS",
+    );
   }
-  assert.equal(seen.length, 1, `junk args minted ${seen.length} entries`);
+  assert.equal(seen.length, 0, `refused junk reached the lane ${seen.length} times`);
+  // …and identical declared args still share one entry.
+  await surface.callTool("search_catalog", { query: "serum" });
+  await surface.callTool("search_catalog", { query: "serum" });
+  assert.equal(seen.length, 1, "identical declared args must share one cache entry");
 });
 
 test("the key's NEGATIVE half: meaningfully different queries must NOT share an entry", async () => {

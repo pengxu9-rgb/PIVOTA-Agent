@@ -985,8 +985,17 @@ test('5. through the real commerce surface: listed, strict schema, toParams, and
   assert.equal(tool.annotations.openWorldHint, true);
   assert.equal(tool.annotations.idempotentHint, false);
 
+  // an UNDECLARED argument is refused loudly by the surface's declared-schema guard — it used to be
+  // silently dropped by the allowlist, which is how a misplaced top-level price_max became an
+  // unenforced budget on prod (2026-08-25)
+  await assert.rejects(
+    surface.callTool('recommend_products', { need: 'gentle exfoliant', merchant_id: 'dropped' }, { agent_id: 'agent_a' }),
+    (e) => e.code === 'INVALID_ARGUMENTS' && e.message.includes('"merchant_id"'),
+  );
+  assert.equal(seen.length, 0, 'a refused call must never reach the lane');
+
   const constraints = { budget: 'under $40' };
-  const out = await surface.callTool('recommend_products', { need: 'gentle exfoliant', constraints, language: 'EN', limit: 2, merchant_id: 'dropped' }, { agent_id: 'agent_a' });
+  const out = await surface.callTool('recommend_products', { need: 'gentle exfoliant', constraints, language: 'EN', limit: 2 }, { agent_id: 'agent_a' });
   assert.equal(seen[0].op, 'recommend_products');
   assert.deepEqual(seen[0].params, { payload: { need: 'gentle exfoliant', language: 'EN', limit: 2, constraints: { budget: 'under $40' } } });
   assert.notEqual(seen[0].params.payload.constraints, constraints, 'constraints must be cloned, not aliased');

@@ -6,7 +6,9 @@
 //
 // SECURITY MODEL (the adapter boundary's job):
 //   - Identity (user_ref / acp_session_id / agent_id) is taken from the SERVER-VERIFIED session context
-//     ONLY, never from the model's tool arguments. Any identity fields a model puts in the args are stripped.
+//     ONLY, never from the model's tool arguments. An identity field a model puts in the args is REFUSED by
+//     the declared-schema guard wherever the schema is strict (no schema declares one), and in the few
+//     free-form envelopes (constraints, payment_authorization) it is still never copied into params.
 //   - A user-scoped tool with no verified buyer is refused (USER_AUTH_REQUIRED) before the executor runs.
 //   - payment_authorization IS a tool argument (the delegated token / mandate the agent obtained), but it is
 //     VERIFIED inside the executor (verifyPaymentAuthorization) — never trusted blindly.
@@ -39,6 +41,7 @@ import {
   UCP_TOOL_DESCRIPTIONS,
   ucpToNativeToolArgs,
 } from "./ucpArgumentAdapter.js";
+import { findUndeclaredArguments, declaredPropertyPathsByName } from "./inputSchemaGuard.js";
 
 export class UnknownToolError extends Error {
   constructor(name) {
@@ -259,6 +262,21 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
       throw new ToolValidationError("Tool arguments must be an object.");
     }
 
+    // 0b) ENFORCE THE ADVERTISED SCHEMA — native dialect. Every tool's inputSchema declares
+    //     `additionalProperties: false`, and until this line nothing read that declaration: `toParams` below
+    //     is a filter, not a validator, so a misplaced argument was silently deleted. Live consequence
+    //     (prod, 2026-08-25): `recommend_products {price_max: 40}` — the ceiling belongs INSIDE
+    //     `constraints` — was accepted, the constraint vanished, and an over-budget item returned with empty
+    //     warnings. A buyer-agent believing an unenforced budget is enforced is exactly the failure this
+    //     surface exists to prevent, so an undeclared argument is a LOUD refusal naming the field (and,
+    //     when the same name is declared deeper, where it belongs). Before the identity gate on purpose:
+    //     a malformed call is malformed regardless of who sent it, and the schemas are public via tools/list
+    //     so the refusal teaches nothing an anonymous caller could not already read.
+    //     The UCP dialect is validated in its own mapper instead (`rejectUnknown` et al. in
+    //     ucpArgumentAdapter.js) against the UCP wire schemas, with UCP-vocabulary refusals — running this
+    //     guard on those args would misjudge them against a shape they never claimed to have.
+    if (dialect === TOOL_DIALECTS.mcp) assertDeclaredArguments(op, toolArgs);
+
     // 1) trusted identity from the verified session ONLY. Identity-derivation errors are swallowed for
     //    read-only ops (anonymous) and surface as USER_AUTH_REQUIRED for user-scoped ops below.
     const ctx = buildContext(sessionContext);
@@ -324,11 +342,12 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
     //    (getOrCompute lets errors propagate uncached), which keeps a transient MERCHANT_UNAVAILABLE from
     //    being served for the rest of the TTL. See the CACHEABLE_TOOLS note above for why the key omits
     //    identity — that omission is the whole safety argument and is asserted by tests.
-    //    The key is the ALLOWLISTED params, never the raw tool args. Nothing rejects unknown argument
-    //    properties, so keying on the raw args lets any caller mint unlimited distinct keys for one
-    //    identical upstream call (`{query, _cb: <nonce>}`) — a 0% hit rate, and 60 such requests evict
-    //    every real entry. Keying on what actually reaches the executor makes that impossible by
-    //    construction: junk properties are already gone by this line.
+    //    The key is the ALLOWLISTED params, never the raw tool args. The declared-schema guard now refuses
+    //    undeclared properties on this surface, but the params-derived key stays for the same reason it was
+    //    chosen: keyed on raw args, any accepted-but-non-allowlisted spelling (`{query, _cb: <nonce>}`)
+    //    would mint unlimited distinct keys for one identical upstream call — a 0% hit rate, and 60 such
+    //    requests evict every real entry. Keying on what actually reaches the executor makes that
+    //    impossible by construction, whatever the guard's coverage.
     // 7) DIALECT RESULT SHAPING — the outbound twin of step 2b, applied to whatever the steps above produced
     //    (fresh or cached). Deliberately AFTER the cache: the cache stores the NATIVE sanitized value keyed on
     //    dialect-agnostic params, and both dialects read the same entry — shaping before the cache would let
@@ -408,6 +427,51 @@ function attestedBuyerFromSession(sessionContext = {}) {
 // stripping a denylist: extra money fields (a model-set refund amount), nested identity, and prototype-
 // polluting keys (__proto__/constructor) all simply never get copied. Each field is read by OWN-property
 // lookup, so a JSON `__proto__` entry cannot inject anything.
+
+// --- declared-schema enforcement (native dialect) ---------------------------------------------------------
+//
+// The refusal half of the advertisement above: findUndeclaredArguments walks the SAME schema object that
+// tools/list publishes, so what the door refuses is exactly what it advertises it refuses — there is no
+// second field table to drift. See inputSchemaGuard.js for the walking rules and the prod incident that
+// motivated this (a silently-dropped top-level price_max on recommend_products).
+
+// "Did you mean" paths per tool, computed lazily from the declared schema (generic: a misplaced
+// `customer_email` on create_checkout_session is pointed at `quote.customer_email`). recommend_products
+// needs its own hint because `constraints` is free-form (additionalProperties as a typed subschema), so a
+// misplaced constraint's name is — by design — declared nowhere the generic scan can find it.
+const DECLARED_PATHS_BY_TOOL = new Map();
+function declaredPathsFor(op) {
+  if (!DECLARED_PATHS_BY_TOOL.has(op.id)) {
+    DECLARED_PATHS_BY_TOOL.set(op.id, declaredPropertyPathsByName(INPUT_SCHEMAS[op.id]));
+  }
+  return DECLARED_PATHS_BY_TOOL.get(op.id);
+}
+
+function assertDeclaredArguments(op, toolArgs) {
+  const schema = INPUT_SCHEMAS[op.id];
+  const violations = findUndeclaredArguments(schema, toolArgs);
+  if (violations.length === 0) return;
+
+  const declared = declaredPathsFor(op);
+  const parts = violations.map(({ path }) => {
+    const leaf = path.replace(/\[\d+\]/g, "").split(".").pop();
+    const elsewhere = (declared.get(leaf) || []).filter((p) => p !== path);
+    return elsewhere.length > 0 ? `"${path}" (did you mean "${elsewhere[0]}"?)` : `"${path}"`;
+  });
+  // The observed live failure class: a hard constraint sent at the top level of recommend_products. Name the
+  // correct envelope explicitly — a model that is told only "unknown argument" retries with a synonym and is
+  // refused identically; one told the envelope fixes it in one retry.
+  const constraintHint =
+    op.id === "recommend_products" && violations.some(({ path }) => !path.includes("."))
+      ? ' If this is a hard constraint (e.g. a price ceiling), send it inside `constraints`: {"constraints":{"price_max":40}}.'
+      : "";
+  const topLevelAllowed = Object.keys(schema.properties || {}).join(", ");
+  throw new ToolValidationError(
+    `${op.mcp}: unknown argument${violations.length > 1 ? "s" : ""} ${parts.join(", ")} — this tool's input ` +
+      `schema declares additionalProperties:false, so undeclared arguments are refused rather than silently ` +
+      `ignored.${constraintHint} Accepted top-level arguments: ${topLevelAllowed}.`,
+  );
+}
 
 const QUOTE_KEYS = ["merchant_id", "discount_codes", "customer_email", "customer_name"];
 const ITEM_KEYS = ["product_id", "sku_id", "variant_id", "quantity"];
