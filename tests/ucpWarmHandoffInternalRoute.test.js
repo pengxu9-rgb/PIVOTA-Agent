@@ -23,8 +23,8 @@ function envOn(overrides = {}) {
   };
 }
 
-function makeHandler({ env = envOn(), service, fetchImpl } = {}) {
-  return createUcpWarmHandoffInternalHandler({ env, service, fetchImpl });
+function makeHandler({ env = envOn(), service, fetchImpl, metrics } = {}) {
+  return createUcpWarmHandoffInternalHandler({ env, service, fetchImpl, ...(metrics ? { metrics } : {}) });
 }
 
 function authedRequest(body, headers = {}) {
@@ -483,4 +483,209 @@ describe('ucpWarmHandoffInternalRoute — seed lane, kill-switch vocabulary, mem
     expect(seen[0]).toBe(`https://cosrx.com/products/${encodeURIComponent(unicodeHandle)}.js`);
     expect(seen[0]).not.toContain('번들'); // the raw form would be an invalid request target
   });
+});
+
+/*
+ * DECLINE OBSERVABILITY. The variant-miss returns never reach the warm-handoff service, which is what
+ * normally records the H1 outcome — so a decline was invisible. For a DEFAULT-ON guard that is the
+ * difference between an actionable kill switch and a guess.
+ */
+describe('ucpWarmHandoffInternalRoute — miss metrics', () => {
+  const HANDLE = 'peptide-132-hair-home-care-kit';
+  const seedWith = (stock) => ({
+    snapshot: { variants: [{ sku: 'SHOPIFY-51895645012184', variant_id: '51895645012184', ...(stock ? { stock } : {}) }] },
+  });
+  const svc = () => ({
+    resolveWarmHandoff: jest.fn().mockResolvedValue({ continue_url: 'https://x.myshopify.com/cart/c/1?key=k' }),
+  });
+  const sink = () => ({ recordWarmHandoffOutcome: jest.fn() });
+
+  test('a sold-out decline counts on the CANONICAL taxonomy tag, not the wire string', async () => {
+    const metrics = sink();
+    const handler = makeHandler({ service: svc(), fetchImpl: jest.fn(), metrics });
+    const out = await handler(authedRequest({ brand_domain: 'cosrx.com', product_handle: HANDLE, seed_data: seedWith('Out of Stock') }));
+
+    expect(out.body.reason).toBe('variant_out_of_stock'); // wire contract, unchanged
+    expect(metrics.recordWarmHandoffOutcome).toHaveBeenCalledWith({
+      outcome: 'fallback',
+      reason: 'out_of_stock', // the tag existing dashboards already watch
+      brandDomain: 'cosrx.com',
+    });
+  });
+
+  test('an unresolvable variant counts as variant_invalid', async () => {
+    const metrics = sink();
+    const fetchImpl = jest.fn().mockResolvedValue({ ok: false, status: 404, json: async () => ({}) });
+    const handler = makeHandler({ service: svc(), fetchImpl, metrics });
+    const out = await handler(authedRequest({ brand_domain: 'cosrx.com', product_handle: 'nope' }));
+
+    expect(out.body.reason).toBe('variant_unresolved');
+    expect(metrics.recordWarmHandoffOutcome).toHaveBeenCalledWith({
+      outcome: 'fallback', reason: 'variant_invalid', brandDomain: 'cosrx.com',
+    });
+  });
+
+  test('a SUCCESS is not double-counted here — the service owns that outcome', async () => {
+    const metrics = sink();
+    const handler = makeHandler({ service: svc(), fetchImpl: jest.fn(), metrics });
+    const out = await handler(authedRequest({ brand_domain: 'cosrx.com', product_handle: HANDLE, seed_data: seedWith('In Stock') }));
+
+    expect(out.body.continue_url).toBe('https://x.myshopify.com/cart/c/1?key=k');
+    expect(metrics.recordWarmHandoffOutcome).not.toHaveBeenCalled();
+  });
+
+  test('a service-level fallback is not counted here either — no double count with the service', async () => {
+    const metrics = sink();
+    const service = { resolveWarmHandoff: jest.fn().mockResolvedValue(null) };
+    const handler = makeHandler({ service, fetchImpl: jest.fn(), metrics });
+    const out = await handler(authedRequest({ brand_domain: 'cosrx.com', product_handle: HANDLE, seed_data: seedWith('In Stock') }));
+
+    expect(out.body.reason).toBe('fallback');
+    expect(metrics.recordWarmHandoffOutcome).not.toHaveBeenCalled();
+  });
+
+  test('a THROWING metrics sink cannot turn a cold redirect into a 5xx', async () => {
+    const metrics = { recordWarmHandoffOutcome: jest.fn(() => { throw new Error('sink exploded'); }) };
+    const handler = makeHandler({ service: svc(), fetchImpl: jest.fn(), metrics });
+    const out = await handler(authedRequest({ brand_domain: 'cosrx.com', product_handle: HANDLE, seed_data: seedWith('sold out') }));
+
+    expect(out.status).toBe(200);
+    expect(out.body.continue_url).toBeNull();
+    expect(out.body.reason).toBe('variant_out_of_stock');
+  });
+
+  test('a malformed metrics sink is ignored rather than thrown through', async () => {
+    for (const metrics of [{}, { recordWarmHandoffOutcome: 'not a function' }]) {
+      const handler = makeHandler({ service: svc(), fetchImpl: jest.fn(), metrics });
+      const out = await handler(authedRequest({ brand_domain: 'cosrx.com', product_handle: HANDLE, seed_data: seedWith('sold out') }));
+      expect(out.status).toBe(200);
+    }
+  });
+});
+
+describe('ucpWarmHandoffInternalRoute — miss metric labels and cardinality', () => {
+  const HANDLE = 'peptide-132-hair-home-care-kit';
+  const seedOOS = () => ({ snapshot: { variants: [{ variant_id: '51895645012184', stock: 'Out of Stock' }] } });
+  const svc = () => ({ resolveWarmHandoff: jest.fn().mockResolvedValue({ continue_url: 'https://x/c/1' }) });
+  const sink = () => ({ recordWarmHandoffOutcome: jest.fn(), observeWarmHandoffLatency: jest.fn() });
+
+  // The service lane records hostOf(normalizeBrandOrigin(...)). If this lane recorded the raw caller
+  // string, one brand would split across series and the dial would under-report.
+  test.each([
+    ['cosrx.com', 'cosrx.com'],
+    ['https://cosrx.com', 'cosrx.com'],
+    ['https://cosrx.com/', 'cosrx.com'],
+    ['http://cosrx.com/products/x', 'cosrx.com'],
+    ['  COSRX.com  ', 'cosrx.com'],
+  ])('brand_domain %p is normalised to the bare host %p', async (given, expected) => {
+    const metrics = sink();
+    const handler = makeHandler({ service: svc(), fetchImpl: jest.fn(), metrics });
+    await handler(authedRequest({ brand_domain: given, product_handle: HANDLE, seed_data: seedOOS() }));
+    expect([given, metrics.recordWarmHandoffOutcome.mock.calls[0][0].brandDomain]).toEqual([given, expected]);
+  });
+
+  test('a brand_domain that cannot be parsed collapses to a single `unknown` series', async () => {
+    // Otherwise unparseable junk becomes the cardinality vector that normalising was meant to close.
+    const metrics = sink();
+    const handler = makeHandler({ service: svc(), fetchImpl: jest.fn(), metrics });
+    for (const junk of ['https://not a url', '%%%', 'http://', '://x']) {
+      await handler(authedRequest({ brand_domain: junk, product_handle: HANDLE, seed_data: seedOOS() }));
+    }
+    const labels = metrics.recordWarmHandoffOutcome.mock.calls.map((c) => c[0].brandDomain);
+    expect(new Set(labels)).toEqual(new Set(['unknown']));
+  });
+
+  test('a request with nothing to resolve from mints NO metric series', async () => {
+    // This return needs no network. Counting it would let a caller mint unbounded permanent
+    // `brand_domain` series at zero cost — the outcome counter is a Map that is never trimmed.
+    const metrics = sink();
+    const fetchImpl = jest.fn();
+    const handler = makeHandler({ service: svc(), fetchImpl, metrics });
+
+    for (let i = 0; i < 50; i += 1) {
+      const out = await handler(authedRequest({ brand_domain: `junk-${i}.example` }));
+      expect(out.body.reason).toBe('variant_unresolved'); // wire vocabulary unchanged
+      expect(out.body.continue_url).toBeNull();
+    }
+    expect(metrics.recordWarmHandoffOutcome).not.toHaveBeenCalled();
+    expect(fetchImpl).not.toHaveBeenCalled(); // and it really was the zero-network path
+  });
+
+  test('a miss that DID cost a fetch is still counted', async () => {
+    const metrics = sink();
+    const fetchImpl = jest.fn().mockResolvedValue({ ok: false, status: 404, json: async () => ({}) });
+    const handler = makeHandler({ service: svc(), fetchImpl, metrics });
+    await handler(authedRequest({ brand_domain: 'cosrx.com', product_handle: 'nope' }));
+    expect(metrics.recordWarmHandoffOutcome).toHaveBeenCalledWith(
+      expect.objectContaining({ outcome: 'fallback', reason: 'variant_invalid' }),
+    );
+  });
+
+  test('the counter and the latency histogram move together', async () => {
+    // The service lane pairs them; a counter without a histogram makes any rate derived from the
+    // histogram disagree with the counter.
+    const metrics = sink();
+    const handler = makeHandler({ service: svc(), fetchImpl: jest.fn(), metrics });
+    await handler(authedRequest({ brand_domain: 'cosrx.com', product_handle: HANDLE, seed_data: seedOOS() }));
+    expect(metrics.recordWarmHandoffOutcome).toHaveBeenCalledTimes(1);
+    expect(metrics.observeWarmHandoffLatency).toHaveBeenCalledTimes(1);
+    expect(metrics.observeWarmHandoffLatency.mock.calls[0][0].outcome).toBe('fallback');
+    expect(Number.isFinite(metrics.observeWarmHandoffLatency.mock.calls[0][0].latencyMs)).toBe(true);
+  });
+
+  test('a sink that only implements ONE of the two recorders is still safe', async () => {
+    for (const metrics of [
+      { recordWarmHandoffOutcome: jest.fn() },
+      { observeWarmHandoffLatency: jest.fn() },
+    ]) {
+      const handler = makeHandler({ service: svc(), fetchImpl: jest.fn(), metrics });
+      const out = await handler(authedRequest({ brand_domain: 'cosrx.com', product_handle: HANDLE, seed_data: seedOOS() }));
+      expect(out.status).toBe(200);
+    }
+  });
+
+  test('a malformed recorder is SKIPPED, not called-and-swallowed', async () => {
+    // `status === 200` alone cannot tell "the typeof guard skipped it" from "it threw and the
+    // containment catch ate it" — which is the thing this is supposed to prove. So make the
+    // malformed member observable: a callable that records invocation and then throws. If the
+    // guard is doing its job it is never invoked at all, and the SECOND recorder still runs.
+    const invoked = [];
+    const badButCallable = (...args) => { invoked.push(args); throw new TypeError('not a real recorder'); };
+    badButCallable.notAFunctionMarker = true;
+    const metrics = {
+      // typeof this is 'object', so the guard must skip it outright
+      recordWarmHandoffOutcome: { call: badButCallable },
+      observeWarmHandoffLatency: jest.fn(),
+    };
+    const handler = makeHandler({ service: svc(), fetchImpl: jest.fn(), metrics });
+    const out = await handler(authedRequest({ brand_domain: 'cosrx.com', product_handle: HANDLE, seed_data: seedOOS() }));
+
+    expect(out.status).toBe(200);
+    expect(invoked).toHaveLength(0);
+    // ...and skipping the bad one must not abort the good one, which a throw-into-catch would.
+    expect(metrics.observeWarmHandoffLatency).toHaveBeenCalledTimes(1);
+  });
+
+  /*
+   * NOTE for the next person running mutation tests here: dropping the `typeof` guard on the LATENCY
+   * recorder is an EQUIVALENT mutant, and no test row can kill it. That call is the last statement
+   * inside the containment try, so "the guard skipped it" and "it threw and the catch swallowed it"
+   * produce identical observable behaviour. The guard on the OUTCOME recorder is a different story
+   * and IS killable — dropping it makes the outcome throw before the latency call, which the test
+   * above detects. Do not add a vacuous row here to make the survivor go away.
+   */
+  test('the same holds with the roles reversed — a malformed LATENCY recorder is skipped', async () => {
+    const invoked = [];
+    const metrics = {
+      recordWarmHandoffOutcome: jest.fn(),
+      observeWarmHandoffLatency: { call: (...a) => { invoked.push(a); throw new TypeError('nope'); } },
+    };
+    const handler = makeHandler({ service: svc(), fetchImpl: jest.fn(), metrics });
+    const out = await handler(authedRequest({ brand_domain: 'cosrx.com', product_handle: HANDLE, seed_data: seedOOS() }));
+
+    expect(out.status).toBe(200);
+    expect(invoked).toHaveLength(0);
+    expect(metrics.recordWarmHandoffOutcome).toHaveBeenCalledTimes(1);
+  });
+
 });
