@@ -1089,6 +1089,7 @@ jobs:
             tests/ui_chat_access_guard.node.test.cjs \
             tests/aurora_surface_host_guard.node.test.cjs \
             tests/recommendations_internal_key_double_send.node.test.cjs \
+            tests/recommendations_internal_key_gate.node.test.cjs \
             tests/aurora_surface_auth.node.test.cjs \
             tests/aurora_surface_auth_rollup.node.test.cjs \
             tests/reco_direct_recall_before_llm.node.test.cjs \

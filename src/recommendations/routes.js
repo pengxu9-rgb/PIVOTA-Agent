@@ -16,6 +16,17 @@ const { isProduction } = require('../config/platform');
  * Buffers first, and a length check BEFORE timingSafeEqual - it throws on a length mismatch, so
  * comparing raw would be both a crash and a length oracle. utf8, so a multi-byte header cannot
  * collapse two different strings onto one buffer.
+ *
+ * `bufA.length > 0` is DEFENSIVE, not load-bearing, and no test covers it: at the only call site
+ * `provided` is already non-empty (the `provided &&` conjunct) and `expected` is already non-empty
+ * (the `if (!expected)` early return), so the clause can never be false today. Mutating it to
+ * `>= 0` or deleting it leaves the suite fully green. It is kept because this is a reusable local
+ * and matches src/auroraBff/authStore.js, not because anything proves it necessary.
+ *
+ * The length pre-check does leak length - a wrong-length key is rejected measurably faster. That
+ * matches every sibling in this repo. safety-kernel/src/pspWebhooks.js documents the strictly
+ * better shape: hash both sides to a fixed 32 bytes first, so there is no length signal and no
+ * length check needed.
  */
 function timingSafeEqualString(a, b) {
   const bufA = Buffer.from(String(a), 'utf8');

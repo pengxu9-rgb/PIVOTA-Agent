@@ -48,10 +48,16 @@ async function callRoute(patch, headers = {}) {
     await new Promise((resolve) => server.once('listening', resolve));
     const { port } = server.address();
     try {
+      // AbortSignal, because a guard that returns false WITHOUT sending a response leaves the
+      // request unanswered forever. node --test runs with --test-timeout=0, so that shape hangs
+      // the whole run instead of failing it — in CI it burns the job timeout and reports a
+      // CANCELLED job, which reads as infrastructure trouble rather than a broken guard. One
+      // mutant in this file's own matrix does exactly that.
       const resp = await fetch(`http://127.0.0.1:${port}${ROUTE}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...headers },
         body: JSON.stringify(BODY),
+        signal: AbortSignal.timeout(5000),
       });
       let body = null;
       try {
@@ -152,16 +158,51 @@ test('a multi-byte key does not crash the route', async () => {
  * Reading the function body rather than the whole file on purpose — the file legitimately contains
  * `===` elsewhere, and a substring check over all of it would pass on any of them.
  */
+/**
+ * Extract a function body by BALANCING BRACES, and prove the extraction reached the end.
+ *
+ * The first version delimited on `src.indexOf('\n  }', start)`. Two ways that goes wrong, both
+ * constructed and confirmed:
+ *
+ *   FALSE GREEN - any line inside the guard that is literally two spaces and a brace truncates the
+ *   body. A block comment whose second line is `  }`, followed by `if (provided === expected)
+ *   return true;`, is valid JS and passed this test.
+ *
+ *   FALSE RED - hoisting the function to module scope de-indents it by two, so the first `\n  }`
+ *   closes an inner block and the compare falls outside the extract.
+ *
+ * Brace balancing is indentation-independent, and the END ANCHOR below is what makes truncation
+ * loud: if the extract stops early it cannot contain the guard's final UNAUTHORIZED return, and
+ * the test fails instead of passing on a short read.
+ */
+function guardBody(src) {
+  const start = src.indexOf('function requireInternalKey(req, res) {');
+  if (start === -1) return null;
+  let depth = 0;
+  for (let i = src.indexOf('{', start); i < src.length; i += 1) {
+    if (src[i] === '{') depth += 1;
+    else if (src[i] === '}') {
+      depth -= 1;
+      if (depth === 0) return src.slice(start, i + 1);
+    }
+  }
+  return null;
+}
+
 test('the guard compares the secret in constant time, not with ===', () => {
   const fs = require('node:fs');
   const path = require('node:path');
   const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'recommendations', 'routes.js'), 'utf8');
 
-  const start = src.indexOf('function requireInternalKey(req, res) {');
-  assert.notStrictEqual(start, -1, 'requireInternalKey not found — this test is testing nothing');
-  const end = src.indexOf('\n  }', start);
-  assert.ok(end > start, 'could not delimit the guard body');
-  const body = src.slice(start, end);
+  const body = guardBody(src);
+  assert.ok(body, 'requireInternalKey not found — this test is testing nothing');
+  // End anchor: proves the extraction covered the whole function rather than stopping early.
+  assert.match(
+    body,
+    /UNAUTHORIZED/,
+    'the extracted guard body is truncated — it does not reach the final UNAUTHORIZED return, so '
+      + 'the assertions below would be scanning only part of the function',
+  );
 
   assert.match(
     body,
