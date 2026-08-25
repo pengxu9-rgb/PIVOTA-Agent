@@ -173,19 +173,18 @@ function requireUserAuthToolError(body) {
   }
 }
 
+// The DECLARED shape — every field below is in the door's published inputSchema. Since PR #2103 the door
+// refuses undeclared arguments by name (declared-schema guard), so the spoofed variant below is a separate
+// probe with its own expected outcome, not extra fields piggybacked onto this one.
 function createSessionArgs(config) {
   return {
     idempotency_key: `idem_mcp_session_${config.runId}`,
-    user_ref: 'usr_body_attacker',
-    acp_session_id: 'acp_body_attacker',
     quote: {
       merchant_id: config.merchantId,
-      currency: config.currency,
       items: [{
         product_id: config.productId,
         ...(config.variantId ? { variant_id: config.variantId } : {}),
         quantity: 1,
-        amount: 99999999,
       }],
       // The door requires a buyer email (unless the identity JWT attests one — this smoke's does not) and,
       // if a shipping address is supplied at all, all five of name/address_line1/city/postal_code/country.
@@ -200,6 +199,26 @@ function createSessionArgs(config) {
         postal_code: env('MCP_SMOKE_SHIP_POSTAL') || '94105',
         address_line1: env('MCP_SMOKE_SHIP_ADDRESS1') || '1 Market St',
       },
+    },
+  };
+}
+
+// The SPOOF probe: model-asserted identity (`user_ref`/`acp_session_id`), a caller-set money field
+// (`items[].amount`) and an undeclared `quote.currency`. Before PR #2103 these were silently stripped and
+// the create SUCCEEDED (evidence key: model_supplied_identity_ignored). Since the declared-schema guard,
+// the whole call is REFUSED with INVALID_ARGUMENTS naming the fields — which is what this smoke now
+// requires (evidence key: model_supplied_identity_refused). A gateway that ACCEPTS this body is the defect.
+function spoofedCreateSessionArgs(config) {
+  const args = createSessionArgs(config);
+  return {
+    ...args,
+    idempotency_key: `idem_mcp_spoof_${config.runId}`,
+    user_ref: 'usr_body_attacker',
+    acp_session_id: 'acp_body_attacker',
+    quote: {
+      ...args.quote,
+      currency: config.currency,
+      items: args.quote.items.map((it) => ({ ...it, amount: 99999999 })),
     },
   };
 }
@@ -266,7 +285,7 @@ async function runSmoke(flags, config) {
       write_without_verified_identity_failed: true,
       write_without_verified_identity_code: 'USER_AUTH_REQUIRED',
       verified_session_created_checkout_session: false,
-      model_supplied_identity_ignored: false,
+      model_supplied_identity_refused: false,
     },
     identity: {
       user_ref_source: 'verified_session_or_test_identity',
@@ -291,17 +310,29 @@ async function runSmoke(flags, config) {
 
   if (flags.full) {
     assertCanRunVerifiedSession(config);
+    // 1) SPOOF: model-asserted identity/money fields must be REFUSED loudly (declared-schema guard,
+    //    PR #2103) — never silently stripped, never priced.
+    const spoofed = await mcp(config, rpc('tools/call', {
+      name: 'create_checkout_session',
+      arguments: spoofedCreateSessionArgs(config),
+    }, 4), identityHeaders(config));
+    const spoofBody = JSON.stringify(parseToolText(spoofed?.result));
+    if (spoofed?.result?.isError !== true || !spoofBody.includes('INVALID_ARGUMENTS') || !spoofBody.includes('user_ref')) {
+      throw new SmokeError('Spoofed create_checkout_session (model-supplied identity/amount) was not refused with INVALID_ARGUMENTS', { body: redactValue(spoofed) });
+    }
+    evidence.remote_mcp.model_supplied_identity_refused = true;
+    evidence.identity.body_identity_rejected = true;
+
+    // 2) CLEAN: the declared shape, on the verified session, must still mint a session.
     const create = await mcp(config, rpc('tools/call', {
       name: 'create_checkout_session',
       arguments: createSessionArgs(config),
-    }, 4), identityHeaders(config));
+    }, 5), identityHeaders(config));
     const result = parseToolText(create?.result);
     if (create?.result?.isError === true || !result?.session_id) {
       throw new SmokeError('Verified remote MCP create_checkout_session did not return a session', { body: redactValue(create) });
     }
     evidence.remote_mcp.verified_session_created_checkout_session = true;
-    evidence.remote_mcp.model_supplied_identity_ignored = true;
-    evidence.identity.body_identity_rejected = true;
 
     assertCanRunConfirmation(config);
     const unsigned = await postJson(`${config.base}/checkout/confirm`, {

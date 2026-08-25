@@ -314,9 +314,11 @@ function amountMinorFromSession(session) {
 }
 
 function createSessionArgs(config) {
+  // NOTE: no `currency` here. QUOTE_SCHEMA does not declare it (the locked quote's currency comes from the
+  // server-side pricing, never from the caller) — it was silently dropped before the declared-schema guard,
+  // and is refused by name since PR #2103. config.currency is still used for the paid-leg amount assertions.
   const quote = {
     merchant_id: config.merchantId,
-    currency: config.currency,
     items: [{
       product_id: config.productId,
       ...(config.variantId ? { variant_id: config.variantId } : {}),

@@ -35,7 +35,7 @@ function validEvidence(overrides = {}) {
       write_without_verified_identity_failed: true,
       write_without_verified_identity_code: 'USER_AUTH_REQUIRED',
       verified_session_created_checkout_session: true,
-      model_supplied_identity_ignored: true,
+      model_supplied_identity_refused: true,
     },
     identity: {
       user_ref_source: 'oauth_sub',

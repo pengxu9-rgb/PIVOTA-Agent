@@ -148,6 +148,19 @@ describe('remote MCP protocol-edge smoke script', () => {
             });
             return;
           }
+          // Emulate the declared-schema guard (PR #2103): model-supplied identity in tool args is an
+          // UNDECLARED argument and the real gateway refuses the whole call by name.
+          if (body.params.arguments?.user_ref !== undefined) {
+            json(res, 200, {
+              jsonrpc: '2.0',
+              id: body.id,
+              result: {
+                isError: true,
+                content: [{ type: 'text', text: JSON.stringify({ error: { code: 'INVALID_ARGUMENTS', message: 'unknown arguments "user_ref", "acp_session_id", "quote.currency", "quote.items[0].amount"' } }) }],
+              },
+            });
+            return;
+          }
           json(res, 200, {
             jsonrpc: '2.0',
             id: body.id,
@@ -185,12 +198,13 @@ describe('remote MCP protocol-edge smoke script', () => {
       });
       const evidence = JSON.parse(stdout);
       expect(evidence.remote_mcp.verified_session_created_checkout_session).toBe(true);
-      expect(evidence.remote_mcp.model_supplied_identity_ignored).toBe(true);
+      expect(evidence.remote_mcp.model_supplied_identity_refused).toBe(true);
       expect(evidence.identity.body_identity_rejected).toBe(true);
       expect(evidence.confirmation_action.unsigned_action_rejected).toBe(true);
       expect(evidence.confirmation_action.signed_user_action_minted_token).toBe(true);
       expect(JSON.stringify(evidence)).not.toContain('confirm_token_should_not_be_output');
-      expect(toolsCalled).toEqual(['create_checkout_session', 'create_checkout_session']);
+      // no-identity probe, spoofed probe (refused), clean create — three calls, all create_checkout_session
+      expect(toolsCalled).toEqual(['create_checkout_session', 'create_checkout_session', 'create_checkout_session']);
       expect(toolsCalled).not.toContain('complete_checkout_session');
     } finally {
       server.close();

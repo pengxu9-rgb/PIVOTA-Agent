@@ -165,6 +165,10 @@ test("findUndeclaredArguments: walking rules", () => {
     },
   };
   assert.deepEqual(findUndeclaredArguments(schema, { a: { b: "ok" }, list: [{ x: 1 }], open: { junk: 1 } }), []);
+  // absent additionalProperties = permissive (the JSON Schema default) — strictness requires the EXPLICIT
+  // `additionalProperties: false` declaration, not merely the presence of `properties`. (Kills the
+  // `!== true` mutant, which no published schema can distinguish from `=== false` today.)
+  assert.deepEqual(findUndeclaredArguments({ type: "object", properties: { k: { type: "string" } } }, { k: "v", extra: 1 }), []);
   assert.deepEqual(
     findUndeclaredArguments(schema, { zzz: 1, a: { c: 2 }, list: [{ x: 1 }, { y: 2 }] }).map((v) => v.path),
     ["zzz", "a.c", "list[1].y"],
