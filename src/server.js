@@ -35852,13 +35852,51 @@ app.get('/healthz/gemini', (req, res) => {
     const gate = getGeminiGlobalGate();
     const snap = gate.snapshot();
     const reasons = [];
-    if (Number(snap.gate.keyCount || 0) <= 0) reasons.push('missing_keys');
+    // Under Vertex the key pool is legitimately empty - auth is ADC, not API keys - so an
+    // empty pool is only a problem on the AI Studio path. The STARTUP check already knew
+    // this (see the 'no API keys expected' branch) but this endpoint did not, so a correctly
+    // configured Vertex deployment reported ok:false / missing_keys forever.
+    //
+    // That is not a cosmetic mismatch. A 2026-08-22 security audit read this endpoint, saw
+    // missing_keys, and concluded a credential had been dropped during the Railway->GCP
+    // migration. Nothing had been dropped: both platforms authenticate the same way, and
+    // both reported ok:false. A health endpoint that is wrong about health costs more than
+    // one that does not exist, because people act on it.
+    // The MODE is decided by vertexEnabled() alone, because that is what actually picks the wire
+    // path - geminiClientOptions(), restTarget(), embedTarget() and openAiCompatHeaders() all
+    // branch on it and never consult credential health. Deriving auth_mode from "enabled AND
+    // healthy" would label a BROKEN Vertex deployment 'ai_studio_api_key' and send whoever is
+    // debugging to hunt for GEMINI_API_KEY, a variable that is deliberately unused there. That is
+    // the same misdirection this endpoint is being fixed for, merely relocated.
+    //
+    // READINESS comes from the observed probe, never from configuration. credentialsAvailable()
+    // returns true on Cloud Run from the presence of K_SERVICE alone, so gating on it would trade
+    // a false red for a false GREEN on the one platform production runs on - and green is the
+    // direction people act on less.
+    const vertexOn = vertexGemini.vertexEnabled();
+    const credentialState = vertexGemini.credentialProbeState();
+    if (vertexOn) {
+      if (credentialState === 'failed') reasons.push('vertex_credentials_unavailable');
+      // 'pending' means no token mint has been observed yet. Reporting ready on that would be the
+      // configured-therefore-fine guess again; the probe is started by the call above and by
+      // startup, so this resolves rather than sticking.
+      else if (credentialState !== 'ok') reasons.push('vertex_credentials_unverified');
+    } else if (Number(snap.gate.keyCount || 0) <= 0) {
+      reasons.push('missing_keys');
+    }
     if (snap.gate.circuitOpen) reasons.push('circuit_open');
     const ready = reasons.length === 0;
     return res.json({
       ok: ready,
       ready,
       reasons,
+      auth_mode: vertexOn ? 'vertex_adc' : 'ai_studio_api_key',
+      vertex_project: vertexOn ? vertexGemini.vertexProject() || null : null,
+      credential_state: credentialState,
+      // Name the thing that is genuinely missing. The module already composes this sentence for
+      // every Vertex misconfiguration; the old endpoint had it available and never called it.
+      credential_detail:
+        vertexOn && credentialState !== 'ok' ? vertexGemini.missingCredentialMessage() : null,
       circuit_open: snap.gate.circuitOpen,
       concurrency_max: snap.gate.concurrencyMax,
       rate_per_min: snap.gate.ratePerMin,
@@ -52935,6 +52973,15 @@ if (require.main === module) {
 
       // Gemini gate startup check
       try {
+        // FIRST in this block, before anything that can throw. Behind getGeminiGlobalGate() and
+        // snapshot() it was skipped whenever either threw - the catch below only logs a warning -
+        // leaving readiness 'pending' until the first health request happened to start it.
+        //
+        // Starting it at boot is what keeps 'pending' a boot-window state instead of the answer an
+        // uptime check sees. It is safe to call here precisely because the readiness probe writes
+        // its OWN state: an early failure reports red and retries, and cannot disable a Gemini call
+        // the way routing this through accessToken() would have.
+        vertexGemini.credentialProbeState();
         const gate = getGeminiGlobalGate();
         const snap = gate.snapshot();
         if (snap.gate.keyCount === 0) {

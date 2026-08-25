@@ -241,6 +241,99 @@ function credentialsAvailable(apiKey) {
   return false;
 }
 
+/**
+ * The OBSERVED credential state, for readiness reporting. 'ok' | 'failed' | 'pending' |
+ * 'not_applicable'.
+ *
+ * `credentialsAvailable()` answers a different question - "should a call be attempted" - and
+ * before any probe resolves it answers from CONFIGURATION. That is the right trade for a call
+ * gate: it fails closed only when nothing is configured, and waving a caller through to a clean
+ * skip beats a mid-request throw.
+ *
+ * It is the wrong answer for a health endpoint, and dangerously so on the platform production
+ * actually runs on. `credentialSourceConfigured()` returns true on the bare presence of
+ * `K_SERVICE`, which Cloud Run injects into every container. So a service with no usable
+ * credential at all reports available, the `startProbe()` line below it is never reached,
+ * `adcProbe` stays null for the life of the process, and readiness would report GREEN with no
+ * credential resolving at all. Trading a false red for a false green is not a fix.
+ *
+ * WHAT THIS DOES NOT PROVE. A minted token is AUTHENTICATION, not AUTHORIZATION. On Cloud Run the
+ * metadata server mints one for the runtime service account unconditionally - including a service
+ * account with no aiplatform permission, or none on GOOGLE_CLOUD_PROJECT. 'ok' therefore means
+ * "a credential resolves", not "Gemini calls will succeed"; a 403-ing gateway still reads green
+ * here. Closing that needs a cheap authorized call, which is a bigger change than this endpoint
+ * warrants today. The narrower claim is still the one that was wrong before, and worth making.
+ *
+ * So this reports only what was actually observed, and - unlike the call gate - it always starts
+ * the probe, which is what makes the observation eventually exist on a runtime carrying those env
+ * markers. Callers get 'pending' until a token mint has been attempted, never a
+ * configured-therefore-fine guess.
+ */
+function credentialProbeState() {
+  if (!vertexEnabled()) return 'not_applicable';
+  if (!vertexProject()) return 'failed';
+  // Checked BEFORE the observed results below, not after. A malformed inline credential is
+  // decidable synchronously and is a definite configuration error, so it should be the answer an
+  // operator gets; sitting behind `adcProbe !== null` made this branch unreachable for the whole
+  // life of any process that had already resolved a probe.
+  if (credentialsJson()) {
+    try {
+      parsedCredentials();
+    } catch {
+      return 'failed';
+    }
+  }
+  // Real traffic is the best evidence available: adcProbe is written by accessToken() on an actual
+  // call. READ it here, never write it - see startReadinessProbe().
+  if (adcProbe !== null) return adcProbe ? 'ok' : 'failed';
+  if (readinessProbe !== null) return readinessProbe ? 'ok' : 'failed';
+  startReadinessProbe();
+  return 'pending';
+}
+
+/**
+ * Observe whether a token can be minted, WITHOUT touching the call gate's state.
+ *
+ * The first version of this called startProbe(), which routes through accessToken(), which records
+ * its result into `adcProbe` - the variable credentialsAvailable() latches on. That turned a health
+ * check into an actuator. On Cloud Run credentialsAvailable() previously never consulted a probe at
+ * all (credentialSourceConfigured() is true from K_SERVICE, so it short-circuits above the probe),
+ * so a container whose metadata server, secret volume or WIF exchange was a beat behind at boot
+ * self-healed on the first real request. Probing at startup and writing adcProbe=false on that one
+ * transient failure closed the gate for every Gemini call site for the life of the process, with no
+ * retry - `probeStarted` stays true, and a closed gate means no caller ever reaches accessToken()
+ * to re-observe. Silently, too: startProbe() swallows the error.
+ *
+ * So readiness keeps its own result. A failure here is reported and retried; it cannot disable
+ * anything. Success is sticky; failure is re-probed on a cooldown so the endpoint recovers on its
+ * own rather than reporting a stale red.
+ */
+function startReadinessProbe() {
+  if (readinessProbeInFlight || readinessProbe === true) return;
+  const now = Date.now();
+  if (readinessProbeAt && now - readinessProbeAt < READINESS_RETRY_MS) return;
+  readinessProbeInFlight = true;
+  readinessProbeAt = now;
+  (async () => {
+    try {
+      const token = await googleAuthForVertex().getAccessToken();
+      readinessProbe = Boolean(token);
+      if (!token) throw new Error('VERTEX_ADC_NO_TOKEN');
+    } catch (err) {
+      readinessProbe = false;
+      if (!warnedReadinessProbe) {
+        warnedReadinessProbe = true;
+        // Once, and only from the readiness path. The old behaviour reported `missing_keys` while
+        // saying nothing about why, which is how a migration got blamed for a credential nobody
+        // had dropped.
+        console.error(`[vertexGemini] readiness probe could not mint a token: ${err && err.message}`);
+      }
+    } finally {
+      readinessProbeInFlight = false;
+    }
+  })();
+}
+
 // The only image-generation model that resolves on Vertex for this project,
 // verified by probing :generateContent in both us-central1 and global. Every
 // AI Studio "-image-preview" id 404s there, as do the imagen-* ids.
@@ -299,6 +392,10 @@ function resetCredentialsCache() {
   cachedAuth = null;
   adcProbe = null;
   probeStarted = false;
+  readinessProbe = null;
+  readinessProbeInFlight = false;
+  readinessProbeAt = 0;
+  warnedReadinessProbe = false;
   warnedBadCredential = false;
   warnedProjectMismatch = false;
 }
@@ -320,6 +417,13 @@ let cachedAuth = null;
 // null = never probed; true/false = observed result of an actual token mint.
 let adcProbe = null;
 let probeStarted = false;
+// Readiness state, deliberately SEPARATE from adcProbe. /healthz/gemini must be able to observe
+// the credential without being able to disable it.
+let readinessProbe = null;
+let readinessProbeInFlight = false;
+let readinessProbeAt = 0;
+let warnedReadinessProbe = false;
+const READINESS_RETRY_MS = 30000;
 // Log an unusable inline credential once per process, not once per call.
 let warnedBadCredential = false;
 let warnedProjectMismatch = false;
@@ -525,6 +629,7 @@ module.exports = {
   vertexLocation,
   geminiClientOptions,
   credentialsAvailable,
+  credentialProbeState,
   clientCacheKey,
   accessToken,
   credentialSourceConfigured,
