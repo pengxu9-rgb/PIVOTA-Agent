@@ -28,6 +28,12 @@ on:
 permissions:
   contents: read
 
+# push and the hourly cron can otherwise overlap and race to report on the same state. The
+# workflow this replaces had both of these; losing them in the rewrite would be a regression.
+concurrency:
+  group: gateway-prod-drift
+  cancel-in-progress: true
+
 env:
   # How long production may lag main before this job goes red. Long enough that a normal
   # merge-then-deploy never trips it; short enough that a forgotten deploy is caught the same
@@ -37,6 +43,7 @@ env:
 jobs:
   drift:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:
@@ -51,10 +58,23 @@ jobs:
           filter: blob:none
 
       - name: Compare live gateway against this commit
+        # Explicit, because a `run:` without it gets GitHub's default `bash -e {0}` - errexit but
+        # NOT pipefail - while `shell: bash` is `bash --noprofile --norc -eo pipefail {0}`. Both
+        # carry -e; `set -uo pipefail` below can add flags but cannot remove it. Naming the shell
+        # is what makes the pipefail half true in CI rather than only in the author's terminal,
+        # which is where this script was first verified. Every unguarded command below was audited
+        # against errexit: the failure paths still exit non-zero, and the two success paths are
+        # explicit `exit 0`s.
+        shell: bash
         run: |
           set -uo pipefail
           MAIN_SHA="$(git rev-parse HEAD)"
           echo "main:      $MAIN_SHA"
+          # workflow_dispatch checks out the DISPATCHED ref, so HEAD is not necessarily main while
+          # every message below says "main". Name it rather than quietly comparing against a branch.
+          if [ "${GITHUB_REF_NAME:-main}" != "main" ]; then
+            echo "::warning::comparing the gateway against '${GITHUB_REF_NAME}', not main - this run was dispatched from another ref"
+          fi
 
           # gateway.pivota.cc, NOT agent.pivota.cc. The latter is the Vercel frontend and 404s on
           # /health - pointing at it is what made the previous guard useless.
@@ -68,12 +88,62 @@ jobs:
           # backend reports. Resolving it through git rather than comparing strings is what makes
           # the ancestry checks below work at all, and it fails loudly if the short sha is unknown
           # or ambiguous instead of silently comparing unequal.
-          LIVE_SHORT="$(printf '%s' "$LIVE_JSON" | python3 -c 'import json,sys; print((json.load(sys.stdin).get("version") or {}).get("commit",""))')"
+          # `.get("commit","")` defaults only on a MISSING key, so a JSON null printed as the string
+          # "None" and sailed past the emptiness check below - and src/config/platform.js states
+          # outright that Cloud Run injects no commit sha, so `null` is exactly what an operator who
+          # forgets PIVOTA_COMMIT_SHA gets. It then read as "someone force-pushed". Take the value
+          # only if it is genuinely a string, and treat an unparseable body as absent rather than
+          # letting a traceback be the diagnosis.
+          # Indented to the block scalar's level on purpose: YAML strips those 10 spaces, so
+          # python still receives column-0 statements. Lines written flush-left here would
+          # TERMINATE the block scalar and silently truncate this whole script.
+          LIVE_SHORT="$(printf '%s' "$LIVE_JSON" | python3 -c '
+          import json, sys
+          try:
+              d = json.load(sys.stdin)
+          except Exception:
+              d = {}
+          v = (d.get("version") or {}).get("commit") if isinstance(d, dict) else None
+          print(v if isinstance(v, str) else "")')"
           if [ -z "$LIVE_SHORT" ]; then
-            echo "::error::/health returned no version.commit - cannot verify what the gateway runs"
+            echo "::error::/health returned no usable version.commit - cannot verify what the gateway runs"
             exit 1
           fi
+
+          # VALIDATE BEFORE RESOLVING. This value arrives over HTTP from a remote host, and
+          # `git rev-parse` accepts revision EXPRESSIONS, not just shas: HEAD, @, main, HEAD@{0} and
+          # any tag name all resolve. In an Actions checkout they resolve to this very commit, so a
+          # /health reporting commit "HEAD" would make this alarm report "running main" forever
+          # while the gateway rots - strictly worse than having no alarm.
+          #
+          # That is not only an adversarial case. src/server.js builds SERVICE_GIT_SHA from
+          # PIVOTA_COMMIT_SHA || RAILWAY_GIT_COMMIT_SHA || COMMIT_SHA with no validation, and the
+          # deploy line this job prints below is `COMMIT_SHA=$(git rev-parse HEAD)` - paste that
+          # inside single quotes and production genuinely reports the literal string HEAD.
+          #
+          # Constraining to hex also removes the newline-injection route into ::error:: / ::notice::
+          # workflow commands, since the value is echoed further down.
+          case "$LIVE_SHORT" in
+            *[!0-9a-fA-F]*)
+              echo "::error::/health reported a version.commit that is not a hex sha; refusing to resolve it as a git revision"
+              exit 1 ;;
+          esac
+          if [ "${#LIVE_SHORT}" -lt 7 ] || [ "${#LIVE_SHORT}" -gt 40 ]; then
+            echo "::error::/health reported a version.commit of ${#LIVE_SHORT} hex chars - not a usable commit id"
+            exit 1
+          fi
+
           LIVE_SHA="$(git rev-parse --verify --quiet "${LIVE_SHORT}^{commit}" || true)"
+          # Hex alone still leaves one gap: a BRANCH literally named e.g. `deadbeef` would resolve
+          # to something that is not the commit it spells. Require the resolved sha to actually
+          # begin with what production reported.
+          if [ -n "$LIVE_SHA" ]; then
+            case "$(printf '%s' "$LIVE_SHA" | tr 'A-Z' 'a-z')" in
+              "$(printf '%s' "$LIVE_SHORT" | tr 'A-Z' 'a-z')"*) ;;
+              *) echo "::warning::$LIVE_SHORT resolved to $LIVE_SHA, which does not start with it - a ref is shadowing the sha. Treating as unknown."
+                 LIVE_SHA="" ;;
+            esac
+          fi
           echo "live prod: ${LIVE_SHORT}${LIVE_SHA:+ -> $LIVE_SHA}"
 
           if [ -n "$LIVE_SHA" ] && [ "$LIVE_SHA" = "$MAIN_SHA" ]; then
@@ -92,22 +162,34 @@ jobs:
           # change what runs even though nothing in src/ moved. Copying the backend's list verbatim
           # would have quietly exempted them.
           if [ -n "$LIVE_SHA" ]; then
-            RUNTIME_CHANGED="$(git diff --name-only "$LIVE_SHA..HEAD" \
+            # The git call is SEPARATE from the filtering, and its failure is fatal. Chaining them
+            # as `git diff | grep -v ... || true` needs that `|| true` because grep -v exits 1 when
+            # it filters everything out - and with pipefail the same `|| true` swallows a failed
+            # `git diff` into an identical empty result, which this block then reports as
+            # "none of them touch code the container runs: no deploy needed", exit 0. That is the
+            # alarm going GREEN on a drifted production because a git command failed, and it is a
+            # live mode here: the checkout is `filter: blob:none`, so git talks to a promisor
+            # remote and a transient fetch failure is enough.
+            GAP="$(git diff --name-only "$LIVE_SHA..HEAD")" || {
+              echo "::error::git diff $LIVE_SHA..HEAD failed - cannot classify the gap, so not calling it clean"
+              exit 1
+            }
+            RUNTIME_CHANGED="$(printf '%s\n' "$GAP" \
               | grep -vE '^(docs/|\.github/|tests/|README|CHANGELOG)' \
               | grep -vE '\.md$' || true)"
             if [ -z "$RUNTIME_CHANGED" ]; then
               echo "the gateway is $(git rev-list --count "$LIVE_SHA..HEAD") commit(s) behind main,"
               echo "but none of them touch code the container runs:"
-              git diff --name-only "$LIVE_SHA..HEAD" | sed 's/^/  /'
+              printf '%s\n' "$GAP" | sed 's/^/  /'
               echo "no deploy needed."
               exit 0
             fi
             echo "runtime-affecting files not in the gateway:"
             printf '%s\n' "$RUNTIME_CHANGED" | sed 's/^/  /'
           else
-            echo "::warning::$LIVE_SHORT is not in this repository at all. With full history that"
-            echo "means the gateway runs a build from a commit that was force-pushed away, or from"
-            echo "another repo. Treating as runtime drift."
+            # One workflow command, one line - a `::warning::` prefix annotates only the line it is
+            # on, so the continuation lines were printing as plain log and losing the annotation.
+            echo "::warning::$LIVE_SHORT is not in this repository at all. With full history that means the gateway runs a build from a commit that was force-pushed away, or from another repo. Treating as runtime drift."
           fi
 
           # A merge that landed seconds ago is a PENDING DEPLOY, not drift. Deploys here are
@@ -135,6 +217,13 @@ jobs:
             rm -f "$RT_LIST"
             if [ -n "$LANDED" ]; then
               AGE_MIN=$(( ( $(date -u +%s) - LANDED ) / 60 ))
+              # A future-dated committer date makes AGE_MIN negative, which satisfies `-lt GRACE`
+              # forever - a permanently green alarm from a clock-skewed or hand-crafted commit.
+              # Anomalous timestamps get no grace at all rather than infinite grace.
+              if [ "$AGE_MIN" -lt 0 ]; then
+                echo "::warning::the landing commit is dated in the future (${AGE_MIN}m) - ignoring the deploy window"
+                AGE_MIN="$GRACE_MINUTES"
+              fi
               if [ "$AGE_MIN" -lt "$GRACE_MINUTES" ]; then
                 echo "::notice::undeployed runtime code landed on main ${AGE_MIN}m ago, inside the ${GRACE_MINUTES}m deploy window - not alarming yet. The hourly run will."
                 exit 0
