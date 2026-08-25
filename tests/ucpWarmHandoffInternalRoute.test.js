@@ -163,17 +163,28 @@ describe('ucpWarmHandoffInternalRoute — products.json variant fallback + memo'
     variants: [{ id: 51895645012184, available: true }],
   };
 
-  // URL-aware fixture matching Shopify's real shapes: the resolver's fast path hits
-  // /products/<handle>.json ({ product: {...} }); the listing fallback hits /products.json
-  // ({ products: [...] }).
+  // URL-aware fixture matching Shopify's real shapes, MEASURED 2026-08-25 on all six warm-handoff
+  // brands. The three public surfaces do NOT agree, and the differences are load-bearing here:
+  //   /products/<handle>.js    -> the product object DIRECTLY, variants carry `available`
+  //   /products/<handle>.json  -> { product: {...} }, variants OMIT `available` entirely
+  //   /products.json           -> { products: [...] }, variants carry `available`
+  // The resolver's fast path asks `.js` first precisely because it is the only per-handle surface
+  // that can answer the stock question. Do not "simplify" this fixture by giving `.json` an
+  // `available` field it never sends — that is what let an inert preference ship green.
   function fetchImplReturningProducts() {
-    return jest.fn().mockImplementation(async (url) => ({
-      ok: true,
-      status: 200,
-      json: async () => (String(url).includes(`/products/${PRODUCT_NODE.handle}.json`)
-        ? { product: PRODUCT_NODE }
-        : { products: [PRODUCT_NODE] }),
-    }));
+    const stripAvailable = (node) => ({
+      ...node,
+      variants: node.variants.map(({ available, ...rest }) => rest),
+    });
+    return jest.fn().mockImplementation(async (url) => {
+      const u = String(url);
+      const body = u.includes(`/products/${PRODUCT_NODE.handle}.js`)
+        ? PRODUCT_NODE
+        : (u.includes(`/products/${PRODUCT_NODE.handle}.json`)
+          ? { product: stripAvailable(PRODUCT_NODE) }
+          : { products: [PRODUCT_NODE] });
+      return { ok: true, status: 200, json: async () => body };
+    });
   }
 
   test('product_handle resolves via products.json; second call hits the memo (single fetch)', async () => {

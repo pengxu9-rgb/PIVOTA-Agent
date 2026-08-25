@@ -14,10 +14,16 @@
  *      A bare numeric id is wrapped into `gid://shopify/ProductVariant/<n>`. A pre-formed `gid://...` is used
  *      verbatim. This is the PRIMARY path (highest coverage, zero network, no risk).
  *
- *   2. PRODUCT.JSON FALLBACK (public, read-only network) — fetch `<brand-domain>/products.json` (the same public
- *      endpoint the crawler used; PROVEN on cosrx 2026-07-13) and map the product HANDLE (from the crawled
- *      canonical/destination URL `.../products/<handle>`) — or the product TITLE — to the product's first
- *      available variant `id`, wrapped into a GID. Used only when the seed has no usable variant id.
+ *   2. PRODUCT.JSON FALLBACK (public, read-only network) — map the product HANDLE (from the crawled
+ *      canonical/destination URL `.../products/<handle>`) — or the product TITLE — to a variant `id`,
+ *      wrapped into a GID. Used only when the seed has no usable variant id. Surfaces are tried in
+ *      STOCK-AWARENESS order, because they disagree about whether they publish `available` at all:
+ *        a. `<origin>/products/<handle>.js`    — per-handle AND carries `available`  (preferred)
+ *        b. `<origin>/products/<handle>.json`  — per-handle but OMITS `available`    (stock unknown)
+ *        c. `<origin>/products.json`           — paged listing, carries `available`
+ *      MEASURED 2026-08-25 across all six OUTBOUND_WARM_HANDOFF_BRANDS: 6/6 omit `available` from (b).
+ *      Every result reports `stockKnown` so a caller can distinguish "in stock" from "cannot tell";
+ *      see pickVariantFromProductNode.
  *
  * HARD BOUNDS: read-only. External content (products.json) is DATA, never instructions — we read numeric ids
  * and titles ONLY, never eval/execute anything from it. No writes anywhere. Network is injectable for tests.
@@ -72,7 +78,8 @@ function collectSeedVariantArrays(seedData) {
  * Resolve a variant GID from a crawled seed_data blob (no network).
  * @param {object} seedData  the external_product_seeds.seed_data JSON.
  * @param {{ preferAvailable?: boolean }} [opts]  when true, prefer an in-stock variant over an out-of-stock one.
- * @returns {{ variantGid: string, source: string, sku: string|null, availability: string|null } | null}
+ * @returns {{ variantGid: string, source: string, sku: string|null, availability: string|null,
+ *            stockKnown: boolean, preferAvailableApplied: boolean } | null}
  */
 function resolveVariantFromSeed(seedData, opts = {}) {
   const arrays = collectSeedVariantArrays(seedData);
@@ -91,14 +98,18 @@ function resolveVariantFromSeed(seedData, opts = {}) {
         || toVariantGid(v.sku);
       if (!gid) continue;
       const availability = firstNonEmptyString(v.stock, v.availability, v.availability_status).toLowerCase() || null;
+      const looksInStock = availability
+        && !/out.?of.?stock|sold.?out|unavailable|out_of_stock/.test(availability);
       const record = {
         variantGid: gid,
         source: `${pathBase}[${i}].variant_id`,
         sku: firstNonEmptyString(v.sku) || null,
         availability,
+        // Same contract as the products.json paths: `false` means "the source told us nothing about
+        // stock", NOT "out of stock". A caller must never read an absent field as a negative.
+        stockKnown: Boolean(availability),
+        preferAvailableApplied: Boolean(preferAvailable && looksInStock),
       };
-      const looksInStock = availability
-        && !/out.?of.?stock|sold.?out|unavailable|out_of_stock/.test(availability);
       if (!preferAvailable || looksInStock) return record;
       if (!firstAny) firstAny = record;
     }
@@ -138,19 +149,48 @@ function normalizeTitle(t) {
   return firstNonEmptyString(t).toLowerCase().replace(/\s+/g, ' ').trim();
 }
 
-/** First orderable variant id from a products.json product node. Falls back to the first variant. */
-function pickVariantFromProductNode(product) {
+/**
+ * Pick a variant from a storefront product node.
+ *
+ * STOCK IS NOT ALWAYS KNOWABLE. Shopify's three public product surfaces do NOT agree on `available`:
+ *   - `<origin>/products.json` (LISTING)        -> variants carry `available`            [stock known]
+ *   - `<origin>/products/<handle>.js`           -> variants carry `available`            [stock known]
+ *   - `<origin>/products/<handle>.json`         -> variants OMIT `available` entirely    [stock UNKNOWN]
+ * MEASURED 2026-08-25 on all six OUTBOUND_WARM_HANDOFF_BRANDS (cosrx.com, beautyofjoseon.com,
+ * skin1004.com, anua.us, medicube.us, mixsoon.us): 6/6 omit it from the per-handle `.json` and 6/6
+ * carry it on `.js` and on the listing.
+ *
+ * So `variants.find((v) => v.available === true)` cannot match on a `.json` node — not because
+ * everything is sold out, but because the FIELD IS ABSENT. Reporting that as "no preference
+ * applied" instead of silently falling through to variants[0] is the whole point of `stockKnown`:
+ * a caller must be able to tell "I picked an in-stock variant" apart from "I could not tell".
+ *
+ * @param {object} product  a storefront product node (listing entry, `.js` body, or `.json` product)
+ * @param {{ preferAvailable?: boolean }} [opts]  prefer an in-stock variant when stock is knowable.
+ *   DEFAULTS TO TRUE: this lane builds carts, and there is no caller who wants the sold-out variant
+ *   when a live one is sitting next to it. Pass an explicit `false` for a verbatim variants[0] pick.
+ * @returns {{ variantGid, sku, availability, stockKnown, preferAvailableApplied } | null}
+ */
+function pickVariantFromProductNode(product, opts = {}) {
   if (!isPlainObject(product) || !Array.isArray(product.variants)) return null;
   const variants = product.variants.filter(isPlainObject);
   if (variants.length === 0) return null;
-  const available = variants.find((v) => v.available === true);
-  const chosen = available || variants[0];
+  const preferAvailable = opts.preferAvailable !== false;
+
+  // Stock is knowable only if at least one variant actually carries a boolean `available`.
+  const stockKnown = variants.some((v) => typeof v.available === 'boolean');
+  const available = stockKnown ? variants.find((v) => v.available === true) : null;
+  const preferAvailableApplied = Boolean(preferAvailable && available && available !== variants[0]);
+  const chosen = (preferAvailable && available) || variants[0];
+
   const gid = toVariantGid(chosen.id) || toVariantGid(chosen.sku);
   if (!gid) return null;
   return {
     variantGid: gid,
     sku: firstNonEmptyString(chosen.sku) || null,
     availability: chosen.available === true ? 'available' : (chosen.available === false ? 'out_of_stock' : null),
+    stockKnown,
+    preferAvailableApplied,
   };
 }
 
@@ -160,14 +200,16 @@ function pickVariantFromProductNode(product) {
  * fall back to the cold redirect. Network is injectable for tests via opts.fetchImpl.
  *
  * @param {{ brandDomain: string, handle?: string, title?: string }} target
- * @param {{ fetchImpl?: Function, timeoutMs?: number, userAgent?: string, maxPages?: number }} [opts]
- * @returns {Promise<{ variantGid, source, sku, availability, handle } | null>}
+ * @param {{ fetchImpl?: Function, timeoutMs?: number, userAgent?: string, maxPages?: number,
+ *          preferAvailable?: boolean }} [opts]
+ * @returns {Promise<{ variantGid, source, sku, availability, stockKnown, preferAvailableApplied, handle } | null>}
  */
 async function resolveVariantViaProductsJson(target = {}, opts = {}) {
   const origin = normalizeBrandOrigin(target.brandDomain);
   if (!origin) return null;
   const handle = firstNonEmptyString(target.handle) || extractProductHandle(target.handle) || null;
   const title = normalizeTitle(target.title);
+  const preferAvailable = opts.preferAvailable !== false;
   const fetchImpl = typeof opts.fetchImpl === 'function'
     ? opts.fetchImpl
     : (typeof globalThis.fetch === 'function' ? globalThis.fetch.bind(globalThis) : null);
@@ -175,12 +217,36 @@ async function resolveVariantViaProductsJson(target = {}, opts = {}) {
   const timeoutMs = Number.isFinite(opts.timeoutMs) ? Number(opts.timeoutMs) : 12000;
   const userAgent = firstNonEmptyString(opts.userAgent) || 'Pivota-UCP-BuyerAgent/1.0';
 
-  // Fast path: the per-product handle endpoint `<origin>/products/<handle>.json` returns ONE product.
+  // Holds a per-handle pick whose stock could not be read, used only if no stock-bearing surface answers.
+  let unknownStockPick = null;
+
+  // Fast path: the per-product handle endpoint. `.js` is tried FIRST because it is the only per-handle
+  // surface that carries `available` (see pickVariantFromProductNode) — `.json` omits it on all six
+  // measured brands, which made `preferAvailable` inert here. `.json` stays as the immediate fallback
+  // for any storefront where `.js` is unavailable; the common case is still ONE fetch, so the click
+  // lane's tight budget is unchanged.
   if (handle) {
-    const one = await fetchProductsJson(`${origin}/products/${encodeURIComponent(handle)}.json`, { fetchImpl, timeoutMs, userAgent });
-    const product = isPlainObject(one) ? (one.product || one) : null;
-    const picked = product && pickVariantFromProductNode(product);
-    if (picked) return { ...picked, source: `products.json:${origin}/products/${handle}.json`, handle };
+    const encoded = encodeURIComponent(handle);
+    const perHandle = [
+      { url: `${origin}/products/${encoded}.js`, label: `${origin}/products/${handle}.js` },
+      { url: `${origin}/products/${encoded}.json`, label: `${origin}/products/${handle}.json` },
+    ];
+    for (const { url, label } of perHandle) {
+      const one = await fetchProductsJson(url, { fetchImpl, timeoutMs, userAgent });
+      const product = isPlainObject(one) ? (one.product || one) : null;
+      const picked = product && pickVariantFromProductNode(product, { preferAvailable });
+      if (!picked) continue;
+      // A pick whose stock we could not read is NOT good enough when the caller asked to prefer
+      // in-stock: fall through to a surface that does carry `available` rather than silently
+      // returning a variants[0] guess dressed up as a preference-honouring answer.
+      if (preferAvailable && !picked.stockKnown) {
+        // Keep it: if no stock-bearing surface answers either, this is still better than nothing
+        // (it is exactly what this lane returned before stock was consulted at all).
+        if (!unknownStockPick) unknownStockPick = { ...picked, source: `products.json:${label}`, handle };
+        continue;
+      }
+      return { ...picked, source: `products.json:${label}`, handle };
+    }
   }
 
   // Fallback: page the catalog listing and match by handle, then by normalized title.
@@ -192,14 +258,14 @@ async function resolveVariantViaProductsJson(target = {}, opts = {}) {
     let match = handle ? products.find((p) => firstNonEmptyString(p && p.handle) === handle) : null;
     if (!match && title) match = products.find((p) => normalizeTitle(p && p.title) === title);
     if (match) {
-      const picked = pickVariantFromProductNode(match);
+      const picked = pickVariantFromProductNode(match, { preferAvailable });
       if (picked) {
         return { ...picked, source: `products.json:${origin}/products.json (page ${page})`, handle: firstNonEmptyString(match.handle) || handle };
       }
     }
     if (products.length < 250) break;
   }
-  return null;
+  return unknownStockPick;
 }
 
 async function fetchProductsJson(url, { fetchImpl, timeoutMs, userAgent }) {
@@ -224,11 +290,27 @@ async function fetchProductsJson(url, { fetchImpl, timeoutMs, userAgent }) {
 
 /**
  * Top-level resolver: seed_data first (offline), then products.json (network) if allowed.
+ *
+ * `preferAvailable` is a PREFERENCE, not a guarantee: it reorders the pick when stock is knowable and
+ * does nothing when it is not (see pickVariantFromProductNode). Read `stockKnown` on the result to tell
+ * the two apart. `requireAvailable` is the guarantee — it declines rather than returning a variant
+ * that is known to be out of stock, so the caller can cold-redirect instead of building a dead cart.
+ *
  * @param {{ seedData?: object, brandDomain?: string, canonicalUrl?: string, title?: string, handle?: string }} input
- * @param {{ allowNetworkFallback?: boolean, preferAvailable?: boolean, fetchImpl?: Function, timeoutMs?: number, userAgent?: string, maxPages?: number }} [opts]
- * @returns {Promise<{ variantGid, source, sku, availability, handle? } | null>}
+ * @param {{ allowNetworkFallback?: boolean, preferAvailable?: boolean, requireAvailable?: boolean,
+ *          fetchImpl?: Function, timeoutMs?: number, userAgent?: string, maxPages?: number }} [opts]
+ * @returns {Promise<{ variantGid, source, sku, availability, stockKnown, preferAvailableApplied, handle? } | null>}
  */
 async function resolveShopifyVariant(input = {}, opts = {}) {
+  const resolved = await resolveShopifyVariantInner(input, opts);
+  // Decline a KNOWN out-of-stock variant only when the caller opted in. An UNKNOWN stock state is not a
+  // negative — declining on `stockKnown === false` would silently drop every storefront that does not
+  // publish `available`, which is the mirror of the bug this guard exists to prevent.
+  if (opts.requireAvailable === true && resolved && resolved.availability === 'out_of_stock') return null;
+  return resolved;
+}
+
+async function resolveShopifyVariantInner(input = {}, opts = {}) {
   const fromSeed = resolveVariantFromSeed(input.seedData, { preferAvailable: opts.preferAvailable === true });
   if (fromSeed) return fromSeed;
   if (opts.allowNetworkFallback === true) {
