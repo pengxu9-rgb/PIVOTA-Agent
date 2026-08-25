@@ -9,9 +9,22 @@ This guide covers deploying the Pivota Agent Gateway to production environments,
 
 ## Production Deploy Policy (Source of Truth)
 
+> [!WARNING]
+> **SUPERSEDED 2026-08-25 — this describes the Railway era and is not how production ships.**
+> Since the 2026-08-22 cutover the production gateway is **GCP Cloud Run behind
+> `gateway.pivota.cc`**, built with `infra/gcp/cloudbuild.gateway.yaml` and deployed by
+> `infra/gcp/deploy_gateway.sh prod <sha>` (both in the `pivota-backend` repo). It does **not**
+> deploy on merge, by design.
+>
+> `pivota-agent-production.up.railway.app` is a retired standby. Its GitHub auto-deploy trigger was
+> removed on 2026-08-25, and `production-deploy-promote.yml` no longer runs on push — it only ever
+> verified the Railway host, so on merge it reported success the Cloud Run gateway had not earned.
+> Whether production runs `main` is answered by `.github/workflows/gateway-prod-drift.yml`.
+
 For this repo, production deploys must use **GitHub push to `main` + Railway auto-deploy or production deploy webhook**.
 
-- Allowed: merge to `main`, then wait for Railway production deployment triggered by GitHub integration or `.github/workflows/production-deploy-promote.yml`.
+- Historical (Railway era): merge to `main`, then wait for Railway auto-deploy. Neither that
+  trigger nor the `push` trigger on `production-deploy-promote.yml` exists any more.
 - Not allowed for normal flow: `railway up` to production.
 
 Reason: manual CLI deployment is easy to overwrite by later auto deploy and creates commit drift.
