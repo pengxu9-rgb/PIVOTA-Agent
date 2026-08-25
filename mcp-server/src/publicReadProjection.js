@@ -103,10 +103,17 @@ function pdpUrl(p, base) {
   return canonical && PIVOTA_HOST_RE.test(canonical) ? canonical : null;
 }
 function priceOf(p) {
-  const amount = finiteNum(p.price);
-  const currency = str(p.currency);
-  if (amount == null) return null;
-  return compact({ amount, currency });
+  // amount and currency travel together or not at all (the same invariant projectGetAlternatives enforces):
+  // a bare amount invites the reader to assume a currency, which fabricates a price when they differ. The
+  // upstream row union is multi-producer: seed-derived rows spell the pair price_amount/price_currency,
+  // merchant payloads sometimes carry currency_code, and one builder can emit a price with no currency key
+  // at all — so read every producer spelling before deciding the pair is incomplete, then withhold rather
+  // than serve half of it. Order matters: `currency` can arrive as '' (a backend coalesce default), which
+  // str() nulls so the fallback keys still get read.
+  const amount = finiteNum(p.price) ?? finiteNum(p.price_amount);
+  const currency = str(p.currency) ?? str(p.price_currency) ?? str(p.currency_code);
+  if (amount == null || currency == null) return null;
+  return { amount, currency };
 }
 const AVAILABILITY_IN_STOCK = new Set(['in_stock', 'in stock', 'instock', 'available']);
 const AVAILABILITY_OUT_OF_STOCK = new Set([

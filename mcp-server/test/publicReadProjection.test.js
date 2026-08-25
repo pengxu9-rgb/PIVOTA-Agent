@@ -51,9 +51,11 @@ test("projected search product exposes only the allowlisted keys", () => {
     for (const k of Object.keys(p)) {
       assert.ok(allowed.has(k), `unexpected key on product: ${k}`);
     }
-    // price, when present, is exactly {amount, currency?}
+    // price, when present, is exactly the complete {amount, currency} pair — never a bare amount
     if (p.price) {
       assert.equal(typeof p.price.amount, "number");
+      assert.equal(typeof p.price.currency, "string");
+      assert.ok(p.price.currency.length > 0);
       for (const k of Object.keys(p.price)) assert.ok(["amount", "currency"].includes(k));
     }
     assert.ok(["in_stock", "out_of_stock", "unknown"].includes(p.availability));
@@ -81,6 +83,49 @@ test("empty search returns a note, not an error shape", () => {
   const projected = projectSearchCatalog({ products: [] });
   assert.deepEqual(projected.products, []);
   assert.equal(typeof projected.note, "string");
+});
+
+// ---- price pair-or-absent on the summary surface (search_catalog + get_product) --------------------------
+// Same defect class as the get_alternatives fix below, one function up: priceOf feeds productSummary. The
+// upstream row union is multi-producer — seed-derived rows spell the pair price_amount/price_currency,
+// merchant payloads carry currency_code, one canonical builder emits price with NO currency key, and a
+// backend coalesce can emit currency:"". A bare {amount} invites the reader to assume a currency.
+
+test("search/product price never serves an amount without its currency, across every producer spelling", () => {
+  const project = (row) =>
+    projectSearchCatalog({ products: [{ product_id: "sig_p", title: "T", brand: "B", ...row }] }, { limit: 1 })
+      .products[0];
+
+  // Currency-less amount → the price is withheld entirely, not served half-dressed; the row itself survives.
+  const bare = project({ price: 49 });
+  assert.equal(bare.price, undefined, "an amount with no known currency must not surface");
+  assert.equal(bare.product_id, "sig_p", "withholding price must not drop the row");
+
+  // Empty-string currency (a backend coalesce default) is not a currency; fallback keys still get read.
+  assert.equal(project({ price: 49, currency: "" }).price, undefined);
+  assert.deepEqual(project({ price: 49, currency: "", price_currency: "EUR" }).price, { amount: 49, currency: "EUR" });
+
+  // Seed-lane spelling: price_amount / price_currency.
+  assert.deepEqual(project({ price_amount: 12, price_currency: "USD" }).price, { amount: 12, currency: "USD" });
+  // Merchant-payload spelling: currency_code.
+  assert.deepEqual(project({ price: 30, currency_code: "GBP" }).price, { amount: 30, currency: "GBP" });
+  // A widened amount with no currency under ANY spelling is still withheld.
+  assert.equal(project({ price_amount: 12 }).price, undefined);
+  // Canonical keys outrank the fallback spellings when both are present.
+  assert.deepEqual(
+    project({ price: 10, price_amount: 99, currency: "USD", price_currency: "EUR" }).price,
+    { amount: 10, currency: "USD" }
+  );
+  // Zero is a real amount, not an absent one.
+  assert.deepEqual(project({ price: 0, currency: "USD" }).price, { amount: 0, currency: "USD" });
+
+  // get_product shares priceOf: same invariant on the detail surface.
+  const detail = projectGetProduct({ product: { pivota_signature_id: "sig_d", title: "D", price: 18 } });
+  assert.equal(detail.price, undefined, "get_product must withhold a currency-less amount too");
+  assert.deepEqual(
+    projectGetProduct({ product: { pivota_signature_id: "sig_d", title: "D", price: 18, price_currency: "USD" } }).price,
+    { amount: 18, currency: "USD" }
+  );
 });
 
 // ---- get_product -----------------------------------------------------------------------------------------
