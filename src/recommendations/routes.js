@@ -8,6 +8,20 @@ const { loadRolesLatest, buildRoleNormalizer } = require('../layer2/dicts/roles'
 const { applyNormalization, buildRoleCandidatesFromDict, suggestRoleIdsForHint } = require('../layer2/kb/roleHintIntegrity');
 const { canonicalizeUrl, hostnameMatchesAllowlist, stableOfferIdFromCanonicalUrl, validateHttpUrlOrThrow } = require('../layer3/external/urlUtils');
 const { resolveExternalOffer } = require('../layer3/external/externalOfferResolver');
+const { isProduction } = require('../config/platform');
+
+/**
+ * Constant-time string comparison. Same shape as src/server.js and auroraBff/authStore.js.
+ *
+ * Buffers first, and a length check BEFORE timingSafeEqual - it throws on a length mismatch, so
+ * comparing raw would be both a crash and a length oracle. utf8, so a multi-byte header cannot
+ * collapse two different strings onto one buffer.
+ */
+function timingSafeEqualString(a, b) {
+  const bufA = Buffer.from(String(a), 'utf8');
+  const bufB = Buffer.from(String(b), 'utf8');
+  return bufA.length === bufB.length && bufA.length > 0 && crypto.timingSafeEqual(bufA, bufB);
+}
 
 function stableHashShort(input) {
   return crypto.createHash('sha256').update(String(input), 'utf8').digest('hex').slice(0, 12);
@@ -341,17 +355,24 @@ const NormalizeRequestSchema = z
 function mountRecommendationRoutes(app) {
   function requireInternalKey(req, res) {
     const expected = String(process.env.RECOMMENDATIONS_INTERNAL_KEY || '').trim();
-    const env = String(process.env.NODE_ENV || process.env.APP_ENV || '').toLowerCase();
-    const isProd = env === 'production' || env === 'prod';
+    // Production used to be decided from `NODE_ENV || APP_ENV`, and BOTH are unset on the
+    // production gateway - PIVOTA_ENV is what is actually set there. So `isProd` was always false,
+    // the CONFIG_MISSING refusal below was UNREACHABLE in production, and an empty key fell
+    // straight through to `return true`: an open internal route, one empty secret away, announcing
+    // nothing. It is armed today only because the secret happens to be mounted non-empty.
+    //
+    // isProduction() is the repo's own answer (src/config/platform.js) and the union every other
+    // caller already uses - including the Cloud Run fail-closed case, so a revision that loses
+    // PIVOTA_ENV is still treated as production instead of re-opening this.
     if (!expected) {
-      if (isProd) {
+      if (isProduction()) {
         res.status(500).json({ error: 'CONFIG_MISSING', message: 'Missing RECOMMENDATIONS_INTERNAL_KEY' });
         return false;
       }
-      return true; // dev default
+      return true; // local development only
     }
     const provided = String(req.header('X-Internal-Key') || '').trim();
-    if (provided && provided === expected) return true;
+    if (provided && timingSafeEqualString(provided, expected)) return true;
     res.status(401).json({ error: 'UNAUTHORIZED', message: 'Missing or invalid X-Internal-Key' });
     return false;
   }
