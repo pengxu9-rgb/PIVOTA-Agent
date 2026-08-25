@@ -12,6 +12,50 @@ function nonEmptyString(v) {
   return typeof v === 'string' && v.trim() !== '';
 }
 
+// EXECUTION SPEC v0 passthrough. The backend composes this at `offers.resolve` (every url built by ONE
+// function, so `cart_url` cannot describe a destination different from the one `affiliate_url` resolves to).
+// This projection must not re-derive any of it — the whole point is that there is a single composer.
+//
+// What it DOES do is refuse to relay anything that is not the shape it claims to be. Every field here is a
+// statement an agent will repeat to a buyer: where they will land, what they will find in the cart, when the
+// link dies. A malformed value must read as "not said" rather than be passed along as a claim, so each field
+// degrades to null independently — a bad `expires_at` must not cost the agent a good `cart_url`.
+//
+// Absent spec -> null, NOT {}. An empty object reads as "a spec exists and it is blank"; null reads as
+// "nobody said", which is the truth for an older backend or a non-external offer. Same reasoning as
+// cart_prefilled above.
+function toExecutionSpec(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const str = (v) => (nonEmptyString(v) ? v : null);
+  const tracking = raw.tracking && typeof raw.tracking === 'object' && !Array.isArray(raw.tracking)
+    ? raw.tracking
+    : {};
+  return {
+    merchant_domain: str(raw.merchant_domain),
+    // Withheld by the backend when its host is not the one the domain allowlist approved. Null here means
+    // "we will not vouch for a product page", never "there isn't one".
+    pdp_url: str(raw.pdp_url),
+    cart_url: str(raw.cart_url),
+    // The NUMERIC storefront variant id. `variantid` is PAN-exempt in the sanitizer; the cart permalink that
+    // embeds it is exempt only via its shape gate (see CART_PERMALINK_RE) — without that, ~1 in 10 of these
+    // urls would come back as `/cart/[REDACTED_PAN]:1`.
+    variant_id: str(raw.variant_id),
+    // Passed through as a label rather than checked against a known set: an unknown rail from a newer backend
+    // is information the agent can ignore, whereas nulling it would silently drop a rail the moment one is
+    // added. It is not a promise about a URL, which is why it does not get the strict treatment above.
+    rail: str(raw.rail),
+    expires_at: str(raw.expires_at),
+    tracking: {
+      click_id: str(tracking.click_id),
+      // WHICH carrier holds the join key in the url the agent was handed — `attributes[pivota_click_id]` on a
+      // cart, a plain query param on a referral. Naming the wrong one sends an agent looking for a key that is
+      // not in the string.
+      param: str(tracking.param),
+      join_mode: str(tracking.join_mode),
+    },
+  };
+}
+
 function offerToSignal(offer, { productId = null } = {}) {
   if (!offer || typeof offer !== 'object') return null;
   const merchantId = nonEmptyString(offer.merchant_id) ? offer.merchant_id : null;
@@ -53,6 +97,9 @@ function offerToSignal(offer, { productId = null } = {}) {
       // truthiness so a stray string, `1`, or `0` can never be read as either claim.
       cart_prefilled:
         offer.cart_prefilled === true ? true : offer.cart_prefilled === false ? false : null,
+      // The rest of the execution spec. `cart_prefilled` above answers "is there a cart"; this answers
+      // "where exactly, with what in it, until when, and how is the click attributed".
+      execution_spec: toExecutionSpec(offer.execution_spec),
     },
     evidence: {
       grade: null,

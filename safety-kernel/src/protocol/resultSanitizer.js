@@ -73,6 +73,18 @@ const URL_SECRET_RE = /([?&](?:client_secret|token|access_token|id_token|refresh
 // still goes through the normal scrub.
 const ATTRIBUTED_LINK_KEYS = new Set(['externalredirecturl', 'affiliateurl', 'merchantcheckouturl']);
 const ATTRIBUTED_LINK_RE = /^https:\/\/[A-Za-z0-9.-]+(?::\d{1,5})?\/r\?token=[A-Za-z0-9_=-]+\.[A-Za-z0-9_=-]+$/;
+// Execution spec v0 (`cart_url`): a Shopify cart permalink is `https://<host>/cart/<variant>:<qty>`, and a
+// Shopify variant id is ALWAYS a 13-19 digit run — precisely PAN_RE's shape. The Luhn gate does not save it:
+// ~1 in 10 variant ids is Luhn-valid by chance, so a plain scrub silently rewrites roughly a tenth of all cart
+// permalinks to `.../cart/[REDACTED_PAN]:1`, which 404s. This is the SAME failure the PAN_RE comment above
+// records from prod 2026-07-10 (a 14-digit Shopify id inside a canonical URL), returning on a new field.
+//
+// Preservation is gated on BOTH the key AND a tight shape — `/cart/<digits>:<digits>` with no fragment and no
+// userinfo — so an arbitrary URL, or a real secret, smuggled under `cart_url` still takes the normal scrub.
+// Deliberately NOT extended to `pdp_url`: a product URL has no constrainable shape, so any gate wide enough
+// to admit it would be wide enough to admit anything.
+const CART_PERMALINK_KEYS = new Set(['carturl']);
+const CART_PERMALINK_RE = /^https:\/\/[A-Za-z0-9.-]+(?::\d{1,5})?\/cart\/\d+:\d+(?:\?[^#\s]*)?$/;
 // STRICT = unambiguous secrets (never a legit id/sku) — scrubbed even in id fields. LOOSE adds sk-{32,}
 // (OpenAI-style), applied OUTSIDE id fields to avoid nuking a long "sk-…" SKU. Stripe publishable pk_ is
 // intentionally excluded (not a secret; collides with SKUs).
@@ -122,7 +134,15 @@ export function sanitizeResult(rootValue, { handoffAllowed = false, stripRanking
       if (keyCanon && ATTRIBUTED_LINK_KEYS.has(keyCanon) && ATTRIBUTED_LINK_RE.test(value)) return value;
       // System-issued id keys skip PAN scanning (their digits are our identifiers); everywhere else PAN
       // redaction is Luhn-gated (all real cards pass Luhn; random ids / URL digit runs almost never do).
-      const out = keyCanon && PAN_EXEMPT_ID_KEYS.has(keyCanon) ? value : redactPans(value);
+      // A shape-verified cart permalink is exempt for the same reason: the digit run IS the variant id.
+      // Note this exempts PAN scanning ONLY — the secret scrubs below still run on it, which is stricter
+      // than the verbatim return the attributed-link rule above takes, and costs nothing here.
+      const panExempt = Boolean(
+        keyCanon
+        && (PAN_EXEMPT_ID_KEYS.has(keyCanon)
+          || (CART_PERMALINK_KEYS.has(keyCanon) && CART_PERMALINK_RE.test(value))),
+      );
+      const out = panExempt ? value : redactPans(value);
       if (keyCanon && isIdKey(keyCanon)) return out.replace(STRICT_SECRET_RE, '[REDACTED_SECRET]'); // keep SKUs, kill real secrets
       return out.replace(LOOSE_SECRET_RE, '[REDACTED_SECRET]').replace(URL_SECRET_RE, '$1[REDACTED]');
     }

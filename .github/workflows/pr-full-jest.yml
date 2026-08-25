@@ -395,6 +395,14 @@ jobs:
       # reach the lane, namespaced agent uid + no profile + bounded budget, projection built from the LANE'S
       # OWN output contract (a hand-written fixture hid five dead field reads), the need text scrubbed by the
       # sanitizer, lane failure = reasoned empty answer, and the real commerce surface end to end.
+      # ADDED 2026-08-25: `safety-kernel/test/resultSanitizer`, confirmed green (17/17). It ran NOWHERE
+      # on a PR: absent from this list, and jest's `testMatch` wants `tests/` (plural) while this lives in
+      # `safety-kernel/test/` — the whole-directory `cd safety-kernel && node --test` is workflow_dispatch
+      # only. That is the single chokepoint EVERY protocol adapter runs before echoing a result to an
+      # agent: secret + PAN redaction, ranking-internal stripping, the product-node score rule. All of it
+      # was unguarded. It now also carries the cart-permalink PAN exemption, which is load-bearing — a
+      # Shopify variant id is a 13-19 digit run, ~1 in 10 is Luhn-valid, so without the shape gate about a
+      # tenth of every cart url we publish would reach the agent as `/cart/[REDACTED_PAN]:1`.
       # ADDED 2026-08-22: `tests/agent_signals_intelligence_reads`, confirmed green (26/26). It was
       # ALREADY 280 lines old and running NOWHERE: absent from this list, and jest cannot see it either
       # because `testMatch` is `**/tests/**/*.test.(js|ts)` and this file is `.cjs`. Every assertion in
@@ -1036,6 +1044,7 @@ jobs:
             safety-kernel/test/mcpOAuthResourceServer.test.js \
             tests/ucp_conformance_probe.node.test.cjs \
             tests/ucp_conformance_probe_io.node.test.cjs \
+            safety-kernel/test/resultSanitizer.test.js \
             safety-kernel/test/protocol.test.js \
             safety-kernel/test/delegatedPaymentRefusal.test.js \
             mcp-server/test/ucpFulfillmentAddressContract.test.js \
