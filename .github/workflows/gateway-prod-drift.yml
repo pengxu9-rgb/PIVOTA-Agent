@@ -1,0 +1,286 @@
+# Does the production GATEWAY actually run what `main` says it runs?
+#
+# Since the 2026-08-22 cutover the gateway serves from GCP Cloud Run behind gateway.pivota.cc, and
+# it only moves when somebody runs deploy_gateway.sh by hand. Nothing reported the gap, and on
+# 2026-08-25 production was found running 6aa49526db95 while main was 27 commits ahead - eleven
+# weeks of merges that no user was ever served.
+#
+# It was not that nobody built a guard. `production-deploy-drift-guard.yml` existed and was
+# supposed to be exactly this. It watched agent.pivota.cc (a Vercel host that 404s on /health) and
+# a Railway URL, and on failure it fired RAILWAY_ROLLBACK_WEBHOOK_URL. It failed its last five
+# scheduled runs, was switched off by hand on 2026-06-08, and has not run since. A guard aimed at
+# the wrong host does not degrade into a weaker guard - it degrades into an annoyance, gets
+# disabled, and leaves the same silence as having none, plus the belief that one exists.
+#
+# This job does not deploy. Deploying the gateway to a payments path on merge is a bigger decision
+# than this file should make. It only says out loud when live != main.
+name: gateway prod drift
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    # :37 rather than the backend alarm's :17 - two red jobs in the same minute read as one
+    # incident and get triaged as one.
+    - cron: '37 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# push and the hourly cron can otherwise overlap and race to report on the same state. The
+# workflow this replaces had both of these; losing them in the rewrite would be a regression.
+concurrency:
+  # Keyed by ref: without it a workflow_dispatch from a feature branch shares the group, cancels an
+  # in-flight run on main, and can itself exit 0 - leaving a green conclusion for a state it never
+  # checked. push and the hourly cron on main still collapse together, which is the intent.
+  group: gateway-prod-drift-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # How long production may lag main before this job goes red. Long enough that a normal
+  # merge-then-deploy never trips it; short enough that a forgotten deploy is caught the same
+  # morning. Only applies when production is BEHIND main, never when it has diverged.
+  GRACE_MINUTES: '120'
+
+jobs:
+  drift:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history, deliberately. Every question below - is the live commit an ancestor of
+          # main, how many commits behind, is the gap docs-only - can only be answered if the live
+          # commit exists in this checkout. Under a shallow clone it never does, and the job falls
+          # through to "cannot classify" on every run: the backend's copy of this alarm shipped
+          # that way and reported a divergence that had not happened, which also made its docs-only
+          # exemption unreachable dead code. blob:none keeps it cheap - the diffs here are
+          # --name-only, which needs trees, not file contents.
+          fetch-depth: 0
+          filter: blob:none
+
+      - name: Compare live gateway against this commit
+        # Explicit, because a `run:` without it gets GitHub's default `bash -e {0}` - errexit but
+        # NOT pipefail - while `shell: bash` is `bash --noprofile --norc -eo pipefail {0}`. Both
+        # carry -e; `set -euo pipefail` below can add flags but cannot remove it. Naming the shell
+        # is what makes the pipefail half true in CI rather than only in the author's terminal,
+        # which is where this script was first verified. Every unguarded command below was audited
+        # against errexit: the failure paths still exit non-zero, and the two success paths are
+        # explicit `exit 0`s.
+        shell: bash
+        run: |
+          # -e is supplied by `shell: bash`, but naming it here makes the script correct on its
+          # own: delete that key and GitHub's default is still `bash -e`, silently WITHOUT pipefail.
+          set -euo pipefail
+          MAIN_SHA="$(git rev-parse HEAD)"
+          echo "main:      $MAIN_SHA"
+          # workflow_dispatch checks out the DISPATCHED ref, so HEAD is not necessarily main while
+          # every message below says "main". Name it rather than quietly comparing against a branch.
+          if [ "${GITHUB_REF_NAME:-main}" != "main" ]; then
+            echo "::warning::comparing the gateway against '${GITHUB_REF_NAME}', not main - this run was dispatched from another ref"
+          fi
+
+          # gateway.pivota.cc, NOT agent.pivota.cc. The latter is the Vercel frontend and 404s on
+          # /health - pointing at it is what made the previous guard useless.
+          LIVE_JSON="$(curl -fsS --max-time 25 https://gateway.pivota.cc/health || true)"
+          if [ -z "$LIVE_JSON" ]; then
+            echo "::error::could not reach https://gateway.pivota.cc/health - the gateway's health is unknown"
+            exit 1
+          fi
+
+          # This service reports version.commit, a 12-character SHORT sha - not the full_sha the
+          # backend reports. Resolving it through git rather than comparing strings is what makes
+          # the ancestry checks below work at all, and it fails loudly if the short sha is unknown
+          # or ambiguous instead of silently comparing unequal.
+          # `.get("commit","")` defaults only on a MISSING key, so a JSON null printed as the string
+          # "None" and sailed past the emptiness check below - and src/config/platform.js states
+          # outright that Cloud Run injects no commit sha, so `null` is exactly what an operator who
+          # forgets PIVOTA_COMMIT_SHA gets. It then read as "someone force-pushed". Take the value
+          # only if it is genuinely a string, and treat an unparseable body as absent rather than
+          # letting a traceback be the diagnosis.
+          # Indented to the block scalar's level on purpose: YAML strips those 10 spaces, so
+          # python still receives column-0 statements. Lines written flush-left here would
+          # TERMINATE the block scalar and silently truncate this whole script.
+          LIVE_SHORT="$(printf '%s' "$LIVE_JSON" | python3 -c '
+          import json, sys
+          try:
+              d = json.load(sys.stdin)
+          except Exception:
+              d = {}
+          v = d.get("version") if isinstance(d, dict) else None
+          v = v.get("commit") if isinstance(v, dict) else None
+          print(v if isinstance(v, str) else "")')"
+          if [ -z "$LIVE_SHORT" ]; then
+            echo "::error::/health returned no usable version.commit - cannot verify what the gateway runs"
+            exit 1
+          fi
+
+          # VALIDATE BEFORE RESOLVING. This value arrives over HTTP from a remote host, and
+          # `git rev-parse` accepts revision EXPRESSIONS, not just shas: HEAD, @, main, HEAD@{0} and
+          # any tag name all resolve. In an Actions checkout they resolve to this very commit, so a
+          # /health reporting commit "HEAD" would make this alarm report "running main" forever
+          # while the gateway rots - strictly worse than having no alarm.
+          #
+          # That is not only an adversarial case. src/server.js builds SERVICE_GIT_SHA from
+          # PIVOTA_COMMIT_SHA || RAILWAY_GIT_COMMIT_SHA || COMMIT_SHA with no validation, and the
+          # deploy line this job prints below is `COMMIT_SHA=$(git rev-parse HEAD)` - paste that
+          # inside single quotes and production genuinely reports the literal string HEAD.
+          #
+          # Constraining to hex also removes the newline-injection route into ::error:: / ::notice::
+          # workflow commands, since the value is echoed further down.
+          case "$LIVE_SHORT" in
+            *[!0-9a-fA-F]*)
+              echo "::error::/health reported a version.commit that is not a hex sha; refusing to resolve it as a git revision"
+              exit 1 ;;
+          esac
+          if [ "${#LIVE_SHORT}" -lt 7 ] || [ "${#LIVE_SHORT}" -gt 40 ]; then
+            echo "::error::/health reported a version.commit of ${#LIVE_SHORT} hex chars - not a usable commit id"
+            exit 1
+          fi
+
+          LIVE_SHA="$(git rev-parse --verify --quiet "${LIVE_SHORT}^{commit}" || true)"
+          # Hex alone still leaves one gap: a BRANCH literally named e.g. `deadbeef` would resolve
+          # to something that is not the commit it spells. Require the resolved sha to actually
+          # begin with what production reported.
+          if [ -n "$LIVE_SHA" ]; then
+            case "$(printf '%s' "$LIVE_SHA" | tr 'A-Z' 'a-z')" in
+              "$(printf '%s' "$LIVE_SHORT" | tr 'A-Z' 'a-z')"*) ;;
+              *) echo "::warning::$LIVE_SHORT resolved to $LIVE_SHA, which does not start with it - a ref is shadowing the sha. Treating as unknown."
+                 LIVE_SHA="" ;;
+            esac
+          fi
+          echo "live prod: ${LIVE_SHORT}${LIVE_SHA:+ -> $LIVE_SHA}"
+
+          if [ -n "$LIVE_SHA" ] && [ "$LIVE_SHA" = "$MAIN_SHA" ]; then
+            echo "the gateway is running main"
+            exit 0
+          fi
+
+          # Not every commit needs a deploy. Anything NOT exempted here is treated as
+          # runtime-affecting, so the default is to alarm and a new top-level directory is a deploy
+          # until someone says otherwise.
+          #
+          # This list is SHORTER than the backend's, on purpose. The image is built with `COPY . .`
+          # and a .dockerignore that drops only tests, README and a few doc/demo globs, so most of
+          # this repo really does ship. In particular `scripts/` is NOT exempt here: several
+          # scheduled workflows invoke scripts in it as production jobs, so a change there can
+          # change what runs even though nothing in src/ moved. Copying the backend's list verbatim
+          # would have quietly exempted them.
+          # Decide ancestry ONCE, here, because two separate things depend on it and one of them
+          # used to get it wrong. `git diff A..HEAD` is a symmetric tree delta: it is only a
+          # statement about "what production is missing" when A is an ancestor of HEAD. Applied to a
+          # DIVERGED gateway it happily reported "0 commit(s) behind ... no deploy needed", exit 0 -
+          # blessing a deployment that is not on main at all, with self-evidently broken output.
+          #
+          # merge-base exits 0 for ancestor and 1 for not-ancestor, but anything else is a git
+          # FAILURE, and swallowing that with `2>/dev/null` turned it into "the two have diverged" -
+          # the exact false-divergence report this file's own header blames on the backend copy.
+          IS_ANCESTOR=0
+          if [ -n "$LIVE_SHA" ]; then
+            MB=0; git merge-base --is-ancestor "$LIVE_SHA" HEAD || MB=$?
+            case "$MB" in
+              0) IS_ANCESTOR=1 ;;
+              1) IS_ANCESTOR=0 ;;
+              *) echo "::error::git merge-base exited $MB - cannot tell whether the gateway is behind or diverged, so not guessing"
+                 exit 1 ;;
+            esac
+          fi
+
+          if [ "$IS_ANCESTOR" = 1 ]; then
+            # The git call is SEPARATE from the filtering, and its failure is fatal. Chaining them
+            # as `git diff | grep -v ... || true` needs that `|| true` because grep -v exits 1 when
+            # it filters everything out - and with pipefail the same `|| true` swallows a failed
+            # `git diff` into an identical empty result, which this block then reports as
+            # "none of them touch code the container runs: no deploy needed", exit 0. That is the
+            # alarm going GREEN on a drifted production because a git command failed, and it is a
+            # live mode here: the checkout is `filter: blob:none`, so git talks to a promisor
+            # remote and a transient fetch failure is enough.
+            GAP="$(git diff --name-only "$LIVE_SHA..HEAD")" || {
+              echo "::error::git diff $LIVE_SHA..HEAD failed - cannot classify the gap, so not calling it clean"
+              exit 1
+            }
+            # `|| [ $? -eq 1 ]` rather than `|| true`, for the same reason the git call above was
+            # hoisted out. grep exits 1 for "matched nothing", which is expected and fine, but 2 for
+            # a real error - and `|| true` accepts both, handing this block an empty result it
+            # reports as clean. One token apart, and the difference is whether a broken grep can
+            # declare a drifted production healthy.
+            RUNTIME_CHANGED="$(printf '%s\n' "$GAP" \
+              | { grep -vE '^(docs/|\.github/|tests/|README|CHANGELOG)' || [ $? -eq 1 ]; } \
+              | { grep -vE '\.md$' || [ $? -eq 1 ]; })" || {
+              echo "::error::filtering the gap failed - cannot classify it, so not calling it clean"
+              exit 1
+            }
+            if [ -z "$RUNTIME_CHANGED" ]; then
+              echo "the gateway is $(git rev-list --count "$LIVE_SHA..HEAD") commit(s) behind main,"
+              echo "but none of them touch code the container runs:"
+              printf '%s\n' "$GAP" | sed 's/^/  /'
+              echo "no deploy needed."
+              exit 0
+            fi
+            echo "runtime-affecting files not in the gateway:"
+            printf '%s\n' "$RUNTIME_CHANGED" | sed 's/^/  /'
+          elif [ -n "$LIVE_SHA" ]; then
+            echo "::error::the gateway runs $LIVE_SHORT, which is NOT an ancestor of main - the two have diverged. No docs-only exemption and no deploy window apply to a commit that is not on main."
+          else
+            # One workflow command, one line - a `::warning::` prefix annotates only the line it is
+            # on, so the continuation lines were printing as plain log and losing the annotation.
+            echo "::warning::$LIVE_SHORT is not in this repository at all. With full history that means the gateway runs a build from a commit that was force-pushed away, or from another repo. Treating as runtime drift."
+          fi
+
+          # A merge that landed seconds ago is a PENDING DEPLOY, not drift. Deploys here are
+          # manual, so every merge of runtime code would otherwise make this job red instantly -
+          # before any human could have deployed it. That is not an alarm, it is a notification on
+          # every merge, and it trains people to ignore the job. Which is precisely how the
+          # previous guard ended up switched off.
+          #
+          # Measure when the code LANDED ON MAIN, not when it was written: a branch developed over
+          # two hours has commits that look two hours stale the instant they merge. Walking
+          # --first-parent gives the merge that put the change on main, whose committer date IS the
+          # moment production fell behind. Anchored to files whose CONTENT still differs, so a
+          # commit re-introducing already-deployed content does not restart the clock.
+          #
+          # The window applies ONLY to "behind". A DIVERGED gateway means someone deployed
+          # something that is not on main, which is never a pending deploy and is never delayed.
+          if [ "$IS_ANCESTOR" = 1 ]; then
+            RT_LIST="$(mktemp)"; printf '%s\n' "$RUNTIME_CHANGED" > "$RT_LIST"
+            LANDED=""
+            for c in $(git rev-list --reverse --first-parent "$LIVE_SHA..HEAD"); do
+              if git diff --name-only "$c^" "$c" 2>/dev/null | grep -qFxf "$RT_LIST"; then
+                LANDED="$(git show -s --format=%ct "$c")"; break
+              fi
+            done
+            rm -f "$RT_LIST"
+            if [ -n "$LANDED" ]; then
+              AGE_MIN=$(( ( $(date -u +%s) - LANDED ) / 60 ))
+              # A future-dated committer date makes AGE_MIN negative, which satisfies `-lt GRACE`
+              # forever - a permanently green alarm from a clock-skewed or hand-crafted commit.
+              # Anomalous timestamps get no grace at all rather than infinite grace.
+              if [ "$AGE_MIN" -lt 0 ]; then
+                echo "::warning::the landing commit is dated ${AGE_MIN#-}m in the FUTURE - clock skew or a hand-set committer date. Ignoring the deploy window rather than granting it forever."
+                AGE_MIN=""
+              elif [ "$AGE_MIN" -lt "$GRACE_MINUTES" ]; then
+                echo "::notice::undeployed runtime code landed on main ${AGE_MIN}m ago, inside the ${GRACE_MINUTES}m deploy window - not alarming yet. The hourly run will."
+                exit 0
+              fi
+              # Empty only on the future-dated path above, where printing an age would state a
+              # falsehood - it read "on main for 120 minutes" for a commit dated 30 days ahead.
+              [ -z "$AGE_MIN" ] || echo "this gap has been on main for ${AGE_MIN} minutes (window is ${GRACE_MINUTES})."
+            fi
+            BEHIND="$(git rev-list --count "$LIVE_SHA..HEAD" 2>/dev/null || echo '?')"
+            echo "::error::the gateway is $BEHIND commit(s) BEHIND main and will stay there until someone deploys."
+            echo "commits not in the gateway:"
+            git log --oneline "$LIVE_SHA..HEAD" | sed 's/^/  /'
+          fi
+          # No `else` here any more: the diverged and not-in-this-repo cases are both already
+          # reported by the classification block above, and repeating them read as two findings.
+
+          # The build config and deploy script live in the BACKEND repo (pivota-backend), which is
+          # why this is spelled out rather than pointing at a script in this tree.
+          cat <<'EOF'
+          To ship main to the gateway, from a checkout of THIS repo with pivota-backend alongside:
+            gcloud builds submit --config ../pivota-backend/infra/gcp/cloudbuild.gateway.yaml \
+              --project pivota-shared --substitutions=COMMIT_SHA=$(git rev-parse HEAD) .
+            ../pivota-backend/infra/gcp/deploy_gateway.sh prod <sha>
+          EOF
+          exit 1

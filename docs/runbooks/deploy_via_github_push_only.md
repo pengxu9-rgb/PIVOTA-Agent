@@ -28,10 +28,10 @@ bash scripts/verify_deployed_commit_matches.sh
 7. Keep the production drift guard enabled:
 
 ```bash
-gh workflow run production-deploy-drift-guard.yml
+gh workflow run gateway-prod-drift.yml
 ```
 
-This verifies that production `/version.commit` still matches GitHub `main`. If production drifts to an older deployment and the rollback webhook is configured, the guard will trigger rollback automatically.
+This verifies that the gateway's `/health` `version.commit` still matches GitHub `main`, reading gateway.pivota.cc — the host that actually serves users. It does NOT roll anything back: the workflow it replaced fired a Railway rollback webhook, which post-cutover pointed at the retired platform. Deploying is a deliberate step, not something an alarm should do on your behalf.
 
 ## Fast Local Check
 
@@ -56,7 +56,7 @@ If manual `railway up` is unavoidable:
 5. Clear any temporary `AURORA_GIT_SHA` override after the deployment chain is healthy again.
 
 Do not keep production in a state where deployed commit is not traceable to `main`.
-The scheduled workflow `.github/workflows/production-deploy-drift-guard.yml` is the backstop that catches later drift or an accidental old redeploy.
+The scheduled workflow `.github/workflows/gateway-prod-drift.yml` is the backstop that catches later drift or an accidental old redeploy. It runs hourly and holds fire for 120 minutes after a runtime commit lands, so a normal merge-then-deploy never trips it.
 
 ## Required Production Wiring
 
