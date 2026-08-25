@@ -52973,13 +52973,17 @@ if (require.main === module) {
 
       // Gemini gate startup check
       try {
+        // FIRST in this block, before anything that can throw. Behind getGeminiGlobalGate() and
+        // snapshot() it was skipped whenever either threw - the catch below only logs a warning -
+        // leaving readiness 'pending' until the first health request happened to start it.
+        //
+        // Starting it at boot is what keeps 'pending' a boot-window state instead of the answer an
+        // uptime check sees. It is safe to call here precisely because the readiness probe writes
+        // its OWN state: an early failure reports red and retries, and cannot disable a Gemini call
+        // the way routing this through accessToken() would have.
+        vertexGemini.credentialProbeState();
         const gate = getGeminiGlobalGate();
         const snap = gate.snapshot();
-        // Start the ADC probe at boot rather than on the first health request. On Cloud Run
-        // nothing else starts it - credentialsAvailable() short-circuits on the K_SERVICE marker
-        // before reaching startProbe() - so without this /healthz/gemini would report
-        // 'vertex_credentials_unverified' until something else happened to mint a token.
-        vertexGemini.credentialProbeState();
         if (snap.gate.keyCount === 0) {
           // Under Vertex (VERTEX_AI_ENABLED=true) the key pool is legitimately
           // empty — auth is ADC, not API keys — so keyCount 0 is not a failure

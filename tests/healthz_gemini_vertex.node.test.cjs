@@ -9,7 +9,10 @@
  * The case that matters most is CLOUD_RUN_MARKER_ONLY. credentialSourceConfigured() returns true
  * on the bare presence of K_SERVICE, which Cloud Run injects into every container, so a service
  * with no credential whatsoever looks configured. If this function ever answers 'ok' there,
- * /healthz/gemini reports green on a gateway whose every Gemini call 403s.
+ * /healthz/gemini reports green on a gateway that cannot resolve a credential at all.
+ *
+ * It does NOT prove calls will succeed: a minted token is authentication, not authorization, and
+ * Cloud Run mints one for any runtime service account. See credentialProbeState()'s docstring.
  */
 const test = require('node:test');
 const assert = require('node:assert');
@@ -24,6 +27,7 @@ const ENV_KEYS = [
   'K_SERVICE',
   'GAE_SERVICE',
   'GCE_METADATA_HOST',
+  'CLOUDSDK_CONFIG',
 ];
 
 /** Run fn with exactly `patch` set and every other credential-shaped var cleared. */
@@ -33,6 +37,11 @@ function withEnv(patch, fn) {
     previous[key] = process.env[key];
     delete process.env[key];
   }
+  // Point gcloud's config at nothing that exists. Otherwise a developer machine with
+  // ~/.config/gcloud/application_default_credentials.json lets the readiness probe mint a REAL
+  // token against real infrastructure from a unit test — harmless to these assertions, which read
+  // the synchronous return, but not something a test suite should be doing.
+  process.env.CLOUDSDK_CONFIG = '/nonexistent-gcloud-config-for-tests';
   for (const [key, value] of Object.entries(patch)) process.env[key] = String(value);
   // The module memoises the auth client and the probe result across calls; without this a
   // resolved probe from one case would answer every later one.

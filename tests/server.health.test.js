@@ -160,6 +160,137 @@ describe('health endpoints', () => {
     );
   });
 
+  it('/healthz/gemini reports ok:true once a token mint is actually observed', async () => {
+    // Without this case, two mutants live: making credentialProbeState() always return 'failed',
+    // or dropping the `credentialState !== 'ok'` guard, leaves the endpoint permanently RED under
+    // Vertex — verbatim the bug this whole change exists to fix — and every other test still
+    // passes, because they all pin the false-GREEN direction only.
+    //
+    // googleAuthForVertex() resolves google-auth-library from @anthropic-ai/vertex-sdk's context
+    // when that package is installed and falls back to the hoisted copy when it is not. Those are
+    // two different module paths, so mocking one name would intercept here and quietly not
+    // intercept in CI. Mock whichever exist.
+    const authModulePaths = ['google-auth-library'];
+    try {
+      authModulePaths.push(
+        require.resolve('google-auth-library', {
+          paths: [require.resolve('@anthropic-ai/vertex-sdk')],
+        }),
+      );
+    } catch {
+      // SDK absent: the hoisted copy is the only one, already listed.
+    }
+    try {
+      await withEnv(
+        {
+          GEMINI_API_KEY: undefined,
+          GOOGLE_API_KEY: undefined,
+          VERTEX_AI_ENABLED: 'true',
+          GOOGLE_CLOUD_PROJECT: 'pivota-prod',
+          GOOGLE_APPLICATION_CREDENTIALS_JSON: undefined,
+          K_SERVICE: 'gateway',
+        },
+        async () => {
+          jest.resetModules();
+          for (const modulePath of authModulePaths) {
+            jest.doMock(modulePath, () => ({
+              GoogleAuth: class {
+                async getAccessToken() {
+                  return 'ya29.test-token';
+                }
+              },
+            }));
+          }
+          const app = require('../src/server');
+
+          // The probe is async and the endpoint answers synchronously, so the first hit must report
+          // 'pending' rather than guessing — that is the whole point of the change.
+          const first = await request(app).get('/healthz/gemini').expect(200);
+          expect(first.body.credential_state).toBe('pending');
+          expect(first.body.ok).toBe(false);
+
+          let body = first.body;
+          for (let i = 0; i < 50 && body.credential_state === 'pending'; i += 1) {
+            await new Promise((resolve) => setTimeout(resolve, 20));
+            body = (await request(app).get('/healthz/gemini').expect(200)).body;
+          }
+
+          expect(body.credential_state).toBe('ok');
+          expect(body.ok).toBe(true);
+          expect(body.ready).toBe(true);
+          expect(body.reasons).toEqual([]);
+          expect(body.credential_detail).toBeNull();
+          expect(body.auth_mode).toBe('vertex_adc');
+          expect(body.key_count).toBe(0);
+        },
+      );
+    } finally {
+      for (const modulePath of authModulePaths) jest.dontMock(modulePath);
+      jest.resetModules();
+    }
+  });
+
+  it('a failed readiness probe reports red WITHOUT disabling Gemini calls', async () => {
+    // The regression this pins is the one the fix itself introduced. Routing readiness through
+    // accessToken() wrote its result into `adcProbe`, which credentialsAvailable() latches on — so
+    // one transient failure at boot closed the gate for all 16 Gemini call sites for the life of
+    // the process, with no retry, where the same container previously self-healed on the first
+    // real request. A health check must be able to observe the credential, never to disable it.
+    const authModulePaths = ['google-auth-library'];
+    try {
+      authModulePaths.push(
+        require.resolve('google-auth-library', {
+          paths: [require.resolve('@anthropic-ai/vertex-sdk')],
+        }),
+      );
+    } catch {
+      // SDK absent: the hoisted copy is the only one.
+    }
+    try {
+      await withEnv(
+        {
+          GEMINI_API_KEY: undefined,
+          GOOGLE_API_KEY: undefined,
+          VERTEX_AI_ENABLED: 'true',
+          GOOGLE_CLOUD_PROJECT: 'pivota-prod',
+          GOOGLE_APPLICATION_CREDENTIALS_JSON: undefined,
+          K_SERVICE: 'gateway',
+        },
+        async () => {
+          jest.resetModules();
+          for (const modulePath of authModulePaths) {
+            jest.doMock(modulePath, () => ({
+              GoogleAuth: class {
+                async getAccessToken() {
+                  throw new Error('metadata server unreachable');
+                }
+              },
+            }));
+          }
+          const app = require('../src/server');
+          const vertexGemini = require('../src/llm/vertexGemini');
+
+          let body = (await request(app).get('/healthz/gemini').expect(200)).body;
+          for (let i = 0; i < 50 && body.credential_state === 'pending'; i += 1) {
+            await new Promise((resolve) => setTimeout(resolve, 20));
+            body = (await request(app).get('/healthz/gemini').expect(200)).body;
+          }
+
+          expect(body.credential_state).toBe('failed');
+          expect(body.ok).toBe(false);
+          expect(body.reasons).toContain('vertex_credentials_unavailable');
+
+          // The gate is the point. On Cloud Run this is true from the K_SERVICE marker and must
+          // stay true: readiness observing a failure must not be what turns Gemini off.
+          expect(vertexGemini.credentialsAvailable(null)).toBe(true);
+        },
+      );
+    } finally {
+      for (const modulePath of authModulePaths) jest.dontMock(modulePath);
+      jest.resetModules();
+    }
+  });
+
   it('/healthz/gemini names Vertex as the transport even when its credential is broken', async () => {
     // Reporting 'ai_studio_api_key' for a misconfigured Vertex deployment sends the reader after
     // GEMINI_API_KEY - a variable that is deliberately unused there. auth_mode has to follow the
