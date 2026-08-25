@@ -60,6 +60,8 @@ export declare function isManagedPlatform(env?: EnvLike): boolean;
 export declare function platformName(env?: EnvLike): PlatformName;
 export declare function serviceName(env?: EnvLike): string | null;
 export declare function commitSha(env?: EnvLike): string | null;
+/** Test-only: point the baked-commit-sha reader at another file; no argument restores the real one. */
+export declare function setBakedCommitShaFileForTests(filePath?: string): void;
 export declare function commitShaShort(env?: EnvLike): string | null;
 export declare function deploymentId(env?: EnvLike): string | null;
 export declare function gitBranch(env?: EnvLike): string | null;
