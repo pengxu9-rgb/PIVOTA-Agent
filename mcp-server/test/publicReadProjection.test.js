@@ -116,8 +116,34 @@ test("search/product price never serves an amount without its currency, across e
     project({ price: 10, price_amount: 99, currency: "USD", price_currency: "EUR" }).price,
     { amount: 10, currency: "USD" }
   );
-  // Zero is a real amount, not an absent one.
-  assert.deepEqual(project({ price: 0, currency: "USD" }).price, { amount: 0, currency: "USD" });
+  // Object spelling: price:{amount,currency} is a self-contained pair (offer hydrator / group-member rows).
+  assert.deepEqual(project({ price: { amount: 12, currency: "USD" } }).price, { amount: 12, currency: "USD" });
+  // An incomplete price object does not price the row itself; the flat siblings written beside it do.
+  assert.deepEqual(project({ price: { amount: 12 }, price_amount: 12, currency: "USD" }).price, { amount: 12, currency: "USD" });
+  // The zero-sentinel rule applies inside the object spelling too.
+  assert.equal(project({ price: { amount: 0, currency: "USD" } }).price, undefined);
+  // An empty-string flat price is ABSENT (fallback spellings still read), not stated-but-unparseable.
+  assert.deepEqual(project({ price: "", price_amount: 12, price_currency: "USD" }).price, { amount: 12, currency: "USD" });
+  // currency_code completes the seed spelling as a last resort as well.
+  assert.deepEqual(project({ price_amount: 12, currency_code: "USD" }).price, { amount: 12, currency: "USD" });
+  // When the amount comes from price_amount, its own spelling's currency (price_currency) outranks a stray
+  // `currency` from another leg — same source-atomic rule as the flat direction.
+  assert.deepEqual(project({ price_amount: 12, price_currency: "EUR", currency: "USD" }).price, { amount: 12, currency: "EUR" });
+  // Numeric-string prices parse; formatted strings do not and must NOT substitute price_amount — a
+  // stated-but-unparseable price is withheld, never swapped for a different number under its currency.
+  assert.deepEqual(project({ price: "18.50", currency: "USD" }).price, { amount: 18.5, currency: "USD" });
+  assert.equal(project({ price: "1,299.00", currency: "USD", price_amount: 179900 }).price, undefined);
+  // Pairing is source-atomic: price_currency belongs to price_amount when both spellings coexist, so it
+  // must never complete a DIFFERENT amount's missing currency (12 here is not a JPY price).
+  assert.equal(project({ price: 12, currency: "", price_amount: 3900, price_currency: "JPY" }).price, undefined);
+  // Currency is an ISO-4217 alpha code or nothing: scraped junk is refused, honest lowercase is normalized.
+  assert.equal(project({ price: 49, price_currency: "$" }).price, undefined);
+  assert.deepEqual(project({ price: 49, currency: "usd" }).price, { amount: 49, currency: "USD" });
+  // Zero is this repo's not-buyable / transaction-hold sentinel (resolveCanonicalOfferDerivedPrice:
+  // "a 0.00 price is not buyable"; applyTransactionHoldToVariant writes price:0 as a hold marker), so a
+  // non-positive amount is withheld — serving "0 USD" would be exactly the fabrication this fix closes.
+  assert.equal(project({ price: 0, currency: "USD" }).price, undefined);
+  assert.equal(project({ price: -5, currency: "USD" }).price, undefined);
 
   // get_product shares priceOf: same invariant on the detail surface.
   const detail = projectGetProduct({ product: { pivota_signature_id: "sig_d", title: "D", price: 18 } });
