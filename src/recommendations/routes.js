@@ -8,6 +8,31 @@ const { loadRolesLatest, buildRoleNormalizer } = require('../layer2/dicts/roles'
 const { applyNormalization, buildRoleCandidatesFromDict, suggestRoleIdsForHint } = require('../layer2/kb/roleHintIntegrity');
 const { canonicalizeUrl, hostnameMatchesAllowlist, stableOfferIdFromCanonicalUrl, validateHttpUrlOrThrow } = require('../layer3/external/urlUtils');
 const { resolveExternalOffer } = require('../layer3/external/externalOfferResolver');
+const { isProduction } = require('../config/platform');
+
+/**
+ * Constant-time string comparison. Same shape as src/server.js and auroraBff/authStore.js.
+ *
+ * Buffers first, and a length check BEFORE timingSafeEqual - it throws on a length mismatch, so
+ * comparing raw would be both a crash and a length oracle. utf8, so a multi-byte header cannot
+ * collapse two different strings onto one buffer.
+ *
+ * `bufA.length > 0` is DEFENSIVE, not load-bearing, and no test covers it: at the only call site
+ * `provided` is already non-empty (the `provided &&` conjunct) and `expected` is already non-empty
+ * (the `if (!expected)` early return), so the clause can never be false today. Mutating it to
+ * `>= 0` or deleting it leaves the suite fully green. It is kept because this is a reusable local
+ * and matches src/auroraBff/authStore.js, not because anything proves it necessary.
+ *
+ * The length pre-check does leak length - a wrong-length key is rejected measurably faster. That
+ * matches every sibling in this repo. safety-kernel/src/pspWebhooks.js documents the strictly
+ * better shape: hash both sides to a fixed 32 bytes first, so there is no length signal and no
+ * length check needed.
+ */
+function timingSafeEqualString(a, b) {
+  const bufA = Buffer.from(String(a), 'utf8');
+  const bufB = Buffer.from(String(b), 'utf8');
+  return bufA.length === bufB.length && bufA.length > 0 && crypto.timingSafeEqual(bufA, bufB);
+}
 
 function stableHashShort(input) {
   return crypto.createHash('sha256').update(String(input), 'utf8').digest('hex').slice(0, 12);
@@ -341,17 +366,24 @@ const NormalizeRequestSchema = z
 function mountRecommendationRoutes(app) {
   function requireInternalKey(req, res) {
     const expected = String(process.env.RECOMMENDATIONS_INTERNAL_KEY || '').trim();
-    const env = String(process.env.NODE_ENV || process.env.APP_ENV || '').toLowerCase();
-    const isProd = env === 'production' || env === 'prod';
+    // Production used to be decided from `NODE_ENV || APP_ENV`, and BOTH are unset on the
+    // production gateway - PIVOTA_ENV is what is actually set there. So `isProd` was always false,
+    // the CONFIG_MISSING refusal below was UNREACHABLE in production, and an empty key fell
+    // straight through to `return true`: an open internal route, one empty secret away, announcing
+    // nothing. It is armed today only because the secret happens to be mounted non-empty.
+    //
+    // isProduction() is the repo's own answer (src/config/platform.js) and the union every other
+    // caller already uses - including the Cloud Run fail-closed case, so a revision that loses
+    // PIVOTA_ENV is still treated as production instead of re-opening this.
     if (!expected) {
-      if (isProd) {
+      if (isProduction()) {
         res.status(500).json({ error: 'CONFIG_MISSING', message: 'Missing RECOMMENDATIONS_INTERNAL_KEY' });
         return false;
       }
-      return true; // dev default
+      return true; // local development only
     }
     const provided = String(req.header('X-Internal-Key') || '').trim();
-    if (provided && provided === expected) return true;
+    if (provided && timingSafeEqualString(provided, expected)) return true;
     res.status(401).json({ error: 'UNAUTHORIZED', message: 'Missing or invalid X-Internal-Key' });
     return false;
   }

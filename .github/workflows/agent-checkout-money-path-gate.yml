@@ -130,7 +130,8 @@ jobs:
           node --test \
             tests/find_products_search_route_entry.node.test.cjs \
             tests/integration/safety_kernel_mount.node.test.cjs \
-            tests/healthz_gemini_vertex.node.test.cjs
+            tests/healthz_gemini_vertex.node.test.cjs \
+            tests/recommendations_internal_key_gate.node.test.cjs
 
       - name: Strict-route Jest checks
         run: |
