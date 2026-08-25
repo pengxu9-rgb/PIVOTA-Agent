@@ -170,6 +170,58 @@ function resetPlatformWarnings() {
   warnedMessages.clear();
 }
 
+/**
+ * THE COMMIT STAMPED INTO THE IMAGE, or null outside a stamped image.
+ *
+ * Written by the root `Dockerfile` from the `COMMIT_SHA` build arg that
+ * `infra/gcp/cloudbuild.gateway.yaml` passes. It exists because the deploy-time env var
+ * alone was not enough: `gcloud run deploy --image X` with no env flag INHERITS the
+ * previous revision's environment, so on 2026-08-25 a revision ran the `17e7cfa8` image
+ * while `PIVOTA_COMMIT_SHA` still said `6aa49526db95`. /health under-reported the deployed
+ * commit by 7, and `gateway-prod-drift.yml` — whose entire job is comparing that value to
+ * main — computed "30 commits behind" against a true 23. A stale stamp that happens to
+ * MATCH main would be worse still: the alarm goes green over undeployed code.
+ *
+ * A FILE, NOT AN ENV. `--set-env-vars` / `--update-env-vars` can override an image `ENV`,
+ * so that guarantee would last only until someone set the name. Nothing in a Cloud Run
+ * deploy can rewrite a file inside the image, so this value cannot disagree with the code
+ * it ships beside. The path is a module constant for the same reason: an env-overridable
+ * path would hand back the redirection this is meant to remove.
+ *
+ * Read once and cached. This module documents that env is read at CALL time and nothing is
+ * captured at import; the file is the one exception, and it is a safe one — the file cannot
+ * change without the process being replaced along with it. Tests use
+ * `setBakedCommitShaFileForTests`.
+ */
+const IMAGE_COMMIT_SHA_FILE = '/app/.image_commit_sha';
+const UNREAD = Symbol('unread');
+let imageCommitShaFile = IMAGE_COMMIT_SHA_FILE;
+let bakedCommitShaCache = UNREAD;
+
+function bakedCommitSha() {
+  if (bakedCommitShaCache === UNREAD) {
+    try {
+      // Required lazily so the module stays loadable in any runtime that lacks `node:fs`
+      // (and so requiring it can never be the reason a guard fails to evaluate).
+      bakedCommitShaCache = trimmed(require('node:fs').readFileSync(imageCommitShaFile, 'utf8')) || null;
+    } catch {
+      // Not running from a stamped image — local dev, tests, or an image built without the
+      // build arg (the Dockerfile defaults it to empty). The env chain covers those.
+      bakedCommitShaCache = null;
+    }
+  }
+  return bakedCommitShaCache;
+}
+
+/**
+ * Test-only: point the baked-sha reader at another file and forget the cached read.
+ * Call with no argument to restore the real image path.
+ */
+function setBakedCommitShaFileForTests(filePath) {
+  imageCommitShaFile = filePath === undefined ? IMAGE_COMMIT_SHA_FILE : filePath;
+  bakedCommitShaCache = UNREAD;
+}
+
 /** True when a managed PaaS (Railway or Cloud Run) started this process. */
 function isManagedPlatform(env) {
   return hasAny(readEnv(env), MANAGED_PLATFORM_MARKERS);
@@ -280,6 +332,11 @@ function serviceName(env) {
 /**
  * Deployed commit sha, or null.
  *
+ * THE BAKED SHA OUTRANKS EVERY ENV VAR, deliberately. Every name below is set by whoever
+ * deploys, so a deploy that forgets one reports the PREVIOUS commit while running the new
+ * code — see `bakedCommitSha` for the revision this actually happened to. The stamped file
+ * ships inside the image and cannot disagree with the code beside it.
+ *
  * Cloud Run injects NO commit sha, so `COMMIT_SHA` / `SOURCE_VERSION` (the names Cloud
  * Build and buildpacks conventionally set, and what our deploy step should inject) are
  * part of the chain. Order preserves the pre-existing `src/server.js` chain exactly;
@@ -287,13 +344,32 @@ function serviceName(env) {
  */
 function commitSha(env) {
   const e = readEnv(env);
-  return firstNonEmpty(e, [
+  const declared = firstNonEmpty(e, [
     'PIVOTA_COMMIT_SHA',
     'RAILWAY_GIT_COMMIT_SHA',
     'COMMIT_SHA',
     'GIT_COMMIT_SHA',
     'SOURCE_VERSION',
   ]).value || null;
+  const baked = bakedCommitSha();
+  // Loose check on purpose: `bakedCommitSha` normalises an empty stamp to null, and this
+  // treats '' the same way, so the two cannot drift into disagreeing about what "no stamp"
+  // is. Tightening this to `baked === null` would make the normalisation load-bearing and
+  // silently reintroduce an empty-file image reporting '' as its commit.
+  if (!baked) return declared;
+  // A disagreement is not cosmetic: it means something deployed this image without setting
+  // the stamp, so the env var is a leftover from the PREVIOUS revision. Reporting the baked
+  // value keeps /health honest; saying so out loud is what makes the broken deploy path
+  // findable, because a correct-looking /health is exactly why the last one went unnoticed
+  // for eleven weeks. Use `infra/gcp/deploy_gateway.sh`, which always sets both from one
+  // variable, rather than a hand `gcloud run deploy`.
+  if (declared && declared !== baked) {
+    warnOnce('deployed commit sha disagrees with the sha baked into this image - reporting the baked one', {
+      baked,
+      declared,
+    });
+  }
+  return baked;
 }
 
 /** First 12 chars of `commitSha()`, or null. The repo's existing short-sha width. */
@@ -392,4 +468,5 @@ module.exports = {
   requirePlatformEnv,
   normalizeEnvName,
   resetPlatformWarnings,
+  setBakedCommitShaFileForTests,
 };
