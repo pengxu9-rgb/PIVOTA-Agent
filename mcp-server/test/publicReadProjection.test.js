@@ -211,6 +211,38 @@ test("get_alternatives empty returns a note", () => {
   assert.equal(typeof out.note, "string");
 });
 
+test("get_alternatives never serves an amount without its currency (verified live 2026-08-25)", () => {
+  // Prod served a $49 alternative as {amount: 49} beside a currency-carrying anchor price — a bare amount
+  // invites the reader to assume the anchor's currency, which fabricates a price when they differ. The
+  // amount is withheld (the currency-free ratio survives), never served half-dressed.
+  const altSignal = (related) => ({
+    signal_type: "alternative",
+    subject: { kind: "product", id: "sig_anchor" },
+    value: { related, relation: "competitive_alternative", price_comparison: { price_ratio: 8.17 } },
+    evidence: { grade: "B", sources: [] },
+  });
+  const out = projectGetAlternatives({
+    subject: { kind: "product", id: "sig_anchor" },
+    signals: [
+      altSignal({ ref: "sig_bare", title: "Currency-less", price: 49 }),
+      altSignal({ ref: "sig_paired", title: "Paired", price: 49, currency: "USD" }),
+    ],
+  });
+  const bare = out.alternatives.find((a) => a.product_id === "sig_bare");
+  assert.equal(bare.price, undefined, "an amount with no known currency must not surface");
+  assert.equal(bare.price_vs_anchor, "+717%", "the currency-free comparison still serves");
+  const paired = out.alternatives.find((a) => a.product_id === "sig_paired");
+  assert.deepEqual(paired.price, { amount: 49, currency: "USD" });
+  // The surface invariant itself: every price object on the alternatives surface is a complete pair.
+  for (const a of out.alternatives) {
+    if (a.price !== undefined) {
+      assert.equal(typeof a.price.amount, "number");
+      assert.equal(typeof a.price.currency, "string");
+      assert.ok(a.price.currency.length > 0);
+    }
+  }
+});
+
 // ---- dispatcher + denylist integrity ---------------------------------------------------------------------
 
 test("dispatcher routes each tool and returns {} for an unknown tool", () => {

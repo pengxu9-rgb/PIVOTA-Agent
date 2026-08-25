@@ -1024,6 +1024,12 @@ jobs:
       # price at all", or ADR-024's own founding defect (the Mintree INR prices) files itself under
       # `served_unpriced`. classifyRecoCandidateAgainstPriceCeiling re-normalizes with its own
       # allowlist, so 4500 INR is still `unknown` against a 40 USD ceiling and never `over`.
+      # ADDED 2026-08-25: `mcp-server/test/publicReadProjection`, confirmed green (16/16). It ran NOWHERE
+      # on a PR (absent from this list; jest's `testMatch` cannot see `mcp-server/test/`). It pins the
+      # whole public /mcp read projection — the denylist/leak guard, byte budget, and now the alternatives
+      # price-pairing invariant: no price object on the get_alternatives surface may carry an amount
+      # without its currency (verified live 2026-08-25: a $49 alternative served as {amount:49} beside a
+      # currency-carrying anchor — a bare amount invites the reader to assume the anchor's currency).
       - name: Run node:test suites
         run: |
           node --test \
@@ -1078,6 +1084,7 @@ jobs:
             tests/commerce_search_self_invoke_budget.node.test.cjs \
             mcp-server/test/commerceReadCache.test.js \
             mcp-server/test/publicReadSearchZeroResults.test.js \
+            mcp-server/test/publicReadProjection.test.js \
             mcp-server/test/commerceToolSurface.test.js \
             mcp-server/test/mcpBuyerIntake.test.js \
             mcp-server/test/crossProtocolConformance.test.js \

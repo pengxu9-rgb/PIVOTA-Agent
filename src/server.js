@@ -30785,7 +30785,14 @@ async function getCommerceRemoteMcpAdapter() {
       const verifyPaymentAuthorization = await getCommercePaymentAuthorizationVerifier();
       // Read-only intelligence reads (get_alternatives/get_offers) injected as localReads — the relationship
       // graph + offers live in the app DB, so the handlers are wired here (not in the safety kernel).
-      const { makeGetAlternatives, makeGetOffers, makeGetIntel, mapOffersResolveResponse } = require('./agentSignals/intelligenceReads');
+      const {
+        makeGetAlternatives,
+        makeGetOffers,
+        makeGetIntel,
+        mapOffersResolveResponse,
+        candidateSnapshotNeedsHydration,
+        hydrateCandidateSnapshotFromEntity,
+      } = require('./agentSignals/intelligenceReads');
       const { makeRecommendProducts } = require('./agentSignals/recommendProducts');
       const {
         listApprovedRelationshipEdgesForAnchor,
@@ -30832,15 +30839,17 @@ async function getCommerceRemoteMcpAdapter() {
             });
             return identity ? applyAnchorIdentity(anchorProduct, identity) : anchorProduct;
           },
-          // Resolve candidate titles at read-time (the stored candidate_snapshot has none on the
-          // uncollapsed path) so alternatives carry a product NAME, not just a brand. Reuses the same
-          // resolver the family-collapse serving path uses. Fail-open: a miss leaves the snapshot as-is.
+          // Resolve candidate titles AND the currency of a stored price amount at read-time (the stored
+          // candidate_snapshot has no title on the uncollapsed path, and its writer never normalized a
+          // currency key — an amount must never reach an agent without its currency). Reuses the same
+          // resolver the family-collapse serving path uses; the per-edge merge is the pure
+          // hydrateCandidateSnapshotFromEntity. Fail-open: a miss leaves the snapshot as-is.
           hydrateCandidates: async (edges) => {
             if (typeof resolveRelationshipGraphRefsToCanonicalEntities !== 'function') return;
             const refs = [];
             for (const e of edges) {
               const snap = (e && e.candidate_snapshot) || {};
-              if (e && e.candidate_product_ref && !snap.title) {
+              if (e && e.candidate_product_ref && candidateSnapshotNeedsHydration(snap)) {
                 refs.push({ ref: e.candidate_product_ref, snapshot: snap });
               }
             }
@@ -30852,13 +30861,10 @@ async function getCommerceRemoteMcpAdapter() {
                 ? (normalizeRelationshipGraphRefForResolution(ref) || {}).normalized_ref
                 : ref;
             for (const e of edges) {
+              if (!e || !e.candidate_product_ref) continue;
               const snap = (e && e.candidate_snapshot) || {};
-              if (snap.title || !e || !e.candidate_product_ref) continue;
-              const ent = resMap.get(keyOf(e.candidate_product_ref));
-              const title = ent && (ent.title || ent.name);
-              if (title) {
-                e.candidate_snapshot = { ...snap, title, brand: snap.brand || (ent && ent.brand) || null };
-              }
+              const hydrated = hydrateCandidateSnapshotFromEntity(snap, resMap.get(keyOf(e.candidate_product_ref)));
+              if (hydrated) e.candidate_snapshot = hydrated;
             }
           },
         }),

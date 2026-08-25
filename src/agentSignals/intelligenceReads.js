@@ -16,6 +16,43 @@ function nonEmpty(v) {
   return typeof v === 'string' && v.trim() !== '';
 }
 
+// --- candidate snapshot hydration (the pure half of the injected hydrateCandidates) -----------------------
+// The stored candidate_snapshot is a raw product spread frozen at edge-build time; two gaps are repaired at
+// read time from the canonical catalog row the ref resolves to:
+//   - title (the uncollapsed serving path stores none — titles are resolved at read time);
+//   - the currency of an already-stored price amount (the snapshot writer never normalized a currency key,
+//     and an amount must never reach an agent without its currency). The canonical row is the SAME listing
+//     the amount was crawled from, so pairing its currency with the stored amount stays honest.
+// The resolver I/O lives in the caller (server wiring); these stay pure and unit-testable.
+
+function candidateSnapshotNeedsHydration(snapshot) {
+  const snap = snapshot && typeof snapshot === 'object' ? snapshot : {};
+  const needsTitle = !snap.title;
+  const needsCurrency =
+    snap.price != null && snap.price !== '' && !snap.currency && !snap.price_currency;
+  return needsTitle || needsCurrency;
+}
+
+// Merge a resolved canonical entity into a stored candidate_snapshot, filling ONLY what the snapshot lacks.
+// Returns the hydrated snapshot, or null when there is nothing to fill (caller keeps the edge as-is).
+function hydrateCandidateSnapshotFromEntity(snapshot, entity) {
+  const snap = snapshot && typeof snapshot === 'object' ? snapshot : {};
+  const ent = entity && typeof entity === 'object' ? entity : null;
+  if (!ent) return null;
+  const title = !snap.title ? ent.title || ent.name || null : null;
+  const displaySnap = ent.display_snapshot && typeof ent.display_snapshot === 'object' ? ent.display_snapshot : null;
+  const currency =
+    snap.price != null && snap.price !== '' && !snap.currency && !snap.price_currency && displaySnap
+      ? displaySnap.currency || null
+      : null;
+  if (!title && !currency) return null;
+  return {
+    ...snap,
+    ...(title ? { title, brand: snap.brand || ent.brand || null } : {}),
+    ...(currency ? { currency } : {}),
+  };
+}
+
 /**
  * get_alternatives — project relationship-graph edges → alternative/related Signals.
  * @param {{
@@ -256,4 +293,12 @@ function mapOffersResolveResponse(res, fallbackGroupId = null) {
   return { offers, product_group_id: groupId };
 }
 
-module.exports = { makeGetAlternatives, makeGetOffers, makeGetIntel, mapOffersResolveResponse, DEFAULT_RELATIONS };
+module.exports = {
+  makeGetAlternatives,
+  makeGetOffers,
+  makeGetIntel,
+  mapOffersResolveResponse,
+  DEFAULT_RELATIONS,
+  candidateSnapshotNeedsHydration,
+  hydrateCandidateSnapshotFromEntity,
+};

@@ -48,7 +48,10 @@ function relationshipEdgeToSignal(edge, { anchorId = null } = {}) {
         price: Number.isFinite(Number(snapshot.price)) && snapshot.price !== null && snapshot.price !== ''
           ? Number(snapshot.price)
           : null,
-        currency: snapshot.currency || null,
+        // Same raw-spread reason as price: the snapshot's currency key varies by producer (`currency` in
+        // products_cache payloads, `price_currency` in seed/PDP payloads), so a one-key read here is how a
+        // stored amount sheds its currency on the agent surface.
+        currency: snapshot.currency || snapshot.price_currency || snapshot.priceCurrency || null,
         image_url: snapshot.image_url || null,
       },
       relation,

@@ -271,6 +271,59 @@ describe('catalogEntityResolution', () => {
     expect(resolved.get('product:ext_concealer_150').family_key).toMatch(/^family:v1:/);
   });
 
+  test('relationship graph display snapshot carries the payload price WITH its currency', async () => {
+    const {
+      resolveRelationshipGraphRefsToCanonicalEntities,
+      _internals,
+    } = require('../../src/services/catalogEntityResolution');
+    _internals.RELATIONSHIP_GRAPH_REF_RESOLUTION_CACHE.clear();
+    const queryFn = jest.fn(async () => ({
+      rows: [
+        {
+          input_ref: 'product:ext_priced',
+          normalized_ref: 'product:ext_priced',
+          source_product_id: 'ext_priced',
+          title: 'Priced Serum',
+          brand: 'BrandY',
+          category: 'serum',
+          product_payload: { price_amount: 49, price_currency: 'USD' },
+          pivota_signature_id: 'sig_priced',
+          product_group_id: 'pg_priced',
+          is_primary: true,
+          pdp_lifecycle_stage: 'published',
+        },
+        {
+          // Payloads that only say `currency` (products_cache shape) must resolve too.
+          input_ref: 'product:ext_nested',
+          normalized_ref: 'product:ext_nested',
+          source_product_id: 'ext_nested',
+          title: 'Nested Serum',
+          brand: 'BrandZ',
+          category: 'serum',
+          product_payload: { snapshot: { price: '22.00', currency: 'EUR' } },
+          pivota_signature_id: 'sig_nested',
+          product_group_id: 'pg_nested',
+          is_primary: true,
+          pdp_lifecycle_stage: 'published',
+        },
+      ],
+    }));
+
+    const resolved = await resolveRelationshipGraphRefsToCanonicalEntities(
+      ['product:ext_priced', 'product:ext_nested'],
+      { queryFn, bypassCache: true },
+    );
+
+    expect(resolved.get('product:ext_priced').display_snapshot).toMatchObject({
+      price: '49',
+      currency: 'USD',
+    });
+    expect(resolved.get('product:ext_nested').display_snapshot).toMatchObject({
+      price: '22.00',
+      currency: 'EUR',
+    });
+  });
+
   test('relationship graph resolver uses structured variant payload fields for read-time family key', async () => {
     const {
       resolveRelationshipGraphRefsToCanonicalEntities,
