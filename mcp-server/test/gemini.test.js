@@ -95,27 +95,46 @@ test("geminiCallToCommerceTool executes the canonical surface with verified sess
     }
   });
 
+  const verified = { user_ref: "user_verified", acp_session_id: "sess_gemini", claims: { iss: "https://idp.test", sub: "s1", email: "buyer@example.com", email_verified: true } };
   const part = await geminiCallToCommerceTool(
     {
       name: "create_checkout_session",
       args: {
         idempotency_key: "idem-gemini-safe-001",
-        user_ref: "user_model",
         quote: {
           merchant_id: "m1",
-          items: [{ product_id: "p1", variant_id: "v1", quantity: 1, amount: 999999 }]
+          items: [{ product_id: "p1", variant_id: "v1", quantity: 1 }]
         }
       }
     },
     surface,
-    { user_ref: "user_verified", acp_session_id: "sess_gemini", claims: { iss: "https://idp.test", sub: "s1", email: "buyer@example.com", email_verified: true } }
+    verified
   );
 
   assert.equal(part.functionResponse.name, "create_checkout_session");
   assert.equal(part.functionResponse.response.session_id, "quote_gemini");
   assert.deepEqual(seen.ctx, { user_ref: "user_verified", acp_session_id: "sess_gemini" });
   assert.equal(seen.params.user_ref, undefined);
-  assert.equal(seen.params.quote.items[0].amount, undefined);
+
+  // Model-asserted identity or money fields are no longer silently stripped: the declared-schema guard on
+  // the surface refuses the whole call, so nothing reaches the executor for it.
+  seen = undefined;
+  await assert.rejects(
+    geminiCallToCommerceTool(
+      {
+        name: "create_checkout_session",
+        args: {
+          idempotency_key: "idem-gemini-safe-002",
+          user_ref: "user_model",
+          quote: { merchant_id: "m1", items: [{ product_id: "p1", variant_id: "v1", quantity: 1, amount: 999999 }] }
+        }
+      },
+      surface,
+      verified
+    ),
+    (e) => e.code === "INVALID_ARGUMENTS" && e.message.includes('"user_ref"') && e.message.includes('"quote.items[0].amount"')
+  );
+  assert.equal(seen, undefined, "a refused call must never reach the executor");
 });
 
 test("geminiCallToInvoke rejects operations not allowed for the tool", () => {

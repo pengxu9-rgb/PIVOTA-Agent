@@ -1030,6 +1030,17 @@ jobs:
       # price-pairing invariant: no price object on the get_alternatives surface may carry an amount
       # without its currency (verified live 2026-08-25: a $49 alternative served as {amount:49} beside a
       # currency-carrying anchor — a bare amount invites the reader to assume the anchor's currency).
+      # ADDED 2026-08-25: `mcp-server/test/inputSchemaGuard`, a NEW file, green (9/9) and
+      # mutation-checked (guard invocation disabled -> 13 failures across this file + remoteMcpAdapter).
+      # It pins declared-schema enforcement on the NATIVE tools/call path: every tool schema advertises
+      # `additionalProperties:false`, but nothing read that declaration — `toParams` is a filter, not a
+      # validator — so a misplaced argument was silently deleted. Verified on prod 2026-08-25:
+      # `recommend_products {price_max:40}` (belongs inside `constraints`) was accepted, the ceiling
+      # never applied, and an over-budget item returned with empty warnings. The suite pins: the exact
+      # reported failure (top-level price_max refused naming the constraints envelope; the declared
+      # spelling reaches the lane), the whole-surface sweep (every tool refuses an undeclared argument;
+      # nothing reaches an upstream read), nested paths, did-you-mean hints, identity-in-args refusal,
+      # and that free-form envelopes (payment_authorization, constraints) stay free-form.
       - name: Run node:test suites
         run: |
           node --test \
@@ -1086,6 +1097,7 @@ jobs:
             mcp-server/test/publicReadSearchZeroResults.test.js \
             mcp-server/test/publicReadProjection.test.js \
             mcp-server/test/commerceToolSurface.test.js \
+            mcp-server/test/inputSchemaGuard.test.js \
             mcp-server/test/mcpBuyerIntake.test.js \
             mcp-server/test/crossProtocolConformance.test.js \
             tests/upstream_retry_deadline_budget.node.test.cjs \

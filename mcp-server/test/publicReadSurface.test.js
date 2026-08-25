@@ -57,7 +57,7 @@ test("tools outside the allowlist do not exist on the public surface", async () 
   assert.equal(calls.length, 0, "refused tools must never reach the executor");
 });
 
-test("read calls run anonymously and strip model-supplied identity", async () => {
+test("read calls run anonymously and refuse model-supplied identity", async () => {
   const calls = [];
   const surface = createPublicReadToolSurface(
     fakeExecutor(calls, {
@@ -68,12 +68,19 @@ test("read calls run anonymously and strip model-supplied identity", async () =>
       },
     })
   );
-  const result = await surface.callTool("search_catalog", {
-    query: "niacinamide serum",
-    user_ref: "model-supplied-identity",
-    acp_session_id: "model-supplied-session",
-  });
-  // Result is the slim projected shape, not the raw executor return.
+  // Model-supplied identity fields are UNDECLARED arguments; the commerce surface's declared-schema guard
+  // refuses the call outright (they used to be silently stripped). Nothing reaches the executor.
+  await assert.rejects(
+    surface.callTool("search_catalog", {
+      query: "niacinamide serum",
+      user_ref: "model-supplied-identity",
+      acp_session_id: "model-supplied-session",
+    }),
+    (e) => e.code === "INVALID_ARGUMENTS",
+  );
+  assert.equal(calls.length, 0, "a refused call must never reach the executor");
+  // A clean call runs ANONYMOUSLY — empty ctx — and returns the slim projected shape.
+  const result = await surface.callTool("search_catalog", { query: "niacinamide serum" });
   assert.equal(result.products.length, 1);
   assert.equal(result.products[0].product_id, "sig_1");
   assert.deepEqual(result.products[0].price, { amount: 26, currency: "USD" });

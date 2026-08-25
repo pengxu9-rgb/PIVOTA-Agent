@@ -62,7 +62,10 @@ async function probe(query) {
     headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream' },
     body: JSON.stringify({
       jsonrpc: '2.0', id: 1, method: 'tools/call',
-      params: { name: 'search_catalog', arguments: { query, limit: 10 } },
+      // `page_size` is the DECLARED name; `limit` was silently dropped before the declared-schema guard
+      // (PR #2103) and is refused by name since — which would have turned this audit into a confident
+      // 100%-zero false measurement.
+      params: { name: 'search_catalog', arguments: { query, page_size: 10 } },
     }),
   });
   let body = await res.text();
