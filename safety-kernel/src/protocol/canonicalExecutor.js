@@ -593,8 +593,20 @@ async function createPaymentLink({ kernel, upstream }, params, ctx) {
     async (runCtx) => {
       const orderKey = `${base}:order`;
       // 1. INV-1/5: order from the session's locked quote; amount is the server-side snapshot, not the caller's.
+      //    `customer_email` MUST ride the order: pivota-backend's POST /agent/v2/orders hard-requires
+      //    `buyer_context.customer_email` (routes/agent_v2.py create_order_v2), and its fallback -- the
+      //    quote's stored `request_json` -- is a PII-minimized fingerprint that deliberately does not
+      //    retain the email. Without this field every door-minted payment link dies there with
+      //    INVALID_BUYER_CONTEXT (400), after the quote and the session both succeeded. Found live 2026-08-25.
       const order = await kernel.createOrder(
-        { idempotency_key: orderKey, order: { quote_id: params.session_id, shipping_address: params.shipping_address ?? {} } },
+        {
+          idempotency_key: orderKey,
+          order: {
+            quote_id: params.session_id,
+            customer_email: params.customer_email ?? null,
+            shipping_address: params.shipping_address ?? {},
+          },
+        },
         ctx,
       );
       // 2. Mint the HOSTED checkout surface. Creating a backend session is a side effect; mark it so a

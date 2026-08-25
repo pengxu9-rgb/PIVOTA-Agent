@@ -122,3 +122,33 @@ test('contract safety: needs verified buyer + session + idempotency key', async 
   await assert.rejects(exec('create_payment_link', { session_id: sid }, CTX), (e) => e.code === 'IDEMPOTENCY_CONFLICT');
   await assert.rejects(exec('create_payment_link', { idempotency_key: 'k2' }, CTX), (e) => e.code === 'QUOTE_NOT_FOUND');
 });
+
+test('create_payment_link threads customer_email onto the ORDER it mints (backend hard-requires buyer_context.customer_email)', async () => {
+  // pivota-backend's POST /agent/v2/orders refuses INVALID_BUYER_CONTEXT (400) without
+  // buyer_context.customer_email, and the quote's stored request_json is a PII-minimized
+  // fingerprint that cannot supply it. So the email given to create_payment_link MUST ride
+  // the create_order payload itself -- found live 2026-08-25 when every door-minted payment
+  // link died at order creation after quote and session had both succeeded.
+  const orderPayloads = [];
+  const kernelUpstream = async (op, payload) => {
+    if (op === 'create_order') { orderPayloads.push(payload); return { order_id: 'o_exec', acp_state: {} }; }
+    if (op === 'preview_quote') return QUOTE;
+    return {};
+  };
+  const kernel = new SafetyKernel({ upstream: kernelUpstream, secret: SECRET, log: quiet });
+  const readUpstream = async (op) => (
+    op === 'create_payment_link'
+      ? { checkout_url: 'https://checkout.stripe.com/c/pay/cs_test_abc123', checkout_session_id: 'cs_test_abc123', expires_at: 1780000000 }
+      : { ok: true }
+  );
+  const exec = createCanonicalExecutor({ kernel, upstream: readUpstream, verifyPaymentAuthorization: async () => ({ ok: true }), hostedLinkEnabled: true }).execute;
+  const s = await exec('create_checkout_session', { idempotency_key: 'idem-email-1', quote: { merchant_id: 'merch_A', items: [{ product_id: 'p1', quantity: 1 }] } }, CTX);
+  await exec('create_payment_link', { idempotency_key: 'idem-email-2', session_id: s.session_id, customer_email: 'buyer@example.com' }, CTX);
+  assert.equal(orderPayloads.length, 1);
+  assert.equal(orderPayloads[0].order.customer_email, 'buyer@example.com');
+  // And absent an email, the field is an explicit null -- never undefined-dropped into a
+  // different shape than the backend contract names.
+  const s2 = await exec('create_checkout_session', { idempotency_key: 'idem-email-3', quote: { merchant_id: 'merch_A', items: [{ product_id: 'p1', quantity: 1 }] } }, CTX);
+  await exec('create_payment_link', { idempotency_key: 'idem-email-4', session_id: s2.session_id, customer_email: 'x@y.zz' }, CTX);
+  assert.equal(orderPayloads[1].order.customer_email, 'x@y.zz');
+});
