@@ -241,6 +241,44 @@ function credentialsAvailable(apiKey) {
   return false;
 }
 
+/**
+ * The OBSERVED credential state, for readiness reporting. 'ok' | 'failed' | 'pending' |
+ * 'not_applicable'.
+ *
+ * `credentialsAvailable()` answers a different question - "should a call be attempted" - and
+ * before any probe resolves it answers from CONFIGURATION. That is the right trade for a call
+ * gate: it fails closed only when nothing is configured, and waving a caller through to a clean
+ * skip beats a mid-request throw.
+ *
+ * It is the wrong answer for a health endpoint, and dangerously so on the platform production
+ * actually runs on. `credentialSourceConfigured()` returns true on the bare presence of
+ * `K_SERVICE`, which Cloud Run injects into every container. So a service with no usable
+ * credential at all reports available, the `startProbe()` line below it is never reached,
+ * `adcProbe` stays null for the life of the process, and readiness would report GREEN on a
+ * gateway whose every Gemini call 403s. Trading a false red for a false green is not a fix.
+ *
+ * So this reports only what was actually observed, and - unlike the call gate - it always starts
+ * the probe, which is what makes the observation eventually exist on a runtime carrying those env
+ * markers. Callers get 'pending' until a token mint has been attempted, never a
+ * configured-therefore-fine guess.
+ */
+function credentialProbeState() {
+  if (!vertexEnabled()) return 'not_applicable';
+  if (!vertexProject()) return 'failed';
+  if (adcProbe !== null) return adcProbe ? 'ok' : 'failed';
+  // A malformed inline credential is decidable synchronously. Waiting on a probe to rediscover
+  // it would report 'pending' for a config that cannot ever succeed.
+  if (credentialsJson()) {
+    try {
+      parsedCredentials();
+    } catch {
+      return 'failed';
+    }
+  }
+  startProbe();
+  return 'pending';
+}
+
 // The only image-generation model that resolves on Vertex for this project,
 // verified by probing :generateContent in both us-central1 and global. Every
 // AI Studio "-image-preview" id 404s there, as do the imagen-* ids.
@@ -525,6 +563,7 @@ module.exports = {
   vertexLocation,
   geminiClientOptions,
   credentialsAvailable,
+  credentialProbeState,
   clientCacheKey,
   accessToken,
   credentialSourceConfigured,

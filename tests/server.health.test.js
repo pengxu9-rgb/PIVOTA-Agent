@@ -61,6 +61,11 @@ describe('health endpoints', () => {
         GEMINI_API_KEY_3: undefined,
         AURORA_SKIN_GEMINI_API_KEY: undefined,
         GOOGLE_API_KEY: undefined,
+        // 'missing_keys' is the AI-Studio-path answer. Naming the Vertex vars keeps this case
+        // testing the mode it says it tests instead of inheriting whatever the runner has set.
+        VERTEX_AI_ENABLED: undefined,
+        GOOGLE_CLOUD_PROJECT: undefined,
+        K_SERVICE: undefined,
       },
       async () => {
         jest.resetModules();
@@ -79,6 +84,9 @@ describe('health endpoints', () => {
       {
         GEMINI_API_KEY: 'test_gemini_health_key',
         GOOGLE_API_KEY: undefined,
+        VERTEX_AI_ENABLED: undefined,
+        GOOGLE_CLOUD_PROJECT: undefined,
+        K_SERVICE: undefined,
       },
       async () => {
         jest.resetModules();
@@ -89,6 +97,90 @@ describe('health endpoints', () => {
         expect(Array.isArray(resp.body.reasons)).toBe(true);
         expect(resp.body.reasons.length).toBe(0);
         expect(resp.body.circuit_open).toBe(false);
+        expect(resp.body.auth_mode).toBe('ai_studio_api_key');
+      },
+    );
+  });
+
+  // The three below drive the real handler. An earlier attempt at this asserted a re-implemented
+  // copy of the endpoint's predicate in a separate file, which stayed green when the shipped code
+  // was reverted. These fail if src/server.js's /healthz/gemini branch is changed back.
+
+  it('/healthz/gemini does not report missing_keys under Vertex, where the key pool is meant to be empty', async () => {
+    await withEnv(
+      {
+        GEMINI_API_KEY: undefined,
+        GEMINI_API_KEY_1: undefined,
+        GEMINI_API_KEY_2: undefined,
+        GEMINI_API_KEY_3: undefined,
+        AURORA_SKIN_GEMINI_API_KEY: undefined,
+        GOOGLE_API_KEY: undefined,
+        VERTEX_AI_ENABLED: 'true',
+        GOOGLE_CLOUD_PROJECT: 'pivota-prod',
+        GOOGLE_APPLICATION_CREDENTIALS_JSON: undefined,
+        K_SERVICE: 'gateway',
+      },
+      async () => {
+        jest.resetModules();
+        const app = require('../src/server');
+        const resp = await request(app).get('/healthz/gemini').expect(200);
+        // The original bug: an empty pool is correct here, so this reason is simply wrong.
+        expect(resp.body.reasons).not.toContain('missing_keys');
+        expect(resp.body.key_count).toBe(0);
+      },
+    );
+  });
+
+  it('/healthz/gemini stays red on Cloud Run when no credential can be minted', async () => {
+    // K_SERVICE alone satisfies credentialSourceConfigured(), so a readiness check derived from
+    // configuration reports GREEN on a container with no usable credential at all. Trading the
+    // false red above for that false green would be a worse bug, on the platform prod runs on.
+    await withEnv(
+      {
+        GEMINI_API_KEY: undefined,
+        GEMINI_API_KEY_1: undefined,
+        GEMINI_API_KEY_2: undefined,
+        GEMINI_API_KEY_3: undefined,
+        AURORA_SKIN_GEMINI_API_KEY: undefined,
+        GOOGLE_API_KEY: undefined,
+        VERTEX_AI_ENABLED: 'true',
+        GOOGLE_CLOUD_PROJECT: 'pivota-prod',
+        GOOGLE_APPLICATION_CREDENTIALS_JSON: undefined,
+        K_SERVICE: 'gateway',
+      },
+      async () => {
+        jest.resetModules();
+        const app = require('../src/server');
+        const resp = await request(app).get('/healthz/gemini').expect(200);
+        expect(resp.body.ok).toBe(false);
+        expect(resp.body.ready).toBe(false);
+        expect(resp.body.credential_state).not.toBe('ok');
+        expect(resp.body.reasons).toContain('vertex_credentials_unverified');
+      },
+    );
+  });
+
+  it('/healthz/gemini names Vertex as the transport even when its credential is broken', async () => {
+    // Reporting 'ai_studio_api_key' for a misconfigured Vertex deployment sends the reader after
+    // GEMINI_API_KEY - a variable that is deliberately unused there. auth_mode has to follow the
+    // wire path, which vertexEnabled() alone decides.
+    await withEnv(
+      {
+        GEMINI_API_KEY: undefined,
+        GOOGLE_API_KEY: undefined,
+        VERTEX_AI_ENABLED: 'true',
+        GOOGLE_CLOUD_PROJECT: undefined,
+        K_SERVICE: undefined,
+      },
+      async () => {
+        jest.resetModules();
+        const app = require('../src/server');
+        const resp = await request(app).get('/healthz/gemini').expect(200);
+        expect(resp.body.auth_mode).toBe('vertex_adc');
+        expect(resp.body.ok).toBe(false);
+        expect(resp.body.reasons).toContain('vertex_credentials_unavailable');
+        expect(resp.body.credential_detail).toMatch(/GOOGLE_CLOUD_PROJECT/);
+        expect(resp.body.credential_detail).not.toMatch(/GEMINI_API_KEY/);
       },
     );
   });

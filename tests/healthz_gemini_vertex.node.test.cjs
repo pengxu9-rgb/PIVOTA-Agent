@@ -1,73 +1,104 @@
-'use strict';
-
 /**
- * /healthz/gemini must not report "missing_keys" on a Vertex deployment.
+ * credentialProbeState() - the readiness answer /healthz/gemini depends on.
  *
- * Under VERTEX_AI_ENABLED=true the Gemini clients authenticate with Application
- * Default Credentials, so the API-key pool is legitimately empty. The startup
- * check already accounted for that; this endpoint did not, and reported
- * ok:false / missing_keys on a perfectly healthy production service.
+ * This exercises the REAL exported function. An earlier version of this file re-implemented the
+ * endpoint's predicate as a local helper and asserted against that, which proved only that the
+ * test agreed with itself: reverting the shipped code left all of it green. A test that cannot
+ * fail when the thing it names is broken is worse than no test, because it is counted as coverage.
  *
- * A 2026-08-22 security audit read exactly that output and concluded a credential
- * had been dropped during the Railway->GCP migration. It had not - both platforms
- * authenticate identically and both reported ok:false. This test exists so the
- * endpoint cannot drift back into being wrong about health.
+ * The case that matters most is CLOUD_RUN_MARKER_ONLY. credentialSourceConfigured() returns true
+ * on the bare presence of K_SERVICE, which Cloud Run injects into every container, so a service
+ * with no credential whatsoever looks configured. If this function ever answers 'ok' there,
+ * /healthz/gemini reports green on a gateway whose every Gemini call 403s.
  */
-
 const test = require('node:test');
 const assert = require('node:assert');
 
 const vertexGemini = require('../src/llm/vertexGemini');
 
-// Mirrors the endpoint's decision. Kept deliberately small: the point is the
-// PREDICATE, not the JSON shape around it.
-function reasonsFor({ keyCount, circuitOpen, vertexActive }) {
-  const reasons = [];
-  if (!vertexActive && Number(keyCount || 0) <= 0) reasons.push('missing_keys');
-  if (circuitOpen) reasons.push('circuit_open');
-  return reasons;
+const ENV_KEYS = [
+  'VERTEX_AI_ENABLED',
+  'GOOGLE_CLOUD_PROJECT',
+  'GOOGLE_APPLICATION_CREDENTIALS_JSON',
+  'GOOGLE_APPLICATION_CREDENTIALS',
+  'K_SERVICE',
+  'GAE_SERVICE',
+  'GCE_METADATA_HOST',
+];
+
+/** Run fn with exactly `patch` set and every other credential-shaped var cleared. */
+function withEnv(patch, fn) {
+  const previous = {};
+  for (const key of ENV_KEYS) {
+    previous[key] = process.env[key];
+    delete process.env[key];
+  }
+  for (const [key, value] of Object.entries(patch)) process.env[key] = String(value);
+  // The module memoises the auth client and the probe result across calls; without this a
+  // resolved probe from one case would answer every later one.
+  vertexGemini.resetCredentialsCache();
+  try {
+    return fn();
+  } finally {
+    for (const key of ENV_KEYS) {
+      if (previous[key] == null) delete process.env[key];
+      else process.env[key] = previous[key];
+    }
+    vertexGemini.resetCredentialsCache();
+  }
 }
 
-test('vertex + empty key pool is healthy', () => {
-  const reasons = reasonsFor({ keyCount: 0, circuitOpen: false, vertexActive: true });
-  assert.deepStrictEqual(reasons, [], 'ADC auth means an empty API-key pool is expected');
+test('vertex off is not applicable, whatever else is set', () => {
+  const state = withEnv({ GOOGLE_CLOUD_PROJECT: 'p', K_SERVICE: 'gateway' }, () =>
+    vertexGemini.credentialProbeState(),
+  );
+  assert.strictEqual(state, 'not_applicable');
 });
 
-test('AI Studio + empty key pool is still unhealthy', () => {
-  const reasons = reasonsFor({ keyCount: 0, circuitOpen: false, vertexActive: false });
-  assert.deepStrictEqual(reasons, ['missing_keys'], 'without Vertex, no keys really is broken');
+test('vertex on with no project fails rather than waiting on a probe', () => {
+  const state = withEnv({ VERTEX_AI_ENABLED: 'true' }, () => vertexGemini.credentialProbeState());
+  assert.strictEqual(state, 'failed');
 });
 
-test('an open circuit is unhealthy even under vertex', () => {
-  const reasons = reasonsFor({ keyCount: 0, circuitOpen: true, vertexActive: true });
-  assert.ok(reasons.includes('circuit_open'));
-  assert.ok(!reasons.includes('missing_keys'));
+test('a malformed inline credential fails synchronously', () => {
+  const state = withEnv(
+    {
+      VERTEX_AI_ENABLED: 'true',
+      GOOGLE_CLOUD_PROJECT: 'pivota-prod',
+      GOOGLE_APPLICATION_CREDENTIALS_JSON: '{not json',
+    },
+    () => vertexGemini.credentialProbeState(),
+  );
+  assert.strictEqual(state, 'failed');
 });
 
-test('vertex does not mask a real key-pool problem on the AI Studio path', () => {
-  const reasons = reasonsFor({ keyCount: 3, circuitOpen: false, vertexActive: false });
-  assert.deepStrictEqual(reasons, [], 'keys present, not vertex - healthy');
+test('CLOUD_RUN_MARKER_ONLY: K_SERVICE with no credential is never ok', () => {
+  // The regression this file exists for. K_SERVICE alone satisfies
+  // credentialSourceConfigured(), so anything deriving readiness from configuration reports
+  // healthy here - on a container that cannot mint a token.
+  const state = withEnv(
+    { VERTEX_AI_ENABLED: 'true', GOOGLE_CLOUD_PROJECT: 'pivota-prod', K_SERVICE: 'gateway' },
+    () => vertexGemini.credentialProbeState(),
+  );
+  assert.notStrictEqual(state, 'ok');
+  assert.strictEqual(state, 'pending');
 });
 
-test('vertexGemini exposes what the endpoint depends on', () => {
-  for (const fn of ['vertexEnabled', 'credentialsAvailable', 'vertexProject']) {
-    assert.strictEqual(typeof vertexGemini[fn], 'function', `${fn} must be exported`);
-  }
+test('the call gate still says available there - the two answer different questions', () => {
+  // Not a redundant assertion: it pins the reason credentialProbeState() had to exist. If
+  // credentialsAvailable() is ever "fixed" to fail closed here it would gate off every Gemini
+  // call on Cloud Run, so the divergence is deliberate and must stay visible.
+  const available = withEnv(
+    { VERTEX_AI_ENABLED: 'true', GOOGLE_CLOUD_PROJECT: 'pivota-prod', K_SERVICE: 'gateway' },
+    () => vertexGemini.credentialsAvailable(null),
+  );
+  assert.strictEqual(available, true);
 });
 
-test('VERTEX_AI_ENABLED is read as a strict "true"', () => {
-  const prev = process.env.VERTEX_AI_ENABLED;
-  try {
-    process.env.VERTEX_AI_ENABLED = 'true';
-    assert.strictEqual(vertexGemini.vertexEnabled(), true);
-    process.env.VERTEX_AI_ENABLED = 'TRUE';
-    assert.strictEqual(vertexGemini.vertexEnabled(), true, 'case-insensitive');
-    process.env.VERTEX_AI_ENABLED = 'false';
-    assert.strictEqual(vertexGemini.vertexEnabled(), false);
-    delete process.env.VERTEX_AI_ENABLED;
-    assert.strictEqual(vertexGemini.vertexEnabled(), false, 'unset must not enable vertex');
-  } finally {
-    if (prev === undefined) delete process.env.VERTEX_AI_ENABLED;
-    else process.env.VERTEX_AI_ENABLED = prev;
-  }
+test('missingCredentialMessage names the Vertex problem, not GEMINI_API_KEY', () => {
+  const message = withEnv({ VERTEX_AI_ENABLED: 'true' }, () =>
+    vertexGemini.missingCredentialMessage(),
+  );
+  assert.match(message, /GOOGLE_CLOUD_PROJECT/);
+  assert.doesNotMatch(message, /GEMINI_API_KEY/);
 });

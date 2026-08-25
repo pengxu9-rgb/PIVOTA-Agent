@@ -35862,16 +35862,41 @@ app.get('/healthz/gemini', (req, res) => {
     // migration. Nothing had been dropped: both platforms authenticate the same way, and
     // both reported ok:false. A health endpoint that is wrong about health costs more than
     // one that does not exist, because people act on it.
-    const vertexActive = vertexGemini.vertexEnabled() && vertexGemini.credentialsAvailable(null);
-    if (!vertexActive && Number(snap.gate.keyCount || 0) <= 0) reasons.push('missing_keys');
+    // The MODE is decided by vertexEnabled() alone, because that is what actually picks the wire
+    // path - geminiClientOptions(), restTarget(), embedTarget() and openAiCompatHeaders() all
+    // branch on it and never consult credential health. Deriving auth_mode from "enabled AND
+    // healthy" would label a BROKEN Vertex deployment 'ai_studio_api_key' and send whoever is
+    // debugging to hunt for GEMINI_API_KEY, a variable that is deliberately unused there. That is
+    // the same misdirection this endpoint is being fixed for, merely relocated.
+    //
+    // READINESS comes from the observed probe, never from configuration. credentialsAvailable()
+    // returns true on Cloud Run from the presence of K_SERVICE alone, so gating on it would trade
+    // a false red for a false GREEN on the one platform production runs on - and green is the
+    // direction people act on less.
+    const vertexOn = vertexGemini.vertexEnabled();
+    const credentialState = vertexGemini.credentialProbeState();
+    if (vertexOn) {
+      if (credentialState === 'failed') reasons.push('vertex_credentials_unavailable');
+      // 'pending' means no token mint has been observed yet. Reporting ready on that would be the
+      // configured-therefore-fine guess again; the probe is started by the call above and by
+      // startup, so this resolves rather than sticking.
+      else if (credentialState !== 'ok') reasons.push('vertex_credentials_unverified');
+    } else if (Number(snap.gate.keyCount || 0) <= 0) {
+      reasons.push('missing_keys');
+    }
     if (snap.gate.circuitOpen) reasons.push('circuit_open');
     const ready = reasons.length === 0;
     return res.json({
       ok: ready,
       ready,
       reasons,
-      auth_mode: vertexActive ? 'vertex_adc' : 'ai_studio_api_key',
-      vertex_project: vertexActive ? vertexGemini.vertexProject() || null : null,
+      auth_mode: vertexOn ? 'vertex_adc' : 'ai_studio_api_key',
+      vertex_project: vertexOn ? vertexGemini.vertexProject() || null : null,
+      credential_state: credentialState,
+      // Name the thing that is genuinely missing. The module already composes this sentence for
+      // every Vertex misconfiguration; the old endpoint had it available and never called it.
+      credential_detail:
+        vertexOn && credentialState !== 'ok' ? vertexGemini.missingCredentialMessage() : null,
       circuit_open: snap.gate.circuitOpen,
       concurrency_max: snap.gate.concurrencyMax,
       rate_per_min: snap.gate.ratePerMin,
@@ -52950,6 +52975,11 @@ if (require.main === module) {
       try {
         const gate = getGeminiGlobalGate();
         const snap = gate.snapshot();
+        // Start the ADC probe at boot rather than on the first health request. On Cloud Run
+        // nothing else starts it - credentialsAvailable() short-circuits on the K_SERVICE marker
+        // before reaching startProbe() - so without this /healthz/gemini would report
+        // 'vertex_credentials_unverified' until something else happened to mint a token.
+        vertexGemini.credentialProbeState();
         if (snap.gate.keyCount === 0) {
           // Under Vertex (VERTEX_AI_ENABLED=true) the key pool is legitimately
           // empty — auth is ADC, not API keys — so keyCount 0 is not a failure
