@@ -6,10 +6,18 @@ name: External Seed Sentinel Non-Growth Audit
 # for weeks (~1,693 rows minted between two censuses while the writer was
 # believed fixed). Watermarks + per-lane enforce/report modes live in
 # tests/fixtures/external_seed_sentinel_watermarks.json.
+#
+# The daily schedule (cron "23 10 * * *") moved to the Cloud Run Job
+# `external-seed-sentinel-nongrowth` (pivota-prod, us-west1, Cloud Scheduler
+# trigger — see pivota-backend infra/gcp/setup_scheduler.sh): a breach fails
+# the execution and pages via the "prod: Cloud Run job failing" alert policy.
+# This workflow's DATABASE_URL secret still points at the decommissioned
+# Railway Postgres proxy (torn down 2026-08-25), so scheduled runs here could
+# only fail (ECONNRESET on every query, daily since 2026-08-26). Manual
+# dispatch is kept for ad-hoc audits, but requires repointing the
+# environment's DATABASE_URL secret to a reachable database first.
 
 on:
-  schedule:
-    - cron: "23 10 * * *"
   workflow_dispatch: {}
 
 jobs:
