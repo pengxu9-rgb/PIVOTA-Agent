@@ -180,6 +180,75 @@ const BRAND_SUFFIX_TOKENS = new Set([
   'makeup',
 ]);
 
+// Generic category/product nouns that legitimately appear INSIDE vendor names
+// ("Briogeo Hair Care", "Soap & Glory") but must never stand alone as a
+// dynamic brand alias: a bare "hair" alias brand-matches every "hair …" query.
+// They stay usable inside multi-token phrases; a phrase made only of them is
+// no alias at all.
+const GENERIC_CATEGORY_TOKENS = new Set([
+  'hair',
+  'skin',
+  'skincare',
+  'face',
+  'facial',
+  'body',
+  'care',
+  'lip',
+  'lips',
+  'eye',
+  'eyes',
+  'nail',
+  'nails',
+  'lash',
+  'lashes',
+  'brow',
+  'brows',
+  'scalp',
+  'bath',
+  'hand',
+  'hands',
+  'foot',
+  'feet',
+  'tooth',
+  'teeth',
+  'oral',
+  'serum',
+  'serums',
+  'cream',
+  'creams',
+  'lotion',
+  'lotions',
+  'cleanser',
+  'cleansers',
+  'toner',
+  'toners',
+  'shampoo',
+  'conditioner',
+  'mask',
+  'masks',
+  'balm',
+  'balms',
+  'scrub',
+  'scrubs',
+  'soap',
+  'soaps',
+  'mist',
+  'mists',
+  'oil',
+  'oils',
+  'gel',
+  'gels',
+  'wash',
+  'spray',
+  'sunscreen',
+  'moisturizer',
+  'moisturizers',
+  'treatment',
+  'treatments',
+  'wellness',
+  'health',
+]);
+
 const BRAND_STOP_TOKENS = new Set([
   'the',
   'for',
@@ -300,10 +369,16 @@ function collectDynamicBrandAliases(candidateProducts = []) {
           !BRAND_SUFFIX_TOKENS.has(token),
       );
       if (!tokens.length) continue;
-      const phrase = tokens.slice(0, 4).join(' ');
-      if (phrase.length >= 3) out.add(phrase);
+      const phraseTokens = tokens.slice(0, 4);
+      const phrase = phraseTokens.join(' ');
+      if (
+        phrase.length >= 3 &&
+        phraseTokens.some((token) => !GENERIC_CATEGORY_TOKENS.has(token))
+      ) {
+        out.add(phrase);
+      }
       for (const token of tokens) {
-        if (token.length >= 4) out.add(token);
+        if (token.length >= 4 && !GENERIC_CATEGORY_TOKENS.has(token)) out.add(token);
       }
     }
     if (out.size >= 256) break;

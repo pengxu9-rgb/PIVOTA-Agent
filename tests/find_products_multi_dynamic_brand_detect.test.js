@@ -49,6 +49,41 @@ describe('dynamic catalog brand detection', () => {
     expect(r.detection_mode).toBe('static');
   });
 
+  // Candidate-derived (not catalog-dictionary) aliases: every >=4-char vendor
+  // token used to become a standalone brand alias, so vendor "Briogeo Hair
+  // Care" made the bare token "hair" a brand signal and 'hair conditioner'
+  // came back brand_like. Generic category nouns must only count inside a
+  // multi-token phrase that also carries a distinctive token.
+  test('vendor generic noun is NOT a standalone dynamic alias', () => {
+    const candidateProducts = [{ vendor: 'Briogeo Hair Care' }];
+    for (const q of ['hair conditioner', 'hair mask', 'care package']) {
+      const r = detectBrandEntities(q, { candidateProducts });
+      expect(r.brand_like).toBe(false);
+      expect(r.brands).toEqual([]);
+    }
+  });
+
+  test('vendor with generic nouns stays detectable via phrase and distinctive token', () => {
+    const candidateProducts = [{ vendor: 'Briogeo Hair Care' }];
+    const phrase = detectBrandEntities('briogeo hair care shampoo', { candidateProducts });
+    expect(phrase.brand_like).toBe(true);
+    expect(phrase.detection_mode).toBe('dynamic');
+    expect(phrase.brands).toContain('briogeo hair care');
+    expect(phrase.brands).not.toContain('hair');
+    expect(phrase.brands).not.toContain('care');
+
+    const bare = detectBrandEntities('briogeo shampoo', { candidateProducts });
+    expect(bare.brand_like).toBe(true);
+    expect(bare.brands).toContain('briogeo');
+  });
+
+  test('vendor name made ONLY of generic nouns emits no dynamic aliases', () => {
+    const candidateProducts = [{ vendor: 'Hair Care' }, { brand: 'Skin Serum' }];
+    for (const q of ['hair care', 'skin serum', 'hair care skin serum']) {
+      expect(detectBrandEntities(q, { candidateProducts }).brand_like).toBe(false);
+    }
+  });
+
   test('matchCatalogBrand respects min length + flag gate', () => {
     delete process.env.GATEWAY_DYNAMIC_BRAND_DETECT;
     brandDict.__setBrandSetForTest(['anuko']);
