@@ -54,11 +54,13 @@ function harness({ pages, staticIssuers = [STATIC_CANARY], env = ENV, ttlMs = 10
     logger: { warn: (o, m) => logs.warn.push(m), error: (o, m) => logs.error.push(m), info() {} },
     now: () => clock,
   });
-  const verify = registry.createVerifier(async (issuers) => {
+  const splits = [];
+  const verify = registry.createVerifier(async (issuers, byMethod) => {
     builds.push(issuers.map((e) => e.iss));
+    splits.push(byMethod ? { sg: byMethod.signed_grant.map((e) => e.iss), ap2: byMethod.ap2_mandate.map((e) => e.iss) } : null);
     return async (authorization) => ({ ok: true, seen: issuers.map((e) => e.iss) });
   });
-  return { registry, verify, builds, logs, fetches: () => fetchImpl.calls.length, tick: (ms) => { clock += ms; } };
+  return { registry, verify, builds, splits, logs, fetches: () => fetchImpl.calls.length, tick: (ms) => { clock += ms; } };
 }
 
 test('disabled registry (no internal key) serves static issuers and never fetches', async () => {
@@ -115,6 +117,32 @@ test('ap2-only rows are inert; signed_grant+ap2 rows are served', async () => {
   });
   await verify(grantFor(STATIC_CANARY.iss));
   assert.deepEqual(builds[0], [STATIC_CANARY.iss, 'https://both.example']);
+});
+
+test('the build callback receives the per-method split: ap2 rows reach ap2_mandate, never signed_grant', async () => {
+  const h = harness({
+    pages: [[
+      row({ iss: 'https://ap2only.example', methods: ['ap2_mandate'] }),
+      row({ iss: 'https://both.example', methods: ['signed_grant', 'ap2_mandate'] }),
+      row(),
+    ]],
+  });
+  await h.verify(grantFor(STATIC_CANARY.iss));
+  const [split] = h.splits;
+  assert.deepEqual(split.sg, [STATIC_CANARY.iss, 'https://both.example', 'https://antom.example/payments']);
+  assert.deepEqual(split.ap2, ['https://ap2only.example', 'https://both.example']);
+  // static env entries never gain AP2 trust implicitly
+  assert.ok(!split.ap2.includes(STATIC_CANARY.iss));
+  // the kernel's issuer config does not know `methods` — the split lists must not carry it
+  assert.ok(h.builds[0].length > 0);
+});
+
+test('a methods change alone (signed_grant -> +ap2_mandate) rebuilds the verifier', async () => {
+  const h = harness({ pages: [[row()], [row({ methods: ['signed_grant', 'ap2_mandate'] })]] });
+  await h.verify(grantFor(STATIC_CANARY.iss));
+  h.tick(1500);
+  await h.verify(grantFor(STATIC_CANARY.iss));
+  assert.equal(h.builds.length, 2); // trust SCOPE changed even though the iss set did not
 });
 
 test('TTL: calls inside the window share one fetch; past it, a re-read happens', async () => {

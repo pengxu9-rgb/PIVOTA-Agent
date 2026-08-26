@@ -1048,6 +1048,7 @@ jobs:
             tests/platform_production_guards.node.test.cjs \
             tests/agent_identity_issuer_registry.node.test.cjs \
             tests/payment_grant_issuer_registry.node.test.cjs \
+            tests/ap2_checkout_binding.node.test.cjs \
             tests/agent_signals_intelligence_reads.node.test.cjs \
             tests/agent_signals_recommend_products.node.test.cjs \
             tests/aurora_chat_v1_mainline_delegation_cycle.node.test.cjs \
