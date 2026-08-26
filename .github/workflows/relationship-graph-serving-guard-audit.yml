@@ -1,8 +1,13 @@
 name: Relationship Graph Serving Guard Audit
 
+# The daily scheduled audit moved with the routine to the Cloud Run Job `relgraph-sync`
+# (pivota-prod, us-west1): its `serving_guard_audit` step runs the same
+# audit-relationship-graph-serving-guard.js with threshold enforcement every tick. This
+# workflow's DATABASE_URL secret still points at the decommissioned Railway Postgres proxy
+# (torn down 2026-08-25), so scheduled runs here can only fail (ECONNRESET on every query).
+# Manual dispatch is kept for ad-hoc audits, but requires repointing the environment's
+# DATABASE_URL secret to a reachable database first.
 on:
-  schedule:
-    - cron: "0 10 * * *"
   workflow_dispatch:
     inputs:
       market:
