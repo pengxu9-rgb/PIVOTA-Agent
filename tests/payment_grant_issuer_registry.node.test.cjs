@@ -108,7 +108,7 @@ test('a piped iss is dropped at ingest (it would poison the WHOLE verifier build
   assert.ok(logs.error.some((m) => m.includes('piped iss')));
 });
 
-test('ap2-only rows are inert; signed_grant+ap2 rows are served', async () => {
+test('ap2-only rows are LIVE ap2_mandate trust and are kept out of the signed_grant slice', async () => {
   const { verify, builds } = harness({
     pages: [[
       row({ iss: 'https://ap2only.example', methods: ['ap2_mandate'] }),

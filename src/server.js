@@ -30616,28 +30616,21 @@ async function getCommercePaymentAuthorizationVerifier() {
       const ap2Binding = await getAp2CheckoutBinding(); // null when the flag is off
 
       const { createPaymentAuthorizationVerifier } = await import('../safety-kernel/src/protocol/paymentAuthorizationVerifier.js');
-      const { createSignedGrantVerifier, createAp2MandateVerifier } = await import('../safety-kernel/src/protocol/protocolPaymentVerifiers.js');
+      const { buildPaymentMethodVerifiers } = await import('../safety-kernel/src/protocol/protocolPaymentVerifiers.js');
       const { PivotaCommerceError } = await import('../safety-kernel/src/errors.js');
       // Rebuilt by the registry wrapper ONLY when the merged issuer list changes; with the
       // registry disabled this builds exactly once over the static list, as before.
-      const registryVerifier = paymentIssuerRegistry.createVerifier((issuers, byMethod) => {
-        const signedGrantVerifier = createSignedGrantVerifier({ issuers });
-        const methods = {
-          acp_delegated_token: signedGrantVerifier,
-          ucp_handler: signedGrantVerifier,
-        };
-        // AP2 needs BOTH the flag (=> binding service) AND at least one issuer trusted for
-        // ap2_mandate. Registry rows opt in via methods; static env entries may too, but AP2
-        // trust is never implicit — a signed_grant-only issuer cannot mint mandates.
-        if (ap2Binding && byMethod && byMethod.ap2_mandate.length) {
-          methods.ap2_mandate = createAp2MandateVerifier({
-            issuers: byMethod.ap2_mandate,
-            verifyCheckoutHash: ap2Binding.createCheckoutHashVerifier(),
-            ...(process.env.AP2_EXPECTED_VCT ? { expectedVct: String(process.env.AP2_EXPECTED_VCT).trim() } : {}),
-          });
-        }
-        return createPaymentAuthorizationVerifier({ methods });
-      });
+      const registryVerifier = paymentIssuerRegistry.createVerifier((issuers, byMethod) => createPaymentAuthorizationVerifier({
+        // `issuers` is already the signed_grant SLICE (see createVerifier). Composition lives in
+        // buildPaymentMethodVerifiers so it is reachable from a test — this callback was the one
+        // place the registry's fake-build tests could never exercise.
+        methods: buildPaymentMethodVerifiers({
+          signedGrantIssuers: issuers,
+          ap2MandateIssuers: byMethod ? byMethod.ap2_mandate : [],
+          ap2Binding,
+          expectedVct: process.env.AP2_EXPECTED_VCT ? String(process.env.AP2_EXPECTED_VCT).trim() : '',
+        }),
+      }));
       // Every throw that leaves this seam must be a PivotaCommerceError: the doors are
       // instanceof-gated (toToolError's SAFE_ERROR_CLASSES; the ACP adapter 500s on anything
       // else), so the registry's own failures — empty merged list, a verifier build refused —
