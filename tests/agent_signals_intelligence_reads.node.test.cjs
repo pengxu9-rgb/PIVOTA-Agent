@@ -457,6 +457,13 @@ const FULL_SPEC = {
   variant_id: '40064041844877',
   rail: 'shopify_cart',
   expires_at: '2026-09-01T00:00:00Z',
+  // The live-verification half. Present in the fixture so the verbatim-passthrough assertion
+  // below covers the COMPLETE published shape — a deep-equal that omits half the spec would go
+  // green while those fields were being silently dropped.
+  expected_item_total: 19.99,
+  expected_currency: 'USD',
+  expected_quantity: 1,
+  expected_total_expires_at: '2026-08-26T03:10:00Z',
   tracking: {
     click_id: 'clk_abc',
     param: 'attributes[pivota_click_id]',
@@ -581,4 +588,141 @@ test('an unknown rail from a newer backend is relayed, not nulled', () => {
     { productId: 'sig_1' },
   );
   assert.equal(sig.value.execution_spec.rail, 'ucp_checkout');
+});
+
+// ---------------------------------------------------------------------------------------------
+// LIVE VERIFICATION — what the merchant said, just now.
+//
+// The backend asks the merchant's own storefront before a handoff. Without these keys an agent
+// gets a spec that looks IDENTICAL whether we checked it a second ago or are reciting an index
+// row that is, on the audit's measurement, wrong 31.1% of the time. Three separate facts because
+// they fail separately, and absence is never a claim.
+// ---------------------------------------------------------------------------------------------
+
+const VERIFIED_OFFER = {
+  merchant_id: 'm1',
+  price: 19.99,
+  currency: 'USD',
+  stock_verified: true,
+  merchant_price_verified: true,
+  execution_spec: {
+    merchant_domain: 'brand.com',
+    cart_url: 'https://brand.com/cart/40064041844877:1',
+    expected_item_total: 19.99,
+    expected_currency: 'USD',
+    expected_quantity: 1,
+    expected_total_expires_at: '2026-08-26T03:10:00Z',
+  },
+};
+
+test('a verified offer carries what the merchant said, and when it stops being true', () => {
+  const { offerToSignal } = require('../src/agentSignals/offerToSignal');
+  const v = offerToSignal(VERIFIED_OFFER, { productId: 'sig_1' }).value;
+
+  assert.equal(v.stock_verified, true);
+  assert.equal(v.merchant_price_verified, true);
+  assert.equal(v.execution_spec.expected_item_total, 19.99);
+  assert.equal(v.execution_spec.expected_currency, 'USD');
+  assert.equal(v.execution_spec.expected_quantity, 1);
+  assert.equal(v.execution_spec.expected_total_expires_at, '2026-08-26T03:10:00Z');
+});
+
+test('stock and price verify SEPARATELY — one can hold while the other does not', () => {
+  // The storefront endpoint the backend reads carries an amount with NO currency code, so a
+  // price is only verified once the shop's declared currency is known to match the offer's.
+  // Stock is currency-free and holds regardless. Folding these into one flag is what published
+  // a yen amount under a dollar label in an earlier cut.
+  const { offerToSignal } = require('../src/agentSignals/offerToSignal');
+  const v = offerToSignal(
+    { ...VERIFIED_OFFER, merchant_price_verified: false,
+      execution_spec: { merchant_domain: 'brand.com' } },
+    { productId: 'sig_1' },
+  ).value;
+
+  assert.equal(v.stock_verified, true, 'stock is currency-free and still established');
+  assert.equal(v.merchant_price_verified, false);
+  assert.equal(v.execution_spec.expected_item_total, null,
+    'no total may be published for a price we could not verify');
+});
+
+test('an offer nobody checked reports null, NOT false', () => {
+  // "We did not look" and "we looked and it failed" are different facts. An offer outside the
+  // verified top-3, a non-external offer, or an older backend has no verdict at all — and
+  // flattening that into `false` would make the measurement useless AND defame a fine merchant.
+  const { offerToSignal } = require('../src/agentSignals/offerToSignal');
+  for (const offer of [
+    { merchant_id: 'm1' },
+    { merchant_id: 'm1', stock_verified: null },
+    { merchant_id: 'm1', stock_verified: 'true' },
+    { merchant_id: 'm1', stock_verified: 1 },
+  ]) {
+    const v = offerToSignal(offer, { productId: 'sig_1' }).value;
+    assert.equal(v.stock_verified, null,
+      `absence must stay null for ${JSON.stringify(offer.stock_verified)}`);
+    assert.equal(v.merchant_price_verified, null);
+  }
+});
+
+test('an explicit false IS relayed — it is a real answer', () => {
+  const { offerToSignal } = require('../src/agentSignals/offerToSignal');
+  const v = offerToSignal(
+    { merchant_id: 'm1', stock_verified: false, merchant_price_verified: false },
+    { productId: 'sig_1' },
+  ).value;
+  assert.equal(v.stock_verified, false);
+  assert.equal(v.merchant_price_verified, false);
+});
+
+test('a total is a NUMBER — a numeric-looking string is not money', () => {
+  // It would sort and compare as text wherever an agent does arithmetic on it, which is worse
+  // than not having it: "9.99" < "10.00" is false as a string.
+  const { offerToSignal } = require('../src/agentSignals/offerToSignal');
+  for (const bad of ['19.99', '', {}, [], true, NaN, Infinity]) {
+    const v = offerToSignal(
+      { merchant_id: 'm1', execution_spec: { expected_item_total: bad } },
+      { productId: 'sig_1' },
+    ).value;
+    assert.equal(v.execution_spec.expected_item_total, null,
+      `must not publish ${JSON.stringify(bad)} as a total`);
+  }
+});
+
+test('rank_one_unverified surfaces only when the backend asserts it', () => {
+  // The backend sets this when the WHOLE shortlist came back unverified, so rank 1 cannot be
+  // presented as confidently checked. Absent means the ordinary case, not a denial.
+  const { offerToSignal } = require('../src/agentSignals/offerToSignal');
+  assert.equal(
+    offerToSignal({ merchant_id: 'm1', rank_one_unverified: true }, { productId: 's' })
+      .value.rank_one_unverified,
+    true,
+  );
+  assert.equal(
+    offerToSignal({ merchant_id: 'm1' }, { productId: 's' }).value.rank_one_unverified,
+    null,
+  );
+});
+
+test('the verification keys survive the shared sanitizer', () => {
+  // Everything an agent sees passes through it, and it has previously eaten a cart url whose
+  // variant id looked like a card number. A total and a boolean must come through untouched.
+  const { sanitizeResult } = require('../safety-kernel/src/protocol/resultSanitizer.js');
+  const out = sanitizeResult({ offers: [VERIFIED_OFFER] }).offers[0];
+  assert.equal(out.stock_verified, true);
+  assert.equal(out.merchant_price_verified, true);
+  assert.equal(out.execution_spec.expected_item_total, 19.99);
+  assert.equal(out.execution_spec.cart_url, VERIFIED_OFFER.execution_spec.cart_url);
+});
+
+test('rank_one_unverified needs an explicit true, not a truthy value', () => {
+  // It is a warning that the top result was NOT confirmed. A stray string or a 1 arriving from
+  // a future backend must not be able to raise it — a false alarm here tells an agent to distrust
+  // a shortlist we actually checked.
+  const { offerToSignal } = require('../src/agentSignals/offerToSignal');
+  for (const truthy of ['true', 1, {}, []]) {
+    const v = offerToSignal(
+      { merchant_id: 'm1', rank_one_unverified: truthy }, { productId: 's' },
+    ).value;
+    assert.equal(v.rank_one_unverified, null,
+      `must not raise the warning for ${JSON.stringify(truthy)}`);
+  }
 });

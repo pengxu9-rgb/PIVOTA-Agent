@@ -27,6 +27,10 @@ function nonEmptyString(v) {
 function toExecutionSpec(raw) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
   const str = (v) => (nonEmptyString(v) ? v : null);
+  // Money and counts are NUMBERS. A string that happens to look numeric is not a total: it would
+  // sort and compare as text wherever an agent does arithmetic on it, so it degrades to null
+  // rather than being coerced.
+  const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
   const tracking = raw.tracking && typeof raw.tracking === 'object' && !Array.isArray(raw.tracking)
     ? raw.tracking
     : {};
@@ -45,6 +49,21 @@ function toExecutionSpec(raw) {
     // added. It is not a promise about a URL, which is why it does not get the strict treatment above.
     rail: str(raw.rail),
     expires_at: str(raw.expires_at),
+    // WHAT THE MERCHANT SAID, JUST NOW. The backend's live-verification hop asks the merchant's
+    // own storefront before the handoff and publishes what it found. Without these an agent gets
+    // a spec that looks identical whether we checked it a second ago or are reciting a row that
+    // is, on the audit's measurement, wrong 31.1% of the time.
+    //
+    // `expected_item_total` is only ever populated when the shop's declared currency MATCHED the
+    // one the offer quotes — the backend refuses to compare across currencies rather than
+    // publishing a number in the wrong unit. `expected_quantity` says what the total is FOR,
+    // because a total is only right for the quantity the cart encodes.
+    expected_item_total: num(raw.expected_item_total),
+    expected_currency: str(raw.expected_currency),
+    expected_quantity: num(raw.expected_quantity),
+    // When the promise stops being one. An agent holding a spec past this must re-resolve rather
+    // than act on a total whose shelf life has run out.
+    expected_total_expires_at: str(raw.expected_total_expires_at),
     tracking: {
       click_id: str(tracking.click_id),
       // WHICH carrier holds the join key in the url the agent was handed — `attributes[pivota_click_id]` on a
@@ -97,6 +116,27 @@ function offerToSignal(offer, { productId = null } = {}) {
       // truthiness so a stray string, `1`, or `0` can never be read as either claim.
       cart_prefilled:
         offer.cart_prefilled === true ? true : offer.cart_prefilled === false ? false : null,
+      // DID WE ACTUALLY CHECK, AND WHAT DID WE ESTABLISH. Three separate facts, because they
+      // fail separately: stock can be confirmed while price cannot (the storefront endpoint the
+      // backend reads carries an amount with NO currency code, so a price is only verified once
+      // the shop's declared currency is known to match). Folding them into one flag is what
+      // produced a yen amount published under a dollar label in an earlier cut.
+      //
+      // Absence stays null throughout: an older backend, a non-external offer, or an offer
+      // outside the verified top-3 has no verdict, and "we did not look" is not "we looked and
+      // it failed". Only an explicit backend boolean is believed.
+      stock_verified:
+        offer.stock_verified === true ? true : offer.stock_verified === false ? false : null,
+      merchant_price_verified:
+        offer.merchant_price_verified === true
+          ? true
+          : offer.merchant_price_verified === false
+            ? false
+            : null,
+      // Named for its PROVENANCE. The reco lane publishes its own `price_verified` meaning
+      // "consistent with Pivota's own projection" — the opposite claim from "the merchant said
+      // so", and one key for both would make them indistinguishable to a model.
+      rank_one_unverified: offer.rank_one_unverified === true ? true : null,
       // The rest of the execution spec. `cart_prefilled` above answers "is there a cart"; this answers
       // "where exactly, with what in it, until when, and how is the click attributed".
       execution_spec: toExecutionSpec(offer.execution_spec),
