@@ -21611,20 +21611,19 @@ async function searchBeautyExternalSeedProductsMainline({
     // ACTIVE_AWARE_RECALL — see PIVOT_BEAUTY_MAINLINE_TOKEN_MATCH_ENABLED for
     // why that grouping kept the rank ladder dark, and for the measured effect
     // in category-bucket mode. NOTE: with the category-browse text union on
-    // (the default) the token WHERE is no longer dropped under a prefix — the
-    // union carries the PLAIN text clause, token arm included.
+    // the token WHERE is no longer dropped under a prefix — the union carries
+    // the text clause, token arm included, in whatever shape this flag elects.
     tokenMatch: PIVOT_BEAUTY_MAINLINE_TOKEN_MATCH_ENABLED,
-    // #1935: sargable text WHERE. Still a no-op in category-bucket mode, but
-    // for a DIFFERENT reason than when this was written: the text WHERE used to
-    // be discarded there, whereas now the union deliberately routes past the
-    // sargable form and takes the plain clause (see the whereClause comment in
-    // canonicalCatalogSearch.js for why extending an unmeasured plan change to
-    // every prefix-resolving query would be wrong). So this still only affects
-    // the ~30% of beauty queries that resolve to no prefix — where it cut prod
-    // EXPLAIN execution 2798ms -> 850ms with byte-identical rows and order
-    // across 12 measured queries. The COROLLARY, unmeasured and called out in
-    // review: prefix-resolving queries now run the plain disjunction, which
-    // this file's own prod EXPLAINs put at 3.2-3.9s.
+    // #1935: sargable text WHERE. In text mode (~30% of beauty queries) it cut
+    // prod EXPLAIN execution 2798ms -> 850ms with byte-identical rows and order
+    // across 12 measured queries. In category-bucket mode the union's text arm
+    // now applies the same trade on ITS OWN gate — the recall_doc coverage arm,
+    // not this option — because gating on this election would leave every
+    // non-electing browse caller (the shopping browse lane passes neither this
+    // nor tokenMatch) on the 4.4s plan for no recall benefit. See the
+    // unionTextWhereClause comment in canonicalCatalogSearch.js for the
+    // 2026-08-20 prod measurements: 3.2-4.4s -> 0.4-1.0s, identical row digests
+    // on toner / shampoo / hair mask / niacinamide toner / cleanser.
     // See PIVOT_BEAUTY_MAINLINE_SARGABLE_TEXT_WHERE_ENABLED.
     sargableTextWhere: PIVOT_BEAUTY_MAINLINE_SARGABLE_TEXT_WHERE_ENABLED,
     limit: canonicalLimit,
