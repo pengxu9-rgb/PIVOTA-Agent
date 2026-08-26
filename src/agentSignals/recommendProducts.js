@@ -452,9 +452,12 @@ function recommendationItemToSignal(item, { rank } = {}) {
  *   generate: (args:object) => Promise<object>,   // Aurora routes.__internal.generateProductRecommendations
  *   buildAsk?: ({focus, constraints, lang}) => string, // routes.__internal.buildRecoGenerateUserAsk
  *   isEnabled?: () => boolean,                     // agent-surface flag (fail-closed when absent)
- *   verifyPrice?: ({product_id, merchant_id, product_ref}) => Promise<{price, currency, in_stock?}|null>,
+ *   verifyPrice?: ({product_id, merchant_id, product_ref}) => Promise<{price, currency, in_stock?}|{unresolvable:true}|null>,
  *     // live PDP/offer lookup for a grounded item (server.js wires get_pdp_v2 over loopback); absent =
- *     // no re-verification, items keep their catalog-snapshot price with no price_verified key at all
+ *     // no re-verification, items keep their catalog-snapshot price with no price_verified key at all.
+ *     // `{unresolvable:true}` means the lookup answered a DEFINITIVE not-found (the id is dead on the
+ *     // same read chain get_product serves) — the item is DROPPED from the shortlist, unlike null,
+ *     // which only degrades it to an unverified snapshot price
  *   logger?: { warn?: Function, info?: Function },
  *   budgetMs?: number,
  *   now?: () => number,
@@ -591,7 +594,7 @@ function makeRecommendProducts(deps = {}) {
     // leftover slot, but a commerce door must never rank it above a real catalog item (live
     // 2026-08-20: an invented cleanser sat at #1 above the only purchasable result). Lane order is
     // preserved within each group.
-    const groundedSignals = projected.filter((s) => s.value.grounding === 'catalog');
+    let groundedSignals = projected.filter((s) => s.value.grounding === 'catalog');
     const ungroundedSignals = projected.filter((s) => s.value.grounding !== 'catalog');
 
     // LIVE PRICE RE-VERIFICATION (grounded items only; there is nothing to verify on an invented
@@ -599,8 +602,13 @@ function makeRecommendProducts(deps = {}) {
     // same PDP/offer lane the public product page renders from, so a stale snapshot is corrected
     // BEFORE the ceiling is enforced — the gate must judge the price the buyer would actually see.
     // Bounded: only items that could reach the shortlist are checked, in parallel, and a failed or
-    // slow check degrades to the snapshot price with `price_verified: false` — never an error, never
-    // a dropped item. Each signal records the outcome so a partner agent knows what it is holding.
+    // slow check degrades to the snapshot price with `price_verified: false` — never an error. The
+    // ONE outcome that removes an item is a definitive `{unresolvable:true}`: the loopback proved the
+    // id this item would advertise answers PRODUCT_NOT_FOUND on the very read chain get_product
+    // serves, so returning it breaks the chain contract ("never advertise a product_id that
+    // get_product cannot resolve" — the same rule the public search projector enforces). Only the
+    // proven envelope buys a drop; a timeout or error must never buy a delisting. Each signal
+    // records the outcome so a partner agent knows what it is holding.
     let verification = null;
     if (typeof verifyPrice === 'function' && groundedSignals.length > 0) {
       // The window is sized to what can actually RETURN: without a ceiling the first `limit` grounded
@@ -614,7 +622,8 @@ function makeRecommendProducts(deps = {}) {
         enforcing ? limit + PRICE_VERIFY_EXTRA : limit,
         PRICE_VERIFY_MAX_CHECKS,
       ));
-      verification = { checked: toVerify.length, confirmed: 0, updated: 0, unavailable: 0, unchecked: 0 };
+      verification = { checked: toVerify.length, confirmed: 0, updated: 0, unavailable: 0, unresolvable: 0, unchecked: 0 };
+      const unresolvableSignals = new Set();
       await Promise.all(toVerify.map(async (s) => {
         const product = s.value.product;
         let live = null;
@@ -624,6 +633,14 @@ function makeRecommendProducts(deps = {}) {
             new Promise((resolve) => { const t = setTimeout(() => resolve(null), PRICE_VERIFY_RACE_MS); if (t.unref) t.unref(); }),
           ]);
         } catch { live = null; }
+        if (isPlainObject(live) && live.unresolvable === true) {
+          // Grounded in Aurora's corpus, dead on the serving chain (live repro 2026-08-26: the lane's
+          // top acne picks 404'd on get_product). Dropped, and the slot backfills from the remaining
+          // grounded candidates below.
+          unresolvableSignals.add(s);
+          verification.unresolvable += 1;
+          return;
+        }
         const livePrice = finiteNumber(isPlainObject(live) ? live.price : null);
         const liveCurrency = isPlainObject(live) ? str(live.currency).toUpperCase() : '';
         // A live answer is trusted only when it is a POSITIVE amount in a KNOWN currency. `price: 0` is a
@@ -655,6 +672,15 @@ function makeRecommendProducts(deps = {}) {
           s.value.watchouts = dedupe(['live availability check: out of stock', ...s.value.watchouts]).slice(0, 6);
         }
       }));
+      if (unresolvableSignals.size > 0) {
+        logger?.warn?.(
+          {
+            dropped_product_ids: [...unresolvableSignals].map((s) => s.value.product?.product_id ?? null),
+          },
+          'recommend_products dropped items unresolvable on the read chain',
+        );
+        groundedSignals = groundedSignals.filter((s) => !unresolvableSignals.has(s));
+      }
     }
 
     let signals;
@@ -778,8 +804,12 @@ function makeRecommendProducts(deps = {}) {
         // opened or bought.
         ...(ungroundedReturned > 0 ? { ungrounded_returned: ungroundedReturned } : {}),
         // Live-price check tallies (only when a verifier is wired and grounded items existed):
-        // checked = confirmed + updated + unavailable; `updated` items carry the corrected price and a
-        // watchout naming the move; `unavailable` items keep the snapshot with price_verified: false.
+        // checked = confirmed + updated + unavailable + unresolvable; `updated` items carry the
+        // corrected price and a watchout naming the move; `unavailable` items keep the snapshot with
+        // price_verified: false; `unresolvable` items were DROPPED — the loopback proved their id
+        // answers PRODUCT_NOT_FOUND on the read chain get_product serves, so they never reach the
+        // shortlist (the count is the only trace, deliberately: an agent must not be handed a dead id
+        // even in a diagnostic field).
         ...(verification ? { price_verification: verification } : {}),
         // What this pass actually enforced, so a partner agent can tell "all conforming" from "includes
         // flagged near-misses" from "could not be checked" — without rescanning items, and without
@@ -813,8 +843,28 @@ function makeRecommendProducts(deps = {}) {
   };
 }
 
+/**
+ * Classify the loopback get_pdp_v2 HTTP answer for the injected verifyPrice. Pure, and exported so
+ * the server.js wiring and its tests read the SAME line — the `{unresolvable: true}` drop signal
+ * must come from exactly one place. ONLY an HTTP 404 carrying the PRODUCT_NOT_FOUND envelope is
+ * definitive (that is what the pdp_v2 lane answers for an id get_product cannot serve); a 404
+ * without the code, and every other non-2xx, is null ("price unavailable") — cannot-verify must
+ * never buy a delisting.
+ * @param {number} status
+ * @param {any} body
+ * @returns {{unresolvable:true}|null|undefined} undefined = 2xx: the caller reads the price itself
+ */
+function classifyVerifyPriceResponse(status, body) {
+  if (status === 404) {
+    const code = isPlainObject(body) ? (body.error || body.reasonCode) : null;
+    return String(code || '').trim().toUpperCase() === 'PRODUCT_NOT_FOUND' ? { unresolvable: true } : null;
+  }
+  if (status < 200 || status >= 300) return null;
+  return undefined;
+}
+
 // markPriceViolation/markPriceUnverifiable are exported ONLY so a test can pin that they mutate
 // `signal.value` in place rather than rebuilding it. That is not an implementation detail — the
 // join-key mint above is ordered after them precisely because of it, and without a direct
 // assertion the ordering is unfalsifiable (verified: moving the mint earlier left every test green).
-module.exports = { makeRecommendProducts, recommendationItemToSignal, normalizeConstraints, agentLaneUid, extractPriceMax, markPriceViolation, markPriceUnverifiable };
+module.exports = { makeRecommendProducts, recommendationItemToSignal, normalizeConstraints, agentLaneUid, extractPriceMax, markPriceViolation, markPriceUnverifiable, classifyVerifyPriceResponse };

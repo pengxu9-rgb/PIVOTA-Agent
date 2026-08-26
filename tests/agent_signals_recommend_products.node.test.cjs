@@ -597,7 +597,7 @@ test('6. verifyPrice corrects a stale snapshot BEFORE the ceiling pass, and mark
   assert.deepEqual(v.constraint_violations, [{ constraint: 'price_max', limit: 40, limit_currency: 'USD', price: 45, currency: 'USD' }],
     'the ceiling is enforced against the LIVE price, not the stale snapshot');
   assert.equal(v.watchouts.some((w) => /price updated by live check: 35 USD -> 45 USD/.test(w)), true);
-  assert.deepEqual(res.metadata.price_verification, { checked: 1, confirmed: 0, updated: 1, unavailable: 0, unchecked: 0 });
+  assert.deepEqual(res.metadata.price_verification, { checked: 1, confirmed: 0, updated: 1, unavailable: 0, unresolvable: 0, unchecked: 0 });
 });
 
 test('6b. a confirmed price is marked verified; a failed check degrades to the snapshot, marked', async () => {
@@ -615,7 +615,7 @@ test('6b. a confirmed price is marked verified; a failed check degrades to the s
   assert.equal(a.watchouts.some((w) => /price updated/.test(w)), false, 'a confirmed price earns no watchout');
   assert.equal(b.product.price_verified, false, 'a thrown check degrades to the snapshot, marked');
   assert.equal(b.product.price, 18.5, 'the snapshot price is kept');
-  assert.deepEqual(res.metadata.price_verification, { checked: 2, confirmed: 1, updated: 0, unavailable: 1, unchecked: 0 });
+  assert.deepEqual(res.metadata.price_verification, { checked: 2, confirmed: 1, updated: 0, unavailable: 1, unresolvable: 0, unchecked: 0 });
   // both still conform to the ceiling on the prices the bridge holds
   assert.equal(res.metadata.constraint_violations_returned, 0);
 });
@@ -637,7 +637,7 @@ test('6d. ungrounded items are never sent to the verifier — there is nothing t
   const res = await h({ payload: { need: 'cleanser' } }, { agent_id: 'agent_a' });
   assert.deepEqual(calls, ['sig_abc']);
   assert.equal(res.signals[1].value.product.price_verified, undefined, 'no phantom price_verified on advisories');
-  assert.deepEqual(res.metadata.price_verification, { checked: 1, confirmed: 1, updated: 0, unavailable: 0, unchecked: 0 });
+  assert.deepEqual(res.metadata.price_verification, { checked: 1, confirmed: 1, updated: 0, unavailable: 0, unresolvable: 0, unchecked: 0 });
 });
 
 test('6e. an out-of-stock live check is said out loud on the item', async () => {
@@ -747,6 +747,88 @@ test('6k. latency_ms includes the verification pass the partner actually waited 
   });
   const res = await h({ payload: { need: 'x' } }, {});
   assert.ok(res.metadata.latency_ms >= 50, `latency_ms=${res.metadata.latency_ms} must cover the ~60ms verify pass`);
+});
+
+// CHAIN CONTRACT (2026-08-26, live repro): the lane's top picks answered NO_MERCHANT_OFFER on
+// get_product — the reco corpus is Aurora's, and nothing here checked that the id an item ADVERTISES
+// resolves on the read chain that serves it. The public search projector already enforces "never
+// advertise a product_id that get_product cannot resolve"; these tests pin the same rule onto this
+// surface. The signal rides the existing verifyPrice loopback: a DEFINITIVE `{unresolvable: true}`
+// (HTTP 404 + PRODUCT_NOT_FOUND envelope, classified in the server.js wiring) drops the item; every
+// other failure stays "price unavailable" — cannot-verify must never buy a delisting.
+test('6l. a definitively unresolvable id is dropped and its slot backfills; the drop is counted', async () => {
+  const dead = { ...ITEM_FULL, sku: { product_id: 'sig_dead', name: 'Dead Pick' } };
+  const checked = [];
+  const h = makeRecommendProducts({
+    generate: async () => laneResult([dead, ITEM_FULL, ITEM_INTERNAL]),
+    isEnabled: () => true,
+    verifyPrice: async ({ product_id }) => {
+      checked.push(product_id);
+      if (product_id === 'sig_dead') return { unresolvable: true };
+      return { price: 35, currency: 'USD' };
+    },
+  });
+  const res = await h({ payload: { need: 'exfoliant', limit: 2 } }, { agent_id: 'agent_a' });
+  assert.deepEqual(checked, ['sig_dead', 'sig_abc'], 'the window covered the first two grounded items');
+  assert.deepEqual(res.signals.map((s) => s.subject.id), ['sig_abc', 'sig_int'],
+    'the dead pick is gone and the next grounded item takes its slot');
+  assert.equal(JSON.stringify(res).includes('sig_dead'), false,
+    'the dead id appears NOWHERE in the response — not even a diagnostic field may hand it to an agent');
+  assert.equal(res.signals[0].value.product.price_verified, true);
+  assert.equal(res.signals[1].value.product.price_verified, false, 'the backfilled item is honestly unchecked');
+  assert.deepEqual(res.metadata.price_verification,
+    { checked: 2, confirmed: 1, updated: 0, unavailable: 0, unresolvable: 1, unchecked: 1 });
+});
+
+test('6m. unresolvable must be the PROVEN envelope — null, a thrown check, and a truthy-but-not-true flag all keep the item', async () => {
+  for (const answer of [null, () => { throw new Error('pdp lane down'); }, { unresolvable: 1 }, { unresolvable: 'true' }]) {
+    const h = makeRecommendProducts({
+      generate: async () => laneResult([ITEM_FULL]),
+      isEnabled: () => true,
+      verifyPrice: async () => (typeof answer === 'function' ? answer() : answer),
+    });
+    const res = await h({ payload: { need: 'exfoliant' } }, { agent_id: 'agent_a' });
+    assert.equal(res.signals.length, 1, `answer ${JSON.stringify(String(answer))} must not buy a delisting`);
+    assert.equal(res.signals[0].subject.id, 'sig_abc');
+    assert.equal(res.signals[0].value.product.price_verified, false, 'it degrades to unverified, marked');
+    assert.equal(res.metadata.price_verification.unresolvable, 0);
+    assert.equal(res.metadata.price_verification.unavailable, 1);
+  }
+});
+
+test('6o. the HTTP classifier: only 404 + the PRODUCT_NOT_FOUND envelope is definitive', () => {
+  const classify = require('../src/agentSignals/recommendProducts').classifyVerifyPriceResponse;
+  // definitive — both envelope spellings the pdp_v2 lane emits
+  assert.deepEqual(classify(404, { error: 'PRODUCT_NOT_FOUND' }), { unresolvable: true });
+  assert.deepEqual(classify(404, { reasonCode: 'PRODUCT_NOT_FOUND' }), { unresolvable: true });
+  // NOT definitive: a 404 without the code (a proxy, a route miss) must not buy a delisting
+  assert.equal(classify(404, {}), null);
+  assert.equal(classify(404, null), null);
+  assert.equal(classify(404, 'Not Found'), null);
+  assert.equal(classify(404, { error: 'SOMETHING_ELSE' }), null);
+  // other failures degrade to "price unavailable"
+  assert.equal(classify(500, { error: 'PRODUCT_NOT_FOUND' }), null, 'the code without the status is not the envelope');
+  assert.equal(classify(503, {}), null);
+  assert.equal(classify(302, {}), null);
+  // 2xx: the caller reads the price itself
+  assert.equal(classify(200, { modules: [] }), undefined);
+  assert.equal(classify(204, null), undefined);
+});
+
+test('6n. a drop under an enforced ceiling still re-slots from the survivors, never resurrects the dead id', async () => {
+  const dead = { ...ITEM_FULL, sku: { product_id: 'sig_dead', name: 'Dead Cheap Pick' }, price: { amount: 10, currency: 'USD' } };
+  const pricey = { ...ITEM_FULL, sku: { product_id: 'sig_pricey', name: 'Violator' }, price: { amount: 50, currency: 'USD' } };
+  const h = makeRecommendProducts({
+    generate: async () => laneResult([dead, pricey, ITEM_FULL]),
+    isEnabled: () => true,
+    verifyPrice: async ({ product_id }) => (product_id === 'sig_dead' ? { unresolvable: true } : { price: 50, currency: 'USD' }),
+  });
+  const res = await h({ payload: { need: 'x', constraints: { price_max: 40 } } }, {});
+  assert.equal(JSON.stringify(res).includes('sig_dead'), false,
+    'a conforming price on a dead id must not out-rank real items — the item does not exist');
+  assert.deepEqual(res.signals.map((s) => s.subject.id), ['sig_pricey', 'sig_abc'],
+    'the surviving items are slotted by the ceiling rules alone');
+  assert.equal(res.metadata.price_verification.unresolvable, 1);
 });
 
 // REVIEW FINDING: assuming the ceiling's currency for a currency-less price re-introduced the very
