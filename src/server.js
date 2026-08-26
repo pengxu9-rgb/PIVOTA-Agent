@@ -30574,7 +30574,18 @@ async function getCommercePaymentAuthorizationVerifier() {
         ),
         'PAYMENT_ISSUERS_JSON',
       );
-      if (!paymentIssuers) return undefined;
+
+      // Registry-backed issuers (pivota-backend #1886): static env issuers stay pinned (the
+      // canary lives there), registry rows are additive, and the merged list is re-read on a
+      // TTL so onboarding a PSP is a portal row, not a gateway redeploy. With the registry
+      // DISABLED (no base/key) and no env issuers, this returns undefined exactly as before —
+      // requiresPaymentAuthz operations stay refused.
+      const { createPaymentGrantIssuerRegistry } = require('./services/paymentGrantIssuerRegistry');
+      const paymentIssuerRegistry = createPaymentGrantIssuerRegistry({
+        staticIssuers: paymentIssuers || [],
+        logger,
+      });
+      if (!paymentIssuers && !paymentIssuerRegistry.enabled) return undefined;
 
       if (parseBooleanEnv(process.env.AGENT_CHECKOUT_MCP_ENABLE_AP2_MANDATE, false)) {
         throw new Error('AP2 mandate verification requires a reviewed checkout-hash verifier and is not wired on this MCP route');
@@ -30582,12 +30593,16 @@ async function getCommercePaymentAuthorizationVerifier() {
 
       const { createPaymentAuthorizationVerifier } = await import('../safety-kernel/src/protocol/paymentAuthorizationVerifier.js');
       const { createSignedGrantVerifier } = await import('../safety-kernel/src/protocol/protocolPaymentVerifiers.js');
-      const signedGrantVerifier = createSignedGrantVerifier({ issuers: paymentIssuers });
-      return createPaymentAuthorizationVerifier({
-        methods: {
-          acp_delegated_token: signedGrantVerifier,
-          ucp_handler: signedGrantVerifier,
-        },
+      // Rebuilt by the registry wrapper ONLY when the merged issuer list changes; with the
+      // registry disabled this builds exactly once over the static list, as before.
+      return paymentIssuerRegistry.createVerifier((issuers) => {
+        const signedGrantVerifier = createSignedGrantVerifier({ issuers });
+        return createPaymentAuthorizationVerifier({
+          methods: {
+            acp_delegated_token: signedGrantVerifier,
+            ucp_handler: signedGrantVerifier,
+          },
+        });
       });
     })();
   }
