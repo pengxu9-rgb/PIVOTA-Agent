@@ -49,12 +49,22 @@ function statusForUpstream(result) {
   return status === 403 || status === 429 || status >= 500 ? 'blocked' : 'failed';
 }
 
+// Strip URL substrings from merchant-controlled strings before they enter a
+// receipt payload. The backend 422s ANY payload string containing http(s)://,
+// so forwarding a URL-bearing title verbatim wedges the claim into
+// lease-expiry loops it can never complete.
+function scrubUrls(value) {
+  if (typeof value !== 'string') return value;
+  const scrubbed = value.replace(/https?:\/\/\S*/gi, '').replace(/\s+/g, ' ').trim();
+  return scrubbed || null;
+}
+
 function redactedPricedFacts(priced) {
   if (!isPlainObject(priced)) return null;
   const item = isPlainObject(priced.item) ? priced.item : {};
   return {
-    item_id: firstString(item.id, item.variant_id, item.sku),
-    item_title: firstString(item.title, item.name),
+    item_id: scrubUrls(firstString(item.id, item.variant_id, item.sku)),
+    item_title: scrubUrls(firstString(item.title, item.name)),
     item_price: item.price != null ? item.price : null,
     subtotal: priced.subtotal != null ? priced.subtotal : null,
     shipping: priced.shipping != null ? priced.shipping : null,
@@ -64,7 +74,7 @@ function redactedPricedFacts(priced) {
     shipping_option_count: Array.isArray(priced.shipping_options)
       ? priced.shipping_options.length
       : 0,
-    checkout_status: firstString(priced.status),
+    checkout_status: scrubUrls(firstString(priced.status)),
   };
 }
 
@@ -116,10 +126,29 @@ function createUcpStoreAuditProbe(deps = {}) {
 
     const endpoint = firstString(discovery && discovery.mcpEndpoint);
     if (!endpoint) {
+      // Only a CLEAN absence is a durable "no UCP here" observation: a 2xx
+      // profile without an MCP endpoint, or a 404 on the well-known path. The
+      // backend deactivates the route on succeeded+NOT_UCP_REACHABLE, so a
+      // 403 WAF page, a 429, a 5xx, a refused 3xx, or an unknown status must
+      // NOT buy a delisting — those are upstream conditions, reported blocked.
+      const discoveryStatus = Number(discovery && discovery.status);
+      const cleanAbsence = (discoveryStatus >= 200 && discoveryStatus < 300) || discoveryStatus === 404;
+      if (cleanAbsence) {
+        return {
+          verifier_id: VERIFIER_ID,
+          verification_status: 'succeeded',
+          reason: FAILURE_REASON.NOT_UCP_REACHABLE,
+          route: null,
+          acceptance_signal: null,
+          observed_at: now().toISOString(),
+        };
+      }
       return {
         verifier_id: VERIFIER_ID,
-        verification_status: 'succeeded',
-        reason: FAILURE_REASON.NOT_UCP_REACHABLE,
+        verification_status: 'blocked',
+        reason: discoveryStatus >= 300 && discoveryStatus < 400
+          ? FAILURE_REASON.PROFILE_REDIRECTED
+          : FAILURE_REASON.PROFILE_UNREACHABLE,
         route: null,
         acceptance_signal: null,
         observed_at: now().toISOString(),

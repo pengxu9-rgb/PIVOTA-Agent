@@ -183,6 +183,9 @@ function isForbiddenNetworkAddress(address) {
       ['192.0.0.0', 24], ['192.0.2.0', 24], ['192.88.99.0', 24],
       ['192.168.0.0', 16], ['198.18.0.0', 15], ['198.51.100.0', 24],
       ['203.0.113.0', 24], ['224.0.0.0', 4],
+      // 240.0.0.0/4 is reserved ("Class E") and includes the limited-broadcast
+      // address 255.255.255.255/32, listed explicitly for auditability.
+      ['240.0.0.0', 4], ['255.255.255.255', 32],
     ].some(([base, prefix]) => inIpv4Range(raw, base, prefix));
   }
   if (family === 6) {
@@ -204,18 +207,51 @@ function isForbiddenNetworkAddress(address) {
 }
 
 function createPublicOnlyLookup(lookup = nodeDns.lookup) {
-  return (hostname, _options, callback) => {
+  return (hostname, options, callback) => {
+    // Node's socket layer calls a custom lookup in TWO shapes: legacy
+    // (hostname, callback) and (hostname, options, callback). Since Node 20,
+    // autoSelectFamily (default ON) passes { all: true } and expects an ARRAY
+    // of { address, family } records back — answering the legacy single-address
+    // shape there fails every connection with "Invalid IP address: undefined".
+    const cb = typeof options === 'function' ? options : callback;
+    const opts = (typeof options === 'function' || !options) ? {} : options;
     lookup(hostname, { all: true, verbatim: true }, (error, addresses) => {
-      if (error) return callback(error);
+      if (error) return cb(error);
       const records = Array.isArray(addresses) ? addresses : [];
       // Reject mixed answers too. Falling back from a public address to a
       // private one after a connection failure is a common SSRF bypass.
       if (!records.length || records.some((entry) => isForbiddenNetworkAddress(entry.address))) {
-        return callback(new Error('merchant endpoint resolved to a non-public address'));
+        return cb(new Error('merchant endpoint resolved to a non-public address'));
       }
-      return callback(null, records[0].address, records[0].family);
+      if (opts.all) {
+        return cb(null, records.map(({ address, family }) => ({ address, family })));
+      }
+      return cb(null, records[0].address, records[0].family);
     });
   };
+}
+
+// Response bodies from merchant-controlled origins are bounded so a probed
+// endpoint cannot balloon this process's memory.
+const MAX_MERCHANT_RESPONSE_BYTES = 2 * 1024 * 1024;
+
+/**
+ * Map a raw node HTTP response (status, headers, buffered body) onto a WHATWG
+ * Response. Pure and exported so the null-body edge cases are testable without
+ * a socket: `new Response(body, { status })` THROWS for 1xx (RangeError) and
+ * for the null-body statuses 204/205/304 (TypeError) — inside an 'end' event
+ * callback that would be an uncaught exception, i.e. a merchant-triggerable
+ * process crash.
+ */
+function toFetchResponse(statusCode, headers, bodyBuffer) {
+  const status = Number(statusCode) || 0;
+  if (status < 200) {
+    throw new Error(`merchant endpoint returned an unsupported status ${status}`);
+  }
+  if (status === 204 || status === 205 || status === 304) {
+    return new Response(null, { status, headers });
+  }
+  return new Response(bodyBuffer, { status, headers });
 }
 
 function createPublicNetworkFetch(lookup) {
@@ -237,11 +273,24 @@ function createPublicNetworkFetch(lookup) {
         return;
       }
       const chunks = [];
-      response.on('data', (chunk) => chunks.push(chunk));
-      response.on('end', () => resolve(new Response(Buffer.concat(chunks), {
-        status: response.statusCode || 0,
-        headers: response.headers,
-      })));
+      let receivedBytes = 0;
+      response.on('data', (chunk) => {
+        receivedBytes += chunk.length;
+        if (receivedBytes > MAX_MERCHANT_RESPONSE_BYTES) {
+          const error = new Error('merchant endpoint response exceeded the size cap');
+          reject(error);
+          request.destroy(error);
+          return;
+        }
+        chunks.push(chunk);
+      });
+      response.on('end', () => {
+        try {
+          resolve(toFetchResponse(response.statusCode, response.headers, Buffer.concat(chunks)));
+        } catch (error) {
+          reject(error);
+        }
+      });
       response.on('error', reject);
     });
     request.once('error', reject);
@@ -1539,4 +1588,6 @@ module.exports = {
   isForbiddenNetworkAddress,
   createPublicOnlyLookup,
   createPublicNetworkFetch,
+  toFetchResponse,
+  MAX_MERCHANT_RESPONSE_BYTES,
 };
