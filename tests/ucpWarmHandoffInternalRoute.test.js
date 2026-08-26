@@ -696,32 +696,38 @@ describe('ucpWarmHandoffInternalRoute — miss metric labels and cardinality', (
 // is correct and never called is indistinguishable from one that is broken: the mutant that
 // removed the spread from the response body left every unit test green.
 
-describe('landed total on the internal route', () => {
+describe('merchant price assertion on the internal route', () => {
+  // LIVE shape: string amounts in minor units, no shipping, no tax, escalation required.
   const PRICED = {
     continue_url: 'https://brand.com/checkouts/cn/abc',
     cart_id: 'cart_1',
-    preview: { total: 48.5, currency: 'USD', subtotal: 41.99, tax: 3.51 },
+    preview: { subtotal: '1600', total: '1600', currency: 'USD', tax: null,
+               shipping_options: [], requires_escalation: true },
   };
 
   function serviceReturning(handoff) {
     return { resolveWarmHandoff: async () => handoff };
   }
 
-  it('surfaces the priced total alongside the handoff url', async () => {
+  it('surfaces the merchant subtotal alongside the handoff url', async () => {
     const handler = makeHandler({ service: serviceReturning(PRICED) });
     const out = await handler(authedRequest({ brand_domain: 'brand.com', variant_gid: COSRX_GID }));
 
     expect(out.status).toBe(200);
     expect(out.body.continue_url).toBe(PRICED.continue_url);
     expect(out.body.preview).toEqual({
-      total: 48.5, currency: 'USD', subtotal: 41.99, tax: 3.51, requires_escalation: false,
+      subtotal_minor: 1600,
+      currency: 'USD',
+      tax_minor: null,
+      includes_shipping: false,
+      includes_tax: false,
+      requires_escalation: true,
     });
   });
 
   it('omits the key entirely when the lane produced no priced preview', async () => {
-    // The preview flag is DEFAULT OFF, so this is the ordinary path. The response must be
-    // byte-identical to before this existed — an absent key, not a null one, so a caller cannot
-    // mistake "the flag is off" for "the merchant quoted nothing".
+    // The preview flag is DEFAULT OFF, so this is the ordinary path. An absent key rather than a
+    // null one, so a caller cannot mistake "the flag is off" for "the merchant quoted nothing".
     const handler = makeHandler({
       service: serviceReturning({ continue_url: PRICED.continue_url, cart_id: 'cart_1' }),
     });
@@ -732,11 +738,9 @@ describe('landed total on the internal route', () => {
     expect('preview' in out.body).toBe(false);
   });
 
-  it('omits the key when the merchant quoted an amount with no currency', async () => {
-    // Withheld rather than published bare: quoting 4500 as dollars when the merchant meant yen is
-    // worse than quoting nothing.
+  it('omits the key when the merchant quoted an amount with no usable currency', async () => {
     const handler = makeHandler({
-      service: serviceReturning({ ...PRICED, preview: { total: 4500, currency: '' } }),
+      service: serviceReturning({ ...PRICED, preview: { total: '4500', currency: '' } }),
     });
     const out = await handler(authedRequest({ brand_domain: 'brand.com', variant_gid: COSRX_GID }));
 
@@ -745,9 +749,7 @@ describe('landed total on the internal route', () => {
     expect('preview' in out.body).toBe(false);
   });
 
-  it('never echoes the handoff url back inside the preview', async () => {
-    // The caller already holds `continue_url` at the top level. Widening the internal contract to
-    // repeat it buys nothing and gives a future reader two places to look.
+  it('never echoes the handoff url or merchant text back inside the preview', async () => {
     const handler = makeHandler({
       service: serviceReturning({
         ...PRICED,

@@ -1,119 +1,156 @@
 'use strict';
 
 /*
- * The landed total (audit item 9), surfaced through the warm-handoff internal route.
+ * What create_checkout can honestly assert about price (audit item 9), surfaced through the
+ * warm-handoff internal route.
  *
- * The service already builds a priced create_checkout preview against the merchant — synthetic
- * address, no PII, never completed and never paid — and the route was dropping it. It is the only
- * source that can answer "what will the buyer actually be charged", because it INCLUDES shipping
- * and tax and it names its currency. The storefront `.js` endpoint the backend otherwise reads
- * carries a bare unit price with no currency code at all.
+ * THE AUDIT'S PREMISE WAS WRONG, and these encode the corrected one. B7 assumed UCP
+ * `create_checkout` "returns the same numbers anonymously" as the admin API. It does not: the
+ * live schema has no `shipping_address` field, Shopify collects the delivery address on the
+ * STOREFRONT, and shipping/tax quotes are therefore not returned at this step at all
+ * (ucpBuyerAgentClient.js:1017,1253 — live-verified against cosrx). On the real path
+ * `total === subtotal`, `shipping_options` is `[]`, `tax` is `null`, and the checkout comes back
+ * `requires_escalation`.
  *
- * These pin the one rule that matters here: an amount and its currency move together.
+ * So what crosses this hop is a PRE-SHIPPING SUBTOTAL IN MINOR UNITS. Its value over the
+ * storefront `.js` endpoint is not completeness — it is that it NAMES ITS CURRENCY, which `.js`
+ * does not do at all.
  */
 
 const assert = require('node:assert/strict');
 
 const { pricedTotals } = require('../src/services/ucpWarmHandoffInternalRoute');
 
-test('a complete priced preview is projected to its money fields', () => {
-  const out = pricedTotals({
-    total: 48.5,
+// The shape the repo's own live fixture carries (cosrx, 2026-07-13): STRING amounts, minor units,
+// no shipping, no tax, escalation required.
+const LIVE = {
+  subtotal: '1600',
+  total: '1600',
+  currency: 'USD',
+  tax: null,
+  shipping_options: [],
+  requires_escalation: true,
+};
+
+test('the LIVE merchant shape is accepted — string amounts, minor units', () => {
+  // The first cut of this required `typeof total === 'number'`, which made the feature inert on
+  // the only merchant payload anyone has actually verified. `pickMoney` is documented "no math,
+  // no coercion" and passes strings straight through.
+  assert.deepEqual(pricedTotals(LIVE), {
+    subtotal_minor: 1600,
     currency: 'USD',
-    subtotal: 41.99,
-    tax: 3.51,
-    shipping_options: [{ id: 'std', price: 3.0 }],
-    continue_url: 'https://brand.com/checkouts/cn/abc',
-    messages: ['note'],
-    requires_escalation: false,
-  });
-  assert.deepEqual(out, {
-    total: 48.5,
-    currency: 'USD',
-    subtotal: 41.99,
-    tax: 3.51,
-    requires_escalation: false,
+    tax_minor: null,
+    includes_shipping: false,
+    includes_tax: false,
+    requires_escalation: true,
   });
 });
 
-test('the projection is NARROWING — it does not leak the handoff url or free text back', () => {
-  // The caller already holds the continue_url; echoing it here would widen an internal contract
-  // for no gain, and `messages` is merchant-authored free text with no reason to cross this hop.
-  const out = pricedTotals({
-    total: 10, currency: 'USD',
-    continue_url: 'https://brand.com/checkouts/cn/secret',
-    messages: ['merchant says hello'],
-    shipping_options: [{ id: 'std' }],
-  });
-  assert.equal(out.continue_url, undefined);
-  assert.equal(out.messages, undefined);
-  assert.equal(out.shipping_options, undefined);
+test('the amount is MINOR units and the key says so', () => {
+  // `1600 USD` is $16.00. A bare `total: 1600` beside a currency code is the same
+  // amount-without-its-unit hazard as a missing currency, one level down — and it errs in the
+  // direction that overstates by 100x.
+  const out = pricedTotals(LIVE);
+  assert.equal(out.subtotal_minor, 1600);
+  assert.ok(!('total' in out), 'must not publish a bare `total` that reads as major units');
+  assert.ok(!('subtotal' in out), 'the unscaled name is exactly the ambiguity being removed');
 });
 
-test('an amount with no currency is withheld ENTIRELY, not published bare', () => {
-  // Quoting 4500 as dollars when the merchant meant yen is worse than saying nothing. This is the
-  // amount-without-its-currency class both repos have now fixed several times.
-  for (const preview of [
-    { total: 4500 },
-    { total: 4500, currency: '' },
-    { total: 4500, currency: '   ' },
-    { total: 4500, currency: null },
-    { total: 4500, currency: 42 },
-    { total: 4500, currency: 'US' },
-    { total: 4500, currency: 'DOLLARS' },
-    { total: 4500, currency: 'U5D' },
-  ]) {
-    assert.equal(pricedTotals(preview), null,
-      `must withhold a total whose currency is ${JSON.stringify(preview.currency)}`);
+test('a DECIMAL amount is refused rather than guessed at', () => {
+  // "16.00" means the merchant is not using the convention we are about to publish under.
+  // Guessing which it is would be the whole bug.
+  for (const amount of ['16.00', '16.5', '1,600', '1600.0']) {
+    assert.equal(pricedTotals({ total: amount, currency: 'USD' }), null,
+      `must refuse ${JSON.stringify(amount)}`);
   }
 });
 
-test('a currency with no amount says nothing and is withheld too', () => {
+test('shipping and tax exclusions are STATED, not left to be inferred', () => {
+  // On the live path both are false every single time. A caller that assumes otherwise quotes a
+  // number the buyer will not be charged.
+  const out = pricedTotals(LIVE);
+  assert.equal(out.includes_shipping, false);
+  assert.equal(out.includes_tax, false);
+
+  const withBoth = pricedTotals({
+    ...LIVE, tax: '300', shipping_options: [{ id: 'std', price: '500' }],
+  });
+  assert.equal(withBoth.includes_tax, true);
+  assert.equal(withBoth.tax_minor, 300);
+  assert.equal(withBoth.includes_shipping, true);
+});
+
+test('an amount with no usable currency is withheld ENTIRELY', () => {
+  for (const currency of ['', '   ', null, 42, 'US', 'DOLLARS', 'USDT', 'U5D', 'usd '.repeat(2)]) {
+    assert.equal(pricedTotals({ total: '1600', currency }), null,
+      `must withhold for currency ${JSON.stringify(currency)}`);
+  }
+});
+
+test('XXX is refused — it is the ISO code for "no currency"', () => {
+  // An assertion that there is no unit is not a unit.
+  assert.equal(pricedTotals({ total: '1600', currency: 'XXX' }), null);
+  assert.equal(pricedTotals({ total: '1600', currency: 'xxx' }), null);
+});
+
+test('a lowercase or padded currency still normalises', () => {
+  assert.equal(pricedTotals({ total: '1600', currency: ' usd ' }).currency, 'USD');
+  assert.equal(pricedTotals({ total: '1600', currency: 'Jpy' }).currency, 'JPY');
+});
+
+test('a currency with no amount says nothing and is withheld', () => {
   assert.equal(pricedTotals({ currency: 'JPY' }), null);
   assert.equal(pricedTotals({ currency: 'JPY', total: null }), null);
 });
 
-test('a non-numeric total is refused rather than relayed', () => {
-  // A string total would sort and compare as text wherever a caller does arithmetic on it.
-  for (const total of ['48.50', {}, [], true, NaN, Infinity, -Infinity]) {
+test('a negative amount is refused — there is no negative subtotal', () => {
+  assert.equal(pricedTotals({ total: -1600, currency: 'USD' }), null);
+  assert.equal(pricedTotals({ total: '-1600', currency: 'USD' }), null);
+});
+
+test('a zero subtotal is real and survives', () => {
+  const out = pricedTotals({ total: 0, currency: 'USD' });
+  assert.equal(out.subtotal_minor, 0);
+});
+
+test('a non-integer or unsafe numeric amount is refused', () => {
+  for (const total of [16.5, 1e21, NaN, Infinity, {}, [], true, '1e21']) {
     assert.equal(pricedTotals({ total, currency: 'USD' }), null,
       `must refuse ${JSON.stringify(total)}`);
   }
 });
 
-test('a zero total is real and survives', () => {
-  // A fully-discounted or gift order is a legitimate total. Treating 0 as absent would withhold it.
-  const out = pricedTotals({ total: 0, currency: 'USD' });
-  assert.equal(out.total, 0);
-  assert.equal(out.currency, 'USD');
+test('subtotal is preferred over total when both are present', () => {
+  // They are equal on the live path, but `subtotal` is the one whose NAME matches what we publish.
+  const out = pricedTotals({ subtotal: '1600', total: '9999', currency: 'USD' });
+  assert.equal(out.subtotal_minor, 1600);
 });
 
-test('subtotal and tax degrade on their own — they are not the promise', () => {
-  // Unlike the total, these are supporting detail. A merchant that omits tax must not cost the
-  // caller the total it CAN quote.
-  const out = pricedTotals({ total: 48.5, currency: 'USD', subtotal: 'nope', tax: undefined });
-  assert.equal(out.total, 48.5);
-  assert.equal(out.subtotal, null);
-  assert.equal(out.tax, null);
+test('the projection NARROWS — no handoff url, no merchant free text', () => {
+  const out = pricedTotals({
+    ...LIVE,
+    continue_url: 'https://brand.com/checkouts/cn/secret',
+    messages: ['merchant text'],
+    item: { id: 'gid://x' },
+    checkout_status: 'requires_escalation',
+  });
+  for (const leaked of ['continue_url', 'messages', 'item', 'checkout_status', 'shipping_options']) {
+    assert.equal(out[leaked], undefined, `${leaked} must not cross the hop`);
+  }
 });
 
 test('requires_escalation is relayed and needs an explicit true', () => {
-  // It means the merchant still needs an address or payment on the STOREFRONT — i.e. this total
-  // is the best computable WITHOUT the buyer, and must not be presented as final.
-  assert.equal(pricedTotals({ total: 1, currency: 'USD', requires_escalation: true })
-    .requires_escalation, true);
+  assert.equal(pricedTotals(LIVE).requires_escalation, true);
   for (const truthy of ['true', 1, {}]) {
     assert.equal(
-      pricedTotals({ total: 1, currency: 'USD', requires_escalation: truthy }).requires_escalation,
-      false,
-      `a truthy ${JSON.stringify(truthy)} must not raise the escalation flag`,
+      pricedTotals({ ...LIVE, requires_escalation: truthy }).requires_escalation, false,
+      `a truthy ${JSON.stringify(truthy)} must not raise it`,
     );
   }
 });
 
 test('a missing or non-object preview is null, never a throw', () => {
-  // The preview key is ABSENT whenever the flag is off, which is the default — so this is the
-  // ordinary path, not an edge case.
+  // The preview key is ABSENT whenever the flag is off, which is the default.
   for (const bad of [undefined, null, 'nope', 42, [], true]) {
     assert.equal(pricedTotals(bad), null);
   }
