@@ -63,6 +63,19 @@ const HANDOFF_KEYS = new Set([
   'checkouturl', 'confirmationurl', 'nextactionurl', 'threedsurl', 'approvalurl', 'authorizeurl', 'authenticationurl', 'acsurl',
 ]);
 const isIdKey = (c) => c === 'id' || c.endsWith('id');
+// AP2 checkout binding JWT. This is the one payment-adjacent string that MUST reach the agent
+// verbatim: the wallet hashes it to mint a Checkout Mandate, and the kernel then compares that
+// digest. It is not a bearer credential — it grants nothing, carries only a checkout session id
+// and an expiry, and is signed with a server-side secret that never leaves us. LOOSE_SECRET_RE
+// matches any compact JWS, so it was being rewritten to [REDACTED_SECRET] and every AP2
+// completion failed checkout_hash_mismatch on a token the wallet could never have seen.
+//
+// Preserved regardless of handoffAllowed: the ACP session body is sanitized with
+// handoffAllowed:false, and that door needs the field just as much as the native one. Gated on
+// BOTH the key name AND a strict compact-JWS shape, the same belt-and-braces as
+// ATTRIBUTED_LINK_KEYS, so an arbitrary secret smuggled under this key still gets scrubbed.
+const AP2_CHECKOUT_JWT_KEYS = new Set(['ap2checkoutjwt']);
+const AP2_CHECKOUT_JWT_RE = /^eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{4,}$/;
 const URL_SECRET_RE = /([?&](?:client_secret|token|access_token|id_token|refresh_token|api_key|apikey|key|password|secret|sig|signature|code)=)[^&#\s]+/gi;
 // Attributed outbound links (redirect-commission lane): pivota-backend stamps signed first-party redirect URLs
 // (`https://<host>/r?token=<payload_b64url>.<sig_b64url>`) onto product/offer payloads under these keys. The
@@ -152,6 +165,8 @@ export function sanitizeResult(rootValue, { handoffAllowed = false, stripRanking
       // Signed attribution link under an attributed-link key — verbatim regardless of handoffAllowed (these
       // ride on DISCOVERY payloads: feed items, product detail, offers). Shape-gated; see ATTRIBUTED_LINK_RE.
       if (keyCanon && ATTRIBUTED_LINK_KEYS.has(keyCanon) && ATTRIBUTED_LINK_RE.test(value)) return value;
+      // AP2 binding material under its own key, shape-gated. See AP2_CHECKOUT_JWT_KEYS.
+      if (keyCanon && AP2_CHECKOUT_JWT_KEYS.has(keyCanon) && AP2_CHECKOUT_JWT_RE.test(value)) return value;
       // System-issued id keys skip PAN scanning (their digits are our identifiers); everywhere else PAN
       // redaction is Luhn-gated (all real cards pass Luhn; random ids / URL digit runs almost never do).
       // A shape-verified cart permalink is exempt for the same reason: the digit run IS the variant id.

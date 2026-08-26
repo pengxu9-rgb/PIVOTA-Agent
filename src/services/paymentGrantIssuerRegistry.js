@@ -92,13 +92,15 @@ function normalizeEntry(raw, logger) {
     logger.error({ iss }, 'payment issuer row carries a non-allowlisted alg; dropped (would poison the whole verifier registry)');
     return null;
   }
-  const methods = Array.isArray(raw.methods) && raw.methods.length ? raw.methods.map(String) : ['signed_grant'];
-  if (!methods.includes('signed_grant')) return null; // ap2-only trust is inert until the checkout-hash verifier ships
+  const methods = (Array.isArray(raw.methods) && raw.methods.length ? raw.methods.map(String) : ['signed_grant'])
+    .filter((m) => m === 'signed_grant' || m === 'ap2_mandate');
+  if (!methods.length) return null; // a row trusted for nothing we can enforce is not trust
   return {
     iss,
     jwksUri,
     aud,
     algs,
+    methods,
     // NOTE: buildIssuerRegistry does not currently READ azp — carried for the fingerprint and
     // for the day the kernel enforces it, but it is not an enforced constraint on this path.
     ...(nonEmpty(raw.azp) ? { azp: raw.azp.trim() } : {}),
@@ -109,7 +111,7 @@ function fingerprintOf(entries) {
   // Sorted: identical sets in different orders are the same trust and must not rebuild. The
   // backend serves ORDER BY id today, but the fingerprint should not depend on that staying true.
   return JSON.stringify(
-    entries.map((e) => [e.iss, e.jwksUri, e.aud, e.algs, e.azp || null]).sort(),
+    entries.map((e) => [e.iss, e.jwksUri, e.aud, e.algs, e.azp || null, e.methods || ['signed_grant']]).sort(),
   );
 }
 
@@ -202,6 +204,22 @@ function createPaymentGrantIssuerRegistry(opts = {}) {
     return inflight;
   }
 
+  function methodsOf(entry) {
+    const m = Array.isArray(entry?.methods) && entry.methods.length ? entry.methods : ['signed_grant'];
+    return m;
+  }
+
+  /** The merged list split per authorization method. Static env entries may declare `methods`
+   * too; without one they are signed_grant-only — AP2 trust is never implicit. The kernel's
+   * verifier config does not read `methods`, so each per-method list is emitted WITHOUT it. */
+  function issuersByMethod(list) {
+    const strip = ({ methods: _m, ...entry }) => entry;
+    return {
+      signed_grant: list.filter((e) => methodsOf(e).includes('signed_grant')).map(strip),
+      ap2_mandate: list.filter((e) => methodsOf(e).includes('ap2_mandate')).map(strip),
+    };
+  }
+
   /** The merged list the verifier is built from, applying the staleness drop. */
   function currentIssuers() {
     const registryFresh = enabled && fetchedAt > 0 && now() - fetchedAt <= maxStalenessMs;
@@ -241,7 +259,7 @@ function createPaymentGrantIssuerRegistry(opts = {}) {
         // snapshot that both revoked an issuer and carried a poison row kept the revoked
         // issuer verifying indefinitely. Review reproduced it; the IIFE turns the sync throw
         // into a rejection the cleanup below actually sees.
-        innerPromise = (async () => build(issuers))();
+        innerPromise = (async () => build(issuersByMethod(issuers).signed_grant, issuersByMethod(issuers)))();
         innerPromise.catch(() => {
           // A build that failed must not wedge the verifier on a bad fingerprint forever.
           if (innerFingerprint === fp) { innerPromise = null; innerFingerprint = null; }
@@ -258,7 +276,8 @@ function createPaymentGrantIssuerRegistry(opts = {}) {
         await refresh({ force: true });
         issuers = currentIssuers();
       }
-      if (!issuers.length) {
+      const split = issuersByMethod(issuers);
+      if (!split.signed_grant.length && !split.ap2_mandate.length) {
         const err = new Error('no trusted payment issuers are configured');
         err.code = 'PAYMENT_AUTHZ_UNAVAILABLE';
         throw err;
@@ -274,6 +293,7 @@ function createPaymentGrantIssuerRegistry(opts = {}) {
     createVerifier,
     _debug: {
       currentIssuers,
+      issuersByMethod: () => issuersByMethod(currentIssuers()),
       size: () => registryRows.length,
       fetchedAt: () => fetchedAt,
       peekGrantIssuer,

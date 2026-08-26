@@ -30563,6 +30563,28 @@ function parseJsonArrayEnv(raw, label) {
   return parsed;
 }
 
+// AP2 checkout binding service — ONE instance shared by the two seams that must agree on the
+// secret: the executor's mint hook (create_checkout returns ap2_checkout_jwt) and the mandate
+// verifier's verifyCheckoutHash (complete_checkout proves the wallet hashed that exact JWT).
+// null when the AP2 flag is off. THROWS on flag-on-without-secret: the old unconditional throw
+// moved here — misconfig stays loud, it just stopped being the only possible outcome.
+let commerceAp2CheckoutBindingPromise = null;
+function isAp2MandateEnabled() {
+  return parseBooleanEnv(process.env.AGENT_CHECKOUT_MCP_ENABLE_AP2_MANDATE, false);
+}
+async function getAp2CheckoutBinding() {
+  if (!isAp2MandateEnabled()) return null;
+  if (!commerceAp2CheckoutBindingPromise) {
+    commerceAp2CheckoutBindingPromise = (async () => {
+      const secret = String(process.env.AP2_CHECKOUT_JWT_SECRET || '').trim();
+      const { Ap2CheckoutBindingService } = await import('../safety-kernel/src/protocol/ap2CheckoutBinding.js');
+      return new Ap2CheckoutBindingService({ secret }); // throws on a weak/missing secret
+    })();
+    commerceAp2CheckoutBindingPromise.catch(() => { commerceAp2CheckoutBindingPromise = null; });
+  }
+  return commerceAp2CheckoutBindingPromise;
+}
+
 async function getCommercePaymentAuthorizationVerifier() {
   if (!commercePaymentAuthorizationVerifierPromise) {
     commercePaymentAuthorizationVerifierPromise = (async () => {
@@ -30587,24 +30609,28 @@ async function getCommercePaymentAuthorizationVerifier() {
       });
       if (!paymentIssuers && !paymentIssuerRegistry.enabled) return undefined;
 
-      if (parseBooleanEnv(process.env.AGENT_CHECKOUT_MCP_ENABLE_AP2_MANDATE, false)) {
-        throw new Error('AP2 mandate verification requires a reviewed checkout-hash verifier and is not wired on this MCP route');
-      }
+      // The unconditional AP2 throw is gone: the reviewed checkout-hash verifier it demanded
+      // now exists (safety-kernel/src/protocol/ap2CheckoutBinding.js). Flag-on still fails
+      // LOUDLY on a missing/weak AP2_CHECKOUT_JWT_SECRET — inside getAp2CheckoutBinding — so
+      // the misconfig posture is unchanged; what changed is that a correct config proceeds.
+      const ap2Binding = await getAp2CheckoutBinding(); // null when the flag is off
 
       const { createPaymentAuthorizationVerifier } = await import('../safety-kernel/src/protocol/paymentAuthorizationVerifier.js');
-      const { createSignedGrantVerifier } = await import('../safety-kernel/src/protocol/protocolPaymentVerifiers.js');
+      const { buildPaymentMethodVerifiers } = await import('../safety-kernel/src/protocol/protocolPaymentVerifiers.js');
       const { PivotaCommerceError } = await import('../safety-kernel/src/errors.js');
       // Rebuilt by the registry wrapper ONLY when the merged issuer list changes; with the
       // registry disabled this builds exactly once over the static list, as before.
-      const registryVerifier = paymentIssuerRegistry.createVerifier((issuers) => {
-        const signedGrantVerifier = createSignedGrantVerifier({ issuers });
-        return createPaymentAuthorizationVerifier({
-          methods: {
-            acp_delegated_token: signedGrantVerifier,
-            ucp_handler: signedGrantVerifier,
-          },
-        });
-      });
+      const registryVerifier = paymentIssuerRegistry.createVerifier((issuers, byMethod) => createPaymentAuthorizationVerifier({
+        // `issuers` is already the signed_grant SLICE (see createVerifier). Composition lives in
+        // buildPaymentMethodVerifiers so it is reachable from a test — this callback was the one
+        // place the registry's fake-build tests could never exercise.
+        methods: buildPaymentMethodVerifiers({
+          signedGrantIssuers: issuers,
+          ap2MandateIssuers: byMethod ? byMethod.ap2_mandate : [],
+          ap2Binding,
+          expectedVct: process.env.AP2_EXPECTED_VCT ? String(process.env.AP2_EXPECTED_VCT).trim() : '',
+        }),
+      }));
       // Every throw that leaves this seam must be a PivotaCommerceError: the doors are
       // instanceof-gated (toToolError's SAFE_ERROR_CLASSES; the ACP adapter 500s on anything
       // else), so the registry's own failures — empty merged list, a verifier build refused —
@@ -31038,6 +31064,20 @@ async function getCommerceRemoteMcpAdapter() {
         verifyPaymentAuthorization,
         hostedLinkEnabled: isAgentCheckoutHostedLinkEnabled(),
         localReads,
+        // AP2: checkout sessions carry the merchant-signed Checkout JWT a wallet hashes into
+        // its mandate. Best-effort inside the executor; a mint failure logs here and costs
+        // only AP2 (which then fails closed at verification), never the session.
+        mintAp2CheckoutJwt: isAp2MandateEnabled()
+          ? async (input) => {
+            try {
+              const binding = await getAp2CheckoutBinding();
+              return binding ? binding.mintCheckoutJwt(input) : undefined;
+            } catch (err) {
+              logger.warn({ code: err?.code || 'AP2_MINT_FAILED' }, 'ap2 checkout jwt mint failed');
+              return undefined;
+            }
+          }
+          : undefined,
         // ACP delegated-PSP-token lane (Stripe SharedPaymentToken). The executor is kernel-side and stays
         // transport-agnostic, so the HTTP call lives here, beside the other upstream money calls, and rides
         // the SAME auth headers / timeout / error taxonomy as create_order and submit_payment.

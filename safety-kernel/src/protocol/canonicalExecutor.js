@@ -99,6 +99,10 @@ function refusalFor(opId) {
  *   // dispatch seam, so every charge-once guard still applies.
  *   submitDelegatedPayment?: (bound:{order_id,amount,currency,idempotency_key,token,user_ref}) => Promise<object>,
  *   delegatedTokenHandoffEnabled?: boolean | (() => boolean),   // ACP_SPT_GATEWAY_HANDOFF_ENABLED; default OFF
+ *   // AP2: mints the merchant-signed Checkout JWT a wallet hashes into its Checkout Mandate
+ *   // (ap2CheckoutBinding.js). Attached to checkout-session results as `ap2_checkout_jwt`;
+ *   // absent hook = field absent = AP2 fails closed at verification, sessions unaffected.
+ *   mintAp2CheckoutJwt?: (input:{checkout_session_id:string, expires_at?:string}) => Promise<string>|string,
  * }} deps
  */
 export function createCanonicalExecutor({
@@ -108,6 +112,7 @@ export function createCanonicalExecutor({
   hostedLinkEnabled = false,
   localReads,
   submitDelegatedPayment,
+  mintAp2CheckoutJwt,
   delegatedTokenHandoffEnabled = false,
 } = {}) {
   if (!kernel || typeof kernel.previewQuote !== 'function') {
@@ -214,13 +219,13 @@ export function createCanonicalExecutor({
       case 'create_checkout_session':
       case 'update_checkout_session': {
         const quote = await kernel.previewQuote({ quote: params.quote ?? {} }, ctx);
-        return toSession(quote);
+        return attachAp2CheckoutJwt(toSession(quote), mintAp2CheckoutJwt, ctx);
       }
 
       case 'get_checkout_session': {
         if (!nonEmpty(params.session_id)) throw new PivotaCommerceError('QUOTE_NOT_FOUND', { reason: 'missing_session_id' });
         const snapshot = await kernel.quotes.resolveForOrder(params.session_id, ctx); // ownership + expiry
-        return toSession(snapshot);
+        return attachAp2CheckoutJwt(toSession(snapshot), mintAp2CheckoutJwt, ctx);
       }
 
       case 'cancel_checkout_session':
@@ -672,6 +677,37 @@ async function cancelSession(kernel, params, ctx) {
 }
 
 // Map a kernel quote snapshot → the canonical "checkout session" shape adapters return.
+/** Best-effort on purpose: a mint failure must not take checkout availability down — its only
+ * consequence is that AP2 (one payment method among several) fails closed at verification. The
+ * hook logs its own failures; the session result stays authoritative either way. */
+async function attachAp2CheckoutJwt(session, mint, ctx) {
+  if (typeof mint !== 'function') return session;
+  try {
+    // BIND TO THE ID THE DOOR WILL VERIFY AGAINST, which is not always the kernel quote id.
+    //
+    // complete_checkout_session verifies against `authorization_checkout_session_id ?? session_id`,
+    // and the ACP REST adapter is the ONLY caller that sets authorization_checkout_session_id
+    // (= its acp_session_id). An ACP wallet never learns the kernel quote id, so a JWT minted over
+    // session_id matched nothing it could assert: every ACP AP2 completion failed session_mismatch.
+    //
+    // Gate on ctx.protocol, NOT on the mere presence of ctx.acp_session_id. That field is on EVERY
+    // door — the executor requires it for any op with requiresUserRef (see the linkage check
+    // above), where it is the per-connection session the kernel binds quote<->order to. On the
+    // native/MCP door nothing forwards it as authorization_checkout_session_id, so binding to it
+    // there would break the door that currently works. Same discriminator the delegated-token lane
+    // uses at DELEGATED_LANE_PROTOCOL.
+    const bindsToDoorSession = ctx?.protocol === DELEGATED_LANE_PROTOCOL && nonEmpty(ctx?.acp_session_id);
+    const jwt = await mint({
+      checkout_session_id: bindsToDoorSession ? ctx.acp_session_id : session.session_id,
+      expires_at: session.expires_at,
+    });
+    if (typeof jwt === 'string' && jwt !== '') session.ap2_checkout_jwt = jwt;
+  } catch {
+    /* field absent -> AP2 verification fails closed; nothing else is affected */
+  }
+  return session;
+}
+
 function toSession(q) {
   return {
     session_id: q.quote_id,
