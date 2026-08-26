@@ -27,6 +27,10 @@ function nonEmptyString(v) {
 function toExecutionSpec(raw) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
   const str = (v) => (nonEmptyString(v) ? v : null);
+  // Money and counts are NUMBERS. A string that happens to look numeric is not a total: it would
+  // sort and compare as text wherever an agent does arithmetic on it, so it degrades to null
+  // rather than being coerced.
+  const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
   const tracking = raw.tracking && typeof raw.tracking === 'object' && !Array.isArray(raw.tracking)
     ? raw.tracking
     : {};
@@ -45,6 +49,31 @@ function toExecutionSpec(raw) {
     // added. It is not a promise about a URL, which is why it does not get the strict treatment above.
     rail: str(raw.rail),
     expires_at: str(raw.expires_at),
+    // WHAT THE MERCHANT SAID, JUST NOW. The backend's live-verification hop asks the merchant's
+    // own storefront before the handoff and publishes what it found. Without these an agent gets
+    // a spec that looks identical whether we checked it a second ago or are reciting a row that
+    // is, on the audit's measurement, wrong 31.1% of the time.
+    //
+    // `expected_item_total` is only ever populated when the shop's declared currency MATCHED the
+    // one the offer quotes — the backend refuses to compare across currencies rather than
+    // publishing a number in the wrong unit. `expected_quantity` says what the total is FOR,
+    // because a total is only right for the quantity the cart encodes.
+    // AMOUNT AND CURRENCY MOVE TOGETHER, or neither moves. The file's "each field degrades
+    // independently" rule is right for urls and wrong for money: publishing 14.99 with a null
+    // currency hands the agent a number to compare a checkout total against with no unit, which
+    // is the exact shape #2102/#2104 removed from the sibling readers.
+    expected_item_total:
+      num(raw.expected_item_total) !== null && str(raw.expected_currency) !== null
+        ? num(raw.expected_item_total)
+        : null,
+    expected_currency:
+      num(raw.expected_item_total) !== null && str(raw.expected_currency) !== null
+        ? str(raw.expected_currency)
+        : null,
+    expected_quantity: num(raw.expected_quantity),
+    // When the promise stops being one. An agent holding a spec past this must re-resolve rather
+    // than act on a total whose shelf life has run out.
+    expected_total_expires_at: str(raw.expected_total_expires_at),
     tracking: {
       click_id: str(tracking.click_id),
       // WHICH carrier holds the join key in the url the agent was handed — `attributes[pivota_click_id]` on a
@@ -69,6 +98,10 @@ function offerToSignal(offer, { productId = null } = {}) {
       price,
       currency: offer.currency || null,
       availability: offer.availability || null,
+      // The backend CORRECTS this on a verified offer and leaves `availability` alone, so
+      // without it the wire carried `availability: "unknown"` next to `stock_verified: true` —
+      // a confirmed-in-stock item with no positive stock statement anywhere on it.
+      in_stock: offer.in_stock === true ? true : offer.in_stock === false ? false : null,
       is_primary: offer.is_primary === true,
       url: offer.url || null,
       // Attributed-redirect lane: backend offers.resolve stamps a signed /r attribution link on external
@@ -97,6 +130,31 @@ function offerToSignal(offer, { productId = null } = {}) {
       // truthiness so a stray string, `1`, or `0` can never be read as either claim.
       cart_prefilled:
         offer.cart_prefilled === true ? true : offer.cart_prefilled === false ? false : null,
+      // DID WE ACTUALLY CHECK, AND WHAT DID WE ESTABLISH. Three separate facts, because they
+      // fail separately: stock can be confirmed while price cannot (the storefront endpoint the
+      // backend reads carries an amount with NO currency code, so a price is only verified once
+      // the shop's declared currency is known to match). Folding them into one flag is what
+      // produced a yen amount published under a dollar label in an earlier cut.
+      //
+      // Absence stays null throughout: an older backend, a non-external offer, or an offer
+      // outside the verified top-3 has no verdict, and "we did not look" is not "we looked and
+      // it failed". Only an explicit backend boolean is believed.
+      stock_verified:
+        offer.stock_verified === true ? true : offer.stock_verified === false ? false : null,
+      // Named for its PROVENANCE. The reco lane publishes its own `price_verified` meaning
+      // "consistent with Pivota's own projection" — the opposite claim from "the merchant said
+      // so", and one key for both would make them indistinguishable to a model.
+      merchant_price_verified:
+        offer.merchant_price_verified === true
+          ? true
+          : offer.merchant_price_verified === false
+            ? false
+            : null,
+      // THE TOP RESULT WAS NOT CONFIRMED. The backend raises this when the whole shortlist came
+      // back unverified — the outage case, and precisely when an agent is most likely to act on
+      // a stale price. `true` or absent, never `false`: it is a warning, and "no warning" is the
+      // ordinary state rather than a claim that everything checked out.
+      rank_one_unverified: offer.rank_one_unverified === true ? true : null,
       // The rest of the execution spec. `cart_prefilled` above answers "is there a cart"; this answers
       // "where exactly, with what in it, until when, and how is the click attributed".
       execution_spec: toExecutionSpec(offer.execution_spec),
@@ -123,10 +181,27 @@ function offersToSignals(offers, opts = {}) {
     const s = offerToSignal(o, { productId });
     if (s) signals.push(s);
   }
-  // best = primary first, then lowest price — mirrors the backend aggregate_offers ordering.
+  // best = primary, then CONFIRMED-IN-STOCK, then lowest price.
+  //
+  // The stock tier is not a preference, it is a correction. The backend already sorts its
+  // shortlist verified-first, and without mirroring that here a cheaper offer we could NOT
+  // confirm wins `best_offer` over one the merchant just confirmed — so the tool that advertises
+  // live verification would hand the agent the unverified offer as its headline answer. An agent
+  // that reads only `best_offer` never sees `rank_one_unverified` either, because that rides on
+  // signals[0].
+  //
+  // Explicitly `=== false` for the middle tier: null means "not checked", which is not evidence
+  // against an offer and must not be penalised the way a failed check is.
+  const stockTier = (s) => {
+    if (s.value.stock_verified === true) return 0;
+    if (s.value.stock_verified === false) return 2;
+    return 1; // unchecked — no evidence either way
+  };
   const priced = signals.filter((s) => typeof s.value.price === 'number');
   priced.sort((a, b) => {
     if (a.value.is_primary !== b.value.is_primary) return a.value.is_primary ? -1 : 1;
+    const tier = stockTier(a) - stockTier(b);
+    if (tier !== 0) return tier;
     return a.value.price - b.value.price;
   });
   const best_offer = priced.length ? priced[0] : signals[0] || null;
