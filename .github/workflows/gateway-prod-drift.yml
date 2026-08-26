@@ -22,18 +22,23 @@ on:
   schedule:
     # :37 rather than the backend alarm's :17 - two red jobs in the same minute read as one
     # incident and get triaged as one.
-    - cron: '37 * * * *'
+    #
+    # Every 4h, not hourly. One undeployed gap is ONE fact; restating it every hour is what turns
+    # a true alarm into a mailing list. On 2026-08-25 a single gap produced 7 scheduled failures
+    # here (plus 3 on push) and 7 more from the backend alarm - and the guard THIS FILE replaced
+    # was switched off by hand after five straight failures. Volume is how that happens.
+    - cron: '37 */4 * * *'
   workflow_dispatch:
 
 permissions:
   contents: read
 
-# push and the hourly cron can otherwise overlap and race to report on the same state. The
+# push and the scheduled cron can otherwise overlap and race to report on the same state. The
 # workflow this replaces had both of these; losing them in the rewrite would be a regression.
 concurrency:
   # Keyed by ref: without it a workflow_dispatch from a feature branch shares the group, cancels an
   # in-flight run on main, and can itself exit 0 - leaving a green conclusion for a state it never
-  # checked. push and the hourly cron on main still collapse together, which is the intent.
+  # checked. push and the scheduled cron on main still collapse together, which is the intent.
   group: gateway-prod-drift-${{ github.ref }}
   cancel-in-progress: true
 
@@ -41,7 +46,16 @@ env:
   # How long production may lag main before this job goes red. Long enough that a normal
   # merge-then-deploy never trips it; short enough that a forgotten deploy is caught the same
   # morning. Only applies when production is BEHIND main, never when it has diverged.
-  GRACE_MINUTES: '120'
+  #
+  # 120 was too twitchy for how this repo merges. Measured over the 14 days to 2026-08-25, the
+  # span from a day's first merge to its last was a MEDIAN of 14.7h (p75 21.0h, max 23.9h):
+  # work lands across the whole day and ships in batches, so a 2h window went red during
+  # ordinary afternoons - including on push, three times that day.
+  #
+  # WHY NOT MUCH LONGER, which is the tempting fix. Sizing the window so a normal day never
+  # trips it means ~15h, and that is not a weaker alarm - it is an off one, which is precisely
+  # the state this file exists to end. 240 still catches a forgotten deploy the same day.
+  GRACE_MINUTES: '240'
 
 jobs:
   drift:
@@ -260,7 +274,7 @@ jobs:
                 echo "::warning::the landing commit is dated ${AGE_MIN#-}m in the FUTURE - clock skew or a hand-set committer date. Ignoring the deploy window rather than granting it forever."
                 AGE_MIN=""
               elif [ "$AGE_MIN" -lt "$GRACE_MINUTES" ]; then
-                echo "::notice::undeployed runtime code landed on main ${AGE_MIN}m ago, inside the ${GRACE_MINUTES}m deploy window - not alarming yet. The hourly run will."
+                echo "::notice::undeployed runtime code landed on main ${AGE_MIN}m ago, inside the ${GRACE_MINUTES}m deploy window - not alarming yet. A later scheduled run will."
                 exit 0
               fi
               # Empty only on the future-dated path above, where printing an age would state a
