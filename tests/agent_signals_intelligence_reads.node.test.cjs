@@ -677,9 +677,12 @@ test('a total is a NUMBER — a numeric-looking string is not money', () => {
   // It would sort and compare as text wherever an agent does arithmetic on it, which is worse
   // than not having it: "9.99" < "10.00" is false as a string.
   const { offerToSignal } = require('../src/agentSignals/offerToSignal');
+  // A VALID CURRENCY IS SUPPLIED on purpose. The amount/currency atomicity rule nulls an amount
+  // with no currency before `num()` is ever consulted, so without this these rows stopped
+  // exercising the type check — and the mutant that made `num()` accept a numeric string survived.
   for (const bad of ['19.99', '', {}, [], true, NaN, Infinity]) {
     const v = offerToSignal(
-      { merchant_id: 'm1', execution_spec: { expected_item_total: bad } },
+      { merchant_id: 'm1', execution_spec: { expected_item_total: bad, expected_currency: 'USD' } },
       { productId: 'sig_1' },
     ).value;
     assert.equal(v.execution_spec.expected_item_total, null,
@@ -725,4 +728,144 @@ test('rank_one_unverified needs an explicit true, not a truthy value', () => {
     assert.equal(v.rank_one_unverified, null,
       `must not raise the warning for ${JSON.stringify(truthy)}`);
   }
+});
+
+test('best_offer does not hand the agent an UNVERIFIED offer over a confirmed one', () => {
+  // The tool now advertises live verification. Sorting on price alone made a cheaper offer we
+  // could NOT confirm win `best_offer` over one the merchant had just confirmed — the headline
+  // answer contradicting the feature. An agent reading only `best_offer` also never sees
+  // `rank_one_unverified`, which rides on signals[0].
+  const { offersToSignals } = require('../src/agentSignals/offerToSignal');
+  const { best_offer } = offersToSignals(
+    [
+      { merchant_id: 'cheap_unchecked', price: 12.5, currency: 'USD', stock_verified: false },
+      { merchant_id: 'confirmed', price: 14.99, currency: 'USD', stock_verified: true },
+    ],
+    { productId: 'p' },
+  );
+  assert.equal(best_offer.value.merchant_id, 'confirmed');
+});
+
+test('an UNCHECKED offer is not penalised the way a FAILED check is', () => {
+  // null means "we did not look" — no evidence against the merchant. Treating it like a failed
+  // check would demote every offer outside the verified top-3 on the strength of our own budget.
+  const { offersToSignals } = require('../src/agentSignals/offerToSignal');
+  const { best_offer } = offersToSignals(
+    [
+      { merchant_id: 'cheap_unchecked', price: 12.5, currency: 'USD' },
+      { merchant_id: 'pricier_confirmed', price: 14.99, currency: 'USD', stock_verified: true },
+    ],
+    { productId: 'p' },
+  );
+  assert.equal(best_offer.value.merchant_id, 'pricier_confirmed', 'confirmed still wins');
+
+  // The unchecked offer is the DEARER one here, deliberately: if the tiers were equal, price
+  // would decide and pick the cheap failed offer. Only a real tier difference can produce this.
+  const { best_offer: b2 } = offersToSignals(
+    [
+      { merchant_id: 'cheap_failed', price: 12.5, currency: 'USD', stock_verified: false },
+      { merchant_id: 'pricier_unchecked', price: 14.99, currency: 'USD' },
+    ],
+    { productId: 'p' },
+  );
+  assert.equal(b2.value.merchant_id, 'pricier_unchecked',
+    'an unchecked offer must outrank one whose check FAILED, even when dearer');
+});
+
+test('a verified offer carries a positive stock statement, not just a stale availability', () => {
+  // The backend corrects `in_stock` and leaves `availability` alone. External-seed offers default
+  // to availability "unknown", so dropping in_stock published `availability: "unknown"` next to
+  // `stock_verified: true` — a confirmed item with nothing on it saying so.
+  const { offerToSignal } = require('../src/agentSignals/offerToSignal');
+  const v = offerToSignal(
+    { merchant_id: 'm1', availability: 'unknown', in_stock: true, stock_verified: true },
+    { productId: 'p' },
+  ).value;
+  assert.equal(v.in_stock, true);
+  assert.equal(v.stock_verified, true);
+});
+
+test('an amount and its currency move together, or neither moves', () => {
+  // #2102/#2104 settled this for the sibling readers: an amount without its currency is not a
+  // smaller truth, it is a different and wrong one. The description tells an agent to compare
+  // `expected_item_total` against a merchant checkout total — with no unit, that is a guess.
+  const { offerToSignal } = require('../src/agentSignals/offerToSignal');
+
+  const orphanAmount = offerToSignal(
+    { merchant_id: 'm1', execution_spec: { expected_item_total: 14.99 } }, { productId: 'p' },
+  ).value.execution_spec;
+  assert.equal(orphanAmount.expected_item_total, null, 'an amount with no currency is withheld');
+  assert.equal(orphanAmount.expected_currency, null);
+
+  const orphanCurrency = offerToSignal(
+    { merchant_id: 'm1', execution_spec: { expected_currency: 'USD' } }, { productId: 'p' },
+  ).value.execution_spec;
+  assert.equal(orphanCurrency.expected_currency, null, 'a currency with no amount says nothing');
+
+  const both = offerToSignal(
+    { merchant_id: 'm1', execution_spec: { expected_item_total: 14.99, expected_currency: 'USD' } },
+    { productId: 'p' },
+  ).value.execution_spec;
+  assert.equal(both.expected_item_total, 14.99);
+  assert.equal(both.expected_currency, 'USD');
+});
+
+test('a blank or non-string currency is refused, not relayed', () => {
+  const { offerToSignal } = require('../src/agentSignals/offerToSignal');
+  for (const bad of ['', '   ', 42, {}, null]) {
+    const spec = offerToSignal(
+      { merchant_id: 'm1', execution_spec: { expected_item_total: 14.99, expected_currency: bad } },
+      { productId: 'p' },
+    ).value.execution_spec;
+    assert.equal(spec.expected_currency, null, `must refuse ${JSON.stringify(bad)}`);
+    assert.equal(spec.expected_item_total, null, 'and withhold the amount with it');
+  }
+});
+
+test('a blank expiry is refused — a promise with an unreadable shelf life is not a promise', () => {
+  const { offerToSignal } = require('../src/agentSignals/offerToSignal');
+  for (const bad of ['', '   ', 12345, {}]) {
+    const spec = offerToSignal(
+      { merchant_id: 'm1', execution_spec: { expected_total_expires_at: bad } }, { productId: 'p' },
+    ).value.execution_spec;
+    assert.equal(spec.expected_total_expires_at, null, `must refuse ${JSON.stringify(bad)}`);
+  }
+});
+
+test('stock_verified is its own fact and never inherits cart_prefilled', () => {
+  // They answer different questions — "is it buyable" vs "where does the link land". Falling
+  // through would report a merchant as stock-confirmed on the strength of a cart permalink we
+  // built ourselves, without asking anyone.
+  const { offerToSignal } = require('../src/agentSignals/offerToSignal');
+  const v = offerToSignal(
+    { merchant_id: 'm1', cart_prefilled: true }, { productId: 'p' },
+  ).value;
+  assert.equal(v.cart_prefilled, true);
+  assert.equal(v.stock_verified, null, 'a prefilled cart is not evidence about stock');
+});
+
+test('a zero total is a real number and survives', () => {
+  // A 100%-off promo is a legitimate total. Rejecting 0 as falsy would silently withhold it.
+  const { offerToSignal } = require('../src/agentSignals/offerToSignal');
+  const spec = offerToSignal(
+    { merchant_id: 'm1', execution_spec: { expected_item_total: 0, expected_currency: 'USD' } },
+    { productId: 'p' },
+  ).value.execution_spec;
+  assert.equal(spec.expected_item_total, 0);
+});
+
+test('the sanitizer preserves the PROJECTION, not just a raw backend offer', () => {
+  // The earlier version sanitized VERIFIED_OFFER — the backend shape — so it proved the key names
+  // survive canon() but nothing about the projection's output reaching the wire. Stripping the
+  // booleans from the projection left it green.
+  const { offerToSignal } = require('../src/agentSignals/offerToSignal');
+  const { sanitizeResult } = require('../safety-kernel/src/protocol/resultSanitizer.js');
+  const projected = offerToSignal(VERIFIED_OFFER, { productId: 'sig_1' });
+  const out = sanitizeResult({ signals: [projected] }).signals[0].value;
+
+  assert.equal(out.stock_verified, true);
+  assert.equal(out.merchant_price_verified, true);
+  assert.equal(out.execution_spec.expected_item_total, 19.99);
+  assert.equal(out.execution_spec.expected_currency, 'USD');
+  assert.equal(out.execution_spec.cart_url, VERIFIED_OFFER.execution_spec.cart_url);
 });
