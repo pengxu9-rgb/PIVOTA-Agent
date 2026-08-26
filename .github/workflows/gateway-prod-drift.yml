@@ -24,10 +24,16 @@ on:
     # incident and get triaged as one.
     #
     # Every 4h, not hourly. One undeployed gap is ONE fact; restating it every hour is what turns
-    # a true alarm into a mailing list. On 2026-08-25 a single gap produced 7 scheduled failures
-    # here (plus 3 on push) and 7 more from the backend alarm - and the guard THIS FILE replaced
-    # was switched off by hand after five straight failures. Volume is how that happens.
-    - cron: '37 */4 * * *'
+    # a true alarm into a mailing list. On 2026-08-25 this workflow sent 7 scheduled failures and
+    # the backend alarm sent 7 more - and the guard THIS FILE replaced was switched off by hand
+    # after five straight failures. Volume is how that happens.
+    #
+    # WHY THESE HOURS AND NOT `*/4`. GitHub drops scheduled runs under load and drops the midnight
+    # one hardest - this workflow missed 00:37 on both days sampled (08-25 and 08-26), and 12:37
+    # on one of them. Losing one slot in 24 costs an hour; losing one in six leaves an 8h blind
+    # window. Starting at 02:37 keeps the 4h cadence and the :37 offset while skipping the slot
+    # least likely to be delivered.
+    - cron: '37 2,6,10,14,18,22 * * *'
   workflow_dispatch:
 
 permissions:
@@ -45,12 +51,21 @@ concurrency:
 env:
   # How long production may lag main before this job goes red. Long enough that a normal
   # merge-then-deploy never trips it; short enough that a forgotten deploy is caught the same
-  # morning. Only applies when production is BEHIND main, never when it has diverged.
+  # working day - not the same morning: grace plus one cron interval is ~8h, so a gap opening at
+  # 09:00Z is first reported that afternoon. Only applies when production is BEHIND main, never
+  # when it has diverged.
   #
-  # 120 was too twitchy for how this repo merges. Measured over the 14 days to 2026-08-25, the
-  # span from a day's first merge to its last was a MEDIAN of 14.7h (p75 21.0h, max 23.9h):
-  # work lands across the whole day and ships in batches, so a 2h window went red during
-  # ordinary afternoons - including on push, three times that day.
+  # 120 was too twitchy for how this repo merges. Across the 13 multi-merge days in the 14 days
+  # to 2026-08-25, the span from a day's first merge to its last had a MEDIAN of 14.4h (p75
+  # 21.0h, max 23.9h): work lands across the whole day and ships in batches, so a 2h window went
+  # red during ordinary afternoons - including once on push, at 18:02Z on 08-25 with the gap
+  # 122 minutes old.
+  #
+  # Only ONCE, despite three red push runs that day - the other two are a different story and
+  # widening the window does not touch either. 04:30Z was the original 11-week gap (30 commits,
+  # age 3723m), red at any sane grace. 15:09Z never reached a verdict at all: gateway.pivota.cc
+  # reset the connection and the job failed on `could not reach`. That health-unreachable path
+  # is its own failure class and stays exactly as loud as it was.
   #
   # WHY NOT MUCH LONGER, which is the tempting fix. Sizing the window so a normal day never
   # trips it means ~15h, and that is not a weaker alarm - it is an off one, which is precisely
