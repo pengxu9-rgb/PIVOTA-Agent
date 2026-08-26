@@ -796,23 +796,105 @@ test('6m. unresolvable must be the PROVEN envelope — null, a thrown check, and
   }
 });
 
-test('6o. the HTTP classifier: only 404 + the PRODUCT_NOT_FOUND envelope is definitive', () => {
+test('6o. the HTTP classifier: which 404s are definitive, which must be confirmed, which prove nothing', () => {
   const classify = require('../src/agentSignals/recommendProducts').classifyVerifyPriceResponse;
-  // definitive — both envelope spellings the pdp_v2 lane emits
-  assert.deepEqual(classify(404, { error: 'PRODUCT_NOT_FOUND' }), { unresolvable: true });
-  assert.deepEqual(classify(404, { reasonCode: 'PRODUCT_NOT_FOUND' }), { unresolvable: true });
-  // NOT definitive: a 404 without the code (a proxy, a route miss) must not buy a delisting
+  // DEFINITIVE, no confirmation needed — envelopes only a successful read can produce:
+  // PRODUCT_NOT_SERVABLE (post-eligibility-read; the incident cohort finding 2 named), and
+  // PRODUCT_NOT_FOUND carrying details.reason (e.g. the external_seed_not_active precheck).
+  assert.deepEqual(classify(404, { error: 'PRODUCT_NOT_SERVABLE' }), { unresolvable: true });
+  assert.deepEqual(classify(404, { reasonCode: 'PRODUCT_NOT_SERVABLE' }), { unresolvable: true });
+  assert.deepEqual(classify(404, { error: 'PRODUCT_NOT_FOUND', details: { reason: 'external_seed_not_active' } }),
+    { unresolvable: true });
+  // AMBIGUOUS — the bare rescue-fail emit: a transient dependency blip mints the same body as a
+  // truly absent row, so it must be seen twice (both envelope spellings).
+  assert.deepEqual(classify(404, { error: 'PRODUCT_NOT_FOUND' }), { unresolvable: true, confirm: true });
+  assert.deepEqual(classify(404, { reasonCode: 'PRODUCT_NOT_FOUND' }), { unresolvable: true, confirm: true });
+  assert.deepEqual(classify(404, { error: 'PRODUCT_NOT_FOUND', details: {} }), { unresolvable: true, confirm: true },
+    'an empty details object carries no reason and stays ambiguous');
+  // PROVES NOTHING: a 404 without either code (a proxy, a route miss) must not buy a delisting
   assert.equal(classify(404, {}), null);
   assert.equal(classify(404, null), null);
   assert.equal(classify(404, 'Not Found'), null);
   assert.equal(classify(404, { error: 'SOMETHING_ELSE' }), null);
   // other failures degrade to "price unavailable"
   assert.equal(classify(500, { error: 'PRODUCT_NOT_FOUND' }), null, 'the code without the status is not the envelope');
+  assert.equal(classify(500, { error: 'PRODUCT_NOT_SERVABLE' }), null);
   assert.equal(classify(503, {}), null);
   assert.equal(classify(302, {}), null);
   // 2xx: the caller reads the price itself
   assert.equal(classify(200, { modules: [] }), undefined);
   assert.equal(classify(204, null), undefined);
+});
+
+test('6p. the ambiguous envelope is probed twice: a second answer wins the item back; a repeat buys the drop', async () => {
+  // (a) blip on the first probe, real price on the second: the item is KEPT and live-verified
+  let calls = 0;
+  const blipThenPrice = makeRecommendProducts({
+    generate: async () => laneResult([ITEM_FULL]),
+    isEnabled: () => true,
+    verifyPrice: async () => {
+      calls += 1;
+      return calls === 1 ? { unresolvable: true, confirm: true } : { price: 35, currency: 'USD' };
+    },
+  });
+  const kept = await blipThenPrice({ payload: { need: 'exfoliant' } }, { agent_id: 'agent_a' });
+  assert.equal(calls, 2, 'the ambiguous answer costs exactly one extra probe');
+  assert.equal(kept.signals.length, 1);
+  assert.equal(kept.signals[0].value.product.price_verified, true, 'the second probe answer is USED, not discarded');
+  assert.equal(kept.metadata.price_verification.unresolvable, 0);
+
+  // (b) the same ambiguous envelope twice: two independent probes agree — dropped
+  calls = 0;
+  const blipTwice = makeRecommendProducts({
+    generate: async () => laneResult([ITEM_FULL]),
+    isEnabled: () => true,
+    verifyPrice: async () => { calls += 1; return { unresolvable: true, confirm: true }; },
+  });
+  const dropped = await blipTwice({ payload: { need: 'exfoliant' } }, { agent_id: 'agent_a' });
+  assert.equal(calls, 2);
+  assert.equal(dropped.signals.length, 0);
+  assert.equal(dropped.metadata.price_verification.unresolvable, 1);
+
+  // (c) a DEFINITIVE answer needs no confirmation: exactly one probe, dropped
+  calls = 0;
+  const definitive = makeRecommendProducts({
+    generate: async () => laneResult([ITEM_FULL]),
+    isEnabled: () => true,
+    verifyPrice: async () => { calls += 1; return { unresolvable: true }; },
+  });
+  const gone = await definitive({ payload: { need: 'exfoliant' } }, { agent_id: 'agent_a' });
+  assert.equal(calls, 1, 'a definitive envelope must not spend a second loopback');
+  assert.equal(gone.signals.length, 0);
+});
+
+test('6q. an all-dropped shortlist says WHY — and does not blame identity', async () => {
+  const h = makeRecommendProducts({
+    generate: async () => laneResult([ITEM_FULL]),
+    isEnabled: () => true,
+    verifyPrice: async () => ({ unresolvable: true }),
+  });
+  const res = await h({ payload: { need: 'exfoliant' } }, { agent_id: 'agent_a' });
+  assert.equal(res.signals.length, 0);
+  assert.equal(res.metadata.products_empty_reason, 'unresolvable_on_read_chain',
+    "'no_recommendations' would blame the lane for items it actually produced");
+  assert.equal(res.metadata.dropped_unidentified_items, undefined,
+    'a dropped IDENTIFIED item must not be counted as unidentified');
+  assert.equal(res.metadata.price_verification.unresolvable, 1);
+});
+
+test('6r. the server.js wiring actually consumes the classifier — the delivery line is pinned', () => {
+  // The repo pattern from #1898: mutate the DELIVERY path, not your diff. Reverting only the two
+  // wiring lines in server.js would leave every unit test here green while making the whole PR a
+  // production no-op, so the consuming lines are pinned at the source level (same pattern as
+  // tests/public_feed_gate.node.test.cjs).
+  const fs = require('node:fs');
+  const server = fs.readFileSync(require.resolve('../src/server'), 'utf8');
+  assert.match(server, /const classified = classifyVerifyPriceResponse\(response\.status, response\.data\);/,
+    'the verifyPrice wiring must classify through the exported function');
+  assert.match(server, /if \(classified !== undefined\) return classified;/,
+    'the wiring must RETURN the classification — reading it without returning is the no-op mutant');
+  assert.match(server, /makeRecommendProducts, classifyVerifyPriceResponse \} = require\('\.\/agentSignals\/recommendProducts'\)/,
+    'the classifier must be the exported one, not a local copy that can drift');
 });
 
 test('6n. a drop under an enforced ceiling still re-slots from the survivors, never resurrects the dead id', async () => {

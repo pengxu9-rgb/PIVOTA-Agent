@@ -457,7 +457,9 @@ function recommendationItemToSignal(item, { rank } = {}) {
  *     // no re-verification, items keep their catalog-snapshot price with no price_verified key at all.
  *     // `{unresolvable:true}` means the lookup answered a DEFINITIVE not-found (the id is dead on the
  *     // same read chain get_product serves) — the item is DROPPED from the shortlist, unlike null,
- *     // which only degrades it to an unverified snapshot price
+ *     // which only degrades it to an unverified snapshot price. `{unresolvable:true, confirm:true}`
+ *     // is the AMBIGUOUS flavor (an envelope a transient dependency blip can also mint): the bridge
+ *     // probes that item once more, and only a repeated unresolvable answer buys the drop
  *   logger?: { warn?: Function, info?: Function },
  *   budgetMs?: number,
  *   now?: () => number,
@@ -626,13 +628,22 @@ function makeRecommendProducts(deps = {}) {
       const unresolvableSignals = new Set();
       await Promise.all(toVerify.map(async (s) => {
         const product = s.value.product;
-        let live = null;
-        try {
-          live = await Promise.race([
-            verifyPrice({ product_id: product.product_id, merchant_id: product.merchant_id, product_ref: product.product_ref }),
-            new Promise((resolve) => { const t = setTimeout(() => resolve(null), PRICE_VERIFY_RACE_MS); if (t.unref) t.unref(); }),
-          ]);
-        } catch { live = null; }
+        const probe = async () => {
+          try {
+            return await Promise.race([
+              verifyPrice({ product_id: product.product_id, merchant_id: product.merchant_id, product_ref: product.product_ref }),
+              new Promise((resolve) => { const t = setTimeout(() => resolve(null), PRICE_VERIFY_RACE_MS); if (t.unref) t.unref(); }),
+            ]);
+          } catch { return null; }
+        };
+        let live = await probe();
+        if (isPlainObject(live) && live.unresolvable === true && live.confirm === true) {
+          // The AMBIGUOUS not-found (see classifyVerifyPriceResponse): a transient dependency blip
+          // mints the same body as a truly absent row, so this envelope must be seen TWICE before
+          // it buys a drop. A second answer carrying a price — or nothing at all — wins the item
+          // back to the ordinary degrade path.
+          live = await probe();
+        }
         if (isPlainObject(live) && live.unresolvable === true) {
           // Grounded in Aurora's corpus, dead on the serving chain (live repro 2026-08-26: the lane's
           // top acne picks 404'd on get_product). Dropped, and the slot backfills from the remaining
@@ -796,7 +807,12 @@ function makeRecommendProducts(deps = {}) {
         warnings: asStringArray(payload.warnings, 8),
         grounding_status: firstString(payload.grounding_status, meta.grounding_status) || null,
         source_mode: firstString(meta.source_mode, payload.source) || null,
-        products_empty_reason: signals.length === 0 ? firstString(payload.products_empty_reason, result?.upstreamFailureCode) || 'no_recommendations' : null,
+        // When the shortlist emptied because the resolvability pass dropped everything, say THAT —
+        // 'no_recommendations' would blame the lane for items it actually produced.
+        products_empty_reason: signals.length === 0
+          ? firstString(payload.products_empty_reason, result?.upstreamFailureCode)
+            || (verification && verification.unresolvable > 0 ? 'unresolvable_on_read_chain' : 'no_recommendations')
+          : null,
         vertical: 'beauty',
         latency_ms: latencyMs,
         // How many returned signals are advisory archetypes rather than catalog products — said out
@@ -837,7 +853,12 @@ function makeRecommendProducts(deps = {}) {
         // unreadable second constraint) the key reports the unread constraint — either value already means
         // "do not treat this shortlist as fully price-checked".
         ...(ceiling !== null && ceiling.unstructured ? { price_constraint_unenforced: ceiling.unstructured } : {}),
-        ...(signals.length === 0 && items.length > 0 ? { dropped_unidentified_items: items.length } : {}),
+        // Counts only items projection could not IDENTIFY (items minus projected), not the whole
+        // lane output: an empty shortlist can now also mean identified items were dropped as
+        // unresolvable, and those belong to price_verification.unresolvable, not to this key.
+        ...(signals.length === 0 && items.length > projected.length
+          ? { dropped_unidentified_items: items.length - projected.length }
+          : {}),
       },
     };
   };
@@ -856,8 +877,23 @@ function makeRecommendProducts(deps = {}) {
  */
 function classifyVerifyPriceResponse(status, body) {
   if (status === 404) {
-    const code = isPlainObject(body) ? (body.error || body.reasonCode) : null;
-    return String(code || '').trim().toUpperCase() === 'PRODUCT_NOT_FOUND' ? { unresolvable: true } : null;
+    const b = isPlainObject(body) ? body : null;
+    const code = b ? String(b.error || b.reasonCode || '').trim().toUpperCase() : '';
+    // PRODUCT_NOT_SERVABLE is emitted ONLY after a SUCCESSFUL serving-eligibility read (server.js
+    // get_pdp_v2 eligibility gate) — a definitive "get_product will not serve this id", with no
+    // transient path that can mint it. It maps to the same NO_MERCHANT_OFFER the buyer would see.
+    if (code === 'PRODUCT_NOT_SERVABLE') return { unresolvable: true };
+    if (code === 'PRODUCT_NOT_FOUND') {
+      // With details.reason (e.g. external_seed_not_active) the verdict came from a successful
+      // read of the row — definitive. WITHOUT it, this is the rescue-fail emit, and that path
+      // swallows dependency errors into null: a transient DB blip mints the SAME body as a truly
+      // absent row. Ambiguous — the caller must CONFIRM it with a second probe before it may buy
+      // a drop.
+      const reason = b && isPlainObject(b.details) ? str(b.details.reason) : '';
+      return reason ? { unresolvable: true } : { unresolvable: true, confirm: true };
+    }
+    // A 404 without either code (a proxy, a route miss) proves nothing.
+    return null;
   }
   if (status < 200 || status >= 300) return null;
   return undefined;
