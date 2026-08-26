@@ -191,6 +191,81 @@ test('malformed rows are dropped without taking the fetch down', async () => {
   assert.deepEqual(h.builds[0], [STATIC_CANARY.iss, 'https://antom.example/payments']);
 });
 
+test('a row that would make buildIssuerRegistry THROW is dropped at ingest: http jwks, bad algs, dup iss', async () => {
+  // Review finding 2: the pipe-only guard was insufficient — an http jwksUri row sailed
+  // through and every payment attempt (static canary included) then died on the build.
+  const h = harness({
+    pages: [[
+      row({ iss: 'https://http-jwks.example', jwksUri: 'http://http-jwks.example/jwks' }),
+      row({ iss: 'https://bad-alg.example', algs: ['HS256'] }),
+      row({ iss: 'https://dup.example' }),
+      row({ iss: 'https://dup.example', jwksUri: 'https://dup2.example/jwks' }),
+      row(),
+    ]],
+  });
+  await h.verify(grantFor(STATIC_CANARY.iss));
+  assert.deepEqual(h.builds[0], [STATIC_CANARY.iss, 'https://dup.example', 'https://antom.example/payments']);
+  assert.ok(h.logs.error.some((m) => m.includes('non-https jwksUri')));
+  assert.ok(h.logs.error.some((m) => m.includes('non-allowlisted alg')));
+  assert.ok(h.logs.error.some((m) => m.includes('duplicate payment issuer row')));
+});
+
+test('a SYNCHRONOUS build throw must not strand the old verifier under the new fingerprint', async () => {
+  // Review finding 3, the fail-open-for-revocation bug: with Promise.resolve(build(...)),
+  // a sync throw escaped before assignment — the fingerprint said "new list" while the old
+  // verifier kept serving, so a snapshot that both revoked an issuer and carried a poison
+  // row kept the revoked issuer verifying indefinitely.
+  let mode = 'good';
+  const seen = [];
+  const registry = createPaymentGrantIssuerRegistry({
+    env: ENV, staticIssuers: [STATIC_CANARY], ttlMs: 1000,
+    fetchImpl: fakeFetch([[], [row()], [row()]]),
+    now: (() => { let c = 0; return () => { c += 1500; return c; }; })(), // every call passes TTL
+  });
+  const verify = registry.createVerifier((issuers) => {
+    // SYNC throw, exactly like createSignedGrantVerifier
+    if (mode === 'poison') throw new Error('issuer jwksUri must be https');
+    seen.push(issuers.map((e) => e.iss));
+    return async () => ({ ok: true, over: issuers.map((e) => e.iss) });
+  });
+  const first = await verify(grantFor(STATIC_CANARY.iss)); // static-only build
+  assert.deepEqual(first.over, [STATIC_CANARY.iss]);
+  mode = 'poison';
+  await assert.rejects(() => verify(grantFor(STATIC_CANARY.iss)), /must be https/);
+  // Same (changed) list again while still poisoned: must THROW AGAIN (a retried build), never
+  // silently serve the pre-poison verifier.
+  await assert.rejects(() => verify(grantFor(STATIC_CANARY.iss)), /must be https/);
+  mode = 'good';
+  const healed = await verify(grantFor(STATIC_CANARY.iss));
+  assert.ok(healed.over.includes('https://antom.example/payments'));
+});
+
+test('the fingerprint is order-insensitive but azp-sensitive', async () => {
+  const a = row({ iss: 'https://a.example' });
+  const b = row({ iss: 'https://b.example' });
+  const h = harness({ pages: [[a, b], [b, a], [a, { ...b, azp: 'client-2' }]] });
+  await h.verify(grantFor(STATIC_CANARY.iss));
+  h.tick(1500);
+  await h.verify(grantFor(STATIC_CANARY.iss)); // same set, reordered: NO rebuild
+  assert.equal(h.builds.length, 1);
+  h.tick(1500);
+  await h.verify(grantFor(STATIC_CANARY.iss)); // azp changed: rebuild
+  assert.equal(h.builds.length, 2);
+});
+
+test('the staleness alarm logs once a minute, not once per payment attempt', async () => {
+  const h = harness({ pages: [[row()], new Error('down')], maxStalenessMs: 5000 });
+  await h.verify(grantFor(STATIC_CANARY.iss));
+  h.tick(6000);
+  for (let i = 0; i < 5; i += 1) await h.verify(grantFor(STATIC_CANARY.iss));
+  const first = h.logs.error.filter((m) => m.includes('stale beyond bound')).length;
+  assert.equal(first, 1);
+  h.tick(61_000);
+  await h.verify(grantFor(STATIC_CANARY.iss));
+  const after = h.logs.error.filter((m) => m.includes('stale beyond bound')).length;
+  assert.equal(after, 2);
+});
+
 test('a failed inner build is retried, not wedged forever', async () => {
   let attempts = 0;
   const registry = createPaymentGrantIssuerRegistry({

@@ -56,8 +56,19 @@ function peekGrantIssuer(authorization) {
   }
 }
 
-/** Registry row -> verifier config entry, or null (dropped). Registry rows must clear the same
- * bars a static entry would, PLUS the pipe rule that would otherwise poison the whole build. */
+// The alg names buildIssuerRegistry accepts — a row carrying anything else makes it THROW,
+// for the whole registry. Same pattern the backend validates against.
+const ALLOWED_ALG_RE = /^(?:RS|PS|ES)\d{3}$|^EdDSA$/;
+
+/** Registry row -> verifier config entry, or null (dropped).
+ *
+ * The bar here is deliberately EVERYTHING buildIssuerRegistry hard-throws on — pipe in iss,
+ * non-https jwksUri, unknown algs — because it throws while building the ENTIRE registry, so
+ * one bad row would take static trust down with it. Review of this PR proved the original
+ * pipe-only guard insufficient: an http jwksUri row sailed through ingest and every payment
+ * attempt (canary included) then failed on the build. The backend enforces https and no-pipe
+ * as DB CHECK constraints, but algs is route-validated only — a hand-inserted row is exactly
+ * the case this exists for. */
 function normalizeEntry(raw, logger) {
   if (!raw || typeof raw !== 'object') return null;
   const iss = nonEmpty(raw.iss) ? raw.iss.trim() : null;
@@ -65,10 +76,20 @@ function normalizeEntry(raw, logger) {
   const aud = nonEmpty(raw.aud) ? raw.aud.trim() : null;
   if (!iss || !jwksUri || !aud) return null;
   if (iss.includes('|')) {
-    // buildIssuerRegistry throws on this for the ENTIRE registry; refusing the row here keeps
-    // one bad backend row from killing static trust. ERROR level: the backend's own guard
-    // should have made this impossible.
     logger.error({ iss }, 'payment issuer row contains a piped iss; dropped (would poison the whole verifier registry)');
+    return null;
+  }
+  let jwksOk = false;
+  try {
+    jwksOk = new URL(jwksUri).protocol === 'https:';
+  } catch { jwksOk = false; }
+  if (!jwksOk) {
+    logger.error({ iss }, 'payment issuer row has a non-https jwksUri; dropped (would poison the whole verifier registry)');
+    return null;
+  }
+  const algs = Array.isArray(raw.algs) && raw.algs.length ? raw.algs.map(String) : ['RS256', 'ES256'];
+  if (!algs.every((a) => ALLOWED_ALG_RE.test(a))) {
+    logger.error({ iss }, 'payment issuer row carries a non-allowlisted alg; dropped (would poison the whole verifier registry)');
     return null;
   }
   const methods = Array.isArray(raw.methods) && raw.methods.length ? raw.methods.map(String) : ['signed_grant'];
@@ -77,13 +98,19 @@ function normalizeEntry(raw, logger) {
     iss,
     jwksUri,
     aud,
-    algs: Array.isArray(raw.algs) && raw.algs.length ? raw.algs.map(String) : ['RS256', 'ES256'],
+    algs,
+    // NOTE: buildIssuerRegistry does not currently READ azp — carried for the fingerprint and
+    // for the day the kernel enforces it, but it is not an enforced constraint on this path.
     ...(nonEmpty(raw.azp) ? { azp: raw.azp.trim() } : {}),
   };
 }
 
 function fingerprintOf(entries) {
-  return JSON.stringify(entries.map((e) => [e.iss, e.jwksUri, e.aud, e.algs, e.azp || null]));
+  // Sorted: identical sets in different orders are the same trust and must not rebuild. The
+  // backend serves ORDER BY id today, but the fingerprint should not depend on that staying true.
+  return JSON.stringify(
+    entries.map((e) => [e.iss, e.jwksUri, e.aud, e.algs, e.azp || null]).sort(),
+  );
 }
 
 /**
@@ -116,6 +143,7 @@ function createPaymentGrantIssuerRegistry(opts = {}) {
   let fetchedAt = 0;
   let lastForcedAt = 0;
   let inflight = null;
+  let lastStaleLogAt = 0;
 
   async function fetchOnce() {
     const controller = new AbortController();
@@ -129,15 +157,23 @@ function createPaymentGrantIssuerRegistry(opts = {}) {
       if (!resp.ok) throw new Error(`registry HTTP ${resp.status}`);
       const body = await resp.json();
       const next = [];
+      const seenIss = new Set();
       for (const raw of Array.isArray(body?.issuers) ? body.issuers : []) {
         const e = normalizeEntry(raw, logger);
         if (!e) continue;
+        if (seenIss.has(e.iss)) {
+          // buildIssuerRegistry throws on duplicate iss for the whole registry. The backend's
+          // partial unique index makes this impossible through the API; first row wins here.
+          logger.error({ iss: e.iss }, 'duplicate payment issuer row; dropped (would poison the whole verifier registry)');
+          continue;
+        }
         if (staticIss.has(e.iss)) {
           // Static trust is pinned at deploy time; a DB row must never replace it. Loud,
           // because it means someone registered an issuer the platform already carries.
           logger.warn({ iss: e.iss }, 'payment issuer row shadows a static env issuer; dropped');
           continue;
         }
+        seenIss.add(e.iss);
         next.push(e);
       }
       registryRows = next;
@@ -170,10 +206,15 @@ function createPaymentGrantIssuerRegistry(opts = {}) {
   function currentIssuers() {
     const registryFresh = enabled && fetchedAt > 0 && now() - fetchedAt <= maxStalenessMs;
     if (enabled && fetchedAt > 0 && !registryFresh && registryRows.length) {
-      logger.error(
-        { stale_ms: now() - fetchedAt, dropped: registryRows.length },
-        'payment issuer registry stale beyond bound; serving STATIC issuers only until it refreshes',
-      );
+      // Once a minute, not once per payment attempt: currentIssuers() runs 1-2x per attempt,
+      // and a >15m outage at any volume would otherwise be a log storm of one repeated fact.
+      if (now() - lastStaleLogAt >= 60_000) {
+        lastStaleLogAt = now();
+        logger.error(
+          { stale_ms: now() - fetchedAt, dropped: registryRows.length },
+          'payment issuer registry stale beyond bound; serving STATIC issuers only until it refreshes',
+        );
+      }
     }
     return registryFresh ? [...staticIssuers, ...registryRows] : [...staticIssuers];
   }
@@ -194,7 +235,13 @@ function createPaymentGrantIssuerRegistry(opts = {}) {
       const fp = fingerprintOf(issuers);
       if (!innerPromise || innerFingerprint !== fp) {
         innerFingerprint = fp;
-        innerPromise = Promise.resolve(build(issuers));
+        // Async IIFE, NOT Promise.resolve(build(...)): createSignedGrantVerifier throws
+        // SYNCHRONOUSLY, and with Promise.resolve the throw escaped before assignment — the
+        // fingerprint said "new list" while innerPromise still held the OLD verifier, so a
+        // snapshot that both revoked an issuer and carried a poison row kept the revoked
+        // issuer verifying indefinitely. Review reproduced it; the IIFE turns the sync throw
+        // into a rejection the cleanup below actually sees.
+        innerPromise = (async () => build(issuers))();
         innerPromise.catch(() => {
           // A build that failed must not wedge the verifier on a bad fingerprint forever.
           if (innerFingerprint === fp) { innerPromise = null; innerFingerprint = null; }

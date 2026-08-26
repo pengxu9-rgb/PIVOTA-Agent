@@ -30593,9 +30593,10 @@ async function getCommercePaymentAuthorizationVerifier() {
 
       const { createPaymentAuthorizationVerifier } = await import('../safety-kernel/src/protocol/paymentAuthorizationVerifier.js');
       const { createSignedGrantVerifier } = await import('../safety-kernel/src/protocol/protocolPaymentVerifiers.js');
+      const { PivotaCommerceError } = await import('../safety-kernel/src/errors.js');
       // Rebuilt by the registry wrapper ONLY when the merged issuer list changes; with the
       // registry disabled this builds exactly once over the static list, as before.
-      return paymentIssuerRegistry.createVerifier((issuers) => {
+      const registryVerifier = paymentIssuerRegistry.createVerifier((issuers) => {
         const signedGrantVerifier = createSignedGrantVerifier({ issuers });
         return createPaymentAuthorizationVerifier({
           methods: {
@@ -30604,6 +30605,21 @@ async function getCommercePaymentAuthorizationVerifier() {
           },
         });
       });
+      // Every throw that leaves this seam must be a PivotaCommerceError: the doors are
+      // instanceof-gated (toToolError's SAFE_ERROR_CLASSES; the ACP adapter 500s on anything
+      // else), so the registry's own failures — empty merged list, a verifier build refused —
+      // would otherwise degrade the clean CONFIRMATION_INVALID refusal an ABSENT verifier
+      // produces into a generic UNEXPECTED_ERROR / HTTP 500. Same wrapping the kernel itself
+      // applies to method verifiers (paymentAuthorizationVerifier.js), one level further out.
+      return async (authorization, ...rest) => {
+        try {
+          return await registryVerifier(authorization, ...rest);
+        } catch (err) {
+          if (err instanceof PivotaCommerceError) throw err;
+          logger.warn({ code: err?.code || 'PAYMENT_AUTHZ_FAILURE' }, 'payment verifier unavailable; refusing');
+          throw new PivotaCommerceError('CONFIRMATION_INVALID', { reason: 'payment_authorization_unavailable' });
+        }
+      };
     })();
   }
   return commercePaymentAuthorizationVerifierPromise;
