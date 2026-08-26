@@ -167,6 +167,68 @@ function recordVariantMiss({ reason, brandDomain, metrics, latencyMs }) {
   } catch { /* metrics must never throw the lane */ }
 }
 
+/**
+ * What the merchant asserted about price, in a form that cannot be misread.
+ *
+ * NOT A LANDED TOTAL, and the audit's B7 assumption that it would be is wrong. The live
+ * create_checkout schema has no `shipping_address` field — Shopify collects the delivery address
+ * on the STOREFRONT, so shipping and tax quotes are not returned at this step at all
+ * (ucpBuyerAgentClient.js:1017, 1253; live-verified against cosrx 2026-07-13). On the real path
+ * `total === subtotal`, `shipping_options` is `[]`, `tax` is `null`, and the checkout comes back
+ * `requires_escalation`. Publishing that as a grand total would be quoting a number the buyer
+ * will not be charged.
+ *
+ * So this emits a PRE-SHIPPING SUBTOTAL, named as one, with the two exclusions stated explicitly
+ * rather than left for a caller to infer.
+ *
+ * MINOR UNITS, ALWAYS, AND SAID SO IN THE KEY. The live payload's `totals[].amount` is minor
+ * units (integer cents) and `pickMoney` passes it through with no coercion, as a number OR a
+ * string. `1600 USD` is $16.00 — a bare `total: 1600` beside a currency code is the same
+ * amount-without-its-unit hazard as a missing currency, one level down, and a 100x error in the
+ * direction that overstates. The key says `_minor` so the scale travels with the number.
+ */
+function pricedTotals(preview) {
+  if (!isPlainObject(preview)) return null;
+
+  // Money arrives as a NUMBER OR A STRING — `pickMoney` is documented "no math, no coercion", and
+  // the live cosrx payload carries strings. Requiring a number made this inert on the only
+  // merchant shape anyone has actually verified.
+  const minor = (v) => {
+    if (typeof v === 'number') return Number.isSafeInteger(v) && v >= 0 ? v : null;
+    if (typeof v !== 'string') return null;
+    const t = v.trim();
+    // Integer minor units only. A decimal point here means the merchant is NOT using the
+    // convention we are about to publish under, and guessing which it is would be the whole bug.
+    if (!/^\d{1,15}$/.test(t)) return null;
+    const n = Number(t);
+    return Number.isSafeInteger(n) ? n : null;
+  };
+
+  const subtotal = minor(preview.subtotal != null ? preview.subtotal : preview.total);
+  const rawCurrency = typeof preview.currency === 'string' ? preview.currency.trim().toUpperCase() : '';
+  // ISO 4217 SHAPE, not merely non-empty. `firstNonEmptyString` STRINGIFIES, so a numeric 42
+  // arrived as the currency code "42". `XXX` is excluded: it is the ISO code meaning "no
+  // currency", which is an assertion that there is no unit, not a unit.
+  const currency = /^[A-Z]{3}$/.test(rawCurrency) && rawCurrency !== 'XXX' ? rawCurrency : null;
+
+  // AMOUNT AND CURRENCY MOVE TOGETHER. Either both, or neither.
+  if (subtotal === null || !currency) return null;
+
+  return {
+    subtotal_minor: subtotal,
+    currency,
+    tax_minor: minor(preview.tax),
+    // Stated, not implied. On the live path both are false every time, and a caller that assumes
+    // otherwise quotes a number the buyer will not be charged.
+    includes_shipping: Array.isArray(preview.shipping_options) && preview.shipping_options.length > 0,
+    includes_tax: minor(preview.tax) !== null,
+    // True when the merchant still needs an address or payment on the STOREFRONT — which, per the
+    // live schema, is ALWAYS on this path. Kept so a caller can tell a genuinely-final quote from
+    // this one if a merchant ever returns one.
+    requires_escalation: preview.requires_escalation === true,
+  };
+}
+
 function createUcpWarmHandoffInternalHandler(deps = {}) {
   const now = typeof deps.now === 'function' ? deps.now : () => Date.now();
   const variantCache = createTtlCache({ maxEntries: VARIANT_CACHE_MAX_ENTRIES, now });
@@ -315,6 +377,18 @@ function createUcpWarmHandoffInternalHandler(deps = {}) {
         continue_url: handoff.continue_url,
         cart_id: firstNonEmptyString(handoff.cart_id) || null,
         variant_gid: variantGid,
+        // WHAT THE MERCHANT ASSERTED ABOUT PRICE — a PRE-SHIPPING SUBTOTAL in minor units,
+        // not a landed total. See pricedTotals: the live schema returns no shipping or tax at
+        // this step because Shopify collects the address on the storefront.
+        //
+        // The service already builds this (create_checkout against the merchant, synthetic
+        // address, no PII, never completed and never paid) and the route was dropping it. Its
+        // value over the storefront `.js` endpoint the backend otherwise reads is that it NAMES
+        // ITS CURRENCY — `.js` carries a bare unit price with no currency code at all.
+        //
+        // Shape-gated, not spread: only the money fields cross, and only when the amount arrives
+        // WITH its currency and in a scale we can name.
+        ...(pricedTotals(handoff.preview) ? { preview: pricedTotals(handoff.preview) } : {}),
       },
     };
   };
@@ -322,6 +396,7 @@ function createUcpWarmHandoffInternalHandler(deps = {}) {
 
 module.exports = {
   REQUIRE_AVAILABLE_ENV,
+  pricedTotals,
   createUcpWarmHandoffInternalHandler,
   ROUTE_FLAG_ENV,
   INTERNAL_KEY_ENV,

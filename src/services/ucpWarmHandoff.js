@@ -43,6 +43,9 @@ const DEFAULT_TOTAL_BUDGET_MS = 9000; // total discover->cart(->preview) wall-cl
 // also fetches a create_checkout PRICED preview (synthetic address, no PII) to enrich the result with
 // { item, shipping_options, tax, total, currency, continue_url }. It NEVER completes checkout or pays.
 const INCHAT_PREVIEW_FLAG_ENV = 'UCP_INCHAT_PREVIEW_ENABLED';
+// Below this there is no point starting a create_checkout at all — it would time out inside the
+// remaining window and cost the shopper the wait for nothing.
+const MIN_PREVIEW_BUDGET_MS = 400;
 
 function isPlainObject(v) {
   return Boolean(v && typeof v === 'object' && !Array.isArray(v));
@@ -327,11 +330,20 @@ function createWarmHandoffService(deps = {}) {
 
     // PHASE 1 in-chat PRICED PREVIEW enrichment. Only when the SEPARATE flag is ON. Flag OFF => `result` above is
     // returned unchanged (byte-identical to today's warm handoff). Any preview failure is swallowed so the warm
-    // handoff still succeeds with just the continue_url. Skipped if the total budget is already spent. HARD BOUND:
-    // create_checkout preview only — no payment, no completion, the continue_url is never opened.
+    // handoff still succeeds with just the continue_url. HARD BOUND: create_checkout preview only — no payment,
+    // no completion, the continue_url is never opened.
+    //
+    // BOUNDED BY WHAT IS LEFT, not by "the budget is not yet spent". The old check was a START GATE: it let the
+    // preview begin at budget-minus-1ms and then take its own full per-call ceiling on top. Measured against a
+    // 2000ms click budget: 1954ms without the preview, 3455ms with it — past the BACKEND caller's hard 2.5s
+    // `asyncio.wait_for`, which aborts to a COLD redirect. So enabling the flag did not degrade to cart-only as
+    // designed; it threw the whole warm handoff away. The shopper is waiting on a 302 for this.
+    const previewRemainingMs = totalBudgetMs - (now() - startedAt);
     if (previewEnabled && cartId && typeof client.createCheckoutPreview === 'function'
-      && now() - startedAt <= totalBudgetMs) {
-      const preview = await buildPreview({ mcpEndpoint, cartId, variantGid, quantity, origin });
+      && previewRemainingMs >= MIN_PREVIEW_BUDGET_MS) {
+      const preview = await buildPreview({
+        mcpEndpoint, cartId, variantGid, quantity, origin, budgetMs: previewRemainingMs,
+      });
       if (preview) result.preview = preview;
     }
 
@@ -342,11 +354,14 @@ function createWarmHandoffService(deps = {}) {
   }
 
   /** Fetch + normalize the create_checkout priced preview. Never throws; returns null on any failure. */
-  async function buildPreview({ mcpEndpoint, cartId, variantGid, quantity, origin }) {
+  async function buildPreview({ mcpEndpoint, cartId, variantGid, quantity, origin, budgetMs }) {
     try {
       const pv = await client.createCheckoutPreview(mcpEndpoint, {
         cartId,
         lineItems: [{ item: { id: variantGid }, quantity }],
+        // The caller's REMAINING window, so this call cannot outlive the budget it was admitted
+        // under. Without it the per-call ceiling applied on top of an almost-exhausted budget.
+        ...(Number.isFinite(budgetMs) ? { timeoutMs: Math.max(1, Math.floor(budgetMs)) } : {}),
       });
       if (!pv || !pv.ok || !pv.priced) {
         note('info', 'ucp_inchat_preview_unavailable', { origin, status: pv && pv.status });
