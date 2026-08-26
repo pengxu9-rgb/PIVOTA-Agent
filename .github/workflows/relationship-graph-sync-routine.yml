@@ -1,8 +1,13 @@
 name: Relationship Graph Sync Routine
 
+# The daily scheduled tick (cron "37 10 * * *") moved to the Cloud Run Job `relgraph-sync`
+# (pivota-prod, us-west1, Cloud Scheduler trigger) during the Railway -> GCP migration; that lane
+# also records the relationship_graph_routine_runs ledger, which this one never did. This
+# workflow's DATABASE_URL secret still points at the decommissioned Railway Postgres proxy
+# (torn down 2026-08-25), so scheduled runs here can only fail (ECONNRESET on every query).
+# Manual dispatch/call is kept for ad-hoc ops runs, but requires repointing the environment's
+# DATABASE_URL secret to a reachable database first.
 on:
-  schedule:
-    - cron: "37 10 * * *"
   workflow_dispatch:
     inputs:
       cutoff:
