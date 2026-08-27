@@ -1052,6 +1052,7 @@ jobs:
             tests/payment_method_verifier_composition.node.test.cjs \
             tests/agent_signals_intelligence_reads.node.test.cjs \
             tests/agent_signals_recommend_products.node.test.cjs \
+            tests/sourcing_sentinel_merchant_scope.node.test.cjs \
             tests/aurora_chat_v1_mainline_delegation_cycle.node.test.cjs \
             tests/aurora_bff_v1_chat_rollout.node.test.cjs \
             mcp-server/test/ucpToolVocabulary.test.js \

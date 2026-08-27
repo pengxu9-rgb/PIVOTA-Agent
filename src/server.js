@@ -29,6 +29,7 @@ const {
   getExternalSeedImageCacheBootstrapStatus,
   scheduleExternalSeedImageCacheBootstrap,
 } = require('./services/externalSeedImageCacheBootstrap');
+const { isSourcingSentinelMerchantId } = require('./services/sourcingSentinel');
 const {
   getExternalSeedImageCacheJobRunnerStatus,
   scheduleExternalSeedImageCacheJobRunner,
@@ -29990,7 +29991,15 @@ async function invokeCommerceKernelRawUpstream(operation, payload, headers = {})
       // there and the canonical module is normalized back to the { product } contract below.
       // Merchant-scoped detail keeps the Python backend unchanged (commerce in-store flows).
       const prod = isPlainObject(payload?.product) ? payload.product : {};
-      const merchantScoped = typeof prod.merchant_id === 'string' && prod.merchant_id.trim() !== '';
+      // The 'external_seed' sourcing sentinel is NOT a merchant scope: the Python per-merchant
+      // catalog has no such merchant, so routing "scoped" detail there answers NO_MERCHANT_OFFER
+      // for every seed product an agent asks about — and get_product's schema REQUIRES merchant_id,
+      // so agents echo the advertised sentinel on every seed call. Treat it as unscoped so the
+      // sig-detail lane (which serves these products) gets the lookup. See services/sourcingSentinel.
+      const merchantScoped =
+        typeof prod.merchant_id === 'string' &&
+        prod.merchant_id.trim() !== '' &&
+        !isSourcingSentinelMerchantId(prod.merchant_id);
       const pid = typeof prod.product_id === 'string' ? prod.product_id.trim() : '';
       if (!merchantScoped && pid) {
         pdpV2Detail = true;
@@ -37856,6 +37865,9 @@ async function resolveProductIntelInvokeContext({
   let requestedMerchantId = String(
     productRef.merchant_id || productRef.merchantId || payload.merchant_id || payload.merchantId || '',
   ).trim();
+  // A caller-supplied 'external_seed' is the sourcing sentinel, not a seller — treat as unscoped
+  // (same rule as the get_product_detail routing fork; see services/sourcingSentinel).
+  if (isSourcingSentinelMerchantId(requestedMerchantId)) requestedMerchantId = '';
   const variantId = String(
     productRef.variant_id ||
       productRef.variantId ||
