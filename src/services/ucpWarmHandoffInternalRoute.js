@@ -226,6 +226,12 @@ function pricedTotals(preview) {
     // live schema, is ALWAYS on this path. Kept so a caller can tell a genuinely-final quote from
     // this one if a merchant ever returns one.
     requires_escalation: preview.requires_escalation === true,
+    // The merchant's handle on this checkout, when it gave one. Null is honest and common: a
+    // merchant may price a preview without naming an id. A caller must treat null as "no
+    // mintable checkout here", never as a reason to fabricate one.
+    checkout_id: typeof preview.checkout_id === 'string' && preview.checkout_id.trim()
+      ? preview.checkout_id.trim()
+      : null,
   };
 }
 
