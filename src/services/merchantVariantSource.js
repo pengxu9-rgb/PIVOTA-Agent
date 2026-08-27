@@ -174,6 +174,18 @@ function idNamesVariant(variantId, hint) {
 
 
 
+
+// Mirrors `pdpBuilder.shouldExposeProductVariants`' per-variant test: a variant is displayable when it has
+// a title that is not one of the generic placeholders, or carries options of its own. Kept in step with the
+// builder by the contract test in tests/merchant_variant_source (the regex is copied verbatim).
+const PDP_GENERIC_VARIANT_TITLE_RE = /^(default|default title|variant \d+|single item)$/i;
+function pdpWouldExpose(raw) {
+  if (!isPlainObject(raw)) return false;
+  if (Array.isArray(raw.options) && raw.options.length > 0) return true;
+  const title = str(raw.title);
+  return Boolean(title) && !PDP_GENERIC_VARIANT_TITLE_RE.test(title);
+}
+
 /**
  * Is this variant id just the product id RESTATED?
  *
@@ -240,10 +252,15 @@ function majorUnitsOf(money) {
   // `<= 0` rather than `< 0`: a zero price is a broken offer row, not a free product, and publishing "$0.00"
   // on a PDP is a wrong number. pdpBuilder's `toVariantPrice` also drops <= 0, but relying on that would
   // leave this module's promise ("never a guessed price") true only by a downstream accident.
-  if (!Number.isFinite(amount) || amount <= 0) return null;
+  // `Number.isInteger`, not just finite: the `/^\d+$/` guard above covers the STRING path, so without this
+  // a numeric `4800.5` slipped through as $48.005 while the string '4800.5' was refused — the same value
+  // accepted or rejected by its JS type, which is not a rule anyone can reason about.
+  if (!Number.isInteger(amount) || amount <= 0) return null;
   // A storefront that answers a nonsense magnitude is not a price we publish. MAX_SAFE_INTEGER keeps the
   // division exact; the practical ceiling is far below it.
-  if (amount > Number.MAX_SAFE_INTEGER) return null;
+  // A practical ceiling, not a numeric one: MAX_SAFE_INTEGER itself would admit a $90-trillion price.
+  // 10^12 minor units is $10bn — far above any real SKU and far below anything that could be a units bug.
+  if (amount > 1e12) return null;
   const currency = str(money.currency).toUpperCase();
   const exp = currencyExponent(currency);
   if (exp === null) return null;
@@ -324,6 +341,9 @@ function createMerchantVariantSource(deps = {}) {
   // bounded so a wide crawl cannot grow it without limit.
   const resultTtlMs = Number.isFinite(deps.resultTtlMs) && deps.resultTtlMs >= 0 ? deps.resultTtlMs : 120000;
   const resultMax = Number.isFinite(deps.resultCacheMax) && deps.resultCacheMax > 0 ? deps.resultCacheMax : 500;
+  // A failed lookup is cached far more briefly than a good one: long enough to stop a broken storefront
+  // being re-asked on every render, short enough that a recovered one is picked up quickly.
+  const negativeTtlMs = Number.isFinite(deps.negativeTtlMs) && deps.negativeTtlMs >= 0 ? deps.negativeTtlMs : 20000;
   const results = new Map();
   const clock = typeof deps.now === 'function' ? deps.now : () => Date.now();
   function cacheGet(key) {
@@ -333,10 +353,11 @@ function createMerchantVariantSource(deps = {}) {
     if (clock() >= hit.expiresAt) { results.delete(key); return undefined; }
     return hit.value;
   }
-  function cacheSet(key, value) {
-    if (resultTtlMs === 0) return;
+  function cacheSet(key, value, ttlMs) {
+    const ttl = Number.isFinite(ttlMs) ? ttlMs : resultTtlMs;
+    if (ttl <= 0) return;
     if (results.size >= resultMax) results.delete(results.keys().next().value);
-    results.set(key, { value, expiresAt: clock() + resultTtlMs });
+    results.set(key, { value, expiresAt: clock() + ttl });
   }
 
   /** Shared gate + network path: -> the ONE catalogue product whose url is ours, or null. */
@@ -404,6 +425,13 @@ function createMerchantVariantSource(deps = {}) {
       // only that the lookup did not answer.
       logger?.warn?.({ product_id, merchant_host: pdp.host, err: err?.message || String(err) },
         'merchant variant source did not answer');
+      // CACHE THE ERROR REFUSAL TOO — this is the one that actually costs. The first cut returned here
+      // BEFORE `cacheSet`, so only "searched fine, matched nothing" was cached while a merchant that 500s,
+      // rate-limits or HANGS was re-asked on every single render: measured 5 renders -> 5 searches, each
+      // paying the full timeout. That is precisely the render traffic and latency the cache exists to
+      // absorb, left unfixed in its worst case. A SHORTER negative TTL, so a transient outage is not sticky
+      // for the full positive window.
+      cacheSet(memoKey, null, negativeTtlMs);
       return { pdp, match: null };
     } finally {
       inflight.delete(memoKey);
@@ -459,6 +487,27 @@ function createMerchantVariantSource(deps = {}) {
       .map(merchantVariantToRaw)
       .filter(Boolean);
     if (raws.length === 0) return null;
+    // NEVER PUBLISH A SET THE PDP WILL SWALLOW.
+    //
+    // `shouldExposeProductVariants` hides any variant whose title is absent or generic — `buildVariants`
+    // fills a missing title with `Variant ${idx+1}`, which its exclusion regex (`default|default title|
+    // variant \d+|single item`) then rejects — and the single-variant rescue only covers length === 1. So a
+    // storefront publishing two variants with no titles produced a PDP with ZERO variants while this module
+    // logged "published 2", and the row's checkout went from RESOLVING (via the product-grain carve-out it
+    // no longer qualifies for) to refusing `no_variants`: strictly worse than before the repair, and worse
+    // than the `ambiguous` this feature is meant to produce.
+    //
+    // So: give an untitled variant an honest label derived from what the merchant DID publish (its sku),
+    // and if a multi-variant set still has any member the PDP would hide, decline the replacement entirely
+    // and leave the row exactly as it was. A partial publish is the one outcome worse than not publishing.
+    for (const v of raws) {
+      if (!v.title && v.sku_id) v.title = `SKU ${v.sku_id}`;
+    }
+    if (raws.length > 1 && !raws.every(pdpWouldExpose)) {
+      logger?.warn?.({ product_id, merchant_host: pdp.host, variant_count: raws.length },
+        'merchant variants declined: the pdp would hide at least one, and a partial variant set is worse than the placeholder');
+      return null;
+    }
     logger?.info?.({ product_id, merchant_host: pdp.host, variant_count: raws.length },
       'merchant variant source published storefront variants on the pdp');
     return raws;
@@ -510,4 +559,4 @@ function brandAllowlistMatcher(raw) {
   return { brands, isAllowed: (host) => brands.some((b) => hostMatchesBrand(host, b)) };
 }
 
-module.exports = { createMerchantVariantSource, urlIdentity, variantIdsOf, collectCatalogProducts, variantHintOf, idNamesVariant, hostMatchesBrand, brandAllowlistMatcher, currencyExponent, majorUnitsOf, merchantVariantToRaw, isRestatedProductId };
+module.exports = { createMerchantVariantSource, urlIdentity, variantIdsOf, collectCatalogProducts, variantHintOf, idNamesVariant, hostMatchesBrand, brandAllowlistMatcher, currencyExponent, majorUnitsOf, merchantVariantToRaw, isRestatedProductId, pdpWouldExpose, PDP_GENERIC_VARIANT_TITLE_RE };

@@ -1975,7 +1975,11 @@ function buildVariants(product) {
   const productOptionNames = getProductOptionNames(product);
 
   return rawVariants.map((v, idx) => {
-    const attrs = v && typeof v.variant_attributes === 'object' ? v.variant_attributes : {};
+    // `typeof null === 'object'`, so the null case fell through and `attrs.variant_id` on the next line
+    // threw — a product whose variant carries `variant_attributes: null` 500'd the whole PDP. Found while
+    // mirroring this id chain in the merchant-variant hook (which guards it); the builder needs the guard
+    // too, since it is the one that renders.
+    const attrs = v && typeof v.variant_attributes === 'object' && v.variant_attributes ? v.variant_attributes : {};
     const variantId = v.variant_id || v.id || attrs.variant_id || v.sku || v.sku_id || `${product.product_id}-${idx + 1}`;
     const title =
       attrs.title || v.title || v.name || v.option_title || v.sku_name || `Variant ${idx + 1}`;
