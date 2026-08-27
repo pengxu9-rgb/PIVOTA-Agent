@@ -29714,11 +29714,31 @@ function isMerchantVariantSourcingEnabled() {
   return ['1', 'true', 'on', 'yes'].includes(normalized);
 }
 
+// PILOT SCOPE. `MERCHANT_VARIANT_SOURCING_BRANDS` is a comma-separated host allowlist (the shape
+// OUTBOUND_WARM_HANDOFF_BRANDS already uses), and it is REQUIRED: an empty list arms nothing.
+//
+// Empty-means-none, not empty-means-all, because the blast radii are not symmetric. This capability makes an
+// outbound call to a third party on the checkout intake path, and for the seed cohort the REFUSAL path is the
+// common one — so "someone set ENABLED=1 without naming brands" must not silently point the whole corpus at
+// every storefront we have ever crawled. The cost of failing closed is that the flag can be on and inert,
+// which is its own hazard, so `buildMerchantVariantSource` logs loudly in exactly that state rather than
+// leaving it to be discovered by absence.
+function merchantVariantSourcingBrands() {
+  const { brandAllowlistMatcher } = require('./services/merchantVariantSource');
+  return brandAllowlistMatcher(process.env.MERCHANT_VARIANT_SOURCING_BRANDS);
+}
+
 // Built once per surface, not per request: the UCP client memoizes endpoint discovery, so a repeat checkout
 // against the same storefront costs one catalog search rather than a discovery round-trip too.
 let _merchantVariantSource = null;
 function buildMerchantVariantSource(logger) {
   if (_merchantVariantSource) return _merchantVariantSource;
+  // ON BUT INERT is a real state and must never be a silent one: with no brands named, every lookup is
+  // refused before contact, so the capability would appear armed and resolve nothing.
+  if (isMerchantVariantSourcingEnabled() && merchantVariantSourcingBrands().brands.length === 0) {
+    logger?.warn?.({ flag: 'MERCHANT_VARIANT_SOURCING_ENABLED' },
+      'merchant variant sourcing is ENABLED but MERCHANT_VARIANT_SOURCING_BRANDS is empty — no brand is piloted, so it will resolve nothing');
+  }
   const { createMerchantVariantSource } = require('./services/merchantVariantSource');
   const { createUcpBuyerAgentClient, unwrapToolPayload } = require('./services/ucpBuyerAgentClient');
   _merchantVariantSource = createMerchantVariantSource({
@@ -29729,6 +29749,8 @@ function buildMerchantVariantSource(logger) {
     // construction and make the kill switch un-flippable without a redeploy. For a capability justified as
     // "adds a third-party call to the checkout intake path", disarming must not require one.
     isEnabled: isMerchantVariantSourcingEnabled,
+    // Read per call for the same reason — a pilot's brand list changes without a redeploy.
+    isBrandAllowed: (host) => merchantVariantSourcingBrands().isAllowed(host),
     // Our own hosts can appear on a product read (`url`/`canonical_url` point at agent.pivota.cc); naming
     // them here keeps a self-referential url from ever being used as the merchant join key.
     selfHosts: ['agent.pivota.cc', 'api.pivota.cc', 'mcp.pivota.cc', 'gateway.pivota.cc', 'pivota.cc'],
