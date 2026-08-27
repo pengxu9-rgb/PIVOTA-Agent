@@ -30850,7 +30850,7 @@ async function getCommerceRemoteMcpAdapter() {
         candidateSnapshotNeedsHydration,
         hydrateCandidateSnapshotFromEntity,
       } = require('./agentSignals/intelligenceReads');
-      const { makeRecommendProducts } = require('./agentSignals/recommendProducts');
+      const { makeRecommendProducts, classifyVerifyPriceResponse } = require('./agentSignals/recommendProducts');
       const {
         listApprovedRelationshipEdgesForAnchor,
         buildAnchorRefsFromProduct,
@@ -31050,7 +31050,16 @@ async function getCommerceRemoteMcpAdapter() {
                   validateStatus: () => true,
                 },
               );
-              if (response.status < 200 || response.status >= 300) return null;
+              // A DEFINITIVE not-found — HTTP 404 carrying the PRODUCT_NOT_FOUND envelope — means the
+              // id this item would advertise is dead on the very lane get_product serves, and the
+              // bridge drops the item rather than handing an agent an id that 404s one call later
+              // (live repro 2026-08-26: the lane's top picks answered NO_MERCHANT_OFFER on
+              // get_product). ONLY the proven envelope buys the drop: any other failure — timeout,
+              // 5xx, a 404 without the code — stays null ("price unavailable"), because
+              // cannot-verify must never buy a delisting. The classification is the exported pure
+              // function so its tests pin THIS line's behavior, not a copy.
+              const classified = classifyVerifyPriceResponse(response.status, response.data);
+              if (classified !== undefined) return classified;
               const { product } = normalizePdpV2ToProductDetail(response.data);
               if (!product || typeof product.price !== 'number') return null;
               return { price: product.price, currency: product.currency, in_stock: product.in_stock };

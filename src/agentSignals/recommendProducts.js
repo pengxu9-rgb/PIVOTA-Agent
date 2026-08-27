@@ -452,9 +452,14 @@ function recommendationItemToSignal(item, { rank } = {}) {
  *   generate: (args:object) => Promise<object>,   // Aurora routes.__internal.generateProductRecommendations
  *   buildAsk?: ({focus, constraints, lang}) => string, // routes.__internal.buildRecoGenerateUserAsk
  *   isEnabled?: () => boolean,                     // agent-surface flag (fail-closed when absent)
- *   verifyPrice?: ({product_id, merchant_id, product_ref}) => Promise<{price, currency, in_stock?}|null>,
+ *   verifyPrice?: ({product_id, merchant_id, product_ref}) => Promise<{price, currency, in_stock?}|{unresolvable:true}|null>,
  *     // live PDP/offer lookup for a grounded item (server.js wires get_pdp_v2 over loopback); absent =
- *     // no re-verification, items keep their catalog-snapshot price with no price_verified key at all
+ *     // no re-verification, items keep their catalog-snapshot price with no price_verified key at all.
+ *     // `{unresolvable:true}` means the lookup answered a DEFINITIVE not-found (the id is dead on the
+ *     // same read chain get_product serves) — the item is DROPPED from the shortlist, unlike null,
+ *     // which only degrades it to an unverified snapshot price. `{unresolvable:true, confirm:true}`
+ *     // is the AMBIGUOUS flavor (an envelope a transient dependency blip can also mint): the bridge
+ *     // probes that item once more, and only a repeated unresolvable answer buys the drop
  *   logger?: { warn?: Function, info?: Function },
  *   budgetMs?: number,
  *   now?: () => number,
@@ -591,7 +596,7 @@ function makeRecommendProducts(deps = {}) {
     // leftover slot, but a commerce door must never rank it above a real catalog item (live
     // 2026-08-20: an invented cleanser sat at #1 above the only purchasable result). Lane order is
     // preserved within each group.
-    const groundedSignals = projected.filter((s) => s.value.grounding === 'catalog');
+    let groundedSignals = projected.filter((s) => s.value.grounding === 'catalog');
     const ungroundedSignals = projected.filter((s) => s.value.grounding !== 'catalog');
 
     // LIVE PRICE RE-VERIFICATION (grounded items only; there is nothing to verify on an invented
@@ -599,8 +604,13 @@ function makeRecommendProducts(deps = {}) {
     // same PDP/offer lane the public product page renders from, so a stale snapshot is corrected
     // BEFORE the ceiling is enforced — the gate must judge the price the buyer would actually see.
     // Bounded: only items that could reach the shortlist are checked, in parallel, and a failed or
-    // slow check degrades to the snapshot price with `price_verified: false` — never an error, never
-    // a dropped item. Each signal records the outcome so a partner agent knows what it is holding.
+    // slow check degrades to the snapshot price with `price_verified: false` — never an error. The
+    // ONE outcome that removes an item is a definitive `{unresolvable:true}`: the loopback proved the
+    // id this item would advertise answers PRODUCT_NOT_FOUND on the very read chain get_product
+    // serves, so returning it breaks the chain contract ("never advertise a product_id that
+    // get_product cannot resolve" — the same rule the public search projector enforces). Only the
+    // proven envelope buys a drop; a timeout or error must never buy a delisting. Each signal
+    // records the outcome so a partner agent knows what it is holding.
     let verification = null;
     if (typeof verifyPrice === 'function' && groundedSignals.length > 0) {
       // The window is sized to what can actually RETURN: without a ceiling the first `limit` grounded
@@ -614,16 +624,34 @@ function makeRecommendProducts(deps = {}) {
         enforcing ? limit + PRICE_VERIFY_EXTRA : limit,
         PRICE_VERIFY_MAX_CHECKS,
       ));
-      verification = { checked: toVerify.length, confirmed: 0, updated: 0, unavailable: 0, unchecked: 0 };
+      verification = { checked: toVerify.length, confirmed: 0, updated: 0, unavailable: 0, unresolvable: 0, unchecked: 0 };
+      const unresolvableSignals = new Set();
       await Promise.all(toVerify.map(async (s) => {
         const product = s.value.product;
-        let live = null;
-        try {
-          live = await Promise.race([
-            verifyPrice({ product_id: product.product_id, merchant_id: product.merchant_id, product_ref: product.product_ref }),
-            new Promise((resolve) => { const t = setTimeout(() => resolve(null), PRICE_VERIFY_RACE_MS); if (t.unref) t.unref(); }),
-          ]);
-        } catch { live = null; }
+        const probe = async () => {
+          try {
+            return await Promise.race([
+              verifyPrice({ product_id: product.product_id, merchant_id: product.merchant_id, product_ref: product.product_ref }),
+              new Promise((resolve) => { const t = setTimeout(() => resolve(null), PRICE_VERIFY_RACE_MS); if (t.unref) t.unref(); }),
+            ]);
+          } catch { return null; }
+        };
+        let live = await probe();
+        if (isPlainObject(live) && live.unresolvable === true && live.confirm === true) {
+          // The AMBIGUOUS not-found (see classifyVerifyPriceResponse): a transient dependency blip
+          // mints the same body as a truly absent row, so this envelope must be seen TWICE before
+          // it buys a drop. A second answer carrying a price — or nothing at all — wins the item
+          // back to the ordinary degrade path.
+          live = await probe();
+        }
+        if (isPlainObject(live) && live.unresolvable === true) {
+          // Grounded in Aurora's corpus, dead on the serving chain (live repro 2026-08-26: the lane's
+          // top acne picks 404'd on get_product). Dropped, and the slot backfills from the remaining
+          // grounded candidates below.
+          unresolvableSignals.add(s);
+          verification.unresolvable += 1;
+          return;
+        }
         const livePrice = finiteNumber(isPlainObject(live) ? live.price : null);
         const liveCurrency = isPlainObject(live) ? str(live.currency).toUpperCase() : '';
         // A live answer is trusted only when it is a POSITIVE amount in a KNOWN currency. `price: 0` is a
@@ -655,6 +683,15 @@ function makeRecommendProducts(deps = {}) {
           s.value.watchouts = dedupe(['live availability check: out of stock', ...s.value.watchouts]).slice(0, 6);
         }
       }));
+      if (unresolvableSignals.size > 0) {
+        logger?.warn?.(
+          {
+            dropped_product_ids: [...unresolvableSignals].map((s) => s.value.product?.product_id ?? null),
+          },
+          'recommend_products dropped items unresolvable on the read chain',
+        );
+        groundedSignals = groundedSignals.filter((s) => !unresolvableSignals.has(s));
+      }
     }
 
     let signals;
@@ -770,7 +807,12 @@ function makeRecommendProducts(deps = {}) {
         warnings: asStringArray(payload.warnings, 8),
         grounding_status: firstString(payload.grounding_status, meta.grounding_status) || null,
         source_mode: firstString(meta.source_mode, payload.source) || null,
-        products_empty_reason: signals.length === 0 ? firstString(payload.products_empty_reason, result?.upstreamFailureCode) || 'no_recommendations' : null,
+        // When the shortlist emptied because the resolvability pass dropped everything, say THAT —
+        // 'no_recommendations' would blame the lane for items it actually produced.
+        products_empty_reason: signals.length === 0
+          ? firstString(payload.products_empty_reason, result?.upstreamFailureCode)
+            || (verification && verification.unresolvable > 0 ? 'unresolvable_on_read_chain' : 'no_recommendations')
+          : null,
         vertical: 'beauty',
         latency_ms: latencyMs,
         // How many returned signals are advisory archetypes rather than catalog products — said out
@@ -778,8 +820,12 @@ function makeRecommendProducts(deps = {}) {
         // opened or bought.
         ...(ungroundedReturned > 0 ? { ungrounded_returned: ungroundedReturned } : {}),
         // Live-price check tallies (only when a verifier is wired and grounded items existed):
-        // checked = confirmed + updated + unavailable; `updated` items carry the corrected price and a
-        // watchout naming the move; `unavailable` items keep the snapshot with price_verified: false.
+        // checked = confirmed + updated + unavailable + unresolvable; `updated` items carry the
+        // corrected price and a watchout naming the move; `unavailable` items keep the snapshot with
+        // price_verified: false; `unresolvable` items were DROPPED — the loopback proved their id
+        // answers PRODUCT_NOT_FOUND on the read chain get_product serves, so they never reach the
+        // shortlist (the count is the only trace, deliberately: an agent must not be handed a dead id
+        // even in a diagnostic field).
         ...(verification ? { price_verification: verification } : {}),
         // What this pass actually enforced, so a partner agent can tell "all conforming" from "includes
         // flagged near-misses" from "could not be checked" — without rescanning items, and without
@@ -807,14 +853,54 @@ function makeRecommendProducts(deps = {}) {
         // unreadable second constraint) the key reports the unread constraint — either value already means
         // "do not treat this shortlist as fully price-checked".
         ...(ceiling !== null && ceiling.unstructured ? { price_constraint_unenforced: ceiling.unstructured } : {}),
-        ...(signals.length === 0 && items.length > 0 ? { dropped_unidentified_items: items.length } : {}),
+        // Counts only items projection could not IDENTIFY (items minus projected), not the whole
+        // lane output: an empty shortlist can now also mean identified items were dropped as
+        // unresolvable, and those belong to price_verification.unresolvable, not to this key.
+        ...(signals.length === 0 && items.length > projected.length
+          ? { dropped_unidentified_items: items.length - projected.length }
+          : {}),
       },
     };
   };
+}
+
+/**
+ * Classify the loopback get_pdp_v2 HTTP answer for the injected verifyPrice. Pure, and exported so
+ * the server.js wiring and its tests read the SAME line — the `{unresolvable: true}` drop signal
+ * must come from exactly one place. ONLY an HTTP 404 carrying the PRODUCT_NOT_FOUND envelope is
+ * definitive (that is what the pdp_v2 lane answers for an id get_product cannot serve); a 404
+ * without the code, and every other non-2xx, is null ("price unavailable") — cannot-verify must
+ * never buy a delisting.
+ * @param {number} status
+ * @param {any} body
+ * @returns {{unresolvable:true}|null|undefined} undefined = 2xx: the caller reads the price itself
+ */
+function classifyVerifyPriceResponse(status, body) {
+  if (status === 404) {
+    const b = isPlainObject(body) ? body : null;
+    const code = b ? String(b.error || b.reasonCode || '').trim().toUpperCase() : '';
+    // PRODUCT_NOT_SERVABLE is emitted ONLY after a SUCCESSFUL serving-eligibility read (server.js
+    // get_pdp_v2 eligibility gate) — a definitive "get_product will not serve this id", with no
+    // transient path that can mint it. It maps to the same NO_MERCHANT_OFFER the buyer would see.
+    if (code === 'PRODUCT_NOT_SERVABLE') return { unresolvable: true };
+    if (code === 'PRODUCT_NOT_FOUND') {
+      // With details.reason (e.g. external_seed_not_active) the verdict came from a successful
+      // read of the row — definitive. WITHOUT it, this is the rescue-fail emit, and that path
+      // swallows dependency errors into null: a transient DB blip mints the SAME body as a truly
+      // absent row. Ambiguous — the caller must CONFIRM it with a second probe before it may buy
+      // a drop.
+      const reason = b && isPlainObject(b.details) ? str(b.details.reason) : '';
+      return reason ? { unresolvable: true } : { unresolvable: true, confirm: true };
+    }
+    // A 404 without either code (a proxy, a route miss) proves nothing.
+    return null;
+  }
+  if (status < 200 || status >= 300) return null;
+  return undefined;
 }
 
 // markPriceViolation/markPriceUnverifiable are exported ONLY so a test can pin that they mutate
 // `signal.value` in place rather than rebuilding it. That is not an implementation detail — the
 // join-key mint above is ordered after them precisely because of it, and without a direct
 // assertion the ordering is unfalsifiable (verified: moving the mint earlier left every test green).
-module.exports = { makeRecommendProducts, recommendationItemToSignal, normalizeConstraints, agentLaneUid, extractPriceMax, markPriceViolation, markPriceUnverifiable };
+module.exports = { makeRecommendProducts, recommendationItemToSignal, normalizeConstraints, agentLaneUid, extractPriceMax, markPriceViolation, markPriceUnverifiable, classifyVerifyPriceResponse };
