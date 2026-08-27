@@ -1329,7 +1329,12 @@ function normalizePricedCheckout(toolResult) {
   // STOREFRONT: `continue_url` (already lifted above) is where the agent types, and re-reading
   // `get_checkout` on this id AFTER an address is entered is the only way to learn a total that
   // includes shipping and tax — which a pre-address preview cannot carry (see the audit's B7).
-  const checkout_id = firstNonEmpty(payload.id, payload.checkout_id) || null;
+  // `id` first because the UCP checkout schema declares it required and response-only
+  // (`ucp_request: "omit"`), and Shopify returns `gid://shopify/Checkout/...` there. The aliases
+  // are not speculative: PIVOTA'S OWN door names this `session_id`
+  // (mcp-server/test/ucpFulfillmentAddressContract.test.js reads `created.session_id ?? created.id`
+  // and feeds it to `update_checkout`'s `id`), so an `id`-only read would return null against us.
+  const checkout_id = firstNonEmpty(payload.id, payload.checkout_id, payload.session_id) || null;
   const status = firstNonEmpty(payload.status) || null;
   const messages = Array.isArray(payload.messages)
     ? payload.messages.map((m) => (isPlainObjectLocal(m)

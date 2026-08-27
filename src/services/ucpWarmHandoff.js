@@ -377,6 +377,12 @@ function createWarmHandoffService(deps = {}) {
         currency: p.currency || null,
         // The shopper still pays on the merchant storefront; this is the same handoff URL, surfaced for display.
         continue_url: p.continue_url || null,
+        // THE HOP THAT ACTUALLY DELIVERS IT. This whitelist — not the client's normalized
+        // object — is what `ucpWarmHandoffInternalRoute` receives as `handoff.preview`, so a
+        // field lifted in `normalizePricedCheckout` and omitted here reaches the route as
+        // `undefined` and is published as a constant `null`. Lifting the id without this line
+        // is a no-op with a green test suite, which is exactly how it was first written.
+        checkout_id: p.checkout_id || null,
         checkout_status: p.status || null,
         // True when the merchant still needs a delivery address / payment entered on the STOREFRONT to finalize.
         requires_escalation: Boolean(pv.requires_escalation),
