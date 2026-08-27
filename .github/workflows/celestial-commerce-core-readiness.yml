@@ -11,25 +11,35 @@
 # failed: 14m10s on 2026-08-27 (db96c0403, run 33093441756), and the same timeout shape on 08-25
 # (run 32877254706) and 08-26 (run 32983022976).
 #
-# It has still gone green a few times since the cutover, which is the part worth not misreading. At
-# least one of those - 2026-08-27 00:20, run 33025314010 - matched on attempt 1, because a hand
-# deploy of that very sha had landed while the local_contracts job ran ahead of it. The gate passes
-# when a deploy happens to beat it, not when the merge is sound.
+# Not every merge, though, and the exceptions are the part worth not misreading. Of the 10 push runs
+# since the cutover, 4 went green: 32684458188, 32808912882, 33025314010, and 32539085715 on the
+# cutover date itself. Run 33025314010 matched on attempt 1 - a hand deploy of that very sha landed
+# during the ~18 minutes this job spent queued for a runner. The gate passes when a deploy happens
+# to beat it, not when the merge is sound.
 #
-# The cost was not only the noise. The wait ran BEFORE the audit, so on every merge the readiness
-# audit itself never ran at all. A gate that cannot pass does not weaken the check behind it - it
-# deletes it, while still reporting in the check's name.
+# The cost was not only the noise. The wait runs BEFORE the audit, so on the merges where it timed
+# out the readiness audit did not run at all. A gate that cannot pass does not weaken the check
+# behind it - it deletes it, while still reporting in the check's name.
 #
 # `gateway prod drift` already owns "is live == main", on push and every 4h, with a grace window
 # tuned to how this repo batches deploys. Asking the same question here, with no grace window and
 # no ability to deploy, is the two-jobs-disagree-about-production failure that gateway-prod-drift.yml
 # was written to end - just inverted: promote used to lie green, this lies red.
 #
-# So on push this audits whatever production is actually serving, and the audit's own report stamps
-# the deployed `service_version.commit` it measured (`authoritative_production_smoke_commit`), so a
-# run can never be read as clearing the commit that triggered it. The commit-match wait is kept for
+# So on push this reports on whatever production is actually serving, and the report stamps the
+# deployed `service_version.commit` it measured (`authoritative_production_smoke_commit`), so it
+# cannot be read as clearing the commit that triggered the run. The commit-match wait is kept for
 # `workflow_dispatch`, where an operator who just ran deploy_gateway.sh does want to block until the
 # new build is live; that is what `wait_for_commit` is for, and it still defaults to true there.
+#
+# READ THE ARTIFACT, NOT THE CHECK MARK. run_celestial_commerce_core_readiness_audit.sh is
+# report-only: it records each step and every scorecard dial and then exits 0 whatever they say.
+# A green `readiness_audit` means the run completed, NOT that production is healthy - the green
+# 33098431088 carries commerce_core_production_smoke=fail, commerce_core_prompt_live_smoke=fail and
+# four red dials in its own summary.json. The gating in this workflow is the `local_contracts` job,
+# which runs real jest suites and fails properly. Making a red scorecard exit non-zero is a change
+# worth making, but it is a policy decision about what should block a merge, not part of removing a
+# gate that could never pass.
 name: Celestial Commerce Core Readiness
 
 on:
