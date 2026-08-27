@@ -1309,7 +1309,21 @@ function normalizePricedCheckout(toolResult) {
   const totalsByType = indexTotals(payload.totals);
   const tax = pickMoney(payload.total_tax, payload.tax, totalsByType.tax, totalsByType.taxes);
   const subtotal = pickMoney(payload.subtotal, totalsByType.subtotal);
-  const shipping = pickMoney(payload.total_shipping, totalsByType.shipping, totalsByType.delivery);
+  // `fulfillment` FIRST — it is the wire name. UCP's totals type enum is "subtotal,
+  // items_discount, discount, fulfillment, tax, fee, total"
+  // (ucp.dev/2026-04-08/schemas/shopping/types/total.json); "Shipping" and "Delivery" appear
+  // there only as `display_text` examples, i.e. the human label. Live on
+  // cosrx-renewal.myshopify.com, `fulfillment` appears 12 times in its checkout schemas and
+  // `"shipping"` as a totals type zero times — so this pick returned null on a merchant that
+  // HAD quoted shipping. The same omission caused a real bug in pivota-backend (#1923), where a
+  // landed quote read as unlanded and earned card headroom it should not have had.
+  //
+  // Latent here rather than live: `buildPreview` does not carry `shipping` into the warm-handoff
+  // preview, so nothing consumes this value yet. Fixed now precisely because the day something
+  // does, the bug would arrive silently.
+  const shipping = pickMoney(
+    payload.total_shipping, totalsByType.fulfillment, totalsByType.shipping, totalsByType.delivery,
+  );
   const total = pickMoney(
     payload.total_amount, payload.grand_total, payload.total_price, totalsByType.total,
     (typeof payload.total === 'string' || typeof payload.total === 'number') ? payload.total : undefined,
@@ -1351,13 +1365,43 @@ function normalizePricedCheckout(toolResult) {
  * through as-is (minor units) — no coercion.
  */
 function indexTotals(totals) {
+  // A REPEATED DETAIL TYPE RESOLVES TO ABSENT, NOT TO THE LAST ONE.
+  //
+  // UCP states it plainly: "MUST contain exactly one subtotal and one total entry. Detail types
+  // (tax, fee, discount, fulfillment) may appear multiple times for itemization."
+  // (ucp.dev/2026-04-08/schemas/shopping/types/totals.json). This index is a single-value lookup,
+  // so an itemised merchant has no single answer to give — and last-wins silently reported ONE
+  // line of an itemisation as the whole figure: two fulfillment rows of 500 and 300 published
+  // `shipping = 300` for an 800 charge, into a store-audit acceptance receipt.
+  //
+  // Summing them is the other obvious repair and is deliberately NOT done: `pickMoney` in this
+  // file is documented "no math, no coercion", amounts arrive as numbers OR strings OR objects,
+  // and inventing arithmetic over merchant money to paper over an ambiguity is a worse failure
+  // than admitting the ambiguity. Absent reads downstream as "unknown", which is true.
+  //
+  // This also repairs the same pre-existing hazard for `tax`, which was last-wins before this
+  // function ever looked at `fulfillment`.
   const out = {};
+  const seen = new Set();
   if (Array.isArray(totals)) {
     for (const t of totals) {
-      if (isPlainObjectLocal(t) && t.type) out[String(t.type)] = (t.amount !== undefined ? t.amount : t.value);
+      if (!isPlainObjectLocal(t) || !t.type) continue;
+      // NORMALISED: `type` is a free-text string in the schema, so casing and stray whitespace
+      // are the merchant's to choose, and an unnormalised key means a merchant sending "Tax" is
+      // read as having quoted none. That one reaches the warm-handoff response today via
+      // buildPreview -> pricedTotals.includes_tax.
+      const key = String(t.type).trim().toLowerCase();
+      // `amount` before `value`: `amount` is the schema's field, `value` is tolerated only for
+      // merchants that use it instead.
+      const amount = (t.amount !== undefined ? t.amount : t.value);
+      if (seen.has(key)) { out[key] = undefined; continue; }
+      seen.add(key);
+      out[key] = amount;
     }
   } else if (isPlainObjectLocal(totals)) {
-    for (const [k, v] of Object.entries(totals)) out[k] = v;
+    // The object form gets the SAME normalisation. Fixing only the array branch left
+    // `{ Tax: 190 }` reading as no tax — the exact bug this was meant to close.
+    for (const [k, v] of Object.entries(totals)) out[String(k).trim().toLowerCase()] = v;
   }
   return out;
 }
