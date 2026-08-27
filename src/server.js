@@ -29768,8 +29768,10 @@ function merchantVariantSourcingBrands() {
   return brandAllowlistMatcher(process.env.MERCHANT_VARIANT_SOURCING_BRANDS);
 }
 
-// Built once per surface, not per request: the UCP client memoizes endpoint discovery, so a repeat checkout
-// against the same storefront costs one catalog search rather than a discovery round-trip too.
+// Built once per surface, not per request, so the source's own caches (a short-TTL result cache and an
+// in-flight memo) survive across requests. NOTE: the UCP client does NOT cache discovery — an earlier
+// comment here claimed it did; the per-domain endpoint cache lives in ucpWarmHandoff, not in the client — so
+// a cache MISS costs two outbound requests (well-known + search), which is why the result cache exists.
 let _merchantVariantSource = null;
 function buildMerchantVariantSource(logger) {
   if (_merchantVariantSource) return _merchantVariantSource;
@@ -43899,6 +43901,53 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 productId: canonicalProductRef?.product_id,
               });
         pdpServingEligibilityChecked = true;
+      }
+
+      // PUBLISH THE MERCHANT'S VARIANTS, so an agent can NAME one.
+      //
+      // Resolving identity at checkout is only half the job: a seed product with two real storefront
+      // variants is correctly refused as `ambiguous`, and nothing can break that tie unless the options are
+      // visible on the product. Our own row publishes only pdpBuilder's fabricated `variant_id ===
+      // product_id`, so this replaces that placeholder with the storefront's real variants — same brand
+      // scope, same flag, same url join as the resolver uses.
+      //
+      // ONLY WHEN OURS ARE FABRICATED. A row that already carries real crawled variant identity keeps it and
+      // costs no round trip; this is strictly a repair for rows that have none. Failure is invisible: the
+      // placeholder simply stays, exactly as today.
+      try {
+        const merchantSource = buildMerchantVariantSource(logger);
+        if (typeof merchantSource?.details === 'function' && canonicalProductForPdp) {
+          const own = Array.isArray(canonicalProductForPdp.variants) ? canonicalProductForPdp.variants : [];
+          const ownPid = String(canonicalProductForPdp.product_id || canonicalProductForPdp.id || '').trim();
+          // MIRRORS pdpBuilder.buildVariants' OWN id chain, in order:
+          //   v.variant_id || v.id || attrs.variant_id || v.sku || v.sku_id || `${pid}-${idx+1}`
+          // A shorter chain here is not a harmless approximation — it reads a row that the BUILDER would
+          // publish with real identity as "fabricated", and this hook then REPLACES those real crawled
+          // variants with the merchant's. Review measured exactly that: a row carrying two real SKUs
+          // (`[{sku:'SKU-A'},{sku:'SKU-B'}]`, no variant_id) was judged fabricated and discarded, so the PDP
+          // would show a different option set than the one we crawled and priced.
+          const ownIdOf = (v) => {
+            const attrs = v && typeof v.variant_attributes === 'object' && v.variant_attributes ? v.variant_attributes : {};
+            return String((v && (v.variant_id || v.id)) || attrs.variant_id || (v && (v.sku || v.sku_id)) || '').trim();
+          };
+          // Uses the SHARED predicate rather than a third hand-written copy of "is this id restated". It is
+          // still a copy of safety-kernel's (CJS cannot require ESM on Node 20), but a contract test now
+          // asserts the two agree, so the copies cannot drift silently.
+          const { isRestatedProductId } = require('./services/merchantVariantSource');
+          const hasRealIdentity = own.some((v) => {
+            const id = ownIdOf(v);
+            return id && !isRestatedProductId(id, ownPid);
+          });
+          if (!hasRealIdentity) {
+            const merchantVariants = await merchantSource.details({ product: canonicalProductForPdp }, ownPid);
+            if (Array.isArray(merchantVariants) && merchantVariants.length > 0) {
+              canonicalProductForPdp = { ...canonicalProductForPdp, variants: merchantVariants };
+            }
+          }
+        }
+      } catch (err) {
+        // Never cost the PDP: a storefront that is slow, hostile or absent leaves the row exactly as it was.
+        logger?.warn?.({ err: err?.message || String(err) }, 'merchant variant publish skipped');
       }
 
       const pdpPayload = buildPdpPayload({

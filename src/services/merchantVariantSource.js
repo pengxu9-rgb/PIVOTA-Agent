@@ -172,6 +172,138 @@ function idNamesVariant(variantId, hint) {
   return tail === h;
 }
 
+
+
+
+// Mirrors `pdpBuilder.shouldExposeProductVariants`' per-variant test: a variant is displayable when it has
+// a title that is not one of the generic placeholders, or carries options of its own. Kept in step with the
+// builder by the contract test in tests/merchant_variant_source (the regex is copied verbatim).
+const PDP_GENERIC_VARIANT_TITLE_RE = /^(default|default title|variant \d+|single item)$/i;
+function pdpWouldExpose(raw) {
+  if (!isPlainObject(raw)) return false;
+  if (Array.isArray(raw.options) && raw.options.length > 0) return true;
+  const title = str(raw.title);
+  return Boolean(title) && !PDP_GENERIC_VARIANT_TITLE_RE.test(title);
+}
+
+/**
+ * Is this variant id just the product id RESTATED?
+ *
+ * A DELIBERATE SECOND COPY of `safety-kernel/src/protocol/buyerIntake.isRestatedProductId`, and the copy is
+ * structural, not laziness: safety-kernel is ESM (`"type": "module"`), src/server.js is CommonJS, and CI runs
+ * Node 20 — which cannot `require()` an ESM module. There is no synchronous way to share the original.
+ *
+ * Two copies of a SAFETY predicate is exactly how they drift, so drift is made detectable rather than
+ * trusted: tests/merchant_variant_source contract-tests this against the ESM original over a table of id
+ * shapes via dynamic `import()`. If either side changes, that test fails.
+ *
+ * Byte-for-byte semantics of the original: equal, or the product id followed by a NON-alphanumeric
+ * separator. `sig_abc123` is NOT a restatement of `sig_abc` (it continues alphanumerically, so it carries
+ * identity of its own); `sig_abc-1` is.
+ */
+function isRestatedProductId(candidate, product_id) {
+  const c = typeof candidate === 'string' ? candidate.trim() : '';
+  const p = typeof product_id === 'string' ? product_id.trim() : '';
+  if (!c || !p) return false;
+  if (c === p) return true;
+  if (!c.startsWith(p)) return false;
+  return /[^A-Za-z0-9]/.test(c.charAt(p.length));
+}
+
+// ---- publishing the merchant's variants on the PDP -------------------------------------------------------
+//
+// Resolving identity at checkout is not enough on its own: a product with two real variants is correctly
+// REFUSED as `ambiguous`, and an agent cannot break that tie unless it can SEE the options. So the same
+// join publishes them on the product read.
+//
+// MONEY IS THE DANGEROUS PART. UCP amounts are in MINOR units (`{"amount": 4800, "currency": "USD"}` is
+// $48.00), while the PDP's own prices are major units. Writing 4800 through would publish a $4,800 product —
+// a fabricated number of exactly the kind this repo has been bitten by. And omitting price is not a safe
+// default either once MULTIPLE variants are shown: One-Pack and Two-Pack displayed at one product-level
+// price is also a wrong number, just a quieter one. So the conversion is explicit, and a currency we cannot
+// verify yields NO price rather than a guessed one.
+
+/** ISO-4217 minor-unit exponent, or null when the code is not a real currency (`Intl` answers 2 for junk). */
+function currencyExponent(code) {
+  const c = str(code).toUpperCase();
+  if (!/^[A-Z]{3}$/.test(c)) return null;
+  try {
+    if (typeof Intl.supportedValuesOf === 'function' && !Intl.supportedValuesOf('currency').includes(c)) return null;
+    return new Intl.NumberFormat('en', { style: 'currency', currency: c }).resolvedOptions().maximumFractionDigits;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * `{amount: 4800, currency: 'USD'}` (minor) -> `{ amount: 48, currency: 'USD' }` (major), or null.
+ * Null on: a non-finite/negative amount, or a currency whose exponent we cannot establish. Never a guess —
+ * the caller omits the price instead, which is honest, where a wrong number is not.
+ */
+function majorUnitsOf(money) {
+  if (!isPlainObject(money)) return null;
+  const raw = money.amount;
+  // `Number()` is too permissive for a function that promises never to guess: it reads '0x10' as 16 (-> a
+  // published $0.16) and '1e3' as 1000. A minor-unit amount is an integer string or a number, nothing else.
+  let amount;
+  if (typeof raw === 'number') amount = raw;
+  else if (typeof raw === 'string' && /^\d+$/.test(raw.trim())) amount = Number(raw.trim());
+  else return null;
+  // `<= 0` rather than `< 0`: a zero price is a broken offer row, not a free product, and publishing "$0.00"
+  // on a PDP is a wrong number. pdpBuilder's `toVariantPrice` also drops <= 0, but relying on that would
+  // leave this module's promise ("never a guessed price") true only by a downstream accident.
+  // `Number.isInteger`, not just finite: the `/^\d+$/` guard above covers the STRING path, so without this
+  // a numeric `4800.5` slipped through as $48.005 while the string '4800.5' was refused — the same value
+  // accepted or rejected by its JS type, which is not a rule anyone can reason about.
+  if (!Number.isInteger(amount) || amount <= 0) return null;
+  // A storefront that answers a nonsense magnitude is not a price we publish. MAX_SAFE_INTEGER keeps the
+  // division exact; the practical ceiling is far below it.
+  // A practical ceiling, not a numeric one: MAX_SAFE_INTEGER itself would admit a $90-trillion price.
+  // 10^12 minor units is $10bn — far above any real SKU and far below anything that could be a units bug.
+  if (amount > 1e12) return null;
+  const currency = str(money.currency).toUpperCase();
+  const exp = currencyExponent(currency);
+  if (exp === null) return null;
+  return { amount: amount / 10 ** exp, currency };
+}
+
+/**
+ * A merchant catalogue variant -> the raw-variant shape `pdpBuilder.buildVariants` already consumes
+ * (`variant_id` / `sku_id` / `title` / `options` / `in_stock` / `price`). Nothing is invented: a field the
+ * storefront did not publish is simply absent, and an unconvertible price is omitted rather than approximated.
+ */
+function merchantVariantToRaw(v) {
+  if (!isPlainObject(v)) return null;
+  const variantId = str(v.id) || str(v.variant_id);
+  if (!variantId) return null;
+  const out = { variant_id: variantId };
+  const sku = str(v.sku) || str(v.sku_id);
+  if (sku) out.sku_id = sku;
+  const title = str(v.title) || str(v.name);
+  if (title) out.title = title;
+  const options = (Array.isArray(v.options) ? v.options : [])
+    .map((o) => (isPlainObject(o) ? { name: str(o.name), value: str(o.label) || str(o.value) } : null))
+    .filter((o) => o && o.name && o.value);
+  if (options.length) out.options = options;
+  if (isPlainObject(v.availability) && typeof v.availability.available === 'boolean') {
+    out.in_stock = v.availability.available;
+  }
+  const price = majorUnitsOf(v.price);
+  if (price) {
+    // ONLY the flat pair — deliberately NOT a nested `price` object.
+    //
+    // pdpBuilder resolves a variant price as `toVariantPrice(v.price || v.pricing || {amount:
+    // v.price_amount, currency: v.price_currency}, productCurrency)`, and its `normalizeCurrency` reads
+    // `value.currency` — one level SHALLOWER than a `{current:{amount,currency}}` shape. So setting `price`
+    // made the merchant's currency invisible and substituted the PRODUCT's: a EUR variant published as USD
+    // at the same number (€86.00 -> $86.00). The amount was right, which is what makes that error hard to
+    // see. Leaving `price` unset takes the fallback branch, where `price_currency` IS read.
+    out.price_amount = price.amount;
+    out.price_currency = price.currency;
+  }
+  return out;
+}
+
 /**
  * Build the merchant-variant source for `createDefaultVariantResolver`'s optional fallback.
  *
@@ -201,28 +333,58 @@ function createMerchantVariantSource(deps = {}) {
   const inflight = new Map();
   function memoKeyFor(product_id, identity) { return `${product_id}\u0000${identity}`; }
 
-  return async function sourceMerchantVariants(productRead, product_id) {
-    if (typeof isEnabled === 'function' && !isEnabled()) return null;
+  // SHORT-TTL RESULT CACHE. The in-flight memo above collapses CONCURRENT callers only; the PDP renders
+  // sequentially, so without this every product view is a live search against the merchant (measured by
+  // review: 5 renders -> 5 searches, and discovery is not cached in the client either, so ~2 outbound
+  // requests per view). That is render traffic aimed at a storefront that never agreed to serve it. The TTL
+  // is deliberately short — a catalogue answer held too long is a stale SKU on a checkout — and the cache is
+  // bounded so a wide crawl cannot grow it without limit.
+  const resultTtlMs = Number.isFinite(deps.resultTtlMs) && deps.resultTtlMs >= 0 ? deps.resultTtlMs : 120000;
+  const resultMax = Number.isFinite(deps.resultCacheMax) && deps.resultCacheMax > 0 ? deps.resultCacheMax : 500;
+  // A failed lookup is cached far more briefly than a good one: long enough to stop a broken storefront
+  // being re-asked on every render, short enough that a recovered one is picked up quickly.
+  const negativeTtlMs = Number.isFinite(deps.negativeTtlMs) && deps.negativeTtlMs >= 0 ? deps.negativeTtlMs : 20000;
+  const results = new Map();
+  const clock = typeof deps.now === 'function' ? deps.now : () => Date.now();
+  function cacheGet(key) {
+    if (resultTtlMs === 0) return undefined;
+    const hit = results.get(key);
+    if (!hit) return undefined;
+    if (clock() >= hit.expiresAt) { results.delete(key); return undefined; }
+    return hit.value;
+  }
+  function cacheSet(key, value, ttlMs) {
+    const ttl = Number.isFinite(ttlMs) ? ttlMs : resultTtlMs;
+    if (ttl <= 0) return;
+    if (results.size >= resultMax) results.delete(results.keys().next().value);
+    results.set(key, { value, expiresAt: clock() + ttl });
+  }
+
+  /** Shared gate + network path: -> the ONE catalogue product whose url is ours, or null. */
+  async function matchedCatalogProduct(productRead, product_id) {
+    if (typeof isEnabled === 'function' && !isEnabled()) return { pdp: null, match: null };
     const product = productOfRead(productRead);
     const pdp = merchantPdpUrlOf(product, selfHosts);
-    if (!pdp) return null;
+    if (!pdp) return { pdp: null, match: null };
     // SCOPE BEFORE CONTACT. A pilot names the storefronts it has actually been exercised against; every
     // other merchant keeps today's behaviour and, crucially, receives no traffic from us at all. Checked
     // here — before discovery — so a non-piloted brand costs zero outbound requests rather than a
     // well-known fetch we then discard.
-    if (typeof isBrandAllowed === 'function' && !isBrandAllowed(pdp.host)) return null;
+    if (typeof isBrandAllowed === 'function' && !isBrandAllowed(pdp.host)) return { pdp, match: null };
 
     // The search term is the merchant's OWN handle when their url gives us one (the most selective text we
     // hold), else the crawled title. Neither SELECTS the product — the url match below does — so a poor term
     // costs a miss, never a wrong answer.
     const handle = pdp.identity.split('/').pop();
     const query = handle && handle !== '/' ? handle.replace(/[-_]+/g, ' ') : str(product.title);
-    if (!query) return null;
+    if (!query) return { pdp, match: null };
 
     const memoKey = memoKeyFor(product_id, pdp.identity);
-    if (inflight.has(memoKey)) return inflight.get(memoKey);
+    const cached = cacheGet(memoKey);
+    if (cached !== undefined) return { pdp, match: cached };
+    if (inflight.has(memoKey)) return { pdp, match: await inflight.get(memoKey) };
 
-    let ids = null;
+    let match = null;
     const lookup = withTimeout(async () => {
         // `discoverEndpoint` answers `{ mcpEndpoint, businessProfile, wellKnownUrl, status }` — the key is
         // `mcpEndpoint`, as ucpWarmHandoff and ucpStoreAuditProbe both read it. An earlier revision read a
@@ -249,39 +411,110 @@ function createMerchantVariantSource(deps = {}) {
         // pattern, is precisely how two entries share one url).
         if (walk.truncated) return null;
         if (matches.length !== 1) return null;
-        const variantIds = variantIdsOf(matches[0]);
-        if (variantIds.length === 0) return null;
-        // THE CRAWLED URL MAY ITSELF NAME A VARIANT. Shopify PDP deep links carry `?variant=<n>`, and the row
-        // was crawled, priced and displayed as THAT variant — so resolving it to a sibling would open a
-        // checkout on a different SKU than the one the shopper was shown, which is the exact "prices a
-        // different cart" harm this join exists to prevent. When the crawl names a variant, only that variant
-        // may be returned; if the catalogue does not publish it, refuse rather than substitute.
-        if (pdp.variantHint) {
-          const pinned = variantIds.filter((id) => idNamesVariant(id, pdp.variantHint));
-          return pinned.length === 1 ? pinned : null;
-        }
-        return variantIds;
-    }, timeoutMs);
-    // Memoize the IN-FLIGHT promise, so concurrent items for one product share a single round trip, and drop
-    // it once settled — a cart is short, and holding catalogue answers past it would serve a stale SKU.
+        return matches[0];
+      }, timeoutMs);
+
+    // Memoize the IN-FLIGHT lookup so concurrent callers for one (product, url) share a single round trip,
+    // and drop it once settled — a cart is short, and holding a catalogue answer past it would serve a stale
+    // SKU. Per-cart dedup for the SEQUENTIAL resolver path lives in buyerIntake; this covers concurrency.
     inflight.set(memoKey, lookup.catch(() => null));
     try {
-      ids = await lookup;
+      match = await lookup;
     } catch (err) {
-      // Fail closed: the caller's existing refusal stands. The merchant's error text is never surfaced —
-      // it can carry their internal detail — only that the lookup did not answer.
+      // Fail closed. The merchant's error text is never surfaced — it can carry their internal detail —
+      // only that the lookup did not answer.
       logger?.warn?.({ product_id, merchant_host: pdp.host, err: err?.message || String(err) },
         'merchant variant source did not answer');
-      return null;
+      // CACHE THE ERROR REFUSAL TOO — this is the one that actually costs. The first cut returned here
+      // BEFORE `cacheSet`, so only "searched fine, matched nothing" was cached while a merchant that 500s,
+      // rate-limits or HANGS was re-asked on every single render: measured 5 renders -> 5 searches, each
+      // paying the full timeout. That is precisely the render traffic and latency the cache exists to
+      // absorb, left unfixed in its worst case. A SHORTER negative TTL, so a transient outage is not sticky
+      // for the full positive window.
+      cacheSet(memoKey, null, negativeTtlMs);
+      return { pdp, match: null };
     } finally {
       inflight.delete(memoKey);
     }
+    // Cache the REFUSAL too (null): a storefront that did not surface this row will not surface it on the
+    // next render either, and re-asking turns every view into another outbound request.
+    cacheSet(memoKey, match ?? null);
+    return { pdp, match };
+  }
+
+  /**
+   * The matched catalogue product -> the variant ids the RESOLVER may accept.
+   *
+   * THE CRAWLED URL MAY ITSELF NAME A VARIANT. Shopify PDP deep links carry `?variant=<n>`, and the row was
+   * crawled, priced and displayed as THAT variant — resolving it to a sibling would open a checkout on a
+   * different SKU than the shopper was shown, the exact "prices a different cart" harm this join exists to
+   * prevent. When the crawl names one, only that variant may be returned; if the catalogue no longer
+   * publishes it, refuse rather than substitute.
+   */
+  function variantIdsFromMatch(match, pdp) {
+    if (!isPlainObject(match)) return null;
+    const variantIds = variantIdsOf(match);
+    if (variantIds.length === 0) return null;
+    if (pdp && pdp.variantHint) {
+      const pinned = variantIds.filter((id) => idNamesVariant(id, pdp.variantHint));
+      return pinned.length === 1 ? pinned : null;
+    }
+    return variantIds;
+  }
+
+  /** The resolver's fallback: ids only, unchanged contract. */
+  async function sourceMerchantVariants(productRead, product_id) {
+    const { pdp, match } = await matchedCatalogProduct(productRead, product_id);
+    const ids = variantIdsFromMatch(match, pdp);
     if (ids && logger?.info) {
       logger.info({ product_id, merchant_host: pdp.host, variant_count: ids.length },
         'merchant variant source resolved storefront variants');
     }
     return ids;
-  };
+  }
+
+  /**
+   * The PDP's publisher: the merchant's variants in the raw shape `pdpBuilder.buildVariants` consumes.
+   *
+   * Deliberately NOT pinned by `?variant=`: the resolver must not GUESS between siblings, but a shopper
+   * being shown the product should see every option the storefront sells — that is what lets an agent break
+   * the `ambiguous` tie by naming one. Prices are converted minor->major and omitted when unconvertible.
+   */
+  async function sourceMerchantVariantDetails(productRead, product_id) {
+    const { pdp, match } = await matchedCatalogProduct(productRead, product_id);
+    if (!isPlainObject(match)) return null;
+    const raws = (Array.isArray(match.variants) ? match.variants : [])
+      .map(merchantVariantToRaw)
+      .filter(Boolean);
+    if (raws.length === 0) return null;
+    // NEVER PUBLISH A SET THE PDP WILL SWALLOW.
+    //
+    // `shouldExposeProductVariants` hides any variant whose title is absent or generic — `buildVariants`
+    // fills a missing title with `Variant ${idx+1}`, which its exclusion regex (`default|default title|
+    // variant \d+|single item`) then rejects — and the single-variant rescue only covers length === 1. So a
+    // storefront publishing two variants with no titles produced a PDP with ZERO variants while this module
+    // logged "published 2", and the row's checkout went from RESOLVING (via the product-grain carve-out it
+    // no longer qualifies for) to refusing `no_variants`: strictly worse than before the repair, and worse
+    // than the `ambiguous` this feature is meant to produce.
+    //
+    // So: give an untitled variant an honest label derived from what the merchant DID publish (its sku),
+    // and if a multi-variant set still has any member the PDP would hide, decline the replacement entirely
+    // and leave the row exactly as it was. A partial publish is the one outcome worse than not publishing.
+    for (const v of raws) {
+      if (!v.title && v.sku_id) v.title = `SKU ${v.sku_id}`;
+    }
+    if (raws.length > 1 && !raws.every(pdpWouldExpose)) {
+      logger?.warn?.({ product_id, merchant_host: pdp.host, variant_count: raws.length },
+        'merchant variants declined: the pdp would hide at least one, and a partial variant set is worse than the placeholder');
+      return null;
+    }
+    logger?.info?.({ product_id, merchant_host: pdp.host, variant_count: raws.length },
+      'merchant variant source published storefront variants on the pdp');
+    return raws;
+  }
+
+  sourceMerchantVariants.details = sourceMerchantVariantDetails;
+  return sourceMerchantVariants;
 }
 
 /**
@@ -326,4 +559,4 @@ function brandAllowlistMatcher(raw) {
   return { brands, isAllowed: (host) => brands.some((b) => hostMatchesBrand(host, b)) };
 }
 
-module.exports = { createMerchantVariantSource, urlIdentity, variantIdsOf, collectCatalogProducts, variantHintOf, idNamesVariant, hostMatchesBrand, brandAllowlistMatcher };
+module.exports = { createMerchantVariantSource, urlIdentity, variantIdsOf, collectCatalogProducts, variantHintOf, idNamesVariant, hostMatchesBrand, brandAllowlistMatcher, currencyExponent, majorUnitsOf, merchantVariantToRaw, isRestatedProductId, pdpWouldExpose, PDP_GENERIC_VARIANT_TITLE_RE };
