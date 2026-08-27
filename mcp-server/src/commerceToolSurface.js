@@ -321,7 +321,11 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
       const reads = memoizedProductReads(executor);
       const escalated = await tryEscalateUcpCheckout({ op, params, ctx, executor: reads, ucpArgs: toolArgs, attested });
       if (escalated) return escalated;
-      resolveVariantsForThisCall = createDefaultVariantResolver({ executor: reads });
+      // The UCP checkout door needs the merchant source MORE than the native one, not less: a UCP `item.id`
+      // carries a product id only (no variant carrier at all), so this is the door where seed rows are most
+      // certain to arrive without variant identity. Threading it here was missed in the first revision, which
+      // armed the capability for native `create_checkout_session` alone.
+      resolveVariantsForThisCall = createDefaultVariantResolver({ executor: reads, sourceMerchantVariants });
     }
 
     // 3b) BUYER INTAKE — the shared rules, applied before anything is priced. See the note below toParams.

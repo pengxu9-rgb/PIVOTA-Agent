@@ -29725,6 +29725,10 @@ function buildMerchantVariantSource(logger) {
     ucpClient: createUcpBuyerAgentClient({ timeoutMs: 5000, retryAttempts: 1 }),
     unwrap: unwrapToolPayload,
     logger,
+    // Thunk, not a boolean: the surface is built once for the process, so a boolean would freeze the flag at
+    // construction and make the kill switch un-flippable without a redeploy. For a capability justified as
+    // "adds a third-party call to the checkout intake path", disarming must not require one.
+    isEnabled: isMerchantVariantSourcingEnabled,
     // Our own hosts can appear on a product read (`url`/`canonical_url` point at agent.pivota.cc); naming
     // them here keeps a self-referential url from ever being used as the merchant join key.
     selfHosts: ['agent.pivota.cc', 'api.pivota.cc', 'mcp.pivota.cc', 'gateway.pivota.cc', 'pivota.cc'],
@@ -31170,9 +31174,9 @@ async function getCommerceRemoteMcpAdapter() {
         // intake refuses every such row (`no_real_variant_identity`). The storefront it was crawled from does
         // publish one, over the same UCP endpoint the warm handoff already uses. Default OFF: this adds a
         // third-party call to the checkout intake path, so it is armed deliberately.
-        sourceMerchantVariants: isMerchantVariantSourcingEnabled()
-          ? buildMerchantVariantSource(logger)
-          : undefined,
+        // Always constructed; the source consults `isMerchantVariantSourcingEnabled()` per call, so the flag
+        // is live rather than frozen at surface-construction time.
+        sourceMerchantVariants: buildMerchantVariantSource(logger),
       });
       // …and the surface, for the UCP door to project (one shared read cache — see commerceSharedToolSurface).
       commerceSharedToolSurface = surface;

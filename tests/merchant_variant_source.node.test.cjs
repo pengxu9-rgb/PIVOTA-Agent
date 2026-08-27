@@ -26,9 +26,45 @@ function catalogProduct(url, variantIds) {
   };
 }
 
+// THE DOUBLE MUST NOT INVENT THE SHAPE. The first revision's fake returned a bare endpoint string, which
+// `createUcpBuyerAgentClient` has NEVER emitted (it answers `{ mcpEndpoint, businessProfile, wellKnownUrl,
+// status }`), and the source read a `.endpoint` key that does not exist — so every test passed while the
+// feature was a no-op in production. `realClientOver` builds the ACTUAL client over an injected fetch, so
+// discovery shape is the client's own; `clientReturning` is kept only for cases that need to force a
+// failure, and its discovery return is pinned against the real one by the contract test below.
+const { createUcpBuyerAgentClient, unwrapToolPayload } = require('../src/services/ucpBuyerAgentClient');
+
+const MCP_ENDPOINT = 'https://murad-us.myshopify.com/api/ucp/mcp';
+
+function wellKnownBody() {
+  return {
+    ucp: {
+      version: '2026-04-08',
+      services: { 'dev.ucp.shopping': [{ version: '2026-04-08', transport: 'mcp', endpoint: MCP_ENDPOINT }] },
+    },
+  };
+}
+
+/** The real client, with only the network replaced. Discovery therefore returns the client's real shape. */
+function realClientOver(products, opts = {}) {
+  const fetchImpl = async (url, init) => {
+    const u = String(url);
+    if (u.includes('/.well-known/ucp')) {
+      return { ok: true, status: 200, json: async () => wellKnownBody(), text: async () => JSON.stringify(wellKnownBody()) };
+    }
+    if (opts.onSearch) opts.onSearch(u, JSON.parse(String(init?.body || '{}')));
+    if (opts.throwOnSearch) throw new Error('merchant refused');
+    const payload = { result: { content: [{ type: 'text', text: JSON.stringify({ products }) }] } };
+    return { ok: true, status: 200, json: async () => payload, text: async () => JSON.stringify(payload) };
+  };
+  return createUcpBuyerAgentClient({ fetchImpl, timeoutMs: 2000, retryAttempts: 0 });
+}
+
 function clientReturning(products, opts = {}) {
   return {
-    discoverEndpoint: async () => opts.endpoint ?? 'https://murad-us.myshopify.com/api/ucp/mcp',
+    discoverEndpoint: async () => (
+      'endpoint' in opts ? { mcpEndpoint: opts.endpoint } : { mcpEndpoint: MCP_ENDPOINT }
+    ),
     searchCatalog: async (endpoint, args) => {
       if (opts.onSearch) opts.onSearch(endpoint, args);
       if (opts.throwOnSearch) throw new Error('merchant refused');
@@ -128,10 +164,17 @@ test('FAIL CLOSED on every unhappy path', async () => {
     const src = createMerchantVariantSource({ ucpClient });
     assert.equal(await src(seedRead(), 'sig_seed_1'), null, name);
   }
-  // discovery that hangs is bounded by the source's own deadline
+  // A HANGING merchant must be bounded by the source's own deadline — and the deadline must actually FIRE
+  // when nothing else keeps the event loop alive, which is exactly what an `unref()`d timer breaks (CI caught
+  // that: "Promise resolution is still pending but the event loop has already resolved"). Asserting elapsed
+  // time pins the deadline as a real wall-clock bound rather than a hope.
   const hanging = { discoverEndpoint: () => new Promise(() => {}), searchCatalog: async () => ({ products: [] }) };
   const src = createMerchantVariantSource({ ucpClient: hanging, timeoutMs: 40 });
+  const startedAt = Date.now();
   assert.equal(await src(seedRead(), 'sig_seed_1'), null, 'timeout');
+  const elapsed = Date.now() - startedAt;
+  assert.ok(elapsed >= 35, `the deadline must actually elapse (got ${elapsed}ms)`);
+  assert.ok(elapsed < 5000, `and must not wait on the hanging call (got ${elapsed}ms)`);
 });
 
 test('the flag gate short-circuits before any storefront contact', async () => {
@@ -163,12 +206,8 @@ test('a client missing the tools it needs fails at construction, not at checkout
 
 test('the LIVE murad.com envelope yields its real variant gids through the real unwrapper', async () => {
   const envelope = require('./fixtures/ucp_search_catalog_murad.json');
-  const { unwrapToolPayload } = require('../src/services/ucpBuyerAgentClient');
   const src = createMerchantVariantSource({
-    ucpClient: {
-      discoverEndpoint: async () => 'https://murad-us.myshopify.com/api/ucp/mcp',
-      searchCatalog: async () => envelope,
-    },
+    ucpClient: { discoverEndpoint: async () => ({ mcpEndpoint: MCP_ENDPOINT }), searchCatalog: async () => envelope },
     unwrap: unwrapToolPayload,
   });
   const ids = await src(seedRead(), 'sig_seed_1');
@@ -183,11 +222,110 @@ test('the server wiring consumes this module — the delivery line is pinned', (
   // test above green while no checkout ever consulted a storefront.
   const fs = require('node:fs');
   const server = fs.readFileSync(require.resolve('../src/server'), 'utf8');
-  assert.match(server, /sourceMerchantVariants: isMerchantVariantSourcingEnabled\(\)\s*\n\s*\? buildMerchantVariantSource\(logger\)/,
-    'the commerce surface must receive the source, gated by the flag');
+  assert.match(server, /sourceMerchantVariants: buildMerchantVariantSource\(logger\)/,
+    'the commerce surface must receive the source');
   assert.match(server, /createMerchantVariantSource\(\{/, 'the builder must construct the real source');
   assert.match(server, /unwrap: unwrapToolPayload/, 'and unwrap with the client\'s own envelope reader, not a copy');
+  assert.match(server, /isEnabled: isMerchantVariantSourcingEnabled/,
+    'the flag must be a THUNK so it stays a live kill switch, not frozen at construction');
   const surface = fs.readFileSync(require.resolve('../mcp-server/src/commerceToolSurface'), 'utf8');
-  assert.match(surface, /createDefaultVariantResolver\(\{ executor, sourceMerchantVariants \}\)/,
-    'the surface must thread it into the resolver');
+  // BOTH doors: native create_checkout_session and the UCP checkout door. UCP needs it more — a UCP item.id
+  // carries a product id only — and the first revision threaded only the native one.
+  const threaded = surface.match(/createDefaultVariantResolver\(\{[^}]*sourceMerchantVariants[^}]*\}\)/g) || [];
+  assert.equal(threaded.length, 2,
+    `both resolver call sites must receive the source (found ${threaded.length})`);
+});
+
+test('the deadline fires on a QUIET event loop — the unref regression, reproduced deterministically', () => {
+  // An `unref()`d deadline does not hold the loop open, so when the merchant call is the only pending work
+  // the loop drains and the timeout NEVER fires: the lookup hangs and the caller's refusal never arrives.
+  // Inside node:test that is invisible — the runner's own handles keep the loop alive, so the mutant passes.
+  // CI caught it because the file ran with a quiet loop. This runs the hanging lookup in a CHILD process with
+  // nothing else pending, which is that condition on purpose: ref'd -> prints "null"; unref'd -> the child
+  // drains and prints nothing. Without this, restoring `t.unref()` is a surviving mutant.
+  const { execFileSync } = require('node:child_process');
+  const path = require('node:path');
+  const modulePath = path.join(__dirname, '..', 'src', 'services', 'merchantVariantSource.js');
+  const script = `
+    const { createMerchantVariantSource } = require(${JSON.stringify(modulePath)});
+    const src = createMerchantVariantSource({
+      ucpClient: { discoverEndpoint: () => new Promise(() => {}), searchCatalog: async () => ({}) },
+      timeoutMs: 50,
+    });
+    src({ product: { product_id: 'p', destination_url: 'https://shop.example/products/a' } }, 'p')
+      .then((v) => process.stdout.write(String(v)));
+  `;
+  const out = execFileSync(process.execPath, ['-e', script], { encoding: 'utf8', timeout: 15000 }).trim();
+  assert.equal(out, 'null',
+    'the child printed nothing: its loop drained before the deadline fired (the timer is unref\'d)');
+});
+
+// ---- the three defects an adversarial review found, each pinned ------------------------------------------
+
+test('BLOCKER 1: it works against the REAL client — discovery shape is never invented', async () => {
+  // The first revision read `discovery.endpoint`; the client emits `{ mcpEndpoint, … }`. Both doubles had
+  // invented a bare string, so the suite was green while the feature was a production no-op. This drives the
+  // ACTUAL createUcpBuyerAgentClient over an injected fetch: nothing here can invent a shape.
+  const src = createMerchantVariantSource({
+    ucpClient: realClientOver([catalogProduct(PDP, [GID_A])]),
+    unwrap: unwrapToolPayload,
+  });
+  assert.deepEqual(await src(seedRead(), 'sig_seed_1'), [GID_A]);
+});
+
+test('BLOCKER 1b: the double\'s discovery shape matches what the real client returns', async () => {
+  const real = await realClientOver([]).discoverEndpoint('https://www.murad.com');
+  const fake = await clientReturning([]).discoverEndpoint('https://www.murad.com');
+  assert.deepEqual(Object.keys(fake), ['mcpEndpoint'], 'the fake exposes only keys the real client also has');
+  assert.ok(Object.prototype.hasOwnProperty.call(real, 'mcpEndpoint'),
+    'and mcpEndpoint is the key the real client actually publishes');
+  assert.equal(typeof real.mcpEndpoint, 'string');
+});
+
+test('BLOCKER 2: a truncated walk can never assert uniqueness — it refuses', async () => {
+  // Two entries carry OUR url, with enough filler between them that the second sits past the candidate cap.
+  // Answering from a partial view would resolve to whichever copy the walk reached first — possibly an
+  // archived listing with a stale SKU. The verdict must not depend on catalogue size.
+  const filler = Array.from({ length: 40 }, (_, i) =>
+    catalogProduct(`https://www.murad.com/products/filler-${i}`, [`gid://shopify/ProductVariant/9${i}`]));
+  const products = [catalogProduct(PDP, [GID_A]), ...filler, catalogProduct(PDP, [GID_B])];
+  const src = createMerchantVariantSource({ ucpClient: clientReturning(products) });
+  assert.equal(await src(seedRead(), 'sig_seed_1'), null,
+    'a duplicate hidden past the cap must not become a confident answer');
+  // and the same two entries adjacent (no truncation) still refuse, for the ordinary reason
+  const adjacent = [catalogProduct(PDP, [GID_A]), catalogProduct(PDP, [GID_B])];
+  assert.equal(await createMerchantVariantSource({ ucpClient: clientReturning(adjacent) })(seedRead(), 'sig_seed_1'), null);
+});
+
+test('BLOCKER 3: a crawled ?variant= pins the SKU — never resolved to a sibling', async () => {
+  const pdpWithVariant = `${PDP}?variant=51348961657135`;
+  // the catalogue publishes both variants; only the pinned one may be returned
+  const src = createMerchantVariantSource({ ucpClient: clientReturning([catalogProduct(PDP, [GID_A, GID_B])]) });
+  assert.deepEqual(await src(seedRead({ destination_url: pdpWithVariant }), 'sig_seed_1'), [GID_A],
+    'the row was crawled, priced and displayed as this variant');
+
+  // if the catalogue no longer publishes the pinned variant, REFUSE rather than substitute a sibling
+  const gone = createMerchantVariantSource({ ucpClient: clientReturning([catalogProduct(PDP, [GID_B])]) });
+  assert.equal(await gone(seedRead({ destination_url: pdpWithVariant }), 'sig_seed_1'), null,
+    'substituting the surviving variant would open a checkout on a different SKU than was displayed');
+
+  // the hint is matched on the id's trailing segment, anchored — never a substring
+  const { idNamesVariant, variantHintOf } = require('../src/services/merchantVariantSource');
+  assert.equal(variantHintOf(pdpWithVariant), '51348961657135');
+  assert.equal(variantHintOf(`${PDP}?utm_source=pivota`), null);
+  assert.equal(idNamesVariant(GID_A, '51348961657135'), true);
+  assert.equal(idNamesVariant(GID_A, '1657135'), false, 'a substring of the id must not satisfy the pin');
+  assert.equal(idNamesVariant(GID_A, '51348961689903'), false);
+});
+
+test('P2: one storefront round trip per product, however many cart lines name it', async () => {
+  let searches = 0;
+  const client = clientReturning([catalogProduct(PDP, [GID_A])], { onSearch: () => { searches += 1; } });
+  const src = createMerchantVariantSource({ ucpClient: client });
+  const read = seedRead();
+  const results = await Promise.all([
+    src(read, 'sig_seed_1'), src(read, 'sig_seed_1'), src(read, 'sig_seed_1'),
+  ]);
+  for (const r of results) assert.deepEqual(r, [GID_A]);
+  assert.equal(searches, 1, 'concurrent lines for one product share a single lookup');
 });
