@@ -21,6 +21,13 @@
 // `search_catalog` is only a way to enumerate candidates; the URL is what selects one. Anything other than
 // EXACTLY ONE URL-matching product returns null, and null means the caller refuses.
 //
+// WHICH DOORS GET THIS, DELIBERATELY. It is threaded into both `createDefaultVariantResolver` call sites in
+// mcp-server/src/commerceToolSurface.js — native `create_checkout_session` and the UCP checkout door (UCP
+// needs it MOST: a UCP `item.id` carries a product id and no variant carrier at all). safety-kernel's
+// acpRestAdapter.js is NOT threaded and that is a choice, not an oversight: safety-kernel is a package with
+// no business reaching into a gateway service, and wiring it would put a gateway dependency on the ACP
+// door's constructor. The ACP door keeps today's refusal until a door-side composition point exists.
+//
 // WHAT THIS DOES NOT DO. It returns identity, not a price and not a purchase. The seed cohort still cannot be
 // priced by pivota-backend's quote engine (Shopify-only, needs the SELLER's own store — see the SCOPE note in
 // buyerIntake's resolver). The payoff of a real GID is the merchant's OWN UCP cart/checkout, which is where
@@ -31,9 +38,12 @@ const DEFAULT_TIMEOUT_MS = 6000;
 // A storefront search can page; we only ever want the entry whose URL is ours, so a small window is enough
 // and bounds what one intake costs. If the row is not in the first page by title, we refuse rather than page
 // the merchant's catalogue on a checkout path.
-const MAX_CANDIDATES = 25;
-// A separate, larger ceiling on NODES VISITED: the candidate cap alone cannot bound a deeply nested response
-// that contains few product-shaped nodes. Both exhausting is reported as `truncated`.
+// The ONLY budget on the walk. There was also a 25-node candidate cap, and once a truncated walk correctly
+// began REFUSING (it cannot prove uniqueness from a partial view) that cap stopped buying safety and started
+// converting answerable lookups into refusals: a routine response of 9 products each nesting 2
+// `related_products` is 27 product-shaped nodes, so the feature would have been armed and refused almost
+// everything, with no test showing it. A visit budget bounds the work; uniqueness stays guarded by
+// `truncated` either way.
 const MAX_VISITS = 5000;
 
 function isPlainObject(v) {
@@ -83,7 +93,10 @@ function variantHintOf(raw) {
   if (!s) return null;
   try {
     const v = str(new URL(s).searchParams.get('variant'));
-    return /^[A-Za-z0-9_-]+$/.test(v) ? v : null;
+    // NUMERIC only — that is Shopify's variant id shape, and `variant` is otherwise a generic query name
+    // (`?variant=large`, `?variant=us`, `?variant=mobile`). Treating those as a pin would refuse rows that
+    // resolve fine, so a non-numeric value is no hint at all rather than an unmatchable one.
+    return /^\d+$/.test(v) ? v : null;
   } catch {
     return null;
   }
@@ -128,7 +141,7 @@ function variantIdsOf(catalogProduct) {
  */
 function collectCatalogProducts(payload, state) {
   const st = state || { nodes: [], visits: 0, truncated: false };
-  if (st.nodes.length >= MAX_CANDIDATES || st.visits >= MAX_VISITS) {
+  if (st.visits >= MAX_VISITS) {
     st.truncated = true;
     return st;
   }
@@ -178,9 +191,12 @@ function createMerchantVariantSource(deps = {}) {
       .filter(Boolean),
   );
 
-  // ONE storefront lookup per (product, pdp url) — the caller resolves items in a loop and a cart may name
-  // the same product twice, so without this a 50-item cart could aim 50 sequential round trips at one
-  // merchant host. Bounded and short-lived: entries expire so a checkout never serves a stale catalogue.
+  // Collapse genuinely CONCURRENT lookups for one (product, pdp url) onto a single round trip. Stated
+  // precisely because the first revision's comment claimed more than the code delivered: the resolver calls
+  // this SEQUENTIALLY, so on that path nothing is ever in flight when the next line arrives and this memo
+  // never hits. Per-cart deduplication is therefore done where the loop is, in buyerIntake's
+  // `merchantByProduct`. This map is for other callers (and future concurrent ones), and is dropped on
+  // settle so a checkout never serves a stale catalogue.
   const inflight = new Map();
   function memoKeyFor(product_id, identity) { return `${product_id}\u0000${identity}`; }
 

@@ -131,3 +131,36 @@ test('with NO source injected the behaviour is byte-identical to before', async 
   const items = [{ product_id: PID, quantity: 1 }];
   assert.equal(await refusalOf(resolve(items, undefined, {})), 'no_real_variant_identity');
 });
+
+test('ONE merchant lookup per distinct product, however many cart lines name it', async () => {
+  // The delivery path resolves items in a SEQUENTIAL loop, so a source-side in-flight memo never hits here
+  // (measured: 5 lines -> 5 calls). Deduplication has to live where the loop is — this pins the per-cart
+  // bound the money path actually needs: a 50-line cart cannot buy 50 storefront round trips.
+  const calls = [];
+  const resolve = createDefaultVariantResolver({
+    executor: executorReturning(seedRead()),
+    sourceMerchantVariants: async (_raw, pid) => {
+      calls.push(pid);
+      return ['gid://shopify/ProductVariant/51348961657135'];
+    },
+  });
+  const items = [
+    { product_id: PID, quantity: 1 },
+    { product_id: PID, quantity: 2 },
+    { product_id: PID, quantity: 3 },
+  ];
+  await resolve(items, undefined, {});
+  assert.deepEqual(calls, [PID], 'three lines naming one product cost ONE lookup');
+  for (const it of items) assert.equal(it.variant_id, 'gid://shopify/ProductVariant/51348961657135');
+});
+
+test('a refusal is cached too — a storefront that could not answer is not re-asked per line', async () => {
+  let calls = 0;
+  const resolve = createDefaultVariantResolver({
+    executor: executorReturning(seedRead()),
+    sourceMerchantVariants: async () => { calls += 1; return null; },
+  });
+  const items = [{ product_id: PID, quantity: 1 }, { product_id: PID, quantity: 1 }];
+  await refusalOf(resolve(items, undefined, {}));
+  assert.equal(calls, 1, 're-asking a storefront that already declined multiplies the worst case');
+});

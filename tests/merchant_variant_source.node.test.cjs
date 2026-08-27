@@ -318,14 +318,41 @@ test('BLOCKER 3: a crawled ?variant= pins the SKU — never resolved to a siblin
   assert.equal(idNamesVariant(GID_A, '51348961689903'), false);
 });
 
-test('P2: one storefront round trip per product, however many cart lines name it', async () => {
+test('the source memo collapses CONCURRENT lookups only — the sequential case is the caller\'s job', async () => {
+  // Stated as narrowly as the code delivers. The first revision asserted this with Promise.all and then
+  // claimed in a comment that it bounded a 50-line cart; the resolver calls sequentially, so it bounded
+  // nothing there. The per-cart guarantee is pinned in the safety-kernel suite, against the real loop.
   let searches = 0;
   const client = clientReturning([catalogProduct(PDP, [GID_A])], { onSearch: () => { searches += 1; } });
   const src = createMerchantVariantSource({ ucpClient: client });
   const read = seedRead();
-  const results = await Promise.all([
-    src(read, 'sig_seed_1'), src(read, 'sig_seed_1'), src(read, 'sig_seed_1'),
-  ]);
+  const results = await Promise.all([src(read, 'sig_seed_1'), src(read, 'sig_seed_1'), src(read, 'sig_seed_1')]);
   for (const r of results) assert.deepEqual(r, [GID_A]);
   assert.equal(searches, 1, 'concurrent lines for one product share a single lookup');
+});
+
+test('a nested `related_products` response still RESOLVES — the candidate cap no longer walls it off', async () => {
+  // Review finding: with a 25-node candidate cap, a routine catalogue of 9 products each nesting 2
+  // recommendations is 27 product-shaped nodes -> truncated -> refuse. The flag could have been armed and
+  // resolved almost nothing. Only the visit budget bounds the walk now.
+  const products = Array.from({ length: 9 }, (_, i) => ({
+    ...catalogProduct(i === 4 ? PDP : `https://www.murad.com/products/other-${i}`, [`gid://shopify/ProductVariant/7${i}`]),
+    related_products: [
+      catalogProduct(`https://www.murad.com/products/rel-${i}-a`, [`gid://shopify/ProductVariant/8${i}1`]),
+      catalogProduct(`https://www.murad.com/products/rel-${i}-b`, [`gid://shopify/ProductVariant/8${i}2`]),
+    ],
+  }));
+  const src = createMerchantVariantSource({ ucpClient: clientReturning(products) });
+  assert.deepEqual(await src(seedRead(), 'sig_seed_1'), ['gid://shopify/ProductVariant/74']);
+});
+
+test('a generic ?variant= value is NOT a pin — only Shopify\'s numeric id shape is', async () => {
+  const { variantHintOf } = require('../src/services/merchantVariantSource');
+  for (const v of ['large', 'us', 'mobile', 'true', '12abc']) {
+    assert.equal(variantHintOf(`${PDP}?variant=${v}`), null, `?variant=${v} must not pin`);
+  }
+  assert.equal(variantHintOf(`${PDP}?variant=51348961657135`), '51348961657135');
+  // and a row carrying a generic value still resolves rather than refusing
+  const src = createMerchantVariantSource({ ucpClient: clientReturning([catalogProduct(PDP, [GID_A])]) });
+  assert.deepEqual(await src(seedRead({ destination_url: `${PDP}?variant=large` }), 'sig_seed_1'), [GID_A]);
 });

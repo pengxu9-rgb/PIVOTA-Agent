@@ -526,6 +526,11 @@ export function createDefaultVariantResolver({ executor, timeoutMs, sourceMercha
       throw itemVariantRefusal('resolution_unavailable', VARIANT_RESOLUTION_UNAVAILABLE_MESSAGE);
     }
     const byProduct = new Map(productIds.map((pid, i) => [pid, resolved[i]]));
+    // ONE merchant lookup per DISTINCT product, exactly as `byProduct` does for our own reads. This loop is
+    // SEQUENTIAL, so without this a cart naming one product on five lines would make five storefront round
+    // trips, each costing the source's full deadline. A source-side in-flight memo cannot help here: nothing
+    // is ever in flight concurrently on this path (review of #2117 measured 5 lines -> 5 calls).
+    const merchantByProduct = new Map();
     for (const it of needing) {
       const read = byProduct.get(it.product_id) ?? { ids: [], productGrain: false, raw: null };
       const candidates = read.ids;
@@ -573,10 +578,17 @@ export function createDefaultVariantResolver({ executor, timeoutMs, sourceMercha
         // through the identical filter and the identical exactly-one rule immediately below.
         if (typeof sourceMerchantVariants === 'function') {
           let merchantIds = null;
-          try {
-            merchantIds = await sourceMerchantVariants(read.raw, it.product_id, ctx);
-          } catch {
-            merchantIds = null; // fail closed into the refusals below
+          if (merchantByProduct.has(it.product_id)) {
+            merchantIds = merchantByProduct.get(it.product_id);
+          } else {
+            try {
+              merchantIds = await sourceMerchantVariants(read.raw, it.product_id, ctx);
+            } catch {
+              merchantIds = null; // fail closed into the refusals below
+            }
+            // Cache the REFUSAL too: a storefront that could not answer for this product will not answer for
+            // the next line naming it either, and re-asking multiplies the cost of the worst case.
+            merchantByProduct.set(it.product_id, merchantIds);
           }
           const merchantReal = (Array.isArray(merchantIds) ? merchantIds : [])
             .filter((id) => nonEmpty(id) && !isRestatedProductId(id, it.product_id));
