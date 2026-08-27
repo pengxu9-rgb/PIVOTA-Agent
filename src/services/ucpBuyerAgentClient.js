@@ -1309,7 +1309,21 @@ function normalizePricedCheckout(toolResult) {
   const totalsByType = indexTotals(payload.totals);
   const tax = pickMoney(payload.total_tax, payload.tax, totalsByType.tax, totalsByType.taxes);
   const subtotal = pickMoney(payload.subtotal, totalsByType.subtotal);
-  const shipping = pickMoney(payload.total_shipping, totalsByType.shipping, totalsByType.delivery);
+  // `fulfillment` FIRST — it is the wire name. UCP's totals type enum is "subtotal,
+  // items_discount, discount, fulfillment, tax, fee, total"
+  // (ucp.dev/2026-04-08/schemas/shopping/types/total.json); "Shipping" and "Delivery" appear
+  // there only as `display_text` examples, i.e. the human label. Live on
+  // cosrx-renewal.myshopify.com, `fulfillment` appears 12 times in its checkout schemas and
+  // `"shipping"` as a totals type zero times — so this pick returned null on a merchant that
+  // HAD quoted shipping. The same omission caused a real bug in pivota-backend (#1923), where a
+  // landed quote read as unlanded and earned card headroom it should not have had.
+  //
+  // Latent here rather than live: `buildPreview` does not carry `shipping` into the warm-handoff
+  // preview, so nothing consumes this value yet. Fixed now precisely because the day something
+  // does, the bug would arrive silently.
+  const shipping = pickMoney(
+    payload.total_shipping, totalsByType.fulfillment, totalsByType.shipping, totalsByType.delivery,
+  );
   const total = pickMoney(
     payload.total_amount, payload.grand_total, payload.total_price, totalsByType.total,
     (typeof payload.total === 'string' || typeof payload.total === 'number') ? payload.total : undefined,
@@ -1354,7 +1368,13 @@ function indexTotals(totals) {
   const out = {};
   if (Array.isArray(totals)) {
     for (const t of totals) {
-      if (isPlainObjectLocal(t) && t.type) out[String(t.type)] = (t.amount !== undefined ? t.amount : t.value);
+      // NORMALISED. `type` is a free-text string in the UCP schema, so casing and stray
+      // whitespace are the merchant's to choose — and an unnormalised key means a merchant
+      // sending "Tax" is read as having quoted no tax at all. That one reaches the warm-handoff
+      // response today via buildPreview -> pricedTotals.includes_tax.
+      if (isPlainObjectLocal(t) && t.type) {
+        out[String(t.type).trim().toLowerCase()] = (t.amount !== undefined ? t.amount : t.value);
+      }
     }
   } else if (isPlainObjectLocal(totals)) {
     for (const [k, v] of Object.entries(totals)) out[k] = v;

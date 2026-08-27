@@ -1142,7 +1142,8 @@ jobs:
             tests/price_text_shared_reader.node.test.cjs \
             tests/reco_unknown_served_tripwire.node.test.cjs \
             tests/reco_card_price_tier_currency.node.test.cjs \
-            tests/ucp_checkout_id_bridge.node.test.cjs
+            tests/ucp_checkout_id_bridge.node.test.cjs \
+            tests/ucp_totals_wire_vocabulary.node.test.cjs
 
   jest:
     runs-on: ubuntu-latest
