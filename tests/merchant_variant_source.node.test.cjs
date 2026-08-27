@@ -447,7 +447,9 @@ test('details publishes every storefront option in the shape the PDP builder con
     variant_id: GID_A, sku_id: '15391', title: 'One-Pack',
     options: [{ name: 'Select Size', value: 'One-Pack' }],
     in_stock: true, price_amount: 48, price_currency: 'USD',
-    price: { current: { amount: 48, currency: 'USD' } },
+    // NO nested `price` object, deliberately — see the EUR/USD blocker below: pdpBuilder's normalizeCurrency
+    // reads `value.currency`, so a `{current:{...}}` shape hid the merchant's currency and published the
+    // product's instead. The flat pair is the shape it actually reads.
   });
   assert.equal(out[1].price_amount, 86, 'the sibling carries ITS OWN price — showing both at one price lies');
   assert.equal(out[1].in_stock, false);
@@ -491,4 +493,111 @@ test('the PDP wiring publishes ONLY over fabricated variants, and never costs th
     'a row that already carries real crawled identity must keep it and pay no round trip');
   assert.match(server, /'merchant variant publish skipped'/,
     'a slow or hostile storefront must leave the PDP exactly as it was');
+});
+
+test('CONTRACT: the CJS restated-id predicate agrees with safety-kernel\'s ESM original', async () => {
+  // The copy is structural — safety-kernel is ESM, src/server.js is CJS, and CI runs Node 20 which cannot
+  // require() ESM. Two copies of a SAFETY predicate is how they drift, so this compares them directly over
+  // the shapes that matter. If either side changes, this fails rather than a checkout quietly accepting a
+  // forged variant id (or quietly refusing a real one).
+  const { isRestatedProductId: cjs } = require('../src/services/merchantVariantSource');
+  const { isRestatedProductId: esm } = await import('../safety-kernel/src/protocol/buyerIntake.js');
+  const pid = 'sig_abc';
+  const table = [
+    [pid, pid],                 // exact restatement
+    [`${pid}-1`, pid],          // pdpBuilder's `${pid}-${idx+1}` fabrication
+    [`${pid}:default`, pid],
+    [`${pid}_1`, pid],
+    [`${pid}.2`, pid],
+    [`${pid}123`, pid],         // continues ALPHANUMERICALLY -> identity of its own, NOT a restatement
+    ['gid://shopify/ProductVariant/51348961657135', pid],
+    [`  ${pid}  `, pid],        // trimmed on both sides
+    ['', pid],
+    [pid, ''],
+    [null, pid],
+    [undefined, pid],
+    [pid, null],
+    ['sig_ab', pid],            // shorter prefix
+    ['xsig_abc', pid],          // does not start with it
+  ];
+  for (const [candidate, productId] of table) {
+    assert.equal(cjs(candidate, productId), esm(candidate, productId),
+      `predicates disagree on (${JSON.stringify(candidate)}, ${JSON.stringify(productId)})`);
+  }
+  // and pin the two that actually matter, so an agreeing-but-WRONG pair is still caught
+  assert.equal(cjs(`${pid}-1`, pid), true, 'the fabrication must be recognised');
+  assert.equal(cjs(`${pid}123`, pid), false, 'a distinct id must not be mistaken for a restatement');
+});
+
+// ---- the two blockers an adversarial review found, each pinned END TO END ---------------------------------
+
+test('BLOCKER 1: a EUR variant publishes as EUR through the REAL pdp builder, not as the product currency', () => {
+  // The first cut set `price: {current:{amount,currency}}`. pdpBuilder's `normalizeCurrency` reads
+  // `value.currency` — one level shallower — so the merchant's currency was dropped and the PRODUCT's
+  // substituted: €86.00 published as $86.00, the amount right and the label wrong, which is the harder
+  // error to see. Asserting through buildPdpPayload itself, because that is where the drop happened; a
+  // unit test on the mapper alone passed the whole time.
+  const { buildPdpPayload } = require('../src/pdpBuilder');
+  const { merchantVariantToRaw } = require('../src/services/merchantVariantSource');
+  const eur = merchantVariantToRaw({ id: GID_A, title: 'One-Pack', price: { amount: 8600, currency: 'EUR' } });
+  const payload = buildPdpPayload({
+    product: { product_id: 'sig_seed_1', title: 'X', currency: 'USD', price: 48, variants: [eur] },
+  });
+  const published = JSON.stringify(payload);
+  assert.ok(published.includes('"EUR"'), 'the merchant currency must survive to the PDP');
+  assert.ok(!/"amount":\s*86[^0-9][^}]*"currency":\s*"USD"/.test(published),
+    'a EUR amount must never be published under USD');
+  // and the mapper must not emit the nested shape that caused it
+  assert.equal(eur.price, undefined, 'no nested price object — pdpBuilder reads price_currency instead');
+  assert.equal(eur.price_currency, 'EUR');
+  assert.equal(eur.price_amount, 86);
+});
+
+test('BLOCKER 2: a row whose variants carry only sku (or variant_attributes) is REAL — never replaced', () => {
+  // pdpBuilder resolves ids as variant_id || id || attrs.variant_id || sku || sku_id. A shorter chain in the
+  // hook reads such a row as fabricated and REPLACES two real crawled SKUs with the merchant's option set —
+  // a PDP showing options that do not correspond to the row we crawled and priced.
+  const fs = require('node:fs');
+  const server = fs.readFileSync(require.resolve('../src/server'), 'utf8');
+  assert.match(server, /attrs\.variant_id \|\| \(v && \(v\.sku \|\| v\.sku_id\)\)/,
+    'the hook must read the same id chain buildVariants does');
+  // and prove the chain itself, against the real builder: these rows must publish their OWN identity
+  const { buildPdpPayload } = require('../src/pdpBuilder');
+  const skuOnly = buildPdpPayload({
+    product: { product_id: 'sig_seed_1', title: 'X', currency: 'USD', price: 48,
+      variants: [{ sku: 'SKU-A', title: 'Small' }, { sku: 'SKU-B', title: 'Large' }] },
+  });
+  const s1 = JSON.stringify(skuOnly);
+  assert.ok(s1.includes('SKU-A') && s1.includes('SKU-B'),
+    'the builder publishes sku-only variants as real identity, so the hook must not call them fabricated');
+});
+
+test('money: 0, hex/exponent strings and absurd magnitudes are refused LOCALLY, not by a downstream guard', () => {
+  const { majorUnitsOf } = require('../src/services/merchantVariantSource');
+  assert.equal(majorUnitsOf({ amount: 0, currency: 'USD' }), null, 'a zero price is a broken row, not free');
+  assert.equal(majorUnitsOf({ amount: '0x10', currency: 'USD' }), null, "Number('0x10') would publish $0.16");
+  assert.equal(majorUnitsOf({ amount: '1e3', currency: 'USD' }), null);
+  assert.equal(majorUnitsOf({ amount: '4,800', currency: 'USD' }), null);
+  assert.equal(majorUnitsOf({ amount: ' 4800 ', currency: 'USD' }).amount, 48, 'plain integer strings still work');
+  assert.equal(majorUnitsOf({ amount: Number.MAX_SAFE_INTEGER + 10, currency: 'USD' }), null);
+});
+
+test('a PDP view is not a live merchant search on every render', async () => {
+  // Review measured 5 sequential renders -> 5 searches (+5 discoveries, since the client caches neither).
+  let searches = 0;
+  const client = clientReturning([{ ...catalogProduct(PDP, []), variants: MERCHANT_VARIANTS }], { onSearch: () => { searches += 1; } });
+  const src = createMerchantVariantSource({ ucpClient: client, isBrandAllowed: () => true, resultTtlMs: 60000 });
+  for (let i = 0; i < 5; i += 1) assert.equal((await src.details(seedRead(), 'sig_seed_1')).length, 2);
+  assert.equal(searches, 1, 'five renders must cost ONE outbound search');
+  // ...and the cache must EXPIRE, so a checkout never opens on a stale catalogue
+  let t = 1000;
+  const expiring = createMerchantVariantSource({
+    ucpClient: clientReturning([{ ...catalogProduct(PDP, []), variants: MERCHANT_VARIANTS }], { onSearch: () => { searches += 1; } }),
+    isBrandAllowed: () => true, resultTtlMs: 100, now: () => t,
+  });
+  const before = searches;
+  await expiring.details(seedRead(), 'sig_seed_1');
+  t += 5000;
+  await expiring.details(seedRead(), 'sig_seed_1');
+  assert.equal(searches - before, 2, 'past the TTL the storefront is asked again');
 });

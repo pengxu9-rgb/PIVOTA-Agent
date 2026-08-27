@@ -173,6 +173,31 @@ function idNamesVariant(variantId, hint) {
 }
 
 
+
+/**
+ * Is this variant id just the product id RESTATED?
+ *
+ * A DELIBERATE SECOND COPY of `safety-kernel/src/protocol/buyerIntake.isRestatedProductId`, and the copy is
+ * structural, not laziness: safety-kernel is ESM (`"type": "module"`), src/server.js is CommonJS, and CI runs
+ * Node 20 — which cannot `require()` an ESM module. There is no synchronous way to share the original.
+ *
+ * Two copies of a SAFETY predicate is exactly how they drift, so drift is made detectable rather than
+ * trusted: tests/merchant_variant_source contract-tests this against the ESM original over a table of id
+ * shapes via dynamic `import()`. If either side changes, that test fails.
+ *
+ * Byte-for-byte semantics of the original: equal, or the product id followed by a NON-alphanumeric
+ * separator. `sig_abc123` is NOT a restatement of `sig_abc` (it continues alphanumerically, so it carries
+ * identity of its own); `sig_abc-1` is.
+ */
+function isRestatedProductId(candidate, product_id) {
+  const c = typeof candidate === 'string' ? candidate.trim() : '';
+  const p = typeof product_id === 'string' ? product_id.trim() : '';
+  if (!c || !p) return false;
+  if (c === p) return true;
+  if (!c.startsWith(p)) return false;
+  return /[^A-Za-z0-9]/.test(c.charAt(p.length));
+}
+
 // ---- publishing the merchant's variants on the PDP -------------------------------------------------------
 //
 // Resolving identity at checkout is not enough on its own: a product with two real variants is correctly
@@ -206,8 +231,19 @@ function currencyExponent(code) {
 function majorUnitsOf(money) {
   if (!isPlainObject(money)) return null;
   const raw = money.amount;
-  const amount = typeof raw === 'number' ? raw : (typeof raw === 'string' && raw.trim() !== '' ? Number(raw) : NaN);
-  if (!Number.isFinite(amount) || amount < 0) return null;
+  // `Number()` is too permissive for a function that promises never to guess: it reads '0x10' as 16 (-> a
+  // published $0.16) and '1e3' as 1000. A minor-unit amount is an integer string or a number, nothing else.
+  let amount;
+  if (typeof raw === 'number') amount = raw;
+  else if (typeof raw === 'string' && /^\d+$/.test(raw.trim())) amount = Number(raw.trim());
+  else return null;
+  // `<= 0` rather than `< 0`: a zero price is a broken offer row, not a free product, and publishing "$0.00"
+  // on a PDP is a wrong number. pdpBuilder's `toVariantPrice` also drops <= 0, but relying on that would
+  // leave this module's promise ("never a guessed price") true only by a downstream accident.
+  if (!Number.isFinite(amount) || amount <= 0) return null;
+  // A storefront that answers a nonsense magnitude is not a price we publish. MAX_SAFE_INTEGER keeps the
+  // division exact; the practical ceiling is far below it.
+  if (amount > Number.MAX_SAFE_INTEGER) return null;
   const currency = str(money.currency).toUpperCase();
   const exp = currencyExponent(currency);
   if (exp === null) return null;
@@ -237,9 +273,16 @@ function merchantVariantToRaw(v) {
   }
   const price = majorUnitsOf(v.price);
   if (price) {
+    // ONLY the flat pair — deliberately NOT a nested `price` object.
+    //
+    // pdpBuilder resolves a variant price as `toVariantPrice(v.price || v.pricing || {amount:
+    // v.price_amount, currency: v.price_currency}, productCurrency)`, and its `normalizeCurrency` reads
+    // `value.currency` — one level SHALLOWER than a `{current:{amount,currency}}` shape. So setting `price`
+    // made the merchant's currency invisible and substituted the PRODUCT's: a EUR variant published as USD
+    // at the same number (€86.00 -> $86.00). The amount was right, which is what makes that error hard to
+    // see. Leaving `price` unset takes the fallback branch, where `price_currency` IS read.
     out.price_amount = price.amount;
     out.price_currency = price.currency;
-    out.price = { current: { amount: price.amount, currency: price.currency } };
   }
   return out;
 }
@@ -273,6 +316,29 @@ function createMerchantVariantSource(deps = {}) {
   const inflight = new Map();
   function memoKeyFor(product_id, identity) { return `${product_id}\u0000${identity}`; }
 
+  // SHORT-TTL RESULT CACHE. The in-flight memo above collapses CONCURRENT callers only; the PDP renders
+  // sequentially, so without this every product view is a live search against the merchant (measured by
+  // review: 5 renders -> 5 searches, and discovery is not cached in the client either, so ~2 outbound
+  // requests per view). That is render traffic aimed at a storefront that never agreed to serve it. The TTL
+  // is deliberately short — a catalogue answer held too long is a stale SKU on a checkout — and the cache is
+  // bounded so a wide crawl cannot grow it without limit.
+  const resultTtlMs = Number.isFinite(deps.resultTtlMs) && deps.resultTtlMs >= 0 ? deps.resultTtlMs : 120000;
+  const resultMax = Number.isFinite(deps.resultCacheMax) && deps.resultCacheMax > 0 ? deps.resultCacheMax : 500;
+  const results = new Map();
+  const clock = typeof deps.now === 'function' ? deps.now : () => Date.now();
+  function cacheGet(key) {
+    if (resultTtlMs === 0) return undefined;
+    const hit = results.get(key);
+    if (!hit) return undefined;
+    if (clock() >= hit.expiresAt) { results.delete(key); return undefined; }
+    return hit.value;
+  }
+  function cacheSet(key, value) {
+    if (resultTtlMs === 0) return;
+    if (results.size >= resultMax) results.delete(results.keys().next().value);
+    results.set(key, { value, expiresAt: clock() + resultTtlMs });
+  }
+
   /** Shared gate + network path: -> the ONE catalogue product whose url is ours, or null. */
   async function matchedCatalogProduct(productRead, product_id) {
     if (typeof isEnabled === 'function' && !isEnabled()) return { pdp: null, match: null };
@@ -293,6 +359,8 @@ function createMerchantVariantSource(deps = {}) {
     if (!query) return { pdp, match: null };
 
     const memoKey = memoKeyFor(product_id, pdp.identity);
+    const cached = cacheGet(memoKey);
+    if (cached !== undefined) return { pdp, match: cached };
     if (inflight.has(memoKey)) return { pdp, match: await inflight.get(memoKey) };
 
     let match = null;
@@ -340,6 +408,9 @@ function createMerchantVariantSource(deps = {}) {
     } finally {
       inflight.delete(memoKey);
     }
+    // Cache the REFUSAL too (null): a storefront that did not surface this row will not surface it on the
+    // next render either, and re-asking turns every view into another outbound request.
+    cacheSet(memoKey, match ?? null);
     return { pdp, match };
   }
 
@@ -439,4 +510,4 @@ function brandAllowlistMatcher(raw) {
   return { brands, isAllowed: (host) => brands.some((b) => hostMatchesBrand(host, b)) };
 }
 
-module.exports = { createMerchantVariantSource, urlIdentity, variantIdsOf, collectCatalogProducts, variantHintOf, idNamesVariant, hostMatchesBrand, brandAllowlistMatcher, currencyExponent, majorUnitsOf, merchantVariantToRaw };
+module.exports = { createMerchantVariantSource, urlIdentity, variantIdsOf, collectCatalogProducts, variantHintOf, idNamesVariant, hostMatchesBrand, brandAllowlistMatcher, currencyExponent, majorUnitsOf, merchantVariantToRaw, isRestatedProductId };

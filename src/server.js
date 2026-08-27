@@ -29728,8 +29728,10 @@ function merchantVariantSourcingBrands() {
   return brandAllowlistMatcher(process.env.MERCHANT_VARIANT_SOURCING_BRANDS);
 }
 
-// Built once per surface, not per request: the UCP client memoizes endpoint discovery, so a repeat checkout
-// against the same storefront costs one catalog search rather than a discovery round-trip too.
+// Built once per surface, not per request, so the source's own caches (a short-TTL result cache and an
+// in-flight memo) survive across requests. NOTE: the UCP client does NOT cache discovery — an earlier
+// comment here claimed it did; the per-domain endpoint cache lives in ucpWarmHandoff, not in the client — so
+// a cache MISS costs two outbound requests (well-known + search), which is why the result cache exists.
 let _merchantVariantSource = null;
 function buildMerchantVariantSource(logger) {
   if (_merchantVariantSource) return _merchantVariantSource;
@@ -43868,10 +43870,24 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         if (typeof merchantSource?.details === 'function' && canonicalProductForPdp) {
           const own = Array.isArray(canonicalProductForPdp.variants) ? canonicalProductForPdp.variants : [];
           const ownPid = String(canonicalProductForPdp.product_id || canonicalProductForPdp.id || '').trim();
-          const ownIdOf = (v) => String((v && (v.variant_id || v.id || v.sku_id)) || '').trim();
+          // MIRRORS pdpBuilder.buildVariants' OWN id chain, in order:
+          //   v.variant_id || v.id || attrs.variant_id || v.sku || v.sku_id || `${pid}-${idx+1}`
+          // A shorter chain here is not a harmless approximation — it reads a row that the BUILDER would
+          // publish with real identity as "fabricated", and this hook then REPLACES those real crawled
+          // variants with the merchant's. Review measured exactly that: a row carrying two real SKUs
+          // (`[{sku:'SKU-A'},{sku:'SKU-B'}]`, no variant_id) was judged fabricated and discarded, so the PDP
+          // would show a different option set than the one we crawled and priced.
+          const ownIdOf = (v) => {
+            const attrs = v && typeof v.variant_attributes === 'object' && v.variant_attributes ? v.variant_attributes : {};
+            return String((v && (v.variant_id || v.id)) || attrs.variant_id || (v && (v.sku || v.sku_id)) || '').trim();
+          };
+          // Uses the SHARED predicate rather than a third hand-written copy of "is this id restated". It is
+          // still a copy of safety-kernel's (CJS cannot require ESM on Node 20), but a contract test now
+          // asserts the two agree, so the copies cannot drift silently.
+          const { isRestatedProductId } = require('./services/merchantVariantSource');
           const hasRealIdentity = own.some((v) => {
             const id = ownIdOf(v);
-            return id && id !== ownPid && !(ownPid && id.startsWith(ownPid) && /[^A-Za-z0-9]/.test(id.charAt(ownPid.length)));
+            return id && !isRestatedProductId(id, ownPid);
           });
           if (!hasRealIdentity) {
             const merchantVariants = await merchantSource.details({ product: canonicalProductForPdp }, ownPid);
