@@ -43852,6 +43852,39 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         pdpServingEligibilityChecked = true;
       }
 
+      // PUBLISH THE MERCHANT'S VARIANTS, so an agent can NAME one.
+      //
+      // Resolving identity at checkout is only half the job: a seed product with two real storefront
+      // variants is correctly refused as `ambiguous`, and nothing can break that tie unless the options are
+      // visible on the product. Our own row publishes only pdpBuilder's fabricated `variant_id ===
+      // product_id`, so this replaces that placeholder with the storefront's real variants — same brand
+      // scope, same flag, same url join as the resolver uses.
+      //
+      // ONLY WHEN OURS ARE FABRICATED. A row that already carries real crawled variant identity keeps it and
+      // costs no round trip; this is strictly a repair for rows that have none. Failure is invisible: the
+      // placeholder simply stays, exactly as today.
+      try {
+        const merchantSource = buildMerchantVariantSource(logger);
+        if (typeof merchantSource?.details === 'function' && canonicalProductForPdp) {
+          const own = Array.isArray(canonicalProductForPdp.variants) ? canonicalProductForPdp.variants : [];
+          const ownPid = String(canonicalProductForPdp.product_id || canonicalProductForPdp.id || '').trim();
+          const ownIdOf = (v) => String((v && (v.variant_id || v.id || v.sku_id)) || '').trim();
+          const hasRealIdentity = own.some((v) => {
+            const id = ownIdOf(v);
+            return id && id !== ownPid && !(ownPid && id.startsWith(ownPid) && /[^A-Za-z0-9]/.test(id.charAt(ownPid.length)));
+          });
+          if (!hasRealIdentity) {
+            const merchantVariants = await merchantSource.details({ product: canonicalProductForPdp }, ownPid);
+            if (Array.isArray(merchantVariants) && merchantVariants.length > 0) {
+              canonicalProductForPdp = { ...canonicalProductForPdp, variants: merchantVariants };
+            }
+          }
+        }
+      } catch (err) {
+        // Never cost the PDP: a storefront that is slow, hostile or absent leaves the row exactly as it was.
+        logger?.warn?.({ err: err?.message || String(err) }, 'merchant variant publish skipped');
+      }
+
       const pdpPayload = buildPdpPayload({
         product: canonicalProductForPdp,
         relatedProducts,

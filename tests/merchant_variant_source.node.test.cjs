@@ -410,3 +410,85 @@ test('the server reads the brand list per call and warns when armed with none', 
   assert.match(server, /MERCHANT_VARIANT_SOURCING_BRANDS is empty/,
     'armed-but-inert must be loud, since empty-means-none cannot otherwise be told from working');
 });
+
+// ---- publishing the merchant's variants on the PDP -------------------------------------------------------
+
+const MERCHANT_VARIANTS = [
+  { id: GID_A, sku: '15391', title: 'One-Pack', price: { amount: 4800, currency: 'USD' }, availability: { available: true }, options: [{ name: 'Select Size', label: 'One-Pack' }] },
+  { id: GID_B, sku: '15392', title: 'Two-Pack', price: { amount: 8600, currency: 'USD' }, availability: { available: false }, options: [{ name: 'Select Size', label: 'Two-Pack' }] },
+];
+
+test('money is converted MINOR -> MAJOR, and an unverifiable currency yields no price at all', () => {
+  const { majorUnitsOf, currencyExponent } = require('../src/services/merchantVariantSource');
+  // UCP amounts are minor units: 4800 USD is $48.00, and publishing 4800 would be a $4,800 product.
+  assert.deepEqual(majorUnitsOf({ amount: 4800, currency: 'USD' }), { amount: 48, currency: 'USD' });
+  // zero-decimal currencies must NOT be divided
+  assert.deepEqual(majorUnitsOf({ amount: 4800, currency: 'JPY' }), { amount: 4800, currency: 'JPY' });
+  assert.deepEqual(majorUnitsOf({ amount: 4800, currency: 'KRW' }), { amount: 4800, currency: 'KRW' });
+  assert.deepEqual(majorUnitsOf({ amount: 4800, currency: 'BHD' }), { amount: 4.8, currency: 'BHD' }, 'three-decimal');
+  // a currency we cannot verify is NO price rather than a guessed one — Intl answers 2 for junk codes,
+  // so the ISO check is what stops `XYZ` becoming a confident $48.00
+  assert.equal(currencyExponent('XYZ'), null);
+  assert.equal(majorUnitsOf({ amount: 4800, currency: 'XYZ' }), null);
+  assert.equal(majorUnitsOf({ amount: 4800, currency: '' }), null);
+  assert.equal(majorUnitsOf({ amount: -1, currency: 'USD' }), null);
+  assert.equal(majorUnitsOf({ amount: 'abc', currency: 'USD' }), null);
+  assert.equal(majorUnitsOf(null), null);
+});
+
+test('details publishes every storefront option in the shape the PDP builder consumes', async () => {
+  const src = createMerchantVariantSource({
+    ucpClient: clientReturning([{ ...catalogProduct(PDP, []), variants: MERCHANT_VARIANTS }]),
+    isBrandAllowed: () => true,
+  });
+  const out = await src.details(seedRead(), 'sig_seed_1');
+  assert.equal(out.length, 2, 'both options are shown — that is what lets an agent break the ambiguous tie');
+  assert.deepEqual(out[0], {
+    variant_id: GID_A, sku_id: '15391', title: 'One-Pack',
+    options: [{ name: 'Select Size', value: 'One-Pack' }],
+    in_stock: true, price_amount: 48, price_currency: 'USD',
+    price: { current: { amount: 48, currency: 'USD' } },
+  });
+  assert.equal(out[1].price_amount, 86, 'the sibling carries ITS OWN price — showing both at one price lies');
+  assert.equal(out[1].in_stock, false);
+});
+
+test('details is NOT pinned by ?variant= — the resolver must not guess, but a shopper should see the options', async () => {
+  const src = createMerchantVariantSource({
+    ucpClient: clientReturning([{ ...catalogProduct(PDP, []), variants: MERCHANT_VARIANTS }]),
+    isBrandAllowed: () => true,
+  });
+  const read = seedRead({ destination_url: `${PDP}?variant=51348961657135` });
+  const ids = await src(read, 'sig_seed_1');
+  assert.deepEqual(ids, [GID_A], 'the RESOLVER still honours the pin');
+  const details = await src.details(read, 'sig_seed_1');
+  assert.deepEqual(details.map((v) => v.variant_id), [GID_A, GID_B], 'the PDP still shows both');
+});
+
+test('details obeys the same scope and fails closed the same way', async () => {
+  let contacted = false;
+  const client = clientReturning([{ ...catalogProduct(PDP, []), variants: MERCHANT_VARIANTS }], { onSearch: () => { contacted = true; } });
+  const scoped = createMerchantVariantSource({ ucpClient: client, isBrandAllowed: () => false });
+  assert.equal(await scoped.details(seedRead(), 'sig_seed_1'), null);
+  assert.equal(contacted, false, 'a non-piloted brand receives no request from the PDP path either');
+
+  const off = createMerchantVariantSource({ ucpClient: client, isEnabled: () => false });
+  assert.equal(await off.details(seedRead(), 'sig_seed_1'), null);
+
+  const broken = createMerchantVariantSource({ ucpClient: clientReturning([], { throwOnSearch: true }), isBrandAllowed: () => true });
+  assert.equal(await broken.details(seedRead(), 'sig_seed_1'), null);
+
+  const noVariants = createMerchantVariantSource({ ucpClient: clientReturning([catalogProduct(PDP, [])]), isBrandAllowed: () => true });
+  assert.equal(await noVariants.details(seedRead(), 'sig_seed_1'), null, 'a product with no variants publishes nothing');
+});
+
+test('the PDP wiring publishes ONLY over fabricated variants, and never costs the read', () => {
+  const fs = require('node:fs');
+  const server = fs.readFileSync(require.resolve('../src/server'), 'utf8');
+  assert.match(server, /merchantSource\.details\(\{ product: canonicalProductForPdp \}, ownPid\)/,
+    'the PDP must call the details publisher with the product it is about to render');
+  assert.match(server, /if \(!hasRealIdentity\) \{/,
+    'a row that already carries real crawled identity must keep it and pay no round trip');
+  assert.match(server, /'merchant variant publish skipped'/,
+    'a slow or hostile storefront must leave the PDP exactly as it was');
+});
