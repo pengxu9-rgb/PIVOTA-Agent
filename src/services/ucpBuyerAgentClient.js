@@ -1365,19 +1365,43 @@ function normalizePricedCheckout(toolResult) {
  * through as-is (minor units) — no coercion.
  */
 function indexTotals(totals) {
+  // A REPEATED DETAIL TYPE RESOLVES TO ABSENT, NOT TO THE LAST ONE.
+  //
+  // UCP states it plainly: "MUST contain exactly one subtotal and one total entry. Detail types
+  // (tax, fee, discount, fulfillment) may appear multiple times for itemization."
+  // (ucp.dev/2026-04-08/schemas/shopping/types/totals.json). This index is a single-value lookup,
+  // so an itemised merchant has no single answer to give — and last-wins silently reported ONE
+  // line of an itemisation as the whole figure: two fulfillment rows of 500 and 300 published
+  // `shipping = 300` for an 800 charge, into a store-audit acceptance receipt.
+  //
+  // Summing them is the other obvious repair and is deliberately NOT done: `pickMoney` in this
+  // file is documented "no math, no coercion", amounts arrive as numbers OR strings OR objects,
+  // and inventing arithmetic over merchant money to paper over an ambiguity is a worse failure
+  // than admitting the ambiguity. Absent reads downstream as "unknown", which is true.
+  //
+  // This also repairs the same pre-existing hazard for `tax`, which was last-wins before this
+  // function ever looked at `fulfillment`.
   const out = {};
+  const seen = new Set();
   if (Array.isArray(totals)) {
     for (const t of totals) {
-      // NORMALISED. `type` is a free-text string in the UCP schema, so casing and stray
-      // whitespace are the merchant's to choose — and an unnormalised key means a merchant
-      // sending "Tax" is read as having quoted no tax at all. That one reaches the warm-handoff
-      // response today via buildPreview -> pricedTotals.includes_tax.
-      if (isPlainObjectLocal(t) && t.type) {
-        out[String(t.type).trim().toLowerCase()] = (t.amount !== undefined ? t.amount : t.value);
-      }
+      if (!isPlainObjectLocal(t) || !t.type) continue;
+      // NORMALISED: `type` is a free-text string in the schema, so casing and stray whitespace
+      // are the merchant's to choose, and an unnormalised key means a merchant sending "Tax" is
+      // read as having quoted none. That one reaches the warm-handoff response today via
+      // buildPreview -> pricedTotals.includes_tax.
+      const key = String(t.type).trim().toLowerCase();
+      // `amount` before `value`: `amount` is the schema's field, `value` is tolerated only for
+      // merchants that use it instead.
+      const amount = (t.amount !== undefined ? t.amount : t.value);
+      if (seen.has(key)) { out[key] = undefined; continue; }
+      seen.add(key);
+      out[key] = amount;
     }
   } else if (isPlainObjectLocal(totals)) {
-    for (const [k, v] of Object.entries(totals)) out[k] = v;
+    // The object form gets the SAME normalisation. Fixing only the array branch left
+    // `{ Tax: 190 }` reading as no tax — the exact bug this was meant to close.
+    for (const [k, v] of Object.entries(totals)) out[String(k).trim().toLowerCase()] = v;
   }
   return out;
 }

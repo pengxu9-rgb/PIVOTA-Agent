@@ -99,3 +99,79 @@ test('a bare pre-address checkout still reads as carrying neither', () => {
   assert.strictEqual(out.shipping, null);
   assert.strictEqual(out.tax, null);
 });
+
+
+// ---------------------------------------------- itemisation: the ambiguity must not be guessed
+
+test('a REPEATED detail type resolves to absent, not to one of its lines', () => {
+  // UCP: "Detail types (tax, fee, discount, fulfillment) may appear multiple times for
+  // itemization." This index is single-valued, so an itemised merchant has no single answer —
+  // and last-wins published ONE line as the whole figure. Reporting 300 for an 800 shipping
+  // charge is worse than reporting unknown, and `redactedPricedFacts` ships that number to the
+  // backend in a store-audit acceptance receipt.
+  const out = normalizePricedCheckout(wrap({
+    ...BASE,
+    totals: [
+      { type: 'fulfillment', amount: '500', display_text: 'Standard' },
+      { type: 'fulfillment', amount: '300', display_text: 'Oversize' },
+    ],
+  }));
+  assert.strictEqual(out.shipping, null);
+});
+
+test('the same holds for tax, which was lossy before this change ever touched it', () => {
+  const out = normalizePricedCheckout(wrap({
+    ...BASE, totals: [{ type: 'tax', amount: '190' }, { type: 'tax', amount: '60' }],
+  }));
+  assert.strictEqual(out.tax, null);
+});
+
+test('a case-variant duplicate is a duplicate, not a second key', () => {
+  // Normalising makes "Tax" and "tax" collide. Before, they were distinct and the canonical
+  // lookup won by luck of ordering; now the collision is VISIBLE and refused rather than
+  // resolved to whichever came last.
+  for (const order of [
+    [{ type: 'tax', amount: '200' }, { type: 'Tax', amount: '100' }],
+    [{ type: 'Tax', amount: '100' }, { type: 'tax', amount: '200' }],
+  ]) {
+    assert.strictEqual(normalizePricedCheckout(wrap({ ...BASE, totals: order })).tax, null);
+  }
+});
+
+test('one entry of a type is still read — refusing repeats must not refuse everything', () => {
+  const out = normalizePricedCheckout(wrap({
+    ...BASE,
+    totals: [
+      { type: 'subtotal', amount: '2317' },
+      { type: 'fulfillment', amount: '800' },
+      { type: 'tax', amount: '190' },
+      { type: 'total', amount: '3307' },
+    ],
+  }));
+  assert.strictEqual(out.shipping, '800');
+  assert.strictEqual(out.tax, '190');
+  assert.strictEqual(out.subtotal, '2317');
+});
+
+test('`amount` is preferred over `value`', () => {
+  // Survivor: swapping the precedence passed the whole suite because every fixture used
+  // `amount`. `amount` is the schema's field name; `value` is tolerated, not equal.
+  const out = normalizePricedCheckout(wrap({
+    ...BASE, totals: [{ type: 'fulfillment', amount: '800', value: '111' }],
+  }));
+  assert.strictEqual(out.shipping, '800');
+  // ...and `value` is still honoured when `amount` is absent.
+  const fallback = normalizePricedCheckout(wrap({
+    ...BASE, totals: [{ type: 'fulfillment', value: '111' }],
+  }));
+  assert.strictEqual(fallback.shipping, '111');
+});
+
+test('the OBJECT form of totals is normalised too', () => {
+  // The fix was half-applied: only the array branch was normalised, so `{ Tax: 190 }` still read
+  // as no tax — the exact bug it was meant to close. `indexTotals` is also called from
+  // normalizeLineItem, which reaches this branch.
+  const out = normalizePricedCheckout(wrap({ ...BASE, totals: { Tax: '190', Fulfillment: '800' } }));
+  assert.strictEqual(out.tax, '190');
+  assert.strictEqual(out.shipping, '800');
+});
