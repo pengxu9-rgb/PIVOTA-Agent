@@ -356,3 +356,57 @@ test('a generic ?variant= value is NOT a pin — only Shopify\'s numeric id shap
   const src = createMerchantVariantSource({ ucpClient: clientReturning([catalogProduct(PDP, [GID_A])]) });
   assert.deepEqual(await src(seedRead({ destination_url: `${PDP}?variant=large` }), 'sig_seed_1'), [GID_A]);
 });
+
+// ---- pilot scoping: a named brand is contacted, every other merchant is not -------------------------------
+
+test('brand matching covers subdomains and www, never a non-boundary suffix', () => {
+  const { hostMatchesBrand, brandAllowlistMatcher } = require('../src/services/merchantVariantSource');
+  // the PDPs we crawl are www.murad.com; a pilot should be able to write "murad.com"
+  assert.equal(hostMatchesBrand('www.murad.com', 'murad.com'), true);
+  assert.equal(hostMatchesBrand('murad.com', 'murad.com'), true);
+  assert.equal(hostMatchesBrand('shop.murad.com', 'murad.com'), true);
+  assert.equal(hostMatchesBrand('MURAD.com', 'murad.com'), true);
+  assert.equal(hostMatchesBrand('murad.com', 'www.murad.com'), true, 'a brand written with www still matches');
+  assert.equal(hostMatchesBrand('murad.com', '.murad.com'), true, 'a leading dot is tolerated');
+  // the dangerous near-misses
+  assert.equal(hostMatchesBrand('notmurad.com', 'murad.com'), false);
+  assert.equal(hostMatchesBrand('murad.com.evil.test', 'murad.com'), false);
+  assert.equal(hostMatchesBrand('murad.co', 'murad.com'), false);
+  assert.equal(hostMatchesBrand('', 'murad.com'), false);
+  assert.equal(hostMatchesBrand('murad.com', ''), false);
+  // parsing
+  const m = brandAllowlistMatcher(' murad.com , www.cosrx.com ,, ');
+  assert.deepEqual(m.brands, ['murad.com', 'cosrx.com']);
+  assert.equal(m.isAllowed('www.murad.com'), true);
+  assert.equal(m.isAllowed('theordinary.com'), false);
+  assert.deepEqual(brandAllowlistMatcher('').brands, [], 'empty list parses to no brands');
+  assert.equal(brandAllowlistMatcher('').isAllowed('murad.com'), false, 'empty list allows NOTHING');
+});
+
+test('a non-piloted merchant receives NO outbound traffic at all', async () => {
+  let contacted = false;
+  const client = clientReturning([catalogProduct(PDP, [GID_A])], { onSearch: () => { contacted = true; } });
+  const src = createMerchantVariantSource({
+    ucpClient: { ...client, discoverEndpoint: async () => { contacted = true; return { mcpEndpoint: MCP_ENDPOINT }; } },
+    isBrandAllowed: (host) => host === 'cosrx.com',
+  });
+  assert.equal(await src(seedRead(), 'sig_seed_1'), null, 'murad is not in this pilot');
+  assert.equal(contacted, false, 'scope is checked BEFORE discovery — not one request is sent');
+});
+
+test('the piloted merchant resolves normally', async () => {
+  const src = createMerchantVariantSource({
+    ucpClient: clientReturning([catalogProduct(PDP, [GID_A])]),
+    isBrandAllowed: (host) => host === 'murad.com',
+  });
+  assert.deepEqual(await src(seedRead(), 'sig_seed_1'), [GID_A]);
+});
+
+test('the server reads the brand list per call and warns when armed with none', () => {
+  const fs = require('node:fs');
+  const server = fs.readFileSync(require.resolve('../src/server'), 'utf8');
+  assert.match(server, /isBrandAllowed: \(host\) => merchantVariantSourcingBrands\(\)\.isAllowed\(host\)/,
+    'the allowlist must be read per call, so a pilot changes without a redeploy');
+  assert.match(server, /MERCHANT_VARIANT_SOURCING_BRANDS is empty/,
+    'armed-but-inert must be loud, since empty-means-none cannot otherwise be told from working');
+});

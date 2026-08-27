@@ -175,12 +175,13 @@ function idNamesVariant(variantId, hint) {
 /**
  * Build the merchant-variant source for `createDefaultVariantResolver`'s optional fallback.
  *
- * @param {{ ucpClient: object, isEnabled?: () => boolean, selfHosts?: string[], logger?: object,
- *           timeoutMs?: number, unwrap?: (toolResult:any)=>any }} deps
+ * @param {{ ucpClient: object, isEnabled?: () => boolean, isBrandAllowed?: (host:string) => boolean,
+ *           selfHosts?: string[], logger?: object, timeoutMs?: number,
+ *           unwrap?: (toolResult:any)=>any }} deps
  * @returns {(productRead:object, product_id:string, ctx:object)=>Promise<string[]|null>}
  */
 function createMerchantVariantSource(deps = {}) {
-  const { ucpClient, isEnabled, logger, unwrap } = deps;
+  const { ucpClient, isEnabled, isBrandAllowed, logger, unwrap } = deps;
   if (!ucpClient || typeof ucpClient.discoverEndpoint !== 'function' || typeof ucpClient.searchCatalog !== 'function') {
     throw new Error('createMerchantVariantSource requires a ucp client with discoverEndpoint() and searchCatalog()');
   }
@@ -205,6 +206,11 @@ function createMerchantVariantSource(deps = {}) {
     const product = productOfRead(productRead);
     const pdp = merchantPdpUrlOf(product, selfHosts);
     if (!pdp) return null;
+    // SCOPE BEFORE CONTACT. A pilot names the storefronts it has actually been exercised against; every
+    // other merchant keeps today's behaviour and, crucially, receives no traffic from us at all. Checked
+    // here — before discovery — so a non-piloted brand costs zero outbound requests rather than a
+    // well-known fetch we then discard.
+    if (typeof isBrandAllowed === 'function' && !isBrandAllowed(pdp.host)) return null;
 
     // The search term is the merchant's OWN handle when their url gives us one (the most selective text we
     // hold), else the crawled title. Neither SELECTS the product — the url match below does — so a poor term
@@ -298,4 +304,26 @@ function withTimeout(fn, ms) {
   });
 }
 
-module.exports = { createMerchantVariantSource, urlIdentity, variantIdsOf, collectCatalogProducts, variantHintOf, idNamesVariant };
+/**
+ * Host-allowlist matcher, sharing `urlIdentity`'s host rules (lowercased, `www.` stripped) so a brand can be
+ * written the way anyone would type it. An entry matches the host itself or any SUBDOMAIN of it — a pilot
+ * naming `murad.com` covers the `www.murad.com` its PDPs use — and never a suffix that is not a dot boundary
+ * (`notmurad.com` must not match `murad.com`).
+ */
+function hostMatchesBrand(host, brand) {
+  const h = str(host).toLowerCase().replace(/^www\./, '');
+  const b = str(brand).toLowerCase().replace(/^\./, '').replace(/^www\./, '');
+  if (!h || !b) return false;
+  return h === b || h.endsWith(`.${b}`);
+}
+
+/** Parse a comma-separated brand list (the OUTBOUND_WARM_HANDOFF_BRANDS shape) into a matcher. */
+function brandAllowlistMatcher(raw) {
+  const brands = String(raw || '')
+    .split(',')
+    .map((b) => str(b).toLowerCase().replace(/^\./, '').replace(/^www\./, ''))
+    .filter(Boolean);
+  return { brands, isAllowed: (host) => brands.some((b) => hostMatchesBrand(host, b)) };
+}
+
+module.exports = { createMerchantVariantSource, urlIdentity, variantIdsOf, collectCatalogProducts, variantHintOf, idNamesVariant, hostMatchesBrand, brandAllowlistMatcher };
