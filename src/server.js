@@ -803,6 +803,37 @@ const AGENT_AUTH_INTROSPECT_COOLDOWN_MS = AGENT_AUTH_INTROSPECT_COOLDOWN_DISABLE
     });
 const INVOKE_AUTH_CONTEXT = new AsyncLocalStorage();
 
+// Makes the in-flight request's fpm_stage_breakdown reachable from withSearchDiagnostics, which is
+// a module-level function and cannot see handleInvokeRequest's closure.
+//
+// WHY NOT PLUMB IT THROUGH `diagnostics`. withSearchDiagnostics has 7 call sites in the invoke
+// handler and the handler gains early-return lanes over time; a new lane that forgot the extra
+// field would silently emit null timings again, which is the failure this is meant to end. One
+// read at the single emission point cannot be forgotten by a lane that does not know it exists.
+//
+// Request-scoped, matching INVOKE_AUTH_CONTEXT: containerConcurrency is 80, so a module-level
+// reference would blend concurrent requests. Reads no-op when no store is set, so unit tests that
+// call withSearchDiagnostics directly are unaffected.
+const INVOKE_FPM_STAGE_CONTEXT = new AsyncLocalStorage();
+
+// Collapses the breakdown to {stage: ms} for `metadata.route_trace.node_timings_ms`, the shape
+// scripts/search_stability_matrix.js has always read and always found null. Same-named stages sum
+// (the cache lane runs more than one search per request), and off_path entries are skipped for the
+// same reason fpm_unattributed_ms skips them: they overlap the pipeline and would overstate it.
+function buildFpmNodeTimingsMs(stageBreakdown) {
+  if (!Array.isArray(stageBreakdown) || stageBreakdown.length === 0) return null;
+  const out = {};
+  for (const entry of stageBreakdown) {
+    if (!entry || typeof entry !== 'object' || entry.off_path === true) continue;
+    const stage = String(entry.stage || '').trim();
+    if (!stage) continue;
+    const latency = Number(entry.latency_ms);
+    if (!Number.isFinite(latency)) continue;
+    out[stage] = (Number(out[stage]) || 0) + Math.max(0, Math.round(latency));
+  }
+  return Object.keys(out).length > 0 ? out : null;
+}
+
 // Agent budgeting & loop protection (per /ui/chat turn)
 const MAX_AGENT_STEPS_PER_TURN = Number(process.env.AGENT_MAX_STEPS_PER_TURN || 8);
 const MAX_TOOL_CALLS_PER_TURN = Number(process.env.AGENT_MAX_TOOL_CALLS_PER_TURN || 8);
@@ -13775,6 +13806,15 @@ function withSearchDiagnostics(body, diagnostics = {}) {
     metadata.search_decision = existingSearchDecision;
   }
   metadata.route_health = routeHealth;
+
+  const fpmNodeTimingsMs = buildFpmNodeTimingsMs(INVOKE_FPM_STAGE_CONTEXT.getStore());
+  if (fpmNodeTimingsMs) {
+    const existingRouteTrace =
+      metadata.route_trace && typeof metadata.route_trace === 'object' && !Array.isArray(metadata.route_trace)
+        ? metadata.route_trace
+        : {};
+    metadata.route_trace = { ...existingRouteTrace, node_timings_ms: fpmNodeTimingsMs };
+  }
 
   if (diagnostics.search_trace) metadata.search_trace = diagnostics.search_trace;
   const metadataSearchTrace =
@@ -39928,6 +39968,15 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
   // pipeline leg, emitted in the 'invoke request complete' log so prod logs
   // can attribute latency_ms to concrete legs (upstream HTTP vs LLM vs local).
   const fpmStageBreakdown = [];
+  // enterWith, not run(): this handler's body is ~8000 lines and wrapping it in a callback to set
+  // one store would be a large, risky reshape of a live payments-adjacent path for a telemetry
+  // field. enterWith binds the store for the remainder of this async context, which is exactly the
+  // request. The array is published by reference, so stages recorded later are visible to readers.
+  try {
+    INVOKE_FPM_STAGE_CONTEXT.enterWith(fpmStageBreakdown);
+  } catch (_) {
+    // Telemetry must never be able to fail the surface it measures.
+  }
   let fpmUpstreamHttpMs = 0;
   const isFpmStageOperation = () => {
     const op = String(debugRuntime.operation || '').trim().toLowerCase();
@@ -47081,17 +47130,34 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               100,
               FIND_PRODUCTS_MULTI_CACHE_STAGE_BUDGET_MS - elapsedMs,
             );
-            return await withStageBudget(
-              searchCrossMerchantFromCache(queryTextForCache, page, limit, {
-                inStockOnly,
-                intent: effectiveIntent,
-                queryClass: cachePolicyQueryClass,
-                beautyQueryProfile,
-                publicBeautyUnifiedSearch,
-              }),
-              remainingBudgetMs,
-              stageLabel,
-            );
+            // This lane was the single largest hole in fpm_stage_breakdown. On 2026-08-27 the
+            // aurora-bff exact lookup took 28,576ms of which fpm_unattributed_ms was 16,335 -- and
+            // one sampled request attributed 20ms of 35,555. The cross-merchant cache lane runs
+            // ~1100 lines between its `try` and its fallback log without recording a single stage,
+            // so the breakdown just looked short, which is the exact failure fpm_unattributed_ms
+            // was added to make visible.
+            //
+            // try/finally, not record-on-success: a search that blows remainingBudgetMs throws out
+            // of withStageBudget, and that is precisely the request whose duration is worth having.
+            const cacheSearchStartedAt = Date.now();
+            try {
+              return await withStageBudget(
+                searchCrossMerchantFromCache(queryTextForCache, page, limit, {
+                  inStockOnly,
+                  intent: effectiveIntent,
+                  queryClass: cachePolicyQueryClass,
+                  beautyQueryProfile,
+                  publicBeautyUnifiedSearch,
+                }),
+                remainingBudgetMs,
+                stageLabel,
+              );
+            } finally {
+              recordFpmStage('cache_cross_merchant_search', cacheSearchStartedAt, {
+                stage_label: String(stageLabel || '') || null,
+                budget_ms: remainingBudgetMs,
+              });
+            }
           };
           let activeCacheSearchQueryText = baseCacheSearchQueryText;
           let fromCache = await runCacheSearch(
@@ -52844,6 +52910,14 @@ module.exports._debug = {
   // predicate reads AsyncLocalStorage, so it has to be driven inside a store the test controls.
   shouldPreferInternalInvokeUpstreamAuth,
   INVOKE_AUTH_CONTEXT,
+  // Telemetry property: `metadata.route_trace.node_timings_ms` was read by the prod smoke and written
+  // by nobody, so the latency column was structurally null and every latency question restarted from
+  // Cloud Run logs. These three are exported so the emission is asserted end-to-end -- the collapse
+  // shape, and that withSearchDiagnostics actually attaches it -- rather than inferred from the
+  // 8000-line handler that populates the breakdown.
+  buildFpmNodeTimingsMs,
+  INVOKE_FPM_STAGE_CONTEXT,
+  withSearchDiagnostics,
   // Safety property: while the money kill-switch is dark the profile must WITHHOLD the checkout and AP2
   // capabilities. Exported because the served document no longer distinguishes it — a strict-off profile
   // advertises nothing at all — so the guard has to be driven directly or it is guarded by nothing.
