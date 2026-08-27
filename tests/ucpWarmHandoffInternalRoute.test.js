@@ -722,7 +722,26 @@ describe('merchant price assertion on the internal route', () => {
       includes_shipping: false,
       includes_tax: false,
       requires_escalation: true,
+      // Null here means "priced, but the merchant named no checkout" — distinct from the absent
+      // `preview` in the sibling test below, which means "no priced preview at all".
+      checkout_id: null,
     });
+  });
+
+  it('carries the merchant checkout id through the HTTP response', async () => {
+    // THE DELIVERY PATH, not just the projection. pivota-backend's card mint requires a UCP
+    // `checkout_id`; this response is how it would reach anything able to mint. Asserting only
+    // the pure function would leave the hop that actually delivers it untested.
+    const handler = makeHandler({
+      service: serviceReturning({
+        ...PRICED,
+        preview: { ...PRICED.preview, checkout_id: 'chk_42' },
+      }),
+    });
+    const out = await handler(authedRequest({ brand_domain: 'brand.com', variant_gid: COSRX_GID }));
+
+    expect(out.status).toBe(200);
+    expect(out.body.preview.checkout_id).toBe('chk_42');
   });
 
   it('omits the key entirely when the lane produced no priced preview', async () => {
