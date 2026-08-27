@@ -1,3 +1,35 @@
+# Does production actually serve commerce-core correctly?
+#
+# WHAT THIS DOES NOT ASK ANY MORE: whether production runs the commit that just merged.
+#
+# The audit opened by waiting for `gateway.pivota.cc/version` to report `${GITHUB_SHA:0:12}`. That
+# was a fair thing to ask while a merge to main deployed on its own. The 2026-08-22 cutover moved
+# the serving gateway to Cloud Run, which only moves when somebody runs deploy_gateway.sh by hand -
+# `production-deploy-promote.yml` had its `push` trigger removed for exactly this reason and its
+# header says so. The wait was never revisited, so on every merge since, this job has asked
+# production for a commit that nothing was going to deploy, spent 80 attempts x 10s on it, and
+# failed: 14m10s on 2026-08-27 (db96c0403, run 33093441756), and the same timeout shape on 08-25
+# (run 32877254706) and 08-26 (run 32983022976).
+#
+# It has still gone green a few times since the cutover, which is the part worth not misreading. At
+# least one of those - 2026-08-27 00:20, run 33025314010 - matched on attempt 1, because a hand
+# deploy of that very sha had landed while the local_contracts job ran ahead of it. The gate passes
+# when a deploy happens to beat it, not when the merge is sound.
+#
+# The cost was not only the noise. The wait ran BEFORE the audit, so on every merge the readiness
+# audit itself never ran at all. A gate that cannot pass does not weaken the check behind it - it
+# deletes it, while still reporting in the check's name.
+#
+# `gateway prod drift` already owns "is live == main", on push and every 4h, with a grace window
+# tuned to how this repo batches deploys. Asking the same question here, with no grace window and
+# no ability to deploy, is the two-jobs-disagree-about-production failure that gateway-prod-drift.yml
+# was written to end - just inverted: promote used to lie green, this lies red.
+#
+# So on push this audits whatever production is actually serving, and the audit's own report stamps
+# the deployed `service_version.commit` it measured (`authoritative_production_smoke_commit`), so a
+# run can never be read as clearing the commit that triggered it. The commit-match wait is kept for
+# `workflow_dispatch`, where an operator who just ran deploy_gateway.sh does want to block until the
+# new build is live; that is what `wait_for_commit` is for, and it still defaults to true there.
 name: Celestial Commerce Core Readiness
 
 on:
@@ -12,7 +44,10 @@ on:
         required: false
         default: "https://web-production-fedb.up.railway.app"
       wait_for_commit:
-        description: "Wait for deployed agent commit before running production smoke"
+        # Only has an effect here. After a hand deploy_gateway.sh run, leave this true to block
+        # until the gateway actually serves this ref's commit before auditing it. Set it false to
+        # audit whatever is live right now, which is what a push to main does.
+        description: "Wait for the gateway to serve this ref's commit before auditing (dispatch only)"
         type: boolean
         required: false
         default: true
@@ -244,8 +279,10 @@ jobs:
       - name: Install Railway CLI
         run: npm install -g @railway/cli@4.35.0
 
+      # workflow_dispatch only: see the header. On push nothing deploys the gateway, so this can
+      # only ever time out, and it times out in front of the audit.
       - name: Verify deployed commit via service_version
-        if: github.event_name != 'workflow_dispatch' || inputs.wait_for_commit == true
+        if: github.event_name == 'workflow_dispatch' && inputs.wait_for_commit
         shell: bash
         run: |
           set -euo pipefail
