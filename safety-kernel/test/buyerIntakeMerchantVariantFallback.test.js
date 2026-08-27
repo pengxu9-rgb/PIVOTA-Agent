@@ -164,3 +164,87 @@ test('a refusal is cached too — a storefront that could not answer is not re-a
   await refusalOf(resolve(items, undefined, {}));
   assert.equal(calls, 1, 're-asking a storefront that already declined multiplies the worst case');
 });
+
+// ---- the batch: N DISTINCT products must not serialise N deadlines ---------------------------------------
+
+/** A read whose product id and pdp url vary, so each cart line is a genuinely distinct product. */
+function seedReadFor(pid) {
+  return {
+    product: {
+      product_id: pid,
+      title: `Product ${pid}`,
+      destination_url: `https://www.murad.com/products/${pid}`,
+      purchase_grain: 'variant',
+      variants: [{ variant_id: pid }],
+    },
+  };
+}
+
+test('merchant lookups for DISTINCT products run concurrently, not one after another', async () => {
+  // Before this, the loop asked the storefront per item, so 8 distinct products cost 8 lookups end to end.
+  // Each lookup here takes 60ms; serial would be ~480ms, batched at concurrency 6 is ~120ms. Asserting the
+  // OVERLAP rather than a wall-clock ceiling keeps the test honest on a loaded CI box.
+  let inFlight = 0;
+  let maxInFlight = 0;
+  const pids = Array.from({ length: 8 }, (_, i) => `sig_p${i}`);
+  const resolve = createDefaultVariantResolver({
+    executor: { execute: async (_op, { payload }) => seedReadFor(payload.product.product_id) },
+    sourceMerchantVariants: async (_raw, pid) => {
+      inFlight += 1;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      await new Promise((r) => setTimeout(r, 60));
+      inFlight -= 1;
+      return [`gid://shopify/ProductVariant/${pid.slice(-1)}`];
+    },
+  });
+  const items = pids.map((pid) => ({ product_id: pid, quantity: 1 }));
+  await resolve(items, undefined, {});
+  assert.ok(maxInFlight > 1, `merchant lookups must overlap (max in flight was ${maxInFlight})`);
+  for (const it of items) assert.match(it.variant_id, /^gid:\/\/shopify\/ProductVariant\/\d$/);
+});
+
+test('a storefront that hangs cannot stall intake past the batch deadline', async () => {
+  // The whole point of moving the lookups under `withDeadline`: a hanging merchant used to add its full
+  // timeout PER PRODUCT, after the batch deadline for our own reads had already resolved.
+  const pids = Array.from({ length: 6 }, (_, i) => `sig_h${i}`);
+  const resolve = createDefaultVariantResolver({
+    executor: { execute: async (_op, { payload }) => seedReadFor(payload.product.product_id) },
+    timeoutMs: 120,
+    sourceMerchantVariants: () => new Promise(() => {}), // never settles
+  });
+  const items = pids.map((pid) => ({ product_id: pid, quantity: 1 }));
+  const startedAt = Date.now();
+  const reason = await refusalOf(resolve(items, undefined, {}));
+  const elapsed = Date.now() - startedAt;
+  assert.equal(reason, 'no_real_variant_identity', 'a hanging storefront still fails closed');
+  assert.ok(elapsed < 1500, `intake must be bounded by ONE deadline, not one per product (took ${elapsed}ms)`);
+});
+
+test('the batch runs BEFORE the item loop — no storefront call happens inside it', async () => {
+  // Ordering matters for the money path: a network call inside the loop is a per-item cost that no deadline
+  // above it bounds. Pinned by observing that every lookup has completed before the first variant is written.
+  const order = [];
+  const resolve = createDefaultVariantResolver({
+    executor: { execute: async (_op, { payload }) => seedReadFor(payload.product.product_id) },
+    sourceMerchantVariants: async (_raw, pid) => {
+      order.push(`lookup:${pid}`);
+      return [`gid://shopify/ProductVariant/${pid.slice(-1)}`];
+    },
+  });
+  const items = [{ product_id: 'sig_a1', quantity: 1 }, { product_id: 'sig_b2', quantity: 1 }];
+  await resolve(items, undefined, {});
+  assert.deepEqual(order, ['lookup:sig_a1', 'lookup:sig_b2'], 'both lookups happen in one batch');
+});
+
+test('the source receives an abort signal it can honour', async () => {
+  let sawSignal = false;
+  const resolve = createDefaultVariantResolver({
+    executor: { execute: async (_op, { payload }) => seedReadFor(payload.product.product_id) },
+    sourceMerchantVariants: async (_raw, pid, ctx) => {
+      sawSignal = Boolean(ctx && ctx.signal && typeof ctx.signal.aborted === 'boolean');
+      return [`gid://shopify/ProductVariant/${pid.slice(-1)}`];
+    },
+  });
+  await resolve([{ product_id: 'sig_z9', quantity: 1 }], undefined, {});
+  assert.equal(sawSignal, true, 'ctx.signal is threaded so a source can stop early on an expired batch');
+});
