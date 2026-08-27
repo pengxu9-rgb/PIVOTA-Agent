@@ -213,9 +213,31 @@ test('a storefront that hangs cannot stall intake past the batch deadline', asyn
     sourceMerchantVariants: () => new Promise(() => {}), // never settles
   });
   const items = pids.map((pid) => ({ product_id: pid, quantity: 1 }));
-  const startedAt = Date.now();
-  const reason = await refusalOf(resolve(items, undefined, {}));
-  const elapsed = Date.now() - startedAt;
+  // WHY THE KEEP-ALIVE. `withDeadline`'s timer is unref'd BY DESIGN — its own note says "a refusal timer
+  // must not be a reason to stay up" — so it does not hold the event loop open. A live server always has an
+  // HTTP listener doing that; a bare test process does not, and this source never settles, so without an
+  // explicit handle the loop drains before the deadline fires and node:test reports "Promise resolution is
+  // still pending but the event loop has already resolved" (which is exactly what CI saw). Supplying the
+  // liveness a server would have keeps this a test of the DEADLINE rather than of the runner's own handles.
+  // Measured in a bare child process (not inferred): no keep-alive -> the process exits with NO result;
+  // with one -> REFUSED at ~125ms against a 120ms deadline.
+  //
+  // WHAT THIS DOES AND DOES NOT GUARANTEE, since the distinction is the whole point: a source that never
+  // settles AND never honours abort is a worse case than anything shipped — merchantVariantSource bounds
+  // itself with its OWN ref'd timer (deliberately not unref'd, #2117), so it always settles and production
+  // cannot hang here. This test pins the SECOND bound, the resolver-level deadline, which only holds while
+  // something keeps the loop alive. If anyone ever unrefs the source's timer, that first guarantee goes and
+  // this test would still pass — so the source's timer has its own child-process test next door.
+  const keepAlive = setInterval(() => {}, 20);
+  let reason;
+  let elapsed;
+  try {
+    const startedAt = Date.now();
+    reason = await refusalOf(resolve(items, undefined, {}));
+    elapsed = Date.now() - startedAt;
+  } finally {
+    clearInterval(keepAlive);
+  }
   assert.equal(reason, 'no_real_variant_identity', 'a hanging storefront still fails closed');
   assert.ok(elapsed < 1500, `intake must be bounded by ONE deadline, not one per product (took ${elapsed}ms)`);
 });
