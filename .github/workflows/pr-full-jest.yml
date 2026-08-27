@@ -1052,6 +1052,7 @@ jobs:
             tests/payment_method_verifier_composition.node.test.cjs \
             tests/agent_signals_intelligence_reads.node.test.cjs \
             tests/agent_signals_recommend_products.node.test.cjs \
+            tests/merchant_variant_source.node.test.cjs \
             tests/sourcing_sentinel_merchant_scope.node.test.cjs \
             tests/aurora_chat_v1_mainline_delegation_cycle.node.test.cjs \
             tests/aurora_bff_v1_chat_rollout.node.test.cjs \
@@ -1068,6 +1069,7 @@ jobs:
             tests/ucp_conformance_probe_io.node.test.cjs \
             safety-kernel/test/resultSanitizer.test.js \
             safety-kernel/test/protocol.test.js \
+            safety-kernel/test/buyerIntakeMerchantVariantFallback.test.js \
             safety-kernel/test/canonicalExecutor_payment_link.test.js \
             safety-kernel/test/delegatedPaymentRefusal.test.js \
             mcp-server/test/ucpFulfillmentAddressContract.test.js \

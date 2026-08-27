@@ -197,7 +197,7 @@ function cloneCachedValue(value, onCloneFailure) {
  *   documented kill switch behind this one and double the resident payload for no extra hit rate.
  * @returns {{ tools: Array<{name,description,inputSchema}>, callTool: Function, isCommerceTool: Function }}
  */
-export function createCommerceToolSurface(executor, { log, cache: cacheOpt = true } = {}) {
+export function createCommerceToolSurface(executor, { log, cache: cacheOpt = true, sourceMerchantVariants } = {}) {
   if (!executor || typeof executor.execute !== "function") {
     throw new Error("createCommerceToolSurface requires a canonical executor with execute()");
   }
@@ -206,7 +206,10 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
 
   // Default-variant resolution over THIS surface's executor — the same canonical `get_product` read the ACP
   // door resolves through, built by the same factory. Nothing about the rule lives here.
-  const resolveDefaultVariants = createDefaultVariantResolver({ executor });
+  // `sourceMerchantVariants` (optional) lets the seed cohort resolve identity from the MERCHANT's own
+  // storefront when our catalog publishes only restatements of the product id. It is threaded, not
+  // defaulted: a door that passes nothing keeps today's behaviour exactly.
+  const resolveDefaultVariants = createDefaultVariantResolver({ executor, sourceMerchantVariants });
 
   // Shorter-lived than the public tier's 10min/60min: these results carry prices and availability an agent
   // may act on. Search staleness cannot produce a wrong charge — the money path re-quotes against the
@@ -318,7 +321,11 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
       const reads = memoizedProductReads(executor);
       const escalated = await tryEscalateUcpCheckout({ op, params, ctx, executor: reads, ucpArgs: toolArgs, attested });
       if (escalated) return escalated;
-      resolveVariantsForThisCall = createDefaultVariantResolver({ executor: reads });
+      // The UCP checkout door needs the merchant source MORE than the native one, not less: a UCP `item.id`
+      // carries a product id only (no variant carrier at all), so this is the door where seed rows are most
+      // certain to arrive without variant identity. Threading it here was missed in the first revision, which
+      // armed the capability for native `create_checkout_session` alone.
+      resolveVariantsForThisCall = createDefaultVariantResolver({ executor: reads, sourceMerchantVariants });
     }
 
     // 3b) BUYER INTAKE — the shared rules, applied before anything is priced. See the note below toParams.

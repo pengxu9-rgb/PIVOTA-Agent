@@ -29702,6 +29702,40 @@ function isAcpSptGatewayHandoffEnabled() {
   return ['1', 'true', 'on', 'yes'].includes(normalized);
 }
 
+// MERCHANT VARIANT SOURCING — ask the storefront for the variant identity our crawl cannot carry.
+//
+// OFF by default and deliberately so: it puts a third-party call (UCP discovery + catalog search on the
+// merchant's own endpoint) on the checkout INTAKE path. It is also strictly additive — it is consulted only
+// for rows our own read could not resolve, so arming it can unblock seed-cohort checkouts but can never
+// change an answer we already had. See src/services/merchantVariantSource.js for the URL-join safety
+// argument, and buyerIntake's resolver for how the returned ids are filtered.
+function isMerchantVariantSourcingEnabled() {
+  const normalized = String(process.env.MERCHANT_VARIANT_SOURCING_ENABLED || '').trim().toLowerCase();
+  return ['1', 'true', 'on', 'yes'].includes(normalized);
+}
+
+// Built once per surface, not per request: the UCP client memoizes endpoint discovery, so a repeat checkout
+// against the same storefront costs one catalog search rather than a discovery round-trip too.
+let _merchantVariantSource = null;
+function buildMerchantVariantSource(logger) {
+  if (_merchantVariantSource) return _merchantVariantSource;
+  const { createMerchantVariantSource } = require('./services/merchantVariantSource');
+  const { createUcpBuyerAgentClient, unwrapToolPayload } = require('./services/ucpBuyerAgentClient');
+  _merchantVariantSource = createMerchantVariantSource({
+    ucpClient: createUcpBuyerAgentClient({ timeoutMs: 5000, retryAttempts: 1 }),
+    unwrap: unwrapToolPayload,
+    logger,
+    // Thunk, not a boolean: the surface is built once for the process, so a boolean would freeze the flag at
+    // construction and make the kill switch un-flippable without a redeploy. For a capability justified as
+    // "adds a third-party call to the checkout intake path", disarming must not require one.
+    isEnabled: isMerchantVariantSourcingEnabled,
+    // Our own hosts can appear on a product read (`url`/`canonical_url` point at agent.pivota.cc); naming
+    // them here keeps a self-referential url from ever being used as the merchant join key.
+    selfHosts: ['agent.pivota.cc', 'api.pivota.cc', 'mcp.pivota.cc', 'gateway.pivota.cc', 'pivota.cc'],
+  });
+  return _merchantVariantSource;
+}
+
 function isAgentCheckoutHostedLinkEnabled() {
   // Guest hosted-checkout (create_payment_link). Independent of the autonomous-charge flag above:
   // this path never charges, but it does mint a real payment surface, so it ships OFF by default.
@@ -31134,7 +31168,16 @@ async function getCommerceRemoteMcpAdapter() {
       });
       // Publish the executor for the ACP/UCP doors to reuse (one shared kernel — see commerceSharedExecutor).
       commerceSharedExecutor = executor;
-      const surface = createCommerceToolSurface(executor, { log: logger });
+      const surface = createCommerceToolSurface(executor, {
+        log: logger,
+        // MERCHANT VARIANT SOURCING. Our catalog publishes no real variant identity for the seed cohort, so
+        // intake refuses every such row (`no_real_variant_identity`). The storefront it was crawled from does
+        // publish one, over the same UCP endpoint the warm handoff already uses. Default OFF: this adds a
+        // third-party call to the checkout intake path, so it is armed deliberately.
+        // Always constructed; the source consults `isMerchantVariantSourcingEnabled()` per call, so the flag
+        // is live rather than frozen at surface-construction time.
+        sourceMerchantVariants: buildMerchantVariantSource(logger),
+      });
       // …and the surface, for the UCP door to project (one shared read cache — see commerceSharedToolSurface).
       commerceSharedToolSurface = surface;
       return createRemoteMcpAdapter(surface, {
