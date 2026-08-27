@@ -1559,6 +1559,10 @@ async function withTimeout(run, ms) {
 
 module.exports = {
   createUcpBuyerAgentClient,
+  // Exported so merchant variant sourcing unwraps the MCP envelope with THIS function rather than a copy of
+  // it: the shapes it handles (`content[].json`, `content[].text` holding JSON) are the client's own contract
+  // with the storefront, and a twin would drift the day a merchant changes which one it sends.
+  unwrapToolPayload,
   TOOL,
   // Exported so a test can pin the SET ITSELF, not just one tool's behaviour: this is the only thing
   // standing between a transient 500 and a blind-retried mutating call (a duplicate cart, a re-priced

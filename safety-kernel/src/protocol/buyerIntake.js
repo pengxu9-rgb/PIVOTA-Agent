@@ -452,10 +452,24 @@ export function normalizeCartItems(rawItems) {
  * is threaded anyway because it is what the LIMITER checks (an aborted batch launches no further reads); if
  * `read()` ever grows a third argument, in-flight cancellation follows for free.
  *
- * @param {{ executor: {execute:Function}, timeoutMs?: number }} deps
+ * OPTIONAL MERCHANT FALLBACK (`sourceMerchantVariants`). Our catalog carries no real variant identity for the
+ * seed cohort — it publishes ids restated from the product id, which the filter below correctly refuses. The
+ * merchant's OWN storefront does carry them (see src/services/merchantVariantSource.js), so a door may inject
+ * a source that asks it. This hook changes WHERE candidate ids come from and nothing else:
+ *   * it is consulted ONLY when our own read produced no real identity — never to override or outvote one;
+ *   * whatever it returns goes through the SAME `isRestatedProductId` filter and the SAME exactly-one-real
+ *     rule, so property 1 holds for merchant answers exactly as for ours (a storefront that echoed our
+ *     product id back would still be refused);
+ *   * it runs AFTER the product-grain carve-out, so a row the read declared product-grain keeps resolving
+ *     locally and never spends a network hop;
+ *   * returning null/[] leaves the existing refusal exactly as it was, and a throw is caught into that same
+ *     refusal — there is no path from a failed merchant lookup to a priced cart.
+ *
+ * @param {{ executor: {execute:Function}, timeoutMs?: number,
+ *           sourceMerchantVariants?: (productRead:object, product_id:string, ctx:object)=>Promise<string[]|null> }} deps
  * @returns {(items:Array, merchant_id:string|undefined, ctx:object)=>Promise<void>} mutates items in place
  */
-export function createDefaultVariantResolver({ executor, timeoutMs } = {}) {
+export function createDefaultVariantResolver({ executor, timeoutMs, sourceMerchantVariants } = {}) {
   if (!executor || typeof executor.execute !== 'function') {
     throw new Error('createDefaultVariantResolver requires a canonical executor with execute()');
   }
@@ -470,7 +484,10 @@ export function createDefaultVariantResolver({ executor, timeoutMs } = {}) {
     if (nonEmpty(merchant_id)) product.merchant_id = merchant_id;
     const result = await executor.execute('get_product', { payload: { product } }, { ...ctx, signal });
     assertProductIdentity(result, product_id, merchant_id);
-    return { ids: variantIdsFromProductRead(result), productGrain: isProductGrainRead(result) };
+    // The RAW read rides along so an injected merchant source can use the storefront pointer the read
+    // already carries (the seed lane publishes the merchant PDP url on the product). No second read of our
+    // own catalog, and nothing downstream reads `raw` unless a source was injected.
+    return { ids: variantIdsFromProductRead(result), productGrain: isProductGrainRead(result), raw: result };
   }
 
   /**
@@ -510,7 +527,7 @@ export function createDefaultVariantResolver({ executor, timeoutMs } = {}) {
     }
     const byProduct = new Map(productIds.map((pid, i) => [pid, resolved[i]]));
     for (const it of needing) {
-      const read = byProduct.get(it.product_id) ?? { ids: [], productGrain: false };
+      const read = byProduct.get(it.product_id) ?? { ids: [], productGrain: false, raw: null };
       const candidates = read.ids;
       // THE central filter. A candidate that is the requested product_id, or the requested product_id plus a
       // separator, carries no identity of its own — it is the product id restated. src/pdpBuilder.js
@@ -550,6 +567,26 @@ export function createDefaultVariantResolver({ executor, timeoutMs } = {}) {
         if (read.productGrain && candidates.every((id) => id === it.product_id) && candidates.length <= 1) {
           it.variant_id = it.product_id;
           continue;
+        }
+        // ASK THE MERCHANT, if a door injected a source. Our catalog has nothing real to offer for this row;
+        // the storefront it was crawled from does. Merchant answers are NOT trusted more than ours — they go
+        // through the identical filter and the identical exactly-one rule immediately below.
+        if (typeof sourceMerchantVariants === 'function') {
+          let merchantIds = null;
+          try {
+            merchantIds = await sourceMerchantVariants(read.raw, it.product_id, ctx);
+          } catch {
+            merchantIds = null; // fail closed into the refusals below
+          }
+          const merchantReal = (Array.isArray(merchantIds) ? merchantIds : [])
+            .filter((id) => nonEmpty(id) && !isRestatedProductId(id, it.product_id));
+          if (merchantReal.length === 1) {
+            it.variant_id = merchantReal[0];
+            continue;
+          }
+          if (merchantReal.length > 1) {
+            throw itemVariantRefusal('ambiguous', variantAmbiguousMessage(merchantReal.length), { variant_count: merchantReal.length });
+          }
         }
         // Distinguish "the catalog published no variant identity for this product" (it published only
         // restatements of the product id) from "the product genuinely has no variants". Ops needs both.
