@@ -1294,7 +1294,7 @@ function normalizePricedCheckout(toolResult) {
   if (!payload || typeof payload !== 'object') {
     return {
       item: null, shipping_options: [], tax: null, total: null, subtotal: null, shipping: null,
-      currency: null, continue_url: null, status: null, messages: [], raw: null,
+      currency: null, continue_url: null, checkout_id: null, status: null, messages: [], raw: null,
     };
   }
   const lineItems = Array.isArray(payload.line_items) ? payload.line_items
@@ -1320,6 +1320,16 @@ function normalizePricedCheckout(toolResult) {
   const continue_url = firstNonEmpty(
     payload.continue_url, payload.checkout_url, payload.permalink, payload.url,
   ) || null;
+  // THE MERCHANT'S HANDLE ON THIS CHECKOUT. It was in `raw` all along and simply never lifted
+  // out, which is the whole reason the card rail and the link rail looked like separate worlds:
+  // `CardIssueRequest` requires a UCP `checkout_id`, and nothing surfaced one. `update_checkout`
+  // takes this same value as its required top-level `id`, so the merchant's own schema names it.
+  //
+  // It is what makes a card mintable against a checkout the buyer is about to finish on the
+  // STOREFRONT: `continue_url` (already lifted above) is where the agent types, and re-reading
+  // `get_checkout` on this id AFTER an address is entered is the only way to learn a total that
+  // includes shipping and tax — which a pre-address preview cannot carry (see the audit's B7).
+  const checkout_id = firstNonEmpty(payload.id, payload.checkout_id) || null;
   const status = firstNonEmpty(payload.status) || null;
   const messages = Array.isArray(payload.messages)
     ? payload.messages.map((m) => (isPlainObjectLocal(m)
@@ -1327,7 +1337,7 @@ function normalizePricedCheckout(toolResult) {
       : null)).filter(Boolean)
     : [];
 
-  return { item, shipping_options, tax, total, subtotal, shipping, currency, continue_url, status, messages, raw: payload };
+  return { item, shipping_options, tax, total, subtotal, shipping, currency, continue_url, checkout_id, status, messages, raw: payload };
 }
 
 /**
