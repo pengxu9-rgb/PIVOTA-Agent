@@ -526,11 +526,75 @@ export function createDefaultVariantResolver({ executor, timeoutMs, sourceMercha
       throw itemVariantRefusal('resolution_unavailable', VARIANT_RESOLUTION_UNAVAILABLE_MESSAGE);
     }
     const byProduct = new Map(productIds.map((pid, i) => [pid, resolved[i]]));
-    // ONE merchant lookup per DISTINCT product, exactly as `byProduct` does for our own reads. This loop is
-    // SEQUENTIAL, so without this a cart naming one product on five lines would make five storefront round
-    // trips, each costing the source's full deadline. A source-side in-flight memo cannot help here: nothing
-    // is ever in flight concurrently on this path (review of #2117 measured 5 lines -> 5 calls).
+
+    // MERCHANT SOURCING RUNS AS A BATCH, BEFORE THE ITEM LOOP — never inside it.
+    //
+    // The loop below is sequential, so asking the storefront from inside it made a cart of N DISTINCT
+    // products cost N lookups END TO END, each up to the source's own deadline (~50 x 6s past a 3s batch
+    // deadline for a full cart) — an unbounded stall the batch deadline above had already been designed to
+    // prevent for our OWN reads. Per-product deduping fixed only the repeated-line case; distinct products
+    // were still serial. So the products that need a storefront are computed FIRST, then resolved through
+    // the same limiter + deadline + controller our own reads use.
+    //
+    // WHICH PRODUCTS NEED ONE is decided here exactly as the loop decides it: our read published no REAL
+    // identity, and the product-grain carve-out does not apply. The loop is still the only place that
+    // ACCEPTS an id — this pass only pre-fetches candidates for it, so no verdict moves out of the loop.
+    //
+    // ABORT, STATED HONESTLY: an expired deadline stops us WAITING and stops the limiter LAUNCHING further
+    // lookups (`mapWithConcurrency` checks `signal.aborted` before each launch). It does not cancel an HTTP
+    // request already in flight — the UCP client owns its own per-call timeout and accepts no external
+    // signal — so the bound this buys is on INTAKE latency, not on the merchant's socket. `ctx.signal` is
+    // threaded for a source that wants to stop early; the shipped one takes two parameters and ignores it.
+    //
+    // TWO DEADLINES, NOT ONE SHARED BUDGET, deliberately: worst-case intake becomes 2x `deadlineMs` rather
+    // than `deadlineMs + N x source_timeout`. A single shared budget would let slow local reads starve this
+    // phase to nothing, and the capability would silently never fire under exactly the load that makes it
+    // matter. A caller sizing an HTTP timeout off `variantResolutionTimeoutMs` must budget for 2x.
     const merchantByProduct = new Map();
+    if (typeof sourceMerchantVariants === 'function') {
+      const needMerchant = productIds.filter((pid) => {
+        const read = byProduct.get(pid);
+        if (!read) return false;
+        if (read.ids.some((id) => !isRestatedProductId(id, pid))) return false; // our read already answered
+        if (read.productGrain && read.ids.every((id) => id === pid) && read.ids.length <= 1) return false;
+        return true;
+      });
+      if (needMerchant.length > 0) {
+        const merchantController = new AbortController();
+        let merchantResults = [];
+        try {
+          merchantResults = await withDeadline(
+            mapWithConcurrency(
+              needMerchant,
+              VARIANT_RESOLUTION_CONCURRENCY,
+              async (pid) => {
+                if (merchantController.signal.aborted) return null;
+                try {
+                  return await sourceMerchantVariants(byProduct.get(pid).raw, pid, { ...ctx, signal: merchantController.signal });
+                } catch {
+                  return null; // fail closed; the loop's existing refusal stands for this product
+                }
+              },
+              merchantController,
+            ),
+            deadlineMs,
+            merchantController,
+          );
+        } catch {
+          // A blown deadline refuses every product it covered — fail-closed, and the same outcome the loop
+          // would have produced without a source at all.
+          //
+          // KNOWN COST, accepted for now: this discards lookups that had ALREADY SUCCEEDED before the
+          // deadline fired (measured by review: 4 products, 2 answered, all 4 refuse), because the array
+          // `mapWithConcurrency` was filling is not reachable from here. Preserving partial results needs a
+          // limiter that surfaces them on abort; until then the trade is a rare wasted answer in exchange
+          // for never returning a partially-populated map that the loop would read as complete.
+          merchantResults = [];
+        }
+        needMerchant.forEach((pid, i) => merchantByProduct.set(pid, merchantResults[i] ?? null));
+      }
+    }
+
     for (const it of needing) {
       const read = byProduct.get(it.product_id) ?? { ids: [], productGrain: false, raw: null };
       const candidates = read.ids;
@@ -577,19 +641,10 @@ export function createDefaultVariantResolver({ executor, timeoutMs, sourceMercha
         // the storefront it was crawled from does. Merchant answers are NOT trusted more than ours — they go
         // through the identical filter and the identical exactly-one rule immediately below.
         if (typeof sourceMerchantVariants === 'function') {
-          let merchantIds = null;
-          if (merchantByProduct.has(it.product_id)) {
-            merchantIds = merchantByProduct.get(it.product_id);
-          } else {
-            try {
-              merchantIds = await sourceMerchantVariants(read.raw, it.product_id, ctx);
-            } catch {
-              merchantIds = null; // fail closed into the refusals below
-            }
-            // Cache the REFUSAL too: a storefront that could not answer for this product will not answer for
-            // the next line naming it either, and re-asking multiplies the cost of the worst case.
-            merchantByProduct.set(it.product_id, merchantIds);
-          }
+          // Already fetched by the batch above (one entry per DISTINCT product, refusals included, so a
+          // storefront that declined is never re-asked for the next line naming the same product). No
+          // network call happens inside this loop.
+          const merchantIds = merchantByProduct.get(it.product_id) ?? null;
           const merchantReal = (Array.isArray(merchantIds) ? merchantIds : [])
             .filter((id) => nonEmpty(id) && !isRestatedProductId(id, it.product_id));
           if (merchantReal.length === 1) {
