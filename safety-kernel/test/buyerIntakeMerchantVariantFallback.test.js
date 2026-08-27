@@ -222,21 +222,28 @@ test('a storefront that hangs cannot stall intake past the batch deadline', asyn
 
 test('the batch runs BEFORE the item loop — no storefront call happens inside it', async () => {
   // Ordering matters for the money path: a network call inside the loop is a per-item cost that no deadline
-  // above it bounds. Pinned by observing that every lookup has completed before the first variant is written.
-  const order = [];
+  // above it bounds.
+  //
+  // OBSERVE THE RIGHT THING. A first version recorded the lookup SEQUENCE, which is identical whether the
+  // lookups are batched or made per item — a reviewer proved it vacuous by reverting the batch and watching
+  // the assertion still pass. The discriminating observation is how many variant_ids have already been
+  // WRITTEN when each lookup runs: batched -> [0, 0] (nothing decided yet), in-loop -> [0, 1] (item 1 was
+  // resolved before item 2 was looked up).
+  const items = [{ product_id: 'sig_a1', quantity: 1 }, { product_id: 'sig_b2', quantity: 1 }];
+  const writtenAtLookup = [];
   const resolve = createDefaultVariantResolver({
     executor: { execute: async (_op, { payload }) => seedReadFor(payload.product.product_id) },
     sourceMerchantVariants: async (_raw, pid) => {
-      order.push(`lookup:${pid}`);
+      writtenAtLookup.push(items.filter((it) => it.variant_id).length);
       return [`gid://shopify/ProductVariant/${pid.slice(-1)}`];
     },
   });
-  const items = [{ product_id: 'sig_a1', quantity: 1 }, { product_id: 'sig_b2', quantity: 1 }];
   await resolve(items, undefined, {});
-  assert.deepEqual(order, ['lookup:sig_a1', 'lookup:sig_b2'], 'both lookups happen in one batch');
+  assert.deepEqual(writtenAtLookup, [0, 0],
+    'every lookup must run before ANY variant is written — a non-zero entry means a lookup happened inside the loop');
 });
 
-test('the source receives an abort signal it can honour', async () => {
+test('the source is HANDED an abort signal (threading; today\'s source does not read it)', async () => {
   let sawSignal = false;
   const resolve = createDefaultVariantResolver({
     executor: { execute: async (_op, { payload }) => seedReadFor(payload.product.product_id) },
@@ -246,5 +253,8 @@ test('the source receives an abort signal it can honour', async () => {
     },
   });
   await resolve([{ product_id: 'sig_z9', quantity: 1 }], undefined, {});
-  assert.equal(sawSignal, true, 'ctx.signal is threaded so a source can stop early on an expired batch');
+  // Stated as narrowly as it is true: the shipped merchantVariantSource takes (productRead, product_id) and
+  // ignores ctx entirely. This pins the THREADING so a future source can stop early; it does not claim
+  // today's source honours it.
+  assert.equal(sawSignal, true, 'ctx.signal is threaded through to the source');
 });

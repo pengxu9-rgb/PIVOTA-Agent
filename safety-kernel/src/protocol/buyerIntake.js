@@ -541,9 +541,15 @@ export function createDefaultVariantResolver({ executor, timeoutMs, sourceMercha
     // ACCEPTS an id — this pass only pre-fetches candidates for it, so no verdict moves out of the loop.
     //
     // ABORT, STATED HONESTLY: an expired deadline stops us WAITING and stops the limiter LAUNCHING further
-    // lookups. It does not cancel an HTTP request already in flight — the UCP client owns its own per-call
-    // timeout and accepts no external signal — so the bound this buys is on INTAKE latency, not on the
-    // merchant's socket.
+    // lookups (`mapWithConcurrency` checks `signal.aborted` before each launch). It does not cancel an HTTP
+    // request already in flight — the UCP client owns its own per-call timeout and accepts no external
+    // signal — so the bound this buys is on INTAKE latency, not on the merchant's socket. `ctx.signal` is
+    // threaded for a source that wants to stop early; the shipped one takes two parameters and ignores it.
+    //
+    // TWO DEADLINES, NOT ONE SHARED BUDGET, deliberately: worst-case intake becomes 2x `deadlineMs` rather
+    // than `deadlineMs + N x source_timeout`. A single shared budget would let slow local reads starve this
+    // phase to nothing, and the capability would silently never fire under exactly the load that makes it
+    // matter. A caller sizing an HTTP timeout off `variantResolutionTimeoutMs` must budget for 2x.
     const merchantByProduct = new Map();
     if (typeof sourceMerchantVariants === 'function') {
       const needMerchant = productIds.filter((pid) => {
@@ -575,7 +581,15 @@ export function createDefaultVariantResolver({ executor, timeoutMs, sourceMercha
             merchantController,
           );
         } catch {
-          merchantResults = []; // a blown deadline refuses every product it covered, exactly as before
+          // A blown deadline refuses every product it covered — fail-closed, and the same outcome the loop
+          // would have produced without a source at all.
+          //
+          // KNOWN COST, accepted for now: this discards lookups that had ALREADY SUCCEEDED before the
+          // deadline fired (measured by review: 4 products, 2 answered, all 4 refuse), because the array
+          // `mapWithConcurrency` was filling is not reachable from here. Preserving partial results needs a
+          // limiter that surfaces them on abort; until then the trade is a rare wasted answer in exchange
+          // for never returning a partially-populated map that the loop would read as complete.
+          merchantResults = [];
         }
         needMerchant.forEach((pid, i) => merchantByProduct.set(pid, merchantResults[i] ?? null));
       }
