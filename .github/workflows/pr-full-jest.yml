@@ -1055,6 +1055,7 @@ jobs:
             tests/merchant_variant_source.node.test.cjs \
             tests/sourcing_sentinel_merchant_scope.node.test.cjs \
             tests/catalog_image_cache_stale_host.node.test.cjs \
+            tests/catalog_image_cache_offer_gallery.node.test.cjs \
             tests/aurora_chat_v1_mainline_delegation_cycle.node.test.cjs \
             tests/aurora_bff_v1_chat_rollout.node.test.cjs \
             mcp-server/test/ucpToolVocabulary.test.js \

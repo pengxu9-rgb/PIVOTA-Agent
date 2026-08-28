@@ -186,6 +186,46 @@ test('the external-seed lane re-homes the cache-map fallback branch', () => {
   });
 });
 
+// Search cards are a SEPARATE builder from the home feed, reading row/snapshot/seed columns that
+// are not re-homed anywhere upstream. Without this pin, reverting that one call site passes the
+// whole suite while prod keeps serving the dead host on every search result.
+test('a search card re-homes a stale-host image', () => {
+  withEnv(PROD_ENV, () => {
+    const card = seedLane.buildExternalSeedBrandSearchProduct({
+      external_product_id: 'ext_test',
+      title: 'Test Blush',
+      brand: 'Test Brand',
+      image_url: DEAD,
+      price_amount: 20,
+      price_currency: 'USD',
+      destination_url: 'https://example.test/p',
+      seed_data: {},
+      status: 'active',
+    });
+    assert.ok(card, 'builder must return a card for this row');
+    assert.equal(card.image_url, `https://gateway.pivota.cc/${KEY}`);
+  });
+});
+
+test('a search card leaves a merchant CDN image untouched', () => {
+  withEnv(PROD_ENV, () => {
+    const direct = 'https://cdn.shopify.com/s/files/1/0314/1143/7703/files/CARD.jpg?v=1';
+    const card = seedLane.buildExternalSeedBrandSearchProduct({
+      external_product_id: 'ext_test2',
+      title: 'Test Blush 2',
+      brand: 'Test Brand',
+      image_url: direct,
+      price_amount: 20,
+      price_currency: 'USD',
+      destination_url: 'https://example.test/p2',
+      seed_data: {},
+      status: 'active',
+    });
+    assert.ok(card);
+    assert.equal(card.image_url, direct);
+  });
+});
+
 // The documented rollback lever. Re-homing onto the proxy while it is disabled would silently
 // defeat the one env var that takes traffic off the gateway proxy during an outage.
 test('the disable-runtime-proxy kill switch suppresses re-homing', () => {
