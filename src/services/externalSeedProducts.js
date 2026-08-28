@@ -4745,11 +4745,16 @@ function buildExternalSeedBrandSearchProduct(row) {
     ingredientIds: [],
   });
   const cachedImageUrls = collectCachedSeedImageUrls(effectiveSeedData);
-  const imageUrl = firstNonEmptyString(
-    cachedImageUrls[0],
-    row.image_url,
-    snapshot.image_url,
-    effectiveSeedData.image_url,
+  // Only the cached-contract arm is re-homed upstream; the row/snapshot/seed columns are raw and
+  // one of them wins whenever that contract is absent — which is how a retired host reaches a
+  // search card.
+  const imageUrl = normalizeCatalogImageCacheUrlHost(
+    firstNonEmptyString(
+      cachedImageUrls[0],
+      row.image_url,
+      snapshot.image_url,
+      effectiveSeedData.image_url,
+    ),
   );
   const imageUrls = imageUrl ? [imageUrl] : [];
   const price = normalizeAmount(row.price_amount ?? effectiveSeedData.price_amount ?? snapshot.price_amount);

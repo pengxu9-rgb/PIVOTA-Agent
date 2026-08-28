@@ -133,13 +133,22 @@ function buildCatalogImageCacheVisibleUrl({ key, cachedUrl } = {}) {
 //
 // Rewrites ONLY a value whose path parses as a catalog-image-cache key (two hex chars / 64-hex
 // sha256 / known extension, enforced by normalizeCatalogImageCacheKey). Anything else — a
-// merchant CDN URL, a relative path, junk — is returned byte-identical, so this cannot rewrite
-// an image we do not host.
+// merchant CDN URL, a relative path, junk — is returned byte-identical.
+//
+// The key must also be lower-case to be ours: buildCatalogImageCacheKey lower-cases every key it
+// mints and R2 keys are case-sensitive, so an upper-case variant of our exact path shape is
+// somebody else's URL that would 404 if re-homed. normalizeCatalogImageCacheKey matches
+// case-insensitively, so that last check happens here.
+//
+// Honours CATALOG_IMAGE_CACHE_DISABLE_RUNTIME_PROXY: that flag is the documented lever for taking
+// traffic off the gateway proxy (rotated R2 creds, proxy outage). Re-homing onto the proxy base
+// while it is set would silently defeat the rollback.
 function normalizeCatalogImageCacheUrlHost(value) {
   const raw = String(value || '').trim();
   if (!raw) return raw;
+  if (parseBooleanEnv('CATALOG_IMAGE_CACHE_DISABLE_RUNTIME_PROXY', false)) return raw;
   const key = extractCatalogImageCacheKeyFromUrl(raw);
-  if (!key) return raw;
+  if (!key || key !== key.toLowerCase()) return raw;
   const base = trimTrailingSlashes(getCatalogImageCacheRuntimePublicBaseUrl());
   if (!base) return raw;
   let baseOrigin = '';

@@ -36,6 +36,7 @@ const {
 const {
   getCatalogImageCacheObject,
   normalizeCatalogImageCacheKey,
+  normalizeCatalogImageCacheUrlHost,
 } = require('./services/catalogImageCacheStorage');
 const {
   isPdpIdentityReconcileEnabled,
@@ -9716,7 +9717,10 @@ function isTomFordOfficialShopifyFileUrl(url) {
 }
 
 function preferReliableOfferImageUrls(urls) {
-  const deduped = dedupePdpImageUrls(urls);
+  // This function HOISTS cache URLs ahead of working merchant CDN URLs, so a cache row stored
+  // under a retired host would be promoted into the hero slot of the offer/PDP gallery. Re-home
+  // before partitioning, so what gets promoted is a URL that actually serves.
+  const deduped = dedupePdpImageUrls(urls).map((url) => normalizeCatalogImageCacheUrlHost(url));
   const cached = deduped.filter(isCatalogImageCacheUrl);
   if (!cached.length) return deduped;
 

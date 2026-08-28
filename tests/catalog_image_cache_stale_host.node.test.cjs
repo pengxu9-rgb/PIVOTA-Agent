@@ -34,11 +34,16 @@ function withEnv(vars, run) {
   }
 }
 
-// Prod's shape: an explicit proxy base is configured.
+// Prod's ACTUAL shape, read off the serving Cloud Run revision. CATALOG_IMAGE_CACHE_PUBLIC_BASE_URL
+// matters and must not be omitted: it ends in .r2.dev, which makes shouldUseCatalogImageCacheRuntimeProxy
+// return true, which changes what buildCatalogImageCacheVisibleUrl does. A fixture missing it can
+// make a composed call site look load-bearing when in prod it is already a no-op.
 const PROD_ENV = {
   CATALOG_IMAGE_CACHE_PROXY_PUBLIC_BASE_URL: 'https://gateway.pivota.cc',
   CATALOG_IMAGE_CACHE_RUNTIME_PUBLIC_BASE_URL: undefined,
   PIVOTA_AGENT_PUBLIC_BASE_URL: undefined,
+  CATALOG_IMAGE_CACHE_PUBLIC_BASE_URL: 'https://pub-bf93709fb9444fcf803a6606a48e2682.r2.dev',
+  CATALOG_IMAGE_CACHE_DISABLE_RUNTIME_PROXY: undefined,
 };
 
 test('re-homes a stale-host catalog image URL onto the configured base', () => {
@@ -161,6 +166,50 @@ test('the external-seed lane re-homes a stale-host image (home feed + search car
       seedLane.rewriteSeedImageUrlThroughCache(DEAD, new Map(), ''),
       `https://gateway.pivota.cc/${KEY}`,
     );
+  });
+});
+
+// The cache-map-HIT branch: a non-empty map, a cache-URL fallback and a non-cache candidate. This
+// is the branch normalizeVariantVisualFields actually drives, and an earlier cut of this suite
+// only ever passed an empty Map, so reverting that return survived silently.
+test('the external-seed lane re-homes the cache-map fallback branch', () => {
+  withEnv(PROD_ENV, () => {
+    const map = new Map([['https://example.test/original.jpg', DEAD]]);
+    assert.equal(
+      seedLane.rewriteSeedImageUrlThroughCache(
+        'https://cdn.shopify.com/s/files/direct.jpg',
+        map,
+        DEAD,
+      ),
+      `https://gateway.pivota.cc/${KEY}`,
+    );
+  });
+});
+
+// The documented rollback lever. Re-homing onto the proxy while it is disabled would silently
+// defeat the one env var that takes traffic off the gateway proxy during an outage.
+test('the disable-runtime-proxy kill switch suppresses re-homing', () => {
+  withEnv({ ...PROD_ENV, CATALOG_IMAGE_CACHE_DISABLE_RUNTIME_PROXY: 'true' }, () => {
+    assert.equal(normalizeCatalogImageCacheUrlHost(DEAD), DEAD);
+    assert.equal(seedLane.rewriteSeedImageUrlThroughCache(DEAD, new Map(), ''), DEAD);
+  });
+});
+
+// R2 keys are case-sensitive and we only ever mint lower-case, so an upper-case variant of our
+// path shape belongs to somebody else and must not be re-homed onto our origin.
+test('an upper-case key variant is not ours and is left alone', () => {
+  withEnv(PROD_ENV, () => {
+    const upper = `https://other.example/catalog-image-cache/24/${'24393A70120C64DD946AF8971252D97C796050A390B7EF5CB67CCFB29626EB4E'}.WEBP`;
+    assert.equal(normalizeCatalogImageCacheUrlHost(upper), upper);
+  });
+});
+
+// Makes the origin short-circuit non-vacuous: without it, a same-origin URL would be re-minted
+// from the key and silently lose its query string.
+test('a query string on an already-correct URL survives', () => {
+  withEnv(PROD_ENV, () => {
+    const withQuery = `https://gateway.pivota.cc/${KEY}?w=200`;
+    assert.equal(normalizeCatalogImageCacheUrlHost(withQuery), withQuery);
   });
 });
 
