@@ -33,6 +33,7 @@ const {
 } = require('./externalSeedLocalityFacts');
 const {
   buildCatalogImageCacheVisibleUrl,
+  normalizeCatalogImageCacheUrlHost,
 } = require('./catalogImageCacheStorage');
 const {
   resolveBeautyCategoryPathPrefixFromText,
@@ -1421,7 +1422,11 @@ function appendImageUrls(out, value) {
 function normalizeCatalogImageCacheVisibleUrl(value) {
   const normalized = normalizePdpImageUrl(value);
   if (!normalized) return '';
-  return buildCatalogImageCacheVisibleUrl({ cachedUrl: normalized }) || normalized;
+  // buildCatalogImageCacheVisibleUrl hands a stored URL back verbatim on its non-proxy branch, so
+  // a row cached under a retired host survives it. Re-home on the way out.
+  return normalizeCatalogImageCacheUrlHost(
+    buildCatalogImageCacheVisibleUrl({ cachedUrl: normalized }) || normalized,
+  );
 }
 
 function normalizeCatalogImageCacheVisibleUrls(values) {
@@ -2925,9 +2930,11 @@ function rewriteSeedImageUrlThroughCache(url, cacheUrlMap, fallbackImageUrl = ''
     isCatalogImageCacheUrl(fallback) &&
     !isCatalogImageCacheUrl(candidate)
   ) {
-    return fallback;
+    return normalizeCatalogImageCacheUrlHost(fallback);
   }
-  return candidate;
+  // A cache-map miss falls back to the RAW stored value, which is how rows cached under a retired
+  // host reach the home feed and search cards. Re-home whichever candidate wins.
+  return normalizeCatalogImageCacheUrlHost(candidate);
 }
 
 function normalizeVariantVisualFields(rawVariant, fallbackImageUrl, cacheUrlMap) {
@@ -4738,11 +4745,16 @@ function buildExternalSeedBrandSearchProduct(row) {
     ingredientIds: [],
   });
   const cachedImageUrls = collectCachedSeedImageUrls(effectiveSeedData);
-  const imageUrl = firstNonEmptyString(
-    cachedImageUrls[0],
-    row.image_url,
-    snapshot.image_url,
-    effectiveSeedData.image_url,
+  // Only the cached-contract arm is re-homed upstream; the row/snapshot/seed columns are raw and
+  // one of them wins whenever that contract is absent — which is how a retired host reaches a
+  // search card.
+  const imageUrl = normalizeCatalogImageCacheUrlHost(
+    firstNonEmptyString(
+      cachedImageUrls[0],
+      row.image_url,
+      snapshot.image_url,
+      effectiveSeedData.image_url,
+    ),
   );
   const imageUrls = imageUrl ? [imageUrl] : [];
   const price = normalizeAmount(row.price_amount ?? effectiveSeedData.price_amount ?? snapshot.price_amount);
@@ -4854,6 +4866,10 @@ module.exports = {
   collectSeedImageUrls,
   collectCachedSeedImageUrls,
   normalizeSeedImageUrls,
+  // Exposed so the stale-cache-host re-homing can be pinned on the lane that actually serves the
+  // home feed and search cards, rather than only on the shared helper it calls.
+  normalizeCatalogImageCacheVisibleUrl,
+  rewriteSeedImageUrlThroughCache,
   normalizeSeedVariants,
   normalizeExternalSeedPrice,
   sanitizeSeedVariantDisplayFields,

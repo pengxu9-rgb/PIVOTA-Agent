@@ -36,6 +36,7 @@ const {
 const {
   getCatalogImageCacheObject,
   normalizeCatalogImageCacheKey,
+  normalizeCatalogImageCacheUrlHost,
 } = require('./services/catalogImageCacheStorage');
 const {
   isPdpIdentityReconcileEnabled,
@@ -9716,7 +9717,10 @@ function isTomFordOfficialShopifyFileUrl(url) {
 }
 
 function preferReliableOfferImageUrls(urls) {
-  const deduped = dedupePdpImageUrls(urls);
+  // This function HOISTS cache URLs ahead of working merchant CDN URLs, so a cache row stored
+  // under a retired host would be promoted into the hero slot of the offer/PDP gallery. Re-home
+  // before partitioning, so what gets promoted is a URL that actually serves.
+  const deduped = dedupePdpImageUrls(urls).map((url) => normalizeCatalogImageCacheUrlHost(url));
   const cached = deduped.filter(isCatalogImageCacheUrl);
   if (!cached.length) return deduped;
 
@@ -52918,6 +52922,11 @@ async function runPdpCorePrewarmPass() {
 
 module.exports = app;
 module.exports._debug = {
+  // Exported so the ORDERING property can be asserted: this function hoists catalog-image-cache
+  // URLs ahead of working merchant CDN URLs, so a row stored under a retired host lands in the
+  // hero slot. Over the wire a re-homed hero and a dead one are both just a gallery array; only
+  // the returned order and origin separate them.
+  preferReliableOfferImageUrls,
   // Availability/security property of the invoke-auth verdict cache: positive verdicts may be
   // replayed during an introspection outage for at most the stale-if-error window measured from the
   // introspection that minted them; negative verdicts are clamped to seconds and are NEVER
