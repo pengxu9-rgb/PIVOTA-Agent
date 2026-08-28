@@ -144,6 +144,34 @@ test('the recommendation lane re-homes a stale-host image (delivery path)', () =
   });
 });
 
+// The external-seed lane is what actually serves the home feed ("Today's Picks") and the search
+// cards — measured 2026-08-28: 3 of 5 home images were dead Railway URLs. Its cache-map lookup
+// falls back to the RAW stored value on a miss, which is how a retired host reaches the first
+// screen, so the re-homing has to be pinned here too and not only on the recommendation lane.
+const seedLane = require('../src/services/externalSeedProducts');
+
+test('the external-seed lane re-homes a stale-host image (home feed + search cards)', () => {
+  withEnv(PROD_ENV, () => {
+    assert.equal(
+      seedLane.normalizeCatalogImageCacheVisibleUrl(DEAD),
+      `https://gateway.pivota.cc/${KEY}`,
+    );
+    // Cache-map MISS: an empty map is the path that previously returned the raw stored URL.
+    assert.equal(
+      seedLane.rewriteSeedImageUrlThroughCache(DEAD, new Map(), ''),
+      `https://gateway.pivota.cc/${KEY}`,
+    );
+  });
+});
+
+test('the external-seed lane leaves merchant CDN images untouched', () => {
+  withEnv(PROD_ENV, () => {
+    const merchant = 'https://cdn.shopify.com/s/files/1/0314/1143/7703/files/BOX.jpg?v=1762289029';
+    assert.equal(seedLane.normalizeCatalogImageCacheVisibleUrl(merchant), merchant);
+    assert.equal(seedLane.rewriteSeedImageUrlThroughCache(merchant, new Map(), ''), merchant);
+  });
+});
+
 test('the recommendation lane leaves merchant CDN images untouched', () => {
   withEnv(PROD_ENV, () => {
     const merchant = 'https://cdn.shopify.com/s/files/1/0314/1143/7703/files/BLUSH.jpg?v=1';
