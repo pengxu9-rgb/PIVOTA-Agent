@@ -6475,6 +6475,7 @@ module.exports = {
     normalizeText,
     tokenize,
     jaccard,
+    firstImageUrl,
     getBrandName,
     getLeafCategory,
     getParentCategory,

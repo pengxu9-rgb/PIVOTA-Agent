@@ -112,21 +112,43 @@ test('trailing slashes on the base do not produce a doubled slash', () => {
   });
 });
 
-// The delivering path: the recommendation lane resolves EVERY image through firstImageUrl, so the
-// re-homing must be observable there and not only in the helper. Loading the engine pulls in the
-// db module, so this asserts through the module's own export surface rather than a re-implementation.
-test('the recommendation lane exposes re-homed image urls', async () => {
-  await withEnv(PROD_ENV, async () => {
-    const enginePath = require.resolve('../src/services/RecommendationEngine');
-    delete require.cache[enginePath];
-    let engine;
-    try {
-      engine = require('../src/services/RecommendationEngine');
-    } catch (err) {
-      // The engine requires a db client; if it cannot load in this harness the helper tests above
-      // still pin the behaviour. Fail loudly rather than passing vacuously.
-      assert.fail(`RecommendationEngine failed to load: ${err && err.message}`);
-    }
-    assert.ok(engine, 'engine module must load');
+// THE DELIVERING PATH. The helper being correct proves nothing if the recommendation lane never
+// calls it — reverting the call site is the single edit that makes this whole change a no-op, so
+// it has to be what fails here. firstImageUrl is the one helper every recommendation image
+// resolves through, exercised via the module's own `_internals` test seam rather than a
+// re-implementation of it.
+const { _internals } = require('../src/services/RecommendationEngine');
+
+test('the recommendation lane re-homes a stale-host image (delivery path)', () => {
+  withEnv(PROD_ENV, () => {
+    assert.equal(
+      typeof _internals.firstImageUrl,
+      'function',
+      'firstImageUrl must stay exposed for this pin',
+    );
+    // As a bare string, the shape stored in row.image_url.
+    assert.equal(
+      _internals.firstImageUrl(DEAD),
+      `https://gateway.pivota.cc/${KEY}`,
+    );
+    // And through the object branch (snapshot/seed objects carry {url|image_url|src}).
+    assert.equal(
+      _internals.firstImageUrl(null, '', { image_url: DEAD }),
+      `https://gateway.pivota.cc/${KEY}`,
+    );
+    // Fallback order is preserved: the first non-empty value still wins, re-homed.
+    assert.equal(
+      _internals.firstImageUrl(undefined, DEAD, 'https://cdn.shopify.com/s/files/other.jpg'),
+      `https://gateway.pivota.cc/${KEY}`,
+    );
+  });
+});
+
+test('the recommendation lane leaves merchant CDN images untouched', () => {
+  withEnv(PROD_ENV, () => {
+    const merchant = 'https://cdn.shopify.com/s/files/1/0314/1143/7703/files/BLUSH.jpg?v=1';
+    assert.equal(_internals.firstImageUrl(merchant), merchant);
+    assert.equal(_internals.firstImageUrl({ url: merchant }), merchant);
+    assert.equal(_internals.firstImageUrl(), '');
   });
 });
