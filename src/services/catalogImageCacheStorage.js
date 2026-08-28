@@ -123,6 +123,40 @@ function buildCatalogImageCacheVisibleUrl({ key, cachedUrl } = {}) {
   return publicBase ? `${publicBase}/${normalizedKey}` : '';
 }
 
+// Re-home an ALREADY-STORED catalog image URL onto the current runtime base.
+//
+// buildCatalogImageCacheVisibleUrl only governs URLs we mint now. Rows written before a host
+// migration keep whatever base was current when they were cached — prod still serves
+// recommendation rows pointing at the decommissioned Railway host, which 404s, while the very
+// same object answers 200 at the configured base. The bytes never moved: the key is a content
+// digest, so the path is stable across hosts and only the origin is wrong.
+//
+// Rewrites ONLY a value whose path parses as a catalog-image-cache key (two hex chars / 64-hex
+// sha256 / known extension, enforced by normalizeCatalogImageCacheKey). Anything else — a
+// merchant CDN URL, a relative path, junk — is returned byte-identical, so this cannot rewrite
+// an image we do not host.
+function normalizeCatalogImageCacheUrlHost(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return raw;
+  const key = extractCatalogImageCacheKeyFromUrl(raw);
+  if (!key) return raw;
+  const base = trimTrailingSlashes(getCatalogImageCacheRuntimePublicBaseUrl());
+  if (!base) return raw;
+  let baseOrigin = '';
+  try {
+    baseOrigin = new URL(base).origin;
+  } catch {
+    // A malformed configured base must not mangle a URL that is currently serving.
+    return raw;
+  }
+  try {
+    if (new URL(raw).origin === baseOrigin) return raw;
+  } catch {
+    // Not absolute (a bare key or path): fall through and mint it against the base.
+  }
+  return `${base}/${key}`;
+}
+
 let cachedClient = null;
 
 function getClient() {
@@ -190,6 +224,7 @@ module.exports = {
   getCatalogImageCacheObject,
   hasCatalogImageCacheConfig,
   normalizeCatalogImageCacheKey,
+  normalizeCatalogImageCacheUrlHost,
   putCatalogImageCacheObject,
   sha256Buffer,
 };

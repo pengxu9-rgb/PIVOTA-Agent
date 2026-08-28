@@ -6,6 +6,7 @@ const query = db.query;
 const queryWithStatementTimeout =
   typeof db.queryWithStatementTimeout === 'function' ? db.queryWithStatementTimeout : db.query;
 const { recordPdpRecsTimeout } = require('../observability/pdpMetrics');
+const { normalizeCatalogImageCacheUrlHost } = require('./catalogImageCacheStorage');
 const {
   inferVerticalFromProduct,
   computeSemanticSignalStrength,
@@ -2057,12 +2058,15 @@ function firstNonEmptyText(...values) {
   return '';
 }
 
+// Every recommendation image URL is resolved through here, from columns and snapshots written at
+// cache time. Rows cached before a host migration still name the old origin, so re-home the ones
+// we host onto the current base on the way out — a no-op for merchant CDN URLs.
 function firstImageUrl(...values) {
   for (const value of values) {
-    if (typeof value === 'string' && value.trim()) return value.trim();
+    if (typeof value === 'string' && value.trim()) return normalizeCatalogImageCacheUrlHost(value.trim());
     if (value && typeof value === 'object') {
       const text = firstNonEmptyText(value.url, value.image_url, value.src);
-      if (text) return text;
+      if (text) return normalizeCatalogImageCacheUrlHost(text);
     }
   }
   return '';
