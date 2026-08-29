@@ -40711,16 +40711,21 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     }
     finalBody = maybeAttachInvokeBeautyExpertProjection(finalBody);
     finalBody = appendCitableSupplementItems(finalBody, citableSupplementItems);
-    // Every search card must have a canonical, currency-qualified price (or
-    // a priced seller offer that has been materialized as that card price).
-    // Run after supplements because that is where citation cards enter the
-    // response, and before pagination so an invalid card cannot consume a slot.
-    finalBody = enforceFindProductsMultiPriceContract(finalBody);
-    // Some storefronts are mirrored into the demo catalog under a second
-    // merchant. `dedupe_group_id` is the catalog's stable cross-merchant
-    // identity for that case, so retain the first ranked card rather than
-    // showing the same product twice.
-    finalBody = dedupeFindProductsMultiProductGroups(finalBody);
+    const finalOperation = String(debugRuntime.operation || req?.body?.operation || '')
+      .trim()
+      .toLowerCase();
+    if (finalOperation === 'find_products_multi') {
+      // Every search card must have a canonical, currency-qualified price (or
+      // a priced seller offer that has been materialized as that card price).
+      // Run after supplements because that is where citation cards enter the
+      // response, and before pagination so an invalid card cannot consume a slot.
+      finalBody = enforceFindProductsMultiPriceContract(finalBody);
+      // Some storefronts are mirrored into the demo catalog under a second
+      // merchant. `dedupe_group_id` is the catalog's stable cross-merchant
+      // identity for that case, so retain the first ranked card rather than
+      // showing the same product twice.
+      finalBody = dedupeFindProductsMultiProductGroups(finalBody);
+    }
     // Final near-dup collapse (+ ingredient-direct reorder) on the fully merged
     // list, so citable-supplement items can't re-introduce near-identical titles
     // the lane already collapsed. See refineBeautyFindProductsMultiResponseBody.
