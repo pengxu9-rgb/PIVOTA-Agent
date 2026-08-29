@@ -17,6 +17,7 @@ function loadDebug() {
 describe('find_products_multi canonical price contract', () => {
   const {
     finalizeCitableSupplementItem,
+    isShoppingAgentFindProductsMultiRequest,
     enforceFindProductsMultiPriceContract,
     dedupeFindProductsMultiProductGroups,
   } = loadDebug();
@@ -80,5 +81,26 @@ describe('find_products_multi canonical price contract', () => {
       dedupe_group_id_applied: true,
       dropped_duplicate_groups: 1,
     });
+  });
+
+  test('applies the price contract to Shopping Agent searches without changing other invoke surfaces', () => {
+    expect(
+      isShoppingAgentFindProductsMultiRequest(
+        { body: { metadata: { source: 'shopping_agent' } } },
+        'find_products_multi',
+      ),
+    ).toBe(true);
+    expect(
+      isShoppingAgentFindProductsMultiRequest(
+        { body: { metadata: { source: 'creator_agent' } } },
+        'find_products_multi',
+      ),
+    ).toBe(false);
+    expect(
+      isShoppingAgentFindProductsMultiRequest(
+        { body: { metadata: { source: 'shopping_agent' } } },
+        'get_discovery_feed',
+      ),
+    ).toBe(false);
   });
 });

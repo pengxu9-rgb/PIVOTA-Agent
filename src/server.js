@@ -12145,6 +12145,16 @@ function materializeCanonicalSearchProductPrice(product) {
   };
 }
 
+function isShoppingAgentFindProductsMultiRequest(req, operation) {
+  if (String(operation || '').trim().toLowerCase() !== 'find_products_multi') return false;
+  const metadata = req?.body?.metadata;
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return false;
+  const source = String(metadata.source || metadata.client_source || '')
+    .trim()
+    .toLowerCase();
+  return source === 'shopping_agent' || source === 'shopping-agent';
+}
+
 function enforceFindProductsMultiPriceContract(responseBody) {
   if (!responseBody || typeof responseBody !== 'object' || Array.isArray(responseBody)) return responseBody;
   const container = Array.isArray(responseBody.products)
@@ -40714,7 +40724,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     const finalOperation = String(debugRuntime.operation || req?.body?.operation || '')
       .trim()
       .toLowerCase();
-    if (finalOperation === 'find_products_multi') {
+    if (isShoppingAgentFindProductsMultiRequest(req, finalOperation)) {
       // Every search card must have a canonical, currency-qualified price (or
       // a priced seller offer that has been materialized as that card price).
       // Run after supplements because that is where citation cards enter the
@@ -53304,6 +53314,7 @@ module.exports._debug = {
   readCanonicalSearchPricePair,
   resolveCanonicalSearchProductPrice,
   materializeCanonicalSearchProductPrice,
+  isShoppingAgentFindProductsMultiRequest,
   enforceFindProductsMultiPriceContract,
   dedupeFindProductsMultiProductGroups,
   buildTravelLookupSearchProductDedupeKey,
