@@ -12061,8 +12061,7 @@ function citableSupplementCacheTtlMs() {
 }
 
 // Finalize one built product into a citation item (ADR-007). Marks it
-// non-buyable and strips fields that don't belong on an offer-free citation:
-//   - price (no offer),
+// non-buyable and strips fields that don't belong on a citation:
 //   - the raw seed_data / external_seed jsonb blobs that
 //     buildCanonicalChainMainlineProduct echoes onto every item. On a citation
 //     these are pure response bloat — measured on prod as present on ~65% of
@@ -12070,19 +12069,160 @@ function citableSupplementCacheTtlMs() {
 //     builder extracts from those blobs (ingredient_intel, active_ingredients,
 //     ingredients_inci, pdp_ingredients_raw, fashion_meta, identity) are separate
 //     top-level keys and are intentionally KEPT.
+// A citation may be referral-only, but it still needs a source-backed price to
+// be shown in a shopping result. The public search contract never permits a
+// card with an absent price or a fabricated currency. We therefore materialize
+// a positive amount/currency pair before removing the source payload below.
 // Scoped to the citation lane only; other lanes keep the full item shape.
+function readCanonicalSearchPricePair(value, fallbackCurrency = '') {
+  if (value === null || value === undefined) return null;
+  if (typeof value === 'number' || typeof value === 'string') {
+    const amount = Number(value);
+    const currency = String(fallbackCurrency || '').trim().toUpperCase();
+    return Number.isFinite(amount) && amount > 0 && currency ? { amount, currency } : null;
+  }
+  if (!isPlainObject(value)) return null;
+
+  const localCurrency = firstNonEmptyString(
+    value.currency,
+    value.currency_code,
+    value.price_currency,
+    value.priceCurrency,
+    fallbackCurrency,
+  );
+  for (const field of ['amount', 'value', 'price_amount', 'priceAmount', 'current_price', 'currentPrice', 'sale_price', 'salePrice', 'min_price', 'minPrice']) {
+    const amount = Number(value[field]);
+    if (Number.isFinite(amount) && amount > 0 && localCurrency) {
+      return { amount, currency: String(localCurrency).trim().toUpperCase() };
+    }
+  }
+  for (const field of ['price', 'pricing', 'current', 'sale', 'min', 'offer_price', 'offerPrice']) {
+    const pair = readCanonicalSearchPricePair(value[field], localCurrency);
+    if (pair) return pair;
+  }
+  return null;
+}
+
+function resolveCanonicalSearchProductPrice(product) {
+  if (!isPlainObject(product)) return null;
+  const productCurrency = firstNonEmptyString(
+    product.currency,
+    product.currency_code,
+    product.price_currency,
+    product.priceCurrency,
+  );
+  const direct = readCanonicalSearchPricePair(product, productCurrency);
+  if (direct) return direct;
+
+  for (const collection of [product.offers, product.variants]) {
+    if (!Array.isArray(collection)) continue;
+    for (const entry of collection) {
+      const pair = readCanonicalSearchPricePair(entry, productCurrency);
+      if (pair) return pair;
+    }
+  }
+
+  // Citation rows retain their exact source snapshot until finalization. Each
+  // object is evaluated independently, so an amount can never borrow a
+  // currency from a different source.
+  for (const source of [product.seed_data, product.external_seed]) {
+    if (!isPlainObject(source)) continue;
+    const directSourcePair = readCanonicalSearchPricePair(source);
+    if (directSourcePair) return directSourcePair;
+    const snapshotPair = readCanonicalSearchPricePair(source.snapshot);
+    if (snapshotPair) return snapshotPair;
+  }
+  return null;
+}
+
+function materializeCanonicalSearchProductPrice(product) {
+  const price = resolveCanonicalSearchProductPrice(product);
+  if (!price) return null;
+  return {
+    ...product,
+    price: price.amount,
+    currency: price.currency,
+  };
+}
+
+function enforceFindProductsMultiPriceContract(responseBody) {
+  if (!responseBody || typeof responseBody !== 'object' || Array.isArray(responseBody)) return responseBody;
+  const container = Array.isArray(responseBody.products)
+    ? responseBody
+    : responseBody.data && Array.isArray(responseBody.data.products)
+      ? responseBody.data
+      : null;
+  if (!container) return responseBody;
+
+  const input = container.products;
+  const priced = input.map(materializeCanonicalSearchProductPrice).filter(Boolean);
+  const dropped = input.length - priced.length;
+  container.products = priced;
+  if (Array.isArray(responseBody.products)) responseBody.products = priced;
+  const metadata =
+    responseBody.metadata && typeof responseBody.metadata === 'object' && !Array.isArray(responseBody.metadata)
+      ? responseBody.metadata
+      : {};
+  metadata.price_contract = {
+    canonical_price_or_offer_required: true,
+    dropped_unpriced: dropped,
+  };
+  responseBody.metadata = metadata;
+  responseBody.page_size = priced.length;
+  if (Number.isFinite(Number(responseBody.total))) {
+    responseBody.total = Math.max(priced.length, Number(responseBody.total) - dropped);
+  } else {
+    responseBody.total = priced.length;
+  }
+  return responseBody;
+}
+
+function dedupeFindProductsMultiProductGroups(responseBody) {
+  if (!responseBody || typeof responseBody !== 'object' || Array.isArray(responseBody)) return responseBody;
+  const container = Array.isArray(responseBody.products)
+    ? responseBody
+    : responseBody.data && Array.isArray(responseBody.data.products)
+      ? responseBody.data
+      : null;
+  if (!container) return responseBody;
+
+  const seenGroups = new Set();
+  const products = [];
+  let dropped = 0;
+  for (const product of container.products) {
+    const groupId = firstNonEmptyString(product?.dedupe_group_id, product?.dedupeGroupId);
+    if (groupId && seenGroups.has(groupId)) {
+      dropped += 1;
+      continue;
+    }
+    if (groupId) seenGroups.add(groupId);
+    products.push(product);
+  }
+  container.products = products;
+  if (Array.isArray(responseBody.products)) responseBody.products = products;
+  if (!dropped) return responseBody;
+  responseBody.page_size = products.length;
+  if (Number.isFinite(Number(responseBody.total))) {
+    responseBody.total = Math.max(products.length, Number(responseBody.total) - dropped);
+  }
+  const metadata =
+    responseBody.metadata && typeof responseBody.metadata === 'object' && !Array.isArray(responseBody.metadata)
+      ? responseBody.metadata
+      : {};
+  metadata.search_dedupe = { dedupe_group_id_applied: true, dropped_duplicate_groups: dropped };
+  responseBody.metadata = metadata;
+  return responseBody;
+}
+
 function finalizeCitableSupplementItem(item) {
   if (!item || typeof item !== 'object' || Array.isArray(item)) return null;
+  const pricedItem = materializeCanonicalSearchProductPrice(item);
+  if (!pricedItem) return null;
+  item = pricedItem;
   item.buyable = false;
   item.in_stock = false;
-  delete item.price;
-  delete item.currency;
-  // A citation is offer-free BY DEFINITION (ADR-007: trust+quality+identity
-  // without an offer), so "the offer row carried no price" is the expected
-  // state here, not a defect worth reporting. Left in place it would stamp the
-  // reason code on every citation and swamp no_offer_derived_price_count —
-  // the counter exists to size the SERVING residue, and citations are not in
-  // it. Dropped for the same reason `price` is.
+  // The price/currency above are a verified pair. The previous reason code
+  // would be stale after that materialization and must not leak to clients.
   delete item.price_absent_reason;
   delete item.seed_data;
   delete item.external_seed;
@@ -40571,6 +40711,16 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     }
     finalBody = maybeAttachInvokeBeautyExpertProjection(finalBody);
     finalBody = appendCitableSupplementItems(finalBody, citableSupplementItems);
+    // Every search card must have a canonical, currency-qualified price (or
+    // a priced seller offer that has been materialized as that card price).
+    // Run after supplements because that is where citation cards enter the
+    // response, and before pagination so an invalid card cannot consume a slot.
+    finalBody = enforceFindProductsMultiPriceContract(finalBody);
+    // Some storefronts are mirrored into the demo catalog under a second
+    // merchant. `dedupe_group_id` is the catalog's stable cross-merchant
+    // identity for that case, so retain the first ranked card rather than
+    // showing the same product twice.
+    finalBody = dedupeFindProductsMultiProductGroups(finalBody);
     // Final near-dup collapse (+ ingredient-direct reorder) on the fully merged
     // list, so citable-supplement items can't re-introduce near-identical titles
     // the lane already collapsed. See refineBeautyFindProductsMultiResponseBody.
@@ -53146,6 +53296,11 @@ module.exports._debug = {
   collapseNearDuplicateSearchProducts,
   enforceFindProductsMultiRequestedPageSize,
   appendCitableSupplementItems,
+  readCanonicalSearchPricePair,
+  resolveCanonicalSearchProductPrice,
+  materializeCanonicalSearchProductPrice,
+  enforceFindProductsMultiPriceContract,
+  dedupeFindProductsMultiProductGroups,
   buildTravelLookupSearchProductDedupeKey,
   normalizeSearchAvailabilityState,
   postProcessTravelLookupProductsResponse,
