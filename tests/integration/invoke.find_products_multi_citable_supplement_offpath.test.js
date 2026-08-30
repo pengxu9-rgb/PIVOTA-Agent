@@ -40,7 +40,11 @@ function citableRow() {
     brand: 'CitBrand',
     content_key: 'ck_cit_1',
     pivota_signature_id: 'sig_cit_1',
-    product_payload: {},
+    product_payload: {
+      seed_data: {
+        snapshot: { price_amount: 26, price_currency: 'USD' },
+      },
+    },
   };
 }
 
@@ -57,6 +61,8 @@ function mockUpstreamSearch() {
           merchant_id: 'merch_1',
           title: 'Hydrating Face Cream',
           description: 'Fresh upstream result',
+          price: 31,
+          currency: 'USD',
         },
       ],
       total: 1,
