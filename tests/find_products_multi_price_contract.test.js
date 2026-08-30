@@ -19,6 +19,7 @@ describe('find_products_multi canonical price contract', () => {
     finalizeCitableSupplementItem,
     isShoppingAgentFindProductsMultiRequest,
     enforceFindProductsMultiPriceContract,
+    enforceFindProductsMultiAvailabilityContract,
     dedupeFindProductsMultiProductGroups,
   } = loadDebug();
 
@@ -45,6 +46,52 @@ describe('find_products_multi canonical price contract', () => {
         seed_data: { snapshot: { price_amount: '12.50' } },
       }),
     ).toBeNull();
+  });
+
+  test('drops products that the PDP has already declared unavailable while retaining unknown inventory', () => {
+    const response = {
+      products: [
+        { product_id: 'servable', price: 20, currency: 'USD', in_stock: true },
+        {
+          product_id: 'no-us-offer',
+          price: 20,
+          currency: 'USD',
+          serving_eligible: false,
+          blocker_code: 'no_us_offer',
+        },
+        { product_id: 'out-of-stock', price: 20, currency: 'USD', in_stock: false },
+        { product_id: 'unknown-stock', price: 20, currency: 'USD' },
+        {
+          product_id: 'citation',
+          price: 20,
+          currency: 'USD',
+          in_stock: false,
+          catalog_track: 'citation',
+          source: 'canonical_citation',
+        },
+        {
+          product_id: 'retired-source',
+          price: 20,
+          currency: 'USD',
+          seed_data: { snapshot: { source_unavailable_v1: { status: 'source_unavailable' } } },
+        },
+      ],
+      total: 5,
+      metadata: {},
+    };
+
+    enforceFindProductsMultiAvailabilityContract(response);
+
+    expect(response.products.map((product) => product.product_id)).toEqual([
+      'servable',
+      'unknown-stock',
+      'citation',
+    ]);
+    expect(response.total).toBe(3);
+    expect(response.metadata.availability_contract).toEqual({
+      known_unavailable_excluded: true,
+      dropped_known_unavailable: 3,
+    });
   });
 
   test('materializes a seller offer, rejects an unpriced card, and collapses mirrored product groups', () => {
