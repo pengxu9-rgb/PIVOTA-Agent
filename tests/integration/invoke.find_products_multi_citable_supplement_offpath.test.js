@@ -182,11 +182,15 @@ describe('/agent/shop/v1/invoke find_products_multi citable supplement off-path'
     expect(second.status).toBe(200);
     // Cache hit: no second index_eligible round-trip.
     expect(supplementCalls).toBe(1);
-    const citation = second.body.products.find((p) => p.source === 'canonical_citation');
-    expect(citation).toBeDefined();
-    expect(citation.buyable).toBe(false);
-    expect(citation.catalog_track).toBe('citation');
+    // Citations remain available to the evidence layer, but must not be
+    // returned as Shopping Agent recommendation cards: they cannot be added
+    // to bag and can be stale relative to the current PDP offer.
+    expect(second.body.products.find((p) => p.source === 'canonical_citation')).toBeUndefined();
     expect(second.body.metadata.citable_supplement_count).toBe(1);
+    expect(second.body.metadata.availability_contract).toMatchObject({
+      known_unavailable_excluded: true,
+      dropped_known_unavailable: 1,
+    });
     expect(second.body.metadata.citable_supplement_pending).toBeUndefined();
   });
 });

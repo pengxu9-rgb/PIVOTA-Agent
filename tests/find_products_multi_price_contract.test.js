@@ -48,7 +48,7 @@ describe('find_products_multi canonical price contract', () => {
     ).toBeNull();
   });
 
-  test('drops products that the PDP has already declared unavailable while retaining unknown inventory', () => {
+  test('drops products that the PDP has already declared unavailable, citations, while retaining unknown inventory', () => {
     const response = {
       products: [
         { product_id: 'servable', price: 20, currency: 'USD', in_stock: true },
@@ -85,12 +85,11 @@ describe('find_products_multi canonical price contract', () => {
     expect(response.products.map((product) => product.product_id)).toEqual([
       'servable',
       'unknown-stock',
-      'citation',
     ]);
-    expect(response.total).toBe(3);
+    expect(response.total).toBe(2);
     expect(response.metadata.availability_contract).toEqual({
       known_unavailable_excluded: true,
-      dropped_known_unavailable: 3,
+      dropped_known_unavailable: 4,
     });
   });
 
@@ -126,6 +125,41 @@ describe('find_products_multi canonical price contract', () => {
     });
     expect(response.metadata.search_dedupe).toEqual({
       dedupe_group_id_applied: true,
+      dropped_duplicate_groups: 1,
+    });
+  });
+
+  test('collapses legacy catalog mirrors when their group id has not been backfilled', () => {
+    const response = {
+      products: [
+        {
+          product_id: 'knight-unicorn-a',
+          merchant_id: 'merchant-a',
+          source: 'catalog_cache',
+          title: 'Knight Unicorn Satin Blush',
+          price: 23,
+          currency: 'USD',
+        },
+        {
+          product_id: 'knight-unicorn-b',
+          merchant_id: 'merchant-b',
+          source: 'catalog_cache',
+          title: 'Knight Unicorn Satin Blush',
+          price: '23.00',
+          currency: 'USD',
+        },
+      ],
+      total: 2,
+      metadata: {},
+    };
+
+    dedupeFindProductsMultiProductGroups(response);
+
+    expect(response.products.map((product) => product.product_id)).toEqual(['knight-unicorn-a']);
+    expect(response.total).toBe(1);
+    expect(response.metadata.search_dedupe).toEqual({
+      dedupe_group_id_applied: true,
+      catalog_mirror_title_price_applied: true,
       dropped_duplicate_groups: 1,
     });
   });
