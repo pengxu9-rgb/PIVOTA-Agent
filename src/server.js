@@ -12218,15 +12218,17 @@ function hasSearchSourceUnavailableContract(product) {
 
 function isKnownUnservableSearchProduct(product) {
   if (!isPlainObject(product)) return true;
-  // Citation supplements are explicitly non-transactional. They use
-  // `in_stock: false` to prevent checkout, not to report retailer inventory;
-  // keep them in informational result sets when their source-backed price has
-  // already passed the canonical-price contract.
+  // Citation supplements are explicitly non-transactional. A shopping-agent
+  // result is a recommendation card and must be actionable, so do not let a
+  // historical citation bypass the availability gate merely because it has a
+  // source-backed price. In particular, its local price can outlive the PDP's
+  // US offer, which would otherwise recreate the "PDP unavailable from chat"
+  // failure this contract protects against.
   if (
     String(product.catalog_track || '').trim().toLowerCase() === 'citation' &&
     String(product.source || '').trim().toLowerCase() === 'canonical_citation'
   ) {
-    return false;
+    return true;
   }
   const servingSignals = [
     product.serving_eligible,
@@ -12298,15 +12300,33 @@ function dedupeFindProductsMultiProductGroups(responseBody) {
   if (!container) return responseBody;
 
   const seenGroups = new Set();
+  let fallbackCatalogMirrorApplied = false;
   const products = [];
   let dropped = 0;
   for (const product of container.products) {
     const groupId = firstNonEmptyString(product?.dedupe_group_id, product?.dedupeGroupId);
-    if (groupId && seenGroups.has(groupId)) {
+    // Some catalog mirrors predate the stable dedupe_group_id backfill. Keep
+    // this fallback deliberately narrow: it only collapses catalog-cache rows
+    // with the same normalized title and canonical price/currency, never two
+    // distinct marketplace offers from arbitrary sources.
+    const isCatalogCache = String(product?.source || '').trim().toLowerCase() === 'catalog_cache';
+    const fallbackTitle = String(product?.canonical_title || product?.title || product?.name || '')
+      .normalize('NFKD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, ' ')
+      .trim();
+    const fallbackPrice = isCatalogCache ? resolveCanonicalSearchProductPrice(product) : null;
+    const fallbackGroupId = fallbackTitle && fallbackPrice
+      ? `catalog-mirror:${fallbackTitle}:${fallbackPrice.currency}:${fallbackPrice.amount}`
+      : null;
+    const dedupeKey = groupId ? `group:${groupId}` : fallbackGroupId;
+    if (dedupeKey && seenGroups.has(dedupeKey)) {
       dropped += 1;
+      if (!groupId && fallbackGroupId) fallbackCatalogMirrorApplied = true;
       continue;
     }
-    if (groupId) seenGroups.add(groupId);
+    if (dedupeKey) seenGroups.add(dedupeKey);
     products.push(product);
   }
   container.products = products;
@@ -12320,7 +12340,11 @@ function dedupeFindProductsMultiProductGroups(responseBody) {
     responseBody.metadata && typeof responseBody.metadata === 'object' && !Array.isArray(responseBody.metadata)
       ? responseBody.metadata
       : {};
-  metadata.search_dedupe = { dedupe_group_id_applied: true, dropped_duplicate_groups: dropped };
+  metadata.search_dedupe = {
+    dedupe_group_id_applied: true,
+    ...(fallbackCatalogMirrorApplied ? { catalog_mirror_title_price_applied: true } : {}),
+    dropped_duplicate_groups: dropped,
+  };
   responseBody.metadata = metadata;
   return responseBody;
 }
