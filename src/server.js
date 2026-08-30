@@ -3119,9 +3119,14 @@ async function buildFindProductsMultiInvokeBody({
   const requestedCatalogSurface =
     String(resolvedStrictInvokeDecision?.catalogSurface || '').trim().toLowerCase() ||
     getRequestedCatalogSurface({ search, metadata });
+  const forceShoppingAvailability = isShoppingSource(metadata?.source);
   const normalizedSearch = {
     ...(search && typeof search === 'object' ? search : {}),
     ...(requestedCatalogSurface ? { catalog_surface: requestedCatalogSurface } : {}),
+    // Chat recommendations must be actionable. Keep unknown inventory eligible
+    // downstream, but never ask the upstream search lane to include known OOS
+    // products just because an older client sent `in_stock_only: false`.
+    ...(forceShoppingAvailability ? { in_stock_only: true } : {}),
     ...(
       resolvedStrictInvokeDecision?.strictConstraintQuery && String(rawQueryText || '').trim()
         ? { query: String(rawQueryText || '').trim() }
@@ -12184,6 +12189,101 @@ function enforceFindProductsMultiPriceContract(responseBody) {
     responseBody.total = Math.max(priced.length, Number(responseBody.total) - dropped);
   } else {
     responseBody.total = priced.length;
+  }
+  return responseBody;
+}
+
+// Search cards and PDPs must agree on whether a product can be served. A
+// result with unknown inventory is still useful (many retailers do not expose
+// stock at search time), but a card with an explicit terminal signal must not
+// be recommended: its PDP would deterministically refuse to render.
+function hasSearchSourceUnavailableContract(product) {
+  if (!isPlainObject(product)) return false;
+  const hasUnavailableContract = (value) => {
+    if (!isPlainObject(value)) return false;
+    const version = String(value.contract_version || value.version || '').trim().toLowerCase();
+    const status = String(value.status || value.reason || '').trim().toLowerCase();
+    return version === 'external_seed.source_unavailable.v1' || status === 'source_unavailable';
+  };
+  const seedData = isPlainObject(product.seed_data) ? product.seed_data : {};
+  const externalSeed = isPlainObject(product.external_seed) ? product.external_seed : {};
+  return [
+    product.source_unavailable_v1,
+    seedData.source_unavailable_v1,
+    seedData.snapshot?.source_unavailable_v1,
+    externalSeed.source_unavailable_v1,
+    externalSeed.snapshot?.source_unavailable_v1,
+  ].some(hasUnavailableContract);
+}
+
+function isKnownUnservableSearchProduct(product) {
+  if (!isPlainObject(product)) return true;
+  // Citation supplements are explicitly non-transactional. They use
+  // `in_stock: false` to prevent checkout, not to report retailer inventory;
+  // keep them in informational result sets when their source-backed price has
+  // already passed the canonical-price contract.
+  if (
+    String(product.catalog_track || '').trim().toLowerCase() === 'citation' &&
+    String(product.source || '').trim().toLowerCase() === 'canonical_citation'
+  ) {
+    return false;
+  }
+  const servingSignals = [
+    product.serving_eligible,
+    product.is_serving_eligible,
+    product.index_pipeline_state?.serving_eligible,
+    product.pipeline_state?.serving_eligible,
+  ].filter((value) => typeof value === 'boolean');
+  if (servingSignals.includes(false)) return true;
+
+  const blocker = String(
+    firstNonEmptyString(product.blocker_code, product.reason, product.details?.reason) || '',
+  ).trim().toLowerCase();
+  if (
+    [
+      'no_seed',
+      'serving_eligibility_missing',
+      'not_serving_eligible',
+      'no_us_offer',
+      'test_merchant_excluded',
+      'catalog_source_excluded',
+    ].includes(blocker)
+  ) {
+    return true;
+  }
+
+  return hasSearchSourceUnavailableContract(product) ||
+    normalizeSearchAvailabilityState(product) === 'out_of_stock';
+}
+
+function enforceFindProductsMultiAvailabilityContract(responseBody) {
+  if (!responseBody || typeof responseBody !== 'object' || Array.isArray(responseBody)) return responseBody;
+  const container = Array.isArray(responseBody.products)
+    ? responseBody
+    : responseBody.data && Array.isArray(responseBody.data.products)
+      ? responseBody.data
+      : null;
+  if (!container) return responseBody;
+
+  const input = container.products;
+  const available = input.filter((product) => !isKnownUnservableSearchProduct(product));
+  const dropped = input.length - available.length;
+  container.products = available;
+  if (Array.isArray(responseBody.products)) responseBody.products = available;
+  const metadata =
+    responseBody.metadata && typeof responseBody.metadata === 'object' && !Array.isArray(responseBody.metadata)
+      ? responseBody.metadata
+      : {};
+  metadata.availability_contract = {
+    known_unavailable_excluded: true,
+    dropped_known_unavailable: dropped,
+  };
+  responseBody.metadata = metadata;
+  responseBody.page_size = available.length;
+  if (Number.isFinite(Number(responseBody.total))) {
+    responseBody.total = Math.max(available.length, Number(responseBody.total) - dropped);
+  } else {
+    responseBody.total = available.length;
   }
   return responseBody;
 }
@@ -40731,6 +40831,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       // Run after supplements because that is where citation cards enter the
       // response, and before pagination so an invalid card cannot consume a slot.
       finalBody = enforceFindProductsMultiPriceContract(finalBody);
+      // A terminal catalog/PDP eligibility signal wins over a caller's
+      // in_stock_only=false preference. Unknown inventory remains eligible,
+      // but a known unavailable product must never be linked from chat.
+      finalBody = enforceFindProductsMultiAvailabilityContract(finalBody);
       // Some storefronts are mirrored into the demo catalog under a second
       // merchant. `dedupe_group_id` is the catalog's stable cross-merchant
       // identity for that case, so retain the first ranked card rather than
@@ -53317,6 +53421,8 @@ module.exports._debug = {
   materializeCanonicalSearchProductPrice,
   isShoppingAgentFindProductsMultiRequest,
   enforceFindProductsMultiPriceContract,
+  enforceFindProductsMultiAvailabilityContract,
+  isKnownUnservableSearchProduct,
   dedupeFindProductsMultiProductGroups,
   buildTravelLookupSearchProductDedupeKey,
   normalizeSearchAvailabilityState,
