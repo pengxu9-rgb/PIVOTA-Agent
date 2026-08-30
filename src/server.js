@@ -12138,11 +12138,12 @@ function resolveCanonicalSearchProductPrice(product) {
 function materializeCanonicalSearchProductPrice(product) {
   const price = resolveCanonicalSearchProductPrice(product);
   if (!price) return null;
-  return {
-    ...product,
-    price: price.amount,
-    currency: price.currency,
-  };
+  // Keep the established response-finalization identity semantics: callers
+  // may safely retain references to a card while its canonical price is
+  // normalized in place.
+  product.price = price.amount;
+  product.currency = price.currency;
+  return product;
 }
 
 function isShoppingAgentFindProductsMultiRequest(req, operation) {

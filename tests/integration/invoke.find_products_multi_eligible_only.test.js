@@ -13,10 +13,9 @@ const nock = require('nock');
 // exact_resolution_identifiers, serving_mode/commerce_surface metadata) no
 // longer exists in the gateway — no such code remains under src/ — the v2
 // upstream is now the eligibility authority and the gateway serves its result
-// through the transport projection whitelist
-// (projectSearchTransportProduct, src/server.js ~11380), which intentionally
-// drops unknown per-product fields. This test now pins the current contract:
-// v2 POST body shape + authoritative pass-through of upstream products.
+// through the transport projection whitelist. Shopping Agent responses then
+// enforce the display contract: every returned card has a paired positive
+// price and currency, so upstream cards without that pair are excluded.
 describe('/agent/shop/v1/invoke find_products_multi eligible-only serving', () => {
   afterEach(() => {
     nock.cleanAll();
@@ -129,16 +128,20 @@ describe('/agent/shop/v1/invoke find_products_multi eligible-only serving', () =
       capturedBodies.some((body) => String(body.query || '').toLowerCase().includes('serum')),
     ).toBe(true);
 
-    // Authoritative shopping rail: upstream result is served as-is (no
-    // gateway-side eligible-only filtering; upstream owns eligibility).
-    expect(resp.body.total).toBe(3);
-    expect(resp.body.page_size).toBe(3);
-    expect(resp.body.products).toHaveLength(3);
+    // The upstream remains authoritative for eligibility, while the Shopping
+    // Agent edge excludes cards that cannot display a canonical price.
+    expect(resp.body.total).toBe(2);
+    expect(resp.body.page_size).toBe(2);
+    expect(resp.body.products).toHaveLength(2);
     expect(resp.body.metadata).toEqual(
       expect.objectContaining({
         invoke_search_rail: 'authoritative_shopping',
         legacy_contract: false,
         query_source: 'test_upstream',
+        price_contract: {
+          canonical_price_or_offer_required: true,
+          dropped_unpriced: 1,
+        },
       }),
     );
 
