@@ -3110,6 +3110,14 @@ ${selectColumns}
   }
 }
 
+function isCanonicalSigEntitySearch(search = {}) {
+  return (
+    String(search?.catalog_entity_mode || search?.catalogEntityMode || '')
+      .trim()
+      .toLowerCase() === 'canonical_sig'
+  );
+}
+
 async function buildFindProductsMultiInvokeBody({
   payload = {},
   search = {},
@@ -3141,10 +3149,7 @@ async function buildFindProductsMultiInvokeBody({
         : {}
     ),
   };
-  const canonicalSigMode =
-    String(
-      normalizedSearch.catalog_entity_mode || normalizedSearch.catalogEntityMode || '',
-    ).trim().toLowerCase() === 'canonical_sig';
+  const canonicalSigMode = isCanonicalSigEntitySearch(normalizedSearch);
   const prefetchedExternalSeedCandidates = canonicalSigMode
     ? []
     : await prefetchStrictIngredientExternalSeedCandidates({
@@ -41015,6 +41020,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       metadata,
       operation,
     );
+    const canonicalSigEntityMode =
+      operation === 'find_products_multi' &&
+      isCanonicalSigEntitySearch(sourceContractPayload?.search || sourceContractPayload);
     try {
       gatewayGovernanceAudit = buildInvokeGatewayGovernanceAudit({
         req,
@@ -41091,6 +41099,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         shouldPreserveIngredientDirectForPivotBeautyContract(earlyQueryText, earlyIngredientIntentIds);
       if (
         PIVOT_BEAUTY_DIRECT_INDEXED_RECALL_ENABLED &&
+        !canonicalSigEntityMode &&
         earlyPivotBeautyContractRequest &&
         earlyQueryText &&
         earlyBeautyIntent.beautyLike &&
@@ -41366,6 +41375,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         : null;
     if (
       operation === 'find_products_multi' &&
+      !canonicalSigEntityMode &&
       shouldShortCircuitInvokeSearchQualitySafeEmpty({
         contract: findProductsSearchQualityContract,
         payload: effectivePayload,
@@ -46511,15 +46521,13 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	    if (operation === 'find_products_multi') {
 	      const source = metadata?.source;
 	      const search = effectivePayload.search || effectivePayload || {};
-        const canonicalSigEntityMode =
-          String(search.catalog_entity_mode || search.catalogEntityMode || '')
-            .trim()
-            .toLowerCase() === 'canonical_sig';
         strictFindProductsMultiDecision = getStrictFindProductsMultiConstraintDecision({
           search,
           metadata,
         });
-        strictCommerceFindProductsMulti = Boolean(strictFindProductsMultiDecision.enabled);
+        strictCommerceFindProductsMulti = Boolean(
+          canonicalSigEntityMode || strictFindProductsMultiDecision.enabled,
+        );
 	      const queryText = String(search.query || '').trim();
       const routeSearchQualityContract =
         SEARCH_QUALITY_CONTRACT_V1_ENABLED &&
@@ -48931,7 +48939,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           operation === 'find_products_multi' && strictFindProductsMultiDecision?.enabled
             ? strictFindProductsMultiDecision
             : getStrictFindProductsMultiConstraintDecision({ search, metadata });
-        strictCommerceFindProductsMulti = Boolean(strictFindProductsMultiDecision.enabled);
+        strictCommerceFindProductsMulti = Boolean(
+          canonicalSigEntityMode || strictFindProductsMultiDecision.enabled,
+        );
         const useCreatorBeautyMainlineInternalPrimitive =
           shouldUseCreatorBeautyMainlineInternalPrimitive({
             operation,
@@ -48939,7 +48949,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             metadata,
             rawUserQuery: rawUserQuery || search?.query,
           });
-        if (strictCommerceFindProductsMulti) {
+        if (canonicalSigEntityMode || strictCommerceFindProductsMulti) {
           url = `${PIVOTA_API_BASE}/agent/shop/v1/invoke`;
           requestBody = await buildFindProductsMultiInvokeBody({
             payload,
@@ -52244,7 +52254,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         querySource === 'cache_cross_merchant_search_supplemented';
       const isErrorSoftFallbackSource = querySource === 'agent_products_error_fallback';
       const isAliasLookupQuery = isKnownLookupAliasQuery(policyQueryText);
+      const isCanonicalSigAuthoritativeResponse =
+        canonicalSigEntityMode && querySource === 'pivot_catalog_sig_multi';
       const skipPolicyForLookupSoftFallback =
+        isCanonicalSigAuthoritativeResponse ||
         isErrorSoftFallbackSource ||
         (isResolverLookupSource && isLookupPolicyQuery) ||
         (isCacheLookupSource && isLookupPolicyQuery) ||
