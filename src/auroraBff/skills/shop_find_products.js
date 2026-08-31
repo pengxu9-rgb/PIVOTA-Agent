@@ -10,6 +10,7 @@
 
 const BaseSkill = require('./BaseSkill');
 const shopGatewayClient = require('../clients/shopGatewayClient');
+const { understandShoppingQuery } = require('../../findProductsMulti/queryUnderstanding');
 
 function firstTrimmed(...vals) {
   for (const v of vals) {
@@ -51,6 +52,9 @@ function toRecommendationRow(product) {
     category_path: Array.isArray(product.category_path) ? product.category_path : null,
     image_url: firstImage(product),
     pdp_url: firstTrimmed(product.pdp_url, product.url, product.redirect_url, product.buy_url) || null,
+    price: product.price ?? product.price_amount ?? null,
+    currency: firstTrimmed(product.currency, product.price_currency) || null,
+    availability: firstTrimmed(product.availability, product.stock_status) || null,
     source: 'catalog_search',
     retrieval_source: 'find_products_multi',
   };
@@ -70,13 +74,20 @@ class ShopFindProductsSkill extends BaseSkill {
 
   _resolveQuery(request) {
     const p = request && request.params ? request.params : {};
-    return firstTrimmed(
+    const rawQuery = firstTrimmed(
       p.find_products_query,
       p.query,
       p.user_message,
       p.message,
       p.text,
     );
+    if (!rawQuery) return '';
+    const understanding = understandShoppingQuery({
+      rawQuery,
+      conversationMessages: Array.isArray(p.messages) ? p.messages : [],
+      source: 'aurora_chat_shop',
+    });
+    return firstTrimmed(understanding.effective_query, rawQuery);
   }
 
   async execute(request /* , llmGateway */) {

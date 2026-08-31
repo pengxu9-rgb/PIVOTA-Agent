@@ -19,6 +19,10 @@ describe('detectExplicitProductSearch', () => {
     ['buy acropass patches', 'acropass patches'],
     ['where can i buy biodance', 'biodance'],
     ['shop the ordinary', 'the ordinary'], // "the" is a real brand prefix, not guarded
+    ['ordinary', 'ordinary'],
+    ['knight unicorn', 'knight unicorn'],
+    ['only blush', 'only blush'],
+    ['show me niacinamide under $10', 'niacinamide under $10'],
   ])('routes %j -> query %j', (msg, query) => {
     const r = detectExplicitProductSearch(msg);
     expect(r).not.toBeNull();
@@ -37,6 +41,10 @@ describe('detectExplicitProductSearch', () => {
     'buy a moisturizer for winter', // generic category → article guard
     'shop for a sunscreen', // generic category → article guard
     'buy something', // generic filler → article guard
+    'hello',
+    'how are you',
+    'dry skin',
+    'what is niacinamide?',
   ])('does NOT route (falls through to LLM): %j', (msg) => {
     expect(detectExplicitProductSearch(msg)).toBeNull();
   });
@@ -60,6 +68,9 @@ describe('toRecommendationRow', () => {
       images: [{ url: 'https://cdn/img.jpg' }],
       pdp_url: 'https://agent.pivota.cc/products/sig_1',
       category: 'skincare',
+      price: 12.5,
+      currency: 'USD',
+      availability: 'in_stock',
     });
     expect(row).toMatchObject({
       product_id: 'p1',
@@ -70,6 +81,9 @@ describe('toRecommendationRow', () => {
       image_url: 'https://cdn/img.jpg',
       pdp_url: 'https://agent.pivota.cc/products/sig_1',
       source: 'catalog_search',
+      price: 12.5,
+      currency: 'USD',
+      availability: 'in_stock',
     });
   });
 
@@ -130,6 +144,26 @@ describe('ShopFindProductsSkill', () => {
     expect(res.cards[0].card_type).toBe('text_response');
     expect(res.cards[0].sections[0].text_en.toLowerCase()).toContain('looking for');
   });
+
+  test('binds a terse category refinement to the prior catalog brand query', async () => {
+    let receivedQuery = null;
+    const skill = new ShopFindProductsSkill({
+      client: {
+        findProductsMulti: async ({ query }) => {
+          receivedQuery = query;
+          return { ok: true, products: [] };
+        },
+      },
+    });
+    await skill.execute({
+      params: {
+        find_products_query: 'only blush',
+        messages: [{ role: 'user', content: 'knight unicorn' }],
+      },
+    });
+    expect(receivedQuery).toMatch(/knight unicorn/i);
+    expect(receivedQuery).toMatch(/blush/i);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -155,5 +189,49 @@ describe('SkillRouter routing', () => {
     const resolved = await router._resolveSkillRequest(request, {});
     expect(llmCalled).toBe(true);
     expect(resolved.skillId).toBe('reco.step_based');
+  });
+
+  test.each(['ordinary', 'knight unicorn', 'only blush'])(
+    'a short catalog phrase %j routes before the LLM classifier',
+    async (message) => {
+      let llmCalled = false;
+      const router = new SkillRouter({
+        call: async () => {
+          llmCalled = true;
+          return { parsed: { intent: 'general_chat', confidence: 0.9 } };
+        },
+      });
+      const request = { params: { user_message: message } };
+      const resolved = await router._resolveSkillRequest(request, {});
+      expect(resolved.skillId).toBe('shop.find_products');
+      expect(request.params.find_products_query).toBe(message);
+      expect(llmCalled).toBe(false);
+    },
+  );
+});
+
+describe('shopGatewayClient canonical catalog contract', () => {
+  test('requests canonical SIG entities from the unified backend recall lane', async () => {
+    const previousBase = process.env.PIVOTA_BACKEND_BASE_URL;
+    process.env.PIVOTA_BACKEND_BASE_URL = 'https://backend.example';
+    jest.resetModules();
+    const client = require('../src/auroraBff/clients/shopGatewayClient');
+    let sentBody = null;
+    const http = {
+      post: async (_url, body) => {
+        sentBody = body;
+        return { status: 200, data: { products: [] } };
+      },
+    };
+
+    try {
+      await client.findProductsMulti({ query: 'ordinary', deps: { axios: http } });
+      expect(sentBody.payload.search.catalog_entity_mode).toBe('canonical_sig');
+      expect(sentBody.metadata.invoked_by).toBe('chat.shop_find_products');
+    } finally {
+      if (previousBase === undefined) delete process.env.PIVOTA_BACKEND_BASE_URL;
+      else process.env.PIVOTA_BACKEND_BASE_URL = previousBase;
+      jest.resetModules();
+    }
   });
 });

@@ -65,6 +65,7 @@ async function findProductsMulti({
         limit: Math.max(1, Math.min(Number(limit) || 8, 24)),
         in_stock_only: Boolean(inStockOnly),
         catalog_surface: catalogSurface,
+        catalog_entity_mode: 'canonical_sig',
       },
     },
     metadata: {
