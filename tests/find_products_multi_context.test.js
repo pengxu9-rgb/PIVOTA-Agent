@@ -284,6 +284,20 @@ describe('find_products_multi context building', () => {
     );
   });
 
+  test('missing intent budget does not become a zero-price hard gate', async () => {
+    const { adjustedPayload } = await buildFindProductsMultiContext({
+      payload: {
+        search: { query: 'fragrance', in_stock_only: true },
+        user: { recent_queries: [] },
+        messages: [{ role: 'user', content: 'fragrance' }],
+      },
+      metadata: {},
+    });
+
+    expect(adjustedPayload.search.price_max).toBeUndefined();
+    expect(adjustedPayload.search.max_price).toBeUndefined();
+  });
+
   test('exact stable-alias product title uses lookup class instead of exploratory', async () => {
     const { adjustedPayload, expansion_meta, intent } = await buildFindProductsMultiContext({
       payload: {

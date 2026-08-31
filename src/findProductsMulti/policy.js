@@ -5283,7 +5283,10 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
     semanticFamily: effectiveSemanticFamily,
   });
   const beautyBudgetMax = getBeautyBudgetMax(payloadBeautyRequest);
-  const intentBudgetMax = Number(intent?.hard_constraints?.price?.max);
+  const intentBudgetMaxRaw = intent?.hard_constraints?.price?.max;
+  const intentBudgetMax = intentBudgetMaxRaw == null || intentBudgetMaxRaw === ''
+    ? null
+    : Number(intentBudgetMaxRaw);
   const effectiveBudgetMax = beautyBudgetMax != null
     ? beautyBudgetMax
     : Number.isFinite(intentBudgetMax) && intentBudgetMax >= 0
