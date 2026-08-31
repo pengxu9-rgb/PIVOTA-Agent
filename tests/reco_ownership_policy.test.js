@@ -40,4 +40,18 @@ describe('recoOwnershipPolicy beauty exact-product routing', () => {
     expect(looksLikeBeautyExactProductAssistAsk(request)).toBe(false);
     expect(shouldProxyFrameworkRecoToV1Mainline(request)).toBe(false);
   });
+
+  test.each([
+    'ordinary',
+    'knight unicorn',
+    'only blush',
+    'show me niacinamide under $10',
+  ])('catalog search %j is not intercepted by the framework reco proxy', (message) => {
+    expect(shouldProxyFrameworkRecoToV1Mainline({ message })).toBe(false);
+  });
+
+  test('an ingredient recommendation remains owned by the framework mainline', () => {
+    const request = { message: 'recommend a niacinamide serum for my oily skin' };
+    expect(shouldProxyFrameworkRecoToV1Mainline(request)).toBe(true);
+  });
 });
