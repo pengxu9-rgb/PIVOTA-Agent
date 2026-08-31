@@ -151,6 +151,7 @@ describe('find_products_multi query understanding', () => {
 
   test.each([
     ['fenty', 'brand_browse', 'beauty', 'fenty beauty', null],
+    ['ordinary', 'brand_browse', 'beauty', 'the ordinary', null],
     ['fenty lipstick', 'brand_category', 'beauty', 'fenty beauty', 'beauty/makeup/lip/'],
     ['rare beauty blush', 'brand_category', 'beauty', 'rare beauty', 'beauty/makeup/face/blush/'],
     ['the ordinary niacinamide', 'brand_category', 'beauty', 'the ordinary', 'beauty/skincare/treat/'],
