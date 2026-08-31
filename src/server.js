@@ -2592,6 +2592,14 @@ function buildSearchProductsV2Body({
     query: search?.query != null ? String(search.query || '') : undefined,
     category: firstNonEmptyString(search?.category),
     catalog_surface: firstNonEmptyString(search?.catalog_surface, search?.catalogSurface),
+    catalog_entity_mode: firstNonEmptyString(
+      search?.catalog_entity_mode,
+      search?.catalogEntityMode,
+    ),
+    commerce_surface: firstNonEmptyString(
+      search?.commerce_surface,
+      search?.commerceSurface,
+    ),
     min_price: search?.price_min ?? search?.min_price,
     max_price: search?.price_max ?? search?.max_price,
     in_stock_only: search?.in_stock_only !== false,
@@ -3133,11 +3141,17 @@ async function buildFindProductsMultiInvokeBody({
         : {}
     ),
   };
-  const prefetchedExternalSeedCandidates = await prefetchStrictIngredientExternalSeedCandidates({
-    search: normalizedSearch,
-    strictInvokeDecision: resolvedStrictInvokeDecision,
-    rawQueryText,
-  });
+  const canonicalSigMode =
+    String(
+      normalizedSearch.catalog_entity_mode || normalizedSearch.catalogEntityMode || '',
+    ).trim().toLowerCase() === 'canonical_sig';
+  const prefetchedExternalSeedCandidates = canonicalSigMode
+    ? []
+    : await prefetchStrictIngredientExternalSeedCandidates({
+        search: normalizedSearch,
+        strictInvokeDecision: resolvedStrictInvokeDecision,
+        rawQueryText,
+      });
   return {
     operation: 'find_products_multi',
     payload: {
@@ -11845,6 +11859,11 @@ function projectSearchTransportOffer(offer) {
     'seller_name',
     'seller_of_record',
     'source_type',
+    'catalog_track',
+    'truth_tier',
+    'readiness_tier',
+    'offer_mode',
+    'source_system',
     'connector',
     'product_id',
     'variant_id',
@@ -11873,7 +11892,17 @@ function projectSearchTransportOffer(offer) {
     'payment_offer_evidence',
     'payment_offer_badges',
     'capability_flags',
+    'market',
+    'is_first_party',
+    'official_source',
+    'why_buy_direct',
+    'market_availability',
+    'is_buy_pick',
   ]);
+  if (offer.pricing && typeof offer.pricing === 'object' && !Array.isArray(offer.pricing)) {
+    projected.pricing = safeCloneJson(offer.pricing);
+  }
+  if (Array.isArray(offer.incentives)) projected.incentives = offer.incentives.slice(0, 4);
   if (Array.isArray(offer.promotions)) projected.promotions = offer.promotions.slice(0, 3);
   return projected;
 }
@@ -46482,6 +46511,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	    if (operation === 'find_products_multi') {
 	      const source = metadata?.source;
 	      const search = effectivePayload.search || effectivePayload || {};
+        const canonicalSigEntityMode =
+          String(search.catalog_entity_mode || search.catalogEntityMode || '')
+            .trim()
+            .toLowerCase() === 'canonical_sig';
         strictFindProductsMultiDecision = getStrictFindProductsMultiConstraintDecision({
           search,
           metadata,
@@ -46507,6 +46540,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         shouldPreserveIngredientDirectForPivotBeautyContract(queryText, ingredientIntentIds);
       if (
         strictCommerceFindProductsMulti &&
+        !canonicalSigEntityMode &&
         ingredientIntentIds.length > 0 &&
         (!pivotBeautyContractInvoke || preserveIngredientDirectForPivotBeautyContract)
       ) {
@@ -46833,6 +46867,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       const earlyHasMerchantScopeForBeauty = Boolean(earlyMerchantIdForBeauty) || earlyMerchantIdsForBeauty.length > 0;
       const earlyBeautyMainlineIntentForDirect = inferBeautyMainlineIntent(queryText);
       if (
+        !canonicalSigEntityMode &&
         pivotBeautyContractInvoke &&
         queryText.length > 0 &&
         process.env.DATABASE_URL &&
@@ -47271,6 +47306,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 
       const creatorBeautyMainlineDirectEligible =
         !findProductsMultiProductOnly &&
+        !canonicalSigEntityMode &&
         (!strictCommerceFindProductsMulti || routeSearchQualityContractApplied) &&
         queryText.length > 0 &&
         process.env.DATABASE_URL &&
