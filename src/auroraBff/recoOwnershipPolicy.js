@@ -1,5 +1,6 @@
 const { extractRecoTargetStepFromText, normalizeRecoTargetStep } = require('./recoTargetStep');
 const { resolveRecommendationTargetContext } = require('./recommendationSharedStack');
+const { detectExplicitProductSearch } = require('./findProductsIntent');
 
 const BEAUTY_EXACT_BRAND_PATTERN =
   /\b(beauty of joseon|ultra repair|first aid beauty|round lab|skin1004|paula'?s choice|glossier|supergoop|haruharu|byoma|dieux|the ordinary|good molecules|la roche-posay|la roche posay)\b/i;
@@ -229,6 +230,12 @@ function hasTypedUserMessage(input) {
  */
 function shouldProxyFrameworkRecoToV1Mainline(input) {
   const payload = isPlainObject(input) ? input : {};
+  // Product lookup owns explicit/bare catalog searches. This check must run
+  // before framework-role inference: ingredient/category terms such as
+  // "niacinamide" otherwise look like a serum recommendation and are proxied
+  // to the v1 ingredient/reco mainline before shop.find_products can execute.
+  const typedMessage = extractRecoUserMessage(payload);
+  if (typedMessage && detectExplicitProductSearch(typedMessage)) return false;
   const actionId = extractChatActionId(payload);
   if (actionId && !hasTypedUserMessage(payload)) {
     const normalizedActionId = String(actionId).trim().toLowerCase();

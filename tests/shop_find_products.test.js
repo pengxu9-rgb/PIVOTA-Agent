@@ -4,6 +4,7 @@ const { detectExplicitProductSearch } = require('../src/auroraBff/findProductsIn
 const ShopFindProductsSkill = require('../src/auroraBff/skills/shop_find_products');
 const { toRecommendationRow } = require('../src/auroraBff/skills/shop_find_products');
 const { SkillRouter } = require('../src/auroraBff/orchestrator/skill_router');
+const { isCatalogSearchOwnedChatRequest } = require('../src/auroraBff/routes/chat');
 
 // ---------------------------------------------------------------------------
 // detectExplicitProductSearch — high-precision routing gate
@@ -52,6 +53,23 @@ describe('detectExplicitProductSearch', () => {
   test('empty / whitespace returns null', () => {
     expect(detectExplicitProductSearch('')).toBeNull();
     expect(detectExplicitProductSearch('   ')).toBeNull();
+  });
+});
+
+describe('chat entry ownership', () => {
+  test.each(['ordinary', 'knight unicorn', 'only blush', 'show me niacinamide under $10'])(
+    'current typed catalog turn %j owns the route before all specialist gates',
+    (message) => expect(isCatalogSearchOwnedChatRequest({ message })).toBe(true),
+  );
+
+  test('does not infer current catalog ownership from prior messages or generated action copy', () => {
+    expect(isCatalogSearchOwnedChatRequest({ messages: [{ role: 'user', content: 'ordinary' }] })).toBe(false);
+    expect(isCatalogSearchOwnedChatRequest({ action: { data: { reply_text: 'ordinary' } } })).toBe(false);
+  });
+
+  test('leaves recommendation and evaluation turns on their specialist owners', () => {
+    expect(isCatalogSearchOwnedChatRequest({ message: 'recommend a niacinamide serum for my oily skin' })).toBe(false);
+    expect(isCatalogSearchOwnedChatRequest({ message: 'is this serum good for me?' })).toBe(false);
   });
 });
 
