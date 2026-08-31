@@ -208,7 +208,8 @@ describe('/agent/shop/v1/invoke find_products_multi strict surfaces', () => {
     mockDbRows([seedRow()], capturedSql);
     let forwardedBody = null;
     const canonicalInvoke = nock('http://pivota.test')
-      .post('/agent/shop/v1/invoke')
+      .post('/agent/v2/products/search')
+      .query(true)
       .reply(200, function reply(_uri, body) {
         forwardedBody = body;
         return {
@@ -243,7 +244,7 @@ describe('/agent/shop/v1/invoke find_products_multi strict surfaces', () => {
         operation: 'find_products_multi',
         payload: {
           search: {
-            query: 'ordinary niacinamide serum',
+            query: 'ordinary',
             limit: 10,
             in_stock_only: true,
             catalog_surface: 'agent_api',
@@ -263,15 +264,11 @@ describe('/agent/shop/v1/invoke find_products_multi strict surfaces', () => {
     expect(canonicalInvoke.isDone()).toBe(true);
     expect(forwardedBody).toEqual(
       expect.objectContaining({
-        operation: 'find_products_multi',
-        payload: {
-          search: expect.objectContaining({
-            catalog_entity_mode: 'canonical_sig',
-            catalog_surface: 'agent_api',
-            commerce_surface: 'agent_api',
-            allow_external_seed: false,
-          }),
-        },
+        query: 'ordinary',
+        catalog_entity_mode: 'canonical_sig',
+        catalog_surface: 'agent_api',
+        commerce_surface: 'agent_api',
+        allow_external_seed: false,
       }),
     );
     expect(capturedSql.all.some((text) => text.includes('FROM external_product_seeds'))).toBe(false);

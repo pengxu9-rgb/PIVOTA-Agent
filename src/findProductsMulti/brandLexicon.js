@@ -279,6 +279,19 @@ function matchesBrandAliasInNormalizedText(normalizedText, normalizedAlias) {
   return false;
 }
 
+function matchesExactArticleElidedBrandQuery(normalizedQuery, normalizedAlias) {
+  const query = normalizeBrandText(normalizedQuery);
+  const alias = normalizeBrandText(normalizedAlias);
+  if (!query || !alias) return false;
+
+  const articleElidedAlias = alias.replace(/^(?:the|a|an)\s+/, '').trim();
+  return (
+    articleElidedAlias !== alias &&
+    articleElidedAlias.length >= 5 &&
+    query === articleElidedAlias
+  );
+}
+
 function collectDynamicBrandAliases(candidateProducts = []) {
   const out = new Set();
   for (const product of Array.isArray(candidateProducts) ? candidateProducts : []) {
@@ -319,7 +332,10 @@ function detectBrandByStaticAliases(normalizedQuery) {
     for (const alias of sortedAliases) {
       const normalizedAlias = normalizeBrandText(alias);
       if (!normalizedAlias) continue;
-      if (matchesBrandAliasInNormalizedText(normalizedQuery, normalizedAlias)) {
+      if (
+        matchesBrandAliasInNormalizedText(normalizedQuery, normalizedAlias) ||
+        matchesExactArticleElidedBrandQuery(normalizedQuery, normalizedAlias)
+      ) {
         matchedAlias = normalizedAlias;
         break;
       }
@@ -356,7 +372,12 @@ function resolveBeautyBrandBrowseQuery(queryText, options = {}) {
     for (const alias of sortedAliases) {
       const normalizedAlias = normalizeBrandText(alias);
       if (!normalizedAlias) continue;
-      if (!matchesBrandAliasInNormalizedText(normalizedQuery, normalizedAlias)) continue;
+      if (
+        !matchesBrandAliasInNormalizedText(normalizedQuery, normalizedAlias) &&
+        !matchesExactArticleElidedBrandQuery(normalizedQuery, normalizedAlias)
+      ) {
+        continue;
+      }
       matches.push({
         brand_key: brandKey,
         brand: toCanonicalBrandLabel(aliases[0]),

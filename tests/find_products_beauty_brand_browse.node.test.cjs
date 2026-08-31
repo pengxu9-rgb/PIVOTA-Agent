@@ -54,6 +54,14 @@ test('known beauty brand aliases use the brand_browse beauty contract', () => {
   assert.equal(fentyIntent.beautyLike, true);
   assert.equal(fentyIntent.brandBrowse.contract, 'brand_browse');
 
+  const ordinary = resolveBeautyBrandBrowseQuery('ordinary');
+  assert.equal(ordinary.matched, true);
+  assert.equal(ordinary.brand, 'the ordinary');
+  assert.equal(ordinary.brand_only, true);
+
+  const ordinaryAdjectivePhrase = resolveBeautyBrandBrowseQuery('ordinary moisturizer');
+  assert.equal(ordinaryAdjectivePhrase.matched, false);
+
   const zara = resolveBeautyBrandBrowseQuery('zara');
   assert.equal(zara.matched, false);
   assert.equal(inferBeautyMainlineIntent('zara').beautyLike, false);
