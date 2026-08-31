@@ -2602,8 +2602,15 @@ function buildSearchProductsV2Body({
     ),
     min_price: search?.price_min ?? search?.min_price,
     max_price: search?.price_max ?? search?.max_price,
+    // The canonical shop invoke model is page-based and names these fields
+    // price_min/price_max. Keep the older aliases above for agent-v2 callers,
+    // but do not silently turn page 2 into page 1 when the downstream ignores
+    // offset or discard a budget because it ignores max_price.
+    price_min: search?.price_min ?? search?.min_price,
+    price_max: search?.price_max ?? search?.max_price,
     in_stock_only: search?.in_stock_only !== false,
     limit,
+    page,
     offset,
     allow_external_seed: search?.allow_external_seed,
     external_seed_only: search?.external_seed_only,
@@ -3157,6 +3164,12 @@ async function buildFindProductsMultiInvokeBody({
         strictInvokeDecision: resolvedStrictInvokeDecision,
         rawQueryText,
       });
+  const sourceUser = isPlainObject(payload?.user) ? payload.user : {};
+  const recentQueries = Array.isArray(sourceUser.session_recent_queries)
+    ? sourceUser.session_recent_queries
+    : Array.isArray(sourceUser.recent_queries)
+      ? sourceUser.recent_queries
+      : [];
   return {
     operation: 'find_products_multi',
     payload: {
@@ -3168,6 +3181,15 @@ async function buildFindProductsMultiInvokeBody({
         gatewayRequestId,
         defaultSearchAllMerchants,
       }),
+      ...(Object.keys(sourceUser).length > 0
+        ? {
+            user: pruneEmptyFields({
+              id: sourceUser.id,
+              email: sourceUser.email,
+              recent_queries: recentQueries,
+            }),
+          }
+        : {}),
     },
     metadata: pruneEmptyFields({
       ...(metadata && typeof metadata === 'object' ? metadata : {}),

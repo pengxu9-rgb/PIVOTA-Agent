@@ -280,6 +280,68 @@ describe('/agent/shop/v1/invoke find_products_multi strict surfaces', () => {
     expect(res.body.products[0].offers[0].catalog_track).toBe('external_referral');
   });
 
+  test('canonical invoke preserves page, budget aliases, and recent conversation queries', async () => {
+    mockDbRows([]);
+    let forwardedBody = null;
+    const canonicalInvoke = nock('http://pivota.test')
+      .post('/agent/shop/v1/invoke')
+      .reply(200, function reply(_uri, body) {
+        forwardedBody = body;
+        return {
+          products: [],
+          total: 36,
+          page: 2,
+          page_size: 0,
+          metadata: { query_source: 'pivot_catalog_sig_multi' },
+        };
+      });
+
+    const app = require('../../src/server');
+    await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'ordinary niacinamide',
+            page: 2,
+            limit: 12,
+            price_min: 2,
+            price_max: 10,
+            catalog_surface: 'agent_api',
+            commerce_surface: 'agent_api',
+            catalog_entity_mode: 'canonical_sig',
+          },
+          user: {
+            conversation_id: 'conv_contract',
+            session_recent_queries: ['ordinary', 'show me niacinamide under $10'],
+          },
+        },
+        metadata: {
+          source: 'shopping_agent',
+          catalog_surface: 'agent_api',
+          commerce_surface: 'agent_api',
+        },
+      })
+      .expect(200);
+
+    expect(canonicalInvoke.isDone()).toBe(true);
+    expect(forwardedBody.payload.search).toEqual(
+      expect.objectContaining({
+        page: 2,
+        offset: 12,
+        limit: 12,
+        min_price: 2,
+        max_price: 10,
+        price_min: 2,
+        price_max: 10,
+      }),
+    );
+    expect(forwardedBody.payload.user).toEqual({
+      recent_queries: ['ordinary', 'show me niacinamide under $10'],
+    });
+  });
+
   test('canonical sig mode bypasses the beauty-only safe-empty gate for catalog queries', async () => {
     const capturedSql = { value: '', all: [] };
     mockDbRows([seedRow()], capturedSql);

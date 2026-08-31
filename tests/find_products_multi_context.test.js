@@ -238,6 +238,66 @@ describe('find_products_multi context building', () => {
     expect(expanded).not.toContain('mascara');
   });
 
+  test('short category follow-up keeps the current conversation brand', async () => {
+    const { adjustedPayload, expansion_meta } = await buildFindProductsMultiContext({
+      payload: {
+        search: { query: 'only blush' },
+        user: { recent_queries: [], conversation_id: 'conv_knight' },
+        messages: [
+          { role: 'user', content: 'knight unicorn' },
+          { role: 'assistant', content: 'I found two products.' },
+          { role: 'user', content: 'only blush' },
+        ],
+      },
+      metadata: { source: 'shopping_agent', catalog_surface: 'agent_api' },
+    });
+
+    expect(String(adjustedPayload.search.query).toLowerCase()).toContain('knight unicorn');
+    expect(String(adjustedPayload.search.query).toLowerCase()).toContain('blush');
+    expect(expansion_meta).toEqual(
+      expect.objectContaining({
+        contextual_query_source: 'brand_refinement_followup_conversation',
+        contextual_brand: 'knight unicorn',
+      }),
+    );
+  });
+
+  test('brand refinement carries brand and projects a natural-language budget', async () => {
+    const { adjustedPayload, expansion_meta } = await buildFindProductsMultiContext({
+      payload: {
+        search: { query: 'show me niacinamide under $10' },
+        user: { recent_queries: [], conversation_id: 'conv_ordinary' },
+        messages: [
+          { role: 'user', content: 'ordinary' },
+          { role: 'assistant', content: 'Here are The Ordinary products.' },
+          { role: 'user', content: 'show me niacinamide under $10' },
+        ],
+      },
+      metadata: { source: 'shopping_agent', catalog_surface: 'agent_api' },
+    });
+
+    expect(String(adjustedPayload.search.query).toLowerCase()).toContain('ordinary');
+    expect(adjustedPayload.search.price_max).toBe(10);
+    expect(adjustedPayload.search.max_price).toBe(10);
+    expect(expansion_meta.contextual_query_source).toBe(
+      'brand_refinement_followup_conversation',
+    );
+  });
+
+  test('missing intent budget does not become a zero-price hard gate', async () => {
+    const { adjustedPayload } = await buildFindProductsMultiContext({
+      payload: {
+        search: { query: 'fragrance', in_stock_only: true },
+        user: { recent_queries: [] },
+        messages: [{ role: 'user', content: 'fragrance' }],
+      },
+      metadata: {},
+    });
+
+    expect(adjustedPayload.search.price_max).toBeUndefined();
+    expect(adjustedPayload.search.max_price).toBeUndefined();
+  });
+
   test('exact stable-alias product title uses lookup class instead of exploratory', async () => {
     const { adjustedPayload, expansion_meta, intent } = await buildFindProductsMultiContext({
       payload: {

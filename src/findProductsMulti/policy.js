@@ -5283,6 +5283,15 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
     semanticFamily: effectiveSemanticFamily,
   });
   const beautyBudgetMax = getBeautyBudgetMax(payloadBeautyRequest);
+  const intentBudgetMaxRaw = intent?.hard_constraints?.price?.max;
+  const intentBudgetMax = intentBudgetMaxRaw == null || intentBudgetMaxRaw === ''
+    ? null
+    : Number(intentBudgetMaxRaw);
+  const effectiveBudgetMax = beautyBudgetMax != null
+    ? beautyBudgetMax
+    : Number.isFinite(intentBudgetMax) && intentBudgetMax >= 0
+      ? intentBudgetMax
+      : null;
   const normalizedSessionRecentQueries = normalizeStringArray(sessionRecentQueries, 5, 80);
 
   const adjustedPayload = {
@@ -5304,14 +5313,14 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
       ...(effectiveTargetStepFamily ? { target_step_family: effectiveTargetStepFamily } : {}),
       ...(effectiveSemanticFamily ? { semantic_family: effectiveSemanticFamily } : {}),
       ...(effectiveConcernClass ? { concern_class: effectiveConcernClass } : {}),
-      ...(beautyBudgetMax != null &&
+      ...(effectiveBudgetMax != null &&
       search?.price_max == null &&
       search?.max_price == null &&
       payload?.price_max == null &&
       payload?.max_price == null
         ? {
-            price_max: beautyBudgetMax,
-            max_price: beautyBudgetMax,
+            price_max: effectiveBudgetMax,
+            max_price: effectiveBudgetMax,
           }
         : {}),
       ...(adjustedSemanticContract ? { semantic_contract: adjustedSemanticContract } : {}),
