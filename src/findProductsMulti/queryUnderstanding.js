@@ -877,6 +877,63 @@ function maybeBindConversationContext({ rawQuery, correctedQuery, categoryPathPr
   return null;
 }
 
+function maybeBindBrandRefinementContext({
+  rawQuery,
+  correctedQuery,
+  categoryPathPrefix,
+  conversationMessages,
+  currentBrandCandidates,
+}) {
+  if (Array.isArray(currentBrandCandidates) && currentBrandCandidates.length > 0) return null;
+  const current = String(correctedQuery || rawQuery || '').trim();
+  const normalized = normalizeQueryTextForUnderstanding(current);
+  if (!normalized || normalized.length > 80) return null;
+  if (/^(hi|hello|hey|thanks|thank you|你好|您好|谢谢|謝謝)\b/i.test(normalized)) return null;
+
+  // Only bind an actual refinement. This avoids carrying an old brand into an
+  // unrelated new mission while supporting terse chat turns such as
+  // "only blush" and "show me niacinamide under $10".
+  const looksLikeRefinement =
+    /\b(only|under|below|over|above|cheaper|more|less|show|with|without|in stock|blush|serum|cleanser|toner|moisturizer|sunscreen|niacinamide|retinol|salicylic|shade|color|size)\b/i.test(
+      normalized,
+    ) || /只要|仅看|僅看|低于|低於|以内|以內|更便宜|精华|精華|腮红|腮紅|防晒|防曬/.test(current);
+  if (!looksLikeRefinement) return null;
+
+  const priorUserMessages = extractPriorUserMessages(conversationMessages, rawQuery);
+  for (const message of priorUserMessages) {
+    const priorCorrected = applyDeterministicCorrections(message.content).corrected_query || message.content;
+    const priorBrands = buildBrandCandidates(priorCorrected);
+    const priorNormalized = normalizeQueryTextForUnderstanding(priorCorrected);
+    const priorTokens = priorNormalized.split(/\s+/).filter(Boolean);
+    const priorLooksLikeNamedAnchor = Boolean(
+      priorNormalized &&
+        priorNormalized.length <= 48 &&
+        priorTokens.length >= 1 &&
+        priorTokens.length <= 5 &&
+        !resolveBeautyCategoryPathPrefixFromText(priorCorrected) &&
+        !hasNonMerchandiseQuerySignal(priorCorrected) &&
+        !/\b(show|find|get|recommend|products?|items?|under|over|best|cheap|routine|skin)\b/i.test(
+          priorNormalized,
+        ),
+    );
+    // Newly onboarded merchants may not be in the static brand lexicon yet.
+    // A short, category-free prior turn is still a safe conversation-local
+    // named anchor; it is never persisted or applied outside this chat.
+    const priorBrand = priorBrands[0] || (priorLooksLikeNamedAnchor ? priorCorrected : null);
+    if (!priorBrand) continue;
+    return {
+      scope: 'conversation',
+      source: 'current_conversation_messages',
+      source_query: message.content,
+      brand: priorBrand,
+      category_path_prefix: categoryPathPrefix || null,
+      reason: 'brand_refinement_followup_conversation',
+      contextual_query: `${priorBrand} ${current}`.trim(),
+    };
+  }
+  return null;
+}
+
 function isExplicitSessionContinuationQuery(text) {
   const normalized = normalizeQueryTextForUnderstanding(text);
   if (!normalized) return false;
@@ -962,6 +1019,13 @@ function understandShoppingQuery({
         currentProfileSignals,
         currentConcernSignals,
       }) ||
+      maybeBindBrandRefinementContext({
+        rawQuery: raw,
+        correctedQuery,
+        categoryPathPrefix,
+        conversationMessages,
+        currentBrandCandidates: brandCandidates,
+      }) ||
       maybeBindExplicitSessionContext({
         rawQuery: raw,
         correctedQuery,
@@ -970,6 +1034,7 @@ function understandShoppingQuery({
       })
     : null;
   const effectiveQuery = contextBinding?.contextual_query || correctedQuery || raw;
+  const effectiveBrandCandidates = buildBrandCandidates(effectiveQuery);
   const effectiveCategoryPathPrefix =
     nonMerchandiseQuery
       ? null
@@ -997,7 +1062,7 @@ function understandShoppingQuery({
     corrected_normalized_query: correctedNormalized,
     effective_query: effectiveQuery,
     corrections: correctionResult.corrections,
-    brand_candidates: brandCandidates,
+    brand_candidates: effectiveBrandCandidates,
     category_path_prefix: effectiveCategoryPathPrefix,
     context_binding: contextBinding,
     context_scope: contextBinding?.scope || 'none',
