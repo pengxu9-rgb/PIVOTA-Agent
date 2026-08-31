@@ -203,6 +203,82 @@ describe('/agent/shop/v1/invoke find_products_multi strict surfaces', () => {
     expect(externalSeedSql).not.toMatch(/CAST\(COALESCE\(seed_data|seed_data::text/);
   });
 
+  test('canonical sig mode is forwarded intact and suppresses direct seed prefetch', async () => {
+    const capturedSql = { value: '', all: [] };
+    mockDbRows([seedRow()], capturedSql);
+    let forwardedBody = null;
+    const canonicalInvoke = nock('http://pivota.test')
+      .post('/agent/shop/v1/invoke')
+      .reply(200, function reply(_uri, body) {
+        forwardedBody = body;
+        return {
+          products: [
+            {
+              product_id: 'sig_ordinary_niacinamide',
+              pivota_signature_id: 'sig_ordinary_niacinamide',
+              title: 'The Ordinary Niacinamide 10% + Zinc 1%',
+              price: 6.5,
+              currency: 'USD',
+              in_stock: true,
+              offers: [
+                {
+                  offer_id: 'offer_external',
+                  catalog_track: 'external_referral',
+                  price: 6.5,
+                  currency: 'USD',
+                  availability: 'in_stock',
+                },
+              ],
+            },
+          ],
+          total: 1,
+          metadata: { query_source: 'pivot_catalog_sig_multi' },
+        };
+      });
+
+    const app = require('../../src/server');
+    const res = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'ordinary niacinamide serum',
+            limit: 10,
+            in_stock_only: true,
+            catalog_surface: 'agent_api',
+            commerce_surface: 'agent_api',
+            catalog_entity_mode: 'canonical_sig',
+            allow_external_seed: false,
+          },
+        },
+        metadata: {
+          source: 'shopping_agent',
+          catalog_surface: 'agent_api',
+          commerce_surface: 'agent_api',
+        },
+      })
+      .expect(200);
+
+    expect(canonicalInvoke.isDone()).toBe(true);
+    expect(forwardedBody).toEqual(
+      expect.objectContaining({
+        operation: 'find_products_multi',
+        payload: {
+          search: expect.objectContaining({
+            catalog_entity_mode: 'canonical_sig',
+            catalog_surface: 'agent_api',
+            commerce_surface: 'agent_api',
+            allow_external_seed: false,
+          }),
+        },
+      }),
+    );
+    expect(capturedSql.all.some((text) => text.includes('FROM external_product_seeds'))).toBe(false);
+    expect(res.body.products[0].product_id).toBe('sig_ordinary_niacinamide');
+    expect(res.body.products[0].offers[0].catalog_track).toBe('external_referral');
+  });
+
   test('strict ingredient budget filtering evaluates each product currency before returning hits', async () => {
     mockDbRows([
       seedRow({
