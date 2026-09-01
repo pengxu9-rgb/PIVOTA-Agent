@@ -828,6 +828,75 @@ async function resolveCanonicalCatalogEntityGroup(args = {}) {
 }
 
 // ---------------------------------------------------------------------------------------------------
+// sig_ -> the merchant's OWN platform product id, for the merchant-scoped detail lane.
+//
+// `search_catalog` hands every row back with its Pivota signature as the top-level `product_id`, and
+// `get_product`'s schema REQUIRES a merchant_id — so the argument pair an agent naturally forms from a
+// search result is (merchant_id, sig_...). That pair could not be served: merchant-scoped detail goes to
+// the Python per-merchant catalog, which is keyed by the PLATFORM product id and knows nothing about
+// signatures. It misses the cache, misses the 500-row catalog slice, and then hands the sig to Shopify
+// Admin as if it were a numeric product id (`/admin/api/…/products/sig_… .json`). Shopify answers a
+// non-404, so the backend raises 502 SHOPIFY_PRODUCT_FETCH_FAILED and the gateway's error mapping —
+// which has no arm for that code — lands on MERCHANT_UNAVAILABLE / retriable:true. Measured live on prod
+// 2026-08-31 against a healthy merchant: three identical calls, three "the merchant is temporarily
+// unreachable", and three wasted Shopify Admin round trips. Read the header of
+// services/commerceKernelErrorMapping.js: this is the SAME defect it was extracted for (#1829), still
+// live on the one lane that fix did not cover.
+//
+// So translate the id instead of teaching two more systems about signatures.
+//
+// MERCHANT-EXACT, and only that. The canonical group this signature belongs to is cross-merchant by
+// construction; answering a merchant-SCOPED question with a sibling merchant's listing would open a
+// different seller's product under the caller's own scope. Only a row carrying BOTH the signature and
+// the requested merchant_id can translate, which is why this is its own narrow query rather than a
+// filter over resolveCanonicalCatalogEntityGroup's 100-row group.
+//
+// EXACTLY ONE, OR REFUSE. Two distinct source ids under one merchant for one signature is a tie this
+// function has no basis to break, and picking either could open the wrong listing. LIMIT 2 makes the
+// ambiguity visible at the cost of one extra row.
+//
+// The shared active-source gate applies, deliberately. Every other catalog read in this module carries
+// it; a translation that skipped it would be the one path through which a test/demo rig's signature
+// reaches a per-merchant detail read (see the header of services/testMerchantPolicy.js for what that
+// costs). A gated-out signature simply keeps today's behaviour.
+//
+// FAIL-OPEN, which lands on the honest answer: on a DB error the caller falls through to the untranslated
+// upstream call, and "the merchant is temporarily unreachable / retriable" is then TRUE — the database
+// this gateway needs really is unreachable. Never throw: a detail read must not become a 500 because an
+// id could not be rewritten.
+async function resolveMerchantScopedSourceProductId({ productId, merchantId, queryFn } = {}) {
+  const runQuery = queryFn || defaultQuery;
+  if (!process.env.DATABASE_URL || typeof runQuery !== 'function') return null;
+  const sig = asString(productId);
+  const merchant = asString(merchantId);
+  if (!isSigId(sig) || !merchant) return null;
+
+  const sql = `
+    SELECT DISTINCT cp.source_product_id
+    FROM catalog_products cp
+    LEFT JOIN catalog_merchants cm ON cm.merchant_id = cp.merchant_id
+    WHERE cp.pivota_signature_id = $1
+      AND cp.merchant_id = $2
+      AND coalesce(nullif(trim(cp.source_product_id), ''), '') <> ''
+      AND ${activeCatalogProductSourceWhere('cp', 'cm')}
+    LIMIT 2
+  `;
+
+  let rows;
+  try {
+    rows = normalizeRows(await runQuery(sql, [sig, merchant]));
+  } catch {
+    return null;
+  }
+
+  const candidates = Array.from(
+    new Set(rows.map((row) => asString(row && row.source_product_id)).filter(Boolean)),
+  ).filter((id) => id !== sig && !isSigId(id) && !id.includes('::'));
+
+  return candidates.length === 1 ? candidates[0] : null;
+}
+
+// ---------------------------------------------------------------------------------------------------
 // Anchor-identity hydration for the relationship-graph READ path.
 //
 // The served graph keys edges on EITHER the source id (`product:ext_<hash>` / `product:ulta:<hash>`)
@@ -1001,6 +1070,7 @@ async function applyCanonicalAnchorRefs(products, { queryFn } = {}) {
 
 module.exports = {
   resolveCanonicalCatalogEntityGroup,
+  resolveMerchantScopedSourceProductId,
   resolveRelationshipGraphRefsToCanonicalEntities,
   resolveAnchorIdentityForRelationshipGraph,
   applyAnchorIdentity,
