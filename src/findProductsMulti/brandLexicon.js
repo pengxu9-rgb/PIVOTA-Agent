@@ -551,10 +551,92 @@ function buildBrandQueryVariants(queryText, brands = []) {
   return variants.slice(0, 8);
 }
 
+
+// Request-framing words that carry NO retrieval intent of their own.
+//
+// A brand query in a chat UI is almost never the bare token. Users type "show me Murad products",
+// and until this list existed that phrasing was a different query class from "Murad": the bare form
+// took the verbatim path below and returned 12 Murad products, while the natural form kept "show",
+// "me" and "products" as content tokens and returned a LIZUSH bath bomb whose title happens to end
+// "bath & body products". "Murad products" returned nothing at all. Measured live on agent.pivota.cc
+// 2026-08-31 against gateway-00081-lay, with /internal/diag/brand-dict confirming the brand WAS
+// detected on every one of those phrasings — the detection was never the problem.
+//
+// Membership rule, so this list stays safe to extend: a token belongs here only if dropping it can
+// never change WHICH products answer. Request verbs ("show", "find"), function words ("me", "for",
+// "a") and generic container nouns ("products", "items", "collection") qualify. Words that steer
+// retrieval do NOT, however filler they sound: "new" (new arrivals), "best"/"top" (ranking),
+// "cheap"/"sale" (price), and every category noun. When in doubt, leave it out — a token left here
+// only preserves today's behaviour, while a wrong one silently deletes a constraint the user typed.
+const BRAND_QUERY_FILLER_TOKENS = new Set([
+  // articles, pronouns, copulas
+  'a', 'an', 'the', 'i', 'im', 'me', 'my', 'we', 'us', 'our', 'you', 'your', 'it', 'is', 'am', 'are',
+  // request verbs
+  'show', 'find', 'get', 'give', 'see', 'want', 'need', 'looking', 'look', 'search', 'searching',
+  'browse', 'buy', 'shop', 'shopping', 'list', 'display', 'have', 'has', 'got',
+  // function words
+  'for', 'of', 'from', 'by', 'at', 'in', 'on', 'to', 'with', 'and', 'some', 'any', 'all', 'please',
+  // generic container nouns — "which products", not "which kind of product"
+  'product', 'products', 'item', 'items', 'thing', 'things', 'stuff', 'range', 'lineup', 'catalog',
+  'catalogue', 'selection', 'collection', 'option', 'options',
+]);
+
+// Unicode-aware, and deliberately identical to the token normalization the bare-brand guard in
+// findProductsMulti/policy.js used before it delegated here, so the `bare` verdict is unchanged.
+function normalizeBrandGuardToken(token) {
+  return String(token || '')
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]/gu, '');
+}
+
+/**
+ * Classify a query against the brands detected in it, and — when the only non-brand words are
+ * filler — hand back the query with that filler removed.
+ *
+ * @param {string} queryText   the user's query, verbatim
+ * @param {string[]} brands    detected brand spans (detectBrandEntities().brands)
+ * @returns {null | { bare: boolean, fillerOnly: boolean, query: string }}
+ *   `bare`       — the query is nothing but the brand (today's behaviour, unchanged)
+ *   `fillerOnly` — every non-brand token is filler, so this IS a bare brand query in disguise
+ *   `query`      — the brand tokens AS THE USER TYPED THEM, in their original order and case.
+ *                  Never synthesised from the brand entity: the entity is a normalized catalog span,
+ *                  and echoing a normalization back as the user's query is how a search starts
+ *                  answering a question nobody asked.
+ *   null when no brand token is present at all.
+ */
+function reduceBrandOnlyQuery(queryText, brands = []) {
+  const brandTokenSet = new Set(
+    (Array.isArray(brands) ? brands : [])
+      .flatMap((brand) => String(brand || '').toLowerCase().split(/\s+/))
+      .map(normalizeBrandGuardToken)
+      .filter(Boolean),
+  );
+  if (!brandTokenSet.size) return null;
+
+  const kept = [];
+  const dropped = [];
+  for (const token of String(queryText || '').split(/\s+/)) {
+    const normalized = normalizeBrandGuardToken(token);
+    if (!normalized) continue;
+    if (brandTokenSet.has(normalized)) kept.push(token);
+    else dropped.push(normalized);
+  }
+  if (!kept.length) return null;
+
+  return {
+    bare: dropped.length === 0,
+    fillerOnly:
+      dropped.length > 0 && dropped.every((token) => BRAND_QUERY_FILLER_TOKENS.has(token)),
+    query: kept.join(' '),
+  };
+}
+
 module.exports = {
   detectBrandEntities,
   buildBrandQueryVariants,
   hasExplicitCategoryHint,
   normalizeBrandText,
+  reduceBrandOnlyQuery,
   resolveBeautyBrandBrowseQuery,
+  BRAND_QUERY_FILLER_TOKENS,
 };

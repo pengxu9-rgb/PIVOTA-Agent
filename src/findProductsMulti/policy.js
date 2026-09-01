@@ -12,6 +12,7 @@ const {
   detectBrandEntities,
   buildBrandQueryVariants,
   hasExplicitCategoryHint,
+  reduceBrandOnlyQuery,
 } = require('./brandLexicon');
 const {
   buildBeautyQueryProfile,
@@ -2546,9 +2547,44 @@ function shouldUseSemanticContractQueryOwner(semanticContract = null) {
   return isBeautyDiscoverySemanticContract(semanticContract);
 }
 
+// The semantic owner query REPLACES the user's words with the contract's canonical category phrase.
+// That is the point — it is what grounds a vague beauty request — but it also deleted the one word in
+// the query that no category phrase can carry: the brand. Measured before this preservation, with no
+// database and no network:
+//     "CeraVe cleanser"    -> "daily cleanser"
+//     "CeraVe serum"       -> "serum serum"
+//     "CeraVe moisturizer" -> "lightweight moisturizer face moisturizer"
+// and in production the same shape answered "I am looking for a Murad cleanser" with twelve
+// cleansers from Pixi, Mixsoon and The Ordinary while Murad's own cleansers — which the bare query
+// "Murad" returned seconds earlier — were absent. Makeup categories were unaffected ("NARS blush"
+// survived), which is why this read as a category problem rather than a brand one.
+//
+// So the brand the user typed is carried through the rewrite instead of being replaced by it. Terms
+// are prepended, not appended: the pack's own phrase stays intact behind them, and a query whose
+// first token is the brand is what the bare-brand path already proves works. Token-deduplicated
+// case-insensitively, so "CeraVe serum" + "serum serum" is "CeraVe serum" rather than a stutter.
+function withPreservedQueryTerms(query, preserveTerms = '') {
+  const base = String(query || '').trim();
+  const preserved = String(preserveTerms || '').trim();
+  if (!preserved) return base;
+  if (!base) return preserved;
+  const seen = new Set();
+  const out = [];
+  for (const token of `${preserved} ${base}`.split(/\s+/)) {
+    const key = token.toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
+    if (!key) continue;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(token);
+  }
+  const joined = out.join(' ').trim();
+  return joined.length > 220 ? joined.slice(0, 220).trim() : joined;
+}
+
 function buildSemanticOwnerSearchQuery({
   semanticRewriteResult = null,
   fallbackQuery = '',
+  preserveTerms = '',
 } = {}) {
   const normalizedQueryPack = Array.isArray(semanticRewriteResult?.normalized_query_pack)
     ? semanticRewriteResult.normalized_query_pack
@@ -2563,13 +2599,15 @@ function buildSemanticOwnerSearchQuery({
       .slice(0, 3)
       .join(' ')
       .trim();
-    if (joined) return joined.length > 220 ? joined.slice(0, 220).trim() : joined;
+    if (joined) return withPreservedQueryTerms(joined, preserveTerms);
   }
   const primaryQuery = normalizedQueryPack
     .map((value) => String(value || '').trim())
     .find(Boolean);
-  if (!primaryQuery) return String(fallbackQuery || '').trim();
-  return primaryQuery.length > 220 ? primaryQuery.slice(0, 220).trim() : primaryQuery;
+  // The fallback is the user's OWN query, so it already carries the brand; preservation is idempotent
+  // there thanks to the dedupe, and running it keeps every return path on one rule.
+  if (!primaryQuery) return withPreservedQueryTerms(String(fallbackQuery || '').trim(), preserveTerms);
+  return withPreservedQueryTerms(primaryQuery, preserveTerms);
 }
 
 function inferQueryClassFromIntentAndQuery(intent, rawQuery) {
@@ -4950,33 +4988,36 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
   // detectBrandEntities includes the catalog dictionary
   // (GATEWAY_DYNAMIC_BRAND_DETECT), so brands unknown to the NLU are exactly
   // the ones this protects.
-  const brandQueryExpansionBypassed = (() => {
-    if (!brandQueryDetected || !latestUserQuery) return false;
-    const normalizeGuardToken = (token) =>
-      String(token || '')
-        .toLowerCase()
-        .replace(/[^\p{L}\p{N}]/gu, '');
-    const brandTokenSet = new Set(
-      brandEntities
-        .flatMap((brand) => String(brand || '').toLowerCase().split(/\s+/))
-        .map(normalizeGuardToken)
-        .filter(Boolean),
-    );
-    if (!brandTokenSet.size) return false;
-    const remainder = String(latestUserQuery)
-      .toLowerCase()
-      .split(/\s+/)
-      .map(normalizeGuardToken)
-      .filter(Boolean)
-      .filter((token) => !brandTokenSet.has(token));
-    return remainder.length === 0;
-  })();
+  //
+  // A brand query in a chat UI is rarely the bare token, and until this reduction the two spellings
+  // were different query classes. Live on agent.pivota.cc 2026-08-31, against a build carrying every
+  // one of #2127-#2135: "Murad" -> 12 Murad products; "Murad products" -> nothing at all;
+  // "show me Murad products" -> one LIZUSH bath bomb, matched on the word "products" in its title.
+  // detectBrandEntities returned brand_like:true for all three (confirmed in prod through
+  // /internal/diag/brand-dict), so the brand was detected every time and then simply not acted on.
+  // When the only non-brand words are filler, reduce the query to the brand tokens the user actually
+  // typed and take the SAME verbatim path the bare query takes. A remainder holding any real token
+  // -- "Murad cleanser" -- is untouched and still expands, because that query asks something the
+  // brand alone does not answer.
+  const brandQueryReduction =
+    brandQueryDetected && latestUserQuery
+      ? reduceBrandOnlyQuery(latestUserQuery, brandEntities)
+      : null;
+  const brandQueryFillerReducedQuery =
+    brandQueryReduction && brandQueryReduction.fillerOnly ? brandQueryReduction.query : null;
+  const brandQueryExpansionBypassed = Boolean(
+    brandQueryReduction && (brandQueryReduction.bare || brandQueryFillerReducedQuery),
+  );
 
   const expandedQuery = (() => {
     const q = latestUserQuery;
     if (!q) return q;
     const expansionMode = baseExpansionMode;
     if (expansionMode === 'off') return q;
+    // The filler-reduced form REPLACES the query rather than merely skipping expansion: leaving
+    // "show me murad products" verbatim is what returned the bath bomb, and leaving "murad products"
+    // verbatim is what returned nothing.
+    if (brandQueryFillerReducedQuery) return brandQueryFillerReducedQuery;
     if (brandQueryExpansionBypassed) return q;
     const lang = intent?.language || 'en';
     const target = intent?.target_object?.type || 'unknown';
@@ -5273,6 +5314,9 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
     ? buildSemanticOwnerSearchQuery({
         semanticRewriteResult,
         fallbackQuery: expandedWithAssociation || latestUserQuery,
+        // The brand tokens AS TYPED. reduceBrandOnlyQuery returns them whatever the remainder looks
+        // like, so this covers "CeraVe cleanser" as well as the filler-only shapes above.
+        preserveTerms: brandQueryReduction ? brandQueryReduction.query : '',
       })
     : expandedWithAssociation;
   const beautyContextRetrievalQuery = buildBeautyContextRetrievalQuery({
@@ -5378,6 +5422,7 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
     query_semantic_class: querySemanticClass,
     brand_query_detected: brandQueryDetected,
     brand_query_expansion_bypassed: brandQueryExpansionBypassed,
+    brand_query_filler_reduced_to: brandQueryFillerReducedQuery,
     brand_entities: brandEntities,
     brand_detection_mode: brandDetection?.detection_mode || null,
     brand_query_without_category: brandQueryWithoutCategory,

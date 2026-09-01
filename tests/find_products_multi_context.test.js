@@ -1338,4 +1338,78 @@ describe('find_products_multi context building', () => {
     expect(intent.target_object.type).toBe('human');
     expect(intent.scenario.name).toBe('sleepwear');
   });
+
+  // A brand query typed the way a person types it. Live on agent.pivota.cc 2026-08-31, on a build
+  // carrying every one of #2127-#2135: "Murad" returned 12 Murad products, "Murad products" returned
+  // nothing at all, and "show me Murad products" returned one LIZUSH bath bomb whose title ends
+  // "bath & body products". detectBrandEntities said brand_like:true on all three (confirmed against
+  // prod through /internal/diag/brand-dict), so the brand was detected and then never acted on.
+  //
+  // CeraVe rather than Murad here on purpose: Murad is only in the catalog dictionary, which needs a
+  // database, so a test using it would pass for the wrong reason in CI. CeraVe is a static alias.
+  describe('brand queries wrapped in filler reach upstream as the brand', () => {
+    const upstreamQueryFor = async (query) => {
+      const { adjustedPayload } = await buildFindProductsMultiContext({
+        payload: { search: { query }, user: { recent_queries: [] }, messages: [{ role: 'user', content: query }] },
+        metadata: {},
+      });
+      return String(adjustedPayload.search.query || '');
+    };
+
+    test('"show me CeraVe products" searches for CeraVe, not for "products"', async () => {
+      expect(await upstreamQueryFor('show me CeraVe products')).toBe('CeraVe');
+    });
+
+    test('"CeraVe products" searches for CeraVe', async () => {
+      expect(await upstreamQueryFor('CeraVe products')).toBe('CeraVe');
+    });
+
+    test('a bare brand is unchanged — the path that already worked stays byte-identical', async () => {
+      expect(await upstreamQueryFor('CeraVe')).toBe('CeraVe');
+    });
+
+    test('a real category token is NOT filler: "CeraVe cleanser" keeps its category', async () => {
+      // The positive counterpart. Without it, deleting the fillerOnly arm entirely would leave the
+      // three assertions above green for a build that had simply stopped expanding everything.
+      const upstream = await upstreamQueryFor('CeraVe cleanser');
+      expect(upstream.toLowerCase()).toContain('cleanser');
+      expect(upstream.toLowerCase()).toContain('cerave');
+    });
+
+    // The second, larger half of the same production failure. The beauty semantic contract owns the
+    // query on skincare requests and REPLACES it with the contract's canonical category phrase, which
+    // has no room for a brand. Measured on this build before the fix, with no DB and no network:
+    //   "CeraVe cleanser" -> "daily cleanser"; "CeraVe serum" -> "serum serum";
+    //   "CeraVe moisturizer" -> "lightweight moisturizer face moisturizer".
+    // Makeup categories were untouched, which is exactly why this looked like a category bug.
+    test.each([
+      ['CeraVe cleanser', 'cerave'],
+      ['CeraVe serum', 'cerave'],
+      ['CeraVe moisturizer', 'cerave'],
+    ])('the semantic rewrite of %s carries the brand through', async (query, brandToken) => {
+      expect(await upstreamQueryFor(query)).toEqual(
+        expect.stringMatching(new RegExp(brandToken, 'i')),
+      );
+    });
+
+    test('the rewrite still grounds the category — the brand is carried, not substituted', async () => {
+      // Preserving the brand must not turn into "send the raw query": the contract's canonical phrase
+      // is what grounds a vague beauty request, and dropping it would be a different regression.
+      expect((await upstreamQueryFor('CeraVe cleanser')).toLowerCase()).toBe('cerave daily cleanser');
+    });
+
+    test('a repeated token is not stuttered back at the search engine', async () => {
+      expect((await upstreamQueryFor('CeraVe serum')).toLowerCase()).toBe('cerave serum');
+    });
+
+    test('a brandless beauty query keeps the canonical rewrite exactly as today', async () => {
+      // The no-op counterpart: preservation must change nothing when there is no brand to preserve.
+      expect((await upstreamQueryFor('cleanser for dry skin')).toLowerCase()).toBe('daily cleanser');
+    });
+
+    test('a query with no detected brand is untouched by the reduction', async () => {
+      const upstream = await upstreamQueryFor('show me products');
+      expect(upstream.toLowerCase()).toContain('products');
+    });
+  });
 });
