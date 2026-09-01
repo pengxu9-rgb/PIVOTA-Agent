@@ -179,3 +179,38 @@ test('no brands, or nothing to reorder, is a no-op', () => {
   assert.equal(hoistDetectedBrandProducts([row('a', 'Pixi Beauty')], ['cerave']).applied, false);
   assert.deepEqual(hoistDetectedBrandProducts(null, ['cerave']).products, []);
 });
+
+test('the hoist is genuinely LAST — no stage may reassign the page after it', () => {
+  // Review finding on this PR. The first cut sat immediately after the beauty-bucket backstop, which
+  // reads like the end of the pipeline but is not: the context fail-open below replaces `filtered`
+  // wholesale with preDomainFilterCandidates (a snapshot taken ~400 lines earlier), and the clarify
+  // path can empty it. A brand query that lost its page and then recovered came back UN-SCOPED.
+  //
+  // The behavioural suites could not catch that — reaching the fail-open needs an emptied page plus a
+  // resolved scenario slot plus a clarify-eligible ambiguity score — so the invariant itself is
+  // asserted: every `filtered = …` in the policy must appear BEFORE the hoist, and the hoist before
+  // the first read of the finished page. This fails on the original placement.
+  const fs = require('node:fs');
+  const source = fs.readFileSync(require.resolve('../src/findProductsMulti/policy'), 'utf8');
+  const lines = source.split('\n');
+
+  const hoistLine = lines.findIndex((line) =>
+    line.includes('const brandResultScope = hoistDetectedBrandProducts('),
+  );
+  assert.ok(hoistLine > 0, 'the hoist must exist in policy.js');
+
+  const reassignments = lines
+    .map((line, index) => ({ line, index }))
+    .filter(({ line, index }) => index !== hoistLine + 1 && /^\s*filtered = /.test(line));
+  assert.ok(reassignments.length > 5, 'sanity: the policy really does reassign `filtered` repeatedly');
+
+  const after = reassignments.filter(({ index }) => index > hoistLine);
+  assert.deepEqual(
+    after.map(({ index, line }) => `${index + 1}: ${line.trim()}`),
+    [],
+    'a stage that reassigns `filtered` after the hoist silently discards the brand scoping',
+  );
+
+  const firstRead = lines.findIndex((line) => /^\s*after = filtered\.length;/.test(line));
+  assert.ok(firstRead > hoistLine, 'the hoist must run BEFORE the finished page is read');
+});

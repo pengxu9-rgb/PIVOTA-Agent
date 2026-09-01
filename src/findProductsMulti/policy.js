@@ -5816,33 +5816,6 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
     40,
     queryClass,
   );
-  // Last word on ORDER, so nothing above can put a competitor back on top of a brand the user named.
-  // Runs after every dropping stage and before the post-quality gate counts the page: this pass only
-  // reorders, so postCandidateCount, the recall floor and the ambiguity gate all see exactly what
-  // they saw before it existed. (An llm_rerank stage still runs downstream in server.js and would
-  // re-sort this if it were ever applied; it reports applied:false on the observed traffic.)
-  // No brandQueryDetected guard in front of this: brandEntities is only ever populated from that same
-  // detection, so a guard would be an unreachable branch — and hoistDetectedBrandProducts already
-  // refuses on an empty alias list. A mutant that removed the guard left every test green, which is
-  // the tell; the honest fix is to delete the redundancy rather than write a test for a state the
-  // code cannot reach.
-  const brandResultScope = hoistDetectedBrandProducts(filtered, brandEntities);
-  filtered = Array.isArray(brandResultScope.products) ? brandResultScope.products : filtered;
-  pushGateTrace(
-    'brand_result_scope',
-    Boolean(brandResultScope.applied),
-    brandResultScope.applied ? 'reordered' : 'pass',
-    brandEntities.length === 0
-      ? null
-      : brandResultScope.applied
-        ? `hoisted_${brandResultScope.matched}`
-        : brandResultScope.matched > 0
-          ? 'all_on_brand'
-          : 'brand_absent_from_page',
-    5,
-    queryClass,
-  );
-
   const scenarioDerivedAnchorActive =
     SEARCH_SCENARIO_ANCHOR_MODE === 'derived' &&
     ['scenario', 'mission'].includes(String(queryClass || ''));
@@ -6057,6 +6030,42 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
   } else {
     postQuality.context_fail_open_applied = false;
   }
+
+  // Genuinely the last word on ORDER, and it has to be here rather than up with the other ordering
+  // stages. A first cut sat immediately after the beauty-bucket backstop, which reads like the end of
+  // the pipeline but is not: the context fail-open above replaces `filtered` wholesale with
+  // preDomainFilterCandidates — a snapshot taken ~400 lines earlier — and the clarify path can empty
+  // it. A brand query that lost its page and then recovered would have come back un-scoped, with the
+  // named brand buried among competitors, which is the exact complaint this pass exists to answer.
+  // Placed below every reassignment and above the first read (`after`, computeMatchStats,
+  // setResponseProductList), so no later branch can undo it.
+  //
+  // Still only a reorder, so `after`, the match stats and the response length are all identical to
+  // what they would be without it. (An llm_rerank stage runs further downstream in server.js and
+  // would re-sort this if it ever applied; it reports applied:false on the observed traffic.)
+  //
+  // No brandQueryDetected guard in front of this: brandEntities is only ever populated from that same
+  // detection, so a guard would be an unreachable branch — and hoistDetectedBrandProducts already
+  // refuses on an empty alias list. A mutant that removed the guard left every test green, which is
+  // the tell; the honest fix is to delete the redundancy rather than write a test for a state the
+  // code cannot reach.
+  const brandResultScope = hoistDetectedBrandProducts(filtered, brandEntities);
+  filtered = Array.isArray(brandResultScope.products) ? brandResultScope.products : filtered;
+  pushGateTrace(
+    'brand_result_scope',
+    Boolean(brandResultScope.applied),
+    brandResultScope.applied ? 'reordered' : 'pass',
+    brandEntities.length === 0
+      ? null
+      : brandResultScope.applied
+        ? `hoisted_${brandResultScope.matched}`
+        : brandResultScope.matched > 0
+          ? 'all_on_brand'
+          : 'brand_absent_from_page',
+    5,
+    queryClass,
+  );
+
   after = filtered.length;
 
   let stats = computeMatchStats(filtered, intent, { rawQuery });
