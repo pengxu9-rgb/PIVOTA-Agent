@@ -9,6 +9,8 @@ const assert = require('node:assert/strict');
 
 const {
   reduceBrandOnlyQuery,
+  hoistDetectedBrandProducts,
+  productMatchesDetectedBrand,
   BRAND_QUERY_FILLER_TOKENS,
 } = require('../src/findProductsMulti/brandLexicon');
 
@@ -117,4 +119,63 @@ test('every filler token is normalized the same way the matcher normalizes query
       `filler token "${token}" can never match a normalized query token`,
     );
   }
+});
+
+// ---------------------------------------------------------------------------------------------
+// Result-side brand scoping. Carrying the brand into the query is not the same as making it a
+// constraint on the answer; this is the pass that does the second thing.
+
+const row = (id, brand, extra = {}) => ({ id, title: `${brand || 'unbranded'} thing`, brand, ...extra });
+
+test('the named brand is lifted to the front, and every product is returned', () => {
+  const products = [row('a', 'Pixi Beauty'), row('b', 'CeraVe'), row('c', 'The Ordinary'), row('d', 'CeraVe')];
+  const result = hoistDetectedBrandProducts(products, ['cerave']);
+  assert.deepEqual(result.products.map((p) => p.id), ['b', 'd', 'a', 'c']);
+  assert.equal(result.products.length, products.length, 'hoist, never truncate');
+  assert.deepEqual({ matched: result.matched, applied: result.applied }, { matched: 2, applied: true });
+});
+
+test('a brand absent from the page produces NO opinion — the safety property', () => {
+  // A false-positive detection may cost ranking position. It must never empty or reshuffle a page.
+  const products = [row('a', 'Pixi Beauty'), row('b', 'The Ordinary')];
+  const result = hoistDetectedBrandProducts(products, ['cerave']);
+  assert.deepEqual(result.products, products);
+  assert.deepEqual({ matched: result.matched, applied: result.applied }, { matched: 0, applied: false });
+});
+
+test('an all-on-brand page reports no work rather than phantom work', () => {
+  const products = [row('a', 'CeraVe'), row('b', 'CeraVe')];
+  const result = hoistDetectedBrandProducts(products, ['cerave']);
+  assert.deepEqual(result.products, products);
+  assert.equal(result.applied, false);
+});
+
+test('vendor answers when brand is empty; neither means never hoisted', () => {
+  const products = [
+    row('a', 'Pixi Beauty'),
+    { id: 'b', title: 'CeraVe Foaming Cleanser', vendor: 'CeraVe' },
+    { id: 'c', title: 'CeraVe dupe foaming cleanser' },
+  ];
+  const result = hoistDetectedBrandProducts(products, ['cerave']);
+  // 'c' names the brand in its TITLE only — that is where "dupe" gets written, so it stays put.
+  assert.deepEqual(result.products.map((p) => p.id), ['b', 'a', 'c']);
+  assert.equal(result.matched, 1);
+});
+
+test('brand matching is the canonical matcher, not a substring test', () => {
+  assert.equal(productMatchesDetectedBrand({ brand: 'CeraVe' }, ['cerave']), true);
+  assert.equal(productMatchesDetectedBrand({ brand: 'Tom Ford Beauty' }, ['tom ford']), true);
+  assert.equal(productMatchesDetectedBrand({ brand: 'Tomford' }, ['tom ford']), true);
+  // A brand that merely CONTAINS the alias inside a longer token is a different company.
+  assert.equal(productMatchesDetectedBrand({ brand: 'Naris Cosmetics' }, ['nars']), false);
+  assert.equal(productMatchesDetectedBrand({ brand: '' }, ['cerave']), false);
+  assert.equal(productMatchesDetectedBrand(null, ['cerave']), false);
+});
+
+test('no brands, or nothing to reorder, is a no-op', () => {
+  const products = [row('a', 'CeraVe'), row('b', 'Pixi Beauty')];
+  assert.equal(hoistDetectedBrandProducts(products, []).applied, false);
+  assert.equal(hoistDetectedBrandProducts(products, ['']).applied, false);
+  assert.equal(hoistDetectedBrandProducts([row('a', 'Pixi Beauty')], ['cerave']).applied, false);
+  assert.deepEqual(hoistDetectedBrandProducts(null, ['cerave']).products, []);
 });

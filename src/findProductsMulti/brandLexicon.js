@@ -631,8 +631,81 @@ function reduceBrandOnlyQuery(queryText, brands = []) {
   };
 }
 
+
+// Result-side brand scoping: when the user named a brand and that brand is IN the page, put it first.
+//
+// Retrieval carrying the brand (see reduceBrandOnlyQuery and the semantic-owner preservation) fixes
+// the QUERY. It does not make the brand a constraint on the ANSWER: `brandQueryDetected` only ever
+// relaxed gates — min-recall floor, ambiguity clarify — and `brand_query_variants` is computed in
+// policy.js and read by nobody. The one real brand-scoped retrieval path,
+// resolvePublicBrandScopeForDiscovery -> getDiscoveryFeed in server.js, returns [] for any caller
+// that is not a public search rail, so the chat rail the agent UI uses has never had one.
+//
+// HOIST, NEVER TRUNCATE. This reorders and returns every product it was given. That is the whole
+// safety argument, and it is deliberate rather than timid:
+//   - A false-positive brand detection can cost ranking position. It can never empty a page. The
+//     catalog dictionary is 338 entries built from live rows, and a single-token brand that collides
+//     with an ordinary word is exactly the shape it is most likely to get wrong.
+//   - "Murad cleanser" legitimately wants other cleansers BELOW the Murad ones — truncating would
+//     delete the alternatives that make the answer useful.
+//   - A page with zero on-brand rows is left completely alone. Returning nothing would be a more
+//     honest answer to "show me Murad" than twelve competitors, but it is a product decision about
+//     what an empty result means, not something a reordering pass should decide by itself.
+//
+// Matching is on the brand/vendor FIELDS, never the title: "CeraVe dupe" is a competitor's product,
+// and a title is where that sentence gets written. A row carrying no brand data is therefore never
+// hoisted — it keeps its position, which costs ranking rather than visibility. The matcher is the
+// same matchesBrandAliasInNormalizedText the detector uses, so a brand that detection recognises in
+// a query is recognised here in a row; a local twin of it is how this class of bug regressed before.
+function productMatchesDetectedBrand(product, normalizedBrandAliases = []) {
+  if (!product || typeof product !== 'object') return false;
+  const brandText = normalizeBrandText(
+    [product.brand, product.vendor, product.brand_name, product.brandName]
+      .map((value) => String(value || '').trim())
+      .find(Boolean) || '',
+  );
+  if (!brandText) return false;
+  return normalizedBrandAliases.some((alias) => matchesBrandAliasInNormalizedText(brandText, alias));
+}
+
+/**
+ * Stable partition that lifts the detected brand's products to the front of the page.
+ *
+ * @returns {{ products: any[], matched: number, applied: boolean }}
+ *   `applied` is false whenever the order is unchanged — no brands, nothing matched, everything
+ *   matched, or nothing to reorder — so a gate trace cannot claim work that did not happen.
+ */
+function hoistDetectedBrandProducts(products, brands = []) {
+  const list = Array.isArray(products) ? products : [];
+  const normalizedBrandAliases = (Array.isArray(brands) ? brands : [])
+    .map((brand) => normalizeBrandText(brand))
+    .filter(Boolean);
+  // A pure short-circuit, deliberately behaviour-neutral: with no aliases nothing can match and the
+  // partition below would return the list untouched anyway. A mutant that deletes this line stays
+  // green on purpose — it is a cheap early return, not a correctness boundary, and no test should be
+  // written to pin it.
+  if (!normalizedBrandAliases.length || list.length < 2) {
+    return { products: list, matched: 0, applied: false };
+  }
+
+  const onBrand = [];
+  const rest = [];
+  for (const product of list) {
+    if (productMatchesDetectedBrand(product, normalizedBrandAliases)) onBrand.push(product);
+    else rest.push(product);
+  }
+
+  // Nothing to say: the brand is absent from the page, or the page is already all of it.
+  if (onBrand.length === 0 || rest.length === 0) {
+    return { products: list, matched: onBrand.length, applied: false };
+  }
+  return { products: [...onBrand, ...rest], matched: onBrand.length, applied: true };
+}
+
 module.exports = {
   detectBrandEntities,
+  hoistDetectedBrandProducts,
+  productMatchesDetectedBrand,
   buildBrandQueryVariants,
   hasExplicitCategoryHint,
   normalizeBrandText,

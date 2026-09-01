@@ -12,6 +12,7 @@ const {
   detectBrandEntities,
   buildBrandQueryVariants,
   hasExplicitCategoryHint,
+  hoistDetectedBrandProducts,
   reduceBrandOnlyQuery,
 } = require('./brandLexicon');
 const {
@@ -5815,6 +5816,33 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
     40,
     queryClass,
   );
+  // Last word on ORDER, so nothing above can put a competitor back on top of a brand the user named.
+  // Runs after every dropping stage and before the post-quality gate counts the page: this pass only
+  // reorders, so postCandidateCount, the recall floor and the ambiguity gate all see exactly what
+  // they saw before it existed. (An llm_rerank stage still runs downstream in server.js and would
+  // re-sort this if it were ever applied; it reports applied:false on the observed traffic.)
+  // No brandQueryDetected guard in front of this: brandEntities is only ever populated from that same
+  // detection, so a guard would be an unreachable branch — and hoistDetectedBrandProducts already
+  // refuses on an empty alias list. A mutant that removed the guard left every test green, which is
+  // the tell; the honest fix is to delete the redundancy rather than write a test for a state the
+  // code cannot reach.
+  const brandResultScope = hoistDetectedBrandProducts(filtered, brandEntities);
+  filtered = Array.isArray(brandResultScope.products) ? brandResultScope.products : filtered;
+  pushGateTrace(
+    'brand_result_scope',
+    Boolean(brandResultScope.applied),
+    brandResultScope.applied ? 'reordered' : 'pass',
+    brandEntities.length === 0
+      ? null
+      : brandResultScope.applied
+        ? `hoisted_${brandResultScope.matched}`
+        : brandResultScope.matched > 0
+          ? 'all_on_brand'
+          : 'brand_absent_from_page',
+    5,
+    queryClass,
+  );
+
   const scenarioDerivedAnchorActive =
     SEARCH_SCENARIO_ANCHOR_MODE === 'derived' &&
     ['scenario', 'mission'].includes(String(queryClass || ''));
