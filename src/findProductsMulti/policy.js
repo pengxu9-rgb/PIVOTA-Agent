@@ -12,6 +12,8 @@ const {
   detectBrandEntities,
   buildBrandQueryVariants,
   hasExplicitCategoryHint,
+  hoistDetectedBrandProducts,
+  reduceBrandOnlyQuery,
 } = require('./brandLexicon');
 const {
   buildBeautyQueryProfile,
@@ -2546,9 +2548,44 @@ function shouldUseSemanticContractQueryOwner(semanticContract = null) {
   return isBeautyDiscoverySemanticContract(semanticContract);
 }
 
+// The semantic owner query REPLACES the user's words with the contract's canonical category phrase.
+// That is the point — it is what grounds a vague beauty request — but it also deleted the one word in
+// the query that no category phrase can carry: the brand. Measured before this preservation, with no
+// database and no network:
+//     "CeraVe cleanser"    -> "daily cleanser"
+//     "CeraVe serum"       -> "serum serum"
+//     "CeraVe moisturizer" -> "lightweight moisturizer face moisturizer"
+// and in production the same shape answered "I am looking for a Murad cleanser" with twelve
+// cleansers from Pixi, Mixsoon and The Ordinary while Murad's own cleansers — which the bare query
+// "Murad" returned seconds earlier — were absent. Makeup categories were unaffected ("NARS blush"
+// survived), which is why this read as a category problem rather than a brand one.
+//
+// So the brand the user typed is carried through the rewrite instead of being replaced by it. Terms
+// are prepended, not appended: the pack's own phrase stays intact behind them, and a query whose
+// first token is the brand is what the bare-brand path already proves works. Token-deduplicated
+// case-insensitively, so "CeraVe serum" + "serum serum" is "CeraVe serum" rather than a stutter.
+function withPreservedQueryTerms(query, preserveTerms = '') {
+  const base = String(query || '').trim();
+  const preserved = String(preserveTerms || '').trim();
+  if (!preserved) return base;
+  if (!base) return preserved;
+  const seen = new Set();
+  const out = [];
+  for (const token of `${preserved} ${base}`.split(/\s+/)) {
+    const key = token.toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
+    if (!key) continue;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(token);
+  }
+  const joined = out.join(' ').trim();
+  return joined.length > 220 ? joined.slice(0, 220).trim() : joined;
+}
+
 function buildSemanticOwnerSearchQuery({
   semanticRewriteResult = null,
   fallbackQuery = '',
+  preserveTerms = '',
 } = {}) {
   const normalizedQueryPack = Array.isArray(semanticRewriteResult?.normalized_query_pack)
     ? semanticRewriteResult.normalized_query_pack
@@ -2563,13 +2600,15 @@ function buildSemanticOwnerSearchQuery({
       .slice(0, 3)
       .join(' ')
       .trim();
-    if (joined) return joined.length > 220 ? joined.slice(0, 220).trim() : joined;
+    if (joined) return withPreservedQueryTerms(joined, preserveTerms);
   }
   const primaryQuery = normalizedQueryPack
     .map((value) => String(value || '').trim())
     .find(Boolean);
-  if (!primaryQuery) return String(fallbackQuery || '').trim();
-  return primaryQuery.length > 220 ? primaryQuery.slice(0, 220).trim() : primaryQuery;
+  // The fallback is the user's OWN query, so it already carries the brand; preservation is idempotent
+  // there thanks to the dedupe, and running it keeps every return path on one rule.
+  if (!primaryQuery) return withPreservedQueryTerms(String(fallbackQuery || '').trim(), preserveTerms);
+  return withPreservedQueryTerms(primaryQuery, preserveTerms);
 }
 
 function inferQueryClassFromIntentAndQuery(intent, rawQuery) {
@@ -4950,33 +4989,36 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
   // detectBrandEntities includes the catalog dictionary
   // (GATEWAY_DYNAMIC_BRAND_DETECT), so brands unknown to the NLU are exactly
   // the ones this protects.
-  const brandQueryExpansionBypassed = (() => {
-    if (!brandQueryDetected || !latestUserQuery) return false;
-    const normalizeGuardToken = (token) =>
-      String(token || '')
-        .toLowerCase()
-        .replace(/[^\p{L}\p{N}]/gu, '');
-    const brandTokenSet = new Set(
-      brandEntities
-        .flatMap((brand) => String(brand || '').toLowerCase().split(/\s+/))
-        .map(normalizeGuardToken)
-        .filter(Boolean),
-    );
-    if (!brandTokenSet.size) return false;
-    const remainder = String(latestUserQuery)
-      .toLowerCase()
-      .split(/\s+/)
-      .map(normalizeGuardToken)
-      .filter(Boolean)
-      .filter((token) => !brandTokenSet.has(token));
-    return remainder.length === 0;
-  })();
+  //
+  // A brand query in a chat UI is rarely the bare token, and until this reduction the two spellings
+  // were different query classes. Live on agent.pivota.cc 2026-08-31, against a build carrying every
+  // one of #2127-#2135: "Murad" -> 12 Murad products; "Murad products" -> nothing at all;
+  // "show me Murad products" -> one LIZUSH bath bomb, matched on the word "products" in its title.
+  // detectBrandEntities returned brand_like:true for all three (confirmed in prod through
+  // /internal/diag/brand-dict), so the brand was detected every time and then simply not acted on.
+  // When the only non-brand words are filler, reduce the query to the brand tokens the user actually
+  // typed and take the SAME verbatim path the bare query takes. A remainder holding any real token
+  // -- "Murad cleanser" -- is untouched and still expands, because that query asks something the
+  // brand alone does not answer.
+  const brandQueryReduction =
+    brandQueryDetected && latestUserQuery
+      ? reduceBrandOnlyQuery(latestUserQuery, brandEntities)
+      : null;
+  const brandQueryFillerReducedQuery =
+    brandQueryReduction && brandQueryReduction.fillerOnly ? brandQueryReduction.query : null;
+  const brandQueryExpansionBypassed = Boolean(
+    brandQueryReduction && (brandQueryReduction.bare || brandQueryFillerReducedQuery),
+  );
 
   const expandedQuery = (() => {
     const q = latestUserQuery;
     if (!q) return q;
     const expansionMode = baseExpansionMode;
     if (expansionMode === 'off') return q;
+    // The filler-reduced form REPLACES the query rather than merely skipping expansion: leaving
+    // "show me murad products" verbatim is what returned the bath bomb, and leaving "murad products"
+    // verbatim is what returned nothing.
+    if (brandQueryFillerReducedQuery) return brandQueryFillerReducedQuery;
     if (brandQueryExpansionBypassed) return q;
     const lang = intent?.language || 'en';
     const target = intent?.target_object?.type || 'unknown';
@@ -5273,6 +5315,9 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
     ? buildSemanticOwnerSearchQuery({
         semanticRewriteResult,
         fallbackQuery: expandedWithAssociation || latestUserQuery,
+        // The brand tokens AS TYPED. reduceBrandOnlyQuery returns them whatever the remainder looks
+        // like, so this covers "CeraVe cleanser" as well as the filler-only shapes above.
+        preserveTerms: brandQueryReduction ? brandQueryReduction.query : '',
       })
     : expandedWithAssociation;
   const beautyContextRetrievalQuery = buildBeautyContextRetrievalQuery({
@@ -5378,6 +5423,7 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
     query_semantic_class: querySemanticClass,
     brand_query_detected: brandQueryDetected,
     brand_query_expansion_bypassed: brandQueryExpansionBypassed,
+    brand_query_filler_reduced_to: brandQueryFillerReducedQuery,
     brand_entities: brandEntities,
     brand_detection_mode: brandDetection?.detection_mode || null,
     brand_query_without_category: brandQueryWithoutCategory,
@@ -5984,6 +6030,42 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
   } else {
     postQuality.context_fail_open_applied = false;
   }
+
+  // Genuinely the last word on ORDER, and it has to be here rather than up with the other ordering
+  // stages. A first cut sat immediately after the beauty-bucket backstop, which reads like the end of
+  // the pipeline but is not: the context fail-open above replaces `filtered` wholesale with
+  // preDomainFilterCandidates — a snapshot taken ~400 lines earlier — and the clarify path can empty
+  // it. A brand query that lost its page and then recovered would have come back un-scoped, with the
+  // named brand buried among competitors, which is the exact complaint this pass exists to answer.
+  // Placed below every reassignment and above the first read (`after`, computeMatchStats,
+  // setResponseProductList), so no later branch can undo it.
+  //
+  // Still only a reorder, so `after`, the match stats and the response length are all identical to
+  // what they would be without it. (An llm_rerank stage runs further downstream in server.js and
+  // would re-sort this if it ever applied; it reports applied:false on the observed traffic.)
+  //
+  // No brandQueryDetected guard in front of this: brandEntities is only ever populated from that same
+  // detection, so a guard would be an unreachable branch — and hoistDetectedBrandProducts already
+  // refuses on an empty alias list. A mutant that removed the guard left every test green, which is
+  // the tell; the honest fix is to delete the redundancy rather than write a test for a state the
+  // code cannot reach.
+  const brandResultScope = hoistDetectedBrandProducts(filtered, brandEntities);
+  filtered = Array.isArray(brandResultScope.products) ? brandResultScope.products : filtered;
+  pushGateTrace(
+    'brand_result_scope',
+    Boolean(brandResultScope.applied),
+    brandResultScope.applied ? 'reordered' : 'pass',
+    brandEntities.length === 0
+      ? null
+      : brandResultScope.applied
+        ? `hoisted_${brandResultScope.matched}`
+        : brandResultScope.matched > 0
+          ? 'all_on_brand'
+          : 'brand_absent_from_page',
+    5,
+    queryClass,
+  );
+
   after = filtered.length;
 
   let stats = computeMatchStats(filtered, intent, { rawQuery });

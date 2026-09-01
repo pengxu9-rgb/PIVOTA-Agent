@@ -1931,3 +1931,95 @@ describe('find_products_multi intent + filtering', () => {
     expect(resp.reason_codes || []).toEqual(expect.arrayContaining(['FASHION_VISIBLE_CONSTRAINT_FILTERED']));
   });
 });
+
+// Result-side brand scoping. Retrieval carrying the brand fixes the QUERY; nothing made the brand a
+// constraint on the ANSWER. brandQueryDetected only ever relaxed gates, brand_query_variants is read
+// by nobody, and resolvePublicBrandScopeForDiscovery (server.js) returns [] for any caller that is
+// not a public search rail — so the chat rail the agent UI uses never had one. Live on
+// agent.pivota.cc 2026-08-31: "I am looking for a Murad cleanser" answered with twelve cleansers
+// from Pixi, Mixsoon and The Ordinary and no Murad at all.
+//
+// CeraVe rather than Murad here: Murad lives only in the catalog dictionary, which needs a database,
+// so a test using it would pass for the wrong reason in CI.
+describe('result-side brand scoping', () => {
+  const row = (id, title, brand) =>
+    makeRawProduct({ id, title, brand, description: title, price: 20 });
+
+  const applyFor = (query, products) =>
+    applyFindProductsMultiPolicy({
+      response: { products, reply: null },
+      intent: extractIntentRuleBased(query, [], []),
+      requestPayload: { search: { query } },
+      metadata: {},
+      rawUserQuery: query,
+    });
+
+  // gate_trace rides on response.metadata, not the top level.
+  const traceFor = (resp) =>
+    ((resp.metadata && resp.metadata.gate_trace) || resp.gate_trace || []).find(
+      (entry) => entry.gate_id === 'brand_result_scope',
+    ) || null;
+
+  test('the named brand is lifted to the front, and nothing is lost', () => {
+    const resp = applyFor('CeraVe cleanser', [
+      row('a', 'Glow Mud Cleanser', 'Pixi Beauty'),
+      row('b', 'Foaming Facial Cleanser', 'CeraVe'),
+      row('c', 'Squalane Cleanser', 'The Ordinary'),
+      row('d', 'Hydrating Cleanser', 'CeraVe'),
+    ]);
+    expect(resp.products.map((p) => p.id)).toEqual(['b', 'd', 'a', 'c']);
+    // Hoist, never truncate: the page is reordered, not shortened.
+    expect(resp.products).toHaveLength(4);
+    expect(traceFor(resp)).toMatchObject({ applied: true, decision: 'reordered', reason: 'hoisted_2' });
+  });
+
+  test('relative order WITHIN each group is preserved', () => {
+    const resp = applyFor('CeraVe cleanser', [
+      row('a', 'Alpha Cleanser', 'CeraVe'),
+      row('b', 'Beta Cleanser', 'Pixi Beauty'),
+      row('c', 'Gamma Cleanser', 'CeraVe'),
+      row('d', 'Delta Cleanser', 'The Ordinary'),
+    ]);
+    expect(resp.products.map((p) => p.id)).toEqual(['a', 'c', 'b', 'd']);
+  });
+
+  test('a page with none of the brand on it is left completely alone', () => {
+    // The safety property. A false-positive brand detection can cost ranking position; it must never
+    // empty or reshuffle a page, so a brand that is simply absent produces no opinion at all.
+    const products = [
+      row('a', 'Glow Mud Cleanser', 'Pixi Beauty'),
+      row('b', 'Squalane Cleanser', 'The Ordinary'),
+    ];
+    const resp = applyFor('CeraVe cleanser', products);
+    expect(resp.products.map((p) => p.id)).toEqual(['a', 'b']);
+    expect(traceFor(resp)).toMatchObject({ applied: false, reason: 'brand_absent_from_page' });
+  });
+
+  test('an all-on-brand page reports no work rather than phantom work', () => {
+    const resp = applyFor('CeraVe cleanser', [
+      row('a', 'Foaming Facial Cleanser', 'CeraVe'),
+      row('b', 'Hydrating Cleanser', 'CeraVe'),
+    ]);
+    expect(resp.products.map((p) => p.id)).toEqual(['a', 'b']);
+    expect(traceFor(resp)).toMatchObject({ applied: false, reason: 'all_on_brand' });
+  });
+
+  test('a query naming no brand is untouched', () => {
+    // The no-op counterpart: without it, a build that hoisted on every query would stay green above.
+    const resp = applyFor('gentle cleanser for dry skin', [
+      row('a', 'Glow Mud Cleanser', 'Pixi Beauty'),
+      row('b', 'Foaming Facial Cleanser', 'CeraVe'),
+    ]);
+    expect(resp.products.map((p) => p.id)).toEqual(['a', 'b']);
+    expect(traceFor(resp)).toMatchObject({ applied: false });
+  });
+
+  test('a brand named only in the TITLE is not treated as that brand', () => {
+    // "CeraVe dupe" is a competitor's product, and the title is where that sentence gets written.
+    const resp = applyFor('CeraVe cleanser', [
+      row('a', 'CeraVe dupe foaming cleanser', 'Pixi Beauty'),
+      row('b', 'Foaming Facial Cleanser', 'CeraVe'),
+    ]);
+    expect(resp.products.map((p) => p.id)).toEqual(['b', 'a']);
+  });
+});

@@ -551,10 +551,165 @@ function buildBrandQueryVariants(queryText, brands = []) {
   return variants.slice(0, 8);
 }
 
+
+// Request-framing words that carry NO retrieval intent of their own.
+//
+// A brand query in a chat UI is almost never the bare token. Users type "show me Murad products",
+// and until this list existed that phrasing was a different query class from "Murad": the bare form
+// took the verbatim path below and returned 12 Murad products, while the natural form kept "show",
+// "me" and "products" as content tokens and returned a LIZUSH bath bomb whose title happens to end
+// "bath & body products". "Murad products" returned nothing at all. Measured live on agent.pivota.cc
+// 2026-08-31 against gateway-00081-lay, with /internal/diag/brand-dict confirming the brand WAS
+// detected on every one of those phrasings — the detection was never the problem.
+//
+// Membership rule, so this list stays safe to extend: a token belongs here only if dropping it can
+// never change WHICH products answer. Request verbs ("show", "find"), function words ("me", "for",
+// "a") and generic container nouns ("products", "items", "collection") qualify. Words that steer
+// retrieval do NOT, however filler they sound: "new" (new arrivals), "best"/"top" (ranking),
+// "cheap"/"sale" (price), and every category noun. When in doubt, leave it out — a token left here
+// only preserves today's behaviour, while a wrong one silently deletes a constraint the user typed.
+const BRAND_QUERY_FILLER_TOKENS = new Set([
+  // articles, pronouns, copulas
+  'a', 'an', 'the', 'i', 'im', 'me', 'my', 'we', 'us', 'our', 'you', 'your', 'it', 'is', 'am', 'are',
+  // request verbs
+  'show', 'find', 'get', 'give', 'see', 'want', 'need', 'looking', 'look', 'search', 'searching',
+  'browse', 'buy', 'shop', 'shopping', 'list', 'display', 'have', 'has', 'got',
+  // function words
+  'for', 'of', 'from', 'by', 'at', 'in', 'on', 'to', 'with', 'and', 'some', 'any', 'all', 'please',
+  // generic container nouns — "which products", not "which kind of product"
+  'product', 'products', 'item', 'items', 'thing', 'things', 'stuff', 'range', 'lineup', 'catalog',
+  'catalogue', 'selection', 'collection', 'option', 'options',
+]);
+
+// Unicode-aware, and deliberately identical to the token normalization the bare-brand guard in
+// findProductsMulti/policy.js used before it delegated here, so the `bare` verdict is unchanged.
+function normalizeBrandGuardToken(token) {
+  return String(token || '')
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]/gu, '');
+}
+
+/**
+ * Classify a query against the brands detected in it, and — when the only non-brand words are
+ * filler — hand back the query with that filler removed.
+ *
+ * @param {string} queryText   the user's query, verbatim
+ * @param {string[]} brands    detected brand spans (detectBrandEntities().brands)
+ * @returns {null | { bare: boolean, fillerOnly: boolean, query: string }}
+ *   `bare`       — the query is nothing but the brand (today's behaviour, unchanged)
+ *   `fillerOnly` — every non-brand token is filler, so this IS a bare brand query in disguise
+ *   `query`      — the brand tokens AS THE USER TYPED THEM, in their original order and case.
+ *                  Never synthesised from the brand entity: the entity is a normalized catalog span,
+ *                  and echoing a normalization back as the user's query is how a search starts
+ *                  answering a question nobody asked.
+ *   null when no brand token is present at all.
+ */
+function reduceBrandOnlyQuery(queryText, brands = []) {
+  const brandTokenSet = new Set(
+    (Array.isArray(brands) ? brands : [])
+      .flatMap((brand) => String(brand || '').toLowerCase().split(/\s+/))
+      .map(normalizeBrandGuardToken)
+      .filter(Boolean),
+  );
+  if (!brandTokenSet.size) return null;
+
+  const kept = [];
+  const dropped = [];
+  for (const token of String(queryText || '').split(/\s+/)) {
+    const normalized = normalizeBrandGuardToken(token);
+    if (!normalized) continue;
+    if (brandTokenSet.has(normalized)) kept.push(token);
+    else dropped.push(normalized);
+  }
+  if (!kept.length) return null;
+
+  return {
+    bare: dropped.length === 0,
+    fillerOnly:
+      dropped.length > 0 && dropped.every((token) => BRAND_QUERY_FILLER_TOKENS.has(token)),
+    query: kept.join(' '),
+  };
+}
+
+
+// Result-side brand scoping: when the user named a brand and that brand is IN the page, put it first.
+//
+// Retrieval carrying the brand (see reduceBrandOnlyQuery and the semantic-owner preservation) fixes
+// the QUERY. It does not make the brand a constraint on the ANSWER: `brandQueryDetected` only ever
+// relaxed gates — min-recall floor, ambiguity clarify — and `brand_query_variants` is computed in
+// policy.js and read by nobody. The one real brand-scoped retrieval path,
+// resolvePublicBrandScopeForDiscovery -> getDiscoveryFeed in server.js, returns [] for any caller
+// that is not a public search rail, so the chat rail the agent UI uses has never had one.
+//
+// HOIST, NEVER TRUNCATE. This reorders and returns every product it was given. That is the whole
+// safety argument, and it is deliberate rather than timid:
+//   - A false-positive brand detection can cost ranking position. It can never empty a page. The
+//     catalog dictionary is 338 entries built from live rows, and a single-token brand that collides
+//     with an ordinary word is exactly the shape it is most likely to get wrong.
+//   - "Murad cleanser" legitimately wants other cleansers BELOW the Murad ones — truncating would
+//     delete the alternatives that make the answer useful.
+//   - A page with zero on-brand rows is left completely alone. Returning nothing would be a more
+//     honest answer to "show me Murad" than twelve competitors, but it is a product decision about
+//     what an empty result means, not something a reordering pass should decide by itself.
+//
+// Matching is on the brand/vendor FIELDS, never the title: "CeraVe dupe" is a competitor's product,
+// and a title is where that sentence gets written. A row carrying no brand data is therefore never
+// hoisted — it keeps its position, which costs ranking rather than visibility. The matcher is the
+// same matchesBrandAliasInNormalizedText the detector uses, so a brand that detection recognises in
+// a query is recognised here in a row; a local twin of it is how this class of bug regressed before.
+function productMatchesDetectedBrand(product, normalizedBrandAliases = []) {
+  if (!product || typeof product !== 'object') return false;
+  const brandText = normalizeBrandText(
+    [product.brand, product.vendor, product.brand_name, product.brandName]
+      .map((value) => String(value || '').trim())
+      .find(Boolean) || '',
+  );
+  if (!brandText) return false;
+  return normalizedBrandAliases.some((alias) => matchesBrandAliasInNormalizedText(brandText, alias));
+}
+
+/**
+ * Stable partition that lifts the detected brand's products to the front of the page.
+ *
+ * @returns {{ products: any[], matched: number, applied: boolean }}
+ *   `applied` is false whenever the order is unchanged — no brands, nothing matched, everything
+ *   matched, or nothing to reorder — so a gate trace cannot claim work that did not happen.
+ */
+function hoistDetectedBrandProducts(products, brands = []) {
+  const list = Array.isArray(products) ? products : [];
+  const normalizedBrandAliases = (Array.isArray(brands) ? brands : [])
+    .map((brand) => normalizeBrandText(brand))
+    .filter(Boolean);
+  // A pure short-circuit, deliberately behaviour-neutral: with no aliases nothing can match and the
+  // partition below would return the list untouched anyway. A mutant that deletes this line stays
+  // green on purpose — it is a cheap early return, not a correctness boundary, and no test should be
+  // written to pin it.
+  if (!normalizedBrandAliases.length || list.length < 2) {
+    return { products: list, matched: 0, applied: false };
+  }
+
+  const onBrand = [];
+  const rest = [];
+  for (const product of list) {
+    if (productMatchesDetectedBrand(product, normalizedBrandAliases)) onBrand.push(product);
+    else rest.push(product);
+  }
+
+  // Nothing to say: the brand is absent from the page, or the page is already all of it.
+  if (onBrand.length === 0 || rest.length === 0) {
+    return { products: list, matched: onBrand.length, applied: false };
+  }
+  return { products: [...onBrand, ...rest], matched: onBrand.length, applied: true };
+}
+
 module.exports = {
   detectBrandEntities,
+  hoistDetectedBrandProducts,
+  productMatchesDetectedBrand,
   buildBrandQueryVariants,
   hasExplicitCategoryHint,
   normalizeBrandText,
+  reduceBrandOnlyQuery,
   resolveBeautyBrandBrowseQuery,
+  BRAND_QUERY_FILLER_TOKENS,
 };
