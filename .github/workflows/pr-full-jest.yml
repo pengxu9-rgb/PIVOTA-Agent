@@ -1054,6 +1054,7 @@ jobs:
             tests/agent_signals_recommend_products.node.test.cjs \
             tests/merchant_variant_source.node.test.cjs \
             tests/sourcing_sentinel_merchant_scope.node.test.cjs \
+            tests/get_product_detail_sig_merchant_scope.node.test.cjs \
             tests/catalog_image_cache_stale_host.node.test.cjs \
             tests/catalog_image_cache_offer_gallery.node.test.cjs \
             tests/aurora_chat_v1_mainline_delegation_cycle.node.test.cjs \

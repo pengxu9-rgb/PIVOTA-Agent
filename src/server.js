@@ -277,6 +277,7 @@ const {
 } = beautyRelevanceGate;
 const {
   resolveCanonicalCatalogEntityGroup,
+  resolveMerchantScopedSourceProductId,
   resolveAnchorIdentityForRelationshipGraph,
   applyAnchorIdentity,
 } = require('./services/catalogEntityResolution');
@@ -30452,6 +30453,22 @@ async function invokeCommerceKernelRawUpstream(operation, payload, headers = {})
           operation: 'get_pdp_v2',
           payload: { product_ref: { product_id: pid }, include: ['product_overview'] },
         };
+      } else if (merchantScoped && pid.startsWith('sig_')) {
+        // A merchant-scoped signature: the upstream per-merchant catalog is keyed by the PLATFORM product
+        // id and cannot resolve a sig_, so translate it to THIS merchant's own source id before asking.
+        // See resolveMerchantScopedSourceProductId — merchant-exact, exactly-one-or-refuse, fail-open.
+        // A refusal leaves the request exactly as the caller sent it (today's behaviour); it never
+        // substitutes a different merchant's listing and never invents an id.
+        const sourceProductId = await resolveMerchantScopedSourceProductId({
+          productId: pid,
+          merchantId: rawDetailMerchant,
+        });
+        if (sourceProductId) {
+          requestBody = {
+            operation: op,
+            payload: { ...payload, product: { ...prod, product_id: sourceProductId } },
+          };
+        }
       }
       break;
     }
