@@ -93,6 +93,7 @@ const {
 const {
   shouldKeepTypedRecoRequestOnV1Mainline: shouldKeepTypedRecoRequestOnV1MainlinePolicy,
 } = require('./recoOwnershipPolicy');
+const { getCatalogSearchOwnership } = require('./findProductsIntent');
 const {
   createBeautyChatMainlineEnvelopeRuntime,
 } = require('./beautyChatMainlineEnvelope');
@@ -1992,6 +1993,7 @@ async function buildChatIntentContract(body) {
         language,
       })
     : null;
+  const catalogSearchOwnership = getCatalogSearchOwnership(payload);
 
   const typedRecoOwnershipKeepsV1Mainline =
     hasMessage ? shouldKeepTypedRecoRequestOnV1MainlinePolicy({ ...payload, message }) : false;
@@ -2154,6 +2156,33 @@ async function buildChatIntentContract(body) {
       delegate_target: 'legacy_quarantine',
       should_search: false,
       reply_mode: 'ingredient_advice',
+    };
+  }
+  if (catalogSearchOwnership?.match_type === 'explicit') {
+    return {
+      contract_version: 'chat_intent_v1',
+      surface: 'chat',
+      ownership_domain: 'catalog_search',
+      request_class: 'catalog_search',
+      delegate_target: 'v2',
+      should_search: true,
+      reply_mode: 'product_search',
+      primary_lane: 'shop.find_products',
+    };
+  }
+  if (
+    catalogSearchOwnership?.match_type === 'bare' &&
+    !await shouldKeepV1ChatOnLegacyIngredientPath(payload)
+  ) {
+    return {
+      contract_version: 'chat_intent_v1',
+      surface: 'chat',
+      ownership_domain: 'catalog_search',
+      request_class: 'catalog_search',
+      delegate_target: 'v2',
+      should_search: true,
+      reply_mode: 'product_search',
+      primary_lane: 'shop.find_products',
     };
   }
   if (

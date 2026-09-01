@@ -54,6 +54,11 @@ describe('detectExplicitProductSearch', () => {
     expect(detectExplicitProductSearch('')).toBeNull();
     expect(detectExplicitProductSearch('   ')).toBeNull();
   });
+
+  test('distinguishes explicit shopping syntax from ambiguous bare phrases', () => {
+    expect(detectExplicitProductSearch('show me niacinamide under $10')?.match_type).toBe('explicit');
+    expect(detectExplicitProductSearch('ordinary')?.match_type).toBe('bare');
+  });
 });
 
 describe('chat entry ownership', () => {

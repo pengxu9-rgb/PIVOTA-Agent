@@ -8,7 +8,7 @@ const { buildRequestContext } = require('../requestContext');
 const { computeAuroraChatRolloutContext } = require('../rollout');
 const { GATE_POLICY_VERSION: AURORA_GATE_POLICY_META_VERSION } = require('../gatePolicyRegistry');
 const { shouldProxyFrameworkRecoToV1Mainline } = require('../recoOwnershipPolicy');
-const { detectExplicitProductSearch } = require('../findProductsIntent');
+const { isCatalogSearchOwnedChatRequest } = require('../findProductsIntent');
 const { attachBeautyExpertV1ToResponse } = require('../../modules/orchestration/aurora_beauty/beautyExpertV1');
 const { getProfileForIdentity } = require('../memoryStore');
 
@@ -132,20 +132,6 @@ function canProxyRecoToV1Mainline() {
   return typeof routesInternal.hasMountedV1ChatMainlineHandler === 'function'
     ? routesInternal.hasMountedV1ChatMainlineHandler() === true
     : false;
-}
-
-function isCatalogSearchOwnedChatRequest(body) {
-  const payload = isPlainObject(body) ? body : {};
-  // Ownership is based on the CURRENT typed turn only. Falling back to
-  // messages or action.reply_text here would let a previous catalog query (or
-  // generated chip copy) steal a later explicit action.
-  const currentTypedMessage = pickFirstTrimmed(
-    payload.message,
-    payload.user_message,
-    payload.query,
-    payload.text,
-  );
-  return Boolean(currentTypedMessage && detectExplicitProductSearch(currentTypedMessage));
 }
 
 function buildLoopbackChatBaseUrl(req) {

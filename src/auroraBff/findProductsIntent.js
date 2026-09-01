@@ -41,7 +41,7 @@ function detectBareCatalogPhrase(message) {
   const tokens = value.split(/\s+/).filter(Boolean);
   if (tokens.length < 1 || tokens.length > 6) return null;
   if (!tokens.every((token) => /^[\p{L}\p{N}&+%'’.$€£¥-]+$/u.test(token))) return null;
-  return { query: value };
+  return { query: value, match_type: 'bare' };
 }
 
 function clean(s) {
@@ -66,21 +66,21 @@ function detectExplicitProductSearch(userMessage) {
 
   // "show me <X> products" / "find me <X> products"
   let m = msg.match(SHOW_PRODUCTS_RE);
-  if (m && clean(m[2])) return { query: clean(m[2]) };
+  if (m && clean(m[2])) return { query: clean(m[2]), match_type: 'explicit' };
 
   // "products from <X>" / "products by <X>"
   m = msg.match(PRODUCTS_FROM_RE);
-  if (m && clean(m[1])) return { query: clean(m[1]) };
+  if (m && clean(m[1])) return { query: clean(m[1]), match_type: 'explicit' };
 
   // "where can i buy <X>"
   m = msg.match(WHERE_BUY_RE);
-  if (m && clean(m[1])) return { query: clean(m[1]) };
+  if (m && clean(m[1])) return { query: clean(m[1]), match_type: 'explicit' };
 
   // "show me niacinamide under $10" is just as explicit as the older
   // "show me X products" template. The recommendation guard above keeps
   // profile-aware requests out of this lane.
   m = msg.match(DIRECT_SHOW_RE);
-  if (m && detectBareCatalogPhrase(m[1])) return { query: clean(m[1]) };
+  if (m && detectBareCatalogPhrase(m[1])) return { query: clean(m[1]), match_type: 'explicit' };
 
   // "shop <X>" / "browse <X>" / "buy <X>" — strip the leading verb (+ "for").
   if (SHOP_VERB_RE.test(lower)) {
@@ -93,11 +93,41 @@ function detectExplicitProductSearch(userMessage) {
     // it fall through. "the" is intentionally NOT guarded ("shop the ordinary" is
     // a real brand). Keep it short (brand/keyword, not a sentence).
     const generic = /^(a|an|some|any|something|anything|stuff|things?)\b/i.test(stripped);
-    if (stripped && !generic && stripped.split(/\s+/).length <= 6) return { query: stripped };
+    if (stripped && !generic && stripped.split(/\s+/).length <= 6) {
+      return { query: stripped, match_type: 'explicit' };
+    }
     return null;
   }
 
   return detectBareCatalogPhrase(msg);
 }
 
-module.exports = { detectExplicitProductSearch };
+/**
+ * Decide catalog ownership from the current typed turn only.
+ *
+ * Public chat has two entry points (the v1 compatibility mainline and the v2
+ * router). Keeping request-shape extraction here prevents those entry points
+ * from drifting on messages that also resemble ingredient/reco requests.
+ * Historical `messages` and action reply text are intentionally excluded: they
+ * describe earlier/generated turns and must not steal a new explicit action.
+ */
+function getCatalogSearchOwnership(body) {
+  const payload = body && typeof body === 'object' && !Array.isArray(body) ? body : {};
+  const currentTypedMessage = [
+    payload.message,
+    payload.user_message,
+    payload.query,
+    payload.text,
+  ].find((value) => typeof value === 'string' && value.trim());
+  return currentTypedMessage ? detectExplicitProductSearch(currentTypedMessage) : null;
+}
+
+function isCatalogSearchOwnedChatRequest(body) {
+  return Boolean(getCatalogSearchOwnership(body));
+}
+
+module.exports = {
+  detectExplicitProductSearch,
+  getCatalogSearchOwnership,
+  isCatalogSearchOwnedChatRequest,
+};

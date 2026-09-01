@@ -888,6 +888,78 @@ test('buildChatIntentContract locks beauty reco free-text before v2 delegation',
   assert.equal(contract.should_search, true);
 });
 
+test('buildChatIntentContract delegates explicit ingredient and budget lookup to catalog search', async () => {
+  resetAuroraModules();
+  const { __internal } = require('../src/auroraBff/routes');
+
+  const contract = await __internal.buildChatIntentContract({
+    message: 'show me niacinamide under $10',
+    language: 'EN',
+    session: { state: 'idle' },
+    messages: [{ role: 'user', content: 'ordinary' }],
+  });
+
+  assert.deepEqual(
+    {
+      ownership_domain: contract.ownership_domain,
+      request_class: contract.request_class,
+      delegate_target: contract.delegate_target,
+      should_search: contract.should_search,
+      reply_mode: contract.reply_mode,
+      primary_lane: contract.primary_lane,
+    },
+    {
+      ownership_domain: 'catalog_search',
+      request_class: 'catalog_search',
+      delegate_target: 'v2',
+      should_search: true,
+      reply_mode: 'product_search',
+      primary_lane: 'shop.find_products',
+    },
+  );
+});
+
+test('buildChatIntentContract delegates bare catalog phrases after ingredient disambiguation', async () => {
+  resetAuroraModules();
+  const { __internal } = require('../src/auroraBff/routes');
+  __internal.__setGetBestIngredientReferenceMatchForTest(async () => null);
+  __internal.__setGetBestIngredientSignalMatchForTest(async () => null);
+
+  try {
+    for (const message of ['ordinary', 'knight unicorn', 'only blush']) {
+      const contract = await __internal.buildChatIntentContract({
+        message,
+        language: 'EN',
+        session: { state: 'idle' },
+      });
+      assert.equal(contract.ownership_domain, 'catalog_search', message);
+      assert.equal(contract.delegate_target, 'v2', message);
+      assert.equal(contract.primary_lane, 'shop.find_products', message);
+    }
+  } finally {
+    __internal.__resetGetBestIngredientReferenceMatchForTest();
+    __internal.__resetGetBestIngredientSignalMatchForTest();
+  }
+});
+
+test('buildChatIntentContract does not let historical catalog text steal the current turn', async () => {
+  resetAuroraModules();
+  const { __internal } = require('../src/auroraBff/routes');
+
+  const contract = await __internal.buildChatIntentContract({
+    language: 'EN',
+    session: { state: 'idle' },
+    messages: [
+      { role: 'user', content: 'ordinary' },
+      { role: 'assistant', content: 'Here are products.' },
+      { role: 'user', content: 'Can I use retinol during pregnancy?' },
+    ],
+  });
+
+  assert.equal(contract.delegate_target, 'legacy_quarantine');
+  assert.equal(contract.reply_mode, 'ingredient_advice');
+});
+
 test('buildChatIntentContract keeps explicit travel skincare on the travel/weather owner', async () => {
   resetAuroraModules();
   const { __internal } = require('../src/auroraBff/routes');
