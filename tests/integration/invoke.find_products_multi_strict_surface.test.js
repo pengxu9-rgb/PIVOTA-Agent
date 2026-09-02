@@ -68,6 +68,7 @@ describe('/agent/shop/v1/invoke find_products_multi strict surfaces', () => {
     jest.resetModules();
     jest.dontMock('../../src/db');
     jest.dontMock('../../src/services/productGroundingResolver');
+    jest.dontMock('../../src/services/externalSeedAttributionStamp');
     nock.cleanAll();
     nock.disableNetConnect();
     nock.enableNetConnect((host) => {
@@ -99,6 +100,7 @@ describe('/agent/shop/v1/invoke find_products_multi strict surfaces', () => {
   afterEach(() => {
     jest.dontMock('../../src/db');
     jest.dontMock('../../src/services/productGroundingResolver');
+    jest.dontMock('../../src/services/externalSeedAttributionStamp');
     jest.resetModules();
     nock.cleanAll();
     nock.enableNetConnect();
@@ -796,9 +798,10 @@ describe('/agent/shop/v1/invoke find_products_multi strict surfaces', () => {
     'https://fentybeauty.com/products/watch-ya-tone-niacinamide-dark-spot-serum' +
     '?utm_source=pivota&utm_medium=find_products_multi&utm_campaign=US&pvt_click_id=clk_1&utm_content=clk_1';
 
-  async function runIngredientDirectSearch(app) {
-    return request(app)
-      .post('/agent/shop/v1/invoke')
+  async function runIngredientDirectSearch(app, { headers = {}, status = 200 } = {}) {
+    const pending = request(app).post('/agent/shop/v1/invoke');
+    for (const [name, value] of Object.entries(headers)) pending.set(name, value);
+    return pending
       .send({
         operation: 'find_products_multi',
         payload: {
@@ -810,8 +813,17 @@ describe('/agent/shop/v1/invoke find_products_multi strict surfaces', () => {
         },
         metadata: { source: 'shopping_agent' },
       })
-      .expect(200);
+      .expect(status);
   }
+
+  // A request that actually CARRIES caller identity. Asserting "no X-Buyer-Ref
+  // reached the mint" against a request that never had one is vacuous — it
+  // passes with the suppression flags flipped.
+  const CALLER_IDENTITY_HEADERS = {
+    'X-Buyer-Ref': 'buyer_leak_probe',
+    'X-Agent-User-JWT': 'jwt_leak_probe',
+    'X-API-Key': 'caller_key_probe',
+  };
 
   test('js-built external seed cards ship a minted redirect, attributed destination, and tracking', async () => {
     mockDbRows([seedRow()]);
@@ -839,7 +851,7 @@ describe('/agent/shop/v1/invoke find_products_multi strict surfaces', () => {
       });
 
     const app = require('../../src/server');
-    const res = await runIngredientDirectSearch(app);
+    const res = await runIngredientDirectSearch(app, { headers: CALLER_IDENTITY_HEADERS });
 
     expect(mint.isDone()).toBe(true);
     expect(res.body.products).toHaveLength(1);
@@ -868,10 +880,14 @@ describe('/agent/shop/v1/invoke find_products_multi strict surfaces', () => {
     expect(mintBody.candidates).toHaveLength(1);
 
     // Caller-independent: search results are cached and shared across callers,
-    // so no caller-derived byte may reach the mint.
+    // so no caller-derived byte may reach the mint. The request above DID carry
+    // all three — without that, these assertions pass even with the suppression
+    // flags flipped.
     expect(mintHeaders['x-buyer-ref']).toBeUndefined();
     expect(mintHeaders['x-agent-user-jwt']).toBeUndefined();
     expect(mintHeaders['x-api-key']).toBe('test-token');
+    expect(mintHeaders['x-api-key']).not.toBe('caller_key_probe');
+    expect(mintHeaders.authorization).toBe('Bearer test-token');
   });
 
   test('a failing mint endpoint leaves the seed card on its raw destination and still returns 200', async () => {
@@ -952,4 +968,64 @@ describe('/agent/shop/v1/invoke find_products_multi strict surfaces', () => {
     expect(card).not.toHaveProperty('external_redirect_url');
     expect(res.body.metadata).not.toHaveProperty('external_seed_attribution');
   });
+
+  test('a throw in the response tail after the mint answers 500 instead of hanging', async () => {
+    mockDbRows([seedRow()]);
+
+    // The metadata write is the last thing the async tail does before
+    // originalJson, so making it throw stands in for the real hazards there:
+    // ERR_HTTP_HEADERS_SENT out of setInvokePerfHeaders, or a circular body out
+    // of originalJson. Without the .catch() on that tail this is an UNHANDLED
+    // REJECTION — no response is ever sent, and since this process installs no
+    // unhandledRejection handler the whole gateway dies, not just this request.
+    jest.doMock('../../src/services/externalSeedAttributionStamp', () => {
+      const actual = jest.requireActual('../../src/services/externalSeedAttributionStamp');
+      return {
+        ...actual,
+        applyExternalSeedAttributionMetadata: () => {
+          throw new Error('response tail exploded');
+        },
+      };
+    });
+
+    const mint = nock('http://pivota.test')
+      .post('/agent/shop/v1/attribution/external-seed-links')
+      .reply(200, {
+        links: [
+          {
+            external_seed_id: 'seed_fenty_niacinamide',
+            external_redirect_url: 'https://api.pivota.cc/r?token=abc.def',
+            destination_url: SEED_ATTRIBUTED_DESTINATION,
+            cart_url: null,
+            tracking: { click_id: 'clk_1', param: 'pvt_click_id', join_mode: 'referral_only' },
+          },
+        ],
+      });
+
+    const app = require('../../src/server');
+    const res = await runIngredientDirectSearch(app, { status: 500 });
+
+    // The mint really did run: this is the async tail, not the sync path.
+    expect(mint.isDone()).toBe(true);
+    expect(res.body).toEqual({
+      error: 'INTERNAL_ERROR',
+      message: 'Internal Server Error',
+      gateway_request_id: expect.any(String),
+    });
+  });
+
+  // NOT COVERED HERE, deliberately: the mint now runs on the FINAL card list
+  // (after near-dup collapse and page-size enforcement) rather than the working
+  // list, but this suite cannot observe the difference and a test that cannot
+  // fail is worse than none. Measured, not assumed:
+  //   - enforceFindProductsMultiRequestedPageSize returns early whenever
+  //     metadata.contract_bridge.resolved_contract is 'shop_invoke_strict'
+  //     (src/server.js ~12787), which is every route that produces JS-built
+  //     seed cards, so the page-size trim never fires for them;
+  //   - for DB-lane cards the beauty near-dup collapse has already run upstream
+  //     of this interceptor (instrumented: 1 card pre-refine, 1 card final);
+  //   - the canonical upstream path DOES trim here, but its normalized cards
+  //     carry no external_seed_id, so they are never stamp candidates.
+  // A discriminating test needs a route where a seed-shaped card survives to
+  // the interceptor in greater number than it ships.
 });

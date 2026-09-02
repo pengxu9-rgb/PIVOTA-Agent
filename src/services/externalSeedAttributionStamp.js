@@ -17,7 +17,13 @@
 
 const axios = require('axios');
 
-const EXTERNAL_SEED_MERCHANT_ID = 'external_seed';
+// ADR-009: detect the LANE, not the seller. Comparing the merchant identity
+// against the sentinel seller is the shape the ratchet forbids — it goes blind
+// the moment seed rows are re-keyed onto their observed sellers, while these two
+// fields are what actually survive that migration. Both JS seed builders emit
+// both (externalSeedProducts.js ~4490/4514 and ~4781/4797).
+const SEED_LANE_SOURCE = 'external_seed';
+const SEED_LANE_PLATFORM = 'external';
 const MAX_SEED_LINK_CANDIDATES = 50;
 const DEFAULT_ATTRIBUTION_TIMEOUT_MS = 800;
 const SEED_LINK_PATH = '/agent/shop/v1/attribution/external-seed-links';
@@ -33,6 +39,10 @@ const PASSTHROUGH_CANDIDATE_FIELDS = [
   'seed_kind',
   'variant_id',
 ];
+
+const KILL_SWITCH_ON_VALUES = new Set(['1', 'true', 'on', 'yes']);
+const KILL_SWITCH_OFF_VALUES = new Set(['0', 'false', 'off', 'no']);
+let unrecognizedKillSwitchWarned = false;
 
 function isPlainObject(value) {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -60,12 +70,36 @@ function usableHttpUrl(value) {
   return raw;
 }
 
-// Default ON. Any value other than '1' (an explicitly set, non-'1' value)
-// disables the hook entirely, which keeps the res.json interceptor synchronous.
-function isExternalSeedAttributionStampEnabled(env = process.env) {
+function sameOrigin(candidateUrl, referenceUrl) {
+  try {
+    return new URL(candidateUrl).origin === new URL(referenceUrl).origin;
+  } catch (_) {
+    return false;
+  }
+}
+
+// Default ON. Both truthy and falsy spellings are accepted so that an operator
+// reaching for the kill switch in an incident cannot accidentally ARM the thing
+// they meant to disarm ('true' used to read as OFF). An unrecognized value is
+// treated as ON — a typo must not silently drop attribution — and warns once.
+function isExternalSeedAttributionStampEnabled(env = process.env, logger = null) {
   const raw = env ? env.EXTERNAL_SEED_ATTRIBUTION_STAMP_ENABLED : undefined;
-  if (raw === undefined || raw === null || String(raw).trim() === '') return true;
-  return String(raw).trim() === '1';
+  const normalized = String(raw === undefined || raw === null ? '' : raw)
+    .trim()
+    .toLowerCase();
+  if (!normalized) return true;
+  if (KILL_SWITCH_ON_VALUES.has(normalized)) return true;
+  if (KILL_SWITCH_OFF_VALUES.has(normalized)) return false;
+  if (!unrecognizedKillSwitchWarned) {
+    unrecognizedKillSwitchWarned = true;
+    if (logger?.warn) {
+      logger.warn(
+        { value: normalized },
+        'unrecognized EXTERNAL_SEED_ATTRIBUTION_STAMP_ENABLED value; treating the stamp as enabled',
+      );
+    }
+  }
+  return true;
 }
 
 function externalSeedAttributionTimeoutMs(env = process.env) {
@@ -74,22 +108,22 @@ function externalSeedAttributionTimeoutMs(env = process.env) {
   return DEFAULT_ATTRIBUTION_TIMEOUT_MS;
 }
 
-function isExternalSeedCard(card) {
+function isExternalSeedLaneCard(card) {
   if (!isPlainObject(card)) return false;
   const source = String(card.source || '').trim().toLowerCase();
-  const merchantId = String(card.merchant_id || '').trim().toLowerCase();
-  return source === EXTERNAL_SEED_MERCHANT_ID || merchantId === EXTERNAL_SEED_MERCHANT_ID;
+  const platform = String(card.platform || '').trim().toLowerCase();
+  return source === SEED_LANE_SOURCE || platform === SEED_LANE_PLATFORM;
 }
 
-// A card is a stamp candidate only when it is an external-seed card with a
+// A card is a stamp candidate only when it is on the external-seed lane with a
 // usable http(s) destination, a seed id to join on, and NO external_redirect_url
 // at all. An existing redirect is never second-guessed or replaced.
-function collectUnattributedSeedCards(products, { env = process.env } = {}) {
+function collectUnattributedSeedCards(products, { env = process.env, logger = null } = {}) {
   if (!Array.isArray(products)) return [];
-  if (!isExternalSeedAttributionStampEnabled(env)) return [];
+  if (!isExternalSeedAttributionStampEnabled(env, logger)) return [];
   const out = [];
   for (const card of products) {
-    if (!isExternalSeedCard(card)) continue;
+    if (!isExternalSeedLaneCard(card)) continue;
     if (nonEmptyString(card.external_redirect_url)) continue;
     if (!usableHttpUrl(card.destination_url)) continue;
     if (!nonEmptyString(card.external_seed_id)) continue;
@@ -98,10 +132,10 @@ function collectUnattributedSeedCards(products, { env = process.env } = {}) {
   return out;
 }
 
-// `market` / `tool` describe the REQUEST and travel at the body top level (see
-// createBackendSeedLinkFetcher); the per-candidate `market` / `tool` describe the
-// seed row and stay null when the card carries none.
-function buildSeedLinkCandidates(cards, { market = null, tool = null } = {}) { // eslint-disable-line no-unused-vars
+// The per-candidate `market` / `tool` describe the SEED ROW and stay null when
+// the card carries none; the request's market/tool travel at the body top level
+// (see createBackendSeedLinkFetcher).
+function buildSeedLinkCandidates(cards) {
   if (!Array.isArray(cards)) return [];
   const candidates = [];
   for (const card of cards) {
@@ -161,8 +195,8 @@ async function stampExternalSeedAttribution(
   products,
   { fetchLinks, market = null, tool = null, logger = null, env = process.env } = {},
 ) {
-  const cards = collectUnattributedSeedCards(products, { env });
-  const candidates = buildSeedLinkCandidates(cards, { market, tool });
+  const cards = collectUnattributedSeedCards(products, { env, logger });
+  const candidates = buildSeedLinkCandidates(cards);
   if (!candidates.length) return { candidates: 0, stamped: 0 };
   if (typeof fetchLinks !== 'function') {
     return { candidates: candidates.length, stamped: 0, error: 'fetch_links_unavailable' };
@@ -202,17 +236,45 @@ async function stampExternalSeedAttribution(
     if (!link) continue;
     const redirectUrl = usableHttpUrl(link.external_redirect_url);
     if (!redirectUrl) continue;
+    // The card's own raw url is the origin of record. The redirect itself is
+    // deliberately NOT origin-checked against it: it is our own first-party
+    // /r?token= host, which is a different origin on purpose.
+    const rawDestination = card.destination_url;
     card.external_redirect_url = redirectUrl;
     // A null destination means the backend minted a referral link but no
-    // attributed destination: keep the card's own raw url rather than blanking it.
-    const attributedDestination = nonEmptyString(link.destination_url);
-    if (attributedDestination) card.destination_url = attributedDestination;
-    const cartUrl = nonEmptyString(link.cart_url);
-    if (cartUrl) card.cart_url = cartUrl;
-    if (isPlainObject(link.tracking)) card.tracking = link.tracking;
+    // attributed destination: keep the card's own raw url rather than blanking
+    // it. A destination on a DIFFERENT origin is refused outright — a mint
+    // response must never be able to move a card's merchant.
+    const attributedDestination = usableHttpUrl(link.destination_url);
+    if (attributedDestination && sameOrigin(attributedDestination, rawDestination)) {
+      card.destination_url = attributedDestination;
+    }
+    const cartUrl = usableHttpUrl(link.cart_url);
+    if (cartUrl && sameOrigin(cartUrl, rawDestination)) {
+      card.cart_url = cartUrl;
+    }
+    // Copy per card: two cards resolving to one link must not share a mutable
+    // tracking object that a later consumer could edit for both.
+    if (isPlainObject(link.tracking)) card.tracking = { ...link.tracking };
     stamped += 1;
   }
   return { candidates: candidates.length, stamped };
+}
+
+// Records what the mint was asked for and what it delivered, on the body that is
+// actually about to be sent. Written at send time because the refine and
+// page-size passes rebuild `metadata`. A run with zero candidates says nothing
+// worth reporting, so the key stays absent rather than reading as "0 stamped".
+function applyExternalSeedAttributionMetadata(responseBody, counts) {
+  if (!isPlainObject(responseBody)) return responseBody;
+  if (!isPlainObject(counts) || !(Number(counts.candidates) > 0)) return responseBody;
+  const metadata = isPlainObject(responseBody.metadata) ? responseBody.metadata : {};
+  metadata.external_seed_attribution = {
+    candidates: Number(counts.candidates) || 0,
+    stamped: Number(counts.stamped) || 0,
+  };
+  responseBody.metadata = metadata;
+  return responseBody;
 }
 
 // HTTP implementation of `fetchLinks`, shaped like fetchSimilarProductsFromUpstream
@@ -227,7 +289,13 @@ function createBackendSeedLinkFetcher({
   return async function fetchExternalSeedLinks(candidates, { market = null, tool = null } = {}) {
     const base = String(apiBase || '').trim().replace(/\/+$/, '');
     if (!base) throw new Error('PIVOTA_API_BASE is not configured');
-    const headers = typeof buildHeaders === 'function' ? buildHeaders() : buildHeaders || {};
+    const headers = typeof buildHeaders === 'function' ? buildHeaders() : buildHeaders;
+    // No internal key, no mint. buildInvokeUpstreamAuthHeaders falls back to the
+    // CALLER's key when PIVOTA_API_KEY is unset, and a caller-scoped mint would
+    // put one caller's identity behind links that every other caller is then
+    // served from cache. Failing here lands on the fail-soft path: raw
+    // destination urls, cards untouched.
+    if (!isPlainObject(headers)) throw new Error('internal_key_unavailable');
     const resp = await axios({
       method: 'POST',
       url: `${base}${SEED_LINK_PATH}`,
@@ -250,7 +318,8 @@ function createBackendSeedLinkFetcher({
 }
 
 module.exports = {
-  EXTERNAL_SEED_MERCHANT_ID,
+  SEED_LANE_SOURCE,
+  SEED_LANE_PLATFORM,
   MAX_SEED_LINK_CANDIDATES,
   DEFAULT_ATTRIBUTION_TIMEOUT_MS,
   SEED_LINK_PATH,
@@ -259,5 +328,6 @@ module.exports = {
   collectUnattributedSeedCards,
   buildSeedLinkCandidates,
   stampExternalSeedAttribution,
+  applyExternalSeedAttributionMetadata,
   createBackendSeedLinkFetcher,
 };

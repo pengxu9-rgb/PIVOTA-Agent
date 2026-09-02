@@ -1,18 +1,40 @@
+// The HTTP fetcher is the only part of this module that touches the network, and
+// the guard under test is that it does NOT dial when it has no internal key.
+// A mocked axios is what makes "no call happened" assertable; every other test
+// here supplies its own fetchLinks and never reaches axios at all.
+jest.mock('axios', () => jest.fn(async () => ({ data: { links: [] } })));
+
+const axios = require('axios');
 const {
   MAX_SEED_LINK_CANDIDATES,
   collectUnattributedSeedCards,
   buildSeedLinkCandidates,
   stampExternalSeedAttribution,
+  applyExternalSeedAttributionMetadata,
+  createBackendSeedLinkFetcher,
   isExternalSeedAttributionStampEnabled,
 } = require('../src/services/externalSeedAttributionStamp');
+
+// The exact shape safety-kernel's result sanitizer preserves verbatim
+// (safety-kernel/src/protocol/resultSanitizer.js:88, ATTRIBUTED_LINK_RE).
+// Inlined rather than imported: the packages do not depend on each other, and a
+// cross-package require would couple them. Pinned here so a backend change to
+// the minted link shape fails in this repo instead of silently degrading — a
+// redirect that misses this regex is scrubbed on its way through the MCP door,
+// and the agent is handed an attribution link that no longer resolves.
+const SAFETY_KERNEL_ATTRIBUTED_LINK_RE =
+  /^https:\/\/[A-Za-z0-9.-]+(?::\d{1,5})?\/r\?token=[A-Za-z0-9_=-]+\.[A-Za-z0-9_=-]+$/;
 
 function seedCard(overrides = {}) {
   return {
     id: 'ext_1',
     product_id: 'ext_1',
     external_product_id: 'ext_1',
+    // Present as DATA only. The lane is detected from source/platform (ADR-009):
+    // the seller identity is the thing a re-key migrates away from.
     merchant_id: 'external_seed',
     source: 'external_seed',
+    platform: 'external',
     title: 'Watch Ya Tone Niacinamide Dark Spot Serum',
     destination_url: 'https://fentybeauty.com/products/watch-ya-tone',
     canonical_url: 'https://fentybeauty.com/products/watch-ya-tone',
@@ -41,9 +63,12 @@ describe('collectUnattributedSeedCards', () => {
     expect(collectUnattributedSeedCards([card])).toEqual([card]);
   });
 
-  test('matches on merchant_id even when source is absent', () => {
+  test("matches on platform 'external' when source is absent", () => {
+    // Either lane field alone is enough; neither is the seller identity.
     const card = seedCard({ source: undefined });
     expect(collectUnattributedSeedCards([card])).toEqual([card]);
+    const bySourceOnly = seedCard({ platform: undefined });
+    expect(collectUnattributedSeedCards([bySourceOnly])).toEqual([bySourceOnly]);
   });
 
   test('skips a card that already carries an external_redirect_url', () => {
@@ -62,8 +87,13 @@ describe('collectUnattributedSeedCards', () => {
   });
 
   test('skips non external-seed cards', () => {
-    const internal = seedCard({ source: 'catalog', merchant_id: 'murad' });
+    const internal = seedCard({ source: 'catalog', platform: 'shopify', merchant_id: 'murad' });
     expect(collectUnattributedSeedCards([internal])).toEqual([]);
+    // The seller identity alone must NOT qualify a card: after the ADR-009
+    // re-key the sentinel seller stops being a lane signal.
+    const sellerOnly = seedCard({ source: 'catalog', platform: 'shopify' });
+    expect(sellerOnly.merchant_id).toBe('external_seed');
+    expect(collectUnattributedSeedCards([sellerOnly])).toEqual([]);
   });
 
   test('skips cards with a missing, blank, or non-http destination_url', () => {
@@ -86,33 +116,52 @@ describe('collectUnattributedSeedCards', () => {
     expect(collectUnattributedSeedCards([null, undefined, 'x'])).toEqual([]);
   });
 
-  test('kill switch: any value other than 1 disables collection entirely', () => {
+  test('kill switch: both truthy and falsy spellings are understood', () => {
     const card = seedCard();
-    expect(collectUnattributedSeedCards([card], { env: {} })).toEqual([card]);
-    expect(
-      collectUnattributedSeedCards([card], { env: { EXTERNAL_SEED_ATTRIBUTION_STAMP_ENABLED: '1' } }),
-    ).toEqual([card]);
-    expect(
-      collectUnattributedSeedCards([card], { env: { EXTERNAL_SEED_ATTRIBUTION_STAMP_ENABLED: '0' } }),
-    ).toEqual([]);
-    expect(
+    const collectWith = (value) =>
       collectUnattributedSeedCards([card], {
-        env: { EXTERNAL_SEED_ATTRIBUTION_STAMP_ENABLED: 'false' },
-      }),
-    ).toEqual([]);
+        env: value === undefined ? {} : { EXTERNAL_SEED_ATTRIBUTION_STAMP_ENABLED: value },
+      });
+
+    // ON. 'true' used to read as OFF, which meant an operator spelling the
+    // switch the obvious way DISARMED the thing they were trying to arm.
+    for (const on of [undefined, '', '1', 'true', 'TRUE', ' on ', 'yes', 'Yes']) {
+      expect(collectWith(on)).toEqual([card]);
+    }
+    // OFF.
+    for (const off of ['0', 'false', 'False', 'off', ' OFF ', 'no']) {
+      expect(collectWith(off)).toEqual([]);
+    }
+
     expect(isExternalSeedAttributionStampEnabled({})).toBe(true);
-    expect(isExternalSeedAttributionStampEnabled({ EXTERNAL_SEED_ATTRIBUTION_STAMP_ENABLED: '0' })).toBe(
-      false,
-    );
+    expect(
+      isExternalSeedAttributionStampEnabled({ EXTERNAL_SEED_ATTRIBUTION_STAMP_ENABLED: 'true' }),
+    ).toBe(true);
+    expect(
+      isExternalSeedAttributionStampEnabled({ EXTERNAL_SEED_ATTRIBUTION_STAMP_ENABLED: 'off' }),
+    ).toBe(false);
+    expect(
+      isExternalSeedAttributionStampEnabled({ EXTERNAL_SEED_ATTRIBUTION_STAMP_ENABLED: '0' }),
+    ).toBe(false);
+  });
+
+  test('an unrecognized kill-switch value stays ON and warns exactly once', () => {
+    // Isolated registry: the warn-once latch is module state.
+    jest.isolateModules(() => {
+      // eslint-disable-next-line global-require
+      const mod = require('../src/services/externalSeedAttributionStamp');
+      const logger = { warn: jest.fn() };
+      const env = { EXTERNAL_SEED_ATTRIBUTION_STAMP_ENABLED: 'maybe' };
+      expect(mod.isExternalSeedAttributionStampEnabled(env, logger)).toBe(true);
+      expect(mod.isExternalSeedAttributionStampEnabled(env, logger)).toBe(true);
+      expect(logger.warn).toHaveBeenCalledTimes(1);
+    });
   });
 });
 
 describe('buildSeedLinkCandidates', () => {
   test('builds the full candidate shape from the card', () => {
-    const candidates = buildSeedLinkCandidates([seedCard()], {
-      market: 'US',
-      tool: 'find_products_multi',
-    });
+    const candidates = buildSeedLinkCandidates([seedCard()]);
     expect(candidates).toEqual([
       {
         external_seed_id: 'seed_1',
@@ -174,7 +223,7 @@ describe('buildSeedLinkCandidates', () => {
     const cards = Array.from({ length: 73 }, (_, i) =>
       seedCard({ external_seed_id: `seed_${i}`, external_product_id: `ext_${i}` }),
     );
-    const candidates = buildSeedLinkCandidates(cards, {});
+    const candidates = buildSeedLinkCandidates(cards);
     expect(MAX_SEED_LINK_CANDIDATES).toBe(50);
     expect(candidates).toHaveLength(50);
     expect(candidates[0].external_seed_id).toBe('seed_0');
@@ -346,5 +395,198 @@ describe('stampExternalSeedAttribution', () => {
     expect(sent).toHaveLength(50);
     expect(counts).toEqual({ candidates: 50, stamped: 0 });
     expect(cards[50]).not.toHaveProperty('external_redirect_url');
+  });
+});
+
+describe('stamp origin guard', () => {
+  test('a foreign-origin destination is refused but the redirect still lands', async () => {
+    const card = seedCard();
+    const counts = await stampExternalSeedAttribution([card], {
+      fetchLinks: async () => [
+        linkFor({ destination_url: 'https://evil.example/products/watch-ya-tone?pvt_click_id=clk_1' }),
+      ],
+    });
+    // The mint may attribute a card; it must never MOVE one to another merchant.
+    expect(counts).toEqual({ candidates: 1, stamped: 1 });
+    expect(card.destination_url).toBe('https://fentybeauty.com/products/watch-ya-tone');
+    expect(card.external_redirect_url).toBe('https://api.pivota.cc/r?token=abc.def');
+    expect(card.tracking).toEqual({
+      click_id: 'clk_1',
+      param: 'pvt_click_id',
+      join_mode: 'referral_only',
+    });
+  });
+
+  test('a same-origin destination on a different path/port is judged by origin only', async () => {
+    const sameHost = seedCard();
+    await stampExternalSeedAttribution([sameHost], {
+      fetchLinks: async () => [
+        linkFor({ destination_url: 'https://fentybeauty.com/collections/serums?pvt_click_id=clk_1' }),
+      ],
+    });
+    expect(sameHost.destination_url).toBe(
+      'https://fentybeauty.com/collections/serums?pvt_click_id=clk_1',
+    );
+
+    const otherPort = seedCard();
+    await stampExternalSeedAttribution([otherPort], {
+      fetchLinks: async () => [
+        linkFor({ destination_url: 'https://fentybeauty.com:8443/products/watch-ya-tone' }),
+      ],
+    });
+    expect(otherPort.destination_url).toBe('https://fentybeauty.com/products/watch-ya-tone');
+  });
+
+  test('a non-http cart_url is refused, and so is a foreign-origin one', async () => {
+    const scripted = seedCard();
+    await stampExternalSeedAttribution([scripted], {
+      fetchLinks: async () => [linkFor({ cart_url: 'javascript:alert(1)' })],
+    });
+    expect(scripted).not.toHaveProperty('cart_url');
+
+    const foreign = seedCard();
+    await stampExternalSeedAttribution([foreign], {
+      fetchLinks: async () => [linkFor({ cart_url: 'https://evil.example/cart/1:1' })],
+    });
+    expect(foreign).not.toHaveProperty('cart_url');
+
+    const ok = seedCard();
+    await stampExternalSeedAttribution([ok], {
+      fetchLinks: async () => [linkFor({ cart_url: 'https://fentybeauty.com/cart/1:1' })],
+    });
+    expect(ok.cart_url).toBe('https://fentybeauty.com/cart/1:1');
+  });
+
+  test('a non-http destination_url is refused like any other unusable url', async () => {
+    const card = seedCard();
+    await stampExternalSeedAttribution([card], {
+      fetchLinks: async () => [linkFor({ destination_url: 'javascript:alert(1)' })],
+    });
+    expect(card.destination_url).toBe('https://fentybeauty.com/products/watch-ya-tone');
+    expect(card.external_redirect_url).toBe('https://api.pivota.cc/r?token=abc.def');
+  });
+
+  test('two cards resolving to one link do not share a tracking object', async () => {
+    const first = seedCard();
+    const second = seedCard({
+      external_seed_id: 'seed_2',
+      external_product_id: 'ext_1',
+      id: 'ext_1',
+      product_id: 'ext_1',
+    });
+    const link = linkFor();
+    const counts = await stampExternalSeedAttribution([first, second], {
+      // Both cards resolve to this one entry: `first` on its seed id, `second`
+      // on the external_product_id fallback.
+      fetchLinks: async () => [link],
+    });
+    expect(counts).toEqual({ candidates: 2, stamped: 2 });
+    expect(first.tracking).toEqual(second.tracking);
+    expect(first.tracking).not.toBe(second.tracking);
+    expect(first.tracking).not.toBe(link.tracking);
+    first.tracking.click_id = 'mutated';
+    expect(second.tracking.click_id).toBe('clk_1');
+    expect(link.tracking.click_id).toBe('clk_1');
+  });
+});
+
+describe('createBackendSeedLinkFetcher', () => {
+  beforeEach(() => {
+    axios.mockClear();
+    axios.mockImplementation(async () => ({ data: { links: [linkFor()] } }));
+  });
+
+  test('sends the mint with the headers it was given', async () => {
+    const card = seedCard();
+    const fetchLinks = createBackendSeedLinkFetcher({
+      apiBase: 'http://pivota.test/',
+      buildHeaders: () => ({ 'X-API-Key': 'internal-key' }),
+    });
+    const counts = await stampExternalSeedAttribution([card], {
+      fetchLinks,
+      market: 'US',
+      tool: 'find_products_multi',
+    });
+    expect(counts).toEqual({ candidates: 1, stamped: 1 });
+    expect(axios).toHaveBeenCalledTimes(1);
+    const sent = axios.mock.calls[0][0];
+    expect(sent.url).toBe('http://pivota.test/agent/shop/v1/attribution/external-seed-links');
+    expect(sent.headers['X-API-Key']).toBe('internal-key');
+    expect(sent.timeout).toBe(800);
+    expect(sent.data).toEqual(
+      expect.objectContaining({ market: 'US', tool: 'find_products_multi' }),
+    );
+  });
+
+  test('no internal key => no HTTP call at all, cards unchanged', async () => {
+    // buildInvokeUpstreamAuthHeaders falls back to the CALLER's key when
+    // PIVOTA_API_KEY is unset. A caller-scoped mint would bind one caller's
+    // identity to links every other caller is then served from cache, so the
+    // call site hands back null and the fetcher must refuse to dial.
+    const card = seedCard();
+    const fetchLinks = createBackendSeedLinkFetcher({
+      apiBase: 'http://pivota.test',
+      buildHeaders: () => null,
+    });
+    const counts = await stampExternalSeedAttribution([card], { fetchLinks });
+    expect(axios).not.toHaveBeenCalled();
+    expect(counts).toEqual({
+      candidates: 1,
+      stamped: 0,
+      error: 'internal_key_unavailable',
+    });
+    expect(card).not.toHaveProperty('external_redirect_url');
+    expect(card.destination_url).toBe('https://fentybeauty.com/products/watch-ya-tone');
+  });
+
+  test('honours EXTERNAL_SEED_ATTRIBUTION_TIMEOUT_MS', async () => {
+    const fetchLinks = createBackendSeedLinkFetcher({
+      apiBase: 'http://pivota.test',
+      buildHeaders: () => ({ 'X-API-Key': 'internal-key' }),
+      env: { EXTERNAL_SEED_ATTRIBUTION_TIMEOUT_MS: '120' },
+    });
+    await fetchLinks([], {});
+    expect(axios.mock.calls[0][0].timeout).toBe(120);
+  });
+});
+
+describe('applyExternalSeedAttributionMetadata', () => {
+  test('writes the counts without disturbing other metadata keys', () => {
+    const body = { products: [], metadata: { query_source: 'ingredient_direct' } };
+    applyExternalSeedAttributionMetadata(body, { candidates: 3, stamped: 2 });
+    expect(body.metadata).toEqual({
+      query_source: 'ingredient_direct',
+      external_seed_attribution: { candidates: 3, stamped: 2 },
+    });
+  });
+
+  test('stays absent when nothing was a candidate', () => {
+    const body = { products: [], metadata: {} };
+    applyExternalSeedAttributionMetadata(body, { candidates: 0, stamped: 0 });
+    applyExternalSeedAttributionMetadata(body, null);
+    expect(body.metadata).not.toHaveProperty('external_seed_attribution');
+  });
+});
+
+describe('the minted redirect survives the safety-kernel sanitizer', () => {
+  test('the fixture redirect matches ATTRIBUTED_LINK_RE verbatim', async () => {
+    // If this fails, every test above is asserting a link shape the MCP door
+    // would SCRUB — the stamp would look correct here and degrade in prod.
+    expect(linkFor().external_redirect_url).toMatch(SAFETY_KERNEL_ATTRIBUTED_LINK_RE);
+
+    const card = seedCard();
+    await stampExternalSeedAttribution([card], { fetchLinks: async () => [linkFor()] });
+    expect(card.external_redirect_url).toMatch(SAFETY_KERNEL_ATTRIBUTED_LINK_RE);
+
+    // CONTROL: the regex is strict, not a rubber stamp. Each of these is a
+    // realistic near-miss the backend could return.
+    for (const rejected of [
+      'http://api.pivota.cc/r?token=abc.def',
+      'https://api.pivota.cc/r?token=abcdef',
+      'https://api.pivota.cc/redirect?token=abc.def',
+      'https://api.pivota.cc/r?token=abc.def&utm_source=pivota',
+    ]) {
+      expect(rejected).not.toMatch(SAFETY_KERNEL_ATTRIBUTED_LINK_RE);
+    }
   });
 });

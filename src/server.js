@@ -264,6 +264,7 @@ const {
 const {
   collectUnattributedSeedCards,
   stampExternalSeedAttribution,
+  applyExternalSeedAttributionMetadata,
   createBackendSeedLinkFetcher,
 } = require('./services/externalSeedAttributionStamp');
 const {
@@ -40924,6 +40925,14 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     }
     finalBody = maybeAttachInvokeBeautyExpertProjection(finalBody);
     finalBody = appendCitableSupplementItems(finalBody, citableSupplementItems);
+    // The external-seed mint below opens an async window between this merge and
+    // the actual send. The off-path citable prefetch can resolve inside that
+    // window and flip `citableSupplementSettled` to true AFTER the append above
+    // already ran with an empty list — which would report "settled, found
+    // nothing" for a supplement that was still in flight when its items were
+    // needed. Snapshot the flag at the point the items were merged and let
+    // finish() read the snapshot.
+    const citableSupplementSettledAtMerge = citableSupplementSettled;
     const finalOperation = String(debugRuntime.operation || req?.body?.operation || '')
       .trim()
       .toLowerCase();
@@ -40944,12 +40953,28 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       finalBody = dedupeFindProductsMultiProductGroups(finalBody);
     }
     // External-seed cards this gateway builds in JS carry a raw destination_url
-    // and no signed redirect (this process holds no signing secret). Ask the
-    // backend to mint the attributed links before the response is finalized.
-    // The mint is the ONLY asynchronous step in this interceptor: when there is
-    // nothing to stamp we fall through to finish() synchronously, exactly as
-    // before, so the ~35 `return res.json(...)` sites are unaffected.
+    // and no signed redirect (this process holds no signing secret), so the
+    // attributed link has to be minted by the backend.
+    //
+    // The mint is the ONLY asynchronous step in this interceptor, and it runs on
+    // the FINAL card list — after near-dup collapse and page-size enforcement —
+    // so a 50-card page never buys links for the ~20 cards that actually ship.
+    // When there is nothing to stamp, send() is reached synchronously, exactly
+    // as before, so the ~35 `return res.json(...)` sites are unaffected.
     let seedAttributionCounts = null;
+
+    const send = () => {
+      // Deliberately NOT wrapped in try/catch: on the async tail a throw here
+      // (ERR_HTTP_HEADERS_SENT out of setInvokePerfHeaders, a circular body out
+      // of originalJson) must reach the .catch() below. Swallowing it would
+      // leave the request with no response at all, and this process installs no
+      // `unhandledRejection` handler (see the note at the /mcp door), so an
+      // escaped rejection takes down the WHOLE gateway rather than one request.
+      finalBody = applyExternalSeedAttributionMetadata(finalBody, seedAttributionCounts);
+      setInvokePerfHeaders();
+      return originalJson(finalBody);
+    };
+
     const finish = () => {
       // Final near-dup collapse (+ ingredient-direct reorder) on the fully merged
       // list, so citable-supplement items can't re-introduce near-identical titles
@@ -40961,8 +40986,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       // Stamp the count even when 0 items were appended, so the metadata
       // distinguishes "supplement ran, nothing to add" (0) from "this response
       // path bypassed the wrapper entirely" (field absent). When the off-path
-      // prefetch hasn't resolved by send time, citable_supplement_pending marks
-      // "still in flight (warming the cache)" vs "ran and found nothing".
+      // prefetch hadn't resolved by the time the items were merged,
+      // citable_supplement_pending marks "still in flight (warming the cache)"
+      // vs "ran and found nothing" — read from the merge-time snapshot, because
+      // the mint's async window can flip the live flag after the merge.
       if (
         citableSupplementAttempted &&
         finalBody &&
@@ -40973,7 +41000,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         if (finalBody.metadata.citable_supplement_count === undefined) {
           finalBody.metadata.citable_supplement_count = 0;
         }
-        if (!citableSupplementSettled) {
+        if (!citableSupplementSettledAtMerge) {
           finalBody.metadata.citable_supplement_pending = true;
         }
       }
@@ -41012,116 +41039,133 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           'failed to enforce requested page_size on find_products_multi response',
         );
       }
-      if (
-        seedAttributionCounts &&
-        Number(seedAttributionCounts.candidates) > 0 &&
-        finalBody &&
-        typeof finalBody === 'object' &&
-        !Array.isArray(finalBody)
-      ) {
-        try {
-          const attributionMeta =
-            finalBody.metadata &&
-            typeof finalBody.metadata === 'object' &&
-            !Array.isArray(finalBody.metadata)
-              ? finalBody.metadata
-              : {};
-          attributionMeta.external_seed_attribution = {
-            candidates: Number(seedAttributionCounts.candidates) || 0,
-            stamped: Number(seedAttributionCounts.stamped) || 0,
-          };
-          finalBody.metadata = attributionMeta;
-        } catch (attributionMetaErr) {
-          logger.warn(
+
+      let seedAttributionContainer = null;
+      let seedAttributionCards = [];
+      try {
+        if (finalOperation === 'find_products_multi') {
+          seedAttributionContainer = Array.isArray(finalBody?.products)
+            ? finalBody
+            : finalBody?.data && Array.isArray(finalBody.data.products)
+              ? finalBody.data
+              : null;
+          if (seedAttributionContainer) {
+            seedAttributionCards = collectUnattributedSeedCards(seedAttributionContainer.products, {
+              logger,
+            });
+          }
+        }
+      } catch (seedAttributionCollectErr) {
+        seedAttributionCards = [];
+        logger.warn(
+          {
+            gateway_request_id: gatewayRequestId,
+            err: seedAttributionCollectErr?.message || String(seedAttributionCollectErr),
+          },
+          'failed to collect unattributed external seed cards',
+        );
+      }
+      if (!seedAttributionCards.length) return send();
+
+      const seedAttributionStartedAt = Date.now();
+      let seedAttributionSettled = null;
+      try {
+        const seedAttributionPayload =
+          req?.body?.payload && typeof req.body.payload === 'object' && !Array.isArray(req.body.payload)
+            ? req.body.payload
+            : {};
+        const seedAttributionSearch =
+          seedAttributionPayload.search &&
+          typeof seedAttributionPayload.search === 'object' &&
+          !Array.isArray(seedAttributionPayload.search)
+            ? seedAttributionPayload.search
+            : seedAttributionPayload;
+        const seedAttributionMarket =
+          String(
+            seedAttributionSearch.market ||
+              seedAttributionPayload.market ||
+              req?.body?.metadata?.market ||
+              '',
+          ).trim() || null;
+        seedAttributionSettled = stampExternalSeedAttribution(seedAttributionContainer.products, {
+          // Caller-independent by construction: search results are cached and
+          // shared across callers, so the mint carries only the internal key —
+          // and when there is no internal key it must not go out at all, since
+          // buildInvokeUpstreamAuthHeaders would otherwise fall back to the
+          // CALLER's key and bind one caller's identity to a shared link.
+          fetchLinks: createBackendSeedLinkFetcher({
+            apiBase: PIVOTA_API_BASE,
+            buildHeaders: () =>
+              (PIVOTA_API_KEY
+                ? buildInvokeUpstreamAuthHeaders({
+                    forceInternalFallback: true,
+                    forwardAgentUserJwt: false,
+                    forwardBuyerRef: false,
+                  })
+                : null),
+          }),
+          market: seedAttributionMarket,
+          tool: finalOperation,
+          logger,
+        });
+      } catch (seedAttributionErr) {
+        logger.warn(
+          {
+            gateway_request_id: gatewayRequestId,
+            err: seedAttributionErr?.message || String(seedAttributionErr),
+          },
+          'failed to dispatch external seed attribution mint',
+        );
+        return send();
+      }
+
+      return seedAttributionSettled
+        .then(
+          (counts) => {
+            seedAttributionCounts = counts;
+            // Attribute the mint's latency to its own stage; otherwise it lands
+            // in fpm_unattributed_ms and reads as unexplained pipeline time.
+            recordFpmStage('external_seed_attribution', seedAttributionStartedAt, {
+              candidates: counts?.candidates,
+              stamped: counts?.stamped,
+            });
+          },
+          // stampExternalSeedAttribution swallows its own failures; this branch
+          // only guards against a rejection we did not anticipate.
+          (stampErr) => {
+            logger.warn(
+              {
+                gateway_request_id: gatewayRequestId,
+                err: stampErr?.message || String(stampErr),
+              },
+              'external seed attribution rejected unexpectedly',
+            );
+          },
+        )
+        .then(send)
+        .catch((finishErr) => {
+          // Last line of defence for the async tail. Without it a throw out of
+          // send() is an unhandled rejection: no response, and the process dies.
+          logger.error(
             {
               gateway_request_id: gatewayRequestId,
-              err: attributionMetaErr?.message || String(attributionMetaErr),
+              err: finishErr?.message || String(finishErr),
             },
-            'failed to stamp external seed attribution metadata',
+            'find_products_multi finish failed after external seed attribution',
           );
-        }
-      }
-      setInvokePerfHeaders();
-      return originalJson(finalBody);
+          if (res.headersSent) return undefined;
+          // originalJson, never res.status(500).json — the latter re-enters this
+          // interceptor and would throw again on the same body.
+          res.statusCode = 500;
+          return originalJson.call(res, {
+            error: 'INTERNAL_ERROR',
+            message: 'Internal Server Error',
+            gateway_request_id: gatewayRequestId,
+          });
+        });
     };
 
-    let seedAttributionContainer = null;
-    let seedAttributionCards = [];
-    try {
-      if (finalOperation === 'find_products_multi') {
-        seedAttributionContainer = Array.isArray(finalBody?.products)
-          ? finalBody
-          : finalBody?.data && Array.isArray(finalBody.data.products)
-            ? finalBody.data
-            : null;
-        if (seedAttributionContainer) {
-          seedAttributionCards = collectUnattributedSeedCards(seedAttributionContainer.products);
-        }
-      }
-    } catch (seedAttributionCollectErr) {
-      seedAttributionCards = [];
-      logger.warn(
-        {
-          gateway_request_id: gatewayRequestId,
-          err: seedAttributionCollectErr?.message || String(seedAttributionCollectErr),
-        },
-        'failed to collect unattributed external seed cards',
-      );
-    }
-    if (!seedAttributionCards.length) return finish();
-
-    try {
-      const seedAttributionPayload =
-        req?.body?.payload && typeof req.body.payload === 'object' && !Array.isArray(req.body.payload)
-          ? req.body.payload
-          : {};
-      const seedAttributionSearch =
-        seedAttributionPayload.search &&
-        typeof seedAttributionPayload.search === 'object' &&
-        !Array.isArray(seedAttributionPayload.search)
-          ? seedAttributionPayload.search
-          : seedAttributionPayload;
-      const seedAttributionMarket =
-        String(
-          seedAttributionSearch.market ||
-            seedAttributionPayload.market ||
-            req?.body?.metadata?.market ||
-            '',
-        ).trim() || null;
-      return stampExternalSeedAttribution(seedAttributionContainer.products, {
-        // Caller-independent by construction: search results are cached and
-        // shared across callers, so the mint carries only the internal key.
-        fetchLinks: createBackendSeedLinkFetcher({
-          apiBase: PIVOTA_API_BASE,
-          buildHeaders: () =>
-            buildInvokeUpstreamAuthHeaders({
-              forceInternalFallback: true,
-              forwardAgentUserJwt: false,
-              forwardBuyerRef: false,
-            }),
-        }),
-        market: seedAttributionMarket,
-        tool: finalOperation,
-        logger,
-      }).then(
-        (counts) => {
-          seedAttributionCounts = counts;
-          return finish();
-        },
-        // stampExternalSeedAttribution swallows its own failures; this branch
-        // only guards against a rejection we did not anticipate.
-        () => finish(),
-      );
-    } catch (seedAttributionErr) {
-      logger.warn(
-        {
-          gateway_request_id: gatewayRequestId,
-          err: seedAttributionErr?.message || String(seedAttributionErr),
-        },
-        'failed to dispatch external seed attribution mint',
-      );
-      return finish();
-    }
+    return finish();
   };
   res.setHeader('X-Gateway-Request-Id', gatewayRequestId);
 
