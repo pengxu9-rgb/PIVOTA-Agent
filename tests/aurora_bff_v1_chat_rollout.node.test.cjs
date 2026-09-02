@@ -2607,3 +2607,120 @@ test('/v1/chat keeps legacy interactive action/session flows even when skill_rou
     },
   );
 });
+
+// ---------------------------------------------------------------------------------------------
+// Catalog-search ownership at the v1 ingress must not swallow the lanes it sits in front of.
+//
+// The ownership arms were added ahead of the safety, diagnosis, progress and reco-continuation
+// returns, and originally read the RAW payload while every sibling guard reads the canonicalized
+// `message`. getCatalogSearchOwnership also reads `query`/`user_message`, which `message` does not —
+// so a body carrying only `query` resolved ownership while `hasMessage` was false, and `hasMessage`
+// is the gate on the pregnancy/lactation safety guard.
+
+test('a query-only body cannot reach catalog search — that is where the hasMessage guards are dark', async () => {
+  resetAuroraModules();
+  const { __internal } = require('../src/auroraBff/routes');
+
+  // `query` is a first-class field of V1ChatRequestSchema and the v1 mainline treats it as the user
+  // message, but buildChatIntentContract's own `message` never reads it. Ownership resolved from it
+  // anyway, so this body delegated to catalog search with the pregnancy/lactation guard — and every
+  // other `hasMessage &&` guard — structurally skipped. Measured on the pre-fix code: as `{query}`
+  // this returned catalog_search / product_search, while the SAME text as `{message}` correctly
+  // returned the ingredient/safety lane.
+  const body = { language: 'EN', session: { state: 'idle' } };
+  const viaQuery = await __internal.buildChatIntentContract({
+    ...body,
+    query: 'show me retinol while pregnant',
+  });
+  assert.notEqual(viaQuery.ownership_domain, 'catalog_search');
+  assert.notEqual(viaQuery.reply_mode, 'product_search');
+  // It falls to the legacy mainline, which DOES read `query` and carries the safety engine.
+  assert.equal(viaQuery.delegate_target, 'legacy_quarantine');
+
+  // The same text where the guards CAN see it must reach the ingredient/safety lane — the
+  // counterpart that proves the assertion above is about the missing guard, not about the phrasing.
+  const viaMessage = await __internal.buildChatIntentContract({
+    ...body,
+    message: 'show me retinol while pregnant',
+  });
+  assert.equal(viaMessage.reply_mode, 'ingredient_advice');
+});
+
+test('the diagnosis lane is not swallowed by the bare catalog arm', async () => {
+  resetAuroraModules();
+  const { __internal } = require('../src/auroraBff/routes');
+  // Every EN phrasing in the diagnosis allowlist is a `bare` catalog match, and the bare arm sits
+  // in front of the diagnosis return.
+  for (const message of ['analyze my skin', 'scan my face', 'skin assessment']) {
+    const contract = await __internal.buildChatIntentContract({
+      message,
+      language: 'EN',
+      session: { state: 'idle' },
+    });
+    assert.notEqual(contract.ownership_domain, 'catalog_search', `${message} must not be a catalog search`);
+    assert.equal(contract.reply_mode, 'diagnosis', `${message} belongs to the diagnosis lane`);
+  }
+});
+
+test('the progress-check lane is not swallowed by the bare catalog arm', async () => {
+  resetAuroraModules();
+  const { __internal } = require('../src/auroraBff/routes');
+  const contract = await __internal.buildChatIntentContract({
+    message: 'check my progress',
+    language: 'EN',
+    session: { state: 'idle' },
+  });
+  assert.notEqual(contract.ownership_domain, 'catalog_search');
+});
+
+test('an explicit ingredient ask stays on the ingredient path, not just the bare one', async () => {
+  // The ingredient carve-out was on the `bare` arm only, so "MCI" was preserved while
+  // "show me MCI" — the same ask, explicit phrasing — became a catalog search for a preservative
+  // that has no purchasable SKU. The pre-existing regression test only covers the bare body.
+  resetAuroraModules();
+  const routes = require('../src/auroraBff/routes');
+  routes.__internal.__setGetBestIngredientReferenceMatchForTest(async (input) => {
+    const token = String(input || '').trim();
+    if (token !== 'MCI' && token !== 'Methylchloroisothiazolinone') return null;
+    return {
+      record_id: 'ING-0400',
+      normalized_key: 'methylchloroisothiazolinone',
+      canonical_inci_name: 'Methylchloroisothiazolinone',
+      canonical_display_name: 'Methylchloroisothiazolinone',
+      ingredient_family: 'preservative',
+      primary_bucket: 'preservative',
+      aliases_common_list: ['MCI'],
+      deprecated_aliases_list: [],
+      benefit_tags_list: ['formula_stability'],
+      function_tags_list: ['preservative'],
+      risk_flags_list: ['sensitizer'],
+      flags: { is_preservative: true },
+    };
+  });
+  try {
+    for (const message of ['MCI', 'show me MCI']) {
+      const contract = await routes.__internal.buildChatIntentContract({
+        message,
+        language: 'EN',
+        session: { state: 'idle' },
+      });
+      assert.notEqual(contract.ownership_domain, 'catalog_search', `${message} must stay on the ingredient path`);
+    }
+  } finally {
+    routes.__internal.__resetGetBestIngredientReferenceMatchForTest();
+  }
+});
+
+test('the lane this PR exists for still works — the positive counterpart', async () => {
+  // Without this, every assertion above would pass on a build that had simply deleted both arms.
+  resetAuroraModules();
+  const { __internal } = require('../src/auroraBff/routes');
+  const contract = await __internal.buildChatIntentContract({
+    message: 'show me Murad products',
+    language: 'EN',
+    session: { state: 'idle' },
+  });
+  assert.equal(contract.ownership_domain, 'catalog_search');
+  assert.equal(contract.reply_mode, 'product_search');
+  assert.equal(contract.primary_lane, 'shop.find_products');
+});

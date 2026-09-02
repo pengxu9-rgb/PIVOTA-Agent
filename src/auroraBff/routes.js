@@ -94,6 +94,10 @@ const {
   shouldKeepTypedRecoRequestOnV1Mainline: shouldKeepTypedRecoRequestOnV1MainlinePolicy,
 } = require('./recoOwnershipPolicy');
 const { getCatalogSearchOwnership } = require('./findProductsIntent');
+// A price/budget constraint in the extracted catalog query. Only products can answer it, so it is
+// what separates "show me niacinamide under $10" (shopping) from "show me MCI" (ingredient science).
+const CATALOG_QUERY_SHOPPING_CONSTRAINT_RE =
+  /(?:\bunder\b|\bbelow\b|\bless\s+than\b|\bmax\b|\bbudget\b|\bcheaper\s+than\b)\s*\$?\s?\d|\$\s?\d/i;
 const {
   createBeautyChatMainlineEnvelopeRuntime,
 } = require('./beautyChatMainlineEnvelope');
@@ -1993,7 +1997,18 @@ async function buildChatIntentContract(body) {
         language,
       })
     : null;
-  const catalogSearchOwnership = getCatalogSearchOwnership(payload);
+  // Consume the SAME canonicalized `message` every sibling guard in this function reads — NOT the raw
+  // payload. getCatalogSearchOwnership also reads `query` and `user_message`, and `message` above
+  // (built from message/text/reply_text/messages[]) does not. Passing the payload therefore let these
+  // arms fire in a state where `hasMessage` is FALSE, which is exactly the state in which every
+  // `hasMessage && …` guard below is structurally dark — including the pregnancy/lactation safety
+  // guard. `query` is a first-class field of V1ChatRequestSchema and the v1 mainline treats it as the
+  // user message (extractPrimaryChatRequestMessage), so this was reachable, not theoretical:
+  //   POST /v1/chat {"query":"can i buy tretinoin while pregnant"}
+  // resolved match_type 'explicit' and delegated to catalog search with the safety guard skipped.
+  // Reading the canonicalized message also puts these arms behind canonicalizeGenericConcernQuery,
+  // whose whole purpose is rewriting generic asks so the reco lane owns them.
+  const catalogSearchOwnership = hasMessage ? getCatalogSearchOwnership({ message }) : null;
 
   const typedRecoOwnershipKeepsV1Mainline =
     hasMessage ? shouldKeepTypedRecoRequestOnV1MainlinePolicy({ ...payload, message }) : false;
@@ -2158,22 +2173,36 @@ async function buildChatIntentContract(body) {
       reply_mode: 'ingredient_advice',
     };
   }
-  if (catalogSearchOwnership?.match_type === 'explicit') {
-    return {
-      contract_version: 'chat_intent_v1',
-      surface: 'chat',
-      ownership_domain: 'catalog_search',
-      request_class: 'catalog_search',
-      delegate_target: 'v2',
-      should_search: true,
-      reply_mode: 'product_search',
-      primary_lane: 'shop.find_products',
-    };
-  }
-  if (
-    catalogSearchOwnership?.match_type === 'bare' &&
-    !await shouldKeepV1ChatOnLegacyIngredientPath(payload)
-  ) {
+  // ONE gate for both match types. The ingredient carve-out was originally on the `bare` arm only,
+  // which made this PR's own "known ingredient aliases such as MCI stay on their specialist paths"
+  // claim false for the explicit phrasing of the same ask: `show me MCI`, `show me retinol` and
+  // `where can i buy tretinoin` all resolve 'explicit', and the existing MCI regression test only
+  // covers the BARE body, so it stayed green through that.
+  //
+  // The three lane checks below are the lanes this block sits IN FRONT OF and would otherwise
+  // swallow whole. Verified against the shipped extractor: every EN phrasing in the diagnosis
+  // allowlist (`analyze my skin`, `scan my face`, `skin assessment`) and both progress phrasings
+  // (`check my progress`, `track my progress`) are `bare` catalog matches, and the reco-continuation
+  // cues (`under $30`, `what should i buy next`) match too. A catalog-search router must not be the
+  // thing that decides a skin scan is a product query.
+  //
+  // The ingredient carve-out keys on the EXTRACTED catalog query carrying a shopping constraint, not
+  // on which template matched. `shouldKeepV1ChatOnLegacyIngredientPath` returns true for any message
+  // naming a known ingredient, so applying it flatly would also block `show me niacinamide under $10`
+  // — a real shopping ask with a budget, and one this PR deliberately routes to catalog search. The
+  // distinction is not explicit-vs-bare, it is "bare ingredient name" vs "ingredient plus a
+  // constraint you can only satisfy by looking at products": `show me MCI` is a question about a
+  // preservative with no purchasable SKU, `show me niacinamide under $10` is shopping.
+  const catalogQueryHasShoppingConstraint = CATALOG_QUERY_SHOPPING_CONSTRAINT_RE.test(
+    (catalogSearchOwnership && catalogSearchOwnership.query) || '',
+  );
+  const catalogSearchLaneBlocked =
+    !catalogSearchOwnership ||
+    contextualRecoContinuationKeepsV1Mainline ||
+    looksLikeDiagnosisStart(message) ||
+    looksLikeProgressCheckRequest(message, actionId) ||
+    (!catalogQueryHasShoppingConstraint && await shouldKeepV1ChatOnLegacyIngredientPath(payload));
+  if (!catalogSearchLaneBlocked) {
     return {
       contract_version: 'chat_intent_v1',
       surface: 'chat',
