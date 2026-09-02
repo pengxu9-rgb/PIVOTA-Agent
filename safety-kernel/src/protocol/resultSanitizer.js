@@ -31,6 +31,20 @@ const PAN_EXEMPT_ID_KEYS = new Set([
   'sellableitemgroupid', 'signatureid', 'pivotasignatureid', 'productkey', 'catalogproductkey',
   'orderid', 'quoteid', 'sessionid', 'checkoutsessionid', 'merchantid', 'externalseedid', 'offerid',
   'lineitemid', 'itemid',
+  // The COMPOSITE key family. `productkey` was exempted when this list was written; its siblings
+  // were not, and they carry the identical value shape — so the same platform id survived in one
+  // field and was destroyed in the next one down. Observed in prod 2026-09-02 on a single
+  // get_product response:
+  //   product_key: "merch_c5e24a8d3738d73b|shopify|9854988910809"
+  //   sku_key:     "merch_c5e24a8d3738d73b|shopify|[REDACTED_PAN]|∅"
+  // The Shopify product id 9854988910809 is 13 digits and Luhn-valid, so the checksum gate that
+  // stops random digit runs does not stop this one — the SHAPE is what identifies it as ours.
+  //
+  // Enumerated, never `endsWith('key')`: `consumer_key` is a WooCommerce credential and
+  // `idempotency_key`/`lock_key`/`module_key` are not identifiers we publish. Exempting a key here
+  // means "a PAN cannot legitimately appear in this value via any flow" — that is a claim about
+  // each field, so each field is named.
+  'skukey', 'contentkey', 'attachedproductkey', 'representativeproductkey', 'matchedproductkey',
 ]);
 function luhnValid(candidate) {
   const digits = String(candidate).replace(/[ -]/g, '');

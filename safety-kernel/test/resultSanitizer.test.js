@@ -256,3 +256,59 @@ test('the exemption covers PAN scanning ONLY — secrets in the query are still 
 test('variant_id itself is PAN-exempt as a system-issued id key', () => {
   assert.equal(spec('variant_id', LUHN_VALID_VARIANT_ID), LUHN_VALID_VARIANT_ID);
 });
+
+// The composite-key family. `productkey` was exempted from PAN scanning when PAN_EXEMPT_ID_KEYS was
+// written; its siblings carry the identical value shape and were not — so the SAME platform id
+// survived in one field of a response and was destroyed in the next one down. Observed in prod
+// 2026-09-02 on a single get_product response:
+//     product_key: "merch_c5e24a8d3738d73b|shopify|9854988910809"
+//     sku_key:     "merch_c5e24a8d3738d73b|shopify|[REDACTED_PAN]|∅"
+// 9854988910809 is 13 digits AND Luhn-valid, so the checksum gate that stops random digit runs
+// does not stop this one — an agent chaining on sku_key got a broken identifier.
+
+test('a composite key keeps its platform id — the Luhn gate does not save a 13-digit product id', () => {
+  const out = sanitizeResult({
+    review_summary: {
+      product_key: 'merch_c5e24a8d3738d73b|shopify|9854988910809',
+      sku_key: 'merch_c5e24a8d3738d73b|shopify|9854988910809|∅',
+      content_key: 'merch_c5e24a8d3738d73b|shopify|9854988910809',
+    },
+    attached_product_key: 'prod::merch_c5e24a8d3738d73b::shopify::9854988910809',
+    representative_product_key: 'prod::merch_c5e24a8d3738d73b::shopify::9854988910809',
+    matched_product_key: 'prod::merch_c5e24a8d3738d73b::shopify::9854988910809',
+  });
+  // The id the agent has to chain on must survive in EVERY field that carries it, not just one.
+  assert.equal(out.review_summary.sku_key, 'merch_c5e24a8d3738d73b|shopify|9854988910809|∅');
+  assert.equal(out.review_summary.product_key, 'merch_c5e24a8d3738d73b|shopify|9854988910809');
+  assert.equal(out.review_summary.content_key, 'merch_c5e24a8d3738d73b|shopify|9854988910809');
+  for (const k of ['attached_product_key', 'representative_product_key', 'matched_product_key']) {
+    assert.match(out[k], /9854988910809/, `${k} must keep its platform id`);
+  }
+  assert.equal(JSON.stringify(out).includes('REDACTED_PAN'), false);
+});
+
+test('the exemption is per-key, so a key that is NOT one of ours still gets PAN-scanned', () => {
+  // The counterpart. Exempting a key asserts "a PAN cannot legitimately appear in this value via
+  // any flow" — a claim about each field — so the list is enumerated rather than `endsWith('key')`.
+  // consumer_key is a WooCommerce credential; idempotency/lock/module keys are not published ids.
+  const out = sanitizeResult({
+    consumer_key: 'key 4111111111111111 end',
+    idempotency_key: 'idem 4111111111111111 end',
+    lock_key: 'lock 4111111111111111 end',
+    module_key: 'mod 4111111111111111 end',
+    note: 'card 4111111111111111 here',
+  });
+  for (const k of ['consumer_key', 'idempotency_key', 'lock_key', 'module_key', 'note']) {
+    assert.match(out[k], /\[REDACTED_PAN\]/, `${k} must still be PAN-scanned`);
+  }
+});
+
+test('a real PAN is still redacted where a composite key is not involved', () => {
+  // Guards the obvious over-correction: exempting keys must not weaken the scan itself.
+  const out = sanitizeResult({ sku_key: '4111111111111111', note: '4111111111111111' });
+  assert.equal(out.note, '[REDACTED_PAN]');
+  // ...and the exempt field is exempt by KEY, which is the deliberate trade: a bare PAN placed in
+  // sku_key survives. That is acceptable only because sku_key is server-composed and a card number
+  // cannot reach it — the same reasoning already applied to product_key.
+  assert.equal(out.sku_key, '4111111111111111');
+});
