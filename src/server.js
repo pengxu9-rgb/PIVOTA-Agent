@@ -728,7 +728,7 @@ const REVIEWS_API_BASE = (
   process.env.REVIEWS_API_BASE ||
   process.env.REVIEWS_BACKEND_URL ||
   process.env.REVIEWS_BACKEND ||
-  'https://web-production-fedb.up.railway.app'
+  PIVOTA_API_BASE
 ).replace(/\/$/, '');
 const UI_GATEWAY_URL = (process.env.PIVOTA_GATEWAY_URL || 'http://localhost:3000/agent/shop/v1/invoke').replace(/\/$/, '');
 const ADMIN_API_KEY = process.env.ADMIN_API_KEY || '';

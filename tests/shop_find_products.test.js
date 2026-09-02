@@ -54,6 +54,11 @@ describe('detectExplicitProductSearch', () => {
     expect(detectExplicitProductSearch('')).toBeNull();
     expect(detectExplicitProductSearch('   ')).toBeNull();
   });
+
+  test('distinguishes explicit shopping syntax from ambiguous bare phrases', () => {
+    expect(detectExplicitProductSearch('show me niacinamide under $10')?.match_type).toBe('explicit');
+    expect(detectExplicitProductSearch('ordinary')?.match_type).toBe('bare');
+  });
 });
 
 describe('chat entry ownership', () => {
@@ -251,5 +256,52 @@ describe('shopGatewayClient canonical catalog contract', () => {
       else process.env.PIVOTA_BACKEND_BASE_URL = previousBase;
       jest.resetModules();
     }
+  });
+});
+
+// The template guards, once these results reach the v1 ingress and become user-visible searches.
+describe('detectExplicitProductSearch template guards', () => {
+  const { detectExplicitProductSearch } = require('../src/auroraBff/findProductsIntent');
+
+  test('the shop-verb test and its strip agree on POSITION', () => {
+    // The test matched the verb anywhere while the strip is ^-anchored, so a sentence that merely
+    // mentioned shopping entered the branch, stripped nothing, and returned itself as the query.
+    expect(detectExplicitProductSearch('i shop at sephora')?.match_type).not.toBe('explicit');
+    // `purchase` heads a noun phrase far more often than an imperative.
+    expect(detectExplicitProductSearch('purchase history')?.query).not.toBe('history');
+    // ...and the leading-imperative forms still work.
+    expect(detectExplicitProductSearch('shop cerave')).toEqual({ query: 'cerave', match_type: 'explicit' });
+    expect(detectExplicitProductSearch('buy cerave')).toEqual({ query: 'cerave', match_type: 'explicit' });
+    // "the" is deliberately not filler — it is part of the brand.
+    expect(detectExplicitProductSearch('browse the ordinary')).toEqual({
+      query: 'the ordinary',
+      match_type: 'explicit',
+    });
+  });
+
+  test('a generic head REFUSES on every template, not just the shop-verb one', () => {
+    // Each of these is an open-ended category ask for the profile-aware reco lane. Returning null
+    // rather than falling through matters: the bare check would otherwise re-admit the whole
+    // sentence as a catalog query — the same wrong search wearing a different label.
+    expect(detectExplicitProductSearch('find me a moisturizer')).toBeNull();
+    expect(detectExplicitProductSearch('show me a serum')).toBeNull();
+    expect(detectExplicitProductSearch('buy a moisturizer')).toBeNull();
+    expect(detectExplicitProductSearch('where can i buy a refund')).toBeNull();
+  });
+
+  test('the phrasings this lane exists for are unaffected', () => {
+    expect(detectExplicitProductSearch('show me Murad products')).toEqual({
+      query: 'Murad',
+      match_type: 'explicit',
+    });
+    expect(detectExplicitProductSearch('where can i buy cerave')).toEqual({
+      query: 'cerave',
+      match_type: 'explicit',
+    });
+    expect(detectExplicitProductSearch('show me niacinamide under $10')).toEqual({
+      query: 'niacinamide under $10',
+      match_type: 'explicit',
+    });
+    expect(detectExplicitProductSearch('ordinary')?.match_type).toBe('bare');
   });
 });
