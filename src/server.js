@@ -262,6 +262,11 @@ const {
   resolveBeautyCategoryPathPrefixForQuery,
 } = require('./services/externalSeedProducts');
 const {
+  collectUnattributedSeedCards,
+  stampExternalSeedAttribution,
+  createBackendSeedLinkFetcher,
+} = require('./services/externalSeedAttributionStamp');
+const {
   EXTERNAL_SEED_RECALL_SQL_FIELDS,
 } = require('./services/externalSeedRecall');
 const {
@@ -40938,69 +40943,185 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       // showing the same product twice.
       finalBody = dedupeFindProductsMultiProductGroups(finalBody);
     }
-    // Final near-dup collapse (+ ingredient-direct reorder) on the fully merged
-    // list, so citable-supplement items can't re-introduce near-identical titles
-    // the lane already collapsed. See refineBeautyFindProductsMultiResponseBody.
-    finalBody = refineBeautyFindProductsMultiResponseBody(
-      finalBody,
-      String(req?.body?.payload?.search?.query || req?.body?.payload?.query || '').trim(),
-    );
-    // Stamp the count even when 0 items were appended, so the metadata
-    // distinguishes "supplement ran, nothing to add" (0) from "this response
-    // path bypassed the wrapper entirely" (field absent). When the off-path
-    // prefetch hasn't resolved by send time, citable_supplement_pending marks
-    // "still in flight (warming the cache)" vs "ran and found nothing".
-    if (
-      citableSupplementAttempted &&
-      finalBody &&
-      typeof finalBody === 'object' &&
-      finalBody.metadata &&
-      typeof finalBody.metadata === 'object'
-    ) {
-      if (finalBody.metadata.citable_supplement_count === undefined) {
-        finalBody.metadata.citable_supplement_count = 0;
-      }
-      if (!citableSupplementSettled) {
-        finalBody.metadata.citable_supplement_pending = true;
-      }
-    }
-    try {
+    // External-seed cards this gateway builds in JS carry a raw destination_url
+    // and no signed redirect (this process holds no signing secret). Ask the
+    // backend to mint the attributed links before the response is finalized.
+    // The mint is the ONLY asynchronous step in this interceptor: when there is
+    // nothing to stamp we fall through to finish() synchronously, exactly as
+    // before, so the ~35 `return res.json(...)` sites are unaffected.
+    let seedAttributionCounts = null;
+    const finish = () => {
+      // Final near-dup collapse (+ ingredient-direct reorder) on the fully merged
+      // list, so citable-supplement items can't re-introduce near-identical titles
+      // the lane already collapsed. See refineBeautyFindProductsMultiResponseBody.
+      finalBody = refineBeautyFindProductsMultiResponseBody(
+        finalBody,
+        String(req?.body?.payload?.search?.query || req?.body?.payload?.query || '').trim(),
+      );
+      // Stamp the count even when 0 items were appended, so the metadata
+      // distinguishes "supplement ran, nothing to add" (0) from "this response
+      // path bypassed the wrapper entirely" (field absent). When the off-path
+      // prefetch hasn't resolved by send time, citable_supplement_pending marks
+      // "still in flight (warming the cache)" vs "ran and found nothing".
       if (
-        FPM_ENFORCE_REQUESTED_PAGE_SIZE &&
-        String(debugRuntime.operation || req?.body?.operation || '').trim().toLowerCase() ===
-          'find_products_multi'
+        citableSupplementAttempted &&
+        finalBody &&
+        typeof finalBody === 'object' &&
+        finalBody.metadata &&
+        typeof finalBody.metadata === 'object'
       ) {
-        const payloadBodyForLimit =
-          req?.body?.payload && typeof req.body.payload === 'object' && !Array.isArray(req.body.payload)
-            ? req.body.payload
-            : {};
-        const searchParamsForLimit =
-          payloadBodyForLimit.search &&
-          typeof payloadBodyForLimit.search === 'object' &&
-          !Array.isArray(payloadBodyForLimit.search)
-            ? payloadBodyForLimit.search
-            : payloadBodyForLimit;
-        finalBody = enforceFindProductsMultiRequestedPageSize({
-          responseBody: finalBody,
-          searchParams: searchParamsForLimit,
-          // RAW user query (not the expanded one) — the brand guard must key
-          // off what the user actually asked for.
-          queryText: String(
-            req?.body?.payload?.search?.query || req?.body?.payload?.query || '',
-          ).trim(),
-        });
+        if (finalBody.metadata.citable_supplement_count === undefined) {
+          finalBody.metadata.citable_supplement_count = 0;
+        }
+        if (!citableSupplementSettled) {
+          finalBody.metadata.citable_supplement_pending = true;
+        }
       }
-    } catch (pageSizeErr) {
+      try {
+        if (
+          FPM_ENFORCE_REQUESTED_PAGE_SIZE &&
+          String(debugRuntime.operation || req?.body?.operation || '').trim().toLowerCase() ===
+            'find_products_multi'
+        ) {
+          const payloadBodyForLimit =
+            req?.body?.payload && typeof req.body.payload === 'object' && !Array.isArray(req.body.payload)
+              ? req.body.payload
+              : {};
+          const searchParamsForLimit =
+            payloadBodyForLimit.search &&
+            typeof payloadBodyForLimit.search === 'object' &&
+            !Array.isArray(payloadBodyForLimit.search)
+              ? payloadBodyForLimit.search
+              : payloadBodyForLimit;
+          finalBody = enforceFindProductsMultiRequestedPageSize({
+            responseBody: finalBody,
+            searchParams: searchParamsForLimit,
+            // RAW user query (not the expanded one) — the brand guard must key
+            // off what the user actually asked for.
+            queryText: String(
+              req?.body?.payload?.search?.query || req?.body?.payload?.query || '',
+            ).trim(),
+          });
+        }
+      } catch (pageSizeErr) {
+        logger.warn(
+          {
+            gateway_request_id: gatewayRequestId,
+            err: pageSizeErr?.message || String(pageSizeErr),
+          },
+          'failed to enforce requested page_size on find_products_multi response',
+        );
+      }
+      if (
+        seedAttributionCounts &&
+        Number(seedAttributionCounts.candidates) > 0 &&
+        finalBody &&
+        typeof finalBody === 'object' &&
+        !Array.isArray(finalBody)
+      ) {
+        try {
+          const attributionMeta =
+            finalBody.metadata &&
+            typeof finalBody.metadata === 'object' &&
+            !Array.isArray(finalBody.metadata)
+              ? finalBody.metadata
+              : {};
+          attributionMeta.external_seed_attribution = {
+            candidates: Number(seedAttributionCounts.candidates) || 0,
+            stamped: Number(seedAttributionCounts.stamped) || 0,
+          };
+          finalBody.metadata = attributionMeta;
+        } catch (attributionMetaErr) {
+          logger.warn(
+            {
+              gateway_request_id: gatewayRequestId,
+              err: attributionMetaErr?.message || String(attributionMetaErr),
+            },
+            'failed to stamp external seed attribution metadata',
+          );
+        }
+      }
+      setInvokePerfHeaders();
+      return originalJson(finalBody);
+    };
+
+    let seedAttributionContainer = null;
+    let seedAttributionCards = [];
+    try {
+      if (finalOperation === 'find_products_multi') {
+        seedAttributionContainer = Array.isArray(finalBody?.products)
+          ? finalBody
+          : finalBody?.data && Array.isArray(finalBody.data.products)
+            ? finalBody.data
+            : null;
+        if (seedAttributionContainer) {
+          seedAttributionCards = collectUnattributedSeedCards(seedAttributionContainer.products);
+        }
+      }
+    } catch (seedAttributionCollectErr) {
+      seedAttributionCards = [];
       logger.warn(
         {
           gateway_request_id: gatewayRequestId,
-          err: pageSizeErr?.message || String(pageSizeErr),
+          err: seedAttributionCollectErr?.message || String(seedAttributionCollectErr),
         },
-        'failed to enforce requested page_size on find_products_multi response',
+        'failed to collect unattributed external seed cards',
       );
     }
-    setInvokePerfHeaders();
-    return originalJson(finalBody);
+    if (!seedAttributionCards.length) return finish();
+
+    try {
+      const seedAttributionPayload =
+        req?.body?.payload && typeof req.body.payload === 'object' && !Array.isArray(req.body.payload)
+          ? req.body.payload
+          : {};
+      const seedAttributionSearch =
+        seedAttributionPayload.search &&
+        typeof seedAttributionPayload.search === 'object' &&
+        !Array.isArray(seedAttributionPayload.search)
+          ? seedAttributionPayload.search
+          : seedAttributionPayload;
+      const seedAttributionMarket =
+        String(
+          seedAttributionSearch.market ||
+            seedAttributionPayload.market ||
+            req?.body?.metadata?.market ||
+            '',
+        ).trim() || null;
+      return stampExternalSeedAttribution(seedAttributionContainer.products, {
+        // Caller-independent by construction: search results are cached and
+        // shared across callers, so the mint carries only the internal key.
+        fetchLinks: createBackendSeedLinkFetcher({
+          apiBase: PIVOTA_API_BASE,
+          buildHeaders: () =>
+            buildInvokeUpstreamAuthHeaders({
+              forceInternalFallback: true,
+              forwardAgentUserJwt: false,
+              forwardBuyerRef: false,
+            }),
+        }),
+        market: seedAttributionMarket,
+        tool: finalOperation,
+        logger,
+      }).then(
+        (counts) => {
+          seedAttributionCounts = counts;
+          return finish();
+        },
+        // stampExternalSeedAttribution swallows its own failures; this branch
+        // only guards against a rejection we did not anticipate.
+        () => finish(),
+      );
+    } catch (seedAttributionErr) {
+      logger.warn(
+        {
+          gateway_request_id: gatewayRequestId,
+          err: seedAttributionErr?.message || String(seedAttributionErr),
+        },
+        'failed to dispatch external seed attribution mint',
+      );
+      return finish();
+    }
   };
   res.setHeader('X-Gateway-Request-Id', gatewayRequestId);
 

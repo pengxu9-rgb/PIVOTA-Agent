@@ -82,6 +82,9 @@ describe('/agent/shop/v1/invoke find_products_multi strict surfaces', () => {
       API_MODE: process.env.API_MODE,
       PIVOTA_BACKEND_BASE_URL: process.env.PIVOTA_BACKEND_BASE_URL,
       PROXY_SEARCH_RESOLVER_FIRST_ENABLED: process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED,
+      EXTERNAL_SEED_ATTRIBUTION_STAMP_ENABLED:
+        process.env.EXTERNAL_SEED_ATTRIBUTION_STAMP_ENABLED,
+      EXTERNAL_SEED_ATTRIBUTION_TIMEOUT_MS: process.env.EXTERNAL_SEED_ATTRIBUTION_TIMEOUT_MS,
     };
 
     process.env.PIVOTA_API_BASE = 'http://pivota.test';
@@ -89,6 +92,8 @@ describe('/agent/shop/v1/invoke find_products_multi strict surfaces', () => {
     process.env.API_MODE = 'REAL';
     process.env.DATABASE_URL = 'postgres://strict-surface-test';
     delete process.env.PIVOTA_BACKEND_BASE_URL;
+    delete process.env.EXTERNAL_SEED_ATTRIBUTION_STAMP_ENABLED;
+    delete process.env.EXTERNAL_SEED_ATTRIBUTION_TIMEOUT_MS;
   });
 
   afterEach(() => {
@@ -777,5 +782,174 @@ describe('/agent/shop/v1/invoke find_products_multi strict surfaces', () => {
         }),
       }),
     );
+  });
+
+  // ---------------------------------------------------------------------------
+  // External-seed attribution stamp: JS-built seed cards hold a RAW
+  // destination_url and no signed redirect (this gateway holds no signing
+  // secret). The backend mints both; a failure must never cost the card.
+  // ---------------------------------------------------------------------------
+
+  const SEED_RAW_DESTINATION =
+    'https://fentybeauty.com/products/watch-ya-tone-niacinamide-dark-spot-serum';
+  const SEED_ATTRIBUTED_DESTINATION =
+    'https://fentybeauty.com/products/watch-ya-tone-niacinamide-dark-spot-serum' +
+    '?utm_source=pivota&utm_medium=find_products_multi&utm_campaign=US&pvt_click_id=clk_1&utm_content=clk_1';
+
+  async function runIngredientDirectSearch(app) {
+    return request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'niacinamide serum under €30',
+            limit: 10,
+            in_stock_only: true,
+          },
+        },
+        metadata: { source: 'shopping_agent' },
+      })
+      .expect(200);
+  }
+
+  test('js-built external seed cards ship a minted redirect, attributed destination, and tracking', async () => {
+    mockDbRows([seedRow()]);
+
+    let mintBody = null;
+    let mintHeaders = null;
+    // Registered FIRST: nock matches interceptors in registration order.
+    const mint = nock('http://pivota.test')
+      .post('/agent/shop/v1/attribution/external-seed-links')
+      .reply(200, function reply(_uri, body) {
+        mintBody = body;
+        mintHeaders = { ...this.req.headers };
+        return {
+          links: [
+            {
+              external_seed_id: 'seed_fenty_niacinamide',
+              external_product_id: 'ext_fenty_niacinamide',
+              external_redirect_url: 'https://api.pivota.cc/r?token=abc.def',
+              destination_url: SEED_ATTRIBUTED_DESTINATION,
+              cart_url: null,
+              tracking: { click_id: 'clk_1', param: 'pvt_click_id', join_mode: 'referral_only' },
+            },
+          ],
+        };
+      });
+
+    const app = require('../../src/server');
+    const res = await runIngredientDirectSearch(app);
+
+    expect(mint.isDone()).toBe(true);
+    expect(res.body.products).toHaveLength(1);
+    const card = res.body.products[0];
+    expect(card.external_redirect_url).toBe('https://api.pivota.cc/r?token=abc.def');
+    expect(card.destination_url).toBe(SEED_ATTRIBUTED_DESTINATION);
+    expect(card.tracking).toEqual({
+      click_id: 'clk_1',
+      param: 'pvt_click_id',
+      join_mode: 'referral_only',
+    });
+    expect(res.body.metadata.external_seed_attribution).toEqual({ candidates: 1, stamped: 1 });
+
+    // The mint request carried the card's seed id and its RAW destination.
+    expect(mintBody).toEqual(
+      expect.objectContaining({
+        tool: 'find_products_multi',
+        candidates: [
+          expect.objectContaining({
+            external_seed_id: 'seed_fenty_niacinamide',
+            destination_url: SEED_RAW_DESTINATION,
+          }),
+        ],
+      }),
+    );
+    expect(mintBody.candidates).toHaveLength(1);
+
+    // Caller-independent: search results are cached and shared across callers,
+    // so no caller-derived byte may reach the mint.
+    expect(mintHeaders['x-buyer-ref']).toBeUndefined();
+    expect(mintHeaders['x-agent-user-jwt']).toBeUndefined();
+    expect(mintHeaders['x-api-key']).toBe('test-token');
+  });
+
+  test('a failing mint endpoint leaves the seed card on its raw destination and still returns 200', async () => {
+    mockDbRows([seedRow()]);
+
+    const mint = nock('http://pivota.test')
+      .post('/agent/shop/v1/attribution/external-seed-links')
+      .reply(500, { error: 'boom' });
+
+    const app = require('../../src/server');
+    const res = await runIngredientDirectSearch(app);
+
+    expect(mint.isDone()).toBe(true);
+    expect(res.body.products).toHaveLength(1);
+    const card = res.body.products[0];
+    expect(card.destination_url).toBe(SEED_RAW_DESTINATION);
+    expect(card).not.toHaveProperty('external_redirect_url');
+    expect(card).not.toHaveProperty('tracking');
+    expect(res.body.metadata.external_seed_attribution).toEqual({ candidates: 1, stamped: 0 });
+  });
+
+  test('a mint endpoint slower than the attribution budget leaves the seed card unchanged', async () => {
+    mockDbRows([seedRow()]);
+    process.env.EXTERNAL_SEED_ATTRIBUTION_TIMEOUT_MS = '60';
+
+    // nock 14 crashes on replyWithError({...}); simulate the timeout by
+    // delaying a normal reply past the axios budget instead.
+    const mint = nock('http://pivota.test')
+      .post('/agent/shop/v1/attribution/external-seed-links')
+      .delay(900)
+      .reply(200, {
+        links: [
+          {
+            external_seed_id: 'seed_fenty_niacinamide',
+            external_redirect_url: 'https://api.pivota.cc/r?token=too.late',
+            destination_url: SEED_ATTRIBUTED_DESTINATION,
+            cart_url: null,
+            tracking: { click_id: 'clk_late', param: 'pvt_click_id', join_mode: 'referral_only' },
+          },
+        ],
+      });
+
+    // The mint MUST have been dispatched — otherwise this test would pass for
+    // the wrong reason (no call at all rather than a call that timed out).
+    let mintRequested = false;
+    mint.on('request', () => {
+      mintRequested = true;
+    });
+
+    const app = require('../../src/server');
+    const res = await runIngredientDirectSearch(app);
+
+    expect(mintRequested).toBe(true);
+    expect(res.body.products).toHaveLength(1);
+    const card = res.body.products[0];
+    expect(card.destination_url).toBe(SEED_RAW_DESTINATION);
+    expect(card).not.toHaveProperty('external_redirect_url');
+    expect(card).not.toHaveProperty('tracking');
+    expect(res.body.metadata.external_seed_attribution).toEqual({ candidates: 1, stamped: 0 });
+    nock.abortPendingRequests();
+  });
+
+  test('the kill switch stops the gateway from calling the mint endpoint at all', async () => {
+    mockDbRows([seedRow()]);
+    process.env.EXTERNAL_SEED_ATTRIBUTION_STAMP_ENABLED = '0';
+
+    const mint = nock('http://pivota.test')
+      .post('/agent/shop/v1/attribution/external-seed-links')
+      .reply(200, { links: [] });
+
+    const app = require('../../src/server');
+    const res = await runIngredientDirectSearch(app);
+
+    expect(mint.isDone()).toBe(false);
+    expect(res.body.products).toHaveLength(1);
+    const card = res.body.products[0];
+    expect(card.destination_url).toBe(SEED_RAW_DESTINATION);
+    expect(card).not.toHaveProperty('external_redirect_url');
+    expect(res.body.metadata).not.toHaveProperty('external_seed_attribution');
   });
 });
