@@ -257,58 +257,86 @@ test('variant_id itself is PAN-exempt as a system-issued id key', () => {
   assert.equal(spec('variant_id', LUHN_VALID_VARIANT_ID), LUHN_VALID_VARIANT_ID);
 });
 
-// The composite-key family. `productkey` was exempted from PAN scanning when PAN_EXEMPT_ID_KEYS was
-// written; its siblings carry the identical value shape and were not — so the SAME platform id
-// survived in one field of a response and was destroyed in the next one down. Observed in prod
-// 2026-09-02 on a single get_product response:
-//     product_key: "merch_c5e24a8d3738d73b|shopify|9854988910809"
-//     sku_key:     "merch_c5e24a8d3738d73b|shopify|[REDACTED_PAN]|∅"
-// 9854988910809 is 13 digits AND Luhn-valid, so the checksum gate that stops random digit runs
-// does not stop this one — an agent chaining on sku_key got a broken identifier.
+// PAN redaction vs OUR composite identifiers.
+//
+// PAN_EXEMPT_ID_KEYS already carried `productkey`, so on one prod get_product response (2026-09-02)
+// `product_key` kept the Shopify id 9854988910809 while `sku_key` came back "[REDACTED_PAN]". The id
+// is 13 digits AND Luhn-valid, so the checksum gate that stops random digit runs cannot stop it.
+// The fix is a value-SHAPE gate rather than more key names — see COMPOSITE_ID_RE.
 
-test('a composite key keeps its platform id — the Luhn gate does not save a 13-digit product id', () => {
+test('a composite identifier keeps the digit segments that follow its separators', () => {
   const out = sanitizeResult({
     review_summary: {
       product_key: 'merch_c5e24a8d3738d73b|shopify|9854988910809',
       sku_key: 'merch_c5e24a8d3738d73b|shopify|9854988910809|∅',
-      content_key: 'merch_c5e24a8d3738d73b|shopify|9854988910809',
     },
     attached_product_key: 'prod::merch_c5e24a8d3738d73b::shopify::9854988910809',
-    representative_product_key: 'prod::merch_c5e24a8d3738d73b::shopify::9854988910809',
-    matched_product_key: 'prod::merch_c5e24a8d3738d73b::shopify::9854988910809',
+    // No key list is consulted, so a key nobody enumerated works too. That is the point: the
+    // original hole was `productkey` exempt and `skukey` not, and a name list cannot stop rotting.
+    some_future_key: 'somenewkey::merch_x::shopify::9854988910809',
   });
-  // The id the agent has to chain on must survive in EVERY field that carries it, not just one.
   assert.equal(out.review_summary.sku_key, 'merch_c5e24a8d3738d73b|shopify|9854988910809|∅');
   assert.equal(out.review_summary.product_key, 'merch_c5e24a8d3738d73b|shopify|9854988910809');
-  assert.equal(out.review_summary.content_key, 'merch_c5e24a8d3738d73b|shopify|9854988910809');
-  for (const k of ['attached_product_key', 'representative_product_key', 'matched_product_key']) {
-    assert.match(out[k], /9854988910809/, `${k} must keep its platform id`);
-  }
+  assert.match(out.attached_product_key, /9854988910809/);
+  assert.match(out.some_future_key, /9854988910809/);
   assert.equal(JSON.stringify(out).includes('REDACTED_PAN'), false);
 });
 
-test('the exemption is per-key, so a key that is NOT one of ours still gets PAN-scanned', () => {
-  // The counterpart. Exempting a key asserts "a PAN cannot legitimately appear in this value via
-  // any flow" — a claim about each field — so the list is enumerated rather than `endsWith('key')`.
-  // consumer_key is a WooCommerce credential; idempotency/lock/module keys are not published ids.
+test('the shape gate is STRICTER than a key exemption: a bare PAN is still redacted', () => {
+  // A key-name exemption skips scanning the whole value, so a card number placed in sku_key would
+  // survive. The shape gate refuses it — there is no separator in front of it.
   const out = sanitizeResult({
-    consumer_key: 'key 4111111111111111 end',
-    idempotency_key: 'idem 4111111111111111 end',
-    lock_key: 'lock 4111111111111111 end',
-    module_key: 'mod 4111111111111111 end',
-    note: 'card 4111111111111111 here',
+    sku_key: '4111111111111111',
+    // ...and a PAN in the FIRST segment has no preceding separator either.
+    content_key: '4111111111111111|shopify|9854988910809',
   });
-  for (const k of ['consumer_key', 'idempotency_key', 'lock_key', 'module_key', 'note']) {
-    assert.match(out[k], /\[REDACTED_PAN\]/, `${k} must still be PAN-scanned`);
-  }
+  assert.equal(out.sku_key, '[REDACTED_PAN]');
+  assert.equal(out.content_key, '[REDACTED_PAN]|shopify|9854988910809');
 });
 
-test('a real PAN is still redacted where a composite key is not involved', () => {
-  // Guards the obvious over-correction: exempting keys must not weaken the scan itself.
-  const out = sanitizeResult({ sku_key: '4111111111111111', note: '4111111111111111' });
-  assert.equal(out.note, '[REDACTED_PAN]');
-  // ...and the exempt field is exempt by KEY, which is the deliberate trade: a bare PAN placed in
-  // sku_key survives. That is acceptable only because sku_key is server-composed and a card number
-  // cannot reach it — the same reasoning already applied to product_key.
-  assert.equal(out.sku_key, '4111111111111111');
+test('free text is never treated as a composite id, whatever the key is called', () => {
+  // `catalog_variant_promoter._visible_attributes` lowercases MERCHANT-AUTHORED option axis names
+  // straight into dict keys, and canon() erases the space — so an axis named "sku key" would
+  // inherit any name-based exemption. A composite id has no whitespace, so this stays scanned.
+  const out = sanitizeResult({
+    visible_attributes: { 'sku key': '4111111111111111', shade: '4111111111111111' },
+    consumer_key: 'key 4111111111111111 end',
+    note: 'card 4111111111111111 here',
+    // A separator immediately before the digits is NOT enough on its own — free text can contain
+    // one. The whitespace test is what makes it a composite identifier.
+    ref_line: 'ref:4111111111111111 (customer copy)',
+  });
+  assert.equal(out.visible_attributes['sku key'], '[REDACTED_PAN]');
+  assert.equal(out.visible_attributes.shade, '[REDACTED_PAN]');
+  assert.match(out.consumer_key, /\[REDACTED_PAN\]/);
+  assert.match(out.note, /\[REDACTED_PAN\]/);
+  assert.match(out.ref_line, /\[REDACTED_PAN\]/);
+});
+
+test('a real content_key is unaffected either way — it can never match PAN_RE', () => {
+  // content_key is `ck_` + 32 lowercase hex (services/catalog_identity.make_content_key). PAN_RE
+  // needs a word boundary before the first digit and `ck_`/hex letters are word characters, so it
+  // cannot match: 0 hits across 200k random keys. Pinned so nobody "fixes" content_key by inventing
+  // a fixture holding a product_key-shaped value, which is what an earlier cut of this change did.
+  const key = 'ck_32de31827aded89c8d0339895b6a2786';
+  assert.equal(sanitizeResult({ content_key: key }).content_key, key);
+  assert.equal(sanitizeResult({ unrelated: key }).unrelated, key);
+});
+
+test('a nested array under a composite-looking key is still scanned element by element', () => {
+  // The shape gate is per STRING, decided by that string's own shape, so it cannot propagate into
+  // children the way a name-based exemption does.
+  //
+  // NOT FIXED HERE, and deliberately out of scope: the PRE-EXISTING name exemptions (`id`, `sku`,
+  // `productkey`, …) still propagate `keyCanon` into array elements at unlimited depth, so
+  // `product_key: ['4111111111111111']` survives today. This change stops ADDING to that surface —
+  // it does not drain it. Draining it means retiring the name list in favour of this gate, which is
+  // its own change with its own blast radius.
+  const out = sanitizeResult({
+    sku_key: ['4111111111111111', [['4111111111111111']]],
+    product_key: { note: '4111111111111111' },
+  });
+  assert.equal(out.sku_key[0], '[REDACTED_PAN]');
+  assert.equal(out.sku_key[1][0][0], '[REDACTED_PAN]');
+  assert.equal(out.product_key.note, '[REDACTED_PAN]');
 });

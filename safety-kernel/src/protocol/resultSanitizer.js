@@ -31,20 +31,6 @@ const PAN_EXEMPT_ID_KEYS = new Set([
   'sellableitemgroupid', 'signatureid', 'pivotasignatureid', 'productkey', 'catalogproductkey',
   'orderid', 'quoteid', 'sessionid', 'checkoutsessionid', 'merchantid', 'externalseedid', 'offerid',
   'lineitemid', 'itemid',
-  // The COMPOSITE key family. `productkey` was exempted when this list was written; its siblings
-  // were not, and they carry the identical value shape — so the same platform id survived in one
-  // field and was destroyed in the next one down. Observed in prod 2026-09-02 on a single
-  // get_product response:
-  //   product_key: "merch_c5e24a8d3738d73b|shopify|9854988910809"
-  //   sku_key:     "merch_c5e24a8d3738d73b|shopify|[REDACTED_PAN]|∅"
-  // The Shopify product id 9854988910809 is 13 digits and Luhn-valid, so the checksum gate that
-  // stops random digit runs does not stop this one — the SHAPE is what identifies it as ours.
-  //
-  // Enumerated, never `endsWith('key')`: `consumer_key` is a WooCommerce credential and
-  // `idempotency_key`/`lock_key`/`module_key` are not identifiers we publish. Exempting a key here
-  // means "a PAN cannot legitimately appear in this value via any flow" — that is a claim about
-  // each field, so each field is named.
-  'skukey', 'contentkey', 'attachedproductkey', 'representativeproductkey', 'matchedproductkey',
 ]);
 function luhnValid(candidate) {
   const digits = String(candidate).replace(/[ -]/g, '');
@@ -63,8 +49,40 @@ function luhnValid(candidate) {
   }
   return sum % 10 === 0;
 }
+// A COMPOSITE IDENTIFIER is one of our own keys: separator-joined, no whitespace —
+// "merch_x|shopify|9854988910809|∅", "prod::merch_x::shopify::9854988910809". Inside one, a digit
+// run that FOLLOWS a separator is a segment of the id, never a card number.
+//
+// Why a shape gate and not more key names. `PAN_EXEMPT_ID_KEYS` already carried `productkey`, so on
+// one prod get_product response (2026-09-02) `product_key` kept the Shopify id 9854988910809 while
+// `sku_key` came back "[REDACTED_PAN]" — 13 digits and Luhn-valid, so the checksum gate that stops
+// random digit runs cannot stop this one. Adding `skukey` fixes that row and nothing else: the same
+// asymmetry waits on every sibling nobody enumerated (`matched_product_key` is exempted by name in
+// one upserter tuple while `matched_content_key` beside it is not), which is how the original hole
+// was born. A name list cannot stop rotting; the value's shape can.
+//
+// It is also strictly SAFER than a name exemption, which skips PAN scanning for the whole value:
+//   - a bare PAN keeps being redacted even under an exempt key — "4111111111111111" has no
+//     separator before it;
+//   - a PAN in the FIRST segment is redacted — "4111111111111111|shopify|985…" → the leading run is
+//     not preceded by a separator;
+//   - free text is untouched, because a composite id has no whitespace. That closes a real hole:
+//     `catalog_variant_promoter._visible_attributes` lowercases MERCHANT-AUTHORED option axis names
+//     into dict keys, and canon() erases the space — so an axis literally named "sku key" would
+//     inherit a name-based exemption. Its value is bare text, so the shape gate refuses it.
+//
+// Mirrors redactPansOutsideStorefrontIds below, whose comment records that its own per-VALUE
+// ancestor was a prefix-gate hole. Same lesson, same fix.
+const COMPOSITE_ID_RE = /^\S*(?:\|\|?|::)\S*$/;
+const COMPOSITE_SEGMENT_SEPARATORS = new Set(['|', ':']);
+
 function redactPans(s) {
-  return s.replace(PAN_RE, (m) => (luhnValid(m) ? '[REDACTED_PAN]' : m));
+  const composite = COMPOSITE_ID_RE.test(s);
+  return s.replace(PAN_RE, (m, offset) => {
+    if (!luhnValid(m)) return m;
+    if (composite && offset > 0 && COMPOSITE_SEGMENT_SEPARATORS.has(s[offset - 1])) return m;
+    return '[REDACTED_PAN]';
+  });
 }
 const SENSITIVE = new Set([
   'ap2state', 'confirmationtoken', 'clientsecret', 'authorization', 'accesstoken', 'idtoken', 'refreshtoken',
