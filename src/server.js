@@ -25,6 +25,8 @@ const {
 const logger = require('./logger');
 const { runMigrations } = require('./db/migrate');
 const { query, withClient } = require('./db');
+const { normalizeShopifyAdminHost } = require('./services/shopifyAdminHost');
+const { createPublicNetworkFetch } = require('./services/ucpBuyerAgentClient');
 const {
   getExternalSeedImageCacheBootstrapStatus,
   scheduleExternalSeedImageCacheBootstrap,
@@ -10939,6 +10941,10 @@ async function buildOffersFromGroupMembers(args) {
 const SHOPIFY_MERCHANT_CURRENCY_CACHE = new Map(); // merchant_id -> { currency, expiresAtMs }
 const SHOPIFY_MERCHANT_CURRENCY_TTL_MS = 6 * 60 * 60 * 1000;
 const SHOPIFY_MERCHANT_CURRENCY_NEG_TTL_MS = 10 * 60 * 1000;
+// Preserves the 8 s ceiling the axios call had. The fenced transport takes an AbortSignal instead of
+// a `timeout` option, and dropping it would be a hot-path regression: this runs inline, under
+// Promise.all, on ~13 search/browse response paths.
+const SHOPIFY_MERCHANT_CURRENCY_TIMEOUT_MS = 8000;
 
 function getCachedShopifyMerchantCurrency(merchantId) {
   const mid = String(merchantId || '').trim();
@@ -11008,23 +11014,43 @@ async function fetchShopifyMerchantCurrency(merchantId) {
     return null;
   }
 
-  const domain = storeRow && storeRow.domain ? String(storeRow.domain).trim() : '';
+  // The column is untrusted input, not a hostname. Every writer lives in another repo, and the value
+  // that lands here is the upstream shop.json `myshopify_domain` — re-validated by neither side — so
+  // the shape is settled HERE, before a URL exists, or the request is not made at all.
+  const host = normalizeShopifyAdminHost(storeRow && storeRow.domain);
   const accessToken = parseShopifyAccessToken(storeRow && storeRow.api_key ? storeRow.api_key : '');
 
-  if (!domain || !accessToken) {
+  if (!host || !accessToken) {
+    // Deliberately no `domain` in this log line. It is attacker-influenced text that would be echoed
+    // into the log pipeline, and the merchant id is enough to find the offending row.
+    if (storeRow && storeRow.domain && !host) {
+      logger.warn({ merchantId: mid, reason: 'not_a_myshopify_admin_host' }, 'Refused Shopify shop currency lookup');
+    }
     setCachedShopifyMerchantCurrency(mid, null, SHOPIFY_MERCHANT_CURRENCY_NEG_TTL_MS);
     return null;
   }
 
   try {
-    const url = `https://${domain}/admin/api/2024-07/shop.json`;
-    const resp = await axios.get(url, {
+    // Fenced transport, not axios. Two independent reasons, and the host pin above answers neither:
+    //   1. axios follows up to 5 redirects, and follow-redirects strips only `authorization`/`cookie`
+    //      on a cross-host hop — a CUSTOM header such as X-Shopify-Access-Token is REPLAYED to the
+    //      redirect target. `redirect: 'error'` ends that; node:https does not follow on its own, so
+    //      the option pins the intent rather than adding the behaviour.
+    //   2. `createPublicOnlyLookup` refuses a DNS answer containing any non-public address, so a
+    //      matching-but-hostile name cannot pivot inward, and forbiddenLiteralHost runs before a
+    //      request is built.
+    // The 2 MiB wire cap this transport imposes is not a risk on this call the way it was on the
+    // paginated products.json lane (#2143): shop.json returns ONE `shop` object with a fixed scalar
+    // field set — there is no collection in it to grow. Losing gzip is likewise immaterial at that size.
+    const fetchPublic = createPublicNetworkFetch();
+    const resp = await fetchPublic(`https://${host}/admin/api/2024-07/shop.json`, {
+      method: 'GET',
       headers: {
         'X-Shopify-Access-Token': accessToken,
         'Content-Type': 'application/json',
       },
-      timeout: 8000,
-      validateStatus: () => true,
+      redirect: 'error',
+      signal: AbortSignal.timeout(SHOPIFY_MERCHANT_CURRENCY_TIMEOUT_MS),
     });
 
     if (resp.status !== 200) {
@@ -11032,7 +11058,8 @@ async function fetchShopifyMerchantCurrency(merchantId) {
       return null;
     }
 
-    const cur = String(resp.data && resp.data.shop && resp.data.shop.currency ? resp.data.shop.currency : '')
+    const body = await resp.json();
+    const cur = String(body && body.shop && body.shop.currency ? body.shop.currency : '')
       .trim()
       .toUpperCase();
     if (!cur) {
@@ -11043,7 +11070,11 @@ async function fetchShopifyMerchantCurrency(merchantId) {
     setCachedShopifyMerchantCurrency(mid, cur, SHOPIFY_MERCHANT_CURRENCY_TTL_MS);
     return cur;
   } catch (err) {
-    logger.warn({ err: err.message, merchantId: mid }, 'Failed to fetch Shopify shop currency');
+    // `err.message` is NOT logged. normalizeBaseUrl echoes the offending URL into its message, and a
+    // DNS/connect failure carries the host too, so forwarding it would put the very value this
+    // function refuses to trust into the log pipeline. `err.code` is the libuv/PIVOTA_ code alone
+    // (ENOTFOUND, ECONNREFUSED, PIVOTA_SSRF_REFUSED, ...) and names no host.
+    logger.warn({ code: err && err.code ? err.code : 'unknown', merchantId: mid }, 'Failed to fetch Shopify shop currency');
     setCachedShopifyMerchantCurrency(mid, null, SHOPIFY_MERCHANT_CURRENCY_NEG_TTL_MS);
     return null;
   }
@@ -53477,6 +53508,13 @@ async function runPdpCorePrewarmPass() {
 
 module.exports = app;
 module.exports._debug = {
+  // Exported because the credential-exfiltration property cannot be asserted over the wire. This
+  // function sends a LIVE Shopify Admin token to a host named by a database column, and the thing
+  // under test is that a bad row produces NO packet at all — a refusal that is indistinguishable, in
+  // every response this feeds, from a merchant that simply has no currency override. Driving it
+  // directly is the only way to watch the socket and the outgoing headers at the same time.
+  fetchShopifyMerchantCurrency,
+  SHOPIFY_MERCHANT_CURRENCY_CACHE,
   // Exported so the ORDERING property can be asserted: this function hoists catalog-image-cache
   // URLs ahead of working merchant CDN URLs, so a row stored under a retired host lands in the
   // hero slot. Over the wire a re-homed hero and a dead one are both just a gallery array; only
