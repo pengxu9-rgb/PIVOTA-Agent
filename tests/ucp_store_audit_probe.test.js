@@ -137,7 +137,13 @@ describe('Store Audit UCP probe', () => {
         const client = endpointlessClient(status);
         const result = await createUcpStoreAuditProbe({ client }).probe({ brandDomain: 'shop.example.com' });
         expect(result.verification_status).toBe('blocked');
-        expect(result.reason).toBe('profile_unreachable');
+        // The BASE reason, which is what the backend and every other consumer
+        // match on; the ':status=' qualifier that follows says which upstream
+        // condition it was, and is asserted separately below. This test's point
+        // is that an upstream refusal never becomes not_ucp_reachable, because
+        // that is the string the backend deactivates a route on.
+        expect(result.reason.split(':')[0]).toBe('profile_unreachable');
+        expect(result.reason).not.toBe('not_ucp_reachable');
         expect(client.listTools).not.toHaveBeenCalled();
       },
     );
@@ -146,7 +152,7 @@ describe('Store Audit UCP probe', () => {
       const client = endpointlessClient(301);
       const result = await createUcpStoreAuditProbe({ client }).probe({ brandDomain: 'shop.example.com' });
       expect(result.verification_status).toBe('blocked');
-      expect(result.reason).toBe('profile_redirected');
+      expect(result.reason.split(':')[0]).toBe('profile_redirected');
     });
   });
 
@@ -209,5 +215,111 @@ describe('Store Audit UCP probe', () => {
     expect(facts.item_title).toBe('Serum — see today');
     expect(facts.checkout_status).toBe('open');
     expect(JSON.stringify(facts).toLowerCase()).not.toContain('http');
+  });
+});
+
+describe('Store Audit UCP probe — the reason names WHICH cause fired', () => {
+  // PROFILE_UNREACHABLE is produced by four unrelated things: a thrown fetch
+  // (DNS/TLS/connect/abort/SSRF refusal) and any 403, 429 or 5xx. Stored as one
+  // identical string they are indistinguishable, and a whole day was spent on
+  // two merchants stuck on it without being able to say which had happened.
+  const fakeClient = (behaviour) => ({
+    tier: 'anonymous',
+    discoverEndpoint: behaviour,
+    listTools: async () => ({ ok: true, status: 200, response: { result: { tools: [] } } }),
+  });
+
+  const reasonFor = async (behaviour) => {
+    const probe = createUcpStoreAuditProbe({ client: fakeClient(behaviour) });
+    const out = await probe.probe({ brandDomain: 'shop.example' });
+    return out.reason;
+  };
+
+  test('a real transport error carries its TOP-LEVEL code', async () => {
+    // THE SHAPE PRODUCTION ACTUALLY PRODUCES. The probe's fetch is node
+    // https.request, not undici, so a network error arrives with a top-level
+    // `code` and NO `cause`. An earlier version of this test invented undici's
+    // cause-shape, and deleting the top-level branch left every test green
+    // while production stamped threw=unknown on every network failure.
+    const err = new Error('getaddrinfo ENOTFOUND shop.example');
+    err.code = 'ENOTFOUND';
+    const reason = await reasonFor(async () => { throw err; });
+
+    // The base string is unchanged and FIRST, so existing consumers still match.
+    expect(reason.startsWith('profile_unreachable')).toBe(true);
+    expect(reason).toBe('profile_unreachable:threw=ENOTFOUND');
+  });
+
+  test('an AggregateError reports EVERY attempt, not just the first', async () => {
+    // With autoSelectFamily on — the live configuration — Node tries all
+    // resolved addresses and throws an AggregateError whose own `code` is
+    // errors[0].code. On a subnet with no IPv6 route and an AAAA-first
+    // resolver that first code is ALWAYS ENETUNREACH, so reading it alone
+    // would blame v6 for a v4 failure and send the reader back to the wrong
+    // hypothesis — the exact mistake this qualifier exists to end.
+    const v6 = new Error('connect ENETUNREACH'); v6.code = 'ENETUNREACH';
+    const v4 = new Error('connect ECONNREFUSED'); v4.code = 'ECONNREFUSED';
+    const agg = new Error('connect failed'); agg.code = 'ENETUNREACH';
+    agg.errors = [v6, v4];
+    const reason = await reasonFor(async () => { throw agg; });
+
+    expect(reason).toBe('profile_unreachable:threw=ENETUNREACH+ECONNREFUSED');
+  });
+
+  test('an SSRF refusal is distinguishable from a network failure', async () => {
+    // The client now stamps its own refusals, so this no longer lands in the
+    // threw=unknown bucket alongside the size cap and a refused redirect.
+    const err = new Error('merchant endpoint resolved to a non-public address');
+    err.code = 'PIVOTA_SSRF_REFUSED';
+    const reason = await reasonFor(async () => { throw err; });
+
+    expect(reason).toBe('profile_unreachable:threw=PIVOTA_SSRF_REFUSED');
+  });
+
+  test('an error with nothing to identify it still says so', async () => {
+    const reason = await reasonFor(async () => { throw new Error('opaque'); });
+
+    expect(reason).toBe('profile_unreachable:threw=unknown');
+  });
+
+  test('a 403 is reported as a status, never as a throw', async () => {
+    const reason = await reasonFor(async () => ({ mcpEndpoint: undefined, status: 403 }));
+
+    expect(reason).toBe('profile_unreachable:status=403');
+  });
+
+  test('a 429 and a 503 are told apart from each other', async () => {
+    expect(await reasonFor(async () => ({ mcpEndpoint: undefined, status: 429 })))
+      .toBe('profile_unreachable:status=429');
+    expect(await reasonFor(async () => ({ mcpEndpoint: undefined, status: 503 })))
+      .toBe('profile_unreachable:status=503');
+  });
+
+  test('a refused redirect keeps its own reason and gains the status', async () => {
+    const reason = await reasonFor(async () => ({ mcpEndpoint: undefined, status: 301 }));
+
+    expect(reason).toBe('profile_redirected:status=301');
+  });
+
+  test('a clean absence is untouched — it must stay exactly not_ucp_reachable', async () => {
+    // The backend DEACTIVATES a route on succeeded + not_ucp_reachable, so a
+    // qualifier here would change what an existing consumer does.
+    const probe = createUcpStoreAuditProbe({
+      client: fakeClient(async () => ({ mcpEndpoint: undefined, status: 200 })),
+    });
+    const out = await probe.probe({ brandDomain: 'shop.example' });
+
+    expect(out.verification_status).toBe('succeeded');
+    expect(out.reason).toBe('not_ucp_reachable');
+  });
+
+  test('a merchant-controlled cause cannot fill the reason field', async () => {
+    // reason is capped at 500 chars by the receipt; an unbounded error string
+    // would wedge the claim in a lease-expiry loop it can never complete.
+    const err = new Error('fetch failed');
+    err.code = 'X'.repeat(5000);
+    const reason = await reasonFor(async () => { throw err; });
+
+    expect(reason.length).toBeLessThan(120);
   });
 });

@@ -173,6 +173,33 @@ function inIpv6Range(value, base, prefix) {
 }
 
 /** Reject addresses that must never be reachable through merchant-controlled URLs. */
+// A refusal that says which refusal it was. Without a code every in-house
+// rejection here — the SSRF guard, a refused redirect, the size cap, an
+// unsupported status — reaches the probe as a bare Error and is recorded
+// identically as `threw=unknown`, the same collapse of distinct causes that
+// made the probe's reason string unreadable in the first place. The PIVOTA_
+// prefix keeps them apart from libuv's errno codes, which share this field.
+// The literal an SSRF check has to actually test. WHATWG URL.hostname KEEPS the
+// brackets on an IPv6 literal ('[::1]'), and net.isIP('[::1]') is 0 — so a guard
+// spelled `isIP(hostname) && isForbidden(hostname)` short-circuits and never asks
+// the question. isForbiddenNetworkAddress strips brackets itself and would have
+// answered true; it was simply never called. Node then strips them too and,
+// because the host is an IP literal, SKIPS the lookup hook entirely, so
+// createPublicOnlyLookup does not fence it either — there is no third guard.
+// Measured 2026-09-04: https://[::ffff:169.254.169.254] produced a live
+// connection attempt at the cloud metadata address. v4-mapped literals are the
+// sharp end, because they ride the v4 stack even where IPv6 is unrouted.
+function forbiddenLiteralHost(hostname) {
+  const literal = String(hostname || '').replace(/^\[|\]$/g, '');
+  return Boolean(nodeNet.isIP(literal)) && isForbiddenNetworkAddress(literal);
+}
+
+function codedError(message, code) {
+  const error = new Error(message);
+  error.code = code;
+  return error;
+}
+
 function isForbiddenNetworkAddress(address) {
   const raw = String(address || '').toLowerCase().replace(/^\[|\]$/g, '');
   const family = nodeNet.isIP(raw);
@@ -197,6 +224,12 @@ function isForbiddenNetworkAddress(address) {
         ['::', 96], ['::ffff:0:0', 96],
         ['64:ff9b::', 96], ['100::', 64],
         ['2001:db8::', 32], ['2001:2::', 48],
+        // Each embeds or tunnels to somewhere it must not reach: 2002::/16
+        // (6to4) carries a v4 address inside the prefix, 2001::/32 (Teredo)
+        // tunnels v4, fec0::/10 is the deprecated site-local range, and
+        // 64:ff9b:1::/48 is local-use NAT64. Measured 2026-09-04: [2002:7f00:1::]
+        // (6to4 for 127.0.0.1) and [fec0::1] both reached a real socket.connect.
+        ['2002::', 16], ['2001::', 32], ['fec0::', 10], ['64:ff9b:1::', 48],
         ['fc00::', 7], ['fe80::', 10], ['ff00::', 8],
       ].some(([base, prefix]) => inIpv6Range(value, base, prefix));
     } catch {
@@ -221,12 +254,33 @@ function createPublicOnlyLookup(lookup = nodeDns.lookup) {
       // Reject mixed answers too. Falling back from a public address to a
       // private one after a connection failure is a common SSRF bypass.
       if (!records.length || records.some((entry) => isForbiddenNetworkAddress(entry.address))) {
-        return cb(new Error('merchant endpoint resolved to a non-public address'));
+        return cb(codedError('merchant endpoint resolved to a non-public address', 'PIVOTA_SSRF_REFUSED'));
       }
       if (opts.all) {
         return cb(null, records.map(({ address, family }) => ({ address, family })));
       }
-      return cb(null, records[0].address, records[0].family);
+      // SINGLE-ADDRESS SHAPE, WHICH HAS NO FALLBACK. Whichever record we return
+      // decides the request outright. `verbatim: true` keeps the resolver's
+      // order, commonly AAAA first for a dual-stack merchant — and on a host
+      // with no IPv6 route that connect answers ENETUNREACH with no second
+      // attempt, because Happy Eyeballs is what normally rescues it and is not
+      // in play here. The store-audit crawl subnet is exactly such a host
+      // (measured 2026-09-04: v6 connect => ENETUNREACH, v4 fine).
+      //
+      // Node uses this shape only when autoSelectFamily is OFF — an older
+      // runtime, --no-network-family-autoselection, or
+      // net.setDefaultAutoSelectFamily(false) — so this is a LATENT failure,
+      // invisible until someone changes that flag, at which point every
+      // dual-stack merchant drops out at once on a subnet where v6 is dead.
+      //
+      // Preferring IPv4 is not a claim that v6 is worse; it is that a branch
+      // which cannot retry should pick the family routable from the widest set
+      // of hosts we run on. A v6-only answer still returns v6 — filtering to
+      // nothing would turn a reachable merchant into a resolution failure — and
+      // the mixed public/private refusal above still runs first, so this cannot
+      // become the private-address fallback that guard exists to stop.
+      const preferred = records.find((entry) => entry.family === 4) || records[0];
+      return cb(null, preferred.address, preferred.family);
     });
   };
 }
@@ -246,7 +300,7 @@ const MAX_MERCHANT_RESPONSE_BYTES = 2 * 1024 * 1024;
 function toFetchResponse(statusCode, headers, bodyBuffer) {
   const status = Number(statusCode) || 0;
   if (status < 200) {
-    throw new Error(`merchant endpoint returned an unsupported status ${status}`);
+    throw codedError(`merchant endpoint returned an unsupported status ${status}`, 'PIVOTA_UNSUPPORTED_STATUS');
   }
   if (status === 204 || status === 205 || status === 304) {
     return new Response(null, { status, headers });
@@ -258,8 +312,8 @@ function createPublicNetworkFetch(lookup) {
   const publicOnlyLookup = createPublicOnlyLookup(lookup);
   return (url, options = {}) => new Promise((resolve, reject) => {
     const parsed = normalizeBaseUrl(url, 'merchantEndpoint');
-    if (nodeNet.isIP(parsed.hostname) && isForbiddenNetworkAddress(parsed.hostname)) {
-      reject(new Error('merchant endpoint must resolve to a public address'));
+    if (forbiddenLiteralHost(parsed.hostname)) {
+      reject(codedError('merchant endpoint must resolve to a public address', 'PIVOTA_SSRF_LITERAL'));
       return;
     }
     const request = nodeHttps.request(parsed, {
@@ -269,7 +323,7 @@ function createPublicNetworkFetch(lookup) {
     }, (response) => {
       if (options.redirect === 'error' && response.statusCode >= 300 && response.statusCode < 400) {
         response.resume();
-        reject(new Error('merchant endpoint redirected'));
+        reject(codedError('merchant endpoint redirected', 'PIVOTA_REDIRECT_REFUSED'));
         return;
       }
       const chunks = [];
@@ -277,7 +331,7 @@ function createPublicNetworkFetch(lookup) {
       response.on('data', (chunk) => {
         receivedBytes += chunk.length;
         if (receivedBytes > MAX_MERCHANT_RESPONSE_BYTES) {
-          const error = new Error('merchant endpoint response exceeded the size cap');
+          const error = codedError('merchant endpoint response exceeded the size cap', 'PIVOTA_SIZE_CAP');
           reject(error);
           request.destroy(error);
           return;
@@ -554,8 +608,12 @@ function createUcpBuyerAgentClient(options = {}) {
 
   async function fetchMerchantEndpoint(url, options) {
     const parsed = normalizeBaseUrl(url, 'merchantEndpoint');
-    if (nodeNet.isIP(parsed.hostname) && isForbiddenNetworkAddress(parsed.hostname)) {
-      throw new Error('merchant endpoint must resolve to a public address');
+    if (forbiddenLiteralHost(parsed.hostname)) {
+      // Same refusal as the one inside createPublicNetworkFetch, reached by a
+      // different caller — fetchMerchantEndpoint checks the literal before the
+      // request is built. Both carry the code, or the pre-flight path is the one
+      // that lands in the threw=unknown bucket.
+      throw codedError('merchant endpoint must resolve to a public address', 'PIVOTA_SSRF_LITERAL');
     }
     return merchantFetch(parsed.toString(), options);
   }

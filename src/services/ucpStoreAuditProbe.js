@@ -42,6 +42,87 @@ function toolNames(listResult) {
   return [...new Set(tools.map((tool) => firstString(tool && tool.name)).filter(Boolean))].sort();
 }
 
+// A reason the reader can act on. The base string stays FIRST and unchanged so
+// every consumer that compares or greps on it keeps working — the backend
+// deactivates a route on `reason == "not_ucp_reachable"`, which is why that one
+// is never qualified. Bounded because the receipt caps reason at 500 chars and
+// a merchant-controlled string must never be able to fill it.
+function qualifiedReason(base, kind, detail) {
+  const value = detail === null || detail === undefined || detail === ''
+    || (typeof detail === 'number' && Number.isNaN(detail))
+    ? null
+    : String(detail);
+  if (!value) return base;
+  return `${base}:${kind}=${value.slice(0, 60)}`;
+}
+
+// The stable machine-readable part of a throw, never the message.
+//
+// THE TRANSPORT IS node https.request, NOT undici: createPublicNetworkFetch
+// builds the request itself, so a real network error arrives with a TOP-LEVEL
+// `code` (ENOTFOUND, ECONNREFUSED, ETIMEDOUT) and NO `cause`. An earlier cut
+// read `cause` first and its test invented undici's shape, so deleting the
+// top-level branch left every test green while production stamped
+// `threw=unknown` on every network failure.
+//
+// AND IT MUST LOOK INSIDE AggregateError. With autoSelectFamily on — the live
+// configuration — Node tries every resolved address and throws a
+// NodeAggregateError whose own `code` is just `errors[0].code`, i.e. the FIRST
+// attempt. On a subnet with no IPv6 route and an AAAA-first resolver that first
+// code is always ENETUNREACH, so a dual-stack merchant whose v4 attempt failed
+// for some entirely different reason would be recorded as a v6 problem — this
+// function manufacturing the wrong conclusion, which is the one thing it exists
+// to prevent. Every distinct code is reported, in attempt order.
+function causeCode(error) {
+  if (!error) return 'unknown';
+  const codes = [];
+  const push = (value) => {
+    const code = value === null || value === undefined ? '' : String(value);
+    if (code && !codes.includes(code)) codes.push(code);
+  };
+  if (Array.isArray(error.errors)) {
+    for (const nested of error.errors) {
+      push(nested && ((nested.cause && (nested.cause.code || nested.cause.errno))
+        || nested.code || nested.errno));
+    }
+  }
+  if (!codes.length) {
+    push(error.code || error.errno);
+    push(error.cause && (error.cause.code || error.cause.errno));
+  }
+  if (!codes.length && error.name && error.name !== 'Error') push(error.name);
+  // Bounded by COUNT, not by slicing the joined string: qualifiedReason's
+  // 60-char cut is token-agnostic, so a sixth distinct code would truncate mid
+  // token and print a code that does not exist (…ECONNRESET+E). A reader would
+  // then look up an errno that was never returned.
+  if (!codes.length) return 'unknown';
+  // Built to fit, not sliced to fit. qualifiedReason's 60-char cut is
+  // token-agnostic and runs AFTER this, so any string produced here that is
+  // longer gets truncated mid-token into an errno that does not exist — and
+  // '+more', the marker saying codes were dropped, is the first thing the cut
+  // removes. Assembled under the same budget instead: whole codes only, and the
+  // marker is reserved space rather than a suffix that might not survive.
+  const BUDGET = 60;
+  const MARKER = '+more';
+  const kept = [];
+  let width = 0;
+  for (const code of codes) {
+    const addition = (kept.length ? 1 : 0) + code.length;
+    if (width + addition + (kept.length < codes.length - 1 ? MARKER.length : 0) > BUDGET) break;
+    kept.push(code);
+    width += addition;
+  }
+  if (!kept.length) {
+    // Degenerate: a single code so long that reserving the marker pushed it out.
+    // Unreachable with real errnos (the longest Node emits is ~29 chars) but it
+    // must not silently drop the OTHER codes — that is the elision this whole
+    // function exists to make visible.
+    const only = codes[0].slice(0, codes.length > 1 ? BUDGET - MARKER.length : BUDGET);
+    return codes.length > 1 ? only + MARKER : only;
+  }
+  return kept.join('+') + (kept.length < codes.length ? MARKER : '');
+}
+
 function statusForUpstream(result) {
   const status = Number(result && result.status);
   // `blocked` is the existing verifier meaning: upstream unavailable and no
@@ -117,7 +198,15 @@ function createUcpStoreAuditProbe(deps = {}) {
       return {
         verifier_id: VERIFIER_ID,
         verification_status: 'blocked',
-        reason: FAILURE_REASON.PROFILE_UNREACHABLE,
+        // WHY THE QUALIFIER. PROFILE_UNREACHABLE is produced by four unrelated
+        // things: a thrown fetch (DNS, TLS, connect, abort, the SSRF refusal)
+        // and — below — any 403, 429 or 5xx. All four stored one identical
+        // string, so a merchant stuck on it was indistinguishable from a WAF
+        // block and the row said nothing about what to fix. Appended to the
+        // reason rather than added as a field so no receipt schema changes; the
+        // BASE string stays first and unchanged because
+        // routes/store_audit_probe_internal.py compares reason by equality.
+        reason: qualifiedReason(FAILURE_REASON.PROFILE_UNREACHABLE, 'threw', causeCode(error)),
         route: null,
         acceptance_signal: null,
         observed_at: now().toISOString(),
@@ -147,8 +236,8 @@ function createUcpStoreAuditProbe(deps = {}) {
         verifier_id: VERIFIER_ID,
         verification_status: 'blocked',
         reason: discoveryStatus >= 300 && discoveryStatus < 400
-          ? FAILURE_REASON.PROFILE_REDIRECTED
-          : FAILURE_REASON.PROFILE_UNREACHABLE,
+          ? qualifiedReason(FAILURE_REASON.PROFILE_REDIRECTED, 'status', discoveryStatus)
+          : qualifiedReason(FAILURE_REASON.PROFILE_UNREACHABLE, 'status', discoveryStatus),
         route: null,
         acceptance_signal: null,
         observed_at: now().toISOString(),
