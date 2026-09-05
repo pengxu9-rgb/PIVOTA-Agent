@@ -222,6 +222,10 @@ function isForbiddenNetworkAddress(address) {
         ['::', 128], ['::1', 128],
         // IPv4-compatible and mapped forms are never valid merchant origins.
         ['::', 96], ['::ffff:0:0', 96],
+        // RFC 2765 IPv4-TRANSLATED (`::ffff:0:0:0/96`) — the sibling of the mapped form above, and the
+        // one that was missing: `[::ffff:0:7f00:1]` embeds 127.0.0.1 and was ALLOWED. Only reachable
+        // behind a SIIT translator, but every other embedding form here is already refused.
+        ['::ffff:0:0:0', 96],
         ['64:ff9b::', 96], ['100::', 64],
         ['2001:db8::', 32], ['2001:2::', 48],
         // Each embeds or tunnels to somewhere it must not reach: 2002::/16
@@ -1707,6 +1711,10 @@ module.exports = {
   normalizeHostname,
   configuredProfileHostnames,
   isForbiddenNetworkAddress,
+  // Exported so a transport that is NOT this module's node:https fetch (the aurora BFF's axios lane)
+  // applies the IDENTICAL literal rule instead of a twin that drifts. The bracket-stripping in here is
+  // exactly the subtlety a re-implementation gets wrong — see the note above the function.
+  forbiddenLiteralHost,
   createPublicOnlyLookup,
   createPublicNetworkFetch,
   toFetchResponse,

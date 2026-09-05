@@ -1,5 +1,10 @@
 const vertexGemini = require('../llm/vertexGemini');
 const axios = require('axios');
+// SSRF fence for the caller-supplied product-URL lane. `productUrl` on this path arrives from a REQUEST
+// BODY (/v1/product/analyze `url`, /v1/chat `anchor_product_url`), so every URL built from it is
+// attacker-influenced; see src/services/publicUrlFetch.js for why the fence is shared with
+// ucpBuyerAgentClient but the axios transport is deliberately kept.
+const { createPublicUrlFetch, parsePublicHttpUrl } = require('../services/publicUrlFetch');
 const sharp = require('sharp');
 const fs = require('fs');
 const crypto = require('crypto');
@@ -16207,6 +16212,12 @@ function buildUrlFetchFailureCode(attempts = []) {
   if (statuses.includes(429)) return 'url_fetch_rate_limited_429';
   if (statuses.includes(406)) return 'url_fetch_not_acceptable_406';
   if (errorCodes.includes('empty_body')) return 'url_fetch_empty_body';
+  // A refused address must be DISTINGUISHABLE from a merchant being down. The literal cases never reach
+  // here (they are refused up front with `url_forbidden_address`), but a hostname whose DNS answer is
+  // private is only caught at the resolver, and without this branch it reported the same
+  // `url_fetch_failed` as any timeout — so abuse of this lane was invisible in the one field most likely
+  // to be dashboarded.
+  if (errorCodes.some((code) => code.startsWith('pivota_ssrf'))) return 'url_forbidden_address';
   if (errorCodes.some((code) => code.includes('timeout') || code === 'ecconnaborted')) return 'url_fetch_timeout';
   return 'url_fetch_failed';
 }
@@ -16283,6 +16294,9 @@ async function fetchViaZenRows({
   }
 }
 
+// One pinned transport for the whole product-URL lane. Built once: it only wraps agents and closures.
+const fetchPublicProductUrl = createPublicUrlFetch({ axiosInstance: axios });
+
 async function runSingleUrlFetchAttempt({
   strategy,
   provider = 'native',
@@ -16326,7 +16340,14 @@ async function runSingleUrlFetchAttempt({
   }
 
   try {
-    const resp = await axios.get(productUrl, {
+    // NOT `axios.get`. This is the SSRF sink: a bare axios.get here followed a merchant's
+    // `302 -> http://127.0.0.1:PORT` all the way onto loopback, because axios defaults to
+    // maxRedirects: 5 and nothing in this chain ever checked an address. `fetchPublicProductUrl`
+    // refuses non-public literals before a request is built, dials through a public-only DNS
+    // resolver, and re-applies both to EVERY redirect hop. Everything else below — the decoded-byte
+    // cap, gzip negotiation, the text decoding, `validateStatus`, and the `resp.headers` shape that
+    // detectBotChallengePage reads — is unchanged, which is why the axios adapter was kept.
+    const resp = await fetchPublicProductUrl(productUrl, {
       timeout: timeoutMs,
       maxContentLength: PRODUCT_URL_INGREDIENT_ANALYSIS_MAX_BYTES,
       maxBodyLength: PRODUCT_URL_INGREDIENT_ANALYSIS_MAX_BYTES,
@@ -16393,6 +16414,39 @@ async function fetchProductHtmlWithUnblockChain({
       attempts: [{ strategy: 'input_validation', provider: 'native', error_code: 'invalid_url' }],
       final_strategy: 'none',
       failure_code: 'url_invalid',
+      unblock_attempted: false,
+      unblock_failed: false,
+      used_unblock_vendor: false,
+    };
+  }
+
+  // Refuse a non-public URL ONCE, here, instead of three times at the sink. This is an optimisation and
+  // a partial vendor guard, NOT the fence: runSingleUrlFetchAttempt refuses independently, and deleting
+  // this block leaves the lane just as closed — verified by mutation (reverting the sink to a bare
+  // axios.get IS caught; neutering this block is not, because the sink's own refusal now produces the
+  // same failure_code). No test pins this block, deliberately: there is no behaviour left to pin once
+  // the sink refuses.
+  //
+  // What it adds is (a) refusing before three identical attempts, and (b) PARTIAL cover for the zenrows
+  // branch, which never reaches the fenced transport — it hands `productUrl` to a paid vendor as a query
+  // parameter. "Partial" is exact: this gate is parsePublicHttpUrl, which sees LITERALS only. A hostname
+  // whose DNS answer is private passes it, fails the three direct attempts, and is still handed to the
+  // vendor when AURORA_BFF_URL_UNBLOCK_ONLY_ON_BLOCKED is false (it defaults true). Low impact — zenrows
+  // fetches from its own network, not ours — but the guard is not the whole door.
+  try {
+    parsePublicHttpUrl(urlText);
+  } catch (err) {
+    return {
+      ok: false,
+      status: null,
+      html: '',
+      attempts: [{
+        strategy: 'input_validation',
+        provider: 'native',
+        error_code: String(err?.code || 'pivota_ssrf_refused').trim().toLowerCase(),
+      }],
+      final_strategy: 'none',
+      failure_code: 'url_forbidden_address',
       unblock_attempted: false,
       unblock_failed: false,
       used_unblock_vendor: false,
