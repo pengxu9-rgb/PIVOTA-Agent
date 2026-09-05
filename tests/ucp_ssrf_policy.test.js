@@ -270,15 +270,29 @@ describe('IPv6 literals are fenced by the same guard as IPv4 ones', () => {
     });
   });
 
-  test('a public IPv6 literal is still allowed through the gate', async () => {
-    // The counterpart: a guard that refused every bracketed host would pass the
-    // cases above while blocking legitimate merchants on v6.
-    const { createUcpBuyerAgentClient: mk } = require('../src/services/ucpBuyerAgentClient');
-    const client = mk({ forceAnonymous: true, timeoutMs: 1 });
-    // It must NOT be the literal refusal; any other outcome (timeout, refused)
-    // means the gate let it past, which is the behaviour under test.
-    await expect(client.discoverEndpoint('https://[2606:4700:4700::1111]'))
-      .rejects.not.toMatchObject({ code: 'PIVOTA_SSRF_LITERAL' });
+  test('a public IPv6 literal is passed THROUGH to the transport', async () => {
+    // POSITIVE, and off the network. Asserting only "not the literal refusal"
+    // passed for a mutant that refused every bracketed host with a DIFFERENT
+    // code — every v6 merchant blocked, suite green — and it also made a real
+    // connection, so on a v6-less runner it passed by timing out instead.
+    // Assert the request actually reached https.request with this hostname.
+    const spy = jest.spyOn(nodeHttps, 'request').mockImplementation((url, _opts, _cb) => {
+      const request = new EventEmitter();
+      request.write = jest.fn();
+      request.end = jest.fn(() => request.emit('error', new Error('stopped here')));
+      request.destroy = jest.fn();
+      request.seenHost = url && url.hostname;
+      return request;
+    });
+    try {
+      const client = createUcpBuyerAgentClient({ forceAnonymous: true, retryAttempts: 0 });
+      await expect(client.discoverEndpoint('https://[2606:4700:4700::1111]')).rejects.toThrow();
+      expect(spy).toHaveBeenCalled();
+      const [url] = spy.mock.calls[0];
+      expect(String(url.hostname)).toBe('[2606:4700:4700::1111]');
+    } finally {
+      spy.mockRestore();
+    }
   });
 });
 
@@ -303,6 +317,107 @@ test('a refused redirect carries PIVOTA_REDIRECT_REFUSED', async () => {
     const fetchImpl = createPublicNetworkFetch((_h, _o, cb) => cb(null, [{ address: '8.8.8.8', family: 4 }]));
     await expect(fetchImpl('https://merchant.example/', { redirect: 'error' }))
       .rejects.toMatchObject({ code: 'PIVOTA_REDIRECT_REFUSED' });
+  } finally {
+    spy.mockRestore();
+  }
+});
+
+describe('each literal gate is pinned on its own, not just in series', () => {
+  // discoverEndpoint crosses BOTH gates, so every v6 test above passed with
+  // either one reverted — 160/160 green with a hole open. The gates are not
+  // redundant in production: passing fetchImpl swaps the fenced transport out
+  // and leaves only fetchMerchantEndpoint's gate, and createPublicNetworkFetch
+  // used standalone leaves only its own.
+  test('createPublicNetworkFetch refuses a v4-mapped literal on its own', async () => {
+    const called = jest.fn();
+    const spy = jest.spyOn(nodeHttps, 'request').mockImplementation(() => {
+      called();
+      const request = new EventEmitter();
+      request.end = jest.fn();
+      request.destroy = jest.fn();
+      return request;
+    });
+    try {
+      const fetchImpl = createPublicNetworkFetch((_h, _o, cb) => cb(null, [{ address: '8.8.8.8', family: 4 }]));
+      await expect(fetchImpl('https://[::ffff:169.254.169.254]/'))
+        .rejects.toMatchObject({ code: 'PIVOTA_SSRF_LITERAL' });
+      // Refused BEFORE any request was built.
+      expect(called).not.toHaveBeenCalled();
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  test('fetchMerchantEndpoint refuses it even when the fenced transport is replaced', async () => {
+    // With fetchImpl injected, createPublicNetworkFetch's gate is bypassed
+    // entirely and this is the ONLY one left.
+    const fetchImpl = jest.fn();
+    const client = createUcpBuyerAgentClient({ forceAnonymous: true, fetchImpl });
+    await expect(client.discoverEndpoint('https://[::ffff:127.0.0.1]')).rejects.toMatchObject({
+      code: 'PIVOTA_SSRF_LITERAL',
+    });
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+});
+
+describe('causeCode fits its budget by construction', () => {
+  const { createUcpStoreAuditProbe } = require('../src/services/ucpStoreAuditProbe');
+  const reasonFor = async (error) => {
+    const probe = createUcpStoreAuditProbe({
+      client: { tier: 'anonymous', discoverEndpoint: async () => { throw error; }, listTools: async () => ({}) },
+    });
+    return (await probe.probe({ brandDomain: 'shop.example' })).reason;
+  };
+
+  test('many codes are elided with a marker, never truncated mid-token', async () => {
+    const agg = new Error('connect failed');
+    agg.errors = ['EPROTONOSUPPORT', 'EADDRNOTAVAIL', 'EHOSTUNREACH', 'ECONNREFUSED',
+                  'ENETUNREACH', 'ECONNRESET'].map((code) => Object.assign(new Error(code), { code }));
+    const reason = await reasonFor(agg);
+    const codes = reason.split('threw=')[1];
+
+    expect(codes.endsWith('+more')).toBe(true);
+    // Every token before the marker is a whole code — the failure mode was a
+    // trailing fragment like '+EHOST' that reads as an errno and is not one.
+    for (const token of codes.replace('+more', '').split('+')) {
+      expect(['EPROTONOSUPPORT', 'EADDRNOTAVAIL', 'EHOSTUNREACH', 'ECONNREFUSED',
+              'ENETUNREACH', 'ECONNRESET']).toContain(token);
+    }
+  });
+
+  test('a single very long code is not silently replaced by the marker', async () => {
+    const err = new Error('x');
+    err.code = 'ERR_SOCKET_CONNECTION_TIMEOUT_WITH_AN_ABSURDLY_LONG_SUFFIX_XXXXX';
+    const reason = await reasonFor(err);
+
+    expect(reason.startsWith('profile_unreachable:threw=ERR_SOCKET')).toBe(true);
+  });
+});
+
+test('a 1xx keeps its code through the delivery line, not just in toFetchResponse', async () => {
+  // The pure-function assertion left `reject(new Error(error.message))` at the
+  // delivery site surviving: a 1xx merchant would have recorded threw=unknown
+  // with the suite green — exactly the failure the code was added to close.
+  const spy = jest.spyOn(nodeHttps, 'request').mockImplementation((_url, _opts, onResponse) => {
+    const request = new EventEmitter();
+    request.write = jest.fn();
+    request.destroy = jest.fn();
+    request.end = jest.fn(() => {
+      const response = new EventEmitter();
+      response.statusCode = 101;
+      response.headers = {};
+      response.resume = jest.fn();
+      process.nextTick(() => {
+        onResponse(response);
+        response.emit('end');
+      });
+    });
+    return request;
+  });
+  try {
+    const fetchImpl = createPublicNetworkFetch((_h, _o, cb) => cb(null, [{ address: '8.8.8.8', family: 4 }]));
+    await expect(fetchImpl('https://merchant.example/'))
+      .rejects.toMatchObject({ code: 'PIVOTA_UNSUPPORTED_STATUS' });
   } finally {
     spy.mockRestore();
   }

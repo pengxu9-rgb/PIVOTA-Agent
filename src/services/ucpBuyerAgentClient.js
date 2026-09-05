@@ -224,6 +224,12 @@ function isForbiddenNetworkAddress(address) {
         ['::', 96], ['::ffff:0:0', 96],
         ['64:ff9b::', 96], ['100::', 64],
         ['2001:db8::', 32], ['2001:2::', 48],
+        // Each embeds or tunnels to somewhere it must not reach: 2002::/16
+        // (6to4) carries a v4 address inside the prefix, 2001::/32 (Teredo)
+        // tunnels v4, fec0::/10 is the deprecated site-local range, and
+        // 64:ff9b:1::/48 is local-use NAT64. Measured 2026-09-04: [2002:7f00:1::]
+        // (6to4 for 127.0.0.1) and [fec0::1] both reached a real socket.connect.
+        ['2002::', 16], ['2001::', 32], ['fec0::', 10], ['64:ff9b:1::', 48],
         ['fc00::', 7], ['fe80::', 10], ['ff00::', 8],
       ].some(([base, prefix]) => inIpv6Range(value, base, prefix));
     } catch {

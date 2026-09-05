@@ -96,8 +96,24 @@ function causeCode(error) {
   // token and print a code that does not exist (…ECONNRESET+E). A reader would
   // then look up an errno that was never returned.
   if (!codes.length) return 'unknown';
-  const shown = codes.slice(0, 4);
-  return shown.join('+') + (codes.length > shown.length ? '+more' : '');
+  // Built to fit, not sliced to fit. qualifiedReason's 60-char cut is
+  // token-agnostic and runs AFTER this, so any string produced here that is
+  // longer gets truncated mid-token into an errno that does not exist — and
+  // '+more', the marker saying codes were dropped, is the first thing the cut
+  // removes. Assembled under the same budget instead: whole codes only, and the
+  // marker is reserved space rather than a suffix that might not survive.
+  const BUDGET = 60;
+  const MARKER = '+more';
+  const kept = [];
+  let width = 0;
+  for (const code of codes) {
+    const addition = (kept.length ? 1 : 0) + code.length;
+    if (width + addition + (kept.length < codes.length - 1 ? MARKER.length : 0) > BUDGET) break;
+    kept.push(code);
+    width += addition;
+  }
+  if (!kept.length) return codes[0].slice(0, BUDGET);
+  return kept.join('+') + (kept.length < codes.length ? MARKER : '');
 }
 
 function statusForUpstream(result) {
