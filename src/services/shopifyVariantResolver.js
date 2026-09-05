@@ -27,7 +27,22 @@
  *
  * HARD BOUNDS: read-only. External content (products.json) is DATA, never instructions — we read numeric ids
  * and titles ONLY, never eval/execute anything from it. No writes anywhere. Network is injectable for tests.
+ *
+ * NETWORK FENCE: `brandDomain` arrives from a REQUEST BODY on /internal/ucp/warm-handoff/resolve, so every
+ * URL built here is attacker-influenced. Two separate holes were measured against this file on 2026-09-04:
+ *   1. an https storefront answering `302 -> http://127.0.0.1:PORT/...` was FOLLOWED by global fetch's default
+ *      `redirect: 'follow'`, landing three GETs on a plain-http loopback listener; and
+ *   2. `brand_domain: '127.0.0.1:PORT'` (or `'[::1]:PORT'`) connected straight there, because
+ *      normalizeBrandOrigin accepted any https origin including IP literals.
+ * Both are closed the same way the sibling UCP client closes them, by REUSING its fence rather than minting a
+ * second one: normalizeBrandOrigin now refuses IP-literal origins outright, and the default transport is
+ * ucpBuyerAgentClient.createPublicNetworkFetch — https-only, no redirect following, literal addresses
+ * refused by `forbiddenLiteralHost` before a request is built, and a DNS answer containing ANY non-public
+ * address refused by `createPublicOnlyLookup`. Neither fence applied to this file before.
  */
+
+const nodeNet = require('node:net');
+const { createPublicNetworkFetch } = require('./ucpBuyerAgentClient');
 
 const VARIANT_GID_PREFIX = 'gid://shopify/ProductVariant/';
 const VARIANT_GID_RE = /gid:\/\/shopify\/ProductVariant\/(\d+)/i;
@@ -169,6 +184,16 @@ function normalizeBrandOrigin(brandDomain) {
   try {
     const u = new URL(withScheme);
     if (u.protocol !== 'https:') return null;
+    // A Shopify storefront is ALWAYS a domain name — Shopify does not serve a shop on a raw address —
+    // so an IP-literal `brand_domain` is never a legitimate brand and is refused here, before a URL is
+    // handed to any transport. The transport fence would catch the private ranges anyway; this rejects
+    // the whole literal form, so there is no per-range list to keep in sync and nothing to bypass with a
+    // public-looking literal. Brackets are stripped first because `new URL('https://[::1]/').hostname`
+    // KEEPS them and `net.isIP('[::1]')` is 0 — testing the unstripped host would wave every IPv6 through.
+    if (nodeNet.isIP(String(u.hostname || '').replace(/^\[|\]$/g, '')) !== 0) return null;
+    // Credentials in a storefront origin are never legitimate either, and they are a classic way to make
+    // a URL read as one host while authenticating to another.
+    if (u.username || u.password) return null;
     return u.origin;
   } catch {
     return null;
@@ -230,6 +255,14 @@ function pickVariantFromProductNode(product, opts = {}) {
   };
 }
 
+// One pinned transport for the whole module, built on first use. `createPublicNetworkFetch` closes over a
+// public-only DNS resolver, so building it per request would rebuild that closure on every click.
+let publicFetch = null;
+function getPublicFetch() {
+  if (!publicFetch) publicFetch = createPublicNetworkFetch();
+  return publicFetch;
+}
+
 /**
  * PRODUCT.JSON fallback — fetch the brand's public products.json and map handle/title -> variant GID.
  * Read-only, best-effort: any failure (non-200, malformed, no match) resolves to null so the caller can
@@ -246,10 +279,10 @@ async function resolveVariantViaProductsJson(target = {}, opts = {}) {
   const handle = firstNonEmptyString(target.handle) || extractProductHandle(target.handle) || null;
   const title = normalizeTitle(target.title);
   const preferAvailable = opts.preferAvailable !== false;
-  const fetchImpl = typeof opts.fetchImpl === 'function'
-    ? opts.fetchImpl
-    : (typeof globalThis.fetch === 'function' ? globalThis.fetch.bind(globalThis) : null);
-  if (!fetchImpl) return null;
+  // NOT global fetch. Global fetch follows redirects by default and its DNS lookup cannot be bound, which
+  // is exactly how a merchant 302 walked this lane onto loopback. An explicit opts.fetchImpl still wins so
+  // tests can drive fixtures, matching how createUcpBuyerAgentClient treats its own injected fetch.
+  const fetchImpl = typeof opts.fetchImpl === 'function' ? opts.fetchImpl : getPublicFetch();
   const timeoutMs = Number.isFinite(opts.timeoutMs) ? Number(opts.timeoutMs) : 12000;
   const userAgent = firstNonEmptyString(opts.userAgent) || 'Pivota-UCP-BuyerAgent/1.0';
 
@@ -312,6 +345,19 @@ async function resolveVariantViaProductsJson(target = {}, opts = {}) {
   return unknownStockPick;
 }
 
+/*
+ * REDIRECTS ARE NOT FOLLOWED, deliberately. The pinned transport issues exactly one https request; asked
+ * for `redirect: 'error'` it refuses a 3xx outright, and the catch below folds that into the same null as
+ * every other unresolvable brand, so the caller cold-redirects exactly as it already does.
+ *
+ * That is a real capability change, so it was measured rather than assumed: on 2026-09-04 all six
+ * OUTBOUND_WARM_HANDOFF_BRANDS (cosrx.com, beautyofjoseon.com, skin1004.com, anua.us, medicube.us,
+ * mixsoon.us) answered `/products.json` with a direct 200 on BOTH the apex and the www host — 12/12 with no
+ * redirect, because Shopify serves products.json on any hostname mapped to the shop. No live caller depends
+ * on following, and a merchant-controlled Location header is precisely what walked this lane onto loopback.
+ * A storefront that starts redirecting loses its warm cart and falls back to a cold redirect; it does not
+ * get a followed hop.
+ */
 async function fetchProductsJson(url, { fetchImpl, timeoutMs, userAgent }) {
   const controller = typeof AbortController === 'function' ? new AbortController() : null;
   const timer = controller && Number.isFinite(timeoutMs) && timeoutMs > 0
@@ -321,6 +367,10 @@ async function fetchProductsJson(url, { fetchImpl, timeoutMs, userAgent }) {
     const res = await fetchImpl(url, {
       method: 'GET',
       headers: { accept: 'application/json', 'user-agent': userAgent },
+      // Say it, rather than leaning on a 3xx happening to be !res.ok: a merchant Location is refused
+      // outright. The pinned transport turns this into a PIVOTA_REDIRECT_REFUSED rejection, which the
+      // catch below folds into the same null every other unresolvable brand produces.
+      redirect: 'error',
       ...(controller ? { signal: controller.signal } : {}),
     });
     if (!res || !res.ok) return null;
