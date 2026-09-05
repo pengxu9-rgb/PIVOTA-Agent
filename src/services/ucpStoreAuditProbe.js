@@ -112,7 +112,14 @@ function causeCode(error) {
     kept.push(code);
     width += addition;
   }
-  if (!kept.length) return codes[0].slice(0, BUDGET);
+  if (!kept.length) {
+    // Degenerate: a single code so long that reserving the marker pushed it out.
+    // Unreachable with real errnos (the longest Node emits is ~29 chars) but it
+    // must not silently drop the OTHER codes — that is the elision this whole
+    // function exists to make visible.
+    const only = codes[0].slice(0, codes.length > 1 ? BUDGET - MARKER.length : BUDGET);
+    return codes.length > 1 ? only + MARKER : only;
+  }
   return kept.join('+') + (kept.length < codes.length ? MARKER : '');
 }
 

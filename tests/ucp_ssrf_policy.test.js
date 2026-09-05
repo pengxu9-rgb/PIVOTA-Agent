@@ -333,7 +333,10 @@ describe('each literal gate is pinned on its own, not just in series', () => {
     const spy = jest.spyOn(nodeHttps, 'request').mockImplementation(() => {
       called();
       const request = new EventEmitter();
-      request.end = jest.fn();
+      // Settles, so a reverted gate FAILS ON THE ASSERTION rather than hanging
+      // 15s and failing on a jest timeout — a kill for the wrong reason, and one
+      // that never runs the "refused before any request was built" check below.
+      request.end = jest.fn(() => request.emit('error', new Error('stopped here')));
       request.destroy = jest.fn();
       return request;
     });
@@ -421,4 +424,68 @@ test('a 1xx keeps its code through the delivery line, not just in toFetchRespons
   } finally {
     spy.mockRestore();
   }
+});
+
+describe('causeCode budget — fixtures that separate the loop from a slice', () => {
+  // The original fixture landed on exactly 60 chars, the one width at which the
+  // old `slice(0,4)+'+more'` and the new loop produce the SAME string, so eight
+  // mutants of the arithmetic survived — including reverting to the slice this
+  // commit replaced. Each case below differs between the two.
+  const { createUcpStoreAuditProbe } = require('../src/services/ucpStoreAuditProbe');
+  const reasonFor = async (codes) => {
+    const agg = new Error('connect failed');
+    agg.errors = codes.map((code) => Object.assign(new Error(code), { code }));
+    const probe = createUcpStoreAuditProbe({
+      client: { tier: 'anonymous', discoverEndpoint: async () => { throw agg; }, listTools: async () => ({}) },
+    });
+    const reason = (await probe.probe({ brandDomain: 'shop.example' })).reason;
+    return reason.split('threw=')[1];
+  };
+
+  test('a long first code means FEWER kept, not four sliced', async () => {
+    // The slice would keep four and cut mid-token; the loop keeps what fits.
+    expect(await reasonFor([
+      'ERR_SOCKET_CONNECTION_TIMEOUT', 'ENETUNREACH', 'ECONNREFUSED', 'EHOSTUNREACH',
+    ])).toBe('ERR_SOCKET_CONNECTION_TIMEOUT+ENETUNREACH+ECONNREFUSED+more');
+  });
+
+  test('a fifth code that does not fit is elided, not truncated', async () => {
+    expect(await reasonFor([
+      'EPROTONOSUPPORT', 'EADDRNOTAVAIL', 'EHOSTUNREACH', 'ECONNREFUSED', 'ENET', 'ECONNRESET',
+    ])).toBe('EPROTONOSUPPORT+EADDRNOTAVAIL+EHOSTUNREACH+ECONNREFUSED+more');
+  });
+
+  test('a fifth code that DOES fit is kept, with no marker', async () => {
+    // The marker is only reserved while codes remain; keeping all of them must
+    // not spend that space or claim an elision that did not happen.
+    expect(await reasonFor([
+      'EPROTONOSUPPORT', 'EADDRNOTAVAIL', 'EHOSTUNREACH', 'ECONNREFUSED', 'ENET',
+    ])).toBe('EPROTONOSUPPORT+EADDRNOTAVAIL+EHOSTUNREACH+ECONNREFUSED+ENET');
+  });
+
+  test('six short codes keep four and mark the rest', async () => {
+    // Pins the separator accounting: without counting the '+' the fifth would
+    // appear to fit.
+    expect(await reasonFor([
+      'EACCES11111', 'EAGAIN11111', 'EBADF111111', 'EBUSY111111', 'ECHILD11111', 'ECONNAB1111',
+    ])).toBe('EACCES11111+EAGAIN11111+EBADF111111+EBUSY111111+more');
+  });
+
+  test('a long code followed by short ones stops at the first that will not fit', async () => {
+    expect(await reasonFor([
+      'ERR_SOCKET_CONNECTION_TIMEOUT', 'EPROTONOSUPPORT', 'EADDRNOTAVAIL', 'ENET',
+    ])).toBe('ERR_SOCKET_CONNECTION_TIMEOUT+EPROTONOSUPPORT+more');
+  });
+
+  test('every result fits the budget the qualifier then applies', async () => {
+    // If any of these exceeded 60, qualifiedReason's token-agnostic cut would
+    // reintroduce the mid-token truncation the loop exists to prevent.
+    for (const codes of [
+      ['ERR_SOCKET_CONNECTION_TIMEOUT', 'ENETUNREACH', 'ECONNREFUSED', 'EHOSTUNREACH'],
+      ['EPROTONOSUPPORT', 'EADDRNOTAVAIL', 'EHOSTUNREACH', 'ECONNREFUSED', 'ENET', 'ECONNRESET'],
+      ['EACCES11111', 'EAGAIN11111', 'EBADF111111', 'EBUSY111111', 'ECHILD11111', 'ECONNAB1111'],
+    ]) {
+      expect((await reasonFor(codes)).length).toBeLessThanOrEqual(60);
+    }
+  });
 });
