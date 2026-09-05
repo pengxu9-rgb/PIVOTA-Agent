@@ -42,6 +42,32 @@ function toolNames(listResult) {
   return [...new Set(tools.map((tool) => firstString(tool && tool.name)).filter(Boolean))].sort();
 }
 
+// A reason the reader can act on. The base string stays FIRST and unchanged so
+// every consumer that compares or greps on it keeps working — the backend
+// deactivates a route on `reason == "not_ucp_reachable"`, which is why that one
+// is never qualified. Bounded because the receipt caps reason at 500 chars and
+// a merchant-controlled string must never be able to fill it.
+function qualifiedReason(base, kind, detail) {
+  const value = detail === null || detail === undefined || detail === ''
+    || (typeof detail === 'number' && Number.isNaN(detail))
+    ? null
+    : String(detail);
+  if (!value) return base;
+  return `${base}:${kind}=${value.slice(0, 60)}`;
+}
+
+// The stable machine-readable part of a throw, never the message: undici puts
+// the real reason in `cause` (ENETUNREACH, ECONNREFUSED, ETIMEDOUT,
+// CERT_HAS_EXPIRED) while the outer message is a generic "fetch failed". Falls
+// back to the name so an SSRF refusal or an AbortError still says which it was.
+function causeCode(error) {
+  const cause = error && error.cause;
+  const code = (cause && (cause.code || cause.errno)) || (error && error.code);
+  if (code) return String(code);
+  const name = error && error.name;
+  return name && name !== 'Error' ? String(name) : 'unknown';
+}
+
 function statusForUpstream(result) {
   const status = Number(result && result.status);
   // `blocked` is the existing verifier meaning: upstream unavailable and no
@@ -117,7 +143,15 @@ function createUcpStoreAuditProbe(deps = {}) {
       return {
         verifier_id: VERIFIER_ID,
         verification_status: 'blocked',
-        reason: FAILURE_REASON.PROFILE_UNREACHABLE,
+        // WHY THE QUALIFIER. PROFILE_UNREACHABLE is produced by four unrelated
+        // things: a thrown fetch (DNS, TLS, connect, abort, the SSRF refusal)
+        // and — below — any 403, 429 or 5xx. All four stored one identical
+        // string, so a merchant stuck on it was indistinguishable from a WAF
+        // block and the row said nothing about what to fix. Appended to the
+        // reason rather than added as a field so no receipt schema changes; the
+        // BASE string stays first and unchanged because
+        // routes/store_audit_probe_internal.py compares reason by equality.
+        reason: qualifiedReason(FAILURE_REASON.PROFILE_UNREACHABLE, 'threw', causeCode(error)),
         route: null,
         acceptance_signal: null,
         observed_at: now().toISOString(),
@@ -147,8 +181,8 @@ function createUcpStoreAuditProbe(deps = {}) {
         verifier_id: VERIFIER_ID,
         verification_status: 'blocked',
         reason: discoveryStatus >= 300 && discoveryStatus < 400
-          ? FAILURE_REASON.PROFILE_REDIRECTED
-          : FAILURE_REASON.PROFILE_UNREACHABLE,
+          ? qualifiedReason(FAILURE_REASON.PROFILE_REDIRECTED, 'status', discoveryStatus)
+          : qualifiedReason(FAILURE_REASON.PROFILE_UNREACHABLE, 'status', discoveryStatus),
         route: null,
         acceptance_signal: null,
         observed_at: now().toISOString(),

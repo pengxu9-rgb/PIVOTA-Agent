@@ -127,3 +127,71 @@ test('a merchant response beyond the 2MB cap destroys the request and rejects', 
     spy.mockRestore();
   }
 });
+
+describe('single-address lookup shape has no fallback, so the family matters', () => {
+  // Node uses this shape only when autoSelectFamily is OFF (older runtime,
+  // --no-network-family-autoselection, net.setDefaultAutoSelectFamily(false)).
+  // There is no second attempt on it: whichever record comes back decides the
+  // request. `verbatim: true` keeps resolver order, commonly AAAA first — and
+  // the store-audit crawl subnet has no IPv6 route at all (a v6 connect there
+  // answers ENETUNREACH, measured 2026-09-04), so returning the AAAA would fail
+  // every dual-stack merchant outright the moment that flag changes.
+  test('a dual-stack answer returns the IPv4 record, not the resolver-first AAAA', (done) => {
+    const lookup = createPublicOnlyLookup((_h, _o, cb) => cb(null, [
+      { address: '2620:127:f00f:e::', family: 6 },
+      { address: '23.227.38.74', family: 4 },
+    ]));
+    lookup('merchant.example', {}, (error, address, family) => {
+      expect(error).toBeNull();
+      expect(address).toBe('23.227.38.74');
+      expect(family).toBe(4);
+      done();
+    });
+  });
+
+  test('a v6-only answer still returns v6 rather than nothing', (done) => {
+    // Filtering to a family that is not there would turn a reachable
+    // merchant into a resolution failure, which is worse than the hazard.
+    const lookup = createPublicOnlyLookup((_h, _o, cb) => cb(null, [
+      { address: '2606:4700:4700::1111', family: 6 },
+    ]));
+    lookup('merchant.example', {}, (error, address, family) => {
+      expect(error).toBeNull();
+      expect(address).toBe('2606:4700:4700::1111');
+      expect(family).toBe(6);
+      done();
+    });
+  });
+
+  test('the {all: true} shape is untouched and still returns every record in order', (done) => {
+    // Happy Eyeballs owns the ordering on that path; preferring a family there
+    // would override the interleaving Node does deliberately.
+    const lookup = createPublicOnlyLookup((_h, _o, cb) => cb(null, [
+      { address: '2620:127:f00f:e::', family: 6 },
+      { address: '23.227.38.74', family: 4 },
+    ]));
+    lookup('merchant.example', { all: true }, (error, addresses) => {
+      expect(error).toBeNull();
+      expect(addresses).toEqual([
+        { address: '2620:127:f00f:e::', family: 6 },
+        { address: '23.227.38.74', family: 4 },
+      ]);
+      done();
+    });
+  });
+
+  test('a mixed public/private answer is still refused in the single shape', (done) => {
+    // The SSRF fence must not be weakened by the family preference: picking the
+    // public v4 out of a mixed answer is exactly the fallback the guard exists
+    // to stop.
+    const lookup = createPublicOnlyLookup((_h, _o, cb) => cb(null, [
+      { address: '2606:4700:4700::1111', family: 6 },
+      { address: '10.0.0.9', family: 4 },
+    ]));
+    lookup('merchant.example', {}, (error, address) => {
+      expect(error).toBeInstanceOf(Error);
+      expect(address).toBeUndefined();
+      done();
+    });
+  });
+});

@@ -226,7 +226,28 @@ function createPublicOnlyLookup(lookup = nodeDns.lookup) {
       if (opts.all) {
         return cb(null, records.map(({ address, family }) => ({ address, family })));
       }
-      return cb(null, records[0].address, records[0].family);
+      // SINGLE-ADDRESS SHAPE, WHICH HAS NO FALLBACK. Whichever record we return
+      // decides the request outright. `verbatim: true` keeps the resolver's
+      // order, commonly AAAA first for a dual-stack merchant — and on a host
+      // with no IPv6 route that connect answers ENETUNREACH with no second
+      // attempt, because Happy Eyeballs is what normally rescues it and is not
+      // in play here. The store-audit crawl subnet is exactly such a host
+      // (measured 2026-09-04: v6 connect => ENETUNREACH, v4 fine).
+      //
+      // Node uses this shape only when autoSelectFamily is OFF — an older
+      // runtime, --no-network-family-autoselection, or
+      // net.setDefaultAutoSelectFamily(false) — so this is a LATENT failure,
+      // invisible until someone changes that flag, at which point every
+      // dual-stack merchant drops out at once on a subnet where v6 is dead.
+      //
+      // Preferring IPv4 is not a claim that v6 is worse; it is that a branch
+      // which cannot retry should pick the family routable from the widest set
+      // of hosts we run on. A v6-only answer still returns v6 — filtering to
+      // nothing would turn a reachable merchant into a resolution failure — and
+      // the mixed public/private refusal above still runs first, so this cannot
+      // become the private-address fallback that guard exists to stop.
+      const preferred = records.find((entry) => entry.family === 4) || records[0];
+      return cb(null, preferred.address, preferred.family);
     });
   };
 }
