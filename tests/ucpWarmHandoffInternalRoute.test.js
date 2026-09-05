@@ -513,6 +513,56 @@ describe('ucpWarmHandoffInternalRoute — miss metrics', () => {
     });
   });
 
+  /*
+   * A `brand_domain` that cannot become an https origin (IP literal, userinfo) is refused by
+   * shopifyVariantResolver BEFORE any URL is built, so the miss costs no network. The route's own rule
+   * for that case is the one written above the `no_variant_input` branch: a free miss must not be
+   * counted or memoized, or a caller can mint unbounded `brand_domain` series and evict live carts from
+   * the 500-entry memo at zero cost.
+   */
+  test.each(['127.0.0.1', '[::1]:8080', '169.254.169.254', 'https://u:p@cosrx.com'])(
+    'a free miss on brand_domain %s is neither counted nor memoized',
+    async (brand) => {
+      const metrics = sink();
+      const fetchImpl = jest.fn();
+      const handler = makeHandler({ service: svc(), fetchImpl, metrics });
+
+      const out = await handler(authedRequest({ brand_domain: brand, product_handle: 'anything' }));
+
+      expect(out.status).toBe(200);
+      expect(out.body.continue_url).toBeNull();
+      // The wire vocabulary is unchanged — the internal reason never leaks.
+      expect(out.body.reason).toBe('variant_unresolved');
+      // It cost no network...
+      expect(fetchImpl).not.toHaveBeenCalled();
+      // ...so it must cost no metric series either.
+      expect(metrics.recordWarmHandoffOutcome).not.toHaveBeenCalled();
+    },
+  );
+
+  test('a free miss does not evict a live memo (the whole point of not caching it)', async () => {
+    // Drive far more free misses than the memo holds; a legitimate entry resolved first must survive.
+    const metrics = sink();
+    const fetchImpl = jest.fn();
+    const handler = makeHandler({ service: svc(), fetchImpl, metrics });
+
+    const good = await handler(authedRequest({
+      brand_domain: 'cosrx.com', product_handle: HANDLE, seed_data: seedWith('in stock'),
+    }));
+    expect(good.body.continue_url).not.toBeNull();
+
+    for (let i = 0; i < 600; i += 1) {
+      await handler(authedRequest({ brand_domain: '203.0.113.9', product_handle: `flood-${i}` }));
+    }
+    expect(fetchImpl).not.toHaveBeenCalled();
+
+    // Still served from the memo: the service is not consulted a second time for the same key.
+    const again = await handler(authedRequest({
+      brand_domain: 'cosrx.com', product_handle: HANDLE, seed_data: seedWith('in stock'),
+    }));
+    expect(again.body.continue_url).toBe(good.body.continue_url);
+  });
+
   test('an unresolvable variant counts as variant_invalid', async () => {
     const metrics = sink();
     const fetchImpl = jest.fn().mockResolvedValue({ ok: false, status: 404, json: async () => ({}) });

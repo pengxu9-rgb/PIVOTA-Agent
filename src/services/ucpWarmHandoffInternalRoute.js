@@ -292,6 +292,14 @@ function createUcpWarmHandoffInternalHandler(deps = {}) {
       return { gid: null, reason: 'no_variant_input' };
     }
 
+    // A `brand_domain` that cannot become an https origin (an IP literal, or userinfo) now costs NO
+    // network at all — shopifyVariantResolver declines before it builds a URL. That is deliberate, but it
+    // reopens the hole the `no_variant_input` branch above closes unless this miss is treated the same
+    // way: a caller could otherwise mint unbounded `brand_domain` series and flood the 500-entry memo
+    // for free, evicting live carts. NOT an early return, because seed_data resolves without an origin —
+    // the verdict is only applied below, if nothing resolved.
+    const brandOriginUsable = normalizeBrandOrigin(brandDomain) !== null;
+
     let resolved = null;
     try {
       resolved = await resolveShopifyVariant(
@@ -317,6 +325,11 @@ function createUcpWarmHandoffInternalHandler(deps = {}) {
     // out" honestly, which beats a cart that dies at checkout. Only `out_of_stock` declines — an
     // UNKNOWN stock state (a storefront that does not publish `available`) must still resolve, or
     // this guard would drop every such brand. See shopifyVariantResolver.pickVariantFromProductNode.
+    if (!resolved && !brandOriginUsable) {
+      // Free miss: neither cached nor counted, exactly like `no_variant_input`.
+      return { gid: null, reason: 'invalid_brand_domain' };
+    }
+
     const soldOut = Boolean(resolved && resolved.availability === 'out_of_stock' && requireAvailable(env));
     const gid = !soldOut && resolved && resolved.variantGid ? resolved.variantGid : null;
     const reason = gid ? null : (soldOut ? 'variant_out_of_stock' : 'variant_unresolved');
@@ -353,12 +366,14 @@ function createUcpWarmHandoffInternalHandler(deps = {}) {
     const { gid: variantGid, reason: variantMissReason } = await resolveVariantGid({ body, brandDomain, env });
     if (!variantGid) {
       const reason = variantMissReason || 'variant_unresolved';
-      if (reason !== 'no_variant_input') {
+      // Both of these are misses that cost no network, so neither is counted — see resolveVariantGid.
+      const uncountedMiss = reason === 'no_variant_input' || reason === 'invalid_brand_domain';
+      if (!uncountedMiss) {
         recordVariantMiss({ reason, brandDomain, metrics: deps.metrics, latencyMs: now() - variantStartedAt });
       }
-      // The wire reason stays in the shipped vocabulary; `no_variant_input` is reported as the
+      // The wire reason stays in the shipped vocabulary; these internal ones are reported as the
       // generic unresolved so the response contract is unchanged.
-      return { status: 200, body: { continue_url: null, reason: reason === 'no_variant_input' ? 'variant_unresolved' : reason } };
+      return { status: 200, body: { continue_url: null, reason: uncountedMiss ? 'variant_unresolved' : reason } };
     }
 
     const quantity = Number.isInteger(body.quantity) && body.quantity > 0 ? body.quantity : 1;
