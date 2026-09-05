@@ -91,7 +91,13 @@ function causeCode(error) {
     push(error.cause && (error.cause.code || error.cause.errno));
   }
   if (!codes.length && error.name && error.name !== 'Error') push(error.name);
-  return codes.length ? codes.join('+') : 'unknown';
+  // Bounded by COUNT, not by slicing the joined string: qualifiedReason's
+  // 60-char cut is token-agnostic, so a sixth distinct code would truncate mid
+  // token and print a code that does not exist (…ECONNRESET+E). A reader would
+  // then look up an errno that was never returned.
+  if (!codes.length) return 'unknown';
+  const shown = codes.slice(0, 4);
+  return shown.join('+') + (codes.length > shown.length ? '+more' : '');
 }
 
 function statusForUpstream(result) {

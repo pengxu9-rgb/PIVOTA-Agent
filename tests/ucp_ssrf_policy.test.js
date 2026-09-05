@@ -90,6 +90,15 @@ test.each([204, 205, 304])('null-body status %s maps to a bodyless Response inst
 test('a 1xx merchant response rejects with a clear error instead of a RangeError crash', () => {
   expect(() => toFetchResponse(101, {}, Buffer.alloc(0)))
     .toThrow('unsupported status 101');
+  // ...and the CODE, which is what the probe records as threw=<code>. Asserting
+  // the message alone let the code be deleted with the whole suite green.
+  let caught;
+  try {
+    toFetchResponse(101, {}, Buffer.alloc(0));
+  } catch (error) {
+    caught = error;
+  }
+  expect(caught.code).toBe('PIVOTA_UNSUPPORTED_STATUS');
 });
 
 test('a plain 200 keeps the buffered body', async () => {
@@ -119,7 +128,7 @@ test('a merchant response beyond the 2MB cap destroys the request and rejects', 
   });
   try {
     const fetchImpl = createPublicNetworkFetch((_h, _o, cb) => cb(null, [{ address: '8.8.8.8', family: 4 }]));
-    await expect(fetchImpl('https://merchant.example/')).rejects.toThrow('size cap');
+    await expect(fetchImpl('https://merchant.example/')).rejects.toMatchObject({ code: 'PIVOTA_SIZE_CAP' });
     const req = spy.mock.results[0].value;
     expect(req.destroy).toHaveBeenCalledTimes(1);
     expect(MAX_MERCHANT_RESPONSE_BYTES).toBe(2 * 1024 * 1024);
@@ -239,4 +248,62 @@ describe('in-house refusals carry a code, so the probe can tell them apart', () 
       code: 'PIVOTA_SSRF_LITERAL',
     });
   });
+});
+
+describe('IPv6 literals are fenced by the same guard as IPv4 ones', () => {
+  // net.isIP('[::1]') is 0 because WHATWG URL.hostname keeps the brackets, so
+  // the literal gate short-circuited and Node — seeing an IP literal — also
+  // skipped the lookup hook. Neither fence ran. Measured before the fix:
+  // https://[::ffff:169.254.169.254] made a live connection attempt at the
+  // cloud metadata address. The earlier version of this suite pinned the guard
+  // with 127.0.0.1 only, so it certified a hole as closed.
+  test.each([
+    ['https://[::1]', 'loopback'],
+    ['https://[::ffff:127.0.0.1]', 'v4-mapped loopback'],
+    ['https://[::ffff:169.254.169.254]', 'v4-mapped cloud metadata'],
+    ['https://[fc00::1]', 'unique local'],
+    ['https://[fe80::1]', 'link local'],
+  ])('%s (%s) is refused before any connection', async (url) => {
+    const client = createUcpBuyerAgentClient({ forceAnonymous: true });
+    await expect(client.discoverEndpoint(url)).rejects.toMatchObject({
+      code: 'PIVOTA_SSRF_LITERAL',
+    });
+  });
+
+  test('a public IPv6 literal is still allowed through the gate', async () => {
+    // The counterpart: a guard that refused every bracketed host would pass the
+    // cases above while blocking legitimate merchants on v6.
+    const { createUcpBuyerAgentClient: mk } = require('../src/services/ucpBuyerAgentClient');
+    const client = mk({ forceAnonymous: true, timeoutMs: 1 });
+    // It must NOT be the literal refusal; any other outcome (timeout, refused)
+    // means the gate let it past, which is the behaviour under test.
+    await expect(client.discoverEndpoint('https://[2606:4700:4700::1111]'))
+      .rejects.not.toMatchObject({ code: 'PIVOTA_SSRF_LITERAL' });
+  });
+});
+
+test('a refused redirect carries PIVOTA_REDIRECT_REFUSED', async () => {
+  // The last of the three codes nothing asserted. Each was matched by MESSAGE
+  // only, so deleting the code left the suite green while the probe silently
+  // recorded threw=unknown.
+  const spy = jest.spyOn(nodeHttps, 'request').mockImplementation((_url, _opts, onResponse) => {
+    const request = new EventEmitter();
+    request.write = jest.fn();
+    request.destroy = jest.fn();
+    request.end = jest.fn(() => {
+      const response = new EventEmitter();
+      response.statusCode = 302;
+      response.headers = { location: 'https://elsewhere.example/' };
+      response.resume = jest.fn();
+      process.nextTick(() => onResponse(response));
+    });
+    return request;
+  });
+  try {
+    const fetchImpl = createPublicNetworkFetch((_h, _o, cb) => cb(null, [{ address: '8.8.8.8', family: 4 }]));
+    await expect(fetchImpl('https://merchant.example/', { redirect: 'error' }))
+      .rejects.toMatchObject({ code: 'PIVOTA_REDIRECT_REFUSED' });
+  } finally {
+    spy.mockRestore();
+  }
 });

@@ -179,6 +179,21 @@ function inIpv6Range(value, base, prefix) {
 // identically as `threw=unknown`, the same collapse of distinct causes that
 // made the probe's reason string unreadable in the first place. The PIVOTA_
 // prefix keeps them apart from libuv's errno codes, which share this field.
+// The literal an SSRF check has to actually test. WHATWG URL.hostname KEEPS the
+// brackets on an IPv6 literal ('[::1]'), and net.isIP('[::1]') is 0 — so a guard
+// spelled `isIP(hostname) && isForbidden(hostname)` short-circuits and never asks
+// the question. isForbiddenNetworkAddress strips brackets itself and would have
+// answered true; it was simply never called. Node then strips them too and,
+// because the host is an IP literal, SKIPS the lookup hook entirely, so
+// createPublicOnlyLookup does not fence it either — there is no third guard.
+// Measured 2026-09-04: https://[::ffff:169.254.169.254] produced a live
+// connection attempt at the cloud metadata address. v4-mapped literals are the
+// sharp end, because they ride the v4 stack even where IPv6 is unrouted.
+function forbiddenLiteralHost(hostname) {
+  const literal = String(hostname || '').replace(/^\[|\]$/g, '');
+  return Boolean(nodeNet.isIP(literal)) && isForbiddenNetworkAddress(literal);
+}
+
 function codedError(message, code) {
   const error = new Error(message);
   error.code = code;
@@ -291,7 +306,7 @@ function createPublicNetworkFetch(lookup) {
   const publicOnlyLookup = createPublicOnlyLookup(lookup);
   return (url, options = {}) => new Promise((resolve, reject) => {
     const parsed = normalizeBaseUrl(url, 'merchantEndpoint');
-    if (nodeNet.isIP(parsed.hostname) && isForbiddenNetworkAddress(parsed.hostname)) {
+    if (forbiddenLiteralHost(parsed.hostname)) {
       reject(codedError('merchant endpoint must resolve to a public address', 'PIVOTA_SSRF_LITERAL'));
       return;
     }
@@ -587,7 +602,7 @@ function createUcpBuyerAgentClient(options = {}) {
 
   async function fetchMerchantEndpoint(url, options) {
     const parsed = normalizeBaseUrl(url, 'merchantEndpoint');
-    if (nodeNet.isIP(parsed.hostname) && isForbiddenNetworkAddress(parsed.hostname)) {
+    if (forbiddenLiteralHost(parsed.hostname)) {
       // Same refusal as the one inside createPublicNetworkFetch, reached by a
       // different caller — fetchMerchantEndpoint checks the literal before the
       // request is built. Both carry the code, or the pre-flight path is the one
