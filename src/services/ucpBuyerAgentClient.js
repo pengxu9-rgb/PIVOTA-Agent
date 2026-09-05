@@ -588,7 +588,11 @@ function createUcpBuyerAgentClient(options = {}) {
   async function fetchMerchantEndpoint(url, options) {
     const parsed = normalizeBaseUrl(url, 'merchantEndpoint');
     if (nodeNet.isIP(parsed.hostname) && isForbiddenNetworkAddress(parsed.hostname)) {
-      throw new Error('merchant endpoint must resolve to a public address');
+      // Same refusal as the one inside createPublicNetworkFetch, reached by a
+      // different caller — fetchMerchantEndpoint checks the literal before the
+      // request is built. Both carry the code, or the pre-flight path is the one
+      // that lands in the threw=unknown bucket.
+      throw codedError('merchant endpoint must resolve to a public address', 'PIVOTA_SSRF_LITERAL');
     }
     return merchantFetch(parsed.toString(), options);
   }

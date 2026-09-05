@@ -200,3 +200,43 @@ describe('single-address lookup shape has no fallback, so the family matters', (
     });
   });
 });
+
+describe('in-house refusals carry a code, so the probe can tell them apart', () => {
+  // The probe records a throw as `profile_unreachable:threw=<code>`. Without a
+  // code every refusal this module raises collapses into threw=unknown —
+  // indistinguishable from each other and from an opaque failure, which is the
+  // same ambiguity the qualifier was added to remove. Asserted against the REAL
+  // producer: a hand-built error with the code set proves only that the test
+  // author knows the string.
+  test('the DNS-time SSRF refusal is coded', (done) => {
+    const lookup = createPublicOnlyLookup((_h, _o, cb) => cb(null, [
+      { address: '10.0.0.9', family: 4 },
+    ]));
+    lookup('merchant.example', {}, (error) => {
+      expect(error).toBeInstanceOf(Error);
+      expect(error.code).toBe('PIVOTA_SSRF_REFUSED');
+      done();
+    });
+  });
+
+  test('the same refusal under {all: true} is coded identically', (done) => {
+    const lookup = createPublicOnlyLookup((_h, _o, cb) => cb(null, [
+      { address: '8.8.8.8', family: 4 },
+      { address: '169.254.169.254', family: 4 },
+    ]));
+    lookup('merchant.example', { all: true }, (error) => {
+      expect(error.code).toBe('PIVOTA_SSRF_REFUSED');
+      done();
+    });
+  });
+
+  test('a literal private storefront is coded distinctly from the DNS refusal', async () => {
+    // Two different refusals with two different fixes: one is the merchant's
+    // DNS, the other is the URL we were handed. Sharing a code would merge them
+    // back together in the stored reason.
+    const client = createUcpBuyerAgentClient({ forceAnonymous: true });
+    await expect(client.discoverEndpoint('https://127.0.0.1')).rejects.toMatchObject({
+      code: 'PIVOTA_SSRF_LITERAL',
+    });
+  });
+});
