@@ -11023,7 +11023,13 @@ async function fetchShopifyMerchantCurrency(merchantId) {
   if (!host || !accessToken) {
     // Deliberately no `domain` in this log line. It is attacker-influenced text that would be echoed
     // into the log pipeline, and the merchant id is enough to find the offending row.
-    if (storeRow && storeRow.domain && !host) {
+    //
+    // Emitted at most once per negative-cache window, NOT once per call. The negative cache does not
+    // short-circuit anything — `getCachedShopifyMerchantCurrency` ends in `hit.currency || null`, so a
+    // negative entry reads back as null and the `if (cached)` guard above lets the call proceed — so
+    // an unguarded warn here fires on EVERY search response that carries this merchant, across all
+    // ~13 paths. Measured before this guard: five calls produced five warns.
+    if (storeRow && storeRow.domain && !host && !SHOPIFY_MERCHANT_CURRENCY_CACHE.has(mid)) {
       logger.warn({ merchantId: mid, reason: 'not_a_myshopify_admin_host' }, 'Refused Shopify shop currency lookup');
     }
     setCachedShopifyMerchantCurrency(mid, null, SHOPIFY_MERCHANT_CURRENCY_NEG_TTL_MS);

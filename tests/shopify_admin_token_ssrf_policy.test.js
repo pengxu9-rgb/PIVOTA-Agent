@@ -454,6 +454,21 @@ describe('the refusal does not leak the row into the logs', () => {
     expect(logged).toContain('log-test');
   });
 
+  test('a refused row is logged once per cache window, not once per request', async () => {
+    /*
+     * The refusal path is the one an attacker can drive repeatedly, and it sits on ~13 search/browse
+     * paths, so an unguarded warn here is a log-volume amplifier.
+     *
+     * It is NOT enough to rely on the negative cache to suppress the repeat:
+     * `getCachedShopifyMerchantCurrency` ends in `hit.currency || null`, so a negative entry reads
+     * back as null and the `if (cached) return cached` guard does not fire. Every call runs the whole
+     * body again. Measured before the fix: five calls, five warns.
+     */
+    storeRow('evil.example');
+    for (let i = 0; i < 5; i += 1) await fetchShopifyMerchantCurrency('m-repeat');
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+  });
+
   test('a transport failure logs a code, never the message that echoes the URL', async () => {
     // normalizeBaseUrl builds `${field} must be https: ${s}` — the offending URL is IN the message —
     // and a DNS/connect failure carries the host too. Forwarding err.message would put the very
