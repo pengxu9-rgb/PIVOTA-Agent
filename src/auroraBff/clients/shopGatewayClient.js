@@ -41,6 +41,8 @@ function extractProducts(body) {
  * @param {string} opts.query           user query / brand keyword (backend does brand detection)
  * @param {number} [opts.limit=8]
  * @param {boolean} [opts.inStockOnly=false]
+ * @param {number} [opts.minPrice]
+ * @param {number} [opts.maxPrice]
  * @param {string} [opts.catalogSurface='beauty']
  * @param {object} [opts.deps]          { axios } injectable for tests
  */
@@ -48,6 +50,8 @@ async function findProductsMulti({
   query,
   limit = 8,
   inStockOnly = false,
+  minPrice,
+  maxPrice,
   catalogSurface = 'beauty',
   deps = {},
 } = {}) {
@@ -64,6 +68,8 @@ async function findProductsMulti({
         query: q,
         limit: Math.max(1, Math.min(Number(limit) || 8, 24)),
         in_stock_only: Boolean(inStockOnly),
+        ...(Number.isFinite(Number(minPrice)) ? { min_price: Number(minPrice) } : {}),
+        ...(Number.isFinite(Number(maxPrice)) ? { max_price: Number(maxPrice) } : {}),
         catalog_surface: catalogSurface,
         catalog_entity_mode: 'canonical_sig',
       },

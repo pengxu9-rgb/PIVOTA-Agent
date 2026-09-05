@@ -941,29 +941,8 @@ function parseBudgetToPriceConstraint(latestUserQuery) {
             ? 'JPY'
             : null;
 
-  // Range forms: "30-50", "30~50", "30 to 50", "30到50"
-  const rangeMatch = normalized.match(
-    /(\d+(?:\.\d+)?)\s*(?:-|~|—|–|to|到|〜|～)\s*(\d+(?:\.\d+)?)/i,
-  );
-  if (rangeMatch) {
-    const a = Number(rangeMatch[1]);
-    const b = Number(rangeMatch[2]);
-    if (!Number.isFinite(a) || !Number.isFinite(b) || a <= 0 || b <= 0) return null;
-    return { currency, min: Math.min(a, b), max: Math.max(a, b) };
-  }
-
-  const m = normalized.match(/(\d+(?:\.\d+)?)/);
-  if (!m) return null;
-
-  const val = Number(m[1]);
-  if (!Number.isFinite(val) || val <= 0) return null;
-
-  const within = /左右|around|about|approx/i.test(normalized);
-
-  // Max-only: "≤30", "under 30", "30以内/以下"
   const maxOnly =
     /以内|以下|不超过|至多|最多|at most|up to|under|<=|＜=|≤|less than|below/i.test(normalized);
-  // Min-only: "≥30", "over 30", "30以上/至少/起"
   const minOnly =
     /以上|至少|不低于|起\b|起步|>=|＞=|≥|\b(over|above|more than|at least|from|starting from|start(?:ing)?\s+at)\b/i.test(
       normalized,
@@ -973,6 +952,41 @@ function parseBudgetToPriceConstraint(latestUserQuery) {
     /(?:m[aá]s\s+de|al\s+menos|a\s+partir\s+de|desde)\b/i.test(normalized) ||
     /(?:以上)\b/.test(normalized) ||
     /ドル以上|円以上|以上/.test(normalized);
+
+  // Range forms: "30-50", "30~50", "30 to 50", "30到50". Percentage
+  // ranges are formulation strengths, not prices (for example niacinamide
+  // 5%-10%), so never let them preempt a later explicit budget.
+  const rangeMatch = normalized.match(
+    /(\d+(?:\.\d+)?)(?!\s*%)\s*(?:-|~|—|–|to|到|〜|～)\s*(\d+(?:\.\d+)?)(?!\s*%)/i,
+  );
+  if (rangeMatch) {
+    const a = Number(rangeMatch[1]);
+    const b = Number(rangeMatch[2]);
+    if (!Number.isFinite(a) || !Number.isFinite(b) || a <= 0 || b <= 0) return null;
+    return { currency, min: Math.min(a, b), max: Math.max(a, b) };
+  }
+
+  // Prefer a number attached to a currency marker or to an explicit bound.
+  // Product names routinely contain concentrations and sizes before the
+  // budget clause ("Niacinamide 10% + Zinc 1% under $8"). Falling back to the
+  // first number silently turns the formulation strength into a price cap.
+  const currencyAmountMatch = normalized.match(
+    /(?:[$€£¥￥]\s*|(?:usd|eur|gbp|cny|rmb|jpy)\s*)(\d+(?:\.\d+)?)/i,
+  ) || normalized.match(
+    /(\d+(?:\.\d+)?)\s*(?:usd|eur|gbp|cny|rmb|jpy|dollars?|euros?|pounds?|yuan|yen|美元|美金|欧元|英镑|人民币|日元|日圆|円)/i,
+  );
+  const boundedAmountMatch = maxOnly || minOnly
+    ? normalized.match(
+        /(?:以内|以下|不超过|至多|最多|at most|up to|under|<=|＜=|≤|less than|below|以上|至少|不低于|>=|＞=|≥|over|above|more than|at least|from|starting from|starting at)\s*(?:[$€£¥￥]|usd|eur|gbp|cny|rmb|jpy)?\s*(\d+(?:\.\d+)?)/i,
+      )
+    : null;
+  const m = currencyAmountMatch || boundedAmountMatch || normalized.match(/(\d+(?:\.\d+)?)/);
+  if (!m) return null;
+
+  const val = Number(m[1]);
+  if (!Number.isFinite(val) || val <= 0) return null;
+
+  const within = /左右|around|about|approx/i.test(normalized);
 
   if (within) {
     return {

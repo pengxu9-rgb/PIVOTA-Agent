@@ -187,6 +187,33 @@ describe('ShopFindProductsSkill', () => {
     expect(receivedQuery).toMatch(/knight unicorn/i);
     expect(receivedQuery).toMatch(/blush/i);
   });
+
+  test('forwards a parsed hard price ceiling to canonical catalog recall', async () => {
+    let received = null;
+    const skill = new ShopFindProductsSkill({
+      client: {
+        findProductsMulti: async (input) => {
+          received = input;
+          return { ok: true, products: [] };
+        },
+      },
+    });
+    await skill.execute({ params: { find_products_query: 'Niacinamide 10% + Zinc 1% under $8' } });
+    expect(received.maxPrice).toBe(8);
+  });
+
+  test('never projects an over-budget catalog row into the chat card', async () => {
+    const skill = makeSkill({
+      ok: true,
+      products: [
+        { product_id: 'sig_under', title: 'Niacinamide Serum', price: '6.00', currency: 'USD' },
+        { product_id: 'sig_over', title: 'Niacinamide Emulsion', price: '10.78', currency: 'USD' },
+      ],
+    });
+    const res = await skill.execute({ params: { find_products_query: 'niacinamide under $10' } });
+    expect(res.cards[0].metadata.recommendations.map((row) => row.product_id)).toEqual(['sig_under']);
+    expect(res._meta.budget_filtered_out_count).toBe(1);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -248,8 +275,9 @@ describe('shopGatewayClient canonical catalog contract', () => {
     };
 
     try {
-      await client.findProductsMulti({ query: 'ordinary', deps: { axios: http } });
+      await client.findProductsMulti({ query: 'ordinary', maxPrice: 10, deps: { axios: http } });
       expect(sentBody.payload.search.catalog_entity_mode).toBe('canonical_sig');
+      expect(sentBody.payload.search.max_price).toBe(10);
       expect(sentBody.metadata.invoked_by).toBe('chat.shop_find_products');
     } finally {
       if (previousBase === undefined) delete process.env.PIVOTA_BACKEND_BASE_URL;

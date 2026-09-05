@@ -48195,9 +48195,17 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           });
           const cacheBrandLikeQuery = Boolean(cacheBrandDetection?.brand_like);
           const cacheLookupClass = cachePolicyQueryClass === 'lookup' || cachePolicyQueryClass === 'attribute';
+          const lookupHasHardPriceConstraint = Boolean(
+            effectiveIntent?.hard_constraints?.price &&
+            (
+              effectiveIntent.hard_constraints.price.min != null ||
+              effectiveIntent.hard_constraints.price.max != null
+            ),
+          );
           const shouldSkipLookupPolicyForCacheHit =
             isLookupQuery &&
             (cacheLookupClass || !cachePolicyQueryClass) &&
+            !lookupHasHardPriceConstraint &&
             String(upstreamData?.metadata?.query_source || '').startsWith(
               'cache_cross_merchant_search',
             );

@@ -658,6 +658,11 @@ describe('find_products_multi intent + filtering', () => {
     expect(intent.hard_constraints.price.max).toBe(30);
   });
 
+  test('budget parsing ignores ingredient percentages before an explicit price cap', () => {
+    const intent = extractIntentRuleBased('Niacinamide 10% + Zinc 1% under $8', [], []);
+    expect(intent.hard_constraints.price).toEqual({ currency: 'USD', min: null, max: 8 });
+  });
+
   test('new chat: base makeup tools should not inherit sleepwear mission from recent_queries', () => {
     const latest = '干皮冬天用什么底妆工具不卡粉';
     const intent = extractIntentRuleBased(latest, ['绿色睡衣', '睡衣', 'pajamas'], [{ role: 'user', content: latest }]);

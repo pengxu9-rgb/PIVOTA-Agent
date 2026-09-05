@@ -1004,6 +1004,111 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     expect(upstreamSearch.isDone()).toBe(false);
   });
 
+  test('lookup cache hit still applies policy when the request has a hard price ceiling', async () => {
+    const applyPolicyMock = jest.fn().mockImplementation(({ response, intent }) => {
+      const max = Number(intent?.hard_constraints?.price?.max);
+      const products = (response?.products || []).filter((product) => Number(product.price) <= max);
+      return { ...(response || {}), products, total: products.length };
+    });
+
+    jest.doMock('../../src/findProductsMulti/policy', () => ({
+      ...jest.requireActual('../../src/findProductsMulti/policy'),
+      buildFindProductsMultiContext: jest.fn().mockImplementation(({ payload }) => ({
+        intent: {
+          language: 'en',
+          primary_domain: 'beauty',
+          target_object: { type: 'human', age_group: 'adult', notes: '' },
+          category: { required: [], optional: [] },
+          scenario: { name: 'general', signals: [] },
+          hard_constraints: {
+            temperature_c: { min: null, max: null },
+            must_include_keywords: [],
+            must_exclude_domains: [],
+            must_exclude_keywords: [],
+            in_stock_only: null,
+            price: { currency: 'USD', min: null, max: 10 },
+          },
+          soft_preferences: { style: [], colors: [], brands: [], materials: [] },
+          confidence: { overall: 0.9, domain: 0.9, target_object: 0.9, category: 0.8, notes: '' },
+          ambiguity: { needs_clarification: false, missing_slots: [], clarifying_questions: [] },
+          history_usage: { used: false, reason: 'test', ignored_queries: [] },
+          query_class: 'lookup',
+        },
+        adjustedPayload: payload,
+        rawUserQuery: payload?.search?.query || '',
+      })),
+      applyFindProductsMultiPolicy: applyPolicyMock,
+    }));
+
+    jest.doMock('../../src/db', () => ({
+      query: async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('COUNT(*)::int AS total')) return { rows: [{ total: 2 }] };
+        if (text.includes('FROM products_cache pc') && text.includes('JOIN merchant_onboarding mo')) {
+          return {
+            rows: [
+              {
+                merchant_id: 'merch_1',
+                merchant_name: 'Merchant One',
+                product_data: {
+                  id: 'under_budget',
+                  product_id: 'under_budget',
+                  merchant_id: 'merch_1',
+                  title: 'IPSA Hydrating Serum',
+                  status: 'published',
+                  inventory_quantity: 8,
+                  price: 6,
+                  currency: 'USD',
+                },
+              },
+              {
+                merchant_id: 'merch_1',
+                merchant_name: 'Merchant One',
+                product_data: {
+                  id: 'over_budget',
+                  product_id: 'over_budget',
+                  merchant_id: 'merch_1',
+                  title: 'IPSA Hydrating Emulsion',
+                  status: 'published',
+                  inventory_quantity: 8,
+                  price: 10.78,
+                  currency: 'USD',
+                },
+              },
+            ],
+          };
+        }
+        return { rows: [] };
+      },
+    }));
+
+    nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(200, { status: 'success', success: true, products: [], total: 0 });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'ipsa under $10',
+            max_price: 10,
+            page: 1,
+            limit: 8,
+            in_stock_only: false,
+          },
+        },
+        metadata: { source: 'creator_agent' },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(applyPolicyMock).toHaveBeenCalledTimes(1);
+    expect(resp.body.products.map((product) => product.product_id)).toEqual(['under_budget']);
+  });
+
   test('supplements first-page cache hits with external seed candidates', async () => {
     jest.doMock('../../src/db', () => ({
       query: async (sql) => {
