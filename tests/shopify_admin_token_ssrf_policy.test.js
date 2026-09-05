@@ -72,40 +72,86 @@ function listenCounting() {
   });
 }
 
-/* Every door a request could leave by. `outgoing` collects { host, headers } from each. */
+/*
+ * Read a node:https.request call WITHOUT assuming which transport made it. The fenced transport calls
+ * `request(url, opts, cb)`; axios calls `request(options, cb)` with the host in `options.hostname`.
+ * An earlier version of this harness hard-coded the first shape, so against the vulnerable build the
+ * fake threw `onResponse is not a function` and sixteen tests went red on a HARNESS error rather than
+ * on their assertion — red for the wrong reason is not evidence the test catches the vulnerability.
+ */
+function describeHttpsCall(args) {
+  const onResponse = args.find((a) => typeof a === 'function');
+  const objects = args.filter((a) => a && typeof a === 'object');
+  const urlObj = objects.find((a) => a instanceof URL);
+  const opts = objects.find((a) => !(a instanceof URL)) || {};
+  const host = (urlObj && urlObj.hostname) || opts.hostname || opts.host || null;
+  const path = (urlObj && `${urlObj.pathname}${urlObj.search}`) || opts.path || '';
+  return {
+    onResponse,
+    opts,
+    host,
+    path,
+    // Rebuilt rather than read off arg 0: axios passes an options object there, so stringifying it
+    // yields "[object Object]" and an assertion on the exact URL could never hold for that build.
+    url: host ? `https://${host}${path}` : null,
+    headers: opts.headers || {},
+  };
+}
+
+/* Every door a request could leave by, SPIED BUT NOT STUBBED. On the vulnerable build axios is the
+ * transport that carried the leak, so a call here is itself the regression; calling through keeps the
+ * failure honest and lets the assertion — not a fake — be the thing that fails. */
 function watchTransports() {
-  const outgoing = [];
-  const httpsSpy = jest.spyOn(nodeHttps, 'request').mockImplementation((url, opts, onResponse) => {
-    outgoing.push({ door: 'https', host: url && url.hostname, headers: (opts && opts.headers) || {} });
-    const request = new EventEmitter();
-    request.write = jest.fn();
-    request.destroy = jest.fn();
-    request.end = jest.fn(() => {
-      const response = new EventEmitter();
-      response.statusCode = 404;
-      response.headers = {};
-      response.resume = jest.fn();
-      process.nextTick(() => { onResponse(response); response.emit('end'); });
-    });
-    return request;
-  });
-  // Spied but NOT stubbed: on the vulnerable build axios is the transport that carried the leak, so
-  // a call here is itself the regression. Calling through keeps the failure honest.
+  const httpsSpy = jest.spyOn(nodeHttps, 'request');
   const axiosSpy = jest.spyOn(axios, 'get');
   const fetchSpy = jest.spyOn(globalThis, 'fetch');
   return {
-    outgoing,
     httpsSpy,
     axiosSpy,
     fetchSpy,
-    /** Requests seen at ANY door, normalised — including the ones the axios spy saw call through. */
+    /*
+     * Requests at the WIRE door, normalised to { host, headers }.
+     *
+     * Only node:https is counted, and that is not a narrowing: axios's http adapter reaches the
+     * network through `https.request`, so a call through axios is recorded HERE too — verified
+     * against the vulnerable build. Counting the axios door as well double-counted one request as
+     * two, which made the positive counterpart below fail against a build that was in fact doing the
+     * working lookup correctly. `axiosSpy` is still watched, but as its own signal rather than as a
+     * second row. A transport that bypassed node:https entirely would be caught by `fetchSpy` and,
+     * whatever it used, by the real listening socket.
+     */
     all() {
-      const fromAxios = axiosSpy.mock.calls.map(([url, cfg]) => ({
-        door: 'axios',
-        host: (() => { try { return new URL(String(url)).hostname; } catch { return String(url); } })(),
-        headers: (cfg && cfg.headers) || {},
-      }));
-      return outgoing.concat(fromAxios);
+      return httpsSpy.mock.calls.map((args) => {
+        const { host, headers } = describeHttpsCall(args);
+        return { door: 'https', host, headers };
+      });
+    },
+    /** Stage a canned response, for the few tests that need the call to COMPLETE. Arity-tolerant, so
+     *  it answers axios and the fenced transport alike. */
+    stage({ statusCode, headers = {}, body = null }) {
+      httpsSpy.mockImplementation((...args) => {
+        const { onResponse } = describeHttpsCall(args);
+        const request = new EventEmitter();
+        for (const noop of ['write', 'destroy', 'abort', 'flushHeaders', 'setNoDelay', 'setSocketKeepAlive', 'setHeader', 'removeHeader']) {
+          request[noop] = jest.fn();
+        }
+        request.getHeader = jest.fn();
+        request.setTimeout = jest.fn(() => request);
+        request.end = jest.fn(() => {
+          const response = new EventEmitter();
+          response.statusCode = statusCode;
+          response.headers = headers;
+          response.resume = jest.fn();
+          response.setEncoding = jest.fn();
+          response.destroy = jest.fn();
+          process.nextTick(() => {
+            if (typeof onResponse === 'function') onResponse(response);
+            if (body !== null) response.emit('data', Buffer.from(body));
+            response.emit('end');
+          });
+        });
+        return request;
+      });
     },
     restore() { httpsSpy.mockRestore(); axiosSpy.mockRestore(); fetchSpy.mockRestore(); },
   };
@@ -118,6 +164,8 @@ function expectNoRequestWasBuilt(listener, t) {
   // exactly the case the socket exists to catch.
   expect(listener.count).toBe(0);
   expect(t.all()).toEqual([]);
+  // The transport the vulnerable build used, named explicitly: reaching it at all is the regression.
+  expect(t.axiosSpy).not.toHaveBeenCalled();
   expect(t.fetchSpy).not.toHaveBeenCalled();
 }
 
@@ -260,23 +308,10 @@ describe('the Admin token is confined to *.myshopify.com', () => {
   // simply never calls Shopify. This pins that the working lookup still works, that it goes to
   // exactly one host, and that it still carries the credential there.
   test('a valid shop row still sends the token to its myshopify host and returns the currency', async () => {
-    t.httpsSpy.mockImplementation((url, opts, onResponse) => {
-      t.outgoing.push({ door: 'https', host: url.hostname, headers: opts.headers || {} });
-      const request = new EventEmitter();
-      request.write = jest.fn();
-      request.destroy = jest.fn();
-      request.end = jest.fn(() => {
-        const response = new EventEmitter();
-        response.statusCode = 200;
-        response.headers = { 'content-type': 'application/json' };
-        response.resume = jest.fn();
-        process.nextTick(() => {
-          onResponse(response);
-          response.emit('data', Buffer.from(JSON.stringify({ shop: { currency: 'KRW' } })));
-          response.emit('end');
-        });
-      });
-      return request;
+    t.stage({
+      statusCode: 200,
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ shop: { currency: 'KRW' } }),
     });
 
     storeRow('cosrx-renewal.myshopify.com');
@@ -287,7 +322,7 @@ describe('the Admin token is confined to *.myshopify.com', () => {
     expect(t.all()).toHaveLength(1);
     // The exact URL, not merely the host: a mutant that kept the host but moved the path off the
     // Admin API would otherwise survive.
-    expect(t.httpsSpy.mock.calls[0][0].href)
+    expect(describeHttpsCall(t.httpsSpy.mock.calls[0]).url)
       .toBe('https://cosrx-renewal.myshopify.com/admin/api/2024-07/shop.json');
   });
 
@@ -301,11 +336,14 @@ describe('the Admin token is confined to *.myshopify.com', () => {
     // REAL DNS query for the shop, and reported the public answer as "the fence admitted 127.0.0.1".
     const dnsSpy = jest.spyOn(nodeDns, 'lookup');
     try {
+      t.stage({ statusCode: 404 });
       storeRow('cosrx-renewal.myshopify.com');
       await fetchShopifyMerchantCurrency('dns');
 
       expect(t.httpsSpy).toHaveBeenCalled();
-      const { lookup } = t.httpsSpy.mock.calls[0][1];
+      // The vulnerable build reaches node:https through axios, which passes NO lookup at all — so on
+      // that build this destructure yields undefined and the assertion below is what fails.
+      const { lookup } = describeHttpsCall(t.httpsSpy.mock.calls[0]).opts;
       expect(typeof lookup).toBe('function');
 
       // Both directions are driven through the SAME resolver instance — one call could not show both.
@@ -334,31 +372,36 @@ describe('the Admin token is confined to *.myshopify.com', () => {
     }
   });
 
-  test('redirects are refused, so a hop cannot replay the token to another host', async () => {
-    // axios follows up to 5 redirects and follow-redirects strips only `authorization`/`cookie` on a
-    // cross-host hop — a CUSTOM header such as X-Shopify-Access-Token is REPLAYED to the target.
-    // Verified against node_modules/follow-redirects/index.js:475.
-    t.httpsSpy.mockImplementation((url, opts, onResponse) => {
-      t.outgoing.push({ door: 'https', host: url.hostname, headers: opts.headers || {} });
-      const request = new EventEmitter();
-      request.write = jest.fn();
-      request.destroy = jest.fn();
-      request.end = jest.fn(() => {
-        const response = new EventEmitter();
-        response.statusCode = 302;
-        response.headers = { location: 'https://evil.example/collect' };
-        response.resume = jest.fn();
-        process.nextTick(() => { onResponse(response); response.emit('end'); });
-      });
-      return request;
-    });
+  /*
+   * Defence in depth, and honestly labelled: this does NOT fail against main.
+   *
+   * The risk is real — follow-redirects strips only `authorization`/`cookie` on a cross-host hop
+   * (node_modules/follow-redirects/index.js:475), so a CUSTOM header such as X-Shopify-Access-Token
+   * is replayed to the redirect target. But a staged 302 does not reproduce the second hop through a
+   * fake ClientRequest (measured: axios made one request, not two), so a hop-counting assertion here
+   * would pass against the leaking build and prove nothing.
+   *
+   * What IS discriminating is the mechanism the fix installs. `redirect: 'error'` makes the transport
+   * REJECT a 3xx with PIVOTA_REDIRECT_REFUSED; drop that option and node:https simply returns the 302
+   * as a response, the caller falls out on `status !== 200`, and nothing is logged at all. So the
+   * coded warn below is what pins the flag — a hop count could not.
+   */
+  test('a 3xx is refused with a coded error rather than followed', async () => {
+    const warnSpy = jest.spyOn(logger, 'warn').mockImplementation(() => {});
+    try {
+      t.stage({ statusCode: 302, headers: { location: 'https://evil.example/collect' } });
 
-    storeRow('cosrx-renewal.myshopify.com');
-    await expect(fetchShopifyMerchantCurrency('redir')).resolves.toBeNull();
+      storeRow('cosrx-renewal.myshopify.com');
+      await expect(fetchShopifyMerchantCurrency('redir')).resolves.toBeNull();
 
-    // Exactly one request: the hop was not taken.
-    expect(t.all()).toHaveLength(1);
-    expect(t.all()[0].host).toBe('cosrx-renewal.myshopify.com');
+      // Exactly one token-bearing request, and it went to the shop. No hop was taken.
+      expect(tokenBearingRequests(t).map((r) => r.host)).toEqual(['cosrx-renewal.myshopify.com']);
+      expect(t.all().every((r) => r.host === 'cosrx-renewal.myshopify.com')).toBe(true);
+      // The refusal was the transport's, not an incidental non-200.
+      expect(JSON.stringify(warnSpy.mock.calls)).toContain('PIVOTA_REDIRECT_REFUSED');
+    } finally {
+      warnSpy.mockRestore();
+    }
   });
 });
 
@@ -372,11 +415,17 @@ describe('the refusal does not leak the row into the logs', () => {
   });
   afterEach(() => { warnSpy.mockRestore(); t.restore(); });
 
+  /*
+   * The second column is the string the VULNERABLE build actually puts in the log, which is not
+   * always the raw column value: for `shop.myshopify.com@evil.example` axios resolves the userinfo
+   * form and logs `getaddrinfo ENOTFOUND evil.example`. Asserting only on the raw value there passed
+   * against the leaking build — the leak was real and the assertion simply looked for the wrong text.
+   */
   test.each([
-    ['169.254.169.254'],
-    ['evil.example'],
-    ['shop.myshopify.com@evil.example'],
-  ])('neither the domain nor the token appears in any log call for %s', async (domain) => {
+    ['169.254.169.254', '169.254.169.254'],
+    ['evil.example', 'evil.example'],
+    ['shop.myshopify.com@evil.example', 'evil.example'],
+  ])('no part of %s, and no token, reaches a log call', async (domain, leaked) => {
     storeRow(domain);
     await fetchShopifyMerchantCurrency('log-test');
 
@@ -384,6 +433,7 @@ describe('the refusal does not leak the row into the logs', () => {
     expect(warnSpy).toHaveBeenCalled();
     const logged = JSON.stringify(warnSpy.mock.calls);
     expect(logged).not.toContain(domain);
+    expect(logged).not.toContain(leaked);
     expect(logged).not.toContain(TOKEN);
     // The merchant id is the safe handle for finding the offending row.
     expect(logged).toContain('log-test');
