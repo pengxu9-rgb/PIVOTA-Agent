@@ -44,7 +44,17 @@ const { query } = require('../src/db');
 const logger = require('../src/logger');
 const { normalizeShopifyAdminHost } = require('../src/services/shopifyAdminHost');
 
-process.env.DATABASE_URL = process.env.DATABASE_URL || 'postgres://stub/stub';
+/*
+ * `fetchShopifyMerchantCurrency` returns early unless DATABASE_URL is set, and server.js reads env at
+ * require time, so this has to be set BEFORE the require below — not in a beforeAll.
+ *
+ * process.env is per WORKER, not per test file, so leaving it set leaks into every suite that runs
+ * after this one in the same worker and can switch those suites onto database paths they are written
+ * to skip. That is not hypothetical: it made tests/integration/invoke.get_discovery_feed.test.js fail
+ * in a full-suite run while passing in isolation. Restored in afterAll below.
+ */
+const PRIOR_DATABASE_URL = process.env.DATABASE_URL;
+process.env.DATABASE_URL = PRIOR_DATABASE_URL || 'postgres://stub/stub';
 const { _debug } = require('../src/server');
 const { fetchShopifyMerchantCurrency, SHOPIFY_MERCHANT_CURRENCY_CACHE } = _debug;
 
@@ -179,6 +189,11 @@ function tokenBearingRequests(t) {
     r.headers['X-Shopify-Access-Token'] === TOKEN || r.headers['x-shopify-access-token'] === TOKEN
   ));
 }
+
+afterAll(() => {
+  if (PRIOR_DATABASE_URL === undefined) delete process.env.DATABASE_URL;
+  else process.env.DATABASE_URL = PRIOR_DATABASE_URL;
+});
 
 beforeEach(() => {
   jest.clearAllMocks();
