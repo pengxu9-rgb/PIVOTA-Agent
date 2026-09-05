@@ -184,9 +184,14 @@ describe('single-address lookup shape has no fallback, so the family matters', (
     // The SSRF fence must not be weakened by the family preference: picking the
     // public v4 out of a mixed answer is exactly the fallback the guard exists
     // to stop.
+    // PUBLIC v4 + PRIVATE v6 on purpose. The earlier fixture had it the other
+    // way round, so the family preference selected the private record and any
+    // single-record check would have refused it — the test passed without
+    // exercising the hazard it names. This ordering is the one where a guard
+    // that only checked the PREFERRED record would wave the answer through.
     const lookup = createPublicOnlyLookup((_h, _o, cb) => cb(null, [
-      { address: '2606:4700:4700::1111', family: 6 },
-      { address: '10.0.0.9', family: 4 },
+      { address: '23.227.38.74', family: 4 },
+      { address: 'fc00::1', family: 6 },
     ]));
     lookup('merchant.example', {}, (error, address) => {
       expect(error).toBeInstanceOf(Error);

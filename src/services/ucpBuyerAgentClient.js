@@ -173,6 +173,18 @@ function inIpv6Range(value, base, prefix) {
 }
 
 /** Reject addresses that must never be reachable through merchant-controlled URLs. */
+// A refusal that says which refusal it was. Without a code every in-house
+// rejection here — the SSRF guard, a refused redirect, the size cap, an
+// unsupported status — reaches the probe as a bare Error and is recorded
+// identically as `threw=unknown`, the same collapse of distinct causes that
+// made the probe's reason string unreadable in the first place. The PIVOTA_
+// prefix keeps them apart from libuv's errno codes, which share this field.
+function codedError(message, code) {
+  const error = new Error(message);
+  error.code = code;
+  return error;
+}
+
 function isForbiddenNetworkAddress(address) {
   const raw = String(address || '').toLowerCase().replace(/^\[|\]$/g, '');
   const family = nodeNet.isIP(raw);
@@ -221,7 +233,7 @@ function createPublicOnlyLookup(lookup = nodeDns.lookup) {
       // Reject mixed answers too. Falling back from a public address to a
       // private one after a connection failure is a common SSRF bypass.
       if (!records.length || records.some((entry) => isForbiddenNetworkAddress(entry.address))) {
-        return cb(new Error('merchant endpoint resolved to a non-public address'));
+        return cb(codedError('merchant endpoint resolved to a non-public address', 'PIVOTA_SSRF_REFUSED'));
       }
       if (opts.all) {
         return cb(null, records.map(({ address, family }) => ({ address, family })));
@@ -267,7 +279,7 @@ const MAX_MERCHANT_RESPONSE_BYTES = 2 * 1024 * 1024;
 function toFetchResponse(statusCode, headers, bodyBuffer) {
   const status = Number(statusCode) || 0;
   if (status < 200) {
-    throw new Error(`merchant endpoint returned an unsupported status ${status}`);
+    throw codedError(`merchant endpoint returned an unsupported status ${status}`, 'PIVOTA_UNSUPPORTED_STATUS');
   }
   if (status === 204 || status === 205 || status === 304) {
     return new Response(null, { status, headers });
@@ -280,7 +292,7 @@ function createPublicNetworkFetch(lookup) {
   return (url, options = {}) => new Promise((resolve, reject) => {
     const parsed = normalizeBaseUrl(url, 'merchantEndpoint');
     if (nodeNet.isIP(parsed.hostname) && isForbiddenNetworkAddress(parsed.hostname)) {
-      reject(new Error('merchant endpoint must resolve to a public address'));
+      reject(codedError('merchant endpoint must resolve to a public address', 'PIVOTA_SSRF_LITERAL'));
       return;
     }
     const request = nodeHttps.request(parsed, {
@@ -290,7 +302,7 @@ function createPublicNetworkFetch(lookup) {
     }, (response) => {
       if (options.redirect === 'error' && response.statusCode >= 300 && response.statusCode < 400) {
         response.resume();
-        reject(new Error('merchant endpoint redirected'));
+        reject(codedError('merchant endpoint redirected', 'PIVOTA_REDIRECT_REFUSED'));
         return;
       }
       const chunks = [];
@@ -298,7 +310,7 @@ function createPublicNetworkFetch(lookup) {
       response.on('data', (chunk) => {
         receivedBytes += chunk.length;
         if (receivedBytes > MAX_MERCHANT_RESPONSE_BYTES) {
-          const error = new Error('merchant endpoint response exceeded the size cap');
+          const error = codedError('merchant endpoint response exceeded the size cap', 'PIVOTA_SIZE_CAP');
           reject(error);
           request.destroy(error);
           return;

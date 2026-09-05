@@ -56,16 +56,42 @@ function qualifiedReason(base, kind, detail) {
   return `${base}:${kind}=${value.slice(0, 60)}`;
 }
 
-// The stable machine-readable part of a throw, never the message: undici puts
-// the real reason in `cause` (ENETUNREACH, ECONNREFUSED, ETIMEDOUT,
-// CERT_HAS_EXPIRED) while the outer message is a generic "fetch failed". Falls
-// back to the name so an SSRF refusal or an AbortError still says which it was.
+// The stable machine-readable part of a throw, never the message.
+//
+// THE TRANSPORT IS node https.request, NOT undici: createPublicNetworkFetch
+// builds the request itself, so a real network error arrives with a TOP-LEVEL
+// `code` (ENOTFOUND, ECONNREFUSED, ETIMEDOUT) and NO `cause`. An earlier cut
+// read `cause` first and its test invented undici's shape, so deleting the
+// top-level branch left every test green while production stamped
+// `threw=unknown` on every network failure.
+//
+// AND IT MUST LOOK INSIDE AggregateError. With autoSelectFamily on — the live
+// configuration — Node tries every resolved address and throws a
+// NodeAggregateError whose own `code` is just `errors[0].code`, i.e. the FIRST
+// attempt. On a subnet with no IPv6 route and an AAAA-first resolver that first
+// code is always ENETUNREACH, so a dual-stack merchant whose v4 attempt failed
+// for some entirely different reason would be recorded as a v6 problem — this
+// function manufacturing the wrong conclusion, which is the one thing it exists
+// to prevent. Every distinct code is reported, in attempt order.
 function causeCode(error) {
-  const cause = error && error.cause;
-  const code = (cause && (cause.code || cause.errno)) || (error && error.code);
-  if (code) return String(code);
-  const name = error && error.name;
-  return name && name !== 'Error' ? String(name) : 'unknown';
+  if (!error) return 'unknown';
+  const codes = [];
+  const push = (value) => {
+    const code = value === null || value === undefined ? '' : String(value);
+    if (code && !codes.includes(code)) codes.push(code);
+  };
+  if (Array.isArray(error.errors)) {
+    for (const nested of error.errors) {
+      push(nested && ((nested.cause && (nested.cause.code || nested.cause.errno))
+        || nested.code || nested.errno));
+    }
+  }
+  if (!codes.length) {
+    push(error.code || error.errno);
+    push(error.cause && (error.cause.code || error.cause.errno));
+  }
+  if (!codes.length && error.name && error.name !== 'Error') push(error.name);
+  return codes.length ? codes.join('+') : 'unknown';
 }
 
 function statusForUpstream(result) {
