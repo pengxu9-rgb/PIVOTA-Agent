@@ -41,8 +41,14 @@ function listenCounting() {
     connections.push(Date.now());
     socket.destroy();
   });
-  return new Promise((resolve) => {
-    server.listen(0, '127.0.0.1', () => resolve({
+  return new Promise((resolve, reject) => {
+    // Without this a failed bind never settles and the test dies at the 15 s jest timeout with no cause.
+    server.once('error', reject);
+    // Bound on `::`, NOT 127.0.0.1. A v4-only bind cannot observe a dial to `[::1]:port` — it just gets
+    // ECONNREFUSED — so the IPv6 cases would assert `count === 0` against a build that fully connected,
+    // which is the exact false-green this file's header argues against. Verified: a server on `::`
+    // records connections from both 127.0.0.1 and ::1.
+    server.listen(0, '::', () => resolve({
       server,
       port: server.address().port,
       get count() { return connections.length; },
@@ -53,10 +59,13 @@ function listenCounting() {
 
 /** Assert nothing was dialled and no transport was even invoked. */
 function expectNoRequestWasBuilt({ listener, httpsSpy, fetchSpy }) {
-  // Ordered weakest-to-strongest so a failure names the most specific thing that went wrong.
+  // The LISTENER first, deliberately. Jest reports only the first failing assertion, and the listener is
+  // the one signal that survives a transport neither spy watches — swap the module to raw node:net and
+  // both spies stay silent while sockets open. Asserting the spies first would hide exactly the case the
+  // socket exists to catch.
+  expect(listener.count).toBe(0);
   expect(fetchSpy).not.toHaveBeenCalled();
   expect(httpsSpy).not.toHaveBeenCalled();
-  expect(listener.count).toBe(0);
 }
 
 describe('normalizeBrandOrigin refuses IP-literal origins', () => {
@@ -70,12 +79,19 @@ describe('normalizeBrandOrigin refuses IP-literal origins', () => {
     expect(normalizeBrandOrigin(brandDomain)).toBeNull();
   });
 
-  test.each(['cosrx.com', 'www.cosrx.com', 'http://cosrx.com', 'https://anua.us'])(
-    'a real storefront host still normalises: %s',
-    (brandDomain) => {
-      expect(normalizeBrandOrigin(brandDomain)).toMatch(/^https:\/\//);
-    },
-  );
+  // Asserting only `/^https:\/\//` here let a mutant that dropped the port and stripped `www.` survive
+  // all 76 tests across this file and the sibling resolver suite. The exact origin is the contract:
+  // the host must survive verbatim, and so must a non-default port.
+  test.each([
+    ['cosrx.com', 'https://cosrx.com'],
+    ['www.cosrx.com', 'https://www.cosrx.com'],
+    ['http://cosrx.com', 'https://cosrx.com'],
+    ['https://anua.us', 'https://anua.us'],
+    ['shop.example.com:8443', 'https://shop.example.com:8443'],
+    ['https://cosrx.com/products/x', 'https://cosrx.com'],
+  ])('a real storefront host normalises exactly: %s -> %s', (brandDomain, expected) => {
+    expect(normalizeBrandOrigin(brandDomain)).toBe(expected);
+  });
 
   test('userinfo in a brand origin is refused', () => {
     expect(normalizeBrandOrigin('https://user:pass@cosrx.com')).toBeNull();
@@ -166,12 +182,22 @@ describe('the products.json fallback never reaches a private address', () => {
 
     const { lookup } = seenOptions[0];
     expect(typeof lookup).toBe('function');
-    // Not a synthetic answer: this is the real resolver being asked about a real loopback hostname.
+
+    /*
+     * The security property, asserted so it cannot go red on the environment: asked about a hostname
+     * that resolves to loopback, the installed resolver hands the socket NO address.
+     *
+     * Only that is asserted — not the message. `createPublicOnlyLookup` refuses with "non-public
+     * address" on a host where `localhost` resolves normally, but a container without a `localhost`
+     * entry fails the same call with ENOTFOUND. Both mean "no address reached the socket"; pinning the
+     * string would turn a missing hosts entry into a red build. The message-level contract is pinned
+     * synthetically in tests/ucp_ssrf_policy.test.js, which can inject the underlying resolver — this
+     * lookup wraps the real one, so it cannot be fed a fake answer from here.
+     */
     await new Promise((done, fail) => {
       lookup('localhost', { all: true }, (error, addresses) => {
         try {
           expect(error).toBeInstanceOf(Error);
-          expect(error.message).toMatch(/non-public address/);
           expect(addresses).toBeUndefined();
           done();
         } catch (assertionError) { fail(assertionError); }
@@ -253,29 +279,138 @@ describe('a merchant redirect to loopback is never followed', () => {
     }
   });
 
-  test('every products.json request asks the transport to refuse redirects', async () => {
-    // `redirect` is consumed by createPublicNetworkFetch and never reaches node:https, so it is asserted
-    // where it is passed. An injected fetchImpl is the module's own documented test seam.
-    const calls = [];
-    const fetchImpl = jest.fn(async (url, options) => {
-      calls.push({ url, options });
-      return { ok: false, status: 302, json: async () => ({}) };
+  /*
+   * Redirects ARE followed now, because refusing them broke half the live cohort: measured 2026-09-04,
+   * cosrx.com, skin1004.com and anua.us all 301 on `<origin>/products/<handle>.js`, the only per-handle
+   * surface carrying `available`. What must never happen is following one to a private address.
+   */
+  test.each([
+    // The first two use a HOSTNAME, not a literal, on purpose: with `127.0.0.1` in the Location the
+    // IP-literal check rejects it first, so deleting the https-only guard or the userinfo guard left the
+    // whole suite green. Against a hostname, each of those guards is the check that actually decides.
+    ['a plain-http Location', 'http://www.cosrx.com/products/some-product.js'],
+    ['a userinfo Location', 'https://user:pass@www.cosrx.com/products/some-product.js'],
+    ['an https IPv4 literal', 'https://127.0.0.1:PORT/products/some-product.js'],
+    ['an https IPv6 literal', 'https://[::1]:PORT/products/some-product.js'],
+    ['a protocol-relative Location', '//127.0.0.1:PORT/products/some-product.js'],
+  ])('%s is never turned into a request', async (_label, template) => {
+    // No listener here on purpose: the transport is injected, so nothing could dial the port even if the
+    // hop WERE followed — a `count === 0` assertion would be unfalsifiable. What is falsifiable, and what
+    // actually matters, is that the loopback URL is never handed to the transport at all.
+    const requested = [];
+    const fetchImpl = jest.fn(async (url) => {
+      requested.push(url);
+      return {
+        ok: false,
+        status: 302,
+        headers: { get: (h) => (h === 'location' ? template.replace('PORT', '8081') : null) },
+        json: async () => ({}),
+      };
     });
     const result = await resolveVariantViaProductsJson(
       { brandDomain: 'merchant.example', handle: 'some-product' },
       { fetchImpl, maxPages: 1, timeoutMs: 3000 },
     );
     expect(result).toBeNull();
-    expect(calls.length).toBeGreaterThan(0);
-    expect(calls.every((c) => c.options.redirect === 'error')).toBe(true);
+    expect(requested.length).toBeGreaterThan(0);
+    expect(requested.every((u) => u.startsWith('https://merchant.example/'))).toBe(true);
+    expect(requested.some((u) => /127\.0\.0\.1|\[::1\]|8081|cosrx/.test(u))).toBe(false);
+  });
+
+  test('a legitimate https redirect IS followed, and the hop re-enters the same fence', async () => {
+    // The real case this protects: cosrx.com/products/<handle>.js 301s to www.cosrx.com. Refusing it
+    // cost the only per-handle surface that carries `available` and forced a ~760 KB listing walk.
+    const requested = [];
+    const fetchImpl = jest.fn(async (url) => {
+      requested.push(url);
+      if (url === 'https://cosrx.com/products/some-product.js') {
+        return {
+          ok: false,
+          status: 301,
+          headers: { get: (h) => (h === 'location' ? 'https://www.cosrx.com/products/some-product.js' : null) },
+          json: async () => ({}),
+        };
+      }
+      return {
+        ok: true,
+        status: 200,
+        headers: { get: () => null },
+        json: async () => ({ id: 1, variants: [{ id: 44445555666677, sku: 'X', available: true }] }),
+      };
+    });
+    const result = await resolveVariantViaProductsJson(
+      { brandDomain: 'cosrx.com', handle: 'some-product' },
+      { fetchImpl, maxPages: 1, timeoutMs: 3000 },
+    );
+    expect(requested).toEqual([
+      'https://cosrx.com/products/some-product.js',
+      'https://www.cosrx.com/products/some-product.js',
+    ]);
+    expect(result).toMatchObject({
+      variantGid: 'gid://shopify/ProductVariant/44445555666677',
+      // The whole point of following: this surface is the one that reports stock.
+      stockKnown: true,
+      availability: 'available',
+    });
+  });
+
+  test('a redirect loop is capped instead of spinning', async () => {
+    const requested = [];
+    const fetchImpl = jest.fn(async (url) => {
+      requested.push(url);
+      return {
+        ok: false,
+        status: 302,
+        headers: { get: (h) => (h === 'location' ? 'https://merchant.example/loop' : null) },
+        json: async () => ({}),
+      };
+    });
+    const result = await resolveVariantViaProductsJson(
+      { brandDomain: 'merchant.example', handle: 'some-product' },
+      { fetchImpl, maxPages: 1, timeoutMs: 3000 },
+    );
+    expect(result).toBeNull();
+    // 3 surfaces tried, each allowed at most 1 + MAX_REDIRECT_HOPS(3) requests.
+    expect(requested.length).toBeLessThanOrEqual(12);
+    expect(fetchImpl).toHaveBeenCalled();
+  });
+
+  test('a gzipped listing is decoded, and compression is actually requested', async () => {
+    // Not cosmetic: the transport counts WIRE bytes against a 2 MiB cap, and medicube.us's listing
+    // measured 2,040,790 bytes uncompressed (97.3% of the cap) versus 342,704 gzipped.
+    const zlib = require('node:zlib');
+    const payload = { products: [{ handle: 'some-product', title: 'T', variants: [{ id: 99998888777766, available: true }] }] };
+    const gz = zlib.gzipSync(Buffer.from(JSON.stringify(payload)));
+    const seenHeaders = [];
+    const fetchImpl = jest.fn(async (url, options) => {
+      seenHeaders.push(options.headers);
+      if (!url.includes('/products.json?')) return { ok: false, status: 404, headers: { get: () => null }, json: async () => ({}) };
+      return {
+        ok: true,
+        status: 200,
+        headers: { get: (h) => (h === 'content-encoding' ? 'gzip' : null) },
+        arrayBuffer: async () => gz.buffer.slice(gz.byteOffset, gz.byteOffset + gz.byteLength),
+        json: async () => { throw new Error('body is gzipped; json() must not be used'); },
+      };
+    });
+    const result = await resolveVariantViaProductsJson(
+      { brandDomain: 'merchant.example', handle: 'some-product' },
+      { fetchImpl, maxPages: 1, timeoutMs: 3000 },
+    );
+    expect(result).toMatchObject({ variantGid: 'gid://shopify/ProductVariant/99998888777766' });
+    expect(seenHeaders.every((h) => h['accept-encoding'] === 'gzip')).toBe(true);
+    expect(seenHeaders.length).toBeGreaterThan(0);
   });
 
   test('the pinned transport surfaces a 3xx instead of following its Location', async () => {
     // Pins no-follow independently of the address gates: if someone later relaxes normalizeBrandOrigin,
     // a merchant Location still must not become a second request.
-    const target = await listenCounting();
+    let target = null;
+    let spy = null;
     const requested = [];
-    const spy = jest.spyOn(nodeHttps, 'request').mockImplementation((url, _opts, onResponse) => {
+    try {
+    target = await listenCounting();
+    spy = jest.spyOn(nodeHttps, 'request').mockImplementation((url, _opts, onResponse) => {
       requested.push(typeof url === 'string' ? url : url.href);
       const request = new EventEmitter();
       request.write = jest.fn();
@@ -289,16 +424,16 @@ describe('a merchant redirect to loopback is never followed', () => {
       });
       return request;
     });
-    try {
       const fetchImpl = createPublicNetworkFetch((_h, _o, cb) => cb(null, [{ address: '8.8.8.8', family: 4 }]));
       const res = await fetchImpl('https://merchant.example/products/x.js');
       expect(res.status).toBe(302);
-      expect(res.ok).toBe(false); // so fetchProductsJson reads it as a miss, not as a body
+      // Surfaced, not followed: the transport itself never turns a Location into a second request.
+      expect(res.ok).toBe(false);
       expect(requested).toEqual(['https://merchant.example/products/x.js']);
       expect(target.count).toBe(0);
     } finally {
-      spy.mockRestore();
-      await target.close();
+      if (spy) spy.mockRestore();
+      if (target) await target.close();
     }
   });
 });
@@ -321,7 +456,10 @@ describe('the shared fence refuses IP literals, including bracketed IPv6', () =>
     const spy = jest.spyOn(nodeHttps, 'request');
     try {
       const fetchImpl = createPublicNetworkFetch((_h, _o, cb) => cb(null, [{ address: '8.8.8.8', family: 4 }]));
-      await expect(fetchImpl(url)).rejects.toThrow('public address');
+      // By CODE, not message: 'must resolve to a public address' (literal gate, PIVOTA_SSRF_LITERAL) and
+      // 'resolved to a non-public address' (DNS gate, PIVOTA_SSRF_REFUSED) BOTH contain 'public address',
+      // so a substring match cannot tell "refused before a request" from "refused after one was built".
+      await expect(fetchImpl(url)).rejects.toMatchObject({ code: 'PIVOTA_SSRF_LITERAL' });
       expect(spy).not.toHaveBeenCalled();
     } finally {
       spy.mockRestore();

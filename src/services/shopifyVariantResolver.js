@@ -36,12 +36,18 @@
  *      normalizeBrandOrigin accepted any https origin including IP literals.
  * Both are closed the same way the sibling UCP client closes them, by REUSING its fence rather than minting a
  * second one: normalizeBrandOrigin now refuses IP-literal origins outright, and the default transport is
- * ucpBuyerAgentClient.createPublicNetworkFetch — https-only, no redirect following, literal addresses
- * refused by `forbiddenLiteralHost` before a request is built, and a DNS answer containing ANY non-public
- * address refused by `createPublicOnlyLookup`. Neither fence applied to this file before.
+ * ucpBuyerAgentClient.createPublicNetworkFetch — https-only, literal addresses refused by
+ * `forbiddenLiteralHost` before a request is built, and a DNS answer containing ANY non-public address
+ * refused by `createPublicOnlyLookup`. Neither fence applied to this file before.
+ *
+ * Redirects are still followed, because three of the six live brands 301 on the per-handle surface (see
+ * fetchProductsJson) — but each hop is a fresh call into that transport, so every hop is re-fenced. The
+ * difference from the old behaviour is not that we stopped following; it is that following can no longer
+ * leave the public internet.
  */
 
 const nodeNet = require('node:net');
+const nodeZlib = require('node:zlib');
 const { createPublicNetworkFetch } = require('./ucpBuyerAgentClient');
 
 const VARIANT_GID_PREFIX = 'gid://shopify/ProductVariant/';
@@ -191,8 +197,10 @@ function normalizeBrandOrigin(brandDomain) {
     // public-looking literal. Brackets are stripped first because `new URL('https://[::1]/').hostname`
     // KEEPS them and `net.isIP('[::1]')` is 0 — testing the unstripped host would wave every IPv6 through.
     if (nodeNet.isIP(String(u.hostname || '').replace(/^\[|\]$/g, '')) !== 0) return null;
-    // Credentials in a storefront origin are never legitimate either, and they are a classic way to make
-    // a URL read as one host while authenticating to another.
+    // Credentials in a storefront origin are refused as hygiene, NOT as a fence: `u.origin` below already
+    // drops userinfo, so the pre-existing code never transmitted it. A brand_domain carrying credentials
+    // is malformed rather than a storefront, and the route treats the resulting miss as free (uncounted,
+    // unmemoized) so refusing it cannot be used to mint metric series.
     if (u.username || u.password) return null;
     return u.origin;
   } catch {
@@ -255,13 +263,9 @@ function pickVariantFromProductNode(product, opts = {}) {
   };
 }
 
-// One pinned transport for the whole module, built on first use. `createPublicNetworkFetch` closes over a
-// public-only DNS resolver, so building it per request would rebuild that closure on every click.
-let publicFetch = null;
-function getPublicFetch() {
-  if (!publicFetch) publicFetch = createPublicNetworkFetch();
-  return publicFetch;
-}
+// One pinned transport for the whole module. `createPublicNetworkFetch` only builds closures and there is
+// no require cycle to defer, so there is nothing to gain from constructing it lazily.
+const publicFetch = createPublicNetworkFetch();
 
 /**
  * PRODUCT.JSON fallback — fetch the brand's public products.json and map handle/title -> variant GID.
@@ -282,7 +286,7 @@ async function resolveVariantViaProductsJson(target = {}, opts = {}) {
   // NOT global fetch. Global fetch follows redirects by default and its DNS lookup cannot be bound, which
   // is exactly how a merchant 302 walked this lane onto loopback. An explicit opts.fetchImpl still wins so
   // tests can drive fixtures, matching how createUcpBuyerAgentClient treats its own injected fetch.
-  const fetchImpl = typeof opts.fetchImpl === 'function' ? opts.fetchImpl : getPublicFetch();
+  const fetchImpl = typeof opts.fetchImpl === 'function' ? opts.fetchImpl : publicFetch;
   const timeoutMs = Number.isFinite(opts.timeoutMs) ? Number(opts.timeoutMs) : 12000;
   const userAgent = firstNonEmptyString(opts.userAgent) || 'Pivota-UCP-BuyerAgent/1.0';
 
@@ -346,40 +350,122 @@ async function resolveVariantViaProductsJson(target = {}, opts = {}) {
 }
 
 /*
- * REDIRECTS ARE NOT FOLLOWED, deliberately. The pinned transport issues exactly one https request; asked
- * for `redirect: 'error'` it refuses a 3xx outright, and the catch below folds that into the same null as
- * every other unresolvable brand, so the caller cold-redirects exactly as it already does.
+ * REDIRECTS ARE FOLLOWED, but every hop is re-fenced.
  *
- * That is a real capability change, so it was measured rather than assumed: on 2026-09-04 all six
- * OUTBOUND_WARM_HANDOFF_BRANDS (cosrx.com, beautyofjoseon.com, skin1004.com, anua.us, medicube.us,
- * mixsoon.us) answered `/products.json` with a direct 200 on BOTH the apex and the www host — 12/12 with no
- * redirect, because Shopify serves products.json on any hostname mapped to the shop. No live caller depends
- * on following, and a merchant-controlled Location header is precisely what walked this lane onto loopback.
- * A storefront that starts redirecting loses its warm cart and falls back to a cold redirect; it does not
- * get a followed hop.
+ * Not following at all was tried first and is WRONG here, and the measurement that said otherwise was
+ * scoped to the wrong endpoint. `/products.json` does answer 200 directly on all six
+ * OUTBOUND_WARM_HANDOFF_BRANDS (apex and www, 12/12) — but that is not the surface this lane hits first.
+ * The first request is `<origin>/products/<handle>.js`, and measured 2026-09-04 THREE of the six 301 there:
+ *   cosrx.com    -> www.cosrx.com
+ *   skin1004.com -> www.skin1004.com
+ *   anua.us      -> anua.com          (a DIFFERENT apex, not a www prefix)
+ * Refusing the hop costs those brands the only per-handle surface that carries `available`: the lane falls
+ * through to `.json` (no `available`, so stock unknown), then to a ~760 KB listing walk — three fetches and
+ * a thousandfold more bytes on a click path budgeted at 1200 ms per fetch, and if that listing times out
+ * the caller gets `availability: null`, which ucpWarmHandoffInternalRoute does NOT decline. So refusing
+ * redirects silently disarms the sold-out guard for half the cohort.
+ *
+ * Following safely is not the same as what global fetch did. Global fetch followed with NO fence at all,
+ * which is how a merchant 302 walked this lane onto loopback. Here every hop is a fresh call into the
+ * pinned transport, so each one independently re-applies https-only, `forbiddenLiteralHost` and the
+ * public-only DNS resolver — a `302 -> http://127.0.0.1:PORT` is refused at the hop, not followed. The
+ * Location is additionally rejected here if it is not https or is an IP literal, so a bad hop dies before
+ * a request is built at all. Hops are capped, which also terminates a redirect loop.
  */
+// Bounds the DECODED body, and is deliberately larger than the transport's 2 MiB wire cap
+// (ucpBuyerAgentClient MAX_MERCHANT_RESPONSE_BYTES) — a gzipped listing legitimately inflates several
+// times over. It is a zip-bomb stop, not a size policy: the wire cap is what limits ordinary bodies.
+const MAX_DECODED_BODY_BYTES = 8 * 1024 * 1024;
+// TWO, not three. Every redirect measured on the live cohort is a SINGLE hop (cosrx.com -> www,
+// skin1004.com -> www, anua.us -> anua.com), so one spare hop covers everything seen plus a chained
+// canonicalisation. It is a cap on merchant-facing traffic as much as on loops: each surface may
+// redirect, so N hops costs up to 3*(1+N) requests per resolve — 9 at two hops, 12 at three, against 3
+// before. A brand that genuinely needs a third hop loses its warm cart and cold-redirects; a brand that
+// 302s everything cannot make this lane amplify without bound.
+const MAX_REDIRECT_HOPS = 2;
+const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
+
+/** Resolve a Location against the URL it came from, then refuse anything that is not a public https host. */
+function nextHopUrl(location, currentUrl) {
+  const raw = firstNonEmptyString(location);
+  if (!raw) return null;
+  let next;
+  try { next = new URL(raw, currentUrl); } catch { return null; }
+  if (next.protocol !== 'https:') return null;
+  if (next.username || next.password) return null;
+  // Same literal rule as normalizeBrandOrigin: brackets stripped before isIP, or every IPv6 literal
+  // would read as a hostname. The transport refuses these too; this just stops the request earlier.
+  if (nodeNet.isIP(String(next.hostname || '').replace(/^\[|\]$/g, '')) !== 0) return null;
+  return next.toString();
+}
+
 async function fetchProductsJson(url, { fetchImpl, timeoutMs, userAgent }) {
   const controller = typeof AbortController === 'function' ? new AbortController() : null;
+  // One budget for the WHOLE chain, not per hop: the click path cares how long it waits, and a per-hop
+  // timer would let a 3-hop redirect spend three times the budget it was given.
   const timer = controller && Number.isFinite(timeoutMs) && timeoutMs > 0
     ? setTimeout(() => controller.abort(), timeoutMs)
     : null;
   try {
-    const res = await fetchImpl(url, {
-      method: 'GET',
-      headers: { accept: 'application/json', 'user-agent': userAgent },
-      // Say it, rather than leaning on a 3xx happening to be !res.ok: a merchant Location is refused
-      // outright. The pinned transport turns this into a PIVOTA_REDIRECT_REFUSED rejection, which the
-      // catch below folds into the same null every other unresolvable brand produces.
-      redirect: 'error',
-      ...(controller ? { signal: controller.signal } : {}),
-    });
-    if (!res || !res.ok) return null;
-    return await res.json();
+    let currentUrl = url;
+    for (let hop = 0; ; hop += 1) {
+      const res = await fetchImpl(currentUrl, {
+        method: 'GET',
+        headers: {
+          accept: 'application/json',
+          'user-agent': userAgent,
+          // The pinned transport is node:https, which — unlike global fetch — neither advertises nor
+          // decodes compression. Asking for it back matters twice: the transport's 2 MiB cap counts
+          // WIRE bytes, and medicube.us's listing measured 2,040,790 bytes uncompressed on 2026-09-04
+          // against a 2,097,152 cap (97.3%, ~56 KB of headroom) versus 342,704 gzipped. Without this
+          // header one more product on that storefront silently deletes its listing fallback.
+          'accept-encoding': 'gzip',
+        },
+        ...(controller ? { signal: controller.signal } : {}),
+      });
+      if (!res) return null;
+
+      if (REDIRECT_STATUSES.has(res.status)) {
+        if (hop >= MAX_REDIRECT_HOPS) return null;
+        const next = nextHopUrl(res.headers && res.headers.get && res.headers.get('location'), currentUrl);
+        if (!next) return null;
+        currentUrl = next;
+        continue;
+      }
+
+      if (!res.ok) return null;
+      return await decodeJson(res);
+    }
   } catch {
     return null;
   } finally {
     if (timer) clearTimeout(timer);
   }
+}
+
+/**
+ * Read a JSON body, inflating it first when the storefront honoured `accept-encoding: gzip`.
+ * `res.json()` cannot do this itself — node:https hands back the bytes exactly as they arrived.
+ *
+ * The inflated size is bounded as well as the wire size. A 2 MiB cap on compressed bytes is not a bound
+ * on memory: gzip of a repetitive JSON body reaches ~1000:1, so a merchant could answer inside the wire
+ * cap and still expand to gigabytes here. `maxOutputLength` makes zlib throw instead, which the caller's
+ * catch folds into the same null as any other unreadable body.
+ */
+async function decodeJson(res) {
+  const encoding = String((res.headers && res.headers.get && res.headers.get('content-encoding')) || '')
+    .trim()
+    .toLowerCase();
+  if (encoding !== 'gzip' && encoding !== 'deflate') return res.json();
+  const raw = Buffer.from(await res.arrayBuffer());
+  // The ASYNC inflate, not gunzipSync: this runs on a click path that walks up to `maxPages` listings,
+  // and each synchronous inflate blocks the event loop for the whole server (~1.4 ms per measured
+  // medicube.us page). The async form hands it to the threadpool instead.
+  const inflate = encoding === 'gzip' ? nodeZlib.gunzip : nodeZlib.inflate;
+  const decoded = await new Promise((resolve, reject) => {
+    inflate(raw, { maxOutputLength: MAX_DECODED_BODY_BYTES }, (err, out) => (err ? reject(err) : resolve(out)));
+  });
+  return JSON.parse(decoded.toString('utf8'));
 }
 
 /**
