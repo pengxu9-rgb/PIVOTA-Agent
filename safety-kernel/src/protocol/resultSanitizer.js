@@ -32,6 +32,48 @@ const PAN_EXEMPT_ID_KEYS = new Set([
   'orderid', 'quoteid', 'sessionid', 'checkoutsessionid', 'merchantid', 'externalseedid', 'offerid',
   'lineitemid', 'itemid',
 ]);
+// The same exemption, derived rather than enumerated — BOUNDED ON BOTH SIDES.
+//
+// The list this replaces rotted exactly as the composite-id note below predicts a list will. It
+// carried `variantid` and not `defaultvariantid`, so one prod get_product response (MAC Retro Matte
+// Lipstick, 2026-09-06) carried the same Shopify id twice — intact inside `variants[]`,
+// "[REDACTED_PAN]" in `default_variant_id`, the one field an agent reads to preselect a shade.
+// 54057345941699 is 14 digits and Luhn-valid, and Luhn is only a 1-in-10 filter.
+//
+// THE WHOLE KEY MUST BE BUILT FROM WORDS WE CHOSE. A qualifier* + noun + "id", anchored at BOTH
+// ends. The anchoring is the entire point, and it is what three earlier attempts got wrong:
+//
+//   - `endsWith('id')` exempts ~468 keys, including `payment_id` — which `upstreamAdapter` copies
+//     verbatim out of the raw upstream body — plus `card_number_id`, `account_id`, and every
+//     merchant-authored option axis that happens to end in "id" ("Liquid", "Paid" are real
+//     cosmetics finishes, and axis names become dict KEYS).
+//   - A bare suffix like /(variant|product|…|line|order)id$/ looks bounded and is not: the left
+//     context is still open, so `payment_session_id`, `psp_session_id`, `acquirer_merchant_id`,
+//     `card_line_id` and `pan_order_id` all match, and so does `decline_id` — "dec" + "line" + "id".
+//     Measured against a system word list, that form newly exempts 621 ordinary English words.
+//
+// Anchoring the left side to a closed qualifier vocabulary removes the unbounded context. A key we
+// have not composed ourselves is scanned, and the cost of missing one is that an id gets redacted —
+// a visible bug on a page — INTERMITTENTLY, on the ~1 in 10 ids that are Luhn-valid, which is why
+// this defect went unnoticed until 2026-09-06. That is still the direction to fail in: the
+// alternative rules leak a card,
+// silently. `vault/pci.js::assertNoPan` makes the same call, using Luhn alone and failing closed.
+const ID_QUALIFIERS = 'default|matched|source|parent|canonical|preferred|selected|primary|elected'
+  + '|representative|attached|external|platform|base|target|sellable|pivota|first|last|new|old';
+const ID_NOUNS = 'variant|product|sku|offer|order|quote|session|merchant|group|item|line'
+  + '|signature|seed|catalog';
+// AT LEAST ONE LEADING TOKEN, never zero, and every token drawn from the two closed vocabularies.
+// A noun may lead as well as qualify, because real keys compound nouns: `product_line_id` and
+// `line_item_id` are among the most common ids in this repo.
+//
+// Requiring a leading token is what buys the merchant-authored case. Every BARE noun form —
+// `variantid`, `productid`, `orderid`, `itemid`, `signatureid` and the rest — is already enumerated
+// above, so demanding one costs nothing; and an option axis named "Line ID" or "Group Id"
+// canonicalizes to exactly a bare noun, with axis names becoming dict KEYS whose values are
+// merchant free text.
+const ID_STEM_KEY_RE = new RegExp(`^(?:${ID_QUALIFIERS}|${ID_NOUNS})+(?:${ID_NOUNS})id$`);
+const isPanExemptKey = (c) => PAN_EXEMPT_ID_KEYS.has(c) || ID_STEM_KEY_RE.test(c);
+
 function luhnValid(candidate) {
   const digits = String(candidate).replace(/[ -]/g, '');
   if (digits.length < 13 || digits.length > 19) return false;
@@ -204,7 +246,7 @@ export function sanitizeResult(rootValue, { handoffAllowed = false, stripRanking
       // A shape-verified cart permalink is exempt for the same reason: the digit run IS the variant id.
       // Note this exempts PAN scanning ONLY — the secret scrubs below still run on it, which is stricter
       // than the verbatim return the attributed-link rule above takes, and costs nothing here.
-      const out = keyCanon && PAN_EXEMPT_ID_KEYS.has(keyCanon)
+      const out = keyCanon && isPanExemptKey(keyCanon)
         ? value
         : keyCanon && STOREFRONT_URL_KEYS.has(keyCanon)
           ? redactPansOutsideStorefrontIds(value)
