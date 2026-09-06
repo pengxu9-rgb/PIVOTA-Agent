@@ -312,8 +312,75 @@ function createPublicUrlFetch({ axiosInstance, lookup, maxRedirectHops = MAX_RED
   };
 }
 
+/**
+ * Answer "may this URL be handed to a THIRD PARTY to fetch on our behalf?" — the question the transport
+ * fence cannot answer, because on that path we never open the socket.
+ *
+ * The aurora BFF's unblock vendor (zenrows) receives `productUrl` as a QUERY PARAMETER and fetches it
+ * from its own network. Our egress is never used, so `createPublicUrlFetch` never runs and none of its
+ * guards apply. What is left is a paid account that will fetch an arbitrary caller-named URL.
+ *
+ * Same policy, applied ahead of time rather than at connect: `parsePublicHttpUrl` for the
+ * literal/scheme/userinfo forms, then the SAME `createPublicOnlyLookup` — so the mixed public+private
+ * answer rule and the whole range table are shared, not restated. It resolves and judges; never connects.
+ *
+ * On TOCTOU, because it looks like a hole and is not: DNS may change between this check and the vendor's
+ * own resolution. That cannot become an SSRF against us — the vendor dials from its network, not ours —
+ * so this is a policy gate, and a racing answer costs at worst one vendor fetch we would rather not have
+ * paid for.
+ */
+function createPublicHostCheck(lookup) {
+  const publicOnlyLookup = createPublicOnlyLookup(lookup);
+  return (rawUrl) => new Promise((resolve) => {
+    let parsed;
+    try {
+      parsed = parsePublicHttpUrl(rawUrl);
+    } catch (error) {
+      return resolve({ ok: false, code: error.code || 'PIVOTA_SSRF_INVALID_URL', reason: 'address_refused', url: null });
+    }
+    // `{ all: true }` asks for the array shape. It is NOT what makes the mixed public/private refusal
+    // work — createPublicOnlyLookup passes `all: true` to the real resolver itself and screens every
+    // record before it answers, whichever shape the caller asked for. Verified by mutation: changing
+    // this to `{}` is behaviourally EQUIVALENT here, because only `error` is read below. It stays
+    // `{ all: true }` to avoid the single-address branch's IPv4-preference logic, which has nothing to
+    // say about a call that discards the addresses.
+    publicOnlyLookup(parsed.hostname, { all: true }, (error) => {
+      // `url` is the NORMALISED href, and callers must send THAT rather than the string they passed in.
+      // Validating one string and transmitting another is the whole bug class: measured, Node's WHATWG
+      // parser reads `http://cosrx.com\\@127.0.0.1/` as host `cosrx.com` (the backslash is a path
+      // delimiter for special schemes) while Python's urllib reads the same bytes as host `127.0.0.1`.
+      // We do not control the vendor's parser, so the only safe thing to hand it is the form OUR check
+      // actually judged — `http://cosrx.com/@127.0.0.1/`, where the host is unambiguous.
+      if (!error) return resolve({ ok: true, code: null, reason: 'public', url: parsed.toString() });
+      /*
+       * A REFUSAL AND A RESOLUTION FAILURE ARE NOT THE SAME ANSWER, and conflating them broke a real
+       * feature. `createPublicOnlyLookup` reports a definite private/mixed answer as
+       * PIVOTA_SSRF_REFUSED; anything else (ENOTFOUND, EAI_AGAIN, ETIMEDOUT) means we simply could not
+       * resolve the name, which is NOT evidence the address is private.
+       *
+       * Failing closed on that was wrong twice over. It deletes the unblock vendor for every host OUR
+       * resolver cannot see — the vendor exists precisely to reach hosts we cannot — and a transient DNS
+       * blip would silently disable the fallback fleet-wide. It was caught by an existing test
+       * (`escalates to zenrows when native attempts are blocked`) whose fixture host `blocked.example`
+       * does not resolve at all.
+       *
+       * Failing open here is bounded: the vendor fetches from ITS network, not ours, so an unresolvable
+       * name cannot reach OUR private space through this path no matter what it later resolves to. The
+       * residual risk is a paid fetch and, at worst, a probe of the vendor's own internal space — which
+       * we cannot prevent anyway, since we do not control their resolver. Our own egress stays fenced by
+       * createPublicUrlFetch regardless.
+       */
+      if (String(error.code) === 'PIVOTA_SSRF_REFUSED') {
+        return resolve({ ok: false, code: 'PIVOTA_SSRF_REFUSED', reason: 'address_refused', url: null });
+      }
+      return resolve({ ok: true, code: null, reason: 'unresolved', url: parsed.toString() });
+    });
+  });
+}
+
 module.exports = {
   createPublicUrlFetch,
+  createPublicHostCheck,
   parsePublicHttpUrl,
   createPublicAgents,
   MAX_REDIRECT_HOPS,
