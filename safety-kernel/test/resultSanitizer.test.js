@@ -340,3 +340,127 @@ test('a nested array under a composite-looking key is still scanned element by e
   assert.equal(out.sku_key[1][0][0], '[REDACTED_PAN]');
   assert.equal(out.product_key.note, '[REDACTED_PAN]');
 });
+
+// The id this whole change exists for. Asserted redacted under a NON-exempt key, because every
+// stem test below is survival-only: with a Luhn-invalid fixture they would all pass whether or not
+// the rule exists. The suite's tripwire above does not cover it, so it is pinned here.
+const LUHN_VALID_BARE_ID = '54057345941699';
+test('the stem fixture really is redaction-eligible — otherwise the stem tests prove nothing', () => {
+  assert.equal(sanitizeResult({ note: LUHN_VALID_BARE_ID }).note, '[REDACTED_PAN]');
+});
+
+test('a qualified id key the enumeration missed is exempt by its stem', () => {
+  // THE DEFECT. `PAN_EXEMPT_ID_KEYS` carried `variantid` and not `defaultvariantid`, so one prod
+  // get_product response (MAC Retro Matte Lipstick, 2026-09-06) carried the same Shopify id twice —
+  // intact inside `variants[]`, "[REDACTED_PAN]" in `default_variant_id`.
+  assert.equal(
+    sanitizeResult({ default_variant_id: LUHN_VALID_BARE_ID }).default_variant_id,
+    LUHN_VALID_BARE_ID,
+  );
+  // one key per NOUN, so a noun cannot be dropped silently — each reintroduces the bug for a family
+  const perNoun = {
+    variant: 'default_variant_id', product: 'parent_product_id', sku: 'default_sku_id',
+    offer: 'canonical_offer_id', order: 'source_order_id', quote: 'matched_quote_id',
+    session: 'primary_session_id', merchant: 'attached_merchant_id', group: 'sellable_group_id',
+    item: 'selected_item_id', line: 'product_line_id', signature: 'default_signature_id',
+    seed: 'matched_seed_id', catalog: 'elected_catalog_id',
+  };
+  for (const [noun, key] of Object.entries(perNoun)) {
+    assert.equal(sanitizeResult({ [key]: LUHN_VALID_BARE_ID })[key], LUHN_VALID_BARE_ID, noun);
+  }
+});
+
+test('the exemption is bounded on BOTH sides — an unbounded suffix leaks payment keys', () => {
+  // A bare /(variant|product|…|line|order)id$/ looks bounded and is not: the left context stays
+  // open. Measured before this was anchored: `payment_session_id`, `psp_session_id`,
+  // `acquirer_merchant_id`, `card_line_id`, `pan_order_id` and `cvv_group_id` all matched, and so
+  // did `decline_id` — "dec" + "line" + "id". Against a system word list that form newly exempted
+  // 621 ordinary English words. Every key here ENDS in a real stem and must still be scanned.
+  const PAN = '4111111111111111';
+  for (const key of [
+    'payment_session_id', 'psp_session_id', 'payment_order_id', 'payment_line_id',
+    'payment_offer_id', 'payment_item_id', 'acquirer_merchant_id', 'sub_merchant_id',
+    'card_line_id', 'pan_order_id', 'cvv_group_id', 'cvv_session_id', 'charge_order_id',
+    'credit_line_id', 'bank_session_id', 'decline_id', 'authorization_checkout_session_id',
+  ]) {
+    assert.equal(sanitizeResult({ [key]: PAN })[key], '[REDACTED_PAN]', key);
+  }
+  // and the keys an unbounded-suffix rule would NOT have caught either, for contrast
+  for (const key of ['payment_id', 'card_number_id', 'account_id', 'liquid', 'paid', 'recommendation_id']) {
+    assert.equal(sanitizeResult({ [key]: PAN })[key], '[REDACTED_PAN]', key);
+  }
+  // THE LEFT ANCHOR IS LOAD-BEARING. Without `^` the pattern matches a SUFFIX, so prefixing any
+  // exempt compound with a payment word re-opens the hole this test exists to close.
+  for (const key of [
+    'payment_default_variant_id', 'card_matched_product_id', 'pan_parent_product_id',
+    'cvv_source_order_id',
+  ]) {
+    assert.equal(sanitizeResult({ [key]: PAN })[key], '[REDACTED_PAN]', key);
+  }
+});
+
+test('a BARE noun is not exempted by the stem — merchant axis names become dict keys', () => {
+  // `canon()` strips separators, so an option axis named "Line ID" or "Group Id" canonicalizes onto
+  // a bare noun, and axis values are merchant free text. Every bare form we do want is enumerated
+  // already, so the stem requires at least one qualifier and these stay scanned.
+  const PAN = '4111111111111111';
+  for (const key of ['line_id', 'group_id', 'seed_id', 'catalog_id']) {
+    assert.equal(sanitizeResult({ [key]: PAN })[key], '[REDACTED_PAN]', key);
+  }
+  assert.deepEqual(
+    sanitizeResult({ visible_attributes: { 'Line ID': PAN, 'Group Id': PAN } }).visible_attributes,
+    { 'Line ID': '[REDACTED_PAN]', 'Group Id': '[REDACTED_PAN]' },
+  );
+  // `signature_id` and the other bare nouns in PAN_EXEMPT_ID_KEYS stay exempt by ENUMERATION —
+  // pre-existing, and not something the stem rule grants or could take away.
+  assert.equal(sanitizeResult({ signature_id: PAN }).signature_id, PAN);
+});
+
+test('the stem must END the key, not merely appear in it', () => {
+  // Unanchored on the right, `productid` matches inside `productidentifier`, and a merchant axis
+  // named "Product Identity" canonicalizes to `productidentity`.
+  const PAN = '4111111111111111';
+  for (const key of [
+    'default_product_identifier', 'default_variant_identity', 'source_sku_identifier',
+    'matched_order_identification',
+  ]) {
+    assert.equal(sanitizeResult({ [key]: PAN })[key], '[REDACTED_PAN]', key);
+  }
+  // Positive control on a NON-enumerated compound, so it fails if the stem rule dies. `product_id`
+  // would not: it is in PAN_EXEMPT_ID_KEYS and survives either way.
+  assert.equal(
+    sanitizeResult({ default_product_id: LUHN_VALID_BARE_ID }).default_product_id,
+    LUHN_VALID_BARE_ID,
+  );
+});
+
+test('an exempt key still carries its value into ARRAY elements — a widened pre-existing hole', () => {
+  // `keyCanon` propagates into array elements at unlimited depth, so a key exemption has always
+  // covered arrays: `{sku: [PAN]}` survives on main too. This change does not drain that hole, and
+  // it does add the qualified-stem keys to it. Pinned so the surface is measured rather than
+  // assumed, and so draining it later is a visible change.
+  const PAN = '4111111111111111';
+  assert.deepEqual(sanitizeResult({ sku: [PAN] }).sku, [PAN], 'pre-existing, unchanged');
+  assert.deepEqual(sanitizeResult({ default_variant_id: [PAN] }).default_variant_id, [PAN],
+    'added by this change');
+  // an unqualified or payment-adjacent key gets no such cover
+  assert.deepEqual(sanitizeResult({ payment_session_id: [PAN] }).payment_session_id,
+    ['[REDACTED_PAN]']);
+});
+
+test('a merchant axis that spells a real compound id IS exempt — the accepted residue', () => {
+  // Honest boundary, asserted rather than claimed away. `canon()` strips separators, so an option
+  // axis named "Product Line Id" is indistinguishable from the key `product_line_id` — one of the
+  // most common ids in this repo. No key rule can separate them, so this one is accepted: it needs
+  // a merchant to both name an axis that way AND put a card in its value, and main already exempts
+  // the same class through `productid` / `itemid` / `skuid`.
+  //
+  // The bare-noun cases next door ("Line ID", "Group Id") are NOT accepted and are redacted; that
+  // is what requiring a leading token buys.
+  const PAN = '4111111111111111';
+  assert.equal(
+    sanitizeResult({ visible_attributes: { 'Product Line Id': PAN } }).visible_attributes['Product Line Id'],
+    PAN,
+    'documented residue, not an oversight',
+  );
+});
