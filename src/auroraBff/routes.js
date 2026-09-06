@@ -4,7 +4,7 @@ const axios = require('axios');
 // BODY (/v1/product/analyze `url`, /v1/chat `anchor_product_url`), so every URL built from it is
 // attacker-influenced; see src/services/publicUrlFetch.js for why the fence is shared with
 // ucpBuyerAgentClient but the axios transport is deliberately kept.
-const { createPublicUrlFetch, parsePublicHttpUrl } = require('../services/publicUrlFetch');
+const { createPublicUrlFetch, createPublicHostCheck, parsePublicHttpUrl } = require('../services/publicUrlFetch');
 const sharp = require('sharp');
 const fs = require('fs');
 const crypto = require('crypto');
@@ -16206,18 +16206,18 @@ function buildUrlFetchFailureCode(attempts = []) {
     .map((item) => String(item?.error_code || '').trim().toLowerCase())
     .filter(Boolean);
 
+  // FIRST, ahead of the challenge/status branches. In the DEFAULT config the precheck is only reachable
+  // AFTER a 403/406/429 or a challenge — that is what lets the vendor run at all — so checking statuses
+  // first meant a refused address reported `url_fetch_forbidden_403` and the `url_forbidden_address`
+  // dial stayed silent for exactly the case it was added to count. An address we refused is the more
+  // important fact about the request than the status that preceded it.
+  if (errorCodes.some((code) => code.startsWith('pivota_ssrf'))) return 'url_forbidden_address';
   if (challengeTypes.includes('cloudflare_challenge')) return 'url_fetch_challenge_cloudflare';
   if (challengeTypes.includes('access_denied_page')) return 'url_fetch_access_denied';
   if (statuses.includes(403)) return 'url_fetch_forbidden_403';
   if (statuses.includes(429)) return 'url_fetch_rate_limited_429';
   if (statuses.includes(406)) return 'url_fetch_not_acceptable_406';
   if (errorCodes.includes('empty_body')) return 'url_fetch_empty_body';
-  // A refused address must be DISTINGUISHABLE from a merchant being down. The literal cases never reach
-  // here (they are refused up front with `url_forbidden_address`), but a hostname whose DNS answer is
-  // private is only caught at the resolver, and without this branch it reported the same
-  // `url_fetch_failed` as any timeout — so abuse of this lane was invisible in the one field most likely
-  // to be dashboarded.
-  if (errorCodes.some((code) => code.startsWith('pivota_ssrf'))) return 'url_forbidden_address';
   if (errorCodes.some((code) => code.includes('timeout') || code === 'ecconnaborted')) return 'url_fetch_timeout';
   return 'url_fetch_failed';
 }
@@ -16296,6 +16296,9 @@ async function fetchViaZenRows({
 
 // One pinned transport for the whole product-URL lane. Built once: it only wraps agents and closures.
 const fetchPublicProductUrl = createPublicUrlFetch({ axiosInstance: axios });
+// The vendor lane never opens our socket, so the transport fence cannot speak for it. This answers the
+// same address question ahead of that call. Built once, beside the transport it complements.
+const checkPublicProductHost = createPublicHostCheck();
 
 async function runSingleUrlFetchAttempt({
   strategy,
@@ -16504,6 +16507,11 @@ async function fetchProductHtmlWithUnblockChain({
       timeoutMs: Math.max(700, Math.min(attemptTimeoutMs, totalDeadline - Date.now())),
       headers: plan.headers,
     });
+    // Tagged with WHICH url produced it. The evidence guard below must not treat a refusal on the
+    // `www.` host VARIANT as evidence about `urlText` — they are different hosts, and a merchant whose
+    // www label CNAMEs into private space would otherwise lose the vendor fallback for a perfectly
+    // public canonical URL. Measured: that false positive withheld the vendor for https://cosrx.com/p/x.
+    out.attempt.__url = plan.url;
     if (out.ok) {
       return {
         ok: true,
@@ -16520,10 +16528,93 @@ async function fetchProductHtmlWithUnblockChain({
     attempts.push(out.attempt);
   }
 
-  const shouldRunVendor =
+  /*
+   * THE VENDOR IS FENCED TOO, and it needs its own gate because it is the one path where OUR socket is
+   * never opened: `fetchViaZenRows` hands `productUrl` to api.zenrows.com as a query parameter and the
+   * vendor fetches it from ITS network, so `fetchPublicProductUrl` and every guard inside it are simply
+   * not on this code path.
+   *
+   * Reachability, stated precisely rather than dramatically: `shouldTryUnblockVendor` fires only on a
+   * `challenge_type` or a 403/406/429, and an address refusal carries NEITHER (verified live in prod:
+   * `attempts: [{error_code: 'pivota_ssrf_refused'}]`, no status). So under the DEFAULT
+   * AURORA_BFF_URL_UNBLOCK_ONLY_ON_BLOCKED=true the vendor already does not run for a refused address.
+   * Set that one flag false — URL_UNBLOCK_ENABLED defaults true, provider defaults zenrows — and the
+   * gate vanishes. Measured on unfixed main in exactly that config: `http://localhost:8080/admin` was
+   * handed to the vendor TWICE (http and js_render). One env flag is not a security boundary.
+   *
+   * Two INDEPENDENT refusals, neither load-bearing alone:
+   *   (a) evidence already held — a direct attempt was refused by the fence, so the address is known bad
+   *       and no lookup is needed; and
+   *   (b) a direct check that does not depend on attempt bookkeeping at all, covering the case where the
+   *       direct attempts never ran (the deadline can break that loop before the first one) and there is
+   *       no evidence to read.
+   * A test kills each separately.
+   */
+  const fenceRefusedAddress = attempts.some(
+    (attempt) => attempt?.__url === urlText
+      && String(attempt?.error_code || '').trim().toLowerCase().startsWith('pivota_ssrf'),
+  );
+
+  let shouldRunVendor =
+    !fenceRefusedAddress &&
     URL_UNBLOCK_ENABLED &&
     URL_UNBLOCK_PROVIDER === 'zenrows' &&
     (!URL_UNBLOCK_ONLY_ON_BLOCKED || shouldTryUnblockVendor(attempts));
+
+  // The exact string the vendor will be sent. Set by the precheck to the NORMALISED href, so the URL we
+  // judged is the URL we transmit — see below.
+  let vendorUrl = urlText;
+
+  if (shouldRunVendor) {
+    // Only here, so the happy path never pays for a lookup: this runs only when a vendor call — far more
+    // expensive than a resolve — is about to happen anyway. Measured: a 200 on the first direct attempt
+    // performs zero lookups through this path.
+    //
+    // BOUNDED, because a bare `await` here sits OUTSIDE the deadline this function was given: measured,
+    // a stalling resolver returned at 4006 ms against a declared 900 ms budget, and the deadline is only
+    // consulted on the next statement. It also holds a libuv threadpool slot. A lookup that outlives the
+    // budget is treated as "not proven bad" rather than "bad" — same direction as `unresolved` below,
+    // and the direct attempts have already resolved this name anyway.
+    // Wrapped, because an unexpected throw would otherwise escape fetchProductHtmlWithUnblockChain
+    // entirely; a failure to CHECK must never become a failure to serve, but it must not open the door
+    // either, so it fails closed. UNTESTED AND UNPINNED, deliberately stated: nothing reachable makes
+    // this reject today (the only throwing shape is the wrong-arity `createPublicHostCheck({lookup})`,
+    // and the single call site passes no args), and the lookup reference is captured at module load, so
+    // a spy cannot reach it without fighting the require order. It is defence against a future edit, not
+    // a guard with coverage — do not read the catch as evidence of a tested path.
+    const remainingMs = Math.max(0, totalDeadline - Date.now());
+    let vendorHostCheck;
+    try {
+      vendorHostCheck = await Promise.race([
+        checkPublicProductHost(urlText),
+        new Promise((resolve) => setTimeout(
+          () => resolve({ ok: true, code: null, reason: 'unresolved', url: null }),
+          Math.max(150, Math.min(1500, remainingMs)),
+        )),
+      ]);
+    } catch {
+      vendorHostCheck = { ok: false, code: 'pivota_ssrf_refused', reason: 'address_refused', url: null };
+    }
+    if (!vendorHostCheck.ok) {
+      shouldRunVendor = false;
+      attempts.push({
+        strategy: 'vendor_precheck',
+        provider: 'zenrows',
+        error_code: String(vendorHostCheck.code || 'pivota_ssrf_refused').trim().toLowerCase(),
+      });
+    } else if (vendorHostCheck.url) {
+      /*
+       * SEND THE STRING WE VALIDATED, not the one the caller typed. Our own fetches already go out
+       * normalised (`parsePublicHttpUrl(...).toString()` inside the pinned transport); the vendor was
+       * getting the raw input, and the two can disagree about the HOST. Measured:
+       * `http://cosrx.com\@127.0.0.1/` is host `cosrx.com` to Node's WHATWG parser (backslash is a path
+       * delimiter for special schemes) and host `127.0.0.1` to Python's urllib. We do not control the
+       * vendor's parser, so handing it anything other than the form we judged is validating one string
+       * and transmitting another.
+       */
+      vendorUrl = vendorHostCheck.url;
+    }
+  }
 
   if (shouldRunVendor && Date.now() < totalDeadline) {
     const vendorPlans = [
@@ -16538,7 +16629,7 @@ async function fetchProductHtmlWithUnblockChain({
       const out = await runSingleUrlFetchAttempt({
         strategy: plan.strategy,
         provider: plan.provider,
-        productUrl: urlText,
+        productUrl: vendorUrl,
         timeoutMs: Math.max(700, Math.min(URL_UNBLOCK_TIMEOUT_MS, totalDeadline - Date.now())),
         jsRender: plan.jsRender,
       });
