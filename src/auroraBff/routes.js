@@ -14,7 +14,14 @@ const path = require('path');
 const { z } = require('zod');
 const db = require('../db');
 const photoBackendClient = require('../photoBackendClient');
-const runDbQuery = (...args) => db.query(...args);
+// Callers that pass a `timeoutMs` get the pool-safe path: a checkout bounded by
+// the caller's own budget, and a connection destroyed rather than returned when
+// its statement outlives that budget. Everything else keeps `db.query`.
+const runDbQuery = (sql, params, options) => (
+  Number(options?.timeoutMs) > 0
+    ? db.queryWithBudget(sql, params, options)
+    : db.query(sql, params)
+);
 const {
   EXTERNAL_SEED_MERCHANT_ID,
   buildExternalSeedProduct,
@@ -9793,6 +9800,23 @@ function rankLocalExternalSeedSupportCandidatesForRole(candidates = [], query = 
     }));
 }
 
+// Headroom for the outer stage race so the db layer's own budget — the one that
+// hands the pool slot back — expires first on the real transport.
+const LOCAL_EXTERNAL_SEED_STAGE_TIMEOUT_GRACE_MS = 250;
+
+// `pool_acquire` means the stage never ran: it sat in the checkout queue until
+// its budget expired. That is a pool-capacity signal and reads nothing like
+// `query`, which means the statement itself was too slow. Before this split both
+// arrived as a bare `timeout: true`, and the acne-recall starvation of
+// 2026-09-08 was misread as a slow query for exactly that reason.
+function classifyLocalExternalSeedStageTimeoutCause(error) {
+  const code = String(error?.code || '').trim();
+  if (code === db.DB_BUDGET_ACQUIRE_TIMEOUT) return 'pool_acquire';
+  if (code === db.DB_BUDGET_QUERY_TIMEOUT) return 'query';
+  if (code === 'LOCAL_EXTERNAL_SEED_SUPPORT_QUERY_TIMEOUT') return 'stage_budget';
+  return '';
+}
+
 async function searchLocalExternalSeedProductsViaSupportStages({
   runQuery,
   q,
@@ -9904,6 +9928,7 @@ async function searchLocalExternalSeedProductsViaSupportStages({
         ...(stagedRows.length > safeLimit ? { pre_rank_row_count: stagedRows.length } : {}),
         sequential_query: true,
         timeout: true,
+        timeout_cause: 'stage_budget',
       });
       return {
         rows: stagedRows,
@@ -9915,14 +9940,20 @@ async function searchLocalExternalSeedProductsViaSupportStages({
     }
     let res = null;
     try {
+      // The budget goes to the db layer so an expired stage releases its pool
+      // slot instead of abandoning a query that keeps it. `withTimeout` stays as
+      // a backstop for injected `queryFn`s (tests, callers with their own
+      // transport), which do not honour `timeoutMs`; the grace keeps the inner,
+      // slot-releasing path the one that normally fires.
       // eslint-disable-next-line no-await-in-loop
       res = await withTimeout(
-        Promise.resolve().then(() => runQuery(sql, params)),
-        remainingMs,
+        Promise.resolve().then(() => runQuery(sql, params, { timeoutMs: remainingMs })),
+        remainingMs + LOCAL_EXTERNAL_SEED_STAGE_TIMEOUT_GRACE_MS,
         'LOCAL_EXTERNAL_SEED_SUPPORT_QUERY_TIMEOUT',
       );
     } catch (error) {
-      const timedOut = error?.code === 'LOCAL_EXTERNAL_SEED_SUPPORT_QUERY_TIMEOUT';
+      const timeoutCause = classifyLocalExternalSeedStageTimeoutCause(error);
+      const timedOut = Boolean(timeoutCause);
       stageDebug.push({
         stage: definition.stage,
         row_count: 0,
@@ -9933,6 +9964,7 @@ async function searchLocalExternalSeedProductsViaSupportStages({
         ...(stagedRows.length > safeLimit ? { pre_rank_row_count: stagedRows.length } : {}),
         sequential_query: true,
         timeout: timedOut,
+        ...(timeoutCause ? { timeout_cause: timeoutCause } : {}),
       });
       if (timedOut) {
         return {

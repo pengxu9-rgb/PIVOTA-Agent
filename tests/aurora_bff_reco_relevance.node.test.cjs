@@ -18290,3 +18290,63 @@ staleFallbackPlannerTest('/v1/analysis/skin -> /v1/session/bootstrap keeps lates
     else process.env.AURORA_BFF_RETENTION_DAYS = prevRetention;
   }
 });
+
+test('__internal: local external seed stage hands its remaining budget to the db layer', async () => {
+  const { __internal } = loadRoutesFresh();
+  const observedOptions = [];
+
+  const out = await __internal.searchLocalExternalSeedProducts({
+    query: 'salicylic acid serum clogged pores',
+    limit: 6,
+    role: {
+      role_id: 'acne_clogged_pore_treatment',
+      rank: 11,
+      preferred_step: 'treatment',
+      query_terms: ['salicylic acid treatment'],
+      fit_keywords: ['clogged', 'pore'],
+      product_type_hypotheses: ['serum'],
+    },
+    preferredStep: 'treatment',
+    timeoutMs: 4000,
+    queryFn: async (sql, params, options) => {
+      observedOptions.push(options);
+      return { rows: [] };
+    },
+  });
+
+  assert.ok(out);
+  assert.ok(observedOptions.length > 0);
+  // Without this the db layer cannot bound the checkout, and an expired stage
+  // goes back to abandoning a query that keeps its pool slot.
+  assert.ok(Number(observedOptions[0]?.timeoutMs) > 0);
+});
+
+test('__internal: a starved checkout is recorded as pool_acquire, not as a slow query', async () => {
+  const { __internal } = loadRoutesFresh();
+
+  const out = await __internal.searchLocalExternalSeedProducts({
+    query: 'salicylic acid serum clogged pores',
+    limit: 6,
+    role: {
+      role_id: 'acne_clogged_pore_treatment',
+      rank: 11,
+      preferred_step: 'treatment',
+      query_terms: ['salicylic acid treatment'],
+      fit_keywords: ['clogged', 'pore'],
+      product_type_hypotheses: ['serum'],
+    },
+    preferredStep: 'treatment',
+    timeoutMs: 4000,
+    queryFn: async () => {
+      const err = new Error('Timed out waiting for a pooled connection');
+      err.code = 'DB_BUDGET_ACQUIRE_TIMEOUT';
+      throw err;
+    },
+  });
+
+  const stage = out.local_external_seed_stage_debug[0];
+  assert.equal(stage?.timeout, true);
+  // The distinction the 2026-09-08 fallback lacked: this stage never ran, so the
+  // remedy is pool capacity, not a faster query.
+  assert.equal(stage?.timeout_cause, 'pool_acquire');
+});

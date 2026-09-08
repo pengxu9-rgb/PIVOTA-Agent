@@ -129,7 +129,16 @@ function getPool() {
     const useSsl = shouldUseSsl(databaseUrl);
     const nextPool = new Pool({
       connectionString: databaseUrl,
-      max: Number(process.env.DB_POOL_MAX || 5),
+      // A single chat turn fans out several recall queries in parallel (the
+      // beauty lane runs primary + support roles per round), so a pool smaller
+      // than that fan-out starves by construction: one query answers and the
+      // rest sit in the checkout queue until their budget expires. That is what
+      // emptied the acne recall on 2026-09-08, against a pool of 2.
+      //
+      // Sizing is bounded by Cloud SQL `max_connections` (300 on pivota-pg)
+      // across every service, so raising this is a budget decision, not a free
+      // one: worst case is `max` x the service's max instance count.
+      max: Number(process.env.DB_POOL_MAX || 12),
       idleTimeoutMillis: Number(process.env.DB_IDLE_TIMEOUT_MS || 30000),
       connectionTimeoutMillis: Number(process.env.DB_CONN_TIMEOUT_MS || 10000),
       // Backstop so NO query in this process can hang forever.
@@ -210,6 +219,150 @@ function normalizeLocalTimeoutMs(value) {
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || parsed <= 0) return null;
   return Math.max(1, Math.min(60_000, Math.trunc(parsed)));
+}
+
+const DB_BUDGET_ACQUIRE_TIMEOUT = 'DB_BUDGET_ACQUIRE_TIMEOUT';
+const DB_BUDGET_QUERY_TIMEOUT = 'DB_BUDGET_QUERY_TIMEOUT';
+
+function buildBudgetTimeoutError(code, { budgetMs, waitedMs }) {
+  const err = new Error(
+    code === DB_BUDGET_ACQUIRE_TIMEOUT
+      ? `Timed out after ${waitedMs}ms waiting for a pooled connection (budget ${budgetMs}ms)`
+      : `Query exceeded its ${budgetMs}ms budget after ${waitedMs}ms`,
+  );
+  err.code = code;
+  err.budget_ms = budgetMs;
+  err.waited_ms = waitedMs;
+  return err;
+}
+
+function raceAgainstBudget(promise, timeoutMs, code, { budgetMs, startedAt }) {
+  let timer = null;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => {
+      reject(buildBudgetTimeoutError(code, {
+        budgetMs,
+        waitedMs: Math.max(0, Date.now() - startedAt),
+      }));
+    }, timeoutMs);
+  });
+  return Promise.race([promise, timeout]).finally(() => {
+    if (timer) clearTimeout(timer);
+  });
+}
+
+// A pool-safe `query` for callers that hold a wall-clock budget (a request
+// deadline, a recall stage) and would otherwise abandon the promise when it
+// expires.
+//
+// Abandoning `pool.query` is what starves the pool, in two ways that both
+// outlive the caller:
+//
+//   1. A checkout that has not been granted yet CANNOT be cancelled — pg hands
+//      you the client whenever one frees up, and then runs the query. Dropping
+//      the promise does not withdraw you from the queue; it just means nobody
+//      releases what you are eventually given.
+//   2. A statement already in flight keeps its connection until it finishes or
+//      `statement_timeout` (30s) fires — an eternity behind a caller whose own
+//      budget was 5s.
+//
+// Both were live on the aurora beauty recall lane (2026-09-08): three parallel
+// seed queries per round against a pool of 2, where one returned in ~60ms and
+// the rest were cut at the identical millisecond, never having run at all.
+//
+// So: bound the checkout, hand back the slot the instant a late checkout lands,
+// and destroy — not release — a connection whose statement is still running.
+// The distinct error codes matter as much as the fix; `pool starvation` and
+// `slow query` need different remedies and used to look identical from outside.
+async function queryWithBudget(text, params, options = {}) {
+  const budgetMs = normalizeLocalTimeoutMs(options.timeoutMs);
+  if (!budgetMs) return query(text, params);
+
+  const p = getPool();
+  if (!p) throw buildNoDatabaseError();
+
+  const startedAt = Date.now();
+  const acquire = p.connect();
+  let client = null;
+  try {
+    client = await raceAgainstBudget(acquire, budgetMs, DB_BUDGET_ACQUIRE_TIMEOUT, {
+      budgetMs,
+      startedAt,
+    });
+  } catch (err) {
+    if (err?.code === DB_BUDGET_ACQUIRE_TIMEOUT) {
+      // We are still in pg's checkout queue and cannot leave it. Give the slot
+      // straight back to the next waiter rather than spending it on a query
+      // whose result nobody is awaiting.
+      acquire.then(
+        (lateClient) => {
+          try {
+            lateClient.release();
+          } catch {
+            // pool already torn down; nothing to hand back
+          }
+        },
+        () => {},
+      );
+    }
+    throw err;
+  }
+
+  const remainingMs = budgetMs - (Date.now() - startedAt);
+  if (remainingMs <= 0) {
+    try {
+      client.release();
+    } catch {
+      // ignore release failures
+    }
+    throw buildBudgetTimeoutError(DB_BUDGET_QUERY_TIMEOUT, {
+      budgetMs,
+      waitedMs: Math.max(0, Date.now() - startedAt),
+    });
+  }
+
+  let queryPromise = null;
+  let destroyed = false;
+  try {
+    // Inside the try: `client.query` can throw synchronously (a malformed
+    // query), and that path must still hand the connection back.
+    queryPromise = client.query(text, params);
+    return await raceAgainstBudget(
+      queryPromise,
+      remainingMs,
+      DB_BUDGET_QUERY_TIMEOUT,
+      { budgetMs, startedAt },
+    );
+  } catch (err) {
+    const budgetExpired = err?.code === DB_BUDGET_QUERY_TIMEOUT;
+    if (queryPromise && (budgetExpired || isTransientDbError(err))) {
+      // The statement is still running server-side. Returning this connection
+      // to the pool would hand the next caller a client that cannot answer
+      // until `statement_timeout`; destroying it frees the slot now.
+      // `release(true)` attaches pg-pool's own error listener before tearing
+      // the client down, so the doomed statement cannot raise an unhandled
+      // 'error' event on the way out. Deliberately NOT `resetPool`: one slow
+      // statement says nothing about the other connections, and tearing the
+      // whole pool down from a budgeted read path would turn a blip into an
+      // outage.
+      queryPromise.catch(() => {});
+      destroyed = true;
+      try {
+        client.release(true);
+      } catch {
+        // ignore release failures on broken clients
+      }
+    }
+    throw err;
+  } finally {
+    if (!destroyed) {
+      try {
+        client.release();
+      } catch {
+        // ignore release failures
+      }
+    }
+  }
 }
 
 async function queryWithStatementTimeout(text, params, options = {}) {
@@ -356,9 +509,12 @@ async function closePool() {
 }
 
 module.exports = {
+  DB_BUDGET_ACQUIRE_TIMEOUT,
+  DB_BUDGET_QUERY_TIMEOUT,
   closePool,
   getPool,
   query,
+  queryWithBudget,
   queryWithStatementTimeout,
   withClient,
 };
