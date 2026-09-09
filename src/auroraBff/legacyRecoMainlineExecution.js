@@ -7,6 +7,37 @@ function isPlainObjectValue(value) {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 
+// Merge the warnings/missing_info of a DECLINED llm answer onto whatever replaced it.
+// Deduped case-insensitively and bounded, appended after the replacement's own notes so the
+// replacement still leads. Returns the input untouched when there was no decline, so every
+// path that does not involve one is byte-identical.
+function carryRecoDeclineNotes(structured, { declined = false, declinedAnswer = null } = {}) {
+  if (!declined || !isPlainObjectValue(structured) || !isPlainObjectValue(declinedAnswer)) return structured;
+  if (structured === declinedAnswer) return structured;
+  const merge = (base, extra, cap) => {
+    const seen = new Set();
+    const out = [];
+    for (const value of [...(Array.isArray(base) ? base : []), ...(Array.isArray(extra) ? extra : [])]) {
+      const text = typeof value === 'string' ? value.trim() : '';
+      if (!text) continue;
+      const key = text.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(text);
+      if (out.length >= cap) break;
+    }
+    return out;
+  };
+  const warnings = merge(structured.warnings, declinedAnswer.warnings, 8);
+  const missingInfo = merge(structured.missing_info, declinedAnswer.missing_info, 8);
+  if (!warnings.length && !missingInfo.length) return structured;
+  return {
+    ...structured,
+    ...(warnings.length ? { warnings } : {}),
+    ...(missingInfo.length ? { missing_info: missingInfo } : {}),
+  };
+}
+
 function isDirectRecoEntryType(entryType) {
   const token = String(entryType || '').trim().toLowerCase();
   return token === 'direct' || token === 'agent_tool';
@@ -563,7 +594,7 @@ function createLegacyRecoMainlineExecutionRuntime(deps = {}) {
         catalogStructured &&
         Array.isArray(catalogStructured.recommendations) &&
         catalogStructured.recommendations.length > 0;
-      structured = catalogRecoveredFromLlmGap
+      const structuredBeforeDeclineCarry = catalogRecoveredFromLlmGap
         ? catalogStructured
         : llmStructuredRecoEmpty
           ? (
@@ -574,6 +605,20 @@ function createLegacyRecoMainlineExecutionRuntime(deps = {}) {
           : llmStructured ||
             catalogStructured ||
             catalogTransientFallbackStructured;
+      // CARRY THE DECLINE. When the model returns a well-formed answer with NO
+      // recommendations, that is a decision, and its warnings/missing_info are the only
+      // account of WHY — "makeup items such as bronzers are outside the skincare domain
+      // boundary" is the lane's own words. Replacing the answer wholesale with the catalog
+      // list threw that away, so the better the prompt got at declining, the more often a
+      // buyer received an unexplained off-category shortlist instead of a reasoned refusal.
+      //
+      // Only a DECLINE carries: llmStructuredRecoEmpty means the model answered in schema
+      // with an empty list. A leg that threw or returned garbage has nothing to say, and
+      // carrying its (absent) warnings would be inventing an explanation.
+      structured = carryRecoDeclineNotes(structuredBeforeDeclineCarry, {
+        declined: Boolean(llmStructuredRecoEmpty) && isPlainObjectValue(llmStructured),
+        declinedAnswer: llmStructured,
+      });
       structuredSource = catalogRecoveredFromLlmGap
         ? 'catalog_grounded'
         : llmStructuredRecoEmpty
@@ -669,6 +714,7 @@ function createLegacyRecoMainlineExecutionRuntime(deps = {}) {
 }
 
 module.exports = {
+  carryRecoDeclineNotes,
   createLegacyRecoMainlineExecutionRuntime,
   applyStrictConformingTopUp,
   isDirectRecoEntryType,

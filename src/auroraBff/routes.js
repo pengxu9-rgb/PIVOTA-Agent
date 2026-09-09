@@ -41743,6 +41743,14 @@ function hasRenderableCards(cards) {
 function classifyRecoUpstreamFailureCode(err) {
   const code = String((err && err.code) || '').trim().toUpperCase();
   const message = String((err && err.message) || '').trim().toLowerCase();
+  // AN HTTP REJECTION IS A CLASSIFICATION, NOT A BLANK. postWithRetry throws
+  // `Upstream status <n>` with err.status set and no err.code, and every branch below keys
+  // on code/message — so until now every HTTP answer the decision service gave us returned
+  // '' from here. That '' is what made the 2026-09-09 incident invisible: the service was
+  // rejecting an unregistered PROMPT_TEMPLATE_ID with 400 on every call, and the lane
+  // recorded it as "the model returned nothing".
+  const status = Number(err && err.status);
+  if (Number.isFinite(status) && status >= 400) return `HTTP_${Math.trunc(status)}`;
   if (code === 'ECONNRESET' || message.includes('connection reset')) return 'ECONNRESET';
   if (code === 'EPIPE' || message.includes('broken pipe')) return 'EPIPE';
   if (code === 'ETIMEDOUT' || code === 'ECONNABORTED' || message.includes('timeout')) return 'ETIMEDOUT';
@@ -41753,6 +41761,10 @@ function classifyRecoUpstreamFailureCode(err) {
 
 function isTransientRecoUpstreamFailureCode(code) {
   const token = String(code || '').trim().toUpperCase();
+  // 5xx is the upstream having a bad moment; 4xx is a request WE built wrong and will keep
+  // building wrong until someone changes it. Only the former is transient.
+  const httpStatus = /^HTTP_(\d{3})$/.exec(token);
+  if (httpStatus) return Number(httpStatus[1]) >= 500;
   return (
     token === 'ECONNRESET' ||
     token === 'EPIPE' ||
@@ -84566,6 +84578,9 @@ async function runRecoLlmPrimary({
   let llmStructuredSource = null;
   let initialLlmOutcome = promptContract.ok ? 'not_invoked' : 'prompt_contract_mismatch';
   let llmInvoked = false;
+  // Set only when the upstream call actually threw. Kept separate from llmFailureClass,
+  // which feeds the contract/status derivation and is deliberately left alone here.
+  let llmUpstreamError = null;
 
   if (!promptContract.ok) {
     llmLatencyMs = 0;
@@ -84602,6 +84617,11 @@ async function runRecoLlmPrimary({
       llmLatencyMs = Date.now() - llmStartedAtMs;
     } catch (err) {
       llmLatencyMs = Date.now() - llmStartedAtMs;
+      llmUpstreamError = {
+        code: classifyRecoUpstreamFailureCode(err) || null,
+        status: Number.isFinite(Number(err && err.status)) ? Math.trunc(Number(err.status)) : null,
+        not_configured: Boolean(err && err.code === 'AURORA_NOT_CONFIGURED'),
+      };
       upstreamFailureCode = classifyRecoUpstreamFailureCode(err);
       initialLlmOutcome = isTransientRecoUpstreamFailureCode(upstreamFailureCode) ? 'upstream_timeout' : 'upstream_dependency_failure';
       if (isTransientRecoUpstreamFailureCode(upstreamFailureCode)) {
@@ -84656,18 +84676,40 @@ async function runRecoLlmPrimary({
     } else if (!llmFailureClass && llmStructured) {
       initialLlmOutcome = 'success';
       recordAuroraRecoLlmCall({ stage: 'main', outcome: 'success' });
-    } else if (!llmFailureClass && llmInvoked) {
+    } else if (!llmFailureClass && llmInvoked && !llmUpstreamError) {
       initialLlmOutcome = 'empty_structured';
       llmFailureClass = 'empty_structured';
       recordAuroraRecoLlmCall({ stage: 'main', outcome: 'empty_structured' });
+    } else if (!llmFailureClass && llmUpstreamError) {
+      // The call THREW. It did not answer nothing — it never answered. Keep the outcome the
+      // catch already set (upstream_timeout / upstream_dependency_failure) rather than
+      // relabelling it as an empty model answer, and count it as what it was.
+      recordAuroraRecoLlmCall({ stage: 'main', outcome: initialLlmOutcome });
     }
   }
 
+  // WHAT HAPPENED TO THE LLM LEG, as a fact rather than an inference. Every other field here
+  // describes the ANSWER; none of them said whether the model was reached at all, so a dead
+  // leg and a model that declined were the same record — and the recovery path below strips
+  // `error_class`, which was the only surviving hint. This one is not stripped.
+  const llmLegOutcome = !promptContract.ok
+    ? 'prompt_contract_mismatch'
+    : !llmInvoked
+      ? 'not_invoked'
+      : llmUpstreamError
+        ? (llmUpstreamError.not_configured ? 'not_configured' : (llmUpstreamError.code || 'upstream_error').toLowerCase())
+        : (llmFailureClass || 'ok');
   const llmTrace = {
     ...llmTraceSeed,
     latency_ms: llmLatencyMs,
     cache_hit: false,
     prompt_contract_ok: promptContract.ok,
+    llm_leg: {
+      invoked: Boolean(llmInvoked),
+      outcome: llmLegOutcome,
+      upstream_status: llmUpstreamError ? llmUpstreamError.status : null,
+      latency_ms: llmLatencyMs,
+    },
     ...(promptContract.ok ? {} : { prompt_contract_issues: promptContract.issues.slice(0, 6) }),
     ...(llmFailureClass ? { error_class: llmFailureClass } : {}),
   };
