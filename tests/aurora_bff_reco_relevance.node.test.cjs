@@ -18493,3 +18493,106 @@ test('__internal: the ledger keeps a snapshot, so a still-running call cannot re
     'a recorded stage must not be mutated by the call that outlived it',
   );
 });
+
+const ACNE_MISSING_PRIMARY_TARGET_CONTEXT = {
+  framework_id: 'recofw_test_acne_primary_missing',
+  primary_role_id: 'acne_clogged_pore_treatment',
+  framework_roles: [
+    {
+      role_id: 'acne_clogged_pore_treatment',
+      rank: 1,
+      preferred_step: 'treatment',
+      alternate_steps: ['serum'],
+      label: 'Acne / clogged pore treatment',
+      query_terms: ['salicylic acid treatment', 'salicylic acid serum clogged pores'],
+      fit_keywords: ['salicylic', 'bha', 'clogged', 'pore', 'acne', 'blemish'],
+    },
+    {
+      role_id: 'lightweight_moisturizer',
+      rank: 2,
+      preferred_step: 'moisturizer',
+      label: 'Lightweight moisturizer',
+      query_terms: ['lightweight moisturizer', 'gel cream', 'oil free moisturizer'],
+      fit_keywords: ['lightweight moisturizer', 'gel cream', 'breathable hydration', 'oil free'],
+    },
+    {
+      role_id: 'daily_sunscreen',
+      rank: 3,
+      preferred_step: 'sunscreen',
+      label: 'Daily sunscreen',
+      query_terms: ['daily sunscreen', 'lightweight sunscreen oily skin'],
+      fit_keywords: ['spf', 'broad spectrum', 'uv filters', 'sunscreen'],
+    },
+  ],
+};
+
+const ACNE_MISSING_PRIMARY_MOISTURIZER_ROW = {
+  product_id: 'ext_support_moist_1',
+  merchant_id: 'external_seed',
+  brand: 'Good Molecules',
+  name: 'Oil-Free Gel Cream Moisturizer',
+  display_name: 'Oil-Free Gel Cream Moisturizer',
+  category: 'moisturizer',
+  product_type: 'moisturizer',
+  retrieval_source: 'external_seed',
+  retrieval_query: 'lightweight moisturizer oily skin',
+  retrieval_step: 'moisturizer',
+  retrieval_role_id: 'lightweight_moisturizer',
+  benefit_tags: ['lightweight', 'oil free'],
+  short_description: 'A lightweight oil-free gel cream that gives breathable hydration.',
+};
+
+const ACNE_MISSING_PRIMARY_SUNSCREEN_ROW = {
+  product_id: 'ext_support_spf_1',
+  merchant_id: 'external_seed',
+  brand: 'Beauty of Joseon',
+  name: 'Relief Sun Broad Spectrum SPF 50',
+  display_name: 'Relief Sun Broad Spectrum SPF 50',
+  category: 'sunscreen',
+  product_type: 'sunscreen',
+  retrieval_source: 'external_seed',
+  retrieval_query: 'lightweight sunscreen oily skin',
+  retrieval_step: 'sunscreen',
+  retrieval_role_id: 'daily_sunscreen',
+  benefit_tags: ['spf', 'broad spectrum'],
+  short_description: 'A lightweight broad spectrum SPF 50 sunscreen for daily use.',
+};
+
+test('__internal: two filled support roles surface as a partial routine when the primary is missing', async () => {
+  const { __internal } = loadRoutesFresh();
+  const state = __internal.finalizeConcernFrameworkCandidatePools(
+    [ACNE_MISSING_PRIMARY_MOISTURIZER_ROW, ACNE_MISSING_PRIMARY_SUNSCREEN_ROW],
+    { targetContext: ACNE_MISSING_PRIMARY_TARGET_CONTEXT },
+  );
+
+  // The primary really is missing and must keep saying so — this is a partial
+  // answer, not a routine that happens to lack its lead product.
+  assert.equal(state.primary_role_matched, false);
+  assert.equal(state.primary_missing_support_routine_surfaced, true);
+  assert.equal(state.selected_candidate_count, 2);
+  assert.deepEqual(
+    state.selected_recommendations.map((item) => item.matched_role_id).sort(),
+    ['daily_sunscreen', 'lightweight_moisturizer'],
+  );
+  // Nothing may be passed off as filling the primary slot.
+  assert.equal(
+    state.selected_recommendations.some((item) => item.matched_role_id === 'acne_clogged_pore_treatment'),
+    false,
+  );
+  assert.equal(state.primary_recommendation_id ?? null, null);
+});
+
+test('__internal: a single filled support role still surfaces nothing when the primary is missing', async () => {
+  const { __internal } = loadRoutesFresh();
+  const state = __internal.finalizeConcernFrameworkCandidatePools(
+    [ACNE_MISSING_PRIMARY_MOISTURIZER_ROW],
+    { targetContext: ACNE_MISSING_PRIMARY_TARGET_CONTEXT },
+  );
+
+  // One orphan support product answers a concern question worse than admitting
+  // we could not confirm options. Only a routine earns the exception.
+  assert.equal(state.primary_role_matched, false);
+  assert.equal(state.primary_missing_support_routine_surfaced, false);
+  assert.equal(state.selected_candidate_count, 0);
+  assert.equal(state.selected_recommendations.length, 0);
+});

@@ -1548,6 +1548,7 @@ const {
   buildRecoPayloadFromBeautyMainlineHandoff,
   classifyBeautyMainlineHandoffFallback,
   buildBeautyMainlineHandoffFallbackEnvelope,
+  buildConfidenceNoticeCardPayload,
   looksLikeRecommendationRequest,
   runConcernSemanticPlanner,
   buildConcernTargetContextFromSemanticPlan,
@@ -23895,6 +23896,8 @@ function buildBeautyMainlineLocalCandidatePoolSummary({
     primary_role_matched: candidateState?.primary_role_matched === true,
     primary_missing_authoritative_support_selected:
       candidateState?.primary_missing_authoritative_support_selected === true,
+    primary_missing_support_routine_surfaced:
+      candidateState?.primary_missing_support_routine_surfaced === true,
     viable_pool_strength: String(candidateState?.viable_pool_strength || '').trim().toLowerCase() || 'empty',
     weak_viable_pool: candidateState?.weak_viable_pool === true,
     candidate_drop_stage: pickFirstTrimmed(candidateState?.candidate_drop_stage) || null,
@@ -28070,12 +28073,36 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
 
   const primaryRoleMatched = selected.some((item) => String(item.matched_role_id || '').trim() === primaryRoleId);
   const primaryRecommendation = selected.find((item) => String(item.matched_role_id || '').trim() === primaryRoleId) || null;
+  // With no primary pick, the default is still to surface nothing: one orphan
+  // support product answers a concern question worse than saying we could not
+  // confirm options, which is why that rule exists.
+  //
+  // A routine is the exception. When two or more DISTINCT support roles are
+  // filled, what is on the table is a coherent partial answer -- "no acne
+  // treatment confirmed, but here is the moisturiser and the sunscreen to pair
+  // with one" -- and discarding it loses real, already-scored candidates. On
+  // 2026-09-08 the acne turn threw away 10 viable rows across two support roles
+  // (moisturiser 6 @ 0.82, sunscreen 4 @ 0.86) to return nothing at all.
+  //
+  // The caller must not read this as a full routine: `primary_role_matched`
+  // stays false and `primary_missing_support_routine_surfaced` says the primary
+  // step is the one that is missing.
+  const supportOnlySelected = primaryRoleMatched
+    ? []
+    : selected.filter((item) => {
+      const roleId = String(item?.matched_role_id || '').trim();
+      return Boolean(roleId && roleId !== primaryRoleId);
+    });
+  const distinctSupportRoleCount = new Set(
+    supportOnlySelected.map((item) => String(item?.matched_role_id || '').trim()),
+  ).size;
+  const primaryMissingSupportRoutineSurfaced = !primaryRoleMatched && distinctSupportRoleCount >= 2;
   const surfacedRecommendations = primaryRoleMatched
     ? pruneConcernFrameworkExplicitNoAdditionalActiveSameRoleRows(selected, {
         targetContext,
         primaryRole,
       })
-    : [];
+    : (primaryMissingSupportRoutineSurfaced ? supportOnlySelected : []);
   const primarySelectedRecommendations = surfacedRecommendations.filter((item) => String(item.matched_role_id || '').trim() === primaryRoleId);
   const comparisonFillCount = surfacedRecommendations.filter((item) => item?.comparison_fill === true).length;
   const routineSupportFillCount = surfacedRecommendations.filter((item) => {
@@ -28107,6 +28134,7 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
     primary_role_id: primaryRoleId || null,
     primary_role_matched: primaryRoleMatched,
     primary_missing_authoritative_support_selected: primaryMissingButAuthoritativeSupportSelected,
+    primary_missing_support_routine_surfaced: primaryMissingSupportRoutineSurfaced,
     best_available_role_id: pickFirstTrimmed(
       bestAvailableRecommendation?.matched_role_id,
       bestAvailableRecommendation?.matchedRoleId,
@@ -38859,6 +38887,10 @@ function buildConfidenceNoticeCardPayload({
       lang === 'CN'
         ? '检测到可能的医疗风险信号，已停止商品推荐。'
         : 'Potential medical risk signals detected, so product recommendations are blocked.',
+    primary_step_unconfirmed:
+      lang === 'CN'
+        ? '这轮没有找到可信的主步骤商品，以下只是可以搭配的辅助步骤。'
+        : 'I could not confirm a product for the main step of this routine, so these are the supporting steps only — pair them with a treatment for your main concern.',
     timeout_degraded:
       lang === 'CN'
         ? '这轮商品匹配没有在时限内完成。请稍后重试，或补充当前护肤流程/想找的步骤后我再继续缩窄。'

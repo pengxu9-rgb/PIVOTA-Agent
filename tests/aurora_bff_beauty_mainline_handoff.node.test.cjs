@@ -6801,3 +6801,133 @@ test('beauty chat mainline entry lets request profile patch override null stored
   assert.deepEqual(observed.rewriteProfile?.goals, ['sun protection', 'lightweight finish']);
   assert.deepEqual(observed.rewriteProfile?.travel_plan, { destination: 'hot humid' });
 });
+
+test('beauty chat mainline entry marks a support-only routine as missing its primary step', async () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const observed = {
+      payloadSourceMode: null,
+      payloadTargetContext: null,
+    };
+    const runtime = createBeautyChatMainlineEntryRuntime({
+      RECO_CATALOG_GROUNDED_ENABLED: true,
+      RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS: 1000,
+      resolveRecommendationTargetContext,
+      summarizeProfileForContext: (profile) => profile,
+      mergeIngredientRecoContextValue: (left, right) => ({ ...(left || {}), ...(right || {}) }),
+      appendLatestRecoContextToSessionPatch: (sessionPatch, recoContext) => {
+        sessionPatch.latest_reco_context = recoContext;
+      },
+      extractRecoFinalSelectionContract: (value) =>
+        value?.metadata?.search_stage_ledger?.final_selection
+        || value?.search_stage_ledger?.final_selection
+        || null,
+      buildRouteAwareAssistantText: () => 'framework handoff response',
+      makeAssistantMessage: (content) => ({ role: 'assistant', format: 'text', content }),
+      buildEnvelope: (_ctx, envelope) => envelope,
+      makeEvent: (_ctx, kind, data) => ({ kind, data }),
+      applyRecoContractToRecoRequestedEvents: (events) => ({ events }),
+      buildRecoRequestedEventData: ({ payload, source }) => ({ payload, source }),
+      normalizeRecoSourceDetail: (value) => value,
+      stateChangeAllowed: () => false,
+      handoffRecoToBeautyMainlineSearch: (args) =>
+        __internal.handoffRecoToBeautyMainlineSearch({
+          ...args,
+          searchFn: async () => ({
+            ok: true,
+            products: [
+              {
+                product_id: 'framework_oily_1',
+                merchant_id: 'external_seed',
+                title: 'Oil Control Serum',
+                brand: 'Pivota',
+                category: 'Treatment',
+                product_type: 'treatment',
+                candidate_step: 'treatment',
+                matched_role_id: 'oil_control_treatment',
+              },
+            ],
+            decision_owner: 'shopping_agent_beauty_mainline',
+            semantic_owner: 'shopping_agent_beauty_mainline',
+            query_source: 'agent_products_search',
+            metadata: {
+              contract_bridge: {
+                resolved_contract: 'agent_v1_search_beauty_mainline',
+              },
+              source_breakdown: {
+                source_tier_counts: { fresh_external: 1 },
+              },
+              candidate_pool_summary: {
+                primary_role_matched: false,
+                primary_missing_support_routine_surfaced: true,
+              },
+              search_stage_ledger: {
+                final_selection: {
+                  selection_owner: 'shopping_agent_beauty_mainline',
+                  selected_product_ids: ['framework_oily_1'],
+                  selected_titles: ['Oil Control Serum'],
+                  selection_signature: 'search_sel_framework_oily',
+                  mainline_status: 'grounded_success',
+                  source_tier_counts: { fresh_external: 1 },
+                },
+              },
+            },
+          }),
+        }),
+      buildRecoPayloadFromBeautyMainlineHandoff: ({ targetContext, sourceMode }) => {
+        observed.payloadTargetContext = targetContext;
+        observed.payloadSourceMode = sourceMode;
+        return {
+          payload: {
+            source: 'catalog_grounded_v1',
+            mainline_status: 'grounded_success',
+            recommendation_meta: {
+              source_mode: sourceMode,
+            },
+          },
+          contract: {
+            version: 'test_contract',
+          },
+        };
+      },
+      buildConfidenceNoticeCardPayload: ({ reason, severity }) => ({ reason, severity }),
+      classifyBeautyMainlineHandoffFallback: () => ({ reason: 'unreachable' }),
+      buildBeautyMainlineHandoffFallbackEnvelope: () => ({ cards: [] }),
+      looksLikeRecommendationRequest: () => true,
+      sendChatEnvelope: async () => null,
+    });
+
+    const result = await runtime.maybeHandleBeautyOwnedChatReco({
+      ctx: {
+        request_id: 'req_primary_missing',
+        trace_id: 'trace_primary_missing',
+        lang: 'EN',
+        trigger_source: 'chat',
+      },
+      logger: null,
+      message: 'im oily skin, what products should i use?',
+      recoEntrySourceDetail: 'typed_reco',
+      profile: {
+        skinType: 'oily',
+        sensitivity: 'low',
+        barrierStatus: 'stable',
+        goals: ['oil control'],
+      },
+    });
+
+    assert.equal(result?.handled, true);
+    assert.equal(observed.payloadSourceMode, 'framework_mainline');
+    assert.equal(observed.payloadTargetContext?.intent_mode, 'generic_concern');
+    assert.equal(observed.payloadTargetContext?.primary_role_id, 'oil_control_treatment');
+    // The routine still ships...
+    assert.equal(result?.envelope?.cards?.[0]?.type, 'recommendations');
+    // ...but it must not read as a complete answer. Without this card the reply
+    // shows supporting products and never says the main step is missing.
+    const notice = (result?.envelope?.cards || []).find((card) => card?.type === 'confidence_notice');
+    assert.ok(notice, 'a support-only routine must carry the primary-step notice');
+    assert.equal(notice.payload?.reason, 'primary_step_unconfirmed');
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
