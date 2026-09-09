@@ -84708,9 +84708,10 @@ async function runRecoLlmPrimary({
       //
       // Both tokens had to be added to normalizeAuroraRecoLlmCallOutcome's allowlist, or this
       // recorded as 'provider_error' — which is ALSO that function's catch-all default, so the
-      // incident would have been indistinguishable from an unrecognised token. Note this branch
-      // cannot fire for a 5xx: the catch sets llmFailureClass = 'timeout' for transient codes, so
-      // `!llmFailureClass` is false there. Non-transient failures are what reach it.
+      // incident would have been indistinguishable from an unrecognised token. This branch DOES
+      // fire for a 5xx — it used to be gated on `!llmFailureClass`, and the catch sets
+      // llmFailureClass = 'timeout' for transient codes, which is exactly what made a 503 record
+      // nothing at all. Ungating it is what put `upstream_timeout` on the wire.
       recordAuroraRecoLlmCall({ stage: 'main', outcome: initialLlmOutcome });
     }
   }
