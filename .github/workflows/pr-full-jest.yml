@@ -27,6 +27,12 @@ on:
       - "package.json"
       - "package-lock.json"
       - "jest.config.js"
+      # The LLM prompts are behaviour, not assets. prompts/reco_main_v1_2.system.txt bounds the Aurora
+      # chat lane to skincare and reco_main_v1_3 opens the agent door to beauty; either file is one
+      # editable line away from re-narrowing a door or widening the chat surface, and
+      # tests/reco_widen_lane_domain_scope.node.test.cjs asserts on both. Without this a prompt-only PR
+      # would have run NO gate at all — the same "green that means nothing ran" this file exists to stop.
+      - "prompts/**"
       # ANY workflow change, not just this file's. The workflow-hygiene gate in
       # tests/ polices `.github/workflows/**`, and a PR that ADDS a workflow
       # touches nothing else — so without this the gate could not fire on the
@@ -1052,6 +1058,7 @@ jobs:
             tests/payment_method_verifier_composition.node.test.cjs \
             tests/agent_signals_intelligence_reads.node.test.cjs \
             tests/agent_signals_recommend_products.node.test.cjs \
+            tests/reco_widen_lane_domain_scope.node.test.cjs \
             tests/merchant_variant_source.node.test.cjs \
             tests/sourcing_sentinel_merchant_scope.node.test.cjs \
             tests/get_product_detail_sig_merchant_scope.node.test.cjs \
