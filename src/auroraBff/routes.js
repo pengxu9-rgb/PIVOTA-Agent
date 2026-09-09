@@ -71353,12 +71353,12 @@ function buildAuroraProductRecommendationsPromptBundle({ profile, requestText, l
     // THE FALLBACK IS A SECOND COPY OF THE DOMAIN RULE, not a reference to the template file — so it has
     // to branch too, or a failed template read silently reverts the widening to skincare-only.
     triggerSource === 'agent_tool'
-      ? 'You are a precision beauty recommendation planner covering skincare, makeup, fragrance and haircare.'
+      ? 'You are a precision beauty recommendation planner covering skincare, makeup and fragrance.'
       : 'You are a precision skincare recommendation planner.',
     '',
     'Output MUST be a single valid JSON object only. No markdown, no extra keys, no commentary.',
     triggerSource === 'agent_tool'
-      ? 'Recommend skincare, makeup, fragrance and haircare. Answer the category actually asked for. Never recommend brushes, applicators, tools, devices, or supplements.'
+      ? 'Recommend skincare, makeup and fragrance. Answer the category actually asked for. Never recommend haircare, brushes, applicators, tools, devices, or supplements.'
       : 'Recommend skincare only. Never recommend makeup, brushes, tools, devices, fragrance, or haircare.',
     'Never invent or guess product identifiers, SKUs, prices, availability, or citations. If unknown, use null.',
     'Candidates are optional grounding hints only. Do not constrain recommendation quality to candidates[].',

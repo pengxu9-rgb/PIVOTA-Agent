@@ -26,7 +26,11 @@ test('1. the widened template exists, carries the schema the projector reads, an
   const s13 = fs.readFileSync(path.join(PROMPTS, 'reco_main_v1_3.user_schema.json'));
   assert.ok(s13.equals(s12), 'v1_3 must start as a byte-copy of v1_2 schema — the output contract is unchanged');
 
-  assert.match(v13, /Recommend skincare, makeup, fragrance and haircare\./);
+  assert.match(v13, /Recommend skincare, makeup and fragrance\./);
+  // Haircare is STAGED, not excluded on principle: the catalog carries 126 rows but only 15/20 sampled
+  // are USD, and non-USD is unservable on the US offer path. Pinned so the reason travels with the rule.
+  assert.match(v13, /Do not recommend haircare yet\./);
+  assert.match(v13, /not servable on the US offer path/);
   assert.match(v13, /Never recommend brushes, applicators, beauty tools, devices, or supplements/);
   // Measured 2026-09-09: tool queries resolve no category and return nothing purchasable (total 0,
   // decision "clarify", 0/20 in stock), so a tool pick can only be an invention.
@@ -74,8 +78,10 @@ test('4. the INLINE FALLBACK prompt widens too — the copy that is not the temp
   // Left un-widened it would answer a makeup need with skincare exactly when the template is missing —
   // the failure that is hardest to notice, since everything else still works.
   const fallback = ROUTES.slice(ROUTES.indexOf('const fallbackSystemPrompt'), ROUTES.indexOf('const fallbackSystemPrompt') + 1400);
-  assert.match(fallback, /Recommend skincare, makeup, fragrance and haircare\./,
+  assert.match(fallback, /Recommend skincare, makeup and fragrance\. Answer the category actually asked for\./,
     'the fallback must widen for the agent lane');
+  assert.match(fallback, /Never recommend haircare, brushes/,
+    'and must carry the same staged-haircare exclusion as the template');
   assert.match(fallback, /Recommend skincare only\. Never recommend makeup/,
     'and must still be skincare-only for every other caller');
   assert.equal((fallback.match(/triggerSource === 'agent_tool'/g) || []).length, 2,
