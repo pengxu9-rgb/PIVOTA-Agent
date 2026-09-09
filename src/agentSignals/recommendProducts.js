@@ -11,7 +11,11 @@
 // HONEST LIMITS, stated in the tool description too:
 //  - the lane is the Aurora BEAUTY engine today: its prompts, catalog grounding and guardrails are tuned for
 //    skincare/beauty. An off-vertical need answers with an empty shortlist + `missing_info`, not with
-//    fabricated products;
+//    fabricated products — and that is now ENFORCED here (offVerticalMarker), not merely hoped for: the lane
+//    itself is a recommender and will happily answer a trading-card need with a cleanser;
+//  - every returned signal is a CATALOG product with a non-null product_id. The lane also emits
+//    "ungrounded" archetypes (a product it named but could not resolve, every identity field null); they
+//    are suppressed from the shortlist and reported as text on `metadata.unresolved_archetypes`;
 //  - it calls an external decision service (AURORA_DECISION_BASE_URL) — seconds, not milliseconds; the
 //    door's heartbeat keeps the connection alive. `budgetMs` is passed to the lane's own deadline for its
 //    enrichment/framework passes; the upstream LLM leg is bounded separately by the lane's
@@ -73,6 +77,73 @@ function dedupe(values) {
     out.push(v);
   }
   return out;
+}
+
+// ── OFF-VERTICAL GATE ────────────────────────────────────────────────────────────────────────────
+// The tool description promises: "Today's lane is tuned for beauty/skincare: off-vertical needs answer
+// with an empty shortlist and a reason, never with fabricated products." Nothing enforced that half of
+// the sentence. Live 2026-09-08, "I collect Pokémon trading cards and want a sealed Scarlet & Violet
+// booster box" answered with a Jurlique cleanser and a COSRX moisturizer — both at `fit.level: 'high'`,
+// both `grounding: 'catalog'`, `products_empty_reason: null` — plus one invented sunscreen. Nothing had
+// malfunctioned: the beauty lane is never ASKED whether the need is a beauty need, it is asked to
+// recommend, and a recommender always recommends. The question has to be put before it is called.
+//
+// Lexical, and deliberately so: it runs BEFORE the lane, so an off-vertical need costs no LLM
+// generation (that live call took 21s) and no fabricated shortlist is ever built to be filtered later.
+//
+// DELIBERATELY ASYMMETRIC, because the two error directions are not equally expensive:
+//   - a false NEGATIVE (an off-vertical domain this list does not name) leaves today's behaviour, which
+//     the grounding suppression downstream already makes safer — the answer is wrong-vertical, not
+//     fabricated;
+//   - a false POSITIVE refuses a real beauty buyer, which is the only outcome here that loses a sale.
+// So a need is off-vertical ONLY when it names an off-vertical domain AND names nothing beauty at all.
+// "a lipstick to match my dress" keeps its shortlist; "a sealed booster box" does not. That asymmetry
+// is also why the beauty lexicon is generous and the off-vertical one is narrow: a word added to the
+// beauty side can only ever make this gate QUIETER, so it costs nothing to be liberal there, while a
+// word added to the off-vertical side can refuse a paying buyer.
+//
+// Word-anchored on the Latin side so "carbon" is not read as "car" and "keyboards" still matches. The
+// CJK patterns are bare substrings on purpose: `\b` is meaningless between CJK characters, and this
+// tool takes `language: 'CN'` as a first-class parameter, so a CN need must reach the same gate.
+// Each group below is an alternation of word-anchored alternatives; `anchored` wraps the lot so a
+// group can be edited without re-deriving the boundaries every time.
+const anchored = (groups) => new RegExp(String.raw`\b(?:${groups.join('|')})\b`, 'i');
+const OFF_VERTICAL_RE = anchored([
+  // Collectibles / TCG — the reported repro.
+  String.raw`trading cards?|booster (?:box|pack)e?s?|pok[eé]mon|tcg|graded cards?|magic the gathering|sports cards?|funko`,
+  // Consumer electronics. `switch`/`monitor` are absent on purpose: alone they are ordinary English.
+  String.raw`laptops?|smartphones?|headphones|earbuds|graphics cards?|gpus?|cpus?|game consoles?|xbox|playstation|nintendo|keyboards?|webcams?`,
+  // Large household goods.
+  String.raw`refrigerators?|dishwashers?|washing machines?|mattress(?:es)?|sofas?|couch(?:es)?|lawn ?mowers?|power drills?`,
+  // Vehicles.
+  String.raw`motorcycles?|car t[iy]res?|windshields?|spark plugs?`,
+  // Pets / groceries / other verticals that share a storefront with beauty but not this lane.
+  String.raw`dog food|cat litter|aquariums?|textbooks?|firearms?|ammunition`,
+]);
+const OFF_VERTICAL_CJK_RE = /卡牌|显卡|笔记本电脑|智能手机|游戏机|键盘|冰箱|洗碗机|洗衣机|床垫|沙发|摩托车|狗粮|猫砂/;
+// Suppression side: anything that plausibly makes this a beauty need. Liberal by design (see above).
+const BEAUTY_RE = anchored([
+  String.raw`skin|skin-?care|complexion|faces?|facial|derma\w*|cosmetics?|makeup|beauty`,
+  String.raw`serums?|essences?|ampoules?|moistur\w*|cleansers?|cleans\w*|toners?|exfoliat\w*|peels?|masks?|creams?|lotions?|balms?|oils?|mists?`,
+  String.raw`sunscreens?|spf|retinols?|retinoids?|niacinamide|hyaluronic|ceramides?|salicylic|glycolic|azelaic|vitamin c|peptides?|antioxidants?`,
+  String.raw`acne|breakouts?|blackheads?|whiteheads?|pores?|wrinkles?|fine lines|dark spots?|hyperpigmentation|redness|rosacea|eczema|psoriasis|dryness|oiliness|sensitive|dull\w*`,
+  String.raw`anti-?ag\w*|brighten\w*|hydrat\w*|soothing|barrier|routines?`,
+  String.raw`lips?|lipsticks?|foundations?|concealers?|mascaras?|eyeliners?|eyeshadows?|blush(?:es)?|primers?|nail polish`,
+  String.raw`shampoos?|conditioners?|scalp|hair|fragrances?|perfumes?|deodorants?|body wash`,
+]);
+const BEAUTY_CJK_RE = /护肤|皮肤|精华|面霜|乳液|洁面|防晒|化妆|彩妆|口红|唇|痘|毛孔|皱纹|美白|保湿|敏感肌|洗发|护发|香水|面膜|眼霜|爽肤/;
+
+/**
+ * Is this need plainly outside the beauty/skincare lane? Exported so the rule is testable directly
+ * rather than only through a mocked lane.
+ * @returns {string|null} the off-vertical phrase that fired, or null (in-vertical, or unknown)
+ */
+function offVerticalMarker(need) {
+  if (!nonEmpty(need)) return null;
+  // A beauty word anywhere in the need suppresses the gate outright — see the asymmetry note above.
+  if (BEAUTY_RE.test(need) || BEAUTY_CJK_RE.test(need)) return null;
+  const m = OFF_VERTICAL_RE.exec(need) || OFF_VERTICAL_CJK_RE.exec(need);
+  return m ? m[0] : null;
 }
 
 /** The lane's integer 0-100 score as a band an agent can act on (never the raw score: see `fit`). */
@@ -539,6 +610,52 @@ function makeRecommendProducts(deps = {}) {
     const enforcing = ceiling !== null && Number.isFinite(ceiling.limit);
 
     const startedAt = now();
+
+    // OFF-VERTICAL: answer with an empty shortlist and a REASON, before spending a lane generation on
+    // a need this lane cannot serve. See offVerticalMarker for why the rule is shaped the way it is.
+    // The full metadata block is returned (not the thin `reason:` shape the disabled/need_required
+    // exits use) because this is a legitimate ANSWER, not a failure: a partner agent has to be able to
+    // tell "we cannot help with this" from "we broke", and `products_empty_reason` is the field the
+    // description points it at.
+    const offVertical = offVerticalMarker(need);
+    if (offVertical) {
+      logger?.info?.(
+        { recommendation_set_id: recommendationSetId, marker: offVertical },
+        'recommend_products refused an off-vertical need',
+      );
+      return {
+        subject,
+        signals: [],
+        metadata: {
+          need,
+          constraints,
+          limit,
+          returned: 0,
+          recommendation_set_id: recommendationSetId,
+          confidence_overall: null,
+          // What Pivota would need for this to become answerable: a different lane. Said as the thing
+          // the agent should DO, since missing_info is the field it reads to decide whether to re-ask.
+          missing_info: [
+            lang === 'CN'
+              ? '该推荐通道目前仅覆盖美妆/护肤品类，无法回答此需求。'
+              : "This recommendation lane covers beauty/skincare only; it cannot serve this need.",
+          ],
+          warnings: [
+            lang === 'CN'
+              ? `需求涉及非美妆品类（“${offVertical}”），已返回空结果，未生成任何推荐。`
+              : `The need names an off-vertical domain ("${offVertical}"); returned an empty shortlist rather than beauty products.`,
+          ],
+          grounding_status: null,
+          source_mode: null,
+          products_empty_reason: 'off_vertical',
+          vertical: 'beauty',
+          // The phrase that fired, so a partner (and we) can audit the gate's precision from logs
+          // instead of guessing which word refused a buyer.
+          off_vertical_marker: offVertical,
+          latency_ms: now() - startedAt,
+        },
+      };
+    }
     let result;
     try {
       result = await generate({
@@ -591,13 +708,54 @@ function makeRecommendProducts(deps = {}) {
       const s = recommendationItemToSignal(item, {});
       if (s) projected.push(s);
     }
-    // GROUNDED BEFORE UNGROUNDED, always. An ungrounded item is the lane's advisory ("look for this
-    // kind of product") with no product_id, no price and nothing to open or buy — it may take a
-    // leftover slot, but a commerce door must never rank it above a real catalog item (live
-    // 2026-08-20: an invented cleanser sat at #1 above the only purchasable result). Lane order is
-    // preserved within each group.
-    let groundedSignals = projected.filter((s) => s.value.grounding === 'catalog');
-    const ungroundedSignals = projected.filter((s) => s.value.grounding !== 'catalog');
+    // NOTHING UNBUYABLE LEAVES THIS FUNCTION. Two independent ways a signal can carry no purchasable
+    // identity; both are suppressed HERE, the one point every exit below flows through.
+    //
+    //  (1) UNGROUNDED — the lane named a product it could not resolve, so product_id, price, url and
+    //      image are all null by construction. An earlier revision RANKED these last instead of
+    //      dropping them, on the theory that an advisory archetype is still worth something to an
+    //      agent. Live 2026-09-08 settled it: a "Daily Broad Spectrum SPF 30 Sunscreen" with every
+    //      identity field null reached a partner agent as rank 3 of 3, in a tool whose own description
+    //      promises that exact case never happens ("never with fabricated products"). Ranking it last
+    //      was never the fix — a commerce door's shortlist is a list of things to BUY, and an item an
+    //      agent can neither open, price nor purchase is not a weaker recommendation, it is a
+    //      different kind of object. It travels on `metadata.unresolved_archetypes` now, as TEXT,
+    //      where it cannot be mistaken for something with a product identity.
+    //      NOTE the count was already computed before this change (`ungrounded_returned`) — the
+    //      condition was detected and then not acted on, which is the whole defect.
+    //
+    //  (2) A NULL product_id on an item that claims catalog grounding — a lane defect rather than a
+    //      design choice (grounding_status is ABSENT on some rows and absence reads as grounded, so an
+    //      item with a name and no id projects to grounding 'catalog' with product_id null). Rare, and
+    //      it must not reach a caller either: the chain contract this file already enforces on the
+    //      verifier path is "never advertise a product_id that get_product cannot resolve", and null
+    //      is the strongest form of that. Filtering on grounding ALONE would leave this one open, so
+    //      the id is checked on its own terms.
+    //
+    // Lane order is preserved among the survivors.
+    const suppressed = { ungrounded: 0, unidentified: 0 };
+    const unresolvedArchetypes = [];
+    let groundedSignals = [];
+    for (const s of projected) {
+      if (s.value.grounding !== 'catalog') {
+        suppressed.ungrounded += 1;
+        // The archetype is the only part worth keeping: "look for a broad-spectrum SPF 30".
+        const name = str(s.value.product.title);
+        if (name) unresolvedArchetypes.push(name);
+        continue;
+      }
+      if (!nonEmpty(s.value.product.product_id)) {
+        suppressed.unidentified += 1;
+        continue;
+      }
+      groundedSignals.push(s);
+    }
+    if (suppressed.unidentified > 0) {
+      logger?.warn?.(
+        { recommendation_set_id: recommendationSetId, count: suppressed.unidentified },
+        'recommend_products suppressed catalog-grounded items carrying no product_id',
+      );
+    }
 
     // LIVE PRICE RE-VERIFICATION (grounded items only; there is nothing to verify on an invented
     // product). The lane's price is a catalog-offer snapshot; the injected `verifyPrice` resolves the
@@ -698,12 +856,12 @@ function makeRecommendProducts(deps = {}) {
     let violationsReturned = 0;
     let unverifiedReturned = 0;
     if (!enforcing) {
-      signals = [...groundedSignals, ...ungroundedSignals].slice(0, limit);
+      signals = groundedSignals.slice(0, limit);
     } else {
-      // Verified-conforming first, then price-unverifiable, then known violations — and only then
-      // ungrounded advisories: a slot never goes to an item known to breach the ceiling while one that
-      // honours it is waiting, and never to an invented product while any real one (even a flagged
-      // near-miss) is waiting.
+      // Verified-conforming first, then price-unverifiable, then known violations: a slot never goes
+      // to an item known to breach the ceiling while one that honours it is waiting. There is no
+      // fourth rung any more — ungrounded advisories used to backfill the leftover slots here, and
+      // they are suppressed above instead.
       const verdicts = new Map(groundedSignals.map((s) => [s, checkPriceMax(s, ceiling)]));
       signals = groundedSignals.filter((s) => verdicts.get(s) === 'ok').slice(0, limit);
       for (const rung of ['unverifiable', 'violation']) {
@@ -714,14 +872,8 @@ function makeRecommendProducts(deps = {}) {
           else { signals.push(markPriceUnverifiable(s, ceiling)); unverifiedReturned += 1; }
         }
       }
-      for (const s of ungroundedSignals) {
-        if (signals.length >= limit) break;
-        signals.push(markPriceUnverifiable(s, ceiling));
-        unverifiedReturned += 1;
-      }
     }
     signals.forEach((s, i) => { s.value.rank = i + 1; });
-    const ungroundedReturned = signals.filter((s) => s.value.grounding !== 'catalog').length;
     // Coverage honesty: with a ceiling, re-slotting can return a grounded item from beyond the
     // verification window (a conforming item the lane ranked low). It carries `price_verified: false`
     // like any other unchecked price, and `unchecked` counts it — otherwise "checked N, unavailable 0"
@@ -729,7 +881,8 @@ function makeRecommendProducts(deps = {}) {
     // misreading this metadata exists to prevent.
     if (verification) {
       for (const s of signals) {
-        if (s.value.grounding !== 'catalog') continue;
+        // Every survivor is catalog-grounded now (see the suppression above), so there is no
+        // grounding test here: an ungrounded item can no longer reach this loop to be skipped.
         if (s.value.product.price_verified === undefined) {
           s.value.product.price_verified = false;
           verification.unchecked += 1;
@@ -811,14 +964,28 @@ function makeRecommendProducts(deps = {}) {
         // 'no_recommendations' would blame the lane for items it actually produced.
         products_empty_reason: signals.length === 0
           ? firstString(payload.products_empty_reason, result?.upstreamFailureCode)
-            || (verification && verification.unresolvable > 0 ? 'unresolvable_on_read_chain' : 'no_recommendations')
+            || (verification && verification.unresolvable > 0 ? 'unresolvable_on_read_chain' : null)
+            // The lane DID answer, but every item it produced was an archetype it could not resolve
+            // (or carried no id). 'no_recommendations' would blame it for producing nothing when the
+            // truth is that nothing it produced was buyable — a different problem with a different fix.
+            || (suppressed.ungrounded + suppressed.unidentified > 0 ? 'no_grounded_recommendations' : 'no_recommendations')
           : null,
         vertical: 'beauty',
         latency_ms: latencyMs,
-        // How many returned signals are advisory archetypes rather than catalog products — said out
-        // loud so "returned: 2" is never read as "2 purchasable products" when one of them cannot be
-        // opened or bought.
-        ...(ungroundedReturned > 0 ? { ungrounded_returned: ungroundedReturned } : {}),
+        // What was withheld, and why. `ungrounded_returned` used to live here and counted archetypes
+        // that were RETURNED; nothing is returned any more, so the key would be permanently absent and
+        // is gone. These replace it: a shortlist shorter than `limit` now has a stated reason rather
+        // than looking like a thin catalog.
+        ...(suppressed.ungrounded > 0 ? { ungrounded_suppressed: suppressed.ungrounded } : {}),
+        // The archetypes themselves, as plain strings. Deliberately NOT product-shaped: the whole
+        // point is that these have no product identity, and a node with a null `product_id` is exactly
+        // what a partner agent showed a buyer on 2026-09-08.
+        ...(unresolvedArchetypes.length > 0
+          ? { unresolved_archetypes: dedupe(unresolvedArchetypes).slice(0, 8) }
+          : {}),
+        // A lane defect, not a policy outcome (see the suppression block): an item that claimed
+        // catalog grounding and carried no id. Surfaced so it is countable rather than silent.
+        ...(suppressed.unidentified > 0 ? { unidentified_suppressed: suppressed.unidentified } : {}),
         // Live-price check tallies (only when a verifier is wired and grounded items existed):
         // checked = confirmed + updated + unavailable + unresolvable; `updated` items carry the
         // corrected price and a watchout naming the move; `unavailable` items keep the snapshot with
@@ -903,4 +1070,4 @@ function classifyVerifyPriceResponse(status, body) {
 // `signal.value` in place rather than rebuilding it. That is not an implementation detail — the
 // join-key mint above is ordered after them precisely because of it, and without a direct
 // assertion the ordering is unfalsifiable (verified: moving the mint earlier left every test green).
-module.exports = { makeRecommendProducts, recommendationItemToSignal, normalizeConstraints, agentLaneUid, extractPriceMax, markPriceViolation, markPriceUnverifiable, classifyVerifyPriceResponse };
+module.exports = { makeRecommendProducts, recommendationItemToSignal, normalizeConstraints, agentLaneUid, extractPriceMax, markPriceViolation, markPriceUnverifiable, classifyVerifyPriceResponse, offVerticalMarker };
