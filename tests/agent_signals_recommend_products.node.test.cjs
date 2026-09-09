@@ -1517,9 +1517,11 @@ test('8e. the tool description and the code agree — the promises are quoted fr
   // lane loaded the skincare-bounded reco_main_v1_2. This bridge now passes promptDomainScope 'beauty'
   // and the lane loads a wider template, so the description states the wider domain — and the file
   // named by that scope is read here so a description edit alone cannot make the claim true again.
-  assert.ok(/The lane covers BEAUTY: skincare, makeup, beauty tools and brushes, fragrance, haircare and body care/.test(src),
+  assert.ok(/The lane covers skincare \(body care included\), makeup, fragrance and haircare/.test(src),
     "the domain the door's own prompt allows must be stated, since it changes what a makeup need gets back");
-  assert.ok(/return nothing rather than substitute an adjacent one/.test(src),
+  assert.ok(/does NOT cover beauty tools, brushes, sponges or devices/.test(src),
+    'the one category the widened lane still refuses must be stated, since the catalog cannot serve it');
+  assert.ok(/return an empty shortlist rather than substitute an adjacent one/.test(src),
     'the category-fidelity promise must be stated: it is the half that stops a bronzer answering as a serum');
   const { __internal } = require('../src/auroraBff/routes');
   const doorSpec = __internal.resolveRecoMainPromptSpec({ promptDomainScope: 'beauty' });
@@ -1529,6 +1531,8 @@ test('8e. the tool description and the code agree — the promises are quoted fr
     'the description promises beauty; the prompt this door loads must not bound the lane to skincare');
   assert.ok(/Never substitute an adjacent category/.test(doorPrompt),
     'the description promises no adjacent-category substitution; the prompt must actually say so');
+  assert.ok(/Never recommend beauty tools, brushes, sponges, applicators, or devices/.test(doorPrompt),
+    'the description says tools are not covered; the prompt this door loads must actually refuse them');
   assert.ok(surfaceMod, 'the surface module still loads with the edited description');
 });
 

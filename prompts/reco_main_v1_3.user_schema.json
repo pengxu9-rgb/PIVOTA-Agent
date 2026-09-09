@@ -49,7 +49,7 @@
         "slot": "other",
         "step": "cleanser|treatment|moisturizer|sunscreen|other",
         "score": "integer 0-100",
-        "product_type": "cleanser|treatment|moisturizer|sunscreen|serum|foundation|concealer|bronzer|blush|highlighter|powder|lipstick|lip balm|mascara|eyeliner|eyeshadow|brow|makeup brush|sponge|beauty tool|shampoo|conditioner|hair treatment|styling|fragrance|body care|other",
+        "product_type": "cleanser|treatment|moisturizer|sunscreen|serum|body care|foundation|concealer|bronzer|blush|highlighter|powder|lipstick|lip balm|mascara|eyeliner|eyeshadow|brow|shampoo|conditioner|hair treatment|styling|fragrance|other",
         "brand": "string|null",
         "name": "string|null",
         "display_name": "string|null",
@@ -98,9 +98,9 @@
   "hard_rules": [
     "Return JSON only with exactly the required top-level keys.",
     "Do not ask clarifying questions.",
-    "Recommend beauty only: skincare, makeup, beauty tools, fragrance, haircare, body care. Never supplements, ingestibles, medication, medical devices, or non-beauty categories.",
+    "Recommend skincare (including body care), makeup, fragrance, and haircare only. Never beauty tools, brushes, sponges, applicators or devices; never supplements, ingestibles, medication, or non-beauty categories.",
     "Answer in the category the request names. Never substitute an adjacent category: a bronzer request is not answered with a serum.",
-    "If the requested category cannot be served well, return recommendations: [] and explain in missing_info rather than returning an off-category pick.",
+    "If the requested category cannot be served \u2014 including any tool, brush or device request \u2014 return recommendations: [] and explain in missing_info rather than returning an off-category pick.",
     "Do not invent product IDs, SKUs, prices, links, or citations.",
     "If profile is incomplete, return fewer but still useful recommendations.",
     "query_terms are for downstream grounding only; they do not constrain recommendation quality."

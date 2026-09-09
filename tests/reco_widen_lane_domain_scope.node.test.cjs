@@ -147,8 +147,14 @@ test('the widened prompt reaches the wire: the query text and hard_rules actuall
   // The SYSTEM prompt is the thing that produced the bronzer -> serum answer. Assert the boundary is
   // gone from the wide query and still present in the narrow one, in the query STRING that is sent —
   // not merely in the file, and not merely in the template id.
-  assert.match(wide.query, /Recommend beauty products/);
+  assert.match(wide.query, /Recommend skincare \(including body care\), makeup, fragrance, and haircare/);
   assert.match(wide.query, /Never substitute an adjacent category/);
+  // TOOLS ARE STILL REFUSED, and the widened query must carry that. Measured on prod 2026-09-09,
+  // `makeup brush` answers total 0 with final_decision 'clarify' and every search_quality tier count
+  // zero; `gua sha facial tool` returns mis-filed rows inside a total of 0. Inviting the model into a
+  // category with no serving lane swaps a wrong answer for an empty one, not for a right one.
+  assert.match(wide.query, /Never recommend beauty tools, brushes, sponges, applicators, or devices/);
+  assert.match(wide.query, /For a tool, brush or device request, return recommendations: \[\]/);
   assert.doesNotMatch(wide.query, /Recommend skincare only/);
   assert.doesNotMatch(wide.query, /Never recommend makeup, brushes, beauty tools/);
   assert.match(narrow.query, /Recommend skincare only/);
@@ -162,23 +168,30 @@ test('the widened prompt reaches the wire: the query text and hard_rules actuall
   // overwritten), so a stale rule here would contradict the system prompt inside one request.
   const wideRules = wide.user_payload.hard_rules.join(' | ');
   const narrowRules = narrow.user_payload.hard_rules.join(' | ');
-  assert.match(wideRules, /Recommend beauty only/);
+  assert.match(wideRules, /Recommend skincare \(including body care\), makeup, fragrance, and haircare only/);
   assert.match(wideRules, /a bronzer request is not answered with a serum/);
-  assert.doesNotMatch(wideRules, /non-skincare/);
+  assert.match(wideRules, /Never beauty tools, brushes, sponges, applicators or devices/);
+  assert.doesNotMatch(wideRules, /non-skincare categories/);
   assert.match(narrowRules, /Do not recommend non-skincare categories/);
 });
 
 test('the v1_3 prompt widens the domain and pins category fidelity', () => {
   const text = readPrompt('reco_main_v1_3.system.txt');
   assert.match(text, /precision beauty recommendation planner/i);
-  assert.match(text, /skincare, makeup, beauty tools and brushes, fragrance, haircare, and body care/i);
+  assert.match(text, /Recommend skincare \(including body care\), makeup, fragrance, and haircare\./i);
+  // The widened set is exactly what was MEASURED servable on prod 2026-09-09 (skincare control;
+  // makeup 19-70 per query at 90-100% in-category; fragrance 73; haircare 77 on a need-shaped query,
+  // 20/20 USD and 20/20 in stock). Tools were measured UNSERVABLE and must stay out — a widening that
+  // invites a category the catalog cannot answer is a new empty-shortlist defect, not a fix.
+  assert.match(text, /Never recommend beauty tools, brushes, sponges, applicators, or devices/i);
+  assert.match(text, /For a tool, brush or device request, return recommendations: \[\]/i);
   // Widening the DOMAIN alone would have removed the exclusion warning and kept the serum. The
   // defect in #2155 is a category substitution, so the replacement prompt must forbid it by name.
   assert.match(text, /CATEGORY FIDELITY/);
   assert.match(text, /If the request names a bronzer, do not return a serum/i);
   assert.match(text, /return recommendations: \[\] and say so in missing_info/i);
   // Still a BEAUTY lane, not an open one.
-  assert.match(text, /Never recommend supplements, ingestibles, medication, medical devices/i);
+  assert.match(text, /Never recommend supplements, ingestibles, medication, or anything outside beauty/i);
   assert.doesNotMatch(text, /Recommend skincare only/);
 });
 
@@ -207,11 +220,15 @@ test('an unreadable wide template still sends a WIDE fallback, not the skincare 
     const wide = reloaded.buildAuroraProductRecommendationsPromptBundle({ ...args, promptDomainScope: 'beauty' });
     assert.equal(wide.prompt_spec.template_id, 'reco_main_no_such_template_v9');
     assert.match(wide.query, /precision beauty recommendation planner/i);
-    assert.match(wide.query, /Recommend beauty only|Recommend beauty:/i);
+    assert.match(wide.query, /Recommend skincare \(including body care\), makeup, fragrance and haircare/i);
     assert.doesNotMatch(wide.query, /Recommend skincare only/);
+    // The fallback must carry the tools refusal too, or an unreadable template turns a refused
+    // category into an invited one.
+    assert.match(wide.query, /Never beauty tools, brushes, sponges or devices/i);
     const rules = wide.user_payload.hard_rules.join(' | ');
-    assert.match(rules, /Recommend beauty only/);
+    assert.match(rules, /Recommend skincare \(including body care\), makeup, fragrance and haircare only/);
     assert.match(rules, /a bronzer request is not answered with a serum/);
+    assert.match(rules, /Never beauty tools, brushes, sponges, applicators or devices/);
     assert.doesNotMatch(rules, /Recommend skincare only/);
 
     // The NARROW fallback must stay narrow: this is the chat lane's behaviour when its own template

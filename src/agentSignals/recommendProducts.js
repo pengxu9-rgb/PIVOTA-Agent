@@ -10,9 +10,10 @@
 //
 // HONEST LIMITS, stated in the tool description too:
 //  - the lane is the Aurora BEAUTY engine today. Its prompt is selected per DOOR: this bridge passes
-//    promptDomainScope 'beauty' and the lane loads reco_main_v1_3 (skincare, makeup, tools, fragrance,
-//    haircare, body care, answer-in-the-category-asked); the Aurora consumer chat lane passes nothing and
-//    keeps the skincare-bounded reco_main_v1_2. Catalog grounding remains deepest in skincare and makeup.
+//    promptDomainScope 'beauty' and the lane loads reco_main_v1_3 (skincare incl. body care, makeup,
+//    fragrance, haircare, answer-in-the-category-asked); the Aurora consumer chat lane passes nothing and
+//    keeps the skincare-bounded reco_main_v1_2. TOOLS/brushes/devices stay refused there: measured on prod
+//    2026-09-09 `makeup brush` returns total 0 / final_decision 'clarify', so there is nothing to ground;
 //    An off-vertical need answers with an empty shortlist + `missing_info`, not with fabricated products —
 //    and that is ENFORCED here (offVerticalMarker), not merely hoped for: the lane itself is a recommender
 //    and will happily answer a trading-card need with a cleanser;

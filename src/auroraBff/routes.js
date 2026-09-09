@@ -788,7 +788,13 @@ const RECO_INGREDIENT_PROMPT_TEMPLATE_ID = String(
 //
 // The two callers therefore select DIFFERENT templates instead of one being widened under the
 // other. Chat keeps v1_2 untouched; only a caller that passes promptDomainScope 'beauty' reaches
-// v1_3. Rollback is a value, not a boolean: point this env var back at reco_main_v1_2 and the door
+// v1_3.
+//
+// v1_3 covers skincare (body care files under beauty/skincare/moisturize/), makeup, fragrance and
+// haircare, and still REFUSES tools/brushes/devices — measured on prod 2026-09-09: `makeup brush`
+// answers total 0 with final_decision 'clarify' and every search_quality tier count zero, and
+// `gua sha facial tool` returns mis-filed rows inside a total of 0. Inviting a category with no
+// serving lane would trade a wrong answer for an empty one, not for a right one. Rollback is a value, not a boolean: point this env var back at reco_main_v1_2 and the door
 // is narrow again with no deploy — chosen over a flag because a Cloud Run deploy has wiped this
 // service's env vars before (2026-08-30), and a wiped flag must fail to the CURRENT behaviour.
 const RECO_MAIN_WIDE_PROMPT_TEMPLATE_ID = String(
@@ -71398,8 +71404,9 @@ function buildRecoMainPromptPayload({
       // hardcoded skincare-only rule here would re-narrow the wide door with no trace in the diff.
       ...(domainWide
         ? [
-          'Recommend beauty only: skincare, makeup, beauty tools, fragrance, haircare, body care. Never supplements, ingestibles, medication, medical devices, or non-beauty categories.',
+          'Recommend skincare (including body care), makeup, fragrance and haircare only. Never beauty tools, brushes, sponges, applicators or devices; never supplements, ingestibles, medication, or non-beauty categories.',
           'Answer in the category the request names. Never substitute an adjacent category: a bronzer request is not answered with a serum.',
+          'If the requested category cannot be served — any tool, brush or device request included — return recommendations: [] and explain in missing_info.',
         ]
         : ['Recommend skincare only; never recommend makeup, tools, devices, fragrance, or haircare.']),
       'Do not output routines or AM/PM plans.',
@@ -71501,8 +71508,8 @@ function buildAuroraProductRecommendationsPromptBundle({ profile, requestText, l
     'Output MUST be a single valid JSON object only. No markdown, no extra keys, no commentary.',
     ...(domainWide
       ? [
-        'Recommend beauty only: skincare, makeup, beauty tools and brushes, fragrance, haircare, body care. Never supplements, ingestibles, medication, or medical devices.',
-        'Answer in the category the request names; never substitute an adjacent one. If the requested category cannot be served, return an empty list and say so in missing_info.',
+        'Recommend skincare (including body care), makeup, fragrance and haircare. Never beauty tools, brushes, sponges or devices; never supplements, ingestibles or medication.',
+        'Answer in the category the request names; never substitute an adjacent one. If the requested category cannot be served — a tool or brush request included — return an empty list and say so in missing_info.',
       ]
       : ['Recommend skincare only. Never recommend makeup, brushes, tools, devices, fragrance, or haircare.']),
     'Never invent or guess product identifiers, SKUs, prices, availability, or citations. If unknown, use null.',
