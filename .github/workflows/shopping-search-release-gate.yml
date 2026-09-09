@@ -56,6 +56,11 @@ on:
       - "src/services/catalogServingIndex.js"
       - "src/services/ingredientSkuEvidence.js"
       - "src/services/externalSeedProducts.js"
+      # The recall text path: these build the retrieval_title/summary this gate
+      # exercises, so a change here must not bypass it. Added after a quadratic
+      # rewrite of externalSeedMarketingText.js reached a PR ungated (2026-09-09).
+      - "src/services/externalSeedRecall.js"
+      - "src/services/externalSeedMarketingText.js"
       - "src/services/externalSeedHarvesterBridge.js"
       - "src/services/RecommendationEngine.js"
       - "src/services/pdpIngredientAuthority.js"
@@ -138,6 +143,11 @@ on:
       - "src/services/catalogServingIndex.js"
       - "src/services/ingredientSkuEvidence.js"
       - "src/services/externalSeedProducts.js"
+      # The recall text path: these build the retrieval_title/summary this gate
+      # exercises, so a change here must not bypass it. Added after a quadratic
+      # rewrite of externalSeedMarketingText.js reached a PR ungated (2026-09-09).
+      - "src/services/externalSeedRecall.js"
+      - "src/services/externalSeedMarketingText.js"
       - "src/services/externalSeedHarvesterBridge.js"
       - "src/services/RecommendationEngine.js"
       - "src/services/pdpIngredientAuthority.js"
@@ -226,6 +236,7 @@ jobs:
           NODE_OPTIONS: --max-old-space-size=4096
         run: |
           npx jest --runInBand \
+            tests/external_seed_marketing_text.test.js \
             tests/integration/invoke.find_products_multi_cache_search.test.js \
             tests/integration/invoke.find_products_multi_strict_surface.test.js \
             tests/integration/invoke.get_discovery_feed.test.js \
