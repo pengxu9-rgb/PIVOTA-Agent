@@ -29,7 +29,7 @@
 //
 // SANITIZER-SAFE BY CONSTRUCTION. The commerce surface strips `score`/`confidence` from product-shaped nodes
 // and drops `score_breakdown`/`candidate_source`/`debug` anywhere (safety-kernel/src/protocol/resultSanitizer).
-// Per-item certainty therefore lives under `value.fit` (not a bare `confidence`), and the overall certainty
+// Per-item certainty therefore lives under `value.lane_confidence` (not a bare `confidence`), and the overall certainty
 // sits on `metadata` (not a product node).
 
 const MAX_NEED_CHARS = 500;
@@ -390,7 +390,7 @@ function markPriceViolation(signal, ceiling) {
   v.watchouts = dedupe([marker, ...stripBudgetClaims(v.watchouts)]).slice(0, 6);
   // Only ever a DOWNGRADE: where the lane emitted no score there is no band to assert, and inventing
   // one would be the same fabrication this file's header guards against.
-  v.fit = { ...v.fit, level: v.fit.level === null ? null : 'low' };
+  v.lane_confidence = { ...v.lane_confidence, level: v.lane_confidence.level === null ? null : 'low' };
   v.constraint_violations = [{
     constraint: 'price_max',
     limit: ceiling.limit,
@@ -548,8 +548,16 @@ function recommendationItemToSignal(item, { rank } = {}) {
       // Grounded = resolved to a product in Pivota's catalog; ungrounded = the lane named a product it could
       // not resolve, and such items carry NO url/price by construction (the lane strips them).
       grounding: grounded ? 'catalog' : 'ungrounded',
-      fit: {
-        // Not a bare `confidence`/`score`: the sanitizer removes those keys from product-shaped nodes.
+      // RENAMED from `fit` (2026-09-09). `fit` invited exactly one misreading, and
+      // agents made it: that the band says how well the item answers the NEED.
+      // It does not — it is the lane's own certainty about the item, and nothing
+      // in its derivation consults the need, so an off-vertical need could come
+      // back at `fit: high`. The name now says which question it answers.
+      //
+      // `lane_confidence`, not a bare `confidence`: the sanitizer removes bare
+      // `confidence`/`score` from product-shaped nodes. Verified through the real
+      // commerce surface that the qualified name survives.
+      lane_confidence: {
         // The lane emits an integer 0-100 `score`; it is surfaced as a BAND, which is what an agent can
         // act on, and lane-level certainty stays on metadata.confidence_overall.
         //
