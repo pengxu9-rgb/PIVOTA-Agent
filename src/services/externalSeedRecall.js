@@ -1,3 +1,9 @@
+// Strict mode so a write to a frozen object THROWS. In sloppy CJS it fails
+// silently, which made a 'deep-freeze the inputs and assert no throw' purity
+// test pass with a planted mutation. Verified nothing here relies on sloppy
+// semantics.
+'use strict';
+
 const { stripExternalSeedMarketingBannerPrefix } = require('./externalSeedMarketingText');
 const { buildRecoAuthorityAliasTokens } = require('./recoAlternativesAuthority');
 const {

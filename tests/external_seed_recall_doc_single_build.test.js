@@ -35,6 +35,11 @@ function buildRow({ stored = true } = {}) {
             retrieval_summary: description.slice(0, 4000),
             brand: 'Test Brand',
             category: 'moisturizer',
+            // Present so the aliasing walk has real input nodes to find in the
+            // output; without them the old comparison was `(object) !== undefined`.
+            exclusion_flags: { gift_card: false },
+            quality_signals: { template_polluted: false },
+            ingredient_tokens: 'niacinamide squalane',
           },
         },
       }
@@ -101,31 +106,64 @@ describe('resolveExternalSeedRecallDoc', () => {
   });
 
   test('does not mutate its inputs, which is what makes reusing the built doc safe', () => {
-    // This whole change rests on the builder being pure: `fallback` is reused
-    // instead of rebuilt, so any input mutation would now be observed once
-    // rather than twice. Committed as a test rather than left as a one-off run,
-    // so it can be re-checked rather than taken on trust.
-    const deepFreeze = (value) => {
-      if (value && typeof value === 'object' && !Object.isFrozen(value)) {
-        Object.freeze(value);
-        Object.keys(value).forEach((key) => deepFreeze(value[key]));
-      }
-      return value;
-    };
-    const frozen = deepFreeze(buildRow());
-    // Throws on any write in strict mode, which jest modules are.
-    expect(() => resolveExternalSeedRecallDoc(frozen)).not.toThrow();
-    expect(() => resolveExternalSeedRecallDoc(frozen, { buildDoc: buildExternalSeedRecallDoc })).not.toThrow();
+    // Clone-compare, NOT `expect(...).not.toThrow()` on a frozen input. This
+    // module is non-strict CJS, so writes to a frozen object silently no-op
+    // instead of throwing — verified: a planted `seedData.__planted = true`
+    // passed the frozen-input version of this test.
+    const input = buildRow();
+    const before = JSON.parse(JSON.stringify(input));
+    resolveExternalSeedRecallDoc(input);
+    resolveExternalSeedRecallDoc(input, { buildDoc: buildExternalSeedRecallDoc });
+    expect(JSON.parse(JSON.stringify(input))).toEqual(before);
   });
 
-  test('the returned doc does not alias the caller-visible input objects', () => {
-    // Reusing `fallback` shares its nested objects into the result. `fallback` is
-    // function-local so nothing outside can hold it, but the returned doc must
-    // still not hand back references INTO the input.
+  test('builds exactly once even counting through paths the seam cannot see', () => {
+    // Belt-and-braces beside the tag test, and it needs no production seam: a
+    // counting getter on a field the builder reads exactly once and resolve's
+    // stored-doc branch never reads. The tag proves the RETURNED doc came from
+    // the counted build; this proves no build happened anywhere at all, through
+    // the seam or around it.
     const input = buildRow();
+    let builds = 0;
+    Object.defineProperty(input.seedData, 'seed_description_origin', {
+      get() {
+        builds += 1;
+        return 'crawl';
+      },
+      enumerable: true,
+      configurable: true,
+    });
+
+    resolveExternalSeedRecallDoc(input);
+
+    expect(builds).toBe(1);
+  });
+
+  test('the returned doc shares no object with the inputs', () => {
+    // The previous version compared two fields the fixture never set, so both
+    // sides were `undefined` and it reduced to `(object) !== undefined`. A live
+    // reference INTO the input passed it. This walks both graphs instead.
+    const collectNodes = (value, seen = new Set()) => {
+      if (!value || typeof value !== 'object' || seen.has(value)) return seen;
+      seen.add(value);
+      Object.values(value).forEach((child) => collectNodes(child, seen));
+      return seen;
+    };
+
+    const input = buildRow();
+    const inputNodes = collectNodes(input);
     const resolved = resolveExternalSeedRecallDoc(input);
-    expect(resolved.exclusion_flags).not.toBe(input.seedData.derived.recall.exclusion_flags);
-    expect(resolved.quality_signals).not.toBe(input.seedData.derived.recall.quality_signals);
+
+    const shared = [];
+    const walk = (value, path, seen = new Set()) => {
+      if (!value || typeof value !== 'object' || seen.has(value)) return;
+      seen.add(value);
+      if (inputNodes.has(value)) shared.push(path);
+      Object.entries(value).forEach(([key, child]) => walk(child, `${path}.${key}`, seen));
+    };
+    walk(resolved, 'resolved');
+
+    expect(shared).toEqual([]);
   });
 
   test('a stored recall doc still wins over the freshly built fallback', () => {
