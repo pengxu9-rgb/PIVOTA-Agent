@@ -56,6 +56,23 @@ describe('stripExternalSeedMarketingBannerPrefix', () => {
     expect(out.endsWith('extraordinarily hydrating gel cream for oily skin types.')).toBe(true);
   });
 
+  test('a caps ingredient block later in the text cannot swallow the description', () => {
+    // The real shape, reduced: prose description, then a long uppercase
+    // INGREDIENTS list carrying stray lowercase joiners. Scanning the whole
+    // string let that list dominate the "uppercase prefix" test, and one of the
+    // lowercase joiners became the split point -- so the old code returned a
+    // fragment of the ingredients AS the body and threw the description away.
+    // Two live rows did exactly this; verified this input reproduces it against
+    // the pre-change function.
+    const description = 'Egg cream is an all-in-one firming moisturizer that works as a serum and sleeping mask.';
+    const caps = 'WATER, GLYCERIN, DIPROPYLENE GLYCOL, CETEARYL ALCOHOL, POLYGLYCERYL-2 DIPOLYHYDROXYSTEARATE, SODIUM STEAROYL GLUTAMATE, PANTHENOL, CHOLESTEROL, ';
+    const tail = 'and LUMDI, TROMETHAMINE, FOLIC ACID, CHOLESTEROL, DISODIUM STEAROYL GLUTAMATE, PULLULAN, PANTHENOL.';
+    const out = stripExternalSeedMarketingBannerPrefix(
+      `${description} INGREDIENTS: ${caps.repeat(9)}${tail}`,
+    );
+    expect(out.startsWith('Egg cream is an all-in-one firming moisturizer')).toBe(true);
+  });
+
   // The regression that matters: this was O(n^2). A 52KB description cost ~2.4s
   // of synchronous work and blocked the event loop for seconds, which is what
   // emptied the aurora acne recall (measured 2026-09-09). The old code needs
