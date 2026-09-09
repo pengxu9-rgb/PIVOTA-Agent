@@ -1386,7 +1386,14 @@ test('8a. the live 2026-09-08 repro: an off-vertical need is empty and reasoned,
   // partner cannot tell "we cannot help with this" from "we broke".
   assert.equal(res.metadata.reason, undefined);
   assert.equal(typeof res.metadata.recommendation_set_id, 'string', 'still an addressable event');
-  assert.ok(/beauty\/skincare only/i.test(res.metadata.missing_info[0]), 'missing_info says what would be needed');
+  assert.equal(res.metadata.missing_info[0],
+    'This recommendation lane covers skincare and beauty only; it cannot serve this need.',
+    'missing_info says what would be needed');
+  // The CN refusal is a first-class output of this tool (`language: 'CN'`) and was pinned by nothing.
+  const resCn = await h({ payload: { need: 'a graphics card', language: 'CN' } }, { agent_id: 'agent_a' });
+  assert.equal(resCn.metadata.products_empty_reason, 'off_vertical');
+  assert.equal(resCn.metadata.missing_info[0], '该推荐通道仅覆盖护肤/美妆品类，无法回答此需求。');
+  assert.match(resCn.metadata.warnings[0], /非美妆品类/);
   assert.ok(/off-vertical/i.test(res.metadata.warnings[0]), 'the vertical mismatch is warned about explicitly');
 });
 
@@ -1485,9 +1492,12 @@ test('8d. an ungrounded item that DOES carry an id is still suppressed — the c
 });
 
 test('8e. the tool description and the code agree — the promises are quoted from the served text', async () => {
-  // The description is what a partner agent actually plans against, and the two halves of this test
-  // are the two sentences the 2026-09-08 response contradicted. If someone re-broadens the behaviour,
-  // this fails here rather than in a partner's product.
+  // The description is what a partner agent actually plans against. Each assertion below pins one
+  // claim the served text makes — the two the 2026-09-08 response contradicted outright, plus the
+  // limits later review forced into the open (the off-vertical hedge, what the band measures, and the
+  // domain the door's own prompt actually allows — WIDE since #2162, and checked against that prompt
+  // rather than against this text). If someone re-broadens a promise, it fails here rather than in a
+  // partner's product.
   const surfaceMod = await import(pathToFileURL(path.join(__dirname, '..', 'mcp-server', 'src', 'commerceToolSurface.js')).href);
   const src = require('node:fs').readFileSync(
     path.join(__dirname, '..', 'mcp-server', 'src', 'commerceToolSurface.js'), 'utf8');
@@ -1583,17 +1593,27 @@ test('8g. the lane admitting it was off-DOMAIN never empties the shortlist — i
   }
 });
 
-test('8h. the class the LANE refuses but this TOOL advertises is never refused by the gate', async () => {
-  // The lane's prompt excludes makeup, tools, fragrance, haircare and supplements; the tool advertises
-  // beauty/skincare. Every one of these was measured carrying NO beauty token, so they sat one lexicon
-  // entry away from being refused as off-vertical. They are beauty buyers and must keep their shortlist.
-  const inVertical = [
-    'a bronzer for contouring', 'a brush set for my kit', 'a highlighter stick', 'setting spray',
+test('8h. an in-vertical beauty need is never refused by the gate, whatever tier its evidence is', async () => {
+  // Every need below was measured carrying NO beauty token at all, so each sat one lexicon entry away
+  // from being refused as off-vertical. They are beauty buyers and must keep their shortlist.
+  //
+  // The ORIGINAL reason for this test is now history worth keeping straight: until #2162 the lane's
+  // prompt was skincare-only while the tool advertised beauty, so makeup/fragrance/haircare needs were
+  // in-vertical for the TOOL and refused by the LANE. #2162 widened the door's prompt, so the lane
+  // refuses none of those any more — only tools, devices and supplements. What survives is the gate
+  // question this test actually asks: none of these needs may be refused before the lane is called.
+  // STRONG evidence: an unambiguous beauty word, which outranks even a HARD off-vertical domain.
+  const strongEvidence = [
+    'a bronzer for contouring', 'a highlighter stick', 'setting spray',
     'false lashes for a wedding', 'an eyelash curler', 'a gel manicure kit', 'cologne for my dad',
     'body butter', 'a gua sha tool', 'melasma treatment', 'under-eye bags', 'razor burn',
-    'a palette', 'a brow pencil', 'a blender sponge',
+    'an eyeshadow palette', 'a brow pencil', 'a blender sponge', 'a makeup brush set',
   ];
-  for (const need of inVertical)
+  // WEAK evidence: an ambiguous noun (`brush`, `nails`, `palette`…). Served on its own, and enough to
+  // hold a SOFT domain, but deliberately NOT enough to outrank a HARD one — "a sponge for my
+  // dishwasher" is the same shape and must refuse.
+  const weakEvidence = ['a brush set for my kit', 'a top coat for my nails', 'a compact palette'];
+  for (const need of [...strongEvidence, ...weakEvidence])
     assert.equal(offVerticalMarker(need), null, `"${need}" is in-vertical for this tool and must not be refused`);
 
   // THE ASSERTION ABOVE CANNOT FAIL ON ITS OWN, and that is worth saying out loud: these needs carry no
@@ -1602,12 +1622,41 @@ test('8h. the class the LANE refuses but this TOOL advertises is never refused b
   // only does work when an off-vertical token is ALSO present, so that is the shape it must be pinned
   // in: each need is probed with a known off-vertical word appended, where only a beauty token can
   // still win. This is what makes the vocabulary load-bearing rather than decorative.
-  for (const need of inVertical)
+  // THE PROBE TIER MUST MATCH THE EVIDENCE TIER, or the test asserts the wrong rule: strong evidence
+  // is probed against a HARD domain, weak evidence against a SOFT one.
+  for (const need of strongEvidence)
     assert.equal(offVerticalMarker(`${need} laptop`), null,
-      `"${need}" must carry a beauty token strong enough to suppress an explicit off-vertical word`);
+      `"${need}" must carry a beauty token strong enough to suppress a HARD off-vertical word`);
+  for (const need of weakEvidence) {
+    assert.equal(offVerticalMarker(`${need} sneakers`), null,
+      `"${need}" must carry enough beauty to hold a SOFT off-vertical word`);
+    assert.ok(offVerticalMarker(`${need} dishwasher`),
+      `"${need}" is ambiguous and must NOT outrank a HARD one — that is the dishwasher-sponge shape`);
+  }
 
-  // control: the same probe on a need with NO beauty token is refused, so the probe itself has teeth
+  // controls: both probe words refuse on their own, so neither probe is vacuous
   assert.ok(offVerticalMarker('a widget laptop'));
+  assert.ok(offVerticalMarker('a widget sneakers'));
+
+  // MIXED AND INCIDENTAL NEEDS — the direction that loses a sale, and the one this file's doctrine
+  // names as the expensive one. All of these were SERVED on main and REFUSED by the first version of
+  // the qualification fix, which measured itself only against needs containing no off-vertical word
+  // and so could not see it. Two shapes: a bag or garment the cosmetic is carried in / worn with
+  // (SOFT), and a genuinely mixed basket (STRONG beauty word alongside a HARD domain).
+  for (const need of [
+    'a brush that fits in my handbag',
+    'a travel palette for my backpack',
+    'a highlighter small enough for my handbag',
+    'a sponge I can keep in my backpack',
+    'a compact palette for my carry on backpack',
+    'nails that will not chip while I wear sneakers all day',
+    'a stippling brush, and diapers while I am here',
+    'a duo fibre brush and a treadmill',
+  ]) assert.equal(offVerticalMarker(need), null, `"${need}" is a beauty buyer and must keep the shortlist`);
+
+  // and the SOFT words still refuse on their own, or the tier would be doing nothing
+  for (const need of ['running shoes', 'a winter coat', 'a handbag', 'sneakers'])
+    assert.ok(offVerticalMarker(need), `"${need}" alone names no beauty and must refuse`);
 });
 
 test('8i. the categories measured live on 2026-09-08 are refused now', async () => {
@@ -1618,8 +1667,64 @@ test('8i. the categories measured live on 2026-09-08 are refused now', async () 
     'a winter coat', 'a rifle scope', 'car wax', 'protein powder'])
     assert.ok(offVerticalMarker(need), `"${need}" was measured passing the gate — it must refuse now`);
 
-  // and none of them cost a beauty buyer their shortlist
-  for (const need of ['a top coat for my nails', 'a beauty blender sponge', 'a foundation brush',
-    'wax strips for upper lip hair', 'a setting powder for oily skin', 'a body wash for eczema'])
+  // and none of them cost a beauty buyer their shortlist. PROBED, not asserted bare: these needs carry
+  // no off-vertical token either, so a plain `=== null` here passes even with the beauty side deleted —
+  // the same shape that made 8h green while pinning nothing. Appending an explicit off-vertical word
+  // means only a beauty token can still win.
+  for (const need of ['a beauty blender sponge', 'a foundation brush',
+    'wax strips for upper lip hair', 'a setting powder for oily skin', 'a body wash for eczema']) {
     assert.equal(offVerticalMarker(need), null, `"${need}" is beauty and must keep its shortlist`);
+    assert.equal(offVerticalMarker(`${need} treadmill`), null,
+      `"${need}" must carry a beauty token strong enough to suppress a HARD off-vertical word`);
+  }
+  // weak evidence: served, and held against a SOFT domain, but not against a HARD one (see 8h)
+  assert.equal(offVerticalMarker('a top coat for my nails'), null);
+  assert.equal(offVerticalMarker('a top coat for my nails sneakers'), null);
+  assert.ok(offVerticalMarker('a widget treadmill'), 'control: the probe word does refuse on its own');
+});
+
+test('8j. an ambiguous beauty word never cancels an explicit off-vertical signal', async () => {
+  // THE FIX-FORWARD DEFECT from #2149. `brush`, `sponge`, `nail`, `palette` and `highlighter` went onto
+  // the suppression side BARE, and they are ordinary English before they are beauty words — so every
+  // one of them cancelled an unambiguous off-vertical need. Measured on the merged commit: 40/40 of
+  // these refused correctly BEFORE the widening and 0/40 after it. The suppression side is the cheap
+  // direction to be liberal in, but not with words the rest of commerce also owns.
+  const ambiguous = ['sponge', 'brush', 'nails', 'palette', 'highlighter'];
+  const offVertical = ['dishwasher', 'chainsaw', 'textbooks', 'laptop', 'treadmill', 'air fryer', 'mattress', 'dog food'];
+  for (const w of ambiguous)
+    for (const o of offVertical)
+      assert.ok(offVerticalMarker(`a ${w} for my ${o}`),
+        `"${w}" must not cancel "${o}" — a bare beauty word is not a beauty need`);
+
+  // The QUALIFIED spellings are the ones that carry beauty, and they still win outright.
+  for (const need of ['a makeup brush', 'a blending sponge', 'nail polish', 'an eyeshadow palette',
+    'a highlighter stick', 'a beauty blender sponge', 'gel nails'])
+    assert.equal(offVerticalMarker(`${need} laptop`), null,
+      `"${need}" names its beauty context and must still suppress`);
+
+  // AND THE QUALIFIERS THEMSELVES MUST NOT BE AMBIGUOUS — the same defect one level in. Each of these
+  // was a qualifier the previous revision accepted, and each moved the leak rather than closing it: a
+  // wire brush SET, a silicone SPONGE, a COLOUR palette, a highlighter PEN, a nail CLIPPER and "MY
+  // nail gun" are hardware, stationery and pet-grooming phrases. A qualifier the rest of commerce also
+  // uses is not a qualifier.
+  for (const need of ['a wire brush set for my chainsaw', 'a brush kit for my lawn mower',
+    'a silicone sponge for my dishwasher', 'my nail gun and a power drill',
+    'a color palette for my laptop', 'a colour palette for my graphics card',
+    'an eye palette for my webcam', 'a highlighter pen for my textbooks',
+    'dog food and a nail clipper for my dog', 'a blender for smoothies', 'a kitchen blender'])
+    assert.ok(offVerticalMarker(need), `"${need}" is not a beauty need — its qualifier is borrowed`);
+});
+
+test('8l. the archetype list is not bounded by `limit` — it is built from every lane row', async () => {
+  // The cap was raised from 8 on the stated grounds that a lane response cannot exceed `limit`. It
+  // can: `unresolvedArchetypes` is built in the suppression loop over EVERY projected row, and
+  // `.slice(0, limit)` runs later and only on survivors. Driven, because the justification was wrong
+  // even though the change was right.
+  const rows = Array.from({ length: 12 }, (_, i) => ({ name: `Archetype ${i + 1}`, grounding_status: 'ungrounded', reasons: ['x'] }));
+  const h = makeRecommendProducts({ generate: async () => laneResult(rows), isEnabled: () => true });
+  const res = await h({ payload: { need: 'a serum', limit: 3 } }, {});
+  assert.equal(res.metadata.ungrounded_suppressed, 12);
+  assert.equal(res.metadata.unresolved_archetypes.length, 12,
+    'twelve suppressed rows produce twelve names, and `limit: 3` does not truncate them');
+  assert.equal(res.metadata.products_empty_reason, 'no_grounded_recommendations');
 });

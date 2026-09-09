@@ -41,6 +41,9 @@ const MAX_CONSTRAINT_KEYS = 8;
 const MAX_CONSTRAINT_VALUE_CHARS = 120;
 const DEFAULT_LIMIT = 5;
 const MAX_LIMIT = 10;
+// Not MAX_LIMIT: the archetype list is built from every row the lane returned, which is independent of
+// the caller's `limit` (see where it is emitted). Sized for a pathological response, not a shortlist.
+const MAX_UNRESOLVED_ARCHETYPES = 50;
 const DEFAULT_BUDGET_MS = 9000;
 // Live price re-verification bounds: check only the items that could reach the shortlist (limit plus a
 // small margin for slots freed by the ceiling pass), and never let one slow PDP lookup hold the whole
@@ -103,8 +106,13 @@ function dedupe(values) {
 // So a need is off-vertical ONLY when it names an off-vertical domain AND names nothing beauty at all.
 // "a lipstick to match my dress" keeps its shortlist; "a sealed booster box" does not. That asymmetry
 // is also why the beauty lexicon is generous and the off-vertical one is narrow: a word added to the
-// beauty side can only ever make this gate QUIETER, so it costs nothing to be liberal there, while a
-// word added to the off-vertical side can refuse a paying buyer.
+// beauty side can only ever make this gate QUIETER, while a word added to the off-vertical side can
+// refuse a paying buyer.
+//
+// "Quieter" is NOT the same as free, and an earlier revision of this comment said it cost nothing.
+// It does not: a beauty word that the rest of commerce also owns (`brush`, `sponge`, `nail`,
+// `palette`, `highlighter`) silences the gate for a dishwasher sponge and a chainsaw brush. That is
+// what the STRONG/WEAK split below is for — liberality is free only for words nothing else uses.
 //
 // LEXICAL, AND ONLY LEXICAL — which is why the served description says a RECOGNISED off-vertical need
 // rather than promising a universal.
@@ -135,34 +143,35 @@ function dedupe(values) {
 // Each group below is an alternation of word-anchored alternatives; `anchored` wraps the lot so a
 // group can be edited without re-deriving the boundaries every time.
 const anchored = (groups) => new RegExp(String.raw`\b(?:${groups.join('|')})\b`, 'i');
-const OFF_VERTICAL_RE = anchored([
-  // Collectibles / TCG — the reported repro.
+const OFF_VERTICAL_HARD_RE = anchored([
+  // HARD: domains that are never a plausible context for a beauty purchase. A weak beauty word does
+  // NOT rescue these — "a sponge for my dishwasher" is a dishwasher need whatever `sponge` suggests.
   String.raw`trading cards?|booster (?:box|pack)e?s?|pok[eé]mon|tcg|graded cards?|magic the gathering|sports cards?|funko`,
-  // Consumer electronics. `switch`/`monitor` are absent on purpose: alone they are ordinary English.
   String.raw`laptops?|smartphones?|iphones?|ipads?|headphones|earbuds|graphics cards?|gpus?|cpus?|game consoles?|xbox|playstation|nintendo|keyboards?|webcams?|televisions?|printers?|drones?`,
-  // Large household goods.
-  String.raw`refrigerators?|dishwashers?|washing machines?|mattress(?:es)?|sofas?|couch(?:es)?|lawn ?mowers?|power drills?`,
-  // Vehicles.
-  String.raw`motorcycles?|car t[iy]res?|windshields?|spark plugs?`,
-  // Kitchen / small appliances — measured 2026-09-08: "an air fryer" returned a Jurlique cleanser at
-  // fit 'high'. `blenders?` is deliberately ABSENT: a beauty blender is a makeup sponge, "a blender
-  // sponge" was measured being refused by it, and a kitchen blender is not worth a refused buyer.
-  String.raw`air ?fryers?|microwaves?|coffee ?makers?|espresso machines?|toasters?|kettles?|vacuum cleaners?`,
-  // Fitness. "protein powder" is a phrase, never bare `powder` — setting powder is beauty.
+  // `blenders?` is HARD again. #2149 removed it because "a blender sponge" was being refused; the fix
+  // for that is putting the beauty phrase on the strong side, not deleting a whole kitchen category —
+  // "a blender for smoothies" and "a kitchen blender" were unrefusable in between.
+  String.raw`air ?fryers?|microwaves?|blenders?|coffee ?makers?|espresso machines?|toasters?|kettles?|vacuum cleaners?`,
+  String.raw`refrigerators?|dishwashers?|washing machines?|mattress(?:es)?|sofas?|couch(?:es)?|lawn ?mowers?|power drills?|nail guns?`,
+  String.raw`motorcycles?|car t[iy]res?|windshields?|spark plugs?|car wax|wiper blades?`,
   String.raw`treadmills?|dumbbells?|kettlebells?|exercise bikes?|yoga mats?|protein powder`,
-  // Apparel / footwear. Bare `coat` is deliberately absent (a top coat is nail care) and so is
-  // `boots` (Boots is a beauty retailer); only unambiguous compounds appear.
-  String.raw`sneakers?|running shoes?|jeans|handbags?|backpacks?|winter coats?|hoodies?`,
-  // Baby / childcare.
   String.raw`diapers?|nappies|strollers?|car seats?`,
-  // Outdoors / tools / auto care. `car wax` is a phrase: bare `wax` is hair removal.
-  String.raw`rifle scopes?|fishing rods?|tents?|sleeping bags?|chainsaws?|car wax|wiper blades?`,
-  // Pets / groceries / other verticals that share a storefront with beauty but not this lane.
+  String.raw`rifle scopes?|fishing rods?|tents?|sleeping bags?|chainsaws?`,
   String.raw`dog food|cat litter|aquariums?|textbooks?|firearms?|ammunition`,
 ]);
+// SOFT: apparel and accessories. These ARE off-vertical for this lane, and on their own they are
+// refused — "running shoes" and "a winter coat" were both measured returning beauty products. But
+// they are also the things a buyer carries cosmetics IN or wears WHILE using them, so they co-occur
+// innocently with real beauty needs ("a brush that fits in my handbag", "nails that will not chip
+// while I wear sneakers all day"). A weak beauty word is enough to keep them served.
+const OFF_VERTICAL_SOFT_RE = anchored([
+  String.raw`sneakers?|running shoes?|jeans|handbags?|purses?|backpacks?|winter coats?|raincoats?|hoodies?`,
+]);
 const OFF_VERTICAL_CJK_RE = /卡牌|显卡|笔记本电脑|智能手机|游戏机|键盘|冰箱|洗碗机|洗衣机|床垫|沙发|摩托车|狗粮|猫砂/;
-// Suppression side: anything that plausibly makes this a beauty need. Liberal by design (see above).
-const BEAUTY_RE = anchored([
+
+// STRONG beauty: unambiguous in any sentence. Presence anywhere serves the need, mixed or not —
+// "a duo fibre brush and a treadmill" is a buyer who wants a makeup brush and mentioned a treadmill.
+const BEAUTY_STRONG_RE = anchored([
   String.raw`skin|skin ?care|complexion|faces?|facial|derma\w*|cosmetics?|makeup|beauty`,
   String.raw`serums?|essences?|ampoules?|moistur\w*|cleansers?|cleans\w*|toners?|exfoliat\w*|peels?|masks?|creams?|lotions?|balms?|oils?|mists?`,
   String.raw`sunscreens?|spf|retinols?|retinoids?|niacinamide|hyaluronic|ceramides?|salicylic|glycolic|azelaic|vitamin c|peptides?|antioxidants?`,
@@ -172,12 +181,25 @@ const BEAUTY_RE = anchored([
   // The class the lane's NARROW prompt refuses and this tool advertises. Since #2155 the tool's own
   // door loads the wide prompt, so these are in-domain end to end; they stay on the suppression side
   // because the gate must not refuse them if that prompt is ever pointed back at reco_main_v1_2.
-  // These sit on the SUPPRESSION side, so they cost nothing and stop the gate refusing a beauty buyer:
-  // measured 2026-09-08, "a bronzer for contouring", "a brush set for my kit" and "a blender sponge"
+  // Measured 2026-09-08: "a bronzer for contouring", "a brush set for my kit" and "a blender sponge"
   // carried no beauty token at all.
-  String.raw`bronzers?|highlighters?|contour\w*|palettes?|brow pencils?|brows?|lash(?:es)?|eyelash\w*|setting sprays?|makeup brush(?:es)?|brush(?:es)?|sponges?|beauty blenders?`,
-  String.raw`manicures?|pedicures?|nails?|cuticles?|colognes?|body butter|body creams?|gua sha|jade rollers?|derm[ar]?planing|razor burn|ingrown hairs?|melasma|under.?eye\w*|puffiness|dark circles?`,
   String.raw`shampoos?|conditioners?|scalp|hair|fragrances?|perfumes?|deodorants?|body wash`,
+  String.raw`bronzers?|contour\w*|brow pencils?|brows?|lash(?:es)?|eyelash\w*|setting sprays?`,
+  String.raw`manicures?|pedicures?|cuticles?|colognes?|body butter|body creams?|gua sha|jade rollers?|derm[ar]?planing|razor burn|ingrown hairs?|melasma|under.?eye\w*|puffiness|dark circles?`,
+  // The QUALIFIED forms of the ambiguous nouns. Each qualifier must be a word that is itself beauty:
+  // `brush set`, `silicone sponge`, `colour palette`, `highlighter pen` and `nail clipper` were all
+  // tried and all leaked (a wire brush set, a dishwasher sponge, a laptop colour palette, a textbook
+  // highlighter, a dog's nail clipper). A qualifier that the rest of commerce also uses is not one.
+  String.raw`(?:makeup|make up|cosmetics?|blush|brow|lash|eyeshadow|eyeliner|foundation|contour|powder|kabuki|fan|blending|stippling|duo fibre|duo fiber|beauty) brush(?:es)?`,
+  String.raw`(?:makeup|make up|blending|blender|beauty|konjac|cleansing) sponges?|beauty blenders?`,
+  String.raw`(?:eyeshadow|contour|highlight\w*|makeup|blush|bronzer) palettes?`,
+  String.raw`highlighter (?:sticks?|powders?|palettes?)|(?:cream|powder|liquid|stick) highlighters?`,
+  String.raw`nail (?:polish|art|care|files?|salons?|beds?|strengtheners?)|(?:gel|acrylic|press.on) nails?`,
+]);
+// WEAK beauty: the bare ambiguous nouns. They are NOT beauty evidence on their own — they never
+// rescue a HARD domain — but they are enough to tip a SOFT one back to being served.
+const BEAUTY_WEAK_RE = anchored([
+  String.raw`brush(?:es)?|sponges?|nails?|palettes?|highlighters?|compacts?|travel sized?`,
 ]);
 const BEAUTY_CJK_RE = /护肤|皮肤|精华|面霜|乳液|洁面|防晒|化妆|彩妆|口红|唇|痘|毛孔|皱纹|美白|保湿|敏感肌|洗发|护发|香水|面膜|眼霜|爽肤/;
 
@@ -186,23 +208,35 @@ function normalizeForMatch(s) {
   return String(s).replace(/[-–—_:/\\]+/g, ' ').replace(/\s+/g, ' ');
 }
 
-/** Does the need name anything beauty at all? The suppression side of the asymmetry. */
+/** Does the need name something unambiguously beauty? The suppression side of the asymmetry. */
 function hasBeautyMarker(need) {
   if (!nonEmpty(need)) return false;
-  return BEAUTY_RE.test(normalizeForMatch(need)) || BEAUTY_CJK_RE.test(need);
+  return BEAUTY_STRONG_RE.test(normalizeForMatch(need)) || BEAUTY_CJK_RE.test(need);
 }
 
 /**
  * Is this need plainly outside the beauty/skincare lane? Exported so the rule is testable directly
  * rather than only through a mocked lane.
+ *
+ * TWO TIERS A SIDE, one rule — replacing a per-word lexicon that had to be re-tuned every review and
+ * moved its leak to a neighbouring phrase each time (`sponge` -> `silicone sponge` -> …). What the
+ * tiers encode is that ambiguity is a property of the WORD, not of the phrase it happens to sit in:
+ *   - a STRONG beauty word serves the need outright, even mixed with an off-vertical one;
+ *   - a HARD off-vertical domain refuses regardless of any weak beauty noun;
+ *   - a SOFT one (apparel, bags) refuses only when nothing beauty-ish is present at all, because it
+ *     is exactly what a cosmetic is carried in or worn with.
+ *
  * @returns {string|null} the off-vertical phrase that fired, or null (in-vertical, or unrecognised)
  */
 function offVerticalMarker(need) {
   if (!nonEmpty(need)) return null;
-  // A beauty word anywhere in the need suppresses the gate outright — see the asymmetry note above.
   if (hasBeautyMarker(need)) return null;
-  const m = OFF_VERTICAL_RE.exec(normalizeForMatch(need)) || OFF_VERTICAL_CJK_RE.exec(need);
-  return m ? m[0] : null;
+  const n = normalizeForMatch(need);
+  const hard = OFF_VERTICAL_HARD_RE.exec(n) || OFF_VERTICAL_CJK_RE.exec(need);
+  if (hard) return hard[0];
+  if (BEAUTY_WEAK_RE.test(n)) return null;
+  const soft = OFF_VERTICAL_SOFT_RE.exec(n);
+  return soft ? soft[0] : null;
 }
 
 /** The lane's integer 0-100 score as a band an agent can act on (never the raw score: see `fit`). */
@@ -676,7 +710,7 @@ function makeRecommendProducts(deps = {}) {
     // exits use) because this is a legitimate ANSWER, not a failure: a partner agent has to be able to
     // tell "we cannot help with this" from "we broke", and `products_empty_reason` is the field the
     // description points it at.
-    const offVerticalAnswer = (marker, detectedBy) => ({
+    const offVerticalAnswer = (marker) => ({
       subject,
       signals: [],
       metadata: {
@@ -690,8 +724,8 @@ function makeRecommendProducts(deps = {}) {
         // the agent should DO, since missing_info is the field it reads to decide whether to re-ask.
         missing_info: [
           lang === 'CN'
-            ? '该推荐通道目前仅覆盖美妆/护肤品类，无法回答此需求。'
-            : 'This recommendation lane covers beauty/skincare only; it cannot serve this need.',
+            ? '该推荐通道仅覆盖护肤/美妆品类，无法回答此需求。'
+            : 'This recommendation lane covers skincare and beauty only; it cannot serve this need.',
         ],
         warnings: [
           lang === 'CN'
@@ -705,7 +739,10 @@ function makeRecommendProducts(deps = {}) {
         // The phrase that fired, so a partner (and we) can audit the gate's precision from logs
         // instead of guessing which word refused a buyer.
         off_vertical_marker: marker,
-        off_vertical_detected_by: detectedBy,
+        // Always 'need_lexicon' — the only axis left. Kept as an explicit key rather than dropped:
+        // a caller that has to distinguish a future second axis should not have to infer it from
+        // absence, and a parameter with one call site and one value is not that distinction.
+        off_vertical_detected_by: 'need_lexicon',
         latency_ms: now() - startedAt,
       },
     });
@@ -716,7 +753,7 @@ function makeRecommendProducts(deps = {}) {
         { recommendation_set_id: recommendationSetId, marker: offVertical, detected_by: 'need_lexicon' },
         'recommend_products refused an off-vertical need',
       );
-      return offVerticalAnswer(offVertical, 'need_lexicon');
+      return offVerticalAnswer(offVertical);
     }
     let result;
     try {
@@ -1062,7 +1099,13 @@ function makeRecommendProducts(deps = {}) {
         // point is that these have no product identity, and a node with a null `product_id` is exactly
         // what a partner agent showed a buyer on 2026-09-08.
         ...(unresolvedArchetypes.length > 0
-          ? { unresolved_archetypes: dedupe(unresolvedArchetypes).slice(0, 8) }
+          // Capped well above what a lane response can carry. NOT bounded by `limit`: an earlier comment
+          // here claimed it was, which is false — this list is built from every PROJECTED row (see the
+          // suppression loop), and `.slice(0, limit)` runs later and only on survivors, so a lane
+          // returning 12 unresolvable rows against limit 3 produces 12 names. The description says such
+          // products appear ONLY here, so a cap that truncates makes that sentence false; this one is a
+          // sanity bound on a pathological response, not a display limit.
+          ? { unresolved_archetypes: dedupe(unresolvedArchetypes).slice(0, MAX_UNRESOLVED_ARCHETYPES) }
           : {}),
         // A lane defect, not a policy outcome (see the suppression block): an item that claimed
         // catalog grounding and carried no id. Surfaced so it is countable rather than silent.
