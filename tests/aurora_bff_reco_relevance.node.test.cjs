@@ -18661,3 +18661,65 @@ test('__internal: the primary-step-unconfirmed notice has its own copy, not the 
     assert.doesNotMatch(payload.message, /not showing product picks/i);
   }
 });
+
+test('__internal: the real handoff lane surfaces a support routine when the primary comes back empty', async () => {
+  const { __internal } = loadRoutesFresh();
+  // The wiring test. Every other test here hands the flag or the rows straight to
+  // the selector, so deleting the production opt-in stayed green everywhere while
+  // the live lane surfaced nothing. This walks the lane the chat entry actually
+  // calls: empty primary, viable supports, and asserts products come out.
+  const supportRow = (id, title, category, step) => ({
+    product_id: id,
+    merchant_id: 'external_seed',
+    brand: 'Test Brand',
+    name: title,
+    display_name: title,
+    title,
+    category,
+    product_type: category,
+    retrieval_source: 'external_seed',
+    retrieval_step: step,
+    candidate_step: step,
+    short_description: `A lightweight ${category} for oily skin that absorbs quickly.`,
+  });
+
+  try {
+    __internal.__setRouteDependencyOverridesForTest({
+      searchInternalProductsPrimitive: async () => ({ ok: true, products: [] }),
+      searchExternalSeedAuthorityProducts: async () => ({ ok: true, products: [] }),
+      searchLocalExternalSeedProducts: async ({ query, role }) => {
+        const roleId = String(role?.role_id || '');
+        // The primary role finds nothing; the supports do. This is the shape the
+        // prod acne turn shows: viable 10, acne bucket 0.
+        if (!roleId || roleId === 'acne_clogged_pore_treatment') return { ok: false, products: [], reason: 'empty' };
+        if (roleId === 'lightweight_moisturizer') {
+          return { ok: true, products: [supportRow('ext_m1', 'Oil-Free Gel Cream Moisturizer', 'moisturizer', 'moisturizer')] };
+        }
+        if (roleId === 'daily_sunscreen') {
+          return { ok: true, products: [supportRow('ext_s1', 'Invisible Daily Sunscreen SPF 50', 'sunscreen', 'sunscreen')] };
+        }
+        return { ok: false, products: [], reason: 'empty', query };
+      },
+    });
+
+    const out = await __internal.runBeautyMainlineLocalHandoffSearch({
+      ctx: { request_id: 'req_wiring', trace_id: 'trace_wiring', lang: 'EN' },
+      logger: null,
+      targetContext: ACNE_MISSING_PRIMARY_TARGET_CONTEXT,
+      timeoutMs: 8000,
+      deadlineMs: Date.now() + 20000,
+    });
+
+    const summary = out?.metadata?.candidate_pool_summary || {};
+    // Products reach the caller...
+    assert.ok(
+      (out?.products || []).length >= 2,
+      `expected a support routine from the real lane, got ${(out?.products || []).length}`,
+    );
+    // ...and the state still says the primary step is the missing one.
+    assert.equal(summary.primary_role_matched, false);
+    assert.equal(summary.primary_missing_support_routine_surfaced, true);
+  } finally {
+    __internal.__resetRouteDependencyOverridesForTest();
+  }
+});

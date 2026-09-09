@@ -2392,8 +2392,9 @@ function createFindProductsBeautyDiscoveryLocalMainlineRuntime(deps = {}) {
 
       candidateState = finalizeConcernFrameworkCandidatePools(rawCandidates, {
         targetContext,
-        // This lane's envelope renders the primary-step-unconfirmed notice.
-        allowPrimaryMissingSupportRoutine: true,
+        // Deliberately NOT opting in: this module builds a search response, not a
+        // chat envelope, and renders no `primary_step_unconfirmed` notice. If it
+        // ever goes live on /agent/v1/products/search it must stay opted out.
       });
       const selectedProductIdsAfter = getSelectedProductIds(
         candidateState?.selected_recommendations,

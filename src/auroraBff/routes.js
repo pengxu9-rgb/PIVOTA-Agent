@@ -21015,9 +21015,9 @@ function buildRecoCatalogQueryLevels({
     : [];
 }
 
-function buildRecoCandidateStateFromRawCandidates(rawCandidates, { targetContext, recommendationTaskContext = null, priceCeiling = null } = {}) {
+function buildRecoCandidateStateFromRawCandidates(rawCandidates, { targetContext, recommendationTaskContext = null, priceCeiling = null, allowPrimaryMissingSupportRoutine = false } = {}) {
   return targetContext && Array.isArray(targetContext.framework_roles) && targetContext.framework_roles.length > 0
-    ? finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext })
+    ? finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext, allowPrimaryMissingSupportRoutine })
     : finalizeRecommendationCandidatePools(rawCandidates, {
         targetContext,
         recoContext: recommendationTaskContext,
@@ -25169,6 +25169,12 @@ async function runBeautyMainlineLocalHandoffSearch({
     : 0;
 
   const collectedBase = await collectRecoCandidatesFromQueryLevels({
+    // The only production caller of this lane is
+    // `handoffRecoToBeautyMainlineSearch`, whose only caller is the beauty chat
+    // mainline entry -- the one surface that renders the
+    // `primary_step_unconfirmed` notice. Opting in anywhere else would surface a
+    // routine missing the requested step with nothing saying so.
+    allowPrimaryMissingSupportRoutine: true,
     queryLevels: effectiveLocalHandoffQueryLevels,
     targetContext,
     recommendationTaskContext,
@@ -25784,7 +25790,11 @@ async function runBeautyMainlineLocalHandoffSearch({
       ),
       deadlineAtMs: hydrationDeadlineMs || deadlineMs,
     });
-    const hydratedFrameworkState = finalizeConcernFrameworkCandidatePools(hydratedFrameworkRawPool, { targetContext });
+    // Re-finalizing without the flag would silently drop the surfacing that the
+    // collector already decided on, so a hydrated pool would return nothing.
+    // Redundant for the non-hydrating path the wiring test walks -- removing
+    // these two alone stays green -- so the hydrated path is not yet covered.
+    const hydratedFrameworkState = finalizeConcernFrameworkCandidatePools(hydratedFrameworkRawPool, { targetContext, allowPrimaryMissingSupportRoutine: true });
     if (
       Array.isArray(hydratedFrameworkState?.selected_recommendations)
       && hydratedFrameworkState.selected_recommendations.length > 0
@@ -25809,7 +25819,7 @@ async function runBeautyMainlineLocalHandoffSearch({
           deadlineAtMs: hydrationDeadlineMs || deadlineMs,
         },
       );
-      const rerankedFrameworkState = finalizeConcernFrameworkCandidatePools(hydratedFrameworkPool, { targetContext });
+      const rerankedFrameworkState = finalizeConcernFrameworkCandidatePools(hydratedFrameworkPool, { targetContext, allowPrimaryMissingSupportRoutine: true });
       if (Array.isArray(rerankedFrameworkState?.selected_recommendations) && rerankedFrameworkState.selected_recommendations.length > 0) {
         effectiveCandidateState = mergeConcernFrameworkRerankedState(
           effectiveCandidateState,
@@ -28494,6 +28504,7 @@ async function collectRecoCandidatesFromQueryLevels({
   initialRawCandidates = [],
   initialSearchResults = [],
   priceCeiling = null,
+  allowPrimaryMissingSupportRoutine = false,
 } = {}) {
   const rawCandidates = (Array.isArray(initialRawCandidates) ? initialRawCandidates : [])
     .map((candidate) => normalizeRecoCatalogProduct(candidate))
@@ -28518,6 +28529,7 @@ async function collectRecoCandidatesFromQueryLevels({
   );
   let candidateState = buildRecoCandidateStateFromRawCandidates(rawCandidates, {
     targetContext,
+    allowPrimaryMissingSupportRoutine,
     recommendationTaskContext,
     priceCeiling,
   });
@@ -28901,6 +28913,7 @@ async function collectRecoCandidatesFromQueryLevels({
         }
         candidateState = buildRecoCandidateStateFromRawCandidates(rawCandidates, {
           targetContext,
+          allowPrimaryMissingSupportRoutine,
           recommendationTaskContext,
           priceCeiling,
         });
@@ -28916,6 +28929,7 @@ async function collectRecoCandidatesFromQueryLevels({
           accumulateQueryLevelRow(stageId, row, levelAggregate);
           candidateState = buildRecoCandidateStateFromRawCandidates(rawCandidates, {
             targetContext,
+            allowPrimaryMissingSupportRoutine,
             recommendationTaskContext,
             priceCeiling,
           });
@@ -28968,6 +28982,7 @@ async function collectRecoCandidatesFromQueryLevels({
         accumulateQueryLevelRow(stageId, row, levelAggregate);
         candidateState = buildRecoCandidateStateFromRawCandidates(rawCandidates, {
           targetContext,
+          allowPrimaryMissingSupportRoutine,
           recommendationTaskContext,
           priceCeiling,
         });
@@ -28994,6 +29009,7 @@ async function collectRecoCandidatesFromQueryLevels({
     attemptedPathsByStage[stageId] = Array.from(levelAggregate.attemptedPaths);
     candidateState = buildRecoCandidateStateFromRawCandidates(rawCandidates, {
       targetContext,
+      allowPrimaryMissingSupportRoutine,
       recommendationTaskContext,
       priceCeiling,
     });

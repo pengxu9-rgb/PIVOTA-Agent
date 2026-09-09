@@ -1481,7 +1481,7 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
           && typeof buildConfidenceNoticeCardPayload === 'function'
           ? [
             {
-              card_id: `conf_${ctx?.request_id}_primary_step_unconfirmed`,
+              card_id: `conf_${ctx?.request_id || Date.now()}_primary_step_unconfirmed`,
               type: 'confidence_notice',
               payload: buildConfidenceNoticeCardPayload({
                 language: ctx?.lang,
