@@ -49,8 +49,26 @@ function stripExternalSeedMarketingBannerPrefix(value) {
   // re-split and re-scanned the prefix, so a 52KB description cost ~2.4s of
   // synchronous work — and these rows average 56KB. Measured 2026-09-09 as the
   // ~5-6s event-loop block behind the aurora recall stalls.
-  const scanWindow = normalized.length > BANNER_SCAN_LIMIT
-    ? normalized.slice(0, BANNER_SCAN_LIMIT)
+  //
+  // The bound alone is not safe: a banner is only a banner if some LOWERCASE
+  // token follows it, and a leading all-caps INCI list can run past the limit.
+  // Stopping there leaves the text opening with "INGREDIENTS", which the cut
+  // patterns in `stripRecallNarrativeNoise` then match at index 0 and drop the
+  // WHOLE FIELD -- turning "banner not stripped" into "no recall text at all".
+  // 5 of 10,136 active rows have a leading no-lowercase run over the limit.
+  //
+  // So extend the window just far enough to cover the first lowercase-bearing
+  // token. That costs one extra linear scan and stays linear overall: every
+  // all-caps token before it is rejected by the cheap `/[a-z]/` test, so only
+  // that one token ever pays for the prefix passes.
+  const firstLowercaseIndex = normalized.search(/[a-z]/);
+  let scanLimit = BANNER_SCAN_LIMIT;
+  if (firstLowercaseIndex >= scanLimit) {
+    const tokenEnd = normalized.indexOf(' ', firstLowercaseIndex);
+    scanLimit = tokenEnd === -1 ? normalized.length : tokenEnd;
+  }
+  const scanWindow = normalized.length > scanLimit
+    ? normalized.slice(0, scanLimit)
     : normalized;
   // A cut final token keeps the real word's start index, so it is still a valid
   // boundary; truncation can only hide a lowercase letter and make us miss a

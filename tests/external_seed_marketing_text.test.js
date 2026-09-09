@@ -3,6 +3,11 @@
 const {
   stripExternalSeedMarketingBannerPrefix,
 } = require('../src/services/externalSeedMarketingText');
+// Inputs are real product descriptions pulled from active seeds (truncated to
+// 3000 chars); each `expected` was produced by the PRE-CHANGE function on
+// origin/main, so this is a genuine golden and not a snapshot of the new code
+// agreeing with itself.
+const golden = require('./fixtures/external_seed_marketing_text_golden.json');
 
 describe('stripExternalSeedMarketingBannerPrefix', () => {
   // Behaviour first: the bound added for cost must not change what gets stripped.
@@ -48,12 +53,45 @@ describe('stripExternalSeedMarketingBannerPrefix', () => {
     expect(out.length).toBeGreaterThan(80000);
   });
 
-  test('a long all-caps run with no lowercase body start is left whole', () => {
-    // The body starts well past the scan window, so no boundary should be found
-    // there and the text must come back whole.
+  test('an all-caps run longer than the scan bound is still stripped', () => {
+    // The scan bound alone would stop before this body ever appears. The window
+    // extends to the first lowercase-bearing token precisely so a leading INCI
+    // list cannot survive as the start of the text -- see the dropped-field test
+    // below for what that costs downstream.
     const text = `${'HYDRATION '.repeat(400)}extraordinarily hydrating gel cream for oily skin types.`;
-    const out = stripExternalSeedMarketingBannerPrefix(text);
-    expect(out.endsWith('extraordinarily hydrating gel cream for oily skin types.')).toBe(true);
+    // `toBe`, not `endsWith`: the old 56-char fragment also ends this way, so
+    // `endsWith` passed for both the bug and the fix and proved nothing.
+    expect(stripExternalSeedMarketingBannerPrefix(text))
+      .toBe('extraordinarily hydrating gel cream for oily skin types.');
+  });
+
+  test('a leading all-caps INCI list past the bound does not become a dropped field', () => {
+    // `stripRecallNarrativeNoise` cuts to '' when a cut pattern matches before
+    // index 24. So leaving the text opening with "INGREDIENTS" does not merely
+    // fail to strip a banner -- it destroys the whole recall field. Constructed
+    // at 1100 chars of caps, past the 1000 bound; 5 of 10,136 active rows have a
+    // leading no-lowercase run that long.
+    let block = 'INGREDIENTS: WATER, GLYCERIN, BUTYLENE GLYCOL, SQUALANE, NIACINAMIDE, ADENOSINE, CARBOMER, XANTHAN GUM, TOCOPHEROL, ';
+    while (block.length < 1100) {
+      block += 'WATER, GLYCERIN, BUTYLENE GLYCOL, SQUALANE, NIACINAMIDE, ADENOSINE, CARBOMER, TOCOPHEROL, ';
+    }
+    const body = 'A hydrating gel cream for oily skin that absorbs quickly and leaves no residue on the face.';
+    const out = stripExternalSeedMarketingBannerPrefix(`${block.slice(0, 1100).trim()} ${body}`);
+    // The body must lead, or the cut patterns downstream match at index 0.
+    expect(out).toBe(body);
+  });
+
+  test('a qualifying token past a short early lowercase word is still found', () => {
+    // This is what BANNER_SCAN_LIMIT's floor actually controls. The extension
+    // guarantees the FIRST lowercase token is always reachable, so a plain
+    // "banner then body" case survives even a limit of 100. Only when an early
+    // lowercase word cannot qualify (its prefix is under 6 tokens) does the real
+    // boundary sit further out, where the limit decides whether we look at all.
+    // Without this, lowering the limit to 100 passes every other test here.
+    const head = 'NEW ab ';
+    const caps = 'LIMITED EDITION BESTSELLER GLOW DROP SET EXCLUSIVE OFFER SHOP NOW '.repeat(6);
+    const body = 'a hydrating gel cream for oily and combination skin that absorbs quickly.';
+    expect(stripExternalSeedMarketingBannerPrefix(`${head}${caps}${body}`)).toBe(body);
   });
 
   test('a caps ingredient block later in the text cannot swallow the description', () => {
@@ -102,5 +140,15 @@ describe('stripExternalSeedMarketingBannerPrefix', () => {
     const startedAt = Date.now();
     stripExternalSeedMarketingBannerPrefix(text);
     expect(Date.now() - startedAt).toBeLessThan(1000);
+  });
+
+  test('matches the pre-change function on every real description in the golden', () => {
+    // The behaviour claim in the PR rests on this. Without the fixture in the
+    // repo, "byte-identical on 51 real cases" was unverifiable from the PR.
+    expect(golden.length).toBeGreaterThan(40);
+    const mismatches = golden
+      .filter((row) => stripExternalSeedMarketingBannerPrefix(row.input) !== row.expected)
+      .map((row) => row.name);
+    expect(mismatches).toEqual([]);
   });
 });

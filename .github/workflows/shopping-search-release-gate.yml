@@ -236,6 +236,7 @@ jobs:
           NODE_OPTIONS: --max-old-space-size=4096
         run: |
           npx jest --runInBand \
+            tests/external_seed_marketing_text.test.js \
             tests/integration/invoke.find_products_multi_cache_search.test.js \
             tests/integration/invoke.find_products_multi_strict_surface.test.js \
             tests/integration/invoke.get_discovery_feed.test.js \
