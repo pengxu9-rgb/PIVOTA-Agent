@@ -400,7 +400,9 @@ function markPriceViolation(signal, ceiling) {
   v.watchouts = dedupe([marker, ...stripBudgetClaims(v.watchouts)]).slice(0, 6);
   // Only ever a DOWNGRADE: where the lane emitted no score there is no band to assert, and inventing
   // one would be the same fabrication this file's header guards against.
-  v.fit = { ...v.fit, level: v.fit.level === null ? null : 'low' };
+  // MUTATED IN PLACE, deliberately: `v.fit` and `v.lane_confidence` are the same object (see
+  // recommendationItemToSignal), and reassigning would split them and leave the alias stale.
+  if (v.lane_confidence.level !== null) v.lane_confidence.level = 'low';
   v.constraint_violations = [{
     constraint: 'price_max',
     limit: ceiling.limit,
@@ -532,7 +534,7 @@ function recommendationItemToSignal(item, { rank } = {}) {
   // safety warning off the list — the #2036 failure class reached by eviction instead of deletion.
   const watchouts = [...asStringArray(item.warnings, 4), ...asStringArray(item.constraint_notes, 4)];
 
-  return {
+  const signal = {
     signal_type: 'recommendation',
     subject: { kind: 'product', id: productId || null },
     value: {
@@ -558,8 +560,25 @@ function recommendationItemToSignal(item, { rank } = {}) {
       // Grounded = resolved to a product in Pivota's catalog; ungrounded = the lane named a product it could
       // not resolve, and such items carry NO url/price by construction (the lane strips them).
       grounding: grounded ? 'catalog' : 'ungrounded',
-      fit: {
-        // Not a bare `confidence`/`score`: the sanitizer removes those keys from product-shaped nodes.
+      // `lane_confidence` — RENAMED FROM `fit` (#2156). The band answers "how sure is the lane about
+      // this product?", never "how well does this answer the need?": nothing on this path reads `need`.
+      // Those two questions diverge exactly when it matters — measured live 2026-09-08, "an air fryer",
+      // "a treadmill" and "a bronzer" all came back at the top band, the last one alongside the lane's
+      // own warning that it had excluded makeup. A field called `fit` sitting in a per-item node is
+      // read as agreement with the need, so the name was doing the misleading.
+      //
+      // `fit` is still emitted, as a DEPRECATED ALIAS pointing at the SAME object (so the price-ceiling
+      // downgrade below cannot leave the two disagreeing). A silent rename would have broken every
+      // partner reading `value.fit.level` — including the integration this defect was found from — and
+      // the description now names `lane_confidence` as the field to read. Drop the alias in a later
+      // release, not in the one that introduces the replacement.
+      //
+      // The earlier note here claimed this could not be a bare `confidence` because the sanitizer
+      // strips that from product-shaped nodes. Measured: `value` is NOT a product node (its
+      // product_id lives one level down in `value.product`), so a bare `confidence` survives there
+      // too — the rationale was wrong, though the conclusion to avoid the name still stands on its
+      // own merits. `lane_confidence` was verified to survive resultSanitizer in both positions.
+      lane_confidence: {
         // The lane emits an integer 0-100 `score`; it is surfaced as a BAND, which is what an agent can
         // act on, and lane-level certainty stays on metadata.confidence_overall.
         //
@@ -579,6 +598,11 @@ function recommendationItemToSignal(item, { rank } = {}) {
     },
     visibility: 'buyer_safe',
   };
+  // THE SAME OBJECT, not a copy: every later pass that downgrades the band (markPriceViolation) must
+  // reach both keys, and two independently-built objects would let the deprecated alias keep saying
+  // 'high' on an item the ceiling had already capped to 'low' — a worse defect than the rename fixes.
+  signal.value.fit = signal.value.lane_confidence;
+  return signal;
 }
 
 /**

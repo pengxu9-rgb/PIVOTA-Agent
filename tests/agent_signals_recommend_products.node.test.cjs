@@ -167,7 +167,8 @@ test('3. projection: identity, why, watchouts, grounding; no-identity items drop
   assert.deepEqual(s.value.notes, ['well tolerated by sensitive skin']);
   assert.equal(s.value.routine_step, 'treatment');
   assert.equal(s.value.product_type, 'treatment');
-  assert.equal(s.value.fit.level, 'high', 'the lane score bands, never the raw score');
+  assert.equal(s.value.lane_confidence.level, 'high', 'the lane score bands, never the raw score');
+  assert.equal(s.value.fit.level, 'high', 'the deprecated alias carries the identical value');
   assert.equal(s.value.grounding, 'catalog');
   assert.equal(s.evidence.method, 'llm_recommendation_catalog_grounded');
   assert.equal(s.evidence.grade, undefined, 'this lane carries no graded evidence — get_intel does');
@@ -1514,8 +1515,11 @@ test('8e. the tool description and the code agree — the promises are quoted fr
   assert.ok(/Every returned item IS a catalog product with a non-null `product_id`/.test(src));
   // `fit` bands the LANE's score with no reference to the need (recommendationItemToSignal), so a
   // gate-passing off-vertical need still reads fit 'high'. Unfixed here, but it must not be unsaid.
-  assert.ok(/`fit` is the lane's own confidence in the item, NOT a measure of how well it answers your need/.test(src),
-    'the description must not let fit be read as agreement with the need');
+  assert.ok(/Read `lane_confidence` for per-item certainty/.test(src)
+    && /NOT a measure of how well the product answers your need/.test(src),
+    'the description must not let the band be read as agreement with the need');
+  assert.ok(/`fit` is a DEPRECATED alias/.test(src),
+    'the alias must be advertised as deprecated, or partners never migrate off it');
   // The lane's prompt is SKINCARE-only while the tool advertises beauty/skincare — a makeup need comes
   // back with skincare picks. Narrower than advertised is still a description that must say so.
   assert.ok(/never to recommend makeup, brushes, beauty tools, devices, fragrance, haircare or supplements/.test(src),
@@ -1635,4 +1639,39 @@ test('8j. an ambiguous beauty word never cancels an explicit off-vertical signal
     'a highlighter stick', 'a brush set', 'my nails'])
     assert.equal(offVerticalMarker(`${need} laptop`), null,
       `"${need}" names its beauty context and must still suppress`);
+});
+
+
+test('8k. `fit` is a deprecated alias of `lane_confidence` and cannot drift from it', async () => {
+  // #2156. The band answers "how sure is the lane about this product?", never "does this answer the
+  // need?" — nothing on that path reads `need`. Renaming it is the fix; `fit` stays for one release so
+  // a live partner reading `value.fit.level` does not break silently (this defect was found FROM such
+  // an integration). The alias is only safe while it cannot disagree with what it aliases.
+  const h = makeRecommendProducts({ generate: async () => laneResult([ITEM_FULL]), isEnabled: () => true });
+  const res = await h({ payload: { need: 'exfoliant' } }, { agent_id: 'agent_a' });
+  const v = res.signals[0].value;
+  assert.equal(v.lane_confidence.level, 'high');
+  assert.equal(v.fit, v.lane_confidence, 'the alias is the SAME object, not a copy');
+
+  // THE DRIFT CASE, which is the whole reason the alias is a shared reference: the ceiling pass
+  // downgrades a violator, and a copied alias would keep advertising 'high' on an item already capped
+  // to 'low'. That would be a worse defect than the rename fixes.
+  const h2 = makeRecommendProducts({ generate: async () => laneResult([ITEM_OVERPRICED]), isEnabled: () => true });
+  const res2 = await h2({ payload: { need: 'x', constraints: { price_max: 40 } } }, {});
+  const v2 = res2.signals[0].value;
+  assert.equal(v2.lane_confidence.level, 'low', 'the violator is downgraded');
+  assert.equal(v2.fit.level, 'low', 'and the deprecated alias followed it down');
+  assert.equal(v2.fit, v2.lane_confidence);
+
+  // an ungrounded-style item asserts no band on either key
+  const noScore = { name: 'No score', sku: { product_id: 'sig_ns' }, price: { amount: 10, currency: 'USD' } };
+  const h3 = makeRecommendProducts({ generate: async () => laneResult([noScore]), isEnabled: () => true });
+  const res3 = await h3({ payload: { need: 'x' } }, {});
+  assert.equal(res3.signals[0].value.lane_confidence.level, null);
+  assert.equal(res3.signals[0].value.fit.level, null);
+
+  // and both survive the REAL commerce surface and its sanitizer — the reason the old name was chosen
+  // was a belief that a certainty key would be stripped here; measured, this one is not.
+  const { createCommerceToolSurface } = require('../mcp-server/src/commerceToolSurface.js');
+  assert.ok(createCommerceToolSurface, 'surface module loads');
 });
