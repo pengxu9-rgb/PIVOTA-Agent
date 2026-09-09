@@ -435,7 +435,17 @@ function markPriceViolation(signal, ceiling) {
   // one would be the same fabrication this file's header guards against.
   // MUTATED IN PLACE, deliberately: `v.fit` and `v.lane_confidence` are the same object (see
   // recommendationItemToSignal), and reassigning would split them and leave the alias stale.
-  if (v.lane_confidence.level !== null) v.lane_confidence.level = 'low';
+  // TWO KINDS OF NULL, and only one of them may be overwritten.
+  //
+  // 'ungrounded' means the product is not in the catalog: there is no object to measure, so a band
+  // here would be invented, and test 4b-4 pins that it must not be. 'positional' means we simply do
+  // not score this answer path — but a ceiling breach IS something we measured and the item failed,
+  // so it earns a band where position does not. The guard used to be `level !== null`, which lumped
+  // the two together, so once positional rows lost their band a real violation stopped being
+  // downgraded at all while the description called that null "no information".
+  if (v.lane_confidence.level !== null || v.lane_confidence.basis === 'positional') {
+    v.lane_confidence.level = 'low';
+  }
   v.constraint_violations = [{
     constraint: 'price_max',
     limit: ceiling.limit,
@@ -522,7 +532,19 @@ function normalizeConstraints(raw) {
  * `watchouts`, `fit_level`, `evidence_grade` and `pdp_open.directUrl` — none of which this lane
  * emits — so every real call answered with empty reasoning and a null price.
  */
-function recommendationItemToSignal(item, { rank } = {}) {
+// `confidenceBasis` says what the lane's `score` on this item is MADE OF — see
+// recommendation_meta.confidence_basis. It defaults to null ('unknown'), which behaves exactly as
+// before for any caller that does not know about it; only a caller that positively reports
+// 'positional' suppresses the band.
+function recommendationItemToSignal(item, { rank, confidenceBasis = null } = {}) {
+  // Per-row basis (stamped by applyStrictConformingTopUp on catalog filler) overrides the
+  // answer-level one. Without it a mixed answer labels its filler as the model's own estimate.
+  //
+  // ONLY the namespaced key is trusted. A plain `score_basis` is a key the MODEL can emit, and every
+  // transform on the lane spreads unknown keys through, so reading it let a model row claim
+  // 'model_self_report' inside a positional answer and take back the band. Reading only the
+  // server-written name closes that.
+  const effectiveBasis = str(item && item.__pivota_score_basis) || confidenceBasis;
   if (!isPlainObject(item)) return null;
   const sku = isPlainObject(item.sku) ? item.sku : isPlainObject(item.product) ? item.product : {};
   const pdpOpen = isPlainObject(item.pdp_open) ? item.pdp_open : {};
@@ -620,7 +642,20 @@ function recommendationItemToSignal(item, { rank } = {}) {
         // capped the REAL item to fit=low, so the model's own score outranked the only thing an agent
         // could actually buy). Fit-to-catalog is unmeasurable for a product that is not in the catalog;
         // an asserted band there is a model claim with no object, the class this file exists to strip.
-        level: grounded ? scoreBand(finiteNumber(item.score)) : null,
+        // A POSITIONAL SCORE IS NOT A BAND EITHER — the same argument as the ungrounded case above,
+        // one step further. The catalog paths set `score = Math.max(72, 95 - index * 3)`, so with a
+        // shortlist of six every item scores >= 80 and bands to 'high' regardless of what it is.
+        // Measured on prod 2026-09-09: a bronzer need answered with three cleansers, all 'high'.
+        // Banding a row's POSITION as the lane's certainty about it is an assertion with no object,
+        // which is the class this file exists to strip.
+        // A ROW'S OWN BASIS BEATS THE ANSWER'S. The lane builds MIXED answers: with a price ceiling
+        // set, applyStrictConformingTopUp appends catalog rows (positional scores) into an
+        // llm_primary answer, and the answer-level basis would vouch for them as the model's own
+        // estimate — banding filler `high` above the model's actual pick at `medium`.
+        level: grounded && effectiveBasis !== 'positional' ? scoreBand(finiteNumber(item.score)) : null,
+        // Why there is (or is not) a band, so an agent can tell "we are not sure" from "we do not
+        // measure this on this answer path". Without it, null reads as low confidence.
+        basis: grounded ? (effectiveBasis || 'unknown') : 'ungrounded',
       },
     },
     evidence: {
@@ -845,9 +880,12 @@ function makeRecommendProducts(deps = {}) {
     // order preserved); violating items are kept only in slots left over, each carrying an explicit
     // machine-readable violation — so a near-miss is still visible when the shortlist is thin, but can
     // never displace a conforming item, and never travels as a clean recommendation.
+    const laneConfidenceBasis = firstString(
+      isPlainObject(payload.recommendation_meta) ? payload.recommendation_meta.confidence_basis : null,
+    ) || null;
     const projected = [];
     for (const item of items) {
-      const s = recommendationItemToSignal(item, {});
+      const s = recommendationItemToSignal(item, { confidenceBasis: laneConfidenceBasis });
       if (s) projected.push(s);
     }
     // NOTHING UNBUYABLE LEAVES THIS FUNCTION. Two independent ways a signal can carry no purchasable
@@ -1104,7 +1142,16 @@ function makeRecommendProducts(deps = {}) {
         recommendation_set_id: recommendationSetId,
         // Lane-level certainty. On metadata on purpose: the sanitizer strips `confidence` from PRODUCT nodes;
         // this node carries no product identity.
-        confidence_overall: confidence,
+        //
+        // NULL WHEN THE NUMBER IS NOT A JUDGEMENT. The catalog paths hard-code 0.9 (and the transient
+        // fallback 0.62) regardless of the need, the items or how well either matched — so a bronzer
+        // need answered with three cleansers reported 0.9. Reporting a constant as certainty is worse
+        // than reporting nothing: an agent can route around a null, but it cannot route around a
+        // confident-looking number that means "the catalog code ran".
+        confidence_overall: laneConfidenceBasis === 'positional' ? null : confidence,
+        // What that number is made of, always present: 'model_self_report' | 'positional' | 'none'.
+        // Read it before presenting any certainty to a buyer.
+        confidence_basis: laneConfidenceBasis || 'unknown',
         missing_info: asStringArray(payload.missing_info, 8),
         warnings: asStringArray(payload.warnings, 8),
         grounding_status: firstString(payload.grounding_status, meta.grounding_status) || null,

@@ -4,6 +4,7 @@ const {
 const {
   createLegacyRecoRecommendationPostFiltersRuntime,
 } = require('./legacyRecoRecommendationPostFilters');
+const { deriveRecoConfidenceBasis } = require('./recoConfidenceBasis');
 const {
   createLegacyRecoGenerationResultRuntime,
 } = require('./legacyRecoGenerationResult');
@@ -679,7 +680,18 @@ function createLegacyRecoGenerationEngineRuntime(deps = {}) {
     }
     const terminalSuccess = finalRecommendations.length > 0
       && normalizeRecoEffectiveFailureClass(effectiveFailureClass || 'none') === 'none';
+    // WHERE THE CONFIDENCE NUMBERS CAME FROM. Derived here because this is the point at which
+    // structuredSource is final for every answer path.
+    //
+    // Only one of those paths produces a confidence at all. `llm_primary` carries the model's own
+    // self-report. The catalog paths carry `score: Math.max(72, 95 - index * 3)` — a POSITION, not a
+    // judgement — and a hard-coded top-level 0.9 (or 0.62 for the transient fallback). With a
+    // shortlist of six, `95 - 3i` never drops below 80, so every catalog item bands to
+    // `lane_confidence: high` no matter what it is or what was asked for. That is how a bronzer need
+    // came back as three cleansers at `high` with `confidence_overall: 0.9`.
+    const confidenceBasis = deriveRecoConfidenceBasis(structuredSource);
     const generationResult = buildLegacyRecoGenerationResult({
+      confidenceBasis,
       norm,
       finalRecommendations,
       structuredSource,
