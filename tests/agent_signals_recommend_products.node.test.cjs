@@ -1356,11 +1356,13 @@ test('7g. a lane outage is JOINABLE — the set id reaches the log, not just the
 
 test('8a. the live 2026-09-08 repro: an off-vertical need is empty and reasoned, and never reaches the lane', async () => {
   let laneCalls = 0;
+  const infos = [];
   const h = makeRecommendProducts({
     // If the gate ever stops firing, the lane answers with beauty products and this fixture makes the
     // failure LOUD rather than merely returning a different empty.
     generate: async () => { laneCalls += 1; return laneResult([ITEM_FULL]); },
     isEnabled: () => true,
+    logger: { info: (o, m) => infos.push([o, m]) },
   });
   const res = await h({ payload: {
     need: 'I collect Pokémon trading cards and want a sealed Scarlet & Violet booster box for my collection',
@@ -1373,6 +1375,13 @@ test('8a. the live 2026-09-08 repro: an off-vertical need is empty and reasoned,
   assert.equal(res.metadata.vertical, 'beauty');
   assert.equal(res.metadata.off_vertical_marker, 'Pokémon');
   assert.equal(laneCalls, 0, 'the lane is never called: no LLM generation, and nothing to fabricate from');
+  assert.equal(res.metadata.off_vertical_detected_by, 'need_lexicon');
+  // the refusal is joinable: an unlogged gate cannot be audited for the false positives that cost sales
+  assert.equal(infos.length, 1);
+  assert.match(infos[0][1], /off-vertical/);
+  assert.equal(infos[0][0].marker, 'Pokémon');
+  assert.equal(infos[0][0].detected_by, 'need_lexicon');
+  assert.equal(infos[0][0].recommendation_set_id, res.metadata.recommendation_set_id);
   // The refusal is an ANSWER, not a failure — it must not wear the shape the outage exits use, or a
   // partner cannot tell "we cannot help with this" from "we broke".
   assert.equal(res.metadata.reason, undefined);
@@ -1444,7 +1453,11 @@ test('8c. NO returned signal ever carries a null product_id — by either route 
   assert.deepEqual(res.signals.map((x) => x.value.product.product_id), ['sig_abc']);
   assert.equal(res.metadata.ungrounded_suppressed, 1);
   assert.equal(res.metadata.unidentified_suppressed, 1);
-  assert.deepEqual(res.metadata.unresolved_archetypes, ['Daily Broad Spectrum SPF 30 Sunscreen']);
+  // BOTH names land here, not just the ungrounded one. From a caller's side these are one thing —
+  // "a product the lane named but could not resolve" — and the description says they appear here.
+  // Counting the id-less one and dropping its name left a named product vanishing behind an integer.
+  assert.deepEqual(res.metadata.unresolved_archetypes,
+    ['Daily Broad Spectrum SPF 30 Sunscreen', 'A product with a name and no id']);
   // The id-less GROUNDED item is a lane defect, not a policy outcome, so it is logged rather than
   // only counted — a silent suppression is how this class of thing survives unnoticed for a month.
   assert.equal(warns.length, 1);
@@ -1484,5 +1497,99 @@ test('8e. the tool description and the code agree — the promises are quoted fr
     'the description must say unresolved products are not returned, since they are not');
   assert.ok(!/never with fabricated products\./.test(src),
     'the old wording promised something the response shape could not express — it must not come back');
+  // THE HEDGE IS LOAD-BEARING. Off-vertical detection is a keyword list plus the lane's own
+  // admission; neither is exhaustive, and measured 2026-09-08 "an air fryer" and "a treadmill" reached
+  // the real door and came back with beauty products. A description promising the universal would be
+  // the same false-description defect this PR exists to fix, one level up — so the unconditional claim
+  // must NOT return, and the caveat must stay.
+  assert.ok(/best-effort, not exhaustive/.test(src) && /RECOGNISED off-vertical/.test(src),
+    'the off-vertical promise must stay hedged to what the detection can actually honour');
+  assert.ok(!/an off-vertical need answers with an empty shortlist and `metadata/.test(src),
+    'the unhedged universal must not come back');
+  // The id guarantee, by contrast, IS unconditional — it is enforced on every exit, so it is stated flatly.
+  assert.ok(/Every returned item IS a catalog product with a non-null `product_id`/.test(src));
   assert.ok(surfaceMod, 'the surface module still loads with the edited description');
+});
+
+
+test('8f. separators cannot buy a fabricated shortlist — the repro one hyphen away still refuses', async () => {
+  // Every multi-word alternative is written with a single space, so before normalisation these ALL
+  // passed the gate while their spaced spellings were refused: the reported need, reworded.
+  for (const need of ['a booster-box', 'trading-cards', 'a graphics-card', 'magic: the gathering cards', 'an air-fryer'])
+    assert.ok(offVerticalMarker(need), `"${need}" must refuse exactly like its spaced spelling`);
+  // and the spaced spellings still do
+  for (const need of ['a sealed Scarlet & Violet booster box', 'trading cards', 'a graphics card'])
+    assert.ok(offVerticalMarker(need));
+
+  // WHAT THE WORD ANCHORS ACTUALLY CARRY. An earlier comment claimed they stop "carbon" being read as
+  // "car"; they do not, because `car` is not an alternative (only the two-word `car tires` is). This
+  // is the real case: a token must not match inside a longer word.
+  assert.ok(offVerticalMarker('tcg singles'), 'the bare token matches');
+  assert.equal(offVerticalMarker('tcgel gets everywhere'), null, 'but never inside a longer word');
+  assert.equal(offVerticalMarker('carbon filter'), null);
+});
+
+test('8g. the lane admitting the need was off-domain empties the shortlist, even with no keyword hit', async () => {
+  // THE SECOND AXIS, from two live 2026-09-08 responses. "an air fryer" and "a treadmill" both came
+  // back with beauty products at fit 'high' AND a warning saying the lane had excluded the request as
+  // non-skincare. The lane knew; nothing acted on it. A keyword list will never hold every vertical,
+  // so the lane's own admission is read as a signal.
+  for (const [need, warning] of [
+    ['something for my kitchen counter', 'Non-skincare requests (such as kitchen appliances) have been excluded per domain boundaries.'],
+    ['something for my garage', 'Request contained non-skincare intent (fitness equipment); defaulted to general baseline skincare recommendations.'],
+    ['a thing', 'This request falls outside the beauty domain; returning generic picks.'],
+  ]) {
+    assert.equal(offVerticalMarker(need), null, 'the keyword list does NOT catch this need — that is the point');
+    const infos = [];
+    const h = makeRecommendProducts({
+      generate: async () => laneResult([ITEM_FULL], { warnings: [warning] }),
+      isEnabled: () => true,
+      logger: { info: (o, m) => infos.push([o, m]) },
+    });
+    const res = await h({ payload: { need } }, { agent_id: 'agent_a' });
+    assert.deepEqual(res.signals, [], `"${warning}" is an admission, not copy`);
+    assert.equal(res.metadata.products_empty_reason, 'off_vertical');
+    assert.equal(res.metadata.off_vertical_detected_by, 'lane_warning');
+    assert.equal(res.metadata.returned, 0);
+    assert.equal(infos.length, 1);
+    assert.equal(infos[0][0].suppressed_items, 1, 'the items it would have returned are counted in the log');
+  }
+});
+
+test('8h. the lane axis never refuses a buyer who named something beauty', async () => {
+  // The expensive error direction. On a MIXED need the lane may honestly report excluding the
+  // non-beauty half — and refusing that buyer their moisturizer is the only outcome here that loses a
+  // sale. The same asymmetry as the pre-gate: a beauty word anywhere wins.
+  const warning = 'Non-skincare requests have been excluded per domain boundaries.';
+  const h = makeRecommendProducts({
+    generate: async () => laneResult([ITEM_FULL], { warnings: [warning] }),
+    isEnabled: () => true,
+  });
+  const res = await h({ payload: { need: 'a moisturizer, and also a phone case' } }, { agent_id: 'agent_a' });
+  assert.equal(res.signals.length, 1, 'the beauty half of the need is still answered');
+  assert.equal(res.metadata.products_empty_reason, null);
+  assert.deepEqual(res.metadata.warnings, [warning], "the lane's warning is relayed, not acted on");
+
+  // and an ordinary beauty warning is never mistaken for an admission
+  const h2 = makeRecommendProducts({
+    generate: async () => laneResult([ITEM_FULL], { warnings: ['Patch test actives before full use.'] }),
+    isEnabled: () => true,
+  });
+  const res2 = await h2({ payload: { need: 'a gentle serum' } }, { agent_id: 'agent_a' });
+  assert.equal(res2.signals.length, 1);
+  assert.equal(res2.metadata.products_empty_reason, null);
+});
+
+test('8i. the categories measured live on 2026-09-08 are refused now', async () => {
+  // Every one of these reached the real door and came back with the beauty shortlist at fit 'high'.
+  // The list is not exhaustive and the description no longer claims it is — but a measured miss that
+  // stays missing is just an unfixed bug.
+  for (const need of ['a new iPhone', 'an air fryer', 'a treadmill', 'diapers', 'running shoes',
+    'a winter coat', 'a rifle scope', 'car wax', 'protein powder'])
+    assert.ok(offVerticalMarker(need), `"${need}" was measured passing the gate — it must refuse now`);
+
+  // and none of them cost a beauty buyer their shortlist
+  for (const need of ['a top coat for my nails', 'a beauty blender sponge', 'a foundation brush',
+    'wax strips for upper lip hair', 'a setting powder for oily skin', 'a body wash for eczema'])
+    assert.equal(offVerticalMarker(need), null, `"${need}" is beauty and must keep its shortlist`);
 });

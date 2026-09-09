@@ -102,9 +102,23 @@ function dedupe(values) {
 // beauty side can only ever make this gate QUIETER, so it costs nothing to be liberal there, while a
 // word added to the off-vertical side can refuse a paying buyer.
 //
-// Word-anchored on the Latin side so "carbon" is not read as "car" and "keyboards" still matches. The
-// CJK patterns are bare substrings on purpose: `\b` is meaningless between CJK characters, and this
-// tool takes `language: 'CN'` as a first-class parameter, so a CN need must reach the same gate.
+// TWO AXES, because one is not enough (see the honesty note on the description). The lexical list
+// below is the cheap one; `laneDeclaredOffVertical` reads the lane's own admission and catches needs
+// this list has never heard of. Neither is complete, which is why the served description says
+// RECOGNISED off-vertical rather than promising a universal.
+//
+// SEPARATORS ARE NORMALISED FIRST. Every multi-word alternative here is written with a single space,
+// so "booster-box", "trading-cards", "graphics-card" and "magic: the gathering" all escaped the gate
+// while their spaced spellings were refused — the repro's own wording, one hyphen away from passing.
+// normalizeForMatch collapses `-`, `:`, `/`, `_` to spaces before matching, so a rewording cannot buy
+// a fabricated shortlist.
+//
+// Word-anchored so a token cannot match inside a longer word: `\btcg\b` refuses "tcg singles" but not
+// "tcgel". (An earlier version of this comment claimed the anchors stop "carbon" being read as "car" —
+// they do not, because `car` is not an alternative here; the only bare-`car` entry is the two-word
+// `car t[iy]res`. Test 8f pins the case the anchors actually carry.) The CJK patterns are bare
+// substrings on purpose: `\b` is meaningless between CJK characters, and this tool takes
+// `language: 'CN'` as a first-class parameter, so a CN need must reach the same gate.
 // Each group below is an alternation of word-anchored alternatives; `anchored` wraps the lot so a
 // group can be edited without re-deriving the boundaries every time.
 const anchored = (groups) => new RegExp(String.raw`\b(?:${groups.join('|')})\b`, 'i');
@@ -112,38 +126,85 @@ const OFF_VERTICAL_RE = anchored([
   // Collectibles / TCG — the reported repro.
   String.raw`trading cards?|booster (?:box|pack)e?s?|pok[eé]mon|tcg|graded cards?|magic the gathering|sports cards?|funko`,
   // Consumer electronics. `switch`/`monitor` are absent on purpose: alone they are ordinary English.
-  String.raw`laptops?|smartphones?|headphones|earbuds|graphics cards?|gpus?|cpus?|game consoles?|xbox|playstation|nintendo|keyboards?|webcams?`,
+  String.raw`laptops?|smartphones?|iphones?|ipads?|headphones|earbuds|graphics cards?|gpus?|cpus?|game consoles?|xbox|playstation|nintendo|keyboards?|webcams?|televisions?|printers?|drones?`,
   // Large household goods.
   String.raw`refrigerators?|dishwashers?|washing machines?|mattress(?:es)?|sofas?|couch(?:es)?|lawn ?mowers?|power drills?`,
   // Vehicles.
   String.raw`motorcycles?|car t[iy]res?|windshields?|spark plugs?`,
+  // Kitchen / small appliances — measured 2026-09-08: "an air fryer" returned a Jurlique cleanser at
+  // fit 'high'. `blenders?` is here despite the beauty "blending sponge": that phrase names `beauty`
+  // or `foundation`, either of which suppresses the gate before this list is consulted.
+  String.raw`air ?fryers?|microwaves?|blenders?|coffee ?makers?|espresso machines?|toasters?|kettles?|vacuum cleaners?`,
+  // Fitness. "protein powder" is a phrase, never bare `powder` — setting powder is beauty.
+  String.raw`treadmills?|dumbbells?|kettlebells?|exercise bikes?|yoga mats?|protein powder`,
+  // Apparel / footwear. Bare `coat` is deliberately absent (a top coat is nail care) and so is
+  // `boots` (Boots is a beauty retailer); only unambiguous compounds appear.
+  String.raw`sneakers?|running shoes?|jeans|handbags?|backpacks?|winter coats?|hoodies?`,
+  // Baby / childcare.
+  String.raw`diapers?|nappies|strollers?|car seats?`,
+  // Outdoors / tools / auto care. `car wax` is a phrase: bare `wax` is hair removal.
+  String.raw`rifle scopes?|fishing rods?|tents?|sleeping bags?|chainsaws?|car wax|wiper blades?`,
   // Pets / groceries / other verticals that share a storefront with beauty but not this lane.
   String.raw`dog food|cat litter|aquariums?|textbooks?|firearms?|ammunition`,
 ]);
 const OFF_VERTICAL_CJK_RE = /卡牌|显卡|笔记本电脑|智能手机|游戏机|键盘|冰箱|洗碗机|洗衣机|床垫|沙发|摩托车|狗粮|猫砂/;
 // Suppression side: anything that plausibly makes this a beauty need. Liberal by design (see above).
 const BEAUTY_RE = anchored([
-  String.raw`skin|skin-?care|complexion|faces?|facial|derma\w*|cosmetics?|makeup|beauty`,
+  String.raw`skin|skin ?care|complexion|faces?|facial|derma\w*|cosmetics?|makeup|beauty`,
   String.raw`serums?|essences?|ampoules?|moistur\w*|cleansers?|cleans\w*|toners?|exfoliat\w*|peels?|masks?|creams?|lotions?|balms?|oils?|mists?`,
   String.raw`sunscreens?|spf|retinols?|retinoids?|niacinamide|hyaluronic|ceramides?|salicylic|glycolic|azelaic|vitamin c|peptides?|antioxidants?`,
   String.raw`acne|breakouts?|blackheads?|whiteheads?|pores?|wrinkles?|fine lines|dark spots?|hyperpigmentation|redness|rosacea|eczema|psoriasis|dryness|oiliness|sensitive|dull\w*`,
-  String.raw`anti-?ag\w*|brighten\w*|hydrat\w*|soothing|barrier|routines?`,
+  String.raw`anti ?ag\w*|brighten\w*|hydrat\w*|soothing|barrier|routines?`,
   String.raw`lips?|lipsticks?|foundations?|concealers?|mascaras?|eyeliners?|eyeshadows?|blush(?:es)?|primers?|nail polish`,
   String.raw`shampoos?|conditioners?|scalp|hair|fragrances?|perfumes?|deodorants?|body wash`,
 ]);
 const BEAUTY_CJK_RE = /护肤|皮肤|精华|面霜|乳液|洁面|防晒|化妆|彩妆|口红|唇|痘|毛孔|皱纹|美白|保湿|敏感肌|洗发|护发|香水|面膜|眼霜|爽肤/;
 
+/** Fold the separators a buyer may type between words of one term onto a single space. */
+function normalizeForMatch(s) {
+  return String(s).replace(/[-–—_:/\\]+/g, ' ').replace(/\s+/g, ' ');
+}
+
+/** Does the need name anything beauty at all? The suppression side of the asymmetry. */
+function hasBeautyMarker(need) {
+  if (!nonEmpty(need)) return false;
+  return BEAUTY_RE.test(normalizeForMatch(need)) || BEAUTY_CJK_RE.test(need);
+}
+
 /**
  * Is this need plainly outside the beauty/skincare lane? Exported so the rule is testable directly
  * rather than only through a mocked lane.
- * @returns {string|null} the off-vertical phrase that fired, or null (in-vertical, or unknown)
+ * @returns {string|null} the off-vertical phrase that fired, or null (in-vertical, or unrecognised)
  */
 function offVerticalMarker(need) {
   if (!nonEmpty(need)) return null;
   // A beauty word anywhere in the need suppresses the gate outright — see the asymmetry note above.
-  if (BEAUTY_RE.test(need) || BEAUTY_CJK_RE.test(need)) return null;
-  const m = OFF_VERTICAL_RE.exec(need) || OFF_VERTICAL_CJK_RE.exec(need);
+  if (hasBeautyMarker(need)) return null;
+  const m = OFF_VERTICAL_RE.exec(normalizeForMatch(need)) || OFF_VERTICAL_CJK_RE.exec(need);
   return m ? m[0] : null;
+}
+
+// THE SECOND AXIS. The lane frequently KNOWS the need was off-vertical and says so in its own
+// `warnings`, then recommends beauty anyway. Measured live 2026-09-08:
+//   "an air fryer …"  -> "Non-skincare requests (such as kitchen appliances) have been excluded per
+//                         domain boundaries."   (3 beauty signals, products_empty_reason null)
+//   "a treadmill …"   -> "Request contained non-skincare intent (fitness equipment); defaulted to
+//                         general baseline skincare recommendations."
+// Different prose, same admission — and the admission covers needs no keyword list will ever hold.
+// So it is read as a signal, not as copy.
+//
+// It is only ever consulted when the need names NOTHING beauty (the same asymmetry as the pre-gate):
+// on a mixed need like "a moisturizer and a phone case" the lane may honestly report excluding the
+// phone case, and refusing that buyer their moisturizer is the one outcome that costs a sale.
+const LANE_OFF_DOMAIN_RE = /\bnon ?(?:skin ?care|beauty|cosmetic)\b|\bdomain boundar|\b(?:outside|beyond)\b[^.;]{0,40}\b(?:domain|scope|vertical)\b/i;
+
+/** @returns {string|null} the lane's own admission that the need was off-domain, or null */
+function laneDeclaredOffVertical(warnings, need) {
+  if (hasBeautyMarker(need)) return null;
+  for (const w of asStringArray(warnings, 8)) {
+    if (LANE_OFF_DOMAIN_RE.test(normalizeForMatch(w))) return w;
+  }
+  return null;
 }
 
 /** The lane's integer 0-100 score as a band an agent can act on (never the raw score: see `fit`). */
@@ -617,44 +678,50 @@ function makeRecommendProducts(deps = {}) {
     // exits use) because this is a legitimate ANSWER, not a failure: a partner agent has to be able to
     // tell "we cannot help with this" from "we broke", and `products_empty_reason` is the field the
     // description points it at.
+    // ONE shape for both axes, so a caller cannot tell "refused before the lane" from "refused on the
+    // lane's own admission" by the response's structure — only by `off_vertical_detected_by`, which is
+    // there for us to audit the gate's precision, not for the agent to branch on.
+    const offVerticalAnswer = (marker, detectedBy, lane = {}) => ({
+      subject,
+      signals: [],
+      metadata: {
+        need,
+        constraints,
+        limit,
+        returned: 0,
+        recommendation_set_id: recommendationSetId,
+        confidence_overall: lane.confidence ?? null,
+        // What Pivota would need for this to become answerable: a different lane. Said as the thing
+        // the agent should DO, since missing_info is the field it reads to decide whether to re-ask.
+        missing_info: [
+          lang === 'CN'
+            ? '该推荐通道目前仅覆盖美妆/护肤品类，无法回答此需求。'
+            : 'This recommendation lane covers beauty/skincare only; it cannot serve this need.',
+        ],
+        warnings: [
+          lang === 'CN'
+            ? `需求涉及非美妆品类（“${marker}”），已返回空结果，未生成任何推荐。`
+            : `The need names an off-vertical domain ("${marker}"); returned an empty shortlist rather than beauty products.`,
+        ],
+        grounding_status: lane.grounding_status ?? null,
+        source_mode: lane.source_mode ?? null,
+        products_empty_reason: 'off_vertical',
+        vertical: 'beauty',
+        // The phrase that fired, so a partner (and we) can audit the gate's precision from logs
+        // instead of guessing which word refused a buyer.
+        off_vertical_marker: marker,
+        off_vertical_detected_by: detectedBy,
+        latency_ms: now() - startedAt,
+      },
+    });
+
     const offVertical = offVerticalMarker(need);
     if (offVertical) {
       logger?.info?.(
-        { recommendation_set_id: recommendationSetId, marker: offVertical },
+        { recommendation_set_id: recommendationSetId, marker: offVertical, detected_by: 'need_lexicon' },
         'recommend_products refused an off-vertical need',
       );
-      return {
-        subject,
-        signals: [],
-        metadata: {
-          need,
-          constraints,
-          limit,
-          returned: 0,
-          recommendation_set_id: recommendationSetId,
-          confidence_overall: null,
-          // What Pivota would need for this to become answerable: a different lane. Said as the thing
-          // the agent should DO, since missing_info is the field it reads to decide whether to re-ask.
-          missing_info: [
-            lang === 'CN'
-              ? '该推荐通道目前仅覆盖美妆/护肤品类，无法回答此需求。'
-              : "This recommendation lane covers beauty/skincare only; it cannot serve this need.",
-          ],
-          warnings: [
-            lang === 'CN'
-              ? `需求涉及非美妆品类（“${offVertical}”），已返回空结果，未生成任何推荐。`
-              : `The need names an off-vertical domain ("${offVertical}"); returned an empty shortlist rather than beauty products.`,
-          ],
-          grounding_status: null,
-          source_mode: null,
-          products_empty_reason: 'off_vertical',
-          vertical: 'beauty',
-          // The phrase that fired, so a partner (and we) can audit the gate's precision from logs
-          // instead of guessing which word refused a buyer.
-          off_vertical_marker: offVertical,
-          latency_ms: now() - startedAt,
-        },
-      };
+      return offVerticalAnswer(offVertical, 'need_lexicon');
     }
     let result;
     try {
@@ -696,6 +763,22 @@ function makeRecommendProducts(deps = {}) {
     const norm = isPlainObject(result?.norm) ? result.norm : null;
     const payload = isPlainObject(norm?.payload) ? norm.payload : isPlainObject(norm) ? norm : {};
     const items = Array.isArray(payload.recommendations) ? payload.recommendations : [];
+    // SECOND AXIS (see laneDeclaredOffVertical): the lane itself reported excluding the need as
+    // off-domain and then recommended beauty anyway. The generation is already spent — this cannot
+    // save the latency the pre-gate saves — but it is the only axis that covers a need no keyword
+    // list anticipated, and returning nothing is the whole point of the contract.
+    const laneOffVertical = laneDeclaredOffVertical(payload.warnings, need);
+    if (laneOffVertical) {
+      logger?.info?.(
+        { recommendation_set_id: recommendationSetId, marker: laneOffVertical, detected_by: 'lane_warning', suppressed_items: items.length },
+        'recommend_products refused an off-vertical need',
+      );
+      return offVerticalAnswer(laneOffVertical, 'lane_warning', {
+        confidence: finiteNumber(payload.confidence),
+        grounding_status: firstString(payload.grounding_status) || null,
+        source_mode: firstString(isPlainObject(payload.recommendation_meta) ? payload.recommendation_meta.source_mode : null, payload.source) || null,
+      });
+    }
     // DETERMINISTIC CONSTRAINT ENFORCEMENT. The lane only ever sees constraints as prompt text
     // (normalizeConstraints → buildAsk), so nothing upstream guarantees the shortlist honours them —
     // live 2026-08-20 a "under $40" need answered with a $45 product whose why[] asserted budget fit.
@@ -746,6 +829,13 @@ function makeRecommendProducts(deps = {}) {
       }
       if (!nonEmpty(s.value.product.product_id)) {
         suppressed.unidentified += 1;
+        // The title goes to the SAME place as an ungrounded archetype's. From a caller's side these
+        // are one thing — "a product the lane named but could not resolve" — and the description says
+        // such products appear there. Counting this one and dropping its name silently made that
+        // sentence false for exactly the route the grounding filter does not cover, and a named
+        // product would vanish leaving only an integer.
+        const named = str(s.value.product.title);
+        if (named) unresolvedArchetypes.push(named);
         continue;
       }
       groundedSignals.push(s);
