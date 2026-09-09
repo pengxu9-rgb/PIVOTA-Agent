@@ -839,17 +839,23 @@ function readStoredRecallDoc(seedData) {
   return ensureJsonObject(ensureJsonObject(seedData).derived?.recall);
 }
 
-// `buildDoc` is an injected seam, matching the `queryFn` / `searchFn` convention
-// used elsewhere in this codebase. It exists because the duplicate build this
-// function used to do has no other observable signature: the second call was to
-// the local binding, so it cannot be spied through the export, and a timing
-// ratio is the only alternative -- which is a flaky thing to put in CI.
-function resolveExternalSeedRecallDoc({
-  row = {},
-  seedData = {},
-  snapshot = {},
-  buildDoc = buildExternalSeedRecallDoc,
-} = {}) {
+// `buildDoc` is an injected seam in a SECOND parameter, matching the
+// `queryFn` / `searchFn` convention used elsewhere in this codebase. Second
+// parameter rather than a key on the first: the first is built from row data,
+// and a `{ ...rowContext }` spread carrying a `buildDoc` key would otherwise
+// shadow the builder.
+//
+// It exists because the duplicate build this function used to do has no other
+// observable signature -- the second call was to the local binding, so it cannot
+// be spied through the export. Counting calls through the seam is NOT sufficient
+// on its own: a mutant that restores the original local-binding call is not
+// counted at all. The test also tags the injected builder's output and asserts
+// the tag survives into the returned doc, which is what proves the returned
+// spread came from the counted build.
+function resolveExternalSeedRecallDoc(
+  { row = {}, seedData = {}, snapshot = {} } = {},
+  { buildDoc = buildExternalSeedRecallDoc } = {},
+) {
   const stored = readStoredRecallDoc(seedData);
   if (
     normalizeNonEmptyString(stored.retrieval_title) ||
