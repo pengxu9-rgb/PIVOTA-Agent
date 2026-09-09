@@ -9053,14 +9053,22 @@ function buildLocalExternalSeedPrimaryFinishFitQueryStage({
     roleId === 'daily_sunscreen' ||
     roleId === 'daily_sunscreen_finish_fit' ||
     /\b(?:daily[_\s-]?sunscreen|sunscreen|spf)\b/.test(roleId);
-  // NOT SWEPT, DELIBERATELY. This asks the same question with the same broken assumption
-  // — a spaced-rank primary reads as support here too — but the swap is not a pure
-  // widening: a role at rank 1 that is NOT the framework's primary by id currently gets
-  // the precise stage and would lose it. And this builder could not be driven from a test
-  // at all (it returns null before reaching the predicate for every input tried, and the
-  // `support_category_fit_broad` stage below is nested inside its result), so neither the
-  // defect nor a fix can be demonstrated yet. Changing it blind is how #2157 shipped a
-  // half-sweep in the first place. Reachability study first — see the follow-up issue.
+  // NOT SWEPT IN THE SAME CHANGE, and the reason is a JUDGEMENT, not an impossibility.
+  //
+  // An earlier version of this comment said the site could not be driven from a test. That was
+  // false, and review demonstrated the defect here in about fifteen lines: pass a sunscreen-step
+  // role and a queryFn returning [] so every stage runs, then read `match_stage` out of the SQL.
+  // `finish_fit_layering` at rank 11 with a matching primary_role_id — a spaced-rank PRIMARY —
+  // loses `support_query_precise` entirely, where the identical role at rank 1 keeps it.
+  //
+  // What is true is that the swap is not a pure widening: a role at rank 1 that is NOT the
+  // framework's primary by id currently gets the precise stage and would lose it. The defect is
+  // also narrower than the general rank problem, because `roleRank > 1 && isCanonicalSunscreenRole`
+  // already lets any sunscreen-ish role id through at a spaced rank; only a sunscreen-STEP role
+  // whose id does not match /sunscreen|spf/ is affected.
+  //
+  // So: swept separately, with the before/after measured, rather than folded into a change whose
+  // evidence is about a different site.
   const allowPreciseSunscreenRecall =
     Number.isFinite(roleRank) &&
     (
@@ -9495,11 +9503,13 @@ function buildLocalExternalSeedSupportStageDefinitions({
         ),
       ),
     });
-    // NOT SWEPT, DELIBERATELY — same reason as the precise stage above, plus a sharper
-    // one: this branch REMOVES a stage from the primary rather than adding one, so a wrong
-    // sweep here shrinks recall on the role the buyer asked about. Unreachable from a test
-    // today (it is nested inside primaryFinishFitQueryStage, which never built in any probe),
-    // so there is no measurement either way. See the follow-up issue.
+    // NOT SWEPT IN THE SAME CHANGE — see the note on the precise stage above, including the
+    // correction that both sites ARE reachable from a test.
+    //
+    // The sharper reason here: this branch ADDS `support_category_fit_broad(_attached)` for a
+    // rank > 1 role, so sweeping it would REMOVE two stages from a spaced-rank primary. A wrong
+    // sweep therefore shrinks recall on the role the buyer asked about, which is the opposite of
+    // what the pool-cap fix below is for. Measure that before changing it.
     const roleRank = Number(role?.rank);
     if (Number.isFinite(roleRank) && roleRank > 1) {
       addStage({
@@ -25090,9 +25100,17 @@ function isBeautyMainlineSameRoleComparison(targetContext = null) {
 
 function isBeautyMainlinePrimaryRoleQuery(queryEntry = null, primaryRoleId = '') {
   if (!isPlainObject(queryEntry)) return false;
-  // Already identity-first before the sweep; routed through the shared helper so the
-  // rule has ONE definition. Behaviour is unchanged: same id compare, same rank
-  // fallback, same "no rank means primary".
+  // Routed through the shared helper so the rule has ONE definition. NOT a pure refactor: the
+  // inline body this replaced compared ids CASE-SENSITIVELY and the helper lowercases both sides,
+  // so a lane whose primary_role_id differs in case from role_id now answers `true` where it
+  // answered `false`.
+  //
+  // That lane is real. beautyChatMainlineEntry.js sets primary_role_id from session
+  // `context.primary_target_id` while role_id comes from `target.target_id`, and that file already
+  // lowercases both sides when it compares them itself. It also emits spaced ranks ((i+1)*10), so
+  // pre-change this fell through to rank and answered "not primary" for every role in the lane.
+  // Answering `true` there switches on the stable-alias primary authority seed and the query strip
+  // below it — a product change, deliberately taken, because case-sensitivity was the bug.
   return isPrimaryFrameworkRole(queryEntry, null, { primaryRoleId });
 }
 
@@ -25573,7 +25591,11 @@ async function runBeautyMainlineLocalHandoffSearch({
             : Number.isFinite(Number(args?.roleRank))
               ? Number(args.roleRank)
               : null;
-          // Same rule as everywhere else; see isPrimaryFrameworkRole. Behaviour unchanged.
+          // Same rule as everywhere else; see isPrimaryFrameworkRole. NOT a pure refactor — the
+          // inline body this replaced was case-SENSITIVE (see the note on
+          // isBeautyMainlinePrimaryRoleQuery), and it also fell back to a top-level `args.roleRank`
+          // when `args.role.rank` was not finite. `args.roleRank` is written nowhere in src/, so
+          // that fallback is dead, but it is a capability this removes rather than preserves.
           const isPrimaryRole = isPrimaryFrameworkRole(
             args?.role || { role_id: roleId, rank: roleRank },
             null,
@@ -105732,6 +105754,11 @@ const __internal = {
   // Exported for tests: the pool cap is provable through searchLocalExternalSeedProducts,
   // but the rule itself deserves a direct unit test — it is the thing five sites share.
   isPrimaryFrameworkRole,
+  // Exported so the CASE-SENSITIVITY CHANGE at this call site is pinned. The helper's own
+  // lowercasing is tested directly, but that says nothing about whether this site uses it — and
+  // mutating this function back to its pre-sweep inline body was green across every test in the
+  // repo until this export existed.
+  isBeautyMainlinePrimaryRoleQuery,
   buildAuroraRecoAlternativesQuery,
   buildRecoAlternativesTargetSignals,
   buildRecoAlternativesLocalSeedSearchRole,

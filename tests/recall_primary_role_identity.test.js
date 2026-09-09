@@ -170,3 +170,37 @@ describe('support rank pool cap — the site the sweep actually fixes', () => {
     expect((await surfacingPool({ role: { ...PRIMARY, rank: 1 }, targetContext: noId })).pool).toBe(24);
   });
 });
+
+describe('the refactored sites — a case change, not a no-op', () => {
+  // These exist because mutating either site back to its pre-sweep INLINE body was green across
+  // every test in this repo. The helper's lowercasing is tested above; that proves nothing about
+  // whether a given call site calls the helper. A claimed behaviour change with no test is the
+  // same defect as a false comment.
+  //
+  // The lane that makes this matter: beautyChatMainlineEntry.js sets primary_role_id from session
+  // `context.primary_target_id` while role_id comes from `target.target_id`, and emits spaced ranks
+  // ((i+1)*10). Pre-sweep the id compare failed on case, fell through to rank, saw 10/20/30 and
+  // answered "not primary" for every role in the lane.
+  test('isBeautyMainlinePrimaryRoleQuery matches a differently-cased primary id', () => {
+    const isPrimaryQuery = __internal.isBeautyMainlinePrimaryRoleQuery;
+    // The pre-sweep body was `roleId === primaryRoleId` — this case returned false.
+    expect(isPrimaryQuery({ role_id: 'acne_clogged_pore_treatment', role_rank: 11 },
+      'Acne_Clogged_Pore_Treatment')).toBe(true);
+    expect(isPrimaryQuery({ role_id: ' ACNE_CLOGGED_PORE_TREATMENT ', role_rank: 11 },
+      'acne_clogged_pore_treatment')).toBe(true);
+    // A genuinely different role still answers false, so this is not "everything is primary now".
+    expect(isPrimaryQuery({ role_id: 'lightweight_moisturizer', role_rank: 20 },
+      'Acne_Clogged_Pore_Treatment')).toBe(false);
+    // And the rank fallback survives for entries carrying no id.
+    expect(isPrimaryQuery({ role_rank: 11 }, 'acne_clogged_pore_treatment')).toBe(false);
+    expect(isPrimaryQuery({ role_rank: 1 }, 'acne_clogged_pore_treatment')).toBe(true);
+    expect(isPrimaryQuery(null, 'acne_clogged_pore_treatment')).toBe(false);
+  });
+
+  // STILL UNPINNED, said out loud rather than left to look covered: the second refactored site is
+  // the stable-alias authority branch inside runBeautyMainlineLocalHandoffSearch's closure. It is
+  // not reachable the way the function above is, and reverting IT to its pre-sweep inline body is
+  // still green everywhere. Same case-sensitivity change, same lane, no test. Either export the
+  // predicate the way this one was, or drive the handoff.
+  test.todo('the stable-alias authority branch is not pinned — reverting it stays green');
+});
