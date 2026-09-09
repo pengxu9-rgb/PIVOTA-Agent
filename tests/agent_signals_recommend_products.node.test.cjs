@@ -1537,8 +1537,12 @@ test('8e. the tool description and the code agree — the promises are quoted fr
   // lane loaded the skincare-bounded reco_main_v1_2. This bridge now passes promptDomainScope 'beauty'
   // and the lane loads a wider template, so the description states the wider domain — and the file
   // named by that scope is read here so a description edit alone cannot make the claim true again.
-  assert.ok(/The lane covers skincare \(body care included\), makeup, fragrance and haircare/.test(src),
+  assert.ok(/The lane covers skincare \(body care included\), makeup and fragrance; haircare is not covered yet/.test(src),
     "the domain the door's own prompt allows must be stated, since it changes what a makeup need gets back");
+  // Haircare is STAGED (#2163), so the description must not advertise it. It has the largest raw total
+  // measured (126) but only 15/20 sampled rows are USD, and non-USD is unservable on the US offer path.
+  assert.ok(!/makeup, fragrance and haircare/.test(src),
+    'the description must not claim haircare while the prompt answers it empty');
   assert.ok(/does NOT cover beauty tools, brushes, sponges or devices/.test(src),
     'the one category the widened lane still refuses must be stated, since the catalog cannot serve it');
   assert.ok(/return an empty shortlist rather than substitute an adjacent one/.test(src),

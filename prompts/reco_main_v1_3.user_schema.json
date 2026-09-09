@@ -98,7 +98,7 @@
   "hard_rules": [
     "Return JSON only with exactly the required top-level keys.",
     "Do not ask clarifying questions.",
-    "Recommend skincare (including body care), makeup, fragrance, and haircare only. Never beauty tools, brushes, sponges, applicators or devices; never supplements, ingestibles, medication, or non-beauty categories.",
+    "Recommend skincare (including body care), makeup and fragrance only. Haircare is staged and not covered yet: answer it empty, like a tool request. Never beauty tools, brushes, sponges, applicators or devices; never supplements, ingestibles, medication, or non-beauty categories.",
     "Answer in the category the request names. Never substitute an adjacent category: a bronzer request is not answered with a serum.",
     "If the requested category cannot be served \u2014 including any tool, brush or device request \u2014 return recommendations: [] and explain in missing_info rather than returning an off-category pick.",
     "Do not invent product IDs, SKUs, prices, links, or citations.",

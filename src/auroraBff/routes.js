@@ -71404,7 +71404,7 @@ function buildRecoMainPromptPayload({
       // hardcoded skincare-only rule here would re-narrow the wide door with no trace in the diff.
       ...(domainWide
         ? [
-          'Recommend skincare (including body care), makeup, fragrance and haircare only. Never beauty tools, brushes, sponges, applicators or devices; never supplements, ingestibles, medication, or non-beauty categories.',
+          'Recommend skincare (including body care), makeup and fragrance only. Haircare is staged and not covered yet: answer it empty, like a tool request. Never beauty tools, brushes, sponges, applicators or devices; never supplements, ingestibles, medication, or non-beauty categories.',
           'Answer in the category the request names. Never substitute an adjacent category: a bronzer request is not answered with a serum.',
           'If the requested category cannot be served — any tool, brush or device request included — return recommendations: [] and explain in missing_info.',
         ]
@@ -71508,7 +71508,7 @@ function buildAuroraProductRecommendationsPromptBundle({ profile, requestText, l
     'Output MUST be a single valid JSON object only. No markdown, no extra keys, no commentary.',
     ...(domainWide
       ? [
-        'Recommend skincare (including body care), makeup, fragrance and haircare. Never beauty tools, brushes, sponges or devices; never supplements, ingestibles or medication.',
+        'Recommend skincare (including body care), makeup and fragrance. Haircare is staged and not covered yet. Never beauty tools, brushes, sponges or devices; never supplements, ingestibles or medication.',
         'Answer in the category the request names; never substitute an adjacent one. If the requested category cannot be served — a tool or brush request included — return an empty list and say so in missing_info.',
       ]
       : ['Recommend skincare only. Never recommend makeup, brushes, tools, devices, fragrance, or haircare.']),
