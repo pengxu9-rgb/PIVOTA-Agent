@@ -47,7 +47,10 @@ describe('primary-role query budget', () => {
     // costs in prod, which is all this fix needs. Asserted as the REAL effective
     // budget rather than the constant, so the clamp cannot change under it
     // silently.
-    expect(budget).toBe(4000);
+    // The stage loop hands the db layer its REMAINING budget, so this lands just
+    // under the 4,000ms ceiling rather than exactly on it.
+    expect(budget).toBeGreaterThan(3500);
+    expect(budget).toBeLessThanOrEqual(4000);
   });
 
   test('a support role still gets the support budget', async () => {
