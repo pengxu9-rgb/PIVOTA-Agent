@@ -527,6 +527,9 @@ function normalizeConstraints(raw) {
 // before for any caller that does not know about it; only a caller that positively reports
 // 'positional' suppresses the band.
 function recommendationItemToSignal(item, { rank, confidenceBasis = null } = {}) {
+  // Per-row `score_basis` (stamped by applyStrictConformingTopUp on catalog filler) overrides the
+  // answer-level basis. Without this a mixed answer labels its filler as the model's own estimate.
+  const effectiveBasis = str(item && item.score_basis) || confidenceBasis;
   if (!isPlainObject(item)) return null;
   const sku = isPlainObject(item.sku) ? item.sku : isPlainObject(item.product) ? item.product : {};
   const pdpOpen = isPlainObject(item.pdp_open) ? item.pdp_open : {};
@@ -630,10 +633,14 @@ function recommendationItemToSignal(item, { rank, confidenceBasis = null } = {})
         // Measured on prod 2026-09-09: a bronzer need answered with three cleansers, all 'high'.
         // Banding a row's POSITION as the lane's certainty about it is an assertion with no object,
         // which is the class this file exists to strip.
-        level: grounded && confidenceBasis !== 'positional' ? scoreBand(finiteNumber(item.score)) : null,
+        // A ROW'S OWN BASIS BEATS THE ANSWER'S. The lane builds MIXED answers: with a price ceiling
+        // set, applyStrictConformingTopUp appends catalog rows (positional scores) into an
+        // llm_primary answer, and the answer-level basis would vouch for them as the model's own
+        // estimate — banding filler `high` above the model's actual pick at `medium`.
+        level: grounded && effectiveBasis !== 'positional' ? scoreBand(finiteNumber(item.score)) : null,
         // Why there is (or is not) a band, so an agent can tell "we are not sure" from "we do not
         // measure this on this answer path". Without it, null reads as low confidence.
-        basis: grounded ? (confidenceBasis || 'unknown') : 'ungrounded',
+        basis: grounded ? (effectiveBasis || 'unknown') : 'ungrounded',
       },
     },
     evidence: {

@@ -63,6 +63,16 @@ test('every catalog item banded HIGH before this change — that is the defect, 
   // Not a test of the fix; a test of the arithmetic that made the fix necessary. If the positional
   // formula ever changes so that it no longer saturates the top band, this fails and someone should
   // re-read whether suppression is still the right call.
+  //
+  // Tied to the PRODUCTION formula, not to the fixture's copy of it: an earlier version asserted
+  // only the numbers this file generates, so it would have gone on passing after routes.js changed.
+  const routesSrc = require('node:fs').readFileSync(
+    require('node:path').join(__dirname, '..', 'src', 'auroraBff', 'routes.js'), 'utf8');
+  // COUNT, not presence: the formula is written out THREE times in routes.js, so an `includes`
+  // check goes on passing after one of them changes — which is exactly what a mutant proved.
+  const formulaCopies = routesSrc.split('score: Math.max(72, 95 - index * 3)').length - 1;
+  assert.equal(formulaCopies, 3,
+    'a catalog score formula changed or moved; re-derive the bands below before trusting this test');
   const scores = catalogItems(6).map((item) => item.score);
   assert.deepEqual(scores, [95, 92, 89, 86, 83, 80]);
   assert.ok(scores.every((score) => score >= 80), 'all six land in the top band regardless of the need');
@@ -186,4 +196,45 @@ test('the derived basis reaches recommendation_meta through the real lane', asyn
   assert.equal(deadLeg, 'none', 'no answer path ran, so there is no basis to claim');
 
   assert.notEqual(answered, deadLeg, 'a constant would satisfy neither assertion honestly');
+});
+
+test('a MIXED answer reports each row honestly', async () => {
+  // With a price ceiling set and the model's conforming picks short of the limit,
+  // applyStrictConformingTopUp appends catalog rows into an llm_primary answer. Measured before
+  // this fix: the model's own pick banded `medium` (score 61) while two positional fillers banded
+  // `high` (95, 92) — all three labelled `model_self_report`, the fillers outranking the real pick
+  // and the label vouching for them.
+  const model = { product_id: 'a', merchant_id: 'm', name: 'Model pick', brand: 'B', price: 10,
+    currency: 'USD', url: 'https://x.test/p', image_url: 'https://x.test/i.png',
+    step: 'cleanser', grounding: 'catalog', score: 61 };
+  // The filler is produced by the REAL top-up, not hand-stamped: hand-feeding `score_basis` here
+  // left the stamp itself unpinned, which is the same hand-fed-flag defect this workstream keeps
+  // repeating. applyStrictConformingTopUp is what knows which rows were filler.
+  const { applyStrictConformingTopUp } = require('../src/auroraBff/legacyRecoMainlineExecution');
+  const toppedUp = applyStrictConformingTopUp({
+    structured: { recommendations: [model] },
+    catalogStructured: {
+      recommendations: [{ ...model, product_id: 'b', name: 'Top-up filler', score: 95 }],
+    },
+    priceCeiling: { limit: 50, currency: 'USD' },
+    shortlistTarget: 2,
+  });
+  assert.equal(toppedUp.appendedCount, 1, 'the top-up must actually have appended a row');
+  const [, filler] = toppedUp.structured.recommendations;
+  assert.equal(filler.score_basis, 'positional', 'the top-up must stamp what its rows are');
+  const handler = makeRecommendProducts({
+    generate: async () => ({ norm: { payload: {
+      recommendations: [model, filler], confidence: 0.7,
+      recommendation_meta: { source_mode: 'llm_primary', confidence_basis: 'model_self_report' },
+    } } }),
+    isEnabled: () => true, verifyPrice: null,
+  });
+  const res = await handler({ payload: { need: 'a gentle cleanser under $50', limit: 2 } }, { agent_id: 'a' });
+  const [first, second] = res.signals;
+  assert.equal(first.value.lane_confidence.level, 'medium');
+  assert.equal(first.value.lane_confidence.basis, 'model_self_report');
+  assert.equal(second.value.lane_confidence.level, null, 'filler must not outrank the model\'s own pick');
+  assert.equal(second.value.lane_confidence.basis, 'positional');
+  // The answer-level number still describes the answer, which really was model-primary.
+  assert.equal(res.metadata.confidence_basis, 'model_self_report');
 });

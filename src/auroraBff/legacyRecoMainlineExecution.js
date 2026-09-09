@@ -116,13 +116,23 @@ function applyStrictConformingTopUp({
     target: shortlistTarget,
   });
   if (!Array.isArray(appended) || appended.length === 0) return noop;
+  // STAMP WHAT THESE ROWS ARE. They come from the catalog, carrying `95 - 3*index` as their score —
+  // a POSITION, not a judgement about the item. The answer they are appended to keeps
+  // structuredSource 'llm_primary', so an answer-level confidence basis would call them the model's
+  // own estimate and band them `high`, above the model's actual pick. Per-row, because this is the
+  // only place that knows which rows were filler.
+  const stamped = appended.map((row) => (
+    row && typeof row === 'object' && !Array.isArray(row)
+      ? { ...row, score_basis: 'positional' }
+      : row
+  ));
   return {
     structured: {
       ...structured,
-      recommendations: [...structured.recommendations, ...appended],
+      recommendations: [...structured.recommendations, ...stamped],
     },
-    appended,
-    appendedCount: appended.length,
+    appended: stamped,
+    appendedCount: stamped.length,
   };
 }
 
