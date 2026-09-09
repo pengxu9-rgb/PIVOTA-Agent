@@ -73,6 +73,24 @@ describe('stripExternalSeedMarketingBannerPrefix', () => {
     expect(out.startsWith('Egg cream is an all-in-one firming moisturizer')).toBe(true);
   });
 
+  test('a surrogate pair split by the scan bound never reaches the output', () => {
+    // The window is cut at a fixed number of code UNITS, so it can land inside a
+    // surrogate pair. That is survivable only because the window is used for
+    // ANALYSIS while the body is sliced from the full normalised string. These
+    // inputs put a banner early (so a split really is taken) and a surrogate pair
+    // astride code unit 1000 (so a window-sliced body would be cut through it and
+    // emit a lone surrogate into the recall text).
+    const loneSurrogate = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
+    const banner = 'SHOP NOW FREE SHIPPING TODAY ONLY BIG SALE LIMITED EDITION ';
+    for (const pad of [903, 904, 905]) {
+      const text = `${banner}a hydrating gel cream for oily skin ${'y'.repeat(pad)}\u{1F48E} and it absorbs quickly leaving no residue.`;
+      const out = stripExternalSeedMarketingBannerPrefix(text);
+      // A split was genuinely taken, or this proves nothing.
+      expect(out.startsWith('a hydrating gel cream')).toBe(true);
+      expect(loneSurrogate.test(out)).toBe(false);
+    }
+  });
+
   // The regression that matters: this was O(n^2). A 52KB description cost ~2.4s
   // of synchronous work and blocked the event loop for seconds, which is what
   // emptied the aurora acne recall (measured 2026-09-09). The old code needs
