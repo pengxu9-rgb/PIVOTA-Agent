@@ -175,8 +175,18 @@ const BEAUTY_RE = anchored([
   // These sit on the SUPPRESSION side, so they cost nothing and stop the gate refusing a beauty buyer:
   // measured 2026-09-08, "a bronzer for contouring", "a brush set for my kit" and "a blender sponge"
   // carried no beauty token at all.
-  String.raw`bronzers?|highlighters?|contour\w*|palettes?|brow pencils?|brows?|lash(?:es)?|eyelash\w*|setting sprays?|makeup brush(?:es)?|brush(?:es)?|sponges?|beauty blenders?`,
-  String.raw`manicures?|pedicures?|nails?|cuticles?|colognes?|body butter|body creams?|gua sha|jade rollers?|derm[ar]?planing|razor burn|ingrown hairs?|melasma|under.?eye\w*|puffiness|dark circles?`,
+  // QUALIFIED, not bare. `brush`, `sponge`, `nail`, `palette` and `highlighter` are ordinary English
+  // before they are beauty words, and bare entries here suppressed the gate for a dishwasher sponge, a
+  // dog brush, fence nails, an oil-painting palette and a textbook highlighter — 12/12 measured leaking
+  // (2026-09-08). Anything on the suppression side that is also a hardware, stationery or pet word has
+  // to name its beauty context. Both orders are accepted, since buyers write either.
+  String.raw`bronzers?|contour\w*|brow pencils?|brows?|lash(?:es)?|eyelash\w*|setting sprays?`,
+  String.raw`(?:makeup|make up|cosmetics?|blush|brow|lash|eyeshadow|eyeliner|foundation|contour|powder|kabuki|fan|blending|beauty) brush(?:es)?|brush (?:sets?|kits?)`,
+  String.raw`(?:makeup|make up|blending|blender|beauty|silicone|konjac|cleansing) sponges?|beauty blenders?`,
+  String.raw`(?:eyeshadow|eye|colou?r|contour|highlight\w*|makeup|blush|bronzer) palettes?`,
+  String.raw`highlighter (?:sticks?|powders?|palettes?|pens?)|(?:cream|powder|liquid|stick) highlighters?`,
+  String.raw`manicures?|pedicures?|cuticles?|colognes?|body butter|body creams?|gua sha|jade rollers?|derm[ar]?planing|razor burn|ingrown hairs?|melasma|under.?eye\w*|puffiness|dark circles?`,
+  String.raw`nail (?:polish|art|care|files?|clippers?|salons?|beds?|strengtheners?)|(?:gel|acrylic|press.on) nails?|(?:my|your|her|his|their) nails?`,
   String.raw`shampoos?|conditioners?|scalp|hair|fragrances?|perfumes?|deodorants?|body wash`,
 ]);
 const BEAUTY_CJK_RE = /护肤|皮肤|精华|面霜|乳液|洁面|防晒|化妆|彩妆|口红|唇|痘|毛孔|皱纹|美白|保湿|敏感肌|洗发|护发|香水|面膜|眼霜|爽肤/;
@@ -676,7 +686,7 @@ function makeRecommendProducts(deps = {}) {
     // exits use) because this is a legitimate ANSWER, not a failure: a partner agent has to be able to
     // tell "we cannot help with this" from "we broke", and `products_empty_reason` is the field the
     // description points it at.
-    const offVerticalAnswer = (marker, detectedBy) => ({
+    const offVerticalAnswer = (marker) => ({
       subject,
       signals: [],
       metadata: {
@@ -690,8 +700,8 @@ function makeRecommendProducts(deps = {}) {
         // the agent should DO, since missing_info is the field it reads to decide whether to re-ask.
         missing_info: [
           lang === 'CN'
-            ? '该推荐通道目前仅覆盖美妆/护肤品类，无法回答此需求。'
-            : 'This recommendation lane covers beauty/skincare only; it cannot serve this need.',
+            ? '该推荐通道仅覆盖护肤/美妆品类，无法回答此需求。'
+            : 'This recommendation lane covers skincare and beauty only; it cannot serve this need.',
         ],
         warnings: [
           lang === 'CN'
@@ -705,7 +715,10 @@ function makeRecommendProducts(deps = {}) {
         // The phrase that fired, so a partner (and we) can audit the gate's precision from logs
         // instead of guessing which word refused a buyer.
         off_vertical_marker: marker,
-        off_vertical_detected_by: detectedBy,
+        // Always 'need_lexicon' — the only axis left. Kept as an explicit key rather than dropped:
+        // a caller that has to distinguish a future second axis should not have to infer it from
+        // absence, and a parameter with one call site and one value is not that distinction.
+        off_vertical_detected_by: 'need_lexicon',
         latency_ms: now() - startedAt,
       },
     });
@@ -716,7 +729,7 @@ function makeRecommendProducts(deps = {}) {
         { recommendation_set_id: recommendationSetId, marker: offVertical, detected_by: 'need_lexicon' },
         'recommend_products refused an off-vertical need',
       );
-      return offVerticalAnswer(offVertical, 'need_lexicon');
+      return offVerticalAnswer(offVertical);
     }
     let result;
     try {
@@ -1062,7 +1075,10 @@ function makeRecommendProducts(deps = {}) {
         // point is that these have no product identity, and a node with a null `product_id` is exactly
         // what a partner agent showed a buyer on 2026-09-08.
         ...(unresolvedArchetypes.length > 0
-          ? { unresolved_archetypes: dedupe(unresolvedArchetypes).slice(0, 8) }
+          // Capped at MAX_LIMIT, not below it: the description says such products appear ONLY here, so
+          // a cap under what one call can suppress would make that sentence false by truncation. The
+          // lane cannot return more than `limit` items and `limit` cannot exceed MAX_LIMIT.
+          ? { unresolved_archetypes: dedupe(unresolvedArchetypes).slice(0, MAX_LIMIT) }
           : {}),
         // A lane defect, not a policy outcome (see the suppression block): an item that claimed
         // catalog grounding and carried no id. Surfaced so it is countable rather than silent.
