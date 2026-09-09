@@ -33,7 +33,8 @@
 //
 // SANITIZER-SAFE BY CONSTRUCTION. The commerce surface strips `score`/`confidence` from product-shaped nodes
 // and drops `score_breakdown`/`candidate_source`/`debug` anywhere (safety-kernel/src/protocol/resultSanitizer).
-// Per-item certainty therefore lives under `value.fit` (not a bare `confidence`), and the overall certainty
+// Per-item certainty therefore lives under `value.lane_confidence` (see the note there: `value` turns
+// out NOT to be a product node, so the original bare-`confidence` premise was wrong), and the overall certainty
 // sits on `metadata` (not a product node).
 
 const MAX_NEED_CHARS = 500;
@@ -631,6 +632,10 @@ function recommendationItemToSignal(item, { rank } = {}) {
   // THE SAME OBJECT, not a copy: every later pass that downgrades the band (markPriceViolation) must
   // reach both keys, and two independently-built objects would let the deprecated alias keep saying
   // 'high' on an item the ceiling had already capped to 'low' — a worse defect than the rename fixes.
+  // NOTE this makes `signal.value` a DAG: one object reachable by two keys. resultSanitizer handles
+  // that deliberately (it tracks ancestors, not every node ever seen). Other walkers in this repo use
+  // a permanent visited set — mcp-server/src/safety.js and recoPrelabelService.js — and would drop
+  // the second occurrence; neither is on this path today, but a new walker that is must be checked.
   signal.value.fit = signal.value.lane_confidence;
   return signal;
 }
