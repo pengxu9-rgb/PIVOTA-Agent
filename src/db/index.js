@@ -169,6 +169,16 @@ function getPool() {
           : undefined,
     });
     if (typeof nextPool.on === 'function') {
+      // Connection age is a diagnostic we cannot reconstruct later: pg exposes no
+      // birth time, and "was this socket fresh or hours old?" is exactly what
+      // separates a stale-connection stall from a slow statement.
+      nextPool.on('connect', (client) => {
+        try {
+          client.__pivotaConnectedAtMs = Date.now();
+        } catch {
+          // a frozen/mock client is not worth failing a connection over
+        }
+      });
       nextPool.on('error', (err) => {
         logger.warn(
           { err: err?.message || String(err), code: err?.code || null },
@@ -236,14 +246,61 @@ function buildBudgetTimeoutError(code, { budgetMs, waitedMs }) {
   return err;
 }
 
-function raceAgainstBudget(promise, timeoutMs, code, { budgetMs, startedAt }) {
+// Event-loop lag, sampled across the WHOLE call rather than once at the deadline.
+//
+// The point sample `timer_lag_ms` only exists when a deadline fires, and it can
+// read near zero for a 300ms block that ended before the deadline came due — so
+// on its own it neither covers the fast path nor rules a stall out. This watches
+// the interval instead: a timer that should fire every `intervalMs` and comes
+// back late by N was a loop that could not run for N, which is also a loop that
+// could not drain a socket for N.
+function startEventLoopLagProbe(intervalMs = 100) {
+  let maxLagMs = 0;
+  let lastFiredAtMs = Date.now();
   let timer = null;
+  try {
+    timer = setInterval(() => {
+      const now = Date.now();
+      const lagMs = Math.max(0, now - lastFiredAtMs - intervalMs);
+      if (lagMs > maxLagMs) maxLagMs = lagMs;
+      lastFiredAtMs = now;
+    }, intervalMs);
+    // Never hold the process open for a diagnostic.
+    if (typeof timer.unref === 'function') timer.unref();
+  } catch {
+    timer = null;
+  }
+  return {
+    stop() {
+      if (timer) {
+        clearInterval(timer);
+        timer = null;
+      }
+      // Count the tail too: a block still running when the call ends would
+      // otherwise never be sampled.
+      const tailLagMs = Math.max(0, Date.now() - lastFiredAtMs - intervalMs);
+      return Math.max(maxLagMs, tailLagMs);
+    },
+  };
+}
+
+function raceAgainstBudget(promise, timeoutMs, code, { budgetMs, startedAt, diagnostics = null }) {
+  let timer = null;
+  const scheduledFireAtMs = Date.now() + timeoutMs;
   const timeout = new Promise((_, reject) => {
     timer = setTimeout(() => {
-      reject(buildBudgetTimeoutError(code, {
+      // How late this timer fired is a direct read on event-loop health: a timer
+      // cannot run while the loop is blocked, so a large lag means the process
+      // was busy and could not drain its sockets either. A lag near zero says the
+      // loop was free and the wait was genuinely out in the network or the server.
+      const lagMs = Math.max(0, Date.now() - scheduledFireAtMs);
+      if (diagnostics) diagnostics.timer_lag_ms = lagMs;
+      const err = buildBudgetTimeoutError(code, {
         budgetMs,
         waitedMs: Math.max(0, Date.now() - startedAt),
-      }));
+      });
+      err.timer_lag_ms = lagMs;
+      reject(err);
     }, timeoutMs);
   });
   return Promise.race([promise, timeout]).finally(() => {
@@ -281,20 +338,58 @@ async function queryWithBudget(text, params, options = {}) {
   const p = getPool();
   if (!p) throw buildNoDatabaseError();
 
+  // Callers may hand in an object to be filled with what this call actually did.
+  // Split timings and pool census are the difference between "the pool is full",
+  // "the loop was blocked" and "the server or the wire was slow" — from outside
+  // they produce the same symptom, a caller that waited and gave up.
+  const diagnostics = options.diagnostics && typeof options.diagnostics === 'object'
+    ? options.diagnostics
+    : null;
+  // Three MOMENTS, each under its own name, never overwritten. `_at_request` is
+  // the pressure we queued into, `_at_acquire` is what it looked like once we
+  // were served, `_at_failure` is what it looked like when we gave up.
+  //
+  // Re-capturing a failure-time census under the `_at_acquire` name is worse than
+  // not capturing it: a stage served instantly into an idle pool that dies 1.6s
+  // later would report `pool_waiting_at_acquire: 9`, and an on-call reads that as
+  // pool starvation and raises DB_POOL_MAX -- chasing the one cause #2148 already
+  // removed.
+  const capturePoolCensus = (suffix) => {
+    if (!diagnostics) return;
+    if (Number.isFinite(Number(p.totalCount))) diagnostics[`pool_total_at_${suffix}`] = Number(p.totalCount);
+    if (Number.isFinite(Number(p.idleCount))) diagnostics[`pool_idle_at_${suffix}`] = Number(p.idleCount);
+    if (Number.isFinite(Number(p.waitingCount))) diagnostics[`pool_waiting_at_${suffix}`] = Number(p.waitingCount);
+  };
+  const lagProbe = diagnostics ? startEventLoopLagProbe() : null;
+  const finishLagProbe = () => {
+    if (!lagProbe || !diagnostics) return;
+    diagnostics.event_loop_lag_ms = lagProbe.stop();
+  };
+  if (diagnostics) diagnostics.budget_ms = budgetMs;
+  capturePoolCensus('request');
+
   const startedAt = Date.now();
-  const acquire = p.connect();
+  let acquire = null;
   let client = null;
   try {
+    // Inside the try: the probe is already running, and a synchronous throw from
+    // `connect` would otherwise leak its interval.
+    acquire = p.connect();
     client = await raceAgainstBudget(acquire, budgetMs, DB_BUDGET_ACQUIRE_TIMEOUT, {
       budgetMs,
       startedAt,
+      diagnostics,
     });
   } catch (err) {
+    if (diagnostics) diagnostics.acquire_ms = Math.max(0, Date.now() - startedAt);
+    capturePoolCensus('failure');
+    finishLagProbe();
+    if (diagnostics) err.diagnostics = { ...diagnostics };
     if (err?.code === DB_BUDGET_ACQUIRE_TIMEOUT) {
       // We are still in pg's checkout queue and cannot leave it. Give the slot
       // straight back to the next waiter rather than spending it on a query
       // whose result nobody is awaiting.
-      acquire.then(
+      acquire?.then?.(
         (lateClient) => {
           try {
             lateClient.release();
@@ -308,6 +403,22 @@ async function queryWithBudget(text, params, options = {}) {
     throw err;
   }
 
+  const acquiredAt = Date.now();
+  if (diagnostics) {
+    diagnostics.acquire_ms = Math.max(0, acquiredAt - startedAt);
+    const connectedAtMs = Number(client?.__pivotaConnectedAtMs);
+    if (Number.isFinite(connectedAtMs)) {
+      diagnostics.conn_age_ms = Math.max(0, acquiredAt - connectedAtMs);
+    }
+    // pg-pool only sets `_poolUseCount` in `_release`, so a connection's FIRST
+    // use has none. Dropping the field there loses exactly the case that
+    // distinguishes a brand-new socket from a reused one.
+    diagnostics.conn_use_count = Number.isFinite(Number(client?._poolUseCount))
+      ? Number(client._poolUseCount)
+      : 0;
+    capturePoolCensus('acquire');
+  }
+
   const remainingMs = budgetMs - (Date.now() - startedAt);
   if (remainingMs <= 0) {
     try {
@@ -315,6 +426,7 @@ async function queryWithBudget(text, params, options = {}) {
     } catch {
       // ignore release failures
     }
+    finishLagProbe();
     throw buildBudgetTimeoutError(DB_BUDGET_QUERY_TIMEOUT, {
       budgetMs,
       waitedMs: Math.max(0, Date.now() - startedAt),
@@ -327,13 +439,24 @@ async function queryWithBudget(text, params, options = {}) {
     // Inside the try: `client.query` can throw synchronously (a malformed
     // query), and that path must still hand the connection back.
     queryPromise = client.query(text, params);
-    return await raceAgainstBudget(
+    const result = await raceAgainstBudget(
       queryPromise,
       remainingMs,
       DB_BUDGET_QUERY_TIMEOUT,
-      { budgetMs, startedAt },
+      { budgetMs, startedAt, diagnostics },
     );
+    if (diagnostics) {
+      diagnostics.query_ms = Math.max(0, Date.now() - acquiredAt);
+      finishLagProbe();
+    }
+    return result;
   } catch (err) {
+    if (diagnostics) {
+      diagnostics.query_ms = Math.max(0, Date.now() - acquiredAt);
+      capturePoolCensus('failure');
+      finishLagProbe();
+      err.diagnostics = { ...diagnostics };
+    }
     const budgetExpired = err?.code === DB_BUDGET_QUERY_TIMEOUT;
     if (queryPromise && (budgetExpired || isTransientDbError(err))) {
       // The statement is still running server-side. Returning this connection

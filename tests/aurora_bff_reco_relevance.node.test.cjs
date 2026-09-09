@@ -18350,3 +18350,146 @@ test('__internal: a starved checkout is recorded as pool_acquire, not as a slow 
   // remedy is pool capacity, not a faster query.
   assert.equal(stage?.timeout_cause, 'pool_acquire');
 });
+
+test('__internal: the stage ledger carries the db diagnostics that attribute a stall', async () => {
+  const { __internal } = loadRoutesFresh();
+
+  const out = await __internal.searchLocalExternalSeedProducts({
+    query: 'salicylic acid serum clogged pores',
+    limit: 6,
+    role: {
+      role_id: 'acne_clogged_pore_treatment',
+      rank: 11,
+      preferred_step: 'treatment',
+      query_terms: ['salicylic acid treatment'],
+      fit_keywords: ['clogged', 'pore'],
+      product_type_hypotheses: ['serum'],
+    },
+    preferredStep: 'treatment',
+    timeoutMs: 4000,
+    queryFn: async (sql, params, options) => {
+      // Stand in for the db layer, which is what fills this object in prod.
+      Object.assign(options.diagnostics, {
+        budget_ms: options.timeoutMs,
+        acquire_ms: 3,
+        query_ms: 5,
+        pool_total: 6,
+        pool_idle: 0,
+        pool_waiting: 2,
+        conn_age_ms: 91000,
+        event_loop_lag_ms: 4,
+      });
+      return { rows: [] };
+    },
+  });
+
+  const stage = out.local_external_seed_stage_debug[0];
+  assert.ok(stage?.db, 'stage debug should carry the db diagnostics');
+  // acquire vs query is the split that says whether the pool or the statement
+  // owned the wait; pool_waiting and timer_lag say which pressure caused it.
+  assert.equal(stage.db.acquire_ms, 3);
+  assert.equal(stage.db.query_ms, 5);
+  assert.equal(stage.db.pool_waiting, 2);
+  assert.equal(stage.db.conn_age_ms, 91000);
+  assert.equal(stage.db.event_loop_lag_ms, 4);
+});
+
+test('__internal: a timed-out stage records the diagnostics and logs them outside the debug response', async () => {
+  const { __internal } = loadRoutesFresh();
+  const warnings = [];
+  const logger = { warn: (fields, message) => warnings.push({ fields, message }), info: () => {}, error: () => {} };
+
+  const out = await __internal.searchLocalExternalSeedProducts({
+    query: 'salicylic acid serum clogged pores',
+    limit: 6,
+    logger,
+    role: {
+      role_id: 'acne_clogged_pore_treatment',
+      rank: 11,
+      preferred_step: 'treatment',
+      query_terms: ['salicylic acid treatment'],
+      fit_keywords: ['clogged', 'pore'],
+      product_type_hypotheses: ['serum'],
+    },
+    preferredStep: 'treatment',
+    timeoutMs: 4000,
+    queryFn: async (sql, params, options) => {
+      // What the db layer throws when a statement outruns its budget.
+      Object.assign(options.diagnostics, {
+        budget_ms: options.timeoutMs,
+        acquire_ms: 2,
+        query_ms: 3998,
+        pool_waiting_at_request: 0,
+        conn_age_ms: 240000,
+        conn_use_count: 17,
+        event_loop_lag_ms: 3,
+        timer_lag_ms: 1,
+      });
+      const err = new Error('Query exceeded its budget');
+      err.code = 'DB_BUDGET_QUERY_TIMEOUT';
+      err.diagnostics = { ...options.diagnostics };
+      throw err;
+    },
+  });
+
+  // The timeout path is the only one this instrumentation exists for, so it is
+  // the one that must carry the fields.
+  const stage = out.local_external_seed_stage_debug[0];
+  assert.equal(stage?.timeout, true);
+  assert.equal(stage?.timeout_cause, 'query');
+  assert.ok(stage?.db, 'a timed-out stage must carry the db diagnostics');
+  assert.equal(stage.db.query_ms, 3998);
+  assert.equal(stage.db.event_loop_lag_ms, 3);
+  assert.equal(stage.db.conn_age_ms, 240000);
+
+  // The ledger only ever travels in a debug response. A stall nobody was
+  // watching has to be attributable afterwards, which means jsonPayload.
+  const timeoutLog = warnings.find((row) => row.message === 'local_external_seed_stage_timeout');
+  assert.ok(timeoutLog, 'a timed-out stage must be logged, not only returned');
+  assert.equal(timeoutLog.fields?.timeout_cause, 'query');
+  assert.equal(timeoutLog.fields?.db?.query_ms, 3998);
+  assert.equal(timeoutLog.fields?.db?.event_loop_lag_ms, 3);
+});
+
+test('__internal: the ledger keeps a snapshot, so a still-running call cannot rewrite a recorded stage', async () => {
+  const { __internal } = loadRoutesFresh();
+
+  const out = await __internal.searchLocalExternalSeedProducts({
+    query: 'salicylic acid serum clogged pores',
+    limit: 6,
+    role: {
+      role_id: 'acne_clogged_pore_treatment',
+      rank: 11,
+      preferred_step: 'treatment',
+      query_terms: ['salicylic acid treatment'],
+      fit_keywords: ['clogged', 'pore'],
+      product_type_hypotheses: ['serum'],
+    },
+    preferredStep: 'treatment',
+    // `queryTimeoutMs` is the real knob; `timeoutMs` is not a parameter here and
+    // is silently ignored.
+    queryTimeoutMs: 200,
+    // Ignores the budget, so the OUTER stage race fires first and the ledger
+    // entry is pushed while this call is still in flight — then it writes into
+    // the same diagnostics object, exactly as the db layer does on that path.
+    queryFn: async (sql, params, options) => {
+      Object.assign(options.diagnostics, { acquire_ms: 1 });
+      await new Promise((resolve) => { setTimeout(resolve, 700); });
+      options.diagnostics.late_write = 'must_not_reach_the_ledger';
+      return { rows: [] };
+    },
+  });
+
+  const stage = out.local_external_seed_stage_debug[0];
+  assert.equal(stage?.timeout, true);
+  assert.equal(stage?.timeout_cause, 'stage_budget');
+
+  // Wait past the late write before judging: a live reference would only be
+  // wrong AFTER the in-flight call gets there.
+  await new Promise((resolve) => { setTimeout(resolve, 800); });
+  assert.equal(
+    stage?.db?.late_write,
+    undefined,
+    'a recorded stage must not be mutated by the call that outlived it',
+  );
+});

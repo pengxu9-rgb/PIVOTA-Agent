@@ -9819,6 +9819,7 @@ function classifyLocalExternalSeedStageTimeoutCause(error) {
 
 async function searchLocalExternalSeedProductsViaSupportStages({
   runQuery,
+  logger = null,
   q,
   patterns = [],
   role = null,
@@ -9939,6 +9940,10 @@ async function searchLocalExternalSeedProductsViaSupportStages({
       };
     }
     let res = null;
+    // Filled in by the db layer with the split timings, pool census, connection
+    // age and timer lag for THIS stage. Recorded on the fast path too: a slow
+    // stage only means something next to a fast one from the same turn.
+    const stageDbDiagnostics = {};
     try {
       // The budget goes to the db layer so an expired stage releases its pool
       // slot instead of abandoning a query that keeps it. `withTimeout` stays as
@@ -9947,7 +9952,7 @@ async function searchLocalExternalSeedProductsViaSupportStages({
       // slot-releasing path the one that normally fires.
       // eslint-disable-next-line no-await-in-loop
       res = await withTimeout(
-        Promise.resolve().then(() => runQuery(sql, params, { timeoutMs: remainingMs })),
+        Promise.resolve().then(() => runQuery(sql, params, { timeoutMs: remainingMs, diagnostics: stageDbDiagnostics })),
         remainingMs + LOCAL_EXTERNAL_SEED_STAGE_TIMEOUT_GRACE_MS,
         'LOCAL_EXTERNAL_SEED_SUPPORT_QUERY_TIMEOUT',
       );
@@ -9965,7 +9970,23 @@ async function searchLocalExternalSeedProductsViaSupportStages({
         sequential_query: true,
         timeout: timedOut,
         ...(timeoutCause ? { timeout_cause: timeoutCause } : {}),
+        ...(Object.keys(stageDbDiagnostics).length > 0 ? { db: { ...stageDbDiagnostics } } : {}),
       });
+      if (timedOut) {
+        // Into jsonPayload, not just the debug response body: the stalls worth
+        // attributing are intermittent, and nobody is holding a debug request
+        // open when one happens.
+        logger?.warn?.(
+          {
+            stage: definition.stage,
+            query: q,
+            role_id: role?.role_id || null,
+            timeout_cause: timeoutCause || null,
+            db: { ...stageDbDiagnostics },
+          },
+          'local_external_seed_stage_timeout',
+        );
+      }
       if (timedOut) {
         return {
           rows: stagedRows,
@@ -9988,6 +10009,7 @@ async function searchLocalExternalSeedProductsViaSupportStages({
       ...(queryCap !== Number(definition.cap || safeLimit) ? { query_cap: queryCap } : {}),
       ...(stagedRows.length > safeLimit ? { pre_rank_row_count: stagedRows.length } : {}),
       sequential_query: true,
+      ...(Object.keys(stageDbDiagnostics).length > 0 ? { db: { ...stageDbDiagnostics } } : {}),
       ...(definition.stopAfterAnyMatch ? { stop_after_any_match: true } : {}),
       ...(continueAfterPreciseStage === true && definition.stage === 'support_query_precise' ? { continued_after_precise_stage: true } : {}),
     });
@@ -10278,6 +10300,7 @@ async function searchLocalExternalSeedProducts({
     if (leanSql) {
       const staged = await searchLocalExternalSeedProductsViaSupportStages({
         runQuery,
+        logger,
         q,
         patterns,
         role,
@@ -10482,6 +10505,7 @@ async function searchLocalExternalSeedProductsForQueryVariants({
   try {
     const staged = await searchLocalExternalSeedProductsViaSupportStages({
       runQuery,
+      logger,
       q,
       patterns,
       role,
