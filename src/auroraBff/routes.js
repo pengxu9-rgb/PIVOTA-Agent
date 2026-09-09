@@ -9009,6 +9009,35 @@ function isLocalExternalSeedSameRoleComparisonTargetContext(targetContext = null
   return comparisonMode === 'same_role_comparison' || comparisonMode === 'same_role';
 }
 
+// IS THIS ROLE THE FRAMEWORK'S PRIMARY? Identity first, rank only as a fallback.
+//
+// #2157 fixed exactly one site that asked this question with `roleRank > 1`, and the
+// probe went green, which made it look finished. It was not: the concern planner emits
+// SPACED ranks — acne_clogged_pore_treatment is 11, lightweight_moisturizer 20,
+// daily_sunscreen 30 (recommendationSharedStack.js) — so `> 1` calls the primary a
+// support role at every site that still asks that way. Measured on this branch before
+// the change: the rank-11 acne primary reached the surfacing ranker with a pool of 12
+// where a rank-1 primary got 24, half of it dropped by the support cap.
+//
+// One helper, used everywhere, so the next planner change cannot half-apply again.
+// The contract this encodes is written down in docs/reco_framework_role_rank_contract.md. The
+// rank fallback keeps the old meaning for lanes that carry no primary_role_id, and an
+// ABSENT rank reads as primary — a role nobody ranked is not evidence of support.
+// Lowercased on both sides: the prior-reco continuation lane carries a differently-cased
+// primary id, and a trim-only compare would make every role non-primary there.
+function isPrimaryFrameworkRole(role, targetContext, { primaryRoleId: explicitPrimaryRoleId = null } = {}) {
+  const primaryRoleId = String(
+    explicitPrimaryRoleId != null ? explicitPrimaryRoleId : (targetContext?.primary_role_id || ''),
+  ).trim().toLowerCase();
+  const roleId = String(
+    role?.role_id ?? role?.roleId ?? '',
+  ).trim().toLowerCase();
+  if (primaryRoleId && roleId) return roleId === primaryRoleId;
+  const rawRank = role?.rank ?? role?.role_rank ?? role?.roleRank;
+  const rank = Number(rawRank);
+  return !(Number.isFinite(rank) && rank > 1);
+}
+
 function buildLocalExternalSeedPrimaryFinishFitQueryStage({
   patterns = [],
   categoryTerms = [],
@@ -9024,6 +9053,14 @@ function buildLocalExternalSeedPrimaryFinishFitQueryStage({
     roleId === 'daily_sunscreen' ||
     roleId === 'daily_sunscreen_finish_fit' ||
     /\b(?:daily[_\s-]?sunscreen|sunscreen|spf)\b/.test(roleId);
+  // NOT SWEPT, DELIBERATELY. This asks the same question with the same broken assumption
+  // — a spaced-rank primary reads as support here too — but the swap is not a pure
+  // widening: a role at rank 1 that is NOT the framework's primary by id currently gets
+  // the precise stage and would lose it. And this builder could not be driven from a test
+  // at all (it returns null before reaching the predicate for every input tried, and the
+  // `support_category_fit_broad` stage below is nested inside its result), so neither the
+  // defect nor a fix can be demonstrated yet. Changing it blind is how #2157 shipped a
+  // half-sweep in the first place. Reachability study first — see the follow-up issue.
   const allowPreciseSunscreenRecall =
     Number.isFinite(roleRank) &&
     (
@@ -9458,6 +9495,11 @@ function buildLocalExternalSeedSupportStageDefinitions({
         ),
       ),
     });
+    // NOT SWEPT, DELIBERATELY — same reason as the precise stage above, plus a sharper
+    // one: this branch REMOVES a stage from the primary rather than adding one, so a wrong
+    // sweep here shrinks recall on the role the buyer asked about. Unreachable from a test
+    // today (it is nested inside primaryFinishFitQueryStage, which never built in any probe),
+    // so there is no measurement either way. See the follow-up issue.
     const roleRank = Number(role?.rank);
     if (Number.isFinite(roleRank) && roleRank > 1) {
       addStage({
@@ -9592,9 +9634,9 @@ function resolveLocalExternalSeedSupportRankPoolCap({
   safeLimit = 6,
   role = null,
   preferredStep = '',
+  targetContext = null,
 } = {}) {
   const baseCap = Math.max(1, Math.min(12, Number.isFinite(Number(safeLimit)) ? Math.trunc(Number(safeLimit)) : 6));
-  const roleRank = Number(role?.rank);
   const step = normalizeRecoTargetStep(preferredStep || role?.preferred_step);
   const roleId = String(role?.role_id || role?.roleId || '').trim().toLowerCase();
   if (
@@ -9603,7 +9645,12 @@ function resolveLocalExternalSeedSupportRankPoolCap({
   ) {
     return Math.max(baseCap, Math.min(30, Math.max(18, baseCap * 5)));
   }
-  if (Number.isFinite(roleRank) && roleRank > 1) {
+  // MEASURED before this change (rank-11 acne primary, primary_role_id set, 40 rows
+  // per stage): surfacing_candidate_count 12 with 12 dropped, against 24 and 0 dropped
+  // for the same role at rank 1. It does not change how MANY products come back — the
+  // caller's limit still governs that — it halves the pool the surfacing ranker gets to
+  // choose those from, on the one role the buyer actually asked about.
+  if (!isPrimaryFrameworkRole(role, targetContext)) {
     return Math.max(baseCap, Math.min(12, Math.max(8, baseCap * 2)));
   }
   return Math.max(baseCap, Math.min(24, baseCap * 4));
@@ -10397,6 +10444,7 @@ async function searchLocalExternalSeedProducts({
         safeLimit,
         role,
         preferredStep,
+        targetContext,
       });
       const rankPoolRows = rows.slice(0, rankPoolCap);
       const surfacingCandidates = rankPoolRows
@@ -10601,6 +10649,7 @@ async function searchLocalExternalSeedProductsForQueryVariants({
       safeLimit,
       role,
       preferredStep,
+      targetContext,
     });
     const rankPoolRows = rows.slice(0, rankPoolCap);
     const surfacingCandidates = rankPoolRows
@@ -25041,14 +25090,10 @@ function isBeautyMainlineSameRoleComparison(targetContext = null) {
 
 function isBeautyMainlinePrimaryRoleQuery(queryEntry = null, primaryRoleId = '') {
   if (!isPlainObject(queryEntry)) return false;
-  const roleId = pickFirstTrimmed(queryEntry.role_id, queryEntry.roleId);
-  if (roleId && primaryRoleId) return roleId === primaryRoleId;
-  const roleRank = Number.isFinite(Number(queryEntry?.role_rank))
-    ? Number(queryEntry.role_rank)
-    : Number.isFinite(Number(queryEntry?.roleRank))
-      ? Number(queryEntry.roleRank)
-      : null;
-  return roleRank == null || roleRank <= 1;
+  // Already identity-first before the sweep; routed through the shared helper so the
+  // rule has ONE definition. Behaviour is unchanged: same id compare, same rank
+  // fallback, same "no rank means primary".
+  return isPrimaryFrameworkRole(queryEntry, null, { primaryRoleId });
 }
 
 function buildBeautyMainlineStableAliasAuthorityProduct({ stableAliasResolution, queryEntry } = {}) {
@@ -25528,9 +25573,12 @@ async function runBeautyMainlineLocalHandoffSearch({
             : Number.isFinite(Number(args?.roleRank))
               ? Number(args.roleRank)
               : null;
-          const isPrimaryRole = roleId && primaryRoleId
-            ? roleId === primaryRoleId
-            : roleRank == null || roleRank <= 1;
+          // Same rule as everywhere else; see isPrimaryFrameworkRole. Behaviour unchanged.
+          const isPrimaryRole = isPrimaryFrameworkRole(
+            args?.role || { role_id: roleId, rank: roleRank },
+            null,
+            { primaryRoleId },
+          );
           if (isPrimaryRole && !isSameRoleComparison) {
             const stableAliasPreflightOut = buildStableAliasAuthorityOut({ preflight: true });
             if (stableAliasPreflightOut) return stableAliasPreflightOut;
@@ -105681,6 +105729,9 @@ const __internal = {
   buildIngredientRecoUpstreamPrompt,
   buildAuroraProductRecommendationsQuery,
   buildAuroraProductRecommendationsPromptBundle,
+  // Exported for tests: the pool cap is provable through searchLocalExternalSeedProducts,
+  // but the rule itself deserves a direct unit test — it is the thing five sites share.
+  isPrimaryFrameworkRole,
   buildAuroraRecoAlternativesQuery,
   buildRecoAlternativesTargetSignals,
   buildRecoAlternativesLocalSeedSearchRole,
