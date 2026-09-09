@@ -41743,6 +41743,11 @@ function hasRenderableCards(cards) {
 function classifyRecoUpstreamFailureCode(err) {
   const code = String((err && err.code) || '').trim().toUpperCase();
   const message = String((err && err.message) || '').trim().toLowerCase();
+  // NOTE: HTTP status is deliberately NOT classified here. This function is shared with
+  // legacyChatRecoExecution's rethrow guard and two beauty-handoff sites, and axios sets
+  // `.status` on any error carrying a response — so classifying it here silently changed how
+  // those three lanes treat a 5xx, and both of their suites stub this function, so nothing
+  // would have shown it. The reco LLM leg classifies status itself; see classifyRecoLlmLegFailure.
   if (code === 'ECONNRESET' || message.includes('connection reset')) return 'ECONNRESET';
   if (code === 'EPIPE' || message.includes('broken pipe')) return 'EPIPE';
   if (code === 'ETIMEDOUT' || code === 'ECONNABORTED' || message.includes('timeout')) return 'ETIMEDOUT';
@@ -41751,8 +41756,31 @@ function classifyRecoUpstreamFailureCode(err) {
   return '';
 }
 
+// THE RECO LLM LEG'S OWN CLASSIFICATION. Scoped to this leg rather than to the shared classifier
+// above, and deliberately TOTAL: every throw gets a non-empty code.
+//
+// `''` was the old answer for an HTTP rejection, and it is also the answer for
+// AURORA_NOT_CONFIGURED and for any error whose code this repo does not recognise. A blank code
+// means the failure leaves the telemetry dimension entirely rather than moving within it — on the
+// tree before this, a decision service that was DOWN produced null upstream_failure_code, null
+// failure_class and products in the response, which reads as success.
+function classifyRecoLlmLegFailure(err) {
+  const shared = classifyRecoUpstreamFailureCode(err);
+  if (shared) return shared;
+  const status = Number(err && err.status);
+  if (Number.isFinite(status) && status >= 400) return `HTTP_${Math.trunc(status)}`;
+  const code = String((err && err.code) || '').trim().toUpperCase();
+  if (code === 'AURORA_NOT_CONFIGURED') return 'NOT_CONFIGURED';
+  return 'UPSTREAM_ERROR';
+}
+
 function isTransientRecoUpstreamFailureCode(code) {
   const token = String(code || '').trim().toUpperCase();
+  // 5xx is the upstream having a bad moment; 4xx is not worth retrying on the same request. (429
+  // lands here too, which is not "a request we built wrong" as an earlier version of this comment
+  // put it — postWithRetry does not retry it either, so the classification matches the behaviour.)
+  const httpStatus = /^HTTP_(\d{3})$/.exec(token);
+  if (httpStatus) return Number(httpStatus[1]) >= 500;
   return (
     token === 'ECONNRESET' ||
     token === 'EPIPE' ||
@@ -84566,6 +84594,9 @@ async function runRecoLlmPrimary({
   let llmStructuredSource = null;
   let initialLlmOutcome = promptContract.ok ? 'not_invoked' : 'prompt_contract_mismatch';
   let llmInvoked = false;
+  // Set only when the upstream call actually threw. Kept separate from llmFailureClass,
+  // which feeds the contract/status derivation and is deliberately left alone here.
+  let llmUpstreamError = null;
 
   if (!promptContract.ok) {
     llmLatencyMs = 0;
@@ -84602,7 +84633,12 @@ async function runRecoLlmPrimary({
       llmLatencyMs = Date.now() - llmStartedAtMs;
     } catch (err) {
       llmLatencyMs = Date.now() - llmStartedAtMs;
-      upstreamFailureCode = classifyRecoUpstreamFailureCode(err);
+      llmUpstreamError = {
+        code: classifyRecoLlmLegFailure(err),
+        status: Number.isFinite(Number(err && err.status)) ? Math.trunc(Number(err.status)) : null,
+        not_configured: Boolean(err && err.code === 'AURORA_NOT_CONFIGURED'),
+      };
+      upstreamFailureCode = llmUpstreamError.code;
       initialLlmOutcome = isTransientRecoUpstreamFailureCode(upstreamFailureCode) ? 'upstream_timeout' : 'upstream_dependency_failure';
       if (isTransientRecoUpstreamFailureCode(upstreamFailureCode)) {
         llmFailureClass = 'timeout';
@@ -84656,18 +84692,52 @@ async function runRecoLlmPrimary({
     } else if (!llmFailureClass && llmStructured) {
       initialLlmOutcome = 'success';
       recordAuroraRecoLlmCall({ stage: 'main', outcome: 'success' });
-    } else if (!llmFailureClass && llmInvoked) {
+    } else if (!llmFailureClass && llmInvoked && !llmUpstreamError) {
       initialLlmOutcome = 'empty_structured';
       llmFailureClass = 'empty_structured';
       recordAuroraRecoLlmCall({ stage: 'main', outcome: 'empty_structured' });
+    } else if (llmUpstreamError) {
+      // The call THREW. It did not answer nothing — it never answered. Keep the outcome the
+      // catch already set (upstream_timeout / upstream_dependency_failure) rather than
+      // relabelling it as an empty model answer, and count it as what it was.
+      //
+      // NOT gated on `!llmFailureClass`. It was, and that made this branch unreachable for a 5xx:
+      // the catch sets llmFailureClass = 'timeout' for transient codes, so a 503 recorded NO
+      // main-stage metric at all — it went from the wrong bucket to no bucket, and the
+      // `upstream_timeout` token added to the allowlist alongside it was dead on arrival.
+      //
+      // Both tokens had to be added to normalizeAuroraRecoLlmCallOutcome's allowlist, or this
+      // recorded as 'provider_error' — which is ALSO that function's catch-all default, so the
+      // incident would have been indistinguishable from an unrecognised token. This branch DOES
+      // fire for a 5xx — it used to be gated on `!llmFailureClass`, and the catch sets
+      // llmFailureClass = 'timeout' for transient codes, which is exactly what made a 503 record
+      // nothing at all. Ungating it is what put `upstream_timeout` on the wire.
+      recordAuroraRecoLlmCall({ stage: 'main', outcome: initialLlmOutcome });
     }
   }
 
+  // WHAT HAPPENED TO THE LLM LEG, as a fact rather than an inference. Every other field here
+  // describes the ANSWER; none of them said whether the model was reached at all, so a dead
+  // leg and a model that declined were the same record — and the recovery path below strips
+  // `error_class`, which was the only surviving hint. This one is not stripped.
+  const llmLegOutcome = !promptContract.ok
+    ? 'prompt_contract_mismatch'
+    : !llmInvoked
+      ? 'not_invoked'
+      : llmUpstreamError
+        ? (llmUpstreamError.not_configured ? 'not_configured' : (llmUpstreamError.code || 'upstream_error').toLowerCase())
+        : (llmFailureClass || 'ok');
   const llmTrace = {
     ...llmTraceSeed,
     latency_ms: llmLatencyMs,
     cache_hit: false,
     prompt_contract_ok: promptContract.ok,
+    llm_leg: {
+      invoked: Boolean(llmInvoked),
+      outcome: llmLegOutcome,
+      upstream_status: llmUpstreamError ? llmUpstreamError.status : null,
+      latency_ms: llmLatencyMs,
+    },
     ...(promptContract.ok ? {} : { prompt_contract_issues: promptContract.issues.slice(0, 6) }),
     ...(llmFailureClass ? { error_class: llmFailureClass } : {}),
   };

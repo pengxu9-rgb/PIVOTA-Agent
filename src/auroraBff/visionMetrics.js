@@ -705,7 +705,13 @@ function normalizeAuroraRecoLlmCallOutcome(outcome) {
     token === 'provider_error' ||
     token === 'timeout' ||
     token === 'empty_structured' ||
-    token === 'empty_structured_clarify'
+    token === 'empty_structured_clarify' ||
+    // The upstream REFUSED or was unreachable — distinct from 'provider_error', which is also the
+    // catch-all default below and therefore cannot be counted on. Without these two the reco lane's
+    // 2026-09-09 incident (an unregistered PROMPT_TEMPLATE_ID answering 400 on every call) counted
+    // as the same bucket as an unrecognised token.
+    token === 'upstream_dependency_failure' ||
+    token === 'upstream_timeout'
   ) {
     return token;
   }
