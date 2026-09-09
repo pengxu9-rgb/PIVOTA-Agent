@@ -64,3 +64,17 @@ describe('primary-role query budget', () => {
     expect(budget).toBeLessThanOrEqual(1600);
   });
 });
+
+describe('primary-role id comparison', () => {
+  test('a differently-cased primary_role_id still matches', async () => {
+    // Every other comparison of these ids in this codebase lowercases. Trim-only
+    // would make `isPrimaryRole` false for EVERY role in a lane whose primary id
+    // is cased differently — the prior-reco continuation lane carries one — which
+    // silently restores the 1600ms race with the other tests still green.
+    const budget = await budgetFor({
+      role: ROLE,
+      targetContext: { ...TARGET_CONTEXT, primary_role_id: 'Acne_Clogged_Pore_Treatment' },
+    });
+    expect(budget).toBeGreaterThan(3500);
+  });
+});

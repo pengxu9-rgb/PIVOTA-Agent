@@ -9871,6 +9871,10 @@ async function searchLocalExternalSeedProductsViaSupportStages({
   const overallStartedAt = Date.now();
   const effectiveTimeoutMs = Math.max(
     250,
+    // THIS clamp is the only thing holding the primary ladder at 4s — the 18,000ms
+    // constant is inert above it. `tests/recall_primary_role_budget.test.js`
+    // asserts the effective band and fails if this is lifted; removing an
+    // accidental bound is otherwise an invisible regression.
     Math.min(4000, Number.isFinite(Number(queryTimeoutMs)) ? Math.trunc(Number(queryTimeoutMs)) : 1600),
   );
   const stageStopRowFloor = Math.max(
@@ -10305,8 +10309,13 @@ async function searchLocalExternalSeedProducts({
   // `Math.min(4000, ...)`, so the effective budget here is 4,000ms — roughly 2.2x
   // the measured query cost, and the worst-case pool-slot hold this raise can
   // cause is 4s, not 18s.
-  const primaryRoleId = String(targetContext?.primary_role_id || '').trim();
-  const roleId = String(role?.role_id || '').trim();
+  // Lowercased on BOTH sides: every other comparison of these two ids in this
+  // codebase does (`beautyChatMainlineEntry.js:263,280,335`, `routes.js:24131,
+  // 26690,28215`). Trim-only would make `isPrimaryRole` false for EVERY role in a
+  // lane carrying a differently-cased primary id — the prior-reco continuation
+  // lane does — silently restoring the 1600ms race with every test still green.
+  const primaryRoleId = String(targetContext?.primary_role_id || '').trim().toLowerCase();
+  const roleId = String(role?.role_id || '').trim().toLowerCase();
   const isPrimaryRole = primaryRoleId && roleId
     ? roleId === primaryRoleId
     : !(Number.isFinite(roleRank) && roleRank > 1);
