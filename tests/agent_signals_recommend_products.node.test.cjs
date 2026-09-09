@@ -219,7 +219,7 @@ test('3b. an internally-grounded item (no direct URL) surfaces the product_ref t
   assert.equal(s.value.product.url, null, 'this lane path has no direct URL');
   assert.equal(s.value.product.product_ref, 'sig_int', 'without a ref the agent holds an id it cannot open');
   assert.equal(s.value.product.price, 18.5);
-  assert.equal(s.value.fit.level, 'medium');
+  assert.equal(s.value.lane_confidence.level, 'medium');
 });
 
 test('3c. the need text is scrubbed by the sanitizer — it must never sit under an id-shaped key', async () => {
@@ -259,15 +259,15 @@ test('4b. mutant-killer: a $45 product against price_max 40 never passes as a cl
   assert.equal(res.signals.length, 2);
   assert.equal(res.signals[0].subject.id, 'sig_abc');
   assert.equal(res.signals[0].value.rank, 1);
-  assert.equal(res.signals[0].value.fit.level, 'high', 'a conforming item is untouched');
+  assert.equal(res.signals[0].value.lane_confidence.level, 'high', 'a conforming item is untouched');
   assert.equal(res.signals[0].value.constraint_violations, undefined);
   assert.equal(res.signals[0].value.watchouts.some((w) => /price_max/.test(w)), false, 'a conforming item carries no price marker');
 
   const v = res.signals[1];
   assert.equal(v.subject.id, 'sig_2c7636bb');
   assert.equal(v.value.rank, 2);
-  assert.notEqual(v.value.fit.level, 'high', 'the violating item must not pass as fit=high');
-  assert.equal(v.value.fit.level, 'low');
+  assert.notEqual(v.value.lane_confidence.level, 'high', 'the violating item must not pass as fit=high');
+  assert.equal(v.value.lane_confidence.level, 'low');
   assert.deepEqual(v.value.constraint_violations, [{ constraint: 'price_max', limit: 40, limit_currency: 'USD', price: 45, currency: 'USD' }]);
   assert.equal(v.value.watchouts[0], 'exceeds price_max 40 USD: price 45 USD', 'the marker leads so the cap cannot truncate it');
   assert.equal(v.value.why.some((line) => /budget|price/i.test(line)), false, 'the false budget-fit claim is stripped in the bridge');
@@ -318,7 +318,7 @@ test('4b-4. marking a violator only ever DOWNGRADES fit — it never invents a b
   const h = makeRecommendProducts({ generate: async () => laneResult([noScore]), isEnabled: () => true });
   const res = await h({ payload: { need: 'exfoliant', constraints: { price_max: 40 } } }, { agent_id: 'agent_a' });
   const s = res.signals[0];
-  assert.equal(s.value.fit.level, null, 'no lane score ⇒ no band, even on a violator: the marker carries the signal');
+  assert.equal(s.value.lane_confidence.level, null, 'no lane score ⇒ no band, even on a violator: the marker carries the signal');
   assert.equal(s.value.constraint_violations.length, 1, 'the violation itself is still recorded');
 });
 
@@ -341,7 +341,7 @@ test('4c-2. the ceiling is a MAXIMUM: a price exactly at the ceiling conforms', 
   const h = makeRecommendProducts({ generate: async () => laneResult([atCeiling]), isEnabled: () => true });
   const res = await h({ payload: { need: 'exfoliant', constraints: { price_max: 40 } } }, { agent_id: 'agent_a' });
   assert.equal(res.signals[0].value.constraint_violations, undefined, 'price == price_max is within the ceiling');
-  assert.equal(res.signals[0].value.fit.level, 'high');
+  assert.equal(res.signals[0].value.lane_confidence.level, 'high');
   assert.equal(res.metadata.constraint_violations_returned, 0);
 });
 
@@ -389,7 +389,7 @@ test('4d. free-text-only budget is OUT of scope: no prose parsing, but the calle
   const h = makeRecommendProducts({ generate: async () => laneResult([ITEM_OVERPRICED]), isEnabled: () => true });
   const res = await h({ payload: { need: 'a gentle exfoliant under $40', constraints: { budget: 'under $40' } } }, { agent_id: 'agent_a' });
   const s = res.signals[0];
-  assert.equal(s.value.fit.level, 'high', 'no structured ceiling ⇒ the bridge must not guess one from prose');
+  assert.equal(s.value.lane_confidence.level, 'high', 'no structured ceiling ⇒ the bridge must not guess one from prose');
   assert.equal(s.value.constraint_violations, undefined);
   assert.deepEqual(s.value.why, ['Fits comfortably within the under $40 budget constraint', 'PHA is the gentlest exfoliating acid']);
   assert.equal(res.metadata.price_max_enforced, undefined);
@@ -438,7 +438,7 @@ test('4f. an item with no resolvable price is unverifiable — never marked, nev
   const h = makeRecommendProducts({ generate: async () => laneResult([noPrice]), isEnabled: () => true });
   const res = await h({ payload: { need: 'x', constraints: { price_max: 40 } } }, {});
   assert.equal(res.signals[0].value.constraint_violations, undefined);
-  assert.equal(res.signals[0].value.fit.level, null, 'no lane score ⇒ no invented band, in either direction');
+  assert.equal(res.signals[0].value.lane_confidence.level, null, 'no lane score ⇒ no invented band, in either direction');
   assert.equal(res.signals[0].value.watchouts[0], 'price_max 40 USD not verified: no catalog price');
   assert.equal(res.metadata.constraint_violations_returned, 0);
   assert.equal(res.metadata.price_unverified_returned, 1);
@@ -569,7 +569,7 @@ test('5. an ungrounded advisory is suppressed entirely — it takes no slot, at 
   const res = await h({ payload: { need: 'a gentle exfoliant for sensitive skin under $40', constraints: { price_max: 40 } } }, { agent_id: 'agent_a' });
   assert.deepEqual(res.signals.map((s) => [s.value.grounding, s.value.rank]), [['catalog', 1]],
     'the flagged real item is the whole shortlist; the invention is gone, not demoted');
-  assert.equal(res.signals[0].value.fit.level, 'low', 'the violator stays flagged');
+  assert.equal(res.signals[0].value.lane_confidence.level, 'low', 'the violator stays flagged');
   assert.equal(res.metadata.ungrounded_suppressed, 1);
   assert.deepEqual(res.metadata.unresolved_archetypes, ['Hydrating Amino Acid Gel Cleanser']);
   assert.equal(res.metadata.constraint_violations_returned, 1);
@@ -1119,6 +1119,12 @@ test('4i. the enforcement markers survive the REAL commerce surface and its sani
   assert.deepEqual(sig.value.constraint_violations, [{ constraint: 'price_max', limit: 40, limit_currency: 'USD', price: 45, currency: 'USD' }]);
   assert.equal(sig.value.watchouts[0], 'exceeds price_max 40 USD: price 45 USD');
   assert.equal(sig.value.fit.level, 'low');
+  // THE FIELD PARTNERS ARE TOLD TO READ, asserted on the far side of the REAL sanitizer. 4i is the
+  // only test that drives it, and without this line `lane_confidence` could be added to
+  // resultSanitizer's RANKING_INTERNAL set — beside `rankingscore`/`scorebreakdown`/`xscore`, a
+  // plausible edit — and vanish from the wire with every suite still green, unnoticed until the
+  // deprecated `fit` alias is dropped and the band disappears entirely.
+  assert.equal(sig.value.lane_confidence.level, 'low');
   assert.equal(body.metadata.price_max_enforced, 40);
   assert.equal(body.metadata.constraint_violations_returned, 1);
   // and the advertised schema must teach the shape that is actually enforced
@@ -1738,8 +1744,8 @@ test('8k. `fit` is a deprecated alias of `lane_confidence` and cannot drift from
   assert.equal(res3.signals[0].value.lane_confidence.level, null);
   assert.equal(res3.signals[0].value.fit.level, null);
 
-  // and both survive the REAL commerce surface and its sanitizer — the reason the old name was chosen
-  // was a belief that a certainty key would be stripped here; measured, this one is not.
-  const { createCommerceToolSurface } = require('../mcp-server/src/commerceToolSurface.js');
-  assert.ok(createCommerceToolSurface, 'surface module loads');
+  // Sanitizer survival is NOT asserted here. It was, as `assert.ok(createCommerceToolSurface)` — a
+  // tautology that passes against a stub and proved nothing about the field. Test 4i drives the real
+  // SafetyKernel -> commerce surface -> sanitizeResult path and asserts `lane_confidence` there,
+  // which is the only place that claim can honestly be made.
 });
