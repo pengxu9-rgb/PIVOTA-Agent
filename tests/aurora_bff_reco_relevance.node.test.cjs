@@ -18776,3 +18776,213 @@ test('__internal: the card headline does not tell you to start with a product th
   assert.equal(supportOnly.primary_recommendation_name ?? null, null);
 });
 
+
+// The envelope-level walk. The selector-level assertion above pins
+// `finalizeConcernFrameworkCandidatePools`, but the SHIPPED payload is rebuilt
+// twice after that (`applyRecoCanonicalSearchResultToPayload` →
+// `applyRecoFinalSelectionContractToPayload`, `routes.js:59825-59829`, sets
+// `primary_recommendation_id` to `selected_product_ids[0]` with no role check),
+// so only an assertion on the card payload catches a support product being
+// named as the primary pick.
+const ACNE_MISSING_PRIMARY_SEMANTIC_PLAN = {
+  intent_mode: 'generic_concern',
+  comparison_mode: 'routine_build',
+  selection_owner_state: 'trusted',
+  primary_role_id: ACNE_MISSING_PRIMARY_TARGET_CONTEXT.primary_role_id,
+  core_roles: ACNE_MISSING_PRIMARY_TARGET_CONTEXT.framework_roles,
+  support_roles: [],
+};
+
+function buildAcneMissingPrimaryWalkRow(productId, title, category, step) {
+  return {
+    product_id: productId,
+    merchant_id: 'external_seed',
+    brand: 'Test Brand',
+    name: title,
+    display_name: title,
+    title,
+    category,
+    product_type: category,
+    retrieval_source: 'external_seed',
+    retrieval_step: step,
+    candidate_step: step,
+    short_description: `A lightweight ${category} for oily skin that absorbs quickly.`,
+  };
+}
+
+// Real chat entry -> real handoff -> real local handoff search -> real payload
+// builder. Only the backend search primitives are faked.
+async function driveAcneMissingPrimaryChatWalk({ primaryFills }) {
+  const { __internal } = loadRoutesFresh();
+  const walkTargetContext = {
+    ...ACNE_MISSING_PRIMARY_TARGET_CONTEXT,
+    entry_type: 'chat',
+    intent_mode: 'generic_concern',
+    semantic_plan: ACNE_MISSING_PRIMARY_SEMANTIC_PLAN,
+  };
+  try {
+    __internal.__setRouteDependencyOverridesForTest({
+      searchInternalProductsPrimitive: async () => ({ ok: true, products: [] }),
+      searchExternalSeedAuthorityProducts: async () => ({ ok: true, products: [] }),
+      searchLocalExternalSeedProducts: async ({ role }) => {
+        const roleId = String(role?.role_id || '');
+        if (!roleId) return { ok: false, products: [], reason: 'empty' };
+        if (roleId === 'acne_clogged_pore_treatment') {
+          return primaryFills
+            ? {
+              ok: true,
+              products: [buildAcneMissingPrimaryWalkRow(
+                'ext_p1',
+                'Salicylic Acid 2% Clogged Pore Treatment',
+                'treatment',
+                'treatment',
+              )],
+            }
+            : { ok: false, products: [], reason: 'empty' };
+        }
+        if (roleId === 'lightweight_moisturizer') {
+          return {
+            ok: true,
+            products: [buildAcneMissingPrimaryWalkRow(
+              'ext_m1',
+              'Oil-Free Gel Cream Moisturizer',
+              'moisturizer',
+              'moisturizer',
+            )],
+          };
+        }
+        if (roleId === 'daily_sunscreen') {
+          return {
+            ok: true,
+            products: [buildAcneMissingPrimaryWalkRow(
+              'ext_s1',
+              'Invisible Daily Sunscreen SPF 50',
+              'sunscreen',
+              'sunscreen',
+            )],
+          };
+        }
+        return { ok: false, products: [], reason: 'empty' };
+      },
+    });
+
+    const runtime = createBeautyChatMainlineEntryRuntime({
+      RECO_CATALOG_GROUNDED_ENABLED: true,
+      RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS: 1000,
+      AURORA_BFF_CHAT_RECO_BUDGET_MS: 26000,
+      AURORA_RECO_ASSISTANT_REWRITE_TIMEOUT_MS: 4500,
+      BEAUTY_DISCOVERY_MAINLINE_OWNER: 'shopping_agent_beauty_mainline',
+      // The production units under test.
+      handoffRecoToBeautyMainlineSearch: __internal.handoffRecoToBeautyMainlineSearch,
+      buildRecoPayloadFromBeautyMainlineHandoff: __internal.buildRecoPayloadFromBeautyMainlineHandoff,
+      buildConfidenceNoticeCardPayload: __internal.buildConfidenceNoticeCardPayload,
+      extractRecoFinalSelectionContract: (value) =>
+        value?.metadata?.final_selection
+        || value?.metadata?.search_stage_ledger?.final_selection
+        || value?.final_selection
+        || null,
+      // Everything outside the walk is stubbed. The selector deps are omitted on
+      // purpose so the LLM selector is skipped and the ordering under test is the
+      // lane's own.
+      resolveRecommendationTargetContext: () => walkTargetContext,
+      runConcernSemanticPlanner: async () => ({
+        semanticPlan: ACNE_MISSING_PRIMARY_SEMANTIC_PLAN,
+        trace: { planner_used: true, planner_fallback_used: false },
+      }),
+      buildConcernTargetContextFromSemanticPlan: () => ({
+        ...walkTargetContext,
+        mainline_fallback_policy: 'strict_no_runtime_fallback',
+        semantic_planner_required: true,
+      }),
+      summarizeProfileForContext: (profile) => profile,
+      mergeIngredientRecoContextValue: (left, right) => ({ ...(left || {}), ...(right || {}) }),
+      appendLatestRecoContextToSessionPatch: () => {},
+      maybeRewriteRecoAssistantTextWithLlm: async () => ({
+        llm_used: false,
+        text: '',
+        reason: 'disabled_in_test',
+      }),
+      makeAssistantMessage: (content) => ({ role: 'assistant', format: 'text', content }),
+      buildEnvelope: (_ctx, envelope) => envelope,
+      makeEvent: (_ctx, kind, data) => ({ kind, data }),
+      applyRecoContractToRecoRequestedEvents: (events) => ({ events }),
+      buildRecoRequestedEventData: ({ payload, source }) => ({ payload, source }),
+      normalizeRecoSourceDetail: (value) => value,
+      stateChangeAllowed: () => false,
+      classifyBeautyMainlineHandoffFallback: () => ({ reason: 'unreachable' }),
+      buildBeautyMainlineHandoffFallbackEnvelope: () => ({ cards: [] }),
+      looksLikeRecommendationRequest: () => true,
+      sendChatEnvelope: async () => null,
+    });
+
+    const result = await runtime.maybeHandleBeautyOwnedChatReco({
+      ctx: {
+        request_id: `req_primary_missing_walk_${primaryFills ? 'healthy' : 'support_only'}`,
+        trace_id: 'trace_primary_missing_walk',
+        lang: 'EN',
+        trigger_source: 'chat',
+      },
+      logger: null,
+      message: 'my skin keeps breaking out with clogged pores. what should i buy?',
+      recoEntrySourceDetail: 'typed_reco',
+      profile: {
+        skinType: 'oily',
+        sensitivity: 'low',
+        barrierStatus: 'stable',
+        goals: ['clear breakouts'],
+      },
+    });
+    const cards = Array.isArray(result?.envelope?.cards) ? result.envelope.cards : [];
+    return {
+      result,
+      cards,
+      payload: cards.find((card) => card?.type === 'recommendations')?.payload || null,
+      noticeCard: cards.find((card) => card?.type === 'confidence_notice') || null,
+    };
+  } finally {
+    __internal.__resetRouteDependencyOverridesForTest();
+  }
+}
+
+test('the shipped card never names a support product as the primary pick when the primary step is missing', async () => {
+  const supportOnly = await driveAcneMissingPrimaryChatWalk({ primaryFills: false });
+
+  assert.equal(supportOnly.result?.handled, true);
+  // The support routine is what we agreed to ship for this state.
+  assert.deepEqual(
+    (supportOnly.payload?.recommendations || []).map((item) => item.product_id),
+    ['ext_m1', 'ext_s1'],
+  );
+  assert.equal(supportOnly.payload?.primary_role_matched, false);
+  assert.equal(supportOnly.payload?.primary_role_id, 'acne_clogged_pore_treatment');
+  // ...with the disclosure card beside it.
+  assert.ok(supportOnly.noticeCard, 'expected the primary_step_unconfirmed notice card');
+  assert.match(supportOnly.noticeCard.payload?.message || '', /supporting steps only/i);
+  // The one that matters: this lane's visible prose is written from this payload,
+  // so a support product named here is presented to the user as the pick for the
+  // concern they asked about.
+  assert.equal(
+    supportOnly.payload?.primary_recommendation_id ?? null,
+    null,
+    `primary_recommendation_id must stay null while primary_role_matched is false, got ${JSON.stringify(supportOnly.payload?.primary_recommendation_id)}`,
+  );
+  assert.equal(supportOnly.payload?.framework_summary?.primary_recommendation_name ?? null, null);
+});
+
+test('the shipped card still names the primary product when the primary step is filled', async () => {
+  const healthy = await driveAcneMissingPrimaryChatWalk({ primaryFills: true });
+
+  assert.equal(healthy.result?.handled, true);
+  assert.deepEqual(
+    (healthy.payload?.recommendations || []).map((item) => item.product_id),
+    ['ext_p1', 'ext_m1', 'ext_s1'],
+  );
+  assert.equal(healthy.payload?.primary_role_matched, true);
+  assert.equal(healthy.payload?.primary_recommendation_id, 'ext_p1');
+  assert.match(String(healthy.payload?.framework_summary?.headline || ''), /^Start with /);
+  assert.equal(
+    healthy.cards.some((card) => card?.type === 'confidence_notice'),
+    false,
+    'the healthy path must not carry the primary_step_unconfirmed notice',
+  );
+});

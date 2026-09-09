@@ -400,9 +400,14 @@ function applyEnvelopeVisibleSelectionContractToPayload(payload = null, {
     // correct `null` -- shipping `primary_recommendation_id: <moisturizer>` beside
     // `primary_role_matched: false`. Latent before this PR, because that state
     // shipped zero products and never reached this line.
+    // `? null`, NOT `? payload.primary_recommendation_id`. Falling back to the
+    // payload's own value looks conservative and is inert: by the time this runs,
+    // `applyRecoFinalSelectionContractToPayload` (routes.js:59825-59829) has
+    // already set it to `selected_product_ids[0]` with no role check — the
+    // support product. Preserving that preserved the bug.
     primary_recommendation_id:
       primaryRoleUnmatchedForVisibleSelection
-        ? (payload.primary_recommendation_id ?? null)
+        ? null
         : extractEnvelopeRecoSelectionProductId(orderedVisibleRecommendations[0]) || payload.primary_recommendation_id,
     recommendation_meta: nextRecommendationMeta,
     metadata: nextPayloadMeta,
