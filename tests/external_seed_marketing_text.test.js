@@ -34,10 +34,10 @@ describe('stripExternalSeedMarketingBannerPrefix', () => {
 
   test('a banner in front of a very long body is still stripped, and the whole body survives', () => {
     const body = `A hydrating gel cream for oily skin. ${'It absorbs quickly and leaves no residue. '.repeat(2000)}`.trim();
-    const out = stripExternalSeedMarketingBannerPrefix(`THE LOWDOWN: ${body}`);
-    expect(out.startsWith('A hydrating gel cream for oily skin.')).toBe(true);
-    // The bound applies to the SCAN, never to the returned text.
-    expect(out.length).toBeGreaterThan(80000);
+    // `toBe`, not `startsWith` + a length floor: both pass for a body truncated
+    // anywhere past 80k, so they would not catch the scan bound leaking into the
+    // returned text.
+    expect(stripExternalSeedMarketingBannerPrefix(`THE LOWDOWN: ${body}`)).toBe(body);
   });
 
   test('an uppercase-run banner returns the whole body, not just the scanned window', () => {
@@ -46,11 +46,9 @@ describe('stripExternalSeedMarketingBannerPrefix', () => {
     // text. Returning the window here would truncate the description to 1000
     // characters and quietly destroy the recall text.
     const body = `A hydrating gel cream for oily skin. ${'It absorbs quickly and leaves no residue. '.repeat(2000)}`.trim();
-    const out = stripExternalSeedMarketingBannerPrefix(
+    expect(stripExternalSeedMarketingBannerPrefix(
       `NEW LIMITED EDITION BESTSELLER GLOW DROP SET ${body}`,
-    );
-    expect(out.startsWith('A hydrating gel cream for oily skin.')).toBe(true);
-    expect(out.length).toBeGreaterThan(80000);
+    )).toBe(body);
   });
 
   test('an all-caps run longer than the scan bound is still stripped', () => {
@@ -105,10 +103,11 @@ describe('stripExternalSeedMarketingBannerPrefix', () => {
     const description = 'Egg cream is an all-in-one firming moisturizer that works as a serum and sleeping mask.';
     const caps = 'WATER, GLYCERIN, DIPROPYLENE GLYCOL, CETEARYL ALCOHOL, POLYGLYCERYL-2 DIPOLYHYDROXYSTEARATE, SODIUM STEAROYL GLUTAMATE, PANTHENOL, CHOLESTEROL, ';
     const tail = 'and LUMDI, TROMETHAMINE, FOLIC ACID, CHOLESTEROL, DISODIUM STEAROYL GLUTAMATE, PULLULAN, PANTHENOL.';
-    const out = stripExternalSeedMarketingBannerPrefix(
-      `${description} INGREDIENTS: ${caps.repeat(9)}${tail}`,
-    );
-    expect(out.startsWith('Egg cream is an all-in-one firming moisturizer')).toBe(true);
+    const input = `${description} INGREDIENTS: ${caps.repeat(9)}${tail}`;
+    // `toBe(input)`, not `startsWith`: the ingredient list must survive too. With
+    // only a prefix assertion, a mutant that truncated to the first sentence
+    // would pass while silently dropping the rest of the field.
+    expect(stripExternalSeedMarketingBannerPrefix(input)).toBe(input);
   });
 
   test('a surrogate pair split by the scan bound never reaches the output', () => {
