@@ -55,20 +55,21 @@ are known and unswept, listed underneath.
 | `searchLocalExternalSeedProducts` query budget | fixed in #2157 and pinned by `tests/recall_primary_role_budget.test.js`, but it still re-derives the rule inline rather than calling the helper — and reads only `role.role_id`/`role.rank`, so for `{ roleId: <primary>, rank: 11 }` it and the pool cap now DISAGREE. Route it. |
 | `resolveLocalExternalSeedSupportRankPoolCap` (both call sites) | fixed here, pinned by `tests/recall_primary_role_identity.test.js` |
 | `isBeautyMainlinePrimaryRoleQuery` | routed through the helper. NOT behaviour-preserving: the inline body was case-sensitive; see the note at the call site |
-| the stable-alias authority branch (`routes.js` ~:25576) | routed through the helper. Same case-sensitivity change; also drops a dead `args.roleRank` fallback |
-| `localIsPrimaryRole` (`routes.js` ~:25490) | **NOT swept** — a second, case-sensitive copy of the rule inside the same function as the stable-alias branch, 90 lines apart. They now disagree in a case-mismatched lane. It gates the sunscreen query timeout cap (2200 vs 900 ms) |
+| the stable-alias authority branch (`routes.js` ~:25599) | routed through the helper. Same case-sensitivity change, and it feeds FOUR branches, not one: the stable-alias preflight, `isRoutineSupportExternalRole` (which returns via `support_local_authority_first`), the sunscreen finish-fit role test, and `primary_local_authority_first` (which returns and deliberately skips the backend hop). In a case-mismatched lane a spaced-rank primary therefore moves from the support-first path to the primary-first path — a larger product change than the seed alone. Also drops an `args.roleRank` fallback that nothing reaches |
+| `localIsPrimaryRole` (`routes.js` ~:25506) | **NOT swept** — a second, case-sensitive copy of the rule inside the same function as the stable-alias branch, 90 lines apart. They now disagree in a case-mismatched lane. It gates the sunscreen query timeout cap (2200 vs 900 ms) |
 | `buildLocalExternalSeedPrimaryFinishFitQueryStage` + the nested `support_category_fit_broad` stage | **NOT swept.** Both ARE reachable from a test — an earlier version of this doc said otherwise and was wrong. Swept separately because the precise-stage swap is not a pure widening and the broad-stage swap REMOVES stages from a spaced-rank primary |
 
 ### Known and unswept
 
 | site | what it decides |
 |---|---|
-| `buildLocalExternalSeedRoleSearchPhrases` (~`:8843`) | how many role search phrases are built |
+| `buildLocalExternalSeedRoleSearchPhrases` (~`:8839`) | how many role search phrases are built |
 | `shouldUseLeanLocalExternalSeedPatternPack` (~`:8871`) | **the SQL pattern pack.** Measured on this branch: the acne primary at rank 1 gets 8 patterns, at rank 11 gets **1**. This site is in the same call as the pool cap and has a much larger effect than the cap does — the pool was widened while the rows entering it are still retrieved with an eighth of the query surface |
-| `~:21247`, `~:27706`, `~:29929` | `query_step_strength`, which is sent upstream as a search parameter |
-| `~:27240` | support-role viability relaxation |
+| `~:21260`, `~:27728` | `query_step_strength` (`strong_goal_family` vs `supportive_family`), sent upstream as a search parameter |
+| `~:27262` | support-role viability relaxation |
+| `~:25612` | `isRoutineSupportExternalRole`, in the SAME closure as the swept stable-alias branch and guarded by `!isPrimaryRole`, so it is consistent today — but it is a rank comparison and belongs in this list |
 
-## If you add a sixth site
+## If you add another site
 
 Call the helper, and add a case to `tests/recall_primary_role_identity.test.js` that fails when
 the call site is reverted to a rank comparison. A test that only checks the helper in isolation

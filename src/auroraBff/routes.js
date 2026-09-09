@@ -25105,10 +25105,14 @@ function isBeautyMainlinePrimaryRoleQuery(queryEntry = null, primaryRoleId = '')
   // so a lane whose primary_role_id differs in case from role_id now answers `true` where it
   // answered `false`.
   //
-  // That lane is real. beautyChatMainlineEntry.js sets primary_role_id from session
-  // `context.primary_target_id` while role_id comes from `target.target_id`, and that file already
-  // lowercases both sides when it compares them itself. It also emits spaced ranks ((i+1)*10), so
-  // pre-change this fell through to rank and answered "not primary" for every role in the lane.
+  // That lane CAN differ — stated as capability, not as an observed event, because no producer was
+  // traced actually emitting a mixed-case id. beautyChatMainlineEntry.js sets primary_role_id from
+  // session `context.primary_target_id` (raw, via pickFirstTrimmed) while role_id comes from
+  // `target.target_id`, which reaches it slugified and lowercased. So the compare really is
+  // lowercase-against-raw, and that file already lowercases both sides where it compares them
+  // itself. The spaced ranks ARE unconditional: normalizeRecoContextRankedTargets emits no rank, so
+  // the (i+1)*10 default always applies — meaning whenever the ids do differ in case, every role in
+  // the lane fell through to rank and answered "not primary".
   // Answering `true` there switches on the stable-alias primary authority seed and the query strip
   // below it — a product change, deliberately taken, because case-sensitivity was the bug.
   return isPrimaryFrameworkRole(queryEntry, null, { primaryRoleId });
@@ -25591,11 +25595,18 @@ async function runBeautyMainlineLocalHandoffSearch({
             : Number.isFinite(Number(args?.roleRank))
               ? Number(args.roleRank)
               : null;
-          // Same rule as everywhere else; see isPrimaryFrameworkRole. NOT a pure refactor — the
-          // inline body this replaced was case-SENSITIVE (see the note on
-          // isBeautyMainlinePrimaryRoleQuery), and it also fell back to a top-level `args.roleRank`
-          // when `args.role.rank` was not finite. `args.roleRank` is written nowhere in src/, so
-          // that fallback is dead, but it is a capability this removes rather than preserves.
+          // Same rule as everywhere else; see isPrimaryFrameworkRole. NOT a pure refactor, and the
+          // blast radius here is wider than at the other site: this value feeds FOUR branches below
+          // — the stable-alias preflight, `isRoutineSupportExternalRole` (which returns via
+          // support_local_authority_first), the sunscreen finish-fit test, and
+          // primary_local_authority_first (which returns and skips the backend hop). So in a
+          // case-mismatched lane a spaced-rank primary moves from the support-first path to the
+          // primary-first path, not merely from no-seed to seed.
+          //
+          // It also drops a fallback to a top-level `args.roleRank` when `args.role.rank` was not
+          // finite. Nothing populates `args.roleRank` on this path (recoRecallPlanner writes a
+          // `roleRank` buildStage option, but that is converted to `role_rank` before it becomes
+          // `args`), so the fallback is unreachable — a capability removed rather than preserved.
           const isPrimaryRole = isPrimaryFrameworkRole(
             args?.role || { role_id: roleId, rank: roleRank },
             null,
