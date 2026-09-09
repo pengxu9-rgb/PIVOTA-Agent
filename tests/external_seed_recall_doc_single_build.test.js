@@ -46,21 +46,28 @@ function medianMs(fn, runs = 9) {
 }
 
 describe('resolveExternalSeedRecallDoc', () => {
-  test('builds the underlying doc once, not twice', () => {
+  test('builds the underlying doc exactly once', () => {
     const input = buildRow();
-    buildExternalSeedRecallDoc(input);
-    resolveExternalSeedRecallDoc(input);
+    let calls = 0;
+    const counting = (args) => {
+      calls += 1;
+      return buildExternalSeedRecallDoc(args);
+    };
 
-    const buildMs = medianMs(() => buildExternalSeedRecallDoc(input));
-    const resolveMs = medianMs(() => resolveExternalSeedRecallDoc(input));
+    const resolved = resolveExternalSeedRecallDoc({ ...input, buildDoc: counting });
 
-    // Guard against a degenerate machine where both round to nothing.
-    expect(buildMs).toBeGreaterThan(0.5);
-    // Resolve legitimately costs about TWO builds' worth of work even with one
-    // build, because it re-cleans and re-classifies the stored values. Measured
-    // on this input: 2.01 with a single build, 3.00 with the duplicate. 2.5 sits
-    // between them with room for a loaded runner on either side.
-    expect(resolveMs / buildMs).toBeLessThan(2.5);
+    // Deterministic, not a timing ratio: the duplicate build had no other
+    // observable signature, and a ratio assertion in CI is a flake waiting to
+    // happen. Two here is the bug.
+    expect(calls).toBe(1);
+    expect(resolved.version).toBe('v1');
+  });
+
+  test('the injected builder is only a seam — the default is the real builder', () => {
+    // Guards against the seam drifting away from production behaviour.
+    const input = buildRow();
+    expect(resolveExternalSeedRecallDoc(input))
+      .toEqual(resolveExternalSeedRecallDoc({ ...input, buildDoc: buildExternalSeedRecallDoc }));
   });
 
   test('a stored recall doc still wins over the freshly built fallback', () => {

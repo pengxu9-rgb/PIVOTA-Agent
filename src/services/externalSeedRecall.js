@@ -839,14 +839,24 @@ function readStoredRecallDoc(seedData) {
   return ensureJsonObject(ensureJsonObject(seedData).derived?.recall);
 }
 
-function resolveExternalSeedRecallDoc({ row = {}, seedData = {}, snapshot = {} } = {}) {
+// `buildDoc` is an injected seam, matching the `queryFn` / `searchFn` convention
+// used elsewhere in this codebase. It exists because the duplicate build this
+// function used to do has no other observable signature: the second call was to
+// the local binding, so it cannot be spied through the export, and a timing
+// ratio is the only alternative -- which is a flaky thing to put in CI.
+function resolveExternalSeedRecallDoc({
+  row = {},
+  seedData = {},
+  snapshot = {},
+  buildDoc = buildExternalSeedRecallDoc,
+} = {}) {
   const stored = readStoredRecallDoc(seedData);
   if (
     normalizeNonEmptyString(stored.retrieval_title) ||
     normalizeNonEmptyString(stored.retrieval_summary) ||
     normalizeNonEmptyString(stored.retrieval_body)
   ) {
-    const fallback = buildExternalSeedRecallDoc({ row, seedData, snapshot });
+    const fallback = buildDoc({ row, seedData, snapshot });
     const brand = firstNonEmptyString(stored.brand, fallback.brand);
     const category = resolveStoredRecallCategory(stored, fallback);
     const retrievalTitle =
@@ -902,7 +912,7 @@ function resolveExternalSeedRecallDoc({ row = {}, seedData = {}, snapshot = {} }
       suppression_flags: protection.suppression_flags,
     };
   }
-  return buildExternalSeedRecallDoc({ row, seedData, snapshot });
+  return buildDoc({ row, seedData, snapshot });
 }
 
 const EXTERNAL_SEED_RECALL_SQL_FIELDS = Object.freeze({
