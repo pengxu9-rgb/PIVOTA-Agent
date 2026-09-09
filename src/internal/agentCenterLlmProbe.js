@@ -31,10 +31,12 @@
 
 'use strict';
 const vertexGemini = require('../llm/vertexGemini');
+const consumerAnswer = require('./consumerAnswerEvidence');
 
 const { getGeminiGlobalGate } = require('../lib/geminiGlobalGate');
 
 const ALLOWED_SCAN_MODES = new Set([
+  consumerAnswer.MODE,
   'open_product_visibility_test',
   'merchant_store_attribution_test',
   'pivota_pdp_attribution_test',
@@ -192,6 +194,9 @@ function validateRequest(body) {
       ok: false,
       error: `unsupported scan_mode: ${scan_mode}. Allowed: ${[...ALLOWED_SCAN_MODES].join(', ')}`,
     };
+  }
+  if (scan_mode === consumerAnswer.MODE && (process.env.PIVOTA_CONSUMER_ANSWER_ENABLED !== 'true' || !Array.isArray(context?.queries) || !context.queries.length || context.queries.some(q => !_isNonEmptyString(q)))) {
+    return { ok: false, error: 'consumer answer capture requires enabled gate and explicit nonempty queries' };
   }
   if (!_isNonEmptyString(scan_target_id)) {
     return { ok: false, error: 'scan_target_id is required' };
@@ -400,6 +405,7 @@ function getAnthropicClient() {
 }
 
 function buildPromptForScanMode(input) {
+  if (input.scan_mode === consumerAnswer.MODE) return consumerAnswer.prompt();
   const { scan_mode, context } = input;
   // Prompt's "Product:" field: prefer the product title (real, meaningful
   // to the LLM) over the entity_id (meaningless string like "m1|shopify|P1").
@@ -1273,8 +1279,10 @@ function extractAnthropicRetrievedSources(resp) {
 }
 
 async function buildGroundedProviderProbe(input, providerSpec) {
+  consumerAnswer.assertEnabled(input);
   const client = providerSpec.getClient();
   if (!client) {
+    if (input.scan_mode === consumerAnswer.MODE) throw new Error('consumer answer provider unavailable');
     const mocked = buildMockProbe(input);
     return { ...mocked, provider: providerSpec.noKeyFallbackProvider };
   }
@@ -1335,10 +1343,14 @@ async function buildGroundedProviderProbe(input, providerSpec) {
     let rawText = '';
     let chunks = [];
     let retrievedSources = [];
+    let finishReason = null;
+    let responseModel = null;
     let groundingMetadata = null;
     try {
       const providerResult = await providerSpec.invoke({ client, input, prompt, userText, query: q });
       rawText = providerResult.rawText || '';
+      finishReason = providerResult.finishReason;
+      responseModel = providerResult.model;
       parsed = unwrapJson(rawText);
       chunks = Array.isArray(providerResult.chunks) ? providerResult.chunks : [];
       retrievedSources = Array.isArray(providerResult.retrievedSources) ? providerResult.retrievedSources : [];
@@ -1358,6 +1370,11 @@ async function buildGroundedProviderProbe(input, providerSpec) {
       rawText = `__error__:${reason}`;
       failedRuns += 1;
       errorReasons.push(reason);
+    }
+
+    if (scan_mode === consumerAnswer.MODE) {
+      rawRuns.push(consumerAnswer.evidence({ query: q, rawText, provider: providerSpec.provider, model: responseModel, finishReason, chunks, retrievedSources }));
+      continue;
     }
 
     const scoringGroundingMetadata =
@@ -1407,7 +1424,7 @@ async function buildGroundedProviderProbe(input, providerSpec) {
     failed_runs: failedRuns,
     succeeded_runs: succeededRuns,
     error_reasons: summarizeProbeErrorReasons(errorReasons),
-    scores: { visibility_score: visibilityScore, attribution_echo_rate: echoRate },
+    scores: scan_mode === consumerAnswer.MODE ? null : { visibility_score: visibilityScore, attribution_echo_rate: echoRate },
     findings,
     usage: buildProviderUsage({
       inputTokens,
@@ -1423,10 +1440,12 @@ async function buildGroundedProviderProbe(input, providerSpec) {
 }
 
 async function buildGeminiProbe(input) {
+  consumerAnswer.assertEnabled(input);
   const client = getGeminiClient();
   if (!client) {
     // Fall back to mock so callers still get a useful response, with a
     // clearly-marked provider so they know it didn't go through Gemini.
+    if (input.scan_mode === consumerAnswer.MODE) throw new Error('consumer answer provider unavailable');
     const mocked = buildMockProbe(input);
     return { ...mocked, provider: 'mock_fallback_no_gemini_key' };
   }
@@ -1525,6 +1544,8 @@ async function buildGeminiProbe(input) {
     let parsed = null;
     let rawText = '';
     let groundingMetadata = null;
+    let finishReason = null;
+    let responseModel = null;
     try {
       const resp = await withProbeCostGate(
         input,
@@ -1555,6 +1576,8 @@ async function buildGeminiProbe(input) {
       // the model used the search tool. Capture it — we both score
       // against it and ship it back in raw_runs for evidence.
       const cand0 = Array.isArray(resp?.candidates) ? resp.candidates[0] : null;
+      finishReason = cand0?.finishReason;
+      responseModel = resp?.modelVersion || GEMINI_MODEL;
       groundingMetadata = cand0?.groundingMetadata || cand0?.grounding_metadata || null;
       parsed = unwrapJson(rawText);
       if (resp?.usageMetadata) {
@@ -1584,6 +1607,10 @@ async function buildGeminiProbe(input) {
     }
     // Pre-parse the chunks once per run — used by scoring + raw_runs.
     const chunks = normalizeGroundingChunks(groundingMetadata);
+    if (scan_mode === consumerAnswer.MODE) {
+      rawRuns.push(consumerAnswer.evidence({ query: q, rawText, provider: 'gemini', model: responseModel, finishReason, chunks }));
+      continue;
+    }
     const hasAnyGrounding = chunks.length > 0;
     const merchantBrand = context.product?.vendor || context.product?.title || null;
 
@@ -1779,7 +1806,7 @@ async function buildGeminiProbe(input) {
     failed_runs: failedRuns,
     succeeded_runs: succeededRuns,
     error_reasons: summarizeProbeErrorReasons(errorReasons),
-    scores: { visibility_score: visibilityScore, attribution_echo_rate: echoRate },
+    scores: scan_mode === consumerAnswer.MODE ? null : { visibility_score: visibilityScore, attribution_echo_rate: echoRate },
     findings,
     usage: buildProviderUsage({
       inputTokens,
@@ -1821,6 +1848,8 @@ async function buildChatGptProbe(input) {
       const chunks = extractOpenAIGroundingChunks(resp);
       return {
         rawText: extractOpenAIOutputText(resp),
+        finishReason: (resp?.output || []).some(item => (item?.content || []).some(part => part?.type === 'refusal')) ? 'refusal' : resp?.status,
+        model: resp?.model || model,
         chunks,
         retrievedSources: extractOpenAIRetrievedSources(resp),
         groundingMetadata: groundingMetadataFromNormalizedChunks(chunks),
@@ -1869,6 +1898,8 @@ async function buildClaudeProbe(input) {
       const chunks = extractAnthropicGroundingChunks(resp);
       return {
         rawText: extractAnthropicOutputText(resp),
+        finishReason: resp?.stop_reason,
+        model: resp?.model || anthropicModelForTransport(),
         chunks,
         retrievedSources: extractAnthropicRetrievedSources(resp),
         groundingMetadata: groundingMetadataFromNormalizedChunks(chunks),
@@ -1881,6 +1912,10 @@ async function buildClaudeProbe(input) {
 }
 
 async function dispatchProbe(normalized) {
+  consumerAnswer.assertEnabled(normalized);
+  if (normalized.scan_mode === consumerAnswer.MODE && !['gemini', 'chatgpt', 'claude'].includes(normalized.provider)) {
+    throw new Error('consumer answer capture requires a real provider');
+  }
   if (normalized.provider === 'gemini') {
     return buildGeminiProbe(normalized);
   }

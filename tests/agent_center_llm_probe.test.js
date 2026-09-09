@@ -127,6 +127,10 @@ describe('agentCenterLlmProbe — request validation', () => {
   test('PRIMARY_ISSUE_TYPE_BY_SCAN_MODE covers all four demand-test modes', () => {
     const { PRIMARY_ISSUE_TYPE_BY_SCAN_MODE } = _internals;
     for (const mode of ALLOWED_SCAN_MODES) {
+      if (mode === 'consumer_answer_test') {
+        expect(PRIMARY_ISSUE_TYPE_BY_SCAN_MODE[mode]).toBeUndefined();
+        continue;
+      }
       expect(PRIMARY_ISSUE_TYPE_BY_SCAN_MODE[mode]).toBeTruthy();
     }
   });
