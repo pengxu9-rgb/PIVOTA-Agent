@@ -9,11 +9,12 @@
 // lane's UI envelope into the `{ subject, signals[], metadata }` shape every other insights tool uses.
 //
 // HONEST LIMITS, stated in the tool description too:
-//  - the lane is the Aurora BEAUTY engine today. Its prompt is selected per DOOR: this bridge passes
-//    promptDomainScope 'beauty' and the lane loads reco_main_v1_3 (skincare incl. body care, makeup,
-//    fragrance, haircare, answer-in-the-category-asked); the Aurora consumer chat lane passes nothing and
-//    keeps the skincare-bounded reco_main_v1_2. TOOLS/brushes/devices stay refused there: measured on prod
-//    2026-09-09 `makeup brush` returns total 0 / final_decision 'clarify', so there is nothing to ground;
+//  - the lane is the Aurora BEAUTY engine today: its prompts, catalog grounding and guardrails are tuned
+//    for SKINCARE. This bridge asks for the wider beauty prompt (promptDomainScope 'beauty'), but that ask
+//    is INERT until RECO_MAIN_WIDE_PROMPT_TEMPLATE_ID names reco_main_v1_3 — the decision service 400s on
+//    an id it does not know, so v1_3 stays off by default (see the constant in routes.js). Until then a
+//    makeup/haircare/fragrance need still comes back with skincare picks, which is what the tool
+//    description says;
 //    An off-vertical need answers with an empty shortlist + `missing_info`, not with fabricated products —
 //    and that is ENFORCED here (offVerticalMarker), not merely hoped for: the lane itself is a recommender
 //    and will happily answer a trading-card need with a cleanser;

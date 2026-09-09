@@ -794,12 +794,26 @@ const RECO_INGREDIENT_PROMPT_TEMPLATE_ID = String(
 // haircare, and still REFUSES tools/brushes/devices — measured on prod 2026-09-09: `makeup brush`
 // answers total 0 with final_decision 'clarify' and every search_quality tier count zero, and
 // `gua sha facial tool` returns mis-filed rows inside a total of 0. Inviting a category with no
-// serving lane would trade a wrong answer for an empty one, not for a right one. Rollback is a value, not a boolean: point this env var back at reco_main_v1_2 and the door
-// is narrow again with no deploy — chosen over a flag because a Cloud Run deploy has wiped this
-// service's env vars before (2026-08-30), and a wiped flag must fail to the CURRENT behaviour.
+// serving lane would trade a wrong answer for an empty one, not for a right one.
+//
+// DEFAULT OFF SINCE 2026-09-09. The template id is NOT a local filename: formatAuroraPromptQuery
+// puts `PROMPT_TEMPLATE_ID=<id>` into the query sent to AURORA_DECISION_BASE_URL, and that service
+// VALIDATES it. Deployed as 8ed132e95233 (rev gateway-00131-jel), every LLM leg of the agent door
+// answered "Upstream status 400" — zero such errors in the 40 minutes before, zero after the
+// rollback. Registering an id there is not done in this repo.
+//
+// The failure is SILENT to the caller: with the LLM leg dead the lane answers from its catalog
+// path, so a partner sees products rather than an error. Nothing here could have caught it —
+// every test in this repo stops at the prompt builder and none calls the decision service.
+//
+// So the default names the NARROW template: v1_3 ships, stays tested, and stays inert. Setting this
+// env var to 'reco_main_v1_3' arms it, and must not be done until a live probe shows the decision
+// service accepting the id. It is a CODE default rather than a live env pin because a Cloud Run
+// deploy has wiped this service's env vars before (2026-08-30) — with the default armed, the next
+// wipe would silently re-break the lane.
 const RECO_MAIN_WIDE_PROMPT_TEMPLATE_ID = String(
-  process.env.RECO_MAIN_WIDE_PROMPT_TEMPLATE_ID || 'reco_main_v1_3',
-).trim() || 'reco_main_v1_3';
+  process.env.RECO_MAIN_WIDE_PROMPT_TEMPLATE_ID || 'reco_main_v1_2',
+).trim() || 'reco_main_v1_2';
 // The only value that widens the lane. Anything else — '', 'skincare', a typo, an object — is the
 // narrow default, so a mistake upstream cannot silently widen the chat lane.
 const RECO_PROMPT_DOMAIN_SCOPE_BEAUTY = 'beauty';
@@ -46070,6 +46084,11 @@ function resolveRecoMainPromptSpec({ ingredientContext, promptDomainScope = '' }
     // Reported, not inferred downstream: the template id alone cannot say whether the wide lane was
     // ASKED for (an operator may point both env vars at one file), and telemetry needs the ask.
     domain_scope: domainWide ? RECO_PROMPT_DOMAIN_SCOPE_BEAUTY : 'skincare',
+    // Whether the ask was actually GRANTED. With the wide id pinned back to the narrow template
+    // these differ, and the prompt TEXT must follow this one — otherwise the query carries a
+    // "beauty recommendation plan" task line wrapped around v1_2's skincare-only system prompt:
+    // half-applied, and worse than either end state.
+    wide_template_active: domainWide && templateId !== RECO_MAIN_PROMPT_TEMPLATE_ID,
     llm_mode: ingredientMode ? 'ingredient_filtered_products' : 'goal_based_products',
     template_id: templateId,
     schema_file: `${templateId}.user_schema.json`,
@@ -71347,7 +71366,7 @@ function buildRecoMainPromptPayload({
   ingredientContext,
   promptSpec,
 } = {}) {
-  const domainWide = isWideRecoPromptDomainScope(promptSpec && promptSpec.domain_scope);
+  const domainWide = Boolean(promptSpec && promptSpec.wide_template_active);
   const fallbackSchema = {
     meta: { lang: 'EN', intent: 'reco_products', region: 'US', no_clarify: true },
     profile: { skinType: null, sensitivity: null, barrierStatus: null, goals: [], contraindications: [] },
@@ -71499,7 +71518,7 @@ function buildRecoMainPromptPayload({
 
 function buildAuroraProductRecommendationsPromptBundle({ profile, requestText, lang, globalStatus, candidates, ingredientContext, promptDomainScope = '' } = {}) {
   const promptSpec = resolveRecoMainPromptSpec({ ingredientContext, promptDomainScope });
-  const domainWide = isWideRecoPromptDomainScope(promptSpec.domain_scope);
+  const domainWide = Boolean(promptSpec.wide_template_active);
   const fallbackSystemPrompt = [
     domainWide
       ? 'You are a precision beauty recommendation planner.'
@@ -84496,6 +84515,7 @@ function buildRecoLlmPromptState({
   llmTraceSeed.schema_chars = Number(promptBundle.schema_chars || 0);
   llmTraceSeed.llm_mode = String(promptBundle.prompt_spec.llm_mode || '').trim() || null;
   llmTraceSeed.prompt_domain_scope = String(promptBundle.prompt_spec.domain_scope || '').trim() || null;
+  llmTraceSeed.wide_template_active = Boolean(promptBundle.prompt_spec.wide_template_active);
   llmTraceSeed.candidate_count = Array.isArray(candidates) ? candidates.length : 0;
   const promptContractBase = validateRecoPromptContract({
     query,
