@@ -1508,6 +1508,14 @@ test('8e. the tool description and the code agree — the promises are quoted fr
     'the unhedged universal must not come back');
   // The id guarantee, by contrast, IS unconditional — it is enforced on every exit, so it is stated flatly.
   assert.ok(/Every returned item IS a catalog product with a non-null `product_id`/.test(src));
+  // `fit` bands the LANE's score with no reference to the need (recommendationItemToSignal), so a
+  // gate-passing off-vertical need still reads fit 'high'. Unfixed here, but it must not be unsaid.
+  assert.ok(/`fit` is the lane's own confidence in the item, NOT a measure of how well it answers your need/.test(src),
+    'the description must not let fit be read as agreement with the need');
+  // The lane's prompt is SKINCARE-only while the tool advertises beauty/skincare — a makeup need comes
+  // back with skincare picks. Narrower than advertised is still a description that must say so.
+  assert.ok(/never to recommend makeup, brushes, beauty tools, devices, fragrance, haircare or supplements/.test(src),
+    "the lane's real (narrower) domain must be stated, since it changes what a makeup need gets back");
   assert.ok(surfaceMod, 'the surface module still loads with the edited description');
 });
 
@@ -1525,59 +1533,63 @@ test('8f. separators cannot buy a fabricated shortlist — the repro one hyphen 
   // "car"; they do not, because `car` is not an alternative (only the two-word `car tires` is). This
   // is the real case: a token must not match inside a longer word.
   assert.ok(offVerticalMarker('tcg singles'), 'the bare token matches');
-  assert.equal(offVerticalMarker('tcgel gets everywhere'), null, 'but never inside a longer word');
+  assert.equal(offVerticalMarker('tcgel gets everywhere'), null, 'but never inside a longer word (trailing \\b)');
+  assert.equal(offVerticalMarker('the wtcg deck'), null, 'nor at the end of one (leading \\b)');
   assert.equal(offVerticalMarker('carbon filter'), null);
 });
 
-test('8g. the lane admitting the need was off-domain empties the shortlist, even with no keyword hit', async () => {
-  // THE SECOND AXIS, from two live 2026-09-08 responses. "an air fryer" and "a treadmill" both came
-  // back with beauty products at fit 'high' AND a warning saying the lane had excluded the request as
-  // non-skincare. The lane knew; nothing acted on it. A keyword list will never hold every vertical,
-  // so the lane's own admission is read as a signal.
+test('8g. the lane admitting it was off-DOMAIN never empties the shortlist — its domain is narrower than ours', async () => {
+  // A REMOVED AXIS, pinned so it cannot come back. The lane admits in its own warnings when it declines
+  // a need ("Non-skincare requests … have been excluded per domain boundaries"), which looked like free
+  // coverage for needs no keyword list holds. It is not: prompts/reco_main_v1_2.system.txt bounds the
+  // lane to "skincare only … never makeup, brushes, beauty tools, devices, fragrance, haircare, or
+  // supplements" — NARROWER than the beauty/skincare this tool advertises. So it emits that same
+  // sentence for a bronzer or a brush set, and acting on it emptied the shortlist for in-vertical
+  // buyers while telling them their beauty need was not beauty.
   for (const [need, warning] of [
+    ['a bronzer for contouring', 'Makeup items such as bronzer fall outside the skincare domain; returning skincare picks instead.'],
+    ['a brush set for my kit', 'Beauty tools are outside the scope of this lane.'],
+    ['cologne for my dad', 'Fragrance is outside the skincare domain.'],
+    ['what helps with razor burn', 'Consult a dermatologist; prescription options fall outside the scope of this routine.'],
     ['something for my kitchen counter', 'Non-skincare requests (such as kitchen appliances) have been excluded per domain boundaries.'],
-    ['something for my garage', 'Request contained non-skincare intent (fitness equipment); defaulted to general baseline skincare recommendations.'],
-    ['a thing', 'This request falls outside the beauty domain; returning generic picks.'],
   ]) {
-    assert.equal(offVerticalMarker(need), null, 'the keyword list does NOT catch this need — that is the point');
-    const infos = [];
     const h = makeRecommendProducts({
       generate: async () => laneResult([ITEM_FULL], { warnings: [warning] }),
       isEnabled: () => true,
-      logger: { info: (o, m) => infos.push([o, m]) },
     });
     const res = await h({ payload: { need } }, { agent_id: 'agent_a' });
-    assert.deepEqual(res.signals, [], `"${warning}" is an admission, not copy`);
-    assert.equal(res.metadata.products_empty_reason, 'off_vertical');
-    assert.equal(res.metadata.off_vertical_detected_by, 'lane_warning');
-    assert.equal(res.metadata.returned, 0);
-    assert.equal(infos.length, 1);
-    assert.equal(infos[0][0].suppressed_items, 1, 'the items it would have returned are counted in the log');
+    assert.equal(res.signals.length, 1, `"${warning}" must be relayed, never acted on`);
+    assert.equal(res.metadata.products_empty_reason, null);
+    assert.equal(res.metadata.off_vertical_detected_by, undefined);
+    assert.deepEqual(res.metadata.warnings, [warning], "the lane's own words reach the caller intact");
   }
 });
 
-test('8h. the lane axis never refuses a buyer who named something beauty', async () => {
-  // The expensive error direction. On a MIXED need the lane may honestly report excluding the
-  // non-beauty half — and refusing that buyer their moisturizer is the only outcome here that loses a
-  // sale. The same asymmetry as the pre-gate: a beauty word anywhere wins.
-  const warning = 'Non-skincare requests have been excluded per domain boundaries.';
-  const h = makeRecommendProducts({
-    generate: async () => laneResult([ITEM_FULL], { warnings: [warning] }),
-    isEnabled: () => true,
-  });
-  const res = await h({ payload: { need: 'a moisturizer, and also a phone case' } }, { agent_id: 'agent_a' });
-  assert.equal(res.signals.length, 1, 'the beauty half of the need is still answered');
-  assert.equal(res.metadata.products_empty_reason, null);
-  assert.deepEqual(res.metadata.warnings, [warning], "the lane's warning is relayed, not acted on");
+test('8h. the class the LANE refuses but this TOOL advertises is never refused by the gate', async () => {
+  // The lane's prompt excludes makeup, tools, fragrance, haircare and supplements; the tool advertises
+  // beauty/skincare. Every one of these was measured carrying NO beauty token, so they sat one lexicon
+  // entry away from being refused as off-vertical. They are beauty buyers and must keep their shortlist.
+  const inVertical = [
+    'a bronzer for contouring', 'a brush set for my kit', 'a highlighter stick', 'setting spray',
+    'false lashes for a wedding', 'an eyelash curler', 'a gel manicure kit', 'cologne for my dad',
+    'body butter', 'a gua sha tool', 'melasma treatment', 'under-eye bags', 'razor burn',
+    'a palette', 'a brow pencil', 'a blender sponge',
+  ];
+  for (const need of inVertical)
+    assert.equal(offVerticalMarker(need), null, `"${need}" is in-vertical for this tool and must not be refused`);
 
-  // and an ordinary beauty warning is never mistaken for an admission
-  const h2 = makeRecommendProducts({
-    generate: async () => laneResult([ITEM_FULL], { warnings: ['Patch test actives before full use.'] }),
-    isEnabled: () => true,
-  });
-  const res2 = await h2({ payload: { need: 'a gentle serum' } }, { agent_id: 'agent_a' });
-  assert.equal(res2.signals.length, 1);
-  assert.equal(res2.metadata.products_empty_reason, null);
+  // THE ASSERTION ABOVE CANNOT FAIL ON ITS OWN, and that is worth saying out loud: these needs carry no
+  // off-vertical token either, so they return null whether or not the beauty side knows the word —
+  // deleting the entire makeup/tool/fragrance vocabulary left every line above green. The suppression
+  // only does work when an off-vertical token is ALSO present, so that is the shape it must be pinned
+  // in: each need is probed with a known off-vertical word appended, where only a beauty token can
+  // still win. This is what makes the vocabulary load-bearing rather than decorative.
+  for (const need of inVertical)
+    assert.equal(offVerticalMarker(`${need} laptop`), null,
+      `"${need}" must carry a beauty token strong enough to suppress an explicit off-vertical word`);
+
+  // control: the same probe on a need with NO beauty token is refused, so the probe itself has teeth
+  assert.ok(offVerticalMarker('a widget laptop'));
 });
 
 test('8i. the categories measured live on 2026-09-08 are refused now', async () => {

@@ -102,10 +102,19 @@ function dedupe(values) {
 // beauty side can only ever make this gate QUIETER, so it costs nothing to be liberal there, while a
 // word added to the off-vertical side can refuse a paying buyer.
 //
-// TWO AXES, because one is not enough (see the honesty note on the description). The lexical list
-// below is the cheap one; `laneDeclaredOffVertical` reads the lane's own admission and catches needs
-// this list has never heard of. Neither is complete, which is why the served description says
-// RECOGNISED off-vertical rather than promising a universal.
+// LEXICAL, AND ONLY LEXICAL — which is why the served description says a RECOGNISED off-vertical need
+// rather than promising a universal.
+//
+// A second axis was tried and REMOVED, and the reason is worth keeping: the lane frequently admits in
+// its own `warnings` that it excluded the need as off-domain ("Non-skincare requests … have been
+// excluded per domain boundaries"), which looked like free coverage for needs no keyword list holds.
+// It is not, because the lane's DOMAIN IS NARROWER THAN THIS TOOL'S. prompts/reco_main_v1_2.system.txt
+// says "Recommend skincare only. Never recommend makeup, brushes, beauty tools, devices, fragrance,
+// haircare, or supplements" — so it emits that same admission for a bronzer, a brush set, cologne or a
+// gua sha tool, all of which are squarely inside the beauty/skincare lane this tool advertises. Its
+// prose cannot distinguish "not commerce for us" from "beauty, but not skincare for me", so acting on
+// it emptied the shortlist for in-vertical buyers and told them their beauty need was not beauty. The
+// admission is still relayed verbatim in `metadata.warnings`; nothing is lost by not acting on it.
 //
 // SEPARATORS ARE NORMALISED FIRST. Every multi-word alternative here is written with a single space,
 // so "booster-box", "trading-cards", "graphics-card" and "magic: the gathering" all escaped the gate
@@ -132,9 +141,9 @@ const OFF_VERTICAL_RE = anchored([
   // Vehicles.
   String.raw`motorcycles?|car t[iy]res?|windshields?|spark plugs?`,
   // Kitchen / small appliances — measured 2026-09-08: "an air fryer" returned a Jurlique cleanser at
-  // fit 'high'. `blenders?` is here despite the beauty "blending sponge": that phrase names `beauty`
-  // or `foundation`, either of which suppresses the gate before this list is consulted.
-  String.raw`air ?fryers?|microwaves?|blenders?|coffee ?makers?|espresso machines?|toasters?|kettles?|vacuum cleaners?`,
+  // fit 'high'. `blenders?` is deliberately ABSENT: a beauty blender is a makeup sponge, "a blender
+  // sponge" was measured being refused by it, and a kitchen blender is not worth a refused buyer.
+  String.raw`air ?fryers?|microwaves?|coffee ?makers?|espresso machines?|toasters?|kettles?|vacuum cleaners?`,
   // Fitness. "protein powder" is a phrase, never bare `powder` — setting powder is beauty.
   String.raw`treadmills?|dumbbells?|kettlebells?|exercise bikes?|yoga mats?|protein powder`,
   // Apparel / footwear. Bare `coat` is deliberately absent (a top coat is nail care) and so is
@@ -156,6 +165,12 @@ const BEAUTY_RE = anchored([
   String.raw`acne|breakouts?|blackheads?|whiteheads?|pores?|wrinkles?|fine lines|dark spots?|hyperpigmentation|redness|rosacea|eczema|psoriasis|dryness|oiliness|sensitive|dull\w*`,
   String.raw`anti ?ag\w*|brighten\w*|hydrat\w*|soothing|barrier|routines?`,
   String.raw`lips?|lipsticks?|foundations?|concealers?|mascaras?|eyeliners?|eyeshadows?|blush(?:es)?|primers?|nail polish`,
+  // The class the LANE refuses but this TOOL advertises (its prompt is skincare-only; see above).
+  // These sit on the SUPPRESSION side, so they cost nothing and stop the gate refusing a beauty buyer:
+  // measured 2026-09-08, "a bronzer for contouring", "a brush set for my kit" and "a blender sponge"
+  // carried no beauty token at all.
+  String.raw`bronzers?|highlighters?|contour\w*|palettes?|brow pencils?|brows?|lash(?:es)?|eyelash\w*|setting sprays?|makeup brush(?:es)?|brush(?:es)?|sponges?|beauty blenders?`,
+  String.raw`manicures?|pedicures?|nails?|cuticles?|colognes?|body butter|body creams?|gua sha|jade rollers?|derm[ar]?planing|razor burn|ingrown hairs?|melasma|under.?eye\w*|puffiness|dark circles?`,
   String.raw`shampoos?|conditioners?|scalp|hair|fragrances?|perfumes?|deodorants?|body wash`,
 ]);
 const BEAUTY_CJK_RE = /护肤|皮肤|精华|面霜|乳液|洁面|防晒|化妆|彩妆|口红|唇|痘|毛孔|皱纹|美白|保湿|敏感肌|洗发|护发|香水|面膜|眼霜|爽肤/;
@@ -182,29 +197,6 @@ function offVerticalMarker(need) {
   if (hasBeautyMarker(need)) return null;
   const m = OFF_VERTICAL_RE.exec(normalizeForMatch(need)) || OFF_VERTICAL_CJK_RE.exec(need);
   return m ? m[0] : null;
-}
-
-// THE SECOND AXIS. The lane frequently KNOWS the need was off-vertical and says so in its own
-// `warnings`, then recommends beauty anyway. Measured live 2026-09-08:
-//   "an air fryer …"  -> "Non-skincare requests (such as kitchen appliances) have been excluded per
-//                         domain boundaries."   (3 beauty signals, products_empty_reason null)
-//   "a treadmill …"   -> "Request contained non-skincare intent (fitness equipment); defaulted to
-//                         general baseline skincare recommendations."
-// Different prose, same admission — and the admission covers needs no keyword list will ever hold.
-// So it is read as a signal, not as copy.
-//
-// It is only ever consulted when the need names NOTHING beauty (the same asymmetry as the pre-gate):
-// on a mixed need like "a moisturizer and a phone case" the lane may honestly report excluding the
-// phone case, and refusing that buyer their moisturizer is the one outcome that costs a sale.
-const LANE_OFF_DOMAIN_RE = /\bnon ?(?:skin ?care|beauty|cosmetic)\b|\bdomain boundar|\b(?:outside|beyond)\b[^.;]{0,40}\b(?:domain|scope|vertical)\b/i;
-
-/** @returns {string|null} the lane's own admission that the need was off-domain, or null */
-function laneDeclaredOffVertical(warnings, need) {
-  if (hasBeautyMarker(need)) return null;
-  for (const w of asStringArray(warnings, 8)) {
-    if (LANE_OFF_DOMAIN_RE.test(normalizeForMatch(w))) return w;
-  }
-  return null;
 }
 
 /** The lane's integer 0-100 score as a band an agent can act on (never the raw score: see `fit`). */
@@ -678,10 +670,7 @@ function makeRecommendProducts(deps = {}) {
     // exits use) because this is a legitimate ANSWER, not a failure: a partner agent has to be able to
     // tell "we cannot help with this" from "we broke", and `products_empty_reason` is the field the
     // description points it at.
-    // ONE shape for both axes, so a caller cannot tell "refused before the lane" from "refused on the
-    // lane's own admission" by the response's structure — only by `off_vertical_detected_by`, which is
-    // there for us to audit the gate's precision, not for the agent to branch on.
-    const offVerticalAnswer = (marker, detectedBy, lane = {}) => ({
+    const offVerticalAnswer = (marker, detectedBy) => ({
       subject,
       signals: [],
       metadata: {
@@ -690,7 +679,7 @@ function makeRecommendProducts(deps = {}) {
         limit,
         returned: 0,
         recommendation_set_id: recommendationSetId,
-        confidence_overall: lane.confidence ?? null,
+        confidence_overall: null,
         // What Pivota would need for this to become answerable: a different lane. Said as the thing
         // the agent should DO, since missing_info is the field it reads to decide whether to re-ask.
         missing_info: [
@@ -703,8 +692,8 @@ function makeRecommendProducts(deps = {}) {
             ? `需求涉及非美妆品类（“${marker}”），已返回空结果，未生成任何推荐。`
             : `The need names an off-vertical domain ("${marker}"); returned an empty shortlist rather than beauty products.`,
         ],
-        grounding_status: lane.grounding_status ?? null,
-        source_mode: lane.source_mode ?? null,
+        grounding_status: null,
+        source_mode: null,
         products_empty_reason: 'off_vertical',
         vertical: 'beauty',
         // The phrase that fired, so a partner (and we) can audit the gate's precision from logs
@@ -763,22 +752,7 @@ function makeRecommendProducts(deps = {}) {
     const norm = isPlainObject(result?.norm) ? result.norm : null;
     const payload = isPlainObject(norm?.payload) ? norm.payload : isPlainObject(norm) ? norm : {};
     const items = Array.isArray(payload.recommendations) ? payload.recommendations : [];
-    // SECOND AXIS (see laneDeclaredOffVertical): the lane itself reported excluding the need as
-    // off-domain and then recommended beauty anyway. The generation is already spent — this cannot
-    // save the latency the pre-gate saves — but it is the only axis that covers a need no keyword
-    // list anticipated, and returning nothing is the whole point of the contract.
-    const laneOffVertical = laneDeclaredOffVertical(payload.warnings, need);
-    if (laneOffVertical) {
-      logger?.info?.(
-        { recommendation_set_id: recommendationSetId, marker: laneOffVertical, detected_by: 'lane_warning', suppressed_items: items.length },
-        'recommend_products refused an off-vertical need',
-      );
-      return offVerticalAnswer(laneOffVertical, 'lane_warning', {
-        confidence: finiteNumber(payload.confidence),
-        grounding_status: firstString(payload.grounding_status) || null,
-        source_mode: firstString(isPlainObject(payload.recommendation_meta) ? payload.recommendation_meta.source_mode : null, payload.source) || null,
-      });
-    }
+
     // DETERMINISTIC CONSTRAINT ENFORCEMENT. The lane only ever sees constraints as prompt text
     // (normalizeConstraints → buildAsk), so nothing upstream guarantees the shortlist honours them —
     // live 2026-08-20 a "under $40" need answered with a $45 product whose why[] asserted budget fit.
