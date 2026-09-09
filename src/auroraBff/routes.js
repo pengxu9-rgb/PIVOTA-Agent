@@ -84684,6 +84684,12 @@ async function runRecoLlmPrimary({
       // The call THREW. It did not answer nothing — it never answered. Keep the outcome the
       // catch already set (upstream_timeout / upstream_dependency_failure) rather than
       // relabelling it as an empty model answer, and count it as what it was.
+      //
+      // Both tokens had to be added to normalizeAuroraRecoLlmCallOutcome's allowlist, or this
+      // recorded as 'provider_error' — which is ALSO that function's catch-all default, so the
+      // incident would have been indistinguishable from an unrecognised token. Note this branch
+      // cannot fire for a 5xx: the catch sets llmFailureClass = 'timeout' for transient codes, so
+      // `!llmFailureClass` is false there. Non-transient failures are what reach it.
       recordAuroraRecoLlmCall({ stage: 'main', outcome: initialLlmOutcome });
     }
   }

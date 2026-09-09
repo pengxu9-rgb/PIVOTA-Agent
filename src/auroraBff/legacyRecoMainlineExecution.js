@@ -612,11 +612,24 @@ function createLegacyRecoMainlineExecutionRuntime(deps = {}) {
       // list threw that away, so the better the prompt got at declining, the more often a
       // buyer received an unexplained off-category shortlist instead of a reasoned refusal.
       //
-      // Only a DECLINE carries: llmStructuredRecoEmpty means the model answered in schema
-      // with an empty list. A leg that threw or returned garbage has nothing to say, and
-      // carrying its (absent) warnings would be inventing an explanation.
+      // Only a DECLINE carries, and "decline" needs BOTH halves.
+      //
+      // llmStructuredRecoEmpty says the object has an empty recommendations ARRAY. It does not say
+      // the MODEL produced that object. When the upstream answers 200 with a routine and no reco
+      // JSON, llmStructured is mapAuroraRoutineToRecoGenerate's output, and that mapper SYNTHESIZES
+      // missing_info from our own logic — 'routine_missing', 'budget_unknown', 'over_budget'. Those
+      // satisfy the empty-array test, and normalize.js promotes 'routine_missing' into the
+      // user-visible warnings. Without the source check this shipped a warning WE invented on a
+      // perfectly healthy catalog answer, presented as the model's account of a refusal — the exact
+      // fabrication this carry exists to avoid, arriving through the door it did not guard.
+      //
+      // 'llm_answer_json' is the only source that is the model's own words about recommending.
+      const llmDeclinedInItsOwnWords =
+        llmStructuredSource === 'llm_answer_json'
+        && Boolean(llmStructuredRecoEmpty)
+        && isPlainObjectValue(llmStructured);
       structured = carryRecoDeclineNotes(structuredBeforeDeclineCarry, {
-        declined: Boolean(llmStructuredRecoEmpty) && isPlainObjectValue(llmStructured),
+        declined: llmDeclinedInItsOwnWords,
         declinedAnswer: llmStructured,
       });
       structuredSource = catalogRecoveredFromLlmGap

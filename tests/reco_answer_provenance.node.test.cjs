@@ -15,6 +15,15 @@
 //
 // Three different things, one record. These tests pin them apart.
 //
+// SCOPE, stated because the PR header originally overstated it: this fixes `error_class` and adds
+// `llm_leg`. It does NOT fix `mainline_status`, which still returns 'empty_structured' for all
+// three — deriveRecoMainlineStatus has no branch for a non-transient upstream failure. For HTTP 4xx
+// `telemetry_failure_reason` and `failure_class` now go ABSENT rather than moving to a correct
+// bucket, so the 4xx signal leaves that dimension instead of relocating in it. Both are filed, not
+// fixed here. And note what actually reaches telemetry: `upstream_failure_code` is on the
+// reco_requested event; `llm_leg` is NOT (buildRecoLlmTraceRef whitelists three fields), so it
+// lives only in the response body. Build an alert on the former.
+//
 // ORDERING MATTERS: routes.js destructures `auroraChat` at module load
 // (`const { auroraChat } = require('./auroraDecisionClient')`), so the stub has to be in
 // place BEFORE routes is required. Both are cleared from the cache per case.
@@ -149,6 +158,7 @@ const DECLINED = { recommendations: [], confidence: 0.2, warnings: [DECLINE_WARN
 test('the provenance survives the catalog recovery that strips error_class', async () => {
   const LLM_ANSWER = DECLINED;
   const LLM_FAILURE = 'empty_structured';
+  const LLM_SOURCE = 'llm_answer_json';
   // The recovery block deletes `error_class` from the trace when the catalog rescues an empty
   // or schema-invalid answer — which was the last surviving hint that anything went wrong.
   // `llm_leg` must not be stripped with it, or the rescue erases the evidence all over again.
@@ -168,7 +178,7 @@ test('the provenance survives the catalog recovery that strips error_class', asy
       // llmFailureClass 'empty_structured' is what makes the recovery block strip error_class;
       // with '' the strip never fires and this test would assert nothing about it.
       upstream: {}, contextMeta: {}, upstreamFailureCode: '', llmFailureClass: LLM_FAILURE, llmLatencyMs: 5,
-      answerJson: LLM_ANSWER, llmStructured: LLM_ANSWER, llmStructuredSource: 'llm_primary',
+      answerJson: LLM_ANSWER, llmStructured: LLM_ANSWER, llmStructuredSource: LLM_SOURCE,
       initialLlmOutcome: LLM_FAILURE, llmInvoked: true,
     }),
     resolveConcernMainlineFailure: () => ({ effective_failure_class: 'none', failure_origin: 'none' }),
@@ -209,6 +219,7 @@ test('a SCHEMA-INVALID answer lends nothing, even though it carries a warnings a
   // llmStructuredRecoEmpty, which requires recommendations to be an ARRAY of length 0.
   const LLM_ANSWER = { recommendations: 'not-an-array', warnings: ['half-written thought'], missing_info: ['Nope'] };
   const LLM_FAILURE = 'schema_invalid';
+  const LLM_SOURCE = 'llm_answer_json';
   // The recovery block deletes `error_class` from the trace when the catalog rescues an empty
   // or schema-invalid answer — which was the last surviving hint that anything went wrong.
   // `llm_leg` must not be stripped with it, or the rescue erases the evidence all over again.
@@ -228,7 +239,7 @@ test('a SCHEMA-INVALID answer lends nothing, even though it carries a warnings a
       // llmFailureClass 'empty_structured' is what makes the recovery block strip error_class;
       // with '' the strip never fires and this test would assert nothing about it.
       upstream: {}, contextMeta: {}, upstreamFailureCode: '', llmFailureClass: LLM_FAILURE, llmLatencyMs: 5,
-      answerJson: LLM_ANSWER, llmStructured: LLM_ANSWER, llmStructuredSource: 'llm_primary',
+      answerJson: LLM_ANSWER, llmStructured: LLM_ANSWER, llmStructuredSource: LLM_SOURCE,
       initialLlmOutcome: LLM_FAILURE, llmInvoked: true,
     }),
     resolveConcernMainlineFailure: () => ({ effective_failure_class: 'none', failure_origin: 'none' }),
@@ -309,4 +320,67 @@ test('the carry is bounded and drops empty strings', () => {
   assert.equal(out.warnings.length, 8);
   assert.equal(out.warnings[0], 'keep');
   assert.ok(out.warnings.every((w) => w.trim() !== ''));
+});
+
+test('a routine mapped by OUR mapper is not a decline, and lends nothing', async () => {
+  // The upstream answered 200 with a routine and no reco JSON, so llmStructured is
+  // mapAuroraRoutineToRecoGenerate's output. That mapper SYNTHESIZES missing_info from our own
+  // logic — 'routine_missing' when it cannot parse steps, 'budget_unknown' when no budget is set —
+  // and it has an empty recommendations array, so the empty-array test alone calls it a decline.
+  // normalize.js then promotes 'routine_missing' into user-visible warnings. Carrying it puts words
+  // WE wrote into a healthy catalog answer, attributed to the model.
+  const { createLegacyRecoMainlineExecutionRuntime } = require('../src/auroraBff/legacyRecoMainlineExecution');
+  const MAPPED = { recommendations: [], missing_info: ['routine_missing', 'budget_unknown'], warnings: [] };
+  const CATALOG = { recommendations: [{ product_id: 'p1', name: 'A Cleanser' }], warnings: [], missing_info: [] };
+  const { runLegacyRecoMainlineExecution } = createLegacyRecoMainlineExecutionRuntime({
+    pickFirstTrimmed: (...v) => v.map((x) => String(x == null ? '' : x).trim()).find(Boolean) || '',
+    isPlainObject: (v) => Boolean(v) && typeof v === 'object' && !Array.isArray(v),
+    finalizeConcernFrameworkCandidatePools: () => ({ selected_recommendations: [] }),
+    finalizeRecommendationCandidatePools: () => ({ selected_recommendations: [] }),
+    buildRecoGenerateFromCatalog: async () => ({ structured: CATALOG, candidate_pool: [{ product_id: 'p1' }], debug: {} }),
+    deriveRecoPdpFastFallbackReasonCode: () => null,
+    buildRecoLlmPromptState: () => ({ promptBundle: { prompt_spec: {}, schema_chars: 0 }, query: 'q', promptContract: { ok: true, issues: [] }, llmTraceSeed: {} }),
+    runRecoLlmPrimary: async () => ({
+      promptBundle: { prompt_spec: {}, schema_chars: 0 }, query: 'q', promptContract: { ok: true, issues: [] },
+      llmTrace: { llm_leg: { invoked: true, outcome: 'empty_structured', upstream_status: null, latency_ms: 5 } },
+      upstream: {}, contextMeta: {}, upstreamFailureCode: '', llmFailureClass: 'empty_structured', llmLatencyMs: 5,
+      answerJson: null, llmStructured: MAPPED,
+      // THE DISCRIMINATOR. Not 'llm_answer_json' — our mapper built this object, not the model.
+      llmStructuredSource: 'llm_context_routine',
+      initialLlmOutcome: 'empty_structured', llmInvoked: true,
+    }),
+    resolveConcernMainlineFailure: () => ({ effective_failure_class: 'none', failure_origin: 'none' }),
+    resolveRecoEffectiveFailure: () => ({ effective_failure_class: 'none', failure_origin: 'none' }),
+    normalizeRecoFailureClass: (v) => v || 'none',
+    hasEmptyStructuredRecommendations: (x) => Boolean(
+      x && typeof x === 'object' && !Array.isArray(x)
+      && Array.isArray(x.recommendations) && x.recommendations.length === 0,
+    ),
+    shouldUseRecoCatalogTransientFallback: () => false,
+    buildRecoCatalogTransientFallbackStructured: () => null,
+    recordAuroraRecoLlmCall: () => {},
+  });
+  const out = await runLegacyRecoMainlineExecution({
+    targetContext: { framework_roles: [] }, profileSummary: {}, debug: false, logger: null,
+    ctx: { request_id: 'r', lang: 'EN' }, entryType: 'direct', userAsk: 'a bronzer for contouring',
+    prefix: '', recentLogs: [], globalStatus: {}, mainlineStageTimingsMs: {},
+  });
+  assert.equal(out.structuredSource, 'catalog_grounded');
+  assert.deepEqual(out.structured.missing_info, [],
+    "our mapper's synthesized codes must not travel as the model's reason for declining");
+  assert.deepEqual(out.structured.warnings, []);
+});
+
+test('an upstream failure is counted as itself, not as the catch-all bucket', () => {
+  // recordAuroraRecoLlmCall funnels through normalizeAuroraRecoLlmCallOutcome, whose allowlist did
+  // not contain either upstream token — so the incident counted as 'provider_error', which is ALSO
+  // that function's default for an unrecognised token. A bucket that means both "the upstream
+  // refused us" and "we do not know what this is" cannot support an alert.
+  const metrics = require('../src/auroraBff/visionMetrics');
+  for (const outcome of ['upstream_dependency_failure', 'upstream_timeout']) {
+    metrics.recordAuroraRecoLlmCall({ stage: 'main', outcome });
+  }
+  const rendered = metrics.renderVisionMetricsPrometheus();
+  assert.match(rendered, /aurora_reco_llm_call_total\{stage="main",outcome="upstream_dependency_failure"\}/);
+  assert.match(rendered, /aurora_reco_llm_call_total\{stage="main",outcome="upstream_timeout"\}/);
 });
