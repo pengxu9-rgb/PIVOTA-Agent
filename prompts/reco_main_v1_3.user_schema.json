@@ -1,0 +1,106 @@
+{
+  "meta": {
+    "lang": "EN",
+    "intent": "reco_products",
+    "region": "US",
+    "no_clarify": true,
+    "request_text": "Recommend skincare products for acne marks and oily skin.",
+    "ingredient_context": {
+      "query": null,
+      "goal": null,
+      "sensitivity": "unknown",
+      "candidates": []
+    }
+  },
+  "profile": {
+    "skinType": "oily",
+    "sensitivity": "low",
+    "barrierStatus": "healthy",
+    "goals": [
+      "acne-control",
+      "brightening"
+    ],
+    "contraindications": []
+  },
+  "global_status": {
+    "budget_known": false,
+    "itinerary_provided": false,
+    "recent_logs_provided": false
+  },
+  "candidates": [],
+  "task": {
+    "type": "user_adaptive_recommendation_plan",
+    "max_recommendations": 5,
+    "ranking_priorities": [
+      "fit to skin profile and stated goals",
+      "low irritation / barrier-aware choices",
+      "practical coverage across key skincare steps"
+    ],
+    "defaults_when_profile_missing": [
+      "prefer fragrance-free skincare",
+      "avoid aggressive leave-on actives when barrier/sensitivity are unclear",
+      "prefer simpler barrier-friendly formulations",
+      "use fewer recommendations instead of weak guesses"
+    ]
+  },
+  "output_schema": {
+    "recommendations": [
+      {
+        "slot": "other",
+        "step": "cleanser|treatment|moisturizer|sunscreen|other",
+        "score": "integer 0-100",
+        "product_type": "cleanser|treatment|moisturizer|sunscreen|serum|other",
+        "brand": "string|null",
+        "name": "string|null",
+        "display_name": "string|null",
+        "use_case": "string",
+        "concern_match": [
+          "string"
+        ],
+        "skin_fit": [
+          "string"
+        ],
+        "constraint_notes": [
+          "string"
+        ],
+        "query_terms": [
+          "string"
+        ],
+        "reasons": [
+          "string"
+        ],
+        "example_profile": "string|null",
+        "sku": {
+          "brand": "string|null",
+          "name": "string|null",
+          "display_name": "string|null",
+          "sku_id": "string|null",
+          "product_id": "string|null",
+          "category": "string|null"
+        },
+        "missing_info": [
+          "string"
+        ],
+        "warnings": [
+          "string"
+        ]
+      }
+    ],
+    "evidence": {},
+    "confidence": "number 0..1",
+    "missing_info": [
+      "string"
+    ],
+    "warnings": [
+      "string"
+    ]
+  },
+  "hard_rules": [
+    "Return JSON only with exactly the required top-level keys.",
+    "Do not ask clarifying questions.",
+    "Do not recommend non-skincare categories.",
+    "Do not invent product IDs, SKUs, prices, links, or citations.",
+    "If profile is incomplete, return fewer but still useful recommendations.",
+    "query_terms are for downstream grounding only; they do not constrain recommendation quality."
+  ]
+}

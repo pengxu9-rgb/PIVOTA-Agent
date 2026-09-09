@@ -1531,10 +1531,15 @@ test('8e. the tool description and the code agree — the promises are quoted fr
     'the description must not let the band be read as agreement with the need');
   assert.ok(/`fit` is a DEPRECATED alias/.test(src),
     'the alias must be advertised as deprecated, or partners never migrate off it');
-  // The lane's prompt is SKINCARE-only while the tool advertises beauty/skincare — a makeup need comes
-  // back with skincare picks. Narrower than advertised is still a description that must say so.
-  assert.ok(/never to recommend makeup, brushes, beauty tools, devices, fragrance, haircare or supplements/.test(src),
-    "the lane's real (narrower) domain must be stated, since it changes what a makeup need gets back");
+  // The agent lane now covers skincare + makeup + fragrance + haircare (#2155, reco_main_v1_3), and
+  // still declines tools/devices/supplements — where the catalog has no serving lane at all. Both
+  // halves have to be stated: the first is what changed, the second is what a buyer still cannot get.
+  assert.ok(/covers SKINCARE, MAKEUP, FRAGRANCE and HAIRCARE/.test(src),
+    'the widened domain must be stated, since it changes what a makeup need gets back');
+  assert.ok(/never to recommend brushes, applicators, beauty tools, devices or supplements/.test(src),
+    'the categories still excluded must be named — the catalog has no serving lane for them');
+  assert.ok(!/tuned for SKINCARE specifically/.test(src),
+    'the skincare-only claim is no longer true for this lane and must not survive');
   assert.ok(surfaceMod, 'the surface module still loads with the edited description');
 });
 

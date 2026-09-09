@@ -294,6 +294,9 @@ function createLegacyRecoMainlineExecutionRuntime(deps = {}) {
         globalStatus,
         ingredientContext: normalizedIngredientContext,
         candidates: catalogCandidatePool,
+        // Selects the widened agent template (see RECO_AGENT_PROMPT_TEMPLATE_ID). `ctx` is already the
+        // source of `lang` here; the agent tool sets trigger_source: 'agent_tool' on the same object.
+        triggerSource: ctx && ctx.trigger_source,
       });
       promptBundle = promptState.promptBundle;
       query = promptState.query;
@@ -450,6 +453,9 @@ function createLegacyRecoMainlineExecutionRuntime(deps = {}) {
         globalStatus,
         ingredientContext: normalizedIngredientContext,
         candidates: catalogCandidatePool,
+        // Selects the widened agent template (see RECO_AGENT_PROMPT_TEMPLATE_ID). `ctx` is already the
+        // source of `lang` here; the agent tool sets trigger_source: 'agent_tool' on the same object.
+        triggerSource: ctx && ctx.trigger_source,
       });
       promptBundle = promptState.promptBundle;
       query = promptState.query;

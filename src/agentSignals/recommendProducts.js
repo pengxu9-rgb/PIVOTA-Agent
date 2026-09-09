@@ -117,13 +117,13 @@ function dedupe(values) {
 // A second axis was tried and REMOVED, and the reason is worth keeping: the lane frequently admits in
 // its own `warnings` that it excluded the need as off-domain ("Non-skincare requests … have been
 // excluded per domain boundaries"), which looked like free coverage for needs no keyword list holds.
-// It is not, because the lane's DOMAIN IS NARROWER THAN THIS TOOL'S. prompts/reco_main_v1_2.system.txt
-// says "Recommend skincare only. Never recommend makeup, brushes, beauty tools, devices, fragrance,
-// haircare, or supplements" — so it emits that same admission for a bronzer, a brush set, cologne or a
-// gua sha tool, all of which are squarely inside the beauty/skincare lane this tool advertises. Its
-// prose cannot distinguish "not commerce for us" from "beauty, but not skincare for me", so acting on
-// it emptied the shortlist for in-vertical buyers and told them their beauty need was not beauty. The
-// admission is still relayed verbatim in `metadata.warnings`; nothing is lost by not acting on it.
+// It is not, because the lane's domain and this tool's are not the same set. The agent lane now runs
+// prompts/reco_main_v1_3.system.txt (skincare + makeup + fragrance + haircare; see
+// RECO_AGENT_PROMPT_TEMPLATE_ID), but it still declines brushes, applicators, tools, devices and
+// supplements, and the consumer lane on v1_2 declines far more. Its admission prose cannot distinguish
+// "not commerce for us" from "covered by the tool, declined by this template", so acting on it emptied
+// the shortlist for in-vertical buyers and told them their beauty need was not beauty. The admission
+// is still relayed verbatim in `metadata.warnings`; nothing is lost by not acting on it.
 //
 // SEPARATORS ARE NORMALISED FIRST. Every multi-word alternative here is written with a single space,
 // so "booster-box", "trading-cards", "graphics-card" and "magic: the gathering" all escaped the gate
@@ -178,6 +178,10 @@ const BEAUTY_STRONG_RE = anchored([
   String.raw`shampoos?|conditioners?|scalp|hair|fragrances?|perfumes?|deodorants?|body wash`,
   String.raw`bronzers?|contour\w*|brow pencils?|brows?|lash(?:es)?|eyelash\w*|setting sprays?`,
   String.raw`manicures?|pedicures?|cuticles?|colognes?|body butter|body creams?|gua sha|jade rollers?|derm[ar]?planing|razor burn|ingrown hairs?|melasma|under.?eye\w*|puffiness|dark circles?`,
+  // Makeup / fragrance / haircare are IN the lane as of #2155 (measured coverage: mascara 70, shampoo
+  // 126, perfume 73, eyeshadow 36, lipstick 33 — at parity with skincare's 87-114). These sit on the
+  // strong side so such a need is never mistaken for off-vertical.
+  String.raw`eau de (?:parfum|toilette)|edps?|edts?|scents?|body sprays?|dry shampoos?|hair masks?|hair oils?|leave.in|heat protectants?|curl creams?|frizz|split ends?|dandruff|blowouts?|hair serums?`,
   // The QUALIFIED forms of the ambiguous nouns. Each qualifier must be a word that is itself beauty:
   // `brush set`, `silicone sponge`, `colour palette`, `highlighter pen` and `nail clipper` were all
   // tried and all leaked (a wire brush set, a dishwasher sponge, a laptop colour palette, a textbook

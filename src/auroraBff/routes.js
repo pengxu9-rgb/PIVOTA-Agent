@@ -777,6 +777,14 @@ const RECO_PROMPTS_ROOT_DIR = path.resolve(__dirname, '../../prompts');
 const RECO_MAIN_PROMPT_TEMPLATE_ID = String(
   process.env.RECO_MAIN_PROMPT_TEMPLATE_ID || 'reco_main_v1_2',
 ).trim() || 'reco_main_v1_2';
+// The AGENT lane's template. `reco_main_v1_2` is the SHARED prompt: it also drives the Aurora consumer
+// chat and POST /v1/reco/generate, so widening its DOMAIN BOUNDARY would change a consumer surface that
+// has its own quality bar and evaluation history. `v1_3` widens to makeup/fragrance/haircare for the
+// agent tool ONLY (PIVOTA-Agent#2155); consumer chat stays on v1_2 until it opts in on its own evidence.
+// Env-overridable so the widening can be reverted without a deploy — this repo ships by hand.
+const RECO_AGENT_PROMPT_TEMPLATE_ID = String(
+  process.env.RECO_AGENT_PROMPT_TEMPLATE_ID || 'reco_main_v1_3',
+).trim() || 'reco_main_v1_3';
 const RECO_INGREDIENT_PROMPT_TEMPLATE_ID = String(
   process.env.RECO_INGREDIENT_PROMPT_TEMPLATE_ID || RECO_MAIN_PROMPT_TEMPLATE_ID,
 ).trim() || RECO_MAIN_PROMPT_TEMPLATE_ID;
@@ -45899,7 +45907,7 @@ function loadRecoPromptTemplateFile(fileName, { parseJson = false, fallback = ''
   return value;
 }
 
-function resolveRecoMainPromptSpec({ ingredientContext } = {}) {
+function resolveRecoMainPromptSpec({ ingredientContext, triggerSource = null } = {}) {
   const normalizedIngredientContext = normalizeIngredientRecoContextValue(ingredientContext);
   const ingredientMode = Boolean(
     normalizedIngredientContext &&
@@ -45914,7 +45922,11 @@ function resolveRecoMainPromptSpec({ ingredientContext } = {}) {
         (Array.isArray(normalizedIngredientContext.candidates) && normalizedIngredientContext.candidates.length > 0)
       ),
   );
-  const templateId = ingredientMode ? RECO_INGREDIENT_PROMPT_TEMPLATE_ID : RECO_MAIN_PROMPT_TEMPLATE_ID;
+  // Agent-tool calls get the widened template; every other caller keeps the shared skincare one.
+  // Ingredient mode is unchanged either way — it is a different task with its own schema.
+  const templateId = ingredientMode
+    ? RECO_INGREDIENT_PROMPT_TEMPLATE_ID
+    : (triggerSource === 'agent_tool' ? RECO_AGENT_PROMPT_TEMPLATE_ID : RECO_MAIN_PROMPT_TEMPLATE_ID);
   return {
     ingredient_mode: ingredientMode,
     llm_mode: ingredientMode ? 'ingredient_filtered_products' : 'goal_based_products',
@@ -71335,13 +71347,19 @@ function buildRecoMainPromptPayload({
   return payload;
 }
 
-function buildAuroraProductRecommendationsPromptBundle({ profile, requestText, lang, globalStatus, candidates, ingredientContext } = {}) {
-  const promptSpec = resolveRecoMainPromptSpec({ ingredientContext });
+function buildAuroraProductRecommendationsPromptBundle({ profile, requestText, lang, globalStatus, candidates, ingredientContext, triggerSource = null } = {}) {
+  const promptSpec = resolveRecoMainPromptSpec({ ingredientContext, triggerSource });
   const fallbackSystemPrompt = [
-    'You are a precision skincare recommendation planner.',
+    // THE FALLBACK IS A SECOND COPY OF THE DOMAIN RULE, not a reference to the template file — so it has
+    // to branch too, or a failed template read silently reverts the widening to skincare-only.
+    triggerSource === 'agent_tool'
+      ? 'You are a precision beauty recommendation planner covering skincare, makeup, fragrance and haircare.'
+      : 'You are a precision skincare recommendation planner.',
     '',
     'Output MUST be a single valid JSON object only. No markdown, no extra keys, no commentary.',
-    'Recommend skincare only. Never recommend makeup, brushes, tools, devices, fragrance, or haircare.',
+    triggerSource === 'agent_tool'
+      ? 'Recommend skincare, makeup, fragrance and haircare. Answer the category actually asked for. Never recommend brushes, applicators, tools, devices, or supplements.'
+      : 'Recommend skincare only. Never recommend makeup, brushes, tools, devices, fragrance, or haircare.',
     'Never invent or guess product identifiers, SKUs, prices, availability, or citations. If unknown, use null.',
     'Candidates are optional grounding hints only. Do not constrain recommendation quality to candidates[].',
     'Return fewer recommendations instead of weak guesses.',
@@ -71379,7 +71397,7 @@ function buildAuroraProductRecommendationsPromptBundle({ profile, requestText, l
   };
 }
 
-function buildAuroraProductRecommendationsQuery({ profile, requestText, lang, globalStatus, candidates, ingredientContext }) {
+function buildAuroraProductRecommendationsQuery({ profile, requestText, lang, globalStatus, candidates, ingredientContext, triggerSource = null }) {
   return buildAuroraProductRecommendationsPromptBundle({
     profile,
     requestText,
@@ -71387,6 +71405,7 @@ function buildAuroraProductRecommendationsQuery({ profile, requestText, lang, gl
     globalStatus,
     candidates,
     ingredientContext,
+    triggerSource,
   }).query;
 }
 
@@ -84294,6 +84313,7 @@ function buildRecoLlmPromptState({
   globalStatus = null,
   ingredientContext = null,
   candidates = [],
+  triggerSource = null,
 } = {}) {
   const promptBundle = buildAuroraProductRecommendationsPromptBundle({
     profile: profileSummary || {},
@@ -84302,6 +84322,7 @@ function buildRecoLlmPromptState({
     globalStatus: isPlainObject(globalStatus) ? globalStatus : {},
     candidates: Array.isArray(candidates) ? candidates : [],
     ingredientContext,
+    triggerSource,
   });
   const query = `${prefix}${promptBundle.query}`;
   const llmTraceCoverage = buildRecoInputCoverage({
