@@ -1494,8 +1494,9 @@ test('8d. an ungrounded item that DOES carry an id is still suppressed — the c
 test('8e. the tool description and the code agree — the promises are quoted from the served text', async () => {
   // The description is what a partner agent actually plans against. Each assertion below pins one
   // claim the served text makes — the two the 2026-09-08 response contradicted outright, plus the
-  // limits later review forced into the open (the off-vertical hedge, what the band measures, the
-  // lane's narrower skincare domain). If someone re-broadens a promise, it fails here rather than in a
+  // limits later review forced into the open (the off-vertical hedge, what the band measures, and the
+  // domain the door's own prompt actually allows — WIDE since #2162, and checked against that prompt
+  // rather than against this text). If someone re-broadens a promise, it fails here rather than in a
   // partner's product.
   const surfaceMod = await import(pathToFileURL(path.join(__dirname, '..', 'mcp-server', 'src', 'commerceToolSurface.js')).href);
   const src = require('node:fs').readFileSync(
@@ -1592,10 +1593,15 @@ test('8g. the lane admitting it was off-DOMAIN never empties the shortlist — i
   }
 });
 
-test('8h. the class the LANE refuses but this TOOL advertises is never refused by the gate', async () => {
-  // The lane's prompt excludes makeup, tools, fragrance, haircare and supplements; the tool advertises
-  // beauty/skincare. Every one of these was measured carrying NO beauty token, so they sat one lexicon
-  // entry away from being refused as off-vertical. They are beauty buyers and must keep their shortlist.
+test('8h. an in-vertical beauty need is never refused by the gate, whatever tier its evidence is', async () => {
+  // Every need below was measured carrying NO beauty token at all, so each sat one lexicon entry away
+  // from being refused as off-vertical. They are beauty buyers and must keep their shortlist.
+  //
+  // The ORIGINAL reason for this test is now history worth keeping straight: until #2162 the lane's
+  // prompt was skincare-only while the tool advertised beauty, so makeup/fragrance/haircare needs were
+  // in-vertical for the TOOL and refused by the LANE. #2162 widened the door's prompt, so the lane
+  // refuses none of those any more — only tools, devices and supplements. What survives is the gate
+  // question this test actually asks: none of these needs may be refused before the lane is called.
   // STRONG evidence: an unambiguous beauty word, which outranks even a HARD off-vertical domain.
   const strongEvidence = [
     'a bronzer for contouring', 'a highlighter stick', 'setting spray',
