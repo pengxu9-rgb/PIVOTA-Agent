@@ -86,12 +86,20 @@ describe('queryWithBudget diagnostics', () => {
     const pool = buildPool({ connectImpl: async () => client });
     const db = loadDb(pool);
 
+    // Block the loop across the 25ms deadline so the timer cannot fire on time.
+    setTimeout(() => {
+      const until = Date.now() + 300;
+      while (Date.now() < until) { /* spin */ }
+    }, 5);
+
     const diagnostics = {};
     const err = await db.queryWithBudget('SELECT 1', [], { timeoutMs: 25, diagnostics })
       .then(() => null, (e) => e);
 
     expect(err.code).toBe(db.DB_BUDGET_QUERY_TIMEOUT);
-    expect(typeof err.timer_lag_ms).toBe('number');
+    // A deadline that fires 300ms late because the loop was blocked must SAY 300,
+    // not merely be a number: a constant ships green against `typeof`.
+    expect(err.timer_lag_ms).toBeGreaterThan(150);
     expect(diagnostics.timer_lag_ms).toBe(err.timer_lag_ms);
     // The error carries a snapshot so a caller that only sees the throw still
     // learns which of the three causes it was.
@@ -181,5 +189,68 @@ describe('event-loop lag measurement', () => {
     // and it must not be confused with the case above.
     expect(diagnostics.event_loop_lag_ms).toBeLessThan(60);
     expect(diagnostics.query_ms).toBeGreaterThan(300);
+  });
+});
+
+describe('census moments and connection identity', () => {
+  let previousDatabaseUrl;
+
+  beforeEach(() => {
+    jest.resetModules();
+    jest.clearAllMocks();
+    previousDatabaseUrl = process.env.DATABASE_URL;
+    process.env.DATABASE_URL = 'postgres://example:test@localhost:5432/pivota';
+  });
+
+  afterEach(() => {
+    jest.dontMock('pg');
+    jest.dontMock('../src/logger');
+    jest.resetModules();
+    if (previousDatabaseUrl === undefined) delete process.env.DATABASE_URL;
+    else process.env.DATABASE_URL = previousDatabaseUrl;
+  });
+
+  test('a stage served by an idle pool that later times out is not reported as starvation', async () => {
+    const running = deferred();
+    const client = { query: jest.fn(() => running.promise), release: jest.fn() };
+    // Served instantly into an idle pool; the pool fills up only afterwards.
+    const pool = buildPool({ connectImpl: async () => client, idleCount: 1, waitingCount: 0 });
+    const db = loadDb(pool);
+
+    const diagnostics = {};
+    const pending = db.queryWithBudget('SELECT 1', [], { timeoutMs: 60, diagnostics })
+      .then(() => null, (e) => e);
+    // Pressure arrives while our statement is in flight — it did not delay us.
+    // On a timer, not inline: `connect()` resolves on a microtask, so mutating
+    // synchronously here would land BEFORE the acquire census and prove nothing.
+    setTimeout(() => {
+      pool.idleCount = 0;
+      pool.waitingCount = 9;
+    }, 15);
+    const err = await pending;
+
+    expect(err.code).toBe(db.DB_BUDGET_QUERY_TIMEOUT);
+    expect(diagnostics.acquire_ms).toBeLessThan(30);
+    // The moment we were served: an idle pool. Overwriting this with the failure
+    // census reads as starvation and sends the reader to raise DB_POOL_MAX.
+    expect(diagnostics.pool_waiting_at_acquire).toBe(0);
+    expect(diagnostics.pool_idle_at_acquire).toBe(1);
+    // The later pressure is still recorded — under the name of when it happened.
+    expect(diagnostics.pool_waiting_at_failure).toBe(9);
+
+    running.reject(Object.assign(new Error('Connection terminated'), { code: 'ECONNRESET' }));
+    await new Promise((resolve) => setImmediate(resolve));
+  });
+
+  test("a connection's first use reports a use count of 0, not nothing", async () => {
+    // pg-pool sets `_poolUseCount` only in `_release`, so a fresh client has none.
+    const client = { query: jest.fn(async () => ({ rows: [] })), release: jest.fn() };
+    const pool = buildPool({ connectImpl: async () => client });
+    const db = loadDb(pool);
+
+    const diagnostics = {};
+    await db.queryWithBudget('SELECT 1', [], { timeoutMs: 5000, diagnostics });
+
+    expect(diagnostics.conn_use_count).toBe(0);
   });
 });

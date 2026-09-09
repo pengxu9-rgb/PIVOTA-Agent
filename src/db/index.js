@@ -345,9 +345,15 @@ async function queryWithBudget(text, params, options = {}) {
   const diagnostics = options.diagnostics && typeof options.diagnostics === 'object'
     ? options.diagnostics
     : null;
-  // Two snapshots, not one moving one. `_at_request` is the pressure we queued
-  // into; `_at_acquire` is what it looked like once we were served. Collapsing
-  // them to a single overwritten field loses the only interesting comparison.
+  // Three MOMENTS, each under its own name, never overwritten. `_at_request` is
+  // the pressure we queued into, `_at_acquire` is what it looked like once we
+  // were served, `_at_failure` is what it looked like when we gave up.
+  //
+  // Re-capturing a failure-time census under the `_at_acquire` name is worse than
+  // not capturing it: a stage served instantly into an idle pool that dies 1.6s
+  // later would report `pool_waiting_at_acquire: 9`, and an on-call reads that as
+  // pool starvation and raises DB_POOL_MAX -- chasing the one cause #2148 already
+  // removed.
   const capturePoolCensus = (suffix) => {
     if (!diagnostics) return;
     if (Number.isFinite(Number(p.totalCount))) diagnostics[`pool_total_at_${suffix}`] = Number(p.totalCount);
@@ -363,9 +369,12 @@ async function queryWithBudget(text, params, options = {}) {
   capturePoolCensus('request');
 
   const startedAt = Date.now();
-  const acquire = p.connect();
+  let acquire = null;
   let client = null;
   try {
+    // Inside the try: the probe is already running, and a synchronous throw from
+    // `connect` would otherwise leak its interval.
+    acquire = p.connect();
     client = await raceAgainstBudget(acquire, budgetMs, DB_BUDGET_ACQUIRE_TIMEOUT, {
       budgetMs,
       startedAt,
@@ -373,14 +382,14 @@ async function queryWithBudget(text, params, options = {}) {
     });
   } catch (err) {
     if (diagnostics) diagnostics.acquire_ms = Math.max(0, Date.now() - startedAt);
-    capturePoolCensus('acquire');
+    capturePoolCensus('failure');
     finishLagProbe();
     if (diagnostics) err.diagnostics = { ...diagnostics };
     if (err?.code === DB_BUDGET_ACQUIRE_TIMEOUT) {
       // We are still in pg's checkout queue and cannot leave it. Give the slot
       // straight back to the next waiter rather than spending it on a query
       // whose result nobody is awaiting.
-      acquire.then(
+      acquire?.then?.(
         (lateClient) => {
           try {
             lateClient.release();
@@ -444,7 +453,7 @@ async function queryWithBudget(text, params, options = {}) {
   } catch (err) {
     if (diagnostics) {
       diagnostics.query_ms = Math.max(0, Date.now() - acquiredAt);
-      capturePoolCensus('acquire');
+      capturePoolCensus('failure');
       finishLagProbe();
       err.diagnostics = { ...diagnostics };
     }

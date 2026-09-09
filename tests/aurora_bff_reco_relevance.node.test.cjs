@@ -18450,3 +18450,46 @@ test('__internal: a timed-out stage records the diagnostics and logs them outsid
   assert.equal(timeoutLog.fields?.db?.query_ms, 3998);
   assert.equal(timeoutLog.fields?.db?.event_loop_lag_ms, 3);
 });
+
+test('__internal: the ledger keeps a snapshot, so a still-running call cannot rewrite a recorded stage', async () => {
+  const { __internal } = loadRoutesFresh();
+
+  const out = await __internal.searchLocalExternalSeedProducts({
+    query: 'salicylic acid serum clogged pores',
+    limit: 6,
+    role: {
+      role_id: 'acne_clogged_pore_treatment',
+      rank: 11,
+      preferred_step: 'treatment',
+      query_terms: ['salicylic acid treatment'],
+      fit_keywords: ['clogged', 'pore'],
+      product_type_hypotheses: ['serum'],
+    },
+    preferredStep: 'treatment',
+    // `queryTimeoutMs` is the real knob; `timeoutMs` is not a parameter here and
+    // is silently ignored.
+    queryTimeoutMs: 200,
+    // Ignores the budget, so the OUTER stage race fires first and the ledger
+    // entry is pushed while this call is still in flight — then it writes into
+    // the same diagnostics object, exactly as the db layer does on that path.
+    queryFn: async (sql, params, options) => {
+      Object.assign(options.diagnostics, { acquire_ms: 1 });
+      await new Promise((resolve) => { setTimeout(resolve, 700); });
+      options.diagnostics.late_write = 'must_not_reach_the_ledger';
+      return { rows: [] };
+    },
+  });
+
+  const stage = out.local_external_seed_stage_debug[0];
+  assert.equal(stage?.timeout, true);
+  assert.equal(stage?.timeout_cause, 'stage_budget');
+
+  // Wait past the late write before judging: a live reference would only be
+  // wrong AFTER the in-flight call gets there.
+  await new Promise((resolve) => { setTimeout(resolve, 800); });
+  assert.equal(
+    stage?.db?.late_write,
+    undefined,
+    'a recorded stage must not be mutated by the call that outlived it',
+  );
+});
