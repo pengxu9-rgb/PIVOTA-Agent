@@ -81,6 +81,7 @@ function createLegacyRecoGenerationEngineRuntime(deps = {}) {
     shouldUseRecoCatalogTransientFallback,
     buildRecoCatalogTransientFallbackStructured,
     recordAuroraRecoLlmCall,
+    recordAuroraRecoAnswerPath,
     groundRecoRecommendationsFromCatalog,
     coerceRecoItemForUi,
     normalizeRecoGenerate,
@@ -690,6 +691,11 @@ function createLegacyRecoGenerationEngineRuntime(deps = {}) {
     // `lane_confidence: high` no matter what it is or what was asked for. That is how a bronzer need
     // came back as three cleansers at `high` with `confidence_overall: 0.9`.
     const confidenceBasis = deriveRecoConfidenceBasis(structuredSource);
+    // COUNT THE PATH. Recorded here, in the lane, because the `recommend_products` agent door emits
+    // no reco_requested event — a handler-side signal would miss the door #2155 was filed against.
+    // Labelled by entry type too: measured 2026-09-09 the consumer lane answered llm_primary 16/16
+    // while the agent door used both, and one number over both doors would have hidden that.
+    recordAuroraRecoAnswerPath({ entryType, basis: confidenceBasis });
     const generationResult = buildLegacyRecoGenerationResult({
       confidenceBasis,
       norm,

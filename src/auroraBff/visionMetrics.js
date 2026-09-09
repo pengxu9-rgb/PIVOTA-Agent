@@ -181,6 +181,17 @@ const auroraIngredientsFirstAnswerLatency = {
 const auroraSkinAnalysisRealModelCounter = new Map();
 const auroraSkinLlmCallCounter = new Map();
 const auroraRecoLlmCallCounter = new Map();
+// WHICH ANSWER PATH SERVED THE TURN. Deliberately separate from source_mode, which is a
+// PRESENTATION label with its own fallback ladder — a turn can report source_mode
+// 'step_aware_mainline' while the answer itself came from the LLM. This counter reads the same
+// derivation the wire does (structuredSource -> confidence_basis), so it answers "did the path that
+// reads the domain prompt serve this, or the one that reads no prompt at all" — the question behind
+// #2155, which until now could only be answered by polling the response body by hand.
+//
+// Counted in the LANE rather than in a route handler, because the `recommend_products` agent door
+// emits no reco_requested event at all; a handler-side signal would miss the door the defect was
+// filed against.
+const auroraRecoAnswerPathCounter = new Map();
 let recoAlternativesBudgetExhaustedTotal = 0;
 let recoAlternativesTimeoutTotal = 0;
 let recoAlternativesEmptyTotal = 0;
@@ -2467,6 +2478,26 @@ function recordAuroraSkinLlmCall({ stage, outcome, delta } = {}) {
   );
 }
 
+function normalizeAuroraRecoAnswerPath(basis) {
+  const token = cleanMetricToken(basis, 'unknown');
+  return (token === 'model_self_report' || token === 'positional' || token === 'none') ? token : 'unknown';
+}
+
+function recordAuroraRecoAnswerPath({ entryType, basis, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    auroraRecoAnswerPathCounter,
+    {
+      // The DOOR matters as much as the path: measured 2026-09-09, the consumer lane answered
+      // llm_primary 16/16 while the agent door used both. One number over both would have hidden it.
+      entry_type: cleanMetricToken(entryType, 'unknown'),
+      basis: normalizeAuroraRecoAnswerPath(basis),
+    },
+    amount,
+  );
+}
+
 function recordAuroraRecoLlmCall({ stage, outcome, delta } = {}) {
   const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
   if (amount <= 0) return;
@@ -3343,6 +3374,9 @@ function renderVisionMetricsPrometheus() {
   lines.push('# TYPE aurora_skin_llm_call_total counter');
   renderCounter(lines, 'aurora_skin_llm_call_total', auroraSkinLlmCallCounter);
 
+  lines.push('# HELP aurora_reco_answer_path_total Recommendation answers grouped by entry door and which path produced them.');
+  lines.push('# TYPE aurora_reco_answer_path_total counter');
+  renderCounter(lines, 'aurora_reco_answer_path_total', auroraRecoAnswerPathCounter);
   lines.push('# HELP aurora_reco_llm_call_total Total recommendation LLM call decisions grouped by stage and outcome.');
   lines.push('# TYPE aurora_reco_llm_call_total counter');
   renderCounter(lines, 'aurora_reco_llm_call_total', auroraRecoLlmCallCounter);
@@ -4034,6 +4068,7 @@ module.exports = {
   recordAuroraSkinAnalysisRealModel,
   recordAuroraSkinLlmCall,
   recordAuroraRecoLlmCall,
+  recordAuroraRecoAnswerPath,
   recordRecoAlternativesBudgetExhausted,
   recordRecoAlternativesTimeout,
   recordRecoAlternativesEmpty,
