@@ -10300,6 +10300,11 @@ async function searchLocalExternalSeedProducts({
   // It therefore ALWAYS overran, and whether rows came back was a race between
   // the query resolving and the deadline firing. Rank is kept only as a fallback
   // for target contexts that carry no `primary_role_id`.
+  //
+  // The constant is 18,000ms but the staged search clamps to
+  // `Math.min(4000, ...)`, so the effective budget here is 4,000ms — roughly 2.2x
+  // the measured query cost, and the worst-case pool-slot hold this raise can
+  // cause is 4s, not 18s.
   const primaryRoleId = String(targetContext?.primary_role_id || '').trim();
   const roleId = String(role?.role_id || '').trim();
   const isPrimaryRole = primaryRoleId && roleId

@@ -42,9 +42,12 @@ async function budgetFor({ role, targetContext }) {
 describe('primary-role query budget', () => {
   test('the primary role gets the primary budget even when its rank is not 1', async () => {
     const budget = await budgetFor({ role: ROLE, targetContext: TARGET_CONTEXT });
-    // Anything at or below the support tier means the rank test is back and the
-    // primary is racing a deadline it cannot reliably beat.
-    expect(budget).toBeGreaterThan(1600);
+    // The staged search clamps to `Math.min(4000, ...)`, so the 18,000ms constant
+    // lands at 4,000 — comfortably above the ~1,720-1,800ms the query actually
+    // costs in prod, which is all this fix needs. Asserted as the REAL effective
+    // budget rather than the constant, so the clamp cannot change under it
+    // silently.
+    expect(budget).toBe(4000);
   });
 
   test('a support role still gets the support budget', async () => {
