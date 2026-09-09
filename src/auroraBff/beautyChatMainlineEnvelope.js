@@ -317,6 +317,18 @@ function applyEnvelopeVisibleSelectionContractToPayload(payload = null, {
   targetContext = null,
 } = {}) {
   if (!isPlainObject(payload)) return payload;
+  // Prefer the payload's own verdict (the framework block sets it just above);
+  // fall back to comparing roles when it is absent.
+  const primaryRoleIdForVisibleSelection = pickFirstTrimmed(targetContext?.primary_role_id);
+  const primaryRoleUnmatchedForVisibleSelection = typeof payload.primary_role_matched === 'boolean'
+    ? payload.primary_role_matched === false
+    : Boolean(
+      primaryRoleIdForVisibleSelection
+        && Array.isArray(payload.recommendations)
+        && payload.recommendations.length > 0
+        && !payload.recommendations.some((item) => pickFirstTrimmed(item?.matched_role_id, item?.matchedRoleId)
+          === primaryRoleIdForVisibleSelection),
+    );
   const sourceRecommendations = Array.isArray(recommendations)
     ? recommendations
     : Array.isArray(payload.recommendations)
@@ -382,8 +394,16 @@ function applyEnvelopeVisibleSelectionContractToPayload(payload = null, {
     grounded_count: orderedVisibleRecommendations.length,
     ...(visibleProducts ? { products: visibleProducts } : {}),
     ...(visibleSections ? { sections: visibleSections } : {}),
+    // The first VISIBLE recommendation is the primary pick only when the primary
+    // role was actually filled. In the support-only state the first visible item
+    // is a support product, and naming it here overwrote the framework block's
+    // correct `null` -- shipping `primary_recommendation_id: <moisturizer>` beside
+    // `primary_role_matched: false`. Latent before this PR, because that state
+    // shipped zero products and never reached this line.
     primary_recommendation_id:
-      extractEnvelopeRecoSelectionProductId(orderedVisibleRecommendations[0]) || payload.primary_recommendation_id,
+      primaryRoleUnmatchedForVisibleSelection
+        ? (payload.primary_recommendation_id ?? null)
+        : extractEnvelopeRecoSelectionProductId(orderedVisibleRecommendations[0]) || payload.primary_recommendation_id,
     recommendation_meta: nextRecommendationMeta,
     metadata: nextPayloadMeta,
   };

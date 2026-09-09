@@ -18775,3 +18775,4 @@ test('__internal: the card headline does not tell you to start with a product th
   assert.match(supportOnly.headline, /could not confirm/i);
   assert.equal(supportOnly.primary_recommendation_name ?? null, null);
 });
+
