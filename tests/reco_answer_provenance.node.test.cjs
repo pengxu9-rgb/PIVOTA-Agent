@@ -18,9 +18,16 @@
 // SCOPE, stated because the PR header originally overstated it: this fixes `error_class` and adds
 // `llm_leg`. It does NOT fix `mainline_status`, which still returns 'empty_structured' for all
 // three — deriveRecoMainlineStatus has no branch for a non-transient upstream failure. For HTTP 4xx
-// `telemetry_failure_reason` and `failure_class` now go ABSENT rather than moving to a correct
-// bucket, so the 4xx signal leaves that dimension instead of relocating in it. Both are filed, not
-// fixed here. And note what actually reaches telemetry: `upstream_failure_code` is on the
+// `failure_class` and `telemetry_failure_reason` go ABSENT for every NON-TRANSIENT throw — not
+// just 4xx, which is how an earlier version of this note put it. A 5xx keeps them ('timeout' /
+// 'timeout_degraded'). `upstream_failure_code` is now always non-empty, so a dimension exists for
+// every throw, but the failure_class one is still missing and is filed rather than fixed.
+//
+// AND THE DOOR THE INCIDENT HAPPENED ON CARRIES NEITHER. recommend_products emits no
+// reco_requested event and forwards `upstream_failure_code` only as products_empty_reason when the
+// shortlist is EMPTY — which it was not, in the incident. On that door the only signals are the
+// metric bucket and the pre-existing warn log, which did already carry 'Upstream status 400'. So
+// "invisible" meant invisible to structured fields, not absent everywhere. And note what actually reaches telemetry: `upstream_failure_code` is on the
 // reco_requested event; `llm_leg` is NOT (buildRecoLlmTraceRef whitelists three fields), so it
 // lives only in the response body. Build an alert on the former.
 //
@@ -369,6 +376,42 @@ test('a routine mapped by OUR mapper is not a decline, and lends nothing', async
   assert.deepEqual(out.structured.missing_info, [],
     "our mapper's synthesized codes must not travel as the model's reason for declining");
   assert.deepEqual(out.structured.warnings, []);
+});
+
+test('every throw is countable ON THE LANE — code and metric, for all four shapes', async () => {
+  // The previous version of this called recordAuroraRecoLlmCall DIRECTLY, so it pinned the
+  // allowlist and not the lane: deleting the emission at the call site was green. It also missed
+  // that the emission was gated on `!llmFailureClass`, which made it unreachable for a 5xx — the
+  // transient branch sets llmFailureClass = 'timeout' first, so a 503 recorded NOTHING and the
+  // `upstream_timeout` token was dead on arrival.
+  //
+  // A blank `upstream_failure_code` is the other half: it was '' for AURORA_NOT_CONFIGURED and for
+  // any unrecognised code, so a decision service that was DOWN produced no failure dimension at all
+  // while products were still in the response — which reads as success.
+  const metrics = require('../src/auroraBff/visionMetrics');
+  const cases = [
+    ['http 4xx', () => { const e = new Error('Upstream status 400'); e.status = 400; throw e; }, 'HTTP_400', 'upstream_dependency_failure'],
+    ['http 5xx', () => { const e = new Error('Upstream status 503'); e.status = 503; throw e; }, 'HTTP_503', 'upstream_timeout'],
+    ['not configured', () => { const e = new Error('nc'); e.code = 'AURORA_NOT_CONFIGURED'; throw e; }, 'NOT_CONFIGURED', 'upstream_dependency_failure'],
+    ['unclassified', () => { const e = new Error('boom'); e.code = 'ECONNREFUSED'; throw e; }, 'UPSTREAM_ERROR', 'upstream_dependency_failure'],
+  ];
+  for (const [label, thrower, expectedCode, expectedOutcome] of cases) {
+    const recorded = [];
+    const original = metrics.recordAuroraRecoLlmCall;
+    metrics.recordAuroraRecoLlmCall = (args) => { recorded.push(args && args.outcome); return original(args); };
+    try {
+      const res = await withStubbedLlm(async () => { thrower(); }, async (internal) => internal.generateProductRecommendations({
+        ctx: { request_id: 'r', trace_id: 't', aurora_uid: 'agent:test', lang: 'EN', trigger_source: 'agent_tool', state: null, backend_auth_headers: {} },
+        profile: null, recentLogs: [], message: 'x', focus: 'x', includeAlternatives: false,
+        debug: true, logger: null, budgetMs: 4000, entryType: 'direct', recoTriggerSource: 'agent_tool',
+      }));
+      const meta = res?.norm?.payload?.recommendation_meta || {};
+      assert.equal(meta.upstream_failure_code, expectedCode, `${label}: every throw needs a non-empty code`);
+      assert.ok(recorded.includes(expectedOutcome), `${label}: expected ${expectedOutcome}, got ${JSON.stringify(recorded)}`);
+    } finally {
+      metrics.recordAuroraRecoLlmCall = original;
+    }
+  }
 });
 
 test('an upstream failure is counted as itself, not as the catch-all bucket', () => {

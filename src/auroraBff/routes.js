@@ -41743,14 +41743,11 @@ function hasRenderableCards(cards) {
 function classifyRecoUpstreamFailureCode(err) {
   const code = String((err && err.code) || '').trim().toUpperCase();
   const message = String((err && err.message) || '').trim().toLowerCase();
-  // AN HTTP REJECTION IS A CLASSIFICATION, NOT A BLANK. postWithRetry throws
-  // `Upstream status <n>` with err.status set and no err.code, and every branch below keys
-  // on code/message — so until now every HTTP answer the decision service gave us returned
-  // '' from here. That '' is what made the 2026-09-09 incident invisible: the service was
-  // rejecting an unregistered PROMPT_TEMPLATE_ID with 400 on every call, and the lane
-  // recorded it as "the model returned nothing".
-  const status = Number(err && err.status);
-  if (Number.isFinite(status) && status >= 400) return `HTTP_${Math.trunc(status)}`;
+  // NOTE: HTTP status is deliberately NOT classified here. This function is shared with
+  // legacyChatRecoExecution's rethrow guard and two beauty-handoff sites, and axios sets
+  // `.status` on any error carrying a response — so classifying it here silently changed how
+  // those three lanes treat a 5xx, and both of their suites stub this function, so nothing
+  // would have shown it. The reco LLM leg classifies status itself; see classifyRecoLlmLegFailure.
   if (code === 'ECONNRESET' || message.includes('connection reset')) return 'ECONNRESET';
   if (code === 'EPIPE' || message.includes('broken pipe')) return 'EPIPE';
   if (code === 'ETIMEDOUT' || code === 'ECONNABORTED' || message.includes('timeout')) return 'ETIMEDOUT';
@@ -41759,10 +41756,29 @@ function classifyRecoUpstreamFailureCode(err) {
   return '';
 }
 
+// THE RECO LLM LEG'S OWN CLASSIFICATION. Scoped to this leg rather than to the shared classifier
+// above, and deliberately TOTAL: every throw gets a non-empty code.
+//
+// `''` was the old answer for an HTTP rejection, and it is also the answer for
+// AURORA_NOT_CONFIGURED and for any error whose code this repo does not recognise. A blank code
+// means the failure leaves the telemetry dimension entirely rather than moving within it — on the
+// tree before this, a decision service that was DOWN produced null upstream_failure_code, null
+// failure_class and products in the response, which reads as success.
+function classifyRecoLlmLegFailure(err) {
+  const shared = classifyRecoUpstreamFailureCode(err);
+  if (shared) return shared;
+  const status = Number(err && err.status);
+  if (Number.isFinite(status) && status >= 400) return `HTTP_${Math.trunc(status)}`;
+  const code = String((err && err.code) || '').trim().toUpperCase();
+  if (code === 'AURORA_NOT_CONFIGURED') return 'NOT_CONFIGURED';
+  return 'UPSTREAM_ERROR';
+}
+
 function isTransientRecoUpstreamFailureCode(code) {
   const token = String(code || '').trim().toUpperCase();
-  // 5xx is the upstream having a bad moment; 4xx is a request WE built wrong and will keep
-  // building wrong until someone changes it. Only the former is transient.
+  // 5xx is the upstream having a bad moment; 4xx is not worth retrying on the same request. (429
+  // lands here too, which is not "a request we built wrong" as an earlier version of this comment
+  // put it — postWithRetry does not retry it either, so the classification matches the behaviour.)
   const httpStatus = /^HTTP_(\d{3})$/.exec(token);
   if (httpStatus) return Number(httpStatus[1]) >= 500;
   return (
@@ -84618,11 +84634,11 @@ async function runRecoLlmPrimary({
     } catch (err) {
       llmLatencyMs = Date.now() - llmStartedAtMs;
       llmUpstreamError = {
-        code: classifyRecoUpstreamFailureCode(err) || null,
+        code: classifyRecoLlmLegFailure(err),
         status: Number.isFinite(Number(err && err.status)) ? Math.trunc(Number(err.status)) : null,
         not_configured: Boolean(err && err.code === 'AURORA_NOT_CONFIGURED'),
       };
-      upstreamFailureCode = classifyRecoUpstreamFailureCode(err);
+      upstreamFailureCode = llmUpstreamError.code;
       initialLlmOutcome = isTransientRecoUpstreamFailureCode(upstreamFailureCode) ? 'upstream_timeout' : 'upstream_dependency_failure';
       if (isTransientRecoUpstreamFailureCode(upstreamFailureCode)) {
         llmFailureClass = 'timeout';
@@ -84680,10 +84696,15 @@ async function runRecoLlmPrimary({
       initialLlmOutcome = 'empty_structured';
       llmFailureClass = 'empty_structured';
       recordAuroraRecoLlmCall({ stage: 'main', outcome: 'empty_structured' });
-    } else if (!llmFailureClass && llmUpstreamError) {
+    } else if (llmUpstreamError) {
       // The call THREW. It did not answer nothing — it never answered. Keep the outcome the
       // catch already set (upstream_timeout / upstream_dependency_failure) rather than
       // relabelling it as an empty model answer, and count it as what it was.
+      //
+      // NOT gated on `!llmFailureClass`. It was, and that made this branch unreachable for a 5xx:
+      // the catch sets llmFailureClass = 'timeout' for transient codes, so a 503 recorded NO
+      // main-stage metric at all — it went from the wrong bucket to no bucket, and the
+      // `upstream_timeout` token added to the allowlist alongside it was dead on arrival.
       //
       // Both tokens had to be added to normalizeAuroraRecoLlmCallOutcome's allowlist, or this
       // recorded as 'provider_error' — which is ALSO that function's catch-all default, so the
