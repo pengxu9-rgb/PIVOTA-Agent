@@ -1548,6 +1548,7 @@ const {
   buildRecoPayloadFromBeautyMainlineHandoff,
   classifyBeautyMainlineHandoffFallback,
   buildBeautyMainlineHandoffFallbackEnvelope,
+  buildConfidenceNoticeCardPayload,
   looksLikeRecommendationRequest,
   runConcernSemanticPlanner,
   buildConcernTargetContextFromSemanticPlan,
@@ -21041,9 +21042,9 @@ function buildRecoCatalogQueryLevels({
     : [];
 }
 
-function buildRecoCandidateStateFromRawCandidates(rawCandidates, { targetContext, recommendationTaskContext = null, priceCeiling = null } = {}) {
+function buildRecoCandidateStateFromRawCandidates(rawCandidates, { targetContext, recommendationTaskContext = null, priceCeiling = null, allowPrimaryMissingSupportRoutine = false } = {}) {
   return targetContext && Array.isArray(targetContext.framework_roles) && targetContext.framework_roles.length > 0
-    ? finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext })
+    ? finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext, allowPrimaryMissingSupportRoutine })
     : finalizeRecommendationCandidatePools(rawCandidates, {
         targetContext,
         recoContext: recommendationTaskContext,
@@ -21693,6 +21694,9 @@ function buildConcernFrameworkSummary({
   const primaryRoleId = String(targetContext.primary_role_id || '').trim();
   const primaryRole = targetContext.framework_roles.find((role) => String(role?.role_id || '').trim() === primaryRoleId) || targetContext.framework_roles[0] || null;
   const recommendationList = Array.isArray(recommendations) ? recommendations : [];
+  const primaryRoleFilled = recommendationList.some(
+    (item) => String(item?.matched_role_id || item?.matchedRoleId || '').trim() === primaryRoleId,
+  );
   const primaryReco = recommendationList.find((item) => {
     const matchedRoleId = pickFirstTrimmed(item?.matched_role_id, item?.matchedRoleId);
     return matchedRoleId && matchedRoleId === primaryRoleId;
@@ -21720,7 +21724,14 @@ function buildConcernFrameworkSummary({
   const topPickRole = targetContext.framework_roles.find((role) => String(role?.role_id || '').trim() === topPickRoleId) || null;
   return {
     concern_text: String(targetContext?.framework_summary?.concern_text || '').trim() || null,
-    headline: primaryRole
+    // "Start with X" is an instruction to use a product that is not in the card
+    // when the primary role went unfilled. Derived from the recommendations in
+    // hand rather than a new parameter, so it cannot drift from what shipped.
+    headline: primaryRole && !primaryRoleFilled && recommendationList.length > 0
+      ? (String(language || '').toUpperCase() === 'CN'
+        ? `暂未确认 ${primaryRole.label}，以下仅为可搭配的支持步骤`
+        : `I could not confirm a ${primaryRole.label} — these are the supporting steps to pair with one`)
+      : primaryRole
       ? (String(language || '').toUpperCase() === 'CN'
         ? `先围绕 ${primaryRole.label} 建立护理框架，再补充其它支持步骤`
         : `Start with ${primaryRole.label}, then layer the supporting roles`)
@@ -23922,6 +23933,8 @@ function buildBeautyMainlineLocalCandidatePoolSummary({
     primary_role_matched: candidateState?.primary_role_matched === true,
     primary_missing_authoritative_support_selected:
       candidateState?.primary_missing_authoritative_support_selected === true,
+    primary_missing_support_routine_surfaced:
+      candidateState?.primary_missing_support_routine_surfaced === true,
     viable_pool_strength: String(candidateState?.viable_pool_strength || '').trim().toLowerCase() || 'empty',
     weak_viable_pool: candidateState?.weak_viable_pool === true,
     candidate_drop_stage: pickFirstTrimmed(candidateState?.candidate_drop_stage) || null,
@@ -25193,6 +25206,12 @@ async function runBeautyMainlineLocalHandoffSearch({
     : 0;
 
   const collectedBase = await collectRecoCandidatesFromQueryLevels({
+    // The only production caller of this lane is
+    // `handoffRecoToBeautyMainlineSearch`, whose only caller is the beauty chat
+    // mainline entry -- the one surface that renders the
+    // `primary_step_unconfirmed` notice. Opting in anywhere else would surface a
+    // routine missing the requested step with nothing saying so.
+    allowPrimaryMissingSupportRoutine: true,
     queryLevels: effectiveLocalHandoffQueryLevels,
     targetContext,
     recommendationTaskContext,
@@ -25808,7 +25827,15 @@ async function runBeautyMainlineLocalHandoffSearch({
       ),
       deadlineAtMs: hydrationDeadlineMs || deadlineMs,
     });
-    const hydratedFrameworkState = finalizeConcernFrameworkCandidatePools(hydratedFrameworkRawPool, { targetContext });
+    // Both adoption sites are guarded by `selected_recommendations.length > 0`,
+    // so an empty re-finalize is DISCARDED rather than adopted -- dropping the
+    // flag here does not return nothing, it loses the hydration/rerank
+    // enrichment for this state. (An earlier comment here claimed the opposite,
+    // and also called this the redundant pair: hydration runs whenever
+    // `isFrameworkLocalHandoff && rawCandidates.length > 0`, so there is no
+    // non-hydrating path for this state and it is the collector's opt-in that is
+    // covered by the walk.)
+    const hydratedFrameworkState = finalizeConcernFrameworkCandidatePools(hydratedFrameworkRawPool, { targetContext, allowPrimaryMissingSupportRoutine: true });
     if (
       Array.isArray(hydratedFrameworkState?.selected_recommendations)
       && hydratedFrameworkState.selected_recommendations.length > 0
@@ -25833,7 +25860,7 @@ async function runBeautyMainlineLocalHandoffSearch({
           deadlineAtMs: hydrationDeadlineMs || deadlineMs,
         },
       );
-      const rerankedFrameworkState = finalizeConcernFrameworkCandidatePools(hydratedFrameworkPool, { targetContext });
+      const rerankedFrameworkState = finalizeConcernFrameworkCandidatePools(hydratedFrameworkPool, { targetContext, allowPrimaryMissingSupportRoutine: true });
       if (Array.isArray(rerankedFrameworkState?.selected_recommendations) && rerankedFrameworkState.selected_recommendations.length > 0) {
         effectiveCandidateState = mergeConcernFrameworkRerankedState(
           effectiveCandidateState,
@@ -26731,6 +26758,17 @@ function mergeConcernFrameworkRerankedState(baseState, rerankedState, { candidat
       ? { primary_recommendation_id: pickFirstTrimmed(reranked.primary_recommendation_id, base.primary_recommendation_id) }
       : {}),
     ...(typeof reranked.terminal_success === 'boolean' ? { terminal_success: reranked.terminal_success } : {}),
+    // These two travel WITH `selected_recommendations`, for the same reason
+    // `terminal_success` does. Taking the products from the reranked state while
+    // leaving these on `...base` ships a support-only routine with the base's
+    // `primary_role_matched: true` and no notice -- products presented as a
+    // complete answer, which is the exact harm this PR exists to prevent.
+    ...(typeof reranked.primary_role_matched === 'boolean'
+      ? { primary_role_matched: reranked.primary_role_matched }
+      : {}),
+    ...(typeof reranked.primary_missing_support_routine_surfaced === 'boolean'
+      ? { primary_missing_support_routine_surfaced: reranked.primary_missing_support_routine_surfaced }
+      : {}),
     ...(typeof reranked.comparison_fill_applied === 'boolean'
       ? { comparison_fill_applied: reranked.comparison_fill_applied }
       : {}),
@@ -27698,7 +27736,17 @@ function orderConcernFrameworkRolesForSelection(roles = [], { primaryRoleId = ''
   ];
 }
 
-function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext } = {}) {
+// `allowPrimaryMissingSupportRoutine` is opt-in for one reason: surfacing a
+// support-only routine is only honest where the caller also renders the
+// "primary step unconfirmed" notice. This selector feeds nine call sites across
+// six modules, each with its own card, and only the beauty mainline entry
+// discloses. Defaulting to false means every other surface keeps returning
+// nothing rather than quietly showing a routine that is missing the step the
+// user asked about.
+function finalizeConcernFrameworkCandidatePools(
+  rawCandidates,
+  { targetContext, allowPrimaryMissingSupportRoutine = false } = {},
+) {
   const roles = Array.isArray(targetContext?.framework_roles) ? targetContext.framework_roles : [];
   const deduped = [];
   const seen = new Set();
@@ -28097,12 +28145,38 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
 
   const primaryRoleMatched = selected.some((item) => String(item.matched_role_id || '').trim() === primaryRoleId);
   const primaryRecommendation = selected.find((item) => String(item.matched_role_id || '').trim() === primaryRoleId) || null;
+  // With no primary pick, the default is still to surface nothing: one orphan
+  // support product answers a concern question worse than saying we could not
+  // confirm options, which is why that rule exists.
+  //
+  // A routine is the exception. When two or more DISTINCT support roles are
+  // filled, what is on the table is a coherent partial answer -- "no acne
+  // treatment confirmed, but here is the moisturiser and the sunscreen to pair
+  // with one" -- and discarding it loses real, already-scored candidates. On
+  // 2026-09-08 the acne turn threw away 10 viable rows across two support roles
+  // (moisturiser 6 @ 0.82, sunscreen 4 @ 0.86) to return nothing at all.
+  //
+  // The caller must not read this as a full routine: `primary_role_matched`
+  // stays false and `primary_missing_support_routine_surfaced` says the primary
+  // step is the one that is missing.
+  const supportOnlySelected = primaryRoleMatched
+    ? []
+    : selected.filter((item) => {
+      const roleId = String(item?.matched_role_id || '').trim();
+      return Boolean(roleId && roleId !== primaryRoleId);
+    });
+  const distinctSupportRoleCount = new Set(
+    supportOnlySelected.map((item) => String(item?.matched_role_id || '').trim()),
+  ).size;
+  const primaryMissingSupportRoutineSurfaced = allowPrimaryMissingSupportRoutine === true
+    && !primaryRoleMatched
+    && distinctSupportRoleCount >= 2;
   const surfacedRecommendations = primaryRoleMatched
     ? pruneConcernFrameworkExplicitNoAdditionalActiveSameRoleRows(selected, {
         targetContext,
         primaryRole,
       })
-    : [];
+    : (primaryMissingSupportRoutineSurfaced ? supportOnlySelected : []);
   const primarySelectedRecommendations = surfacedRecommendations.filter((item) => String(item.matched_role_id || '').trim() === primaryRoleId);
   const comparisonFillCount = surfacedRecommendations.filter((item) => item?.comparison_fill === true).length;
   const routineSupportFillCount = surfacedRecommendations.filter((item) => {
@@ -28134,6 +28208,7 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
     primary_role_id: primaryRoleId || null,
     primary_role_matched: primaryRoleMatched,
     primary_missing_authoritative_support_selected: primaryMissingButAuthoritativeSupportSelected,
+    primary_missing_support_routine_surfaced: primaryMissingSupportRoutineSurfaced,
     best_available_role_id: pickFirstTrimmed(
       bestAvailableRecommendation?.matched_role_id,
       bestAvailableRecommendation?.matchedRoleId,
@@ -28193,7 +28268,11 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
     constraint_conflict: false,
     average_context_fit_score: 0,
     artifact_context_applied: false,
-    terminal_success: surfacedRecommendations.length > 0,
+    // A routine missing the step the user asked for is not a terminal success.
+    // `legacyRecoPostMainline` gates several fallbacks on `!terminal_success`,
+    // so claiming success here would silently disable them for exactly the state
+    // that most needs them.
+    terminal_success: surfacedRecommendations.length > 0 && !primaryMissingSupportRoutineSurfaced,
     reco_policy_version: RECOMMENDATION_RECO_POLICY_V1,
     role_conflict_present: hasWeakViablePool,
     late_conflict_without_override: hasWeakViablePool,
@@ -28477,6 +28556,7 @@ async function collectRecoCandidatesFromQueryLevels({
   initialRawCandidates = [],
   initialSearchResults = [],
   priceCeiling = null,
+  allowPrimaryMissingSupportRoutine = false,
 } = {}) {
   const rawCandidates = (Array.isArray(initialRawCandidates) ? initialRawCandidates : [])
     .map((candidate) => normalizeRecoCatalogProduct(candidate))
@@ -28501,6 +28581,7 @@ async function collectRecoCandidatesFromQueryLevels({
   );
   let candidateState = buildRecoCandidateStateFromRawCandidates(rawCandidates, {
     targetContext,
+    allowPrimaryMissingSupportRoutine,
     recommendationTaskContext,
     priceCeiling,
   });
@@ -28884,6 +28965,7 @@ async function collectRecoCandidatesFromQueryLevels({
         }
         candidateState = buildRecoCandidateStateFromRawCandidates(rawCandidates, {
           targetContext,
+          allowPrimaryMissingSupportRoutine,
           recommendationTaskContext,
           priceCeiling,
         });
@@ -28899,6 +28981,7 @@ async function collectRecoCandidatesFromQueryLevels({
           accumulateQueryLevelRow(stageId, row, levelAggregate);
           candidateState = buildRecoCandidateStateFromRawCandidates(rawCandidates, {
             targetContext,
+            allowPrimaryMissingSupportRoutine,
             recommendationTaskContext,
             priceCeiling,
           });
@@ -28951,6 +29034,7 @@ async function collectRecoCandidatesFromQueryLevels({
         accumulateQueryLevelRow(stageId, row, levelAggregate);
         candidateState = buildRecoCandidateStateFromRawCandidates(rawCandidates, {
           targetContext,
+          allowPrimaryMissingSupportRoutine,
           recommendationTaskContext,
           priceCeiling,
         });
@@ -28977,6 +29061,7 @@ async function collectRecoCandidatesFromQueryLevels({
     attemptedPathsByStage[stageId] = Array.from(levelAggregate.attemptedPaths);
     candidateState = buildRecoCandidateStateFromRawCandidates(rawCandidates, {
       targetContext,
+      allowPrimaryMissingSupportRoutine,
       recommendationTaskContext,
       priceCeiling,
     });
@@ -38886,6 +38971,10 @@ function buildConfidenceNoticeCardPayload({
       lang === 'CN'
         ? '检测到可能的医疗风险信号，已停止商品推荐。'
         : 'Potential medical risk signals detected, so product recommendations are blocked.',
+    primary_step_unconfirmed:
+      lang === 'CN'
+        ? '这轮没有找到可信的主步骤商品，以下只是可以搭配的辅助步骤。'
+        : 'I could not confirm a product for the main step of this routine, so these are the supporting steps only — pair them with a treatment for your main concern.',
     timeout_degraded:
       lang === 'CN'
         ? '这轮商品匹配没有在时限内完成。请稍后重试，或补充当前护肤流程/想找的步骤后我再继续缩窄。'
@@ -105375,6 +105464,9 @@ const __internal = {
   applyConcernSelectorRaceOrdering,
   runConcernSemanticPlanner,
   finalizeConcernFrameworkCandidatePools,
+  buildBeautyMainlineLocalCandidatePoolSummary,
+  mergeConcernFrameworkRerankedState,
+  buildConcernFrameworkSummary,
   resolveConcernFrameworkBudgetCeiling,
   classifyConcernFrameworkCandidateAgainstBudget,
   isConcernFrameworkCandidateOverBudget,
