@@ -1386,7 +1386,9 @@ test('8a. the live 2026-09-08 repro: an off-vertical need is empty and reasoned,
   // partner cannot tell "we cannot help with this" from "we broke".
   assert.equal(res.metadata.reason, undefined);
   assert.equal(typeof res.metadata.recommendation_set_id, 'string', 'still an addressable event');
-  assert.ok(/beauty\/skincare only/i.test(res.metadata.missing_info[0]), 'missing_info says what would be needed');
+  // The refusal must name the lane's scope in the SAME terms the served description does — a buyer
+  // told "beauty/skincare" by one string and "skincare" by the other cannot tell what to re-ask for.
+  assert.ok(/skincare and beauty only/i.test(res.metadata.missing_info[0]), 'missing_info says what would be needed');
   assert.ok(/off-vertical/i.test(res.metadata.warnings[0]), 'the vertical mismatch is warned about explicitly');
 });
 
@@ -1485,9 +1487,11 @@ test('8d. an ungrounded item that DOES carry an id is still suppressed — the c
 });
 
 test('8e. the tool description and the code agree — the promises are quoted from the served text', async () => {
-  // The description is what a partner agent actually plans against, and the two halves of this test
-  // are the two sentences the 2026-09-08 response contradicted. If someone re-broadens the behaviour,
-  // this fails here rather than in a partner's product.
+  // The description is what a partner agent actually plans against. Each assertion below pins one
+  // claim the served text makes — the two the 2026-09-08 response contradicted outright, plus the
+  // limits later review forced into the open (the off-vertical hedge, what `fit` measures, the lane's
+  // narrower skincare domain). If someone re-broadens a promise, it fails here rather than in a
+  // partner's product.
   const surfaceMod = await import(pathToFileURL(path.join(__dirname, '..', 'mcp-server', 'src', 'commerceToolSurface.js')).href);
   const src = require('node:fs').readFileSync(
     path.join(__dirname, '..', 'mcp-server', 'src', 'commerceToolSurface.js'), 'utf8');
@@ -1573,7 +1577,7 @@ test('8h. the class the LANE refuses but this TOOL advertises is never refused b
     'a bronzer for contouring', 'a brush set for my kit', 'a highlighter stick', 'setting spray',
     'false lashes for a wedding', 'an eyelash curler', 'a gel manicure kit', 'cologne for my dad',
     'body butter', 'a gua sha tool', 'melasma treatment', 'under-eye bags', 'razor burn',
-    'a palette', 'a brow pencil', 'a blender sponge',
+    'an eyeshadow palette', 'a brow pencil', 'a blender sponge',
   ];
   for (const need of inVertical)
     assert.equal(offVerticalMarker(need), null, `"${need}" is in-vertical for this tool and must not be refused`);
@@ -1600,8 +1604,35 @@ test('8i. the categories measured live on 2026-09-08 are refused now', async () 
     'a winter coat', 'a rifle scope', 'car wax', 'protein powder'])
     assert.ok(offVerticalMarker(need), `"${need}" was measured passing the gate — it must refuse now`);
 
-  // and none of them cost a beauty buyer their shortlist
+  // and none of them cost a beauty buyer their shortlist. PROBED, not asserted bare: these needs carry
+  // no off-vertical token either, so a plain `=== null` here passes even with the beauty side deleted —
+  // the same shape that made 8h green while pinning nothing. Appending an explicit off-vertical word
+  // means only a beauty token can still win.
   for (const need of ['a top coat for my nails', 'a beauty blender sponge', 'a foundation brush',
-    'wax strips for upper lip hair', 'a setting powder for oily skin', 'a body wash for eczema'])
+    'wax strips for upper lip hair', 'a setting powder for oily skin', 'a body wash for eczema']) {
     assert.equal(offVerticalMarker(need), null, `"${need}" is beauty and must keep its shortlist`);
+    assert.equal(offVerticalMarker(`${need} treadmill`), null,
+      `"${need}" must carry a beauty token strong enough to suppress an explicit off-vertical word`);
+  }
+  assert.ok(offVerticalMarker('a widget treadmill'), 'control: the probe word does refuse on its own');
+});
+
+test('8j. an ambiguous beauty word never cancels an explicit off-vertical signal', async () => {
+  // THE FIX-FORWARD DEFECT from #2149. `brush`, `sponge`, `nail`, `palette` and `highlighter` went onto
+  // the suppression side BARE, and they are ordinary English before they are beauty words — so every
+  // one of them cancelled an unambiguous off-vertical need. Measured on the merged commit: 40/40 of
+  // these refused correctly BEFORE the widening and 0/40 after it. The suppression side is the cheap
+  // direction to be liberal in, but not with words the rest of commerce also owns.
+  const ambiguous = ['sponge', 'brush', 'nails', 'palette', 'highlighter'];
+  const offVertical = ['dishwasher', 'chainsaw', 'textbooks', 'laptop', 'treadmill', 'air fryer', 'mattress', 'dog food'];
+  for (const w of ambiguous)
+    for (const o of offVertical)
+      assert.ok(offVerticalMarker(`a ${w} for my ${o}`),
+        `"${w}" must not cancel "${o}" — a bare beauty word is not a beauty need`);
+
+  // The QUALIFIED spellings are the ones that carry beauty, and they still win outright.
+  for (const need of ['a makeup brush', 'a blending sponge', 'nail polish', 'an eyeshadow palette',
+    'a highlighter stick', 'a brush set', 'my nails'])
+    assert.equal(offVerticalMarker(`${need} laptop`), null,
+      `"${need}" names its beauty context and must still suppress`);
 });
