@@ -26,12 +26,22 @@ test('1. the widened template exists, carries the schema the projector reads, an
   const s13 = fs.readFileSync(path.join(PROMPTS, 'reco_main_v1_3.user_schema.json'));
   assert.ok(s13.equals(s12), 'v1_3 must start as a byte-copy of v1_2 schema — the output contract is unchanged');
 
-  assert.match(v13, /Recommend skincare, makeup and fragrance\./);
+  assert.match(v13, /Recommend skincare \(including body care\), makeup and fragrance\./);
   // Haircare is STAGED, not excluded on principle: the catalog carries 126 rows but only 15/20 sampled
   // are USD, and non-USD is unservable on the US offer path. Pinned so the reason travels with the rule.
   assert.match(v13, /Do not recommend haircare yet\./);
+  // CATEGORY FIDELITY and the explicit empty-answer rule. Widening the domain is only half the fix:
+  // the 2026-09-08 repro was a bronzer request answered with a serum, and "cover makeup" alone does
+  // not forbid that substitution — the lane has to be told an empty answer beats an off-category one.
+  assert.match(v13, /^CATEGORY FIDELITY:$/m);
+  assert.match(v13, /If the request names a bronzer, do not return a serum\./);
+  assert.match(v13, /An empty answer is correct; an off-category answer is not\./);
+  // Tools are the category the census proved unservable, so a tool request must answer EMPTY rather
+  // than fall back on a covered category — the same substitution in a different direction.
+  assert.match(v13, /return recommendations: \[\] and say in missing_info that this lane does not cover tools/);
   assert.match(v13, /not servable on the US offer path/);
-  assert.match(v13, /Never recommend brushes, applicators, beauty tools, devices, or supplements/);
+  assert.match(v13, /Never recommend brushes, sponges, applicators, beauty tools, or devices/);
+  assert.match(v13, /Never recommend supplements, ingestibles, or medication/);
   // Measured 2026-09-09: tool queries resolve no category and return nothing purchasable (total 0,
   // decision "clarify", 0/20 in stock), so a tool pick can only be an invention.
   assert.doesNotMatch(v13, /Recommend skincare only/);
@@ -78,10 +88,12 @@ test('4. the INLINE FALLBACK prompt widens too — the copy that is not the temp
   // Left un-widened it would answer a makeup need with skincare exactly when the template is missing —
   // the failure that is hardest to notice, since everything else still works.
   const fallback = ROUTES.slice(ROUTES.indexOf('const fallbackSystemPrompt'), ROUTES.indexOf('const fallbackSystemPrompt') + 1400);
-  assert.match(fallback, /Recommend skincare, makeup and fragrance\. Answer the category actually asked for\./,
+  assert.match(fallback, /Recommend skincare \(body care included\), makeup and fragrance\./,
     'the fallback must widen for the agent lane');
-  assert.match(fallback, /Never recommend haircare, brushes/,
-    'and must carry the same staged-haircare exclusion as the template');
+  assert.match(fallback, /never substitute an adjacent one/,
+    'the fallback must carry the category-fidelity rule too, not just the widened domain');
+  assert.match(fallback, /For haircare, tools, brushes, sponges, devices or supplements return recommendations: \[\]/,
+    'and the same empty-answer rule for the uncovered categories');
   assert.match(fallback, /Recommend skincare only\. Never recommend makeup/,
     'and must still be skincare-only for every other caller');
   assert.equal((fallback.match(/triggerSource === 'agent_tool'/g) || []).length, 2,

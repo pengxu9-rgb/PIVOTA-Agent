@@ -71358,7 +71358,7 @@ function buildAuroraProductRecommendationsPromptBundle({ profile, requestText, l
     '',
     'Output MUST be a single valid JSON object only. No markdown, no extra keys, no commentary.',
     triggerSource === 'agent_tool'
-      ? 'Recommend skincare, makeup and fragrance. Answer the category actually asked for. Never recommend haircare, brushes, applicators, tools, devices, or supplements.'
+      ? 'Recommend skincare (body care included), makeup and fragrance. Answer in the category the request names and never substitute an adjacent one — if the request names a bronzer, do not return a serum. For haircare, tools, brushes, sponges, devices or supplements return recommendations: [] with the reason in missing_info, never a product from another category.'
       : 'Recommend skincare only. Never recommend makeup, brushes, tools, devices, fragrance, or haircare.',
     'Never invent or guess product identifiers, SKUs, prices, availability, or citations. If unknown, use null.',
     'Candidates are optional grounding hints only. Do not constrain recommendation quality to candidates[].',

@@ -1534,10 +1534,14 @@ test('8e. the tool description and the code agree — the promises are quoted fr
   // The agent lane now covers skincare + makeup + fragrance + haircare (#2155, reco_main_v1_3), and
   // still declines tools/devices/supplements — where the catalog has no serving lane at all. Both
   // halves have to be stated: the first is what changed, the second is what a buyer still cannot get.
-  assert.ok(/covers SKINCARE, MAKEUP and FRAGRANCE/.test(src),
+  assert.ok(/covers SKINCARE \(body care included\), MAKEUP and FRAGRANCE/.test(src),
     'the widened domain must be stated, since it changes what a makeup need gets back');
-  assert.ok(/never to recommend haircare, brushes, applicators, beauty tools, devices or supplements/.test(src),
+  assert.ok(/does NOT cover haircare, tools, brushes, sponges, devices or supplements/.test(src),
     'what is still excluded must be named — haircare is staged behind its currency gap, the rest have no serving lane');
+  // The empty-answer rule is a PROMPT instruction, not an enforced gate. Saying it is enforced would be
+  // the same over-claim the hedge elsewhere in this description exists to avoid.
+  assert.ok(/that is a prompt instruction, not an enforced gate/.test(src),
+    'the description must not present a prompt instruction as a guarantee');
   assert.ok(!/tuned for SKINCARE specifically/.test(src),
     'the skincare-only claim is no longer true for this lane and must not survive');
   assert.ok(surfaceMod, 'the surface module still loads with the edited description');
