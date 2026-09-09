@@ -1359,9 +1359,12 @@ describe('agentCenterLlmProbe — ChatGPT and Claude providers', () => {
       context: { queries: ['where can I buy Product X'], product: { title: 'Product X' } },
     });
 
-    // tokens: 1000/1000*0.005 + 100/1000*0.02 = 0.005 + 0.002 = 0.007
-    // web search: 2 calls * 0.015 = 0.030  ->  total 0.037
-    expect(out.usage.cost_usd_estimate).toBeCloseTo(0.037, 6);
+    // Published chat-latest token cost: 0.005 + 0.003 = 0.008
+    // Preview search SKU uncertainty: 2 * $0.01–$0.025.
+    expect(out.usage.cost_usd_estimate).toBeCloseTo(0.058, 6);
+    expect(out.usage.cost_usd_estimate_min).toBeCloseTo(0.028, 6);
+    expect(out.usage.web_search_requests).toBe(2);
+    expect(out.usage.cost_settled).toBe(false);
     // The search fee dominates token cost here — the whole point of metering it.
     expect(out.usage.cost_usd_estimate).toBeGreaterThan(0.007 * 2);
   });

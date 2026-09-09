@@ -13,17 +13,24 @@ function assertEnabled(input) {
 function prompt() { return { system: SYSTEM, userPerQuery: (query) => query }; }
 function evidence({ query, rawText, provider, model, finishReason, chunks = [], retrievedSources = [] }) {
   const failed = rawText.startsWith('__error__:');
-  const complete = !failed && rawText.trim().length > 0 && (
+  const transportComplete = !failed && rawText.trim().length > 0 && (
     (provider === 'chatgpt' && finishReason === 'completed') ||
     (provider === 'claude' && finishReason === 'end_turn') ||
     (provider === 'gemini' && finishReason === 'STOP')
   );
+  // Provider completion does not establish a grounded shopping answer.
+  const hasCitedSource = chunks.some(c => {
+    try { const url = new URL(c.uri); return ['http:', 'https:'].includes(url.protocol) && Boolean(url.hostname); }
+    catch { return false; }
+  });
+  const complete = transportComplete && hasCitedSource;
   return {
     query, raw: rawText, parsed: null,
     evidence_kind: 'consumer_answer', prompt_contract: CONTRACT,
     answer: {
       text: failed ? null : rawText, sha256: failed ? null : hash(rawText),
-      complete, finish_reason: finishReason || null,
+      complete, transport_complete: transportComplete, qualification: 'cited_consumer_answer_v2',
+      unknown_reason: transportComplete && !hasCitedSource ? 'answer_sources_missing' : null, finish_reason: finishReason || null,
       status: failed ? 'provider_failed' : complete ? 'complete' : 'incomplete',
       provider, model: model || null, captured_at: new Date().toISOString(),
       prompt_sha256: hash(JSON.stringify([SYSTEM, query])),

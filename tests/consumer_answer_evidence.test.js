@@ -37,7 +37,7 @@ test('actual ChatGPT path uses consumer question, preserves completeness and bil
   expect(create.mock.calls[0][0].input).toBe('best moisturizer');
   expect(JSON.stringify(create.mock.calls[0][0])).not.toContain('SECRET');
   expect(result.scores).toBeNull(); expect(result.findings).toEqual([]);
-  expect(result.raw_runs[0].answer).toMatchObject({complete:true,model:'test-model',text:'Consider Anua.'});
+  expect(result.raw_runs[0].answer).toMatchObject({complete:false,transport_complete:true,unknown_reason:'answer_sources_missing',model:'test-model',text:'Consider Anua.'});
   expect(result.usage.input_tokens).toBe(10);
   delete process.env.PIVOTA_CONSUMER_ANSWER_ENABLED;
   await expect(probe.buildChatGptProbe(input)).rejects.toThrow(/enabled gate/);
@@ -57,10 +57,24 @@ test.each(['gemini','claude'])('actual %s path captures consumer prose without t
     const probe=require('../src/internal/agentCenterLlmProbe')._internals;
     const result=await (provider === 'gemini' ? probe.buildGeminiProbe(input) : probe.buildClaudeProbe(input));
     expect(JSON.stringify(invoke.mock.calls[0][0])).not.toContain('SECRET');
-    expect(result.raw_runs[0].answer).toMatchObject({complete:true,text:'Consider Anua.',provider});
+    expect(result.raw_runs[0].answer).toMatchObject({complete:false,transport_complete:true,unknown_reason:'answer_sources_missing',text:'Consider Anua.',provider});
     expect(result.scores).toBeNull();
   } finally {
     delete process.env.GEMINI_API_KEY;delete process.env.ANTHROPIC_API_KEY;
     jest.dontMock('../src/llm/vertexGemini');jest.dontMock('@google/genai');jest.dontMock('@anthropic-ai/sdk');
   }
+});
+
+test('a completed preamble or retrieved-only response cannot qualify as grounded evidence', () => {
+ const result=evidence({query:'q',rawText:'I will check sources.',provider:'chatgpt',finishReason:'completed',retrievedSources:[{uri:'https://example.com'}]});
+ expect(result.answer).toMatchObject({complete:false,transport_complete:true,unknown_reason:'answer_sources_missing'});
+});
+
+test('published cost estimate includes cache and reports unknown model prices explicitly', () => {
+ const {buildProviderUsage,openAIProbePricing}=require('../src/internal/agentCenterLlmProbe')._internals;
+ const result=buildProviderUsage({inputTokens:10974,outputTokens:235,cachedInputTokens:4352,webSearchRequests:1,pricing:openAIProbePricing('chat-latest')});
+ expect(result.cost_usd_estimate).toBeCloseTo(0.067336,6);
+ expect(result.cost_usd_estimate_min).toBeCloseTo(0.052336,6);
+ expect(result.cached_input_tokens).toBe(4352);
+ expect(buildProviderUsage({inputTokens:10,outputTokens:10,pricing:openAIProbePricing('unknown-model')}).cost_usd_estimate).toBeNull();
 });
