@@ -1060,6 +1060,7 @@ jobs:
             tests/agent_signals_recommend_products.node.test.cjs \
             tests/reco_widen_lane_domain_scope.node.test.cjs \
             tests/reco_answer_provenance.node.test.cjs \
+            tests/reco_confidence_basis.node.test.cjs \
             tests/merchant_variant_source.node.test.cjs \
             tests/sourcing_sentinel_merchant_scope.node.test.cjs \
             tests/get_product_detail_sig_merchant_scope.node.test.cjs \

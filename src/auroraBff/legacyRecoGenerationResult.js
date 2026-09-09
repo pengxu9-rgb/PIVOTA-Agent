@@ -67,6 +67,7 @@ function createLegacyRecoGenerationResultRuntime(deps = {}) {
     stepAwareMainlineFailure = null,
     normalizedIngredientContext = null,
     llmTrace = null,
+    confidenceBasis = 'none',
     frameworkMainlineWarningNonBlocking = false,
     beautyMainlineHandoffNonBlocking = false,
     stepAwarePoolWarningNonBlocking = false,
@@ -199,6 +200,9 @@ function createLegacyRecoGenerationResultRuntime(deps = {}) {
           ? norm.payload.recommendation_meta
           : {}),
         source_mode: sourceMode,
+        // What the confidence numbers on this answer are made of. Consumers that present a certainty
+        // to a human or an agent must read this before presenting one.
+        confidence_basis: confidenceBasis,
         trigger_source: normalizedRecoTriggerSource,
         recompute_from_profile_update: recomputeFromProfileUpdateFlag,
         used_recent_logs: Array.isArray(recentLogs) && recentLogs.length > 0,
