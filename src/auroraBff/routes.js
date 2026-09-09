@@ -9819,6 +9819,7 @@ function classifyLocalExternalSeedStageTimeoutCause(error) {
 
 async function searchLocalExternalSeedProductsViaSupportStages({
   runQuery,
+  logger = null,
   q,
   patterns = [],
   role = null,
@@ -9971,6 +9972,21 @@ async function searchLocalExternalSeedProductsViaSupportStages({
         ...(timeoutCause ? { timeout_cause: timeoutCause } : {}),
         ...(Object.keys(stageDbDiagnostics).length > 0 ? { db: { ...stageDbDiagnostics } } : {}),
       });
+      if (timedOut) {
+        // Into jsonPayload, not just the debug response body: the stalls worth
+        // attributing are intermittent, and nobody is holding a debug request
+        // open when one happens.
+        logger?.warn?.(
+          {
+            stage: definition.stage,
+            query: q,
+            role_id: role?.role_id || null,
+            timeout_cause: timeoutCause || null,
+            db: { ...stageDbDiagnostics },
+          },
+          'local_external_seed_stage_timeout',
+        );
+      }
       if (timedOut) {
         return {
           rows: stagedRows,
@@ -10284,6 +10300,7 @@ async function searchLocalExternalSeedProducts({
     if (leanSql) {
       const staged = await searchLocalExternalSeedProductsViaSupportStages({
         runQuery,
+        logger,
         q,
         patterns,
         role,
@@ -10488,6 +10505,7 @@ async function searchLocalExternalSeedProductsForQueryVariants({
   try {
     const staged = await searchLocalExternalSeedProductsViaSupportStages({
       runQuery,
+      logger,
       q,
       patterns,
       role,

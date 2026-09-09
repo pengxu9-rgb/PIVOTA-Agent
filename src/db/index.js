@@ -246,6 +246,44 @@ function buildBudgetTimeoutError(code, { budgetMs, waitedMs }) {
   return err;
 }
 
+// Event-loop lag, sampled across the WHOLE call rather than once at the deadline.
+//
+// The point sample `timer_lag_ms` only exists when a deadline fires, and it can
+// read near zero for a 300ms block that ended before the deadline came due — so
+// on its own it neither covers the fast path nor rules a stall out. This watches
+// the interval instead: a timer that should fire every `intervalMs` and comes
+// back late by N was a loop that could not run for N, which is also a loop that
+// could not drain a socket for N.
+function startEventLoopLagProbe(intervalMs = 100) {
+  let maxLagMs = 0;
+  let lastFiredAtMs = Date.now();
+  let timer = null;
+  try {
+    timer = setInterval(() => {
+      const now = Date.now();
+      const lagMs = Math.max(0, now - lastFiredAtMs - intervalMs);
+      if (lagMs > maxLagMs) maxLagMs = lagMs;
+      lastFiredAtMs = now;
+    }, intervalMs);
+    // Never hold the process open for a diagnostic.
+    if (typeof timer.unref === 'function') timer.unref();
+  } catch {
+    timer = null;
+  }
+  return {
+    stop() {
+      if (timer) {
+        clearInterval(timer);
+        timer = null;
+      }
+      // Count the tail too: a block still running when the call ends would
+      // otherwise never be sampled.
+      const tailLagMs = Math.max(0, Date.now() - lastFiredAtMs - intervalMs);
+      return Math.max(maxLagMs, tailLagMs);
+    },
+  };
+}
+
 function raceAgainstBudget(promise, timeoutMs, code, { budgetMs, startedAt, diagnostics = null }) {
   let timer = null;
   const scheduledFireAtMs = Date.now() + timeoutMs;
@@ -307,14 +345,22 @@ async function queryWithBudget(text, params, options = {}) {
   const diagnostics = options.diagnostics && typeof options.diagnostics === 'object'
     ? options.diagnostics
     : null;
-  const capturePoolCensus = () => {
+  // Two snapshots, not one moving one. `_at_request` is the pressure we queued
+  // into; `_at_acquire` is what it looked like once we were served. Collapsing
+  // them to a single overwritten field loses the only interesting comparison.
+  const capturePoolCensus = (suffix) => {
     if (!diagnostics) return;
-    if (Number.isFinite(Number(p.totalCount))) diagnostics.pool_total = Number(p.totalCount);
-    if (Number.isFinite(Number(p.idleCount))) diagnostics.pool_idle = Number(p.idleCount);
-    if (Number.isFinite(Number(p.waitingCount))) diagnostics.pool_waiting = Number(p.waitingCount);
+    if (Number.isFinite(Number(p.totalCount))) diagnostics[`pool_total_at_${suffix}`] = Number(p.totalCount);
+    if (Number.isFinite(Number(p.idleCount))) diagnostics[`pool_idle_at_${suffix}`] = Number(p.idleCount);
+    if (Number.isFinite(Number(p.waitingCount))) diagnostics[`pool_waiting_at_${suffix}`] = Number(p.waitingCount);
+  };
+  const lagProbe = diagnostics ? startEventLoopLagProbe() : null;
+  const finishLagProbe = () => {
+    if (!lagProbe || !diagnostics) return;
+    diagnostics.event_loop_lag_ms = lagProbe.stop();
   };
   if (diagnostics) diagnostics.budget_ms = budgetMs;
-  capturePoolCensus();
+  capturePoolCensus('request');
 
   const startedAt = Date.now();
   const acquire = p.connect();
@@ -327,7 +373,8 @@ async function queryWithBudget(text, params, options = {}) {
     });
   } catch (err) {
     if (diagnostics) diagnostics.acquire_ms = Math.max(0, Date.now() - startedAt);
-    capturePoolCensus();
+    capturePoolCensus('acquire');
+    finishLagProbe();
     if (diagnostics) err.diagnostics = { ...diagnostics };
     if (err?.code === DB_BUDGET_ACQUIRE_TIMEOUT) {
       // We are still in pg's checkout queue and cannot leave it. Give the slot
@@ -354,10 +401,13 @@ async function queryWithBudget(text, params, options = {}) {
     if (Number.isFinite(connectedAtMs)) {
       diagnostics.conn_age_ms = Math.max(0, acquiredAt - connectedAtMs);
     }
-    if (Number.isFinite(Number(client?._poolUseCount))) {
-      diagnostics.conn_use_count = Number(client._poolUseCount);
-    }
-    capturePoolCensus();
+    // pg-pool only sets `_poolUseCount` in `_release`, so a connection's FIRST
+    // use has none. Dropping the field there loses exactly the case that
+    // distinguishes a brand-new socket from a reused one.
+    diagnostics.conn_use_count = Number.isFinite(Number(client?._poolUseCount))
+      ? Number(client._poolUseCount)
+      : 0;
+    capturePoolCensus('acquire');
   }
 
   const remainingMs = budgetMs - (Date.now() - startedAt);
@@ -367,6 +417,7 @@ async function queryWithBudget(text, params, options = {}) {
     } catch {
       // ignore release failures
     }
+    finishLagProbe();
     throw buildBudgetTimeoutError(DB_BUDGET_QUERY_TIMEOUT, {
       budgetMs,
       waitedMs: Math.max(0, Date.now() - startedAt),
@@ -385,12 +436,16 @@ async function queryWithBudget(text, params, options = {}) {
       DB_BUDGET_QUERY_TIMEOUT,
       { budgetMs, startedAt, diagnostics },
     );
-    if (diagnostics) diagnostics.query_ms = Math.max(0, Date.now() - acquiredAt);
+    if (diagnostics) {
+      diagnostics.query_ms = Math.max(0, Date.now() - acquiredAt);
+      finishLagProbe();
+    }
     return result;
   } catch (err) {
     if (diagnostics) {
       diagnostics.query_ms = Math.max(0, Date.now() - acquiredAt);
-      capturePoolCensus();
+      capturePoolCensus('acquire');
+      finishLagProbe();
       err.diagnostics = { ...diagnostics };
     }
     const budgetExpired = err?.code === DB_BUDGET_QUERY_TIMEOUT;

@@ -18377,7 +18377,7 @@ test('__internal: the stage ledger carries the db diagnostics that attribute a s
         pool_idle: 0,
         pool_waiting: 2,
         conn_age_ms: 91000,
-        timer_lag_ms: 0,
+        event_loop_lag_ms: 4,
       });
       return { rows: [] };
     },
@@ -18391,5 +18391,62 @@ test('__internal: the stage ledger carries the db diagnostics that attribute a s
   assert.equal(stage.db.query_ms, 5);
   assert.equal(stage.db.pool_waiting, 2);
   assert.equal(stage.db.conn_age_ms, 91000);
-  assert.equal(stage.db.timer_lag_ms, 0);
+  assert.equal(stage.db.event_loop_lag_ms, 4);
+});
+
+test('__internal: a timed-out stage records the diagnostics and logs them outside the debug response', async () => {
+  const { __internal } = loadRoutesFresh();
+  const warnings = [];
+  const logger = { warn: (fields, message) => warnings.push({ fields, message }), info: () => {}, error: () => {} };
+
+  const out = await __internal.searchLocalExternalSeedProducts({
+    query: 'salicylic acid serum clogged pores',
+    limit: 6,
+    logger,
+    role: {
+      role_id: 'acne_clogged_pore_treatment',
+      rank: 11,
+      preferred_step: 'treatment',
+      query_terms: ['salicylic acid treatment'],
+      fit_keywords: ['clogged', 'pore'],
+      product_type_hypotheses: ['serum'],
+    },
+    preferredStep: 'treatment',
+    timeoutMs: 4000,
+    queryFn: async (sql, params, options) => {
+      // What the db layer throws when a statement outruns its budget.
+      Object.assign(options.diagnostics, {
+        budget_ms: options.timeoutMs,
+        acquire_ms: 2,
+        query_ms: 3998,
+        pool_waiting_at_request: 0,
+        conn_age_ms: 240000,
+        conn_use_count: 17,
+        event_loop_lag_ms: 3,
+        timer_lag_ms: 1,
+      });
+      const err = new Error('Query exceeded its budget');
+      err.code = 'DB_BUDGET_QUERY_TIMEOUT';
+      err.diagnostics = { ...options.diagnostics };
+      throw err;
+    },
+  });
+
+  // The timeout path is the only one this instrumentation exists for, so it is
+  // the one that must carry the fields.
+  const stage = out.local_external_seed_stage_debug[0];
+  assert.equal(stage?.timeout, true);
+  assert.equal(stage?.timeout_cause, 'query');
+  assert.ok(stage?.db, 'a timed-out stage must carry the db diagnostics');
+  assert.equal(stage.db.query_ms, 3998);
+  assert.equal(stage.db.event_loop_lag_ms, 3);
+  assert.equal(stage.db.conn_age_ms, 240000);
+
+  // The ledger only ever travels in a debug response. A stall nobody was
+  // watching has to be attributable afterwards, which means jsonPayload.
+  const timeoutLog = warnings.find((row) => row.message === 'local_external_seed_stage_timeout');
+  assert.ok(timeoutLog, 'a timed-out stage must be logged, not only returned');
+  assert.equal(timeoutLog.fields?.timeout_cause, 'query');
+  assert.equal(timeoutLog.fields?.db?.query_ms, 3998);
+  assert.equal(timeoutLog.fields?.db?.event_loop_lag_ms, 3);
 });
