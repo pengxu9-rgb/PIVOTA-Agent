@@ -435,7 +435,17 @@ function markPriceViolation(signal, ceiling) {
   // one would be the same fabrication this file's header guards against.
   // MUTATED IN PLACE, deliberately: `v.fit` and `v.lane_confidence` are the same object (see
   // recommendationItemToSignal), and reassigning would split them and leave the alias stale.
-  if (v.lane_confidence.level !== null) v.lane_confidence.level = 'low';
+  // TWO KINDS OF NULL, and only one of them may be overwritten.
+  //
+  // 'ungrounded' means the product is not in the catalog: there is no object to measure, so a band
+  // here would be invented, and test 4b-4 pins that it must not be. 'positional' means we simply do
+  // not score this answer path — but a ceiling breach IS something we measured and the item failed,
+  // so it earns a band where position does not. The guard used to be `level !== null`, which lumped
+  // the two together, so once positional rows lost their band a real violation stopped being
+  // downgraded at all while the description called that null "no information".
+  if (v.lane_confidence.level !== null || v.lane_confidence.basis === 'positional') {
+    v.lane_confidence.level = 'low';
+  }
   v.constraint_violations = [{
     constraint: 'price_max',
     limit: ceiling.limit,
@@ -527,9 +537,14 @@ function normalizeConstraints(raw) {
 // before for any caller that does not know about it; only a caller that positively reports
 // 'positional' suppresses the band.
 function recommendationItemToSignal(item, { rank, confidenceBasis = null } = {}) {
-  // Per-row `score_basis` (stamped by applyStrictConformingTopUp on catalog filler) overrides the
-  // answer-level basis. Without this a mixed answer labels its filler as the model's own estimate.
-  const effectiveBasis = str(item && item.score_basis) || confidenceBasis;
+  // Per-row basis (stamped by applyStrictConformingTopUp on catalog filler) overrides the
+  // answer-level one. Without it a mixed answer labels its filler as the model's own estimate.
+  //
+  // ONLY the namespaced key is trusted. A plain `score_basis` is a key the MODEL can emit, and every
+  // transform on the lane spreads unknown keys through, so reading it let a model row claim
+  // 'model_self_report' inside a positional answer and take back the band. Reading only the
+  // server-written name closes that.
+  const effectiveBasis = str(item && item.__pivota_score_basis) || confidenceBasis;
   if (!isPlainObject(item)) return null;
   const sku = isPlainObject(item.sku) ? item.sku : isPlainObject(item.product) ? item.product : {};
   const pdpOpen = isPlainObject(item.pdp_open) ? item.pdp_open : {};

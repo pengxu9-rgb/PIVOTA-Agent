@@ -116,14 +116,21 @@ function applyStrictConformingTopUp({
     target: shortlistTarget,
   });
   if (!Array.isArray(appended) || appended.length === 0) return noop;
-  // STAMP WHAT THESE ROWS ARE. They come from the catalog, carrying `95 - 3*index` as their score —
+  // STAMP WHAT THESE ROWS ARE. The key is namespaced because it is a SERVER assertion on a row that
+  // may otherwise be model-authored: every transform on this lane is a `{...row}` spread, so a plain
+  // `score_basis` emitted by the model would arrive at the signal builder and be read as
+  // authoritative — letting a model hand itself back the band this PR exists to withhold. Verified:
+  // a row carrying `score_basis: 'model_self_report'` banded `high` inside an answer the server had
+  // derived as positional. Namespacing removes the realistic vector; the principled fix is a strip
+  // at the mapper boundary, the shape stripRecoPlanPriceCarryingFields already uses for price, and
+  // that is filed rather than done here. They come from the catalog, carrying `95 - 3*index` as their score —
   // a POSITION, not a judgement about the item. The answer they are appended to keeps
   // structuredSource 'llm_primary', so an answer-level confidence basis would call them the model's
   // own estimate and band them `high`, above the model's actual pick. Per-row, because this is the
   // only place that knows which rows were filler.
   const stamped = appended.map((row) => (
     row && typeof row === 'object' && !Array.isArray(row)
-      ? { ...row, score_basis: 'positional' }
+      ? { ...row, __pivota_score_basis: 'positional' }
       : row
   ));
   return {

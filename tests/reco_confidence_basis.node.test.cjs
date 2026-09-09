@@ -119,8 +119,12 @@ test('an ungrounded item is still bandless, and says which kind of nothing it is
 test('the description tells an agent how to read a null band', () => {
   const src = require('node:fs').readFileSync(
     require('node:path').join(__dirname, '..', 'mcp-server', 'src', 'commerceToolSurface.js'), 'utf8');
-  assert.ok(/A null band means unmeasured, not low/.test(src),
+  assert.ok(/A null band usually means unmeasured rather than low/.test(src),
     'a null that reads as "low confidence" is a new wrong answer, not a fixed one');
+  assert.ok(/breaches a `price_max` you set is downgraded to `low`/.test(src),
+    'the one case where a null DOES become a band must be stated, or the sentence is false');
+  assert.ok(/`basis` also takes `ungrounded`/.test(src),
+    'a partner writing an exhaustive switch must not meet an undocumented value');
   assert.ok(/`positional` means the lane has NO certainty estimate/.test(src));
   assert.ok(/lane_confidence\.basis/.test(src));
 });
@@ -146,6 +150,15 @@ test('the basis is derived from the answer path, not from the answer', () => {
   // An unknown future source must NOT default to a basis that licenses a band.
   assert.equal(deriveRecoConfidenceBasis('some_new_path_v2'), 'none');
   assert.equal(RECO_CONFIDENCE_BASIS.POSITIONAL, 'positional');
+
+  // AND THE RUNTIME'S OWN DEFAULT must not license a band either. The derivation refusing to
+  // default to model_self_report says nothing about what buildLegacyRecoGenerationResult does when
+  // the engine passes it nothing — that default was 'none' and unpinned, so flipping it to
+  // model_self_report was green.
+  const resultSrc = require('node:fs').readFileSync(
+    require('node:path').join(__dirname, '..', 'src', 'auroraBff', 'legacyRecoGenerationResult.js'), 'utf8');
+  assert.match(resultSrc, /confidenceBasis = 'none',/,
+    "the result runtime's default basis must be the one that licenses nothing");
 });
 
 const CLIENT_ID = require.resolve('../src/auroraBff/auroraDecisionClient');
@@ -221,7 +234,7 @@ test('a MIXED answer reports each row honestly', async () => {
   });
   assert.equal(toppedUp.appendedCount, 1, 'the top-up must actually have appended a row');
   const [, filler] = toppedUp.structured.recommendations;
-  assert.equal(filler.score_basis, 'positional', 'the top-up must stamp what its rows are');
+  assert.equal(filler.__pivota_score_basis, 'positional', 'the top-up must stamp what its rows are');
   const handler = makeRecommendProducts({
     generate: async () => ({ norm: { payload: {
       recommendations: [model, filler], confidence: 0.7,
@@ -238,3 +251,42 @@ test('a MIXED answer reports each row honestly', async () => {
   // The answer-level number still describes the answer, which really was model-primary.
   assert.equal(res.metadata.confidence_basis, 'model_self_report');
 });
+
+test('a model cannot hand itself the band back', () => {
+  // `score_basis` is a key the MODEL can emit, and every transform on this lane spreads unknown keys
+  // through. Reading it made the suppression model-writable: a row claiming 'model_self_report'
+  // banded `high` inside an answer the server had derived as positional. Only the namespaced,
+  // server-written key is trusted.
+  const row = { product_id: 'x', merchant_id: 'm', name: 'Model row', score: 95, grounding: 'catalog',
+    step: 'cleanser', price: 10, currency: 'USD', url: 'https://x.test/p', image_url: 'https://x.test/i.png' };
+  const spoofed = recommendationItemToSignal({ ...row, score_basis: 'model_self_report' }, { confidenceBasis: 'positional' });
+  assert.equal(spoofed.value.lane_confidence.level, null, 'a model-supplied basis must not license a band');
+  assert.equal(spoofed.value.lane_confidence.basis, 'positional');
+  const stamped = recommendationItemToSignal({ ...row, __pivota_score_basis: 'positional' }, { confidenceBasis: 'model_self_report' });
+  assert.equal(stamped.value.lane_confidence.level, null, 'the server-written stamp still wins');
+});
+
+test('a measured ceiling breach still downgrades, even where position does not license a band', () => {
+  // The suppression must not swallow a real measurement. markPriceViolation was guarded on a
+  // non-null band, so once positional rows lost theirs, a row breaching the buyer's own price_max
+  // stopped being downgraded — while the description told an agent to read that null as
+  // "no information".
+  const { markPriceViolation } = require('../src/agentSignals/recommendProducts');
+  const signal = recommendationItemToSignal(
+    { product_id: 'x', merchant_id: 'm', name: 'Over budget', score: 95, grounding: 'catalog',
+      step: 'cleanser', price: 90, currency: 'USD', url: 'https://x.test/p', image_url: 'https://x.test/i.png',
+      __pivota_score_basis: 'positional' },
+    { confidenceBasis: 'positional' },
+  );
+  assert.equal(signal.value.lane_confidence.level, null, 'position alone earns no band');
+  markPriceViolation(signal, { limit: 50, currency: 'USD' });
+  assert.equal(signal.value.lane_confidence.level, 'low', 'but a breach we measured does');
+  assert.equal(signal.value.fit.level, 'low', 'and the deprecated alias is the same object');
+  assert.ok(Array.isArray(signal.value.constraint_violations));
+});
+
+// STILL UNPINNED, said rather than hidden: no test drives a CATALOG-path answer through the real
+// lane, so mislabelling the catalog population at the engine seam passes everything here. The
+// transport is reachable (PIVOTA_BACKEND_BASE_URL plus a fetch stub gets the lane querying); the
+// search-response envelope is what still needs matching.
+test.todo('a catalog-path lane answer is not pinned — mislabelling it at the engine stays green');
