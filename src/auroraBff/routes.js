@@ -27674,7 +27674,17 @@ function orderConcernFrameworkRolesForSelection(roles = [], { primaryRoleId = ''
   ];
 }
 
-function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext } = {}) {
+// `allowPrimaryMissingSupportRoutine` is opt-in for one reason: surfacing a
+// support-only routine is only honest where the caller also renders the
+// "primary step unconfirmed" notice. This selector feeds nine call sites across
+// six modules, each with its own card, and only the beauty mainline entry
+// discloses. Defaulting to false means every other surface keeps returning
+// nothing rather than quietly showing a routine that is missing the step the
+// user asked about.
+function finalizeConcernFrameworkCandidatePools(
+  rawCandidates,
+  { targetContext, allowPrimaryMissingSupportRoutine = false } = {},
+) {
   const roles = Array.isArray(targetContext?.framework_roles) ? targetContext.framework_roles : [];
   const deduped = [];
   const seen = new Set();
@@ -28096,7 +28106,9 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
   const distinctSupportRoleCount = new Set(
     supportOnlySelected.map((item) => String(item?.matched_role_id || '').trim()),
   ).size;
-  const primaryMissingSupportRoutineSurfaced = !primaryRoleMatched && distinctSupportRoleCount >= 2;
+  const primaryMissingSupportRoutineSurfaced = allowPrimaryMissingSupportRoutine === true
+    && !primaryRoleMatched
+    && distinctSupportRoleCount >= 2;
   const surfacedRecommendations = primaryRoleMatched
     ? pruneConcernFrameworkExplicitNoAdditionalActiveSameRoleRows(selected, {
         targetContext,
@@ -28194,7 +28206,11 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
     constraint_conflict: false,
     average_context_fit_score: 0,
     artifact_context_applied: false,
-    terminal_success: surfacedRecommendations.length > 0,
+    // A routine missing the step the user asked for is not a terminal success.
+    // `legacyRecoPostMainline` gates several fallbacks on `!terminal_success`,
+    // so claiming success here would silently disable them for exactly the state
+    // that most needs them.
+    terminal_success: surfacedRecommendations.length > 0 && !primaryMissingSupportRoutineSurfaced,
     reco_policy_version: RECOMMENDATION_RECO_POLICY_V1,
     role_conflict_present: hasWeakViablePool,
     late_conflict_without_override: hasWeakViablePool,
@@ -105380,6 +105396,7 @@ const __internal = {
   applyConcernSelectorRaceOrdering,
   runConcernSemanticPlanner,
   finalizeConcernFrameworkCandidatePools,
+  buildBeautyMainlineLocalCandidatePoolSummary,
   resolveConcernFrameworkBudgetCeiling,
   classifyConcernFrameworkCandidateAgainstBudget,
   isConcernFrameworkCandidateOverBudget,

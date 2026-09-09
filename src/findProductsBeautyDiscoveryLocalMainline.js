@@ -2392,6 +2392,8 @@ function createFindProductsBeautyDiscoveryLocalMainlineRuntime(deps = {}) {
 
       candidateState = finalizeConcernFrameworkCandidatePools(rawCandidates, {
         targetContext,
+        // This lane's envelope renders the primary-step-unconfirmed notice.
+        allowPrimaryMissingSupportRoutine: true,
       });
       const selectedProductIdsAfter = getSelectedProductIds(
         candidateState?.selected_recommendations,

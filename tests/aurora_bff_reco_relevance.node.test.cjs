@@ -18562,7 +18562,7 @@ test('__internal: two filled support roles surface as a partial routine when the
   const { __internal } = loadRoutesFresh();
   const state = __internal.finalizeConcernFrameworkCandidatePools(
     [ACNE_MISSING_PRIMARY_MOISTURIZER_ROW, ACNE_MISSING_PRIMARY_SUNSCREEN_ROW],
-    { targetContext: ACNE_MISSING_PRIMARY_TARGET_CONTEXT },
+    { targetContext: ACNE_MISSING_PRIMARY_TARGET_CONTEXT, allowPrimaryMissingSupportRoutine: true },
   );
 
   // The primary really is missing and must keep saying so — this is a partial
@@ -18586,7 +18586,7 @@ test('__internal: a single filled support role still surfaces nothing when the p
   const { __internal } = loadRoutesFresh();
   const state = __internal.finalizeConcernFrameworkCandidatePools(
     [ACNE_MISSING_PRIMARY_MOISTURIZER_ROW],
-    { targetContext: ACNE_MISSING_PRIMARY_TARGET_CONTEXT },
+    { targetContext: ACNE_MISSING_PRIMARY_TARGET_CONTEXT, allowPrimaryMissingSupportRoutine: true },
   );
 
   // One orphan support product answers a concern question worse than admitting
@@ -18595,4 +18595,69 @@ test('__internal: a single filled support role still surfaces nothing when the p
   assert.equal(state.primary_missing_support_routine_surfaced, false);
   assert.equal(state.selected_candidate_count, 0);
   assert.equal(state.selected_recommendations.length, 0);
+});
+
+test('__internal: a support routine without the primary step is not a terminal success', async () => {
+  const { __internal } = loadRoutesFresh();
+  const state = __internal.finalizeConcernFrameworkCandidatePools(
+    [ACNE_MISSING_PRIMARY_MOISTURIZER_ROW, ACNE_MISSING_PRIMARY_SUNSCREEN_ROW],
+    { targetContext: ACNE_MISSING_PRIMARY_TARGET_CONTEXT, allowPrimaryMissingSupportRoutine: true },
+  );
+
+  assert.equal(state.selected_candidate_count, 2);
+  // `legacyRecoPostMainline` gates several fallbacks on `!terminal_success`, so
+  // counting a routine missing the requested step as a success would switch them
+  // off for exactly the state that needs them.
+  assert.equal(state.terminal_success, false);
+});
+
+test('__internal: a caller that cannot disclose the missing step surfaces nothing', async () => {
+  const { __internal } = loadRoutesFresh();
+  // Same rows, no opt-in. This selector feeds nine call sites across six modules
+  // and only the beauty mainline entry renders the notice; everywhere else must
+  // keep returning nothing rather than a routine missing the step asked about.
+  const state = __internal.finalizeConcernFrameworkCandidatePools(
+    [ACNE_MISSING_PRIMARY_MOISTURIZER_ROW, ACNE_MISSING_PRIMARY_SUNSCREEN_ROW],
+    { targetContext: ACNE_MISSING_PRIMARY_TARGET_CONTEXT },
+  );
+
+  assert.equal(state.primary_missing_support_routine_surfaced, false);
+  assert.equal(state.selected_candidate_count, 0);
+  assert.equal(state.selected_recommendations.length, 0);
+});
+
+test('__internal: the surfaced flag reaches candidate_pool_summary, which is what renders the notice', async () => {
+  const { __internal } = loadRoutesFresh();
+  const state = __internal.finalizeConcernFrameworkCandidatePools(
+    [ACNE_MISSING_PRIMARY_MOISTURIZER_ROW, ACNE_MISSING_PRIMARY_SUNSCREEN_ROW],
+    { targetContext: ACNE_MISSING_PRIMARY_TARGET_CONTEXT, allowPrimaryMissingSupportRoutine: true },
+  );
+  // The entry reads this flag off candidate_pool_summary, not off the state. The
+  // handoff test hand-feeds it into stubbed metadata, so deleting this plumbing
+  // left every suite green while the notice silently stopped rendering.
+  const summary = __internal.buildBeautyMainlineLocalCandidatePoolSummary({ candidateState: state });
+  assert.equal(summary.primary_missing_support_routine_surfaced, true);
+  assert.equal(summary.primary_role_matched, false);
+});
+
+test('__internal: the primary-step-unconfirmed notice has its own copy, not the generic fallback line', async () => {
+  const { __internal } = loadRoutesFresh();
+  for (const language of ['EN', 'CN']) {
+    const payload = __internal.buildConfidenceNoticeCardPayload({
+      language,
+      reason: 'primary_step_unconfirmed',
+      severity: 'info',
+      confidence: { score: 0.45, level: 'medium', rationale: ['beauty_mainline_support_routine_without_primary'] },
+      actions: ['retry_recommendations'],
+    });
+    // Deleting the copy entry falls through to the generic "did not converge, so
+    // I am not showing product picks yet" — shown next to a card that IS showing
+    // products. The reason alone does not catch that; the sentence has to.
+    assert.match(
+      payload.message,
+      language === 'CN' ? /主步骤/ : /supporting steps only/i,
+      `${language} notice fell through to the default copy`,
+    );
+    assert.doesNotMatch(payload.message, /not showing product picks/i);
+  }
 });
