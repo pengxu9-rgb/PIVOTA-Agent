@@ -1533,39 +1533,39 @@ test('8e. the tool description and the code agree — the promises are quoted fr
   assert.ok(/`fit` is a DEPRECATED alias/.test(src),
     'the alias must be advertised as deprecated, or partners never migrate off it');
   // THE DOMAIN SENTENCE IS CHECKED AGAINST THE PROMPT THE DOOR ACTUALLY LOADS, not against itself.
-  // Until #2155 the description had to state a domain NARROWER than the tool advertised, because the
-  // lane loaded the skincare-bounded reco_main_v1_2. This bridge now passes promptDomainScope 'beauty'
-  // and the lane loads a wider template, so the description states the wider domain — and the file
-  // named by that scope is read here so a description edit alone cannot make the claim true again.
-  assert.ok(/The lane covers skincare \(body care included\), makeup and fragrance\. Haircare is NOT covered yet/.test(src),
+  // #2162 widened this to beauty and had to be rolled back: AURORA_DECISION_BASE_URL validates
+  // PROMPT_TEMPLATE_ID and answered 400 for reco_main_v1_3, killing the LLM leg in prod. The wide
+  // template is default-off, so the door is back on the skincare-bounded reco_main_v1_2 and the
+  // description says so again. Reading the file the scope RESOLVES TO keeps the two honest: when the
+  // id is registered upstream and the default flips, this fails until the sentence is updated with
+  // it — which is the point.
+  assert.ok(/The lane is tuned for SKINCARE specifically/.test(src),
     "the domain the door's own prompt allows must be stated, since it changes what a makeup need gets back");
-  // Haircare is STAGED (#2163), so the description must not advertise it. It has the largest raw total
-  // measured (126) but only 15/20 sampled rows are USD, and non-USD is unservable on the US offer path.
-  assert.ok(!/makeup, fragrance and haircare/.test(src),
-    'the description must not claim haircare while the prompt answers it empty');
-  // Saying a category is excluded is only half a contract — a partner also has to know what it GETS.
-  // Driven on this branch: a haircare need passes the off-vertical gate (correctly — it is in-vertical
-  // and merely staged), reaches the lane, and comes back empty carrying the ORDINARY
-  // products_empty_reason, not 'off_vertical'. An agent branching on that code cannot tell this from
-  // "the lane found nothing", so the description has to point it at missing_info instead.
-  assert.ok(/such a need answers with an empty shortlist and the reason in `missing_info`/.test(src),
-    'the description must say what a haircare need returns, not only that it is excluded');
-  assert.ok(/not `'off_vertical'`, since haircare is in-vertical and merely staged/.test(src),
-    'and must say which reason code it carries, or an agent will branch on the wrong one');
-  assert.ok(/does NOT cover beauty tools, brushes, sponges or devices/.test(src),
-    'the one category the widened lane still refuses must be stated, since the catalog cannot serve it');
-  assert.ok(/return an empty shortlist rather than substitute an adjacent one/.test(src),
-    'the category-fidelity promise must be stated: it is the half that stops a bronzer answering as a serum');
+  // AND THE OTHER TWO CLAIMS GO WITH IT. v1_2 — the template the door actually loads while the wide
+  // one is inert — has no CATEGORY FIDELITY block and no empty-answer instruction: its whole domain
+  // section is "Recommend skincare only. Never recommend makeup, brushes, beauty tools, devices,
+  // fragrance, haircare, or supplements." So promising a partner that the lane answers in the category
+  // it names, or answers a tool request empty rather than off-category, would be exactly the
+  // description-ahead-of-the-prompt defect this file exists to prevent. They return when v1_3 does.
+  assert.ok(!/return an empty shortlist rather than substitute an adjacent one/.test(src),
+    'the category-fidelity promise is v1_3-only; it must not be advertised while v1_2 is loaded');
+  assert.ok(!/does NOT cover beauty tools, brushes, sponges or devices/.test(src),
+    'the tools empty-answer promise is v1_3-only; v1_2 merely declines to recommend them');
+  // The mechanism that keeps this honest either way: read the prompt the scope RESOLVES TO.
+  const doorPromptFile = require('node:fs').readFileSync(
+    path.join(__dirname, '..', 'prompts', `${require('../src/auroraBff/routes').__internal.resolveRecoMainPromptSpec({ promptDomainScope: 'beauty' }).system_file}`), 'utf8');
+  assert.ok(/Recommend skincare only/.test(doorPromptFile),
+    'while the wide template is default-off the door must resolve to the skincare-bounded prompt');
   const { __internal } = require('../src/auroraBff/routes');
   const doorSpec = __internal.resolveRecoMainPromptSpec({ promptDomainScope: 'beauty' });
+  assert.equal(doorSpec.wide_template_active, false,
+    'the wide template must stay off by default until the decision service accepts its id');
   const doorPrompt = require('node:fs').readFileSync(
     path.join(__dirname, '..', 'prompts', doorSpec.system_file), 'utf8');
-  assert.ok(!/Recommend skincare only/.test(doorPrompt),
-    'the description promises beauty; the prompt this door loads must not bound the lane to skincare');
-  assert.ok(/Never substitute an adjacent category/.test(doorPrompt),
-    'the description promises no adjacent-category substitution; the prompt must actually say so');
-  assert.ok(/Never recommend beauty tools, brushes, sponges, applicators, or devices/.test(doorPrompt),
-    'the description says tools are not covered; the prompt this door loads must actually refuse them');
+  assert.ok(/Recommend skincare only/.test(doorPrompt),
+    'the description says skincare-only; the prompt this door loads must actually bound it that way');
+  assert.ok(/Never recommend makeup, brushes, beauty tools, devices, fragrance, haircare, or supplements/.test(doorPrompt),
+    'the exclusions the description names must be the ones the loaded prompt states');
   assert.ok(surfaceMod, 'the surface module still loads with the edited description');
 });
 
@@ -1594,8 +1594,8 @@ test('8g. the lane admitting it was off-DOMAIN never empties the shortlist — i
   // coverage for needs no keyword list holds. It is not: prompts/reco_main_v1_2.system.txt bounds the
   // lane to "skincare only … never makeup, brushes, beauty tools, devices, fragrance, haircare, or
   // supplements" — NARROWER than the beauty/skincare this tool advertises. So it emits that same
-  // sentence for a bronzer or a brush set (its own door loads the wider reco_main_v1_3 since #2155, but
-  // this axis must stay out however the prompt is pointed), and acting on it emptied the shortlist for in-vertical
+  // sentence for a bronzer or a brush set (this axis must stay out however the prompt is pointed —
+  // #2162's widening is shipped but default-off), and acting on it emptied the shortlist for in-vertical
   // buyers while telling them their beauty need was not beauty.
   for (const [need, warning] of [
     ['a bronzer for contouring', 'Makeup items such as bronzer fall outside the skincare domain; returning skincare picks instead.'],

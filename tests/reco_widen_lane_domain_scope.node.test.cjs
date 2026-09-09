@@ -29,6 +29,67 @@ const path = require('node:path');
 const { __internal } = require('../src/auroraBff/routes');
 const { makeRecommendProducts } = require('../src/agentSignals/recommendProducts');
 
+// The wide template id is read ONCE at module load, so arming it means reloading the module. The
+// prompt-file cache is module-scoped too, which is what makes this honest rather than sticky.
+function withRoutesEnv(env, fn) {
+  const moduleId = require.resolve('../src/auroraBff/routes');
+  const before = {};
+  for (const [k, v] of Object.entries(env)) {
+    before[k] = process.env[k];
+    if (v === undefined) delete process.env[k];
+    else process.env[k] = v;
+  }
+  delete require.cache[moduleId];
+  try {
+    const out = fn(require('../src/auroraBff/routes').__internal);
+    // SYNC ONLY, and said out loud rather than left as a trap. The finally below restores the env and
+    // busts the cache immediately; an async fn's assertions would then run against a module reloaded
+    // under the RESTORED env, and pass for the wrong reason with nothing visible to explain it.
+    if (out && typeof out.then === 'function') {
+      throw new Error('withRoutesEnv is synchronous: an async fn would assert against the restored env');
+    }
+    return out;
+  } finally {
+    for (const [k, v] of Object.entries(before)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+    delete require.cache[moduleId];
+  }
+}
+const withWideTemplate = (templateId, fn) =>
+  withRoutesEnv({ RECO_MAIN_WIDE_PROMPT_TEMPLATE_ID: templateId }, fn);
+
+// The async twin, for the tests that drive the real lane. Kept separate from the sync one rather
+// than making that one polymorphic: the whole point of the guard there is that awaiting is not
+// optional, and a single function silently doing both is how that guarantee gets lost.
+async function withRoutesEnvAsync(env, fn) {
+  const moduleId = require.resolve('../src/auroraBff/routes');
+  const before = {};
+  for (const [k, v] of Object.entries(env)) {
+    before[k] = process.env[k];
+    if (v === undefined) delete process.env[k];
+    else process.env[k] = v;
+  }
+  delete require.cache[moduleId];
+  try {
+    return await fn(require('../src/auroraBff/routes').__internal);
+  } finally {
+    for (const [k, v] of Object.entries(before)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+    delete require.cache[moduleId];
+  }
+}
+const PROMPT_ARGS = {
+  profile: {},
+  requestText: 'a bronzer for contouring my cheekbones, warm undertone',
+  lang: 'EN',
+  globalStatus: {},
+  candidates: [],
+};
+
 const PROMPTS = path.join(__dirname, '..', 'prompts');
 const readPrompt = (name) => fs.readFileSync(path.join(PROMPTS, name), 'utf8');
 
@@ -58,11 +119,14 @@ async function runLane(extra) {
   });
 }
 
-test('the real lane loads the WIDE template only when the caller asks for the beauty scope', async () => {
+test('the real lane records the beauty ASK but, by default, still loads the narrow template', async () => {
+  // The ask is threaded end to end (bridge -> engine -> mainline -> prompt builder) and shows up on
+  // the trace; what it does NOT do, while v1_3 is unregistered upstream, is change the template.
   const wide = await runLane({ entryType: 'direct', recoTriggerSource: 'agent_tool', promptDomainScope: 'beauty' });
-  assert.equal(wide.llmTrace.template_id, 'reco_main_v1_3');
-  assert.equal(wide.llmTrace.prompt_domain_scope, 'beauty');
-  assert.equal(wide.norm.payload.prompt_template_id, 'reco_main_v1_3');
+  assert.equal(wide.llmTrace.prompt_domain_scope, 'beauty', 'the ask must still reach the trace');
+  assert.equal(wide.llmTrace.template_id, 'reco_main_v1_2', 'but the default must not arm v1_3');
+  assert.equal(wide.llmTrace.wide_template_active, false);
+  assert.equal(wide.norm.payload.prompt_template_id, 'reco_main_v1_2');
 
   // The consumer direct lane (POST /v1/reco/generate) shares entryType 'direct' with the agent tool
   // and must NOT widen — this is the whole reason the scope is threaded instead of read off entryType.
@@ -107,13 +171,24 @@ test('only the exact token widens; every other value keeps the skincare template
 
   for (const scope of wide) {
     const spec = __internal.resolveRecoMainPromptSpec({ promptDomainScope: scope });
-    assert.equal(spec.template_id, 'reco_main_v1_3', `expected wide for ${JSON.stringify(scope)}`);
-    assert.equal(spec.domain_scope, 'beauty');
+    assert.equal(spec.domain_scope, 'beauty', `expected the beauty ask for ${JSON.stringify(scope)}`);
+    // The token still has to be recognised while the template is pinned, or arming the env var later
+    // would arm nothing — the rot this test exists to catch.
+    withWideTemplate('reco_main_v1_3', (armed) => {
+      const s2 = armed.resolveRecoMainPromptSpec({ promptDomainScope: scope });
+      assert.equal(s2.template_id, 'reco_main_v1_3', `expected wide for ${JSON.stringify(scope)} when armed`);
+      assert.equal(s2.wide_template_active, true);
+    });
   }
   for (const scope of narrow) {
     const spec = __internal.resolveRecoMainPromptSpec({ promptDomainScope: scope });
     assert.equal(spec.template_id, 'reco_main_v1_2', `expected narrow for ${JSON.stringify(scope)}`);
     assert.equal(spec.domain_scope, 'skincare');
+    withWideTemplate('reco_main_v1_3', (armed) => {
+      const s2 = armed.resolveRecoMainPromptSpec({ promptDomainScope: scope });
+      assert.equal(s2.template_id, 'reco_main_v1_2', `must stay narrow for ${JSON.stringify(scope)} even when armed`);
+      assert.equal(s2.wide_template_active, false);
+    });
   }
   assert.equal(__internal.resolveRecoMainPromptSpec().template_id, 'reco_main_v1_2');
   assert.equal(__internal.resolveRecoMainPromptSpec({}).template_id, 'reco_main_v1_2');
@@ -127,52 +202,56 @@ test('ingredient mode keeps its own template and reports the narrow scope', () =
   assert.equal(spec.ingredient_mode, true);
   assert.equal(spec.template_id, 'reco_main_v1_2');
   assert.equal(spec.domain_scope, 'skincare');
+  withWideTemplate('reco_main_v1_3', (armed) => {
+    const s2 = armed.resolveRecoMainPromptSpec({ promptDomainScope: 'beauty', ingredientContext: { query: 'niacinamide' } });
+    assert.equal(s2.template_id, 'reco_main_v1_2', 'ingredient mode keeps its own template even when armed');
+    assert.equal(s2.wide_template_active, false);
+  });
 });
 
-test('the widened prompt reaches the wire: the query text and hard_rules actually change', () => {
-  const args = {
-    profile: {},
-    requestText: 'a bronzer for contouring my cheekbones, warm undertone',
-    lang: 'EN',
-    globalStatus: {},
-    candidates: [],
-  };
-  const wide = __internal.buildAuroraProductRecommendationsPromptBundle({ ...args, promptDomainScope: 'beauty' });
-  const narrow = __internal.buildAuroraProductRecommendationsPromptBundle({ ...args });
+test('by DEFAULT the beauty ask changes nothing on the wire — byte for byte', () => {
+  // THE POINT OF THIS PR. v1_3 400s at the decision service, so the ask must be fully inert, not
+  // half-applied: a "beauty recommendation plan" task line wrapped around v1_2's skincare-only
+  // system prompt would be worse than either end state.
+  const wide = __internal.buildAuroraProductRecommendationsPromptBundle({ ...PROMPT_ARGS, promptDomainScope: 'beauty' });
+  const narrow = __internal.buildAuroraProductRecommendationsPromptBundle({ ...PROMPT_ARGS });
+  assert.equal(wide.query, narrow.query, 'the beauty ask must not alter one byte of the query');
+  assert.deepEqual(wide.user_payload.hard_rules, narrow.user_payload.hard_rules);
+  assert.equal(wide.prompt_spec.template_id, 'reco_main_v1_2');
+  assert.equal(wide.prompt_spec.wide_template_active, false);
+  // The narrow boundary is what actually ships today, so say so rather than inferring it.
+  assert.match(wide.query, /Recommend skincare only/);
+  assert.match(wide.query, /Task: Generate a user-adaptive skincare recommendation plan/);
+  assert.doesNotMatch(wide.query, /user-adaptive beauty recommendation plan/);
+});
 
-  // The exported query builder returns the same string this bundle carries: assert once that the
-  // two agree, so testing the bundle is testing what the lane actually sends.
-  assert.equal(__internal.buildAuroraProductRecommendationsQuery({ ...args, promptDomainScope: 'beauty' }), wide.query);
+test('when ARMED, the widened prompt reaches the wire: query text and hard_rules change', () => {
+  withWideTemplate('reco_main_v1_3', (armed) => {
+    const wide = armed.buildAuroraProductRecommendationsPromptBundle({ ...PROMPT_ARGS, promptDomainScope: 'beauty' });
+    const narrow = armed.buildAuroraProductRecommendationsPromptBundle({ ...PROMPT_ARGS });
+    assert.equal(wide.prompt_spec.wide_template_active, true);
+    assert.equal(armed.buildAuroraProductRecommendationsQuery({ ...PROMPT_ARGS, promptDomainScope: 'beauty' }), wide.query);
 
-  // The SYSTEM prompt is the thing that produced the bronzer -> serum answer. Assert the boundary is
-  // gone from the wide query and still present in the narrow one, in the query STRING that is sent —
-  // not merely in the file, and not merely in the template id.
-  assert.match(wide.query, /Recommend skincare \(including body care\), makeup, and fragrance\./);
-  assert.match(wide.query, /Never substitute an adjacent category/);
-  // TOOLS ARE STILL REFUSED, and the widened query must carry that. Measured on prod 2026-09-09,
-  // `makeup brush` answers total 0 with final_decision 'clarify' and every search_quality tier count
-  // zero; `gua sha facial tool` returns mis-filed rows inside a total of 0. Inviting the model into a
-  // category with no serving lane swaps a wrong answer for an empty one, not for a right one.
-  assert.match(wide.query, /Never recommend beauty tools, brushes, sponges, applicators, or devices/);
-  assert.match(wide.query, /For a tool, brush or device request, return recommendations: \[\]/);
-  assert.doesNotMatch(wide.query, /Recommend skincare only/);
-  assert.doesNotMatch(wide.query, /Never recommend makeup, brushes, beauty tools/);
-  assert.match(narrow.query, /Recommend skincare only/);
-  assert.match(narrow.query, /Never recommend makeup, brushes, beauty tools/);
+    assert.match(wide.query, /Recommend skincare \(including body care\), makeup, and fragrance\./);
+    assert.match(wide.query, /Never substitute an adjacent category/);
+    // Tools stay refused even armed: measured on prod 2026-09-09, `makeup brush` answers total 0 with
+    // final_decision 'clarify' and every search_quality tier count zero.
+    assert.match(wide.query, /Never recommend beauty tools, brushes, sponges, applicators, or devices/);
+    assert.match(wide.query, /For a tool, brush or device request, return recommendations: \[\]/);
+    assert.doesNotMatch(wide.query, /Recommend skincare only/);
+    assert.match(wide.query, /Task: Generate a user-adaptive beauty recommendation plan/);
 
-  // The task line is part of the same query and contradicted a widened system prompt.
-  assert.match(wide.query, /Task: Generate a user-adaptive beauty recommendation plan/);
-  assert.match(narrow.query, /Task: Generate a user-adaptive skincare recommendation plan/);
+    // The chat lane's own template must stay narrow in the same process.
+    assert.match(narrow.query, /Recommend skincare only/);
+    assert.match(narrow.query, /Task: Generate a user-adaptive skincare recommendation plan/);
 
-  // hard_rules survive the payload builder verbatim (only meta/profile/global_status/candidates are
-  // overwritten), so a stale rule here would contradict the system prompt inside one request.
-  const wideRules = wide.user_payload.hard_rules.join(' | ');
-  const narrowRules = narrow.user_payload.hard_rules.join(' | ');
-  assert.match(wideRules, /Recommend skincare \(including body care\), makeup and fragrance only/);
-  assert.match(wideRules, /a bronzer request is not answered with a serum/);
-  assert.match(wideRules, /Never beauty tools, brushes, sponges, applicators or devices/);
-  assert.doesNotMatch(wideRules, /non-skincare categories/);
-  assert.match(narrowRules, /Do not recommend non-skincare categories/);
+    const wideRules = wide.user_payload.hard_rules.join(' | ');
+    assert.match(wideRules, /Recommend skincare \(including body care\), makeup and fragrance only/);
+    assert.match(wideRules, /a bronzer request is not answered with a serum/);
+    assert.match(wideRules, /Never beauty tools, brushes, sponges, applicators or devices/);
+    assert.doesNotMatch(wideRules, /non-skincare categories/);
+    assert.match(narrow.user_payload.hard_rules.join(' | '), /Do not recommend non-skincare categories/);
+  });
 });
 
 test('the v1_3 prompt widens the domain and pins category fidelity', () => {
@@ -217,12 +296,7 @@ test('the chat lane template is untouched — the whole reason v1_3 exists', () 
 // nothing in the diff to show it. Driven here by pointing the wide template at a file that does not
 // exist and reloading the module, since both the env var and the template cache are module-scoped.
 test('an unreadable wide template still sends a WIDE fallback, not the skincare one', () => {
-  const moduleId = require.resolve('../src/auroraBff/routes');
-  const before = process.env.RECO_MAIN_WIDE_PROMPT_TEMPLATE_ID;
-  process.env.RECO_MAIN_WIDE_PROMPT_TEMPLATE_ID = 'reco_main_no_such_template_v9';
-  delete require.cache[moduleId];
-  try {
-    const reloaded = require('../src/auroraBff/routes').__internal;
+  withWideTemplate('reco_main_no_such_template_v9', (reloaded) => {
     const args = { profile: {}, requestText: 'a bronzer', lang: 'EN', globalStatus: {}, candidates: [] };
     const wide = reloaded.buildAuroraProductRecommendationsPromptBundle({ ...args, promptDomainScope: 'beauty' });
     assert.equal(wide.prompt_spec.template_id, 'reco_main_no_such_template_v9');
@@ -245,9 +319,89 @@ test('an unreadable wide template still sends a WIDE fallback, not the skincare 
     // is unreadable, and widening it here would be the shared-prompt bug by another route.
     const narrowSpec = reloaded.resolveRecoMainPromptSpec({});
     assert.equal(narrowSpec.template_id, 'reco_main_v1_2');
-  } finally {
-    if (before === undefined) delete process.env.RECO_MAIN_WIDE_PROMPT_TEMPLATE_ID;
-    else process.env.RECO_MAIN_WIDE_PROMPT_TEMPLATE_ID = before;
-    delete require.cache[moduleId];
+  });
+});
+
+test('the NARROW in-code fallback stays narrow when the CHAT template is the unreadable one', () => {
+  // The previous version of this claim asserted only `template_id === 'reco_main_v1_2'` while that
+  // file was perfectly readable — so the narrow fallback never executed and three mutations of its
+  // text survived. Point the CHAT lane's own id at a missing file so the branch actually runs.
+  withRoutesEnv({ RECO_MAIN_PROMPT_TEMPLATE_ID: 'reco_main_no_such_narrow_v9' }, (reloaded) => {
+    const bundle = reloaded.buildAuroraProductRecommendationsPromptBundle({ ...PROMPT_ARGS });
+    assert.equal(bundle.prompt_spec.template_id, 'reco_main_no_such_narrow_v9');
+    assert.equal(bundle.prompt_spec.wide_template_active, false);
+    assert.match(bundle.query, /You are a precision skincare recommendation planner/);
+    assert.match(bundle.query, /Recommend skincare only\. Never recommend makeup, brushes, tools, devices, fragrance, or haircare\./);
+    const rules = bundle.user_payload.hard_rules.join(' | ');
+    assert.match(rules, /Recommend skincare only; never recommend makeup, tools, devices, fragrance, or haircare\./);
+    assert.doesNotMatch(rules, /makeup, fragrance and haircare only/);
+  });
+});
+
+test('the fallback SCHEMA follows the loaded template, not the ask — no cross-lane cache poisoning', () => {
+  // loadRecoPromptTemplateFile caches by FILENAME while the fallback CONTENT is scope-dependent, so
+  // if the fallback branch keyed off the ask instead of the template, whichever lane ran first would
+  // poison the other through a shared cache entry. Both lanes name the same missing file here, so a
+  // scope-keyed branch would hand the second caller the first caller's rules.
+  withRoutesEnv({ RECO_MAIN_PROMPT_TEMPLATE_ID: 'reco_main_no_such_shared_v9' }, (reloaded) => {
+    const wideFirst = reloaded.buildAuroraProductRecommendationsPromptBundle({ ...PROMPT_ARGS, promptDomainScope: 'beauty' });
+    const narrowSecond = reloaded.buildAuroraProductRecommendationsPromptBundle({ ...PROMPT_ARGS });
+    assert.equal(wideFirst.prompt_spec.template_id, narrowSecond.prompt_spec.template_id);
+    assert.deepEqual(
+      wideFirst.user_payload.hard_rules,
+      narrowSecond.user_payload.hard_rules,
+      'one template, one set of hard_rules — order of callers must not change them',
+    );
+    assert.match(narrowSecond.user_payload.hard_rules.join(' | '), /Recommend skincare only;/);
+  });
+});
+
+test('repointing the CHAT template cannot half-arm this door', () => {
+  // Regression: the wide id used to default to the literal 'reco_main_v1_2', so bumping the chat
+  // lane's template left the two ids DIFFERENT and armed wide_template_active — a beauty task line
+  // wrapped around a skincare-only system prompt, the exact state resolveRecoMainPromptSpec exists to
+  // prevent. It now inherits RECO_MAIN_PROMPT_TEMPLATE_ID, so "off" holds by construction.
+  for (const narrowId of ['reco_main_v1_0', 'reco_main_v1_1', 'reco_main_v1_2']) {
+    withRoutesEnv({ RECO_MAIN_PROMPT_TEMPLATE_ID: narrowId }, (reloaded) => {
+      const spec = reloaded.resolveRecoMainPromptSpec({ promptDomainScope: 'beauty' });
+      assert.equal(spec.template_id, narrowId, `the door must follow the chat template (${narrowId})`);
+      assert.equal(spec.wide_template_active, false, `bumping the chat template must not arm the door (${narrowId})`);
+      const wide = reloaded.buildAuroraProductRecommendationsPromptBundle({ ...PROMPT_ARGS, promptDomainScope: 'beauty' });
+      const narrow = reloaded.buildAuroraProductRecommendationsPromptBundle({ ...PROMPT_ARGS });
+      assert.equal(wide.query, narrow.query, `the ask must stay inert at ${narrowId}`);
+    });
   }
+  // ...and arming still works on top of a bumped chat template.
+  withRoutesEnv({ RECO_MAIN_PROMPT_TEMPLATE_ID: 'reco_main_v1_1', RECO_MAIN_WIDE_PROMPT_TEMPLATE_ID: 'reco_main_v1_3' }, (reloaded) => {
+    const spec = reloaded.resolveRecoMainPromptSpec({ promptDomainScope: 'beauty' });
+    assert.equal(spec.template_id, 'reco_main_v1_3');
+    assert.equal(spec.wide_template_active, true);
+  });
+});
+
+test('the step-aware catalog-first branch forwards the ask too — the second prompt-state call site', async () => {
+  // The other buildRecoLlmPromptState call site. Deleting `promptDomainScope` there left the whole
+  // suite green, so the day the wide id is armed with this flag on, that sub-lane would silently keep
+  // the narrow template while the rest of the door widened: a half-armed door, invisible to CI.
+  await withRoutesEnvAsync({ AURORA_BFF_RECO_STEP_AWARE_CATALOG_FIRST_ENABLED: 'true' }, async (reloaded) => {
+    const res = await reloaded.generateProductRecommendations({
+      ctx: { ...BASE_CTX },
+      profile: null,
+      recentLogs: [],
+      message: 'I need a moisturizer step for my routine',
+      focus: 'I need a moisturizer step for my routine',
+      includeAlternatives: false,
+      debug: true,
+      logger: null,
+      budgetMs: 4000,
+      entryType: 'direct',
+      recoTriggerSource: 'agent_tool',
+      promptDomainScope: 'beauty',
+    });
+    assert.equal(res.llmTrace.prompt_domain_scope, 'beauty',
+      'the step-aware branch must carry the ask as far as the default path does');
+    // Still inert while v1_3 is unregistered upstream — the ask travels, the template does not change.
+    assert.equal(res.llmTrace.template_id, 'reco_main_v1_2');
+    assert.equal(res.llmTrace.wide_template_active, false);
+  });
 });
