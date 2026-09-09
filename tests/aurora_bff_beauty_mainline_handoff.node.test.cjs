@@ -14,6 +14,16 @@ process.env.AURORA_PRODUCT_GROUNDING_STABLE_ALIAS_PATH = path.join(
 );
 
 const { createBeautyChatMainlineEntryRuntime } = require('../src/auroraBff/beautyChatMainlineEntry');
+const recoAnswerPathMetrics = require('../src/auroraBff/visionMetrics');
+
+function recoAnswerPathCounts() {
+  const out = {};
+  for (const line of recoAnswerPathMetrics.renderVisionMetricsPrometheus().split('\n')) {
+    const m = /^aurora_reco_answer_path_total\{door="([^"]+)",path="([^"]+)"\} (\d+)/.exec(line);
+    if (m) out[`${m[1]}/${m[2]}`] = Number(m[3]);
+  }
+  return out;
+}
 const { createBeautyChatMainlineEnvelopeRuntime } = require('../src/auroraBff/beautyChatMainlineEnvelope');
 const { resolveRecommendationTargetContext } = require('../src/auroraBff/recommendationSharedStack');
 
@@ -4806,8 +4816,15 @@ test('beauty chat mainline entry invokes llm concern planner before deterministi
     }),
     looksLikeRecommendationRequest: () => true,
     sendChatEnvelope: async () => null,
+    // This door answers WITHOUT entering the reco lane, so the lane's answer-path counter never
+    // sees it. It is a catalog producer that reads no domain prompt — exactly the population #2155
+    // is about — so leaving it uncounted would overstate the share of turns the prompt-reading path
+    // served. Wired to the real recorder here because this is the one test that drives the hard
+    // path end to end.
+    recordAuroraRecoAnswerPath: recoAnswerPathMetrics.recordAuroraRecoAnswerPath,
   });
 
+  const answerPathBefore = recoAnswerPathCounts();
   const result = await runtime.maybeHandleBeautyOwnedChatReco({
     ctx: {
       request_id: 'req_llm_planned_oily',
@@ -4827,6 +4844,13 @@ test('beauty chat mainline entry invokes llm concern planner before deterministi
   });
 
   assert.equal(result?.handled, true);
+  const answerPathAfter = recoAnswerPathCounts();
+  assert.equal(
+    (answerPathAfter['chat/beauty_mainline_grounded'] || 0)
+      - (answerPathBefore['chat/beauty_mainline_grounded'] || 0),
+    1,
+    'the beauty-owned chat door must count the answer it just produced',
+  );
   assert.equal(observed.plannerCalls, 1);
   assert.equal(observed.handoffTargetContext?.framework_owner_source, 'llm_concern_planner');
   assert.equal(observed.handoffTargetContext?.framework_id, 'llm_broad_oily_plan');

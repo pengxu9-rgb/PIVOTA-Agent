@@ -2478,21 +2478,53 @@ function recordAuroraSkinLlmCall({ stage, outcome, delta } = {}) {
   );
 }
 
-function normalizeAuroraRecoAnswerPath(basis) {
-  const token = cleanMetricToken(basis, 'unknown');
-  return (token === 'model_self_report' || token === 'positional' || token === 'none') ? token : 'unknown';
+// THE DOOR THE REQUEST CAME IN BY. This is not `entryType`: the `recommend_products` agent door and
+// the consumer POST /v1/reco/generate lane BOTH pass entryType 'direct', so entry type cannot tell
+// apart the two doors this counter exists to compare. `recoTriggerSource` can, and the chat lane —
+// which sets no trigger source — is identified by its entry type instead.
+const RECO_ANSWER_DOORS = new Set(['agent_tool', 'typed_reco', 'chat']);
+// WHICH PRODUCER ANSWERED, at structuredSource grain rather than collapsed to confidence_basis.
+// Basis maps BOTH catalog paths to 'positional' and folds `legacy_notice` in with a dead leg, which
+// loses exactly the distinctions #2155 turns on: whether the path that reads the domain prompt
+// served the turn, and if not, which promptless path did.
+const RECO_ANSWER_PATHS = new Set([
+  'llm_primary',
+  'catalog_grounded',
+  'catalog_transient_fallback',
+  'legacy_notice',
+  // The beauty-owned chat mainline answers from its own grounded handoff without ever entering the
+  // reco lane, so it has no structuredSource of its own. Named rather than folded into
+  // 'catalog_grounded' because it is a different producer with a different failure mode.
+  'beauty_mainline_grounded',
+  'none',
+]);
+
+function normalizeRecoAnswerDoor(door, entryType) {
+  const doorToken = cleanMetricToken(door, '');
+  if (RECO_ANSWER_DOORS.has(doorToken)) return doorToken;
+  const entryToken = cleanMetricToken(entryType, '');
+  if (RECO_ANSWER_DOORS.has(entryToken)) return entryToken;
+  return 'other';
 }
 
-function recordAuroraRecoAnswerPath({ entryType, basis, delta } = {}) {
+function normalizeRecoAnswerPath(path) {
+  const token = cleanMetricToken(path, '');
+  // ABSENT and UNRECOGNISED are different facts and must not share a bucket. Absent means no path
+  // produced an answer — a dead leg — and that is a real, expected outcome worth counting as such.
+  // A non-empty value we do not know is a path someone added without extending this list, and it
+  // should show up as 'unknown' rather than hide among the dead legs.
+  if (!token) return 'none';
+  return RECO_ANSWER_PATHS.has(token) ? token : 'unknown';
+}
+
+function recordAuroraRecoAnswerPath({ door, entryType, path, delta } = {}) {
   const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
   if (amount <= 0) return;
   incCounter(
     auroraRecoAnswerPathCounter,
     {
-      // The DOOR matters as much as the path: measured 2026-09-09, the consumer lane answered
-      // llm_primary 16/16 while the agent door used both. One number over both would have hidden it.
-      entry_type: cleanMetricToken(entryType, 'unknown'),
-      basis: normalizeAuroraRecoAnswerPath(basis),
+      door: normalizeRecoAnswerDoor(door, entryType),
+      path: normalizeRecoAnswerPath(path),
     },
     amount,
   );
@@ -3374,9 +3406,10 @@ function renderVisionMetricsPrometheus() {
   lines.push('# TYPE aurora_skin_llm_call_total counter');
   renderCounter(lines, 'aurora_skin_llm_call_total', auroraSkinLlmCallCounter);
 
-  lines.push('# HELP aurora_reco_answer_path_total Recommendation answers grouped by entry door and which path produced them.');
+  lines.push('# HELP aurora_reco_answer_path_total Recommendation answers grouped by the door they arrived at and the path that produced them.');
   lines.push('# TYPE aurora_reco_answer_path_total counter');
   renderCounter(lines, 'aurora_reco_answer_path_total', auroraRecoAnswerPathCounter);
+
   lines.push('# HELP aurora_reco_llm_call_total Total recommendation LLM call decisions grouped by stage and outcome.');
   lines.push('# TYPE aurora_reco_llm_call_total counter');
   renderCounter(lines, 'aurora_reco_llm_call_total', auroraRecoLlmCallCounter);

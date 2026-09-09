@@ -693,9 +693,16 @@ function createLegacyRecoGenerationEngineRuntime(deps = {}) {
     const confidenceBasis = deriveRecoConfidenceBasis(structuredSource);
     // COUNT THE PATH. Recorded here, in the lane, because the `recommend_products` agent door emits
     // no reco_requested event — a handler-side signal would miss the door #2155 was filed against.
-    // Labelled by entry type too: measured 2026-09-09 the consumer lane answered llm_primary 16/16
-    // while the agent door used both, and one number over both doors would have hidden that.
-    recordAuroraRecoAnswerPath({ entryType, basis: confidenceBasis });
+    //
+    // Labelled by DOOR, not by entry type: the agent door and the consumer direct lane both pass
+    // entryType 'direct', and measured 2026-09-09 the consumer lane answered llm_primary 16/16 while
+    // the agent door produced both. Labelling on entry type would have collapsed the one comparison
+    // this counter exists to make. `recoTriggerSource` separates them; the chat lane sets none, so
+    // the normalizer falls back to its entry type.
+    //
+    // The path label is structuredSource, NOT confidenceBasis: basis maps both catalog paths to
+    // 'positional', and the point is to see which promptless path served the turn.
+    recordAuroraRecoAnswerPath({ door: recoTriggerSource, entryType, path: structuredSource });
     const generationResult = buildLegacyRecoGenerationResult({
       confidenceBasis,
       norm,

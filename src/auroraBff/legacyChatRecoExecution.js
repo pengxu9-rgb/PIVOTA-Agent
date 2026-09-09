@@ -25,6 +25,7 @@ function createLegacyChatRecoExecutionRuntime(deps = {}) {
     classifyRecoUpstreamFailureCode,
     isTransientRecoUpstreamFailureCode,
     recordAuroraRecoLlmCall,
+    recordAuroraRecoAnswerPath,
     normalizeRecoFailureClass,
   } = deps;
 
@@ -126,6 +127,14 @@ function createLegacyChatRecoExecutionRuntime(deps = {}) {
         recoSource = 'catalog_grounded_v1';
         recoMainlineStatus = 'grounded_success';
         recoTelemetryFailureReason = '';
+        // ANOTHER ANSWER THE LANE NEVER SEES. Setting `norm` here makes the guard below skip
+        // generateProductRecommendations entirely, so this grounded answer would go uncounted.
+        // Counted here rather than after the guard so the record sits with the assignment that
+        // causes the skip; the accompanying test drives a real restore and asserts exactly ONE row,
+        // which is what would catch it if the lane ever ran anyway.
+        if (typeof recordAuroraRecoAnswerPath === 'function') {
+          recordAuroraRecoAnswerPath({ door: 'chat', path: 'catalog_grounded' });
+        }
       }
     }
 

@@ -1606,6 +1606,7 @@ const {
   buildConcernTargetContextFromSemanticPlan,
   runConcernSelectorRace,
   applyConcernSelectorRaceOrdering,
+  recordAuroraRecoAnswerPath,
 });
 const {
   shouldEnterLegacyProductRecommendations,
@@ -104020,6 +104021,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           classifyRecoUpstreamFailureCode,
           isTransientRecoUpstreamFailureCode,
           recordAuroraRecoLlmCall,
+          recordAuroraRecoAnswerPath,
           normalizeRecoFailureClass,
           recordAuroraSkinFlowMetric,
           recordAuroraRecoEntrySource,
