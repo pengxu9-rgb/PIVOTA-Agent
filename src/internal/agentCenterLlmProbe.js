@@ -1376,6 +1376,10 @@ async function buildGroundedProviderProbe(input, providerSpec) {
 
     rawRuns.push({
       query: q,
+      // This prompt asks for a merchant-context diagnostic, not a consumer answer.
+      // Stamp outside parsed JSON so model output cannot assert its own provenance.
+      evidence_kind: 'merchant_context_diagnostic',
+      prompt_contract: 'merchant_context_diagnostic_v1',
       raw: rawText,
       parsed,
       product_visible: scored.normalizedFields.product_visible,
@@ -1692,6 +1696,8 @@ async function buildGeminiProbe(input) {
     const normalizedFields = normalizeProbeRunFields(scan_mode, parsed, urlMatch, runPositive);
     rawRuns.push({
       query: q,
+      evidence_kind: 'merchant_context_diagnostic',
+      prompt_contract: 'merchant_context_diagnostic_v1',
       raw: rawText,
       parsed,
       product_visible: normalizedFields.product_visible,

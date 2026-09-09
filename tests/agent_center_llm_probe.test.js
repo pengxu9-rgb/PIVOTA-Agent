@@ -951,6 +951,8 @@ describe('agentCenterLlmProbe — buildGeminiProbe with mocked client + groundin
       max_runs: 1,
       context: { queries: ['X'], product: { title: 'X' } },
     });
+    expect(out.raw_runs[0].evidence_kind).toBe('merchant_context_diagnostic');
+    expect(out.raw_runs[0].prompt_contract).toBe('merchant_context_diagnostic_v1');
     expect(out.raw_runs[0].grounding_sources).toEqual([
       { uri: 'https://vertexaisearch.cloud.google.com/abc', title: 'Sephora' },
       { uri: 'https://vertexaisearch.cloud.google.com/def', title: 'Olive Young Global' },
@@ -1271,6 +1273,8 @@ describe('agentCenterLlmProbe — ChatGPT and Claude providers', () => {
       cost_usd_estimate: expect.any(Number),
     }));
     expect(out.raw_runs[0]).toEqual(expect.objectContaining({
+      evidence_kind: 'merchant_context_diagnostic',
+      prompt_contract: 'merchant_context_diagnostic_v1',
       product_visible: true,
       competitors_listed: ['Sephora'],
       evidence_excerpt: 'Merchant PDP was cited.',
@@ -1381,6 +1385,8 @@ describe('agentCenterLlmProbe — ChatGPT and Claude providers', () => {
     expect(out.scores.visibility_score).toBe(0);
     expect(out.findings.map((f) => f.issue_type)).toContain('ai_visibility_loss');
     expect(out.raw_runs[0]).toEqual(expect.objectContaining({
+      evidence_kind: 'merchant_context_diagnostic',
+      prompt_contract: 'merchant_context_diagnostic_v1',
       raw: '',
       parsed: null,
       product_visible: false,
@@ -1574,6 +1580,8 @@ describe('agentCenterLlmProbe — ChatGPT and Claude providers', () => {
     expect(out.provider).toBe('claude');
     expect(out.scores.visibility_score).toBe(100);
     expect(out.raw_runs[0]).toEqual(expect.objectContaining({
+      evidence_kind: 'merchant_context_diagnostic',
+      prompt_contract: 'merchant_context_diagnostic_v1',
       product_visible: true,
       evidence_excerpt: 'Merchant page cited.',
       grounding_chunks: ['https://merchant.com/p/123'],
@@ -1609,6 +1617,8 @@ describe('agentCenterLlmProbe — ChatGPT and Claude providers', () => {
     expect(out.provider).toBe('claude');
     expect(out.scores.visibility_score).toBe(0);
     expect(out.raw_runs[0]).toEqual(expect.objectContaining({
+      evidence_kind: 'merchant_context_diagnostic',
+      prompt_contract: 'merchant_context_diagnostic_v1',
       raw: '__error__:upstream unavailable',
       parsed: null,
       product_visible: false,
