@@ -140,6 +140,10 @@ function createLegacyRecoGenerationEngineRuntime(deps = {}) {
     recomputeFromProfileUpdate = false,
     budgetMs = null,
     entryType = 'chat',
+    // Set ONLY by the `recommend_products` agent bridge, which advertises a beauty vertical the
+    // skincare-bounded prompt cannot serve (#2155). Absent everywhere else, so chat and the consumer
+    // direct lane keep reco_main_v1_2 unchanged.
+    promptDomainScope = '',
     catalogExternalSeedStrategy = '',
     // The buyer's STRUCTURED price ceiling, when the caller extracted one. Prose in the prompt is not
     // a constraint on RECALL: it only reaches the LLM, and recall is what decides which ~5 candidates
@@ -358,6 +362,7 @@ function createLegacyRecoGenerationEngineRuntime(deps = {}) {
       recentLogs,
       globalStatus,
       mainlineStageTimingsMs,
+      promptDomainScope,
       RECO_MAIN_PROMPT_TEMPLATE_ID,
       RECO_PDP_FAST_EXTERNAL_FALLBACK_ENABLED,
       RECO_DIRECT_RECALL_BEFORE_LLM_ENABLED:

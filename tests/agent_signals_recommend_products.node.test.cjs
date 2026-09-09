@@ -1512,10 +1512,23 @@ test('8e. the tool description and the code agree — the promises are quoted fr
   // gate-passing off-vertical need still reads fit 'high'. Unfixed here, but it must not be unsaid.
   assert.ok(/`fit` is the lane's own confidence in the item, NOT a measure of how well it answers your need/.test(src),
     'the description must not let fit be read as agreement with the need');
-  // The lane's prompt is SKINCARE-only while the tool advertises beauty/skincare — a makeup need comes
-  // back with skincare picks. Narrower than advertised is still a description that must say so.
-  assert.ok(/never to recommend makeup, brushes, beauty tools, devices, fragrance, haircare or supplements/.test(src),
-    "the lane's real (narrower) domain must be stated, since it changes what a makeup need gets back");
+  // THE DOMAIN SENTENCE IS CHECKED AGAINST THE PROMPT THE DOOR ACTUALLY LOADS, not against itself.
+  // Until #2155 the description had to state a domain NARROWER than the tool advertised, because the
+  // lane loaded the skincare-bounded reco_main_v1_2. This bridge now passes promptDomainScope 'beauty'
+  // and the lane loads a wider template, so the description states the wider domain — and the file
+  // named by that scope is read here so a description edit alone cannot make the claim true again.
+  assert.ok(/The lane covers BEAUTY: skincare, makeup, beauty tools and brushes, fragrance, haircare and body care/.test(src),
+    "the domain the door's own prompt allows must be stated, since it changes what a makeup need gets back");
+  assert.ok(/return nothing rather than substitute an adjacent one/.test(src),
+    'the category-fidelity promise must be stated: it is the half that stops a bronzer answering as a serum');
+  const { __internal } = require('../src/auroraBff/routes');
+  const doorSpec = __internal.resolveRecoMainPromptSpec({ promptDomainScope: 'beauty' });
+  const doorPrompt = require('node:fs').readFileSync(
+    path.join(__dirname, '..', 'prompts', doorSpec.system_file), 'utf8');
+  assert.ok(!/Recommend skincare only/.test(doorPrompt),
+    'the description promises beauty; the prompt this door loads must not bound the lane to skincare');
+  assert.ok(/Never substitute an adjacent category/.test(doorPrompt),
+    'the description promises no adjacent-category substitution; the prompt must actually say so');
   assert.ok(surfaceMod, 'the surface module still loads with the edited description');
 });
 
@@ -1544,7 +1557,8 @@ test('8g. the lane admitting it was off-DOMAIN never empties the shortlist — i
   // coverage for needs no keyword list holds. It is not: prompts/reco_main_v1_2.system.txt bounds the
   // lane to "skincare only … never makeup, brushes, beauty tools, devices, fragrance, haircare, or
   // supplements" — NARROWER than the beauty/skincare this tool advertises. So it emits that same
-  // sentence for a bronzer or a brush set, and acting on it emptied the shortlist for in-vertical
+  // sentence for a bronzer or a brush set (its own door loads the wider reco_main_v1_3 since #2155, but
+  // this axis must stay out however the prompt is pointed), and acting on it emptied the shortlist for in-vertical
   // buyers while telling them their beauty need was not beauty.
   for (const [need, warning] of [
     ['a bronzer for contouring', 'Makeup items such as bronzer fall outside the skincare domain; returning skincare picks instead.'],

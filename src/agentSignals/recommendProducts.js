@@ -9,10 +9,13 @@
 // lane's UI envelope into the `{ subject, signals[], metadata }` shape every other insights tool uses.
 //
 // HONEST LIMITS, stated in the tool description too:
-//  - the lane is the Aurora BEAUTY engine today: its prompts, catalog grounding and guardrails are tuned for
-//    skincare/beauty. An off-vertical need answers with an empty shortlist + `missing_info`, not with
-//    fabricated products — and that is now ENFORCED here (offVerticalMarker), not merely hoped for: the lane
-//    itself is a recommender and will happily answer a trading-card need with a cleanser;
+//  - the lane is the Aurora BEAUTY engine today. Its prompt is selected per DOOR: this bridge passes
+//    promptDomainScope 'beauty' and the lane loads reco_main_v1_3 (skincare, makeup, tools, fragrance,
+//    haircare, body care, answer-in-the-category-asked); the Aurora consumer chat lane passes nothing and
+//    keeps the skincare-bounded reco_main_v1_2. Catalog grounding remains deepest in skincare and makeup.
+//    An off-vertical need answers with an empty shortlist + `missing_info`, not with fabricated products —
+//    and that is ENFORCED here (offVerticalMarker), not merely hoped for: the lane itself is a recommender
+//    and will happily answer a trading-card need with a cleanser;
 //  - every returned signal is a CATALOG product with a non-null product_id. The lane also emits
 //    "ungrounded" archetypes (a product it named but could not resolve, every identity field null); they
 //    are suppressed from the shortlist and reported as text on `metadata.unresolved_archetypes`;
@@ -165,7 +168,9 @@ const BEAUTY_RE = anchored([
   String.raw`acne|breakouts?|blackheads?|whiteheads?|pores?|wrinkles?|fine lines|dark spots?|hyperpigmentation|redness|rosacea|eczema|psoriasis|dryness|oiliness|sensitive|dull\w*`,
   String.raw`anti ?ag\w*|brighten\w*|hydrat\w*|soothing|barrier|routines?`,
   String.raw`lips?|lipsticks?|foundations?|concealers?|mascaras?|eyeliners?|eyeshadows?|blush(?:es)?|primers?|nail polish`,
-  // The class the LANE refuses but this TOOL advertises (its prompt is skincare-only; see above).
+  // The class the lane's NARROW prompt refuses and this tool advertises. Since #2155 the tool's own
+  // door loads the wide prompt, so these are in-domain end to end; they stay on the suppression side
+  // because the gate must not refuse them if that prompt is ever pointed back at reco_main_v1_2.
   // These sit on the SUPPRESSION side, so they cost nothing and stop the gate refusing a beauty buyer:
   // measured 2026-09-08, "a bronzer for contouring", "a brush set for my kit" and "a blender sponge"
   // carried no beauty token at all.
@@ -727,6 +732,17 @@ function makeRecommendProducts(deps = {}) {
         logger,
         recoTriggerSource: 'agent_tool',
         entryType: 'direct',
+        // WIDEN THE LANE'S QUESTION, not its answer. This tool advertises beauty; the lane's default
+        // prompt is bounded to skincare, so a makeup/haircare/fragrance need was answered with a
+        // skincare product carrying the exclusion in warnings -- measured 2026-09-08, "a bronzer for
+        // contouring my cheekbones" returned The Ordinary Soothing & Barrier Support Serum at
+        // fit 'high' (#2155).
+        //
+        // Set HERE, by the bridge, and never from `p.*`: it is a property of which door the caller
+        // came through, not something a calling agent may ask for. entryType cannot carry it --
+        // the consumer POST /v1/reco/generate lane shares entryType 'direct' with this tool and its
+        // buyers are on a skincare surface.
+        promptDomainScope: 'beauty',
         budgetMs,
         // Only an ENFORCING ceiling is threaded. A `price_max` the extractor refused (prose, an array,
         // a non-positive number) must leave recall exactly as it is today rather than silently biasing

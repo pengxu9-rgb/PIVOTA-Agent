@@ -780,6 +780,29 @@ const RECO_MAIN_PROMPT_TEMPLATE_ID = String(
 const RECO_INGREDIENT_PROMPT_TEMPLATE_ID = String(
   process.env.RECO_INGREDIENT_PROMPT_TEMPLATE_ID || RECO_MAIN_PROMPT_TEMPLATE_ID,
 ).trim() || RECO_MAIN_PROMPT_TEMPLATE_ID;
+// The SAME lane, asked a wider question. reco_main_v1_2 bounds the planner to skincare
+// ("Never recommend makeup, brushes, beauty tools, devices, fragrance, haircare"), which is right
+// for the Aurora consumer chat lane and wrong for the `recommend_products` agent door, whose
+// advertised vertical is beauty: a bronzer need came back as a barrier serum at fit 'high' with the
+// exclusion stated in warnings (#2155, measured 2026-09-08).
+//
+// The two callers therefore select DIFFERENT templates instead of one being widened under the
+// other. Chat keeps v1_2 untouched; only a caller that passes promptDomainScope 'beauty' reaches
+// v1_3. Rollback is a value, not a boolean: point this env var back at reco_main_v1_2 and the door
+// is narrow again with no deploy — chosen over a flag because a Cloud Run deploy has wiped this
+// service's env vars before (2026-08-30), and a wiped flag must fail to the CURRENT behaviour.
+const RECO_MAIN_WIDE_PROMPT_TEMPLATE_ID = String(
+  process.env.RECO_MAIN_WIDE_PROMPT_TEMPLATE_ID || 'reco_main_v1_3',
+).trim() || 'reco_main_v1_3';
+// The only value that widens the lane. Anything else — '', 'skincare', a typo, an object — is the
+// narrow default, so a mistake upstream cannot silently widen the chat lane.
+const RECO_PROMPT_DOMAIN_SCOPE_BEAUTY = 'beauty';
+function isWideRecoPromptDomainScope(scope) {
+  // typeof-checked, not coerced: String(['beauty']) === 'beauty', so a bare String() here would let a
+  // one-element array widen the lane. Caught by the token test.
+  if (typeof scope !== 'string') return false;
+  return scope.trim().toLowerCase() === RECO_PROMPT_DOMAIN_SCOPE_BEAUTY;
+}
 const RECO_ALTERNATIVES_PROMPT_TEMPLATE_ID = 'reco_alternatives_v1_0';
 const RECO_ALTERNATIVES_HYBRID_PROMPT_TEMPLATE_ID = 'reco_alternatives_hybrid_v1';
 const recoPromptTemplateCache = new Map();
@@ -46015,7 +46038,7 @@ function loadRecoPromptTemplateFile(fileName, { parseJson = false, fallback = ''
   return value;
 }
 
-function resolveRecoMainPromptSpec({ ingredientContext } = {}) {
+function resolveRecoMainPromptSpec({ ingredientContext, promptDomainScope = '' } = {}) {
   const normalizedIngredientContext = normalizeIngredientRecoContextValue(ingredientContext);
   const ingredientMode = Boolean(
     normalizedIngredientContext &&
@@ -46030,9 +46053,17 @@ function resolveRecoMainPromptSpec({ ingredientContext } = {}) {
         (Array.isArray(normalizedIngredientContext.candidates) && normalizedIngredientContext.candidates.length > 0)
       ),
   );
-  const templateId = ingredientMode ? RECO_INGREDIENT_PROMPT_TEMPLATE_ID : RECO_MAIN_PROMPT_TEMPLATE_ID;
+  // Ingredient mode wins: it has its own template and its own contract, and the wide scope has
+  // nothing to say about an ingredient lookup. Widening is only ever the plain goal-based path.
+  const domainWide = !ingredientMode && isWideRecoPromptDomainScope(promptDomainScope);
+  const templateId = ingredientMode
+    ? RECO_INGREDIENT_PROMPT_TEMPLATE_ID
+    : (domainWide ? RECO_MAIN_WIDE_PROMPT_TEMPLATE_ID : RECO_MAIN_PROMPT_TEMPLATE_ID);
   return {
     ingredient_mode: ingredientMode,
+    // Reported, not inferred downstream: the template id alone cannot say whether the wide lane was
+    // ASKED for (an operator may point both env vars at one file), and telemetry needs the ask.
+    domain_scope: domainWide ? RECO_PROMPT_DOMAIN_SCOPE_BEAUTY : 'skincare',
     llm_mode: ingredientMode ? 'ingredient_filtered_products' : 'goal_based_products',
     template_id: templateId,
     schema_file: `${templateId}.user_schema.json`,
@@ -71310,6 +71341,7 @@ function buildRecoMainPromptPayload({
   ingredientContext,
   promptSpec,
 } = {}) {
+  const domainWide = isWideRecoPromptDomainScope(promptSpec && promptSpec.domain_scope);
   const fallbackSchema = {
     meta: { lang: 'EN', intent: 'reco_products', region: 'US', no_clarify: true },
     profile: { skinType: null, sensitivity: null, barrierStatus: null, goals: [], contraindications: [] },
@@ -71362,7 +71394,14 @@ function buildRecoMainPromptPayload({
     },
     hard_rules: [
       'Do not ask clarifying questions.',
-      'Recommend skincare only; never recommend makeup, tools, devices, fragrance, or haircare.',
+      // Scope-aware on purpose. This branch runs only when the template FILE is unreadable, and a
+      // hardcoded skincare-only rule here would re-narrow the wide door with no trace in the diff.
+      ...(domainWide
+        ? [
+          'Recommend beauty only: skincare, makeup, beauty tools, fragrance, haircare, body care. Never supplements, ingestibles, medication, medical devices, or non-beauty categories.',
+          'Answer in the category the request names. Never substitute an adjacent category: a bronzer request is not answered with a serum.',
+        ]
+        : ['Recommend skincare only; never recommend makeup, tools, devices, fragrance, or haircare.']),
       'Do not output routines or AM/PM plans.',
       'Do not invent purchase links, product ids, or availability.',
       'Use candidates[] only as optional grounding hints, not as a hard restriction.',
@@ -71451,13 +71490,21 @@ function buildRecoMainPromptPayload({
   return payload;
 }
 
-function buildAuroraProductRecommendationsPromptBundle({ profile, requestText, lang, globalStatus, candidates, ingredientContext } = {}) {
-  const promptSpec = resolveRecoMainPromptSpec({ ingredientContext });
+function buildAuroraProductRecommendationsPromptBundle({ profile, requestText, lang, globalStatus, candidates, ingredientContext, promptDomainScope = '' } = {}) {
+  const promptSpec = resolveRecoMainPromptSpec({ ingredientContext, promptDomainScope });
+  const domainWide = isWideRecoPromptDomainScope(promptSpec.domain_scope);
   const fallbackSystemPrompt = [
-    'You are a precision skincare recommendation planner.',
+    domainWide
+      ? 'You are a precision beauty recommendation planner.'
+      : 'You are a precision skincare recommendation planner.',
     '',
     'Output MUST be a single valid JSON object only. No markdown, no extra keys, no commentary.',
-    'Recommend skincare only. Never recommend makeup, brushes, tools, devices, fragrance, or haircare.',
+    ...(domainWide
+      ? [
+        'Recommend beauty only: skincare, makeup, beauty tools and brushes, fragrance, haircare, body care. Never supplements, ingestibles, medication, or medical devices.',
+        'Answer in the category the request names; never substitute an adjacent one. If the requested category cannot be served, return an empty list and say so in missing_info.',
+      ]
+      : ['Recommend skincare only. Never recommend makeup, brushes, tools, devices, fragrance, or haircare.']),
     'Never invent or guess product identifiers, SKUs, prices, availability, or citations. If unknown, use null.',
     'Candidates are optional grounding hints only. Do not constrain recommendation quality to candidates[].',
     'Return fewer recommendations instead of weak guesses.',
@@ -71486,7 +71533,7 @@ function buildAuroraProductRecommendationsPromptBundle({ profile, requestText, l
     userPayload: payload,
   });
   return {
-    query: `Task: Generate a user-adaptive skincare recommendation plan (NOT a full AM/PM routine).\n${promptBody}`,
+    query: `Task: Generate a user-adaptive ${domainWide ? 'beauty' : 'skincare'} recommendation plan (NOT a full AM/PM routine).\n${promptBody}`,
     prompt_spec: promptSpec,
     user_payload: payload,
     system_prompt: systemPrompt,
@@ -71495,8 +71542,9 @@ function buildAuroraProductRecommendationsPromptBundle({ profile, requestText, l
   };
 }
 
-function buildAuroraProductRecommendationsQuery({ profile, requestText, lang, globalStatus, candidates, ingredientContext }) {
+function buildAuroraProductRecommendationsQuery({ profile, requestText, lang, globalStatus, candidates, ingredientContext, promptDomainScope = '' }) {
   return buildAuroraProductRecommendationsPromptBundle({
+    promptDomainScope,
     profile,
     requestText,
     lang,
@@ -84410,6 +84458,9 @@ function buildRecoLlmPromptState({
   globalStatus = null,
   ingredientContext = null,
   candidates = [],
+  // Which domain the CALLER is entitled to. Chat never sets it and keeps reco_main_v1_2; the
+  // agent-door bridge sets 'beauty' (#2155). See RECO_MAIN_WIDE_PROMPT_TEMPLATE_ID.
+  promptDomainScope = '',
 } = {}) {
   const promptBundle = buildAuroraProductRecommendationsPromptBundle({
     profile: profileSummary || {},
@@ -84418,6 +84469,7 @@ function buildRecoLlmPromptState({
     globalStatus: isPlainObject(globalStatus) ? globalStatus : {},
     candidates: Array.isArray(candidates) ? candidates : [],
     ingredientContext,
+    promptDomainScope,
   });
   const query = `${prefix}${promptBundle.query}`;
   const llmTraceCoverage = buildRecoInputCoverage({
@@ -84436,6 +84488,7 @@ function buildRecoLlmPromptState({
   });
   llmTraceSeed.schema_chars = Number(promptBundle.schema_chars || 0);
   llmTraceSeed.llm_mode = String(promptBundle.prompt_spec.llm_mode || '').trim() || null;
+  llmTraceSeed.prompt_domain_scope = String(promptBundle.prompt_spec.domain_scope || '').trim() || null;
   llmTraceSeed.candidate_count = Array.isArray(candidates) ? candidates.length : 0;
   const promptContractBase = validateRecoPromptContract({
     query,
@@ -105592,6 +105645,7 @@ const __internal = {
   buildAuroraProductRecommendationsPromptBundle,
   buildIngredientRecoUpstreamPrompt,
   buildAuroraProductRecommendationsQuery,
+  buildAuroraProductRecommendationsPromptBundle,
   buildAuroraRecoAlternativesQuery,
   buildRecoAlternativesTargetSignals,
   buildRecoAlternativesLocalSeedSearchRole,

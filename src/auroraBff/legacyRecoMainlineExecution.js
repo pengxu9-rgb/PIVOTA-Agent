@@ -135,6 +135,10 @@ function createLegacyRecoMainlineExecutionRuntime(deps = {}) {
     recentLogs = [],
     globalStatus = {},
     mainlineStageTimingsMs = {},
+    // '' (chat, consumer /v1/reco/generate) keeps the skincare-bounded template; 'beauty' selects the
+    // wider one for the agent door only (#2155). Threaded rather than inferred from entryType: the
+    // consumer direct lane shares entryType 'direct' with the tool and must NOT widen.
+    promptDomainScope = '',
     RECO_MAIN_PROMPT_TEMPLATE_ID = 'reco_main_v1_2',
     RECO_PDP_FAST_EXTERNAL_FALLBACK_ENABLED = false,
     RECO_DIRECT_RECALL_BEFORE_LLM_ENABLED = true,
@@ -294,6 +298,7 @@ function createLegacyRecoMainlineExecutionRuntime(deps = {}) {
         globalStatus,
         ingredientContext: normalizedIngredientContext,
         candidates: catalogCandidatePool,
+        promptDomainScope,
       });
       promptBundle = promptState.promptBundle;
       query = promptState.query;
@@ -450,6 +455,7 @@ function createLegacyRecoMainlineExecutionRuntime(deps = {}) {
         globalStatus,
         ingredientContext: normalizedIngredientContext,
         candidates: catalogCandidatePool,
+        promptDomainScope,
       });
       promptBundle = promptState.promptBundle;
       query = promptState.query;
