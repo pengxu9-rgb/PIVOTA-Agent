@@ -169,6 +169,16 @@ function getPool() {
           : undefined,
     });
     if (typeof nextPool.on === 'function') {
+      // Connection age is a diagnostic we cannot reconstruct later: pg exposes no
+      // birth time, and "was this socket fresh or hours old?" is exactly what
+      // separates a stale-connection stall from a slow statement.
+      nextPool.on('connect', (client) => {
+        try {
+          client.__pivotaConnectedAtMs = Date.now();
+        } catch {
+          // a frozen/mock client is not worth failing a connection over
+        }
+      });
       nextPool.on('error', (err) => {
         logger.warn(
           { err: err?.message || String(err), code: err?.code || null },
@@ -236,14 +246,23 @@ function buildBudgetTimeoutError(code, { budgetMs, waitedMs }) {
   return err;
 }
 
-function raceAgainstBudget(promise, timeoutMs, code, { budgetMs, startedAt }) {
+function raceAgainstBudget(promise, timeoutMs, code, { budgetMs, startedAt, diagnostics = null }) {
   let timer = null;
+  const scheduledFireAtMs = Date.now() + timeoutMs;
   const timeout = new Promise((_, reject) => {
     timer = setTimeout(() => {
-      reject(buildBudgetTimeoutError(code, {
+      // How late this timer fired is a direct read on event-loop health: a timer
+      // cannot run while the loop is blocked, so a large lag means the process
+      // was busy and could not drain its sockets either. A lag near zero says the
+      // loop was free and the wait was genuinely out in the network or the server.
+      const lagMs = Math.max(0, Date.now() - scheduledFireAtMs);
+      if (diagnostics) diagnostics.timer_lag_ms = lagMs;
+      const err = buildBudgetTimeoutError(code, {
         budgetMs,
         waitedMs: Math.max(0, Date.now() - startedAt),
-      }));
+      });
+      err.timer_lag_ms = lagMs;
+      reject(err);
     }, timeoutMs);
   });
   return Promise.race([promise, timeout]).finally(() => {
@@ -281,6 +300,22 @@ async function queryWithBudget(text, params, options = {}) {
   const p = getPool();
   if (!p) throw buildNoDatabaseError();
 
+  // Callers may hand in an object to be filled with what this call actually did.
+  // Split timings and pool census are the difference between "the pool is full",
+  // "the loop was blocked" and "the server or the wire was slow" — from outside
+  // they produce the same symptom, a caller that waited and gave up.
+  const diagnostics = options.diagnostics && typeof options.diagnostics === 'object'
+    ? options.diagnostics
+    : null;
+  const capturePoolCensus = () => {
+    if (!diagnostics) return;
+    if (Number.isFinite(Number(p.totalCount))) diagnostics.pool_total = Number(p.totalCount);
+    if (Number.isFinite(Number(p.idleCount))) diagnostics.pool_idle = Number(p.idleCount);
+    if (Number.isFinite(Number(p.waitingCount))) diagnostics.pool_waiting = Number(p.waitingCount);
+  };
+  if (diagnostics) diagnostics.budget_ms = budgetMs;
+  capturePoolCensus();
+
   const startedAt = Date.now();
   const acquire = p.connect();
   let client = null;
@@ -288,8 +323,12 @@ async function queryWithBudget(text, params, options = {}) {
     client = await raceAgainstBudget(acquire, budgetMs, DB_BUDGET_ACQUIRE_TIMEOUT, {
       budgetMs,
       startedAt,
+      diagnostics,
     });
   } catch (err) {
+    if (diagnostics) diagnostics.acquire_ms = Math.max(0, Date.now() - startedAt);
+    capturePoolCensus();
+    if (diagnostics) err.diagnostics = { ...diagnostics };
     if (err?.code === DB_BUDGET_ACQUIRE_TIMEOUT) {
       // We are still in pg's checkout queue and cannot leave it. Give the slot
       // straight back to the next waiter rather than spending it on a query
@@ -306,6 +345,19 @@ async function queryWithBudget(text, params, options = {}) {
       );
     }
     throw err;
+  }
+
+  const acquiredAt = Date.now();
+  if (diagnostics) {
+    diagnostics.acquire_ms = Math.max(0, acquiredAt - startedAt);
+    const connectedAtMs = Number(client?.__pivotaConnectedAtMs);
+    if (Number.isFinite(connectedAtMs)) {
+      diagnostics.conn_age_ms = Math.max(0, acquiredAt - connectedAtMs);
+    }
+    if (Number.isFinite(Number(client?._poolUseCount))) {
+      diagnostics.conn_use_count = Number(client._poolUseCount);
+    }
+    capturePoolCensus();
   }
 
   const remainingMs = budgetMs - (Date.now() - startedAt);
@@ -327,13 +379,20 @@ async function queryWithBudget(text, params, options = {}) {
     // Inside the try: `client.query` can throw synchronously (a malformed
     // query), and that path must still hand the connection back.
     queryPromise = client.query(text, params);
-    return await raceAgainstBudget(
+    const result = await raceAgainstBudget(
       queryPromise,
       remainingMs,
       DB_BUDGET_QUERY_TIMEOUT,
-      { budgetMs, startedAt },
+      { budgetMs, startedAt, diagnostics },
     );
+    if (diagnostics) diagnostics.query_ms = Math.max(0, Date.now() - acquiredAt);
+    return result;
   } catch (err) {
+    if (diagnostics) {
+      diagnostics.query_ms = Math.max(0, Date.now() - acquiredAt);
+      capturePoolCensus();
+      err.diagnostics = { ...diagnostics };
+    }
     const budgetExpired = err?.code === DB_BUDGET_QUERY_TIMEOUT;
     if (queryPromise && (budgetExpired || isTransientDbError(err))) {
       // The statement is still running server-side. Returning this connection

@@ -18350,3 +18350,46 @@ test('__internal: a starved checkout is recorded as pool_acquire, not as a slow 
   // remedy is pool capacity, not a faster query.
   assert.equal(stage?.timeout_cause, 'pool_acquire');
 });
+
+test('__internal: the stage ledger carries the db diagnostics that attribute a stall', async () => {
+  const { __internal } = loadRoutesFresh();
+
+  const out = await __internal.searchLocalExternalSeedProducts({
+    query: 'salicylic acid serum clogged pores',
+    limit: 6,
+    role: {
+      role_id: 'acne_clogged_pore_treatment',
+      rank: 11,
+      preferred_step: 'treatment',
+      query_terms: ['salicylic acid treatment'],
+      fit_keywords: ['clogged', 'pore'],
+      product_type_hypotheses: ['serum'],
+    },
+    preferredStep: 'treatment',
+    timeoutMs: 4000,
+    queryFn: async (sql, params, options) => {
+      // Stand in for the db layer, which is what fills this object in prod.
+      Object.assign(options.diagnostics, {
+        budget_ms: options.timeoutMs,
+        acquire_ms: 3,
+        query_ms: 5,
+        pool_total: 6,
+        pool_idle: 0,
+        pool_waiting: 2,
+        conn_age_ms: 91000,
+        timer_lag_ms: 0,
+      });
+      return { rows: [] };
+    },
+  });
+
+  const stage = out.local_external_seed_stage_debug[0];
+  assert.ok(stage?.db, 'stage debug should carry the db diagnostics');
+  // acquire vs query is the split that says whether the pool or the statement
+  // owned the wait; pool_waiting and timer_lag say which pressure caused it.
+  assert.equal(stage.db.acquire_ms, 3);
+  assert.equal(stage.db.query_ms, 5);
+  assert.equal(stage.db.pool_waiting, 2);
+  assert.equal(stage.db.conn_age_ms, 91000);
+  assert.equal(stage.db.timer_lag_ms, 0);
+});
