@@ -67,6 +67,7 @@ function createLegacyRecoGenerationResultRuntime(deps = {}) {
     stepAwareMainlineFailure = null,
     normalizedIngredientContext = null,
     llmTrace = null,
+    categoryFidelity = null,
     frameworkMainlineWarningNonBlocking = false,
     beautyMainlineHandoffNonBlocking = false,
     stepAwarePoolWarningNonBlocking = false,
@@ -199,6 +200,10 @@ function createLegacyRecoGenerationResultRuntime(deps = {}) {
           ? norm.payload.recommendation_meta
           : {}),
         source_mode: sourceMode,
+        // The verdict is stamped on EVERY answer path, including the ones that never read a prompt,
+        // so "did this answer the category asked for" becomes a thing you can count rather than a
+        // thing you notice in a screenshot.
+        ...(isPlainObject(categoryFidelity) ? { category_fidelity: categoryFidelity } : {}),
         trigger_source: normalizedRecoTriggerSource,
         recompute_from_profile_update: recomputeFromProfileUpdateFlag,
         used_recent_logs: Array.isArray(recentLogs) && recentLogs.length > 0,

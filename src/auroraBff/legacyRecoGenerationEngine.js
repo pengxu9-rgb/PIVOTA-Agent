@@ -4,6 +4,8 @@ const {
 const {
   createLegacyRecoRecommendationPostFiltersRuntime,
 } = require('./legacyRecoRecommendationPostFilters');
+const { evaluateRecoCategoryFidelity } = require('./recoCategoryFidelity');
+const { classifyBeautyCoarseCandidate } = require('../shared/beautyRecoCoarseClassifier');
 const {
   createLegacyRecoGenerationResultRuntime,
 } = require('./legacyRecoGenerationResult');
@@ -679,7 +681,20 @@ function createLegacyRecoGenerationEngineRuntime(deps = {}) {
     }
     const terminalSuccess = finalRecommendations.length > 0
       && normalizeRecoEffectiveFailureClass(effectiveFailureClass || 'none') === 'none';
+    // DID THE ANSWER COME BACK IN THE CATEGORY THE BUYER ASKED FOR? Computed HERE, after the
+    // ungrounded-recovery swap above, because this is the one point where `structured` is final for
+    // EVERY path — llm_primary, catalog_grounded, the transient fallback and the recovery swap all
+    // converge before it. The domain rules that would otherwise answer this live in an LLM prompt,
+    // and the catalog path never reads one, which is why #2155 cannot be fixed upstream of here.
+    //
+    // REPORTED, NOT ENFORCED. Nothing below acts on this verdict. See recoCategoryFidelity.js.
+    const categoryFidelity = evaluateRecoCategoryFidelity({
+      requestText: userAsk,
+      items: Array.isArray(structured?.recommendations) ? structured.recommendations : [],
+      classifyCoarse: classifyBeautyCoarseCandidate,
+    });
     const generationResult = buildLegacyRecoGenerationResult({
+      categoryFidelity,
       norm,
       finalRecommendations,
       structuredSource,
