@@ -237,6 +237,8 @@ jobs:
         run: |
           npx jest --runInBand \
             tests/external_seed_marketing_text.test.js \
+            tests/external_seed_recall.test.js \
+            tests/external_seed_recall_doc_single_build.test.js \
             tests/integration/invoke.find_products_multi_cache_search.test.js \
             tests/integration/invoke.find_products_multi_strict_surface.test.js \
             tests/integration/invoke.get_discovery_feed.test.js \

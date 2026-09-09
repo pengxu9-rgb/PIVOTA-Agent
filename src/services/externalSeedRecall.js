@@ -879,7 +879,12 @@ function resolveExternalSeedRecallDoc({ row = {}, seedData = {}, snapshot = {} }
     });
 
     return {
-      ...buildExternalSeedRecallDoc({ row, seedData, snapshot }),
+      // `fallback` above is this exact call with these exact arguments, and the
+      // function is pure. Calling it again rebuilt the whole doc a second time
+      // per row -- every text scan, every token pass -- for a byte-identical
+      // result. It doubled the cost of the quadratic stripper before #2153 and
+      // it still doubles the residual.
+      ...fallback,
       ...stored,
       retrieval_title: retrievalTitle,
       retrieval_summary: retrievalSummary,
