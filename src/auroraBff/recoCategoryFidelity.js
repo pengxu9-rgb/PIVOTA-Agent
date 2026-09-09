@@ -11,7 +11,10 @@
 //
 // THIS MODULE ONLY REPORTS. It does not empty a shortlist. The precision of the request classifier
 // below is what decides whether acting on it is safe, and that number does not exist yet for real
-// traffic — #2149 already emptied in-vertical buyers' shortlists once by acting on a signal that
+// traffic. Adversarial review found 55 false positives across 129 hand-written needs it wrote
+// itself ("dog shampoo" -> haircare, "toner cartridge for my hp printer" -> skincare, "a fan brush
+// for watercolour painting" -> beauty_tool). The corpus in the test file is a FLOOR against
+// regression, not evidence of precision — #2149 already emptied in-vertical buyers' shortlists once by acting on a signal that
 // looked good enough, and the fix was to stop acting on it. Measure first.
 //
 // Two asymmetric jobs:
@@ -66,9 +69,13 @@ const REQUEST_CATEGORY_PATTERNS = [
 /**
  * The category a NEED names, or null when it does not clearly name one.
  *
- * Deliberately refuses to answer when the need matches more than one category: "a bronzer that will
- * not break me out" names makeup AND an acne concern, and picking either would be a guess. An
- * ambiguous need is exactly the one where emptying a shortlist would hurt a real buyer.
+ * Deliberately refuses to answer when the need matches more than one category: "a fragrance-free
+ * moisturiser" names fragrance AND skincare, and picking either would be a guess. An ambiguous need
+ * is exactly the one where emptying a shortlist would hurt a real buyer.
+ *
+ * (An earlier version of this comment used "a bronzer that will not break me out" as the example.
+ * That need resolves to makeup, because the skincare family matches `breakouts?` and not "break me
+ * out" — the comment described a refusal the code does not make.)
  */
 function classifyRecoRequestCategory(requestText) {
   const text = normalizeForMatch(requestText);
@@ -104,6 +111,28 @@ const CATEGORY_PATH_PREFIXES = [
   [/^beauty\/(?:skincare|skin[_-]care|body)\b/i, 'skincare'],
 ];
 
+// THE FIELDS SERVED ROWS ACTUALLY CARRY. An earlier version read `category_path` and called it
+// authoritative; review showed served rows do not have one — the catalog builder emits `category`
+// (a product type such as 'serum'), and grounded rows keep the catalog product under `sku`. The
+// path branch above stayed dead in production while the fixtures injected a shape prod never
+// produces. These are the real fields, checked against a live row.
+const PRODUCT_TYPE_CATEGORY = [
+  [/^(?:bronzer|blush|highlighter|foundation|concealer|primer|lipstick|lip gloss|lip liner|mascara|eyeliner|eyeshadow|brow|setting spray|setting powder|bb cream|cc cream)$/i, 'makeup'],
+  [/^(?:shampoo|conditioner|hair mask|hair oil|hair serum|hair treatment|dry shampoo|styling)$/i, 'haircare'],
+  [/^(?:fragrance|perfume|cologne|eau de parfum|eau de toilette|body mist)$/i, 'fragrance'],
+  [/^(?:brush|makeup brush|sponge|beauty blender|applicator|gua sha|jade roller|device|tool)$/i, 'beauty_tool'],
+  [/^(?:cleanser|serum|moisturizer|moisturiser|sunscreen|treatment|toner|essence|ampoule|exfoliant|mask|eye cream|face oil|balm|lotion|cream)$/i, 'skincare'],
+];
+
+function categoryFromProductTypeToken(value) {
+  const token = String(value || '').trim().toLowerCase();
+  if (!token) return null;
+  for (const [pattern, category] of PRODUCT_TYPE_CATEGORY) {
+    if (pattern.test(token)) return category;
+  }
+  return null;
+}
+
 /**
  * The category an ANSWER ITEM belongs to, or null. category_path is authoritative because the
  * catalog assigns it; the coarse classifier is a fallback for rows that carry none.
@@ -111,12 +140,27 @@ const CATEGORY_PATH_PREFIXES = [
 function classifyRecoItemCategory(item, { classifyCoarse = null } = {}) {
   if (!item || typeof item !== 'object') return { category: null, reason: 'not_an_item' };
   const path = String(
-    item.category_path || item.categoryPath || (item.product && item.product.category_path) || '',
+    item.category_path
+    || item.categoryPath
+    || (item.product && item.product.category_path)
+    || (item.sku && item.sku.category_path)
+    || '',
   ).trim();
   if (path) {
     for (const [pattern, category] of CATEGORY_PATH_PREFIXES) {
       if (pattern.test(path)) return { category, reason: 'category_path', path };
     }
+  }
+  // The fields a served row really has. `product_type` and `step` come from the lane's own
+  // normalisation, `category`/`sku.category` from the catalog row.
+  for (const [field, value] of [
+    ['product_type', item.product_type],
+    ['category', item.category],
+    ['sku_category', item.sku && item.sku.category],
+    ['step', item.step],
+  ]) {
+    const category = categoryFromProductTypeToken(value);
+    if (category) return { category, reason: field };
   }
   if (typeof classifyCoarse === 'function') {
     let coarse = null;

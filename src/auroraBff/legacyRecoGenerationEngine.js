@@ -681,20 +681,21 @@ function createLegacyRecoGenerationEngineRuntime(deps = {}) {
     }
     const terminalSuccess = finalRecommendations.length > 0
       && normalizeRecoEffectiveFailureClass(effectiveFailureClass || 'none') === 'none';
-    // DID THE ANSWER COME BACK IN THE CATEGORY THE BUYER ASKED FOR? Computed HERE, after the
-    // ungrounded-recovery swap above, because this is the one point where `structured` is final for
-    // EVERY path — llm_primary, catalog_grounded, the transient fallback and the recovery swap all
-    // converge before it. The domain rules that would otherwise answer this live in an LLM prompt,
-    // and the catalog path never reads one, which is why #2155 cannot be fixed upstream of here.
+    // CATEGORY FIDELITY is computed in buildLegacyRecoGenerationResult, not here.
     //
-    // REPORTED, NOT ENFORCED. Nothing below acts on this verdict. See recoCategoryFidelity.js.
-    const categoryFidelity = evaluateRecoCategoryFidelity({
-      requestText: userAsk,
-      items: Array.isArray(structured?.recommendations) ? structured.recommendations : [],
-      classifyCoarse: classifyBeautyCoarseCandidate,
-    });
+    // It used to be computed at this seam on `structured.recommendations`. Review showed that is the
+    // wrong list: `structured` is final as INPUT to the post-mainline pass, not as the answer, and
+    // the served list is what post-mainline returns after grounding, dedupe (maxItems 8) and the
+    // framework pass. With nine rows and a bronzer last, the bronzer was dropped and the verdict
+    // still said `matched`.
+    //
+    // `focus` rather than `userAsk` is passed for the same class of reason: on the agent door
+    // `userAsk` is buildRecoGenerateUserAsk's composition, "Recommend a few SKINCARE products for me
+    // with focus on <need>", so the classifier was reading a template word. It scored the bronzer
+    // need `unresolved` (makeup + the template's skincare) and scored "something nice for my
+    // girlfriend" a confident skincare.
     const generationResult = buildLegacyRecoGenerationResult({
-      categoryFidelity,
+      categoryFidelityRequestText: focus || userAsk,
       norm,
       finalRecommendations,
       structuredSource,

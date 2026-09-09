@@ -1,3 +1,6 @@
+const { evaluateRecoCategoryFidelity } = require('./recoCategoryFidelity');
+const { classifyBeautyCoarseCandidate } = require('../shared/beautyRecoCoarseClassifier');
+
 function createLegacyRecoGenerationResultRuntime(deps = {}) {
   const {
     isPlainObject,
@@ -67,7 +70,7 @@ function createLegacyRecoGenerationResultRuntime(deps = {}) {
     stepAwareMainlineFailure = null,
     normalizedIngredientContext = null,
     llmTrace = null,
-    categoryFidelity = null,
+    categoryFidelityRequestText = '',
     frameworkMainlineWarningNonBlocking = false,
     beautyMainlineHandoffNonBlocking = false,
     stepAwarePoolWarningNonBlocking = false,
@@ -203,7 +206,14 @@ function createLegacyRecoGenerationResultRuntime(deps = {}) {
         // The verdict is stamped on EVERY answer path, including the ones that never read a prompt,
         // so "did this answer the category asked for" becomes a thing you can count rather than a
         // thing you notice in a screenshot.
-        ...(isPlainObject(categoryFidelity) ? { category_fidelity: categoryFidelity } : {}),
+        // Computed HERE because `finalRecommendations` is the list the caller is actually served —
+        // after grounding, dedupe and the framework pass. Computed on `structured` upstream, the
+        // verdict described rows that were dropped and missed rows that were added.
+        category_fidelity: evaluateRecoCategoryFidelity({
+          requestText: categoryFidelityRequestText,
+          items: finalRecommendations,
+          classifyCoarse: classifyBeautyCoarseCandidate,
+        }),
         trigger_source: normalizedRecoTriggerSource,
         recompute_from_profile_update: recomputeFromProfileUpdateFlag,
         used_recent_logs: Array.isArray(recentLogs) && recentLogs.length > 0,

@@ -70,7 +70,27 @@ test('an empty shortlist is unresolved, not off_category', () => {
   assert.equal(evaluate('a bronzer for contouring', []).verdict, 'unresolved');
 });
 
-test('category_path is authoritative and the coarse classifier is the fallback', () => {
+test('the classifier reads the fields a SERVED row actually has', () => {
+  // Measured off a live lane row: served recommendations carry `step`, `product_type`, `category`,
+  // `category_name` and `sku` — and NO `category_path`. An earlier version of this module read only
+  // `category_path` and called it authoritative, so on production traffic the only classifier that
+  // ever ran was the coarse title regex. The fixtures hid it by injecting a path through the mock.
+  const servedSerum = { step: 'treatment', product_type: 'serum', category: 'serum', name: 'A Serum' };
+  const servedBronzer = { step: 'other', product_type: 'bronzer', category: 'Bronzer', name: 'A Bronzer' };
+  const servedShampoo = { product_type: 'shampoo', name: 'A Shampoo' };
+  const servedGrounded = { sku: { category: 'Perfume' }, name: 'A Perfume' };
+  assert.equal(classifyRecoItemCategory(servedSerum).category, 'skincare');
+  assert.equal(classifyRecoItemCategory(servedSerum).reason, 'product_type');
+  assert.equal(classifyRecoItemCategory(servedBronzer).category, 'makeup');
+  assert.equal(classifyRecoItemCategory(servedShampoo).category, 'haircare');
+  assert.equal(classifyRecoItemCategory(servedGrounded).category, 'fragrance');
+  assert.equal(classifyRecoItemCategory(servedGrounded).reason, 'sku_category');
+  // And the reported defect, in the shape it really arrives in.
+  assert.equal(evaluate('a bronzer for contouring', [servedSerum]).verdict, 'off_category');
+  assert.equal(evaluate('a bronzer for contouring', [servedBronzer]).verdict, 'matched');
+});
+
+test('category_path is still preferred when present, and the coarse classifier is the last resort', () => {
   assert.equal(classifyRecoItemCategory(BRONZER).category, 'makeup');
   assert.equal(classifyRecoItemCategory(BRONZER).reason, 'category_path');
   // No path: falls back. The coarse classifier reads the title.
@@ -192,12 +212,17 @@ async function laneFidelity(need, items) {
   });
   try {
     const { __internal } = require('../src/auroraBff/routes');
+    // THE REAL CALL SHAPE. The tool sends buildRecoGenerateUserAsk's composition as `message` and
+    // the buyer's words as `focus`. Passing `message: need` — as this test used to — hid the fact
+    // that the classifier was reading the template's own word "skincare".
+    const composedAsk = __internal.buildRecoGenerateUserAsk({ focus: need, constraints: {}, lang: 'EN' });
+    assert.match(composedAsk, /skincare/, 'the composed ask carries a category word of its own');
     const res = await __internal.generateProductRecommendations({
       ctx: {
         request_id: 'req_fid', trace_id: 'trace_fid', aurora_uid: 'agent:test',
         lang: 'EN', trigger_source: 'agent_tool', state: null, backend_auth_headers: {},
       },
-      profile: null, recentLogs: [], message: need, focus: need,
+      profile: null, recentLogs: [], message: composedAsk, focus: need,
       includeAlternatives: false, debug: true, logger: null, budgetMs: 4000,
       entryType: 'direct', recoTriggerSource: 'agent_tool',
     });
@@ -232,6 +257,15 @@ test('the verdict reaches recommendation_meta on the real lane', async () => {
   // no classifier at all.
   const acne = await laneFidelity('i have acne issues, and please recommend some products', [LANE_SERUM]);
   assert.equal(acne.verdict, 'matched');
+
+  // These two are in the must-refuse corpus. Through the composed ask they were both a CONFIDENT
+  // `skincare` — the template word, not the buyer — and answering either with a lipstick produced a
+  // confident `off_category`. They must stay unresolved end to end, not just in the unit test.
+  for (const need of ['something nice for my girlfriend', 'help me build a routine']) {
+    const out = await laneFidelity(need, [LANE_SERUM]);
+    assert.equal(out.verdict, 'unresolved', `"${need}" must not become confident via the template`);
+    assert.equal(out.request_category, null);
+  }
 });
 
 test('reporting does not change the answer — nothing is emptied yet', async () => {
