@@ -147,7 +147,7 @@ test('the widened prompt reaches the wire: the query text and hard_rules actuall
   // The SYSTEM prompt is the thing that produced the bronzer -> serum answer. Assert the boundary is
   // gone from the wide query and still present in the narrow one, in the query STRING that is sent —
   // not merely in the file, and not merely in the template id.
-  assert.match(wide.query, /Recommend skincare \(including body care\), makeup, fragrance, and haircare/);
+  assert.match(wide.query, /Recommend skincare \(including body care\), makeup, and fragrance\./);
   assert.match(wide.query, /Never substitute an adjacent category/);
   // TOOLS ARE STILL REFUSED, and the widened query must carry that. Measured on prod 2026-09-09,
   // `makeup brush` answers total 0 with final_decision 'clarify' and every search_quality tier count
@@ -168,7 +168,7 @@ test('the widened prompt reaches the wire: the query text and hard_rules actuall
   // overwritten), so a stale rule here would contradict the system prompt inside one request.
   const wideRules = wide.user_payload.hard_rules.join(' | ');
   const narrowRules = narrow.user_payload.hard_rules.join(' | ');
-  assert.match(wideRules, /Recommend skincare \(including body care\), makeup, fragrance, and haircare only/);
+  assert.match(wideRules, /Recommend skincare \(including body care\), makeup and fragrance only/);
   assert.match(wideRules, /a bronzer request is not answered with a serum/);
   assert.match(wideRules, /Never beauty tools, brushes, sponges, applicators or devices/);
   assert.doesNotMatch(wideRules, /non-skincare categories/);
@@ -178,7 +178,14 @@ test('the widened prompt reaches the wire: the query text and hard_rules actuall
 test('the v1_3 prompt widens the domain and pins category fidelity', () => {
   const text = readPrompt('reco_main_v1_3.system.txt');
   assert.match(text, /precision beauty recommendation planner/i);
-  assert.match(text, /Recommend skincare \(including body care\), makeup, fragrance, and haircare\./i);
+  assert.match(text, /Recommend skincare \(including body care\), makeup, and fragrance\./i);
+  // HAIRCARE IS STAGED, not excluded on principle (#2163). It has the largest raw total measured (126)
+  // and the worst currency profile: only 15/20 sampled rows are USD, and non-USD is unservable on the
+  // USD-only US offer path, so effective coverage is far below the total and nothing in the total says
+  // so. The reason lives in the prompt rather than only in a PR, so it cannot be dropped as arbitrary.
+  assert.match(text, /Do not recommend haircare yet\./);
+  assert.match(text, /not servable on the US offer path/);
+  assert.match(text, /Haircare is staged behind that fix, not excluded on principle\./);
   // The widened set is exactly what was MEASURED servable on prod 2026-09-09 (skincare control;
   // makeup 19-70 per query at 90-100% in-category; fragrance 73; haircare 77 on a need-shaped query,
   // 20/20 USD and 20/20 in stock). Tools were measured UNSERVABLE and must stay out — a widening that
@@ -220,13 +227,16 @@ test('an unreadable wide template still sends a WIDE fallback, not the skincare 
     const wide = reloaded.buildAuroraProductRecommendationsPromptBundle({ ...args, promptDomainScope: 'beauty' });
     assert.equal(wide.prompt_spec.template_id, 'reco_main_no_such_template_v9');
     assert.match(wide.query, /precision beauty recommendation planner/i);
-    assert.match(wide.query, /Recommend skincare \(including body care\), makeup, fragrance and haircare/i);
+    assert.match(wide.query, /Recommend skincare \(including body care\), makeup and fragrance only\./i);
     assert.doesNotMatch(wide.query, /Recommend skincare only/);
     // The fallback must carry the tools refusal too, or an unreadable template turns a refused
     // category into an invited one.
     assert.match(wide.query, /Never beauty tools, brushes, sponges or devices/i);
     const rules = wide.user_payload.hard_rules.join(' | ');
-    assert.match(rules, /Recommend skincare \(including body care\), makeup, fragrance and haircare only/);
+    assert.match(rules, /Recommend skincare \(including body care\), makeup and fragrance only/);
+    // the fallback is a second copy of the domain rule — it has to carry the staging too, or a failed
+    // template read quietly re-enables haircare
+    assert.match(rules, /Haircare is staged and not covered yet/);
     assert.match(rules, /a bronzer request is not answered with a serum/);
     assert.match(rules, /Never beauty tools, brushes, sponges, applicators or devices/);
     assert.doesNotMatch(rules, /Recommend skincare only/);
