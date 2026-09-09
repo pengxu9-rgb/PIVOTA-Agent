@@ -21667,6 +21667,9 @@ function buildConcernFrameworkSummary({
   const primaryRoleId = String(targetContext.primary_role_id || '').trim();
   const primaryRole = targetContext.framework_roles.find((role) => String(role?.role_id || '').trim() === primaryRoleId) || targetContext.framework_roles[0] || null;
   const recommendationList = Array.isArray(recommendations) ? recommendations : [];
+  const primaryRoleFilled = recommendationList.some(
+    (item) => String(item?.matched_role_id || item?.matchedRoleId || '').trim() === primaryRoleId,
+  );
   const primaryReco = recommendationList.find((item) => {
     const matchedRoleId = pickFirstTrimmed(item?.matched_role_id, item?.matchedRoleId);
     return matchedRoleId && matchedRoleId === primaryRoleId;
@@ -21694,7 +21697,14 @@ function buildConcernFrameworkSummary({
   const topPickRole = targetContext.framework_roles.find((role) => String(role?.role_id || '').trim() === topPickRoleId) || null;
   return {
     concern_text: String(targetContext?.framework_summary?.concern_text || '').trim() || null,
-    headline: primaryRole
+    // "Start with X" is an instruction to use a product that is not in the card
+    // when the primary role went unfilled. Derived from the recommendations in
+    // hand rather than a new parameter, so it cannot drift from what shipped.
+    headline: primaryRole && !primaryRoleFilled && recommendationList.length > 0
+      ? (String(language || '').toUpperCase() === 'CN'
+        ? `暂未确认 ${primaryRole.label}，以下仅为可搭配的支持步骤`
+        : `I could not confirm a ${primaryRole.label} — these are the supporting steps to pair with one`)
+      : primaryRole
       ? (String(language || '').toUpperCase() === 'CN'
         ? `先围绕 ${primaryRole.label} 建立护理框架，再补充其它支持步骤`
         : `Start with ${primaryRole.label}, then layer the supporting roles`)
@@ -25790,10 +25800,14 @@ async function runBeautyMainlineLocalHandoffSearch({
       ),
       deadlineAtMs: hydrationDeadlineMs || deadlineMs,
     });
-    // Re-finalizing without the flag would silently drop the surfacing that the
-    // collector already decided on, so a hydrated pool would return nothing.
-    // Redundant for the non-hydrating path the wiring test walks -- removing
-    // these two alone stays green -- so the hydrated path is not yet covered.
+    // Both adoption sites are guarded by `selected_recommendations.length > 0`,
+    // so an empty re-finalize is DISCARDED rather than adopted -- dropping the
+    // flag here does not return nothing, it loses the hydration/rerank
+    // enrichment for this state. (An earlier comment here claimed the opposite,
+    // and also called this the redundant pair: hydration runs whenever
+    // `isFrameworkLocalHandoff && rawCandidates.length > 0`, so there is no
+    // non-hydrating path for this state and it is the collector's opt-in that is
+    // covered by the walk.)
     const hydratedFrameworkState = finalizeConcernFrameworkCandidatePools(hydratedFrameworkRawPool, { targetContext, allowPrimaryMissingSupportRoutine: true });
     if (
       Array.isArray(hydratedFrameworkState?.selected_recommendations)
@@ -26717,6 +26731,17 @@ function mergeConcernFrameworkRerankedState(baseState, rerankedState, { candidat
       ? { primary_recommendation_id: pickFirstTrimmed(reranked.primary_recommendation_id, base.primary_recommendation_id) }
       : {}),
     ...(typeof reranked.terminal_success === 'boolean' ? { terminal_success: reranked.terminal_success } : {}),
+    // These two travel WITH `selected_recommendations`, for the same reason
+    // `terminal_success` does. Taking the products from the reranked state while
+    // leaving these on `...base` ships a support-only routine with the base's
+    // `primary_role_matched: true` and no notice -- products presented as a
+    // complete answer, which is the exact harm this PR exists to prevent.
+    ...(typeof reranked.primary_role_matched === 'boolean'
+      ? { primary_role_matched: reranked.primary_role_matched }
+      : {}),
+    ...(typeof reranked.primary_missing_support_routine_surfaced === 'boolean'
+      ? { primary_missing_support_routine_surfaced: reranked.primary_missing_support_routine_surfaced }
+      : {}),
     ...(typeof reranked.comparison_fill_applied === 'boolean'
       ? { comparison_fill_applied: reranked.comparison_fill_applied }
       : {}),
@@ -105413,6 +105438,8 @@ const __internal = {
   runConcernSemanticPlanner,
   finalizeConcernFrameworkCandidatePools,
   buildBeautyMainlineLocalCandidatePoolSummary,
+  mergeConcernFrameworkRerankedState,
+  buildConcernFrameworkSummary,
   resolveConcernFrameworkBudgetCeiling,
   classifyConcernFrameworkCandidateAgainstBudget,
   isConcernFrameworkCandidateOverBudget,

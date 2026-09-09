@@ -1502,7 +1502,7 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
           suggested_chips: [],
           cards: [
             {
-              card_id: `reco_${ctx?.request_id}`,
+              card_id: `reco_${ctx?.request_id || Date.now()}`,
               type: 'recommendations',
               payload: hardPathPayloadBundle.payload,
             },

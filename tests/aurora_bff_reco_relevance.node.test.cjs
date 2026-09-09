@@ -18723,3 +18723,55 @@ test('__internal: the real handoff lane surfaces a support routine when the prim
     __internal.__resetRouteDependencyOverridesForTest();
   }
 });
+
+test('__internal: a rerank cannot ship the routine while leaving the disclosure behind', async () => {
+  const { __internal } = loadRoutesFresh();
+  // `selected_recommendations` and `terminal_success` are carried from the
+  // reranked state. If the two disclosure fields are not, a rerank that flips
+  // role classification ships a support-only routine carrying the BASE's
+  // `primary_role_matched: true` and no notice — products presented as a
+  // complete answer.
+  const merged = __internal.mergeConcernFrameworkRerankedState(
+    {
+      selected_recommendations: [],
+      primary_role_matched: true,
+      primary_missing_support_routine_surfaced: false,
+      terminal_success: true,
+    },
+    {
+      selected_recommendations: [{ product_id: 'm1' }, { product_id: 's1' }],
+      primary_role_matched: false,
+      primary_missing_support_routine_surfaced: true,
+      terminal_success: false,
+    },
+    { candidateCount: 2 },
+  );
+
+  assert.equal(merged.selected_recommendations.length, 2);
+  assert.equal(merged.primary_role_matched, false);
+  assert.equal(merged.primary_missing_support_routine_surfaced, true);
+  assert.equal(merged.terminal_success, false);
+});
+
+test('__internal: the card headline does not tell you to start with a product that is not there', async () => {
+  const { __internal } = loadRoutesFresh();
+  const summaryFor = (recommendations) => __internal.buildConcernFrameworkSummary({
+    targetContext: ACNE_MISSING_PRIMARY_TARGET_CONTEXT,
+    recommendations,
+    language: 'EN',
+  });
+
+  // Primary filled: the normal instruction stands.
+  assert.match(
+    summaryFor([{ product_id: 'a', matched_role_id: 'acne_clogged_pore_treatment' }]).headline,
+    /^Start with /,
+  );
+  // Support-only: "Start with <role>" would name a product the card does not show.
+  const supportOnly = summaryFor([
+    { product_id: 'm', matched_role_id: 'lightweight_moisturizer' },
+    { product_id: 's', matched_role_id: 'daily_sunscreen' },
+  ]);
+  assert.doesNotMatch(supportOnly.headline, /^Start with /);
+  assert.match(supportOnly.headline, /could not confirm/i);
+  assert.equal(supportOnly.primary_recommendation_name ?? null, null);
+});
