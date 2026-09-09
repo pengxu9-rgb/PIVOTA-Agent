@@ -61,6 +61,12 @@ on:
       # rewrite of externalSeedMarketingText.js reached a PR ungated (2026-09-09).
       - "src/services/externalSeedRecall.js"
       - "src/services/externalSeedMarketingText.js"
+      # The gate RUNS these tests, so editing only a test file must fire it too
+      # — the same miss shape this file already documents above.
+      - "tests/external_seed_recall.test.js"
+      - "tests/services/external_seed_recall.test.js"
+      - "tests/external_seed_recall_doc_single_build.test.js"
+      - "tests/external_seed_marketing_text.test.js"
       - "src/services/externalSeedHarvesterBridge.js"
       - "src/services/RecommendationEngine.js"
       - "src/services/pdpIngredientAuthority.js"
@@ -148,6 +154,12 @@ on:
       # rewrite of externalSeedMarketingText.js reached a PR ungated (2026-09-09).
       - "src/services/externalSeedRecall.js"
       - "src/services/externalSeedMarketingText.js"
+      # The gate RUNS these tests, so editing only a test file must fire it too
+      # — the same miss shape this file already documents above.
+      - "tests/external_seed_recall.test.js"
+      - "tests/services/external_seed_recall.test.js"
+      - "tests/external_seed_recall_doc_single_build.test.js"
+      - "tests/external_seed_marketing_text.test.js"
       - "src/services/externalSeedHarvesterBridge.js"
       - "src/services/RecommendationEngine.js"
       - "src/services/pdpIngredientAuthority.js"
@@ -237,6 +249,9 @@ jobs:
         run: |
           npx jest --runInBand \
             tests/external_seed_marketing_text.test.js \
+            tests/external_seed_recall.test.js \
+            tests/services/external_seed_recall.test.js \
+            tests/external_seed_recall_doc_single_build.test.js \
             tests/integration/invoke.find_products_multi_cache_search.test.js \
             tests/integration/invoke.find_products_multi_strict_surface.test.js \
             tests/integration/invoke.get_discovery_feed.test.js \
