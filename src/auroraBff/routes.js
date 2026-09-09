@@ -10292,9 +10292,22 @@ async function searchLocalExternalSeedProducts({
     queryTimeoutMs != null &&
     Number.isFinite(Number(queryTimeoutMs)) &&
     Number(queryTimeoutMs) > 0;
+  // Which budget a role gets is a question about whether it is THE PRIMARY, not
+  // about its rank number. `roleRank > 1` assumed the primary always ranks 1;
+  // the concern planner emits spaced ranks (11 / 20 / 30 for the acne
+  // framework), so `> 1` was true for every role and the primary always fell to
+  // the support tier -- 1600ms against a query measured at 1720-1800ms in prod.
+  // It therefore ALWAYS overran, and whether rows came back was a race between
+  // the query resolving and the deadline firing. Rank is kept only as a fallback
+  // for target contexts that carry no `primary_role_id`.
+  const primaryRoleId = String(targetContext?.primary_role_id || '').trim();
+  const roleId = String(role?.role_id || '').trim();
+  const isPrimaryRole = primaryRoleId && roleId
+    ? roleId === primaryRoleId
+    : !(Number.isFinite(roleRank) && roleRank > 1);
   const effectiveQueryTimeoutMs = explicitQueryTimeoutMs
     ? Math.trunc(Number(queryTimeoutMs))
-    : (Number.isFinite(roleRank) && roleRank > 1 ? 1600 : RECO_CATALOG_PRIMARY_EXTERNAL_SEED_QUERY_TIMEOUT_MS);
+    : (isPrimaryRole ? RECO_CATALOG_PRIMARY_EXTERNAL_SEED_QUERY_TIMEOUT_MS : 1600);
 
   try {
     if (leanSql) {
