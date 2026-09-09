@@ -31,16 +31,54 @@ const { makeRecommendProducts } = require('../src/agentSignals/recommendProducts
 
 // The wide template id is read ONCE at module load, so arming it means reloading the module. The
 // prompt-file cache is module-scoped too, which is what makes this honest rather than sticky.
-function withWideTemplate(templateId, fn) {
+function withRoutesEnv(env, fn) {
   const moduleId = require.resolve('../src/auroraBff/routes');
-  const before = process.env.RECO_MAIN_WIDE_PROMPT_TEMPLATE_ID;
-  process.env.RECO_MAIN_WIDE_PROMPT_TEMPLATE_ID = templateId;
+  const before = {};
+  for (const [k, v] of Object.entries(env)) {
+    before[k] = process.env[k];
+    if (v === undefined) delete process.env[k];
+    else process.env[k] = v;
+  }
   delete require.cache[moduleId];
   try {
-    return fn(require('../src/auroraBff/routes').__internal);
+    const out = fn(require('../src/auroraBff/routes').__internal);
+    // SYNC ONLY, and said out loud rather than left as a trap. The finally below restores the env and
+    // busts the cache immediately; an async fn's assertions would then run against a module reloaded
+    // under the RESTORED env, and pass for the wrong reason with nothing visible to explain it.
+    if (out && typeof out.then === 'function') {
+      throw new Error('withRoutesEnv is synchronous: an async fn would assert against the restored env');
+    }
+    return out;
   } finally {
-    if (before === undefined) delete process.env.RECO_MAIN_WIDE_PROMPT_TEMPLATE_ID;
-    else process.env.RECO_MAIN_WIDE_PROMPT_TEMPLATE_ID = before;
+    for (const [k, v] of Object.entries(before)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+    delete require.cache[moduleId];
+  }
+}
+const withWideTemplate = (templateId, fn) =>
+  withRoutesEnv({ RECO_MAIN_WIDE_PROMPT_TEMPLATE_ID: templateId }, fn);
+
+// The async twin, for the tests that drive the real lane. Kept separate from the sync one rather
+// than making that one polymorphic: the whole point of the guard there is that awaiting is not
+// optional, and a single function silently doing both is how that guarantee gets lost.
+async function withRoutesEnvAsync(env, fn) {
+  const moduleId = require.resolve('../src/auroraBff/routes');
+  const before = {};
+  for (const [k, v] of Object.entries(env)) {
+    before[k] = process.env[k];
+    if (v === undefined) delete process.env[k];
+    else process.env[k] = v;
+  }
+  delete require.cache[moduleId];
+  try {
+    return await fn(require('../src/auroraBff/routes').__internal);
+  } finally {
+    for (const [k, v] of Object.entries(before)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
     delete require.cache[moduleId];
   }
 }
@@ -281,5 +319,89 @@ test('an unreadable wide template still sends a WIDE fallback, not the skincare 
     // is unreadable, and widening it here would be the shared-prompt bug by another route.
     const narrowSpec = reloaded.resolveRecoMainPromptSpec({});
     assert.equal(narrowSpec.template_id, 'reco_main_v1_2');
+  });
+});
+
+test('the NARROW in-code fallback stays narrow when the CHAT template is the unreadable one', () => {
+  // The previous version of this claim asserted only `template_id === 'reco_main_v1_2'` while that
+  // file was perfectly readable — so the narrow fallback never executed and three mutations of its
+  // text survived. Point the CHAT lane's own id at a missing file so the branch actually runs.
+  withRoutesEnv({ RECO_MAIN_PROMPT_TEMPLATE_ID: 'reco_main_no_such_narrow_v9' }, (reloaded) => {
+    const bundle = reloaded.buildAuroraProductRecommendationsPromptBundle({ ...PROMPT_ARGS });
+    assert.equal(bundle.prompt_spec.template_id, 'reco_main_no_such_narrow_v9');
+    assert.equal(bundle.prompt_spec.wide_template_active, false);
+    assert.match(bundle.query, /You are a precision skincare recommendation planner/);
+    assert.match(bundle.query, /Recommend skincare only\. Never recommend makeup, brushes, tools, devices, fragrance, or haircare\./);
+    const rules = bundle.user_payload.hard_rules.join(' | ');
+    assert.match(rules, /Recommend skincare only; never recommend makeup, tools, devices, fragrance, or haircare\./);
+    assert.doesNotMatch(rules, /makeup, fragrance and haircare only/);
+  });
+});
+
+test('the fallback SCHEMA follows the loaded template, not the ask — no cross-lane cache poisoning', () => {
+  // loadRecoPromptTemplateFile caches by FILENAME while the fallback CONTENT is scope-dependent, so
+  // if the fallback branch keyed off the ask instead of the template, whichever lane ran first would
+  // poison the other through a shared cache entry. Both lanes name the same missing file here, so a
+  // scope-keyed branch would hand the second caller the first caller's rules.
+  withRoutesEnv({ RECO_MAIN_PROMPT_TEMPLATE_ID: 'reco_main_no_such_shared_v9' }, (reloaded) => {
+    const wideFirst = reloaded.buildAuroraProductRecommendationsPromptBundle({ ...PROMPT_ARGS, promptDomainScope: 'beauty' });
+    const narrowSecond = reloaded.buildAuroraProductRecommendationsPromptBundle({ ...PROMPT_ARGS });
+    assert.equal(wideFirst.prompt_spec.template_id, narrowSecond.prompt_spec.template_id);
+    assert.deepEqual(
+      wideFirst.user_payload.hard_rules,
+      narrowSecond.user_payload.hard_rules,
+      'one template, one set of hard_rules — order of callers must not change them',
+    );
+    assert.match(narrowSecond.user_payload.hard_rules.join(' | '), /Recommend skincare only;/);
+  });
+});
+
+test('repointing the CHAT template cannot half-arm this door', () => {
+  // Regression: the wide id used to default to the literal 'reco_main_v1_2', so bumping the chat
+  // lane's template left the two ids DIFFERENT and armed wide_template_active — a beauty task line
+  // wrapped around a skincare-only system prompt, the exact state resolveRecoMainPromptSpec exists to
+  // prevent. It now inherits RECO_MAIN_PROMPT_TEMPLATE_ID, so "off" holds by construction.
+  for (const narrowId of ['reco_main_v1_0', 'reco_main_v1_1', 'reco_main_v1_2']) {
+    withRoutesEnv({ RECO_MAIN_PROMPT_TEMPLATE_ID: narrowId }, (reloaded) => {
+      const spec = reloaded.resolveRecoMainPromptSpec({ promptDomainScope: 'beauty' });
+      assert.equal(spec.template_id, narrowId, `the door must follow the chat template (${narrowId})`);
+      assert.equal(spec.wide_template_active, false, `bumping the chat template must not arm the door (${narrowId})`);
+      const wide = reloaded.buildAuroraProductRecommendationsPromptBundle({ ...PROMPT_ARGS, promptDomainScope: 'beauty' });
+      const narrow = reloaded.buildAuroraProductRecommendationsPromptBundle({ ...PROMPT_ARGS });
+      assert.equal(wide.query, narrow.query, `the ask must stay inert at ${narrowId}`);
+    });
+  }
+  // ...and arming still works on top of a bumped chat template.
+  withRoutesEnv({ RECO_MAIN_PROMPT_TEMPLATE_ID: 'reco_main_v1_1', RECO_MAIN_WIDE_PROMPT_TEMPLATE_ID: 'reco_main_v1_3' }, (reloaded) => {
+    const spec = reloaded.resolveRecoMainPromptSpec({ promptDomainScope: 'beauty' });
+    assert.equal(spec.template_id, 'reco_main_v1_3');
+    assert.equal(spec.wide_template_active, true);
+  });
+});
+
+test('the step-aware catalog-first branch forwards the ask too — the second prompt-state call site', async () => {
+  // The other buildRecoLlmPromptState call site. Deleting `promptDomainScope` there left the whole
+  // suite green, so the day the wide id is armed with this flag on, that sub-lane would silently keep
+  // the narrow template while the rest of the door widened: a half-armed door, invisible to CI.
+  await withRoutesEnvAsync({ AURORA_BFF_RECO_STEP_AWARE_CATALOG_FIRST_ENABLED: 'true' }, async (reloaded) => {
+    const res = await reloaded.generateProductRecommendations({
+      ctx: { ...BASE_CTX },
+      profile: null,
+      recentLogs: [],
+      message: 'I need a moisturizer step for my routine',
+      focus: 'I need a moisturizer step for my routine',
+      includeAlternatives: false,
+      debug: true,
+      logger: null,
+      budgetMs: 4000,
+      entryType: 'direct',
+      recoTriggerSource: 'agent_tool',
+      promptDomainScope: 'beauty',
+    });
+    assert.equal(res.llmTrace.prompt_domain_scope, 'beauty',
+      'the step-aware branch must carry the ask as far as the default path does');
+    // Still inert while v1_3 is unregistered upstream — the ask travels, the template does not change.
+    assert.equal(res.llmTrace.template_id, 'reco_main_v1_2');
+    assert.equal(res.llmTrace.wide_template_active, false);
   });
 });

@@ -11,8 +11,9 @@
 // HONEST LIMITS, stated in the tool description too:
 //  - the lane is the Aurora BEAUTY engine today: its prompts, catalog grounding and guardrails are tuned
 //    for SKINCARE. This bridge asks for the wider beauty prompt (promptDomainScope 'beauty'), but that ask
-//    is INERT until RECO_MAIN_WIDE_PROMPT_TEMPLATE_ID names reco_main_v1_3 — the decision service 400s on
-//    an id it does not know, so v1_3 stays off by default (see the constant in routes.js). Until then a
+//    is INERT until RECO_MAIN_WIDE_PROMPT_TEMPLATE_ID names a template DIFFERENT from the chat lane's
+//    (it inherits that id, so they match unless someone sets it) — the decision service 400s on an id it
+//    does not know, so v1_3 stays off by default (see the constant in routes.js). Until then a
 //    makeup/haircare/fragrance need still comes back with skincare picks, which is what the tool
 //    description says;
 //    An off-vertical need answers with an empty shortlist + `missing_info`, not with fabricated products —

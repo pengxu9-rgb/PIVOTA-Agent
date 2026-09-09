@@ -806,14 +806,22 @@ const RECO_INGREDIENT_PROMPT_TEMPLATE_ID = String(
 // path, so a partner sees products rather than an error. Nothing here could have caught it —
 // every test in this repo stops at the prompt builder and none calls the decision service.
 //
-// So the default names the NARROW template: v1_3 ships, stays tested, and stays inert. Setting this
-// env var to 'reco_main_v1_3' arms it, and must not be done until a live probe shows the decision
-// service accepting the id. It is a CODE default rather than a live env pin because a Cloud Run
-// deploy has wiped this service's env vars before (2026-08-30) — with the default armed, the next
-// wipe would silently re-break the lane.
+// So the default is the NARROW template: v1_3 ships, stays tested, and stays inert. Setting this env
+// var to 'reco_main_v1_3' arms it, and must not be done until a live probe shows the decision service
+// accepting the id. It is a CODE default rather than a live env pin because a Cloud Run deploy has
+// wiped this service's env vars before (2026-08-30) — with the default armed, the next wipe would
+// silently re-break the lane.
+//
+// It defaults to RECO_MAIN_PROMPT_TEMPLATE_ID, not to the literal 'reco_main_v1_2' — the same shape
+// RECO_INGREDIENT_PROMPT_TEMPLATE_ID uses above, and for the same reason. With a literal, the two
+// ids agree only while a human keeps them in sync: repointing the CHAT lane's template (an ordinary
+// operation that has nothing to do with this door) would leave the wide id on the literal, making it
+// DIFFER from the narrow one and arming wide_template_active below — a 'beauty recommendation plan'
+// task line wrapped around a skincare-only system prompt. Inheriting makes "off" true by
+// construction instead of by coincidence.
 const RECO_MAIN_WIDE_PROMPT_TEMPLATE_ID = String(
-  process.env.RECO_MAIN_WIDE_PROMPT_TEMPLATE_ID || 'reco_main_v1_2',
-).trim() || 'reco_main_v1_2';
+  process.env.RECO_MAIN_WIDE_PROMPT_TEMPLATE_ID || RECO_MAIN_PROMPT_TEMPLATE_ID,
+).trim() || RECO_MAIN_PROMPT_TEMPLATE_ID;
 // The only value that widens the lane. Anything else — '', 'skincare', a typo, an object — is the
 // narrow default, so a mistake upstream cannot silently widen the chat lane.
 const RECO_PROMPT_DOMAIN_SCOPE_BEAUTY = 'beauty';
