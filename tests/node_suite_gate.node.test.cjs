@@ -100,6 +100,13 @@ test('every suite the pre-glob allowlist ran is still discovered', () => {
   const discovered = new Set(discoverSuites());
   const dropped = want.filter((f) => !discovered.has(f)).sort();
   assert.deepEqual(dropped, [], 'suite(s) the old allowlist ran are no longer discovered');
+
+  // Discovered is not enough: quarantining one of these would drop coverage CI already
+  // had, just as silently as failing to glob it. All 110 are green, so the honest way to
+  // remove one from the gate is to fix it, not to list it.
+  const quarantined = readQuarantine();
+  const excluded = want.filter((f) => quarantined.has(f)).sort();
+  assert.deepEqual(excluded, [], 'suite(s) the old allowlist ran green are now quarantined');
 });
 
 test('discovery is a glob: a suite nobody has heard of is found anyway', () => {
