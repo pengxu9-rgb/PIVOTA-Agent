@@ -20,6 +20,15 @@
 //     constraints / language / limit (and clones constraints), and the SANITIZER keeps why/fit/grounding/
 //     confidence_overall while the projector never places a bare `confidence`/`score` on a product node
 
+// PIN THE CONFIGURATION THIS FILE DESCRIBES. The wide template id is read ONCE at module load, so
+// a test asserting the DEFAULT-OFF contract against a module loaded under an ambient
+// RECO_MAIN_WIDE_PROMPT_TEMPLATE_ID is asserting something else entirely -- and prod exports exactly
+// that variable. Six tests across two files failed under prod's own configuration for this reason,
+// on main, while CI stayed green: CI ran the disarmed lane and prod runs the armed one. The tests
+// that want the ARMED lane arm it explicitly (withWideTemplate below); this makes their disarmed
+// counterparts mean what they say wherever they run.
+delete process.env.RECO_MAIN_WIDE_PROMPT_TEMPLATE_ID;
+
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');

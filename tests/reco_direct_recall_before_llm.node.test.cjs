@@ -731,3 +731,40 @@ test('the ASK alone does not honour a decline — only the granted template does
     + 'unresolvable clarification the chat lane is protected from');
   assert.equal(disarmed.structured.recommendations.length, 2);
 });
+
+test('only the model AUTHORED source counts as a decline — all four values, not just one', async () => {
+  // COVERAGE GAP found in review. The `llmStructuredSource === 'llm_answer_json'` pin was only ever
+  // exercised against `llm_context_routine`, so a future weakening to `!== 'llm_context_routine'`
+  // passed every test. routes.js:84671-84680 emits exactly four values; this drives all of them.
+  //
+  // The distinction is not cosmetic: `llm_context_routine` is our own mapper's output and
+  // `llm_structured_fallback` is a salvage read of the upstream envelope. Neither is the model's
+  // account of RECOMMENDING, so neither may empty a shortlist by claiming to be a refusal.
+  const REASON = 'a bronzer is makeup; not substituting skincare';
+  const run = async (llmStructuredSource) => {
+    const deps = declineDeps({
+      runRecoLlmPrimary: async () => ({
+        upstream: null, contextMeta: {}, upstreamFailureCode: '', llmFailureClass: '',
+        llmLatencyMs: 10, answerJson: null,
+        llmStructured: { recommendations: [], missing_info: [REASON], warnings: [] },
+        llmStructuredSource,
+        llmTrace: {}, llmInvoked: true, initialLlmOutcome: 'success',
+      }),
+    });
+    const { runLegacyRecoMainlineExecution } = createLegacyRecoMainlineExecutionRuntime(deps);
+    return runLegacyRecoMainlineExecution(baseArgs({
+      userAsk: 'a bronzer for contouring', promptDomainScope: 'beauty',
+    }));
+  };
+
+  const authored = await run('llm_answer_json');
+  assert.equal(authored.structuredSource, 'llm_primary',
+    'the model\'s own recommendation JSON is the only account of a refusal');
+
+  for (const notAuthored of ['llm_context_routine', 'llm_structured_fallback', null]) {
+    const out = await run(notAuthored);
+    assert.equal(out.structuredSource, 'catalog_grounded',
+      `${notAuthored} is not the model recommending — it must not empty the shortlist`);
+    assert.equal(out.structured.recommendations.length, 2);
+  }
+});
