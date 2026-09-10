@@ -1,0 +1,122 @@
+# Suites that FAIL on main today and are therefore not yet part of the node:test gate.
+# Everything NOT listed here runs — discovery is a glob over three roots (tests/ walked
+# recursively, mcp-server/test, safety-kernel/test), so a new suite is gated the moment it
+# lands. That inversion is the point.
+#
+# Before this file existed, a suite ran in CI only if someone had added it to the allowlist
+# inside .github/workflows/pr-full-jest.yml: 110 files. A second list in the `test:node`
+# npm script named 66 more, but NO WORKFLOW INVOKES `npm run test:node`, so those never ran
+# either. 208 suites under tests/ had never executed in CI. Among them was
+# `aurora_undefined_symbol_guard`, which fails because src/server.js referenced
+# `crossMerchantCacheRouteDebug` at two points outside the scope of its `let` — a live
+# ReferenceError no gate could see.
+#
+# AN ENTRY MAY CARRY ONE MARKER: `path  # intermittent`. It means the suite PASSES when run
+# on its own and FAILS inside the gated batch. Those three are exempt from the recovery
+# ratchet below, and nothing else is. Without the exemption they deadlock it: the ratchet
+# re-runs quarantined suites SOLO, which for such a suite reports "recovered" every time and
+# demands un-quarantining — which returns it to the batch, where it fails again. Observed on
+# CI run 34522664588, where a fully green gated batch still failed the job that way.
+#
+# THIS LIST MAY ONLY SHRINK. The runner executes these suites too, and FAILS the job if one
+# of them passes, with instructions to delete the line. A quarantined suite that gets fixed
+# cannot silently stay quarantined. Enforced under CI only — see the runner for why.
+#
+# Entries are repo-relative PATHS, not bare filenames: two roots can hold the same basename
+# and one entry would otherwise silence both.
+#
+# Measured 2026-09-10 against 205e9f1cd, per file, with the INHERITED environment — no
+# forced flags. An earlier draft forced AURORA_BFF_USE_MOCK=true across every suite, which
+# is not inert: it swaps auroraChat for a mock, and so manufactured the failure that put
+# `aurora_decision_client_upstream_path` on this list. That suite is green and is no longer
+# here. Do not add a forced flag to the runner without re-measuring this file.
+#
+# All 45 below are genuine assertion or missing-export failures — none is an environment,
+# network or credential problem. They are listed, not deleted, because a red suite is a
+# finding to work off, and deleting it would destroy the finding. All 69 suites under
+# mcp-server/test and safety-kernel/test are green, as are all 110 files the old allowlist
+# ran (pinned in tests/fixtures/pre_glob_allowlist.txt).
+tests/aurora_activity_api.node.test.cjs
+tests/aurora_activity_followup_chat.node.test.cjs
+tests/aurora_bff.node.test.cjs
+tests/aurora_bff_activity_profile_safety.node.test.cjs
+tests/aurora_bff_analysis_guardrail.node.test.cjs
+tests/aurora_bff_analysis_request_profile_overlay.node.test.cjs
+tests/aurora_bff_analysis_story_v2.node.test.cjs
+tests/aurora_bff_budget_boundary.node.test.cjs
+tests/aurora_bff_chat_llm_forwarding.node.test.cjs
+tests/aurora_bff_claims_product_rec.node.test.cjs
+tests/aurora_bff_cn_en_parity.node.test.cjs
+tests/aurora_bff_contracts.node.test.cjs
+tests/aurora_bff_fault_injection.node.test.cjs
+tests/aurora_bff_photo_full_chain_e2e.node.test.cjs
+tests/aurora_bff_photo_modules_acceptance.node.test.cjs
+tests/aurora_bff_photo_modules_consistency.node.test.cjs
+tests/aurora_bff_photo_render_fallback.node.test.cjs
+tests/aurora_bff_purchasable_fallback_chain.node.test.cjs
+tests/aurora_bff_reco_catalog.node.test.cjs
+tests/aurora_bff_routine_analysis_v2.node.test.cjs
+tests/aurora_bff_routine_multiturn_contract_v2.node.test.cjs
+tests/aurora_bff_routine_upgrade.node.test.cjs
+tests/aurora_bff_skin_reco_pipeline.node.test.cjs
+tests/aurora_bff_travel_reco_hardening.node.test.cjs
+tests/aurora_bff_vision_policy.node.test.cjs
+tests/aurora_chat_diagnosis_reco_handoff.node.test.cjs
+tests/aurora_chat_travel_message_autorec.node.test.cjs
+tests/aurora_chat_v2_prompt_contract.node.test.cjs
+tests/aurora_chat_v2_routes.node.test.cjs
+tests/aurora_chat_v2_skill_guards.node.test.cjs
+tests/aurora_legacy_analysis_story_prompt_contract.node.test.cjs
+tests/aurora_prompt_spec_library.node.test.cjs
+tests/aurora_recommendation_shared_stack.node.test.cjs
+tests/aurora_routine_contract_guards.node.test.cjs
+tests/aurora_routine_editorial_reco_hotfix.node.test.cjs
+tests/aurora_routine_legacy_chat_hotfix.node.test.cjs
+tests/aurora_routine_livepath_cut1.node.test.cjs
+tests/aurora_routine_store.node.test.cjs
+tests/aurora_undefined_symbol_guard.node.test.cjs
+tests/catalog_row_trust_upserter.node.test.cjs
+tests/diagnosis_artifact_store_persistence.node.test.cjs
+tests/diagnosis_v2_orchestrator.node.test.cjs
+tests/diagnosis_v2_routes.node.test.cjs
+tests/find_products_invoke_semantic_owner.node.test.cjs
+tests/integration/safety_kernel_mount.node.test.cjs
+# Passes locally, fails on a CI runner: 'framework local beauty mainline hard-stops wall
+# clock when internal primitive hangs' is cancelledByParent with "Promise resolution is
+# still pending but the event loop has already resolved". The test builds a primitive that
+# never settles, so when nothing else holds the loop open the file exits underneath it.
+# Never ran in CI before this gate, so the race is newly visible, not newly created. This
+# is the case the CI-only ratchet exists for: locally it reports as "passes here".
+tests/find_products_beauty_discovery_local_mainline.node.test.cjs  # intermittent
+# Same shape as the entry above, found by the first CI run that gated it: five LOAD tests
+# in this file build `productRead: () => new Promise(() => {})` — a read that never settles
+# — and assert on deadline/concurrency behaviour. Green locally and on an unloaded box;
+# cancelledByParent under the batch's parallelism, because when nothing else holds the
+# event loop open the file exits underneath the pending promise. The old allowlist never
+# named this file, so the race is newly visible, not newly created.
+#
+# KNOWN HAZARD, recorded so the next one is recognised rather than rediscovered: 12 gated
+# suites contain a never-settling promise. Seven of them are CI-proven — they ran under the
+# old allowlist and have been green for months (mcp-server/test/ucpCheckoutEscalation,
+# safety-kernel/test/buyerIntakeMerchantVariantFallback, aurora_bff_beauty_mainline_handoff,
+# aurora_bff_v1_chat_rollout, invoke_auth_introspect_load_shedding, merchant_variant_source).
+# The pattern alone is therefore NOT the predictor, and quarantining all twelve would
+# discard working coverage — the same mistake as dropping suites, in the other direction.
+# Only suites CI has actually cancelled are listed.
+safety-kernel/test/acpBuyerIntake.test.js  # intermittent
+# Cancelled in CI on run 34520405621 (batch) — a concurrency test at :14278 asserting
+# per-level catalog searches run in parallel. It PASSED the run before with no change
+# between them, so it is intermittent, which is why chasing these one green run at a time
+# never converges.
+#
+# WHAT WAS TRIED AND DID NOT WORK, recorded so nobody spends the afternoon again: running
+# these three with `--test-concurrency=1` in a separate phase, on the theory that batch CPU
+# contention was starving them. It made acpBuyerIntake WORSE (38 cancellations instead of 5).
+# The reading was wrong. `--test-concurrency` bounds how many test FILES run at once, and the
+# cascade is INSIDE one file: in acpBuyerIntake the first hanging test ('resolution TIMES OUT:
+# refused on expiry', :360) never settles, and every later test in that file is then
+# cancelledByParent. No amount of isolation between files helps a file that poisons itself.
+# All three pass on macOS locally and hang on the Linux runner, which points at a timer or
+# unref difference rather than at load.
+tests/aurora_bff_reco_relevance.node.test.cjs  # intermittent
+
