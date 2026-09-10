@@ -1606,7 +1606,6 @@ const {
   buildConcernTargetContextFromSemanticPlan,
   runConcernSelectorRace,
   applyConcernSelectorRaceOrdering,
-  recordAuroraRecoAnswerPath,
 });
 const {
   shouldEnterLegacyProductRecommendations,
@@ -1645,7 +1644,6 @@ const {
   buildConfidenceNoticeCardPayload,
   summarizeProfileForContext,
   appendLatestRecoContextToSessionPatch,
-  recordAuroraRecoAnswerPath,
 });
 const {
   prepareLegacyChatRecoContext,
@@ -103677,6 +103675,10 @@ function mountAuroraBffRoutes(app, { logger }) {
           const hasRecs = Array.isArray(norm.payload.recommendations) && norm.payload.recommendations.length > 0;
           const nextState = hasRecs && stateChangeAllowed(ctx.trigger_source) ? 'S7_PRODUCT_RECO' : undefined;
           const payload = !debugUpstream ? stripInternalRefsDeep(norm.payload) : norm.payload;
+          // COUNTED: the routine lane answers a recommendation request without entering the reco
+          // lane, from its own synthesized routine query — the user's text never reaches the
+          // upstream. Budget-flow branch.
+          recordAuroraRecoAnswerPath({ door: 'chat', path: 'routine_lane', served: hasRecs });
 
           const envelope = buildEnvelope(ctx, {
             assistant_message: makeAssistantMessage(
@@ -103767,6 +103769,9 @@ function mountAuroraBffRoutes(app, { logger }) {
           ? 'S7_PRODUCT_RECO'
           : undefined;
         const payload = !debugUpstream ? stripInternalRefsDeep(norm.payload) : norm.payload;
+        // COUNTED: the other routine-lane branch. Its trigger is a substring match on the message
+        // (`routine`, `am/pm`, and the Chinese equivalents), so it is broad live traffic.
+        recordAuroraRecoAnswerPath({ door: 'chat', path: 'routine_lane', served: hasRecs });
         const nextChips = Array.isArray(suggestedChips) ? [...suggestedChips] : [];
         if (!budget) nextChips.push(buildBudgetOptimizationEntryChip(ctx.lang));
 
@@ -104022,7 +104027,6 @@ function mountAuroraBffRoutes(app, { logger }) {
           classifyRecoUpstreamFailureCode,
           isTransientRecoUpstreamFailureCode,
           recordAuroraRecoLlmCall,
-          recordAuroraRecoAnswerPath,
           normalizeRecoFailureClass,
           recordAuroraSkinFlowMetric,
           recordAuroraRecoEntrySource,

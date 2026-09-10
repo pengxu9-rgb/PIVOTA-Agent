@@ -1,3 +1,5 @@
+const { recordAuroraRecoAnswerPath } = require('./visionMetrics');
+
 function isPlainObject(value) {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
@@ -25,7 +27,6 @@ function createLegacyChatRecoExecutionRuntime(deps = {}) {
     classifyRecoUpstreamFailureCode,
     isTransientRecoUpstreamFailureCode,
     recordAuroraRecoLlmCall,
-    recordAuroraRecoAnswerPath,
     normalizeRecoFailureClass,
   } = deps;
 
@@ -132,9 +133,7 @@ function createLegacyChatRecoExecutionRuntime(deps = {}) {
         // Counted here rather than after the guard so the record sits with the assignment that
         // causes the skip; the accompanying test drives a real restore and asserts exactly ONE row,
         // which is what would catch it if the lane ever ran anyway.
-        if (typeof recordAuroraRecoAnswerPath === 'function') {
-          recordAuroraRecoAnswerPath({ door: 'chat', path: 'verified_context_restore' });
-        }
+        recordAuroraRecoAnswerPath({ door: 'chat', path: 'verified_context_restore' });
       }
     }
 

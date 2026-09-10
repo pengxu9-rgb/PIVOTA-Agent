@@ -19,8 +19,8 @@ const recoAnswerPathMetrics = require('../src/auroraBff/visionMetrics');
 function recoAnswerPathCounts() {
   const out = {};
   for (const line of recoAnswerPathMetrics.renderVisionMetricsPrometheus().split('\n')) {
-    const m = /^aurora_reco_answer_path_total\{door="([^"]+)",path="([^"]+)"\} (\d+)/.exec(line);
-    if (m) out[`${m[1]}/${m[2]}`] = Number(m[3]);
+    const m = /^aurora_reco_answer_path_total\{door="([^"]+)",path="([^"]+)",served="([^"]+)"\} (\d+)/.exec(line);
+    if (m) out[`${m[1]}/${m[2]}/${m[3]}`] = Number(m[4]);
   }
   return out;
 }
@@ -4818,12 +4818,6 @@ test('beauty chat mainline entry invokes llm concern planner before deterministi
     }),
     looksLikeRecommendationRequest: () => true,
     sendChatEnvelope: async () => null,
-    // This door answers WITHOUT entering the reco lane, so the lane's answer-path counter never
-    // sees it. It is a catalog producer that reads no domain prompt — exactly the population #2155
-    // is about — so leaving it uncounted would overstate the share of turns the prompt-reading path
-    // served. Wired to the real recorder here because this is the one test that drives the hard
-    // path end to end.
-    recordAuroraRecoAnswerPath: recoAnswerPathMetrics.recordAuroraRecoAnswerPath,
   });
 
   hardPathRecommendations = [{ product_id: 'p1', brand: 'B', name: 'Oil control gel' }];
@@ -4849,10 +4843,10 @@ test('beauty chat mainline entry invokes llm concern planner before deterministi
   assert.equal(result?.handled, true);
   const answerPathAfter = recoAnswerPathCounts();
   assert.equal(
-    (answerPathAfter['chat/beauty_mainline_grounded'] || 0)
-      - (answerPathBefore['chat/beauty_mainline_grounded'] || 0),
+    (answerPathAfter['chat/beauty_mainline_grounded/yes'] || 0)
+      - (answerPathBefore['chat/beauty_mainline_grounded/yes'] || 0),
     1,
-    'the beauty-owned chat door must count the answer it just produced',
+    'the beauty-owned chat door must count the answer it just produced, as served',
   );
 
   assert.equal(observed.plannerCalls, 1);
@@ -4907,8 +4901,7 @@ test('beauty chat mainline entry invokes llm concern planner before deterministi
 
   // AND THE EMPTY CASE, on the same runtime. This door returns `handled: true` whenever the payload
   // has the right SHAPE — it never checks that anything is in it — so without this control an empty
-  // card would be counted as a served answer, and 'none' would mean different things on this door
-  // and in the lane.
+  // card would be indistinguishable from a real answer.
   hardPathRecommendations = [];
   const emptyBefore = recoAnswerPathCounts();
   const emptyResult = await runtime.maybeHandleBeautyOwnedChatReco({
@@ -4925,13 +4918,17 @@ test('beauty chat mainline entry invokes llm concern planner before deterministi
   });
   const emptyAfter = recoAnswerPathCounts();
   assert.equal(emptyResult?.handled, true, 'the door still handles the turn with an empty card');
-  assert.equal((emptyAfter['chat/none'] || 0) - (emptyBefore['chat/none'] || 0), 1,
-    'an empty card is not an answer — it must count as none');
   assert.equal(
-    (emptyAfter['chat/beauty_mainline_grounded'] || 0)
-      - (emptyBefore['chat/beauty_mainline_grounded'] || 0),
+    (emptyAfter['chat/beauty_mainline_grounded/no'] || 0)
+      - (emptyBefore['chat/beauty_mainline_grounded/no'] || 0),
+    1,
+    'an empty card is still THIS producer — it is the served axis that says nothing came back',
+  );
+  assert.equal(
+    (emptyAfter['chat/beauty_mainline_grounded/yes'] || 0)
+      - (emptyBefore['chat/beauty_mainline_grounded/yes'] || 0),
     0,
-    'an empty card must not be counted as a grounded answer',
+    'an empty card must not be counted as served',
   );
 });
 

@@ -26,7 +26,6 @@ function createLegacyChatRecoResultPipelineRuntime(deps = {}) {
     classifyRecoUpstreamFailureCode,
     isTransientRecoUpstreamFailureCode,
     recordAuroraRecoLlmCall,
-    recordAuroraRecoAnswerPath,
     normalizeRecoFailureClass,
     postProcessLegacyChatRecoResult,
     normalizeLegacyChatRecoPayload,
@@ -57,7 +56,6 @@ function createLegacyChatRecoResultPipelineRuntime(deps = {}) {
     classifyRecoUpstreamFailureCode,
     isTransientRecoUpstreamFailureCode,
     recordAuroraRecoLlmCall,
-    recordAuroraRecoAnswerPath,
     normalizeRecoFailureClass,
   });
 

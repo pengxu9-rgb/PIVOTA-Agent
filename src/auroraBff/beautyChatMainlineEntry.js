@@ -1,3 +1,5 @@
+const { recordAuroraRecoAnswerPath } = require('./visionMetrics');
+
 function isPlainObject(value) {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
@@ -773,7 +775,6 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
     runConcernSelectorRace,
     applyConcernSelectorRaceOrdering,
     sendChatEnvelope,
-    recordAuroraRecoAnswerPath,
   } = deps;
 
   function isBeautyOwnedChatRecoRequest({
@@ -1541,18 +1542,14 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
         // it. Left uncounted the metric would be biased in the worst direction: this is a catalog
         // producer that reads no domain prompt, which is exactly the population #2155 is about, and
         // omitting it would overstate the share of turns the prompt-reading path served.
-        if (typeof recordAuroraRecoAnswerPath === 'function') {
-          // An EMPTY card is not an answer. The lane calls that outcome 'none', and if this door
-          // called it 'beauty_mainline_grounded' the two doors' 'none' would mean different things
-          // and no cross-door "answers served" denominator would be comparable.
-          const hardPathRecoCount = Array.isArray(hardPathPayloadBundle?.payload?.recommendations)
-            ? hardPathPayloadBundle.payload.recommendations.length
-            : 0;
-          recordAuroraRecoAnswerPath({
-            door: 'chat',
-            path: hardPathRecoCount > 0 ? 'beauty_mainline_grounded' : 'none',
-          });
-        }
+        const hardPathRecoCount = Array.isArray(hardPathPayloadBundle?.payload?.recommendations)
+          ? hardPathPayloadBundle.payload.recommendations.length
+          : 0;
+        recordAuroraRecoAnswerPath({
+          door: 'chat',
+          path: 'beauty_mainline_grounded',
+          served: hardPathRecoCount > 0,
+        });
         return {
           handled: true,
           targetContext: effectiveHandoffTargetContext,

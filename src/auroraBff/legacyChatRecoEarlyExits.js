@@ -1,3 +1,5 @@
+const { recordAuroraRecoAnswerPath } = require('./visionMetrics');
+
 function isPlainObject(value) {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
@@ -18,7 +20,6 @@ function createLegacyChatRecoEarlyExitsRuntime(deps = {}) {
     buildConfidenceNoticeCardPayload,
     summarizeProfileForContext,
     appendLatestRecoContextToSessionPatch,
-    recordAuroraRecoAnswerPath,
   } = deps;
 
   function buildLegacyRecoSafetyGateEnvelope({
@@ -202,9 +203,7 @@ function createLegacyChatRecoEarlyExitsRuntime(deps = {}) {
     // runs, and it returns a full recommendations card built from the travel skill contract — a
     // promptless producer on the chat door, the same class as the two counted elsewhere. It reaches
     // here only when travelRecommendations is non-empty (checked above), so there is no empty case.
-    if (typeof recordAuroraRecoAnswerPath === 'function') {
-      recordAuroraRecoAnswerPath({ door: 'chat', path: 'travel_preview' });
-    }
+    recordAuroraRecoAnswerPath({ door: 'chat', path: 'travel_preview' });
     return buildEnvelope(ctx, {
       assistant_message: makeAssistantMessage(
         ctx.lang === 'CN'

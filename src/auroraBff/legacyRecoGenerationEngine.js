@@ -702,7 +702,12 @@ function createLegacyRecoGenerationEngineRuntime(deps = {}) {
     //
     // The path label is structuredSource, NOT confidenceBasis: basis maps both catalog paths to
     // 'positional', and the point is to see which promptless path served the turn.
-    recordAuroraRecoAnswerPath({ door: recoTriggerSource, entryType, path: structuredSource });
+    recordAuroraRecoAnswerPath({
+      door: recoTriggerSource,
+      entryType,
+      path: structuredSource,
+      served: finalRecommendations.length > 0,
+    });
     const generationResult = buildLegacyRecoGenerationResult({
       confidenceBasis,
       norm,

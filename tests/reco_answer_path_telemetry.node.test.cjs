@@ -36,14 +36,21 @@ const metrics = require('../src/auroraBff/visionMetrics');
 function pathCounts() {
   const out = {};
   for (const line of metrics.renderVisionMetricsPrometheus().split('\n')) {
-    const m = /^aurora_reco_answer_path_total\{door="([^"]+)",path="([^"]+)"\} (\d+)/.exec(line);
-    if (m) out[`${m[1]}/${m[2]}`] = Number(m[3]);
+    const m = /^aurora_reco_answer_path_total\{door="([^"]+)",path="([^"]+)",served="([^"]+)"\} (\d+)/.exec(line);
+    if (m) out[`${m[1]}/${m[2]}/${m[3]}`] = Number(m[4]);
   }
   return out;
 }
 
 function delta(before, after, key) {
   return (after[key] || 0) - (before[key] || 0);
+}
+
+// Sum across the served axis. The PATH label and the SERVED label are independent claims, and a
+// test about which producer answered should not also be pinning whether that answer had rows in it
+// — that is the next test's job, and coupling them makes both brittle.
+function pathDelta(before, after, door, path) {
+  return delta(before, after, `${door}/${path}/yes`) + delta(before, after, `${door}/${path}/no`);
 }
 
 // Drop every auroraBff module EXCEPT the metrics registry, so a re-required engine re-binds to a
@@ -116,21 +123,21 @@ test('the two direct doors are countable apart', async () => {
   const before = pathCounts();
   await runLane({ entryType: 'direct', recoTriggerSource: 'agent_tool' });
   const afterAgent = pathCounts();
-  assert.equal(delta(before, afterAgent, 'agent_tool/llm_primary'), 1,
+  assert.equal(delta(before, afterAgent, 'agent_tool/llm_primary/no'), 1,
     'the recommend_products agent door must count under its own name');
 
   await runLane({ entryType: 'direct', recoTriggerSource: 'typed_reco' });
   const afterConsumer = pathCounts();
-  assert.equal(delta(afterAgent, afterConsumer, 'typed_reco/llm_primary'), 1,
+  assert.equal(delta(afterAgent, afterConsumer, 'typed_reco/llm_primary/no'), 1,
     'the consumer /v1/reco/generate lane must count under its own name');
-  assert.equal(delta(afterAgent, afterConsumer, 'agent_tool/llm_primary'), 0,
+  assert.equal(delta(afterAgent, afterConsumer, 'agent_tool/llm_primary/no'), 0,
     'a consumer turn must not land on the agent door series — entryType is the same for both');
 
   // The chat lane sets no trigger source at all and is identified by its entry type instead.
   await runLane({ entryType: 'chat', recoTriggerSource: null });
   const afterChat = pathCounts();
-  assert.equal(delta(afterConsumer, afterChat, 'chat/llm_primary'), 1);
-  assert.equal(delta(afterConsumer, afterChat, 'other/llm_primary'), 0,
+  assert.equal(delta(afterConsumer, afterChat, 'chat/llm_primary/no'), 1);
+  assert.equal(delta(afterConsumer, afterChat, 'other/llm_primary/no'), 0,
     'a chat turn must not fall through to the catch-all door');
 });
 
@@ -146,11 +153,11 @@ test('every path the lane can answer from is its own countable series', async ()
     const before = pathCounts();
     await runLane({ recoTriggerSource: 'agent_tool', answeredFrom: source });
     const after = pathCounts();
-    assert.equal(delta(before, after, `agent_tool/${source}`), 1,
+    assert.equal(pathDelta(before, after, 'agent_tool', source), 1,
       `a turn the lane answered from ${source} must count as ${source}`);
     for (const other of LANE_PATHS) {
       if (other === source) continue;
-      assert.equal(delta(before, after, `agent_tool/${other}`), 0,
+      assert.equal(pathDelta(before, after, 'agent_tool', other), 0,
         `a ${source} turn must not be counted as ${other}`);
     }
   }
@@ -164,27 +171,31 @@ test('a dead leg counts as none; a path nobody declared counts as unknown', asyn
   const beforeDead = pathCounts();
   await runLane({ recoTriggerSource: 'agent_tool', chat: DEAD_LEG });
   const afterDead = pathCounts();
-  assert.equal(delta(beforeDead, afterDead, 'agent_tool/none'), 1);
-  assert.equal(delta(beforeDead, afterDead, 'agent_tool/unknown'), 0,
+  assert.equal(delta(beforeDead, afterDead, 'agent_tool/none/no'), 1);
+  assert.equal(delta(beforeDead, afterDead, 'agent_tool/none/yes'), 0,
+    'a turn no path could serve cannot be marked served');
+  assert.equal(delta(beforeDead, afterDead, 'agent_tool/unknown/yes'), 0,
     'a dead leg is a known outcome, not an unrecognised path');
 
   const beforeNew = pathCounts();
   await runLane({ recoTriggerSource: 'agent_tool', answeredFrom: 'some_path_added_later' });
   const afterNew = pathCounts();
-  assert.equal(delta(beforeNew, afterNew, 'agent_tool/unknown'), 1);
-  assert.equal(delta(beforeNew, afterNew, 'agent_tool/none'), 0,
+  assert.equal(pathDelta(beforeNew, afterNew, 'agent_tool', 'unknown'), 1);
+  assert.equal(pathDelta(beforeNew, afterNew, 'agent_tool', 'none'), 0,
     'an unrecognised path must not hide among the dead legs');
-  assert.ok(!Object.keys(afterNew).some((k) => k.endsWith('/some_path_added_later')),
+  assert.ok(!Object.keys(afterNew).some((k) => k.includes('/some_path_added_later/')),
     'an unrecognised path must not mint a new series');
 });
 
 test('an unrecognised door falls to the catch-all rather than minting a series', () => {
-  // Prometheus label cardinality is a real cost and `recoTriggerSource` is not a closed set at its
-  // source — the lane falls back to ctx.trigger_source, which callers control.
+  // Prometheus label cardinality is a real cost and `recoTriggerSource` is a plain string supplied
+  // by the caller. NOTE: the lane passes the RAW parameter here, deliberately — there is a
+  // `pickFirstTrimmed(recoTriggerSource, ctx.trigger_source, 'text')` ladder elsewhere in the same
+  // function, and using it would misfile every chat turn as whatever ctx.trigger_source says.
   const before = pathCounts();
   metrics.recordAuroraRecoAnswerPath({ door: 'partner_integration_47', path: 'llm_primary' });
   const after = pathCounts();
-  assert.equal(delta(before, after, 'other/llm_primary'), 1);
+  assert.equal(delta(before, after, 'other/llm_primary/yes'), 1);
   assert.ok(!Object.keys(after).some((k) => k.startsWith('partner_integration_47/')));
 });
 
@@ -208,7 +219,6 @@ test('the chat verified-context restore is counted, and the lane is not counted 
     }),
     generateProductRecommendations: async () => { laneCalls += 1; return { norm: null }; },
     normalizeRecoFailureClass: (value) => value || '',
-    recordAuroraRecoAnswerPath: metrics.recordAuroraRecoAnswerPath,
   });
 
   const before = pathCounts();
@@ -234,7 +244,7 @@ test('the chat verified-context restore is counted, and the lane is not counted 
   assert.equal(Array.isArray(result?.norm?.payload?.recommendations)
     && result.norm.payload.recommendations.length, 1, 'the restore must actually have produced an answer');
   assert.equal(laneCalls, 0, 'the restore short-circuits the lane — if it stops doing so this row double counts');
-  assert.equal(delta(before, after, 'chat/verified_context_restore'), 1,
+  assert.equal(delta(before, after, 'chat/verified_context_restore/yes'), 1,
     'the restore is its own producer — it replays session candidates and runs no recall at all');
 });
 
@@ -264,93 +274,6 @@ test('the reco_requested event carries the path, distinctly from source_mode', (
   assert.ok(!Object.prototype.hasOwnProperty.call(withoutBasis, 'confidence_basis'));
 });
 
-test('the recorder survives every hop of the production chat wiring', async () => {
-  // THE TEST THAT WOULD HAVE CAUGHT THE LAST ROUND'S BLOCKER. The recorder was threaded through the
-  // three hops the author knew about and dropped by two more that nobody had looked at:
-  // legacyChatRecoDeps re-lists its deps by name, and legacyChatRecoRouteEntry forwards them by
-  // name. Neither carried the new key, so the restore counted ZERO in production while every test
-  // stayed green — the call sites are `typeof === 'function'` guarded, so a dropped dep is silent.
-  //
-  // Asserting the wiring rather than the guard: the guard stays (many unrelated tests build these
-  // runtimes without telemetry deps and should not have to care), so this is what makes a drop loud.
-  resetAuroraModules();
-  const { buildLegacyChatRecoRouteDeps } = require('../src/auroraBff/legacyChatRecoDeps');
-  const marker = () => 'marker';
-  const routeDeps = buildLegacyChatRecoRouteDeps({
-    recordAuroraRecoLlmCall: () => {},
-    recordAuroraRecoAnswerPath: marker,
-  });
-  assert.equal(routeDeps.recordAuroraRecoAnswerPath, marker,
-    'buildLegacyChatRecoRouteDeps must carry the recorder through — it re-lists deps by name');
-
-  const entry = require('../src/auroraBff/legacyChatRecoRouteEntry');
-  let handedOff = null;
-  const { maybeHandleLegacyChatRecoRouteEntry } = entry.createLegacyChatRecoRouteEntryRuntime({
-    shouldEnterLegacyProductRecommendations: () => true,
-    handleLegacyChatRecoRequest: async (args) => { handedOff = args; return null; },
-  });
-  await maybeHandleLegacyChatRecoRouteEntry({
-    ctx: { request_id: 'r' },
-    legacyRecoDeps: { recordAuroraRecoAnswerPath: marker },
-  });
-  assert.ok(handedOff, 'the route entry must hand off to the chat reco request handler');
-  assert.equal(handedOff.recordAuroraRecoAnswerPath, marker,
-    'legacyChatRecoRouteEntry must forward the recorder — it forwards deps by name');
-
-  // ...and the last hop, pipeline -> execution runtime, which re-lists deps by name too.
-  // The execution module must be patched BEFORE the pipeline is loaded: the pipeline destructures
-  // the factory at its own load time and keeps that binding, so patching afterwards watches a dead
-  // object. (Same trap as the mainline wrapper above; it is the reason the first draft of that
-  // harness asserted nothing.)
-  resetAuroraModules();
-  const execution = require('../src/auroraBff/legacyChatRecoExecution');
-  let executionDeps = null;
-  const realExecutionFactory = execution.createLegacyChatRecoExecutionRuntime;
-  execution.createLegacyChatRecoExecutionRuntime = (deps) => {
-    executionDeps = deps;
-    return realExecutionFactory(deps);
-  };
-  try {
-    const pipeline = require('../src/auroraBff/legacyChatRecoResultPipeline');
-    pipeline.createLegacyChatRecoResultPipelineRuntime({ recordAuroraRecoAnswerPath: marker });
-  } finally {
-    execution.createLegacyChatRecoExecutionRuntime = realExecutionFactory;
-  }
-  assert.ok(executionDeps, 'the pipeline must construct the execution runtime');
-  assert.equal(executionDeps.recordAuroraRecoAnswerPath, marker,
-    'legacyChatRecoResultPipeline must pass the recorder into the execution runtime');
-});
-
-test('routes constructs the two lane-free chat doors WITH the recorder', async () => {
-  // The other half of the same gap, and what MUT-1 exploited: the beauty door and the travel early
-  // exit are constructed in routes.js by hand. Their own tests build the runtime themselves and
-  // inject the recorder directly, so they can pass while production is wired without it.
-  resetAuroraModules();
-  const beauty = require('../src/auroraBff/beautyChatMainlineEntry');
-  const earlyExits = require('../src/auroraBff/legacyChatRecoEarlyExits');
-  const seen = {};
-  const realBeauty = beauty.createBeautyChatMainlineEntryRuntime;
-  const realEarly = earlyExits.createLegacyChatRecoEarlyExitsRuntime;
-  beauty.createBeautyChatMainlineEntryRuntime = (deps) => {
-    seen.beauty = deps && deps.recordAuroraRecoAnswerPath;
-    return realBeauty(deps);
-  };
-  earlyExits.createLegacyChatRecoEarlyExitsRuntime = (deps) => {
-    seen.travel = deps && deps.recordAuroraRecoAnswerPath;
-    return realEarly(deps);
-  };
-  try {
-    require('../src/auroraBff/routes');
-  } finally {
-    beauty.createBeautyChatMainlineEntryRuntime = realBeauty;
-    earlyExits.createLegacyChatRecoEarlyExitsRuntime = realEarly;
-  }
-  assert.equal(typeof seen.beauty, 'function',
-    'the beauty-owned chat door must be constructed with the recorder');
-  assert.equal(typeof seen.travel, 'function',
-    'the travel preview early exit must be constructed with the recorder');
-});
-
 test('the restore counts only when it actually restored something', async () => {
   // CONTROL FOR THE TEST ABOVE. Without it, moving the record out of the
   // `restoredRecommendations.length > 0` branch — counting whenever the restore PREDICATE fires —
@@ -374,7 +297,6 @@ test('the restore counts only when it actually restored something', async () => 
     classifyRecoUpstreamFailureCode: () => '',
     isTransientRecoUpstreamFailureCode: () => false,
     recordAuroraRecoLlmCall: () => {},
-    recordAuroraRecoAnswerPath: metrics.recordAuroraRecoAnswerPath,
   });
 
   const before = pathCounts();
@@ -397,7 +319,7 @@ test('the restore counts only when it actually restored something', async () => 
   });
   const after = pathCounts();
 
-  assert.equal(delta(before, after, 'chat/verified_context_restore'), 0,
+  assert.equal(delta(before, after, 'chat/verified_context_restore/yes'), 0,
     'a restore that restored nothing is not an answer and must not be counted');
   assert.equal(laneCalls, 1,
     'with nothing restored the lane DOES run — which is why counting the predicate would double count');
@@ -415,7 +337,6 @@ test('the travel preview early exit is counted', async () => {
     buildConfidenceNoticeCardPayload: () => ({}),
     summarizeProfileForContext: (profile) => profile,
     appendLatestRecoContextToSessionPatch: () => {},
-    recordAuroraRecoAnswerPath: metrics.recordAuroraRecoAnswerPath,
   });
 
   const before = pathCounts();
@@ -435,7 +356,7 @@ test('the travel preview early exit is counted', async () => {
   const card = (envelope?.cards || []).find((c) => c.type === 'recommendations');
   assert.ok(card, 'this path must actually have produced a recommendations card');
   assert.equal(card.payload.recommendations.length, 1);
-  assert.equal(delta(before, after, 'chat/travel_preview'), 1);
+  assert.equal(delta(before, after, 'chat/travel_preview/yes'), 1);
 });
 
 // KNOWN UNTESTED BRANCH, named rather than papered over.
@@ -450,3 +371,99 @@ test('the travel preview early exit is counted', async () => {
 // Driving it needs a catalog fixture, not another stub. Until then the record's PLACEMENT after the
 // recovery block is held only by reading the code.
 test.todo('the ungrounded-catalog recovery counts the path it recovered TO, not the one it started from');
+
+test('the lane-free producers record without anything being injected', async () => {
+  // THIS REPLACES A WIRING TEST, because the wiring is gone. The recorder used to travel six hops
+  // of by-name re-listing from routes.js down to each producer, and two rounds of review each found
+  // a different hop that silently dropped it — the chat half counted zero in production while every
+  // test stayed green. The three lane-free producers now require the recorder directly, which makes
+  // that whole class of bug unrepresentable.
+  //
+  // What this pins is that they really do, and that nothing shadows it: a leftover
+  // `const { recordAuroraRecoAnswerPath } = deps;` inside a factory would bind undefined over the
+  // module-level require and throw here. The runtimes below are built with NO telemetry dep at all.
+  resetAuroraModules();
+  const { createLegacyChatRecoEarlyExitsRuntime } = require('../src/auroraBff/legacyChatRecoEarlyExits');
+  const { maybeBuildLegacyTravelRecoEnvelope } = createLegacyChatRecoEarlyExitsRuntime({
+    buildEnvelope: (ctx, envelope) => envelope,
+    makeAssistantMessage: (content) => ({ role: 'assistant', content }),
+    makeEvent: (ctx, name, data) => ({ name, data }),
+    buildConfidenceNoticeCardPayload: () => ({}),
+    summarizeProfileForContext: (profile) => profile,
+    appendLatestRecoContextToSessionPatch: () => {},
+  });
+  const before = pathCounts();
+  maybeBuildLegacyTravelRecoEnvelope({
+    ctx: { request_id: 'r', lang: 'EN' },
+    travelRecoHandoff: true,
+    travelSkillsContracts: {
+      __internal: { buildRecoPreview: () => ({ recommendations: [{ product_id: 'p1' }] }) },
+    },
+    travelRecoContext: { travel_readiness: { env_source: 'test' } },
+    profile: null,
+  });
+  assert.equal(delta(before, pathCounts(), 'chat/travel_preview/yes'), 1,
+    'the travel early exit must record with no recorder passed to its runtime');
+});
+
+test('a turn that served nothing is separable from one that did, on the same path', async () => {
+  // THE LABEL THAT MAKES THIS METRIC USABLE FOR #2155. An `llm_primary` turn that grounds to ZERO
+  // products is the makeup case exactly: the model understood the request, refused to substitute a
+  // skincare product for a bronzer, and recall could not reach the category. Folding that into
+  // path='none' would erase the distinction; leaving it indistinguishable from a served answer
+  // would inflate `llm_primary` with every dead turn and hide the problem the other way.
+  //
+  // Both turns below take the SAME path. Only `served` separates them.
+  const before = pathCounts();
+  await runLane({ recoTriggerSource: 'agent_tool', chat: ANSWERING });
+  const afterEmpty = pathCounts();
+  assert.equal(delta(before, afterEmpty, 'agent_tool/llm_primary/no'), 1,
+    'an LLM answer grounded away to nothing is an llm_primary turn that served nothing');
+  assert.equal(delta(before, afterEmpty, 'agent_tool/llm_primary/yes'), 0);
+
+  // ...and the same path with rows that survive.
+  await runLane({ recoTriggerSource: 'agent_tool', answeredFrom: 'llm_primary', chat: ANSWERING });
+  const afterServed = pathCounts();
+  assert.equal(
+    delta(afterEmpty, afterServed, 'agent_tool/llm_primary/yes')
+      + delta(afterEmpty, afterServed, 'agent_tool/llm_primary/no'),
+    1,
+    'the second turn is the same path and must be counted once',
+  );
+});
+
+test('the skill_router door is counted, served and unserved', async () => {
+  // The chat door is not one producer. skill_router_v2 (AURORA_CHAT_SKILL_ROUTER_V2, default ON)
+  // answers recommendation requests on its own lane, and three review rounds in a row found a chat
+  // producer that counted nothing. It gets its own door rather than being folded into `chat`,
+  // because it is a different route with different failure modes — shop.find_products is grounded
+  // against the catalog, while reco.step_based can ship LLM-invented rows with no product_id.
+  resetAuroraModules();
+  const ShopFindProductsSkill = require('../src/auroraBff/skills/shop_find_products');
+
+  const withRows = new ShopFindProductsSkill({
+    client: {
+      findProductsMulti: async () => ({
+        products: [{
+          product_id: 'p1', name: 'A cleanser', brand: 'B',
+          price: 20, currency: 'USD', url: 'https://example.test/p1',
+        }],
+      }),
+    },
+  });
+  const before = pathCounts();
+  const served = await withRows.execute({ params: { query: 'a gentle cleanser' }, context: {} });
+  const afterServed = pathCounts();
+  assert.ok((served?.cards || []).some((c) => c.card_type === 'recommendations'),
+    'this drive must actually have produced a recommendations card');
+  assert.equal(delta(before, afterServed, 'skill_router/skill_find_products/yes'), 1);
+
+  const withoutRows = new ShopFindProductsSkill({
+    client: { findProductsMulti: async () => ({ products: [] }) },
+  });
+  await withoutRows.execute({ params: { query: 'a gentle cleanser' }, context: {} });
+  const afterEmpty = pathCounts();
+  assert.equal(delta(afterServed, afterEmpty, 'skill_router/skill_find_products/no'), 1,
+    'a skill turn that found nothing is still a turn this door handled');
+  assert.equal(delta(afterServed, afterEmpty, 'skill_router/skill_find_products/yes'), 0);
+});

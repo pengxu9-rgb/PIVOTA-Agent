@@ -1,3 +1,5 @@
+const { recordAuroraRecoAnswerPath } = require('../visionMetrics');
+
 const BaseSkill = require('./BaseSkill');
 const recoHybridResolver = require('../usecases/recoHybridResolveCandidates');
 
@@ -193,6 +195,13 @@ class RecoStepBasedSkill extends BaseSkill {
       });
     }
 
+    // COUNTED: skill_router_v2 answers a recommendation request without entering the reco lane, on
+    // its own door. AURORA_CHAT_SKILL_ROUTER_V2 defaults on, so this is live traffic.
+    recordAuroraRecoAnswerPath({
+      door: 'skill_router',
+      path: 'skill_step_based',
+      served: recommendations.length > 0,
+    });
     if (recommendations.length > 0) {
       cards.push({
         card_type: 'recommendations',

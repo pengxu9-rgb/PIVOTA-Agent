@@ -158,8 +158,6 @@ function createLegacyChatRecoRouteEntryRuntime(deps = {}) {
         legacyRecoDeps.isTransientRecoUpstreamFailureCode,
       recordAuroraRecoLlmCall:
         legacyRecoDeps.recordAuroraRecoLlmCall,
-      recordAuroraRecoAnswerPath:
-        legacyRecoDeps.recordAuroraRecoAnswerPath,
       normalizeRecoFailureClass:
         legacyRecoDeps.normalizeRecoFailureClass,
       recordAuroraSkinFlowMetric:

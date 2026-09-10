@@ -2482,7 +2482,7 @@ function recordAuroraSkinLlmCall({ stage, outcome, delta } = {}) {
 // the consumer POST /v1/reco/generate lane BOTH pass entryType 'direct', so entry type cannot tell
 // apart the two doors this counter exists to compare. `recoTriggerSource` can, and the chat lane —
 // which sets no trigger source — is identified by its entry type instead.
-const RECO_ANSWER_DOORS = new Set(['agent_tool', 'typed_reco', 'chat']);
+const RECO_ANSWER_DOORS = new Set(['agent_tool', 'typed_reco', 'chat', 'skill_router']);
 // WHICH PRODUCER ANSWERED, at structuredSource grain rather than collapsed to confidence_basis.
 // Basis maps BOTH catalog paths to 'positional' and folds `legacy_notice` in with a dead leg, which
 // loses exactly the distinctions #2155 turns on: whether the path that reads the domain prompt
@@ -2501,6 +2501,9 @@ const RECO_ANSWER_PATHS = new Set([
   'beauty_mainline_grounded',   // beauty-owned chat mainline, from its own grounded handoff
   'verified_context_restore',   // replayed session candidates, no recall run at all
   'travel_preview',             // travel handoff preview, built from the travel skill contract
+  'routine_lane',               // routine generator, answers a synthesized routine query
+  'skill_step_based',           // skill_router_v2 reco.step_based
+  'skill_find_products',        // skill_router_v2 shop.find_products
   'none',
 ]);
 
@@ -2522,7 +2525,7 @@ function normalizeRecoAnswerPath(path) {
   return RECO_ANSWER_PATHS.has(token) ? token : 'unknown';
 }
 
-function recordAuroraRecoAnswerPath({ door, entryType, path, delta } = {}) {
+function recordAuroraRecoAnswerPath({ door, entryType, path, served, delta } = {}) {
   const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
   if (amount <= 0) return;
   incCounter(
@@ -2530,6 +2533,16 @@ function recordAuroraRecoAnswerPath({ door, entryType, path, delta } = {}) {
     {
       door: normalizeRecoAnswerDoor(door, entryType),
       path: normalizeRecoAnswerPath(path),
+      // WHETHER THE BUYER ACTUALLY GOT ANYTHING, as a separate axis from which producer ran.
+      // Collapsing an empty answer into path='none' would destroy the single most important
+      // signal we have: an `llm_primary` turn that grounds to ZERO products is exactly the
+      // makeup case -- the model understood the request, refused to substitute, and recall
+      // could not reach the category. That is a different fact from "no producer answered",
+      // and a different fact again from a served answer, so it gets its own label rather than
+      // being folded into either. It also makes the denominator comparable across doors, which
+      // path alone was not: the lane counted an empty turn as served while the beauty door
+      // counted it as none.
+      served: served === false ? 'no' : 'yes',
     },
     amount,
   );
@@ -3411,7 +3424,7 @@ function renderVisionMetricsPrometheus() {
   lines.push('# TYPE aurora_skin_llm_call_total counter');
   renderCounter(lines, 'aurora_skin_llm_call_total', auroraSkinLlmCallCounter);
 
-  lines.push('# HELP aurora_reco_answer_path_total Recommendation answers grouped by the door they arrived at and the path that produced them.');
+  lines.push('# HELP aurora_reco_answer_path_total Recommendation turns grouped by the door they arrived at, the path that produced them, and whether any product was served.');
   lines.push('# TYPE aurora_reco_answer_path_total counter');
   renderCounter(lines, 'aurora_reco_answer_path_total', auroraRecoAnswerPathCounter);
 
