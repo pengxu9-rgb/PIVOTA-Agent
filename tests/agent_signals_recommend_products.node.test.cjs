@@ -20,14 +20,34 @@
 //     constraints / language / limit (and clones constraints), and the SANITIZER keeps why/fit/grounding/
 //     confidence_overall while the projector never places a bare `confidence`/`score` on a product node
 
-// PIN THE CONFIGURATION THIS FILE DESCRIBES. The wide template id is read ONCE at module load, so
-// a test asserting the DEFAULT-OFF contract against a module loaded under an ambient
-// RECO_MAIN_WIDE_PROMPT_TEMPLATE_ID is asserting something else entirely -- and prod exports exactly
-// that variable. Six tests across two files failed under prod's own configuration for this reason,
-// on main, while CI stayed green: CI ran the disarmed lane and prod runs the armed one. The tests
-// that want the ARMED lane arm it explicitly (withWideTemplate below); this makes their disarmed
-// counterparts mean what they say wherever they run.
-delete process.env.RECO_MAIN_WIDE_PROMPT_TEMPLATE_ID;
+
+// Resolve the reco prompt spec under a NAMED configuration rather than whatever the ambient shell
+// exports. The wide template id is read once at module load (routes.js:823), so arming it means
+// reloading the module; the prompt-file cache is module-scoped too, which is what makes this honest
+// rather than sticky. Synchronous by design — an async body would assert against the RESTORED env.
+function withRoutesEnv(env, fn) {
+  const moduleId = require.resolve('../src/auroraBff/routes');
+  const before = {};
+  for (const [k, v] of Object.entries(env)) {
+    before[k] = process.env[k];
+    if (v === undefined) delete process.env[k];
+    else process.env[k] = v;
+  }
+  delete require.cache[moduleId];
+  try {
+    const out = fn(require('../src/auroraBff/routes').__internal);
+    if (out && typeof out.then === 'function') {
+      throw new Error('withRoutesEnv is synchronous: an async fn would assert against the restored env');
+    }
+    return out;
+  } finally {
+    for (const [k, v] of Object.entries(before)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+    delete require.cache[moduleId];
+  }
+}
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -1548,32 +1568,48 @@ test('8e. the tool description and the code agree — the promises are quoted fr
   // description says so again. Reading the file the scope RESOLVES TO keeps the two honest: when the
   // id is registered upstream and the default flips, this fails until the sentence is updated with
   // it — which is the point.
-  assert.ok(/The lane is tuned for SKINCARE specifically/.test(src),
+  assert.ok(/The lane covers skincare \(including body care\), makeup and fragrance/.test(src),
     "the domain the door's own prompt allows must be stated, since it changes what a makeup need gets back");
+  // THE TWO LIMITS ARE LOAD-BEARING and must not be quietly dropped when someone tightens the prose.
+  // Measured on the live agent door 2026-09-10: four consecutive calls answered from the CATALOG path,
+  // which reads no prompt, and a makeup / haircare / fragrance need each came back with cleansers. A
+  // description promising category fidelity without that caveat would be the same
+  // description-ahead-of-the-code defect this file exists to prevent (#2149).
+  assert.ok(/binds the model-authored path only/.test(src)
+    && /reads no prompt at all/.test(src),
+    'the category promise must stay bounded to the path that actually reads the prompt');
+  assert.ok(/a bare empty answer is treated as a gap the catalog may fill/.test(src),
+    'the empty-answer promise must say what it requires, since a bare empty answer does not qualify');
   // AND THE OTHER TWO CLAIMS GO WITH IT. v1_2 — the template the door actually loads while the wide
   // one is inert — has no CATEGORY FIDELITY block and no empty-answer instruction: its whole domain
   // section is "Recommend skincare only. Never recommend makeup, brushes, beauty tools, devices,
   // fragrance, haircare, or supplements." So promising a partner that the lane answers in the category
   // it names, or answers a tool request empty rather than off-category, would be exactly the
   // description-ahead-of-the-prompt defect this file exists to prevent. They return when v1_3 does.
-  assert.ok(!/return an empty shortlist rather than substitute an adjacent one/.test(src),
-    'the category-fidelity promise is v1_3-only; it must not be advertised while v1_2 is loaded');
-  assert.ok(!/does NOT cover beauty tools, brushes, sponges or devices/.test(src),
-    'the tools empty-answer promise is v1_3-only; v1_2 merely declines to recommend them');
+  // INVERTED 2026-09-10. These were negative because v1_3 was default-off and the promises would have
+  // been ahead of the loaded prompt. Prod now pins RECO_MAIN_WIDE_PROMPT_TEMPLATE_ID=reco_main_v1_3
+  // and the door resolves to it, so the promises are BEHIND the prompt instead — the description had
+  // been telling partner agents the lane "never recommends makeup or fragrance" while it recommends
+  // both. Asserted positively now, against the armed resolution below.
+  assert.ok(/does NOT cover haircare, beauty tools, brushes, sponges or devices/.test(src),
+    'the tools and haircare exclusions the loaded prompt states must be the ones the description names');
   // The mechanism that keeps this honest either way: read the prompt the scope RESOLVES TO.
-  const doorPromptFile = require('node:fs').readFileSync(
-    path.join(__dirname, '..', 'prompts', `${require('../src/auroraBff/routes').__internal.resolveRecoMainPromptSpec({ promptDomainScope: 'beauty' }).system_file}`), 'utf8');
-  assert.ok(/Recommend skincare only/.test(doorPromptFile),
-    'while the wide template is default-off the door must resolve to the skincare-bounded prompt');
-  const { __internal } = require('../src/auroraBff/routes');
-  const doorSpec = __internal.resolveRecoMainPromptSpec({ promptDomainScope: 'beauty' });
-  assert.equal(doorSpec.wide_template_active, false,
-    'the wide template must stay off by default until the decision service accepts its id');
+  // THE MECHANISM THAT KEEPS THIS HONEST: read the prompt the scope RESOLVES TO — under the
+  // configuration PROD RUNS, armed explicitly rather than inherited from whatever the shell exports.
+  // That is the whole subject of this assertion: the description describes a live door, so it must be
+  // checked against the live door's template, not against whichever one CI happens to default to.
+  const armedDoorSpec = withRoutesEnv(
+    { RECO_MAIN_WIDE_PROMPT_TEMPLATE_ID: 'reco_main_v1_3' },
+    (internal) => internal.resolveRecoMainPromptSpec({ promptDomainScope: 'beauty' }),
+  );
+  assert.equal(armedDoorSpec.wide_template_active, true,
+    'with the wide id named, the beauty ask must actually GRANT the wide template');
   const doorPrompt = require('node:fs').readFileSync(
-    path.join(__dirname, '..', 'prompts', doorSpec.system_file), 'utf8');
-  assert.ok(/Recommend skincare only/.test(doorPrompt),
-    'the description says skincare-only; the prompt this door loads must actually bound it that way');
-  assert.ok(/Never recommend makeup, brushes, beauty tools, devices, fragrance, haircare, or supplements/.test(doorPrompt),
+    path.join(__dirname, '..', 'prompts', armedDoorSpec.system_file), 'utf8');
+  assert.ok(/Recommend skincare \(including body care\), makeup, and fragrance/.test(doorPrompt),
+    'the description names a domain; the prompt this door loads must actually allow it');
+  assert.ok(/Do not recommend haircare yet/.test(doorPrompt)
+    && /Never recommend beauty tools, brushes, sponges, applicators, or devices/.test(doorPrompt),
     'the exclusions the description names must be the ones the loaded prompt states');
   assert.ok(surfaceMod, 'the surface module still loads with the edited description');
 });
