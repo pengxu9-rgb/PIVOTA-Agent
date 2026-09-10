@@ -3,11 +3,12 @@
 //
 // jest.config.js testMatch is `**/tests/**/*.test.(js|ts)`, so every `*.node.test.cjs`
 // file is invisible to the sharded jest job. Until this script, the answer was two
-// hand-maintained allowlists (the `test:node` npm script and a list inside
-// pr-full-jest.yml). They had drifted to 135 of 295 files: 161 suites had never run in
-// any CI job, including suites written specifically to stop a production defect from
-// coming back. A test that never executes is not a weaker guard than no test — it is
-// worse, because the PR that added it was reviewed as though a guard now existed.
+// hand-maintained allowlists. The one inside pr-full-jest.yml named 87 of 295 files; the
+// one in the `test:node` npm script named 66 more, but no workflow invokes that script,
+// so those never ran either. 208 suites had never run in any CI job, including suites
+// written specifically to stop a production defect from coming back. A test that never
+// executes is not a weaker guard than no test — it is worse, because the PR that added
+// it was reviewed as though a guard now existed.
 //
 // So discovery here is a GLOB, and the only list is a list of EXCLUSIONS that may only
 // shrink. A suite added tomorrow is gated tomorrow, with nobody remembering anything.

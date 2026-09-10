@@ -1,9 +1,10 @@
 // Guards the gate that runs every other `node --test` suite.
 //
 // Context, because it is the reason these assertions are worth their weight: for most of
-// this repo's life, `*.node.test.cjs` files ran only if a human added them to one of two
-// hand-maintained allowlists. On 2026-09-10 that had drifted to 135 of 295 files — 161
-// suites had never executed in any CI job. Several of them were written specifically to
+// this repo's life, `*.node.test.cjs` files ran only if a human added them to a
+// hand-maintained allowlist. On 2026-09-10 the one that CI actually reads named 87 of
+// 295 files (a second list, in the `test:node` npm script, is invoked by no workflow at
+// all), so 208 suites had never executed in any CI job. Several of them were written specifically to
 // stop a production defect recurring, and one of them (aurora_undefined_symbol_guard) is
 // red on main right now over a live ReferenceError in src/server.js.
 //

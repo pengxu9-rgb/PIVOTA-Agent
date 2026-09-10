@@ -54,18 +54,19 @@ jobs:
   # This job used to be a 1,100-line hand-maintained allowlist, added to file by
   # file, on the reasoning that sweeping every suite in "without first confirming
   # each is green would trade a silent gap for a permanently red gate". The caution
-  # was sound; the allowlist was not. Measured on 2026-09-10 against 205e9f1cd, it
-  # and the `test:node` npm list between them named 135 of 295 suites. The other
-  # 161 had never executed in any CI job. 122 of those 161 were passing — gating
-  # nothing purely because nobody had typed their names. Among the rest was
-  # `aurora_undefined_symbol_guard`, red over a live ReferenceError in src/server.js
-  # (`crossMerchantCacheRouteDebug`, referenced at two points outside the scope of
-  # its `let`) that no gate in this repo could see.
+  # was sound; the allowlist was not. Measured on 2026-09-10 against 205e9f1cd it
+  # named 87 of 295 suites. A second list in the `test:node` npm script named 66
+  # more — but no workflow invokes `npm run test:node`, so those never ran either,
+  # which is easy to miss because the list looks like coverage. 208 suites had never
+  # executed in CI. 163 of them were passing, gating nothing, purely because nobody
+  # had typed their names. Among the rest was `aurora_undefined_symbol_guard`, red
+  # over a live ReferenceError in src/server.js (`crossMerchantCacheRouteDebug`,
+  # referenced at two points outside the scope of its `let`) that no gate could see.
   #
   # So discovery is now a GLOB, and the list is a list of EXCLUSIONS
   # (tests/node_suite_quarantine.txt) that may only shrink: the runner executes the
   # quarantined suites too and FAILS if one of them passes, telling you to delete
-  # its line. The original caution is preserved — the 40 suites red on main are
+  # its line. The original caution is preserved — the 45 suites red on main are
   # still excluded — but the default is inverted. A suite added tomorrow is gated
   # tomorrow, with nobody remembering anything.
   node-tests:
