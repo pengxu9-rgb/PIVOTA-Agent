@@ -146,8 +146,10 @@ test('every path the lane can answer from is its own countable series', async ()
   // catalog_transient_fallback both to 'positional', and legacy_notice to 'none' alongside a dead
   // leg. A mutant that reports any of these as another value fails here.
   // These three are every value `structuredSource` can actually take. `legacy_notice` is NOT a
-  // fourth: it is a source_mode, produced only when structuredSource is falsy, so a turn that
-  // reaches it counts as 'none' and is covered by the dead-leg test below.
+  // fourth: it is a source_mode, never a structuredSource. It is also NOT a synonym for a dead leg
+  // -- legacyRecoGenerationResult.js:81-107 falls to it for any structuredSource, llm_primary
+  // included, when the shortlist is empty on a non-framework non-step-aware turn. That turn counts
+  // llm_primary/served=no.
   const LANE_PATHS = ['llm_primary', 'catalog_grounded', 'catalog_transient_fallback'];
   for (const source of LANE_PATHS) {
     const before = pathCounts();
@@ -458,10 +460,23 @@ test('the skill_router door is counted, served and unserved', async () => {
     'this drive must actually have produced a recommendations card');
   assert.equal(delta(before, afterServed, 'skill_router/skill_find_products/yes'), 1);
 
+  // Priced OUT rather than simply absent. The skill re-checks the price bound after the gateway
+  // returns, so `served` must come from the post-filter list — computing it from the gateway's rows
+  // would report a turn as served when every row was filtered away one line later.
   const withoutRows = new ShopFindProductsSkill({
-    client: { findProductsMulti: async () => ({ products: [] }) },
+    client: {
+      findProductsMulti: async () => ({
+        products: [{
+          product_id: 'p2', name: 'An expensive cleanser', brand: 'B',
+          price: 400, currency: 'USD', url: 'https://example.test/p2',
+        }],
+      }),
+    },
   });
-  await withoutRows.execute({ params: { query: 'a gentle cleanser' }, context: {} });
+  await withoutRows.execute({
+    params: { query: 'a gentle cleanser under $20', price_max: 20 },
+    context: {},
+  });
   const afterEmpty = pathCounts();
   assert.equal(delta(afterServed, afterEmpty, 'skill_router/skill_find_products/no'), 1,
     'a skill turn that found nothing is still a turn this door handled');
@@ -594,4 +609,21 @@ test('the agent door records exactly once, through the REAL lane', async () => {
     'exactly one series may move: the lane must defer to the bridge, and the bridge must know the path');
   assert.equal(delta(before, after, 'agent_tool/llm_primary/no'), 1,
     'and it must move by one — two means the lane recorded as well');
+});
+
+test('a falsy count is unserved — `served` is not a truthiness accident', () => {
+  // The first version read `served === false ? 'no' : 'yes'`, which recorded `served: 0` as SERVED.
+  // Zero is the obvious future shape here (`served: rows.length`), and it means the opposite.
+  // Absent still means yes: two call sites sit inside non-empty guards and pass nothing.
+  const before = pathCounts();
+  metrics.recordAuroraRecoAnswerPath({ door: 'chat', path: 'travel_preview', served: 0 });
+  const afterZero = pathCounts();
+  assert.equal(delta(before, afterZero, 'chat/travel_preview/no'), 1,
+    'a zero count is not a served answer');
+  assert.equal(delta(before, afterZero, 'chat/travel_preview/yes'), 0);
+
+  metrics.recordAuroraRecoAnswerPath({ door: 'chat', path: 'travel_preview' });
+  const afterAbsent = pathCounts();
+  assert.equal(delta(afterZero, afterAbsent, 'chat/travel_preview/yes'), 1,
+    'omitting it still means served — the guarded call sites rely on that');
 });

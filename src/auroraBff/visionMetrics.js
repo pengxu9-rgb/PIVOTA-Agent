@@ -2488,9 +2488,12 @@ const RECO_ANSWER_DOORS = new Set(['agent_tool', 'typed_reco', 'chat', 'skill_ro
 // loses exactly the distinctions #2155 turns on: whether the path that reads the domain prompt
 // served the turn, and if not, which promptless path did.
 const RECO_ANSWER_PATHS = new Set([
-  // The three values `structuredSource` can actually take. `legacy_notice` is deliberately NOT here:
-  // it is a source_mode, produced only when structuredSource is falsy, and a turn that reaches it
-  // counts as 'none' — which is the truth about it.
+  // The three values `structuredSource` can actually take. `legacy_notice` is deliberately NOT here
+  // because it is a SOURCE_MODE, never a structuredSource — but do not read it as "the leg died":
+  // legacyRecoGenerationResult.js:81-107 falls to 'legacy_notice' for ANY structuredSource,
+  // 'llm_primary' included, whenever the shortlist is empty on a non-framework, non-step-aware turn.
+  // Such a turn counts here as llm_primary/served=no, NOT as none. An operator cross-referencing
+  // this counter against reco_requested.source needs that, or the two will look like they disagree.
   'llm_primary',
   'catalog_grounded',
   'catalog_transient_fallback',
@@ -2518,9 +2521,16 @@ const RECO_ANSWER_PATHS = new Set([
 //   - On the agent door, turns refused BEFORE the lane runs (disabled, need_required, off_vertical).
 //     A lane failure IS counted, as none/served=no.
 //
-// So `chat` means "these named chat producers", not "every chat answer". The two doors that ARE
-// complete are `agent_tool` -- recorded at the bridge, from what the partner actually received --
-// and `typed_reco`. Those are the ones the partner-integration question turns on.
+// So `chat` means "these named chat producers", not "every chat answer".
+//
+// AND `served` IS ONLY EXACT ON `agent_tool`. That door records at the bridge, from the list the
+// partner actually receives. Every other door records in the lane, and work happens after it:
+//   - typed_reco: applyRecommendationOutputGuardrailsForRoute (directRecoGenerateHandler.js:718)
+//     both DROPS rows (strict skincare filter) and ADDS them (purchasable fallback, external seed
+//     supplement) -- all three on prod defaults -- so served=yes can ship nothing and served=no can
+//     ship something. A lane throw on that door emits no row at all.
+//   - chat: beautyExpertV1, as above.
+// Elsewhere read `served` as "the producer returned rows", not "the caller got them".
 
 function normalizeRecoAnswerDoor(door, entryType) {
   const doorToken = cleanMetricToken(door, '');
@@ -2557,7 +2567,10 @@ function recordAuroraRecoAnswerPath({ door, entryType, path, served, delta } = {
       // being folded into either. It also makes the denominator comparable across doors, which
       // path alone was not: the lane counted an empty turn as served while the beauty door
       // counted it as none.
-      served: served === false ? 'no' : 'yes',
+      // Explicitly boolean-ised. `served === false ? ...` recorded `served: 0` -- the obvious future
+      // shape `served: rows.length` -- as SERVED. Absent still means yes: two call sites sit inside
+      // non-empty guards and say so.
+      served: served === undefined ? 'yes' : (served ? 'yes' : 'no'),
     },
     amount,
   );
@@ -3439,7 +3452,7 @@ function renderVisionMetricsPrometheus() {
   lines.push('# TYPE aurora_skin_llm_call_total counter');
   renderCounter(lines, 'aurora_skin_llm_call_total', auroraSkinLlmCallCounter);
 
-  lines.push('# HELP aurora_reco_answer_path_total Recommendation turns from the reco lane and six named lane-free producers, by entry door, producing path, and whether a product reached the caller. NOT a census of every recommendations card - see RECO_ANSWER_PATHS in visionMetrics.js for what is out of scope.');
+  lines.push('# HELP aurora_reco_answer_path_total Recommendation turns from the reco lane and six named lane-free producers, by entry door, producing path, and whether the producer returned rows (exact delivery only on the agent_tool door). NOT a census of every recommendations card - see RECO_ANSWER_PATHS in visionMetrics.js for what is out of scope.');
   lines.push('# TYPE aurora_reco_answer_path_total counter');
   renderCounter(lines, 'aurora_reco_answer_path_total', auroraRecoAnswerPathCounter);
 
