@@ -17,7 +17,10 @@
  *
  * WHAT IT CHECKS, in one run so a single daily job covers the graph:
  *   1. serving guard  — approved rows that are suppressed, and any critical suppression reason.
- *   2. no-op runs     — the ledger passing while nothing is applied (see
+ *   2. expiry risk    — >30% of serving edges expiring within 14 days, or the serving set falling
+ *                       below 500 rows, or emptying entirely. This was a SECOND step in the retired
+ *                       workflow and was missed on the first port; review caught it.
+ *   3. no-op runs     — the ledger passing while nothing is applied (see
  *                       audit-relationship-graph-noop-runs.js for why it is keyed on
  *                       applied_count and not on the edges view's created_at).
  *
@@ -29,12 +32,31 @@
 const { closePool } = require('../src/db');
 const { runServingGuardAudit } = require('./audit-relationship-graph-serving-guard');
 const { runNoopAudit } = require('./audit-relationship-graph-noop-runs');
+const {
+  DEFAULT_THRESHOLDS,
+  runServingStatusReport,
+} = require('./report-relationship-graph-serving-status');
+
+// The three reasons the retired workflow hardcoded as CRITICAL_REASONS. Defaulted HERE rather than
+// left to the caller: the Cloud Run job passes thresholds through env, and a reason list that is
+// empty unless someone remembers an env var is a check that silently never fires — which is the
+// defect this job exists to report, committed inside it. Review caught exactly that.
+const DEFAULT_CRITICAL_REASONS = [
+  'ai_approved_dupe_quarantined',
+  'candidate_ref_unresolvable_nested_product_prefix',
+  'anchor_ref_unresolvable_nested_product_prefix',
+];
+
+// The retired workflow's SECOND step, "Serving expiry risk alarm": all markets, fail when more than
+// 30% of serving edges expire inside 14 days, or when the serving set falls below 500 rows.
+const DEFAULT_MAX_EXPIRING_14D_PCT = 30;
+const DEFAULT_MIN_TOTAL_ROWS = 500;
 
 const DEFAULTS = {
   market: 'US',
   maxSuppressedRows: 0,
   maxSuppressedPct: 0,
-  criticalReasons: [],
+  criticalReasons: DEFAULT_CRITICAL_REASONS,
   failOnNoop: false,
 };
 
@@ -51,6 +73,7 @@ function parseArgs(argv = process.argv.slice(2), env = process.env) {
     return v && !v.startsWith('--') ? v : null;
   };
   const reasons = at('critical-reasons') || env.RELGRAPH_CRITICAL_REASONS || '';
+  const parsedReasons = String(reasons).split(',').map((x) => x.trim()).filter(Boolean);
   return {
     market: (at('market') || env.RELGRAPH_MARKET || DEFAULTS.market).toUpperCase(),
     maxSuppressedRows: num(
@@ -61,10 +84,13 @@ function parseArgs(argv = process.argv.slice(2), env = process.env) {
       at('max-suppressed-pct') ?? env.RELGRAPH_MAX_SUPPRESSED_PCT,
       DEFAULTS.maxSuppressedPct,
     ),
-    criticalReasons: String(reasons)
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean),
+    // An explicit list overrides; an ABSENT one keeps the workflow's three, never an empty list.
+    criticalReasons: parsedReasons.length ? parsedReasons : DEFAULT_CRITICAL_REASONS,
+    maxExpiring14dPct: num(
+      at('max-expiring-14d-pct') ?? env.RELGRAPH_MAX_EXPIRING_14D_PCT,
+      DEFAULT_MAX_EXPIRING_14D_PCT,
+    ),
+    minTotalRows: num(at('min-total-rows') ?? env.RELGRAPH_MIN_TOTAL_ROWS, DEFAULT_MIN_TOTAL_ROWS),
     // Report-only until someone decides the no-op state should page. The serving-guard thresholds
     // were already enforcing before the move, so they stay enforcing; changing both severities in
     // one migration would make it impossible to tell a migration bug from a real finding.
@@ -108,14 +134,46 @@ function evaluateServingGuard(report, opts) {
   };
 }
 
+/**
+ * The retired workflow's expiry alarm, ported verbatim in behaviour:
+ * fail when >maxExpiring14dPct of serving edges expire within 14 days, when the serving set is
+ * below minTotalRows, or when it is EMPTY — 0% of 0 rows must never read as healthy, because at
+ * that point the cliff has already happened.
+ */
+function evaluateExpiryRisk(report) {
+  const expiring = report && report.checks && report.checks.expiring_14d_pct;
+  const floor = report && report.checks && report.checks.total_rows;
+  const totalRows = Number((report && report.coverage && report.coverage.total_rows) || 0);
+  const servingEmpty = totalRows === 0;
+  const violations = [];
+  if (expiring && expiring.status === 'fail') violations.push({ metric: 'expiring_14d_pct' });
+  if (floor && floor.status === 'fail') violations.push({ metric: 'total_rows' });
+  if (servingEmpty) violations.push({ metric: 'serving_empty' });
+  return { ok: violations.length === 0, total_rows: totalRows, violations };
+}
+
 async function runHealthJob(opts, deps = {}) {
   const servingAudit = deps.runServingGuardAudit || runServingGuardAudit;
   const noopAudit = deps.runNoopAudit || runNoopAudit;
+  const statusReport = deps.runServingStatusReport || runServingStatusReport;
+
   const report = await servingAudit({ market: opts.market });
   const gate = evaluateServingGuard(report, opts);
+
+  // ALL MARKETS, as the retired step did — an expiry cliff in one market is still a cliff.
+  const status = await statusReport({
+    market: '',
+    thresholds: {
+      ...DEFAULT_THRESHOLDS,
+      maxExpiring14dPct: opts.maxExpiring14dPct,
+      minTotalRows: opts.minTotalRows,
+    },
+  });
+  const expiry = evaluateExpiryRisk(status);
+
   const noop = await noopAudit({});
-  const failed = !gate.ok || (noop.noop && opts.failOnNoop);
-  return { market: opts.market, gate, noop, ok: !failed };
+  const failed = !gate.ok || !expiry.ok || (noop.noop && opts.failOnNoop);
+  return { market: opts.market, gate, expiry, noop, ok: !failed };
 }
 
 async function main() {
@@ -141,4 +199,10 @@ if (require.main === module) {
   });
 }
 
-module.exports = { parseArgs, evaluateServingGuard, runHealthJob };
+module.exports = {
+  parseArgs,
+  evaluateServingGuard,
+  evaluateExpiryRisk,
+  runHealthJob,
+  DEFAULT_CRITICAL_REASONS,
+};
