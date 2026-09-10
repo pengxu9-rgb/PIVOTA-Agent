@@ -11,6 +11,13 @@
 # `crossMerchantCacheRouteDebug` at two points outside the scope of its `let` — a live
 # ReferenceError no gate could see.
 #
+# AN ENTRY MAY CARRY ONE MARKER: `path  # intermittent`. It means the suite PASSES when run
+# on its own and FAILS inside the gated batch. Those three are exempt from the recovery
+# ratchet below, and nothing else is. Without the exemption they deadlock it: the ratchet
+# re-runs quarantined suites SOLO, which for such a suite reports "recovered" every time and
+# demands un-quarantining — which returns it to the batch, where it fails again. Observed on
+# CI run 34522664588, where a fully green gated batch still failed the job that way.
+#
 # THIS LIST MAY ONLY SHRINK. The runner executes these suites too, and FAILS the job if one
 # of them passes, with instructions to delete the line. A quarantined suite that gets fixed
 # cannot silently stay quarantined. Enforced under CI only — see the runner for why.
@@ -80,7 +87,7 @@ tests/integration/safety_kernel_mount.node.test.cjs
 # never settles, so when nothing else holds the loop open the file exits underneath it.
 # Never ran in CI before this gate, so the race is newly visible, not newly created. This
 # is the case the CI-only ratchet exists for: locally it reports as "passes here".
-tests/find_products_beauty_discovery_local_mainline.node.test.cjs
+tests/find_products_beauty_discovery_local_mainline.node.test.cjs  # intermittent
 # Same shape as the entry above, found by the first CI run that gated it: five LOAD tests
 # in this file build `productRead: () => new Promise(() => {})` — a read that never settles
 # — and assert on deadline/concurrency behaviour. Green locally and on an unloaded box;
@@ -96,7 +103,7 @@ tests/find_products_beauty_discovery_local_mainline.node.test.cjs
 # The pattern alone is therefore NOT the predictor, and quarantining all twelve would
 # discard working coverage — the same mistake as dropping suites, in the other direction.
 # Only suites CI has actually cancelled are listed.
-safety-kernel/test/acpBuyerIntake.test.js
+safety-kernel/test/acpBuyerIntake.test.js  # intermittent
 # Cancelled in CI on run 34520405621 (batch) — a concurrency test at :14278 asserting
 # per-level catalog searches run in parallel. It PASSED the run before with no change
 # between them, so it is intermittent, which is why chasing these one green run at a time
@@ -111,5 +118,5 @@ safety-kernel/test/acpBuyerIntake.test.js
 # cancelledByParent. No amount of isolation between files helps a file that poisons itself.
 # All three pass on macOS locally and hang on the Linux runner, which points at a timer or
 # unref difference rather than at load.
-tests/aurora_bff_reco_relevance.node.test.cjs
+tests/aurora_bff_reco_relevance.node.test.cjs  # intermittent
 

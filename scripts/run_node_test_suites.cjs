@@ -59,15 +59,33 @@ const TEST_ENV = { ...process.env };
 // signal rather than eating the workflow's own timeout with no output.
 const GATED_BATCH_TIMEOUT_MS = 20 * 60 * 1000;
 
+// Entries may carry an inline marker: `path  # intermittent`. Returns Map path -> Set(flags).
+//
+// `intermittent` means: this suite PASSES when run on its own and FAILS inside the gated
+// batch. It exists because the recovery ratchet re-runs quarantined suites solo, and for
+// such a suite that measurement says "recovered" every single time — so the ratchet would
+// demand it be un-quarantined, and un-quarantining puts it straight back in the batch where
+// it fails. A ratchet whose measurement disagrees with the gate's measurement is a deadlock,
+// not a ratchet. These entries are therefore exempt from recovery, and only these.
+function readQuarantineEntries(file = QUARANTINE_FILE) {
+  const entries = new Map();
+  if (!fs.existsSync(file)) return entries;
+  for (const raw of fs.readFileSync(file, 'utf8').split('\n')) {
+    const line = raw.trim();
+    if (!line || line.startsWith('#')) continue;
+    const [pathPart, ...rest] = line.split('#');
+    const suite = pathPart.trim();
+    if (!suite) continue;
+    const flags = new Set(
+      rest.join('#').split(/[\s,]+/).map((f) => f.trim()).filter(Boolean),
+    );
+    entries.set(suite, flags);
+  }
+  return entries;
+}
+
 function readQuarantine(file = QUARANTINE_FILE) {
-  if (!fs.existsSync(file)) return new Set();
-  return new Set(
-    fs
-      .readFileSync(file, 'utf8')
-      .split('\n')
-      .map((line) => line.trim())
-      .filter((line) => line && !line.startsWith('#')),
-  );
+  return new Set(readQuarantineEntries(file).keys());
 }
 
 function walk(absDir, suffix, recursive, out, prefix) {
@@ -183,13 +201,19 @@ function main() {
   // credential). CI is the authority on whether a suite is green, so failing a dev box
   // for disagreeing with a runner would train people to ignore this message. Locally the
   // finding is still printed, because "this might be fixable now" is worth reading.
-  const recovered = [...quarantined].sort().filter((f) => suitePasses(f));
+  // Only suites whose quarantine claim the solo re-run can actually test. See
+  // readQuarantineEntries for why `intermittent` is exempt.
+  const entries = readQuarantineEntries();
+  const testable = [...quarantined]
+    .sort()
+    .filter((f) => !(entries.get(f) || new Set()).has('intermittent'));
+  const recovered = testable.filter((f) => suitePasses(f));
   if (recovered.length) {
     // `CI=false` is not CI. GitHub sets the literal string "true".
     const inCi = String(process.env.CI || '').toLowerCase() === 'true';
     const outcome = recoveryOutcome(recovered, inCi);
     console.error(
-      `\n[node:test] ${recovered.length} quarantined suite(s) PASS here:\n` +
+      `\n[node:test] ${recovered.length} of ${testable.length} testable quarantined suite(s) PASS here:\n` +
         recovered.map((f) => `  - ${f}`).join('\n') +
         (inCi
           ? `\nDelete those lines from tests/node_suite_quarantine.txt so the gate keeps them green.\n`
@@ -210,6 +234,7 @@ if (require.main === module) main();
 module.exports = {
   discoverSuites,
   readQuarantine,
+  readQuarantineEntries,
   planRun,
   recoveryOutcome,
   SUITE_ROOTS,

@@ -26,6 +26,7 @@ const { execFileSync } = require('node:child_process');
 const {
   discoverSuites,
   readQuarantine,
+  readQuarantineEntries,
   planRun,
   recoveryOutcome,
   SUITE_ROOTS,
@@ -172,6 +173,35 @@ test('quarantine entries are repo-relative paths under a known suite root', () =
       roots.some((r) => entry.startsWith(r)),
       `quarantine entry ${JSON.stringify(entry)} is not under a known suite root`,
     );
+  }
+});
+
+test('an intermittent entry is exempt from recovery, and nothing else is', () => {
+  // The deadlock this marker prevents, observed on CI run 34522664588: the GATE measures a
+  // suite inside the batch, the RATCHET re-runs it solo. For a suite that passes solo and
+  // fails batched, the ratchet reports "recovered" every time and demands it be
+  // un-quarantined — which puts it straight back in the batch, where it fails. A ratchet
+  // whose measurement disagrees with the gate's is not a ratchet.
+  const entries = readQuarantineEntries();
+  assert.ok(entries.size > 0);
+
+  const flagged = [...entries].filter(([, flags]) => flags.has('intermittent'));
+  assert.ok(flagged.length > 0, 'expected at least one intermittent entry; else this is inert');
+
+  // The exemption must stay narrow: it is the one way a red suite can hide from the
+  // mechanism meant to free it, so only this marker may be spelled here.
+  const ALLOWED = new Set(['intermittent']);
+  for (const [suite, flags] of entries) {
+    for (const flag of flags) {
+      assert.ok(ALLOWED.has(flag), `${suite} carries unknown marker ${JSON.stringify(flag)}`);
+    }
+  }
+
+  // Markers annotate; they must never change which suite the line names.
+  const quarantined = readQuarantine();
+  for (const [suite] of entries) {
+    assert.ok(quarantined.has(suite), `${suite} parsed with a marker but is not quarantined`);
+    assert.ok(!suite.includes('#'), 'the marker must be stripped from the path');
   }
 });
 
