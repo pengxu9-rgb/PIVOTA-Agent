@@ -78,3 +78,22 @@ test('published cost estimate includes cache and reports unknown model prices ex
  expect(result.cached_input_tokens).toBe(4352);
  expect(buildProviderUsage({inputTokens:10,outputTokens:10,pricing:openAIProbePricing('unknown-model')}).cost_usd_estimate).toBeNull();
 });
+
+test('required-search profile changes the real request and binds answer provenance', async () => {
+ process.env.OPENAI_API_KEY='test-only';process.env.PIVOTA_CONSUMER_ANSWER_ENABLED='true';
+ const response={status:'completed',model:'chat-latest',output_text:'Consider Anua.',usage:{input_tokens:10,output_tokens:5},output:[
+  {type:'web_search_call',status:'completed'},
+  {type:'message',content:[{type:'output_text',text:'Consider Anua.',annotations:[{type:'url_citation',url:'https://example.com/source'}]}]}
+ ]};
+ const create=jest.fn(async()=>response);
+ jest.doMock('openai',()=>jest.fn(function(){return {responses:{create}};}));
+ const helper=require('../src/internal/consumerAnswerEvidence');
+ const probe=require('../src/internal/agentCenterLlmProbe')._internals;
+ const current={...input,provider:'chatgpt',context:{...input.context,consumer_execution_profile:helper.REQUIRED_PROFILE}};
+ const result=await probe.buildChatGptProbe(current);
+ expect(create.mock.calls[0][0]).toMatchObject({model:'chat-latest',tool_choice:'required',max_output_tokens:900});
+ expect(result.raw_runs[0]).toMatchObject({prompt_contract:helper.REQUIRED_CONTRACT,answer:{complete:true,web_search_requests:1,execution:helper.REQUIRED_EXECUTION}});
+ response.output=response.output.filter(x=>x.type!=='web_search_call');
+ expect((await probe.buildChatGptProbe(current)).raw_runs[0].answer.complete).toBe(false);
+ await expect(probe.buildChatGptProbe({...current,model:'gpt-4o-mini'})).rejects.toThrow('profile does not match');
+});

@@ -1359,6 +1359,7 @@ async function buildGroundedProviderProbe(input, providerSpec) {
     let finishReason = null;
     let responseModel = null;
     let groundingMetadata = null;
+    let runWebSearchRequests = 0;
     try {
       const providerResult = await providerSpec.invoke({ client, input, prompt, userText, query: q });
       rawText = providerResult.rawText || '';
@@ -1373,7 +1374,8 @@ async function buildGroundedProviderProbe(input, providerSpec) {
       if (!chunks.length) chunks = normalizeGroundingChunks(groundingMetadata);
       inputTokens += Number(providerResult.inputTokens || 0);
       outputTokens += Number(providerResult.outputTokens || 0);
-      webSearchRequests += Number(providerResult.webSearchRequests || 0);
+      runWebSearchRequests = Number(providerResult.webSearchRequests || 0);
+      webSearchRequests += runWebSearchRequests;
       cachedInputTokens += Number(providerResult.cachedInputTokens || 0);
     } catch (err) {
       // A swallowed per-run error here is the bug behind un-metered COGS: the
@@ -1387,7 +1389,7 @@ async function buildGroundedProviderProbe(input, providerSpec) {
     }
 
     if (scan_mode === consumerAnswer.MODE) {
-      rawRuns.push(consumerAnswer.evidence({ query: q, rawText, provider: providerSpec.provider, model: responseModel, finishReason, chunks, retrievedSources }));
+      rawRuns.push(consumerAnswer.evidence({ query: q, rawText, provider: providerSpec.provider, model: responseModel, finishReason, chunks, retrievedSources, executionProfile: input.context?.consumer_execution_profile, webSearchRequests: runWebSearchRequests }));
       continue;
     }
 
@@ -1858,7 +1860,7 @@ async function buildChatGptProbe(input) {
             instructions: prompt.system,
             input: userText,
             tools: [{ type: 'web_search_preview' }],
-            tool_choice: 'auto',
+            tool_choice: consumerAnswer.requiresWeb(probeInput) ? 'required' : 'auto',
             include: ['web_search_call.action.sources'],
             max_output_tokens: 900,
             store: false,
