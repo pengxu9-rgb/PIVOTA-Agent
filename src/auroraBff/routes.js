@@ -406,7 +406,7 @@ const {
   buildChatAnalysisContextFromSnapshot,
   buildAnalysisContextPromptBlock,
 } = require('./analysisContextSnapshot');
-const { normalizeRecoTargetStep, extractRecoTargetStepFromText } = require('./recoTargetStep');
+const { normalizeRecoTargetStep, extractRecoTargetStepFromText, resolveRecoStepDomain } = require('./recoTargetStep');
 const {
   normalizeRecoPriceCeiling,
   applyRecoPriceCeilingPreference,
@@ -21083,12 +21083,42 @@ function buildRecoCatalogQueryLevels({
     needSeedText,
     maxQueries: maxGenericQueries,
   });
-  return queries.length
+  // THE EXTERNAL-SEED LANE IS WHERE MAKEUP SUPPLY LIVES, and this ladder never asked for it. The
+  // framework branch above sets allow_external_seed from its stage plan; the generic branch set
+  // nothing, so `queryEntry.allow_external_seed === true` was false, the request went out
+  // internal-only, and buildPurchasableFallbackCandidates took its internal branch and returned
+  // without supplementing. #2174 fixed the external-seed CATEGORY VOCABULARY for beauty/makeup/face
+  // -- correctly -- on a lane this door could not reach.
+  //
+  // Scoped to the domains the internal catalog is thin on, from the same step->domain map the
+  // taxonomy owns. A skincare ask is byte-identical to before: no key, no supplement. Strategy is
+  // supplement_internal_first, not stage_planned -- internal candidates still lead, external seeds
+  // only fill what is missing.
+  const generalDomain = resolveRecoStepDomain(
+    pickFirstTrimmed(targetContext?.resolved_target_step, needSeedText),
+  );
+  const externalSeedEligible = generalDomain === 'makeup' || generalDomain === 'fragrance';
+  // `source_scope` IS THE FIELD THAT DECIDES IT, and `allow_external_seed` alone is a no-op here.
+  // The outbound site derives sourceScope from entry.source_scope ONLY, defaulting to 'internal',
+  // and then sends `allowExternalSeed: sourceScope !== 'internal'`. Setting the other flag and not
+  // this one produces a ladder that looks external-eligible in every trace and still goes out
+  // internal-only -- which is how the lane looked before this change.
+  //
+  // 'hybrid', not 'external_seed': internal candidates still run, external seeds supplement them.
+  const generalQueries = externalSeedEligible
+    ? queries.map((entry) => ({
+        ...entry,
+        source_scope: 'hybrid',
+        allow_external_seed: true,
+        external_seed_strategy: 'supplement_internal_first',
+      }))
+    : queries;
+  return generalQueries.length
     ? [
         {
           level_index: 0,
           ladder_level: 'generic_catalog',
-          queries,
+          queries: generalQueries,
         },
       ]
     : [];
