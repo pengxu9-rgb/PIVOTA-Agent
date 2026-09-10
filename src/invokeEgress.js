@@ -1,4 +1,12 @@
-// The single door every /invoke response leaves by.
+// The single door every response from `handleInvokeRequest` leaves by.
+//
+// PRECISELY THAT, and not "every /invoke response" — an earlier version of this comment said
+// the latter and it is false. The route has exits that never reach this function at all: the
+// strict-invoke handler (server.js:32299) answers 405/401/200/503 directly,
+// requireExternalInvokeAuth (:29852) has five 401/403/503 exits, the body-size middleware
+// answers 413, and handleAgentProductsSearchViaInvoke (:37083) has a fastpath that returns a
+// product payload before delegating here. Those are outside this door. Claiming otherwise
+// would make this module read as coverage it does not have, which is worse than the gap.
 //
 // WHY THIS EXISTS. `handleInvokeRequest` is ~13,000 lines with 96 response exits, and until
 // now each one shaped its own body. The anti-leak projection this repo already owns
@@ -44,7 +52,11 @@ function projectInvokeResponse(body, _ctx = {}) {
 // internals. Replacing the export would not work — the default is bound here, lexically, so a
 // swapped export table is a seam the code under test never goes through, and a test built on
 // one passes with the defect restored.
-function installInvokeEgress(res, ctx = {}, { project = projectInvokeResponse } = {}) {
+function installInvokeEgress(
+  res,
+  ctx = {},
+  { project = projectInvokeResponse, onProjectError = null } = {},
+) {
   if (!res || typeof res.json !== 'function') {
     // Nothing to wrap (a test double, a closed socket). Degrade to a no-op rather than
     // throwing: an egress hook must never be able to fail the surface it guards.
@@ -58,10 +70,22 @@ function installInvokeEgress(res, ctx = {}, { project = projectInvokeResponse } 
       let projected = body;
       try {
         projected = project(body, ctx);
-      } catch (_) {
-        // A throwing projector must not turn a good response into a 500. Fall back to the
-        // body as given: failing open here is a leak at worst, failing closed is an outage.
+      } catch (err) {
+        // A throwing projector must not turn a good response into a 500: failing open is a
+        // leak at worst, failing closed is an outage. But it must not be SILENT either — once
+        // real policy lives here, a projector that throws on one body shape would degrade that
+        // whole response class to no projection at all, forever, with no signal. So the
+        // degradation is announced, and the announcement itself is wrapped, because an
+        // observability call must never be able to fail the surface it observes.
         projected = body;
+        try {
+          if (typeof onProjectError === 'function') onProjectError(err, ctx);
+          else if (typeof res.setHeader === 'function' && !res.headersSent) {
+            res.setHeader('X-Pivota-Egress-Projection', 'failed');
+          }
+        } catch (_) {
+          // nothing left to do; never rethrow from an egress hook
+        }
       }
       return originalJson(projected);
     };

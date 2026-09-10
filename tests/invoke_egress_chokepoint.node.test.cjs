@@ -62,6 +62,33 @@ test('res.json is the only way a response leaves the invoke route', () => {
   assert.ok(resParam && ts.isIdentifier(resParam.name), 'expected a named response parameter');
   const resName = resParam.name.text;
 
+  // ALIASES. The first version of this walk only matched the literal parameter identifier, so
+  // `const r = res; r.send(...)` — the most natural thing to write when a response is used a
+  // lot — walked straight past it. Three such mutants survived review. Collect every local
+  // name bound directly to `res` first, then treat them all as the response.
+  const responseNames = new Set([resName]);
+  (function collectAliases(node) {
+    if (ts.isVariableDeclaration(node) && node.initializer && ts.isIdentifier(node.initializer)
+        && responseNames.has(node.initializer.text) && ts.isIdentifier(node.name)) {
+      responseNames.add(node.name.text);
+    }
+    // `let r; r = res;`
+    if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.EqualsToken
+        && ts.isIdentifier(node.left) && ts.isIdentifier(node.right)
+        && responseNames.has(node.right.text)) {
+      responseNames.add(node.left.text);
+    }
+    ts.forEachChild(node, collectAliases);
+  })(fn);
+  // Two passes, because an alias may be declared after a use in source order.
+  (function collectAgain(node) {
+    if (ts.isVariableDeclaration(node) && node.initializer && ts.isIdentifier(node.initializer)
+        && responseNames.has(node.initializer.text) && ts.isIdentifier(node.name)) {
+      responseNames.add(node.name.text);
+    }
+    ts.forEachChild(node, collectAgain);
+  })(fn);
+
   const exits = [];
   const bypasses = [];
   (function walk(node) {
@@ -70,18 +97,39 @@ test('res.json is the only way a response leaves the invoke route', () => {
       // `res.json(...)` and `res.status(n).json(...)` both end in a `.json` call whose object
       // resolves to the response; the second is covered because `status()` returns the same
       // object, which is exactly why wrapping `json` once is sufficient.
-      if (name === 'json') exits.push(lineOf(node));
-      if (BYPASSING_METHODS.includes(name)) {
-        const obj = node.expression.expression;
-        if (ts.isIdentifier(obj) && obj.text === resName) {
-          bypasses.push(`${name} at line ${lineOf(node)}`);
+      const obj = node.expression.expression;
+      const onResponse = ts.isIdentifier(obj) && responseNames.has(obj.text);
+      // Count only json calls ON THE RESPONSE. A bare `.json(` count would also sweep in
+      // `await something.json()` and inflate the floor below with calls that are not exits.
+      if (name === 'json' && (onResponse || ts.isCallExpression(obj))) exits.push(lineOf(node));
+      if (BYPASSING_METHODS.includes(name) && onResponse) {
+        bypasses.push(`${name} at line ${lineOf(node)} (via ${obj.text})`);
+      }
+      // The prototype escape. `installInvokeEgress` sets an OWN property, so reaching the
+      // method on the prototype — `Object.getPrototypeOf(res).json.call(res, body)` — writes
+      // straight past it. Nobody does that by accident, and there is no legitimate reason to
+      // take the response's prototype in this handler, so the call itself is the signal.
+      if (name === 'getPrototypeOf' && ts.isIdentifier(node.expression.expression)
+          && node.expression.expression.text === 'Object') {
+        const [arg] = node.arguments;
+        if (arg && ts.isIdentifier(arg) && responseNames.has(arg.text)) {
+          bypasses.push(`Object.getPrototypeOf(${arg.text}) at line ${lineOf(node)}`);
         }
       }
     }
     ts.forEachChild(node, walk);
   })(fn);
 
-  assert.ok(exits.length > 50, `expected the route's many json exits, saw ${exits.length}`);
+  // A COUNT, not a floor. `> 50` would have stayed green with 46 exits deleted, so it only
+  // ever asserted "the walk found the function". Pinning the number means adding or removing
+  // an exit is a deliberate edit here — which is the point, since every one of them is a place
+  // a response leaves. Update it when you change the route, and look at what you changed.
+  assert.equal(
+    exits.length,
+    96,
+    `expected 96 response exits in handleInvokeRequest, saw ${exits.length}`,
+  );
+  assert.ok(responseNames.size >= 1);
   assert.deepEqual(
     bypasses,
     [],
@@ -90,17 +138,38 @@ test('res.json is the only way a response leaves the invoke route', () => {
 });
 
 test('the chokepoint is installed at the ingress, before any exit', () => {
+  // Walks the AST rather than comparing string indexes. The string version was satisfied by a
+  // COMMENT containing `installInvokeEgress(`: a mutant that moved the real call below an early
+  // `res.status(400).json(...)` exit, leaving a comment behind, kept the suite green. Comments
+  // and string literals are not code and must not be able to answer a question about ordering.
   const fn = invokeHandlerNode();
-  const body = source.slice(fn.getStart(sourceFile), fn.getEnd());
 
-  const installedAt = body.indexOf('installInvokeEgress(');
-  assert.notEqual(installedAt, -1, 'handleInvokeRequest must install the egress chokepoint');
+  let installLine = null;
+  let firstExitLine = null;
+  (function walk(node) {
+    if (ts.isCallExpression(node)) {
+      const callee = node.expression;
+      if (ts.isIdentifier(callee) && callee.text === 'installInvokeEgress') {
+        const line = lineOf(node);
+        if (installLine === null || line < installLine) installLine = line;
+      }
+      if (ts.isPropertyAccessExpression(callee)) {
+        const name = callee.name.text;
+        if (name === 'json' || name === 'status') {
+          const line = lineOf(node);
+          if (firstExitLine === null || line < firstExitLine) firstExitLine = line;
+        }
+      }
+    }
+    ts.forEachChild(node, walk);
+  })(fn);
 
-  const firstExit = body.search(/\bres\s*\.\s*(json|status)\s*\(/);
-  assert.notEqual(firstExit, -1);
+  assert.notEqual(installLine, null, 'handleInvokeRequest must install the egress chokepoint');
+  assert.notEqual(firstExitLine, null);
   assert.ok(
-    installedAt < firstExit,
-    'the chokepoint must be installed before the first response exit, or early exits bypass it',
+    installLine < firstExitLine,
+    `the chokepoint is installed at line ${installLine}, after the first response exit at ` +
+      `${firstExitLine} — every exit before it bypasses the door`,
   );
 });
 
@@ -127,41 +196,101 @@ test('every exit passes through the projector — including res.status(n).json',
   assert.equal(original.length, 2, 'and both should still reach the real res.json');
 });
 
-test('CONTROL: the observation above can actually fail', () => {
-  // An "it passed through" assertion is worthless if the harness would report success with no
-  // wrap at all. Same res, no installInvokeEgress: the projector must NOT see the body.
+test('CONTROL: the interception claim above can actually fail', () => {
+  // The previous version of this control declared an observer, discarded it with `void`, and
+  // asserted it saw nothing — `assert.equal(0, 0)`. It survived every mutant, including
+  // deleting the install call outright. A control that cannot fail is worse than none: it
+  // makes the test beside it look corroborated.
+  //
+  // This one captures the ORIGINAL res.json before installing and calls it afterwards. That is
+  // the one path which genuinely bypasses the wrap, so if `installInvokeEgress` ever became a
+  // no-op, the two assertions below would agree with each other and this test would fail.
   const seen = [];
-  const res = { json() { return 'sent'; }, status() { return this; } };
-  const observer = (body) => { seen.push(body); return body; };
-  // The SAME observer the passing test uses, simply never installed.
-  void observer;
-  res.json({ products: [] });
-  assert.equal(seen.length, 0, 'without the wrap nothing should reach the projector');
+  const res = { json(body) { return body; }, status() { return this; } };
+
+  const preInstall = res.json;
+  installInvokeEgress(res, {}, { project: (body) => { seen.push(body); return body; } });
+
+  preInstall.call(res, { products: ['bypassed'] });
+  assert.equal(seen.length, 0, 'the pre-install json must not reach the projector');
+
+  res.json({ products: ['wrapped'] });
+  assert.equal(seen.length, 1, 'the patched json must reach it — else the wrap is a no-op');
+  assert.notEqual(res.json, preInstall, 'installing must actually replace res.json');
 });
 
-test('this change removes no field — the projector is the identity', () => {
-  // Pins the scope of this PR. Policy comes later and separately: destination_url carries
-  // Pivota click attribution and platform/source feed the UI's external-seed predicate, so
-  // shrinking the surface has consumers to settle first.
-  const body = {
-    products: [{ id: 'p1', platform: 'external_seed', source: 'canonical_chain', destination_url: 'https://x/y' }],
-    metadata: { gateway_request_id: 'r1' },
-  };
-  // Compare against a snapshot taken BEFORE the call, not against `body` itself. A projector
-  // that mutates in place (`delete p.platform`) returns the same object it damaged, so
-  // `deepEqual(out, body)` would compare the damage to itself and pass — a test that cannot
-  // fail. Caught by mutation: that exact projector survived the first version of this
-  // assertion.
-  const before = JSON.stringify(body);
-  const out = projectInvokeResponse(body, { operation: 'find_products' });
-  assert.equal(JSON.stringify(out), before, 'byte-identical to the input, key order included');
-  assert.equal(JSON.stringify(body), before, 'and the input itself must not be mutated');
+test("the projector's OUTPUT is what gets sent, not the body it was handed", () => {
+  // The most valuable assertion in this file, and it was missing. Without it,
+  // `return originalJson(projected)` can be refactored to `originalJson(body)` and the whole
+  // suite stays green: the projector still runs, still sees everything, and its result is
+  // thrown away. Once real policy lands here, that mutation silently disarms every field the
+  // policy strips — in production, permanently, with the chokepoint reporting as installed.
+  //
+  // Caught by mutation review: that exact mutant survived the first version of this suite.
+  const sent = [];
+  const res = { json(body) { sent.push(body); return 'sent'; }, status() { return this; } };
 
-  // Name the fields explicitly: these are the ones with known external consumers, so a future
-  // policy change that drops them should have to edit this line and think about it.
-  assert.equal(out.products[0].platform, 'external_seed');
-  assert.equal(out.products[0].source, 'canonical_chain');
-  assert.equal(out.products[0].destination_url, 'https://x/y');
+  installInvokeEgress(res, {}, {
+    project: (body) => ({ ...body, products: (body.products || []).map(({ secret, ...rest }) => rest) }),
+  });
+
+  res.json({ products: [{ id: 'p1', secret: 'internal' }], ok: true });
+
+  assert.equal(sent.length, 1);
+  assert.deepEqual(sent[0], { products: [{ id: 'p1' }], ok: true });
+  assert.equal('secret' in sent[0].products[0], false, 'the projection must reach the wire');
+});
+
+test('a projector that transforms conditionally is still honoured', () => {
+  // A conditional leak keyed on ctx is exactly what a single-shape identity test cannot see.
+  const sent = [];
+  const res = { json(body) { sent.push(body); return 'sent'; }, status() { return this; } };
+  installInvokeEgress(res, { operation: 'get_product' }, {
+    project: (body, ctx) => (ctx.operation === 'get_product' ? { ...body, tagged: true } : body),
+  });
+  res.json({ id: 'x' });
+  assert.deepEqual(sent[0], { id: 'x', tagged: true });
+});
+
+test('this change removes no field — the projector is the identity, for EVERY operation', () => {
+  // Pins the scope of this PR. Ranges over the real operation vocabulary, not one example:
+  // a projector that drops a field only when ctx.operation === 'get_product' is invisible to a
+  // single-shape test, and exactly that mutant survived the first version of this assertion.
+  // Policy comes later and separately — destination_url carries Pivota click attribution and
+  // platform/source feed the UI's external-seed predicate, so shrinking the surface has
+  // consumers to settle first.
+  const { OperationEnum } = require('../src/schema');
+  const operations = OperationEnum.options || OperationEnum._def.values;
+  assert.ok(operations.length > 20, `expected the full operation vocabulary, saw ${operations.length}`);
+
+  for (const operation of operations) {
+    const body = {
+      products: [
+        {
+          id: 'p1',
+          platform: 'external_seed',
+          source: 'canonical_chain',
+          destination_url: 'https://x/y',
+          external_product_id: 'eps_1',
+        },
+      ],
+      metadata: { gateway_request_id: 'r1' },
+    };
+    // Snapshot BEFORE the call. A projector that mutates in place returns the object it
+    // damaged, so comparing the result to `body` would compare the damage to itself and pass —
+    // a test that cannot fail. That mutant survived the first version of this assertion too.
+    const before = JSON.stringify(body);
+    const out = projectInvokeResponse(body, { operation });
+
+    assert.equal(JSON.stringify(out), before, `${operation}: output must be byte-identical`);
+    assert.equal(JSON.stringify(body), before, `${operation}: the input must not be mutated`);
+
+    // Named explicitly: these are the fields with known external consumers, so a future policy
+    // change that drops one has to edit this line and think about it.
+    for (const field of ['platform', 'source', 'destination_url', 'external_product_id']) {
+      assert.ok(field in out.products[0], `${operation}: ${field} must survive`);
+    }
+  }
 });
 
 test('installing twice does not double-wrap, and a throwing projector cannot break a response', () => {

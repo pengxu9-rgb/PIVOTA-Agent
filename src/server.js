@@ -40364,7 +40364,9 @@ const { observeAssertedPrivilege } = require('./services/assertedPrivilegeObserv
 async function handleInvokeRequest(req, res, routeContext = {}) {
   const clientChannel = String(routeContext.client_channel || 'shop').trim().toLowerCase() || 'shop';
 
-  // EGRESS CHOKEPOINT. Installed here, first, because this function has 96 response exits
+  // EGRESS CHOKEPOINT for this function's responses — NOT for every /invoke response: the
+  // strict-invoke handler, the auth middleware and the body-size middleware all answer without
+  // reaching here. Installed first, because this function has 96 response exits
   // spread over ~13,000 lines and every one of them is `res.json` — so wrapping it once at the
   // ingress covers all of them, and every exit added later, by construction rather than by
   // convention. Changes no response today: projectInvokeResponse is the identity. What it buys
@@ -41260,8 +41262,15 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             'find_products_multi finish failed after external seed attribution',
           );
           if (res.headersSent) return undefined;
-          // originalJson, never res.status(500).json — the latter re-enters this
-          // interceptor and would throw again on the same body.
+          // originalJson, never res.status(500).json — the latter re-enters the
+          // find_products_multi overlay above and would throw again on the same body.
+          // NOTE since the egress chokepoint landed: `originalJson` is no longer Express's
+          // raw method, it is invokeEgress's patchedJson. So this call still passes through
+          // the egress projector — which is correct and deliberate, an error body should be
+          // projected like any other — but it no longer bypasses ALL interception, only the
+          // overlay it was written to avoid. Said plainly because the old wording implied a
+          // raw write, and a comment describing an invariant the code no longer has is worse
+          // than no comment.
           res.statusCode = 500;
           return originalJson.call(res, {
             error: 'INTERNAL_ERROR',
