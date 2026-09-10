@@ -1,6 +1,55 @@
 const RECOMMENDATION_STEP_RESOLUTION_RULES_V1 = 'recommendation_step_resolution_rules_v1';
 
 const STEP_PATTERNS = Object.freeze([
+  // MAKEUP AND FRAGRANCE ARE STEPS, not gaps. This vocabulary was nine skincare steps, and every
+  // consumer of it treated "no step" as "nothing to look for": normalizeRecoTargetStep('bronzer')
+  // returned null, so buildSameFamilyQueryLevels returned [] and the grounding pass ran ZERO queries
+  // for a makeup archetype -- it was never failing to find bronzers, it was never searching. Worse,
+  // 'cream blush' fell through to the moisturizer patterns and was grounded against moisturizers.
+  //
+  // The widened prompt (reco_main_v1_3) recommends makeup and fragrance, so the taxonomy the answer
+  // is resolved against has to know they exist. Ordered before the skincare entries that would
+  // otherwise capture them: 'cream blush' and 'powder foundation' both contain skincare tokens.
+  {
+    step: 'blush',
+    patterns: [/\b(cream blush|powder blush|liquid blush|blush stick|cheek tint|cheek colou?r|blush)\b/i, /腮红/, /胭脂/],
+  },
+  {
+    step: 'bronzer',
+    patterns: [/\b(bronzer|bronzing powder|contour powder|contour stick|contouring powder|bronzing)\b/i, /修容/, /古铜/],
+  },
+  {
+    step: 'highlighter',
+    patterns: [/\b(highlighter|illuminator|luminizer|strobe cream)\b/i, /高光/],
+  },
+  {
+    step: 'foundation',
+    patterns: [/\b(foundation|skin tint|bb cream|cc cream|tinted moisturi[sz]er|base makeup)\b/i, /粉底/, /气垫/, /隔离/],
+  },
+  {
+    step: 'concealer',
+    patterns: [/\b(concealer|colou?r correct(or|ing)|under[- ]?eye corrector)\b/i, /遮瑕/],
+  },
+  {
+    step: 'face_powder',
+    patterns: [/\b(setting powder|finishing powder|loose powder|pressed powder|translucent powder|face powder)\b/i, /散粉/, /定妆粉/, /蜜粉/],
+  },
+  {
+    step: 'primer',
+    patterns: [/\b(makeup primer|face primer|pore primer|primer)\b/i, /妆前乳/],
+  },
+  {
+    step: 'lip_colour',
+    patterns: [/\b(lipstick|lip gloss|lip liner|lip tint|lip stain|lip lacquer|liquid lip)\b/i, /口红/, /唇釉/, /唇彩/, /唇线/],
+  },
+  {
+    step: 'eye_colour',
+    patterns: [/\b(eyeshadow|eye shadow|eyeshadow palette|eyeliner|eye liner|mascara|brow pencil|brow gel|eyebrow)\b/i, /眼影/, /眼线/, /睫毛膏/, /眉笔/],
+  },
+  {
+    step: 'fragrance',
+    patterns: [/\b(fragrance|perfume|parfum|eau de parfum|eau de toilette|cologne|body mist|edp|edt)\b/i, /香水/, /淡香/, /body spray/i],
+  },
   {
     step: 'mask',
     patterns: [
@@ -23,7 +72,13 @@ const STEP_PATTERNS = Object.freeze([
   {
     step: 'moisturizer',
     patterns: [
-      /\b(moisturizer|moisturiser|face cream|cream|lotion|gel cream|gel-cream|emulsion|water cream|day cream|night cream)\b/i,
+      // BARE `cream` AND `lotion` ARE MODIFIERS AS OFTEN AS THEY ARE PRODUCTS. 'cream blush' and
+      // 'cream bronzer' name a makeup texture, not a moisturizer; before makeup existed in this
+      // taxonomy 'cream blush' resolved to `moisturizer` and was grounded against moisturizers.
+      // Matching both now makes it ambiguous, and extractRecoTargetStepFromText returns null on
+      // ambiguity -- safe, but it loses a step the buyer named. The noun wins.
+      /\b(moisturizer|moisturiser|face cream|gel cream|gel-cream|emulsion|water cream|day cream|night cream)\b/i,
+      /\b(cream|lotion)\b(?!\s*(blush|bronzer|highlighter|shadow|eyeshadow|foundation|concealer|liner|lipstick|lip))/i,
       /面霜/,
       /乳液/,
       /保湿霜/,
@@ -123,6 +178,20 @@ const MEDIUM_CONFIDENCE_HINTS = Object.freeze([
 ]);
 
 const CANONICAL_STEP_FAMILY_MAP = Object.freeze({
+  // Makeup families are grouped by what a buyer would accept as a near-substitute, the same test the
+  // skincare families use. A bronzer and a blush are adjacent; a bronzer and a mascara are not.
+  blush: Object.freeze({ same_family: ['blush'], adjacent_family: ['bronzer', 'highlighter'] }),
+  bronzer: Object.freeze({ same_family: ['bronzer'], adjacent_family: ['blush', 'face_powder', 'highlighter'] }),
+  highlighter: Object.freeze({ same_family: ['highlighter'], adjacent_family: ['blush', 'bronzer'] }),
+  foundation: Object.freeze({ same_family: ['foundation'], adjacent_family: ['concealer', 'face_powder', 'primer'] }),
+  concealer: Object.freeze({ same_family: ['concealer'], adjacent_family: ['foundation', 'face_powder'] }),
+  face_powder: Object.freeze({ same_family: ['face_powder'], adjacent_family: ['foundation', 'bronzer'] }),
+  primer: Object.freeze({ same_family: ['primer'], adjacent_family: ['foundation'] }),
+  // No adjacent family: a lip colour is not an acceptable substitute for anything else, and nothing
+  // is an acceptable substitute for it. Same for the eye and fragrance groups.
+  lip_colour: Object.freeze({ same_family: ['lip_colour'], adjacent_family: [] }),
+  eye_colour: Object.freeze({ same_family: ['eye_colour'], adjacent_family: [] }),
+  fragrance: Object.freeze({ same_family: ['fragrance'], adjacent_family: [] }),
   cleanser: Object.freeze({
     same_family: ['cleanser'],
     adjacent_family: ['toner'],
@@ -162,6 +231,50 @@ const CANONICAL_STEP_FAMILY_MAP = Object.freeze({
 });
 
 const EXACT_ALIAS_MAP = Object.freeze({
+  // EVERY CANONICAL STEP MUST NORMALISE TO ITSELF. The skincare steps get this for free -- each is a
+  // single word its own pattern matches -- but a multi-word canonical name does not: before these
+  // three lines normalizeRecoTargetStep('lip_colour') returned null, so a resolved lip step built an
+  // EMPTY grounding ladder, which is the exact defect this taxonomy exists to remove, reintroduced
+  // one layer up. Pinned by a test over CANONICAL_STEP_FAMILY_MAP rather than by these lines alone.
+  lip_colour: 'lip_colour',
+  eye_colour: 'eye_colour',
+  face_powder: 'face_powder',
+  blush: 'blush',
+  'cream blush': 'blush',
+  'powder blush': 'blush',
+  'cheek tint': 'blush',
+  bronzer: 'bronzer',
+  'bronzing powder': 'bronzer',
+  'contour powder': 'bronzer',
+  contour: 'bronzer',
+  highlighter: 'highlighter',
+  illuminator: 'highlighter',
+  foundation: 'foundation',
+  'skin tint': 'foundation',
+  'bb cream': 'foundation',
+  'cc cream': 'foundation',
+  concealer: 'concealer',
+  'setting powder': 'face_powder',
+  'loose powder': 'face_powder',
+  'pressed powder': 'face_powder',
+  'face powder': 'face_powder',
+  primer: 'primer',
+  'makeup primer': 'primer',
+  lipstick: 'lip_colour',
+  'lip gloss': 'lip_colour',
+  'lip liner': 'lip_colour',
+  'lip tint': 'lip_colour',
+  mascara: 'eye_colour',
+  eyeliner: 'eye_colour',
+  eyeshadow: 'eye_colour',
+  'eye shadow': 'eye_colour',
+  'brow pencil': 'eye_colour',
+  fragrance: 'fragrance',
+  perfume: 'fragrance',
+  'eau de parfum': 'fragrance',
+  'eau de toilette': 'fragrance',
+  cologne: 'fragrance',
+  'body mist': 'fragrance',
   cleanser: 'cleanser',
   toner: 'toner',
   essence: 'essence',

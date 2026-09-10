@@ -1135,6 +1135,7 @@ jobs:
             tests/aurora_surface_auth_rollup.node.test.cjs \
             tests/reco_direct_recall_before_llm.node.test.cjs \
             tests/reco_recall_honest_queries.node.test.cjs \
+            tests/reco_step_taxonomy_covers_beauty.node.test.cjs \
             tests/reco_recall_pool_cache.node.test.cjs \
             tests/aurora_surface_auth_curl_wrapper.node.test.cjs \
             tests/invoke_auth_introspect_outage_cache.node.test.cjs \
