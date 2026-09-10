@@ -46795,10 +46795,19 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     strictConstraintQuery: false,
     strictConstraintReason: null,
   };
+  // Declared OUTSIDE the try because the catch at the bottom of this function reads it
+  // (twice, building the `cacheStage` snapshot for an upstream failure). While it lived
+  // inside the try, both of those reads were ReferenceErrors: the catch is a sibling
+  // block, not a nested one, so the binding was simply not there. The error handler for
+  // a find_products upstream failure therefore threw on its own way out, and the throw
+  // landed in the outer catch — turning a reportable upstream error into a generic one
+  // with no cache diagnostics, on exactly the path those diagnostics exist to explain.
+  // Assignments inside the try still reach this binding, so the catch sees what the try
+  // last wrote, which is what the snapshot was always meant to report.
+  let crossMerchantCacheRouteDebug = null;
   try {
     let creatorCacheRouteDebug = null;
     let creatorHumanApparelDirectRouteDebug = null;
-    let crossMerchantCacheRouteDebug = null;
     let creatorCacheSearchResponse = null;
     shoppingFreshMainlineSearch =
       (operation === 'find_products' || operation === 'find_products_multi') &&
