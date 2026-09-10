@@ -546,3 +546,59 @@ test('canonical chain replaces degraded products for beauty brand browse', () =>
   assert.equal(out.metadata.search_card_quality_gate.applied, true);
   assert.equal(out.metadata.source_breakdown.canonical_chain_count, 3);
 });
+
+test('a makeup face query recalls face terms, not the skincare defaults', () => {
+  // MUTANT: delete the `beauty/makeup/face/` branch.
+  //
+  // Without it a bronzer query matches no prefix branch, is not brand-browse, and falls through
+  // to ['sunscreen','cleanser','moisturizer','serum'] — so external-seed recall goes looking for
+  // skincare and the makeup hard-constraint then rejects what it finds. Measured on prod
+  // 2026-09-10 (gateway f19c997a057b): all six retrieval arms on `bronzer for medium skin`
+  // carried the four skincare terms, `category_mismatch: 206`, `ranker_rejected: 1`.
+  const SKINCARE_DEFAULTS = ['sunscreen', 'cleanser', 'moisturizer', 'serum'];
+
+  for (const query of ['bronzer for medium skin', 'foundation for oily skin', 'setting powder']) {
+    const terms = buildBeautyExternalSeedCategoryTerms(inferBeautyMainlineIntent(query));
+    assert.ok(
+      terms.includes('bronzer') || terms.includes('foundation') || terms.includes('powder'),
+      `${query} recalled no face term: ${JSON.stringify(terms)}`,
+    );
+    assert.ok(
+      !SKINCARE_DEFAULTS.every((t) => terms.includes(t)),
+      `${query} fell through to the skincare defaults: ${JSON.stringify(terms)}`,
+    );
+  }
+});
+
+test('a blush query gets cheek terms rather than the whole face set', () => {
+  // Mirrors the split its sibling buildBeautyExternalSeedBrandCategoryTextTerms already makes.
+  const terms = buildBeautyExternalSeedCategoryTerms(inferBeautyMainlineIntent('blush'));
+  assert.ok(terms.includes('blush'), JSON.stringify(terms));
+  assert.ok(terms.includes('cheek'), JSON.stringify(terms));
+  assert.ok(!terms.includes('foundation'), `blush pulled the whole face set: ${JSON.stringify(terms)}`);
+});
+
+test('KNOWN GAP: a family word inside a makeup query still wins over the category prefix', () => {
+  // NOT a regression and NOT fixed here — recorded so it is visible rather than surprising.
+  //
+  // `families` are matched before the prefix fallback, so 'cream blush' matches the MOISTURIZER
+  // family on the word "cream" and never reaches the makeup branch at all. The same shape will
+  // affect 'powder cleanser', 'serum foundation' and friends. Fixing it means changing which
+  // signal wins in `inferBeautyMainlineIntent`, one layer up, with a much wider blast radius than
+  // this change — so it is left alone deliberately and asserted as-is. If someone fixes the
+  // precedence, this test SHOULD fail and be updated.
+  const terms = buildBeautyExternalSeedCategoryTerms(inferBeautyMainlineIntent('cream blush'));
+  assert.deepStrictEqual(terms, ['moisturizer'], JSON.stringify(terms));
+});
+
+test('the skincare lanes are unchanged', () => {
+  // The fix must not move any lane that already worked.
+  const acne = buildBeautyExternalSeedCategoryTerms(
+    inferBeautyMainlineIntent('acne treatment for clogged pores'),
+  );
+  assert.ok(acne.length > 0, JSON.stringify(acne));
+  const lip = buildBeautyExternalSeedCategoryTerms(inferBeautyMainlineIntent('red lipstick'));
+  assert.ok(lip.includes('lipstick'), JSON.stringify(lip));
+  const fragrance = buildBeautyExternalSeedCategoryTerms(inferBeautyMainlineIntent('eau de parfum'));
+  assert.ok(fragrance.includes('fragrance'), JSON.stringify(fragrance));
+});

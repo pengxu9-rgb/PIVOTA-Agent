@@ -16469,6 +16469,41 @@ function buildBeautyExternalSeedCategoryTerms(intent = null) {
       push('mascara');
       push('eyeshadow');
       push('brow pencil');
+    } else if (
+      categoryPathPrefix.startsWith('beauty/makeup/face/blush/')
+      || categoryPathPrefix.startsWith('beauty/makeup/cheek/')
+    ) {
+      // Same split its sibling makes: a blush query gets cheek terms, not the whole face set.
+      push('blush');
+      push('cheek');
+      push('luminizer');
+      push('highlighter');
+    } else if (categoryPathPrefix.startsWith('beauty/makeup/face/')) {
+      // `beauty/makeup/face/` WAS THE ONLY MAKEUP BRANCH MISSING HERE, and its absence is a
+      // recall failure rather than a display one. A bronzer query resolves the prefix
+      // `beauty/makeup/face/bronzer/`, matched no branch above, is not brand-browse, and so fell
+      // through to the four skincare defaults below — external-seed recall then searched for
+      // sunscreen/cleanser/moisturizer/serum and returned skincare, which the bronzer hard
+      // constraint rejected. Measured on prod 2026-09-10, gateway f19c997a057b: the bronzer query
+      // reported `category_terms: ["sunscreen","cleanser","moisturizer","serum"]` on all six
+      // retrieval arms and `category_mismatch: 206` against `ranker_rejected: 1` — so the ranker
+      // was never the blocker, the vocabulary was.
+      //
+      // This function was the ONE out of step, not an unmodelled category: its sibling
+      // `buildBeautyExternalSeedBrandCategoryTextTerms` already branches on
+      // `beauty/makeup/face/blush/`, and `beautyCategoryTextMatchesPrefix` already matches
+      // general `beauty/makeup/face` with exactly this vocabulary. Kept identical to that list so
+      // the three spellings agree; if you add a face term, add it in all three.
+      push('foundation');
+      push('concealer');
+      push('primer');
+      push('blush');
+      push('bronzer');
+      push('highlighter');
+      push('setting powder');
+      push('powder');
+      push('cushion');
+      push('skin tint');
     } else if (categoryPathPrefix.startsWith('beauty/fragrance/')) {
       push('fragrance');
     }
