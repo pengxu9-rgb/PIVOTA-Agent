@@ -1450,7 +1450,15 @@ function normalizeViabilityScore({ relation, candidateStep, targetStep }) {
 function classifyRecommendationCandidate(product, { targetContext, recoContext } = {}) {
   const row = isPlainObject(product) ? product : null;
   if (!row) return null;
-  const skincareDomainClass = classifySkincareCandidateDomain(row);
+  // THE REQUESTED CATEGORY REACHES THE CLASSIFIER HERE TOO. Without it ranking re-asks the domain
+  // question with no idea what was asked for, so a bronzer on a BRONZER request scores 'ambiguous'
+  // and pays 0.08 while a serum classifies explicit_face_skincare and pays 0 -- on a pool that is
+  // then sliced to three. Driven before this change: two real bronzers were displaced by a serum and
+  // a moisturizer on a bronzer query. The gate learned the requested domain one PR ago; this is the
+  // second reader that needed telling.
+  const skincareDomainClass = classifySkincareCandidateDomain(row, {
+    requestedStep: (targetContext && targetContext.resolved_target_step) || '',
+  });
   const facialSkincareCandidate =
     skincareDomainClass !== 'explicit_non_skincare'
     && skincareDomainClass !== 'explicit_non_face_supportive';

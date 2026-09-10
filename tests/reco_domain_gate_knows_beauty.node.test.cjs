@@ -98,3 +98,41 @@ test('an unthreaded caller gets exactly the historical behaviour', () => {
     assert.equal(at(name).hard_reject, rejected, `${name} with no requestedStep`);
   }
 });
+
+test('RANKING asks the same question, with the same answer', async () => {
+  // BOTH READERS, OR NEITHER. classifyRecommendationCandidate re-asks the domain question at ranking
+  // time, and it was calling the classifier with no requested step. Once this PR taught the gate to
+  // RECOGNISE `bronzer` as makeup, that unthreaded call started classifying a bronzer as
+  // explicit_non_skincare — so a bronzer request produced `terminal_success: false` and selected
+  // NOTHING. Widening the gate without threading this reader is strictly worse than not widening it,
+  // which is why the two live in one PR.
+  const stack = require('../src/auroraBff/recommendationSharedStack');
+  const pool = [
+    { product_id: 'b1', name: 'Hoola Matte Bronzer', product_type: 'bronzer' },
+    { product_id: 's1', name: 'Niacinamide 10% Serum', product_type: 'serum' },
+    { product_id: 'b2', name: 'Bronzing Powder', product_type: 'bronzer' },
+    { product_id: 'm1', name: 'Hydrating Moisturizer', product_type: 'moisturizer' },
+    { product_id: 'b3', name: 'Cream Bronzer Stick', product_type: 'bronzer' },
+  ];
+  const out = stack.finalizeRecommendationCandidatePools(pool, {
+    targetContext: { resolved_target_step: 'bronzer', step_aware_intent: true, framework_roles: [] },
+    recoContext: null,
+    priceCeiling: null,
+  }) || {};
+  const selected = (out.selected_recommendations || []).map((r) => r.name);
+
+  assert.equal(out.terminal_success, true, 'a bronzer request must produce a viable pool');
+  assert.equal(selected.length, 3, 'the shortlist is sliced to three — they must be the right three');
+  for (const name of selected) {
+    assert.match(name, /Bronz/i, `${name} is not a bronzer, and a bronzer was asked for`);
+  }
+  // The control: the same pool on a SKINCARE request selects skincare, not bronzers.
+  const skincare = stack.finalizeRecommendationCandidatePools(pool, {
+    targetContext: { resolved_target_step: 'serum', step_aware_intent: true, framework_roles: [] },
+    recoContext: null,
+    priceCeiling: null,
+  }) || {};
+  for (const r of (skincare.selected_recommendations || [])) {
+    assert.doesNotMatch(String(r.name), /Bronz/i, 'a bronzer must not be served to a serum request');
+  }
+});
