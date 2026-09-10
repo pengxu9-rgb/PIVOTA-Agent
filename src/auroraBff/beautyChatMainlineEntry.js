@@ -1542,7 +1542,16 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
         // producer that reads no domain prompt, which is exactly the population #2155 is about, and
         // omitting it would overstate the share of turns the prompt-reading path served.
         if (typeof recordAuroraRecoAnswerPath === 'function') {
-          recordAuroraRecoAnswerPath({ door: 'chat', path: 'beauty_mainline_grounded' });
+          // An EMPTY card is not an answer. The lane calls that outcome 'none', and if this door
+          // called it 'beauty_mainline_grounded' the two doors' 'none' would mean different things
+          // and no cross-door "answers served" denominator would be comparable.
+          const hardPathRecoCount = Array.isArray(hardPathPayloadBundle?.payload?.recommendations)
+            ? hardPathPayloadBundle.payload.recommendations.length
+            : 0;
+          recordAuroraRecoAnswerPath({
+            door: 'chat',
+            path: hardPathRecoCount > 0 ? 'beauty_mainline_grounded' : 'none',
+          });
         }
         return {
           handled: true,

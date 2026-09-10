@@ -2488,14 +2488,19 @@ const RECO_ANSWER_DOORS = new Set(['agent_tool', 'typed_reco', 'chat']);
 // loses exactly the distinctions #2155 turns on: whether the path that reads the domain prompt
 // served the turn, and if not, which promptless path did.
 const RECO_ANSWER_PATHS = new Set([
+  // The three values `structuredSource` can actually take. `legacy_notice` is deliberately NOT here:
+  // it is a source_mode, produced only when structuredSource is falsy, and a turn that reaches it
+  // counts as 'none' — which is the truth about it.
   'llm_primary',
   'catalog_grounded',
   'catalog_transient_fallback',
-  'legacy_notice',
-  // The beauty-owned chat mainline answers from its own grounded handoff without ever entering the
-  // reco lane, so it has no structuredSource of its own. Named rather than folded into
-  // 'catalog_grounded' because it is a different producer with a different failure mode.
-  'beauty_mainline_grounded',
+  // Producers that answer WITHOUT entering the reco lane, so they have no structuredSource at all.
+  // Each is named rather than folded into 'catalog_grounded' because each is a different producer
+  // with a different failure mode, and a shared label would make them indistinguishable in exactly
+  // the analysis this counter exists for.
+  'beauty_mainline_grounded',   // beauty-owned chat mainline, from its own grounded handoff
+  'verified_context_restore',   // replayed session candidates, no recall run at all
+  'travel_preview',             // travel handoff preview, built from the travel skill contract
   'none',
 ]);
 

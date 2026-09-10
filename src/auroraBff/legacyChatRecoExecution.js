@@ -133,7 +133,7 @@ function createLegacyChatRecoExecutionRuntime(deps = {}) {
         // causes the skip; the accompanying test drives a real restore and asserts exactly ONE row,
         // which is what would catch it if the lane ever ran anyway.
         if (typeof recordAuroraRecoAnswerPath === 'function') {
-          recordAuroraRecoAnswerPath({ door: 'chat', path: 'catalog_grounded' });
+          recordAuroraRecoAnswerPath({ door: 'chat', path: 'verified_context_restore' });
         }
       }
     }

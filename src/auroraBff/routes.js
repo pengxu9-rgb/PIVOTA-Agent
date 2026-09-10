@@ -1645,6 +1645,7 @@ const {
   buildConfidenceNoticeCardPayload,
   summarizeProfileForContext,
   appendLatestRecoContextToSessionPatch,
+  recordAuroraRecoAnswerPath,
 });
 const {
   prepareLegacyChatRecoContext,

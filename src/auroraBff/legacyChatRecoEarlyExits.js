@@ -18,6 +18,7 @@ function createLegacyChatRecoEarlyExitsRuntime(deps = {}) {
     buildConfidenceNoticeCardPayload,
     summarizeProfileForContext,
     appendLatestRecoContextToSessionPatch,
+    recordAuroraRecoAnswerPath,
   } = deps;
 
   function buildLegacyRecoSafetyGateEnvelope({
@@ -197,6 +198,13 @@ function createLegacyChatRecoEarlyExitsRuntime(deps = {}) {
         travel_handoff: true,
       },
     };
+    // A THIRD ANSWER THE LANE NEVER SEES. This is an EARLY EXIT taken before executeLegacyChatReco
+    // runs, and it returns a full recommendations card built from the travel skill contract — a
+    // promptless producer on the chat door, the same class as the two counted elsewhere. It reaches
+    // here only when travelRecommendations is non-empty (checked above), so there is no empty case.
+    if (typeof recordAuroraRecoAnswerPath === 'function') {
+      recordAuroraRecoAnswerPath({ door: 'chat', path: 'travel_preview' });
+    }
     return buildEnvelope(ctx, {
       assistant_message: makeAssistantMessage(
         ctx.lang === 'CN'

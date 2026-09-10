@@ -4629,6 +4629,7 @@ test('beauty chat mainline entry keeps framework source mode when real handoff d
 });
 
 test('beauty chat mainline entry invokes llm concern planner before deterministic handoff for generic concern asks', async () => {
+  let hardPathRecommendations = [{ product_id: 'p1', brand: 'B', name: 'Oil control gel' }];
   const startedAtMs = Date.now();
   const observed = {
     plannerCalls: 0,
@@ -4778,6 +4779,7 @@ test('beauty chat mainline entry invokes llm concern planner before deterministi
         payload: {
           source: 'catalog_grounded_v1',
           mainline_status: 'grounded_success',
+          recommendations: hardPathRecommendations,
           recommendation_meta: {
             ...(basePayload?.recommendation_meta || {}),
             source_mode: sourceMode,
@@ -4824,6 +4826,7 @@ test('beauty chat mainline entry invokes llm concern planner before deterministi
     recordAuroraRecoAnswerPath: recoAnswerPathMetrics.recordAuroraRecoAnswerPath,
   });
 
+  hardPathRecommendations = [{ product_id: 'p1', brand: 'B', name: 'Oil control gel' }];
   const answerPathBefore = recoAnswerPathCounts();
   const result = await runtime.maybeHandleBeautyOwnedChatReco({
     ctx: {
@@ -4851,6 +4854,7 @@ test('beauty chat mainline entry invokes llm concern planner before deterministi
     1,
     'the beauty-owned chat door must count the answer it just produced',
   );
+
   assert.equal(observed.plannerCalls, 1);
   assert.equal(observed.handoffTargetContext?.framework_owner_source, 'llm_concern_planner');
   assert.equal(observed.handoffTargetContext?.framework_id, 'llm_broad_oily_plan');
@@ -4900,6 +4904,35 @@ test('beauty chat mainline entry invokes llm concern planner before deterministi
       reason: 'test_passthrough',
     },
   ]);
+
+  // AND THE EMPTY CASE, on the same runtime. This door returns `handled: true` whenever the payload
+  // has the right SHAPE — it never checks that anything is in it — so without this control an empty
+  // card would be counted as a served answer, and 'none' would mean different things on this door
+  // and in the lane.
+  hardPathRecommendations = [];
+  const emptyBefore = recoAnswerPathCounts();
+  const emptyResult = await runtime.maybeHandleBeautyOwnedChatReco({
+    ctx: {
+      request_id: 'req_llm_planned_oily_empty',
+      trace_id: 'trace_llm_planned_oily_empty',
+      lang: 'EN',
+      trigger_source: 'chat',
+    },
+    logger: null,
+    message: 'im oily skin, what products should i use?',
+    recoEntrySourceDetail: 'typed_reco',
+    profile: { skinType: 'oily', sensitivity: 'low', barrierStatus: 'stable', goals: ['oil control'] },
+  });
+  const emptyAfter = recoAnswerPathCounts();
+  assert.equal(emptyResult?.handled, true, 'the door still handles the turn with an empty card');
+  assert.equal((emptyAfter['chat/none'] || 0) - (emptyBefore['chat/none'] || 0), 1,
+    'an empty card is not an answer — it must count as none');
+  assert.equal(
+    (emptyAfter['chat/beauty_mainline_grounded'] || 0)
+      - (emptyBefore['chat/beauty_mainline_grounded'] || 0),
+    0,
+    'an empty card must not be counted as a grounded answer',
+  );
 });
 
 test('beauty chat mainline entry carries prior reco context into planner and retrieval for contextual follow-ups', async () => {
