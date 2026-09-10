@@ -26,7 +26,6 @@ const { execFileSync } = require('node:child_process');
 const {
   discoverSuites,
   readQuarantine,
-  readSerial,
   planRun,
   recoveryOutcome,
   SUITE_ROOTS,
@@ -173,23 +172,6 @@ test('quarantine entries are repo-relative paths under a known suite root', () =
       roots.some((r) => entry.startsWith(r)),
       `quarantine entry ${JSON.stringify(entry)} is not under a known suite root`,
     );
-  }
-});
-
-test('the serial lane is a subset of the gated set, never an exemption from it', () => {
-  // The distinction this file exists to protect: node_suite_serial.txt changes HOW a suite
-  // runs, never WHETHER. If an entry ever drifted into being quarantined too, its coverage
-  // would be gone while the file still implied it was running.
-  const all = discoverSuites();
-  const quarantined = readQuarantine();
-  const serial = readSerial();
-  const { gated } = planRun(all, quarantined);
-
-  assert.ok(serial.size > 0, 'expected a serial lane; if it is empty this test is inert');
-  for (const entry of serial) {
-    assert.ok(all.includes(entry), `serial lane names ${entry}, which is not discovered`);
-    assert.ok(!quarantined.has(entry), `${entry} is both serial and quarantined — it does not run`);
-    assert.ok(gated.includes(entry), `${entry} is in the serial lane but not gated`);
   }
 });
 

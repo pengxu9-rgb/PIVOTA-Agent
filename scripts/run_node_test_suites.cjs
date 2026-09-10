@@ -24,7 +24,6 @@ const path = require('node:path');
 const ROOT = path.resolve(__dirname, '..');
 const TESTS_DIR = path.join(ROOT, 'tests');
 const QUARANTINE_FILE = path.join(TESTS_DIR, 'node_suite_quarantine.txt');
-const SERIAL_FILE = path.join(TESTS_DIR, 'node_suite_serial.txt');
 const SUITE_SUFFIX = '.node.test.cjs';
 
 // WHERE SUITES LIVE. Three roots, because this repo keeps `node --test` suites in three
@@ -60,7 +59,7 @@ const TEST_ENV = { ...process.env };
 // signal rather than eating the workflow's own timeout with no output.
 const GATED_BATCH_TIMEOUT_MS = 20 * 60 * 1000;
 
-function readListFile(file) {
+function readQuarantine(file = QUARANTINE_FILE) {
   if (!fs.existsSync(file)) return new Set();
   return new Set(
     fs
@@ -69,14 +68,6 @@ function readListFile(file) {
       .map((line) => line.trim())
       .filter((line) => line && !line.startsWith('#')),
   );
-}
-
-function readQuarantine(file = QUARANTINE_FILE) {
-  return readListFile(file);
-}
-
-function readSerial(file = SERIAL_FILE) {
-  return readListFile(file);
 }
 
 function walk(absDir, suffix, recursive, out, prefix) {
@@ -116,12 +107,10 @@ function discoverSuites(roots = SUITE_ROOTS, root = ROOT) {
   return found.sort();
 }
 
-// One `node --test` invocation. `concurrency` of 1 pins the serial lane — see
-// tests/node_suite_serial.txt for why a handful of suites need it. Returns the exit code.
-function runSuites(files, concurrency = null) {
+// One `node --test` invocation for the whole set. Returns the exit code.
+function runSuites(files) {
   if (!files.length) return 0;
-  const flags = concurrency ? [`--test-concurrency=${concurrency}`] : [];
-  const result = spawnSync(process.execPath, ['--test', ...flags, ...files], {
+  const result = spawnSync(process.execPath, ['--test', ...files], {
     cwd: ROOT,
     env: TEST_ENV,
     stdio: 'inherit',
@@ -178,31 +167,12 @@ function main() {
     return;
   }
 
-  // The serial lane is a subset of `gated`, not an exemption from it: these suites still
-  // run and still gate, just without competing for CPU.
-  const serial = readListFile(SERIAL_FILE);
-  const staleSerial = [...serial].filter((f) => !all.includes(f)).sort();
-  if (staleSerial.length) {
-    console.error(
-      `\n[node:test] the serial lane names ${staleSerial.length} suite(s) that do not exist:\n` +
-        staleSerial.map((f) => `  - ${f}`).join('\n') +
-        `\nDelete these lines from tests/node_suite_serial.txt.\n`,
-    );
-    process.exitCode = 1;
-    return;
-  }
-  const batched = gated.filter((f) => !serial.has(f));
-  const serialGated = gated.filter((f) => serial.has(f));
-
   console.log(
-    `[node:test] ${gated.length} gated suite(s) (${serialGated.length} run serially), ` +
-      `${quarantined.size} quarantined ` +
+    `[node:test] ${gated.length} gated suite(s), ${quarantined.size} quarantined ` +
       `(${all.length} discovered under ${SUITE_ROOTS.map((r) => r.dir).join(', ')}).`,
   );
 
-  const batchedStatus = runSuites(batched);
-  const serialStatus = runSuites(serialGated, 1);
-  const gatedStatus = batchedStatus || serialStatus;
+  const gatedStatus = runSuites(gated);
 
   // The ratchet. Checked even when the gated run is already red, so one red suite never
   // hides the news that another has been fixed.
@@ -240,13 +210,10 @@ if (require.main === module) main();
 module.exports = {
   discoverSuites,
   readQuarantine,
-  readSerial,
-  readListFile,
   planRun,
   recoveryOutcome,
   SUITE_ROOTS,
   SUITE_SUFFIX,
   TESTS_DIR,
   QUARANTINE_FILE,
-  SERIAL_FILE,
 };
