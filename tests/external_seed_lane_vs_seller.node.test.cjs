@@ -23,7 +23,10 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const { EXTERNAL_SEED_MERCHANT_ID, EXTERNAL_SEED_PLATFORM } = require('../src/pdpConfig');
+const {
+  EXTERNAL_SEED_MERCHANT_ID,
+  EXTERNAL_SEED_PLATFORM,
+} = require('../src/services/externalSeedProducts');
 
 const serverSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'server.js'), 'utf8');
 
@@ -86,6 +89,36 @@ test('CONTROL: the scan flags the real offenders and spares the legitimate shape
     laneExpressionsUsingSellerConstant(mustNotFlag.join('\n')),
     [],
     'a seller comparison, the ADR-009 sentinel fallback, and correct lane use must all survive',
+  );
+});
+
+test('the lane constant is a real string where server.js uses it — not undefined', () => {
+  // THE GUARD THIS FILE WAS MISSING, and the reason the first push of this PR emitted
+  // `WHERE cp.platform = 'undefined'` into a live query.
+  //
+  // The constant was defined in src/pdpConfig.js and imported in src/server.js from
+  // src/services/externalSeedProducts.js — two modules that BOTH declare
+  // EXTERNAL_SEED_MERCHANT_ID independently, so the import looked right and resolved to
+  // undefined. Inside a template literal that is not an error: it interpolates the text
+  // "undefined", the WHERE clause matches nothing, and lane 0 of the seed route goes silently
+  // dead. An existing integration test caught it; the guard in THIS file did not, because it
+  // only grepped source text. Source-shape assertions cannot see a binding that is missing.
+  assert.equal(typeof EXTERNAL_SEED_PLATFORM, 'string');
+  assert.ok(EXTERNAL_SEED_PLATFORM.length > 0);
+
+  // Every module server.js destructures the constant from must actually export it.
+  const exportedBy = require('../src/services/externalSeedProducts');
+  assert.equal(
+    exportedBy.EXTERNAL_SEED_PLATFORM,
+    EXTERNAL_SEED_PLATFORM,
+    'server.js imports the lane constant from services/externalSeedProducts — it must export it',
+  );
+
+  // And nothing in server.js may interpolate a name that resolves to undefined into SQL.
+  assert.equal(
+    /=\s*'undefined'/.test(serverSrc),
+    false,
+    "server.js contains = 'undefined' — an unresolved template interpolation reached a query",
   );
 });
 
