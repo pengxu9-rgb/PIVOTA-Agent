@@ -103,15 +103,28 @@ function main() {
 
   // The ratchet. Checked even when the gated run is already red, so one red suite never
   // hides the news that another has been fixed.
+  //
+  // ENFORCED ONLY IN CI, and the reason is a real case rather than caution: at least one
+  // quarantined suite passes on a developer machine and fails on a runner
+  // (find_products_beauty_discovery_local_mainline — an event-loop race, not a flag or a
+  // credential). CI is the authority on whether a suite is green, so failing a dev box
+  // for disagreeing with a runner would train people to ignore this message. Locally the
+  // finding is still printed, because "this might be fixable now" is worth reading.
   const recovered = [...quarantined].sort().filter((f) => suitePasses(f));
   if (recovered.length) {
+    const inCi = Boolean(process.env.CI);
     console.error(
-      `\n[node:test] ${recovered.length} quarantined suite(s) now PASS:\n` +
+      `\n[node:test] ${recovered.length} quarantined suite(s) PASS here:\n` +
         recovered.map((f) => `  - ${f}`).join('\n') +
-        `\nDelete those lines from tests/node_suite_quarantine.txt so the gate keeps them green.\n`,
+        (inCi
+          ? `\nDelete those lines from tests/node_suite_quarantine.txt so the gate keeps them green.\n`
+          : `\nIf CI agrees, delete those lines from tests/node_suite_quarantine.txt.` +
+            ` Not failing locally: only CI decides this.\n`),
     );
-    process.exitCode = 1;
-    return;
+    if (inCi) {
+      process.exitCode = 1;
+      return;
+    }
   }
 
   process.exitCode = gatedStatus;

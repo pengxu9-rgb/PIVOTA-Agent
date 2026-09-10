@@ -14,6 +14,10 @@
 # job if one of them passes, with instructions to delete the line. A quarantined
 # suite that gets fixed cannot silently stay quarantined.
 #
+# One entry is here for a different reason and is marked below: it passes locally and
+# fails on a CI runner. CI is the authority, so it is quarantined on CI's verdict — and
+# the recovery ratchet is enforced only under CI for exactly that reason.
+#
 # Measured 2026-09-10 against 205e9f1cd, per file, with AURORA_BFF_USE_MOCK=true, and
 # confirmed against a CI runner: the aggregate failure count agrees with the per-file
 # counts exactly, so none of these is a parallelism artifact. All 45 are genuine
@@ -68,3 +72,9 @@ diagnosis_artifact_store_persistence.node.test.cjs
 diagnosis_v2_orchestrator.node.test.cjs
 diagnosis_v2_routes.node.test.cjs
 find_products_invoke_semantic_owner.node.test.cjs
+# Passes locally, fails on a CI runner: 'framework local beauty mainline hard-stops wall
+# clock when internal primitive hangs' is cancelledByParent with "Promise resolution is
+# still pending but the event loop has already resolved". The test builds a primitive
+# that never settles, so when nothing else holds the loop open the file exits underneath
+# it. Never ran in CI before this gate, so the race is newly visible, not newly created.
+find_products_beauty_discovery_local_mainline.node.test.cjs
