@@ -14,6 +14,7 @@ const OpenAI = require('openai');
 const { createHash, createHmac, randomUUID, timingSafeEqual } = require('crypto');
 const { AsyncLocalStorage } = require('async_hooks');
 const { InvokeRequestSchema, OperationEnum } = require('./schema');
+const { installInvokeEgress } = require('./invokeEgress');
 const commerceMcpOAuth = require('./commerceMcpOAuth');
 const {
   commitSha: platformCommitSha,
@@ -40362,6 +40363,18 @@ const { observeAssertedPrivilege } = require('./services/assertedPrivilegeObserv
 
 async function handleInvokeRequest(req, res, routeContext = {}) {
   const clientChannel = String(routeContext.client_channel || 'shop').trim().toLowerCase() || 'shop';
+
+  // EGRESS CHOKEPOINT. Installed here, first, because this function has 96 response exits
+  // spread over ~13,000 lines and every one of them is `res.json` — so wrapping it once at the
+  // ingress covers all of them, and every exit added later, by construction rather than by
+  // convention. Changes no response today: projectInvokeResponse is the identity. What it buys
+  // is that "what may leave the invoke route" finally has ONE owner instead of 96, so the next
+  // field question is answered in a single place rather than re-derived at whichever call site
+  // the bug was noticed in. See src/invokeEgress.js.
+  installInvokeEgress(res, {
+    operation: String(req?.body?.operation || '').trim().toLowerCase() || null,
+    client_channel: clientChannel,
+  });
   const routeKeyFingerprint =
     routeContext.key_fingerprint || req?.invokeAuth?.key_fingerprint || null;
   const gatewayRequestId = randomUUID();
