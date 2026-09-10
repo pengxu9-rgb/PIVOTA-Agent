@@ -260,6 +260,7 @@ const { buildClarification } = require('./findProductsMulti/clarification');
 const { mountAgentCenterLlmProbe } = require('./internal/agentCenterLlmProbe');
 const {
   EXTERNAL_SEED_MERCHANT_ID,
+  EXTERNAL_SEED_PLATFORM,
   buildExternalSeedProduct,
   buildExternalSeedBrandSearchProduct,
   normalizeExternalSeedPrice,
@@ -6350,7 +6351,7 @@ async function resolveCatalogProductRefFromPivotaSignatureInner(normalizedProduc
               eps.created_at,
               0 AS seed_route_lane
             FROM external_product_seeds eps
-            WHERE cp.platform = '${EXTERNAL_SEED_MERCHANT_ID}'
+            WHERE cp.platform = '${EXTERNAL_SEED_PLATFORM}'
               AND eps.external_product_id = cp.source_product_id
             UNION ALL
             -- LANE 1 — P3 MINTED CANONICALS. Path-C rows
@@ -7175,7 +7176,7 @@ async function resolveCatalogIdentityForProductRef({ merchantId, productId, prod
       );
       return buildIdentityResult(Array.isArray(identityResult?.rows) ? identityResult.rows[0] : null, {
         merchant_id: EXTERNAL_SEED_MERCHANT_ID,
-        platform: 'external_seed',
+        platform: EXTERNAL_SEED_PLATFORM,
         source_product_id: normalizedProductId,
       });
     }
@@ -17667,7 +17668,7 @@ function buildCanonicalChainMainlineProduct(row) {
   const canonicalProductRef = {
     merchant_id: merchantId,
     product_id: sourceProductId || productId,
-    platform: firstNonEmptyString(row.platform, row.merchant_primary_platform, merchantId === EXTERNAL_SEED_MERCHANT_ID ? 'external_seed' : 'catalog'),
+    platform: firstNonEmptyString(row.platform, row.merchant_primary_platform, merchantId === EXTERNAL_SEED_MERCHANT_ID ? EXTERNAL_SEED_PLATFORM : 'catalog'),
     ...(firstNonEmptyString(row.product_key) ? { product_key: firstNonEmptyString(row.product_key) } : {}),
     ...(pivotaSignatureId ? { pivota_signature_id: pivotaSignatureId } : {}),
   };
@@ -17747,7 +17748,7 @@ function buildCanonicalChainMainlineProduct(row) {
     product_id: productId,
     merchant_id: merchantId,
     merchant_name: firstNonEmptyString(row.merchant_name, brand, merchantId),
-    platform: firstNonEmptyString(row.platform, row.merchant_primary_platform, merchantId === EXTERNAL_SEED_MERCHANT_ID ? 'external_seed' : 'catalog'),
+    platform: firstNonEmptyString(row.platform, row.merchant_primary_platform, merchantId === EXTERNAL_SEED_MERCHANT_ID ? EXTERNAL_SEED_PLATFORM : 'catalog'),
     platform_product_id: sourceProductId || productId,
     title,
     ...(description ? { description } : {}),
@@ -28712,7 +28713,7 @@ function buildSimilarCatalogProductProjection(product = {}, catalogRow = {}) {
     product.image,
   );
   const merchantId = firstNonEmptyString(catalogRow.merchant_id, product.merchant_id, EXTERNAL_SEED_MERCHANT_ID);
-  const platform = firstNonEmptyString(catalogRow.platform, product.platform, EXTERNAL_SEED_MERCHANT_ID);
+  const platform = firstNonEmptyString(catalogRow.platform, product.platform, EXTERNAL_SEED_PLATFORM);
   const productKey = firstNonEmptyString(catalogRow.product_key, product.product_key);
   const catalogProductRef = {
     product_id: publicId,
