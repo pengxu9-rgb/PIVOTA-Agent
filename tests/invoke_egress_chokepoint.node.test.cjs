@@ -12,28 +12,40 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const acorn = require('acorn');
+// The parser is `typescript`, not `acorn`. acorn is present in a developer's flat
+// node_modules as somebody's transitive dependency and is NOT a declared dependency of this
+// repo, so `require('acorn')` resolves on a laptop and throws on a CI runner — verified the
+// hard way on run 34529976633. typescript is in devDependencies and is already relied on by
+// tests/server_invoke_scope_guard.node.test.cjs, which passes in CI.
+const ts = require('typescript');
 
 const { installInvokeEgress, projectInvokeResponse } = require('../src/invokeEgress');
 
 const serverPath = path.join(__dirname, '..', 'src', 'server.js');
 const source = fs.readFileSync(serverPath, 'utf8');
 
+const sourceFile = ts.createSourceFile(
+  'server.js',
+  source,
+  ts.ScriptTarget.Latest,
+  /* setParentNodes */ true,
+  ts.ScriptKind.JS,
+);
+
+function lineOf(node) {
+  return sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile)).line + 1;
+}
+
 function invokeHandlerNode() {
-  const ast = acorn.parse(source, { ecmaVersion: 'latest', sourceType: 'script', locations: true });
   let found = null;
   (function walk(node) {
-    if (!node || typeof node.type !== 'string' || found) return;
-    if (node.type === 'FunctionDeclaration' && node.id && node.id.name === 'handleInvokeRequest') {
+    if (found) return;
+    if (ts.isFunctionDeclaration(node) && node.name && node.name.text === 'handleInvokeRequest') {
       found = node;
       return;
     }
-    for (const key of Object.keys(node)) {
-      const value = node[key];
-      if (Array.isArray(value)) value.forEach((c) => c && typeof c.type === 'string' && walk(c));
-      else if (value && typeof value.type === 'string') walk(value);
-    }
-  })(ast);
+    ts.forEachChild(node, walk);
+  })(sourceFile);
   return found;
 }
 
@@ -46,33 +58,27 @@ test('res.json is the only way a response leaves the invoke route', () => {
   const fn = invokeHandlerNode();
   assert.ok(fn, 'handleInvokeRequest should be a top-level function declaration');
 
-  const resParam = fn.params[1];
-  assert.ok(resParam && resParam.type === 'Identifier', 'expected a named response parameter');
-  const resName = resParam.name;
+  const resParam = fn.parameters[1];
+  assert.ok(resParam && ts.isIdentifier(resParam.name), 'expected a named response parameter');
+  const resName = resParam.name.text;
 
   const exits = [];
   const bypasses = [];
   (function walk(node) {
-    if (!node || typeof node.type !== 'string') return;
-    if (node.type === 'CallExpression' && node.callee && node.callee.type === 'MemberExpression') {
-      const prop = node.callee.property;
-      const name = prop && (prop.name || prop.value);
+    if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)) {
+      const name = node.expression.name.text;
       // `res.json(...)` and `res.status(n).json(...)` both end in a `.json` call whose object
       // resolves to the response; the second is covered because `status()` returns the same
       // object, which is exactly why wrapping `json` once is sufficient.
-      if (name === 'json') exits.push(node.loc.start.line);
+      if (name === 'json') exits.push(lineOf(node));
       if (BYPASSING_METHODS.includes(name)) {
-        const obj = node.callee.object;
-        if (obj && obj.type === 'Identifier' && obj.name === resName) {
-          bypasses.push(`${name} at line ${node.loc.start.line}`);
+        const obj = node.expression.expression;
+        if (ts.isIdentifier(obj) && obj.text === resName) {
+          bypasses.push(`${name} at line ${lineOf(node)}`);
         }
       }
     }
-    for (const key of Object.keys(node)) {
-      const value = node[key];
-      if (Array.isArray(value)) value.forEach((c) => c && typeof c.type === 'string' && walk(c));
-      else if (value && typeof value.type === 'string') walk(value);
-    }
+    ts.forEachChild(node, walk);
   })(fn);
 
   assert.ok(exits.length > 50, `expected the route's many json exits, saw ${exits.length}`);
@@ -85,7 +91,7 @@ test('res.json is the only way a response leaves the invoke route', () => {
 
 test('the chokepoint is installed at the ingress, before any exit', () => {
   const fn = invokeHandlerNode();
-  const body = source.slice(fn.start, fn.end);
+  const body = source.slice(fn.getStart(sourceFile), fn.getEnd());
 
   const installedAt = body.indexOf('installInvokeEgress(');
   assert.notEqual(installedAt, -1, 'handleInvokeRequest must install the egress chokepoint');
