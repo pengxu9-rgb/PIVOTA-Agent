@@ -791,8 +791,9 @@ const RECO_INGREDIENT_PROMPT_TEMPLATE_ID = String(
 // other. Chat keeps v1_2 untouched; only a caller that passes promptDomainScope 'beauty' reaches
 // v1_3.
 //
-// v1_3 covers skincare (body care files under beauty/skincare/moisturize/), makeup, fragrance and
-// haircare, and still REFUSES tools/brushes/devices — measured on prod 2026-09-09: `makeup brush`
+// v1_3 covers skincare (body care files under beauty/skincare/moisturize/), makeup and fragrance,
+// STAGES HAIRCARE OUT (#2164 — the catalog carries it but only 15/20 sampled rows price in USD),
+// and still REFUSES tools/brushes/devices — measured on prod 2026-09-09: `makeup brush`
 // answers total 0 with final_decision 'clarify' and every search_quality tier count zero, and
 // `gua sha facial tool` returns mis-filed rows inside a total of 0. Inviting a category with no
 // serving lane would trade a wrong answer for an empty one, not for a right one.
