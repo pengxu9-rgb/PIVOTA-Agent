@@ -7,6 +7,7 @@ const {
   resolveRecoTargetStepIntent,
   normalizeRecoTargetStep,
   getRecoTargetFamilyRelation,
+  resolveRecoStepDomain,
 } = require('../auroraBff/recoTargetStep');
 const {
   TARGET_RELEVANCE_CLASS_OWNER,
@@ -1348,6 +1349,13 @@ function classifyBeautyCoarseCandidate(product, {
   const rawBucket = classifyBeautyBucketFromText(text);
   const stepResolution = resolveBeautyCoarseStepFamily(product);
   const candidateStep = normalizeRecoTargetStep(stepResolution.candidate_step);
+  // "IT RESOLVED A STEP" MEANT "IT IS SKINCARE" only while every step WAS a skincare step. Once the
+  // taxonomy learned makeup and fragrance, a Tom Ford eau de parfum resolved `fragrance`, satisfied
+  // the cue below, and was classified domain_scope=skincare / usage_scope=face / leave_on -- a valid
+  // skincare hit. MAKEUP_RE catches lipsticks and eyeshadows one branch earlier, which is why this
+  // surfaced as PERFUMES: nothing else was watching them. Measured on the real 7-day query "few
+  // skincare": fragrance rows in the valid set went 4 -> 18.
+  const candidateStepIsSkincare = Boolean(candidateStep) && resolveRecoStepDomain(candidateStep) === 'skincare';
   const hasBodyCue = BODY_RE.test(lower);
   const hasFaceCue = FACE_RE.test(lower);
   const hasServiceCue =
@@ -1356,7 +1364,7 @@ function classifyBeautyCoarseCandidate(product, {
     (SERVICE_DURATION_RE.test(lower) && SERVICE_CONTEXT_RE.test(lower));
   const hasSkincareCue =
     rawBucket === 'skincare' ||
-    Boolean(candidateStep) ||
+    candidateStepIsSkincare ||
     SPF_RE.test(lower) ||
     CLEANSER_RE.test(lower) ||
     SERUM_GUIDANCE_FAMILY_RE.test(lower) ||
@@ -1387,12 +1395,12 @@ function classifyBeautyCoarseCandidate(product, {
   let usageScope = 'unknown';
   if (objectType === 'brush' || objectType === 'tool' || objectType === 'accessory') usageScope = 'tool';
   else if (domainScope === 'bodycare' || (hasBodyCue && !hasFaceCue)) usageScope = 'body';
-  else if (domainScope === 'skincare' || hasFaceCue || candidateStep) usageScope = 'face';
+  else if (domainScope === 'skincare' || hasFaceCue || candidateStepIsSkincare) usageScope = 'face';
 
   let applicationMode = 'unknown';
   if (usageScope === 'tool') applicationMode = 'tool';
   else if (candidateStep === 'cleanser') applicationMode = 'rinse_off';
-  else if (domainScope === 'skincare' || candidateStep) applicationMode = 'leave_on';
+  else if (domainScope === 'skincare' || candidateStepIsSkincare) applicationMode = 'leave_on';
 
   const familyRelation = queryTargetStepFamily && candidateStep
     ? getRecoTargetFamilyRelation(queryTargetStepFamily, candidateStep)

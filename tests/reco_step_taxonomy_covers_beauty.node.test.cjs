@@ -191,8 +191,8 @@ test('two nouns listed side by side are still ambiguous, and must not acquire a 
   // wins". A routine request names several steps and owns none of them.
   for (const text of [
     'a full routine: cleanser, serum and moisturizer',
-    'Compare the cards: I use foundation, want less white cast, and need a sunscreen option.',
     'I need a cleanser and a toner',
+    'should I get a serum or a moisturizer',
   ]) {
     assert.equal(extractRecoTargetStepFromText(text), null, text);
   }
@@ -229,4 +229,89 @@ test('pattern ORDER inside a step does not decide its match', () => {
   const sunscreen = details.find((d) => d.step === 'sunscreen');
   assert.ok(sunscreen, 'sunscreen must be among the matches');
   assert.equal(sunscreen.token, '隔离防晒', 'the LONGEST of the step’s own patterns wins');
+});
+
+test('a makeup category named as WEAR CONTEXT is not a request for it', () => {
+  // /v1/chat derives step-aware intent from this resolver, and a buyer describing the makeup they
+  // already wear was naming a second category. 16 of 28 realistic phrasings lost their step.
+  const cases = [
+    ['a sunscreen that won’t pill under my foundation', 'sunscreen'],
+    ['sunscreen for under foundation', 'sunscreen'],
+    ['moisturizer to wear under foundation', 'moisturizer'],
+    ['cleanser that removes mascara and eyeliner', 'cleanser'],
+    ['toner to use before primer', 'toner'],
+    ['eye cream that won’t crease my concealer', 'moisturizer'],
+    ['sunscreen that doubles as a primer', 'sunscreen'],
+    ['I use foundation daily, need a sunscreen without white cast', 'sunscreen'],
+    ['Compare the cards: I use foundation, want less white cast, and need a sunscreen option.', 'sunscreen'],
+  ];
+  for (const [text, expected] of cases) {
+    assert.equal(extractRecoTargetStepFromText(text), expected, text);
+  }
+  // THE CONTROL. Masking wear-context must not swallow the request itself.
+  for (const [text, expected] of [
+    ['recommend a foundation for warm undertones', 'foundation'],
+    ['what primer should I buy', 'primer'],
+    ['a mascara that does not smudge', 'eye_colour'],
+    ['a concealer for dark circles', 'concealer'],
+    ['a bronzer for contouring my cheekbones', 'bronzer'],
+  ]) {
+    assert.equal(extractRecoTargetStepFromText(text), expected, `control: ${text}`);
+  }
+});
+
+test('normalizeRecoTargetStep reads the same masked text the intent resolver does', () => {
+  // A SECOND RESOLVER THAT DID NOT SHARE THE MASK IS A SECOND SET OF ANSWERS. This one takes the
+  // first pattern that matches and the makeup entries are listed first, so a `Fragrance-Free` title
+  // resolved `fragrance` here while the intent resolver said `moisturizer` — and
+  // ingredientSkuEvidence.resolveRecallCandidateStep calls THIS one, on a bare title, first.
+  for (const [text, expected] of [
+    ['CeraVe Daily Moisturizing Lotion, Fragrance-Free', 'moisturizer'],
+    ['Fragrance-Free Barrier Cream', 'moisturizer'],
+    ['gentle cleanser sensitive skin fragrance free', 'cleanser'],
+  ]) {
+    assert.equal(normalizeRecoTargetStep(text), expected, text);
+  }
+  // The canonical-name lookup runs BEFORE the mask, so an explicit step still normalises to itself.
+  assert.equal(normalizeRecoTargetStep('fragrance'), 'fragrance');
+  assert.equal(normalizeRecoTargetStep('perfume'), 'fragrance');
+  assert.equal(normalizeRecoTargetStep('lip_colour'), 'lip_colour');
+});
+
+test('SPF outranks primer, and yields to the complexion-colour categories', () => {
+  // Unseen, Dewscreen and Glowscreen are sun care that primes. Letting `primer` win moved them out
+  // of the sunscreen pipeline — on a `sunscreen` query the row went same_family → incompatible —
+  // and "spf primer" collapsed its result set from 75 to 2.
+  for (const text of ['spf primer', 'primer with spf', 'Dewscreen Hydrating Primer SPF 50', 'Supergoop Glowscreen SPF 40']) {
+    assert.equal(extractRecoTargetStepFromText(text), 'sunscreen', text);
+  }
+  // A foundation with SPF is sold on coverage, so there `spf` still yields.
+  assert.equal(extractRecoTargetStepFromText('Protec(tint) Daily Skin Tint SPF 50'), 'foundation');
+  // And a primer with no SPF claim is still a primer.
+  assert.equal(extractRecoTargetStepFromText('a makeup primer for large pores'), 'primer');
+});
+
+test('a delivery FORMAT is not a category', () => {
+  // Sunscreen, haircare and fragrance all ship as a body mist or a body spray. Read as a category,
+  // the format made Supergoop's own sunscreens name two categories and resolve to neither.
+  for (const text of [
+    'A weightless, non-aerosol sunscreen body spray for face and body',
+    'PLAY Antioxidant Body Mist SPF 30 with Vitamin C',
+  ]) {
+    assert.equal(extractRecoTargetStepFromText(text), 'sunscreen', text);
+  }
+  // THE CONTROL. When the format is the ONLY thing that matched, it is the category.
+  for (const text of ['body mist', 'Allover Body Mist - Green Raspberry']) {
+    assert.equal(extractRecoTargetStepFromText(text), 'fragrance', text);
+  }
+});
+
+test('overlap resolves BEFORE the weak-surface rules, not after', () => {
+  // The weak-surface rules reason about which SURFACES survived. Run first, they saw a `mist` that
+  // `body mist` was about to absorb and counted it as a third category, so "PLAY Antioxidant Body
+  // Mist SPF 30" kept a spurious `toner` and resolved to nothing.
+  const { collectHighConfidenceMatchDetails } = require('../src/auroraBff/recoTargetStep');
+  const details = collectHighConfidenceMatchDetails('PLAY Antioxidant Body Mist SPF 30 with Vitamin C');
+  assert.deepEqual(details.map((d) => d.step), ['sunscreen'],
+    'body mist absorbs mist, then the format yields to the SPF claim — one step, not three');
 });

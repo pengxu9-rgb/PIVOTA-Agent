@@ -53,6 +53,24 @@ test('the requested beauty category is admitted, and only that category', () => 
   assert.equal(serumOnMakeupAsk.classification, 'explicit_face_skincare');
 });
 
+test('NOT A BEAUTY PRODUCT never relaxes — including when it also names the requested category', () => {
+  // THE ORIGINAL VERSION OF THIS TEST COULD NOT FAIL. It used Dog Collar / Plush Toy / Lingerie Set
+  // / Loofah — no name that ALSO carries a makeup token — so moving the non-beauty check after the
+  // requested-category admit passed it. With the check moved, every name below is admitted at
+  // penalty 0 on the request it names.
+  for (const name of ['Eyeshadow Brush', 'Lipstick Applicator Brush', 'Nail Clipper Tool', 'Blush Brush Set']) {
+    for (const step of ['eyeshadow', 'lipstick', 'bronzer', 'blush', undefined]) {
+      const r = at(name, step);
+      assert.equal(r.hard_reject, true, `${name} on a ${step || 'bare'} request`);
+      assert.equal(r.penalty, 1, `${name} must not be admitted at penalty 0`);
+    }
+  }
+  // An ACCESSORY for a category is not that category either, and these are in no fatal list.
+  for (const name of ['Beauty Sponge for blush', 'Eyeshadow Palette Case', 'Powder Puff for setting powder']) {
+    assert.equal(at(name, 'bronzer').hard_reject, true, `${name} must not answer a bronzer request`);
+  }
+});
+
 test('NOT A BEAUTY PRODUCT never relaxes, whatever was requested', () => {
   // The half of the old list that was doing real work. No request makes a dog collar admissible.
   for (const step of [undefined, 'bronzer', 'eau de toilette', 'serum']) {
@@ -71,7 +89,8 @@ test('a makeup row is rejected from a SKINCARE shortlist — but only on a THREA
   assert.equal(at('Hoola Matte Bronzer').hard_reject, false, 'unthreaded: exactly as on main');
   assert.equal(at('Hoola Matte Bronzer', 'serum').hard_reject, true,
     'a bronzer must not answer a serum request');
-  assert.equal(at('Hoola Matte Bronzer', 'serum').reason, 'explicit_wrong_beauty_category');
+  assert.equal(at('Hoola Matte Bronzer', 'serum').reason, 'explicit_wrong_beauty_category',
+    'the THREADED rejection is the one new reason — it has no unthreaded twin to break');
   assert.equal(at('Positive Light Liquid Luminizer highlighter', 'moisturizer').hard_reject, true);
   // And the fragrance-free row is NOT read as a fragrance by that same rule — the lens is masked.
   assert.equal(at('CeraVe Daily Moisturizing Lotion, Fragrance-Free', 'moisturizer').hard_reject, false);
@@ -79,26 +98,14 @@ test('a makeup row is rejected from a SKINCARE shortlist — but only on a THREA
 
 test('the makeup rows main already rejected are still rejected', () => {
   // The gate has to work in both directions, or this trades #2155 for its mirror image.
-  for (const name of ['Cream Blush', 'Chanel No 5 perfume', '口红']) {
+  for (const name of ['Cream Blush', 'Chanel No 5 perfume', 'Hoola Bronzer and Blush Duo']) {
     assert.equal(at(name).hard_reject, true, `${name} must not enter a shortlist that asked for skincare`);
   }
   // `Cream Blush` in particular: 'cream' is an allow-token, and letting it excuse a blush would
   // admit makeup to every skincare shortlist. It was fatal before this change for that reason.
-  assert.equal(at('Cream Blush').reason, 'explicit_wrong_beauty_category');
-});
-
-test('the CJK half of the block list actually fires — it never did', () => {
-  // JS \b is defined against [A-Za-z0-9_], so a CJK character never forms a word boundary and
-  // /\b彩妆\b/ CANNOT match. Verified against origin/main: every CJK token in these lists tested
-  // false, so a 宠物项圈 (pet collar) was admissible to a beauty shortlist.
-  for (const name of ['宠物项圈', '玩具', '内衣']) {
-    assert.equal(at(name).hard_reject, true, `${name} must be rejected as non-beauty`);
-    assert.equal(at(name, 'bronzer').hard_reject, true, `${name} must stay rejected on any request`);
-  }
-  // ...and the CJK makeup tokens are category-relaxable, exactly like their English twins.
-  assert.equal(at('口红', 'lipstick').hard_reject, false);
-  assert.equal(at('香水', 'eau de toilette').hard_reject, false);
-  assert.equal(at('口红').hard_reject, true, 'still fatal when no makeup was requested');
+  // The REASON STRING is main's, deliberately. Renaming it moved 4,358 corpus strings onto reasons
+  // no dashboard knows; the split this PR makes is in the code, not in the telemetry.
+  assert.equal(at('Cream Blush').reason, 'explicit_non_skincare');
 });
 
 test('an unthreaded caller gets exactly the historical behaviour', () => {
@@ -198,31 +205,6 @@ test('an unthreaded caller gets exactly the historical verdict', () => {
   }
 });
 
-test('the CJK block half now fires, and the CJK allow half fires with it', () => {
-  // A gate that can REJECT a Chinese row but never EXCUSE one is worse than a dead one. Both halves
-  // wake up in the same change.
-  assert.equal(at('宠物项圈').hard_reject, true, 'a pet collar is not a beauty product');
-  assert.equal(at('性感内衣').hard_reject, true);
-  assert.equal(at('口红').hard_reject, true, 'makeup, with no makeup requested');
-  assert.equal(at('口红', 'lipstick').hard_reject, false, 'makeup, on a makeup request');
-  const cn = at('温和洁面 保湿修护精华');
-  assert.equal(cn.hard_reject, false);
-  assert.equal(cn.classification, 'explicit_face_skincare',
-    'a Chinese skincare row must be RECOGNISED, not merely tolerated as ambiguous');
-  assert.equal(cn.penalty, 0);
-});
-
-test('熊猫眼 is dark circles, not a cat — single CJK characters are not block tokens', () => {
-  // 狗/猫/犬 were single characters in the fatal list. 熊猫眼 is the ordinary Chinese word for dark
-  // circles, so a live /猫/ hard-rejects the eye creams that name the concern they treat.
-  for (const name of ['熊猫眼修护眼霜', '改善熊猫眼的保湿眼部精华']) {
-    assert.equal(at(name).hard_reject, false, `${name} must not be read as a pet product`);
-  }
-  // The pet case still lands, through tokens that mean it.
-  assert.equal(at('宠物玩具').hard_reject, true);
-  assert.equal(at('猫粮').hard_reject, true);
-});
-
 // ---------------------------------------------------------------------------------------------
 // THE RANKER IS NOT THE BOUNDARY. Threading the step into ranking alone fixed nothing a buyer could
 // see: the recall boundary runs FIRST, deletes the row, and the ranker never gets to score it.
@@ -263,4 +245,98 @@ test('the beauty mainline boundary passes the step it recalled for', () => {
     'the boundary must admit the category the ladder was searching for');
   assert.equal(fn({ name: 'CeraVe Moisturizing Lotion Fragrance-Free' }, { requestedStep: 'moisturizer' }).rejected,
     false, 'and must not delete a fragrance-free moisturiser from a moisturizer recall');
+});
+
+// ---------------------------------------------------------------------------------------------
+// WHAT THE PRODUCT IS, NOT WHAT IS IN IT. The category lens read descriptions and ingredient lists,
+// so "Ingredients: Aqua, Glycerin, Fragrance (Parfum)" made a moisturiser a fragrance and deleted it
+// from a moisturizer request — at the recall boundary, on all three reco lanes.
+
+test('an ingredient list does not decide a category', () => {
+  const rows = [
+    { title: 'La Roche-Posay Toleriane Double Repair Face Moisturizer', description: 'Fragrance: none. Ingredients: Aqua, Glycerin, Parfum' },
+    { title: 'EltaMD UV Clear Broad-Spectrum SPF 46', description: 'Free from: Alcohol Fragrance Paraben', category: 'Sunscreen' },
+    { title: 'Paula’s Choice 2% BHA Liquid Exfoliant', ingredients: ['Water', 'Salicylic Acid', 'Fragrance'] },
+    { title: 'Volume Cream', description: 'Formulated with no synthetic fragrance' },
+    { title: 'Kiehl’s Ultra Facial Cream', description: 'has a subtle fragrance of chamomile' },
+    // The MAKEUP half of the same lens, with no fragrance wording at all.
+    { title: 'Daily Face Moisturizer', description: 'gives a healthy bronzing effect without shimmer' },
+    { title: 'Barrier Repair Moisturizer', description: 'leaves a setting powder finish' },
+  ];
+  for (const row of rows) {
+    for (const step of ['moisturizer', 'serum', 'cleanser', 'sunscreen', 'treatment']) {
+      const r = classify(row, { requestedStep: step });
+      assert.equal(r.hard_reject, false,
+        `${row.title} must survive a ${step} request — got ${r.reason}`);
+    }
+  }
+});
+
+test('the identity fields still decide it, in both directions', () => {
+  const bronzerByCategory = { title: 'Hoola', category: 'Makeup > Face > Bronzer' };
+  assert.equal(classify(bronzerByCategory, { requestedStep: 'bronzer' }).classification,
+    'explicit_requested_beauty_category', 'a category path names the category');
+  assert.equal(classify(bronzerByCategory, { requestedStep: 'serum' }).hard_reject, true);
+  for (const title of ['Tom Ford Black Orchid Eau de Parfum', 'Hoola Matte Bronzer', 'Charlotte Tilbury Pillow Talk Lipstick']) {
+    assert.equal(classify({ title }, { requestedStep: 'moisturizer' }).hard_reject, true,
+      `${title} must not answer a moisturizer request`);
+  }
+});
+
+
+// ---------------------------------------------------------------------------------------------
+// EVERY THREADED CALL SITE, PINNED. Three of them had no test at all: reverting each to an
+// unthreaded call passed the entire 3,778-test gate.
+
+test('the framework pool finalizer threads the step it recalled for', () => {
+  const { __internal } = require('../src/auroraBff/routes');
+  const finalize = __internal.finalizeConcernFrameworkCandidatePools;
+  assert.equal(typeof finalize, 'function', 'the finalizer must be reachable to be pinned');
+  const run = (step) => finalize(
+    [{ product_id: 'p1', name: 'Hoola Matte Bronzer', title: 'Hoola Matte Bronzer', matched_role_id: 'primary' }],
+    {
+      targetContext: {
+        resolved_target_step: step,
+        framework_roles: [{ role_id: 'primary', label: 'Primary', preferred_step: step }],
+      },
+    },
+  ) || {};
+  // Asserted on the SCOPE verdict the finalizer records, not on survival: on a bronzer request the
+  // row still drops further down for `framework_hard_mismatch`, a different mechanism this test is
+  // not about. What this pins is that the scope gate is no longer the thing that removed it.
+  const bronzer = run('bronzer');
+  assert.equal(bronzer.scope_classification_stats.explicit_requested_beauty_category, 1,
+    'a bronzer must clear the framework pool’s scope gate on a bronzer request');
+  assert.ok(!(bronzer.hard_reject || []).some((entry) => entry.reason === 'explicit_wrong_beauty_category'),
+    'and must not be removed BY that gate');
+  const serum = run('serum');
+  assert.equal(serum.scope_classification_stats.explicit_non_skincare, 1);
+  assert.deepEqual((serum.hard_reject || []).map((entry) => entry.reason), ['explicit_wrong_beauty_category'],
+    'on a serum request the scope gate is exactly what removes it');
+  assert.equal(serum.scope_classification_stats.explicit_requested_beauty_category, 0,
+    'the class needs its own telemetry bucket, or it is counted as ambiguous');
+});
+
+test('the winner-safety check threads the primary role step', () => {
+  const { isConcernPrimaryRoleWinnerSafe } = require('../src/auroraBff/selectorWinnerPolicy');
+  const semanticPlan = { core_roles: [{ role_id: 'primary', preferred_step: 'bronzer' }] };
+  const row = { name: 'Hoola Matte Bronzer', title: 'Hoola Matte Bronzer', matched_role_id: 'primary' };
+  assert.equal(isConcernPrimaryRoleWinnerSafe(row, { semanticPlan }), true,
+    'the bronzer the lane recalled must be allowed to WIN; unthreaded, this returned false');
+  const serumPlan = { core_roles: [{ role_id: 'primary', preferred_step: 'serum' }] };
+  assert.equal(isConcernPrimaryRoleWinnerSafe(row, { semanticPlan: serumPlan }), false,
+    'and must not win a serum role');
+});
+
+
+// THE CJK HALF OF BOTH LISTS IS STILL DEAD, and that is this change's deliberate scope line. JS \b
+// never forms a boundary against CJK, so /\b彩妆\b/ cannot match and a 宠物项圈 is admissible to a
+// beauty shortlist today. Waking it needs its own PR: two review rounds on this one found that a
+// live /猫/ rejects 熊猫眼 (dark circles) eye creams, that 彩妆 sat in the fatal half while its ASCII
+// twin `makeup` is allow-excused, and that a live block half with a dead ALLOW half can reject a
+// Chinese row nothing can excuse. Pinned so the scope line is visible rather than assumed.
+test('CJK rows are untouched by this change — the gate half that has never fired still does not', () => {
+  for (const name of ['宠物项圈', '口红', '彩妆套盒', '温和洁面乳 一步卸除彩妆和防晒', '娃娃脸腮红']) {
+    assert.equal(at(name).hard_reject, false, `${name}: unchanged from main, in both directions`);
+  }
 });

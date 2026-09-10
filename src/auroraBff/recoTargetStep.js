@@ -16,7 +16,9 @@ const STEP_PATTERNS = Object.freeze([
   },
   {
     step: 'bronzer',
-    patterns: [/\b(bronzer|bronzing powder|contour powder|contour stick|contouring powder|bronzing)\b/i, /修容/, /古铜/],
+    // `bronzing` ALONE IS A FINISH, NOT A CATEGORY. "Firming-Lifting Cream ... cues around bronzing
+    // or contour definition" is a moisturiser, and bare `bronzing` cost it its step.
+    patterns: [/\b(bronzer|bronzing (?:powder|drops|cream|balm|milk|lotion|stick|serum)|contour powder|contour stick|contouring powder)\b/i, /修容/, /古铜/],
   },
   {
     step: 'highlighter',
@@ -44,11 +46,12 @@ const STEP_PATTERNS = Object.freeze([
   },
   {
     step: 'eye_colour',
-    patterns: [/\b(eyeshadow|eye shadow|eyeshadow palette|eyeliner|eye liner|mascara|brow pencil|brow gel|eyebrow)\b/i, /眼影/, /眼线/, /睫毛膏/, /眉笔/],
+    // NOT bare `eyebrow`: "Moon Boost Eyebrow and Lash Serum" is a growth serum, not eye colour.
+    patterns: [/\b(eyeshadow|eye shadow|eyeshadow palette|eyeliner|eye liner|mascara|brow pencil|brow gel)\b/i, /眼影/, /眼线/, /睫毛膏/, /眉笔/],
   },
   {
     step: 'fragrance',
-    patterns: [/\b(fragrance|perfume|parfum|eau de parfum|eau de toilette|cologne|body mist|edp|edt)\b/i, /香水/, /淡香/, /body spray/i],
+    patterns: [/\b(fragrance|perfume|parfum|eau de parfum|eau de toilette|cologne|body mist|body spray|edp|edt)\b/i, /香水/, /淡香/],
   },
   {
     step: 'mask',
@@ -353,9 +356,19 @@ function uniqStrings(items, max = 12) {
 function normalizeRecoTargetStep(value) {
   const raw = normalizeText(value).toLowerCase();
   if (!raw) return null;
+  // The canonical-name lookup runs on the RAW string, so an explicit step of 'fragrance' still
+  // normalises to itself -- the mask below only ever sees free text that failed to be a step name.
   if (EXACT_ALIAS_MAP[raw]) return EXACT_ALIAS_MAP[raw];
+  // A SECOND RESOLVER THAT DID NOT SHARE THE MASK IS A SECOND SET OF ANSWERS. This one takes the
+  // first pattern that matches and the makeup entries are listed first, so
+  // 'CeraVe Daily Moisturizing Lotion, Fragrance-Free' resolved `fragrance` here while the intent
+  // resolver said `moisturizer` -- and ingredientSkuEvidence.resolveRecallCandidateStep calls THIS
+  // one, on a bare title, before the intent resolver ever runs. 74 of the 91 skincare strings that
+  // flipped to `fragrance` were denial phrasings.
+  const masked = maskNonCategoryQualifiers(raw);
+  if (!masked.trim()) return null;
   for (const entry of STEP_PATTERNS) {
-    if (entry.patterns.some((pattern) => pattern.test(raw))) return entry.step;
+    if (entry.patterns.some((pattern) => pattern.test(masked))) return entry.step;
   }
   return null;
 }
@@ -398,9 +411,28 @@ const NON_CATEGORY_QUALIFIER_PATTERNS = Object.freeze([
   /(?:不含|无添加|无)香精/g,
 ]);
 
+// A CATEGORY NAMED AS WEAR CONTEXT IS NOT A REQUEST FOR IT. "a sunscreen that won't pill under my
+// foundation" is a sunscreen ask; before this it matched both `sunscreen` and `foundation`, went
+// ambiguous, and lost its step -- on /v1/chat, the highest-traffic lane, which derives step-aware
+// intent from exactly this resolver. Measured: 16 of 28 realistic chat phrasings that mention the
+// buyer's existing makeup lost their step. The tell is grammatical, not lexical: the category sits
+// inside a prepositional or relative clause about wearing, layering or removing something else.
+const MAKEUP_CONTEXT_NOUNS = 'foundation|concealer|mascara|eyeliner|eye liner|eyeshadow|eye shadow|lipstick|lip gloss|blush|bronzer|highlighter|primer|setting powder|face powder|brow pencil|makeup|make-up';
+const CATEGORY_AS_CONTEXT_PATTERNS = Object.freeze([
+  new RegExp(`\\b(?:under|underneath|beneath|over|on top of|before|after|with|without|alongside)\\s+(?:my |the |any |your )?(?:${MAKEUP_CONTEXT_NOUNS})\\b`, 'gi'),
+  // A COORDINATED LIST IS STILL ONE CLAUSE. "removes mascara and eyeliner" names two categories and
+  // requests neither; matching only the first left the second to make the ask ambiguous again.
+  new RegExp(`\\b(?:removes?|removing|remove|takes? off|breaks? down|dissolves?|creases?|crease|pills? under|wears? under)\\s+(?:my |the |any |your )?(?:${MAKEUP_CONTEXT_NOUNS})\\b(?:\\s*,?\\s*(?:and |or )?(?:my |the |your )?(?:${MAKEUP_CONTEXT_NOUNS})\\b)*`, 'gi'),
+  new RegExp(`\\b(?:doubles?|works?|acts?)\\s+as\\s+an?\\s+(?:${MAKEUP_CONTEXT_NOUNS})\\b`, 'gi'),
+  new RegExp(`\\b(?:i |we )?(?:use|uses|used|using|wear|wears|wearing)\\s+(?:my |the |any |your )?(?:${MAKEUP_CONTEXT_NOUNS})\\b`, 'gi'),
+]);
+
 function maskNonCategoryQualifiers(input) {
   let text = String(input || '');
   for (const pattern of NON_CATEGORY_QUALIFIER_PATTERNS) {
+    text = text.replace(pattern, (match) => ' '.repeat(match.length));
+  }
+  for (const pattern of CATEGORY_AS_CONTEXT_PATTERNS) {
     text = text.replace(pattern, (match) => ' '.repeat(match.length));
   }
   return text;
@@ -423,15 +455,37 @@ function maskNonCategoryQualifiers(input) {
 // all of them complexion products that main mislabelled. A moisturiser with SPF is genuinely both
 // and keeps saying so by resolving to nothing.
 const WEAK_STEP_SURFACES = new Set(['spf']);
+// A DELIVERY FORMAT IS NOT A CATEGORY. Sunscreen, haircare and fragrance all ship as a body mist or
+// a body spray, so when anything else matched, the format loses. Without this, Supergoop's "PLAY
+// Antioxidant Body Mist SPF 30" and its "non-aerosol sunscreen body spray" — both sunscreens — read
+// as a sunscreen AND a fragrance and resolved to nothing at all.
+const FORMAT_ONLY_SURFACES = new Set(['body mist', 'body spray']);
+// PRIMER IS THE ONE MAKEUP CATEGORY WHERE SPF IS THE PRIMARY CLAIM. Supergoop's Unseen, Dewscreen
+// and Glowscreen are sold as sun care that primes; letting `primer` beat an SPF surface moved them
+// out of the sunscreen pipeline entirely — on a `sunscreen` query the row went from `same_family` to
+// `incompatible_family`, and the query "spf primer" collapsed its result set from 75 to 2.
+const STEPS_SPF_OUTRANKS = new Set(['primer']);
 
 function dropWeakSurfaceMatches(details) {
   if (details.length < 2) return details;
-  const makeupNamed = details.some(
-    (detail) => !WEAK_STEP_SURFACES.has(detail.token) && STEP_DOMAIN_MAP[detail.step] === 'makeup',
-  );
-  if (!makeupNamed) return details;
-  const strong = details.filter((detail) => !WEAK_STEP_SURFACES.has(detail.token));
-  return strong.length ? strong : details;
+  const withoutFormat = details.filter((detail) => !FORMAT_ONLY_SURFACES.has(detail.token));
+  const working = withoutFormat.length && withoutFormat.length !== details.length ? withoutFormat : details;
+  if (working.length < 2) return working;
+  const weak = working.filter((detail) => WEAK_STEP_SURFACES.has(detail.token));
+  const strong = working.filter((detail) => !WEAK_STEP_SURFACES.has(detail.token));
+  if (!weak.length || !strong.length) return working;
+  // `spf` YIELDS to a complexion-colour category: a foundation with SPF is sold on coverage.
+  //
+  // NARROW BY MEASUREMENT, NOT BY TASTE. Demoting `spf` against every step moved 70 SKINCARE strings
+  // in this repo's corpus — "Daily Moisturizer SPF 30" stopped being ambiguous and became a
+  // moisturizer, on a lane this change has no business touching. A moisturiser with SPF is genuinely
+  // both and keeps saying so by resolving to nothing.
+  if (strong.some(
+    (detail) => STEP_DOMAIN_MAP[detail.step] === 'makeup' && !STEPS_SPF_OUTRANKS.has(detail.step),
+  )) return strong;
+  const survivors = strong.filter((detail) => !STEPS_SPF_OUTRANKS.has(detail.step));
+  if (survivors.length !== strong.length) return survivors.length ? [...survivors, ...weak] : weak;
+  return working;
 }
 
 function resolveOverlappingStepMatches(details) {
@@ -476,7 +530,10 @@ function collectStepPatternMatchDetails(input, entries) {
     });
     if (details.length >= 8) break;
   }
-  return resolveOverlappingStepMatches(dropWeakSurfaceMatches(details));
+  // OVERLAP FIRST. The weak-surface rules below reason about which SURFACES survived, and running
+  // them on the raw list let a `mist` that `body mist` was about to absorb count as a third category
+  // — "PLAY Antioxidant Body Mist SPF 30" kept a spurious `toner` and resolved to nothing.
+  return dropWeakSurfaceMatches(resolveOverlappingStepMatches(details));
 }
 
 function collectHighConfidenceMatchDetails(input) {

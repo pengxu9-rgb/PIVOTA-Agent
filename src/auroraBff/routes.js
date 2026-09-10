@@ -21034,19 +21034,30 @@ function buildRecoCatalogQueryLevels({
   // moisturizer".
   const externalSeedDomain = resolveRecoStepDomain(pickFirstTrimmed(targetContext?.resolved_target_step));
   const externalSeedEligible = externalSeedDomain === 'makeup' || externalSeedDomain === 'fragrance';
-  // `source_scope` IS THE FIELD THAT DECIDES IT, and `allow_external_seed` alone is a no-op. The
-  // outbound site derives sourceScope from entry.source_scope ONLY, defaulting to 'internal', and
-  // then sends `allowExternalSeed: sourceScope !== 'internal'`. Setting the other flag and not this
-  // one produces a ladder that looks external-eligible in every trace and still goes out
-  // internal-only -- which is how the lane looked before this change.
+  // BOTH FIELDS, BECAUSE THE TWO COLLECTORS READ DIFFERENT ONES. An earlier version of this comment
+  // said `source_scope` decides and `allow_external_seed` is a no-op; a review traced it and the
+  // truth is the other way round on the path this ladder actually takes.
+  //   - collectRecoCandidatesFromQueryLevels -> runQueryLevelEntry OVERWRITES source_scope from
+  //     `allowExternalSeed && entry.allow_external_seed`, so `allow_external_seed` is what decides
+  //     and any scope set here is discarded.
+  //   - executeRecoRecallPlanEntry reads entry.source_scope directly.
+  // Setting one and not the other yields a ladder that looks external-eligible in a trace and goes
+  // out internal-only on whichever collector runs. Do not drop either.
   //
-  // 'hybrid', not 'external_seed': internal candidates still lead, external seeds supplement them.
+  // NOTE that the query-levels path rewrites the scope to 'external_seed', not 'hybrid' -- so on
+  // that path the request uses the external-seed direct transport and fast mode. External seeds
+  // SUPPLEMENT rather than replace only via external_seed_strategy, which is why it is pinned here.
+  //
+  // `preferred_step` is emitted alongside `step` because the outbound external-seed arm derives
+  // targetStepFamily from `preferred_step` alone; the step-aware ladder only ever set `step`, so the
+  // makeup category never reached the backend's own category resolution.
   const withExternalSeedSupplement = (entry) => (externalSeedEligible
     ? {
       ...entry,
       source_scope: 'hybrid',
       allow_external_seed: true,
       external_seed_strategy: 'supplement_internal_first',
+      preferred_step: pickFirstTrimmed(entry?.preferred_step, entry?.step) || '',
     }
     : entry);
   if (targetContext && Array.isArray(targetContext.framework_roles) && targetContext.framework_roles.length > 0) {
@@ -21115,7 +21126,11 @@ function buildRecoCatalogQueryLevels({
     needSeedText,
     maxQueries: maxGenericQueries,
   });
-  const generalQueries = queries.map(withExternalSeedSupplement);
+  // NOT withExternalSeedSupplement HERE. This branch is only reached when no step resolved (a
+  // resolved step at high or medium confidence sets step_aware_intent and takes the branch above),
+  // and externalSeedEligible is derived from the resolved step -- so the call was dead code whose
+  // comment implied otherwise. The eligibility test above is the whole rule.
+  const generalQueries = queries;
   return generalQueries.length
     ? [
         {
@@ -27870,6 +27885,9 @@ function finalizeConcernFrameworkCandidatePools(
     explicit_face_skincare: 0,
     explicit_non_face_supportive: 0,
     explicit_non_skincare: 0,
+    // Without its own bucket the new class fell into `ambiguous`, so the telemetry said the pool was
+    // full of rows the gate could not place — the opposite of what threading the step achieved.
+    explicit_requested_beauty_category: 0,
     ambiguous: 0,
   };
   for (const role of roles) {

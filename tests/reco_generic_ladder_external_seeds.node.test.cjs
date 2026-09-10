@@ -23,6 +23,7 @@ const assert = require('node:assert/strict');
 
 const { __internal } = require('../src/auroraBff/routes');
 const { resolveRecommendationTargetContext } = require('../src/auroraBff/recommendationSharedStack');
+const { normalizeRecoTargetStep, resolveRecoStepDomain } = require('../src/auroraBff/recoTargetStep');
 
 function ladderFor(text) {
   const targetContext = resolveRecommendationTargetContext({
@@ -46,11 +47,22 @@ function ladderFor(text) {
 // because an earlier version of this change set only that flag — which the outbound site never
 // reads — and produced a ladder that looked external-eligible in every trace while still going out
 // internal-only.
+// Mirrors `runQueryLevelEntry` in routes.js, which is where the decision is actually made:
+//
+//     const queryAllowExternalSeed = allowExternalSeed === true && queryEntry?.allow_external_seed === true;
+//     source_scope: queryAllowExternalSeed ? 'external_seed' : 'internal'
+//
+// AN EARLIER VERSION OF THIS HELPER MIRRORED THE WRONG SITE. It read `entry.source_scope` and
+// treated it as the decider, which is true only on the recall-plan collector; on the collector this
+// ladder reaches, source_scope is OVERWRITTEN from `allow_external_seed`. A test that mirrors the
+// wrong site can pass while the wire stays internal-only — the exact failure this file exists to
+// catch, one layer up.
 function outboundAllowsExternalSeed(entry) {
-  const normalized = String(entry?.source_scope || 'internal').trim().toLowerCase();
-  const sourceScope = normalized === 'external_seed' ? 'external_seed'
-    : normalized === 'hybrid' ? 'hybrid' : 'internal';
-  return sourceScope !== 'internal';
+  return entry?.allow_external_seed === true;
+}
+
+function outboundSourceScope(entry) {
+  return outboundAllowsExternalSeed(entry) ? 'external_seed' : 'internal';
 }
 
 test('a makeup need takes the STEP-AWARE branch, and that is the branch that must reach external seeds', () => {
@@ -67,10 +79,20 @@ test('a makeup need takes the STEP-AWARE branch, and that is the branch that mus
     for (const entry of queries) {
       assert.equal(outboundAllowsExternalSeed(entry), true,
         `${text}: the OUTBOUND request must allow external seeds, not merely the entry flag`);
-      assert.equal(entry.source_scope, 'hybrid',
-        'hybrid, not external_seed — internal candidates still run and external seeds supplement');
+      assert.equal(outboundSourceScope(entry), 'external_seed',
+        'the query-levels collector rewrites the scope from allow_external_seed');
       assert.equal(entry.allow_external_seed, true);
-      assert.equal(entry.external_seed_strategy, 'supplement_internal_first');
+      // Set for the OTHER collector, executeRecoRecallPlanEntry, which reads source_scope directly.
+      assert.equal(entry.source_scope, 'hybrid');
+      assert.equal(entry.external_seed_strategy, 'supplement_internal_first',
+        'external seeds supplement internal candidates rather than replacing them');
+      // The outbound external-seed arm derives targetStepFamily from `preferred_step` alone.
+      // The ladder's own alias ('lipstick' for lip_colour) is what the backend can query, so the
+      // assertion is that the field is PRESENT and in the requested family, not that it is the
+      // family label.
+      assert.ok(entry.preferred_step, 'preferred_step must be set — the external-seed arm derives targetStepFamily from it alone');
+      assert.equal(normalizeRecoTargetStep(entry.preferred_step), targetContext.resolved_target_step,
+        `${entry.preferred_step} must normalise back to the requested step`);
     }
   }
 });
@@ -96,12 +118,11 @@ test('a skincare need is byte-identical to before — no key, no supplement', ()
 });
 
 test('a need with NO resolved step reaches the generic branch and stays internal', () => {
-  // THE CASE THE `needSeedText` FALLBACK WAS WRITTEN FOR, and the only one that can reach it: with a
-  // step resolved, pickFirstTrimmed never consults the second argument, so the fallback is invisible
-  // until no step resolves. Then it reads the raw text through normalizeRecoTargetStep -- which does
-  // NOT mask denials -- and "fragrance-free" becomes a fragrance request. Verified: for each string
-  // below resolveRecoStepDomain(text) === 'fragrance' while the resolved step is null.
-  const { resolveRecoStepDomain } = require('../src/auroraBff/recoTargetStep');
+  // THE FALLBACK THIS GUARDS IS NOW DEAD TWICE OVER, and the test says so rather than pretending to
+  // catch it. Eligibility reads the resolved step only; and `normalizeRecoTargetStep` shares the
+  // denial mask, so "fragrance-free" no longer looks like a fragrance to it either. Both had to be
+  // true — the first version of this change read the need TEXT and routed exactly these asks to the
+  // makeup supply lane.
   for (const text of [
     'something gentle and fragrance-free, nothing too rich',
     'a fragrance-free option under $30',
@@ -109,8 +130,7 @@ test('a need with NO resolved step reaches the generic branch and stays internal
   ]) {
     const { targetContext, queries } = ladderFor(text);
     assert.equal(targetContext.resolved_target_step, null, `${text}: no step resolves`);
-    assert.equal(resolveRecoStepDomain(text), 'fragrance',
-      `${text}: the raw text DOES look like a fragrance domain — which is exactly the trap`);
+    assert.equal(resolveRecoStepDomain(text), '', `${text}: and the raw text no longer reads as a domain either`);
     assert.ok(queries.length > 0, `${text}: the generic ladder must still issue queries`);
     for (const entry of queries) {
       assert.equal(outboundAllowsExternalSeed(entry), false,

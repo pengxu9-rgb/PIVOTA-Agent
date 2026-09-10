@@ -45,9 +45,9 @@ const STEP_ALIASES = Object.freeze({
 });
 
 const SKINCARE_ALLOW_RE = /\b(cleanser|face wash|cleansing|toner|mist|essence|serum|ampoule|booster|moistur|cream|lotion|gel cream|gel-cream|sunscreen|sun screen|spf|sunblock|treatment|retinol|retinoid|acid|aha|bha|mask|sheet mask|sleeping mask|overnight mask|clay mask|mud mask|face oil|facial oil|barrier|repair|hydrating|hydration|soothing|calming|blemish|acne|niacinamide|azelaic|ceramide|peptide|vitamin c|skincare|skin care|facial|face|洁面|洗面奶|化妆水|爽肤水|精华|精华水|面霜|乳液|保湿|防晒|面膜|修护|屏障|舒缓|祛痘|烟酰胺|壬二酸|神经酰胺|胜肽|维c|护肤|护肤品|护肤油)\b/i;
-// The same \b defect, on the ALLOW side. Split so the CJK tokens match as substrings; without this
-// the CJK block half above could reject a Chinese row that nothing could ever excuse.
-const SKINCARE_ALLOW_CJK_RE = /(洁面|洗面奶|化妆水|爽肤水|精华|精华水|面霜|乳液|保湿|防晒|面膜|修护|屏障|舒缓|祛痘|烟酰胺|壬二酸|神经酰胺|胜肽|维c|护肤|护肤品|护肤油)/;
+// Held back with the block half above, so the two stay symmetric: SKINCARE_ALLOW_RE's CJK tokens
+// carry the same dead \b, and both halves wake up together in their own PR or not at all.
+const SKINCARE_ALLOW_CJK_RE = /\b(洁面|洗面奶|化妆水|爽肤水|精华|精华水|面霜|乳液|保湿|防晒|面膜|修护|屏障|舒缓|祛痘|烟酰胺|壬二酸|神经酰胺|胜肽|维c|护肤|护肤品|护肤油)\b/;
 // THE BLOCK LIST MIXES TWO DIFFERENT JUDGEMENTS, and that is the whole defect. "lingerie" and "dog
 // harness" mean NOT A BEAUTY PRODUCT AT ALL. "blush" and "perfume" mean A BEAUTY PRODUCT IN A
 // CATEGORY THIS LANE WAS BUILT FOR SKINCARE. Collapsed into one fatal regex, a bronzer on a bronzer
@@ -68,19 +68,20 @@ const { resolveRecoStepDomain, maskNonCategoryQualifiers } = require('../recoTar
 
 const NON_BEAUTY_FATAL_ASCII_RE = /\b(brush|applicator|blender|tool|supplement|vitamin gummies|brush set|lingerie|underwear|bra|panties|bodysuit|overalls|onesie|dress|jacket|coat|hoodie|sweater|sweatshirt|shirt|tee|vest|apparel|clothing|pet|dog|dogs|cat|cats|puppy|kitten|harness|leash|collar|toy|toys|doll|plush|costume)\b/i;
 const WRONG_CATEGORY_FATAL_ASCII_RE = /\b(eyeshadow|blush|lipstick|foundation|concealer|palette|mascara|brow|nail|perfume)\b/i;
-// NO \b ON THE CJK HALF, and this is a live fix, not a cosmetic one. JS \b is defined against
-// [A-Za-z0-9_], so a CJK character never forms a word boundary and /\b彩妆\b/ CANNOT match anything.
-// Verified against origin/main: every CJK token in these lists -- 彩妆, 香水, 宠物, 口红, 化妆刷 --
-// tested false. The entire Chinese half of the off-vertical gate has never fired, so a 宠物项圈 (pet
-// collar) is admissible to a beauty shortlist today. Substring matching is correct for a script with
-// no word delimiters, and SKINCARE_ALLOW_RE below is fixed in the same way in the same change: a
-// half-live gate that can reject a Chinese row but never excuse one is worse than a dead one.
+// THE CJK HALF OF BOTH LISTS IS STILL DEAD, AND THAT IS DELIBERATE HERE. JS \b is defined against
+// [A-Za-z0-9_], so a CJK character never forms a word boundary and /\b彩妆\b/ CANNOT match: a
+// 宠物项圈 is admissible to a beauty shortlist today. That is a real bug and it is NOT this change's
+// bug. Waking it up needs its own PR, because it is a change to a different lane with its own blast
+// radius -- two review rounds on this one found that a live /猫/ rejects 熊猫眼 (dark circles) eye
+// creams, that 彩妆 sat in the fatal half while its ASCII twin `makeup` is allow-excused, and that a
+// live block half with a \b-dead ALLOW half can reject a Chinese row that nothing can excuse. The
+// live index is 0% CJK, so there is no cost to landing it separately and every reason to.
 //
-// 狗/猫/犬 ARE DROPPED, single characters and no longer safe as substrings. 熊猫眼 is the ordinary
-// Chinese word for dark circles, so a live /猫/ hard-rejects the eye creams that name the concern
-// they treat. 宠物 and 项圈 carry the pet case without that.
-const NON_BEAUTY_FATAL_CJK_RE = /(化妆刷|营养补剂|配件|内衣|文胸|胸罩|下着|ランジェリー|宠物|寵物|狗粮|猫粮|猫砂|项圈|項圈|牵引绳|牽引繩|玩具|娃娃)/;
-const WRONG_CATEGORY_FATAL_CJK_RE = /(彩妆|眼影|粉底|口红|睫毛膏|眉笔|指甲|香水)/;
+// The \b is therefore preserved exactly as main has it. The positive LENS below carries CJK without
+// \b, which is safe in a way this is not: it only ever recognises a requested category on a
+// threaded call, and recognising more is not a new way to delete a row.
+const NON_BEAUTY_FATAL_CJK_RE = /\b(化妆刷|营养补剂|配件|内衣|文胸|胸罩|下着|ランジェリー|宠物|寵物|狗|猫|犬|项圈|項圈|牵引|牽引|玩具|娃娃)\b/;
+const WRONG_CATEGORY_FATAL_CJK_RE = /\b(彩妆|眼影|粉底|口红|睫毛膏|眉笔|指甲|香水)\b/;
 
 // A POSITIVE LENS, NOT A BLOCK LIST. These two decide "is this row the category that was asked
 // for?" and nothing else -- they are never consulted to reject. That is why they may be COMPLETE
@@ -88,6 +89,12 @@ const WRONG_CATEGORY_FATAL_CJK_RE = /(彩妆|眼影|粉底|口红|睫毛膏|眉�
 // that completeness changing what an unthreaded caller rejects. Recognising a bronzer is what earns
 // it penalty 0 on a bronzer request instead of the 0.18 an unrecognised row pays.
 const MAKEUP_CATEGORY_RE = /\b(eyeshadow|eye shadow|blush|lipstick|lip gloss|lip liner|lip tint|foundation|concealer|palette|mascara|eyeliner|brow pencil|brow gel|brow|nail|bronzer|bronzing|contour powder|contour stick|highlighter|illuminator|makeup primer|face primer|pore primer|setting powder|finishing powder|loose powder|pressed powder|translucent powder|face powder|cheek tint|skin tint|bb cream|cc cream)\b|(彩妆|眼影|粉底|口红|睫毛膏|眉笔|指甲|修容|腮红|高光|散粉|定妆粉|蜜粉|妆前乳|唇釉|唇彩|眼线)/i;
+// AN ACCESSORY FOR A CATEGORY IS NOT THAT CATEGORY. The lens is positive-only, so 'Beauty Sponge
+// for blush' matched `blush` and was admitted at penalty 0 on a bronzer request -- main rejected it
+// outright via the same token. Tools have no serving lane at all, so admitting them at the BEST
+// penalty is the worst available answer. Checked only on the admit path; it never rejects anything
+// main did not, so the unthreaded verdict is untouched.
+const CATEGORY_ACCESSORY_RE = /\b(sponge|puff|case|sharpener|holder|pouch|bag|mirror|refill case|organizer|organiser|tray|stand|dupe card|swatch card)\b/i;
 const FRAGRANCE_CATEGORY_RE = /\b(perfume|parfum|fragrance|eau de parfum|eau de toilette|cologne|body mist|edp|edt)\b|(香水|淡香)/i;
 function matchesNonBeautyFatal(text) {
   return NON_BEAUTY_FATAL_ASCII_RE.test(text) || NON_BEAUTY_FATAL_CJK_RE.test(text);
@@ -737,6 +744,56 @@ function isImplementProduct(product) {
   return IMPLEMENT_HEAD_RE.test(head) || IMPLEMENT_HEAD_CN_RE.test(head);
 }
 
+// WHAT THE PRODUCT IS, not what is in it. The category lens must never read a description or an
+// ingredient list, and the first version of it read both -- so "Ingredients: Aqua, Glycerin,
+// Fragrance (Parfum)" made a moisturiser a fragrance and deleted it from a moisturizer request, at
+// the recall boundary, on all three reco lanes. Measured: 9 real face-skincare rows in a 1,679-row
+// corpus, and the corpus under-counts because only 24 of those rows carry INCI text at all -- every
+// fragranced skincare row in the live catalog lists Parfum.
+//
+// Extending the mask instead was the tempting fix and it is whack-a-mole: `Parfum`, `Free from:
+// Alcohol Fragrance Paraben`, `no synthetic fragrance`, `a subtle fragrance`, `Fragrance: none`,
+// `0% fragrance` all had to be enumerated, and `bronzing effect` and `setting powder finish` on a
+// moisturiser were rejected by the MAKEUP half of the same lens with no fragrance wording at all.
+// The category a row belongs to is stated by its identity fields. Ingredients, benefits, skin-type
+// tags and prose are evidence about a product, not a claim about its category.
+function productIdentityText(product) {
+  const row = isPlainObject(product) ? product : {};
+  const sku = isPlainObject(row.sku) ? row.sku : {};
+  const nestedProduct = isPlainObject(row.product) ? row.product : {};
+  const sourceProduct = isPlainObject(row.source_product)
+    ? row.source_product
+    : isPlainObject(row.sourceProduct)
+      ? row.sourceProduct
+      : {};
+  return [
+    row.brand, row.name, row.title, row.product_name, row.productName,
+    row.display_name, row.displayName,
+    nestedProduct.brand, nestedProduct.name, nestedProduct.title,
+    nestedProduct.product_name, nestedProduct.productName,
+    nestedProduct.display_name, nestedProduct.displayName,
+    sourceProduct.brand, sourceProduct.name, sourceProduct.title,
+    sourceProduct.product_name, sourceProduct.productName,
+    sourceProduct.display_name, sourceProduct.displayName,
+    sku.brand, sku.name, sku.title, sku.product_name, sku.productName,
+    sku.display_name, sku.displayName,
+    row.category, row.category_name, row.categoryName,
+    row.category_label, row.categoryLabel,
+    typeof row.category_path === 'string' ? row.category_path : '',
+    row.product_category, row.productCategory, row.product_type, row.productType,
+    nestedProduct.category, nestedProduct.category_name, nestedProduct.categoryName,
+    nestedProduct.product_type, nestedProduct.productType,
+    sourceProduct.category, sourceProduct.category_name, sourceProduct.categoryName,
+    sourceProduct.product_type, sourceProduct.productType,
+    sku.category, sku.category_name, sku.categoryName,
+    sku.category_label, sku.categoryLabel, sku.product_type, sku.productType,
+    ...(Array.isArray(row.category_path) ? row.category_path : []),
+  ]
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+    .join(' ');
+}
+
 // `requestedStep` is OPTIONAL and defaults to the historical behaviour exactly: with no step, every
 // makeup and fragrance token is fatal, which is what every unthreaded caller still gets.
 function classifySkincareCandidate(product, { requestedStep = '' } = {}) {
@@ -776,7 +833,11 @@ function classifySkincareCandidate(product, { requestedStep = '' } = {}) {
       classification: 'explicit_non_skincare',
       hard_reject: true,
       penalty: 1,
-      reason: 'explicit_non_beauty',
+      // MAIN'S STRING, NOT A NEW ONE. This is the value recordBeautyMainlineBoundaryReject writes,
+      // and renaming it moved 4,358 corpus strings onto reasons no dashboard knows -- any panel
+      // keyed on `explicit_non_skincare` would have gone to zero on deploy and read as a fixed bug.
+      // The split this PR makes is in the CODE; it does not need to be in the telemetry.
+      reason: 'explicit_non_skincare',
     };
   }
   // THE CATEGORY THAT WAS ASKED FOR, admitted and named. Only rows that actually match it: a cleanser
@@ -789,12 +850,13 @@ function classifySkincareCandidate(product, { requestedStep = '' } = {}) {
     // "CeraVe Daily Moisturizing Lotion, Fragrance-Free" as a fragrance and rejects it from the
     // moisturizer request it was recalled for. One definition of "this mention is a denial", owned
     // by the taxonomy and shared with step resolution.
-    const lensText = maskNonCategoryQualifiers(joined);
+    const lensText = maskNonCategoryQualifiers(productIdentityText(product));
     const matchesMakeup = MAKEUP_CATEGORY_RE.test(lensText);
     const matchesFragrance = FRAGRANCE_CATEGORY_RE.test(lensText);
     const matchesRequestedCategory =
-      (requestedDomain === 'makeup' && matchesMakeup)
-      || (requestedDomain === 'fragrance' && matchesFragrance);
+      !CATEGORY_ACCESSORY_RE.test(lensText)
+      && ((requestedDomain === 'makeup' && matchesMakeup)
+        || (requestedDomain === 'fragrance' && matchesFragrance));
     if (matchesRequestedCategory) {
       return {
         classification: 'explicit_requested_beauty_category',
@@ -825,7 +887,7 @@ function classifySkincareCandidate(product, { requestedStep = '' } = {}) {
       classification: 'explicit_non_skincare',
       hard_reject: true,
       penalty: 1,
-      reason: 'explicit_wrong_beauty_category',
+      reason: 'explicit_non_skincare',
     };
   }
   // The softer list -- bare 'makeup' and 'fragrance' -- keeps its historical allow-excuse, and that
