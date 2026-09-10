@@ -1,6 +1,9 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const path = '/private/tmp/claude-501/-Users-pengchydan-dev-pivota-backend-quality-gate/a34e7697-45d7-4ace-b46e-c7fbd724bb7b/scratchpad/wt-tel/src/auroraBff/legacyRecoGenerationEngine';
+// Resolved RELATIVE to this file. An absolute path here passes on the machine that wrote it and
+// fails everywhere else -- which is exactly what happened: adopted with the author's scratchpad
+// path baked in, green locally, MODULE_NOT_FOUND in CI.
+const path = require('node:path').join(__dirname, '..', 'src', 'auroraBff', 'legacyRecoGenerationEngine');
 const { createLegacyRecoGenerationEngineRuntime } = require(path);
 
 const isPlainObject = (v) => Boolean(v) && typeof v === 'object' && !Array.isArray(v);
