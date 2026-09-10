@@ -36,9 +36,11 @@ jobs:
           node-version: 20
           cache: npm
       # `npm ci` retried, matching pr-full-jest.yml. This gate failed twice in ten runs on
-      # 2026-09-09 with `ETIMEDOUT connect 150.171.109.74:443` — the npm registry, not this repo's
-      # code. A ~20% flake on a REQUIRED gate trains people to re-run red checks without reading
-      # them, which is how a real failure gets waved through.
+      # 2026-09-09 with `AggregateError [ETIMEDOUT]` inside npm ci — onnxruntime-node's postinstall
+      # downloading a native binary from a CDN (150.171.109.74 is Microsoft, NOT
+      # registry.npmjs.org), the same flake pr-full-jest.yml already documents. Nothing to do with
+      # this repo's code. A ~20% flake on a REQUIRED gate trains people to re-run red checks
+      # without reading them, which is how a real failure gets waved through.
       - name: Install
         run: |
           for attempt in 1 2 3; do
