@@ -1,3 +1,5 @@
+const { recordAuroraRecoAnswerPath } = require('../visionMetrics');
+
 const BaseSkill = require('./BaseSkill');
 const recoHybridResolver = require('../usecases/recoHybridResolveCandidates');
 
@@ -107,6 +109,10 @@ class RecoStepBasedSkill extends BaseSkill {
         sourceMode: 'llm_error',
         telemetryReason: String(err?.message || 'llm_error').slice(0, 200),
       });
+      // A DEAD LEG IS STILL A TURN THIS DOOR HANDLED. Returning without a row here would bias the
+      // door's served-share upward by exactly the turns that failed — the same silent-omission
+      // shape this counter exists to remove.
+      recordAuroraRecoAnswerPath({ door: 'skill_router', path: 'skill_step_based', served: false });
       return {
         cards: [
           {
@@ -193,6 +199,13 @@ class RecoStepBasedSkill extends BaseSkill {
       });
     }
 
+    // COUNTED: skill_router_v2 answers a recommendation request without entering the reco lane, on
+    // its own door. AURORA_CHAT_SKILL_ROUTER_V2 defaults on, so this is live traffic.
+    recordAuroraRecoAnswerPath({
+      door: 'skill_router',
+      path: 'skill_step_based',
+      served: recommendations.length > 0,
+    });
     if (recommendations.length > 0) {
       cards.push({
         card_type: 'recommendations',

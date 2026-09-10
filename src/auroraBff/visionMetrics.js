@@ -181,6 +181,17 @@ const auroraIngredientsFirstAnswerLatency = {
 const auroraSkinAnalysisRealModelCounter = new Map();
 const auroraSkinLlmCallCounter = new Map();
 const auroraRecoLlmCallCounter = new Map();
+// WHICH ANSWER PATH SERVED THE TURN. Deliberately separate from source_mode, which is a
+// PRESENTATION label with its own fallback ladder — a turn can report source_mode
+// 'step_aware_mainline' while the answer itself came from the LLM. This counter reads the same
+// derivation the wire does (structuredSource -> confidence_basis), so it answers "did the path that
+// reads the domain prompt serve this, or the one that reads no prompt at all" — the question behind
+// #2155, which until now could only be answered by polling the response body by hand.
+//
+// Counted in the LANE rather than in a route handler, because the `recommend_products` agent door
+// emits no reco_requested event at all; a handler-side signal would miss the door the defect was
+// filed against.
+const auroraRecoAnswerPathCounter = new Map();
 let recoAlternativesBudgetExhaustedTotal = 0;
 let recoAlternativesTimeoutTotal = 0;
 let recoAlternativesEmptyTotal = 0;
@@ -2467,6 +2478,104 @@ function recordAuroraSkinLlmCall({ stage, outcome, delta } = {}) {
   );
 }
 
+// THE DOOR THE REQUEST CAME IN BY. This is not `entryType`: the `recommend_products` agent door and
+// the consumer POST /v1/reco/generate lane BOTH pass entryType 'direct', so entry type cannot tell
+// apart the two doors this counter exists to compare. `recoTriggerSource` can, and the chat lane —
+// which sets no trigger source — is identified by its entry type instead.
+const RECO_ANSWER_DOORS = new Set(['agent_tool', 'typed_reco', 'chat', 'skill_router']);
+// WHICH PRODUCER ANSWERED, at structuredSource grain rather than collapsed to confidence_basis.
+// Basis maps BOTH catalog paths to 'positional' and folds `legacy_notice` in with a dead leg, which
+// loses exactly the distinctions #2155 turns on: whether the path that reads the domain prompt
+// served the turn, and if not, which promptless path did.
+const RECO_ANSWER_PATHS = new Set([
+  // The three values `structuredSource` can actually take. `legacy_notice` is deliberately NOT here
+  // because it is a SOURCE_MODE, never a structuredSource — but do not read it as "the leg died":
+  // legacyRecoGenerationResult.js:81-107 falls to 'legacy_notice' for ANY structuredSource,
+  // 'llm_primary' included, whenever the shortlist is empty on a non-framework, non-step-aware turn.
+  // Such a turn counts here as llm_primary/served=no, NOT as none. An operator cross-referencing
+  // this counter against reco_requested.source needs that, or the two will look like they disagree.
+  'llm_primary',
+  'catalog_grounded',
+  'catalog_transient_fallback',
+  // Producers that answer WITHOUT entering the reco lane, so they have no structuredSource at all.
+  // Each is named rather than folded into 'catalog_grounded' because each is a different producer
+  // with a different failure mode, and a shared label would make them indistinguishable in exactly
+  // the analysis this counter exists for.
+  'beauty_mainline_grounded',   // beauty-owned chat mainline, from its own grounded handoff
+  'verified_context_restore',   // replayed session candidates, no recall run at all
+  'travel_preview',             // travel handoff preview, built from the travel skill contract
+  'routine_lane',               // routine generator, answers a synthesized routine query
+  'skill_step_based',           // skill_router_v2 reco.step_based
+  'skill_find_products',        // skill_router_v2 shop.find_products
+  'none',
+]);
+// WHAT THIS COUNTER DOES NOT COVER, stated because the door labels would otherwise imply it does.
+// Four review rounds each turned up another producer; rather than keep widening, the scope is fixed
+// here and the exclusions are named:
+//
+//   - beautyExpertV1's projection, which runs on every /v1/chat response and can overwrite a card's
+//     rows or synthesise a card of its own. It is the LAST mutator of a chat answer, so a `chat` row
+//     describes what the producer made, not necessarily what shipped.
+//   - POST /v1/reco/alternatives, the `dupe.suggest` skill, PDP recommendations,
+//     get_alternatives, find_similar_products, and the offers_resolved -> recommendations projection.
+//   - On the agent door, turns refused BEFORE the lane runs (disabled, need_required, off_vertical).
+//     A lane failure IS counted, as none/served=no.
+//
+// So `chat` means "these named chat producers", not "every chat answer".
+//
+// AND `served` IS ONLY EXACT ON `agent_tool`. That door records at the bridge, from the list the
+// partner actually receives. Every other door records in the lane, and work happens after it:
+//   - typed_reco: applyRecommendationOutputGuardrailsForRoute (directRecoGenerateHandler.js:718)
+//     both DROPS rows (strict skincare filter) and ADDS them (purchasable fallback, external seed
+//     supplement) -- all three on prod defaults -- so served=yes can ship nothing and served=no can
+//     ship something. A lane throw on that door emits no row at all.
+//   - chat: beautyExpertV1, as above.
+// Elsewhere read `served` as "the producer returned rows", not "the caller got them".
+
+function normalizeRecoAnswerDoor(door, entryType) {
+  const doorToken = cleanMetricToken(door, '');
+  if (RECO_ANSWER_DOORS.has(doorToken)) return doorToken;
+  const entryToken = cleanMetricToken(entryType, '');
+  if (RECO_ANSWER_DOORS.has(entryToken)) return entryToken;
+  return 'other';
+}
+
+function normalizeRecoAnswerPath(path) {
+  const token = cleanMetricToken(path, '');
+  // ABSENT and UNRECOGNISED are different facts and must not share a bucket. Absent means no path
+  // produced an answer — a dead leg — and that is a real, expected outcome worth counting as such.
+  // A non-empty value we do not know is a path someone added without extending this list, and it
+  // should show up as 'unknown' rather than hide among the dead legs.
+  if (!token) return 'none';
+  return RECO_ANSWER_PATHS.has(token) ? token : 'unknown';
+}
+
+function recordAuroraRecoAnswerPath({ door, entryType, path, served, delta } = {}) {
+  const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
+  if (amount <= 0) return;
+  incCounter(
+    auroraRecoAnswerPathCounter,
+    {
+      door: normalizeRecoAnswerDoor(door, entryType),
+      path: normalizeRecoAnswerPath(path),
+      // WHETHER THE BUYER ACTUALLY GOT ANYTHING, as a separate axis from which producer ran.
+      // Collapsing an empty answer into path='none' would destroy the single most important
+      // signal we have: an `llm_primary` turn that grounds to ZERO products is exactly the
+      // makeup case -- the model understood the request, refused to substitute, and recall
+      // could not reach the category. That is a different fact from "no producer answered",
+      // and a different fact again from a served answer, so it gets its own label rather than
+      // being folded into either. It also makes the denominator comparable across doors, which
+      // path alone was not: the lane counted an empty turn as served while the beauty door
+      // counted it as none.
+      // Explicitly boolean-ised. `served === false ? ...` recorded `served: 0` -- the obvious future
+      // shape `served: rows.length` -- as SERVED. Absent still means yes: two call sites sit inside
+      // non-empty guards and say so.
+      served: served === undefined ? 'yes' : (served ? 'yes' : 'no'),
+    },
+    amount,
+  );
+}
+
 function recordAuroraRecoLlmCall({ stage, outcome, delta } = {}) {
   const amount = Number.isFinite(Number(delta)) ? Math.max(0, Math.trunc(Number(delta))) : 1;
   if (amount <= 0) return;
@@ -3343,6 +3452,10 @@ function renderVisionMetricsPrometheus() {
   lines.push('# TYPE aurora_skin_llm_call_total counter');
   renderCounter(lines, 'aurora_skin_llm_call_total', auroraSkinLlmCallCounter);
 
+  lines.push('# HELP aurora_reco_answer_path_total Recommendation turns from the reco lane and six named lane-free producers, by entry door, producing path, and whether the producer returned rows (exact delivery only on the agent_tool door). NOT a census of every recommendations card - see RECO_ANSWER_PATHS in visionMetrics.js for what is out of scope.');
+  lines.push('# TYPE aurora_reco_answer_path_total counter');
+  renderCounter(lines, 'aurora_reco_answer_path_total', auroraRecoAnswerPathCounter);
+
   lines.push('# HELP aurora_reco_llm_call_total Total recommendation LLM call decisions grouped by stage and outcome.');
   lines.push('# TYPE aurora_reco_llm_call_total counter');
   renderCounter(lines, 'aurora_reco_llm_call_total', auroraRecoLlmCallCounter);
@@ -3714,6 +3827,7 @@ function resetVisionMetrics() {
   auroraSkinAnalysisRealModelCounter.clear();
   auroraSkinLlmCallCounter.clear();
   auroraRecoLlmCallCounter.clear();
+  auroraRecoAnswerPathCounter.clear();
   recoAlternativesBudgetExhaustedTotal = 0;
   recoAlternativesTimeoutTotal = 0;
   recoAlternativesEmptyTotal = 0;
@@ -4034,6 +4148,7 @@ module.exports = {
   recordAuroraSkinAnalysisRealModel,
   recordAuroraSkinLlmCall,
   recordAuroraRecoLlmCall,
+  recordAuroraRecoAnswerPath,
   recordRecoAlternativesBudgetExhausted,
   recordRecoAlternativesTimeout,
   recordRecoAlternativesEmpty,

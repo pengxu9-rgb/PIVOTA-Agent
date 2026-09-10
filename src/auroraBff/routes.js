@@ -334,6 +334,7 @@ const {
   recordAuroraSkinAnalysisRealModel,
   recordAuroraSkinLlmCall,
   recordAuroraRecoLlmCall,
+  recordAuroraRecoAnswerPath,
   recordRecoAlternativesBudgetExhausted,
   recordRecoAlternativesTimeout,
   recordRecoAlternativesEmpty,
@@ -46045,6 +46046,10 @@ function buildRecoRequestedEventData({
     ...(resolvedFailure.productsEmptyReason ? { products_empty_reason: resolvedFailure.productsEmptyReason } : {}),
     ...(resolvedFailure.surfaceReason ? { surface_reason: resolvedFailure.surfaceReason } : {}),
     ...(pickFirstTrimmed(meta.prompt_template_id) ? { prompt_template_id: pickFirstTrimmed(meta.prompt_template_id) } : {}),
+    // NOT the same as `source` above, which is source_mode — a presentation label with its own
+    // fallback ladder that can read 'step_aware_mainline' on a turn the LLM actually answered.
+    // This one is derived from structuredSource, so it says which path produced the answer.
+    ...(pickFirstTrimmed(meta.confidence_basis) ? { confidence_basis: pickFirstTrimmed(meta.confidence_basis) } : {}),
     ...(pickFirstTrimmed(meta.owner_source) ? { owner_source: pickFirstTrimmed(meta.owner_source) } : {}),
     ...(pickFirstTrimmed(meta.final_outcome_owner) ? { final_outcome_owner: pickFirstTrimmed(meta.final_outcome_owner) } : {}),
     ...(pickFirstTrimmed(meta.primary_target_id) ? { primary_target_id: pickFirstTrimmed(meta.primary_target_id) } : {}),
@@ -84816,6 +84821,7 @@ const {
   shouldUseRecoCatalogTransientFallback,
   buildRecoCatalogTransientFallbackStructured,
   recordAuroraRecoLlmCall,
+  recordAuroraRecoAnswerPath,
   groundRecoRecommendationsFromCatalog,
   coerceRecoItemForUi,
   normalizeRecoGenerate,
@@ -103669,6 +103675,10 @@ function mountAuroraBffRoutes(app, { logger }) {
           const hasRecs = Array.isArray(norm.payload.recommendations) && norm.payload.recommendations.length > 0;
           const nextState = hasRecs && stateChangeAllowed(ctx.trigger_source) ? 'S7_PRODUCT_RECO' : undefined;
           const payload = !debugUpstream ? stripInternalRefsDeep(norm.payload) : norm.payload;
+          // COUNTED: the routine lane answers a recommendation request without entering the reco
+          // lane, from its own synthesized routine query — the user's text never reaches the
+          // upstream. Budget-flow branch.
+          recordAuroraRecoAnswerPath({ door: 'chat', path: 'routine_lane', served: hasRecs });
 
           const envelope = buildEnvelope(ctx, {
             assistant_message: makeAssistantMessage(
@@ -103759,6 +103769,9 @@ function mountAuroraBffRoutes(app, { logger }) {
           ? 'S7_PRODUCT_RECO'
           : undefined;
         const payload = !debugUpstream ? stripInternalRefsDeep(norm.payload) : norm.payload;
+        // COUNTED: the other routine-lane branch. Its trigger is a substring match on the message
+        // (`routine`, `am/pm`, and the Chinese equivalents), so it is broad live traffic.
+        recordAuroraRecoAnswerPath({ door: 'chat', path: 'routine_lane', served: hasRecs });
         const nextChips = Array.isArray(suggestedChips) ? [...suggestedChips] : [];
         if (!budget) nextChips.push(buildBudgetOptimizationEntryChip(ctx.lang));
 

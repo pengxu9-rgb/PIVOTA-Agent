@@ -503,6 +503,11 @@ function createLegacyRecoGenerationResultRuntime(deps = {}) {
 
     return {
       norm,
+      // WHICH PRODUCER ANSWERED, surfaced so a caller that post-processes the shortlist can report
+      // the path alongside what it actually delivered. The lane cannot do that itself: the agent
+      // bridge drops ungrounded rows AFTER this returns, so the lane's own view of "served" is the
+      // lane's, not the buyer's.
+      structuredSource,
       upstreamDebug,
       contract: recoContract,
       contractStatus,

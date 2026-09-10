@@ -81,6 +81,7 @@ function createLegacyRecoGenerationEngineRuntime(deps = {}) {
     shouldUseRecoCatalogTransientFallback,
     buildRecoCatalogTransientFallbackStructured,
     recordAuroraRecoLlmCall,
+    recordAuroraRecoAnswerPath,
     groundRecoRecommendationsFromCatalog,
     coerceRecoItemForUi,
     normalizeRecoGenerate,
@@ -153,6 +154,11 @@ function createLegacyRecoGenerationEngineRuntime(deps = {}) {
     // How many recommendations the CALLER asked for. With an enforcing ceiling this is the number of
     // CONFORMING products the shortlist should hold before a flagged near-miss may take a slot.
     shortlistTarget = 0,
+    // WHO RECORDS THE ANSWER PATH. Default: the lane, because it is the only place that knows which
+    // producer ran. The agent bridge sets this, because it drops ungrounded rows after the lane
+    // returns -- a turn where every row is ungrounded (the #2155 failure exactly) would otherwise be
+    // recorded as served while the partner agent receives an empty list.
+    deferAnswerPathRecord = false,
   }) {
     const {
       buildLegacyRecoUpstreamDebug,
@@ -690,6 +696,25 @@ function createLegacyRecoGenerationEngineRuntime(deps = {}) {
     // `lane_confidence: high` no matter what it is or what was asked for. That is how a bronzer need
     // came back as three cleansers at `high` with `confidence_overall: 0.9`.
     const confidenceBasis = deriveRecoConfidenceBasis(structuredSource);
+    // COUNT THE PATH. Recorded here, in the lane, because the `recommend_products` agent door emits
+    // no reco_requested event — a handler-side signal would miss the door #2155 was filed against.
+    //
+    // Labelled by DOOR, not by entry type: the agent door and the consumer direct lane both pass
+    // entryType 'direct', and measured 2026-09-09 the consumer lane answered llm_primary 16/16 while
+    // the agent door produced both. Labelling on entry type would have collapsed the one comparison
+    // this counter exists to make. `recoTriggerSource` separates them; the chat lane sets none, so
+    // the normalizer falls back to its entry type.
+    //
+    // The path label is structuredSource, NOT confidenceBasis: basis maps both catalog paths to
+    // 'positional', and the point is to see which promptless path served the turn.
+    if (!deferAnswerPathRecord) {
+      recordAuroraRecoAnswerPath({
+        door: recoTriggerSource,
+        entryType,
+        path: structuredSource,
+        served: finalRecommendations.length > 0,
+      });
+    }
     const generationResult = buildLegacyRecoGenerationResult({
       confidenceBasis,
       norm,
