@@ -2506,6 +2506,21 @@ const RECO_ANSWER_PATHS = new Set([
   'skill_find_products',        // skill_router_v2 shop.find_products
   'none',
 ]);
+// WHAT THIS COUNTER DOES NOT COVER, stated because the door labels would otherwise imply it does.
+// Four review rounds each turned up another producer; rather than keep widening, the scope is fixed
+// here and the exclusions are named:
+//
+//   - beautyExpertV1's projection, which runs on every /v1/chat response and can overwrite a card's
+//     rows or synthesise a card of its own. It is the LAST mutator of a chat answer, so a `chat` row
+//     describes what the producer made, not necessarily what shipped.
+//   - POST /v1/reco/alternatives, the `dupe.suggest` skill, PDP recommendations,
+//     get_alternatives, find_similar_products, and the offers_resolved -> recommendations projection.
+//   - On the agent door, turns refused BEFORE the lane runs (disabled, need_required, off_vertical).
+//     A lane failure IS counted, as none/served=no.
+//
+// So `chat` means "these named chat producers", not "every chat answer". The two doors that ARE
+// complete are `agent_tool` -- recorded at the bridge, from what the partner actually received --
+// and `typed_reco`. Those are the ones the partner-integration question turns on.
 
 function normalizeRecoAnswerDoor(door, entryType) {
   const doorToken = cleanMetricToken(door, '');
@@ -3424,7 +3439,7 @@ function renderVisionMetricsPrometheus() {
   lines.push('# TYPE aurora_skin_llm_call_total counter');
   renderCounter(lines, 'aurora_skin_llm_call_total', auroraSkinLlmCallCounter);
 
-  lines.push('# HELP aurora_reco_answer_path_total Recommendation turns grouped by the door they arrived at, the path that produced them, and whether any product was served.');
+  lines.push('# HELP aurora_reco_answer_path_total Recommendation turns from the reco lane and six named lane-free producers, by entry door, producing path, and whether a product reached the caller. NOT a census of every recommendations card - see RECO_ANSWER_PATHS in visionMetrics.js for what is out of scope.');
   lines.push('# TYPE aurora_reco_answer_path_total counter');
   renderCounter(lines, 'aurora_reco_answer_path_total', auroraRecoAnswerPathCounter);
 

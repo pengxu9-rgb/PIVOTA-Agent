@@ -1,5 +1,7 @@
 'use strict';
 
+const { recordAuroraRecoAnswerPath } = require('../auroraBff/visionMetrics');
+
 // recommend_products — a NEED in natural language → a reasoned shortlist, as agent-facing Signals.
 //
 // This is the bridge from Pivota's prompt-level recommendation lane (the Aurora BFF's
@@ -856,6 +858,11 @@ function makeRecommendProducts(deps = {}) {
         // hold. Without it the lane has no idea whether one conforming item is the whole answer or a
         // third of it.
         shortlistTarget: limit,
+        // THIS DOOR RECORDS ITS OWN ANSWER PATH, below, once the shortlist is final. The lane records
+        // `served` from ITS final list, but this bridge then drops every ungrounded row and every
+        // row whose price probe came back unresolvable — so an all-ungrounded turn, which is the
+        // #2155 failure exactly, would be counted as served while the partner receives nothing.
+        deferAnswerPathRecord: true,
       });
     } catch (err) {
       // The set id goes IN THE LOG, not just the response. `lane_unavailable` returns zero
@@ -867,6 +874,7 @@ function makeRecommendProducts(deps = {}) {
         { err: err?.message || String(err), recommendation_set_id: recommendationSetId },
         'recommend_products lane failed',
       );
+      recordAuroraRecoAnswerPath({ door: 'agent_tool', path: 'none', served: false });
       return { subject, signals: [], metadata: { reason: 'lane_unavailable', latency_ms: now() - startedAt, recommendation_set_id: recommendationSetId } };
     }
     const norm = isPlainObject(result?.norm) ? result.norm : null;
@@ -1127,6 +1135,14 @@ function makeRecommendProducts(deps = {}) {
     // Measured HERE, after verification and slotting: a 2s live-price pass is real wall time the
     // partner waited; stamping the lane's latency alone would understate the call by that much.
     const latencyMs = now() - startedAt;
+
+    // THE ANSWER IS FINAL HERE, and only here. `signals` is what the partner agent actually receives,
+    // after the resolvability pass and the price probe have removed rows the lane still counted.
+    recordAuroraRecoAnswerPath({
+      door: 'agent_tool',
+      path: result?.structuredSource,
+      served: signals.length > 0,
+    });
 
     return {
       subject,

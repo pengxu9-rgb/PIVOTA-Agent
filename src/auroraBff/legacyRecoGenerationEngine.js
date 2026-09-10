@@ -154,6 +154,11 @@ function createLegacyRecoGenerationEngineRuntime(deps = {}) {
     // How many recommendations the CALLER asked for. With an enforcing ceiling this is the number of
     // CONFORMING products the shortlist should hold before a flagged near-miss may take a slot.
     shortlistTarget = 0,
+    // WHO RECORDS THE ANSWER PATH. Default: the lane, because it is the only place that knows which
+    // producer ran. The agent bridge sets this, because it drops ungrounded rows after the lane
+    // returns -- a turn where every row is ungrounded (the #2155 failure exactly) would otherwise be
+    // recorded as served while the partner agent receives an empty list.
+    deferAnswerPathRecord = false,
   }) {
     const {
       buildLegacyRecoUpstreamDebug,
@@ -702,12 +707,14 @@ function createLegacyRecoGenerationEngineRuntime(deps = {}) {
     //
     // The path label is structuredSource, NOT confidenceBasis: basis maps both catalog paths to
     // 'positional', and the point is to see which promptless path served the turn.
-    recordAuroraRecoAnswerPath({
-      door: recoTriggerSource,
-      entryType,
-      path: structuredSource,
-      served: finalRecommendations.length > 0,
-    });
+    if (!deferAnswerPathRecord) {
+      recordAuroraRecoAnswerPath({
+        door: recoTriggerSource,
+        entryType,
+        path: structuredSource,
+        served: finalRecommendations.length > 0,
+      });
+    }
     const generationResult = buildLegacyRecoGenerationResult({
       confidenceBasis,
       norm,

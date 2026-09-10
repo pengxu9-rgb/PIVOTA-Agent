@@ -507,3 +507,91 @@ test('reco.step_based counts its turns, including the ones its LLM leg kills', a
 //
 // Until that harness exists, the routine sites' labels are held only by reading the code.
 test.todo('the routine lane records under its own door and path');
+
+test('the agent door records what the PARTNER received, not what the lane produced', async () => {
+  // THE NUMBER THIS METRIC EXISTS FOR. The lane records `served` from its own final list, but this
+  // bridge then drops every ungrounded row — so an all-ungrounded turn, which is the #2155 makeup
+  // failure exactly (the model names a bronzer, refuses to substitute, and nothing grounds), was
+  // recorded as SERVED while the partner agent received an empty list. That is backwards in the one
+  // case Meitu MakeupPlus and Perfect Corp YouCam will hit hardest.
+  //
+  // The lane's own record is deferred for this door; the bridge records once, here, from `signals`.
+  resetAuroraModules();
+  const { makeRecommendProducts } = require('../src/agentSignals/recommendProducts');
+
+  const groundedItem = {
+    slot: 'treatment', step: 'treatment', score: 88, product_type: 'treatment',
+    brand: "Paula's Choice", name: '2% BHA Liquid Exfoliant', display_name: '2% BHA Liquid Exfoliant',
+    use_case: 'Unclogs pores', reasons: ['clears pores'], query_terms: ['bha'],
+    sku: { brand: "Paula's Choice", name: '2% BHA Liquid Exfoliant', sku_id: 'sku_1', product_id: 'sig_abc' },
+    merchant_id: 'merch_1', price: { amount: 35, currency: 'USD', unknown: false },
+    url: 'https://shop.example/p/sig_abc', pdp_url: 'https://shop.example/p/sig_abc',
+  };
+  // Same shape, but ungrounded: no product_id and no merchant. The bridge drops these.
+  const ungroundedItem = {
+    slot: 'makeup', step: 'makeup', score: 88, product_type: 'makeup',
+    brand: 'Some Brand', name: 'Warm-Toned Powder Bronzer', display_name: 'Warm-Toned Powder Bronzer',
+    use_case: 'Contouring', reasons: ['warm undertone'], query_terms: ['bronzer'],
+    sku: { brand: 'Some Brand', name: 'Warm-Toned Powder Bronzer' },
+  };
+  const lane = (items) => async () => ({
+    structuredSource: 'llm_primary',
+    norm: { payload: { recommendations: items, confidence: 0.72, grounding_status: 'grounded' } },
+  });
+
+  const served = makeRecommendProducts({ generate: lane([groundedItem]), isEnabled: () => true });
+  const before = pathCounts();
+  const good = await served({ payload: { need: 'a gentle exfoliant' } }, { agent_id: 'a' });
+  const afterServed = pathCounts();
+  assert.ok(good.signals.length > 0, 'the grounded turn must actually deliver something');
+  assert.equal(delta(before, afterServed, 'agent_tool/llm_primary/yes'), 1);
+
+  const empty = makeRecommendProducts({ generate: lane([ungroundedItem]), isEnabled: () => true });
+  const bad = await empty({ payload: { need: 'a bronzer for contouring' } }, { agent_id: 'a' });
+  const afterEmpty = pathCounts();
+  assert.equal(bad.signals.length, 0, 'the ungrounded turn must deliver nothing — that is the setup');
+  assert.equal(delta(afterServed, afterEmpty, 'agent_tool/llm_primary/no'), 1,
+    'an llm_primary turn the partner got nothing from must count as UNSERVED');
+  assert.equal(delta(afterServed, afterEmpty, 'agent_tool/llm_primary/yes'), 0,
+    'the lane produced a row, but the partner received none — the door reports the partner');
+
+  // And a lane that never returns is still a turn this door handled.
+  const dead = makeRecommendProducts({
+    generate: async () => { throw new Error('lane down'); }, isEnabled: () => true,
+  });
+  const out = await dead({ payload: { need: 'a gentle exfoliant' } }, { agent_id: 'a' });
+  const afterDead = pathCounts();
+  assert.equal(out.metadata.reason, 'lane_unavailable');
+  assert.equal(delta(afterEmpty, afterDead, 'agent_tool/none/no'), 1);
+});
+
+test('the agent door records exactly once, through the REAL lane', async () => {
+  // The test above stubs the lane, so it cannot see the two things that matter about the handoff:
+  // that the lane actually HONOURS the defer flag (otherwise the turn is counted twice, once with
+  // the lane's notion of served and once with the partner's), and that the real lane actually
+  // SURFACES the path (otherwise every agent turn silently records path='none').
+  //
+  // So this one wires the production lane into the production bridge.
+  resetAuroraModules();
+  const client = require('../src/auroraBff/auroraDecisionClient');
+  client.auroraChat = ANSWERING;
+  const { __internal } = require('../src/auroraBff/routes');
+  const { makeRecommendProducts } = require('../src/agentSignals/recommendProducts');
+
+  const handler = makeRecommendProducts({
+    generate: __internal.generateProductRecommendations,
+    isEnabled: () => true,
+    budgetMs: 4000,
+  });
+
+  const before = pathCounts();
+  await handler({ payload: { need: 'a gentle retinol' } }, { agent_id: 'agent_test' });
+  const after = pathCounts();
+
+  const moved = Object.keys({ ...before, ...after })
+    .filter((k) => delta(before, after, k) !== 0);
+  assert.deepEqual(moved, ['agent_tool/llm_primary/no'],
+    'exactly one series may move: the lane must defer to the bridge, and the bridge must know the path');
+  assert.equal(delta(before, after, 'agent_tool/llm_primary/no'), 1,
+    'and it must move by one — two means the lane recorded as well');
+});
