@@ -238,6 +238,55 @@ describe('run-relgraph-health-job', () => {
     ).toBe(false);
   });
 
+  it('CLAMPS env thresholds, so a config typo cannot silently disarm the alarm', () => {
+    // The CLI this replaces clamps to [0,100] and >=0. Unclamped, RELGRAPH_MAX_EXPIRING_14D_PCT=1e9
+    // makes the alarm unfirable and -1 makes it fire every run — a config error presenting as a
+    // healthy green, which is the class this job exists to report.
+    expect(parseArgs([], { RELGRAPH_MAX_EXPIRING_14D_PCT: '1e9' }).maxExpiring14dPct).toBe(100);
+    expect(parseArgs([], { RELGRAPH_MAX_EXPIRING_14D_PCT: '-1' }).maxExpiring14dPct).toBe(0);
+    expect(parseArgs([], { RELGRAPH_MIN_TOTAL_ROWS: '-5' }).minTotalRows).toBe(0);
+    expect(parseArgs([], { RELGRAPH_MAX_SUPPRESSED_PCT: '900' }).maxSuppressedPct).toBe(100);
+    // and a value inside the range is untouched
+    expect(parseArgs([], { RELGRAPH_MAX_EXPIRING_14D_PCT: '45' }).maxExpiring14dPct).toBe(45);
+  });
+
+  it('defaults the expiry thresholds INSIDE runHealthJob, not only in parseArgs', () => {
+    // A caller that builds opts by hand passed undefined, and an undefined threshold makes
+    // maxGate/thresholdGate return not_applicable — an alarm that is present, green, and incapable
+    // of firing. Five tests in this file call runHealthJob that way.
+    const f = fakes(CLEAN, { noop: false });
+    return runHealthJob(
+      { market: 'US', maxSuppressedRows: 0, maxSuppressedPct: 0, criticalReasons: [] },
+      f,
+    ).then(() => {
+      expect(f.runServingStatusReport).toHaveBeenCalledWith(
+        expect.objectContaining({
+          thresholds: expect.objectContaining({ maxExpiring14dPct: 30, minTotalRows: 500 }),
+        }),
+      );
+    });
+  });
+
+  it('carries the EVIDENCE, not just the verdict', () => {
+    // The retired workflow uploaded three JSON artifacts with 14-day retention. A Cloud Run job has
+    // only its log, so a breach that prints `{metric:'critical_reason', observed:1}` and nothing
+    // else is a verdict nobody can act on.
+    const f = fakes(
+      { ...CLEAN, by_reason: { r: 2 }, examples_by_reason: { r: ['k1'] } },
+      { noop: false },
+      { ...HEALTHY_STATUS, by_market: { US: 1 } },
+    );
+    return runHealthJob(
+      { market: 'US', maxSuppressedRows: 0, maxSuppressedPct: 0, criticalReasons: [] },
+      f,
+    ).then((r) => {
+      expect(r.evidence.by_reason).toEqual({ r: 2 });
+      expect(r.evidence.examples_by_reason).toEqual({ r: ['k1'] });
+      expect(r.evidence.coverage).toEqual(HEALTHY_STATUS.coverage);
+      expect(r.evidence.by_market).toEqual({ US: 1 });
+    });
+  });
+
   it('takes thresholds from env, so the Cloud Run job sets them without argv commas', () => {
     const a = parseArgs([], {
       RELGRAPH_MAX_SUPPRESSED_ROWS: '5',

@@ -10,7 +10,15 @@
  * `pivota-pg` has `ipv4Enabled: false`, a single RFC1918 address (10.25.0.2), and no authorized
  * networks. A GitHub-hosted runner has no route to it and never will; the `read ECONNRESET` those
  * runs report is GitHub's network resetting traffic to a non-routable address, not a database
- * fault. So the audit has had NO coverage since 2026-08-26 and cannot be repaired where it lives.
+ * fault. It then stopped firing entirely: #2109 (`e128a2d58`, 2026-08-26) removed the `schedule:`
+ * block, so by this PR's merge base the workflow was `workflow_dispatch`-only. Either way it cannot
+ * be repaired where it lives.
+ *
+ * ⚠️ "no coverage" would be too strong, and an earlier draft said it. `relgraph-sync` runs
+ * `serving_guard_audit` itself at 1% / 25 rows with the same three critical reasons
+ * (run-relationship-graph-sync-routine.js:23-36 holds those defaults and forwards them). This job
+ * TIGHTENS that to 0/0 and adds the expiry and no-op checks; the expiry alarm is the one with
+ * genuinely zero coverage today.
  *
  * The gate logic used to live in the workflow YAML as an inline `node -e`, which is why it could
  * not simply be pointed at a Cloud Run job. It lives here now, in code, with tests.
@@ -60,9 +68,13 @@ const DEFAULTS = {
   failOnNoop: false,
 };
 
-function num(value, fallback) {
+// CLAMPED, like the CLI it replaces (report-relationship-graph-serving-status.js:127-135). An
+// unclamped RELGRAPH_MAX_EXPIRING_14D_PCT=1e9 silently disarms the alarm and -1 trips it every run
+// — a config error that presents as a healthy green, which is the class this whole job exists for.
+function num(value, fallback, { min = -Infinity, max = Infinity } = {}) {
   const n = Number(value);
-  return Number.isFinite(n) ? n : fallback;
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(max, Math.max(min, n));
 }
 
 function parseArgs(argv = process.argv.slice(2), env = process.env) {
@@ -83,18 +95,25 @@ function parseArgs(argv = process.argv.slice(2), env = process.env) {
     maxSuppressedRows: num(
       at('max-suppressed-rows') ?? env.RELGRAPH_MAX_SUPPRESSED_ROWS,
       DEFAULTS.maxSuppressedRows,
+      { min: 0 },
     ),
     maxSuppressedPct: num(
       at('max-suppressed-pct') ?? env.RELGRAPH_MAX_SUPPRESSED_PCT,
       DEFAULTS.maxSuppressedPct,
+      { min: 0, max: 100 },
     ),
     // An explicit list overrides; an ABSENT one keeps the workflow's three, never an empty list.
     criticalReasons: parsedReasons.length ? parsedReasons : DEFAULT_CRITICAL_REASONS,
     maxExpiring14dPct: num(
       at('max-expiring-14d-pct') ?? env.RELGRAPH_MAX_EXPIRING_14D_PCT,
       DEFAULT_MAX_EXPIRING_14D_PCT,
+      { min: 0, max: 100 },
     ),
-    minTotalRows: num(at('min-total-rows') ?? env.RELGRAPH_MIN_TOTAL_ROWS, DEFAULT_MIN_TOTAL_ROWS),
+    minTotalRows: num(
+      at('min-total-rows') ?? env.RELGRAPH_MIN_TOTAL_ROWS,
+      DEFAULT_MIN_TOTAL_ROWS,
+      { min: 0 },
+    ),
     // Report-only until someone decides the no-op state should page. The serving-guard thresholds
     // were already enforcing before the move, so they stay enforcing; changing both severities in
     // one migration would make it impossible to tell a migration bug from a real finding.
@@ -165,19 +184,42 @@ async function runHealthJob(opts, deps = {}) {
   const gate = evaluateServingGuard(report, opts);
 
   // ALL MARKETS, as the retired step did — an expiry cliff in one market is still a cliff.
+  //
+  // The `??` are load-bearing, not defensive noise. Only parseArgs used to default these, so any
+  // caller that built an options object by hand passed `undefined` here — and an undefined
+  // threshold makes maxGate/thresholdGate return `not_applicable`, which never fails. The alarm
+  // would be present, green, and incapable of firing. That is the defect this job reports.
   const status = await statusReport({
     market: '',
     thresholds: {
       ...DEFAULT_THRESHOLDS,
-      maxExpiring14dPct: opts.maxExpiring14dPct,
-      minTotalRows: opts.minTotalRows,
+      maxExpiring14dPct: opts.maxExpiring14dPct ?? DEFAULT_MAX_EXPIRING_14D_PCT,
+      minTotalRows: opts.minTotalRows ?? DEFAULT_MIN_TOTAL_ROWS,
     },
   });
   const expiry = evaluateExpiryRisk(status);
 
   const noop = await noopAudit({});
   const failed = !gate.ok || !expiry.ok || (noop.noop && opts.failOnNoop);
-  return { market: opts.market, gate, expiry, noop, ok: !failed };
+  return {
+    market: opts.market,
+    gate,
+    expiry,
+    noop,
+    ok: !failed,
+    // THE EVIDENCE, not just the verdict. The retired workflow uploaded serving_guard_audit.json,
+    // serving_guard_gate.json and serving_status_expiry.json with 14-day retention; a Cloud Run job
+    // has only its log, so the log has to carry what those files did. Without this a critical-reason
+    // breach prints `{metric:'critical_reason', reason, observed:1}` and nothing to look at — no
+    // example rows, no coverage, no per-market split. A verdict you cannot act on is half a signal.
+    evidence: {
+      by_reason: (report && report.by_reason) || {},
+      examples_by_reason: (report && report.examples_by_reason) || {},
+      coverage: (status && status.coverage) || null,
+      checks: (status && status.checks) || null,
+      by_market: (status && status.by_market) || null,
+    },
+  };
 }
 
 async function main() {
