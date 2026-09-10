@@ -16469,41 +16469,62 @@ function buildBeautyExternalSeedCategoryTerms(intent = null) {
       push('mascara');
       push('eyeshadow');
       push('brow pencil');
-    } else if (
-      categoryPathPrefix.startsWith('beauty/makeup/face/blush/')
-      || categoryPathPrefix.startsWith('beauty/makeup/cheek/')
-    ) {
-      // Same split its sibling makes: a blush query gets cheek terms, not the whole face set.
-      push('blush');
-      push('cheek');
-      push('luminizer');
-      push('highlighter');
-    } else if (categoryPathPrefix.startsWith('beauty/makeup/face/')) {
-      // `beauty/makeup/face/` WAS THE ONLY MAKEUP BRANCH MISSING HERE, and its absence is a
-      // recall failure rather than a display one. A bronzer query resolves the prefix
-      // `beauty/makeup/face/bronzer/`, matched no branch above, is not brand-browse, and so fell
-      // through to the four skincare defaults below — external-seed recall then searched for
-      // sunscreen/cleanser/moisturizer/serum and returned skincare, which the bronzer hard
-      // constraint rejected. Measured on prod 2026-09-10, gateway f19c997a057b: the bronzer query
-      // reported `category_terms: ["sunscreen","cleanser","moisturizer","serum"]` on all six
-      // retrieval arms and `category_mismatch: 206` against `ranker_rejected: 1` — so the ranker
-      // was never the blocker, the vocabulary was.
+    } else if (categoryPathPrefix.startsWith('beauty/makeup/face/')
+               || categoryPathPrefix.startsWith('beauty/makeup/cheek/')) {
+      // `beauty/makeup/face/` WAS THE ONLY MAKEUP BRANCH MISSING HERE. A bronzer query resolves
+      // `beauty/makeup/face/bronzer/`, matched no branch above, is not brand-browse, and fell
+      // through to the four skincare defaults below — so external-seed recall searched for
+      // sunscreen/cleanser/moisturizer/serum and the makeup hard constraint rejected what it
+      // found. Measured on prod 2026-09-10 UTC (gateway f19c997a057b): `category_mismatch: 206`
+      // against `ranker_rejected: 1`, so the ranker was never the blocker.
       //
-      // This function was the ONE out of step, not an unmodelled category: its sibling
-      // `buildBeautyExternalSeedBrandCategoryTextTerms` already branches on
-      // `beauty/makeup/face/blush/`, and `beautyCategoryTextMatchesPrefix` already matches
-      // general `beauty/makeup/face` with exactly this vocabulary. Kept identical to that list so
-      // the three spellings agree; if you add a face term, add it in all three.
-      push('foundation');
-      push('concealer');
-      push('primer');
-      push('blush');
-      push('bronzer');
-      push('highlighter');
-      push('setting powder');
-      push('powder');
-      push('cushion');
-      push('skin tint');
+      // SPECIFIC FORM FIRST, ONE TERM. The resolver already knows the form, and the hard
+      // constraint is that same sub-prefix — so pushing the whole face set would spend the
+      // per-category row budget on arms the constraint then rejects. `perCategoryRowLimit` is
+      // ceil(perScopeRowLimit / terms.length) clamped to >= 3, so ten terms cut a bronzer query
+      // to 3 rows per scope where the lip lane's single term gets 24. Worse, for a seed with no
+      // category PATH the fallback is the general face regex, which admits a foundation for a
+      // bronzer query — and `category_order` puts foundation first. One term keeps the budget and
+      // cannot serve the wrong form.
+      //
+      // TERMS ARE DERIVED LABELS, not display words. The SQL matches
+      // `derived.recall.category` by EQUALITY, and that column is written from
+      // BEAUTY_CATEGORY_PATTERNS in services/externalSeedProducts.js, whose face labels are
+      // exactly Foundation / Concealer / Powder / Highlighter / Blush / Bronzer. So this map
+      // deliberately differs from GENERIC_CATEGORY_BY_PREFIX in
+      // findProductsMulti/queryUnderstanding.js, which is a DISPLAY vocabulary: its
+      // `face/powder/ -> 'setting powder'` is not a label and would match nothing.
+      // `primer` has no label at all, so it can only ever hit a row whose raw merchant category
+      // equals it; kept because emitting `foundation` for a primer query would serve the wrong
+      // product, which is the failure this branch exists to avoid.
+      const faceTerm = categoryPathPrefix.startsWith('beauty/makeup/face/blush/')
+          || categoryPathPrefix.startsWith('beauty/makeup/cheek/')
+        ? 'blush'
+        : categoryPathPrefix.startsWith('beauty/makeup/face/bronzer/')
+          ? 'bronzer'
+          : categoryPathPrefix.startsWith('beauty/makeup/face/highlighter/')
+            ? 'highlighter'
+            : categoryPathPrefix.startsWith('beauty/makeup/face/powder/')
+              ? 'powder'
+              : categoryPathPrefix.startsWith('beauty/makeup/face/concealer/')
+                ? 'concealer'
+                : categoryPathPrefix.startsWith('beauty/makeup/face/primer/')
+                  ? 'primer'
+                  : '';
+      if (faceTerm) {
+        push(faceTerm);
+      } else {
+        // Bare `beauty/makeup/face/` — the caller named no form, so breadth is correct here.
+        // Every term is a real label; change this list together with the regex in
+        // `beautyProductMatchesCategoryPathQuery` and with
+        // `buildBeautyExternalSeedBrandCategoryTextTerms`.
+        push('foundation');
+        push('concealer');
+        push('powder');
+        push('highlighter');
+        push('blush');
+        push('bronzer');
+      }
     } else if (categoryPathPrefix.startsWith('beauty/fragrance/')) {
       push('fragrance');
     }
