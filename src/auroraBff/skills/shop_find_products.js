@@ -1,6 +1,6 @@
-const { recordAuroraRecoAnswerPath } = require('../visionMetrics');
-
 'use strict';
+
+const { recordAuroraRecoAnswerPath } = require('../visionMetrics');
 
 // shop.find_products — grounded product/brand lookup for /v1/chat.
 //

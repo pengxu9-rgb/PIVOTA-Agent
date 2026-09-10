@@ -3799,6 +3799,7 @@ function resetVisionMetrics() {
   auroraSkinAnalysisRealModelCounter.clear();
   auroraSkinLlmCallCounter.clear();
   auroraRecoLlmCallCounter.clear();
+  auroraRecoAnswerPathCounter.clear();
   recoAlternativesBudgetExhaustedTotal = 0;
   recoAlternativesTimeoutTotal = 0;
   recoAlternativesEmptyTotal = 0;

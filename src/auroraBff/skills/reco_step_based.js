@@ -109,6 +109,10 @@ class RecoStepBasedSkill extends BaseSkill {
         sourceMode: 'llm_error',
         telemetryReason: String(err?.message || 'llm_error').slice(0, 200),
       });
+      // A DEAD LEG IS STILL A TURN THIS DOOR HANDLED. Returning without a row here would bias the
+      // door's served-share upward by exactly the turns that failed — the same silent-omission
+      // shape this counter exists to remove.
+      recordAuroraRecoAnswerPath({ door: 'skill_router', path: 'skill_step_based', served: false });
       return {
         cards: [
           {

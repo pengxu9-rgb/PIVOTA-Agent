@@ -467,3 +467,43 @@ test('the skill_router door is counted, served and unserved', async () => {
     'a skill turn that found nothing is still a turn this door handled');
   assert.equal(delta(afterServed, afterEmpty, 'skill_router/skill_find_products/yes'), 0);
 });
+
+test('reco.step_based counts its turns, including the ones its LLM leg kills', async () => {
+  // Counted but untested is how a record site rots: a review mutant deleted this call entirely and
+  // every test stayed green. Both of this skill's exits are driven here.
+  resetAuroraModules();
+  const RecoStepBasedSkill = require('../src/auroraBff/skills/reco_step_based');
+  const skill = new RecoStepBasedSkill();
+
+  // The LLM answers, but nothing resolves to a product.
+  const before = pathCounts();
+  await skill.execute(
+    { params: { target_step: 'treatment' }, context: { locale: 'en-US' } },
+    { call: async () => ({ parsed: { answer_en: 'try a retinol', answer_zh: null, products: [] } }) },
+  );
+  const afterEmpty = pathCounts();
+  assert.equal(delta(before, afterEmpty, 'skill_router/skill_step_based/no'), 1,
+    'a step-based turn that resolved no product is still a turn this door handled');
+
+  // The LLM leg dies outright.
+  await skill.execute(
+    { params: { target_step: 'treatment' }, context: { locale: 'en-US' } },
+    { call: async () => { throw new Error('upstream exploded'); } },
+  );
+  const afterDead = pathCounts();
+  assert.equal(delta(afterEmpty, afterDead, 'skill_router/skill_step_based/no'), 1,
+    'a dead LLM leg must not vanish from the denominator — that biases served-share upward');
+  assert.equal(delta(afterEmpty, afterDead, 'skill_router/skill_step_based/yes'), 0);
+});
+
+// SECOND KNOWN GAP, named rather than papered over.
+//
+// The two routine-lane record sites (routes.js, the S6_BUDGET branch and the
+// looksLikeRoutineRequest branch) have no test. A review mutant relabelled BOTH of them to
+// `agent_tool` / `llm_primary` and every test here stayed green -- and that particular lie would
+// pollute the one series this metric exists to read. They are not reachable without driving
+// /v1/chat through a routine turn with a stubbed upstream, and no harness for that exists anywhere
+// in tests/ today (`grep -rln generateRoutineReco tests/` is empty).
+//
+// Until that harness exists, the routine sites' labels are held only by reading the code.
+test.todo('the routine lane records under its own door and path');
