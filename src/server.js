@@ -15,6 +15,7 @@ const { createHash, createHmac, randomUUID, timingSafeEqual } = require('crypto'
 const { AsyncLocalStorage } = require('async_hooks');
 const { InvokeRequestSchema, OperationEnum } = require('./schema');
 const { installInvokeEgress } = require('./invokeEgress');
+const { isExternalSeedRow } = require('./externalSeedIdentity');
 const commerceMcpOAuth = require('./commerceMcpOAuth');
 const {
   commitSha: platformCommitSha,
@@ -15414,11 +15415,18 @@ function applyShoppingCatalogQueryGuards(queryParams, source) {
   };
 }
 
+// Delegates to the one owner. See src/externalSeedIdentity.js for why five implementations of
+// this question existed and what production actually emits (short version: this predicate, and
+// every sibling, returns false for all 13,896 external seeds in the catalog — they were written
+// against a vocabulary the data stopped using).
+//
+// Two deliberate differences from the code this replaces, neither of which changes any
+// production answer: merchant_id is now compared case-INSENSITIVELY, matching the four sibling
+// implementations rather than this one (no row carries 'external_seed' as a merchant_id in any
+// casing), and `source` is read through its aliases. Both are widenings, so no call site that
+// used to see an external seed stops seeing one.
 function isExternalSeedProduct(product) {
-  if (!product || typeof product !== 'object') return false;
-  const merchantId = String(product.merchant_id || product.merchantId || '').trim();
-  const source = String(product.source || '').trim().toLowerCase();
-  return merchantId === 'external_seed' || source === 'external_seed';
+  return isExternalSeedRow(product);
 }
 
 function isExternalSeedProductId(productId) {

@@ -4,6 +4,7 @@ const {
   _debug: intentLlmDebug = {},
 } = require('./intentLlm');
 const { injectPivotaAttributes, buildProductText, isToyLikeText } = require('./productTagger');
+const { isExternalSeedRow } = require('../externalSeedIdentity');
 const { recommendToolKits } = require('./toolRecommender');
 const { buildEyeShadowBrushReply } = require('./eyeShadowBrushAdvisor');
 const { buildClarification } = require('./clarification');
@@ -412,11 +413,11 @@ function hasFragranceQuerySignal(rawQuery) {
   return inferFragranceSemanticClass(rawQuery) === 'fragrance';
 }
 
+// Delegates to the one owner — see src/externalSeedIdentity.js. Identical semantics for
+// merchant_id and `source`; additionally reads the source aliases and the two further source
+// spellings pdpBuilder already accepted, so this is a widening and never a narrowing.
 function isExternalSeedProduct(product) {
-  if (!product || typeof product !== 'object') return false;
-  const merchantId = String(product.merchant_id || product.merchantId || '').trim().toLowerCase();
-  const source = String(product.source || '').trim().toLowerCase();
-  return merchantId === 'external_seed' || source === 'external_seed';
+  return isExternalSeedRow(product);
 }
 
 function normalizeBrandTerms(terms) {
