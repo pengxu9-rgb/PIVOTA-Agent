@@ -208,6 +208,7 @@ test('a DECLINE is served as the answer, and keeps its provenance', async () => 
     targetContext: { framework_roles: [] }, profileSummary: {}, debug: false, logger: null,
     ctx: { request_id: 'r', lang: 'EN' }, entryType: 'direct', userAsk: 'a bronzer for contouring',
     prefix: '', recentLogs: [], globalStatus: {}, mainlineStageTimingsMs: {},
+    promptDomainScope: 'beauty',
   });
   assert.equal(out.structuredSource, 'llm_primary',
     'the model answered — "no" is an answer, and it is not the catalog\'s');
@@ -429,6 +430,28 @@ test('an upstream failure is counted as itself, not as the catch-all bucket', ()
   const rendered = metrics.renderVisionMetricsPrometheus();
   assert.match(rendered, /aurora_reco_llm_call_total\{stage="main",outcome="upstream_dependency_failure"\}/);
   assert.match(rendered, /aurora_reco_llm_call_total\{stage="main",outcome="upstream_timeout"\}/);
+
+  // ...and the LANE'S OWN outcomes, added 2026-09-10 and untested until review pointed it out:
+  // mutants removing any of them from the allowlist left every test green. Without them a turn where
+  // the MODEL declined and the catalog replaced it counted as 'provider_error' -- indistinguishable
+  // from the upstream erroring, which is the exact pair this work exists to separate.
+  const LANE_OUTCOMES = [
+    'schema_invalid',
+    'catalog_grounded_primary',
+    'catalog_grounded_ungrounded_recovery',
+    'strict_conforming_top_up',
+  ];
+  for (const outcome of LANE_OUTCOMES) {
+    metrics.recordAuroraRecoLlmCall({ stage: 'main', outcome });
+  }
+  const withLaneOutcomes = metrics.renderVisionMetricsPrometheus();
+  for (const outcome of LANE_OUTCOMES) {
+    assert.match(
+      withLaneOutcomes,
+      new RegExp(`aurora_reco_llm_call_total\\{stage="main",outcome="${outcome}"\\}`),
+      `${outcome} must render as itself, not collapse into provider_error`,
+    );
+  }
 });
 
 test('the provenance survives the catalog recovery that strips error_class', async () => {

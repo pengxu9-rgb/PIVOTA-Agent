@@ -44,9 +44,15 @@ function carryRecoDeclineNotes(structured, { declined = false, declinedAnswer = 
 // list did so having been shown zero candidates. Treating that as a domain decision would empty a
 // shortlist the catalog could legitimately have filled.
 function hasStatedDeclineReason(structured) {
-  if (!isPlainObjectValue(structured)) return false;
+  // No isPlainObjectValue guard: the only caller already requires it one line above the call, so a
+  // guard here is unfalsifiable -- the same shape that was removed from the recovery gate earlier
+  // in this branch rather than left as a line no test can justify.
   for (const field of ['warnings', 'missing_info']) {
     const values = structured[field];
+    // A BARE STRING COUNTS. Both templates ask for an array, but "missing_info": "..." is a common
+    // model slip and nothing normalises before this read -- so the array-only version reproduced the
+    // original defect (cleansers served) on exactly the turns where the model DID explain itself.
+    if (typeof values === 'string' && values.trim()) return true;
     if (!Array.isArray(values)) continue;
     if (values.some((v) => typeof v === 'string' && v.trim())) return true;
   }
@@ -646,8 +652,23 @@ function createLegacyRecoMainlineExecutionRuntime(deps = {}) {
       // fabrication this carry exists to avoid, arriving through the door it did not guard.
       //
       // 'llm_answer_json' is the only source that is the model's own words about recommending.
+      // ONLY WHERE THE DECLINE IS A CONTRACT. reco_main_v1_3 -- the widened template, asked for by
+      // the agent bridge alone (promptDomainScope 'beauty') -- instructs the model to answer an
+      // off-category request with `recommendations: []` and the reason in missing_info. On that
+      // template an empty answer with a reason IS a refusal.
+      //
+      // reco_main_v1_2, which chat and the consumer lane run, contains no such instruction. There an
+      // empty list with `missing_info: ['Skin type']` is the model saying it lacks PROFILE data --
+      // both templates forbid clarifying questions, so an empty answer is the only channel it has --
+      // and honouring that as a refusal would empty a shortlist the catalog was right to fill.
+      // Nothing in the notes can tell a refusal from a clarification, so the template that defines
+      // the contract is the gate.
+      const wideRecoTemplateInPlay =
+        typeof promptDomainScope === 'string'
+        && promptDomainScope.trim().toLowerCase() === 'beauty';
       const llmDeclinedInItsOwnWords =
-        llmStructuredSource === 'llm_answer_json'
+        wideRecoTemplateInPlay
+        && llmStructuredSource === 'llm_answer_json'
         && Boolean(llmStructuredRecoEmpty)
         && isPlainObjectValue(llmStructured)
         // ...AND the model gave a reason. The carry below exists because "its warnings/missing_info
