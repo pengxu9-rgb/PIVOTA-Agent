@@ -173,8 +173,6 @@ test('two patterns matching the SAME WORDS have named one category, not two', ()
     ['tinted moisturizer', 'foundation'],
     ['bb cream', 'foundation'],
     ['cc cream', 'foundation'],
-    // 'fragrance' over 'body mist', 'toner' over 'mist'.
-    ['body mist', 'fragrance'],
     // 'sunscreen' over all four characters, 'foundation' over the first two.
     ['隔离防晒', 'sunscreen'],
     // 'oil' over 'oil serum', 'serum' over its last word.
@@ -291,27 +289,95 @@ test('SPF outranks primer, and yields to the complexion-colour categories', () =
   assert.equal(extractRecoTargetStepFromText('a makeup primer for large pores'), 'primer');
 });
 
-test('a delivery FORMAT is not a category', () => {
-  // Sunscreen, haircare and fragrance all ship as a body mist or a body spray. Read as a category,
-  // the format made Supergoop's own sunscreens name two categories and resolve to neither.
-  for (const text of [
-    'A weightless, non-aerosol sunscreen body spray for face and body',
-    'PLAY Antioxidant Body Mist SPF 30 with Vitamin C',
+test('a delivery FORMAT yields to a named category, and yields FIRST', () => {
+  // Sunscreen, haircare and fragrance all ship as a body mist or a body spray, so read as a
+  // category the format made Supergoop's own sunscreen name two categories and resolve to neither.
+  assert.equal(
+    extractRecoTargetStepFromText('A weightless, non-aerosol sunscreen body spray for face and body'),
+    'sunscreen',
+  );
+  // ORDER IS LOAD-BEARING. `body mist` OVERLAPS toner's `mist`, so running the format rule after
+  // overlap resolution let overlap absorb the very match the format was supposed to yield to — and
+  // "Bulgarian Rose Water Face, Hair & Body Mist Spray" became a fragrance where main called it a
+  // toner, which flipped it out of the valid set on the find_products_multi lane.
+  for (const [text, expected] of [
+    ['Bulgarian Rose Water Face, Hair & Body Mist Spray', 'toner'],
+    ['body mist', 'toner'],
+    ['Allover Body Mist - Green Raspberry', 'toner'],
+    // Two categories genuinely named, and the format yields to neither — as on main.
+    ['PLAY Antioxidant Body Mist SPF 30 with Vitamin C', null],
   ]) {
-    assert.equal(extractRecoTargetStepFromText(text), 'sunscreen', text);
-  }
-  // THE CONTROL. When the format is the ONLY thing that matched, it is the category.
-  for (const text of ['body mist', 'Allover Body Mist - Green Raspberry']) {
-    assert.equal(extractRecoTargetStepFromText(text), 'fragrance', text);
+    assert.equal(extractRecoTargetStepFromText(text), expected, text);
   }
 });
 
-test('overlap resolves BEFORE the weak-surface rules, not after', () => {
-  // The weak-surface rules reason about which SURFACES survived. Run first, they saw a `mist` that
-  // `body mist` was about to absorb and counted it as a third category, so "PLAY Antioxidant Body
-  // Mist SPF 30" kept a spurious `toner` and resolved to nothing.
-  const { collectHighConfidenceMatchDetails } = require('../src/auroraBff/recoTargetStep');
-  const details = collectHighConfidenceMatchDetails('PLAY Antioxidant Body Mist SPF 30 with Vitamin C');
-  assert.deepEqual(details.map((d) => d.step), ['sunscreen'],
-    'body mist absorbs mist, then the format yields to the SPF claim — one step, not three');
+test('THE TWO RESOLVERS AGREE — one question, one answer', () => {
+  // `normalizeRecoTargetStep` and `extractRecoTargetStepFromText` are both called on free text, by
+  // different consumers: beautyRecoCoarseClassifier and ingredientSkuEvidence call the FIRST one on
+  // bare product titles. Teaching only the intent resolver about overlap, formats and weak surfaces
+  // made them disagree on 24 corpus strings where main disagreed on NONE.
+  const cases = [
+    'PLAY Antioxidant Body Mist SPF 30 with Vitamin C',
+    'Dewscreen Hydrating Primer SPF 50',
+    '隔离防晒',
+    'tinted moisturizer',
+    'CeraVe Daily Moisturizing Lotion, Fragrance-Free',
+    'A weightless, non-aerosol sunscreen body spray for face and body',
+    'Bulgarian Rose Water Face, Hair & Body Mist Spray',
+    'oil serum',
+    '口服异维A酸期间叠加强酸风险高。',
+  ];
+  for (const text of cases) {
+    assert.equal(normalizeRecoTargetStep(text), extractRecoTargetStepFromText(text),
+      `the two resolvers disagree on: ${text}`);
+  }
+  // And the alias path still short-circuits, so an EXPLICIT step name is unaffected by any of it.
+  for (const [alias, expected] of [['perfume', 'fragrance'], ['lip_colour', 'lip_colour'], ['spf', 'sunscreen']]) {
+    assert.equal(normalizeRecoTargetStep(alias), expected, alias);
+  }
+});
+
+test('a skincare ask that MENTIONS makeup keeps its skincare step', () => {
+  // /v1/chat is the highest-traffic lane and derives step-aware intent from this resolver. A buyer
+  // describing the makeup they already wear was naming a second category, going ambiguous, and
+  // losing the step — seven realistic asks, one of them a fixture in two suites here that kept
+  // passing throughout.
+  const cases = [
+    // The general rule: this lane's mainline is skincare, so on a mixed match the skincare step is
+    // the request. It resolves TOWARDS main's answer — main had no makeup steps at all.
+    ['my foundation looks patchy, what moisturizer should I use underneath', 'moisturizer'],
+    ['what serum will make my foundation sit better', 'serum'],
+    ['I have a blush I love, need a moisturizer that keeps it from sliding off', 'moisturizer'],
+    ['loose powder sunscreen for touch ups over makeup', 'sunscreen'],
+    ['bronzing drops to mix into moisturizer', 'moisturizer'],
+  ];
+  for (const [text, expected] of cases) {
+    assert.equal(extractRecoTargetStepFromText(text), expected, text);
+  }
+  // NAMING AN INGREDIENT YOU REACT TO IS NOT ORDERING IT. This exact string is a fixture at
+  // tests/aurora_bff_v1_chat_rollout and tests/aurora_bff_reco_final_selection; it resolved to
+  // `fragrance` and went out on the makeup supply lane while both suites stayed green.
+  assert.equal(
+    extractRecoTargetStepFromText('I am in Phoenix with dry heat and high UV, fragrance usually stings, and my budget is about $40.'),
+    null,
+  );
+  for (const text of ['I am sensitive to fragrance', 'fragrance irritates my skin', 'I have a fragrance allergy']) {
+    assert.equal(extractRecoTargetStepFromText(text), null, text);
+  }
+  // UP TO TWO WORDS MAY SIT BETWEEN THE VERB AND THE NOUN — "takes off waterproof mascara" is a
+  // cleanser ask, and matching only the adjacent form made the shortlist a lash primer.
+  assert.equal(extractRecoTargetStepFromText('micellar water that takes off waterproof mascara'), null);
+  assert.equal(extractRecoTargetStepFromText('a cleanser that removes long-wear liquid foundation'), 'cleanser');
+
+  // THE CONTROLS. A makeup ask with no skincare noun is untouched, or none of this is worth having.
+  for (const [text, expected] of [
+    ['a warm toned bronzer for contouring my cheekbones', 'bronzer'],
+    ['recommend a lipstick for a warm undertone', 'lip_colour'],
+    ['a fresh citrus eau de toilette', 'fragrance'],
+    ['recommend a setting powder that will not flash back', 'face_powder'],
+    ['a concealer for dark circles', 'concealer'],
+    ['what primer should I buy', 'primer'],
+  ]) {
+    assert.equal(extractRecoTargetStepFromText(text), expected, `control: ${text}`);
+  }
 });

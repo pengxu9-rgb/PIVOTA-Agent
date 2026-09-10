@@ -95,6 +95,19 @@ const MAKEUP_CATEGORY_RE = /\b(eyeshadow|eye shadow|blush|lipstick|lip gloss|lip
 // penalty is the worst available answer. Checked only on the admit path; it never rejects anything
 // main did not, so the unthreaded verdict is untouched.
 const CATEGORY_ACCESSORY_RE = /\b(sponge|puff|case|sharpener|holder|pouch|bag|mirror|refill case|organizer|organiser|tray|stand|dupe card|swatch card)\b/i;
+// THE REJECT VOCABULARY IS NOT THE ADMIT VOCABULARY, and conflating them is the defect that
+// survived two review rounds in two different disguises. The admit lens may carry `fragrance`,
+// `body mist` and `skin tint`, because recognising too much only ever admits. Used to REJECT, those
+// same tokens delete Supergoop's "PLAY Antioxidant Body Mist SPF 30" from a SUNSCREEN request, its
+// "Protec(tint) Daily Skin Tint SPF 50" likewise, and Neutrogena's "Hydro Boost Water Gel with
+// Signature Fragrance" from a moisturizer request -- 94 of 6,905 corpus rows main admits.
+//
+// These lists carry only nouns that cannot appear in skincare identity copy meaning anything else,
+// and only the ones NOT already in main's unconditional fatal list (which still runs below and
+// still needs no excuse). ASCII only: the CJK activation is withdrawn from this change, and 香水 is
+// a substring of 香水百合 (casablanca lily), which is a body lotion.
+const MAKEUP_STRONG_REJECT_RE = /\b(bronzer|bronzing (?:powder|drops|balm|stick)|contour powder|contour stick|highlighter|illuminator|makeup primer|pore primer|setting powder|finishing powder|translucent powder|cheek tint|lip gloss|lip liner|eyeliner|eye shadow|brow pencil|brow gel)\b/i;
+const FRAGRANCE_STRONG_REJECT_RE = /\b(perfume|parfum|eau de parfum|eau de toilette|cologne|edp|edt)\b/i;
 const FRAGRANCE_CATEGORY_RE = /\b(perfume|parfum|fragrance|eau de parfum|eau de toilette|cologne|body mist|edp|edt)\b|(香水|淡香)/i;
 function matchesNonBeautyFatal(text) {
   return NON_BEAUTY_FATAL_ASCII_RE.test(text) || NON_BEAUTY_FATAL_CJK_RE.test(text);
@@ -757,6 +770,39 @@ function isImplementProduct(product) {
 // moisturiser were rejected by the MAKEUP half of the same lens with no fragrance wording at all.
 // The category a row belongs to is stated by its identity fields. Ingredients, benefits, skin-type
 // tags and prose are evidence about a product, not a claim about its category.
+// THE ADMIT DIRECTION CAN AFFORD TO BE GENEROUS; THE REJECT DIRECTION CANNOT. Merchants put the
+// category in `tags` or `search_aliases` at least as often as in the title -- "Hoola" with
+// tags:['bronzer'] is the brand-name-only makeup supply this change exists to admit. Reading those
+// to RECOGNISE a requested category costs nothing if it is wrong: the row simply falls through to
+// the ordinary ladder. Reading them to DELETE a row is how the last two review rounds each found a
+// P0. So they are here, and not in productIdentityText below.
+function productCategoryAdmitText(product) {
+  const row = isPlainObject(product) ? product : {};
+  return [
+    productIdentityText(product),
+    ...(Array.isArray(row.tags) ? row.tags : []),
+    ...(Array.isArray(row.tag_tokens) ? row.tag_tokens : []),
+    ...(Array.isArray(row.search_aliases) ? row.search_aliases : []),
+    ...(Array.isArray(row.searchAliases) ? row.searchAliases : []),
+    ...(Array.isArray(row.aliases) ? row.aliases : []),
+  ]
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+    .join(' ');
+}
+
+// NO OVERRIDE FOR A MERCHANT CATEGORY, and the reason is worth recording because the opposite is
+// tempting. A row whose own taxonomy says "Makeup > Face > Bronzer" is excused into a skincare
+// shortlist by the bare token `face` in SKINCARE_ALLOW_RE, which is obviously wrong -- and every
+// attempt to make the category field decisive deleted real skincare instead, because the field is
+// sometimes simply WRONG. Four live rows are typed `Bronzer` and are not: Embryolisse
+// Firming-Lifting Cream, Nuxe Lift Eye Cream, Beauty of Joseon JELLOSKIN Massage Cream, Patyka
+// Patchs Lift Regard. A name-based excuse rescued the first three and not the fourth, whose name is
+// French.
+//
+// Being excused is main's behaviour and costs a 0.18 penalty. Deleting a real moisturiser from a
+// moisturizer request is a P0, and this change has produced one in each of three review rounds by
+// reaching for strictness the lane did not ask for. The category field stays advisory.
 function productIdentityText(product) {
   const row = isPlainObject(product) ? product : {};
   const sku = isPlainObject(row.sku) ? row.sku : {};
@@ -846,36 +892,42 @@ function classifySkincareCandidate(product, { requestedStep = '' } = {}) {
   // what keeps an unthreaded call identical to main.
   if (requestedDomain) {
     // MASKED, and this is the P0 the first version of this change shipped. `fragrance` is the word a
-    // sensitive-skin moisturiser prints to say it contains none, so an unmasked lens reads
-    // "CeraVe Daily Moisturizing Lotion, Fragrance-Free" as a fragrance and rejects it from the
-    // moisturizer request it was recalled for. One definition of "this mention is a denial", owned
-    // by the taxonomy and shared with step resolution.
-    const lensText = maskNonCategoryQualifiers(productIdentityText(product));
-    const matchesMakeup = MAKEUP_CATEGORY_RE.test(lensText);
-    const matchesFragrance = FRAGRANCE_CATEGORY_RE.test(lensText);
-    const matchesRequestedCategory =
-      !CATEGORY_ACCESSORY_RE.test(lensText)
-      && ((requestedDomain === 'makeup' && matchesMakeup)
-        || (requestedDomain === 'fragrance' && matchesFragrance));
-    if (matchesRequestedCategory) {
-      return {
-        classification: 'explicit_requested_beauty_category',
-        hard_reject: false,
-        penalty: 0,
-        reason: `explicit_${requestedDomain}`,
-      };
-    }
-    // A BEAUTY CATEGORY THAT IS NOT THE ONE ASKED FOR. Only reachable on a THREADED call: with no
-    // requested step this branch cannot run, which is what keeps an unthreaded caller identical to
-    // main. It is also the direction #2155 does not name — a bronzer answering a serum request —
-    // and it costs nothing to close here, where the requested domain is finally known.
-    if (matchesMakeup || matchesFragrance) {
-      return {
-        classification: 'explicit_non_skincare',
-        hard_reject: true,
-        penalty: 1,
-        reason: 'explicit_wrong_beauty_category',
-      };
+    // sensitive-skin moisturiser prints to say it contains none. One definition of "this mention is
+    // a denial", owned by the taxonomy and shared with step resolution.
+    const admitText = maskNonCategoryQualifiers(productCategoryAdmitText(product));
+    const identityText = maskNonCategoryQualifiers(productIdentityText(product));
+    // AN ACCESSORY FOR A CATEGORY IS NOT THAT CATEGORY, and it is not the WRONG category either --
+    // it is not a category at all. It must skip BOTH branches: gating only the admit dropped
+    // "Butter Bronzer with Mirror" straight into the reject, on a bronzer request.
+    if (!CATEGORY_ACCESSORY_RE.test(admitText)) {
+      const matchesRequestedCategory = requestedDomain === 'makeup'
+        ? MAKEUP_CATEGORY_RE.test(admitText)
+        : requestedDomain === 'fragrance' && FRAGRANCE_CATEGORY_RE.test(admitText);
+      // THE CATEGORY THAT WAS ASKED FOR, admitted and named. Only rows that actually match it: a
+      // cleanser does not become a bronzer because a bronzer was requested. With no requested step
+      // this whole block is unreachable, which is what keeps an unthreaded call identical to main.
+      if (matchesRequestedCategory) {
+        return {
+          classification: 'explicit_requested_beauty_category',
+          hard_reject: false,
+          penalty: 0,
+          reason: `explicit_${requestedDomain}`,
+        };
+      }
+      // NO CROSS-DOMAIN REJECTION HERE, AND THAT IS A DECISION, not an omission.
+      //
+      // An earlier version of this branch also DELETED a row whose category was not the one asked
+      // for. It looked free -- the requested domain is finally known, so why not be exact -- and it
+      // produced a P0 in each of three review rounds, in three different disguises: reading the
+      // ingredient list (`Fragrance (Parfum)` deleted a moisturiser), then reading the admit
+      // vocabulary (`body mist` deleted Supergoop's PLAY sunscreen from a SUNSCREEN request), then
+      // trusting the merchant category (four live rows typed `Bronzer` are face creams, and the one
+      // with a French name could not be rescued by any name-based excuse).
+      //
+      // It was never part of #2155. #2155 is that a bronzer on a BRONZER request was deleted; the
+      // admit above is the entire fix. A bronzer on a serum request stays `ambiguous` at 0.18,
+      // exactly as on main, and ranking's domain penalty and family relation still separate them.
+      // The deletion side of this gate stays main's, on every call, threaded or not.
     }
   }
   // A BEAUTY PRODUCT IN A CATEGORY THAT WAS NOT ASKED FOR. Still fatal -- this is the half of the old

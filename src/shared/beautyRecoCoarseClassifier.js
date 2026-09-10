@@ -8,6 +8,7 @@ const {
   normalizeRecoTargetStep,
   getRecoTargetFamilyRelation,
   resolveRecoStepDomain,
+  STEP_DOMAIN_MAP,
 } = require('../auroraBff/recoTargetStep');
 const {
   TARGET_RELEVANCE_CLASS_OWNER,
@@ -288,6 +289,24 @@ function resolveStructuredCategoryIdentityConflictStep(structuredStep, product) 
         candidate_step_confidence: 'medium',
       };
     }
+  }
+  // THE MIRROR OF THE RULE ABOVE, and it only became reachable when makeup became a step. Supergoop
+  // types "Unseen Sunscreen SPF 50" as `product_type: "Primer"` under `beauty/makeup/face/primer`;
+  // before this taxonomy knew `primer`, the structured field resolved to nothing and text salvage
+  // called it a sunscreen. Now the structured field wins and the row leaves the sunscreen pipeline
+  // -- on a `sunscreen` query it went same_family -> incompatible_family and out of the top 20.
+  // A product whose own NAME says sunscreen is a sunscreen, whatever aisle the merchant filed it in.
+  // `primer` also yields to a bare SPF claim, and only `primer` does — the same asymmetry the step
+  // resolver encodes in STEPS_SPF_OUTRANKS. "Dewscreen Hydrating Primer SPF 50" never says the word
+  // sunscreen; the SPF is the claim. A FOUNDATION with SPF is sold on coverage and keeps its step.
+  const sunscreenByIdentity = SUNSCREEN_PRIMARY_FORM_RE.test(identityText)
+    || (step === 'primer' && SPF_RE.test(identityText));
+  if (STEP_DOMAIN_MAP[step] === 'makeup' && sunscreenByIdentity) {
+    return {
+      candidate_step: 'sunscreen',
+      candidate_step_source: 'structured_category_identity_conflict',
+      candidate_step_confidence: 'high',
+    };
   }
   return null;
 }
@@ -1322,7 +1341,21 @@ function resolveBeautyCoarseStepFamily(product) {
   }
   const text = buildBeautyCandidateText(product);
   const resolved = resolveRecoTargetStepIntent({ text, focus: text });
-  const candidateStep = normalizeRecoTargetStep(resolved?.resolved_target_step);
+  let candidateStep = normalizeRecoTargetStep(resolved?.resolved_target_step);
+  // A MAKEUP OR FRAGRANCE STEP MAY NOT BE SALVAGED FROM PROSE. buildBeautyCandidateText joins
+  // descriptions, how-to-use copy, claims and ingredient tokens, and skincare copy is full of makeup
+  // words: "Tea Tree & Macadamia Deep Cleansing Shampoo" acquired a `fragrance` step from its scent
+  // description and ranked above real perfumes on a `perfume` query, and "Dew Boost Makeup Serum"
+  // ("grips foundation") stopped being a serum. Skincare salvage is unchanged -- a moisturiser
+  // described as a moisturiser is one -- because that is the reading this function was built for and
+  // the one main relied on.
+  if (candidateStep && STEP_DOMAIN_MAP[candidateStep]) {
+    const identityText = buildBeautyPrimaryIdentityText(product);
+    const identityStep = normalizeRecoTargetStep(
+      resolveRecoTargetStepIntent({ text: identityText, focus: identityText })?.resolved_target_step,
+    );
+    if (identityStep !== candidateStep) candidateStep = null;
+  }
   if (!candidateStep) {
     return {
       candidate_step: null,
@@ -1404,7 +1437,10 @@ function classifyBeautyCoarseCandidate(product, {
 
   const familyRelation = queryTargetStepFamily && candidateStep
     ? getRecoTargetFamilyRelation(queryTargetStepFamily, candidateStep)
-    : candidateStep
+    // candidateStepIsSkincare, not candidateStep: with no query family to compare against, a
+    // resolved step used to mean "a skincare row of some kind", so it stood in for same_family. A
+    // fragrance resolving a step does not make it same-family with an unspecified query.
+    : candidateStepIsSkincare
       ? 'same_family'
       : 'unknown';
   const decisionMode = normalizeRecommendationDecisionMode(mode, { guidanceOnlyDiscovery });

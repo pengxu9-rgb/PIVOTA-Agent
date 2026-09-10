@@ -292,7 +292,6 @@ const EXACT_ALIAS_MAP = Object.freeze({
   'eau de parfum': 'fragrance',
   'eau de toilette': 'fragrance',
   cologne: 'fragrance',
-  'body mist': 'fragrance',
   cleanser: 'cleanser',
   toner: 'toner',
   essence: 'essence',
@@ -365,12 +364,16 @@ function normalizeRecoTargetStep(value) {
   // resolver said `moisturizer` -- and ingredientSkuEvidence.resolveRecallCandidateStep calls THIS
   // one, on a bare title, before the intent resolver ever runs. 74 of the 91 skincare strings that
   // flipped to `fragrance` were denial phrasings.
-  const masked = maskNonCategoryQualifiers(raw);
-  if (!masked.trim()) return null;
-  for (const entry of STEP_PATTERNS) {
-    if (entry.patterns.some((pattern) => pattern.test(masked))) return entry.step;
-  }
-  return null;
+  // THROUGH THE SAME COLLECTOR THE INTENT RESOLVER USES, not a private first-match loop. Sharing
+  // only the MASK was half a fix: this function still took the first pattern in listing order while
+  // extractRecoTargetStepFromText applied overlap, format and weak-surface resolution, so the two
+  // disagreed on 24 corpus strings where main disagreed on none — 'PLAY Antioxidant Body Mist SPF
+  // 30' was a `fragrance` here and a `sunscreen` there, and beautyRecoCoarseClassifier calls THIS
+  // one. Two resolvers that disagree are two answers to a question that has one.
+  // The ORIGINAL case, not `raw`. Lowercasing is right for the alias lookup above and wrong here:
+  // the CJK patterns include /维A/, and a lowercased 维a does not match it.
+  const details = collectHighConfidenceMatchDetails(normalizeText(value));
+  return details.length === 1 ? details[0].step : null;
 }
 
 // The SURFACE TOKEN a step pattern matched, normalized for use as a query.
@@ -409,6 +412,12 @@ const NON_CATEGORY_QUALIFIER_PATTERNS = Object.freeze([
   // that it is the ingredient a buyer asks to AVOID.
   /\bfragrance\s+(?:essential\s+)?oils?\b/gi,
   /(?:不含|无添加|无)香精/g,
+  // NAMING AN INGREDIENT YOU REACT TO IS NOT ORDERING IT. "fragrance usually stings" is a
+  // sensitivity, and it made a Phoenix dry-heat sunscreen ask resolve to `fragrance` and go out on
+  // the makeup supply lane. That string is a fixture in two suites here, both of which kept passing.
+  /\bfragrances?\s+(?:usually\s+|often\s+|sometimes\s+|always\s+|really\s+)?(?:stings?|irritates?|bothers?|burns?|breaks? me out)/gi,
+  /\b(?:sensitive|allergic|reactive)\s+to\s+(?:added\s+)?fragrances?\b/gi,
+  /\bfragrance\s+(?:sensitivity|sensitive|allergy|allergies)\b/gi,
 ]);
 
 // A CATEGORY NAMED AS WEAR CONTEXT IS NOT A REQUEST FOR IT. "a sunscreen that won't pill under my
@@ -422,7 +431,10 @@ const CATEGORY_AS_CONTEXT_PATTERNS = Object.freeze([
   new RegExp(`\\b(?:under|underneath|beneath|over|on top of|before|after|with|without|alongside)\\s+(?:my |the |any |your )?(?:${MAKEUP_CONTEXT_NOUNS})\\b`, 'gi'),
   // A COORDINATED LIST IS STILL ONE CLAUSE. "removes mascara and eyeliner" names two categories and
   // requests neither; matching only the first left the second to make the ask ambiguous again.
-  new RegExp(`\\b(?:removes?|removing|remove|takes? off|breaks? down|dissolves?|creases?|crease|pills? under|wears? under)\\s+(?:my |the |any |your )?(?:${MAKEUP_CONTEXT_NOUNS})\\b(?:\\s*,?\\s*(?:and |or )?(?:my |the |your )?(?:${MAKEUP_CONTEXT_NOUNS})\\b)*`, 'gi'),
+  // UP TO TWO WORDS MAY SIT BETWEEN THE VERB AND THE NOUN. "takes off waterproof mascara" is a
+  // cleanser ask, and matching only the adjacent form let `mascara` name a second category — the
+  // shortlist for it was a mascara-boosting lash primer.
+  new RegExp(`\\b(?:removes?|removing|remove|takes? off|breaks? down|dissolves?|creases?|crease|pills? under|wears? under)\\s+(?:my |the |any |your )?(?:\\w+\\s+){0,2}(?:${MAKEUP_CONTEXT_NOUNS})\\b(?:\\s*,?\\s*(?:and |or )?(?:my |the |your )?(?:${MAKEUP_CONTEXT_NOUNS})\\b)*`, 'gi'),
   new RegExp(`\\b(?:doubles?|works?|acts?)\\s+as\\s+an?\\s+(?:${MAKEUP_CONTEXT_NOUNS})\\b`, 'gi'),
   new RegExp(`\\b(?:i |we )?(?:use|uses|used|using|wear|wears|wearing)\\s+(?:my |the |any |your )?(?:${MAKEUP_CONTEXT_NOUNS})\\b`, 'gi'),
 ]);
@@ -466,11 +478,19 @@ const FORMAT_ONLY_SURFACES = new Set(['body mist', 'body spray']);
 // `incompatible_family`, and the query "spf primer" collapsed its result set from 75 to 2.
 const STEPS_SPF_OUTRANKS = new Set(['primer']);
 
-function dropWeakSurfaceMatches(details) {
+// SEPARATE FROM dropWeakSurfaceMatches BECAUSE IT HAS TO RUN FIRST. `body mist` overlaps toner's
+// `mist`, so overlap resolution absorbs the very match the format was supposed to yield to, and by
+// the time the format rule ran nothing else had matched — "Bulgarian Rose Water Face, Hair & Body
+// Mist Spray" became a fragrance where main called it a toner.
+function dropFormatOnlySurfaceMatches(details) {
   if (details.length < 2) return details;
   const withoutFormat = details.filter((detail) => !FORMAT_ONLY_SURFACES.has(detail.token));
-  const working = withoutFormat.length && withoutFormat.length !== details.length ? withoutFormat : details;
-  if (working.length < 2) return working;
+  return withoutFormat.length && withoutFormat.length !== details.length ? withoutFormat : details;
+}
+
+function dropWeakSurfaceMatches(details) {
+  if (details.length < 2) return details;
+  const working = details;
   const weak = working.filter((detail) => WEAK_STEP_SURFACES.has(detail.token));
   const strong = working.filter((detail) => !WEAK_STEP_SURFACES.has(detail.token));
   if (!weak.length || !strong.length) return working;
@@ -486,6 +506,23 @@ function dropWeakSurfaceMatches(details) {
   const survivors = strong.filter((detail) => !STEPS_SPF_OUTRANKS.has(detail.step));
   if (survivors.length !== strong.length) return survivors.length ? [...survivors, ...weak] : weak;
   return working;
+}
+
+// A SKINCARE STEP AND A MAKEUP STEP IN ONE ASK: THE SKINCARE ONE IS THE REQUEST. This lane's
+// mainline is skincare, and a buyer who names both is describing the makeup they already wear --
+// "what serum will make my foundation sit better", "a moisturizer that keeps my blush from sliding
+// off", "loose powder sunscreen for touch ups". Before this they named two categories, went
+// ambiguous, and lost their step on /v1/chat, the highest-traffic lane.
+//
+// The clause masks above catch the frames they were written for and no more; this is the general
+// rule behind them, and it resolves TOWARDS main's answer -- main had no makeup steps at all, so a
+// mixed ask resolved to its skincare step there too. Runs last, so an ask whose makeup category is
+// the only thing named is untouched.
+function preferSkincareStepOnMixedMatch(details) {
+  if (details.length < 2) return details;
+  const skincare = details.filter((detail) => !STEP_DOMAIN_MAP[detail.step]);
+  if (!skincare.length || skincare.length === details.length) return details;
+  return skincare;
 }
 
 function resolveOverlappingStepMatches(details) {
@@ -530,10 +567,11 @@ function collectStepPatternMatchDetails(input, entries) {
     });
     if (details.length >= 8) break;
   }
-  // OVERLAP FIRST. The weak-surface rules below reason about which SURFACES survived, and running
-  // them on the raw list let a `mist` that `body mist` was about to absorb count as a third category
-  // — "PLAY Antioxidant Body Mist SPF 30" kept a spurious `toner` and resolved to nothing.
-  return dropWeakSurfaceMatches(resolveOverlappingStepMatches(details));
+  // ORDER IS LOAD-BEARING: formats yield first (before overlap can absorb what they yield to), then
+  // overlap collapses two patterns over one span, then the weak-surface rules judge what survived.
+  return preferSkincareStepOnMixedMatch(
+    dropWeakSurfaceMatches(resolveOverlappingStepMatches(dropFormatOnlySurfaceMatches(details))),
+  );
 }
 
 function collectHighConfidenceMatchDetails(input) {

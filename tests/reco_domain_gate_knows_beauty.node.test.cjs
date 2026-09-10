@@ -40,8 +40,13 @@ test('the requested beauty category is admitted, and only that category', () => 
 
   // A DIFFERENT beauty category is still fatal. Asking for a bronzer does not open the door to
   // perfume, which is the substitution #2155 is about.
+  // `perfume` is on main's unconditional fatal list, so it stays fatal on any request.
   assert.equal(at('Chanel No 5 perfume', 'bronzer').hard_reject, true);
-  assert.equal(at('Hoola Matte Bronzer', 'eau de toilette').hard_reject, true);
+  // `bronzer` is on NEITHER of main's lists, so a bronzer on a fragrance request is `ambiguous`
+  // exactly as on main — threading may recognise, never delete.
+  const bronzerOnFragranceAsk = at('Hoola Matte Bronzer', 'eau de toilette');
+  assert.equal(bronzerOnFragranceAsk.hard_reject, at('Hoola Matte Bronzer').hard_reject);
+  assert.notEqual(bronzerOnFragranceAsk.classification, 'explicit_requested_beauty_category');
   // And a skincare row on a makeup request is not off-vertical — it is simply the wrong product,
   // which ranking decides, not this gate. But it must NOT be relabelled as the requested category:
   // that would hand a serum the same penalty-0 standing as a bronzer on a bronzer request, which is
@@ -65,9 +70,16 @@ test('NOT A BEAUTY PRODUCT never relaxes — including when it also names the re
       assert.equal(r.penalty, 1, `${name} must not be admitted at penalty 0`);
     }
   }
-  // An ACCESSORY for a category is not that category either, and these are in no fatal list.
+  // An ACCESSORY for a category is not that category — but it is not the WRONG category either, so
+  // the rule is that it must not be ADMITTED at penalty 0, not that it must be deleted. Deleting it
+  // was over-reach: main leaves 'Powder Puff for setting powder' ambiguous, and this change has no
+  // business being stricter than main on a row it was not written for.
   for (const name of ['Beauty Sponge for blush', 'Eyeshadow Palette Case', 'Powder Puff for setting powder']) {
-    assert.equal(at(name, 'bronzer').hard_reject, true, `${name} must not answer a bronzer request`);
+    const r = at(name, 'bronzer');
+    assert.notEqual(r.classification, 'explicit_requested_beauty_category',
+      `${name} must not be admitted as the category it is an accessory to`);
+    assert.notEqual(r.penalty, 0, `${name} must not be admitted at the best penalty`);
+    assert.equal(r.hard_reject, at(name).hard_reject, `${name}: threading a step must not change its fate`);
   }
 });
 
@@ -79,21 +91,6 @@ test('NOT A BEAUTY PRODUCT never relaxes, whatever was requested', () => {
         `${name} must stay fatal with requestedStep=${String(step)}`);
     }
   }
-});
-
-test('a makeup row is rejected from a SKINCARE shortlist — but only on a THREADED call', () => {
-  // With no requested step the verdict is main's, unchanged: `bronzer` was in neither of main's
-  // lists, so a bronzer is `ambiguous` and pays 0.18. Adding it to a block list would buy a
-  // stricter answer at the cost of the identity invariant below, and it is not the direction #2155
-  // is about. Threaded, the requested domain is known and the answer can be exact.
-  assert.equal(at('Hoola Matte Bronzer').hard_reject, false, 'unthreaded: exactly as on main');
-  assert.equal(at('Hoola Matte Bronzer', 'serum').hard_reject, true,
-    'a bronzer must not answer a serum request');
-  assert.equal(at('Hoola Matte Bronzer', 'serum').reason, 'explicit_wrong_beauty_category',
-    'the THREADED rejection is the one new reason — it has no unthreaded twin to break');
-  assert.equal(at('Positive Light Liquid Luminizer highlighter', 'moisturizer').hard_reject, true);
-  // And the fragrance-free row is NOT read as a fragrance by that same rule — the lens is masked.
-  assert.equal(at('CeraVe Daily Moisturizing Lotion, Fragrance-Free', 'moisturizer').hard_reject, false);
 });
 
 test('the makeup rows main already rejected are still rejected', () => {
@@ -216,11 +213,8 @@ test('the recall boundary asks the same question, with the same answer', () => {
     'no requested step: off-vertical, exactly as on main');
   assert.equal(classifyConcernScopeCandidate(bronzer, { requestedStep: 'bronzer' }).hard_reject, false,
     'it must survive the RECALL boundary on a bronzer request, not just the ranker');
-  assert.equal(
-    classifyConcernScopeCandidate({ name: 'Hoola Matte Bronzer' }, { requestedStep: 'serum' }).hard_reject,
-    true,
-    'and the boundary rejects the wrong category once it knows which one was asked for',
-  );
+  assert.equal(classifyConcernScopeCandidate(bronzer, { requestedStep: 'bronzer' }).penalty, 0,
+    'and arrive there recognised, not merely tolerated');
   const serum = { name: 'Niacinamide Serum', title: 'Niacinamide Serum' };
   assert.equal(classifyConcernScopeCandidate(serum, { requestedStep: 'bronzer' }).hard_reject, false);
   assert.notEqual(
@@ -276,11 +270,18 @@ test('the identity fields still decide it, in both directions', () => {
   const bronzerByCategory = { title: 'Hoola', category: 'Makeup > Face > Bronzer' };
   assert.equal(classify(bronzerByCategory, { requestedStep: 'bronzer' }).classification,
     'explicit_requested_beauty_category', 'a category path names the category');
-  assert.equal(classify(bronzerByCategory, { requestedStep: 'serum' }).hard_reject, true);
-  for (const title of ['Tom Ford Black Orchid Eau de Parfum', 'Hoola Matte Bronzer', 'Charlotte Tilbury Pillow Talk Lipstick']) {
-    assert.equal(classify({ title }, { requestedStep: 'moisturizer' }).hard_reject, true,
-      `${title} must not answer a moisturizer request`);
+  assert.notEqual(classify(bronzerByCategory, { requestedStep: 'serum' }).classification,
+    'explicit_requested_beauty_category', 'and does not name a serum');
+  // These stay rejected because they are on MAIN's fatal list — `perfume`, `lipstick` — not because
+  // this change added a rejection. `bronzer` is on neither list and stays ambiguous, as on main.
+  for (const title of ['Chanel No 5 Perfume', 'Charlotte Tilbury Pillow Talk Lipstick']) {
+    assert.equal(classify({ title }, { requestedStep: 'moisturizer' }).hard_reject, true, title);
   }
+  // PRE-EXISTING, and named so it is not mistaken for this change: main's fatal list carries
+  // `perfume` but not `parfum`, so "Eau de Parfum" is `ambiguous` on a skincare request on main and
+  // stays `ambiguous` here. Widening that list is a deletion, and this change adds none.
+  assert.equal(classify({ title: 'Tom Ford Black Orchid Eau de Parfum' }, { requestedStep: 'moisturizer' }).classification,
+    classify({ title: 'Tom Ford Black Orchid Eau de Parfum' }).classification);
 });
 
 
@@ -310,11 +311,10 @@ test('the framework pool finalizer threads the step it recalled for', () => {
   assert.ok(!(bronzer.hard_reject || []).some((entry) => entry.reason === 'explicit_wrong_beauty_category'),
     'and must not be removed BY that gate');
   const serum = run('serum');
-  assert.equal(serum.scope_classification_stats.explicit_non_skincare, 1);
-  assert.deepEqual((serum.hard_reject || []).map((entry) => entry.reason), ['explicit_wrong_beauty_category'],
-    'on a serum request the scope gate is exactly what removes it');
   assert.equal(serum.scope_classification_stats.explicit_requested_beauty_category, 0,
-    'the class needs its own telemetry bucket, or it is counted as ambiguous');
+    'a bronzer is not the requested category on a serum request');
+  assert.ok(!(serum.hard_reject || []).some((entry) => entry.reason === 'explicit_wrong_beauty_category'),
+    'and the gate still does not DELETE it — threading may recognise, never delete');
 });
 
 test('the winner-safety check threads the primary role step', () => {
@@ -323,9 +323,12 @@ test('the winner-safety check threads the primary role step', () => {
   const row = { name: 'Hoola Matte Bronzer', title: 'Hoola Matte Bronzer', matched_role_id: 'primary' };
   assert.equal(isConcernPrimaryRoleWinnerSafe(row, { semanticPlan }), true,
     'the bronzer the lane recalled must be allowed to WIN; unthreaded, this returned false');
+  // On a serum role the bronzer is not RECOGNISED, so it does not get the recognised row's penalty
+  // 0 — but it is not deleted either, which is main's behaviour and deliberately preserved.
   const serumPlan = { core_roles: [{ role_id: 'primary', preferred_step: 'serum' }] };
-  assert.equal(isConcernPrimaryRoleWinnerSafe(row, { semanticPlan: serumPlan }), false,
-    'and must not win a serum role');
+  const { classifyConcernScopeCandidate } = require('../src/auroraBff/productScopeClassifier');
+  assert.notEqual(classifyConcernScopeCandidate(row, { requestedStep: 'serum' }).classification,
+    'explicit_requested_beauty_category', 'a bronzer is not what a serum role asked for');
 });
 
 
@@ -338,5 +341,80 @@ test('the winner-safety check threads the primary role step', () => {
 test('CJK rows are untouched by this change — the gate half that has never fired still does not', () => {
   for (const name of ['宠物项圈', '口红', '彩妆套盒', '温和洁面乳 一步卸除彩妆和防晒', '娃娃脸腮红']) {
     assert.equal(at(name).hard_reject, false, `${name}: unchanged from main, in both directions`);
+  }
+});
+
+
+// ---------------------------------------------------------------------------------------------
+// THE ADMIT VOCABULARY IS NOT THE REJECT VOCABULARY, and conflating them is the defect that survived
+// two review rounds in two different disguises. Recognising too much only ever ADMITS, and a wrong
+// admit costs nothing — the row falls through to the ordinary ladder. Rejecting on the same tokens
+// DELETES, at the recall boundary, on all three reco lanes.
+
+test('brand-name-only makeup is recognised from tags — the supply this change exists to admit', () => {
+  // Merchants put the category in `tags`/`search_aliases` at least as often as in the title.
+  // Reading them to RECOGNISE costs nothing if wrong; they are deliberately absent from the text
+  // the reject branch reads.
+  assert.equal(classify({ brand: 'Benefit Cosmetics', name: 'Hoola', tags: ['bronzer', 'makeup'] },
+    { requestedStep: 'bronzer' }).classification, 'explicit_requested_beauty_category');
+  assert.equal(classify({ brand: 'NARS', name: 'Orgasm', search_aliases: ['blush'] },
+    { requestedStep: 'blush' }).classification, 'explicit_requested_beauty_category');
+  // THE CONTROL: an INCI `Fragrance` in a field the reject branch does not read must not admit it
+  // as a fragrance either.
+  assert.notEqual(classify({ name: 'Hydrating Moisturizer', ingredients: ['Aqua', 'Fragrance'] },
+    { requestedStep: 'fragrance' }).classification, 'explicit_requested_beauty_category');
+});
+
+
+// ---------------------------------------------------------------------------------------------
+// THE INVARIANT THAT WOULD HAVE CAUGHT ALL THREE ROUNDS AT ONCE.
+//
+// Threading the requested step may only ever make this gate LESS deletion-happy, never more. Every
+// P0 in this PR's review history was the same shape: a threaded call deleting a row an unthreaded
+// call kept. Ingredient text, then the admit vocabulary, then the merchant category — three
+// disguises, one rule broken. Stated as a rule, it is one line to check and impossible to slip past.
+
+test('threading a step NEVER deletes a row that an unthreaded call keeps', () => {
+  const rows = [
+    { brand: 'Supergoop!', name: 'PLAY Antioxidant Body Mist SPF 30', category: 'Skincare > Sunscreen' },
+    { brand: 'Supergoop!', name: 'Protec(tint) Daily Skin Tint SPF 50', category: 'Skincare > Sunscreen' },
+    { brand: 'Neutrogena', name: 'Hydro Boost Water Gel with Signature Fragrance', category: 'Skincare > Moisturizers' },
+    { brand: 'Alteya', name: 'Bulgarian Rose Water Face, Hair & Body Mist Spray', category: 'Skincare > Toner' },
+    { name: 'Firming-Lifting Cream', category: 'Bronzer' },
+    { name: 'Patchs Lift Regard 360', category: 'Bronzer' },
+    { name: 'Butter Bronzer with Mirror', category: 'Makeup > Face' },
+    { title: 'La Roche-Posay Toleriane Double Repair', description: 'Ingredients: Aqua, Glycerin, Parfum' },
+    { title: 'Ultra Light Serum Sunscreen SPF 50+', description: 'Free from: Alcohol Fragrance Paraben' },
+    { name: 'Vitamin C Serum', category: 'Skincare > Serums', tags: ['summer glow', 'bronzer collection'] },
+    { name: 'Hoola Matte Bronzer' },
+    { name: 'Tom Ford Black Orchid Eau de Parfum' },
+    { name: 'Cream Blush' },
+    { name: 'Dog Collar' },
+    { name: 'Eyeshadow Brush' },
+  ];
+  const steps = ['moisturizer', 'serum', 'cleanser', 'sunscreen', 'treatment', 'toner',
+    'bronzer', 'blush', 'lipstick', 'eau de toilette'];
+  for (const row of rows) {
+    const unthreaded = classify(row).hard_reject;
+    for (const step of steps) {
+      const threaded = classify(row, { requestedStep: step }).hard_reject;
+      assert.ok(!(threaded && !unthreaded),
+        `${row.name || row.title}: threading '${step}' deleted a row the unthreaded call keeps`);
+    }
+  }
+});
+
+test('and threading is what makes the requested category reachable — the whole point', () => {
+  for (const row of [
+    { name: 'Hoola Matte Bronzer' },
+    { brand: 'Benefit Cosmetics', name: 'Hoola', tags: ['bronzer', 'makeup'] },
+    { name: 'Sun Stalk’r Instant Warmth Bronzer' },
+  ]) {
+    const bare = classify(row);
+    const threaded = classify(row, { requestedStep: 'bronzer' });
+    assert.equal(threaded.classification, 'explicit_requested_beauty_category', row.name);
+    assert.equal(threaded.penalty, 0, `${row.name}: recognised means penalty 0`);
+    assert.ok(threaded.penalty < bare.penalty || bare.penalty === 0,
+      `${row.name}: threading must improve its standing, not merely preserve it`);
   }
 });
