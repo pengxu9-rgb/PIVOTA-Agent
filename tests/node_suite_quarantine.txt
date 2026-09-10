@@ -1,80 +1,83 @@
-# Suites under tests/*.node.test.cjs that FAIL on main today and are therefore not
-# yet part of the node:test gate. Everything NOT listed here runs — discovery is a
-# glob, so a new suite is gated the moment it lands. That inversion is the point.
+# Suites that FAIL on main today and are therefore not yet part of the node:test gate.
+# Everything NOT listed here runs — discovery is a glob over three roots (tests/ walked
+# recursively, mcp-server/test, safety-kernel/test), so a new suite is gated the moment it
+# lands. That inversion is the point.
 #
-# Before this file existed, a suite ran in CI only if someone had added it to the
-# allowlist inside .github/workflows/pr-full-jest.yml: 87 of 295 files. A second list
-# in the `test:node` npm script named 66 more, but NO WORKFLOW INVOKES `npm run
-# test:node`, so those never ran either. 208 suites had never executed in CI. 163 of
-# them were passing and gating nothing. Among the rest was `aurora_undefined_symbol_guard`,
-# which fails because src/server.js referenced `crossMerchantCacheRouteDebug` at two
-# points outside the scope of its `let` — a live ReferenceError no gate could see.
+# Before this file existed, a suite ran in CI only if someone had added it to the allowlist
+# inside .github/workflows/pr-full-jest.yml: 110 files. A second list in the `test:node`
+# npm script named 66 more, but NO WORKFLOW INVOKES `npm run test:node`, so those never ran
+# either. 208 suites under tests/ had never executed in CI. Among them was
+# `aurora_undefined_symbol_guard`, which fails because src/server.js referenced
+# `crossMerchantCacheRouteDebug` at two points outside the scope of its `let` — a live
+# ReferenceError no gate could see.
 #
-# THIS LIST MAY ONLY SHRINK. The runner executes these suites too, and FAILS the
-# job if one of them passes, with instructions to delete the line. A quarantined
-# suite that gets fixed cannot silently stay quarantined.
+# THIS LIST MAY ONLY SHRINK. The runner executes these suites too, and FAILS the job if one
+# of them passes, with instructions to delete the line. A quarantined suite that gets fixed
+# cannot silently stay quarantined. Enforced under CI only — see the runner for why.
 #
-# One entry is here for a different reason and is marked below: it passes locally and
-# fails on a CI runner. CI is the authority, so it is quarantined on CI's verdict — and
-# the recovery ratchet is enforced only under CI for exactly that reason.
+# Entries are repo-relative PATHS, not bare filenames: two roots can hold the same basename
+# and one entry would otherwise silence both.
 #
-# Measured 2026-09-10 against 205e9f1cd, per file, with AURORA_BFF_USE_MOCK=true, and
-# confirmed against a CI runner: the aggregate failure count agrees with the per-file
-# counts exactly, so none of these is a parallelism artifact. All 45 are genuine
-# assertion or missing-export failures — none is an environment, network or credential
-# problem. They are listed, not deleted, because a red suite is a finding to work off,
-# and deleting it would destroy the finding.
+# Measured 2026-09-10 against 205e9f1cd, per file, with the INHERITED environment — no
+# forced flags. An earlier draft forced AURORA_BFF_USE_MOCK=true across every suite, which
+# is not inert: it swaps auroraChat for a mock, and so manufactured the failure that put
+# `aurora_decision_client_upstream_path` on this list. That suite is green and is no longer
+# here. Do not add a forced flag to the runner without re-measuring this file.
 #
-# The last five below were in the `test:node` list, which is why an earlier draft of
-# this file assumed CI ran them green and left them out. It never ran them at all.
-aurora_activity_api.node.test.cjs
-aurora_activity_followup_chat.node.test.cjs
-aurora_bff.node.test.cjs
-aurora_bff_activity_profile_safety.node.test.cjs
-aurora_bff_analysis_guardrail.node.test.cjs
-aurora_bff_analysis_request_profile_overlay.node.test.cjs
-aurora_bff_analysis_story_v2.node.test.cjs
-aurora_bff_budget_boundary.node.test.cjs
-aurora_bff_chat_llm_forwarding.node.test.cjs
-aurora_bff_claims_product_rec.node.test.cjs
-aurora_bff_cn_en_parity.node.test.cjs
-aurora_bff_contracts.node.test.cjs
-aurora_bff_fault_injection.node.test.cjs
-aurora_bff_photo_full_chain_e2e.node.test.cjs
-aurora_bff_photo_modules_acceptance.node.test.cjs
-aurora_bff_photo_modules_consistency.node.test.cjs
-aurora_bff_photo_render_fallback.node.test.cjs
-aurora_bff_purchasable_fallback_chain.node.test.cjs
-aurora_bff_reco_catalog.node.test.cjs
-aurora_bff_routine_analysis_v2.node.test.cjs
-aurora_bff_routine_multiturn_contract_v2.node.test.cjs
-aurora_bff_routine_upgrade.node.test.cjs
-aurora_bff_skin_reco_pipeline.node.test.cjs
-aurora_bff_travel_reco_hardening.node.test.cjs
-aurora_bff_vision_policy.node.test.cjs
-aurora_chat_diagnosis_reco_handoff.node.test.cjs
-aurora_chat_travel_message_autorec.node.test.cjs
-aurora_chat_v2_prompt_contract.node.test.cjs
-aurora_chat_v2_routes.node.test.cjs
-aurora_chat_v2_skill_guards.node.test.cjs
-aurora_decision_client_upstream_path.node.test.cjs
-aurora_legacy_analysis_story_prompt_contract.node.test.cjs
-aurora_prompt_spec_library.node.test.cjs
-aurora_recommendation_shared_stack.node.test.cjs
-aurora_routine_contract_guards.node.test.cjs
-aurora_routine_editorial_reco_hotfix.node.test.cjs
-aurora_routine_legacy_chat_hotfix.node.test.cjs
-aurora_routine_livepath_cut1.node.test.cjs
-aurora_routine_store.node.test.cjs
-aurora_undefined_symbol_guard.node.test.cjs
-catalog_row_trust_upserter.node.test.cjs
-diagnosis_artifact_store_persistence.node.test.cjs
-diagnosis_v2_orchestrator.node.test.cjs
-diagnosis_v2_routes.node.test.cjs
-find_products_invoke_semantic_owner.node.test.cjs
+# All 45 below are genuine assertion or missing-export failures — none is an environment,
+# network or credential problem. They are listed, not deleted, because a red suite is a
+# finding to work off, and deleting it would destroy the finding. All 69 suites under
+# mcp-server/test and safety-kernel/test are green, as are all 110 files the old allowlist
+# ran (pinned in tests/fixtures/pre_glob_allowlist.txt).
+tests/aurora_activity_api.node.test.cjs
+tests/aurora_activity_followup_chat.node.test.cjs
+tests/aurora_bff.node.test.cjs
+tests/aurora_bff_activity_profile_safety.node.test.cjs
+tests/aurora_bff_analysis_guardrail.node.test.cjs
+tests/aurora_bff_analysis_request_profile_overlay.node.test.cjs
+tests/aurora_bff_analysis_story_v2.node.test.cjs
+tests/aurora_bff_budget_boundary.node.test.cjs
+tests/aurora_bff_chat_llm_forwarding.node.test.cjs
+tests/aurora_bff_claims_product_rec.node.test.cjs
+tests/aurora_bff_cn_en_parity.node.test.cjs
+tests/aurora_bff_contracts.node.test.cjs
+tests/aurora_bff_fault_injection.node.test.cjs
+tests/aurora_bff_photo_full_chain_e2e.node.test.cjs
+tests/aurora_bff_photo_modules_acceptance.node.test.cjs
+tests/aurora_bff_photo_modules_consistency.node.test.cjs
+tests/aurora_bff_photo_render_fallback.node.test.cjs
+tests/aurora_bff_purchasable_fallback_chain.node.test.cjs
+tests/aurora_bff_reco_catalog.node.test.cjs
+tests/aurora_bff_routine_analysis_v2.node.test.cjs
+tests/aurora_bff_routine_multiturn_contract_v2.node.test.cjs
+tests/aurora_bff_routine_upgrade.node.test.cjs
+tests/aurora_bff_skin_reco_pipeline.node.test.cjs
+tests/aurora_bff_travel_reco_hardening.node.test.cjs
+tests/aurora_bff_vision_policy.node.test.cjs
+tests/aurora_chat_diagnosis_reco_handoff.node.test.cjs
+tests/aurora_chat_travel_message_autorec.node.test.cjs
+tests/aurora_chat_v2_prompt_contract.node.test.cjs
+tests/aurora_chat_v2_routes.node.test.cjs
+tests/aurora_chat_v2_skill_guards.node.test.cjs
+tests/aurora_legacy_analysis_story_prompt_contract.node.test.cjs
+tests/aurora_prompt_spec_library.node.test.cjs
+tests/aurora_recommendation_shared_stack.node.test.cjs
+tests/aurora_routine_contract_guards.node.test.cjs
+tests/aurora_routine_editorial_reco_hotfix.node.test.cjs
+tests/aurora_routine_legacy_chat_hotfix.node.test.cjs
+tests/aurora_routine_livepath_cut1.node.test.cjs
+tests/aurora_routine_store.node.test.cjs
+tests/aurora_undefined_symbol_guard.node.test.cjs
+tests/catalog_row_trust_upserter.node.test.cjs
+tests/diagnosis_artifact_store_persistence.node.test.cjs
+tests/diagnosis_v2_orchestrator.node.test.cjs
+tests/diagnosis_v2_routes.node.test.cjs
+tests/find_products_invoke_semantic_owner.node.test.cjs
+tests/integration/safety_kernel_mount.node.test.cjs
 # Passes locally, fails on a CI runner: 'framework local beauty mainline hard-stops wall
 # clock when internal primitive hangs' is cancelledByParent with "Promise resolution is
-# still pending but the event loop has already resolved". The test builds a primitive
-# that never settles, so when nothing else holds the loop open the file exits underneath
-# it. Never ran in CI before this gate, so the race is newly visible, not newly created.
-find_products_beauty_discovery_local_mainline.node.test.cjs
+# still pending but the event loop has already resolved". The test builds a primitive that
+# never settles, so when nothing else holds the loop open the file exits underneath it.
+# Never ran in CI before this gate, so the race is newly visible, not newly created. This
+# is the case the CI-only ratchet exists for: locally it reports as "passes here".
+tests/find_products_beauty_discovery_local_mainline.node.test.cjs

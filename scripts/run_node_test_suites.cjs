@@ -26,10 +26,38 @@ const TESTS_DIR = path.join(ROOT, 'tests');
 const QUARANTINE_FILE = path.join(TESTS_DIR, 'node_suite_quarantine.txt');
 const SUITE_SUFFIX = '.node.test.cjs';
 
-// Matches the env the `test:node` script has always used. Kept here so the local
-// command and the CI job cannot diverge — divergence is what produced a suite that
-// was green on a laptop and had never run in CI.
-const TEST_ENV = { ...process.env, AURORA_BFF_USE_MOCK: 'true' };
+// WHERE SUITES LIVE. Three roots, because this repo keeps `node --test` suites in three
+// shapes and an earlier version of this script globbed only the first — silently dropping
+// 23 money-path suites under mcp-server/ and safety-kernel/ that the allowlist it replaced
+// had been running, plus everything nested under tests/. A glob is only an improvement
+// over an allowlist if it covers what the allowlist covered.
+//
+// `tests` is walked RECURSIVELY: tests/integration, tests/scripts and tests/services all
+// hold suites, and a flat readdir cannot see them.
+const SUITE_ROOTS = Object.freeze([
+  { dir: 'tests', suffix: SUITE_SUFFIX, recursive: true },
+  // ESM packages with their own package.json. Directory is `test`, singular — which is
+  // also why jest's `**/tests/**` testMatch cannot see them either.
+  { dir: 'mcp-server/test', suffix: '.test.js', recursive: false },
+  { dir: 'safety-kernel/test', suffix: '.test.js', recursive: false },
+]);
+
+// The suites run with the env they inherit. An earlier version of this script forced
+// AURORA_BFF_USE_MOCK=true across every suite, copying what the `test:node` npm script
+// did — and that flag is not inert: it swaps auroraChat for a mock
+// (src/auroraBff/auroraDecisionClient.js), so it BROKE
+// tests/aurora_decision_client_upstream_path, whose whole subject is the real upstream
+// POST. That suite is green on main and was quarantined for a failure this runner
+// manufactured, which the recovery ratchet could never have released because the ratchet
+// re-runs with the same forced env.
+//
+// The CI job this replaces set no such flag over its 110 suites, so inheriting is also
+// the faithful choice. A suite that needs the mock sets it for itself.
+const TEST_ENV = { ...process.env };
+
+// Generous: the observed gated batch is ~2.5 minutes. This exists so a hang fails with a
+// signal rather than eating the workflow's own timeout with no output.
+const GATED_BATCH_TIMEOUT_MS = 20 * 60 * 1000;
 
 function readQuarantine(file = QUARANTINE_FILE) {
   if (!fs.existsSync(file)) return new Set();
@@ -42,37 +70,83 @@ function readQuarantine(file = QUARANTINE_FILE) {
   );
 }
 
-// `dir` is a parameter, not a constant, so a test can point discovery at a scratch
+function walk(absDir, suffix, recursive, out, prefix) {
+  let entries;
+  try {
+    entries = fs.readdirSync(absDir, { withFileTypes: true });
+  } catch (err) {
+    if (err && err.code === 'ENOENT') return out;
+    throw err;
+  }
+  for (const entry of entries) {
+    const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
+    if (entry.isDirectory()) {
+      if (recursive && entry.name !== 'node_modules') {
+        walk(path.join(absDir, entry.name), suffix, recursive, out, rel);
+      }
+    } else if (entry.name.endsWith(suffix)) {
+      out.push(rel);
+    }
+  }
+  return out;
+}
+
+// `roots` is a parameter, not a constant, so a test can point discovery at a scratch
 // directory and prove the glob actually globs. A discovery function that only ever
-// reads one hardcoded path cannot be distinguished from a hardcoded list by any test
-// that calls it, and "it is a glob" is the single claim this whole script rests on.
-function discoverSuites(dir = TESTS_DIR) {
-  return fs
-    .readdirSync(dir)
-    .filter((name) => name.endsWith(SUITE_SUFFIX))
-    .sort();
+// reads its own hardcoded paths cannot be distinguished from a hardcoded list by any
+// test that calls it, and "it is a glob" is the single claim this whole script rests on.
+//
+// Returns repo-relative paths (e.g. `tests/foo.node.test.cjs`,
+// `mcp-server/test/bar.test.js`), NOT bare filenames: two roots can hold the same
+// basename, and a bare name would make one quarantine entry silence both.
+function discoverSuites(roots = SUITE_ROOTS, root = ROOT) {
+  const found = [];
+  for (const spec of roots) {
+    walk(path.join(root, spec.dir), spec.suffix, spec.recursive, found, spec.dir);
+  }
+  return found.sort();
 }
 
 // One `node --test` invocation for the whole set. Returns the exit code.
 function runSuites(files) {
   if (!files.length) return 0;
-  const result = spawnSync(
-    process.execPath,
-    ['--test', ...files.map((f) => path.join('tests', f))],
-    { cwd: ROOT, env: TEST_ENV, stdio: 'inherit' },
-  );
+  const result = spawnSync(process.execPath, ['--test', ...files], {
+    cwd: ROOT,
+    env: TEST_ENV,
+    stdio: 'inherit',
+    // A hung gated suite should not silently consume the whole job budget.
+    timeout: GATED_BATCH_TIMEOUT_MS,
+  });
   return result.status == null ? 1 : result.status;
 }
 
 // Per file, quietly — used only to ask whether a quarantined suite has started passing.
 function suitePasses(file) {
-  const result = spawnSync(process.execPath, ['--test', path.join('tests', file)], {
+  const result = spawnSync(process.execPath, ['--test', file], {
     cwd: ROOT,
     env: TEST_ENV,
     stdio: 'ignore',
     timeout: 180_000,
   });
   return result.status === 0;
+}
+
+// The run's decisions, as data. Pulled out of main() so they can be tested: the recovery
+// ratchet is the mechanism this whole script rests on ("quarantine is self-emptying"), and
+// in its first version that argument was carried entirely by untested code.
+function planRun(all, quarantined) {
+  const stale = [...quarantined].filter((f) => !all.includes(f)).sort();
+  const gated = all.filter((f) => !quarantined.has(f));
+  return { stale, gated };
+}
+
+// Exit 1 ONLY under CI. A quarantined suite that passes locally is a finding worth
+// printing and not worth failing on: at least one suite passes on a laptop and fails on a
+// runner, and failing developers for disagreeing with CI trains people to ignore the
+// message. CI can still never let a fixed suite stay quarantined.
+function recoveryOutcome(recovered, inCi) {
+  if (!recovered.length) return { exitCode: 0, enforced: false };
+  return { exitCode: inCi ? 1 : 0, enforced: Boolean(inCi) };
 }
 
 function main() {
@@ -82,7 +156,7 @@ function main() {
   // A quarantine entry naming a file that no longer exists is stale. Fail loudly rather
   // than skipping it: a stale entry is how a list starts describing a repo it has drifted
   // from, and that drift is the defect this script exists to end.
-  const missing = [...quarantined].filter((f) => !all.includes(f));
+  const { stale: missing, gated } = planRun(all, quarantined);
   if (missing.length) {
     console.error(
       `\n[node:test] quarantine names ${missing.length} suite(s) that do not exist:\n` +
@@ -93,10 +167,9 @@ function main() {
     return;
   }
 
-  const gated = all.filter((f) => !quarantined.has(f));
   console.log(
     `[node:test] ${gated.length} gated suite(s), ${quarantined.size} quarantined ` +
-      `(${all.length} discovered under tests/*${SUITE_SUFFIX}).`,
+      `(${all.length} discovered under ${SUITE_ROOTS.map((r) => r.dir).join(', ')}).`,
   );
 
   const gatedStatus = runSuites(gated);
@@ -112,7 +185,9 @@ function main() {
   // finding is still printed, because "this might be fixable now" is worth reading.
   const recovered = [...quarantined].sort().filter((f) => suitePasses(f));
   if (recovered.length) {
-    const inCi = Boolean(process.env.CI);
+    // `CI=false` is not CI. GitHub sets the literal string "true".
+    const inCi = String(process.env.CI || '').toLowerCase() === 'true';
+    const outcome = recoveryOutcome(recovered, inCi);
     console.error(
       `\n[node:test] ${recovered.length} quarantined suite(s) PASS here:\n` +
         recovered.map((f) => `  - ${f}`).join('\n') +
@@ -121,8 +196,8 @@ function main() {
           : `\nIf CI agrees, delete those lines from tests/node_suite_quarantine.txt.` +
             ` Not failing locally: only CI decides this.\n`),
     );
-    if (inCi) {
-      process.exitCode = 1;
+    if (outcome.enforced) {
+      process.exitCode = outcome.exitCode;
       return;
     }
   }
@@ -135,6 +210,9 @@ if (require.main === module) main();
 module.exports = {
   discoverSuites,
   readQuarantine,
+  planRun,
+  recoveryOutcome,
+  SUITE_ROOTS,
   SUITE_SUFFIX,
   TESTS_DIR,
   QUARANTINE_FILE,
