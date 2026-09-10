@@ -433,7 +433,7 @@ test('an upstream failure is counted as itself, not as the catch-all bucket', ()
 
 test('the provenance survives the catalog recovery that strips error_class', async () => {
   // The coverage the decline test above used to carry, now on a fixture where the recovery ACTUALLY
-  // fires. `routine_mapped` is not the model's own account of recommending — the mapper synthesises
+  // fires. `llm_context_routine` is not the model's own account of recommending — the mapper synthesises
   // missing_info from our logic — so this is a genuine gap the catalog may fill, and the recovery
   // deletes `error_class` from the trace. `llm_leg` must not be deleted with it, or the rescue
   // erases the evidence that anything went wrong all over again.
@@ -452,7 +452,7 @@ test('the provenance survives the catalog recovery that strips error_class', asy
       promptBundle: { prompt_spec: {}, schema_chars: 0 }, query: 'q', promptContract: { ok: true, issues: [] },
       llmTrace: { error_class: 'empty_structured', llm_leg: { invoked: true, outcome: 'empty_structured', upstream_status: null, latency_ms: 5 } },
       upstream: {}, contextMeta: {}, upstreamFailureCode: '', llmFailureClass: 'empty_structured', llmLatencyMs: 5,
-      answerJson: MAPPED_EMPTY, llmStructured: MAPPED_EMPTY, llmStructuredSource: 'routine_mapped',
+      answerJson: MAPPED_EMPTY, llmStructured: MAPPED_EMPTY, llmStructuredSource: 'llm_context_routine',
       initialLlmOutcome: 'empty_structured', llmInvoked: true,
     }),
     resolveConcernMainlineFailure: () => ({ effective_failure_class: 'none', failure_origin: 'none' }),

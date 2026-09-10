@@ -38,6 +38,21 @@ function carryRecoDeclineNotes(structured, { declined = false, declinedAnswer = 
   };
 }
 
+// Did the model actually SAY why it returned nothing? A bare `{recommendations: []}` is not a
+// refusal -- it is an empty answer, and on chat it is very likely a SUPPLY gap: the chat lane gets
+// no pre-LLM recall (isDirectRecoEntryType below excludes it), so a chat model returning an empty
+// list did so having been shown zero candidates. Treating that as a domain decision would empty a
+// shortlist the catalog could legitimately have filled.
+function hasStatedDeclineReason(structured) {
+  if (!isPlainObjectValue(structured)) return false;
+  for (const field of ['warnings', 'missing_info']) {
+    const values = structured[field];
+    if (!Array.isArray(values)) continue;
+    if (values.some((v) => typeof v === 'string' && v.trim())) return true;
+  }
+  return false;
+}
+
 function isDirectRecoEntryType(entryType) {
   const token = String(entryType || '').trim().toLowerCase();
   return token === 'direct' || token === 'agent_tool';
@@ -100,6 +115,13 @@ function applyStrictConformingTopUp({
 } = {}) {
   const noop = { structured, appended: [], appendedCount: 0 };
   if (!isPlainObjectValue(structured) || !Array.isArray(structured.recommendations)) return noop;
+  // AN EMPTY ANSWER HAS NO SLOTS TO FILL. This function fills the slots of a shortlist the model
+  // produced; on an empty answer "shortfall = target - 0" turns it into a REPLACEMENT, and it
+  // silently reinstated the exact defect the decline fix removes: measured by executing this helper
+  // with a bronzer decline, three catalog cleansers and { limit: 40, currency: 'USD' }, it appended
+  // all three. Only the agent bridge threads a priceCeiling and a shortlistTarget, so "a bronzer
+  // under $40" would have come back as cleansers on the one door this was written for.
+  if (structured.recommendations.length === 0) return noop;
   const catalogRows = [
     ...(isPlainObjectValue(catalogStructured) && Array.isArray(catalogStructured.recommendations)
       ? catalogStructured.recommendations
@@ -627,7 +649,10 @@ function createLegacyRecoMainlineExecutionRuntime(deps = {}) {
       const llmDeclinedInItsOwnWords =
         llmStructuredSource === 'llm_answer_json'
         && Boolean(llmStructuredRecoEmpty)
-        && isPlainObjectValue(llmStructured);
+        && isPlainObjectValue(llmStructured)
+        // ...AND the model gave a reason. The carry below exists because "its warnings/missing_info
+        // are the only account of WHY"; with neither there is no account, and nothing to honour.
+        && hasStatedDeclineReason(llmStructured);
       // A DECLINE IS NOT A GAP. Hoisted above the recovery gate below, because that gate treated
       // `llmStructuredRecoEmpty` as a FAILURE to be repaired from the catalog -- and a decline is
       // the model succeeding. Measured in prod 2026-09-10 on the agent door: a bronzer ask returned

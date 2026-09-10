@@ -727,6 +727,9 @@ function normalizeAuroraRecoLlmCallOutcome(outcome) {
     // 'provider_error' catch-all, so a turn where the MODEL declined and the catalog replaced it
     // was indistinguishable from the upstream erroring -- which is exactly the pair we spent
     // 2026-09-10 trying to tell apart.
+    // Recorded at routes.js:84692 and absent from this list, so it fell to 'provider_error' too --
+    // the same hole as the three below, found by the same review.
+    token === 'schema_invalid' ||
     token === 'catalog_grounded_primary' ||
     token === 'catalog_grounded_ungrounded_recovery' ||
     token === 'strict_conforming_top_up'

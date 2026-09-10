@@ -513,7 +513,7 @@ test('an empty answer the MODEL did not author still recovers from the catalog',
       upstream: null, contextMeta: {}, upstreamFailureCode: '', llmFailureClass: '',
       llmLatencyMs: 10, answerJson: null,
       llmStructured: { recommendations: [], missing_info: ['routine_missing'] },
-      llmStructuredSource: 'routine_mapped',
+      llmStructuredSource: 'llm_context_routine',
       llmTrace: {}, llmInvoked: true, initialLlmOutcome: 'success',
     }),
   });
@@ -523,4 +523,59 @@ test('an empty answer the MODEL did not author still recovers from the catalog',
   assert.equal(out.structuredSource, 'catalog_grounded',
     'a non-authored empty answer is still a gap the catalog may fill');
   assert.equal(out.structured.recommendations.length, 2);
+});
+
+test('a BARE empty answer is not a decline — with no stated reason the catalog still fills it', async () => {
+  // Review found this: the decline carve-out required only source + emptiness, so `{recommendations: []}`
+  // with NO warnings and NO missing_info was honoured as a refusal. It is not one — it is an empty
+  // answer, and on CHAT it is very likely a supply gap: the chat lane gets no pre-LLM recall
+  // (isDirectRecoEntryType covers 'direct' and 'agent_tool' only), so a chat model returning an empty
+  // list did so having been shown zero candidates. Honouring that would empty a shortlist the catalog
+  // could legitimately have filled.
+  const deps = declineDeps({
+    runRecoLlmPrimary: async () => ({
+      upstream: null, contextMeta: {}, upstreamFailureCode: '', llmFailureClass: '',
+      llmLatencyMs: 10, answerJson: null,
+      llmStructured: { recommendations: [], warnings: [], missing_info: [] },
+      llmStructuredSource: 'llm_answer_json',
+      llmTrace: {}, llmInvoked: true, initialLlmOutcome: 'success',
+    }),
+  });
+  const { runLegacyRecoMainlineExecution } = createLegacyRecoMainlineExecutionRuntime(deps);
+  const out = await runLegacyRecoMainlineExecution(baseArgs());
+
+  assert.equal(out.structuredSource, 'catalog_grounded',
+    'no stated reason means no refusal to honour — this is still a gap the catalog may fill');
+  assert.equal(out.structured.recommendations.length, 2);
+});
+
+test('a top-up cannot turn an EMPTY answer into a shortlist', async () => {
+  // Review found this too, and it defeated the whole fix on the one door it was written for.
+  // applyStrictConformingTopUp fills the SLOTS of a shortlist under a price ceiling; on an empty
+  // answer `shortfall = target - 0` turned it into a REPLACEMENT. Only the agent bridge threads a
+  // priceCeiling and a shortlistTarget, so "a bronzer for contouring under $40" came back as
+  // cleansers even with the decline honoured — measured by executing this helper directly.
+  const { applyStrictConformingTopUp } = require('../src/auroraBff/legacyRecoMainlineExecution');
+  const CLEANSERS = { recommendations: [
+    { product_id: 'c1', name: 'Revitalising Cleansing Gel', price: { amount: 20, currency: 'USD' } },
+    { product_id: 'c2', name: 'Replenishing Cleansing Lotion', price: { amount: 25, currency: 'USD' } },
+  ] };
+  const CEILING = { limit: 40, currency: 'USD' };
+
+  const onDecline = applyStrictConformingTopUp({
+    structured: { recommendations: [], missing_info: ['a bronzer is makeup; not substituting skincare'] },
+    catalogStructured: CLEANSERS, preLlmCatalogStructured: CLEANSERS,
+    priceCeiling: CEILING, shortlistTarget: 3,
+  });
+  assert.equal(onDecline.appendedCount, 0, 'an empty answer has no slots to fill');
+  assert.deepEqual(onDecline.structured.recommendations, []);
+
+  // CONTROL: a real shortlist under its target still gets topped up, or the guard has just
+  // disabled the feature rather than bounded it.
+  const onPartial = applyStrictConformingTopUp({
+    structured: { recommendations: [{ product_id: 'm1', name: 'A Bronzer', price: { amount: 30, currency: 'USD' } }] },
+    catalogStructured: CLEANSERS, preLlmCatalogStructured: CLEANSERS,
+    priceCeiling: CEILING, shortlistTarget: 3,
+  });
+  assert.ok(onPartial.appendedCount > 0, 'a non-empty shortlist must still be topped up to target');
 });
