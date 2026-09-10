@@ -1568,14 +1568,22 @@ test('8e. the tool description and the code agree — the promises are quoted fr
   // description says so again. Reading the file the scope RESOLVES TO keeps the two honest: when the
   // id is registered upstream and the default flips, this fails until the sentence is updated with
   // it — which is the point.
-  assert.ok(/The lane covers skincare \(including body care\), makeup and fragrance/.test(src),
-    "the domain the door's own prompt allows must be stated, since it changes what a makeup need gets back");
+  // THE DESCRIPTION DESCRIBES THE DOOR, NOT THE PROMPT. Those are different today: the loaded prompt
+  // allows makeup and fragrance, and buildRecoGenerateUserAsk (routes.js:71251) still frames every
+  // request as "Recommend a few skincare products for me" — a FIFTH copy of the domain rule, and the
+  // one nobody threaded. Live probes 2026-09-10: four consecutive makeup/fragrance needs returned
+  // zero, each citing that framing. Promising partners the prompt's domain would be the description
+  // running ahead of the code again, which is what this test exists to stop.
+  assert.ok(/SKINCARE IS THE ONLY CATEGORY THIS DOOR CURRENTLY SERVES/.test(src),
+    'the description must state what the door SERVES, not merely what its prompt allows');
+  assert.ok(/frames every request to the model as/.test(src),
+    'and it must name the cause, or the next reader will "fix" the prompt and change nothing');
   // THE TWO LIMITS ARE LOAD-BEARING and must not be quietly dropped when someone tightens the prose.
   // Measured on the live agent door 2026-09-10: four consecutive calls answered from the CATALOG path,
   // which reads no prompt, and a makeup / haircare / fragrance need each came back with cleansers. A
   // description promising category fidelity without that caveat would be the same
   // description-ahead-of-the-code defect this file exists to prevent (#2149).
-  assert.ok(/binds the model-authored path only/.test(src)
+  assert.ok(/bind the\s+MODEL-AUTHORED path only/.test(src)
     && /reads no prompt at all/.test(src),
     'the category promise must stay bounded to the path that actually reads the prompt');
   assert.ok(/a bare empty answer is treated as a gap the catalog may fill/.test(src),
@@ -1591,7 +1599,7 @@ test('8e. the tool description and the code agree — the promises are quoted fr
   // and the door resolves to it, so the promises are BEHIND the prompt instead — the description had
   // been telling partner agents the lane "never recommends makeup or fragrance" while it recommends
   // both. Asserted positively now, against the armed resolution below.
-  assert.ok(/does NOT cover haircare, beauty tools, brushes, sponges or devices/.test(src),
+  assert.ok(/Haircare, beauty tools, brushes, sponges, devices and anything outside beauty are not covered/.test(src),
     'the tools and haircare exclusions the loaded prompt states must be the ones the description names');
   // The mechanism that keeps this honest either way: read the prompt the scope RESOLVES TO.
   // THE MECHANISM THAT KEEPS THIS HONEST: read the prompt the scope RESOLVES TO — under the
