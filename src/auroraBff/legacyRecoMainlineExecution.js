@@ -663,9 +663,19 @@ function createLegacyRecoMainlineExecutionRuntime(deps = {}) {
       // and honouring that as a refusal would empty a shortlist the catalog was right to fill.
       // Nothing in the notes can tell a refusal from a clarification, so the template that defines
       // the contract is the gate.
-      const wideRecoTemplateInPlay =
-        typeof promptDomainScope === 'string'
-        && promptDomainScope.trim().toLowerCase() === 'beauty';
+      // THE GRANT, NOT THE ASK. An earlier revision read `promptDomainScope === 'beauty'`, which is
+      // the bridge ASKING for the wide template -- and the ask is inert by default:
+      // RECO_MAIN_WIDE_PROMPT_TEMPLATE_ID INHERITS the narrow id (routes.js:823), so unless the env
+      // names a different template the beauty ask loads reco_main_v1_2 and `wide_template_active`
+      // stays false. Gating on the ask meant applying v1_3's decline contract to v1_2's output on
+      // the agent door -- exposing the one door this fix targets to the very clarification ambiguity
+      // it protects chat from, and doing it silently the moment anyone used the #2165 rollback lever
+      // (repointing the env at v1_2) to disarm the template.
+      //
+      // `wide_template_active` is `domainWide && templateId !== RECO_MAIN_PROMPT_TEMPLATE_ID`
+      // (routes.js:46132) -- the ask AND the grant. Two other readers already use it
+      // (routes.js:71410, :71562); this is the third, not a new idiom.
+      const wideRecoTemplateInPlay = Boolean(promptBundle?.prompt_spec?.wide_template_active);
       const llmDeclinedInItsOwnWords =
         wideRecoTemplateInPlay
         && llmStructuredSource === 'llm_answer_json'

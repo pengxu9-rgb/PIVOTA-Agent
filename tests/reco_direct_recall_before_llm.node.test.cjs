@@ -66,7 +66,20 @@ function makeDeps(overrides = {}) {
     buildRecoLlmPromptState: (args) => {
       calls.promptStates.push(args);
       return {
-        promptBundle: { prompt_spec: { template_id: 't', llm_mode: null }, schema_chars: 0 },
+        promptBundle: {
+          prompt_spec: {
+            // MODELS BOTH HALVES, the way routes.js:46132 does:
+            //   wide_template_active = domainWide && templateId !== RECO_MAIN_PROMPT_TEMPLATE_ID
+            // The ASK alone is inert -- the wide id inherits the narrow one unless the env names a
+            // different template -- so a fixture that only sets promptDomainScope is modelling a
+            // DISARMED lane, which is the shipped default.
+            template_id: overrides.__wideTemplateArmed ? 'reco_main_v1_3' : 'reco_main_v1_2',
+            wide_template_active:
+              args?.promptDomainScope === 'beauty' && Boolean(overrides.__wideTemplateArmed),
+            llm_mode: null,
+          },
+          schema_chars: 0,
+        },
         query: 'q',
         promptContract: { ok: true, issues: [] },
         llmTraceSeed: {},
@@ -452,6 +465,9 @@ test('maxQueries only ever narrows the ladder; 0 means the historical cap of 8',
 
 function declineDeps(overrides = {}) {
   return makeDeps({
+    // the agent door with reco_main_v1_3 actually armed -- prod sets
+    // RECO_MAIN_WIDE_PROMPT_TEMPLATE_ID=reco_main_v1_3
+    __wideTemplateArmed: true,
     // The catalog has plenty to offer — that is precisely what made this fire.
     buildRecoGenerateFromCatalog: async () => ({
       structured: {
@@ -665,4 +681,53 @@ test('a decline reason may arrive in warnings, or as a bare string', async () =>
   const noFieldsAtAll = await run({ recommendations: [] });
   assert.equal(noFieldsAtAll.structuredSource, 'catalog_grounded',
     'an answer with no notes at all states no reason, on any door');
+});
+
+test('the ASK alone does not honour a decline — only the granted template does', async () => {
+  // BLOCKER FROM REVIEW ROUND 3, and the sharpest one on this branch. An earlier revision gated on
+  // `promptDomainScope === 'beauty'` — the bridge ASKING for the wide template. That ask is inert by
+  // default: RECO_MAIN_WIDE_PROMPT_TEMPLATE_ID INHERITS the narrow id (routes.js:823), so unless the
+  // env names a different template the beauty ask loads reco_main_v1_2 and the grant stays false.
+  //
+  // Gating on the ask applied v1_3's decline contract to v1_2's output on the agent door — the one
+  // door this fix targets — and would have done it silently the moment anyone used the #2165
+  // rollback lever to disarm the template.
+  const REASON = 'a bronzer is makeup; not substituting skincare';
+  const run = async (armed) => {
+    const deps = makeDeps({
+      __wideTemplateArmed: armed,
+      buildRecoGenerateFromCatalog: async () => ({
+        structured: { recommendations: [
+          { product_id: 'c1', name: 'Revitalising Cleansing Gel' },
+          { product_id: 'c2', name: 'Replenishing Cleansing Lotion' },
+        ] },
+        candidate_pool: CATALOG_POOL,
+        candidate_pool_state: { selected_candidate_count: 2, terminal_success: true },
+        debug: { ok_count: 2, query_count: 2 },
+      }),
+      runRecoLlmPrimary: async () => ({
+        upstream: null, contextMeta: {}, upstreamFailureCode: '', llmFailureClass: '',
+        llmLatencyMs: 10, answerJson: null,
+        llmStructured: { recommendations: [], missing_info: [REASON], warnings: [] },
+        llmStructuredSource: 'llm_answer_json',
+        llmTrace: {}, llmInvoked: true, initialLlmOutcome: 'success',
+      }),
+    });
+    const { runLegacyRecoMainlineExecution } = createLegacyRecoMainlineExecutionRuntime(deps);
+    // The ask is identical in both runs. Only the GRANT differs.
+    return runLegacyRecoMainlineExecution(baseArgs({
+      userAsk: 'a bronzer for contouring', promptDomainScope: 'beauty',
+    }));
+  };
+
+  const armed = await run(true);
+  assert.equal(armed.structuredSource, 'llm_primary',
+    'with reco_main_v1_3 actually granted, the decline it mandates is honoured');
+  assert.deepEqual(armed.structured.recommendations, []);
+
+  const disarmed = await run(false);
+  assert.equal(disarmed.structuredSource, 'catalog_grounded',
+    'asking for the wide template is not the same as getting it — on v1_2 this is the same '
+    + 'unresolvable clarification the chat lane is protected from');
+  assert.equal(disarmed.structured.recommendations.length, 2);
 });

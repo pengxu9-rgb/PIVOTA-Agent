@@ -180,7 +180,7 @@ test('a DECLINE is served as the answer, and keeps its provenance', async () => 
     finalizeRecommendationCandidatePools: () => ({ selected_recommendations: [] }),
     buildRecoGenerateFromCatalog: async () => ({ structured: CATALOG, candidate_pool: [{ product_id: 'p1' }], debug: {} }),
     deriveRecoPdpFastFallbackReasonCode: () => null,
-    buildRecoLlmPromptState: () => ({ promptBundle: { prompt_spec: {}, schema_chars: 0 }, query: 'q', promptContract: { ok: true, issues: [] }, llmTraceSeed: {} }),
+    buildRecoLlmPromptState: () => ({ promptBundle: { prompt_spec: { wide_template_active: true }, schema_chars: 0 }, query: 'q', promptContract: { ok: true, issues: [] }, llmTraceSeed: {} }),
     runRecoLlmPrimary: async () => ({
       promptBundle: { prompt_spec: {}, schema_chars: 0 }, query: 'q', promptContract: { ok: true, issues: [] },
       llmTrace: { error_class: LLM_FAILURE, llm_leg: { invoked: true, outcome: LLM_FAILURE, upstream_status: null, latency_ms: 5 } },
