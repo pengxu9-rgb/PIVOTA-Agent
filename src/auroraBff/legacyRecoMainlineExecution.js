@@ -38,6 +38,27 @@ function carryRecoDeclineNotes(structured, { declined = false, declinedAnswer = 
   };
 }
 
+// Did the model actually SAY why it returned nothing? A bare `{recommendations: []}` is not a
+// refusal -- it is an empty answer, and on chat it is very likely a SUPPLY gap: the chat lane gets
+// no pre-LLM recall (isDirectRecoEntryType below excludes it), so a chat model returning an empty
+// list did so having been shown zero candidates. Treating that as a domain decision would empty a
+// shortlist the catalog could legitimately have filled.
+function hasStatedDeclineReason(structured) {
+  // No isPlainObjectValue guard: the only caller already requires it one line above the call, so a
+  // guard here is unfalsifiable -- the same shape that was removed from the recovery gate earlier
+  // in this branch rather than left as a line no test can justify.
+  for (const field of ['warnings', 'missing_info']) {
+    const values = structured[field];
+    // A BARE STRING COUNTS. Both templates ask for an array, but "missing_info": "..." is a common
+    // model slip and nothing normalises before this read -- so the array-only version reproduced the
+    // original defect (cleansers served) on exactly the turns where the model DID explain itself.
+    if (typeof values === 'string' && values.trim()) return true;
+    if (!Array.isArray(values)) continue;
+    if (values.some((v) => typeof v === 'string' && v.trim())) return true;
+  }
+  return false;
+}
+
 function isDirectRecoEntryType(entryType) {
   const token = String(entryType || '').trim().toLowerCase();
   return token === 'direct' || token === 'agent_tool';
@@ -100,6 +121,13 @@ function applyStrictConformingTopUp({
 } = {}) {
   const noop = { structured, appended: [], appendedCount: 0 };
   if (!isPlainObjectValue(structured) || !Array.isArray(structured.recommendations)) return noop;
+  // AN EMPTY ANSWER HAS NO SLOTS TO FILL. This function fills the slots of a shortlist the model
+  // produced; on an empty answer "shortfall = target - 0" turns it into a REPLACEMENT, and it
+  // silently reinstated the exact defect the decline fix removes: measured by executing this helper
+  // with a bronzer decline, three catalog cleansers and { limit: 40, currency: 'USD' }, it appended
+  // all three. Only the agent bridge threads a priceCeiling and a shortlistTarget, so "a bronzer
+  // under $40" would have come back as cleansers on the one door this was written for.
+  if (structured.recommendations.length === 0) return noop;
   const catalogRows = [
     ...(isPlainObjectValue(catalogStructured) && Array.isArray(catalogStructured.recommendations)
       ? catalogStructured.recommendations
@@ -605,23 +633,6 @@ function createLegacyRecoMainlineExecutionRuntime(deps = {}) {
             ? buildRecoCatalogTransientFallbackStructured({ ctx })
             : null;
       }
-      const catalogRecoveredFromLlmGap =
-        (normalizedNonStepAwareLlmFailure === 'schema_invalid' ||
-          llmStructuredRecoEmpty) &&
-        catalogStructured &&
-        Array.isArray(catalogStructured.recommendations) &&
-        catalogStructured.recommendations.length > 0;
-      const structuredBeforeDeclineCarry = catalogRecoveredFromLlmGap
-        ? catalogStructured
-        : llmStructuredRecoEmpty
-          ? (
-              catalogStructured ||
-              catalogTransientFallbackStructured ||
-              llmStructured
-            )
-          : llmStructured ||
-            catalogStructured ||
-            catalogTransientFallbackStructured;
       // CARRY THE DECLINE. When the model returns a well-formed answer with NO
       // recommendations, that is a decision, and its warnings/missing_info are the only
       // account of WHY — "makeup items such as bronzers are outside the skincare domain
@@ -641,15 +652,73 @@ function createLegacyRecoMainlineExecutionRuntime(deps = {}) {
       // fabrication this carry exists to avoid, arriving through the door it did not guard.
       //
       // 'llm_answer_json' is the only source that is the model's own words about recommending.
+      // ONLY WHERE THE DECLINE IS A CONTRACT. reco_main_v1_3 -- the widened template, asked for by
+      // the agent bridge alone (promptDomainScope 'beauty') -- instructs the model to answer an
+      // off-category request with `recommendations: []` and the reason in missing_info. On that
+      // template an empty answer with a reason IS a refusal.
+      //
+      // reco_main_v1_2, which chat and the consumer lane run, contains no such instruction. There an
+      // empty list with `missing_info: ['Skin type']` is the model saying it lacks PROFILE data --
+      // both templates forbid clarifying questions, so an empty answer is the only channel it has --
+      // and honouring that as a refusal would empty a shortlist the catalog was right to fill.
+      // Nothing in the notes can tell a refusal from a clarification, so the template that defines
+      // the contract is the gate.
+      // THE GRANT, NOT THE ASK. An earlier revision read `promptDomainScope === 'beauty'`, which is
+      // the bridge ASKING for the wide template -- and the ask is inert by default:
+      // RECO_MAIN_WIDE_PROMPT_TEMPLATE_ID INHERITS the narrow id (routes.js:823), so unless the env
+      // names a different template the beauty ask loads reco_main_v1_2 and `wide_template_active`
+      // stays false. Gating on the ask meant applying v1_3's decline contract to v1_2's output on
+      // the agent door -- exposing the one door this fix targets to the very clarification ambiguity
+      // it protects chat from, and doing it silently the moment anyone used the #2165 rollback lever
+      // (repointing the env at v1_2) to disarm the template.
+      //
+      // `wide_template_active` is `domainWide && templateId !== RECO_MAIN_PROMPT_TEMPLATE_ID`
+      // (routes.js:46132) -- the ask AND the grant. Two other readers already use it
+      // (routes.js:71410, :71562); this is the third, not a new idiom.
+      const wideRecoTemplateInPlay = Boolean(promptBundle?.prompt_spec?.wide_template_active);
       const llmDeclinedInItsOwnWords =
-        llmStructuredSource === 'llm_answer_json'
+        wideRecoTemplateInPlay
+        && llmStructuredSource === 'llm_answer_json'
         && Boolean(llmStructuredRecoEmpty)
-        && isPlainObjectValue(llmStructured);
+        && isPlainObjectValue(llmStructured)
+        // ...AND the model gave a reason. The carry below exists because "its warnings/missing_info
+        // are the only account of WHY"; with neither there is no account, and nothing to honour.
+        && hasStatedDeclineReason(llmStructured);
+      // A DECLINE IS NOT A GAP. Hoisted above the recovery gate below, because that gate treated
+      // `llmStructuredRecoEmpty` as a FAILURE to be repaired from the catalog -- and a decline is
+      // the model succeeding. Measured in prod 2026-09-10 on the agent door: a bronzer ask returned
+      // three CLEANSERS with the model's own refusal ("Per category fidelity rules, we do not
+      // substitute skincare for a makeup request") pasted onto them as missing_info. The prompt fix
+      // worked and this gate reversed it, every time recall had anything at all to offer.
+      // NOTE: deliberately NOT gated on llmDeclinedInItsOwnWords. Both readers of this flag check
+      // the decline first, so a guard here is unfalsifiable -- a mutant removing it leaves every
+      // test green. The decline is handled where the flag is USED, below.
+      const catalogRecoveredFromLlmGap =
+        (normalizedNonStepAwareLlmFailure === 'schema_invalid' ||
+          llmStructuredRecoEmpty) &&
+        catalogStructured &&
+        Array.isArray(catalogStructured.recommendations) &&
+        catalogStructured.recommendations.length > 0;
+      const structuredBeforeDeclineCarry = llmDeclinedInItsOwnWords
+        ? llmStructured
+        : catalogRecoveredFromLlmGap
+        ? catalogStructured
+        : llmStructuredRecoEmpty
+          ? (
+              catalogStructured ||
+              catalogTransientFallbackStructured ||
+              llmStructured
+            )
+          : llmStructured ||
+            catalogStructured ||
+            catalogTransientFallbackStructured;
       structured = carryRecoDeclineNotes(structuredBeforeDeclineCarry, {
         declined: llmDeclinedInItsOwnWords,
         declinedAnswer: llmStructured,
       });
-      structuredSource = catalogRecoveredFromLlmGap
+      structuredSource = llmDeclinedInItsOwnWords
+        ? 'llm_primary'
+        : catalogRecoveredFromLlmGap
         ? 'catalog_grounded'
         : llmStructuredRecoEmpty
           ? (
@@ -669,6 +738,7 @@ function createLegacyRecoMainlineExecutionRuntime(deps = {}) {
                 ? 'catalog_transient_fallback'
                 : null;
       if (
+        !llmDeclinedInItsOwnWords &&
         !deterministicCatalogFirstEnabled &&
         promptContract.ok &&
         catalogStructured &&

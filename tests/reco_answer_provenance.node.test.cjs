@@ -162,13 +162,15 @@ test('a leg that was genuinely never invoked reports not_invoked, and invoked:fa
 
 const DECLINED = { recommendations: [], confidence: 0.2, warnings: [DECLINE_WARNING], missing_info: ['Skin type'] };
 
-test('the provenance survives the catalog recovery that strips error_class', async () => {
+test('a DECLINE is served as the answer, and keeps its provenance', async () => {
+  // REWRITTEN 2026-09-10. This test used to assert `structuredSource === 'catalog_grounded'` with
+  // the comment "the catalog did replace the declined answer" — it pinned the defect. Measured in
+  // prod that same day on the agent door: "a bronzer for contouring" returned three CLEANSERS with
+  // the model's refusal pasted onto them as missing_info. The model was right and the lane
+  // overrode it. The decline is now the answer; the catalog does not get to speak for it.
   const LLM_ANSWER = DECLINED;
   const LLM_FAILURE = 'empty_structured';
   const LLM_SOURCE = 'llm_answer_json';
-  // The recovery block deletes `error_class` from the trace when the catalog rescues an empty
-  // or schema-invalid answer — which was the last surviving hint that anything went wrong.
-  // `llm_leg` must not be stripped with it, or the rescue erases the evidence all over again.
   const { createLegacyRecoMainlineExecutionRuntime } = require('../src/auroraBff/legacyRecoMainlineExecution');
   const CATALOG = { recommendations: [{ product_id: 'p1', name: 'A Cleanser' }], warnings: [], missing_info: [] };
   const { runLegacyRecoMainlineExecution } = createLegacyRecoMainlineExecutionRuntime({
@@ -178,7 +180,7 @@ test('the provenance survives the catalog recovery that strips error_class', asy
     finalizeRecommendationCandidatePools: () => ({ selected_recommendations: [] }),
     buildRecoGenerateFromCatalog: async () => ({ structured: CATALOG, candidate_pool: [{ product_id: 'p1' }], debug: {} }),
     deriveRecoPdpFastFallbackReasonCode: () => null,
-    buildRecoLlmPromptState: () => ({ promptBundle: { prompt_spec: {}, schema_chars: 0 }, query: 'q', promptContract: { ok: true, issues: [] }, llmTraceSeed: {} }),
+    buildRecoLlmPromptState: () => ({ promptBundle: { prompt_spec: { wide_template_active: true }, schema_chars: 0 }, query: 'q', promptContract: { ok: true, issues: [] }, llmTraceSeed: {} }),
     runRecoLlmPrimary: async () => ({
       promptBundle: { prompt_spec: {}, schema_chars: 0 }, query: 'q', promptContract: { ok: true, issues: [] },
       llmTrace: { error_class: LLM_FAILURE, llm_leg: { invoked: true, outcome: LLM_FAILURE, upstream_status: null, latency_ms: 5 } },
@@ -206,17 +208,19 @@ test('the provenance survives the catalog recovery that strips error_class', asy
     targetContext: { framework_roles: [] }, profileSummary: {}, debug: false, logger: null,
     ctx: { request_id: 'r', lang: 'EN' }, entryType: 'direct', userAsk: 'a bronzer for contouring',
     prefix: '', recentLogs: [], globalStatus: {}, mainlineStageTimingsMs: {},
+    promptDomainScope: 'beauty',
   });
-  assert.equal(out.structuredSource, 'catalog_grounded', 'the catalog did replace the declined answer');
-  assert.equal(out.structured.recommendations.length, 1);
-  // MEASURED before this change: warnings [] and missing_info [] — the model's stated reason
-  // for declining was discarded along with the answer, so the buyer received an off-category
-  // shortlist with no explanation at all.
+  assert.equal(out.structuredSource, 'llm_primary',
+    'the model answered — "no" is an answer, and it is not the catalog\'s');
+  assert.deepEqual(out.structured.recommendations, [],
+    'the cleanser in the catalog must NOT become the answer to a bronzer request');
   assert.deepEqual(out.structured.warnings, [DECLINE_WARNING]);
   assert.deepEqual(out.structured.missing_info, ['Skin type']);
-  assert.equal(out.llmTrace.error_class, undefined, 'the recovery still clears error_class');
+  // error_class is NOT stripped here, and that is right: the strip belongs to the recovery, and
+  // nothing recovered. The sibling below covers the case where it does.
+  assert.equal(out.llmTrace.error_class, 'empty_structured');
   assert.deepEqual(out.llmTrace.llm_leg, { invoked: true, outcome: 'empty_structured', upstream_status: null, latency_ms: 5 },
-    'but the provenance survives it');
+    'and the provenance survives either way');
 });
 
 test('a SCHEMA-INVALID answer lends nothing, even though it carries a warnings array', async () => {
@@ -426,4 +430,77 @@ test('an upstream failure is counted as itself, not as the catch-all bucket', ()
   const rendered = metrics.renderVisionMetricsPrometheus();
   assert.match(rendered, /aurora_reco_llm_call_total\{stage="main",outcome="upstream_dependency_failure"\}/);
   assert.match(rendered, /aurora_reco_llm_call_total\{stage="main",outcome="upstream_timeout"\}/);
+
+  // ...and the LANE'S OWN outcomes, added 2026-09-10 and untested until review pointed it out:
+  // mutants removing any of them from the allowlist left every test green. Without them a turn where
+  // the MODEL declined and the catalog replaced it counted as 'provider_error' -- indistinguishable
+  // from the upstream erroring, which is the exact pair this work exists to separate.
+  const LANE_OUTCOMES = [
+    'schema_invalid',
+    'catalog_grounded_primary',
+    'catalog_grounded_ungrounded_recovery',
+    'strict_conforming_top_up',
+  ];
+  for (const outcome of LANE_OUTCOMES) {
+    metrics.recordAuroraRecoLlmCall({ stage: 'main', outcome });
+  }
+  const withLaneOutcomes = metrics.renderVisionMetricsPrometheus();
+  for (const outcome of LANE_OUTCOMES) {
+    assert.match(
+      withLaneOutcomes,
+      new RegExp(`aurora_reco_llm_call_total\\{stage="main",outcome="${outcome}"\\}`),
+      `${outcome} must render as itself, not collapse into provider_error`,
+    );
+  }
+});
+
+test('the provenance survives the catalog recovery that strips error_class', async () => {
+  // The coverage the decline test above used to carry, now on a fixture where the recovery ACTUALLY
+  // fires. `llm_context_routine` is not the model's own account of recommending — the mapper synthesises
+  // missing_info from our logic — so this is a genuine gap the catalog may fill, and the recovery
+  // deletes `error_class` from the trace. `llm_leg` must not be deleted with it, or the rescue
+  // erases the evidence that anything went wrong all over again.
+  const { createLegacyRecoMainlineExecutionRuntime } = require('../src/auroraBff/legacyRecoMainlineExecution');
+  const MAPPED_EMPTY = { recommendations: [], warnings: [], missing_info: ['routine_missing'] };
+  const CATALOG = { recommendations: [{ product_id: 'p1', name: 'A Cleanser' }], warnings: [], missing_info: [] };
+  const { runLegacyRecoMainlineExecution } = createLegacyRecoMainlineExecutionRuntime({
+    pickFirstTrimmed: (...v) => v.map((x) => String(x == null ? '' : x).trim()).find(Boolean) || '',
+    isPlainObject: (v) => Boolean(v) && typeof v === 'object' && !Array.isArray(v),
+    finalizeConcernFrameworkCandidatePools: () => ({ selected_recommendations: [] }),
+    finalizeRecommendationCandidatePools: () => ({ selected_recommendations: [] }),
+    buildRecoGenerateFromCatalog: async () => ({ structured: CATALOG, candidate_pool: [{ product_id: 'p1' }], debug: {} }),
+    deriveRecoPdpFastFallbackReasonCode: () => null,
+    buildRecoLlmPromptState: () => ({ promptBundle: { prompt_spec: {}, schema_chars: 0 }, query: 'q', promptContract: { ok: true, issues: [] }, llmTraceSeed: {} }),
+    runRecoLlmPrimary: async () => ({
+      promptBundle: { prompt_spec: {}, schema_chars: 0 }, query: 'q', promptContract: { ok: true, issues: [] },
+      llmTrace: { error_class: 'empty_structured', llm_leg: { invoked: true, outcome: 'empty_structured', upstream_status: null, latency_ms: 5 } },
+      upstream: {}, contextMeta: {}, upstreamFailureCode: '', llmFailureClass: 'empty_structured', llmLatencyMs: 5,
+      answerJson: MAPPED_EMPTY, llmStructured: MAPPED_EMPTY, llmStructuredSource: 'llm_context_routine',
+      initialLlmOutcome: 'empty_structured', llmInvoked: true,
+    }),
+    resolveConcernMainlineFailure: () => ({ effective_failure_class: 'none', failure_origin: 'none' }),
+    resolveRecoEffectiveFailure: () => ({ effective_failure_class: 'none', failure_origin: 'none' }),
+    normalizeRecoFailureClass: (v) => v || 'none',
+    hasEmptyStructuredRecommendations: (x) => Boolean(
+      x && typeof x === 'object' && !Array.isArray(x)
+      && Array.isArray(x.recommendations) && x.recommendations.length === 0,
+    ),
+    shouldUseRecoCatalogTransientFallback: () => false,
+    buildRecoCatalogTransientFallbackStructured: () => null,
+    recordAuroraRecoLlmCall: () => {},
+  });
+  const out = await runLegacyRecoMainlineExecution({
+    targetContext: { framework_roles: [] }, profileSummary: {}, debug: false, logger: null,
+    ctx: { request_id: 'r', lang: 'EN' }, entryType: 'direct', userAsk: 'what should i use',
+    prefix: '', recentLogs: [], globalStatus: {}, mainlineStageTimingsMs: {},
+  });
+
+  assert.equal(out.structuredSource, 'catalog_grounded',
+    'a gap the model did not author is still the catalog\'s to fill');
+  assert.equal(out.structured.recommendations.length, 1);
+  assert.deepEqual(out.structured.missing_info, [],
+    'and nothing the mapper synthesised may be presented as the model\'s reasoning');
+  assert.equal(out.llmTrace.error_class, undefined, 'the recovery still clears error_class');
+  assert.deepEqual(out.llmTrace.llm_leg, { invoked: true, outcome: 'empty_structured', upstream_status: null, latency_ms: 5 },
+    'but the provenance survives it');
 });

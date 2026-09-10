@@ -1062,6 +1062,7 @@ jobs:
             tests/reco_answer_provenance.node.test.cjs \
             tests/reco_confidence_basis.node.test.cjs \
             tests/reco_answer_path_telemetry.node.test.cjs \
+            tests/reco_agent_door_catalog_gates.node.test.cjs \
             tests/aurora_bff_beauty_mainline_handoff.node.test.cjs \
             tests/merchant_variant_source.node.test.cjs \
             tests/sourcing_sentinel_merchant_scope.node.test.cjs \

@@ -66,7 +66,20 @@ function makeDeps(overrides = {}) {
     buildRecoLlmPromptState: (args) => {
       calls.promptStates.push(args);
       return {
-        promptBundle: { prompt_spec: { template_id: 't', llm_mode: null }, schema_chars: 0 },
+        promptBundle: {
+          prompt_spec: {
+            // MODELS BOTH HALVES, the way routes.js:46132 does:
+            //   wide_template_active = domainWide && templateId !== RECO_MAIN_PROMPT_TEMPLATE_ID
+            // The ASK alone is inert -- the wide id inherits the narrow one unless the env names a
+            // different template -- so a fixture that only sets promptDomainScope is modelling a
+            // DISARMED lane, which is the shipped default.
+            template_id: overrides.__wideTemplateArmed ? 'reco_main_v1_3' : 'reco_main_v1_2',
+            wide_template_active:
+              args?.promptDomainScope === 'beauty' && Boolean(overrides.__wideTemplateArmed),
+            llm_mode: null,
+          },
+          schema_chars: 0,
+        },
         query: 'q',
         promptContract: { ok: true, issues: [] },
         llmTraceSeed: {},
@@ -434,4 +447,287 @@ test('maxQueries only ever narrows the ladder; 0 means the historical cap of 8',
   assert.ok(unbounded.length > 2, `expected the historical ladder, got ${unbounded.length}`);
   assert.equal(bounded.length, 2);
   assert.deepEqual(bounded.map((q) => q.query), unbounded.slice(0, 2).map((q) => q.query));
+});
+
+// ---------------------------------------------------------------------------
+// A MODEL DECLINE IS AN ANSWER, NOT A GAP TO BE FILLED FROM THE CATALOG
+// ---------------------------------------------------------------------------
+//
+// Measured in prod on the agent door, 2026-09-10: "a bronzer for contouring my cheekbones" came back
+// as three CLEANSERS, `source_mode: catalog_grounded`, with the model's own refusal pasted onto them
+// in missing_info — "The request specifically asks for a bronzer for contouring, which falls under
+// makeup." Same for a shampoo ask and a perfume ask. The widened prompt (reco_main_v1_3) was doing
+// exactly what it was written to do, and the recovery gate below reversed it on every turn where
+// recall had anything at all to hand back.
+//
+// `llmStructuredRecoEmpty` was being read as "the model failed to answer". For a decline it means
+// "the model answered, and the answer is no".
+
+function declineDeps(overrides = {}) {
+  return makeDeps({
+    // the agent door with reco_main_v1_3 actually armed -- prod sets
+    // RECO_MAIN_WIDE_PROMPT_TEMPLATE_ID=reco_main_v1_3
+    __wideTemplateArmed: true,
+    // The catalog has plenty to offer — that is precisely what made this fire.
+    buildRecoGenerateFromCatalog: async () => ({
+      structured: {
+        recommendations: [
+          { product_id: 'clean_1', name: 'Revitalising Cleansing Gel', category: 'Cleanser' },
+          { product_id: 'clean_2', name: 'Replenishing Cleansing Lotion', category: 'Cleanser' },
+        ],
+      },
+      candidate_pool: CATALOG_POOL,
+      candidate_pool_state: { selected_candidate_count: 2, terminal_success: true },
+      debug: { ok_count: 2, query_count: 2 },
+    }),
+    ...overrides,
+  });
+}
+
+const DECLINE_NOTE =
+  'The request specifically asks for a bronzer for contouring, which falls under makeup.';
+
+test('a model DECLINE survives as the answer instead of being replaced by catalog rows', async () => {
+  const llmCalls = [];
+  const deps = declineDeps({
+    recordAuroraRecoLlmCall: (args) => { llmCalls.push(args); },
+    runRecoLlmPrimary: async () => ({
+      upstream: null, contextMeta: {}, upstreamFailureCode: '', llmFailureClass: '',
+      llmLatencyMs: 10, answerJson: null,
+      // The model's own words about recommending: a well-formed answer with NO products.
+      llmStructured: { recommendations: [], missing_info: [DECLINE_NOTE], warnings: [] },
+      llmStructuredSource: 'llm_answer_json',
+      llmTrace: {}, llmInvoked: true, initialLlmOutcome: 'success',
+    }),
+  });
+  const { runLegacyRecoMainlineExecution } = createLegacyRecoMainlineExecutionRuntime(deps);
+  const out = await runLegacyRecoMainlineExecution(baseArgs({
+    userAsk: 'a bronzer for contouring',
+    // The agent door, the only caller that asks for reco_main_v1_3 -- the template that makes an
+    // empty answer with a reason a CONTRACT rather than a guess.
+    promptDomainScope: 'beauty',
+  }));
+
+  assert.equal(out.structuredSource, 'llm_primary',
+    'a decline is the model answering, not a catalog gap — it must not be relabelled catalog_grounded');
+  assert.deepEqual(out.structured.recommendations, [],
+    'the cleansers must NOT become the answer to a bronzer request');
+  assert.ok((out.structured.missing_info || []).includes(DECLINE_NOTE),
+    'and the reason must survive as the answer, not as a footnote on someone else\'s products');
+
+  // AND THE TELEMETRY MUST NOT CLAIM A RECOVERY EITHER. The block that erases llmFailureClass and
+  // stamps `catalog_recovered_empty_structured` runs on the same `llmStructuredRecoEmpty` signal, so
+  // without this a decline still reported as a catalog recovery and the counter logged
+  // `catalog_grounded_primary` — an operator reading either would think the model had failed.
+  assert.notEqual(out.initialLlmOutcome, 'catalog_recovered_empty_structured',
+    'a decline is not a recovery from an empty answer');
+  assert.ok(!llmCalls.some((c) => c && c.outcome === 'catalog_grounded_primary'),
+    'and it must not be counted as the catalog answering primary');
+});
+
+test('an empty answer the MODEL did not author still recovers from the catalog', async () => {
+  // The control. Without it the fix above could be "never recover", which would turn every mapped
+  // routine and every malformed upstream reply into an empty shortlist. Only `llm_answer_json` is
+  // the model's own account; a mapped routine synthesises missing_info from our own logic.
+  const deps = declineDeps({
+    runRecoLlmPrimary: async () => ({
+      upstream: null, contextMeta: {}, upstreamFailureCode: '', llmFailureClass: '',
+      llmLatencyMs: 10, answerJson: null,
+      llmStructured: { recommendations: [], missing_info: ['routine_missing'] },
+      llmStructuredSource: 'llm_context_routine',
+      llmTrace: {}, llmInvoked: true, initialLlmOutcome: 'success',
+    }),
+  });
+  const { runLegacyRecoMainlineExecution } = createLegacyRecoMainlineExecutionRuntime(deps);
+  const out = await runLegacyRecoMainlineExecution(baseArgs());
+
+  assert.equal(out.structuredSource, 'catalog_grounded',
+    'a non-authored empty answer is still a gap the catalog may fill');
+  assert.equal(out.structured.recommendations.length, 2);
+});
+
+test('a BARE empty answer is not a decline — with no stated reason the catalog still fills it', async () => {
+  // Review found this: the decline carve-out required only source + emptiness, so `{recommendations: []}`
+  // with NO warnings and NO missing_info was honoured as a refusal. It is not one — it is an empty
+  // answer, and on CHAT it is very likely a supply gap: the chat lane gets no pre-LLM recall
+  // (isDirectRecoEntryType covers 'direct' and 'agent_tool' only), so a chat model returning an empty
+  // list did so having been shown zero candidates. Honouring that would empty a shortlist the catalog
+  // could legitimately have filled.
+  const deps = declineDeps({
+    runRecoLlmPrimary: async () => ({
+      upstream: null, contextMeta: {}, upstreamFailureCode: '', llmFailureClass: '',
+      llmLatencyMs: 10, answerJson: null,
+      llmStructured: { recommendations: [], warnings: [], missing_info: [] },
+      llmStructuredSource: 'llm_answer_json',
+      llmTrace: {}, llmInvoked: true, initialLlmOutcome: 'success',
+    }),
+  });
+  const { runLegacyRecoMainlineExecution } = createLegacyRecoMainlineExecutionRuntime(deps);
+  const out = await runLegacyRecoMainlineExecution(baseArgs());
+
+  assert.equal(out.structuredSource, 'catalog_grounded',
+    'no stated reason means no refusal to honour — this is still a gap the catalog may fill');
+  assert.equal(out.structured.recommendations.length, 2);
+});
+
+test('a top-up cannot turn an EMPTY answer into a shortlist', async () => {
+  // Review found this too, and it defeated the whole fix on the one door it was written for.
+  // applyStrictConformingTopUp fills the SLOTS of a shortlist under a price ceiling; on an empty
+  // answer `shortfall = target - 0` turned it into a REPLACEMENT. Only the agent bridge threads a
+  // priceCeiling and a shortlistTarget, so "a bronzer for contouring under $40" came back as
+  // cleansers even with the decline honoured — measured by executing this helper directly.
+  const { applyStrictConformingTopUp } = require('../src/auroraBff/legacyRecoMainlineExecution');
+  const CLEANSERS = { recommendations: [
+    { product_id: 'c1', name: 'Revitalising Cleansing Gel', price: { amount: 20, currency: 'USD' } },
+    { product_id: 'c2', name: 'Replenishing Cleansing Lotion', price: { amount: 25, currency: 'USD' } },
+  ] };
+  const CEILING = { limit: 40, currency: 'USD' };
+
+  const onDecline = applyStrictConformingTopUp({
+    structured: { recommendations: [], missing_info: ['a bronzer is makeup; not substituting skincare'] },
+    catalogStructured: CLEANSERS, preLlmCatalogStructured: CLEANSERS,
+    priceCeiling: CEILING, shortlistTarget: 3,
+  });
+  assert.equal(onDecline.appendedCount, 0, 'an empty answer has no slots to fill');
+  assert.deepEqual(onDecline.structured.recommendations, []);
+
+  // CONTROL: a real shortlist under its target still gets topped up, or the guard has just
+  // disabled the feature rather than bounded it.
+  const onPartial = applyStrictConformingTopUp({
+    structured: { recommendations: [{ product_id: 'm1', name: 'A Bronzer', price: { amount: 30, currency: 'USD' } }] },
+    catalogStructured: CLEANSERS, preLlmCatalogStructured: CLEANSERS,
+    priceCeiling: CEILING, shortlistTarget: 3,
+  });
+  assert.ok(onPartial.appendedCount > 0, 'a non-empty shortlist must still be topped up to target');
+});
+
+test('CHAT: an empty answer with a reason is a CLARIFICATION, not a refusal, and still recovers', async () => {
+  // THE BLOCKER FROM REVIEW ROUND 2. The decline carve-out had no door gate, so this exact input --
+  // the PR's own fixture text -- emptied a chat shortlist that main served from the catalog:
+  //
+  //     { recommendations: [], missing_info: ['Skin type'] }   entryType: 'chat'
+  //
+  // reco_main_v1_2, which chat and the consumer lane run, never instructs an empty answer with a
+  // reason. Both templates forbid clarifying questions, so an empty list IS how the model says it
+  // lacks profile data. Nothing in the notes distinguishes that from a refusal, so the gate is the
+  // template: only reco_main_v1_3 (promptDomainScope 'beauty', asked for by the agent bridge alone)
+  // makes empty-with-a-reason a contract.
+  const deps = declineDeps({
+    runRecoLlmPrimary: async () => ({
+      upstream: null, contextMeta: {}, upstreamFailureCode: '', llmFailureClass: '',
+      llmLatencyMs: 10, answerJson: null,
+      llmStructured: { recommendations: [], missing_info: ['Skin type'], warnings: [] },
+      llmStructuredSource: 'llm_answer_json',
+      llmTrace: {}, llmInvoked: true, initialLlmOutcome: 'success',
+    }),
+  });
+  const { runLegacyRecoMainlineExecution } = createLegacyRecoMainlineExecutionRuntime(deps);
+
+  const chat = await runLegacyRecoMainlineExecution(baseArgs({
+    entryType: 'chat', userAsk: 'what should i use',
+    // no promptDomainScope: chat runs the narrow template
+  }));
+  assert.equal(chat.structuredSource, 'catalog_grounded',
+    'a v1_2 lane has no decline contract — this is a clarification and the catalog may still answer');
+  assert.equal(chat.structured.recommendations.length, 2);
+
+  // The consumer direct lane is the same template, so the same answer.
+  const consumer = await runLegacyRecoMainlineExecution(baseArgs({ userAsk: 'a gentle exfoliant' }));
+  assert.equal(consumer.structuredSource, 'catalog_grounded');
+
+  // ...and the SAME answer on the agent door IS honoured, because v1_3 defines it as a refusal.
+  const agent = await runLegacyRecoMainlineExecution(baseArgs({
+    userAsk: 'a bronzer for contouring', promptDomainScope: 'beauty',
+  }));
+  assert.equal(agent.structuredSource, 'llm_primary',
+    'the door that asked for the wide template gets its contract honoured');
+  assert.deepEqual(agent.structured.recommendations, []);
+});
+
+test('a decline reason may arrive in warnings, or as a bare string', async () => {
+  // Both halves of hasStatedDeclineReason were untested: mutants dropping `warnings` from the field
+  // list and dropping the `.trim()` check both survived. And an array-only read reproduced the
+  // original defect on a common model slip -- `missing_info` as a plain string.
+  const run = async (llmStructured) => {
+    const deps = declineDeps({
+      runRecoLlmPrimary: async () => ({
+        upstream: null, contextMeta: {}, upstreamFailureCode: '', llmFailureClass: '',
+        llmLatencyMs: 10, answerJson: null, llmStructured,
+        llmStructuredSource: 'llm_answer_json',
+        llmTrace: {}, llmInvoked: true, initialLlmOutcome: 'success',
+      }),
+    });
+    const { runLegacyRecoMainlineExecution } = createLegacyRecoMainlineExecutionRuntime(deps);
+    return runLegacyRecoMainlineExecution(baseArgs({
+      userAsk: 'a bronzer for contouring', promptDomainScope: 'beauty',
+    }));
+  };
+
+  const viaWarnings = await run({ recommendations: [], warnings: [DECLINE_NOTE], missing_info: [] });
+  assert.equal(viaWarnings.structuredSource, 'llm_primary', 'a reason in warnings is still a reason');
+
+  const viaBareString = await run({ recommendations: [], missing_info: DECLINE_NOTE });
+  assert.equal(viaBareString.structuredSource, 'llm_primary',
+    'the templates ask for an array, but a bare string is a common slip and still an explanation');
+
+  const whitespaceOnly = await run({ recommendations: [], missing_info: ['   '], warnings: [] });
+  assert.equal(whitespaceOnly.structuredSource, 'catalog_grounded',
+    'whitespace is not an explanation');
+
+  // FIELDS ABSENT ENTIRELY, not merely empty. This is the bare shape a model actually emits when it
+  // has nothing to say, and it is distinct from `{warnings: [], missing_info: []}`: the reader walks
+  // a different branch for `undefined` than for an empty array, and a mutant treating a non-array as
+  // "reason present" survived every other fixture here.
+  const noFieldsAtAll = await run({ recommendations: [] });
+  assert.equal(noFieldsAtAll.structuredSource, 'catalog_grounded',
+    'an answer with no notes at all states no reason, on any door');
+});
+
+test('the ASK alone does not honour a decline — only the granted template does', async () => {
+  // BLOCKER FROM REVIEW ROUND 3, and the sharpest one on this branch. An earlier revision gated on
+  // `promptDomainScope === 'beauty'` — the bridge ASKING for the wide template. That ask is inert by
+  // default: RECO_MAIN_WIDE_PROMPT_TEMPLATE_ID INHERITS the narrow id (routes.js:823), so unless the
+  // env names a different template the beauty ask loads reco_main_v1_2 and the grant stays false.
+  //
+  // Gating on the ask applied v1_3's decline contract to v1_2's output on the agent door — the one
+  // door this fix targets — and would have done it silently the moment anyone used the #2165
+  // rollback lever to disarm the template.
+  const REASON = 'a bronzer is makeup; not substituting skincare';
+  const run = async (armed) => {
+    const deps = makeDeps({
+      __wideTemplateArmed: armed,
+      buildRecoGenerateFromCatalog: async () => ({
+        structured: { recommendations: [
+          { product_id: 'c1', name: 'Revitalising Cleansing Gel' },
+          { product_id: 'c2', name: 'Replenishing Cleansing Lotion' },
+        ] },
+        candidate_pool: CATALOG_POOL,
+        candidate_pool_state: { selected_candidate_count: 2, terminal_success: true },
+        debug: { ok_count: 2, query_count: 2 },
+      }),
+      runRecoLlmPrimary: async () => ({
+        upstream: null, contextMeta: {}, upstreamFailureCode: '', llmFailureClass: '',
+        llmLatencyMs: 10, answerJson: null,
+        llmStructured: { recommendations: [], missing_info: [REASON], warnings: [] },
+        llmStructuredSource: 'llm_answer_json',
+        llmTrace: {}, llmInvoked: true, initialLlmOutcome: 'success',
+      }),
+    });
+    const { runLegacyRecoMainlineExecution } = createLegacyRecoMainlineExecutionRuntime(deps);
+    // The ask is identical in both runs. Only the GRANT differs.
+    return runLegacyRecoMainlineExecution(baseArgs({
+      userAsk: 'a bronzer for contouring', promptDomainScope: 'beauty',
+    }));
+  };
+
+  const armed = await run(true);
+  assert.equal(armed.structuredSource, 'llm_primary',
+    'with reco_main_v1_3 actually granted, the decline it mandates is honoured');
+  assert.deepEqual(armed.structured.recommendations, []);
+
+  const disarmed = await run(false);
+  assert.equal(disarmed.structuredSource, 'catalog_grounded',
+    'asking for the wide template is not the same as getting it — on v1_2 this is the same '
+    + 'unresolvable clarification the chat lane is protected from');
+  assert.equal(disarmed.structured.recommendations.length, 2);
 });

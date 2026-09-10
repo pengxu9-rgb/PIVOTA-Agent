@@ -341,8 +341,16 @@ function createLegacyRecoGenerationEngineRuntime(deps = {}) {
     const frameworkCatalogFirstEnabled = Boolean(
       Array.isArray(targetContext?.framework_roles) && targetContext.framework_roles.length > 0,
     );
+    // NEVER FOR THE AGENT DOOR. Catalog-first assigns structuredSource BEFORE the model is called and
+    // never reads its answer back, so `recommend_products` -- which advertises a beauty vertical the
+    // catalog leg is skincare-shaped for -- would answer from a promptless path while still paying
+    // for the LLM. Prod runs AURORA_BFF_RECO_STEP_AWARE_CATALOG_FIRST_ENABLED=true (the code default
+    // here is false), and the target resolver marks any ask NAMING A STEP as step_aware -- 'serum',
+    // 'toner', 'moisturizer' -- so this fires on ordinary partner traffic. Gated on the door rather
+    // than the env flag because the flag also governs chat and the consumer lane.
     const deterministicCatalogFirstEnabled = Boolean(
       AURORA_BFF_RECO_STEP_AWARE_CATALOG_FIRST_ENABLED
+        && recoTriggerSource !== 'agent_tool'
         && (targetContext.step_aware_intent || frameworkCatalogFirstEnabled),
     );
     const stepAwareFailurePolicyEnabled = Boolean(
@@ -500,7 +508,11 @@ function createLegacyRecoGenerationEngineRuntime(deps = {}) {
     let ungroundedCatalogRecoveryApplied = false;
     if (
       shouldRecoverFullyUngroundedDirectAnswer({
-        enabled: AURORA_BFF_RECO_DIRECT_UNGROUNDED_RECOVERY_ENABLED,
+        // Same reason as catalog-first above: swapping a fully-ungrounded answer for catalog rows is
+        // how "we don't carry a bronzer" became "here are three cleansers". The agent bridge already
+        // reports unresolved archetypes as TEXT, which is what a partner agent can actually route on.
+        enabled: AURORA_BFF_RECO_DIRECT_UNGROUNDED_RECOVERY_ENABLED
+          && recoTriggerSource !== 'agent_tool',
         entryType,
         structuredSource,
         groundingApplied: Boolean(postMainline.groundingResult),
