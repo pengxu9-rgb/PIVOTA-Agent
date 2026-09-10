@@ -63,7 +63,9 @@ function isConcernPrimaryRoleWinnerSafe(row, { semanticPlan = null } = {}) {
   const primaryRoleId = pickFirstTrimmed(primaryRole?.role_id);
   const matchedRoleId = pickFirstTrimmed(row?.matched_role_id, row?.matchedRoleId);
   if (!primaryRoleId || !matchedRoleId || matchedRoleId !== primaryRoleId) return false;
-  const scopeClassification = classifyConcernScopeCandidate(row);
+  const scopeClassification = classifyConcernScopeCandidate(row, {
+    requestedStep: pickFirstTrimmed(primaryRole?.preferred_step) || '',
+  });
   if (scopeClassification.hard_reject) return false;
   const candidateText = uniqCaseInsensitiveStrings([
     buildConcernFrameworkCandidateText(row),

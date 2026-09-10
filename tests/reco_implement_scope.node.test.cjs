@@ -252,7 +252,13 @@ test('PRE-EXISTING, not caused by this PR: brush / blender / applicator are alre
   assert.equal(domainOf({ title: 'Sponge Applicator Tinted Moisturizer' }), 'explicit_non_skincare');
   // The reason distinguishes the two paths: these come from the pre-existing fatal list, NOT from the
   // new implement rule.
-  assert.equal(classify({ title: 'Brush Cleanser' }).reason, 'explicit_non_skincare');
+  //
+  // RENAMED 2026-09-10 from 'explicit_non_skincare' to 'explicit_non_beauty'. The distinction this
+  // assertion exists to draw is unchanged and still pinned; what changed is that the fatal list was
+  // SPLIT, because it conflated "not a beauty product at all" (a brush, a dog collar) with "a beauty
+  // product in another category" (a blush, a perfume). Only the second half may relax when that
+  // category is what the buyer asked for. A brush is in the first half and relaxes for nobody.
+  assert.equal(classify({ title: 'Brush Cleanser' }).reason, 'explicit_non_beauty');
   assert.equal(classify({ title: 'Loofah' }).reason, 'explicit_non_skincare_implement');
 });
 

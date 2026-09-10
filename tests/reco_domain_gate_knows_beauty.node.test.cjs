@@ -1,0 +1,266 @@
+'use strict';
+
+// THE OFF-VERTICAL GATE WAS A SKINCARE GATE WEARING A BEAUTY BADGE.
+//
+// One regex answered two different questions: "is this a beauty product at all?" (lingerie, a dog
+// collar, a plush toy) and "is this a beauty product in the category we were built for?" (a blush, a
+// perfume). Collapsed together, a bronzer on a BRONZER REQUEST was hard-rejected at recall —
+// deleted before ranking, before the model ever saw it. Measured on origin/main: bronzer, blush,
+// lipstick, foundation and eau de toilette all `hard_reject: true`.
+//
+// Split, so the relaxable half relaxes and the other half never does. This is item 2 of the makeup
+// chain; item 1 (#2178) taught the taxonomy that makeup exists, and this consumes that single source
+// rather than growing a seventh copy of the vocabulary.
+
+process.env.AURORA_BFF_USE_MOCK = 'true';
+
+const test = require('node:test');
+const assert = require('node:assert/strict');
+
+const mod = require('../src/auroraBff/usecases/recoHybridResolveCandidates');
+const classify = (mod.__internal && mod.__internal.classifySkincareCandidate) || mod.classifySkincareCandidate;
+const at = (name, requestedStep) => classify({ name }, requestedStep ? { requestedStep } : undefined);
+
+test('the requested beauty category is admitted, and only that category', () => {
+  for (const name of ['Hoola Matte Bronzer', 'Bronzing Powder', '修容盘']) {
+    const r = at(name, 'bronzer');
+    assert.equal(r.hard_reject, false, `${name} must survive a bronzer request`);
+    assert.equal(r.penalty, 0, `${name} must not be penalised on the request that named it`);
+    assert.equal(r.classification, 'explicit_requested_beauty_category');
+  }
+  // FRAGRANCE, the positive case. Without this the fragrance half of the gate can be deleted
+  // entirely and every test still passes: a perfume falls through to the older soft block list and
+  // is rejected, which looks the same from `hard_reject` alone on a request that never admitted it.
+  for (const name of ['Chanel No 5 perfume', 'A fresh citrus eau de toilette', '香水']) {
+    const r = at(name, 'eau de toilette');
+    assert.equal(r.hard_reject, false, `${name} must survive a fragrance request`);
+    assert.equal(r.classification, 'explicit_requested_beauty_category', `${name} classification`);
+    assert.equal(r.penalty, 0, `${name} must not be penalised on the request that named it`);
+  }
+
+  // A DIFFERENT beauty category is still fatal. Asking for a bronzer does not open the door to
+  // perfume, which is the substitution #2155 is about.
+  assert.equal(at('Chanel No 5 perfume', 'bronzer').hard_reject, true);
+  assert.equal(at('Hoola Matte Bronzer', 'eau de toilette').hard_reject, true);
+  // And a skincare row on a makeup request is not off-vertical — it is simply the wrong product,
+  // which ranking decides, not this gate. But it must NOT be relabelled as the requested category:
+  // that would hand a serum the same penalty-0 standing as a bronzer on a bronzer request, which is
+  // how a serum out-ranks a bronzer in the first place.
+  const serumOnMakeupAsk = at('Niacinamide Serum', 'bronzer');
+  assert.equal(serumOnMakeupAsk.hard_reject, false);
+  assert.notEqual(serumOnMakeupAsk.classification, 'explicit_requested_beauty_category',
+    'a cleanser does not become a bronzer because a bronzer was requested');
+  assert.equal(serumOnMakeupAsk.classification, 'explicit_face_skincare');
+});
+
+test('NOT A BEAUTY PRODUCT never relaxes, whatever was requested', () => {
+  // The half of the old list that was doing real work. No request makes a dog collar admissible.
+  for (const step of [undefined, 'bronzer', 'eau de toilette', 'serum']) {
+    for (const name of ['Dog Collar', 'Plush Toy', 'Lingerie Set', 'Loofah']) {
+      assert.equal(at(name, step).hard_reject, true,
+        `${name} must stay fatal with requestedStep=${String(step)}`);
+    }
+  }
+});
+
+test('a makeup row is rejected from a SKINCARE shortlist — but only on a THREADED call', () => {
+  // With no requested step the verdict is main's, unchanged: `bronzer` was in neither of main's
+  // lists, so a bronzer is `ambiguous` and pays 0.18. Adding it to a block list would buy a
+  // stricter answer at the cost of the identity invariant below, and it is not the direction #2155
+  // is about. Threaded, the requested domain is known and the answer can be exact.
+  assert.equal(at('Hoola Matte Bronzer').hard_reject, false, 'unthreaded: exactly as on main');
+  assert.equal(at('Hoola Matte Bronzer', 'serum').hard_reject, true,
+    'a bronzer must not answer a serum request');
+  assert.equal(at('Hoola Matte Bronzer', 'serum').reason, 'explicit_wrong_beauty_category');
+  assert.equal(at('Positive Light Liquid Luminizer highlighter', 'moisturizer').hard_reject, true);
+  // And the fragrance-free row is NOT read as a fragrance by that same rule — the lens is masked.
+  assert.equal(at('CeraVe Daily Moisturizing Lotion, Fragrance-Free', 'moisturizer').hard_reject, false);
+});
+
+test('the makeup rows main already rejected are still rejected', () => {
+  // The gate has to work in both directions, or this trades #2155 for its mirror image.
+  for (const name of ['Cream Blush', 'Chanel No 5 perfume', '口红']) {
+    assert.equal(at(name).hard_reject, true, `${name} must not enter a shortlist that asked for skincare`);
+  }
+  // `Cream Blush` in particular: 'cream' is an allow-token, and letting it excuse a blush would
+  // admit makeup to every skincare shortlist. It was fatal before this change for that reason.
+  assert.equal(at('Cream Blush').reason, 'explicit_wrong_beauty_category');
+});
+
+test('the CJK half of the block list actually fires — it never did', () => {
+  // JS \b is defined against [A-Za-z0-9_], so a CJK character never forms a word boundary and
+  // /\b彩妆\b/ CANNOT match. Verified against origin/main: every CJK token in these lists tested
+  // false, so a 宠物项圈 (pet collar) was admissible to a beauty shortlist.
+  for (const name of ['宠物项圈', '玩具', '内衣']) {
+    assert.equal(at(name).hard_reject, true, `${name} must be rejected as non-beauty`);
+    assert.equal(at(name, 'bronzer').hard_reject, true, `${name} must stay rejected on any request`);
+  }
+  // ...and the CJK makeup tokens are category-relaxable, exactly like their English twins.
+  assert.equal(at('口红', 'lipstick').hard_reject, false);
+  assert.equal(at('香水', 'eau de toilette').hard_reject, false);
+  assert.equal(at('口红').hard_reject, true, 'still fatal when no makeup was requested');
+});
+
+test('an unthreaded caller gets exactly the historical behaviour', () => {
+  // Every call site that does not pass a step must be byte-identical to before, or this change has a
+  // blast radius nobody measured.
+  const cases = [
+    ['A Gentle Cleanser', false], ['Niacinamide Serum', false], ['Hydrating Moisturizer', false],
+    ['Cream Blush', true], ['Chanel No 5 perfume', true], ['Dog Collar', true], ['Loofah', true],
+  ];
+  for (const [name, rejected] of cases) {
+    assert.equal(at(name).hard_reject, rejected, `${name} with no requestedStep`);
+  }
+});
+
+test('RANKING asks the same question, with the same answer', async () => {
+  // BOTH READERS, OR NEITHER. classifyRecommendationCandidate re-asks the domain question at ranking
+  // time, and it was calling the classifier with no requested step. Once this PR taught the gate to
+  // RECOGNISE `bronzer` as makeup, that unthreaded call started classifying a bronzer as
+  // explicit_non_skincare — so a bronzer request produced `terminal_success: false` and selected
+  // NOTHING. Widening the gate without threading this reader is strictly worse than not widening it,
+  // which is why the two live in one PR.
+  const stack = require('../src/auroraBff/recommendationSharedStack');
+  const pool = [
+    { product_id: 'b1', name: 'Hoola Matte Bronzer', product_type: 'bronzer' },
+    { product_id: 's1', name: 'Niacinamide 10% Serum', product_type: 'serum' },
+    { product_id: 'b2', name: 'Bronzing Powder', product_type: 'bronzer' },
+    { product_id: 'm1', name: 'Hydrating Moisturizer', product_type: 'moisturizer' },
+    { product_id: 'b3', name: 'Cream Bronzer Stick', product_type: 'bronzer' },
+  ];
+  const out = stack.finalizeRecommendationCandidatePools(pool, {
+    targetContext: { resolved_target_step: 'bronzer', step_aware_intent: true, framework_roles: [] },
+    recoContext: null,
+    priceCeiling: null,
+  }) || {};
+  const selected = (out.selected_recommendations || []).map((r) => r.name);
+
+  assert.equal(out.terminal_success, true, 'a bronzer request must produce a viable pool');
+  assert.equal(selected.length, 3, 'the shortlist is sliced to three — they must be the right three');
+  for (const name of selected) {
+    assert.match(name, /Bronz/i, `${name} is not a bronzer, and a bronzer was asked for`);
+  }
+  // The control: the same pool on a SKINCARE request selects skincare, not bronzers.
+  const skincare = stack.finalizeRecommendationCandidatePools(pool, {
+    targetContext: { resolved_target_step: 'serum', step_aware_intent: true, framework_roles: [] },
+    recoContext: null,
+    priceCeiling: null,
+  }) || {};
+  for (const r of (skincare.selected_recommendations || [])) {
+    assert.doesNotMatch(String(r.name), /Bronz/i, 'a bronzer must not be served to a serum request');
+  }
+});
+
+// ---------------------------------------------------------------------------------------------
+// THE FIRST VERSION OF THIS CHANGE HARD-REJECTED FRAGRANCE-FREE SKINCARE, on every lane, including
+// lanes it never intended to touch. It promoted bare `fragrance` into a fatal branch that fires
+// BEFORE the allow-excuse, and `fragrance` is the word a sensitive-skin moisturiser prints on its
+// own label to say it contains none. Measured against the live catalog: 11 of 193 rows flipped to
+// hard_reject, eight of them for advertising the absence of the thing.
+
+test('a fragrance-free skincare row is admitted — on every lane, whatever was requested', () => {
+  const rows = [
+    'CeraVe Daily Moisturizing Lotion, Fragrance-Free',
+    'EltaMD UV Clear Broad-Spectrum SPF 46, fragrance-free',
+    'Vanicream Gentle Facial Cleanser — free of fragrance',
+    'La Roche-Posay Toleriane Double Repair Face Moisturizer, fragrance free',
+    'Ceramide Barrier Serum with no added fragrance',
+  ];
+  for (const name of rows) {
+    for (const step of [undefined, 'moisturizer', 'serum', 'bronzer', 'eau de toilette']) {
+      const r = at(name, step);
+      assert.equal(r.hard_reject, false,
+        `${name} must not be hard-rejected (requestedStep=${step || 'none'}) — got ${r.reason}`);
+    }
+  }
+  // A row that lists fragrance as an ingredient is a skincare row too.
+  assert.equal(at("Kiehl's Ultra Facial Cream, contains fragrance").hard_reject, false);
+});
+
+// THE INVARIANT THAT BOUNDS THE BLAST RADIUS. NON_BEAUTY_FATAL and WRONG_CATEGORY_FATAL together
+// are, token for token, main's single fatal list; the allow-excused list is untouched. So a call
+// that passes no step must reach the verdict main reached — not "roughly", exactly. Verified over
+// 10,402 ASCII strings from this repo against origin/main at 205e9f1cd: 0 decisions differ.
+test('an unthreaded caller gets exactly the historical verdict', () => {
+  const cases = [
+    // Rejected on main, and still rejected.
+    ['Cream Blush', true], ['Hoola Matte Bronzer for cheeks and eyeshadow', true],
+    ['Chanel No 5 perfume', true], ['Nail Polish', true], ['Dog Collar', true],
+    ['Loofah', true], ['Silk Lingerie Set', true], ['Makeup Brush Set', true],
+    // Admitted on main, and still admitted — every one of these contains a token the split touched.
+    ['A Gentle Cleanser', false], ['Niacinamide 10% Serum', false],
+    ['Hydrating Moisturizer, fragrance-free', false],
+    ['Broad Spectrum Sunscreen SPF 50', false],
+    ['Barrier Repair Cream for sensitive skin', false],
+  ];
+  for (const [name, rejected] of cases) {
+    assert.equal(at(name).hard_reject, rejected, `${name} with no requestedStep`);
+  }
+});
+
+test('the CJK block half now fires, and the CJK allow half fires with it', () => {
+  // A gate that can REJECT a Chinese row but never EXCUSE one is worse than a dead one. Both halves
+  // wake up in the same change.
+  assert.equal(at('宠物项圈').hard_reject, true, 'a pet collar is not a beauty product');
+  assert.equal(at('性感内衣').hard_reject, true);
+  assert.equal(at('口红').hard_reject, true, 'makeup, with no makeup requested');
+  assert.equal(at('口红', 'lipstick').hard_reject, false, 'makeup, on a makeup request');
+  const cn = at('温和洁面 保湿修护精华');
+  assert.equal(cn.hard_reject, false);
+  assert.equal(cn.classification, 'explicit_face_skincare',
+    'a Chinese skincare row must be RECOGNISED, not merely tolerated as ambiguous');
+  assert.equal(cn.penalty, 0);
+});
+
+test('熊猫眼 is dark circles, not a cat — single CJK characters are not block tokens', () => {
+  // 狗/猫/犬 were single characters in the fatal list. 熊猫眼 is the ordinary Chinese word for dark
+  // circles, so a live /猫/ hard-rejects the eye creams that name the concern they treat.
+  for (const name of ['熊猫眼修护眼霜', '改善熊猫眼的保湿眼部精华']) {
+    assert.equal(at(name).hard_reject, false, `${name} must not be read as a pet product`);
+  }
+  // The pet case still lands, through tokens that mean it.
+  assert.equal(at('宠物玩具').hard_reject, true);
+  assert.equal(at('猫粮').hard_reject, true);
+});
+
+// ---------------------------------------------------------------------------------------------
+// THE RANKER IS NOT THE BOUNDARY. Threading the step into ranking alone fixed nothing a buyer could
+// see: the recall boundary runs FIRST, deletes the row, and the ranker never gets to score it.
+
+test('the recall boundary asks the same question, with the same answer', () => {
+  const { classifyConcernScopeCandidate } = require('../src/auroraBff/productScopeClassifier');
+  const bronzer = { name: 'Cream Blush Bronzer Duo', title: 'Cream Blush Bronzer Duo' };
+  assert.equal(classifyConcernScopeCandidate(bronzer).hard_reject, true,
+    'no requested step: off-vertical, exactly as on main');
+  assert.equal(classifyConcernScopeCandidate(bronzer, { requestedStep: 'bronzer' }).hard_reject, false,
+    'it must survive the RECALL boundary on a bronzer request, not just the ranker');
+  assert.equal(
+    classifyConcernScopeCandidate({ name: 'Hoola Matte Bronzer' }, { requestedStep: 'serum' }).hard_reject,
+    true,
+    'and the boundary rejects the wrong category once it knows which one was asked for',
+  );
+  const serum = { name: 'Niacinamide Serum', title: 'Niacinamide Serum' };
+  assert.equal(classifyConcernScopeCandidate(serum, { requestedStep: 'bronzer' }).hard_reject, false);
+  assert.notEqual(
+    classifyConcernScopeCandidate(serum, { requestedStep: 'bronzer' }).classification,
+    'explicit_requested_beauty_category',
+    'a serum does not become a bronzer because a bronzer was requested',
+  );
+  // And the fragrance-free row survives the boundary too — this is where the P0 above would bite.
+  assert.equal(
+    classifyConcernScopeCandidate({ name: 'CeraVe Moisturizing Lotion Fragrance-Free' }).hard_reject,
+    false,
+  );
+});
+
+test('the beauty mainline boundary passes the step it recalled for', () => {
+  const { __internal } = require('../src/auroraBff/routes');
+  const fn = __internal.classifyBeautyMainlineBoundaryRejectCandidate;
+  assert.equal(typeof fn, 'function', 'the boundary must be reachable to be pinned');
+  const bronzer = { name: 'Cream Blush Bronzer Duo', title: 'Cream Blush Bronzer Duo' };
+  assert.equal(fn(bronzer).rejected, true, 'unthreaded: unchanged');
+  assert.equal(fn(bronzer, { requestedStep: 'bronzer' }).rejected, false,
+    'the boundary must admit the category the ladder was searching for');
+  assert.equal(fn({ name: 'CeraVe Moisturizing Lotion Fragrance-Free' }, { requestedStep: 'moisturizer' }).rejected,
+    false, 'and must not delete a fragrance-free moisturiser from a moisturizer recall');
+});

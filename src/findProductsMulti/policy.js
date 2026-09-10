@@ -1678,6 +1678,13 @@ const SEMANTIC_ROLE_STRUCTURAL_TOKENS = new Set([
 // than silently degrading recall.
 const STEP_FAMILY_QUERY_ANCHORS = Object.freeze({
   oil: 'face oil',
+  // Makeup families whose CANONICAL name is not a thing a buyer would search for. The invariant this
+  // table serves (tests/reco_recall_honest_queries) is that the search side and the planner side
+  // anchor on the same string; without these four, recall would query the literal 'lip_colour'.
+  face_powder: 'setting powder',
+  primer: 'makeup primer',
+  lip_colour: 'lipstick',
+  eye_colour: 'eyeshadow',
 });
 
 function resolveStepFamilyQueryAnchor(targetStepFamily) {

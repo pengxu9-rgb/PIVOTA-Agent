@@ -58,6 +58,19 @@ const STEP_QUERY_ALIASES = Object.freeze({
   treatment: Object.freeze(['treatment', 'spot treatment', 'retinol treatment', 'acid treatment', '祛痘', '刷酸', '点涂']),
   mask: Object.freeze(['mask', 'sleeping mask', 'sheet mask', 'overnight mask', 'facial mask', '面膜', '睡眠面膜', '泥膜']),
   oil: Object.freeze(['face oil', 'facial oil', 'oil serum', '护肤油', '面油']),
+  // MAKEUP AND FRAGRANCE. Without these a resolved makeup step would build its ladder from the bare
+  // step token alone, which is the narrowest possible query -- the aliases are what let 'bronzer'
+  // also recall 'bronzing powder' and 'contour powder', the way 'cleanser' recalls 'face wash'.
+  blush: Object.freeze(['blush', 'cream blush', 'powder blush', 'cheek tint', '腮红']),
+  bronzer: Object.freeze(['bronzer', 'bronzing powder', 'contour powder', 'contour stick', '修容']),
+  highlighter: Object.freeze(['highlighter', 'illuminator', 'luminizer', '高光']),
+  foundation: Object.freeze(['foundation', 'skin tint', 'bb cream', 'cc cream', 'tinted moisturizer', '粉底', '气垫']),
+  concealer: Object.freeze(['concealer', 'under eye concealer', 'colour corrector', '遮瑕']),
+  face_powder: Object.freeze(['setting powder', 'loose powder', 'pressed powder', 'finishing powder', '散粉', '定妆粉']),
+  primer: Object.freeze(['makeup primer', 'face primer', 'pore primer', '妆前乳']),
+  lip_colour: Object.freeze(['lipstick', 'lip gloss', 'lip tint', 'lip liner', '口红', '唇釉']),
+  eye_colour: Object.freeze(['eyeshadow', 'eyeliner', 'mascara', 'brow pencil', '眼影', '眼线', '睫毛膏']),
+  fragrance: Object.freeze(['fragrance', 'perfume', 'eau de parfum', 'eau de toilette', 'body mist', '香水']),
 });
 
 const STEP_QUERY_LADDER_EXPANSIONS = Object.freeze({
@@ -1437,7 +1450,15 @@ function normalizeViabilityScore({ relation, candidateStep, targetStep }) {
 function classifyRecommendationCandidate(product, { targetContext, recoContext } = {}) {
   const row = isPlainObject(product) ? product : null;
   if (!row) return null;
-  const skincareDomainClass = classifySkincareCandidateDomain(row);
+  // THE REQUESTED CATEGORY REACHES THE CLASSIFIER HERE TOO. Without it ranking re-asks the domain
+  // question with no idea what was asked for, so a bronzer on a BRONZER request scores 'ambiguous'
+  // and pays 0.08 while a serum classifies explicit_face_skincare and pays 0 -- on a pool that is
+  // then sliced to three. Driven before this change: two real bronzers were displaced by a serum and
+  // a moisturizer on a bronzer query. The gate learned the requested domain one PR ago; this is the
+  // second reader that needed telling.
+  const skincareDomainClass = classifySkincareCandidateDomain(row, {
+    requestedStep: (targetContext && targetContext.resolved_target_step) || '',
+  });
   const facialSkincareCandidate =
     skincareDomainClass !== 'explicit_non_skincare'
     && skincareDomainClass !== 'explicit_non_face_supportive';

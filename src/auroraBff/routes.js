@@ -406,7 +406,7 @@ const {
   buildChatAnalysisContextFromSnapshot,
   buildAnalysisContextPromptBlock,
 } = require('./analysisContextSnapshot');
-const { normalizeRecoTargetStep, extractRecoTargetStepFromText } = require('./recoTargetStep');
+const { normalizeRecoTargetStep, extractRecoTargetStepFromText, resolveRecoStepDomain } = require('./recoTargetStep');
 const {
   normalizeRecoPriceCeiling,
   applyRecoPriceCeilingPreference,
@@ -21017,6 +21017,38 @@ function buildRecoCatalogQueryLevels({
   needSeedText = '',
   maxGenericQueries = 0,
 } = {}) {
+  // THE EXTERNAL-SEED LANE IS WHERE MAKEUP SUPPLY LIVES, and this ladder never asked for it. The
+  // framework branch sets allow_external_seed from its stage plan; the other two branches set
+  // nothing, so `queryEntry.allow_external_seed === true` was false, the request went out
+  // internal-only, and buildPurchasableFallbackCandidates took its internal branch and returned
+  // without supplementing. #2174 fixed the external-seed CATEGORY VOCABULARY for beauty/makeup/face
+  // -- correctly -- on a lane this door could not reach.
+  //
+  // FROM THE RESOLVED STEP AND NOTHING ELSE. The first attempt read the step OR `needSeedText`, and
+  // put the supplement on the GENERIC branch. Both were wrong, in opposite directions and at the
+  // same time: `step_aware_intent` is set whenever a step resolves, so a makeup ask never reaches
+  // the generic branch and got no supplement, while a skincare ask whose text said "fragrance-free"
+  // resolved as fragrance through the seed-text fallback and got one. Measured live: bronzer,
+  // lipstick and eau-de-toilette all took the step-aware branch with source_scope undefined; the
+  // only need that reached the generic branch with a beauty domain was "a fragrance-free
+  // moisturizer".
+  const externalSeedDomain = resolveRecoStepDomain(pickFirstTrimmed(targetContext?.resolved_target_step));
+  const externalSeedEligible = externalSeedDomain === 'makeup' || externalSeedDomain === 'fragrance';
+  // `source_scope` IS THE FIELD THAT DECIDES IT, and `allow_external_seed` alone is a no-op. The
+  // outbound site derives sourceScope from entry.source_scope ONLY, defaulting to 'internal', and
+  // then sends `allowExternalSeed: sourceScope !== 'internal'`. Setting the other flag and not this
+  // one produces a ladder that looks external-eligible in every trace and still goes out
+  // internal-only -- which is how the lane looked before this change.
+  //
+  // 'hybrid', not 'external_seed': internal candidates still lead, external seeds supplement them.
+  const withExternalSeedSupplement = (entry) => (externalSeedEligible
+    ? {
+      ...entry,
+      source_scope: 'hybrid',
+      allow_external_seed: true,
+      external_seed_strategy: 'supplement_internal_first',
+    }
+    : entry);
   if (targetContext && Array.isArray(targetContext.framework_roles) && targetContext.framework_roles.length > 0) {
     const recallPlan = buildRecoRecallPlan({
       mode: 'framework_generic',
@@ -21067,7 +21099,7 @@ function buildRecoCatalogQueryLevels({
     return (Array.isArray(recallPlan?.stages) ? recallPlan.stages : []).map((stage, index) => ({
       level_index: index,
       ladder_level: String(stage?.stage_id || `step_stage_${index + 1}`).trim() || `step_stage_${index + 1}`,
-      queries: (Array.isArray(stage?.entries) ? stage.entries : []).map((entry) => ({
+      queries: (Array.isArray(stage?.entries) ? stage.entries : []).map((entry) => withExternalSeedSupplement({
         query: String(entry?.query || '').trim(),
         step: pickFirstTrimmed(entry?.preferred_step, targetContext.resolved_target_step) || '',
         slot: pickFirstTrimmed(entry?.slot, inferSlotForStep(entry?.preferred_step || targetContext.resolved_target_step), 'other') || 'other',
@@ -21083,12 +21115,13 @@ function buildRecoCatalogQueryLevels({
     needSeedText,
     maxQueries: maxGenericQueries,
   });
-  return queries.length
+  const generalQueries = queries.map(withExternalSeedSupplement);
+  return generalQueries.length
     ? [
         {
           level_index: 0,
           ladder_level: 'generic_catalog',
-          queries,
+          queries: generalQueries,
         },
       ]
     : [];
@@ -21104,9 +21137,9 @@ function buildRecoCandidateStateFromRawCandidates(rawCandidates, { targetContext
       });
 }
 
-function classifyBeautyMainlineBoundaryRejectCandidate(candidate) {
+function classifyBeautyMainlineBoundaryRejectCandidate(candidate, { requestedStep = '' } = {}) {
   if (!isPlainObject(candidate)) return { rejected: false, reason: null };
-  const scopeClassification = classifyConcernScopeCandidate(candidate);
+  const scopeClassification = classifyConcernScopeCandidate(candidate, { requestedStep });
   if (scopeClassification?.hard_reject === true) {
     return {
       rejected: true,
@@ -21544,7 +21577,9 @@ async function collectRecoCandidatesFromRecallPlan({
     for (const product of products) {
       const normalized = normalizeRecoCatalogProduct(product);
       if (!isPlainObject(normalized)) continue;
-      const boundaryReject = classifyBeautyMainlineBoundaryRejectCandidate(normalized);
+      const boundaryReject = classifyBeautyMainlineBoundaryRejectCandidate(normalized, {
+        requestedStep: pickFirstTrimmed(targetContext?.resolved_target_step, queryEntry?.preferred_step) || '',
+      });
       if (boundaryReject.rejected) {
         recordBeautyMainlineBoundaryReject({
           rejects: boundaryRejects,
@@ -21956,8 +21991,12 @@ function countConcernRoleSignalMatches(text, values = [], maxHits = 2) {
   return hits;
 }
 
-function classifyConcernScopeCandidate(row) {
-  return classifyConcernScopeCandidatePolicy(row);
+// A PASS-THROUGH THAT DROPPED THE OPTIONS IS A SILENT UNTHREADING. This wrapper sits between the
+// mainline boundary and the policy module; forwarding `row` alone meant the step reached the policy
+// on the two call sites that use the policy directly and nowhere else, and the boundary went on
+// deleting the category it had just searched for.
+function classifyConcernScopeCandidate(row, options = {}) {
+  return classifyConcernScopeCandidatePolicy(row, options);
 }
 
 function scoreConcernRoleCandidate(row, role, { candidateStep, candidateText = '', targetContext = null } = {}) {
@@ -27840,8 +27879,9 @@ function finalizeConcernFrameworkCandidatePools(
     rolePoolStats[roleId] = { viable_count: 0, top_score: 0 };
   }
 
+  const frameworkRequestedStep = pickFirstTrimmed(targetContext?.resolved_target_step) || '';
   for (const row of deduped) {
-    const scopeClassification = classifyConcernScopeCandidate(row);
+    const scopeClassification = classifyConcernScopeCandidate(row, { requestedStep: frameworkRequestedStep });
     if (Object.prototype.hasOwnProperty.call(scopeClassificationStats, scopeClassification.classification)) {
       scopeClassificationStats[scopeClassification.classification] += 1;
     } else {
@@ -28798,7 +28838,9 @@ async function collectRecoCandidatesFromQueryLevels({
     for (const product of products) {
       const normalized = normalizeRecoCatalogProduct(product);
       if (!isPlainObject(normalized)) continue;
-      const boundaryReject = classifyBeautyMainlineBoundaryRejectCandidate(normalized);
+      const boundaryReject = classifyBeautyMainlineBoundaryRejectCandidate(normalized, {
+        requestedStep: pickFirstTrimmed(targetContext?.resolved_target_step, queryEntry?.preferred_step) || '',
+      });
       if (boundaryReject.rejected) {
         recordBeautyMainlineBoundaryReject({
           rejects: boundaryRejects,
@@ -105609,6 +105651,7 @@ const __internal = {
   buildRecoRecallTransportPolicy,
   resolveRecoRecallTransportModeForPlannerMode,
   buildRecoCatalogQueryLevels,
+  classifyBeautyMainlineBoundaryRejectCandidate,
   extractCatalogCandidatePrice,
   buildRecoCatalogQueries,
   buildRecoNeedSeedQueries,

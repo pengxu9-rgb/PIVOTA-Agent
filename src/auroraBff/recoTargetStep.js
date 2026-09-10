@@ -1,6 +1,55 @@
 const RECOMMENDATION_STEP_RESOLUTION_RULES_V1 = 'recommendation_step_resolution_rules_v1';
 
 const STEP_PATTERNS = Object.freeze([
+  // MAKEUP AND FRAGRANCE ARE STEPS, not gaps. This vocabulary was nine skincare steps, and every
+  // consumer of it treated "no step" as "nothing to look for": normalizeRecoTargetStep('bronzer')
+  // returned null, so buildSameFamilyQueryLevels returned [] and the grounding pass ran ZERO queries
+  // for a makeup archetype -- it was never failing to find bronzers, it was never searching. Worse,
+  // 'cream blush' fell through to the moisturizer patterns and was grounded against moisturizers.
+  //
+  // The widened prompt (reco_main_v1_3) recommends makeup and fragrance, so the taxonomy the answer
+  // is resolved against has to know they exist. Ordered before the skincare entries that would
+  // otherwise capture them: 'cream blush' and 'powder foundation' both contain skincare tokens.
+  {
+    step: 'blush',
+    patterns: [/\b(cream blush|powder blush|liquid blush|blush stick|cheek tint|cheek colou?r|blush)\b/i, /腮红/, /胭脂/],
+  },
+  {
+    step: 'bronzer',
+    patterns: [/\b(bronzer|bronzing powder|contour powder|contour stick|contouring powder|bronzing)\b/i, /修容/, /古铜/],
+  },
+  {
+    step: 'highlighter',
+    patterns: [/\b(highlighter|illuminator|luminizer|strobe cream)\b/i, /高光/],
+  },
+  {
+    step: 'foundation',
+    patterns: [/\b(foundation|skin tint|bb cream|cc cream|tinted moisturi[sz]er|base makeup)\b/i, /粉底/, /气垫/, /隔离/],
+  },
+  {
+    step: 'concealer',
+    patterns: [/\b(concealer|colou?r correct(or|ing)|under[- ]?eye corrector)\b/i, /遮瑕/],
+  },
+  {
+    step: 'face_powder',
+    patterns: [/\b(setting powder|finishing powder|loose powder|pressed powder|translucent powder|face powder)\b/i, /散粉/, /定妆粉/, /蜜粉/],
+  },
+  {
+    step: 'primer',
+    patterns: [/\b(makeup primer|face primer|pore primer|primer)\b/i, /妆前乳/],
+  },
+  {
+    step: 'lip_colour',
+    patterns: [/\b(lipstick|lip gloss|lip liner|lip tint|lip stain|lip lacquer|liquid lip)\b/i, /口红/, /唇釉/, /唇彩/, /唇线/],
+  },
+  {
+    step: 'eye_colour',
+    patterns: [/\b(eyeshadow|eye shadow|eyeshadow palette|eyeliner|eye liner|mascara|brow pencil|brow gel|eyebrow)\b/i, /眼影/, /眼线/, /睫毛膏/, /眉笔/],
+  },
+  {
+    step: 'fragrance',
+    patterns: [/\b(fragrance|perfume|parfum|eau de parfum|eau de toilette|cologne|body mist|edp|edt)\b/i, /香水/, /淡香/, /body spray/i],
+  },
   {
     step: 'mask',
     patterns: [
@@ -23,7 +72,13 @@ const STEP_PATTERNS = Object.freeze([
   {
     step: 'moisturizer',
     patterns: [
-      /\b(moisturizer|moisturiser|face cream|cream|lotion|gel cream|gel-cream|emulsion|water cream|day cream|night cream)\b/i,
+      // BARE `cream` AND `lotion` ARE MODIFIERS AS OFTEN AS THEY ARE PRODUCTS. 'cream blush' and
+      // 'cream bronzer' name a makeup texture, not a moisturizer; before makeup existed in this
+      // taxonomy 'cream blush' resolved to `moisturizer` and was grounded against moisturizers.
+      // Matching both now makes it ambiguous, and extractRecoTargetStepFromText returns null on
+      // ambiguity -- safe, but it loses a step the buyer named. The noun wins.
+      /\b(moisturizer|moisturiser|face cream|gel cream|gel-cream|emulsion|water cream|day cream|night cream)\b/i,
+      /\b(cream|lotion)\b(?!\s*(blush|bronzer|highlighter|shadow|eyeshadow|foundation|concealer|liner|lipstick|lip))/i,
       /面霜/,
       /乳液/,
       /保湿霜/,
@@ -123,6 +178,20 @@ const MEDIUM_CONFIDENCE_HINTS = Object.freeze([
 ]);
 
 const CANONICAL_STEP_FAMILY_MAP = Object.freeze({
+  // Makeup families are grouped by what a buyer would accept as a near-substitute, the same test the
+  // skincare families use. A bronzer and a blush are adjacent; a bronzer and a mascara are not.
+  blush: Object.freeze({ same_family: ['blush'], adjacent_family: ['bronzer', 'highlighter'] }),
+  bronzer: Object.freeze({ same_family: ['bronzer'], adjacent_family: ['blush', 'face_powder', 'highlighter'] }),
+  highlighter: Object.freeze({ same_family: ['highlighter'], adjacent_family: ['blush', 'bronzer'] }),
+  foundation: Object.freeze({ same_family: ['foundation'], adjacent_family: ['concealer', 'face_powder', 'primer'] }),
+  concealer: Object.freeze({ same_family: ['concealer'], adjacent_family: ['foundation', 'face_powder'] }),
+  face_powder: Object.freeze({ same_family: ['face_powder'], adjacent_family: ['foundation', 'bronzer'] }),
+  primer: Object.freeze({ same_family: ['primer'], adjacent_family: ['foundation'] }),
+  // No adjacent family: a lip colour is not an acceptable substitute for anything else, and nothing
+  // is an acceptable substitute for it. Same for the eye and fragrance groups.
+  lip_colour: Object.freeze({ same_family: ['lip_colour'], adjacent_family: [] }),
+  eye_colour: Object.freeze({ same_family: ['eye_colour'], adjacent_family: [] }),
+  fragrance: Object.freeze({ same_family: ['fragrance'], adjacent_family: [] }),
   cleanser: Object.freeze({
     same_family: ['cleanser'],
     adjacent_family: ['toner'],
@@ -161,7 +230,66 @@ const CANONICAL_STEP_FAMILY_MAP = Object.freeze({
   }),
 });
 
+// WHICH DOMAIN A STEP BELONGS TO. One table, because the alternative is every consumer re-deciding
+// "is bronzer makeup?" from its own word list -- and this vocabulary already exists in six places.
+const STEP_DOMAIN_MAP = Object.freeze({
+  blush: 'makeup', bronzer: 'makeup', highlighter: 'makeup', foundation: 'makeup',
+  concealer: 'makeup', face_powder: 'makeup', primer: 'makeup',
+  lip_colour: 'makeup', eye_colour: 'makeup',
+  fragrance: 'fragrance',
+});
+
+function resolveRecoStepDomain(step) {
+  const normalized = normalizeRecoTargetStep(step);
+  if (!normalized) return '';
+  return STEP_DOMAIN_MAP[normalized] || 'skincare';
+}
+
 const EXACT_ALIAS_MAP = Object.freeze({
+  // EVERY CANONICAL STEP MUST NORMALISE TO ITSELF. The skincare steps get this for free -- each is a
+  // single word its own pattern matches -- but a multi-word canonical name does not: before these
+  // three lines normalizeRecoTargetStep('lip_colour') returned null, so a resolved lip step built an
+  // EMPTY grounding ladder, which is the exact defect this taxonomy exists to remove, reintroduced
+  // one layer up. Pinned by a test over CANONICAL_STEP_FAMILY_MAP rather than by these lines alone.
+  lip_colour: 'lip_colour',
+  eye_colour: 'eye_colour',
+  face_powder: 'face_powder',
+  blush: 'blush',
+  'cream blush': 'blush',
+  'powder blush': 'blush',
+  'cheek tint': 'blush',
+  bronzer: 'bronzer',
+  'bronzing powder': 'bronzer',
+  'contour powder': 'bronzer',
+  contour: 'bronzer',
+  highlighter: 'highlighter',
+  illuminator: 'highlighter',
+  foundation: 'foundation',
+  'skin tint': 'foundation',
+  'bb cream': 'foundation',
+  'cc cream': 'foundation',
+  concealer: 'concealer',
+  'setting powder': 'face_powder',
+  'loose powder': 'face_powder',
+  'pressed powder': 'face_powder',
+  'face powder': 'face_powder',
+  primer: 'primer',
+  'makeup primer': 'primer',
+  lipstick: 'lip_colour',
+  'lip gloss': 'lip_colour',
+  'lip liner': 'lip_colour',
+  'lip tint': 'lip_colour',
+  mascara: 'eye_colour',
+  eyeliner: 'eye_colour',
+  eyeshadow: 'eye_colour',
+  'eye shadow': 'eye_colour',
+  'brow pencil': 'eye_colour',
+  fragrance: 'fragrance',
+  perfume: 'fragrance',
+  'eau de parfum': 'fragrance',
+  'eau de toilette': 'fragrance',
+  cologne: 'fragrance',
+  'body mist': 'fragrance',
   cleanser: 'cleanser',
   toner: 'toner',
   essence: 'essence',
@@ -249,24 +377,106 @@ function normalizeMatchedStepToken(value) {
     .slice(0, 40);
 }
 
+// PHRASES THAT NAME A CATEGORY IN ORDER TO DENY IT. "fragrance-free" is not a fragrance request, and
+// "with alcohol and fragrance" is an ingredient list, not a category. Before `fragrance` was a step
+// these read as nothing; now they read as a SECOND category, every such string goes ambiguous, and
+// ambiguity resolves to no step at all. Measured over 12,818 strings drawn from this repo, that cost
+// 61 strings their step -- and product titles reach this resolver too (beautyRecoCoarseClassifier's
+// candidate salvage, ingredientSkuEvidence), so a fragrance-free moisturiser stopped being a
+// moisturiser to the ranker. Masked with spaces rather than deleted so every match offset below
+// still points at the original text.
+const NON_CATEGORY_QUALIFIER_PATTERNS = Object.freeze([
+  /\b(?:fragrance|perfume|parfum|scent)[-\s]?free\b/gi,
+  /\bfree\s+of\s+(?:added\s+)?(?:fragrance|perfume|parfum)s?\b/gi,
+  /\bwithout\s+(?:added\s+)?(?:fragrance|perfume|parfum)s?\b/gi,
+  /\bno\s+(?:added\s+)?(?:fragrance|perfume|parfum)s?\b/gi,
+  /\bnon[-\s]?fragranced?\b/gi,
+  /\b(?:contains?|with|and)\s+(?:added\s+)?fragrances?\b/gi,
+  // "fragrance oil" / "fragrance essential oil" is an ingredient, and the only reason it is here is
+  // that it is the ingredient a buyer asks to AVOID.
+  /\bfragrance\s+(?:essential\s+)?oils?\b/gi,
+  /(?:不含|无添加|无)香精/g,
+]);
+
+function maskNonCategoryQualifiers(input) {
+  let text = String(input || '');
+  for (const pattern of NON_CATEGORY_QUALIFIER_PATTERNS) {
+    text = text.replace(pattern, (match) => ' '.repeat(match.length));
+  }
+  return text;
+}
+
+// TWO PATTERNS THAT MATCHED THE SAME WORDS HAVE NOT NAMED TWO CATEGORIES. 'tinted moisturizer' is
+// matched by the foundation pattern over the whole phrase and by the moisturizer pattern over its
+// last word; '隔离防晒' by sunscreen over all four characters and by foundation over the first two.
+// Counting those as ambiguous discards a step the buyer plainly named. Overlap is the test, because
+// it is the thing that distinguishes one head noun described twice from two nouns listed side by
+// side -- 'cleanser, serum and moisturizer' still has no single step, and must not acquire one.
+// A CLAIM PRINTED ON A COMPLEXION PRODUCT IS NOT A SUNSCREEN REQUEST. "SPF 50" appears on skin
+// tints, foundations and primers; read as a category it turned "Hydrating Foundation Broad Spectrum
+// SPF 50+" into a sunscreen on main, and into no step at all once `foundation` became a step it
+// could disagree with.
+//
+// NARROW BY MEASUREMENT, NOT BY TASTE. Demoting `spf` against every step moved 70 SKINCARE strings
+// in this repo's own corpus -- "Daily Moisturizer SPF 30" stopped being ambiguous and became a
+// moisturizer, on a lane this change has no business touching. Against a MAKEUP step it moves six,
+// all of them complexion products that main mislabelled. A moisturiser with SPF is genuinely both
+// and keeps saying so by resolving to nothing.
+const WEAK_STEP_SURFACES = new Set(['spf']);
+
+function dropWeakSurfaceMatches(details) {
+  if (details.length < 2) return details;
+  const makeupNamed = details.some(
+    (detail) => !WEAK_STEP_SURFACES.has(detail.token) && STEP_DOMAIN_MAP[detail.step] === 'makeup',
+  );
+  if (!makeupNamed) return details;
+  const strong = details.filter((detail) => !WEAK_STEP_SURFACES.has(detail.token));
+  return strong.length ? strong : details;
+}
+
+function resolveOverlappingStepMatches(details) {
+  const kept = [];
+  const byLongest = details
+    .slice()
+    .sort((a, b) => b.length - a.length || a.index - b.index);
+  for (const detail of byLongest) {
+    const overlaps = kept.some(
+      (chosen) => detail.index < chosen.index + chosen.length && chosen.index < detail.index + detail.length,
+    );
+    if (!overlaps) kept.push(detail);
+  }
+  return kept.sort((a, b) => a.index - b.index);
+}
+
 function collectStepPatternMatchDetails(input, entries) {
-  const text = normalizeText(input);
-  if (!text) return [];
+  const text = maskNonCategoryQualifiers(normalizeText(input));
+  if (!text.trim()) return [];
   const details = [];
   const seen = new Set();
   for (const entry of entries) {
+    if (seen.has(entry.step)) continue;
+    // THE LONGEST OF THIS STEP'S OWN PATTERNS, not the first one listed. `sunscreen` carries both
+    // /防晒/ and /隔离防晒/; taking the first left it holding the two-character match, which no
+    // longer overlapped `foundation`'s /隔离/, so '隔离防晒' read as two categories and resolved to
+    // none. Pattern order inside a step is a listing detail and must not decide a match.
+    let best = null;
     for (const pattern of entry.patterns) {
       // exec, not test: `test` throws the matched surface away, which is the whole defect.
       const match = pattern.exec(text);
       if (!match) continue;
-      if (seen.has(entry.step)) break;
-      seen.add(entry.step);
-      details.push({ step: entry.step, token: normalizeMatchedStepToken(match[0]) });
-      break;
+      if (!best || match[0].length > best[0].length) best = match;
     }
+    if (!best) continue;
+    seen.add(entry.step);
+    details.push({
+      step: entry.step,
+      token: normalizeMatchedStepToken(best[0]),
+      index: best.index,
+      length: best[0].length,
+    });
     if (details.length >= 8) break;
   }
-  return details;
+  return resolveOverlappingStepMatches(dropWeakSurfaceMatches(details));
 }
 
 function collectHighConfidenceMatchDetails(input) {
@@ -345,6 +555,9 @@ function resolveRecoTargetStepIntent({ explicitStep = '', focus = '', text = '' 
 }
 
 module.exports = {
+  STEP_DOMAIN_MAP,
+  maskNonCategoryQualifiers,
+  resolveRecoStepDomain,
   RECOMMENDATION_STEP_RESOLUTION_RULES_V1,
   CANONICAL_STEP_FAMILY_MAP,
   normalizeRecoTargetStep,
