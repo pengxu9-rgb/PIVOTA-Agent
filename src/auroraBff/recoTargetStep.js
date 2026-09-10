@@ -230,6 +230,21 @@ const CANONICAL_STEP_FAMILY_MAP = Object.freeze({
   }),
 });
 
+// WHICH DOMAIN A STEP BELONGS TO. One table, because the alternative is every consumer re-deciding
+// "is bronzer makeup?" from its own word list -- and this vocabulary already exists in six places.
+const STEP_DOMAIN_MAP = Object.freeze({
+  blush: 'makeup', bronzer: 'makeup', highlighter: 'makeup', foundation: 'makeup',
+  concealer: 'makeup', face_powder: 'makeup', primer: 'makeup',
+  lip_colour: 'makeup', eye_colour: 'makeup',
+  fragrance: 'fragrance',
+});
+
+function resolveRecoStepDomain(step) {
+  const normalized = normalizeRecoTargetStep(step);
+  if (!normalized) return '';
+  return STEP_DOMAIN_MAP[normalized] || 'skincare';
+}
+
 const EXACT_ALIAS_MAP = Object.freeze({
   // EVERY CANONICAL STEP MUST NORMALISE TO ITSELF. The skincare steps get this for free -- each is a
   // single word its own pattern matches -- but a multi-word canonical name does not: before these
@@ -458,6 +473,8 @@ function resolveRecoTargetStepIntent({ explicitStep = '', focus = '', text = '' 
 }
 
 module.exports = {
+  STEP_DOMAIN_MAP,
+  resolveRecoStepDomain,
   RECOMMENDATION_STEP_RESOLUTION_RULES_V1,
   CANONICAL_STEP_FAMILY_MAP,
   normalizeRecoTargetStep,

@@ -1146,6 +1146,7 @@ jobs:
             tests/reco_scalar_price_currency.node.test.cjs \
             tests/reco_gentleness_ranking.node.test.cjs \
             tests/reco_implement_scope.node.test.cjs \
+            tests/reco_domain_gate_knows_beauty.node.test.cjs \
             tests/reco_scrub_step_vocabulary.node.test.cjs \
             tests/aurora_legacy_reco_prompt_contract.node.test.cjs \
             tests/reco_alternatives_candidate_price_contract.node.test.cjs \

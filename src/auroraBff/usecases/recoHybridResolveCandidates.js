@@ -45,6 +45,36 @@ const STEP_ALIASES = Object.freeze({
 });
 
 const SKINCARE_ALLOW_RE = /\b(cleanser|face wash|cleansing|toner|mist|essence|serum|ampoule|booster|moistur|cream|lotion|gel cream|gel-cream|sunscreen|sun screen|spf|sunblock|treatment|retinol|retinoid|acid|aha|bha|mask|sheet mask|sleeping mask|overnight mask|clay mask|mud mask|face oil|facial oil|barrier|repair|hydrating|hydration|soothing|calming|blemish|acne|niacinamide|azelaic|ceramide|peptide|vitamin c|skincare|skin care|facial|face|洁面|洗面奶|化妆水|爽肤水|精华|精华水|面霜|乳液|保湿|防晒|面膜|修护|屏障|舒缓|祛痘|烟酰胺|壬二酸|神经酰胺|胜肽|维c|护肤|护肤品|护肤油)\b/i;
+// THE BLOCK LISTS MIX TWO DIFFERENT JUDGEMENTS, and that is the whole defect. "lingerie" and "dog
+// harness" mean NOT A BEAUTY PRODUCT AT ALL. "blush" and "perfume" mean A BEAUTY PRODUCT IN A
+// CATEGORY THIS LANE WAS BUILT FOR SKINCARE. Collapsed into one fatal regex, a bronzer on a bronzer
+// request was hard-rejected as off-vertical -- deleted at recall, before ranking, before the model
+// ever saw it. Measured: bronzer/blush/lipstick/foundation/eau-de-toilette all `hard_reject: true`.
+//
+// Split, so the relaxable half can relax and the other half NEVER can. A makeup row is admissible
+// when makeup was asked for; a dog collar is admissible on no request that exists.
+const { resolveRecoStepDomain } = require('../recoTargetStep');
+
+const NON_BEAUTY_FATAL_ASCII_RE = /\b(brush|applicator|blender|tool|supplement|vitamin gummies|brush set|lingerie|underwear|bra|panties|bodysuit|overalls|onesie|dress|jacket|coat|hoodie|sweater|sweatshirt|shirt|tee|vest|apparel|clothing|pet|dog|dogs|cat|cats|puppy|kitten|harness|leash|collar|toy|toys|doll|plush|costume)\b/i;
+// NO \b ON THE CJK HALF, and this is a live fix, not a cosmetic one. JS \b is defined against
+// [A-Za-z0-9_], so a CJK character never forms a word boundary and /\b彩妆\b/ CANNOT match anything.
+// Verified against origin/main: every CJK token in these lists -- 彩妆, 香水, 宠物, 口红, 化妆刷 --
+// tested false. The entire Chinese half of the off-vertical gate has never fired, so a 宠物项圈 (pet
+// collar) is admissible to a beauty shortlist today. Substring matching is correct for a script with
+// no word delimiters.
+const NON_BEAUTY_FATAL_CJK_RE = /(化妆刷|营养补剂|配件|内衣|文胸|胸罩|下着|ランジェリー|宠物|寵物|狗|猫|犬|项圈|項圈|牵引|牽引|玩具|娃娃)/;
+// Includes the makeup nouns the old FATAL list MISSED -- bronzer, highlighter, primer, setting
+// powder. Their absence is why a bronzer scored 'ambiguous' rather than being recognised as the
+// category it is, which cost it 0.18 at recall and 0.08 at ranking against a serum that paid 0.
+// Recognising them also means a bronzer is now correctly rejected from a SKINCARE shortlist,
+// which it was not before: that is #2155 pointed the other way.
+const MAKEUP_CATEGORY_RE = /\b(eyeshadow|blush|lipstick|lip gloss|lip liner|foundation|concealer|palette|mascara|brow|nail|bronzer|bronzing|contour powder|highlighter|illuminator|makeup primer|setting powder|loose powder|skin tint)\b|(彩妆|眼影|粉底|口红|睫毛膏|眉笔|指甲|修容|腮红|高光|散粉|妆前乳)/i;
+const FRAGRANCE_CATEGORY_RE = /\b(perfume|fragrance|eau de parfum|eau de toilette|cologne)\b|(香水|淡香)/i;
+function matchesNonBeautyFatal(text) {
+  return NON_BEAUTY_FATAL_ASCII_RE.test(text) || NON_BEAUTY_FATAL_CJK_RE.test(text);
+}
+// Preserved for the callers that still ask the skincare-only question. Identical to the original
+// union, so an unparameterised call is byte-for-byte what it was.
 const SKINCARE_BLOCK_RE = /\b(brush|applicator|blender|tool|makeup|eyeshadow|blush|lipstick|foundation|concealer|palette|mascara|brow|nail|perfume|supplement|vitamin gummies|fragrance|brush set|lingerie|underwear|bra|panties|bodysuit|overalls|onesie|dress|jacket|coat|hoodie|sweater|sweatshirt|shirt|tee|vest|apparel|clothing|pet|dog|dogs|cat|cats|puppy|kitten|harness|leash|collar|toy|toys|doll|plush|costume|化妆刷|彩妆|眼影|粉底|口红|睫毛膏|眉笔|指甲|香水|营养补剂|配件|内衣|文胸|胸罩|下着|ランジェリー|宠物|寵物|狗|猫|犬|项圈|項圈|牵引|牽引|玩具|娃娃)\b/i;
 const SKINCARE_FATAL_BLOCK_RE = /\b(brush|applicator|blender|tool|eyeshadow|blush|lipstick|foundation|concealer|palette|mascara|brow|nail|perfume|supplement|vitamin gummies|brush set|lingerie|underwear|bra|panties|bodysuit|overalls|onesie|dress|jacket|coat|hoodie|sweater|sweatshirt|shirt|tee|vest|apparel|clothing|pet|dog|dogs|cat|cats|puppy|kitten|harness|leash|collar|toy|toys|doll|plush|costume|化妆刷|彩妆|眼影|粉底|口红|睫毛膏|眉笔|指甲|香水|营养补剂|配件|内衣|文胸|胸罩|下着|ランジェリー|宠物|寵物|狗|猫|犬|项圈|項圈|牵引|牽引|玩具|娃娃)\b/i;
 const STRONG_SUNSCREEN_ALLOW_RE = /\b(sunscreen|sun screen|sunblock|sun fluid|sun cream|sun lotion|broad spectrum|uv filters?|防晒|防曬)\b/i;
@@ -687,7 +717,10 @@ function isImplementProduct(product) {
   return IMPLEMENT_HEAD_RE.test(head) || IMPLEMENT_HEAD_CN_RE.test(head);
 }
 
-function classifySkincareCandidate(product) {
+// `requestedStep` is OPTIONAL and defaults to the historical behaviour exactly: with no step, every
+// makeup and fragrance token is fatal, which is what every unthreaded caller still gets.
+function classifySkincareCandidate(product, { requestedStep = '' } = {}) {
+  const requestedDomain = resolveRecoStepDomain(requestedStep);
   const joined = productText(product);
   if (!joined) {
     return {
@@ -715,9 +748,47 @@ function classifySkincareCandidate(product) {
       reason: 'explicit_non_skincare_implement',
     };
   }
-  const hardBlocked = SKINCARE_FATAL_BLOCK_RE.test(joined)
-    || (SKINCARE_BLOCK_RE.test(joined) && !strongSunscreenProduct && !explicitSkincareProduct);
-  if (hardBlocked) {
+  // NOT A BEAUTY PRODUCT AT ALL -- never relaxed, on any request. A dog collar is admissible to no
+  // shortlist that exists, and no allow-token excuses it.
+  if (matchesNonBeautyFatal(joined)) {
+    return {
+      classification: 'explicit_non_skincare',
+      hard_reject: true,
+      penalty: 1,
+      reason: 'explicit_non_beauty',
+    };
+  }
+  const matchesMakeup = MAKEUP_CATEGORY_RE.test(joined);
+  const matchesFragrance = FRAGRANCE_CATEGORY_RE.test(joined);
+  const matchesRequestedCategory =
+    (requestedDomain === 'makeup' && matchesMakeup)
+    || (requestedDomain === 'fragrance' && matchesFragrance);
+
+  // A BEAUTY PRODUCT IN A CATEGORY THAT WAS NOT ASKED FOR. Still fatal -- this is the half of the old
+  // list that was doing real work. Deliberately NOT excused by an allow-token: 'Cream Blush' contains
+  // 'cream', and letting that excuse it would admit makeup to every skincare shortlist. It was fatal
+  // before this change for exactly that reason.
+  if ((matchesMakeup || matchesFragrance) && !matchesRequestedCategory) {
+    return {
+      classification: 'explicit_non_skincare',
+      hard_reject: true,
+      penalty: 1,
+      reason: 'explicit_wrong_beauty_category',
+    };
+  }
+  // THE CATEGORY THAT WAS ASKED FOR, admitted and named. Only rows that actually match it: a cleanser
+  // does not become a bronzer because a bronzer was requested.
+  if (matchesRequestedCategory) {
+    return {
+      classification: 'explicit_requested_beauty_category',
+      hard_reject: false,
+      penalty: 0,
+      reason: `explicit_${requestedDomain}`,
+    };
+  }
+  // The residual softer list (bare 'makeup'/'fragrance' words) keeps its historical allow-excuse.
+  if (SKINCARE_BLOCK_RE.test(joined) && !strongSunscreenProduct && !explicitSkincareProduct
+      && !matchesRequestedCategory) {
     return {
       classification: 'explicit_non_skincare',
       hard_reject: true,
@@ -749,12 +820,12 @@ function classifySkincareCandidate(product) {
   };
 }
 
-function isSkincareCandidate(product) {
-  return classifySkincareCandidate(product).classification !== 'explicit_non_skincare';
+function isSkincareCandidate(product, options = {}) {
+  return classifySkincareCandidate(product, options).classification !== 'explicit_non_skincare';
 }
 
-function classifySkincareCandidateDomain(product) {
-  return String(classifySkincareCandidate(product).classification || 'ambiguous').trim() || 'ambiguous';
+function classifySkincareCandidateDomain(product, options = {}) {
+  return String(classifySkincareCandidate(product, options).classification || 'ambiguous').trim() || 'ambiguous';
 }
 
 function stepCompatibilityScore(product, targetStep, seedStep) {
