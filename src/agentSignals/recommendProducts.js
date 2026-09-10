@@ -757,8 +757,11 @@ function makeRecommendProducts(deps = {}) {
       state: null,
       backend_auth_headers: {},
     };
+    // The scope goes to the ASK as well as to the prompt. Without it the request text says
+    // "skincare products" while the system prompt says beauty, and the model resolves that
+    // contradiction against the buyer -- a bronzer need returns nothing at all.
     const message = typeof buildAsk === 'function'
-      ? buildAsk({ focus: need, constraints, lang })
+      ? buildAsk({ focus: need, constraints, lang, promptDomainScope: 'beauty' })
       : `Recommend a few products for me with focus on ${need}.`;
 
     // Extracted BEFORE the lane runs, not only after it answers. Until now the ceiling reached the

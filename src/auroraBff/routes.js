@@ -71221,8 +71221,22 @@ function buildAuroraRoutineQuery({ profile, focus, constraints, lang }) {
   );
 }
 
-function buildRecoGenerateUserAsk({ focus, constraints, lang } = {}) {
+// THE FIFTH COPY OF THE DOMAIN RULE. The system prompt, the task line, the payload hard_rules and
+// two in-code fallbacks all follow `wide_template_active`; this one did not, and it is the one the
+// MODEL reads as the user's own words. Armed, the door sent v1_3's "skincare, makeup, and fragrance"
+// system prompt wrapped around "Recommend a few skincare products for me" -- and the model resolved
+// the contradiction the way CATEGORY FIDELITY tells it to: measured against the live door
+// 2026-09-10, bronzer / lipstick / blush / eau de toilette each returned ZERO, every one citing the
+// skincare framing in the request text. A moisturizer control served normally.
+//
+// Reads the GRANT, not the ask: promptDomainScope 'beauty' is inert until
+// RECO_MAIN_WIDE_PROMPT_TEMPLATE_ID names a template different from the narrow one, and framing a
+// request as beauty while v1_2 ("Recommend skincare only") is loaded would invert the same defect.
+function buildRecoGenerateUserAsk({ focus, constraints, lang, promptDomainScope = '' } = {}) {
   const isCn = String(lang || '').trim().toUpperCase() === 'CN';
+  const wideDomainGranted = Boolean(
+    resolveRecoMainPromptSpec({ promptDomainScope }).wide_template_active,
+  );
   const focusText = String(focus || '').trim();
   const constraintObj = constraints && typeof constraints === 'object' && !Array.isArray(constraints)
     ? constraints
@@ -71243,12 +71257,12 @@ function buildRecoGenerateUserAsk({ focus, constraints, lang } = {}) {
     .filter(Boolean)
     .slice(0, 8);
   if (isCn) {
-    const parts = ['给我推荐几款护肤产品'];
+    const parts = [wideDomainGranted ? '给我推荐几款美妆产品' : '给我推荐几款护肤产品'];
     if (focusText) parts.push(`重点：${focusText}`);
     if (constraintLines.length) parts.push(`约束：${constraintLines.join('；')}`);
     return `${parts.join('，')}。`;
   }
-  const parts = ['Recommend a few skincare products for me'];
+  const parts = [wideDomainGranted ? 'Recommend a few beauty products for me' : 'Recommend a few skincare products for me'];
   if (focusText) parts.push(`with focus on ${focusText}`);
   if (constraintLines.length) parts.push(`under these constraints: ${constraintLines.join('; ')}`);
   return `${parts.join(' ')}.`;

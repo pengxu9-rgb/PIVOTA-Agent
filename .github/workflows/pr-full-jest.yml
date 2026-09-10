@@ -1059,6 +1059,7 @@ jobs:
             tests/agent_signals_intelligence_reads.node.test.cjs \
             tests/agent_signals_recommend_products.node.test.cjs \
             tests/reco_widen_lane_domain_scope.node.test.cjs \
+            tests/reco_user_ask_follows_granted_domain.node.test.cjs \
             tests/reco_answer_provenance.node.test.cjs \
             tests/reco_confidence_basis.node.test.cjs \
             tests/reco_answer_path_telemetry.node.test.cjs \
