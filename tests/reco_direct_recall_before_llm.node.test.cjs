@@ -435,3 +435,92 @@ test('maxQueries only ever narrows the ladder; 0 means the historical cap of 8',
   assert.equal(bounded.length, 2);
   assert.deepEqual(bounded.map((q) => q.query), unbounded.slice(0, 2).map((q) => q.query));
 });
+
+// ---------------------------------------------------------------------------
+// A MODEL DECLINE IS AN ANSWER, NOT A GAP TO BE FILLED FROM THE CATALOG
+// ---------------------------------------------------------------------------
+//
+// Measured in prod on the agent door, 2026-09-10: "a bronzer for contouring my cheekbones" came back
+// as three CLEANSERS, `source_mode: catalog_grounded`, with the model's own refusal pasted onto them
+// in missing_info — "The request specifically asks for a bronzer for contouring, which falls under
+// makeup." Same for a shampoo ask and a perfume ask. The widened prompt (reco_main_v1_3) was doing
+// exactly what it was written to do, and the recovery gate below reversed it on every turn where
+// recall had anything at all to hand back.
+//
+// `llmStructuredRecoEmpty` was being read as "the model failed to answer". For a decline it means
+// "the model answered, and the answer is no".
+
+function declineDeps(overrides = {}) {
+  return makeDeps({
+    // The catalog has plenty to offer — that is precisely what made this fire.
+    buildRecoGenerateFromCatalog: async () => ({
+      structured: {
+        recommendations: [
+          { product_id: 'clean_1', name: 'Revitalising Cleansing Gel', category: 'Cleanser' },
+          { product_id: 'clean_2', name: 'Replenishing Cleansing Lotion', category: 'Cleanser' },
+        ],
+      },
+      candidate_pool: CATALOG_POOL,
+      candidate_pool_state: { selected_candidate_count: 2, terminal_success: true },
+      debug: { ok_count: 2, query_count: 2 },
+    }),
+    ...overrides,
+  });
+}
+
+const DECLINE_NOTE =
+  'The request specifically asks for a bronzer for contouring, which falls under makeup.';
+
+test('a model DECLINE survives as the answer instead of being replaced by catalog rows', async () => {
+  const llmCalls = [];
+  const deps = declineDeps({
+    recordAuroraRecoLlmCall: (args) => { llmCalls.push(args); },
+    runRecoLlmPrimary: async () => ({
+      upstream: null, contextMeta: {}, upstreamFailureCode: '', llmFailureClass: '',
+      llmLatencyMs: 10, answerJson: null,
+      // The model's own words about recommending: a well-formed answer with NO products.
+      llmStructured: { recommendations: [], missing_info: [DECLINE_NOTE], warnings: [] },
+      llmStructuredSource: 'llm_answer_json',
+      llmTrace: {}, llmInvoked: true, initialLlmOutcome: 'success',
+    }),
+  });
+  const { runLegacyRecoMainlineExecution } = createLegacyRecoMainlineExecutionRuntime(deps);
+  const out = await runLegacyRecoMainlineExecution(baseArgs({ userAsk: 'a bronzer for contouring' }));
+
+  assert.equal(out.structuredSource, 'llm_primary',
+    'a decline is the model answering, not a catalog gap — it must not be relabelled catalog_grounded');
+  assert.deepEqual(out.structured.recommendations, [],
+    'the cleansers must NOT become the answer to a bronzer request');
+  assert.ok((out.structured.missing_info || []).includes(DECLINE_NOTE),
+    'and the reason must survive as the answer, not as a footnote on someone else\'s products');
+
+  // AND THE TELEMETRY MUST NOT CLAIM A RECOVERY EITHER. The block that erases llmFailureClass and
+  // stamps `catalog_recovered_empty_structured` runs on the same `llmStructuredRecoEmpty` signal, so
+  // without this a decline still reported as a catalog recovery and the counter logged
+  // `catalog_grounded_primary` — an operator reading either would think the model had failed.
+  assert.notEqual(out.initialLlmOutcome, 'catalog_recovered_empty_structured',
+    'a decline is not a recovery from an empty answer');
+  assert.ok(!llmCalls.some((c) => c && c.outcome === 'catalog_grounded_primary'),
+    'and it must not be counted as the catalog answering primary');
+});
+
+test('an empty answer the MODEL did not author still recovers from the catalog', async () => {
+  // The control. Without it the fix above could be "never recover", which would turn every mapped
+  // routine and every malformed upstream reply into an empty shortlist. Only `llm_answer_json` is
+  // the model's own account; a mapped routine synthesises missing_info from our own logic.
+  const deps = declineDeps({
+    runRecoLlmPrimary: async () => ({
+      upstream: null, contextMeta: {}, upstreamFailureCode: '', llmFailureClass: '',
+      llmLatencyMs: 10, answerJson: null,
+      llmStructured: { recommendations: [], missing_info: ['routine_missing'] },
+      llmStructuredSource: 'routine_mapped',
+      llmTrace: {}, llmInvoked: true, initialLlmOutcome: 'success',
+    }),
+  });
+  const { runLegacyRecoMainlineExecution } = createLegacyRecoMainlineExecutionRuntime(deps);
+  const out = await runLegacyRecoMainlineExecution(baseArgs());
+
+  assert.equal(out.structuredSource, 'catalog_grounded',
+    'a non-authored empty answer is still a gap the catalog may fill');
+  assert.equal(out.structured.recommendations.length, 2);
+});

@@ -722,7 +722,14 @@ function normalizeAuroraRecoLlmCallOutcome(outcome) {
     // 2026-09-09 incident (an unregistered PROMPT_TEMPLATE_ID answering 400 on every call) counted
     // as the same bucket as an unrecognised token.
     token === 'upstream_dependency_failure' ||
-    token === 'upstream_timeout'
+    token === 'upstream_timeout' ||
+    // The lane's own catalog-recovery outcomes. Absent from this list they fell to the
+    // 'provider_error' catch-all, so a turn where the MODEL declined and the catalog replaced it
+    // was indistinguishable from the upstream erroring -- which is exactly the pair we spent
+    // 2026-09-10 trying to tell apart.
+    token === 'catalog_grounded_primary' ||
+    token === 'catalog_grounded_ungrounded_recovery' ||
+    token === 'strict_conforming_top_up'
   ) {
     return token;
   }

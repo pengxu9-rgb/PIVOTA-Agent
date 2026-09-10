@@ -605,23 +605,6 @@ function createLegacyRecoMainlineExecutionRuntime(deps = {}) {
             ? buildRecoCatalogTransientFallbackStructured({ ctx })
             : null;
       }
-      const catalogRecoveredFromLlmGap =
-        (normalizedNonStepAwareLlmFailure === 'schema_invalid' ||
-          llmStructuredRecoEmpty) &&
-        catalogStructured &&
-        Array.isArray(catalogStructured.recommendations) &&
-        catalogStructured.recommendations.length > 0;
-      const structuredBeforeDeclineCarry = catalogRecoveredFromLlmGap
-        ? catalogStructured
-        : llmStructuredRecoEmpty
-          ? (
-              catalogStructured ||
-              catalogTransientFallbackStructured ||
-              llmStructured
-            )
-          : llmStructured ||
-            catalogStructured ||
-            catalogTransientFallbackStructured;
       // CARRY THE DECLINE. When the model returns a well-formed answer with NO
       // recommendations, that is a decision, and its warnings/missing_info are the only
       // account of WHY — "makeup items such as bronzers are outside the skincare domain
@@ -645,11 +628,41 @@ function createLegacyRecoMainlineExecutionRuntime(deps = {}) {
         llmStructuredSource === 'llm_answer_json'
         && Boolean(llmStructuredRecoEmpty)
         && isPlainObjectValue(llmStructured);
+      // A DECLINE IS NOT A GAP. Hoisted above the recovery gate below, because that gate treated
+      // `llmStructuredRecoEmpty` as a FAILURE to be repaired from the catalog -- and a decline is
+      // the model succeeding. Measured in prod 2026-09-10 on the agent door: a bronzer ask returned
+      // three CLEANSERS with the model's own refusal ("Per category fidelity rules, we do not
+      // substitute skincare for a makeup request") pasted onto them as missing_info. The prompt fix
+      // worked and this gate reversed it, every time recall had anything at all to offer.
+      // NOTE: deliberately NOT gated on llmDeclinedInItsOwnWords. Both readers of this flag check
+      // the decline first, so a guard here is unfalsifiable -- a mutant removing it leaves every
+      // test green. The decline is handled where the flag is USED, below.
+      const catalogRecoveredFromLlmGap =
+        (normalizedNonStepAwareLlmFailure === 'schema_invalid' ||
+          llmStructuredRecoEmpty) &&
+        catalogStructured &&
+        Array.isArray(catalogStructured.recommendations) &&
+        catalogStructured.recommendations.length > 0;
+      const structuredBeforeDeclineCarry = llmDeclinedInItsOwnWords
+        ? llmStructured
+        : catalogRecoveredFromLlmGap
+        ? catalogStructured
+        : llmStructuredRecoEmpty
+          ? (
+              catalogStructured ||
+              catalogTransientFallbackStructured ||
+              llmStructured
+            )
+          : llmStructured ||
+            catalogStructured ||
+            catalogTransientFallbackStructured;
       structured = carryRecoDeclineNotes(structuredBeforeDeclineCarry, {
         declined: llmDeclinedInItsOwnWords,
         declinedAnswer: llmStructured,
       });
-      structuredSource = catalogRecoveredFromLlmGap
+      structuredSource = llmDeclinedInItsOwnWords
+        ? 'llm_primary'
+        : catalogRecoveredFromLlmGap
         ? 'catalog_grounded'
         : llmStructuredRecoEmpty
           ? (
@@ -669,6 +682,7 @@ function createLegacyRecoMainlineExecutionRuntime(deps = {}) {
                 ? 'catalog_transient_fallback'
                 : null;
       if (
+        !llmDeclinedInItsOwnWords &&
         !deterministicCatalogFirstEnabled &&
         promptContract.ok &&
         catalogStructured &&
