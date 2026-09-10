@@ -73,7 +73,11 @@ function parseArgs(argv = process.argv.slice(2), env = process.env) {
     return v && !v.startsWith('--') ? v : null;
   };
   const reasons = at('critical-reasons') || env.RELGRAPH_CRITICAL_REASONS || '';
-  const parsedReasons = String(reasons).split(',').map((x) => x.trim()).filter(Boolean);
+  // SEMICOLON *OR* COMMA. gcloud's --set-env-vars is itself comma-separated, so a comma-joined
+  // list cannot be carried through it — infra/gcp/setup_scheduler.sh joins the three reasons with
+  // ';'. Splitting on only one of the two would deliver the whole string as a single bogus reason
+  // that matches nothing, which is the silent-no-op defect this job reports, in the job.
+  const parsedReasons = String(reasons).split(/[,;]/).map((x) => x.trim()).filter(Boolean);
   return {
     market: (at('market') || env.RELGRAPH_MARKET || DEFAULTS.market).toUpperCase(),
     maxSuppressedRows: num(

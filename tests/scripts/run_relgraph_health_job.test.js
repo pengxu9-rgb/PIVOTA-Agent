@@ -217,6 +217,27 @@ describe('run-relgraph-health-job', () => {
     expect(r.expiry.ok).toBe(false);
   });
 
+  it('splits the reason list on SEMICOLONS too, because --set-env-vars eats commas', () => {
+    // setup_scheduler.sh must join with ';': gcloud's --set-env-vars is comma-separated, so a
+    // comma-joined list would be parsed as three separate env vars and lost. A parser that split on
+    // ',' alone would take the whole string as ONE reason, match nothing, and pass every run.
+    const semi = parseArgs([], {
+      RELGRAPH_CRITICAL_REASONS:
+        'ai_approved_dupe_quarantined;candidate_ref_unresolvable_nested_product_prefix',
+    });
+    expect(semi.criticalReasons).toEqual([
+      'ai_approved_dupe_quarantined',
+      'candidate_ref_unresolvable_nested_product_prefix',
+    ]);
+    // and the guard actually fires on a reason delivered that way — parsing it is not enough
+    expect(
+      evaluateServingGuard(
+        { ...CLEAN, by_reason: { ai_approved_dupe_quarantined: 1 } },
+        { maxSuppressedRows: 999, maxSuppressedPct: 99, criticalReasons: semi.criticalReasons },
+      ).ok,
+    ).toBe(false);
+  });
+
   it('takes thresholds from env, so the Cloud Run job sets them without argv commas', () => {
     const a = parseArgs([], {
       RELGRAPH_MAX_SUPPRESSED_ROWS: '5',
