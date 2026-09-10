@@ -32,6 +32,10 @@ const tscEntrypoint = path.join(repoRoot, 'node_modules', 'typescript', 'lib', '
 
 const UNRESOLVED_NAME = /TS2552|TS2304|Cannot find name/;
 
+// Generous next to today's 1.3MB, but see the ENOBUFS branch in checkJs: the point is to
+// FAIL on truncation, not to hope the limit is high enough.
+const MAX_OUTPUT_BYTES = 64 * 1024 * 1024;
+
 function checkJs(file, cwd = repoRoot) {
   try {
     execFileSync(
@@ -48,10 +52,21 @@ function checkJs(file, cwd = repoRoot) {
         'es2022',
         file,
       ],
-      { cwd, encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 },
+      { cwd, encoding: 'utf8', maxBuffer: MAX_OUTPUT_BYTES },
     );
     return '';
   } catch (err) {
+    // ENOBUFS is the one failure that would read as SUCCESS here: execFileSync throws,
+    // err.stdout is truncated, the filter finds nothing, and the assertion passes. It is
+    // not a random slice either — tsc groups diagnostics by path, and src/server.js sorts
+    // near the END of the output, so a truncation eats exactly the lines this guard looks
+    // for. Refuse to interpret a truncated read at all.
+    if (err && (err.code === 'ENOBUFS' || err.code === 'ETIMEDOUT')) {
+      throw new Error(
+        `the type checker's output was truncated (${err.code}); this guard cannot tell a clean ` +
+          `file from a cut-off one, so it is failing rather than reporting green`,
+      );
+    }
     // tsc exits non-zero when it reports anything; the diagnostics are on stdout.
     return `${err.stdout || ''}\n${err.stderr || ''}`;
   }
@@ -63,7 +78,9 @@ function unresolvedNamesIn(output, filePrefix) {
     .map((line) => line.trim())
     .filter(Boolean)
     .filter((line) => UNRESOLVED_NAME.test(line))
-    .filter((line) => line.startsWith(filePrefix));
+    // `startsWith(filePrefix)` alone would also admit a hypothetical src/server.jsx.
+    // tsc's format is `<path>(<line>,<col>): error …`, so require the paren.
+    .filter((line) => line.startsWith(`${filePrefix}(`));
 }
 
 // THE CONTROL. The assertion below is an absence assertion, and an absence assertion
@@ -84,8 +101,11 @@ test('control: the checker actually reports an unresolved name', () => {
       ['function f() {', '  try {', '    let onlyInTry = 1;', '    return onlyInTry;', '  } catch (e) {', '    return onlyInTry;', '  }', '}', 'module.exports = { f };', ''].join('\n'),
     );
 
-    // tsc echoes each path exactly as it was given, so pass the bare filename with cwd
-    // set to the scratch dir and match on that same spelling.
+    // tsc relativizes every diagnostic path to its cwd, so a bare filename with cwd set
+    // to the scratch dir comes back spelled 'probe.js'. Deliberately the SAME invocation
+    // form as the real assertion below — relative path argument, matched on that same
+    // relative spelling — so this control exercises the dimension that could make the
+    // assertion inert, rather than a differently-shaped call that happens to work.
     const found = unresolvedNamesIn(checkJs('probe.js', dir), 'probe.js');
     assert.ok(
       found.length > 0,
@@ -98,10 +118,15 @@ test('control: the checker actually reports an unresolved name', () => {
 });
 
 test('src/server.js has no unresolved names', () => {
-  const serverJs = path.join(repoRoot, 'src', 'server.js');
-  assert.equal(fs.existsSync(serverJs), true);
+  const relative = path.join('src', 'server.js');
+  assert.equal(fs.existsSync(path.join(repoRoot, relative)), true);
 
-  const found = unresolvedNamesIn(checkJs(serverJs), 'src/server.js');
+  // A RELATIVE argument, not an absolute one. tsc relativizes diagnostics to cwd, and if
+  // cwd is reached through a symlink an absolute argument comes back spelled '../<link>/…'
+  // — which this filter would drop, passing the test vacuously. A relative argument is
+  // spelled 'src/server.js' either way. Node realpaths __dirname so repoRoot is already
+  // resolved today, but that is a property of the loader, not of this assertion.
+  const found = unresolvedNamesIn(checkJs(relative), relative);
   assert.deepEqual(
     found,
     [],
