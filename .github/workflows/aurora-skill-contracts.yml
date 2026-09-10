@@ -35,6 +35,19 @@ jobs:
         with:
           node-version: 20
           cache: npm
-      - run: npm ci
+      # `npm ci` retried, matching pr-full-jest.yml. This gate failed twice in ten runs on
+      # 2026-09-09 with `ETIMEDOUT connect 150.171.109.74:443` — the npm registry, not this repo's
+      # code. A ~20% flake on a REQUIRED gate trains people to re-run red checks without reading
+      # them, which is how a real failure gets waved through.
+      - name: Install
+        run: |
+          for attempt in 1 2 3; do
+            echo "npm ci attempt $attempt/3"
+            if npm ci; then exit 0; fi
+            echo "npm ci failed (attempt $attempt); retrying after backoff…"
+            sleep $((attempt * 15))
+          done
+          echo "npm ci failed after 3 attempts" >&2
+          exit 1
       - run: node scripts/verify_aurora_contracts_sync.cjs
       - run: node tests/skills/test_skill_contract.js
