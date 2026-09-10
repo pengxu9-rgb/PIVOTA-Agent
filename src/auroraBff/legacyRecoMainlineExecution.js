@@ -237,6 +237,8 @@ function createLegacyRecoMainlineExecutionRuntime(deps = {}) {
     let answerJson = null;
     let structured = null;
     let structuredSource = null;
+  // Function-scope so the return can see it; assigned in the LLM-first branch below.
+  let llmDeclinedInItsOwnWords = false;
     let llmStructured = null;
     let llmStructuredSource = null;
     let promptBundle = {
@@ -676,7 +678,7 @@ function createLegacyRecoMainlineExecutionRuntime(deps = {}) {
       // (routes.js:46132) -- the ask AND the grant. Two other readers already use it
       // (routes.js:71410, :71562); this is the third, not a new idiom.
       const wideRecoTemplateInPlay = Boolean(promptBundle?.prompt_spec?.wide_template_active);
-      const llmDeclinedInItsOwnWords =
+      llmDeclinedInItsOwnWords =
         wideRecoTemplateInPlay
         && llmStructuredSource === 'llm_answer_json'
         && Boolean(llmStructuredRecoEmpty)
@@ -789,6 +791,11 @@ function createLegacyRecoMainlineExecutionRuntime(deps = {}) {
       answerJson,
       structured,
       structuredSource,
+      // WHETHER THIS TURN IS A REFUSAL rather than a lane that produced nothing. Surfaced because
+      // the two are indistinguishable downstream once the shortlist is empty: structuredSource reads
+      // 'llm_primary' for both, and source_mode collapses to 'legacy_notice'. A partner agent needs
+      // to tell "we will not substitute an off-category product" from "we broke".
+      llmDeclinedInItsOwnWords,
       llmStructured,
       llmStructuredSource,
       promptBundle,
