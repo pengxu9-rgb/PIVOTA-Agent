@@ -74,27 +74,8 @@ tests/diagnosis_v2_orchestrator.node.test.cjs
 tests/diagnosis_v2_routes.node.test.cjs
 tests/find_products_invoke_semantic_owner.node.test.cjs
 tests/integration/safety_kernel_mount.node.test.cjs
-# Passes locally, fails on a CI runner: 'framework local beauty mainline hard-stops wall
-# clock when internal primitive hangs' is cancelledByParent with "Promise resolution is
-# still pending but the event loop has already resolved". The test builds a primitive that
-# never settles, so when nothing else holds the loop open the file exits underneath it.
-# Never ran in CI before this gate, so the race is newly visible, not newly created. This
-# is the case the CI-only ratchet exists for: locally it reports as "passes here".
-tests/find_products_beauty_discovery_local_mainline.node.test.cjs
-# Same shape as the entry above, found by the first CI run that gated it: five LOAD tests
-# in this file build `productRead: () => new Promise(() => {})` — a read that never settles
-# — and assert on deadline/concurrency behaviour. Green locally and on an unloaded box;
-# cancelledByParent under the batch's parallelism, because when nothing else holds the
-# event loop open the file exits underneath the pending promise. The old allowlist never
-# named this file, so the race is newly visible, not newly created.
-#
-# KNOWN HAZARD, recorded so the next one is recognised rather than rediscovered: 12 gated
-# suites contain a never-settling promise. Seven of them are CI-proven — they ran under the
-# old allowlist and have been green for months (mcp-server/test/ucpCheckoutEscalation,
-# safety-kernel/test/buyerIntakeMerchantVariantFallback, aurora_bff_beauty_mainline_handoff,
-# aurora_bff_v1_chat_rollout, invoke_auth_introspect_load_shedding, merchant_variant_source).
-# The pattern alone is therefore NOT the predictor, and quarantining all twelve would
-# discard working coverage — the same mistake as dropping suites, in the other direction.
-# Only suites CI has actually cancelled are listed.
-safety-kernel/test/acpBuyerIntake.test.js
+# NOTE: two suites that were listed here — find_products_beauty_discovery_local_mainline and
+# safety-kernel/test/acpBuyerIntake — are NOT quarantined. They are green; they were being
+# starved by the batch. They now run in the serial lane (tests/node_suite_serial.txt), which
+# keeps their coverage instead of trading it for a green run.
 
