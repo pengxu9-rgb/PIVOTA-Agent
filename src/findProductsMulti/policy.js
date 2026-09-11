@@ -1685,6 +1685,11 @@ const STEP_FAMILY_QUERY_ANCHORS = Object.freeze({
   primer: 'makeup primer',
   lip_colour: 'lipstick',
   eye_colour: 'eyeshadow',
+  // Fragrance belongs here for a slightly different reason than the four above: "fragrance" IS a
+  // word buyers use, but in this catalog it is overwhelmingly a word SKINCARE uses about itself
+  // ("fragrance-free"), so it retrieves the wrong rows. "perfume" is the noun a fragrance product is
+  // actually titled. See the STEP_QUERY_ALIASES.fragrance comment for the measurement.
+  fragrance: 'perfume',
 });
 
 function resolveStepFamilyQueryAnchor(targetStepFamily) {

@@ -70,7 +70,18 @@ const STEP_QUERY_ALIASES = Object.freeze({
   primer: Object.freeze(['makeup primer', 'face primer', 'pore primer', '妆前乳']),
   lip_colour: Object.freeze(['lipstick', 'lip gloss', 'lip tint', 'lip liner', '口红', '唇釉']),
   eye_colour: Object.freeze(['eyeshadow', 'eyeliner', 'mascara', 'brow pencil', '眼影', '眼线', '睫毛膏']),
-  fragrance: Object.freeze(['fragrance', 'perfume', 'eau de parfum', 'eau de toilette', 'body mist', '香水']),
+  // PERFUME LEADS, NOT "fragrance". The first alias is the family's QUERY ANCHOR: it is the rescue
+  // query every other fragrance phrasing falls back to when its own token retrieves nothing. The
+  // bare word "fragrance" is not what a perfume is titled -- it is what a MOISTURISER says about
+  // itself ("fragrance-free", "no added fragrance"), so as a catalog query it returned three
+  // non-fragrance rows that the domain classifier then hard-rejected, leaving the pool empty.
+  // Measured against prod 79790300377d: `recommend a fragrance` planned exactly one query,
+  // "fragrance", and came back viable=0 / hard_reject=3, while `recommend a perfume` planned
+  // ["perfume", "fragrance"] and its FIRST query grounded three real perfumes. Every other
+  // phrasing (eau de toilette / eau de parfum / cologne) inherited the dead anchor as its only
+  // rescue and failed identically. Same pattern as face_powder/lip_colour/eye_colour above: the
+  // anchor is the noun a product is TITLED, never the family label.
+  fragrance: Object.freeze(['perfume', 'fragrance', 'eau de parfum', 'eau de toilette', 'body mist', '香水']),
 });
 
 const STEP_QUERY_LADDER_EXPANSIONS = Object.freeze({
