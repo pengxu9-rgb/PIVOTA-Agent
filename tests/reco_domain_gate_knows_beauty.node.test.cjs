@@ -418,3 +418,47 @@ test('and threading is what makes the requested category reachable — the whole
       `${row.name}: threading must improve its standing, not merely preserve it`);
   }
 });
+
+
+test('the winner-safety check threads a MAKEUP primary role — the line no mutant could reach', () => {
+  // `selectorWinnerPolicy.js` passes `primaryRole.preferred_step` into the scope classifier, and
+  // replacing it with '' survived the entire 5,457-test gate: every concern-framework role in the
+  // fixtures carries a SKINCARE step, so the admit branch could never fire. Inert today, unverified
+  // forever. One makeup role makes the line observable.
+  const { isConcernPrimaryRoleWinnerSafe } = require('../src/auroraBff/selectorWinnerPolicy');
+  const { classifyConcernScopeCandidate } = require('../src/auroraBff/productScopeClassifier');
+  const row = { name: 'Hoola Matte Bronzer', title: 'Hoola Matte Bronzer', matched_role_id: 'primary' };
+  assert.equal(
+    classifyConcernScopeCandidate(row, { requestedStep: 'bronzer' }).classification,
+    'explicit_requested_beauty_category',
+    'the step must reach the classifier from a makeup primary role',
+  );
+  assert.equal(classifyConcernScopeCandidate(row, { requestedStep: 'bronzer' }).penalty, 0);
+  assert.equal(
+    isConcernPrimaryRoleWinnerSafe(row, { semanticPlan: { core_roles: [{ role_id: 'primary', preferred_step: 'bronzer' }] } }),
+    true,
+    'and a bronzer must be allowed to win a bronzer role',
+  );
+});
+
+test('the admit lens reads MASKED text — a denial is not a request', () => {
+  // Removing the mask from the admit path survived every taxonomy suite. On a fragrance request a
+  // fragrance-free moisturiser would be recognised as a fragrance at penalty 0 — the best score in
+  // the pool, for the wrong product.
+  for (const name of [
+    'CeraVe Daily Moisturizing Lotion, Fragrance-Free',
+    'Vanicream Gentle Facial Cleanser — free of fragrance',
+    'Barrier Cream with no added fragrance',
+  ]) {
+    assert.notEqual(classify({ name }, { requestedStep: 'eau de toilette' }).classification,
+      'explicit_requested_beauty_category', `${name} is not a fragrance`);
+  }
+  // Bare `fragrance` is not on the admit lens at all, for the same reason.
+  assert.notEqual(
+    classify({ name: 'Neutrogena Hydro Boost Water Gel with Signature Fragrance' }, { requestedStep: 'eau de toilette' }).classification,
+    'explicit_requested_beauty_category',
+  );
+  // A real fragrance still admits.
+  assert.equal(classify({ name: 'Chanel No 5 Eau de Parfum' }, { requestedStep: 'eau de toilette' }).classification,
+    'explicit_requested_beauty_category');
+});

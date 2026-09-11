@@ -113,3 +113,22 @@ test('a makeup or fragrance step may not be salvaged from prose', () => {
   assert.equal((classifyBeautyCoarseCandidate({ brand: 'CeraVe', name: 'Daily Moisturizing Lotion', description: 'a rich moisturizer for dry skin' },
     { queryTargetStepFamily: '' }) || {}).candidate_step, 'moisturizer');
 });
+
+test('a tinted SUNSCREEN is a sunscreen, not complexion makeup', () => {
+  // Supergoop Protec(tint) and Ilia Super Serum Skin Tint are sunscreens with coverage, typed
+  // `Foundation` by the merchant. Read as makeup they went same_family → incompatible_family on a
+  // sunscreen query and fell from rank 1 to rank 4.
+  for (const row of [
+    { brand: 'Supergoop!', name: 'Protec(tint) Daily Skin Tint SPF 50', product_type: 'Foundation' },
+    { brand: 'Ilia', name: 'Super Serum Skin Tint SPF 40', product_type: 'Foundation' },
+    { brand: 'Tower 28', name: 'SunnyDays Tinted Sunscreen SPF 30', product_type: 'Foundation' },
+  ]) {
+    assert.equal((classifyBeautyCoarseCandidate(row, { queryTargetStepFamily: 'sunscreen' }) || {}).candidate_step,
+      'sunscreen', row.name);
+  }
+  // A foundation with NO sun claim is still a foundation.
+  assert.equal((classifyBeautyCoarseCandidate(
+    { brand: 'Estée Lauder', name: 'Double Wear Stay-in-Place Foundation', product_type: 'Foundation' },
+    { queryTargetStepFamily: '' },
+  ) || {}).candidate_step, 'foundation');
+});

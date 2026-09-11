@@ -204,15 +204,15 @@ test('SPF is a claim printed on complexion products, and yields only to a MAKEUP
   ]) {
     assert.equal(extractRecoTargetStepFromText(text), 'foundation', text);
   }
-  // THE CONTROL, and it is the whole reason this rule is scoped. Demoting `spf` against every step
-  // moved 70 SKINCARE strings in this repo's corpus onto a lane this change has no business
-  // touching. A moisturiser with SPF is genuinely both and keeps saying so by resolving to nothing.
+  // THE CONTROL: `spf` yields to a complexion COLOUR category and to nothing else. Against a
+  // skincare form noun the SPF claim WINS, which is main's answer — see "an SPF claim beats a
+  // skincare form noun" below for the measurement that settled it.
   for (const text of [
     'Daily Moisturizer SPF 30',
     'Fenty Beauty Hydra Vizor Invisible Moisturizer Broad Spectrum SPF 30 Sunscreen',
     'A lightweight SPF 45 sunscreen serum for daily UV protection.',
   ]) {
-    assert.equal(extractRecoTargetStepFromText(text), null, `${text} must stay ambiguous`);
+    assert.equal(extractRecoTargetStepFromText(text), 'sunscreen', text);
   }
   // And a real sunscreen still resolves: `sunscreen`/`sunblock`/防晒 name the category.
   assert.equal(extractRecoTargetStepFromText('A fragrance-free broad spectrum sunscreen'), 'sunscreen');
@@ -304,8 +304,8 @@ test('a delivery FORMAT yields to a named category, and yields FIRST', () => {
     ['Bulgarian Rose Water Face, Hair & Body Mist Spray', 'toner'],
     ['body mist', 'toner'],
     ['Allover Body Mist - Green Raspberry', 'toner'],
-    // Two categories genuinely named, and the format yields to neither — as on main.
-    ['PLAY Antioxidant Body Mist SPF 30 with Vitamin C', null],
+    // The format yields, and then the SPF claim wins: this is a sunscreen that ships as a mist.
+    ['PLAY Antioxidant Body Mist SPF 30 with Vitamin C', 'sunscreen'],
   ]) {
     assert.equal(extractRecoTargetStepFromText(text), expected, text);
   }
@@ -366,7 +366,8 @@ test('a skincare ask that MENTIONS makeup keeps its skincare step', () => {
   }
   // UP TO TWO WORDS MAY SIT BETWEEN THE VERB AND THE NOUN — "takes off waterproof mascara" is a
   // cleanser ask, and matching only the adjacent form made the shortlist a lash primer.
-  assert.equal(extractRecoTargetStepFromText('micellar water that takes off waterproof mascara'), null);
+  assert.equal(extractRecoTargetStepFromText('micellar water that takes off waterproof mascara'), 'cleanser');
+  assert.equal(extractRecoTargetStepFromText('a cleansing balm that melts off foundation'), 'cleanser');
   assert.equal(extractRecoTargetStepFromText('a cleanser that removes long-wear liquid foundation'), 'cleanser');
 
   // THE CONTROLS. A makeup ask with no skincare noun is untouched, or none of this is worth having.
@@ -377,6 +378,91 @@ test('a skincare ask that MENTIONS makeup keeps its skincare step', () => {
     ['recommend a setting powder that will not flash back', 'face_powder'],
     ['a concealer for dark circles', 'concealer'],
     ['what primer should I buy', 'primer'],
+  ]) {
+    assert.equal(extractRecoTargetStepFromText(text), expected, `control: ${text}`);
+  }
+});
+
+// ---------------------------------------------------------------------------------------------
+// AN ACTIVE IS NOT A CATEGORY, AND AN SPF CLAIM BEATS A FORM NOUN.
+//
+// #2184 unified the two step resolvers so they could not disagree. That made
+// `normalizeRecoTargetStep` strict — "exactly one step, or null" — where it used to take the first
+// pattern in listing order. Strict is right for an ASK. For a CANDIDATE ROW it deleted the step
+// from rows whose title names an active or an SPF claim alongside the thing it is, and a row with
+// no step matches no family. Measured over 3,841 real title-shaped rows: same-family candidates
+// fell 277→258 for a serum request and 422→343 for a sunscreen request.
+
+test('an ACTIVE named beside a formulation noun does not cancel it', () => {
+  for (const [text, expected] of [
+    ['Strong Retinol Serum', 'serum'],
+    ['2% BHA Serum', 'serum'],
+    ['Pore Clearing BHA Serum', 'serum'],
+    ['COSRX AHA Serum', 'serum'],
+    ['Night Retinol Emulsion', 'moisturizer'],
+    ['BHA Barrier Cream', 'moisturizer'],
+  ]) {
+    assert.equal(normalizeRecoTargetStep(text), expected, text);
+    assert.equal(extractRecoTargetStepFromText(text), expected, `${text} (intent resolver)`);
+  }
+  // THE CONTROL: when the active is the ONLY evidence, it is still a treatment — the rule needs two
+  // matches to do anything.
+  assert.equal(normalizeRecoTargetStep('retinol'), 'treatment');
+  assert.equal(normalizeRecoTargetStep('Retinol'), 'treatment');
+  // And a treatment that names itself keeps its step over the active.
+  assert.equal(normalizeRecoTargetStep('Salicylic Acid Acne Treatment'), 'treatment');
+  assert.equal(extractRecoTargetStepFromText('a gentle exfoliant for sensitive skin'), 'treatment');
+});
+
+test('an SPF claim beats a skincare form noun — main’s answer, restored', () => {
+  // main's first-match order put `sunscreen` ahead of moisturizer/cleanser/serum/toner/essence/oil/
+  // treatment, so these were sunscreens to the ranker and matched same_family on a sunscreen ask.
+  for (const text of [
+    'Daily Moisturizer SPF 30',
+    'Anthelios AOX Daily Antioxidant Face Serum SPF 50',
+    'All-In-One Defense Lotion Moisturizer SPF 35',
+    'Beauty of Joseon Dayscreen Moisturizer SPF 30',
+  ]) {
+    assert.equal(normalizeRecoTargetStep(text), 'sunscreen', text);
+  }
+  // `mask` is the exception, as on main: it is listed BEFORE sunscreen there.
+  assert.equal(normalizeRecoTargetStep('Sheet Mask SPF 30'), 'mask');
+  // Complexion COLOUR still wins — the one place this deliberately differs from main.
+  assert.equal(normalizeRecoTargetStep('Protec(tint) Daily Skin Tint SPF 50'), 'foundation');
+  assert.equal(normalizeRecoTargetStep('SPF foundation'), 'foundation');
+  // And `primer` still yields to the SPF claim.
+  assert.equal(normalizeRecoTargetStep('spf primer'), 'sunscreen');
+});
+
+test('the two resolvers still agree — the property #2184 unified them for', () => {
+  for (const text of [
+    'Strong Retinol Serum', '2% BHA Serum', 'Daily Moisturizer SPF 30', 'Sheet Mask SPF 30',
+    'Protec(tint) Daily Skin Tint SPF 50', 'PLAY Antioxidant Body Mist SPF 30 with Vitamin C',
+    'CeraVe Daily Moisturizing Lotion, Fragrance-Free', '隔离防晒', 'oil serum',
+  ]) {
+    assert.equal(normalizeRecoTargetStep(text), extractRecoTargetStepFromText(text),
+      `the two resolvers disagree on: ${text}`);
+  }
+});
+
+test('masking may never delete the only category named', () => {
+  // The clause patterns drop a category mentioned as CONTEXT, which presumes another one is left.
+  // These name one category and nothing else, and masking took it — leaving a ladder of
+  // ["cleanser"] for a blush ask.
+  for (const [text, expected] of [
+    ['I wear blush and want a new shade', 'blush'],
+    ['what should I use with blush', 'blush'],
+    ['I use primer every morning, recommend a better one', 'primer'],
+    ['I want to start using blush, which one should I buy', 'blush'],
+  ]) {
+    assert.equal(extractRecoTargetStepFromText(text), expected, text);
+  }
+  // THE CONTROL: where masking leaves a step, the masked words stay masked.
+  for (const [text, expected] of [
+    ['a sunscreen that won’t pill under my foundation', 'sunscreen'],
+    ['what serum will make my foundation sit better', 'serum'],
+    ['cleanser that removes mascara and eyeliner', 'cleanser'],
+    ['I am in Phoenix with dry heat and high UV, fragrance usually stings, and my budget is about $40.', null],
   ]) {
     assert.equal(extractRecoTargetStepFromText(text), expected, `control: ${text}`);
   }

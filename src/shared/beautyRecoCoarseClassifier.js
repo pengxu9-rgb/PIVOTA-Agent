@@ -299,8 +299,14 @@ function resolveStructuredCategoryIdentityConflictStep(structuredStep, product) 
   // `primer` also yields to a bare SPF claim, and only `primer` does — the same asymmetry the step
   // resolver encodes in STEPS_SPF_OUTRANKS. "Dewscreen Hydrating Primer SPF 50" never says the word
   // sunscreen; the SPF is the claim. A FOUNDATION with SPF is sold on coverage and keeps its step.
+  // `skin tint` and `tinted moisturizer` join `primer` for the same reason: Supergoop's
+  // Protec(tint) and Ilia's Super Serum Skin Tint are SUNSCREENS with coverage, typed `Foundation`
+  // by the merchant. Read as complexion makeup they went same_family -> incompatible_family on a
+  // sunscreen query and fell from rank 1 to rank 4. The step resolver's rule that complexion COLOUR
+  // beats a bare `spf` is right for an ask; here the merchant type is the thing being corrected.
+  const tintedSunForm = /\b(skin tint|tinted moisturi[sz]er|tinted sunscreen)\b/i.test(identityText);
   const sunscreenByIdentity = SUNSCREEN_PRIMARY_FORM_RE.test(identityText)
-    || (step === 'primer' && SPF_RE.test(identityText));
+    || ((step === 'primer' || tintedSunForm) && SPF_RE.test(identityText));
   if (STEP_DOMAIN_MAP[step] === 'makeup' && sunscreenByIdentity) {
     return {
       candidate_step: 'sunscreen',
