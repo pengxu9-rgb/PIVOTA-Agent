@@ -49559,7 +49559,14 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             let resolvedSignatureRef = null;
             if (
               isPivotaSignatureProductId(productId) &&
-              (!merchantId || merchantId === EXTERNAL_SEED_MERCHANT_ID)
+              // isExternalSeedListingMerchantId, not the bare sentinel: after ADR-009 phase 3 the
+              // door serves {merchant_id:'merch_obs_*', product_id:'sig_*'} and agents echo that
+              // straight back here. The sentinel-only test read a re-keyed ref as "the caller
+              // pinned a real seller", skipped signature resolution, and fell through to a lookup
+              // that cannot match a sig_ id. #2191 widened twelve gates spelled
+              // `requestedMerchantId`; this one is spelled `merchantId` and its guard regex could
+              // not see it.
+              (!merchantId || isExternalSeedListingMerchantId(merchantId))
             ) {
               const resolveSignatureStartedAt = Date.now();
               resolvedSignatureRef = await resolveCatalogProductRefFromPivotaSignature(productId, {

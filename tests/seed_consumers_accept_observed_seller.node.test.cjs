@@ -33,6 +33,18 @@ const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'server.js'), 'utf
 function sentinelOnlyGates() {
   return src.split('\n').reduce((acc, line, i) => {
     if (!/EXTERNAL_SEED_MERCHANT_ID/.test(line)) return acc;
+    // SCOPE, and its known limit. This matches the two spellings a request merchant carries in the
+    // invoke handler. It does NOT catch a gate that binds the same value to a plainer name — the
+    // find_similar_products signature gate spells it `merchantId` (from sim.merchant_id ||
+    // payload.merchant_id), and a real defect hid behind it until a reviewer found it by reading.
+    //
+    // I tried widening this to any *merchantId identifier and reverted: ~14 sites match, and most
+    // are internal predicates on ROW data, mints, or platform defaults — a different question with
+    // a different right answer. A lexical scan cannot tell "the caller pinned this" from "this row
+    // carries this", so widening it turns the guard into noise silenced site by site.
+    //
+    // The find_similar gate is pinned by NAME in its own test below instead. A round-trip gate
+    // under a third spelling would be seen by neither; read externalSeedLane.js and decide.
     if (!/\b(requestedMerchantId|callerRequestedMerchantId)\b/.test(line)) return acc;
     if (/(===|!==)\s*EXTERNAL_SEED_MERCHANT_ID/.test(line)) acc.push({ line: i + 1, text: line.trim() });
     return acc;
@@ -75,6 +87,30 @@ test('each sentinel-only gate says WHY it is one', () => {
       `the gate at line ${gate.line} is sentinel-only with no recorded reason:\n  ${gate.text}`,
     );
   }
+});
+
+test('the find_similar signature gate accepts an observed seller', () => {
+  // Pinned by NAME because the scan above cannot see it: this gate spells the request merchant
+  // `merchantId`. After ADR-009 phase 3 the door serves {merchant_id:'merch_obs_*',
+  // product_id:'sig_*'} and agents echo it straight back, so a sentinel-only test here skipped
+  // signature resolution and fell through to a lookup that cannot match a sig_ id.
+  //
+  // The behavioural proof is in tests/find_similar_products_mainline_wrapper.test.js — a round trip
+  // that FAILS without the fix. This assertion only stops the line being quietly reverted.
+  assert.match(
+    src,
+    /!merchantId \|\| isExternalSeedListingMerchantId\(merchantId\)/,
+    'the find_similar signature gate must use the listing predicate',
+  );
+  // NOT asserted: "no bare `merchantId` anywhere is compared to the sentinel". I wrote that first
+  // and it failed on readCollapsibleInternalMerchantId (server.js:10332), which reads
+  // offer.merchant_id — ROW data, a different question with a different right answer. The same
+  // over-broad instinct this guard's scope note warns about, committed inside the guard.
+  assert.equal(
+    (src.match(/isPivotaSignatureProductId\(productId\) &&/g) || []).length,
+    1,
+    'one signature-resolution gate is expected; if that changed, re-read this assertion',
+  );
 });
 
 test('the widened gates delegate to the one watched predicate', () => {
