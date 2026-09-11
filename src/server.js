@@ -17798,6 +17798,12 @@ function buildCanonicalChainMainlineProduct(row) {
     ingredientIntel.active_ingredients,
   );
 
+  const categoryPathLeaf = String(categoryPathText || '')
+    .split('/')
+    .filter(Boolean)
+    .pop() || '';
+  const resolvedProductType = firstNonEmptyString(category, categoryPathLeaf);
+
   return {
     id: productId,
     product_id: productId,
@@ -17818,7 +17824,26 @@ function buildCanonicalChainMainlineProduct(row) {
     ...(imageUrl ? { image_url: imageUrl, images: [imageUrl], image_urls: [imageUrl] } : {}),
     ...(availability ? { availability } : {}),
     ...(typeof inStock === 'boolean' ? { in_stock: inStock } : {}),
-    product_type: category || 'canonical_catalog',
+    // `canonical_catalog` IS A PROVENANCE VALUE WEARING A TAXONOMY FIELD. It names where the row
+    // came from, not what the product is, and it is invented here at serve time -- nothing stores
+    // it. Consumers read `product_type` to learn what a thing IS, and this handed them the name of
+    // a pipeline.
+    //
+    // It is not inert. `resolveBeautyCoarseStepFamily` reads `product_type` FIRST when resolving a
+    // candidate's step. Measured on a real row -- Guerlain "ABSOLUS ALLEGORIA Tabac Sahara", stored
+    // correctly under beauty/fragrance/perfume:
+    //
+    //     product_type: 'canonical_catalog'  ->  candidate_step: null
+    //     product_type: 'perfume'            ->  candidate_step: fragrance  (structured_category)
+    //
+    // So a correctly-categorised perfume arrived at ranking with no step at all, and only rows whose
+    // TITLE happens to name their category were rescued by text salvage. On the live index 30 of 50
+    // rows returned for "eau de parfum" carry this placeholder and exactly ONE says `fragrance`.
+    //
+    // The leaf of the category path is a real product type and is already right there. Where there
+    // is neither, the field is OMITTED rather than filled with a fiction -- the same rule this
+    // builder already applies to price and currency a few lines up.
+    ...(resolvedProductType ? { product_type: resolvedProductType } : {}),
     ...(category ? { category } : {}),
     ...(categoryPathText ? { category_path: normalizeCatalogCategoryPathArray(categoryPathText) } : {}),
     ...(categoryPathText ? { catalog_category_path: categoryPathText } : {}),
@@ -18508,7 +18533,24 @@ function getSearchQualityContractHardConstraintResult(product = {}, contract = n
       queryText || contract.effective_query,
       categoryPathPrefix,
     );
-    if (existingCategoryPath) {
+    // A BARE DOMAIN IS NOT A CATEGORY, so it must not disable the rescue below. This branch used
+    // `existingCategoryPath` truthiness as proof the row had been categorised -- and `beauty` is a
+    // namespace, not an answer to "what is this". The effect was that a row with a USELESS path was
+    // treated more confidently than a row with none: the text rescue only ran when the path was
+    // absent, so a bad path was strictly worse than no path.
+    //
+    // Measured on the live index for `beauty/fragrance/`: of 50 rows returned for "eau de parfum",
+    // 19 are not on a fragrance path, and 16 of those sit on bare `beauty` -- the entire Ariana
+    // Grande line (Cloud, Ari, God Is A Woman, r.e.m.), Cosmic Kylie Jenner, and every PixiPerfume.
+    // Six of eight sampled eau de parfums were rejected, and the fragrance regex in
+    // beautyProductMatchesCategoryPathQuery would have admitted every one.
+    //
+    // DELIBERATELY NOT A RESCUE FOR A WRONG PATH. `Flaura Eau De Parfum` is stored under
+    // beauty/makeup/face/blush and stays rejected here: that is a mis-categorised row, not an
+    // un-categorised one, and letting title text override a specific category claim would make the
+    // stored category advisory everywhere. Those belong to the backfill and to the ingest-time
+    // requirement, not to this gate.
+    if (categoryPathIsCategorised(existingCategoryPath)) {
       if (!pathMatches) reasons.push('category_mismatch');
     } else if (!textMatches) {
       reasons.push('category_mismatch');
@@ -21108,6 +21150,18 @@ function buildBeautyMainlineRetrievalQueries(queryText = '', intent = null) {
 
 function getBeautyProductCategoryPathText(product = {}) {
   return beautyRelevanceGate.getProductCategoryPathText(product);
+}
+
+// A path names a category only once it says something past the top-level domain. `beauty` is a
+// namespace; `beauty/fragrance` is a category. One segment is not a categorisation, and treating it
+// as one is what let the mis-pathed cohort fail silently at serving while passing every
+// off-taxonomy health check -- `beauty` IS on the taxonomy, so nothing was watching it.
+function categoryPathIsCategorised(categoryPath = '') {
+  return String(categoryPath || '')
+    .trim()
+    .replace(/^\/+|\/+$/g, '')
+    .split('/')
+    .filter(Boolean).length >= 2;
 }
 
 function beautyProductMatchesCategoryPathPrefix(product = {}, categoryPathPrefix = '') {
