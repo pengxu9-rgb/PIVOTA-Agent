@@ -19527,14 +19527,12 @@ async function searchCreatorHumanApparelExternalSeedProductsDirect({
       fetched_at: new Date().toISOString(),
       external_seed_only_requested: true,
       external_seed_rows_fetched: selectedScope.rawProducts.length,
-      // MISLABELLED — see the note on the sibling metadata block. `rankedProducts` and
-      // `pagedProducts` are both the COMBINED sets, so neither of the next two lines counts the
-      // seed lane. Kept because consumers read them; the honest counts follow.
+      // Correct as written: this lane is single-source (searchCreatorHumanApparelExternalSeedProductsDirect
+      // builds rankedProducts only from queryCreatorHumanApparelExternalSeedRows), so every row here IS a
+      // seed row and rankedProducts.length IS the seed count. The sibling beauty-mainline block is the one
+      // where the same expression means something else, because two lanes feed it there.
       external_seed_rows_built: rankedProducts.length,
       external_seed_returned_count: pagedProducts.length,
-      beauty_mainline_ranked_total_count: rankedProducts.length,
-      beauty_mainline_seed_lane_built_count: countNonCanonicalChainProducts(rankedProducts),
-      beauty_mainline_seed_lane_returned_count: countNonCanonicalChainProducts(pagedProducts),
       creator_external_seed_tool_scope: allToolsScoped ? 'all_tools' : 'creator_preferred',
       retrieval_query_variants: retrievalQueries,
       retrieval_query_debug: selectedScope.variantResults,
@@ -22507,22 +22505,26 @@ async function searchBeautyExternalSeedProductsMainline({
       fetched_at: new Date().toISOString(),
       external_seed_only_requested: true,
       external_seed_rows_fetched: Array.isArray(selectedRows?.rawProducts) ? selectedRows.rawProducts.length : 0,
-      // MISLABELLED, KEPT FOR ITS CONSUMERS. `rankedProducts` is the COMBINED post-gate set —
-      // canonical chain AND seed lane — so this field does not count seed rows built, and never
-      // has. It read 70 on a query whose external_seed_rows_fetched was 8, which is how a reader
-      // concludes 62 rows vanished somewhere. They did not; the number means something else.
-      // Read beauty_mainline_seed_lane_built_count below instead. Not corrected in place because
-      // findProductsExternalSeedBrandFastpath, findProductsExternalSeedDirectFinalize,
-      // findProductsInvokeSemanticOwnerExecution, aurora_beauty/index and guidanceLadderOutcome
-      // all read these, and changing a value they consume is a behaviour change, not a rename.
+      // MISLABELLED, KEPT FOR ITS CONSUMERS — and ONLY this one line. `rankedProducts` here is the
+      // COMBINED post-gate set (canonical chain AND seed lane), so it does not count seed rows
+      // built and never has. It read 70 on a query whose external_seed_rows_fetched was 8, which
+      // is how a reader concludes 62 rows vanished. They did not; the number means something else.
+      // Read beauty_mainline_seed_lane_built_count below.
+      //
+      // `external_seed_returned_count` on the next line is NOT mislabelled: pagedExternalSeedCount
+      // is paged minus canonical, which IS the seed count of the returned page. An earlier version
+      // of this comment said both lines were wrong and added a duplicate of the second; corrected.
+      //
+      // Not fixed in place because server.js:13973/14135, :23583, :47688 and
+      // aurora_beauty/index.js read this value, and changing a value a consumer reads is a
+      // behaviour change, not a rename.
       external_seed_rows_built: rankedProducts.length,
       external_seed_returned_count: pagedExternalSeedCount,
-      // The honest pair: how many of the RANKED set came from the seed lane, and how many of the
-      // RETURNED page did. Classified the same way buildSearchQualityTierCounts classifies —
-      // source !== 'canonical_chain' — so the three numbers can actually be compared.
+      // The one number that was genuinely missing: how much of the RANKED set came from the seed
+      // lane. Classified the way buildSearchQualityTierCounts classifies — source !==
+      // 'canonical_chain' — so it can be compared with the tier counts without translating.
       beauty_mainline_ranked_total_count: rankedProducts.length,
       beauty_mainline_seed_lane_built_count: countNonCanonicalChainProducts(rankedProducts),
-      beauty_mainline_seed_lane_returned_count: countNonCanonicalChainProducts(pagedProducts),
       ...(queryUnderstanding
         ? {
             query_understanding: queryUnderstanding,

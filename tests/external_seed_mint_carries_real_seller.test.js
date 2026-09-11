@@ -159,6 +159,27 @@ describe('the beauty mainline reports its lanes honestly', () => {
     expect(count(null)).toBe(0);
   });
 
+  test('parity detail: trims, does NOT lowercase, and honours alias precedence', () => {
+    // The three properties that make "classified exactly as buildSearchQualityTierCounts" TRUE, and
+    // which the first version of this test left unpinned — mutants dropping .trim(), swapping alias
+    // precedence, and adding .toLowerCase() all survived it. Each is asserted here against the
+    // target's actual behaviour (server.js buildSearchQualityTierCounts: String(a||b||c||'').trim(),
+    // compared case-SENSITIVELY to 'canonical_chain').
+    const count = _debug.countNonCanonicalChainProducts;
+
+    // trims — a padded canonical value is still canonical, so it must NOT be counted
+    expect(count([{ source: '  canonical_chain  ' }])).toBe(0);
+
+    // does NOT lowercase — the target compares case-sensitively, so an upper-case value is NOT
+    // canonical and MUST be counted. Adding .toLowerCase() here would silently diverge from it.
+    expect(count([{ source: 'CANONICAL_CHAIN' }])).toBe(1);
+
+    // alias precedence: `source` is read FIRST, so a row whose source is seed-ish counts even when a
+    // later alias says canonical. Swapping the order flips this.
+    expect(count([{ source: 'external_seed', search_recall_source: 'canonical_chain' }])).toBe(1);
+    expect(count([{ source: 'canonical_chain', search_recall_source: 'external_seed' }])).toBe(0);
+  });
+
   test('a set that is entirely canonical reports zero seed-lane rows', () => {
     const count = _debug.countNonCanonicalChainProducts;
     expect(count([{ source: 'canonical_chain' }, { source: 'canonical_chain' }])).toBe(0);
