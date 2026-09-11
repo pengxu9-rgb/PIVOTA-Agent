@@ -1,35 +1,62 @@
-// The one place that answers "is this row an external seed?".
+// The LEGACY external-seed predicate, kept only until its call sites stop asking the question.
 //
-// WHY IT EXISTS. Five functions answered it independently — server.js:15417,
-// findProductsMulti/policy.js:415, pdpBuilder.js:233,
-// findProductsInvokeSemanticOwnerExecution.js:111, and a sixth in pivota-agent-ui's
-// ProductDetailClient.tsx:281 — and no two agreed. One compared merchant_id case-SENSITIVELY
-// while the others lowercased; one accepted `source` substrings; two accepted
-// `platform === 'external'`; the field lists ranged from two aliases to six.
+// THIS IS NOT THE OWNER. The owner is src/services/externalSeedLane.js —
+// "Gateway-side adapter for the ONE seed-lane predicate" — over
+// src/services/pdpRenderability.js's `isSeedRoutedLane`, built across ~15 PRs (#1770–#1799)
+// for the ADR-009 phase-3 re-key, and already imported by src/server.js:102-103. An earlier
+// version of this header called THIS module "the one place that answers: is this row an
+// external seed?", which was simply false: I enumerated the predicates by grepping for
+// `is*External*Seed*` NAMES, and the canonical one is called `isSeedRoutedLane`, so it never
+// matched. Consolidating a scattered concern is exactly when an N+1th implementation is most
+// tempting and most harmful.
 //
-// THE MEASUREMENT THAT MATTERS (prod, 2026-09-10, and re-checked against the live agent door
-// rather than the table, because a stored shape is not a served fact):
+// WHY IT STILL EXISTS RATHER THAN BEING DELETED. Deleting it means putting the seller
+// comparison back inline at server.js:15417 and findProductsMulti/policy.js — and
+// tests/scripts/external_seed_merchant_literal_ratchet.test.js is shrink-only per file
+// (`count > baseline[file] || 0` fails), so that is a migration REGRESSION the guard
+// correctly refuses. The literal cannot be relocated; it can only be removed. Removing it
+// means the call sites stop asking the seller question, which is branch deletion, which is
+// blocked on the mint sites below. So this file is a waypoint, and it says so.
 //
-//   catalog_products.platform    external_seed=13896  shopify=1545  wix=40  url_audit=34
-//                                brand_authored=1     — 'external' occurs ZERO times
-//   catalog_products.merchant_id  all 13,896 external_seed rows carry a real merch_* id;
-//                                 NONE is the literal 'external_seed'
-//   served rows (search_catalog)  platform='external_seed' on 90/90; source ∈ {merchant_public,
-//                                 pdp_ingredient_fields, canonical_chain, title_url_anchor,
-//                                 catalog_intelligence, brand_seed_map} — never 'external_seed'
+// WHAT IT IS NOT INTERCHANGEABLE WITH. `isExternalSeedLaneProduct` is NOT a superset of this
+// predicate, measured on real shapes:
 //
-// So all five predicates return FALSE for every external seed in production. The branches they
-// gate — the dominant-brand external detection at server.js:15462, `cacheInternalProducts` at
-// :13271, `upstreamExternalOnly` at :13280 — are unreachable, and the metric that would have
-// shown it reports 0. They were written against a vocabulary the data stopped using.
+//   shape                          legacy(here)   lane owner
+//   served canonical-chain seed    false          TRUE
+//   source = 'external_seed'       TRUE           false
+//   source_product_id 'ext_…'      false          TRUE
 //
-// WHAT THIS MODULE DOES NOT DO: change that. `isExternalSeedRow` deliberately keeps today's
-// semantics, so adopting it is behaviour-preserving. `isExternalSeedRowCorrected` is the
-// predicate the data actually calls for, and `externalSeedDisagreement` reports where the two
-// differ. Flipping 13,896 rows from false to true across five decision sites at once is not a
-// refactor, and it is not obvious it should be flipped at all — under ADR-020 the target model
-// is that external-vs-internal stops being a product distinction. That decision deserves its own
-// change, taken on measured evidence rather than as a side effect of tidying.
+// It both widens (the 13,896 canonical-chain rows) and NARROWS (it does not read `source` at
+// all). The owner's own header says as much: lane membership "is deliberately NOT a synonym
+// for any call site's full notion of external" and call sites must keep their local legs and
+// OR them. So a blind delegation here would silently arm branches slated for deletion AND
+// drop a leg. That is why this is a shim and not a forwarder.
+//
+// CORRECTION TO WHAT THIS FILE USED TO CLAIM. It said `isExternalSeedRow` is "the union of
+// what the five accept today" and "never NARROWS a call site". Both false. It is the union of
+// the TWO predicates it actually replaced (server.js:15417 and policy.js), verified over
+// 879,841 row shapes with zero narrowings against those two. Against the other implementations
+// it is strictly narrower: pdpBuilder.js:233 also accepts `purchase_route` ∈
+// {affiliate_outbound, merchant_site, external_redirect, links_out} and `commerce_mode` ∈
+// {links_out, affiliate_outbound, merchant_site} and normalises with stripHtml, and
+// findProductsInvokeSemanticOwnerExecution.js:111 matches `source` by SUBSTRING. Delegating
+// either of those to this module would flip branches — pdpBuilder's is exported and used at
+// 18 sites, including PDP redirect resolution and renderability.
+//
+// A SIXTH implementation exists and was missed by the original survey:
+// src/services/pdpIngredientAuthority.js:954, keyed additionally on `external_seed_id` and
+// `external_seed_recall`. `external_seed_id` IS set on products (src/server.js:17317), so it
+// is plausibly the one predicate here that does fire.
+//
+// PRODUCTION MEASUREMENT, and the limit of what it proves. catalog_products.platform is
+// external_seed=13896, shopify=1545, wix=40, url_audit=34, brand_authored=1 — 'external' never
+// occurs; zero catalog_products/catalog_offers rows carry the sentinel seller id; served
+// rows carry platform='external_seed' 90/90 and never source='external_seed'. That is about DB
+// columns and served JSON. These predicates run on IN-MEMORY objects, and
+// buildBeautyExternalSeedMainlineProduct (src/server.js:16635, consumed at :17301) mints
+// the sentinel seller, platform='external' AND source='external_seed' — true on every leg. So "all five are false in production" does NOT hold for the objects these branches
+// filter, and the branches are NOT dead. Deleting them is blocked until the MINT sites stop
+// minting the sentinel, which is ADR-009 phase 3's job.
 
 const SEED_MERCHANT_ID = 'external_seed';
 
@@ -77,11 +104,16 @@ function isExternalSeedRow(row) {
   );
 }
 
-// THE ANSWER THE DATA CALLS FOR. Not wired to anything yet — see the module header.
+// THE ANSWER THE DATA CALLS FOR — delegated to the owner rather than invented here. An earlier
+// version added `platform === 'external_seed'` locally and presented it as a finding; that arm
+// already existed in isSeedRoutedLane, along with a source_system arm and an ext_/ext: id-prefix
+// arm this module never had. Still wired to nothing: see the header for why the branches it
+// would arm cannot be deleted yet.
 function isExternalSeedRowCorrected(row) {
-  const f = externalSeedFields(row);
-  if (!f) return false;
-  return isExternalSeedRow(row) || OBSERVED_SEED_PLATFORMS.includes(f.platform);
+  if (!row || typeof row !== 'object') return false;
+  const { isExternalSeedLaneProduct } = require('./services/externalSeedLane');
+  // OR, not replace — the owner does not read `source`, which this predicate's call sites do.
+  return isExternalSeedRow(row) || isExternalSeedLaneProduct(row);
 }
 
 // Non-null when the two answers differ, so the size of the pending decision can be measured on

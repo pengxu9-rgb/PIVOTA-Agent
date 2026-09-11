@@ -23,21 +23,25 @@ const {
 
 const norm = (v) => String(v == null ? '' : v).trim().toLowerCase();
 
-// The five legacy predicates, transcribed from their definitions. Transcriptions rather than
-// imports because most are module-private; each is pinned to its file:line so a drift between
-// this table and the original is findable. The equivalence test below is what keeps them honest.
+// IMPORTED where reachable, transcribed only where genuinely module-private.
+//
+// The transcription-only version of this table got pdpBuilder's predicate WRONG — it copied five
+// of seven clauses, dropping the `purchase_route` and `commerce_mode` arms and substituting
+// String().trim() for stripHtml(). That made the module's "union of all five / never narrows"
+// claim look verified when it was false. pdpBuilder exports its predicate, so importing it would
+// have failed immediately. A transcription is a second copy, and a second copy can be wrong —
+// which is the defect this whole file is about, committed inside the test for it.
+const { isExternalSeedLikeProduct } = require('../src/pdpBuilder');
+const { isExternalSeedLaneProduct } = require('../src/services/externalSeedLane');
+
 const LEGACY = {
   'server.js:15417': (p) =>
     String(p.merchant_id || p.merchantId || '').trim() === 'external_seed' ||
     norm(p.source) === 'external_seed',
   'findProductsMulti/policy.js:415': (p) =>
     norm(p.merchant_id || p.merchantId) === 'external_seed' || norm(p.source) === 'external_seed',
-  'pdpBuilder.js:233': (p) =>
-    norm(p.merchant_id || p.merchantId || (p.merchant && p.merchant.id)) === 'external_seed' ||
-    ['external_seed', 'external_product_seeds', 'external_seed_db'].includes(
-      norm(p.source || p.product_source || p.productSource || p.detail_source || p.query_source),
-    ) ||
-    norm(p.platform || p.source_platform) === 'external',
+  // The REAL function, not a copy of it.
+  'pdpBuilder.js:233': (p) => isExternalSeedLikeProduct(p),
   'semanticOwnerExecution.js:111': (p) =>
     norm(p.merchant_id || p.merchantId) === 'external_seed' ||
     norm(p.source || p.query_source).includes('external_seed'),
@@ -118,19 +122,54 @@ test('every legacy predicate is FALSE for every external seed in production', ()
   }
 });
 
-test("platform === 'external' matches nothing — it is legacy vocabulary, not a live check", () => {
-  // Two legacy predicates gate on it. Prod `catalog_products.platform` has zero such rows:
-  // external_seed=13896, shopify=1545, wix=40, url_audit=34, brand_authored=1. Written down so
-  // nobody re-adds it believing it does something.
-  assert.deepEqual(LEGACY_SEED_PLATFORMS, ['external']);
-  assert.deepEqual(OBSERVED_SEED_PLATFORMS, ['external_seed']);
-  assert.notDeepEqual(LEGACY_SEED_PLATFORMS, OBSERVED_SEED_PLATFORMS);
+test('the owner is NARROWER than two of the five — the "union" claim was false', () => {
+  // The correction. isExternalSeedRow is the union of the TWO predicates it actually replaced,
+  // not of all five. pdpBuilder accepts purchase_route/commerce_mode arms it does not have, and
+  // semanticOwnerExecution matches `source` by substring. Both are shown here with the real
+  // function, so a future delegation cannot be argued for on a false premise: pdpBuilder's is
+  // exported and used at 18 sites, including PDP redirect resolution and renderability.
+  const narrowerThanPdpBuilder = [
+    { purchase_route: 'links_out' },
+    { purchase_route: 'affiliate_outbound' },
+    { commerce_mode: 'links_out' },
+  ];
+  for (const row of narrowerThanPdpBuilder) {
+    assert.equal(LEGACY['pdpBuilder.js:233'](row), true, `${JSON.stringify(row)}: pdpBuilder says external`);
+    assert.equal(isExternalSeedRow(row), false, `${JSON.stringify(row)}: the owner does NOT — it is narrower`);
+  }
 
-  const observedPlatforms = ['external_seed', 'shopify', 'wix', 'url_audit', 'brand_authored'];
+  const narrowerThanSemanticOwner = { source: 'external_seed_backfill' };
+  assert.equal(LEGACY['semanticOwnerExecution.js:111'](narrowerThanSemanticOwner), true);
+  assert.equal(isExternalSeedRow(narrowerThanSemanticOwner), false);
+});
+
+test('the real owner is isSeedRoutedLane, and it is not interchangeable with this one', () => {
+  // Pins the difference in BOTH directions so nobody "simplifies" by forwarding one to the other.
+  // src/services/externalSeedLane.js is the canonical seed-lane predicate, already imported by
+  // src/server.js:102-103. It widens (canonical-chain rows, ext_ id prefixes) AND narrows (it
+  // does not read `source` at all).
+  const servedCanonicalChain = { platform: 'external_seed', source: 'canonical_chain', merchant_id: 'merch_obs_a' };
+  assert.equal(isExternalSeedRow(servedCanonicalChain), false, 'legacy: false');
+  assert.equal(isExternalSeedLaneProduct(servedCanonicalChain), true, 'owner: true — a widening');
+
+  const bySource = { merchant_id: 'merch_x', source: 'external_seed' };
+  assert.equal(isExternalSeedRow(bySource), true, 'legacy: true');
+  assert.equal(isExternalSeedLaneProduct(bySource), false, 'owner: false — a NARROWING');
+
+  // And the corrected predicate ORs them rather than replacing one with the other.
+  assert.equal(isExternalSeedRowCorrected(servedCanonicalChain), true);
+  assert.equal(isExternalSeedRowCorrected(bySource), true);
+
+  // A shape ONLY the owner accepts — no platform leg, no source leg, just the id prefix. This is
+  // what distinguishes "delegates to the owner" from "reimplements a platform check locally";
+  // without it, an invented `platform === 'external_seed'` arm passes every assertion above.
+  const byIdPrefix = { merchant_id: 'merch_obs_b', source_product_id: 'ext_123' };
+  assert.equal(isExternalSeedRow(byIdPrefix), false, 'legacy has no id-prefix arm');
+  assert.equal(isExternalSeedLaneProduct(byIdPrefix), true, 'the owner does');
   assert.equal(
-    observedPlatforms.includes('external'),
-    false,
-    "'external' is not a platform value this system produces",
+    isExternalSeedRowCorrected(byIdPrefix),
+    true,
+    'the corrected answer must come from the owner, not a locally reinvented platform check',
   );
 });
 
