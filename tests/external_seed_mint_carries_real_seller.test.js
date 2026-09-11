@@ -129,3 +129,38 @@ describe('the built row carries the seller', () => {
     expect(product.merchant_id).toBe('external_seed');
   });
 });
+
+describe('the beauty mainline reports its lanes honestly', () => {
+  // WHY THIS EXISTS. Three metadata fields are named `external_seed_*`, and only one of them
+  // measures the seed lane. `external_seed_rows_built` is `rankedProducts.length` — the COMBINED
+  // post-gate set — and `external_seed_returned_count` is a residual. On a live query they read
+  // 70 and 0 while `external_seed_rows_fetched` read 8, which reads as "62 rows vanished". Nothing
+  // vanished; the field means something else. That misreading cost two rounds of investigation,
+  // so the honest counters are pinned here rather than left to be rediscovered.
+  const { _debug } = require('../src/server.js');
+
+  test('the lane classifier matches buildSearchQualityTierCounts', () => {
+    const count = _debug.countNonCanonicalChainProducts;
+    expect(typeof count).toBe('function');
+
+    const products = [
+      { source: 'canonical_chain' },
+      { search_recall_source: 'canonical_chain' },
+      { catalog_source: 'canonical_chain' },
+      { source: 'external_seed' },
+      { source: 'merchant_public' },
+      {},
+    ];
+    // Three canonical by each of the three aliases; the other three are the seed lane's, including
+    // the empty one — buildSearchQualityTierCounts puts anything not canonical_chain in the else
+    // branch, and this must agree with it or the numbers cannot be compared.
+    expect(count(products)).toBe(3);
+    expect(count([])).toBe(0);
+    expect(count(null)).toBe(0);
+  });
+
+  test('a set that is entirely canonical reports zero seed-lane rows', () => {
+    const count = _debug.countNonCanonicalChainProducts;
+    expect(count([{ source: 'canonical_chain' }, { source: 'canonical_chain' }])).toBe(0);
+  });
+});

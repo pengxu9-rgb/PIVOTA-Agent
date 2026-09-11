@@ -18607,6 +18607,21 @@ function scoreBeautySearchQualityContract({ product, contract = null, queryText 
   return score;
 }
 
+// Counts products the beauty mainline did NOT get from the canonical chain — i.e. the seed lane's
+// real contribution. Classified exactly as buildSearchQualityTierCounts does (source, falling back
+// through the two aliases), so a reader can compare its numbers with these without translating.
+function countNonCanonicalChainProducts(products) {
+  if (!Array.isArray(products)) return 0;
+  let n = 0;
+  for (const product of products) {
+    const source = String(
+      product?.source || product?.search_recall_source || product?.catalog_source || '',
+    ).trim();
+    if (source !== 'canonical_chain') n += 1;
+  }
+  return n;
+}
+
 function buildSearchQualityTierCounts(products = [], contract = null, queryText = '') {
   const counts = {
     input_count: Array.isArray(products) ? products.length : 0,
@@ -19512,8 +19527,14 @@ async function searchCreatorHumanApparelExternalSeedProductsDirect({
       fetched_at: new Date().toISOString(),
       external_seed_only_requested: true,
       external_seed_rows_fetched: selectedScope.rawProducts.length,
+      // MISLABELLED — see the note on the sibling metadata block. `rankedProducts` and
+      // `pagedProducts` are both the COMBINED sets, so neither of the next two lines counts the
+      // seed lane. Kept because consumers read them; the honest counts follow.
       external_seed_rows_built: rankedProducts.length,
       external_seed_returned_count: pagedProducts.length,
+      beauty_mainline_ranked_total_count: rankedProducts.length,
+      beauty_mainline_seed_lane_built_count: countNonCanonicalChainProducts(rankedProducts),
+      beauty_mainline_seed_lane_returned_count: countNonCanonicalChainProducts(pagedProducts),
       creator_external_seed_tool_scope: allToolsScoped ? 'all_tools' : 'creator_preferred',
       retrieval_query_variants: retrievalQueries,
       retrieval_query_debug: selectedScope.variantResults,
@@ -22486,8 +22507,22 @@ async function searchBeautyExternalSeedProductsMainline({
       fetched_at: new Date().toISOString(),
       external_seed_only_requested: true,
       external_seed_rows_fetched: Array.isArray(selectedRows?.rawProducts) ? selectedRows.rawProducts.length : 0,
+      // MISLABELLED, KEPT FOR ITS CONSUMERS. `rankedProducts` is the COMBINED post-gate set —
+      // canonical chain AND seed lane — so this field does not count seed rows built, and never
+      // has. It read 70 on a query whose external_seed_rows_fetched was 8, which is how a reader
+      // concludes 62 rows vanished somewhere. They did not; the number means something else.
+      // Read beauty_mainline_seed_lane_built_count below instead. Not corrected in place because
+      // findProductsExternalSeedBrandFastpath, findProductsExternalSeedDirectFinalize,
+      // findProductsInvokeSemanticOwnerExecution, aurora_beauty/index and guidanceLadderOutcome
+      // all read these, and changing a value they consume is a behaviour change, not a rename.
       external_seed_rows_built: rankedProducts.length,
       external_seed_returned_count: pagedExternalSeedCount,
+      // The honest pair: how many of the RANKED set came from the seed lane, and how many of the
+      // RETURNED page did. Classified the same way buildSearchQualityTierCounts classifies —
+      // source !== 'canonical_chain' — so the three numbers can actually be compared.
+      beauty_mainline_ranked_total_count: rankedProducts.length,
+      beauty_mainline_seed_lane_built_count: countNonCanonicalChainProducts(rankedProducts),
+      beauty_mainline_seed_lane_returned_count: countNonCanonicalChainProducts(pagedProducts),
       ...(queryUnderstanding
         ? {
             query_understanding: queryUnderstanding,
@@ -53993,6 +54028,7 @@ module.exports._debug = {
   collapseNearDuplicateScoredBeautyProducts,
   buildBeautyExternalSeedRecallPatterns,
   queryBeautyExternalSeedRowsFast,
+  countNonCanonicalChainProducts,
   // Exported for tests only. The seller carried onto a built row is the thing worth
   // asserting, and a source-text guard cannot see it — the first version of this change
   // shipped a no-op that three grep-based assertions all passed.
