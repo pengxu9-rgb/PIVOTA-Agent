@@ -97,3 +97,31 @@ test('required-search profile changes the real request and binds answer provenan
  expect((await probe.buildChatGptProbe(current)).raw_runs[0].answer.complete).toBe(false);
  await expect(probe.buildChatGptProbe({...current,model:'gpt-4o-mini'})).rejects.toThrow('profile does not match');
 });
+
+test('HTTP handler preserves required-search execution through normalization and dispatch', async () => {
+ process.env.OPENAI_API_KEY='test-only'; process.env.PIVOTA_CONSUMER_ANSWER_ENABLED='true';
+ const create=jest.fn(async()=>({status:'completed',model:'chat-latest',output_text:'A sourced answer.',usage:{input_tokens:10,output_tokens:5},output:[
+  {type:'web_search_call',status:'completed'},
+  {type:'message',content:[{type:'output_text',text:'A sourced answer.',annotations:[{type:'url_citation',url:'https://example.com/source'}]}]}
+ ]}));
+ jest.doMock('openai',()=>jest.fn(function(){return {responses:{create}};}));
+ const module=require('../src/internal/agentCenterLlmProbe');
+ const mount=jest.fn();module.mountAgentCenterLlmProbe({post:mount});
+ const handler=mount.mock.calls[0][2];
+ const response={status:jest.fn().mockReturnThis(),json:jest.fn()};
+ const body={...input,options:{provider:'chatgpt',max_runs:1},context:{...input.context,consumer_execution_profile:'openai_web_required_v2'}};
+ await handler({body},response);
+ expect(response.status).toHaveBeenCalledWith(200);
+ expect(create).toHaveBeenCalledTimes(1);
+ expect(create.mock.calls[0][0]).toMatchObject({model:'chat-latest',tool_choice:'required',max_output_tokens:900});
+ expect(response.json.mock.calls[0][0].result.raw_runs[0]).toMatchObject({prompt_contract:'consumer_query_openai_web_required_v2',answer:{complete:true,web_search_requests:1}});
+ for(const invalid of [
+  {...body,context:{...body.context,consumer_execution_profile:'unsupported'}},
+  {...body,options:{provider:'gemini',max_runs:1}},
+  {...body,options:{provider:'chatgpt',model:'gpt-4o-mini'}}
+ ]) {
+  response.status.mockClear();await handler({body:invalid},response);
+  expect(response.status).toHaveBeenCalledWith(400);
+ }
+ expect(create).toHaveBeenCalledTimes(1);
+});

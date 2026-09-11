@@ -241,6 +241,14 @@ function validateRequest(body) {
     }
   }
 
+  if (scan_mode === consumerAnswer.MODE) {
+    try {
+      consumerAnswer.assertEnabled({ scan_mode, provider, model, context });
+    } catch (err) {
+      return { ok: false, error: err.message };
+    }
+  }
+
   // Per-mode required context bits. The mock provider tolerates anything; the
   // gemini provider needs the URL fields to actually run a probe.
   const queries = Array.isArray(context.queries) ? context.queries.filter(_isNonEmptyString) : [];
@@ -278,6 +286,8 @@ function validateRequest(body) {
       max_runs: maxRuns,
       context: {
         queries,
+        ...(scan_mode === consumerAnswer.MODE && context.consumer_execution_profile != null
+          ? { consumer_execution_profile: context.consumer_execution_profile } : {}),
         merchant_pdp_url: merchantPdpUrl,
         pivota_pdp_url: pivotaPdpUrl,
         product_entity_id: productEntityId,
