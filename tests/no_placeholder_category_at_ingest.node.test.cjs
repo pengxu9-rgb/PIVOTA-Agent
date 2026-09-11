@@ -29,19 +29,19 @@ const {
   MIN_CATEGORISED_PATH_SEGMENTS,
   CANONICAL_CATEGORY_PATHS,
 } = require('../src/services/beautyTaxonomy');
+const SYNC_INTERNALS = require('../scripts/sync-external-seeds-to-catalog.cjs')._internals;
+const ULTA_INTERNALS = require('../scripts/sync-ulta-external-seeds-to-catalog.cjs')._internals;
+const { inferCatalogMirrorCategory, buildMirror } = SYNC_INTERNALS;
+const { buildMirror: buildUltaMirror } = ULTA_INTERNALS;
 const {
-  _internals: { inferCatalogMirrorCategory, buildMirror },
-} = require('../scripts/sync-external-seeds-to-catalog.cjs');
-const {
-  _internals: { buildMirror: buildUltaMirror },
-} = require('../scripts/sync-ulta-external-seeds-to-catalog.cjs');
-const {
-  _internals: { validateEntry },
+  _internals: { validateEntry, buildCategoryPatchPlanForRow },
 } = require('../scripts/apply-reviewed-external-seed-category-patch.cjs');
+const { normalizeFeedRecord, buildSeedRowFromOYOffer } = require('../src/services/oliveYoungAffiliateFeed');
 
 const SCRIPTS = path.join(__dirname, '..', 'scripts');
 const SYNC_SRC = fs.readFileSync(path.join(SCRIPTS, 'sync-external-seeds-to-catalog.cjs'), 'utf8');
 const ULTA_SRC = fs.readFileSync(path.join(SCRIPTS, 'sync-ulta-external-seeds-to-catalog.cjs'), 'utf8');
+const OY_SRC = fs.readFileSync(path.join(__dirname, '..', 'src', 'services', 'oliveYoungAffiliateFeed.js'), 'utf8');
 
 // ---------------------------------------------------------------------------
 // 1. The rule itself, and that it is ONE rule across the three writers.
@@ -149,26 +149,67 @@ test('writer 1: the mirror row carries the empty path to the sink the gate reads
   assert.notEqual(mirror.product.product_type, 'Beauty Product');
 });
 
-test('writer 1: run() skips the uncategorised row with a counted reason, and does not throw', () => {
-  // applyMirrors wraps the whole batch in one BEGIN and --batch-size defaults to every fetched row,
-  // so a guard that THREW here would abort an entire sync run over one uncategorised seed. The gate
-  // must be a per-row `skipped.push(...) + continue`, in the loop, before `mirrors.push`.
-  const loopStart = SYNC_SRC.indexOf('    const mirror = buildMirror(row);');
-  assert.ok(loopStart > 0, 'the row loop must still call buildMirror');
-  const loopEnd = SYNC_SRC.indexOf('    mirrors.push(mirror);', loopStart);
-  assert.ok(loopEnd > loopStart, 'the row loop must still push mirrors');
-  const body = SYNC_SRC.slice(loopStart, loopEnd);
+// THE GATE IS DRIVEN, NOT READ. The two tests this replaces were pure source-text pins
+// (`indexOf` + `assert.match`), and a source pin cannot see a broken BINDING. Both stayed green
+// when the imported predicate was swapped for `() => true`, and when the destructured import was
+// mistyped so the binding was `undefined` -- which in production throws
+// `TypeError: categoryPathIsCategorised is not a function` on the FIRST row and aborts the entire
+// batch, i.e. precisely the failure the "per-row skip, not a throw" shape exists to prevent.
+for (const [name, internals, src] of [
+  ['writer 1', SYNC_INTERNALS, SYNC_SRC],
+  ['writer 2', ULTA_INTERNALS, ULTA_SRC],
+]) {
+  test(`${name}: the gate's predicate IS the shared module export, not a look-alike`, () => {
+    assert.equal(
+      internals.categoryPathIsCategorised,
+      categoryPathIsCategorised,
+      `${name} must gate on beautyTaxonomy's export; a local stub or a mistyped import that resolves `
+        + 'to undefined is the failure this pins',
+    );
+    assert.equal(typeof internals.categoryPathIsCategorised, 'function');
+  });
 
-  assert.match(
-    body,
-    /if \(!categoryPathIsCategorised\(mirror\.product\.category_path\)\) \{/,
-    'the uncategorised gate must run between buildMirror and mirrors.push',
-  );
-  assert.match(body, /reason: 'category_path_uncategorised'/, 'the skip must carry a counted reason');
-  const gate = body.slice(body.indexOf('if (!categoryPathIsCategorised('));
-  assert.doesNotMatch(gate, /throw new Error/, 'the gate must skip the row, never abort the batch');
-  assert.match(gate, /continue;/, 'the gate must continue to the next row');
-});
+  test(`${name}: the gate skips an uncategorised mirror with a counted reason, and admits a real one`, () => {
+    const skip = internals.mirrorCategorySkipReason({
+      row: { external_product_id: 'ext_probe' },
+      product: { category_path: 'beauty', title: 'Widget 3000' },
+    });
+    assert.ok(skip, 'a bare domain must produce a skip record');
+    assert.equal(skip.reason, 'category_path_uncategorised');
+    assert.equal(skip.external_product_id, 'ext_probe');
+    assert.equal(skip.category_path, 'beauty');
+
+    for (const empty of ['', null, undefined]) {
+      assert.ok(
+        internals.mirrorCategorySkipReason({ row: {}, product: { category_path: empty } }),
+        `${JSON.stringify(empty)} must also skip`,
+      );
+    }
+    assert.equal(
+      internals.mirrorCategorySkipReason({ row: {}, product: { category_path: 'beauty/fragrance/perfume' } }),
+      null,
+      'a categorised path must be admitted',
+    );
+    // It must never throw -- applyMirrors wraps the batch in one BEGIN, so an exception here
+    // discards the whole run rather than one row.
+    assert.doesNotThrow(() => internals.mirrorCategorySkipReason(undefined));
+    assert.doesNotThrow(() => internals.mirrorCategorySkipReason({}));
+  });
+
+  test(`${name}: run() consults the gate between building the mirror and writing it`, () => {
+    // Still a source check, but now only for WIRING -- the behaviour above is driven. Deleting the
+    // call is the mutant this catches.
+    const at = src.indexOf('    const mirror = buildMirror(row);');
+    assert.ok(at > 0, 'the row loop must still call buildMirror');
+    const end = src.indexOf('    mirrors.push(mirror);', at);
+    assert.ok(end > at, 'the row loop must still push mirrors');
+    const body = src.slice(at, end);
+    assert.match(body, /const categorySkip = mirrorCategorySkipReason\(mirror\);/);
+    assert.match(body, /skipped\.push\(categorySkip\);/);
+    assert.match(body.slice(body.indexOf('const categorySkip')), /continue;/);
+    assert.doesNotMatch(body.slice(body.indexOf('const categorySkip')), /throw new Error/);
+  });
+}
 
 test('writer 1: the fragrance branch admits real stranded rows from the live index', () => {
   // Verbatim titles measured on the live index sitting on bare `beauty`, plus the forms the ladder
@@ -217,6 +258,116 @@ test('writer 1: the fragrance branch takes no row away from a branch that had it
 });
 
 const INCI_DESCRIPTION = 'Ingredients: Aqua, Glycerin, Parfum (Fragrance), Tocopherol, Limonene.';
+
+test('writer 1: a "fragrance free" claim is not a fragrance, in every hyphen the web uses', () => {
+  // THE GUARD HAS TO BE THE REASON THIS PASSES. The two "fragrance free" rows in the CONTROLS list
+  // above are claimed by EARLIER ladder branches (sunscreen, cleanser), so deleting the guard left
+  // them green -- the same "passes for the wrong reason" defect this suite already fixed once for
+  // the INCI probe. These titles reach the end of the ladder unclaimed, so only the guard can save
+  // them.
+  //
+  // And the separators are real: the guard was `[\s-]*`, which accepts an ASCII hyphen and nothing
+  // else, so a typographic hyphen, non-breaking hyphen, en dash or minus sign all classified a
+  // fragrance-free product as a perfume.
+  const SEPARATORS = [
+    ['-', 'hyphen-minus'],
+    ['\u2010', 'U+2010 hyphen'],
+    ['\u2011', 'U+2011 non-breaking hyphen'],
+    ['\u2013', 'U+2013 en dash'],
+    ['\u2212', 'U+2212 minus sign'],
+    [' ', 'space'],
+    ['\u00a0', 'U+00A0 no-break space'],
+  ];
+  for (const [sep, label] of SEPARATORS) {
+    const title = `Fragrance${sep}Free Daily Elixir`;
+    const shape = inferCatalogMirrorCategory(seedRow({ title }));
+    assert.notEqual(
+      shape.categoryPath,
+      CANONICAL_CATEGORY_PATHS.fragrance,
+      `a fragrance-free claim written with ${label} must not classify as a fragrance`,
+    );
+  }
+  // Control: the guard must not be swallowing everything -- drop the "free" and it IS a fragrance.
+  assert.equal(
+    inferCatalogMirrorCategory(seedRow({ title: 'Fragrance Daily Elixir' })).categoryPath,
+    CANONICAL_CATEGORY_PATHS.fragrance,
+  );
+});
+
+test('writer 1: a fragrance word inside a LONGER word is not a fragrance', () => {
+  // `\bperfume` / `\bparfum` had no TRAILING boundary, so they matched inside ordinary words.
+  //
+  // THE PROBES CARRY NO VETO WORD, AND THAT IS THE POINT. An earlier version of this test used
+  // "Perfumed Nail Polish" / "La Parfumerie Gift Card", and it could not fail: the veto caught
+  // `polish` and `gift card` first, so restoring the unbounded pattern left the test green. These
+  // titles reach the branch with nothing else to stop them, so only the boundary decides.
+  for (const title of ['La Parfumerie', 'Parfumerie Boutique', 'Perfumery Studio Voucher', 'Perfumed Aura']) {
+    assert.notEqual(
+      inferCatalogMirrorCategory(seedRow({ title })).categoryPath,
+      CANONICAL_CATEGORY_PATHS.fragrance,
+      `${title} contains a fragrance word but is not a fragrance`,
+    );
+  }
+  // Control: the bare nouns and their plurals must still match, or the boundary has gone too far.
+  for (const title of ['Rose Perfume', 'Signature Perfumes', 'Grey Vetiver Parfum', 'Azure Lime Cologne']) {
+    assert.equal(
+      inferCatalogMirrorCategory(seedRow({ title })).categoryPath,
+      CANONICAL_CATEGORY_PATHS.fragrance,
+      `${title} names a fragrance`,
+    );
+  }
+});
+
+test('writer 1: the ladder names a lotion and a bare emulsion', () => {
+  // Not cosmetic: over the 40 real ulta.com titles in the repo's readiness checkpoint these were
+  // most of what fell through to the placeholder, and the branch only had `facial emulsion|face
+  // emulsion` — so an emulsion calling itself "Face and Body" missed it.
+  for (const title of [
+    'Natural Moisturizing Factors + Inulin Body Lotion',
+    'Niacinamide 5% Face and Body Emulsion for Dark Spots & Uneven Tone',
+    'Retinal 0.2% Emulsion High-Strength Retinoid Nighttime Treatment',
+  ]) {
+    assert.equal(
+      inferCatalogMirrorCategory(seedRow({ title })).categoryPath,
+      'beauty/skincare/moisturizer',
+      `${title} must reach a real category`,
+    );
+  }
+});
+
+test('writer 1: a line extension that names two product classes is skipped, not served as perfume', () => {
+  // THE VETO ALWAYS WINS; there is no "unambiguous form" override. Every fragrance house ships
+  // these, and filing them as perfume is worse than the placeholder being removed: it turns
+  // "invisible to category browse" into "served as the wrong answer to a fragrance query".
+  const AMBIGUOUS = [
+    'Chanel No 5 Eau de Parfum Body Lotion',
+    'Eau de Toilette Deodorant Spray',
+    'Eau de Parfum Shower Gel',
+    'Fenty Parfum Body Cr\u00e8me',
+    'Perfume Storage Organizer Tray',
+    'Perfume Atomizer Refillable Travel Bottle',
+  ];
+  for (const title of AMBIGUOUS) {
+    assert.notEqual(
+      inferCatalogMirrorCategory(seedRow({ title })).categoryPath,
+      CANONICAL_CATEGORY_PATHS.fragrance,
+      `${title} names a second product class and must not be filed as a fragrance`,
+    );
+  }
+  // `Cr\u00e8me` vs `Cream` must not decide it: the accent alone used to flip the answer.
+  assert.equal(
+    inferCatalogMirrorCategory(seedRow({ title: 'Fenty Parfum Body Cr\u00e8me' })).categoryPath,
+    inferCatalogMirrorCategory(seedRow({ title: 'Fenty Parfum Body Creme' })).categoryPath,
+  );
+  // Control: FRAGRANCE FORMATS are how fragrance is sold and must still classify.
+  for (const title of ['COBALT PERFUME OIL 10ml', 'Roll On Perfume', 'Find Comfort Body & Hair Fragrance Mist']) {
+    assert.equal(
+      inferCatalogMirrorCategory(seedRow({ title })).categoryPath,
+      CANONICAL_CATEGORY_PATHS.fragrance,
+      `${title} is a fragrance format, not another product class`,
+    );
+  }
+});
 
 test('writer 1: `parfum` in an ingredient list does not make a product a fragrance', () => {
   // THIS IS THE TITLE-ONLY NARROWING, AND NOTHING ELSE. `haystack` folds in seed descriptions, and
@@ -301,24 +452,6 @@ test('writer 2: an unclassifiable Ulta row is left uncategorised for the gate to
   assert.equal(categoryPathIsCategorised(mirror.product.category_path), false);
 });
 
-test('writer 2: run() skips the uncategorised row with a counted reason, and does not throw', () => {
-  const loopStart = ULTA_SRC.indexOf('    const mirror = buildMirror(row);');
-  assert.ok(loopStart > 0, 'the row loop must still call buildMirror');
-  const loopEnd = ULTA_SRC.indexOf('    mirrors.push(mirror);', loopStart);
-  assert.ok(loopEnd > loopStart, 'the row loop must still push mirrors');
-  const body = ULTA_SRC.slice(loopStart, loopEnd);
-
-  assert.match(
-    body,
-    /if \(!categoryPathIsCategorised\(mirror\.product\.category_path\)\) \{/,
-    'the uncategorised gate must run between buildMirror and mirrors.push',
-  );
-  assert.match(body, /reason: 'category_path_uncategorised'/, 'the skip must carry a counted reason');
-  const gate = body.slice(body.indexOf('if (!categoryPathIsCategorised('));
-  assert.doesNotMatch(gate, /throw new Error/, 'the gate must skip the row, never abort the batch');
-  assert.match(gate, /continue;/, 'the gate must continue to the next row');
-});
-
 // ---------------------------------------------------------------------------
 // 4. Writer 3 -- scripts/apply-reviewed-external-seed-category-patch.cjs
 // ---------------------------------------------------------------------------
@@ -366,6 +499,76 @@ test('writer 3: a real path still passes, and a non-beauty path still reports th
   assert.ok(!offDomain.includes('category_path_not_categorised'), 'fashion/shoes IS categorised');
 });
 
+test('writer 3: a placeholder prior claim does not block its own repair', () => {
+  // THE PLACEHOLDER BLOCKED THE ONE TOOL BUILT TO FIX IT. `findConflicts` protected any non-empty
+  // existing value as a prior claim, and `beauty` is not a claim -- it is the absence of one,
+  // written down. The only escape was --allow-overwrite, which disables conflict protection for
+  // every field across the whole run.
+  const entry = reviewedEntry('beauty/fragrance/perfume');
+  const plan = (seedData) =>
+    buildCategoryPatchPlanForRow(
+      { external_product_id: 'ext_reviewed', title: 'Cloud Eau de Parfum', seed_data: seedData },
+      { ...entry, title: 'Cloud Eau de Parfum' },
+      {},
+    );
+
+  for (const placeholder of [
+    { category_path: 'beauty', category: 'beauty', snapshot: {} },
+    { category_path: 'beauty', category: 'Beauty Product', snapshot: {} },
+    { catalog_category_path: 'beauty', snapshot: {} },
+    { snapshot: { category_path: 'beauty' } },
+  ]) {
+    const out = plan(placeholder);
+    assert.equal(
+      out.status,
+      'planned',
+      `a placeholder prior claim must not block the repair, got ${JSON.stringify(out.blocking_reasons || [])}`,
+    );
+  }
+
+  // AND A REAL DISAGREEMENT MUST STILL BLOCK -- otherwise this is not a narrowing, it is deleting
+  // the protection. `Flaura Eau De Parfum` really is stored under makeup/face/blush, and that is a
+  // mis-categorisation for a human to resolve, not something a manifest may silently overwrite.
+  const real = plan({ category_path: 'beauty/makeup/face/blush', category: 'Blush', snapshot: {} });
+  assert.equal(real.status, 'blocked');
+  assert.ok(
+    real.blocking_reasons.some((r) => r.includes('beauty/makeup/face/blush')),
+    `a real prior path must still conflict, got ${JSON.stringify(real.blocking_reasons)}`,
+  );
+});
+
+test('writer 4: the OliveYoung feed seeds no placeholder category either', () => {
+  // The fourth committed writer of the same literal, and the one that caused the block above:
+  // it writes the SEED, and the reviewed-patch lane reads `seed_data.category_path` as a claim.
+  const record = normalizeFeedRecord(
+    {
+      product_id: 'oy_probe',
+      title: 'Cloud Eau de Parfum',
+      brand: 'Ariana Grande',
+      product_url: 'https://global.oliveyoung.com/product/detail?prdtNo=oy_probe',
+      price: '58.00',
+      currency: 'USD',
+      availability: 'in_stock',
+    },
+    'US',
+  );
+  assert.equal(record.category_path, '', 'a feed row with no category must not invent one');
+
+  const seed = buildSeedRowFromOYOffer(record, { market: 'US' });
+  const seeded = seed.seed_data.category_path;
+  assert.ok(
+    seeded === undefined || categoryPathIsCategorised(seeded),
+    `the seed must carry a real category or none, got ${JSON.stringify(seeded)}`,
+  );
+
+  // Control: a feed row that DOES carry a category still passes it through untouched.
+  const withCategory = buildSeedRowFromOYOffer(
+    { ...record, category_path: 'beauty/fragrance/perfume' },
+    { market: 'US' },
+  );
+  assert.equal(withCategory.seed_data.category_path, 'beauty/fragrance/perfume');
+});
+
 // ---------------------------------------------------------------------------
 // 5. No writer may reintroduce the literal.
 // ---------------------------------------------------------------------------
@@ -377,7 +580,11 @@ function stripComments(src) {
 }
 
 test('no writer falls back to the bare domain literal', () => {
-  for (const [name, src] of [['sync-external-seeds', SYNC_SRC], ['sync-ulta-external-seeds', ULTA_SRC]]) {
+  for (const [name, src] of [
+    ['sync-external-seeds', SYNC_SRC],
+    ['sync-ulta-external-seeds', ULTA_SRC],
+    ['oliveYoungAffiliateFeed', OY_SRC],
+  ]) {
     const code = stripComments(src);
     const hit = code.match(/\|\|\s*'beauty'/);
     assert.equal(

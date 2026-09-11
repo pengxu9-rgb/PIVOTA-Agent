@@ -645,6 +645,35 @@ function classifyMirrorProductKind(row, categoryShape, context = {}) {
   });
 }
 
+// Fragrance vocabulary, hoisted so each pattern is stated once and can be read as a set.
+//
+// TRAILING BOUNDARIES ARE LOAD-BEARING. These were `\bperfume` and `\bparfum` with no closing
+// boundary, which matched inside ordinary words: "Perfumed Nail Polish", "Perfumed Talc Powder" and
+// "La Parfumerie Gift Card" all classified as perfume.
+const FRAGRANCE_FORM_PATTERN = /(?:eau\s+de\s+(?:parfum|toilette|cologne)|\bedp\b|\bedt\b)/;
+const FRAGRANCE_NOUN_PATTERN = /\b(?:perfumes?|parfums?|colognes?|fragrances?)\b/;
+// Other product classes. NOT fragrance formats (oil / mist / spray / roll-on / bar / solid), which
+// are how fragrance itself is sold.
+const NON_FRAGRANCE_PRODUCT_CLASS_PATTERN =
+  /\b(?:lotion|emulsion|cream|creme|butter|scrub|exfoliant|wash|soap|shampoo|conditioner|deodorant|antiperspirant|sunscreen|spf|polish|candle|diffuser|balm|wipes?|mask|toner|cleanser|serum|powder|talc|foundation|concealer|lipstick|atomizer|organizer|tray|case|pouch|gift\s+card)\b|\b(?:shower|bath|shaving)\s+(?:gel|cream|oil|foam)\b/;
+// `[\s-]*` only accepted an ASCII hyphen, so "Fragrance\u2010Free Daily Gel" (a real typographic
+// hyphen) classified as a perfume. Separators are normalised before the test rather than enumerated
+// here -- see normalizeFragranceSeparators.
+const FRAGRANCE_FREE_CLAIM_PATTERN = /(?:fragrance|perfume|parfum|scent)[\s-]*free/;
+
+// Collapse the typographic dash/hyphen family and `crème`-style diacritics onto their ASCII forms,
+// so one spelling of a word cannot slip past a pattern that its neighbour trips. "Fenty Parfum Body
+// Crème" classified as a perfume while "…Body Cream" classified as a moisturiser -- the accent, and
+// nothing else, decided it.
+function normalizeFragranceSeparators(value) {
+  return String(value || '')
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[\u2010-\u2015\u2212\u00ad]/g, '-')
+    .replace(/\u00a0/g, ' ')
+    .toLowerCase();
+}
+
 function inferCatalogMirrorCategory(row) {
   const highConfidenceTitleShape = inferHighConfidenceTitleCategoryShape(row);
   if (highConfidenceTitleShape) return highConfidenceTitleShape;
@@ -724,7 +753,11 @@ function inferCatalogMirrorCategory(row) {
   if (/\b(?:face mask|herbal face mask|recovery mask)\b/.test(haystack)) {
     return { productType: 'Face Mask', category: 'Face Mask', categoryPath: 'beauty/skincare/mask' };
   }
-  if (/\b(?:facial emulsion|face emulsion|moisturizer|moisturiser|cream|water gel|gel cream)\b/.test(haystack)) {
+  // `lotion` and bare `emulsion` were missing, and they are not exotic: measured over the 40 real
+  // ulta.com titles in reports/.../domains/ulta.com.json, they are most of what the ladder could
+  // not name -- "Body Lotion", "Face and Body Emulsion", "Retinal 0.2% Emulsion". The branch only
+  // had `facial emulsion|face emulsion`, so an emulsion that says "Face and Body" missed it.
+  if (/\b(?:emulsion|lotion|moisturizer|moisturiser|cream|water gel|gel cream)\b/.test(haystack)) {
     return { productType: 'Moisturizer', category: 'Moisturizer', categoryPath: 'beauty/skincare/moisturizer' };
   }
   if (/\b(?:hair mask)\b/.test(haystack)) {
@@ -748,33 +781,34 @@ function inferCatalogMirrorCategory(row) {
   // measured over a 6,607-title corpus taking five rows off branches that had them right --
   // "Neutrogena Hydro Boost Water Gel with Signature Fragrance" (a moisturiser whose title merely
   // MENTIONS fragrance) and three "Perfume Nourishing Body Cream" variants (a brand line, not a
-  // product class). Running last makes the change purely additive to the ladder: every row an
-  // existing branch claimed, it still claims, and this arm only ever sees rows that were headed
-  // for the placeholder.
+  // product class). Running last makes it purely additive to the ladder.
   //
   // MATCHED ON NAME, NOT ON DESCRIPTION. `haystack` folds in seed descriptions, and `parfum` is an
   // INCI ingredient name listed on a great many products that are not fragrances. This branch
-  // reads the title and the seed's own category token only -- the same narrowing
-  // `inferHighConfidenceTitleCategoryShape` already applies -- and excludes the "fragrance free"
-  // claim, which is a skincare marketing line.
-  //
-  // The veto is a second belt for product classes the ladder above does not cover (scrub, lotion,
-  // body wash, candle...), so a scented body scrub is left uncategorised and SKIPPED rather than
-  // filed as a perfume. An unambiguous fragrance form -- "eau de parfum", EDP, EDT -- overrides it,
-  // because that is the product's own name for itself and not a scent note.
-  const fragranceNameText = `${explicitCategory} ${titleOnlyCategoryText(row)}`;
-  const unambiguousFragranceForm = /(?:eau\s+de\s+(?:parfum|toilette|cologne)|\bedp\b|\bedt\b)/.test(
-    fragranceNameText,
+  // reads the title and the seed's own category token only.
+  const fragranceNameText = normalizeFragranceSeparators(
+    `${explicitCategory} ${titleOnlyCategoryText(row)}`,
   );
-  const namesFragrance =
-    unambiguousFragranceForm ||
-    /(?:\bperfume|\bparfum|\bcologne\b|\bfragrance\b)/.test(fragranceNameText);
-  const namesAnotherProductClass =
-    /\b(?:scrub|lotion|body\s+butter|body\s+wash|hand\s+wash|soap|deodorant|candle|diffuser|balm|wipes?|shampoo|conditioner|sunscreen)\b/.test(
-      fragranceNameText,
-    );
-  const claimsFragranceFree = /(?:fragrance|perfume|parfum|scent)[\s-]*free/.test(fragranceNameText);
-  if (namesFragrance && !claimsFragranceFree && (unambiguousFragranceForm || !namesAnotherProductClass)) {
+  // THE VETO ALWAYS WINS -- there is no "unambiguous form" override any more, and removing it is a
+  // bug fix, not a simplification. The override existed so "eau de parfum" could beat the veto, and
+  // every fragrance house ships LINE EXTENSIONS whose names carry the concentration token while the
+  // product is something else: "Chanel No 5 Eau de Parfum Body Lotion", "Eau de Toilette Deodorant
+  // Spray", "Eau de Parfum Shower Gel" all landed on beauty/fragrance/perfume. That is strictly
+  // worse than the placeholder this PR removes -- it turns "invisible to category browse" into
+  // "served as the wrong answer to a fragrance query". A name that claims two product classes is
+  // ambiguous, and an ambiguous row is left uncategorised and SKIPPED, which is repairable.
+  //
+  // THE VETO LISTS OTHER PRODUCT CLASSES, NOT FRAGRANCE FORMATS. `oil`, `mist`, `spray`, `roll-on`,
+  // `bar` and `solid` are how fragrance is SOLD ("COBALT PERFUME OIL", "Roll On Perfume", "Body &
+  // Hair Fragrance Mist"), so vetoing them would delete real fragrance. `lotion`, `cream`, `scrub`,
+  // `polish`, `candle`, `tray` name a different thing.
+  const namesFragrance = FRAGRANCE_FORM_PATTERN.test(fragranceNameText)
+    || FRAGRANCE_NOUN_PATTERN.test(fragranceNameText);
+  if (
+    namesFragrance
+    && !FRAGRANCE_FREE_CLAIM_PATTERN.test(fragranceNameText)
+    && !NON_FRAGRANCE_PRODUCT_CLASS_PATTERN.test(fragranceNameText)
+  ) {
     return {
       productType: 'Perfume',
       category: 'Perfume',
@@ -1428,6 +1462,29 @@ function buildMirror(row) {
     },
     skus,
     auditReasons: identifierAuditReasons(skus),
+  };
+}
+
+// THE PER-ROW CATEGORY GATE, as a function rather than four lines inside a 100-line loop.
+//
+// It is extracted for ONE reason: a gate that lives only inside `run()` can only be tested by
+// reading the source text, and a source pin cannot see a broken binding. Both source-pin tests for
+// this gate stayed green when the imported predicate was replaced with `() => true`, and when the
+// destructured import was mistyped so the binding was `undefined` -- the second of which throws
+// `TypeError: categoryPathIsCategorised is not a function` on the FIRST row and aborts the whole
+// run, i.e. exactly the batch-abort this gate is shaped to avoid. Exported so a test can drive the
+// decision and can assert the binding is the real module export, not a look-alike.
+//
+// Returns a skip record, or null to admit. Never throws: applyMirrors wraps the batch in a single
+// BEGIN and --batch-size defaults to every fetched row, so an exception here would discard the run.
+function mirrorCategorySkipReason(mirror) {
+  const product = asObject(mirror && mirror.product);
+  if (categoryPathIsCategorised(product.category_path)) return null;
+  return {
+    external_product_id: asString(asObject(mirror && mirror.row).external_product_id),
+    reason: 'category_path_uncategorised',
+    category_path: asString(product.category_path) || null,
+    title: asString(product.title),
   };
 }
 
@@ -2507,26 +2564,18 @@ async function run() {
       });
       continue;
     }
-    if (!categoryPathIsCategorised(mirror.product.category_path)) {
+    const categorySkip = mirrorCategorySkipReason(mirror);
+    if (categorySkip) {
       // A ROW THAT HAS NOT BEEN CATEGORISED IS SKIPPED, NOT LANDED ON A PLACEHOLDER.
       //
-      // A PER-ROW SKIP, DELIBERATELY NOT A THROW. applyMirrors wraps the whole batch in a single
-      // BEGIN (see applyMirrors), and --batch-size defaults to every fetched row, so a guard that
-      // threw here would abort an entire sync run over one uncategorised seed. This is counted and
-      // reported in `skipped[]` alongside missing_canonical_url and content_key_unmintable, and the
-      // row is retried on the next run -- once the seed carries a category, or once the ladder in
-      // inferCatalogMirrorCategory grows an arm for it.
+      // `category_path = 'beauty'` is unretrievable by category-scoped recall AND invisible to
+      // every repair tool: pivota-backend's regex backfill selects `WHERE category_path IS NULL`,
+      // and an off-taxonomy health check passes it because `beauty` IS on the taxonomy. The row was
+      // simultaneously unservable by category and, to every fixer, finished.
       //
-      // WHY SKIPPING BEATS LANDING. `category_path = 'beauty'` is unretrievable by category-scoped
-      // recall AND invisible to every repair tool: pivota-backend's regex backfill selects
-      // `WHERE category_path IS NULL`, and an off-taxonomy health check passes it because `beauty`
-      // IS on the taxonomy. The row was simultaneously unservable and, to every fixer, finished.
-      skipped.push({
-        external_product_id: id,
-        reason: 'category_path_uncategorised',
-        category_path: mirror.product.category_path || null,
-        title: mirror.product.title,
-      });
+      // Counted in `skipped[]` beside missing_canonical_url and content_key_unmintable, and retried
+      // next run -- once the seed carries a category, or once the ladder grows an arm for it.
+      skipped.push(categorySkip);
       continue;
     }
     if (!mirror.product.content_key) {
@@ -2616,6 +2665,10 @@ if (require.main === module) {
 
 module.exports = {
   _internals: {
+    // Exported so the gate can be DRIVEN, and so a test can assert this binding IS
+    // beautyTaxonomy's export rather than a look-alike that always admits.
+    categoryPathIsCategorised,
+    mirrorCategorySkipReason,
     annotateMirrorMerchants,
     inferCatalogMirrorCategory,
     normalizeCategoryToken,

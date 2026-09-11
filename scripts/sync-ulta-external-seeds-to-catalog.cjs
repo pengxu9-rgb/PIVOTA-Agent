@@ -248,6 +248,29 @@ function dropUnmintableMirrors(mirrors, skipped, identityResolution = null) {
   });
 }
 
+// THE PER-ROW CATEGORY GATE, as a function rather than four lines inside a 100-line loop.
+//
+// It is extracted for ONE reason: a gate that lives only inside `run()` can only be tested by
+// reading the source text, and a source pin cannot see a broken binding. Both source-pin tests for
+// this gate stayed green when the imported predicate was replaced with `() => true`, and when the
+// destructured import was mistyped so the binding was `undefined` -- the second of which throws
+// `TypeError: categoryPathIsCategorised is not a function` on the FIRST row and aborts the whole
+// run, i.e. exactly the batch-abort this gate is shaped to avoid. Exported so a test can drive the
+// decision and can assert the binding is the real module export, not a look-alike.
+//
+// Returns a skip record, or null to admit. Never throws: applyMirrors wraps the batch in a single
+// BEGIN and --batch-size defaults to every fetched row, so an exception here would discard the run.
+function mirrorCategorySkipReason(mirror) {
+  const product = asObject(mirror && mirror.product);
+  if (categoryPathIsCategorised(product.category_path)) return null;
+  return {
+    external_product_id: asString(asObject(mirror && mirror.row).external_product_id),
+    reason: 'category_path_uncategorised',
+    category_path: asString(product.category_path) || null,
+    title: asString(product.title),
+  };
+}
+
 function buildMirror(row) {
   const seedData = asObject(row.seed_data);
   const snapshot = asObject(seedData.snapshot);
@@ -916,26 +939,21 @@ async function run() {
       skipped.push({ external_product_id: row.external_product_id, reason: 'missing_canonical_url' });
       continue;
     }
-    if (!categoryPathIsCategorised(mirror.product.category_path)) {
+    const categorySkip = mirrorCategorySkipReason(mirror);
+    if (categorySkip) {
       // A ROW THAT HAS NOT BEEN CATEGORISED IS SKIPPED, NOT LANDED ON A PLACEHOLDER.
       //
-      // A PER-ROW SKIP, DELIBERATELY NOT A THROW: applyMirrors wraps the batch in a single BEGIN,
-      // so a guard that threw would abort a whole sync run over one unclassifiable seed. The row is
-      // counted in `skipped[]` and retried next run -- once the seed carries a category, or once
-      // the shared ladder in inferCatalogMirrorCategory grows an arm for it.
+      // EXPECT A NON-TRIVIAL COUNT. Ulta rows carry no category of their own, so each is classified
+      // from its title alone. Measured over the 40 real ulta.com titles in
+      // reports/.../pdp_readiness_checkpoint/domains/ulta.com.json: 15% are still unnamed by their
+      // own title (The Ordinary-style "Alpha Arbutin 2% + Hyaluronic Acid" names ingredients, not a
+      // product class). Read `skipped[]` grouped by this reason before widening the ladder.
       //
-      // EXPECT THIS COUNT TO BE NON-TRIVIAL ON THE FIRST RUN. Ulta rows arrive with no category of
-      // their own, so each is classified from its title alone, and what the title does not name
-      // cannot be categorised. That is the honest outcome: those rows were being written
-      // unretrievable, and a skipped row is repairable while a row parked on `beauty` is invisible
-      // to the very tools that would repair it. Read `skipped[]` grouped by this reason to size the
-      // gap before widening the ladder.
-      skipped.push({
-        external_product_id: row.external_product_id,
-        reason: 'category_path_uncategorised',
-        category_path: mirror.product.category_path || null,
-        title: mirror.product.title,
-      });
+      // THE COST IS STALENESS, NOT DELETION: a skipped row is not deleted (stale deletes are scoped
+      // to the mirrors actually built), but its price, availability and image stop refreshing while
+      // it stays `sync_status: 'live'`. That is the trade being made against writing a category
+      // that no category query can reach.
+      skipped.push(categorySkip);
       continue;
     }
     mirrors.push(mirror);
@@ -1055,6 +1073,8 @@ if (require.main === module) {
 
 module.exports = {
   _internals: {
+    categoryPathIsCategorised,
+    mirrorCategorySkipReason,
     annotateUltaMirrorMerchants,
     buildMirror,
     dropUnmintableMirrors,

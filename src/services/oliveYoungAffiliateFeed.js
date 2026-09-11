@@ -226,7 +226,17 @@ function buildSeedRowFromOYOffer(offer, { market = 'US', buildDiscoveredVia } = 
       image_url: o.image_url || null,
       image_urls: imageUrls,
       images: imageUrls,
-      category_path: o.category_path || 'beauty',
+      // NO PLACEHOLDER. This ended `|| 'beauty'`, the fourth committed writer of the same fiction
+      // (the three in scripts/ are fixed in the same change). A bare top-level domain is a
+      // NAMESPACE, not an answer to "what is this", and here it is worse than merely useless:
+      // this writes the SEED, and `apply-reviewed-external-seed-category-patch.cjs` treats any
+      // non-empty `seed_data.category_path` as a prior claim to protect. So the placeholder blocks
+      // its own repair -- a reviewed manifest setting `beauty/fragrance/perfume` on such a seed
+      // comes back `blocked: existing_category_conflict:seed_data.category_path:beauty`, while the
+      // same manifest against a seed with NO path is `planned`. Leaving the field absent is
+      // therefore strictly better than filling it: the catalog mirror classifies from the title,
+      // and what it cannot classify it skips and reports.
+      ...(asString(o.category_path) ? { category_path: asString(o.category_path) } : {}),
       discovered_via: discoveredVia,
       oliveyoung_affiliate: {
         contract_version: 'oliveyoung_affiliate_feed.v1',
