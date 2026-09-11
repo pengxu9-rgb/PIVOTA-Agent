@@ -42493,7 +42493,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 		      if (
 			        productId &&
 			        String(productId).trim().toLowerCase().startsWith('sig_') &&
-			        (!requestedMerchantId || requestedMerchantId === EXTERNAL_SEED_MERCHANT_ID)
+			        (!requestedMerchantId || isExternalSeedListingMerchantId(requestedMerchantId))
 			      ) {
 		        const signatureResolveStartedAt = Date.now();
         let signatureProductRef = null;
@@ -42856,6 +42856,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	      // measurement, not a rename.
 	      const entryProductIsExternalSeed =
 	        isExternalSeedProductId(entryProductId) ||
+	        // SENTINEL-ONLY, DELIBERATELY. Widening this to isExternalSeedListingMerchantId fails
+	        // `an observed-seller request` in get_pdp_v2_observed_seller_entry: a merch_obs_ caller
+	        // names a SPECIFIC seller, and this entry predicate asks whether the caller named the
+	        // LEGACY BUCKET — not whether the row is seed supply. Measured gate-by-gate against the
+	        // pinned suites 2026-09-11: 8 of these 12 siblings widened safely; this one does not.
 	        requestedMerchantId === EXTERNAL_SEED_MERCHANT_ID;
         let productGroupAliasId = null;
 	      let externalSeedDirectPrecheckProduct =
@@ -42914,7 +42919,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         }
 	      if (
 	        entryProductIsExternalSeed &&
-	        (!requestedMerchantId || requestedMerchantId === EXTERNAL_SEED_MERCHANT_ID)
+	        (!requestedMerchantId || isExternalSeedListingMerchantId(requestedMerchantId))
 	      ) {
 	        markPdpV2Checkpoint('before_seed_precheck');
 	        const externalSeedStatusStartedAt = Date.now();
@@ -42987,7 +42992,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	      }
 	      if (
 	        entryProductIsExternalSeed &&
-	        (!requestedMerchantId || requestedMerchantId === EXTERNAL_SEED_MERCHANT_ID)
+	        (!requestedMerchantId || isExternalSeedListingMerchantId(requestedMerchantId))
 	      ) {
 	        const entryMerchantId = requestedMerchantId || EXTERNAL_SEED_MERCHANT_ID;
 	        startPdpSimilarPrewarm({
@@ -43271,11 +43276,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 
 	      const canSkipExternalSeedUpstreamGroupResolve =
 	        externalSeedRouteProductId &&
-	        (!requestedMerchantId || requestedMerchantId === EXTERNAL_SEED_MERCHANT_ID) &&
+	        (!requestedMerchantId || isExternalSeedListingMerchantId(requestedMerchantId)) &&
 	        !PDP_EXTERNAL_SEED_UPSTREAM_GROUP_RESOLVE_ENABLED;
 	      const canResolveExternalSeedUnscopedWithoutPrecheck =
 	        externalSeedRouteProductId &&
-	        (!requestedMerchantId || requestedMerchantId === EXTERNAL_SEED_MERCHANT_ID) &&
+	        (!requestedMerchantId || isExternalSeedListingMerchantId(requestedMerchantId)) &&
 	        !canSkipExternalSeedUpstreamGroupResolve;
 	      let resolveGroupCachedStartedAt = null;
 	      let resolveGroupCachedPromise = null;
@@ -43295,7 +43300,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	        if (
 	          attemptUnscopedExternalSeedResolve &&
 	          externalSeedRouteProductId &&
-	          (!requestedMerchantId || requestedMerchantId === EXTERNAL_SEED_MERCHANT_ID) &&
+	          (!requestedMerchantId || isExternalSeedListingMerchantId(requestedMerchantId)) &&
 	          !hasExplicitProductGroup &&
 	          !offerProductGroupId
 	        ) {
@@ -43364,7 +43369,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	        (
 	          !requestedMerchantId ||
 	          precheckEntryProductMissing ||
-	          requestedMerchantId === EXTERNAL_SEED_MERCHANT_ID
+	          isExternalSeedListingMerchantId(requestedMerchantId)
 	        ) &&
 	        !shouldSkipExternalSeedUpstreamGroupResolve;
 
@@ -43463,6 +43468,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	          // vocabulary — see the entry-predicate comment above.
 	          if (shouldFallbackToExternalSeedProductRef) {
 	            identityResolutionSource =
+	              // SENTINEL-ONLY, DELIBERATELY, with the gate below. Together they distinguish "the
+	              // caller pinned a REAL seller" from "the caller named the legacy bucket", and a
+	              // merch_obs_ caller IS a real seller for that question. Widening either fails two
+	              // pinned tests in get_pdp_v2_caller_requested_merchant — including the CONTROL that
+	              // a caller who really did pin another seller still gets the mismatch.
 	              callerRequestedMerchantId && callerRequestedMerchantId !== EXTERNAL_SEED_MERCHANT_ID
 	                ? 'external_seed_product_id_fallback'
 	                : 'external_seed_product_id';
@@ -43470,6 +43480,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	          if (
 	            shouldFallbackToExternalSeedProductRef &&
 	            callerRequestedMerchantId &&
+	            // SENTINEL-ONLY, DELIBERATELY — same reason as the gate a few lines above:
+	            // "pinned a REAL seller" vs "named the legacy bucket", where merch_obs_ is real.
 	            callerRequestedMerchantId !== EXTERNAL_SEED_MERCHANT_ID
 	          ) {
 	            canonicalizationApplied = true;
@@ -43758,7 +43770,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         const shouldSkipDirectExternalSeedIdentityGraph =
           entryProductIsExternalSeed &&
           resolvedRefIsSeedRouted() &&
-          (!requestedMerchantId || requestedMerchantId === EXTERNAL_SEED_MERCHANT_ID) &&
+          (!requestedMerchantId || isExternalSeedListingMerchantId(requestedMerchantId)) &&
           !variantId &&
           !offerId &&
           !hasExplicitProductGroup &&
@@ -43775,6 +43787,12 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           // this job.
           !canonicalizationGroupElectionApplied &&
           resolvedRefIsSeedRouted() &&
+          // SENTINEL-ONLY, DELIBERATELY — and the repo already says why, at
+          // tests/integration/get_pdp_v2_caller_requested_merchant.test.js:423. This conjunct is
+          // what holds the identity-graph skip CLOSED for merch_obs_ rows, and pdpIdentityGraph's
+          // catalog-entity-group branch exists FOR those rows — product_group_id, offer counts,
+          // offer_source group_fused, electronics_meta. Widening it skips that branch, which is an
+          // OUTPUT change on the main PDP route, not a latency one. That test fails on purpose.
           (!requestedMerchantId || requestedMerchantId === EXTERNAL_SEED_MERCHANT_ID) &&
           !variantId &&
           !offerId &&
