@@ -16720,10 +16720,18 @@ function buildBeautyExternalSeedMainlineProduct(row) {
   const inStock = availabilityKey
     ? !['out of stock', 'out_of_stock', 'outofstock', 'oos', 'sold out', 'sold_out'].includes(availabilityKey)
     : undefined;
+  // ADR-009 phase 3. The seller comes from the mirrored catalog row when there is one, and
+  // falls back to the sentinel only when there is genuinely nothing — the COALESCE(row value,
+  // sentinel) shape ADR-009 permits, never an invented identity (services/seller_identity.py:
+  // "minting NEVER invents an identity from nothing"). Every active seed has a mirrored row
+  // today, so the fallback is expected to be unreachable in production; it is kept because
+  // proving that for every serving path is a separate measurement, and failing open to the
+  // legacy bucket is recoverable where minting a wrong seller is not.
+  const resolvedMerchantId = firstNonEmptyString(row.catalog_merchant_id, EXTERNAL_SEED_MERCHANT_ID);
   const product = {
     id: responseProductId,
     product_id: responseProductId,
-    merchant_id: EXTERNAL_SEED_MERCHANT_ID,
+    merchant_id: resolvedMerchantId,
     merchant_name: brand || row.domain || 'External',
     platform: 'external',
     platform_product_id: externalProductId,
@@ -16904,7 +16912,26 @@ async function queryBeautyExternalSeedRowsFast({
                ON ips.content_key = cp.content_key
               AND ips.serving_eligible = TRUE
             WHERE cp.product_key = external_product_seeds.attached_product_key
-            LIMIT 1) AS catalog_category_path`;
+            LIMIT 1) AS catalog_category_path,
+          -- ADR-009 phase 3: the row's REAL seller, carried through instead of minting the
+          -- sentinel. Same subquery shape and same join key as the four above — the mirror
+          -- attaches by attached_product_key, not source_product_id, which is why a backlog
+          -- query keyed on the latter reports thousands of unmirrored seeds when there are
+          -- none. Measured 2026-09-11: 11,765 of 11,819 active seeds resolve to a merch_obs_*
+          -- seller and zero catalog_products rows carry the banned sentinel bucket.
+          --
+          -- NOTE the missing serving_eligible join, which every neighbour above has. That is
+          -- deliberate, and measured: a row's SELLER is an identity fact, not a serving
+          -- decision. The four columns above are things you may only SHOW for a servable row
+          -- (its canonical URL, its signature), so gating them on serving_eligible is right.
+          -- Gating the seller on it is not — it would leave the row correctly excluded from
+          -- serving but wrongly attributed to the banned sentinel bucket while it is excluded.
+          -- Copying the neighbouring shape verbatim cost 2,823 of 11,819 active seeds (23.9%)
+          -- their real seller; without the join, 11,819 of 11,819 resolve one.
+          (SELECT cp.merchant_id
+             FROM catalog_products cp
+            WHERE cp.product_key = external_product_seeds.attached_product_key
+            LIMIT 1) AS catalog_merchant_id`;
   const attachedServingSeedFilterSql = `
               AND coalesce(attached_product_key, '') <> ''
               AND EXISTS (
@@ -16941,7 +16968,14 @@ async function queryBeautyExternalSeedRowsFast({
           catalog_product_key,
           pivota_signature_id,
           pivota_canonical_url,
-          catalog_category_path
+          catalog_category_path,
+          -- The outer list of this derived table enumerates columns EXPLICITLY, so a column the
+          -- inner arms project is silently dropped here with no SQL error. That is how the first
+          -- version of this change shipped as a no-op on the default query shape: the inner arms
+          -- selected catalog_merchant_id and this list did not, so row.catalog_merchant_id was
+          -- undefined and every row fell back to the sentinel. Add new mirror columns in BOTH
+          -- places, or they only reach the single-category path.
+          catalog_merchant_id
         FROM (
           ${categoryTerms
             .map((categoryTerm, index) => {
@@ -53926,6 +53960,10 @@ module.exports._debug = {
   collapseNearDuplicateScoredBeautyProducts,
   buildBeautyExternalSeedRecallPatterns,
   queryBeautyExternalSeedRowsFast,
+  // Exported for tests only. The seller carried onto a built row is the thing worth
+  // asserting, and a source-text guard cannot see it — the first version of this change
+  // shipped a no-op that three grep-based assertions all passed.
+  buildBeautyExternalSeedMainlineProduct,
   mainlineProductMatchesId,
   diagnosePromptInspect,
   buildBeautyIngredientSourceText,
