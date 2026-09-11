@@ -3,7 +3,10 @@ const vertexGemini = require('./llm/vertexGemini');
  * Pivota Agent gateway.
  * Exposes /agent/shop/v1/invoke and forwards to Pivota internal API based on operation.
  */
-require('dotenv').config();const { marketsForRequest, primaryMarket, servedMarkets } = require('./services/servedMarkets');
+require('dotenv').config();
+const {
+  marketsForRequest, primaryMarket, servedMarkets, marketBind,
+} = require('./services/servedMarkets');
 
 const express = require('express');
 const axios = require('axios');
@@ -3029,13 +3032,14 @@ ${seedDataProjection}
       created_at,
       updated_at
   `;
+  const stageMkt = marketBind(servedMarkets(), '$1');
   const buildStageSql = (matchSql) => `
     SELECT
 ${selectColumns}
     FROM external_product_seeds
     WHERE status = 'active'
       AND attached_product_key IS NULL
-      AND market = ANY($1::text[])
+      AND ${stageMkt.sql}
       AND (
         ${structuredIngredientEvidenceClauses.join(' OR ')}
       )
@@ -3093,7 +3097,7 @@ ${selectColumns}
     const candidates = [];
     const seen = new Set();
     for (const stage of stages) {
-      const result = await query(buildStageSql(stage.matchSql), [servedMarkets(), stage.patterns, stage.limit]);
+      const result = await query(buildStageSql(stage.matchSql), [stageMkt.value, stage.patterns, stage.limit]);
       for (const row of result?.rows || []) {
         const product = buildExternalSeedProduct(row);
         if (!product) continue;
@@ -16318,7 +16322,8 @@ async function queryCreatorHumanApparelExternalSeedRows({
         return { query: retrievalQuery, row_count: 0, rows: [] };
       }
 
-      const sqlParams = [marketsForRequest(market)];
+      const apparelMkt = marketBind(marketsForRequest(market), '$1');
+      const sqlParams = [apparelMkt.value];
       const filters = [
         `(
           lower(coalesce(title, '')) LIKE ANY($2::text[])
@@ -16373,7 +16378,7 @@ async function queryCreatorHumanApparelExternalSeedRows({
           FROM external_product_seeds
           WHERE status = 'active'
             AND attached_product_key IS NULL
-            AND market = ANY($1::text[])
+            AND ${apparelMkt.sql}
             ${toolClause}
             AND ${filters.join('\n            AND ')}
           ORDER BY ${orderClause}
@@ -16919,10 +16924,16 @@ async function queryBeautyExternalSeedRowsFast({
                  AND ips_serving.serving_eligible = TRUE
                 WHERE cp_serving.product_key = external_product_seeds.attached_product_key
               )`;
-  const runScopeQuery = async (tool, queryMarket = safeMarket, marketScope = 'exact_market') => {
+  // queryMarket defaults to NULL, not safeMarket. `safeMarket` is truthy, so the old default
+  // sent every no-arg call down marketsForRequest(safeMarket) = [safeMarket] and the
+  // deployment's served list was never bound — this whole change was a no-op on its own main
+  // lane. The two callers that genuinely want one market (the KR brand-home bridge, :17383
+  // and :17391) pass 'US' explicitly and still get exactly ['US'].
+  const runScopeQuery = async (tool, queryMarket = null, marketScope = 'exact_market') => {
     try {
       const safeQueryMarkets = queryMarket ? marketsForRequest(queryMarket) : safeMarkets;
       const safeQueryMarket = safeQueryMarkets[0];
+      const mkt = marketBind(safeQueryMarkets, '$1');
       const isSingleCategory = categoryTerms.length === 1;
       const categoryLimitBind = `$${categoryTerms.length + 3}`;
       const scopeLimitBind = `$${categoryTerms.length + 4}`;
@@ -16974,7 +16985,7 @@ async function queryBeautyExternalSeedRowsFast({
             FROM external_product_seeds
             WHERE status = 'active'
               ${attachedServingSeedFilterSql}
-              AND market = ANY($1::text[])
+              AND ${mkt.sql}
               AND tool = $2
               AND ${categoryAuthoritySql} = ${categoryBind}
               ${inStockOnly ? `AND coalesce(lower(availability), '') NOT IN ('out of stock', 'out_of_stock', 'outofstock', 'oos')` : ''}
@@ -17014,7 +17025,7 @@ async function queryBeautyExternalSeedRowsFast({
         FROM external_product_seeds
         WHERE status = 'active'
           ${attachedServingSeedFilterSql}
-          AND market = ANY($1::text[])
+          AND ${mkt.sql}
           AND tool = $2
           AND ${categoryAuthoritySql} = $3
           ${inStockOnly ? `AND coalesce(lower(availability), '') NOT IN ('out of stock', 'out_of_stock', 'outofstock', 'oos')` : ''}
@@ -17025,8 +17036,8 @@ async function queryBeautyExternalSeedRowsFast({
       `
         : multiCategorySql;
       const params = isSingleCategory
-        ? [safeQueryMarkets, tool, categoryTerms[0], perScopeRowLimit]
-        : [safeQueryMarkets, tool, ...categoryTerms, perCategoryRowLimit, perScopeRowLimit];
+        ? [mkt.value, tool, categoryTerms[0], perScopeRowLimit]
+        : [mkt.value, tool, ...categoryTerms, perCategoryRowLimit, perScopeRowLimit];
       const queryStartedAt = Date.now();
       const result = await queryBeautyExternalSeedRowsWithTimeout(
         sql,
@@ -17076,7 +17087,7 @@ async function queryBeautyExternalSeedRowsFast({
       };
     }
   };
-  const runTextRecallQuery = async (tool, queryMarket = safeMarket, marketScope = 'text_recall_underfill') => {
+  const runTextRecallQuery = async (tool, queryMarket = null, marketScope = 'text_recall_underfill') => {
     const safePatterns = recallPatterns.filter(Boolean).slice(0, 14);
     const brandCategoryRecall = Boolean(
       intent?.brandBrowse &&
@@ -17112,6 +17123,7 @@ async function queryBeautyExternalSeedRowsFast({
     try {
       const safeQueryMarkets = queryMarket ? marketsForRequest(queryMarket) : safeMarkets;
       const safeQueryMarket = safeQueryMarkets[0];
+      const mkt = marketBind(safeQueryMarkets, '$1');
       const useBrandCategoryRecall = brandPatterns.length > 0 && brandCategoryPatterns.length > 0;
       if (useBrandCategoryRecall) {
         const brandClauses = brandPatterns.map((_, index) => {
@@ -17161,7 +17173,7 @@ async function queryBeautyExternalSeedRowsFast({
           FROM external_product_seeds
           WHERE status = 'active'
             ${attachedServingSeedFilterSql}
-            AND market = ANY($1::text[])
+            AND ${mkt.sql}
             AND tool = $2
             AND (${brandClauses.join('\n            OR ')})
             AND (${categoryClauses.join('\n            OR ')})
@@ -17174,7 +17186,7 @@ async function queryBeautyExternalSeedRowsFast({
         const queryStartedAt = Date.now();
         const result = await queryBeautyExternalSeedRowsWithTimeout(
           sql,
-          [safeQueryMarkets, tool, ...brandPatterns, ...brandCategoryPatterns, perScopeRowLimit],
+          [mkt.value, tool, ...brandPatterns, ...brandCategoryPatterns, perScopeRowLimit],
           2800,
         );
         const queryDurationMs = Math.max(0, Date.now() - queryStartedAt);
@@ -17244,7 +17256,7 @@ async function queryBeautyExternalSeedRowsFast({
         FROM external_product_seeds
         WHERE status = 'active'
           ${attachedServingSeedFilterSql}
-          AND market = ANY($1::text[])
+          AND ${mkt.sql}
           AND tool = $2
           AND (${patternClauses.join('\n          OR ')})
           ${inStockOnly ? `AND coalesce(lower(availability), '') NOT IN ('out of stock', 'out_of_stock', 'outofstock', 'oos')` : ''}
@@ -17256,7 +17268,7 @@ async function queryBeautyExternalSeedRowsFast({
       const queryStartedAt = Date.now();
       const result = await queryBeautyExternalSeedRowsWithTimeout(
         sql,
-        [safeQueryMarkets, tool, ...safePatterns, perScopeRowLimit],
+        [mkt.value, tool, ...safePatterns, perScopeRowLimit],
         1200,
       );
       const queryDurationMs = Math.max(0, Date.now() - queryStartedAt);

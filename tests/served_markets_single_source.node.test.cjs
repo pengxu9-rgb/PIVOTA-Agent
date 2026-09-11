@@ -24,7 +24,7 @@ const path = require('node:path');
 const ROOT = path.resolve(__dirname, '..');
 const HELPER = 'src/services/servedMarkets.js';
 const {
-  parseMarketList, servedMarkets, marketsForRequest, primaryMarket, DEFAULT_MARKET,
+  parseMarketList, servedMarkets, marketsForRequest, primaryMarket, DEFAULT_MARKET, marketBind,
 } = require(path.join(ROOT, HELPER));
 
 // Files that still spell the question themselves. ONLY EVER REMOVE FROM THESE.
@@ -113,14 +113,47 @@ test('parseMarketList dedupes and preserves order', () => {
 
 // --- the door uses it -----------------------------------------------------------------
 
-test('the door binds market as a LIST, not a scalar', () => {
+test('the door builds its market predicate from the helper, never inline', () => {
   const server = fs.readFileSync(path.join(ROOT, 'src/server.js'), 'utf8');
   const scalars = server.split('AND market = $1').length - 1;
   assert.strictEqual(scalars, 0,
-    `src/server.js still has ${scalars} scalar \`AND market = $1\` bind(s). A scalar cannot ` +
-    'express "US and SG", which is the defect this module exists to remove.');
-  const lists = server.split('AND market = ANY($1::text[])').length - 1;
-  assert.ok(lists >= 6, `expected the door's six seed lanes to bind a list, found ${lists}`);
+    `src/server.js still has ${scalars} hardcoded \`AND market = $1\` bind(s). A hardcoded ` +
+    'scalar cannot express "US and SG", which is the defect this module exists to remove.');
+  const built = (server.match(/AND \$\{\w+\.sql\}/g) || []).length;
+  assert.ok(built >= 6,
+    `expected the door's six seed lanes to take their predicate from marketBind(), found ${built}`);
+});
+
+test('marketBind keeps the single-market plan identical, and widens only when asked', () => {
+  // `market` is the LEADING column of the partial indexes these ORDER BY ... LIMIT n lanes use.
+  // A ScalarArrayOpExpr does not reliably carry the index's sort order, and these lanes already
+  // return 57014 timeouts — so one market must emit exactly the SQL that shipped before.
+  const one = marketBind(['US'], '$1');
+  assert.strictEqual(one.sql, 'market = $1');
+  assert.strictEqual(one.value, 'US', 'a single market must bind a SCALAR, not a 1-element array');
+  const two = marketBind(['US', 'SG'], '$1');
+  assert.strictEqual(two.sql, 'market = ANY($1::text[])');
+  assert.deepStrictEqual(two.value, ['US', 'SG']);
+  // The pair must never disagree — that mismatch is the bug this change already made once.
+  for (const markets of [['US'], ['US', 'SG'], ['SG', 'HK', 'US']]) {
+    const b = marketBind(markets, '$1');
+    assert.strictEqual(b.sql.includes('ANY('), Array.isArray(b.value),
+      `predicate and param disagree for ${markets}: ${b.sql} <- ${JSON.stringify(b.value)}`);
+  }
+});
+
+test('the main beauty lane actually widens — the default must not pin it to one market', () => {
+  // `runScopeQuery(tool)` defaulted queryMarket to `safeMarket`, which is TRUTHY, so every
+  // no-arg call took marketsForRequest(safeMarket) = [safeMarket] and the deployment's served
+  // list was never bound. The change was a no-op on its own main lane; review caught it.
+  const server = fs.readFileSync(path.join(ROOT, 'src/server.js'), 'utf8');
+  for (const fn of ['runScopeQuery', 'runTextRecallQuery']) {
+    const m = new RegExp(`const ${fn} = async \\(tool, queryMarket = (\\w+)`).exec(server);
+    assert.ok(m, `${fn} not found`);
+    assert.strictEqual(m[1], 'null',
+      `${fn} defaults queryMarket to \`${m[1]}\`, which is truthy — the served list can never ` +
+      'be reached and multi-market is silently a no-op on this lane.');
+  }
 });
 
 test('the door does not read the market env directly any more', () => {

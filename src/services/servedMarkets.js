@@ -78,8 +78,32 @@ function primaryMarket(env = process.env) {
   return servedMarkets(env)[0];
 }
 
+/**
+ * THE PREDICATE AND ITS PARAM, AS A PAIR — so the default deployment's QUERY PLAN is provably
+ * unchanged, not merely probably.
+ *
+ * `market` is the LEADING column of the partial indexes these recall lanes depend on
+ * (db/migrations/034_external_seed_recall_vertical_fastpath.sql, 039_*), and every one of them
+ * is `ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST LIMIT n`. A scalar `=`
+ * carries the index's sort order; a ScalarArrayOpExpr does not reliably, and the array length
+ * is unknown at plan time for a bound parameter, so the planner may add a Sort. These lanes
+ * ALREADY return 57014 timeouts, so that is not a risk worth taking for the common case.
+ *
+ * One market — which is every deployment today — emits exactly the SQL that shipped before.
+ * The array form appears only when someone has actually opted into more than one market.
+ * Returned together because a predicate and its parameter must not be able to disagree; that
+ * mismatch is precisely the bug this change already made once.
+ */
+function marketBind(markets, paramRef) {
+  const list = Array.isArray(markets) ? markets : parseMarketList(markets);
+  return list.length === 1
+    ? { sql: `market = ${paramRef}`, value: list[0] }
+    : { sql: `market = ANY(${paramRef}::text[])`, value: list };
+}
+
 module.exports = {
   DEFAULT_MARKET,
+  marketBind,
   parseMarketList,
   servedMarkets,
   marketsForRequest,
