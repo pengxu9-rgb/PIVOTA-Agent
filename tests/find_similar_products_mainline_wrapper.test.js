@@ -323,7 +323,7 @@ describe('find_similar_products mainline wrapper', () => {
   // ADR-009 phase 3 round trip. The test above sends the LEGACY sentinel; this one sends what the
   // door now actually serves. After #2189 a beauty mainline card is
   // {merchant_id: 'merch_obs_*', product_id: 'sig_*'}, and an agent echoes that straight back into
-  // find_similar_products. The signature-resolution gate at server.js:49562 read
+  // find_similar_products. The signature-resolution gate at the signature-resolution gate (server.js, ~:49578 — line numbers drift, grep isPivotaSignatureProductId) read
   // `merchantId === EXTERNAL_SEED_MERCHANT_ID`, so a re-keyed ref skipped resolution entirely and
   // fell through to a lookup that cannot match a sig_ id.
   //
@@ -391,7 +391,11 @@ describe('find_similar_products mainline wrapper', () => {
         operation: 'find_similar_products',
         payload: {
           product_id: 'sig_source1',
-          merchant_id: 'merch_obs_9ab12cd34ef56789',
+          // DELIBERATELY DIFFERENT from the catalog row's seller below. With both the same, this
+          // test cannot tell "carries the RESOLVED seller" from "carries the REQUEST seller" — and
+          // a mutant doing the latter survived it. The assertion on pdp_product.merchant_id is only
+          // meaningful because these two differ.
+          merchant_id: 'merch_obs_deadbeefcafe0001',
           limit: 4,
           options: { debug: true },
         },

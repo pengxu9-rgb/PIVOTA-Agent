@@ -193,8 +193,10 @@ describe('the re-keyed row is still recognised by the seed-lane owner', () => {
   // 'external' (not 'external_seed'), carried no source_system, and the remaining arm is an
   // ext_/ext: id prefix that 7,031 of 11,814 active attached seeds (59.5%) do NOT have.
   //
-  // So ~60% of mainline rows silently stopped reading as seed-lane at that predicate's ~10 call
-  // sites (auroraBff/routes.js, guidanceFastpath, catalogTrustPolicy, productGroundingResolver).
+  // So ~60% of mainline rows silently stopped reading as seed-lane at that predicate's call sites. Review narrowed
+  // this from the ~10 first claimed to ~5 that actually re-class such a row — routes.js:8444/8459/
+  // 8749, guidanceFastpath:68, catalogTrustPolicy:613. The others OR a platform or source leg the
+  // builder already satisfies, so they never changed answer.
   // Nothing failed; the rows simply changed category. Carrying the mirror's source_system restores
   // the arm without touching platform — all 13,896 catalog rows have one.
   const { isExternalSeedLaneProduct } = require('../src/services/externalSeedLane');

@@ -16966,8 +16966,10 @@ async function queryBeautyExternalSeedRowsFast({
           -- removed the ONLY isSeedRoutedLane arm these rows could satisfy: the builder stamps
           -- platform 'external' (not 'external_seed'), carries no source_system, and the remaining
           -- arm is an ext_/ext: id prefix that 7,031 of 11,814 active seeds (59.5%) do not have. So
-          -- ~60% of mainline rows silently stopped reading as seed-lane at that predicate's ~10 call
-          -- sites. Carrying the mirror's source_system restores the arm without touching platform —
+          -- ~60% of mainline rows silently stopped reading as seed-lane. Review narrowed the affected
+          -- call sites from the ~10 I first claimed to ~5 that actually re-class such a row
+          -- (routes.js:8444/8459/8749, guidanceFastpath:68, catalogTrustPolicy:613); the rest OR a
+          -- platform or source leg the builder already satisfies. Carrying the mirror's source_system restores the arm without touching platform —
           -- every one of the 13,896 catalog rows has one.
           (SELECT cp.source_system
              FROM catalog_products cp
@@ -49663,6 +49665,12 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 ? {
                     // The resolved seller, sentinel only when there is none — the COALESCE shape
                     // ADR-009 permits, never a re-mint over a real one.
+                    //
+                    // UNPINNED BY TESTS, stated rather than left to be discovered: this twin of the
+                    // branch above only runs when a NON seed-supply merchant is pinned with an ext_
+                    // id AND the detail fetch fails, which the suite cannot reach. A mutant minting
+                    // the sentinel here survives. It is corrected for consistency with its twin; if
+                    // you make this branch reachable, pin it.
                     merchant_id: effectiveMerchantId || EXTERNAL_SEED_MERCHANT_ID,
                     product_id: effectiveProductId,
                     external_product_id: effectiveProductId,
