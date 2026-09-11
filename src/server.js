@@ -3,7 +3,8 @@ const vertexGemini = require('./llm/vertexGemini');
  * Pivota Agent gateway.
  * Exposes /agent/shop/v1/invoke and forwards to Pivota internal API based on operation.
  */
-require('dotenv').config();
+require('dotenv').config();const { marketsForRequest, primaryMarket } = require('./services/servedMarkets');
+
 const express = require('express');
 const axios = require('axios');
 const http = require('http');
@@ -3034,7 +3035,7 @@ ${selectColumns}
     FROM external_product_seeds
     WHERE status = 'active'
       AND attached_product_key IS NULL
-      AND market = $1
+      AND market = ANY($1::text[])
       AND (
         ${structuredIngredientEvidenceClauses.join(' OR ')}
       )
@@ -16372,7 +16373,7 @@ async function queryCreatorHumanApparelExternalSeedRows({
           FROM external_product_seeds
           WHERE status = 'active'
             AND attached_product_key IS NULL
-            AND market = $1
+            AND market = ANY($1::text[])
             ${toolClause}
             AND ${filters.join('\n            AND ')}
           ORDER BY ${orderClause}
@@ -16842,7 +16843,10 @@ async function queryBeautyExternalSeedRowsFast({
     };
   }
 
-  const safeMarket = String(market || 'US').trim().toUpperCase() || 'US';
+  // LIST, via the one source of truth. `safeMarket` stays a scalar for the call sites that
+  // genuinely need one name (telemetry, the KR bridge); `safeMarkets` is what SQL binds.
+  const safeMarkets = marketsForRequest(market);
+  const safeMarket = safeMarkets[0];
   const safeLimit = Math.max(1, Math.min(60, Number(limit || 24) || 24));
   const perScopeRowLimit = Math.max(8, Math.min(24, safeLimit * 2));
   const categoryTerms = buildBeautyExternalSeedCategoryTerms(intent);
@@ -16917,7 +16921,8 @@ async function queryBeautyExternalSeedRowsFast({
               )`;
   const runScopeQuery = async (tool, queryMarket = safeMarket, marketScope = 'exact_market') => {
     try {
-      const safeQueryMarket = String(queryMarket || safeMarket).trim().toUpperCase() || safeMarket;
+      const safeQueryMarkets = queryMarket ? marketsForRequest(queryMarket) : safeMarkets;
+      const safeQueryMarket = safeQueryMarkets[0];
       const isSingleCategory = categoryTerms.length === 1;
       const categoryLimitBind = `$${categoryTerms.length + 3}`;
       const scopeLimitBind = `$${categoryTerms.length + 4}`;
@@ -16969,7 +16974,7 @@ async function queryBeautyExternalSeedRowsFast({
             FROM external_product_seeds
             WHERE status = 'active'
               ${attachedServingSeedFilterSql}
-              AND market = $1
+              AND market = ANY($1::text[])
               AND tool = $2
               AND ${categoryAuthoritySql} = ${categoryBind}
               ${inStockOnly ? `AND coalesce(lower(availability), '') NOT IN ('out of stock', 'out_of_stock', 'outofstock', 'oos')` : ''}
@@ -17009,7 +17014,7 @@ async function queryBeautyExternalSeedRowsFast({
         FROM external_product_seeds
         WHERE status = 'active'
           ${attachedServingSeedFilterSql}
-          AND market = $1
+          AND market = ANY($1::text[])
           AND tool = $2
           AND ${categoryAuthoritySql} = $3
           ${inStockOnly ? `AND coalesce(lower(availability), '') NOT IN ('out of stock', 'out_of_stock', 'outofstock', 'oos')` : ''}
@@ -17020,8 +17025,8 @@ async function queryBeautyExternalSeedRowsFast({
       `
         : multiCategorySql;
       const params = isSingleCategory
-        ? [safeQueryMarket, tool, categoryTerms[0], perScopeRowLimit]
-        : [safeQueryMarket, tool, ...categoryTerms, perCategoryRowLimit, perScopeRowLimit];
+        ? [safeQueryMarkets, tool, categoryTerms[0], perScopeRowLimit]
+        : [safeQueryMarkets, tool, ...categoryTerms, perCategoryRowLimit, perScopeRowLimit];
       const queryStartedAt = Date.now();
       const result = await queryBeautyExternalSeedRowsWithTimeout(
         sql,
@@ -17105,7 +17110,8 @@ async function queryBeautyExternalSeedRowsFast({
       };
     }
     try {
-      const safeQueryMarket = String(queryMarket || safeMarket).trim().toUpperCase() || safeMarket;
+      const safeQueryMarkets = queryMarket ? marketsForRequest(queryMarket) : safeMarkets;
+      const safeQueryMarket = safeQueryMarkets[0];
       const useBrandCategoryRecall = brandPatterns.length > 0 && brandCategoryPatterns.length > 0;
       if (useBrandCategoryRecall) {
         const brandClauses = brandPatterns.map((_, index) => {
@@ -17155,7 +17161,7 @@ async function queryBeautyExternalSeedRowsFast({
           FROM external_product_seeds
           WHERE status = 'active'
             ${attachedServingSeedFilterSql}
-            AND market = $1
+            AND market = ANY($1::text[])
             AND tool = $2
             AND (${brandClauses.join('\n            OR ')})
             AND (${categoryClauses.join('\n            OR ')})
@@ -17238,7 +17244,7 @@ async function queryBeautyExternalSeedRowsFast({
         FROM external_product_seeds
         WHERE status = 'active'
           ${attachedServingSeedFilterSql}
-          AND market = $1
+          AND market = ANY($1::text[])
           AND tool = $2
           AND (${patternClauses.join('\n          OR ')})
           ${inStockOnly ? `AND coalesce(lower(availability), '') NOT IN ('out of stock', 'out_of_stock', 'outofstock', 'oos')` : ''}
@@ -18856,7 +18862,7 @@ async function fetchCanonicalChainRecallForFindProductsMulti({ search = {} } = {
   // so non-matching Path B rows are filtered. Falls back to env / 'US' to
   // preserve existing behaviour for callers that don't pass market.
   const safeMarket =
-    String(search.market || process.env.CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET || 'US')
+    String(marketsForRequest(search.market)[0])
       .trim()
       .toUpperCase() || 'US';
   const startedAt = Date.now();
@@ -19375,7 +19381,7 @@ async function searchCreatorHumanApparelExternalSeedProductsDirect({
   );
   const inStockOnly = parseQueryBoolean(search.in_stock_only ?? search.inStockOnly) !== false;
   const market =
-    String(process.env.CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET || 'US').trim().toUpperCase() || 'US';
+    primaryMarket();
   const normalizedQuery = normalizeSearchTextForMatch(queryText);
   const anchorTokens = extractSearchAnchorTokens(queryText);
   const queryTokens = Array.from(new Set(tokenizeSearchTextForMatch(normalizedQuery)));
@@ -21922,7 +21928,7 @@ async function searchBeautyExternalSeedProductsMainline({
         : null;
   const rawQueryText = extractSearchQueryText(search);
   const market =
-    String(search.market || metadata.market || process.env.CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET || 'US')
+    String(marketsForRequest(search.market || metadata.market)[0])
       .trim()
       .toUpperCase() || 'US';
   const requestSearchQualityContract =
@@ -23397,7 +23403,7 @@ async function searchExternalSeedBrandCandidatesLocally({
   const requestedCount = Math.max(1, Number(neededCount || 1));
   const retrievalLimit = Math.min(Math.max(requestedCount * 3, 24), SEARCH_LIMIT_MAX);
   const market =
-    String(process.env.CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET || 'US').trim().toUpperCase() || 'US';
+    primaryMarket();
   const brandTerms = Array.isArray(brandDetection?.brands)
     ? brandDetection.brands.map((item) => normalizeSearchTextForMatch(item)).filter(Boolean)
     : [];
@@ -46945,7 +46951,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         // leaking into US users' canonical chain). Falls back to env
         // / 'US' when not set.
         const ingredientPathMarket =
-          String(search.market || metadata.market || process.env.CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET || 'US')
+          String(marketsForRequest(search.market || metadata.market)[0])
             .trim()
             .toUpperCase() || 'US';
         // Bounded from inside: this leg is otherwise the only expensive stage

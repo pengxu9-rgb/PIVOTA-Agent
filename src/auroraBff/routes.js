@@ -1,4 +1,5 @@
 const vertexGemini = require('../llm/vertexGemini');
+const { servedMarkets } = require('../services/servedMarkets');
 const axios = require('axios');
 // SSRF fence for the caller-supplied product-URL lane. `productUrl` on this path arrives from a REQUEST
 // BODY (/v1/product/analyze `url`, /v1/chat `anchor_product_url`), so every URL built from it is
@@ -9957,7 +9958,7 @@ async function searchLocalExternalSeedProductsViaSupportStages({
         '${definition.stage}'::text AS match_stage
       FROM external_product_seeds
       WHERE status = 'active'
-        AND market = $1
+        AND market = ANY($1::text[])
         AND tool = ANY($2::text[])
         AND (${whereSql})
     `;
@@ -10342,7 +10343,9 @@ async function searchLocalExternalSeedProducts({
 
   const safeLimit = Math.max(1, Math.min(12, Number.isFinite(Number(limit)) ? Math.trunc(Number(limit)) : 6));
   const rowCap = Math.max(18, Math.min(80, safeLimit * 8));
-  const market = String(process.env.CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET || 'US').trim().toUpperCase() || 'US';
+  // LIST, from the one source of truth — see src/services/servedMarkets.js. These two lanes
+  // take NO request override, so the deployment's served list is the whole answer here.
+  const market = servedMarkets();
   const tool = 'creator_agents';
   const roleRank = Number(role?.rank);
   const explicitQueryTimeoutMs =
@@ -10447,7 +10450,7 @@ async function searchLocalExternalSeedProducts({
           ${LOCAL_EXTERNAL_SEED_SELECT_FIELDS}
         FROM external_product_seeds
         WHERE status = 'active'
-          AND market = $1
+          AND market = ANY($1::text[])
           AND (tool = '*' OR tool = $2)
           AND ${buildLocalExternalSeedSearchPredicate('$3', { lean: leanSql })}
         ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
@@ -10560,7 +10563,9 @@ async function searchLocalExternalSeedProductsForQueryVariants({
   }
 
   const safeLimit = Math.max(1, Math.min(12, Number.isFinite(Number(limit)) ? Math.trunc(Number(limit)) : 6));
-  const market = String(process.env.CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET || 'US').trim().toUpperCase() || 'US';
+  // LIST, from the one source of truth — see src/services/servedMarkets.js. These two lanes
+  // take NO request override, so the deployment's served list is the whole answer here.
+  const market = servedMarkets();
   const tool = 'creator_agents';
   const q = normalizedQueries.join(' ');
   const patterns = uniqCaseInsensitiveStrings(
