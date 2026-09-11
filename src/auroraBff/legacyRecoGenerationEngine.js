@@ -487,6 +487,7 @@ function createLegacyRecoGenerationEngineRuntime(deps = {}) {
       preLlmCatalogStructured: mainlineExecution.preLlmCatalogStructured,
       priceCeiling,
       shortlistTarget,
+      requestedStep: (targetContext && targetContext.resolved_target_step) || '',
     });
     // Unconditional assignment: applyStrictConformingTopUp returns the SAME object when it appends
     // nothing, so this branch cannot alter a no-top-up answer -- one less untested branch at a call

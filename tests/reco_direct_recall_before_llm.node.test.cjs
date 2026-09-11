@@ -586,17 +586,33 @@ test('a top-up cannot turn an EMPTY answer into a shortlist', async () => {
   const onDecline = applyStrictConformingTopUp({
     structured: { recommendations: [], missing_info: ['a bronzer is makeup; not substituting skincare'] },
     catalogStructured: CLEANSERS, preLlmCatalogStructured: CLEANSERS,
-    priceCeiling: CEILING, shortlistTarget: 3,
+    priceCeiling: CEILING, shortlistTarget: 3, requestedStep: 'bronzer',
   });
   assert.equal(onDecline.appendedCount, 0, 'an empty answer has no slots to fill');
   assert.deepEqual(onDecline.structured.recommendations, []);
 
-  // CONTROL: a real shortlist under its target still gets topped up, or the guard has just
-  // disabled the feature rather than bounded it.
-  const onPartial = applyStrictConformingTopUp({
-    structured: { recommendations: [{ product_id: 'm1', name: 'A Bronzer', price: { amount: 30, currency: 'USD' } }] },
+  // AND THE CONTROL WAS ITSELF THE NEXT DEFECT. It padded a bronzer shortlist with CLEANSERS and
+  // asserted that was correct — the empty-answer guard bounded the replacement case and left the
+  // partial case free to fill a makeup shortlist with skincare. The top-up now refuses a row whose
+  // family is not the one asked for, so the same input appends nothing.
+  const PARTIAL_BRONZER = { recommendations: [{ product_id: 'm1', name: 'A Bronzer', price: { amount: 30, currency: 'USD' } }] };
+  const onPartialWrongCategory = applyStrictConformingTopUp({
+    structured: PARTIAL_BRONZER,
     catalogStructured: CLEANSERS, preLlmCatalogStructured: CLEANSERS,
-    priceCeiling: CEILING, shortlistTarget: 3,
+    priceCeiling: CEILING, shortlistTarget: 3, requestedStep: 'bronzer',
+  });
+  assert.equal(onPartialWrongCategory.appendedCount, 0, 'a price ceiling does not make a cleanser a bronzer');
+
+  // CONTROL: a real shortlist under its target still gets topped up from the RIGHT category, or the
+  // guard has disabled the feature rather than bounded it.
+  const BRONZERS = { recommendations: [
+    { product_id: 'd1', name: 'Butter Bronzer', price: { amount: 15, currency: 'USD' } },
+    { product_id: 'd2', name: 'Baked Bronzer', price: { amount: 9, currency: 'USD' } },
+  ] };
+  const onPartial = applyStrictConformingTopUp({
+    structured: PARTIAL_BRONZER,
+    catalogStructured: BRONZERS, preLlmCatalogStructured: BRONZERS,
+    priceCeiling: CEILING, shortlistTarget: 3, requestedStep: 'bronzer',
   });
   assert.ok(onPartial.appendedCount > 0, 'a non-empty shortlist must still be topped up to target');
 });

@@ -1,4 +1,6 @@
 const { selectRecoPriceCeilingTopUpRows } = require('./recoPriceCeiling');
+const { getRecoTargetFamilyRelation, normalizeRecoTargetStep } = require('./recoTargetStep');
+const { resolveBeautyCoarseStepFamily } = require('../shared/beautyRecoCoarseClassifier');
 
 // The direct lane = consumer POST /v1/reco/generate and the agent-door tool `recommend_products`.
 // Both reach generateProductRecommendations with entryType 'direct'; the chat lane uses 'chat' and is
@@ -111,13 +113,74 @@ function shouldRecoverFullyUngroundedDirectAnswer({
  * single bounded pass: nothing loops, nothing is removed, and an all-violating catalog appends
  * NOTHING rather than padding with filler.
  */
+// FILLER MUST BE THE CATEGORY THAT WAS ASKED FOR, or there must be no filler.
+//
+// selectRecoPriceCeilingTopUpRows filters on ONE thing: does the row conform to the price ceiling.
+// Not the category, not the step, not the family. Driven on this branch before the fix, with the
+// buyer asking for "a bronzer under $40" and the model returning one bronzer:
+//
+//     Hoola Matte Bronzer                  $32   (the answer)
+//     CeraVe Foaming Facial Cleanser       $14   <- appended
+//     The Ordinary Niacinamide 10% Serum   $6    <- appended
+//
+// That is #2155's exact shape, reintroduced one layer later, on the ONE door that threads a price
+// ceiling -- the agent door the Meitu and Perfect Corp partnerships arrive at.
+//
+// REFUSE THE CATEGORY THAT IS WRONG; DO NOT DEMAND THE ONE THAT IS RIGHT.
+//
+// The first version of this gate demanded a positive same-family match on makeup requests, on the
+// premise that "makeup titles resolve reliably now the taxonomy knows them". Review measured that
+// premise against the real Meitu US try-on catalog -- 57 products, every one of them lip makeup --
+// and it is false: 47% resolve a step. `Hot Lips`, `Matte Revolution`, `Joli Rouge`, `Metallic
+// Velvetines`, `RETRO MATTE`, `Diamond Crushers` resolve to nothing, and on a `lip_colour` shortlist
+// the gate refused all of them. Over 1,528 real titles from this repo's report dumps only 24%
+// resolve at all. So the rule is symmetric and it is a REFUSAL, not a requirement:
+//
+//   - A row whose family is INCOMPATIBLE with the request is refused. That is the whole defect: a
+//     cleanser and a serum are not bronzers, and a price ceiling does not make them one.
+//   - A row that resolves to NOTHING is allowed. It already cleared the recall boundary and ranking
+//     for this need; "unknown" is not evidence of wrongness, and refusing it deletes the feature on
+//     exactly the catalogs this door serves.
+//   - ADJACENT is allowed, because the selector that BUILT this pool allows it
+//     (routes.js `allowStepAwareAdjacentFamilyFallback` drops only incompatible_family). A top-up
+//     stricter than the selector feeding it would refuse rows the lane had already judged
+//     acceptable near-substitutes for this very need.
+//   - With NO resolved step nothing is appended: there is no basis to judge any row, and padding
+//     blind is the defect. Measured cost: a step resolves on 13 of this repo's 18 `need:` fixtures,
+//     so roughly a quarter of needs lose the top-up rather than gain a guess.
+//
+// The step is read from the row FIRST and re-derived from text only as a fallback. These rows come
+// off the lane's own catalog answer and frequently carry a step already; re-deriving one from the
+// title threw that away.
+function resolveTopUpRowStep(row, resolveCandidateStep) {
+  const stamped = normalizeRecoTargetStep([
+    row && row.candidate_step, row && row.candidateStep, row && row.step,
+    row && row.retrieval_step, row && row.retrievalStep,
+  ].map((value) => String(value || '').trim()).find(Boolean) || '');
+  if (stamped) return stamped;
+  const resolved = resolveCandidateStep(row);
+  return normalizeRecoTargetStep(
+    (resolved && typeof resolved === 'object') ? resolved.candidate_step : resolved,
+  );
+}
+
+function topUpRowIsOffCategory(row, requestedStep, resolveCandidateStep) {
+  const target = normalizeRecoTargetStep(requestedStep);
+  if (!target) return true;
+  const candidateStep = resolveTopUpRowStep(row, resolveCandidateStep);
+  if (!candidateStep) return false;
+  return getRecoTargetFamilyRelation(target, candidateStep) === 'incompatible_family';
+}
+
 function applyStrictConformingTopUp({
   structured = null,
   catalogStructured = null,
   preLlmCatalogStructured = null,
   priceCeiling = null,
   shortlistTarget = 0,
+  requestedStep = '',
   selectTopUpRows = selectRecoPriceCeilingTopUpRows,
+  resolveCandidateStep = resolveBeautyCoarseStepFamily,
 } = {}) {
   const noop = { structured, appended: [], appendedCount: 0 };
   if (!isPlainObjectValue(structured) || !Array.isArray(structured.recommendations)) return noop;
@@ -137,9 +200,18 @@ function applyStrictConformingTopUp({
       : []),
   ];
   if (!catalogRows.length) return noop;
+  // FILTER THE POOL, NOT THE SELECTION. selectRecoPriceCeilingTopUpRows breaks at `shortfall`, so it
+  // returns the FIRST N price-conforming rows and stops -- filtering afterwards cannot reach the
+  // rows it never selected. Measured with the two real bronzers sitting behind a cleanser and a
+  // serum in the pool: the post-filter appended NOTHING, starving on-category supply that was right
+  // there and conforming.
+  const onCategoryRows = catalogRows.filter(
+    (row) => !topUpRowIsOffCategory(row, requestedStep, resolveCandidateStep),
+  );
+  if (!onCategoryRows.length) return noop;
   const appended = selectTopUpRows({
     recommendations: structured.recommendations,
-    catalogRows,
+    catalogRows: onCategoryRows,
     ceiling: priceCeiling,
     target: shortlistTarget,
   });

@@ -107,6 +107,9 @@ test("supply of 3 conforming: the shortlist fills 3/3 even when the LLM returns 
     catalogStructured,
     priceCeiling: USD40,
     shortlistTarget: 3,
+    // The fixtures are exfoliants, acids and peels — a `treatment` need. The top-up now refuses to
+    // fill a shortlist with a category the buyer did not ask for, so the suite has to name one.
+    requestedStep: 'treatment',
   });
 
   // Mutant killed: removing the top-up from the engine, or gating it on something other than the
@@ -135,6 +138,9 @@ test('supply of 2 conforming: 2 conforming, and the leftover slot keeps a flagge
     catalogStructured: out.structured,
     priceCeiling: USD40,
     shortlistTarget: 3,
+    // The fixtures are exfoliants, acids and peels — a `treatment` need. The top-up now refuses to
+    // fill a shortlist with a category the buyer did not ask for, so the suite has to name one.
+    requestedStep: 'treatment',
   });
   const rows = topUp.structured.recommendations;
   const conforming = rows.filter((r) => classifyRecoCandidateAgainstPriceCeiling(r, USD40) === 'conforming');
@@ -153,6 +159,9 @@ test('an ALL-VIOLATING catalog appends nothing and never empties the answer', as
     catalogStructured: out.structured,
     priceCeiling: USD40,
     shortlistTarget: 3,
+    // The fixtures are exfoliants, acids and peels — a `treatment` need. The top-up now refuses to
+    // fill a shortlist with a category the buyer did not ask for, so the suite has to name one.
+    requestedStep: 'treatment',
   });
   // Mutant killed: treating "cannot reach the target" as a reason to drop or replace the answer. A
   // flagged near-miss is a worse answer than a conforming product and a far better one than zero.
@@ -336,6 +345,9 @@ test('the top-up falls back to the PRE-LLM catalog answer when the recovery one 
     preLlmCatalogStructured: { recommendations: [NATURIUM, COSRX] },
     priceCeiling: USD40,
     shortlistTarget: 3,
+    // The fixtures are exfoliants, acids and peels — a `treatment` need. The top-up now refuses to
+    // fill a shortlist with a category the buyer did not ask for, so the suite has to name one.
+    requestedStep: 'treatment',
   });
   // Mutant killed: reading only catalogStructured. On the direct lane an LLM SUCCESS leaves
   // catalogStructured null by design (#2045) -- the pool lives in preLlmCatalogStructured, so the
@@ -350,6 +362,7 @@ test('a missing or malformed answer is left alone', () => {
       catalogStructured: { recommendations: [NATURIUM] },
       priceCeiling: USD40,
       shortlistTarget: 3,
+      requestedStep: 'treatment',
     });
     assert.equal(out.appendedCount, 0);
   }
@@ -685,4 +698,112 @@ test('only a CONSTRAINED request may go past the shared upstream cap of 12', () 
   assert.equal(f(6, null), 6);
   assert.equal(f(0, USD40), 1, 'never zero');
   assert.equal(f(undefined, null), 6, 'the historical default');
+});
+
+// ---------------------------------------------------------------------------------------------
+// A PRICE CEILING DOES NOT MAKE A CLEANSER A BRONZER.
+//
+// selectRecoPriceCeilingTopUpRows filters on ONE thing: does the row conform to the price ceiling.
+// Not the category. Driven on main, with the buyer asking for "a bronzer under $40" and the model
+// returning one bronzer:
+//
+//     Hoola Matte Bronzer                  $32   (the answer)
+//     CeraVe Foaming Facial Cleanser       $14   <- appended
+//     The Ordinary Niacinamide 10% Serum   $6    <- appended
+
+const BRONZER_ANSWER = { recommendations: [{ product_id: 'b1', name: 'Hoola Matte Bronzer', price: 32, currency: 'USD' }] };
+const CLEANSER_ROW = { product_id: 'c1', name: 'CeraVe Foaming Facial Cleanser', price: 14, currency: 'USD' };
+const SERUM_ROW = { product_id: 'c2', name: 'The Ordinary Niacinamide 10% Serum', price: 6, currency: 'USD' };
+const BRONZER_ROWS = [
+  { product_id: 'd1', name: 'Physicians Formula Butter Bronzer', price: 15, currency: 'USD' },
+  { product_id: 'd2', name: 'Milani Baked Bronzer', price: 9, currency: 'USD' },
+];
+const topUpWith = (catalogRows, requestedStep, structured = BRONZER_ANSWER) => applyStrictConformingTopUp({
+  structured,
+  catalogStructured: { recommendations: catalogRows },
+  priceCeiling: USD40,
+  shortlistTarget: 3,
+  requestedStep,
+});
+
+test('a price ceiling does not make a cleanser a bronzer', () => {
+  const out = topUpWith([CLEANSER_ROW, SERUM_ROW], 'bronzer');
+  assert.equal(out.appendedCount, 0, 'both rows conform on PRICE and neither is a bronzer');
+  assert.deepEqual(out.structured.recommendations.map((r) => r.name), ['Hoola Matte Bronzer']);
+});
+
+test('the POOL is filtered, not the selection — on-category supply behind off-category rows is reached', () => {
+  // selectRecoPriceCeilingTopUpRows breaks at `shortfall`: it returns the FIRST N price-conforming
+  // rows and stops. Filtering AFTER it cannot reach the rows it never selected, so the first version
+  // of this gate appended NOTHING here — starving two real bronzers that were in the pool and
+  // conforming, sitting behind a cleanser and a serum.
+  const out = topUpWith([CLEANSER_ROW, SERUM_ROW, ...BRONZER_ROWS], 'bronzer');
+  assert.equal(out.appendedCount, 2, 'the bronzers behind the off-category rows must still be reached');
+  for (const row of out.appended) assert.match(row.name, /Bronzer/i);
+});
+
+test('an UNRESOLVABLE row is admitted — refusing them deletes the feature on real catalogs', () => {
+  // The first version demanded a positive same-family match on makeup requests, on the premise that
+  // makeup titles resolve reliably. Measured against the real Meitu US try-on catalog — 57 products,
+  // every one lip makeup — 47% resolve a step. These are genuine lipsticks that resolve to nothing.
+  const out = topUpWith([
+    { product_id: 'l1', name: 'Metallic Velvetines', price: 20, currency: 'USD' },
+    { product_id: 'l2', name: 'RETRO MATTE', price: 22, currency: 'USD' },
+  ], 'lip_colour');
+  assert.equal(out.appendedCount, 2, 'unknown is not evidence of wrongness');
+});
+
+test('the step already stamped on the row is preferred to re-deriving one from the title', () => {
+  // These rows come off the lane's own catalog answer and frequently carry a step; re-deriving one
+  // from a brand-name-only title ("Hoola", "Orgasm", "Pillow Talk") threw that away.
+  assert.equal(topUpWith([{ product_id: 't1', name: 'Hoola', step: 'bronzer', price: 15, currency: 'USD' }], 'bronzer').appendedCount, 1);
+  assert.equal(topUpWith([{ product_id: 't2', name: 'Hoola', candidate_step: 'cleanser', price: 15, currency: 'USD' }], 'bronzer').appendedCount, 0,
+    'and a stamped step that is incompatible is refused on its own evidence');
+});
+
+test('ADJACENT family is allowed, because the selector that built this pool allows it', () => {
+  // routes.js `allowStepAwareAdjacentFamilyFallback` drops only incompatible_family. A top-up
+  // stricter than the selector feeding it would refuse rows the lane had already judged acceptable
+  // near-substitutes for this very need. Deliberate, and pinned so it is a decision not an accident.
+  const { getRecoTargetFamilyRelation } = require('../src/auroraBff/recoTargetStep');
+  assert.equal(getRecoTargetFamilyRelation('bronzer', 'blush'), 'adjacent_family');
+  assert.equal(topUpWith([{ product_id: 'a1', name: 'Soft Pinch Liquid Blush', price: 18, currency: 'USD' }], 'bronzer').appendedCount, 1);
+  // INCOMPATIBLE is still refused — that is the defect this exists for.
+  assert.equal(getRecoTargetFamilyRelation('bronzer', 'cleanser'), 'incompatible_family');
+  assert.equal(topUpWith([CLEANSER_ROW], 'bronzer').appendedCount, 0);
+});
+
+test('with NO resolved step nothing is appended — there is no basis to judge any row', () => {
+  // Measured cost: a step resolves on 13 of this repo's 18 `need:` fixtures, so roughly a quarter of
+  // needs lose the top-up rather than gain a guess.
+  assert.equal(topUpWith(BRONZER_ROWS, '').appendedCount, 0);
+  assert.equal(topUpWith([CLEANSER_ROW], null).appendedCount, 0);
+});
+
+test('a refused top-up returns the SAME object, which the call site depends on', () => {
+  // legacyRecoGenerationEngine assigns `structured = strictTopUp.structured` unconditionally, and
+  // justifies that on this identity. Returning a clone would make a no-op top-up a silent rewrite.
+  const input = { recommendations: [...BRONZER_ANSWER.recommendations] };
+  const refused = topUpWith([CLEANSER_ROW], 'bronzer', input);
+  assert.strictEqual(refused.structured, input, 'a refused top-up must return the identical object');
+  const noStep = topUpWith(BRONZER_ROWS, '', input);
+  assert.strictEqual(noStep.structured, input);
+});
+
+test('the engine threads the resolved step, under whatever name the helper declares', () => {
+  // A test that greps for the literal `requestedStep:` cannot see a RENAME: rename the helper's
+  // parameter and leave the call site verbatim, and the helper silently defaults to '' — refusing
+  // every row and killing the feature — while the grep still passes. So the name is read from the
+  // helper itself and then required at the call site.
+  const paramBlock = applyStrictConformingTopUp.toString().slice(0, applyStrictConformingTopUp.toString().indexOf('} = {}'));
+  const stepParam = [...paramBlock.matchAll(/(\w+)\s*=/g)].map((m) => m[1]).find((n) => /step/i.test(n) && !/shortlist/i.test(n));
+  assert.ok(stepParam, 'the helper must declare a step parameter');
+  const src = require('node:fs').readFileSync(
+    require('node:path').join(__dirname, '..', 'src', 'auroraBff', 'legacyRecoGenerationEngine.js'), 'utf8',
+  );
+  const at = src.indexOf('applyStrictConformingTopUp({');
+  assert.ok(at > 0, 'the engine must call the top-up');
+  const call = src.slice(at, at + 400);
+  assert.ok(call.includes(`${stepParam}:`), `the call site must pass ${stepParam}`);
+  assert.match(call, /targetContext\.resolved_target_step/, 'and it must pass the RESOLVED step');
 });
