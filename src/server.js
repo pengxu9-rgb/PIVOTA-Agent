@@ -3,7 +3,7 @@ const vertexGemini = require('./llm/vertexGemini');
  * Pivota Agent gateway.
  * Exposes /agent/shop/v1/invoke and forwards to Pivota internal API based on operation.
  */
-require('dotenv').config();const { marketsForRequest, primaryMarket } = require('./services/servedMarkets');
+require('dotenv').config();const { marketsForRequest, primaryMarket, servedMarkets } = require('./services/servedMarkets');
 
 const express = require('express');
 const axios = require('axios');
@@ -3093,7 +3093,7 @@ ${selectColumns}
     const candidates = [];
     const seen = new Set();
     for (const stage of stages) {
-      const result = await query(buildStageSql(stage.matchSql), ['US', stage.patterns, stage.limit]);
+      const result = await query(buildStageSql(stage.matchSql), [servedMarkets(), stage.patterns, stage.limit]);
       for (const row of result?.rows || []) {
         const product = buildExternalSeedProduct(row);
         if (!product) continue;
@@ -16318,7 +16318,7 @@ async function queryCreatorHumanApparelExternalSeedRows({
         return { query: retrievalQuery, row_count: 0, rows: [] };
       }
 
-      const sqlParams = [market];
+      const sqlParams = [marketsForRequest(market)];
       const filters = [
         `(
           lower(coalesce(title, '')) LIKE ANY($2::text[])
@@ -17174,7 +17174,7 @@ async function queryBeautyExternalSeedRowsFast({
         const queryStartedAt = Date.now();
         const result = await queryBeautyExternalSeedRowsWithTimeout(
           sql,
-          [safeQueryMarket, tool, ...brandPatterns, ...brandCategoryPatterns, perScopeRowLimit],
+          [safeQueryMarkets, tool, ...brandPatterns, ...brandCategoryPatterns, perScopeRowLimit],
           2800,
         );
         const queryDurationMs = Math.max(0, Date.now() - queryStartedAt);
@@ -17256,7 +17256,7 @@ async function queryBeautyExternalSeedRowsFast({
       const queryStartedAt = Date.now();
       const result = await queryBeautyExternalSeedRowsWithTimeout(
         sql,
-        [safeQueryMarket, tool, ...safePatterns, perScopeRowLimit],
+        [safeQueryMarkets, tool, ...safePatterns, perScopeRowLimit],
         1200,
       );
       const queryDurationMs = Math.max(0, Date.now() - queryStartedAt);

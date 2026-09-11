@@ -162,3 +162,38 @@ test('fixing a baselined file updates this baseline', () => {
     `progress — lower these in SCALAR_BIND_BASELINE: ${fixed.join(', ')}. When the map is ` +
     'empty, there is one source of truth and this test can go.');
 });
+
+// --- the mistake this change actually made, caught by CI and not by the tests above -----
+
+test('no params array hands a SCALAR market to an ANY(...) bind', () => {
+  /* I converted six `AND market = $1` binds to `ANY($1::text[])` and updated ONE of the four
+   * params arrays. The other three kept passing a scalar — `safeQueryMarket`, a bare `market`,
+   * and a hardcoded `'US'`. node-postgres does not reject that: the query runs and matches
+   * NOTHING, which surfaced as a single KR-bridge integration test failing with "failed"
+   * rather than as anything naming market or SQL.
+   *
+   * The nine tests above all passed while it was broken, because every one of them reasons
+   * about the helper or greps the SQL text — none looks at what is BOUND to it. */
+  const files = ['src/server.js', 'src/auroraBff/routes.js'];
+  const offenders = [];
+  for (const f of files) {
+    const src = fs.readFileSync(path.join(ROOT, f), 'utf8');
+    if (!src.includes('market = ANY($1::text[])')) continue;
+    // An identifier assigned from the helper HOLDS a list — flagging it would be a false
+    // positive, and the first cut of this test produced two. Resolve before accusing.
+    const listIds = new Set();
+    for (const m of src.matchAll(/(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:servedMarkets|marketsForRequest)\s*\(/g)) {
+      listIds.add(m[1]);
+    }
+    // `[,\]]` not just `,` — a ONE-element params array (`const sqlParams = [market];`) has no
+    // trailing comma, and the first cut of this regex missed exactly that site.
+    for (const m of src.matchAll(/\[\s*(safeQueryMarket|safeMarket|market|'US'|"US")\s*[,\]]/g)) {
+      const id = m[1];
+      if (listIds.has(id)) continue;
+      offenders.push(`${f}:${src.slice(0, m.index).split('\n').length} binds ${id}`);
+    }
+  }
+  assert.deepStrictEqual(offenders, [],
+    'these params arrays pass a scalar market as $1 while the SQL binds ANY($1::text[]). ' +
+    'The query will run and match zero rows:\n  ' + offenders.join('\n  '));
+});
