@@ -51,6 +51,31 @@ describe('brandDictionaryCache', () => {
     expect(cache.matchCatalogBrand('vitamin c serum')).toBeNull();
   });
 
+  test('brandAliases indexes the leading segment of a piped brand + tagline', () => {
+    // "Biodance | Better Formula for Better Glow" must yield a matchable
+    // "biodance" alias (the incident: a bare brand query missed the full span).
+    expect(cache.brandAliases('Biodance | Better Formula for Better Glow')).toEqual([
+      'biodance better formula for better glow',
+      'biodance',
+    ]);
+    // The tagline segment is NOT indexed on its own (no false brand hits).
+    expect(cache.brandAliases('Biodance | Better Formula for Better Glow')).not.toContain(
+      'better formula for better glow',
+    );
+    // Clean single-segment brands yield exactly one alias (no dup).
+    expect(cache.brandAliases('ACROPASS')).toEqual(['acropass']);
+    // Newline separator handled too.
+    expect(cache.brandAliases('Rovectin\nSkin Essentials')).toContain('rovectin');
+  });
+
+  test('a piped brand is detectable by its leading token once loaded', () => {
+    process.env[FLAG] = '1';
+    // Mirror what refresh() builds from the raw brand row.
+    cache.__setBrandSetForTest(cache.brandAliases('Biodance | Better Formula for Better Glow'));
+    expect(cache.matchCatalogBrand('biodance')).toBe('biodance');
+    expect(cache.matchCatalogBrand('biodance collagen mask')).toBe('biodance');
+  });
+
   test('debugState exposes counts + config, never the brand list', () => {
     process.env[FLAG] = '1';
     cache.__setBrandSetForTest(['skin1004', 'anuko']);
