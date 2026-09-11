@@ -17798,6 +17798,12 @@ function buildCanonicalChainMainlineProduct(row) {
     ingredientIntel.active_ingredients,
   );
 
+  const categoryPathLeaf = String(categoryPathText || '')
+    .split('/')
+    .filter(Boolean)
+    .pop() || '';
+  const resolvedProductType = firstNonEmptyString(category, categoryPathLeaf);
+
   return {
     id: productId,
     product_id: productId,
@@ -17818,7 +17824,26 @@ function buildCanonicalChainMainlineProduct(row) {
     ...(imageUrl ? { image_url: imageUrl, images: [imageUrl], image_urls: [imageUrl] } : {}),
     ...(availability ? { availability } : {}),
     ...(typeof inStock === 'boolean' ? { in_stock: inStock } : {}),
-    product_type: category || 'canonical_catalog',
+    // `canonical_catalog` IS A PROVENANCE VALUE WEARING A TAXONOMY FIELD. It names where the row
+    // came from, not what the product is, and it is invented here at serve time -- nothing stores
+    // it. Consumers read `product_type` to learn what a thing IS, and this handed them the name of
+    // a pipeline.
+    //
+    // It is not inert. `resolveBeautyCoarseStepFamily` reads `product_type` FIRST when resolving a
+    // candidate's step. Measured on a real row -- Guerlain "ABSOLUS ALLEGORIA Tabac Sahara", stored
+    // correctly under beauty/fragrance/perfume:
+    //
+    //     product_type: 'canonical_catalog'  ->  candidate_step: null
+    //     product_type: 'perfume'            ->  candidate_step: fragrance  (structured_category)
+    //
+    // So a correctly-categorised perfume arrived at ranking with no step at all, and only rows whose
+    // TITLE happens to name their category were rescued by text salvage. On the live index 30 of 50
+    // rows returned for "eau de parfum" carry this placeholder and exactly ONE says `fragrance`.
+    //
+    // The leaf of the category path is a real product type and is already right there. Where there
+    // is neither, the field is OMITTED rather than filled with a fiction -- the same rule this
+    // builder already applies to price and currency a few lines up.
+    ...(resolvedProductType ? { product_type: resolvedProductType } : {}),
     ...(category ? { category } : {}),
     ...(categoryPathText ? { category_path: normalizeCatalogCategoryPathArray(categoryPathText) } : {}),
     ...(categoryPathText ? { catalog_category_path: categoryPathText } : {}),

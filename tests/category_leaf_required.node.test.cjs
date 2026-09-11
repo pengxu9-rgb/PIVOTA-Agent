@@ -74,3 +74,54 @@ test('the rows this unblocks, and the one it deliberately does not', () => {
   assert.equal(categorised('beauty/makeup/face/blush'), true,
     'a wrong-but-specific path is still a categorisation, and this gate does not second-guess it');
 });
+
+// ---------------------------------------------------------------------------------------------
+// `canonical_catalog` IS A PROVENANCE VALUE WEARING A TAXONOMY FIELD.
+//
+// It names where a row came from, not what the product is, and it is invented at serve time —
+// nothing stores it. It is not inert: `resolveBeautyCoarseStepFamily` reads `product_type` FIRST
+// when resolving a candidate's step, so a correctly-categorised perfume arrived at ranking with no
+// step at all. On the live index 30 of 50 rows returned for "eau de parfum" carry the placeholder
+// and exactly ONE says `fragrance`.
+
+test('the canonical builder does not invent a product_type', () => {
+  const at = SERVER_SRC.indexOf('function buildCanonicalChainSearchProduct');
+  const region = at > 0 ? SERVER_SRC.slice(at, at + 9000) : SERVER_SRC;
+  assert.doesNotMatch(region, /product_type:\s*category\s*\|\|\s*'canonical_catalog'/,
+    'the placeholder must not come back');
+  assert.match(SERVER_SRC, /\.\.\.\(resolvedProductType \? \{ product_type: resolvedProductType \} : \{\}\)/,
+    'product_type is emitted only when it is real, like price and currency above it');
+  assert.match(SERVER_SRC, /const resolvedProductType = firstNonEmptyString\(category, categoryPathLeaf\)/,
+    'and it falls back to the category-path LEAF, which is a real product type');
+});
+
+test('the leaf of a category path is what a product type should say', () => {
+  // Lifted from source for the same reason as the predicate above: server.js boots a listener.
+  const at = SERVER_SRC.indexOf('const categoryPathLeaf = String(categoryPathText');
+  assert.ok(at > 0, 'the leaf extraction must exist');
+  const src = SERVER_SRC.slice(at, SERVER_SRC.indexOf(';', SERVER_SRC.indexOf(".pop() || ''", at)) + 1);
+  const leafOf = new Function('categoryPathText', `${src} return categoryPathLeaf;`);
+  assert.equal(leafOf('beauty/fragrance/perfume'), 'perfume');
+  assert.equal(leafOf('beauty/makeup/face/bronzer'), 'bronzer');
+  assert.equal(leafOf('beauty/skincare/treat/serum'), 'serum');
+  // A bare domain yields `beauty`, which is not a product type — but it is also not a FICTION, and
+  // the row it describes is exactly the cohort the predicate above routes to the text rescue.
+  assert.equal(leafOf('beauty'), 'beauty');
+  assert.equal(leafOf(''), '');
+  assert.equal(leafOf(null), '');
+});
+
+test('a real perfume resolves a step once the placeholder is gone', () => {
+  // The measurement that made this worth doing, run against the real resolver.
+  const { resolveBeautyCoarseStepFamily } = require('../src/shared/beautyRecoCoarseClassifier');
+  const title = 'ABSOLUS ALLEGORIA Tabac Sahara';   // names no category in its own words
+  const withPlaceholder = resolveBeautyCoarseStepFamily({
+    title, product_type: 'canonical_catalog', catalog_category_path: 'beauty/fragrance/perfume',
+  }) || {};
+  const withLeaf = resolveBeautyCoarseStepFamily({
+    title, product_type: 'perfume', catalog_category_path: 'beauty/fragrance/perfume',
+  }) || {};
+  assert.equal(withPlaceholder.candidate_step, null, 'this is what the placeholder cost');
+  assert.equal(withLeaf.candidate_step, 'fragrance');
+  assert.equal(withLeaf.candidate_step_source, 'structured_category');
+});
