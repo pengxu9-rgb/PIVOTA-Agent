@@ -19,7 +19,7 @@
  "src/services/externalSeedLane.js": 4,
  "src/services/externalSeedProducts.js": 3,
  "src/services/pdpIdentityGraph.js": 2,
- "src/services/pdpRenderability.js": 2,
+ "src/services/pdpRenderability.js": 1,
  "src/services/pdpReviewedIngredientAuthority.js": 1,
  "src/services/productGroundingResolver.js": 1,
  "src/shared/beautyRecoCoarseClassifier.js": 2,
