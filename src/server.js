@@ -18508,7 +18508,24 @@ function getSearchQualityContractHardConstraintResult(product = {}, contract = n
       queryText || contract.effective_query,
       categoryPathPrefix,
     );
-    if (existingCategoryPath) {
+    // A BARE DOMAIN IS NOT A CATEGORY, so it must not disable the rescue below. This branch used
+    // `existingCategoryPath` truthiness as proof the row had been categorised -- and `beauty` is a
+    // namespace, not an answer to "what is this". The effect was that a row with a USELESS path was
+    // treated more confidently than a row with none: the text rescue only ran when the path was
+    // absent, so a bad path was strictly worse than no path.
+    //
+    // Measured on the live index for `beauty/fragrance/`: of 50 rows returned for "eau de parfum",
+    // 19 are not on a fragrance path, and 16 of those sit on bare `beauty` -- the entire Ariana
+    // Grande line (Cloud, Ari, God Is A Woman, r.e.m.), Cosmic Kylie Jenner, and every PixiPerfume.
+    // Six of eight sampled eau de parfums were rejected, and the fragrance regex in
+    // beautyProductMatchesCategoryPathQuery would have admitted every one.
+    //
+    // DELIBERATELY NOT A RESCUE FOR A WRONG PATH. `Flaura Eau De Parfum` is stored under
+    // beauty/makeup/face/blush and stays rejected here: that is a mis-categorised row, not an
+    // un-categorised one, and letting title text override a specific category claim would make the
+    // stored category advisory everywhere. Those belong to the backfill and to the ingest-time
+    // requirement, not to this gate.
+    if (categoryPathIsCategorised(existingCategoryPath)) {
       if (!pathMatches) reasons.push('category_mismatch');
     } else if (!textMatches) {
       reasons.push('category_mismatch');
@@ -21108,6 +21125,18 @@ function buildBeautyMainlineRetrievalQueries(queryText = '', intent = null) {
 
 function getBeautyProductCategoryPathText(product = {}) {
   return beautyRelevanceGate.getProductCategoryPathText(product);
+}
+
+// A path names a category only once it says something past the top-level domain. `beauty` is a
+// namespace; `beauty/fragrance` is a category. One segment is not a categorisation, and treating it
+// as one is what let the mis-pathed cohort fail silently at serving while passing every
+// off-taxonomy health check -- `beauty` IS on the taxonomy, so nothing was watching it.
+function categoryPathIsCategorised(categoryPath = '') {
+  return String(categoryPath || '')
+    .trim()
+    .replace(/^\/+|\/+$/g, '')
+    .split('/')
+    .filter(Boolean).length >= 2;
 }
 
 function beautyProductMatchesCategoryPathPrefix(product = {}, categoryPathPrefix = '') {
