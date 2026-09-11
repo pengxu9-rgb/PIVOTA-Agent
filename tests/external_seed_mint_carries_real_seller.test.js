@@ -3,7 +3,8 @@
 //
 // This is a jest suite on purpose. The first version of this change was guarded only by
 // source-text assertions in a node:test file, and they all passed while it shipped a no-op:
-// `catalogMirrorProjectionSql` is interpolated at FIVE sites, and `multiCategorySql` wraps it in
+// `catalogMirrorProjectionSql` is interpolated at FOUR sites (an earlier note said five), and
+// `multiCategorySql` wraps it in
 // a derived table whose outer SELECT enumerates columns explicitly, so the new column was
 // projected by the inner arms and silently dropped by the outer list. No SQL error, no failing
 // test. The multi-category shape is the DEFAULT — brand browse, serum, eye makeup, and any

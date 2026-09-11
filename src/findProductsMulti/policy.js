@@ -413,7 +413,8 @@ function hasFragranceQuerySignal(rawQuery) {
   return inferFragranceSemanticClass(rawQuery) === 'fragrance';
 }
 
-// Delegates to the one owner — see src/externalSeedIdentity.js. Identical semantics for
+// Delegates to src/externalSeedIdentity.js, the LEGACY shim — NOT the owner of this question.
+// The owner is src/services/externalSeedLane.js over pdpRenderability's isSeedRoutedLane. Identical semantics for
 // merchant_id and `source`; additionally reads the source aliases and the two further source
 // spellings pdpBuilder already accepted, so this is a widening and never a narrowing.
 function isExternalSeedProduct(product) {

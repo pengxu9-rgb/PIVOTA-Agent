@@ -15421,10 +15421,18 @@ function applyShoppingCatalogQueryGuards(queryParams, source) {
   };
 }
 
-// Delegates to the one owner. See src/externalSeedIdentity.js for why five implementations of
-// this question existed and what production actually emits (short version: this predicate, and
-// every sibling, returns false for all 13,896 external seeds in the catalog — they were written
-// against a vocabulary the data stopped using).
+// Delegates to src/externalSeedIdentity.js — the LEGACY shim, not the owner. The owner of this
+// question is src/services/externalSeedLane.js over pdpRenderability's isSeedRoutedLane, which
+// this file already imports at :102-103. An earlier version of this comment called the shim "the
+// one owner"; it is not, and saying so was how a second implementation got written in the first
+// place.
+//
+// CORRECTION to what this comment used to assert as fact. It said this predicate "returns false
+// for all 13,896 external seeds in the catalog". That was measured on DB columns and served JSON —
+// but these predicates run on IN-MEMORY objects, and four builders mint rows that are true on
+// every leg (see the header of externalSeedIdentity.js). The claim holds for catalog-shaped rows
+// and NOT for the objects this predicate is actually handed, which is the distinction the original
+// wording erased.
 //
 // Two deliberate differences from the code this replaces, neither of which changes any
 // production answer: merchant_id is now compared case-INSENSITIVELY, matching the four sibling
@@ -16938,8 +16946,13 @@ async function queryBeautyExternalSeedRowsFast({
           -- (its canonical URL, its signature), so gating them on serving_eligible is right.
           -- Gating the seller on it is not — it would leave the row correctly excluded from
           -- serving but wrongly attributed to the banned sentinel bucket while it is excluded.
-          -- Copying the neighbouring shape verbatim cost 2,823 of 11,819 active seeds (23.9%)
-          -- their real seller; without the join, 11,819 of 11,819 resolve one.
+          -- RETRACTED MEASUREMENT, kept visible rather than deleted. This used to claim the join
+          -- "cost 2,823 of 11,819 active seeds (23.9%) their real seller". That was measured over
+          -- status='active', which is NOT this query's population: every shape here also
+          -- interpolates attachedServingSeedFilterSql, which requires a serving-eligible mirror row
+          -- on the SAME key by a byte-identical join. So the join would have cost ZERO returned
+          -- rows, and the number never described this path. The reason to omit it stands on its
+          -- own: a seller is an identity fact, not a serving decision.
           (SELECT cp.merchant_id
              FROM catalog_products cp
             WHERE cp.product_key = external_product_seeds.attached_product_key

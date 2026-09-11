@@ -86,6 +86,20 @@ const WRITER_MINT_PATTERNS = [
   //    also the only shape that spans lines in the wild, so it is matched
   //    against whole file text and not line by line.
   /\|\|\s*EXTERNAL_SEED_MERCHANT_ID\b/g,
+  // 2b. THE SAME DEFAULT MINT, written as a function call instead of `||`. Added 2026-09-11 after
+  //    review found it invisible: `firstNonEmptyString(row.merchant_id, EXTERNAL_SEED_MERCHANT_ID)`
+  //    is pattern 2's defect exactly — a real seller looked up, the sentinel substituted when the
+  //    lookup is empty — and matched nothing, because pattern 2 anchors on the `||` operator rather
+  //    than on the semantics.
+  //
+  //    This was not hypothetical. PR #2189 removed one counted `merchant_id: EXTERNAL_SEED_MERCHANT_ID`
+  //    and introduced `firstNonEmptyString(row.catalog_merchant_id, EXTERNAL_SEED_MERCHANT_ID)` in
+  //    its place, then lowered the baseline by one. A mint replaced by an invisible mint read as
+  //    progress on the metric this file exists to make honest.
+  //
+  //    Requires a COMMA before the sentinel so it matches an argument position, not a comparison:
+  //    `=== EXTERNAL_SEED_MERCHANT_ID` is a reader and is already counted by the reader patterns.
+  /,\s*EXTERNAL_SEED_MERCHANT_ID\s*\)/g,
   // 3. The same default written with the raw string instead of the constant.
   //    Anchored on a merchant token EARLIER ON THE SAME LINE rather than on the
   //    bare fallback, because the sourcing fields default to the very same word
