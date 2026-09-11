@@ -472,6 +472,30 @@ const WEAK_STEP_SURFACES = new Set(['spf']);
 // Antioxidant Body Mist SPF 30" and its "non-aerosol sunscreen body spray" — both sunscreens — read
 // as a sunscreen AND a fragrance and resolved to nothing at all.
 const FORMAT_ONLY_SURFACES = new Set(['body mist', 'body spray']);
+// AN ACTIVE IS NOT A CATEGORY. `retinol`, `bha` and `acid` are on the `treatment` pattern because a
+// product called "Retinol" is a treatment -- but they are ALSO the ingredient every serum, cream and
+// toner prints on its front label. Competing with the formulation noun, they cancelled it: "Strong
+// Retinol Serum", "2% BHA Serum" and "Pore Clearing BHA Serum" resolved to NOTHING.
+//
+// That landed on candidate rows, not asks. `normalizeRecoTargetStep` used to take the first pattern
+// in listing order, where `serum` precedes `treatment`, so it answered `serum` and the row kept a
+// step; unifying the two resolvers (one question, one answer) made it strict and the step went away.
+// Measured through finalizeRecommendationCandidatePools on an identical corpus: the ask "serum for
+// acne" lost 73 of 850 viable candidates, 69 of them BHA and retinol serums -- the acne-relevant
+// ones. Rows with a clean structured product_type were unaffected; the loss was on rows whose only
+// evidence is the title, which is exactly what an external seed is.
+//
+// The formulation noun wins, and a product whose ONLY step evidence is the active still resolves to
+// `treatment` -- the weak rules below need two matches to do anything.
+// Exactly the actives that are TOKENS of the treatment pattern. `acid`, `niacinamide` and
+// `azelaic` are not on it at all -- listing them here would read as protection that does nothing.
+const INGREDIENT_ONLY_SURFACES = new Set(['retinol', 'retinoid', 'bha', 'aha']);
+
+function dropIngredientOnlySurfaceMatches(details) {
+  if (details.length < 2) return details;
+  const withoutActives = details.filter((detail) => !INGREDIENT_ONLY_SURFACES.has(detail.token));
+  return withoutActives.length && withoutActives.length !== details.length ? withoutActives : details;
+}
 // PRIMER IS THE ONE MAKEUP CATEGORY WHERE SPF IS THE PRIMARY CLAIM. Supergoop's Unseen, Dewscreen
 // and Glowscreen are sold as sun care that primes; letting `primer` beat an SPF surface moved them
 // out of the sunscreen pipeline entirely — on a `sunscreen` query the row went from `same_family` to
@@ -518,6 +542,35 @@ function dropWeakSurfaceMatches(details) {
 // rule behind them, and it resolves TOWARDS main's answer -- main had no makeup steps at all, so a
 // mixed ask resolved to its skincare step there too. Runs last, so an ask whose makeup category is
 // the only thing named is untouched.
+// AN SPF CLAIM BEATS A SKINCARE FORM NOUN, and this is main's answer restored rather than a new
+// rule. main's normalizeRecoTargetStep took the first pattern in listing order, where `sunscreen`
+// precedes `moisturizer`, `cleanser`, `serum`, `toner`, `essence`, `oil` and `treatment` -- so
+// "Daily Moisturizer SPF 30" and "Anthelios Antioxidant Serum SPF 50" were sunscreens to the ranker
+// and matched same_family on a sunscreen request. Leaving them ambiguous instead cost 79 of 422
+// same-family sunscreen candidates over 3,841 real title-shaped rows, on the request they answer.
+//
+// `mask` is the exception, as it was on main: it is listed BEFORE sunscreen there, so a sheet mask
+// with SPF stayed a mask. Complexion COLOUR still wins over `spf` -- that is the one place this
+// differs from main, and it is measured: a skin tint is makeup.
+const SKINCARE_STEPS_SUNSCREEN_OUTRANKS = new Set([
+  'moisturizer', 'cleanser', 'serum', 'toner', 'essence', 'oil', 'treatment',
+]);
+
+function preferSunscreenOverOtherSkincare(details) {
+  if (details.length < 2) return details;
+  if (!details.some((detail) => detail.step === 'sunscreen')) return details;
+  // `mask` OUTRANKS sunscreen, not the other way round — it is listed before it on main, so a sheet
+  // mask with SPF stayed a mask there.
+  if (details.some((detail) => detail.step === 'mask')) {
+    const withoutSunscreen = details.filter((detail) => detail.step !== 'sunscreen');
+    return withoutSunscreen.length ? withoutSunscreen : details;
+  }
+  const survivors = details.filter(
+    (detail) => !SKINCARE_STEPS_SUNSCREEN_OUTRANKS.has(detail.step),
+  );
+  return survivors.length && survivors.length !== details.length ? survivors : details;
+}
+
 function preferSkincareStepOnMixedMatch(details) {
   if (details.length < 2) return details;
   const skincare = details.filter((detail) => !STEP_DOMAIN_MAP[detail.step]);
@@ -570,7 +623,11 @@ function collectStepPatternMatchDetails(input, entries) {
   // ORDER IS LOAD-BEARING: formats yield first (before overlap can absorb what they yield to), then
   // overlap collapses two patterns over one span, then the weak-surface rules judge what survived.
   return preferSkincareStepOnMixedMatch(
-    dropWeakSurfaceMatches(resolveOverlappingStepMatches(dropFormatOnlySurfaceMatches(details))),
+    preferSunscreenOverOtherSkincare(
+      dropWeakSurfaceMatches(
+        resolveOverlappingStepMatches(dropIngredientOnlySurfaceMatches(dropFormatOnlySurfaceMatches(details))),
+      ),
+    ),
   );
 }
 
