@@ -7,6 +7,8 @@ const {
   resolveRecoTargetStepIntent,
   normalizeRecoTargetStep,
   getRecoTargetFamilyRelation,
+  resolveRecoStepDomain,
+  STEP_DOMAIN_MAP,
 } = require('../auroraBff/recoTargetStep');
 const {
   TARGET_RELEVANCE_CLASS_OWNER,
@@ -287,6 +289,24 @@ function resolveStructuredCategoryIdentityConflictStep(structuredStep, product) 
         candidate_step_confidence: 'medium',
       };
     }
+  }
+  // THE MIRROR OF THE RULE ABOVE, and it only became reachable when makeup became a step. Supergoop
+  // types "Unseen Sunscreen SPF 50" as `product_type: "Primer"` under `beauty/makeup/face/primer`;
+  // before this taxonomy knew `primer`, the structured field resolved to nothing and text salvage
+  // called it a sunscreen. Now the structured field wins and the row leaves the sunscreen pipeline
+  // -- on a `sunscreen` query it went same_family -> incompatible_family and out of the top 20.
+  // A product whose own NAME says sunscreen is a sunscreen, whatever aisle the merchant filed it in.
+  // `primer` also yields to a bare SPF claim, and only `primer` does — the same asymmetry the step
+  // resolver encodes in STEPS_SPF_OUTRANKS. "Dewscreen Hydrating Primer SPF 50" never says the word
+  // sunscreen; the SPF is the claim. A FOUNDATION with SPF is sold on coverage and keeps its step.
+  const sunscreenByIdentity = SUNSCREEN_PRIMARY_FORM_RE.test(identityText)
+    || (step === 'primer' && SPF_RE.test(identityText));
+  if (STEP_DOMAIN_MAP[step] === 'makeup' && sunscreenByIdentity) {
+    return {
+      candidate_step: 'sunscreen',
+      candidate_step_source: 'structured_category_identity_conflict',
+      candidate_step_confidence: 'high',
+    };
   }
   return null;
 }
@@ -1321,7 +1341,21 @@ function resolveBeautyCoarseStepFamily(product) {
   }
   const text = buildBeautyCandidateText(product);
   const resolved = resolveRecoTargetStepIntent({ text, focus: text });
-  const candidateStep = normalizeRecoTargetStep(resolved?.resolved_target_step);
+  let candidateStep = normalizeRecoTargetStep(resolved?.resolved_target_step);
+  // A MAKEUP OR FRAGRANCE STEP MAY NOT BE SALVAGED FROM PROSE. buildBeautyCandidateText joins
+  // descriptions, how-to-use copy, claims and ingredient tokens, and skincare copy is full of makeup
+  // words: "Tea Tree & Macadamia Deep Cleansing Shampoo" acquired a `fragrance` step from its scent
+  // description and ranked above real perfumes on a `perfume` query, and "Dew Boost Makeup Serum"
+  // ("grips foundation") stopped being a serum. Skincare salvage is unchanged -- a moisturiser
+  // described as a moisturiser is one -- because that is the reading this function was built for and
+  // the one main relied on.
+  if (candidateStep && STEP_DOMAIN_MAP[candidateStep]) {
+    const identityText = buildBeautyPrimaryIdentityText(product);
+    const identityStep = normalizeRecoTargetStep(
+      resolveRecoTargetStepIntent({ text: identityText, focus: identityText })?.resolved_target_step,
+    );
+    if (identityStep !== candidateStep) candidateStep = null;
+  }
   if (!candidateStep) {
     return {
       candidate_step: null,
@@ -1348,6 +1382,13 @@ function classifyBeautyCoarseCandidate(product, {
   const rawBucket = classifyBeautyBucketFromText(text);
   const stepResolution = resolveBeautyCoarseStepFamily(product);
   const candidateStep = normalizeRecoTargetStep(stepResolution.candidate_step);
+  // "IT RESOLVED A STEP" MEANT "IT IS SKINCARE" only while every step WAS a skincare step. Once the
+  // taxonomy learned makeup and fragrance, a Tom Ford eau de parfum resolved `fragrance`, satisfied
+  // the cue below, and was classified domain_scope=skincare / usage_scope=face / leave_on -- a valid
+  // skincare hit. MAKEUP_RE catches lipsticks and eyeshadows one branch earlier, which is why this
+  // surfaced as PERFUMES: nothing else was watching them. Measured on the real 7-day query "few
+  // skincare": fragrance rows in the valid set went 4 -> 18.
+  const candidateStepIsSkincare = Boolean(candidateStep) && resolveRecoStepDomain(candidateStep) === 'skincare';
   const hasBodyCue = BODY_RE.test(lower);
   const hasFaceCue = FACE_RE.test(lower);
   const hasServiceCue =
@@ -1356,7 +1397,7 @@ function classifyBeautyCoarseCandidate(product, {
     (SERVICE_DURATION_RE.test(lower) && SERVICE_CONTEXT_RE.test(lower));
   const hasSkincareCue =
     rawBucket === 'skincare' ||
-    Boolean(candidateStep) ||
+    candidateStepIsSkincare ||
     SPF_RE.test(lower) ||
     CLEANSER_RE.test(lower) ||
     SERUM_GUIDANCE_FAMILY_RE.test(lower) ||
@@ -1387,16 +1428,19 @@ function classifyBeautyCoarseCandidate(product, {
   let usageScope = 'unknown';
   if (objectType === 'brush' || objectType === 'tool' || objectType === 'accessory') usageScope = 'tool';
   else if (domainScope === 'bodycare' || (hasBodyCue && !hasFaceCue)) usageScope = 'body';
-  else if (domainScope === 'skincare' || hasFaceCue || candidateStep) usageScope = 'face';
+  else if (domainScope === 'skincare' || hasFaceCue || candidateStepIsSkincare) usageScope = 'face';
 
   let applicationMode = 'unknown';
   if (usageScope === 'tool') applicationMode = 'tool';
   else if (candidateStep === 'cleanser') applicationMode = 'rinse_off';
-  else if (domainScope === 'skincare' || candidateStep) applicationMode = 'leave_on';
+  else if (domainScope === 'skincare' || candidateStepIsSkincare) applicationMode = 'leave_on';
 
   const familyRelation = queryTargetStepFamily && candidateStep
     ? getRecoTargetFamilyRelation(queryTargetStepFamily, candidateStep)
-    : candidateStep
+    // candidateStepIsSkincare, not candidateStep: with no query family to compare against, a
+    // resolved step used to mean "a skincare row of some kind", so it stood in for same_family. A
+    // fragrance resolving a step does not make it same-family with an unspecified query.
+    : candidateStepIsSkincare
       ? 'same_family'
       : 'unknown';
   const decisionMode = normalizeRecommendationDecisionMode(mode, { guidanceOnlyDiscovery });

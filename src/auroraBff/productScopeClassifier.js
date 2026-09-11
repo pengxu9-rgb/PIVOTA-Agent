@@ -143,8 +143,15 @@ function buildConcernFrameworkCandidateText(row) {
     .trim();
 }
 
-function classifyConcernScopeCandidate(row) {
-  const base = recoHybridInternal.classifySkincareCandidate(row);
+// `requestedStep` IS THE RECALL BOUNDARY'S HALF OF THE SAME QUESTION. Threading the step into the
+// ranker alone fixed nothing a buyer could see: this function runs FIRST, deletes the row, and the
+// ranker never gets to score it. The three paths that HARD-REJECT a candidate on category grounds
+// -- the beauty mainline boundary, the framework pool finalizer, the winner-safety check -- all
+// come through here, so this is where the step has to arrive; ranking asks the same question of
+// classifySkincareCandidate directly, and pays a penalty rather than deleting. Optional, and an
+// omitted step still asks the skincare-only question, unchanged.
+function classifyConcernScopeCandidate(row, { requestedStep = '' } = {}) {
+  const base = recoHybridInternal.classifySkincareCandidate(row, { requestedStep });
   const classification = String(base?.classification || 'ambiguous').trim() || 'ambiguous';
   return {
     classification,

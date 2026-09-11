@@ -406,7 +406,7 @@ const {
   buildChatAnalysisContextFromSnapshot,
   buildAnalysisContextPromptBlock,
 } = require('./analysisContextSnapshot');
-const { normalizeRecoTargetStep, extractRecoTargetStepFromText } = require('./recoTargetStep');
+const { normalizeRecoTargetStep, extractRecoTargetStepFromText, resolveRecoStepDomain } = require('./recoTargetStep');
 const {
   normalizeRecoPriceCeiling,
   applyRecoPriceCeilingPreference,
@@ -21017,6 +21017,49 @@ function buildRecoCatalogQueryLevels({
   needSeedText = '',
   maxGenericQueries = 0,
 } = {}) {
+  // THE EXTERNAL-SEED LANE IS WHERE MAKEUP SUPPLY LIVES, and this ladder never asked for it. The
+  // framework branch sets allow_external_seed from its stage plan; the other two branches set
+  // nothing, so `queryEntry.allow_external_seed === true` was false, the request went out
+  // internal-only, and buildPurchasableFallbackCandidates took its internal branch and returned
+  // without supplementing. #2174 fixed the external-seed CATEGORY VOCABULARY for beauty/makeup/face
+  // -- correctly -- on a lane this door could not reach.
+  //
+  // FROM THE RESOLVED STEP AND NOTHING ELSE. The first attempt read the step OR `needSeedText`, and
+  // put the supplement on the GENERIC branch. Both were wrong, in opposite directions and at the
+  // same time: `step_aware_intent` is set whenever a step resolves, so a makeup ask never reaches
+  // the generic branch and got no supplement, while a skincare ask whose text said "fragrance-free"
+  // resolved as fragrance through the seed-text fallback and got one. Measured live: bronzer,
+  // lipstick and eau-de-toilette all took the step-aware branch with source_scope undefined; the
+  // only need that reached the generic branch with a beauty domain was "a fragrance-free
+  // moisturizer".
+  const externalSeedDomain = resolveRecoStepDomain(pickFirstTrimmed(targetContext?.resolved_target_step));
+  const externalSeedEligible = externalSeedDomain === 'makeup' || externalSeedDomain === 'fragrance';
+  // BOTH FIELDS, BECAUSE THE TWO COLLECTORS READ DIFFERENT ONES. An earlier version of this comment
+  // said `source_scope` decides and `allow_external_seed` is a no-op; a review traced it and the
+  // truth is the other way round on the path this ladder actually takes.
+  //   - collectRecoCandidatesFromQueryLevels -> runQueryLevelEntry OVERWRITES source_scope from
+  //     `allowExternalSeed && entry.allow_external_seed`, so `allow_external_seed` is what decides
+  //     and any scope set here is discarded.
+  //   - executeRecoRecallPlanEntry reads entry.source_scope directly.
+  // Setting one and not the other yields a ladder that looks external-eligible in a trace and goes
+  // out internal-only on whichever collector runs. Do not drop either.
+  //
+  // NOTE that the query-levels path rewrites the scope to 'external_seed', not 'hybrid' -- so on
+  // that path the request uses the external-seed direct transport and fast mode. External seeds
+  // SUPPLEMENT rather than replace only via external_seed_strategy, which is why it is pinned here.
+  //
+  // `preferred_step` is emitted alongside `step` because the outbound external-seed arm derives
+  // targetStepFamily from `preferred_step` alone; the step-aware ladder only ever set `step`, so the
+  // makeup category never reached the backend's own category resolution.
+  const withExternalSeedSupplement = (entry) => (externalSeedEligible
+    ? {
+      ...entry,
+      source_scope: 'hybrid',
+      allow_external_seed: true,
+      external_seed_strategy: 'supplement_internal_first',
+      preferred_step: pickFirstTrimmed(entry?.preferred_step, entry?.step) || '',
+    }
+    : entry);
   if (targetContext && Array.isArray(targetContext.framework_roles) && targetContext.framework_roles.length > 0) {
     const recallPlan = buildRecoRecallPlan({
       mode: 'framework_generic',
@@ -21067,7 +21110,7 @@ function buildRecoCatalogQueryLevels({
     return (Array.isArray(recallPlan?.stages) ? recallPlan.stages : []).map((stage, index) => ({
       level_index: index,
       ladder_level: String(stage?.stage_id || `step_stage_${index + 1}`).trim() || `step_stage_${index + 1}`,
-      queries: (Array.isArray(stage?.entries) ? stage.entries : []).map((entry) => ({
+      queries: (Array.isArray(stage?.entries) ? stage.entries : []).map((entry) => withExternalSeedSupplement({
         query: String(entry?.query || '').trim(),
         step: pickFirstTrimmed(entry?.preferred_step, targetContext.resolved_target_step) || '',
         slot: pickFirstTrimmed(entry?.slot, inferSlotForStep(entry?.preferred_step || targetContext.resolved_target_step), 'other') || 'other',
@@ -21083,12 +21126,17 @@ function buildRecoCatalogQueryLevels({
     needSeedText,
     maxQueries: maxGenericQueries,
   });
-  return queries.length
+  // NOT withExternalSeedSupplement HERE. This branch is only reached when no step resolved (a
+  // resolved step at high or medium confidence sets step_aware_intent and takes the branch above),
+  // and externalSeedEligible is derived from the resolved step -- so the call was dead code whose
+  // comment implied otherwise. The eligibility test above is the whole rule.
+  const generalQueries = queries;
+  return generalQueries.length
     ? [
         {
           level_index: 0,
           ladder_level: 'generic_catalog',
-          queries,
+          queries: generalQueries,
         },
       ]
     : [];
@@ -21104,9 +21152,9 @@ function buildRecoCandidateStateFromRawCandidates(rawCandidates, { targetContext
       });
 }
 
-function classifyBeautyMainlineBoundaryRejectCandidate(candidate) {
+function classifyBeautyMainlineBoundaryRejectCandidate(candidate, { requestedStep = '' } = {}) {
   if (!isPlainObject(candidate)) return { rejected: false, reason: null };
-  const scopeClassification = classifyConcernScopeCandidate(candidate);
+  const scopeClassification = classifyConcernScopeCandidate(candidate, { requestedStep });
   if (scopeClassification?.hard_reject === true) {
     return {
       rejected: true,
@@ -21544,7 +21592,9 @@ async function collectRecoCandidatesFromRecallPlan({
     for (const product of products) {
       const normalized = normalizeRecoCatalogProduct(product);
       if (!isPlainObject(normalized)) continue;
-      const boundaryReject = classifyBeautyMainlineBoundaryRejectCandidate(normalized);
+      const boundaryReject = classifyBeautyMainlineBoundaryRejectCandidate(normalized, {
+        requestedStep: pickFirstTrimmed(targetContext?.resolved_target_step, queryEntry?.preferred_step) || '',
+      });
       if (boundaryReject.rejected) {
         recordBeautyMainlineBoundaryReject({
           rejects: boundaryRejects,
@@ -21956,8 +22006,12 @@ function countConcernRoleSignalMatches(text, values = [], maxHits = 2) {
   return hits;
 }
 
-function classifyConcernScopeCandidate(row) {
-  return classifyConcernScopeCandidatePolicy(row);
+// A PASS-THROUGH THAT DROPPED THE OPTIONS IS A SILENT UNTHREADING. This wrapper sits between the
+// mainline boundary and the policy module; forwarding `row` alone meant the step reached the policy
+// on the two call sites that use the policy directly and nowhere else, and the boundary went on
+// deleting the category it had just searched for.
+function classifyConcernScopeCandidate(row, options = {}) {
+  return classifyConcernScopeCandidatePolicy(row, options);
 }
 
 function scoreConcernRoleCandidate(row, role, { candidateStep, candidateText = '', targetContext = null } = {}) {
@@ -27831,6 +27885,9 @@ function finalizeConcernFrameworkCandidatePools(
     explicit_face_skincare: 0,
     explicit_non_face_supportive: 0,
     explicit_non_skincare: 0,
+    // Without its own bucket the new class fell into `ambiguous`, so the telemetry said the pool was
+    // full of rows the gate could not place — the opposite of what threading the step achieved.
+    explicit_requested_beauty_category: 0,
     ambiguous: 0,
   };
   for (const role of roles) {
@@ -27840,8 +27897,9 @@ function finalizeConcernFrameworkCandidatePools(
     rolePoolStats[roleId] = { viable_count: 0, top_score: 0 };
   }
 
+  const frameworkRequestedStep = pickFirstTrimmed(targetContext?.resolved_target_step) || '';
   for (const row of deduped) {
-    const scopeClassification = classifyConcernScopeCandidate(row);
+    const scopeClassification = classifyConcernScopeCandidate(row, { requestedStep: frameworkRequestedStep });
     if (Object.prototype.hasOwnProperty.call(scopeClassificationStats, scopeClassification.classification)) {
       scopeClassificationStats[scopeClassification.classification] += 1;
     } else {
@@ -28798,7 +28856,9 @@ async function collectRecoCandidatesFromQueryLevels({
     for (const product of products) {
       const normalized = normalizeRecoCatalogProduct(product);
       if (!isPlainObject(normalized)) continue;
-      const boundaryReject = classifyBeautyMainlineBoundaryRejectCandidate(normalized);
+      const boundaryReject = classifyBeautyMainlineBoundaryRejectCandidate(normalized, {
+        requestedStep: pickFirstTrimmed(targetContext?.resolved_target_step, queryEntry?.preferred_step) || '',
+      });
       if (boundaryReject.rejected) {
         recordBeautyMainlineBoundaryReject({
           rejects: boundaryRejects,
@@ -105609,6 +105669,7 @@ const __internal = {
   buildRecoRecallTransportPolicy,
   resolveRecoRecallTransportModeForPlannerMode,
   buildRecoCatalogQueryLevels,
+  classifyBeautyMainlineBoundaryRejectCandidate,
   extractCatalogCandidatePrice,
   buildRecoCatalogQueries,
   buildRecoNeedSeedQueries,
