@@ -107,6 +107,9 @@ test("supply of 3 conforming: the shortlist fills 3/3 even when the LLM returns 
     catalogStructured,
     priceCeiling: USD40,
     shortlistTarget: 3,
+    // The fixtures are exfoliants, acids and peels — a `treatment` need. The top-up now refuses to
+    // fill a shortlist with a category the buyer did not ask for, so the suite has to name one.
+    requestedStep: 'treatment',
   });
 
   // Mutant killed: removing the top-up from the engine, or gating it on something other than the
@@ -135,6 +138,9 @@ test('supply of 2 conforming: 2 conforming, and the leftover slot keeps a flagge
     catalogStructured: out.structured,
     priceCeiling: USD40,
     shortlistTarget: 3,
+    // The fixtures are exfoliants, acids and peels — a `treatment` need. The top-up now refuses to
+    // fill a shortlist with a category the buyer did not ask for, so the suite has to name one.
+    requestedStep: 'treatment',
   });
   const rows = topUp.structured.recommendations;
   const conforming = rows.filter((r) => classifyRecoCandidateAgainstPriceCeiling(r, USD40) === 'conforming');
@@ -153,6 +159,9 @@ test('an ALL-VIOLATING catalog appends nothing and never empties the answer', as
     catalogStructured: out.structured,
     priceCeiling: USD40,
     shortlistTarget: 3,
+    // The fixtures are exfoliants, acids and peels — a `treatment` need. The top-up now refuses to
+    // fill a shortlist with a category the buyer did not ask for, so the suite has to name one.
+    requestedStep: 'treatment',
   });
   // Mutant killed: treating "cannot reach the target" as a reason to drop or replace the answer. A
   // flagged near-miss is a worse answer than a conforming product and a far better one than zero.
@@ -336,6 +345,9 @@ test('the top-up falls back to the PRE-LLM catalog answer when the recovery one 
     preLlmCatalogStructured: { recommendations: [NATURIUM, COSRX] },
     priceCeiling: USD40,
     shortlistTarget: 3,
+    // The fixtures are exfoliants, acids and peels — a `treatment` need. The top-up now refuses to
+    // fill a shortlist with a category the buyer did not ask for, so the suite has to name one.
+    requestedStep: 'treatment',
   });
   // Mutant killed: reading only catalogStructured. On the direct lane an LLM SUCCESS leaves
   // catalogStructured null by design (#2045) -- the pool lives in preLlmCatalogStructured, so the
@@ -350,6 +362,7 @@ test('a missing or malformed answer is left alone', () => {
       catalogStructured: { recommendations: [NATURIUM] },
       priceCeiling: USD40,
       shortlistTarget: 3,
+      requestedStep: 'treatment',
     });
     assert.equal(out.appendedCount, 0);
   }
@@ -685,4 +698,74 @@ test('only a CONSTRAINED request may go past the shared upstream cap of 12', () 
   assert.equal(f(6, null), 6);
   assert.equal(f(0, USD40), 1, 'never zero');
   assert.equal(f(undefined, null), 6, 'the historical default');
+});
+
+// ---------------------------------------------------------------------------------------------
+// FILLER MUST BE THE CATEGORY THAT WAS ASKED FOR, OR THERE MUST BE NO FILLER.
+//
+// selectRecoPriceCeilingTopUpRows filters on ONE thing: does the row conform to the price ceiling.
+// Not the category, not the step, not the family. Driven on main before this change, with the buyer
+// asking for "a bronzer under $40" and the model returning one bronzer:
+//
+//     Hoola Matte Bronzer                  $32   (the answer)
+//     CeraVe Foaming Facial Cleanser       $14   <- appended
+//     The Ordinary Niacinamide 10% Serum   $6    <- appended
+//
+// That is #2155's exact shape, one layer later, on the ONE door that threads a price ceiling.
+
+const BRONZER_ANSWER = { recommendations: [{ product_id: 'b1', name: 'Hoola Matte Bronzer', price: 32, currency: 'USD' }] };
+const topUpWith = (catalogRows, requestedStep) => applyStrictConformingTopUp({
+  structured: BRONZER_ANSWER,
+  catalogStructured: { recommendations: catalogRows },
+  priceCeiling: USD40,
+  shortlistTarget: 3,
+  requestedStep,
+});
+
+test('a price ceiling does not make a cleanser a bronzer', () => {
+  const out = topUpWith([
+    { product_id: 'c1', name: 'CeraVe Foaming Facial Cleanser', price: 14, currency: 'USD' },
+    { product_id: 'c2', name: 'The Ordinary Niacinamide 10% Serum', price: 6, currency: 'USD' },
+  ], 'bronzer');
+  assert.equal(out.appendedCount, 0, 'both rows conform on PRICE and neither is a bronzer');
+  assert.deepEqual(out.structured.recommendations.map((r) => r.name), ['Hoola Matte Bronzer']);
+});
+
+test('and the feature still fills, when the supply is the right category', () => {
+  const out = topUpWith([
+    { product_id: 'd1', name: 'Physicians Formula Butter Bronzer', price: 15, currency: 'USD' },
+    { product_id: 'd2', name: 'Milani Baked Bronzer', price: 9, currency: 'USD' },
+  ], 'bronzer');
+  assert.equal(out.appendedCount, 2, 'a short bronzer shortlist is still filled — with bronzers');
+  for (const row of out.appended) assert.match(row.name, /Bronzer/i);
+});
+
+test('a MAKEUP request needs a positive match; an unresolvable row is not admitted', () => {
+  // Makeup titles resolve reliably now that the taxonomy knows them, so an unresolvable row in a
+  // bronzer shortlist is far more likely to be skincare than a bronzer.
+  const out = topUpWith([{ product_id: 'x1', name: 'Dewtopia Peel', price: 14, currency: 'USD' }], 'bronzer');
+  assert.equal(out.appendedCount, 0);
+});
+
+test('a SKINCARE request still accepts an unresolvable row — 66% of catalog titles resolve to none', () => {
+  // Demanding a positive match on the skincare lane would not fix this feature, it would delete it.
+  // An unresolvable row already cleared the recall boundary and ranking for this need.
+  const out = topUpWith([{ product_id: 'x1', name: 'The Ordinary Lactic Acid 5%', price: 6, currency: 'USD' }], 'serum');
+  assert.equal(out.appendedCount, 1);
+  // But a row that resolves to a DIFFERENT family is refused on every lane.
+  assert.equal(topUpWith([{ product_id: 'm1', name: 'Maybelline Fit Me Foundation', price: 8, currency: 'USD' }], 'serum').appendedCount, 0);
+});
+
+test('with NO resolved step nothing is appended — there is no basis to claim a row belongs', () => {
+  assert.equal(topUpWith([{ product_id: 'd1', name: 'Physicians Formula Butter Bronzer', price: 15, currency: 'USD' }], '').appendedCount, 0);
+  assert.equal(topUpWith([{ product_id: 'c1', name: 'CeraVe Foaming Facial Cleanser', price: 14, currency: 'USD' }], null).appendedCount, 0);
+});
+
+test('the engine threads the resolved step — the wiring, not just the helper', () => {
+  const src = require('node:fs').readFileSync(
+    require('node:path').join(__dirname, '..', 'src', 'auroraBff', 'legacyRecoGenerationEngine.js'), 'utf8',
+  );
+  const call = src.slice(src.indexOf('applyStrictConformingTopUp({'), src.indexOf('applyStrictConformingTopUp({') + 400);
+  assert.match(call, /requestedStep:\s*\(targetContext && targetContext\.resolved_target_step\)/,
+    'the call site must pass the resolved step, or the helper refuses every row and the feature is dead');
 });

@@ -231,6 +231,8 @@ test('a MIXED answer reports each row honestly', async () => {
     },
     priceCeiling: { limit: 50, currency: 'USD' },
     shortlistTarget: 2,
+    // The top-up now refuses filler outside the requested family; the fixture row is a cleanser.
+    requestedStep: 'cleanser',
   });
   assert.equal(toppedUp.appendedCount, 1, 'the top-up must actually have appended a row');
   const [, filler] = toppedUp.structured.recommendations;

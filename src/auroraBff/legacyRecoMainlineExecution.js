@@ -1,4 +1,6 @@
 const { selectRecoPriceCeilingTopUpRows } = require('./recoPriceCeiling');
+const { getRecoTargetFamilyRelation, normalizeRecoTargetStep, resolveRecoStepDomain } = require('./recoTargetStep');
+const { resolveBeautyCoarseStepFamily } = require('../shared/beautyRecoCoarseClassifier');
 
 // The direct lane = consumer POST /v1/reco/generate and the agent-door tool `recommend_products`.
 // Both reach generateProductRecommendations with entryType 'direct'; the chat lane uses 'chat' and is
@@ -111,13 +113,53 @@ function shouldRecoverFullyUngroundedDirectAnswer({
  * single bounded pass: nothing loops, nothing is removed, and an all-violating catalog appends
  * NOTHING rather than padding with filler.
  */
+// FILLER MUST BE THE CATEGORY THAT WAS ASKED FOR, or there must be no filler.
+//
+// selectRecoPriceCeilingTopUpRows filters on ONE thing: does the row conform to the price ceiling.
+// Not the category, not the step, not the family. Driven on this branch before the fix, with the
+// buyer asking for "a bronzer under $40" and the model returning one bronzer:
+//
+//     Hoola Matte Bronzer                  $32   (the answer)
+//     CeraVe Foaming Facial Cleanser       $14   <- appended
+//     The Ordinary Niacinamide 10% Serum   $6    <- appended
+//
+// That is #2155's exact shape, reintroduced one layer later, on the ONE door that threads a price
+// ceiling -- the agent door the Meitu and Perfect Corp partnerships arrive at.
+//
+// THE RULE IS ASYMMETRIC, AND THE ASYMMETRY IS MEASURED. 66% of real catalog titles resolve to no
+// step at all ("The Ordinary Lactic Acid 5%", "OleHenriksen Dewtopia Peel"), so demanding a positive
+// same-family match would not fix this feature, it would delete it.
+//
+//   - A row that resolves to a DIFFERENT family is refused, always. That is the demonstrated defect:
+//     a cleanser and a serum are not bronzers, and nothing about a price ceiling makes them one.
+//   - A row that resolves to NOTHING is allowed on a SKINCARE request. It already cleared the recall
+//     boundary and ranking for this need; "unknown" is not evidence of wrongness, and refusing it
+//     would empty the shortlists this feature exists to fill.
+//   - On a MAKEUP or FRAGRANCE request it must match POSITIVELY. Makeup titles resolve reliably now
+//     that the taxonomy knows them, an unresolvable row in a bronzer shortlist is far more likely to
+//     be skincare than a bronzer, and this is the door the partnerships arrive at.
+//
+// With no resolved step at all there is no basis to claim any row belongs, so nothing is appended.
+function topUpRowMatchesRequestedFamily(row, requestedStep, resolveCandidateStep) {
+  const target = normalizeRecoTargetStep(requestedStep);
+  if (!target) return false;
+  const resolved = resolveCandidateStep(row);
+  const candidateStep = normalizeRecoTargetStep(
+    (resolved && typeof resolved === 'object') ? resolved.candidate_step : resolved,
+  );
+  if (candidateStep) return getRecoTargetFamilyRelation(target, candidateStep) === 'same_family';
+  return resolveRecoStepDomain(target) === 'skincare';
+}
+
 function applyStrictConformingTopUp({
   structured = null,
   catalogStructured = null,
   preLlmCatalogStructured = null,
   priceCeiling = null,
   shortlistTarget = 0,
+  requestedStep = '',
   selectTopUpRows = selectRecoPriceCeilingTopUpRows,
+  resolveCandidateStep = resolveBeautyCoarseStepFamily,
 } = {}) {
   const noop = { structured, appended: [], appendedCount: 0 };
   if (!isPlainObjectValue(structured) || !Array.isArray(structured.recommendations)) return noop;
@@ -144,6 +186,10 @@ function applyStrictConformingTopUp({
     target: shortlistTarget,
   });
   if (!Array.isArray(appended) || appended.length === 0) return noop;
+  const onCategory = appended.filter(
+    (row) => topUpRowMatchesRequestedFamily(row, requestedStep, resolveCandidateStep),
+  );
+  if (onCategory.length === 0) return noop;
   // STAMP WHAT THESE ROWS ARE. The key is namespaced because it is a SERVER assertion on a row that
   // may otherwise be model-authored: every transform on this lane is a `{...row}` spread, so a plain
   // `score_basis` emitted by the model would arrive at the signal builder and be read as
@@ -156,7 +202,7 @@ function applyStrictConformingTopUp({
   // structuredSource 'llm_primary', so an answer-level confidence basis would call them the model's
   // own estimate and band them `high`, above the model's actual pick. Per-row, because this is the
   // only place that knows which rows were filler.
-  const stamped = appended.map((row) => (
+  const stamped = onCategory.map((row) => (
     row && typeof row === 'object' && !Array.isArray(row)
       ? { ...row, __pivota_score_basis: 'positional' }
       : row
