@@ -49592,8 +49592,14 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 bypassCache,
               }).catch(() => null);
               directRouteTimingMs.resolve_signature_ref = Date.now() - resolveSignatureStartedAt;
+              // The RESOLVED ref's seller, not the request's. resolveCatalogProductRefFromPivotaSignature
+              // returns catalog_products.merchant_id raw, and after ADR-009 phase 3 that is never the
+              // sentinel — so a sentinel-only test here discards every resolution it just performed.
+              // Widening the gate above WITHOUT this is a no-op on production rows: the door opens and
+              // the next line throws the result away. My first attempt did exactly that, and passed a
+              // test whose catalog fixture was still the pre-migration row.
               const resolvedExternalSeedProductId =
-                resolvedSignatureRef?.merchant_id === EXTERNAL_SEED_MERCHANT_ID &&
+                isExternalSeedListingMerchantId(resolvedSignatureRef?.merchant_id) &&
                 resolvedSignatureRef?.product_id &&
                 !isPivotaSignatureProductId(resolvedSignatureRef.product_id)
                   ? String(resolvedSignatureRef.product_id).trim()
@@ -49602,7 +49608,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 resolvedExternalSeedProductId
               ) {
                 effectiveProductId = resolvedExternalSeedProductId;
-                effectiveMerchantId = EXTERNAL_SEED_MERCHANT_ID;
+                // Carry the seller the catalog actually holds. Re-minting the sentinel here would undo
+                // the re-key one line after honouring it, into a bucket ADR-009 D2 bans for new writes.
+                effectiveMerchantId =
+                  firstNonEmptyString(resolvedSignatureRef?.merchant_id) || EXTERNAL_SEED_MERCHANT_ID;
               }
             }
             const directCandidateLimit = Math.max(
@@ -49614,13 +49623,15 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               Boolean(effectiveProductId) &&
               !isPivotaSignatureProductId(effectiveProductId) &&
               (
-                effectiveMerchantId === EXTERNAL_SEED_MERCHANT_ID ||
+                isExternalSeedListingMerchantId(effectiveMerchantId) ||
                 (!effectiveMerchantId && isExternalSeedProductId(effectiveProductId))
               );
             const baseProduct =
               (isExternalSeedDirectBase
                 ? {
-                    merchant_id: EXTERNAL_SEED_MERCHANT_ID,
+                    // The resolved seller, sentinel only when there is none — the COALESCE shape
+                    // ADR-009 permits, never a re-mint over a real one.
+                    merchant_id: effectiveMerchantId || EXTERNAL_SEED_MERCHANT_ID,
                     product_id: effectiveProductId,
                     external_product_id: effectiveProductId,
                     source: 'external_seed',
@@ -49650,7 +49661,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 : null) ||
               (isExternalSeedDirectBase || isExternalSeedProductId(effectiveProductId)
                 ? {
-                    merchant_id: EXTERNAL_SEED_MERCHANT_ID,
+                    // The resolved seller, sentinel only when there is none — the COALESCE shape
+                    // ADR-009 permits, never a re-mint over a real one.
+                    merchant_id: effectiveMerchantId || EXTERNAL_SEED_MERCHANT_ID,
                     product_id: effectiveProductId,
                     external_product_id: effectiveProductId,
                     source: 'external_seed',

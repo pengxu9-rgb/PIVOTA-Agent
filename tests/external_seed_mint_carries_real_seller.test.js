@@ -223,25 +223,48 @@ describe('the re-keyed row is still recognised by the seed-lane owner', () => {
     expect(isExternalSeedLaneProduct(prefixed)).toBe(true);
   });
 
-  test('the builder carries source_system, on BOTH query shapes', () => {
-    // #2189 added catalog_merchant_id and multiCategorySql's outer SELECT silently dropped it,
-    // making the fix a no-op on the default query shape. Same trap, so the same assertion.
+  test('the BUILT ROW carries source_system, and the lane owner then recognises it', () => {
+    // Asserted on the object the builder returns, not on the SQL text. An earlier version checked
+    // that the query SELECTs the column and that the predicate behaves — and adding
+    // `product.source_system = undefined` after the object literal left every assertion green,
+    // because nothing looked at the value in between. Same class as the guards this migration has
+    // already been bitten by three times.
+    const build = loadServer({ dbMock: makeDbMock().mock }).buildBeautyExternalSeedMainlineProduct;
+    const { isExternalSeedLaneProduct } = require('../src/services/externalSeedLane');
+
+    const row = (extra) => ({
+      external_product_id: 'ponds_us_14749719363952', // NOT ext_-prefixed: the 59.5% case
+      title: 'Dry Skin Cream',
+      domain: 'ponds.us',
+      catalog_merchant_id: 'merch_obs_7156f2b47335f6e3',
+      ...extra,
+    });
+
+    const withSystem = build(row({ catalog_source_system: 'external_product_seeds_mirror_v1' }));
+    expect(withSystem).toBeTruthy();
+    expect(withSystem.source_system).toBe('external_product_seeds_mirror_v1');
+    // End to end: the built row is recognised by the predicate #2189 knocked it out of.
+    expect(isExternalSeedLaneProduct(withSystem)).toBe(true);
+
+    // And without a mirrored source_system nothing is invented — ADR-009's no-fallback rule.
+    const without = build(row({}));
+    expect(without.source_system).toBeUndefined();
+    expect(isExternalSeedLaneProduct(without)).toBe(false);
+  });
+
+  test('both query shapes select the column — multiCategorySql drops it silently otherwise', () => {
+    // Kept as a TEXT assertion on purpose, and labelled as one: the built-row test above cannot see
+    // an outer SELECT that omits the column, because the harness feeds the builder directly. This is
+    // the trap #2189 fell into with catalog_merchant_id.
     const fs = require('fs');
     const path = require('path');
     const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'server.js'), 'utf8');
-
-    expect(src).toMatch(/SELECT cp\.source_system[\s\S]{0,400}?AS catalog_source_system/);
-
-    // AND that the builder actually STAMPS it on the product object. Selecting a column the row
-    // object never carries is a no-op, and the first version of this test could not tell the
-    // difference: deleting the stamp left every assertion green, because the others check the SQL
-    // and the predicate, never the object in between. Scoped to the builder's own body so a
-    // coincidental match elsewhere cannot satisfy it.
-    const fnStart = src.indexOf('function buildBeautyExternalSeedMainlineProduct');
-    expect(fnStart).toBeGreaterThan(-1);
-    const fnBody = src.slice(fnStart, src.indexOf('\nfunction ', fnStart + 10));
-    expect(fnBody).toMatch(/const resolvedSourceSystem = firstNonEmptyString\(row\.catalog_source_system\)/);
-    expect(fnBody).toMatch(/source_system: resolvedSourceSystem,/);
+    // Includes the JOIN CONDITION, not just the column name. Matching only `SELECT cp.source_system
+    // … AS catalog_source_system` leaves a neutered WHERE (`WHERE FALSE AND …`) green — the built-row
+    // harness above cannot see it either, because it feeds the builder a row directly.
+    expect(src).toMatch(
+      /SELECT cp\.source_system\s+FROM catalog_products cp\s+WHERE cp\.product_key = external_product_seeds\.attached_product_key[\s\S]{0,120}?AS catalog_source_system/,
+    );
 
     const i = src.indexOf('const multiCategorySql');
     const outer = src.slice(i, src.indexOf('FROM (', i));

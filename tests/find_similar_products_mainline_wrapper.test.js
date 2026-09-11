@@ -336,7 +336,13 @@ describe('find_similar_products mainline wrapper', () => {
     const dbQueryMock = jest.fn().mockResolvedValue({
       rows: [
         {
-          merchant_id: 'external_seed',
+          // THE PRODUCTION SHAPE. An earlier version of this test left the CATALOG row on the
+          // sentinel and changed only the request merchant — so it exercised a pre-migration row
+          // and passed while the fix was a no-op on real data. After ADR-009 phase 3 the mirrored
+          // row carries an observed seller and a seed source_system; zero catalog rows carry the
+          // sentinel.
+          merchant_id: 'merch_obs_9ab12cd34ef56789',
+          source_system: 'external_product_seeds_mirror_v1',
           platform: 'external_seed',
           source_product_id: 'ext_source_1',
           product_key: 'prod::external_seed::external_seed::ext_source_1',
@@ -396,7 +402,13 @@ describe('find_similar_products mainline wrapper', () => {
     expect(recommendMock).toHaveBeenCalledWith(
       expect.objectContaining({
         pdp_product: expect.objectContaining({
-          merchant_id: 'external_seed',
+          // The OBSERVED seller, carried through from the resolved catalog row — not the sentinel.
+          // The twin above asserts 'external_seed' because its catalog fixture IS the sentinel row;
+          // re-minting it here would undo the re-key one line after honouring it.
+          merchant_id: 'merch_obs_9ab12cd34ef56789',
+          // The point of the fix: the sig_ base resolved to the real product id. Without it this
+          // stays 'sig_source1' and the downstream lookup cannot match it.
+          product_id: 'ext_source_1',
           product_id: 'ext_source_1',
           external_product_id: 'ext_source_1',
           pivota_signature_id: 'sig_source1',
