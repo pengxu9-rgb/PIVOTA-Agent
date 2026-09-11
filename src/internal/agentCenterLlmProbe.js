@@ -31,10 +31,12 @@
 
 'use strict';
 const vertexGemini = require('../llm/vertexGemini');
+const consumerAnswer = require('./consumerAnswerEvidence');
 
 const { getGeminiGlobalGate } = require('../lib/geminiGlobalGate');
 
 const ALLOWED_SCAN_MODES = new Set([
+  consumerAnswer.MODE,
   'open_product_visibility_test',
   'merchant_store_attribution_test',
   'pivota_pdp_attribution_test',
@@ -100,20 +102,24 @@ function anthropicModelForTransport() {
 const ANTHROPIC_WEB_SEARCH_TOOL_VERSION =
   process.env.PIVOTA_AGENT_CENTER_ANTHROPIC_WEB_SEARCH_TOOL_VERSION || 'web_search_20250305';
 
-// Cost estimates are placeholders for staging telemetry only. Verify against
-// each provider pricing page before flipping ChatGPT/Claude default-on.
-const GEMINI_PRICE_PER_1K_TOKENS = { input: 0.0003, output: 0.0025 };
-// `web_search_request` is the per-call OpenAI web_search_preview tool fee.
-// Omitting it silently meters every grounded ChatGPT probe at $0 for the
-// search portion — the bulk of real ChatGPT audit cost. 0.015 matches the
-// authoritative chatgpt `grounding_cost_usd_per_call` in pivota-backend's
-// config/provider_credit_rates.json. Verify against OpenAI's pricing page.
-const OPENAI_PRICE_PER_1K_TOKENS = { input: 0.005, output: 0.02, web_search_request: 0.015 };
+// Published list-price estimates, not invoice settlement. Search allowance and
+// the chat-latest preview-search SKU are not observable from response usage.
+const GEMINI_PRICE_PER_1K_TOKENS = { input: 0.0003, output: 0.0025, cached_input: 0.00003, web_search_request: 0.035, web_search_min: 0 };
+const OPENAI_PRICE_PER_1K_TOKENS = { input: 0.005, output: 0.03, cached_input: 0.0005, web_search_request: 0.025, web_search_min: 0.01 };
 const ANTHROPIC_PRICE_PER_1K_TOKENS = {
   input: 0.003,
   output: 0.015,
   web_search_request: 0.01,
 };
+
+function openAIProbePricing(model) {
+  if (model === 'chat-latest' || /^gpt-5\.5(?:-\d{4}-\d{2}-\d{2})?$/.test(model)) return OPENAI_PRICE_PER_1K_TOKENS;
+  if (/^gpt-4o-mini(?:-\d{4}-\d{2}-\d{2})?$/.test(model)) {
+    return { input: 0.00015, cached_input: 0.000075, output: 0.0006, web_search_request: 0.025 };
+  }
+  // Unknown model pricing must not silently inherit another model's rate.
+  return null;
+}
 
 let cachedGeminiClient = null;
 let geminiInitFailed = false;
@@ -192,6 +198,9 @@ function validateRequest(body) {
       ok: false,
       error: `unsupported scan_mode: ${scan_mode}. Allowed: ${[...ALLOWED_SCAN_MODES].join(', ')}`,
     };
+  }
+  if (scan_mode === consumerAnswer.MODE && (process.env.PIVOTA_CONSUMER_ANSWER_ENABLED !== 'true' || !Array.isArray(context?.queries) || !context.queries.length || context.queries.some(q => !_isNonEmptyString(q)))) {
+    return { ok: false, error: 'consumer answer capture requires enabled gate and explicit nonempty queries' };
   }
   if (!_isNonEmptyString(scan_target_id)) {
     return { ok: false, error: 'scan_target_id is required' };
@@ -400,6 +409,7 @@ function getAnthropicClient() {
 }
 
 function buildPromptForScanMode(input) {
+  if (input.scan_mode === consumerAnswer.MODE) return consumerAnswer.prompt();
   const { scan_mode, context } = input;
   // Prompt's "Product:" field: prefer the product title (real, meaningful
   // to the LLM) over the entity_id (meaningless string like "m1|shopify|P1").
@@ -1116,14 +1126,17 @@ function buildProviderUsage({
   latencyMs,
   pricing,
   webSearchRequests = 0,
+  cachedInputTokens = 0,
   failedRuns = 0,
   succeededRuns = 0,
 }) {
   const tokensIn = Math.max(0, Number(inputTokens) || 0);
   const tokensOut = Math.max(0, Number(outputTokens) || 0);
   const searchRequests = Math.max(0, Number(webSearchRequests) || 0);
+  const cached = Math.min(tokensIn, Math.max(0, Number(cachedInputTokens) || 0));
   const estimatedCost =
-    (tokensIn / 1000) * (Number(pricing?.input) || 0) +
+    ((tokensIn - cached) / 1000) * (Number(pricing?.input) || 0) +
+    (cached / 1000) * (Number(pricing?.cached_input ?? pricing?.input) || 0) +
     (tokensOut / 1000) * (Number(pricing?.output) || 0) +
     searchRequests * (Number(pricing?.web_search_request) || 0);
   return {
@@ -1132,7 +1145,12 @@ function buildProviderUsage({
     tokens_in: tokensIn,
     tokens_out: tokensOut,
     latency_ms: Math.max(0, Number(latencyMs) || 0),
-    cost_usd_estimate: Number(estimatedCost.toFixed(6)),
+    cost_usd_estimate: pricing ? Number(estimatedCost.toFixed(6)) : null,
+    cost_usd_estimate_min: pricing ? Number((estimatedCost - searchRequests * ((Number(pricing?.web_search_request) || 0) - Number(pricing?.web_search_min ?? pricing?.web_search_request ?? 0))).toFixed(6)) : null,
+    cost_basis: pricing ? 'published_list_price_upper_bound_2026_09_09' : 'unknown_model_pricing',
+    cost_settled: false,
+    cached_input_tokens: cached,
+    web_search_requests: searchRequests,
     // Per-run health so the cost-accounting layer can tell "$0 because the
     // calls are genuinely free" from "$0 because every upstream call errored
     // and the per-run catch swallowed it". Without this signal a fully-failed
@@ -1273,8 +1291,10 @@ function extractAnthropicRetrievedSources(resp) {
 }
 
 async function buildGroundedProviderProbe(input, providerSpec) {
+  consumerAnswer.assertEnabled(input);
   const client = providerSpec.getClient();
   if (!client) {
+    if (input.scan_mode === consumerAnswer.MODE) throw new Error('consumer answer provider unavailable');
     const mocked = buildMockProbe(input);
     return { ...mocked, provider: providerSpec.noKeyFallbackProvider };
   }
@@ -1324,6 +1344,7 @@ async function buildGroundedProviderProbe(input, providerSpec) {
   let inputTokens = 0;
   let outputTokens = 0;
   let webSearchRequests = 0;
+  let cachedInputTokens = 0;
   let positives = 0;
   let echoes = 0;
   let failedRuns = 0;
@@ -1335,10 +1356,15 @@ async function buildGroundedProviderProbe(input, providerSpec) {
     let rawText = '';
     let chunks = [];
     let retrievedSources = [];
+    let finishReason = null;
+    let responseModel = null;
     let groundingMetadata = null;
+    let runWebSearchRequests = 0;
     try {
       const providerResult = await providerSpec.invoke({ client, input, prompt, userText, query: q });
       rawText = providerResult.rawText || '';
+      finishReason = providerResult.finishReason;
+      responseModel = providerResult.model;
       parsed = unwrapJson(rawText);
       chunks = Array.isArray(providerResult.chunks) ? providerResult.chunks : [];
       retrievedSources = Array.isArray(providerResult.retrievedSources) ? providerResult.retrievedSources : [];
@@ -1348,7 +1374,9 @@ async function buildGroundedProviderProbe(input, providerSpec) {
       if (!chunks.length) chunks = normalizeGroundingChunks(groundingMetadata);
       inputTokens += Number(providerResult.inputTokens || 0);
       outputTokens += Number(providerResult.outputTokens || 0);
-      webSearchRequests += Number(providerResult.webSearchRequests || 0);
+      runWebSearchRequests = Number(providerResult.webSearchRequests || 0);
+      webSearchRequests += runWebSearchRequests;
+      cachedInputTokens += Number(providerResult.cachedInputTokens || 0);
     } catch (err) {
       // A swallowed per-run error here is the bug behind un-metered COGS: the
       // call never billed us tokens, but the probe still returns provider=X
@@ -1358,6 +1386,11 @@ async function buildGroundedProviderProbe(input, providerSpec) {
       rawText = `__error__:${reason}`;
       failedRuns += 1;
       errorReasons.push(reason);
+    }
+
+    if (scan_mode === consumerAnswer.MODE) {
+      rawRuns.push(consumerAnswer.evidence({ query: q, rawText, provider: providerSpec.provider, model: responseModel, finishReason, chunks, retrievedSources, executionProfile: input.context?.consumer_execution_profile, webSearchRequests: runWebSearchRequests }));
+      continue;
     }
 
     const scoringGroundingMetadata =
@@ -1376,6 +1409,10 @@ async function buildGroundedProviderProbe(input, providerSpec) {
 
     rawRuns.push({
       query: q,
+      // This prompt asks for a merchant-context diagnostic, not a consumer answer.
+      // Stamp outside parsed JSON so model output cannot assert its own provenance.
+      evidence_kind: 'merchant_context_diagnostic',
+      prompt_contract: 'merchant_context_diagnostic_v1',
       raw: rawText,
       parsed,
       product_visible: scored.normalizedFields.product_visible,
@@ -1403,12 +1440,13 @@ async function buildGroundedProviderProbe(input, providerSpec) {
     failed_runs: failedRuns,
     succeeded_runs: succeededRuns,
     error_reasons: summarizeProbeErrorReasons(errorReasons),
-    scores: { visibility_score: visibilityScore, attribution_echo_rate: echoRate },
+    scores: scan_mode === consumerAnswer.MODE ? null : { visibility_score: visibilityScore, attribution_echo_rate: echoRate },
     findings,
     usage: buildProviderUsage({
       inputTokens,
       outputTokens,
       webSearchRequests,
+      cachedInputTokens,
       failedRuns,
       succeededRuns,
       latencyMs: Date.now() - startedAt,
@@ -1419,10 +1457,12 @@ async function buildGroundedProviderProbe(input, providerSpec) {
 }
 
 async function buildGeminiProbe(input) {
+  consumerAnswer.assertEnabled(input);
   const client = getGeminiClient();
   if (!client) {
     // Fall back to mock so callers still get a useful response, with a
     // clearly-marked provider so they know it didn't go through Gemini.
+    if (input.scan_mode === consumerAnswer.MODE) throw new Error('consumer answer provider unavailable');
     const mocked = buildMockProbe(input);
     return { ...mocked, provider: 'mock_fallback_no_gemini_key' };
   }
@@ -1448,7 +1488,7 @@ async function buildGeminiProbe(input) {
         inputTokens: 0,
         outputTokens: 0,
         latencyMs: Date.now() - startedAt,
-        pricing: GEMINI_PRICE_PER_1K_TOKENS,
+        pricing: GEMINI_MODEL === 'gemini-2.5-flash' ? GEMINI_PRICE_PER_1K_TOKENS : null,
       }),
       raw_runs: [],
       aborted: 'missing_input',
@@ -1488,7 +1528,7 @@ async function buildGeminiProbe(input) {
         inputTokens: 0,
         outputTokens: 0,
         latencyMs: Date.now() - startedAt,
-        pricing: GEMINI_PRICE_PER_1K_TOKENS,
+        pricing: GEMINI_MODEL === 'gemini-2.5-flash' ? GEMINI_PRICE_PER_1K_TOKENS : null,
       }),
       raw_runs: [],
     };
@@ -1498,6 +1538,8 @@ async function buildGeminiProbe(input) {
   const rawRuns = [];
   let inputTokens = 0;
   let outputTokens = 0;
+  let webSearchRequests = 0;
+  let cachedInputTokens = 0;
   let positives = 0;
   let echoes = 0;
   let failedRuns = 0;
@@ -1521,6 +1563,8 @@ async function buildGeminiProbe(input) {
     let parsed = null;
     let rawText = '';
     let groundingMetadata = null;
+    let finishReason = null;
+    let responseModel = null;
     try {
       const resp = await withProbeCostGate(
         input,
@@ -1551,7 +1595,10 @@ async function buildGeminiProbe(input) {
       // the model used the search tool. Capture it — we both score
       // against it and ship it back in raw_runs for evidence.
       const cand0 = Array.isArray(resp?.candidates) ? resp.candidates[0] : null;
+      finishReason = cand0?.finishReason;
+      responseModel = resp?.modelVersion || GEMINI_MODEL;
       groundingMetadata = cand0?.groundingMetadata || cand0?.grounding_metadata || null;
+      if ((groundingMetadata?.webSearchQueries || []).length) webSearchRequests += 1;
       parsed = unwrapJson(rawText);
       if (resp?.usageMetadata) {
         // Gemini 2.5 splits usage across fields: promptTokenCount is ONLY the
@@ -1564,6 +1611,7 @@ async function buildGeminiProbe(input) {
         // Gemini look near-free in per-provider cost accounting. `|| 0` keeps
         // this a no-op for any field a given response doesn't carry.
         const um = resp.usageMetadata;
+        cachedInputTokens += Number(um.cachedContentTokenCount || 0);
         inputTokens +=
           Number(um.promptTokenCount || 0) + Number(um.toolUsePromptTokenCount || 0);
         outputTokens +=
@@ -1580,6 +1628,10 @@ async function buildGeminiProbe(input) {
     }
     // Pre-parse the chunks once per run — used by scoring + raw_runs.
     const chunks = normalizeGroundingChunks(groundingMetadata);
+    if (scan_mode === consumerAnswer.MODE) {
+      rawRuns.push(consumerAnswer.evidence({ query: q, rawText, provider: 'gemini', model: responseModel, finishReason, chunks }));
+      continue;
+    }
     const hasAnyGrounding = chunks.length > 0;
     const merchantBrand = context.product?.vendor || context.product?.title || null;
 
@@ -1692,6 +1744,8 @@ async function buildGeminiProbe(input) {
     const normalizedFields = normalizeProbeRunFields(scan_mode, parsed, urlMatch, runPositive);
     rawRuns.push({
       query: q,
+      evidence_kind: 'merchant_context_diagnostic',
+      prompt_contract: 'merchant_context_diagnostic_v1',
       raw: rawText,
       parsed,
       product_visible: normalizedFields.product_visible,
@@ -1773,15 +1827,17 @@ async function buildGeminiProbe(input) {
     failed_runs: failedRuns,
     succeeded_runs: succeededRuns,
     error_reasons: summarizeProbeErrorReasons(errorReasons),
-    scores: { visibility_score: visibilityScore, attribution_echo_rate: echoRate },
+    scores: scan_mode === consumerAnswer.MODE ? null : { visibility_score: visibilityScore, attribution_echo_rate: echoRate },
     findings,
     usage: buildProviderUsage({
       inputTokens,
       outputTokens,
+      webSearchRequests,
+      cachedInputTokens,
       failedRuns,
       succeededRuns,
       latencyMs: Date.now() - startedAt,
-      pricing: GEMINI_PRICE_PER_1K_TOKENS,
+      pricing: GEMINI_MODEL === 'gemini-2.5-flash' ? GEMINI_PRICE_PER_1K_TOKENS : null,
     }),
     raw_runs: rawRuns,
   };
@@ -1793,7 +1849,7 @@ async function buildChatGptProbe(input) {
     provider: 'chatgpt',
     getClient: getOpenAIClient,
     noKeyFallbackProvider: 'mock_fallback_no_openai_key',
-    pricing: OPENAI_PRICE_PER_1K_TOKENS,
+    pricing: openAIProbePricing(model),
     invoke: async ({ client, input: probeInput, prompt, userText }) => {
       const resp = await withProbeCostGate(
         probeInput,
@@ -1804,7 +1860,7 @@ async function buildChatGptProbe(input) {
             instructions: prompt.system,
             input: userText,
             tools: [{ type: 'web_search_preview' }],
-            tool_choice: 'auto',
+            tool_choice: consumerAnswer.requiresWeb(probeInput) ? 'required' : 'auto',
             include: ['web_search_call.action.sources'],
             max_output_tokens: 900,
             store: false,
@@ -1815,9 +1871,12 @@ async function buildChatGptProbe(input) {
       const chunks = extractOpenAIGroundingChunks(resp);
       return {
         rawText: extractOpenAIOutputText(resp),
+        finishReason: (resp?.output || []).some(item => (item?.content || []).some(part => part?.type === 'refusal')) ? 'refusal' : resp?.status,
+        model: resp?.model || model,
         chunks,
         retrievedSources: extractOpenAIRetrievedSources(resp),
         groundingMetadata: groundingMetadataFromNormalizedChunks(chunks),
+        cachedInputTokens: Number(resp?.usage?.input_tokens_details?.cached_tokens || 0),
         inputTokens: Number(resp?.usage?.input_tokens || 0),
         outputTokens: Number(resp?.usage?.output_tokens || 0),
         webSearchRequests: countOpenAIWebSearchCalls(resp),
@@ -1837,7 +1896,7 @@ async function buildClaudeProbe(input) {
     noKeyFallbackProvider: vertexGemini.vertexEnabled()
       ? 'mock_fallback_no_vertex_credentials'
       : 'mock_fallback_no_anthropic_key',
-    pricing: ANTHROPIC_PRICE_PER_1K_TOKENS,
+    pricing: ANTHROPIC_MODEL === 'claude-sonnet-4-20250514' ? ANTHROPIC_PRICE_PER_1K_TOKENS : null,
     invoke: async ({ client, input: probeInput, prompt, userText }) => {
       const resp = await withProbeCostGate(
         probeInput,
@@ -1863,6 +1922,8 @@ async function buildClaudeProbe(input) {
       const chunks = extractAnthropicGroundingChunks(resp);
       return {
         rawText: extractAnthropicOutputText(resp),
+        finishReason: resp?.stop_reason,
+        model: resp?.model || anthropicModelForTransport(),
         chunks,
         retrievedSources: extractAnthropicRetrievedSources(resp),
         groundingMetadata: groundingMetadataFromNormalizedChunks(chunks),
@@ -1875,6 +1936,10 @@ async function buildClaudeProbe(input) {
 }
 
 async function dispatchProbe(normalized) {
+  consumerAnswer.assertEnabled(normalized);
+  if (normalized.scan_mode === consumerAnswer.MODE && !['gemini', 'chatgpt', 'claude'].includes(normalized.provider)) {
+    throw new Error('consumer answer capture requires a real provider');
+  }
   if (normalized.provider === 'gemini') {
     return buildGeminiProbe(normalized);
   }
@@ -1957,6 +2022,7 @@ module.exports = {
     extractOpenAIGroundingChunks,
     extractOpenAIRetrievedSources,
     buildProviderUsage,
+    openAIProbePricing,
     summarizeProbeErrorReasons,
     extractAnthropicGroundingChunks,
     extractAnthropicRetrievedSources,
