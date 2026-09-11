@@ -16968,7 +16968,14 @@ async function queryBeautyExternalSeedRowsFast({
           catalog_product_key,
           pivota_signature_id,
           pivota_canonical_url,
-          catalog_category_path
+          catalog_category_path,
+          -- The outer list of this derived table enumerates columns EXPLICITLY, so a column the
+          -- inner arms project is silently dropped here with no SQL error. That is how the first
+          -- version of this change shipped as a no-op on the default query shape: the inner arms
+          -- selected catalog_merchant_id and this list did not, so row.catalog_merchant_id was
+          -- undefined and every row fell back to the sentinel. Add new mirror columns in BOTH
+          -- places, or they only reach the single-category path.
+          catalog_merchant_id
         FROM (
           ${categoryTerms
             .map((categoryTerm, index) => {
@@ -53953,6 +53960,10 @@ module.exports._debug = {
   collapseNearDuplicateScoredBeautyProducts,
   buildBeautyExternalSeedRecallPatterns,
   queryBeautyExternalSeedRowsFast,
+  // Exported for tests only. The seller carried onto a built row is the thing worth
+  // asserting, and a source-text guard cannot see it — the first version of this change
+  // shipped a no-op that three grep-based assertions all passed.
+  buildBeautyExternalSeedMainlineProduct,
   mainlineProductMatchesId,
   diagnosePromptInspect,
   buildBeautyIngredientSourceText,
