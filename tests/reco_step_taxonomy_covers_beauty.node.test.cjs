@@ -366,7 +366,8 @@ test('a skincare ask that MENTIONS makeup keeps its skincare step', () => {
   }
   // UP TO TWO WORDS MAY SIT BETWEEN THE VERB AND THE NOUN — "takes off waterproof mascara" is a
   // cleanser ask, and matching only the adjacent form made the shortlist a lash primer.
-  assert.equal(extractRecoTargetStepFromText('micellar water that takes off waterproof mascara'), null);
+  assert.equal(extractRecoTargetStepFromText('micellar water that takes off waterproof mascara'), 'cleanser');
+  assert.equal(extractRecoTargetStepFromText('a cleansing balm that melts off foundation'), 'cleanser');
   assert.equal(extractRecoTargetStepFromText('a cleanser that removes long-wear liquid foundation'), 'cleanser');
 
   // THE CONTROLS. A makeup ask with no skincare noun is untouched, or none of this is worth having.
@@ -441,5 +442,28 @@ test('the two resolvers still agree — the property #2184 unified them for', ()
   ]) {
     assert.equal(normalizeRecoTargetStep(text), extractRecoTargetStepFromText(text),
       `the two resolvers disagree on: ${text}`);
+  }
+});
+
+test('masking may never delete the only category named', () => {
+  // The clause patterns drop a category mentioned as CONTEXT, which presumes another one is left.
+  // These name one category and nothing else, and masking took it — leaving a ladder of
+  // ["cleanser"] for a blush ask.
+  for (const [text, expected] of [
+    ['I wear blush and want a new shade', 'blush'],
+    ['what should I use with blush', 'blush'],
+    ['I use primer every morning, recommend a better one', 'primer'],
+    ['I want to start using blush, which one should I buy', 'blush'],
+  ]) {
+    assert.equal(extractRecoTargetStepFromText(text), expected, text);
+  }
+  // THE CONTROL: where masking leaves a step, the masked words stay masked.
+  for (const [text, expected] of [
+    ['a sunscreen that won’t pill under my foundation', 'sunscreen'],
+    ['what serum will make my foundation sit better', 'serum'],
+    ['cleanser that removes mascara and eyeliner', 'cleanser'],
+    ['I am in Phoenix with dry heat and high UV, fragrance usually stings, and my budget is about $40.', null],
+  ]) {
+    assert.equal(extractRecoTargetStepFromText(text), expected, `control: ${text}`);
   }
 });

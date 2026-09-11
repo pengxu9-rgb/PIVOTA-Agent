@@ -93,7 +93,10 @@ const STEP_PATTERNS = Object.freeze([
   {
     step: 'cleanser',
     patterns: [
-      /\b(cleanser|face wash|facial wash|cleansing gel|cleansing foam|cleansing milk)\b/i,
+      // MICELLAR WATER AND CLEANSING BALMS ARE CLEANSERS. Their absence was invisible while nothing
+      // else in the sentence resolved; once `mascara` became a step, "micellar water that takes off
+      // waterproof mascara" had exactly one match and it was the makeup the buyer wants REMOVED.
+      /\b(cleanser|face wash|facial wash|cleansing gel|cleansing foam|cleansing milk|cleansing balm|cleansing oil|cleansing water|micellar water|makeup remover|cleansing cream)\b/i,
       /洁面/,
       /洗面奶/,
       /清洁/,
@@ -293,6 +296,10 @@ const EXACT_ALIAS_MAP = Object.freeze({
   'eau de toilette': 'fragrance',
   cologne: 'fragrance',
   cleanser: 'cleanser',
+  'micellar water': 'cleanser',
+  'cleansing balm': 'cleanser',
+  'cleansing oil': 'cleanser',
+  'makeup remover': 'cleanser',
   toner: 'toner',
   essence: 'essence',
   serum: 'serum',
@@ -439,15 +446,28 @@ const CATEGORY_AS_CONTEXT_PATTERNS = Object.freeze([
   new RegExp(`\\b(?:i |we )?(?:use|uses|used|using|wear|wears|wearing)\\s+(?:my |the |any |your )?(?:${MAKEUP_CONTEXT_NOUNS})\\b`, 'gi'),
 ]);
 
-function maskNonCategoryQualifiers(input) {
+// THE TWO MASKS ARE NOT INTERCHANGEABLE, and the difference decides whether a fallback is safe.
+// A DENIAL ("fragrance-free") means the buyer does not want that category -- re-reading it is the
+// original bug. A CONTEXT clause ("I wear blush") means the category is real but is describing what
+// the buyer already owns, and if nothing else was named it IS the request.
+function maskCategoryDenials(input) {
   let text = String(input || '');
   for (const pattern of NON_CATEGORY_QUALIFIER_PATTERNS) {
     text = text.replace(pattern, (match) => ' '.repeat(match.length));
   }
+  return text;
+}
+
+function maskCategoryAsContext(input) {
+  let text = String(input || '');
   for (const pattern of CATEGORY_AS_CONTEXT_PATTERNS) {
     text = text.replace(pattern, (match) => ' '.repeat(match.length));
   }
   return text;
+}
+
+function maskNonCategoryQualifiers(input) {
+  return maskCategoryAsContext(maskCategoryDenials(input));
 }
 
 // TWO PATTERNS THAT MATCHED THE SAME WORDS HAVE NOT NAMED TWO CATEGORIES. 'tinted moisturizer' is
@@ -593,7 +613,22 @@ function resolveOverlappingStepMatches(details) {
 }
 
 function collectStepPatternMatchDetails(input, entries) {
-  const text = maskNonCategoryQualifiers(normalizeText(input));
+  // A CONTEXT MASK MAY NEVER DELETE THE ONLY CATEGORY NAMED. The clause patterns drop a category
+  // mentioned as context, which presumes another one is left. "I wear blush and want a new shade"
+  // and "what should I use with blush" name ONE category and nothing else, and masking took it --
+  // leaving a ladder of ["cleanser"] for a blush ask.
+  //
+  // The fallback is to the DENIAL-masked text only, never to the raw text: a denial stays denied.
+  // Falling back to raw made "something gentle and fragrance-free, nothing too rich" a fragrance
+  // request, which is the defect the denial mask exists to remove.
+  const denied = maskCategoryDenials(normalizeText(input));
+  const contexted = maskCategoryAsContext(denied);
+  const contextedDetails = contexted.trim() ? collectStepPatternMatchDetailsFrom(contexted, entries) : [];
+  if (contextedDetails.length) return contextedDetails;
+  return collectStepPatternMatchDetailsFrom(denied, entries);
+}
+
+function collectStepPatternMatchDetailsFrom(text, entries) {
   if (!text.trim()) return [];
   const details = [];
   const seen = new Set();

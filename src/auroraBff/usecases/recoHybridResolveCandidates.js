@@ -95,8 +95,12 @@ const MAKEUP_CATEGORY_RE = /\b(eyeshadow|eye shadow|blush|lipstick|lip gloss|lip
 // penalty is the worst available answer. Checked only on the admit path; it never rejects anything
 // main did not, so the unthreaded verdict is untouched.
 const CATEGORY_ACCESSORY_RE = /\b(sponge|puff|case|sharpener|holder|pouch|bag|mirror|refill case|organizer|organiser|tray|stand|dupe card|swatch card)\b/i;
-// THE REJECT VOCABULARY IS NOT THE ADMIT VOCABULARY, and conflating them is the defect that
-// survived two review rounds in two different disguises. The admit lens may carry `fragrance`,
+// THERE IS NO REJECT VOCABULARY ANY MORE -- the cross-domain rejection it served was removed after
+// it produced a P0 in three consecutive review rounds. The two regexes that fed it are deleted with
+// it rather than left behind, because a list named STRONG_REJECT sitting unused is an invitation to
+// wire it back up. The lens below is positive-only: it recognises the category that was asked for.
+//
+// Kept from that history: The admit lens may carry `fragrance`,
 // `body mist` and `skin tint`, because recognising too much only ever admits. Used to REJECT, those
 // same tokens delete Supergoop's "PLAY Antioxidant Body Mist SPF 30" from a SUNSCREEN request, its
 // "Protec(tint) Daily Skin Tint SPF 50" likewise, and Neutrogena's "Hydro Boost Water Gel with
@@ -106,9 +110,11 @@ const CATEGORY_ACCESSORY_RE = /\b(sponge|puff|case|sharpener|holder|pouch|bag|mi
 // and only the ones NOT already in main's unconditional fatal list (which still runs below and
 // still needs no excuse). ASCII only: the CJK activation is withdrawn from this change, and 香水 is
 // a substring of 香水百合 (casablanca lily), which is a body lotion.
-const MAKEUP_STRONG_REJECT_RE = /\b(bronzer|bronzing (?:powder|drops|balm|stick)|contour powder|contour stick|highlighter|illuminator|makeup primer|pore primer|setting powder|finishing powder|translucent powder|cheek tint|lip gloss|lip liner|eyeliner|eye shadow|brow pencil|brow gel)\b/i;
-const FRAGRANCE_STRONG_REJECT_RE = /\b(perfume|parfum|eau de parfum|eau de toilette|cologne|edp|edt)\b/i;
-const FRAGRANCE_CATEGORY_RE = /\b(perfume|parfum|fragrance|eau de parfum|eau de toilette|cologne|body mist|edp|edt)\b|(香水|淡香)/i;
+// NO BARE `fragrance` HERE. It is the word a sensitive-skin moisturiser prints to say it contains
+// none, and on a fragrance request "Neutrogena Hydro Boost Water Gel with Signature Fragrance" was
+// recognised as a fragrance at penalty 0 -- the best score in the pool, for a moisturiser. The mask
+// catches the denial phrasings; this catches the ones the mask cannot know about.
+const FRAGRANCE_CATEGORY_RE = /\b(perfume|parfum|eau de parfum|eau de toilette|cologne|body mist|edp|edt)\b|(香水|淡香)/i;
 function matchesNonBeautyFatal(text) {
   return NON_BEAUTY_FATAL_ASCII_RE.test(text) || NON_BEAUTY_FATAL_CJK_RE.test(text);
 }
