@@ -28,7 +28,14 @@ const {
   EXTERNAL_SEED_PLATFORM,
 } = require('../src/services/externalSeedProducts');
 
-const serverSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'server.js'), 'utf8');
+// EVERY module that asks lane questions, not just server.js. Scanning one file was a real gap,
+// not a hypothetical: review found a structurally identical offender in
+// src/services/pdpRenderability.js — a lane filter on `cp.platform` spelled with the seller
+// constant, built four lines above the site this PR originally fixed and spliced into the SAME
+// statement. A guard that reads one file cannot see the query it helps build.
+const SCANNED = ['src/server.js', 'src/services/pdpRenderability.js', 'src/services/externalSeedProducts.js'];
+const SOURCES = SCANNED.map((rel) => [rel, fs.readFileSync(path.join(__dirname, '..', rel), 'utf8')]);
+const serverSrc = SOURCES[0][1];
 
 test('both constants exist and are separately named', () => {
   assert.equal(typeof EXTERNAL_SEED_MERCHANT_ID, 'string');
@@ -58,12 +65,12 @@ function laneExpressionsUsingSellerConstant(text) {
   return out;
 }
 
-test('no lane value is spelled with the seller constant', () => {
-  assert.deepEqual(
-    laneExpressionsUsingSellerConstant(serverSrc),
-    [],
-    'a platform (lane) value is spelled with the seller sentinel constant',
-  );
+test('no lane value is spelled with the seller constant, in any scanned module', () => {
+  const offenders = [];
+  for (const [rel, text] of SOURCES) {
+    for (const hit of laneExpressionsUsingSellerConstant(text)) offenders.push(`${rel}:${hit}`);
+  }
+  assert.deepEqual(offenders, [], 'a platform (lane) value is spelled with the seller sentinel constant');
 });
 
 test('CONTROL: the scan flags the real offenders and spares the legitimate shapes', () => {
@@ -92,36 +99,33 @@ test('CONTROL: the scan flags the real offenders and spares the legitimate shape
   );
 });
 
-test('the lane constant is a real string where server.js uses it — not undefined', () => {
-  // THE GUARD THIS FILE WAS MISSING, and the reason the first push of this PR emitted
-  // `WHERE cp.platform = 'undefined'` into a live query.
+test('the constant survives into the BUILT SQL — not undefined, not a placeholder', () => {
+  // THE GUARD THIS FILE WAS MISSING, and why the first push of this PR emitted
+  // `WHERE cp.platform = 'undefined'` into a live query. The constant was declared in
+  // src/pdpConfig.js and imported in server.js from src/services/externalSeedProducts.js — two
+  // modules that BOTH declare EXTERNAL_SEED_MERCHANT_ID, so the wrong import looked right and
+  // resolved to undefined. Inside a template literal that is not an error.
   //
-  // The constant was defined in src/pdpConfig.js and imported in src/server.js from
-  // src/services/externalSeedProducts.js — two modules that BOTH declare
-  // EXTERNAL_SEED_MERCHANT_ID independently, so the import looked right and resolved to
-  // undefined. Inside a template literal that is not an error: it interpolates the text
-  // "undefined", the WHERE clause matches nothing, and lane 0 of the seed route goes silently
-  // dead. An existing integration test caught it; the guard in THIS file did not, because it
-  // only grepped source text. Source-shape assertions cannot see a binding that is missing.
+  // Two earlier attempts at this guard did NOT work, and both are worth naming:
+  //   - asserting `exportedBy.X === X` where both came from the same module object: that is
+  //     `m.X === m.X`, true even with the export stripped;
+  //   - grepping server.js for `= 'undefined'`: the defect never appeared in SOURCE. The source
+  //     read `= '${EXTERNAL_SEED_PLATFORM}'` throughout; 'undefined' existed only in the
+  //     runtime-built string.
+  // So assert the built output, which is the only place the failure was ever visible.
   assert.equal(typeof EXTERNAL_SEED_PLATFORM, 'string');
   assert.ok(EXTERNAL_SEED_PLATFORM.length > 0);
 
-  // Every module server.js destructures the constant from must actually export it.
-  const exportedBy = require('../src/services/externalSeedProducts');
-  assert.equal(
-    exportedBy.EXTERNAL_SEED_PLATFORM,
-    EXTERNAL_SEED_PLATFORM,
-    'server.js imports the lane constant from services/externalSeedProducts — it must export it',
-  );
-
-  // And nothing in server.js may interpolate a name that resolves to undefined into SQL.
-  assert.equal(
-    /=\s*'undefined'/.test(serverSrc),
-    false,
-    "server.js contains = 'undefined' — an unresolved template interpolation reached a query",
-  );
+  const { seedRoutedLaneSql, seedRouteResolvesSql } = require('../src/services/pdpRenderability');
+  for (const [name, build] of [['seedRoutedLaneSql', seedRoutedLaneSql], ['seedRouteResolvesSql', seedRouteResolvesSql]]) {
+    const sql = build('cp');
+    assert.equal(typeof sql, 'string');
+    assert.ok(sql.length > 0, `${name} produced nothing`);
+    assert.equal(/undefined/.test(sql), false, `${name} interpolated an undefined binding`);
+    assert.equal(/\$\{/.test(sql), false, `${name} left an un-interpolated placeholder`);
+    assert.ok(sql.includes(`'${EXTERNAL_SEED_PLATFORM}'`), `${name} lost the lane value`);
+  }
 });
-
 test('the seller sentinel is still watched by its own ratchet', () => {
   // This file must not be read as replacing ADR-009's ratchet: that one counts SELLER
   // comparisons and drives them to zero; this one only stops the two axes being conflated.
