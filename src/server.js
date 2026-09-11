@@ -16743,6 +16743,10 @@ function buildBeautyExternalSeedMainlineProduct(row) {
   // proving that for every serving path is a separate measurement, and failing open to the
   // legacy bucket is recoverable where minting a wrong seller is not.
   const resolvedMerchantId = firstNonEmptyString(row.catalog_merchant_id, EXTERNAL_SEED_MERCHANT_ID);
+  // Carried so isSeedRoutedLane still recognises this row after the merchant_id re-key. Not
+  // defaulted: a row with no mirrored source_system has nothing truthful to say here, and inventing
+  // one would be the fabrication ADR-009's no-fallback rule forbids.
+  const resolvedSourceSystem = firstNonEmptyString(row.catalog_source_system) || undefined;
   const product = {
     id: responseProductId,
     product_id: responseProductId,
@@ -16753,6 +16757,7 @@ function buildBeautyExternalSeedMainlineProduct(row) {
     external_product_id: externalProductId,
     external_seed_product_id: externalProductId,
     source_product_id: externalProductId,
+    source_system: resolvedSourceSystem,
     market: firstNonEmptyString(row.market, seedData.market, snapshot.market),
     title,
     ...(description ? { description } : {}),
@@ -16956,7 +16961,18 @@ async function queryBeautyExternalSeedRowsFast({
           (SELECT cp.merchant_id
              FROM catalog_products cp
             WHERE cp.product_key = external_product_seeds.attached_product_key
-            LIMIT 1) AS catalog_merchant_id`;
+            LIMIT 1) AS catalog_merchant_id,
+          -- ADR-009 phase 3, second column. #2189 moved merchant_id off the sentinel and in doing so
+          -- removed the ONLY isSeedRoutedLane arm these rows could satisfy: the builder stamps
+          -- platform 'external' (not 'external_seed'), carries no source_system, and the remaining
+          -- arm is an ext_/ext: id prefix that 7,031 of 11,814 active seeds (59.5%) do not have. So
+          -- ~60% of mainline rows silently stopped reading as seed-lane at that predicate's ~10 call
+          -- sites. Carrying the mirror's source_system restores the arm without touching platform —
+          -- every one of the 13,896 catalog rows has one.
+          (SELECT cp.source_system
+             FROM catalog_products cp
+            WHERE cp.product_key = external_product_seeds.attached_product_key
+            LIMIT 1) AS catalog_source_system`;
   const attachedServingSeedFilterSql = `
               AND coalesce(attached_product_key, '') <> ''
               AND EXISTS (
@@ -17007,7 +17023,8 @@ async function queryBeautyExternalSeedRowsFast({
           -- selected catalog_merchant_id and this list did not, so row.catalog_merchant_id was
           -- undefined and every row fell back to the sentinel. Add new mirror columns in BOTH
           -- places, or they only reach the single-category path.
-          catalog_merchant_id
+          catalog_merchant_id,
+          catalog_source_system
         FROM (
           ${categoryTerms
             .map((categoryTerm, index) => {

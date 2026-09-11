@@ -186,3 +186,70 @@ describe('the beauty mainline reports its lanes honestly', () => {
     expect(count([{ source: 'canonical_chain' }, { source: 'canonical_chain' }])).toBe(0);
   });
 });
+
+describe('the re-keyed row is still recognised by the seed-lane owner', () => {
+  // P1-2, found in review of #2189 and confirmed against prod. Moving merchant_id off the sentinel
+  // removed the ONLY isSeedRoutedLane arm these rows could satisfy: the builder stamps platform
+  // 'external' (not 'external_seed'), carried no source_system, and the remaining arm is an
+  // ext_/ext: id prefix that 7,031 of 11,814 active attached seeds (59.5%) do NOT have.
+  //
+  // So ~60% of mainline rows silently stopped reading as seed-lane at that predicate's ~10 call
+  // sites (auroraBff/routes.js, guidanceFastpath, catalogTrustPolicy, productGroundingResolver).
+  // Nothing failed; the rows simply changed category. Carrying the mirror's source_system restores
+  // the arm without touching platform — all 13,896 catalog rows have one.
+  const { isExternalSeedLaneProduct } = require('../src/services/externalSeedLane');
+
+  const row = (extra) => ({
+    merchant_id: 'merch_obs_7156f2b47335f6e3',
+    platform: 'external',
+    source: 'external_seed',
+    source_product_id: 'ponds_us_14749719363952', // deliberately NOT ext_-prefixed: the 59.5% case
+    external_product_id: 'ponds_us_14749719363952',
+    ...extra,
+  });
+
+  test('a non-ext_ id under an observed seller needs source_system to stay in the lane', () => {
+    // Without it — what #2189 shipped — the row falls out of the lane entirely.
+    expect(isExternalSeedLaneProduct(row())).toBe(false);
+    // With the mirror's source_system carried through, it is recognised again.
+    expect(isExternalSeedLaneProduct(row({ source_system: 'external_product_seeds_mirror_v1' }))).toBe(true);
+    expect(isExternalSeedLaneProduct(row({ source_system: 'catalog_enrichment_agent_v1' }))).toBe(true);
+  });
+
+  test('the ext_-prefixed minority never lost recognition — which is why this hid', () => {
+    // 4,783 of 11,814 keep the id-prefix arm, so any spot check that happened to pick one of these
+    // sees nothing wrong. That is the shape of the bug: a majority regression invisible to a sample.
+    const prefixed = row({ source_product_id: 'ext_abc123', external_product_id: 'ext_abc123' });
+    expect(isExternalSeedLaneProduct(prefixed)).toBe(true);
+  });
+
+  test('the builder carries source_system, on BOTH query shapes', () => {
+    // #2189 added catalog_merchant_id and multiCategorySql's outer SELECT silently dropped it,
+    // making the fix a no-op on the default query shape. Same trap, so the same assertion.
+    const fs = require('fs');
+    const path = require('path');
+    const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'server.js'), 'utf8');
+
+    expect(src).toMatch(/SELECT cp\.source_system[\s\S]{0,400}?AS catalog_source_system/);
+
+    // AND that the builder actually STAMPS it on the product object. Selecting a column the row
+    // object never carries is a no-op, and the first version of this test could not tell the
+    // difference: deleting the stamp left every assertion green, because the others check the SQL
+    // and the predicate, never the object in between. Scoped to the builder's own body so a
+    // coincidental match elsewhere cannot satisfy it.
+    const fnStart = src.indexOf('function buildBeautyExternalSeedMainlineProduct');
+    expect(fnStart).toBeGreaterThan(-1);
+    const fnBody = src.slice(fnStart, src.indexOf('\nfunction ', fnStart + 10));
+    expect(fnBody).toMatch(/const resolvedSourceSystem = firstNonEmptyString\(row\.catalog_source_system\)/);
+    expect(fnBody).toMatch(/source_system: resolvedSourceSystem,/);
+
+    const i = src.indexOf('const multiCategorySql');
+    const outer = src.slice(i, src.indexOf('FROM (', i));
+    for (const col of ['catalog_merchant_id', 'catalog_source_system']) {
+      const declared = outer
+        .split('\n')
+        .some((l) => !l.trim().startsWith('--') && new RegExp(`\\b${col}\\b`).test(l));
+      expect({ col, inOuterSelect: declared }).toEqual({ col, inOuterSelect: true });
+    }
+  });
+});
