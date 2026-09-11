@@ -25,6 +25,7 @@ const ROOT = path.resolve(__dirname, '..');
 const HELPER = 'src/services/servedMarkets.js';
 const {
   parseMarketList, servedMarkets, marketsForRequest, primaryMarket, DEFAULT_MARKET, marketBind,
+  laneMarkets,
 } = require(path.join(ROOT, HELPER));
 
 // Files that still spell the question themselves. ONLY EVER REMOVE FROM THESE.
@@ -36,7 +37,10 @@ const SCALAR_BIND_BASELINE = {
   'src/findProductsExternalSeedDirectRetrieval.js': 1,
   'src/modules/decisioning/shopping_agent/strictFindProductsMulti.js': 1,
   'src/services/RecommendationEngine.js': 5,
-  'src/services/canonicalCatalogSearch.js': 2,
+  // NOT in this baseline: canonicalCatalogSearch.js. Its two `AND market = $1` hits were PROSE
+  // (:776, :929). Its real market gates are a different shape this needle cannot see —
+  // `${marketBind}` at :958/:967 and `$${params.length}` at :1299, all scalar — and they are
+  // tracked below in CANONICAL_SCALAR_GATES instead of being silently counted as zero.
   'src/services/categories.js': 2,
   // ⚠️ FOUND ONLY BY THIS TEST'S OWN CENSUS, NOT BY GREP. discoveryFeed.js is 447KB and
   // contains ONE NUL byte, so `grep` classifies it as binary and skips it SILENTLY — printing
@@ -47,6 +51,10 @@ const SCALAR_BIND_BASELINE = {
   'src/services/ingredientSkuEvidence.js': 2,
   'src/services/productGroundingResolver.js': 1,
 };
+// The canonical arm binds its market through interpolated placeholders, so it needs its own
+// count. Still scalar, still a single market — a known gap, recorded rather than invisible.
+const CANONICAL_SCALAR_GATES = 3;
+
 const RAW_ENV_BASELINE = {
   'src/findProductsExternalSeedDirectPlanning.js': 1,
   'src/services/RecommendationEngine.js': 1,
@@ -65,12 +73,22 @@ function walk(dir, out = []) {
   return out;
 }
 
+// ⚠️ COMMENTS ARE NOT CODE, and counting them made this census wrong in BOTH directions.
+// `canonicalCatalogSearch.js` was baselined at 2 — those were two PROSE lines (:776, :929)
+// quoting the old shape, while the file's real market binds are `${marketBind}` (:958, :967)
+// and `$${params.length}` (:1299), which this needle cannot see at all. A census that counts
+// documentation and misses SQL is worse than no census: it reports progress for a comment edit.
 function census(needle) {
   const found = {};
   for (const abs of walk(path.join(ROOT, 'src'))) {
     const rel = path.relative(ROOT, abs).split(path.sep).join('/');
     if (rel === HELPER) continue; // the helper documents the old shape in prose
-    const n = fs.readFileSync(abs, 'utf8').split(needle).length - 1;
+    let n = 0;
+    for (const line of fs.readFileSync(abs, 'utf8').split('\n')) {
+      const t = line.trim();
+      if (t.startsWith('//') || t.startsWith('*') || t.startsWith('/*')) continue;
+      n += line.split(needle).length - 1;
+    }
     if (n > 0) found[rel] = n;
   }
   return found;
@@ -229,4 +247,79 @@ test('no params array hands a SCALAR market to an ANY(...) bind', () => {
   assert.deepStrictEqual(offenders, [],
     'these params arrays pass a scalar market as $1 while the SQL binds ANY($1::text[]). ' +
     'The query will run and match zero rows:\n  ' + offenders.join('\n  '));
+});
+
+// --- THE TEST THAT WOULD HAVE CAUGHT THE COLLAPSE ------------------------------------------
+//
+// Everything above reasons about the helper or greps source text. Twice now a defect lived in
+// neither: the served list was resolved correctly and then collapsed with `[0]` several
+// thousand lines before it reached SQL, so every constant, default and regex stayed right while
+// the door bound one market. Review found it by RUNNING the chain. So does this.
+
+test('laneMarkets keeps the list the caller resolved, and never re-derives it from one name', () => {
+  const env = { CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET: 'US,SG' };
+  // The caller resolved ['US','SG'] and hands it down. It must survive.
+  assert.deepStrictEqual(laneMarkets(['US', 'SG'], 'US', env), ['US', 'SG']);
+  assert.deepStrictEqual(marketBind(laneMarkets(['US', 'SG'], 'US', env), '$1').value, ['US', 'SG']);
+  // No list handed down => derive from the deployment.
+  assert.deepStrictEqual(laneMarkets(undefined, undefined, env), ['US', 'SG']);
+  // THE COLLAPSE, stated as a counterfactual so this test cannot pass for the wrong reason:
+  // deriving from a single NAME can only ever yield one element, which is why `inherited` wins.
+  assert.deepStrictEqual(marketsForRequest('US', env), ['US']);
+  // An explicitly requested market still narrows to exactly that market.
+  assert.deepStrictEqual(laneMarkets(undefined, 'SG', env), ['SG']);
+});
+
+test('every lane takes its markets from laneMarkets, not by re-deriving from the scalar', () => {
+  // `laneMarkets` is the seam the test above drives. A lane that stops calling it is a lane that
+  // has gone back to deciding for itself — which is how the list was collapsed twice.
+  const src = fs.readFileSync(path.join(ROOT, 'src/server.js'), 'utf8');
+  const uses = (src.match(/laneMarkets\(/g) || []).length;
+  assert.ok(uses >= 2,
+    `expected the door and the apparel lane to resolve through laneMarkets(); found ${uses}`);
+  assert.ok(!/const safeMarkets = marketsForRequest\(market\)/.test(src),
+    'the door re-derives its list from the single `market` name — that collapses it to one ' +
+    'element however the deployment is configured.');
+  assert.ok(!/const markets = \[market\]/.test(src),
+    'a lane rebuilds `markets` from the already-collapsed scalar.');
+  assert.ok(/const markets = marketsForRequest\(search\.market \|\| metadata\.market\)/.test(src),
+    'the beauty mainline no longer resolves a LIST before handing it down.');
+});
+
+test('an empty market list is refused, not silently bound', () => {
+  assert.throws(() => marketBind([], '$1'), /empty market list/);
+});
+
+test('no serving lane collapses the list with [0] before binding', () => {
+  // A grep, deliberately: the runtime test above covers the mainline, but the apparel lane and
+  // the brand fastpath have no request override and are hard to drive without a DB. What they
+  // must never do is take the head of the served list and hand THAT to marketBind.
+  const src = fs.readFileSync(path.join(ROOT, 'src/server.js'), 'utf8');
+  const collapses = [...src.matchAll(/marketBind\(\s*\w*[Mm]arketsForRequest\([^)]*\)\[0\]/g)]
+    .map((m) => src.slice(0, m.index).split('\n').length);
+  assert.deepStrictEqual(collapses, [],
+    `these lines bind the HEAD of the served list instead of the list: ${collapses.join(', ')}`);
+  assert.ok(!/const markets = servedMarkets\(\)\[0\]/.test(src));
+});
+
+test('the canonical arm\'s market gates stay counted, even though the needle cannot see them', () => {
+  // Comments stripped FIRST. :1268 is prose describing the gate, and counting it is the exact
+  // bug this test exists to correct — committed once in the census and again, here, in the test
+  // written to fix the census. A count that includes documentation measures nothing.
+  const src = fs.readFileSync(path.join(ROOT, 'src/services/canonicalCatalogSearch.js'), 'utf8')
+    .split('\n')
+    .filter((l) => {
+      const t = l.trim();
+      return !t.startsWith('//') && !t.startsWith('*') && !t.startsWith('/*');
+    })
+    .join('\n');
+  // ONE pattern. Two overlapping ones double-counted every gate, because `= $` also matches
+  // the first character of `= ${marketBind}`.
+  const gates = (src.match(/(?:recall_market|eps\.market) = \$/g) || []).length;
+  assert.ok(gates <= CANONICAL_SCALAR_GATES,
+    `canonicalCatalogSearch.js grew to ${gates} scalar market gates (baseline ` +
+    `${CANONICAL_SCALAR_GATES}). This arm still binds ONE market; widening it is the next PR.`);
+  assert.ok(gates > 0,
+    'the canonical arm has no market gate at all any more — if that is intended, drop ' +
+    'CANONICAL_SCALAR_GATES to 0 deliberately rather than letting this test pass on absence.');
 });

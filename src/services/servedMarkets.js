@@ -73,6 +73,24 @@ function marketsForRequest(requested, env = process.env) {
   return servedMarkets(env);
 }
 
+/**
+ * THE ONE PLACE A LANE DECIDES WHICH MARKETS IT BINDS — and the reason it is a function rather
+ * than two lines inlined at each lane.
+ *
+ * The served list has now been lost TWICE by being resolved correctly and then collapsed with
+ * `[0]` thousands of lines before the bind: once at the lane default, once at the caller. Both
+ * times every constant, every default and every regex stayed correct while the door bound a
+ * single market. Inline logic cannot be driven by a test; this can.
+ *
+ * `inherited` is the list the caller already resolved. If it is present it WINS — re-deriving
+ * from `fallbackName` is exactly the collapse, because `fallbackName` is a single name and
+ * `marketsForRequest` of one name can only ever return one element.
+ */
+function laneMarkets(inherited, fallbackName, env = process.env) {
+  if (Array.isArray(inherited) && inherited.length) return inherited;
+  return marketsForRequest(fallbackName, env);
+}
+
 /** The single market to stamp on an outgoing card when a row carries none. */
 function primaryMarket(env = process.env) {
   return servedMarkets(env)[0];
@@ -96,6 +114,13 @@ function primaryMarket(env = process.env) {
  */
 function marketBind(markets, paramRef) {
   const list = Array.isArray(markets) ? markets : parseMarketList(markets);
+  // An EMPTY list would emit `market = ANY($1::text[])` with `[]` — valid SQL that matches
+  // nothing, silently. Every caller goes through servedMarkets()/marketsForRequest(), which
+  // never return empty, so reaching this means a caller built a list by hand and got it wrong.
+  // Fail loudly rather than serve an empty catalogue.
+  if (!list.length) {
+    throw new Error('marketBind: empty market list would silently match zero rows');
+  }
   return list.length === 1
     ? { sql: `market = ${paramRef}`, value: list[0] }
     : { sql: `market = ANY(${paramRef}::text[])`, value: list };
@@ -107,5 +132,6 @@ module.exports = {
   parseMarketList,
   servedMarkets,
   marketsForRequest,
+  laneMarkets,
   primaryMarket,
 };

@@ -5,7 +5,7 @@ const vertexGemini = require('./llm/vertexGemini');
  */
 require('dotenv').config();
 const {
-  marketsForRequest, primaryMarket, servedMarkets, marketBind,
+  marketsForRequest, primaryMarket, servedMarkets, marketBind, laneMarkets,
 } = require('./services/servedMarkets');
 
 const express = require('express');
@@ -16310,6 +16310,7 @@ function buildCreatorHumanApparelQueryPatterns(retrievalQuery) {
 
 async function queryCreatorHumanApparelExternalSeedRows({
   market,
+  markets,
   retrievalQueries,
   inStockOnly,
   perQueryLimit,
@@ -16322,7 +16323,7 @@ async function queryCreatorHumanApparelExternalSeedRows({
         return { query: retrievalQuery, row_count: 0, rows: [] };
       }
 
-      const apparelMkt = marketBind(marketsForRequest(market), '$1');
+      const apparelMkt = marketBind(laneMarkets(markets, market), '$1');
       const sqlParams = [apparelMkt.value];
       const filters = [
         `(
@@ -16833,6 +16834,7 @@ function beautyProductHasTargetMarketAuthority(product = {}, targetMarket = '', 
 
 async function queryBeautyExternalSeedRowsFast({
   market,
+  markets,
   queryText,
   intent,
   inStockOnly,
@@ -16848,9 +16850,10 @@ async function queryBeautyExternalSeedRowsFast({
     };
   }
 
-  // LIST, via the one source of truth. `safeMarket` stays a scalar for the call sites that
-  // genuinely need one name (telemetry, the KR bridge); `safeMarkets` is what SQL binds.
-  const safeMarkets = marketsForRequest(market);
+  // TAKE THE LIST THE CALLER RESOLVED. Re-deriving it from `market` is exactly how the served
+  // list was lost: `market` is already a single name, so `marketsForRequest(market)` can only
+  // ever return one element. Fall back to deriving only when no caller supplied a list.
+  const safeMarkets = laneMarkets(markets, market);
   const safeMarket = safeMarkets[0];
   const safeLimit = Math.max(1, Math.min(60, Number(limit || 24) || 24));
   const perScopeRowLimit = Math.max(8, Math.min(24, safeLimit * 2));
@@ -19392,8 +19395,10 @@ async function searchCreatorHumanApparelExternalSeedProductsDirect({
       : (safePage - 1) * safeLimit,
   );
   const inStockOnly = parseQueryBoolean(search.in_stock_only ?? search.inStockOnly) !== false;
-  const market =
-    primaryMarket();
+  // servedMarkets(), not primaryMarket(). These lanes take no request override, so the
+  // deployment's list is the entire answer here and taking its head discards the rest.
+  const markets = servedMarkets();
+  const market = markets[0];
   const normalizedQuery = normalizeSearchTextForMatch(queryText);
   const anchorTokens = extractSearchAnchorTokens(queryText);
   const queryTokens = Array.from(new Set(tokenizeSearchTextForMatch(normalizedQuery)));
@@ -19408,6 +19413,7 @@ async function searchCreatorHumanApparelExternalSeedProductsDirect({
   const perQueryLimit = Math.max(24, Math.min(120, safeLimit * 6));
   const creatorScoped = await queryCreatorHumanApparelExternalSeedRows({
     market,
+    markets,
     retrievalQueries,
     inStockOnly,
     perQueryLimit,
@@ -19429,6 +19435,7 @@ async function searchCreatorHumanApparelExternalSeedProductsDirect({
   const allToolsScoped = shouldBroadenToolScope
     ? await queryCreatorHumanApparelExternalSeedRows({
         market,
+        markets,
         retrievalQueries,
         inStockOnly,
         perQueryLimit,
@@ -21939,10 +21946,13 @@ async function searchBeautyExternalSeedProductsMainline({
         ? metadata.query_understanding
         : null;
   const rawQueryText = extractSearchQueryText(search);
-  const market =
-    String(marketsForRequest(search.market || metadata.market)[0])
-      .trim()
-      .toUpperCase() || 'US';
+  // ⚠️ DO NOT COLLAPSE WITH [0] HERE. This is where the served list died twice: the helper
+  // returned ['US','SG'], this line took the head, and `queryBeautyExternalSeedRowsFast` then
+  // re-ran `marketsForRequest('US')` = ['US'] — so the door bound one market no matter what the
+  // env said, while every constant, default and test looked correct. `markets` is what the SQL
+  // binds; `market` is the ONE NAME for telemetry, the KR bridge and card stamping.
+  const markets = marketsForRequest(search.market || metadata.market);
+  const market = markets[0];
   const requestSearchQualityContract =
     search?.search_quality_contract &&
     typeof search.search_quality_contract === 'object' &&
@@ -22138,6 +22148,7 @@ async function searchBeautyExternalSeedProductsMainline({
     // canonical_chain results despite the external-seed-direct path
     // already filtering correctly.
     marketId: market,
+    markets,
     // Phase 7d backfill (pivota-backend #399 + #401, 2026-05-09)
     // populated the catalog_skus + catalog_offers chain for all 3,936
     // Path B mirrored products. JOIN them so canonical_chain response
@@ -22161,6 +22172,7 @@ async function searchBeautyExternalSeedProductsMainline({
   const [creatorScopedRows, canonicalResult] = await Promise.all([
     queryBeautyExternalSeedRowsFast({
       market,
+      markets,
       queryText,
       intent: beautyIntent,
       inStockOnly,
@@ -22245,6 +22257,7 @@ async function searchBeautyExternalSeedProductsMainline({
   const broadenedRows = shouldBroaden
     ? await queryBeautyExternalSeedRowsFast({
         market,
+        markets,
         queryText,
         intent: beautyIntent,
         inStockOnly,
@@ -23414,8 +23427,10 @@ async function searchExternalSeedBrandCandidatesLocally({
 
   const requestedCount = Math.max(1, Number(neededCount || 1));
   const retrievalLimit = Math.min(Math.max(requestedCount * 3, 24), SEARCH_LIMIT_MAX);
-  const market =
-    primaryMarket();
+  // servedMarkets(), not primaryMarket(). These lanes take no request override, so the
+  // deployment's list is the entire answer here and taking its head discards the rest.
+  const markets = servedMarkets();
+  const market = markets[0];
   const brandTerms = Array.isArray(brandDetection?.brands)
     ? brandDetection.brands.map((item) => normalizeSearchTextForMatch(item)).filter(Boolean)
     : [];
@@ -46963,7 +46978,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         // leaking into US users' canonical chain). Falls back to env
         // / 'US' when not set.
         const ingredientPathMarket =
-          String(marketsForRequest(search.market || metadata.market)[0])
+          String(marketsForRequest(search.market || metadata.market)[0]) /* scalar: marketId only */
             .trim()
             .toUpperCase() || 'US';
         // Bounded from inside: this leg is otherwise the only expensive stage
