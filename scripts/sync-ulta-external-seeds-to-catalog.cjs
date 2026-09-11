@@ -19,6 +19,15 @@ const {
 } = require('../src/services/retailerOfferIdentity');
 // #1916 — the ONE content_key minter (Node mirror of the pivota-backend authority).
 const { makeContentKey } = require('../src/services/contentKey');
+const { categoryPathIsCategorised } = require('../src/services/beautyTaxonomy');
+// THE ONE CLASSIFIER, NOT A SECOND ONE. This lane had no classifier at all and defaulted every row
+// to the bare domain `beauty`. The sibling external-seed mirror already owns a ~20-branch category
+// ladder over exactly this row shape (seed_data + snapshot + title), so this lane borrows it rather
+// than growing a rival that would drift. Script-to-script reuse is the established pattern here
+// (see apply-external-seed-image-health-prune.cjs, audit-kb-commerce-index-readiness.cjs, ...).
+const {
+  _internals: { inferCatalogMirrorCategory },
+} = require('./sync-external-seeds-to-catalog.cjs');
 
 const RETAILER_FUZZY_THRESHOLD = 0.72;
 
@@ -262,6 +271,19 @@ function buildMirror(row) {
   const brand = pickBrand(row);
   const description = pickDescription(row);
   const variantSku = pickVariantSku(row);
+  // `category_path` USED TO BE `asString(seedData.category_path || snapshot.category_path) ||
+  // 'beauty'`, and the left side is empty for essentially every row on this lane: the upstream
+  // producer (scripts/discover-ulta-brand-offers.cjs) never writes a per-product category_path --
+  // its only category_path is a CLI argument recorded on the RUN record, and those values are
+  // ulta.com browse slugs used to build crawl URLs, not our taxonomy. So the fallback WAS the
+  // value, for the whole lane.
+  //
+  // `beauty` is a NAMESPACE, not an answer to "what is this", and it is the worst available answer:
+  // unretrievable by category-scoped recall, yet finished-looking to every repair tool, because
+  // pivota-backend's regex backfill selects `WHERE category_path IS NULL` and an off-taxonomy
+  // health check passes it (`beauty` IS on the taxonomy -- see categoryPathIsCategorised).
+  const categoryShape = inferCatalogMirrorCategory(row);
+  const categoryPath = asString(categoryShape.categoryPath);
   const priceAmount =
     normalizeAmount(row.price_amount) ??
     normalizeAmount(seedData.price_amount) ??
@@ -318,7 +340,7 @@ function buildMirror(row) {
     price_amount: priceAmount,
     price_currency: priceCurrency,
     availability,
-    category_path: asString(seedData.category_path || snapshot.category_path) || 'beauty',
+    category_path: categoryPath,
     commerce_facts_v1: facts || seedData.commerce_facts_v1 || snapshot.commerce_facts_v1 || null,
     ...(agentSafeCommerceFacts ? { agent_safe_commerce_facts: agentSafeCommerceFacts } : {}),
     commerce_facts_gate: gate,
@@ -397,13 +419,18 @@ function buildMirror(row) {
       title,
       description,
       brand,
-      product_type: 'retailer_offer',
-      category: 'beauty',
+      // `retailer_offer` NAMES A LANE, NOT A PRODUCT. It is provenance wearing a taxonomy field,
+      // and it was never the carrier of that fact anyway: consumers read the role from
+      // `source_role` / `source_listing_scope` (set in retailerFields above, and what
+      // audit-ulta-catalog-coverage.cjs actually counts). Grepped across src/ and scripts/, nothing
+      // reads product_type for this value.
+      product_type: asString(categoryShape.productType),
+      category: asString(categoryShape.category),
       canonical_url: canonicalUrl,
       image_url: imageUrl,
       product_payload: productPayload,
       freshness_json: freshness,
-      category_path: asString(seedData.category_path || snapshot.category_path) || 'beauty',
+      category_path: categoryPath,
       category_confidence: 0.8,
       category_label_source: 'ulta_brand_offer_discovery',
       // pdp_scope / pdp_scope_source / pdp_scope_set_at are DELIBERATELY not
@@ -887,6 +914,28 @@ async function run() {
     const mirror = buildMirror(row);
     if (!mirror.product.canonical_url) {
       skipped.push({ external_product_id: row.external_product_id, reason: 'missing_canonical_url' });
+      continue;
+    }
+    if (!categoryPathIsCategorised(mirror.product.category_path)) {
+      // A ROW THAT HAS NOT BEEN CATEGORISED IS SKIPPED, NOT LANDED ON A PLACEHOLDER.
+      //
+      // A PER-ROW SKIP, DELIBERATELY NOT A THROW: applyMirrors wraps the batch in a single BEGIN,
+      // so a guard that threw would abort a whole sync run over one unclassifiable seed. The row is
+      // counted in `skipped[]` and retried next run -- once the seed carries a category, or once
+      // the shared ladder in inferCatalogMirrorCategory grows an arm for it.
+      //
+      // EXPECT THIS COUNT TO BE NON-TRIVIAL ON THE FIRST RUN. Ulta rows arrive with no category of
+      // their own, so each is classified from its title alone, and what the title does not name
+      // cannot be categorised. That is the honest outcome: those rows were being written
+      // unretrievable, and a skipped row is repairable while a row parked on `beauty` is invisible
+      // to the very tools that would repair it. Read `skipped[]` grouped by this reason to size the
+      // gap before widening the ladder.
+      skipped.push({
+        external_product_id: row.external_product_id,
+        reason: 'category_path_uncategorised',
+        category_path: mirror.product.category_path || null,
+        title: mirror.product.title,
+      });
       continue;
     }
     mirrors.push(mirror);

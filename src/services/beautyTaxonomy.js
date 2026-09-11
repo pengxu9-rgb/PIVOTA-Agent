@@ -154,6 +154,39 @@ function toCanonicalCategoryPath(value) {
   return CATEGORY_PATH_ALIASES[path] || path;
 }
 
+// THE WRITER-SIDE DEFINITION OF "THIS ROW HAS BEEN CATEGORISED".
+//
+// A path names a category only once it says something past the top-level domain. `beauty` is a
+// NAMESPACE, not an answer to "what is this" -- and three committed writers were stamping it as an
+// answer, which makes the row unretrievable by category-scoped recall while looking finished to
+// every repair tool.
+//
+// IT SURVIVED A TAXONOMY STANDARDISATION PASS BECAUSE `beauty` IS ON THE TAXONOMY. The backend
+// builds ANCESTOR_NODES with `range(1, len(parts))` (services/category_path_aliases.py), so every
+// root is a node: `has_category_door("beauty")` is True while `resolve("beauty")` is None. An
+// off-taxonomy health check therefore counts the whole cohort healthy. Measured on the live index
+// via search_catalog("eau de parfum"): 16 of 50 rows sit on bare `beauty` -- the entire Ariana
+// Grande fragrance line, Cosmic Kylie Jenner, every PixiPerfume.
+//
+// ONE RULE, THREE LANGUAGES, SAME ANSWER. This is the ingest-side twin of the serving-side
+// `categoryPathIsCategorised` (src/server.js, pengxu9-rgb/PIVOTA-Agent#2195) and of pivota-backend's
+// `is_categorised_path()` (services/pdp_category_classifier.py, pengxu9-rgb/pivota-backend#2172).
+// Deliberately the SAME NAME as the serving twin: when #2195 lands, its local copy in server.js
+// should become a require of this one rather than a second definition. Segment counting is
+// identical in all three -- trim, strip leading/trailing slashes, drop empty segments, require >= 2.
+//
+// It asks for depth, not for a beauty leaf, so `fashion` and `electronics` are caught by the same
+// rule without being named. It deliberately does NOT assert canonicality: `toCanonicalCategoryPath`
+// above is the alias question and is a separate concern -- a row on a non-canonical but real
+// two-segment path is categorised, just not yet folded.
+const MIN_CATEGORISED_PATH_SEGMENTS = 2;
+
+function categoryPathIsCategorised(value) {
+  const path = normalizeCategoryPathText(value);
+  if (!path) return false;
+  return path.split('/').filter(Boolean).length >= MIN_CATEGORISED_PATH_SEGMENTS;
+}
+
 function isCanonicalCategoryPath(value) {
   const path = normalizeCategoryPathText(value);
   if (!path) return false;
@@ -161,10 +194,12 @@ function isCanonicalCategoryPath(value) {
 }
 
 module.exports = {
+  MIN_CATEGORISED_PATH_SEGMENTS,
   CANONICAL_CATEGORY_PATHS,
   CATEGORY_PATH_ALIASES,
   INTENTIONALLY_DISTINCT,
   normalizeCategoryPathText,
   toCanonicalCategoryPath,
   isCanonicalCategoryPath,
+  categoryPathIsCategorised,
 };

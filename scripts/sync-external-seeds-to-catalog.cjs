@@ -16,6 +16,10 @@ const { classifyExternalSeedProductKind } = require('../src/services/externalSee
 const { deriveOfferSellerIdentity } = require('../src/services/offerSellerIdentity');
 // #1916 — the ONE content_key minter (Node mirror of the pivota-backend authority).
 const { makeContentKey } = require('../src/services/contentKey');
+const {
+  CANONICAL_CATEGORY_PATHS,
+  categoryPathIsCategorised,
+} = require('../src/services/beautyTaxonomy');
 
 const MERCHANT_ID = 'external_seed';
 const PLATFORM = 'external_seed';
@@ -733,13 +737,72 @@ function inferCatalogMirrorCategory(row) {
     return { productType: 'Serum', category: 'Serum', categoryPath: 'beauty/skincare/serum' };
   }
 
+  // FRAGRANCE, AND IT RUNS LAST ON PURPOSE. The ladder above had ~20 branches and no arm for a
+  // single bottle of scent, so every eau de parfum fell through to the terminal fallback below.
+  // Fragrance existed ONLY in the set/bundle shape (`beauty/fragrance/sets`), i.e. a two-bottle
+  // gift set was classifiable and one bottle was not. Measured on the live index via
+  // search_catalog("eau de parfum"), 16 of 50 rows sat on the bare-domain fallback -- the entire
+  // Ariana Grande line, Cosmic Kylie Jenner, every PixiPerfume.
+  //
+  // LAST, BECAUSE A NEW BRANCH MUST NOT TAKE ROWS AWAY FROM AN OLD ONE. Placed first, it was
+  // measured over a 6,607-title corpus taking five rows off branches that had them right --
+  // "Neutrogena Hydro Boost Water Gel with Signature Fragrance" (a moisturiser whose title merely
+  // MENTIONS fragrance) and three "Perfume Nourishing Body Cream" variants (a brand line, not a
+  // product class). Running last makes the change purely additive to the ladder: every row an
+  // existing branch claimed, it still claims, and this arm only ever sees rows that were headed
+  // for the placeholder.
+  //
+  // MATCHED ON NAME, NOT ON DESCRIPTION. `haystack` folds in seed descriptions, and `parfum` is an
+  // INCI ingredient name listed on a great many products that are not fragrances. This branch
+  // reads the title and the seed's own category token only -- the same narrowing
+  // `inferHighConfidenceTitleCategoryShape` already applies -- and excludes the "fragrance free"
+  // claim, which is a skincare marketing line.
+  //
+  // The veto is a second belt for product classes the ladder above does not cover (scrub, lotion,
+  // body wash, candle...), so a scented body scrub is left uncategorised and SKIPPED rather than
+  // filed as a perfume. An unambiguous fragrance form -- "eau de parfum", EDP, EDT -- overrides it,
+  // because that is the product's own name for itself and not a scent note.
+  const fragranceNameText = `${explicitCategory} ${titleOnlyCategoryText(row)}`;
+  const unambiguousFragranceForm = /(?:eau\s+de\s+(?:parfum|toilette|cologne)|\bedp\b|\bedt\b)/.test(
+    fragranceNameText,
+  );
+  const namesFragrance =
+    unambiguousFragranceForm ||
+    /(?:\bperfume|\bparfum|\bcologne\b|\bfragrance\b)/.test(fragranceNameText);
+  const namesAnotherProductClass =
+    /\b(?:scrub|lotion|body\s+butter|body\s+wash|hand\s+wash|soap|deodorant|candle|diffuser|balm|wipes?|shampoo|conditioner|sunscreen)\b/.test(
+      fragranceNameText,
+    );
+  const claimsFragranceFree = /(?:fragrance|perfume|parfum|scent)[\s-]*free/.test(fragranceNameText);
+  if (namesFragrance && !claimsFragranceFree && (unambiguousFragranceForm || !namesAnotherProductClass)) {
+    return {
+      productType: 'Perfume',
+      category: 'Perfume',
+      categoryPath: CANONICAL_CATEGORY_PATHS.fragrance,
+    };
+  }
+
+  // NO PLACEHOLDER. This used to end `|| 'beauty'`, which is a NAMESPACE, not an answer to "what is
+  // this" -- and it is the worst possible answer, because it is unretrievable by category-scoped
+  // recall while reading as finished to every repair tool: pivota-backend's regex backfill selects
+  // `WHERE category_path IS NULL`, so a bare domain is never revisited, and an off-taxonomy health
+  // check counts it healthy because `beauty` IS on the taxonomy (see categoryPathIsCategorised).
+  //
+  // Adding the fragrance branch above was necessary and is NOT the fix: the next uncovered category
+  // would do exactly the same thing. The fix is that a row this function cannot categorise says so,
+  // and `run()` skips it with a counted reason instead of landing a fiction. `category` and
+  // `productType` follow the same rule -- the leaf of a real path is a real product type, and where
+  // there is no path there is no product type either, so the field is left empty rather than filled
+  // with `Beauty Product`. CALLERS MUST CHECK: an empty categoryPath means "not categorised".
+  const fallbackPath = normalizeCategoryPath(seedData.category_path || snapshot.category_path);
+  const fallbackLeaf = fallbackPath.split('/').filter(Boolean).pop() || '';
   const explicitTitle = explicitCategory
     ? explicitCategory.replace(/\b\w/g, (char) => char.toUpperCase())
-    : 'Beauty Product';
+    : (fallbackLeaf ? titleizeCategory(fallbackLeaf) : '');
   return {
     productType: explicitTitle,
     category: explicitTitle,
-    categoryPath: normalizeCategoryPath(seedData.category_path || snapshot.category_path) || 'beauty',
+    categoryPath: fallbackPath,
   };
 }
 
@@ -2441,6 +2504,28 @@ async function run() {
         brand: mirror.product.brand,
         title: mirror.product.title,
         image_url: mirror.product.image_url,
+      });
+      continue;
+    }
+    if (!categoryPathIsCategorised(mirror.product.category_path)) {
+      // A ROW THAT HAS NOT BEEN CATEGORISED IS SKIPPED, NOT LANDED ON A PLACEHOLDER.
+      //
+      // A PER-ROW SKIP, DELIBERATELY NOT A THROW. applyMirrors wraps the whole batch in a single
+      // BEGIN (see applyMirrors), and --batch-size defaults to every fetched row, so a guard that
+      // threw here would abort an entire sync run over one uncategorised seed. This is counted and
+      // reported in `skipped[]` alongside missing_canonical_url and content_key_unmintable, and the
+      // row is retried on the next run -- once the seed carries a category, or once the ladder in
+      // inferCatalogMirrorCategory grows an arm for it.
+      //
+      // WHY SKIPPING BEATS LANDING. `category_path = 'beauty'` is unretrievable by category-scoped
+      // recall AND invisible to every repair tool: pivota-backend's regex backfill selects
+      // `WHERE category_path IS NULL`, and an off-taxonomy health check passes it because `beauty`
+      // IS on the taxonomy. The row was simultaneously unservable and, to every fixer, finished.
+      skipped.push({
+        external_product_id: id,
+        reason: 'category_path_uncategorised',
+        category_path: mirror.product.category_path || null,
+        title: mirror.product.title,
       });
       continue;
     }
