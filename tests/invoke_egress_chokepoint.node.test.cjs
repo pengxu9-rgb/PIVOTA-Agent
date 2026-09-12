@@ -124,10 +124,11 @@ test('res.json is the only way a response leaves the invoke route', () => {
   // ever asserted "the walk found the function". Pinning the number means adding or removing
   // an exit is a deliberate edit here — which is the point, since every one of them is a place
   // a response leaves. Update it when you change the route, and look at what you changed.
+  // Three selected beauty-primary error exits return through the same JSON wrapper.
   assert.equal(
     exits.length,
-    96,
-    `expected 96 response exits in handleInvokeRequest, saw ${exits.length}`,
+    99,
+    `expected 99 response exits in handleInvokeRequest, saw ${exits.length}`,
   );
   assert.ok(responseNames.size >= 1);
   assert.deepEqual(

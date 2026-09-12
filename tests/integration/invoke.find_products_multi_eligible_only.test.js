@@ -1,6 +1,4 @@
-process.env.PIVOTA_API_BASE = 'http://localhost:8080';
-process.env.PIVOTA_API_KEY = 'test-token';
-process.env.API_MODE = 'REAL';
+const ORIGINAL_ENV = { ...process.env };
 
 const request = require('supertest');
 const nock = require('nock');
@@ -17,9 +15,17 @@ const nock = require('nock');
 // enforce the display contract: every returned card has a paired positive
 // price and currency, so upstream cards without that pair are excluded.
 describe('/agent/shop/v1/invoke find_products_multi eligible-only serving', () => {
+  beforeEach(() => {
+    jest.resetModules();
+    process.env = { ...ORIGINAL_ENV, PIVOTA_API_BASE: 'http://localhost:8080',
+      PIVOTA_API_KEY: 'test-token', API_MODE: 'REAL',
+      // Eligibility and transport authority in this test are the upstream API.
+      PIVOT_BEAUTY_DIRECT_INDEXED_RECALL_ENABLED: 'false' };
+  });
   afterEach(() => {
     nock.cleanAll();
     jest.resetModules();
+    process.env = { ...ORIGINAL_ENV };
   });
 
   it('forwards the eligible-surface search on the v2 body contract and serves upstream products authoritatively', async () => {

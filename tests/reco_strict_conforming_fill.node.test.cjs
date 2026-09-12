@@ -592,12 +592,12 @@ test('a nested subject/product price cannot resurrect through a re-normalize', (
       `${carrier}: and none comes back when the row is re-normalized`,
     );
   }
-  // The strip must remove the PRICE from those objects, not the objects: they also carry identity.
+  // A different candidate must not retain the old plan's nested product identity either.
   const kept = __internal.mergeRecoPlanWithGroundedCandidate(
     { name: 'x', step: 'Treatment', subject: { product_group_id: 'pg1', price: { amount: 19 } } },
     UNPRICED,
   );
-  assert.equal(kept.subject.product_group_id, 'pg1', 'non-price fields on the carrier survive');
+  assert.equal(kept.subject, undefined, 'a stale group identity must not survive rebinding');
 });
 
 // EXHAUSTIVE. The two tests above pin the alias list and the nested carriers by hand; this one drives

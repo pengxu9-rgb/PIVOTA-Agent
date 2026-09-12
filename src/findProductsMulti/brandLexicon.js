@@ -1,6 +1,9 @@
 const brandDictionaryCache = require('./brandDictionaryCache');
+// Meitu roster and catalog spellings: reviewed aliases, not guessed short brand tokens.
+const MEITU_BRAND_ALIASES = require('../../data/beauty/meitu_brand_aliases.json');
 
 const STATIC_BRAND_ALIASES = Object.freeze({
+  ...MEITU_BRAND_ALIASES,
   tom_ford: ['tom ford', 'tomford', 'tf'],
   jo_malone: ['jo malone london', 'jo malone', 'jomalone', 'jomalonelondon'],
   byredo: ['byredo'],
@@ -92,6 +95,7 @@ const STATIC_BRAND_ALIASES = Object.freeze({
 });
 
 const BEAUTY_BRAND_ALIAS_KEYS = new Set([
+  ...Object.keys(MEITU_BRAND_ALIASES),
   'tom_ford',
   'jo_malone',
   'byredo',
@@ -204,7 +208,9 @@ function normalizeBrandText(value) {
   return String(value || '')
     .trim()
     .toLowerCase()
-    .replace(/[`’'".,!?()[\]{}|/\\:+_*#~]/g, ' ')
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[`’'".·•,!？?()[\]{}|/\\:+_*#~]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 }

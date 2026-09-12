@@ -29,6 +29,7 @@ describe('/agent/shop/v1/invoke find_products_multi speculative-primary guard', 
       PIVOTA_API_KEY: process.env.PIVOTA_API_KEY,
       API_MODE: process.env.API_MODE,
       DATABASE_URL: process.env.DATABASE_URL,
+      PIVOT_BEAUTY_DIRECT_INDEXED_RECALL_ENABLED: process.env.PIVOT_BEAUTY_DIRECT_INDEXED_RECALL_ENABLED,
       PROXY_SEARCH_RESOLVER_FIRST_ENABLED: process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED,
       PROXY_SEARCH_RESOLVER_FIRST_STRONG_ONLY: process.env.PROXY_SEARCH_RESOLVER_FIRST_STRONG_ONLY,
       PROXY_SEARCH_RESOLVER_FALLBACK_ENABLED: process.env.PROXY_SEARCH_RESOLVER_FALLBACK_ENABLED,
@@ -56,6 +57,8 @@ describe('/agent/shop/v1/invoke find_products_multi speculative-primary guard', 
     process.env.STRICT_FIND_PRODUCTS_MULTI_AUTO_CONSTRAINT_ENABLED = 'false';
     // Parallel recall on (the prod default under test here).
     process.env.FPM_PARALLEL_RESOLVER_PRIMARY = 'true';
+    // This suite elects the configured upstream primary; missing DB is not a route selector.
+    process.env.PIVOT_BEAUTY_DIRECT_INDEXED_RECALL_ENABLED = 'false';
     delete process.env.DATABASE_URL;
   });
 

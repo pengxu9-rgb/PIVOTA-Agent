@@ -1,3 +1,5 @@
+const { buildSeedSearchOfferScope } = require('./services/seedSearchOfferScope');
+const { classifyBeautyCoarseCandidate } = require('./shared/beautyRecoCoarseClassifier');
 const vertexGemini = require('./llm/vertexGemini');
 /*
  * Pivota Agent gateway.
@@ -209,6 +211,7 @@ const {
   getProductPriceMajor,
   getProductPriceCurrency,
   resolveBudgetConstraintForCurrency,
+  resolveBudgetConstraintsForRecall,
   isWithinPriceConstraint,
 } = require('./findProductsMulti/policy');
 const {
@@ -12141,52 +12144,7 @@ function projectSearchTransportProduct(product, stats = null) {
   return projected;
 }
 
-// ADR-007 citable supplement — OPERATION-LEVEL. find_products_multi has many
-// lanes (agent_products_search / external_seed_mainline / ingredient_recall_direct)
-// with different return points, so per-exit wiring missed most of them. Instead we
-// hook the single universal res.json wrapper: PREFETCH offer-free index_eligible
-// items once (async, OFF the serial path — see handleInvokeRequest) via
-// buildCitableSupplementItems, then APPEND whatever has resolved by send time
-// synchronously inside the wrapper (appendCitableSupplementItems) so EVERY response
-// is covered. Flag-gated by INDEX_ELIGIBLE_RECALL (default OFF -> no query, no-op).
-// Append-only + deduped; each item is buyable:false / catalog_track:'citation' so
-// it can never be a buyable/checkout result. Best-effort; never throws.
-function citableSupplementEnabled() {
-  return ['1', 'true', 'yes', 'on'].includes(
-    String(process.env.INDEX_ELIGIBLE_RECALL || '').trim().toLowerCase(),
-  );
-}
-
-// The tokenMatch canonical query behind the supplement is expensive
-// (prod fpm_stage_breakdown measured it at 5.8-17.2s), so results are cached
-// per normalized query and concurrent identical queries share one DB
-// round-trip. The first request for a query warms the cache (its own response
-// usually ships before the query resolves); subsequent requests append from
-// cache. Items are cloned on the way out so downstream response mutation
-// (near-dup collapse, page-size trim, projections) can't poison the cache.
-const CITABLE_SUPPLEMENT_CACHE_MAX_ENTRIES = 500;
-const citableSupplementCache = new Map(); // normalized query -> { items, expiresAt }
-const citableSupplementInFlight = new Map(); // normalized query -> Promise<items>
-
-function citableSupplementCacheTtlMs() {
-  const raw = Number(process.env.CITABLE_SUPPLEMENT_CACHE_TTL_MS);
-  return Number.isFinite(raw) && raw >= 0 ? raw : 5 * 60 * 1000;
-}
-
-// Finalize one built product into a citation item (ADR-007). Marks it
-// non-buyable and strips fields that don't belong on a citation:
-//   - the raw seed_data / external_seed jsonb blobs that
-//     buildCanonicalChainMainlineProduct echoes onto every item. On a citation
-//     these are pure response bloat — measured on prod as present on ~65% of
-//     citable items and the dominant per-item byte cost. The DERIVED fields the
-//     builder extracts from those blobs (ingredient_intel, active_ingredients,
-//     ingredients_inci, pdp_ingredients_raw, fashion_meta, identity) are separate
-//     top-level keys and are intentionally KEPT.
-// A citation may be referral-only, but it still needs a source-backed price to
-// be shown in a shopping result. The public search contract never permits a
-// card with an absent price or a fabricated currency. We therefore materialize
-// a positive amount/currency pair before removing the source payload below.
-// Scoped to the citation lane only; other lanes keep the full item shape.
+// A shopping card must carry an amount and currency from the same source.
 function readCanonicalSearchPricePair(value, fallbackCurrency = '') {
   if (value === null || value === undefined) return null;
   if (typeof value === 'number' || typeof value === 'string') {
@@ -12476,147 +12434,7 @@ function finalizeCitableSupplementItem(item) {
   return item;
 }
 
-async function queryCitableSupplementItems(q) {
-  const rows = await fetchCanonicalChainRows({
-    query: q,
-    includeSkuOffers: false,
-    eligibility: 'index_eligible',
-    tokenMatch: true,
-    deps: { query },
-  });
-  if (!Array.isArray(rows) || !rows.length) return [];
-  const items = [];
-  for (const row of rows) {
-    const item = finalizeCitableSupplementItem(buildCanonicalChainMainlineProduct(row));
-    if (!item) continue;
-    items.push(item);
-  }
-  return items;
-}
-
-async function buildCitableSupplementItems(queryText = '') {
-  try {
-    if (!citableSupplementEnabled()) return [];
-    const q = String(queryText || '').trim();
-    if (!q) return [];
-    const cacheKey = q.toLowerCase();
-    const cached = citableSupplementCache.get(cacheKey);
-    if (cached && cached.expiresAt > Date.now()) {
-      return structuredClone(cached.items);
-    }
-    if (cached) citableSupplementCache.delete(cacheKey);
-    let inFlight = citableSupplementInFlight.get(cacheKey);
-    if (!inFlight) {
-      inFlight = queryCitableSupplementItems(q)
-        .then((items) => {
-          const ttlMs = citableSupplementCacheTtlMs();
-          if (ttlMs > 0) {
-            if (citableSupplementCache.size >= CITABLE_SUPPLEMENT_CACHE_MAX_ENTRIES) {
-              const oldestKey = citableSupplementCache.keys().next().value;
-              if (oldestKey !== undefined) citableSupplementCache.delete(oldestKey);
-            }
-            citableSupplementCache.set(cacheKey, { items, expiresAt: Date.now() + ttlMs });
-          }
-          return items;
-        })
-        .finally(() => {
-          citableSupplementInFlight.delete(cacheKey);
-        });
-      citableSupplementInFlight.set(cacheKey, inFlight);
-    }
-    const items = await inFlight;
-    return structuredClone(items);
-  } catch (_) {
-    return []; // best-effort: never break recall
-  }
-}
-
-// Sync: append prefetched citable items to whatever final body is being sent,
-// deduped against the products already present. Returns the (possibly mutated)
-// body. Safe to call on any shape; no-op when items is empty.
-function appendCitableSupplementItems(responseBody, items) {
-  try {
-    if (!responseBody || typeof responseBody !== 'object') return responseBody;
-    // Strict-contract lanes (ingredient_recall_direct + the upstream strict
-    // proxy) paginate inside the lane AND are exempt from
-    // enforceFindProductsMultiRequestedPageSize's trim, so anything appended
-    // here ships to the client uncapped: prod probes showed limit=10 requests
-    // returning 48-52 products whenever the supplement cache was warm at send
-    // time (and 10 when it wasn't — the count flapped with cache warmth).
-    // Citation items are token-matched, never checked against the ingredient
-    // constraint, so they don't belong in a strict_constraint_query response
-    // either. Skip the lane entirely.
-    //
-    // The discriminator must NOT rely on contract_bridge alone:
-    // applyPivotBeautyContractToInvokeSearchResponse runs EARLIER in the same
-    // res.json wrapper and overwrites contract_bridge.{attempted,resolved}_contract
-    // to 'pivot.agent.v1' for beauty-shaped requests — and the strict lane
-    // deliberately still serves pivot-contract ingredient queries
-    // (shouldPreserveIngredientDirectForPivotBeautyContract). That rewrite
-    // spreads the rest of metadata untouched, so the lane's top-level
-    // resolved_contract and strict_constraint_query stamps survive it; the
-    // upstream strict proxy stamps only contract_bridge, which is covered by
-    // the first arm when no rewrite fired.
-    //
-    // This check sits BEFORE the items-length early-return so strict bodies
-    // stamp count 0 + skip_reason deterministically, cold or warm cache —
-    // otherwise the skip_reason itself would flap with cache warmth, the
-    // exact ambiguity it exists to remove.
-    const responseMetadata =
-      responseBody.metadata && typeof responseBody.metadata === 'object' && !Array.isArray(responseBody.metadata)
-        ? responseBody.metadata
-        : null;
-    const isStrictContractBody = Boolean(
-      responseMetadata &&
-        (String(responseMetadata.contract_bridge?.resolved_contract || '') === 'shop_invoke_strict' ||
-          String(responseMetadata.resolved_contract || '') === 'shop_invoke_strict' ||
-          responseMetadata.strict_constraint_query === true),
-    );
-    if (isStrictContractBody) {
-      responseMetadata.citable_supplement_count = 0;
-      responseMetadata.citable_supplement_skip_reason = 'strict_contract';
-      return responseBody;
-    }
-    if (!Array.isArray(items) || !items.length) return responseBody;
-    const container = Array.isArray(responseBody.products)
-      ? responseBody
-      : (responseBody.data && Array.isArray(responseBody.data.products) ? responseBody.data : null);
-    if (!container) return responseBody;
-    const seen = new Set(
-      container.products.map((p) => p && (p.content_key || p.product_id)).filter(Boolean),
-    );
-    let added = 0;
-    for (const item of items) {
-      const key = item && (item.content_key || item.product_id);
-      if (key && seen.has(key)) continue;
-      if (key) seen.add(key);
-      container.products.push(item);
-      added += 1;
-    }
-    if (responseBody.metadata && typeof responseBody.metadata === 'object') {
-      responseBody.metadata.citable_supplement_count = added;
-    }
-  } catch (_) {
-    // best-effort: the citable supplement must never break recall transport
-  }
-  return responseBody;
-}
-
-// Op-level refinement for find_products_multi BEAUTY responses, applied AFTER the
-// citable supplement is appended. The lane-level rank/collapse (PR #1738/#1739)
-// runs BEFORE the supplement, so citable items — which carry distinct
-// content_keys and so pass appendCitableSupplementItems' exact-key dedupe — can
-// re-introduce near-identical titles the lane already collapsed (e.g. "(Copy_Tn)"
-// test copies), and a small-distinct-set lane's demoted dupes can leak into the
-// page. This is the single place that sees the fully merged list.
-//   - Near-dup collapse runs for EVERY beauty lane (idempotent where the lane
-//     already collapsed; catches citable-supplement dupes). Demotes to tail,
-//     never drops → total/pagination stay stable.
-//   - Token-relevance reorder runs ONLY for the ingredient-recall-direct lane
-//     (which has no scorer of its own). The mainline lane keeps its richer
-//     in-lane ranking (brand/category/active weights) untouched — re-sorting it
-//     by token relevance alone would be a regression.
-// Best-effort + flag-gated; never breaks recall transport.
+// Final refinement preserves the selected primary lane and its eligibility rules.
 function refineBeautyFindProductsMultiResponseBody(responseBody, queryText = '') {
   try {
     if (
@@ -14695,6 +14513,36 @@ function getInvokeProductsArray(body) {
   return Array.isArray(body?.products) ? body.products : [];
 }
 
+function buildBeautyPrimaryRecallFailure(queryText, traceId, error = null) {
+  const windowExceeded = error?.code === 'PRIMARY_SEARCH_WINDOW_EXCEEDED';
+  return {
+    status: 'failed',
+    success: false,
+    products: [],
+    total: 0,
+    error: { code: windowExceeded ? 'PRIMARY_SEARCH_WINDOW_EXCEEDED' : 'BEAUTY_PRIMARY_RECALL_FAILED',
+      message: windowExceeded ? 'The primary search result window is limited to 200 items.' : 'Primary product search is unavailable.' },
+    metadata: {
+      status: 'failed',
+      failure_class: windowExceeded ? 'primary_search_window_exceeded' : 'beauty_primary_recall_failed',
+      query_source: 'beauty_external_seed_mainline',
+      fallback_attempted: false,
+      fallback_adopted: false,
+      route_health: {
+        primary_path_used: 'beauty_external_seed_mainline',
+        fallback_triggered: false,
+        final_returned_count: 0,
+      },
+      search_trace: {
+        trace_id: traceId,
+        raw_query: queryText,
+        upstream_stage: { called: false, timeout: false, status: null },
+        final_decision: windowExceeded ? 'primary_search_window_exceeded' : 'beauty_primary_recall_failed',
+      },
+    },
+  };
+}
+
 function isPivotBeautyFallbackLikeResponse(body) {
   const metadata = body?.metadata && isPlainObject(body.metadata) ? body.metadata : {};
   const querySource = String(metadata.query_source || '').trim().toLowerCase();
@@ -14794,11 +14642,13 @@ function applyPivotBeautyContractToInvokeSearchResponse({
     existingMeta.contract_bridge && isPlainObject(existingMeta.contract_bridge)
       ? existingMeta.contract_bridge
       : {};
-  const failureClass = blockFallbackAdoption
-    ? 'beauty_legacy_fallback_blocked'
-    : effectiveProducts.length === 0
-      ? 'beauty_mainline_empty'
-      : null;
+  const failureClass = ['beauty_primary_recall_failed', 'primary_search_window_exceeded'].includes(existingMeta.failure_class)
+    ? existingMeta.failure_class
+    : blockFallbackAdoption
+      ? 'beauty_legacy_fallback_blocked'
+      : effectiveProducts.length === 0
+        ? 'beauty_mainline_empty'
+        : null;
   const contractStatus = failureClass
     ? 'failed'
     : String(body.status || '').trim().toLowerCase() === 'degraded'
@@ -14853,6 +14703,12 @@ function applyPivotBeautyContractToInvokeSearchResponse({
       route_authority: routeAuthority,
       status: contractStatus,
       query_source: querySource,
+      ...(existingMeta.canonical_returned_count != null
+        ? { canonical_returned_count: effectiveProducts.filter((product) => product?.source === 'canonical_chain').length }
+        : {}),
+      ...(existingMeta.external_seed_returned_count != null
+        ? { external_seed_returned_count: effectiveProducts.filter((product) => product?.source !== 'canonical_chain').length }
+        : {}),
       decision_authority:
         firstNonEmptyString(
           existingMeta.decision_authority,
@@ -16470,6 +16326,15 @@ const BEAUTY_EXTERNAL_SEED_BRAND_BROWSE_CATEGORY_TERMS = Object.freeze([
   'tool',
 ]);
 
+function explicitBeautyLipFormTerms(queryText = '') {
+  const query = normalizeSearchTextForMatch(queryText);
+  if (/\blip\s*oils?\b/.test(query)) return ['lip oil', 'lip-oil'];
+  if (/\blip\s*tints?\b/.test(query)) return ['lip tint', 'lip-tint', 'lip stain'];
+  if (/\blip\s*gloss(?:es)?\b/.test(query)) return ['lip gloss', 'lipgloss'];
+  if (/\blip\s*balms?\b/.test(query)) return ['lip balm', 'lipbalm'];
+  return [];
+}
+
 function buildBeautyExternalSeedCategoryTerms(intent = null) {
   const families = Array.isArray(intent?.families) ? intent.families : [];
   const rawQuery = String(intent?.raw || intent?.query || intent?.queryText || '').trim();
@@ -16489,7 +16354,8 @@ function buildBeautyExternalSeedCategoryTerms(intent = null) {
   }
   if (terms.length === 0 && categoryPathPrefix) {
     if (categoryPathPrefix.startsWith('beauty/makeup/lip/')) {
-      push('lipstick');
+      const explicitForms = explicitBeautyLipFormTerms(rawQuery);
+      (explicitForms.length ? explicitForms : ['lipstick']).forEach(push);
     } else if (categoryPathPrefix.startsWith('beauty/makeup/eye/')) {
       push('mascara');
       push('eyeshadow');
@@ -16612,7 +16478,8 @@ function buildBeautyExternalSeedBrandCategoryTextTerms(queryText = '', intent = 
   if (prefix.startsWith('beauty/makeup/face/blush/') || prefix.startsWith('beauty/makeup/cheek/')) {
     ['blush', 'cheek', 'luminizer', 'highlighter'].forEach(push);
   } else if (prefix.startsWith('beauty/makeup/lip/')) {
-    ['lipstick', 'lip color', 'liquid lip', 'rouge'].forEach(push);
+    const explicitForms = explicitBeautyLipFormTerms(queryText);
+    (explicitForms.length ? explicitForms : ['lipstick', 'lip color', 'liquid lip', 'rouge']).forEach(push);
   } else if (prefix.startsWith('beauty/makeup/eye/')) {
     ['mascara', 'eyeshadow', 'eyeliner', 'brow', 'lash'].forEach(push);
   } else if (prefix.startsWith('beauty/fragrance/')) {
@@ -16861,6 +16728,7 @@ async function queryBeautyExternalSeedRowsFast({
   inStockOnly,
   limit,
   toolScope = 'all_tools',
+  offerScope = null,
 } = {}) {
   if (!process.env.DATABASE_URL) {
     return {
@@ -16876,10 +16744,10 @@ async function queryBeautyExternalSeedRowsFast({
   // ever return one element. Fall back to deriving only when no caller supplied a list.
   const safeMarkets = laneMarkets(markets, market);
   const safeMarket = safeMarkets[0];
-  const safeLimit = Math.max(1, Math.min(60, Number(limit || 24) || 24));
-  const perScopeRowLimit = Math.max(8, Math.min(24, safeLimit * 2));
+  const safeLimit = Math.max(1, Math.min(200, Number(limit || 24) || 24));
+  const perScopeRowLimit = Math.max(8, Math.min(200, safeLimit * 2));
   const categoryTerms = buildBeautyExternalSeedCategoryTerms(intent);
-  const perCategoryRowLimit = Math.max(3, Math.min(8, Math.ceil(perScopeRowLimit / Math.max(1, categoryTerms.length))));
+  const perCategoryRowLimit = Math.max(3, Math.ceil(perScopeRowLimit / Math.max(1, categoryTerms.length)));
   const recallPatterns = buildBeautyExternalSeedRecallPatterns({ queryText, intent });
   const primaryToolScopes = toolScope === 'creator_preferred'
     ? ['creator_agents', '*']
@@ -16888,7 +16756,8 @@ async function queryBeautyExternalSeedRowsFast({
   const toolScopes = PIVOT_BEAUTY_LEGACY_TOOL_SCOPE_RECALL_ENABLED
     ? primaryToolScopes.concat(legacyToolScopes)
     : primaryToolScopes;
-  const rawProductCap = Math.max(safeLimit, Math.min(60, safeLimit * Math.max(1, toolScopes.length)));
+  const rawProductCap = Math.max(safeLimit, Math.min(200, safeLimit * Math.max(1, toolScopes.length)));
+  const seedScope = { ...(offerScope || {}), inStockOnly, brand: intent?.brandBrowse?.contract === 'brand_browse' ? intent.brandBrowse : null };
 
   const seen = new Set();
   const rawProducts = [];
@@ -16998,6 +16867,10 @@ async function queryBeautyExternalSeedRowsFast({
       const isSingleCategory = categoryTerms.length === 1;
       const categoryLimitBind = `$${categoryTerms.length + 3}`;
       const scopeLimitBind = `$${categoryTerms.length + 4}`;
+      const params = isSingleCategory
+        ? [mkt.value, tool, categoryTerms[0], perScopeRowLimit]
+        : [mkt.value, tool, ...categoryTerms, perCategoryRowLimit, perScopeRowLimit];
+      const scopedOfferWhere = buildSeedSearchOfferScope(seedScope, params);
       const multiCategorySql = `
         SELECT
           id,
@@ -17054,10 +16927,11 @@ async function queryBeautyExternalSeedRowsFast({
             FROM external_product_seeds
             WHERE status = 'active'
               ${attachedServingSeedFilterSql}
+              ${scopedOfferWhere}
               AND ${mkt.sql}
               AND tool = $2
               AND ${categoryAuthoritySql} = ${categoryBind}
-              ${inStockOnly ? `AND coalesce(lower(availability), '') NOT IN ('out of stock', 'out_of_stock', 'outofstock', 'oos')` : ''}
+
             ORDER BY
               updated_at DESC NULLS LAST,
               created_at DESC NULLS LAST
@@ -17094,19 +16968,18 @@ async function queryBeautyExternalSeedRowsFast({
         FROM external_product_seeds
         WHERE status = 'active'
           ${attachedServingSeedFilterSql}
+          ${scopedOfferWhere}
           AND ${mkt.sql}
           AND tool = $2
           AND ${categoryAuthoritySql} = $3
-          ${inStockOnly ? `AND coalesce(lower(availability), '') NOT IN ('out of stock', 'out_of_stock', 'outofstock', 'oos')` : ''}
+
         ORDER BY
           updated_at DESC NULLS LAST,
           created_at DESC NULLS LAST
         LIMIT $4
       `
         : multiCategorySql;
-      const params = isSingleCategory
-        ? [mkt.value, tool, categoryTerms[0], perScopeRowLimit]
-        : [mkt.value, tool, ...categoryTerms, perCategoryRowLimit, perScopeRowLimit];
+
       const queryStartedAt = Date.now();
       const result = await queryBeautyExternalSeedRowsWithTimeout(
         sql,
@@ -17135,28 +17008,10 @@ async function queryBeautyExternalSeedRowsFast({
         },
       };
     } catch (err) {
-      return {
-        tool,
-        rows: [],
-        variant: {
-          query: String(queryText || '').trim(),
-          row_count: 0,
-          category_terms: categoryTerms,
-          recall_pattern_count: recallPatterns.length,
-          market: String(queryMarket || safeMarket).trim().toUpperCase() || safeMarket,
-          market_scope: marketScope,
-          tool_scope: tool || '(empty)',
-          legacy_tool_scope_recall: PIVOT_BEAUTY_LEGACY_TOOL_SCOPE_RECALL_ENABLED,
-          single_category_indexed_query: categoryTerms.length === 1,
-          multi_category_indexed_union_query: categoryTerms.length !== 1,
-          parallel_scope_recall: PIVOT_BEAUTY_PARALLEL_SCOPE_RECALL_ENABLED,
-          error_code: String(err?.code || err?.name || 'query_failed').slice(0, 80),
-          timeout: String(err?.code || '').trim() === '57014' || /timeout|cancel/i.test(String(err?.message || '')),
-        },
-      };
+      throw err;
     }
   };
-  const runTextRecallQuery = async (tool, queryMarket = null, marketScope = 'text_recall_underfill') => {
+  const runTextRecallQuery = async (tool, queryMarket = null, marketScope = 'primary_text_query') => {
     const safePatterns = recallPatterns.filter(Boolean).slice(0, 14);
     const brandCategoryRecall = Boolean(
       intent?.brandBrowse &&
@@ -17185,7 +17040,7 @@ async function queryBeautyExternalSeedRowsFast({
           market: String(queryMarket || safeMarket).trim().toUpperCase() || safeMarket,
           market_scope: marketScope,
           tool_scope: tool || '(empty)',
-          text_recall_underfill: true,
+          primary_text_query: true,
         },
       };
     }
@@ -17195,17 +17050,7 @@ async function queryBeautyExternalSeedRowsFast({
       const mkt = marketBind(safeQueryMarkets, '$1');
       const useBrandCategoryRecall = brandPatterns.length > 0 && brandCategoryPatterns.length > 0;
       if (useBrandCategoryRecall) {
-        const brandClauses = brandPatterns.map((_, index) => {
-          const bind = `$${index + 3}`;
-          return `(
-            lower(coalesce(seed_data->>'brand', '')) LIKE ${bind}
-            OR lower(coalesce(seed_data->>'vendor', '')) LIKE ${bind}
-            OR lower(coalesce(seed_data->'snapshot'->>'brand', '')) LIKE ${bind}
-            OR lower(coalesce(seed_data->'snapshot'->>'vendor', '')) LIKE ${bind}
-            OR lower(coalesce(seed_data->'derived'->'recall'->>'brand_name', '')) LIKE ${bind}
-          )`;
-        });
-        const categoryStartIndex = 3 + brandPatterns.length;
+        const categoryStartIndex = 3;
         const categoryClauses = brandCategoryPatterns.map((_, index) => {
           const bind = `$${categoryStartIndex + index}`;
           return `(
@@ -17220,7 +17065,9 @@ async function queryBeautyExternalSeedRowsFast({
             OR lower(coalesce(seed_data->'derived'->'recall'->>'category', '')) LIKE ${bind}
           )`;
         });
-        const limitBind = `$${3 + brandPatterns.length + brandCategoryPatterns.length}`;
+        const limitBind = `$${3 + brandCategoryPatterns.length}`;
+        const params = [mkt.value, tool, ...brandCategoryPatterns, perScopeRowLimit];
+        const scopedOfferWhere = buildSeedSearchOfferScope(seedScope, params);
         const sql = `
           SELECT
             id,
@@ -17242,11 +17089,11 @@ async function queryBeautyExternalSeedRowsFast({
           FROM external_product_seeds
           WHERE status = 'active'
             ${attachedServingSeedFilterSql}
+            ${scopedOfferWhere}
             AND ${mkt.sql}
             AND tool = $2
-            AND (${brandClauses.join('\n            OR ')})
             AND (${categoryClauses.join('\n            OR ')})
-            ${inStockOnly ? `AND coalesce(lower(availability), '') NOT IN ('out of stock', 'out_of_stock', 'outofstock', 'oos')` : ''}
+
           ORDER BY
             updated_at DESC NULLS LAST,
             created_at DESC NULLS LAST
@@ -17255,7 +17102,7 @@ async function queryBeautyExternalSeedRowsFast({
         const queryStartedAt = Date.now();
         const result = await queryBeautyExternalSeedRowsWithTimeout(
           sql,
-          [mkt.value, tool, ...brandPatterns, ...brandCategoryPatterns, perScopeRowLimit],
+          params,
           2800,
         );
         const queryDurationMs = Math.max(0, Date.now() - queryStartedAt);
@@ -17272,7 +17119,7 @@ async function queryBeautyExternalSeedRowsFast({
             market: safeQueryMarket,
             market_scope: marketScope,
             tool_scope: tool || '(empty)',
-            text_recall_underfill: true,
+            primary_text_query: true,
             brand_category_text_recall: true,
             query_duration_ms: queryDurationMs,
           },
@@ -17304,6 +17151,8 @@ async function queryBeautyExternalSeedRowsFast({
         )`;
       });
       const limitBind = `$${safePatterns.length + 3}`;
+      const params = [mkt.value, tool, ...safePatterns, perScopeRowLimit];
+      const scopedOfferWhere = buildSeedSearchOfferScope(seedScope, params);
       const sql = `
         SELECT
           id,
@@ -17325,10 +17174,11 @@ async function queryBeautyExternalSeedRowsFast({
         FROM external_product_seeds
         WHERE status = 'active'
           ${attachedServingSeedFilterSql}
+          ${scopedOfferWhere}
           AND ${mkt.sql}
           AND tool = $2
           AND (${patternClauses.join('\n          OR ')})
-          ${inStockOnly ? `AND coalesce(lower(availability), '') NOT IN ('out of stock', 'out_of_stock', 'outofstock', 'oos')` : ''}
+
         ORDER BY
           updated_at DESC NULLS LAST,
           created_at DESC NULLS LAST
@@ -17337,7 +17187,7 @@ async function queryBeautyExternalSeedRowsFast({
       const queryStartedAt = Date.now();
       const result = await queryBeautyExternalSeedRowsWithTimeout(
         sql,
-        [mkt.value, tool, ...safePatterns, perScopeRowLimit],
+        params,
         1200,
       );
       const queryDurationMs = Math.max(0, Date.now() - queryStartedAt);
@@ -17353,27 +17203,12 @@ async function queryBeautyExternalSeedRowsFast({
           market: safeQueryMarket,
           market_scope: marketScope,
           tool_scope: tool || '(empty)',
-          text_recall_underfill: true,
+          primary_text_query: true,
           query_duration_ms: queryDurationMs,
         },
       };
     } catch (err) {
-      return {
-        tool,
-        rows: [],
-        variant: {
-          query: String(queryText || '').trim(),
-          row_count: 0,
-          category_terms: categoryTerms,
-          recall_pattern_count: safePatterns.length,
-          market: String(queryMarket || safeMarket).trim().toUpperCase() || safeMarket,
-          market_scope: marketScope,
-          tool_scope: tool || '(empty)',
-          text_recall_underfill: true,
-          error_code: String(err?.code || err?.name || 'query_failed').slice(0, 80),
-          timeout: String(err?.code || '').trim() === '57014' || /timeout|cancel/i.test(String(err?.message || '')),
-        },
-      };
+      throw err;
     }
   };
   const appendScopeRows = (scopeResult, { requireTargetMarketAuthority = false } = {}) => {
@@ -17420,59 +17255,22 @@ async function queryBeautyExternalSeedRowsFast({
     }
   };
 
+  // Select the query from the request before reading any rows. Empty results
+  // never trigger another query shape, tool scope, or market.
+  const brandCategoryTextRecallRequired = Boolean(
+    intent?.brandBrowse && intent.brandBrowse.contract === 'brand_browse' &&
+    intent.brandBrowse.brand_only === false,
+  );
+  const usePrimaryTextQuery = recallPatterns.length > 0 &&
+    (brandCategoryTextRecallRequired || !Array.isArray(intent?.families) || intent.families.length === 0);
+  const runPrimaryQuery = usePrimaryTextQuery ? runTextRecallQuery : runScopeQuery;
   if (PIVOT_BEAUTY_PARALLEL_SCOPE_RECALL_ENABLED) {
-    const scopeResults = await Promise.all(toolScopes.map((tool) => runScopeQuery(tool)));
-    for (const scopeResult of scopeResults) {
-      appendScopeRows(scopeResult);
-    }
+    const scopeResults = await Promise.all(toolScopes.map((tool) => runPrimaryQuery(tool)));
+    for (const scopeResult of scopeResults) appendScopeRows(scopeResult);
   } else {
     for (const tool of toolScopes) {
       if (rawProducts.length >= rawProductCap) break;
-      appendScopeRows(await runScopeQuery(tool));
-    }
-  }
-
-  const brandCategoryTextRecallRequired = Boolean(
-    intent?.brandBrowse &&
-      intent.brandBrowse.contract === 'brand_browse' &&
-      intent.brandBrowse.brand_only === false,
-  );
-  if ((rawProducts.length < safeLimit || brandCategoryTextRecallRequired) && recallPatterns.length > 0) {
-    if (PIVOT_BEAUTY_PARALLEL_SCOPE_RECALL_ENABLED) {
-      const textScopeResults = await Promise.all(toolScopes.map((tool) => runTextRecallQuery(tool)));
-      for (const scopeResult of textScopeResults) {
-        appendScopeRows(scopeResult);
-      }
-    } else {
-      for (const tool of toolScopes) {
-        if (rawProducts.length >= rawProductCap) break;
-        appendScopeRows(await runTextRecallQuery(tool));
-      }
-    }
-  }
-
-  const shouldBridgeDestinationBrandMarket =
-    safeMarket !== 'US' &&
-    safeMarket === 'KR' &&
-    hasKBeautyLocalIntent(queryText) &&
-    rawProducts.length < safeLimit;
-  if (shouldBridgeDestinationBrandMarket) {
-    destinationBrandMarketBridge.attempted = true;
-    destinationBrandMarketBridge.source_market = 'US';
-    if (PIVOT_BEAUTY_PARALLEL_SCOPE_RECALL_ENABLED) {
-      const bridgeResults = await Promise.all(
-        toolScopes.map((tool) => runScopeQuery(tool, 'US', `${safeMarket.toLowerCase()}_brand_home_bridge`)),
-      );
-      for (const scopeResult of bridgeResults) {
-        appendScopeRows(scopeResult, { requireTargetMarketAuthority: true });
-      }
-    } else {
-      for (const tool of toolScopes) {
-        if (rawProducts.length >= rawProductCap) break;
-        appendScopeRows(await runScopeQuery(tool, 'US', `${safeMarket.toLowerCase()}_brand_home_bridge`), {
-          requireTargetMarketAuthority: true,
-        });
-      }
+      appendScopeRows(await runPrimaryQuery(tool));
     }
   }
 
@@ -18266,21 +18064,13 @@ function getSearchProductServingEligibility(product = {}, options = {}) {
 
 function searchProductMatchesBeautyBrandBrowse(product = {}, brandBrowse = null, candidateText = '') {
   if (!brandBrowse || brandBrowse.contract !== 'brand_browse') return true;
-  const requestedBrand = normalizeSearchTextForMatch(brandBrowse.brand || '');
-  const requestedAlias = normalizeSearchTextForMatch(brandBrowse.alias || '');
-  if (!requestedBrand && !requestedAlias) return true;
-  const productBrand = normalizeSearchTextForMatch(
-    firstNonEmptyString(product?.brand, product?.vendor, product?.merchant_name),
-  );
-  const text = String(candidateText || buildFallbackCandidateText(product) || '');
-  const matches = (needle) => Boolean(
-    needle &&
-      (
-        (productBrand && (productBrand.includes(needle) || needle.includes(productBrand))) ||
-        text.includes(needle)
-      )
-  );
-  return matches(requestedBrand) || matches(requestedAlias);
+  // The ranker and hard gate must use the same reviewed brand identity. A
+  // second raw-text check drops diacritics and legitimate alternate aliases.
+  return productMatchesSearchQualityBrand(product, {
+    canonical: brandBrowse.brand,
+    alias: brandBrowse.alias,
+    brand_key: brandBrowse.brand_key,
+  }, candidateText);
 }
 
 function filterSearchServingEligibleProducts(products = [], options = {}) {
@@ -18431,7 +18221,7 @@ function buildCanonicalQueryTextForBeautyBrandRecall(queryText = '', brandBrowse
 }
 
 function normalizeSearchQualityBrandNeedle(value) {
-  return normalizeSearchTextForMatch(value).replace(/\bbeauty\b/g, ' ').replace(/\s+/g, ' ').trim();
+  return normalizeSearchTextForMatch(normalizeBrandText(value)).replace(/\bbeauty\b/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
 function productMatchesSearchQualityBrand(product = {}, brand = null, candidateText = '') {
@@ -18441,6 +18231,12 @@ function productMatchesSearchQualityBrand(product = {}, brand = null, candidateT
   const productBrand = normalizeSearchQualityBrandNeedle(
     firstNonEmptyString(product?.brand, product?.vendor, product?.merchant_name),
   );
+  // A reviewed alias pair (APIEU / A'PIEU, romand / rom&nd) denotes one
+  // brand. Do not require their punctuation-compacted strings to coincide.
+  if (brand?.brand_key && productBrand) {
+    const identity = resolveBeautyBrandBrowseQuery(productBrand);
+    if (identity.matched && identity.brand_only) return identity.brand_key === brand.brand_key;
+  }
   const text = normalizeSearchTextForMatch(candidateText || buildFallbackCandidateText(product));
   const compactText = text.replace(/\s+/g, '');
   const matches = (needle) => {
@@ -18477,9 +18273,18 @@ function productMatchesSearchQualityExactAnchor(product = {}, exactProductAnchor
     .filter((token) => token.length >= 2)
     .filter((token) => !SEARCH_EXACT_PRODUCT_ANCHOR_STOP_WORDS.has(token));
   if (!tokens.length) return true;
-  const text = normalizeSearchTextForMatch(candidateText || buildFallbackCandidateText(product));
+  // Product-line identity must come from this item's own name, never recommendation/cross-sell
+  // descriptions. A Frost Lipstick mentioning MACximal in its copy is still a different product.
+  const rawText = [product.title, product.name, product.display_name, product.displayName,
+    product.canonical_title, product.canonical_name, product.product_type].filter(Boolean).join(' ');
+  const text = normalizeSearchTextForMatch(rawText);
+  // A word stylized with middle dots (M·A·Cximal) is also searchable as
+  // its joined spelling. Keep the ordinary word-boundary form alongside it.
+  const joinedPunctuationText = normalizeSearchTextForMatch(
+    rawText.replace(/[·•]/g, ''),
+  );
   if (!text) return false;
-  const matched = tokens.filter((token) => text.includes(token));
+  const matched = tokens.filter((token) => text.includes(token) || joinedPunctuationText.includes(token));
   if (tokens.length <= 4) return matched.length === tokens.length;
   return matched.length >= 4 && matched.length / tokens.length >= 0.8;
 }
@@ -18507,6 +18312,22 @@ function productLooksLikeNonBeautyMerchandise(product = {}) {
   return /\b(?:tote\s*bag|canvas\s*bag|phone\s*case|key\s*chain|keychain|stickers?|enamel\s*pins?|hoodie|sweatshirt|t[-\s]?shirt|tee\s*shirt|baseball\s*cap|water\s*bottle|mug)\b/i.test(text);
 }
 
+// Use the established coarse classifier on the product's own identity fields. Descriptions can
+// mention tools used with a cosmetic; even titles can say "Bronzer with Mirror", so classify the
+// named object before that included-accessory qualifier. "Brush with Bronzer" remains a brush.
+function searchProductIdentityIsAccessory(product = {}) {
+  const normalizeIdentityText = (value) => String(value || '')
+    .replace(/\b(?:with|includes?|including)\s+(?:(?:a|an|built.in)\s+)?(?:brush(?:es)?|applicators?|mirrors?|sponges?|puffs?)\b.*$/i, '')
+    .replace(/\bbrushes\b/gi, 'brush')
+    .replace(/\baccessories\b/gi, 'accessory')
+    .replace(/\b(applicator|tool|sponge|puff|mirror|curler|sharpener)s\b/gi, '$1');
+  const own = { title: normalizeIdentityText(firstNonEmptyString(product.title, product.name,
+    product.display_name, product.displayName, product.canonical_title)),
+    product_type: normalizeIdentityText(product.product_type) };
+  const coarse = classifyBeautyCoarseCandidate(own);
+  return ['brush', 'tool', 'accessory'].includes(coarse.object_type);
+}
+
 function getSearchQualityContractHardConstraintResult(product = {}, contract = null, queryText = '') {
   if (!isBeautySearchQualityContractApplied(contract)) return { eligible: true, reasons: [] };
   const reasons = [];
@@ -18516,6 +18337,10 @@ function getSearchQualityContractHardConstraintResult(product = {}, contract = n
 
   if (hasOfferProductTransactionHold(product)) reasons.push('source_unavailable_or_non_merchandise');
   if (productLooksLikeNonBeautyMerchandise(product)) reasons.push('non_beauty_merchandise');
+  if ((hard.category_path_prefix || hard.exact_product_anchor) && searchProductIdentityIsAccessory(product)
+      && !searchProductIdentityIsAccessory({ title: queryText || contract.effective_query })) {
+    reasons.push('accessory_for_product_query');
+  }
   if (
     hard.exact_product_anchor &&
     !productMatchesSearchQualityExactAnchor(product, hard.exact_product_anchor, candidateText)
@@ -18541,7 +18366,16 @@ function getSearchQualityContractHardConstraintResult(product = {}, contract = n
       categoryPathPrefix,
     );
     if (existingCategoryPath) {
-      if (!pathMatches) reasons.push('category_mismatch');
+      const requestedPath = categoryPathPrefix.toLowerCase().replace(/^\/+|\/+$/g, '');
+      const isAncestor = requestedPath.startsWith(`${existingCategoryPath}/`);
+      // The canonical SQL already admits shallow ancestors on row evidence.
+      // Apply the same rule here, with this product's own title/type only;
+      // cross-sell prose must not make an eyeliner satisfy a lipstick query.
+      const ownTypeMatches = isAncestor && beautyProductMatchesCategoryPathQuery({
+        title: firstNonEmptyString(product.title, product.name),
+        product_type: product.product_type,
+      }, queryText || contract.effective_query, categoryPathPrefix);
+      if (!pathMatches && !ownTypeMatches) reasons.push('category_mismatch');
     } else if (!textMatches) {
       reasons.push('category_mismatch');
     }
@@ -18990,6 +18824,7 @@ async function fetchCanonicalChainRecallForFindProductsMulti({ search = {} } = {
       // results.
       marketId: safeMarket,
       brandFilter: canonicalBrandFilter,
+      searchQualityContract: searchQualityContractApplied ? searchQualityContract : null,
       deps: { query },
     });
     const products = (Array.isArray(rows) ? rows : [])
@@ -22068,6 +21903,11 @@ async function searchBeautyExternalSeedProductsMainline({
       ? Math.floor(Number(search.offset))
       : (safePage - 1) * safeLimit,
   );
+  if (safeOffset + safeLimit > 200) {
+    throw Object.assign(new Error('The primary search result window is limited to 200 items.'), {
+      code: 'PRIMARY_SEARCH_WINDOW_EXCEEDED', status: 400,
+    });
+  }
   const contractSafeEmpty = isSearchQualityContractSafeEmptyContract(searchQualityContract);
   if (contractSafeEmpty) {
     return {
@@ -22170,9 +22010,9 @@ async function searchBeautyExternalSeedProductsMainline({
 
   const inStockOnly = parseQueryBoolean(search.in_stock_only ?? search.inStockOnly) !== false;
   const retrievalQueries = buildBeautyMainlineRetrievalQueries(queryText, beautyIntent);
-  const perQueryLimit = searchQualityContractApplied
-    ? Math.max(safeLimit * 2, Math.min(48, safeLimit * 4))
-    : Math.max(safeLimit, Math.min(24, safeLimit * 2));
+  // Rank the same bounded candidate window on every page. Increasing recall
+  // depth with the page number can rerank old candidates into later pages.
+  const perQueryLimit = 200;
   const canonicalCategoryPathPrefix = searchQualityContractApplied
     ? (searchQualityContract?.hard_constraints?.category_path_prefix || null)
     : (resolveBeautyCategoryPathPrefixForQuery(queryText) || null);
@@ -22185,10 +22025,11 @@ async function searchBeautyExternalSeedProductsMainline({
     beautyIntent.brandBrowse,
     canonicalCategoryPathPrefix,
   );
-  const canonicalLimit = searchQualityContractApplied
-    ? Math.max(18, Math.min(48, safeLimit * 4))
-    : Math.max(6, Math.min(12, Math.ceil(safeLimit / 2)));
+  const canonicalLimit = 200;
   const canonicalStartedAt = Date.now();
+  const budgetConstraint = resolveBeautyMainlineBudgetConstraint({ search, intent, queryText });
+  const explicitOfferCurrency = budgetConstraint ? null : firstNonEmptyString(search.currency, search.price_currency, search.priceCurrency, search.currency_code);
+  const primaryOfferScope = { currency: explicitOfferCurrency, priceRanges: resolveBudgetConstraintsForRecall(budgetConstraint) };
   const canonicalRowsPromise = fetchCanonicalChainRows({
     query: canonicalQueryText,
     categoryPathPrefix: canonicalCategoryPathPrefix,
@@ -22241,7 +22082,15 @@ async function searchBeautyExternalSeedProductsMainline({
     // chat shows $0 because the SQL returns NULL placeholders for
     // those columns when joinSkuOffers is false.
     includeSkuOffers: true,
+    offerScope: {
+      inStockOnly,
+      markets,
+      // Currency on a budget denotes its units; keep the established FX
+      // conversion policy. Without bounds an explicit currency scopes offers.
+      ...primaryOfferScope,
+    },
     brandFilter: canonicalBrandFilter,
+    searchQualityContract: searchQualityEnforced ? effectiveSearchQualityContract : null,
     deps: { query },
   })
     .then((rows) => ({
@@ -22249,11 +22098,7 @@ async function searchBeautyExternalSeedProductsMainline({
       error: null,
       duration_ms: Math.max(0, Date.now() - canonicalStartedAt),
     }))
-    .catch((err) => ({
-      rows: [],
-      error: String(err?.code || err?.message || err || 'canonical_query_failed').slice(0, 160),
-      duration_ms: Math.max(0, Date.now() - canonicalStartedAt),
-    }));
+    .catch((err) => { throw err; });
   const [creatorScopedRows, canonicalResult] = await Promise.all([
     queryBeautyExternalSeedRowsFast({
       market,
@@ -22263,17 +22108,13 @@ async function searchBeautyExternalSeedProductsMainline({
       inStockOnly,
       limit: perQueryLimit,
       toolScope: creatorScoped ? 'creator_preferred' : 'all_tools',
+      offerScope: primaryOfferScope,
     }),
     canonicalRowsPromise,
   ]);
   const canonicalProducts = (Array.isArray(canonicalResult?.rows) ? canonicalResult.rows : [])
     .map((row) => buildCanonicalChainMainlineProduct(row))
     .filter(Boolean);
-  // NOTE: the ADR-007 citable lane is NOT here. It's an operation-level supplement
-  // applied in the universal res.json wrapper (buildCitableSupplementItems prefetch
-  // + appendCitableSupplementItems) so it reaches ALL find_products_multi lanes —
-  // branded/ingredient queries never run this canonical block. Flag-gated by
-  // INDEX_ELIGIBLE_RECALL.
   const canonicalTelemetry = {
     canonical_path_executed: true,
     canonical_raw_count: Array.isArray(canonicalResult?.rows) ? canonicalResult.rows.length : 0,
@@ -22324,33 +22165,7 @@ async function searchBeautyExternalSeedProductsMainline({
     beauty_brand_browse: beautyIntent.brandBrowse || null,
     ...(canonicalResult?.error ? { canonical_error: canonicalResult.error } : {}),
   };
-  const creatorScopedProducts = Array.isArray(creatorScopedRows?.rawProducts)
-    ? creatorScopedRows.rawProducts
-    : [];
-  const shouldBroaden =
-    creatorScoped &&
-    creatorScopedProducts.every((product) =>
-      scoreBeautyExternalSeedProduct({
-        product,
-        queryText,
-        intent: beautyIntent,
-        normalizedQuery: beautyIntent.normalized,
-        queryTokens: Array.from(new Set(tokenizeSearchTextForMatch(beautyIntent.normalized))),
-        searchQualityContract: searchQualityEnforced ? effectiveSearchQualityContract : null,
-      }).relevant !== true,
-    );
-  const broadenedRows = shouldBroaden
-    ? await queryBeautyExternalSeedRowsFast({
-        market,
-        markets,
-        queryText,
-        intent: beautyIntent,
-        inStockOnly,
-        limit: perQueryLimit,
-        toolScope: 'all_tools',
-      })
-    : null;
-  const selectedRows = broadenedRows || creatorScopedRows;
+  const selectedRows = creatorScopedRows;
   const normalizedQuery = beautyIntent.normalized;
   const queryTokens = Array.from(new Set(tokenizeSearchTextForMatch(normalizedQuery)));
   const seedProducts = Array.isArray(selectedRows?.rawProducts) ? selectedRows.rawProducts : [];
@@ -22454,15 +22269,13 @@ async function searchBeautyExternalSeedProductsMainline({
         rejected_count: 0,
         input_count: displayRankedProducts.length,
       };
-  const budgetConstraint = resolveBeautyMainlineBudgetConstraint({
-    search,
-    intent,
-    queryText,
-  });
   const budgetFilter = budgetConstraint
     ? filterFindProductsMultiDirectProductsByBudget(budgetConstraint, servingEligibilityGate.products)
     : null;
-  const rankedProducts = budgetFilter ? budgetFilter.products : servingEligibilityGate.products;
+  const budgetEligibleProducts = budgetFilter ? budgetFilter.products : servingEligibilityGate.products;
+  const rankedProducts = explicitOfferCurrency
+    ? budgetEligibleProducts.filter(product => String(product.currency || '').trim().toUpperCase() === explicitOfferCurrency.trim().toUpperCase())
+    : budgetEligibleProducts;
   const budgetFxMetadata = budgetFilter?.resolution?.metadata || null;
   const searchQualityFailureReasons = summarizeSearchQualityFailureReasons({
     scoredRejected: scoreRejected,
@@ -22527,13 +22340,15 @@ async function searchBeautyExternalSeedProductsMainline({
     status: 'success',
     success: true,
     products: pagedProducts,
-    total: balancedProducts.length,
+    total: Math.min(balancedProducts.length, 200),
     page: safePage,
     page_size: pagedProducts.length,
     reply: pagedProducts.length > 0 ? null : 'No matching beauty products found on the mainline catalog path.',
     metadata: {
       query_source: querySource,
       ...(promptInspect ? { prompt_inspect: promptInspect } : {}),
+      primary_result_window: 200,
+      total_is_lower_bound: true,
       fetched_at: new Date().toISOString(),
       external_seed_only_requested: true,
       external_seed_rows_fetched: Array.isArray(selectedRows?.rawProducts) ? selectedRows.rawProducts.length : 0,
@@ -22578,7 +22393,7 @@ async function searchBeautyExternalSeedProductsMainline({
       ...(budgetFxMetadata || {}),
       ...canonicalTelemetry,
       canonical_returned_count: pagedCanonicalCount,
-      creator_external_seed_tool_scope: broadenedRows ? 'all_tools' : (creatorScoped ? 'creator_preferred' : 'all_tools'),
+      creator_external_seed_tool_scope: creatorScoped ? 'creator_preferred' : 'all_tools',
       retrieval_query_variants: retrievalQueries,
       retrieval_query_debug: selectedRows?.variantResults || [],
       beauty_mainline_filter: {
@@ -22651,7 +22466,7 @@ async function searchBeautyExternalSeedProductsMainline({
           target_families: beautyIntent.families,
           safety_rules: beautyIntent.safety,
           creator_scoped: Boolean(creatorScoped),
-          broadened_tool_scope: Boolean(broadenedRows),
+          broadened_tool_scope: false,
           destination_brand_market_bridge: selectedRows?.destinationBrandMarketBridge || null,
           canonical_chain: canonicalTelemetry,
           search_quality_contract_applied: searchQualityContractApplied,
@@ -40859,56 +40674,6 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       'invoke request complete',
     );
   });
-  // ADR-007 op-level citable supplement: prefetch offer-free index_eligible items
-  // once, then append them in the res.json wrapper below so EVERY
-  // find_products_multi lane is covered. No-op unless INDEX_ELIGIBLE_RECALL is on.
-  // NOT awaited: the tokenMatch canonical query is prod-measured at 5.8-17.2s
-  // and used to serialize in front of the whole pipeline (60-80% of fpm wall
-  // time). It now runs alongside the pipeline; the wrapper appends whatever has
-  // resolved by send time (typically a warm-cache hit) and fails open to []
-  // otherwise, stamping metadata.citable_supplement_pending for observability.
-  let citableSupplementItems = [];
-  let citableSupplementAttempted = false;
-  let citableSupplementSettled = false;
-  try {
-    const supplementOp = String(debugRuntime.operation || req?.body?.operation || '').trim().toLowerCase();
-    if (supplementOp === 'find_products_multi' && citableSupplementEnabled()) {
-      citableSupplementAttempted = true;
-      const citableSupplementStartedAt = Date.now();
-      buildCitableSupplementItems(
-        String(req?.body?.payload?.search?.query || req?.body?.payload?.query || '').trim(),
-      )
-        .then((items) => {
-          citableSupplementSettled = true;
-          citableSupplementItems = Array.isArray(items) ? items : [];
-          if (res.writableEnded) {
-            // Response already sent: this request's fpm_stage_breakdown has
-            // been emitted, so keep the DB cost visible with its own log line.
-            logger.info(
-              {
-                gateway_request_id: gatewayRequestId,
-                stage: 'citable_supplement',
-                latency_ms: Math.max(0, Date.now() - citableSupplementStartedAt),
-                returned: citableSupplementItems.length,
-                applied: false,
-              },
-              'citable supplement resolved after response send (off-path)',
-            );
-          } else {
-            recordFpmStage('citable_supplement', citableSupplementStartedAt, {
-              returned: citableSupplementItems.length,
-              off_path: true,
-            });
-          }
-        })
-        .catch(() => {
-          citableSupplementSettled = true;
-          citableSupplementItems = [];
-        });
-    }
-  } catch (_) {
-    citableSupplementItems = [];
-  }
   const originalJson = res.json.bind(res);
   res.json = (body) => {
     let finalBody = body;
@@ -41177,23 +40942,13 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       );
     }
     finalBody = maybeAttachInvokeBeautyExpertProjection(finalBody);
-    finalBody = appendCitableSupplementItems(finalBody, citableSupplementItems);
-    // The external-seed mint below opens an async window between this merge and
-    // the actual send. The off-path citable prefetch can resolve inside that
-    // window and flip `citableSupplementSettled` to true AFTER the append above
-    // already ran with an empty list — which would report "settled, found
-    // nothing" for a supplement that was still in flight when its items were
-    // needed. Snapshot the flag at the point the items were merged and let
-    // finish() read the snapshot.
-    const citableSupplementSettledAtMerge = citableSupplementSettled;
     const finalOperation = String(debugRuntime.operation || req?.body?.operation || '')
       .trim()
       .toLowerCase();
     if (isShoppingAgentFindProductsMultiRequest(req, finalOperation)) {
       // Every search card must have a canonical, currency-qualified price (or
       // a priced seller offer that has been materialized as that card price).
-      // Run after supplements because that is where citation cards enter the
-      // response, and before pagination so an invalid card cannot consume a slot.
+      // Validate before pagination so an invalid card cannot consume a slot.
       finalBody = enforceFindProductsMultiPriceContract(finalBody);
       // A terminal catalog/PDP eligibility signal wins over a caller's
       // in_stock_only=false preference. Unknown inventory remains eligible,
@@ -41224,39 +40979,24 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       // `unhandledRejection` handler (see the note at the /mcp door), so an
       // escaped rejection takes down the WHOLE gateway rather than one request.
       finalBody = applyExternalSeedAttributionMetadata(finalBody, seedAttributionCounts);
+      // Eligibility and pagination can remove the primary lane's last card.
+      // Report the final list; an empty result must not retain pre-filter success.
+      finalBody = applyPivotBeautyContractToInvokeSearchResponse({
+        body: finalBody,
+        req,
+        operation: finalOperation,
+        gatewayRequestId,
+      });
       setInvokePerfHeaders();
       return originalJson(finalBody);
     };
 
     const finish = () => {
-      // Final near-dup collapse (+ ingredient-direct reorder) on the fully merged
-      // list, so citable-supplement items can't re-introduce near-identical titles
-      // the lane already collapsed. See refineBeautyFindProductsMultiResponseBody.
+      // Refine the primary result before enforcing the requested page size.
       finalBody = refineBeautyFindProductsMultiResponseBody(
         finalBody,
         String(req?.body?.payload?.search?.query || req?.body?.payload?.query || '').trim(),
       );
-      // Stamp the count even when 0 items were appended, so the metadata
-      // distinguishes "supplement ran, nothing to add" (0) from "this response
-      // path bypassed the wrapper entirely" (field absent). When the off-path
-      // prefetch hadn't resolved by the time the items were merged,
-      // citable_supplement_pending marks "still in flight (warming the cache)"
-      // vs "ran and found nothing" — read from the merge-time snapshot, because
-      // the mint's async window can flip the live flag after the merge.
-      if (
-        citableSupplementAttempted &&
-        finalBody &&
-        typeof finalBody === 'object' &&
-        finalBody.metadata &&
-        typeof finalBody.metadata === 'object'
-      ) {
-        if (finalBody.metadata.citable_supplement_count === undefined) {
-          finalBody.metadata.citable_supplement_count = 0;
-        }
-        if (!citableSupplementSettledAtMerge) {
-          finalBody.metadata.citable_supplement_pending = true;
-        }
-      }
       try {
         if (
           FPM_ENFORCE_REQUESTED_PAGE_SIZE &&
@@ -41601,6 +41341,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               intent: null,
               creatorScoped: earlyCreatorScoped,
             });
+            if (!directResponse) {
+              throw new Error('beauty_primary_recall_unavailable');
+            }
           } finally {
             recordFpmStage('beauty_direct_recall', earlyDirectStartedAt, {
               returned: Array.isArray(directResponse?.products) ? directResponse.products.length : null,
@@ -41718,8 +41461,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               err: earlyDirectErr?.message || String(earlyDirectErr),
               query: earlyQueryText,
             },
-            'early beauty external-seed mainline search failed; continuing to standard invoke path',
+            'beauty primary recall failed',
           );
+          return res.status(earlyDirectErr?.status === 400 ? 400 : 503).json(buildBeautyPrimaryRecallFailure(earlyQueryText, gatewayRequestId, earlyDirectErr));
         }
       }
     }
@@ -47366,10 +47110,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       const earlyHasMerchantScopeForBeauty = Boolean(earlyMerchantIdForBeauty) || earlyMerchantIdsForBeauty.length > 0;
       const earlyBeautyMainlineIntentForDirect = inferBeautyMainlineIntent(queryText);
       if (
+        PIVOT_BEAUTY_DIRECT_INDEXED_RECALL_ENABLED &&
         !canonicalSigEntityMode &&
         pivotBeautyContractInvoke &&
         queryText.length > 0 &&
-        process.env.DATABASE_URL &&
         (earlyBeautyMainlineIntentForDirect.beautyLike || routeSearchQualityContractApplied) &&
         !earlyHasMerchantScopeForBeauty
       ) {
@@ -47393,22 +47137,14 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               failed: directResponse === undefined ? true : null,
             });
           }
-          const directProducts = Array.isArray(directResponse?.products)
-            ? directResponse.products
-            : [];
-          if (
-            directProducts.length > 0 ||
-            isSearchQualityContractSafeEmptyResponse(directResponse) ||
-            routeSearchQualityContractApplied ||
-            String(directResponse?.status || '').toLowerCase() === 'failed'
-          ) {
-            return res.json(directResponse);
-          }
+          if (!directResponse) throw new Error('beauty_primary_recall_unavailable');
+          return res.json(directResponse);
         } catch (err) {
           logger.warn(
             { err: err?.message || String(err), creatorId, source, queryText },
-            'Beauty contract external seed mainline direct search failed; falling back to guarded invoke flow',
+            'Beauty contract primary recall failed',
           );
+          return res.status(err?.status === 400 ? 400 : 503).json(buildBeautyPrimaryRecallFailure(rawUserQuery || queryText, gatewayRequestId, err));
         }
       }
       const isCreatorUiColdStart = isCreatorUiSource(source) && queryText.length === 0;
@@ -47611,7 +47347,6 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       const shoppingCanonicalMainlineDirectEligible =
         (!strictCommerceFindProductsMulti || routeSearchQualityContractApplied) &&
         queryText.length > 0 &&
-        process.env.DATABASE_URL &&
         PIVOT_BEAUTY_DIRECT_INDEXED_RECALL_ENABLED &&
         (isShoppingSource(source) || routeSearchQualityContractApplied) &&
         (beautyMainlineIntentForDirect.beautyLike || routeSearchQualityContractApplied) &&
@@ -47804,11 +47539,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       }
 
       const creatorBeautyMainlineDirectEligible =
+        PIVOT_BEAUTY_DIRECT_INDEXED_RECALL_ENABLED &&
         !findProductsMultiProductOnly &&
         !canonicalSigEntityMode &&
         (!strictCommerceFindProductsMulti || routeSearchQualityContractApplied) &&
         queryText.length > 0 &&
-        process.env.DATABASE_URL &&
         (
           isPivotBeautyContractInvokeRequest({ operation, req }) ||
           shoppingCanonicalMainlineDirectEligible ||
@@ -47835,28 +47570,14 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               failed: directResponse === undefined ? true : null,
             });
           }
-          const directProducts = Array.isArray(directResponse?.products)
-            ? directResponse.products
-            : [];
-          if (
-            directProducts.length > 0 ||
-            routeSearchQualityContractApplied ||
-            isSearchQualityContractSafeEmptyResponse(directResponse)
-          ) {
-            const enriched = directResponse;
-            return res.json(enriched);
-          }
-          if (directResponse?.metadata?.canonical_path_executed) {
-            canonicalChainRecallPromise = Promise.resolve({
-              products: [],
-              telemetry: directResponse.metadata,
-            });
-          }
+          if (!directResponse) throw new Error('beauty_primary_recall_unavailable');
+          return res.json(directResponse);
         } catch (err) {
           logger.warn(
             { err: err?.message || String(err), creatorId, source, queryText },
-            'Beauty external-seed mainline search failed; continuing to remaining primary search paths',
+            'Beauty primary recall failed',
           );
+          return res.status(err?.status === 400 ? 400 : 503).json(buildBeautyPrimaryRecallFailure(rawUserQuery || queryText, gatewayRequestId, err));
         }
       }
 
@@ -54020,7 +53741,6 @@ module.exports._debug = {
   decideGenericSkincareCachePreference,
   collapseNearDuplicateSearchProducts,
   enforceFindProductsMultiRequestedPageSize,
-  appendCitableSupplementItems,
   readCanonicalSearchPricePair,
   resolveCanonicalSearchProductPrice,
   materializeCanonicalSearchProductPrice,

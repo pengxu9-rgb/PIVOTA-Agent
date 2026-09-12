@@ -75,11 +75,10 @@ describe('the mirrored seller reaches every query shape', () => {
   });
 
   test('the MULTI-category branch selects catalog_merchant_id — the shape that shipped broken', async () => {
-    // No families and no category prefix is the DEFAULT intent, and it produces several category
-    // terms, which is what routes the query through multiCategorySql's derived table.
+    // Explicit multiple families select the primary indexed category union.
     const sqls = await capturedSql(
-      { families: [], normalized: 'best beauty products', brandBrowse: null, safety: [] },
-      'best beauty products',
+      { families: ['cleanser', 'moisturizer'], normalized: 'cleanser and moisturizer', brandBrowse: null, safety: [] },
+      'cleanser and moisturizer',
     );
     expect(sqls.length).toBeGreaterThan(0);
 

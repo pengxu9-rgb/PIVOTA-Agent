@@ -416,6 +416,8 @@ describe('invoke external key auth', () => {
     process.env = {
       ...ORIGINAL_ENV,
       NODE_ENV: 'test',
+      // Exercise auth forwarding on the explicitly configured upstream primary.
+      PIVOT_BEAUTY_DIRECT_INDEXED_RECALL_ENABLED: 'false',
       AGENT_AUTH_INTROSPECT_URL: `${INTROSPECT_BASE}${INTROSPECT_PATH}`,
       AGENT_AUTH_INTROSPECT_INTERNAL_KEY: 'internal_test_key',
       AGENT_AUTH_INTROSPECT_TIMEOUT_MS: '1200',

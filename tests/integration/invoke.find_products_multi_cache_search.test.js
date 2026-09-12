@@ -1646,6 +1646,9 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
                 title,
                 canonical_url: `https://example.com/products/daily-mineral-sunscreen-${suffix || 'empty'}`,
                 destination_url: `https://example.com/products/daily-mineral-sunscreen-${suffix || 'empty'}`,
+                image_url: 'https://cdn.example.com/primary-beauty-product.jpg',
+                price_amount: '20.00',
+                price_currency: 'USD',
                 availability: 'in stock',
                 seed_data: { brand: 'Test Skin', category: 'sunscreen' },
                 updated_at: now,
@@ -1681,8 +1684,11 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
       });
 
     expect(resp.status).toBe(200);
+    expect(resp.body.status).toBe('success');
+    expect(resp.body.products.length).toBeGreaterThan(0);
+    expect(resp.body.products.some(product => /sunscreen/i.test(product.title))).toBe(true);
     expect(resp.body.metadata?.query_source).toBe('agent_products_beauty_external_seed_mainline');
-    expect(externalQueryCount).toBe(6);
+    expect(externalQueryCount).toBe(3);
     expect(maxActiveExternalQueries).toBeGreaterThan(1);
     expect(resp.body.metadata?.retrieval_query_debug || []).toEqual(
       expect.arrayContaining([
@@ -1726,6 +1732,9 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
                 title: 'Daily Mineral Sunscreen SPF 50',
                 canonical_url: `https://example.com/products/daily-mineral-sunscreen-${tool || 'empty'}`,
                 destination_url: `https://example.com/products/daily-mineral-sunscreen-${tool || 'empty'}`,
+                image_url: 'https://cdn.example.com/primary-beauty-product.jpg',
+                price_amount: '20.00',
+                price_currency: 'USD',
                 availability: 'in stock',
                 seed_data: { brand: 'Test Skin', category: 'sunscreen' },
                 updated_at: now,
@@ -1738,6 +1747,9 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
                 title: 'Peptide Barrier Moisturizer',
                 canonical_url: `https://example.com/products/peptide-barrier-moisturizer-${tool || 'empty'}`,
                 destination_url: `https://example.com/products/peptide-barrier-moisturizer-${tool || 'empty'}`,
+                image_url: 'https://cdn.example.com/primary-beauty-product.jpg',
+                price_amount: '20.00',
+                price_currency: 'USD',
                 availability: 'in stock',
                 seed_data: { brand: 'Test Skin', category: 'moisturizer' },
                 updated_at: now,
@@ -1750,6 +1762,9 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
                 title: 'Azelaic Acid Brightening Serum',
                 canonical_url: `https://example.com/products/azelaic-brightening-serum-${tool || 'empty'}`,
                 destination_url: `https://example.com/products/azelaic-brightening-serum-${tool || 'empty'}`,
+                image_url: 'https://cdn.example.com/primary-beauty-product.jpg',
+                price_amount: '20.00',
+                price_currency: 'USD',
                 availability: 'in stock',
                 seed_data: { brand: 'Test Skin', category: 'serum' },
                 updated_at: now,
@@ -1785,8 +1800,11 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
       });
 
     expect(resp.status).toBe(200);
+    expect(resp.body.status).toBe('success');
+    expect(resp.body.products.length).toBeGreaterThan(0);
+    expect(resp.body.products.some(product => /sunscreen/i.test(product.title))).toBe(true);
     expect(resp.body.metadata?.query_source).toBe('agent_products_beauty_external_seed_mainline');
-    expect(externalQueryCount).toBe(6);
+    expect(externalQueryCount).toBe(3);
     expect(resp.body.metadata?.retrieval_query_debug || []).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -4983,7 +5001,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
 	    expect(upstreamSearch.isDone()).toBe(false);
 	  });
 
-  test('Seoul KR market query bridges Korean-brand cleanser rows without fallback when exact KR seeds are sparse', async () => {
+  test('Seoul KR mainline stays empty when only US cleanser listings exist', async () => {
     const observedParams = [];
     jest.doMock('../../src/db', () => ({
       query: async (sql, params = []) => {
@@ -5143,30 +5161,16 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
       });
 
     expect(resp.status).toBe(200);
-    expect(resp.body.status).toBe('success');
+    expect(resp.body.status).toBe('failed');
+    expect(resp.body.success).toBe(false);
+    expect(resp.body.products).toEqual([]);
+    expect(resp.body.total).toBe(0);
+    expect(resp.body.metadata?.failure_class).toBe('beauty_mainline_empty');
     expect(resp.body.metadata?.query_source).toBe('agent_products_beauty_external_seed_mainline');
-    expect(resp.body.metadata?.destination_brand_market_bridge).toMatchObject({
-      attempted: true,
-      source_market: 'US',
-      target_market: 'KR',
-      returned_count: 4,
-    });
+    expect(resp.body.metadata?.destination_brand_market_bridge).toBeUndefined();
     expect(observedParams.some((params) => params[0] === 'KR')).toBe(true);
-    expect(observedParams.some((params) => params[0] === 'US')).toBe(true);
-    const ids = resp.body.products.map((product) => product.product_id);
-    expect(ids).toEqual(expect.arrayContaining([
-      'ext_laneige_cleanser_1',
-      'ext_anua_cleanser_1',
-      'ext_roundlab_cleanser_1',
-      'ext_boj_cleanser_1',
-    ]));
-    expect(ids).not.toContain('ext_generic_cleanser_1');
-    expect(resp.body.products[0]?.local_authority).toMatchObject({
-      brand_home_market: 'KR',
-      brand_origin_country: 'KR',
-    });
-    expect(resp.body.products[0]?.travel_purchase_bucket).toBe('check_in_destination');
-    expect(resp.body.products[0]?.trip_context_reason).toMatch(/Seoul shortlist reason|not confirm KR local stock/i);
+    expect(observedParams.some((params) => params[0] === 'US')).toBe(false);
+    expect(resp.body.metadata?.fallback_attempted).toBe(false);
     expect(upstreamSearch.isDone()).toBe(false);
   });
 
