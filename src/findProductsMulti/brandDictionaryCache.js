@@ -46,6 +46,42 @@ function normalize(value) {
     .trim();
 }
 
+// Detection keys for ONE raw catalog brand. `normalize` turns every separator
+// into a space, so a brand written with one — `A'PIEU`, `Kiehl's`, `L'Oreal` —
+// is indexed as the multi-token span `a pieu`, while the same brand queried as
+// `APIEU` normalises to the single token `apieu` and matches nothing. Measured
+// 2026-09-11: `matchCatalogBrand("a pieu")` returned null against a dictionary
+// holding `apieu`. The static lexicon side-steps this by hand-listing both
+// spellings per brand (`kiehls: ["kiehl's", 'kiehls', 'kiehl s']`); the dynamic
+// dictionary has no such list, so it must index both forms itself.
+//
+// Emits the normalised span AND its separator-free squash, so either spelling
+// of the query finds the brand. No-op for a brand with no internal separator,
+// where the two forms are the same string.
+function brandAliases(rawBrand) {
+  const full = normalize(rawBrand);
+  if (!full) return [];
+  const out = [full];
+  const squashed = full.replace(/[\s\-]/g, '');
+  if (squashed && squashed !== full) out.push(squashed);
+  return out;
+}
+
+// ONE admission rule, used by BOTH the loader and the matcher. They previously
+// each spelled `length >= MIN_LEN` inline; a key admitted under one and rejected
+// under the other is a key that can never match, which is the state `3ce` was in.
+//
+// Below MIN_LEN a key must carry a digit. `3ce` qualifies; `vdl` and `nyx` do
+// not and stay unmatched — a three-letter all-alphabetic span is not
+// distinguishable from noise without a signal this cache does not have, and the
+// cost of guessing is a category query silently scoped to a brand.
+function admissibleKey(key) {
+  const k = String(key || '');
+  if (!k || STOPWORDS.has(k)) return false;
+  if (k.length >= MIN_LEN) return true;
+  return k.length >= 3 && /[0-9]/.test(k);
+}
+
 async function refresh() {
   let query;
   try {
@@ -71,8 +107,9 @@ async function refresh() {
   }
   const next = new Set();
   for (const row of rows) {
-    const b = normalize(row && row.b);
-    if (b && b.length >= MIN_LEN && !STOPWORDS.has(b)) next.add(b);
+    for (const b of brandAliases(row && row.b)) {
+      if (admissibleKey(b)) next.add(b);
+    }
   }
   _set = next;
   _loadedAt = Date.now();
@@ -107,8 +144,15 @@ function matchCatalogBrand(normalizedQuery) {
   for (let size = Math.min(4, tokens.length); size >= 1; size -= 1) {
     for (let i = 0; i + size <= tokens.length; i += 1) {
       const span = tokens.slice(i, i + size).join(' ');
-      if (span.length >= MIN_LEN && !STOPWORDS.has(span) && _set.has(span)) {
+      if (admissibleKey(span) && _set.has(span)) {
         return span;
+      }
+      // The query may spell a separator the catalog brand does not, or the
+      // reverse: `A'PIEU` arrives here as the two tokens `a pieu` while the
+      // dictionary holds `apieu`. Both forms were indexed, so try the squash.
+      const squashed = span.replace(/[\s\-]/g, '');
+      if (squashed !== span && admissibleKey(squashed) && _set.has(squashed)) {
+        return squashed;
       }
     }
   }
@@ -146,6 +190,8 @@ module.exports = {
   maybeRefresh,
   getBrandSet,
   matchCatalogBrand,
+  brandAliases,
+  admissibleKey,
   debugState,
   __setBrandSetForTest,
 };
