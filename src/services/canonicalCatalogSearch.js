@@ -1382,32 +1382,55 @@ async function fetchCanonicalChainRows(args = {}) {
   // union's recall silently depend on two unrelated flags — with recall_doc off, `recallDocArm` is empty
   // and the arm degrades to title/brand/token, which is still the core of the win rather than a surprise.
   //
-  // ONE CARVE-OUT: the ingredient arm comes back when the token arm is EMPTY.
+  // WHICH ARM THE UNION TAKES — gated on the recall_doc COVERAGE ARM, not on the caller's
+  // sargableTextWhere election. Superseded reasoning is kept because the correction is the point.
   //
-  // `plainTokenWhere` is only built at 2+ significant tokens (see buildSignificantTokens), so a BARE
-  // ingredient query collapses this arm to title/brand alone — and bare ingredient queries are exactly the
-  // ones that reach here with `verticalSearch` on. Measured: `niacinamide` resolves the prefix
-  // beauty/skincare/treat/ AND sets verticalSearch, is 1 token, and with recall_doc off the whole union arm
-  // becomes two LIKEs. The sibling lane already refuses the identical narrowing for this reason —
-  // citableSargableLane will not drop these arms unless the recall_doc arm is present, because bare
-  // "glycerin" measured 22/25 rows lost without it. recall_doc does not close the gap either: migration 058
-  // projects EXTERNAL-SEED text only, so internal_merchant rows have recall_doc IS NULL and get no cover.
+  // First cut (#2035): the union took the PLAIN clause unconditionally, arguing that the #1935 sargable
+  // trade dropped recall arms and a recall fix must not drop recall. Prod measured that the hard way — the
+  // flag flip on 2026-08-20 took cold prefix latency from ~7.5s to 9-18.6s and broke the Aurora reco
+  // recall timeout, which drops recommend_products into LLM-invented archetypes.
   //
-  // The cost is bounded, and the shape is what makes it safe: the sku arms match the WHOLE `$2` phrase,
-  // which for a multi-word query never appears in an ingredient-id array — they are near-dead there. So
-  // they can only do useful work in precisely the case this carve-out restores them for. Keeping them at
-  // 1 token and dropping them at 2+ is therefore both the recall-correct and the latency-correct rule,
-  // not a compromise between the two.
+  // Second cut (#2039): narrowed the arm, but attributed the cost to the two `OR EXISTS` on catalog_skus
+  // and gated on nothing. THAT ATTRIBUTION WAS WRONG, corrected by prod EXPLAIN ANALYZE in #2043:
   //
-  // skuTextWhere (sku code / variant title / source_variant_id) is deliberately NOT restored: those fields
-  // carry identifiers and variant labels, not ingredient names, so it is the arm with the cost and none of
-  // the measured recall.
-  const unionIngredientArm = plainTokenWhere ? '' : verticalWhere;
-  const unionTextWhereClause = `
+  //   The dominant cost is `LOWER(COALESCE(m.merchant_name,'')) LIKE $2` — a CROSS-TABLE disjunct. One
+  //   cross-table arm means the whole OR can only be evaluated AFTER the merchants join, so the
+  //   payload-JSON conjuncts (externalSeedUnavailableWhere) run over every serving-eligible row (~8,490).
+  //   catalog_products is 279MB of which 235MB is TOAST, so that is ~8.5k payload detoasts per query:
+  //   measured `toner` at 4,366ms / 285k shared buffers. Dropping it makes the OR single-table, so it
+  //   pushes into the catalog_products scan and the payload quals run only on OR-passing rows (~453 vs
+  //   ~9,572). Measured: toner 4,366 -> 483ms, shampoo 3,167 -> 507ms, hair mask 3,169 -> 912ms,
+  //   niacinamide toner 3,803 -> 1,022ms, cleanser 3,709 -> 777ms, identical row digests on every query.
+  //
+  // GATE ON THE COVERAGE ARM. `recallDocArm` present is what makes the trade safe — #1935's own measured
+  // lesson is that bare "glycerin" lost 22/25 rows when these arms were dropped WITHOUT it. Gating on the
+  // caller's tokenMatch/sargableTextWhere election instead would leave every non-electing browse caller
+  // (the shopping browse lane passes neither) on the 4.4s plan for no recall benefit. With the flag off we
+  // keep the plain complete-recall arm verbatim: slower, and correct.
+  //
+  // `tokenWhere` rides in whatever shape the caller elected — both shapes are single-table so either
+  // pushes down, and the sargable shape is additionally bitmap-eligible. #2039 forced `plainTokenWhere`
+  // here and pinned that with a test; that test was removed with this change, deliberately. Its premise
+  // (the union must not vary with sargableTextWhere) is not worth the 4.4s plan it protects, and the
+  // recall difference between the two token shapes is bounded by the coverage arm this branch requires.
+  //
+  // ONE CARVE-OUT KEPT FROM #2039: the ingredient arm returns when the token arm is EMPTY.
+  // `tokenWhere` needs 2+ significant tokens, so a BARE ingredient query — `niacinamide` resolves a
+  // prefix AND sets verticalSearch — collapses this arm to title/brand/recall_doc. recall_doc does not
+  // cover it: migration 058 projects EXTERNAL-SEED text only, so internal_merchant rows are NULL there.
+  // #2043's parity run (0 of 255 rows admitted only by a dropped arm) does not settle this case: its
+  // vocabulary is 15 browse words and its ingredient probe, `niacinamide toner`, is two tokens. The cost
+  // is bounded and self-limiting — the sku arms match the WHOLE `$2` phrase, which never appears in an
+  // ingredient-id array for a multi-word query, so they can only do useful work in exactly the 1-token
+  // case this restores them for. Drop it when someone measures bare single-token ingredient recall.
+  const unionIngredientArm = tokenWhere ? '' : verticalWhere;
+  const unionTextWhereClause = recallDocArm
+    ? `
         LOWER(COALESCE(p.title, '')) LIKE $2
         OR LOWER(COALESCE(p.brand, '')) LIKE $2${unionIngredientArm}
-        ${plainTokenWhere}${recallDocArm}
-  `;
+        ${tokenWhere}${recallDocArm}
+  `
+    : plainTextWhereClause;
   const textWhereClause = citableSargableLane
     ? `
         LOWER(COALESCE(p.title, '')) LIKE $2
@@ -1432,21 +1455,7 @@ async function fetchCanonicalChainRows(args = {}) {
   if (!categoryBind) {
     whereClause = `(${textWhereClause})`;
   } else if (categoryBrowseTextUnion) {
-    // THE PLAIN FORM, NEVER THE SARGABLE ONE, on the union's text arm.
-    //
-    // `sargableTextWhere` picks a NARROWER text clause: it drops the
-    // merchant_name, source_product_id and sku/vertical OR-EXISTS arms in
-    // exchange for a trigram-bitmap-able plan (#1935). That trade was measured
-    // on the text-only lane, where the recall it gives up is covered by the
-    // recall_doc arm. It was a provable no-op in browse mode only because
-    // browse discarded the text clause outright — which is precisely the
-    // invariant tests/find_products_multi_mainline_sargable.test.js pins.
-    //
-    // Routing the union through `textWhereClause` would silently extend an
-    // unmeasured plan-and-recall change to every prefix-resolving query, and
-    // would do it by DROPPING recall arms inside a fix whose whole purpose is
-    // to recover recall. So the union takes the plain form and #1935's
-    // byte-identity invariant survives intact.
+    // See the unionTextWhereClause comment above for which arm this takes and why.
     whereClause = `((${categoryPredicate})
         OR (${unionTextWhereClause}))`;
   } else {
