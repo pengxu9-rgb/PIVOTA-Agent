@@ -30,6 +30,13 @@
 
 'use strict';
 
+const {
+  TAXONOMY_LEAVES,
+  LEAF_PARENTS,
+  ANCESTOR_NODES,
+  TAXONOMY_ROOTS,
+} = require('./recallTaxonomyLeaves');
+
 // Canonical home for each semantic category. Where the data and the old
 // taxonomy table disagreed, the choice is recorded with its reason — the rule
 // is whichever target yields a TIGHT browse bucket, because the prefix's
@@ -193,8 +200,78 @@ function isCanonicalCategoryPath(value) {
   return !Object.prototype.hasOwnProperty.call(CATEGORY_PATH_ALIASES, path);
 }
 
+// CAN CATEGORY RECALL REACH THIS PATH, AS STORED?
+//
+// The read-side twin of `categoryPathIsCategorised` above, and a DIFFERENT QUESTION from it:
+//
+//     categoryPathIsCategorised('beauty/pottery')  -> true   (two segments: somebody answered)
+//     categoryPathHasDoor('beauty/pottery')        -> false  (no prefix recall browses reaches it)
+//     categoryPathIsCategorised('beauty')          -> false  (a namespace is not an answer)
+//     categoryPathHasDoor('beauty')                -> TRUE   (every root is an ANCESTOR_NODES entry)
+//
+// That last line is the whole reason the bare-domain cohort survived a standardisation pass, so the
+// two predicates must never be collapsed into one.
+//
+// IT ASKS THE WAY RECALL ASKS -- case-sensitively, without trimming -- because a mis-cased path
+// being unreachable is precisely the failure mode. `Beauty/Makeup` has no door even though
+// `beauty/makeup` does. Do not "helpfully" lowercase here; that would measure a different system
+// than the one serving the query.
+//
+// Derived from the VENDORED backend leaf set, not from CANONICAL_CATEGORY_PATHS. Building it from
+// the local canonical map instead was measured to call 190 serving rows doorless where production
+// calls 76 -- see the header of recallTaxonomyLeaves.js.
+function categoryPathHasDoor(value) {
+  // Arrays are joined the way `normalizeCategoryPathText` above joins them, and ONLY for that
+  // reason: two predicates living in one module that disagree about an input shape is a trap, and
+  // the writers that will gate on this read `category_path` out of a JSON payload where the array
+  // form genuinely occurs (see normalizeCategoryPath in the sync scripts). Before this, a
+  // `['beauty','makeup']` was stringified to `'beauty,makeup'` -> no door, while its sibling
+  // `categoryPathIsCategorised` said true for the same input.
+  //
+  // NOTE this is a JS-only tolerance: the Python twin raises TypeError on a list, so neither side
+  // "matches" the other for that shape. Nothing else here normalises -- see the case-sensitivity
+  // note above.
+  const path = Array.isArray(value) ? value.join('/') : String(value == null ? '' : value);
+  if (!path) return false;
+  if (ANCESTOR_NODES.includes(path)) return true;
+  return LEAF_PARENTS.some((parent) => path.startsWith(`${parent}/`));
+}
+
+// THE REVERSE DRIFT CHECK, and it runs at import so it cannot be skipped by a test that nobody
+// invokes. The vendored list can go stale in two directions; this catches the one this repo can
+// actually cause. If somebody adds a canonical home here that the recall taxonomy has never heard
+// of, then `toCanonicalCategoryPath` would start steering rows onto a path recall cannot browse --
+// the exact defect this whole area exists to prevent, arriving from the inside.
+//
+// The other direction (the backend adds a leaf and this copy goes stale) is caught by the fixture
+// in tests/recall_taxonomy_leaf_parity.node.test.cjs, which pins the list against production.
+//
+// A FUNCTION, not an inline filter, for the reason pivota-backend learned the hard way with
+// `gateway_collisions`: an assertion that only ever sees a clean map proves the map is clean, never
+// that the check works. A test hands this a deliberately broken map and watches it fire.
+function canonicalTargetsWithoutADoor(canonicalPaths = CANONICAL_CATEGORY_PATHS) {
+  return Object.values(canonicalPaths || {})
+    .filter((path) => !categoryPathHasDoor(path))
+    .sort();
+}
+
+const _CANONICAL_WITHOUT_A_DOOR = canonicalTargetsWithoutADoor();
+if (_CANONICAL_WITHOUT_A_DOOR.length) {
+  throw new Error(
+    'beautyTaxonomy: CANONICAL_CATEGORY_PATHS targets a path recall cannot reach: '
+      + `${_CANONICAL_WITHOUT_A_DOOR.join(', ')} — either the target is wrong, or `
+      + 'src/services/recallTaxonomyLeaves.js needs regenerating from pivota-backend.',
+  );
+}
+
 module.exports = {
   MIN_CATEGORISED_PATH_SEGMENTS,
+  TAXONOMY_LEAVES,
+  LEAF_PARENTS,
+  ANCESTOR_NODES,
+  TAXONOMY_ROOTS,
+  categoryPathHasDoor,
+  canonicalTargetsWithoutADoor,
   CANONICAL_CATEGORY_PATHS,
   CATEGORY_PATH_ALIASES,
   INTENTIONALLY_DISTINCT,
