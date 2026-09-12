@@ -12142,52 +12142,7 @@ function projectSearchTransportProduct(product, stats = null) {
   return projected;
 }
 
-// ADR-007 citable supplement — OPERATION-LEVEL. find_products_multi has many
-// lanes (agent_products_search / external_seed_mainline / ingredient_recall_direct)
-// with different return points, so per-exit wiring missed most of them. Instead we
-// hook the single universal res.json wrapper: PREFETCH offer-free index_eligible
-// items once (async, OFF the serial path — see handleInvokeRequest) via
-// buildCitableSupplementItems, then APPEND whatever has resolved by send time
-// synchronously inside the wrapper (appendCitableSupplementItems) so EVERY response
-// is covered. Flag-gated by INDEX_ELIGIBLE_RECALL (default OFF -> no query, no-op).
-// Append-only + deduped; each item is buyable:false / catalog_track:'citation' so
-// it can never be a buyable/checkout result. Best-effort; never throws.
-function citableSupplementEnabled() {
-  return ['1', 'true', 'yes', 'on'].includes(
-    String(process.env.INDEX_ELIGIBLE_RECALL || '').trim().toLowerCase(),
-  );
-}
-
-// The tokenMatch canonical query behind the supplement is expensive
-// (prod fpm_stage_breakdown measured it at 5.8-17.2s), so results are cached
-// per normalized query and concurrent identical queries share one DB
-// round-trip. The first request for a query warms the cache (its own response
-// usually ships before the query resolves); subsequent requests append from
-// cache. Items are cloned on the way out so downstream response mutation
-// (near-dup collapse, page-size trim, projections) can't poison the cache.
-const CITABLE_SUPPLEMENT_CACHE_MAX_ENTRIES = 500;
-const citableSupplementCache = new Map(); // normalized query -> { items, expiresAt }
-const citableSupplementInFlight = new Map(); // normalized query -> Promise<items>
-
-function citableSupplementCacheTtlMs() {
-  const raw = Number(process.env.CITABLE_SUPPLEMENT_CACHE_TTL_MS);
-  return Number.isFinite(raw) && raw >= 0 ? raw : 5 * 60 * 1000;
-}
-
-// Finalize one built product into a citation item (ADR-007). Marks it
-// non-buyable and strips fields that don't belong on a citation:
-//   - the raw seed_data / external_seed jsonb blobs that
-//     buildCanonicalChainMainlineProduct echoes onto every item. On a citation
-//     these are pure response bloat — measured on prod as present on ~65% of
-//     citable items and the dominant per-item byte cost. The DERIVED fields the
-//     builder extracts from those blobs (ingredient_intel, active_ingredients,
-//     ingredients_inci, pdp_ingredients_raw, fashion_meta, identity) are separate
-//     top-level keys and are intentionally KEPT.
-// A citation may be referral-only, but it still needs a source-backed price to
-// be shown in a shopping result. The public search contract never permits a
-// card with an absent price or a fabricated currency. We therefore materialize
-// a positive amount/currency pair before removing the source payload below.
-// Scoped to the citation lane only; other lanes keep the full item shape.
+// A shopping card must carry an amount and currency from the same source.
 function readCanonicalSearchPricePair(value, fallbackCurrency = '') {
   if (value === null || value === undefined) return null;
   if (typeof value === 'number' || typeof value === 'string') {
@@ -12477,209 +12432,7 @@ function finalizeCitableSupplementItem(item) {
   return item;
 }
 
-async function queryCitableSupplementItems(q) {
-  const rows = await fetchCanonicalChainRows({
-    query: q,
-    includeSkuOffers: false,
-    eligibility: 'index_eligible',
-    tokenMatch: true,
-    deps: { query },
-  });
-  if (!Array.isArray(rows) || !rows.length) return [];
-  const items = [];
-  for (const row of rows) {
-    const item = finalizeCitableSupplementItem(buildCanonicalChainMainlineProduct(row));
-    if (!item) continue;
-    items.push(item);
-  }
-  return items;
-}
-
-async function buildCitableSupplementItems(queryText = '') {
-  try {
-    if (!citableSupplementEnabled()) return [];
-    const q = String(queryText || '').trim();
-    if (!q) return [];
-    const cacheKey = q.toLowerCase();
-    const cached = citableSupplementCache.get(cacheKey);
-    if (cached && cached.expiresAt > Date.now()) {
-      return structuredClone(cached.items);
-    }
-    if (cached) citableSupplementCache.delete(cacheKey);
-    let inFlight = citableSupplementInFlight.get(cacheKey);
-    if (!inFlight) {
-      inFlight = queryCitableSupplementItems(q)
-        .then((items) => {
-          const ttlMs = citableSupplementCacheTtlMs();
-          if (ttlMs > 0) {
-            if (citableSupplementCache.size >= CITABLE_SUPPLEMENT_CACHE_MAX_ENTRIES) {
-              const oldestKey = citableSupplementCache.keys().next().value;
-              if (oldestKey !== undefined) citableSupplementCache.delete(oldestKey);
-            }
-            citableSupplementCache.set(cacheKey, { items, expiresAt: Date.now() + ttlMs });
-          }
-          return items;
-        })
-        .finally(() => {
-          citableSupplementInFlight.delete(cacheKey);
-        });
-      citableSupplementInFlight.set(cacheKey, inFlight);
-    }
-    const items = await inFlight;
-    return structuredClone(items);
-  } catch (_) {
-    return []; // best-effort: never break recall
-  }
-}
-
-// Sync: append prefetched citable items to whatever final body is being sent,
-// deduped against the products already present. Returns the (possibly mutated)
-// body. Safe to call on any shape; no-op when items is empty.
-function appendCitableSupplementItems(responseBody, items, { queryText = '', searchParams = {} } = {}) {
-  try {
-    if (!responseBody || typeof responseBody !== 'object') return responseBody;
-    // Strict-contract lanes (ingredient_recall_direct + the upstream strict
-    // proxy) paginate inside the lane AND are exempt from
-    // enforceFindProductsMultiRequestedPageSize's trim, so anything appended
-    // here ships to the client uncapped: prod probes showed limit=10 requests
-    // returning 48-52 products whenever the supplement cache was warm at send
-    // time (and 10 when it wasn't — the count flapped with cache warmth).
-    // Citation items are token-matched, never checked against the ingredient
-    // constraint, so they don't belong in a strict_constraint_query response
-    // either. Skip the lane entirely.
-    //
-    // The discriminator must NOT rely on contract_bridge alone:
-    // applyPivotBeautyContractToInvokeSearchResponse runs EARLIER in the same
-    // res.json wrapper and overwrites contract_bridge.{attempted,resolved}_contract
-    // to 'pivot.agent.v1' for beauty-shaped requests — and the strict lane
-    // deliberately still serves pivot-contract ingredient queries
-    // (shouldPreserveIngredientDirectForPivotBeautyContract). That rewrite
-    // spreads the rest of metadata untouched, so the lane's top-level
-    // resolved_contract and strict_constraint_query stamps survive it; the
-    // upstream strict proxy stamps only contract_bridge, which is covered by
-    // the first arm when no rewrite fired.
-    //
-    // This check sits BEFORE the items-length early-return so strict bodies
-    // stamp count 0 + skip_reason deterministically, cold or warm cache —
-    // otherwise the skip_reason itself would flap with cache warmth, the
-    // exact ambiguity it exists to remove.
-    const responseMetadata =
-      responseBody.metadata && typeof responseBody.metadata === 'object' && !Array.isArray(responseBody.metadata)
-        ? responseBody.metadata
-        : null;
-    const isStrictContractBody = Boolean(
-      responseMetadata &&
-        (String(responseMetadata.contract_bridge?.resolved_contract || '') === 'shop_invoke_strict' ||
-          String(responseMetadata.resolved_contract || '') === 'shop_invoke_strict' ||
-          responseMetadata.strict_constraint_query === true),
-    );
-    if (isStrictContractBody) {
-      responseMetadata.citable_supplement_count = 0;
-      responseMetadata.citable_supplement_skip_reason = 'strict_contract';
-      return responseBody;
-    }
-    // The primary lane has already paginated. Reappending the same cached
-    // citations to page 2 would repeat page 1 and leak unranked product types.
-    if (Number(searchParams.page || responseBody.page || 1) > 1) {
-      responseBody.metadata = { ...responseMetadata, citable_supplement_count: 0,
-        citable_supplement_skip_reason: 'primary_lane_paginated' };
-      return responseBody;
-    }
-    if (responseBody.error || (responseBody.status === 'failed' &&
-        responseMetadata?.failure_class !== 'beauty_mainline_empty')) return responseBody;
-    if (!Array.isArray(items) || !items.length) return responseBody;
-    const contract = responseMetadata?.search_quality_contract ||
-      (queryText ? buildSearchQualityContract({ rawQuery: queryText, market: searchParams.market }) : null);
-    if (contract?.hard_constraints?.exclusions?.includes('beauty_product_for_apparel_query')) {
-      responseBody.metadata = { ...responseMetadata, citable_supplement_count: 0,
-        citable_supplement_skip_reason: 'explicit_apparel_request' };
-      return responseBody;
-    }
-    const budget = resolveBeautyMainlineBudgetConstraint({ search: searchParams, queryText });
-    const scoped = items.filter((item) =>
-      getSearchQualityContractHardConstraintResult(item, contract, queryText).eligible);
-    const accepted = filterFindProductsMultiDirectProductsByBudget(budget, scoped).products;
-    const container = Array.isArray(responseBody.products)
-      ? responseBody
-      : (responseBody.data && Array.isArray(responseBody.data.products) ? responseBody.data : null);
-    if (!container) return responseBody;
-    const seen = new Set(
-      container.products.map((p) => p && (p.content_key || p.product_id)).filter(Boolean),
-    );
-    let added = 0;
-    for (const item of accepted) {
-      const key = item && (item.content_key || item.product_id);
-      if (key && seen.has(key)) continue;
-      if (key) seen.add(key);
-      container.products.push(item);
-      added += 1;
-    }
-    responseBody.metadata = {
-      ...responseMetadata,
-      citable_supplement_count: added,
-      citable_supplement_rejected_count: items.length - accepted.length,
-    };
-    if (added) {
-      // Retain the primary result as diagnostics. Citation recovery is a
-      // referral result, not evidence of a now-successful transactional lane.
-      responseBody.metadata.mainline_total = responseBody.total ?? null;
-      responseBody.metadata.total_is_lower_bound = true;
-      container.total = Math.max(Number(container.total) || 0, container.products.length);
-      if (container === responseBody) responseBody.total = container.total;
-      container.page_size = container.products.length;
-
-    }
-  } catch (_) {
-    // best-effort: the citable supplement must never break recall transport
-  }
-  return responseBody;
-}
-
-// Run after eligibility, page limits and link minting: append-time counts include
-// citations some consumer doors intentionally remove. Only actual survivors may
-// recover a semantic-empty response; never turn a transport error into success.
-function finalizeCitableSupplementResponse(responseBody) {
-  if (!responseBody || typeof responseBody !== 'object') return responseBody;
-  const metadata = responseBody.metadata;
-  if (!metadata || metadata.citable_supplement_count == null) return responseBody;
-  const container = Array.isArray(responseBody.products) ? responseBody : responseBody.data;
-  if (!Array.isArray(container?.products)) return responseBody;
-  const citations = container.products.filter(p => p?.source === 'canonical_citation').length;
-  metadata.citable_supplement_returned_count = citations;
-  if (metadata.mainline_total != null) {
-    container.total = Math.max(Number(metadata.mainline_total) || 0, container.products.length);
-    container.page_size = container.products.length;
-  }
-  if (citations && !responseBody.error && metadata.failure_class === 'beauty_mainline_empty') {
-    metadata.mainline_failure_class = metadata.failure_class;
-    metadata.mainline_search_decision = metadata.search_decision;
-    responseBody.status = 'success';
-    responseBody.success = true;
-    responseBody.reply = null;
-    metadata.status = 'success';
-    metadata.failure_class = null;
-    metadata.search_decision = {
-      ...metadata.search_decision, final_decision: 'citation_results_returned',
-    };
-  }
-  return responseBody;
-}
-
-// Op-level refinement for find_products_multi BEAUTY responses, applied AFTER the
-// citable supplement is appended. The lane-level rank/collapse (PR #1738/#1739)
-// runs BEFORE the supplement, so citable items — which carry distinct
-// content_keys and so pass appendCitableSupplementItems' exact-key dedupe — can
-// re-introduce near-identical titles the lane already collapsed (e.g. "(Copy_Tn)"
-// test copies), and a small-distinct-set lane's demoted dupes can leak into the
-// page. This is the single place that sees the fully merged list.
-//   - Near-dup collapse runs for EVERY beauty lane (idempotent where the lane
-//     already collapsed; catches citable-supplement dupes). Demotes to tail,
-//     never drops → total/pagination stay stable.
-//   - Token-relevance reorder runs ONLY for the ingredient-recall-direct lane
-//     (which has no scorer of its own). The mainline lane keeps its richer
-//     in-lane ranking (brand/category/active weights) untouched — re-sorting it
-//     by token relevance alone would be a regression.
-// Best-effort + flag-gated; never breaks recall transport.
+// Final refinement preserves the selected primary lane and its eligibility rules.
 function refineBeautyFindProductsMultiResponseBody(responseBody, queryText = '') {
   try {
     if (
@@ -14758,6 +14511,34 @@ function getInvokeProductsArray(body) {
   return Array.isArray(body?.products) ? body.products : [];
 }
 
+function buildBeautyPrimaryRecallFailure(queryText, traceId) {
+  return {
+    status: 'failed',
+    success: false,
+    products: [],
+    total: 0,
+    error: { code: 'BEAUTY_PRIMARY_RECALL_FAILED', message: 'Primary product search is unavailable.' },
+    metadata: {
+      status: 'failed',
+      failure_class: 'beauty_primary_recall_failed',
+      query_source: 'beauty_external_seed_mainline',
+      fallback_attempted: false,
+      fallback_adopted: false,
+      route_health: {
+        primary_path_used: 'beauty_external_seed_mainline',
+        fallback_triggered: false,
+        final_returned_count: 0,
+      },
+      search_trace: {
+        trace_id: traceId,
+        raw_query: queryText,
+        upstream_stage: { called: false, timeout: false, status: null },
+        final_decision: 'beauty_primary_recall_failed',
+      },
+    },
+  };
+}
+
 function isPivotBeautyFallbackLikeResponse(body) {
   const metadata = body?.metadata && isPlainObject(body.metadata) ? body.metadata : {};
   const querySource = String(metadata.query_source || '').trim().toLowerCase();
@@ -14857,11 +14638,13 @@ function applyPivotBeautyContractToInvokeSearchResponse({
     existingMeta.contract_bridge && isPlainObject(existingMeta.contract_bridge)
       ? existingMeta.contract_bridge
       : {};
-  const failureClass = blockFallbackAdoption
-    ? 'beauty_legacy_fallback_blocked'
-    : effectiveProducts.length === 0
-      ? 'beauty_mainline_empty'
-      : null;
+  const failureClass = existingMeta.failure_class === 'beauty_primary_recall_failed'
+    ? 'beauty_primary_recall_failed'
+    : blockFallbackAdoption
+      ? 'beauty_legacy_fallback_blocked'
+      : effectiveProducts.length === 0
+        ? 'beauty_mainline_empty'
+        : null;
   const contractStatus = failureClass
     ? 'failed'
     : String(body.status || '').trim().toLowerCase() === 'degraded'
@@ -40966,56 +40749,6 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       'invoke request complete',
     );
   });
-  // ADR-007 op-level citable supplement: prefetch offer-free index_eligible items
-  // once, then append them in the res.json wrapper below so EVERY
-  // find_products_multi lane is covered. No-op unless INDEX_ELIGIBLE_RECALL is on.
-  // NOT awaited: the tokenMatch canonical query is prod-measured at 5.8-17.2s
-  // and used to serialize in front of the whole pipeline (60-80% of fpm wall
-  // time). It now runs alongside the pipeline; the wrapper appends whatever has
-  // resolved by send time (typically a warm-cache hit) and fails open to []
-  // otherwise, stamping metadata.citable_supplement_pending for observability.
-  let citableSupplementItems = [];
-  let citableSupplementAttempted = false;
-  let citableSupplementSettled = false;
-  try {
-    const supplementOp = String(debugRuntime.operation || req?.body?.operation || '').trim().toLowerCase();
-    if (supplementOp === 'find_products_multi' && citableSupplementEnabled()) {
-      citableSupplementAttempted = true;
-      const citableSupplementStartedAt = Date.now();
-      buildCitableSupplementItems(
-        String(req?.body?.payload?.search?.query || req?.body?.payload?.query || '').trim(),
-      )
-        .then((items) => {
-          citableSupplementSettled = true;
-          citableSupplementItems = Array.isArray(items) ? items : [];
-          if (res.writableEnded) {
-            // Response already sent: this request's fpm_stage_breakdown has
-            // been emitted, so keep the DB cost visible with its own log line.
-            logger.info(
-              {
-                gateway_request_id: gatewayRequestId,
-                stage: 'citable_supplement',
-                latency_ms: Math.max(0, Date.now() - citableSupplementStartedAt),
-                returned: citableSupplementItems.length,
-                applied: false,
-              },
-              'citable supplement resolved after response send (off-path)',
-            );
-          } else {
-            recordFpmStage('citable_supplement', citableSupplementStartedAt, {
-              returned: citableSupplementItems.length,
-              off_path: true,
-            });
-          }
-        })
-        .catch(() => {
-          citableSupplementSettled = true;
-          citableSupplementItems = [];
-        });
-    }
-  } catch (_) {
-    citableSupplementItems = [];
-  }
   const originalJson = res.json.bind(res);
   res.json = (body) => {
     let finalBody = body;
@@ -41284,26 +41017,13 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       );
     }
     finalBody = maybeAttachInvokeBeautyExpertProjection(finalBody);
-    finalBody = appendCitableSupplementItems(finalBody, citableSupplementItems, {
-      queryText: String(req?.body?.payload?.search?.query || req?.body?.payload?.query || '').trim(),
-      searchParams: req?.body?.payload?.search || req?.body?.payload || {},
-    });
-    // The external-seed mint below opens an async window between this merge and
-    // the actual send. The off-path citable prefetch can resolve inside that
-    // window and flip `citableSupplementSettled` to true AFTER the append above
-    // already ran with an empty list — which would report "settled, found
-    // nothing" for a supplement that was still in flight when its items were
-    // needed. Snapshot the flag at the point the items were merged and let
-    // finish() read the snapshot.
-    const citableSupplementSettledAtMerge = citableSupplementSettled;
     const finalOperation = String(debugRuntime.operation || req?.body?.operation || '')
       .trim()
       .toLowerCase();
     if (isShoppingAgentFindProductsMultiRequest(req, finalOperation)) {
       // Every search card must have a canonical, currency-qualified price (or
       // a priced seller offer that has been materialized as that card price).
-      // Run after supplements because that is where citation cards enter the
-      // response, and before pagination so an invalid card cannot consume a slot.
+      // Validate before pagination so an invalid card cannot consume a slot.
       finalBody = enforceFindProductsMultiPriceContract(finalBody);
       // A terminal catalog/PDP eligibility signal wins over a caller's
       // in_stock_only=false preference. Unknown inventory remains eligible,
@@ -41334,40 +41054,24 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       // `unhandledRejection` handler (see the note at the /mcp door), so an
       // escaped rejection takes down the WHOLE gateway rather than one request.
       finalBody = applyExternalSeedAttributionMetadata(finalBody, seedAttributionCounts);
-      finalBody = finalizeCitableSupplementResponse(finalBody);
+      // Eligibility and pagination can remove the primary lane's last card.
+      // Report the final list; an empty result must not retain pre-filter success.
+      finalBody = applyPivotBeautyContractToInvokeSearchResponse({
+        body: finalBody,
+        req,
+        operation: finalOperation,
+        gatewayRequestId,
+      });
       setInvokePerfHeaders();
       return originalJson(finalBody);
     };
 
     const finish = () => {
-      // Final near-dup collapse (+ ingredient-direct reorder) on the fully merged
-      // list, so citable-supplement items can't re-introduce near-identical titles
-      // the lane already collapsed. See refineBeautyFindProductsMultiResponseBody.
+      // Refine the primary result before enforcing the requested page size.
       finalBody = refineBeautyFindProductsMultiResponseBody(
         finalBody,
         String(req?.body?.payload?.search?.query || req?.body?.payload?.query || '').trim(),
       );
-      // Stamp the count even when 0 items were appended, so the metadata
-      // distinguishes "supplement ran, nothing to add" (0) from "this response
-      // path bypassed the wrapper entirely" (field absent). When the off-path
-      // prefetch hadn't resolved by the time the items were merged,
-      // citable_supplement_pending marks "still in flight (warming the cache)"
-      // vs "ran and found nothing" — read from the merge-time snapshot, because
-      // the mint's async window can flip the live flag after the merge.
-      if (
-        citableSupplementAttempted &&
-        finalBody &&
-        typeof finalBody === 'object' &&
-        finalBody.metadata &&
-        typeof finalBody.metadata === 'object'
-      ) {
-        if (finalBody.metadata.citable_supplement_count === undefined) {
-          finalBody.metadata.citable_supplement_count = 0;
-        }
-        if (!citableSupplementSettledAtMerge) {
-          finalBody.metadata.citable_supplement_pending = true;
-        }
-      }
       try {
         if (
           FPM_ENFORCE_REQUESTED_PAGE_SIZE &&
@@ -41712,6 +41416,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               intent: null,
               creatorScoped: earlyCreatorScoped,
             });
+            if (!directResponse) {
+              throw new Error('beauty_primary_recall_unavailable');
+            }
           } finally {
             recordFpmStage('beauty_direct_recall', earlyDirectStartedAt, {
               returned: Array.isArray(directResponse?.products) ? directResponse.products.length : null,
@@ -41829,8 +41536,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               err: earlyDirectErr?.message || String(earlyDirectErr),
               query: earlyQueryText,
             },
-            'early beauty external-seed mainline search failed; continuing to standard invoke path',
+            'beauty primary recall failed',
           );
+          return res.status(503).json(buildBeautyPrimaryRecallFailure(earlyQueryText, gatewayRequestId));
         }
       }
     }
@@ -47504,22 +47212,14 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               failed: directResponse === undefined ? true : null,
             });
           }
-          const directProducts = Array.isArray(directResponse?.products)
-            ? directResponse.products
-            : [];
-          if (
-            directProducts.length > 0 ||
-            isSearchQualityContractSafeEmptyResponse(directResponse) ||
-            routeSearchQualityContractApplied ||
-            String(directResponse?.status || '').toLowerCase() === 'failed'
-          ) {
-            return res.json(directResponse);
-          }
+          if (!directResponse) throw new Error('beauty_primary_recall_unavailable');
+          return res.json(directResponse);
         } catch (err) {
           logger.warn(
             { err: err?.message || String(err), creatorId, source, queryText },
-            'Beauty contract external seed mainline direct search failed; falling back to guarded invoke flow',
+            'Beauty contract primary recall failed',
           );
+          return res.status(503).json(buildBeautyPrimaryRecallFailure(rawUserQuery || queryText, gatewayRequestId));
         }
       }
       const isCreatorUiColdStart = isCreatorUiSource(source) && queryText.length === 0;
@@ -47946,28 +47646,14 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               failed: directResponse === undefined ? true : null,
             });
           }
-          const directProducts = Array.isArray(directResponse?.products)
-            ? directResponse.products
-            : [];
-          if (
-            directProducts.length > 0 ||
-            routeSearchQualityContractApplied ||
-            isSearchQualityContractSafeEmptyResponse(directResponse)
-          ) {
-            const enriched = directResponse;
-            return res.json(enriched);
-          }
-          if (directResponse?.metadata?.canonical_path_executed) {
-            canonicalChainRecallPromise = Promise.resolve({
-              products: [],
-              telemetry: directResponse.metadata,
-            });
-          }
+          if (!directResponse) throw new Error('beauty_primary_recall_unavailable');
+          return res.json(directResponse);
         } catch (err) {
           logger.warn(
             { err: err?.message || String(err), creatorId, source, queryText },
-            'Beauty external-seed mainline search failed; continuing to remaining primary search paths',
+            'Beauty primary recall failed',
           );
+          return res.status(503).json(buildBeautyPrimaryRecallFailure(rawUserQuery || queryText, gatewayRequestId));
         }
       }
 
@@ -54131,8 +53817,6 @@ module.exports._debug = {
   decideGenericSkincareCachePreference,
   collapseNearDuplicateSearchProducts,
   enforceFindProductsMultiRequestedPageSize,
-  appendCitableSupplementItems,
-  finalizeCitableSupplementResponse,
   readCanonicalSearchPricePair,
   resolveCanonicalSearchProductPrice,
   materializeCanonicalSearchProductPrice,
