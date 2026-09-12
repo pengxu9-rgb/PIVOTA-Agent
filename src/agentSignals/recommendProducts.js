@@ -1,6 +1,7 @@
 'use strict';
 
 const { recordAuroraRecoAnswerPath } = require('../auroraBff/visionMetrics');
+const { recommendationIdentityConflict } = require('../shared/recoProductIdentity');
 
 // recommend_products — a NEED in natural language → a reasoned shortlist, as agent-facing Signals.
 //
@@ -235,8 +236,21 @@ function hasBeautyMarker(need) {
  */
 function offVerticalMarker(need) {
   if (!nonEmpty(need)) return null;
-  if (hasBeautyMarker(need)) return null;
+  // Resolve the object of a narrow non-beauty phrase before ambiguous nouns such as foundation
+  // or oil can suppress the ordinary gate. A cosmetic used at home or to remove machine oil stays in.
   const n = normalizeForMatch(need);
+  const contextual = anchored([
+    String.raw`foundations?\s+(?:for|of|under|beneath)\s+(?:(?:my|our|the|a|an|new)\s+)*(?:houses?|homes?|buildings?|garages?|sheds?)(?!\s+part(?:y|ies)\b)`,
+    String.raw`(?:house|building|concrete|structural)\s+foundations?`,
+    String.raw`(?:engine|motor|machine|chainsaw|gear)\s+(?:oils?|lubricants?)`,
+    String.raw`(?:oils?|lubricants?)\s+(?:for|in)\s+(?:(?:my|our|the|a|an)\s+)*(?:chainsaws?|engines?|motors?|machines?|cars?|lawn mowers?)`,
+  ]).exec(n);
+  if (contextual) {
+    const cosmeticUse = /\b(?:cleansers?|cleansing oils?|hand soaps?|body wash|makeup removers?|moisturizers?|sunscreens?)\b[^.!?;]{0,80}\b(?:remove|wash off|clean off|after|while|during)\b/i.exec(n);
+    const negated = /\b(?:not|without|avoiding)\s+$/i.test(n.slice(0, contextual.index));
+    if (!negated && !(cosmeticUse && cosmeticUse.index < contextual.index)) return contextual[0];
+  }
+  if (hasBeautyMarker(need)) return null;
   const hard = OFF_VERTICAL_HARD_RE.exec(n) || OFF_VERTICAL_CJK_RE.exec(need);
   if (hard) return hard[0];
   if (BEAUTY_WEAK_RE.test(n)) return null;
@@ -537,8 +551,9 @@ function normalizeConstraints(raw) {
 // `confidenceBasis` says what the lane's `score` on this item is MADE OF — see
 // recommendation_meta.confidence_basis. It defaults to null ('unknown'), which behaves exactly as
 // before for any caller that does not know about it; only a caller that positively reports
-// 'positional' suppresses the band.
+// 'positional' or a catalog identity replacement suppresses the band.
 function recommendationItemToSignal(item, { rank, confidenceBasis = null } = {}) {
+  if (recommendationIdentityConflict(item)) return null;
   // Per-row basis (stamped by applyStrictConformingTopUp on catalog filler) overrides the
   // answer-level one. Without it a mixed answer labels its filler as the model's own estimate.
   //
@@ -654,7 +669,8 @@ function recommendationItemToSignal(item, { rank, confidenceBasis = null } = {})
         // set, applyStrictConformingTopUp appends catalog rows (positional scores) into an
         // llm_primary answer, and the answer-level basis would vouch for them as the model's own
         // estimate — banding filler `high` above the model's actual pick at `medium`.
-        level: grounded && effectiveBasis !== 'positional' ? scoreBand(finiteNumber(item.score)) : null,
+        // A catalog replacement also cannot inherit the model's confidence in the original product.
+        level: grounded && effectiveBasis !== 'positional' && effectiveBasis !== 'catalog_rebound' ? scoreBand(finiteNumber(item.score)) : null,
         // Why there is (or is not) a band, so an agent can tell "we are not sure" from "we do not
         // measure this on this answer path". Without it, null reads as low confidence.
         basis: grounded ? (effectiveBasis || 'unknown') : 'ungrounded',
@@ -892,7 +908,14 @@ function makeRecommendProducts(deps = {}) {
       isPlainObject(payload.recommendation_meta) ? payload.recommendation_meta.confidence_basis : null,
     ) || null;
     const projected = [];
+    let identityMismatchSuppressed = 0;
     for (const item of items) {
+      // A price check cannot repair a product whose evidence/destination belongs to another ID.
+      // Withhold the complete row before projection, verification, or buyer-visible notes escape.
+      if (recommendationIdentityConflict(item)) {
+        identityMismatchSuppressed += 1;
+        continue;
+      }
       const s = recommendationItemToSignal(item, { confidenceBasis: laneConfidenceBasis });
       if (s) projected.push(s);
     }
@@ -1180,7 +1203,7 @@ function makeRecommendProducts(deps = {}) {
             // The lane DID answer, but every item it produced was an archetype it could not resolve
             // (or carried no id). 'no_recommendations' would blame it for producing nothing when the
             // truth is that nothing it produced was buyable — a different problem with a different fix.
-            || (suppressed.ungrounded + suppressed.unidentified > 0 ? 'no_grounded_recommendations' : 'no_recommendations')
+            || (identityMismatchSuppressed > 0 ? 'identity_mismatch' : suppressed.ungrounded + suppressed.unidentified > 0 ? 'no_grounded_recommendations' : 'no_recommendations')
           : null,
         vertical: 'beauty',
         latency_ms: latencyMs,
@@ -1204,6 +1227,7 @@ function makeRecommendProducts(deps = {}) {
         // A lane defect, not a policy outcome (see the suppression block): an item that claimed
         // catalog grounding and carried no id. Surfaced so it is countable rather than silent.
         ...(suppressed.unidentified > 0 ? { unidentified_suppressed: suppressed.unidentified } : {}),
+        ...(identityMismatchSuppressed > 0 ? { identity_mismatch_suppressed: identityMismatchSuppressed } : {}),
         // Live-price check tallies (only when a verifier is wired and grounded items existed):
         // checked = confirmed + updated + unavailable + unresolvable; `updated` items carry the
         // corrected price and a watchout naming the move; `unavailable` items keep the snapshot with
@@ -1241,8 +1265,8 @@ function makeRecommendProducts(deps = {}) {
         // Counts only items projection could not IDENTIFY (items minus projected), not the whole
         // lane output: an empty shortlist can now also mean identified items were dropped as
         // unresolvable, and those belong to price_verification.unresolvable, not to this key.
-        ...(signals.length === 0 && items.length > projected.length
-          ? { dropped_unidentified_items: items.length - projected.length }
+        ...(signals.length === 0 && items.length > projected.length + identityMismatchSuppressed
+          ? { dropped_unidentified_items: items.length - projected.length - identityMismatchSuppressed }
           : {}),
       },
     };
