@@ -32,14 +32,30 @@ const {
 } = require('../src/services/beautyTaxonomy');
 const VENDORED = require('../src/services/recallTaxonomyLeaves');
 const VERDICTS = require('./fixtures/recall_category_door_verdicts.json');
+const LEAVES_FIXTURE = require('./fixtures/recall_taxonomy_leaves.json');
 const GOLDEN = require('./fixtures/recall_browse_prefix_golden.json');
+const { spawnSync } = require('node:child_process');
+const fs = require('node:fs');
+const path = require('node:path');
 const { resolveBeautyCategoryPathPrefixForQuery } = require('../src/services/externalSeedProducts');
 
 // ---------------------------------------------------------------------------
 // 1. The vendored copy is the backend's set, and says so in numbers.
 // ---------------------------------------------------------------------------
 
-test('the vendored leaf set matches the shape production derives its doors from', () => {
+test('the vendored leaf set matches production BY MEMBERSHIP, not by count', () => {
+  // A COUNT IS NOT A PIN. The first version of this test checked `length === 72` plus sortedness
+  // plus the path regex — and a fabricated leaf (`fashion/accessories/hat` -> `fashion/accessories/
+  // fedora-bogus`) satisfies all three, changes no door verdict for any of the 217 production
+  // paths, and sailed through the whole suite. The mirror has to be pinned to the thing it mirrors.
+  assert.deepEqual(TAXONOMY_LEAVES, LEAVES_FIXTURE.leaves, 'the vendored leaf set drifted from pivota-backend');
+  assert.deepEqual([...LEAF_PARENTS].sort(), LEAVES_FIXTURE.leaf_parents, 'LEAF_PARENTS drifted');
+  // ANCESTOR_NODES is pinned exactly because the `range(1, len(parts))` boundary is invisible in
+  // behaviour: deriving ancestors with `parts.map` instead of `parts.slice(1).map` grows this from
+  // 27 entries to 99 while leaving categoryPathHasDoor bit-identical (a leaf always startsWith its
+  // own parent). The next consumer asking "is this a branch node?" would then diverge silently.
+  assert.deepEqual([...ANCESTOR_NODES].sort(), LEAVES_FIXTURE.ancestor_nodes, 'ANCESTOR_NODES drifted');
+  assert.equal(ANCESTOR_NODES.length, 27);
   assert.equal(TAXONOMY_LEAVES.length, VERDICTS.leaf_count, 'leaf COUNT drifted from the captured backend set');
   assert.equal(TAXONOMY_LEAVES.length, 72);
   assert.deepEqual([...TAXONOMY_ROOTS].sort(), ['beauty', 'electronics', 'fashion']);
@@ -76,7 +92,11 @@ test('categoryPathHasDoor agrees with pivota-backend on every path in production
   const disagreements = [];
   let servingAffected = 0;
   for (const row of VERDICTS.prod_paths) {
-    const got = categoryPathHasDoor(row.path.trim());
+    // NOT `.trim()`. This suite has a test three below asserting the rule must not trim, and
+    // trimming here would both defeat that and FALSIFY it: a regenerated fixture containing one
+    // padded production path (`'beauty/makeup '`, whose honest Python answer is false) made this
+    // assertion report a drift that does not exist, blamed on the leaf set.
+    const got = categoryPathHasDoor(row.path);
     if (got !== row.door) {
       disagreements.push(`${row.path}: backend=${row.door} node=${got} (serving ${row.serving})`);
       servingAffected += row.serving;
@@ -161,14 +181,23 @@ test('browse prefixes are unchanged — this change is read-side only', () => {
   //
   // Measured across 6,639 queries (every product title in the repo's fixtures plus the category
   // vocabulary): zero prefixes moved. The golden below is the pinned subset.
-  for (const [query, expected] of Object.entries(GOLDEN.prefixes)) {
+  // THE GOLDEN HAS TO PIN THE CHANNEL IT NAMES. The first version pinned 37 queries, every one of
+  // which is answered by `resolveBeautyCategoryPathPrefixFromText` or the alias patterns BEFORE
+  // `BEAUTY_CATEGORY_PATH_BY_LABEL` is consulted — so re-homing a canonical value, or collapsing
+  // ALL 25 onto one leaf, left all 37 assertions green. Collapsing the map and diffing the resolver
+  // over 6,726 queries finds 203 that genuinely route through it; they are pinned here.
+  for (const [query, expected] of Object.entries(GOLDEN.map_dependent)) {
     assert.equal(
       resolveBeautyCategoryPathPrefixForQuery(query),
       expected,
       `browse prefix moved for ${JSON.stringify(query)} — that is a SERVING change, not a refactor`,
     );
   }
-  const nonEmpty = Object.values(GOLDEN.prefixes).filter(Boolean).length;
+  for (const [query, expected] of Object.entries(GOLDEN.other_channels)) {
+    assert.equal(resolveBeautyCategoryPathPrefixForQuery(query), expected, `browse prefix moved for ${JSON.stringify(query)}`);
+  }
+  assert.ok(Object.keys(GOLDEN.map_dependent).length >= 150, 'the map-dependent golden has been gutted');
+  const nonEmpty = Object.values(GOLDEN.other_channels).filter(Boolean).length;
   assert.ok(nonEmpty >= 25, `golden must pin real prefixes, only ${nonEmpty} are non-empty`);
 });
 
@@ -180,4 +209,56 @@ test('the canonical map is untouched by this change', () => {
     true,
     'CANONICAL_CATEGORY_PATHS is the beauty canonicalisation map; the recall leaf set is a separate list',
   );
+});
+
+test('the import-time guard actually throws — not just the function it calls', () => {
+  // Deleting the whole `_CANONICAL_WITHOUT_A_DOOR` block left all nine tests green: one test drives
+  // the FUNCTION and another restates the property, but nothing asserted that importing the module
+  // fails. The mechanism is what protects the gateway's boot, so it is driven here in a child
+  // process against a real copy of the module with one bad canonical target injected.
+  const dir = path.join(__dirname, '..', 'src', 'services');
+  const real = path.join(dir, 'beautyTaxonomy.js');
+  const probe = path.join(dir, `__import_guard_probe_${process.pid}.js`);
+  const source = fs.readFileSync(real, 'utf8');
+  const injected = source.replace(
+    /(const CANONICAL_CATEGORY_PATHS = Object\.freeze\(\{\n)/,
+    "$1  __probe_no_door: 'beauty/pottery',\n",
+  );
+  assert.notEqual(injected, source, 'the probe must actually inject a doorless canonical target');
+  try {
+    fs.writeFileSync(probe, injected);
+    const run = spawnSync(process.execPath, ['-e', `require(${JSON.stringify(probe)})`], { encoding: 'utf8' });
+    assert.notEqual(run.status, 0, 'importing a module with a doorless canonical target must FAIL');
+    assert.match(run.stderr, /CANONICAL_CATEGORY_PATHS targets a path recall cannot reach/);
+    assert.match(run.stderr, /beauty\/pottery/);
+    assert.match(run.stderr, /recallTaxonomyLeaves\.js needs regenerating/, 'the error must say how to fix it');
+  } finally {
+    fs.rmSync(probe, { force: true });
+  }
+  // Control: the UNMODIFIED module imports cleanly in the same child-process harness, so the test
+  // above is measuring the injection and not a broken probe.
+  const clean = spawnSync(process.execPath, ['-e', `require(${JSON.stringify(real)})`], { encoding: 'utf8' });
+  assert.equal(clean.status, 0, clean.stderr);
+});
+
+test('the two predicates agree about an array, because the writers will see one', () => {
+  // `normalizeCategoryPathText` accepts `['beauty','fragrance']`; `categoryPathHasDoor` used a bare
+  // String() and turned it into 'beauty,fragrance' — no door — while its sibling in the same module
+  // said categorised. Two predicates in one file disagreeing about an input shape is a trap, and
+  // the writers that will gate on this read category_path out of JSON where the array form occurs.
+  for (const [arr, str] of [
+    [['beauty', 'makeup'], 'beauty/makeup'],
+    [['beauty', 'makeup', 'face', 'blush'], 'beauty/makeup/face/blush'],
+    [['beauty', 'pottery'], 'beauty/pottery'],
+    [['beauty'], 'beauty'],
+  ]) {
+    assert.equal(categoryPathHasDoor(arr), categoryPathHasDoor(str), `array vs string: ${JSON.stringify(arr)}`);
+    assert.equal(categoryPathIsCategorised(arr), categoryPathIsCategorised(str));
+  }
+  // And the tolerance is exactly that -- it must not become general normalisation.
+  assert.equal(categoryPathHasDoor('Beauty/Makeup'), false);
+  assert.equal(categoryPathHasDoor(' beauty/makeup'), false);
+  for (const junk of [null, undefined, 0, 42, {}, true]) {
+    assert.equal(categoryPathHasDoor(junk), false, `${JSON.stringify(junk)} must not have a door`);
+  }
 });

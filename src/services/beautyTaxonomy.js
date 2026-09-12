@@ -221,7 +221,17 @@ function isCanonicalCategoryPath(value) {
 // the local canonical map instead was measured to call 190 serving rows doorless where production
 // calls 76 -- see the header of recallTaxonomyLeaves.js.
 function categoryPathHasDoor(value) {
-  const path = String(value == null ? '' : value);
+  // Arrays are joined the way `normalizeCategoryPathText` above joins them, and ONLY for that
+  // reason: two predicates living in one module that disagree about an input shape is a trap, and
+  // the writers that will gate on this read `category_path` out of a JSON payload where the array
+  // form genuinely occurs (see normalizeCategoryPath in the sync scripts). Before this, a
+  // `['beauty','makeup']` was stringified to `'beauty,makeup'` -> no door, while its sibling
+  // `categoryPathIsCategorised` said true for the same input.
+  //
+  // NOTE this is a JS-only tolerance: the Python twin raises TypeError on a list, so neither side
+  // "matches" the other for that shape. Nothing else here normalises -- see the case-sensitivity
+  // note above.
+  const path = Array.isArray(value) ? value.join('/') : String(value == null ? '' : value);
   if (!path) return false;
   if (ANCESTOR_NODES.includes(path)) return true;
   return LEAF_PARENTS.some((parent) => path.startsWith(`${parent}/`));
