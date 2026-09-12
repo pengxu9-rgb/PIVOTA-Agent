@@ -31,5 +31,5 @@ test('category main SQL includes shallow ancestors only alongside own product-fo
   expect(params).toContainEqual(['beauty','beauty/makeup']);
   expect(params).toContainEqual(expect.arrayContaining(['romand','romnd']));
   expect(params).toContain('(^| )((lip[ ]*)?tints?)($| )');
-  expect(sql).toMatch(/p\.category_path = ANY\(\$\d+::text\[\]\)\) AND .*p\.title/);
+  expect(sql).toMatch(/p\.category_path = ANY\(\$\d+::text\[\]\) AND .*p\.title/);
 });

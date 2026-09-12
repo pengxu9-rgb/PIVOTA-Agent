@@ -160,4 +160,30 @@ suite('canonical MAIN route with real PostgreSQL and no rescue lanes', () => {
     expect(res.body.products || []).toEqual([]);
     expect(sqlCalls).toHaveLength(1);
   });
+  test('precise canonical category accepts a missing form word but rejects conflicting own type',async()=>{
+    try {
+      await db.query("UPDATE catalog_products SET title='Studio Fix Fluid SPF15',product_type=NULL,category_path='beauty/makeup/face/foundation' WHERE product_key='mac_foundation'");
+      const valid=await invoke('MAC foundation');
+      expect(valid.status).toBe(200);expect(valid.body.status).toBe('success');
+      expect(valid.body.products).toHaveLength(1);
+      expect(valid.body.products[0].product_key).toBe('mac_foundation');
+      for (const [title, type] of [['Studio Fix Cream','Cream'], ['Studio Fix Serum Foundation','Serum']]) {
+        await db.query("UPDATE catalog_products SET title=$1,product_type=$2 WHERE product_key='mac_foundation'",[title,type]);
+        const hybrid=await invoke('MAC foundation');
+        expect(hybrid.body.products).toHaveLength(1);
+        expect(hybrid.body.products[0].product_key).toBe('mac_foundation');
+      }
+      await db.query("UPDATE catalog_products SET title='Barrier Repair Cream',product_type='Moisturizer' WHERE product_key='mac_foundation'");
+      expect((await invoke('MAC foundation')).body.products).toEqual([]);
+      await db.query("UPDATE catalog_products SET title='Studio Fix Fluid SPF15',product_type='Eyeliner' WHERE product_key='mac_foundation'");
+      const conflict=await invoke('MAC foundation');
+      expect(conflict.body.products).toEqual([]);
+      // An ancestor alone still cannot qualify via description cross-sell.
+      await db.query("UPDATE catalog_products SET product_type=NULL,category_path='beauty/makeup' WHERE product_key='mac_foundation'");
+      const thin=await invoke('MAC foundation');expect(thin.body.products).toEqual([]);
+    } finally {
+      await db.query("UPDATE catalog_products SET title='Studio Fix Fluid Foundation',product_type='Foundation',category_path='beauty/makeup' WHERE product_key='mac_foundation'");
+    }
+  });
+
 });

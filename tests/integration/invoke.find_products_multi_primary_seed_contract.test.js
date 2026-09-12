@@ -50,6 +50,11 @@ describe('primary seed query errors and pagination do not switch recall routes',
   test('last supported window scales seed SQL depth to 200',async()=>{
     const resp=await invoke({page:20,limit:10});expect(resp.status).toBe(200);
     expect(seedCalls().length).toBeGreaterThan(0);
-    expect(seedCalls().every(call=>call.params[call.params.length-1]>=200)).toBe(true);
+    expect(seedCalls().every(call=>{
+      // Scope predicates append binds after the limit; assert the value used
+      // by the SQL LIMIT itself, not an incidental parameter position.
+      const limits=[...call.sql.matchAll(/LIMIT \$(\d+)/g)];
+      return limits.length>0 && limits.every(match=>call.params[Number(match[1])-1]>=200);
+    })).toBe(true);
   });
 });

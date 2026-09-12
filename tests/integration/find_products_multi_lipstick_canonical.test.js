@@ -275,7 +275,7 @@ describe('find_products_multi canonical lipstick recall', () => {
         if (text.includes('FROM external_product_seeds') && !text.includes('FROM external_product_seeds eps')) {
           // Only the selected primary brand/category text shape has this data.
           // An exact-category or generic retry query cannot make the test pass.
-          if (!params.includes('%lipstick%') || !params.includes('%fenty beauty%')) return { rows: [] };
+          if (!params.includes('%lipstick%') || !params.some(value => Array.isArray(value) && value.includes('fentybeauty'))) return { rows: [] };
           return {
             rows: [{
               id: 'eps_fenty_lipstick',
@@ -355,7 +355,7 @@ describe('find_products_multi canonical lipstick recall', () => {
     );
     const seedCalls = observed.filter(({ sql }) => sql.includes('FROM external_product_seeds') && !sql.includes('FROM external_product_seeds eps'));
     expect(seedCalls).toHaveLength(3);
-    expect(seedCalls.every(({ params }) => params.includes('%lipstick%') && params.includes('%fenty beauty%'))).toBe(true);
+    expect(seedCalls.every(({ params }) => params.includes('%lipstick%') && params.some(value => Array.isArray(value) && value.includes('fentybeauty')))).toBe(true);
     expect(seedCalls.some(({ params }) => params.includes('lipstick'))).toBe(false);
     expect(resp.body.metadata?.retrieval_query_debug.every(entry => entry.primary_text_query === true)).toBe(true);
   });

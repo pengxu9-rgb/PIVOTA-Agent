@@ -186,4 +186,4 @@ jobs:
       - name: Execute canonical primary SQL through HTTP without rescue
         env:
           CANONICAL_MAINLINE_TEST_DATABASE_URL: postgres://gateway_review:local_test_only@127.0.0.1:5432/gateway_test
-        run: npx jest --watchman=false --runInBand tests/integration/find_products_multi_main_catalog_postgres.test.js tests/integration/canonical_brand_browse_domain_postgres.test.js tests/integration/find_products_multi_offer_scope_postgres.test.js
+        run: npx jest --watchman=false --runInBand tests/integration/find_products_multi_main_catalog_postgres.test.js tests/integration/canonical_brand_browse_domain_postgres.test.js tests/integration/find_products_multi_offer_scope_postgres.test.js tests/integration/find_products_multi_seed_offer_scope_postgres.test.js

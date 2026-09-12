@@ -1,3 +1,4 @@
+const { buildSeedSearchOfferScope } = require('./services/seedSearchOfferScope');
 const { classifyBeautyCoarseCandidate } = require('./shared/beautyRecoCoarseClassifier');
 const vertexGemini = require('./llm/vertexGemini');
 /*
@@ -16716,6 +16717,7 @@ async function queryBeautyExternalSeedRowsFast({
   inStockOnly,
   limit,
   toolScope = 'all_tools',
+  offerScope = null,
 } = {}) {
   if (!process.env.DATABASE_URL) {
     return {
@@ -16744,6 +16746,7 @@ async function queryBeautyExternalSeedRowsFast({
     ? primaryToolScopes.concat(legacyToolScopes)
     : primaryToolScopes;
   const rawProductCap = Math.max(safeLimit, Math.min(200, safeLimit * Math.max(1, toolScopes.length)));
+  const seedScope = { ...(offerScope || {}), inStockOnly, brand: intent?.brandBrowse?.contract === 'brand_browse' ? intent.brandBrowse : null };
 
   const seen = new Set();
   const rawProducts = [];
@@ -16853,6 +16856,10 @@ async function queryBeautyExternalSeedRowsFast({
       const isSingleCategory = categoryTerms.length === 1;
       const categoryLimitBind = `$${categoryTerms.length + 3}`;
       const scopeLimitBind = `$${categoryTerms.length + 4}`;
+      const params = isSingleCategory
+        ? [mkt.value, tool, categoryTerms[0], perScopeRowLimit]
+        : [mkt.value, tool, ...categoryTerms, perCategoryRowLimit, perScopeRowLimit];
+      const scopedOfferWhere = buildSeedSearchOfferScope(seedScope, params);
       const multiCategorySql = `
         SELECT
           id,
@@ -16909,10 +16916,11 @@ async function queryBeautyExternalSeedRowsFast({
             FROM external_product_seeds
             WHERE status = 'active'
               ${attachedServingSeedFilterSql}
+              ${scopedOfferWhere}
               AND ${mkt.sql}
               AND tool = $2
               AND ${categoryAuthoritySql} = ${categoryBind}
-              ${inStockOnly ? `AND coalesce(lower(availability), '') NOT IN ('out of stock', 'out_of_stock', 'outofstock', 'oos')` : ''}
+
             ORDER BY
               updated_at DESC NULLS LAST,
               created_at DESC NULLS LAST
@@ -16949,19 +16957,18 @@ async function queryBeautyExternalSeedRowsFast({
         FROM external_product_seeds
         WHERE status = 'active'
           ${attachedServingSeedFilterSql}
+          ${scopedOfferWhere}
           AND ${mkt.sql}
           AND tool = $2
           AND ${categoryAuthoritySql} = $3
-          ${inStockOnly ? `AND coalesce(lower(availability), '') NOT IN ('out of stock', 'out_of_stock', 'outofstock', 'oos')` : ''}
+
         ORDER BY
           updated_at DESC NULLS LAST,
           created_at DESC NULLS LAST
         LIMIT $4
       `
         : multiCategorySql;
-      const params = isSingleCategory
-        ? [mkt.value, tool, categoryTerms[0], perScopeRowLimit]
-        : [mkt.value, tool, ...categoryTerms, perCategoryRowLimit, perScopeRowLimit];
+
       const queryStartedAt = Date.now();
       const result = await queryBeautyExternalSeedRowsWithTimeout(
         sql,
@@ -17032,17 +17039,7 @@ async function queryBeautyExternalSeedRowsFast({
       const mkt = marketBind(safeQueryMarkets, '$1');
       const useBrandCategoryRecall = brandPatterns.length > 0 && brandCategoryPatterns.length > 0;
       if (useBrandCategoryRecall) {
-        const brandClauses = brandPatterns.map((_, index) => {
-          const bind = `$${index + 3}`;
-          return `(
-            lower(coalesce(seed_data->>'brand', '')) LIKE ${bind}
-            OR lower(coalesce(seed_data->>'vendor', '')) LIKE ${bind}
-            OR lower(coalesce(seed_data->'snapshot'->>'brand', '')) LIKE ${bind}
-            OR lower(coalesce(seed_data->'snapshot'->>'vendor', '')) LIKE ${bind}
-            OR lower(coalesce(seed_data->'derived'->'recall'->>'brand_name', '')) LIKE ${bind}
-          )`;
-        });
-        const categoryStartIndex = 3 + brandPatterns.length;
+        const categoryStartIndex = 3;
         const categoryClauses = brandCategoryPatterns.map((_, index) => {
           const bind = `$${categoryStartIndex + index}`;
           return `(
@@ -17057,7 +17054,9 @@ async function queryBeautyExternalSeedRowsFast({
             OR lower(coalesce(seed_data->'derived'->'recall'->>'category', '')) LIKE ${bind}
           )`;
         });
-        const limitBind = `$${3 + brandPatterns.length + brandCategoryPatterns.length}`;
+        const limitBind = `$${3 + brandCategoryPatterns.length}`;
+        const params = [mkt.value, tool, ...brandCategoryPatterns, perScopeRowLimit];
+        const scopedOfferWhere = buildSeedSearchOfferScope(seedScope, params);
         const sql = `
           SELECT
             id,
@@ -17079,11 +17078,11 @@ async function queryBeautyExternalSeedRowsFast({
           FROM external_product_seeds
           WHERE status = 'active'
             ${attachedServingSeedFilterSql}
+            ${scopedOfferWhere}
             AND ${mkt.sql}
             AND tool = $2
-            AND (${brandClauses.join('\n            OR ')})
             AND (${categoryClauses.join('\n            OR ')})
-            ${inStockOnly ? `AND coalesce(lower(availability), '') NOT IN ('out of stock', 'out_of_stock', 'outofstock', 'oos')` : ''}
+
           ORDER BY
             updated_at DESC NULLS LAST,
             created_at DESC NULLS LAST
@@ -17092,7 +17091,7 @@ async function queryBeautyExternalSeedRowsFast({
         const queryStartedAt = Date.now();
         const result = await queryBeautyExternalSeedRowsWithTimeout(
           sql,
-          [mkt.value, tool, ...brandPatterns, ...brandCategoryPatterns, perScopeRowLimit],
+          params,
           2800,
         );
         const queryDurationMs = Math.max(0, Date.now() - queryStartedAt);
@@ -17141,6 +17140,8 @@ async function queryBeautyExternalSeedRowsFast({
         )`;
       });
       const limitBind = `$${safePatterns.length + 3}`;
+      const params = [mkt.value, tool, ...safePatterns, perScopeRowLimit];
+      const scopedOfferWhere = buildSeedSearchOfferScope(seedScope, params);
       const sql = `
         SELECT
           id,
@@ -17162,10 +17163,11 @@ async function queryBeautyExternalSeedRowsFast({
         FROM external_product_seeds
         WHERE status = 'active'
           ${attachedServingSeedFilterSql}
+          ${scopedOfferWhere}
           AND ${mkt.sql}
           AND tool = $2
           AND (${patternClauses.join('\n          OR ')})
-          ${inStockOnly ? `AND coalesce(lower(availability), '') NOT IN ('out of stock', 'out_of_stock', 'outofstock', 'oos')` : ''}
+
         ORDER BY
           updated_at DESC NULLS LAST,
           created_at DESC NULLS LAST
@@ -17174,7 +17176,7 @@ async function queryBeautyExternalSeedRowsFast({
       const queryStartedAt = Date.now();
       const result = await queryBeautyExternalSeedRowsWithTimeout(
         sql,
-        [mkt.value, tool, ...safePatterns, perScopeRowLimit],
+        params,
         1200,
       );
       const queryDurationMs = Math.max(0, Date.now() - queryStartedAt);
@@ -22015,6 +22017,8 @@ async function searchBeautyExternalSeedProductsMainline({
   const canonicalLimit = 200;
   const canonicalStartedAt = Date.now();
   const budgetConstraint = resolveBeautyMainlineBudgetConstraint({ search, intent, queryText });
+  const explicitOfferCurrency = budgetConstraint ? null : firstNonEmptyString(search.currency, search.price_currency, search.priceCurrency, search.currency_code);
+  const primaryOfferScope = { currency: explicitOfferCurrency, priceRanges: resolveBudgetConstraintsForRecall(budgetConstraint) };
   const canonicalRowsPromise = fetchCanonicalChainRows({
     query: canonicalQueryText,
     categoryPathPrefix: canonicalCategoryPathPrefix,
@@ -22072,8 +22076,7 @@ async function searchBeautyExternalSeedProductsMainline({
       markets,
       // Currency on a budget denotes its units; keep the established FX
       // conversion policy. Without bounds an explicit currency scopes offers.
-      currency: budgetConstraint ? null : firstNonEmptyString(search.currency, search.price_currency, search.priceCurrency, search.currency_code),
-      priceRanges: resolveBudgetConstraintsForRecall(budgetConstraint),
+      ...primaryOfferScope,
     },
     brandFilter: canonicalBrandFilter,
     searchQualityContract: searchQualityEnforced ? effectiveSearchQualityContract : null,
@@ -22094,6 +22097,7 @@ async function searchBeautyExternalSeedProductsMainline({
       inStockOnly,
       limit: perQueryLimit,
       toolScope: creatorScoped ? 'creator_preferred' : 'all_tools',
+      offerScope: primaryOfferScope,
     }),
     canonicalRowsPromise,
   ]);
@@ -22257,7 +22261,10 @@ async function searchBeautyExternalSeedProductsMainline({
   const budgetFilter = budgetConstraint
     ? filterFindProductsMultiDirectProductsByBudget(budgetConstraint, servingEligibilityGate.products)
     : null;
-  const rankedProducts = budgetFilter ? budgetFilter.products : servingEligibilityGate.products;
+  const budgetEligibleProducts = budgetFilter ? budgetFilter.products : servingEligibilityGate.products;
+  const rankedProducts = explicitOfferCurrency
+    ? budgetEligibleProducts.filter(product => String(product.currency || '').trim().toUpperCase() === explicitOfferCurrency.trim().toUpperCase())
+    : budgetEligibleProducts;
   const budgetFxMetadata = budgetFilter?.resolution?.metadata || null;
   const searchQualityFailureReasons = summarizeSearchQualityFailureReasons({
     scoredRejected: scoreRejected,

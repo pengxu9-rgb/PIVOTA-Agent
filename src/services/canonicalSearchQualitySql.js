@@ -33,6 +33,15 @@ const FORM_RULES = [
   [/\bhighlighters?\b/, 'highlighters?|luminizers?'],
 ];
 
+function buildBrandIdentityPredicate(brand, expression, params) {
+  const terms = [...(reviewedAliases[brand.brand_key] || []), brand.canonical, brand.brand, brand.alias]
+    .flatMap(value => [value, String(value || '').replace(/\b(?:beauty|cosmetics?)\b/gi, '')])
+    .map(identityValue).filter(Boolean);
+  const normalized = [...new Set(terms.map(term => term.replace(/\s+/g, '')))];
+  params.push(normalized);
+  return `regexp_replace(${identitySql(expression)}, ' ', '', 'g') = ANY($${params.length}::text[])`;
+}
+
 function buildCanonicalSearchQualitySql({ contract, params, categoryPredicate, defaultWhere, defaultBrandWhere }) {
   if (contract?.target_domain !== 'beauty') return { where: defaultWhere, brandWhere: defaultBrandWhere };
   const hard = contract.hard_constraints || {};
@@ -40,12 +49,8 @@ function buildCanonicalSearchQualitySql({ contract, params, categoryPredicate, d
   const ownName = identitySql("concat_ws(' ', p.title, p.product_type, p.product_payload->>'canonical_title', p.product_payload->>'canonical_name')");
   let brandWhere = defaultBrandWhere;
   if (hard.brand) {
-    const terms = [...(reviewedAliases[hard.brand.brand_key] || []), hard.brand.canonical, hard.brand.alias]
-      .flatMap((value) => [value, String(value || '').replace(/\b(?:beauty|cosmetics?)\b/gi, '')])
-      .map(identityValue).filter(Boolean);
-    const normalized = [...new Set(terms.map((term) => term.replace(/\s+/g, '')))];
-    const ownBrand = identitySql("coalesce(nullif(trim(p.brand), ''), p.product_payload->>'brand', p.product_payload->>'vendor', p.product_payload#>>'{seed_data,brand}')");
-    brandWhere = `AND regexp_replace(${ownBrand}, ' ', '', 'g') = ANY(${bind(normalized)}::text[])`;
+    const ownBrand = "coalesce(nullif(trim(p.brand), ''), p.product_payload->>'brand', p.product_payload->>'vendor', p.product_payload#>>'{seed_data,brand}')";
+    brandWhere = `AND ${buildBrandIdentityPredicate(hard.brand, ownBrand, params)}`;
   }
   let where = defaultWhere;
   if (hard.exact_product_anchor) {
@@ -77,7 +82,15 @@ function buildCanonicalSearchQualitySql({ contract, params, categoryPredicate, d
       const prefix = String(hard.category_path_prefix).replace(/\/+$/, '');
       const parts = prefix.split('/');
       const ancestors = parts.slice(1).map((_, index) => parts.slice(0, index + 1).join('/'));
-      where = `((${categoryPredicate}) OR p.category_path = ANY(${bind(ancestors)}::text[])) AND ${ownForm}`;
+      // A precise catalog category is sufficient when the seller omits the
+      // product-form word. Only shallow ancestors need positive own-name evidence.
+      // A recognized conflicting own type still vetoes polluted categorization.
+      const ownType = identitySql("p.product_type");
+      // Use explicit category nouns, not generic textures (cream/lotion/balm).
+      // A named hybrid such as Serum Foundation is positive product evidence.
+      const explicitClasses = FORM_RULES.map(([rule]) => rule.source.replace(/\\b/g, '').replace(/\\s/g, '[ ]')).join('|');
+      const conflictingType = `(${ownType} ~ ${bind(`(^| )(${explicitClasses})($| )`)} AND NOT (${ownForm}))`;
+      where = `((${categoryPredicate}) OR (p.category_path = ANY(${bind(ancestors)}::text[]) AND ${ownForm})) AND NOT ${conflictingType}`;
     } else {
       where = categoryPredicate;
     }
@@ -97,4 +110,4 @@ function buildCanonicalSearchQualitySql({ contract, params, categoryPredicate, d
   }
   return { where: `(${where}) AND $2::text IS NOT NULL`, brandWhere };
 }
-module.exports = { buildCanonicalSearchQualitySql };
+module.exports = { buildCanonicalSearchQualitySql, buildBrandIdentityPredicate };
