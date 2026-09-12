@@ -12534,7 +12534,7 @@ async function buildCitableSupplementItems(queryText = '') {
 // Sync: append prefetched citable items to whatever final body is being sent,
 // deduped against the products already present. Returns the (possibly mutated)
 // body. Safe to call on any shape; no-op when items is empty.
-function appendCitableSupplementItems(responseBody, items) {
+function appendCitableSupplementItems(responseBody, items, { queryText = '', searchParams = {} } = {}) {
   try {
     if (!responseBody || typeof responseBody !== 'object') return responseBody;
     // Strict-contract lanes (ingredient_recall_direct + the upstream strict
@@ -12577,7 +12577,22 @@ function appendCitableSupplementItems(responseBody, items) {
       responseMetadata.citable_supplement_skip_reason = 'strict_contract';
       return responseBody;
     }
+    // The primary lane has already paginated. Reappending the same cached
+    // citations to page 2 would repeat page 1 and leak unranked product types.
+    if (Number(searchParams.page || responseBody.page || 1) > 1) {
+      responseBody.metadata = { ...responseMetadata, citable_supplement_count: 0,
+        citable_supplement_skip_reason: 'primary_lane_paginated' };
+      return responseBody;
+    }
+    if (responseBody.error || (responseBody.status === 'failed' &&
+        responseMetadata?.failure_class !== 'beauty_mainline_empty')) return responseBody;
     if (!Array.isArray(items) || !items.length) return responseBody;
+    const contract = responseMetadata?.search_quality_contract ||
+      (queryText ? buildSearchQualityContract({ rawQuery: queryText, market: searchParams.market }) : null);
+    const budget = resolveBeautyMainlineBudgetConstraint({ search: searchParams, queryText });
+    const scoped = items.filter((item) =>
+      getSearchQualityContractHardConstraintResult(item, contract, queryText).eligible);
+    const accepted = filterFindProductsMultiDirectProductsByBudget(budget, scoped).products;
     const container = Array.isArray(responseBody.products)
       ? responseBody
       : (responseBody.data && Array.isArray(responseBody.data.products) ? responseBody.data : null);
@@ -12586,15 +12601,38 @@ function appendCitableSupplementItems(responseBody, items) {
       container.products.map((p) => p && (p.content_key || p.product_id)).filter(Boolean),
     );
     let added = 0;
-    for (const item of items) {
+    for (const item of accepted) {
       const key = item && (item.content_key || item.product_id);
       if (key && seen.has(key)) continue;
       if (key) seen.add(key);
       container.products.push(item);
       added += 1;
     }
-    if (responseBody.metadata && typeof responseBody.metadata === 'object') {
-      responseBody.metadata.citable_supplement_count = added;
+    responseBody.metadata = {
+      ...responseMetadata,
+      citable_supplement_count: added,
+      citable_supplement_rejected_count: items.length - accepted.length,
+    };
+    if (added) {
+      // Retain the primary result as diagnostics. Citation recovery is a
+      // referral result, not evidence of a now-successful transactional lane.
+      responseBody.metadata.mainline_total = responseBody.total ?? null;
+      responseBody.metadata.total_is_lower_bound = true;
+      container.total = Math.max(Number(container.total) || 0, container.products.length);
+      if (container === responseBody) responseBody.total = container.total;
+      container.page_size = container.products.length;
+      if (responseMetadata?.failure_class === 'beauty_mainline_empty') {
+        responseBody.metadata.mainline_failure_class = 'beauty_mainline_empty';
+        responseBody.metadata.mainline_search_decision = responseMetadata.search_decision;
+        responseBody.status = 'success';
+        responseBody.success = true;
+        responseBody.reply = null;
+        responseBody.metadata.status = 'success';
+        responseBody.metadata.failure_class = null;
+        responseBody.metadata.search_decision = {
+          ...responseMetadata.search_decision, final_decision: 'citation_results_returned',
+        };
+      }
     }
   } catch (_) {
     // best-effort: the citable supplement must never break recall transport
@@ -18441,6 +18479,12 @@ function productMatchesSearchQualityBrand(product = {}, brand = null, candidateT
   const productBrand = normalizeSearchQualityBrandNeedle(
     firstNonEmptyString(product?.brand, product?.vendor, product?.merchant_name),
   );
+  // A reviewed alias pair (APIEU / A'PIEU, romand / rom&nd) denotes one
+  // brand. Do not require their punctuation-compacted strings to coincide.
+  if (brand?.brand_key && productBrand) {
+    const identity = resolveBeautyBrandBrowseQuery(productBrand);
+    if (identity.matched && identity.brand_only) return identity.brand_key === brand.brand_key;
+  }
   const text = normalizeSearchTextForMatch(candidateText || buildFallbackCandidateText(product));
   const compactText = text.replace(/\s+/g, '');
   const matches = (needle) => {
@@ -18477,9 +18521,13 @@ function productMatchesSearchQualityExactAnchor(product = {}, exactProductAnchor
     .filter((token) => token.length >= 2)
     .filter((token) => !SEARCH_EXACT_PRODUCT_ANCHOR_STOP_WORDS.has(token));
   if (!tokens.length) return true;
-  const text = normalizeSearchTextForMatch(candidateText || buildFallbackCandidateText(product));
+  const rawText = candidateText || buildFallbackCandidateText(product);
+  const text = normalizeSearchTextForMatch(rawText);
+  // A word stylized with middle dots (M·A·Cximal) is also searchable as
+  // its joined spelling. Keep the ordinary word-boundary form alongside it.
+  const joinedPunctuationText = normalizeSearchTextForMatch(String(rawText).replace(/[·•]/g, ''));
   if (!text) return false;
-  const matched = tokens.filter((token) => text.includes(token));
+  const matched = tokens.filter((token) => text.includes(token) || joinedPunctuationText.includes(token));
   if (tokens.length <= 4) return matched.length === tokens.length;
   return matched.length >= 4 && matched.length / tokens.length >= 0.8;
 }
@@ -18541,7 +18589,16 @@ function getSearchQualityContractHardConstraintResult(product = {}, contract = n
       categoryPathPrefix,
     );
     if (existingCategoryPath) {
-      if (!pathMatches) reasons.push('category_mismatch');
+      const requestedPath = categoryPathPrefix.toLowerCase().replace(/^\/+|\/+$/g, '');
+      const isAncestor = requestedPath.startsWith(`${existingCategoryPath}/`);
+      // The canonical SQL already admits shallow ancestors on row evidence.
+      // Apply the same rule here, with this product's own title/type only;
+      // cross-sell prose must not make an eyeliner satisfy a lipstick query.
+      const ownTypeMatches = isAncestor && beautyProductMatchesCategoryPathQuery({
+        title: firstNonEmptyString(product.title, product.name),
+        product_type: product.product_type,
+      }, queryText || contract.effective_query, categoryPathPrefix);
+      if (!pathMatches && !ownTypeMatches) reasons.push('category_mismatch');
     } else if (!textMatches) {
       reasons.push('category_mismatch');
     }
@@ -41177,7 +41234,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       );
     }
     finalBody = maybeAttachInvokeBeautyExpertProjection(finalBody);
-    finalBody = appendCitableSupplementItems(finalBody, citableSupplementItems);
+    finalBody = appendCitableSupplementItems(finalBody, citableSupplementItems, {
+      queryText: String(req?.body?.payload?.search?.query || req?.body?.payload?.query || '').trim(),
+      searchParams: req?.body?.payload?.search || req?.body?.payload || {},
+    });
     // The external-seed mint below opens an async window between this merge and
     // the actual send. The off-path citable prefetch can resolve inside that
     // window and flip `citableSupplementSettled` to true AFTER the append above
