@@ -62,6 +62,24 @@ test('one tampered payload byte is a bad signature, before any claim is read', a
   await expectReason(svc.createCheckoutHashVerifier()(sha256b64u(forged), forged), 'checkout_jwt_bad_signature');
 });
 
+// The sibling test above tampers a byte, so the signature would fail under ANY ordering — it
+// cannot, on its own, prove the HMAC check runs BEFORE the claims. This one can: it hands the
+// verifier a payload that every claim check would independently reject (expired AND carrying no
+// checkout_session_id), signed with the WRONG secret. A verifier that parsed claims first would
+// deny 'checkout_jwt_expired' or 'checkout_jwt_no_session'. Denying 'checkout_jwt_bad_signature'
+// is only possible if the signature is verified before a single claim is read — pinning the
+// deny-before-parse ordering at lines (a)->JSON.parse in ap2CheckoutBinding.js.
+test('a claim-invalid payload with a wrong signature denies on the SIGNATURE, not the claim', async () => {
+  const svc = await loadService();
+  const signingInput = `${b64uJson({ alg: 'HS256', typ: 'pivota-ap2-checkout+jwt' })}.${b64uJson({
+    exp: Math.floor(Date.now() / 1000) - 10_000, // long expired, well past tolerance; and no session id
+  })}`;
+  // a real forgery: signed with a DIFFERENT secret, not merely a mangled segment
+  const wrongSig = createHmac('sha256', 'w'.repeat(40)).update(signingInput).digest('base64url');
+  const impostor = `${signingInput}.${wrongSig}`;
+  await expectReason(svc.createCheckoutHashVerifier()(sha256b64u(impostor), impostor), 'checkout_jwt_bad_signature');
+});
+
 test('a token signed with the RIGHT secret but the WRONG typ is refused — no cross-instrument replay', async () => {
   const svc = await loadService();
   const signingInput = `${b64uJson({ alg: 'HS256', typ: 'confirmation+jwt' })}.${b64uJson({
