@@ -18880,6 +18880,7 @@ async function fetchCanonicalChainRecallForFindProductsMulti({ search = {} } = {
       // results.
       marketId: safeMarket,
       brandFilter: canonicalBrandFilter,
+      searchQualityContract: searchQualityContractApplied ? searchQualityContract : null,
       deps: { query },
     });
     const products = (Array.isArray(rows) ? rows : [])
@@ -22115,7 +22116,7 @@ async function searchBeautyExternalSeedProductsMainline({
     // this file's own prod EXPLAINs put at 3.2-3.9s.
     // See PIVOT_BEAUTY_MAINLINE_SARGABLE_TEXT_WHERE_ENABLED.
     sargableTextWhere: PIVOT_BEAUTY_MAINLINE_SARGABLE_TEXT_WHERE_ENABLED,
-    limit: canonicalLimit,
+    limit: Math.min(200, Math.max(canonicalLimit, safeOffset + safeLimit)),
     // Market-aware filtering — pass the user's market (already computed
     // above for the external-seed-direct path's `safeQueryMarket`) so
     // canonical_chain enforces the same market parity. Without this,
@@ -22132,6 +22133,7 @@ async function searchBeautyExternalSeedProductsMainline({
     // those columns when joinSkuOffers is false.
     includeSkuOffers: true,
     brandFilter: canonicalBrandFilter,
+    searchQualityContract: searchQualityEnforced ? effectiveSearchQualityContract : null,
     deps: { query },
   })
     .then((rows) => ({
@@ -22139,11 +22141,7 @@ async function searchBeautyExternalSeedProductsMainline({
       error: null,
       duration_ms: Math.max(0, Date.now() - canonicalStartedAt),
     }))
-    .catch((err) => ({
-      rows: [],
-      error: String(err?.code || err?.message || err || 'canonical_query_failed').slice(0, 160),
-      duration_ms: Math.max(0, Date.now() - canonicalStartedAt),
-    }));
+    .catch((err) => { throw err; });
   const [creatorScopedRows, canonicalResult] = await Promise.all([
     queryBeautyExternalSeedRowsFast({
       market,
@@ -22159,11 +22157,6 @@ async function searchBeautyExternalSeedProductsMainline({
   const canonicalProducts = (Array.isArray(canonicalResult?.rows) ? canonicalResult.rows : [])
     .map((row) => buildCanonicalChainMainlineProduct(row))
     .filter(Boolean);
-  // NOTE: the ADR-007 citable lane is NOT here. It's an operation-level supplement
-  // applied in the universal res.json wrapper (buildCitableSupplementItems prefetch
-  // + appendCitableSupplementItems) so it reaches ALL find_products_multi lanes —
-  // branded/ingredient queries never run this canonical block. Flag-gated by
-  // INDEX_ELIGIBLE_RECALL.
   const canonicalTelemetry = {
     canonical_path_executed: true,
     canonical_raw_count: Array.isArray(canonicalResult?.rows) ? canonicalResult.rows.length : 0,

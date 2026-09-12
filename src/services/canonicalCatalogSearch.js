@@ -58,6 +58,7 @@
 
 'use strict';
 
+const { buildCanonicalSearchQualitySql } = require('./canonicalSearchQualitySql');
 const { activeCatalogProductSourceWhere } = require('./activeCatalogSourceSql');
 const { queryWantsMultiProductSet } = require('./beautyRelevanceGate');
 
@@ -802,6 +803,7 @@ async function fetchCanonicalChainRows(args = {}) {
     verticalSearch = false,
     includeSkuOffers = false,
     brandFilter = null,
+    searchQualityContract = null,
     marketId = null,
     limit = DEFAULT_LIMIT,
     eligibility = 'serving_eligible',
@@ -969,7 +971,8 @@ async function fetchCanonicalChainRows(args = {}) {
       )`;
   }
 
-  const brandFilterTerms = buildBrandFilterTerms(brandFilter);
+  const brandFilterTerms = searchQualityContract?.target_domain === 'beauty' && searchQualityContract?.hard_constraints?.brand
+    ? [] : buildBrandFilterTerms(brandFilter);
   const brandTextSql = `
     lower(concat_ws(' ',
       p.brand,
@@ -1452,6 +1455,10 @@ async function fetchCanonicalChainRows(args = {}) {
   } else {
     whereClause = `(${categoryPredicate} AND $2::text IS NOT NULL)`;
   }
+  const qualityScope = buildCanonicalSearchQualitySql({ contract: searchQualityContract, params,
+    categoryPredicate, defaultWhere: whereClause, defaultBrandWhere: brandWhere });
+  whereClause = qualityScope.where;
+  brandWhere = qualityScope.brandWhere;
   // Suppress source-unavailable / discontinued external-seed products from
   // recall. ADR-009: gate on platform, NOT the legacy merchant_id='external_seed'
   // bucket — external seeds now mirror under per-brand observed sellers
