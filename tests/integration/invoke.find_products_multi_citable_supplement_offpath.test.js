@@ -193,4 +193,67 @@ describe('/agent/shop/v1/invoke find_products_multi citable supplement off-path'
     });
     expect(second.body.metadata.citable_supplement_pending).toBeUndefined();
   });
+  async function citationOnlyResponse(query, citation, { source = 'public_api', search = {} } = {}) {
+    process.env.DATABASE_URL = 'postgres://mock:mock@127.0.0.1/mock';
+    jest.doMock('../../src/db', () => ({ query: jest.fn(sql => Promise.resolve({
+      rows: isSupplementSql(sql) ? [citation] : [],
+    })) }));
+    const app = require('../../src/server');
+    const input = invokeBody(query);
+    Object.assign(input.payload.search, { domain: 'beauty' }, search);
+    input.metadata.source = source;
+    // The first read warms the off-path cache; the second must exercise the real send boundary.
+    await request(app).post('/agent/shop/v1/invoke').send(input);
+    const result = await request(app).post('/agent/shop/v1/invoke').send(input);
+    expect(result.status).toBe(200);
+    return result.body;
+  }
+
+  test('citation-only Shopping Agent recovery respects final availability filtering', async () => {
+    const body = await citationOnlyResponse('MAC lipstick', {
+      ...citableRow(), product_title: 'MAC Matte Lipstick', brand: 'MAC Cosmetics',
+    }, { source: 'shopping_agent' });
+    expect(body.products).toHaveLength(0);
+    expect(body.status).toBe('failed');
+    expect(body.metadata.failure_class).toBe('beauty_mainline_empty');
+    expect(body.metadata.citable_supplement_count).toBe(1);
+    expect(body.metadata.citable_supplement_returned_count).toBe(0);
+    expect(body.total).toBe(0);
+  });
+
+  test('public exact-line citation recovery returns the correctly scoped product', async () => {
+    const body = await citationOnlyResponse('Stila Stay All Day Liquid Lipstick', {
+      ...citableRow(), product_title: 'Mini Stay All Day Liquid Lipstick', brand: 'Stila Cosmetics',
+    });
+    expect(body.products).toHaveLength(1);
+    expect(body.products[0].title).toBe('Mini Stay All Day Liquid Lipstick');
+    expect(body.status).toBe('success');
+    expect(body.metadata.citable_supplement_returned_count).toBe(1);
+    expect(body.total).toBe(1);
+  });
+
+  test.each([
+    ['MAC foundation', 'Foundation Brush', 'MAC Cosmetics'],
+    ['Stila Stay All Day Liquid Lipstick', 'Plumping Lipstick', 'Stila Cosmetics'],
+  ])('public late citation cannot bypass product/category scope for %s', async (query, title, brand) => {
+    const body = await citationOnlyResponse(query, {
+      ...citableRow(), product_title: title, brand,
+      description: 'Pair with Stay All Day Liquid Lipstick',
+    });
+    expect(body.products).toHaveLength(0);
+    expect(body.status).toBe('failed');
+    expect(body.metadata.citable_supplement_rejected_count).toBe(1);
+    expect(body.metadata.citable_supplement_returned_count).toBe(0);
+  });
+
+  test('mixed-brand apparel safe-empty cannot be repopulated with beauty citations', async () => {
+    const body = await citationOnlyResponse("Victoria's Secret bra", {
+      ...citableRow(), product_title: 'Bare Vanilla Body Mist', brand: "Victoria's Secret",
+    });
+    expect(body.products).toHaveLength(0);
+    expect(body.metadata.search_quality_contract.target_domain).toBe('other');
+    expect(body.metadata.citable_supplement_skip_reason).toBe('explicit_apparel_request');
+    expect(body.metadata.citable_supplement_returned_count).toBe(0);
+  });
+
 });

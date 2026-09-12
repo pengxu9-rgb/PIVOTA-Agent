@@ -21,3 +21,17 @@ test('Stila brand-only query remains shopping', () => {
 test.each(['note the finish of this lipstick', 'a pixel on my phone', 'a macadamia face cream'])('no substring brand for %s', q => {
   expect(detectBrandEntities(q).brand_like).toBe(false);
 });
+
+test.each(["Victoria's Secret bra", "Victoria's Secret lingerie", "Victoria's Secret pajamas",
+  'Victorias Secret underwear', 'Victoria’s Secret 文胸', 'Chanel handbag'])('explicit apparel is not beauty browsing: %s', q => {
+  const c = contract({rawQuery:q});
+  expect(c.target_domain).toBe('other');
+  expect(c.hard_constraints.brand).toBeNull();
+  expect(c.hard_constraints.exact_product_anchor).toBeNull();
+});
+test.each(["Victoria's Secret perfume", "Victoria's Secret Bare Vanilla body mist", "Victoria's Secret",
+  'Chanel perfume to carry in my handbag'])('mixed-brand beauty request remains scoped: %s', q => {
+  const c = contract({rawQuery:q});
+  expect(c.target_domain).toBe('beauty');
+  expect(c.hard_constraints.brand).not.toBeNull();
+});

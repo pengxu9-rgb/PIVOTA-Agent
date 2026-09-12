@@ -603,11 +603,19 @@ function buildSearchQualityContract({
   const hasKnownBeautyBrand = Boolean(beautyBrandBrowse.matched);
   const hasStaticNonBeautyBrand = Boolean(brandCandidates.length && !hasKnownBeautyBrand);
   const hasNonMerchandiseSignal = hasNonMerchandiseQuerySignal(effectiveQuery);
-  const effectiveBrand = hasNonMerchandiseSignal ? null : brand;
-  const effectiveExactProductAnchor = hasNonMerchandiseSignal ? null : exactProductAnchor;
-  const effectiveCategoryPathPrefix = hasNonMerchandiseSignal ? null : categoryPathPrefix;
+  // A mixed retailer/brand is not a category. Explicit apparel requests must not become beauty
+  // browsing solely because the brand has a cosmetics line. Remove the brand first so a suffix
+  // such as "Beauty" or "Cosmetics" cannot cancel this check; perfume carried in a handbag stays in.
+  const merchandiseRemainder = stripBrandTokensFromNormalizedQuery(effectiveQuery, beautyBrandBrowse);
+  const explicitApparelRequest = hasKnownBeautyBrand
+    && /\b(?:bras?|bralettes?|lingerie|underwear|panties|sleepwear|loungewear|pajamas?|pyjamas?|nightgowns?|robes?|handbags?|purses?|dresses?|shirts?|skirts?|jeans|trousers?|leggings?|sneakers?|shoes?|boots?|coats?|jackets?)\b|内衣|內衣|文胸|睡衣|手提包/.test(merchandiseRemainder)
+    && !hasBeautySearchSignal(merchandiseRemainder);
+  const outsideBeauty = hasNonMerchandiseSignal || explicitApparelRequest;
+  const effectiveBrand = outsideBeauty ? null : brand;
+  const effectiveExactProductAnchor = outsideBeauty ? null : exactProductAnchor;
+  const effectiveCategoryPathPrefix = outsideBeauty ? null : categoryPathPrefix;
   const targetDomain =
-    !hasNonMerchandiseSignal &&
+    !outsideBeauty &&
     (hasKnownBeautyBrand || inferredCategoryPathPrefix || concernSignals?.has_concern_signal || constraints.length || hasBeautySearchSignal(effectiveQuery))
       ? 'beauty'
       : 'other';
@@ -636,6 +644,7 @@ function buildSearchQualityContract({
   }
 
   const exclusions = [];
+  if (explicitApparelRequest) exclusions.push('beauty_product_for_apparel_query');
   if (understanding.hard_negatives?.fragrance_free_skincare) exclusions.push('fragrance_product');
   if (understanding.hard_negatives?.strict_lipstick) exclusions.push('lip_gloss_oil_balm_mask');
   if (constraints.includes('pregnancy_safe') || constraints.includes('avoid_retinoids')) exclusions.push('retinoid_forward');

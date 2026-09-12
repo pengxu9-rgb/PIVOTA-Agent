@@ -66,3 +66,40 @@ test('the shopping-agent availability gate removes citations before success reco
   expect(body).toMatchObject({ status: 'failed', success: false, products: [], total: 0 });
   expect(body.metadata.citable_supplement_returned_count).toBe(0);
 });
+
+test.each([
+  ['MAC foundation', 'Foundation Brush'],
+  ['MAC foundation', 'Foundation Brushes'],
+  ['MAC bronzer', 'Bronzer Brush'],
+  ['MAC eyeliner', 'Eyeliner Sharpener'],
+  ['MAC lipstick', 'Lipstick Applicator'],
+  ['MAC lipstick', 'Lipstick Applicators'],
+])('requested-category accessory cannot use a shallow ancestor: %s / %s', (q, title) => {
+  const c = buildSearchQualityContract({ rawQuery: q });
+  expect(gate(row('tool', title, 'MAC Cosmetics'), c, q)).toMatchObject({
+    eligible: false, reasons: expect.arrayContaining(['accessory_for_product_query']),
+  });
+});
+test.each([
+  ['MAC foundation', 'Studio Fix Fluid Foundation'],
+  ['MAC bronzer', 'Butter Bronzer with Mirror'],
+  ['MAC foundation brush', 'Foundation Brush'],
+])('own product and explicitly requested tool remain eligible: %s / %s', (q, title) => {
+  const c = buildSearchQualityContract({ rawQuery: q });
+  expect(gate(row('match', title, 'MAC Cosmetics'), c, q).eligible).toBe(true);
+});
+test.each([
+  ['Stila Stay All Day Liquid Lipstick', 'Plumping Lipstick', 'Stila Cosmetics', 'Pair with Stay All Day Liquid Lipstick'],
+  ['MAC MACximal Silky Matte Lipstick', 'Frost Lipstick', 'MAC Cosmetics', 'Try our MACximal Silky Matte Lipstick too'],
+])('exact product line cannot be proved by cross-sell copy: %s', (q, title, brand, description) => {
+  const c = buildSearchQualityContract({ rawQuery: q });
+  const wrong = { ...row('wrong-line', title, brand), description };
+  expect(gate(wrong, c, q)).toMatchObject({ eligible: false, reasons: expect.arrayContaining(['exact_product_mismatch']) });
+  const body = response(q);
+  append(body, [wrong], { queryText: q });
+  expect(body.products).toEqual([]);
+});
+test('trusted canonical title can identify an exact line when the display title is shortened', () => {
+  const q = 'Stila Stay All Day Liquid Lipstick', c = buildSearchQualityContract({rawQuery:q});
+  expect(gate({ ...row('right-line', 'Mini Lipstick'), canonical_title: 'Mini Stay All Day Liquid Lipstick' }, c, q).eligible).toBe(true);
+});

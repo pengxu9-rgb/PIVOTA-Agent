@@ -1,3 +1,4 @@
+const { classifyBeautyCoarseCandidate } = require('./shared/beautyRecoCoarseClassifier');
 const vertexGemini = require('./llm/vertexGemini');
 /*
  * Pivota Agent gateway.
@@ -12589,6 +12590,11 @@ function appendCitableSupplementItems(responseBody, items, { queryText = '', sea
     if (!Array.isArray(items) || !items.length) return responseBody;
     const contract = responseMetadata?.search_quality_contract ||
       (queryText ? buildSearchQualityContract({ rawQuery: queryText, market: searchParams.market }) : null);
+    if (contract?.hard_constraints?.exclusions?.includes('beauty_product_for_apparel_query')) {
+      responseBody.metadata = { ...responseMetadata, citable_supplement_count: 0,
+        citable_supplement_skip_reason: 'explicit_apparel_request' };
+      return responseBody;
+    }
     const budget = resolveBeautyMainlineBudgetConstraint({ search: searchParams, queryText });
     const scoped = items.filter((item) =>
       getSearchQualityContractHardConstraintResult(item, contract, queryText).eligible);
@@ -18540,12 +18546,15 @@ function productMatchesSearchQualityExactAnchor(product = {}, exactProductAnchor
     .filter((token) => token.length >= 2)
     .filter((token) => !SEARCH_EXACT_PRODUCT_ANCHOR_STOP_WORDS.has(token));
   if (!tokens.length) return true;
-  const rawText = candidateText || buildFallbackCandidateText(product);
+  // Product-line identity must come from this item's own name, never recommendation/cross-sell
+  // descriptions. A Frost Lipstick mentioning MACximal in its copy is still a different product.
+  const rawText = [product.title, product.name, product.display_name, product.displayName,
+    product.canonical_title, product.canonical_name, product.product_type].filter(Boolean).join(' ');
   const text = normalizeSearchTextForMatch(rawText);
   // A word stylized with middle dots (M·A·Cximal) is also searchable as
   // its joined spelling. Keep the ordinary word-boundary form alongside it.
   const joinedPunctuationText = normalizeSearchTextForMatch(
-    [product.title, product.name, product.canonical_title, rawText].filter(Boolean).join(' ').replace(/[·•]/g, ''),
+    rawText.replace(/[·•]/g, ''),
   );
   if (!text) return false;
   const matched = tokens.filter((token) => text.includes(token) || joinedPunctuationText.includes(token));
@@ -18576,6 +18585,22 @@ function productLooksLikeNonBeautyMerchandise(product = {}) {
   return /\b(?:tote\s*bag|canvas\s*bag|phone\s*case|key\s*chain|keychain|stickers?|enamel\s*pins?|hoodie|sweatshirt|t[-\s]?shirt|tee\s*shirt|baseball\s*cap|water\s*bottle|mug)\b/i.test(text);
 }
 
+// Use the established coarse classifier on the product's own identity fields. Descriptions can
+// mention tools used with a cosmetic; even titles can say "Bronzer with Mirror", so classify the
+// named object before that included-accessory qualifier. "Brush with Bronzer" remains a brush.
+function searchProductIdentityIsAccessory(product = {}) {
+  const normalizeIdentityText = (value) => String(value || '')
+    .replace(/\b(?:with|includes?|including)\s+(?:(?:a|an|built.in)\s+)?(?:brush(?:es)?|applicators?|mirrors?|sponges?|puffs?)\b.*$/i, '')
+    .replace(/\bbrushes\b/gi, 'brush')
+    .replace(/\baccessories\b/gi, 'accessory')
+    .replace(/\b(applicator|tool|sponge|puff|mirror|curler|sharpener)s\b/gi, '$1');
+  const own = { title: normalizeIdentityText(firstNonEmptyString(product.title, product.name,
+    product.display_name, product.displayName, product.canonical_title)),
+    product_type: normalizeIdentityText(product.product_type) };
+  const coarse = classifyBeautyCoarseCandidate(own);
+  return ['brush', 'tool', 'accessory'].includes(coarse.object_type);
+}
+
 function getSearchQualityContractHardConstraintResult(product = {}, contract = null, queryText = '') {
   if (!isBeautySearchQualityContractApplied(contract)) return { eligible: true, reasons: [] };
   const reasons = [];
@@ -18585,6 +18610,10 @@ function getSearchQualityContractHardConstraintResult(product = {}, contract = n
 
   if (hasOfferProductTransactionHold(product)) reasons.push('source_unavailable_or_non_merchandise');
   if (productLooksLikeNonBeautyMerchandise(product)) reasons.push('non_beauty_merchandise');
+  if ((hard.category_path_prefix || hard.exact_product_anchor) && searchProductIdentityIsAccessory(product)
+      && !searchProductIdentityIsAccessory({ title: queryText || contract.effective_query })) {
+    reasons.push('accessory_for_product_query');
+  }
   if (
     hard.exact_product_anchor &&
     !productMatchesSearchQualityExactAnchor(product, hard.exact_product_anchor, candidateText)
