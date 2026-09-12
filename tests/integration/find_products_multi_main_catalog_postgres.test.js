@@ -131,10 +131,27 @@ suite('canonical MAIN route with real PostgreSQL and no rescue lanes', () => {
     const ids=new Set(first.body.products.map(p=>p.id));
     expect(second.body.products.every(p=>!ids.has(p.id))).toBe(true);
   });
-  test('deep bounded pages expand recall depth before final pagination',async()=>{
+  test('deep bounded pages retain the full primary candidate window',async()=>{
     const res=await invoke('MAC lipstick',40,2);
     expect(res.body.products).toHaveLength(2);
     expect(sqlCalls[0].params[2]).toBeGreaterThanOrEqual(80);
+  });
+  test('pages four and five share one fixed candidate window and never repeat products',async()=>{
+    const fourth=await invoke('MAC lipstick',4,10), fifth=await invoke('MAC lipstick',5,10);
+    expect(fourth.status).toBe(200);expect(fifth.status).toBe(200);
+    expect(fourth.body.products).toHaveLength(10);expect(fifth.body.products).toHaveLength(10);
+    expect(sqlCalls).toHaveLength(2);
+    // params[2] is the actual candidate LIMIT consumed by PostgreSQL. It must
+    // not grow between pages and allow newly recalled candidates to reorder
+    // products into an already served page. The whole SQL/bind set is stable.
+    expect(sqlCalls.map(call=>call.params[2])).toEqual([200,200]);
+    expect(sqlCalls[1]).toEqual(sqlCalls[0]);
+    const previous=new Set(fourth.body.products.map(product=>product.id));
+    expect(fifth.body.products.every(product=>!previous.has(product.id))).toBe(true);
+    for(const body of [fourth.body,fifth.body]) {
+      expect(body.metadata).toMatchObject({primary_result_window:200,total_is_lower_bound:true});
+      expect(body.total).toBeLessThanOrEqual(200);
+    }
   });
   test('a primary SQL failure propagates instead of succeeding on seed data',async()=>{
     failCanonical=true;

@@ -14512,16 +14512,18 @@ function getInvokeProductsArray(body) {
   return Array.isArray(body?.products) ? body.products : [];
 }
 
-function buildBeautyPrimaryRecallFailure(queryText, traceId) {
+function buildBeautyPrimaryRecallFailure(queryText, traceId, error = null) {
+  const windowExceeded = error?.code === 'PRIMARY_SEARCH_WINDOW_EXCEEDED';
   return {
     status: 'failed',
     success: false,
     products: [],
     total: 0,
-    error: { code: 'BEAUTY_PRIMARY_RECALL_FAILED', message: 'Primary product search is unavailable.' },
+    error: { code: windowExceeded ? 'PRIMARY_SEARCH_WINDOW_EXCEEDED' : 'BEAUTY_PRIMARY_RECALL_FAILED',
+      message: windowExceeded ? 'The primary search result window is limited to 200 items.' : 'Primary product search is unavailable.' },
     metadata: {
       status: 'failed',
-      failure_class: 'beauty_primary_recall_failed',
+      failure_class: windowExceeded ? 'primary_search_window_exceeded' : 'beauty_primary_recall_failed',
       query_source: 'beauty_external_seed_mainline',
       fallback_attempted: false,
       fallback_adopted: false,
@@ -14534,7 +14536,7 @@ function buildBeautyPrimaryRecallFailure(queryText, traceId) {
         trace_id: traceId,
         raw_query: queryText,
         upstream_stage: { called: false, timeout: false, status: null },
-        final_decision: 'beauty_primary_recall_failed',
+        final_decision: windowExceeded ? 'primary_search_window_exceeded' : 'beauty_primary_recall_failed',
       },
     },
   };
@@ -14639,8 +14641,8 @@ function applyPivotBeautyContractToInvokeSearchResponse({
     existingMeta.contract_bridge && isPlainObject(existingMeta.contract_bridge)
       ? existingMeta.contract_bridge
       : {};
-  const failureClass = existingMeta.failure_class === 'beauty_primary_recall_failed'
-    ? 'beauty_primary_recall_failed'
+  const failureClass = ['beauty_primary_recall_failed', 'primary_search_window_exceeded'].includes(existingMeta.failure_class)
+    ? existingMeta.failure_class
     : blockFallbackAdoption
       ? 'beauty_legacy_fallback_blocked'
       : effectiveProducts.length === 0
@@ -16729,10 +16731,10 @@ async function queryBeautyExternalSeedRowsFast({
   // ever return one element. Fall back to deriving only when no caller supplied a list.
   const safeMarkets = laneMarkets(markets, market);
   const safeMarket = safeMarkets[0];
-  const safeLimit = Math.max(1, Math.min(60, Number(limit || 24) || 24));
-  const perScopeRowLimit = Math.max(8, Math.min(24, safeLimit * 2));
+  const safeLimit = Math.max(1, Math.min(200, Number(limit || 24) || 24));
+  const perScopeRowLimit = Math.max(8, Math.min(200, safeLimit * 2));
   const categoryTerms = buildBeautyExternalSeedCategoryTerms(intent);
-  const perCategoryRowLimit = Math.max(3, Math.min(8, Math.ceil(perScopeRowLimit / Math.max(1, categoryTerms.length))));
+  const perCategoryRowLimit = Math.max(3, Math.ceil(perScopeRowLimit / Math.max(1, categoryTerms.length)));
   const recallPatterns = buildBeautyExternalSeedRecallPatterns({ queryText, intent });
   const primaryToolScopes = toolScope === 'creator_preferred'
     ? ['creator_agents', '*']
@@ -16741,7 +16743,7 @@ async function queryBeautyExternalSeedRowsFast({
   const toolScopes = PIVOT_BEAUTY_LEGACY_TOOL_SCOPE_RECALL_ENABLED
     ? primaryToolScopes.concat(legacyToolScopes)
     : primaryToolScopes;
-  const rawProductCap = Math.max(safeLimit, Math.min(60, safeLimit * Math.max(1, toolScopes.length)));
+  const rawProductCap = Math.max(safeLimit, Math.min(200, safeLimit * Math.max(1, toolScopes.length)));
 
   const seen = new Set();
   const rawProducts = [];
@@ -16988,28 +16990,10 @@ async function queryBeautyExternalSeedRowsFast({
         },
       };
     } catch (err) {
-      return {
-        tool,
-        rows: [],
-        variant: {
-          query: String(queryText || '').trim(),
-          row_count: 0,
-          category_terms: categoryTerms,
-          recall_pattern_count: recallPatterns.length,
-          market: String(queryMarket || safeMarket).trim().toUpperCase() || safeMarket,
-          market_scope: marketScope,
-          tool_scope: tool || '(empty)',
-          legacy_tool_scope_recall: PIVOT_BEAUTY_LEGACY_TOOL_SCOPE_RECALL_ENABLED,
-          single_category_indexed_query: categoryTerms.length === 1,
-          multi_category_indexed_union_query: categoryTerms.length !== 1,
-          parallel_scope_recall: PIVOT_BEAUTY_PARALLEL_SCOPE_RECALL_ENABLED,
-          error_code: String(err?.code || err?.name || 'query_failed').slice(0, 80),
-          timeout: String(err?.code || '').trim() === '57014' || /timeout|cancel/i.test(String(err?.message || '')),
-        },
-      };
+      throw err;
     }
   };
-  const runTextRecallQuery = async (tool, queryMarket = null, marketScope = 'text_recall_underfill') => {
+  const runTextRecallQuery = async (tool, queryMarket = null, marketScope = 'primary_text_query') => {
     const safePatterns = recallPatterns.filter(Boolean).slice(0, 14);
     const brandCategoryRecall = Boolean(
       intent?.brandBrowse &&
@@ -17038,7 +17022,7 @@ async function queryBeautyExternalSeedRowsFast({
           market: String(queryMarket || safeMarket).trim().toUpperCase() || safeMarket,
           market_scope: marketScope,
           tool_scope: tool || '(empty)',
-          text_recall_underfill: true,
+          primary_text_query: true,
         },
       };
     }
@@ -17125,7 +17109,7 @@ async function queryBeautyExternalSeedRowsFast({
             market: safeQueryMarket,
             market_scope: marketScope,
             tool_scope: tool || '(empty)',
-            text_recall_underfill: true,
+            primary_text_query: true,
             brand_category_text_recall: true,
             query_duration_ms: queryDurationMs,
           },
@@ -17206,27 +17190,12 @@ async function queryBeautyExternalSeedRowsFast({
           market: safeQueryMarket,
           market_scope: marketScope,
           tool_scope: tool || '(empty)',
-          text_recall_underfill: true,
+          primary_text_query: true,
           query_duration_ms: queryDurationMs,
         },
       };
     } catch (err) {
-      return {
-        tool,
-        rows: [],
-        variant: {
-          query: String(queryText || '').trim(),
-          row_count: 0,
-          category_terms: categoryTerms,
-          recall_pattern_count: safePatterns.length,
-          market: String(queryMarket || safeMarket).trim().toUpperCase() || safeMarket,
-          market_scope: marketScope,
-          tool_scope: tool || '(empty)',
-          text_recall_underfill: true,
-          error_code: String(err?.code || err?.name || 'query_failed').slice(0, 80),
-          timeout: String(err?.code || '').trim() === '57014' || /timeout|cancel/i.test(String(err?.message || '')),
-        },
-      };
+      throw err;
     }
   };
   const appendScopeRows = (scopeResult, { requireTargetMarketAuthority = false } = {}) => {
@@ -17273,59 +17242,22 @@ async function queryBeautyExternalSeedRowsFast({
     }
   };
 
+  // Select the query from the request before reading any rows. Empty results
+  // never trigger another query shape, tool scope, or market.
+  const brandCategoryTextRecallRequired = Boolean(
+    intent?.brandBrowse && intent.brandBrowse.contract === 'brand_browse' &&
+    intent.brandBrowse.brand_only === false,
+  );
+  const usePrimaryTextQuery = recallPatterns.length > 0 &&
+    (brandCategoryTextRecallRequired || !Array.isArray(intent?.families) || intent.families.length === 0);
+  const runPrimaryQuery = usePrimaryTextQuery ? runTextRecallQuery : runScopeQuery;
   if (PIVOT_BEAUTY_PARALLEL_SCOPE_RECALL_ENABLED) {
-    const scopeResults = await Promise.all(toolScopes.map((tool) => runScopeQuery(tool)));
-    for (const scopeResult of scopeResults) {
-      appendScopeRows(scopeResult);
-    }
+    const scopeResults = await Promise.all(toolScopes.map((tool) => runPrimaryQuery(tool)));
+    for (const scopeResult of scopeResults) appendScopeRows(scopeResult);
   } else {
     for (const tool of toolScopes) {
       if (rawProducts.length >= rawProductCap) break;
-      appendScopeRows(await runScopeQuery(tool));
-    }
-  }
-
-  const brandCategoryTextRecallRequired = Boolean(
-    intent?.brandBrowse &&
-      intent.brandBrowse.contract === 'brand_browse' &&
-      intent.brandBrowse.brand_only === false,
-  );
-  if ((rawProducts.length < safeLimit || brandCategoryTextRecallRequired) && recallPatterns.length > 0) {
-    if (PIVOT_BEAUTY_PARALLEL_SCOPE_RECALL_ENABLED) {
-      const textScopeResults = await Promise.all(toolScopes.map((tool) => runTextRecallQuery(tool)));
-      for (const scopeResult of textScopeResults) {
-        appendScopeRows(scopeResult);
-      }
-    } else {
-      for (const tool of toolScopes) {
-        if (rawProducts.length >= rawProductCap) break;
-        appendScopeRows(await runTextRecallQuery(tool));
-      }
-    }
-  }
-
-  const shouldBridgeDestinationBrandMarket =
-    safeMarket !== 'US' &&
-    safeMarket === 'KR' &&
-    hasKBeautyLocalIntent(queryText) &&
-    rawProducts.length < safeLimit;
-  if (shouldBridgeDestinationBrandMarket) {
-    destinationBrandMarketBridge.attempted = true;
-    destinationBrandMarketBridge.source_market = 'US';
-    if (PIVOT_BEAUTY_PARALLEL_SCOPE_RECALL_ENABLED) {
-      const bridgeResults = await Promise.all(
-        toolScopes.map((tool) => runScopeQuery(tool, 'US', `${safeMarket.toLowerCase()}_brand_home_bridge`)),
-      );
-      for (const scopeResult of bridgeResults) {
-        appendScopeRows(scopeResult, { requireTargetMarketAuthority: true });
-      }
-    } else {
-      for (const tool of toolScopes) {
-        if (rawProducts.length >= rawProductCap) break;
-        appendScopeRows(await runScopeQuery(tool, 'US', `${safeMarket.toLowerCase()}_brand_home_bridge`), {
-          requireTargetMarketAuthority: true,
-        });
-      }
+      appendScopeRows(await runPrimaryQuery(tool));
     }
   }
 
@@ -21958,6 +21890,11 @@ async function searchBeautyExternalSeedProductsMainline({
       ? Math.floor(Number(search.offset))
       : (safePage - 1) * safeLimit,
   );
+  if (safeOffset + safeLimit > 200) {
+    throw Object.assign(new Error('The primary search result window is limited to 200 items.'), {
+      code: 'PRIMARY_SEARCH_WINDOW_EXCEEDED', status: 400,
+    });
+  }
   const contractSafeEmpty = isSearchQualityContractSafeEmptyContract(searchQualityContract);
   if (contractSafeEmpty) {
     return {
@@ -22060,9 +21997,9 @@ async function searchBeautyExternalSeedProductsMainline({
 
   const inStockOnly = parseQueryBoolean(search.in_stock_only ?? search.inStockOnly) !== false;
   const retrievalQueries = buildBeautyMainlineRetrievalQueries(queryText, beautyIntent);
-  const perQueryLimit = searchQualityContractApplied
-    ? Math.max(safeLimit * 2, Math.min(48, safeLimit * 4))
-    : Math.max(safeLimit, Math.min(24, safeLimit * 2));
+  // Rank the same bounded candidate window on every page. Increasing recall
+  // depth with the page number can rerank old candidates into later pages.
+  const perQueryLimit = 200;
   const canonicalCategoryPathPrefix = searchQualityContractApplied
     ? (searchQualityContract?.hard_constraints?.category_path_prefix || null)
     : (resolveBeautyCategoryPathPrefixForQuery(queryText) || null);
@@ -22075,9 +22012,7 @@ async function searchBeautyExternalSeedProductsMainline({
     beautyIntent.brandBrowse,
     canonicalCategoryPathPrefix,
   );
-  const canonicalLimit = searchQualityContractApplied
-    ? Math.max(18, Math.min(48, safeLimit * 4))
-    : Math.max(6, Math.min(12, Math.ceil(safeLimit / 2)));
+  const canonicalLimit = 200;
   const canonicalStartedAt = Date.now();
   const budgetConstraint = resolveBeautyMainlineBudgetConstraint({ search, intent, queryText });
   const canonicalRowsPromise = fetchCanonicalChainRows({
@@ -22116,7 +22051,7 @@ async function searchBeautyExternalSeedProductsMainline({
     // this file's own prod EXPLAINs put at 3.2-3.9s.
     // See PIVOT_BEAUTY_MAINLINE_SARGABLE_TEXT_WHERE_ENABLED.
     sargableTextWhere: PIVOT_BEAUTY_MAINLINE_SARGABLE_TEXT_WHERE_ENABLED,
-    limit: Math.min(200, Math.max(canonicalLimit, safeOffset + safeLimit)),
+    limit: canonicalLimit,
     // Market-aware filtering — pass the user's market (already computed
     // above for the external-seed-direct path's `safeQueryMarket`) so
     // canonical_chain enforces the same market parity. Without this,
@@ -22215,33 +22150,7 @@ async function searchBeautyExternalSeedProductsMainline({
     beauty_brand_browse: beautyIntent.brandBrowse || null,
     ...(canonicalResult?.error ? { canonical_error: canonicalResult.error } : {}),
   };
-  const creatorScopedProducts = Array.isArray(creatorScopedRows?.rawProducts)
-    ? creatorScopedRows.rawProducts
-    : [];
-  const shouldBroaden =
-    creatorScoped &&
-    creatorScopedProducts.every((product) =>
-      scoreBeautyExternalSeedProduct({
-        product,
-        queryText,
-        intent: beautyIntent,
-        normalizedQuery: beautyIntent.normalized,
-        queryTokens: Array.from(new Set(tokenizeSearchTextForMatch(beautyIntent.normalized))),
-        searchQualityContract: searchQualityEnforced ? effectiveSearchQualityContract : null,
-      }).relevant !== true,
-    );
-  const broadenedRows = shouldBroaden
-    ? await queryBeautyExternalSeedRowsFast({
-        market,
-        markets,
-        queryText,
-        intent: beautyIntent,
-        inStockOnly,
-        limit: perQueryLimit,
-        toolScope: 'all_tools',
-      })
-    : null;
-  const selectedRows = broadenedRows || creatorScopedRows;
+  const selectedRows = creatorScopedRows;
   const normalizedQuery = beautyIntent.normalized;
   const queryTokens = Array.from(new Set(tokenizeSearchTextForMatch(normalizedQuery)));
   const seedProducts = Array.isArray(selectedRows?.rawProducts) ? selectedRows.rawProducts : [];
@@ -22413,13 +22322,15 @@ async function searchBeautyExternalSeedProductsMainline({
     status: 'success',
     success: true,
     products: pagedProducts,
-    total: balancedProducts.length,
+    total: Math.min(balancedProducts.length, 200),
     page: safePage,
     page_size: pagedProducts.length,
     reply: pagedProducts.length > 0 ? null : 'No matching beauty products found on the mainline catalog path.',
     metadata: {
       query_source: querySource,
       ...(promptInspect ? { prompt_inspect: promptInspect } : {}),
+      primary_result_window: 200,
+      total_is_lower_bound: true,
       fetched_at: new Date().toISOString(),
       external_seed_only_requested: true,
       external_seed_rows_fetched: Array.isArray(selectedRows?.rawProducts) ? selectedRows.rawProducts.length : 0,
@@ -22464,7 +22375,7 @@ async function searchBeautyExternalSeedProductsMainline({
       ...(budgetFxMetadata || {}),
       ...canonicalTelemetry,
       canonical_returned_count: pagedCanonicalCount,
-      creator_external_seed_tool_scope: broadenedRows ? 'all_tools' : (creatorScoped ? 'creator_preferred' : 'all_tools'),
+      creator_external_seed_tool_scope: creatorScoped ? 'creator_preferred' : 'all_tools',
       retrieval_query_variants: retrievalQueries,
       retrieval_query_debug: selectedRows?.variantResults || [],
       beauty_mainline_filter: {
@@ -22537,7 +22448,7 @@ async function searchBeautyExternalSeedProductsMainline({
           target_families: beautyIntent.families,
           safety_rules: beautyIntent.safety,
           creator_scoped: Boolean(creatorScoped),
-          broadened_tool_scope: Boolean(broadenedRows),
+          broadened_tool_scope: false,
           destination_brand_market_bridge: selectedRows?.destinationBrandMarketBridge || null,
           canonical_chain: canonicalTelemetry,
           search_quality_contract_applied: searchQualityContractApplied,
@@ -41534,7 +41445,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             },
             'beauty primary recall failed',
           );
-          return res.status(503).json(buildBeautyPrimaryRecallFailure(earlyQueryText, gatewayRequestId));
+          return res.status(earlyDirectErr?.status === 400 ? 400 : 503).json(buildBeautyPrimaryRecallFailure(earlyQueryText, gatewayRequestId, earlyDirectErr));
         }
       }
     }
@@ -47214,7 +47125,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             { err: err?.message || String(err), creatorId, source, queryText },
             'Beauty contract primary recall failed',
           );
-          return res.status(503).json(buildBeautyPrimaryRecallFailure(rawUserQuery || queryText, gatewayRequestId));
+          return res.status(err?.status === 400 ? 400 : 503).json(buildBeautyPrimaryRecallFailure(rawUserQuery || queryText, gatewayRequestId, err));
         }
       }
       const isCreatorUiColdStart = isCreatorUiSource(source) && queryText.length === 0;
@@ -47646,7 +47557,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             { err: err?.message || String(err), creatorId, source, queryText },
             'Beauty primary recall failed',
           );
-          return res.status(503).json(buildBeautyPrimaryRecallFailure(rawUserQuery || queryText, gatewayRequestId));
+          return res.status(err?.status === 400 ? 400 : 503).json(buildBeautyPrimaryRecallFailure(rawUserQuery || queryText, gatewayRequestId, err));
         }
       }
 
