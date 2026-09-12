@@ -2,6 +2,7 @@ const { Client } = require('pg');
 const request = require('supertest');
 const nock = require('nock');
 const { fetchCanonicalChainRows } = require('../../src/services/canonicalCatalogSearch');
+const reviewedAliases = require('../../data/beauty/meitu_brand_aliases.json');
 const { buildSearchQualityContract } = require('../../src/findProductsMulti/queryUnderstanding');
 
 // Dedicated disposable DB only. CI/operators opt in with this explicit test URL.
@@ -40,12 +41,18 @@ suite('canonical MAIN route with real PostgreSQL and no rescue lanes', () => {
     await db.query("INSERT INTO catalog_merchants(merchant_id,merchant_name,status,primary_platform) VALUES ('retailer','Retailer','active','shopify')");
     const items=[
       ['stila','Mini Stay All Day Liquid Lipstick','Stila','beauty/makeup/lip/lipstick','Lipstick'],
+      ['glokolor','Pearl Glow Lipstick','Code Glökolor','beauty/makeup/lip/lipstick','Lipstick'],
+      ['murad_cream','Barrier Repair Cream','MISSHA','beauty/skincare','Moisturizer'],
+      ['murad_serum','Hydrating Serum','MISSHA','beauty/skincare','Serum'],
+      ['murad_spf','Daily Sun Cream SPF50','MISSHA','beauty/skincare','Sunscreen'],
+      ['chanel_perfume','Chance Eau de Parfum','Chanel','beauty','Perfume'],
       ['stila_wrong','Plumping Lipstick','Stila Cosmetics','beauty/makeup/lip/lipstick','Lipstick'],
       ['mac','M·A·Cximal Silky Matte Lipstick','M·A·C','beauty/makeup/lip/lipstick','Lipstick'],
       ['romand','Juicy Lasting Lip Tint','rom&nd','beauty/makeup','Lip Tint'],
       ['romand_wrong','Glasting Lip Gloss','rom&nd','beauty/makeup/lip/gloss','Lip Gloss'],
       ['mac_brush','Foundation Brush','MAC','beauty/makeup','Brush'],
       ['mac_foundation','Studio Fix Fluid Foundation','MAC Cosmetics','beauty/makeup','Foundation'],
+      ...Array.from({length:220},(_,i)=>[`brush_${i}`,`Foundation Brush Tool ${i}`,'MAC','beauty/makeup/face/foundation','Brush']),
       ...Array.from({length:100},(_,i)=>[`mac_${i}`,`MAC Lipstick Color ${String(i).padStart(2,'0')}`,'MAC Cosmetics','beauty/makeup/lip/lipstick','Lipstick']),
     ];
     for(const [id,title,brand,category,type] of items) {
@@ -85,6 +92,8 @@ suite('canonical MAIN route with real PostgreSQL and no rescue lanes', () => {
   test.each([
     ['Stila Cosmetics products','stila'],['Stila Stay All Day Liquid Lipstick','stila'],
     ['M·A·C MACximal Silky Matte Lipstick','mac'],['romand lip tint','romand'],['MAC foundation','mac_foundation'],
+    ['Code Glokolor lipstick','glokolor'],['MISSHA moisturizer','murad_cream'],['MISSHA serum','murad_serum'],
+    ['MISSHA sunscreen','murad_spf'],['Chanel perfume','chanel_perfume'],
   ])('%s succeeds on the canonical main route',async(q,id)=>{
     const res=await invoke(q); expect(res.status).toBe(200);expect(res.body.products.length).toBeGreaterThan(0);
     expect(res.body.products.some(p=>p.product_key===id || p.product_ref?.product_id===id || p.id===id)).toBe(true);
@@ -94,7 +103,27 @@ suite('canonical MAIN route with real PostgreSQL and no rescue lanes', () => {
     expect(sqlCalls).toHaveLength(1);
     expect(res.body.status).toBe('success');
     expect(res.body.total).toBeGreaterThanOrEqual(res.body.products.length);
-    if(q.includes('Stay All') || q.includes('MACximal') || q.includes('tint') || q.includes('foundation')) expect(res.body.products).toHaveLength(1);
+    if(q.includes('MISSHA') || q.includes('Code Glokolor') || q.includes('Stay All') || q.includes('MACximal') || q.includes('tint') || q.includes('foundation')) expect(res.body.products).toHaveLength(1);
+  });
+  test('every reviewed roster alias matches its stored identity in PostgreSQL',async()=>{
+    const {buildCanonicalSearchQualitySql}=require('../../src/services/canonicalSearchQualitySql');
+    for(const [brand_key,aliases] of Object.entries(reviewedAliases)) {
+      for(const alias of aliases) {
+        const params=['probe','%probe%'];
+        const scoped=buildCanonicalSearchQualitySql({contract:{target_domain:'beauty',query_class:'brand_browse',
+          hard_constraints:{brand:{brand_key,canonical:aliases[0],alias}}},params,defaultWhere:'FALSE',defaultBrandWhere:''});
+        params.push(alias);
+        const result=await db.query(`SELECT $1::text FROM (SELECT $${params.length}::text AS brand, '{}'::jsonb AS product_payload) p WHERE ${scoped.where} ${scoped.brandWhere}`,params);
+        expect({brand_key,alias,count:result.rows.length}).toEqual({brand_key,alias,count:1});
+      }
+    }
+  });
+  test('accessory rows cannot exhaust the primary candidate limit',async()=>{
+    const res=await invoke('MAC foundation',1,2);
+    expect(res.body.products).toHaveLength(1);
+    expect(res.body.products[0].title).toBe('Studio Fix Fluid Foundation');
+    expect(sqlCalls[0].params[2]).toBeLessThan(220);
+    expect(res.body.metadata.canonical_raw_count).toBe(1);
   });
   test('successive pages contain different eligible canonical products',async()=>{
     const first=await invoke('MAC lipstick',1,10), second=await invoke('MAC lipstick',2,10);

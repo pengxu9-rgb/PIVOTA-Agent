@@ -153,3 +153,37 @@ jobs:
             --maxWorkers=1 \
             --workerIdleMemoryLimit=768MB \
             --shard=${{ matrix.shard }}/8
+
+  canonical-main-postgres:
+    name: Canonical main SQL + HTTP (PostgreSQL)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: gateway_review
+          POSTGRES_PASSWORD: local_test_only
+          POSTGRES_DB: gateway_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U gateway_review -d gateway_test"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - name: Install
+        run: |
+          for attempt in 1 2 3; do
+            if npm ci; then exit 0; fi
+            sleep $((attempt * 15))
+          done
+          exit 1
+      - name: Execute canonical primary SQL through HTTP without rescue
+        env:
+          CANONICAL_MAINLINE_TEST_DATABASE_URL: postgres://gateway_review:local_test_only@127.0.0.1:5432/gateway_test
+        run: npx jest --watchman=false --runInBand tests/integration/find_products_multi_main_catalog_postgres.test.js

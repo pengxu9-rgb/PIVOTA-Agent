@@ -18118,21 +18118,13 @@ function getSearchProductServingEligibility(product = {}, options = {}) {
 
 function searchProductMatchesBeautyBrandBrowse(product = {}, brandBrowse = null, candidateText = '') {
   if (!brandBrowse || brandBrowse.contract !== 'brand_browse') return true;
-  const requestedBrand = normalizeSearchTextForMatch(brandBrowse.brand || '');
-  const requestedAlias = normalizeSearchTextForMatch(brandBrowse.alias || '');
-  if (!requestedBrand && !requestedAlias) return true;
-  const productBrand = normalizeSearchTextForMatch(
-    firstNonEmptyString(product?.brand, product?.vendor, product?.merchant_name),
-  );
-  const text = String(candidateText || buildFallbackCandidateText(product) || '');
-  const matches = (needle) => Boolean(
-    needle &&
-      (
-        (productBrand && (productBrand.includes(needle) || needle.includes(productBrand))) ||
-        text.includes(needle)
-      )
-  );
-  return matches(requestedBrand) || matches(requestedAlias);
+  // The ranker and hard gate must use the same reviewed brand identity. A
+  // second raw-text check drops diacritics and legitimate alternate aliases.
+  return productMatchesSearchQualityBrand(product, {
+    canonical: brandBrowse.brand,
+    alias: brandBrowse.alias,
+    brand_key: brandBrowse.brand_key,
+  }, candidateText);
 }
 
 function filterSearchServingEligibleProducts(products = [], options = {}) {
@@ -18283,7 +18275,7 @@ function buildCanonicalQueryTextForBeautyBrandRecall(queryText = '', brandBrowse
 }
 
 function normalizeSearchQualityBrandNeedle(value) {
-  return normalizeSearchTextForMatch(value).replace(/\bbeauty\b/g, ' ').replace(/\s+/g, ' ').trim();
+  return normalizeSearchTextForMatch(normalizeBrandText(value)).replace(/\bbeauty\b/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
 function productMatchesSearchQualityBrand(product = {}, brand = null, candidateText = '') {
