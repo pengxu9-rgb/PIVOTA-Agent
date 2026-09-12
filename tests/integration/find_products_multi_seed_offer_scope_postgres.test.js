@@ -126,4 +126,33 @@ suite('primary seed offer scope with real PostgreSQL and no rescue lanes', () =>
     } finally {await db.query('ROLLBACK');}
   });
 
+  test.each(["A'PIEU lip oil",'lip oil'])('explicit lip-oil form reaches seed-only primary SQL: %s',async(query)=>{
+    await db.query('BEGIN');
+    try {
+      await db.query("UPDATE external_product_seeds SET title=$1,seed_data=$2 WHERE id='MAC_220'",["A'PIEU Honey Milk Lip Oil",{brand:"A'PIEU",category:'Lip Oil'}]);
+      await db.query("UPDATE catalog_products SET category_path='beauty/makeup/lip/oil' WHERE product_key='MAC_220'");
+      const res=await invoke(query,{currency:'USD'});
+      expect(res.status).toBe(200);expect(res.body.status).toBe('success');
+      expect(res.body.products).toHaveLength(1);
+      expect(res.body.products[0]).toMatchObject({source:'external_seed',source_product_id:'MAC_220',currency:'USD',price:20});
+      expect(sqlCalls.every(call=>call.params.includes('%lip oil%'))).toBe(true);
+      expect(sqlCalls.every(call=>!call.params.includes('%lipstick%'))).toBe(true);
+    } finally {await db.query('ROLLBACK');}
+  });
+  test('seed hash index is valid and full equality rejects an accelerator collision',async()=>{
+    const {primaryBrandIndexDefinitions}=require('../../scripts/catalog/primary_brand_indexes');
+    const index=primaryBrandIndexDefinitions().find(index=>index.table==='external_product_seeds');
+    await db.query(index.sql);
+    const ready=await db.query("SELECT indisvalid,indisready FROM pg_index WHERE indexrelid=$1::regclass",[schema+'.'+index.name]);
+    expect(ready.rows[0]).toEqual({indisvalid:true,indisready:true});
+    const {buildSeedSearchOfferScope}=require('../../src/services/seedSearchOfferScope');
+    const params=[];
+    const predicate=buildSeedSearchOfferScope({brand:{brand_key:'mac_cosmetics',brand:'MAC'}},params);
+    // An accelerator hit alone must not qualify the wrong identity.
+    params[1]=[require('crypto').createHash('md5').update('stila').digest('hex')];
+    params.push({brand:'Stila'});
+    const collision=await db.query(`SELECT 1 FROM (SELECT $${params.length}::jsonb seed_data,20::numeric price_amount) p WHERE TRUE ${predicate}`,params);
+    expect(collision.rows).toEqual([]);
+  });
+
 });

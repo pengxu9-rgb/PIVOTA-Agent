@@ -186,4 +186,18 @@ suite('canonical MAIN route with real PostgreSQL and no rescue lanes', () => {
     }
   });
 
+  test('canonical exact-brand index is valid and available before offer selection',async()=>{
+    const {primaryBrandIndexDefinitions}=require('../../scripts/catalog/primary_brand_indexes');
+    const index=primaryBrandIndexDefinitions().find(index=>index.table==='catalog_products');
+    await db.query(index.sql);await db.query('ANALYZE catalog_products');
+    const ready=await db.query("SELECT indisvalid,indisready FROM pg_index WHERE indexrelid=$1::regclass",[schema+'.'+index.name]);
+    expect(ready.rows[0]).toEqual({indisvalid:true,indisready:true});
+    const res=await invoke('Stila Cosmetics products');
+    expect(res.body.products).toHaveLength(2);
+    const explain=await db.query('EXPLAIN (FORMAT JSON) '+sqlCalls[0].sql,sqlCalls[0].params);
+    const nodes=[];const walk=node=>{nodes.push(node);for(const child of node.Plans||[])walk(child);};
+    walk(explain.rows[0]['QUERY PLAN'][0].Plan);
+    expect(nodes.some(node=>node['Index Name']===index.name)).toBe(true);
+  });
+
 });

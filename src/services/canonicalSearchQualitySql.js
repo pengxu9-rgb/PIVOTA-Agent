@@ -1,5 +1,6 @@
 'use strict';
 
+const { createHash } = require('crypto');
 const reviewedAliases = require('../../data/beauty/meitu_brand_aliases.json');
 const { normalizeBrandText } = require('../findProductsMulti/brandLexicon');
 
@@ -33,13 +34,23 @@ const FORM_RULES = [
   [/\bhighlighters?\b/, 'highlighters?|luminizers?'],
 ];
 
+const CANONICAL_OWN_BRAND_SQL = "coalesce(nullif(trim(p.brand), ''), p.product_payload->>'brand', p.product_payload->>'vendor', p.product_payload#>>'{seed_data,brand}')";
+function normalizedBrandIdentitySql(expression) {
+  return `regexp_replace(${identitySql(expression)}, ' ', '', 'g')`;
+}
+
 function buildBrandIdentityPredicate(brand, expression, params) {
   const terms = [...(reviewedAliases[brand.brand_key] || []), brand.canonical, brand.brand, brand.alias]
     .flatMap(value => [value, String(value || '').replace(/\b(?:beauty|cosmetics?)\b/gi, '')])
     .map(identityValue).filter(Boolean);
   const normalized = [...new Set(terms.map(term => term.replace(/\s+/g, '')))];
   params.push(normalized);
-  return `regexp_replace(${identitySql(expression)}, ' ', '', 'g') = ANY($${params.length}::text[])`;
+  const fullBind = `$${params.length}`;
+  params.push(normalized.map(value => createHash('md5').update(value, 'utf8').digest('hex')));
+  // The fixed-width hash only accelerates the index lookup. Full normalized
+  // equality remains mandatory, so collisions cannot alter brand identity.
+  const ownBrand = normalizedBrandIdentitySql(expression);
+  return `(md5(${ownBrand}) = ANY($${params.length}::text[]) AND ${ownBrand} = ANY(${fullBind}::text[]))`;
 }
 
 function buildCanonicalSearchQualitySql({ contract, params, categoryPredicate, defaultWhere, defaultBrandWhere }) {
@@ -49,8 +60,7 @@ function buildCanonicalSearchQualitySql({ contract, params, categoryPredicate, d
   const ownName = identitySql("concat_ws(' ', p.title, p.product_type, p.product_payload->>'canonical_title', p.product_payload->>'canonical_name')");
   let brandWhere = defaultBrandWhere;
   if (hard.brand) {
-    const ownBrand = "coalesce(nullif(trim(p.brand), ''), p.product_payload->>'brand', p.product_payload->>'vendor', p.product_payload#>>'{seed_data,brand}')";
-    brandWhere = `AND ${buildBrandIdentityPredicate(hard.brand, ownBrand, params)}`;
+    brandWhere = `AND ${buildBrandIdentityPredicate(hard.brand, CANONICAL_OWN_BRAND_SQL, params)}`;
   }
   let where = defaultWhere;
   if (hard.exact_product_anchor) {
@@ -110,4 +120,4 @@ function buildCanonicalSearchQualitySql({ contract, params, categoryPredicate, d
   }
   return { where: `(${where}) AND $2::text IS NOT NULL`, brandWhere };
 }
-module.exports = { buildCanonicalSearchQualitySql, buildBrandIdentityPredicate };
+module.exports = { buildCanonicalSearchQualitySql, buildBrandIdentityPredicate, normalizedBrandIdentitySql, CANONICAL_OWN_BRAND_SQL };

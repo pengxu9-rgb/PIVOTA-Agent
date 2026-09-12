@@ -16326,6 +16326,15 @@ const BEAUTY_EXTERNAL_SEED_BRAND_BROWSE_CATEGORY_TERMS = Object.freeze([
   'tool',
 ]);
 
+function explicitBeautyLipFormTerms(queryText = '') {
+  const query = normalizeSearchTextForMatch(queryText);
+  if (/\blip\s*oils?\b/.test(query)) return ['lip oil', 'lip-oil'];
+  if (/\blip\s*tints?\b/.test(query)) return ['lip tint', 'lip-tint', 'lip stain'];
+  if (/\blip\s*gloss(?:es)?\b/.test(query)) return ['lip gloss', 'lipgloss'];
+  if (/\blip\s*balms?\b/.test(query)) return ['lip balm', 'lipbalm'];
+  return [];
+}
+
 function buildBeautyExternalSeedCategoryTerms(intent = null) {
   const families = Array.isArray(intent?.families) ? intent.families : [];
   const rawQuery = String(intent?.raw || intent?.query || intent?.queryText || '').trim();
@@ -16345,7 +16354,8 @@ function buildBeautyExternalSeedCategoryTerms(intent = null) {
   }
   if (terms.length === 0 && categoryPathPrefix) {
     if (categoryPathPrefix.startsWith('beauty/makeup/lip/')) {
-      push('lipstick');
+      const explicitForms = explicitBeautyLipFormTerms(rawQuery);
+      (explicitForms.length ? explicitForms : ['lipstick']).forEach(push);
     } else if (categoryPathPrefix.startsWith('beauty/makeup/eye/')) {
       push('mascara');
       push('eyeshadow');
@@ -16468,7 +16478,8 @@ function buildBeautyExternalSeedBrandCategoryTextTerms(queryText = '', intent = 
   if (prefix.startsWith('beauty/makeup/face/blush/') || prefix.startsWith('beauty/makeup/cheek/')) {
     ['blush', 'cheek', 'luminizer', 'highlighter'].forEach(push);
   } else if (prefix.startsWith('beauty/makeup/lip/')) {
-    ['lipstick', 'lip color', 'liquid lip', 'rouge'].forEach(push);
+    const explicitForms = explicitBeautyLipFormTerms(queryText);
+    (explicitForms.length ? explicitForms : ['lipstick', 'lip color', 'liquid lip', 'rouge']).forEach(push);
   } else if (prefix.startsWith('beauty/makeup/eye/')) {
     ['mascara', 'eyeshadow', 'eyeliner', 'brow', 'lash'].forEach(push);
   } else if (prefix.startsWith('beauty/fragrance/')) {
