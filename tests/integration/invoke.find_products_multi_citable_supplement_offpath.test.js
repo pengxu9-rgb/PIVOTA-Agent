@@ -1,259 +1,180 @@
 const nock = require('nock');
 const request = require('supertest');
 
-// ADR-007 op-level citable supplement — OFF the serial path.
-//
-// Prod fpm_stage_breakdown (PR #1753) measured the supplement's tokenMatch
-// canonical query at 5.8-17.2s on EVERY find_products_multi invoke, 60-80% of
-// wall time, because handleInvokeRequest awaited it BEFORE the pipeline ran.
-// The prefetch is now fire-and-forget: the res.json wrapper appends whatever
-// has resolved by send time and fails open to [] (stamping
-// metadata.citable_supplement_pending), while the resolved result warms a
-// per-query TTL cache so subsequent identical queries append from cache.
-//
-// The supplement query is the only fetchCanonicalChainRows call with
-// eligibility:'index_eligible', so the db mock discriminates on that SQL text.
-
+// Citation evidence is not a second product-search route. Even with its old
+// rollout flag enabled and matching citation rows available, the primary route
+// alone owns products, failure status and pagination on every request.
 const ENV_KEYS = [
-  'PIVOTA_API_BASE',
-  'PIVOTA_API_KEY',
-  'API_MODE',
-  'DATABASE_URL',
-  'INDEX_ELIGIBLE_RECALL',
-  'CITABLE_SUPPLEMENT_CACHE_TTL_MS',
-  'STRICT_FIND_PRODUCTS_MULTI_AUTO_CONSTRAINT_ENABLED',
-  'FIND_PRODUCTS_MULTI_EXPANSION_MODE',
-  'FIND_PRODUCTS_MULTI_SECOND_STAGE_EXPANSION_MODE',
-  'PROXY_SEARCH_RESOLVER_FIRST_ENABLED',
-  'PROXY_SEARCH_INVOKE_FALLBACK_ENABLED',
+  'PIVOTA_API_BASE', 'PIVOTA_API_KEY', 'API_MODE', 'DATABASE_URL', 'INDEX_ELIGIBLE_RECALL',
+  'CITABLE_SUPPLEMENT_CACHE_TTL_MS', 'STRICT_FIND_PRODUCTS_MULTI_AUTO_CONSTRAINT_ENABLED',
+  'FIND_PRODUCTS_MULTI_EXPANSION_MODE', 'FIND_PRODUCTS_MULTI_SECOND_STAGE_EXPANSION_MODE',
+  'PROXY_SEARCH_RESOLVER_FIRST_ENABLED', 'PROXY_SEARCH_INVOKE_FALLBACK_ENABLED',
   'PROXY_SEARCH_SECONDARY_FALLBACK_MULTI_ENABLED',
 ];
-
-const isSupplementSql = (sql) => String(sql || '').includes('index_eligible');
-
-function citableRow() {
+// SQL comments mention both surfaces; only the executable predicate identifies the lane.
+const isSupplementSql = sql => /\bindex_eligible\b/.test(String(sql || '').replace(/--[^\n]*/g, ''));
+function citationRow() {
   return {
-    merchant_id: 'external_seed',
-    product_key: 'prod::external_seed::external_seed::ext_cit_1',
-    source_product_id: 'ext_cit_1',
-    product_title: 'Citable Barrier Cream',
-    brand: 'CitBrand',
-    content_key: 'ck_cit_1',
-    pivota_signature_id: 'sig_cit_1',
-    product_payload: {
-      seed_data: {
-        snapshot: { price_amount: 26, price_currency: 'USD' },
-      },
-    },
+    merchant_id: 'external_seed', product_key: 'prod::external_seed::external_seed::ext_cit_1',
+    source_product_id: 'ext_cit_1', product_title: 'MAC Matte Lipstick', brand: 'MAC Cosmetics',
+    content_key: 'ck_cit_1', pivota_signature_id: 'sig_cit_1',
+    product_payload: { seed_data: { snapshot: { price_amount: 26, price_currency: 'USD' } } },
   };
 }
-
-function mockUpstreamSearch() {
-  return nock('http://pivota.test')
-    .post('/agent/v2/products/search')
-    .query(true)
-    .reply(200, {
-      status: 'success',
-      success: true,
-      products: [
-        {
-          product_id: 'prod_1',
-          merchant_id: 'merch_1',
-          title: 'Hydrating Face Cream',
-          description: 'Fresh upstream result',
-          price: 31,
-          currency: 'USD',
-        },
-      ],
-      total: 1,
-      metadata: { query_source: 'agent_products_search' },
-    })
-    .persist();
-}
-
-function invokeBody(queryText) {
+function primaryRow() {
+  const now = new Date().toISOString();
   return {
-    operation: 'find_products_multi',
-    payload: {
-      search: {
-        query: queryText,
-        limit: 10,
-        page: 1,
-        in_stock_only: true,
-        allow_external_seed: true,
-        allow_stale_cache: false,
-        external_seed_strategy: 'unified_relevance',
-      },
-    },
-    metadata: { source: 'shopping_agent' },
+    id: 'seed_mac_1', external_product_id: 'ext_mac_1', market: 'US', tool: '*',
+    title: 'MAC Matte Lipstick', image_url: 'https://cdn.example.com/mac.jpg',
+    price_amount: '24.00', price_currency: 'USD',
+    canonical_url: 'https://example.com/products/mac-matte-lipstick',
+    destination_url: 'https://example.com/products/mac-matte-lipstick', availability: 'in stock',
+    seed_data: { brand: 'MAC Cosmetics', category: 'lipstick', category_path: 'beauty/makeup/lip/lipstick' },
+    updated_at: now, created_at: now,
   };
 }
+function invokeBody({ source = 'public_api', page = 1, query = 'MAC lipstick', domain = 'beauty' } = {}) {
+  return { operation: 'find_products_multi', payload: { search: {
+    query, ...(domain ? { domain } : {}), limit: 10, page, market: 'US', in_stock_only: true,
+    allow_external_seed: true, allow_stale_cache: false, external_seed_strategy: 'unified_relevance',
+  } }, metadata: { source } };
+}
+function installDatabase({ hit = false, fail = false } = {}) {
+  const calls = [];
+  jest.doMock('../../src/db', () => ({ query: jest.fn(async sql => {
+    const text = String(sql || '');
+    calls.push(text);
+    // An accidental supplement call would find a perfectly matching citation;
+    // tests must reject the call itself, not merely filter the returned card.
+    if (isSupplementSql(text)) return { rows: [citationRow()] };
+    if (fail) throw new Error('primary catalog unavailable');
+    if (hit && text.includes('FROM external_product_seeds') && !text.includes('FROM external_product_seeds eps')) {
+      return { rows: [primaryRow()] };
+    }
+    return { rows: [] };
+  }) }));
+  return calls;
+}
+function expectNoSupplement(body, calls) {
+  expect(calls.filter(isSupplementSql)).toEqual([]);
+  expect((body.products || []).some(p => p.source === 'canonical_citation' || p.content_key === 'ck_cit_1')).toBe(false);
+  expect(Object.keys(body.metadata || {}).filter(k => k.startsWith('citable_supplement'))).toEqual([]);
+  expect(body.metadata?.mainline_failure_class).toBeUndefined();
+}
 
-describe('/agent/shop/v1/invoke find_products_multi citable supplement off-path', () => {
-  let prevEnv;
-
+describe('/agent/shop/v1/invoke uses the primary search route without citation supplementation', () => {
+  let prevEnv, fallbackHttpCalls;
   beforeEach(() => {
     jest.resetModules();
-    nock.cleanAll();
-    nock.disableNetConnect();
-    nock.enableNetConnect((host) => {
-      const h = String(host || '');
-      return h.includes('127.0.0.1') || h.includes('localhost') || h === '::1';
-    });
-
-    prevEnv = {};
-    for (const key of ENV_KEYS) prevEnv[key] = process.env[key];
-
-    process.env.PIVOTA_API_BASE = 'http://pivota.test';
-    process.env.PIVOTA_API_KEY = 'test_key';
-    process.env.API_MODE = 'REAL';
-    delete process.env.DATABASE_URL;
-    process.env.INDEX_ELIGIBLE_RECALL = 'true';
-    process.env.STRICT_FIND_PRODUCTS_MULTI_AUTO_CONSTRAINT_ENABLED = 'false';
-    process.env.FIND_PRODUCTS_MULTI_EXPANSION_MODE = 'off';
-    process.env.FIND_PRODUCTS_MULTI_SECOND_STAGE_EXPANSION_MODE = 'off';
-    process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED = 'false';
-    process.env.PROXY_SEARCH_INVOKE_FALLBACK_ENABLED = 'true';
-    process.env.PROXY_SEARCH_SECONDARY_FALLBACK_MULTI_ENABLED = 'true';
-  });
-
-  afterEach(() => {
-    jest.dontMock('../../src/db');
-    jest.resetModules();
-    nock.cleanAll();
-    nock.enableNetConnect();
-    for (const key of ENV_KEYS) {
-      if (prevEnv[key] === undefined) delete process.env[key];
-      else process.env[key] = prevEnv[key];
+    nock.cleanAll(); nock.disableNetConnect();
+    nock.enableNetConnect(host => /127\.0\.0\.1|localhost|^::1$/.test(String(host || '')));
+    fallbackHttpCalls = [];
+    // A fallback would have a usable hit, so accidental continuation cannot
+    // pass merely because a blocked/unmatched mock happened to return empty.
+    for (const method of ['get', 'post']) {
+      nock('http://pivota.test').persist()[method](/\/(?:products\/search|invoke)$/).query(true)
+        .reply(uri => {
+          fallbackHttpCalls.push(uri);
+          return [200, { status: 'success', success: true, total: 1, products: [{
+            product_id: 'forbidden_fallback_hit', merchant_id: 'merchant_fallback',
+            title: 'MAC Matte Lipstick', brand: 'MAC Cosmetics', price: 24, currency: 'USD',
+          }] }];
+        });
     }
+    prevEnv = Object.fromEntries(ENV_KEYS.map(key => [key, process.env[key]]));
+    Object.assign(process.env, {
+      PIVOTA_API_BASE: 'http://pivota.test', PIVOTA_API_KEY: 'test_key', API_MODE: 'REAL',
+      DATABASE_URL: 'postgres://mock:mock@127.0.0.1/mock', INDEX_ELIGIBLE_RECALL: 'true',
+      CITABLE_SUPPLEMENT_CACHE_TTL_MS: '60000', STRICT_FIND_PRODUCTS_MULTI_AUTO_CONSTRAINT_ENABLED: 'false',
+      FIND_PRODUCTS_MULTI_EXPANSION_MODE: 'off', FIND_PRODUCTS_MULTI_SECOND_STAGE_EXPANSION_MODE: 'off',
+      PROXY_SEARCH_RESOLVER_FIRST_ENABLED: 'false', PROXY_SEARCH_INVOKE_FALLBACK_ENABLED: 'true',
+      PROXY_SEARCH_SECONDARY_FALLBACK_MULTI_ENABLED: 'true',
+    });
+  });
+  afterEach(() => {
+    const unexpectedFallbackCalls = [...fallbackHttpCalls];
+    jest.dontMock('../../src/db'); jest.resetModules();
+    nock.cleanAll(); nock.enableNetConnect();
+    for (const key of ENV_KEYS) {
+      if (prevEnv[key] === undefined) delete process.env[key]; else process.env[key] = prevEnv[key];
+    }
+    expect(unexpectedFallbackCalls).toEqual([]);
   });
 
-  test('a slow supplement query no longer blocks the response (fail-open, pending stamped)', async () => {
-    let supplementCalls = 0;
-    jest.doMock('../../src/db', () => ({
-      query: jest.fn((sql) => {
-        if (isSupplementSql(sql)) {
-          supplementCalls += 1;
-          return new Promise(() => {}); // prod-shaped hang: 5.8-17.2s, never inside test window
-        }
-        return Promise.resolve({ rows: [] });
-      }),
-    }));
-    mockUpstreamSearch();
-
+  test('a primary hit returns without querying citation-only rows', async () => {
+    const calls = installDatabase({ hit: true });
     const app = require('../../src/server');
-    const resp = await request(app)
-      .post('/agent/shop/v1/invoke')
-      .send(invokeBody('hydrating face cream'));
-
+    const resp = await request(app).post('/agent/shop/v1/invoke').send(invokeBody());
     expect(resp.status).toBe(200);
-    // The prefetch was issued exactly once, but the response did not wait on it.
-    expect(supplementCalls).toBe(1);
-    expect(resp.body.products.map((p) => p.product_id)).toContain('prod_1');
-    expect(resp.body.products.every((p) => p.source !== 'canonical_citation')).toBe(true);
-    expect(resp.body.metadata.citable_supplement_count).toBe(0);
-    expect(resp.body.metadata.citable_supplement_pending).toBe(true);
+    expect(resp.body.status).toBe('success');
+    expect(resp.body.products).toHaveLength(1);
+    expect(resp.body.products[0].title).toBe('MAC Matte Lipstick');
+    expect(calls.length).toBeGreaterThan(0);
+    expectNoSupplement(resp.body, calls);
   });
 
-  test('a resolved supplement warms the cache; the next identical query appends without a second DB hit', async () => {
-    let supplementCalls = 0;
-    jest.doMock('../../src/db', () => ({
-      query: jest.fn((sql) => {
-        if (isSupplementSql(sql)) {
-          supplementCalls += 1;
-          return Promise.resolve({ rows: [citableRow()] });
-        }
-        return Promise.resolve({ rows: [] });
-      }),
+  test.each(['public_api', 'shopping_agent'])('matching citation rows cannot rescue an empty primary route for %s', async source => {
+    const calls = installDatabase();
+    const app = require('../../src/server');
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const resp = await request(app).post('/agent/shop/v1/invoke').send(invokeBody({ source }));
+      expect(resp.status).toBe(200);
+      expect(resp.body).toMatchObject({ status: 'failed', success: false, products: [], total: 0 });
+      expect(resp.body.metadata.failure_class).toBe('beauty_mainline_empty');
+      expectNoSupplement(resp.body, calls);
+    }
+    expect(calls.length).toBeGreaterThan(0);
+  });
+
+  test('a failed primary route stays terminal despite matching citation rows', async () => {
+    const calls = installDatabase({ fail: true });
+    const app = require('../../src/server');
+    const resp = await request(app).post('/agent/shop/v1/invoke').send(invokeBody());
+    expect(resp.status).toBe(503);
+    expect(resp.body).toMatchObject({ status: 'failed', success: false, products: [],
+      error: { code: 'BEAUTY_PRIMARY_RECALL_FAILED' }, metadata: { failure_class: 'beauty_primary_recall_failed' } });
+    expectNoSupplement(resp.body, calls);
+  });
+
+  test.each([false, true])('ordinary shopping-agent brand query keeps primary empty/failure terminal, failure=%s', async fail => {
+    const calls = installDatabase({ fail });
+    const app = require('../../src/server');
+    const resp = await request(app).post('/agent/shop/v1/invoke').send(invokeBody({
+      query: 'MAC Cosmetics', source: 'shopping_agent', domain: null,
     }));
-    mockUpstreamSearch();
+    expect(resp.status).toBe(fail ? 503 : 200);
+    expect(resp.body).toMatchObject({ status: 'failed', success: false, products: [], total: 0 });
+    expect(resp.body.metadata.failure_class).toBe(fail ? 'beauty_primary_recall_failed' : 'beauty_mainline_empty');
+    expect(calls.length).toBeGreaterThan(0);
+    expectNoSupplement(resp.body, calls);
+  });
 
+  test.each(['beauty', null])('unconfigured primary route cannot fall through to a usable alternate source, domain=%s', async domain => {
+    delete process.env.DATABASE_URL;
+    const calls = installDatabase({ hit: true });
     const app = require('../../src/server');
-    const first = await request(app)
-      .post('/agent/shop/v1/invoke')
-      .send(invokeBody('barrier repair cream'));
-    expect(first.status).toBe(200);
-    expect(supplementCalls).toBe(1);
-
-    const second = await request(app)
-      .post('/agent/shop/v1/invoke')
-      .send(invokeBody('barrier repair cream'));
-
-    expect(second.status).toBe(200);
-    // Cache hit: no second index_eligible round-trip.
-    expect(supplementCalls).toBe(1);
-    // Citations remain available to the evidence layer, but must not be
-    // returned as Shopping Agent recommendation cards: they cannot be added
-    // to bag and can be stale relative to the current PDP offer.
-    expect(second.body.products.find((p) => p.source === 'canonical_citation')).toBeUndefined();
-    expect(second.body.metadata.citable_supplement_count).toBe(1);
-    expect(second.body.metadata.availability_contract).toMatchObject({
-      known_unavailable_excluded: true,
-      dropped_known_unavailable: 1,
-    });
-    expect(second.body.metadata.citable_supplement_pending).toBeUndefined();
+    const resp = await request(app).post('/agent/shop/v1/invoke').send(invokeBody({
+      query: 'MAC Cosmetics', source: 'shopping_agent', domain,
+    }));
+    expect(resp.status).toBe(503);
+    expect(resp.body).toMatchObject({ status: 'failed', success: false, products: [],
+      error: { code: 'BEAUTY_PRIMARY_RECALL_FAILED' }, metadata: { failure_class: 'beauty_primary_recall_failed' } });
+    expectNoSupplement(resp.body, calls);
   });
-  async function citationOnlyResponse(query, citation, { source = 'public_api', search = {} } = {}) {
-    process.env.DATABASE_URL = 'postgres://mock:mock@127.0.0.1/mock';
-    jest.doMock('../../src/db', () => ({ query: jest.fn(sql => Promise.resolve({
-      rows: isSupplementSql(sql) ? [citation] : [],
-    })) }));
+
+  test('repeated queries and later pages cannot warm or append citation results', async () => {
+    const calls = installDatabase({ hit: true });
     const app = require('../../src/server');
-    const input = invokeBody(query);
-    Object.assign(input.payload.search, { domain: 'beauty' }, search);
-    input.metadata.source = source;
-    // The first read warms the off-path cache; the second must exercise the real send boundary.
-    await request(app).post('/agent/shop/v1/invoke').send(input);
-    const result = await request(app).post('/agent/shop/v1/invoke').send(input);
-    expect(result.status).toBe(200);
-    return result.body;
-  }
-
-  test('citation-only Shopping Agent recovery respects final availability filtering', async () => {
-    const body = await citationOnlyResponse('MAC lipstick', {
-      ...citableRow(), product_title: 'MAC Matte Lipstick', brand: 'MAC Cosmetics',
-    }, { source: 'shopping_agent' });
-    expect(body.products).toHaveLength(0);
-    expect(body.status).toBe('failed');
-    expect(body.metadata.failure_class).toBe('beauty_mainline_empty');
-    expect(body.metadata.citable_supplement_count).toBe(1);
-    expect(body.metadata.citable_supplement_returned_count).toBe(0);
-    expect(body.total).toBe(0);
+    const bodies = [];
+    for (const page of [1, 1, 2]) {
+      const resp = await request(app).post('/agent/shop/v1/invoke').send(invokeBody({ page }));
+      expect(resp.status).toBe(200);
+      expectNoSupplement(resp.body, calls);
+      bodies.push(resp.body);
+    }
+    expect(bodies[0].products.map(p => p.product_id)).toEqual(bodies[1].products.map(p => p.product_id));
+    expect(bodies[0].products).toHaveLength(1);
+    expect(bodies[2].products).toHaveLength(0);
+    expect(bodies[2].page).toBe(2);
   });
-
-  test('public exact-line citation recovery returns the correctly scoped product', async () => {
-    const body = await citationOnlyResponse('Stila Stay All Day Liquid Lipstick', {
-      ...citableRow(), product_title: 'Mini Stay All Day Liquid Lipstick', brand: 'Stila Cosmetics',
-    });
-    expect(body.products).toHaveLength(1);
-    expect(body.products[0].title).toBe('Mini Stay All Day Liquid Lipstick');
-    expect(body.status).toBe('success');
-    expect(body.metadata.citable_supplement_returned_count).toBe(1);
-    expect(body.total).toBe(1);
-  });
-
-  test.each([
-    ['MAC foundation', 'Foundation Brush', 'MAC Cosmetics'],
-    ['Stila Stay All Day Liquid Lipstick', 'Plumping Lipstick', 'Stila Cosmetics'],
-  ])('public late citation cannot bypass product/category scope for %s', async (query, title, brand) => {
-    const body = await citationOnlyResponse(query, {
-      ...citableRow(), product_title: title, brand,
-      description: 'Pair with Stay All Day Liquid Lipstick',
-    });
-    expect(body.products).toHaveLength(0);
-    expect(body.status).toBe('failed');
-    expect(body.metadata.citable_supplement_rejected_count).toBe(1);
-    expect(body.metadata.citable_supplement_returned_count).toBe(0);
-  });
-
-  test('mixed-brand apparel safe-empty cannot be repopulated with beauty citations', async () => {
-    const body = await citationOnlyResponse("Victoria's Secret bra", {
-      ...citableRow(), product_title: 'Bare Vanilla Body Mist', brand: "Victoria's Secret",
-    });
-    expect(body.products).toHaveLength(0);
-    expect(body.metadata.search_quality_contract.target_domain).toBe('other');
-    expect(body.metadata.citable_supplement_skip_reason).toBe('explicit_apparel_request');
-    expect(body.metadata.citable_supplement_returned_count).toBe(0);
-  });
-
 });
