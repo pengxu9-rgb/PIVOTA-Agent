@@ -1,11 +1,12 @@
 const { buildSearchQualityContract } = require('../src/findProductsMulti/queryUnderstanding');
-let append, gate;
+let append, gate, finalize, availability;
 beforeAll(() => {
   jest.doMock('../src/auroraBff/routes', () => ({ mountAuroraBffRoutes: () => {}, __internal: {} }));
   const d = require('../src/server')._debug;
   append = d.appendCitableSupplementItems; gate = d.getSearchQualityContractHardConstraintResult;
+  finalize = d.finalizeCitableSupplementResponse; availability = d.enforceFindProductsMultiAvailabilityContract;
 });
-const row = (id, title, brand = 'Stila Cosmetics', price = 15) => ({ product_id: id, title, brand, price, currency: 'USD', category_path: ['beauty', 'makeup'] });
+const row = (id, title, brand = 'Stila Cosmetics', price = 15) => ({ product_id: id, title, brand, price, currency: 'USD', source: 'canonical_citation', catalog_track: 'citation', category_path: ['beauty', 'makeup'] });
 const response = q => ({ products: [], page: 1, total: 0, status: 'success', metadata: { search_quality_contract: buildSearchQualityContract({ rawQuery: q }) } });
 test('exact Stila line rejects competitors and same-brand eyeliners after merge', () => {
   const q = 'Stila Stay All Day Liquid Lipstick', body = response(q);
@@ -40,6 +41,7 @@ test('semantic-empty recovery preserves diagnosis with coherent envelope', () =>
   Object.assign(body, { status: 'failed', success: false, reply: 'No matching beauty products found on the mainline catalog path.' });
   Object.assign(body.metadata, { status: 'failed', failure_class: 'beauty_mainline_empty', search_decision: { final_decision: 'beauty_mainline_empty' } });
   append(body, [row('mac', 'Amplified Lipstick', 'MAC Cosmetics')], { queryText: 'MAC lipstick' });
+  finalize(body);
   expect(body).toMatchObject({ status: 'success', success: true, total: 1, reply: null });
   expect(body.metadata).toMatchObject({ failure_class: null, mainline_failure_class: 'beauty_mainline_empty' });
 });
@@ -52,4 +54,15 @@ test('transport failure is never disguised as recovery', () => {
 test('exact line matches the actual middle-dot branded product spelling', () => {
   const c = buildSearchQualityContract({ rawQuery: 'M·A·C MACximal Silky Matte Lipstick' });
   expect(gate(row('macximal', 'M·A·Cximal Silky Matte Lipstick', 'MAC Cosmetics'), c, c.effective_query).eligible).toBe(true);
+});
+
+test('the shopping-agent availability gate removes citations before success recovery', () => {
+  const body = response('MAC lipstick');
+  Object.assign(body, { status: 'failed', success: false });
+  body.metadata.failure_class = 'beauty_mainline_empty';
+  append(body, [row('mac', 'Amplified Lipstick', 'MAC Cosmetics')], { queryText: 'MAC lipstick' });
+  availability(body);
+  finalize(body);
+  expect(body).toMatchObject({ status: 'failed', success: false, products: [], total: 0 });
+  expect(body.metadata.citable_supplement_returned_count).toBe(0);
 });

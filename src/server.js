@@ -12621,21 +12621,40 @@ function appendCitableSupplementItems(responseBody, items, { queryText = '', sea
       container.total = Math.max(Number(container.total) || 0, container.products.length);
       if (container === responseBody) responseBody.total = container.total;
       container.page_size = container.products.length;
-      if (responseMetadata?.failure_class === 'beauty_mainline_empty') {
-        responseBody.metadata.mainline_failure_class = 'beauty_mainline_empty';
-        responseBody.metadata.mainline_search_decision = responseMetadata.search_decision;
-        responseBody.status = 'success';
-        responseBody.success = true;
-        responseBody.reply = null;
-        responseBody.metadata.status = 'success';
-        responseBody.metadata.failure_class = null;
-        responseBody.metadata.search_decision = {
-          ...responseMetadata.search_decision, final_decision: 'citation_results_returned',
-        };
-      }
+
     }
   } catch (_) {
     // best-effort: the citable supplement must never break recall transport
+  }
+  return responseBody;
+}
+
+// Run after eligibility, page limits and link minting: append-time counts include
+// citations some consumer doors intentionally remove. Only actual survivors may
+// recover a semantic-empty response; never turn a transport error into success.
+function finalizeCitableSupplementResponse(responseBody) {
+  if (!responseBody || typeof responseBody !== 'object') return responseBody;
+  const metadata = responseBody.metadata;
+  if (!metadata || metadata.citable_supplement_count == null) return responseBody;
+  const container = Array.isArray(responseBody.products) ? responseBody : responseBody.data;
+  if (!Array.isArray(container?.products)) return responseBody;
+  const citations = container.products.filter(p => p?.source === 'canonical_citation').length;
+  metadata.citable_supplement_returned_count = citations;
+  if (metadata.mainline_total != null) {
+    container.total = Math.max(Number(metadata.mainline_total) || 0, container.products.length);
+    container.page_size = container.products.length;
+  }
+  if (citations && !responseBody.error && metadata.failure_class === 'beauty_mainline_empty') {
+    metadata.mainline_failure_class = metadata.failure_class;
+    metadata.mainline_search_decision = metadata.search_decision;
+    responseBody.status = 'success';
+    responseBody.success = true;
+    responseBody.reply = null;
+    metadata.status = 'success';
+    metadata.failure_class = null;
+    metadata.search_decision = {
+      ...metadata.search_decision, final_decision: 'citation_results_returned',
+    };
   }
   return responseBody;
 }
@@ -18525,7 +18544,9 @@ function productMatchesSearchQualityExactAnchor(product = {}, exactProductAnchor
   const text = normalizeSearchTextForMatch(rawText);
   // A word stylized with middle dots (M·A·Cximal) is also searchable as
   // its joined spelling. Keep the ordinary word-boundary form alongside it.
-  const joinedPunctuationText = normalizeSearchTextForMatch(String(rawText).replace(/[·•]/g, ''));
+  const joinedPunctuationText = normalizeSearchTextForMatch(
+    [product.title, product.name, product.canonical_title, rawText].filter(Boolean).join(' ').replace(/[·•]/g, ''),
+  );
   if (!text) return false;
   const matched = tokens.filter((token) => text.includes(token) || joinedPunctuationText.includes(token));
   if (tokens.length <= 4) return matched.length === tokens.length;
@@ -41284,6 +41305,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       // `unhandledRejection` handler (see the note at the /mcp door), so an
       // escaped rejection takes down the WHOLE gateway rather than one request.
       finalBody = applyExternalSeedAttributionMetadata(finalBody, seedAttributionCounts);
+      finalBody = finalizeCitableSupplementResponse(finalBody);
       setInvokePerfHeaders();
       return originalJson(finalBody);
     };
@@ -54081,6 +54103,7 @@ module.exports._debug = {
   collapseNearDuplicateSearchProducts,
   enforceFindProductsMultiRequestedPageSize,
   appendCitableSupplementItems,
+  finalizeCitableSupplementResponse,
   readCanonicalSearchPricePair,
   resolveCanonicalSearchProductPrice,
   materializeCanonicalSearchProductPrice,
