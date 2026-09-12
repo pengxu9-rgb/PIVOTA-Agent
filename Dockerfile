@@ -48,5 +48,20 @@ EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
   CMD node -e "require('http').get('http://localhost:3000/healthz', (res) => { process.exit(res.statusCode === 200 ? 0 : 1); })"
 
+# The commit this image was built from, baked in so the image can identify itself.
+#
+# `--build-arg COMMIT_SHA=...` has been passed by every gateway build for as long as
+# the build logs go back, but nothing here declared the ARG, so Docker discarded it.
+# `/version` reads GIT_COMMIT_SHA from the ENVIRONMENT, which meant the only way an
+# image could report its commit was for the deploy to inject it — and a deploy that
+# forgot left `/version` reporting the PREVIOUS commit while serving the new code.
+# That is the failure `scripts/verify_deployed_commit_matches.sh` exists to catch.
+#
+# Declared last on purpose: an ARG that changes every commit invalidates every layer
+# below it, so putting this above `npm ci` would rebuild dependencies on every build.
+# A deploy-time env var still overrides this, which is the precedence we want.
+ARG COMMIT_SHA=""
+ENV GIT_COMMIT_SHA=$COMMIT_SHA
+
 # Start application
 CMD ["node", "src/server.js"]
