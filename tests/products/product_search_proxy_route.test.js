@@ -201,6 +201,8 @@ describe('product search proxy route — mainline contract', () => {
   // must NOT bridge to the legacy GET route — it returns strict_empty. Pins the
   // no-fallback authoritative shopping contract (normalizeAuthoritativeSearchNoFallbackResponse).
   test('v2 contract mismatch (422) does not bridge to the legacy GET search route', async () => {
+    // Elect upstream for this transport test; neighboring local recall tests keep their primary.
+    process.env.PIVOT_BEAUTY_DIRECT_INDEXED_RECALL_ENABLED = 'false';
     const queryText = 'sunscreen oily skin';
     const upstreamV2 = nock('http://pivota.test')
       .post('/agent/v2/products/search')

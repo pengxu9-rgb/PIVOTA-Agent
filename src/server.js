@@ -47092,6 +47092,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       const earlyHasMerchantScopeForBeauty = Boolean(earlyMerchantIdForBeauty) || earlyMerchantIdsForBeauty.length > 0;
       const earlyBeautyMainlineIntentForDirect = inferBeautyMainlineIntent(queryText);
       if (
+        PIVOT_BEAUTY_DIRECT_INDEXED_RECALL_ENABLED &&
         !canonicalSigEntityMode &&
         pivotBeautyContractInvoke &&
         queryText.length > 0 &&
@@ -47520,6 +47521,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       }
 
       const creatorBeautyMainlineDirectEligible =
+        PIVOT_BEAUTY_DIRECT_INDEXED_RECALL_ENABLED &&
         !findProductsMultiProductOnly &&
         !canonicalSigEntityMode &&
         (!strictCommerceFindProductsMulti || routeSearchQualityContractApplied) &&
