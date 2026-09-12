@@ -155,3 +155,14 @@ for (const need of ['foundation to wear around the house', 'foundation for my fa
   'a foundation for a house party', 'a facial oil, not engine oil']) {
   test(`valid beauty context remains allowed: ${need}`, () => assert.equal(offVerticalMarker(need), null));
 }
+
+
+test('a measured price violation downgrades a replacement product even though its model band was suppressed', async () => {
+  const c = CASES[0];
+  const merged = __internal.mergeRecoPlanWithGroundedCandidate(plan(c), candidate(c, {price: {amount: 50, currency: 'USD'}}));
+  const response = await bridge([merged])({need: 'a cleanser', constraints: {price_max: 25, currency: 'USD'}});
+  assert.equal(response.signals.length, 1);
+  assert.equal(response.signals[0].value.lane_confidence.basis, 'catalog_rebound');
+  assert.equal(response.signals[0].value.lane_confidence.level, 'low');
+  assert.equal(response.metadata.constraint_violations_returned, 1);
+});

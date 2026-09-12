@@ -459,7 +459,7 @@ function markPriceViolation(signal, ceiling) {
   // so it earns a band where position does not. The guard used to be `level !== null`, which lumped
   // the two together, so once positional rows lost their band a real violation stopped being
   // downgraded at all while the description called that null "no information".
-  if (v.lane_confidence.level !== null || v.lane_confidence.basis === 'positional') {
+  if (v.lane_confidence.level !== null || ['positional', 'catalog_rebound'].includes(v.lane_confidence.basis)) {
     v.lane_confidence.level = 'low';
   }
   v.constraint_violations = [{
