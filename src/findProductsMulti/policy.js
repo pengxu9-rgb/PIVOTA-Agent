@@ -716,6 +716,20 @@ function resolveBudgetConstraintForCurrency(priceConstraint, candidateCurrency, 
   };
 }
 
+// SQL recall needs the same per-native-currency bounds as the final budget
+// gate, before it spends its candidate limit. No second FX table or rates.
+function resolveBudgetConstraintsForRecall(priceConstraint) {
+  if (!priceConstraint || (priceConstraint.min == null && priceConstraint.max == null)) return null;
+  const sourceCurrency = normalizePriceCurrencyCode(priceConstraint.currency, '');
+  if (!sourceCurrency) {
+    // Existing policy: an undenominated budget uses each offer's native units.
+    return [{ currency: null, min: priceConstraint.min ?? null, max: priceConstraint.max ?? null }];
+  }
+  const currencies = new Set([sourceCurrency, ...Object.keys(FIND_PRODUCTS_MULTI_BUDGET_FX_USD_RATES)]);
+  return [...currencies].map(currency => resolveBudgetConstraintForCurrency(priceConstraint, currency).constraint)
+    .filter(Boolean);
+}
+
 function buildBudgetFxMetadata(priceConstraint, products = [], fallbackProducts = []) {
   if (
     !priceConstraint ||
@@ -6591,6 +6605,7 @@ module.exports = {
   getProductPriceMajor,
   getProductPriceCurrency,
   resolveBudgetConstraintForCurrency,
+  resolveBudgetConstraintsForRecall,
   isWithinPriceConstraint,
   BEAUTY_DISCOVERY_CONTRACT_OWNER,
   BEAUTY_DISCOVERY_MAINLINE_OWNER,

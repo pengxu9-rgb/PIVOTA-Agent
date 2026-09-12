@@ -210,6 +210,7 @@ const {
   getProductPriceMajor,
   getProductPriceCurrency,
   resolveBudgetConstraintForCurrency,
+  resolveBudgetConstraintsForRecall,
   isWithinPriceConstraint,
 } = require('./findProductsMulti/policy');
 const {
@@ -22078,6 +22079,7 @@ async function searchBeautyExternalSeedProductsMainline({
     ? Math.max(18, Math.min(48, safeLimit * 4))
     : Math.max(6, Math.min(12, Math.ceil(safeLimit / 2)));
   const canonicalStartedAt = Date.now();
+  const budgetConstraint = resolveBeautyMainlineBudgetConstraint({ search, intent, queryText });
   const canonicalRowsPromise = fetchCanonicalChainRows({
     query: canonicalQueryText,
     categoryPathPrefix: canonicalCategoryPathPrefix,
@@ -22130,6 +22132,14 @@ async function searchBeautyExternalSeedProductsMainline({
     // chat shows $0 because the SQL returns NULL placeholders for
     // those columns when joinSkuOffers is false.
     includeSkuOffers: true,
+    offerScope: {
+      inStockOnly,
+      markets,
+      // Currency on a budget denotes its units; keep the established FX
+      // conversion policy. Without bounds an explicit currency scopes offers.
+      currency: budgetConstraint ? null : firstNonEmptyString(search.currency, search.price_currency, search.priceCurrency, search.currency_code),
+      priceRanges: resolveBudgetConstraintsForRecall(budgetConstraint),
+    },
     brandFilter: canonicalBrandFilter,
     searchQualityContract: searchQualityEnforced ? effectiveSearchQualityContract : null,
     deps: { query },
@@ -22335,11 +22345,6 @@ async function searchBeautyExternalSeedProductsMainline({
         rejected_count: 0,
         input_count: displayRankedProducts.length,
       };
-  const budgetConstraint = resolveBeautyMainlineBudgetConstraint({
-    search,
-    intent,
-    queryText,
-  });
   const budgetFilter = budgetConstraint
     ? filterFindProductsMultiDirectProductsByBudget(budgetConstraint, servingEligibilityGate.products)
     : null;

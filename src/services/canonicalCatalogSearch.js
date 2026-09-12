@@ -792,6 +792,11 @@ function buildBrandFilterTerms(brandFilter) {
  *                                          the citableSargableLane comment for
  *                                          the measured plans.
  * @param {function} [args.deps.query]     pg-style query function. Required.
+ * @param {object} [args.offerScope]      MAIN shopping constraints, applied before
+ *                                          candidate LIMIT and to the selected offer:
+ *                                          markets, inStockOnly, optional native
+ *                                          currency, priceRanges from budget policy.
+ *                                          Null preserves other callers' SQL behavior.
  * @returns {Promise<Array<object>>}
  */
 async function fetchCanonicalChainRows(args = {}) {
@@ -809,6 +814,7 @@ async function fetchCanonicalChainRows(args = {}) {
     eligibility = 'serving_eligible',
     tokenMatch = false,
     sargableTextWhere = false,
+    offerScope = null,
     deps = {},
   } = args;
   const { query: pgQuery } = deps;
@@ -1503,6 +1509,56 @@ async function fetchCanonicalChainRows(args = {}) {
     params.push(String(marketId).toUpperCase());
     bestOfferMarketOrder = `CASE WHEN upper(coalesce(o.market, '')) = $${params.length} THEN 0 ELSE 1 END,`;
   }
+  // The MAIN shopping route elects an offer scope. Require a matching live
+  // offer BEFORE the candidate LIMIT, then select from that identical set in
+  // the lateral. Filtering only the chosen cheapest offer afterward loses a
+  // valid sibling (or an entire lower-ranked affordable product).
+  // Other surfaces retain their existing unscoped SQL contract.
+  const offerScopeClauses = [];
+  const bindOfferValue = value => { params.push(value); return `$${params.length}`; };
+  if (offerScope) {
+    offerScopeClauses.push("upper(trim(coalesce(o.currency, ''))) ~ '^[A-Z]{3}$'");
+    const allowedMarkets = [...new Set((Array.isArray(offerScope.markets) ? offerScope.markets : [])
+      .map(value => String(value || '').trim().toUpperCase()).filter(Boolean))];
+    if (allowedMarkets.length) {
+      const bind = bindOfferValue(allowedMarkets);
+      // A declared different offer market is not eligible. Legacy unmarked
+      // offers still rely on the existing product-market gate; no shipping
+      // destination is inferred from currency, domain or retailer identity.
+      offerScopeClauses.push(`(nullif(upper(trim(coalesce(o.market, ''))), '') IS NULL OR upper(trim(o.market)) = ANY(${bind}::text[]))`);
+    }
+    if (offerScope.inStockOnly === true) {
+      offerScopeClauses.push("regexp_replace(lower(coalesce(o.availability, '')), '[^a-z0-9]', '', 'g') NOT IN ('outofstock', 'oos', 'soldout', 'unavailable', 'false')");
+      offerScopeClauses.push('(o.inventory_quantity IS NULL OR o.inventory_quantity > 0)');
+    }
+    if (offerScope.currency) {
+      offerScopeClauses.push(`upper(trim(o.currency)) = ${bindOfferValue(String(offerScope.currency).trim().toUpperCase())}`);
+    }
+    if (Array.isArray(offerScope.priceRanges)) {
+      const price = 'COALESCE(o.merchant_effective_price, o.list_price)';
+      const ranges = offerScope.priceRanges.map(range => {
+        const parts = [];
+        if (range.currency) parts.push(`upper(trim(o.currency)) = ${bindOfferValue(String(range.currency).trim().toUpperCase())}`);
+        for (const [field, operator] of [['min', '>='], ['max', '<=']]) {
+          if (range[field] == null) continue;
+          if (!Number.isFinite(Number(range[field]))) return 'FALSE';
+          parts.push(`${price} ${operator} ${bindOfferValue(Number(range[field]))}`);
+        }
+        return parts.length ? `(${parts.join(' AND ')})` : 'FALSE';
+      });
+      offerScopeClauses.push(`(${ranges.join(' OR ') || 'FALSE'})`);
+    }
+  }
+  const scopedOfferWhere = offerScopeClauses.length ? `AND ${offerScopeClauses.join('\n        AND ')}` : '';
+  const candidateOfferWhere = offerScope ? `
+        AND EXISTS (
+          SELECT 1 FROM catalog_offers o
+          ${joinSkuOffers ? 'JOIN catalog_skus scoped_sku ON scoped_sku.sku_key = o.sku_key AND scoped_sku.suppressed_at IS NULL' : ''}
+          WHERE ${joinSkuOffers ? 'scoped_sku.product_key' : 'o.product_key'} = p.product_key
+            AND o.suppressed_at IS NULL
+            AND COALESCE(o.merchant_effective_price, o.list_price) > 0
+            ${scopedOfferWhere}
+        )` : '';
   const skuOfferColumns = joinSkuOffers
     ? `
       best_sku_offer.sku_key,
@@ -1656,6 +1712,7 @@ async function fetchCanonicalChainRows(args = {}) {
         AND s.suppressed_at IS NULL
         AND COALESCE(o.merchant_effective_price, o.list_price) > 0
         AND o.currency IS NOT NULL
+        ${scopedOfferWhere}
       ORDER BY ${bestOfferMarketOrder}
         COALESCE(o.merchant_effective_price, o.list_price) ASC,
         o.offer_id ASC
@@ -1669,6 +1726,7 @@ async function fetchCanonicalChainRows(args = {}) {
         AND o.suppressed_at IS NULL
         AND COALESCE(o.merchant_effective_price, o.list_price) > 0
         AND o.currency IS NOT NULL
+        ${scopedOfferWhere}
       ORDER BY ${bestOfferMarketOrder}
         COALESCE(o.merchant_effective_price, o.list_price) ASC,
         o.offer_id ASC
@@ -1790,6 +1848,7 @@ async function fetchCanonicalChainRows(args = {}) {
       WHERE ${whereClause}
         AND ${activeCatalogProductSourceWhere('p', 'm')}
         ${externalSeedUnavailableWhere}
+        ${candidateOfferWhere}
       ${merchantClause}
       ${marketWhere}
       ${brandWhere}${innerOrderLimitSql}
