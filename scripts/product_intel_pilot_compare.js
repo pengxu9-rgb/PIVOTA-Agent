@@ -111,7 +111,16 @@ async function invokeGeminiDraft(model, prompt) {
       ],
       generationConfig: {
         temperature: 0,
-        responseMimeType: 'application/json',
+        // No responseMimeType here: forced structured output is mutually
+        // exclusive with google_search grounding. Vertex rejects the pair with
+        // HTTP 400 "controlled generation is not supported with Search tool"
+        // (AI Studio words it differently but 400s the same) — so requesting it
+        // killed every grounded draft before the model ran. The
+        // systemInstruction above still asks for JSON-only, and
+        // extractJsonObject() recovers the object from any prose/markdown the
+        // model wraps around it, matching the grounded probe in
+        // src/internal/agentCenterLlmProbe.js. Verified live on Vertex: with the
+        // field → 400, without → 200 + grounded.
       },
     },
     { timeout: 45000, headers: target.headers },
