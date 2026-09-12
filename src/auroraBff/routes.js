@@ -9011,6 +9011,35 @@ function isLocalExternalSeedSameRoleComparisonTargetContext(targetContext = null
   return comparisonMode === 'same_role_comparison' || comparisonMode === 'same_role';
 }
 
+// IS THIS ROLE THE FRAMEWORK'S PRIMARY? Identity first, rank only as a fallback.
+//
+// #2157 fixed exactly one site that asked this question with `roleRank > 1`, and the
+// probe went green, which made it look finished. It was not: the concern planner emits
+// SPACED ranks — acne_clogged_pore_treatment is 11, lightweight_moisturizer 20,
+// daily_sunscreen 30 (recommendationSharedStack.js) — so `> 1` calls the primary a
+// support role at every site that still asks that way. Measured on this branch before
+// the change: the rank-11 acne primary reached the surfacing ranker with a pool of 12
+// where a rank-1 primary got 24, half of it dropped by the support cap.
+//
+// One helper, used everywhere, so the next planner change cannot half-apply again.
+// The contract this encodes is written down in docs/reco_framework_role_rank_contract.md. The
+// rank fallback keeps the old meaning for lanes that carry no primary_role_id, and an
+// ABSENT rank reads as primary — a role nobody ranked is not evidence of support.
+// Lowercased on both sides: the prior-reco continuation lane carries a differently-cased
+// primary id, and a trim-only compare would make every role non-primary there.
+function isPrimaryFrameworkRole(role, targetContext, { primaryRoleId: explicitPrimaryRoleId = null } = {}) {
+  const primaryRoleId = String(
+    explicitPrimaryRoleId != null ? explicitPrimaryRoleId : (targetContext?.primary_role_id || ''),
+  ).trim().toLowerCase();
+  const roleId = String(
+    role?.role_id ?? role?.roleId ?? '',
+  ).trim().toLowerCase();
+  if (primaryRoleId && roleId) return roleId === primaryRoleId;
+  const rawRank = role?.rank ?? role?.role_rank ?? role?.roleRank;
+  const rank = Number(rawRank);
+  return !(Number.isFinite(rank) && rank > 1);
+}
+
 function buildLocalExternalSeedPrimaryFinishFitQueryStage({
   patterns = [],
   categoryTerms = [],
@@ -9026,6 +9055,22 @@ function buildLocalExternalSeedPrimaryFinishFitQueryStage({
     roleId === 'daily_sunscreen' ||
     roleId === 'daily_sunscreen_finish_fit' ||
     /\b(?:daily[_\s-]?sunscreen|sunscreen|spf)\b/.test(roleId);
+  // NOT SWEPT IN THE SAME CHANGE, and the reason is a JUDGEMENT, not an impossibility.
+  //
+  // An earlier version of this comment said the site could not be driven from a test. That was
+  // false, and review demonstrated the defect here in about fifteen lines: pass a sunscreen-step
+  // role and a queryFn returning [] so every stage runs, then read `match_stage` out of the SQL.
+  // `finish_fit_layering` at rank 11 with a matching primary_role_id — a spaced-rank PRIMARY —
+  // loses `support_query_precise` entirely, where the identical role at rank 1 keeps it.
+  //
+  // What is true is that the swap is not a pure widening: a role at rank 1 that is NOT the
+  // framework's primary by id currently gets the precise stage and would lose it. The defect is
+  // also narrower than the general rank problem, because `roleRank > 1 && isCanonicalSunscreenRole`
+  // already lets any sunscreen-ish role id through at a spaced rank; only a sunscreen-STEP role
+  // whose id does not match /sunscreen|spf/ is affected.
+  //
+  // So: swept separately, with the before/after measured, rather than folded into a change whose
+  // evidence is about a different site.
   const allowPreciseSunscreenRecall =
     Number.isFinite(roleRank) &&
     (
@@ -9460,6 +9505,13 @@ function buildLocalExternalSeedSupportStageDefinitions({
         ),
       ),
     });
+    // NOT SWEPT IN THE SAME CHANGE — see the note on the precise stage above, including the
+    // correction that both sites ARE reachable from a test.
+    //
+    // The sharper reason here: this branch ADDS `support_category_fit_broad(_attached)` for a
+    // rank > 1 role, so sweeping it would REMOVE two stages from a spaced-rank primary. A wrong
+    // sweep therefore shrinks recall on the role the buyer asked about, which is the opposite of
+    // what the pool-cap fix below is for. Measure that before changing it.
     const roleRank = Number(role?.rank);
     if (Number.isFinite(roleRank) && roleRank > 1) {
       addStage({
@@ -9594,9 +9646,9 @@ function resolveLocalExternalSeedSupportRankPoolCap({
   safeLimit = 6,
   role = null,
   preferredStep = '',
+  targetContext = null,
 } = {}) {
   const baseCap = Math.max(1, Math.min(12, Number.isFinite(Number(safeLimit)) ? Math.trunc(Number(safeLimit)) : 6));
-  const roleRank = Number(role?.rank);
   const step = normalizeRecoTargetStep(preferredStep || role?.preferred_step);
   const roleId = String(role?.role_id || role?.roleId || '').trim().toLowerCase();
   if (
@@ -9605,7 +9657,12 @@ function resolveLocalExternalSeedSupportRankPoolCap({
   ) {
     return Math.max(baseCap, Math.min(30, Math.max(18, baseCap * 5)));
   }
-  if (Number.isFinite(roleRank) && roleRank > 1) {
+  // MEASURED before this change (rank-11 acne primary, primary_role_id set, 40 rows
+  // per stage): surfacing_candidate_count 12 with 12 dropped, against 24 and 0 dropped
+  // for the same role at rank 1. It does not change how MANY products come back — the
+  // caller's limit still governs that — it halves the pool the surfacing ranker gets to
+  // choose those from, on the one role the buyer actually asked about.
+  if (!isPrimaryFrameworkRole(role, targetContext)) {
     return Math.max(baseCap, Math.min(12, Math.max(8, baseCap * 2)));
   }
   return Math.max(baseCap, Math.min(24, baseCap * 4));
@@ -10401,6 +10458,7 @@ async function searchLocalExternalSeedProducts({
         safeLimit,
         role,
         preferredStep,
+        targetContext,
       });
       const rankPoolRows = rows.slice(0, rankPoolCap);
       const surfacingCandidates = rankPoolRows
@@ -10607,6 +10665,7 @@ async function searchLocalExternalSeedProductsForQueryVariants({
       safeLimit,
       role,
       preferredStep,
+      targetContext,
     });
     const rankPoolRows = rows.slice(0, rankPoolCap);
     const surfacingCandidates = rankPoolRows
@@ -25101,14 +25160,22 @@ function isBeautyMainlineSameRoleComparison(targetContext = null) {
 
 function isBeautyMainlinePrimaryRoleQuery(queryEntry = null, primaryRoleId = '') {
   if (!isPlainObject(queryEntry)) return false;
-  const roleId = pickFirstTrimmed(queryEntry.role_id, queryEntry.roleId);
-  if (roleId && primaryRoleId) return roleId === primaryRoleId;
-  const roleRank = Number.isFinite(Number(queryEntry?.role_rank))
-    ? Number(queryEntry.role_rank)
-    : Number.isFinite(Number(queryEntry?.roleRank))
-      ? Number(queryEntry.roleRank)
-      : null;
-  return roleRank == null || roleRank <= 1;
+  // Routed through the shared helper so the rule has ONE definition. NOT a pure refactor: the
+  // inline body this replaced compared ids CASE-SENSITIVELY and the helper lowercases both sides,
+  // so a lane whose primary_role_id differs in case from role_id now answers `true` where it
+  // answered `false`.
+  //
+  // That lane CAN differ — stated as capability, not as an observed event, because no producer was
+  // traced actually emitting a mixed-case id. beautyChatMainlineEntry.js sets primary_role_id from
+  // session `context.primary_target_id` (raw, via pickFirstTrimmed) while role_id comes from
+  // `target.target_id`, which reaches it slugified and lowercased. So the compare really is
+  // lowercase-against-raw, and that file already lowercases both sides where it compares them
+  // itself. The spaced ranks ARE unconditional: normalizeRecoContextRankedTargets emits no rank, so
+  // the (i+1)*10 default always applies — meaning whenever the ids do differ in case, every role in
+  // the lane fell through to rank and answered "not primary".
+  // Answering `true` there switches on the stable-alias primary authority seed and the query strip
+  // below it — a product change, deliberately taken, because case-sensitivity was the bug.
+  return isPrimaryFrameworkRole(queryEntry, null, { primaryRoleId });
 }
 
 function buildBeautyMainlineStableAliasAuthorityProduct({ stableAliasResolution, queryEntry } = {}) {
@@ -25588,9 +25655,23 @@ async function runBeautyMainlineLocalHandoffSearch({
             : Number.isFinite(Number(args?.roleRank))
               ? Number(args.roleRank)
               : null;
-          const isPrimaryRole = roleId && primaryRoleId
-            ? roleId === primaryRoleId
-            : roleRank == null || roleRank <= 1;
+          // Same rule as everywhere else; see isPrimaryFrameworkRole. NOT a pure refactor, and the
+          // blast radius here is wider than at the other site: this value feeds FOUR branches below
+          // — the stable-alias preflight, `isRoutineSupportExternalRole` (which returns via
+          // support_local_authority_first), the sunscreen finish-fit test, and
+          // primary_local_authority_first (which returns and skips the backend hop). So in a
+          // case-mismatched lane a spaced-rank primary moves from the support-first path to the
+          // primary-first path, not merely from no-seed to seed.
+          //
+          // It also drops a fallback to a top-level `args.roleRank` when `args.role.rank` was not
+          // finite. Nothing populates `args.roleRank` on this path (recoRecallPlanner writes a
+          // `roleRank` buildStage option, but that is converted to `role_rank` before it becomes
+          // `args`), so the fallback is unreachable — a capability removed rather than preserved.
+          const isPrimaryRole = isPrimaryFrameworkRole(
+            args?.role || { role_id: roleId, rank: roleRank },
+            null,
+            { primaryRoleId },
+          );
           if (isPrimaryRole && !isSameRoleComparison) {
             const stableAliasPreflightOut = buildStableAliasAuthorityOut({ preflight: true });
             if (stableAliasPreflightOut) return stableAliasPreflightOut;
@@ -105830,6 +105911,14 @@ const __internal = {
   buildIngredientRecoUpstreamPrompt,
   buildAuroraProductRecommendationsQuery,
   buildAuroraProductRecommendationsPromptBundle,
+  // Exported for tests: the pool cap is provable through searchLocalExternalSeedProducts,
+  // but the rule itself deserves a direct unit test — it is the thing five sites share.
+  isPrimaryFrameworkRole,
+  // Exported so the CASE-SENSITIVITY CHANGE at this call site is pinned. The helper's own
+  // lowercasing is tested directly, but that says nothing about whether this site uses it — and
+  // mutating this function back to its pre-sweep inline body was green across every test in the
+  // repo until this export existed.
+  isBeautyMainlinePrimaryRoleQuery,
   buildAuroraRecoAlternativesQuery,
   buildRecoAlternativesTargetSignals,
   buildRecoAlternativesLocalSeedSearchRole,
