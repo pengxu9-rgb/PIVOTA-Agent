@@ -1,0 +1,42 @@
+# Gateway production image build.
+#
+# RECONSTRUCTED FROM THE BUILDS THAT WERE ACTUALLY RUN, not from intent: every field
+# below is copied from `gcloud builds describe 9f2142d3-522c-47bd-9adb-e4b844167981`
+# (commit 4afdbf3316f9, SUCCESS, 2026-09-12T01:42Z) — the same shape every gateway
+# image in Artifact Registry was produced by. Until now that shape lived only in
+# whoever's shell history invoked it, so a build was not reproducible from the repo
+# and nothing could review a change to it.
+#
+# Submit:
+#   gcloud builds submit --project pivota-shared --config cloudbuild.yaml \
+#     --substitutions COMMIT_SHA=$(git rev-parse HEAD) .
+#
+# Then deploy that exact tag (see DEPLOY.md).
+substitutions:
+  _IMAGE: gateway
+  _REPO: pivota
+  _REGION: us-west1
+  # COMMIT_SHA is supplied per-build. Cloud Build sets it automatically for
+  # trigger-driven builds; pass it explicitly when submitting from a local tree.
+  COMMIT_SHA: ""
+options:
+  logging: CLOUD_LOGGING_ONLY
+  machineType: E2_HIGHCPU_8
+timeout: 1800s
+steps:
+  # `--build-arg COMMIT_SHA` was being passed long before the Dockerfile declared an
+  # ARG for it, so it was silently discarded and the image could not report the commit
+  # it was built from. The Dockerfile now consumes it; keep the two in step.
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -t
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_IMAGE}:${COMMIT_SHA}
+      - -t
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_IMAGE}:latest
+      - --build-arg
+      - COMMIT_SHA=${COMMIT_SHA}
+      - .
+images:
+  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_IMAGE}:${COMMIT_SHA}
+  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_IMAGE}:latest
