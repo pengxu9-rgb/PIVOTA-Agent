@@ -14699,6 +14699,12 @@ function applyPivotBeautyContractToInvokeSearchResponse({
       route_authority: routeAuthority,
       status: contractStatus,
       query_source: querySource,
+      ...(existingMeta.canonical_returned_count != null
+        ? { canonical_returned_count: effectiveProducts.filter((product) => product?.source === 'canonical_chain').length }
+        : {}),
+      ...(existingMeta.external_seed_returned_count != null
+        ? { external_seed_returned_count: effectiveProducts.filter((product) => product?.source !== 'canonical_chain').length }
+        : {}),
       decision_authority:
         firstNonEmptyString(
           existingMeta.decision_authority,
@@ -47181,7 +47187,6 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         !canonicalSigEntityMode &&
         pivotBeautyContractInvoke &&
         queryText.length > 0 &&
-        process.env.DATABASE_URL &&
         (earlyBeautyMainlineIntentForDirect.beautyLike || routeSearchQualityContractApplied) &&
         !earlyHasMerchantScopeForBeauty
       ) {
@@ -47415,7 +47420,6 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       const shoppingCanonicalMainlineDirectEligible =
         (!strictCommerceFindProductsMulti || routeSearchQualityContractApplied) &&
         queryText.length > 0 &&
-        process.env.DATABASE_URL &&
         PIVOT_BEAUTY_DIRECT_INDEXED_RECALL_ENABLED &&
         (isShoppingSource(source) || routeSearchQualityContractApplied) &&
         (beautyMainlineIntentForDirect.beautyLike || routeSearchQualityContractApplied) &&
@@ -47612,7 +47616,6 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         !canonicalSigEntityMode &&
         (!strictCommerceFindProductsMulti || routeSearchQualityContractApplied) &&
         queryText.length > 0 &&
-        process.env.DATABASE_URL &&
         (
           isPivotBeautyContractInvokeRequest({ operation, req }) ||
           shoppingCanonicalMainlineDirectEligible ||

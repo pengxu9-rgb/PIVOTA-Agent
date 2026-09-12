@@ -1,12 +1,13 @@
 // Primary-route quality gates; no citation append or success-recovery helpers.
 const { buildSearchQualityContract } = require('../src/findProductsMulti/queryUnderstanding');
-let gate, availability, priceContract;
+let gate, availability, priceContract, applyBeautyContract;
 beforeAll(() => {
   jest.doMock('../src/auroraBff/routes', () => ({ mountAuroraBffRoutes: () => {}, __internal: {} }));
   const d = require('../src/server')._debug;
   gate = d.getSearchQualityContractHardConstraintResult;
   availability = d.enforceFindProductsMultiAvailabilityContract;
   priceContract = d.enforceFindProductsMultiPriceContract;
+  applyBeautyContract = d.applyPivotBeautyContractToInvokeSearchResponse;
 });
 const row = (id, title, brand = 'Stila Cosmetics', price = 15) => ({ product_id: id, title, brand, price, currency: 'USD', category_path: ['beauty', 'makeup'] });
 test('exact Stila line accepts its own lipstick and rejects competitors and eyeliners', () => {
@@ -46,6 +47,30 @@ test('availability gate rejects nontransactional citations without recovering fa
   expect(body).toMatchObject({ status: 'failed', success: false, products: [], total: 0 });
   expect(body.metadata.failure_class).toBe('beauty_mainline_empty');
   expect(body.metadata.availability_contract.dropped_known_unavailable).toBe(1);
+});
+
+test.each(['price', 'availability'])('final beauty contract reports empty after the %s gate removes the last primary card', reason => {
+  const req = { body: { operation: 'find_products_multi', metadata: { source: 'shopping_agent' },
+    payload: { search: { query: 'MAC lipstick', domain: 'beauty' } } } };
+  const candidate = row('primary', 'MAC Matte Lipstick', 'MAC Cosmetics');
+  candidate.source = 'canonical_chain';
+  if (reason === 'price') candidate.price = null;
+  else candidate.serving_eligible = false;
+  let body = { status: 'success', success: true, products: [candidate], total: 1, page_size: 1,
+    metadata: { query_source: 'agent_products_beauty_external_seed_mainline',
+      canonical_returned_count: 1, external_seed_returned_count: 0,
+      route_health: { primary_path_used: 'beauty_external_seed_mainline', final_returned_count: 1 },
+      search_decision: { final_decision: 'products_returned' } } };
+  const contract = value => applyBeautyContract({ body: value, req, operation: 'find_products_multi' });
+  body = contract(body); // Same initial contract pass as the HTTP send wrapper.
+  expect(body.status).toBe('success');
+  body = availability(priceContract(body));
+  body = contract(body); // Final send boundary must recompute after filters.
+  expect(body).toMatchObject({ status: 'failed', success: false, products: [], total: 0, page_size: 0 });
+  expect(body.metadata).toMatchObject({ status: 'failed', failure_class: 'beauty_mainline_empty',
+    canonical_returned_count: 0, external_seed_returned_count: 0,
+    route_health: { final_returned_count: 0, fallback_triggered: false, fallback_adopted: false },
+    search_decision: { final_decision: 'beauty_mainline_empty' } });
 });
 
 test.each([
