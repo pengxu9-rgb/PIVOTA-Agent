@@ -40,6 +40,9 @@ suite('canonical MAIN route with real PostgreSQL and no rescue lanes', () => {
     }
     await db.query("INSERT INTO catalog_merchants(merchant_id,merchant_name,status,primary_platform) VALUES ('retailer','Retailer','active','shopify')");
     const items=[
+      ['apieu_hair','A’PIEU Oily Hair Dry Powder (5g)',"A'PIEU",'beauty/haircare/treatment','Hair Treatment'],
+      ['other_hair','Oily Hair Dry Powder','Other Brand','beauty/haircare/treatment','Hair Treatment'],
+      ['apieu_face','Oily Skin Face Powder',"A'PIEU",'beauty/makeup/face/powder','Face Powder'],
       ['stila','Mini Stay All Day Liquid Lipstick','Stila','beauty/makeup/lip/lipstick','Lipstick'],
       ['glokolor','Pearl Glow Lipstick','Code Glökolor','beauty/makeup/lip/lipstick','Lipstick'],
       ['murad_cream','Barrier Repair Cream','MISSHA','beauty/skincare','Moisturizer'],
@@ -90,7 +93,7 @@ suite('canonical MAIN route with real PostgreSQL and no rescue lanes', () => {
   const invoke=(query,page=1,limit=10)=>request(app).post('/agent/shop/v1/invoke').send({operation:'find_products_multi',
     payload:{search:{query,domain:'beauty',market:'US',page,limit}},metadata:{source:'public_api',market:'US'}});
   test.each([
-    ['Stila Cosmetics products','stila'],['Stila Stay All Day Liquid Lipstick','stila'],
+    ["A'PIEU Oily Hair Dry Powder",'apieu_hair'],['Stila Cosmetics products','stila'],['Stila Stay All Day Liquid Lipstick','stila'],
     ['M·A·C MACximal Silky Matte Lipstick','mac'],['romand lip tint','romand'],['MAC foundation','mac_foundation'],
     ['Code Glokolor lipstick','glokolor'],['MISSHA moisturizer','murad_cream'],['MISSHA serum','murad_serum'],
     ['MISSHA sunscreen','murad_spf'],['Chanel perfume','chanel_perfume'],
@@ -104,6 +107,24 @@ suite('canonical MAIN route with real PostgreSQL and no rescue lanes', () => {
     expect(res.body.status).toBe('success');
     expect(res.body.total).toBeGreaterThanOrEqual(res.body.products.length);
     if(q.includes('MISSHA') || q.includes('Code Glokolor') || q.includes('Stay All') || q.includes('MACximal') || q.includes('tint') || q.includes('foundation')) expect(res.body.products).toHaveLength(1);
+  });
+  test('exact oily-hair title keeps stock and explicit currency gates before final ranking', async()=>{
+    const search = ()=>request(app).post('/agent/shop/v1/invoke').send({operation:'find_products_multi',
+      payload:{search:{query:"A'PIEU Oily Hair Dry Powder",domain:'beauty',market:'US',currency:'USD',limit:10}},
+      metadata:{source:'public_api',market:'US'}});
+    const valid=await search();
+    expect(valid.body.status).toBe('success');expect(valid.body.products).toHaveLength(1);
+    expect(valid.body.products[0].product_key).toBe('apieu_hair');
+    expect(valid.body.metadata.canonical_raw_count).toBe(1);
+    try {
+      await db.query("UPDATE catalog_offers SET availability='out_of_stock' WHERE offer_id='apieu_hair'");
+      expect((await search()).body.products).toEqual([]);
+      await db.query("UPDATE catalog_offers SET availability='in_stock',currency='EUR' WHERE offer_id='apieu_hair'");
+      expect((await search()).body.products).toEqual([]);
+    } finally {
+      await db.query("UPDATE catalog_offers SET availability='in_stock',currency='USD' WHERE offer_id='apieu_hair'");
+    }
+    expect(sqlCalls).toHaveLength(3);
   });
   test('every reviewed roster alias matches its stored identity in PostgreSQL',async()=>{
     const {buildCanonicalSearchQualitySql}=require('../../src/services/canonicalSearchQualitySql');

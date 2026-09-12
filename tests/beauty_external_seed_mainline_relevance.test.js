@@ -17,6 +17,25 @@ describe('beauty external-seed mainline relevance', () => {
     safety: [],
   };
 
+  test.each(["A'PIEU Oily Hair Dry Powder", 'oil control hair powder', 'sebum control scalp shampoo'])('%s keeps hair concerns separate from acne', (query) => {
+    expect(beautyQueryHasAcneOilControlIntent(query)).toBe(false);
+    const product = /shampoo/.test(query)
+      ? {title: 'Refreshing Scalp Shampoo', brand: "A'PIEU", category_path: ['beauty','haircare','shampoo'], product_type: 'Shampoo'}
+      : {title: 'Oily Hair Dry Powder', brand: "A'PIEU", category_path: ['beauty','haircare','treatment'],
+        product_type: 'Hair Treatment', description: 'A dry powder for refreshing hair between washes.'};
+    expect(scoreBeautyExternalSeedProduct({product, queryText: query, intent: {families: [], safety: []},
+      normalizedQuery: query.toLowerCase(), queryTokens: query.toLowerCase().split(/\s+/)}).relevant).toBe(true);
+  });
+
+  test.each(['oily skin hair powder', 'hair product for acne and oily skin', 'scalp product for blemishes',
+    'hair products and facial breakouts'])('%s retains its explicit skin concern', (query) => {
+    expect(beautyQueryHasAcneOilControlIntent(query)).toBe(true);
+    const product = {title: 'Oily Hair Dry Powder', brand: "A'PIEU", category_path: ['beauty','haircare','treatment'],
+      product_type: 'Hair Treatment', description: 'A dry powder for refreshing hair between washes.'};
+    expect(scoreBeautyExternalSeedProduct({product, queryText: query, intent: {families: [], safety: []},
+      normalizedQuery: query.toLowerCase(), queryTokens: query.toLowerCase().split(/\s+/)}).relevant).toBe(false);
+  });
+
   test('acne/oily intent rejects weak body fragrance treatment rows', () => {
     const bodyMist = {
       product_id: 'sig_body_mist',
