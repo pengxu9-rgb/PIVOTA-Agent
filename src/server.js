@@ -21062,6 +21062,12 @@ function beautyProductMatchesStrictLipstickIntent(product = {}) {
 }
 
 function beautyQueryHasAcneOilControlIntent(queryText = '') {
+  const query = String(queryText || '');
+  // Oily hair/scalp is not an inferred acne or oily-skin request. Preserve
+  // explicit skin/acne concerns even when the query also mentions hair.
+  const hairContext = /\b(hair|scalp)\b/i.test(query);
+  const explicitSkinConcern = /\b(acne|blemish(?:es)?|breakouts?|pimples?|spots?|clog(?:ged)?\s*pores?|comedones?|skin|facial|face|t[-\s]?zone|complexion|pores?)\b|痘|粉刺|闭口|閉口|油皮/i.test(query);
+  if (hairContext && !explicitSkinConcern) return false;
   return /\b(acne|blemish(?:es)?|breakouts?|pimples?|spots?|clog(?:ged)?\s*pores?|comedones?|oily|oil[-\s]?control|oilier|sebum|shine[-\s]?control|acne[-\s]?prone|breakout[-\s]?prone)\b|痘|粉刺|闭口|閉口|油皮|控油/i.test(
     String(queryText || ''),
   );
