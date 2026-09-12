@@ -3,7 +3,8 @@
 //
 // This is a jest suite on purpose. The first version of this change was guarded only by
 // source-text assertions in a node:test file, and they all passed while it shipped a no-op:
-// `catalogMirrorProjectionSql` is interpolated at FIVE sites, and `multiCategorySql` wraps it in
+// `catalogMirrorProjectionSql` is interpolated at FOUR sites (an earlier note said five), and
+// `multiCategorySql` wraps it in
 // a derived table whose outer SELECT enumerates columns explicitly, so the new column was
 // projected by the inner arms and silently dropped by the outer list. No SQL error, no failing
 // test. The multi-category shape is the DEFAULT — brand browse, serum, eye makeup, and any
@@ -183,5 +184,97 @@ describe('the beauty mainline reports its lanes honestly', () => {
   test('a set that is entirely canonical reports zero seed-lane rows', () => {
     const count = _debug.countNonCanonicalChainProducts;
     expect(count([{ source: 'canonical_chain' }, { source: 'canonical_chain' }])).toBe(0);
+  });
+});
+
+describe('the re-keyed row is still recognised by the seed-lane owner', () => {
+  // P1-2, found in review of #2189 and confirmed against prod. Moving merchant_id off the sentinel
+  // removed the ONLY isSeedRoutedLane arm these rows could satisfy: the builder stamps platform
+  // 'external' (not 'external_seed'), carried no source_system, and the remaining arm is an
+  // ext_/ext: id prefix that 7,031 of 11,814 active attached seeds (59.5%) do NOT have.
+  //
+  // So ~60% of mainline rows silently stopped reading as seed-lane at that predicate's call sites. Review narrowed
+  // this from the ~10 first claimed to ~5 that actually re-class such a row — routes.js:8444/8459/
+  // 8749, guidanceFastpath:68, catalogTrustPolicy:613. The others OR a platform or source leg the
+  // builder already satisfies, so they never changed answer.
+  // Nothing failed; the rows simply changed category. Carrying the mirror's source_system restores
+  // the arm without touching platform — all 13,896 catalog rows have one.
+  const { isExternalSeedLaneProduct } = require('../src/services/externalSeedLane');
+
+  const row = (extra) => ({
+    merchant_id: 'merch_obs_7156f2b47335f6e3',
+    platform: 'external',
+    source: 'external_seed',
+    source_product_id: 'ponds_us_14749719363952', // deliberately NOT ext_-prefixed: the 59.5% case
+    external_product_id: 'ponds_us_14749719363952',
+    ...extra,
+  });
+
+  test('a non-ext_ id under an observed seller needs source_system to stay in the lane', () => {
+    // Without it — what #2189 shipped — the row falls out of the lane entirely.
+    expect(isExternalSeedLaneProduct(row())).toBe(false);
+    // With the mirror's source_system carried through, it is recognised again.
+    expect(isExternalSeedLaneProduct(row({ source_system: 'external_product_seeds_mirror_v1' }))).toBe(true);
+    expect(isExternalSeedLaneProduct(row({ source_system: 'catalog_enrichment_agent_v1' }))).toBe(true);
+  });
+
+  test('the ext_-prefixed minority never lost recognition — which is why this hid', () => {
+    // 4,783 of 11,814 keep the id-prefix arm, so any spot check that happened to pick one of these
+    // sees nothing wrong. That is the shape of the bug: a majority regression invisible to a sample.
+    const prefixed = row({ source_product_id: 'ext_abc123', external_product_id: 'ext_abc123' });
+    expect(isExternalSeedLaneProduct(prefixed)).toBe(true);
+  });
+
+  test('the BUILT ROW carries source_system, and the lane owner then recognises it', () => {
+    // Asserted on the object the builder returns, not on the SQL text. An earlier version checked
+    // that the query SELECTs the column and that the predicate behaves — and adding
+    // `product.source_system = undefined` after the object literal left every assertion green,
+    // because nothing looked at the value in between. Same class as the guards this migration has
+    // already been bitten by three times.
+    const build = loadServer({ dbMock: makeDbMock().mock }).buildBeautyExternalSeedMainlineProduct;
+    const { isExternalSeedLaneProduct } = require('../src/services/externalSeedLane');
+
+    const row = (extra) => ({
+      external_product_id: 'ponds_us_14749719363952', // NOT ext_-prefixed: the 59.5% case
+      title: 'Dry Skin Cream',
+      domain: 'ponds.us',
+      catalog_merchant_id: 'merch_obs_7156f2b47335f6e3',
+      ...extra,
+    });
+
+    const withSystem = build(row({ catalog_source_system: 'external_product_seeds_mirror_v1' }));
+    expect(withSystem).toBeTruthy();
+    expect(withSystem.source_system).toBe('external_product_seeds_mirror_v1');
+    // End to end: the built row is recognised by the predicate #2189 knocked it out of.
+    expect(isExternalSeedLaneProduct(withSystem)).toBe(true);
+
+    // And without a mirrored source_system nothing is invented — ADR-009's no-fallback rule.
+    const without = build(row({}));
+    expect(without.source_system).toBeUndefined();
+    expect(isExternalSeedLaneProduct(without)).toBe(false);
+  });
+
+  test('both query shapes select the column — multiCategorySql drops it silently otherwise', () => {
+    // Kept as a TEXT assertion on purpose, and labelled as one: the built-row test above cannot see
+    // an outer SELECT that omits the column, because the harness feeds the builder directly. This is
+    // the trap #2189 fell into with catalog_merchant_id.
+    const fs = require('fs');
+    const path = require('path');
+    const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'server.js'), 'utf8');
+    // Includes the JOIN CONDITION, not just the column name. Matching only `SELECT cp.source_system
+    // … AS catalog_source_system` leaves a neutered WHERE (`WHERE FALSE AND …`) green — the built-row
+    // harness above cannot see it either, because it feeds the builder a row directly.
+    expect(src).toMatch(
+      /SELECT cp\.source_system\s+FROM catalog_products cp\s+WHERE cp\.product_key = external_product_seeds\.attached_product_key[\s\S]{0,120}?AS catalog_source_system/,
+    );
+
+    const i = src.indexOf('const multiCategorySql');
+    const outer = src.slice(i, src.indexOf('FROM (', i));
+    for (const col of ['catalog_merchant_id', 'catalog_source_system']) {
+      const declared = outer
+        .split('\n')
+        .some((l) => !l.trim().startsWith('--') && new RegExp(`\\b${col}\\b`).test(l));
+      expect({ col, inOuterSelect: declared }).toEqual({ col, inOuterSelect: true });
+    }
   });
 });

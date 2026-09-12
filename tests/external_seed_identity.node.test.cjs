@@ -106,9 +106,15 @@ test('the owner reproduces what the legacy predicates agree on', () => {
   }
 });
 
-test('every legacy predicate is FALSE for every external seed in production', () => {
+test('every legacy predicate is FALSE for a CATALOG-SHAPED external seed row', () => {
+  // SCOPE, stated in the name because an earlier version of it did not. This says "for every
+  // external seed in production", which over-claimed: the CASES below are catalog/served shapes,
+  // and these predicates also run on IN-MEMORY objects that four builders mint true on every leg
+  // (platform:'external' + source:'external_seed'). The assertions were always scoped to the
+  // catalog shape; only the title generalised beyond what it checks.
+  //
   // The finding, pinned. If someone fixes one of the five in place, this fails and points at
-  // the owner — which is the whole reason the owner exists.
+  // the shim — which is the whole reason it exists.
   const productionSeeds = CASES.filter((c) => c.correctedIs && c.row && c.row.platform === 'external_seed');
   assert.ok(productionSeeds.length >= 2, 'expected the observed production shapes');
 

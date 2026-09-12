@@ -15421,10 +15421,18 @@ function applyShoppingCatalogQueryGuards(queryParams, source) {
   };
 }
 
-// Delegates to the one owner. See src/externalSeedIdentity.js for why five implementations of
-// this question existed and what production actually emits (short version: this predicate, and
-// every sibling, returns false for all 13,896 external seeds in the catalog — they were written
-// against a vocabulary the data stopped using).
+// Delegates to src/externalSeedIdentity.js — the LEGACY shim, not the owner. The owner of this
+// question is src/services/externalSeedLane.js over pdpRenderability's isSeedRoutedLane, which
+// this file already imports at :102-103. An earlier version of this comment called the shim "the
+// one owner"; it is not, and saying so was how a second implementation got written in the first
+// place.
+//
+// CORRECTION to what this comment used to assert as fact. It said this predicate "returns false
+// for all 13,896 external seeds in the catalog". That was measured on DB columns and served JSON —
+// but these predicates run on IN-MEMORY objects, and four builders mint rows that are true on
+// every leg (see the header of externalSeedIdentity.js). The claim holds for catalog-shaped rows
+// and NOT for the objects this predicate is actually handed, which is the distinction the original
+// wording erased.
 //
 // Two deliberate differences from the code this replaces, neither of which changes any
 // production answer: merchant_id is now compared case-INSENSITIVELY, matching the four sibling
@@ -16735,6 +16743,10 @@ function buildBeautyExternalSeedMainlineProduct(row) {
   // proving that for every serving path is a separate measurement, and failing open to the
   // legacy bucket is recoverable where minting a wrong seller is not.
   const resolvedMerchantId = firstNonEmptyString(row.catalog_merchant_id, EXTERNAL_SEED_MERCHANT_ID);
+  // Carried so isSeedRoutedLane still recognises this row after the merchant_id re-key. Not
+  // defaulted: a row with no mirrored source_system has nothing truthful to say here, and inventing
+  // one would be the fabrication ADR-009's no-fallback rule forbids.
+  const resolvedSourceSystem = firstNonEmptyString(row.catalog_source_system) || undefined;
   const product = {
     id: responseProductId,
     product_id: responseProductId,
@@ -16745,6 +16757,7 @@ function buildBeautyExternalSeedMainlineProduct(row) {
     external_product_id: externalProductId,
     external_seed_product_id: externalProductId,
     source_product_id: externalProductId,
+    source_system: resolvedSourceSystem,
     market: firstNonEmptyString(row.market, seedData.market, snapshot.market),
     title,
     ...(description ? { description } : {}),
@@ -16938,12 +16951,30 @@ async function queryBeautyExternalSeedRowsFast({
           -- (its canonical URL, its signature), so gating them on serving_eligible is right.
           -- Gating the seller on it is not — it would leave the row correctly excluded from
           -- serving but wrongly attributed to the banned sentinel bucket while it is excluded.
-          -- Copying the neighbouring shape verbatim cost 2,823 of 11,819 active seeds (23.9%)
-          -- their real seller; without the join, 11,819 of 11,819 resolve one.
+          -- RETRACTED MEASUREMENT, kept visible rather than deleted. This used to claim the join
+          -- "cost 2,823 of 11,819 active seeds (23.9%) their real seller". That was measured over
+          -- status='active', which is NOT this query's population: every shape here also
+          -- interpolates attachedServingSeedFilterSql, which requires a serving-eligible mirror row
+          -- on the SAME key by a byte-identical join. So the join would have cost ZERO returned
+          -- rows, and the number never described this path. The reason to omit it stands on its
+          -- own: a seller is an identity fact, not a serving decision.
           (SELECT cp.merchant_id
              FROM catalog_products cp
             WHERE cp.product_key = external_product_seeds.attached_product_key
-            LIMIT 1) AS catalog_merchant_id`;
+            LIMIT 1) AS catalog_merchant_id,
+          -- ADR-009 phase 3, second column. #2189 moved merchant_id off the sentinel and in doing so
+          -- removed the ONLY isSeedRoutedLane arm these rows could satisfy: the builder stamps
+          -- platform 'external' (not 'external_seed'), carries no source_system, and the remaining
+          -- arm is an ext_/ext: id prefix that 7,031 of 11,814 active seeds (59.5%) do not have. So
+          -- ~60% of mainline rows silently stopped reading as seed-lane. Review narrowed the affected
+          -- call sites from the ~10 I first claimed to ~5 that actually re-class such a row
+          -- (routes.js:8444/8459/8749, guidanceFastpath:68, catalogTrustPolicy:613); the rest OR a
+          -- platform or source leg the builder already satisfies. Carrying the mirror's source_system restores the arm without touching platform —
+          -- every one of the 13,896 catalog rows has one.
+          (SELECT cp.source_system
+             FROM catalog_products cp
+            WHERE cp.product_key = external_product_seeds.attached_product_key
+            LIMIT 1) AS catalog_source_system`;
   const attachedServingSeedFilterSql = `
               AND coalesce(attached_product_key, '') <> ''
               AND EXISTS (
@@ -16994,7 +17025,8 @@ async function queryBeautyExternalSeedRowsFast({
           -- selected catalog_merchant_id and this list did not, so row.catalog_merchant_id was
           -- undefined and every row fell back to the sentinel. Add new mirror columns in BOTH
           -- places, or they only reach the single-category path.
-          catalog_merchant_id
+          catalog_merchant_id,
+          catalog_source_system
         FROM (
           ${categoryTerms
             .map((categoryTerm, index) => {
@@ -49546,7 +49578,14 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             let resolvedSignatureRef = null;
             if (
               isPivotaSignatureProductId(productId) &&
-              (!merchantId || merchantId === EXTERNAL_SEED_MERCHANT_ID)
+              // isExternalSeedListingMerchantId, not the bare sentinel: after ADR-009 phase 3 the
+              // door serves {merchant_id:'merch_obs_*', product_id:'sig_*'} and agents echo that
+              // straight back here. The sentinel-only test read a re-keyed ref as "the caller
+              // pinned a real seller", skipped signature resolution, and fell through to a lookup
+              // that cannot match a sig_ id. #2191 widened twelve gates spelled
+              // `requestedMerchantId`; this one is spelled `merchantId` and its guard regex could
+              // not see it.
+              (!merchantId || isExternalSeedListingMerchantId(merchantId))
             ) {
               const resolveSignatureStartedAt = Date.now();
               resolvedSignatureRef = await resolveCatalogProductRefFromPivotaSignature(productId, {
@@ -49555,8 +49594,14 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 bypassCache,
               }).catch(() => null);
               directRouteTimingMs.resolve_signature_ref = Date.now() - resolveSignatureStartedAt;
+              // The RESOLVED ref's seller, not the request's. resolveCatalogProductRefFromPivotaSignature
+              // returns catalog_products.merchant_id raw, and after ADR-009 phase 3 that is never the
+              // sentinel — so a sentinel-only test here discards every resolution it just performed.
+              // Widening the gate above WITHOUT this is a no-op on production rows: the door opens and
+              // the next line throws the result away. My first attempt did exactly that, and passed a
+              // test whose catalog fixture was still the pre-migration row.
               const resolvedExternalSeedProductId =
-                resolvedSignatureRef?.merchant_id === EXTERNAL_SEED_MERCHANT_ID &&
+                isExternalSeedListingMerchantId(resolvedSignatureRef?.merchant_id) &&
                 resolvedSignatureRef?.product_id &&
                 !isPivotaSignatureProductId(resolvedSignatureRef.product_id)
                   ? String(resolvedSignatureRef.product_id).trim()
@@ -49565,7 +49610,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 resolvedExternalSeedProductId
               ) {
                 effectiveProductId = resolvedExternalSeedProductId;
-                effectiveMerchantId = EXTERNAL_SEED_MERCHANT_ID;
+                // Carry the seller the catalog actually holds. Re-minting the sentinel here would undo
+                // the re-key one line after honouring it, into a bucket ADR-009 D2 bans for new writes.
+                effectiveMerchantId =
+                  firstNonEmptyString(resolvedSignatureRef?.merchant_id) || EXTERNAL_SEED_MERCHANT_ID;
               }
             }
             const directCandidateLimit = Math.max(
@@ -49577,13 +49625,15 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               Boolean(effectiveProductId) &&
               !isPivotaSignatureProductId(effectiveProductId) &&
               (
-                effectiveMerchantId === EXTERNAL_SEED_MERCHANT_ID ||
+                isExternalSeedListingMerchantId(effectiveMerchantId) ||
                 (!effectiveMerchantId && isExternalSeedProductId(effectiveProductId))
               );
             const baseProduct =
               (isExternalSeedDirectBase
                 ? {
-                    merchant_id: EXTERNAL_SEED_MERCHANT_ID,
+                    // The resolved seller, sentinel only when there is none — the COALESCE shape
+                    // ADR-009 permits, never a re-mint over a real one.
+                    merchant_id: effectiveMerchantId || EXTERNAL_SEED_MERCHANT_ID,
                     product_id: effectiveProductId,
                     external_product_id: effectiveProductId,
                     source: 'external_seed',
@@ -49613,7 +49663,15 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 : null) ||
               (isExternalSeedDirectBase || isExternalSeedProductId(effectiveProductId)
                 ? {
-                    merchant_id: EXTERNAL_SEED_MERCHANT_ID,
+                    // The resolved seller, sentinel only when there is none — the COALESCE shape
+                    // ADR-009 permits, never a re-mint over a real one.
+                    //
+                    // UNPINNED BY TESTS, stated rather than left to be discovered: this twin of the
+                    // branch above only runs when a NON seed-supply merchant is pinned with an ext_
+                    // id AND the detail fetch fails, which the suite cannot reach. A mutant minting
+                    // the sentinel here survives. It is corrected for consistency with its twin; if
+                    // you make this branch reachable, pin it.
+                    merchant_id: effectiveMerchantId || EXTERNAL_SEED_MERCHANT_ID,
                     product_id: effectiveProductId,
                     external_product_id: effectiveProductId,
                     source: 'external_seed',
