@@ -54,7 +54,13 @@ function buildCanonicalSearchQualitySql({ contract, params, categoryPredicate, d
   } else if (contract.query_class === 'brand_browse' && hard.brand) {
     // The resolved brand IS the query. Framing words ("products", "show me")
     // must not introduce a second full-phrase text requirement.
-    where = 'TRUE';
+    const ownBeautyForm = FORM_RULES.map(([, pattern]) => pattern).join('|');
+    const normalizedPath = "lower(trim(coalesce(p.category_path, '')))";
+    // Mixed brands also sell apparel. Apply the requested beauty domain before
+    // the candidate cut; the later serving gate cannot recover displaced rows.
+    // Thin/root-only categories require the item's own class, never cross-sell
+    // copy. An explicit non-beauty category cannot be overridden by copy.
+    where = `(${normalizedPath} LIKE 'beauty/%' OR (${normalizedPath} IN ('', 'beauty') AND ${ownName} ~ ${bind(`(^| )(${ownBeautyForm})($| )`)}))`;
   } else if (categoryPredicate && hard.category_path_prefix) {
     const query = identityValue(contract.effective_query);
     const prefixForms = [

@@ -12,7 +12,8 @@ async function statement(rawQuery) {
 
 test('brand-only main SQL has no framing phrase requirement or seed brand rescue',async()=>{
   const {sql,params}=await statement('Stila Cosmetics products');
-  expect(sql).toContain('WHERE (TRUE) AND $2::text IS NOT NULL');
+  expect(sql).toContain("LIKE 'beauty/%'");
+  expect(sql).toContain("IN ('', 'beauty')");
   expect(params).toContainEqual(expect.arrayContaining(['stilacosmetics','stila']));
   expect(sql).not.toContain('eps_brand');
 });

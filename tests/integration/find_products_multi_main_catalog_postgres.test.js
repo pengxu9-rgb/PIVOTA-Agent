@@ -113,7 +113,7 @@ suite('canonical MAIN route with real PostgreSQL and no rescue lanes', () => {
         const scoped=buildCanonicalSearchQualitySql({contract:{target_domain:'beauty',query_class:'brand_browse',
           hard_constraints:{brand:{brand_key,canonical:aliases[0],alias}}},params,defaultWhere:'FALSE',defaultBrandWhere:''});
         params.push(alias);
-        const result=await db.query(`SELECT $1::text FROM (SELECT $${params.length}::text AS brand, '{}'::jsonb AS product_payload) p WHERE ${scoped.where} ${scoped.brandWhere}`,params);
+        const result=await db.query(`SELECT $1::text FROM (SELECT $${params.length}::text AS brand, 'Lipstick'::text AS title, 'Lipstick'::text AS product_type, 'beauty/makeup/lip/lipstick'::text AS category_path, '{}'::jsonb AS product_payload) p WHERE ${scoped.where} ${scoped.brandWhere}`,params);
         expect({brand_key,alias,count:result.rows.length}).toEqual({brand_key,alias,count:1});
       }
     }
