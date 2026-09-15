@@ -3,25 +3,26 @@ const request = require('supertest');
 
 // #2204 made every recall arm error fatal: one slow seed tool scope, or a slow canonical query,
 // turned the whole beauty request into HTTP 503. A TIMEOUT now degrades only its own arm (with
-// telemetry); the request still fails when the whole seed lane is down or on a non-timeout
-// defect. None of these paths may reach an upstream/proxy route (asserted in afterEach).
+// telemetry). The request still fails (503) when the whole seed lane is down, when a degraded
+// recall found NOTHING (an empty answer would claim "no products" when we could not look), and on
+// any non-timeout defect. None of these paths may reach an upstream/proxy route (afterEach).
 
-function canonicalMacLipstickRows(count = 12) {
+function canonicalRows({ count = 12, brand, titleStem, categoryPath, productType, url }) {
   return Array.from({ length: count }, (_, index) => ({
-    merchant_id: 'mac_official',
-    product_key: `prod::mac::lipstick_${index}`,
+    merchant_id: `${brand.toLowerCase()}_official`,
+    product_key: `prod::${brand.toLowerCase()}::${productType.toLowerCase()}_${index}`,
     platform: 'catalog_enrichment',
-    source_product_id: `mac_lipstick_${index}`,
-    pivota_signature_id: `sig_mac_lipstick_${index}`,
-    pivota_canonical_url: `https://agent.pivota.cc/products/sig_mac_lipstick_${index}`,
-    product_title: `MAC Matte Lipstick Shade ${index}`,
-    product_description: 'A canonical MAC lipstick row.',
-    brand: 'MAC',
-    product_type: 'Lipstick',
-    category: 'Lipstick',
-    category_path: 'beauty/makeup/lip/lipstick',
-    canonical_url: `https://www.maccosmetics.com/product/lipstick-${index}`,
-    product_image_url: `https://cdn.example.com/mac-lipstick-${index}.jpg`,
+    source_product_id: `${brand.toLowerCase()}_${index}`,
+    pivota_signature_id: `sig_${brand.toLowerCase()}_${productType.toLowerCase()}_${index}`,
+    pivota_canonical_url: `https://agent.pivota.cc/products/sig_${brand.toLowerCase()}_${index}`,
+    product_title: `${titleStem} ${index}`,
+    product_description: `A canonical ${productType.toLowerCase()} row.`,
+    brand,
+    product_type: productType,
+    category: productType,
+    category_path: categoryPath,
+    canonical_url: `${url}/${index}`,
+    product_image_url: `https://cdn.example.com/${brand.toLowerCase()}-${index}.jpg`,
     catalog_track: 'external_referral',
     truth_tier: 'observed',
     readiness_tier: 'referral_only',
@@ -34,8 +35,35 @@ function canonicalMacLipstickRows(count = 12) {
     rank_score: 90,
   }));
 }
+const macLipsticks = () => canonicalRows({
+  brand: 'MAC', titleStem: 'MAC Matte Lipstick Shade', categoryPath: 'beauty/makeup/lip/lipstick',
+  productType: 'Lipstick', url: 'https://www.maccosmetics.com/product/lipstick',
+});
+const moisturizers = () => canonicalRows({
+  brand: 'Acme', titleStem: 'Acme Daily Hydrating Moisturizer Cream', categoryPath: 'beauty/skincare/moisturize/cream',
+  productType: 'Moisturizer', url: 'https://acme.example/products/moisturizer',
+});
+const moisturizerSeedRow = () => {
+  const now = new Date().toISOString();
+  return {
+    id: 'seed_acme_moisturizer',
+    external_product_id: 'ext_acme_moisturizer',
+    market: 'US',
+    tool: '*',
+    title: 'Acme Daily Hydrating Moisturizer Cream',
+    canonical_url: 'https://acme.example/products/daily-moisturizer',
+    destination_url: 'https://acme.example/products/daily-moisturizer',
+    image_url: 'https://cdn.example.com/acme-moisturizer.jpg',
+    price_amount: '22.00',
+    price_currency: 'USD',
+    availability: 'in stock',
+    seed_data: { brand: 'Acme', category: 'moisturizer' },
+    updated_at: now,
+    created_at: now,
+  };
+};
 
-const timeoutError = () => Object.assign(new Error('canceling statement due to statement timeout'), { code: '57014' });
+const statementTimeout = () => Object.assign(new Error('canceling statement due to statement timeout'), { code: '57014' });
 
 describe('a slow beauty recall arm degrades that arm, not the request', () => {
   let previous;
@@ -43,6 +71,8 @@ describe('a slow beauty recall arm degrades that arm, not the request', () => {
   let fallbackCalls;
   let failSeedTools;
   let seedError;
+  let seedRowsByTool;
+  let canonical;
   let canonicalError;
   let app;
 
@@ -54,14 +84,15 @@ describe('a slow beauty recall arm degrades that arm, not the request', () => {
         calls.push({ sql: text, params });
         const isSeed = text.includes('FROM external_product_seeds') && !text.includes('FROM candidate_products c');
         if (isSeed) {
-          if (failSeedTools === 'all' || (Array.isArray(failSeedTools) && failSeedTools.includes(params?.[1]))) {
+          const tool = params?.[1];
+          if (failSeedTools === 'all' || (Array.isArray(failSeedTools) && failSeedTools.includes(tool))) {
             throw seedError();
           }
-          return { rows: [] };
+          return { rows: seedRowsByTool[tool] || [] };
         }
         if (text.includes('FROM catalog_products p')) {
           if (canonicalError) throw canonicalError();
-          return { rows: canonicalMacLipstickRows() };
+          return { rows: canonical() };
         }
         return { rows: [] };
       }),
@@ -75,7 +106,9 @@ describe('a slow beauty recall arm degrades that arm, not the request', () => {
     calls = [];
     fallbackCalls = [];
     failSeedTools = [];
-    seedError = timeoutError;
+    seedError = statementTimeout;
+    seedRowsByTool = {};
+    canonical = macLipsticks;
     canonicalError = null;
     Object.assign(process.env, {
       DATABASE_URL: 'postgres://fixture',
@@ -110,14 +143,17 @@ describe('a slow beauty recall arm degrades that arm, not the request', () => {
     expect(unexpected).toEqual([]);
   });
 
-  const invoke = () => request(app).post('/agent/shop/v1/invoke').send({
+  const invoke = (query = 'MAC lipstick') => request(app).post('/agent/shop/v1/invoke').send({
     operation: 'find_products_multi',
-    payload: { search: { query: 'MAC lipstick', domain: 'beauty', market: 'US', limit: 10 } },
+    payload: { search: { query, domain: 'beauty', market: 'US', limit: 10 } },
     metadata: { source: 'shopping_agent' },
   });
-  const seedTools = () => calls
-    .filter((call) => call.sql.includes('FROM external_product_seeds') && !call.sql.includes('FROM candidate_products c'))
-    .map((call) => call.params?.[1]);
+  const seedCalls = () => calls
+    .filter((call) => call.sql.includes('FROM external_product_seeds') && !call.sql.includes('FROM candidate_products c'));
+  const expectPrimaryFailure = (resp) => {
+    expect(resp.status).toBe(503);
+    expect(resp.body).toMatchObject({ status: 'failed', success: false, products: [], error: { code: 'BEAUTY_PRIMARY_RECALL_FAILED' } });
+  };
 
   test('control: with no timeouts the request answers from the canonical rows', async () => {
     load();
@@ -127,11 +163,11 @@ describe('a slow beauty recall arm degrades that arm, not the request', () => {
     expect(resp.body.metadata.primary_recall_degraded).toBe(false);
   });
 
-  test.each(['true', 'false'])('one timed-out seed tool scope still answers (parallel=%s)', async (parallel) => {
+  test.each(['true', 'false'])('text-recall lane: one timed-out seed tool scope still answers (parallel=%s)', async (parallel) => {
     failSeedTools = ['shopping_agents'];
     load({ PIVOT_BEAUTY_PARALLEL_SCOPE_RECALL_ENABLED: parallel });
     const resp = await invoke();
-    expect(seedTools()).toEqual(expect.arrayContaining(['shopping_agents', 'creator_agents', '*']));
+    expect(seedCalls().map((call) => call.params[1])).toEqual(expect.arrayContaining(['shopping_agents', 'creator_agents', '*']));
     expect(resp.status).toBe(200);
     expect(resp.body.products.length).toBeGreaterThan(0);
     expect(resp.body.metadata).toEqual(expect.objectContaining({
@@ -140,18 +176,41 @@ describe('a slow beauty recall arm degrades that arm, not the request', () => {
     }));
   });
 
+  test('family-query lane (runScopeQuery): two timed-out scopes of three still answer', async () => {
+    canonical = moisturizers;
+    failSeedTools = ['shopping_agents', 'creator_agents'];
+    load();
+    const resp = await invoke('moisturizer');
+    // Prove this went through the category-scoped query, not the text-recall LIKE query the
+    // lipstick cases use -- otherwise a regression confined to runScopeQuery stays green.
+    expect(seedCalls().length).toBeGreaterThan(0);
+    expect(seedCalls().every((call) => !/LIKE \$\d/.test(call.sql))).toBe(true);
+    expect(resp.status).toBe(200);
+    expect(resp.body.metadata).toEqual(expect.objectContaining({
+      primary_recall_degraded: true,
+      external_seed_timed_out_tool_scopes: ['shopping_agents', 'creator_agents'],
+    }));
+    expect(resp.body.metadata.canonical_raw_count).toBeGreaterThan(0);
+  });
+
   test('every seed tool scope timing out is a primary failure, not an empty answer', async () => {
     failSeedTools = 'all';
     load();
-    const resp = await invoke();
-    expect(resp.status).toBe(503);
-    expect(resp.body).toMatchObject({ status: 'failed', success: false, products: [], error: { code: 'BEAUTY_PRIMARY_RECALL_FAILED' } });
+    expectPrimaryFailure(await invoke());
   });
 
-  test('a timed-out canonical query degrades to the seed lane instead of 503', async () => {
-    canonicalError = timeoutError;
+  test('a timed-out canonical query with no seed rows is a primary failure, not "no products"', async () => {
+    canonicalError = statementTimeout;
     load();
-    const resp = await invoke();
+    expectPrimaryFailure(await invoke());
+  });
+
+  test('a timed-out canonical query still answers from the seed rows it did get', async () => {
+    canonical = moisturizers;
+    canonicalError = statementTimeout;
+    seedRowsByTool = { '*': [moisturizerSeedRow()] };
+    load();
+    const resp = await invoke('moisturizer');
     expect(resp.status).toBe(200);
     expect(resp.body.metadata).toEqual(expect.objectContaining({
       primary_recall_degraded: true,
@@ -160,19 +219,36 @@ describe('a slow beauty recall arm degrades that arm, not the request', () => {
     }));
   });
 
-  test('a non-timeout seed query error in ONE scope still fails loudly', async () => {
+  test('one timed-out scope plus an otherwise empty recall is a primary failure', async () => {
+    canonical = () => [];
     failSeedTools = ['shopping_agents'];
-    seedError = () => Object.assign(new Error('column "tool" does not exist'), { code: '42703' });
     load();
-    const resp = await invoke();
-    expect(resp.status).toBe(503);
-    expect(resp.body.error.code).toBe('BEAUTY_PRIMARY_RECALL_FAILED');
+    expectPrimaryFailure(await invoke());
   });
 
-  test('a non-timeout canonical error still fails loudly', async () => {
-    canonicalError = () => Object.assign(new Error('relation "catalog_products" does not exist'), { code: '42P01' });
+  test.each([
+    ['57014 with an arbitrary message', () => Object.assign(new Error('boom'), { code: '57014' }), 200],
+    ['pg-pool acquire timeout (no SQLSTATE)', () => new Error('timeout exceeded when trying to connect'), 200],
+    ['pg connection timeout (no SQLSTATE)', () => new Error('Connection terminated due to connection timeout'), 200],
+    ['a defect whose message says cancel/timeout', () => Object.assign(new Error('column "cancel_timeout" does not exist'), { code: '42703' }), 503],
+    ['a ReferenceError from a refactor', () => new ReferenceError('queryBeautyExternalSeedRowsWithTimeout is not defined'), 503],
+    ['an uncoded error that merely mentions a timeout', () => new Error('upstream timeout while hydrating'), 503],
+  ])('seed scope error classification: %s -> %i', async (_label, makeError, status) => {
+    failSeedTools = ['shopping_agents'];
+    seedError = makeError;
     load();
     const resp = await invoke();
-    expect(resp.status).toBe(503);
+    expect(resp.status).toBe(status);
+    if (status === 503) expect(resp.body.error.code).toBe('BEAUTY_PRIMARY_RECALL_FAILED');
+    else expect(resp.body.metadata.external_seed_timed_out_tool_scopes).toEqual(['shopping_agents']);
+  });
+
+  test.each([
+    ['a missing relation', () => Object.assign(new Error('relation "catalog_products" does not exist'), { code: '42P01' })],
+    ['a defect whose message says timeout', () => Object.assign(new Error('column "statement_timeout" does not exist'), { code: '42703' })],
+  ])('a non-timeout canonical error still fails loudly: %s', async (_label, makeError) => {
+    canonicalError = makeError;
+    load();
+    expectPrimaryFailure(await invoke());
   });
 });

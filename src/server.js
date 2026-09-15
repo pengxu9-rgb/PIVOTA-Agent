@@ -16502,13 +16502,25 @@ function buildBeautyExternalSeedBrandCategoryTextTerms(queryText = '', intent = 
   return terms.slice(0, 8);
 }
 
-// A statement timeout (57014) or a cancelled/timed-out client is ONE recall arm running slow, not
-// the primary lane being down. #2204 rethrew every arm error so a single slow tool scope, or a
-// slow canonical query, failed the whole beauty request with 503. A timed-out arm now degrades
-// to its own empty result with telemetry; a non-timeout error (bad SQL, missing column) is a
-// defect and still fails loudly. No other query shape, scope, market or upstream is tried.
+// A statement timeout (57014) or a pg/pg-pool timeout is ONE recall arm running slow, not the
+// primary lane being down. #2204 rethrew every arm error so a single slow tool scope, or a slow
+// canonical query, failed the whole beauty request with 503. A timed-out arm now degrades to its
+// own empty result with telemetry; anything else (bad SQL, missing column, a ReferenceError from a
+// refactor) is a defect and still fails loudly. No other query shape, scope, market or upstream is
+// tried. The match is deliberately NARROW: before #2204 a loose /timeout|cancel/ only set a
+// telemetry flag; here it decides 200 vs 503, so a defect whose message happens to say "cancel"
+// must not be served as a degraded success. Messages are pg-pool's acquire timeout and pg's
+// connection/query timeouts, which carry no SQLSTATE.
+const BEAUTY_RECALL_TIMEOUT_MESSAGES = [
+  /^timeout exceeded when trying to connect$/i,
+  /^Connection terminated due to connection timeout$/i,
+  /^Query read timeout$/i,
+];
 function isBeautyRecallQueryTimeout(err) {
-  return String(err?.code || '').trim() === '57014' || /timeout|cancel/i.test(String(err?.message || ''));
+  if (String(err?.code || '').trim() === '57014') return true;
+  if (err?.code) return false;
+  const message = String(err?.message || '').trim();
+  return BEAUTY_RECALL_TIMEOUT_MESSAGES.some((pattern) => pattern.test(message));
 }
 
 async function queryBeautyExternalSeedRowsWithTimeout(sql, params, timeoutMs = 1200) {
@@ -22233,6 +22245,12 @@ async function searchBeautyExternalSeedProductsMainline({
   const seedProducts = Array.isArray(selectedRows?.rawProducts) ? selectedRows.rawProducts : [];
   const mergedCanonical = mergeCanonicalChainProductsWithSeedProducts(seedProducts, canonicalProducts);
   const recallProducts = mergedCanonical.products;
+  // A degraded arm may only ever yield a PARTIAL answer. If any arm timed out and recall found
+  // nothing at all, the empty result says "no products" when the truth is "we could not look":
+  // report the primary failure instead (503), exactly as when every seed scope times out.
+  if (canonicalTelemetry.primary_recall_degraded && recallProducts.length === 0) {
+    throw Object.assign(new Error('beauty_primary_recall_timed_out_with_no_rows'), { code: '57014' });
+  }
   canonicalTelemetry.canonical_dedupe_count = mergedCanonical.canonical_dedupe_count;
   const searchQualityTierCounts = buildSearchQualityTierCounts(
     recallProducts,
