@@ -1189,6 +1189,7 @@ const WEAK_CATEGORY_LABELS = new Set(['', 'all', 'catalog', 'external', 'misc', 
 const browsePoolCache = new Map();
 // Brand-direct pool results, keyed on the inputs that decide them (never on the viewer). See
 // loadBrandScopedDirectCandidates.
+const BRAND_DIRECT_POOL_CACHE_MAX_ENTRIES = 50;
 const brandDirectPoolCache = new Map();
 const brandDirectPoolInflight = new Map();
 const browseCatalogCountCache = new Map();
@@ -9742,7 +9743,7 @@ async function loadBrandScopedDirectCandidates(args = {}) {
     const cacheable = !errored && Array.isArray(value?.products);
     if (cacheable) {
       brandDirectPoolCache.set(key, { storedAt: Date.now(), value: cloneBrandDirectResult(value) });
-      if (brandDirectPoolCache.size > 200) {
+      if (brandDirectPoolCache.size > BRAND_DIRECT_POOL_CACHE_MAX_ENTRIES) {
         const oldestKey = Array.from(brandDirectPoolCache.entries()).sort((a, b) => a[1].storedAt - b[1].storedAt)[0]?.[0];
         if (oldestKey) brandDirectPoolCache.delete(oldestKey);
       }
@@ -12268,6 +12269,7 @@ module.exports = {
       brandDirectPoolInflight.clear();
     },
     getBrandDirectPoolCacheTtlMs,
+    BRAND_DIRECT_POOL_CACHE_MAX_ENTRIES,
     computeBrandScopedDirectCandidates,
     resetBrowseCatalogCountCache: () => browseCatalogCountCache.clear(),
   },
