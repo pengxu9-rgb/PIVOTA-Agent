@@ -4,7 +4,8 @@ const { Client } = require('pg');
 // outer `WHERE (content_key IN target OR product_group_id IN target OR product_key IN target)`, which
 // PostgreSQL could only answer by scanning every catalog_products row. It now unions three indexed
 // lookups. This executes the REAL resolver statement on PostgreSQL and pins exactly which rows are
-// members for each argument shape, including the rows that must stay OUT.
+// members for each argument shape, including the rows that must stay OUT. Each OUT row is excluded
+// by exactly one condition, so removing that condition changes the member set.
 const url = process.env.CANONICAL_MAINLINE_TEST_DATABASE_URL;
 const suite = url ? describe : describe.skip;
 
@@ -36,13 +37,19 @@ suite('canonical catalog entity group membership on PostgreSQL', () => {
       CREATE TABLE catalog_skus(sku_key text PRIMARY KEY, product_key text);
       CREATE TABLE catalog_offers(offer_id text PRIMARY KEY, sku_key text);
     `);
-    await db.query(`INSERT INTO catalog_merchants VALUES ('merch_obs_b', 'Seller B', 'observed'), ('merch_obs_c', 'Seller C', 'observed')`);
-    const product = (key, merchant, source, content, signature, stage, minted) => db.query(
+    await db.query(`
+      INSERT INTO catalog_merchants VALUES
+        ('merch_obs_b', 'Seller B', 'observed'),
+        ('merch_obs_c', 'Seller C', 'observed'),
+        ('merch_obs_h', 'Seller H', 'observed'),
+        ('merch_suspended', 'Seller I', 'suspended')
+    `);
+    const product = (key, merchant, source, content, signature, stage, minted, platform = 'external_seed') => db.query(
       `INSERT INTO catalog_products(product_key, merchant_id, platform, source_product_id, title, brand, category_path,
          canonical_url, product_payload, pdp_lifecycle_stage, pivota_signature_id, pivota_signature_minted_at, content_key, updated_at)
-       VALUES ($1, $2, 'external_seed', $3, $1, 'Brand', 'beauty/makeup/lip/lipstick', 'https://x.example/' || $1, '{}'::jsonb,
+       VALUES ($1, $2, $8, $3, $1, 'Brand', 'beauty/makeup/lip/lipstick', 'https://x.example/' || $1, '{}'::jsonb,
          $4, $5, $6::timestamptz, $7, now())`,
-      [key, merchant, source, stage, signature, minted, content],
+      [key, merchant, source, stage, signature, minted, content, platform],
     );
     // A: the target. content ck_group, group G1 (primary).
     await product('A', 'external_seed', 'src_a', 'ck_group', sig(1), 'published', '2026-01-01');
@@ -59,6 +66,16 @@ suite('canonical catalog entity group membership on PostgreSQL', () => {
     await product('F', 'external_seed', 'src_f', 'ck_f', sig(6), 'published', '2026-01-06');
     // G: no content_key and no group row -> only the "is the target" branch can find it.
     await product('G', 'external_seed', 'src_g', null, sig(7), 'published', '2026-01-07');
+    // H: same platform + source id as C's G1 group row, but a DIFFERENT merchant, unrelated content,
+    // an admitted (observed, store-less) merchant -> only the group join's merchant condition keeps
+    // it OUT.
+    await product('H', 'merch_obs_h', 'src_c', 'ck_h', sig(8), 'published', '2026-01-08');
+    // I: same content_key as A, signed, but its merchant is suspended -> only the active-source gate
+    // keeps it OUT.
+    await product('I', 'merch_suspended', 'src_i', 'ck_group', sig(9), 'published', '2026-01-09');
+    // J: same content_key as A with a NULL platform -> still a member (content membership does not
+    // depend on platform).
+    await product('J', 'merch_obs_b', 'src_j', 'ck_group', sig(10), 'draft', '2026-01-10', null);
     await db.query(`
       INSERT INTO product_group_members VALUES
         ('external_seed', 'external_seed', 'src_a', 'G1', true),
@@ -104,7 +121,7 @@ suite('canonical catalog entity group membership on PostgreSQL', () => {
     ['plain product key', { productId: 'A' }],
   ])('%s resolves exactly the content, group and target members', async (_label, args) => {
     const { group, sql, keys } = await resolveMembers(args);
-    expect(keys).toEqual(['A', 'B', 'C']);
+    expect(keys).toEqual(['A', 'B', 'C', 'J']);
     expect(group).toBeTruthy();
     // The removed shape: one OR across three IN-subqueries on the outer query forced a full scan.
     expect(sql).not.toMatch(/OR\s+pgm\.product_group_id\s+IN/);
