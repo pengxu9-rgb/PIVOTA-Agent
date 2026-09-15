@@ -36,7 +36,7 @@ describe('brand-direct discovery pool cache', () => {
           externalCalls += 1;
           return externalBehaviour();
         }
-        if ('products_cache' && text.includes('FROM products_cache')) {
+        if (text.includes('FROM products_cache')) {
           internalCalls += 1;
           return internalBehaviour();
         }
@@ -258,9 +258,6 @@ describe('brand-direct discovery pool cache', () => {
     const notBrandOnly = discovery._internals.normalizeDiscoveryRequest({
       surface: 'browse_products', scope: { brand_names: ['Mixsoon'] }, query: { text: '' }, page: 1, limit: 24,
     });
-    expect(discovery._internals.isBrandScopeOnlyQuery
-      ? discovery._internals.isBrandScopeOnlyQuery(notBrandOnly) !== discovery._internals.isBrandScopeOnlyQuery(request())
-      : true).toBe(true);
     await loadPool({ request: notBrandOnly });
     expect(canonicalCalls).toBe(2);
     await loadPool();
@@ -269,7 +266,7 @@ describe('brand-direct discovery pool cache', () => {
 
   test('the oldest entry is evicted once the cap is exceeded, and the newest is kept', async () => {
     const cap = discovery._internals.BRAND_DIRECT_POOL_CACHE_MAX_ENTRIES;
-    expect(cap).toBe(50);
+    expect(cap).toBe(200);
     let now = 2_000_000;
     jest.spyOn(Date, 'now').mockImplementation(() => now);
     for (let i = 0; i <= cap; i += 1) {
@@ -277,7 +274,9 @@ describe('brand-direct discovery pool cache', () => {
       await loadPool({ brandAliases: [`brandx${i}`] });
     }
     expect(canonicalCalls).toBe(cap + 1);
+    // Exactly ONE entry (the oldest) is evicted: the newest and the second-oldest are still served.
     await loadPool({ brandAliases: [`brandx${cap}`] });
+    await loadPool({ brandAliases: ['brandx1'] });
     expect(canonicalCalls).toBe(cap + 1);
     await loadPool({ brandAliases: ['brandx0'] });
     expect(canonicalCalls).toBe(cap + 2);

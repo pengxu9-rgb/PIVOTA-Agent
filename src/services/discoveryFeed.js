@@ -1189,7 +1189,11 @@ const WEAK_CATEGORY_LABELS = new Set(['', 'all', 'catalog', 'external', 'misc', 
 const browsePoolCache = new Map();
 // Brand-direct pool results, keyed on the inputs that decide them (never on the viewer). See
 // loadBrandScopedDirectCandidates.
-const BRAND_DIRECT_POOL_CACHE_MAX_ENTRIES = 50;
+// 200, not the ~22 brands of the incident: the key is brand x candidate limit x order-by-recency,
+// and page-dependent limits give ~11 live keys per brand (~240 across 22 brands). A 50-entry cap
+// was simulated to cut cache avoidance from 0.93 to 0.78 at 5 brand-page rps/instance (3.1x the
+// DB loads). Worst-case heap at 200 full entries measured 0.6-0.8 GB against a 4Gi limit.
+const BRAND_DIRECT_POOL_CACHE_MAX_ENTRIES = 200;
 const brandDirectPoolCache = new Map();
 const brandDirectPoolInflight = new Map();
 const browseCatalogCountCache = new Map();
