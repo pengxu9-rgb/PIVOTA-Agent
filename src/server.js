@@ -16502,6 +16502,15 @@ function buildBeautyExternalSeedBrandCategoryTextTerms(queryText = '', intent = 
   return terms.slice(0, 8);
 }
 
+// A statement timeout (57014) or a cancelled/timed-out client is ONE recall arm running slow, not
+// the primary lane being down. #2204 rethrew every arm error so a single slow tool scope, or a
+// slow canonical query, failed the whole beauty request with 503. A timed-out arm now degrades
+// to its own empty result with telemetry; a non-timeout error (bad SQL, missing column) is a
+// defect and still fails loudly. No other query shape, scope, market or upstream is tried.
+function isBeautyRecallQueryTimeout(err) {
+  return String(err?.code || '').trim() === '57014' || /timeout|cancel/i.test(String(err?.message || ''));
+}
+
 async function queryBeautyExternalSeedRowsWithTimeout(sql, params, timeoutMs = 1200) {
   const boundedTimeoutMs = Math.max(250, Math.min(3000, Math.trunc(Number(timeoutMs) || 1200)));
   if (typeof withClient !== 'function') return query(sql, params);
@@ -16859,6 +16868,23 @@ async function queryBeautyExternalSeedRowsFast({
   // deployment's served list was never bound — this whole change was a no-op on its own main
   // lane. The two callers that genuinely want one market (the KR brand-home bridge, :17383
   // and :17391) pass 'US' explicitly and still get exactly ['US'].
+  const buildTimedOutScopeResult = (tool, queryMarket, marketScope, err, extra = {}) => ({
+    tool,
+    rows: [],
+    timedOut: true,
+    error: err,
+    variant: {
+      query: String(queryText || '').trim(),
+      row_count: 0,
+      category_terms: categoryTerms,
+      market: String(queryMarket || safeMarket).trim().toUpperCase() || safeMarket,
+      market_scope: marketScope,
+      tool_scope: tool || '(empty)',
+      ...extra,
+      error_code: String(err?.code || err?.name || 'query_failed').slice(0, 80),
+      timeout: true,
+    },
+  });
   const runScopeQuery = async (tool, queryMarket = null, marketScope = 'exact_market') => {
     try {
       const safeQueryMarkets = queryMarket ? marketsForRequest(queryMarket) : safeMarkets;
@@ -17008,7 +17034,10 @@ async function queryBeautyExternalSeedRowsFast({
         },
       };
     } catch (err) {
-      throw err;
+      if (!isBeautyRecallQueryTimeout(err)) throw err;
+      return buildTimedOutScopeResult(tool, queryMarket, marketScope, err, {
+        single_category_indexed_query: categoryTerms.length === 1,
+      });
     }
   };
   const runTextRecallQuery = async (tool, queryMarket = null, marketScope = 'primary_text_query') => {
@@ -17208,7 +17237,8 @@ async function queryBeautyExternalSeedRowsFast({
         },
       };
     } catch (err) {
-      throw err;
+      if (!isBeautyRecallQueryTimeout(err)) throw err;
+      return buildTimedOutScopeResult(tool, queryMarket, marketScope, err, { primary_text_query: true });
     }
   };
   const appendScopeRows = (scopeResult, { requireTargetMarketAuthority = false } = {}) => {
@@ -17264,14 +17294,26 @@ async function queryBeautyExternalSeedRowsFast({
   const usePrimaryTextQuery = recallPatterns.length > 0 &&
     (brandCategoryTextRecallRequired || !Array.isArray(intent?.families) || intent.families.length === 0);
   const runPrimaryQuery = usePrimaryTextQuery ? runTextRecallQuery : runScopeQuery;
+  const scopeOutcomes = [];
   if (PIVOT_BEAUTY_PARALLEL_SCOPE_RECALL_ENABLED) {
     const scopeResults = await Promise.all(toolScopes.map((tool) => runPrimaryQuery(tool)));
-    for (const scopeResult of scopeResults) appendScopeRows(scopeResult);
+    for (const scopeResult of scopeResults) {
+      scopeOutcomes.push(scopeResult);
+      appendScopeRows(scopeResult);
+    }
   } else {
     for (const tool of toolScopes) {
       if (rawProducts.length >= rawProductCap) break;
-      appendScopeRows(await runPrimaryQuery(tool));
+      const scopeResult = await runPrimaryQuery(tool);
+      scopeOutcomes.push(scopeResult);
+      appendScopeRows(scopeResult);
     }
+  }
+  // The seed lane is DOWN only when every scope that ran timed out; then the primary failure is
+  // reported (503), never an empty "no products". One slow scope is a partial answer, surfaced below.
+  const timedOutScopes = scopeOutcomes.filter((result) => result?.timedOut);
+  if (scopeOutcomes.length > 0 && timedOutScopes.length === scopeOutcomes.length) {
+    throw timedOutScopes[0].error;
   }
 
   return {
@@ -17280,6 +17322,7 @@ async function queryBeautyExternalSeedRowsFast({
     categoryTerms,
     recallPatterns,
     destinationBrandMarketBridge,
+    timedOutToolScopes: timedOutScopes.map((result) => result.tool || '(empty)'),
   };
 }
 
@@ -22104,7 +22147,15 @@ async function searchBeautyExternalSeedProductsMainline({
       error: null,
       duration_ms: Math.max(0, Date.now() - canonicalStartedAt),
     }))
-    .catch((err) => { throw err; });
+    .catch((err) => {
+      if (!isBeautyRecallQueryTimeout(err)) throw err;
+      return {
+        rows: [],
+        error: String(err?.code || err?.message || err || 'canonical_query_failed').slice(0, 160),
+        timeout: true,
+        duration_ms: Math.max(0, Date.now() - canonicalStartedAt),
+      };
+    });
   const [creatorScopedRows, canonicalResult] = await Promise.all([
     queryBeautyExternalSeedRowsFast({
       market,
@@ -22170,6 +22221,11 @@ async function searchBeautyExternalSeedProductsMainline({
     requested_limit: safeLimit,
     beauty_brand_browse: beautyIntent.brandBrowse || null,
     ...(canonicalResult?.error ? { canonical_error: canonicalResult.error } : {}),
+    ...(canonicalResult?.timeout ? { canonical_timeout: true } : {}),
+    ...(creatorScopedRows?.timedOutToolScopes?.length
+      ? { external_seed_timed_out_tool_scopes: creatorScopedRows.timedOutToolScopes }
+      : {}),
+    primary_recall_degraded: Boolean(canonicalResult?.timeout || creatorScopedRows?.timedOutToolScopes?.length),
   };
   const selectedRows = creatorScopedRows;
   const normalizedQuery = beautyIntent.normalized;
