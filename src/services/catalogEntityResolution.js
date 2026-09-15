@@ -764,6 +764,33 @@ async function resolveCanonicalCatalogEntityGroup(args = {}) {
         cp.pivota_signature_minted_at ASC NULLS LAST,
         cp.updated_at DESC NULLS LAST
       LIMIT 1
+    ),
+    -- The group's members, gathered through three INDEXED lookups instead of one OR across three
+    -- IN-subqueries on the outer query, which PostgreSQL could only answer by scanning every
+    -- catalog_products row (~0.8-1.0s per get_pdp_v2 on a 120k-product fixture; ~245ms mean in prod
+    -- after #2208). Same membership: a row belongs if it shares the target's content_key
+    -- (idx_catalog_products_content_key), or its product_group_members row carries the target's
+    -- group (idx_product_group_members_group_id, joined back on the SAME merchant/platform/source
+    -- condition the outer LEFT JOIN uses; that join is 1:1 by product_group_members_pkey), or it IS
+    -- the target row (catalog_products_pkey). UNION de-duplicates like the IN list did.
+    candidate_keys AS (
+      SELECT same_content.product_key
+      FROM target
+      JOIN catalog_products same_content ON same_content.content_key = target.content_key
+      WHERE target.content_key IS NOT NULL
+      UNION
+      SELECT same_group_product.product_key
+      FROM target
+      JOIN product_group_members same_group ON same_group.product_group_id = target.product_group_id
+      JOIN catalog_products same_group_product
+        ON same_group_product.merchant_id = same_group.merchant_id
+       AND same_group_product.platform = same_group.platform
+       AND same_group_product.source_product_id = same_group.platform_product_id
+      WHERE target.product_group_id IS NOT NULL
+      UNION
+      SELECT target.product_key
+      FROM target
+      WHERE target.product_key IS NOT NULL
     )
     SELECT
       cp.product_key,
@@ -801,11 +828,7 @@ async function resolveCanonicalCatalogEntityGroup(args = {}) {
       LEFT JOIN catalog_offers o ON o.sku_key = s.sku_key
       WHERE s.product_key = cp.product_key
     ) offer_stats ON TRUE
-    WHERE (
-      cp.content_key IN (SELECT content_key FROM target WHERE content_key IS NOT NULL)
-      OR pgm.product_group_id IN (SELECT product_group_id FROM target WHERE product_group_id IS NOT NULL)
-      OR cp.product_key IN (SELECT product_key FROM target WHERE product_key IS NOT NULL)
-    )
+    WHERE cp.product_key IN (SELECT product_key FROM candidate_keys)
       AND cp.pivota_signature_id IS NOT NULL
       AND ${activeCatalogProductSourceWhere('cp', 'cm')}
     ORDER BY
