@@ -147,6 +147,7 @@ describe('discovery feed service', () => {
     };
     resetDiscoveryMetricsForTest();
     _internals.resetBrowsePoolCache();
+    _internals.resetBrandDirectPoolCache();
     _internals.resetBrowseCatalogCountCache();
     _internals.resetDiscoveryDependencyProbeCache();
     _internals.resetProductIntelKbStoreCache();
@@ -2253,6 +2254,7 @@ describe('discovery feed service', () => {
 
     const compactPage = await fetchFeed(12);
     _internals.resetBrowsePoolCache();
+    _internals.resetBrandDirectPoolCache();
     const standardPage = await fetchFeed(24);
 
     expect(compactPage.total).toBe(standardPage.total);
