@@ -1296,14 +1296,20 @@ async function fetchCanonicalChainRows(args = {}) {
   // hazard the paragraph above describes only exists when the text branch is
   // discarded.
   let recallDocWhere = '';
+  // Binds referenced ONLY inside the text WHERE arm, with their SQL types. The
+  // search-quality contract below may REPLACE the default WHERE; a bind left in
+  // params but absent from the statement fails the whole query with 42P18.
+  const textArmOnlyBinds = [];
   if ((!categoryBind || categoryBrowseTextUnion) && isRecallDocMatchEnabled()) {
     const recallDocPatterns = buildRecallDocMatchPatterns(lowered);
     if (recallDocPatterns.length > 0) {
       params.push(recallDocPatterns);
       const recallDocPatternsBind = `$${params.length}`;
+      textArmOnlyBinds.push({ bind: recallDocPatternsBind, type: 'text[]' });
       let recallDocMarketGuard = '';
       if (marketId) {
         params.push(String(marketId).toUpperCase());
+        textArmOnlyBinds.push({ bind: `$${params.length}`, type: 'text' });
         recallDocMarketGuard = `
           AND (p.recall_market IS NULL OR p.recall_market = $${params.length})`;
       }
@@ -1463,7 +1469,13 @@ async function fetchCanonicalChainRows(args = {}) {
   }
   const qualityScope = buildCanonicalSearchQualitySql({ contract: searchQualityContract, params,
     categoryPredicate, defaultWhere: whereClause, defaultBrandWhere: brandWhere });
-  whereClause = qualityScope.where;
+  // Same idiom as `$2::text IS NOT NULL`: keep a typed, always-true reference to
+  // every text-arm bind the contract's WHERE no longer contains. Params cannot be
+  // removed instead — later binds (brand identity, offer scope) are numbered after them.
+  whereClause = qualityScope.where + textArmOnlyBinds
+    .filter(({ bind }) => !new RegExp(`\\${bind}(?!\\d)`).test(qualityScope.where))
+    .map(({ bind, type }) => ` AND ${bind}::${type} IS NOT NULL`)
+    .join('');
   brandWhere = qualityScope.brandWhere;
   // Suppress source-unavailable / discontinued external-seed products from
   // recall. ADR-009: gate on platform, NOT the legacy merchant_id='external_seed'
@@ -1537,11 +1549,12 @@ async function fetchCanonicalChainRows(args = {}) {
     if (Array.isArray(offerScope.priceRanges)) {
       const price = 'COALESCE(o.merchant_effective_price, o.list_price)';
       const ranges = offerScope.priceRanges.map(range => {
+        // Validate BEFORE binding: an abandoned currency bind is a 42P18 (see seedSearchOfferScope).
+        if (['min', 'max'].some(field => range[field] != null && !Number.isFinite(Number(range[field])))) return 'FALSE';
         const parts = [];
         if (range.currency) parts.push(`upper(trim(o.currency)) = ${bindOfferValue(String(range.currency).trim().toUpperCase())}`);
         for (const [field, operator] of [['min', '>='], ['max', '<=']]) {
           if (range[field] == null) continue;
-          if (!Number.isFinite(Number(range[field]))) return 'FALSE';
           parts.push(`${price} ${operator} ${bindOfferValue(Number(range[field]))}`);
         }
         return parts.length ? `(${parts.join(' AND ')})` : 'FALSE';

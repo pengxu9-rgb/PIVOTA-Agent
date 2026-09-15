@@ -25,11 +25,14 @@ function buildSeedSearchOfferScope({ currency = null, priceRanges = null, brand 
   if (currency) clauses.push(`${nativeCurrency} = ${bind(String(currency).trim().toUpperCase())}`);
   if (Array.isArray(priceRanges)) {
     const ranges = priceRanges.map(range => {
+      // Validate BEFORE binding anything. Returning 'FALSE' after the currency
+      // was bound left that bind in params with no reference in the statement,
+      // which PostgreSQL rejects for the whole query (42P18).
+      if (['min', 'max'].some(field => range[field] != null && !Number.isFinite(Number(range[field])))) return 'FALSE';
       const parts = [];
       if (range.currency) parts.push(`${nativeCurrency} = ${bind(String(range.currency).trim().toUpperCase())}`);
       for (const [field, operator] of [['min', '>='], ['max', '<=']]) {
         if (range[field] == null) continue;
-        if (!Number.isFinite(Number(range[field]))) return 'FALSE';
         parts.push(`${nativePrice} ${operator} ${bind(Number(range[field]))}`);
       }
       return parts.length ? `(${parts.join(' AND ')})` : 'FALSE';
