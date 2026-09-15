@@ -2,6 +2,7 @@
 
 const { query: defaultQuery } = require('../db');
 const { activeCatalogProductSourceWhere } = require('./activeCatalogSourceSql');
+const { CANONICAL_ENTITY_GROUP_SQL_TAG } = require('./catalogEntityResolutionSqlTag');
 const productRelationshipGraphSources = require('../auroraBff/productRelationshipGraphSources');
 
 const relationshipGraphSourcesInternal = productRelationshipGraphSources.__internal || {};
@@ -728,16 +729,15 @@ async function resolveCanonicalCatalogEntityGroup(args = {}) {
 
   if (!targetClauses.length) return null;
 
+  // offer_count is computed PER candidate row (LATERAL, via idx_catalog_skus_product_key and
+  // idx_catalog_offers_sku_key), not by a CTE that grouped EVERY catalog_skus x catalog_offers row.
+  // That CTE ran on every get_pdp_v2 signature resolve: pg_stat_statements 2026-09-15 recorded
+  // ~57,600 calls at 1.25-1.33s mean (min ~0.6s) - pure CPU on the 2-vCPU pivota-pg, and under
+  // ~10x PDP traffic it pinned the instance and starved the gateway pool. Same value: a product
+  // with no SKUs was NULL (then COALESCE -> 0); COUNT over zero rows is 0.
   const sql = `
-    WITH offer_stats AS (
-      SELECT
-        s.product_key,
-        COUNT(DISTINCT o.offer_id)::int AS offer_count
-      FROM catalog_skus s
-      LEFT JOIN catalog_offers o ON o.sku_key = s.sku_key
-      GROUP BY s.product_key
-    ),
-    target AS (
+    ${CANONICAL_ENTITY_GROUP_SQL_TAG}
+    WITH target AS (
       SELECT
         cp.content_key,
         cp.product_key,
@@ -795,7 +795,12 @@ async function resolveCanonicalCatalogEntityGroup(args = {}) {
       ON pgm.merchant_id = cp.merchant_id
      AND pgm.platform = cp.platform
      AND pgm.platform_product_id = cp.source_product_id
-    LEFT JOIN offer_stats ON offer_stats.product_key = cp.product_key
+    LEFT JOIN LATERAL (
+      SELECT COUNT(DISTINCT o.offer_id)::int AS offer_count
+      FROM catalog_skus s
+      LEFT JOIN catalog_offers o ON o.sku_key = s.sku_key
+      WHERE s.product_key = cp.product_key
+    ) offer_stats ON TRUE
     WHERE (
       cp.content_key IN (SELECT content_key FROM target WHERE content_key IS NOT NULL)
       OR pgm.product_group_id IN (SELECT product_group_id FROM target WHERE product_group_id IS NOT NULL)
