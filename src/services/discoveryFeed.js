@@ -1189,6 +1189,11 @@ const WEAK_CATEGORY_LABELS = new Set(['', 'all', 'catalog', 'external', 'misc', 
 const browsePoolCache = new Map();
 // Brand-direct pool results, keyed on the inputs that decide them (never on the viewer). See
 // loadBrandScopedDirectCandidates.
+// 200, not the ~22 brands of the incident: the key is brand x candidate limit x order-by-recency,
+// and page-dependent limits give ~11 live keys per brand (~240 across 22 brands). A 50-entry cap
+// was simulated to cut cache avoidance from 0.93 to 0.78 at 5 brand-page rps/instance (3.1x the
+// DB loads). Worst-case heap at 200 full entries measured 0.6-0.8 GB against a 4Gi limit.
+const BRAND_DIRECT_POOL_CACHE_MAX_ENTRIES = 200;
 const brandDirectPoolCache = new Map();
 const brandDirectPoolInflight = new Map();
 const browseCatalogCountCache = new Map();
@@ -9742,7 +9747,7 @@ async function loadBrandScopedDirectCandidates(args = {}) {
     const cacheable = !errored && Array.isArray(value?.products);
     if (cacheable) {
       brandDirectPoolCache.set(key, { storedAt: Date.now(), value: cloneBrandDirectResult(value) });
-      if (brandDirectPoolCache.size > 200) {
+      if (brandDirectPoolCache.size > BRAND_DIRECT_POOL_CACHE_MAX_ENTRIES) {
         const oldestKey = Array.from(brandDirectPoolCache.entries()).sort((a, b) => a[1].storedAt - b[1].storedAt)[0]?.[0];
         if (oldestKey) brandDirectPoolCache.delete(oldestKey);
       }
@@ -12268,6 +12273,7 @@ module.exports = {
       brandDirectPoolInflight.clear();
     },
     getBrandDirectPoolCacheTtlMs,
+    BRAND_DIRECT_POOL_CACHE_MAX_ENTRIES,
     computeBrandScopedDirectCandidates,
     resetBrowseCatalogCountCache: () => browseCatalogCountCache.clear(),
   },

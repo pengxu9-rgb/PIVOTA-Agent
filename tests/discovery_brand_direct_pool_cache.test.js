@@ -11,6 +11,9 @@ describe('brand-direct discovery pool cache', () => {
   let canonicalCalls;
   let externalCalls;
   let canonicalBehaviour;
+  let externalBehaviour;
+  let internalBehaviour;
+  let internalCalls;
   let discovery;
 
   const canonicalRows = () => SIGS.map((sig, index) => ({
@@ -31,7 +34,11 @@ describe('brand-direct discovery pool cache', () => {
         }
         if (text.includes('external_product_seeds')) {
           externalCalls += 1;
-          return { rows: [] };
+          return externalBehaviour();
+        }
+        if (text.includes('FROM products_cache')) {
+          internalCalls += 1;
+          return internalBehaviour();
         }
         return { rows: [] };
       }),
@@ -63,6 +70,9 @@ describe('brand-direct discovery pool cache', () => {
     canonicalCalls = 0;
     externalCalls = 0;
     canonicalBehaviour = async () => ({ rows: canonicalRows() });
+    externalBehaviour = async () => ({ rows: [] });
+    internalBehaviour = async () => ({ rows: [] });
+    internalCalls = 0;
     load();
   });
 
@@ -177,4 +187,111 @@ describe('brand-direct discovery pool cache', () => {
     await loadPool({ fetchExternalCandidatesFn, fetchInternalCandidatesFn });
     expect(fetchExternalCandidatesFn).toHaveBeenCalledTimes(2);
   });
+
+  test('an external-seed fetcher failure is never cached, even when the canonical lane succeeded', async () => {
+    let failNext = true;
+    externalBehaviour = async () => {
+      if (failNext) {
+        failNext = false;
+        throw new Error('canceling statement due to statement timeout');
+      }
+      return { rows: [] };
+    };
+    const partial = await loadPool();
+    expect(partial.products).toHaveLength(SIGS.length);
+    await loadPool();
+    expect(canonicalCalls).toBe(2);
+    await loadPool();
+    expect(canonicalCalls).toBe(2);
+  });
+
+  test('an internal-catalog fetcher failure is never cached (commerce index off)', async () => {
+    process.env.BRAND_PAGE_USES_COMMERCE_INDEX = 'false';
+    let failNext = true;
+    internalBehaviour = async () => {
+      if (failNext) {
+        failNext = false;
+        throw new Error('timeout exceeded when trying to connect');
+      }
+      return { rows: [] };
+    };
+    await loadPool();
+    const before = internalCalls;
+    expect(before).toBeGreaterThanOrEqual(1);
+    await loadPool();
+    expect(internalCalls).toBe(before + 1);
+    await loadPool();
+    expect(internalCalls).toBe(before + 1);
+  });
+
+  test('the seed market is part of the key', async () => {
+    await loadPool();
+    process.env.CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET = 'SG';
+    await loadPool();
+    expect(canonicalCalls).toBe(2);
+    delete process.env.CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET;
+    await loadPool();
+    expect(canonicalCalls).toBe(2);
+  });
+
+  test('the commerce-index flag is part of the key', async () => {
+    // Count every DB statement: with the flag off the loader takes a different (internal catalog)
+    // lane, whose statements need not match any one counter.
+    const totalCalls = () => canonicalCalls + externalCalls + internalCalls;
+    await loadPool();
+    const afterIndexOn = totalCalls();
+    process.env.BRAND_PAGE_USES_COMMERCE_INDEX = 'false';
+    await loadPool();
+    const afterIndexOff = totalCalls();
+    expect(afterIndexOff).toBeGreaterThan(afterIndexOn);
+    expect(internalCalls).toBeGreaterThan(0);
+    process.env.BRAND_PAGE_USES_COMMERCE_INDEX = 'true';
+    await loadPool();
+    expect(totalCalls()).toBe(afterIndexOff);
+    process.env.BRAND_PAGE_USES_COMMERCE_INDEX = 'false';
+    await loadPool();
+    expect(totalCalls()).toBe(afterIndexOff);
+  });
+
+  test('order-by-recency (brand-only vs not) is part of the key', async () => {
+    await loadPool();
+    const notBrandOnly = discovery._internals.normalizeDiscoveryRequest({
+      surface: 'browse_products', scope: { brand_names: ['Mixsoon'] }, query: { text: '' }, page: 1, limit: 24,
+    });
+    await loadPool({ request: notBrandOnly });
+    expect(canonicalCalls).toBe(2);
+    await loadPool();
+    expect(canonicalCalls).toBe(2);
+  });
+
+  test('the oldest entry is evicted once the cap is exceeded, and the newest is kept', async () => {
+    const cap = discovery._internals.BRAND_DIRECT_POOL_CACHE_MAX_ENTRIES;
+    expect(cap).toBe(200);
+    let now = 2_000_000;
+    jest.spyOn(Date, 'now').mockImplementation(() => now);
+    for (let i = 0; i <= cap; i += 1) {
+      now += 10;
+      await loadPool({ brandAliases: [`brandx${i}`] });
+    }
+    expect(canonicalCalls).toBe(cap + 1);
+    // Exactly ONE entry (the oldest) is evicted: the newest and the second-oldest are still served.
+    await loadPool({ brandAliases: [`brandx${cap}`] });
+    await loadPool({ brandAliases: ['brandx1'] });
+    expect(canonicalCalls).toBe(cap + 1);
+    await loadPool({ brandAliases: ['brandx0'] });
+    expect(canonicalCalls).toBe(cap + 2);
+  });
+
+  test('the TTL env is clamped to [0, 15 min] and falls back to 5 min when unparseable', () => {
+    const ttl = discovery._internals.getBrandDirectPoolCacheTtlMs;
+    process.env.DISCOVERY_BRAND_DIRECT_CACHE_TTL_MS = '99999999';
+    expect(ttl()).toBe(900000);
+    process.env.DISCOVERY_BRAND_DIRECT_CACHE_TTL_MS = '-5';
+    expect(ttl()).toBe(0);
+    process.env.DISCOVERY_BRAND_DIRECT_CACHE_TTL_MS = 'abc';
+    expect(ttl()).toBe(300000);
+    delete process.env.DISCOVERY_BRAND_DIRECT_CACHE_TTL_MS;
+    expect(ttl()).toBe(300000);
+  });
+
 });
