@@ -1187,6 +1187,10 @@ const DOMAIN_KEYWORDS = {
 };
 const WEAK_CATEGORY_LABELS = new Set(['', 'all', 'catalog', 'external', 'misc', 'other', 'product', 'products', 'unknown']);
 const browsePoolCache = new Map();
+// Brand-direct pool results, keyed on the inputs that decide them (never on the viewer). See
+// loadBrandScopedDirectCandidates.
+const brandDirectPoolCache = new Map();
+const brandDirectPoolInflight = new Map();
 const browseCatalogCountCache = new Map();
 const discoveryDbDependencyProbeCache = {
   value: null,
@@ -1705,6 +1709,16 @@ function getDiscoveryColdStartQueries() {
 
 function getDiscoveryPoolCacheTtlMs() {
   return clampInt(process.env.DISCOVERY_POOL_CACHE_TTL_MS, 45000, 1000, 300000);
+}
+
+// Minutes, not seconds: the cache is per gateway instance (no shared store), so a short TTL spread
+// over 4-6 instances would rarely hit. 0 disables it.
+function getBrandDirectPoolCacheTtlMs() {
+  const raw = process.env.DISCOVERY_BRAND_DIRECT_CACHE_TTL_MS;
+  if (raw === undefined || String(raw).trim() === '') return 300000;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed)) return 300000;
+  return Math.min(900000, Math.max(0, Math.trunc(parsed)));
 }
 
 function buildProductKey(merchantId, productId) {
@@ -8761,6 +8775,12 @@ function buildDiscoveryCategoryFacets(entries = []) {
     }));
 }
 
+// The market the brand-scoped external seed query binds. One read, shared with the brand-direct pool
+// cache key, so a cached pool can never be keyed on a different market than the query that built it.
+function brandScopedExternalSeedMarket() {
+  return String(process.env.CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET || 'US').trim().toUpperCase() || 'US';
+}
+
 async function fetchBrandScopedExternalSeedCandidates({
   brandAliases = [],
   limit = 120,
@@ -8769,6 +8789,7 @@ async function fetchBrandScopedExternalSeedCandidates({
   // represented in the canonical agent_pdp_view path (commerce-index brand flow).
   // Default true preserves T2a behaviour.
   includeAttached = true,
+  failures = null,
 } = {}) {
   if (!process.env.DATABASE_URL) return [];
   const normalizedAliases = uniqStrings(
@@ -8790,7 +8811,7 @@ async function fetchBrandScopedExternalSeedCandidates({
   );
 
   const safeLimit = clampInt(limit, Math.max(limit, 120), 24, 500);
-  const market = String(process.env.CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET || 'US').trim().toUpperCase() || 'US';
+  const market = brandScopedExternalSeedMarket();
   const tool = 'creator_agents';
 
   try {
@@ -8906,11 +8927,12 @@ async function fetchBrandScopedExternalSeedCandidates({
       },
       'brand scoped discovery external query failed',
     );
+    if (Array.isArray(failures)) failures.push('external_seed');
     return [];
   }
 }
 
-async function fetchBrandScopedInternalCatalogCandidates({ brandAliases = [], limit = 120 } = {}) {
+async function fetchBrandScopedInternalCatalogCandidates({ brandAliases = [], limit = 120, failures = null } = {}) {
   if (!process.env.DATABASE_URL) return [];
   const normalizedAliases = uniqStrings(
     brandAliases.map((alias) => normalizeBrandText(alias)).filter(Boolean),
@@ -8981,6 +9003,7 @@ async function fetchBrandScopedInternalCatalogCandidates({ brandAliases = [], li
       },
       'brand scoped discovery internal query failed',
     );
+    if (Array.isArray(failures)) failures.push('internal_catalog');
     return [];
   }
 }
@@ -9111,7 +9134,7 @@ function mapCanonicalIndexRowToProduct(row) {
   };
 }
 
-async function fetchBrandScopedCanonicalCandidates({ brandAliases = [], limit = 120 } = {}) {
+async function fetchBrandScopedCanonicalCandidates({ brandAliases = [], limit = 120, failures = null } = {}) {
   if (!process.env.DATABASE_URL) return [];
   const normalizedAliases = uniqStrings(
     brandAliases.map((alias) => normalizeBrandText(alias)).filter(Boolean),
@@ -9301,6 +9324,7 @@ async function fetchBrandScopedCanonicalCandidates({ brandAliases = [], limit = 
       (message.includes('catalog_row_trust') && message.includes('does not exist'))
     ) {
       // Migrations not applied yet — fail open, caller falls back to legacy path.
+      if (Array.isArray(failures)) failures.push('canonical_relation_missing');
       return [];
     }
     logger.warn(
@@ -9310,6 +9334,7 @@ async function fetchBrandScopedCanonicalCandidates({ brandAliases = [], limit = 
       },
       'brand scoped commerce-index query failed',
     );
+    if (Array.isArray(failures)) failures.push('canonical');
     return [];
   }
 }
@@ -9533,12 +9558,13 @@ function brandPageUsesCommerceIndex() {
   return flag === '1' || flag === 'true' || flag === 'yes' || flag === 'on';
 }
 
-async function loadBrandScopedDirectCandidates({
+async function computeBrandScopedDirectCandidates({
   request,
   brandAliases = [],
   limit = 120,
   fetchExternalCandidatesFn = null,
   fetchInternalCandidatesFn = null,
+  failures = null,
 } = {}) {
   const normalizedAliases = uniqStrings(
     brandAliases.map((alias) => normalizeBrandText(alias)).filter(Boolean),
@@ -9572,10 +9598,12 @@ async function loadBrandScopedDirectCandidates({
           ? fetchBrandScopedCanonicalCandidates({
               brandAliases: normalizedAliases,
               limit: safeLimit,
+              failures,
             })
           : fetchBrandScopedInternalCatalogCandidates({
               brandAliases: normalizedAliases,
               limit: safeLimit,
+              failures,
             }),
       typeof fetchExternalCandidatesFn === 'function'
         ? fetchExternalCandidatesFn({
@@ -9589,6 +9617,7 @@ async function loadBrandScopedDirectCandidates({
             limit: safeLimit,
             orderByRecency: !isBrandScopeOnlyQuery(request),
             includeAttached: includeAttachedSeeds,
+            failures,
           }),
     ]);
 
@@ -9637,6 +9666,95 @@ async function loadBrandScopedDirectCandidates({
         },
       ],
     };
+  }
+}
+
+// Brand pages are the hottest repeated read on this surface: the 2026-09-15 pivota-pg CPU incident
+// was ~22 K-beauty brand pages opened over and over, and ~90% of discovery builds were this pool
+// (brand_direct_primary), each running two CPU-heavy brand queries (~5s mean in pg_stat_statements).
+// browsePoolCache never covered it (and is keyed per viewer). The pool depends only on the inputs in
+// the key below, so it is cached per gateway instance for DISCOVERY_BRAND_DIRECT_CACHE_TTL_MS.
+//
+// - Concurrent misses for one key share one load (a 5s query is exactly where a stampede costs most).
+// - A result is NEVER cached when any brand fetcher swallowed an error: they return [] on failure, so
+//   caching would pin an empty brand page for minutes after a transient pool timeout.
+// - Callers get a deep copy, so downstream scoring that mutates products cannot leak across requests.
+// - Injected fetch functions (tests) bypass the cache; production never injects them.
+function cloneBrandDirectResult(value) {
+  return typeof structuredClone === 'function' ? structuredClone(value) : JSON.parse(JSON.stringify(value));
+}
+
+function markBrandDirectCacheHit(value, ageMs, startedAt) {
+  const copy = cloneBrandDirectResult(value);
+  copy.recallSummary = (Array.isArray(copy.recallSummary) ? copy.recallSummary : []).map((step) => ({
+    ...step,
+    cache_hit: true,
+    cache_age_ms: Math.max(0, Math.round(ageMs)),
+    latency_ms: Math.max(0, Date.now() - startedAt),
+  }));
+  return copy;
+}
+
+async function loadBrandScopedDirectCandidates(args = {}) {
+  const {
+    request,
+    brandAliases = [],
+    limit = 120,
+    fetchExternalCandidatesFn = null,
+    fetchInternalCandidatesFn = null,
+  } = args;
+  const ttlMs = getBrandDirectPoolCacheTtlMs();
+  const injected = typeof fetchExternalCandidatesFn === 'function' || typeof fetchInternalCandidatesFn === 'function';
+  const normalizedAliases = uniqStrings(
+    (Array.isArray(brandAliases) ? brandAliases : []).map((alias) => normalizeBrandText(alias)).filter(Boolean),
+    16,
+  );
+  if (ttlMs <= 0 || injected || !normalizedAliases.length) {
+    return computeBrandScopedDirectCandidates(args);
+  }
+  const safeLimit = clampInt(limit, Math.max(limit, 120), 24, 360);
+  const key = JSON.stringify({
+    aliases: normalizedAliases,
+    limit: safeLimit,
+    commerce_index: brandPageUsesCommerceIndex(),
+    order_by_recency: !isBrandScopeOnlyQuery(request),
+    market: brandScopedExternalSeedMarket(),
+  });
+  const startedAt = Date.now();
+  const cached = brandDirectPoolCache.get(key);
+  if (cached) {
+    if (startedAt - cached.storedAt <= ttlMs) {
+      return markBrandDirectCacheHit(cached.value, startedAt - cached.storedAt, startedAt);
+    }
+    brandDirectPoolCache.delete(key);
+  }
+  const inflight = brandDirectPoolInflight.get(key);
+  if (inflight) {
+    const shared = await inflight;
+    return shared.cacheable ? markBrandDirectCacheHit(shared.value, 0, startedAt) : cloneBrandDirectResult(shared.value);
+  }
+  const load = (async () => {
+    const failures = [];
+    const value = await computeBrandScopedDirectCandidates({ ...args, failures });
+    const errored =
+      failures.length > 0 ||
+      (Array.isArray(value?.recallSummary) ? value.recallSummary : []).some((step) => step && step.error);
+    const cacheable = !errored && Array.isArray(value?.products);
+    if (cacheable) {
+      brandDirectPoolCache.set(key, { storedAt: Date.now(), value: cloneBrandDirectResult(value) });
+      if (brandDirectPoolCache.size > 200) {
+        const oldestKey = Array.from(brandDirectPoolCache.entries()).sort((a, b) => a[1].storedAt - b[1].storedAt)[0]?.[0];
+        if (oldestKey) brandDirectPoolCache.delete(oldestKey);
+      }
+    }
+    return { value, cacheable };
+  })();
+  brandDirectPoolInflight.set(key, load);
+  try {
+    const { value } = await load;
+    return value;
+  } finally {
+    brandDirectPoolInflight.delete(key);
   }
 }
 
@@ -12145,6 +12263,12 @@ module.exports = {
       productIntelKbStore = null;
     },
     resetBrowsePoolCache: () => browsePoolCache.clear(),
+    resetBrandDirectPoolCache: () => {
+      brandDirectPoolCache.clear();
+      brandDirectPoolInflight.clear();
+    },
+    getBrandDirectPoolCacheTtlMs,
+    computeBrandScopedDirectCandidates,
     resetBrowseCatalogCountCache: () => browseCatalogCountCache.clear(),
   },
 };
