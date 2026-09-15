@@ -1,4 +1,5 @@
 const request = require('supertest');
+const { CANONICAL_ENTITY_GROUP_SQL_TAG } = require('../../src/services/catalogEntityResolutionSqlTag');
 
 jest.setTimeout(60000);
 
@@ -73,7 +74,7 @@ function seedDetailRow() {
 // this request carry a seller?" is observed end to end.
 function isCanonicalGroupQuery(sql) {
   const text = String(sql || '');
-  return text.includes('WITH offer_stats AS') && text.includes('FROM catalog_products cp');
+  return text.includes(CANONICAL_ENTITY_GROUP_SQL_TAG) && text.includes('FROM catalog_products cp');
 }
 
 function isSeedDetailQuery(sql) {
