@@ -8,9 +8,8 @@ const path = require('path');
 // still reading as coverage that existed. 032's own header calls the hazard out; nothing enforced
 // it, so it happened again.
 //
-// This is a RATCHET, not a clean-sheet assertion. The collisions below already exist and are NOT
-// fixed here (see the note on each). It asserts the set is EXACTLY those, so a new collision fails
-// and a fixed one has to be removed from the list rather than quietly leaving it stale.
+// This is a RATCHET. KNOWN_COLLISIONS is asserted as an EXACT set, so a new collision fails and a
+// fixed one has to be deleted from the list rather than sitting there as a permanent exemption.
 const MIGRATIONS_DIR = path.join(__dirname, '..', 'src', 'db', 'migrations');
 
 // SCOPE, stated because a scanner that silently under-reports is worse than none: this reads
@@ -24,17 +23,12 @@ const MIGRATIONS_DIR = path.join(__dirname, '..', 'src', 'db', 'migrations');
 // rather than being skipped. So KNOWN_COLLISIONS below is exhaustive for what the scanner covers,
 // not for the database.
 //
-// Pre-existing collisions, each verified by reading both definitions.
-//
-// Both are in the Aurora activity feed: 028 redeclares 027's index name with `activity_id` as the
-// third column where 027 used `id`. 027 sorts first, so 027 wins and 028's definition has NEVER
-// been created on any database. Prod therefore carries the `id` shape, not the `activity_id` one
-// 028 intended. Left alone deliberately — deciding which shape is wanted, and rebuilding it on a
-// live table, is not this cleanup's business. Recorded so it is a known debt with a name.
-const KNOWN_COLLISIONS = {
-  idx_aurora_activity_events_aurora_time: ['027_aurora_activity_events.sql', '028_aurora_activity_feed.sql'],
-  idx_aurora_activity_events_user_time: ['027_aurora_activity_events.sql', '028_aurora_activity_feed.sql'],
-};
+// EMPTY, and it should stay that way. The two Aurora collisions this list was created to record
+// are fixed: 028's redeclarations of idx_aurora_activity_events_aurora_time and
+// idx_aurora_activity_events_user_time are gone. 027 wins the name, so those declarations never
+// executed, and the reasoning for deleting rather than reconciling them is in 028's own header.
+// Removing them from here is the ratchet working — a fixed collision leaves the list.
+const KNOWN_COLLISIONS = {};
 
 // Matches the runner's own filter in src/db/migrate.js.
 const migrationFiles = () =>
@@ -97,6 +91,23 @@ describe('migration index names', () => {
       indexNamesIn(fs.readFileSync(path.join(MIGRATIONS_DIR, file), 'utf8'))
         .includes('idx_external_product_seeds_brand_search_fastpath'));
     expect(owners).toEqual(['031_external_product_seeds_brand_search_fastpath.sql']);
+  });
+
+  test('028 does not redeclare 027\u2019s activity index names', () => {
+    // The specific collision this list used to carry. Pinned by name as well as by the general
+    // rule, so a revert reads as "you put the wrong tiebreak back" rather than as an opaque
+    // KNOWN_COLLISIONS diff. 027 creates both with `id DESC`; 028 must not name them at all.
+    const owners = (name) => migrationFiles().filter((file) =>
+      indexNamesIn(fs.readFileSync(path.join(MIGRATIONS_DIR, file), 'utf8')).includes(name));
+    expect(owners('idx_aurora_activity_events_user_time')).toEqual(['027_aurora_activity_events.sql']);
+    expect(owners('idx_aurora_activity_events_aurora_time')).toEqual(['027_aurora_activity_events.sql']);
+    // 027 keeps the `id` tiebreak — pinned because it is the shape PROD CARRIES, not because it
+    // is the shape the live reader wants. It is not: activityStore orders by activity_id, and the
+    // (occurred_at_ms, id) keyset reader in memoryStore has no callers. Changing 027 here would
+    // silently disagree with prod, which is the thing worth catching.
+    const sql027 = fs.readFileSync(path.join(MIGRATIONS_DIR, '027_aurora_activity_events.sql'), 'utf8');
+    expect(sql027).toContain('occurred_at_ms DESC, id DESC');
+    expect(sql027).not.toContain('occurred_at_ms DESC, activity_id DESC');
   });
 
   test('the migration runner sorts by filename, which is what decides who wins a collision', () => {

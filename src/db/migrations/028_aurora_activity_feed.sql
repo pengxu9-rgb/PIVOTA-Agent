@@ -116,13 +116,32 @@ ALTER TABLE IF EXISTS aurora_activity_events
 CREATE UNIQUE INDEX IF NOT EXISTS aurora_activity_events_activity_id_key
   ON aurora_activity_events(activity_id);
 
-CREATE INDEX IF NOT EXISTS idx_aurora_activity_events_aurora_time
-  ON aurora_activity_events(aurora_uid, occurred_at_ms DESC, activity_id DESC)
-  WHERE aurora_uid IS NOT NULL;
-
-CREATE INDEX IF NOT EXISTS idx_aurora_activity_events_user_time
-  ON aurora_activity_events(user_id, occurred_at_ms DESC, activity_id DESC)
-  WHERE user_id IS NOT NULL;
+-- idx_aurora_activity_events_aurora_time and idx_aurora_activity_events_user_time are
+-- deliberately NOT declared here. 027 already creates both, with `id DESC` as the tiebreak
+-- instead of `activity_id DESC`, and 027 sorts first — so these two redeclarations were skipped
+-- by IF NOT EXISTS (which matches on NAME only, silently, even for a different definition) and
+-- have never created anything. Prod carries `(…, occurred_at_ms DESC, id DESC)`, measured
+-- 2026-09-16 from pg_indexes.
+--
+-- They are deleted rather than reconciled, because NEITHER tiebreak is worth a rebuild here and
+-- leaving two contradictory declarations of one name is the actual defect. The readers disagree,
+-- and not in 027's favour:
+--
+--   * activityStore.js listActivityForIdentity is the LIVE list reader (routes/activityRoutes.js
+--     -> activityStore.js:391). It orders `occurred_at_ms DESC, activity_id DESC`, so it is the
+--     one that would want 028's shape. It re-sorts in JS afterwards and its SQL is capped at
+--     max(200, n*6) candidates, so the index tiebreak barely reaches it.
+--   * memoryStore.js listActivityEventsForIdentity is the (occurred_at_ms, id) keyset reader that
+--     027's shape fits exactly. It is exported and has NO callers as of 2026-09-16 — so "027's
+--     shape is the one in use" would be an argument from dead code, and is not made here.
+--
+-- Do not read `activity_id` as a time ordering either way: it is mixed-format. memoryStore emits
+-- `act_<base36 millis>_<rand>` (lexicographically time-ordered), activityStore emits
+-- `act_<uuid4>` (random), and the backfill above emits `act_<md5>`.
+--
+-- At 536 rows / 288 kB (prod, 2026-09-16) none of this is worth a CREATE INDEX on a live table.
+-- Prod keeps the shape it has. If activityStore's ordering ever needs index support, add a NEW
+-- index under its own name rather than redeclaring one of these two.
 
 CREATE INDEX IF NOT EXISTS idx_aurora_activity_events_event_type_time
   ON aurora_activity_events(event_type, occurred_at_ms DESC, activity_id DESC);
