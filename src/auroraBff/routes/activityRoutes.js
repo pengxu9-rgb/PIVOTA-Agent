@@ -6,8 +6,10 @@ const {
 const {
   appendActivityForIdentity,
   listActivityForIdentity,
+  listExplicitArtifactIdsForIdentity,
   getActivityEventByIdForIdentity,
   getActivityDetail,
+  __internal: { compareActivityIdBytes },
 } = require('../activityStore');
 const {
   listDiagnosisArtifactsForIdentity,
@@ -89,7 +91,10 @@ function compareActivityRowsDesc(a, b) {
   const aTs = Number(a && a.occurred_at_ms || 0);
   const bTs = Number(b && b.occurred_at_ms || 0);
   if (aTs !== bTs) return bTs - aTs;
-  return String(b && b.activity_id || '').localeCompare(String(a && a.activity_id || ''));
+  // The store's byte-order tiebreak, not localeCompare: the store's query pages on
+  // `activity_id COLLATE "C"`, and this merge must order and filter ties the same way or a page
+  // boundary inside a tie skips or repeats an item.
+  return compareActivityIdBytes(b && b.activity_id, a && a.activity_id);
 }
 
 function encodeActivityCursor({ occurred_at_ms, activity_id } = {}) {
@@ -131,7 +136,7 @@ function eventAfterCursor(event, cursor) {
   const ts = Number(event && event.occurred_at_ms || 0);
   if (ts < cursor.occurred_at_ms) return true;
   if (ts > cursor.occurred_at_ms) return false;
-  return String(event && event.activity_id || '').localeCompare(String(cursor.activity_id || '')) < 0;
+  return compareActivityIdBytes(event && event.activity_id, cursor.activity_id) < 0;
 }
 
 function normalizeSkinAnalysisBool(value, fallback = false) {
@@ -552,6 +557,9 @@ function mountActivityRoutes(app, deps = {}) {
   const listActivity = typeof deps.listActivityForIdentity === 'function'
     ? deps.listActivityForIdentity
     : listActivityForIdentity;
+  const listExplicitArtifactIds = typeof deps.listExplicitArtifactIdsForIdentity === 'function'
+    ? deps.listExplicitArtifactIdsForIdentity
+    : listExplicitArtifactIdsForIdentity;
   const getActivityById = typeof deps.getActivityEventByIdForIdentity === 'function'
     ? deps.getActivityEventByIdForIdentity
     : getActivityEventByIdForIdentity;
@@ -625,47 +633,64 @@ function mountActivityRoutes(app, deps = {}) {
       const cursor = decodeActivityCursor(parsed.data.cursor);
       const pageLimit = Number(parsed.data.limit);
       const safeLimit = Number.isFinite(pageLimit) ? Math.max(1, Math.min(50, Math.trunc(pageLimit))) : 20;
-      const fetchLimit = Math.max(300, safeLimit * 6);
 
+      // Both sources are read PAST THE CURSOR, one page plus one item each. The page is the first
+      // safeLimit+1 items of their merge, and every such item is among the first safeLimit+1 of its
+      // own source past the cursor — otherwise safeLimit+1 items of that source would rank above it.
+      //
+      // This used to request a large limit with no cursor and apply the cursor here. The store clamps
+      // any limit to 100, so the route only ever saw the newest 100 events: paging past them returned
+      // an empty page with next_cursor null, and the client was told history had ended.
       const explicit = await listActivity({
         auroraUid: identity.auroraUid,
         userId: identity.userId,
-        limit: fetchLimit,
+        limit: safeLimit + 1,
+        cursor,
         eventTypes: requestedTypes.length ? requestedTypes : undefined,
       });
       const explicitItems = Array.isArray(explicit && explicit.items)
         ? explicit.items.map(mapActivityItem).filter(Boolean)
         : [];
 
-      const explicitArtifactIds = new Set(
-        explicitItems
-          .map((item) => {
-            if (!item || item.event_type !== 'skin_analysis') return '';
-            const payload = normalizeActivityPayload(item.payload);
-            return String(payload.artifact_id || '').trim();
-          })
-          .filter(Boolean),
-      );
-
       let syntheticItems = [];
       if (includeSkinAnalysis) {
         try {
+          // Artifacts are still read as a newest-first WINDOW, not by cursor: the artifact store has
+          // no cursor, and eligibility is decided here after the fetch, so a page-sized fetch could
+          // spend its rows on ineligible artifacts. 400 is that store's own ceiling. The bound is real
+          // but far away — measured on prod 2026-09-17, the most artifacts any identity has in 365
+          // days is 47. An identity past 400 would lose its oldest synthetic items, not its events.
           const artifacts = await listArtifacts({
             auroraUid: identity.auroraUid,
             userId: identity.userId,
-            limit: fetchLimit,
+            limit: 400,
             maxAgeDays: 365,
           });
-          syntheticItems = (Array.isArray(artifacts) ? artifacts : [])
+          const candidates = (Array.isArray(artifacts) ? artifacts : [])
             .map(buildSyntheticSkinAnalysisActivityFromArtifact)
             .map(mapActivityItem)
             .filter(Boolean)
-            .filter((item) => {
-              const payload = normalizeActivityPayload(item.payload);
-              const artifactId = String(payload.artifact_id || '').trim();
-              return artifactId && !explicitArtifactIds.has(artifactId);
-            });
+            .filter((item) => eventAfterCursor(item, cursor));
+          const candidateArtifactIds = candidates
+            .map((item) => String(normalizeActivityPayload(item.payload).artifact_id || '').trim())
+            .filter(Boolean);
+          // Hide a synthetic item when an explicit event references the same artifact ANYWHERE in the
+          // history. Checking only the explicit events fetched for this page would show the synthetic
+          // duplicate whenever its explicit event is on a different page.
+          const explicitlyLogged = candidateArtifactIds.length
+            ? await listExplicitArtifactIds({
+              auroraUid: identity.auroraUid,
+              userId: identity.userId,
+              artifactIds: candidateArtifactIds,
+            })
+            : new Set();
+          syntheticItems = candidates.filter((item) => {
+            const artifactId = String(normalizeActivityPayload(item.payload).artifact_id || '').trim();
+            return artifactId && !explicitlyLogged.has(artifactId);
+          });
         } catch (artifactErr) {
+          // Degrade to NO synthetic items rather than un-deduped ones: a missing backfill item is
+          // better than the same analysis appearing twice.
           logger?.warn?.(
             {
               err: artifactErr && artifactErr.message ? artifactErr.message : String(artifactErr),
@@ -675,6 +700,7 @@ function mountActivityRoutes(app, deps = {}) {
             },
             'activity artifact backfill failed',
           );
+          syntheticItems = [];
         }
       }
 

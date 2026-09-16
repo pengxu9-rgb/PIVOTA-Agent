@@ -128,9 +128,14 @@ CREATE UNIQUE INDEX IF NOT EXISTS aurora_activity_events_activity_id_key
 -- and not in 027's favour:
 --
 --   * activityStore.js listActivityForIdentity is the LIVE list reader (routes/activityRoutes.js
---     -> activityStore.js:391). It orders `occurred_at_ms DESC, activity_id DESC`, so it is the
---     one that would want 028's shape. It re-sorts in JS afterwards and its SQL is capped at
---     max(200, n*6) candidates, so the index tiebreak barely reaches it.
+--     -> activityStore.js). Since 2026-09-17 it pages by keyset —
+--     `(occurred_at_ms, activity_id COLLATE "C")`, one page plus one row per query — so it is the
+--     one that would want an activity_id tiebreak. Neither index here supplies it: both break ties
+--     on `id`, and 028's version would have used the database collation, not "C". EXPLAIN on PG 15
+--     (60k rows, 2026-09-17): Index Scan on the identity index with ONLY the identity as Index Cond;
+--     the cursor predicate is a Filter over rows newer than the cursor, then an Incremental Sort on
+--     the presorted occurred_at_ms settles the tie. So a deep page costs a scan of that identity's
+--     newer rows — negligible at prod's largest history (85 events), not free if one grows large.
 --   * memoryStore.js listActivityEventsForIdentity is the (occurred_at_ms, id) keyset reader that
 --     027's shape fits exactly. It is exported and has NO callers as of 2026-09-16 — so "027's
 --     shape is the one in use" would be an argument from dead code, and is not made here.
