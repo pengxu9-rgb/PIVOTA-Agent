@@ -124,3 +124,54 @@ describe('phases measure real elapsed time, in the phase that spent it', () => {
     }
   });
 });
+
+// The regression guard for the fix this file exists to protect. Swapping the two marks around the
+// stable-count await - no label change, no removal - reinstates the original defect (the wait
+// charged to `select`) and every other test still passes. So the boundary itself is pinned here,
+// the same way the recall boundary is: make the count slow, assert the time lands in its phase.
+describe('the stable browse count wait is its own phase', () => {
+  const SLOW_MS = 150;
+
+  afterEach(() => {
+    jest.dontMock('../src/db');
+    jest.resetModules();
+    delete process.env.DATABASE_URL;
+  });
+
+  test('a slow count query shows up in stable_count_wait, not in select', async () => {
+    for (const key of ['DISCOVERY_PRODUCTS_SEARCH_BASE_URL', 'PIVOTA_BACKEND_BASE_URL', 'PIVOTA_API_BASE',
+      'DISCOVERY_PRODUCTS_SEARCH_API_KEY', 'PIVOTA_BACKEND_AGENT_API_KEY', 'PIVOTA_API_KEY']) {
+      delete process.env[key];
+    }
+    // countStableBrowseCatalogTotal returns null without a DSN, so the branch needs one set.
+    process.env.DATABASE_URL = 'postgres://phase-probe';
+    jest.resetModules();
+    jest.doMock('../src/db', () => ({
+      query: async (sql) => {
+        if (/count\(/i.test(String(sql || ''))) {
+          await new Promise((resolve) => setTimeout(resolve, SLOW_MS));
+          return { rows: [{ total: 42 }] };
+        }
+        return { rows: [] };
+      },
+      withClient: async (fn) => fn({ query: async () => ({ rows: [] }) }),
+    }));
+
+    const { getDiscoveryFeed: freshFeed } = require('../src/services/discoveryFeed');
+    const { getLastDiscoverySnapshot: freshSnapshot } = require('../src/observability/discoveryMetrics');
+
+    await freshFeed(
+      {
+        surface: 'browse_products',
+        page: 1,
+        limit: 12,
+        context: { auth_state: 'anonymous', recent_views: [], recent_queries: [], locale: 'en-US' },
+      },
+      { providerOverrides: { internal_catalog: jest.fn(async () => []), external_seeds: jest.fn(async () => []) } },
+    );
+
+    const phases = freshSnapshot('browse_products').phase_ms;
+    expect(phases.stable_count_wait).toBeGreaterThanOrEqual(SLOW_MS - 30);
+    expect(phases.select).toBeLessThan(SLOW_MS - 30);
+  });
+});
