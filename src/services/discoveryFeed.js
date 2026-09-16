@@ -2037,6 +2037,20 @@ function getDiscoveryBrowseCatalogCountCacheTtlMs() {
   return clampInt(process.env.DISCOVERY_BROWSE_COUNT_CACHE_TTL_MS, 60000, 1000, 300000);
 }
 
+// How long a count past its freshness TTL may still be SERVED while a refresh runs in the background.
+// The count is the catalog-wide product total for unfiltered browse: identical for every visitor, moving
+// slowly, and not used for pagination (browse `hasMore` reads the cursor's has_next_page). The
+// per-instance cache it lives in expired after 60s, but unfiltered landing-page traffic is a handful of
+// requests an hour spread over 4+ instances - so in production the entry had always expired before the
+// next visitor, and every one of them waited ~0.9-1.7s on a query that "scans broad JSON text". 0 turns
+// stale serving off and restores the old behaviour exactly.
+function getDiscoveryBrowseCatalogCountMaxStaleMs() {
+  return clampInt(process.env.DISCOVERY_BROWSE_COUNT_MAX_STALE_MS, 6 * 60 * 60 * 1000, 0, 24 * 60 * 60 * 1000);
+}
+
+// One refresh per key at a time: a burst of stale reads must not fan out into a burst of full scans.
+const browseCatalogCountInflight = new Map();
+
 function buildDiscoveryBrowseCatalogCountCacheKey(request, { market = '' } = {}) {
   return JSON.stringify({
     surface: request?.surface || 'unknown',
@@ -2053,12 +2067,14 @@ function buildDiscoveryBrowseCatalogCountCacheKey(request, { market = '' } = {})
 
 function readBrowseCatalogCountCache(cacheKey) {
   const entry = browseCatalogCountCache.get(cacheKey);
-  if (!entry) return null;
-  if (entry.expiresAt <= Date.now()) {
-    browseCatalogCountCache.delete(cacheKey);
-    return null;
+  if (!entry || !entry.value) return null;
+  const now = Date.now();
+  if (entry.expiresAt > now) return { value: entry.value, state: 'fresh' };
+  if (entry.expiresAt + getDiscoveryBrowseCatalogCountMaxStaleMs() > now) {
+    return { value: entry.value, state: 'stale' };
   }
-  return entry.value || null;
+  browseCatalogCountCache.delete(cacheKey);
+  return null;
 }
 
 function writeBrowseCatalogCountCache(cacheKey, value) {
@@ -2318,19 +2334,7 @@ function buildStableBrowseCatalogCountQuery(request, { includeIdentityJoin = tru
   };
 }
 
-async function countStableBrowseCatalogTotal(request, { queryFn = query, useCache = true } = {}) {
-  if (!request || request.surface !== 'browse_products' || typeof queryFn !== 'function' || !process.env.DATABASE_URL) {
-    return null;
-  }
-
-  const { market } = resolveDiscoveryExternalSeedMarketConfig();
-  const cacheEnabled = useCache !== false && queryFn === query;
-  const cacheKey = buildDiscoveryBrowseCatalogCountCacheKey(request, { market });
-  if (cacheEnabled) {
-    const cached = readBrowseCatalogCountCache(cacheKey);
-    if (cached) return cached;
-  }
-
+async function runStableBrowseCatalogCount(request, { queryFn, cacheKey, cacheEnabled }) {
   const attempts = [true, false];
   let lastError = null;
   for (const includeIdentityJoin of attempts) {
@@ -2364,6 +2368,41 @@ async function countStableBrowseCatalogTotal(request, { queryFn = query, useCach
     'stable browse catalog count failed; falling back to runtime corpus size',
   );
   return null;
+}
+
+// Shares one in-flight count per key. A failed refresh leaves any stale entry in place, so the next
+// reader keeps getting the last good total rather than falling back to the runtime corpus size.
+function loadStableBrowseCatalogCountOnce(request, { queryFn, cacheKey, cacheEnabled }) {
+  if (!cacheEnabled) return runStableBrowseCatalogCount(request, { queryFn, cacheKey, cacheEnabled });
+  const inflight = browseCatalogCountInflight.get(cacheKey);
+  if (inflight) return inflight;
+  const pending = runStableBrowseCatalogCount(request, { queryFn, cacheKey, cacheEnabled }).finally(() => {
+    browseCatalogCountInflight.delete(cacheKey);
+  });
+  browseCatalogCountInflight.set(cacheKey, pending);
+  return pending;
+}
+
+async function countStableBrowseCatalogTotal(request, { queryFn = query, useCache = true } = {}) {
+  if (!request || request.surface !== 'browse_products' || typeof queryFn !== 'function' || !process.env.DATABASE_URL) {
+    return null;
+  }
+
+  const { market } = resolveDiscoveryExternalSeedMarketConfig();
+  const cacheEnabled = useCache !== false && queryFn === query;
+  const cacheKey = buildDiscoveryBrowseCatalogCountCacheKey(request, { market });
+  if (cacheEnabled) {
+    const cached = readBrowseCatalogCountCache(cacheKey);
+    if (cached?.state === 'fresh') return cached.value;
+    if (cached?.state === 'stale') {
+      // Serve the last good total NOW and refresh behind it. The refresh is deliberately not awaited:
+      // awaiting it would reinstate the ~1s wait this exists to remove. Its rejection is already handled
+      // inside runStableBrowseCatalogCount, which returns null rather than throwing.
+      loadStableBrowseCatalogCountOnce(request, { queryFn, cacheKey, cacheEnabled });
+      return cached.value;
+    }
+  }
+  return loadStableBrowseCatalogCountOnce(request, { queryFn, cacheKey, cacheEnabled });
 }
 
 function shouldUseStableBrowseCatalogTotal(request) {
@@ -12571,6 +12610,9 @@ module.exports = {
     getBrandDirectPoolCacheTtlMs,
     BRAND_DIRECT_POOL_CACHE_MAX_ENTRIES,
     computeBrandScopedDirectCandidates,
-    resetBrowseCatalogCountCache: () => browseCatalogCountCache.clear(),
+    resetBrowseCatalogCountCache: () => {
+      browseCatalogCountCache.clear();
+      browseCatalogCountInflight.clear();
+    },
   },
 };
