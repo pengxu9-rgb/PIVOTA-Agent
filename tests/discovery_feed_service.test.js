@@ -149,6 +149,7 @@ describe('discovery feed service', () => {
     _internals.resetBrowsePoolCache();
     _internals.resetBrandDirectPoolCache();
     _internals.resetBrowseCatalogCountCache();
+    _internals.resetProductsSearchBreaker();
     _internals.resetDiscoveryDependencyProbeCache();
     _internals.resetProductIntelKbStoreCache();
     nock.cleanAll();
