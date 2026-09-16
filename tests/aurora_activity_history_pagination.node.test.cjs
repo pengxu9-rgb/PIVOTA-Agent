@@ -11,9 +11,20 @@
 // with events — which is the only way to put a synthetic item and the explicit event that should
 // hide it on DIFFERENT pages.
 const test = require('node:test');
+const { after } = require('node:test');
 const assert = require('node:assert/strict');
+const http = require('node:http');
 const express = require('express');
 const supertest = require('supertest');
+
+// ONE listening server per app, reused for every request. `supertest(app)` starts and stops a fresh
+// server for each request, and these tests send hundreds of requests per case — that listen/close
+// churn intermittently reset connections (ECONNRESET / "socket hang up", ~3 runs in 25 on macOS),
+// which made a pagination test fail for a reason that had nothing to do with pagination.
+const servers = [];
+after(async () => {
+  await Promise.all(servers.map((server) => new Promise((resolve) => server.close(resolve))));
+});
 
 process.env.AURORA_BFF_RETENTION_DAYS = '0';
 delete process.env.DATABASE_URL;
@@ -26,7 +37,7 @@ function freshUid(label) {
   return `hist_${label}_${process.pid}_${Date.now()}_${uidSeq}`;
 }
 
-function buildApp({ artifactsByUid = {} } = {}) {
+async function buildApp({ artifactsByUid = {} } = {}) {
   const app = express();
   app.use(express.json({ limit: '1mb' }));
   mountActivityRoutes(app, {
@@ -38,26 +49,47 @@ function buildApp({ artifactsByUid = {} } = {}) {
         throw err;
       }
     },
+    // X-Log-User-Only drops the guest id from the resolved identity, so a write lands under user_id
+    // ONLY — the split a signed-in user's history really has, with some rows under each id.
     resolveIdentity: async (req) => ({
-      auroraUid: req.get('X-Aurora-UID') || null,
+      auroraUid: req.get('X-Log-User-Only') ? null : (req.get('X-Aurora-UID') || null),
       userId: req.get('X-User-ID') || null,
     }),
     classifyStorageError: () => ({}),
     listDiagnosisArtifactsForIdentity: async ({ auroraUid }) => artifactsByUid[auroraUid] || [],
   });
-  return app;
+  // Wait for 'listening' before handing the server out. supertest calls listen(0) itself on a
+  // server with no address yet, so a request made before the first listen completed raced it.
+  const server = http.createServer(app);
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  servers.push(server);
+  return server;
 }
 
-const headersFor = (uid) => ({ 'X-Aurora-UID': uid, 'X-Trace-ID': `t_${uid}`, 'X-Brief-ID': `b_${uid}`, 'X-Lang': 'EN' });
+const headersFor = (uid, extra = {}) => ({ 'X-Aurora-UID': uid, 'X-Trace-ID': `t_${uid}`, 'X-Brief-ID': `b_${uid}`, 'X-Lang': 'EN', ...extra });
 
-async function log(app, uid, body) {
-  const res = await supertest(app).post('/v1/activity/log').set(headersFor(uid)).send(body);
-  assert.equal(res.status, 200, `log failed: ${JSON.stringify(res.body)}`);
-  return res.body.activity_id;
+// Events are written straight to the store — the same appendActivityForIdentity the POST
+// /v1/activity/log route calls — rather than over HTTP. Logging is not what these tests are about,
+// and doing it over HTTP cost ~1,200 short-lived TCP connections per run: on a busy machine that
+// intermittently failed with ECONNRESET / "socket hang up" (5 runs in 40), for reasons unrelated to
+// pagination. Only the LIST requests, which are the subject, still go through the route.
+const { appendActivityForIdentity } = require('../src/auroraBff/activityStore');
+
+async function log(_app, uid, body, extraHeaders = {}) {
+  const userOnly = Boolean(extraHeaders['X-Log-User-Only']);
+  const event = await appendActivityForIdentity({
+    auroraUid: userOnly ? null : uid,
+    userId: extraHeaders['X-User-ID'] || null,
+    eventType: body.event_type,
+    payload: body.payload,
+    occurredAtMs: body.occurred_at_ms,
+  });
+  assert.ok(event && event.activity_id, `append failed for ${JSON.stringify(body)}`);
+  return event.activity_id;
 }
 
 // Follows next_cursor to the end. Returns every item in the order served, plus the page count.
-async function pageAll(app, uid, { limit, types } = {}) {
+async function pageAll(app, uid, { limit, types, extraHeaders = {} } = {}) {
   const items = [];
   let cursor = null;
   let pages = 0;
@@ -65,7 +97,7 @@ async function pageAll(app, uid, { limit, types } = {}) {
     const qs = new URLSearchParams({ limit: String(limit) });
     if (types) qs.set('types', types);
     if (cursor) qs.set('cursor', cursor);
-    const res = await supertest(app).get(`/v1/activity?${qs}`).set(headersFor(uid));
+    const res = await supertest(app).get(`/v1/activity?${qs}`).set(headersFor(uid, extraHeaders));
     assert.equal(res.status, 200, `list failed: ${JSON.stringify(res.body)}`);
     pages += 1;
     items.push(...res.body.items);
@@ -94,7 +126,7 @@ function assertExactlyOnceInOrder(items, expectedCount) {
 }
 
 test('history past 100 events is reachable, exactly once, in order', async () => {
-  const app = buildApp();
+  const app = await buildApp();
   const uid = freshUid('deep');
   for (let i = 1; i <= 250; i += 1) {
     await log(app, uid, { event_type: 'chat_started', occurred_at_ms: 1_000_000 + i, payload: { n: i } });
@@ -106,7 +138,7 @@ test('history past 100 events is reachable, exactly once, in order', async () =>
 });
 
 test('an odd page size walks the whole history without gaps at page boundaries', async () => {
-  const app = buildApp();
+  const app = await buildApp();
   const uid = freshUid('odd');
   for (let i = 1; i <= 130; i += 1) {
     await log(app, uid, { event_type: 'tracker_logged', occurred_at_ms: 2_000_000 + i, payload: { n: i } });
@@ -120,7 +152,7 @@ test('events sharing one timestamp are served exactly once across page boundarie
   // Every event on the same millisecond, so EVERY page boundary falls inside a tie and only the
   // activity_id tiebreak separates "already served" from "not yet served". A tiebreak that orders
   // one way and filters another skips or repeats rows here.
-  const app = buildApp();
+  const app = await buildApp();
   const uid = freshUid('ties');
   for (let i = 1; i <= 120; i += 1) {
     await log(app, uid, { event_type: 'profile_updated', occurred_at_ms: 3_000_000, payload: { n: i } });
@@ -130,7 +162,7 @@ test('events sharing one timestamp are served exactly once across page boundarie
 });
 
 test('a type filter pages through every matching event, not the newest 100 of all types', async () => {
-  const app = buildApp();
+  const app = await buildApp();
   const uid = freshUid('types');
   for (let i = 1; i <= 120; i += 1) {
     await log(app, uid, { event_type: 'tracker_logged', occurred_at_ms: 4_000_000 + i * 2, payload: { n: i } });
@@ -151,7 +183,7 @@ test('synthetic artifact items page correctly, and stay hidden when their explic
     created_at: new Date(base + i * 4 * 1000 + 500).toISOString(),
     artifact_json: { analysis_context: { analysis_source: 'photo' } },
   }));
-  const app = buildApp({ artifactsByUid: { [uid]: artifacts } });
+  const app = await buildApp({ artifactsByUid: { [uid]: artifacts } });
   for (let i = 0; i < 150; i += 1) {
     await log(app, uid, { event_type: 'chat_started', occurred_at_ms: base + i * 1000, payload: { n: i } });
   }
@@ -199,12 +231,87 @@ test('a tie mixing explicit events and synthetic ids that split byte order from 
     [...syntheticIds].sort((a, b) => Buffer.compare(Buffer.from(b), Buffer.from(a))),
     'control: these ids must order differently under localeCompare and byte order',
   );
-  const app = buildApp({ artifactsByUid: { [uid]: artifacts } });
+  const app = await buildApp({ artifactsByUid: { [uid]: artifacts } });
   for (let i = 0; i < 20; i += 1) {
     await log(app, uid, { event_type: 'chat_started', occurred_at_ms: T, payload: { n: i } });
   }
   for (const limit of [1, 3, 4]) {
     const { items } = await pageAll(app, uid, { limit });
     assertExactlyOnceInOrder(items, 20 + artifactIds.length);
+  }
+});
+
+test('a hand-built cursor PostgreSQL would reject is a 400, never a fake database outage', async () => {
+  // The cursor is bound into the store's keyset SQL. Out-of-range timestamps (22003) and a NUL in the
+  // id (22021) are PostgreSQL errors there, which the route reports as 503 DB_UNAVAILABLE. The
+  // in-memory store never runs that SQL, so this asserts the route rejects them BEFORE the store —
+  // without the guard these would come back 200 here, and 503 against a real database.
+  const app = await buildApp();
+  const uid = freshUid('badcursor');
+  await log(app, uid, { event_type: 'chat_started', occurred_at_ms: 7_000_000, payload: {} });
+  const encode = (obj) => Buffer.from(JSON.stringify(obj)).toString('base64');
+  const nul = String.fromCharCode(0);
+  for (const cursor of [
+    encode({ occurred_at_ms: 1e19, activity_id: 'act_x' }),
+    encode({ occurred_at_ms: 1e21, activity_id: 'act_x' }),
+    encode({ occurred_at_ms: 7_000_000, activity_id: `act${nul}x` }),
+  ]) {
+    const res = await supertest(app).get(`/v1/activity?limit=5&cursor=${encodeURIComponent(cursor)}`).set(headersFor(uid));
+    assert.equal(res.status, 400, `crafted cursor got ${res.status}: ${JSON.stringify(res.body)}`);
+  }
+  // Control: the largest timestamp the route can represent exactly is still a valid cursor.
+  const ok = encode({ occurred_at_ms: Number.MAX_SAFE_INTEGER, activity_id: 'act_x' });
+  const res = await supertest(app).get(`/v1/activity?limit=5&cursor=${encodeURIComponent(ok)}`).set(headersFor(uid));
+  assert.equal(res.status, 200);
+  assert.equal(res.body.items.length, 1);
+});
+
+test('a signed-in user does not see an analysis twice when its explicit event is stored under user_id only', async () => {
+  // A signed-in history is split: some rows under the guest aurora_uid, some under user_id. The
+  // dedupe lookup must search BOTH, or an explicit event stored only under user_id fails to hide its
+  // synthetic twin. The explicit event is also placed on a different page from the artifact.
+  const uid = freshUid('signedin');
+  const userId = `user_${uid}`;
+  const T = 8_000_000_000;
+  const artifacts = [{
+    artifact_id: 'art_signed',
+    session_id: 'sess_signed',
+    created_at: new Date(T + 100_000).toISOString(),
+    artifact_json: { analysis_context: { analysis_source: 'photo' } },
+  }];
+  const app = await buildApp({ artifactsByUid: { [uid]: artifacts } });
+  for (let i = 0; i < 20; i += 1) {
+    await log(app, uid, { event_type: 'chat_started', occurred_at_ms: T + i * 1000, payload: { n: i } });
+  }
+  await log(
+    app,
+    uid,
+    { event_type: 'skin_analysis', occurred_at_ms: T - 50_000, payload: { artifact_id: 'art_signed' } },
+    { 'X-User-ID': userId, 'X-Log-User-Only': '1' },
+  );
+  const { items } = await pageAll(app, uid, { limit: 5, extraHeaders: { 'X-User-ID': userId } });
+  assert.ok(
+    !items.some((item) => item.activity_id === 'artifact:art_signed'),
+    'the synthetic twin of a user_id-only explicit event was served',
+  );
+  assertExactlyOnceInOrder(items, 20 + 1);
+});
+
+test('a history made only of synthetic artifact items pages to the end', async () => {
+  // Every item on every page is synthetic, so the route's own page size decides how many synthetic
+  // candidates are needed — cutting them to the page size (rather than page size + 1) loses the item
+  // that proves there is a next page.
+  const uid = freshUid('allsynthetic');
+  const T = 9_000_000_000;
+  const artifacts = Array.from({ length: 5 }, (_, i) => ({
+    artifact_id: `art_only_${i}`,
+    session_id: `sess_only_${i}`,
+    created_at: new Date(T + i * 1000).toISOString(),
+    artifact_json: { analysis_context: { analysis_source: 'photo' } },
+  }));
+  const app = await buildApp({ artifactsByUid: { [uid]: artifacts } });
+  for (const limit of [1, 2, 4]) {
+    const { items } = await pageAll(app, uid, { limit });
+    assertExactlyOnceInOrder(items, 5);
   }
 });

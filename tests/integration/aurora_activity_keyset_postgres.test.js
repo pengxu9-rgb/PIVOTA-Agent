@@ -216,6 +216,32 @@ suite('activity store keyset pagination on PostgreSQL', () => {
     expect(new Set(ids).size).toBe(30);
   });
 
+  test('the lookup searches a signed-in identity\u2019s user_id rows AND its guest rows', async () => {
+    // A signed-in history is split across both ids. An explicit event stored under user_id only must
+    // still be found when the caller carries both, or its synthetic twin is shown a second time.
+    await insert({ activityId: 'act_user_only', auroraUid: null, userId: 'user_9', eventType: 'skin_analysis', occurredAtMs: 1, payload: { artifact_id: 'art_user' } });
+    await insert({ activityId: 'act_guest_only', auroraUid: 'guest_9', eventType: 'skin_analysis', occurredAtMs: 2, payload: { artifact_id: 'art_guest' } });
+    const { listExplicitArtifactIdsForIdentity } = store();
+    const both = await listExplicitArtifactIdsForIdentity({ userId: 'user_9', auroraUid: 'guest_9', artifactIds: ['art_user', 'art_guest'] });
+    expect([...both].sort()).toEqual(['art_guest', 'art_user']);
+    // Control: the guest id alone cannot see the user_id row, so the assertion above depends on userId.
+    const guestOnly = await listExplicitArtifactIdsForIdentity({ auroraUid: 'guest_9', artifactIds: ['art_user', 'art_guest'] });
+    expect([...guestOnly]).toEqual(['art_guest']);
+  });
+
+  test('PostgreSQL rejects the cursors the route must refuse — so the route guard is load-bearing', async () => {
+    // The route turns these into 400s before the store. Called directly, the store binds them and
+    // PostgreSQL raises; through the route that error would be reported as 503 DB_UNAVAILABLE.
+    await insert({ activityId: 'act_guard', occurredAtMs: 5 });
+    const { listActivityForIdentity } = store();
+    await expect(
+      listActivityForIdentity({ auroraUid: 'guest_1', limit: 5, cursor: { occurred_at_ms: 1e19, activity_id: 'act_x' } }),
+    ).rejects.toMatchObject({ code: '22003' });
+    await expect(
+      listActivityForIdentity({ auroraUid: 'guest_1', limit: 5, cursor: { occurred_at_ms: 5, activity_id: `act${String.fromCharCode(0)}x` } }),
+    ).rejects.toMatchObject({ code: '22021' });
+  });
+
   test('explicit artifact references are found across the whole history, scoped to the identity', async () => {
     await insert({ activityId: 'act_ref_1', eventType: 'skin_analysis', occurredAtMs: 1, payload: { artifact_id: 'art_1' } });
     await insert({ activityId: 'act_ref_2', eventType: 'skin_analysis', occurredAtMs: 99999, payload: { artifact_id: ' art_2 ' } });

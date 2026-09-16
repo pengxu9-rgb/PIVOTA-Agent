@@ -119,10 +119,17 @@ function decodeActivityCursor(raw) {
     if (!parsed || !Number.isFinite(Number(parsed.occurred_at_ms))) {
       throw new Error('bad_cursor_payload');
     }
-    return {
-      occurred_at_ms: Math.max(0, Math.trunc(Number(parsed.occurred_at_ms))),
-      activity_id: String(parsed.activity_id || parsed.id || ''),
-    };
+    const occurredAtMs = Math.max(0, Math.trunc(Number(parsed.occurred_at_ms)));
+    const activityId = String(parsed.activity_id || parsed.id || '');
+    // The cursor is bound straight into the activity store's keyset SQL. A value PostgreSQL rejects
+    // there — a timestamp past bigint (22003) or a NUL in the id (22021) — would surface as a
+    // database error and be reported as 503 DB_UNAVAILABLE, so a hand-built cursor could fake an
+    // outage at will. Reject it here as the malformed input it is. MAX_SAFE_INTEGER is also the
+    // largest value this side can round-trip exactly, well inside bigint.
+    if (!Number.isSafeInteger(occurredAtMs) || activityId.indexOf(String.fromCharCode(0)) !== -1) {
+      throw new Error('bad_cursor_payload');
+    }
+    return { occurred_at_ms: occurredAtMs, activity_id: activityId };
   } catch {
     const err = new Error('Invalid cursor');
     err.status = 400;
