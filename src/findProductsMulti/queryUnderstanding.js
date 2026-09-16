@@ -28,6 +28,17 @@ const CATEGORY_ALIAS_RULES = Object.freeze([
     pattern:
       /\b(perfume|perfumes|fragrance|fragrances|parfum|cologne|eau de parfum|eau de toilette|body mist|scent|scents)\b|香水|香氛|古龙|古龍|香體|香体/i,
   },
+  // TWO rules share the beauty/makeup/lip/ prefix and that is intentional, but the
+  // pair is ORDER-SENSITIVE: they emit different `category` telemetry for the same
+  // destination, so this one must stay ABOVE lip_care_or_gloss or `lip color` and
+  // `liquid lips` silently relabel. Serving is unaffected either way; the telemetry
+  // is not. Do not merge or reorder them without moving the query-class pins too.
+  //
+  // Note the `\s*` in every `lip\s*X` arm below is load-bearing beyond the spaced
+  // form: it is the ONLY thing matching the solid spellings (lipgloss, lipbalm,
+  // lipoil, lipliner, liptint), which the bare `\blips?\b` arm cannot match because
+  // there is no word boundary inside them. Measured 2026-09-16 — deleting those arms
+  // as "redundant with bare lip" safe-empties all five.
   {
     category: 'lipstick',
     categoryPathPrefix: 'beauty/makeup/lip/',
