@@ -116,13 +116,25 @@ ALTER TABLE IF EXISTS aurora_activity_events
 CREATE UNIQUE INDEX IF NOT EXISTS aurora_activity_events_activity_id_key
   ON aurora_activity_events(activity_id);
 
-CREATE INDEX IF NOT EXISTS idx_aurora_activity_events_aurora_time
-  ON aurora_activity_events(aurora_uid, occurred_at_ms DESC, activity_id DESC)
-  WHERE aurora_uid IS NOT NULL;
-
-CREATE INDEX IF NOT EXISTS idx_aurora_activity_events_user_time
-  ON aurora_activity_events(user_id, occurred_at_ms DESC, activity_id DESC)
-  WHERE user_id IS NOT NULL;
+-- idx_aurora_activity_events_aurora_time and idx_aurora_activity_events_user_time are
+-- deliberately NOT declared here. 027 already creates both, with `id DESC` as the tiebreak
+-- instead of `activity_id DESC`, and 027 sorts first — so these two redeclarations were skipped
+-- by IF NOT EXISTS and have never created anything on any database. Prod confirms it: both
+-- indexes carry `(…, occurred_at_ms DESC, id DESC)`.
+--
+-- `id` is also the shape that is WANTED, so the skip was luck rather than a near miss:
+-- memoryStore.js reads this table with a keyset cursor over (occurred_at_ms, id) —
+--   WHERE (occurred_at_ms < $n OR (occurred_at_ms = $n AND id < $n+1))
+--   ORDER BY occurred_at_ms DESC, id DESC
+-- which 027's shape answers as a pure index range scan. The `activity_id` tiebreak below would
+-- have forced a sort on every page of that reader, and `activity_id` is a random 'act_<md5>', so
+-- it is not a meaningful "most recent first" ordering the way a BIGSERIAL `id` is.
+--
+-- activityStore.js does order by `activity_id DESC`, but consistently: its comparator, its cursor
+-- encoding and its cursor filter are all on activity_id, so it is a self-contained scheme that
+-- re-sorts in JS. It is not served by either index's tiebreak today and does not need to be at
+-- 536 rows. If this table grows enough for that to matter, the answer is a NEW index under its own
+-- name, not another declaration of one of these two.
 
 CREATE INDEX IF NOT EXISTS idx_aurora_activity_events_event_type_time
   ON aurora_activity_events(event_type, occurred_at_ms DESC, activity_id DESC);
