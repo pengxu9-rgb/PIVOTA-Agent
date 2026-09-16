@@ -9912,11 +9912,16 @@ function buildBrandDirectPoolCacheKey({ request, normalizedAliases, safeLimit })
     // It is NOT resolveBrandAliasSpellings: that re-runs the whole brand lexicon (~0.3ms
     // measured) on every cache HIT, the one path meant to be free. brandIdentityKey is 0.34us
     // and the spellings are a pure function of these names anyway.
+    // Sorted, because the scan is order-insensitive: the keys it probes are a SET, so two
+    // scopes listing the same brands in a different order run the same scan and must share one
+    // entry. This does not make the field a perfect discriminator — ['Aetās'] and
+    // ['Aetas','Aetās'] also scan alike yet key apart, since one is a superset of the other —
+    // it just removes the split that ordering alone caused.
     brand_names: uniqStrings(
       (Array.isArray(request?.scope?.brand_names) ? request.scope.brand_names : [])
         .map((name) => brandIdentityKey(name)),
       16,
-    ),
+    ).sort(),
     limit: safeLimit,
     commerce_index: brandPageUsesCommerceIndex(),
     order_by_recency: !isBrandScopeOnlyQuery(request),

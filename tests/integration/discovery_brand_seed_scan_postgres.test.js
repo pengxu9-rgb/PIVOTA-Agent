@@ -832,6 +832,94 @@ suite('brand-page external seed scan on PostgreSQL', () => {
     expect(fallback).toEqual([['round lab'], ['tocobo']]);
   });
 
+  test('the spelling carried for an alias is the one bound for THAT alias', async () => {
+    // Second-pass review: reading the spellings at a fixed index instead of the alias's own
+    // index survived every test. Its effect is the F1 defect one layer down — an accented brand
+    // loses its rows whenever it is not first in the scope. Asserted on the BOUND PARAMS, because
+    // the cache-key test above holds the alias list fixed and cannot see this.
+    const discovery = require('../../src/services/discoveryFeed');
+    const brandNames = ['Mixsoon', 'Aet\u0101s'];
+    const aliases = discovery._internals.buildBrandScopeAliases(brandNames);
+    const spellings = discovery._internals.resolveBrandAliasSpellings(
+      { scope: { brand_names: brandNames } },
+      aliases,
+    );
+    const { calls: issued } = await runFetcher(aliases, { brandAliasSpellings: spellings });
+    const bound = primaryCall(issued).params.flat().map(String);
+    expect(bound.some((value) => value.startsWith('aet\u0101s'))).toBe(true);
+    expect(bound.some((value) => value.startsWith('mixsoon'))).toBe(true);
+    // ...and the same holds with the order reversed, so neither position is privileged.
+    const reversed = ['Aet\u0101s', 'Mixsoon'];
+    const revAliases = discovery._internals.buildBrandScopeAliases(reversed);
+    const revBound = primaryCall((await runFetcher(revAliases, {
+      brandAliasSpellings: discovery._internals.resolveBrandAliasSpellings(
+        { scope: { brand_names: reversed } },
+        revAliases,
+      ),
+    })).calls).params.flat().map(String);
+    expect(revBound.some((value) => value.startsWith('aet\u0101s'))).toBe(true);
+  });
+
+  test('the spelling resolver still applies past the 16-alias cap', async () => {
+    // normalizeDiscoveryScope caps brand_names at 4, but each name yields up to 8 variants, so a
+    // 4-name scope can exceed 16 aliases. Dropping the cap makes `reproduces` go false, the
+    // resolver falls back to echoing the aliases, and the carried spelling is silently lost for
+    // the whole scope — i.e. the change reverts. The previous test could not see that: the
+    // fallback satisfies "one list per alias, each folding to its alias" too.
+    const discovery = require('../../src/services/discoveryFeed');
+    const brandNames = [
+      'Aet\u0101s Dior Chanel Gucci',
+      'dior chanel gucci prada versace fendi armani ysl',
+      'sulwhasoo laneige innisfree hera',
+      'Fenty Beauty Rare Beauty Glossier Tatcha',
+    ];
+    const all = discovery._internals.buildBrandScopeAliases(brandNames);
+    expect(all.length).toBeGreaterThan(16);
+    // The list computeBrandScopedDirectCandidates actually holds.
+    const capped = all.slice(0, 16);
+    const spellings = discovery._internals.resolveBrandAliasSpellings(
+      { scope: { brand_names: brandNames } },
+      capped,
+    );
+    expect(spellings).toHaveLength(16);
+    // The carried spelling must survive: the first alias folds the macron away, the spelling
+    // does not. Under a dropped cap this is the alias echoed back instead.
+    expect(spellings[0]).toContain(brandNames[0]);
+    expect(spellings[0].some((value) => value.includes('\u0101'))).toBe(true);
+  });
+
+  test('the cache key still separates two scopes that differ only in their alias list', async () => {
+    // The `aliases` field is load-bearing and was unwatched: "La Mer" and "LaMer" produce the
+    // SAME brand-name discriminator ('lamer') but different alias lists, and the alias list is
+    // what the title lane branches on. Blanking the field serves one page the other's pool.
+    const discovery = require('../../src/services/discoveryFeed');
+    const { buildBrandScopeAliases, buildBrandDirectPoolCacheKey } = discovery._internals;
+    const { brandIdentityKey } = require('../../src/services/canonicalSearchQualitySql');
+    expect(brandIdentityKey('La Mer')).toEqual(brandIdentityKey('LaMer'));
+    expect(buildBrandScopeAliases(['La Mer'])).not.toEqual(buildBrandScopeAliases(['LaMer']));
+    const keyFor = (brandNames) => buildBrandDirectPoolCacheKey({
+      request: { surface: 'browse_products', scope: { brand_names: brandNames } },
+      normalizedAliases: buildBrandScopeAliases(brandNames),
+      safeLimit: 120,
+    });
+    expect(keyFor(['La Mer'])).not.toEqual(keyFor(['LaMer']));
+  });
+
+  test('two scopes listing the same brands in a different order share one cache entry', async () => {
+    // The scan probes a SET of identity keys, so order cannot change it. Keying on an unsorted
+    // list split the pool for a difference the scan does not have — extra runs of the statement
+    // behind the 2026-09-15 incident.
+    const discovery = require('../../src/services/discoveryFeed');
+    const { buildBrandScopeAliases, buildBrandDirectPoolCacheKey } = discovery._internals;
+    const keyFor = (brandNames, aliases) => buildBrandDirectPoolCacheKey({
+      request: { surface: 'browse_products', scope: { brand_names: brandNames } },
+      normalizedAliases: aliases,
+      safeLimit: 120,
+    });
+    const aliases = buildBrandScopeAliases(['Mixsoon', 'Tocobo']);
+    expect(keyFor(['Mixsoon', 'Tocobo'], aliases)).toEqual(keyFor(['Tocobo', 'Mixsoon'], aliases));
+  });
+
   test('an ASCII brand page is byte-for-byte unchanged by the spelling carry', async () => {
     // The control. For every brand the Latin-1 fold table covers, the carried spelling and the
     // folded alias produce the SAME key, so this must add no key, no branch and no row. Without
