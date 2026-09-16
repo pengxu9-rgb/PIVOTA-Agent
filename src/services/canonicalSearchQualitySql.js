@@ -47,7 +47,10 @@ const IDENTITY_FOLDED = 'AAAAAAEEEEIIIIOOOOOUUUUYaaaaaaeeeeiiiiooooouuuuyy';
 // spellings), but the SQL translate() does — so a key bound for equality or a
 // prefix must fold too, or "Lancôme" could never equal the indexed "lancome".
 function brandIdentityKey(value) {
-  const folded = Array.from(String(value || '').replace(/[·•]/g, ''))
+  // NFC first: a decomposed "n" + U+0303 would lose its combining mark to the
+  // non-alphanumeric strip below and key as "senora", while PostgreSQL keeps the
+  // mark and stores "señora" — the two sides must agree character for character.
+  const folded = Array.from(String(value || '').normalize('NFC').replace(/[·•]/g, ''))
     .map((character) => {
       const at = IDENTITY_ACCENTED.indexOf(character);
       return at === -1 ? character : IDENTITY_FOLDED[at];

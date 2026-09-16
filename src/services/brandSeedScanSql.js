@@ -11,7 +11,6 @@
 // `LIKE ANY(array)`, which no index can drive, so every brand page read all
 // 11.8k attached seeds (326MB) and re-extracted ~15 JSONB paths per row.
 const { normalizedBrandIdentitySql } = require('./canonicalSearchQualitySql');
-const { SEED_OWN_BRAND_SQL } = require('./seedSearchOfferScope');
 
 // A btree key must fit 2704 bytes or the INSERT that would exceed it fails
 // permanently — and CREATE INDEX fails outright if such a row already exists.

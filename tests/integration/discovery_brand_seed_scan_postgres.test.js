@@ -239,6 +239,34 @@ suite('brand-page external seed scan on PostgreSQL', () => {
     // separates "the brand chain prefixes" from "the domain chain does not".
     await seedRow({ id: 'brand_full_prefix_match', seedData: { brand_name: 'Mixsoonish Teashop' }, title: 'Oolong Gift Box', domain: 'shop.example' });
 
+    // ---- two aliases that collide on ONE identity key ----
+    // 'elf' (3 spaced chars, no prefix arm) and 'e.l.f.' ('e l f', 5, prefix arm) both key to 'elf'.
+    // Taking `prefixable` from whichever alias came first dropped the prefix arm and with it every
+    // row the old predicate reached by prefix, so the two must be OR'd.
+    await seedRow({ id: 'exact_elf_dotted', seedData: { brand_name: 'e.l.f.' }, title: 'Power Grip Primer' });
+    await seedRow({ id: 'exact_elf_plain', seedData: { brand_name: 'elf' }, title: 'Camo Concealer' });
+
+    // ---- a diacritic OUTSIDE the SQL translate() table ----
+    // identitySql folds the Latin-1 set only; 'n-tilde' is not in it, so the indexed row identity
+    // keeps it. Any JS key that folds it cannot equal the row identity, and the page goes empty.
+    await seedRow({ id: 'diacritic_senora', seedData: { brand_name: 'Se\u00f1ora Skin' }, title: 'Se\u00f1ora Skin Cream' });
+
+    // ---- the domain is the domain chain's LAST resort, not its first field ----
+    // Same domain as loss_e_two_pages, but this row fills the chain's own brand path, so the domain
+    // is never reached: it belongs on the Tocobo page and NOT on the Mixsoon page.
+    await seedRow({ id: 'domain_last_resort', seedData: { brand: 'Tocobo' }, title: 'Vita Serum', domain: 'mixsoon.com' });
+
+    // ---- more candidates than the limit, with distinct recency ----
+    // The by-key fetch must ORDER BY before it LIMITs. With exactly `limit` candidates the LIMIT
+    // never chooses, so slicing the candidate ids first would look identical.
+    for (let i = 0; i < 30; i += 1) {
+      await seedRow({ id: `recency_${String(i).padStart(2, '0')}`, seedData: { brand_name: 'Recencybrand' }, title: `Recencybrand Item ${i}` });
+    }
+    await db.query(`UPDATE external_product_seeds
+      SET updated_at = timestamptz '2026-01-01 00:00:00+00' + (substring(id from '[0-9]+$')::int * interval '1 hour'),
+          created_at = timestamptz '2026-01-01 00:00:00+00'
+      WHERE id ~ '^recency_[0-9]+$'`);
+
     // ---- top-level vendor must not outrank top-level brand (distinct from loss (b)'s snapshot) ----
     await seedRow({ id: 'top_level_vendor_tatcha', seedData: { vendor: 'Ulta Beauty', brand: 'Tatcha' }, title: 'Rice Wash Cleanser' });
 
@@ -419,7 +447,14 @@ suite('brand-page external seed scan on PostgreSQL', () => {
     ['a two-word alias that must prefix-match', ['Round Lab'], ['prefix_roundlab_us']],
     ['a 3-character alias (below the prefix floor)', ['Abc'], []],
     ['a 3-character alias that is an exact brand', ['NYX'], ['exact_short_nyx']],
-    ['a dotted alias whose compact form is 3 chars', ['e.l.f.'], ['prefix_elf_cosmetics']],
+    ['a dotted alias whose compact form is 3 chars', ['e.l.f.'],
+      ['exact_elf_dotted', 'exact_elf_plain', 'prefix_elf_cosmetics']],
+    ['two aliases colliding on one identity key', ['elf', 'e.l.f.'],
+      ['exact_elf_dotted', 'exact_elf_plain', 'prefix_elf_cosmetics']],
+    ['the same collision in the other order', ['e.l.f.', 'elf'],
+      ['exact_elf_dotted', 'exact_elf_plain', 'prefix_elf_cosmetics']],
+    ['a brand reached through the domain chain', ['Tocobo'],
+      ['domain_last_resort', 'loss_e_two_pages', 'out_other_brand']],
     ['an alias that is exactly 4 chars spaced', ['Anua'], ['prefix_anua_skincare']],
     ['a brand hidden behind a retailer brand_name', ['Fenty Beauty'], ['loss_a_fenty']],
     ['a brand hidden behind a store vendor', ['Tatcha'], ['loss_b_tatcha', 'top_level_vendor_tatcha']],
@@ -481,8 +516,8 @@ suite('brand-page external seed scan on PostgreSQL', () => {
   });
 
   test('loss (d): the prefix floor reads the spaced form, so "e.l.f." keeps its prefix arm', async () => {
-    expect(await newPrimaryIds(['e.l.f.'])).toEqual(['prefix_elf_cosmetics']);
-    expect(await oldPrimaryIds(['e.l.f.'])).toEqual(['prefix_elf_cosmetics']);
+    expect(await newPrimaryIds(['e.l.f.'])).toEqual(['exact_elf_dotted', 'exact_elf_plain', 'prefix_elf_cosmetics']);
+    expect(await oldPrimaryIds(['e.l.f.'])).toEqual(['exact_elf_dotted', 'exact_elf_plain', 'prefix_elf_cosmetics']);
     // Control: the floor is >= 4 on the spaced form, and "anua" is exactly 4.
     expect(await newPrimaryIds(['Anua'])).toEqual(['prefix_anua_skincare']);
     // Control: a 3-character SPACED alias still has no prefix arm.
@@ -528,6 +563,104 @@ suite('brand-page external seed scan on PostgreSQL', () => {
       // Exactly one domain branch, whatever the alias count.
       expect(primary.sql.split(`${domainSql} = ANY(`)).toHaveLength(2);
     }
+  });
+
+  test('colliding aliases OR their prefixability, whichever order they arrive in', async () => {
+    // The regression this pins: ['elf', 'e.l.f.'] both key to 'elf'. Reading `prefixable` from the
+    // first alias to reach the key gave 'elf' equality only, and the brand page silently lost every
+    // row the retired predicate matched by prefix.
+    const expected = ['exact_elf_dotted', 'exact_elf_plain', 'prefix_elf_cosmetics'];
+    for (const aliases of [['elf', 'e.l.f.'], ['e.l.f.', 'elf']]) {
+      expect(await newPrimaryIds(aliases)).toEqual(expected);
+      expect(await oldPrimaryIds(aliases)).toEqual(expected);
+      const primary = primaryCall((await runFetcher(aliases)).calls);
+      // The prefix arm must actually be in the statement, bound to the whole key.
+      expect(primary.params).toContain('elf%');
+      // One key, so: one brand prefix branch + one domain equality branch, and no duplicate binds.
+      expect(branchCount(primary.sql)).toBe(2);
+      expect(primary.params).toHaveLength(4);
+      expect(primary.params[3]).toEqual(['elf']);
+      expect(new Set(primary.params.slice(2, 3)).size).toBe(1);
+    }
+    // Control: the sub-floor alias ALONE still gets equality only, so the OR above is doing the work
+    // rather than the floor having been abandoned.
+    const soloShort = primaryCall((await runFetcher(['elf'])).calls);
+    expect(soloShort.params).not.toContain('elf%');
+    expect(soloShort.params[2]).toEqual(['elf']);
+    expect(await newPrimaryIds(['elf'])).toEqual(['exact_elf_dotted', 'exact_elf_plain']);
+  });
+
+  // The index stores the SQL value. A bound key that does not equal it CHARACTER FOR CHARACTER
+  // matches nothing, so brandIdentityKey has to agree with normalizedBrandIdentitySql. These are two
+  // separate contracts and are asserted separately: the function's own, and the one the scan relies
+  // on (it binds brandIdentityKey(normalizeBrandText(alias)), not brandIdentityKey(alias)).
+  const TWIN_NAMES = ['Lanc\u00f4me', 'Beyonc\u00e9', 'Se\u00f1ora Skin', '\u0160koda Care', 'M\u0101ori Botanics', 'Mixsoon'];
+  const sqlRowIdentity = async (name) => {
+    const { seedBrandIdentitySql } = require('../../src/services/brandSeedScanSql');
+    const res = await db.query(
+      `SELECT ${seedBrandIdentitySql('eps')} AS identity
+       FROM (SELECT $1::jsonb AS seed_data, ''::text AS domain) eps`,
+      [JSON.stringify({ brand_name: name })],
+    );
+    return res.rows[0].identity;
+  };
+
+  test('brandIdentityKey is the JS twin of the SQL row identity', async () => {
+    const { brandIdentityKey } = require('../../src/services/canonicalSearchQualitySql');
+    const mismatches = [];
+    for (const name of TWIN_NAMES) {
+      const rowIdentity = await sqlRowIdentity(name);
+      const key = brandIdentityKey(name);
+      if (key !== rowIdentity) mismatches.push({ name, rowIdentity, key });
+    }
+    expect(mismatches).toEqual([]);
+  });
+
+  test('the key the scan actually binds equals the SQL row identity', async () => {
+    const { brandIdentityKey } = require('../../src/services/canonicalSearchQualitySql');
+    const { normalizeBrandText } = require('../../src/findProductsMulti/brandLexicon');
+    const mismatches = [];
+    const foldedTwice = [];
+    for (const name of TWIN_NAMES) {
+      const rowIdentity = await sqlRowIdentity(name);
+      // The scan keys off the RAW alias, which is what makes this hold.
+      if (brandIdentityKey(name) !== rowIdentity) {
+        mismatches.push({ name, rowIdentity, key: brandIdentityKey(name) });
+      }
+      // ...and keying off the SPACED form does not, for any diacritic outside the SQL fold
+      // table: normalizeBrandText folds every combining mark (NFKD), translate() folds only
+      // Latin-1. Pinned in both directions so the cheaper-looking composition cannot return.
+      if (brandIdentityKey(normalizeBrandText(name)) !== rowIdentity) foldedTwice.push(name);
+    }
+    expect(mismatches).toEqual([]);
+    expect(foldedTwice.length).toBeGreaterThan(0);
+    // An alias can arrive decomposed ("n" + U+0303) from any caller. Without the NFC pass the
+    // combining mark is stripped as non-alphanumeric and the key silently loses the accent,
+    // while PostgreSQL keeps it — the same mismatch, arriving through the input instead.
+    const decomposed = 'Señora Skin';
+    expect(decomposed.normalize('NFC')).toBe('Señora Skin');
+    expect(brandIdentityKey(decomposed)).toBe(brandIdentityKey('Señora Skin'));
+    expect(brandIdentityKey(decomposed)).toBe(await sqlRowIdentity('Señora Skin'));
+  });
+
+  test('a brand whose diacritic is outside the SQL fold table is still reachable', async () => {
+    // End-to-end form of the twin contract above. The title lane cannot rescue it either: the bound
+    // title pattern is folded the same way and the row's title is not.
+    expect(await newPrimaryIds(['Se\u00f1ora Skin'])).toEqual(['diacritic_senora']);
+  });
+
+  test('the domain chain reaches the domain only after its own brand paths', async () => {
+    // domain_last_resort carries seed_data.brand, the domain chain's FIRST field, so its
+    // mixsoon.com domain is never consulted. Moving the domain ahead of brand/snapshot.brand would
+    // put it on the Mixsoon page.
+    expect(await newPrimaryIds(['Tocobo'])).toContain('domain_last_resort');
+    expect(await oldPrimaryIds(['Tocobo'])).toContain('domain_last_resort');
+    expect(await newPrimaryIds(['Mixsoon'])).not.toContain('domain_last_resort');
+    expect(await oldPrimaryIds(['Mixsoon'])).not.toContain('domain_last_resort');
+    // Contrast, on the SAME domain: loss_e_two_pages leaves both brand paths empty, so the domain is
+    // reached and the row is on both pages. Without this pair the ordering is untestable.
+    expect(await newPrimaryIds(['Mixsoon'])).toContain('loss_e_two_pages');
+    expect(await newPrimaryIds(['Tocobo'])).toContain('loss_e_two_pages');
   });
 
   test('M7: a top-level vendor does not outrank a top-level brand', async () => {
@@ -1039,6 +1172,19 @@ suite('brand-page external seed scan on PostgreSQL', () => {
     expect(seedIds).toContain('title_backfill_snapshot');
     // 'Mixsoonish Copycat Cream' starts with the alias but is a different word.
     expect(seedIds).not.toContain('title_no_space_after_alias');
+  });
+
+  test('the by-key fetch orders BEFORE it limits, so the newest candidates win', async () => {
+    // 30 candidates, limit 24: the LIMIT actually has to choose. Slicing the candidate ids to
+    // safeLimit before the fetch would hand the ORDER BY a set that already dropped rows, and the
+    // union returns ids in index order, not recency order.
+    const candidates = await newCandidateIds(['Recencybrand']);
+    expect(candidates).toHaveLength(30);
+    const { products } = await runFetcher(['Recencybrand'], { limit: 24 });
+    const returned = products.map((product) => product.external_seed_id);
+    expect(returned).toHaveLength(24);
+    // Newest first, and it is the 24 newest of the 30 — recency_00..05 are the ones dropped.
+    expect(returned).toEqual(Array.from({ length: 24 }, (_, i) => `recency_${String(29 - i).padStart(2, '0')}`));
   });
 
   test('the backfill lane runs only when the primary lane underfills', async () => {

@@ -8805,29 +8805,41 @@ async function fetchBrandScopedExternalSeedCandidates({
   failures = null,
 } = {}) {
   if (!process.env.DATABASE_URL) return [];
-  const normalizedAliases = uniqStrings(
-    brandAliases.map((alias) => normalizeBrandText(alias)).filter(Boolean),
-    16,
-  );
+  // ONE capped pass over the caller's aliases feeds both lanes: the title lane matches
+  // the spaced normalization, the brand lanes the identity key. Capping the two lists
+  // separately let the lanes probe different alias sets past the cap. The raw alias is
+  // carried because the identity key must be computed from it — see below.
+  const keptAliases = [];
+  const seenSpaced = new Set();
+  for (const alias of brandAliases) {
+    const spaced = normalizeBrandText(alias);
+    if (!spaced || seenSpaced.has(spaced)) continue;
+    seenSpaced.add(spaced);
+    keptAliases.push({ raw: alias, spaced });
+    if (keptAliases.length >= 16) break;
+  }
+  const normalizedAliases = keptAliases.map((entry) => entry.spaced);
   if (!normalizedAliases.length) return [];
   // Brand identity keys (accent-folded, alphanumerics only) — the SAME value the
   // brand-identity indexes store, so equality and prefix are both index lookups.
-  // Capped ONCE, then split — capping the two lists independently could let a long
-  // alias survive into the prefix list while falling outside identityAliases, so the
-  // domain chain (equality only) would never probe it.
+  // The key comes from the RAW alias, never the spaced form: normalizeBrandText folds
+  // EVERY combining diacritic (NFKD), while the SQL identity's translate() folds only
+  // the Latin-1 table. Keying off the spaced form bound 'senoraskin' against an indexed
+  // 'señoraskin', and those brand pages returned nothing. brandIdentityKey is the twin
+  // of the SQL expression, so it must be fed what the SQL is fed.
   // The >= 4 floor reads the SPACED normalization: "e.l.f." is "e l f" (5) and keeps
   // its prefix arm, where the compacted identity "elf" (3) would silently lose it.
-  const identityKeyed = [];
-  const seenIdentity = new Set();
-  for (const alias of brandAliases) {
-    const key = brandIdentityKey(alias);
-    if (!key || seenIdentity.has(key)) continue;
-    seenIdentity.add(key);
-    identityKeyed.push({ key, prefixable: normalizeBrandText(alias).length >= 4 });
-    if (identityKeyed.length >= 16) break;
+  // Aliases that collide on one identity key are OR'd, never first-wins: ["elf",
+  // "e.l.f."] both key to 'elf', and taking `prefixable` from whichever came first
+  // dropped the prefix arm and with it every row the old predicate matched by prefix.
+  const prefixableByKey = new Map();
+  for (const { raw, spaced } of keptAliases) {
+    const key = brandIdentityKey(raw);
+    if (!key) continue;
+    prefixableByKey.set(key, (prefixableByKey.get(key) || false) || spaced.length >= 4);
   }
-  const identityAliases = identityKeyed.map((entry) => entry.key);
-  const identityPrefixAliases = identityKeyed.filter((entry) => entry.prefixable).map((entry) => entry.key);
+  const identityAliases = [...prefixableByKey.keys()];
+  const identityPrefixAliases = identityAliases.filter((key) => prefixableByKey.get(key));
 
   const safeLimit = clampInt(limit, Math.max(limit, 120), 24, 500);
   const market = brandScopedExternalSeedMarket();
@@ -8935,6 +8947,13 @@ async function fetchBrandScopedExternalSeedCandidates({
         ${orderClause}
         LIMIT $2
       `;
+    // The candidate list is deliberately UNBOUNDED. Binding it back as an id array is what makes the
+    // fetch a key probe instead of a re-planned semi-join, and that array is also what puts a cliff at
+    // the far end: the measured crossover where this shape stops beating the predicate it replaces is
+    // ~13,000 candidates, with the array cost dominating from ~25,000. Prod's ENTIRE attached-seed
+    // population is 11,817 rows and the largest brand page probes 784, so neither is reachable.
+    // Do not add a cap here: a cap truncates BEFORE the fetch's ORDER BY, so it would drop the newest
+    // rows rather than the ones the ranking would have dropped.
     const idsOf = (res) => uniqStrings(
       (Array.isArray(res?.rows) ? res.rows : []).map((row) => String(row?.id || '').trim()).filter(Boolean),
       Number.MAX_SAFE_INTEGER,
