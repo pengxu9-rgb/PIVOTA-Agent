@@ -1,7 +1,7 @@
 const {primaryBrandIndexDefinitions,inspectReadiness}=require('../scripts/catalog/primary_brand_indexes');
 const {buildBrandIdentityPredicate,CANONICAL_OWN_BRAND_SQL}=require('../src/services/canonicalSearchQualitySql');
 const {SEED_OWN_BRAND_SQL}=require('../src/services/seedSearchOfferScope');
-const {seedBrandIdentitySql,seedTitleSql,BRAND_SEED_SCAN_PREDICATE}=require('../src/services/brandSeedScanSql');
+const {seedBrandIdentitySql,seedDomainIdentitySql,seedTitleSql,BRAND_SEED_SCAN_PREDICATE,IDENTITY_MAX_CHARS}=require('../src/services/brandSeedScanSql');
 // An index only accelerates an expression it matches CHARACTER FOR CHARACTER, so every definition
 // must be tied back to the query that is meant to use it. `accelerates` names that query; a
 // definition carrying an unknown value fails here rather than quietly matching nothing.
@@ -18,19 +18,24 @@ const ACCELERATORS={
   // discoveryFeed's brand-page seed scan: one `= ANY(identity keys)` plus one `LIKE alias%` per
   // alias, both over seedBrandIdentitySql.
   identity_prefix(index){
-    expect(index.expression).toBe(seedBrandIdentitySql());
-    // It is buildBrandIdentityPredicate's brand identity plus ONE documented leg: the domain as
-    // brand-of-last-resort, which the predicate this scan replaced also had. Everything else must
-    // still be shared, so assert the whole seed brand chain is embedded verbatim and that the only
-    // addition is the domain fallback — a second normalization would put the brand lanes back into
-    // disagreement about what a brand is.
+    // The scan probes TWO chains, so each definition must be exactly one of them — byte-identical to
+    // the module the query reads, or the index accelerates nothing.
+    const chains={idx_external_seeds_brand_identity_prefix_v1:seedBrandIdentitySql(),
+      idx_external_seeds_brand_domain_identity_prefix_v1:seedDomainIdentitySql()};
+    expect(Object.keys(chains)).toContain(index.name);
+    expect(index.expression).toBe(chains[index.name]);
+    // Same normalization as buildBrandIdentityPredicate's identity — a second normalization would
+    // put the brand lanes back into disagreement about what a brand is. Only the field chain and the
+    // length bound differ, both deliberately, so compare the normalization with the chain masked out.
     const params=[];
     const where=buildBrandIdentityPredicate({brand_key:'mac_cosmetics',brand:'MAC'},SEED_OWN_BRAND_SQL,params);
-    expect(where).toContain(SEED_OWN_BRAND_SQL);
-    expect(index.expression).toContain(SEED_OWN_BRAND_SQL);
-    expect(index.expression).toContain("split_part(domain, '.', 1)");
-    expect(index.expression.replace(`coalesce(nullif(${SEED_OWN_BRAND_SQL}, ''), split_part(domain, '.', 1), '')`,SEED_OWN_BRAND_SQL))
-      .toBe(where.slice(where.lastIndexOf('AND ')+4,where.lastIndexOf(' = ANY(')));
+    const sharedIdentity=where.slice(where.lastIndexOf('AND ')+4,where.lastIndexOf(' = ANY('));
+    const maskChain=(sql)=>sql.replace(/coalesce\([^]*?, ''\), '\[·•\]'/,"<CHAIN>, '[·•]'");
+    expect(maskChain(index.expression)).toBe(`left(${maskChain(sharedIdentity)}, ${IDENTITY_MAX_CHARS})`);
+    // A btree key must fit 2704 bytes or writes to the table start failing, so the expression is
+    // bounded (#2204's sibling index hashes instead, which cannot serve prefixes).
+    expect(index.expression.startsWith('left(')).toBe(true);
+    expect(index.expression.endsWith(`, ${IDENTITY_MAX_CHARS})`)).toBe(true);
     expect(index.opclass).toBe('text_pattern_ops');
   },
   // The same scan's underfill backfill: one `LIKE 'alias %'` per alias over seedTitleSql.
@@ -47,8 +52,9 @@ test.each(primaryBrandIndexDefinitions())('index $name is bounded and exactly ma
   // A partial index is only usable when the query's own predicate implies it, so both sides must be
   // the one shared string rather than two spellings of the same idea.
   if(index.table==='external_product_seeds') expect(index.predicate).toBe(BRAND_SEED_SCAN_PREDICATE);
-  // The prefix indexes also serve the scan's ORDER BY, which trails the key.
-  if(index.recency) expect(index.sql).toContain('updated_at DESC NULLS LAST, created_at DESC NULLS LAST');
+  // No recency columns: a UNION of branches cannot return index order, so every plan sorts anyway
+  // and the extra columns only inflated the index.
+  expect(index.sql).not.toContain('updated_at DESC');
 });
 test('the brand-page seed scan reads its expressions from the same module the indexes do',()=>{
   // Cheap drift alarm next to the definitions. The proof that the planner can actually use them is
@@ -59,8 +65,15 @@ test('the brand-page seed scan reads its expressions from the same module the in
   expect(start).toBeGreaterThan(-1);
   const body=source.slice(start,source.indexOf('\nasync function ',start+1));
   expect(body).toContain("seedBrandIdentitySql('eps')");
+  // Both brand chains must be probed: dropping the domain one silently moves seeds named only by
+  // their domain off that brand's page.
+  expect(body).toContain("seedDomainIdentitySql('eps')");
   expect(body).toContain("seedTitleSql('eps')");
-  expect(body).toContain('BRAND_SEED_SCAN_PREDICATE');
+  expect(body).toContain("brandSeedScanPredicateSql('eps')");
+  // Every bound LIKE pattern goes through the escaper; an unescaped '%' in an alias ("100% PURE")
+  // both widens the match and defeats the index prefix scan.
+  expect(body).not.toMatch(/LIKE \$\{[a-zA-Z]+Bind\}?\(`/);
+  expect(body.match(/likePrefixPattern\(/g) || []).toHaveLength(2);
   // Not asserted here: that the STATEMENT carries no `LIKE ANY(array)` / `unnest` — a source grep
   // cannot tell code from the comment that explains why they were removed. That claim is made
   // against the SQL the fetcher actually builds, in the integration test named above.
