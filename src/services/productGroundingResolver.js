@@ -23,8 +23,12 @@ const PRODUCT_GROUNDING_API_KEY_ENVS = [
 ];
 const EXTERNAL_SEED_BRAND_FASTPATH_SQL =
   "lower(COALESCE(seed_data->>'brand', seed_data->'snapshot'->>'brand', seed_data->>'merchant_display_name', seed_data->'snapshot'->>'merchant_display_name', seed_data->>'vendor', seed_data->'snapshot'->>'vendor', ''))";
+// lower() wraps the COALESCE, not the regexp_replace: the other order runs '[^a-z0-9]' against
+// the raw mixed-case brand and deletes every capital ('Fenty Beauty' -> 'entyeauty'), so this arm
+// matched only brands stored in lower case. It is ORed with the exact-brand arm above, so
+// correcting it can only add matches.
 const EXTERNAL_SEED_BRAND_NORM_SQL =
-  "lower(regexp_replace(COALESCE(seed_data->>'brand', seed_data->'snapshot'->>'brand', split_part(domain, '.', 1), ''), '[^a-z0-9]+', '', 'g'))";
+  "regexp_replace(lower(COALESCE(seed_data->>'brand', seed_data->'snapshot'->>'brand', split_part(domain, '.', 1), '')), '[^a-z0-9]+', '', 'g')";
 const LATIN_STOPWORDS = new Set([
   'a',
   'an',
