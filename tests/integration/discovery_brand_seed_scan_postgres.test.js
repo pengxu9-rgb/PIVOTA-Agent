@@ -254,6 +254,19 @@ suite('brand-page external seed scan on PostgreSQL', () => {
     // 'senoraskin' with the tilde — two different index keys for one brand page, so the scan has to
     // bind BOTH spellings or half its catalogue is invisible.
     await seedRow({ id: 'diacritic_senora_plain', seedData: { brand_name: 'Senora Skin' }, title: 'Senora Skin Lotion' });
+    // A SINGLE-TOKEN brand, and the one this defect was actually measured on in prod (1 of 11,817
+    // attached seeds, 2026-09-16). It matters that it is single-token: buildBrandQueryVariants
+    // emits a compacted variant only for a multi-word brand, and for "Senora Skin" that compacted
+    // variant carries the folded spelling anyway — so a one-word brand is the only fixture that can
+    // tell "bind every spelling" apart from "bind the unfolded one".
+    // Their titles deliberately do NOT start with the brand: the title backfill lane matches
+    // "<alias> ..." and would otherwise return these rows whatever the brand lane bound, which
+    // makes the brand lane's behaviour unobservable here.
+    await seedRow({ id: 'diacritic_aetas', seedData: { brand_name: 'Aet\u0101s' }, title: 'Daily Renewal Serum' });
+    await seedRow({ id: 'diacritic_aetas_plain', seedData: { brand_name: 'Aetas' }, title: 'Nightly Renewal Serum' });
+    // Two more diacritics outside the Latin-1 translate() table: a caron and a macron.
+    await seedRow({ id: 'diacritic_skoda', seedData: { brand_name: '\u0160koda Care' }, title: '\u0160koda Care Balm' });
+    await seedRow({ id: 'diacritic_maori', seedData: { brand_name: 'M\u0101ori Botanics' }, title: 'M\u0101ori Botanics Oil' });
 
     // ---- the domain is the domain chain's LAST resort, not its first field ----
     // Same domain as loss_e_two_pages, but this row fills the chain's own brand path, so the domain
@@ -631,26 +644,21 @@ suite('brand-page external seed scan on PostgreSQL', () => {
     expect(mismatches).toEqual([]);
   });
 
-  test('KNOWN LIMITATION: an accented brand page reaches only its unaccented rows', async () => {
+  test('an accented brand page reaches its accented rows AND its unaccented ones', async () => {
     // Driven from the PRODUCTION entry point on purpose — this is the coverage that caught the two
-    // earlier revisions claiming a fix that no shipping caller could reach.
+    // earlier revisions claiming a fix that no shipping caller could reach. Until the spelling was
+    // carried, this test stood as a KNOWN LIMITATION pinning the accented row as unreachable.
     //
-    // buildBrandScopeAliases and computeBrandScopedDirectCandidates BOTH run normalizeBrandText,
-    // whose NFKD pass folds every combining mark, so the fetcher only ever sees 'senora skin' and
-    // binds 'senoraskin'. A row written "Señora Skin" indexes as 'señoraskin' (the SQL identity's
-    // translate() covers the Latin-1 table only) and is unreachable; a row written "Senora Skin" is
-    // returned. The same goes for compatibility numerals: "a²b Beauty" indexes as 'abbeauty' while
-    // the alias pipeline hands over 'a2bbeauty'.
-    //
-    // This is NOT a regression — the retired predicate missed the same rows, its regexp having
-    // turned the tilde into a separator — and the old-vs-new half of this test is what says so.
-    // Fixing it means carrying the unnormalized brand name through BOTH layers, which is a change to
-    // the shared alias pipeline; filed as a separate task. brandIdentityKey is already the exact
-    // twin of the SQL expression (pinned below), so that follow-up has its foundation.
+    // buildBrandScopeAliases and computeBrandScopedDirectCandidates BOTH run normalizeBrandText
+    // (and buildBrandQueryVariants runs it a third time, which is why the spelling has to be
+    // carried rather than recovered), so the fetcher used to see only 'senora skin' and bind
+    // 'senoraskin'. A row written "Señora Skin" indexes as 'señoraskin' — the SQL identity's
+    // translate() covers the Latin-1 table only — and was unreachable.
     const discovery = require('../../src/services/discoveryFeed');
     const pageAliases = discovery._internals.buildBrandScopeAliases(['Se\u00f1ora Skin']);
     expect(pageAliases.length).toBeGreaterThan(0);
-    // Control: the accent is already gone before the fetcher is reached.
+    // Control: the accent is still gone from the ALIASES. The aliases did not change; what changed
+    // is that the request's own spelling now travels beside them.
     expect(pageAliases.every((alias) => !alias.includes('\u00f1'))).toBe(true);
 
     calls.length = 0;
@@ -670,13 +678,104 @@ suite('brand-page external seed scan on PostgreSQL', () => {
     const primary = primaryCall([...calls]);
     expect(primary).not.toBeNull();
     const bound = primary.params.flat().map(String);
+    // BOTH spellings are bound. Binding only the accented one would move which half of the page is
+    // empty rather than fill it, so both directions are asserted.
     expect(bound).toContain('senoraskin%');
-    expect(bound).not.toContain('se\u00f1oraskin%');
+    expect(bound).toContain('se\u00f1oraskin%');
 
     const served = result.products.map((product) => product.external_seed_id).sort();
-    expect(served).toEqual(['diacritic_senora_plain']);
-    // ...and the predicate this replaces serves exactly the same set, so nothing was lost here.
+    expect(served).toEqual(['diacritic_senora', 'diacritic_senora_plain']);
+    // The predicate this replaces still reaches only the unaccented row — so this is a gain over
+    // it, not a regression against it, and the comparison says which.
     expect(await oldPrimaryIds(pageAliases)).toEqual(['diacritic_senora_plain']);
+  });
+
+  test('the same holds for the other diacritics outside the fold table', async () => {
+    const discovery = require('../../src/services/discoveryFeed');
+    const servedFor = async (brandName) => {
+      const aliases = discovery._internals.buildBrandScopeAliases([brandName]);
+      const result = await discovery._internals.computeBrandScopedDirectCandidates({
+        request: discovery._internals.normalizeDiscoveryRequest({
+          surface: 'browse_products',
+          scope: { brand_names: [brandName] },
+          query: { text: brandName },
+          page: 1,
+          limit: 24,
+        }),
+        brandAliases: aliases,
+        limit: 24,
+        fetchInternalCandidatesFn: async () => [],
+      });
+      return result.products.map((product) => product.external_seed_id).sort();
+    };
+    // The single-token case: only "bind every spelling" reaches both rows here. Keying off the
+    // request's spelling alone loses the unaccented row, keying off the folded alias alone loses
+    // the accented one, and no compacted variant exists to paper over either.
+    expect(await servedFor('Aet\u0101s')).toEqual(['diacritic_aetas', 'diacritic_aetas_plain']);
+    expect(await servedFor('Aetas')).toEqual(['diacritic_aetas_plain']);
+    expect(await servedFor('\u0160koda Care')).toEqual(['diacritic_skoda']);
+    expect(await servedFor('M\u0101ori Botanics')).toEqual(['diacritic_maori']);
+    // A brand the fold table DOES cover is unaffected: one key, one row, no widening.
+    expect(await servedFor('Lancome')).toEqual(['accent_lancome']);
+    expect(await servedFor('Lanc\u00f4me')).toEqual(['accent_lancome']);
+  });
+
+  test('an ASCII brand page is byte-for-byte unchanged by the spelling carry', async () => {
+    // The control. For every brand the Latin-1 fold table covers, the carried spelling and the
+    // folded alias produce the SAME key, so this must add no key, no branch and no row. Without
+    // it, a change that widened every brand page would pass the tests above.
+    const discovery = require('../../src/services/discoveryFeed');
+    for (const brand of ['Mixsoon', 'Round Lab', 'e.l.f.', 'Lanc\u00f4me', 'Dr. Jart+']) {
+      const aliases = discovery._internals.buildBrandScopeAliases([brand]);
+      const spellings = discovery._internals.resolveBrandAliasSpellings(
+        { scope: { brand_names: [brand] } },
+        aliases,
+      );
+      const withSpellings = await runFetcher(aliases, { brandAliasSpellings: spellings });
+      const without = await runFetcher(aliases);
+      expect(primaryCall(withSpellings.calls).sql).toEqual(primaryCall(without.calls).sql);
+      expect(primaryCall(withSpellings.calls).params).toEqual(primaryCall(without.calls).params);
+      expect(withSpellings.products.map((product) => product.external_seed_id))
+        .toEqual(without.products.map((product) => product.external_seed_id));
+    }
+  });
+
+  test('the alias list a brand page probes is not changed by carrying spellings', async () => {
+    // resolveBrandAliasSpellings returns one spelling per alias, in the caller's order, and falls
+    // back to the aliases themselves whenever it cannot reproduce the caller's list — so a caller
+    // whose aliases did not come from the request keeps today's behaviour exactly.
+    const discovery = require('../../src/services/discoveryFeed');
+    const { buildBrandScopeAliases, resolveBrandAliasSpellings } = discovery._internals;
+    const { normalizeBrandText } = require('../../src/findProductsMulti/brandLexicon');
+    for (const brand of ['Se\u00f1ora Skin', 'Mixsoon', 'a\u00b2b Beauty', 'e.l.f.', 'Round Lab']) {
+      const aliases = buildBrandScopeAliases([brand]);
+      const spellings = resolveBrandAliasSpellings({ scope: { brand_names: [brand] } }, aliases);
+      expect(spellings).toHaveLength(aliases.length);
+      expect(spellings.map((value) => normalizeBrandText(value))).toEqual(aliases);
+    }
+    expect(resolveBrandAliasSpellings({ scope: { brand_names: ['Mixsoon'] } }, ['round lab']))
+      .toEqual(['round lab']);
+    expect(resolveBrandAliasSpellings(null, ['se\u00f1ora skin'])).toEqual(['se\u00f1ora skin']);
+  });
+
+  test('two brand names that fold alike do not share one brand-direct cache entry', async () => {
+    // The pool cache keys on the normalized aliases, which are IDENTICAL for these two names, and
+    // the pool it caches is the scan's output, which is not. The production key builder is called
+    // here, not a restatement of it.
+    const discovery = require('../../src/services/discoveryFeed');
+    const { buildBrandScopeAliases, buildBrandDirectPoolCacheKey } = discovery._internals;
+    const accented = 'Se\u00f1ora Skin';
+    const plain = 'Senora Skin';
+    const normalizedAliases = buildBrandScopeAliases([accented]);
+    expect(buildBrandScopeAliases([plain])).toEqual(normalizedAliases);
+    const keyFor = (brandName) => buildBrandDirectPoolCacheKey({
+      request: { surface: 'browse_products', scope: { brand_names: [brandName] } },
+      normalizedAliases,
+      safeLimit: 120,
+    });
+    expect(keyFor(accented)).not.toEqual(keyFor(plain));
+    expect(keyFor(accented)).toEqual(keyFor(accented));
+    expect(keyFor('Mixsoon')).toEqual(keyFor('Mixsoon'));
   });
 
   test('the domain chain reaches the domain only after its own brand paths', async () => {
