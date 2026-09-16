@@ -45,13 +45,51 @@ async function runExternalSeedBrandMainlineFastpath({
         .filter(Boolean),
     ),
   ).slice(0, 8);
+  // Two keys per variant, because normalizeBrandText is NOT the twin of the SQL expression this
+  // is compared against and cannot be made into one without changing every other caller:
+  //   - normalizeBrandText keeps '-' and folds accents to ASCII: "AXIS-Y" -> 'axis-y',
+  //     "Estee Lauder" with the acute -> 'esteelauder'.
+  //   - the SQL '[^a-z0-9]+' drops BOTH: 'axisy' and 'estelauder'.
+  // So the SQL twin is bound ALONGSIDE the existing key, never instead of it: every brand that
+  // matches today still matches, and hyphenated and accented brands start to.
+  //
+  // A twin key under 2 characters is dropped. A brand written in a non-Latin script reduces to
+  // almost nothing under '[^a-z0-9]' ("<katakana> MEAL IT" -> 'mealit', but a script-only brand
+  // can reduce to a single letter), and a one-character key is not an identity — it would equal
+  // unrelated rows that happen to reduce the same way.
+  // One extra key: the RAW query text folded the way the SQL expression folds it. normalizeBrandText
+  // is not the twin of '[^a-z0-9]' and cannot be made into one without changing every other caller
+  // — it KEEPS '-', '&' and '\u00ae', and folds accented letters to ASCII, where the SQL class drops all
+  // of them. So "AXIS-Y" binds 'axis-y' but is stored 'axisy', and "Estee Lauder" with the acute
+  // binds 'esteelauder' but is stored 'estelauder'. The twin is bound ALONGSIDE the existing key,
+  // never instead of it, so no brand that matches today stops matching.
+  //
+  // It is taken from the RAW text, not from the variants: buildBrandQueryVariants (and
+  // detectBrandEntities before it) return values that have ALREADY been through normalizeBrandText,
+  // so the accent is gone before a variant is seen here and twinning a variant recovers nothing a
+  // plain compaction did not already give. Measured over the prod brands that differ under the two
+  // folds, twinning the variants added no key that was not already bound or a whole-sentence
+  // compaction matching nothing.
+  //
+  // KNOWN BOUND: this rescues a query that IS the brand name — which is what a brand page sends.
+  // "Estee Lauder serum" with the acute is not rescued, because the accent is lost inside
+  // detectBrandEntities before any of this runs. Fixing that means carrying the spelling through
+  // the lexicon, which is a change to a shared vocabulary and not this one.
+  //
+  // A twin under 2 characters is dropped: a brand written in a non-Latin script reduces to almost
+  // nothing under '[^a-z0-9]', and a one-character key is not an identity — bound, it would equal
+  // every unrelated row that reduces the same way.
+  const sqlBrandKeyTwin = (value) => String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+  const rawQueryBrandKey = sqlBrandKeyTwin(relevanceQueryText);
   const exactBrandCompactVariants = Array.from(
     new Set(
-      buildBrandQueryVariants(relevanceQueryText, brandTerms)
-        .map((value) => normalizeBrandText(value).replace(/\s+/g, ''))
-        .filter(Boolean),
+      [
+        ...buildBrandQueryVariants(relevanceQueryText, brandTerms)
+          .map((value) => normalizeBrandText(value).replace(/\s+/g, '')),
+        rawQueryBrandKey.length >= 2 ? rawQueryBrandKey : '',
+      ].filter(Boolean),
     ),
-  ).slice(0, 8);
+  ).slice(0, 9);
   const queryPatterns = Array.from(
     new Set(queryVariants.map((value) => `%${value}%`).filter(Boolean)),
   ).slice(0, 12);
@@ -67,19 +105,30 @@ async function runExternalSeedBrandMainlineFastpath({
     ? `AND coalesce(lower(availability), '') NOT IN ('out of stock', 'out_of_stock', 'outofstock', 'oos')`
     : '';
   const attachedFilter = 'AND attached_product_key IS NOT NULL';
+  // lower() wraps the COALESCE, not the regexp_replace. The other order filters before it
+  // case-folds, and 'A-Z' is not in '[^a-z0-9]', so every capital letter is DELETED:
+  // lower(regexp_replace('Fenty Beauty', '[^a-z0-9]+', '', 'g')) is 'entyeauty', not
+  // 'fentybeauty'. The bound key comes from normalizeBrandText, which lowercases first, so the
+  // exact arm could only ever match a brand stored entirely in lower case. Measured on prod
+  // 2026-09-16: 10,283 of 11,817 attached active seeds carry a capital, and replaying the 59
+  // largest brand pages matched 1,311 rows this way against 7,916 with the order below.
+  //
+  // The index definitions in migrations 031/032 carry the broken spelling, so this expression no
+  // longer matches them — which costs nothing here: both are partial on `attached_product_key
+  // IS NULL` while this query requires IS NOT NULL, so neither could ever serve it.
   const brandMatchExpr = `
-    lower(
-      regexp_replace(
+    regexp_replace(
+      lower(
         coalesce(
           seed_data->>'brand',
           seed_data->'snapshot'->>'brand',
           split_part(domain, '.', 1),
           ''
-        ),
-        '[^a-z0-9]+',
-        '',
-        'g'
-      )
+        )
+      ),
+      '[^a-z0-9]+',
+      '',
+      'g'
     )
   `;
   const servingEligibleSeedExistsClause = `
