@@ -18296,8 +18296,23 @@ function productMatchesSearchQualityBrand(product = {}, brand = null, candidateT
   const compactText = text.replace(/\s+/g, '');
   const matches = (needle) => {
     if (!needle) return false;
-    if (productBrand) return productBrand.includes(needle) || needle.includes(productBrand);
     const compactNeedle = needle.replace(/\s+/g, '');
+    if (productBrand) {
+      // A brand written solid in the catalogue (JUNGSAEMMOOL) and spaced in the contract
+      // (jung saem mool) is ONE brand, but neither string contains the other, so containment
+      // alone answers false and every row of that brand is rejected brand_mismatch.
+      // Compare the space-stripped forms as well.
+      //
+      // EQUALITY, not containment, deliberately: a compacted needle tested for containment
+      // could match inside an unrelated solid brand string, which would widen the gate into
+      // admitting a different brand. Equality only ever says "same letters, different spacing".
+      const compactProductBrand = productBrand.replace(/\s+/g, '');
+      return (
+        productBrand.includes(needle) ||
+        needle.includes(productBrand) ||
+        Boolean(compactNeedle && compactProductBrand && compactNeedle === compactProductBrand)
+      );
+    }
     return Boolean(
       text.includes(needle) ||
         (compactNeedle && compactText.includes(compactNeedle))
