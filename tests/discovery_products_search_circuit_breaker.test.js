@@ -1,7 +1,10 @@
 const nock = require('nock');
 const logger = require('../src/logger');
 const { buildDiscoveryProfile, getDiscoveryFeed, _internals } = require('../src/services/discoveryFeed');
-const { resetDiscoveryMetricsForTest } = require('../src/observability/discoveryMetrics');
+const {
+  renderDiscoveryMetricsPrometheus,
+  resetDiscoveryMetricsForTest,
+} = require('../src/observability/discoveryMetrics');
 
 const BASE_URL = 'http://discovery-catalog.test';
 const ENV_KEYS = [
@@ -55,7 +58,11 @@ function interceptSearch(respond) {
 const flush = () => new Promise((resolve) => setImmediate(resolve));
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 async function waitFor(predicate) {
-  for (let i = 0; i < 100 && !predicate(); i += 1) await sleep(5);
+  for (let i = 0; i < 200; i += 1) {
+    if (predicate()) return;
+    await sleep(5);
+  }
+  throw new Error('waitFor: condition not met within 1s');
 }
 
 describe('products_search circuit breaker', () => {
@@ -80,6 +87,7 @@ describe('products_search circuit breaker', () => {
     clock = 1_000_000;
     jest.spyOn(Date, 'now').mockImplementation(() => clock);
     jest.spyOn(logger, 'warn').mockImplementation(() => {});
+    jest.spyOn(logger, 'info').mockImplementation(() => {});
   });
 
   afterEach(() => {
@@ -303,6 +311,153 @@ describe('products_search circuit breaker', () => {
     expect(skipped.recallSummary[0]).toEqual(expect.objectContaining({ skip_reason: 'circuit_open' }));
   });
 
+  test('opening logs a warning, closing logs info, and skips are counted in recall metrics', async () => {
+    let failing = true;
+    interceptSearch(() => (failing ? [503, {}] : [200, { products: [] }]));
+    for (let i = 0; i < 3; i += 1) await load();
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ probe: false, failure_reason: 'http_5xx', consecutive_failures: 3, cooldown_ms: 60000 }),
+      'discovery products_search circuit open',
+    );
+    await load();
+    await load();
+    const metrics = renderDiscoveryMetricsPrometheus();
+    expect(metrics).toMatch(/discovery_feed_recall_requests_total\{[^}]*status="circuit_open"[^}]*\} 2/);
+
+    failing = false;
+    clock += 60000;
+    await load();
+    await waitFor(() => !_internals.getProductsSearchBreakerState().probe_inflight);
+    expect(logger.info).toHaveBeenCalledWith({ probe: true }, 'discovery products_search circuit closed');
+  });
+
+  test('a 4xx about the query neither counts as a failure nor clears the count; 401 and 403 count', async () => {
+    const answers = [503, 503, 404, 400, 422, 503];
+    const calls = interceptSearch((n) => [answers[n - 1] || 401, {}]);
+    for (let i = 0; i < 5; i += 1) await load();
+    expect(_internals.getProductsSearchBreakerState()).toEqual(
+      expect.objectContaining({ open: false, consecutive_failures: 2 }),
+    );
+    await load(); // third 503
+    expect(_internals.getProductsSearchBreakerState().open).toBe(true);
+    expect(calls).toHaveLength(6);
+
+    _internals.resetProductsSearchBreaker();
+    nock.cleanAll();
+    const authAnswers = [401, 403, 401];
+    interceptSearch((n) => [authAnswers[n - 1], {}]);
+    for (let i = 0; i < 3; i += 1) await load();
+    expect(_internals.getProductsSearchBreakerState().open).toBe(true);
+  });
+
+  test('transport errors count as failures', async () => {
+    // A real refused connection: port 1 on loopback has no listener.
+    process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL = 'http://127.0.0.1:1';
+    nock.enableNetConnect('127.0.0.1:1');
+    for (let i = 0; i < 3; i += 1) {
+      const result = await load();
+      expect(result.recallSummary[0]).toEqual(
+        expect.objectContaining({ failure_reason: 'request_error:ECONNREFUSED' }),
+      );
+    }
+    expect(_internals.getProductsSearchBreakerState()).toEqual(
+      expect.objectContaining({ open: true, consecutive_failures: 3 }),
+    );
+  });
+
+  test('five 404s never open the circuit', async () => {
+    const calls = interceptSearch(() => [404, {}]);
+    for (let i = 0; i < 5; i += 1) await load();
+    expect(calls).toHaveLength(5);
+    expect(_internals.getProductsSearchBreakerState()).toEqual(
+      expect.objectContaining({ open: false, consecutive_failures: 0 }),
+    );
+  });
+
+  test('the probe gets the visitor step timeout, so an upstream slower than a visitor would wait stays open', async () => {
+    process.env.DISCOVERY_RECALL_BUDGET_MS = '500'; // visitor step timeout 350ms; provider timeout stays 6500ms
+    let slow = false;
+    const calls = interceptSearch(async () => {
+      if (!slow) return [503, {}];
+      await sleep(700);
+      return [200, { products: [] }];
+    });
+    for (let i = 0; i < 3; i += 1) await load();
+    slow = true;
+
+    clock += 60000;
+    await load();
+    await waitFor(() => calls.length >= 4);
+    await waitFor(() => !_internals.getProductsSearchBreakerState().probe_inflight);
+    expect(_internals.getProductsSearchBreakerState()).toEqual(
+      expect.objectContaining({ open: true, cooldown_ms: 120000 }),
+    );
+    await sleep(400); // let the held reply finish so no handle outlives the test
+  });
+
+  test('a probe answered with a 404 inside the budget closes the circuit', async () => {
+    let down = true;
+    interceptSearch(() => [down ? 503 : 404, {}]);
+    for (let i = 0; i < 3; i += 1) await load();
+    down = false;
+    clock += 60000;
+    await load();
+    await waitFor(() => !_internals.getProductsSearchBreakerState().probe_inflight);
+    expect(_internals.getProductsSearchBreakerState()).toEqual(
+      expect.objectContaining({ open: false, consecutive_failures: 0, cooldown_ms: 0 }),
+    );
+  });
+
+  test('a probe superseded by a real success and a newer probe does not touch the newer cycle', async () => {
+    const gates = {};
+    const script = {}; // call index -> async responder
+    const calls = interceptSearch(async (n) => (script[n] ? script[n]() : [503, {}]));
+    const hold = (n, status) => {
+      const g = deferred();
+      gates[n] = g;
+      script[n] = async () => {
+        await g.promise;
+        return [status, { products: [] }];
+      };
+    };
+
+    hold(1, 200); // slow request that will succeed late
+    const slowSuccess = load();
+    await waitFor(() => calls.length >= 1);
+    for (let i = 0; i < 3; i += 1) await load(); // calls 2-4 fail: open
+    expect(_internals.getProductsSearchBreakerState().open).toBe(true);
+
+    hold(5, 503); // probe A, held
+    clock += 60000;
+    await load();
+    await waitFor(() => calls.length >= 5);
+
+    gates[1].resolve(); // the real success closes the circuit while probe A is out
+    await slowSuccess;
+    expect(_internals.getProductsSearchBreakerState()).toEqual(
+      expect.objectContaining({ open: false, probe_inflight: false }),
+    );
+
+    for (let i = 0; i < 3; i += 1) await load(); // calls 6-8 fail: open again
+    hold(9, 503); // probe B, held
+    clock += 60000;
+    await load();
+    await waitFor(() => calls.length >= 9);
+    const reopenedUntil = _internals.getProductsSearchBreakerState().open_until;
+
+    gates[5].resolve(); // stale probe A fails now
+    await sleep(30);
+    expect(_internals.getProductsSearchBreakerState()).toEqual(
+      expect.objectContaining({ open: true, probe_inflight: true, cooldown_ms: 60000, open_until: reopenedUntil }),
+    );
+
+    gates[9].resolve(); // probe B's verdict is the one that counts
+    await waitFor(() => !_internals.getProductsSearchBreakerState().probe_inflight);
+    expect(_internals.getProductsSearchBreakerState()).toEqual(
+      expect.objectContaining({ open: true, cooldown_ms: 120000 }),
+    );
+  });
+
   test('the feed reports the provider as skipped with circuit_open and makes no upstream call', async () => {
     process.env.DISCOVERY_PRODUCTS_SEARCH_MAX_CALLS = '1';
     const calls = interceptSearch(() => [503, { error: 'backend unavailable' }]);
@@ -331,6 +486,7 @@ describe('products_search circuit breaker', () => {
           successful: false,
           skipped: true,
           skip_reason: 'circuit_open',
+          failure_reason: 'circuit_open',
           latency_ms: 0,
         }),
       ]),

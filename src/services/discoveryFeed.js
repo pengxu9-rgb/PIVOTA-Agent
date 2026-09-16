@@ -4425,18 +4425,35 @@ function isProductsSearchBreakerOpen() {
   return getProductsSearchBreakerFailureThreshold() > 0 && productsSearchBreaker.cooldownMs > 0;
 }
 
-function recordProductsSearchOutcome(success, { probe = false } = {}) {
-  if (success) {
+// Only answers that say the upstream is down or unusable count against it: a timeout, a transport error,
+// a 5xx, or a 401/403 (misconfigured key). A 400/404/422 is about the query, so it neither counts nor
+// clears the count, except on the probe, where any answer inside the budget proves the upstream is back.
+const PRODUCTS_SEARCH_BREAKER_FAILURE_REASONS = new Set(['timeout', 'http_5xx', 'http_401', 'http_403']);
+
+function classifyProductsSearchOutcome(result) {
+  if (result?.success === true) return 'success';
+  const reason = String(result?.summary?.failure_reason || '');
+  if (PRODUCTS_SEARCH_BREAKER_FAILURE_REASONS.has(reason) || reason.startsWith('request_error:')) {
+    return 'failure';
+  }
+  return 'neutral';
+}
+
+function recordProductsSearchOutcome(outcome, { probe = false, failureReason = null } = {}) {
+  const wasOpen = productsSearchBreaker.cooldownMs > 0;
+  if (outcome === 'success' || (probe && outcome === 'neutral')) {
     resetProductsSearchBreaker();
+    if (wasOpen) logger.info({ probe }, 'discovery products_search circuit closed');
     return;
   }
+  if (outcome !== 'failure') return;
   const threshold = getProductsSearchBreakerFailureThreshold();
   if (threshold <= 0) return;
   // A call that was already in flight when the circuit opened must not stretch the cooldown; only the
   // probe's verdict does.
-  if (productsSearchBreaker.cooldownMs > 0 && !probe) return;
+  if (wasOpen && !probe) return;
   productsSearchBreaker.consecutiveFailures += 1;
-  if (productsSearchBreaker.cooldownMs > 0) {
+  if (wasOpen) {
     productsSearchBreaker.cooldownMs = Math.min(
       productsSearchBreaker.cooldownMs * 2,
       Math.max(getProductsSearchBreakerMaxCooldownMs(), getProductsSearchBreakerCooldownMs()),
@@ -4447,23 +4464,38 @@ function recordProductsSearchOutcome(success, { probe = false } = {}) {
     return;
   }
   productsSearchBreaker.openUntil = Date.now() + productsSearchBreaker.cooldownMs;
+  logger.warn(
+    {
+      probe,
+      failure_reason: failureReason,
+      consecutive_failures: productsSearchBreaker.consecutiveFailures,
+      cooldown_ms: productsSearchBreaker.cooldownMs,
+    },
+    'discovery products_search circuit open',
+  );
+}
+
+function recordProductsSearchResult(result, { probe = false } = {}) {
+  recordProductsSearchOutcome(classifyProductsSearchOutcome(result), {
+    probe,
+    failureReason: result?.summary?.failure_reason || null,
+  });
 }
 
 function maybeStartProductsSearchProbe({ baseUrl, request, step, requestHeaders }) {
   if (productsSearchBreaker.probe || Date.now() < productsSearchBreaker.openUntil) return;
-  productsSearchBreaker.probe = fetchDiscoveryRecallStep({
-    baseUrl,
-    request,
-    step,
-    requestHeaders,
-    timeoutMs: getDiscoveryProductsSearchTimeoutMs(),
-  })
-    .then((result) => result?.success === true)
-    .catch(() => false)
-    .then((success) => {
+  // The probe gets the same step timeout a visitor would: an upstream that only answers after a visitor
+  // has given up is still down.
+  const timeoutMs = computeDiscoveryStepTimeoutMs(getDiscoveryRecallBudgetMs(), getDiscoveryProductsSearchTimeoutMs());
+  const probe = fetchDiscoveryRecallStep({ baseUrl, request, step, requestHeaders, timeoutMs })
+    .catch((err) => ({ success: false, summary: { failure_reason: `request_error:${err?.code || 'unknown'}` } }))
+    .then((result) => {
+      // A real success may have closed the circuit, and a new probe replaced this one, while it was out.
+      if (productsSearchBreaker.probe !== probe) return;
       productsSearchBreaker.probe = null;
-      recordProductsSearchOutcome(success, { probe: true });
+      recordProductsSearchResult(result, { probe: true });
     });
+  productsSearchBreaker.probe = probe;
 }
 
 async function loadProductsSearchCandidates({ request, profile, limit = MAX_CANDIDATE_FETCH } = {}) {
@@ -4562,6 +4594,13 @@ async function loadProductsSearchCandidates({ request, profile, limit = MAX_CAND
     if (recallPlan[0]) {
       maybeStartProductsSearchProbe({ baseUrl, request, step: recallPlan[0], requestHeaders });
     }
+    recordDiscoveryRecallStep({
+      surface: request?.surface,
+      step: 'products_search_pool',
+      status: 'circuit_open',
+      latencyMs: 0,
+      cacheHit: false,
+    });
     return {
       products: [],
       recallSummary: [
@@ -4637,7 +4676,7 @@ async function loadProductsSearchCandidates({ request, profile, limit = MAX_CAND
 
     for (const result of stepResults) {
       recallSummary.push(result.summary);
-      recordProductsSearchOutcome(result.success);
+      recordProductsSearchResult(result);
       if (!result.success) continue;
       successCount += 1;
       mergeProducts(result.products);
@@ -4684,7 +4723,7 @@ async function loadProductsSearchCandidates({ request, profile, limit = MAX_CAND
       timeoutMs: stepTimeoutMs,
     });
     recallSummary.push(result.summary);
-    recordProductsSearchOutcome(result.success);
+    recordProductsSearchResult(result);
 
     if (!result.success) continue;
 
@@ -7212,7 +7251,7 @@ function buildProviderBreakdown(results = []) {
     const stepFailureReason =
       recallSummary.find((step) => typeof step?.failure_reason === 'string')?.failure_reason || null;
     const skipReasonAsFailure =
-      ['missing_database', 'schema_missing', 'query_error', 'budget_truncated'].includes(skipReason)
+      ['missing_database', 'schema_missing', 'query_error', 'budget_truncated', 'circuit_open'].includes(skipReason)
         ? skipReason
         : null;
     const failureReason = successfulSteps.length > 0
