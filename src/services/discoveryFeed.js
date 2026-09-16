@@ -63,6 +63,14 @@ const {
   _internals: productGroundingResolverInternals = {},
 } = require('./productGroundingResolver');
 const { activeProductsCacheSourceWhere } = require('./activeCatalogSourceSql');
+const { brandIdentityKey } = require('./canonicalSearchQualitySql');
+const {
+  brandSeedScanPredicateSql,
+  likePrefixPattern,
+  seedBrandIdentitySql,
+  seedDomainIdentitySql,
+  seedTitleSql,
+} = require('./brandSeedScanSql');
 const { transactionCapableMerchantWhere } = require('./merchantTransactionCapabilitySql');
 const {
   fetchRelationshipGraphRecallForAnchors,
@@ -8797,23 +8805,52 @@ async function fetchBrandScopedExternalSeedCandidates({
   failures = null,
 } = {}) {
   if (!process.env.DATABASE_URL) return [];
-  const normalizedAliases = uniqStrings(
-    brandAliases.map((alias) => normalizeBrandText(alias)).filter(Boolean),
-    16,
-  );
+  // ONE capped pass over the caller's aliases feeds both lanes: the title lane matches
+  // the spaced normalization, the brand lanes the identity key. Capping the two lists
+  // separately let the lanes probe different alias sets past the cap. The raw alias is
+  // carried because the identity key must be computed from it — see below.
+  const keptAliases = [];
+  const seenSpaced = new Set();
+  for (const alias of brandAliases) {
+    const spaced = normalizeBrandText(alias);
+    if (!spaced || seenSpaced.has(spaced)) continue;
+    seenSpaced.add(spaced);
+    keptAliases.push({ raw: alias, spaced });
+    if (keptAliases.length >= 16) break;
+  }
+  const normalizedAliases = keptAliases.map((entry) => entry.spaced);
   if (!normalizedAliases.length) return [];
-  const brandPrefixAliases = uniqStrings(
-    normalizedAliases.filter((alias) => alias.length >= 4),
-    16,
-  );
-  const brandPrefixPatterns = uniqStrings(
-    brandPrefixAliases.map((alias) => `${alias}%`),
-    16,
-  );
-  const compactAliases = uniqStrings(
-    normalizedAliases.map((alias) => compactBrandToken(alias)).filter(Boolean),
-    16,
-  );
+  // Brand identity keys (accent-folded, alphanumerics only) — the SAME value the
+  // brand-identity indexes store, so equality and prefix are both index lookups.
+  // The key comes from the RAW alias, never the spaced form: normalizeBrandText folds
+  // EVERY combining diacritic (NFKD), while the SQL identity's translate() folds only
+  // the Latin-1 table. Keying off the spaced form bound 'senoraskin' against an indexed
+  // 'señoraskin', and those brand pages returned nothing. brandIdentityKey is the twin
+  // of the SQL expression, so it must be fed what the SQL is fed.
+  // The >= 4 floor reads the SPACED normalization: "e.l.f." is "e l f" (5) and keeps
+  // its prefix arm, where the compacted identity "elf" (3) would silently lose it.
+  // Aliases that collide on one identity key are OR'd, never first-wins: ["elf",
+  // "e.l.f."] both key to 'elf', and taking `prefixable` from whichever came first
+  // dropped the prefix arm and with it every row the old predicate matched by prefix.
+  // KNOWN LIMITATION, unchanged from the predicate this replaces: a brand whose diacritic
+  // is outside the SQL identity's Latin-1 translate table (Señora, Škoda, Māori), or that
+  // carries a compatibility numeral (a²b), is unreachable. brandIdentityKey is an exact
+  // twin of the SQL expression, but BOTH layers above this function —
+  // buildBrandScopeAliases and computeBrandScopedDirectCandidates — already ran
+  // normalizeBrandText, whose NFKD pass folds every combining mark, so `raw` here is
+  // spelled 'senora' while the row indexes as 'señora'. Main missed those rows too (its
+  // regexp turned ñ into a separator), so this is not a regression and not this change's
+  // job: fixing it means carrying the unnormalized brand name through both layers, which
+  // is a change to the shared alias pipeline. The scan's real reach is pinned by the
+  // production-path test rather than described here.
+  const prefixableByKey = new Map();
+  for (const { raw, spaced } of keptAliases) {
+    const key = brandIdentityKey(raw);
+    if (!key) continue;
+    prefixableByKey.set(key, (prefixableByKey.get(key) || false) || spaced.length >= 4);
+  }
+  const identityAliases = [...prefixableByKey.keys()];
+  const identityPrefixAliases = identityAliases.filter((key) => prefixableByKey.get(key));
 
   const safeLimit = clampInt(limit, Math.max(limit, 120), 24, 500);
   const market = brandScopedExternalSeedMarket();
@@ -8854,64 +8891,130 @@ async function fetchBrandScopedExternalSeedCandidates({
       cp.canonical_url        AS pivota_canonical_url,
       cp.title                AS catalog_title
     `;
-    const normalizedBrandSql = `trim(regexp_replace(${epsBrandFieldSql}, '[^a-z0-9]+', ' ', 'g'))`;
-    const compactBrandSql = `regexp_replace(${epsBrandFieldSql}, '[^a-z0-9]+', '', 'g')`;
     // Brand-scoped public cards must point at a PDP that the serving contract
     // accepts, so external seeds are resolved through attached_product_key.
-    const indexedBrandSql = `lower(regexp_replace(coalesce(eps.seed_data->>'brand', eps.seed_data->'snapshot'->>'brand', split_part(eps.domain, '.', 1), ''), '[^a-z0-9]+', '', 'g'))`;
     const orderClause = orderByRecency
       ? 'ORDER BY eps.updated_at DESC NULLS LAST, eps.created_at DESC NULLS LAST'
       : '';
-    const brandMatchSql = `(
-        ${epsBrandFieldSql} = ANY($3::text[])
-        OR ${epsBrandFieldSql} LIKE ANY($4::text[])
-        OR ${normalizedBrandSql} = ANY($3::text[])
-        OR ${normalizedBrandSql} LIKE ANY($4::text[])
-        OR ${compactBrandSql} = ANY($6::text[])
-        OR ${indexedBrandSql} = ANY($6::text[])
-      )`;
     if (!includeAttached) return [];
-    // Primary query — attached seeds with canonical fields. The old unattached
-    // partial-index path could expose ext_* or stale sig_* routes that PDP
-    // rejects, so public brand recall now requires the serving catalog join.
-    const attachedHeadRes = await query(
-      `
+    // Every bind is pushed at the moment its text is added, so a clause that is
+    // skipped can never leave an unreferenced parameter behind (42P18 kills the
+    // whole statement, see #2207).
+    const headParams = [market, tool];
+    const headBind = (value) => {
+      headParams.push(value);
+      return `$${headParams.length}`;
+    };
+    const scanScopeSql = `${brandSeedScanPredicateSql('eps')}
+            AND eps.market = $1
+            AND (eps.tool = '*' OR eps.tool = $2)`;
+    // Each alias probe is its OWN branch of a UNION, not another OR'd filter on
+    // one scan. An OR chain makes PostgreSQL re-evaluate the 10-path JSONB
+    // identity once per clause per row, so cost grows with alias count and the
+    // planner abandons the index entirely past ~6 clauses — measured at 5.4-11.7x
+    // SLOWER than the predicate this replaces. As UNION branches each probe is a
+    // single comparison the index answers on its own, and the outer query then
+    // touches only the ids that matched.
+    const branch = (identitySql, clause) => `
+          SELECT eps.id
+          FROM external_product_seeds eps
+          WHERE ${scanScopeSql}
+            AND ${identitySql} ${clause}`;
+    // An alias with a prefix arm needs no equality arm: `alias%` already matches
+    // `alias` exactly, so binding both doubled the branch work for nothing.
+    const equalityOnlyAliases = identityAliases.filter((alias) => !identityPrefixAliases.includes(alias));
+    const brandBranches = [];
+    if (identityAliases.length && equalityOnlyAliases.length) {
+      brandBranches.push(branch(seedBrandIdentitySql('eps'), `= ANY(${headBind(equalityOnlyAliases)}::text[])`));
+    }
+    for (const alias of identityPrefixAliases) {
+      brandBranches.push(branch(seedBrandIdentitySql('eps'), `LIKE ${headBind(likePrefixPattern(alias))}`));
+    }
+    // The domain chain is EQUALITY ONLY. The predicate this replaces compared it with
+    // `= ANY($6)` and never prefix-matched it, and a prefix over a domain-derived brand
+    // pulls in unrelated merchants: "mixsoon" would reach mixsoonish-teashop.com, "rare"
+    // would reach rareearthminerals.com. Widening brand pages is not this PR's business.
+    if (identityAliases.length) {
+      brandBranches.push(branch(seedDomainIdentitySql('eps'), `= ANY(${headBind(identityAliases)}::text[])`));
+    }
+    // Candidate ids are resolved in their OWN statement, then the rows are fetched
+    // by primary key. Keeping the union as a CTE of the fetch made the outer query
+    // seq-scan the table again from 8 branches on: PostgreSQL estimates a
+    // parameterized LIKE / `= ANY` over an expression index at ~16% of the table
+    // (3,192 of 20,320 rows measured) where it returns ~17, so it hash-joined
+    // against a full scan instead of probing the key. An id list takes that
+    // estimate out of the decision — every row fetch is a pkey lookup.
+    //
+    // The old unattached partial-index path could expose ext_* or stale sig_*
+    // routes that PDP rejects, so public brand recall still requires the serving
+    // catalog join — and that join still runs AFTER the probe, so LIMIT applies to
+    // rows that passed the trust gate, exactly as before, not to candidates.
+    const fetchByIdSql = `
         SELECT ${attachedSelectColumns}
         FROM external_product_seeds eps
         JOIN catalog_products cp ON cp.product_key = eps.attached_product_key
         ${buildDiscoveryCatalogServingGateJoinSql('cp')}
-        WHERE eps.status = 'active'
-          AND eps.attached_product_key IS NOT NULL
-          AND eps.market = $1
-          AND (eps.tool = '*' OR eps.tool = $2)
-          AND ${brandMatchSql}
+        WHERE eps.id = ANY($1::text[])
         ${orderClause}
-        LIMIT $5
-      `,
-      [market, tool, normalizedAliases, brandPrefixPatterns, safeLimit, compactAliases],
+        LIMIT $2
+      `;
+    // The candidate list is deliberately UNBOUNDED. Binding it back as an id array is what makes the
+    // fetch a key probe instead of a re-planned semi-join, and that array is also what puts a cliff at
+    // the far end: the measured crossover where this shape stops beating the predicate it replaces is
+    // ~13,000 candidates, with the array cost dominating from ~25,000. Prod's ENTIRE attached-seed
+    // population is 11,817 rows and the largest brand page probes 784, so neither is reachable.
+    // Do not add a cap here: a cap truncates BEFORE the fetch's ORDER BY, so it would drop the newest
+    // rows rather than the ones the ranking would have dropped.
+    const idsOf = (res) => uniqStrings(
+      (Array.isArray(res?.rows) ? res.rows : []).map((row) => String(row?.id || '').trim()).filter(Boolean),
+      Number.MAX_SAFE_INTEGER,
     );
-    const rows = Array.isArray(attachedHeadRes?.rows) ? [...attachedHeadRes.rows] : [];
+    let rows = [];
+    if (identityAliases.length) {
+      const brandIdsSql = `
+        WITH brand_seed_ids AS (
+          ${brandBranches.join('\n          UNION')}
+        )
+        SELECT id FROM brand_seed_ids
+      `;
+      const brandIds = idsOf(await query(brandIdsSql, headParams));
+      if (brandIds.length) {
+        const headRes = await query(fetchByIdSql, [brandIds, safeLimit]);
+        rows = Array.isArray(headRes?.rows) ? [...headRes.rows] : [];
+      }
+    }
     if (rows.length < safeLimit) {
-      const titleRes = await query(
-        `
-          SELECT ${attachedSelectColumns}
-          FROM external_product_seeds eps
-          JOIN catalog_products cp ON cp.product_key = eps.attached_product_key
-          ${buildDiscoveryCatalogServingGateJoinSql('cp')}
-          WHERE eps.status = 'active'
-            AND eps.attached_product_key IS NOT NULL
-            AND eps.market = $1
-            AND (eps.tool = '*' OR eps.tool = $2)
-            AND EXISTS (
-              SELECT 1
-              FROM unnest($3::text[]) AS alias
-              WHERE lower(coalesce(eps.seed_data->'snapshot'->>'title', eps.seed_data->>'title', eps.title, '')) LIKE alias || ' %'
-            )
-          ${orderClause}
-          LIMIT $4
-        `,
-        [market, tool, normalizedAliases, Math.max(0, safeLimit - rows.length)],
-      );
+      // Same match as the EXISTS/unnest form this replaces — a title that starts
+      // with an alias followed by a space — but each alias is its own UNION branch,
+      // so idx_external_seeds_attached_title_prefix_v1 answers each one instead of
+      // the title expression being evaluated for every attached seed.
+      // likePrefixPattern escapes % and _: "100% PURE" is a real brand, and an
+      // unescaped % matched everything AND defeated the index's prefix scan.
+      const titleParams = [market, tool];
+      const titleBind = (value) => {
+        titleParams.push(value);
+        return `$${titleParams.length}`;
+      };
+      const titleSql = seedTitleSql('eps');
+      const titleBranches = normalizedAliases.map((alias) => `
+            SELECT eps.id
+            FROM external_product_seeds eps
+            WHERE ${brandSeedScanPredicateSql('eps')}
+              AND eps.market = $1
+              AND (eps.tool = '*' OR eps.tool = $2)
+              AND ${titleSql} LIKE ${titleBind(likePrefixPattern(alias, ' '))}`);
+      // Two statements for the same reason as the brand lane: an id probe cannot be
+      // mis-planned, a semi-join against an estimated CTE can.
+      const titleIdsSql = `
+          WITH title_seed_ids AS (
+            ${titleBranches.join('\n            UNION')}
+          )
+          SELECT id FROM title_seed_ids
+        `;
+      const titleIds = idsOf(await query(titleIdsSql, titleParams));
+      const titleRes = titleIds.length
+        ? await query(fetchByIdSql, [titleIds, Math.max(0, safeLimit - rows.length)])
+        : null;
       const seenIds = new Set(rows.map((row) => String(row?.id || '').trim()).filter(Boolean));
       for (const row of Array.isArray(titleRes?.rows) ? titleRes.rows : []) {
         const id = String(row?.id || '').trim();

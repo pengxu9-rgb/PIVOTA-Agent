@@ -2116,10 +2116,33 @@ describe('discovery feed service', () => {
     const dbQueryMock = jest.fn(async (sql, params) => {
       const text = String(sql || '');
       if (text.includes('FROM external_product_seeds')) {
-        if (text.includes('EXISTS')) return { rows: [] };
-        expect(text).toContain('regexp_replace');
-        expect(params[2]).toEqual(expect.arrayContaining(['la roche posay']));
-        expect(params[5]).toEqual(expect.arrayContaining(['larocheposay']));
+        // The backfill lane's candidate-id statement, identified by the title expression it matches
+        // on. It used to be identified by its EXISTS/unnest subquery, which the indexed rewrite
+        // replaced with one LIKE per alias; that lane still binds the space-separated normalized
+        // alias.
+        if (text.includes('title_seed_ids')) {
+          expect(params[2]).toBe('la roche posay %');
+          return { rows: [] };
+        }
+        // The brand lane's candidate-id statement. It binds brand IDENTITY keys (accent-folded,
+        // alphanumerics only) — the same value the brand-identity index stores — for both the
+        // equality and the prefix arm. The old $3 normalized-alias / $4 prefix-pattern / $6
+        // compact-alias triple is gone.
+        if (text.includes('brand_seed_ids')) {
+          expect(text).toContain('regexp_replace');
+          // "la roche posay" is 14 spaced characters, so it gets a PREFIX arm on the brand chain and
+          // therefore no equality arm there — `larocheposay%` already matches `larocheposay`. $3 is
+          // that pattern; $4 is the domain chain's identity array, which is equality only.
+          expect(params[2]).toBe('larocheposay%');
+          expect(params[3]).toEqual(expect.arrayContaining(['larocheposay']));
+          expect(text).toContain('= ANY($4::text[])');
+          expect(text).not.toMatch(/LIKE ANY\(/);
+          return { rows: [{ id: 'eps_lrp_anthelios' }] };
+        }
+        // The by-key fetch, which carries the serving gate and is bound only to the ids the
+        // candidate statement returned.
+        expect(text).toContain('eps.id = ANY($1::text[])');
+        expect(params[0]).toEqual(['eps_lrp_anthelios']);
         return {
           rows: [
             {

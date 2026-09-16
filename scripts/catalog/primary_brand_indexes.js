@@ -1,15 +1,35 @@
 'use strict';
 const {normalizedBrandIdentitySql,CANONICAL_OWN_BRAND_SQL}=require('../../src/services/canonicalSearchQualitySql');
 const {SEED_OWN_BRAND_SQL}=require('../../src/services/seedSearchOfferScope');
+const {BRAND_SEED_SCAN_PREDICATE,seedBrandIdentitySql,seedDomainIdentitySql,seedTitleSql}=require('../../src/services/brandSeedScanSql');
 
 function primaryBrandIndexDefinitions() {
   const canonical=normalizedBrandIdentitySql(CANONICAL_OWN_BRAND_SQL.replace(/\bp\./g,''));
   const seed=normalizedBrandIdentitySql(SEED_OWN_BRAND_SQL);
   return [
-    {name:'idx_catalog_products_primary_brand_md5_v1',table:'catalog_products',expression:`md5(${canonical})`,predicate:null},
-    {name:'idx_external_seeds_primary_brand_md5_v1',table:'external_product_seeds',expression:`md5(${seed})`,
+    {name:'idx_catalog_products_primary_brand_md5_v1',table:'catalog_products',expression:`md5(${canonical})`,accelerates:'md5_equality',predicate:null},
+    {name:'idx_external_seeds_primary_brand_md5_v1',table:'external_product_seeds',expression:`md5(${seed})`,accelerates:'md5_equality',
       predicate:"status = 'active' AND coalesce(attached_product_key, '') <> ''"},
-  ].map(index=>({...index,sql:`CREATE INDEX CONCURRENTLY ${index.name} ON ${index.table} (${index.table==='external_product_seeds'?'market, tool, ':''}(${index.expression}))${index.predicate?' WHERE '+index.predicate:''};`}));
+    // The brand-page seed scan (discoveryFeed's fetchBrandScopedExternalSeedCandidates)
+    // needs equality AND prefix on the same identity, so it indexes that identity as
+    // text with text_pattern_ops; the md5 index above can only answer equality.
+    // No recency columns: every observed plan sorts anyway (a UNION of branches
+    // cannot return index order), so they only made the index ~9x larger.
+    {name:'idx_external_seeds_brand_identity_prefix_v1',table:'external_product_seeds',
+      expression:seedBrandIdentitySql(),accelerates:'identity_prefix',opclass:'text_pattern_ops',predicate:BRAND_SEED_SCAN_PREDICATE},
+    // The scan probes a SECOND chain (brand, snapshot.brand, domain), which the
+    // retired predicate ORed in — a seed can be named by its brand AND its domain.
+    {name:'idx_external_seeds_brand_domain_identity_prefix_v1',table:'external_product_seeds',
+      expression:seedDomainIdentitySql(),accelerates:'identity_prefix',opclass:'text_pattern_ops',predicate:BRAND_SEED_SCAN_PREDICATE},
+    // The same scan's underfill backfill matches title LIKE 'alias %'.
+    {name:'idx_external_seeds_attached_title_prefix_v1',table:'external_product_seeds',
+      expression:seedTitleSql(),accelerates:'title_prefix',opclass:'text_pattern_ops',predicate:BRAND_SEED_SCAN_PREDICATE},
+  ].map(index=>{
+    const scoped=index.table==='external_product_seeds'?'market, tool, ':'';
+    const key=`(${index.expression})${index.opclass?' '+index.opclass:''}`;
+    const recency=index.recency?', updated_at DESC NULLS LAST, created_at DESC NULLS LAST':'';
+    return {...index,sql:`CREATE INDEX CONCURRENTLY ${index.name} ON ${index.table} (${scoped}${key}${recency})${index.predicate?' WHERE '+index.predicate:''};`};
+  });
 }
 function readinessSql() {
   const names=primaryBrandIndexDefinitions().map(index=>`'${index.name}'`).join(',');

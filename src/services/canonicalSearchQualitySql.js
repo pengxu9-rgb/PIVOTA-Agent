@@ -39,6 +39,29 @@ function normalizedBrandIdentitySql(expression) {
   return `regexp_replace(${identitySql(expression)}, ' ', '', 'g')`;
 }
 
+const IDENTITY_ACCENTED = 'ÀÁÂÃÄÅÈÉÊËÌÍÎÏÒÓÔÕÖÙÚÛÜÝàáâãäåèéêëìíîïòóôõöùúûüýÿ';
+const IDENTITY_FOLDED = 'AAAAAAEEEEIIIIOOOOOUUUUYaaaaaaeeeeiiiiooooouuuuyy';
+// JS twin of normalizedBrandIdentitySql, for callers that bind an alias against
+// the indexed row identity. identityValue() above deliberately does NOT fold
+// accents (buildBrandIdentityPredicate leans on reviewed aliases for those
+// spellings), but the SQL translate() does — so a key bound for equality or a
+// prefix must fold too, or "Lancôme" could never equal the indexed "lancome".
+function brandIdentityKey(value) {
+  // NFC first: a decomposed "n" + U+0303 would lose its combining mark to the
+  // non-alphanumeric strip below and key as "senora", while PostgreSQL keeps the
+  // mark and stores "señora" — the two sides must agree character for character.
+  const folded = Array.from(String(value || '').normalize('NFC').replace(/[·•]/g, ''))
+    .map((character) => {
+      const at = IDENTITY_ACCENTED.indexOf(character);
+      return at === -1 ? character : IDENTITY_FOLDED[at];
+    })
+    .join('');
+  // PostgreSQL's [:alnum:] keeps letters and DECIMAL digits and drops everything else,
+  // including combining marks and compatibility numerals: 'a²b' indexes as 'ab', not 'a²b'.
+  // \p{N} would keep ², ½ and Ⅻ and bind a key no row can carry.
+  return folded.toLowerCase().replace(/[^\p{L}\p{Nd}]+/gu, '');
+}
+
 function buildBrandIdentityPredicate(brand, expression, params) {
   const terms = [...(reviewedAliases[brand.brand_key] || []), brand.canonical, brand.brand, brand.alias]
     .flatMap(value => [value, String(value || '').replace(/\b(?:beauty|cosmetics?)\b/gi, '')])
@@ -120,4 +143,4 @@ function buildCanonicalSearchQualitySql({ contract, params, categoryPredicate, d
   }
   return { where: `(${where}) AND $2::text IS NOT NULL`, brandWhere };
 }
-module.exports = { buildCanonicalSearchQualitySql, buildBrandIdentityPredicate, normalizedBrandIdentitySql, CANONICAL_OWN_BRAND_SQL };
+module.exports = { buildCanonicalSearchQualitySql, buildBrandIdentityPredicate, normalizedBrandIdentitySql, brandIdentityKey, CANONICAL_OWN_BRAND_SQL };
