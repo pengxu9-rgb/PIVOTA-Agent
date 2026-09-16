@@ -16333,9 +16333,6 @@ function explicitBeautyLipFormTerms(queryText = '') {
   if (/\blip\s*gloss(?:es)?\b/.test(query)) return ['lip gloss', 'lipgloss'];
   if (/\blip\s*balms?\b/.test(query)) return ['lip balm', 'lipbalm'];
   if (/\blip\s*plumpers?\b/.test(query)) return ['lip plumper', 'plumper'];
-  // Pinned before the broadened fallback below, so a lipstick query still seeds
-  // lipstick rows only.
-  if (/\b(lipsticks?|lip\s*sticks?|liquid\s*lips?|rouge)\b|口红|口紅/.test(query)) return ['lipstick'];
   // Standalone `gloss` routes here (the guarded rule above `serum`) without `lip`
   // adjacent to it; seeding it as `lipstick` recalled none of the gloss rows.
   if (/\bgloss(?:es)?\b/.test(query)) return ['lip gloss', 'lipgloss', 'gloss'];
@@ -16363,8 +16360,15 @@ function buildBeautyExternalSeedCategoryTerms(intent = null) {
     if (categoryPathPrefix.startsWith('beauty/makeup/lip/')) {
       const explicitForms = explicitBeautyLipFormTerms(rawQuery);
       // A bare-lip / CJK / chapstick query is not a lipstick query. `lipstick` alone
-      // was the fallback, so `dry lips` seeded only lipstick rows.
-      (explicitForms.length ? explicitForms : ['lipstick', 'lip balm', 'lip gloss', 'lip tint', 'lip']).forEach(push);
+      // was the fallback, so `dry lips` seeded only lipstick rows. A query the lipstick
+      // rule claims keeps `lipstick` only -- decided HERE, not in
+      // explicitBeautyLipFormTerms, whose other caller (the brand-category text terms)
+      // relies on its `[]` to fall back to lipstick/lip color/liquid lip/rouge.
+      const lipstickQuery = /\b(lipsticks?|lip\s*sticks?|lip\s*colou?rs?|liquid\s*lips?|rouge)\b|口红|口紅/i
+        .test(normalizeSearchTextForMatch(rawQuery));
+      (explicitForms.length
+        ? explicitForms
+        : lipstickQuery ? ['lipstick'] : ['lipstick', 'lip balm', 'lip gloss', 'lip tint', 'lip']).forEach(push);
     } else if (categoryPathPrefix.startsWith('beauty/makeup/eye/')) {
       push('mascara');
       push('eyeshadow');
@@ -21085,8 +21089,15 @@ function beautyProductMatchesCategoryPathQuery(product = {}, queryText = '', cat
     // row's identity fields, never its description ("apply to lips and cheeks"), and
     // never admit a tool or a two-area product: under `lip gloss`, a depth-2
     // "Lip & Eye Makeup Remover", "眼唇卸妆液", "唇刷" or "Eye and Lip Primer" must stay
-    // out. Bare `唇` is deliberately absent: it is the first character of all of those.
-    // `gloss` mirrors the SQL FORM_RULE for lip gloss, which already admits it.
+    // out. The tool exclusion runs FIRST, which is what lets bare `唇` be an arm: 唇泥 /
+    // 唇蜜 rows pass, 唇刷 / 眼唇卸妆液 do not.
+    //
+    // Bare `gloss` (mirroring the SQL FORM_RULE for lip gloss, which already recalls it)
+    // is the loosest arm, so it carries the same competing-head-noun guard as the query
+    // rule: `High Gloss Top Coat`, `Gloss Hair Serum`, `Gloss Finish Setting Spray` and
+    // a `Gloss Shampoo` product_type were rejected on origin/main and must stay so. The
+    // guard is NOT applied to a `lip` token -- `LIP-PRESSION Metal Serum Gloss` names a
+    // serum and is a lip gloss.
     if (/\b(lipsticks?|lip\s*sticks?|lip\s*colors?|lip\s*colours?|lip\s*tints?|lip\s*gloss(?:es)?|lip\s*liners?|lip\s*balms?|rouge)\b|口红|口紅|唇膏|唇釉|唇彩|唇线|唇線/i.test(text)) {
       return true;
     }
@@ -21100,7 +21111,9 @@ function beautyProductMatchesCategoryPathQuery(product = {}, queryText = '', cat
     if (/\b(brushe?s?|removers?|primers?)\b|\beyes?\s*(?:and|&|\+|\/)?\s*lips?\b|\blips?\s*(?:and|&|\+|\/)?\s*eyes?\b|卸妆|卸妝|刷|眼唇/i.test(identity)) {
       return false;
     }
-    return /\b(lips?|lip\s*plumpers?|lip\s*oils?|chapsticks?)\b|(?<!\b(?:hair|nail)[\s-])\bgloss(?:es)?\b|唇油|润唇|潤唇|唇膜/i.test(identity);
+    if (/\b(lips?|lip\s*plumpers?|lip\s*oils?|chapsticks?)\b|唇/i.test(identity)) return true;
+    return /\bgloss(?:es)?\b/i.test(identity)
+      && !/\b(?:top\s*coats?|polish|nails?|hair|shampoos?|conditioners?|sprays?|setting|serums?|essences?|ampoules?|treatments?|highlighters?|blush(?:es)?|eyes?|brows?|lash(?:es)?|body|face|skin|paints?|varnish)\b/i.test(identity);
   }
   if (prefix.startsWith('beauty/makeup/eye')) {
     return /\b(mascara|eyeliner|eye\s*liner|eyeshadow|eye\s*shadow|brow|lash)\b|睫毛膏|眼线|眼線|眼影|眉笔|眉筆/i.test(text);
@@ -53875,6 +53888,7 @@ module.exports._debug = {
   resolveBeautyBrandBrowseQuery,
   inferBeautyMainlineIntent,
   buildBeautyExternalSeedCategoryTerms,
+  buildBeautyExternalSeedBrandCategoryTextTerms,
   attachCanonicalChainRecallTelemetry,
   filterSearchServingEligibleProducts,
   getSearchProductServingEligibility,

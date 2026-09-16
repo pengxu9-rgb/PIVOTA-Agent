@@ -315,12 +315,14 @@ const CATEGORY_ALIAS_RULES = Object.freeze([
   // `top coat gloss`. So: a query with a `lip` token is always lip; otherwise the
   // query must name no competing head noun or body area. \b treats `-` as a
   // boundary, so `hair-gloss` is excluded too (a lookbehind on `hair\s` was not).
+  // Non-beauty senses are excluded the same way (`high gloss paint`, `semi-gloss`,
+  // `gloss varnish`, `gloss photo paper`), as the primer rule guards paint/wall/wood.
   // Same category name as the adjacent-arm rule: telemetry vocabulary unchanged.
   {
     category: 'lip_care_or_gloss',
     categoryPathPrefix: 'beauty/makeup/lip/',
     pattern:
-      /^(?=.*\bgloss(?:es)?\b)(?:(?=.*\blips?\b)|(?!.*\b(?:serums?|essences?|ampoules?|shampoos?|conditioners?|treatments?|highlighters?|blush(?:es)?|hair|nails?|eyes?|brows?|lash(?:es)?|body|face|skin|polish|top\s*coat)\b))/i,
+      /^(?=.*\bgloss(?:es)?\b)(?:(?=.*\blips?\b)|(?!.*\b(?:serums?|essences?|ampoules?|shampoos?|conditioners?|treatments?|highlighters?|blush(?:es)?|hair|nails?|eyes?|brows?|lash(?:es)?|body|face|skin|polish|top\s*coat|paints?|varnish|lacquer|paper|sprays?|gel|finish|floors?|walls?|wood|semi|cheeks?)\b))/i,
   },
   {
     category: 'serum',
@@ -357,13 +359,13 @@ const CATEGORY_ALIAS_RULES = Object.freeze([
   // REJECTED if this arm outranks the serum rule. `LIP-PRESSION Metal Serum Gloss`
   // does not need the height -- the guarded standalone-`gloss` rule above serum claims it.
   //
-  // `brush` and `remover` are excluded outright: those are tool/cleanser rows that
-  // no lip prefix can admit.
+  // `brush` and `remover` (and 刷 / 卸妆 / 眼唇) are excluded outright: those are
+  // tool/cleanser rows that no lip prefix can admit.
   {
     category: 'lip_generic',
     categoryPathPrefix: 'beauty/makeup/lip/',
     pattern:
-      /^(?!.*\b(brushe?s?|removers?)\b)(?:.*\b(lips?|chapsticks?)\b|.*唇)/i,
+      /^(?!.*(?:\b(?:brushe?s?|removers?)\b|刷|卸妆|卸妝|眼唇))(?:.*\b(lips?|chapsticks?)\b|.*唇)/i,
   },
 ]);
 

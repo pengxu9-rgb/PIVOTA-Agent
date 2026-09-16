@@ -817,3 +817,96 @@ test('the seed lane recalls lip forms beyond lipstick, and a lipstick query stay
     assert.ok(t.includes('lip balm') && t.includes('lip gloss'), `${q} -> ${JSON.stringify(t)}`);
   }
 });
+
+// ---------------------------------------------------------------------------
+// Second re-review of #2214. Each case below was wrong at 38923a61e.
+// ---------------------------------------------------------------------------
+
+test('under a lip query, a NON-LIP gloss row stays rejected, as on origin/main', () => {
+  // The sink's bare `gloss` arm had only a hair/nail lookbehind; nails live under
+  // beauty/makeup/, so a depth-2 top coat is a realistic row.
+  for (const [title, path, type] of [
+    ['High Gloss Top Coat', 'beauty/makeup', 'Nail Polish'],
+    ['Gel Gloss Top Coat', 'beauty/makeup', ''],
+    ['Gloss Hair Serum', 'beauty/makeup', ''],
+    ['Gloss Finish Setting Spray', 'beauty/makeup', ''],
+    ['Shine Gloss Spray', '', 'Hair Styling'],
+    ['Volumising Shampoo', 'beauty/makeup', 'Gloss Shampoo'],
+  ]) {
+    const { result } = gateFor('lip gloss', lipRow(title, path, type));
+    assert.equal(result.eligible, false, `${title} / ${type} must not satisfy a lip query`);
+  }
+  // CONTROL: the guard is not applied to a lip token -- the reported product names a serum.
+  assert.equal(gateFor('lip gloss', lipRow('LIP-PRESSION Metal Serum Gloss', 'beauty/makeup')).result.eligible, true);
+});
+
+test('a product_type alone is lip evidence at depth 2', () => {
+  const { result } = gateFor('lip gloss', lipRow('Bare Glow', 'beauty/makeup', 'Gloss'));
+  assert.equal(result.eligible, true, JSON.stringify(result.reasons));
+});
+
+test('a chapstick row at depth 2 satisfies a chapstick query', () => {
+  const { contract, result } = gateFor('chapstick', lipRow('Classic Chapstick', 'beauty/makeup'));
+  assert.equal(contract.hard_constraints.category_path_prefix, 'beauty/makeup/lip/');
+  assert.equal(result.eligible, true, JSON.stringify(result.reasons));
+});
+
+test('a CJK lip query admits its own depth-2 CJK rows, and still refuses CJK tools', () => {
+  // Same shape as the reported bug: `唇` routed the query to lip, and the sink then
+  // rejected the row, because bare 唇 was not a sink arm.
+  for (const [query, title] of [['唇泥', '唇泥'], ['唇膏', '唇蜜']]) {
+    const { result } = gateFor(query, lipRow(title, 'beauty/makeup'));
+    assert.equal(result.eligible, true, `${query} -> ${title}: ${JSON.stringify(result.reasons)}`);
+  }
+  // Now load-bearing: without the exclusion, bare 唇 admits these.
+  for (const title of ['唇刷', '眼唇卸妆液']) {
+    assert.equal(gateFor('唇膏', lipRow(title, 'beauty/makeup')).result.eligible, false, title);
+  }
+});
+
+test('non-beauty gloss senses and CJK lip tools are not routed to lip', () => {
+  for (const query of ['gloss paint', 'high gloss paint', 'semi-gloss', 'gloss varnish', 'gloss finish',
+    'gloss photo paper', 'gel gloss', 'gloss spray', 'cheek gloss', '唇刷', '眼唇']) {
+    const contract = buildSearchQualityContract({ rawQuery: query, market: 'SG' });
+    assert.notEqual(contract.hard_constraints?.category_path_prefix, 'beauty/makeup/lip/', query);
+  }
+  // CONTROL
+  assert.equal(buildSearchQualityContract({ rawQuery: 'lip and cheek gloss', market: 'SG' })
+    .hard_constraints?.category_path_prefix, 'beauty/makeup/lip/');
+});
+
+test('the high-precedence lip arms outrank the skincare rules they sit above', () => {
+  // `lip plumper` and 唇釉 live in the TOP rule; `lip_generic` at the bottom would lose
+  // these to the treatment / sunscreen rules.
+  for (const query of ['Lip Plump - Refresh AHA BHA Vitamin C Lip Plumper', '唇釉 防晒', '唇泥']) {
+    const contract = buildSearchQualityContract({ rawQuery: query, market: 'SG' });
+    assert.equal(contract.hard_constraints?.category_path_prefix, 'beauty/makeup/lip/', query);
+  }
+});
+
+test('the brand-category text terms for a lipstick query are unchanged from origin/main', () => {
+  // explicitBeautyLipFormTerms has TWO callers. Pinning lipstick inside it narrowed this
+  // one from four terms to one; the pin now lives in the category-terms caller only.
+  const { buildBeautyExternalSeedBrandCategoryTextTerms } = app._debug;
+  for (const query of ['dior rouge', 'fenty lipstick', 'liquid lip']) {
+    assert.deepStrictEqual(
+      buildBeautyExternalSeedBrandCategoryTextTerms(query, inferBeautyMainlineIntent(query)),
+      ['lipstick', 'lip color', 'liquid lip', 'rouge'],
+      query,
+    );
+  }
+  assert.deepStrictEqual(
+    buildBeautyExternalSeedCategoryTerms(inferBeautyMainlineIntent('lip color')), ['lipstick'],
+    'lip color is claimed by the lipstick rule, so it seeds lipstick only',
+  );
+});
+
+test('a single-area lip tool or primer is rejected by the SINK, not only by the accessory gate', () => {
+  // `Lip & Eye …` rows are also caught by the two-area arm, and a brush by
+  // accessory_for_product_query, so neither can observe the brush/remover/primer
+  // exclusion on its own. These titles carry a bare `lip` and nothing else.
+  for (const title of ['Lip Makeup Remover', 'Smoothing Lip Primer', 'Lip Brush']) {
+    const { result } = gateFor('lip gloss', lipRow(title, 'beauty/makeup'));
+    assert.ok(result.reasons.includes('category_mismatch'), `${title}: ${JSON.stringify(result.reasons)}`);
+  }
+});

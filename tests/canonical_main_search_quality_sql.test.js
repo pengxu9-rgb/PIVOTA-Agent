@@ -40,3 +40,15 @@ test.each(['dry lips','chapstick','唇膏'])(
     expect(params.some((p)=>typeof p==='string'&&p.includes('lips?|lipsticks?')&&p.includes('gloss(?:es)?'))).toBe(true);
     expect(sql).toMatch(/p\.category_path = ANY\(\$\d+::text\[\]\) AND /);
 });
+test('the lip ancestor form admits CJK, chapstick and rouge titles, and not a foundation',async()=>{
+  // Behaviour, not substrings: run the bound pattern the way Postgres does, over titles
+  // normalised the way identitySql normalises them (non-alnum -> one space). Verified
+  // against Postgres 15.15 for the CJK case: `[^ ]*唇[^ ]*` is what lets 润唇膏 match.
+  const {params}=await statement('dry lips');
+  const form=params.find((p)=>typeof p==='string'&&p.includes('chapsticks?'));
+  expect(form).toBeDefined();
+  const re=new RegExp(form);
+  const norm=(t)=>t.toLowerCase().replace(/[^\p{L}\p{N}]+/gu,' ').trim();
+  for (const t of ['润唇膏','Chapstick Classic','Rouge Allure Velvet','Gloss Drip']) expect(re.test(norm(t))).toBe(true);
+  for (const t of ['Soft Matte Foundation','Eclipse Cushion']) expect(re.test(norm(t))).toBe(false);
+});

@@ -110,7 +110,9 @@ function buildCanonicalSearchQualitySql({ contract, params, categoryPredicate, d
       // Without this, a lip-prefix query no FORM_RULE matched (`dry lips`, `唇膏`,
       // `chapstick`, `lip plumper`) never admitted the depth-2 beauty/makeup rows,
       // and the partner-reported gloss was reachable only by the `serum` FORM_RULE.
-      ['beauty/makeup/lip', 'lips?|lipsticks?|lip[ ]*sticks?|gloss(?:es)?|lip[ ]*(balms?|tints?|oils?|liners?|plumpers?|masks?|stains?)|chapsticks?|rouge'],
+      // `[^ ]*唇[^ ]*`: CJK titles carry no spaces, so a bare `唇` alternative could never
+      // meet the `(^| )…($| )` boundaries around a title like 润唇膏.
+      ['beauty/makeup/lip', 'lips?|lipsticks?|lip[ ]*sticks?|gloss(?:es)?|lip[ ]*(balms?|tints?|oils?|liners?|plumpers?|masks?|stains?)|chapsticks?|rouge|[^ ]*唇[^ ]*'],
     ];
     const form = FORM_RULES.find(([re]) => re.test(query))?.[1]
       || prefixForms.find(([prefix]) => hard.category_path_prefix.startsWith(prefix))?.[1];
