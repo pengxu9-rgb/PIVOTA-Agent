@@ -642,3 +642,106 @@ test('the skincare, lip and fragrance lanes are unchanged', () => {
   const fragrance = buildBeautyExternalSeedCategoryTerms(inferBeautyMainlineIntent('eau de parfum'));
   assert.ok(fragrance.includes('fragrance'), JSON.stringify(fragrance));
 });
+
+
+// ---------------------------------------------------------------------------
+// LIP ROUTING, VERIFIED AT THE GATE.
+//
+// The first version of this change was verified by comparing
+// `category_path_prefix` before and after. That is the wrong layer: routing a
+// query to beauty/makeup/lip/ does nothing unless the ROW also satisfies the
+// hard constraint, and `beautyProductMatchesCategoryPathQuery`'s lip branch had
+// the same adjacency defect the query rules did. Measured then: the reported
+// product was STILL rejected, and 748 queries moved, stranding lip products whose
+// rows live in other trees. These tests run rows through the real gate.
+// ---------------------------------------------------------------------------
+
+function lipRow(title, categoryPath, productType) {
+  return {
+    id: 'lip_probe', product_id: 'lip_probe', merchant_id: 'merch_obs_jsm',
+    title, brand: 'JUNGSAEMMOOL', price: 28.8, currency: 'SGD',
+    image_url: 'https://cdn.example.com/lip.jpg',
+    product_type: productType || '', category: productType || '',
+    ...(categoryPath ? { category_path: categoryPath.split('/'), catalog_category_path: categoryPath } : {}),
+    source: 'canonical_chain', search_recall_source: 'canonical_chain',
+  };
+}
+
+function gateFor(query, row) {
+  const contract = buildSearchQualityContract({ rawQuery: query, market: 'SG' });
+  return {
+    contract,
+    result: getSearchQualityContractHardConstraintResult(row, contract, query),
+  };
+}
+
+test('a depth-2 makeup row satisfies a lip query by its own title', () => {
+  // The reported product. Its path is beauty/makeup — an ANCESTOR of the lip
+  // prefix — so the gate admits it only through `ownTypeMatches`, which calls the
+  // sink's lip branch with the row's own title. Adjacency-only arms failed it.
+  const { contract, result } = gateFor(
+    'LIP-PRESSION Metal Serum Gloss',
+    lipRow('LIP-PRESSION Metal Serum Gloss', 'beauty/makeup'),
+  );
+  assert.equal(contract.hard_constraints.category_path_prefix, 'beauty/makeup/lip/');
+  assert.equal(result.eligible, true, JSON.stringify(result.reasons));
+});
+
+test('lip products whose rows live in OTHER trees keep serving', () => {
+  // Each of these was ELIGIBLE before the lip change and must stay so: their rows
+  // are not ancestors of the lip prefix, so routing the query to lip/ would reject
+  // them outright. The bare-`lip` arm sits below these head nouns for this reason.
+  for (const [query, title, path, type] of [
+    ['PDRN Lip Serum', 'PDRN Lip Serum', 'beauty/skincare/treat/serum', 'Serum'],
+    ['Lip Sleeping Mask', 'Lip Sleeping Mask', 'beauty/skincare/treat/mask', 'Mask'],
+    ['sunscreen for lips', 'PLAY Lip Shield SPF 30', 'beauty/skincare/sun/sunscreen', 'Sunscreen'],
+    ['eye and lip makeup remover', 'Eye & Lip Makeup Remover', 'beauty/skincare/cleanse/remover', 'Remover'],
+    ['lip and cheek tint', 'Mood Glider Lip And Blush Stick', 'beauty/makeup/face/blush', 'Blush'],
+  ]) {
+    const { result } = gateFor(query, lipRow(title, path, type));
+    assert.equal(result.eligible, true, `${query} -> ${JSON.stringify(result.reasons)}`);
+  }
+});
+
+test('a bare lip query still reaches the lip tree', () => {
+  for (const query of ['dry lips', 'chapped lips', 'lip conditioner', '唇膏']) {
+    const contract = buildSearchQualityContract({ rawQuery: query, market: 'SG' });
+    assert.equal(
+      contract.hard_constraints.category_path_prefix,
+      'beauty/makeup/lip/',
+      `${query} -> ${contract.hard_constraints.category_path_prefix}`,
+    );
+  }
+});
+
+test('CONTROL: a depth-2 row that is NOT a lip product is still rejected', () => {
+  // This is the control that actually reaches the sink's lip branch. The rows in the
+  // test below are rejected by the ANCESTOR check before the branch runs, so they
+  // cannot tell a correct branch from `return true` — a mutant doing exactly that
+  // survived them. A depth-2 `beauty/makeup` row IS an ancestor, so `ownTypeMatches`
+  // runs the branch on its own title, which is the property under test:
+  // widening the branch must not make an eyeliner satisfy a lip query.
+  for (const [title, type] of [
+    ['Precision Eyeliner Pen', 'Eyeliner'],
+    ['Soft Matte Foundation', 'Foundation'],
+    ['Artist Cushion Blush Blur', 'Blush'],
+  ]) {
+    const { result } = gateFor('lip gloss', lipRow(title, 'beauty/makeup', type));
+    assert.equal(result.eligible, false, `${title} must not satisfy a lip query`);
+    assert.ok(result.reasons.includes('category_mismatch'), JSON.stringify(result.reasons));
+  }
+});
+
+test('CONTROL: the lip prefix still rejects rows from other makeup trees', () => {
+  // Without this, every test above would also pass if the lip branch returned true
+  // unconditionally — which is exactly how the sink could be "fixed" wrongly.
+  for (const [title, path, type] of [
+    ['Precision Eyeliner Pen', 'beauty/makeup/eye/eyeliner', 'Eyeliner'],
+    ['Soft Matte Foundation', 'beauty/makeup/face/foundation', 'Foundation'],
+    ['Volumising Shampoo', 'beauty/haircare/shampoo', 'Shampoo'],
+  ]) {
+    const { result } = gateFor('lip gloss', lipRow(title, path, type));
+    assert.equal(result.eligible, false, `${title} should not satisfy a lip query`);
+    assert.ok(result.reasons.includes('category_mismatch'), JSON.stringify(result.reasons));
+  }
+});

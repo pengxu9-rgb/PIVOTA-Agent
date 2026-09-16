@@ -21062,7 +21062,14 @@ function beautyProductMatchesCategoryPathQuery(product = {}, queryText = '', cat
   if (!text) return false;
   const prefix = String(categoryPathPrefix || '').trim().toLowerCase();
   if (prefix.startsWith('beauty/makeup/lip')) {
-    return /\b(lipsticks?|lip\s*sticks?|lip\s*colors?|lip\s*colours?|lip\s*tints?|lip\s*gloss(?:es)?|lip\s*liners?|lip\s*balms?|rouge)\b|口红|口紅|唇膏|唇釉|唇彩|唇线|唇線/i.test(text);
+    // BARE `lips?` matters here for the same reason it does in the query rules, and
+    // leaving it out is why fixing only the query side changed nothing for the
+    // reported product. This branch is what `ownTypeMatches` calls to admit a row
+    // whose path is a shallow ANCESTOR of the lip prefix -- the depth-2
+    // `beauty/makeup` cohort. With adjacency-only arms, a row titled
+    // "LIP-PRESSION Metal Serum Gloss" failed it and was rejected category_mismatch
+    // even once the query routed to beauty/makeup/lip/ correctly.
+    return /\b(lips?|lipsticks?|lip\s*sticks?|lip\s*colors?|lip\s*colours?|lip\s*tints?|lip\s*gloss(?:es)?|lip\s*liners?|lip\s*balms?|lip\s*plumpers?|chapsticks?|rouge)\b|口红|口紅|唇|唇膏|唇釉|唇彩|唇线|唇線|唇油|润唇|潤唇|唇膜/i.test(text);
   }
   if (prefix.startsWith('beauty/makeup/eye')) {
     return /\b(mascara|eyeliner|eye\s*liner|eyeshadow|eye\s*shadow|brow|lash)\b|睫毛膏|眼线|眼線|眼影|眉笔|眉筆/i.test(text);

@@ -1,5 +1,5 @@
 {
-  "note": "Captured at HEAD; verified IDENTICAL on origin/main. Any change here is a SERVING change, not a refactor.",
+  "note": "Browse-prefix golden. 42 of 240 entries were re-pinned 2026-09-16 when the bare-`lip` arm was added to queryUnderstanding: all 42 are lip products that were browsing as beauty/makeup/face/ and now browse beauty/makeup/lip/. Every OTHER entry must stay identical to origin/main — a moved prefix is a SERVING change, not a refactor.",
   "map_dependent_note": "These queries resolve THROUGH BEAUTY_CATEGORY_PATH_BY_LABEL, i.e. through CANONICAL_CATEGORY_PATHS. Found by collapsing every canonical value onto one leaf and diffing the resolver over 6,726 queries: 203 moved. The previous golden pinned ZERO of these, so re-homing a canonical value was invisible.",
   "map_dependent": {
     "Gloss Bomb Heat Universal Lip Luminizer + Plumper": "beauty/makeup/lip/",

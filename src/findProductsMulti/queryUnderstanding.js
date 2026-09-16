@@ -73,7 +73,7 @@ const CATEGORY_ALIAS_RULES = Object.freeze([
     category: 'lip_care_or_gloss',
     categoryPathPrefix: 'beauty/makeup/lip/',
     pattern:
-      /\b(lips?|chapsticks?|lip\s*oils?|lip\s*balms?|lip\s*treatments?|lip\s*masks?|lip\s*gloss(?:es)?|lip\s*liners?|lip\s*pencils?|lip\s*tints?)\b|唇油|润唇|潤唇|唇膜|唇彩|唇线|唇線|唇膏|唇釉/i,
+      /\b(lip\s*oils?|lip\s*balms?|lip\s*treatments?|lip\s*masks?|lip\s*gloss(?:es)?|lip\s*liners?|lip\s*pencils?|lip\s*tints?|lip\s*plumpers?)\b|(?<!\bhair\s)(?<!\bnail\s)\bgloss(?:es)?\b|唇油|润唇|潤唇|唇膜|唇彩|唇线|唇線|唇膏|唇釉/i,
   },
   // Haircare. MEASURED GAP, 2026-08-20: bare `shampoo` / `conditioner` /
   // `hair mask` / `hair oil` had no rule here and no entry in
@@ -90,7 +90,9 @@ const CATEGORY_ALIAS_RULES = Object.freeze([
   // of those skincare rules and browse the wrong tree. Hair words with no
   // hair/scalp anchor (bare `mask`, bare `oil`) are deliberately NOT
   // claimed. The lookbehind keeps `lip conditioner` out — it is a lip
-  // product; it had no rule before and keeps having none.
+  // product, and since 2026-09-16 it HAS a rule: the bare-`lip` arm at the
+  // bottom of this table. This lookbehind is what lets it get there, so it
+  // is load-bearing, not decorative — delete it and haircare claims the query.
   //
   // Prefix is the broad beauty/haircare/ tree (measured 2026-08-20:
   // shampoo 130 + conditioner 42 + general 244 + root 47 serving-eligible
@@ -316,6 +318,38 @@ const CATEGORY_ALIAS_RULES = Object.freeze([
     categoryPathPrefix: 'beauty/skincare/treat/',
     pattern:
       /\b(acne|blemish|breakouts?|pimples?|clogged pores?|congestion|spot treatment|acne treatment|treatment|salicylic(?: acid)?|benzoyl peroxide|azelaic|niacinamide|bha)\b|祛痘|痘痘|闭口|閉口|粉刺|水杨酸|水楊酸/i,
+  },
+  // BARE `lip`, deliberately placed HERE and not with the two lip rules at the top.
+  //
+  // First match wins, so a rule's POSITION is its precedence. The arms above own
+  // `lip <format noun>` (gloss/balm/tint/liner/oil/mask) and a standalone `gloss`,
+  // and they sit at the top because those are unambiguously lip products. A bare
+  // `lip` is not: it appears in queries whose HEAD noun belongs to another tree,
+  // and whose rows live there --
+  //     `sunscreen for lips` -> beauty/skincare/sun/      (15 titles measured)
+  //     `PDRN Lip Serum`     -> beauty/skincare/treat/    (28 titles)
+  //     `Lip Sleeping Mask`  -> beauty/skincare/treat/mask
+  //     `eye and lip makeup remover` -> beauty/skincare/cleanse/
+  // Routing those to beauty/makeup/lip/ does not just rank them lower, it makes the
+  // hard constraint REJECT them category_mismatch, because their path is not an
+  // ancestor of the lip prefix and `ownTypeMatches` never runs. A first version of
+  // this change sat at the top of the table and did exactly that to 748 queries.
+  //
+  // Below sunscreen/cleanser/moisturizer/primer/blush/face_mask, this arm catches
+  // only what nothing else claims: `dry lips`, `chapped lips`, `lip conditioner`,
+  // `唇`, and a product name whose lip token is separated from its format noun.
+  // It sits BELOW serum/skincare_treatment too, and that placement is measured: at
+  // the gate, `PDRN Lip Serum` with its row at beauty/skincare/treat/serum is
+  // REJECTED if this arm outranks the serum rule. `LIP-PRESSION Metal Serum Gloss`
+  // does not need the height -- the standalone `gloss` at the top already claims it.
+  //
+  // `brush` and `remover` are excluded outright: those are tool/cleanser rows that
+  // no lip prefix can admit.
+  {
+    category: 'lip_generic',
+    categoryPathPrefix: 'beauty/makeup/lip/',
+    pattern:
+      /^(?!.*\b(brushe?s?|removers?)\b)(?:.*\b(lips?|chapsticks?)\b|.*(?:唇|润唇|潤唇))/i,
   },
 ]);
 
