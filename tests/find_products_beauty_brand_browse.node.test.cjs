@@ -744,3 +744,44 @@ test('CONTROL: compaction matches on EQUALITY, never on containment', () => {
   assert.equal(gate.eligible, false);
   assert.ok(gate.reasons.includes('brand_mismatch'), JSON.stringify(gate.reasons));
 });
+
+test('a brand+category query admits the solid-spelled brand too', () => {
+  // brand_browse is not the only class that runs the brand hard constraint —
+  // brand_category and exact_product do as well. Pin one of the others so the fix is not
+  // silently scoped to a single query class.
+  const rawQuery = 'jung saem mool lip gloss';
+  const contract = buildSearchQualityContract({ rawQuery, market: 'SG' });
+  assert.equal(contract.query_class, 'brand_category');
+
+  const gate = getSearchQualityContractHardConstraintResult(
+    solidBrandGloss({ category_path: ['beauty', 'makeup', 'lip'], catalog_category_path: 'beauty/makeup/lip' }),
+    contract,
+    rawQuery,
+  );
+  assert.ok(!gate.reasons.includes('brand_mismatch'), JSON.stringify(gate.reasons));
+});
+
+test('KNOWN GAP: a solid-spelled brand still resolves brand_only=false', () => {
+  // NOT fixed here — recorded so the residual is visible rather than surprising.
+  //
+  // `resolveBeautyBrandBrowseQuery` matches 'jungsaemmool' against the alias 'jung saem mool'
+  // through the compact-run path, but then computes the remainder as
+  // queryTokens - aliasTokens - brandTokens. The consumed token 'jungsaemmool' is in neither
+  // token set, so it survives as a remainder and brand_only comes back false.
+  //
+  // Consequences are ranking-only now that the gate is fixed: the brand-browse minimum row
+  // count and the category-priority score both read brand_only. The real fix is in
+  // brandLexicon.js — a token consumed by the compact-run path is not a remainder — and it
+  // touches every multi-token alias, so it needs its own measured no-change invariant.
+  const identity = resolveBeautyBrandBrowseQuery('jungsaemmool');
+  assert.equal(identity.matched, true);
+  assert.equal(identity.brand_key, 'jung_saem_mool');
+  assert.equal(
+    identity.brand_only,
+    false,
+    'brand_only is now true — the lexicon remainder is fixed, delete this test',
+  );
+
+  // Control: the spaced spelling, which the remainder logic handles correctly today.
+  assert.equal(resolveBeautyBrandBrowseQuery('jung saem mool').brand_only, true);
+});
