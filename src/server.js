@@ -16364,7 +16364,7 @@ function buildBeautyExternalSeedCategoryTerms(intent = null) {
       // rule claims keeps `lipstick` only -- decided HERE, not in
       // explicitBeautyLipFormTerms, whose other caller (the brand-category text terms)
       // relies on its `[]` to fall back to lipstick/lip color/liquid lip/rouge.
-      const lipstickQuery = /\b(lipsticks?|lip\s*sticks?|lip\s*colou?rs?|liquid\s*lips?|rouge)\b|口红|口紅/i
+      const lipstickQuery = /\b(lip\s*sticks?|lip\s*colou?rs?|liquid\s*lips?|rouge)\b|口红|口紅/i
         .test(normalizeSearchTextForMatch(rawQuery));
       (explicitForms.length
         ? explicitForms
@@ -16492,7 +16492,16 @@ function buildBeautyExternalSeedBrandCategoryTextTerms(queryText = '', intent = 
     ['blush', 'cheek', 'luminizer', 'highlighter'].forEach(push);
   } else if (prefix.startsWith('beauty/makeup/lip/')) {
     const explicitForms = explicitBeautyLipFormTerms(queryText);
-    (explicitForms.length ? explicitForms : ['lipstick', 'lip color', 'liquid lip', 'rouge']).forEach(push);
+    // Same split as buildBeautyExternalSeedCategoryTerms. These terms become REQUIRED
+    // LIKE clauses in the brand-category seed SQL, so a newly lip-routed non-lipstick
+    // brand query (`dior lip glow`) must not require lipstick words.
+    const lipstickQuery = /\b(lip\s*sticks?|lip\s*colou?rs?|liquid\s*lips?|rouge)\b|口红|口紅/i
+      .test(normalizeSearchTextForMatch(queryText));
+    (explicitForms.length
+      ? explicitForms
+      : lipstickQuery
+        ? ['lipstick', 'lip color', 'liquid lip', 'rouge']
+        : ['lipstick', 'lip color', 'liquid lip', 'rouge', 'lip balm', 'lip gloss', 'lip tint', 'lip']).forEach(push);
   } else if (prefix.startsWith('beauty/makeup/eye/')) {
     ['mascara', 'eyeshadow', 'eyeliner', 'brow', 'lash'].forEach(push);
   } else if (prefix.startsWith('beauty/fragrance/')) {
@@ -21113,7 +21122,7 @@ function beautyProductMatchesCategoryPathQuery(product = {}, queryText = '', cat
     }
     if (/\b(lips?|lip\s*plumpers?|lip\s*oils?|chapsticks?)\b|唇/i.test(identity)) return true;
     return /\bgloss(?:es)?\b/i.test(identity)
-      && !/\b(?:top\s*coats?|polish|nails?|hair|shampoos?|conditioners?|sprays?|setting|serums?|essences?|ampoules?|treatments?|highlighters?|blush(?:es)?|eyes?|brows?|lash(?:es)?|body|face|skin|paints?|varnish)\b/i.test(identity);
+      && !/\b(?:top\s*coats?|polish|nails?|hair|shampoos?|conditioners?|sprays?|setting|serums?|essences?|ampoules?|treatments?|highlighters?|blush(?:es)?|eyes?|brows?|lash(?:es)?|body|face|skin|paints?|varnish|cheeks?)\b/i.test(identity);
   }
   if (prefix.startsWith('beauty/makeup/eye')) {
     return /\b(mascara|eyeliner|eye\s*liner|eyeshadow|eye\s*shadow|brow|lash)\b|睫毛膏|眼线|眼線|眼影|眉笔|眉筆/i.test(text);

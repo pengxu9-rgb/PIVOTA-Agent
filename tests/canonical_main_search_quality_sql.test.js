@@ -49,6 +49,10 @@ test('the lip ancestor form admits CJK, chapstick and rouge titles, and not a fo
   expect(form).toBeDefined();
   const re=new RegExp(form);
   const norm=(t)=>t.toLowerCase().replace(/[^\p{L}\p{N}]+/gu,' ').trim();
-  for (const t of ['润唇膏','Chapstick Classic','Rouge Allure Velvet','Gloss Drip']) expect(re.test(norm(t))).toBe(true);
+  // One title per alternative: the joined spellings (`Lipbalm`) are what the `lip[ ]*…`
+  // forms exist for, since `lips?` needs a space after it.
+  for (const t of ['润唇膏','Chapstick Classic','Rouge Allure Velvet','Gloss Drip','Velvet Lipstick',
+    'Lipbalm Duo','Liptint Cherry','Lipoil Honey','Lipliner Nude','Lipplumper Max','Lipmask Night','Lipstain Red',
+    'Soft Lip Pencil']) expect(re.test(norm(t))).toBe(true);
   for (const t of ['Soft Matte Foundation','Eclipse Cushion']) expect(re.test(norm(t))).toBe(false);
 });

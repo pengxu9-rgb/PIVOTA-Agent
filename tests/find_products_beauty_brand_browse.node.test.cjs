@@ -910,3 +910,81 @@ test('a single-area lip tool or primer is rejected by the SINK, not only by the 
     assert.ok(result.reasons.includes('category_mismatch'), `${title}: ${JSON.stringify(result.reasons)}`);
   }
 });
+
+// ---------------------------------------------------------------------------
+// ONE CASE PER GUARD TOKEN. Third re-review of #2214: 23 of 29 single-token
+// deletions left every test green, because the rows and queries each test used
+// were caught by some OTHER token. Each entry below is caught by exactly one.
+// ---------------------------------------------------------------------------
+
+test('sink: every token of the bare-gloss guard is load-bearing', () => {
+  for (const title of ['Top Coat Gloss', 'Gloss Polish', 'Nail Gloss', 'Hair Gloss', 'Gloss Shampoo',
+    'Gloss Conditioner', 'Gloss Spray', 'Setting Gloss', 'Gloss Serum', 'Gloss Essence', 'Gloss Ampoule',
+    'Gloss Treatment', 'Gloss Highlighter', 'Blush Gloss', 'Eye Gloss', 'Brow Gloss', 'Lash Gloss',
+    'Body Gloss', 'Face Gloss', 'Skin Gloss', 'Gloss Paint', 'Gloss Varnish', 'Cheek Gloss']) {
+    const { result } = gateFor('lip gloss', lipRow(title, 'beauty/makeup'));
+    assert.ok(result.reasons.includes('category_mismatch'), `${title}: ${JSON.stringify(result.reasons)}`);
+  }
+});
+
+test('sink: every token of the tool / two-area exclusion is load-bearing', () => {
+  for (const title of ['Lip Brush', 'Lip Remover', 'Lip Primer', 'Eye and Lip Palette', 'Lip and Eye Palette',
+    '唇部卸妆膏', '唇部卸妝膏', '唇刷', '眼唇霜']) {
+    const { result } = gateFor('lip gloss', lipRow(title, 'beauty/makeup'));
+    assert.ok(result.reasons.includes('category_mismatch'), `${title}: ${JSON.stringify(result.reasons)}`);
+  }
+});
+
+test('sink: the joined lip forms admit their no-space spellings', () => {
+  for (const title of ['Lipplumper Max', 'Lipoil Cherry']) {
+    const { result } = gateFor('lip gloss', lipRow(title, 'beauty/makeup'));
+    assert.equal(result.eligible, true, `${title}: ${JSON.stringify(result.reasons)}`);
+  }
+});
+
+test('query: every token of the standalone-gloss guard is load-bearing', () => {
+  for (const word of ['serum', 'essence', 'ampoule', 'treatment', 'hair', 'nail', 'eye', 'brow', 'lash', 'body',
+    'face', 'skin', 'polish', 'top coat', 'paint', 'varnish', 'lacquer', 'paper', 'spray', 'gel', 'finish',
+    'floor', 'wall', 'wood', 'semi', 'cheek', 'brush', 'remover', 'keychain']) {
+    const query = `gloss ${word}`;
+    const contract = buildSearchQualityContract({ rawQuery: query, market: 'SG' });
+    assert.notEqual(contract.hard_constraints?.category_path_prefix, 'beauty/makeup/lip/', query);
+  }
+});
+
+test('a high-shine gloss product name still routes to lip', () => {
+  // CONTROL for the guard above: `high` was briefly a guard word and removed 18 real Fenty
+  // lip titles from the lip tree.
+  for (const query of ['Gloss Bomb Stix High-Shine Gloss Stick — RiRi', 'Mini High Gloss Duo']) {
+    const contract = buildSearchQualityContract({ rawQuery: query, market: 'SG' });
+    assert.equal(contract.hard_constraints?.category_path_prefix, 'beauty/makeup/lip/', query);
+  }
+});
+
+test('query: every token of the lip_generic exclusion is load-bearing', () => {
+  for (const query of ['lip brush', 'lip remover', 'lip and cheek stain', 'lip sync', 'lip filler',
+    'lip injections', 'cleft lip', 'lip-shaped bag', 'read my lips', 'lip bundle', 'lip combo',
+    '唇刷', '眼唇', '兔唇']) {
+    const contract = buildSearchQualityContract({ rawQuery: query, market: 'SG' });
+    assert.notEqual(contract.hard_constraints?.category_path_prefix, 'beauty/makeup/lip/', query);
+  }
+});
+
+test('seed lane: every lipstick-rule spelling keeps lipstick only, in both callers', () => {
+  const { buildBeautyExternalSeedBrandCategoryTextTerms } = app._debug;
+  // `lip\s*sticks?` covers `lipstick` too; `lip stick` pins the spaced spelling.
+  for (const query of ['red lipstick', 'red lip stick', 'lip color', 'liquid lip', 'rouge', '口红', '口紅']) {
+    assert.deepStrictEqual(buildBeautyExternalSeedCategoryTerms(inferBeautyMainlineIntent(query)), ['lipstick'], query);
+    assert.deepStrictEqual(
+      buildBeautyExternalSeedBrandCategoryTextTerms(query, inferBeautyMainlineIntent(query)),
+      ['lipstick', 'lip color', 'liquid lip', 'rouge'], query,
+    );
+  }
+  assert.deepStrictEqual(buildBeautyExternalSeedCategoryTerms(inferBeautyMainlineIntent('dry lips')),
+    ['lipstick', 'lip balm', 'lip gloss', 'lip tint', 'lip']);
+  // A newly lip-routed NON-lipstick brand query must not REQUIRE lipstick words.
+  assert.deepStrictEqual(
+    buildBeautyExternalSeedBrandCategoryTextTerms('dior lip glow', inferBeautyMainlineIntent('dior lip glow')),
+    ['lipstick', 'lip color', 'liquid lip', 'rouge', 'lip balm', 'lip gloss', 'lip tint', 'lip'],
+  );
+});

@@ -184,9 +184,11 @@ test('browse prefixes are unchanged — this change is read-side only', () => {
   //
   // UPDATED 2026-09-16, and this is the one kind of change that may update it: a DELIBERATE
   // serving change, with the whole diff enumerated first. Two lip rules in queryUnderstanding moved
-  // 42 of these 240 entries, every one of them a lip product routing `beauty/makeup/face/` ->
+  // 41 of these 240 entries, every one of them a lip product routing `beauty/makeup/face/` ->
   // `beauty/makeup/lip/`: 39 by the guarded standalone-`gloss` rule above `serum` (Fenty's Gloss
-  // Bomb Lip Luminizer line) and 3 by the bare-`lip` rule `lip_generic` (Plumping Powder Matte Lip). They were being browsed as FACE. The updater
+  // Bomb Lip Luminizer line) and 2 by the bare-`lip` rule `lip_generic` (Plumping Powder Matte
+  // Lip). `… Lip Bundle` stays at origin/main's value: lip_generic excludes bundles, whose rows
+  // live under beauty/sets, which a lip prefix would reject. They were being browsed as FACE. The updater
   // refuses outright if any moved entry lacks `lip` in its title, so the direction of the change
   // is checked and not assumed.
   //
