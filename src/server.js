@@ -17483,6 +17483,32 @@ const CANONICAL_NO_OFFER_DERIVED_PRICE_REASON = 'no_offer_derived_price';
  * `> 0` rather than merely present, matching pricedOfferSql: a 0.00 price is
  * not buyable either.
  */
+/**
+ * An offer row's `updated_at` as a UTC ISO-8601 instant, or null.
+ *
+ * `databases`/pg hand this back as a Date on one path and a string on another,
+ * so both are accepted; anything unparseable yields null and the caller emits
+ * no `price_as_of` at all rather than a date it cannot stand behind.
+ */
+function normalizeCanonicalPriceAsOf(value) {
+  if (value == null) return null;
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value.toISOString();
+  }
+  const text = String(value).trim();
+  if (!text) return null;
+  // Postgres renders timestamptz as `2026-09-08 04:25:42.316439+00`: a space
+  // separator and a TWO-digit offset. Naively appending 'Z' to that produces
+  // `...+00Z`, which is unparseable -- so the first version of this silently
+  // dropped every real prod timestamp and emitted no as_of at all.
+  let candidate = text.includes('T') ? text : text.replace(' ', 'T');
+  const offset = candidate.match(/[+-](\d{2})(:?\d{2})?$/);
+  if (offset && !offset[2]) candidate += ':00';
+  else if (!offset && !candidate.endsWith('Z')) candidate += 'Z';
+  const parsed = new Date(candidate);
+  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+}
+
 function resolveCanonicalOfferDerivedPrice(row) {
   if (!isPlainObject(row)) {
     return { priced: false, reason: CANONICAL_NO_OFFER_DERIVED_PRICE_REASON };
@@ -17493,7 +17519,39 @@ function resolveCanonicalOfferDerivedPrice(row) {
   if (!currency || !Number.isFinite(amount) || amount <= 0) {
     return { priced: false, reason: CANONICAL_NO_OFFER_DERIVED_PRICE_REASON };
   }
-  return { priced: true, amount, currency };
+  // FRESHNESS TRAVELS WITH THE AMOUNT, off the SAME offer row, for the same
+  // reason the currency does: an as-of taken from anywhere else would date a
+  // number it does not describe, which is the amount-without-its-currency class
+  // this function already exists to prevent.
+  //
+  // We were serving an unqualified price. Measured on prod 2026-09-16 over the
+  // serving-eligible referral lane: 2,273 offers under 7 days old, 8,179 at
+  // 7-30 days, 7,350 at 30-90, and 435 over 90 -- against a catalog audit that
+  // found 43% of live PDPs carrying an active markdown at any moment. A cached
+  // price stated as-of is a defensible product; an undated one is not, and a
+  // partner comparing us to the merchant's own door has no way to tell which
+  // they are holding.
+  //
+  // Absent rather than guessed, throughout: a row with no usable timestamp emits
+  // no as_of instead of "now", which would assert a verification we never did.
+  const asOf = normalizeCanonicalPriceAsOf(row.price_updated_at);
+  // NOT `Number(row.price_confidence)`: Number(null) is 0, which is finite, so a
+  // row that recorded NO confidence would publish 0 -- and 0 is a real value
+  // meaning "we do not believe this price". Absent and disbelieved must not
+  // collapse into the same answer. Measured: 4,897 serving-eligible offers carry
+  // a NULL price_confidence today.
+  const confidenceRaw = row.price_confidence;
+  const confidence =
+    confidenceRaw === null || confidenceRaw === undefined || String(confidenceRaw).trim() === ''
+      ? null
+      : (Number.isFinite(Number(confidenceRaw)) ? Number(confidenceRaw) : null);
+  return {
+    priced: true,
+    amount,
+    currency,
+    ...(asOf ? { as_of: asOf } : {}),
+    ...(confidence != null ? { confidence } : {}),
+  };
 }
 
 function buildCanonicalChainMainlineProduct(row) {
@@ -17698,7 +17756,14 @@ function buildCanonicalChainMainlineProduct(row) {
     // even when there was no price, which is where the hardcoded 'USD' default
     // surfaced. A price-less product now carries a reason code instead.
     ...(offerPrice.priced
-      ? { price: offerPrice.amount, currency: offerPrice.currency }
+      ? {
+          price: offerPrice.amount,
+          currency: offerPrice.currency,
+          // Same rule as price/currency: emitted only when the offer row
+          // actually carried them, never defaulted.
+          ...(offerPrice.as_of ? { price_as_of: offerPrice.as_of } : {}),
+          ...(offerPrice.confidence != null ? { price_confidence: offerPrice.confidence } : {}),
+        }
       : { price_absent_reason: offerPrice.reason }),
     ...(imageUrl ? { image_url: imageUrl, images: [imageUrl], image_urls: [imageUrl] } : {}),
     ...(availability ? { availability } : {}),

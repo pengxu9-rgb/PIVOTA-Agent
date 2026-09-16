@@ -226,3 +226,120 @@ describe('mutation guard: the fallback chain must not come back', () => {
     expect(mapper).not.toContain('seedData.price_amount');
   });
 });
+
+describe('the served price states when it was true', () => {
+  // We were shipping an unqualified number. Measured on prod 2026-09-16 across the
+  // serving-eligible referral lane: 2,273 offers under 7 days old, 8,179 at 7-30
+  // days, 7,350 at 30-90, 435 over 90 -- against a catalog audit that found 43% of
+  // live PDPs carrying an active markdown at any moment. A cached price stated
+  // as-of is a defensible product; an undated one is not.
+  //
+  // The freshness comes off the SAME offer row as the amount, which is the rule
+  // this whole file exists to enforce for the currency.
+
+  test('price_as_of and price_confidence come from the offer row', () => {
+    const product = buildCanonicalChainMainlineProduct(
+      rowWithPayloadPrice({
+        merchant_effective_price: '28.20',
+        currency: 'SGD',
+        price_updated_at: '2026-09-08 04:25:42.316439+00',
+        price_confidence: '0.70',
+      }),
+    );
+
+    expect(product.price).toBe(28.2);
+    expect(product.currency).toBe('SGD');
+    expect(product.price_as_of).toBe('2026-09-08T04:25:42.316Z');
+    expect(product.price_confidence).toBe(0.7);
+  });
+
+  test('a Date instance is accepted, because pg returns one on some paths', () => {
+    const product = buildCanonicalChainMainlineProduct(
+      rowWithPayloadPrice({
+        merchant_effective_price: '10.00',
+        currency: 'USD',
+        price_updated_at: new Date('2026-01-02T03:04:05.000Z'),
+      }),
+    );
+    expect(product.price_as_of).toBe('2026-01-02T03:04:05.000Z');
+  });
+
+  test('NO timestamp means NO price_as_of -- never "now"', () => {
+    // The whole value of the field is that a reader can tell a fresh price from a
+    // stale one. Defaulting an unknown timestamp to the current time asserts a
+    // verification we never performed, and is worse than omitting the field: it
+    // would make every unstamped row look like it was checked this second.
+    const product = buildCanonicalChainMainlineProduct(
+      rowWithPayloadPrice({ merchant_effective_price: '10.00', currency: 'USD' }),
+    );
+
+    expect(product.price).toBe(10);
+    expect(product).not.toHaveProperty('price_as_of');
+  });
+
+  test('an unparseable timestamp is absent, not passed through', () => {
+    const product = buildCanonicalChainMainlineProduct(
+      rowWithPayloadPrice({
+        merchant_effective_price: '10.00',
+        currency: 'USD',
+        price_updated_at: 'not-a-date',
+      }),
+    );
+    expect(product).not.toHaveProperty('price_as_of');
+  });
+
+  test('a null confidence is absent, not coerced to 0', () => {
+    // 0 is a real confidence value meaning "we do not believe this price". Emitting
+    // it for "we did not record one" would be a different claim entirely.
+    const product = buildCanonicalChainMainlineProduct(
+      rowWithPayloadPrice({
+        merchant_effective_price: '10.00',
+        currency: 'USD',
+        price_confidence: null,
+      }),
+    );
+    expect(product).not.toHaveProperty('price_confidence');
+  });
+
+  test('a real zero confidence IS emitted', () => {
+    const product = buildCanonicalChainMainlineProduct(
+      rowWithPayloadPrice({
+        merchant_effective_price: '10.00',
+        currency: 'USD',
+        price_confidence: '0',
+      }),
+    );
+    expect(product.price_confidence).toBe(0);
+  });
+
+  test('CONTROL: an unpriced row carries neither field', () => {
+    // Without this, every test above would also pass if the fields were attached
+    // unconditionally, outside the priced branch -- dating a price that does not
+    // exist.
+    const product = buildCanonicalChainMainlineProduct(
+      rowWithPayloadPrice({
+        merchant_effective_price: null,
+        list_price: null,
+        currency: null,
+        price_updated_at: '2026-09-08T04:25:42.000Z',
+        price_confidence: '0.9',
+      }),
+    );
+
+    expect(product.price).toBeUndefined();
+    expect(product.price_absent_reason).toBe(CANONICAL_NO_OFFER_DERIVED_PRICE_REASON);
+    expect(product).not.toHaveProperty('price_as_of');
+    expect(product).not.toHaveProperty('price_confidence');
+  });
+
+  test('the resolver never invents a timestamp', () => {
+    // Source-level, matching this file's existing mutation guards: a Date.now() or
+    // new Date() with no argument inside the resolver would defeat every assertion
+    // above by making the absent case indistinguishable from the fresh one.
+    const source = resolveCanonicalOfferDerivedPrice.toString();
+    expect(source).not.toContain('Date.now()');
+    expect(source).not.toMatch(/new Date\(\s*\)/);
+    expect(source).toContain('row.price_updated_at');
+    expect(source).toContain('row.price_confidence');
+  });
+});
