@@ -51,17 +51,14 @@ const CATEGORY_ALIAS_RULES = Object.freeze([
   // beauty/makeup/lip/ prefix (519 eligible) is the only one that doesn't
   // orphan a subtree, and the union's title boost sorts the queried form to
   // the head. The lipS/ tree is still excluded by the prefix — recorded.
-  // BARE `lip` arm added 2026-09-16. Every arm above requires `lip` ADJACENT to a
-  // format noun (`lip\s*gloss`), and a product name routinely separates them:
-  // `LIP-PRESSION Metal Serum Gloss` normalises to `lip pression metal serum gloss`,
-  // so no lip arm fired, the query fell through to the `serum` rule twenty rules
-  // below, and browsed beauty/skincare/treat/ — 150 skincare serums answering a lip
-  // query, with the lip row itself rejected category_mismatch. Reported by a partner
-  // who could resolve the product through the merchant's own door but not ours.
-  //
-  // \b-anchored, so it does not fire on lipid, eclipse or lipo-. `lipstick` is NOT
-  // matched by \blips?\b and keeps its own rule above; this arm is what catches a
-  // lip product whose name puts anything at all between `lip` and its format noun.
+  // Every arm here requires `lip` ADJACENT to a format noun (`lip\s*gloss`). A
+  // product name that separates them (`LIP-PRESSION Metal Serum Gloss` -- rules see
+  // the raw corrected query, hyphen and all) is NOT claimed here; it is claimed by
+  // the guarded standalone-`gloss` rule placed directly above `serum`, and a bare
+  // `lip` by `lip_generic` at the bottom of the table. Both sit low on purpose: a
+  // standalone `gloss` or `lip` at THIS height stole `gloss shampoo`, `blush gloss`,
+  // `PDRN Lip Serum` and `sunscreen for lips` into the lip tree, where the hard
+  // constraint rejects their real rows category_mismatch.
   //
   // 唇膏 / 唇釉 were missing from BOTH lip rules (口红 was in the lipstick arm, 唇膏
   // in neither), so the single most common CJK word for this category classified
@@ -73,7 +70,7 @@ const CATEGORY_ALIAS_RULES = Object.freeze([
     category: 'lip_care_or_gloss',
     categoryPathPrefix: 'beauty/makeup/lip/',
     pattern:
-      /\b(lip\s*oils?|lip\s*balms?|lip\s*treatments?|lip\s*masks?|lip\s*gloss(?:es)?|lip\s*liners?|lip\s*pencils?|lip\s*tints?|lip\s*plumpers?)\b|(?<!\bhair\s)(?<!\bnail\s)\bgloss(?:es)?\b|唇油|润唇|潤唇|唇膜|唇彩|唇线|唇線|唇膏|唇釉/i,
+      /\b(lip\s*oils?|lip\s*balms?|lip\s*treatments?|lip\s*masks?|lip\s*gloss(?:es)?|lip\s*liners?|lip\s*pencils?|lip\s*tints?|lip\s*plumpers?)\b|唇油|润唇|潤唇|唇膜|唇彩|唇线|唇線|唇膏|唇釉/i,
   },
   // Haircare. MEASURED GAP, 2026-08-20: bare `shampoo` / `conditioner` /
   // `hair mask` / `hair oil` had no rule here and no entry in
@@ -308,6 +305,23 @@ const CATEGORY_ALIAS_RULES = Object.freeze([
     categoryPathPrefix: 'beauty/body-care/body-wash/',
     pattern: /\bshower\s+gels?\b|沐浴露|沐浴乳/i,
   },
+  // STANDALONE `gloss`, placed directly above `serum` and guarded.
+  //
+  // It must outrank `serum`: `LIP-PRESSION Metal Serum Gloss` -- the partner-reported
+  // product -- otherwise browses beauty/skincare/treat/ and its own row is rejected
+  // category_mismatch. It must NOT fire on a gloss that belongs to another tree, which
+  // is what the first version (an unguarded arm at the top of the table) did:
+  // `gloss shampoo`, `hair-gloss`, `gloss serum`, `blush gloss`, `eye gloss`,
+  // `top coat gloss`. So: a query with a `lip` token is always lip; otherwise the
+  // query must name no competing head noun or body area. \b treats `-` as a
+  // boundary, so `hair-gloss` is excluded too (a lookbehind on `hair\s` was not).
+  // Same category name as the adjacent-arm rule: telemetry vocabulary unchanged.
+  {
+    category: 'lip_care_or_gloss',
+    categoryPathPrefix: 'beauty/makeup/lip/',
+    pattern:
+      /^(?=.*\bgloss(?:es)?\b)(?:(?=.*\blips?\b)|(?!.*\b(?:serums?|essences?|ampoules?|shampoos?|conditioners?|treatments?|highlighters?|blush(?:es)?|hair|nails?|eyes?|brows?|lash(?:es)?|body|face|skin|polish|top\s*coat)\b))/i,
+  },
   {
     category: 'serum',
     categoryPathPrefix: 'beauty/skincare/treat/',
@@ -321,9 +335,9 @@ const CATEGORY_ALIAS_RULES = Object.freeze([
   },
   // BARE `lip`, deliberately placed HERE and not with the two lip rules at the top.
   //
-  // First match wins, so a rule's POSITION is its precedence. The arms above own
-  // `lip <format noun>` (gloss/balm/tint/liner/oil/mask) and a standalone `gloss`,
-  // and they sit at the top because those are unambiguously lip products. A bare
+  // First match wins, so a rule's POSITION is its precedence. The arms at the top own
+  // `lip <format noun>` (gloss/balm/tint/liner/oil/mask), because those are
+  // unambiguously lip products. A bare
   // `lip` is not: it appears in queries whose HEAD noun belongs to another tree,
   // and whose rows live there --
   //     `sunscreen for lips` -> beauty/skincare/sun/      (15 titles measured)
@@ -341,7 +355,7 @@ const CATEGORY_ALIAS_RULES = Object.freeze([
   // It sits BELOW serum/skincare_treatment too, and that placement is measured: at
   // the gate, `PDRN Lip Serum` with its row at beauty/skincare/treat/serum is
   // REJECTED if this arm outranks the serum rule. `LIP-PRESSION Metal Serum Gloss`
-  // does not need the height -- the standalone `gloss` at the top already claims it.
+  // does not need the height -- the guarded standalone-`gloss` rule above serum claims it.
   //
   // `brush` and `remover` are excluded outright: those are tool/cleanser rows that
   // no lip prefix can admit.
@@ -349,7 +363,7 @@ const CATEGORY_ALIAS_RULES = Object.freeze([
     category: 'lip_generic',
     categoryPathPrefix: 'beauty/makeup/lip/',
     pattern:
-      /^(?!.*\b(brushe?s?|removers?)\b)(?:.*\b(lips?|chapsticks?)\b|.*(?:唇|润唇|潤唇))/i,
+      /^(?!.*\b(brushe?s?|removers?)\b)(?:.*\b(lips?|chapsticks?)\b|.*唇)/i,
   },
 ]);
 

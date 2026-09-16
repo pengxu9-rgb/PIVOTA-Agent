@@ -745,3 +745,75 @@ test('CONTROL: the lip prefix still rejects rows from other makeup trees', () =>
     assert.ok(result.reasons.includes('category_mismatch'), JSON.stringify(result.reasons));
   }
 });
+
+// ---------------------------------------------------------------------------
+// STANDALONE `gloss`, and what the sink may admit under a lip query.
+//
+// Re-review of #2214: an unguarded `gloss` arm at the TOP of the rule table
+// stole every gloss that belongs to another tree, and the widened sink admitted
+// tools and two-area products at depth 2. Each case below failed against that
+// version.
+// ---------------------------------------------------------------------------
+
+test('a gloss that belongs to another tree is not routed to lip', () => {
+  for (const [query, notPrefix] of [
+    ['gloss shampoo', 'beauty/makeup/lip/'],
+    ['gloss serum', 'beauty/makeup/lip/'],
+    ['blush gloss', 'beauty/makeup/lip/'],
+    ['hair-gloss', 'beauty/makeup/lip/'],
+    ['nail-gloss', 'beauty/makeup/lip/'],
+    ['eye gloss', 'beauty/makeup/lip/'],
+    ['top coat gloss', 'beauty/makeup/lip/'],
+    ['body gloss oil', 'beauty/makeup/lip/'],
+  ]) {
+    const contract = buildSearchQualityContract({ rawQuery: query, market: 'SG' });
+    assert.notEqual(contract.hard_constraints?.category_path_prefix, notPrefix, query);
+  }
+});
+
+test('a lip gloss whose name does not say lip still routes to lip, above serum', () => {
+  // CONTROL for the test above: a guard that refused every standalone gloss passes it.
+  for (const query of ['Gloss Drip', 'glosses', 'LIP-PRESSION Metal Serum Gloss']) {
+    const contract = buildSearchQualityContract({ rawQuery: query, market: 'SG' });
+    assert.equal(contract.hard_constraints?.category_path_prefix, 'beauty/makeup/lip/', query);
+  }
+  const { result } = gateFor('Gloss Drip', lipRow('Gloss Drip', 'beauty/makeup'));
+  assert.equal(result.eligible, true, JSON.stringify(result.reasons));
+});
+
+test('a lip TOOL query is not routed to the lip tree', () => {
+  // lip_generic excludes brush/remover outright: no lip prefix can admit those rows.
+  for (const query of ['lip brush', 'lip brushes', 'lip remover']) {
+    const contract = buildSearchQualityContract({ rawQuery: query, market: 'SG' });
+    assert.notEqual(contract.hard_constraints?.category_path_prefix, 'beauty/makeup/lip/', query);
+  }
+});
+
+test('under a lip query, a depth-2 tool or two-area product is NOT a lip product', () => {
+  for (const title of ['Lip & Eye Makeup Remover', '眼唇卸妆液', '唇刷', 'Eye and Lip Primer', 'Hair Gloss Treatment', 'Nail Gloss Top Coat']) {
+    const { result } = gateFor('lip gloss', lipRow(title, 'beauty/makeup'));
+    assert.equal(result.eligible, false, `${title} must not satisfy a lip query`);
+  }
+});
+
+test('the widened sink arms read the row identity, not its description', () => {
+  // PATHLESS on purpose: a row with a category_path is judged on title/type only by
+  // the gate itself (`ownTypeMatches`), so it cannot see what the sink reads. A
+  // pathless row reaches the sink with its whole text, description included.
+  const row = { ...lipRow('Velvet Glow Cushion'), description: 'blend over cheeks and lips' };
+  assert.equal(gateFor('lip gloss', row).result.eligible, false, 'a description mentioning lips is not lip evidence');
+  // CONTROL: a row main already admitted by a compound arm is not newly rejected by the exclusions.
+  const kit = lipRow('Lip Gloss Primer', 'beauty/makeup'); // `primer` is in the exclusion list
+  assert.equal(gateFor('lip gloss', kit).result.eligible, true, 'origin/main compound arms run first');
+});
+
+test('the seed lane recalls lip forms beyond lipstick, and a lipstick query stays lipstick', () => {
+  const terms = (q) => buildBeautyExternalSeedCategoryTerms(inferBeautyMainlineIntent(q));
+  assert.deepStrictEqual(terms('red lipstick'), ['lipstick']);
+  assert.deepStrictEqual(terms('Gloss Drip'), ['lip gloss', 'lipgloss', 'gloss']);
+  assert.deepStrictEqual(terms('lip plumper'), ['lip plumper', 'plumper']);
+  for (const q of ['dry lips', 'chapstick']) {
+    const t = terms(q);
+    assert.ok(t.includes('lip balm') && t.includes('lip gloss'), `${q} -> ${JSON.stringify(t)}`);
+  }
+});

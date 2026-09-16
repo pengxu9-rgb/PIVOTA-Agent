@@ -33,3 +33,10 @@ test('category main SQL includes shallow ancestors only alongside own product-fo
   expect(params).toContain('(^| )((lip[ ]*)?tints?)($| )');
   expect(sql).toMatch(/p\.category_path = ANY\(\$\d+::text\[\]\) AND .*p\.title/);
 });
+test.each(['dry lips','chapstick','唇膏'])(
+  'a lip query no FORM_RULE matches still admits depth-2 rows by own-name lip evidence: %s',async(q)=>{
+    const {sql,params}=await statement(q);
+    expect(params).toContainEqual(['beauty','beauty/makeup']);
+    expect(params.some((p)=>typeof p==='string'&&p.includes('lips?|lipsticks?')&&p.includes('gloss(?:es)?'))).toBe(true);
+    expect(sql).toMatch(/p\.category_path = ANY\(\$\d+::text\[\]\) AND /);
+});

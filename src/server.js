@@ -16332,6 +16332,13 @@ function explicitBeautyLipFormTerms(queryText = '') {
   if (/\blip\s*tints?\b/.test(query)) return ['lip tint', 'lip-tint', 'lip stain'];
   if (/\blip\s*gloss(?:es)?\b/.test(query)) return ['lip gloss', 'lipgloss'];
   if (/\blip\s*balms?\b/.test(query)) return ['lip balm', 'lipbalm'];
+  if (/\blip\s*plumpers?\b/.test(query)) return ['lip plumper', 'plumper'];
+  // Pinned before the broadened fallback below, so a lipstick query still seeds
+  // lipstick rows only.
+  if (/\b(lipsticks?|lip\s*sticks?|liquid\s*lips?|rouge)\b|口红|口紅/.test(query)) return ['lipstick'];
+  // Standalone `gloss` routes here (the guarded rule above `serum`) without `lip`
+  // adjacent to it; seeding it as `lipstick` recalled none of the gloss rows.
+  if (/\bgloss(?:es)?\b/.test(query)) return ['lip gloss', 'lipgloss', 'gloss'];
   return [];
 }
 
@@ -16355,7 +16362,9 @@ function buildBeautyExternalSeedCategoryTerms(intent = null) {
   if (terms.length === 0 && categoryPathPrefix) {
     if (categoryPathPrefix.startsWith('beauty/makeup/lip/')) {
       const explicitForms = explicitBeautyLipFormTerms(rawQuery);
-      (explicitForms.length ? explicitForms : ['lipstick']).forEach(push);
+      // A bare-lip / CJK / chapstick query is not a lipstick query. `lipstick` alone
+      // was the fallback, so `dry lips` seeded only lipstick rows.
+      (explicitForms.length ? explicitForms : ['lipstick', 'lip balm', 'lip gloss', 'lip tint', 'lip']).forEach(push);
     } else if (categoryPathPrefix.startsWith('beauty/makeup/eye/')) {
       push('mascara');
       push('eyeshadow');
@@ -21069,7 +21078,29 @@ function beautyProductMatchesCategoryPathQuery(product = {}, queryText = '', cat
     // `beauty/makeup` cohort. With adjacency-only arms, a row titled
     // "LIP-PRESSION Metal Serum Gloss" failed it and was rejected category_mismatch
     // even once the query routed to beauty/makeup/lip/ correctly.
-    return /\b(lips?|lipsticks?|lip\s*sticks?|lip\s*colors?|lip\s*colours?|lip\s*tints?|lip\s*gloss(?:es)?|lip\s*liners?|lip\s*balms?|lip\s*plumpers?|chapsticks?|rouge)\b|口红|口紅|唇|唇膏|唇釉|唇彩|唇线|唇線|唇油|润唇|潤唇|唇膜/i.test(text);
+    //
+    // The arms origin/main already had run first, on the full text, unchanged -- this
+    // branch must not reject anything it used to admit. The WIDENED arms (bare `lip`,
+    // bare `gloss`, chapstick, plumper, oil and the CJK care terms) read only the
+    // row's identity fields, never its description ("apply to lips and cheeks"), and
+    // never admit a tool or a two-area product: under `lip gloss`, a depth-2
+    // "Lip & Eye Makeup Remover", "眼唇卸妆液", "唇刷" or "Eye and Lip Primer" must stay
+    // out. Bare `唇` is deliberately absent: it is the first character of all of those.
+    // `gloss` mirrors the SQL FORM_RULE for lip gloss, which already admits it.
+    if (/\b(lipsticks?|lip\s*sticks?|lip\s*colors?|lip\s*colours?|lip\s*tints?|lip\s*gloss(?:es)?|lip\s*liners?|lip\s*balms?|rouge)\b|口红|口紅|唇膏|唇釉|唇彩|唇线|唇線/i.test(text)) {
+      return true;
+    }
+    const identity = normalizeSearchTextForMatch(
+      [product.title, product.name, product.display_name, product.product_name, product.product_type, product.category]
+        .map((v) => String(v || '').trim())
+        .filter(Boolean)
+        .join(' '),
+    );
+    if (!identity) return false;
+    if (/\b(brushe?s?|removers?|primers?)\b|\beyes?\s*(?:and|&|\+|\/)?\s*lips?\b|\blips?\s*(?:and|&|\+|\/)?\s*eyes?\b|卸妆|卸妝|刷|眼唇/i.test(identity)) {
+      return false;
+    }
+    return /\b(lips?|lip\s*plumpers?|lip\s*oils?|chapsticks?)\b|(?<!\b(?:hair|nail)[\s-])\bgloss(?:es)?\b|唇油|润唇|潤唇|唇膜/i.test(identity);
   }
   if (prefix.startsWith('beauty/makeup/eye')) {
     return /\b(mascara|eyeliner|eye\s*liner|eyeshadow|eye\s*shadow|brow|lash)\b|睫毛膏|眼线|眼線|眼影|眉笔|眉筆/i.test(text);

@@ -107,6 +107,10 @@ function buildCanonicalSearchQualitySql({ contract, params, categoryPredicate, d
       ['beauty/skincare/cleanse', 'cleansers?|cleansing|face[ ]*wash|facial[ ]*wash'],
       ['beauty/skincare/sun', 'sunscreens?|sun[ ]*(screen|block|cream|stick|milk|fluid|lotion)|uv[ ]*(protector|shield)|spf'],
       ['beauty/fragrance', 'perfumes?|fragrances?|parfum|cologne|eau[ ]*de[ ]*toilette|body[ ]*mist'],
+      // Without this, a lip-prefix query no FORM_RULE matched (`dry lips`, `唇膏`,
+      // `chapstick`, `lip plumper`) never admitted the depth-2 beauty/makeup rows,
+      // and the partner-reported gloss was reachable only by the `serum` FORM_RULE.
+      ['beauty/makeup/lip', 'lips?|lipsticks?|lip[ ]*sticks?|gloss(?:es)?|lip[ ]*(balms?|tints?|oils?|liners?|plumpers?|masks?|stains?)|chapsticks?|rouge'],
     ];
     const form = FORM_RULES.find(([re]) => re.test(query))?.[1]
       || prefixForms.find(([prefix]) => hard.category_path_prefix.startsWith(prefix))?.[1];
