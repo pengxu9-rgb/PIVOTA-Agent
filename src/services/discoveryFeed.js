@@ -2404,22 +2404,32 @@ function getBrandDirectPrefetchDelayMs() {
   return clampInt(process.env.DISCOVERY_BRAND_DIRECT_PREFETCH_DELAY_MS, 75, 0, 1000);
 }
 
-function buildCandidateBrandAliases(candidate) {
+// A candidate's brand aliases come from two sources with very different costs. The direct fields
+// (brand, vendor, ...) are a handful of short strings. The detected aliases run detectBrandEntities -
+// a brand-lexicon scan - over the title, name AND FULL DESCRIPTION.
+//
+// Measured 2026-09-17: matchesBrandScopeCandidate cost ~3ms PER CANDIDATE, almost all of it the
+// detection scan (356ms for 120 candidates, 1,074ms for 360, 2,321ms for 784, linear), while
+// normalizing the same candidates took ~0.04ms each. It is synchronous, so it also blocks every other
+// request on the instance, and phase timings put it at ~491ms of a brand page's p50.
+function buildCandidateDirectBrandAliases(candidate) {
   const aliases = new Set();
-  const directSignals = [
+  [
     candidate?.brand,
     candidate?.raw?.brand,
     candidate?.raw?.brand_name,
     candidate?.raw?.vendor,
     candidate?.raw?.vendor_name,
     candidate?.raw?.manufacturer,
-  ];
-
-  directSignals.forEach((value) => {
+  ].forEach((value) => {
     const normalized = normalizeBrandText(value);
     if (normalized) aliases.add(normalized);
   });
+  return Array.from(aliases);
+}
 
+function buildCandidateDetectedBrandAliases(candidate) {
+  const aliases = new Set();
   const detectionText = [
     candidate?.raw?.title,
     candidate?.raw?.name,
@@ -2439,7 +2449,6 @@ function buildCandidateBrandAliases(candidate) {
       });
     });
   }
-
   return Array.from(aliases);
 }
 
@@ -2466,15 +2475,20 @@ function matchesNormalizedBrandAlias(candidateBrand, normalizedAlias) {
 
 function matchesBrandScopeCandidate(candidate, aliases = []) {
   if (!Array.isArray(aliases) || aliases.length === 0) return true;
-  const candidateAliases = buildCandidateBrandAliases(candidate);
-  if (candidateAliases.length === 0) return false;
-  return aliases.some((alias) => {
-    const normalizedAlias = normalizeBrandText(alias);
-    if (!normalizedAlias) return false;
-    return candidateAliases.some((candidateBrand) =>
-      matchesNormalizedBrandAlias(candidateBrand, normalizedAlias),
+  // Normalized once per call rather than once per candidate alias pair.
+  const normalizedAliases = aliases.map((alias) => normalizeBrandText(alias)).filter(Boolean);
+  if (normalizedAliases.length === 0) return false;
+  const anyAliasMatches = (candidateAliases) =>
+    normalizedAliases.some((normalizedAlias) =>
+      candidateAliases.some((candidateBrand) => matchesNormalizedBrandAlias(candidateBrand, normalizedAlias)),
     );
-  });
+  // The detection scan only runs when the direct fields do not already answer the question. This is
+  // the same boolean as matching against the union: `some` over (direct ∪ detected) is exactly
+  // `some` over direct OR `some` over detected. It is not an approximation - it is short-circuit
+  // evaluation of the identical predicate. On the brand-direct lane every candidate was fetched BY
+  // brand, so the direct fields match and the scan never runs.
+  if (anyAliasMatches(buildCandidateDirectBrandAliases(candidate))) return true;
+  return anyAliasMatches(buildCandidateDetectedBrandAliases(candidate));
 }
 
 function parseCandidatePriceAmount(rawPrice) {
@@ -12516,6 +12530,9 @@ module.exports = {
     resolveExternalSeedProviderLimit,
     shouldFilterBrowseCandidateByQueryText,
     matchesBrandScopeCandidate,
+    buildCandidateDirectBrandAliases,
+    buildCandidateDetectedBrandAliases,
+    matchesNormalizedBrandAlias,
     shouldUseDiscoveryExternalSeedExactTitleFastpath,
     normalizeDiscoveryRequest,
     normalizeDiscoveryCursor,
