@@ -116,10 +116,11 @@ describe('phases measure real elapsed time, in the phase that spent it', () => {
 
     expect(slowExternal).toHaveBeenCalled();
     const phases = getLastDiscoverySnapshot('browse_products').phase_ms;
-    // The sleep happened inside the recall window and nowhere else.
-    expect(phases.recall).toBeGreaterThanOrEqual(SLOW_MS - 20);
+    // The sleep happened in the catalog load - one of the four awaits `recall` was split into -
+    // and nowhere else. Pinning the specific sub-phase is what makes a label swap fail.
+    expect(phases.recall_catalog).toBeGreaterThanOrEqual(SLOW_MS - 20);
     for (const [name, value] of Object.entries(phases)) {
-      if (name === 'recall') continue;
+      if (name === 'recall_catalog') continue;
       expect(value).toBeLessThan(SLOW_MS - 20);
     }
   });

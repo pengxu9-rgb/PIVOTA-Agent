@@ -11811,6 +11811,10 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
           })
         : null;
     let prefetchedBrandDirectLoadResult = null;
+    // #2219 put 1,009ms of a 1,114ms p50 inside `recall`, and showed that no entry in
+    // provider_breakdown claims it - the loads below are not in that breakdown at all. These
+    // marks split the window into its four awaits so the second can be attributed to one.
+    phaseTimer.mark('recall_setup');
     if (shouldUseBrandDirectPrimary) {
       prefetchedBrandDirectLoadResult = scheduledBrandDirectLoad
         ? await scheduledBrandDirectLoad.startNow()
@@ -11822,6 +11826,7 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
             fetchInternalCandidatesFn: options.brandFallbackFetchInternalCandidatesFn,
           });
     }
+    phaseTimer.mark('recall_brand_direct');
     const brandDirectAppliedPrimary =
       shouldUseBrandDirectPrimary &&
       Array.isArray(prefetchedBrandDirectLoadResult?.products) &&
@@ -11872,6 +11877,7 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
       candidateLoadResult?.catalogUnavailableError instanceof DiscoveryCatalogUnavailableError
         ? candidateLoadResult.catalogUnavailableError
         : null;
+    phaseTimer.mark('recall_catalog');
     const relationshipGraphDiscovery =
       Array.isArray(options.candidateProducts)
         ? {
@@ -11887,6 +11893,7 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
             logger,
           });
     relationshipGraphDiscoveryStats = relationshipGraphDiscovery.stats || relationshipGraphDiscoveryStats;
+    phaseTimer.mark('recall_graph');
     let effectiveRawCandidates =
       Array.isArray(relationshipGraphDiscovery.products) && relationshipGraphDiscovery.products.length > 0
         ? relationshipGraphDiscovery.products.concat(rawCandidates)
