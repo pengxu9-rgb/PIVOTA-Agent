@@ -1983,7 +1983,7 @@ function compactBrandToken(value) {
 // form) are built out of normalized tokens and have no original spelling to restore.
 function buildBrandScopeAliasEntries(brandNames = []) {
   const entries = [];
-  const seen = new Set();
+  const byNormalized = new Map();
   for (const rawBrand of Array.isArray(brandNames) ? brandNames : []) {
     const brandName = String(rawBrand || '').trim();
     if (!brandName) continue;
@@ -1995,10 +1995,27 @@ function buildBrandScopeAliasEntries(brandNames = []) {
     );
     variants.forEach((variant) => {
       const normalized = normalizeBrandText(variant);
-      if (!normalized || seen.has(normalized)) return;
-      seen.add(normalized);
-      entries.push({ normalized, spelling: normalized === brandNameNormalized ? brandName : normalized });
+      if (!normalized) return;
+      let entry = byNormalized.get(normalized);
+      if (!entry) {
+        entry = { normalized, spellings: [] };
+        byNormalized.set(normalized, entry);
+        entries.push(entry);
+      }
+      // EVERY brand name in the scope that folds to this alias contributes its spelling, not
+      // just the first one to reach it. A scope of ["Aetas", "Aetās"] folds to the single alias
+      // 'aetas', and keeping only the first spelling made the brand page NON-MONOTONIC in its
+      // own scope: ["Aetas","Aetās"] returned strictly fewer rows than ["Aetās"] alone, and
+      // swapping the order of an array the client controls changed the result.
+      if (normalized === brandNameNormalized && !entry.spellings.includes(brandName)) {
+        entry.spellings.push(brandName);
+      }
     });
+  }
+  // A derived variant (a dropped suffix token, the compacted form) is built out of normalized
+  // tokens and has no original spelling to restore, so it stands for itself.
+  for (const entry of entries) {
+    if (!entry.spellings.length) entry.spellings.push(entry.normalized);
   }
   return entries;
 }
@@ -8837,13 +8854,19 @@ async function fetchBrandScopedExternalSeedCandidates({
   // alias is carried, because the identity key must be computed from each — see below.
   const keptAliases = [];
   const seenSpaced = new Set();
-  const spellings = Array.isArray(brandAliasSpellings) ? brandAliasSpellings : [];
+  const spellingsByAlias = Array.isArray(brandAliasSpellings) ? brandAliasSpellings : [];
   for (let at = 0; at < brandAliases.length; at += 1) {
     const alias = brandAliases[at];
     const spaced = normalizeBrandText(alias);
     if (!spaced || seenSpaced.has(spaced)) continue;
     seenSpaced.add(spaced);
-    keptAliases.push({ raw: alias, spelling: spellings[at] || alias, spaced });
+    // A LIST, because two brand names in one scope can fold to this one alias. A caller that
+    // passes no spellings (every injected fetcher, every non-brand-page caller) gets the alias
+    // itself, which is exactly what it passed.
+    const spellings = Array.isArray(spellingsByAlias[at]) && spellingsByAlias[at].length
+      ? spellingsByAlias[at]
+      : [alias];
+    keptAliases.push({ spellings, spaced });
     if (keptAliases.length >= 16) break;
   }
   const normalizedAliases = keptAliases.map((entry) => entry.spaced);
@@ -8861,19 +8884,18 @@ async function fetchBrandScopedExternalSeedCandidates({
   // Aliases that collide on one identity key are OR'd, never first-wins: ["elf",
   // "e.l.f."] both key to 'elf', and taking `prefixable` from whichever came first
   // dropped the prefix arm and with it every row the old predicate matched by prefix.
-  // KNOWN LIMITATION, unchanged from the predicate this replaces: a brand whose diacritic
-  // is outside the SQL identity's Latin-1 translate table (Señora, Škoda, Māori), or that
-  // carries a compatibility numeral (a²b), is unreachable. brandIdentityKey is an exact
-  // twin of the SQL expression, but BOTH layers above this function —
-  // buildBrandScopeAliases and computeBrandScopedDirectCandidates — already ran
-  // normalizeBrandText, whose NFKD pass folds every combining mark, so `raw` here is
-  // spelled 'senora' while the row indexes as 'señora'. Main missed those rows too (its
-  // regexp turned ñ into a separator), so this is not a regression and not this change's
-  // job: fixing it means carrying the unnormalized brand name through both layers, which
-  // is a change to the shared alias pipeline. The scan's real reach is pinned by the
+  // A brand whose diacritic is outside the SQL identity's Latin-1 translate table (Señora,
+  // Škoda, Māori) USED to be unreachable here: every layer above this function runs
+  // normalizeBrandText, whose NFKD pass folds every combining mark, so the alias arrived
+  // spelled 'senora' while the row indexes as 'señora'. The request's own spelling is now
+  // carried alongside the alias (see resolveBrandAliasSpellings) and keyed below, so those
+  // rows are reachable. What is still NOT reachable is the other direction: folding runs one
+  // way, so a plain 'senoraskin' alias cannot reach a row indexed 'señoraskin' — that needs
+  // the ROW side folded, i.e. the diacritic added to identitySql's translate() table and the
+  // three brand identity indexes rebuilt. The scan's real reach is pinned by the
   // production-path test rather than described here.
   const prefixableByKey = new Map();
-  for (const { raw, spelling, spaced } of keptAliases) {
+  for (const { spellings, spaced } of keptAliases) {
     // EVERY spelling this alias is known by, not one of them. For any brand the SQL fold table
     // covers they are the same string and collapse into one key here, so the common brand page
     // gains no branch. Where they differ, both must be probed, because each reaches rows the
@@ -8884,7 +8906,10 @@ async function fetchBrandScopedExternalSeedCandidates({
     //   - the folded spelling reaches a row whose brand is stored unaccented ('senoraskin'),
     //     which the accented key can never equal.
     // Binding only one of them does not fix the brand page, it moves which half of it is empty.
-    for (const key of [brandIdentityKey(spelling), brandIdentityKey(raw), brandIdentityKey(spaced)]) {
+    // `spaced` is the folded spelling. brandIdentityKey(alias) is NOT listed separately: in
+    // production the alias IS its own folded form, so it duplicated this key, and for a caller
+    // that passes no spellings the alias is already in `spellings` above.
+    for (const key of [...spellings.map((value) => brandIdentityKey(value)), brandIdentityKey(spaced)]) {
       if (!key) continue;
       prefixableByKey.set(key, (prefixableByKey.get(key) || false) || spaced.length >= 4);
     }
@@ -9722,8 +9747,10 @@ function resolveBrandAliasSpellings(request, normalizedAliases) {
   const reproduces =
     normalized.length === normalizedAliases.length &&
     normalized.every((value, at) => value === normalizedAliases[at]);
-  if (!reproduces) return normalizedAliases;
-  return entries.slice(0, normalized.length).map((entry) => entry.spelling);
+  // One LIST per alias, never one spelling: two brand names in one scope can fold to the same
+  // alias and both must be probed.
+  if (!reproduces) return normalizedAliases.map((alias) => [alias]);
+  return entries.slice(0, normalized.length).map((entry) => entry.spellings);
 }
 
 async function computeBrandScopedDirectCandidates({
@@ -9874,14 +9901,20 @@ function buildBrandDirectPoolCacheKey({ request, normalizedAliases, safeLimit })
     // spelling too. Without this they would share one entry and one of those names would be
     // served the other's brand page.
     //
-    // The names themselves are the discriminator, not resolveBrandAliasSpellings: the spellings
-    // are a pure function of these, so this separates exactly what the scan separates, and it
-    // costs nothing. Resolving here would re-run the brand lexicon (~0.3ms measured) on every
-    // cache HIT, which is the one path that is supposed to be free. Case and surrounding space
-    // are folded out so they cannot split the cache for two spellings that scan alike.
+    // The discriminator is brandIdentityKey, the SAME function the scan keys on, so this splits
+    // the cache exactly where the scan differs and nowhere else. A weaker fold (trim +
+    // lowercase) splits it far more often than the scan does: "Dr. Jart+" / "Dr Jart+",
+    // "L'Oreal" with a straight vs a curly apostrophe, a doubled space, NFD vs NFC — all scan
+    // identically and would each take a second entry. Every extra entry is another run of the
+    // statement that was #1 in prod pg_stat_statements and the subject of the 2026-09-15
+    // brand-page stampede, so over-splitting this key is not a cosmetic cost.
+    //
+    // It is NOT resolveBrandAliasSpellings: that re-runs the whole brand lexicon (~0.3ms
+    // measured) on every cache HIT, the one path meant to be free. brandIdentityKey is 0.34us
+    // and the spellings are a pure function of these names anyway.
     brand_names: uniqStrings(
       (Array.isArray(request?.scope?.brand_names) ? request.scope.brand_names : [])
-        .map((name) => String(name || '').trim().toLowerCase()),
+        .map((name) => brandIdentityKey(name)),
       16,
     ),
     limit: safeLimit,
