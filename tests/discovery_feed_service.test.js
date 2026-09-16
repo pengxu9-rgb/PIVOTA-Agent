@@ -2116,10 +2116,21 @@ describe('discovery feed service', () => {
     const dbQueryMock = jest.fn(async (sql, params) => {
       const text = String(sql || '');
       if (text.includes('FROM external_product_seeds')) {
-        if (text.includes('EXISTS')) return { rows: [] };
+        // The underfill backfill lane, identified by the title expression it matches on. It used to
+        // be identified by its EXISTS/unnest subquery, which the indexed rewrite replaced with one
+        // LIKE per alias; that lane still binds the space-separated normalized alias.
+        if (text.includes("->'snapshot'->>'title'")) {
+          expect(params[2]).toBe('la roche posay %');
+          return { rows: [] };
+        }
         expect(text).toContain('regexp_replace');
-        expect(params[2]).toEqual(expect.arrayContaining(['la roche posay']));
-        expect(params[5]).toEqual(expect.arrayContaining(['larocheposay']));
+        // The primary lane now binds brand IDENTITY keys (accent-folded, alphanumerics only) — the
+        // same value the brand-identity index stores — for both the equality and the prefix arm.
+        // The old $3 normalized-alias / $4 prefix-pattern / $6 compact-alias triple is gone.
+        expect(params[2]).toEqual(expect.arrayContaining(['larocheposay']));
+        expect(params[3]).toBe('larocheposay%');
+        expect(text).toContain('= ANY($3::text[])');
+        expect(text).not.toMatch(/LIKE ANY\(/);
         return {
           rows: [
             {

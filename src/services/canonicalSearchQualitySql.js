@@ -39,6 +39,23 @@ function normalizedBrandIdentitySql(expression) {
   return `regexp_replace(${identitySql(expression)}, ' ', '', 'g')`;
 }
 
+const IDENTITY_ACCENTED = 'ÀÁÂÃÄÅÈÉÊËÌÍÎÏÒÓÔÕÖÙÚÛÜÝàáâãäåèéêëìíîïòóôõöùúûüýÿ';
+const IDENTITY_FOLDED = 'AAAAAAEEEEIIIIOOOOOUUUUYaaaaaaeeeeiiiiooooouuuuyy';
+// JS twin of normalizedBrandIdentitySql, for callers that bind an alias against
+// the indexed row identity. identityValue() above deliberately does NOT fold
+// accents (buildBrandIdentityPredicate leans on reviewed aliases for those
+// spellings), but the SQL translate() does — so a key bound for equality or a
+// prefix must fold too, or "Lancôme" could never equal the indexed "lancome".
+function brandIdentityKey(value) {
+  const folded = Array.from(String(value || '').replace(/[·•]/g, ''))
+    .map((character) => {
+      const at = IDENTITY_ACCENTED.indexOf(character);
+      return at === -1 ? character : IDENTITY_FOLDED[at];
+    })
+    .join('');
+  return folded.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
+}
+
 function buildBrandIdentityPredicate(brand, expression, params) {
   const terms = [...(reviewedAliases[brand.brand_key] || []), brand.canonical, brand.brand, brand.alias]
     .flatMap(value => [value, String(value || '').replace(/\b(?:beauty|cosmetics?)\b/gi, '')])
@@ -120,4 +137,4 @@ function buildCanonicalSearchQualitySql({ contract, params, categoryPredicate, d
   }
   return { where: `(${where}) AND $2::text IS NOT NULL`, brandWhere };
 }
-module.exports = { buildCanonicalSearchQualitySql, buildBrandIdentityPredicate, normalizedBrandIdentitySql, CANONICAL_OWN_BRAND_SQL };
+module.exports = { buildCanonicalSearchQualitySql, buildBrandIdentityPredicate, normalizedBrandIdentitySql, brandIdentityKey, CANONICAL_OWN_BRAND_SQL };

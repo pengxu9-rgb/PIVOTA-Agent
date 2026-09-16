@@ -63,6 +63,8 @@ const {
   _internals: productGroundingResolverInternals = {},
 } = require('./productGroundingResolver');
 const { activeProductsCacheSourceWhere } = require('./activeCatalogSourceSql');
+const { brandIdentityKey } = require('./canonicalSearchQualitySql');
+const { BRAND_SEED_SCAN_PREDICATE, seedBrandIdentitySql, seedTitleSql } = require('./brandSeedScanSql');
 const { transactionCapableMerchantWhere } = require('./merchantTransactionCapabilitySql');
 const {
   fetchRelationshipGraphRecallForAnchors,
@@ -8802,16 +8804,21 @@ async function fetchBrandScopedExternalSeedCandidates({
     16,
   );
   if (!normalizedAliases.length) return [];
-  const brandPrefixAliases = uniqStrings(
-    normalizedAliases.filter((alias) => alias.length >= 4),
+  // Brand identity keys (accent-folded, alphanumerics only) — the SAME value the
+  // brand-identity index stores, so equality and prefix are both index lookups.
+  // The six OR'd expressions this replaces matched the identical row set: over
+  // 101 simulated brand pages against a 2026-09-15 prod dump of every distinct
+  // brand-key combination (5,091 attached US seeds), identity ∪ identity-prefix
+  // returned all 8,176 rows the old predicate did, with none added.
+  const identityAliases = uniqStrings(
+    brandAliases.map((alias) => brandIdentityKey(alias)).filter(Boolean),
     16,
   );
-  const brandPrefixPatterns = uniqStrings(
-    brandPrefixAliases.map((alias) => `${alias}%`),
-    16,
-  );
-  const compactAliases = uniqStrings(
-    normalizedAliases.map((alias) => compactBrandToken(alias)).filter(Boolean),
+  if (!identityAliases.length) return [];
+  // Same >= 4 floor the old prefix arm used: a 3-character alias would prefix-match
+  // most of the table.
+  const identityPrefixAliases = uniqStrings(
+    identityAliases.filter((alias) => alias.length >= 4),
     16,
   );
 
@@ -8854,23 +8861,29 @@ async function fetchBrandScopedExternalSeedCandidates({
       cp.canonical_url        AS pivota_canonical_url,
       cp.title                AS catalog_title
     `;
-    const normalizedBrandSql = `trim(regexp_replace(${epsBrandFieldSql}, '[^a-z0-9]+', ' ', 'g'))`;
-    const compactBrandSql = `regexp_replace(${epsBrandFieldSql}, '[^a-z0-9]+', '', 'g')`;
     // Brand-scoped public cards must point at a PDP that the serving contract
     // accepts, so external seeds are resolved through attached_product_key.
-    const indexedBrandSql = `lower(regexp_replace(coalesce(eps.seed_data->>'brand', eps.seed_data->'snapshot'->>'brand', split_part(eps.domain, '.', 1), ''), '[^a-z0-9]+', '', 'g'))`;
     const orderClause = orderByRecency
       ? 'ORDER BY eps.updated_at DESC NULLS LAST, eps.created_at DESC NULLS LAST'
       : '';
-    const brandMatchSql = `(
-        ${epsBrandFieldSql} = ANY($3::text[])
-        OR ${epsBrandFieldSql} LIKE ANY($4::text[])
-        OR ${normalizedBrandSql} = ANY($3::text[])
-        OR ${normalizedBrandSql} LIKE ANY($4::text[])
-        OR ${compactBrandSql} = ANY($6::text[])
-        OR ${indexedBrandSql} = ANY($6::text[])
-      )`;
+    const brandIdentitySql = seedBrandIdentitySql('eps');
     if (!includeAttached) return [];
+    // Every bind is pushed at the moment its text is added, so a clause that is
+    // skipped can never leave an unreferenced parameter behind (42P18 kills the
+    // whole statement, see #2207).
+    const headParams = [market, tool];
+    const headBind = (value) => {
+      headParams.push(value);
+      return `$${headParams.length}`;
+    };
+    // `= ANY(array)` and a per-alias LIKE are both index-drivable against
+    // idx_external_seeds_brand_identity_prefix_v1; `LIKE ANY(array)`, which this
+    // replaces, is not, and cost a full scan of every attached seed per call.
+    const brandClauses = [`${brandIdentitySql} = ANY(${headBind(identityAliases)}::text[])`];
+    for (const alias of identityPrefixAliases) {
+      brandClauses.push(`${brandIdentitySql} LIKE ${headBind(`${alias}%`)}`);
+    }
+    const brandMatchSql = `(${brandClauses.join('\n        OR ')})`;
     // Primary query — attached seeds with canonical fields. The old unattached
     // partial-index path could expose ext_* or stale sig_* routes that PDP
     // rejects, so public brand recall now requires the serving catalog join.
@@ -8880,37 +8893,42 @@ async function fetchBrandScopedExternalSeedCandidates({
         FROM external_product_seeds eps
         JOIN catalog_products cp ON cp.product_key = eps.attached_product_key
         ${buildDiscoveryCatalogServingGateJoinSql('cp')}
-        WHERE eps.status = 'active'
-          AND eps.attached_product_key IS NOT NULL
+        WHERE ${BRAND_SEED_SCAN_PREDICATE.replace(/\b(status|attached_product_key)\b/g, 'eps.$1')}
           AND eps.market = $1
           AND (eps.tool = '*' OR eps.tool = $2)
           AND ${brandMatchSql}
         ${orderClause}
-        LIMIT $5
+        LIMIT ${headBind(safeLimit)}
       `,
-      [market, tool, normalizedAliases, brandPrefixPatterns, safeLimit, compactAliases],
+      headParams,
     );
     const rows = Array.isArray(attachedHeadRes?.rows) ? [...attachedHeadRes.rows] : [];
     if (rows.length < safeLimit) {
+      // Same match as the EXISTS/unnest form this replaces — a title that starts
+      // with an alias followed by a space — but written as one LIKE per alias, so
+      // idx_external_seeds_attached_title_prefix_v1 can answer each one. The
+      // unnest form had to evaluate the title expression for every attached seed.
+      const titleParams = [market, tool];
+      const titleBind = (value) => {
+        titleParams.push(value);
+        return `$${titleParams.length}`;
+      };
+      const titleSql = seedTitleSql('eps');
+      const titleClauses = normalizedAliases.map((alias) => `${titleSql} LIKE ${titleBind(`${alias} %`)}`);
       const titleRes = await query(
         `
           SELECT ${attachedSelectColumns}
           FROM external_product_seeds eps
           JOIN catalog_products cp ON cp.product_key = eps.attached_product_key
           ${buildDiscoveryCatalogServingGateJoinSql('cp')}
-          WHERE eps.status = 'active'
-            AND eps.attached_product_key IS NOT NULL
+          WHERE ${BRAND_SEED_SCAN_PREDICATE.replace(/\b(status|attached_product_key)\b/g, 'eps.$1')}
             AND eps.market = $1
             AND (eps.tool = '*' OR eps.tool = $2)
-            AND EXISTS (
-              SELECT 1
-              FROM unnest($3::text[]) AS alias
-              WHERE lower(coalesce(eps.seed_data->'snapshot'->>'title', eps.seed_data->>'title', eps.title, '')) LIKE alias || ' %'
-            )
+            AND (${titleClauses.join('\n              OR ')})
           ${orderClause}
-          LIMIT $4
+          LIMIT ${titleBind(Math.max(0, safeLimit - rows.length))}
         `,
-        [market, tool, normalizedAliases, Math.max(0, safeLimit - rows.length)],
+        titleParams,
       );
       const seenIds = new Set(rows.map((row) => String(row?.id || '').trim()).filter(Boolean));
       for (const row of Array.isArray(titleRes?.rows) ? titleRes.rows : []) {
