@@ -693,8 +693,12 @@ for (const rawQuery of ['JUNG SAEM MOOL', 'JUNGSAEMMOOL']) {
 }
 
 test('the spaced catalogue spelling of the same brand still passes', () => {
-  // The fix compares compacted forms, so it must hold in BOTH directions — a row stored
-  // `JUNG SAEM MOOL` was never broken and must not become broken.
+  // A row stored `JUNG SAEM MOOL` was never broken and must not become broken.
+  //
+  // NOTE what answers this one: the spaced brand resolves through the lexicon with
+  // brand_only=true, so the identity short-circuit returns before the compacted arm
+  // runs. It is a real regression guard for the SPACED cohort, not coverage of the new
+  // arm — the two solid-brand tests and the three controls below are that.
   const contract = buildSearchQualityContract({ rawQuery: 'JUNGSAEMMOOL', market: 'SG' });
   const gate = getSearchQualityContractHardConstraintResult(
     solidBrandGloss({ brand: 'JUNG SAEM MOOL', merchant_name: 'JUNG SAEM MOOL' }),
@@ -716,6 +720,34 @@ test('CONTROL: a different brand is still rejected by the same contract', () => 
       brand: 'VELY VELY',
       merchant_name: 'VELY VELY',
     }),
+    contract,
+    'JUNG SAEM MOOL',
+  );
+  assert.equal(gate.eligible, false);
+  assert.ok(gate.reasons.includes('brand_mismatch'), JSON.stringify(gate.reasons));
+});
+
+test('CONTROL: a same-length brand that is not the same letters is rejected', () => {
+  // Kills a mutant comparing LENGTHS instead of contents. `jungsaemmoon` and
+  // `jungsaemmool` are both twelve characters, so a length check calls them equal and
+  // admits a brand we have never heard of.
+  const contract = buildSearchQualityContract({ rawQuery: 'JUNG SAEM MOOL', market: 'SG' });
+  const gate = getSearchQualityContractHardConstraintResult(
+    solidBrandGloss({ brand: 'Jung Saem Moon', merchant_name: 'Jung Saem Moon' }),
+    contract,
+    'JUNG SAEM MOOL',
+  );
+  assert.equal(gate.eligible, false);
+  assert.ok(gate.reasons.includes('brand_mismatch'), JSON.stringify(gate.reasons));
+});
+
+test('CONTROL: a PREFIX of the brand is rejected, in both containment directions', () => {
+  // The chosen relation is equality. Containment the other way round --
+  // compactNeedle.includes(compactProductBrand) -- would admit `JungSaem` for the
+  // JUNGSAEMMOOL contract, which is a different brand, or none at all.
+  const contract = buildSearchQualityContract({ rawQuery: 'JUNG SAEM MOOL', market: 'SG' });
+  const gate = getSearchQualityContractHardConstraintResult(
+    solidBrandGloss({ brand: 'JungSaem', merchant_name: 'JungSaem' }),
     contract,
     'JUNG SAEM MOOL',
   );
@@ -769,10 +801,22 @@ test('KNOWN GAP: a solid-spelled brand still resolves brand_only=false', () => {
   // queryTokens - aliasTokens - brandTokens. The consumed token 'jungsaemmool' is in neither
   // token set, so it survives as a remainder and brand_only comes back false.
   //
-  // Consequences are ranking-only now that the gate is fixed: the brand-browse minimum row
-  // count and the category-priority score both read brand_only. The real fix is in
-  // brandLexicon.js — a token consumed by the compact-run path is not a remainder — and it
-  // touches every multi-token alias, so it needs its own measured no-change invariant.
+  // This remainder defect is the REASON the identity short-circuit fails, not a
+  // side-effect of it: the lexicon ALREADY carries the solid alias
+  // ('jung_saem_mool': ['jung saem mool', 'jungsaemmool']), so the carve-out would have
+  // answered this with no gate change at all if brand_only were computed correctly.
+  //
+  // Nor is it specific to this brand. A census over the beauty lexicon found 28
+  // same-brand spellings across 12 keys in the same shape — lordandberry,
+  // nyxcosmetics, romnd, jomalone, yslbeauty, tower28beauty, patmcgrath and
+  // firstaidbeauty among them — all resolving brand_only=false. The compacted
+  // equality arm admits them; this predicate still mis-describes them.
+  //
+  // With the gate fixed the REMAINING consequences are ranking-only (the brand-browse
+  // minimum row count and the category-priority score read brand_only). The real fix is
+  // in brandLexicon.js — a token consumed by the compact-run path is not a remainder
+  // — and it touches every multi-token alias, so it needs its own measured
+  // no-change invariant.
   const identity = resolveBeautyBrandBrowseQuery('jungsaemmool');
   assert.equal(identity.matched, true);
   assert.equal(identity.brand_key, 'jung_saem_mool');
