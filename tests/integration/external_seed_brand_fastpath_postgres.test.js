@@ -51,7 +51,7 @@ suite('external seed brand fastpath on PostgreSQL', () => {
 
   const seedRow = async ({
     id, brand, title, domain = 'shop.example', attached = true,
-    status = 'active', servingDecision = 'public',
+    status = 'active', servingDecision = 'public', market = 'US',
   }) => {
     const key = attached ? `pk_${id}` : null;
     if (key) {
@@ -69,9 +69,9 @@ suite('external seed brand fastpath on PostgreSQL', () => {
       `INSERT INTO external_product_seeds(id, external_product_id, market, tool, destination_url, canonical_url,
          domain, title, image_url, price_amount, price_currency, availability, seed_data, updated_at, created_at,
          status, attached_product_key)
-       VALUES ($1, $1, 'US', 'creator_agents', $2, $2, $3, $4, 'https://img.example/x.jpg', 20, 'USD', 'in_stock',
+       VALUES ($1, $1, $8, 'creator_agents', $2, $2, $3, $4, 'https://img.example/x.jpg', 20, 'USD', 'in_stock',
          $5, now(), now(), $7, $6)`,
-      [id, `https://shop.example/${id}`, domain, title, JSON.stringify({ brand }), key, status],
+      [id, `https://shop.example/${id}`, domain, title, JSON.stringify({ brand }), key, status, market],
     );
   };
 
@@ -109,6 +109,9 @@ suite('external seed brand fastpath on PostgreSQL', () => {
     await seedRow({ id: 'scope_suppressed', brand: 'Suppressed Brand', title: 'Hidden Item', servingDecision: 'suppressed' });
     await seedRow({ id: 'scope_inactive', brand: 'Inactive Brand', title: 'Retired Item', status: 'inactive' });
     await seedRow({ id: 'scope_unattached', brand: 'Unattached Brand', title: 'Loose Item', attached: false });
+    // Another market, same brand as a US row, so the market predicate has something to exclude.
+    // Every other fixture is US, which left `AND market = $1` deletable with the suite green.
+    await seedRow({ id: 'scope_other_market', brand: 'Fenty Beauty', title: 'Gloss Bomb KR', market: 'KR' });
   }, 60000);
 
   afterAll(async () => {
@@ -258,7 +261,13 @@ suite('external seed brand fastpath on PostgreSQL', () => {
     // serving-trust gate included.
     expect((await runFastpath('Suppressed Brand')).ids).toEqual([]);   // serving_decision <> 'public'
     expect((await runFastpath('Inactive Brand')).ids).toEqual([]);     // status <> 'active'
-    expect((await runFastpath('Unattached Brand')).ids).toEqual([]);   // no attached_product_key
+    // The market predicate: a KR row for a brand that also has a US row must not reach a US call.
+    expect((await runFastpath('Fenty Beauty')).ids).not.toContain('scope_other_market');
+    // A row with no attached_product_key is excluded, but NOT by `attachedFilter` — the
+    // serving-trust EXISTS joins cp.product_key = attached_product_key, and a NULL never joins,
+    // so it already excludes this row on its own. `attachedFilter` is redundant with it and no
+    // input can distinguish the two; this assertion pins the EXCLUSION, not that predicate.
+    expect((await runFastpath('Unattached Brand')).ids).toEqual([]);
     // ...and a brand that IS servable still comes back, so the three above cannot pass by the
     // whole arm being broken.
     expect((await runFastpath('Fenty Beauty')).ids).toEqual(['caps_fenty']);
