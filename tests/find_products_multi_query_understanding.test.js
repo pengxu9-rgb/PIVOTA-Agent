@@ -221,6 +221,11 @@ describe('find_products_multi query understanding', () => {
     ['hair serum', 'category_browse', 'beauty/haircare/'],
     ['hair cream', 'category_browse', 'beauty/haircare/'],
     ['hair treatment', 'category_browse', 'beauty/haircare/'],
+    // A lip token that is not adjacent to its format noun must still reach the lip
+    // tree rather than falling through to the skincare `serum` arm.
+    ['lip conditioner', 'category_browse', 'beauty/makeup/lip/'],
+    ['lip pression metal serum gloss', 'category_browse', 'beauty/makeup/lip/'],
+    ['唇膏', 'category_browse', 'beauty/makeup/lip/'],
   ])('beauty category vocabulary covers %s', (query, queryClass, categoryPathPrefix) => {
     const contract = buildSearchQualityContract({ rawQuery: query, market: 'US' });
     expect(contract.target_domain).toBe('beauty');
@@ -235,7 +240,10 @@ describe('find_products_multi query understanding', () => {
     ['printer toner'],
     ['toner cartridge'],
     ['fabric conditioner'],
-    ['lip conditioner'],
+    // `lip conditioner` was listed here until 2026-09-16. It is not a non-beauty
+    // sense — the haircare rule's own guard comment calls it "a lip product" — it
+    // was unclassified only because no lip arm matched it. Now pinned as lip in the
+    // vocabulary table above. See the bare-`lip` arm in queryUnderstanding.js.
   ])('non-beauty sense of %s stays unclassified', (query) => {
     const contract = buildSearchQualityContract({ rawQuery: query, market: 'US' });
     expect(contract.query_class).toBe('ambiguous_or_non_shopping');
@@ -417,7 +425,9 @@ describe('find_products_multi query understanding', () => {
     ['air conditioner', ''],
     ['air conditioners', ''],
     ['fabric conditioner', ''],
-    ['lip conditioner', ''],
+    // Not '': the guard's subject is that HAIRCARE does not claim this, and the lip
+    // arm now does. An empty expectation here passed only while no lip arm existed.
+    ['lip conditioner', 'beauty/makeup/lip/'],
   ])('conditioner guard anchoring: %s', (query, expectedPrefix) => {
     expect(resolveBeautyCategoryPathPrefixFromText(query) || '').toBe(expectedPrefix);
   });

@@ -40,11 +40,29 @@ const CATEGORY_ALIAS_RULES = Object.freeze([
   // beauty/makeup/lip/ prefix (519 eligible) is the only one that doesn't
   // orphan a subtree, and the union's title boost sorts the queried form to
   // the head. The lipS/ tree is still excluded by the prefix — recorded.
+  // BARE `lip` arm added 2026-09-16. Every arm above requires `lip` ADJACENT to a
+  // format noun (`lip\s*gloss`), and a product name routinely separates them:
+  // `LIP-PRESSION Metal Serum Gloss` normalises to `lip pression metal serum gloss`,
+  // so no lip arm fired, the query fell through to the `serum` rule twenty rules
+  // below, and browsed beauty/skincare/treat/ — 150 skincare serums answering a lip
+  // query, with the lip row itself rejected category_mismatch. Reported by a partner
+  // who could resolve the product through the merchant's own door but not ours.
+  //
+  // \b-anchored, so it does not fire on lipid, eclipse or lipo-. `lipstick` is NOT
+  // matched by \blips?\b and keeps its own rule above; this arm is what catches a
+  // lip product whose name puts anything at all between `lip` and its format noun.
+  //
+  // 唇膏 / 唇釉 were missing from BOTH lip rules (口红 was in the lipstick arm, 唇膏
+  // in neither), so the single most common CJK word for this category classified
+  // ambiguous_or_non_shopping and safe-emptied before any SQL ran.
+  //
+  // Name kept as-is: `category` is published as query telemetry, and the destination
+  // prefix is unchanged, so widening the arm costs no downstream vocabulary.
   {
     category: 'lip_care_or_gloss',
     categoryPathPrefix: 'beauty/makeup/lip/',
     pattern:
-      /\b(lip\s*oils?|lip\s*balms?|lip\s*treatments?|lip\s*masks?|lip\s*gloss(?:es)?|lip\s*liners?|lip\s*pencils?|lip\s*tints?)\b|唇油|润唇|潤唇|唇膜|唇彩|唇线|唇線/i,
+      /\b(lips?|chapsticks?|lip\s*oils?|lip\s*balms?|lip\s*treatments?|lip\s*masks?|lip\s*gloss(?:es)?|lip\s*liners?|lip\s*pencils?|lip\s*tints?)\b|唇油|润唇|潤唇|唇膜|唇彩|唇线|唇線|唇膏|唇釉/i,
   },
   // Haircare. MEASURED GAP, 2026-08-20: bare `shampoo` / `conditioner` /
   // `hair mask` / `hair oil` had no rule here and no entry in
