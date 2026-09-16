@@ -11740,8 +11740,34 @@ function summarizeExternalSeedRecallTelemetry(recallSummary = []) {
   return summary;
 }
 
+// Phase timings for getDiscoveryFeed. The build reported ONE latency_ms and two
+// unlogged sub-timers, so a p50 of 1.6s could not be attributed: the provider
+// breakdown accounted for ~0ms of it and the database, measured live, for under
+// 500ms. Marks are cumulative-since-the-previous-mark, so the phases PARTITION the
+// wall clock rather than sampling it, and whatever the marks do not cover is
+// reported as `unattributed` instead of vanishing — an instrument that hides the
+// time it cannot explain is worse than none.
+function createDiscoveryPhaseTimer(now = Date.now) {
+  const startedAt = now();
+  let last = startedAt;
+  const phases = {};
+  return {
+    mark(name) {
+      const at = now();
+      phases[name] = Number(phases[name] || 0) + Math.max(0, at - last);
+      last = at;
+    },
+    summary(totalMs) {
+      const attributed = Object.values(phases).reduce((sum, value) => sum + value, 0);
+      const total = Number.isFinite(totalMs) ? totalMs : Math.max(0, now() - startedAt);
+      return { ...phases, unattributed: Math.max(0, total - attributed) };
+    },
+  };
+}
+
 async function getDiscoveryFeed(payload = {}, options = {}) {
   const startedAt = Date.now();
+  const phaseTimer = createDiscoveryPhaseTimer();
   let request = null;
   let profile = null;
   let strategy = 'unknown';
@@ -11756,6 +11782,7 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
   try {
     request = normalizeDiscoveryRequest(payload);
     profile = buildDiscoveryProfile(request.context);
+    phaseTimer.mark('setup');
     strategy = profile.hasInterestSignals ? 'personalized_interest' : 'cold_start_curated';
     personalizationSource =
       strategy === 'personalized_interest' ? profile.personalizationSource : 'none';
@@ -11992,12 +12019,14 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
         },
       ]);
     }
+    phaseTimer.mark('recall');
     const identityGraphDedupe = await applyIdentityGraphDiscoveryDedupe(scopedCandidates, {
       request,
       identityGraphRowsResolverFn: options.identityGraphRowsResolverFn,
     });
     scopedCandidates = identityGraphDedupe.candidates;
     identityGraphDedupeStats = identityGraphDedupe.stats;
+    phaseTimer.mark('identity_dedupe');
     observeDiscoveryCandidateCount({
       surface: request.surface,
       stage: 'normalized',
@@ -12147,6 +12176,7 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
       count: selectedEntries.length,
     });
 
+	    phaseTimer.mark('select');
 	    const selectionLatencyMs = Date.now() - startedAt;
 	    const hasMore =
 	      request.surface === 'browse_products'
@@ -12284,6 +12314,7 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
       });
     }
 
+    phaseTimer.mark('assemble');
     const hydrationStartedAt = Date.now();
     const hydratedSelectedCandidates = await hydrateDiscoveryCandidatesProductIntel(
       selectedEntries.map((entry) => entry.candidate),
@@ -12291,6 +12322,8 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
     );
     const hydrateLatencyMs = Math.max(0, Date.now() - hydrationStartedAt);
     const latencyMs = Math.max(0, Date.now() - startedAt);
+    phaseTimer.mark('hydrate');
+    const phaseMs = phaseTimer.summary(latencyMs);
     metadata.hydrate_latency_ms = hydrateLatencyMs;
     metadata.request_latency_ms = latencyMs;
 
@@ -12335,6 +12368,7 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
       latency_ms: latencyMs,
       selection_latency_ms: selectionLatencyMs,
       hydrate_latency_ms: hydrateLatencyMs,
+      phase_ms: phaseMs,
       dominant_domain: profile.dominantDomain || null,
     });
     logger.info(
@@ -12348,6 +12382,7 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
         candidate_counts: candidateCounts,
         provider_breakdown: providerBreakdown,
         latency_ms: latencyMs,
+        phase_ms: phaseMs,
       },
       'discovery feed built',
     );
@@ -12401,6 +12436,10 @@ module.exports = {
   getDiscoveryHealthSnapshot,
   getDiscoveryFeed,
   _internals: {
+    // The phase timer is exported so a test can drive it with a fake clock: the
+    // property that matters is that the phases PARTITION the total, which cannot
+    // be asserted against a real clock without flaking.
+    createDiscoveryPhaseTimer,
     // ADR-009: exported for test. These three read "is this seller seed
     // supply?" and each silently flipped when the re-key moved that supply onto
     // observed sellers — the brand cap in particular is a 4x change on the live

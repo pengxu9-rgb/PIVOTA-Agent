@@ -326,6 +326,13 @@ describe('discovery feed service', () => {
     delete process.env.PIVOTA_API_KEY;
     delete process.env.DATABASE_URL;
 
+    // The `discovery feed built` line is where an operator reads these, so the log payload is
+    // asserted as well as the snapshot: dropping phase_ms from the log alone otherwise passes.
+    const builtLogPayloads = [];
+    const infoSpy = jest.spyOn(logger, 'info').mockImplementation((payload, message) => {
+      if (message === 'discovery feed built') builtLogPayloads.push(payload);
+    });
+
     const internalSpy = jest.fn(async () => []);
     const externalSpy = jest.fn(async ({ queries }) =>
       Array.from({ length: 12 }, (_, idx) =>
@@ -374,6 +381,28 @@ describe('discovery feed service', () => {
     expect(internalSpy).not.toHaveBeenCalled();
     expect(externalSpy).toHaveBeenCalledTimes(1);
     expect(externalCall.queries).toEqual(['lip balm']);
+
+    // Phase timings, asserted on a feed that demonstrably did the work (12 products above).
+    // getDiscoveryFeed reported ONE latency_ms, so a p50 of 1.6s could not be attributed: the
+    // provider breakdown accounted for ~0ms of it and the database, measured live, for under
+    // 500ms. The phases must add up to the number operators already see, and whatever the marks
+    // do not cover must surface as `unattributed` rather than vanish.
+    // getLastDiscoverySnapshot() with no argument returns a map keyed by surface.
+    const phaseSnapshot = getLastDiscoverySnapshot('browse_products');
+    expect(Object.keys(phaseSnapshot.phase_ms).sort()).toEqual(
+      ['assemble', 'hydrate', 'identity_dedupe', 'recall', 'select', 'setup', 'unattributed'].sort(),
+    );
+    for (const value of Object.values(phaseSnapshot.phase_ms)) {
+      expect(Number.isFinite(value)).toBe(true);
+      expect(value).toBeGreaterThanOrEqual(0);
+    }
+    expect(Object.values(phaseSnapshot.phase_ms).reduce((a, b) => a + b, 0)).toBe(
+      phaseSnapshot.latency_ms,
+    );
+
+    infoSpy.mockRestore();
+    expect(builtLogPayloads).toHaveLength(1);
+    expect(builtLogPayloads[0].phase_ms).toEqual(phaseSnapshot.phase_ms);
     expect(recallSummaryText).not.toMatch(/niacinamide|vitamin c|barrier moisturizer/i);
     expect(response.metadata.provider_breakdown).toEqual(
       expect.arrayContaining([
