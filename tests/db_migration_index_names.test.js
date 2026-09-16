@@ -13,6 +13,17 @@ const path = require('path');
 // and a fixed one has to be removed from the list rather than quietly leaving it stale.
 const MIGRATIONS_DIR = path.join(__dirname, '..', 'src', 'db', 'migrations');
 
+// SCOPE, stated because a scanner that silently under-reports is worse than none: this reads
+// explicit `CREATE [UNIQUE] INDEX` statements ONLY. Index names created as a side effect of a
+// constraint share the same namespace and are invisible here — `027_aurora_activity_events.sql:5`
+// declares `activity_id TEXT NOT NULL UNIQUE`, which creates
+// `aurora_activity_events_activity_id_key`, and `028_aurora_activity_feed.sql:116` then declares
+// `CREATE UNIQUE INDEX IF NOT EXISTS aurora_activity_events_activity_id_key`. That is a THIRD
+// 027/028 collision this test cannot see (benign — same shape — but real). A constraint added over
+// an existing index name is worse: `ALTER TABLE ... ADD CONSTRAINT` fails outright with 42P07
+// rather than being skipped. So KNOWN_COLLISIONS below is exhaustive for what the scanner covers,
+// not for the database.
+//
 // Pre-existing collisions, each verified by reading both definitions.
 //
 // Both are in the Aurora activity feed: 028 redeclares 027's index name with `activity_id` as the
@@ -36,10 +47,11 @@ const stripSqlComments = (sql) => sql.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(
 const indexNamesIn = (sql) => {
   const names = [];
   const re = /CREATE\s+(?:UNIQUE\s+)?INDEX\s+(?:CONCURRENTLY\s+)?(?:IF\s+NOT\s+EXISTS\s+)?([A-Za-z0-9_."]+)/gi;
-  let match = re.exec(stripSqlComments(sql));
+  const scannable = stripSqlComments(sql);
+  let match = re.exec(scannable);
   while (match) {
     names.push(match[1].replace(/"/g, '').toLowerCase());
-    match = re.exec(stripSqlComments(sql));
+    match = re.exec(scannable);
   }
   return names;
 };
@@ -79,7 +91,8 @@ describe('migration index names', () => {
 
   test('the brand-search fastpath name is now declared exactly once', () => {
     // The file this PR deletes declared it a second time and could never create anything, because
-    // 031_external_product_seeds_* sorts first and takes the name. Pinned so it does not come back.
+    // 031_external_product_seeds_* sorts first and takes the name — confirmed against prod, whose
+    // indexdef for that name is the winner's expression. Pinned so it does not come back.
     const owners = migrationFiles().filter((file) =>
       indexNamesIn(fs.readFileSync(path.join(MIGRATIONS_DIR, file), 'utf8'))
         .includes('idx_external_product_seeds_brand_search_fastpath'));
