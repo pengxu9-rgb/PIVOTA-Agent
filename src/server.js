@@ -12046,6 +12046,12 @@ function projectSearchTransportProduct(product, stats = null) {
     'price',
     'price_amount',
     'currency',
+    // Freshness travels with the price through the transport projection too. This is
+    // an explicit allowlist applied at all three primary find_products_multi exits,
+    // so omitting these published them on the early-direct beauty lane ONLY -- the
+    // same product carrying or lacking an as_of depending on how it was routed.
+    'price_as_of',
+    'price_confidence',
     'in_stock',
     'availability',
     'inventory_quantity',
@@ -17495,12 +17501,22 @@ function normalizeCanonicalPriceAsOf(value) {
   if (value instanceof Date) {
     return Number.isNaN(value.getTime()) ? null : value.toISOString();
   }
-  const text = String(value).trim();
-  if (!text) return null;
-  // Postgres renders timestamptz as `2026-09-08 04:25:42.316439+00`: a space
-  // separator and a TWO-digit offset. Naively appending 'Z' to that produces
-  // `...+00Z`, which is unparseable -- so the first version of this silently
-  // dropped every real prod timestamp and emitted no as_of at all.
+  // ONLY a string past this point. `String(value)` on a number was the bug: pg can
+  // hand back an epoch-ish value on some paths, and `String(0) + 'Z'` is '0Z', which
+  // V8 happily parses as the year 2000. A silently wrong as_of is worse than none --
+  // the entire value of the field is that a reader can trust it.
+  if (typeof value !== 'string') return null;
+  const text = value.trim();
+  // Require a FULL date and time before parsing. Partials ('2026') and locale forms
+  // ('9/8/2026') parse in V8 but mean something we never asserted, and the second
+  // is timezone-dependent on top.
+  if (!/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}/.test(text)) return null;
+  // `catalog_offers.updated_at` is `timestamp WITHOUT time zone` (db/catalog.py, and
+  // migration 058 declares plain TIMESTAMP), so this rendering carries NO offset and
+  // the instant is only as good as the session that stamped NOW(). Reading it as UTC
+  // is therefore an assumption, stated here rather than hidden: it holds while the
+  // database session runs UTC, and a non-UTC session shifts every as_of by its offset.
+  // An offset IS honoured when present, for the paths that do supply one.
   let candidate = text.includes('T') ? text : text.replace(' ', 'T');
   const offset = candidate.match(/[+-](\d{2})(:?\d{2})?$/);
   if (offset && !offset[2]) candidate += ':00';
@@ -17540,11 +17556,15 @@ function resolveCanonicalOfferDerivedPrice(row) {
   // meaning "we do not believe this price". Absent and disbelieved must not
   // collapse into the same answer. Measured: 4,897 serving-eligible offers carry
   // a NULL price_confidence today.
+  // Only a string or a number is a confidence. `Number(true)` is 1 and `Number([0.5])`
+  // is 0.5, so an accidental boolean or single-element array would publish a
+  // confidence nobody recorded.
   const confidenceRaw = row.price_confidence;
+  const confidenceIsScalar =
+    typeof confidenceRaw === 'number' ||
+    (typeof confidenceRaw === 'string' && confidenceRaw.trim() !== '');
   const confidence =
-    confidenceRaw === null || confidenceRaw === undefined || String(confidenceRaw).trim() === ''
-      ? null
-      : (Number.isFinite(Number(confidenceRaw)) ? Number(confidenceRaw) : null);
+    confidenceIsScalar && Number.isFinite(Number(confidenceRaw)) ? Number(confidenceRaw) : null;
   return {
     priced: true,
     amount,
@@ -53917,6 +53937,13 @@ module.exports._debug = {
   ensureSearchProductPdpOpen,
   buildCanonicalChainMainlineProduct,
   resolveCanonicalOfferDerivedPrice,
+  // Exported because the property that regressed here is INVISIBLE over the wire in
+  // the only direction that matters: a field missing from this allowlist is simply
+  // absent from the response, which is indistinguishable from a product that never
+  // had one. `price_as_of` shipped stripped on all three primary find_products_multi
+  // exits and present on the early-direct beauty lane, so the same product carried or
+  // lacked it depending on routing, and every response looked individually plausible.
+  projectSearchTransportProduct,
   CANONICAL_NO_OFFER_DERIVED_PRICE_REASON,
   finalizeCitableSupplementItem,
   mergeCanonicalChainProductsWithSeedProducts,

@@ -238,11 +238,14 @@ describe('the served price states when it was true', () => {
   // this whole file exists to enforce for the currency.
 
   test('price_as_of and price_confidence come from the offer row', () => {
+    // NOTE the rendering: `catalog_offers.updated_at` is `timestamp WITHOUT time
+    // zone`, so the real column emits NO offset. An earlier version of this test
+    // used a `+00` form the column never produces.
     const product = buildCanonicalChainMainlineProduct(
       rowWithPayloadPrice({
         merchant_effective_price: '28.20',
         currency: 'SGD',
-        price_updated_at: '2026-09-08 04:25:42.316439+00',
+        price_updated_at: '2026-09-08 04:25:42.316439',
         price_confidence: '0.70',
       }),
     );
@@ -341,5 +344,95 @@ describe('the served price states when it was true', () => {
     expect(source).not.toMatch(/new Date\(\s*\)/);
     expect(source).toContain('row.price_updated_at');
     expect(source).toContain('row.price_confidence');
+  });
+});
+
+
+describe('the freshness contract refuses what it cannot stand behind', () => {
+  test.each([
+    ['a bare number', 0],
+    ['a negative number', -1],
+    ['a year only', '2026'],
+    ['a us locale date', '9/8/2026'],
+    ['a date with no time', '2026-09-08'],
+    ['junk', 'not-a-date'],
+    ['a boolean', true],
+    ['an object', {}],
+    // A single-element array STRINGIFIES to a valid timestamp, so the shape guard
+    // has to reject by type -- the format check alone would wave this through.
+    ['an array wrapping a valid timestamp', ['2026-09-08 04:25:42.316439']],
+  ])('%s yields NO price_as_of', (_label, value) => {
+    // `String(0) + 'Z'` is '0Z', which V8 parses as the year 2000. A silently wrong
+    // as_of is worse than none: the whole value of the field is that it can be
+    // trusted, so anything short of a full date AND time is refused.
+    const product = buildCanonicalChainMainlineProduct(
+      rowWithPayloadPrice({ merchant_effective_price: '10.00', currency: 'USD', price_updated_at: value }),
+    );
+    expect(product.price).toBe(10);
+    expect(product).not.toHaveProperty('price_as_of');
+  });
+
+  test.each([
+    ['the tz-less column rendering', '2026-09-08 04:25:42.316439'],
+    ['an explicit +00 offset', '2026-09-08 04:25:42.316439+00'],
+    ['a full ISO instant', '2026-09-08T04:25:42.316Z'],
+  ])('%s is accepted', (_label, value) => {
+    const product = buildCanonicalChainMainlineProduct(
+      rowWithPayloadPrice({ merchant_effective_price: '10.00', currency: 'USD', price_updated_at: value }),
+    );
+    expect(product.price_as_of).toBe('2026-09-08T04:25:42.316Z');
+  });
+
+  test.each([
+    ['a boolean', true],
+    ['an array', [0.5]],
+    ['an object', {}],
+  ])('%s is not a price_confidence', (_label, value) => {
+    // Number(true) is 1 and Number([0.5]) is 0.5, so either would publish a
+    // confidence nobody recorded.
+    const product = buildCanonicalChainMainlineProduct(
+      rowWithPayloadPrice({ merchant_effective_price: '10.00', currency: 'USD', price_confidence: value }),
+    );
+    expect(product).not.toHaveProperty('price_confidence');
+  });
+});
+
+describe('the freshness fields survive the transport projection', () => {
+  const { projectSearchTransportProduct } = server._debug;
+
+  test('price_as_of and price_confidence are not stripped', () => {
+    // THE defect this guards. `projectSearchTransportProduct` is an explicit
+    // allowlist applied at all three primary find_products_multi exits. Omitted from
+    // it, these fields shipped on the early-direct beauty lane ONLY -- the same
+    // product carrying or lacking an as_of depending on how it was routed, with
+    // every individual response looking plausible.
+    const projected = projectSearchTransportProduct({
+      product_id: 'sig_x',
+      title: 'LIP-PRESSION Metal Serum Gloss',
+      price: 28.2,
+      currency: 'SGD',
+      price_as_of: '2026-09-08T04:25:42.316Z',
+      price_confidence: 0.7,
+    });
+
+    expect(projected.price).toBe(28.2);
+    expect(projected.currency).toBe('SGD');
+    expect(projected.price_as_of).toBe('2026-09-08T04:25:42.316Z');
+    expect(projected.price_confidence).toBe(0.7);
+  });
+
+  test('CONTROL: the projection is still an allowlist', () => {
+    // Without this, the test above would also pass if someone replaced the allowlist
+    // with a pass-through, which would leak every internal field on the wire.
+    const projected = projectSearchTransportProduct({
+      product_id: 'sig_x',
+      title: 'x',
+      _internal_debug_blob: { secret: true },
+      seed_data: { raw: 'payload' },
+    });
+
+    expect(projected.product_id).toBe('sig_x');
+    expect(projected).not.toHaveProperty('_internal_debug_blob');
+    expect(projected).not.toHaveProperty('seed_data');
   });
 });
