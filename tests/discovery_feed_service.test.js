@@ -2130,9 +2130,12 @@ describe('discovery feed service', () => {
         // compact-alias triple is gone.
         if (text.includes('brand_seed_ids')) {
           expect(text).toContain('regexp_replace');
-          expect(params[2]).toEqual(expect.arrayContaining(['larocheposay']));
-          expect(params[3]).toBe('larocheposay%');
-          expect(text).toContain('= ANY($3::text[])');
+          // "la roche posay" is 14 spaced characters, so it gets a PREFIX arm on the brand chain and
+          // therefore no equality arm there — `larocheposay%` already matches `larocheposay`. $3 is
+          // that pattern; $4 is the domain chain's identity array, which is equality only.
+          expect(params[2]).toBe('larocheposay%');
+          expect(params[3]).toEqual(expect.arrayContaining(['larocheposay']));
+          expect(text).toContain('= ANY($4::text[])');
           expect(text).not.toMatch(/LIKE ANY\(/);
           return { rows: [{ id: 'eps_lrp_anthelios' }] };
         }

@@ -8812,21 +8812,22 @@ async function fetchBrandScopedExternalSeedCandidates({
   if (!normalizedAliases.length) return [];
   // Brand identity keys (accent-folded, alphanumerics only) — the SAME value the
   // brand-identity indexes store, so equality and prefix are both index lookups.
-  const identityAliases = uniqStrings(
-    brandAliases.map((alias) => brandIdentityKey(alias)).filter(Boolean),
-    16,
-  );
-  // The old >= 4 floor ran on the SPACED normalization, so "e.l.f." ("e l f",
-  // 5 chars) kept its prefix arm. Measuring the floor on the compacted identity
-  // ("elf", 3) would silently drop it, so the floor still reads the spaced form
-  // while the bound pattern stays the identity.
-  const identityPrefixAliases = uniqStrings(
-    brandAliases
-      .filter((alias) => normalizeBrandText(alias).length >= 4)
-      .map((alias) => brandIdentityKey(alias))
-      .filter(Boolean),
-    16,
-  );
+  // Capped ONCE, then split — capping the two lists independently could let a long
+  // alias survive into the prefix list while falling outside identityAliases, so the
+  // domain chain (equality only) would never probe it.
+  // The >= 4 floor reads the SPACED normalization: "e.l.f." is "e l f" (5) and keeps
+  // its prefix arm, where the compacted identity "elf" (3) would silently lose it.
+  const identityKeyed = [];
+  const seenIdentity = new Set();
+  for (const alias of brandAliases) {
+    const key = brandIdentityKey(alias);
+    if (!key || seenIdentity.has(key)) continue;
+    seenIdentity.add(key);
+    identityKeyed.push({ key, prefixable: normalizeBrandText(alias).length >= 4 });
+    if (identityKeyed.length >= 16) break;
+  }
+  const identityAliases = identityKeyed.map((entry) => entry.key);
+  const identityPrefixAliases = identityKeyed.filter((entry) => entry.prefixable).map((entry) => entry.key);
 
   const safeLimit = clampInt(limit, Math.max(limit, 120), 24, 500);
   const market = brandScopedExternalSeedMarket();
@@ -8896,12 +8897,22 @@ async function fetchBrandScopedExternalSeedCandidates({
           FROM external_product_seeds eps
           WHERE ${scanScopeSql}
             AND ${identitySql} ${clause}`;
+    // An alias with a prefix arm needs no equality arm: `alias%` already matches
+    // `alias` exactly, so binding both doubled the branch work for nothing.
+    const equalityOnlyAliases = identityAliases.filter((alias) => !identityPrefixAliases.includes(alias));
     const brandBranches = [];
-    for (const identitySql of [seedBrandIdentitySql('eps'), seedDomainIdentitySql('eps')]) {
-      brandBranches.push(branch(identitySql, `= ANY(${headBind(identityAliases)}::text[])`));
-      for (const alias of identityPrefixAliases) {
-        brandBranches.push(branch(identitySql, `LIKE ${headBind(likePrefixPattern(alias))}`));
-      }
+    if (identityAliases.length && equalityOnlyAliases.length) {
+      brandBranches.push(branch(seedBrandIdentitySql('eps'), `= ANY(${headBind(equalityOnlyAliases)}::text[])`));
+    }
+    for (const alias of identityPrefixAliases) {
+      brandBranches.push(branch(seedBrandIdentitySql('eps'), `LIKE ${headBind(likePrefixPattern(alias))}`));
+    }
+    // The domain chain is EQUALITY ONLY. The predicate this replaces compared it with
+    // `= ANY($6)` and never prefix-matched it, and a prefix over a domain-derived brand
+    // pulls in unrelated merchants: "mixsoon" would reach mixsoonish-teashop.com, "rare"
+    // would reach rareearthminerals.com. Widening brand pages is not this PR's business.
+    if (identityAliases.length) {
+      brandBranches.push(branch(seedDomainIdentitySql('eps'), `= ANY(${headBind(identityAliases)}::text[])`));
     }
     // Candidate ids are resolved in their OWN statement, then the rows are fetched
     // by primary key. Keeping the union as a CTE of the fetch made the outer query
