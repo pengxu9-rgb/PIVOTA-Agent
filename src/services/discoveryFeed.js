@@ -8832,6 +8832,17 @@ async function fetchBrandScopedExternalSeedCandidates({
   // Aliases that collide on one identity key are OR'd, never first-wins: ["elf",
   // "e.l.f."] both key to 'elf', and taking `prefixable` from whichever came first
   // dropped the prefix arm and with it every row the old predicate matched by prefix.
+  // KNOWN LIMITATION, unchanged from the predicate this replaces: a brand whose diacritic
+  // is outside the SQL identity's Latin-1 translate table (Señora, Škoda, Māori), or that
+  // carries a compatibility numeral (a²b), is unreachable. brandIdentityKey is an exact
+  // twin of the SQL expression, but BOTH layers above this function —
+  // buildBrandScopeAliases and computeBrandScopedDirectCandidates — already ran
+  // normalizeBrandText, whose NFKD pass folds every combining mark, so `raw` here is
+  // spelled 'senora' while the row indexes as 'señora'. Main missed those rows too (its
+  // regexp turned ñ into a separator), so this is not a regression and not this change's
+  // job: fixing it means carrying the unnormalized brand name through both layers, which
+  // is a change to the shared alias pipeline. The scan's real reach is pinned by the
+  // production-path test rather than described here.
   const prefixableByKey = new Map();
   for (const { raw, spaced } of keptAliases) {
     const key = brandIdentityKey(raw);

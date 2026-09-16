@@ -250,6 +250,10 @@ suite('brand-page external seed scan on PostgreSQL', () => {
     // identitySql folds the Latin-1 set only; 'n-tilde' is not in it, so the indexed row identity
     // keeps it. Any JS key that folds it cannot equal the row identity, and the page goes empty.
     await seedRow({ id: 'diacritic_senora', seedData: { brand_name: 'Se\u00f1ora Skin' }, title: 'Se\u00f1ora Skin Cream' });
+    // The same brand written without the accent. It indexes as 'senoraskin', the accented one as
+    // 'senoraskin' with the tilde — two different index keys for one brand page, so the scan has to
+    // bind BOTH spellings or half its catalogue is invisible.
+    await seedRow({ id: 'diacritic_senora_plain', seedData: { brand_name: 'Senora Skin' }, title: 'Senora Skin Lotion' });
 
     // ---- the domain is the domain chain's LAST resort, not its first field ----
     // Same domain as loss_e_two_pages, but this row fills the chain's own brand path, so the domain
@@ -591,10 +595,17 @@ suite('brand-page external seed scan on PostgreSQL', () => {
   });
 
   // The index stores the SQL value. A bound key that does not equal it CHARACTER FOR CHARACTER
-  // matches nothing, so brandIdentityKey has to agree with normalizedBrandIdentitySql. These are two
-  // separate contracts and are asserted separately: the function's own, and the one the scan relies
-  // on (it binds brandIdentityKey(normalizeBrandText(alias)), not brandIdentityKey(alias)).
-  const TWIN_NAMES = ['Lanc\u00f4me', 'Beyonc\u00e9', 'Se\u00f1ora Skin', '\u0160koda Care', 'M\u0101ori Botanics', 'Mixsoon'];
+  // matches nothing, so brandIdentityKey has to agree with normalizedBrandIdentitySql. Two separate
+  // contracts, asserted separately: the FUNCTION's (brandIdentityKey(name) === the row identity),
+  // and the SCAN's (the keys the statement actually binds reach the row). The function's contract
+  // holding says nothing about the scan's — every production caller hands the fetcher an alias
+  // buildBrandScopeAliases has already NFKD-folded, so which value reaches brandIdentityKey is a
+  // property of the call chain, not of the function.
+  const TWIN_NAMES = ['Lanc\u00f4me', 'Beyonc\u00e9', 'Se\u00f1ora Skin', '\u0160koda Care', 'M\u0101ori Botanics',
+    // Compatibility numerals: PostgreSQL's [:alnum:] keeps letters and DECIMAL digits only, so
+    // 'a\u00b2b' indexes as 'ab' and '\u00bd' vanishes. A key built with \p{N} keeps them and can
+    // never match a row.
+    'a\u00b2b Beauty', '\u00bd Moon Skin', 'Mixsoon'];
   const sqlRowIdentity = async (name) => {
     const { seedBrandIdentitySql } = require('../../src/services/brandSeedScanSql');
     const res = await db.query(
@@ -606,6 +617,10 @@ suite('brand-page external seed scan on PostgreSQL', () => {
   };
 
   test('brandIdentityKey is the JS twin of the SQL row identity', async () => {
+    // The FUNCTION's contract, pinned for the follow-up that will carry an unnormalized brand name
+    // down to it. The scan gets no benefit from it today: both layers above the fetcher NFKD-fold
+    // the alias first, so the accented and compatibility-numeral names below never arrive intact —
+    // see the KNOWN LIMITATION test above.
     const { brandIdentityKey } = require('../../src/services/canonicalSearchQualitySql');
     const mismatches = [];
     for (const name of TWIN_NAMES) {
@@ -616,37 +631,52 @@ suite('brand-page external seed scan on PostgreSQL', () => {
     expect(mismatches).toEqual([]);
   });
 
-  test('the key the scan actually binds equals the SQL row identity', async () => {
-    const { brandIdentityKey } = require('../../src/services/canonicalSearchQualitySql');
-    const { normalizeBrandText } = require('../../src/findProductsMulti/brandLexicon');
-    const mismatches = [];
-    const foldedTwice = [];
-    for (const name of TWIN_NAMES) {
-      const rowIdentity = await sqlRowIdentity(name);
-      // The scan keys off the RAW alias, which is what makes this hold.
-      if (brandIdentityKey(name) !== rowIdentity) {
-        mismatches.push({ name, rowIdentity, key: brandIdentityKey(name) });
-      }
-      // ...and keying off the SPACED form does not, for any diacritic outside the SQL fold
-      // table: normalizeBrandText folds every combining mark (NFKD), translate() folds only
-      // Latin-1. Pinned in both directions so the cheaper-looking composition cannot return.
-      if (brandIdentityKey(normalizeBrandText(name)) !== rowIdentity) foldedTwice.push(name);
-    }
-    expect(mismatches).toEqual([]);
-    expect(foldedTwice.length).toBeGreaterThan(0);
-    // An alias can arrive decomposed ("n" + U+0303) from any caller. Without the NFC pass the
-    // combining mark is stripped as non-alphanumeric and the key silently loses the accent,
-    // while PostgreSQL keeps it — the same mismatch, arriving through the input instead.
-    const decomposed = 'Señora Skin';
-    expect(decomposed.normalize('NFC')).toBe('Señora Skin');
-    expect(brandIdentityKey(decomposed)).toBe(brandIdentityKey('Señora Skin'));
-    expect(brandIdentityKey(decomposed)).toBe(await sqlRowIdentity('Señora Skin'));
-  });
+  test('KNOWN LIMITATION: an accented brand page reaches only its unaccented rows', async () => {
+    // Driven from the PRODUCTION entry point on purpose — this is the coverage that caught the two
+    // earlier revisions claiming a fix that no shipping caller could reach.
+    //
+    // buildBrandScopeAliases and computeBrandScopedDirectCandidates BOTH run normalizeBrandText,
+    // whose NFKD pass folds every combining mark, so the fetcher only ever sees 'senora skin' and
+    // binds 'senoraskin'. A row written "Señora Skin" indexes as 'señoraskin' (the SQL identity's
+    // translate() covers the Latin-1 table only) and is unreachable; a row written "Senora Skin" is
+    // returned. The same goes for compatibility numerals: "a²b Beauty" indexes as 'abbeauty' while
+    // the alias pipeline hands over 'a2bbeauty'.
+    //
+    // This is NOT a regression — the retired predicate missed the same rows, its regexp having
+    // turned the tilde into a separator — and the old-vs-new half of this test is what says so.
+    // Fixing it means carrying the unnormalized brand name through BOTH layers, which is a change to
+    // the shared alias pipeline; filed as a separate task. brandIdentityKey is already the exact
+    // twin of the SQL expression (pinned below), so that follow-up has its foundation.
+    const discovery = require('../../src/services/discoveryFeed');
+    const pageAliases = discovery._internals.buildBrandScopeAliases(['Se\u00f1ora Skin']);
+    expect(pageAliases.length).toBeGreaterThan(0);
+    // Control: the accent is already gone before the fetcher is reached.
+    expect(pageAliases.every((alias) => !alias.includes('\u00f1'))).toBe(true);
 
-  test('a brand whose diacritic is outside the SQL fold table is still reachable', async () => {
-    // End-to-end form of the twin contract above. The title lane cannot rescue it either: the bound
-    // title pattern is folded the same way and the row's title is not.
-    expect(await newPrimaryIds(['Se\u00f1ora Skin'])).toEqual(['diacritic_senora']);
+    calls.length = 0;
+    const result = await discovery._internals.computeBrandScopedDirectCandidates({
+      request: discovery._internals.normalizeDiscoveryRequest({
+        surface: 'browse_products',
+        scope: { brand_names: ['Se\u00f1ora Skin'] },
+        query: { text: 'Se\u00f1ora Skin' },
+        page: 1,
+        limit: 24,
+      }),
+      brandAliases: pageAliases,
+      limit: 24,
+      // Only the internal lane is stubbed; the external seed lane under test is the real one.
+      fetchInternalCandidatesFn: async () => [],
+    });
+    const primary = primaryCall([...calls]);
+    expect(primary).not.toBeNull();
+    const bound = primary.params.flat().map(String);
+    expect(bound).toContain('senoraskin%');
+    expect(bound).not.toContain('se\u00f1oraskin%');
+
+    const served = result.products.map((product) => product.external_seed_id).sort();
+    expect(served).toEqual(['diacritic_senora_plain']);
+    // ...and the predicate this replaces serves exactly the same set, so nothing was lost here.
+    expect(await oldPrimaryIds(pageAliases)).toEqual(['diacritic_senora_plain']);
   });
 
   test('the domain chain reaches the domain only after its own brand paths', async () => {
@@ -791,6 +821,25 @@ suite('brand-page external seed scan on PostgreSQL', () => {
     expect(primaryCall(issued)).toBeNull();
     expect(backfillCall(issued)).not.toBeNull();
     expect(Array.isArray(products)).toBe(true);
+  });
+
+  test('the cap dedupes on the SPACED form, so case variants cost one slot, not three', async () => {
+    // Three spellings of one brand plus 14 others plus Tocobo is 18 aliases. Deduping on the spaced
+    // form collapses the three to one and Tocobo is the 16th kept entry; deduping on the raw string
+    // spends three slots on it and the cap falls before Tocobo, silently emptying that brand page.
+    const aliases = [
+      'Casevariant', 'casevariant', 'CASEVARIANT',
+      ...Array.from({ length: 14 }, (_, i) => `Filleralias${String(i).padStart(3, '0')}`),
+      'Tocobo',
+    ];
+    expect(aliases).toHaveLength(18);
+    const primary = primaryCall((await runFetcher(aliases)).calls);
+    // 16 kept spaced forms -> 16 identity keys -> 16 prefix branches + 1 domain branch.
+    expect(branchCount(primary.sql)).toBe(17);
+    expect(primary.params[18]).toHaveLength(16);
+    expect(primary.params[18]).toContain('tocobo');
+    expect(primary.params[18].filter((key) => key === 'casevariant')).toHaveLength(1);
+    expect(await newPrimaryIds(aliases)).toEqual(['domain_last_resort', 'loss_e_two_pages', 'out_other_brand']);
   });
 
   test('the 16-alias cap bounds both the binds and the branch count', async () => {

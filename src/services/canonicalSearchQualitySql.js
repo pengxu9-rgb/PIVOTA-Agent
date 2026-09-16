@@ -56,7 +56,10 @@ function brandIdentityKey(value) {
       return at === -1 ? character : IDENTITY_FOLDED[at];
     })
     .join('');
-  return folded.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
+  // PostgreSQL's [:alnum:] keeps letters and DECIMAL digits and drops everything else,
+  // including combining marks and compatibility numerals: 'a²b' indexes as 'ab', not 'a²b'.
+  // \p{N} would keep ², ½ and Ⅻ and bind a key no row can carry.
+  return folded.toLowerCase().replace(/[^\p{L}\p{Nd}]+/gu, '');
 }
 
 function buildBrandIdentityPredicate(brand, expression, params) {
