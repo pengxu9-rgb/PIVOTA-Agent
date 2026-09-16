@@ -181,6 +181,17 @@ test('browse prefixes are unchanged — this change is read-side only', () => {
   //
   // Measured across 6,639 queries (every product title in the repo's fixtures plus the category
   // vocabulary): zero prefixes moved. The golden below is the pinned subset.
+  //
+  // UPDATED 2026-09-16, and this is the one kind of change that may update it: a DELIBERATE
+  // serving change, with the whole diff enumerated first. Adding a bare `lip` arm to
+  // queryUnderstanding's lip_care_or_gloss rule moved 42 of these 240 entries, every one of them
+  // a lip product routing `beauty/makeup/face/` -> `beauty/makeup/lip/` (Fenty's Gloss Bomb Lip
+  // Luminizer line and Plumping Powder Matte Lip). They were being browsed as FACE. The updater
+  // refuses outright if any moved entry lacks `lip` in its title, so the direction of the change
+  // is checked and not assumed.
+  //
+  // The guard is not weakened by that: it still fails for any prefix that moves from here on, and
+  // a read-side refactor must still produce a 0 diff.
   // THE GOLDEN HAS TO PIN THE CHANNEL IT NAMES. The first version pinned 37 queries, every one of
   // which is answered by `resolveBeautyCategoryPathPrefixFromText` or the alias patterns BEFORE
   // `BEAUTY_CATEGORY_PATH_BY_LABEL` is consulted — so re-homing a canonical value, or collapsing
