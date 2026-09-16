@@ -66,3 +66,61 @@ describe('discovery phase timings', () => {
 
 // The end-to-end half of this - that the BUILD emits these phases - lives in
 // tests/discovery_feed_service.test.js, next to the fixture that produces a populated feed.
+
+// Everything above drives a FAKE clock, which cannot tell a working instrument from a frozen one:
+// with `now = () => 0` every phase reports 0, the whole latency lands in `unattributed`, the sum
+// identity still holds and all keys are present. This drives the REAL clock through the REAL build
+// with one deliberately slow provider, and asserts the time lands in the phase that did the work -
+// which also pins the phase LABELS, since swapping two of them moves the milliseconds.
+describe('phases measure real elapsed time, in the phase that spent it', () => {
+  const { getDiscoveryFeed } = require('../src/services/discoveryFeed');
+  const { getLastDiscoverySnapshot } = require('../src/observability/discoveryMetrics');
+
+  test('a slow recall provider shows up in recall, not elsewhere', async () => {
+    for (const key of ['DISCOVERY_PRODUCTS_SEARCH_BASE_URL', 'PIVOTA_BACKEND_BASE_URL', 'PIVOTA_API_BASE',
+      'DISCOVERY_PRODUCTS_SEARCH_API_KEY', 'PIVOTA_BACKEND_AGENT_API_KEY', 'PIVOTA_API_KEY', 'DATABASE_URL']) {
+      delete process.env[key];
+    }
+    const SLOW_MS = 120;
+    const slowExternal = jest.fn(async (args = {}) => {
+      await new Promise((resolve) => setTimeout(resolve, SLOW_MS));
+      const queries = args.queries || [args.request?.query?.text].filter(Boolean);
+      return Array.from({ length: 12 }, (_, idx) => ({
+        merchant_id: 'external_seed',
+        product_id: `slow_${idx + 1}`,
+        title: `Slow Probe ${idx + 1}`,
+        description: '',
+        brand: `Slow Brand ${idx + 1}`,
+        category: 'Lip Balm',
+        product_type: 'Lip Balm',
+        price: 10 + idx,
+        currency: 'USD',
+        inventory_quantity: 10,
+        url: `https://shop.example.com/slow-${idx}`,
+        status: 'active',
+        observed_queries: queries,
+      }));
+    });
+
+    await getDiscoveryFeed(
+      {
+        surface: 'browse_products',
+        page: 1,
+        limit: 12,
+        debug: true,
+        query: { text: 'lip balm' },
+        context: { auth_state: 'anonymous', recent_views: [], recent_queries: [], locale: 'en-US' },
+      },
+      { providerOverrides: { internal_catalog: jest.fn(async () => []), external_seeds: slowExternal } },
+    );
+
+    expect(slowExternal).toHaveBeenCalled();
+    const phases = getLastDiscoverySnapshot('browse_products').phase_ms;
+    // The sleep happened inside the recall window and nowhere else.
+    expect(phases.recall).toBeGreaterThanOrEqual(SLOW_MS - 20);
+    for (const [name, value] of Object.entries(phases)) {
+      if (name === 'recall') continue;
+      expect(value).toBeLessThan(SLOW_MS - 20);
+    }
+  });
+});

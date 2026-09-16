@@ -12124,7 +12124,14 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
       orderedPool = browseSelection.orderedPool;
       decisions = browseSelection.decisions;
       filterCounts = buildFilterCounts(decisions);
+      // The stable browse count is STARTED back in the recall window and awaited here, and its
+      // own comment says it "scans broad JSON text and can dominate live latency" on exactly this
+      // surface. Charging that wait to `select` would send whoever chases the number to the
+      // ranker instead of to the count query, so it gets its own phase. `select` is marked on
+      // both sides of the await and accumulates.
+      phaseTimer.mark('select');
       const stableBrowseCatalogCount = await stableBrowseCatalogCountPromise;
+      phaseTimer.mark('stable_count_wait');
       total = stableBrowseCatalogCount?.total ?? runtimeCorpusCount;
       corpusTotalCount = total;
       countSource =
@@ -12321,8 +12328,8 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
       request,
     );
     const hydrateLatencyMs = Math.max(0, Date.now() - hydrationStartedAt);
-    const latencyMs = Math.max(0, Date.now() - startedAt);
     phaseTimer.mark('hydrate');
+    const latencyMs = Math.max(0, Date.now() - startedAt);
     const phaseMs = phaseTimer.summary(latencyMs);
     metadata.hydrate_latency_ms = hydrateLatencyMs;
     metadata.request_latency_ms = latencyMs;

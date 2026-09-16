@@ -390,7 +390,7 @@ describe('discovery feed service', () => {
     // getLastDiscoverySnapshot() with no argument returns a map keyed by surface.
     const phaseSnapshot = getLastDiscoverySnapshot('browse_products');
     expect(Object.keys(phaseSnapshot.phase_ms).sort()).toEqual(
-      ['assemble', 'hydrate', 'identity_dedupe', 'recall', 'select', 'setup', 'unattributed'].sort(),
+      ['assemble', 'hydrate', 'identity_dedupe', 'recall', 'select', 'setup', 'stable_count_wait', 'unattributed'].sort(),
     );
     for (const value of Object.values(phaseSnapshot.phase_ms)) {
       expect(Number.isFinite(value)).toBe(true);
