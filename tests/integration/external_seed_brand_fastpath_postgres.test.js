@@ -26,7 +26,33 @@ suite('external seed brand fastpath on PostgreSQL', () => {
   let schema;
   const calls = [];
 
-  const seedRow = async ({ id, brand, title, domain = 'shop.example', attached = true }) => {
+  // Same as seedRow but the caller supplies the whole seed_data, so a row can be named by a
+  // lower link of the brand chain (snapshot.brand) or by nothing at all (domain only).
+  const seedRowRaw = async ({ id, seedData, title, domain = 'shop.example' }) => {
+    const key = `pk_${id}`;
+    await db.query(
+      `INSERT INTO catalog_products(product_key, content_key, pivota_signature_id, pivota_canonical_url, canonical_url, title)
+       VALUES ($1, $2, $3, $4, $4, $5) ON CONFLICT DO NOTHING`,
+      [key, `ck_${id}`, `sig_${id}`, `https://agent.pivota.cc/products/sig_${id}`, title],
+    );
+    await db.query(
+      `INSERT INTO catalog_row_trust(subject_type, subject_key, serving_decision) VALUES ('product', $1, 'public')`,
+      [key],
+    );
+    await db.query(
+      `INSERT INTO external_product_seeds(id, external_product_id, market, tool, destination_url, canonical_url,
+         domain, title, image_url, price_amount, price_currency, availability, seed_data, updated_at, created_at,
+         status, attached_product_key)
+       VALUES ($1, $1, 'US', 'creator_agents', $2, $2, $3, $4, 'https://img.example/x.jpg', 20, 'USD', 'in_stock',
+         $5, now(), now(), 'active', $6)`,
+      [id, `https://shop.example/${id}`, domain, title, JSON.stringify(seedData), key],
+    );
+  };
+
+  const seedRow = async ({
+    id, brand, title, domain = 'shop.example', attached = true,
+    status = 'active', servingDecision = 'public',
+  }) => {
     const key = attached ? `pk_${id}` : null;
     if (key) {
       await db.query(
@@ -35,8 +61,8 @@ suite('external seed brand fastpath on PostgreSQL', () => {
         [key, `ck_${id}`, `sig_${id}`, `https://agent.pivota.cc/products/sig_${id}`, title],
       );
       await db.query(
-        `INSERT INTO catalog_row_trust(subject_type, subject_key, serving_decision) VALUES ('product', $1, 'public')`,
-        [key],
+        `INSERT INTO catalog_row_trust(subject_type, subject_key, serving_decision) VALUES ('product', $1, $2)`,
+        [key, servingDecision],
       );
     }
     await db.query(
@@ -44,8 +70,8 @@ suite('external seed brand fastpath on PostgreSQL', () => {
          domain, title, image_url, price_amount, price_currency, availability, seed_data, updated_at, created_at,
          status, attached_product_key)
        VALUES ($1, $1, 'US', 'creator_agents', $2, $2, $3, $4, 'https://img.example/x.jpg', 20, 'USD', 'in_stock',
-         $5, now(), now(), 'active', $6)`,
-      [id, `https://shop.example/${id}`, domain, title, JSON.stringify({ brand }), key],
+         $5, now(), now(), $7, $6)`,
+      [id, `https://shop.example/${id}`, domain, title, JSON.stringify({ brand }), key, status],
     );
   };
 
@@ -72,6 +98,17 @@ suite('external seed brand fastpath on PostgreSQL', () => {
     await seedRow({ id: 'caps_axisy', brand: 'AXIS-Y', title: 'Dark Spot Serum' });
     await seedRow({ id: 'lower_mixsoon', brand: 'mixsoon', title: 'Bean Essence' });
     await seedRow({ id: 'other_brand', brand: 'Tocobo', title: 'Vita Serum' });
+    // The residue trap: a genuinely BB-branded row. A query written in hangul must not reach it
+    // as an exact brand match just because 'BB' is the only Latin left in the query.
+    await seedRow({ id: 'residue_bb', brand: 'BB', title: 'BB Labs Cushion' });
+    // The two lower links of the match expression's coalesce chain. Without a row that is named
+    // ONLY by each of them, either link can be deleted from the expression with the suite green.
+    await seedRowRaw({ id: 'chain_snapshot', seedData: { snapshot: { brand: 'Snapbrand' } }, title: 'Snap Item' });
+    await seedRowRaw({ id: 'chain_domain', seedData: {}, title: 'Domain Item', domain: 'domainbrand.com' });
+    // Negative controls for the exact arm's row scope.
+    await seedRow({ id: 'scope_suppressed', brand: 'Suppressed Brand', title: 'Hidden Item', servingDecision: 'suppressed' });
+    await seedRow({ id: 'scope_inactive', brand: 'Inactive Brand', title: 'Retired Item', status: 'inactive' });
+    await seedRow({ id: 'scope_unattached', brand: 'Unattached Brand', title: 'Loose Item', attached: false });
   }, 60000);
 
   afterAll(async () => {
@@ -140,7 +177,9 @@ suite('external seed brand fastpath on PostgreSQL', () => {
     // sides are read from the running code: the expression out of the statement the fastpath
     // issued, the keys out of its bound parameters.
     const missing = [];
-    for (const brand of ['Fenty Beauty', 'Round Lab', 'AXIS-Y', 'mixsoon', 'Dr. Jart+', 'e.l.f.', 'Estee Lauder']) {
+    // Brands whose SQL key and bound key are the same function. AXIS-Y and "Estée Lauder" are
+    // deliberately NOT here — see the stated gap below.
+    for (const brand of ['Fenty Beauty', 'Round Lab', 'mixsoon', 'Dr. Jart+', 'e.l.f.', 'Estee Lauder']) {
       const { calls: issued } = await runFastpath(brand);
       const exact = exactCall(issued);
       const expression = exact.sql.match(/AND\s+(regexp_replace\([\s\S]*?'g'\s*\))\s*=\s*ANY/);
@@ -156,47 +195,27 @@ suite('external seed brand fastpath on PostgreSQL', () => {
     expect(missing).toEqual([]);
   });
 
-  test('the accented and hyphenated spellings are bound, not just the folded one', async () => {
-    // normalizeBrandText keeps '-' and folds the acute to ASCII; the SQL class drops both. The
-    // twin is bound ALONGSIDE, so each brand binds both spellings and neither side has to change.
-    const axis = exactCall((await runFastpath('AXIS-Y')).calls);
-    const axisKeys = axis.params.find((p) => Array.isArray(p) && p.every((v) => typeof v === 'string'));
-    expect(axisKeys).toEqual(expect.arrayContaining(['axis-y', 'axisy']));
-
-    const estee = exactCall((await runFastpath('Est\u00e9e Lauder')).calls);
-    const esteeKeys = estee.params.find((p) => Array.isArray(p) && p.every((v) => typeof v === 'string'));
-    // 'esteelauder' is what normalizeBrandText yields; 'estelauder' is what PostgreSQL stores.
-    expect(esteeKeys).toEqual(expect.arrayContaining(['esteelauder', 'estelauder']));
-  });
-
-  test('a brand inside a longer query is NOT rescued, and that bound is deliberate', async () => {
-    // The limit of a query-side fix, pinned so it is stated rather than discovered. The twin is
-    // taken from the raw query text, so it only helps when the query IS the brand name — which is
-    // what a brand page sends. Inside a sentence the brand reaches this function already folded by
-    // detectBrandEntities, and no key built here can recover the original spelling.
-    const inSentence = await runFastpath('AXIS-Y dark spot serum');
-    expect(inSentence.ids).not.toContain('caps_axisy');
-    // ...and the whole-sentence compaction is not bound as a brand key, which would be noise.
-    const exact = exactCall(inSentence.calls);
-    if (exact) {
-      const keys = exact.params.find((p) => Array.isArray(p) && p.every((v) => typeof v === 'string')) || [];
-      expect(keys).not.toContain('axisy');
+  test('STATED GAP: a brand whose punctuation or accent the SQL fold drops is still unreached', async () => {
+    // normalizeBrandText KEEPS '-', '&' and '®' and folds accents to ASCII; the SQL '[^a-z0-9]'
+    // drops all of them. These brands were never reachable by the exact arm and still are not —
+    // this change fixes the CAPITALS, not the character class. Pinned so the gap is stated rather
+    // than rediscovered, and so the next attempt starts from a failing assertion.
+    //
+    // The fix is NOT a key folded from raw query text: that was tried and reverted because a
+    // non-Latin query's Latin residue then binds as a brand identity (see the test above). It
+    // needs a key derived from a DETECTED brand.
+    const { normalizeBrandText } = require('../../src/findProductsMulti/brandLexicon');
+    for (const [brand, storedKey] of [['AXIS-Y', 'axisy'], ['Est\u00e9e Lauder', 'estelauder']]) {
+      const res = await db.query(
+        `SELECT regexp_replace(lower(coalesce(seed_data->>'brand', '')), '[^a-z0-9]+', '', 'g') AS stored
+         FROM (SELECT $1::jsonb AS seed_data) t`,
+        [JSON.stringify({ brand })],
+      );
+      expect(res.rows[0].stored).toBe(storedKey);
+      expect(normalizeBrandText(brand).replace(/\s+/g, '')).not.toBe(storedKey);
     }
-    // The bare brand page, the case this DOES fix, for contrast — so the assertion above reads as a
-    // bound and not as the feature being absent.
-    expect((await runFastpath('AXIS-Y')).ids).toEqual(['caps_axisy']);
-  });
-
-  test('a one-character twin key is never bound', async () => {
-    // A brand in a non-Latin script reduces to almost nothing under '[^a-z0-9]'. A single
-    // character is not an identity: bound, it would equal every unrelated row that reduces the
-    // same way.
-    const { calls: issued } = await runFastpath('\u30bb\u30eb\u30d5\u30e5\u30fc\u30b8\u30e7\u30f3C');
-    const exact = exactCall(issued);
-    if (exact) {
-      const keys = exact.params.find((p) => Array.isArray(p) && p.every((v) => typeof v === 'string')) || [];
-      expect(keys.filter((key) => key.length < 2)).toEqual([]);
-    }
+    // And end to end: the AXIS-Y row is not returned by the exact arm.
+    expect((await runFastpath('AXIS-Y')).strategy).not.toBe('brand_search_external_seed_mainline_exact');
   });
 
   test('the broken spelling is what the corrected one must not be', async () => {
@@ -210,6 +229,61 @@ suite('external seed brand fastpath on PostgreSQL', () => {
       [JSON.stringify({ brand: 'Fenty Beauty' })],
     );
     expect(res.rows[0].stored).toBe('entyeauty');
+  });
+
+  test('a non-Latin query is not hijacked by its Latin residue', async () => {
+    // Found by adversarial review of the first cut of this change, which also bound the SQL fold
+    // of the RAW query text as a brand key. For a query in a non-Latin script that fold leaves
+    // only the Latin residue — a product-line token, not a brand — and the exact arm returns
+    // BEFORE the broad fallback runs, so one junk match suppressed the rows the fallback used to
+    // return. KR and JP are served markets.
+    const hangul = '\uc124\ud654\uc218 \uc5d0\uc13c\uc15c BB';
+    const { ids, strategy, calls: issued } = await runFastpath(hangul);
+    const exact = exactCall(issued);
+    if (exact) {
+      const keys = exact.params.find((p) => Array.isArray(p) && p.every((v) => typeof v === 'string')) || [];
+      // 'bb' is the residue. Binding it as a brand identity is what lost the correct rows.
+      expect(keys).not.toContain('bb');
+    }
+    // The broad fallback may still surface that row by substring, exactly as it does on main —
+    // what must not happen is the EXACT arm claiming it and returning early, which is what
+    // suppressed the correct rows. Asserting on ids alone cannot tell those two apart.
+    expect(strategy).not.toBe('brand_search_external_seed_mainline_exact');
+    expect(Array.isArray(ids)).toBe(true);
+  });
+
+  test('the row scope of the exact arm is not widened by the expression change', async () => {
+    // Negative controls. Every other fixture is active, attached, US and publicly servable, so
+    // without these the exact arm's scope predicates are deletable with the suite green — the
+    // serving-trust gate included.
+    expect((await runFastpath('Suppressed Brand')).ids).toEqual([]);   // serving_decision <> 'public'
+    expect((await runFastpath('Inactive Brand')).ids).toEqual([]);     // status <> 'active'
+    expect((await runFastpath('Unattached Brand')).ids).toEqual([]);   // no attached_product_key
+    // ...and a brand that IS servable still comes back, so the three above cannot pass by the
+    // whole arm being broken.
+    expect((await runFastpath('Fenty Beauty')).ids).toEqual(['caps_fenty']);
+  });
+
+  test('every link of the brand chain the expression reads is reachable', async () => {
+    // The expression this change rewrites is a coalesce chain: seed_data.brand, then
+    // snapshot.brand, then the domain label. Each lower link needs a row named ONLY by it, or the
+    // link can be deleted from the expression and every test still passes.
+    // Asserted on the EXACT arm, not on the ids: the broad fallback substring-matches
+    // seed_data::text and the domain column, so it returns these rows whatever the brand
+    // expression reads — which is exactly how a deleted chain link stays invisible.
+    const snap = await runFastpath('Snapbrand');
+    expect(snap.ids).toContain('chain_snapshot');
+    expect(snap.strategy).toBe('brand_search_external_seed_mainline_exact');
+
+    const dom = await runFastpath('Domainbrand');
+    expect(dom.ids).toContain('chain_domain');
+    expect(dom.strategy).toBe('brand_search_external_seed_mainline_exact');
+
+    // ...and the chain's ORDER is unchanged: a row carrying seed_data.brand is named by that,
+    // never by its domain.
+    const toc = await runFastpath('Tocobo');
+    expect(toc.ids).toContain('other_brand');
+    expect(toc.strategy).toBe('brand_search_external_seed_mainline_exact');
   });
 
   test('an unrelated brand page is not widened by the correction', async () => {

@@ -45,51 +45,26 @@ async function runExternalSeedBrandMainlineFastpath({
         .filter(Boolean),
     ),
   ).slice(0, 8);
-  // Two keys per variant, because normalizeBrandText is NOT the twin of the SQL expression this
-  // is compared against and cannot be made into one without changing every other caller:
-  //   - normalizeBrandText keeps '-' and folds accents to ASCII: "AXIS-Y" -> 'axis-y',
-  //     "Estee Lauder" with the acute -> 'esteelauder'.
-  //   - the SQL '[^a-z0-9]+' drops BOTH: 'axisy' and 'estelauder'.
-  // So the SQL twin is bound ALONGSIDE the existing key, never instead of it: every brand that
-  // matches today still matches, and hyphenated and accented brands start to.
+  // NOTE: normalizeBrandText is NOT the twin of the '[^a-z0-9]' fold this is compared against —
+  // it KEEPS '-', '&' and '\u00ae' and folds accents to ASCII, where the SQL class drops all of them,
+  // so "AXIS-Y" binds 'axis-y' against a stored 'axisy' and "Estee Lauder" with the acute binds
+  // 'esteelauder' against a stored 'estelauder'. Those brands are still unreachable by this arm.
   //
-  // A twin key under 2 characters is dropped. A brand written in a non-Latin script reduces to
-  // almost nothing under '[^a-z0-9]' ("<katakana> MEAL IT" -> 'mealit', but a script-only brand
-  // can reduce to a single letter), and a one-character key is not an identity — it would equal
-  // unrelated rows that happen to reduce the same way.
-  // One extra key: the RAW query text folded the way the SQL expression folds it. normalizeBrandText
-  // is not the twin of '[^a-z0-9]' and cannot be made into one without changing every other caller
-  // — it KEEPS '-', '&' and '\u00ae', and folds accented letters to ASCII, where the SQL class drops all
-  // of them. So "AXIS-Y" binds 'axis-y' but is stored 'axisy', and "Estee Lauder" with the acute
-  // binds 'esteelauder' but is stored 'estelauder'. The twin is bound ALONGSIDE the existing key,
-  // never instead of it, so no brand that matches today stops matching.
-  //
-  // It is taken from the RAW text, not from the variants: buildBrandQueryVariants (and
-  // detectBrandEntities before it) return values that have ALREADY been through normalizeBrandText,
-  // so the accent is gone before a variant is seen here and twinning a variant recovers nothing a
-  // plain compaction did not already give. Measured over the prod brands that differ under the two
-  // folds, twinning the variants added no key that was not already bound or a whole-sentence
-  // compaction matching nothing.
-  //
-  // KNOWN BOUND: this rescues a query that IS the brand name — which is what a brand page sends.
-  // "Estee Lauder serum" with the acute is not rescued, because the accent is lost inside
-  // detectBrandEntities before any of this runs. Fixing that means carrying the spelling through
-  // the lexicon, which is a change to a shared vocabulary and not this one.
-  //
-  // A twin under 2 characters is dropped: a brand written in a non-Latin script reduces to almost
-  // nothing under '[^a-z0-9]', and a one-character key is not an identity — bound, it would equal
-  // every unrelated row that reduces the same way.
-  const sqlBrandKeyTwin = (value) => String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
-  const rawQueryBrandKey = sqlBrandKeyTwin(relevanceQueryText);
+  // Binding the SQL fold of the raw query text as a second key was tried here and REVERTED: it is
+  // not additive. For a query in a non-Latin script the fold leaves only the Latin residue, which
+  // is a product-line token and not a brand — "<hangul> BB" yields the key 'bb' — and because the
+  // exact arm returns before the broad fallback runs, one junk match SUPPRESSES the rows the
+  // fallback used to return. Measured: that query lost its Sulwhasoo row. `split_part(domain, ...)`
+  // in the match expression means a 2-character residue does not even need a 2-letter brand to
+  // collide; it reached a brandless seed on 'cc.co.kr'. A length floor only moves the boundary.
+  // Reaching those brands needs a key derived from a DETECTED brand, not from raw query residue.
   const exactBrandCompactVariants = Array.from(
     new Set(
-      [
-        ...buildBrandQueryVariants(relevanceQueryText, brandTerms)
-          .map((value) => normalizeBrandText(value).replace(/\s+/g, '')),
-        rawQueryBrandKey.length >= 2 ? rawQueryBrandKey : '',
-      ].filter(Boolean),
+      buildBrandQueryVariants(relevanceQueryText, brandTerms)
+        .map((value) => normalizeBrandText(value).replace(/\s+/g, ''))
+        .filter(Boolean),
     ),
-  ).slice(0, 9);
+  ).slice(0, 8);
   const queryPatterns = Array.from(
     new Set(queryVariants.map((value) => `%${value}%`).filter(Boolean)),
   ).slice(0, 12);
