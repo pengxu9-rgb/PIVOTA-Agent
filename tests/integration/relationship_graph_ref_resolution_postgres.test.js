@@ -28,6 +28,7 @@ const OLD_SQL = fs.readFileSync(
 );
 
 const LONG_PREFIX = `https://long.example/${'a'.repeat(600)}`;
+const LONG_GROUP_PREFIX = `pg_${'g'.repeat(600)}`;
 
 const REFS = [
   'product:ext_aaa', // source_product_id
@@ -44,6 +45,8 @@ const REFS = [
   'product:pg_both', // matches a product_key (rank 0) and a group id (rank 10)
   'product:ext_nomatch',
   'PRODUCT:EXT_MIXED_REF', // input ref in upper case
+  'product:pg_mixed_group', // product group id stored in mixed case
+  `product:${LONG_GROUP_PREFIX}x`, // group id longer than the indexed prefix; a sibling group shares the prefix
 ];
 
 suite('relationship graph ref resolution on PostgreSQL', () => {
@@ -123,11 +126,17 @@ suite('relationship graph ref resolution on PostgreSQL', () => {
     await product({ key: 'pg_both', source: 'src_both' });
     await product({ key: 'P14', source: 'src_p14' });
     await product({ key: 'P15', source: 'EXT_MIXED_REF' });
+    await product({ key: 'P16', source: 'src_p16' });
+    await product({ key: 'P17', source: 'src_p17' });
+    await product({ key: 'P18', source: 'src_p18' });
     await db.query(`
       INSERT INTO product_group_members VALUES
         ('external_seed', 'external_seed', 'src_p12', 'pg_group1', true),
-        ('external_seed', 'external_seed', 'src_p14', 'pg_both', true)
-    `);
+        ('external_seed', 'external_seed', 'src_p14', 'pg_both', true),
+        ('external_seed', 'external_seed', 'src_p16', 'PG_Mixed_Group', true),
+        ('external_seed', 'external_seed', 'src_p17', $1, true),
+        ('external_seed', 'external_seed', 'src_p18', $2, true)
+    `, [`${LONG_GROUP_PREFIX}y`, `${LONG_GROUP_PREFIX}x`]);
     await db.query('ANALYZE');
     jest.resetModules();
     process.env.DATABASE_URL = url;
@@ -182,6 +191,8 @@ suite('relationship graph ref resolution on PostgreSQL', () => {
       'product:pg_group1': 'P12',
       'product:pg_both': 'pg_both',
       'product:ext_mixed_ref': 'P15',
+      'product:pg_mixed_group': 'P16',
+      [`product:${LONG_GROUP_PREFIX}x`]: 'P18',
     });
     expect(byRef['product:ext_susp']).toBeUndefined();
     expect(byRef['https://pivota.cc/p/sig_ddd']).toBeUndefined();
@@ -228,6 +239,12 @@ suite('relationship graph ref resolution on PostgreSQL', () => {
           'https://pivota.cc/p/sig_' || md5(g::text), now(), now()
         FROM generate_series(1, 20000) g
       `);
+      await db.query(`
+        INSERT INTO product_group_members(merchant_id, platform, platform_product_id, product_group_id, is_primary)
+        SELECT CASE WHEN g % 3 = 0 THEN 'merch_obs_b' ELSE 'external_seed' END, 'external_seed', 'ext_' || md5(g::text),
+          'pg_' || (g / 4), g % 4 = 0
+        FROM generate_series(1, 20000) g
+      `);
       await db.query(`INSERT INTO catalog_merchants VALUES ('merch_obs_b', 'Seller B', 'observed')`);
       await createRefKeyIndexes();
       await db.query('ANALYZE');
@@ -238,11 +255,12 @@ suite('relationship graph ref resolution on PostgreSQL', () => {
       await db.query(`SET search_path TO ${schema}`);
     });
 
-    test('the planner answers 41 refs from the indexes, not by scanning catalog_products', async () => {
+    test('the planner answers 41 refs from the indexes, not by scanning catalog_products or product_group_members', async () => {
       const refs = [];
       for (let g = 1; g <= 41; g += 1) {
         const key = require('crypto').createHash('md5').update(String(g * 97)).digest('hex');
-        refs.push(g % 2 ? `product:ext_${key}` : `product:sig_${key}`);
+        // Every fifth ref names a product group, which only the group branch can resolve.
+        refs.push(g % 5 === 0 ? `product:pg_${g * 13}` : g % 2 ? `product:ext_${key}` : `product:sig_${key}`);
       }
       const { sql, params } = await resolve(refs);
       const explain = async (statement) =>
@@ -250,6 +268,7 @@ suite('relationship graph ref resolution on PostgreSQL', () => {
 
       const newPlan = await explain(sql);
       expect(newPlan).not.toMatch(/Seq Scan on catalog_products/);
+      expect(newPlan).not.toMatch(/Seq Scan on product_group_members/);
       // Every branch is a probe of its own index: the index is named, and the next plan line is an Index
       // Cond on the bounded expression for that column. This is also the drift alarm between the query
       // expressions and the index definitions, which must match character for character.
@@ -257,7 +276,7 @@ suite('relationship graph ref resolution on PostgreSQL', () => {
       for (const index of definitions) {
         const at = planLines.findIndex((line) => line.includes(` using ${index.name} `) || line.includes(` on ${index.name} `));
         expect({ index: index.name, found: at > -1 }).toEqual({ index: index.name, found: true });
-        const column = index.name.replace('idx_catalog_products_ref_key_', '').replace(/_v1$/, '');
+        const column = index.name.replace(/^idx_.*?_ref_key_/, '').replace(/_v1$/, '');
         expect(planLines[at + 1]).toMatch(/Index Cond:/);
         expect(planLines[at + 1]).toMatch(new RegExp(`"?left"?\\(lower\\(\\(?${column}\\b`));
       }
@@ -268,6 +287,10 @@ suite('relationship graph ref resolution on PostgreSQL', () => {
       const rows = (await db.query(sql, params)).rows;
       expect(rows).toEqual((await db.query(OLD_SQL, params)).rows);
       expect(rows).toHaveLength(41);
+      // The group refs really resolved through the group branch (their product_key is a member, not the ref).
+      const groupRows = rows.filter((row) => row.normalized_ref.startsWith('product:pg_'));
+      expect(groupRows).toHaveLength(8);
+      for (const row of groupRows) expect(row.product_group_id).toBe(row.ref_key);
     });
   });
 });

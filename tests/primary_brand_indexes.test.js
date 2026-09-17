@@ -2,7 +2,7 @@ const {primaryBrandIndexDefinitions,inspectReadiness}=require('../scripts/catalo
 const {buildBrandIdentityPredicate,CANONICAL_OWN_BRAND_SQL}=require('../src/services/canonicalSearchQualitySql');
 const {SEED_OWN_BRAND_SQL}=require('../src/services/seedSearchOfferScope');
 const {seedBrandIdentitySql,seedDomainIdentitySql,seedTitleSql,BRAND_SEED_SCAN_PREDICATE,IDENTITY_MAX_CHARS}=require('../src/services/brandSeedScanSql');
-const {RELATIONSHIP_GRAPH_REF_KEY_COLUMNS,REF_KEY_PREFIX_CHARS,refKeyIndexExpressionSql,refKeyIndexName,refKeyMatchSql}=require('../src/services/relationshipGraphRefKeySql');
+const {PRODUCT_GROUP_REF_KEY_INDEX,RELATIONSHIP_GRAPH_REF_KEY_COLUMNS,REF_KEY_PREFIX_CHARS,productGroupRefKeyIndexExpressionSql,productGroupRefKeyMatchSql,refKeyIndexExpressionSql,refKeyIndexName,refKeyMatchSql}=require('../src/services/relationshipGraphRefKeySql');
 // An index only accelerates an expression it matches CHARACTER FOR CHARACTER, so every definition
 // must be tied back to the query that is meant to use it. `accelerates` names that query; a
 // definition carrying an unknown value fails here rather than quietly matching nothing.
@@ -47,6 +47,15 @@ const ACCELERATORS={
   // The relationship graph ref resolution: one equality branch per key column, probing the bounded
   // prefix and rechecking the full value.
   ref_key_equality(index){
+    if(index.name===PRODUCT_GROUP_REF_KEY_INDEX.name){
+      expect(index.table).toBe('product_group_members');
+      expect(index.expression).toBe(productGroupRefKeyIndexExpressionSql());
+      expect(index.expression).toBe(`left(lower(product_group_id), ${REF_KEY_PREFIX_CHARS})`);
+      expect(productGroupRefKeyMatchSql('pgm','i.ref_key')).toBe(`left(lower(pgm.product_group_id), ${REF_KEY_PREFIX_CHARS}) = left(i.ref_key, ${REF_KEY_PREFIX_CHARS}) AND lower(pgm.product_group_id) = i.ref_key`);
+      expect(index.opclass).toBeUndefined();
+      expect(index.predicate).toBeNull();
+      return;
+    }
     const column=RELATIONSHIP_GRAPH_REF_KEY_COLUMNS.find(c=>refKeyIndexName(c)===index.name);
     expect(column).toBeTruthy();
     expect(index.table).toBe('catalog_products');
@@ -103,8 +112,10 @@ test('index readiness fails on missing/invalid indexes or unreviewed definitions
 });
 test('every relationship graph ref key column has exactly one index, and the resolver probes each',()=>{
   const names=primaryBrandIndexDefinitions().filter(i=>i.accelerates==='ref_key_equality').map(i=>i.name);
-  expect(names).toEqual(RELATIONSHIP_GRAPH_REF_KEY_COLUMNS.map(refKeyIndexName));
+  expect(names).toEqual([...RELATIONSHIP_GRAPH_REF_KEY_COLUMNS.map(refKeyIndexName), PRODUCT_GROUP_REF_KEY_INDEX.name]);
   const source=require('fs').readFileSync(require.resolve('../src/services/catalogEntityResolution'),'utf8');
   expect(source).toContain("refKeyMatchSql(column, 'cp_key', 'i.ref_key')");
+  expect(source).toContain("productGroupRefKeyMatchSql('pgm', 'i.ref_key')");
+  expect(source).not.toMatch(/ON lower\(pgm\.product_group_id\) = i\.ref_key/);
   expect(source).not.toMatch(/OR lower\(cp\.(source_product_id|product_key|pivota_signature_id|canonical_url|pivota_canonical_url)\) = i\.ref_key/);
 });

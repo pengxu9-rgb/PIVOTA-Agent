@@ -2,7 +2,7 @@
 const {normalizedBrandIdentitySql,CANONICAL_OWN_BRAND_SQL}=require('../../src/services/canonicalSearchQualitySql');
 const {SEED_OWN_BRAND_SQL}=require('../../src/services/seedSearchOfferScope');
 const {BRAND_SEED_SCAN_PREDICATE,seedBrandIdentitySql,seedDomainIdentitySql,seedTitleSql}=require('../../src/services/brandSeedScanSql');
-const {RELATIONSHIP_GRAPH_REF_KEY_COLUMNS,refKeyIndexExpressionSql,refKeyIndexName}=require('../../src/services/relationshipGraphRefKeySql');
+const {PRODUCT_GROUP_REF_KEY_INDEX,RELATIONSHIP_GRAPH_REF_KEY_COLUMNS,productGroupRefKeyIndexExpressionSql,refKeyIndexExpressionSql,refKeyIndexName}=require('../../src/services/relationshipGraphRefKeySql');
 
 function primaryBrandIndexDefinitions() {
   const canonical=normalizedBrandIdentitySql(CANONICAL_OWN_BRAND_SQL.replace(/\bp\./g,''));
@@ -29,6 +29,9 @@ function primaryBrandIndexDefinitions() {
     // resolveRelationshipGraphRefsToCanonicalEntities) probes each key column by equality.
     ...RELATIONSHIP_GRAPH_REF_KEY_COLUMNS.map(column=>({name:refKeyIndexName(column),table:'catalog_products',
       expression:refKeyIndexExpressionSql(column),accelerates:'ref_key_equality',predicate:null})),
+    // ...and its product-group branch, which matches the ref against product_group_members.product_group_id.
+    {name:PRODUCT_GROUP_REF_KEY_INDEX.name,table:PRODUCT_GROUP_REF_KEY_INDEX.table,
+      expression:productGroupRefKeyIndexExpressionSql(),accelerates:'ref_key_equality',predicate:null},
   ].map(index=>{
     const scoped=index.table==='external_product_seeds'?'market, tool, ':'';
     const key=`(${index.expression})${index.opclass?' '+index.opclass:''}`;
