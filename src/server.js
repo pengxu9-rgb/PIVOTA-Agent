@@ -10234,6 +10234,52 @@ function buildOfferVariantsForPayload(product, fallbackCurrency) {
     .filter(Boolean);
 }
 
+/**
+ * Rescue a signature PDP's group members from the CATALOG when the identity-listing lane found
+ * none. Extracted so the decision is testable without a database: `resolveGroup` is the only way
+ * this function reaches one, and every refusal is a plain condition rather than a query that
+ * happened to return nothing.
+ *
+ * Returns `{ group_id, members, content_key, offer_count }` only for a group with a SECOND member,
+ * and null otherwise — including when members were already present, when the lane does not apply,
+ * or when the resolver failed.
+ */
+async function resolveMissingIdentityGroupMembers({
+  enabled,
+  groupMembers,
+  productId,
+  merchantId,
+  resolveGroup,
+} = {}) {
+  if (!enabled) return null;
+  if (Array.isArray(groupMembers) && groupMembers.length > 0) return null;
+  const lookupProductId = String(productId || '').trim();
+  if (!lookupProductId || typeof resolveGroup !== 'function') return null;
+
+  const group = await resolveGroup({
+    productId: lookupProductId,
+    merchantId: String(merchantId || '').trim() || null,
+  });
+  const members = Array.isArray(group?.members) ? group.members : [];
+  if (members.length < 2) return null;
+
+  // The SHARED id, never the request's own signature: `canonical_entity_id` is the `pg_` group the
+  // catalog wrote, and `sellable_item_group_id` is its elected canonical signature. Without one of
+  // them there is nothing to report that the caller did not already hold.
+  const groupId =
+    String(group?.canonical_entity_id || '').trim() ||
+    String(group?.sellable_item_group_id || '').trim() ||
+    String(group?.product_group_id || '').trim();
+  if (!groupId) return null;
+
+  return {
+    group_id: groupId,
+    members,
+    content_key: String(group?.content_key || '').trim() || null,
+    offer_count: Number.isFinite(group?.offer_count) ? group.offer_count : null,
+  };
+}
+
 function decoratePdpPayloadWithIdentity(pdpPayload, {
   productGroupId = null,
   sellableItemGroupId = null,
@@ -44978,9 +45024,45 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       const contentReviewState =
         identityGraphLive?.content_review_state ||
         (pdpContentSource === 'canonical_inherited' ? 'pending' : 'not_needed');
+      // GROUP RESCUE BY CONTENT KEY. Everything above resolves a signature PDP's group through
+      // `pdp_identity_listing` alone — by `source_listing_ref`, then by that row's
+      // `sellable_item_group_id`. Nothing in this lane is keyed on the `content_key` the CATALOG
+      // converged the listings on, so when that table has no approved live row the members come
+      // back empty, `catalogIdentity.sellable_item_group_id` has already defaulted to the request's
+      // own signature, and the blocked arm below reports `offers_count: 0` for a product the
+      // catalog holds two priced sellers for. Measured in prod 2026-09-17 on the Pyunkang Yul
+      // two-retailer canary: `get_offers` returned both sellers and the PDP said zero.
+      //
+      // `resolveCanonicalCatalogEntityGroup` is the resolver the canonical-catalog arm already
+      // uses (one indexed query: same content_key UNION same product_group_members UNION self),
+      // and it returns members in the shape `buildOffersFromGroupMembers` consumes.
+      //
+      // A SECOND MEMBER IS REQUIRED. One member is the listing itself, and a group of one is the
+      // case this branch already handles; rescuing it would change the self/blocked decision for
+      // every solo seed listing on the strength of a query that found nothing new.
+      const identityGroupRescue = await resolveMissingIdentityGroupMembers({
+        enabled: Boolean(requestedPivotaSignatureId) && resolvedRefIsSeedRouted(),
+        groupMembers,
+        productId: canonicalProductRef?.product_id || productId,
+        merchantId: canonicalProductRef?.merchant_id || requestedMerchantId || null,
+        resolveGroup: (args) =>
+          resolveCanonicalCatalogEntityGroup({ ...args, queryFn: query }).catch((err) => {
+            logger.warn(
+              { err: err?.message || String(err), product_id: args?.productId },
+              'get_pdp_v2 identity group rescue failed; keeping the identity-listing answer',
+            );
+            return null;
+          }),
+      });
+      if (identityGroupRescue) {
+        groupMembers = identityGroupRescue.members;
+      }
       const identityBackedExternalSeedGroupId =
         resolvedRefIsSeedRouted()
-          ? catalogIdentity?.sellable_item_group_id || catalogIdentity?.product_group_id || null
+          ? identityGroupRescue?.group_id ||
+            catalogIdentity?.sellable_item_group_id ||
+            catalogIdentity?.product_group_id ||
+            null
           : null;
       const identityBackedGroupExpected =
         requestedPivotaSignatureId &&
@@ -53954,6 +54036,7 @@ module.exports._debug = {
   buildGroupMemberCatalogOfferLateralJoinSql,
   filterGroupMembersByCatalogSourceQuarantine,
   decoratePdpPayloadWithIdentity,
+  resolveMissingIdentityGroupMembers,
   hydrateCanonicalPdpPayloadFromOffers,
   loadCreatorSellableFromCache,
   searchCreatorSellableFromCache,
