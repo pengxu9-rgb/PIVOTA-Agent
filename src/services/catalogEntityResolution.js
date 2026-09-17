@@ -3,7 +3,11 @@
 const { query: defaultQuery } = require('../db');
 const { activeCatalogProductSourceWhere } = require('./activeCatalogSourceSql');
 const { CANONICAL_ENTITY_GROUP_SQL_TAG } = require('./catalogEntityResolutionSqlTag');
-const { RELATIONSHIP_GRAPH_REF_KEY_COLUMNS, refKeyMatchSql } = require('./relationshipGraphRefKeySql');
+const {
+  RELATIONSHIP_GRAPH_REF_KEY_COLUMNS,
+  productGroupRefKeyMatchSql,
+  refKeyMatchSql,
+} = require('./relationshipGraphRefKeySql');
 const productRelationshipGraphSources = require('../auroraBff/productRelationshipGraphSources');
 
 const relationshipGraphSourcesInternal = productRelationshipGraphSources.__internal || {};
@@ -623,7 +627,7 @@ async function resolveRelationshipGraphRefsToCanonicalEntities(refs = [], { quer
             COALESCE(pgm.is_primary, false) AS is_primary
           FROM input_refs i
           JOIN product_group_members pgm
-            ON lower(pgm.product_group_id) = i.ref_key
+            ON ${productGroupRefKeyMatchSql('pgm', 'i.ref_key')}
           JOIN catalog_products cp
             ON cp.merchant_id = pgm.merchant_id
            AND cp.platform = pgm.platform

@@ -48,10 +48,35 @@ function refKeyIndexName(column) {
   return `idx_catalog_products_ref_key_${column}_v1`;
 }
 
+// The resolver's second branch matches a ref against product_group_members.product_group_id (a
+// "product:pg_…" ref names a group). It compared lower(product_group_id) = ref with no usable index, so
+// every call scanned the table (15.8k rows, ~14ms of the 74ms resolve in prod after the catalog columns
+// were indexed). Same bounded-prefix index plus exact recheck as the catalog columns.
+const PRODUCT_GROUP_REF_KEY_INDEX = Object.freeze({
+  table: 'product_group_members',
+  column: 'product_group_id',
+  name: 'idx_product_group_members_ref_key_product_group_id_v1',
+});
+
+function productGroupRefKeyIndexExpressionSql(alias = '') {
+  const ref = alias ? `${alias}.product_group_id` : 'product_group_id';
+  return `left(lower(${ref}), ${REF_KEY_PREFIX_CHARS})`;
+}
+
+function productGroupRefKeyMatchSql(groupAlias, refKeySql) {
+  return (
+    `${productGroupRefKeyIndexExpressionSql(groupAlias)} = left(${refKeySql}, ${REF_KEY_PREFIX_CHARS})` +
+    ` AND lower(${groupAlias}.product_group_id) = ${refKeySql}`
+  );
+}
+
 module.exports = {
+  PRODUCT_GROUP_REF_KEY_INDEX,
   REF_KEY_PREFIX_CHARS,
   RELATIONSHIP_GRAPH_REF_KEY_COLUMNS,
   refKeyIndexExpressionSql,
   refKeyIndexName,
   refKeyMatchSql,
+  productGroupRefKeyIndexExpressionSql,
+  productGroupRefKeyMatchSql,
 };
