@@ -1354,19 +1354,21 @@ suite('brand-page external seed scan on PostgreSQL', () => {
       };
       const recall = (n) => ({ brand: 'Mixsoon', category: 'Serum', derived: { recall: { brand: 'Mixsoon', category: 'Serum',
         retrieval_title: `Mixsoon ${n}`, description: 'x'.repeat(3000) } }, snapshot: { vendor: 'Store', product_type: 'Serum' } });
-      // The newest two rows fail the gate: they must not take LIMIT slots.
-      await row('newest_untrusted', { seedData: recall(0), updated: at(50), trusted: false });
-      await row('newest_unattached', { seedData: recall(1), updated: at(49), attached: false });
-      for (let n = 0; n < 12; n += 1) await row(`ok_${String(n).padStart(2, '0')}`, { seedData: recall(n), updated: at(40 - n) });
-      // seed_data that is not an object, or NULL: every read is a text-key path, which is NULL either way.
-      await row('seed_array', { seedData: [{ brand: 'Mixsoon' }], updated: at(20) });
-      await row('seed_scalar', { seedData: 'Mixsoon', updated: at(19) });
-      await row('seed_null', { seedData: undefined, updated: at(18) });
-      await row('seed_empty_object', { seedData: {}, updated: at(17) });
+      // Inserted OLDEST FIRST, so heap order is the reverse of the sort: a pick that applied its LIMIT
+      // without ordering would keep the oldest rows, and the outer re-sort could not hide it.
       // Same updated_at, different created_at: the second sort key decides, in both statements. (Rows equal
       // on both keys have no defined order in either statement, so they would only make this test flaky.)
       await row('tie_a', { seedData: recall(90), updated: at(10), created: at(1) });
       await row('tie_b', { seedData: recall(91), updated: at(10), created: at(2) });
+      // seed_data that is not an object, or NULL: every read is a text-key path, which is NULL either way.
+      await row('seed_empty_object', { seedData: {}, updated: at(17) });
+      await row('seed_null', { seedData: undefined, updated: at(18) });
+      await row('seed_scalar', { seedData: 'Mixsoon', updated: at(19) });
+      await row('seed_array', { seedData: [{ brand: 'Mixsoon' }], updated: at(20) });
+      for (let n = 11; n >= 0; n -= 1) await row(`ok_${String(n).padStart(2, '0')}`, { seedData: recall(n), updated: at(40 - n) });
+      // The newest two rows fail the gate: they must not take LIMIT slots.
+      await row('newest_unattached', { seedData: recall(1), updated: at(49), attached: false });
+      await row('newest_untrusted', { seedData: recall(0), updated: at(50), trusted: false });
       await db.query('ANALYZE');
     });
 
