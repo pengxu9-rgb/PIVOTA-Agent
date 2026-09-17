@@ -319,17 +319,19 @@ const CATEGORY_ALIAS_RULES = Object.freeze([
   // `hair\s` was not). `high gloss paint`, `semi-gloss`, `gloss photo paper` and
   // `gloss bomb keychain` are excluded the same way.
   //
-  // EVERY TOKEN IN THE GUARD IS LIVE, and each is pinned by a test. Measured by deleting
-  // one token at a time: shampoo, conditioner, highlighter and blush were removed from
-  // this list because the haircare / highlighter / blush rules ABOVE already claim
-  // those queries, so the tokens could never fire. `serum`/`essence`/`ampoule`/
-  // `treatment` stay: the rules they belong to sit BELOW this one.
+  // EVERY TOKEN IN THE GUARD IS LIVE for at least one phrasing, and each is pinned by
+  // a test. `shampoo` and `highlighter` are absent because the haircare / highlighter
+  // rules ABOVE claim every phrasing tried (word order, plural, hyphen). `blush` and
+  // `conditioner` stay although those rules usually claim them: the blush rule has no
+  // plural (`gloss blushes`) and the haircare rule exempts `air/fabric conditioner`.
+  // The serum / skincare_treatment vocabulary (serum, essence, ampoule, treatment,
+  // acne, niacinamide, salicylic, bha, …) stays because those rules sit BELOW this one.
   // Same category name as the adjacent-arm rule: telemetry vocabulary unchanged.
   {
     category: 'lip_care_or_gloss',
     categoryPathPrefix: 'beauty/makeup/lip/',
     pattern:
-      /^(?=.*\bgloss(?:es)?\b)(?:(?=.*\blips?\b)|(?!.*\b(?:serums?|essences?|ampoules?|treatments?|hair|nails?|eyes?|brows?|lash(?:es)?|body|face|skin|polish|top\s*coat|paints?|varnish|lacquer|paper|sprays?|gel|finish|floors?|walls?|wood|semi|cheeks?|brushe?s?|removers?|key\s*chains?)\b))/i,
+      /^(?=.*\bgloss(?:es)?\b)(?:(?=.*\blips?\b)|(?!.*\b(?:serums?|essences?|ampoules?|treatments?|acne|blemish(?:es)?|niacinamide|salicylic|azelaic|benzoyl|bha|blush(?:es)?|conditioners?|hair|nails?|eyes?|brows?|lash(?:es)?|body|face|skin|polish|top\s*coat|paints?|varnish|lacquer|paper|sprays?|gel|finish|floors?|walls?|wood|semi|cheeks?|brushe?s?|removers?|key\s*chains?|cars?|tyres?|tires?|shoes?|photos?|prints?|pens?)\b))/i,
   },
   {
     category: 'serum',
@@ -371,13 +373,17 @@ const CATEGORY_ALIAS_RULES = Object.freeze([
   // above already claims it.) `cheek` too: a lip-and-cheek
   // product lives under face/blush as often as lip/, and a lip prefix rejects it there.
   // Non-product senses (`lip sync`, `lip filler`, `cleft lip`, `lip-shaped bag`,
-  // `read my lips`, 兔唇) and bundles (whose rows live under beauty/sets) stay
-  // unrouted, as on origin/main.
+  // 唇形包, `read my lips`, 兔唇) stay unrouted, as on origin/main. So do bare-lip
+  // `bundle` / `combo` queries: in the census those name multi-product offers
+  // (`Build Your Own 3-Piece Lip Bundle`). `kit` / `set` / `duo` are NOT excluded --
+  // `Lip Kit` is a single lip product line, and a lip duo is usually two lip products.
+  // Queries with an adjacent lip form (`lip gloss bundle`) are claimed by the rules
+  // above regardless.
   {
     category: 'lip_generic',
     categoryPathPrefix: 'beauty/makeup/lip/',
     pattern:
-      /^(?!.*(?:\b(?:brushe?s?|removers?|cheeks?|sync(?:ing)?|fillers?|injections?|cleft|shaped|read\s+my|bundles?|combo)\b|刷|眼唇|兔唇))(?:.*\b(lips?|chapsticks?)\b|.*唇)/i,
+      /^(?!.*(?:\b(?:brushe?s?|removers?|cheeks?|sync(?:ing)?|fillers?|injections?|cleft|shaped|read\s+my|bundles?|combo)\b|刷|眼唇|兔唇|唇形))(?:.*\b(lips?|chapsticks?)\b|.*唇)/i,
   },
 ]);
 

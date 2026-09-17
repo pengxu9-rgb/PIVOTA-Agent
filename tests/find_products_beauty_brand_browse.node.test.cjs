@@ -988,3 +988,12 @@ test('seed lane: every lipstick-rule spelling keeps lipstick only, in both calle
     ['lipstick', 'lip color', 'liquid lip', 'rouge', 'lip balm', 'lip gloss', 'lip tint', 'lip'],
   );
 });
+
+test('query: the gloss guard tokens added after the fourth review are load-bearing', () => {
+  for (const query of ['gloss acne', 'gloss blemish', 'gloss niacinamide', 'gloss salicylic', 'gloss azelaic',
+    'gloss benzoyl', 'gloss bha', 'gloss blushes', 'fabric conditioner gloss', 'car gloss', 'gloss tyre',
+    'gloss tire', 'shoe gloss', 'gloss photo', 'gloss print', 'gloss pen', '唇形包']) {
+    const contract = buildSearchQualityContract({ rawQuery: query, market: 'SG' });
+    assert.notEqual(contract.hard_constraints?.category_path_prefix, 'beauty/makeup/lip/', query);
+  }
+});
