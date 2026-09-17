@@ -29,6 +29,9 @@ jest.mock('../../src/db', () => ({
 const ORIGINAL_ENV = process.env;
 
 const SIG_ID = 'sig_rescue0000000000000000000001';
+// The sibling is the group's PRIMARY, so the elected canonical signature is NOT the one requested.
+// With both fixtures pointing at the requested sig, "the group id changed" could not be observed.
+const SIBLING_SIG_ID = 'sig_rescue0000000000000000000002';
 const CONTENT_KEY = 'ck_rescue00000000000000000000001';
 const GROUP_ID = 'pg_rescue00000000000000000000001';
 const SEED_ID = 'ext:retailer:rescue1';
@@ -113,7 +116,7 @@ function seedDetailRow(externalProductId, price) {
   };
 }
 
-function groupRow(merchantId, sourceProductId, isPrimary) {
+function groupRow(merchantId, sourceProductId, isPrimary, lifecycleStage = 'published') {
   return {
     product_key: `prod::${merchantId}::external_seed::${sourceProductId}`,
     merchant_id: merchantId,
@@ -128,8 +131,8 @@ function groupRow(merchantId, sourceProductId, isPrimary) {
     canonical_url: `https://example.test/products/${sourceProductId}`,
     product_image_url: 'https://cdn.example.test/rescue.png',
     product_payload: { title: 'Rescue Probe Cleansing Balm', brand: 'Rescue Labs' },
-    pdp_lifecycle_stage: 'published',
-    pivota_signature_id: isPrimary ? SIG_ID : 'sig_rescue0000000000000000000002',
+    pdp_lifecycle_stage: lifecycleStage,
+    pivota_signature_id: isPrimary ? SIBLING_SIG_ID : SIG_ID,
     pivota_canonical_url: null,
     pivota_signature_minted_at: '2026-09-01T00:00:00Z',
     content_key: CONTENT_KEY,
@@ -142,19 +145,24 @@ function groupRow(merchantId, sourceProductId, isPrimary) {
 }
 
 /**
- * @param {object} opts
- * @param {boolean} opts.sharedGroup false = the catalog holds ONLY this listing, which must keep
- *   the old answer rather than rescuing a group of one.
+ * @param {'shared'|'solo'|'same_merchant'|'sibling_draft'} shape what the catalog holds besides the
+ *   requested listing. Everything but `shared` must leave the old answer alone.
  */
-function install(db, { sharedGroup = true } = {}) {
+function install(db, { shape = 'shared' } = {}) {
   const seen = [];
   db.query.mockImplementation(async (sql, params) => {
     const p = Array.isArray(params) ? params : [];
     seen.push({ sql: norm(sql).slice(0, 80), params: p });
     if (isCanonicalGroupQuery(sql)) {
-      const rows = sharedGroup
-        ? [groupRow(OBS_MERCHANT, SEED_ID, true), groupRow(SIBLING_MERCHANT, SIBLING_SEED_ID, false)]
-        : [groupRow(OBS_MERCHANT, SEED_ID, true)];
+      const self = groupRow(OBS_MERCHANT, SEED_ID, false);
+      const rows =
+        shape === 'solo'
+          ? [self]
+          : shape === 'same_merchant'
+            ? [self, groupRow(OBS_MERCHANT, `${SEED_ID}-relisted`, true)]
+            : shape === 'sibling_draft'
+              ? [self, groupRow(SIBLING_MERCHANT, SIBLING_SEED_ID, true, 'draft')]
+              : [self, groupRow(SIBLING_MERCHANT, SIBLING_SEED_ID, true)];
       return { rows };
     }
     if (isExactSigQuery(sql)) return { rows: [exactSigRow()] };
@@ -195,7 +203,7 @@ afterAll(() => {
 describe('get_pdp_v2 identity group rescue', () => {
   it('serves the catalog group when the identity lane found no members', async () => {
     const { app, db } = loadServerWithDb();
-    const seen = install(db, { sharedGroup: true });
+    const seen = install(db, { shape: 'shared' });
 
     const res = await pdp(app, { product_id: SIG_ID });
     expect(res.status).toBe(200);
@@ -214,7 +222,9 @@ describe('get_pdp_v2 identity group rescue', () => {
     expect((offers.offers || []).map((offer) => offer.merchant_id).sort()).toEqual(
       [OBS_MERCHANT, SIBLING_MERCHANT].sort(),
     );
-    expect(offers.product_group_id).toBe(GROUP_ID);
+    // The GROUP's elected signature, not the one the caller asked with — and the same id every
+    // other lane reading this resolver reports.
+    expect(offers.product_group_id).toBe(SIBLING_SIG_ID);
     expect(offers.product_group_id).not.toBe(SIG_ID);
 
     expect(
@@ -222,11 +232,37 @@ describe('get_pdp_v2 identity group rescue', () => {
     ).toBe(true);
   });
 
+  it('does not serve one merchant twice as two sellers', async () => {
+    // content_key is brand+title+GTIN with no merchant component: 30 content_keys in prod hold 2+
+    // listings from ONE merchant. Serving those would show one store twice and, because the count
+    // then exceeds one, label the PDP multi-merchant.
+    const { app, db } = loadServerWithDb();
+    install(db, { shape: 'same_merchant' });
+
+    const res = await pdp(app, { product_id: SIG_ID });
+    expect(res.status).toBe(200);
+    expect(offersData(res)?.product_group_id).toBe(SIG_ID);
+    expect(offersData(res)?.offers_count).toBe(0);
+  });
+
+  it('does not serve a sibling the catalog is withholding', async () => {
+    // Of 348 catalog rows sharing a content_key with another row, only 85 are published. This lane
+    // is not behind the identity lane's approval gate, so the stage is the only thing standing
+    // between a draft listing and a live PDP.
+    const { app, db } = loadServerWithDb();
+    install(db, { shape: 'sibling_draft' });
+
+    const res = await pdp(app, { product_id: SIG_ID });
+    expect(res.status).toBe(200);
+    expect(offersData(res)?.product_group_id).toBe(SIG_ID);
+    expect(offersData(res)?.offers_count).toBe(0);
+  });
+
   it('keeps the old answer when the catalog holds only this listing', async () => {
     // One member is the listing itself. Rescuing that would change every solo seed listing's
     // answer on the strength of a query that found nothing new.
     const { app, db } = loadServerWithDb();
-    install(db, { sharedGroup: false });
+    install(db, { shape: 'solo' });
 
     const res = await pdp(app, { product_id: SIG_ID });
     expect(res.status).toBe(200);

@@ -1,21 +1,30 @@
 /**
- * A PDP must not report zero offers for a product the catalog holds two sellers for.
+ * A PDP must not report zero offers for a product the catalog holds two sellers for — and must not
+ * invent sellers on the way to fixing that.
  *
  * WHY THIS FILE EXISTS. The signature PDP lane resolves its group through `pdp_identity_listing`
  * only — by `source_listing_ref`, then by that row's `sellable_item_group_id`. Nothing in it is
- * keyed on the `content_key` the catalog actually converged the listings on. When that table has
- * no approved live row, the members come back empty, `catalogIdentity.sellable_item_group_id` has
- * already defaulted to the request's OWN signature, and the blocked arm reports
- * `offers_count: 0`, `product_group_id: <its own sig>`.
+ * keyed on the `content_key` the catalog actually converged the listings on. With no approved live
+ * identity row, members come back empty, `catalogIdentity.sellable_item_group_id` has already
+ * defaulted to the request's OWN signature, and the blocked arm answers `offers_count: 0`.
+ * Measured in prod 2026-09-17: `get_offers` returned both sellers of the Pyunkang Yul canary while
+ * `get_product` on either listing said zero. That whole branch had no test in the repo.
  *
- * Measured in prod 2026-09-17 on the Pyunkang Yul two-retailer canary: `get_offers` returned both
- * sellers ($14.50 eyurs, $19.99 ohlolly) while `get_product` on either listing said zero offers.
- * The whole blocked branch — `multi_offer_blocked` / `identity_group_members_missing` — had no
- * test anywhere in the repo, which is how a serving answer this wrong stayed put.
+ * WHAT THE RESCUE MAY CLAIM, and why each rule exists (all prod measurements, 2026-09-17):
+ *   - PUBLISHED ONLY: of 348 catalog rows sharing a content_key with another row, 85 are
+ *     `published`; 172 are `candidate`, 56 `draft`, 32 `validated`. This lane is not behind the
+ *     identity lane's approval gate, so an unfiltered rescue puts a withheld listing on a live PDP.
+ *   - TWO DISTINCT SELLERS: 30 content_keys hold 2+ listings from ONE merchant, because
+ *     `content_key` carries no merchant component. Counting rows would serve one store twice and
+ *     label the PDP `multi_merchant_canonical`.
+ *   - THE SIGNATURE, not the source id: a `sig_` takes one equality on a unique index (measured
+ *     1.06ms, index scans only); any other shape takes a three-way OR whose `source_product_id`
+ *     leg has no leading-column index, the plan this resolver's header records pinning the
+ *     instance once already.
+ * After both filters, 16 content_keys in prod have two or more published sellers.
  *
- * `resolveMissingIdentityGroupMembers` is the seam. `resolveGroup` is the ONLY way it reaches a
- * database, so every rule below is a decision under test rather than a query that happened to
- * return nothing.
+ * `resolveGroup` is the ONLY way this function reaches a database, so every rule below is a
+ * decision under test rather than a query that happened to return nothing.
  */
 const assert = require('node:assert/strict');
 const test = require('node:test');
@@ -24,20 +33,30 @@ process.env.NODE_ENV = 'test';
 
 const app = require('../src/server');
 
-const { resolveMissingIdentityGroupMembers } = app._debug;
+const { resolveMissingIdentityGroupMembers, resetIdentityGroupRescueCache } = app._debug;
 
-const EYURS = { merchant_id: 'merch_obs_8c4e7afb1bf09b9a', product_id: 'retailer:1aed0be4' };
-const OHLOLLY = { merchant_id: 'merch_obs_c43a84f5b02f2dba', product_id: 'retailer:6ea79af5' };
+const SIG = 'sig_9905aa12d3d261e632b1363bcd911984';
+
+function member(overrides = {}) {
+  return {
+    merchant_id: 'merch_obs_c43a84f5b02f2dba',
+    product_id: 'retailer:6ea79af5',
+    pdp_lifecycle_stage: 'published',
+    ...overrides,
+  };
+}
+
+const OHLOLLY = member();
+const EYURS = member({ merchant_id: 'merch_obs_8c4e7afb1bf09b9a', product_id: 'retailer:1aed0be4' });
 
 function catalogGroup(overrides = {}) {
   return {
     status: 'ok',
     source: 'canonical_catalog',
-    canonical_entity_id: 'pg_5dc9474321d1d597668670aebfd7543a',
     sellable_item_group_id: 'sig_b97a3180c7c8868edd3bd2417f8def27',
+    canonical_entity_id: 'pg_5dc9474321d1d597668670aebfd7543a',
     content_key: 'ck_5dc9474321d1d597668670aebfd7543a',
     members: [EYURS, OHLOLLY],
-    offer_count: 4,
     ...overrides,
   };
 }
@@ -49,151 +68,224 @@ function resolverReturning(group, calls = []) {
   };
 }
 
-const BASE = Object.freeze({
-  enabled: true,
-  groupMembers: [],
-  productId: 'retailer:6ea79af5',
-  merchantId: 'merch_obs_c43a84f5b02f2dba',
-});
+function baseArgs(overrides = {}) {
+  // A distinct cache key per case: the cache is module state, and sharing a key between tests
+  // would let one case answer another.
+  return {
+    enabled: true,
+    groupMembers: [],
+    signatureId: SIG,
+    cacheKey: `case-${Math.random()}`,
+    ...overrides,
+  };
+}
+
+test.beforeEach(() => resetIdentityGroupRescueCache());
 
 test('a listing whose identity lane found no members is rescued from the catalog group', async () => {
   const calls = [];
   const rescued = await resolveMissingIdentityGroupMembers({
-    ...BASE,
+    ...baseArgs(),
     resolveGroup: resolverReturning(catalogGroup(), calls),
   });
 
-  assert.deepEqual(calls, [{ productId: 'retailer:6ea79af5', merchantId: 'merch_obs_c43a84f5b02f2dba' }]);
-  assert.equal(rescued.group_id, 'pg_5dc9474321d1d597668670aebfd7543a', 'the SHARED id, not the request sig');
+  assert.deepEqual(calls, [{ productId: SIG }], 'the signature, and nothing else, is looked up');
+  assert.equal(rescued.group_id, 'sig_b97a3180c7c8868edd3bd2417f8def27');
   assert.deepEqual(rescued.members, [EYURS, OHLOLLY]);
-  assert.equal(rescued.content_key, 'ck_5dc9474321d1d597668670aebfd7543a');
-  assert.equal(rescued.offer_count, 4);
 });
 
-test('the group id falls back to the elected canonical signature, then the product group', async () => {
-  const noEntityId = await resolveMissingIdentityGroupMembers({
-    ...BASE,
-    resolveGroup: resolverReturning(catalogGroup({ canonical_entity_id: '' })),
-  });
-  assert.equal(noEntityId.group_id, 'sig_b97a3180c7c8868edd3bd2417f8def27');
-
-  const onlyProductGroup = await resolveMissingIdentityGroupMembers({
-    ...BASE,
-    resolveGroup: resolverReturning(
-      catalogGroup({ canonical_entity_id: null, sellable_item_group_id: null, product_group_id: 'pg_fallback' }),
-    ),
-  });
-  assert.equal(onlyProductGroup.group_id, 'pg_fallback');
-});
-
-test('a group with no id at all is not a rescue', async () => {
-  // Reporting members under no shared id would tell the caller nothing it did not already hold.
+test('the group id is the elected signature, matching every other lane that reads this resolver', async () => {
+  // Preferring the `pg_` id here would make one product report two different group ids depending
+  // on which lane answered, and flip back the moment the identity lane starts answering.
   const rescued = await resolveMissingIdentityGroupMembers({
-    ...BASE,
-    resolveGroup: resolverReturning(
-      catalogGroup({ canonical_entity_id: '  ', sellable_item_group_id: null, product_group_id: '' }),
-    ),
+    ...baseArgs(),
+    resolveGroup: resolverReturning(catalogGroup()),
+  });
+  assert.equal(rescued.group_id, 'sig_b97a3180c7c8868edd3bd2417f8def27');
+  assert.notEqual(rescued.group_id, 'pg_5dc9474321d1d597668670aebfd7543a');
+
+  const noSig = await resolveMissingIdentityGroupMembers({
+    ...baseArgs(),
+    resolveGroup: resolverReturning(catalogGroup({ sellable_item_group_id: '' })),
+  });
+  assert.equal(noSig.group_id, 'pg_5dc9474321d1d597668670aebfd7543a', 'then the catalog group');
+});
+
+test('two listings from the SAME merchant are one seller, not a rescue', async () => {
+  // 30 content_keys in prod hold 2+ listings from one merchant. Serving those as two sellers would
+  // show one store twice and label the PDP multi-merchant.
+  const twin = member({ product_id: 'retailer:duplicate-row' });
+  const rescued = await resolveMissingIdentityGroupMembers({
+    ...baseArgs(),
+    resolveGroup: resolverReturning(catalogGroup({ members: [OHLOLLY, twin] })),
   });
   assert.equal(rescued, null);
 });
 
-test('a group of ONE is refused, and the query still only ran once', async () => {
-  // One member is the listing itself. That is the case the blocked/self decision already covers,
-  // and rescuing it would change every solo seed listing's answer on the strength of a query that
-  // found nothing new.
-  const calls = [];
+test('merchant ids differing only by case or spacing are one seller', async () => {
+  const shouty = member({ merchant_id: '  MERCH_OBS_C43A84F5B02F2DBA ', product_id: 'retailer:other-row' });
   const rescued = await resolveMissingIdentityGroupMembers({
-    ...BASE,
-    resolveGroup: resolverReturning(catalogGroup({ members: [OHLOLLY] }), calls),
+    ...baseArgs(),
+    resolveGroup: resolverReturning(catalogGroup({ members: [OHLOLLY, shouty] })),
+  });
+  assert.equal(rescued, null);
+});
+
+test('a sibling that is not published is never served as a seller', async () => {
+  for (const stage of ['candidate', 'draft', 'validated', '', undefined]) {
+    const withheld = member({ merchant_id: 'merch_obs_withheld', pdp_lifecycle_stage: stage });
+    const rescued = await resolveMissingIdentityGroupMembers({
+      ...baseArgs(),
+      resolveGroup: resolverReturning(catalogGroup({ members: [OHLOLLY, withheld] })),
+    });
+    assert.equal(rescued, null, `stage ${String(stage)} must not be served`);
+  }
+});
+
+test('a withheld sibling is dropped while the published ones are still served', async () => {
+  const withheld = member({ merchant_id: 'merch_obs_withheld', pdp_lifecycle_stage: 'draft' });
+  const rescued = await resolveMissingIdentityGroupMembers({
+    ...baseArgs(),
+    resolveGroup: resolverReturning(catalogGroup({ members: [EYURS, withheld, OHLOLLY] })),
   });
 
+  assert.deepEqual(
+    rescued.members.map((m) => m.merchant_id),
+    [EYURS.merchant_id, OHLOLLY.merchant_id],
+    'the draft row is not handed to the offers arm either',
+  );
+});
+
+test('a group of one published seller keeps the existing answer', async () => {
+  // One member is the listing itself. That is the case the blocked/self decision already covers.
+  const rescued = await resolveMissingIdentityGroupMembers({
+    ...baseArgs(),
+    resolveGroup: resolverReturning(catalogGroup({ members: [OHLOLLY] })),
+  });
   assert.equal(rescued, null);
-  assert.equal(calls.length, 1);
+});
+
+test('a group with no usable id is not a rescue', async () => {
+  const rescued = await resolveMissingIdentityGroupMembers({
+    ...baseArgs(),
+    resolveGroup: resolverReturning(
+      catalogGroup({ sellable_item_group_id: '  ', canonical_entity_id: null, product_group_id: '' }),
+    ),
+  });
+  assert.equal(rescued, null);
 });
 
 test('members already in hand are never re-resolved', async () => {
   let called = false;
   const rescued = await resolveMissingIdentityGroupMembers({
-    ...BASE,
-    groupMembers: [EYURS, OHLOLLY],
+    ...baseArgs({ groupMembers: [EYURS, OHLOLLY] }),
     resolveGroup: async () => {
       called = true;
       return catalogGroup();
     },
   });
-
   assert.equal(rescued, null);
   assert.equal(called, false, 'the identity lane already answered; this must cost nothing');
 });
 
 test('a lane this rescue does not apply to costs no query', async () => {
-  // `enabled` carries both gates from the call site: a signature request AND a seed-routed ref.
   let called = false;
   const rescued = await resolveMissingIdentityGroupMembers({
-    ...BASE,
-    enabled: false,
+    ...baseArgs({ enabled: false }),
     resolveGroup: async () => {
       called = true;
       return catalogGroup();
     },
   });
-
   assert.equal(rescued, null);
   assert.equal(called, false);
 });
 
-test('a missing product id cannot be looked up', async () => {
+test('anything but a signature is refused before it reaches the database', async () => {
+  // The source-id shape is the unindexed OR plan this lane must never run.
   let called = false;
-  for (const productId of [undefined, '', '   ']) {
+  for (const signatureId of [undefined, '', '   ', 'ext:retailer:6ea79af5', 'ck_5dc9474321d1d597668670aebfd7543a', 'prod::m::external_seed::x']) {
     const rescued = await resolveMissingIdentityGroupMembers({
-      ...BASE,
-      productId,
+      ...baseArgs({ signatureId }),
       resolveGroup: async () => {
         called = true;
         return catalogGroup();
       },
     });
-    assert.equal(rescued, null);
+    assert.equal(rescued, null, String(signatureId));
   }
-  assert.equal(called, false);
+  assert.equal(called, false, 'no non-signature shape may be sent to the resolver');
 });
 
-test('a resolver that fails leaves the identity-listing answer standing', async () => {
-  // The call site catches and returns null; a rescue that throws must not take the PDP with it.
-  const rescued = await resolveMissingIdentityGroupMembers({
-    ...BASE,
-    resolveGroup: async () => null,
-  });
-  assert.equal(rescued, null);
-});
-
-test('a malformed group is refused rather than half-read', async () => {
-  for (const group of [undefined, null, {}, { members: null }, { members: 'two' }, { members: [EYURS] }]) {
+test('a resolver that answers nothing, or answers rubbish, is refused', async () => {
+  for (const group of [undefined, null, {}, { members: null }, { members: 'two' }, { members: [OHLOLLY] }]) {
     const rescued = await resolveMissingIdentityGroupMembers({
-      ...BASE,
+      ...baseArgs(),
       resolveGroup: resolverReturning(group),
     });
     assert.equal(rescued, null, JSON.stringify(group));
   }
 });
 
-test('a non-numeric offer_count is reported as unknown, never as zero', async () => {
-  // `offer_count: 0` from this path would be indistinguishable from the blocked answer this whole
-  // change exists to remove.
-  const rescued = await resolveMissingIdentityGroupMembers({
-    ...BASE,
-    resolveGroup: resolverReturning(catalogGroup({ offer_count: undefined })),
+test('the answer is cached, and so is a NO', async () => {
+  // This fires on the majority of seed-routed signature PDPs and all but ~16 products answer "no
+  // group"; an uncached no would be a query per page view.
+  const hitCalls = [];
+  const key = 'cache-hit-case';
+  const first = await resolveMissingIdentityGroupMembers({
+    ...baseArgs({ cacheKey: key }),
+    resolveGroup: resolverReturning(catalogGroup(), hitCalls),
   });
-  assert.equal(rescued.offer_count, null);
-  assert.deepEqual(rescued.members.length, 2);
+  const second = await resolveMissingIdentityGroupMembers({
+    ...baseArgs({ cacheKey: key }),
+    resolveGroup: resolverReturning(catalogGroup(), hitCalls),
+  });
+  assert.equal(hitCalls.length, 1, 'the second view must not re-query');
+  assert.deepEqual(second, first);
+
+  const missCalls = [];
+  const negativeKey = 'cache-negative-case';
+  await resolveMissingIdentityGroupMembers({
+    ...baseArgs({ cacheKey: negativeKey }),
+    resolveGroup: resolverReturning(catalogGroup({ members: [OHLOLLY] }), missCalls),
+  });
+  const secondNo = await resolveMissingIdentityGroupMembers({
+    ...baseArgs({ cacheKey: negativeKey }),
+    resolveGroup: resolverReturning(catalogGroup({ members: [OHLOLLY] }), missCalls),
+  });
+  assert.equal(missCalls.length, 1, 'a NO is remembered too');
+  assert.equal(secondNo, null);
 });
 
-test('the merchant id is passed through, and blank becomes null', async () => {
+test('the cache expires, so an approved identity listing is not shadowed for long', async () => {
+  const calls = [];
+  const key = 'cache-ttl-case';
+  let clock = 1_000_000;
+  const args = () => ({ ...baseArgs({ cacheKey: key }), now: () => clock });
+
+  await resolveMissingIdentityGroupMembers({ ...args(), resolveGroup: resolverReturning(catalogGroup(), calls) });
+  clock += 59_000;
+  await resolveMissingIdentityGroupMembers({ ...args(), resolveGroup: resolverReturning(catalogGroup(), calls) });
+  assert.equal(calls.length, 1, 'still fresh at 59s');
+
+  clock += 2_000;
+  await resolveMissingIdentityGroupMembers({ ...args(), resolveGroup: resolverReturning(catalogGroup(), calls) });
+  assert.equal(calls.length, 2, 're-resolved after the TTL');
+});
+
+test('the cache is bounded', async () => {
+  // 500 entries, evicting the oldest insertion. Unbounded, this would grow with the catalog.
+  for (let i = 0; i < 600; i += 1) {
+    // eslint-disable-next-line no-await-in-loop
+    await resolveMissingIdentityGroupMembers({
+      ...baseArgs({ cacheKey: `bound-${i}` }),
+      resolveGroup: resolverReturning(catalogGroup()),
+    });
+  }
   const calls = [];
   await resolveMissingIdentityGroupMembers({
-    ...BASE,
-    merchantId: '   ',
+    ...baseArgs({ cacheKey: 'bound-0' }),
     resolveGroup: resolverReturning(catalogGroup(), calls),
   });
-  assert.equal(calls[0].merchantId, null);
+  assert.equal(calls.length, 1, 'the oldest key was evicted rather than kept forever');
 });

@@ -10234,50 +10234,87 @@ function buildOfferVariantsForPayload(product, fallbackCurrency) {
     .filter(Boolean);
 }
 
+const IDENTITY_GROUP_RESCUE_CACHE = new Map();
+const IDENTITY_GROUP_RESCUE_CACHE_TTL_MS = 60_000;
+const IDENTITY_GROUP_RESCUE_CACHE_MAX = 500;
+
+function resetIdentityGroupRescueCache() {
+  IDENTITY_GROUP_RESCUE_CACHE.clear();
+}
+
 /**
  * Rescue a signature PDP's group members from the CATALOG when the identity-listing lane found
  * none. Extracted so the decision is testable without a database: `resolveGroup` is the only way
  * this function reaches one, and every refusal is a plain condition rather than a query that
  * happened to return nothing.
  *
- * Returns `{ group_id, members, content_key, offer_count }` only for a group with a SECOND member,
- * and null otherwise — including when members were already present, when the lane does not apply,
- * or when the resolver failed.
+ * WHAT MAY BE SERVED, measured in prod 2026-09-17:
+ *   PUBLISHED ONLY. Of 348 catalog rows sharing a content_key with another row, only 85 are
+ *   `published` — 172 are `candidate`, 56 `draft`, 32 `validated`. Those stages are withheld from
+ *   serving on purpose, and this lane is NOT behind the identity lane's
+ *   `identity_status='approved' AND live_read_enabled` gate, so without this filter a draft
+ *   listing would appear as a priced seller on a live PDP.
+ *   TWO DISTINCT SELLERS. `content_key` is brand+title+GTIN with no merchant component, so one
+ *   merchant's two rows share it: 30 content_keys in prod hold 2+ listings from a SINGLE merchant.
+ *   `members.length >= 2` would serve one store twice and, because the offers count then exceeds
+ *   one, label the PDP `multi_merchant_canonical`. Merchant ids are folded for case, the house
+ *   rule this file states elsewhere.
+ * After both filters, 16 content_keys in prod have two or more published sellers.
+ *
+ * Returns `{ group_id, members }` for such a group, and null otherwise — including when members
+ * were already present, when the lane does not apply, or when the resolver failed.
  */
 async function resolveMissingIdentityGroupMembers({
   enabled,
   groupMembers,
-  productId,
-  merchantId,
+  signatureId,
   resolveGroup,
+  cacheKey,
+  now = Date.now,
 } = {}) {
   if (!enabled) return null;
   if (Array.isArray(groupMembers) && groupMembers.length > 0) return null;
-  const lookupProductId = String(productId || '').trim();
-  if (!lookupProductId || typeof resolveGroup !== 'function') return null;
+  // The SIGNATURE, never the source product id. `resolveCanonicalCatalogEntityGroup` matches a
+  // `sig_` id with one equality on a unique index; any other shape takes a three-way OR whose
+  // `source_product_id` leg has no leading-column index. Measured in prod 2026-09-17 with the sig:
+  // index scans only, 1.06ms. This resolver's own header records the OR shape pinning the
+  // instance once already.
+  const lookupId = String(signatureId || '').trim();
+  if (!lookupId || !isPivotaSignatureProductId(lookupId) || typeof resolveGroup !== 'function') return null;
 
-  const group = await resolveGroup({
-    productId: lookupProductId,
-    merchantId: String(merchantId || '').trim() || null,
-  });
-  const members = Array.isArray(group?.members) ? group.members : [];
-  if (members.length < 2) return null;
+  // A SHORT CACHE, negatives included. This fires on every seed-routed signature PDP whose identity
+  // lane is empty, which is the majority of them, and all but ~16 products answer "no group".
+  // Planning alone measured 16.8ms. The TTL is short because the answer changes the moment an
+  // identity listing is approved and this lane stops running at all.
+  const key = String(cacheKey || lookupId);
+  const nowMs = now();
+  const cached = IDENTITY_GROUP_RESCUE_CACHE.get(key);
+  if (cached && cached.expires_at > nowMs) return cached.value;
 
-  // The SHARED id, never the request's own signature: `canonical_entity_id` is the `pg_` group the
-  // catalog wrote, and `sellable_item_group_id` is its elected canonical signature. Without one of
-  // them there is nothing to report that the caller did not already hold.
+  const group = await resolveGroup({ productId: lookupId });
+  const members = (Array.isArray(group?.members) ? group.members : []).filter(
+    (member) => String(member?.pdp_lifecycle_stage || '').trim().toLowerCase() === 'published',
+  );
+  const sellers = new Set(
+    members.map((member) => String(member?.merchant_id || '').trim().toLowerCase()).filter(Boolean),
+  );
+
+  // SIG FIRST, matching the four other lanes that read this resolver (`sellable_item_group_id ||
+  // product_group_id`). Preferring the `pg_` id here would make one product report two different
+  // group ids depending on which lane answered, and flip back once the identity lane does.
   const groupId =
-    String(group?.canonical_entity_id || '').trim() ||
     String(group?.sellable_item_group_id || '').trim() ||
+    String(group?.canonical_entity_id || '').trim() ||
     String(group?.product_group_id || '').trim();
-  if (!groupId) return null;
 
-  return {
-    group_id: groupId,
-    members,
-    content_key: String(group?.content_key || '').trim() || null,
-    offer_count: Number.isFinite(group?.offer_count) ? group.offer_count : null,
-  };
+  const value = sellers.size >= 2 && groupId ? { group_id: groupId, members } : null;
+  if (IDENTITY_GROUP_RESCUE_CACHE.size >= IDENTITY_GROUP_RESCUE_CACHE_MAX) {
+    // Bounded, and cheap: drop the oldest insertion rather than carry a heap for an LRU.
+    const oldest = IDENTITY_GROUP_RESCUE_CACHE.keys().next();
+    if (!oldest.done) IDENTITY_GROUP_RESCUE_CACHE.delete(oldest.value);
+  }
+  IDENTITY_GROUP_RESCUE_CACHE.set(key, { value, expires_at: nowMs + IDENTITY_GROUP_RESCUE_CACHE_TTL_MS });
+  return value;
 }
 
 function decoratePdpPayloadWithIdentity(pdpPayload, {
@@ -45040,20 +45077,28 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       // A SECOND MEMBER IS REQUIRED. One member is the listing itself, and a group of one is the
       // case this branch already handles; rescuing it would change the self/blocked decision for
       // every solo seed listing on the strength of a query that found nothing new.
-      const identityGroupRescue = await resolveMissingIdentityGroupMembers({
-        enabled: Boolean(requestedPivotaSignatureId) && resolvedRefIsSeedRouted(),
-        groupMembers,
-        productId: canonicalProductRef?.product_id || productId,
-        merchantId: canonicalProductRef?.merchant_id || requestedMerchantId || null,
-        resolveGroup: (args) =>
-          resolveCanonicalCatalogEntityGroup({ ...args, queryFn: query }).catch((err) => {
-            logger.warn(
-              { err: err?.message || String(err), product_id: args?.productId },
-              'get_pdp_v2 identity group rescue failed; keeping the identity-listing answer',
-            );
-            return null;
-          }),
-      });
+      const identityGroupRescueStartedAt = Date.now();
+      const identityGroupRescue = await withStageBudget(
+        resolveMissingIdentityGroupMembers({
+          enabled: Boolean(requestedPivotaSignatureId) && resolvedRefIsSeedRouted(),
+          groupMembers,
+          signatureId: requestedPivotaSignatureId,
+          resolveGroup: (args) =>
+            resolveCanonicalCatalogEntityGroup({ ...args, queryFn: query }).catch((err) => {
+              logger.warn(
+                { err: err?.message || String(err), product_id: args?.productId },
+                'get_pdp_v2 identity group rescue failed; keeping the identity-listing answer',
+              );
+              return null;
+            }),
+        }),
+        // BUDGETED like every other group resolve on this route: this runs after the payload is
+        // built, so it is serial added latency on first paint. A slow database must cost the PDP
+        // its extra sellers, never its response.
+        PDP_EXTERNAL_SEED_UNSCOPED_GROUP_BUDGET_MS,
+        'pdp_identity_group_rescue',
+      ).catch(() => null);
+      markPdpV2Phase('identity_group_rescue_catalog', identityGroupRescueStartedAt);
       if (identityGroupRescue) {
         groupMembers = identityGroupRescue.members;
       }
@@ -54037,6 +54082,7 @@ module.exports._debug = {
   filterGroupMembersByCatalogSourceQuarantine,
   decoratePdpPayloadWithIdentity,
   resolveMissingIdentityGroupMembers,
+  resetIdentityGroupRescueCache,
   hydrateCanonicalPdpPayloadFromOffers,
   loadCreatorSellableFromCache,
   searchCreatorSellableFromCache,

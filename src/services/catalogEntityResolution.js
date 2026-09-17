@@ -413,6 +413,12 @@ function buildCatalogGroupMember(row, canonicalSigId) {
     content_key: firstNonEmptyString(row?.content_key) || undefined,
     internal_product_group_id: firstNonEmptyString(row?.internal_product_group_id, row?.product_group_id) || undefined,
     is_primary: row?.is_primary === true,
+    // ADDITIVE, and read by the PDP's group rescue: a member's serving stage decides whether it may
+    // be shown as a seller at all. The SELECT has always carried it (it ranks the primary pick);
+    // only the projection dropped it. Prod 2026-09-17: of 348 catalog rows sharing a content_key
+    // with another row, 172 are `candidate`, 56 `draft`, 32 `validated` and 85 `published` — so a
+    // consumer that cannot see this field cannot avoid serving a withheld listing.
+    pdp_lifecycle_stage: firstNonEmptyString(row?.pdp_lifecycle_stage) || undefined,
     source_payload: sourcePayload,
   };
 }
