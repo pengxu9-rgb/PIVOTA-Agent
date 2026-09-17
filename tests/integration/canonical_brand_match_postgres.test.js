@@ -169,6 +169,38 @@ suite('canonical brand match on PostgreSQL', () => {
     expect((await db.query(sql, aetas(params))).rows).toEqual((await db.query(OLD_SQL, aetas(params))).rows);
   });
 
+  test('the page is picked before the laterals: same rows and order as the single statement at every LIMIT', async () => {
+    // 'Glowtest' has more matches than the small limits below. The two newest fail the trust gate and one
+    // has no signature, so the gate and the signature filter must run BEFORE the LIMIT, as they did.
+    const at = (day) => `2026-08-${String(day).padStart(2, '0')}T00:00:00Z`;
+    for (let n = 1; n <= 9; n += 1) {
+      await product({ key: `glow_${n}`, content: `ck_glow_${n}`, brand: 'Glowtest', refreshed: at(n) });
+    }
+    // A second product on content key 1 gives the identity laterals a real choice to make.
+    await product({ key: 'glow_1b', content: 'ck_glow_1', brand: 'Glowtest', refreshed: at(1) });
+    await db.query(`UPDATE catalog_row_trust SET serving_decision = 'private' WHERE subject_key IN ('glow_9', 'glow_8')`);
+    await db.query(`UPDATE agent_pdp_view SET pivota_signature_id = NULL WHERE content_key = 'ck_glow_7'`);
+    try {
+      const { sql, params } = await capture('Glowtest');
+      expect(sql).toContain('picked AS MATERIALIZED');
+      for (const limit of [1, 2, 3, 5, 120]) {
+        const bound = [params[0], params[1], limit];
+        const newRows = (await db.query(sql, bound)).rows;
+        expect(newRows).toEqual((await db.query(OLD_SQL, bound)).rows);
+        const keys = newRows.map((row) => row.content_key);
+        expect(keys).not.toContain('ck_glow_9');
+        expect(keys).not.toContain('ck_glow_8');
+        expect(keys).not.toContain('ck_glow_7');
+        expect(keys.length).toBe(Math.min(limit, 6));
+      }
+    } finally {
+      await db.query(`DELETE FROM catalog_row_trust WHERE subject_key LIKE 'glow_%'`);
+      await db.query(`DELETE FROM external_product_seeds WHERE attached_product_key LIKE 'glow_%'`);
+      await db.query(`DELETE FROM agent_pdp_view WHERE content_key LIKE 'ck_glow_%'`);
+      await db.query(`DELETE FROM catalog_products WHERE product_key LIKE 'glow_%'`);
+    }
+  });
+
   test('the fetcher still maps the rows to products', async () => {
     const { result } = await capture('Fenty Beauty');
     expect(result.products.length).toBe(4);
