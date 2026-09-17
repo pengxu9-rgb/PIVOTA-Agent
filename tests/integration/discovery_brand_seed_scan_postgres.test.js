@@ -1321,6 +1321,104 @@ suite('brand-page external seed scan on PostgreSQL', () => {
   // ---------------------------------------------------------------------------
   // 2c. Plan CHOICE, with the planner left alone
   // ---------------------------------------------------------------------------
+  describe('the by-key fetch reads only the rows it keeps', () => {
+    // The fetch used to join, sort and read seed_data for every candidate; it now picks ids (still
+    // AFTER the serving gate, still before the LIMIT) and reads the wide columns for the picked rows
+    // from a seed_data detoasted once. The single-statement form is frozen verbatim from origin/main
+    // in tests/fixtures/brand_seed_fetch_single_statement_sql.json, for both ORDER BY variants.
+    const FROZEN = require('../fixtures/brand_seed_fetch_single_statement_sql.json');
+    let fetchSchema;
+
+    beforeAll(async () => {
+      fetchSchema = `${schema}_fetch`;
+      await db.query(`CREATE SCHEMA ${fetchSchema}`);
+      await db.query(`SET search_path TO ${fetchSchema}`);
+      await createFixtureTables(db);
+      const at = (minutes) => new Date(Date.UTC(2026, 8, 1, 0, minutes)).toISOString();
+      const row = async (id, { seedData, updated, created = updated, trusted = true, attached = true }) => {
+        const key = `pk_${id}`;
+        if (attached) {
+          await db.query(`INSERT INTO catalog_products VALUES ($1, $2, $3, $4, $4, $5)`,
+            [key, `ck_${id}`, `sig_${id}`, `https://agent.pivota.cc/products/sig_${id}`, `Title ${id}`]);
+          await db.query(`INSERT INTO catalog_row_trust VALUES ('product', $1, $2)`, [key, trusted ? 'public' : 'private']);
+        }
+        await db.query(
+          `INSERT INTO external_product_seeds(id, external_product_id, market, tool, destination_url, canonical_url, domain,
+             title, image_url, price_amount, price_currency, availability, seed_data, updated_at, created_at, status,
+             attached_product_key)
+           VALUES ($1, $1, 'US', 'creator_agents', 'https://shop.example/' || $1::text, 'https://shop.example/' || $1::text,
+             'shop.example', 'Seed ' || $1::text, NULL, 20, 'USD', 'in_stock', $2::jsonb, $3::timestamptz, $5::timestamptz,
+             'active', $4)`,
+          [id, seedData === undefined ? null : JSON.stringify(seedData), updated, attached ? key : 'pk_missing', created],
+        );
+      };
+      const recall = (n) => ({ brand: 'Mixsoon', category: 'Serum', derived: { recall: { brand: 'Mixsoon', category: 'Serum',
+        retrieval_title: `Mixsoon ${n}`, description: 'x'.repeat(3000) } }, snapshot: { vendor: 'Store', product_type: 'Serum' } });
+      // The newest two rows fail the gate: they must not take LIMIT slots.
+      await row('newest_untrusted', { seedData: recall(0), updated: at(50), trusted: false });
+      await row('newest_unattached', { seedData: recall(1), updated: at(49), attached: false });
+      for (let n = 0; n < 12; n += 1) await row(`ok_${String(n).padStart(2, '0')}`, { seedData: recall(n), updated: at(40 - n) });
+      // seed_data that is not an object, or NULL: every read is a text-key path, which is NULL either way.
+      await row('seed_array', { seedData: [{ brand: 'Mixsoon' }], updated: at(20) });
+      await row('seed_scalar', { seedData: 'Mixsoon', updated: at(19) });
+      await row('seed_null', { seedData: undefined, updated: at(18) });
+      await row('seed_empty_object', { seedData: {}, updated: at(17) });
+      // Same updated_at, different created_at: the second sort key decides, in both statements. (Rows equal
+      // on both keys have no defined order in either statement, so they would only make this test flaky.)
+      await row('tie_a', { seedData: recall(90), updated: at(10), created: at(1) });
+      await row('tie_b', { seedData: recall(91), updated: at(10), created: at(2) });
+      await db.query('ANALYZE');
+    });
+
+    afterAll(async () => {
+      await db.query(`DROP SCHEMA ${fetchSchema} CASCADE`);
+      await db.query(`SET search_path TO ${schema}`);
+    });
+
+    const allIds = async () => (await db.query('SELECT id FROM external_product_seeds')).rows.map((r) => r.id);
+    // The fetcher's own fetch text (the recording db mock is armed per test, in beforeEach); the fixture
+    // ids are bound directly.
+    const captureFetchSql = async (options = {}) => {
+      await db.query(`SET search_path TO ${fetchSchema}`);
+      const { calls: issued } = await runFetcher(['Mixsoon'], options);
+      const call = issued.find((entry) => entry.sql.includes('eps.id = ANY('));
+      return call ? call.sql : null;
+    };
+
+    test('the fetcher issues the pick-then-read fetch', async () => {
+      const fetchSql = await captureFetchSql();
+      expect(fetchSql).toContain('WITH picked AS MATERIALIZED');
+      expect(fetchSql).toContain("CROSS JOIN LATERAL (SELECT eps.seed_data || '{}'::jsonb AS seed_data OFFSET 0) sd");
+      expect(fetchSql).not.toMatch(/\beps\.seed_data->/);
+    });
+
+    test.each([2, 5, 12, 50])('ordered, LIMIT %i: same rows, same order, same columns as the single statement', async (limit) => {
+      const fetchSql = await captureFetchSql();
+      const ids = await allIds();
+      const oldRows = (await db.query(FROZEN.ordered, [ids, limit])).rows;
+      const newRows = (await db.query(fetchSql, [ids, limit])).rows;
+      expect(newRows).toEqual(oldRows);
+      expect(newRows.map((r) => r.id)).not.toContain('newest_untrusted');
+      expect(newRows.map((r) => r.id)).not.toContain('newest_unattached');
+      if (limit >= 18) {
+        // The non-object seed_data rows are served, with the same NULL reads as before.
+        const byId = Object.fromEntries(newRows.map((r) => [r.id, r]));
+        for (const id of ['seed_array', 'seed_scalar', 'seed_null']) {
+          expect(byId[id]).toBeDefined();
+          expect(byId[id].seed_brand).toBe('');
+        }
+      }
+    });
+
+    test('unordered: the same set of rows as the single statement when nothing is truncated', async () => {
+      const unordered = await captureFetchSql({ orderByRecency: false });
+      const ids = await allIds();
+      expect(unordered).not.toMatch(/ORDER BY/);
+      const byId = (rows) => [...rows].sort((a, b) => a.id.localeCompare(b.id));
+      expect(byId((await db.query(unordered, [ids, 500])).rows)).toEqual(byId((await db.query(FROZEN.unordered, [ids, 500])).rows));
+    });
+  });
+
   describe('plan choice on a realistic table, planner settings untouched', () => {
     let big;
     let bigSchema;

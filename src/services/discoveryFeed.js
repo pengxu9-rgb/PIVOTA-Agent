@@ -9256,14 +9256,36 @@ async function fetchBrandScopedExternalSeedCandidates({
     // routes that PDP rejects, so public brand recall still requires the serving
     // catalog join — and that join still runs AFTER the probe, so LIMIT applies to
     // rows that passed the trust gate, exactly as before, not to candidates.
+    //
+    // The fetch picks its rows BEFORE it reads them. The single-statement form joined every candidate,
+    // sorted them all, and then read seed_data for the kept rows through ~33 separate `seed_data->...`
+    // expressions, each of which detoasts the row's whole seed_data (~56KB on average) again. In prod on
+    // 2026-09-17, Fenty Beauty's 784 candidates took 193.8ms that way. Now:
+    //   1. `picked` joins and orders ids only, and applies the LIMIT, so the gate still runs before the
+    //      LIMIT exactly as before;
+    //   2. the wide columns are read for the picked rows only, from a seed_data detoasted ONCE per row by
+    //      a lateral that cannot be inlined (OFFSET 0). `seed_data || '{}'` returns a new in-memory value;
+    //      it only differs from seed_data when seed_data is not an object, and every read below is a
+    //      text-key path, which yields NULL on an array or scalar either way.
+    // Same rows, same order: 48.7ms for Fenty. Without an ORDER BY (brand-only pages) the kept rows were
+    // an arbitrary subset before and still are.
+    const detoastedSelectColumns = attachedSelectColumns.replace(/\beps\.seed_data\b/g, 'sd.seed_data');
     const fetchByIdSql = `
-        SELECT ${attachedSelectColumns}
-        FROM external_product_seeds eps
+        WITH picked AS MATERIALIZED (
+          SELECT eps.id
+          FROM external_product_seeds eps
+          JOIN catalog_products cp ON cp.product_key = eps.attached_product_key
+          ${buildDiscoveryCatalogServingGateJoinSql('cp')}
+          WHERE eps.id = ANY($1::text[])
+          ${orderClause}
+          LIMIT $2
+        )
+        SELECT ${detoastedSelectColumns}
+        FROM picked
+        JOIN external_product_seeds eps ON eps.id = picked.id
         JOIN catalog_products cp ON cp.product_key = eps.attached_product_key
-        ${buildDiscoveryCatalogServingGateJoinSql('cp')}
-        WHERE eps.id = ANY($1::text[])
+        CROSS JOIN LATERAL (SELECT eps.seed_data || '{}'::jsonb AS seed_data OFFSET 0) sd
         ${orderClause}
-        LIMIT $2
       `;
     // The candidate list is deliberately UNBOUNDED. Binding it back as an id array is what makes the
     // fetch a key probe instead of a re-planned semi-join, and that array is also what puts a cliff at
@@ -9574,6 +9596,20 @@ async function fetchBrandScopedCanonicalCandidates({ brandAliases = [], limit = 
     const res = await query(
       `
         WITH brand_match AS (${canonicalBrandMatchSql({ alias: 'cp', lowerAliasesParam: '$1', compactAliasesParam: '$2' })}
+        ),
+        -- The page is picked BEFORE the two identity laterals run. Every filter and the ordering that decide
+        -- which rows are served live here, so the laterals run for the kept rows only instead of for every
+        -- brand match (Fenty Beauty: 754 matches for 120 served; 103ms -> 50ms in prod on 2026-09-17, same
+        -- rows in the same order).
+        picked AS MATERIALIZED (
+          SELECT apv.content_key, apv.refreshed_at
+          FROM agent_pdp_view apv
+          JOIN brand_match bm ON bm.content_key = apv.content_key
+          ${gateJoinSql}
+          WHERE apv.pivota_signature_id IS NOT NULL
+            ${gateWhereSql}
+          ORDER BY apv.refreshed_at DESC NULLS LAST
+          LIMIT $3
         )
         SELECT
           apv.content_key,
@@ -9599,9 +9635,8 @@ async function fetchBrandScopedCanonicalCandidates({ brandAliases = [], limit = 
           apv.offer_count,
           apv.offers,
           apv.category_path
-        FROM agent_pdp_view apv
-        JOIN brand_match bm ON bm.content_key = apv.content_key
-        ${gateJoinSql}
+        FROM picked
+        JOIN agent_pdp_view apv ON apv.content_key = picked.content_key
         LEFT JOIN LATERAL (
           SELECT cp.merchant_id, cp.platform, cp.source_product_id, cp.product_key
           FROM catalog_products cp
@@ -9714,10 +9749,7 @@ async function fetchBrandScopedCanonicalCandidates({ brandAliases = [], limit = 
                    cp.product_key ASC
           LIMIT 1
         ) ext_seed ON TRUE
-        WHERE apv.pivota_signature_id IS NOT NULL
-          ${gateWhereSql}
-        ORDER BY apv.refreshed_at DESC NULLS LAST
-        LIMIT $3
+        ORDER BY picked.refreshed_at DESC NULLS LAST
       `,
       [normalizedAliases, compactAliases, safeLimit],
     );
