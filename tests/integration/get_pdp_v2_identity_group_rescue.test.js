@@ -116,7 +116,7 @@ function seedDetailRow(externalProductId, price) {
   };
 }
 
-function groupRow(merchantId, sourceProductId, isPrimary, lifecycleStage = 'published') {
+function groupRow(merchantId, sourceProductId, isPrimary, lifecycleStage = 'published', syncStatus = 'live') {
   return {
     product_key: `prod::${merchantId}::external_seed::${sourceProductId}`,
     merchant_id: merchantId,
@@ -132,6 +132,7 @@ function groupRow(merchantId, sourceProductId, isPrimary, lifecycleStage = 'publ
     product_image_url: 'https://cdn.example.test/rescue.png',
     product_payload: { title: 'Rescue Probe Cleansing Balm', brand: 'Rescue Labs' },
     pdp_lifecycle_stage: lifecycleStage,
+    sync_status: syncStatus,
     pivota_signature_id: isPrimary ? SIBLING_SIG_ID : SIG_ID,
     pivota_canonical_url: null,
     pivota_signature_minted_at: '2026-09-01T00:00:00Z',
@@ -145,7 +146,7 @@ function groupRow(merchantId, sourceProductId, isPrimary, lifecycleStage = 'publ
 }
 
 /**
- * @param {'shared'|'solo'|'same_merchant'|'sibling_draft'} shape what the catalog holds besides the
+ * @param {'shared'|'solo'|'same_merchant'|'sibling_draft'|'sibling_retired'} shape what the catalog holds besides the
  *   requested listing. Everything but `shared` must leave the old answer alone.
  */
 function install(db, { shape = 'shared' } = {}) {
@@ -162,6 +163,8 @@ function install(db, { shape = 'shared' } = {}) {
             ? [self, groupRow(OBS_MERCHANT, `${SEED_ID}-relisted`, true)]
             : shape === 'sibling_draft'
               ? [self, groupRow(SIBLING_MERCHANT, SIBLING_SEED_ID, true, 'draft')]
+              : shape === 'sibling_retired'
+                ? [self, groupRow(SIBLING_MERCHANT, SIBLING_SEED_ID, true, 'published', 'retired')]
               : [self, groupRow(SIBLING_MERCHANT, SIBLING_SEED_ID, true)];
       return { rows };
     }
@@ -251,6 +254,17 @@ describe('get_pdp_v2 identity group rescue', () => {
     // between a draft listing and a live PDP.
     const { app, db } = loadServerWithDb();
     install(db, { shape: 'sibling_draft' });
+
+    const res = await pdp(app, { product_id: SIG_ID });
+    expect(res.status).toBe(200);
+    expect(offersData(res)?.product_group_id).toBe(SIG_ID);
+    expect(offersData(res)?.offers_count).toBe(0);
+  });
+
+  it('does not serve a sibling the catalog has stopped syncing', async () => {
+    // published + retired: its own PDP 404s, so pricing it here would give two answers for one row.
+    const { app, db } = loadServerWithDb();
+    install(db, { shape: 'sibling_retired' });
 
     const res = await pdp(app, { product_id: SIG_ID });
     expect(res.status).toBe(200);

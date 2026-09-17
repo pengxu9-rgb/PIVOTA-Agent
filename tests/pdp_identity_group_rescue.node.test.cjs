@@ -42,6 +42,7 @@ function member(overrides = {}) {
     merchant_id: 'merch_obs_c43a84f5b02f2dba',
     product_id: 'retailer:6ea79af5',
     pdp_lifecycle_stage: 'published',
+    sync_status: 'live',
     ...overrides,
   };
 }
@@ -282,12 +283,21 @@ test('the cache is bounded', async () => {
       resolveGroup: resolverReturning(catalogGroup()),
     });
   }
-  const calls = [];
+  const evicted = [];
   await resolveMissingIdentityGroupMembers({
     ...baseArgs({ cacheKey: 'bound-0' }),
-    resolveGroup: resolverReturning(catalogGroup(), calls),
+    resolveGroup: resolverReturning(catalogGroup(), evicted),
   });
-  assert.equal(calls.length, 1, 'the oldest key was evicted rather than kept forever');
+  assert.equal(evicted.length, 1, 'the oldest key was evicted rather than kept forever');
+
+  // THE CONTROL. Without it a cache that retains NOTHING passes this test: every write evicts,
+  // bound-0 still misses, and a cache of size 1 reads as the intended one.
+  const retained = [];
+  await resolveMissingIdentityGroupMembers({
+    ...baseArgs({ cacheKey: 'bound-599' }),
+    resolveGroup: resolverReturning(catalogGroup(), retained),
+  });
+  assert.equal(retained.length, 0, 'a recent key is still a hit');
 });
 
 test('an identity listing that elected a DIFFERENT group is not second-guessed', async () => {
@@ -298,7 +308,7 @@ test('an identity listing that elected a DIFFERENT group is not second-guessed',
   // sig PDP with an approved identity listing issues NO canonical-group query at all.
   let called = false;
   const rescued = await resolveMissingIdentityGroupMembers({
-    ...baseArgs({ identityGroupId: 'sig_someother_product_line' }),
+    ...baseArgs({ identityGroupId: 'sig_someother_product_line', identityGroupApproved: true }),
     resolveGroup: async () => {
       called = true;
       return catalogGroup();
@@ -312,10 +322,89 @@ test('an identity listing that elected a DIFFERENT group is not second-guessed',
 test('the identity group id echoing the request is exactly the gap to fill', async () => {
   const calls = [];
   const rescued = await resolveMissingIdentityGroupMembers({
-    ...baseArgs({ identityGroupId: SIG }),
+    ...baseArgs({ identityGroupId: SIG, identityGroupApproved: true }),
     resolveGroup: resolverReturning(catalogGroup(), calls),
   });
 
   assert.equal(rescued.group_id, 'sig_b97a3180c7c8868edd3bd2417f8def27');
   assert.equal(calls.length, 1);
+});
+
+test('a listing the catalog is not serving is not a seller, whatever its stage says', async () => {
+  // Every other serving lane in this repo pairs the lifecycle stage with sync_status='live'. A
+  // retired listing is published and dead: its own PDP 404s, so offering it a price here would
+  // give two different answers for one row.
+  for (const sync of ['retired', 'archived', 'pending', '', undefined]) {
+    const dead = member({ merchant_id: 'merch_obs_retired', sync_status: sync });
+    const rescued = await resolveMissingIdentityGroupMembers({
+      ...baseArgs(),
+      resolveGroup: resolverReturning(catalogGroup({ members: [OHLOLLY, dead] })),
+    });
+    assert.equal(rescued, null, `sync_status ${String(sync)} must not be served`);
+  }
+});
+
+test('an identity opinion the identity lane itself refuses to serve is not an opinion', async () => {
+  // Prod 2026-09-17: 7,513 pdp_identity_listing rows are `approved` with live_read_enabled=false
+  // and 670 are review_required. One of the two catalogIdentity producers reads that table through
+  // a LEFT JOIN with NO status filter, so those ids reach this gate. Treating them as an opinion
+  // would leave the original defect in place for exactly those rows.
+  const calls = [];
+  const rescued = await resolveMissingIdentityGroupMembers({
+    ...baseArgs({ identityGroupId: 'sig_someother_product_line', identityGroupApproved: false }),
+    resolveGroup: resolverReturning(catalogGroup(), calls),
+  });
+
+  assert.equal(rescued.group_id, 'sig_b97a3180c7c8868edd3bd2417f8def27');
+  assert.equal(calls.length, 1, 'the rescue still runs');
+});
+
+test('concurrent views of one product issue ONE query', async () => {
+  // A cold cache after a deploy is exactly when every in-flight request for the same product would
+  // otherwise resolve separately — the stampede the cache exists to prevent.
+  const calls = [];
+  let release;
+  const gate = new Promise((resolve) => {
+    release = resolve;
+  });
+  const slowResolver = async (args) => {
+    calls.push(args);
+    await gate;
+    return catalogGroup();
+  };
+
+  const key = 'stampede-case';
+  const inFlight = [1, 2, 3, 4, 5].map(() =>
+    resolveMissingIdentityGroupMembers({ ...baseArgs({ cacheKey: key }), resolveGroup: slowResolver }),
+  );
+  release();
+  const results = await Promise.all(inFlight);
+
+  assert.equal(calls.length, 1, 'five concurrent views, one query');
+  for (const result of results) {
+    assert.equal(result.group_id, 'sig_b97a3180c7c8868edd3bd2417f8def27');
+  }
+});
+
+test('two views never share one mutable members array', async () => {
+  // The cached entry outlives the request. One future `groupMembers.sort()` downstream would
+  // otherwise corrupt every later view of that product for the rest of the TTL.
+  const key = 'aliasing-case';
+  const first = await resolveMissingIdentityGroupMembers({
+    ...baseArgs({ cacheKey: key }),
+    resolveGroup: resolverReturning(catalogGroup()),
+  });
+  first.members.length = 0;
+  first.members.push({ merchant_id: 'mutated' });
+
+  const second = await resolveMissingIdentityGroupMembers({
+    ...baseArgs({ cacheKey: key }),
+    resolveGroup: resolverReturning(catalogGroup()),
+  });
+
+  assert.equal(second.members.length, 2, 'the second view is untouched by the first');
+  assert.deepEqual(
+    second.members.map((m) => m.merchant_id),
+    [EYURS.merchant_id, OHLOLLY.merchant_id],
+  );
 });

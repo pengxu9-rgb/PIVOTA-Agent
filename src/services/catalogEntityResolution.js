@@ -419,6 +419,7 @@ function buildCatalogGroupMember(row, canonicalSigId) {
     // with another row, 172 are `candidate`, 56 `draft`, 32 `validated` and 85 `published` — so a
     // consumer that cannot see this field cannot avoid serving a withheld listing.
     pdp_lifecycle_stage: firstNonEmptyString(row?.pdp_lifecycle_stage) || undefined,
+    sync_status: firstNonEmptyString(row?.sync_status) || undefined,
     source_payload: sourcePayload,
   };
 }
@@ -823,6 +824,10 @@ async function resolveCanonicalCatalogEntityGroup(args = {}) {
       cp.image_url AS product_image_url,
       cp.product_payload,
       cp.pdp_lifecycle_stage,
+      -- Projected for the PDP group rescue: a member may only be served as a seller when the
+      -- CATALOG is serving it, and every other serving lane in this repo pairs the lifecycle
+      -- stage with sync_status = 'live'. (No backticks in here: this SQL is a template literal.)
+      cp.sync_status,
       cp.pivota_signature_id,
       cp.pivota_canonical_url,
       cp.pivota_signature_minted_at,
