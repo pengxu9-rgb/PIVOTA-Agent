@@ -591,18 +591,19 @@ suite('brand-page external seed scan on PostgreSQL', () => {
       expect(await newPrimaryIds(aliases)).toEqual(expected);
       expect(await oldPrimaryIds(aliases)).toEqual(expected);
       const primary = primaryCall((await runFetcher(aliases)).calls);
-      // The prefix arm must actually be in the statement, bound to the whole key.
-      expect(primary.params).toContain('elf%');
+      // The prefix arm must actually be in the statement, bound to the whole key: as the byte range
+      // [key, key || U+10FFFF) the index answers without re-evaluating the identity per row.
+      expect(primary.params).toContain('elf');
+      expect(primary.params).toContain('elf\u{10FFFF}');
       // One key, so: one brand prefix branch + one domain equality branch, and no duplicate binds.
       expect(branchCount(primary.sql)).toBe(2);
-      expect(primary.params).toHaveLength(4);
-      expect(primary.params[3]).toEqual(['elf']);
-      expect(new Set(primary.params.slice(2, 3)).size).toBe(1);
+      expect(primary.params).toHaveLength(5);
+      expect(primary.params[4]).toEqual(['elf']);
     }
     // Control: the sub-floor alias ALONE still gets equality only, so the OR above is doing the work
     // rather than the floor having been abandoned.
     const soloShort = primaryCall((await runFetcher(['elf'])).calls);
-    expect(soloShort.params).not.toContain('elf%');
+    expect(soloShort.params).not.toContain('elf\u{10FFFF}');
     expect(soloShort.params[2]).toEqual(['elf']);
     expect(await newPrimaryIds(['elf'])).toEqual(['exact_elf_dotted', 'exact_elf_plain']);
   });
@@ -680,8 +681,10 @@ suite('brand-page external seed scan on PostgreSQL', () => {
     const bound = primary.params.flat().map(String);
     // BOTH spellings are bound. Binding only the accented one would move which half of the page is
     // empty rather than fill it, so both directions are asserted.
-    expect(bound).toContain('senoraskin%');
-    expect(bound).toContain('se\u00f1oraskin%');
+    expect(bound).toContain('senoraskin');
+    expect(bound).toContain('senoraskin\u{10FFFF}');
+    expect(bound).toContain('se\u00f1oraskin');
+    expect(bound).toContain('se\u00f1oraskin\u{10FFFF}');
 
     const served = result.products.map((product) => product.external_seed_id).sort();
     expect(served).toEqual(['diacritic_senora', 'diacritic_senora_plain']);
@@ -1138,11 +1141,14 @@ suite('brand-page external seed scan on PostgreSQL', () => {
     ];
     expect(aliases).toHaveLength(18);
     const primary = primaryCall((await runFetcher(aliases)).calls);
-    // 16 kept spaced forms -> 16 identity keys -> 16 prefix branches + 1 domain branch.
+    // 16 kept spaced forms -> 16 identity keys -> 16 prefix branches + 1 domain branch. Binds: market,
+    // tool, a lower and upper bound per prefix branch, then the domain identity array.
     expect(branchCount(primary.sql)).toBe(17);
-    expect(primary.params[18]).toHaveLength(16);
-    expect(primary.params[18]).toContain('tocobo');
-    expect(primary.params[18].filter((key) => key === 'casevariant')).toHaveLength(1);
+    const domainKeys = primary.params[primary.params.length - 1];
+    expect(primary.params).toHaveLength(2 + 16 * 2 + 1);
+    expect(domainKeys).toHaveLength(16);
+    expect(domainKeys).toContain('tocobo');
+    expect(domainKeys.filter((key) => key === 'casevariant')).toHaveLength(1);
     expect(await newPrimaryIds(aliases)).toEqual(['domain_last_resort', 'loss_e_two_pages', 'out_other_brand']);
   });
 
@@ -1151,11 +1157,14 @@ suite('brand-page external seed scan on PostgreSQL', () => {
     const { calls: issued } = await runFetcher(many);
     const primary = primaryCall(issued);
     // Every fabricated alias clears the floor, so: 16 brand prefix branches + 1 domain equality
-    // branch = 17. Binds = market, tool, 16 prefix patterns, 1 domain identity array = 19.
+    // branch = 17. Binds = market, tool, 16 (lower, upper) range pairs, 1 domain identity array = 35.
     expect(branchCount(primary.sql)).toBe(17);
-    expect(primary.params).toHaveLength(19);
-    expect(primary.params[18]).toHaveLength(16);
-    expect(primary.params.slice(2, 18).every((pattern) => typeof pattern === 'string' && pattern.endsWith('%'))).toBe(true);
+    expect(primary.params).toHaveLength(35);
+    expect(primary.params[34]).toHaveLength(16);
+    const ranges = primary.params.slice(2, 34);
+    for (let at = 0; at < ranges.length; at += 2) {
+      expect(ranges[at + 1]).toBe(`${ranges[at]}\u{10FFFF}`);
+    }
     const backfill = backfillCall(issued);
     expect(branchCount(backfill.sql)).toBe(16);
     expect(backfill.params).toHaveLength(18);
@@ -1211,6 +1220,50 @@ suite('brand-page external seed scan on PostgreSQL', () => {
       && entry.cond.includes(BRAND_PLAN_MARKER) && entry.cond.includes('= ANY (') && entry.cond.includes('market = '))).toBe(true);
     // Negative control: an index scan whose expression sat only in `Filter:` leaves cond empty.
     expect(conds.filter((entry) => entry.index === IDENTITY_INDEX && entry.cond).length).toBeGreaterThanOrEqual(1);
+  });
+
+  test('the identity range and LIKE agree on every identity value, and no identity contains the sentinel', async () => {
+    // The range [key, key || U+10FFFF) equals `LIKE key%` on strings that never hold U+10FFFF right after
+    // the prefix. identitySql keeps only [:alnum:], which U+10FFFF (a noncharacter) is not. Run both against
+    // brands built to sit at the edges: the sentinel itself, its neighbours, astral letters, combining marks.
+    const { seedBrandIdentitySql, identityPrefixUpperBound } = require('../../src/services/brandSeedScanSql');
+    const brands = [
+      'Fenty', 'Fenty Beauty', 'fentyz', 'fentz', 'fent', 'FENTY\u{10FFFF}X', 'fenty\u{10FFFE}', 'fenty\u{1F600}',
+      'fenty\u{20000}', 'fenty\u00ff', 'fenty\u0301', 'fenty\u{10FFFF}', '\u{10FFFF}fenty', 'fenty-beauty', 'Señora Skin',
+      'senora', 'se\u00f1ora', 'e.l.f.', 'elf cosmetics', '', null,
+    ];
+    const keys = ['fenty', 'fent', 'fentybeauty', 'senora', 'se\u00f1ora', 'elf', 'f', 'z'];
+    const identity = seedBrandIdentitySql('');
+    const res = await db.query(
+      `WITH rows AS (
+         SELECT ordinality, jsonb_build_object('brand', b) AS seed_data FROM unnest($1::text[]) WITH ORDINALITY AS u(b, ordinality)
+       ), ids AS (SELECT ordinality, ${identity} AS v FROM rows)
+       SELECT ids.ordinality, ids.v, k.key,
+              ids.v LIKE (k.key || '%') AS by_like,
+              (ids.v ~>=~ k.key AND ids.v ~<~ k.upper) AS by_range,
+              strpos(ids.v, $3::text) > 0 AS has_sentinel
+       FROM ids CROSS JOIN unnest($2::text[], $4::text[]) AS k(key, upper)`,
+      [brands, keys, '\u{10FFFF}', keys.map((key) => identityPrefixUpperBound(key))],
+    );
+    expect(res.rows.length).toBe(brands.length * keys.length);
+    expect(res.rows.filter((row) => row.has_sentinel)).toEqual([]);
+    expect(res.rows.filter((row) => row.by_like !== row.by_range)).toEqual([]);
+    // Non-vacuous: both sides say yes and no.
+    expect(res.rows.some((row) => row.by_range)).toBe(true);
+    expect(res.rows.some((row) => !row.by_range)).toBe(true);
+  });
+
+  test('a prefix key covered by a shorter one adds no branch and loses no row', async () => {
+    // 'e.l.f.' keys to 'elf' (prefixable: its spaced form clears the floor) and 'elf cosmetics' to
+    // 'elfcosmetics', which 'elf%' already contains.
+    const aliases = ['e.l.f.', 'elf cosmetics'];
+    const primary = primaryCall((await runFetcher(aliases)).calls);
+    expect(branchCount(primary.sql)).toBe(2);
+    expect(primary.params).toContain('elf');
+    expect(primary.params).not.toContain('elfcosmetics');
+    const ids = await newPrimaryIds(aliases);
+    expect(ids).toEqual(await oldPrimaryIds(aliases));
+    expect(ids).toContain('prefix_elf_cosmetics');
   });
 
   test('the by-key fetch is a primary-key probe, not a scan', async () => {
@@ -1359,6 +1412,24 @@ suite('brand-page external seed scan on PostgreSQL', () => {
         };
       }
       return out;
+    });
+
+    test('a brand prefix branch is answered by its index range alone, with no per-row re-evaluation', async () => {
+      // `identity LIKE 'mixsoon%'` put the same range in the Index Cond but ALSO kept the LIKE as a Filter
+      // that re-ran the identity on every row the range returned, re-extracting the brand from seed_data
+      // (prod, Fenty Beauty: 826 rows in 0.1ms from the index, ~130ms per branch in the filter). Checked with
+      // the planner left alone on the big fixture: a tiny table lets it pick an unrelated (market, tool)
+      // index for one OR arm and filter there, which says nothing about the range.
+      await onBig(async () => {
+        const { calls: issued } = await runFetcher([PLANNER_BRANDS[0]], { limit: 24 });
+        const call = primaryCall(issued);
+        const res = await big.query(`EXPLAIN (COSTS OFF) ${call.sql}`, call.params);
+        const lines = res.rows.map((row) => row['QUERY PLAN'].trim());
+        const rangeScans = lines.filter((line) => line.startsWith('Index Cond:') && line.includes('~>=~'));
+        expect(rangeScans.length).toBeGreaterThan(0);
+        expect(lines.filter((line) => line.startsWith('Filter:') && line.includes(BRAND_PLAN_MARKER))).toEqual([]);
+        expect(lines.join('\n')).not.toMatch(/~~ '[^']*%'/);
+      });
     });
 
     test('the fixture is big and wide enough for the planner to have a real choice', async () => {

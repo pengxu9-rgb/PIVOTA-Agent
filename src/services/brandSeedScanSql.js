@@ -99,12 +99,47 @@ function likePrefixPattern(value, suffix = '') {
   return `${String(value || '').replace(/([\\%_])/g, '\\$1')}${suffix}%`;
 }
 
+// A prefix probe on an IDENTITY expression, written as the byte range the text_pattern_ops index answers on
+// its own. `identity LIKE 'fenty%'` produced the same index range but also a Filter that PostgreSQL re-ran on
+// every row the range returned, and re-running it means re-extracting the brand from the row's seed_data:
+// for Fenty Beauty in prod on 2026-09-17 the index returned 826 rows in 0.1ms and the filter took ~130ms per
+// branch (383ms for the scan).
+//
+// The range is exactly the prefix set on the identity expressions, not an approximation:
+//  - text_pattern_ops compares bytes, and UTF-8 byte order is code point order;
+//  - every string with byte prefix `key` lies in [key, key || U+10FFFF) unless the character right after
+//    the prefix is U+10FFFF itself, and no string without that prefix lies in the range;
+//  - identitySql keeps only [:alnum:] characters (everything else becomes a space, and spaces are removed),
+//    and U+10FFFF is a noncharacter that [:alnum:] never matches, so an identity value never contains it.
+// Keys are alphanumeric identity keys (brandIdentityKey), so nothing needs escaping. Only for the identity
+// expressions: the title lane matches raw title text, where U+10FFFF cannot be ruled out, and keeps LIKE.
+const IDENTITY_PREFIX_UPPER_SENTINEL = '\u{10FFFF}';
+
+function identityPrefixUpperBound(key) {
+  return `${String(key || '')}${IDENTITY_PREFIX_UPPER_SENTINEL}`;
+}
+
+function identityPrefixRangeSql(identitySql, lowerBind, upperBind) {
+  return `${identitySql} ~>=~ ${lowerBind}::text AND ${identitySql} ~<~ ${upperBind}::text`;
+}
+
+// A prefix key covered by a shorter prefix key on the same expression matches nothing the shorter one does
+// not ('fentybeauty%' is inside 'fenty%'), so its UNION branch is pure repeated work.
+function uncoveredPrefixKeys(keys = []) {
+  const unique = [...new Set((Array.isArray(keys) ? keys : []).filter(Boolean))];
+  return unique.filter((key) => !unique.some((other) => other !== key && key.startsWith(other)));
+}
+
 module.exports = {
   BRAND_SEED_SCAN_PREDICATE,
+  IDENTITY_PREFIX_UPPER_SENTINEL,
   IDENTITY_MAX_CHARS,
   brandSeedScanPredicateSql,
+  identityPrefixRangeSql,
+  identityPrefixUpperBound,
   likePrefixPattern,
   seedBrandIdentitySql,
   seedDomainIdentitySql,
   seedTitleSql,
+  uncoveredPrefixKeys,
 };
