@@ -289,3 +289,33 @@ test('the cache is bounded', async () => {
   });
   assert.equal(calls.length, 1, 'the oldest key was evicted rather than kept forever');
 });
+
+test('an identity listing that elected a DIFFERENT group is not second-guessed', async () => {
+  // `catalogIdentity.sellable_item_group_id` defaults to the request's own signature when no
+  // approved live listing answered; that echo is the gap this rescue fills. A different id means
+  // an approved listing really did elect a group, and a group with no other members is that
+  // lane's answer. Caught by tests/external_seed_product_detail_fetch.test.js, which pins that a
+  // sig PDP with an approved identity listing issues NO canonical-group query at all.
+  let called = false;
+  const rescued = await resolveMissingIdentityGroupMembers({
+    ...baseArgs({ identityGroupId: 'sig_someother_product_line' }),
+    resolveGroup: async () => {
+      called = true;
+      return catalogGroup();
+    },
+  });
+
+  assert.equal(rescued, null);
+  assert.equal(called, false, 'and it costs no query');
+});
+
+test('the identity group id echoing the request is exactly the gap to fill', async () => {
+  const calls = [];
+  const rescued = await resolveMissingIdentityGroupMembers({
+    ...baseArgs({ identityGroupId: SIG }),
+    resolveGroup: resolverReturning(catalogGroup(), calls),
+  });
+
+  assert.equal(rescued.group_id, 'sig_b97a3180c7c8868edd3bd2417f8def27');
+  assert.equal(calls.length, 1);
+});

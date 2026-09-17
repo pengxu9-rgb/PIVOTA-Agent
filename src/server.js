@@ -10268,12 +10268,20 @@ async function resolveMissingIdentityGroupMembers({
   enabled,
   groupMembers,
   signatureId,
+  identityGroupId,
   resolveGroup,
   cacheKey,
   now = Date.now,
 } = {}) {
   if (!enabled) return null;
   if (Array.isArray(groupMembers) && groupMembers.length > 0) return null;
+  // ONLY WHERE THE IDENTITY LANE HAS NO OPINION. `catalogIdentity.sellable_item_group_id` defaults
+  // to the REQUEST'S OWN signature when no approved live listing answered — that echo is the
+  // signal this rescue exists for. When it names a DIFFERENT group, an approved identity listing
+  // really did elect one, and a group with no other members is that lane's answer, not a gap:
+  // second-guessing it would both contradict it and put a query on a path that had none.
+  const identityGroup = String(identityGroupId || '').trim();
+  if (identityGroup && identityGroup !== String(signatureId || '').trim()) return null;
   // The SIGNATURE, never the source product id. `resolveCanonicalCatalogEntityGroup` matches a
   // `sig_` id with one equality on a unique index; any other shape takes a three-way OR whose
   // `source_product_id` leg has no leading-column index. Measured in prod 2026-09-17 with the sig:
@@ -45083,6 +45091,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           enabled: Boolean(requestedPivotaSignatureId) && resolvedRefIsSeedRouted(),
           groupMembers,
           signatureId: requestedPivotaSignatureId,
+          identityGroupId:
+            catalogIdentity?.sellable_item_group_id || catalogIdentity?.product_group_id || null,
           resolveGroup: (args) =>
             resolveCanonicalCatalogEntityGroup({ ...args, queryFn: query }).catch((err) => {
               logger.warn(
