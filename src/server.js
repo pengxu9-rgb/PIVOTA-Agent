@@ -17715,6 +17715,11 @@ function buildCanonicalChainMainlineProduct(row) {
     catalog_source: 'canonical_chain',
     catalog_product_key: firstNonEmptyString(row.product_key),
     product_key: firstNonEmptyString(row.product_key),
+    // The SHARED identity, which the SELECT has always carried and this projection dropped.
+    // Two retailers' listings of one product converge on it, and without it on the card the
+    // collapse below cannot tell a second SELLER from a second PRODUCT — and an agent holding
+    // the card has no key that reaches the competing offer.
+    ...(firstNonEmptyString(row.content_key) ? { content_key: firstNonEmptyString(row.content_key) } : {}),
     source_product_id: sourceProductId || undefined,
     canonical_product_ref: canonicalProductRef,
     pdp_open: {
@@ -20572,7 +20577,8 @@ function detectBeautyProductPackVariant(product = {}) {
 
 function dedupeBeautyProductsByDisplayKey(products = []) {
   const out = [];
-  const seen = new Set();
+  // A MAP, not a Set: the card that survives each key is what a collapsed sibling attaches to.
+  const seen = new Map();
   for (const product of Array.isArray(products) ? products : []) {
     if (!product || typeof product !== 'object') continue;
     const pick = (...values) =>
@@ -20596,11 +20602,101 @@ function dedupeBeautyProductsByDisplayKey(products = []) {
         : id
           ? `id:${id}`
           : '';
-    if (key && seen.has(key)) continue;
-    if (key) seen.add(key);
+    if (key && seen.has(key)) {
+      // COLLAPSED, not vanished. This step drops by brand+title, so the second SELLER of one
+      // product looks exactly like a duplicate row. Measured 2026-09-17: two retailer listings
+      // of the Pyunkang Yul cleansing balm shared a content_key, and the second was dropped
+      // here with nothing left on the card to reach it — search said `multi_merchant_canonical`
+      // and handed out one seller. When the dropped card carries the SAME non-empty
+      // content_key, that is the stored convergence identity, so the survivor records it.
+      // A different (or absent) content_key claims nothing and drops exactly as before.
+      recordCollapsedSellerListing(seen.get(key), product);
+      continue;
+    }
+    if (key) seen.set(key, product);
     out.push(product);
   }
   return out;
+}
+
+/**
+ * A collapsed listing becomes a COMPETING SELLER on the survivor, or it is dropped exactly as it
+ * was before. Three things must hold, and each was a way to lie:
+ *
+ *   SAME PRODUCT. Both cards carry the same non-empty string `content_key` — the identity the
+ *   catalog converged them on. A shared title alone is not convergence, and `typeof` is checked
+ *   because two non-strings both stringify to '[object Object]' and would compare equal.
+ *
+ *   A DIFFERENT SELLER. `content_key` is built from brand, title and GTIN with NO merchant
+ *   component, so one merchant's two listings of one product (a relist, a second slug) share it.
+ *   Measured in prod 2026-09-17: 30 content_keys hold two or more listings from a SINGLE
+ *   merchant. Counting those as a second seller invents competition, so the merchant ids must be
+ *   present and different — compared case-insensitively, the house rule this file already states
+ *   for merchant_id elsewhere.
+ *
+ *   A REACHABLE LISTING. The entry exists to be called: `get_offers` takes a listing product_key,
+ *   measured live in prod 2026-09-17 after backend #2203. So `product_key` must be present and
+ *   must never be one of the keeper's own, under either spelling.
+ *
+ * The entry carries NO merchant_name. The card's own `merchant_name` falls back to the BRAND when
+ * the catalog_merchants join misses (11 products in prod have no merchants row), and compaction
+ * rewrites `brand` from a different field than the builder used, so the fallback cannot be
+ * detected by comparing the two here. "Also sold by <brand>" for an unnamed reseller reads as a
+ * brand-direct offer, which is a different claim entirely. The id is the honest identifier, and
+ * the offers door names the seller authoritatively.
+ */
+const MAX_COLLAPSED_SELLER_LISTINGS = 8;
+
+function collapsedListingIdentityText(value) {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function recordCollapsedSellerListing(keeper, dropped) {
+  if (!keeper || typeof keeper !== 'object' || !dropped || typeof dropped !== 'object') return;
+  const contentKey = collapsedListingIdentityText(keeper.content_key);
+  if (!contentKey || collapsedListingIdentityText(dropped.content_key) !== contentKey) return;
+
+  const keeperMerchantId = collapsedListingIdentityText(keeper.merchant_id).toLowerCase();
+  const merchantId = collapsedListingIdentityText(dropped.merchant_id);
+  const merchantKey = merchantId.toLowerCase();
+  if (!merchantKey || !keeperMerchantId || merchantKey === keeperMerchantId) return;
+
+  // BOTH key spellings on BOTH sides. The canonical chain builder sets them from one column, but
+  // the seed lane carries `product_key` and `catalog_product_key` independently, so comparing one
+  // value lets a card cite itself as a rival.
+  const keeperKeys = new Set(
+    [keeper.product_key, keeper.catalog_product_key].map(collapsedListingIdentityText).filter(Boolean),
+  );
+  const droppedKeys = [dropped.product_key, dropped.catalog_product_key]
+    .map(collapsedListingIdentityText)
+    .filter(Boolean);
+  if (!droppedKeys.length || droppedKeys.some((key) => keeperKeys.has(key))) return;
+  const productKey = droppedKeys[0];
+
+  const listings = Array.isArray(keeper.other_seller_listings) ? keeper.other_seller_listings : [];
+  // The dedupe checks run BEFORE the cap on purpose: a row that would not have been recorded
+  // anyway must not report the list as truncated.
+  if (listings.some((entry) => String(entry?.product_key || '') === productKey)) return;
+  if (listings.some((entry) => String(entry?.merchant_id || '').toLowerCase() === merchantKey)) return;
+  // CAPPED, like every other list on this card (images 4, description 520 chars). A brand+title
+  // cluster can run to dozens of rows. Truncation is stated, never silent.
+  if (listings.length >= MAX_COLLAPSED_SELLER_LISTINGS) {
+    keeper.other_seller_listings_truncated = true;
+    return;
+  }
+
+  const signatureId = collapsedListingIdentityText(dropped.pivota_signature_id);
+  listings.push({
+    product_key: productKey,
+    merchant_id: merchantId,
+    ...(signatureId ? { pivota_signature_id: signatureId } : {}),
+    content_key: contentKey,
+  });
+  keeper.other_seller_listings = listings;
+  // `listed_seller_count`, NOT a seller total: under truncation the card holds fewer sellers than
+  // exist, and a field called `seller_listing_count` read as a total would be wrong by exactly the
+  // rows the cap dropped.
+  keeper.listed_seller_count = listings.length + 1;
 }
 
 function isWeakSeoulLocalSunscreenDisplayCandidate(product = {}, queryText = '') {
@@ -53967,6 +54063,7 @@ module.exports._debug = {
   buildCanonicalQueryTextForBeautyBrandRecall,
   canonicalizeBeautyProductTitleForDedupe,
   dedupeBeautyProductsByDisplayKey,
+  recordCollapsedSellerListing,
   ensureSearchProductPdpOpen,
   buildCanonicalChainMainlineProduct,
   resolveCanonicalOfferDerivedPrice,
