@@ -642,3 +642,190 @@ test('the skincare, lip and fragrance lanes are unchanged', () => {
   const fragrance = buildBeautyExternalSeedCategoryTerms(inferBeautyMainlineIntent('eau de parfum'));
   assert.ok(fragrance.includes('fragrance'), JSON.stringify(fragrance));
 });
+
+
+// ---------------------------------------------------------------------------
+// A brand stored SOLID must satisfy a contract that spells it SPACED.
+//
+// Measured in prod 2026-09-16 (gateway da7e94db5bd3): every JUNGSAEMMOOL query recalled
+// 100 rows, all serving_eligible, and the hard constraint rejected all 100 with
+// `brand_mismatch` — the brand's entire catalogue was invisible to search while its PDPs
+// were published and buyable. The catalogue stores `JUNGSAEMMOOL`; the contract canonical
+// is `jung saem mool`; neither string contains the other.
+// ---------------------------------------------------------------------------
+
+function solidBrandGloss(overrides = {}) {
+  return {
+    id: 'ext_jsm_metal_serum_gloss',
+    product_id: 'ext_jsm_metal_serum_gloss',
+    merchant_id: 'merch_obs_jsm',
+    title: 'LIP-PRESSION Metal Serum Gloss - Core Drop',
+    brand: 'JUNGSAEMMOOL',
+    merchant_name: 'JUNGSAEMMOOL',
+    price: 28.2,
+    currency: 'SGD',
+    image_url: 'https://cdn.example.com/jsm-metal-serum-gloss.jpg',
+    destination_url: 'https://jsmbeauty.sg/products/lip-pression-metal-serum-gloss',
+    category: 'Lip Gloss',
+    product_type: 'Lip Gloss',
+    category_path: ['beauty', 'makeup'],
+    catalog_category_path: 'beauty/makeup',
+    source: 'canonical_chain',
+    search_recall_source: 'canonical_chain',
+    catalog_source: 'canonical_chain',
+    ...overrides,
+  };
+}
+
+for (const rawQuery of ['JUNG SAEM MOOL', 'JUNGSAEMMOOL']) {
+  test(`a solid-spelled brand passes the hard constraint for query "${rawQuery}"`, () => {
+    const contract = buildSearchQualityContract({ rawQuery, market: 'SG' });
+
+    // Guard the premise, not just the outcome: if the lexicon ever stops producing the
+    // spaced canonical for this query, the assertion below would pass for the wrong reason.
+    assert.equal(contract.query_class, 'brand_browse');
+    assert.equal(contract.hard_constraints.brand.canonical, 'jung saem mool');
+
+    const gate = getSearchQualityContractHardConstraintResult(solidBrandGloss(), contract, rawQuery);
+    assert.equal(gate.eligible, true, JSON.stringify(gate.reasons));
+    assert.ok(!gate.reasons.includes('brand_mismatch'), JSON.stringify(gate.reasons));
+  });
+}
+
+test('the spaced catalogue spelling of the same brand still passes', () => {
+  // A row stored `JUNG SAEM MOOL` was never broken and must not become broken.
+  //
+  // NOTE what answers this one: the spaced brand resolves through the lexicon with
+  // brand_only=true, so the identity short-circuit returns before the compacted arm
+  // runs. It is a real regression guard for the SPACED cohort, not coverage of the new
+  // arm — the two solid-brand tests and the three controls below are that.
+  const contract = buildSearchQualityContract({ rawQuery: 'JUNGSAEMMOOL', market: 'SG' });
+  const gate = getSearchQualityContractHardConstraintResult(
+    solidBrandGloss({ brand: 'JUNG SAEM MOOL', merchant_name: 'JUNG SAEM MOOL' }),
+    contract,
+    'JUNGSAEMMOOL',
+  );
+  assert.equal(gate.eligible, true, JSON.stringify(gate.reasons));
+});
+
+test('CONTROL: a different brand is still rejected by the same contract', () => {
+  // Without this, the test above would also pass if someone deleted the brand check
+  // outright. This is the assertion that keeps the gate a gate.
+  const contract = buildSearchQualityContract({ rawQuery: 'JUNG SAEM MOOL', market: 'SG' });
+  const gate = getSearchQualityContractHardConstraintResult(
+    solidBrandGloss({
+      id: 'ext_vely_gloss',
+      product_id: 'ext_vely_gloss',
+      title: 'Dewy Glow Lip Gloss',
+      brand: 'VELY VELY',
+      merchant_name: 'VELY VELY',
+    }),
+    contract,
+    'JUNG SAEM MOOL',
+  );
+  assert.equal(gate.eligible, false);
+  assert.ok(gate.reasons.includes('brand_mismatch'), JSON.stringify(gate.reasons));
+});
+
+test('CONTROL: a same-length brand that is not the same letters is rejected', () => {
+  // Kills a mutant comparing LENGTHS instead of contents. `jungsaemmoon` and
+  // `jungsaemmool` are both twelve characters, so a length check calls them equal and
+  // admits a brand we have never heard of.
+  const contract = buildSearchQualityContract({ rawQuery: 'JUNG SAEM MOOL', market: 'SG' });
+  const gate = getSearchQualityContractHardConstraintResult(
+    solidBrandGloss({ brand: 'Jung Saem Moon', merchant_name: 'Jung Saem Moon' }),
+    contract,
+    'JUNG SAEM MOOL',
+  );
+  assert.equal(gate.eligible, false);
+  assert.ok(gate.reasons.includes('brand_mismatch'), JSON.stringify(gate.reasons));
+});
+
+test('CONTROL: a PREFIX of the brand is rejected, in both containment directions', () => {
+  // The chosen relation is equality. Containment the other way round --
+  // compactNeedle.includes(compactProductBrand) -- would admit `JungSaem` for the
+  // JUNGSAEMMOOL contract, which is a different brand, or none at all.
+  const contract = buildSearchQualityContract({ rawQuery: 'JUNG SAEM MOOL', market: 'SG' });
+  const gate = getSearchQualityContractHardConstraintResult(
+    solidBrandGloss({ brand: 'JungSaem', merchant_name: 'JungSaem' }),
+    contract,
+    'JUNG SAEM MOOL',
+  );
+  assert.equal(gate.eligible, false);
+  assert.ok(gate.reasons.includes('brand_mismatch'), JSON.stringify(gate.reasons));
+});
+
+test('CONTROL: compaction matches on EQUALITY, never on containment', () => {
+  // Pins the chosen relation. Compacted CONTAINMENT would admit this row — 'velyvelyesque'
+  // contains 'velyvely' — and that is exactly the widening the fix refuses, because it would
+  // let one brand's letters swallow another brand's name.
+  const contract = buildSearchQualityContract({ rawQuery: 'VELY VELY', market: 'SG' });
+  assert.equal(contract.hard_constraints.brand.canonical.replace(/\s+/g, ''), 'velyvely');
+
+  const gate = getSearchQualityContractHardConstraintResult(
+    solidBrandGloss({
+      id: 'ext_velyvelyesque',
+      product_id: 'ext_velyvelyesque',
+      title: 'Velyvelyesque Shine Balm',
+      brand: 'Velyvelyesque',
+      merchant_name: 'Velyvelyesque',
+    }),
+    contract,
+    'VELY VELY',
+  );
+  assert.equal(gate.eligible, false);
+  assert.ok(gate.reasons.includes('brand_mismatch'), JSON.stringify(gate.reasons));
+});
+
+test('a brand+category query admits the solid-spelled brand too', () => {
+  // brand_browse is not the only class that runs the brand hard constraint —
+  // brand_category and exact_product do as well. Pin one of the others so the fix is not
+  // silently scoped to a single query class.
+  const rawQuery = 'jung saem mool lip gloss';
+  const contract = buildSearchQualityContract({ rawQuery, market: 'SG' });
+  assert.equal(contract.query_class, 'brand_category');
+
+  const gate = getSearchQualityContractHardConstraintResult(
+    solidBrandGloss({ category_path: ['beauty', 'makeup', 'lip'], catalog_category_path: 'beauty/makeup/lip' }),
+    contract,
+    rawQuery,
+  );
+  assert.ok(!gate.reasons.includes('brand_mismatch'), JSON.stringify(gate.reasons));
+});
+
+test('KNOWN GAP: a solid-spelled brand still resolves brand_only=false', () => {
+  // NOT fixed here — recorded so the residual is visible rather than surprising.
+  //
+  // `resolveBeautyBrandBrowseQuery` matches 'jungsaemmool' against the alias 'jung saem mool'
+  // through the compact-run path, but then computes the remainder as
+  // queryTokens - aliasTokens - brandTokens. The consumed token 'jungsaemmool' is in neither
+  // token set, so it survives as a remainder and brand_only comes back false.
+  //
+  // This remainder defect is the REASON the identity short-circuit fails, not a
+  // side-effect of it: the lexicon ALREADY carries the solid alias
+  // ('jung_saem_mool': ['jung saem mool', 'jungsaemmool']), so the carve-out would have
+  // answered this with no gate change at all if brand_only were computed correctly.
+  //
+  // Nor is it specific to this brand. A census over the beauty lexicon found 28
+  // same-brand spellings across 12 keys in the same shape — lordandberry,
+  // nyxcosmetics, romnd, jomalone, yslbeauty, tower28beauty, patmcgrath and
+  // firstaidbeauty among them — all resolving brand_only=false. The compacted
+  // equality arm admits them; this predicate still mis-describes them.
+  //
+  // With the gate fixed the REMAINING consequences are ranking-only (the brand-browse
+  // minimum row count and the category-priority score read brand_only). The real fix is
+  // in brandLexicon.js — a token consumed by the compact-run path is not a remainder
+  // — and it touches every multi-token alias, so it needs its own measured
+  // no-change invariant.
+  const identity = resolveBeautyBrandBrowseQuery('jungsaemmool');
+  assert.equal(identity.matched, true);
+  assert.equal(identity.brand_key, 'jung_saem_mool');
+  assert.equal(
+    identity.brand_only,
+    false,
+    'brand_only is now true — the lexicon remainder is fixed, delete this test',
+  );
+
+  // Control: the spaced spelling, which the remainder logic handles correctly today.
+  assert.equal(resolveBeautyBrandBrowseQuery('jung saem mool').brand_only, true);
+});
