@@ -80,7 +80,9 @@ suite('canonical MAIN route with real PostgreSQL and no rescue lanes', () => {
       AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED:'false'});
     nock.disableNetConnect();nock.enableNetConnect(host=>host.includes('127.0.0.1'));
     jest.doMock('../../src/db',()=>({query:async(sql,params)=>{
-      if(sql.includes('WITH candidate_products AS') && sql.includes('ips.serving_eligible')) {
+      // `candidate_products AS`, not `WITH candidate_products AS`: an armed name-evidence statement
+      // opens with another CTE, and this detector has no other clause that would catch it.
+      if(sql.includes('candidate_products AS') && sql.includes('ips.serving_eligible')) {
         sqlCalls.push({sql,params}); if(failCanonical) throw Object.assign(new Error('primary unavailable'),{code:'PRIMARY_TEST_FAILURE'});
         return db.query(sql,params);
       }

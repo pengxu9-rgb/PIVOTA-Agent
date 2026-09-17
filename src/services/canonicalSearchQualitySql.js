@@ -3,6 +3,8 @@
 const { createHash } = require('crypto');
 const reviewedAliases = require('../../data/beauty/meitu_brand_aliases.json');
 const { normalizeBrandText } = require('../findProductsMulti/brandLexicon');
+const { MAX_CARRIERS, nameEvidenceAdmissionEnabled, queryDistinctiveTokens } = require('./searchNameEvidence');
+const { queryWantsMultiProductSet } = require('./beautyRelevanceGate');
 
 // Normalize common Latin accents and middle-dot styling on both query and row identity.
 // This is not a general Unicode transliterator; reviewed aliases cover alternate spellings.
@@ -86,6 +88,7 @@ function buildCanonicalSearchQualitySql({ contract, params, categoryPredicate, d
     brandWhere = `AND ${buildBrandIdentityPredicate(hard.brand, CANONICAL_OWN_BRAND_SQL, params)}`;
   }
   let where = defaultWhere;
+  let nameEvidence = null;
   if (hard.exact_product_anchor) {
     const tokens = [...new Set(identityValue(hard.exact_product_anchor).split(' ').filter((token) => token.length >= 2))];
     if (tokens.length) where = tokens.map((token) => `${ownName} ~ ${bind(`(^| )${token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}($| )`)}`).join(' AND ');
@@ -127,6 +130,70 @@ function buildCanonicalSearchQualitySql({ contract, params, categoryPredicate, d
     } else {
       where = categoryPredicate;
     }
+    // NAME-EVIDENCE ADMISSION (src/services/searchNameEvidence.js has the why and the census).
+    // The category WHERE above deletes before ranking, so the admission has to happen HERE.
+    // This SQL is the only authority: it counts the rows whose own name carries every query
+    // token, admits them only when there are at most MAX_CARRIERS, and marks each admitted
+    // row -- the serving gate and ranker read the mark instead of re-deriving it.
+    const nameTokens = nameEvidenceAdmissionEnabled() ? queryDistinctiveTokens(contract.effective_query, hard) : null;
+    if (nameTokens) {
+      // COST, measured on prod pivota-pg. Own name is title + product_type only: detoasting
+      // product_payload on every row outside the category was the whole measured cost of the
+      // first version (1.7s -> 2.7s; 1.72s -> 1.86s without it). One lookahead regex, so the
+      // name is normalised once, behind a cheap SUPERSET prefilter in a CASE (evaluation order
+      // guaranteed): the same middle-dot removal and accent fold identitySql applies, in BOTH
+      // cases, before lower() -- so it stays a superset under any lc_ctype -- then LIKE.
+      const reEscape = (token) => token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const likeEscape = (token) => token.replace(/[\\%_]/g, '\\$&');
+      const likeBinds = nameTokens.map((token) => bind(`%${likeEscape(token)}%`));
+      const regexBind = bind(`^${nameTokens.map((token) => `(?=.*(^| )${reEscape(token)}($| ))`).join('')}`);
+      const carriesAll = (alias) => {
+        const columns = `concat_ws(' ', ${alias}.title, ${alias}.product_type)`;
+        const rawName = `lower(translate(replace(replace(${columns}, '·', ''), '•', ''), '${IDENTITY_ACCENTED}', '${IDENTITY_FOLDED}'))`;
+        const prefilter = likeBinds.map((b) => `${rawName} LIKE ${b}`).join(' AND ');
+        return `(CASE WHEN ${prefilter} THEN ${identitySql(columns)} ~ ${regexBind} ELSE FALSE END)`;
+      };
+      const categoryWhere = where;
+      // Counted ONCE per statement (a materialised CTE), over every catalog row -- serving or
+      // not, so the count can only be conservative.
+      const cteSql = `name_evidence_carriers AS MATERIALIZED (\n      SELECT count(*) AS n FROM catalog_products np WHERE ${carriesAll('np')}\n    )`;
+      // A MULTI-PRODUCT SET is never admitted on name evidence unless the query asks for one.
+      // Review of #2230: "matte lipstick" admitted a lipstick-and-liner gift set at #1. A set
+      // carries its components' names, so name evidence says nothing about whether it is the
+      // product asked for. Detected the way the rest of search detects sets -- the title/type
+      // words of MULTI_PRODUCT_TITLE_PATTERN (beautyRelevanceGate.js), the beauty/sets tree, and
+      // the enrichment payload's product family -- and read only for rows that already carry
+      // every token (the CASE), so the payload is never detoasted for the rest.
+      const setExclusion = queryWantsMultiProductSet(contract.effective_query)
+        ? 'TRUE'
+        : `NOT (${identitySql("concat_ws(' ', p.title, p.product_type)")} ~ ${bind('(^| )(sets?|kits?|bundles?|duos?|trios?|collections?|discovery|value pack|pack of|[0-9]+ ?(pc|pcs|piece)s?|routines?)($| )|套装|套裝|礼盒|禮盒')})
+          AND lower(coalesce(p.category_path, '')) NOT LIKE 'beauty/sets%'
+          AND lower(COALESCE(p.product_payload->>'external_seed_product_family', p.product_payload->>'product_family', p.product_payload->'external_seed_product_kind'->>'family', '')) <> 'set_or_collection'`;
+      // EVALUATION ORDER IS THE COST CONTROL, so it is forced with CASE rather than left to AND:
+      //  1. the carrier count -- one value per statement (the CTE). For a generic query (count > 10,
+      //     most traffic) every row stops here, and the per-row name match below never runs.
+      //     Review of #2230: `(category) OR (carriesAll(p) AND ...)` forced the name match on every
+      //     row outside the category for EVERY armed query.
+      //  2. the name match (prefilter, then the regex);
+      //  3. the set exclusion (may read product_payload) and the category clause.
+      // NULL-safe: a row whose category clause evaluates NULL (e.g. a NULL category_path) is not
+      // admitted -- `NOT NULL` is NULL, which WHERE and the rank CASE both treat as false.
+      const admitted = `(CASE WHEN (SELECT n FROM name_evidence_carriers) <= ${bind(MAX_CARRIERS)} THEN (CASE WHEN ${carriesAll('p')} THEN ((${setExclusion}) AND NOT (${categoryWhere})) ELSE FALSE END) ELSE FALSE END)`;
+      where = `((${categoryWhere}) OR ${admitted})`;
+      nameEvidence = {
+        cteSql,
+        admittedSql: admitted,
+        // RECALLED IS NOT ENOUGH, AND IT MUST NOT COST ANYONE A SLOT. The candidate LIMIT runs
+        // on rank_score, where every in-category row gets a flat +90. An admitted row gets +95
+        // so the LIMIT keeps it -- and the caller raises the LIMIT by MAX_CARRIERS, the most
+        // rows that can be admitted, so no row the category already recalls is displaced.
+        // (Review of #2230: with a +95 inside the SAME limit, each admitted row evicted the
+        // lowest in-category row, and at the route's candidate cap of 200 that removed rows that
+        // were served.) +95 stays below an exact title (100) and source id (105).
+        rankSql: `CASE WHEN ${admitted} THEN 95 ELSE 0 END +`,
+        extraCandidates: MAX_CARRIERS,
+      };
+    }
   }
   const requested = identityValue(contract.effective_query);
   if (/\bmoisturi[sz]ers?\b/.test(requested) && !/\b(spf|sunscreen|sun protection)\b/.test(requested)) {
@@ -141,6 +208,6 @@ function buildCanonicalSearchQualitySql({ contract, params, categoryPredicate, d
     const namedObject = `regexp_replace(${ownName}, '(with|includes?|including)[ ]+((a|an|built in)[ ]+)?(brush(es)?|applicators?|mirrors?|sponges?|puffs?)([ ]|$).*$', '', 'g')`;
     where = `(${where}) AND NOT (${namedObject} ~ ${bind(toolPattern)})`;
   }
-  return { where: `(${where}) AND $2::text IS NOT NULL`, brandWhere };
+  return { where: `(${where}) AND $2::text IS NOT NULL`, brandWhere, nameEvidence };
 }
 module.exports = { buildCanonicalSearchQualitySql, buildBrandIdentityPredicate, normalizedBrandIdentitySql, brandIdentityKey, CANONICAL_OWN_BRAND_SQL };

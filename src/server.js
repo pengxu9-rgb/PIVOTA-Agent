@@ -288,6 +288,7 @@ const {
   isSetDiversityEnabled: isCanonicalSetDiversityEnabled,
   formAgreementEffectiveFor: canonicalFormAgreementEffectiveFor,
 } = require('./services/canonicalCatalogSearch');
+const searchNameEvidence = require('./services/searchNameEvidence');
 const beautyRelevanceGate = require('./services/beautyRelevanceGate');
 const {
   titleLooksLikeMultiProductSet,
@@ -17687,6 +17688,8 @@ function buildCanonicalChainMainlineProduct(row) {
     id: productId,
     product_id: productId,
     merchant_id: merchantId,
+    // Set only by the canonical SQL's name-evidence arm (searchNameEvidence.js).
+    ...(row.name_evidence_admitted === true ? { [searchNameEvidence.NAME_EVIDENCE_ADMITTED]: true } : {}),
     merchant_name: firstNonEmptyString(row.merchant_name, brand, merchantId),
     platform: firstNonEmptyString(row.platform, row.merchant_primary_platform, merchantId === EXTERNAL_SEED_MERCHANT_ID ? EXTERNAL_SEED_PLATFORM : 'catalog'),
     platform_product_id: sourceProductId || productId,
@@ -18427,7 +18430,9 @@ function getSearchQualityContractHardConstraintResult(product = {}, contract = n
   }
 
   const categoryPathPrefix = String(hard.category_path_prefix || '').trim();
+  let categoryWaivedByNameEvidence = false;
   if (categoryPathPrefix && ['brand_category', 'category_browse', 'need_solution', 'constraint_search', 'exact_product'].includes(queryClass)) {
+    let categoryRejected = false;
     const existingCategoryPath = firstSearchProductCategoryPath(product).toLowerCase().replace(/^\/+|\/+$/g, '');
     const pathMatches = beautyProductMatchesCategoryPathPrefix(product, categoryPathPrefix);
     const textMatches = beautyProductMatchesCategoryPathQuery(
@@ -18445,10 +18450,21 @@ function getSearchQualityContractHardConstraintResult(product = {}, contract = n
         title: firstNonEmptyString(product.title, product.name),
         product_type: product.product_type,
       }, queryText || contract.effective_query, categoryPathPrefix);
-      if (!pathMatches && !ownTypeMatches) reasons.push('category_mismatch');
+      if (!pathMatches && !ownTypeMatches) categoryRejected = true;
     } else if (!textMatches) {
-      reasons.push('category_mismatch');
+      categoryRejected = true;
     }
+    // NAME-EVIDENCE ADMISSION (src/services/searchNameEvidence.js): the guessed category must
+    // not veto a row the canonical SQL admitted on its own name -- the SQL is the only
+    // authority and MARKS those rows (NAME_EVIDENCE_ADMITTED, from its `name_evidence_admitted`
+    // column), so this reads the mark and
+    // never re-derives it. Only a category rejection is waived; brand, exact-anchor,
+    // accessory, merchandise, strict-lipstick and fragrance-free reasons all stand.
+    if (categoryRejected && product[searchNameEvidence.NAME_EVIDENCE_ADMITTED] === true && searchNameEvidence.nameEvidenceAdmissionEnabled()) {
+      categoryRejected = false;
+      categoryWaivedByNameEvidence = true;
+    }
+    if (categoryRejected) reasons.push('category_mismatch');
   }
 
   if (hard.strict_lipstick === true && !beautyProductMatchesStrictLipstickIntent(product)) {
@@ -18462,6 +18478,7 @@ function getSearchQualityContractHardConstraintResult(product = {}, contract = n
   return {
     eligible: reasons.length === 0,
     reasons,
+    ...(categoryWaivedByNameEvidence ? { category_waived_by_name_evidence: true } : {}),
   };
 }
 
@@ -18565,6 +18582,8 @@ function buildSearchQualityTierCounts(products = [], contract = null, queryText 
     external_seed_count: 0,
     hard_constraint_pass_count: 0,
     hard_constraint_reject_count: 0,
+    // Present only while the flag is on, so flag-off responses are byte-for-byte unchanged.
+    ...(searchNameEvidence.nameEvidenceAdmissionEnabled() ? { category_waived_by_name_evidence_count: 0 } : {}),
     serving_eligible_count: 0,
     missing_image_count: 0,
     invalid_price_count: 0,
@@ -18585,6 +18604,9 @@ function buildSearchQualityTierCounts(products = [], contract = null, queryText 
     const hardGate = getSearchQualityContractHardConstraintResult(product, contract, queryText);
     if (hardGate.eligible) counts.hard_constraint_pass_count += 1;
     else counts.hard_constraint_reject_count += 1;
+    // Published so a flag flip is observable per response: rows admitted ONLY because
+    // their own name carried the query.
+    if (hardGate.category_waived_by_name_evidence) counts.category_waived_by_name_evidence_count += 1;
 
     const serving = getSearchProductServingEligibility(product, { requireBeauty: true });
     const reasons = new Set(Array.isArray(serving.reasons) ? serving.reasons : []);
@@ -20164,7 +20186,15 @@ function beautyProductIsLipCareSurface(product) {
   );
 }
 
-function isBeautyProductContraindicatedForQuery(product, queryText = '', intent = null) {
+function isBeautyProductContraindicatedForQuery(product, queryText = '', intent = null, options = {}) {
+  // Two kinds of rule live here. SAFETY rules act on what the query says to AVOID
+  // (retinoids, pregnancy, fragrance, acids, cooling irritants) and always apply.
+  // SURFACE rules reject a product whose shape does not fit the family GUESSED from the
+  // query's words ("a lip-care product is wrong for a query containing serum"). For a
+  // row admitted on name evidence (src/services/searchNameEvidence.js) the row's own
+  // name already carries every one of those words, so the surface guess is exactly the
+  // one that was wrong: surface rules are skipped, safety rules are not.
+  const applySurfaceRules = options.admittedByNameEvidence !== true;
   const text = buildFallbackCandidateText(product);
   if (!text) return false;
   const profile = intent || inferBeautyMainlineIntent(queryText);
@@ -20285,25 +20315,26 @@ function isBeautyProductContraindicatedForQuery(product, queryText = '', intent 
   if (fragranceAverseQuery && fragranceHit && !fragranceFreeClaim) {
     return true;
   }
-  if (calmFaceSkincareQuery && families.has('moisturizer') && productLooksLikeOilSurface && !queryRequestsOil) {
+  if (applySurfaceRules && calmFaceSkincareQuery && families.has('moisturizer') && productLooksLikeOilSurface && !queryRequestsOil) {
     return true;
   }
   if (barrierFirstQuery && productLooksLikeAntiAging && !queryRequestsAntiAging) {
     return true;
   }
-  if (calmFaceSkincareQuery && productLooksLikeRoutineSet && !queryRequestsRoutineSet) {
+  if (applySurfaceRules && calmFaceSkincareQuery && productLooksLikeRoutineSet && !queryRequestsRoutineSet) {
     return true;
   }
   if ((brighteningSerumQuery || gentleSensitiveQuery) && productLooksLikeVolumePlumpingSerum) {
     return true;
   }
-  if (calmFaceSkincareQuery && productLooksLikeMaskPack && !queryRequestsMask) {
+  if (applySurfaceRules && calmFaceSkincareQuery && productLooksLikeMaskPack && !queryRequestsMask) {
     return true;
   }
-  if (calmFaceSkincareQuery && families.has('cleanser') && productLooksLikeBrushTool && !queryRequestsBrushTool) {
+  if (applySurfaceRules && calmFaceSkincareQuery && families.has('cleanser') && productLooksLikeBrushTool && !queryRequestsBrushTool) {
     return true;
   }
   if (
+    applySurfaceRules &&
     calmFaceSkincareQuery &&
     (families.has('cleanser') || families.has('moisturizer') || families.has('sunscreen')) &&
     productLooksLikeTreatmentSerum &&
@@ -20313,6 +20344,7 @@ function isBeautyProductContraindicatedForQuery(product, queryText = '', intent 
     return true;
   }
   if (
+    applySurfaceRules &&
     calmFaceSkincareQuery &&
     !queryRequestsEye &&
     /\b(?:(?:eye|eyes)\b.{0,16}\b(?:cream|balm|serum|treatment)|(?:cream|balm|serum|treatment)\b.{0,16}\b(?:eye|eyes)|under[-\s]?eye)\b|眼霜|眼部/i.test(primarySurfaceText)
@@ -20320,6 +20352,7 @@ function isBeautyProductContraindicatedForQuery(product, queryText = '', intent 
     return true;
   }
   if (
+    applySurfaceRules &&
     calmFaceSkincareQuery &&
     !queryRequestsBody &&
     (
@@ -20340,6 +20373,7 @@ function isBeautyProductContraindicatedForQuery(product, queryText = '', intent 
     return true;
   }
   if (
+    applySurfaceRules &&
     beautyProductIsLipCareSurface(product) &&
     !beautyQueryRequestsLipCare(queryText) &&
     (
@@ -20350,6 +20384,7 @@ function isBeautyProductContraindicatedForQuery(product, queryText = '', intent 
     return true;
   }
   if (
+    applySurfaceRules &&
     families.has('cleanser') &&
     /\b(cleansing\s*pads?|cleanse\s*pads?|peel\s*pads?|toner\s*pads?|exfoliating\s*pads?|clarifying\s*pads?)\b/i.test(text) &&
     !/\b(?:pad|pads)\b|棉片|片/i.test(normalizedQuery)
@@ -21692,7 +21727,10 @@ function scoreBeautyExternalSeedProduct({
   if (!searchProductMatchesBeautyBrandBrowse(product, intent?.brandBrowse, candidateText)) {
     return { product, relevant: false, score: -90 };
   }
-  if (isBeautyProductContraindicatedForQuery(product, queryText, intent)) {
+  // A row the contract admitted on its own name's evidence: the family and category
+  // below were guessed from the query's words, and the row's name carries all of them.
+  const admittedByNameEvidence = Boolean(contractGate.category_waived_by_name_evidence);
+  if (isBeautyProductContraindicatedForQuery(product, queryText, intent, { admittedByNameEvidence })) {
     return { product, relevant: false, score: -100 };
   }
 
@@ -21730,10 +21768,10 @@ function scoreBeautyExternalSeedProduct({
   ) {
     return { product, relevant: false, score: -49 };
   }
-  if (targetFamilies.length > 0 && familyMatches.length === 0) {
+  if (targetFamilies.length > 0 && familyMatches.length === 0 && !admittedByNameEvidence) {
     return { product, relevant: false, score: -40 };
   }
-  if (explicitCategoryPathQuery && !categoryPathMatch && !categoryLexicalMatch) {
+  if (explicitCategoryPathQuery && !categoryPathMatch && !categoryLexicalMatch && !admittedByNameEvidence) {
     return { product, relevant: false, score: -45 };
   }
   if (hasStrictLipstickQueryIntent(queryText) && !beautyProductMatchesStrictLipstickIntent(product)) {
@@ -21757,6 +21795,10 @@ function scoreBeautyExternalSeedProduct({
   }
   if (categoryPathMatch) score += 140;
   else if (categoryLexicalMatch) score += 64;
+  // Must outrank a bare category match (140): measured end to end on PostgreSQL, the
+  // named product was served below 250 rows that only shared its guessed category.
+  // Applies only to rows whose category was waived, so in-category ordering is unchanged.
+  if (admittedByNameEvidence) score += 160;
   if (acneOilControlIntent) {
     if (acneOilControlEvidence) {
       score += 72;
@@ -22140,6 +22182,7 @@ async function searchBeautyExternalSeedProductsMainline({
           external_seed_count: 0,
           hard_constraint_pass_count: 0,
           hard_constraint_reject_count: 0,
+          ...(searchNameEvidence.nameEvidenceAdmissionEnabled() ? { category_waived_by_name_evidence_count: 0 } : {}),
           serving_eligible_count: 0,
           missing_image_count: 0,
           invalid_price_count: 0,
@@ -41776,6 +41819,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               external_seed_count: 0,
               hard_constraint_pass_count: 0,
               hard_constraint_reject_count: 0,
+              ...(searchNameEvidence.nameEvidenceAdmissionEnabled() ? { category_waived_by_name_evidence_count: 0 } : {}),
               serving_eligible_count: 0,
               missing_image_count: 0,
               invalid_price_count: 0,
@@ -53952,6 +53996,7 @@ module.exports._debug = {
   beautyQueryHasAcneOilControlIntent,
   beautyProductHasAcneOilControlEvidence,
   scoreBeautyExternalSeedProduct,
+  isBeautyProductContraindicatedForQuery,
   extractBeautyQueryActiveConcepts,
   countBeautyActiveConceptMatches,
   buildBeautyActivesText,
