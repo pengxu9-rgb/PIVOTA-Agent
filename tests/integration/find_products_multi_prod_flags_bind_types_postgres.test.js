@@ -26,10 +26,14 @@ const PROD_FLAGS = {
 // PIVOT_BEAUTY_MAINLINE_TOKEN_MATCH_ENABLED is secret-backed in production; it shifts the bind
 // numbering, so both values are exercised.
 const TOKEN_MATCH_VALUES = ['true', 'false'];
+// SEARCH_NAME_EVIDENCE_ADMISSION adds a CTE and binds; both values are exercised. `Metal Serum Gloss`
+// is the query that arms it (a category guess plus rare name tokens).
+const NAME_EVIDENCE_VALUES = ['off', 'on'];
 const QUERIES = [
   "A'pieu",
   'lightweight moisturizer face moisturizer',
   'MAC lipstick makeup foundation concealer mascara lipstick',
+  'Metal Serum Gloss',
 ];
 
 const unreferencedBinds = (sql, params) =>
@@ -77,7 +81,7 @@ suite('find_products_multi under production canonical flags binds only reference
     }
   });
 
-  const load = (tokenMatch) => {
+  const load = (tokenMatch, nameEvidence = 'off') => {
     priorEnv = { ...process.env };
     jest.resetModules();
     sqlCalls = [];
@@ -92,13 +96,18 @@ suite('find_products_multi under production canonical flags binds only reference
       AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED: 'false',
       ...PROD_FLAGS,
       PIVOT_BEAUTY_MAINLINE_TOKEN_MATCH_ENABLED: tokenMatch,
+      SEARCH_NAME_EVIDENCE_ADMISSION: nameEvidence,
     });
     nock.disableNetConnect();
     nock.enableNetConnect((host) => host.includes('127.0.0.1'));
     jest.doMock('../../src/db', () => ({
       query: async (sql, params = []) => {
         const primary = sql.includes('ips.serving_eligible') &&
-          (sql.includes('WITH candidate_products AS') || sql.includes('WITH matched_products AS') || sql.includes('FROM external_product_seeds'));
+          // Not `WITH candidate_products AS`: with name-evidence admission on, the statement opens
+          // `WITH name_evidence_carriers AS MATERIALIZED (...), candidate_products AS (`. Measured: in
+          // this suite the armed statement was still caught, but only because it also contains
+          // `FROM external_product_seeds` -- match the CTE names directly instead of relying on that.
+          (sql.includes('candidate_products AS') || sql.includes('matched_products AS') || sql.includes('FROM external_product_seeds'));
         if (!primary) return { rows: [] };
         const call = { sql, params, unreferenced: unreferencedBinds(sql, params) };
         sqlCalls.push(call);
@@ -121,9 +130,10 @@ suite('find_products_multi under production canonical flags binds only reference
     nock.enableNetConnect();
   });
 
-  const cases = TOKEN_MATCH_VALUES.flatMap((tokenMatch) => QUERIES.map((query) => [query, tokenMatch]));
-  test.each(cases)('%s (token match %s): the shopping-agent-ui door executes on PostgreSQL', async (query, tokenMatch) => {
-    load(tokenMatch);
+  const cases = NAME_EVIDENCE_VALUES.flatMap((nameEvidence) => TOKEN_MATCH_VALUES.flatMap((tokenMatch) =>
+    QUERIES.map((query) => [query, tokenMatch, nameEvidence])));
+  test.each(cases)('%s (token match %s, name evidence %s): the shopping-agent-ui door executes on PostgreSQL', async (query, tokenMatch, nameEvidence) => {
+    load(tokenMatch, nameEvidence);
     const res = await request(app).post('/agent/shop/v1/invoke').send({
       operation: 'find_products_multi',
       payload: { search: { query, market: 'US', limit: 10 } },
@@ -132,6 +142,11 @@ suite('find_products_multi under production canonical flags binds only reference
     expect(sqlCalls.length).toBeGreaterThan(0);
     // Both lanes must actually have reached PostgreSQL, or this proves nothing about the canonical SQL.
     expect(sqlCalls.some((call) => call.sql.includes('catalog_products p'))).toBe(true);
+    if (nameEvidence === 'on' && query === 'Metal Serum Gloss') {
+      // The armed statement itself must have executed -- not merely some statement. (With flag
+      // 'off' no statement may carry the arm; that side is pinned by the flag-off byte identity.)
+      expect(sqlCalls.some((call) => call.sql.includes('name_evidence_carriers'))).toBe(true);
+    }
     expect(sqlCalls.map((call) => ({ error: call.error || null, unreferenced: call.unreferenced })))
       .toEqual(sqlCalls.map(() => ({ error: null, unreferenced: [] })));
     expect(res.status).toBe(200);

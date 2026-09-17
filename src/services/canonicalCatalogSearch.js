@@ -64,6 +64,10 @@ const { queryWantsMultiProductSet } = require('./beautyRelevanceGate');
 
 const DEFAULT_LIMIT = 12;
 const CANDIDATE_LIMIT_MIN = 25;
+// NOTE: when the name-evidence arm is armed (SEARCH_NAME_EVIDENCE_ADMISSION), both caps are exceeded
+// by exactly MAX_CARRIERS (searchNameEvidence.js): admitted rows take reserved slots so they never
+// evict a row the category recalls. The overrun is bounded and pinned by
+// tests/integration/search_name_evidence_admission_postgres.test.js.
 const CANDIDATE_LIMIT_MAX = 200;
 const ROW_LIMIT_MIN = 50;
 const ROW_LIMIT_MAX = 500;
@@ -1482,7 +1486,8 @@ async function fetchCanonicalChainRows(args = {}) {
   //  * the carrier count is a CTE, counted once;
   //  * admitted rows are ranked +95 and MARKED, so the gate and ranker read the SQL's decision;
   //  * the candidate and row limits grow by the most rows that can be admitted, so an
-  //    admitted row takes an extra slot instead of evicting a row the category recalls.
+  //    admitted row takes an extra slot instead of evicting a row the category recalls. This
+  //    deliberately exceeds CANDIDATE_LIMIT_MAX / ROW_LIMIT_MAX by exactly MAX_CARRIERS.
   const nameEvidence = qualityScope.nameEvidence || null;
   const nameEvidenceRankArm = nameEvidence ? `\n          ${nameEvidence.rankSql}` : '';
   const nameEvidenceCteSql = nameEvidence ? `${nameEvidence.cteSql},\n    ` : '';

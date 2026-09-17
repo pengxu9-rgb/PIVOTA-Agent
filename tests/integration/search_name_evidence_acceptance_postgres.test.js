@@ -8,12 +8,15 @@ const { buildSearchQualityContract } = require('../../src/findProductsMulti/quer
 
 // The acceptance set's 600 production rows (+ the Meitu row), loaded into real PostgreSQL, every
 // tracked query served through the real route with SEARCH_NAME_EVIDENCE_ADMISSION off and on, at
-// the production default page (12).
+// the default page size (12).
 //
 // Admission is decided by SQL (a carrier count over the catalog), so an offline gate harness
 // cannot say what the flag does; this can. It pins:
-//   * NOTHING SERVED DISAPPEARS OR MOVES: for every query, the flag-off page, minus nothing, is a
-//     prefix of the flag-on page with its admitted rows removed;
+//   * NO REMOVAL OR REORDERING AMONG ROWS THE CATEGORY SERVES: for every query, the flag-on page
+//     with its admitted rows removed is a prefix of the flag-off page, in order. Admitted rows are
+//     served ahead of them, so on a full page the last flag-off row(s) move to the next page --
+//     they are pushed down, never dropped from recall (recall is pinned in
+//     search_name_evidence_admission_postgres.test.js);
 //   * every row the flag newly serves, so a widening shows up in review.
 
 const url = process.env.CANONICAL_MAINLINE_TEST_DATABASE_URL;
@@ -33,17 +36,26 @@ suite('name-evidence admission over the acceptance fixture, real PostgreSQL', ()
     schema = `name_evidence_acc_${process.pid}_${Date.now()}`;
     await db.query(`CREATE SCHEMA ${schema}`);
     await db.query(`SET search_path TO ${schema}`);
-    let sql;
-    process.env[FLAG] = 'on';
-    await fetchCanonicalChainRows({ query: 'Metal Serum Gloss', categoryPathPrefix: 'beauty/skincare/treat/', categoryMode: 'category_browse',
-      includeSkuOffers: true, marketId: 'SG', searchQualityContract: buildSearchQualityContract({ rawQuery: 'Metal Serum Gloss' }),
-      deps: { query: async (text) => { sql = text; return { rows: [] }; } } });
-    delete process.env[FLAG];
+    // Materialise the UNION of the columns every tracked query's statement references, flag off
+    // and on, with and without the sku-offer join. One statement's columns were not enough: review of
+    // #2230 found "vitamin c serum" (which takes the product-level offer join) failing with
+    // `column o.product_key does not exist` in both passes -- a vacuous comparison.
     const tables = {};
-    for (const match of sql.matchAll(/(?:FROM|JOIN)\s+(catalog_\w+|index_pipeline_state|external_product_seeds|merchant_stores)\s+(\w+)/g)) {
-      const [, table, alias] = match; tables[table] ||= new Set();
-      for (const ref of sql.matchAll(new RegExp(`\\b${alias}\\.(\\w+)`, 'g'))) tables[table].add(ref[1]);
+    for (const [flag, includeSkuOffers] of [[null, true], [null, false], ['on', true], ['on', false]]) {
+      if (flag) process.env[FLAG] = flag; else delete process.env[FLAG];
+      for (const query of [...new Set([...CASES.cases.map((c) => c.query), ...(CASES.ratchet_queries || []).map((x) => x.query)])]) {
+        const contract = buildSearchQualityContract({ rawQuery: query, market: 'SG' });
+        let sql = '';
+        await fetchCanonicalChainRows({ query, categoryPathPrefix: contract.hard_constraints.category_path_prefix, categoryMode: 'category_browse',
+          brandFilter: contract.hard_constraints.brand, includeSkuOffers, marketId: 'SG', searchQualityContract: contract,
+          deps: { query: async (text) => { sql = text; return { rows: [] }; } } });
+        for (const match of sql.matchAll(/(?:FROM|JOIN)\s+(catalog_\w+|index_pipeline_state|external_product_seeds|merchant_stores)\s+(\w+)/g)) {
+          const [, table, alias] = match; tables[table] ||= new Set();
+          for (const ref of sql.matchAll(new RegExp(`\\b${alias}\\.(\\w+)`, 'g'))) tables[table].add(ref[1]);
+        }
+      }
     }
+    delete process.env[FLAG];
     tables.index_pipeline_state.add('serving_eligible');
     for (const [table, cols] of Object.entries(tables)) {
       const definitions = [...cols].map((col) => {
@@ -69,7 +81,7 @@ suite('name-evidence admission over the acceptance fixture, real PostgreSQL', ()
         r.image_url || `https://cdn.example/${key}.jpg`, String(i)]);
       await db.query('INSERT INTO index_pipeline_state(content_key,serving_eligible) VALUES ($1,true)', [key]);
       await db.query('INSERT INTO catalog_skus(sku_key,product_key,source_variant_id) VALUES ($1,$1,$2)', [key, `v_${key}`]);
-      await db.query("INSERT INTO catalog_offers(offer_id,sku_key,merchant_effective_price,currency,availability) VALUES ($1,$1,$2,$3,'in_stock')",
+      await db.query("INSERT INTO catalog_offers(offer_id,sku_key,product_key,merchant_effective_price,currency,availability) VALUES ($1,$1,$1,$2,$3,'in_stock')",
         [key, Number(r.price) > 0 ? Number(r.price) : 20, r.currency || 'USD']);
     }
   });
@@ -81,7 +93,10 @@ suite('name-evidence admission over the acceptance fixture, real PostgreSQL', ()
       INDEX_ELIGIBLE_RECALL: 'false', PIVOT_BEAUTY_DIRECT_INDEXED_RECALL_ENABLED: 'true', SEARCH_QUALITY_CONTRACT_V1_ENABLED: 'true',
       SEARCH_QUALITY_CONTRACT_V1_MODE: 'enforce', PIVOT_BEAUTY_MAINLINE_TOKEN_MATCH_ENABLED: 'false',
       CANONICAL_CATALOG_RECALL_DOC_MATCH: 'off', CANONICAL_CATALOG_CATEGORY_BROWSE_TEXT_UNION: 'off',
-      AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED: 'false' });
+      AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED: 'false',
+      // 78 requests per pass exceed find_products_multi's 60-token bucket: review of #2230 found
+      // ~20% of the recorded run was HTTP 429, compared empty-vs-empty and pinned as a result.
+      GATEWAY_RATE_LIMIT_ENABLED: 'false' });
     if (flag) process.env[FLAG] = flag; else delete process.env[FLAG];
     nock.disableNetConnect(); nock.enableNetConnect((host) => host.includes('127.0.0.1'));
     jest.doMock('../../src/db', () => ({ query: async (sql, params) => {
@@ -102,6 +117,10 @@ suite('name-evidence admission over the acceptance fixture, real PostgreSQL', ()
       for (const query of queries) {
         const res = await request(app).post('/agent/shop/v1/invoke').send({ operation: 'find_products_multi',
           payload: { search: { query, domain: 'beauty', market: 'SG', limit: 12 } }, metadata: { source: 'public_api', market: 'SG' } });
+        // Every query must actually run: a 429 or a failed canonical statement is an empty page
+        // on BOTH sides and would compare as "unchanged".
+        expect({ query, status: res.status }).toEqual({ query, status: 200 });
+        expect({ query, canonical_error: res.body.metadata?.canonical_error || null }).toEqual({ query, canonical_error: null });
         out[query] = {
           keys: (res.body.products || []).map((p) => String(p.source_product_id || p.platform_product_id || p.product_id)),
           waived: Number(res.body.metadata?.search_quality_tier_counts?.category_waived_by_name_evidence_count || 0),
@@ -111,7 +130,7 @@ suite('name-evidence admission over the acceptance fixture, real PostgreSQL', ()
     return out;
   }
 
-  test('flag on: no served row disappears or moves, and every addition is the reviewed list', async () => {
+  test('flag on: rows the category serves keep their order (admitted rows lead the page), and every addition is the reviewed list', async () => {
     const off = await serveAll(null);
     const on = await serveAll('on');
     const additions = {};

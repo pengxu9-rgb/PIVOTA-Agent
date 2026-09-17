@@ -13,12 +13,13 @@
 // WHAT MAKES A QUERY A NAME: THE CATALOG, NOT A WORD LIST. The first version called a query a
 // name when one of its words was not category vocabulary; review showed that makes "nail
 // polish", "eye cream" and "matte lipstick" names, and put a nail polish REMOVER at #1.
-// Measured on prod (9,122 serving rows, 2026-09-17), the number of rows whose own name carries
-// every query token separates the two:
-//   names:   Metal Serum Gloss 2 · Egg Vita Peeling Gel 1 · Soft Pinch Liquid Blush 2 ·
-//            Essential Mool Cream 5 · Stay All Day Liquid Lipstick 6
-//   browses: nail polish 44 · eye cream 79 · lip gloss 103 · matte lipstick 33 ·
-//            setting powder 35 · lip balm 133 · sheet mask 134
+// Measured on prod 2026-09-17 over EVERY catalog_products row (15,552 -- the basis the SQL counts,
+// serving or not), the number of rows whose own name carries every query token separates the two:
+//   names:   Metal Serum Gloss 3 · LIP-PRESSION Metal Serum Gloss 3 · Essential Skin Nuder Cushion 9
+//   browses: nail polish 116 · eye cream 106 · lip gloss 149 · matte lipstick 51 ·
+//            setting powder 40 · lip balm 187 · sheet mask 151
+// Over the 9,122 serving rows alone the counts are lower (e.g. nail polish 44), and no query of the
+// 99 measured is <= 10 there but > 10 over all rows: counting everything only errs conservative.
 // So a query is name-shaped when at most MAX_CARRIERS rows carry it. A few browses are that
 // rare too (red lipstick 2, barrier lotion 1); what they admit is still a red lipstick or a
 // barrier lotion, filed under a shallow category.
@@ -32,6 +33,11 @@
 // Flag: SEARCH_NAME_EVIDENCE_ADMISSION=on (default off). Read per call.
 
 const FLAG = 'SEARCH_NAME_EVIDENCE_ADMISSION';
+
+// The in-process mark the product builder sets from the SQL's `name_evidence_admitted` column. A
+// Symbol, not a field: object spreads carry it through the pipeline, but JSON serialisation drops
+// it, so it can never leak into a public response (review of #2230 found the field in 5/78).
+const NAME_EVIDENCE_ADMITTED = Symbol.for('pivota.search.nameEvidenceAdmitted');
 
 // At most this many catalog rows may carry every query token. Absolute, from the census above;
 // revisit as the catalog grows (it is ~0.1% of serving rows today).
@@ -94,6 +100,7 @@ function queryDistinctiveTokens(queryText, hardConstraints = null) {
 
 module.exports = {
   FLAG,
+  NAME_EVIDENCE_ADMITTED,
   IDENTITY_ACCENTED,
   IDENTITY_FOLDED,
   MAX_CARRIERS,

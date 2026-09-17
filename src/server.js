@@ -17689,7 +17689,7 @@ function buildCanonicalChainMainlineProduct(row) {
     product_id: productId,
     merchant_id: merchantId,
     // Set only by the canonical SQL's name-evidence arm (searchNameEvidence.js).
-    ...(row.name_evidence_admitted === true ? { name_evidence_admitted: true } : {}),
+    ...(row.name_evidence_admitted === true ? { [searchNameEvidence.NAME_EVIDENCE_ADMITTED]: true } : {}),
     merchant_name: firstNonEmptyString(row.merchant_name, brand, merchantId),
     platform: firstNonEmptyString(row.platform, row.merchant_primary_platform, merchantId === EXTERNAL_SEED_MERCHANT_ID ? EXTERNAL_SEED_PLATFORM : 'catalog'),
     platform_product_id: sourceProductId || productId,
@@ -18456,10 +18456,11 @@ function getSearchQualityContractHardConstraintResult(product = {}, contract = n
     }
     // NAME-EVIDENCE ADMISSION (src/services/searchNameEvidence.js): the guessed category must
     // not veto a row the canonical SQL admitted on its own name -- the SQL is the only
-    // authority and MARKS those rows (`name_evidence_admitted`), so this reads the mark and
+    // authority and MARKS those rows (NAME_EVIDENCE_ADMITTED, from its `name_evidence_admitted`
+    // column), so this reads the mark and
     // never re-derives it. Only a category rejection is waived; brand, exact-anchor,
     // accessory, merchandise, strict-lipstick and fragrance-free reasons all stand.
-    if (categoryRejected && product.name_evidence_admitted === true && searchNameEvidence.nameEvidenceAdmissionEnabled()) {
+    if (categoryRejected && product[searchNameEvidence.NAME_EVIDENCE_ADMITTED] === true && searchNameEvidence.nameEvidenceAdmissionEnabled()) {
       categoryRejected = false;
       categoryWaivedByNameEvidence = true;
     }
@@ -18581,7 +18582,8 @@ function buildSearchQualityTierCounts(products = [], contract = null, queryText 
     external_seed_count: 0,
     hard_constraint_pass_count: 0,
     hard_constraint_reject_count: 0,
-    category_waived_by_name_evidence_count: 0,
+    // Present only while the flag is on, so flag-off responses are byte-for-byte unchanged.
+    ...(searchNameEvidence.nameEvidenceAdmissionEnabled() ? { category_waived_by_name_evidence_count: 0 } : {}),
     serving_eligible_count: 0,
     missing_image_count: 0,
     invalid_price_count: 0,
@@ -22180,7 +22182,7 @@ async function searchBeautyExternalSeedProductsMainline({
           external_seed_count: 0,
           hard_constraint_pass_count: 0,
           hard_constraint_reject_count: 0,
-          category_waived_by_name_evidence_count: 0,
+          ...(searchNameEvidence.nameEvidenceAdmissionEnabled() ? { category_waived_by_name_evidence_count: 0 } : {}),
           serving_eligible_count: 0,
           missing_image_count: 0,
           invalid_price_count: 0,
@@ -41817,7 +41819,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               external_seed_count: 0,
               hard_constraint_pass_count: 0,
               hard_constraint_reject_count: 0,
-              category_waived_by_name_evidence_count: 0,
+              ...(searchNameEvidence.nameEvidenceAdmissionEnabled() ? { category_waived_by_name_evidence_count: 0 } : {}),
               serving_eligible_count: 0,
               missing_image_count: 0,
               invalid_price_count: 0,

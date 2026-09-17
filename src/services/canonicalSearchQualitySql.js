@@ -4,6 +4,7 @@ const { createHash } = require('crypto');
 const reviewedAliases = require('../../data/beauty/meitu_brand_aliases.json');
 const { normalizeBrandText } = require('../findProductsMulti/brandLexicon');
 const { MAX_CARRIERS, nameEvidenceAdmissionEnabled, queryDistinctiveTokens } = require('./searchNameEvidence');
+const { queryWantsMultiProductSet } = require('./beautyRelevanceGate');
 
 // Normalize common Latin accents and middle-dot styling on both query and row identity.
 // This is not a general Unicode transliterator; reviewed aliases cover alternate spellings.
@@ -156,7 +157,28 @@ function buildCanonicalSearchQualitySql({ contract, params, categoryPredicate, d
       // Counted ONCE per statement (a materialised CTE), over every catalog row -- serving or
       // not, so the count can only be conservative.
       const cteSql = `name_evidence_carriers AS MATERIALIZED (\n      SELECT count(*) AS n FROM catalog_products np WHERE ${carriesAll('np')}\n    )`;
-      const admitted = `(${carriesAll('p')} AND (SELECT n FROM name_evidence_carriers) <= ${bind(MAX_CARRIERS)} AND NOT (${categoryWhere}))`;
+      // A MULTI-PRODUCT SET is never admitted on name evidence unless the query asks for one.
+      // Review of #2230: "matte lipstick" admitted a lipstick-and-liner gift set at #1. A set
+      // carries its components' names, so name evidence says nothing about whether it is the
+      // product asked for. Detected the way the rest of search detects sets -- the title/type
+      // words of MULTI_PRODUCT_TITLE_PATTERN (beautyRelevanceGate.js), the beauty/sets tree, and
+      // the enrichment payload's product family -- and read only for rows that already carry
+      // every token (the CASE), so the payload is never detoasted for the rest.
+      const setExclusion = queryWantsMultiProductSet(contract.effective_query)
+        ? 'TRUE'
+        : `NOT (${identitySql("concat_ws(' ', p.title, p.product_type)")} ~ ${bind('(^| )(sets?|kits?|bundles?|duos?|trios?|collections?|discovery|value pack|pack of|[0-9]+ ?(pc|pcs|piece)s?|routines?)($| )|套装|套裝|礼盒|禮盒')})
+          AND lower(coalesce(p.category_path, '')) NOT LIKE 'beauty/sets%'
+          AND lower(COALESCE(p.product_payload->>'external_seed_product_family', p.product_payload->>'product_family', p.product_payload->'external_seed_product_kind'->>'family', '')) <> 'set_or_collection'`;
+      // EVALUATION ORDER IS THE COST CONTROL, so it is forced with CASE rather than left to AND:
+      //  1. the carrier count -- one value per statement (the CTE). For a generic query (count > 10,
+      //     most traffic) every row stops here, and the per-row name match below never runs.
+      //     Review of #2230: `(category) OR (carriesAll(p) AND ...)` forced the name match on every
+      //     row outside the category for EVERY armed query.
+      //  2. the name match (prefilter, then the regex);
+      //  3. the set exclusion (may read product_payload) and the category clause.
+      // NULL-safe: a row whose category clause evaluates NULL (e.g. a NULL category_path) is not
+      // admitted -- `NOT NULL` is NULL, which WHERE and the rank CASE both treat as false.
+      const admitted = `(CASE WHEN (SELECT n FROM name_evidence_carriers) <= ${bind(MAX_CARRIERS)} THEN (CASE WHEN ${carriesAll('p')} THEN ((${setExclusion}) AND NOT (${categoryWhere})) ELSE FALSE END) ELSE FALSE END)`;
       where = `((${categoryWhere}) OR ${admitted})`;
       nameEvidence = {
         cteSql,
@@ -166,7 +188,7 @@ function buildCanonicalSearchQualitySql({ contract, params, categoryPredicate, d
         // so the LIMIT keeps it -- and the caller raises the LIMIT by MAX_CARRIERS, the most
         // rows that can be admitted, so no row the category already recalls is displaced.
         // (Review of #2230: with a +95 inside the SAME limit, each admitted row evicted the
-        // lowest in-category row, and at the prod candidate limit of 48 that removed rows that
+        // lowest in-category row, and at the route's candidate cap of 200 that removed rows that
         // were served.) +95 stays below an exact title (100) and source id (105).
         rankSql: `CASE WHEN ${admitted} THEN 95 ELSE 0 END +`,
         extraCandidates: MAX_CARRIERS,

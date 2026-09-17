@@ -3,7 +3,8 @@
 // Unit tests for name-evidence admission (src/services/searchNameEvidence.js).
 //
 // The canonical SQL is the only authority on WHICH rows are admitted, and marks them
-// `name_evidence_admitted`; tests/integration/search_name_evidence_admission_postgres.test.js
+// `name_evidence_admitted` (carried in-process as NAME_EVIDENCE_ADMITTED);
+// tests/integration/search_name_evidence_admission_postgres.test.js
 // runs that SQL on real PostgreSQL. These tests cover what the JS layers do with the mark, and
 // the query-token contract both sides share.
 
@@ -25,7 +26,7 @@ const JSM = {
   category: 'makeup', category_path: ['beauty', 'makeup'], catalog_category_path: 'beauty/makeup', price: 28.8,
   currency: 'SGD', image_url: 'https://cdn.example.com/j.jpg', source: 'canonical_chain', search_recall_source: 'canonical_chain',
 };
-const ADMITTED = { ...JSM, name_evidence_admitted: true };
+const ADMITTED = { ...JSM, [ne.NAME_EVIDENCE_ADMITTED]: true };
 
 function withFlag(value, fn) {
   const prior = process.env[ne.FLAG];
@@ -34,6 +35,13 @@ function withFlag(value, fn) {
 }
 
 // --- the query-token contract ---------------------------------------------------
+
+test('the admitted mark never serialises: it cannot leak into a public response', () => {
+  const marked = { ...ADMITTED };
+  assert.equal(marked[ne.NAME_EVIDENCE_ADMITTED], true, 'spreads carry it');
+  assert.equal(JSON.stringify(marked).includes('admitted'), false);
+  assert.equal(Object.keys(marked).includes('name_evidence_admitted'), false);
+});
 
 test('the flag is off unless explicitly on', () => {
   assert.equal(ne.nameEvidenceAdmissionEnabled({}), false);
@@ -184,14 +192,27 @@ test('ranker: the category and family guesses do not reject a marked row', () =>
   // category guess (families empty)
   const jsm = rows.find((r) => r.product_id === 'acceptance_jsm_lip_pression_metal_serum_gloss');
   assert.equal(withFlag('on', () => score({ ...jsm }, 'lip gloss')).relevant, false, 'premise: unmarked it is rejected');
-  assert.equal(withFlag('on', () => score({ ...jsm, name_evidence_admitted: true }, 'lip gloss')).relevant, true);
+  assert.equal(withFlag('on', () => score({ ...jsm, [ne.NAME_EVIDENCE_ADMITTED]: true }, 'lip gloss')).relevant, true);
   // family guess: a sun mist the catalog files under toner, searched by its title
   const mist = rows.find((r) => r.product_id === 'sig_f15d35090db822cba12e633b1eca7933');
   assert.equal(withFlag('on', () => score({ ...mist }, mist.title)).relevant, false, 'premise: unmarked it is rejected');
-  assert.equal(withFlag('on', () => score({ ...mist, name_evidence_admitted: true }, mist.title)).relevant, true);
+  assert.equal(withFlag('on', () => score({ ...mist, [ne.NAME_EVIDENCE_ADMITTED]: true }, mist.title)).relevant, true);
 });
 
 // --- contraindications: surface rules skipped, SAFETY rules never ----------------------------
+
+test('ranker: a safety contraindication rejects a marked row at the ranker call site, not only in isolation', () => {
+  // Review of #2230: the safety tests call isBeautyProductContraindicatedForQuery directly, so a
+  // ranker that skipped the call for admitted rows passed them. This goes through the ranker with
+  // a row whose category IS waived.
+  const query = 'fragrance free moisturizer';
+  const product = { ...ADMITTED, product_id: 'f', title: 'Silk Cream', product_type: 'Cream',
+    description: 'Ingredients: aqua, linalool, limonene',
+    category_path: ['beauty', 'makeup', 'lip'], catalog_category_path: 'beauty/makeup/lip' };
+  const gateResult = withFlag('on', () => gate({ ...product }, contractFor(query), query));
+  assert.equal(gateResult.category_waived_by_name_evidence, true, 'premise: the category is waived');
+  assert.equal(withFlag('on', () => score({ ...product }, query)).relevant, false);
+});
 
 test('contraindications: a marked row skips the SURFACE rules', () => {
   const lip = { title: 'LIP-PRESSION Metal Serum Gloss', product_type: 'makeup' };
