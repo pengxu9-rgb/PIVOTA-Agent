@@ -1,8 +1,8 @@
 {
   "_about": [
-    "Search acceptance set. Each case runs the real contract builder and the real hard-constraint gate over tests/acceptance/fixtures/serving_rows_2026_09_16.json, treating a safe-empty contract as serving nothing.",
+    "Search acceptance set. Each case computes the SERVED list for its query over tests/acceptance/fixtures/serving_rows_2026_09_16.json through the same rankAndServeBeautyRecallProducts the route calls (contract, effective query, multi-family relaxation, scoring with hard constraints, ranking, dedupe, serving gate). A safe-empty contract serves nothing.",
     "status \"pass\": must pass. status \"known_fail\": must still FAIL, with a reason and what tracks it. A known_fail that starts passing fails the suite until it is promoted to \"pass\" in the same change -- so every improvement is recorded, and nothing regresses silently.",
-    "Layer: gate + contract only. Recall SQL, seed lane and ranking are exercised by scripts/acceptance/live_search_acceptance.cjs against the deployed gateway.",
+    "Layer: everything after recall. Canonical SQL recall, the seed lane, budget/currency filters and paging are exercised by scripts/acceptance/live_search_acceptance.cjs against the deployed gateway.",
     "Never flip a status to make a build green without the change that earned it.",
     "Offline `status` and live `live.status` are separate: passing the gate offline does not mean the deployed gateway returns the product. Promote a live status only from a live report."
   ],
@@ -681,7 +681,9 @@
         "kind": "target_eligible",
         "target": "sig_2a7eb9e8b4e72fbd0b9d92fed77fc672"
       },
-      "status": "pass"
+      "status": "known_fail",
+      "reason": "passes the hard-constraint gate, then the ranker drops it with no published reason (relevant:false, score -100: a contraindication/surface rule) -- the silent ranker rejection the 2026-09-16 gate census measured",
+      "tracked_by": "plan step 3: publish ranker rejection reasons"
     },
     {
       "id": "self_sig_51ab43aba24edfcfd9fa5feb4a9e5949",
@@ -866,7 +868,8 @@
       "merchant_product_json": "https://jsmbeauty.sg/products/lip-pression-metal-serum-gloss.json",
       "url_handle": "lip-pression-metal-serum-gloss",
       "variant_id": "50856826536257",
-      "sku": "32168999"
+      "sku": "32168999",
+      "brand": "JUNGSAEMMOOL"
     }
   },
   "live_resolve_cases": [

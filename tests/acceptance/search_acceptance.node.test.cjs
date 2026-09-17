@@ -69,10 +69,42 @@ test('the ratchet comparison detects a removal, an addition and an untracked que
     { 'SG|a': ['1', '2'], 'SG|gone': ['9'] },
     { 'SG|a': ['2', '3'], 'SG|new': ['4'] },
   );
-  assert.deepEqual(diff.removals, [{ query: 'SG|a', product_id: '1' }]);
+  assert.deepEqual(diff.removals, [
+    { query: 'SG|a', product_id: '1' },
+    // Untracking a query is a removal of every row it protected, not a quiet exit.
+    { query: 'SG|gone', product_id: '9', reason: 'query_no_longer_tracked' },
+  ]);
   assert.deepEqual(diff.additions, [{ query: 'SG|a', product_id: '3' }]);
   assert.deepEqual(diff.missingQueries, ['SG|gone']);
   assert.deepEqual(diff.untracked, ['SG|new']);
+});
+
+test('the updater refuses to untrack a query without an approved reason', () => {
+  // Review of #2228: deleting a case from cases.json and regenerating dropped its rows from
+  // the baseline with exit 0 and nothing logged.
+  const fs2 = require('node:fs');
+  const os = require('node:os');
+  const path = require('node:path');
+  const { main } = require('../../scripts/acceptance/update_eligible_baseline.cjs');
+  const baseline = JSON.parse(fs2.readFileSync(h.BASELINE_PATH, 'utf8'));
+  const tmp = fs2.mkdtempSync(path.join(os.tmpdir(), 'acceptance-baseline-'));
+  const tmpBaseline = path.join(tmp, 'baseline.json');
+  const extra = { ...baseline, eligible: { ...baseline.eligible, 'SG|a query nobody tracks any more': ['sig_x'] } };
+  fs2.writeFileSync(tmpBaseline, JSON.stringify(extra));
+  const code = main([], { baselinePath: tmpBaseline, log: () => {}, error: () => {} });
+  assert.equal(code, 1, 'refused');
+  assert.equal(JSON.parse(fs2.readFileSync(tmpBaseline, 'utf8')).eligible['SG|a query nobody tracks any more'][0], 'sig_x', 'baseline untouched');
+});
+
+test('the served set is what the route serves: gate-admitted rows the serving gate or display dedupe removes are not served', () => {
+  // Review of #2228: the first harness stopped at the hard-constraint gate, and certified rows
+  // the route never returns. Each row below passes the gate for its own title.
+  for (const [id, stage] of [['ext_15bb55ab25ad4c0439ea7a85', 'serving_gate'], ['sig_d3be6c248d1758026506580f', 'display_dedupe_or_polish']]) {
+    const row = rows.find((r) => String(r.product_id) === id);
+    const { eligible, rejected } = h.evaluateQuery(row.title, 'SG', rows);
+    assert.equal(eligible.some((r) => String(r.product_id) === id), false, row.title);
+    assert.equal(rejected.get(id)[0], stage, `${row.title}: ${JSON.stringify(rejected.get(id))}`);
+  }
 });
 
 test('a safe-empty contract serves nothing, even though the gate function admits every row', () => {

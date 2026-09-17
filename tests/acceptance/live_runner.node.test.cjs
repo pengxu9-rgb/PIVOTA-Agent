@@ -43,6 +43,10 @@ test('a product is matched by its title or merchant handle, never by a shared wo
   assert.equal(live.matchesTarget({ title: 'x', canonical_url: 'https://jsmbeauty.sg/products/lip-pression-metal-serum-gloss?variant=1' }, TARGET), true);
   assert.equal(live.matchesTarget({ title: 'Serum Gloss Face Oil' }, TARGET), false);
   assert.equal(live.matchesTarget(VELY, TARGET), false);
+  // Review of #2228: supersets of the title or handle are different products.
+  assert.equal(live.matchesTarget({ title: 'LIP-PRESSION Metal Serum Gloss Set' }, TARGET), false);
+  assert.equal(live.matchesTarget({ title: 'x', canonical_url: 'https://jsmbeauty.sg/products/lip-pression-metal-serum-gloss-set' }, TARGET), false);
+  assert.equal(live.matchesTarget({ title: 'JUNGSAEMMOOL LIP-PRESSION Metal Serum Gloss' }, TARGET), true);
 });
 
 test('prices: UCP minor units, REST major units, currency mismatch and stale price all fail', () => {
@@ -53,6 +57,9 @@ test('prices: UCP minor units, REST major units, currency mismatch and stale pri
   assert.equal(live.comparePrice({ amount: 28.2, currency: 'SGD' }, merchant).ok, false, 'the reported stale price');
   assert.equal(live.comparePrice({ amount: 28.8, currency: 'USD' }, merchant).ok, false);
   assert.equal(live.comparePrice(null, merchant).ok, false);
+  assert.equal(live.comparePrice({ amount: 28.8, currency: null }, merchant).ok, false, 'an unlabelled price is not a match');
+  assert.equal(live.comparePrice({ amount: 28.8, currency: null }, { amount: 28.8, currency: null }).ok, false,
+    'two unlabelled prices are not a match either');
 });
 
 test('the reported state today: nothing found on either surface, and resolve empty -- known failures, no regressions', async () => {

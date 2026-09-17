@@ -21926,6 +21926,129 @@ function diagnosePromptInspect(inspect) {
   return 'recalled_not_served';
 }
 
+// Everything the beauty mainline does to recalled rows before budget/currency filters and
+// paging: score (which applies the search-quality hard constraints), rank, near-duplicate
+// collapse, display dedupe/polish, response hints and the serving-eligibility gate.
+//
+// Extracted from searchBeautyExternalSeedProductsMainline so the served set can be computed
+// OUTSIDE a request -- tests/acceptance runs it over production-sampled rows. A copy of these
+// steps in a test would drift from the route; one function cannot.
+function rankAndServeBeautyRecallProducts({
+  recallProducts = [],
+  queryText = '',
+  beautyIntent,
+  normalizedQuery,
+  queryTokens,
+  searchQualityEnforced = false,
+  searchQualityContractApplied = false,
+  effectiveSearchQualityContract = null,
+  creatorScoped = false,
+  metadata = {},
+  safeLimit = 20,
+} = {}) {
+  const scoreRejected = [];
+  const scored = recallProducts
+    .map((product) => {
+      const base = scoreBeautyExternalSeedProduct({
+        product,
+        queryText,
+        intent: beautyIntent,
+        normalizedQuery,
+        queryTokens,
+        searchQualityContract: searchQualityEnforced ? effectiveSearchQualityContract : null,
+      });
+      if (base.relevant !== true) {
+        scoreRejected.push({
+          product_id: firstNonEmptyString(product?.product_id, product?.id, product?.pivota_signature_id) || null,
+          title: firstNonEmptyString(product?.title, product?.name) || null,
+          source: firstNonEmptyString(product?.source, product?.search_recall_source, product?.catalog_source) || null,
+          reasons: Array.isArray(base.rejection_reasons) ? base.rejection_reasons : ['ranker_rejected'],
+        });
+      }
+      if (base.relevant === true && creatorScoped) {
+        const creatorOverlayScore = scoreBeautyCreatorCurationOverlay({
+          product,
+          queryText,
+          creatorId: metadata.creator_id,
+        });
+        if (creatorOverlayScore > 0) {
+          return {
+            ...base,
+            score: base.score + creatorOverlayScore,
+            creator_overlay_score: creatorOverlayScore,
+          };
+        }
+      }
+      return base;
+    })
+    .filter((row) => row.relevant === true)
+    .sort((left, right) => {
+      // Tier-first (token-relevance flag): rows carrying query vocabulary or a
+      // query-named active always rank above pure category-bucket filler. Flag
+      // off => every row defaults to tier 1 and this comparator is byte-identical
+      // to the historical score/title ordering.
+      if (PIVOT_BEAUTY_TOKEN_RELEVANCE_RANK_ENABLED) {
+        const leftTier = left.token_tier ?? 1;
+        const rightTier = right.token_tier ?? 1;
+        if (rightTier !== leftTier) return rightTier - leftTier;
+      }
+      if (right.score !== left.score) return right.score - left.score;
+      return String(left.product?.title || '').localeCompare(String(right.product?.title || ''));
+    });
+  const nearDupCollapse = PIVOT_BEAUTY_NEAR_DUP_COLLAPSE_ENABLED
+    ? collapseNearDuplicateScoredBeautyProducts(scored)
+    : null;
+  const rankedScored = nearDupCollapse ? nearDupCollapse.rows : scored;
+  const displayRankedProducts = polishBeautyProductRankingForDisplay(
+    dedupeBeautyProductsByDisplayKey(
+      rankedScored.map((row) => {
+        const creatorRank = creatorScoped
+          ? buildBeautyCreatorRankTelemetry({ overlayScore: row.creator_overlay_score || 0 })
+          : null;
+        const productForResponse = creatorRank
+          ? {
+              ...row.product,
+              creator_rank: creatorRank,
+            }
+          : row.product;
+        const compactProduct = compactBeautyMainlineProductForResponse(productForResponse, beautyIntent, queryText);
+        return searchQualityContractApplied
+          ? applySearchQualityContractResponseHints(compactProduct, effectiveSearchQualityContract, queryText)
+          : compactProduct;
+      }),
+    ),
+    queryText,
+    safeLimit,
+  );
+  const brandBrowseGateRequired = Boolean(beautyIntent.brandBrowse?.contract === 'brand_browse');
+  const searchQualityServingGateRequired = Boolean(
+    searchQualityEnforced &&
+      SEARCH_SERVING_QUALITY_HOLD_ENABLED &&
+      searchQualityContractApplied
+  );
+  const servingEligibilityGate = (searchQualityServingGateRequired || brandBrowseGateRequired)
+    ? filterSearchServingEligibleProducts(displayRankedProducts, {
+        queryText,
+        requireBeauty: true,
+      })
+    : {
+        products: displayRankedProducts,
+        rejected: [],
+        rejected_count: 0,
+        input_count: displayRankedProducts.length,
+      };
+  return {
+    scoreRejected,
+    scored,
+    rankedScored,
+    nearDupCollapse,
+    displayRankedProducts,
+    brandBrowseGateRequired,
+    searchQualityServingGateRequired,
+    servingEligibilityGate,
+  };
+}
+
 async function searchBeautyExternalSeedProductsMainline({
   search = {},
   metadata = {},
@@ -22272,98 +22395,28 @@ async function searchBeautyExternalSeedProductsMainline({
     searchQualityContractApplied ? effectiveSearchQualityContract : null,
     queryText,
   );
-  const scoreRejected = [];
-  const scored = recallProducts
-    .map((product) => {
-      const base = scoreBeautyExternalSeedProduct({
-        product,
-        queryText,
-        intent: beautyIntent,
-        normalizedQuery,
-        queryTokens,
-        searchQualityContract: searchQualityEnforced ? effectiveSearchQualityContract : null,
-      });
-      if (base.relevant !== true) {
-        scoreRejected.push({
-          product_id: firstNonEmptyString(product?.product_id, product?.id, product?.pivota_signature_id) || null,
-          title: firstNonEmptyString(product?.title, product?.name) || null,
-          source: firstNonEmptyString(product?.source, product?.search_recall_source, product?.catalog_source) || null,
-          reasons: Array.isArray(base.rejection_reasons) ? base.rejection_reasons : ['ranker_rejected'],
-        });
-      }
-      if (base.relevant === true && creatorScoped) {
-        const creatorOverlayScore = scoreBeautyCreatorCurationOverlay({
-          product,
-          queryText,
-          creatorId: metadata.creator_id,
-        });
-        if (creatorOverlayScore > 0) {
-          return {
-            ...base,
-            score: base.score + creatorOverlayScore,
-            creator_overlay_score: creatorOverlayScore,
-          };
-        }
-      }
-      return base;
-    })
-    .filter((row) => row.relevant === true)
-    .sort((left, right) => {
-      // Tier-first (token-relevance flag): rows carrying query vocabulary or a
-      // query-named active always rank above pure category-bucket filler. Flag
-      // off => every row defaults to tier 1 and this comparator is byte-identical
-      // to the historical score/title ordering.
-      if (PIVOT_BEAUTY_TOKEN_RELEVANCE_RANK_ENABLED) {
-        const leftTier = left.token_tier ?? 1;
-        const rightTier = right.token_tier ?? 1;
-        if (rightTier !== leftTier) return rightTier - leftTier;
-      }
-      if (right.score !== left.score) return right.score - left.score;
-      return String(left.product?.title || '').localeCompare(String(right.product?.title || ''));
-    });
-  const nearDupCollapse = PIVOT_BEAUTY_NEAR_DUP_COLLAPSE_ENABLED
-    ? collapseNearDuplicateScoredBeautyProducts(scored)
-    : null;
-  const rankedScored = nearDupCollapse ? nearDupCollapse.rows : scored;
-  if (nearDupCollapse) canonicalTelemetry.near_dup_collapsed_count = nearDupCollapse.collapsed_count;
-  const displayRankedProducts = polishBeautyProductRankingForDisplay(
-    dedupeBeautyProductsByDisplayKey(
-      rankedScored.map((row) => {
-        const creatorRank = creatorScoped
-          ? buildBeautyCreatorRankTelemetry({ overlayScore: row.creator_overlay_score || 0 })
-          : null;
-        const productForResponse = creatorRank
-          ? {
-              ...row.product,
-              creator_rank: creatorRank,
-            }
-          : row.product;
-        const compactProduct = compactBeautyMainlineProductForResponse(productForResponse, beautyIntent, queryText);
-        return searchQualityContractApplied
-          ? applySearchQualityContractResponseHints(compactProduct, effectiveSearchQualityContract, queryText)
-          : compactProduct;
-      }),
-    ),
+  const {
+    scoreRejected,
+    rankedScored,
+    nearDupCollapse,
+    displayRankedProducts,
+    brandBrowseGateRequired,
+    searchQualityServingGateRequired,
+    servingEligibilityGate,
+  } = rankAndServeBeautyRecallProducts({
+    recallProducts,
     queryText,
+    beautyIntent,
+    normalizedQuery,
+    queryTokens,
+    searchQualityEnforced,
+    searchQualityContractApplied,
+    effectiveSearchQualityContract,
+    creatorScoped,
+    metadata,
     safeLimit,
-  );
-  const brandBrowseGateRequired = Boolean(beautyIntent.brandBrowse?.contract === 'brand_browse');
-  const searchQualityServingGateRequired = Boolean(
-    searchQualityEnforced &&
-      SEARCH_SERVING_QUALITY_HOLD_ENABLED &&
-      searchQualityContractApplied
-  );
-  const servingEligibilityGate = (searchQualityServingGateRequired || brandBrowseGateRequired)
-    ? filterSearchServingEligibleProducts(displayRankedProducts, {
-        queryText,
-        requireBeauty: true,
-      })
-    : {
-        products: displayRankedProducts,
-        rejected: [],
-        rejected_count: 0,
-        input_count: displayRankedProducts.length,
-      };
+  });
+  if (nearDupCollapse) canonicalTelemetry.near_dup_collapsed_count = nearDupCollapse.collapsed_count;
   const budgetFilter = budgetConstraint
     ? filterFindProductsMultiDirectProductsByBudget(budgetConstraint, servingEligibilityGate.products)
     : null;
@@ -53859,6 +53912,11 @@ module.exports._debug = {
   shouldAllowPublishedPdpMissingQualitySnapshot,
   fetchPdpServingEligibilityFromDb,
   getSearchQualityContractHardConstraintResult,
+  rankAndServeBeautyRecallProducts,
+  isBeautySearchQualityContractApplied,
+  getSearchQualityContractMode: () => SEARCH_QUALITY_CONTRACT_V1_MODE,
+  relaxSearchQualityContractForMultiFamilyBeautyIntent,
+  tokenizeSearchTextForMatch,
   isSearchQualityContractSafeEmptyContract,
   buildSearchQualityTierCounts,
   projectSearchQualityContractForMetadata,

@@ -32,19 +32,24 @@ const PRICE_TOLERANCE = 0.01;
 function normalizeTitle(value) {
   return String(value || '')
     .toLowerCase()
+    .replace(/^\s*\[[^\]]*\]\s*/, '')
     .replace(/[^\p{L}\p{N}]+/gu, ' ')
     .trim();
 }
 
-// Does a served product describe the live target? The whole normalised target title
-// contained in the served title (so "[BRAND] <title>" matches), or the merchant handle in
-// any URL field.
+// Does a served product describe the live target? Its title EQUALS the target title after
+// normalisation, allowing only a leading "[BRAND]" or the brand name before it; or a URL names
+// the merchant handle exactly. Containment is not enough: "<title> Set" or a "<handle>-set"
+// URL is a different product.
 function matchesTarget(product, target) {
   if (!product || typeof product !== 'object') return false;
+  const want = normalizeTitle(target.title);
   const title = normalizeTitle(product.title || product.name);
-  if (title && title.includes(normalizeTitle(target.title))) return true;
+  const brand = normalizeTitle(target.brand || '');
+  if (title && (title === want || (brand && title === `${brand} ${want}`))) return true;
+  const handle = new RegExp(`/products/${target.url_handle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:$|[/?#])`);
   const urls = [product.url, product.canonical_url, product.destination_url, product.external_url];
-  return urls.some((u) => typeof u === 'string' && u.includes(`/products/${target.url_handle}`));
+  return urls.some((u) => typeof u === 'string' && handle.test(u));
 }
 
 // The served price of a matched product, as { amount, currency } in MAJOR units.
@@ -72,7 +77,10 @@ function merchantVariantPrice(productJson, target) {
 
 function comparePrice(served, merchant) {
   if (!served || !merchant) return { ok: false, why: !served ? 'no served price' : 'no merchant price' };
-  if (merchant.currency && served.currency && merchant.currency !== served.currency) {
+  // A served price without a currency is not a match: 28.80 USD and 28.80 SGD are
+  // different prices, and an unlabelled one cannot be told apart.
+  if (!served.currency) return { ok: false, why: 'served price has no currency' };
+  if (merchant.currency && merchant.currency !== served.currency) {
     return { ok: false, why: `currency ${served.currency} != merchant ${merchant.currency}` };
   }
   const delta = Math.abs(served.amount - merchant.amount);
