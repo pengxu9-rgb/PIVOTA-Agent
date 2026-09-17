@@ -1824,9 +1824,6 @@ describe('discovery feed service', () => {
   });
 
   test('brand-scoped browse prefers direct brand pool over generic internal and external expansion', async () => {
-    // Exercises products_search on a brand-scoped page, which is off by default (see
-    // isBrandScopedProductsSearchEnabled).
-    process.env.DISCOVERY_PRODUCTS_SEARCH_BRAND_SCOPED_ENABLED = 'true';
     process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL = 'http://discovery-catalog.test';
     delete process.env.PIVOTA_BACKEND_BASE_URL;
     delete process.env.PIVOTA_API_BASE;
@@ -2238,72 +2235,7 @@ describe('discovery feed service', () => {
     }
   });
 
-  test('brand-scoped browse does not call products_search by default; the brand direct pool serves the page', async () => {
-    process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL = 'http://discovery-catalog.test';
-    process.env.DISCOVERY_PRODUCTS_SEARCH_API_KEY = 'bridge-key';
-    delete process.env.DISCOVERY_PRODUCTS_SEARCH_BRAND_SCOPED_ENABLED;
-    delete process.env.DATABASE_URL;
-    const axiosGetSpy = jest.spyOn(axios, 'get');
-    const brandDirectProducts = Array.from({ length: 30 }, (_, index) =>
-      makeProduct({
-        merchant_id: 'external_seed',
-        product_id: `fenty_direct_${index + 1}`,
-        title: `Fenty Direct Product ${index + 1}`,
-        brand: 'Fenty Beauty',
-        category: 'Lipstick',
-        product_type: 'Lipstick',
-      }),
-    );
-    const internalSpy = jest.fn(async () => []);
-    const externalSpy = jest.fn(async () => []);
-    const request = {
-      surface: 'browse_products',
-      page: 1,
-      limit: 12,
-      debug: true,
-      scope: { brand_names: ['Fenty Beauty'] },
-      context: { locale: 'en-US' },
-    };
-    const options = {
-      providerOverrides: { internal_catalog: internalSpy, external_seeds: externalSpy },
-      brandFallbackFetchInternalCandidatesFn: jest.fn(async () => []),
-      brandFallbackFetchExternalCandidatesFn: jest.fn(async ({ limit }) => brandDirectProducts.slice(0, limit)),
-    };
-
-    const response = await getDiscoveryFeed(request, options);
-
-    expect(axiosGetSpy.mock.calls.filter(([url]) => String(url).includes('/agent/v1/products/search'))).toHaveLength(0);
-    expect(internalSpy).not.toHaveBeenCalled();
-    expect(externalSpy).not.toHaveBeenCalled();
-    expect(response.products.length).toBeGreaterThan(0);
-    expect(response.products.every((product) => String(product.product_id).startsWith('fenty_direct_'))).toBe(true);
-    expect(response.metadata.provider_breakdown).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          provider: 'products_search',
-          attempted: true,
-          skipped: true,
-          skip_reason: 'brand_direct_pool_supersedes_brand_expansion',
-        }),
-      ]),
-    );
-
-    // The switch restores the call on the same request.
-    _internals.resetBrowsePoolCache();
-    _internals.resetBrandDirectPoolCache();
-    process.env.DISCOVERY_PRODUCTS_SEARCH_BRAND_SCOPED_ENABLED = 'true';
-    nock('http://discovery-catalog.test').persist().get('/agent/v1/products/search').query(true).reply(200, { products: [] });
-    const enabled = await getDiscoveryFeed(request, options);
-    expect(axiosGetSpy.mock.calls.filter(([url]) => String(url).includes('/agent/v1/products/search')).length).toBeGreaterThan(0);
-    expect(enabled.metadata.provider_breakdown).toEqual(
-      expect.arrayContaining([expect.objectContaining({ provider: 'products_search', skipped: false })]),
-    );
-  });
-
   test('brand-scoped browse keeps total stable across page-size budgets', async () => {
-    // Exercises products_search on a brand-scoped page, which is off by default (see
-    // isBrandScopedProductsSearchEnabled).
-    process.env.DISCOVERY_PRODUCTS_SEARCH_BRAND_SCOPED_ENABLED = 'true';
     process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL = 'http://discovery-catalog.test';
     delete process.env.PIVOTA_BACKEND_BASE_URL;
     delete process.env.PIVOTA_API_BASE;
@@ -2746,10 +2678,106 @@ describe('discovery feed service', () => {
     expect(recommendCalls).toBe(0);
   });
 
+  describe('products_search on a brand-only page whose brand pool is empty', () => {
+    const productsSearchCalls = (spy) =>
+      spy.mock.calls.filter(([url]) => String(url).includes('/agent/v1/products/search')).length;
+    const brandOnlyRequest = (extra = {}) => ({
+      surface: 'browse_products',
+      page: 1,
+      limit: 12,
+      debug: true,
+      scope: { brand_names: ['Meebak'] },
+      query: { text: 'Meebak' },
+      context: { locale: 'en-US' },
+      ...extra,
+    });
+    const setUpSearch = () => {
+      process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL = 'http://discovery-catalog.test';
+      process.env.DISCOVERY_PRODUCTS_SEARCH_API_KEY = 'bridge-key';
+      delete process.env.DISCOVERY_PRODUCTS_SEARCH_BRAND_SCOPED_ENABLED;
+      delete process.env.DATABASE_URL;
+      nock('http://discovery-catalog.test').persist().get('/agent/v1/products/search').query(true).reply(200, { products: [] });
+      return jest.spyOn(axios, 'get');
+    };
+    const products = (n, prefix) =>
+      Array.from({ length: n }, (_, index) =>
+        makeProduct({ merchant_id: 'external_seed', product_id: `${prefix}_${index + 1}`, title: `Meebak ${prefix} ${index + 1}`,
+          brand: 'Meebak', category: 'Serum', product_type: 'Serum' }));
+
+    test('a clean empty pool skips products_search and reports the brand as having no products', async () => {
+      const axiosGetSpy = setUpSearch();
+      const response = await getDiscoveryFeed(brandOnlyRequest(), {
+        brandFallbackFetchInternalCandidatesFn: async () => [],
+        brandFallbackFetchExternalCandidatesFn: async () => [],
+      });
+      expect(productsSearchCalls(axiosGetSpy)).toBe(0);
+      expect(response.products).toEqual([]);
+      expect(response.metadata.brand_empty_reason).toBe('no_matching_brand_candidates');
+      expect(response.metadata.route_health.brand_empty_reason).toBe('no_matching_brand_candidates');
+      expect(response.metadata.provider_breakdown).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ provider: 'products_search', attempted: true, skipped: true, skip_reason: 'brand_direct_pool_empty' }),
+        ]),
+      );
+    });
+
+    test('a pool whose fetcher swallowed a failure still calls products_search', async () => {
+      const axiosGetSpy = setUpSearch();
+      await getDiscoveryFeed(brandOnlyRequest(), {
+        brandFallbackFetchInternalCandidatesFn: async ({ failures }) => {
+          failures.push('canonical');
+          return [];
+        },
+        brandFallbackFetchExternalCandidatesFn: async () => [],
+      });
+      expect(productsSearchCalls(axiosGetSpy)).toBeGreaterThan(0);
+    });
+
+    test('a pool that threw still calls products_search', async () => {
+      const axiosGetSpy = setUpSearch();
+      await getDiscoveryFeed(brandOnlyRequest(), {
+        brandFallbackFetchInternalCandidatesFn: async () => [],
+        brandFallbackFetchExternalCandidatesFn: async () => {
+          throw new Error('pool timeout');
+        },
+      });
+      expect(productsSearchCalls(axiosGetSpy)).toBeGreaterThan(0);
+    });
+
+    test('brand plus other query text still calls products_search: the pool is not the primary source', async () => {
+      const axiosGetSpy = setUpSearch();
+      await getDiscoveryFeed(brandOnlyRequest({ query: { text: 'vitamin c serum' } }), {
+        brandFallbackFetchInternalCandidatesFn: async () => [],
+        brandFallbackFetchExternalCandidatesFn: async () => [],
+      });
+      expect(productsSearchCalls(axiosGetSpy)).toBeGreaterThan(0);
+    });
+
+    test('a brand pool with products never reaches products_search', async () => {
+      const axiosGetSpy = setUpSearch();
+      const response = await getDiscoveryFeed(brandOnlyRequest(), {
+        brandFallbackFetchInternalCandidatesFn: async () => [],
+        brandFallbackFetchExternalCandidatesFn: async ({ limit }) => products(20, 'direct').slice(0, limit),
+      });
+      expect(productsSearchCalls(axiosGetSpy)).toBe(0);
+      expect(response.metadata.candidate_source).toBe('brand_direct_primary');
+    });
+
+    test('DISCOVERY_PRODUCTS_SEARCH_BRAND_SCOPED_ENABLED=true calls it for a clean empty pool too', async () => {
+      const axiosGetSpy = setUpSearch();
+      process.env.DISCOVERY_PRODUCTS_SEARCH_BRAND_SCOPED_ENABLED = 'true';
+      const response = await getDiscoveryFeed(brandOnlyRequest(), {
+        brandFallbackFetchInternalCandidatesFn: async () => [],
+        brandFallbackFetchExternalCandidatesFn: async () => [],
+      });
+      expect(productsSearchCalls(axiosGetSpy)).toBeGreaterThan(0);
+      expect(response.metadata.provider_breakdown).toEqual(
+        expect.arrayContaining([expect.objectContaining({ provider: 'products_search', skipped: false })]),
+      );
+    });
+  });
+
   test('brand-scoped discovery returns empty brand results instead of recommendation fallback when brand pool times out', async () => {
-    // Exercises products_search on a brand-scoped page, which is off by default (see
-    // isBrandScopedProductsSearchEnabled).
-    process.env.DISCOVERY_PRODUCTS_SEARCH_BRAND_SCOPED_ENABLED = 'true';
     process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL = 'http://discovery-catalog.test';
     delete process.env.PIVOTA_BACKEND_BASE_URL;
     delete process.env.PIVOTA_API_BASE;
@@ -2780,7 +2808,11 @@ describe('discovery feed service', () => {
         },
       },
       {
-        brandFallbackFetchInternalCandidatesFn: async () => [],
+        // The brand pool really fails, as a statement timeout would: an empty pool is a different case
+        // (see the products_search tests below).
+        brandFallbackFetchInternalCandidatesFn: async () => {
+          throw new Error('canceling statement due to statement timeout');
+        },
         brandFallbackFetchExternalCandidatesFn: async () => [],
         brandFallbackRecommendFn: async () => {
           recommendCalls += 1;
@@ -3972,9 +4004,6 @@ describe('discovery feed service', () => {
   });
 
   test('brand-scoped browse skips supplemental providers once products_search already has enough primary brand candidates', async () => {
-    // Exercises products_search on a brand-scoped page, which is off by default (see
-    // isBrandScopedProductsSearchEnabled).
-    process.env.DISCOVERY_PRODUCTS_SEARCH_BRAND_SCOPED_ENABLED = 'true';
     process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL = 'http://discovery-catalog.test';
     process.env.PIVOTA_BACKEND_BASE_URL = 'http://wrong-backend.test';
     delete process.env.PIVOTA_API_BASE;
