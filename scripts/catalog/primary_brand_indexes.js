@@ -2,6 +2,7 @@
 const {normalizedBrandIdentitySql,CANONICAL_OWN_BRAND_SQL}=require('../../src/services/canonicalSearchQualitySql');
 const {SEED_OWN_BRAND_SQL}=require('../../src/services/seedSearchOfferScope');
 const {BRAND_SEED_SCAN_PREDICATE,seedBrandIdentitySql,seedDomainIdentitySql,seedTitleSql}=require('../../src/services/brandSeedScanSql');
+const {RELATIONSHIP_GRAPH_REF_KEY_COLUMNS,refKeyIndexExpressionSql,refKeyIndexName}=require('../../src/services/relationshipGraphRefKeySql');
 
 function primaryBrandIndexDefinitions() {
   const canonical=normalizedBrandIdentitySql(CANONICAL_OWN_BRAND_SQL.replace(/\bp\./g,''));
@@ -24,6 +25,10 @@ function primaryBrandIndexDefinitions() {
     // The same scan's underfill backfill matches title LIKE 'alias %'.
     {name:'idx_external_seeds_attached_title_prefix_v1',table:'external_product_seeds',
       expression:seedTitleSql(),accelerates:'title_prefix',opclass:'text_pattern_ops',predicate:BRAND_SEED_SCAN_PREDICATE},
+    // The relationship graph's ref resolution (catalogEntityResolution's
+    // resolveRelationshipGraphRefsToCanonicalEntities) probes each key column by equality.
+    ...RELATIONSHIP_GRAPH_REF_KEY_COLUMNS.map(column=>({name:refKeyIndexName(column),table:'catalog_products',
+      expression:refKeyIndexExpressionSql(column),accelerates:'ref_key_equality',predicate:null})),
   ].map(index=>{
     const scoped=index.table==='external_product_seeds'?'market, tool, ':'';
     const key=`(${index.expression})${index.opclass?' '+index.opclass:''}`;

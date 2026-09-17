@@ -2,6 +2,7 @@ const {primaryBrandIndexDefinitions,inspectReadiness}=require('../scripts/catalo
 const {buildBrandIdentityPredicate,CANONICAL_OWN_BRAND_SQL}=require('../src/services/canonicalSearchQualitySql');
 const {SEED_OWN_BRAND_SQL}=require('../src/services/seedSearchOfferScope');
 const {seedBrandIdentitySql,seedDomainIdentitySql,seedTitleSql,BRAND_SEED_SCAN_PREDICATE,IDENTITY_MAX_CHARS}=require('../src/services/brandSeedScanSql');
+const {RELATIONSHIP_GRAPH_REF_KEY_COLUMNS,REF_KEY_PREFIX_CHARS,refKeyIndexExpressionSql,refKeyIndexName,refKeyMatchSql}=require('../src/services/relationshipGraphRefKeySql');
 // An index only accelerates an expression it matches CHARACTER FOR CHARACTER, so every definition
 // must be tied back to the query that is meant to use it. `accelerates` names that query; a
 // definition carrying an unknown value fails here rather than quietly matching nothing.
@@ -42,6 +43,19 @@ const ACCELERATORS={
   title_prefix(index){
     expect(index.expression).toBe(seedTitleSql());
     expect(index.opclass).toBe('text_pattern_ops');
+  },
+  // The relationship graph ref resolution: one equality branch per key column, probing the bounded
+  // prefix and rechecking the full value.
+  ref_key_equality(index){
+    const column=RELATIONSHIP_GRAPH_REF_KEY_COLUMNS.find(c=>refKeyIndexName(c)===index.name);
+    expect(column).toBeTruthy();
+    expect(index.table).toBe('catalog_products');
+    expect(index.expression).toBe(refKeyIndexExpressionSql(column));
+    expect(index.expression).toBe(`left(lower(${column}), ${REF_KEY_PREFIX_CHARS})`);
+    const match=refKeyMatchSql(column,'cp_key','i.ref_key');
+    expect(match).toBe(`left(lower(cp_key.${column}), ${REF_KEY_PREFIX_CHARS}) = left(i.ref_key, ${REF_KEY_PREFIX_CHARS}) AND lower(cp_key.${column}) = i.ref_key`);
+    expect(index.opclass).toBeUndefined();
+    expect(index.predicate).toBeNull();
   },
 };
 test.each(primaryBrandIndexDefinitions())('index $name is bounded and exactly matches the query accelerator',index=>{
@@ -86,4 +100,11 @@ test('index readiness fails on missing/invalid indexes or unreviewed definitions
   expect(inspectReadiness(rows.map(row=>({...row,table_name:'wrong'})),{definitionsReviewed:true}).ready).toBe(false);
   expect(inspectReadiness([{...rows[0],indisvalid:false},rows[1]],{definitionsReviewed:true}).ready).toBe(false);
   expect(inspectReadiness(rows,{definitionsReviewed:true}).ready).toBe(true);
+});
+test('every relationship graph ref key column has exactly one index, and the resolver probes each',()=>{
+  const names=primaryBrandIndexDefinitions().filter(i=>i.accelerates==='ref_key_equality').map(i=>i.name);
+  expect(names).toEqual(RELATIONSHIP_GRAPH_REF_KEY_COLUMNS.map(refKeyIndexName));
+  const source=require('fs').readFileSync(require.resolve('../src/services/catalogEntityResolution'),'utf8');
+  expect(source).toContain("refKeyMatchSql(column, 'cp_key', 'i.ref_key')");
+  expect(source).not.toMatch(/OR lower\(cp\.(source_product_id|product_key|pivota_signature_id|canonical_url|pivota_canonical_url)\) = i\.ref_key/);
 });
