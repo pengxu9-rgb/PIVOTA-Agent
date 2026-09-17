@@ -16,8 +16,10 @@
 // PIVOTA_UCP_AGENT_API_KEY overrides the latter. Keys are read from the environment only
 // and never printed. Merchant truth comes from the public `/products/<handle>.json`.
 //
-// Exit code: 1 if a case marked "pass" fails, or a "known_fail" case now passes (promote
-// it in tests/acceptance/cases.json). --report-only always exits 0.
+// Exit code: 1 if a case whose `live.status` is "pass" fails, or a "known_fail" one now passes
+// (promote `live.status` in tests/acceptance/cases.json). --report-only always exits 0.
+// The offline `status` is not consulted: the gate passing offline says nothing about recall,
+// ranking or price on the deployed gateway.
 
 const fs = require('fs');
 const path = require('path');
@@ -138,7 +140,7 @@ async function runLive({ fetchImpl = fetch, env = process.env } = {}) {
       };
     }
     const pass = Object.values(perSurface).every((s) => s.found_in_top_n && s.price_ok);
-    results.push({ id: c.id, query: c.query, top_n: topN, status: c.status, pass, surfaces: perSurface });
+    results.push({ id: c.id, query: c.query, top_n: topN, status: c.live.status, pass, surfaces: perSurface });
   }
 
   for (const rc of CASES.live_resolve_cases || []) {

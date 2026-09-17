@@ -64,6 +64,14 @@ test('the reported state today: nothing found on either surface, and resolve emp
   assert.deepEqual(report.promotions, []);
 });
 
+test('live verdicts follow live.status, never the offline status', async () => {
+  // Offline, #2213 made the brand cases pass the gate. That proves nothing about the deployed
+  // gateway, so a live run that finds nothing must NOT report those cases as regressions.
+  assert.ok(cases.cases.some((c) => c.live && c.status === 'pass' && c.live.status === 'known_fail'), 'premise');
+  const report = await live.runLive({ fetchImpl: fakeFetch({ restProducts: [], ucpProducts: [] }), env: { PIVOTA_API_KEY: 'k' } });
+  assert.deepEqual(report.regressions, []);
+});
+
 test('found on both surfaces at the merchant price: every case passes and is due for promotion', async () => {
   const fetchImpl = fakeFetch({ restProducts: [JSM_REST], ucpProducts: [JSM_UCP],
     resolve: { resolved: true, candidates: [{ title: 'LIP-PRESSION Metal Serum Gloss' }] } });

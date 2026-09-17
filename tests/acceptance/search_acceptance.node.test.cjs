@@ -23,6 +23,11 @@ test('every case is well-formed, and every known failure says why and what track
       assert.ok(c.reason && c.reason.trim(), `${c.id}: a known failure needs a reason`);
       assert.ok(c.tracked_by && c.tracked_by.trim(), `${c.id}: a known failure needs tracked_by`);
     }
+    if (c.live) {
+      assert.ok(Number.isInteger(c.live.top_n) && c.live.top_n > 0, `${c.id}: live.top_n`);
+      assert.ok(['pass', 'known_fail'].includes(c.live.status), `${c.id}: live.status must be pass or known_fail`);
+      if (c.live.status === 'known_fail') assert.ok(c.live.reason && c.live.tracked_by, `${c.id}: live known failure needs reason and tracked_by`);
+    }
     if (c.expect && /target/.test(c.expect.kind)) {
       assert.ok(rows.some((r) => String(r.product_id) === c.expect.target), `${c.id}: target ${c.expect.target} is not in the fixture`);
     }

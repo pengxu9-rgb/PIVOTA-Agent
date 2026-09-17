@@ -2,9 +2,15 @@
  "_about": "No-deletion ratchet for tests/acceptance. Regenerate only with scripts/acceptance/update_eligible_baseline.cjs.",
  "approved_removals": [],
  "eligible": {
-  "SG|JUNG SAEM MOOL": [],
-  "SG|JUNGSAEMMOOL": [],
-  "SG|jung saem mool": [],
+  "SG|JUNG SAEM MOOL": [
+   "acceptance_jsm_lip_pression_metal_serum_gloss"
+  ],
+  "SG|JUNGSAEMMOOL": [
+   "acceptance_jsm_lip_pression_metal_serum_gloss"
+  ],
+  "SG|jung saem mool": [
+   "acceptance_jsm_lip_pression_metal_serum_gloss"
+  ],
   "SG|LIP-PRESSION Metal Serum Gloss": [
    "sig_0091ec42677c4a05b9247aa72294f469",
    "sig_03bf58ad5b10913b9506eaf1f2cc8e25",
@@ -64,7 +70,9 @@
    "sig_fe40620aee015e212d709a9a3f1c0e38",
    "sig_fee4c0448a2e371bdf80b96362371c67"
   ],
-  "SG|JUNG SAEM MOOL LIP-PRESSION Metal Serum Gloss": [],
+  "SG|JUNG SAEM MOOL LIP-PRESSION Metal Serum Gloss": [
+   "acceptance_jsm_lip_pression_metal_serum_gloss"
+  ],
   "SG|Metal Serum Gloss": [
    "sig_0091ec42677c4a05b9247aa72294f469",
    "sig_03bf58ad5b10913b9506eaf1f2cc8e25",
@@ -1347,7 +1355,9 @@
    "sig_6a40fd176d270798d75b34eb4e11740c",
    "sig_d34252a56e2c08832c89acbeacd6502f"
   ],
-  "SG|Olehenriksen": [],
+  "SG|Olehenriksen": [
+   "sig_0334be49d81498a2683cdabcb036392a"
+  ],
   "SG|Supergoop": [
    "sig_38efeaf77c64b58dfb7f956234009b5c",
    "sig_4201a0a267e8a01f64ad4921bdaa094e",

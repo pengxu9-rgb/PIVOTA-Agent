@@ -3,7 +3,8 @@
     "Search acceptance set. Each case runs the real contract builder and the real hard-constraint gate over tests/acceptance/fixtures/serving_rows_2026_09_16.json, treating a safe-empty contract as serving nothing.",
     "status \"pass\": must pass. status \"known_fail\": must still FAIL, with a reason and what tracks it. A known_fail that starts passing fails the suite until it is promoted to \"pass\" in the same change -- so every improvement is recorded, and nothing regresses silently.",
     "Layer: gate + contract only. Recall SQL, seed lane and ranking are exercised by scripts/acceptance/live_search_acceptance.cjs against the deployed gateway.",
-    "Never flip a status to make a build green without the change that earned it."
+    "Never flip a status to make a build green without the change that earned it.",
+    "Offline `status` and live `live.status` are separate: passing the gate offline does not mean the deployed gateway returns the product. Promote a live status only from a live report."
   ],
   "cases": [
     {
@@ -19,12 +20,14 @@
         "kind": "target_eligible",
         "target": "acceptance_jsm_lip_pression_metal_serum_gloss"
       },
-      "status": "known_fail",
-      "reason": "brand gate compares the spaced lexicon canonical \"jung saem mool\" to the stored solid \"JUNGSAEMMOOL\" by containment",
-      "tracked_by": "PIVOTA-Agent #2213",
+      "status": "pass",
       "live": {
-        "top_n": 20
-      }
+        "top_n": 20,
+        "status": "known_fail",
+        "reason": "E1-E4 returned nothing on 2026-09-15; not yet re-verified against a deployed gateway",
+        "tracked_by": "live run after the next gateway deploy"
+      },
+      "fixed_by": "PIVOTA-Agent #2213 (brand gate compact equality)"
     },
     {
       "id": "meitu_e1_brand_solid",
@@ -38,12 +41,14 @@
         "kind": "target_eligible",
         "target": "acceptance_jsm_lip_pression_metal_serum_gloss"
       },
-      "status": "known_fail",
-      "reason": "brand gate compares the spaced lexicon canonical \"jung saem mool\" to the stored solid \"JUNGSAEMMOOL\" by containment",
-      "tracked_by": "PIVOTA-Agent #2213",
+      "status": "pass",
       "live": {
-        "top_n": 20
-      }
+        "top_n": 20,
+        "status": "known_fail",
+        "reason": "E1-E4 returned nothing on 2026-09-15; not yet re-verified against a deployed gateway",
+        "tracked_by": "live run after the next gateway deploy"
+      },
+      "fixed_by": "PIVOTA-Agent #2213 (brand gate compact equality)"
     },
     {
       "id": "meitu_e1_brand_lowercase",
@@ -57,12 +62,14 @@
         "kind": "target_eligible",
         "target": "acceptance_jsm_lip_pression_metal_serum_gloss"
       },
-      "status": "known_fail",
-      "reason": "brand gate compares the spaced lexicon canonical \"jung saem mool\" to the stored solid \"JUNGSAEMMOOL\" by containment",
-      "tracked_by": "PIVOTA-Agent #2213",
+      "status": "pass",
       "live": {
-        "top_n": 20
-      }
+        "top_n": 20,
+        "status": "known_fail",
+        "reason": "E1-E4 returned nothing on 2026-09-15; not yet re-verified against a deployed gateway",
+        "tracked_by": "live run after the next gateway deploy"
+      },
+      "fixed_by": "PIVOTA-Agent #2213 (brand gate compact equality)"
     },
     {
       "id": "meitu_e2_full_name",
@@ -81,7 +88,10 @@
       "reason": "category_mismatch: query routed to beauty/skincare/treat/, row labelled beauty/makeup",
       "tracked_by": "plan step 2 name-evidence admission; step 4 relabel shallow rows",
       "live": {
-        "top_n": 5
+        "top_n": 5,
+        "status": "known_fail",
+        "reason": "E1-E4 returned nothing on 2026-09-15; not yet re-verified against a deployed gateway",
+        "tracked_by": "live run after the next gateway deploy"
       }
     },
     {
@@ -96,12 +106,14 @@
         "kind": "target_eligible",
         "target": "acceptance_jsm_lip_pression_metal_serum_gloss"
       },
-      "status": "known_fail",
-      "reason": "brand gate compares the spaced lexicon canonical \"jung saem mool\" to the stored solid \"JUNGSAEMMOOL\" by containment",
-      "tracked_by": "PIVOTA-Agent #2213",
+      "status": "pass",
       "live": {
-        "top_n": 5
-      }
+        "top_n": 5,
+        "status": "known_fail",
+        "reason": "E1-E4 returned nothing on 2026-09-15; not yet re-verified against a deployed gateway",
+        "tracked_by": "live run after the next gateway deploy"
+      },
+      "fixed_by": "PIVOTA-Agent #2213 (brand gate compact equality)"
     },
     {
       "id": "meitu_partial_name",
@@ -119,7 +131,10 @@
       "reason": "category_mismatch: query routed to beauty/skincare/treat/, row labelled beauty/makeup",
       "tracked_by": "plan step 2 name-evidence admission; step 4 relabel shallow rows",
       "live": {
-        "top_n": 5
+        "top_n": 5,
+        "status": "known_fail",
+        "reason": "E1-E4 returned nothing on 2026-09-15; not yet re-verified against a deployed gateway",
+        "tracked_by": "live run after the next gateway deploy"
       }
     },
     {
@@ -138,7 +153,10 @@
       "reason": "category_mismatch: query routed to beauty/skincare/treat/, row labelled beauty/makeup",
       "tracked_by": "plan step 2 name-evidence admission; step 4 relabel shallow rows",
       "live": {
-        "top_n": 5
+        "top_n": 5,
+        "status": "known_fail",
+        "reason": "E1-E4 returned nothing on 2026-09-15; not yet re-verified against a deployed gateway",
+        "tracked_by": "live run after the next gateway deploy"
       }
     },
     {
@@ -154,10 +172,13 @@
         "target": "acceptance_jsm_lip_pression_metal_serum_gloss"
       },
       "status": "known_fail",
-      "reason": "brand gate compares the spaced lexicon canonical \"jung saem mool\" to the stored solid \"JUNGSAEMMOOL\" by containment; category_mismatch: query routed to beauty/makeup/lip/, row labelled beauty/makeup",
-      "tracked_by": "PIVOTA-Agent #2213 + plan step 2 name-evidence admission; step 4 relabel shallow rows",
+      "reason": "category_mismatch: query routed to beauty/makeup/lip/, row labelled beauty/makeup",
+      "tracked_by": "plan step 2 name-evidence admission; step 4 relabel shallow rows",
       "live": {
-        "top_n": 20
+        "top_n": 20,
+        "status": "known_fail",
+        "reason": "E1-E4 returned nothing on 2026-09-15; not yet re-verified against a deployed gateway",
+        "tracked_by": "live run after the next gateway deploy"
       }
     },
     {
@@ -176,7 +197,10 @@
       "reason": "category_mismatch: query routed to beauty/makeup/lip/, row labelled beauty/makeup",
       "tracked_by": "plan step 2 name-evidence admission; step 4 relabel shallow rows",
       "live": {
-        "top_n": 20
+        "top_n": 20,
+        "status": "known_fail",
+        "reason": "E1-E4 returned nothing on 2026-09-15; not yet re-verified against a deployed gateway",
+        "tracked_by": "live run after the next gateway deploy"
       }
     },
     {
@@ -195,7 +219,10 @@
       "reason": "category_mismatch: query routed to beauty/makeup/lip/, row labelled beauty/makeup",
       "tracked_by": "plan step 2 name-evidence admission; step 4 relabel shallow rows",
       "live": {
-        "top_n": 20
+        "top_n": 20,
+        "status": "known_fail",
+        "reason": "E1-E4 returned nothing on 2026-09-15; not yet re-verified against a deployed gateway",
+        "tracked_by": "live run after the next gateway deploy"
       }
     },
     {
@@ -214,7 +241,10 @@
       "reason": "category_mismatch: query routed to beauty/makeup/lip/, row labelled beauty/makeup",
       "tracked_by": "plan step 2 name-evidence admission; step 4 relabel shallow rows",
       "live": {
-        "top_n": 20
+        "top_n": 20,
+        "status": "known_fail",
+        "reason": "E1-E4 returned nothing on 2026-09-15; not yet re-verified against a deployed gateway",
+        "tracked_by": "live run after the next gateway deploy"
       }
     },
     {
@@ -230,10 +260,13 @@
         "target": "acceptance_jsm_lip_pression_metal_serum_gloss"
       },
       "status": "known_fail",
-      "reason": "brand gate compares the spaced lexicon canonical \"jung saem mool\" to the stored solid \"JUNGSAEMMOOL\" by containment; category_mismatch: query routed to beauty/makeup/lip/, row labelled beauty/makeup",
-      "tracked_by": "PIVOTA-Agent #2213 + plan step 2 name-evidence admission; step 4 relabel shallow rows",
+      "reason": "category_mismatch: query routed to beauty/makeup/lip/, row labelled beauty/makeup",
+      "tracked_by": "plan step 2 name-evidence admission; step 4 relabel shallow rows",
       "live": {
-        "top_n": 20
+        "top_n": 20,
+        "status": "known_fail",
+        "reason": "E1-E4 returned nothing on 2026-09-15; not yet re-verified against a deployed gateway",
+        "tracked_by": "live run after the next gateway deploy"
       }
     },
     {
