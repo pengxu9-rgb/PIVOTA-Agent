@@ -3,6 +3,7 @@
 const { query: defaultQuery } = require('../db');
 const { activeCatalogProductSourceWhere } = require('./activeCatalogSourceSql');
 const { CANONICAL_ENTITY_GROUP_SQL_TAG } = require('./catalogEntityResolutionSqlTag');
+const { RELATIONSHIP_GRAPH_REF_KEY_COLUMNS, refKeyMatchSql } = require('./relationshipGraphRefKeySql');
 const productRelationshipGraphSources = require('../auroraBff/productRelationshipGraphSources');
 
 const relationshipGraphSourcesInternal = productRelationshipGraphSources.__internal || {};
@@ -528,6 +529,15 @@ async function resolveRelationshipGraphRefsToCanonicalEntities(refs = [], { quer
             raw.ordinality
           FROM unnest($1::text[]) WITH ORDINALITY AS raw(input_ref, ordinality)
         ),
+        -- One indexed equality branch per key column (see relationshipGraphRefKeySql.js). UNION keeps each
+        -- (ref, product) pair once, as the single OR'd join did; the wide row is read by primary key after.
+        ref_key_matches AS (
+          ${RELATIONSHIP_GRAPH_REF_KEY_COLUMNS.map((column) => `
+          SELECT i.ordinality, cp_key.product_key
+          FROM input_refs i
+          JOIN catalog_products cp_key ON ${refKeyMatchSql(column, 'cp_key', 'i.ref_key')}`).join(`
+          UNION`)}
+        ),
         catalog_matches AS (
           SELECT
             i.input_ref,
@@ -564,13 +574,9 @@ async function resolveRelationshipGraphRefsToCanonicalEntities(refs = [], { quer
             ), '') AS product_family_id,
             pgm.product_group_id,
             COALESCE(pgm.is_primary, false) AS is_primary
-          FROM input_refs i
-          JOIN catalog_products cp
-            ON lower(cp.source_product_id) = i.ref_key
-            OR lower(cp.product_key) = i.ref_key
-            OR lower(cp.pivota_signature_id) = i.ref_key
-            OR lower(cp.canonical_url) = i.ref_key
-            OR lower(cp.pivota_canonical_url) = i.ref_key
+          FROM ref_key_matches rkm
+          JOIN input_refs i ON i.ordinality = rkm.ordinality
+          JOIN catalog_products cp ON cp.product_key = rkm.product_key
           LEFT JOIN catalog_merchants cm ON cm.merchant_id = cp.merchant_id
           LEFT JOIN product_group_members pgm
             ON pgm.merchant_id = cp.merchant_id
