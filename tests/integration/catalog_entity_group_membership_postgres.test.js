@@ -25,7 +25,7 @@ suite('canonical catalog entity group membership on PostgreSQL', () => {
     await db.query(`
       CREATE TABLE catalog_products(product_key text PRIMARY KEY, merchant_id text, platform text, source_product_id text,
         title text, description text, brand text, category text, product_type text, category_path text, canonical_url text,
-        image_url text, product_payload jsonb, pdp_lifecycle_stage text, pivota_signature_id text, pivota_canonical_url text,
+        image_url text, product_payload jsonb, pdp_lifecycle_stage text, sync_status text, pivota_signature_id text, pivota_canonical_url text,
         pivota_signature_minted_at timestamptz, content_key text, updated_at timestamptz, source_domain text);
       CREATE UNIQUE INDEX ON catalog_products(pivota_signature_id) WHERE pivota_signature_id IS NOT NULL;
       CREATE INDEX ON catalog_products(content_key) WHERE content_key IS NOT NULL;
