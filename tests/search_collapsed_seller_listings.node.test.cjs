@@ -213,3 +213,103 @@ test('end to end: two built cards collapse into one that names both sellers', ()
     ['ext:retailer:6ea79af5aac0c62fe1dba093340b6dd1'],
   );
 });
+
+/**
+ * THE CLAIM IS "ANOTHER SELLER", so the code must check the seller. `content_key` is
+ * make_content_key(brand, title, gtin) and carries NO merchant component: one store's two listings
+ * of one product share it, and this repo measures 474 content_keys serving identical content under
+ * 2-7 signatures. The first draft of this change counted those as competition.
+ */
+test('two listings from the SAME merchant are not a second seller', () => {
+  const twin = OHLOLLY();
+  twin.merchant_id = 'merch_obs_8c4e7afb1bf09b9a'; // the keeper's own merchant
+  twin.merchant_name = 'eyurs.com';
+
+  const out = dedupeBeautyProductsByDisplayKey([EYURS(), twin]);
+
+  assert.equal(out.length, 1, 'it still collapses the duplicate page');
+  assert.equal(out[0].other_seller_listings, undefined, 'one store is not competition');
+  assert.equal(out[0].seller_listing_count, undefined);
+});
+
+test('a dropped listing with no merchant id names nobody, so it claims nothing', () => {
+  const anonymous = OHLOLLY();
+  delete anonymous.merchant_id;
+
+  const out = dedupeBeautyProductsByDisplayKey([EYURS(), anonymous]);
+
+  assert.equal(out[0].other_seller_listings, undefined);
+});
+
+test('a keeper with no merchant id cannot say another seller differs from it', () => {
+  const anonymousKeeper = EYURS();
+  delete anonymousKeeper.merchant_id;
+
+  const out = dedupeBeautyProductsByDisplayKey([anonymousKeeper, OHLOLLY()]);
+
+  assert.equal(out[0].other_seller_listings, undefined);
+});
+
+test('a second listing from a merchant already recorded is not counted twice', () => {
+  const again = OHLOLLY();
+  again.product_key = 'ext:retailer:cccc0be4ea653d0b3a0d8557ecf6a2c5';
+
+  const [card] = dedupeBeautyProductsByDisplayKey([EYURS(), OHLOLLY(), again]);
+
+  assert.equal(card.other_seller_listings.length, 1, 'one seller is one entry');
+  assert.equal(card.seller_listing_count, 2);
+});
+
+test('a merchant_name that is really the brand fallback is left off the entry', () => {
+  // `merchant_name` falls back to the brand when the catalog_merchants join misses. "Sold by
+  // Pyunkang Yul" for an unnamed reseller reads as a brand-direct offer, which is a different
+  // claim entirely. The id stays; the name goes.
+  const unnamed = OHLOLLY();
+  unnamed.merchant_name = 'Pyunkang Yul';
+
+  const [card] = dedupeBeautyProductsByDisplayKey([EYURS(), unnamed]);
+
+  assert.equal(card.other_seller_listings.length, 1);
+  assert.equal('merchant_name' in card.other_seller_listings[0], false);
+  assert.equal(card.other_seller_listings[0].merchant_id, 'merch_obs_c43a84f5b02f2dba');
+});
+
+test('the seller list is capped and says when it truncated', () => {
+  const many = [EYURS()];
+  for (let i = 0; i < 30; i += 1) {
+    const seller = OHLOLLY();
+    seller.product_key = `ext:retailer:${String(i).padStart(32, '0')}`;
+    seller.merchant_id = `merch_obs_${i}`;
+    seller.merchant_name = `seller-${i}.example`;
+    many.push(seller);
+  }
+
+  const [card] = dedupeBeautyProductsByDisplayKey(many);
+
+  assert.equal(card.other_seller_listings.length, 8, 'capped like every other list on this card');
+  assert.equal(card.seller_listing_count, 9);
+  assert.equal(card.other_seller_listings_truncated, true, 'truncation is stated, never silent');
+});
+
+test('a card never lists its OWN other key as a rival seller', () => {
+  // The seed lane carries product_key and catalog_product_key independently, so comparing only
+  // the first lets a card cite itself.
+  const keeper = EYURS();
+  keeper.catalog_product_key = 'ext:retailer:6ea79af5aac0c62fe1dba093340b6dd1';
+
+  const out = dedupeBeautyProductsByDisplayKey([keeper, OHLOLLY()]);
+
+  assert.equal(out[0].other_seller_listings, undefined, 'that key is the keeper itself');
+});
+
+test('a non-string content_key converges nothing', () => {
+  // Two distinct objects both stringify to '[object Object]' and would compare equal.
+  const keeper = EYURS();
+  const other = OHLOLLY();
+  keeper.content_key = { ck: 1 };
+  other.content_key = { ck: 2 };
+
+  const out = dedupeBeautyProductsByDisplayKey([keeper, other]);
+
+  assert.equal(out[0].other_seller_listings, undefined);
+});

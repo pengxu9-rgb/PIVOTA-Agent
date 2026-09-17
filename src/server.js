@@ -20620,26 +20620,72 @@ function dedupeBeautyProductsByDisplayKey(products = []) {
 }
 
 /**
- * Attach a collapsed listing to the card that survived, but ONLY when both carry the same
- * content_key — the identity the catalog itself converged them on. The entry keeps the dropped
- * listing's own keys, so `get_offers` / `get_product` can be called on it.
+ * A collapsed listing becomes a named COMPETING SELLER on the survivor, or it is dropped exactly
+ * as it was before. Three things must hold, and each was a way to lie:
+ *
+ *   SAME PRODUCT. Both cards carry the same non-empty string `content_key` — the identity the
+ *   catalog converged them on. A shared title alone is not convergence.
+ *
+ *   A DIFFERENT SELLER. `content_key` is make_content_key(brand, title, gtin) and has NO merchant
+ *   component, so one merchant's two listings of one product (a relist, a second slug, a sale
+ *   page) share it. This repo measures that population: 474 content_keys serve identical content
+ *   under 2-7 sigs (see the canonical election at the sitemap query above). Counting those as a
+ *   second seller invents competition, so the merchant ids must be present and DIFFERENT.
+ *
+ *   A REACHABLE LISTING. The entry exists to be called: its `product_key` must be one the other
+ *   doors accept, and never one of the keeper's own.
  */
+const MAX_COLLAPSED_SELLER_LISTINGS = 8;
+
 function recordCollapsedSellerListing(keeper, dropped) {
   if (!keeper || typeof keeper !== 'object' || !dropped || typeof dropped !== 'object') return;
-  const contentKey = String(keeper.content_key || '').trim();
-  if (!contentKey || String(dropped.content_key || '').trim() !== contentKey) return;
-  const keeperKey = String(keeper.product_key || keeper.catalog_product_key || '').trim();
+  // typeof, not truthiness: two non-string values both stringify to '[object Object]' and would
+  // compare equal, converging two products that share nothing.
+  const contentKey = typeof keeper.content_key === 'string' ? keeper.content_key.trim() : '';
+  const droppedContentKey = typeof dropped.content_key === 'string' ? dropped.content_key.trim() : '';
+  if (!contentKey || droppedContentKey !== contentKey) return;
+
+  const keeperMerchantId = String(keeper.merchant_id || '').trim();
+  const merchantId = String(dropped.merchant_id || '').trim();
+  if (!merchantId || !keeperMerchantId || merchantId === keeperMerchantId) return;
+
+  // BOTH of the keeper's key spellings. The canonical chain builder sets them from one column, but
+  // the seed lane carries `product_key` and `catalog_product_key` independently, and comparing
+  // only the first lets a card list one of its own keys as a rival.
+  const keeperKeys = new Set(
+    [keeper.product_key, keeper.catalog_product_key]
+      .map((value) => String(value || '').trim())
+      .filter(Boolean),
+  );
   const productKey = String(dropped.product_key || dropped.catalog_product_key || '').trim();
-  if (!productKey || productKey === keeperKey) return;
+  if (!productKey || keeperKeys.has(productKey)) return;
+
   const listings = Array.isArray(keeper.other_seller_listings) ? keeper.other_seller_listings : [];
   if (listings.some((entry) => String(entry?.product_key || '') === productKey)) return;
-  const merchantId = String(dropped.merchant_id || '').trim();
+  if (listings.some((entry) => String(entry?.merchant_id || '') === merchantId)) return;
+  // CAPPED, like every other list on this card (images 4, description 520 chars). A brand+title
+  // cluster can run to dozens of rows, and an uncapped array would spend an agent's whole budget
+  // on sellers nobody reads. Truncation is stated, never silent.
+  if (listings.length >= MAX_COLLAPSED_SELLER_LISTINGS) {
+    keeper.other_seller_listings_truncated = true;
+    return;
+  }
+
+  // The seller's NAME only when the card actually has one. `merchant_name` falls back to the brand
+  // when the merchant join misses, and "sold by Pyunkang Yul" for an unnamed seller reads as a
+  // brand-direct offer. The id is the honest identifier; the name is decoration or absent.
   const merchantName = String(dropped.merchant_name || '').trim();
+  const brandText = String(dropped.brand || '').trim();
+  const vendorText = String(dropped.vendor || '').trim();
+  const namedSeller =
+    merchantName && merchantName !== brandText && merchantName !== vendorText && merchantName !== merchantId
+      ? merchantName
+      : '';
   const signatureId = String(dropped.pivota_signature_id || '').trim();
   listings.push({
     product_key: productKey,
-    ...(merchantId ? { merchant_id: merchantId } : {}),
-    ...(merchantName ? { merchant_name: merchantName } : {}),
+    merchant_id: merchantId,
+    ...(namedSeller ? { merchant_name: namedSeller } : {}),
     ...(signatureId ? { pivota_signature_id: signatureId } : {}),
     content_key: contentKey,
   });
