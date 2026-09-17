@@ -71,6 +71,29 @@ function sqlIdentityValue(value) {
   return translated.toLowerCase().replace(/[^\p{L}\p{Nd}]+/gu, ' ').trim();
 }
 
+// A name that denotes MORE THAN ONE PRODUCT -- a set, or several of the same product -- read over
+// the identity-folded name. Name evidence says nothing about whether a bundle is the thing asked
+// for, so such a row is not admitted unless the query names one too. The set words are
+// MULTI_PRODUCT_TITLE_PATTERN's (beautyRelevanceGate.js); the pack words extend it with
+// detectBeautyProductPackVariant's multi-pack words (server.js) and three spellings the review of
+// #2230 v3 found admitted and served: "twin pack", "combo", "x2". One meaning, two engines -- the
+// SQL binds this pattern, queryNamesMultiProduct tests it -- and the leading `(^| )` carries the
+// rule: without it "Sunset" is a set.
+const MULTI_PRODUCT_NAME_PATTERN = '(^| )(sets?|kits?|bundles?|duos?|trios?|collections?|discovery|value packs?|pack of'
+  + '|twin packs?|double packs?|multi ?packs?|combos?|x ?[0-9]+|[0-9]+ ?(pc|pcs|pieces?|packs?|count|ct)'
+  + '|routines?)($| )|套装|套裝|礼盒|禮盒';
+const MULTI_PRODUCT_NAME_RE = new RegExp(MULTI_PRODUCT_NAME_PATTERN, 'u');
+
+// "combo"/"combination" SKIN is a skin type, not a bundle. Without this, "serum for combo skin"
+// switches the whole exclusion off and re-admits real sets -- a regression review of #2236 caught,
+// since those queries kept the exclusion before the pack words existed. The TITLE side keeps plain
+// "combo": a product named "... Combo" is a bundle.
+const SKIN_TYPE_COMBO_RE = /(^| )(combo|combination) skin( |$)/u;
+
+function queryNamesMultiProduct(queryText) {
+  return MULTI_PRODUCT_NAME_RE.test(sqlIdentityValue(queryText).replace(SKIN_TYPE_COMBO_RE, ' '));
+}
+
 function nameEvidenceAdmissionEnabled(env = process.env) {
   return /^(1|true|on|yes)$/i.test(String(env[FLAG] || '').trim());
 }
@@ -106,7 +129,9 @@ module.exports = {
   MAX_CARRIERS,
   MIN_TOKENS,
   MIN_TOKEN_LENGTH,
+  MULTI_PRODUCT_NAME_PATTERN,
   nameEvidenceAdmissionEnabled,
   queryDistinctiveTokens,
+  queryNamesMultiProduct,
   sqlIdentityValue,
 };

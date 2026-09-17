@@ -3,7 +3,8 @@
 const { createHash } = require('crypto');
 const reviewedAliases = require('../../data/beauty/meitu_brand_aliases.json');
 const { normalizeBrandText } = require('../findProductsMulti/brandLexicon');
-const { MAX_CARRIERS, nameEvidenceAdmissionEnabled, queryDistinctiveTokens } = require('./searchNameEvidence');
+const { MAX_CARRIERS, MULTI_PRODUCT_NAME_PATTERN, nameEvidenceAdmissionEnabled, queryDistinctiveTokens,
+  queryNamesMultiProduct } = require('./searchNameEvidence');
 const { queryWantsMultiProductSet } = require('./beautyRelevanceGate');
 
 // Normalize common Latin accents and middle-dot styling on both query and row identity.
@@ -157,16 +158,18 @@ function buildCanonicalSearchQualitySql({ contract, params, categoryPredicate, d
       // Counted ONCE per statement (a materialised CTE), over every catalog row -- serving or
       // not, so the count can only be conservative.
       const cteSql = `name_evidence_carriers AS MATERIALIZED (\n      SELECT count(*) AS n FROM catalog_products np WHERE ${carriesAll('np')}\n    )`;
-      // A MULTI-PRODUCT SET is never admitted on name evidence unless the query asks for one.
+      // A MULTI-PRODUCT row is never admitted on name evidence unless the query asks for one.
       // Review of #2230: "matte lipstick" admitted a lipstick-and-liner gift set at #1. A set
-      // carries its components' names, so name evidence says nothing about whether it is the
-      // product asked for. Detected the way the rest of search detects sets -- the title/type
-      // words of MULTI_PRODUCT_TITLE_PATTERN (beautyRelevanceGate.js), the beauty/sets tree, and
-      // the enrichment payload's product family -- and read only for rows that already carry
-      // every token (the CASE), so the payload is never detoasted for the rest.
-      const setExclusion = queryWantsMultiProductSet(contract.effective_query)
+      // carries its components' names, and a twin pack carries one product's name twice, so name
+      // evidence says nothing about whether either is the thing asked for. Detected by
+      // MULTI_PRODUCT_NAME_PATTERN (searchNameEvidence.js -- the shared set words plus the pack
+      // words), the beauty/sets tree, and the enrichment payload's product family; read only for
+      // rows that already carry every token (the CASE), so the payload is never detoasted for the rest.
+      // The query side asks the same question of the query, so "Metal Serum Gloss Twin Pack" still
+      // serves the twin pack.
+      const setExclusion = queryWantsMultiProductSet(contract.effective_query) || queryNamesMultiProduct(contract.effective_query)
         ? 'TRUE'
-        : `NOT (${identitySql("concat_ws(' ', p.title, p.product_type)")} ~ ${bind('(^| )(sets?|kits?|bundles?|duos?|trios?|collections?|discovery|value pack|pack of|[0-9]+ ?(pc|pcs|piece)s?|routines?)($| )|套装|套裝|礼盒|禮盒')})
+        : `NOT (${identitySql("concat_ws(' ', p.title, p.product_type)")} ~ ${bind(MULTI_PRODUCT_NAME_PATTERN)})
           AND lower(coalesce(p.category_path, '')) NOT LIKE 'beauty/sets%'
           AND lower(COALESCE(p.product_payload->>'external_seed_product_family', p.product_payload->>'product_family', p.product_payload->'external_seed_product_kind'->>'family', '')) <> 'set_or_collection'`;
       // EVALUATION ORDER IS THE COST CONTROL, so it is forced with CASE rather than left to AND:
