@@ -64,21 +64,26 @@ test('a collapsed listing on the same content_key is recorded on the surviving c
     {
       product_key: 'ext:retailer:6ea79af5aac0c62fe1dba093340b6dd1',
       merchant_id: 'merch_obs_c43a84f5b02f2dba',
-      merchant_name: 'ohlolly.com',
       pivota_signature_id: 'sig_9905aa12d3d261e632b1363bcd911984',
       content_key: CONTENT_KEY,
     },
   ]);
-  assert.equal(card.seller_listing_count, 2, 'the card counts itself and the seller it replaced');
+  assert.equal(card.listed_seller_count, 2, 'the card counts itself and the seller it replaced');
 });
 
-test('the recorded listing keys are the ones the other doors accept', () => {
-  // The entry exists to be CALLED: `get_offers` / `get_product` take a listing product_key or its
-  // signature. An entry carrying only a merchant name would name a seller an agent cannot reach.
+test('every entry carries the key the offers door takes, and nothing without one', () => {
+  // The entry exists to be CALLED. `get_offers(product_id=<listing product_key>)` returns that
+  // product's sellers — measured live in prod 2026-09-17 after backend #2203. `get_product` is
+  // NOT claimed here: the same canary measured it returning offer_count 0 for a listing and
+  // UNKNOWN_PRODUCT_ID for a content_key.
   const [card] = dedupeBeautyProductsByDisplayKey([EYURS(), OHLOLLY()]);
+
+  assert.equal(card.other_seller_listings.length, 1, 'an empty list would make this vacuous');
   for (const entry of card.other_seller_listings) {
-    assert.match(entry.product_key, /^ext:retailer:[0-9a-f]{32}$/);
-    assert.match(entry.pivota_signature_id, /^sig_[0-9a-f]{32}$/);
+    assert.equal(typeof entry.product_key, 'string');
+    assert.ok(entry.product_key.length > 0);
+    assert.equal(typeof entry.merchant_id, 'string');
+    assert.ok(entry.merchant_id.length > 0);
   }
 });
 
@@ -96,7 +101,7 @@ test('three sellers all land on the card, once each', () => {
     ['ext:retailer:6ea79af5aac0c62fe1dba093340b6dd1', 'ext:retailer:aaaa0be4ea653d0b3a0d8557ecf6a2c5'],
     'a repeat of the same listing must not be recorded twice',
   );
-  assert.equal(card.seller_listing_count, 3);
+  assert.equal(card.listed_seller_count, 3);
 });
 
 test('a dropped row with a DIFFERENT content_key claims nothing', () => {
@@ -109,7 +114,7 @@ test('a dropped row with a DIFFERENT content_key claims nothing', () => {
 
   assert.equal(out.length, 1, 'it still collapses');
   assert.equal(out[0].other_seller_listings, undefined);
-  assert.equal(out[0].seller_listing_count, undefined);
+  assert.equal(out[0].listed_seller_count, undefined);
 });
 
 test('a dropped row with NO content_key claims nothing', () => {
@@ -207,7 +212,7 @@ test('end to end: two built cards collapse into one that names both sellers', ()
   const out = dedupeBeautyProductsByDisplayKey(cards);
 
   assert.equal(out.length, 1);
-  assert.equal(out[0].seller_listing_count, 2);
+  assert.equal(out[0].listed_seller_count, 2);
   assert.deepEqual(
     out[0].other_seller_listings.map((entry) => entry.product_key),
     ['ext:retailer:6ea79af5aac0c62fe1dba093340b6dd1'],
@@ -229,7 +234,7 @@ test('two listings from the SAME merchant are not a second seller', () => {
 
   assert.equal(out.length, 1, 'it still collapses the duplicate page');
   assert.equal(out[0].other_seller_listings, undefined, 'one store is not competition');
-  assert.equal(out[0].seller_listing_count, undefined);
+  assert.equal(out[0].listed_seller_count, undefined);
 });
 
 test('a dropped listing with no merchant id names nobody, so it claims nothing', () => {
@@ -257,21 +262,29 @@ test('a second listing from a merchant already recorded is not counted twice', (
   const [card] = dedupeBeautyProductsByDisplayKey([EYURS(), OHLOLLY(), again]);
 
   assert.equal(card.other_seller_listings.length, 1, 'one seller is one entry');
-  assert.equal(card.seller_listing_count, 2);
+  assert.equal(card.listed_seller_count, 2);
 });
 
-test('a merchant_name that is really the brand fallback is left off the entry', () => {
-  // `merchant_name` falls back to the brand when the catalog_merchants join misses. "Sold by
-  // Pyunkang Yul" for an unnamed reseller reads as a brand-direct offer, which is a different
-  // claim entirely. The id stays; the name goes.
-  const unnamed = OHLOLLY();
-  unnamed.merchant_name = 'Pyunkang Yul';
+test('no entry ever carries a merchant_name, however the card spells it', () => {
+  // `merchant_name` falls back to the BRAND when the catalog_merchants join misses (11 products in
+  // prod, 2026-09-17), and compaction rewrites `brand` from a different field than the builder
+  // read, so a "does the name equal the brand?" test cannot catch the fallback where it happens.
+  // "Also sold by Pyunkang Yul" for an unnamed reseller reads as a brand-direct offer. The id is
+  // the honest identifier; the offers door names the seller.
+  const fallbackNamed = OHLOLLY();
+  fallbackNamed.merchant_name = 'Pyunkang Yul';
+  const realNamed = OHLOLLY();
+  realNamed.product_key = 'ext:retailer:dddd0be4ea653d0b3a0d8557ecf6a2c5';
+  realNamed.merchant_id = 'merch_obs_real_name';
+  realNamed.merchant_name = 'ohlolly.com';
 
-  const [card] = dedupeBeautyProductsByDisplayKey([EYURS(), unnamed]);
+  const [card] = dedupeBeautyProductsByDisplayKey([EYURS(), fallbackNamed, realNamed]);
 
-  assert.equal(card.other_seller_listings.length, 1);
-  assert.equal('merchant_name' in card.other_seller_listings[0], false);
-  assert.equal(card.other_seller_listings[0].merchant_id, 'merch_obs_c43a84f5b02f2dba');
+  assert.equal(card.other_seller_listings.length, 2);
+  for (const entry of card.other_seller_listings) {
+    assert.equal('merchant_name' in entry, false);
+    assert.match(entry.merchant_id, /^merch_obs_/);
+  }
 });
 
 test('the seller list is capped and says when it truncated', () => {
@@ -287,7 +300,7 @@ test('the seller list is capped and says when it truncated', () => {
   const [card] = dedupeBeautyProductsByDisplayKey(many);
 
   assert.equal(card.other_seller_listings.length, 8, 'capped like every other list on this card');
-  assert.equal(card.seller_listing_count, 9);
+  assert.equal(card.listed_seller_count, 9);
   assert.equal(card.other_seller_listings_truncated, true, 'truncation is stated, never silent');
 });
 
@@ -310,6 +323,88 @@ test('a non-string content_key converges nothing', () => {
   other.content_key = { ck: 2 };
 
   const out = dedupeBeautyProductsByDisplayKey([keeper, other]);
+
+  assert.equal(out[0].other_seller_listings, undefined);
+});
+
+test('merchant ids that differ only by case are ONE seller', () => {
+  // This file's own house rule: merchant_id is compared case-insensitively, matching the sibling
+  // implementations elsewhere in server.js. A case-only difference must not invent competition.
+  const shouty = OHLOLLY();
+  shouty.merchant_id = 'MERCH_OBS_8C4E7AFB1BF09B9A'; // the keeper's id, upper-cased
+  const spaced = OHLOLLY();
+  spaced.product_key = 'ext:retailer:eeee0be4ea653d0b3a0d8557ecf6a2c5';
+  spaced.merchant_id = '  merch_obs_8c4e7afb1bf09b9a  ';
+
+  const out = dedupeBeautyProductsByDisplayKey([EYURS(), shouty, spaced]);
+
+  assert.equal(out[0].other_seller_listings, undefined);
+});
+
+test('a second seller already listed under another case is not listed twice', () => {
+  // The RECORDED entry carries the upper-case spelling, so a case-sensitive compare against the
+  // stored list would miss the repeat. Ordered this way deliberately: with the lower-case row
+  // first, the stored id matches either way and the test proves nothing.
+  const seller = OHLOLLY();
+  seller.merchant_id = 'MERCH_OBS_C43A84F5B02F2DBA';
+  const sameSellerShouty = OHLOLLY();
+  sameSellerShouty.product_key = 'ext:retailer:ffff0be4ea653d0b3a0d8557ecf6a2c5';
+  sameSellerShouty.merchant_id = 'merch_obs_c43a84f5b02f2dba';
+
+  const [card] = dedupeBeautyProductsByDisplayKey([EYURS(), seller, sameSellerShouty]);
+
+  assert.equal(card.other_seller_listings.length, 1);
+  assert.equal(card.listed_seller_count, 2);
+});
+
+test('non-string identities are not stringified into an identity', () => {
+  // '[object Object]' as a merchant id or a product key is not a seller and not a callable key.
+  const objectIds = OHLOLLY();
+  objectIds.merchant_id = { id: 'x' };
+  const objectKey = OHLOLLY();
+  objectKey.product_key = { key: 'y' };
+  objectKey.catalog_product_key = null;
+  objectKey.merchant_id = 'merch_obs_other';
+
+  const out = dedupeBeautyProductsByDisplayKey([EYURS(), objectIds, objectKey]);
+
+  assert.equal(out[0].other_seller_listings, undefined);
+});
+
+test('a card the cap never refused does not claim it was truncated', () => {
+  const [card] = dedupeBeautyProductsByDisplayKey([EYURS(), OHLOLLY()]);
+  assert.equal('other_seller_listings_truncated' in card, false);
+});
+
+test('a row the dedupe would have refused anyway does not report truncation', () => {
+  // The cap is checked AFTER the duplicate checks, so a repeat arriving at a full list is not
+  // reported as a seller we dropped for space.
+  const many = [EYURS()];
+  for (let i = 0; i < 8; i += 1) {
+    const seller = OHLOLLY();
+    seller.product_key = `ext:retailer:${String(i).padStart(32, '0')}`;
+    seller.merchant_id = `merch_obs_${i}`;
+    many.push(seller);
+  }
+  const repeat = OHLOLLY();
+  repeat.product_key = 'ext:retailer:00000000000000000000000000000003';
+  repeat.merchant_id = 'merch_obs_3';
+  many.push(repeat);
+
+  const [card] = dedupeBeautyProductsByDisplayKey(many);
+
+  assert.equal(card.other_seller_listings.length, 8);
+  assert.equal('other_seller_listings_truncated' in card, false, 'a duplicate is not a truncation');
+});
+
+test("a card cites neither of its own key spellings, whichever the sibling carries", () => {
+  const keeper = EYURS();
+  keeper.catalog_product_key = 'ext:retailer:6ea79af5aac0c62fe1dba093340b6dd1';
+  const sibling = OHLOLLY();
+  sibling.product_key = 'ext:retailer:9999999999999999999999999999abcd';
+  sibling.catalog_product_key = 'ext:retailer:6ea79af5aac0c62fe1dba093340b6dd1';
+
+  const out = dedupeBeautyProductsByDisplayKey([keeper, sibling]);
 
   assert.equal(out[0].other_seller_listings, undefined);
 });
