@@ -1425,7 +1425,6 @@ suite('brand-page external seed scan on PostgreSQL', () => {
         const call = primaryCall(issued);
         const res = await big.query(`EXPLAIN (COSTS OFF) ${call.sql}`, call.params);
         const lines = res.rows.map((row) => row['QUERY PLAN'].trim());
-        require('fs').writeFileSync(process.env.TMPDIR + '/bss_big_plan.txt', lines.join('\n'));
         const rangeScans = lines.filter((line) => line.startsWith('Index Cond:') && line.includes('~>=~'));
         expect(rangeScans.length).toBeGreaterThan(0);
         expect(lines.filter((line) => line.startsWith('Filter:') && line.includes(BRAND_PLAN_MARKER))).toEqual([]);
