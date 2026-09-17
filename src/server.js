@@ -53859,6 +53859,7 @@ module.exports._debug = {
   shouldAllowPublishedPdpMissingQualitySnapshot,
   fetchPdpServingEligibilityFromDb,
   getSearchQualityContractHardConstraintResult,
+  isSearchQualityContractSafeEmptyContract,
   buildSearchQualityTierCounts,
   projectSearchQualityContractForMetadata,
   buildCanonicalQueryTextForBeautyBrandRecall,

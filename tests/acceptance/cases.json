@@ -1,0 +1,852 @@
+{
+  "_about": [
+    "Search acceptance set. Each case runs the real contract builder and the real hard-constraint gate over tests/acceptance/fixtures/serving_rows_2026_09_16.json, treating a safe-empty contract as serving nothing.",
+    "status \"pass\": must pass. status \"known_fail\": must still FAIL, with a reason and what tracks it. A known_fail that starts passing fails the suite until it is promoted to \"pass\" in the same change -- so every improvement is recorded, and nothing regresses silently.",
+    "Layer: gate + contract only. Recall SQL, seed lane and ranking are exercised by scripts/acceptance/live_search_acceptance.cjs against the deployed gateway.",
+    "Never flip a status to make a build green without the change that earned it."
+  ],
+  "cases": [
+    {
+      "id": "meitu_e1_brand_spaced",
+      "group": "meitu_target",
+      "source": [
+        "meitu_2026_09_15:E1",
+        "meitu_2026_09_15:E3"
+      ],
+      "query": "JUNG SAEM MOOL",
+      "market": "SG",
+      "expect": {
+        "kind": "target_eligible",
+        "target": "acceptance_jsm_lip_pression_metal_serum_gloss"
+      },
+      "status": "known_fail",
+      "reason": "brand gate compares the spaced lexicon canonical \"jung saem mool\" to the stored solid \"JUNGSAEMMOOL\" by containment",
+      "tracked_by": "PIVOTA-Agent #2213",
+      "live": {
+        "top_n": 20
+      }
+    },
+    {
+      "id": "meitu_e1_brand_solid",
+      "group": "meitu_target",
+      "source": [
+        "brand spelling as stored"
+      ],
+      "query": "JUNGSAEMMOOL",
+      "market": "SG",
+      "expect": {
+        "kind": "target_eligible",
+        "target": "acceptance_jsm_lip_pression_metal_serum_gloss"
+      },
+      "status": "known_fail",
+      "reason": "brand gate compares the spaced lexicon canonical \"jung saem mool\" to the stored solid \"JUNGSAEMMOOL\" by containment",
+      "tracked_by": "PIVOTA-Agent #2213",
+      "live": {
+        "top_n": 20
+      }
+    },
+    {
+      "id": "meitu_e1_brand_lowercase",
+      "group": "meitu_target",
+      "source": [
+        "brand spelling variant"
+      ],
+      "query": "jung saem mool",
+      "market": "SG",
+      "expect": {
+        "kind": "target_eligible",
+        "target": "acceptance_jsm_lip_pression_metal_serum_gloss"
+      },
+      "status": "known_fail",
+      "reason": "brand gate compares the spaced lexicon canonical \"jung saem mool\" to the stored solid \"JUNGSAEMMOOL\" by containment",
+      "tracked_by": "PIVOTA-Agent #2213",
+      "live": {
+        "top_n": 20
+      }
+    },
+    {
+      "id": "meitu_e2_full_name",
+      "group": "meitu_target",
+      "source": [
+        "meitu_2026_09_15:E2",
+        "meitu_2026_09_15:E4"
+      ],
+      "query": "LIP-PRESSION Metal Serum Gloss",
+      "market": "SG",
+      "expect": {
+        "kind": "target_eligible",
+        "target": "acceptance_jsm_lip_pression_metal_serum_gloss"
+      },
+      "status": "known_fail",
+      "reason": "category_mismatch: query routed to beauty/skincare/treat/, row labelled beauty/makeup",
+      "tracked_by": "plan step 2 name-evidence admission; step 4 relabel shallow rows",
+      "live": {
+        "top_n": 5
+      }
+    },
+    {
+      "id": "meitu_e2_brand_and_name",
+      "group": "meitu_target",
+      "source": [
+        "E2 with brand"
+      ],
+      "query": "JUNG SAEM MOOL LIP-PRESSION Metal Serum Gloss",
+      "market": "SG",
+      "expect": {
+        "kind": "target_eligible",
+        "target": "acceptance_jsm_lip_pression_metal_serum_gloss"
+      },
+      "status": "known_fail",
+      "reason": "brand gate compares the spaced lexicon canonical \"jung saem mool\" to the stored solid \"JUNGSAEMMOOL\" by containment",
+      "tracked_by": "PIVOTA-Agent #2213",
+      "live": {
+        "top_n": 5
+      }
+    },
+    {
+      "id": "meitu_partial_name",
+      "group": "meitu_target",
+      "source": [
+        "partial product name"
+      ],
+      "query": "Metal Serum Gloss",
+      "market": "SG",
+      "expect": {
+        "kind": "target_eligible",
+        "target": "acceptance_jsm_lip_pression_metal_serum_gloss"
+      },
+      "status": "known_fail",
+      "reason": "category_mismatch: query routed to beauty/skincare/treat/, row labelled beauty/makeup",
+      "tracked_by": "plan step 2 name-evidence admission; step 4 relabel shallow rows",
+      "live": {
+        "top_n": 5
+      }
+    },
+    {
+      "id": "meitu_variant_name",
+      "group": "meitu_target",
+      "source": [
+        "name + shade (E6/E7 variant Core Drop)"
+      ],
+      "query": "metal serum gloss core drop",
+      "market": "SG",
+      "expect": {
+        "kind": "target_eligible",
+        "target": "acceptance_jsm_lip_pression_metal_serum_gloss"
+      },
+      "status": "known_fail",
+      "reason": "category_mismatch: query routed to beauty/skincare/treat/, row labelled beauty/makeup",
+      "tracked_by": "plan step 2 name-evidence admission; step 4 relabel shallow rows",
+      "live": {
+        "top_n": 5
+      }
+    },
+    {
+      "id": "meitu_brand_category",
+      "group": "meitu_target",
+      "source": [
+        "brand + category"
+      ],
+      "query": "jung saem mool lip gloss",
+      "market": "SG",
+      "expect": {
+        "kind": "target_eligible",
+        "target": "acceptance_jsm_lip_pression_metal_serum_gloss"
+      },
+      "status": "known_fail",
+      "reason": "brand gate compares the spaced lexicon canonical \"jung saem mool\" to the stored solid \"JUNGSAEMMOOL\" by containment; category_mismatch: query routed to beauty/makeup/lip/, row labelled beauty/makeup",
+      "tracked_by": "PIVOTA-Agent #2213 + plan step 2 name-evidence admission; step 4 relabel shallow rows",
+      "live": {
+        "top_n": 20
+      }
+    },
+    {
+      "id": "meitu_category",
+      "group": "meitu_target",
+      "source": [
+        "plain category"
+      ],
+      "query": "lip gloss",
+      "market": "SG",
+      "expect": {
+        "kind": "target_eligible",
+        "target": "acceptance_jsm_lip_pression_metal_serum_gloss"
+      },
+      "status": "known_fail",
+      "reason": "category_mismatch: query routed to beauty/makeup/lip/, row labelled beauty/makeup",
+      "tracked_by": "plan step 2 name-evidence admission; step 4 relabel shallow rows",
+      "live": {
+        "top_n": 20
+      }
+    },
+    {
+      "id": "meitu_cjk_category",
+      "group": "meitu_target",
+      "source": [
+        "CJK category"
+      ],
+      "query": "唇彩",
+      "market": "SG",
+      "expect": {
+        "kind": "target_eligible",
+        "target": "acceptance_jsm_lip_pression_metal_serum_gloss"
+      },
+      "status": "known_fail",
+      "reason": "category_mismatch: query routed to beauty/makeup/lip/, row labelled beauty/makeup",
+      "tracked_by": "plan step 2 name-evidence admission; step 4 relabel shallow rows",
+      "live": {
+        "top_n": 20
+      }
+    },
+    {
+      "id": "meitu_cjk_descriptive",
+      "group": "meitu_target",
+      "source": [
+        "CJK descriptive"
+      ],
+      "query": "染色唇漆唇彩",
+      "market": "SG",
+      "expect": {
+        "kind": "target_eligible",
+        "target": "acceptance_jsm_lip_pression_metal_serum_gloss"
+      },
+      "status": "known_fail",
+      "reason": "category_mismatch: query routed to beauty/makeup/lip/, row labelled beauty/makeup",
+      "tracked_by": "plan step 2 name-evidence admission; step 4 relabel shallow rows",
+      "live": {
+        "top_n": 20
+      }
+    },
+    {
+      "id": "meitu_cjk_brand_category",
+      "group": "meitu_target",
+      "source": [
+        "brand + CJK category"
+      ],
+      "query": "JUNG SAEM MOOL 唇彩",
+      "market": "SG",
+      "expect": {
+        "kind": "target_eligible",
+        "target": "acceptance_jsm_lip_pression_metal_serum_gloss"
+      },
+      "status": "known_fail",
+      "reason": "brand gate compares the spaced lexicon canonical \"jung saem mool\" to the stored solid \"JUNGSAEMMOOL\" by containment; category_mismatch: query routed to beauty/makeup/lip/, row labelled beauty/makeup",
+      "tracked_by": "PIVOTA-Agent #2213 + plan step 2 name-evidence admission; step 4 relabel shallow rows",
+      "live": {
+        "top_n": 20
+      }
+    },
+    {
+      "id": "control_serum_excludes_lip_gloss",
+      "group": "control",
+      "source": [
+        "precision control"
+      ],
+      "query": "serum",
+      "market": "SG",
+      "expect": {
+        "kind": "target_not_eligible",
+        "target": "acceptance_jsm_lip_pression_metal_serum_gloss"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "control_lipstick_excludes_eye_products",
+      "group": "control",
+      "source": [
+        "precision control"
+      ],
+      "query": "lipstick",
+      "market": "SG",
+      "expect": {
+        "kind": "no_eligible_title_match",
+        "title_pattern": "\\b(eye\\s*liner|eyeliner|mascara|eyeshadow|brow)\\b"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "traffic_cleanser",
+      "group": "real_traffic",
+      "source": [
+        "gateway logs, 7 days to 2026-09-17"
+      ],
+      "query": "cleanser",
+      "market": "SG",
+      "expect": {
+        "kind": "min_eligible",
+        "count": 1
+      },
+      "status": "pass"
+    },
+    {
+      "id": "traffic_moisturizer",
+      "group": "real_traffic",
+      "source": [
+        "gateway logs, 7 days to 2026-09-17"
+      ],
+      "query": "moisturizer",
+      "market": "SG",
+      "expect": {
+        "kind": "min_eligible",
+        "count": 1
+      },
+      "status": "pass"
+    },
+    {
+      "id": "traffic_barrier_lotion",
+      "group": "real_traffic",
+      "source": [
+        "gateway logs, 7 days to 2026-09-17"
+      ],
+      "query": "barrier lotion",
+      "market": "SG",
+      "expect": {
+        "kind": "min_eligible",
+        "count": 1
+      },
+      "status": "pass"
+    },
+    {
+      "id": "traffic_spf_fluid_oily_skin",
+      "group": "real_traffic",
+      "source": [
+        "gateway logs, 7 days to 2026-09-17"
+      ],
+      "query": "spf fluid oily skin",
+      "market": "SG",
+      "expect": {
+        "kind": "min_eligible",
+        "count": 1
+      },
+      "status": "pass"
+    },
+    {
+      "id": "traffic_lightweight_moisturizer",
+      "group": "real_traffic",
+      "source": [
+        "gateway logs, 7 days to 2026-09-17"
+      ],
+      "query": "lightweight moisturizer",
+      "market": "SG",
+      "expect": {
+        "kind": "min_eligible",
+        "count": 1
+      },
+      "status": "pass"
+    },
+    {
+      "id": "traffic_gel_cream_moisturizer",
+      "group": "real_traffic",
+      "source": [
+        "gateway logs, 7 days to 2026-09-17"
+      ],
+      "query": "gel cream moisturizer",
+      "market": "SG",
+      "expect": {
+        "kind": "min_eligible",
+        "count": 1
+      },
+      "status": "pass"
+    },
+    {
+      "id": "traffic_ipsa_time_reset_aqua",
+      "group": "real_traffic",
+      "source": [
+        "gateway logs, 7 days to 2026-09-17"
+      ],
+      "query": "IPSA Time Reset Aqua",
+      "market": "SG",
+      "expect": {
+        "kind": "min_eligible",
+        "count": 1
+      },
+      "status": "known_fail",
+      "reason": "query classifies ambiguous_or_non_shopping, so the contract serves nothing before recall",
+      "tracked_by": "plan: product-name queries must not safe-empty (name-evidence / lexicon coverage)"
+    },
+    {
+      "id": "traffic_ipsa_products",
+      "group": "real_traffic",
+      "source": [
+        "gateway logs, 7 days to 2026-09-17"
+      ],
+      "query": "IPSA products",
+      "market": "SG",
+      "expect": {
+        "kind": "min_eligible",
+        "count": 1
+      },
+      "status": "known_fail",
+      "reason": "query classifies ambiguous_or_non_shopping, so the contract serves nothing before recall",
+      "tracked_by": "plan: product-name queries must not safe-empty (name-evidence / lexicon coverage)"
+    },
+    {
+      "id": "self_sig_770296e8b9a9065650e5c9ce1a898181",
+      "group": "self_retrieval",
+      "source": [
+        "a serving-eligible prod row queried by its own title"
+      ],
+      "query": "Lipscreen SPF 40 Lip Gloss Sunscreen",
+      "market": "SG",
+      "expect": {
+        "kind": "target_eligible",
+        "target": "sig_770296e8b9a9065650e5c9ce1a898181"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "self_sig_befccb1454d4c7964f213b030faf2bcb",
+      "group": "self_retrieval",
+      "source": [
+        "a serving-eligible prod row queried by its own title"
+      ],
+      "query": "KP Bump Eraser Body Scrub 10% AHA",
+      "market": "SG",
+      "expect": {
+        "kind": "target_eligible",
+        "target": "sig_befccb1454d4c7964f213b030faf2bcb"
+      },
+      "status": "known_fail",
+      "reason": "category_mismatch: query routed to beauty/skincare/treat/exfoliant/, row labelled beauty/body/care",
+      "tracked_by": "plan step 2 name-evidence admission; step 4 relabel shallow rows"
+    },
+    {
+      "id": "self_sig_9cf585299c3d4848522a07c0e1332bce",
+      "group": "self_retrieval",
+      "source": [
+        "a serving-eligible prod row queried by its own title"
+      ],
+      "query": "EXCEPTIONAL RENDEZVOUS CHERRY BLOSSOM 155 ML / 5.24 OZ",
+      "market": "SG",
+      "expect": {
+        "kind": "target_eligible",
+        "target": "sig_9cf585299c3d4848522a07c0e1332bce"
+      },
+      "status": "known_fail",
+      "reason": "query classifies ambiguous_or_non_shopping, so the contract serves nothing before recall",
+      "tracked_by": "plan: product-name queries must not safe-empty (name-evidence / lexicon coverage)"
+    },
+    {
+      "id": "self_sig_745fb0840bc78619eb4bca2b",
+      "group": "self_retrieval",
+      "source": [
+        "a serving-eligible prod row queried by its own title"
+      ],
+      "query": "PROPOWAX™ Antioxidant Conditioner 300ml",
+      "market": "SG",
+      "expect": {
+        "kind": "target_eligible",
+        "target": "sig_745fb0840bc78619eb4bca2b"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "self_sig_efc0bd760fb0b6807428271b4d914387",
+      "group": "self_retrieval",
+      "source": [
+        "a serving-eligible prod row queried by its own title"
+      ],
+      "query": "Scalp Retreat Regenerating Shampoo",
+      "market": "SG",
+      "expect": {
+        "kind": "target_eligible",
+        "target": "sig_efc0bd760fb0b6807428271b4d914387"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "self_sig_c93db881c7e27910aae8f539af898fbf",
+      "group": "self_retrieval",
+      "source": [
+        "a serving-eligible prod row queried by its own title"
+      ],
+      "query": "Supernova Celestial Skin Elixir",
+      "market": "SG",
+      "expect": {
+        "kind": "target_eligible",
+        "target": "sig_c93db881c7e27910aae8f539af898fbf"
+      },
+      "status": "known_fail",
+      "reason": "query classifies ambiguous_or_non_shopping, so the contract serves nothing before recall",
+      "tracked_by": "plan: product-name queries must not safe-empty (name-evidence / lexicon coverage)"
+    },
+    {
+      "id": "self_sig_9123a00a6a493e2a92e44d9bbcb5f37b",
+      "group": "self_retrieval",
+      "source": [
+        "a serving-eligible prod row queried by its own title"
+      ],
+      "query": "Stay All Day® InkWear™ Liquid Eye Liner",
+      "market": "SG",
+      "expect": {
+        "kind": "target_eligible",
+        "target": "sig_9123a00a6a493e2a92e44d9bbcb5f37b"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "self_sig_0dfbe2c639b4421b2b531f4dd2108975",
+      "group": "self_retrieval",
+      "source": [
+        "a serving-eligible prod row queried by its own title"
+      ],
+      "query": "Kylash False Lashes",
+      "market": "SG",
+      "expect": {
+        "kind": "target_eligible",
+        "target": "sig_0dfbe2c639b4421b2b531f4dd2108975"
+      },
+      "status": "known_fail",
+      "reason": "query classifies ambiguous_or_non_shopping, so the contract serves nothing before recall",
+      "tracked_by": "plan: product-name queries must not safe-empty (name-evidence / lexicon coverage)"
+    },
+    {
+      "id": "self_sig_05bde93c88a1933a7f804a0fbc8971a2",
+      "group": "self_retrieval",
+      "source": [
+        "a serving-eligible prod row queried by its own title"
+      ],
+      "query": "Pro Filt'r Instant Retouch Concealer — #170",
+      "market": "SG",
+      "expect": {
+        "kind": "target_eligible",
+        "target": "sig_05bde93c88a1933a7f804a0fbc8971a2"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "self_sig_9c3fefc67b7830406ca52858fd4f1e8e",
+      "group": "self_retrieval",
+      "source": [
+        "a serving-eligible prod row queried by its own title"
+      ],
+      "query": "Sunshift Bronzer + Lightshift Highlighter - Sample",
+      "market": "SG",
+      "expect": {
+        "kind": "target_eligible",
+        "target": "sig_9c3fefc67b7830406ca52858fd4f1e8e"
+      },
+      "status": "known_fail",
+      "reason": "category_mismatch: query routed to beauty/makeup/face/bronzer/, row labelled beauty/makeup/face/highlighter",
+      "tracked_by": "plan step 2 name-evidence admission; step 4 relabel shallow rows"
+    },
+    {
+      "id": "self_sig_d44babbcc1c0f42292c1943e83d1948a",
+      "group": "self_retrieval",
+      "source": [
+        "a serving-eligible prod row queried by its own title"
+      ],
+      "query": "Pro Filt'r Instant Retouch Setting Powder — Lavender",
+      "market": "SG",
+      "expect": {
+        "kind": "target_eligible",
+        "target": "sig_d44babbcc1c0f42292c1943e83d1948a"
+      },
+      "status": "known_fail",
+      "reason": "category_mismatch: query routed to beauty/makeup/face/powder/, row labelled beauty/makeup/face/setting-powder",
+      "tracked_by": "plan step 2 name-evidence admission; step 4 relabel shallow rows"
+    },
+    {
+      "id": "self_sig_61456b1773f0c24624bb9f9991d12405",
+      "group": "self_retrieval",
+      "source": [
+        "a serving-eligible prod row queried by its own title"
+      ],
+      "query": "Vitamin Nourishing Lip Balm",
+      "market": "SG",
+      "expect": {
+        "kind": "target_eligible",
+        "target": "sig_61456b1773f0c24624bb9f9991d12405"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "self_sig_7b79bd251025cbb504ad19dbacb8bbb6",
+      "group": "self_retrieval",
+      "source": [
+        "a serving-eligible prod row queried by its own title"
+      ],
+      "query": "Joli Rouge",
+      "market": "SG",
+      "expect": {
+        "kind": "target_eligible",
+        "target": "sig_7b79bd251025cbb504ad19dbacb8bbb6"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "self_sig_d64ac22c1e6199912d9a3337",
+      "group": "self_retrieval",
+      "source": [
+        "a serving-eligible prod row queried by its own title"
+      ],
+      "query": "Almond & Ginseng Cuticle Oil",
+      "market": "SG",
+      "expect": {
+        "kind": "target_eligible",
+        "target": "sig_d64ac22c1e6199912d9a3337"
+      },
+      "status": "known_fail",
+      "reason": "query classifies ambiguous_or_non_shopping, so the contract serves nothing before recall",
+      "tracked_by": "plan: product-name queries must not safe-empty (name-evidence / lexicon coverage)"
+    },
+    {
+      "id": "self_sig_6a3a6f10a2ad26c774f45e2d5c9084b8",
+      "group": "self_retrieval",
+      "source": [
+        "a serving-eligible prod row queried by its own title"
+      ],
+      "query": "Sparkle Eye Bundle",
+      "market": "SG",
+      "expect": {
+        "kind": "target_eligible",
+        "target": "sig_6a3a6f10a2ad26c774f45e2d5c9084b8"
+      },
+      "status": "known_fail",
+      "reason": "query classifies ambiguous_or_non_shopping, so the contract serves nothing before recall",
+      "tracked_by": "plan: product-name queries must not safe-empty (name-evidence / lexicon coverage)"
+    },
+    {
+      "id": "self_sig_1e912fdeb544ccf33f3dbb7baded0211",
+      "group": "self_retrieval",
+      "source": [
+        "a serving-eligible prod row queried by its own title"
+      ],
+      "query": "Blue Balancing Foam Cleanser",
+      "market": "SG",
+      "expect": {
+        "kind": "target_eligible",
+        "target": "sig_1e912fdeb544ccf33f3dbb7baded0211"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "self_sig_b9bd14fb25ba2a609284f84b5d33d346",
+      "group": "self_retrieval",
+      "source": [
+        "a serving-eligible prod row queried by its own title"
+      ],
+      "query": "Hydra Vizor Refillable Case",
+      "market": "SG",
+      "expect": {
+        "kind": "target_eligible",
+        "target": "sig_b9bd14fb25ba2a609284f84b5d33d346"
+      },
+      "status": "known_fail",
+      "reason": "query classifies ambiguous_or_non_shopping, so the contract serves nothing before recall",
+      "tracked_by": "plan: product-name queries must not safe-empty (name-evidence / lexicon coverage)"
+    },
+    {
+      "id": "self_sig_2a7eb9e8b4e72fbd0b9d92fed77fc672",
+      "group": "self_retrieval",
+      "source": [
+        "a serving-eligible prod row queried by its own title"
+      ],
+      "query": "Egg Vita Peeling Gel",
+      "market": "SG",
+      "expect": {
+        "kind": "target_eligible",
+        "target": "sig_2a7eb9e8b4e72fbd0b9d92fed77fc672"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "self_sig_51ab43aba24edfcfd9fa5feb4a9e5949",
+      "group": "self_retrieval",
+      "source": [
+        "a serving-eligible prod row queried by its own title"
+      ],
+      "query": "[VELY VELY] Bakuchiol Super Biome Lifting Ampoule 100ml",
+      "market": "SG",
+      "expect": {
+        "kind": "target_eligible",
+        "target": "sig_51ab43aba24edfcfd9fa5feb4a9e5949"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "self_sig_e7e5369e85cd38d4f2efaa9724a3c73b",
+      "group": "self_retrieval",
+      "source": [
+        "a serving-eligible prod row queried by its own title"
+      ],
+      "query": "Artist Vegan Eye Point Brush",
+      "market": "SG",
+      "expect": {
+        "kind": "target_eligible",
+        "target": "sig_e7e5369e85cd38d4f2efaa9724a3c73b"
+      },
+      "status": "known_fail",
+      "reason": "query classifies ambiguous_or_non_shopping, so the contract serves nothing before recall",
+      "tracked_by": "plan: product-name queries must not safe-empty (name-evidence / lexicon coverage)"
+    }
+  ],
+  "ratchet_queries": [
+    {
+      "query": "Medicube",
+      "market": "SG"
+    },
+    {
+      "query": "Dermalogica",
+      "market": "SG"
+    },
+    {
+      "query": "Olehenriksen",
+      "market": "SG"
+    },
+    {
+      "query": "Supergoop",
+      "market": "SG"
+    },
+    {
+      "query": "numbuzin",
+      "market": "SG"
+    },
+    {
+      "query": "medicube serum",
+      "market": "SG"
+    },
+    {
+      "query": "fenty lipstick",
+      "market": "SG"
+    },
+    {
+      "query": "dermalogica cleanser",
+      "market": "SG"
+    },
+    {
+      "query": "sunscreen",
+      "market": "SG"
+    },
+    {
+      "query": "toner",
+      "market": "SG"
+    },
+    {
+      "query": "mascara",
+      "market": "SG"
+    },
+    {
+      "query": "blush",
+      "market": "SG"
+    },
+    {
+      "query": "foundation",
+      "market": "SG"
+    },
+    {
+      "query": "shampoo",
+      "market": "SG"
+    },
+    {
+      "query": "face mask",
+      "market": "SG"
+    },
+    {
+      "query": "eye cream",
+      "market": "SG"
+    },
+    {
+      "query": "nail polish",
+      "market": "SG"
+    },
+    {
+      "query": "Deep Vita C Capsule Cream",
+      "market": "SG"
+    },
+    {
+      "query": "Essential Skin Nuder Cushion",
+      "market": "SG"
+    },
+    {
+      "query": "acne treatment for oily skin",
+      "market": "SG"
+    },
+    {
+      "query": "hydrating serum for dry skin",
+      "market": "SG"
+    },
+    {
+      "query": "anti aging retinol",
+      "market": "SG"
+    },
+    {
+      "query": "sunscreen for sensitive skin",
+      "market": "SG"
+    },
+    {
+      "query": "brightening vitamin c",
+      "market": "SG"
+    },
+    {
+      "query": "唇膏",
+      "market": "SG"
+    },
+    {
+      "query": "精华",
+      "market": "SG"
+    },
+    {
+      "query": "防晒",
+      "market": "SG"
+    },
+    {
+      "query": "lipstick under 20",
+      "market": "SG"
+    },
+    {
+      "query": "affordable korean sunscreen",
+      "market": "SG"
+    },
+    {
+      "query": "lip serum",
+      "market": "SG"
+    },
+    {
+      "query": "vitamin c serum",
+      "market": "SG"
+    },
+    {
+      "query": "rose water toner",
+      "market": "SG"
+    },
+    {
+      "query": "green tea cleanser",
+      "market": "SG"
+    },
+    {
+      "query": "red lipstick",
+      "market": "SG"
+    },
+    {
+      "query": "matte lipstick",
+      "market": "SG"
+    },
+    {
+      "query": "tinted moisturizer spf",
+      "market": "SG"
+    }
+  ],
+  "live_targets": {
+    "acceptance_jsm_lip_pression_metal_serum_gloss": {
+      "title": "LIP-PRESSION Metal Serum Gloss",
+      "merchant_product_json": "https://jsmbeauty.sg/products/lip-pression-metal-serum-gloss.json",
+      "url_handle": "lip-pression-metal-serum-gloss",
+      "variant_id": "50856826536257",
+      "sku": "32168999"
+    }
+  },
+  "live_resolve_cases": [
+    {
+      "id": "meitu_e5_resolve_variant",
+      "source": [
+        "meitu_2026_09_15:E5"
+      ],
+      "sku_id": "50856826536257",
+      "target": "acceptance_jsm_lip_pression_metal_serum_gloss",
+      "status": "known_fail",
+      "reason": "resolve reads only products_cache + product_group_members; the referral cohort lives in catalog_skus",
+      "tracked_by": "pivota-backend #2189"
+    }
+  ]
+}
