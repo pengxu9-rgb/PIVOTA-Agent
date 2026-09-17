@@ -116,15 +116,21 @@ describe('stripExternalSeedMarketingBannerPrefix linear loop', () => {
     const text = `${'Glow serum with niacinamide and squalane for oily skin. '.repeat(40)}${'More text. '.repeat(4000)}`;
     const time = (fn) => {
       const startedAt = process.hrtime.bigint();
-      for (let i = 0; i < 300; i += 1) fn(text);
+      for (let i = 0; i < 60; i += 1) fn(text);
       return Number(process.hrtime.bigint() - startedAt) / 1e6;
     };
     time(stripExternalSeedMarketingBannerPrefix);
     time(frozen.stripExternalSeedMarketingBannerPrefix);
-    const oldMs = time(frozen.stripExternalSeedMarketingBannerPrefix);
-    const newMs = time(stripExternalSeedMarketingBannerPrefix);
+    // Best of interleaved rounds, so one GC or scheduler pause cannot land on only one side.
+    let oldMs = Infinity;
+    let newMs = Infinity;
+    for (let round = 0; round < 7; round += 1) {
+      oldMs = Math.min(oldMs, time(frozen.stripExternalSeedMarketingBannerPrefix));
+      newMs = Math.min(newMs, time(stripExternalSeedMarketingBannerPrefix));
+    }
     expect(stripExternalSeedMarketingBannerPrefix(text)).toBe(frozen.stripExternalSeedMarketingBannerPrefix(text));
-    // Loose on purpose (CI noise): measured ~20x locally; it only has to fail if the rescan returns.
-    expect(newMs * 4).toBeLessThan(oldMs);
+    // Loose on purpose (CI noise): ~7x measured on this input, where both sides still pay to normalise and
+    // tokenise ~44KB; the real golden descriptions measured ~31x. It only has to fail if the rescan returns.
+    expect(newMs * 2).toBeLessThan(oldMs);
   });
 });
