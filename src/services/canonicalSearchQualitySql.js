@@ -3,6 +3,7 @@
 const { createHash } = require('crypto');
 const reviewedAliases = require('../../data/beauty/meitu_brand_aliases.json');
 const { normalizeBrandText } = require('../findProductsMulti/brandLexicon');
+const { identityValue, nameEvidenceAdmissionEnabled, queryDistinctiveTokens } = require('./searchNameEvidence');
 
 // Normalize common Latin accents and middle-dot styling on both query and row identity.
 // This is not a general Unicode transliterator; reviewed aliases cover alternate spellings.
@@ -10,7 +11,6 @@ const { normalizeBrandText } = require('../findProductsMulti/brandLexicon');
 function identitySql(expression) {
   return `trim(regexp_replace(lower(translate(regexp_replace(coalesce(${expression}, ''), '[·•]', '', 'g'), 'ÀÁÂÃÄÅÈÉÊËÌÍÎÏÒÓÔÕÖÙÚÛÜÝàáâãäåèéêëìíîïòóôõöùúûüýÿ', 'AAAAAAEEEEIIIIOOOOOUUUUYaaaaaaeeeeiiiiooooouuuuyy')), '[^[:alnum:]]+', ' ', 'g'))`;
 }
-const identityValue = (value) => normalizeBrandText(String(value || '').replace(/[·•]/g, '')).replace(/[^\p{L}\p{N}]+/gu, ' ').replace(/\s+/g, ' ').trim();
 const FORM_RULES = [
   [/\blip\s*tints?\b/, '(lip[ ]*)?tints?'],
   [/\blip\s*oils?\b/, 'lip[ ]*oils?'],
@@ -86,6 +86,7 @@ function buildCanonicalSearchQualitySql({ contract, params, categoryPredicate, d
     brandWhere = `AND ${buildBrandIdentityPredicate(hard.brand, CANONICAL_OWN_BRAND_SQL, params)}`;
   }
   let where = defaultWhere;
+  let nameEvidenceRankSql = '';
   if (hard.exact_product_anchor) {
     const tokens = [...new Set(identityValue(hard.exact_product_anchor).split(' ').filter((token) => token.length >= 2))];
     if (tokens.length) where = tokens.map((token) => `${ownName} ~ ${bind(`(^| )${token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}($| )`)}`).join(' AND ');
@@ -127,6 +128,44 @@ function buildCanonicalSearchQualitySql({ contract, params, categoryPredicate, d
     } else {
       where = categoryPredicate;
     }
+    // NAME-EVIDENCE ADMISSION (src/services/searchNameEvidence.js). The category WHERE
+    // above deletes before ranking, so a row whose own name carries every distinctive
+    // query token must be admitted HERE too, or the serving gate's matching waiver never
+    // sees it. OR-ed outside the whole category clause, conflicting-type veto included:
+    // the row's name is stronger evidence than its type label. Same tokens, same
+    // normalisation as the gate.
+    const nameTokens = nameEvidenceAdmissionEnabled() ? queryDistinctiveTokens(contract.effective_query, hard) : null;
+    if (nameTokens) {
+      // COST, measured on prod pivota-pg (15,552 products, 8,382 serving-eligible), which
+      // evaluates this per row. The first version added ~1s (1.7s -> 2.7s). The cost was
+      // detoasting product_payload for canonical_title/canonical_name on every row outside
+      // the category; this arm reads title + product_type only (searchNameEvidence.js
+      // ownNameTokens has the measurement). Also:
+      //  * ONE regex with a lookahead per token, so the name is normalised once;
+      //  * a cheap SUPERSET prefilter guarding it in a CASE (evaluation order guaranteed):
+      //    lower + the same accent fold and middle-dot removal identitySql applies, then
+      //    LIKE '%token%'. Normalisation only folds characters and turns punctuation into
+      //    spaces, so a whole normalised word is always a raw substring; a row failing the
+      //    prefilter cannot pass the regex.
+      const reEscape = (token) => token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const likeEscape = (token) => token.replace(/[\\%_]/g, '\\$&');
+      const nameColumns = "concat_ws(' ', p.title, p.product_type)";
+      const nameIdentity = identitySql(nameColumns);
+      const rawName = `translate(lower(replace(replace(${nameColumns}, '·', ''), '•', '')), 'àáâãäåèéêëìíîïòóôõöùúûüýÿ', 'aaaaaaeeeeiiiiooooouuuuyy')`;
+      const prefilter = nameTokens.map((token) => `${rawName} LIKE ${bind(`%${likeEscape(token)}%`)}`).join(' AND ');
+      const allTokens = nameTokens.map((token) => `(?=.*(^| )${reEscape(token)}($| ))`).join('');
+      const carriesAll = `(CASE WHEN ${prefilter} THEN ${nameIdentity} ~ ${bind(`^${allTokens}`)} ELSE FALSE END)`;
+      const categoryWhere = where;
+      where = `((${categoryWhere}) OR (${carriesAll}))`;
+      // RECALLED IS NOT ENOUGH: the candidate LIMIT runs on rank_score, and the category
+      // arm gives every in-bucket row a flat +90 while the named row -- outside the
+      // bucket -- gets 0. Measured on real PostgreSQL with 250 in-bucket rows: the named
+      // product was admitted by the WHERE and cut by the LIMIT. +95 puts a row whose own
+      // name carries the whole query above rows that only share its category, and below
+      // an exact title (100) or source id (105). ONLY rows the category clause rejected
+      // get it: the order of rows the category already admits is unchanged.
+      nameEvidenceRankSql = `CASE WHEN (${carriesAll}) AND NOT (${categoryWhere}) THEN 95 ELSE 0 END +`;
+    }
   }
   const requested = identityValue(contract.effective_query);
   if (/\bmoisturi[sz]ers?\b/.test(requested) && !/\b(spf|sunscreen|sun protection)\b/.test(requested)) {
@@ -141,6 +180,6 @@ function buildCanonicalSearchQualitySql({ contract, params, categoryPredicate, d
     const namedObject = `regexp_replace(${ownName}, '(with|includes?|including)[ ]+((a|an|built in)[ ]+)?(brush(es)?|applicators?|mirrors?|sponges?|puffs?)([ ]|$).*$', '', 'g')`;
     where = `(${where}) AND NOT (${namedObject} ~ ${bind(toolPattern)})`;
   }
-  return { where: `(${where}) AND $2::text IS NOT NULL`, brandWhere };
+  return { where: `(${where}) AND $2::text IS NOT NULL`, brandWhere, nameEvidenceRankSql };
 }
 module.exports = { buildCanonicalSearchQualitySql, buildBrandIdentityPredicate, normalizedBrandIdentitySql, brandIdentityKey, CANONICAL_OWN_BRAND_SQL };

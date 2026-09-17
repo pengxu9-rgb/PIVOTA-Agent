@@ -1477,6 +1477,8 @@ async function fetchCanonicalChainRows(args = {}) {
     .map(({ bind, type }) => ` AND ${bind}::${type} IS NOT NULL`)
     .join('');
   brandWhere = qualityScope.brandWhere;
+  // Zero bytes unless the name-evidence flag built an arm, so flag-off SQL is unchanged.
+  const nameEvidenceRankArm = qualityScope.nameEvidenceRankSql ? `\n          ${qualityScope.nameEvidenceRankSql}` : '';
   // Suppress source-unavailable / discontinued external-seed products from
   // recall. ADR-009: gate on platform, NOT the legacy merchant_id='external_seed'
   // bucket — external seeds now mirror under per-brand observed sellers
@@ -1847,7 +1849,7 @@ async function fetchCanonicalChainRows(args = {}) {
           CASE WHEN LOWER(COALESCE(p.source_product_id, '')) = $1         THEN 105 ELSE 0 END +
           CASE WHEN LOWER(COALESCE(p.title, '')) = $1                     THEN 100 ELSE 0 END +
           CASE WHEN LOWER(COALESCE(m.merchant_name, '')) = $1             THEN  90 ELSE 0 END +
-          CASE WHEN LOWER(COALESCE(p.brand, '')) = $1                     THEN  80 ELSE 0 END +
+          CASE WHEN LOWER(COALESCE(p.brand, '')) = $1                     THEN  80 ELSE 0 END +${nameEvidenceRankArm}
           ${canonicalScopeRankArms}
           ${categoryScore}${categoryBrowseTextArm}
           ${verticalScore}
