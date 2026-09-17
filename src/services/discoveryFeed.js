@@ -66,10 +66,13 @@ const { activeProductsCacheSourceWhere } = require('./activeCatalogSourceSql');
 const { brandIdentityKey } = require('./canonicalSearchQualitySql');
 const {
   brandSeedScanPredicateSql,
+  identityPrefixRangeSql,
+  identityPrefixUpperBound,
   likePrefixPattern,
   seedBrandIdentitySql,
   seedDomainIdentitySql,
   seedTitleSql,
+  uncoveredPrefixKeys,
 } = require('./brandSeedScanSql');
 const { transactionCapableMerchantWhere } = require('./merchantTransactionCapabilitySql');
 const { canonicalBrandMatchSql } = require('./canonicalBrandMatchSql');
@@ -9200,9 +9203,13 @@ async function fetchBrandScopedExternalSeedCandidates({
       headParams.push(value);
       return `$${headParams.length}`;
     };
+    // `tool = ANY(ARRAY['*', $2])`, not `(tool = '*' OR tool = $2)`: the OR split every branch into two
+    // bitmap arms, and whenever the planner served one arm from an index without the identity condition it
+    // kept the identity as a Filter for the whole heap scan, re-extracting the brand from seed_data per row.
+    // The array form is the same rows and one index scan whose condition carries market, tool and identity.
     const scanScopeSql = `${brandSeedScanPredicateSql('eps')}
             AND eps.market = $1
-            AND (eps.tool = '*' OR eps.tool = $2)`;
+            AND eps.tool = ANY(ARRAY['*', $2]::text[])`;
     // Each alias probe is its OWN branch of a UNION, not another OR'd filter on
     // one scan. An OR chain makes PostgreSQL re-evaluate the 10-path JSONB
     // identity once per clause per row, so cost grows with alias count and the
@@ -9222,8 +9229,13 @@ async function fetchBrandScopedExternalSeedCandidates({
     if (identityAliases.length && equalityOnlyAliases.length) {
       brandBranches.push(branch(seedBrandIdentitySql('eps'), `= ANY(${headBind(equalityOnlyAliases)}::text[])`));
     }
-    for (const alias of identityPrefixAliases) {
-      brandBranches.push(branch(seedBrandIdentitySql('eps'), `LIKE ${headBind(likePrefixPattern(alias))}`));
+    for (const alias of uncoveredPrefixKeys(identityPrefixAliases)) {
+      const identity = seedBrandIdentitySql('eps');
+      brandBranches.push(`
+          SELECT eps.id
+          FROM external_product_seeds eps
+          WHERE ${scanScopeSql}
+            AND ${identityPrefixRangeSql(identity, headBind(alias), headBind(identityPrefixUpperBound(alias)))}`);
     }
     // The domain chain is EQUALITY ONLY. The predicate this replaces compared it with
     // `= ANY($6)` and never prefix-matched it, and a prefix over a domain-derived brand

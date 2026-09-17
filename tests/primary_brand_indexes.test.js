@@ -113,7 +113,9 @@ test('the brand-page seed scan reads its expressions from the same module the in
   // Every bound LIKE pattern goes through the escaper; an unescaped '%' in an alias ("100% PURE")
   // both widens the match and defeats the index prefix scan.
   expect(body).not.toMatch(/LIKE \$\{[a-zA-Z]+Bind\}?\(`/);
-  expect(body.match(/likePrefixPattern\(/g) || []).toHaveLength(2);
+  // Only the title lane binds a LIKE pattern; the brand chain binds an identity range.
+  expect(body.match(/likePrefixPattern\(/g) || []).toHaveLength(1);
+  expect(body).toContain('identityPrefixRangeSql(identity, headBind(alias), headBind(identityPrefixUpperBound(alias)))');
   // Not asserted here: that the STATEMENT carries no `LIKE ANY(array)` / `unnest` — a source grep
   // cannot tell code from the comment that explains why they were removed. That claim is made
   // against the SQL the fetcher actually builds, in the integration test named above.
