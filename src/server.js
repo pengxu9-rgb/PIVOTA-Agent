@@ -17715,6 +17715,11 @@ function buildCanonicalChainMainlineProduct(row) {
     catalog_source: 'canonical_chain',
     catalog_product_key: firstNonEmptyString(row.product_key),
     product_key: firstNonEmptyString(row.product_key),
+    // The SHARED identity, which the SELECT has always carried and this projection dropped.
+    // Two retailers' listings of one product converge on it, and without it on the card the
+    // collapse below cannot tell a second SELLER from a second PRODUCT — and an agent holding
+    // the card has no key that reaches the competing offer.
+    ...(firstNonEmptyString(row.content_key) ? { content_key: firstNonEmptyString(row.content_key) } : {}),
     source_product_id: sourceProductId || undefined,
     canonical_product_ref: canonicalProductRef,
     pdp_open: {
@@ -20572,7 +20577,8 @@ function detectBeautyProductPackVariant(product = {}) {
 
 function dedupeBeautyProductsByDisplayKey(products = []) {
   const out = [];
-  const seen = new Set();
+  // A MAP, not a Set: the card that survives each key is what a collapsed sibling attaches to.
+  const seen = new Map();
   for (const product of Array.isArray(products) ? products : []) {
     if (!product || typeof product !== 'object') continue;
     const pick = (...values) =>
@@ -20596,11 +20602,49 @@ function dedupeBeautyProductsByDisplayKey(products = []) {
         : id
           ? `id:${id}`
           : '';
-    if (key && seen.has(key)) continue;
-    if (key) seen.add(key);
+    if (key && seen.has(key)) {
+      // COLLAPSED, not vanished. This step drops by brand+title, so the second SELLER of one
+      // product looks exactly like a duplicate row. Measured 2026-09-17: two retailer listings
+      // of the Pyunkang Yul cleansing balm shared a content_key, and the second was dropped
+      // here with nothing left on the card to reach it — search said `multi_merchant_canonical`
+      // and handed out one seller. When the dropped card carries the SAME non-empty
+      // content_key, that is the stored convergence identity, so the survivor records it.
+      // A different (or absent) content_key claims nothing and drops exactly as before.
+      recordCollapsedSellerListing(seen.get(key), product);
+      continue;
+    }
+    if (key) seen.set(key, product);
     out.push(product);
   }
   return out;
+}
+
+/**
+ * Attach a collapsed listing to the card that survived, but ONLY when both carry the same
+ * content_key — the identity the catalog itself converged them on. The entry keeps the dropped
+ * listing's own keys, so `get_offers` / `get_product` can be called on it.
+ */
+function recordCollapsedSellerListing(keeper, dropped) {
+  if (!keeper || typeof keeper !== 'object' || !dropped || typeof dropped !== 'object') return;
+  const contentKey = String(keeper.content_key || '').trim();
+  if (!contentKey || String(dropped.content_key || '').trim() !== contentKey) return;
+  const keeperKey = String(keeper.product_key || keeper.catalog_product_key || '').trim();
+  const productKey = String(dropped.product_key || dropped.catalog_product_key || '').trim();
+  if (!productKey || productKey === keeperKey) return;
+  const listings = Array.isArray(keeper.other_seller_listings) ? keeper.other_seller_listings : [];
+  if (listings.some((entry) => String(entry?.product_key || '') === productKey)) return;
+  const merchantId = String(dropped.merchant_id || '').trim();
+  const merchantName = String(dropped.merchant_name || '').trim();
+  const signatureId = String(dropped.pivota_signature_id || '').trim();
+  listings.push({
+    product_key: productKey,
+    ...(merchantId ? { merchant_id: merchantId } : {}),
+    ...(merchantName ? { merchant_name: merchantName } : {}),
+    ...(signatureId ? { pivota_signature_id: signatureId } : {}),
+    content_key: contentKey,
+  });
+  keeper.other_seller_listings = listings;
+  keeper.seller_listing_count = listings.length + 1;
 }
 
 function isWeakSeoulLocalSunscreenDisplayCandidate(product = {}, queryText = '') {
@@ -53967,6 +54011,7 @@ module.exports._debug = {
   buildCanonicalQueryTextForBeautyBrandRecall,
   canonicalizeBeautyProductTitleForDedupe,
   dedupeBeautyProductsByDisplayKey,
+  recordCollapsedSellerListing,
   ensureSearchProductPdpOpen,
   buildCanonicalChainMainlineProduct,
   resolveCanonicalOfferDerivedPrice,
