@@ -26,7 +26,7 @@ suite('canonical catalog entity group offer_count on PostgreSQL', () => {
     await db.query(`
       CREATE TABLE catalog_products(product_key text PRIMARY KEY, merchant_id text, platform text, source_product_id text,
         title text, description text, brand text, category text, product_type text, category_path text, canonical_url text,
-        image_url text, product_payload jsonb, pdp_lifecycle_stage text, pivota_signature_id text, pivota_canonical_url text,
+        image_url text, product_payload jsonb, pdp_lifecycle_stage text, sync_status text, pivota_signature_id text, pivota_canonical_url text,
         pivota_signature_minted_at timestamptz, content_key text, updated_at timestamptz, source_domain text);
       CREATE TABLE catalog_merchants(merchant_id text PRIMARY KEY, merchant_name text, status text);
       CREATE TABLE product_group_members(merchant_id text, platform text, platform_product_id text, product_group_id text, is_primary boolean);
