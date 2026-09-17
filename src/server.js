@@ -21781,8 +21781,23 @@ function scoreBeautyExternalSeedProduct({
     return { product, relevant: false, score: -30 };
   }
 
+  // The lexical arms below compare unfolded text. The SQL admitted this row because its own name
+  // carries every query token under the IDENTITY fold (accents, middle dots), so read the name that
+  // way here too: review of #2230 found "MÉTAL SERUM GLOSS Sheer" admitted, waived, and then served
+  // below in-category serums for want of the points "LIP-PRESSION Metal Serum Gloss" gets.
+  // Only admitted rows take this path, so every other row scores exactly as before.
+  const foldedName = admittedByNameEvidence
+    ? searchNameEvidence.sqlIdentityValue(
+      [product?.title, product?.name, product?.product_name, product?.display_name, product?.product_type].filter(Boolean).join(' '),
+    )
+    : '';
+  const foldedNameCarries = (text) => {
+    const folded = searchNameEvidence.sqlIdentityValue(text);
+    return Boolean(foldedName && folded && ` ${foldedName} `.includes(` ${folded} `));
+  };
+
   let score = 0;
-  if (normalizedQuery && candidateText.includes(normalizedQuery)) score += 32;
+  if (normalizedQuery && (candidateText.includes(normalizedQuery) || foldedNameCarries(normalizedQuery))) score += 32;
   const productBrand = normalizeSearchTextForMatch(
     firstNonEmptyString(product?.brand, product?.vendor, product?.merchant_name),
   );
@@ -21795,9 +21810,12 @@ function scoreBeautyExternalSeedProduct({
   }
   if (categoryPathMatch) score += 140;
   else if (categoryLexicalMatch) score += 64;
-  // Must outrank a bare category match (140): measured end to end on PostgreSQL, the
-  // named product was served below 250 rows that only shared its guessed category.
-  // Applies only to rows whose category was waived, so in-category ordering is unchanged.
+  // Replaces the category points (140) the waived row cannot earn, plus a margin: measured end to
+  // end on PostgreSQL, the named product was served below 250 rows that only shared its guessed
+  // category. It is not a tier -- "Metal Serum Gloss": admitted carriers 265 (any spelling, via the
+  // fold above), in-category "Barrier Repair Serum" 245, an in-category row whose name also carries
+  // the query 283. Rows that share more of the query can still outrank it, and quality penalties
+  // (missing image, transaction hold) still apply. Only waived rows get it: in-category order is unchanged.
   if (admittedByNameEvidence) score += 160;
   if (acneOilControlIntent) {
     if (acneOilControlEvidence) {
@@ -21890,12 +21908,17 @@ function scoreBeautyExternalSeedProduct({
   }
   score += scoreBeautyStrictQualityOverlay({ product, queryText, intent });
   const overlap = (Array.isArray(queryTokens) ? queryTokens : []).filter(
-    (token) => token.length >= 3 && candidateText.includes(token),
+    (token) => token.length >= 3 && (candidateText.includes(token) || foldedNameCarries(token)),
   ).length;
   score += Math.min(18, overlap * 3);
   let tokenRelevance = null;
   if (PIVOT_BEAUTY_TOKEN_RELEVANCE_RANK_ENABLED) {
-    tokenRelevance = scoreBeautyQueryTokenRelevance({ product, queryTokens });
+    tokenRelevance = scoreBeautyQueryTokenRelevance(admittedByNameEvidence
+      ? {
+        product: { ...product, title: `${product?.title || ''} ${foldedName}` },
+        queryTokens: (Array.isArray(queryTokens) ? queryTokens : []).map((token) => searchNameEvidence.sqlIdentityValue(token) || token),
+      }
+      : { product, queryTokens });
     score += tokenRelevance.bonus;
   }
   score += scoreBeautySearchQualityContract({
@@ -53957,6 +53980,9 @@ module.exports._debug = {
   fetchPdpServingEligibilityFromDb,
   getSearchQualityContractHardConstraintResult,
   rankAndServeBeautyRecallProducts,
+  // Its safe-empty answer never reaches a client -- the invoke lane turns an empty page into a 503
+  // BEAUTY_PRIMARY_RECALL_FAILED -- so the shape it builds is only testable here.
+  searchBeautyExternalSeedProductsMainline,
   isBeautySearchQualityContractApplied,
   getSearchQualityContractMode: () => SEARCH_QUALITY_CONTRACT_V1_MODE,
   relaxSearchQualityContractForMultiFamilyBeautyIntent,

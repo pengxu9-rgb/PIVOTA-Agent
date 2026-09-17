@@ -71,6 +71,16 @@ suite('name-evidence admission with real PostgreSQL', () => {
       ['glacier_b', 'Glacier Silk Serum Lip Gloss B', 'Other', 'beauty/makeup', 'makeup'],
       // A multi-product SET carrying the same name: never admitted unless the query asks for a set.
       ['glacier_set', 'Glacier Silk Serum Lip Duo', 'Other', 'beauty/makeup', 'makeup'],
+      // MORE OF THE SAME PRODUCT is not the product either. Review of #2230 v3 served a twin pack at
+      // #2: the set words alone missed these three spellings.
+      ['glacier_twin', 'Glacier Silk Serum Twin Pack', 'Other', 'beauty/makeup', 'makeup'],
+      ['glacier_combo', 'Glacier Silk Serum Combo', 'Other', 'beauty/makeup', 'makeup'],
+      ['glacier_x2', 'Glacier Silk Serum x2', 'Other', 'beauty/makeup', 'makeup'],
+      // ...and two rows whose names merely CONTAIN those letters, one on each side: dropping the
+      // pattern's leading boundary makes "Sunset" a set, dropping its trailing boundary makes
+      // "Setting" one. Both survived every test.
+      ['glacier_sunset', 'Sunset Glacier Silk Serum', 'Other', 'beauty/makeup', 'makeup'],
+      ['glacier_setting', 'Glacier Silk Serum Setting Mist', 'Other', 'beauty/makeup', 'makeup'],
       // ...and one IN-category row carrying the same name, updated EARLIEST so flag-off order puts it
       // last. It must not be marked or boosted: only rows the category rejected are admitted.
       ['glacier_in', 'Glacier Silk Serum Refill', 'Other', 'beauty/skincare/treat/serum', 'Serum', "now() - interval '30 days'"],
@@ -94,13 +104,13 @@ suite('name-evidence admission with real PostgreSQL', () => {
   });
   afterAll(async () => { if (db) { await db.query(`DROP SCHEMA ${schema} CASCADE`); await db.end(); } });
 
-  const boot = (flag) => {
+  const boot = (flag, extraEnv = {}) => {
     priorEnv = { ...process.env }; jest.resetModules(); sqlCalls = [];
     Object.assign(process.env, { DATABASE_URL: url, PIVOTA_API_BASE: 'http://upstream-disabled.test', PIVOTA_API_KEY: 'test', API_MODE: 'REAL',
       INDEX_ELIGIBLE_RECALL: 'false', PIVOT_BEAUTY_DIRECT_INDEXED_RECALL_ENABLED: 'true', SEARCH_QUALITY_CONTRACT_V1_ENABLED: 'true',
       SEARCH_QUALITY_CONTRACT_V1_MODE: 'enforce', PIVOT_BEAUTY_MAINLINE_TOKEN_MATCH_ENABLED: 'false',
       CANONICAL_CATALOG_RECALL_DOC_MATCH: 'off', CANONICAL_CATALOG_CATEGORY_BROWSE_TEXT_UNION: 'off',
-      AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED: 'false' });
+      AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED: 'false', ...extraEnv });
     if (flag) process.env[FLAG] = flag; else delete process.env[FLAG];
     nock.disableNetConnect(); nock.enableNetConnect((host) => host.includes('127.0.0.1'));
     jest.doMock('../../src/db', () => ({ query: async (sql, params) => {
@@ -144,6 +154,20 @@ suite('name-evidence admission with real PostgreSQL', () => {
     expect(JSON.stringify(res.body.products)).not.toContain('name_evidence_admitted');
   });
 
+  // Review of #2230 v3: the folded spellings were admitted and waived but NOT served -- the ranker's
+  // lexical arms compared unfolded text, so "MÉTAL SERUM GLOSS Sheer" scored below "Barrier Repair
+  // Serum 000" and the 12-row page was jsm_gloss + serums. Pinned on the served page, with the
+  // token-relevance tiering both off and on (it is secret-configured in prod).
+  for (const tokenRank of ['false', 'true']) {
+    test(`flag ON: folded spellings are SERVED, not only admitted (token relevance rank ${tokenRank})`, async () => {
+      boot('on', { PIVOT_BEAUTY_TOKEN_RELEVANCE_RANK_ENABLED: tokenRank });
+      const res = await search('Metal Serum Gloss');
+      expect(res.status).toBe(200);
+      const served = keys(res);
+      expect(served.slice(0, 3).sort()).toEqual(['folded_accent', 'folded_dots', 'jsm_gloss']);
+    });
+  }
+
   test('THE THRESHOLD: 10 carriers are a name and are admitted; 11 are a browse and none is', async () => {
     boot('on');
     await search('Violet Cloud Serum');
@@ -165,10 +189,26 @@ suite('name-evidence admission with real PostgreSQL', () => {
     boot('on');
     await search('Glacier Silk Serum');
     const plain = (await recalled()).filter((r) => r.name_evidence_admitted === true).map((r) => r.product_key).sort();
-    expect(plain).toEqual(['glacier_a', 'glacier_b']);
+    // The duo, the twin pack, the combo and the x2 are all excluded; "Sunset" only contains "set".
+    expect(plain).toEqual(['glacier_a', 'glacier_b', 'glacier_setting', 'glacier_sunset']);
     await search('Glacier Silk Serum Duo');
     const asked = (await recalled()).filter((r) => r.name_evidence_admitted === true).map((r) => r.product_key);
     expect(asked).toEqual(['glacier_set']);
+  });
+
+  test('a query that asks for a pack gets the pack: the exclusion reads the query the same way', async () => {
+    boot('on');
+    for (const [query, expected] of [
+      ['Glacier Silk Serum Twin Pack', ['glacier_twin']],
+      ['Glacier Silk Serum Combo', ['glacier_combo']],
+      // NOT "Glacier Silk Serum x2": that query recalls nothing at all, admitted or not -- the
+      // recall text predicate normalises the query to "x 2" and no row's text matches. A pack
+      // spelled that way is findable only by the words around it.
+    ]) {
+      await search(query);
+      expect({ query, admitted: (await recalled()).filter((r) => r.name_evidence_admitted === true).map((r) => r.product_key) })
+        .toEqual({ query, admitted: expected });
+    }
   });
 
   test('NO DISPLACEMENT: every row the category recalls off is still recalled on, in the same order', async () => {
@@ -187,8 +227,8 @@ suite('name-evidence admission with real PostgreSQL', () => {
     expect([sqlCalls.at(-1).params[2], sqlCalls.at(-1).params[3]]).toEqual([210, 510]);
     const on = (await recalled()).map((r) => r.product_key);
     const onRows = await recalled();
-    expect(onRows.filter((r) => r.name_evidence_admitted === true).map((r) => r.product_key).sort()).toEqual(['glacier_a', 'glacier_b']);
-    const admittedKeys = new Set(['glacier_a', 'glacier_b']);
+    expect(onRows.filter((r) => r.name_evidence_admitted === true).map((r) => r.product_key).sort()).toEqual(['glacier_a', 'glacier_b', 'glacier_setting', 'glacier_sunset']);
+    const admittedKeys = new Set(['glacier_a', 'glacier_b', 'glacier_setting', 'glacier_sunset']);
     // Off is a PREFIX of on: nothing removed, nothing reordered -- including the in-category
     // carrier, wherever flag-off order put it. The unused extra slots may add in-category rows at the tail.
     expect(on.filter((k) => !admittedKeys.has(k)).slice(0, off.length)).toEqual(off);
@@ -196,7 +236,7 @@ suite('name-evidence admission with real PostgreSQL', () => {
     // last flag-off rows are pushed to the next page, not removed.
     const offServed = keys(resOff);
     const onServed = keys(resOn);
-    expect(onServed.filter((k) => admittedKeys.has(k)).sort()).toEqual(['glacier_a', 'glacier_b']);
+    expect(onServed.filter((k) => admittedKeys.has(k)).sort()).toEqual(['glacier_a', 'glacier_b', 'glacier_setting', 'glacier_sunset']);
     const keptServed = onServed.filter((k) => !admittedKeys.has(k));
     expect(keptServed).toEqual(offServed.slice(0, keptServed.length));
   });

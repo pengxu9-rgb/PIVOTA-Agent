@@ -172,6 +172,42 @@ test('ranker: a marked row is relevant and outranks a bare category match; an un
   assert.ok(jsm.score > other.score, `${jsm.score} > ${other.score}`);
 });
 
+test('ranker: an admitted row scores the same in any spelling the SQL fold admits', () => {
+  // Review of #2230 v3: the lexical arms compared unfolded text, so the accent- and dot-folded
+  // carriers scored 35 below the plain spelling and were served behind in-category serums.
+  const plain = withFlag('on', () => score({ ...ADMITTED }, q));
+  for (const title of ['LIP-PRESSION MÉTAL SERUM GLOSS', 'LIP-PRESSION M·E·T·A·L Serum Gloss']) {
+    const folded = withFlag('on', () => score({ ...ADMITTED, product_id: title, title }, q));
+    assert.equal(folded.relevant, true, title);
+    assert.equal(folded.score, plain.score, title);
+  }
+  // The fold reads the NAME, as the SQL does -- never the description, which the SQL never admits
+  // on. The description arms that already exist are unfolded, so an ACCENTED description isolates
+  // the fold: it must add nothing that a description with no query words does not.
+  const described = { ...ADMITTED, product_id: 'd', title: 'Sheer Tint', product_type: 'makeup',
+    description: 'Pairs with MÉTAL SÉRUM' };  // accented only: the unfolded arms match none of it
+  const bare = { ...ADMITTED, product_id: 'n', title: 'Sheer Tint', product_type: 'makeup',
+    description: 'Pairs with nothing in particular' };
+  assert.equal(withFlag('on', () => score(described, q)).score, withFlag('on', () => score(bare, q)).score,
+    'an accented description earns no fold credit');
+  // WHOLE WORDS, like the SQL's regex that admitted the row: "metallic" does not carry "metal".
+  // The rows are ACCENTED because that is the only place this can be measured -- the pre-existing
+  // unfolded arm is a plain substring test, so it already credits "metal" inside "Metallic", and
+  // the fold must not add a second, equally loose match. The control carries exactly the same
+  // query words ("serum", "gloss") with no near-miss, so only that credit can separate them.
+  const metallic = { ...ADMITTED, product_id: 'x', title: 'MÉTALLIC Serum Gloss' };
+  const control = { ...ADMITTED, product_id: 'c', title: 'RÁDIANT Serum Gloss' };
+  assert.equal(withFlag('on', () => score(metallic, q)).score, withFlag('on', () => score(control, q)).score,
+    'a substring is not a token');
+
+  // An UNMARKED row gets no fold credit: only what the SQL admitted is read folded.
+  const serum = { ...JSM, product_id: 'm', title: 'MÉTAL SERUM GLOSS Serum', product_type: 'Serum',
+    category_path: ['beauty', 'skincare', 'treat', 'serum'], catalog_category_path: 'beauty/skincare/treat/serum' };
+  const plainSerum = { ...serum, product_id: 'p', title: 'METAL SERUM GLOSS Serum' };
+  assert.ok(withFlag('on', () => score(serum, q)).score < withFlag('on', () => score(plainSerum, q)).score,
+    'premise: unfolded arms still treat the accented in-category title as a different word');
+});
+
 test('ranker: in-category scores do not change with the flag', () => {
   const inCategory = { ...JSM, product_id: 's', title: 'Metal Serum Gloss', product_type: 'Serum',
     category_path: ['beauty', 'skincare', 'treat', 'serum'], catalog_category_path: 'beauty/skincare/treat/serum' };
@@ -223,8 +259,18 @@ test('contraindications: a marked row skips the SURFACE rules', () => {
 
 test('contraindications: EVERY safety rule still applies to a marked row, each on an input only it catches', () => {
   // Each input was verified to be caught by exactly that rule: guarding the rule with the
-  // surface switch flips the result to false.
+  // surface switch flips the result to false. Review of #2230 v3 found only six of the fourteen
+  // safety rules pinned; guarding any of the other eight survived. All fourteen are listed here, in
+  // the order isBeautyProductContraindicatedForQuery (src/server.js) checks them.
   for (const [rule, query, product] of [
+    ['avoid_retinoids (retinoid for a retinol-free query)', 'retinol free serum', { title: 'Night Serum', product_type: 'Serum', description: 'retinol 0.3%' }],
+    ['retinoid for a sunscreen/cleanser/moisturizer query', 'night moisturizer', { title: 'Night Cream', product_type: 'Moisturizer', description: 'retinol 0.1%' }],
+    ['avoid_cooling_strong_cleanser (scrub for a sensitive cleanser query)', 'sensitive skin cleanser', { title: 'Walnut Scrub Cleanser', product_type: 'Cleanser', description: 'walnut scrub' }],
+    ['avoid_exfoliating_acids (acid for a peeling-skin query)', 'peeling skin cream', { title: 'Glycolic Toner Pads', product_type: 'Toner', description: 'glycolic acid' }],
+    ['volume-plumping actives for a gentle query', 'gentle serum', { title: 'Plump Serum', product_type: 'Serum', description: 'volufiline complex' }],
+    ['scented product for a calm-face query', 'face moisturizer', { title: 'Rose Scented Cream', product_type: 'Moisturizer' }],
+    ['resurfacing product for a barrier-ingredient moisturizer query', 'ceramide moisturizer', { title: 'Clarifying Cream', product_type: 'Moisturizer' }],
+    ['acid treatment for a barrier-ingredient moisturizer query', 'ceramide moisturizer', { title: 'Azelaic Acid Suspension 10%', product_type: 'Treatment' }],
     ['fragrance for a fragrance-averse query', 'fragrance free moisturizer', { title: 'Silk Cream', product_type: 'Moisturizer', description: 'Ingredients: aqua, linalool, limonene' }],
     ['exfoliating acid for a calm-skin query', 'sensitive skin serum', { title: 'Glow Glycolic Serum', product_type: 'Serum', description: 'glycolic acid 7%' }],
     ['avoid_retinoids (peel for pregnancy)', 'pregnancy safe peel', { title: 'Radiance Peel Pads', product_type: 'Exfoliant', description: 'aha peel' }],
