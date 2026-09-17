@@ -81,6 +81,20 @@ suite('name-evidence admission with real PostgreSQL', () => {
       // "Setting" one. Both survived every test.
       ['glacier_sunset', 'Sunset Glacier Silk Serum', 'Other', 'beauty/makeup', 'makeup'],
       ['glacier_setting', 'Glacier Silk Serum Setting Mist', 'Other', 'beauty/makeup', 'makeup'],
+      // A SECOND name family, for the exclusion words the glacier family does not spell and for
+      // the beauty/sets tree. Kept separate so the glacier carrier count stays under MAX_CARRIERS.
+      // Review of #2236: each of these survived as a mutant -- the words were asserted only in a
+      // comment, and the sets-tree clause (a #2230 mechanism) had no row at all.
+      ['velour_plain', 'Velour Cloud Serum Tint', 'Other', 'beauty/makeup', 'makeup'],
+      ['velour_count', 'Velour Cloud Serum 3 Count', 'Other', 'beauty/makeup', 'makeup'],
+      ['velour_ct', 'Velour Cloud Serum 2 ct', 'Other', 'beauty/makeup', 'makeup'],
+      ['velour_double', 'Velour Cloud Serum Double Pack', 'Other', 'beauty/makeup', 'makeup'],
+      ['velour_multi', 'Velour Cloud Serum Multipack', 'Other', 'beauty/makeup', 'makeup'],
+      // A count of ONE is still read as a pack spelling. Conservative on purpose: the row is only
+      // held out of an admission it would otherwise get, and nothing else about it changes.
+      ['velour_one', 'Velour Cloud Serum 1 Count', 'Other', 'beauty/makeup', 'makeup'],
+      // Named like one product, but filed in the sets tree: excluded by category, not by name.
+      ['velour_tree', 'Velour Cloud Serum Deluxe', 'Other', 'beauty/sets/gift', 'makeup'],
       // ...and one IN-category row carrying the same name, updated EARLIEST so flag-off order puts it
       // last. It must not be marked or boosted: only rows the category rejected are admitted.
       ['glacier_in', 'Glacier Silk Serum Refill', 'Other', 'beauty/skincare/treat/serum', 'Serum', "now() - interval '30 days'"],
@@ -194,6 +208,13 @@ suite('name-evidence admission with real PostgreSQL', () => {
     await search('Glacier Silk Serum Duo');
     const asked = (await recalled()).filter((r) => r.name_evidence_admitted === true).map((r) => r.product_key);
     expect(asked).toEqual(['glacier_set']);
+  });
+
+  test('every multi-product spelling is excluded, and so is the beauty/sets tree', async () => {
+    boot('on');
+    await search('Velour Cloud Serum');
+    const admitted = (await recalled()).filter((r) => r.name_evidence_admitted === true).map((r) => r.product_key).sort();
+    expect(admitted).toEqual(['velour_plain']);
   });
 
   test('a query that asks for a pack gets the pack: the exclusion reads the query the same way', async () => {

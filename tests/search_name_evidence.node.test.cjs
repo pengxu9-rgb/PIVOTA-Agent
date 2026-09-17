@@ -107,6 +107,17 @@ test('SQL: the arm is built on BOTH category branches -- with a product-form rul
   }
 });
 
+test('the multi-product pattern reads a bundle, not a skin type', () => {
+  // Review of #2236: adding "combo" to the pack words made "serum for combo skin" -- a SKIN TYPE --
+  // switch the exclusion off, which re-admits real sets. The title side keeps plain "combo".
+  for (const q of ['serum for combo skin', 'oily combo skin moisturizer', 'combination skin serum', 'lip gloss']) {
+    assert.equal(ne.queryNamesMultiProduct(q), false, q);
+  }
+  for (const q of ['Glacier Silk Serum Combo', 'combo pack serum', 'Metal Serum Gloss Twin Pack', 'Serum 3 Count', '\u5957\u88c5']) {
+    assert.equal(ne.queryNamesMultiProduct(q), true, q);
+  }
+});
+
 // --- the gate reads the mark ---------------------------------------------------------------
 
 const q = 'Metal Serum Gloss';
@@ -199,6 +210,22 @@ test('ranker: an admitted row scores the same in any spelling the SQL fold admit
   const control = { ...ADMITTED, product_id: 'c', title: 'RÁDIANT Serum Gloss' };
   assert.equal(withFlag('on', () => score(metallic, q)).score, withFlag('on', () => score(control, q)).score,
     'a substring is not a token');
+
+  // The fold is a MATCH, not a flat bonus for being admitted. Review of #2236: making
+  // foldedNameCarries return true for every admitted row survived every assertion here, because
+  // they all compare two admitted rows under symmetric conditions. A row whose name carries the
+  // tokens OUT OF PHRASE ORDER must not collect the phrase credit (+32).
+  const scrambled = { ...ADMITTED, product_id: 's', title: 'Gloss Serum Metal Tint' };
+  assert.equal(withFlag('on', () => score(scrambled, q)).score + 32, plain.score,
+    'out of phrase order: the token credit stands, the phrase credit does not');
+
+  // The fold reads the same fields the SQL's own name does -- title AND product_type.
+  const typed = { ...ADMITTED, product_id: 't', title: 'Sheer Tint', product_type: 'MÉTAL SERUM GLOSS' };
+  // The control's product_type carries the same words UNACCENTED minus "metal", so the unfolded
+  // arms score the two identically and only the fold over product_type can separate them.
+  const untyped = { ...ADMITTED, product_id: 'u', title: 'Sheer Tint', product_type: 'SERUM GLOSS' };
+  assert.ok(withFlag('on', () => score(typed, q)).score > withFlag('on', () => score(untyped, q)).score,
+    'an accented product_type carries the query too');
 
   // An UNMARKED row gets no fold credit: only what the SQL admitted is read folded.
   const serum = { ...JSM, product_id: 'm', title: 'MÉTAL SERUM GLOSS Serum', product_type: 'Serum',

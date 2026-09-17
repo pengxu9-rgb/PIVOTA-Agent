@@ -84,8 +84,14 @@ const MULTI_PRODUCT_NAME_PATTERN = '(^| )(sets?|kits?|bundles?|duos?|trios?|coll
   + '|routines?)($| )|套装|套裝|礼盒|禮盒';
 const MULTI_PRODUCT_NAME_RE = new RegExp(MULTI_PRODUCT_NAME_PATTERN, 'u');
 
+// "combo"/"combination" SKIN is a skin type, not a bundle. Without this, "serum for combo skin"
+// switches the whole exclusion off and re-admits real sets -- a regression review of #2236 caught,
+// since those queries kept the exclusion before the pack words existed. The TITLE side keeps plain
+// "combo": a product named "... Combo" is a bundle.
+const SKIN_TYPE_COMBO_RE = /(^| )(combo|combination) skin( |$)/u;
+
 function queryNamesMultiProduct(queryText) {
-  return MULTI_PRODUCT_NAME_RE.test(sqlIdentityValue(queryText));
+  return MULTI_PRODUCT_NAME_RE.test(sqlIdentityValue(queryText).replace(SKIN_TYPE_COMBO_RE, ' '));
 }
 
 function nameEvidenceAdmissionEnabled(env = process.env) {

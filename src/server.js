@@ -21914,10 +21914,9 @@ function scoreBeautyExternalSeedProduct({
   let tokenRelevance = null;
   if (PIVOT_BEAUTY_TOKEN_RELEVANCE_RANK_ENABLED) {
     tokenRelevance = scoreBeautyQueryTokenRelevance(admittedByNameEvidence
-      ? {
-        product: { ...product, title: `${product?.title || ''} ${foldedName}` },
-        queryTokens: (Array.isArray(queryTokens) ? queryTokens : []).map((token) => searchNameEvidence.sqlIdentityValue(token) || token),
-      }
+      // The tokens need no folding: they arrive from tokenizeSearchTextForMatch, which already
+      // emits only characters the identity fold leaves alone. Only the NAME needs it.
+      ? { product: { ...product, title: `${product?.title || ''} ${foldedName}` }, queryTokens }
       : { product, queryTokens });
     score += tokenRelevance.bonus;
   }
@@ -53980,9 +53979,6 @@ module.exports._debug = {
   fetchPdpServingEligibilityFromDb,
   getSearchQualityContractHardConstraintResult,
   rankAndServeBeautyRecallProducts,
-  // Its safe-empty answer never reaches a client -- the invoke lane turns an empty page into a 503
-  // BEAUTY_PRIMARY_RECALL_FAILED -- so the shape it builds is only testable here.
-  searchBeautyExternalSeedProductsMainline,
   isBeautySearchQualityContractApplied,
   getSearchQualityContractMode: () => SEARCH_QUALITY_CONTRACT_V1_MODE,
   relaxSearchQualityContractForMultiFamilyBeautyIntent,
