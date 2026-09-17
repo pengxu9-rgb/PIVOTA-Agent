@@ -2,6 +2,7 @@ const {primaryBrandIndexDefinitions,inspectReadiness}=require('../scripts/catalo
 const {buildBrandIdentityPredicate,CANONICAL_OWN_BRAND_SQL}=require('../src/services/canonicalSearchQualitySql');
 const {SEED_OWN_BRAND_SQL}=require('../src/services/seedSearchOfferScope');
 const {seedBrandIdentitySql,seedDomainIdentitySql,seedTitleSql,BRAND_SEED_SCAN_PREDICATE,IDENTITY_MAX_CHARS}=require('../src/services/brandSeedScanSql');
+const {CANONICAL_BRAND_MATCH_PREDICATE,canonicalBrandCompactSql,canonicalBrandLowerSql,canonicalBrandMatchSql}=require('../src/services/canonicalBrandMatchSql');
 const {PRODUCT_GROUP_REF_KEY_INDEX,RELATIONSHIP_GRAPH_REF_KEY_COLUMNS,REF_KEY_PREFIX_CHARS,productGroupRefKeyIndexExpressionSql,productGroupRefKeyMatchSql,refKeyIndexExpressionSql,refKeyIndexName,refKeyMatchSql}=require('../src/services/relationshipGraphRefKeySql');
 // An index only accelerates an expression it matches CHARACTER FOR CHARACTER, so every definition
 // must be tied back to the query that is meant to use it. `accelerates` names that query; a
@@ -46,6 +47,22 @@ const ACCELERATORS={
   },
   // The relationship graph ref resolution: one equality branch per key column, probing the bounded
   // prefix and rechecking the full value.
+  // The brand page's commerce-index lane: one equality branch per brand spelling.
+  canonical_brand_equality(index){
+    const expressions={idx_catalog_products_canonical_brand_lower_v1:canonicalBrandLowerSql(),
+      idx_catalog_products_canonical_brand_compact_v1:canonicalBrandCompactSql()};
+    expect(Object.keys(expressions)).toContain(index.name);
+    expect(index.table).toBe('catalog_products');
+    expect(index.expression).toBe(expressions[index.name]);
+    expect(index.predicate).toBe(CANONICAL_BRAND_MATCH_PREDICATE);
+    const cte=canonicalBrandMatchSql({alias:'cp',lowerAliasesParam:'$1',compactAliasesParam:'$2'});
+    // The query must use the aliased form of exactly this expression, under a predicate that implies
+    // the partial index's.
+    const aliased=index.name.endsWith('_lower_v1')?canonicalBrandLowerSql('cp'):canonicalBrandCompactSql('cp');
+    expect(cte).toContain(`${aliased} = ANY(`);
+    expect(cte).toContain('cp.content_key IS NOT NULL AND cp.brand IS NOT NULL');
+    expect(index.opclass).toBeUndefined();
+  },
   ref_key_equality(index){
     if(index.name===PRODUCT_GROUP_REF_KEY_INDEX.name){
       expect(index.table).toBe('product_group_members');
@@ -118,4 +135,11 @@ test('every relationship graph ref key column has exactly one index, and the res
   expect(source).toContain("productGroupRefKeyMatchSql('pgm', 'i.ref_key')");
   expect(source).not.toMatch(/ON lower\(pgm\.product_group_id\) = i\.ref_key/);
   expect(source).not.toMatch(/OR lower\(cp\.(source_product_id|product_key|pivota_signature_id|canonical_url|pivota_canonical_url)\) = i\.ref_key/);
+});
+test('the canonical brand lane reads its brand match from the module the indexes are built from',()=>{
+  const source=require('fs').readFileSync(require.resolve('../src/services/discoveryFeed'),'latin1');
+  expect(source).toContain("canonicalBrandMatchSql({ alias: 'cp', lowerAliasesParam: '$1', compactAliasesParam: '$2' })");
+  expect(source).not.toContain("OR regexp_replace(lower(cp.brand), '[^a-z0-9]+', '', 'g') = ANY($2::text[])");
+  expect(primaryBrandIndexDefinitions().filter(i=>i.accelerates==='canonical_brand_equality').map(i=>i.name))
+    .toEqual(['idx_catalog_products_canonical_brand_lower_v1','idx_catalog_products_canonical_brand_compact_v1']);
 });

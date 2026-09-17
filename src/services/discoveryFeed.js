@@ -72,6 +72,7 @@ const {
   seedTitleSql,
 } = require('./brandSeedScanSql');
 const { transactionCapableMerchantWhere } = require('./merchantTransactionCapabilitySql');
+const { canonicalBrandMatchSql } = require('./canonicalBrandMatchSql');
 const {
   fetchRelationshipGraphRecallForAnchors,
   isRelationshipGraphSurfaceEnabled,
@@ -9529,15 +9530,7 @@ async function fetchBrandScopedCanonicalCandidates({ brandAliases = [], limit = 
   try {
     const res = await query(
       `
-        WITH brand_match AS (
-          SELECT DISTINCT cp.content_key
-          FROM catalog_products cp
-          WHERE cp.content_key IS NOT NULL
-            AND cp.brand IS NOT NULL
-            AND (
-              lower(cp.brand) = ANY($1::text[])
-              OR regexp_replace(lower(cp.brand), '[^a-z0-9]+', '', 'g') = ANY($2::text[])
-            )
+        WITH brand_match AS (${canonicalBrandMatchSql({ alias: 'cp', lowerAliasesParam: '$1', compactAliasesParam: '$2' })}
         )
         SELECT
           apv.content_key,

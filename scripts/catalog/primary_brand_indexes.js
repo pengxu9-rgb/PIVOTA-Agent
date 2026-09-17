@@ -2,6 +2,7 @@
 const {normalizedBrandIdentitySql,CANONICAL_OWN_BRAND_SQL}=require('../../src/services/canonicalSearchQualitySql');
 const {SEED_OWN_BRAND_SQL}=require('../../src/services/seedSearchOfferScope');
 const {BRAND_SEED_SCAN_PREDICATE,seedBrandIdentitySql,seedDomainIdentitySql,seedTitleSql}=require('../../src/services/brandSeedScanSql');
+const {CANONICAL_BRAND_MATCH_PREDICATE,canonicalBrandCompactSql,canonicalBrandLowerSql}=require('../../src/services/canonicalBrandMatchSql');
 const {PRODUCT_GROUP_REF_KEY_INDEX,RELATIONSHIP_GRAPH_REF_KEY_COLUMNS,productGroupRefKeyIndexExpressionSql,refKeyIndexExpressionSql,refKeyIndexName}=require('../../src/services/relationshipGraphRefKeySql');
 
 function primaryBrandIndexDefinitions() {
@@ -32,6 +33,11 @@ function primaryBrandIndexDefinitions() {
     // ...and its product-group branch, which matches the ref against product_group_members.product_group_id.
     {name:PRODUCT_GROUP_REF_KEY_INDEX.name,table:PRODUCT_GROUP_REF_KEY_INDEX.table,
       expression:productGroupRefKeyIndexExpressionSql(),accelerates:'ref_key_equality',predicate:null},
+    // The brand page's commerce-index lane matches catalog_products.brand lowercased and compacted.
+    {name:'idx_catalog_products_canonical_brand_lower_v1',table:'catalog_products',
+      expression:canonicalBrandLowerSql(),accelerates:'canonical_brand_equality',predicate:CANONICAL_BRAND_MATCH_PREDICATE},
+    {name:'idx_catalog_products_canonical_brand_compact_v1',table:'catalog_products',
+      expression:canonicalBrandCompactSql(),accelerates:'canonical_brand_equality',predicate:CANONICAL_BRAND_MATCH_PREDICATE},
   ].map(index=>{
     const scoped=index.table==='external_product_seeds'?'market, tool, ':'';
     const key=`(${index.expression})${index.opclass?' '+index.opclass:''}`;
