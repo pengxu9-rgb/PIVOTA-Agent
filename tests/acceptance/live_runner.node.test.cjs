@@ -114,6 +114,20 @@ test('resolve counts only when the gateway says resolved, not when a candidate m
   assert.equal(report.results.find((r) => r.id === 'meitu_e5_resolve_variant').pass, false);
 });
 
+test('resolve: a candidate that only mentions the handle as a prefix is not the product', async () => {
+  const fetchImpl = fakeFetch({ restProducts: [], ucpProducts: [],
+    resolve: { resolved: true, candidates: [{ title: 'x', canonical_url: 'https://jsmbeauty.sg/products/lip-pression-metal-serum-gloss-set' }] } });
+  const report = await live.runLive({ fetchImpl, env: { PIVOTA_API_KEY: 'k' } });
+  assert.equal(report.results.find((r) => r.id === 'meitu_e5_resolve_variant').pass, false);
+});
+
+test('merchant currency: a response that omits it falls back to the pinned target currency, never to "any"', () => {
+  const noCurrency = { product: { variants: [{ id: 50856826536257, price: '28.80' }] } };
+  assert.deepEqual(live.merchantVariantPrice(noCurrency, TARGET), { amount: 28.8, currency: 'SGD' });
+  assert.equal(live.comparePrice({ amount: 28.8, currency: 'USD' }, live.merchantVariantPrice(noCurrency, TARGET)).ok, false);
+  assert.equal(live.merchantVariantPrice(noCurrency, { ...TARGET, currency: undefined }), null, 'no stated or pinned currency: no truth');
+});
+
 test('the key is sent in headers and never in a URL', async () => {
   const fetchImpl = fakeFetch({ restProducts: [], ucpProducts: [] });
   await live.runLive({ fetchImpl, env: { PIVOTA_API_KEY: 'secret-key-value' } });

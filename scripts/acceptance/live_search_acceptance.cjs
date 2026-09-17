@@ -66,13 +66,16 @@ function servedPrice(product, surface) {
   return Number.isFinite(amount) ? { amount, currency: product.currency || null, as_of: product.price_as_of || null } : null;
 }
 
-// Merchant truth for the target variant, from Shopify's product JSON.
+// Merchant truth for the target variant, from Shopify's product JSON. The currency is the one
+// the merchant states, or else the target's pinned `currency` -- never absent, so the
+// comparison below cannot fail open on a merchant response that omits it.
 function merchantVariantPrice(productJson, target) {
   const variants = (productJson && productJson.product && productJson.product.variants) || [];
   const v = variants.find((x) => String(x.id) === String(target.variant_id));
   if (!v) return null;
   const amount = Number(v.price);
-  return Number.isFinite(amount) ? { amount, currency: v.price_currency || null } : null;
+  const currency = v.price_currency || target.currency || null;
+  return Number.isFinite(amount) && currency ? { amount, currency } : null;
 }
 
 function comparePrice(served, merchant) {
@@ -80,7 +83,7 @@ function comparePrice(served, merchant) {
   // A served price without a currency is not a match: 28.80 USD and 28.80 SGD are
   // different prices, and an unlabelled one cannot be told apart.
   if (!served.currency) return { ok: false, why: 'served price has no currency' };
-  if (merchant.currency && merchant.currency !== served.currency) {
+  if (!merchant.currency || merchant.currency !== served.currency) {
     return { ok: false, why: `currency ${served.currency} != merchant ${merchant.currency}` };
   }
   const delta = Math.abs(served.amount - merchant.amount);
@@ -156,7 +159,7 @@ async function runLive({ fetchImpl = fetch, env = process.env } = {}) {
     const r = await getJson(fetchImpl, `${REST_BASE}/agent/v1/products/resolve?${new URLSearchParams({ sku_id: rc.sku_id, limit: '10' })}`,
       { headers: { 'X-API-Key': restKey, accept: 'application/json' } });
     const candidates = (r.body && Array.isArray(r.body.candidates)) ? r.body.candidates : [];
-    const pass = Boolean(r.body && r.body.resolved) && candidates.some((cand) => matchesTarget(cand, target) || JSON.stringify(cand).includes(target.url_handle));
+    const pass = Boolean(r.body && r.body.resolved) && candidates.some((cand) => matchesTarget(cand, target));
     results.push({ id: rc.id, sku_id: rc.sku_id, status: rc.status, pass, http_status: r.status, reason_code: r.body ? r.body.reason_code || null : null });
   }
 
