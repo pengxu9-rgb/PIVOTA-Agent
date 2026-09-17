@@ -4099,6 +4099,16 @@ function shouldUseBrandDirectPoolInsteadOfGenericBrandExpansion(request) {
   return request?.surface === 'browse_products' && hasBrandScope(request);
 }
 
+// A brand-scoped browse page already has the brand direct pool (the canonical index plus attached
+// seeds), which is why internal_catalog and external_seeds are skipped for it below. products_search was
+// still called first, and it contributed nothing: across 2026-09-10..17 it ran 781 times on these builds
+// and returned a product 0 times, while 495 of the 505 calls since 09-15 were brand-scoped browse pages
+// that waited ~1.65s on it (p50 1,906ms for the whole build). It now follows the same rule as the other
+// two providers. DISCOVERY_PRODUCTS_SEARCH_BRAND_SCOPED_ENABLED=true restores the call.
+function isBrandScopedProductsSearchEnabled() {
+  return String(process.env.DISCOVERY_PRODUCTS_SEARCH_BRAND_SCOPED_ENABLED || '').trim().toLowerCase() === 'true';
+}
+
 function shouldUseBrandDirectPoolAsPrimary(request) {
   return (
     request?.surface === 'browse_products' &&
@@ -8075,7 +8085,18 @@ async function loadCatalogCandidates({
       }),
     );
   } else if (!explicitQueryScoped) {
-    appendProviderResult(await fetchProductsSearchProviderResult());
+    if (shouldUseBrandDirectPoolInsteadOfGenericBrandExpansion(request) && !isBrandScopedProductsSearchEnabled()) {
+      providerResults.push(
+        buildSkippedProviderResult('products_search', {
+          label: getProviderLabel('products_search'),
+          query: providerQueries.join(' | '),
+          limit: safeLimit,
+          skipReason: 'brand_direct_pool_supersedes_brand_expansion',
+        }),
+      );
+    } else {
+      appendProviderResult(await fetchProductsSearchProviderResult());
+    }
   }
 
   const shouldSkipBrandScopedExpansion = shouldSkipBrandScopedProviderExpansion(mergedProducts, {

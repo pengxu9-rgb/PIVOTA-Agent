@@ -133,6 +133,7 @@ describe('discovery feed service', () => {
       PIVOTA_AGENT_API_KEY: process.env.PIVOTA_AGENT_API_KEY,
       AGENT_API_KEY: process.env.AGENT_API_KEY,
       DISCOVERY_PRODUCTS_SEARCH_MAX_CALLS: process.env.DISCOVERY_PRODUCTS_SEARCH_MAX_CALLS,
+      DISCOVERY_PRODUCTS_SEARCH_BRAND_SCOPED_ENABLED: process.env.DISCOVERY_PRODUCTS_SEARCH_BRAND_SCOPED_ENABLED,
       DISCOVERY_PRODUCTS_SEARCH_TIMEOUT_MS: process.env.DISCOVERY_PRODUCTS_SEARCH_TIMEOUT_MS,
       DISCOVERY_BRAND_DIRECT_PREFETCH_DELAY_MS: process.env.DISCOVERY_BRAND_DIRECT_PREFETCH_DELAY_MS,
       DISCOVERY_RECALL_BUDGET_MS: process.env.DISCOVERY_RECALL_BUDGET_MS,
@@ -1823,6 +1824,9 @@ describe('discovery feed service', () => {
   });
 
   test('brand-scoped browse prefers direct brand pool over generic internal and external expansion', async () => {
+    // Exercises products_search on a brand-scoped page, which is off by default (see
+    // isBrandScopedProductsSearchEnabled).
+    process.env.DISCOVERY_PRODUCTS_SEARCH_BRAND_SCOPED_ENABLED = 'true';
     process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL = 'http://discovery-catalog.test';
     delete process.env.PIVOTA_BACKEND_BASE_URL;
     delete process.env.PIVOTA_API_BASE;
@@ -2234,7 +2238,72 @@ describe('discovery feed service', () => {
     }
   });
 
+  test('brand-scoped browse does not call products_search by default; the brand direct pool serves the page', async () => {
+    process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL = 'http://discovery-catalog.test';
+    process.env.DISCOVERY_PRODUCTS_SEARCH_API_KEY = 'bridge-key';
+    delete process.env.DISCOVERY_PRODUCTS_SEARCH_BRAND_SCOPED_ENABLED;
+    delete process.env.DATABASE_URL;
+    const axiosGetSpy = jest.spyOn(axios, 'get');
+    const brandDirectProducts = Array.from({ length: 30 }, (_, index) =>
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: `fenty_direct_${index + 1}`,
+        title: `Fenty Direct Product ${index + 1}`,
+        brand: 'Fenty Beauty',
+        category: 'Lipstick',
+        product_type: 'Lipstick',
+      }),
+    );
+    const internalSpy = jest.fn(async () => []);
+    const externalSpy = jest.fn(async () => []);
+    const request = {
+      surface: 'browse_products',
+      page: 1,
+      limit: 12,
+      debug: true,
+      scope: { brand_names: ['Fenty Beauty'] },
+      context: { locale: 'en-US' },
+    };
+    const options = {
+      providerOverrides: { internal_catalog: internalSpy, external_seeds: externalSpy },
+      brandFallbackFetchInternalCandidatesFn: jest.fn(async () => []),
+      brandFallbackFetchExternalCandidatesFn: jest.fn(async ({ limit }) => brandDirectProducts.slice(0, limit)),
+    };
+
+    const response = await getDiscoveryFeed(request, options);
+
+    expect(axiosGetSpy.mock.calls.filter(([url]) => String(url).includes('/agent/v1/products/search'))).toHaveLength(0);
+    expect(internalSpy).not.toHaveBeenCalled();
+    expect(externalSpy).not.toHaveBeenCalled();
+    expect(response.products.length).toBeGreaterThan(0);
+    expect(response.products.every((product) => String(product.product_id).startsWith('fenty_direct_'))).toBe(true);
+    expect(response.metadata.provider_breakdown).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          provider: 'products_search',
+          attempted: true,
+          skipped: true,
+          skip_reason: 'brand_direct_pool_supersedes_brand_expansion',
+        }),
+      ]),
+    );
+
+    // The switch restores the call on the same request.
+    _internals.resetBrowsePoolCache();
+    _internals.resetBrandDirectPoolCache();
+    process.env.DISCOVERY_PRODUCTS_SEARCH_BRAND_SCOPED_ENABLED = 'true';
+    nock('http://discovery-catalog.test').persist().get('/agent/v1/products/search').query(true).reply(200, { products: [] });
+    const enabled = await getDiscoveryFeed(request, options);
+    expect(axiosGetSpy.mock.calls.filter(([url]) => String(url).includes('/agent/v1/products/search')).length).toBeGreaterThan(0);
+    expect(enabled.metadata.provider_breakdown).toEqual(
+      expect.arrayContaining([expect.objectContaining({ provider: 'products_search', skipped: false })]),
+    );
+  });
+
   test('brand-scoped browse keeps total stable across page-size budgets', async () => {
+    // Exercises products_search on a brand-scoped page, which is off by default (see
+    // isBrandScopedProductsSearchEnabled).
+    process.env.DISCOVERY_PRODUCTS_SEARCH_BRAND_SCOPED_ENABLED = 'true';
     process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL = 'http://discovery-catalog.test';
     delete process.env.PIVOTA_BACKEND_BASE_URL;
     delete process.env.PIVOTA_API_BASE;
@@ -2678,6 +2747,9 @@ describe('discovery feed service', () => {
   });
 
   test('brand-scoped discovery returns empty brand results instead of recommendation fallback when brand pool times out', async () => {
+    // Exercises products_search on a brand-scoped page, which is off by default (see
+    // isBrandScopedProductsSearchEnabled).
+    process.env.DISCOVERY_PRODUCTS_SEARCH_BRAND_SCOPED_ENABLED = 'true';
     process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL = 'http://discovery-catalog.test';
     delete process.env.PIVOTA_BACKEND_BASE_URL;
     delete process.env.PIVOTA_API_BASE;
@@ -3900,6 +3972,9 @@ describe('discovery feed service', () => {
   });
 
   test('brand-scoped browse skips supplemental providers once products_search already has enough primary brand candidates', async () => {
+    // Exercises products_search on a brand-scoped page, which is off by default (see
+    // isBrandScopedProductsSearchEnabled).
+    process.env.DISCOVERY_PRODUCTS_SEARCH_BRAND_SCOPED_ENABLED = 'true';
     process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL = 'http://discovery-catalog.test';
     process.env.PIVOTA_BACKEND_BASE_URL = 'http://wrong-backend.test';
     delete process.env.PIVOTA_API_BASE;
