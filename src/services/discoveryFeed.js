@@ -4099,6 +4099,25 @@ function shouldUseBrandDirectPoolInsteadOfGenericBrandExpansion(request) {
   return request?.surface === 'browse_products' && hasBrandScope(request);
 }
 
+// products_search is an HTTP hop to the backend. On a brand-only page the brand direct pool (canonical index
+// plus attached seeds) is the source of truth for the brand, and when it completes cleanly with nothing
+// the brand simply has no products. products_search was still called then, and across 2026-09-15..17 the
+// 499 brand-scoped builds that reached it served 0 products in 498 cases while waiting ~1.65s on it. It is
+// now skipped in exactly that case: a brand-only page whose primary brand pool finished without an error or
+// a swallowed fetcher failure and returned nothing. Brand + query text, brand + category, and a failed
+// brand pool still call it. DISCOVERY_PRODUCTS_SEARCH_BRAND_SCOPED_ENABLED=true always calls it.
+function isBrandScopedProductsSearchEnabled() {
+  return String(process.env.DISCOVERY_PRODUCTS_SEARCH_BRAND_SCOPED_ENABLED || '').trim().toLowerCase() === 'true';
+}
+
+function isCleanEmptyBrandDirectResult(result) {
+  if (!result || !Array.isArray(result.products) || result.products.length > 0) return false;
+  const steps = Array.isArray(result.recallSummary) ? result.recallSummary : [];
+  const poolSteps = steps.filter((step) => step && step.label === 'brand_direct_pool');
+  if (poolSteps.length === 0) return false;
+  return !steps.some((step) => step && (step.error || step.degraded === true));
+}
+
 function shouldUseBrandDirectPoolAsPrimary(request) {
   return (
     request?.surface === 'browse_products' &&
@@ -7485,6 +7504,7 @@ async function loadCatalogCandidates({
   limit = MAX_CANDIDATE_FETCH,
   providerOverrides = null,
   identityGraphRowsResolverFn = listLivePdpIdentityRowsForRefs,
+  brandDirectPoolEmpty = false,
 } = {}) {
   const safeLimit = clampInt(
     limit,
@@ -8075,7 +8095,18 @@ async function loadCatalogCandidates({
       }),
     );
   } else if (!explicitQueryScoped) {
-    appendProviderResult(await fetchProductsSearchProviderResult());
+    if (brandDirectPoolEmpty === true && !isBrandScopedProductsSearchEnabled()) {
+      providerResults.push(
+        buildSkippedProviderResult('products_search', {
+          label: getProviderLabel('products_search'),
+          query: providerQueries.join(' | '),
+          limit: safeLimit,
+          skipReason: 'brand_direct_pool_empty',
+        }),
+      );
+    } else {
+      appendProviderResult(await fetchProductsSearchProviderResult());
+    }
   }
 
   const shouldSkipBrandScopedExpansion = shouldSkipBrandScopedProviderExpansion(mergedProducts, {
@@ -9966,6 +9997,9 @@ async function computeBrandScopedDirectCandidates({
 
   const safeLimit = clampInt(limit, Math.max(limit, 120), 24, 360);
   const stepStartedAt = Date.now();
+  // The brand fetchers swallow their own errors and return [], recording them here. Keep a sink even
+  // when the caller passes none, so an empty pool can be told apart from a failed one.
+  const failureSink = Array.isArray(failures) ? failures : [];
 
   // When BRAND_PAGE_USES_COMMERCE_INDEX is enabled, swap the legacy products_cache
   // read for the commerce-index canonical view (agent_pdp_view + catalog_products).
@@ -9980,17 +10014,18 @@ async function computeBrandScopedDirectCandidates({
             brandAliases: normalizedAliases,
             limit: safeLimit,
             request,
+            failures: failureSink,
           })
         : useCommerceIndex
           ? fetchBrandScopedCanonicalCandidates({
               brandAliases: normalizedAliases,
               limit: safeLimit,
-              failures,
+              failures: failureSink,
             })
           : fetchBrandScopedInternalCatalogCandidates({
               brandAliases: normalizedAliases,
               limit: safeLimit,
-              failures,
+              failures: failureSink,
             }),
       typeof fetchExternalCandidatesFn === 'function'
         ? fetchExternalCandidatesFn({
@@ -9998,6 +10033,7 @@ async function computeBrandScopedDirectCandidates({
             limit: safeLimit,
             request,
             includeAttached: includeAttachedSeeds,
+            failures: failureSink,
           })
         : fetchBrandScopedExternalSeedCandidates({
             brandAliases: normalizedAliases,
@@ -10005,7 +10041,7 @@ async function computeBrandScopedDirectCandidates({
             limit: safeLimit,
             orderByRecency: !isBrandScopeOnlyQuery(request),
             includeAttached: includeAttachedSeeds,
-            failures,
+            failures: failureSink,
           }),
     ]);
 
@@ -10034,6 +10070,7 @@ async function computeBrandScopedDirectCandidates({
           returned: deduped.length,
           latency_ms: Date.now() - stepStartedAt,
           cache_hit: false,
+          ...(failureSink.length > 0 ? { degraded: true } : {}),
         },
       ],
     };
@@ -12022,6 +12059,8 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
       shouldUseBrandDirectPrimary &&
       Array.isArray(prefetchedBrandDirectLoadResult?.products) &&
       prefetchedBrandDirectLoadResult.products.length > 0;
+    const brandDirectPoolEmpty =
+      shouldUseBrandDirectPrimary && isCleanEmptyBrandDirectResult(prefetchedBrandDirectLoadResult);
 
     const candidateLoadResult = Array.isArray(options.candidateProducts)
       ? {
@@ -12042,6 +12081,7 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
           limit: candidateLimit,
           providerOverrides: options.providerOverrides || null,
           identityGraphRowsResolverFn: options.identityGraphRowsResolverFn,
+          brandDirectPoolEmpty,
         });
     const rawCandidates = Array.isArray(candidateLoadResult?.products)
       ? candidateLoadResult.products
@@ -12198,7 +12238,9 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
     }
 
     if (brandScopeAliases.length > 0 && scopedCandidates.length === 0) {
-      brandEmptyReason = catalogUnavailableError
+      // A brand pool that completed cleanly with nothing is an answer, not an outage, even when the other
+      // providers were skipped because of it.
+      brandEmptyReason = catalogUnavailableError && !brandDirectPoolEmpty
         ? 'brand_catalog_providers_unavailable'
         : 'no_matching_brand_candidates';
       recallSummary = recallSummary.concat([
