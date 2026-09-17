@@ -17688,6 +17688,8 @@ function buildCanonicalChainMainlineProduct(row) {
     id: productId,
     product_id: productId,
     merchant_id: merchantId,
+    // Set only by the canonical SQL's name-evidence arm (searchNameEvidence.js).
+    ...(row.name_evidence_admitted === true ? { name_evidence_admitted: true } : {}),
     merchant_name: firstNonEmptyString(row.merchant_name, brand, merchantId),
     platform: firstNonEmptyString(row.platform, row.merchant_primary_platform, merchantId === EXTERNAL_SEED_MERCHANT_ID ? EXTERNAL_SEED_PLATFORM : 'catalog'),
     platform_product_id: sourceProductId || productId,
@@ -18452,16 +18454,14 @@ function getSearchQualityContractHardConstraintResult(product = {}, contract = n
     } else if (!textMatches) {
       categoryRejected = true;
     }
-    // NAME-EVIDENCE ADMISSION (src/services/searchNameEvidence.js): the guessed category
-    // must not veto a row whose own name carries every distinctive query token. Only a
-    // category rejection is waived; brand, exact-anchor, accessory and merchandise
-    // reasons stand. The canonical SQL applies the same rule, or this is inert live.
-    if (categoryRejected && searchNameEvidence.nameEvidenceAdmissionEnabled()) {
-      const tokens = searchNameEvidence.queryDistinctiveTokens(queryText || contract.effective_query, hard);
-      if (tokens && searchNameEvidence.ownNameCarriesTokens(product, tokens)) {
-        categoryRejected = false;
-        categoryWaivedByNameEvidence = true;
-      }
+    // NAME-EVIDENCE ADMISSION (src/services/searchNameEvidence.js): the guessed category must
+    // not veto a row the canonical SQL admitted on its own name -- the SQL is the only
+    // authority and MARKS those rows (`name_evidence_admitted`), so this reads the mark and
+    // never re-derives it. Only a category rejection is waived; brand, exact-anchor,
+    // accessory, merchandise, strict-lipstick and fragrance-free reasons all stand.
+    if (categoryRejected && product.name_evidence_admitted === true && searchNameEvidence.nameEvidenceAdmissionEnabled()) {
+      categoryRejected = false;
+      categoryWaivedByNameEvidence = true;
     }
     if (categoryRejected) reasons.push('category_mismatch');
   }
@@ -22180,6 +22180,7 @@ async function searchBeautyExternalSeedProductsMainline({
           external_seed_count: 0,
           hard_constraint_pass_count: 0,
           hard_constraint_reject_count: 0,
+          category_waived_by_name_evidence_count: 0,
           serving_eligible_count: 0,
           missing_image_count: 0,
           invalid_price_count: 0,
@@ -41816,6 +41817,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               external_seed_count: 0,
               hard_constraint_pass_count: 0,
               hard_constraint_reject_count: 0,
+              category_waived_by_name_evidence_count: 0,
               serving_eligible_count: 0,
               missing_image_count: 0,
               invalid_price_count: 0,

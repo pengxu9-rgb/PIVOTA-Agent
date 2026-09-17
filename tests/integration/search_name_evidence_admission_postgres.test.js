@@ -4,17 +4,13 @@ const nock = require('nock');
 const { fetchCanonicalChainRows } = require('../../src/services/canonicalCatalogSearch');
 const { buildSearchQualityContract } = require('../../src/findProductsMulti/queryUnderstanding');
 
-// NAME-EVIDENCE ADMISSION, end to end through HTTP and a real PostgreSQL.
+// NAME-EVIDENCE ADMISSION, end to end through HTTP and a real PostgreSQL, at the PRODUCTION
+// default page size (12 -> a candidate LIMIT of 48).
 //
-// The rule has two halves that only work together: the canonical SQL must RECALL the row
-// (its category WHERE deletes before ranking), and the serving gate must not reject it.
-// A gate-only change is inert live, and nothing but real SQL execution can show that the
-// recall half works -- including under the candidate LIMIT, where 250 correctly
-// categorised rows compete with the one row the query names.
-//
-// Fixture shape follows the Meitu report: the named product is labelled only
-// `beauty/makeup` with product_type `makeup`, and its name contains "Serum", so the query
-// classifies as a skincare serum browse.
+// The SQL is the only authority on admission (src/services/searchNameEvidence.js): it counts the
+// catalog rows whose own name carries every query token, admits them only when there are at most
+// MAX_CARRIERS, marks them, and raises its candidate LIMIT so they never evict a row the category
+// recalls. Only real SQL execution can show that, so every property is measured here.
 
 const url = process.env.CANONICAL_MAINLINE_TEST_DATABASE_URL;
 const suite = url ? describe : describe.skip;
@@ -28,8 +24,8 @@ suite('name-evidence admission with real PostgreSQL', () => {
     await db.query(`CREATE SCHEMA ${schema}`);
     await db.query(`SET search_path TO ${schema}`);
     let sql;
-    // Materialise exactly the columns the production statement references, with the
-    // flag ON so the name-evidence arm's columns are included.
+    // Materialise exactly the columns the production statement references, with the flag ON so
+    // the name-evidence arm's columns are included.
     process.env[FLAG] = 'on';
     await fetchCanonicalChainRows({ query: 'Metal Serum Gloss', categoryPathPrefix: 'beauty/skincare/treat/', categoryMode: 'category_browse',
       includeSkuOffers: true, marketId: 'US', searchQualityContract: buildSearchQualityContract({ rawQuery: 'Metal Serum Gloss' }),
@@ -53,20 +49,27 @@ suite('name-evidence admission with real PostgreSQL', () => {
     }
     await db.query("INSERT INTO catalog_merchants(merchant_id,merchant_name,status,primary_platform) VALUES ('retailer','Retailer','active','shopify')");
     const items = [
+      // The reported shape: a lip gloss labelled only beauty/makeup, whose name says "Serum".
       ['jsm_gloss', 'LIP-PRESSION Metal Serum Gloss', 'JUNGSAEMMOOL', 'beauty/makeup', 'makeup'],
-      // Control: a correctly categorised serum that shares two query words, not all three.
-      ['serum_metal', 'Metal Peptide Serum', 'Other', 'beauty/skincare/treat/serum', 'Serum'],
-      // The prefilter must stay a SUPERSET of the identity match: accents and middle dots are
-      // folded by identitySql, so this row carries "metal serum gloss" after normalisation.
+      // Accent- and middle-dot-folded spellings carry the same identity tokens.
       ['folded_accent', 'MÉTAL SERUM GLOSS Duo', 'Other', 'beauty/makeup', 'makeup'],
       ['folded_dots', 'M·E·T·A·L Serum Gloss', 'Other', 'beauty/makeup', 'makeup'],
-      // Control: shares every query word only in its DESCRIPTION -- never own-name evidence.
+      // Shares every query word only in its DESCRIPTION -- never own-name evidence.
       ['eyeliner', 'Precision Eyeliner', 'Other', 'beauty/makeup', 'Eyeliner'],
-      // In-category rows that carry only "serum", updated LATER than the hydrating rows, so
-      // flag-off order puts them first. A rank boost for every name-carrying row (not only
-      // waived ones) would reorder them -- the ordering test below catches that.
+      // THE THRESHOLD. 10 rows carry "violet cloud serum" (a name); 11 carry "velvet cloud serum"
+      // (too common to be a name). None is in the serum category.
+      ...Array.from({ length: 10 }, (_, i) => [`violet_${i}`, `Violet Cloud Serum Tint ${i}`, 'Other', 'beauty/makeup', 'makeup']),
+      ...Array.from({ length: 11 }, (_, i) => [`velvet_${i}`, `Velvet Cloud Serum Tint ${i}`, 'Other', 'beauty/makeup', 'makeup']),
+      // DISPLACEMENT: a name ("glacier silk serum") carried by two out-of-category rows, while the
+      // query's guessed category (serum) holds far more rows than the candidate LIMIT.
+      ['glacier_a', 'Glacier Silk Serum Lip Gloss A', 'Other', 'beauty/makeup', 'makeup'],
+      ['glacier_b', 'Glacier Silk Serum Lip Gloss B', 'Other', 'beauty/makeup', 'makeup'],
+      // ...and one IN-category row carrying the same name, updated EARLIEST so flag-off order puts it
+      // last. It must not be marked or boosted: only rows the category rejected are admitted.
+      ['glacier_in', 'Glacier Silk Serum Refill', 'Other', 'beauty/skincare/treat/serum', 'Serum', "now() - interval '30 days'"],
+      // ...and in-category rows that only carry "serum", updated LATER, so flag-off order puts them first.
       ...Array.from({ length: 30 }, (_, i) => [`barrier_${i}`, `Barrier Repair Serum ${String(i).padStart(3, '0')}`, 'Brand', 'beauty/skincare/treat/serum', 'Serum', "now() + interval '1 hour'"]),
-      // LIMIT pressure: many rows the category predicate admits on its own.
+      // LIMIT pressure: far more in-category rows than the 48-row candidate LIMIT.
       ...Array.from({ length: 250 }, (_, i) => [`serum_${i}`, `Hydrating Serum ${String(i).padStart(3, '0')}`, 'Brand', 'beauty/skincare/treat/serum', 'Serum']),
     ];
     for (const [id, title, brand, category, type, updatedAt = 'now()'] of items) {
@@ -94,7 +97,7 @@ suite('name-evidence admission with real PostgreSQL', () => {
     if (flag) process.env[FLAG] = flag; else delete process.env[FLAG];
     nock.disableNetConnect(); nock.enableNetConnect((host) => host.includes('127.0.0.1'));
     jest.doMock('../../src/db', () => ({ query: async (sql, params) => {
-      if (sql.includes('WITH candidate_products AS') && sql.includes('ips.serving_eligible')) {
+      if (sql.includes('candidate_products AS') && sql.includes('ips.serving_eligible')) {
         sqlCalls.push({ sql, params }); return db.query(sql, params);
       }
       if (sql.includes('ips.index_eligible')) throw new Error('citation rescue must not execute');
@@ -104,49 +107,70 @@ suite('name-evidence admission with real PostgreSQL', () => {
   };
   afterEach(() => { process.env = priorEnv; jest.dontMock('../../src/db'); jest.resetModules(); nock.cleanAll(); nock.enableNetConnect(); });
 
-  const search = (query, limit = 10) => request(app).post('/agent/shop/v1/invoke').send({ operation: 'find_products_multi',
+  // limit 12 is the production default page: candidate LIMIT 48.
+  const search = (query, limit = 12) => request(app).post('/agent/shop/v1/invoke').send({ operation: 'find_products_multi',
     payload: { search: { query, domain: 'beauty', market: 'US', limit } }, metadata: { source: 'public_api', market: 'US' } });
   const keys = (res) => (res.body.products || []).map((p) => p.product_key || p.product_ref?.product_id || p.id);
+  const recalled = async () => (await db.query(sqlCalls.at(-1).sql, sqlCalls.at(-1).params)).rows;
 
   test('flag OFF: the named product is not served -- the reported defect, reproduced', async () => {
     boot(null);
     const res = await search('Metal Serum Gloss');
     expect(res.status).toBe(200);
     expect(keys(res)).not.toContain('jsm_gloss');
-    expect(sqlCalls.at(-1).params.some((p) => p === '%metal%')).toBe(false);
+    expect(sqlCalls.at(-1).sql).not.toContain('name_evidence_carriers');
   });
 
-  test('flag ON: recalled past 250 category rows AND served, with the waiver published', async () => {
+  test('flag ON: recalled past the category rows at the prod LIMIT, served, marked, and counted', async () => {
     boot('on');
     const res = await search('Metal Serum Gloss');
     expect(res.status).toBe(200);
     expect(keys(res)).toContain('jsm_gloss');
-    const recalled = (await db.query(sqlCalls.at(-1).sql, sqlCalls.at(-1).params)).rows.map((r) => r.product_key);
-    expect(recalled).toEqual(expect.arrayContaining(['folded_accent', 'folded_dots']));
-    expect(sqlCalls.at(-1).params).toEqual(expect.arrayContaining(['%metal%', '%serum%', '%gloss%', '^(?=.*(^| )metal($| ))(?=.*(^| )serum($| ))(?=.*(^| )gloss($| ))']));
-    const counts = res.body.metadata.search_quality_tier_counts || {};
-    expect(counts.category_waived_by_name_evidence_count).toBeGreaterThanOrEqual(1);
-  });
-
-  test('flag ON: own-name evidence only -- partial overlap and description text never admit', async () => {
-    boot('on');
-    const res = await search('Metal Serum Gloss');
-    // The eyeliner mentions the full product name only in its description.
-    expect(keys(res)).not.toContain('eyeliner');
-    // `Metal Peptide Serum` is served on its own category merits; it must not be counted as
-    // a name-evidence admission, because its name lacks "gloss".
-    // jsm_gloss plus the two folded-spelling rows; never the eyeliner or the partial-overlap serum.
+    const rows = await recalled();
+    const admitted = rows.filter((r) => r.name_evidence_admitted === true).map((r) => r.product_key).sort();
+    // Folded spellings are admitted; the description-only eyeliner never is.
+    expect(admitted).toEqual(['folded_accent', 'folded_dots', 'jsm_gloss']);
     expect(res.body.metadata.search_quality_tier_counts.category_waived_by_name_evidence_count).toBe(3);
   });
 
-  test('flag ON: nothing the category serves is removed, and its order is unchanged', async () => {
-    // The boosts apply only to rows whose category was WAIVED, so a query whose results
-    // all sit inside the category must come back identical, order included.
-    boot(null);
-    const off = keys(await search('hydrating serum', 50));
+  test('THE THRESHOLD: 10 carriers are a name and are admitted; 11 are a browse and none is', async () => {
     boot('on');
-    const on = keys(await search('hydrating serum', 50));
-    expect(off.length).toBeGreaterThan(0);
-    expect(on).toEqual(off);
+    await search('Violet Cloud Serum');
+    const violet = (await recalled()).filter((r) => r.name_evidence_admitted === true).map((r) => r.product_key);
+    expect(violet).toHaveLength(10);
+    await search('Velvet Cloud Serum');
+    const velvet = (await recalled()).filter((r) => r.name_evidence_admitted === true);
+    expect(velvet).toHaveLength(0);
+    expect((await recalled()).some((r) => String(r.product_key).startsWith('velvet_'))).toBe(false);
+  });
+
+  test('a generic query is not a name: no admission when many rows carry it, even in-category', async () => {
+    boot('on');
+    await search('hydrating serum');
+    expect((await recalled()).filter((r) => r.name_evidence_admitted === true)).toHaveLength(0);
+  });
+
+  test('NO DISPLACEMENT: every row the category recalls off is still recalled on, in the same order', async () => {
+    // Review of #2230: a +95 inside the SAME 48-row LIMIT evicted the lowest in-category rows,
+    // and rows that were served disappeared. Admitted rows now take extra slots.
+    boot(null);
+    const resOff = await search('Glacier Silk Serum');
+    const off = (await recalled()).map((r) => r.product_key);
+    expect(off.length).toBeGreaterThanOrEqual(48);
+    boot('on');
+    const resOn = await search('Glacier Silk Serum');
+    const on = (await recalled()).map((r) => r.product_key);
+    const onRows = await recalled();
+    expect(onRows.filter((r) => r.name_evidence_admitted === true).map((r) => r.product_key).sort()).toEqual(['glacier_a', 'glacier_b']);
+    const admittedKeys = new Set(['glacier_a', 'glacier_b']);
+    // Off is a PREFIX of on: nothing removed, nothing reordered -- including the in-category
+    // carrier, wherever flag-off order put it. The unused extra slots may add in-category rows at the tail.
+    expect(on.filter((k) => !admittedKeys.has(k)).slice(0, off.length)).toEqual(off);
+    // On the served page the admitted rows lead, and the rest keep flag-off order.
+    const offServed = keys(resOff);
+    const onServed = keys(resOn);
+    expect(onServed.filter((k) => admittedKeys.has(k)).sort()).toEqual(['glacier_a', 'glacier_b']);
+    const keptServed = onServed.filter((k) => !admittedKeys.has(k));
+    expect(keptServed).toEqual(offServed.slice(0, keptServed.length));
   });
 });

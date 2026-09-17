@@ -1477,8 +1477,21 @@ async function fetchCanonicalChainRows(args = {}) {
     .map(({ bind, type }) => ` AND ${bind}::${type} IS NOT NULL`)
     .join('');
   brandWhere = qualityScope.brandWhere;
-  // Zero bytes unless the name-evidence flag built an arm, so flag-off SQL is unchanged.
-  const nameEvidenceRankArm = qualityScope.nameEvidenceRankSql ? `\n          ${qualityScope.nameEvidenceRankSql}` : '';
+  // NAME-EVIDENCE ADMISSION (searchNameEvidence.js, canonicalSearchQualitySql.js). Every piece
+  // is zero bytes unless the flag built an arm, so flag-off SQL is unchanged. When it did:
+  //  * the carrier count is a CTE, counted once;
+  //  * admitted rows are ranked +95 and MARKED, so the gate and ranker read the SQL's decision;
+  //  * the candidate and row limits grow by the most rows that can be admitted, so an
+  //    admitted row takes an extra slot instead of evicting a row the category recalls.
+  const nameEvidence = qualityScope.nameEvidence || null;
+  const nameEvidenceRankArm = nameEvidence ? `\n          ${nameEvidence.rankSql}` : '';
+  const nameEvidenceCteSql = nameEvidence ? `${nameEvidence.cteSql},\n    ` : '';
+  const nameEvidenceProjectionSql = nameEvidence ? `\n        ${nameEvidence.admittedSql} AS name_evidence_admitted,` : '';
+  const nameEvidenceOuterColumnSql = nameEvidence ? '\n      c.name_evidence_admitted,' : '';
+  if (nameEvidence) {
+    params[2] = candidateLimit + nameEvidence.extraCandidates;
+    params[3] = rowLimit + nameEvidence.extraCandidates;
+  }
   // Suppress source-unavailable / discontinued external-seed products from
   // recall. ADR-009: gate on platform, NOT the legacy merchant_id='external_seed'
   // bucket — external seeds now mirror under per-brand observed sellers
@@ -1803,7 +1816,7 @@ async function fetchCanonicalChainRows(args = {}) {
   // the rank-v2 match-quality block built above (canonicalScopeRankArms) and
   // the gateway intentionally diverges from the backend's legacy weights.
   const sql = `
-    WITH ${candidateCteName} AS (
+    WITH ${nameEvidenceCteSql}${candidateCteName} AS (
       SELECT
         COALESCE(m.merchant_id, p.merchant_id) AS merchant_id,
         m.merchant_name         AS merchant_name,
@@ -1843,7 +1856,7 @@ async function fetchCanonicalChainRows(args = {}) {
         p.size_guide,
         p.size_guide_source,
         p.size_guide_confidence,
-        p.updated_at            AS product_updated_at,${setDiversityProjectionSql}
+        p.updated_at            AS product_updated_at,${setDiversityProjectionSql}${nameEvidenceProjectionSql}
         (
           ${skuIdentityScore}
           CASE WHEN LOWER(COALESCE(p.source_product_id, '')) = $1         THEN 105 ELSE 0 END +
@@ -1902,7 +1915,7 @@ async function fetchCanonicalChainRows(args = {}) {
       c.size_guide,
       c.size_guide_source,
       c.size_guide_confidence,
-      c.product_updated_at,
+      c.product_updated_at,${nameEvidenceOuterColumnSql}
       ${skuOfferColumns}
     FROM candidate_products c
     ${skuOfferJoinSql}
