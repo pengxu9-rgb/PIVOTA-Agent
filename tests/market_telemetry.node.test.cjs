@@ -1,7 +1,7 @@
 'use strict';
 
-// Unit tests for src/services/marketTelemetry.js. The module is descriptive: it must report
-// what the door did, never decide anything, and never invent a value it does not have.
+// Unit tests for src/services/marketTelemetry.js. The module reports what the door BOUND, as
+// the door observed it; it must never re-derive the market, and never invent a value.
 
 process.env.NODE_ENV = 'test';
 
@@ -9,45 +9,88 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 
 const mt = require('../src/services/marketTelemetry');
-const { marketsForRequest } = require('../src/services/servedMarkets');
 
-test('market_source distinguishes the two places a caller can name a market, and silence', () => {
-  assert.equal(mt.resolveRequestedMarket({ market: 'SG' }, {}).source, 'explicit_search');
-  assert.equal(mt.resolveRequestedMarket({}, { market: 'SG' }).source, 'explicit_metadata');
-  assert.equal(mt.resolveRequestedMarket({}, {}).source, 'defaulted');
-  // search wins, because that is the precedence the door applies.
-  assert.equal(mt.resolveRequestedMarket({ market: 'SG' }, { market: 'US' }).requested, 'SG');
+test('the door precedence and truthiness, on the door values -- no trimming, no stringifying first', () => {
+  // Review of #2239: trimming and stringifying BEFORE the || made the telemetry disagree with
+  // the bind on exactly these inputs.
+  assert.deepEqual(mt.describeRequested({ market: 'SG' }, { market: 'US' }), { requested: 'SG', source: 'explicit_search' });
+  assert.deepEqual(mt.describeRequested({}, { market: 'SG' }), { requested: 'SG', source: 'explicit_metadata' });
+  assert.deepEqual(mt.describeRequested({}, {}), { requested: null, source: 'defaulted' });
+  // Whitespace is TRUTHY for the door: it wins over metadata, as it does at the bind.
+  assert.deepEqual(mt.describeRequested({ market: '   ' }, { market: 'SG' }), { requested: '   ', source: 'explicit_search' });
+  // false and 0 are FALSY for the door: metadata wins, as it does at the bind.
+  assert.deepEqual(mt.describeRequested({ market: false }, { market: 'SG' }), { requested: 'SG', source: 'explicit_metadata' });
+  assert.deepEqual(mt.describeRequested({ market: 0 }, { market: 'SG' }), { requested: 'SG', source: 'explicit_metadata' });
+  assert.deepEqual(mt.describeRequested(null, null), { requested: null, source: 'defaulted' });
 });
 
-test('market_requested is verbatim; market_bound is what the DOOR binds, not a second opinion', () => {
-  // The point of the module: it calls marketsForRequest rather than re-deriving. A lower-case
-  // or padded request must therefore report exactly what the door would bind for it.
-  for (const raw of ['sg', ' SG ', 'SG']) {
-    const r = mt.resolveRequestedMarket({ market: raw }, {});
-    assert.equal(r.requested, String(raw).trim(), raw);
-    assert.deepEqual(r.bound, marketsForRequest(String(raw).trim()), raw);
-  }
-  // Silence binds the deployment's served list, whatever it is.
-  assert.deepEqual(mt.resolveRequestedMarket({}, {}).bound, marketsForRequest(null));
-  // A market the door cannot parse still reports what the caller SAID -- that is the point.
-  const bad = mt.resolveRequestedMarket({ market: 'EU-DE' }, {});
-  assert.equal(bad.requested, 'EU-DE');
-  assert.deepEqual(bad.bound, marketsForRequest('EU-DE'));
+test('market_requested is capped: free text cannot bloat every line or become an unbounded label', () => {
+  const long = 'X'.repeat(500);
+  const { requested } = mt.describeRequested({ market: long }, {});
+  assert.equal(requested.length, mt.MAX_REQUESTED_CHARS + 1, 'cap plus the ellipsis');
+  assert.ok(requested.startsWith('X'.repeat(mt.MAX_REQUESTED_CHARS)));
+  assert.equal(mt.describeRequested({ market: 'SG' }, {}).requested, 'SG', 'a real code is untouched');
 });
 
-test('served_currency_mismatch counts MIXED, and an unpriced row is not a mix', () => {
+test('observeBoundMarket records exactly what the door hands it, and never throws', () => {
+  const store = {};
+  mt.observeBoundMarket(store, { search: { market: 'SG' }, metadata: {}, markets: ['SG'] });
+  assert.deepEqual(store, { market_observed: true, market_requested: 'SG', market_source: 'explicit_search', market_bound: ['SG'] });
+  // A copy, so a later mutation of the door's array cannot rewrite history.
+  const markets = ['US'];
+  const store2 = {};
+  mt.observeBoundMarket(store2, { search: {}, metadata: {}, markets });
+  markets.push('SG');
+  assert.deepEqual(store2.market_bound, ['US']);
+  // Outside a request there is no store: a no-op, not a throw.
+  assert.doesNotThrow(() => mt.observeBoundMarket(null, { markets: ['US'] }));
+  assert.doesNotThrow(() => mt.observeBoundMarket(undefined, {}));
+});
+
+test('an unbound request reads a FLAT payload the way the early lane does, and claims no binding', () => {
+  // Review of #2239 case B/C: `{query, market}` with no `search` object was counted as
+  // `defaulted`. The early lane reads the payload itself when `search` is not a plain object.
+  assert.deepEqual(mt.describeUnboundRequest({ query: 'x', market: 'SG' }, {}),
+    { market_observed: false, market_requested: 'SG', market_source: 'explicit_search', market_bound: null });
+  assert.deepEqual(mt.describeUnboundRequest({ search: { market: 'SG' } }, {}).market_requested, 'SG');
+  // A non-object `search` falls back to the payload, as the lane does.
+  assert.equal(mt.describeUnboundRequest({ search: 'oops', market: 'JP' }, {}).market_requested, 'JP');
+  assert.equal(mt.describeUnboundRequest({ search: ['a'], market: 'JP' }, {}).market_requested, 'JP');
+  assert.deepEqual(mt.describeUnboundRequest(null, { market: 'SG' }).market_source, 'explicit_metadata');
+  // It never claims a bind it did not see.
+  assert.equal(mt.describeUnboundRequest({ market: 'SG' }, {}).market_bound, null);
+});
+
+test('an observation, when present, WINS over anything re-readable from the request', () => {
+  // The point of the rewrite: the bind is the truth. Here the payload says SG, but the door
+  // observed (and bound) US -- the record must say US.
+  const record = mt.buildMarketTelemetry({
+    operation: 'find_products_multi',
+    observation: { market_observed: true, market_requested: '   ', market_source: 'explicit_search', market_bound: ['US'] },
+    payload: { search: { market: 'SG' } },
+    metadata: {},
+    body: { products: [] },
+    stages: [],
+  });
+  assert.equal(record.market_observed, true);
+  assert.deepEqual(record.market_bound, ['US']);
+  assert.equal(record.market_requested, '   ');
+});
+
+test('served_currency_mismatch counts MIXED; an unpriced row is not a mix; case is normalised', () => {
   const sgd = { currency: 'SGD' };
   const usd = { currency: 'USD' };
   const none = { title: 'no currency at all' };
-  // The live case this counter exists for: SGD 28.20 beside USD 10.40 on one page.
   assert.equal(mt.summariseServedProducts([sgd, usd]).served_currency_mismatch, true);
   assert.equal(mt.summariseServedProducts([sgd, sgd]).served_currency_mismatch, false);
-  // Incomplete is not mixed. Conflating them makes the counter useless for its question.
   assert.equal(mt.summariseServedProducts([sgd, none]).served_currency_mismatch, false);
   assert.equal(mt.summariseServedProducts([]).served_currency_mismatch, false);
-  // A missing currency is reported as unknown, never stamped with a default.
   assert.deepEqual(mt.summariseServedProducts([none]).served_currencies, ['unknown']);
-  assert.deepEqual(mt.summariseServedProducts([sgd, usd]).served_currencies, ['SGD', 'USD']);
+  // Review of #2239 R14: case normalisation was unpinned. 'sgd' and 'SGD' are one currency --
+  // counting them as two would report a mixed page that is not.
+  assert.deepEqual(mt.summariseServedProducts([{ currency: 'sgd' }, { currency: 'SGD' }]).served_currencies, ['SGD']);
+  assert.equal(mt.summariseServedProducts([{ currency: 'sgd' }, { currency: 'SGD' }]).served_currency_mismatch, false);
+  assert.deepEqual(mt.summariseServedProducts([{ price_currency: ' usd ' }]).served_currencies, ['USD']);
 });
 
 test('served_price_sources counts rows by recall source', () => {
@@ -57,50 +100,53 @@ test('served_price_sources counts rows by recall source', () => {
     { currency: 'SGD', catalog_source: 'external_seed' },
     { currency: 'SGD' },
   ];
-  assert.deepEqual(mt.summariseServedProducts(rows).served_price_sources, {
-    canonical_chain: 2, external_seed: 1, unknown: 1,
-  });
+  assert.deepEqual(mt.summariseServedProducts(rows).served_price_sources, { canonical_chain: 2, external_seed: 1, unknown: 1 });
 });
 
-test('lane comes from the stage breakdown the handler already records', () => {
+test('the products are read from body.products -- the page actually sent', () => {
+  // Review of #2239 R12: reading products from the wrong key survived every test, because the
+  // integration environment serves an empty page either way. The read now lives here.
+  const body = { products: [{ currency: 'SGD' }, { currency: 'USD' }], items: [{ currency: 'JPY' }] };
+  const record = mt.buildMarketTelemetry({ operation: 'find_products_multi', body, observation: {} });
+  assert.deepEqual(record.served_currencies, ['SGD', 'USD']);
+  assert.equal(record.served_currency_mismatch, true);
+  // A body with no products array is an empty page, not an error.
+  assert.deepEqual(mt.buildMarketTelemetry({ operation: 'find_products_multi', body: { error: 'x' } }).served_currencies, []);
+  assert.deepEqual(mt.buildMarketTelemetry({ operation: 'find_products_multi', body: ['not', 'an', 'object'] }).served_currencies, []);
+});
+
+test('lane is the LAST lane recorded', () => {
   assert.equal(mt.laneFromStageBreakdown([{ stage: 'route_entry' }, { stage: 'recall', lane: 'early_indexed' }]), 'early_indexed');
-  // The LAST lane wins: a request that falls through lanes is reported by what served it.
   assert.equal(mt.laneFromStageBreakdown([{ lane: 'early_indexed' }, { lane: 'mainline_direct' }]), 'mainline_direct');
   assert.equal(mt.laneFromStageBreakdown([{ stage: 'route_entry' }]), null);
   assert.equal(mt.laneFromStageBreakdown([]), null);
 });
 
-test('the record is emitted for find_products_multi ONLY, and is additive', () => {
-  assert.deepEqual(mt.buildMarketTelemetry({ operation: 'get_offers', search: { market: 'SG' } }), {});
+test('the record is emitted for find_products_multi ONLY, and its keys are all new', () => {
+  assert.deepEqual(mt.buildMarketTelemetry({ operation: 'get_offers', payload: { search: { market: 'SG' } } }), {});
   assert.deepEqual(mt.buildMarketTelemetry({ operation: null }), {});
   const record = mt.buildMarketTelemetry({
     operation: 'find_products_multi',
-    search: { market: 'SG' },
-    metadata: { market: 'US' },
-    products: [{ currency: 'SGD', source: 'canonical_chain' }],
+    observation: { market_observed: true, market_requested: 'SG', market_source: 'explicit_search', market_bound: ['SG'] },
+    body: { products: [{ currency: 'SGD', source: 'canonical_chain' }] },
     stages: [{ lane: 'early_indexed' }],
   });
   assert.deepEqual(record, {
-    market_requested: 'SG',
-    market_source: 'explicit_search',
-    market_bound: marketsForRequest('SG'),
-    served_currencies: ['SGD'],
-    served_currency_mismatch: false,
-    served_price_sources: { canonical_chain: 1 },
+    market_observed: true, market_requested: 'SG', market_source: 'explicit_search', market_bound: ['SG'],
+    served_currencies: ['SGD'], served_currency_mismatch: false, served_price_sources: { canonical_chain: 1 },
     lane: 'early_indexed',
   });
-  // Every key is new: none of them collides with a field the invoke log line already emits.
-  const existing = new Set(['gateway_request_id', 'client_channel', 'key_fingerprint', 'operation',
-    'status', 'latency_ms', 'upstream_ms', 'gateway_retries', 'fpm_stage_breakdown',
-    'fpm_stage_total_ms', 'fpm_unattributed_ms', 'fpm_upstream_http_ms']);
+  const existing = new Set(['gateway_request_id', 'client_channel', 'key_fingerprint', 'operation', 'status',
+    'latency_ms', 'upstream_ms', 'gateway_retries', 'fpm_stage_breakdown', 'fpm_stage_total_ms',
+    'fpm_unattributed_ms', 'fpm_upstream_http_ms']);
   for (const key of Object.keys(record)) assert.equal(existing.has(key), false, key);
 });
 
-test('a malformed request never throws: telemetry must not be able to fail a response', () => {
+test('malformed input never throws: telemetry must not be able to fail a response', () => {
   for (const args of [
-    { operation: 'find_products_multi', search: null, metadata: null, products: null, stages: null },
-    { operation: 'find_products_multi', search: { market: 12345 }, products: [null, 'x', 7] },
-    { operation: 'find_products_multi', search: { market: '' }, products: [{ currency: null }] },
+    { operation: 'find_products_multi', observation: null, payload: null, metadata: null, body: null, stages: null },
+    { operation: 'find_products_multi', payload: { search: { market: 12345 } }, body: { products: [null, 'x', 7] } },
+    { operation: 'find_products_multi', payload: { market: {} }, body: { products: [{ currency: null }] } },
   ]) {
     assert.doesNotThrow(() => mt.buildMarketTelemetry(args), JSON.stringify(args));
   }

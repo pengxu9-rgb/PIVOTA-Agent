@@ -837,6 +837,10 @@ const INVOKE_AUTH_CONTEXT = new AsyncLocalStorage();
 // reference would blend concurrent requests. Reads no-op when no store is set, so unit tests that
 // call withSearchDiagnostics directly are unaffected.
 const INVOKE_FPM_STAGE_CONTEXT = new AsyncLocalStorage();
+// Per-request observation of the market the door BOUND, written at the bind itself
+// (searchBeautyExternalSeedProductsMainline) and read on the invoke completion log line. See
+// services/marketTelemetry.js for why it is observed rather than re-derived.
+const INVOKE_MARKET_CONTEXT = new AsyncLocalStorage();
 
 // Collapses the breakdown to {stage: ms} for `metadata.route_trace.node_timings_ms`, the shape
 // scripts/search_stability_matrix.js has always read and always found null. Same-named stages sum
@@ -22233,6 +22237,7 @@ async function searchBeautyExternalSeedProductsMainline({
   // binds; `market` is the ONE NAME for telemetry, the KR bridge and card stamping.
   const markets = marketsForRequest(search.market || metadata.market);
   const market = markets[0];
+  marketTelemetry.observeBoundMarket(INVOKE_MARKET_CONTEXT.getStore(), { search, metadata, markets });
   const requestSearchQualityContract =
     search?.search_quality_contract &&
     typeof search.search_quality_contract === 'object' &&
@@ -40719,6 +40724,12 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
   } catch (_) {
     // Telemetry must never be able to fail the surface it measures.
   }
+  const marketObservation = {};
+  try {
+    INVOKE_MARKET_CONTEXT.enterWith(marketObservation);
+  } catch (_) {
+    // Same rule: an unavailable store means no observation, never a failed request.
+  }
   let fpmUpstreamHttpMs = 0;
   const isFpmStageOperation = () => {
     const op = String(debugRuntime.operation || '').trim().toLowerCase();
@@ -40997,9 +41008,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     try {
       marketTelemetryRecord = marketTelemetry.buildMarketTelemetry({
         operation: String(debugRuntime.operation || req?.body?.operation || ''),
-        search: req?.body?.payload?.search,
+        observation: marketObservation,
+        payload: req?.body?.payload,
         metadata: req?.body?.metadata,
-        products: body && typeof body === 'object' ? body.products : null,
+        body,
         stages: fpmStageBreakdown,
       });
     } catch (telemetryErr) {
