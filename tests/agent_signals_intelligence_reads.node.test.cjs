@@ -875,9 +875,14 @@ test('best_offer is a seller that CAN sell, not the cheapest one that cannot (pr
   const { offersToSignals } = require('../src/agentSignals/offerToSignal');
   const { best_offer, signals } = offersToSignals(
     [
-      { merchant_id: 'eyurs', price: 13, currency: 'USD', availability: 'out_of_stock', in_stock: false },
-      { merchant_id: 'sokoglam', price: 19.5, currency: 'USD', availability: 'in_stock', in_stock: true },
-      { merchant_id: 'ohlolly', price: 21, currency: 'USD', availability: 'out_of_stock', in_stock: false },
+      // Prod shape: every catalog-arm offer carries purchase_route 'affiliate_outbound'. Leaving it out
+      // let a mutant that exempted EVERY routed offer (switching the fix off in prod) pass.
+      { merchant_id: 'eyurs', price: 13, currency: 'USD', availability: 'out_of_stock', in_stock: false,
+        purchase_route: 'affiliate_outbound' },
+      { merchant_id: 'sokoglam', price: 19.5, currency: 'USD', availability: 'in_stock', in_stock: true,
+        purchase_route: 'affiliate_outbound' },
+      { merchant_id: 'ohlolly', price: 21, currency: 'USD', availability: 'out_of_stock', in_stock: false,
+        purchase_route: 'affiliate_outbound' },
     ],
     { productId: 'ext:retailer:0465db3774ad9906d3d91664fcd3ab1a' },
   );
@@ -922,18 +927,35 @@ test('unknown availability is NOT unsellable: it competes on price with in-stock
   assert.equal(best_offer.value.merchant_id, 'cheap_unknown');
 });
 
-test('a VERIFIED-out-of-stock offer does not beat an unchecked one that says it is in stock', () => {
-  // live_offer_verification stamps stock_verified: true and CORRECTS in_stock to what the merchant
-  // said — which can be false. "Confirmed gone" must not win the headline on the verification tier.
+test('a RESTOCKED, verified offer wins even though its feed availability still says out_of_stock', () => {
+  // The shape live verification actually produces: apply_verdicts stamps stock_verified: true and
+  // corrects in_stock to true, but leaves the feed's stale `availability` untouched. The flag must win;
+  // reading the string here would demote the one offer the merchant just confirmed.
   const { offersToSignals } = require('../src/agentSignals/offerToSignal');
   const { best_offer } = offersToSignals(
     [
-      { merchant_id: 'verified_gone', price: 10, currency: 'USD', stock_verified: true, in_stock: false },
-      { merchant_id: 'unchecked_in_stock', price: 20, currency: 'USD', in_stock: true },
+      { merchant_id: 'restocked_verified', price: 13, currency: 'USD', stock_verified: true, in_stock: true,
+        availability: 'out_of_stock', purchase_route: 'affiliate_outbound' },
+      { merchant_id: 'unchecked_in_stock', price: 19.5, currency: 'USD', in_stock: true,
+        availability: 'in_stock', purchase_route: 'affiliate_outbound' },
     ],
     { productId: 'p' },
   );
-  assert.equal(best_offer.value.merchant_id, 'unchecked_in_stock');
+  assert.equal(best_offer.value.merchant_id, 'restocked_verified');
+});
+
+test('every unavailable spelling counts when the flag is absent', () => {
+  const { offersToSignals } = require('../src/agentSignals/offerToSignal');
+  for (const spelling of ['out_of_stock', 'outofstock', 'sold_out', 'soldout', 'unavailable']) {
+    const { best_offer } = offersToSignals(
+      [
+        { merchant_id: 'cheap', price: 10, currency: 'USD', availability: spelling },
+        { merchant_id: 'dear', price: 20, currency: 'USD' },
+      ],
+      { productId: 'p' },
+    );
+    assert.equal(best_offer.value.merchant_id, 'dear', `${spelling} must mark the offer unavailable`);
+  }
 });
 
 test('a sold-out PRIMARY seller does not win best_offer over a sellable one', () => {
