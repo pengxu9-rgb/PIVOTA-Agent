@@ -62,20 +62,27 @@ test('prices: UCP minor units, REST major units, currency mismatch and stale pri
     'two unlabelled prices are not a match either');
 });
 
-test('the reported state today: nothing found on either surface, and resolve empty -- known failures, no regressions', async () => {
-  const fetchImpl = fakeFetch({ restProducts: [], ucpProducts: [VELY] });
+const RESOLVED = { resolved: true, candidates: [{ title: 'LIP-PRESSION Metal Serum Gloss' }] };
+
+test('the state after backend #2189: search finds nothing, resolve works -- known failures, E5 passes, no regressions', async () => {
+  const fetchImpl = fakeFetch({ restProducts: [], ucpProducts: [VELY], resolve: RESOLVED });
   const report = await live.runLive({ fetchImpl, env: { PIVOTA_API_KEY: 'k' } });
   assert.ok(report.results.length > 0);
-  assert.equal(report.results.every((r) => !r.pass), true);
+  assert.deepEqual(report.results.filter((r) => r.pass).map((r) => r.id), ['meitu_e5_resolve_variant']);
   assert.deepEqual(report.regressions, []);
   assert.deepEqual(report.promotions, []);
+});
+
+test('resolve empty again is a REGRESSION now that E5 is promoted', async () => {
+  const report = await live.runLive({ fetchImpl: fakeFetch({ restProducts: [], ucpProducts: [VELY] }), env: { PIVOTA_API_KEY: 'k' } });
+  assert.deepEqual(report.regressions, ['meitu_e5_resolve_variant']);
 });
 
 test('live verdicts follow live.status, never the offline status', async () => {
   // Offline, #2213 made the brand cases pass the gate. That proves nothing about the deployed
   // gateway, so a live run that finds nothing must NOT report those cases as regressions.
   assert.ok(cases.cases.some((c) => c.live && c.status === 'pass' && c.live.status === 'known_fail'), 'premise');
-  const report = await live.runLive({ fetchImpl: fakeFetch({ restProducts: [], ucpProducts: [] }), env: { PIVOTA_API_KEY: 'k' } });
+  const report = await live.runLive({ fetchImpl: fakeFetch({ restProducts: [], ucpProducts: [], resolve: RESOLVED }), env: { PIVOTA_API_KEY: 'k' } });
   assert.deepEqual(report.regressions, []);
 });
 
@@ -84,7 +91,9 @@ test('found on both surfaces at the merchant price: every case passes and is due
     resolve: { resolved: true, candidates: [{ title: 'LIP-PRESSION Metal Serum Gloss' }] } });
   const report = await live.runLive({ fetchImpl, env: { PIVOTA_API_KEY: 'k' } });
   assert.equal(report.results.every((r) => r.pass), true, JSON.stringify(report.results.filter((r) => !r.pass)));
-  assert.equal(report.promotions.length, report.results.length);
+  // Every case passes; the ones still marked known_fail are the ones due for promotion.
+  assert.deepEqual(report.promotions, report.results.filter((r) => r.status === 'known_fail').map((r) => r.id));
+  assert.equal(report.promotions.length, report.results.length - 1, 'E5 is already promoted');
 });
 
 test('found, but at the stale price: not a pass', async () => {
