@@ -289,6 +289,7 @@ const {
   formAgreementEffectiveFor: canonicalFormAgreementEffectiveFor,
 } = require('./services/canonicalCatalogSearch');
 const searchNameEvidence = require('./services/searchNameEvidence');
+const marketTelemetry = require('./services/marketTelemetry');
 const beautyRelevanceGate = require('./services/beautyRelevanceGate');
 const {
   titleLooksLikeMultiProductSet,
@@ -40705,6 +40706,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
   // pipeline leg, emitted in the 'invoke request complete' log so prod logs
   // can attribute latency_ms to concrete legs (upstream HTTP vs LLM vs local).
   const fpmStageBreakdown = [];
+  // What the caller asked for, what the door bound, what it served -- filled in when the
+  // response body is known (res.json below) and emitted on the completion log line. Nothing
+  // reads it; it exists because no data exists on how often callers name a market.
+  let marketTelemetryRecord = {};
   // enterWith, not run(): this handler's body is ~8000 lines and wrapping it in a callback to set
   // one store would be a large, risky reshape of a live payments-adjacent path for a telemetry
   // field. enterWith binds the store for the remainder of this async context, which is exactly the
@@ -40936,6 +40941,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         latency_ms: Math.max(0, Date.now() - invokeStartedAtMs),
         upstream_ms: Math.max(0, Math.round(upstreamElapsedMs)),
         gateway_retries: Math.max(0, gatewayRetryCount),
+        ...marketTelemetryRecord,
         ...(fpmStageBreakdown.length > 0
           ? {
               fpm_stage_breakdown: fpmStageBreakdown,
@@ -40983,7 +40989,24 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       'invoke request complete',
     );
   });
-  const originalJson = res.json.bind(res);
+  // Every return path funnels through here, so this is the one place the FINAL body is known
+  // -- capturing earlier would record a page that later filtering still changes. Telemetry must
+  // never be able to fail a response, so the capture cannot throw: a failed record is logged as
+  // absent, and the response goes out regardless.
+  const originalJson = ((emit) => (body) => {
+    try {
+      marketTelemetryRecord = marketTelemetry.buildMarketTelemetry({
+        operation: String(debugRuntime.operation || req?.body?.operation || ''),
+        search: req?.body?.payload?.search,
+        metadata: req?.body?.metadata,
+        products: body && typeof body === 'object' ? body.products : null,
+        stages: fpmStageBreakdown,
+      });
+    } catch (telemetryErr) {
+      marketTelemetryRecord = { market_telemetry_error: String(telemetryErr?.message || telemetryErr).slice(0, 120) };
+    }
+    return emit(body);
+  })(res.json.bind(res));
   res.json = (body) => {
     let finalBody = body;
     try {
