@@ -983,3 +983,20 @@ test('an INTERNAL offer is not demoted on its in_stock flag (mirrors the backend
   );
   assert.equal(best_offer.value.merchant_id, 'buy_here');
 });
+
+test('sellable outranks the verification tier: a FAILED check beats a sold-out unchecked offer', () => {
+  // With live verification on: A's check failed (fetch error — no evidence about stock, feed says in
+  // stock); B was never checked and its feed says sold out. Ranking verification above sellability
+  // would pick B, a seller that cannot sell.
+  const { offersToSignals } = require('../src/agentSignals/offerToSignal');
+  const { best_offer } = offersToSignals(
+    [
+      { merchant_id: 'unchecked_sold_out', price: 10, currency: 'USD', in_stock: false,
+        purchase_route: 'affiliate_outbound' },
+      { merchant_id: 'check_failed_in_stock', price: 20, currency: 'USD', stock_verified: false,
+        in_stock: true, purchase_route: 'affiliate_outbound' },
+    ],
+    { productId: 'p' },
+  );
+  assert.equal(best_offer.value.merchant_id, 'check_failed_in_stock');
+});

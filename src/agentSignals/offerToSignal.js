@@ -209,9 +209,11 @@ function offersToSignals(offers, opts = {}) {
   // SELLABLE FIRST. Measured on prod 2026-09-18: get_offers on the Purito Oat-in Calming Gel Cream
   // named eyurs.com $13 `out_of_stock` as best_offer over sokoglam.com $19.50 `in_stock`, because with
   // live verification off every offer is unchecked and price alone decided. A buyer's agent following
-  // best_offer was sent to a seller that cannot sell. It sits above the verification tier, which it
-  // cannot contradict: the backend drops an offer its live check found out of stock (GONE), and stamps
-  // every VERIFIED offer `in_stock: true`, so a verified offer is never "known unavailable" here. It
+  // best_offer was sent to a seller that cannot sell. It sits above the verification tier. A VERIFIED
+  // offer is never "known unavailable" here — the backend drops an offer its live check found out of
+  // stock (GONE) and stamps every VERIFIED one `in_stock: true` — but the two tiers CAN disagree below
+  // that: a check that merely FAILED (`stock_verified: false`, e.g. a fetch error) says nothing about
+  // stock, while an unchecked offer whose feed says `in_stock: false` does. The sellable one wins. It
   // outranks `is_primary` because the primary seller being out of stock does not make it somewhere a
   // buyer can buy.
   //
