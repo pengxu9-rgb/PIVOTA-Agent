@@ -26,6 +26,9 @@
 //   market_requested          the value the door read (or the caller sent), capped; else null
 //   market_source             explicit_search | explicit_metadata | defaulted
 //   market_bound              what the door bound, or null when it bound nothing
+//   market_buyer_currency     the currency the named market was read as (Stage 0a,
+//                             FIND_PRODUCTS_BUYER_MARKET); null when the market was bound as a
+//                             partition, the flag is off, or the door never bound
 //   served_currencies         the distinct currencies on the served page
 //   served_currency_mismatch  true when the page mixes more than one KNOWN currency
 //   served_price_sources      row counts by recall source (a stand-in for price copy -- see below)
@@ -62,7 +65,7 @@ function describeRequested(search, metadata) {
  * Called BY THE DOOR, beside its bind, with the values it bound. `store` is the per-request
  * observation object (null outside a request). Never throws.
  */
-function observeBoundMarket(store, { search, metadata, markets } = {}) {
+function observeBoundMarket(store, { search, metadata, markets, buyerCurrency } = {}) {
   if (!store || typeof store !== 'object') return;
   try {
     const described = describeRequested(search, metadata);
@@ -70,6 +73,7 @@ function observeBoundMarket(store, { search, metadata, markets } = {}) {
     store.market_requested = described.requested;
     store.market_source = described.source;
     store.market_bound = Array.isArray(markets) ? [...markets] : null;
+    store.market_buyer_currency = buyerCurrency || null;
   } catch (_) {
     // Telemetry must never be able to fail the surface it measures.
   }
@@ -91,6 +95,7 @@ function describeUnboundRequest(payload, metadata) {
     market_requested: described.requested,
     market_source: described.source,
     market_bound: null,
+    market_buyer_currency: null,
   };
 }
 
@@ -154,6 +159,7 @@ function buildMarketTelemetry({ operation, observation, payload, metadata, body,
       market_requested: observation.market_requested,
       market_source: observation.market_source,
       market_bound: observation.market_bound,
+      market_buyer_currency: observation.market_buyer_currency || null,
     }
     : describeUnboundRequest(payload, metadata);
   const products = body && typeof body === 'object' && !Array.isArray(body) ? body.products : null;
