@@ -869,3 +869,95 @@ test('the sanitizer preserves the PROJECTION, not just a raw backend offer', () 
   assert.equal(out.execution_spec.expected_currency, 'USD');
   assert.equal(out.execution_spec.cart_url, VERIFIED_OFFER.execution_spec.cart_url);
 });
+
+test('best_offer is a seller that CAN sell, not the cheapest one that cannot (prod 2026-09-18)', () => {
+  // get_offers on the Purito Oat-in Calming Gel Cream, three retailers, verification off.
+  const { offersToSignals } = require('../src/agentSignals/offerToSignal');
+  const { best_offer, signals } = offersToSignals(
+    [
+      { merchant_id: 'eyurs', price: 13, currency: 'USD', availability: 'out_of_stock', in_stock: false },
+      { merchant_id: 'sokoglam', price: 19.5, currency: 'USD', availability: 'in_stock', in_stock: true },
+      { merchant_id: 'ohlolly', price: 21, currency: 'USD', availability: 'out_of_stock', in_stock: false },
+    ],
+    { productId: 'ext:retailer:0465db3774ad9906d3d91664fcd3ab1a' },
+  );
+  assert.equal(best_offer.value.merchant_id, 'sokoglam');
+  // signals keep the backend's order — only the headline pick is re-ranked here.
+  assert.deepEqual(signals.map((s) => s.value.merchant_id), ['eyurs', 'sokoglam', 'ohlolly']);
+});
+
+test('either statement alone marks an offer unsellable: the flag, or the availability string', () => {
+  // The seed and internal lanes ship `in_stock` with no `availability`; a sloppy feed value is
+  // normalised the way the backend normalises it.
+  const { offersToSignals } = require('../src/agentSignals/offerToSignal');
+  const flagOnly = offersToSignals(
+    [
+      { merchant_id: 'cheap_flag_false', price: 10, currency: 'USD', in_stock: false },
+      { merchant_id: 'dear', price: 20, currency: 'USD', in_stock: true },
+    ],
+    { productId: 'p' },
+  );
+  assert.equal(flagOnly.best_offer.value.merchant_id, 'dear');
+  const stringOnly = offersToSignals(
+    [
+      { merchant_id: 'cheap_sold_out', price: 10, currency: 'USD', availability: ' SOLD_OUT ' },
+      { merchant_id: 'dear', price: 20, currency: 'USD' },
+    ],
+    { productId: 'p' },
+  );
+  assert.equal(stringOnly.best_offer.value.merchant_id, 'dear');
+});
+
+test('unknown availability is NOT unsellable: it competes on price with in-stock offers', () => {
+  // `unknown` is catalog_offers.availability's column default and the backend ships it as
+  // in_stock: true. Demoting it would make best_offer disagree with the backend's offers[0].
+  const { offersToSignals } = require('../src/agentSignals/offerToSignal');
+  const { best_offer } = offersToSignals(
+    [
+      { merchant_id: 'dear_in_stock', price: 20, currency: 'USD', availability: 'in_stock', in_stock: true },
+      { merchant_id: 'cheap_unknown', price: 10, currency: 'USD', availability: 'unknown', in_stock: true },
+    ],
+    { productId: 'p' },
+  );
+  assert.equal(best_offer.value.merchant_id, 'cheap_unknown');
+});
+
+test('a VERIFIED-out-of-stock offer does not beat an unchecked one that says it is in stock', () => {
+  // live_offer_verification stamps stock_verified: true and CORRECTS in_stock to what the merchant
+  // said — which can be false. "Confirmed gone" must not win the headline on the verification tier.
+  const { offersToSignals } = require('../src/agentSignals/offerToSignal');
+  const { best_offer } = offersToSignals(
+    [
+      { merchant_id: 'verified_gone', price: 10, currency: 'USD', stock_verified: true, in_stock: false },
+      { merchant_id: 'unchecked_in_stock', price: 20, currency: 'USD', in_stock: true },
+    ],
+    { productId: 'p' },
+  );
+  assert.equal(best_offer.value.merchant_id, 'unchecked_in_stock');
+});
+
+test('a sold-out PRIMARY seller does not win best_offer over a sellable one', () => {
+  const { offersToSignals } = require('../src/agentSignals/offerToSignal');
+  const { best_offer } = offersToSignals(
+    [
+      { merchant_id: 'primary_sold_out', price: 10, currency: 'USD', is_primary: true, in_stock: false },
+      { merchant_id: 'other', price: 20, currency: 'USD', in_stock: true },
+    ],
+    { productId: 'p' },
+  );
+  assert.equal(best_offer.value.merchant_id, 'other');
+});
+
+test('an INTERNAL offer is not demoted on its in_stock flag (mirrors the backend exemption)', () => {
+  // The backend computes an internal offer's in_stock from inventory_quantity alone, so an
+  // untracked-inventory variant that is buyable arrives as in_stock: false.
+  const { offersToSignals } = require('../src/agentSignals/offerToSignal');
+  const { best_offer } = offersToSignals(
+    [
+      { merchant_id: 'referral', price: 20, currency: 'USD', in_stock: true, purchase_route: 'affiliate_outbound' },
+      { merchant_id: 'buy_here', price: 15, currency: 'USD', in_stock: false, purchase_route: 'internal_checkout' },
+    ],
+    { productId: 'p' },
+  );
+  assert.equal(best_offer.value.merchant_id, 'buy_here');
+});
