@@ -2248,42 +2248,38 @@ describe('canonicalCatalogSearch union text arm is the narrow, sargable-shaped o
     }
   });
 
-  // THE DESIGN CLAIM, PINNED. Every other assertion in this block runs in ONE flag state
-  // (sargableTextWhere on, recall_doc on) — and that is exactly the state in which
-  // `citableSargableLane` is true and `textWhereClause` HAPPENS to already be the narrow form. So a
-  // refactor swapping `unionTextWhereClause` for `textWhereClause` looks harmless there while
-  // reintroducing the OR-EXISTS plan — the measured 18.6s shape — in the other flag states. Review
-  // caught exactly that: two mutants survived the rest of this block for this reason.
+  // WHAT THE UNION'S ARM IS GATED ON — the recall_doc COVERAGE arm, not the caller's election.
   //
-  // The union's text arm must depend on NEITHER PIVOT_BEAUTY_MAINLINE_SARGABLE_TEXT_WHERE_ENABLED nor
-  // the recall_doc flag. Byte-identity across the sargable axis states that directly.
-  test('the union arm is independent of sargableTextWhere — byte-identical either way', async () => {
-    for (const doc of ['enabled', undefined]) {
-      process.env[UNION_FLAG] = 'on';
-      if (doc) process.env[DOC_FLAG] = doc; else delete process.env[DOC_FLAG];
-      const on = whereOf((await capture({ ...BROWSE, sargableTextWhere: true })).sql);
-      const off = whereOf((await capture({ ...BROWSE, sargableTextWhere: false })).sql);
-      expect(on).toBe(off);
+  // #2039 pinned the opposite: that the arm must NOT vary with sargableTextWhere, asserted as byte-identity
+  // across that axis. Prod EXPLAIN then showed the cost is the CROSS-TABLE merchant_name disjunct, and that
+  // gating on the caller's election leaves every non-electing browse caller (the shopping browse lane
+  // passes neither tokenMatch nor sargableTextWhere) on the 4.4s plan for no recall benefit. So the old
+  // invariant was deliberately retired; these two tests replace it.
+  test('with the coverage arm present the union is SINGLE-TABLE, whichever shape the caller elected', async () => {
+    process.env[DOC_FLAG] = 'enabled';
+    for (const sargableTextWhere of [true, false]) {
+      const where = whereOf((await capture({ ...BROWSE, sargableTextWhere })).sql);
+      const label = `sargable=${sargableTextWhere}`;
+      // The cross-table arm is the one the prod EXPLAIN blamed: it forces the whole OR to be evaluated
+      // after the merchants join, so the payload-JSON conjuncts detoast every serving-eligible row.
+      expect({ label, m: /m\.merchant_name/.test(where) }).toEqual({ label, m: false });
+      expect({ label, m: /OR EXISTS/.test(where) }).toEqual({ label, m: false });
+      expect({ label, m: /p\.source_product_id/.test(where) }).toEqual({ label, m: false });
     }
   });
 
-  test('no flag state can put an OR-EXISTS back into the union, or narrow its token arm', async () => {
-    for (const doc of ['enabled', undefined]) {
-      for (const sargableTextWhere of [true, false]) {
-        process.env[UNION_FLAG] = 'on';
-        if (doc) process.env[DOC_FLAG] = doc; else delete process.env[DOC_FLAG];
-        const where = whereOf((await capture({ ...BROWSE, sargableTextWhere })).sql);
-        const label = `doc=${doc || 'off'} sargable=${sargableTextWhere}`;
-        expect({ label, m: /OR EXISTS/.test(where) }).toEqual({ label, m: false });
-        expect({ label, m: /m\.merchant_name/.test(where) }).toEqual({ label, m: false });
-        expect({ label, m: /p\.source_product_id/.test(where) }).toEqual({ label, m: false });
-        // The token arm must be the PLAIN form. plainTokenWhere opens `OR (((CASE WHEN`; the sargable
-        // variant opens `OR ((LOWER(...) LIKE $n OR ...) AND ((` — a strictly narrower, recall-reducing
-        // conjunct that the union must never take. Both forms contain `) >= 2)`, so the pre-existing
-        // token assertion cannot tell them apart.
-        expect({ label, m: /OR \(\(\(CASE WHEN/.test(where) }).toEqual({ label, m: true });
-      }
-    }
+  test('WITHOUT the coverage arm the union keeps the complete-recall clause — the #1935 glycerin lesson', async () => {
+    // 22/25 rows were lost when these arms were dropped without recall_doc present. Slower and correct
+    // beats faster and wrong, so the flag-off path must NOT be narrowed.
+    process.env[UNION_FLAG] = 'on';
+    delete process.env[DOC_FLAG];
+    const where = whereOf((await capture(BROWSE)).sql);
+    expect(where).toMatch(/m\.merchant_name/);
+    expect(where).toMatch(/OR EXISTS/);
+    expect(where).toMatch(/p\.source_product_id/);
+    // …and it is still a UNION, not a reversion to category-only.
+    expect(where).toMatch(/LOWER\(COALESCE\(p\.title, ''\)\) LIKE \$2/);
+    expect(where).toMatch(/p\.category_path = \$5 OR p\.category_path LIKE \$6/);
   });
 
   test('with the union off, verticalSearch browse SQL is unchanged from the kill-switch form', async () => {
@@ -2308,8 +2304,17 @@ describe('canonicalCatalogSearch union text arm is the narrow, sargable-shaped o
 // restoring it loses the rows.
 describe('canonicalCatalogSearch union ingredient carve-out', () => {
   const UNION_FLAG = 'CANONICAL_CATALOG_CATEGORY_BROWSE_TEXT_UNION';
-  beforeEach(() => { process.env[UNION_FLAG] = 'on'; });
-  afterEach(() => { delete process.env[UNION_FLAG]; });
+  // The carve-out only exists on the NARROW arm, which requires the coverage arm. With recall_doc off the
+  // union keeps the complete-recall clause and verticalWhere is present anyway, for a different reason —
+  // so without this the whole block would measure the plain clause and prove nothing.
+  beforeEach(() => {
+    process.env[UNION_FLAG] = 'on';
+    process.env.CANONICAL_CATALOG_RECALL_DOC_MATCH = 'enabled';
+  });
+  afterEach(() => {
+    delete process.env[UNION_FLAG];
+    delete process.env.CANONICAL_CATALOG_RECALL_DOC_MATCH;
+  });
 
   async function unionWhere(overrides) {
     const query = makeMockQuery([]);
