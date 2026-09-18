@@ -881,9 +881,8 @@
       ],
       "sku_id": "50856826536257",
       "target": "acceptance_jsm_lip_pression_metal_serum_gloss",
-      "status": "known_fail",
-      "reason": "resolve reads only products_cache + product_group_members; the referral cohort lives in catalog_skus",
-      "tracked_by": "pivota-backend #2189"
+      "status": "pass",
+      "fixed_by": "pivota-backend #2189 (live 01152e9c, 2026-09-18; runner: pass via catalog_identity_exact)"
     }
   ]
 }

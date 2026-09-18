@@ -12,7 +12,7 @@ const request = require('supertest');
 // a DATABASE_URL), because without it the door returns before it binds anything and records
 // no lane -- which is how two wiring mutants (products key, stage breakdown) survived review.
 
-const FIELDS = ['market_observed', 'market_requested', 'market_source', 'market_bound',
+const FIELDS = ['market_observed', 'market_requested', 'market_source', 'market_bound', 'market_buyer_currency',
   'served_currencies', 'served_currency_mismatch', 'served_price_sources'];
 
 describe('market telemetry on the invoke completion log line', () => {
@@ -29,6 +29,7 @@ describe('market telemetry on the invoke completion log line', () => {
       GATEWAY_RATE_LIMIT_ENABLED: 'false', AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED: 'false',
       PIVOT_BEAUTY_DIRECT_INDEXED_RECALL_ENABLED: 'true', DATABASE_URL: 'postgres://unused.test/db',
     });
+    delete process.env.FIND_PRODUCTS_BUYER_MARKET;
     nock.disableNetConnect();
     nock.enableNetConnect((host) => host.includes('127.0.0.1'));
     jest.doMock('../../src/db', () => ({
@@ -77,6 +78,21 @@ describe('market telemetry on the invoke completion log line', () => {
     for (const field of FIELDS) expect(Object.keys(line)).toContain(field);
     // Review of #2239 R13: the lane wiring was unpinned because no test reached a lane.
     expect(line.lane).toBe('early_indexed');
+  });
+
+  test('Stage 0a on: the logged binding is the served partitions plus SG, with the SGD scope', async () => {
+    process.env.FIND_PRODUCTS_BUYER_MARKET = 'on';
+    await invoke({ search: { query: 'lip gloss', domain: 'beauty', limit: 5, market: 'SG' } });
+    expect(logged).toHaveLength(1);
+    expect(logged[0].market_bound).toEqual(['US', 'SG']);
+    expect(logged[0].market_buyer_currency).toBe('SGD');
+    expect(boundInSql()).toContain('SGD');
+  });
+
+  test('Stage 0a off: no buyer currency is logged or bound', async () => {
+    await invoke({ search: { query: 'lip gloss', domain: 'beauty', limit: 5, market: 'SG' } });
+    expect(logged[0].market_buyer_currency).toBeNull();
+    expect(boundInSql()).not.toContain('SGD');
   });
 
   // Review of #2239, probes B, D and E, reproduced: each once logged a market the SQL never bound.
