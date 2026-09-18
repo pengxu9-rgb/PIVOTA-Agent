@@ -289,6 +289,7 @@ const {
   formAgreementEffectiveFor: canonicalFormAgreementEffectiveFor,
 } = require('./services/canonicalCatalogSearch');
 const searchNameEvidence = require('./services/searchNameEvidence');
+const marketTelemetry = require('./services/marketTelemetry');
 const beautyRelevanceGate = require('./services/beautyRelevanceGate');
 const {
   titleLooksLikeMultiProductSet,
@@ -836,6 +837,10 @@ const INVOKE_AUTH_CONTEXT = new AsyncLocalStorage();
 // reference would blend concurrent requests. Reads no-op when no store is set, so unit tests that
 // call withSearchDiagnostics directly are unaffected.
 const INVOKE_FPM_STAGE_CONTEXT = new AsyncLocalStorage();
+// Per-request observation of the market the door BOUND, written at the bind itself
+// (searchBeautyExternalSeedProductsMainline) and read on the invoke completion log line. See
+// services/marketTelemetry.js for why it is observed rather than re-derived.
+const INVOKE_MARKET_CONTEXT = new AsyncLocalStorage();
 
 // Collapses the breakdown to {stage: ms} for `metadata.route_trace.node_timings_ms`, the shape
 // scripts/search_stability_matrix.js has always read and always found null. Same-named stages sum
@@ -22376,6 +22381,7 @@ async function searchBeautyExternalSeedProductsMainline({
   // binds; `market` is the ONE NAME for telemetry, the KR bridge and card stamping.
   const markets = marketsForRequest(search.market || metadata.market);
   const market = markets[0];
+  marketTelemetry.observeBoundMarket(INVOKE_MARKET_CONTEXT.getStore(), { search, metadata, markets });
   const requestSearchQualityContract =
     search?.search_quality_contract &&
     typeof search.search_quality_contract === 'object' &&
@@ -40849,6 +40855,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
   // pipeline leg, emitted in the 'invoke request complete' log so prod logs
   // can attribute latency_ms to concrete legs (upstream HTTP vs LLM vs local).
   const fpmStageBreakdown = [];
+  // What the caller asked for, what the door bound, what it served -- filled in when the
+  // response body is known (res.json below) and emitted on the completion log line. Nothing
+  // reads it; it exists because no data exists on how often callers name a market.
+  let marketTelemetryRecord = {};
   // enterWith, not run(): this handler's body is ~8000 lines and wrapping it in a callback to set
   // one store would be a large, risky reshape of a live payments-adjacent path for a telemetry
   // field. enterWith binds the store for the remainder of this async context, which is exactly the
@@ -40857,6 +40867,12 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     INVOKE_FPM_STAGE_CONTEXT.enterWith(fpmStageBreakdown);
   } catch (_) {
     // Telemetry must never be able to fail the surface it measures.
+  }
+  const marketObservation = {};
+  try {
+    INVOKE_MARKET_CONTEXT.enterWith(marketObservation);
+  } catch (_) {
+    // Same rule: an unavailable store means no observation, never a failed request.
   }
   let fpmUpstreamHttpMs = 0;
   const isFpmStageOperation = () => {
@@ -41080,6 +41096,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         latency_ms: Math.max(0, Date.now() - invokeStartedAtMs),
         upstream_ms: Math.max(0, Math.round(upstreamElapsedMs)),
         gateway_retries: Math.max(0, gatewayRetryCount),
+        ...marketTelemetryRecord,
         ...(fpmStageBreakdown.length > 0
           ? {
               fpm_stage_breakdown: fpmStageBreakdown,
@@ -41127,7 +41144,25 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       'invoke request complete',
     );
   });
-  const originalJson = res.json.bind(res);
+  // Every return path funnels through here, so this is the one place the FINAL body is known
+  // -- capturing earlier would record a page that later filtering still changes. Telemetry must
+  // never be able to fail a response, so the capture cannot throw: a failed record is logged as
+  // absent, and the response goes out regardless.
+  const originalJson = ((emit) => (body) => {
+    try {
+      marketTelemetryRecord = marketTelemetry.buildMarketTelemetry({
+        operation: String(debugRuntime.operation || req?.body?.operation || ''),
+        observation: marketObservation,
+        payload: req?.body?.payload,
+        metadata: req?.body?.metadata,
+        body,
+        stages: fpmStageBreakdown,
+      });
+    } catch (telemetryErr) {
+      marketTelemetryRecord = { market_telemetry_error: String(telemetryErr?.message || telemetryErr).slice(0, 120) };
+    }
+    return emit(body);
+  })(res.json.bind(res));
   res.json = (body) => {
     let finalBody = body;
     try {
