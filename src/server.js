@@ -10383,7 +10383,16 @@ function decoratePdpPayloadWithIdentity(pdpPayload, {
   const lineId = String(productLineId || '').trim();
   const reviewId = String(reviewFamilyId || '').trim();
   const scope = String(canonicalScope || '').trim();
-  const count = Number(offersCount);
+  // NOT COUNTED IS NOT ZERO. `Number(null)` is 0, and `offersCount` defaults to null for every
+  // caller that did not build the offers module — so this used to stamp `offers_count: 0` and
+  // `has_multiple_offers: false` on every PDP served without it. `get_product` asks for
+  // `product_overview` only, and so told agents a product had no sellers while `get_offers`
+  // returned two (measured in prod 2026-09-18 on the Pyunkang Yul canary; the same request WITH
+  // the offers module counts 2). A count must be a number the caller actually took.
+  const count =
+    offersCount === null || offersCount === undefined || String(offersCount).trim() === ''
+      ? NaN
+      : Number(offersCount);
   const hasOfferCount = Number.isFinite(count) && count >= 0;
   const product = pdpPayload.product && typeof pdpPayload.product === 'object'
     ? { ...pdpPayload.product }

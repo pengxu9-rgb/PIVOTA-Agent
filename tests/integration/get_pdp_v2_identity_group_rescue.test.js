@@ -272,6 +272,38 @@ describe('get_pdp_v2 identity group rescue', () => {
     expect(offersData(res)?.offers_count).toBe(0);
   });
 
+  it('a PDP served WITHOUT the offers module states no offer count at all', async () => {
+    // `get_product` asks for `product_overview` only. The count helper used to turn its default
+    // null into 0, so this answered `offers_count: 0, has_multiple_offers: false` for a product
+    // with two sellers, next to `canonical_scope: multi_merchant_canonical`. Measured in prod
+    // 2026-09-18 on the Pyunkang Yul canary.
+    const { app, db } = loadServerWithDb();
+    install(db, { shape: 'shared' });
+
+    const res = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({ operation: 'get_pdp_v2', payload: { product_ref: { product_id: SIG_ID }, include: ['product_overview'] } });
+    expect(res.status).toBe(200);
+
+    const product = res.body.modules?.[0]?.data?.pdp_payload?.product || {};
+    expect(product).not.toHaveProperty('offers_count');
+    expect(product).not.toHaveProperty('offer_count');
+    expect(product).not.toHaveProperty('has_multiple_offers');
+    // What WAS resolved is still stated: the shared group from the rescue.
+    expect(product.product_group_id).toBe(SIBLING_SIG_ID);
+  });
+
+  it('the same PDP WITH the offers module counts both sellers on the product', async () => {
+    // The control for the test above: the count is only absent because nobody took it.
+    const { app, db } = loadServerWithDb();
+    install(db, { shape: 'shared' });
+
+    const res = await pdp(app, { product_id: SIG_ID });
+    const product = res.body.modules?.[0]?.data?.pdp_payload?.product || {};
+    expect(product.offers_count).toBe(2);
+    expect(product.has_multiple_offers).toBe(true);
+  });
+
   it('keeps the old answer when the catalog holds only this listing', async () => {
     // One member is the listing itself. Rescuing that would change every solo seed listing's
     // answer on the strength of a query that found nothing new.
