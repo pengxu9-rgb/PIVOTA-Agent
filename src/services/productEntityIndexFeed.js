@@ -738,8 +738,9 @@ async function getProductEntityIndexFeed(payload = {}, deps = {}) {
         -- Shopping ingesters reject price-null items, so every feed item
         -- carries ONE representative offer's price: amount, currency, and
         -- availability from the SAME offer row (never mixed across rows),
-        -- cheapest in-market first. Currency is never defaulted — an offer
-        -- without a currency is not price-quotable and is skipped.
+        -- in-market first, then known-unavailable last, then cheapest. Unknown
+        -- availability shares the sellable tier. Currency is never defaulted:
+        -- an offer without a currency is not price-quotable and is skipped.
         LEFT JOIN LATERAL (
           SELECT
             COALESCE(o.merchant_effective_price, o.list_price) AS price_amount,
@@ -752,6 +753,8 @@ async function getProductEntityIndexFeed(payload = {}, deps = {}) {
             AND o.currency IS NOT NULL
           ORDER BY
             CASE WHEN upper(coalesce(o.market, '')) = $${bestOfferMarketParam} THEN 0 ELSE 1 END,
+            CASE WHEN lower(btrim(coalesce(o.availability, ''))) IN
+              ('out_of_stock', 'outofstock', 'sold_out', 'soldout', 'unavailable') THEN 1 ELSE 0 END,
             COALESCE(o.merchant_effective_price, o.list_price) ASC,
             o.offer_id ASC
           LIMIT 1
