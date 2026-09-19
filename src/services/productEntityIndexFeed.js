@@ -4,6 +4,7 @@ const {
   EXTERNAL_SEED_MERCHANT_ID,
 } = require('./externalSeedProducts');
 const { activeCatalogProductSourceWhere } = require('./activeCatalogSourceSql');
+const { OFFER_AVAILABILITY_TIER_SQL } = require('./offerAvailabilitySql');
 
 // ADR-018 connection layer, JS twin of pivota-backend
 // `services/connection_layer.classify_connection_layer`. Kept deliberately
@@ -753,8 +754,7 @@ async function getProductEntityIndexFeed(payload = {}, deps = {}) {
             AND o.currency IS NOT NULL
           ORDER BY
             CASE WHEN upper(coalesce(o.market, '')) = $${bestOfferMarketParam} THEN 0 ELSE 1 END,
-            CASE WHEN lower(btrim(coalesce(o.availability, ''))) IN
-              ('out_of_stock', 'outofstock', 'sold_out', 'soldout', 'unavailable') THEN 1 ELSE 0 END,
+            ${OFFER_AVAILABILITY_TIER_SQL},
             COALESCE(o.merchant_effective_price, o.list_price) ASC,
             o.offer_id ASC
           LIMIT 1

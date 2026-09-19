@@ -119,6 +119,10 @@ suite('representative offer availability on real PostgreSQL', () => {
       { id: 'a', price: 1, availability: ' Out_Of_Stock ' },
       { id: 'b', price: 10, availability: 'in_stock' },
     ], 'in_stock', 10],
+    ['JavaScript trim whitespace around unavailable loses to available', [
+      { id: 'a', price: 1, availability: '\t\nOut_Of_Stock\u00a0' },
+      { id: 'b', price: 10, availability: 'in_stock' },
+    ], 'in_stock', 10],
     ['all five unavailable spellings lose', [
       ...['out_of_stock', 'outofstock', 'sold_out', 'soldout', 'unavailable']
         .map((availability, i) => ({ id: `a${i}`, price: i + 1, availability })),

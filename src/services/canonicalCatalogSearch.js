@@ -60,6 +60,7 @@
 
 const { buildCanonicalSearchQualitySql } = require('./canonicalSearchQualitySql');
 const { activeCatalogProductSourceWhere } = require('./activeCatalogSourceSql');
+const { OFFER_AVAILABILITY_TIER_SQL } = require('./offerAvailabilitySql');
 const { queryWantsMultiProductSet } = require('./beautyRelevanceGate');
 
 const DEFAULT_LIMIT = 12;
@@ -1547,8 +1548,7 @@ async function fetchCanonicalChainRows(args = {}) {
   // "oos" and "false", and checks inventory_quantity. That filter keeps its
   // existing behavior; a legacy spelling can pass this ranking tier but still
   // fail an explicit inStockOnly request.
-  const bestOfferAvailabilityOrder = `CASE WHEN lower(btrim(coalesce(o.availability, ''))) IN
-        ('out_of_stock', 'outofstock', 'sold_out', 'soldout', 'unavailable') THEN 1 ELSE 0 END,`;
+  const bestOfferAvailabilityOrder = `${OFFER_AVAILABILITY_TIER_SQL},`;
   // The MAIN shopping route elects an offer scope. Require a matching live
   // offer BEFORE the candidate LIMIT, then select from that identical set in
   // the lateral. Filtering only the chosen cheapest offer afterward loses a
