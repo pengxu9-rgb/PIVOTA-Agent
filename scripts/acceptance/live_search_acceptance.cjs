@@ -129,7 +129,7 @@ async function runLive({ fetchImpl = fetch, env = process.env } = {}) {
       body: JSON.stringify({
         jsonrpc: '2.0', id: Date.now(), method: 'tools/call',
         params: { name: 'search_catalog', arguments: { meta: {}, catalog: {
-          query: c.query, pagination: { limit: Math.max(topN, 20) }, context: { currency: 'SGD' }, filters: { available: false },
+          query: c.query, pagination: { limit: Math.max(topN, 20) }, context: { address_country: c.market || 'SG', currency: 'SGD' }, filters: { available: false },
         } } },
       }),
     });

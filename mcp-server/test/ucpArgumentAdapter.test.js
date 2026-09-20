@@ -694,7 +694,7 @@ describe('search_catalog speaks the UCP nested-catalog shape and takes the unsco
         query: 'vitamin c',
         pagination: { unknown_member: 'PAG_SENTINEL' },
         context: {
-          address_country: 'CTRY_SENTINEL', address_region: 'REG_SENTINEL', postal_code: 'PC_SENTINEL',
+          address_region: 'REG_SENTINEL', postal_code: 'PC_SENTINEL',
           language: 'LANG_SENTINEL', intent: 'INT_SENTINEL', unknown_member: 'CTX_SENTINEL',
         },
         signals: { 'dev.ucp.buyer_ip': 'IP_SENTINEL', 'dev.ucp.user_agent': 'UA_SENTINEL', s: 'SIG_SENTINEL' },
@@ -703,7 +703,7 @@ describe('search_catalog speaks the UCP nested-catalog shape and takes the unsco
     }, SESSION);
     const wire = JSON.stringify(executor.only('search_catalog').params);
     for (const s of [
-      'PAG_SENTINEL', 'CTRY_SENTINEL', 'REG_SENTINEL', 'PC_SENTINEL', 'LANG_SENTINEL',
+      'PAG_SENTINEL', 'REG_SENTINEL', 'PC_SENTINEL', 'LANG_SENTINEL',
       'INT_SENTINEL', 'CTX_SENTINEL', 'IP_SENTINEL', 'UA_SENTINEL', 'SIG_SENTINEL', 'CAT_SENTINEL', 'FIL_SENTINEL',
     ]) {
       assert.equal(wire.includes(s), false, `${s} must not be forwarded`);
@@ -905,11 +905,11 @@ describe('search_catalog reads the live filters, pagination and currency the way
     }
   });
 
-  test('`context.currency` reaches the lane; an empty one is refused; other context members do not', async () => {
+  test('`context.currency` and `address_country` reach the lane; other context members do not', async () => {
     assert.deepEqual(await search({ query: 'q', context: { currency: 'EUR' } }), { query: 'q', currency: 'EUR' });
     assert.deepEqual(
       await search({ query: 'q', context: { currency: 'EUR', address_country: 'FR', language: 'fr-FR', intent: 'gift' } }),
-      { query: 'q', currency: 'EUR' },
+      { query: 'q', currency: 'EUR', market: 'FR' },
     );
     // Blank is ABSENT, as for `query` — the schema types it as a string and a blank string is a string.
     assert.deepEqual(await search({ query: 'q', context: { currency: '' } }), { query: 'q' });
@@ -921,6 +921,12 @@ describe('search_catalog reads the live filters, pagination and currency the way
     );
     for (const bad of [840, null, ['USD'], { code: 'USD' }]) {
       assert.match(await refused({ query: 'q', context: { currency: bad } }), /context\.currency/);
+    }
+    assert.deepEqual(await search({ query: 'q', context: { address_country: ' sg ', currency: 'USD' } }),
+      { query: 'q', currency: 'USD', market: 'sg' });
+    assert.deepEqual(await search({ query: 'q', context: { address_country: '  ' } }), { query: 'q' });
+    for (const bad of [65, null, ['SG']]) {
+      assert.match(await refused({ query: 'q', context: { address_country: bad } }), /context\.address_country/);
     }
   });
 
@@ -956,7 +962,7 @@ describe('search_catalog reads the live filters, pagination and currency the way
       signals: { 'dev.ucp.buyer_ip': '198.51.100.9', 'dev.ucp.user_agent': 'ua', unknown_member: 'SIG_X' },
     });
     assert.deepEqual(params, {
-      query: 'niacinamide serum', page_size: 20, page: 3, price_min: 10, price_max: 40, in_stock_only: true, currency: 'USD',
+      query: 'niacinamide serum', page_size: 20, page: 3, price_min: 10, price_max: 40, in_stock_only: true, currency: 'USD', market: 'US',
     });
     // No merchant_id — the lane stays unscoped no matter how much arrives. `page` came from OUR cursor (3),
     // never from the undeclared `pagination.page: 7`; the exponent came from context.currency (USD), never
@@ -1224,7 +1230,7 @@ describe('schema and mapper cannot drift', () => {
       search_catalog: [
         'catalog.query', 'catalog.pagination.limit', 'catalog.pagination.cursor',
         'catalog.filters.price.min', 'catalog.filters.price.max', 'catalog.filters.available',
-        'catalog.context.currency',
+        'catalog.context.currency', 'catalog.context.address_country',
       ],
       get_product: ['catalog.id'],
       create_checkout: [

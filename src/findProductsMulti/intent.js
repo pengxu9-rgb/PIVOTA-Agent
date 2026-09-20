@@ -924,22 +924,25 @@ function parseBudgetToPriceConstraint(latestUserQuery) {
 
   // Normalize full-width digits and currency symbols if present.
   const normalized = q.replace(/[０-９]/g, (d) => String('０１２３４５６７８９'.indexOf(d)));
+  const hasSgd = /(?:s\$|sgd|singapore dollars?|新加坡元)/i.test(normalized);
   const hasUsd = /(?:\$|usd|dollars?|美金|美元)/i.test(normalized);
   const hasEur = /(?:€|eur|euros?|欧元)/i.test(normalized);
   const hasGbp = /(?:£|gbp|pounds?|英镑)/i.test(normalized);
   const hasCny = /(?:￥|¥|cny|rmb|yuan|人民币|元)/i.test(normalized);
   const hasJpy = /(?:jpy|yen|円|日元|日圆)/i.test(normalized);
-  const currency = hasUsd
-    ? 'USD'
-    : hasEur
-      ? 'EUR'
-      : hasGbp
-        ? 'GBP'
-        : hasCny
-          ? 'CNY'
-          : hasJpy
-            ? 'JPY'
-            : null;
+  const currency = hasSgd
+    ? 'SGD'
+    : hasUsd
+      ? 'USD'
+      : hasEur
+        ? 'EUR'
+        : hasGbp
+          ? 'GBP'
+          : hasCny
+            ? 'CNY'
+            : hasJpy
+              ? 'JPY'
+              : null;
 
   const maxOnly =
     /以内|以下|不超过|至多|最多|at most|up to|under|<=|＜=|≤|less than|below/i.test(normalized);
@@ -971,13 +974,13 @@ function parseBudgetToPriceConstraint(latestUserQuery) {
   // budget clause ("Niacinamide 10% + Zinc 1% under $8"). Falling back to the
   // first number silently turns the formulation strength into a price cap.
   const currencyAmountMatch = normalized.match(
-    /(?:[$€£¥￥]\s*|(?:usd|eur|gbp|cny|rmb|jpy)\s*)(\d+(?:\.\d+)?)/i,
+    /(?:s\$\s*|[$€£¥￥]\s*|(?:sgd|usd|eur|gbp|cny|rmb|jpy)\s*)(\d+(?:\.\d+)?)/i,
   ) || normalized.match(
-    /(\d+(?:\.\d+)?)\s*(?:usd|eur|gbp|cny|rmb|jpy|dollars?|euros?|pounds?|yuan|yen|美元|美金|欧元|英镑|人民币|日元|日圆|円)/i,
+    /(\d+(?:\.\d+)?)\s*(?:sgd|usd|eur|gbp|cny|rmb|jpy|singapore dollars?|dollars?|euros?|pounds?|yuan|yen|新加坡元|美元|美金|欧元|英镑|人民币|日元|日圆|円)/i,
   );
   const boundedAmountMatch = maxOnly || minOnly
     ? normalized.match(
-        /(?:以内|以下|不超过|至多|最多|at most|up to|under|<=|＜=|≤|less than|below|以上|至少|不低于|>=|＞=|≥|over|above|more than|at least|from|starting from|starting at)\s*(?:[$€£¥￥]|usd|eur|gbp|cny|rmb|jpy)?\s*(\d+(?:\.\d+)?)/i,
+        /(?:以内|以下|不超过|至多|最多|at most|up to|under|<=|＜=|≤|less than|below|以上|至少|不低于|>=|＞=|≥|over|above|more than|at least|from|starting from|starting at)\s*(?:s\$|[$€£¥￥]|sgd|usd|eur|gbp|cny|rmb|jpy)?\s*(\d+(?:\.\d+)?)/i,
       )
     : null;
   const m = currencyAmountMatch || boundedAmountMatch || normalized.match(/(\d+(?:\.\d+)?)/);

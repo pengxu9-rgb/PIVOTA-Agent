@@ -488,7 +488,7 @@ function toParams(op, toolArgs) {
   const a = asObj(toolArgs);
   switch (op.id) {
     case "search_catalog":
-      return { payload: { search: pick(a, ["query", "merchant_id", "category", "price_min", "price_max", "currency", "in_stock_only", "page", "page_size"]) } };
+      return { payload: { search: pick(a, ["query", "merchant_id", "category", "price_min", "price_max", "currency", "market", "in_stock_only", "page", "page_size"]) } };
     case "get_product":
       return {
         payload: {
@@ -751,7 +751,7 @@ const INPUT_SCHEMAS = Object.freeze({
     type: "object", additionalProperties: false,
     properties: {
       query: { type: "string" }, merchant_id: { type: "string" }, category: { type: "string" },
-      price_min: { type: "number" }, price_max: { type: "number" }, currency: { type: "string" },
+      price_min: { type: "number" }, price_max: { type: "number" }, currency: { type: "string" }, market: { type: "string", description: "Buyer country (ISO 3166-1 alpha-2)." },
       in_stock_only: { type: "boolean" }, page: { type: "integer", minimum: 1 },
       page_size: { type: "integer", minimum: 1, maximum: 50 },
     },

@@ -24,6 +24,7 @@ describe('/agent/shop/v1/invoke find_products_multi legacy fallback isolation', 
       API_MODE: process.env.API_MODE,
       DATABASE_URL: process.env.DATABASE_URL,
       PIVOT_BEAUTY_DIRECT_INDEXED_RECALL_ENABLED: process.env.PIVOT_BEAUTY_DIRECT_INDEXED_RECALL_ENABLED,
+      PIVOT_BEAUTY_DISCOVERY_ZERO_FALLTHROUGH: process.env.PIVOT_BEAUTY_DISCOVERY_ZERO_FALLTHROUGH,
       PROXY_SEARCH_RESOLVER_FIRST_ENABLED: process.env.PROXY_SEARCH_RESOLVER_FIRST_ENABLED,
       PROXY_SEARCH_RESOLVER_FIRST_STRONG_ONLY:
         process.env.PROXY_SEARCH_RESOLVER_FIRST_STRONG_ONLY,
@@ -410,6 +411,25 @@ describe('/agent/shop/v1/invoke find_products_multi legacy fallback isolation', 
         bridged_operation: 'get_discovery_feed',
       }),
     );
+  });
+
+  test.each([['off', false], ['on', true]])('zero-row discovery fallthrough %s keeps the empty response when indexed recall is unavailable', async (flag, attempted) => {
+    process.env.PIVOT_BEAUTY_DISCOVERY_ZERO_FALLTHROUGH = flag;
+    jest.doMock('../../src/services/discoveryFeed', () => {
+      const actual = jest.requireActual('../../src/services/discoveryFeed');
+      return { ...actual, getDiscoveryFeed: jest.fn(async () => ({ products: [], total: 0, metadata: {} })) };
+    });
+    const app = require('../../src/server');
+    const resp = await request(app).post('/agent/shop/v1/invoke').send({
+      operation: 'find_products_multi',
+      payload: { search: { query: 'lip balm', market: 'SG', catalog_surface: 'beauty' } },
+      metadata: { source: 'search', catalog_surface: 'beauty' },
+    });
+    jest.dontMock('../../src/services/discoveryFeed');
+    expect(resp.status).toBe(200);
+    expect(resp.body.products).toEqual([]);
+    expect(resp.body.metadata.discovery_fallthrough?.attempted === true).toBe(attempted);
+    if (attempted) expect(resp.body.metadata.discovery_fallthrough.reason).toBe('indexed_unavailable');
   });
 
   test.each([
